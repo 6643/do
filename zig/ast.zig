@@ -31,13 +31,14 @@ pub const NodeTag = enum {
     call,
     array_literal,
     constraint_def,
-    enum_def,
+    union_def,
     variant_def,
     match_expr,
     match_branch,
-    enum_literal, // .variant
+    union_literal, // .variant
     tuple_literal,
     tuple_type,
+    ffi_decl,
 };
 
 pub const IdentifierAttr = packed struct {
@@ -152,7 +153,7 @@ pub const Node = struct {
         constraint_def: struct {
             name: []const u8,
         },
-        enum_def: struct {
+        union_def: struct {
             name: []const u8,
             generic_params: []const NodeIndex,
             variants: []const NodeIndex,
@@ -170,12 +171,19 @@ pub const Node = struct {
             pattern: NodeIndex, // For now, likely just a path_get (e.g. .circle) or call (e.g. .circle(r))
             body: NodeIndex,
         },
-        enum_literal: []const u8, // name
+        union_literal: []const u8, // name
         tuple_literal: struct {
             elements: []const NodeIndex,
         },
         tuple_type: struct {
             elements: []const NodeIndex,
+        },
+        ffi_decl: struct {
+            name: []const u8,
+            module_name: []const u8,
+            fn_name: []const u8,
+            params: []const NodeIndex,
+            return_type: NodeIndex,
         },
     },
 };

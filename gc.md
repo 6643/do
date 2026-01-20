@@ -32,7 +32,7 @@
 
 ### 3.2 TypeID 的语义职责
 `TypeID` 是运行时的核心索引，用于指导底层操作：
-*   **递归释放**: 查找该类型的字段布局，递归执行 `dec_ref`。支持 `Struct`, `Tuple`, `Enum`, `Array`。
+*   **递归释放**: 查找该类型的字段布局，递归执行 `dec_ref`。支持 `Struct`, `Tuple`, `Union`, `Array`。
 *   **结构共享**: 在 `Array` (HAMT) 中区分内部节点与叶子节点。
 *   **多态分发**: 索引静态生成的 VTable (包含 `clone`, `drop`, `eq` 等函数指针)。
 

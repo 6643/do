@@ -14,35 +14,37 @@
 
 ## 🛠 开发计划 (Roadmap) 
 
-### 第一阶段：底层引擎与 WASM 指令映射 (Zig 实现)
+### 第一阶段：底层引擎与 WASM 指令映射 (Zig 实现) ✅
 *目标：建立编译器后端，将 WASM 的原始威力通过内建函数 (Intrinsics) 暴露给 `do`。*
 
 1.  **内存原子操作与 FFI**
-    - [ ] `#mem_size()` / `#mem_grow(delta)`: 线性内存容量控制。
-    - [ ] `#get_u8(ptr, offset)` / `#set_u32(ptr, offset, val)`: 原始类型读写。
+    - [x] `mem_size()` / `mem_grow(delta)`: 线性内存容量控制。
+    - [x] `get_u8(ptr, offset)` / `set_u32(ptr, offset, val)`: 原始类型读写。
     - [ ] **FFI 绑定**: `fd_write = #wasi.fd_write(...) -> i32`。
     - [ ] **FFI 结构体**: `WasiIovec = #wasi.WasiIovec { .buf_ptr i32, .buf_len i32 }`。
-    - [ ] `#mem_copy(dst, src, len)` / `#mem_fill(ptr, val, len)`: 块级内存优化指令。
+    - [x] `mem_copy(dst, src, len)` / `mem_fill(ptr, val, len)`: 块级内存优化指令。
 2.  **高性能位计算与异常**
-    - [ ] `#ctz(i32)` / `#clz(i32)`: 用于分配器中快速检索位图空闲位。
-    - [ ] `#popcnt(i32)`: 统计位图中已分配槽位。
-    - [ ] `#unreachable()`: 触发 WASM 陷阱。
+    - [x] `ctz(i32)` / `clz(i32)`: 用于分配器中快速检索位图空闲位。
+    - [x] `popcnt(i32)`: 统计位图中已分配槽位。
+    - [x] `unreachable()`: 触发 WASM 陷阱。
 3.  **内建数学、逻辑与位运算**
-    - [ ] **算术原语**: `add`, `sub`, `mul`, `div`, `rem`。
-    - [ ] **比较原语**: `eq`, `ne`, `gt`, `ge`, `lt`, `le`。
-    - [ ] **逻辑与位运算**: `and`, `or`, `not`, `xor`, `shl`, `shr`, `sar` (编译时根据类型自动分发)。
-    - [ ] **数学指令**: `#sqrt`, `#ceil`, `#floor`, `#trunc`。
+    - [x] **算术原语**: `add`, `sub`, `mul`, `div`, `rem`。
+    - [x] **比较原语**: `eq`, `ne`, `gt`, `ge`, `lt`, `le`。
+    - [x] **逻辑与位运算**: `and`, `or`, `not`, `xor`, `shl`, `shr`, `sar` (编译时根据类型自动分发)。
+    - [x] **数学指令**: `sqrt`, `ceil`, `floor`, `trunc`。
 
-### 第二阶段：语言特性与静态特化 (Zig 实现)
+### 第二阶段：语言特性与静态特化 (Zig 实现) 🚧 (当前进度)
 *目标：定义 `do` 的语法语义，实现静态泛型和基础字面量支持。*
 
-1.  **类型原语**
-    - [x] **Struct<T> / Enum<T>**: 静态布局定义与 Monomorphization。
-    - [ ] **Array<T, N>**: 编译期定长内存块，支持 `set(Array<T>, [...])` 长度推导。
-    - [ ] **Slice<T>**: 动态视图受管类型 (包含 `.ptr` 和 `len`)。
+1.  **编译器原语 (Compiler Primitives)**
+    - [x] **Struct<T>**: 静态布局定义与 Monomorphization。
+    - [x] **Tuple<T...>** (新增): 匿名有序结构，支持 `t = set(Tuple<i32, bool>, [1, true])` 列表初始化与 `(a, b) = t` 解构。
+    - [x] **Union Types** (新增): 核心联合类型 `A | B`。直接支持 `val | nil` 和 `val | error`，移除 `Option` / `Result` 泛型包装，实现空指针优化 (NPO)。
+    - [x] **Array<T, N>**: 编译期定长内存块，支持 `set(Array<T>, [...])` 初始化。
+    - [x] **编译时反射 (Comptime Reflection)**: 拒绝运行时反射 (RTTI)。在编译期遍历类型字段生成代码，保持 WASM 极小体积。
 2.  **字面量与语义**
     - [ ] **文本字面量**: 支持 `"` 单行与 `\\` 多行字符串 (Zig 风格)。
-    - [ ] **作用域管理 (defer)**: 确保作用域结束时自动插入 `dec_rc` 代码。
+    - [ ] **作用域管理**: 无需显式 `drop`，基于作用域自动插入 `dec_rc`。
     - [ ] **编译时约束 (#)**: 如 `#to_string(T) -> Text` 鸭子类型检查。
 
 ### 第三阶段：系统层自举 - System Layer (do 实现)
@@ -56,47 +58,13 @@
     - [ ] **FBIP 核心**: 实现原地修改算法。
 
 ### 第四阶段：核心标准库 - Standard Library (do 实现)
-*目标：提供开发者可用的高层抽象。*
+*目标：提供开发者可用的高层抽象，核心类型自举。*
 
-1.  **核心容器**: `Text`, `List<T>`, `Map<K, V>`。
-2.  **数学扩展**: `math.do` 封装。
-
----
-
-## 📝 语法规范摘要
-
-### 类型定义
-```do
-User<T> {
-    id    T
-    name  Text
-    .age  u8    // 私有
-    ._uid u32   // 只读
-}
-```
-
-### 数据操作
-```do
-// 实例化
-u = set(User<u32>, {
-    .id: 1001,
-    .name: "ZhangSan",
-    .age: 18,
-    ._uid: 8888
-})
-
-// 读取 (严禁 u.id)
-val = get(u, .id)
-
-// 更新 (RC=1 时原地修改)
-u = set(u, .name, "LiSi")
-```
-
-### 导入与 FFI
-```do
-{_pi} = #math
-{get} = #"./http.do"d_write = #wasi.fd_write(i32, WasiIovec, i32, i32) -> i32
-```
-
----
-*Powered by DeepMind Antigravity*
+1.  **核心类型 (Self-hosted)**:
+    - **Slice<T>**: 结构体 `{ ptr, len }`，编译器提供切片语法糖支持。
+    - **Text**: 包装 `Slice<u8>`，实现 UTF-8 处理逻辑。
+    - **List<T>**: 动态数组 `{ ptr, len, cap }`，实现扩容策略。
+    - **Map<K, V>**: 哈希表算法实现。
+2.  **API 设计**:
+    - **重载 (Overloading)**: 利用 `do` 语言的重载机制，为标准库类型实现 `set` / `get`，底层调用编译器原语。
+3.  **数学扩展**: `math.do` 封装。

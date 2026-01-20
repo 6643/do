@@ -24,13 +24,12 @@ pub const Parser = struct {
         self.arena.deinit();
     }
 
-    pub fn parse(self: *Parser) ParseError!ast.NodeIndex {
+    pub fn parse(self: *Parser) !ast.NodeIndex {
         const allocator = self.arena.allocator();
         var root_nodes = std.ArrayListUnmanaged(ast.NodeIndex){};
 
         while (self.peek().tag != .eof) {
-            while (self.match(.semicolon) or self.match(.comma)) {}
-            if (self.peek().tag == .eof) break;
+            std.debug.print("PARSER: next top level, current pos: {d}, tag: {any}\n", .{ self.pos, self.peek().tag });
             const node = try self.parseTopLevel();
             try root_nodes.append(allocator, node);
         }
@@ -44,76 +43,118 @@ pub const Parser = struct {
 
     fn parseTopLevel(self: *Parser) ParseError!ast.NodeIndex {
         const tok = self.peek();
+        if (tok.tag == .hash_tag) return self.parseConstraintDef();
+        if (tok.tag == .kw_loop) return self.parseLoopExpr();
+        
         if (tok.tag == .identifier) {
-            var i: usize = 1;
-
-            if (self.peekAt(i).tag == .less) {
-                i += 1;
-                var depth: u32 = 1;
-                while (depth > 0) {
-                    const t = self.peekAt(i);
-                    if (t.tag == .less) depth += 1;
-                    if (t.tag == .greater) depth -= 1;
-                    if (t.tag == .eof) break;
-                    i += 1;
-                }
-            }
-
-            if (self.peekAt(i).tag == .hash_tag) {
-                i += 1;
-                i += 1;
-                if (self.peekAt(i).tag == .l_brace) {
-                    i += 1;
-                    var depth: u32 = 1;
-                    while (depth > 0) {
-                        const t = self.peekAt(i);
-                        if (t.tag == .l_brace) depth += 1;
-                        if (t.tag == .r_brace) depth -= 1;
-                        if (t.tag == .eof) break;
-                        i += 1;
-                    }
-                }
-            }
-
-            const next = self.peekAt(i);
-            std.debug.print("DEBUG: parseTopLevel sniffing identifier, i: {d}, next: {any}\\n", .{ i, next.tag });
-
-            if (next.tag == .assign) {
-                return self.parseEnumAssignDef();
-            }
-
-            if (next.tag == .l_brace) {
-                if (self.peekAt(i + 1).tag == .dot) {
-                    return self.parseEnumDef();
-                }
-                return self.parseStructDef();
-            } else if (next.tag == .l_paren) {
-                return self.parseFnDef();
-            } else if (next.tag == .less) {
-                var j = i + 1;
-                var depth: u32 = 1;
-                while (depth > 0) {
-                    const t = self.peekAt(j);
-                    if (t.tag == .less) depth += 1;
-                    if (t.tag == .greater) depth -= 1;
-                    if (t.tag == .eof) break;
-                    j += 1;
-                }
-                if (self.peekAt(j).tag == .l_brace) {
-                    if (self.peekAt(j + 1).tag == .dot) {
-                        return self.parseEnumDef();
-                    }
-                    return self.parseStructDef();
-                }
-                return self.parseExpression(0);
-            }
-        } else if (tok.tag == .hash_tag) {
-            return self.parseConstraintDef();
+            if (try self.isDefinition()) return self.parseNamedDefinition();
         }
-        if (self.match(.kw_loop)) {
-            return self.parseLoopExpr();
+
+        return self.parseExpression(0);
+    }
+
+    fn isDefinition(self: *Parser) !bool {
+        var i: usize = 1;
+        std.debug.print("DEBUG: isDefinition sniffing starting at pos {d}\n", .{self.pos});
+        // Skip generics <...>
+        if (self.peekAt(i).tag == .less) {
+            i += 1;
+            var depth: u32 = 1;
+            while (depth > 0) {
+                const t = self.peekAt(i);
+                if (t.tag == .less) depth += 1;
+                if (t.tag == .greater) depth -= 1;
+                if (t.tag == .eof) return false;
+                i += 1;
+            }
+        }
+        
+        const next = self.peekAt(i).tag;
+        std.debug.print("DEBUG: isDefinition next tag: {any}\n", .{next});
+        if (next == .l_brace or next == .assign) return true;
+        
+        if (next == .l_paren) {
+            // Skip params (...)
+            i += 1;
+            var depth: u32 = 1;
+            while (depth > 0) {
+                const t = self.peekAt(i);
+                if (t.tag == .l_paren) depth += 1;
+                if (t.tag == .r_paren) depth -= 1;
+                if (t.tag == .eof) return false;
+                i += 1;
+            }
+            // Check for body or return type
+            const post = self.peekAt(i).tag;
+            std.debug.print("DEBUG: isDefinition post-paren tag: {any}\n", .{post});
+            return post == .l_brace or post == .arrow_out or post == .arrow_fat;
+        }
+        
+        return false;
+    }
+
+    fn parseNamedDefinition(self: *Parser) ParseError!ast.NodeIndex {
+        var i: usize = 1;
+        if (self.peekAt(i).tag == .less) {
+            var depth: u32 = 1; i += 1;
+            while (depth > 0) {
+                const t = self.peekAt(i);
+                if (t.tag == .less) depth += 1;
+                if (t.tag == .greater) depth -= 1;
+                i += 1;
+            }
+        }
+        
+        const next = self.peekAt(i);
+        if (next.tag == .assign) {
+            if (self.peekAt(i + 1).tag == .hash_tag) return self.parseFFIDecl();
+            return self.parseUnionAssignDef();
+        }
+        if (next.tag == .l_paren) return self.parseFnDef();
+        if (next.tag == .l_brace) {
+            if (self.peekAt(i + 1).tag == .dot) return self.parseUnionDef();
+            return self.parseStructDef();
         }
         return self.parseExpression(0);
+    }
+
+    fn parseFFIDecl(self: *Parser) ParseError!ast.NodeIndex {
+        const allocator = self.arena.allocator();
+        const name_tok = try self.expect(.identifier);
+        const name = self.tree.source[name_tok.loc.start..name_tok.loc.end];
+        _ = try self.expect(.assign);
+        _ = try self.expect(.hash_tag);
+        
+        const module_tok = try self.expect(.identifier);
+        const module_name = self.tree.source[module_tok.loc.start..module_tok.loc.end];
+        _ = try self.expect(.dot);
+        const fn_tok = try self.expect(.identifier);
+        const fn_name = self.tree.source[fn_tok.loc.start..fn_tok.loc.end];
+        
+        _ = try self.expect(.l_paren);
+        var params = std.ArrayListUnmanaged(ast.NodeIndex){};
+        while (self.peek().tag != .r_paren) {
+            try params.append(allocator, try self.parseType());
+            if (!self.match(.comma)) break;
+        }
+        _ = try self.expect(.r_paren);
+        
+        var return_type: ast.NodeIndex = 0;
+        if (self.match(.arrow_out)) {
+            return_type = try self.parseType();
+        }
+        
+        return self.tree.addNode(allocator, .{
+            .tag = .ffi_decl,
+            .main_token = @intCast(self.pos - 1),
+            .data = .{ .ffi_decl = .{
+                .name = name,
+                .module_name = module_name,
+                .fn_name = fn_name,
+                .params = try allocator.dupe(ast.NodeIndex, params.items),
+                .return_type = return_type,
+            } }
+        });
     }
 
     fn parseConstraintDef(self: *Parser) ParseError!ast.NodeIndex {
@@ -174,7 +215,7 @@ pub const Parser = struct {
         });
     }
 
-    fn parseEnumDef(self: *Parser) ParseError!ast.NodeIndex {
+    fn parseUnionDef(self: *Parser) ParseError!ast.NodeIndex {
         const allocator = self.arena.allocator();
         const name_tok = try self.expect(.identifier);
         const name = self.tree.source[name_tok.loc.start..name_tok.loc.end];
@@ -210,13 +251,13 @@ pub const Parser = struct {
         }
 
         return self.tree.addNode(allocator, .{
-            .tag = .enum_def,
+            .tag = .union_def,
             .main_token = @as(u32, @intCast(self.pos - 1)),
-            .data = .{ .enum_def = .{ .name = name, .generic_params = generic_params, .variants = try allocator.dupe(ast.NodeIndex, variants.items) } },
+            .data = .{ .union_def = .{ .name = name, .generic_params = generic_params, .variants = try allocator.dupe(ast.NodeIndex, variants.items) } },
         });
     }
 
-    fn parseEnumAssignDef(self: *Parser) ParseError!ast.NodeIndex {
+    fn parseUnionAssignDef(self: *Parser) ParseError!ast.NodeIndex {
         const allocator = self.arena.allocator();
         const name_tok = try self.expect(.identifier);
         const name = self.tree.source[name_tok.loc.start..name_tok.loc.end];
@@ -227,6 +268,7 @@ pub const Parser = struct {
 
         var variants = std.ArrayListUnmanaged(ast.NodeIndex){};
         while (true) {
+            _ = try self.expect(.dot);
             const v_name_tok = try self.expect(.identifier);
             const v_name = self.tree.source[v_name_tok.loc.start..v_name_tok.loc.end];
 
@@ -258,9 +300,9 @@ pub const Parser = struct {
         }
 
         return self.tree.addNode(allocator, .{
-            .tag = .enum_def,
+            .tag = .union_def,
             .main_token = @as(u32, @intCast(self.pos - 1)),
-            .data = .{ .enum_def = .{ .name = name, .generic_params = generic_params, .variants = try allocator.dupe(ast.NodeIndex, variants.items) } },
+            .data = .{ .union_def = .{ .name = name, .generic_params = generic_params, .variants = try allocator.dupe(ast.NodeIndex, variants.items) } },
         });
     }
 
@@ -268,6 +310,7 @@ pub const Parser = struct {
         const allocator = self.arena.allocator();
         const name_tok = try self.expect(.identifier);
         const name = self.tree.source[name_tok.loc.start..name_tok.loc.end];
+        std.debug.print("PARSER: entering parseFnDef for {s}\n", .{name});
 
         const generic_params = try self.parseGenericParams();
 
@@ -296,9 +339,11 @@ pub const Parser = struct {
 
         var return_type: ast.NodeIndex = 0;
         if (self.match(.arrow_out)) {
+            std.debug.print("PARSER: parsing return type\n", .{});
             return_type = try self.parseType();
         }
 
+        std.debug.print("PARSER: finished signature, starting body\n", .{});
         const body = if (self.match(.arrow_fat))
             try self.parseExpression(0)
         else
@@ -345,9 +390,11 @@ pub const Parser = struct {
     fn parseBlock(self: *Parser) ParseError!ast.NodeIndex {
         const allocator = self.arena.allocator();
         _ = try self.expect(.l_brace);
+        std.debug.print("PARSER: entering parseBlock\n", .{});
 
         var statements = std.ArrayListUnmanaged(ast.NodeIndex){};
         while (!self.match(.r_brace)) {
+            std.debug.print("PARSER: next stmt tok: {any}\n", .{self.peek().tag});
             if (self.match(.kw_defer)) {
                 const stmt = try self.parseExpression(0);
                 const defer_node = try self.tree.addNode(allocator, .{
@@ -398,144 +445,99 @@ pub const Parser = struct {
     }
 
     fn parsePrefix(self: *Parser) ParseError!ast.NodeIndex {
+        const tok = self.peek();
+        const allocator = self.arena.allocator();
+
+        return switch (tok.tag) {
+            .literal_int, .literal_float, .literal_text => self.parseLiteral(),
+            .identifier => self.parseIdentifierOrBuiltin(),
+            .kw_match => self.parseMatchExpr(),
+            .l_brace => blk: { self.pos += 1; break :blk self.parseStructInit(0); },
+            .l_bracket => self.parseArrayLiteral(),
+            .l_paren => self.parseGroupOrTuple(),
+            .kw_if => self.parseIfExpr(),
+            .kw_loop => self.parseLoopExpr(),
+            .arrow_in => blk: { _ = self.advance(); break :blk self.tree.addNode(allocator, .{ .tag = .continue_expr, .main_token = @intCast(self.pos-1), .data = .{ .continue_expr = .{ .label_token = 0 } } }); },
+            .arrow_out => blk: { _ = self.advance(); break :blk self.tree.addNode(allocator, .{ .tag = .break_expr, .main_token = @intCast(self.pos-1), .data = .{ .break_expr = .{ .label_token = 0, .value = 0 } } }); },
+            .arrow_fat => blk: { _ = self.advance(); break :blk self.tree.addNode(allocator, .{ .tag = .return_expr, .main_token = @intCast(self.pos-1), .data = .{ .return_expr = .{ .value = try self.parseExpression(0) } } }); },
+            .dot => self.parseUnionLiteral(),
+            else => error.UnexpectedToken,
+        };
+    }
+
+    fn parseLiteral(self: *Parser) ParseError!ast.NodeIndex {
         const tok = self.advance();
         const allocator = self.arena.allocator();
-        switch (tok.tag) {
-            .identifier => {
-                const text = self.tree.source[tok.loc.start..tok.loc.end];
-                if (std.mem.eql(u8, text, "get")) return self.parsePathGet();
-                if (std.mem.eql(u8, text, "set")) return self.parsePathSet();
+        const text = self.tree.source[tok.loc.start..tok.loc.end];
+        return switch (tok.tag) {
+            .literal_int => self.tree.addNode(allocator, .{ .tag = .literal_int, .main_token = @intCast(self.pos-1), .data = .{ .literal_int = try std.fmt.parseInt(i64, text, 0) } }),
+            .literal_float => self.tree.addNode(allocator, .{ .tag = .literal_float, .main_token = @intCast(self.pos-1), .data = .{ .literal_float = try std.fmt.parseFloat(f64, text) } }),
+            .literal_text => self.tree.addNode(allocator, .{ .tag = .literal_text, .main_token = @intCast(self.pos-1), .data = .{ .literal_text = text[1 .. text.len - 1] } }),
+            else => unreachable,
+        };
+    }
 
-                return self.tree.addNode(allocator, .{
-                    .tag = .identifier,
-                    .main_token = @as(u32, @intCast(self.pos - 1)),
-                    .data = .{ .identifier = .{ .name = text, .attr = self.getIdentifierAttr(text) } },
-                });
-            },
-            .kw_match => {
-                self.pos -= 1;
-                return self.parseMatchExpr();
-            },
-            .l_brace => {
-                self.pos -= 1;
-                return self.parseStructInit(0);
-            },
-            .l_bracket => {
-                var elements = std.ArrayListUnmanaged(ast.NodeIndex){};
-                while (self.peek().tag != .r_bracket) {
-                    const elem = try self.parseExpression(0);
-                    try elements.append(allocator, elem);
-                    if (self.peek().tag != .r_bracket) {
-                        _ = try self.expect(.comma);
-                    }
-                }
-                _ = try self.expect(.r_bracket);
-                return self.tree.addNode(allocator, .{
-                    .tag = .array_literal,
-                    .main_token = @as(u32, @intCast(self.pos - 1)),
-                    .data = .{ .array_literal = .{ .elements = try allocator.dupe(ast.NodeIndex, elements.items) } },
-                });
-            },
-            .arrow_in => {
-                return self.tree.addNode(allocator, .{
-                    .tag = .continue_expr,
-                    .main_token = @as(u32, @intCast(self.pos - 1)),
-                    .data = .{ .continue_expr = .{ .label_token = 0 } },
-                });
-            },
-            .arrow_out => {
-                return self.tree.addNode(allocator, .{
-                    .tag = .break_expr,
-                    .main_token = @as(u32, @intCast(self.pos - 1)),
-                    .data = .{ .break_expr = .{ .label_token = 0, .value = 0 } },
-                });
-            },
-            .arrow_fat => {
-                const expr = try self.parseExpression(0);
-                return self.tree.addNode(allocator, .{
-                    .tag = .return_expr,
-                    .main_token = @as(u32, @intCast(self.pos - 1)),
-                    .data = .{ .return_expr = .{ .value = expr } },
-                });
-            },
-            .literal_int => {
-                const text = self.tree.source[tok.loc.start..tok.loc.end];
-                const val = try std.fmt.parseInt(i64, text, 0);
-                return self.tree.addNode(allocator, .{
-                    .tag = .literal_int,
-                    .main_token = @as(u32, @intCast(self.pos - 1)),
-                    .data = .{ .literal_int = val },
-                });
-            },
-            .literal_float => {
-                const text = self.tree.source[tok.loc.start..tok.loc.end];
-                const val = try std.fmt.parseFloat(f64, text);
-                return self.tree.addNode(allocator, .{
-                    .tag = .literal_float,
-                    .main_token = @as(u32, @intCast(self.pos - 1)),
-                    .data = .{ .literal_float = val },
-                });
-            },
-            .literal_text => {
-                const text = self.tree.source[tok.loc.start + 1 .. tok.loc.end - 1];
-                return self.tree.addNode(allocator, .{
-                    .tag = .literal_text,
-                    .main_token = @as(u32, @intCast(self.pos - 1)),
-                    .data = .{ .literal_text = text },
-                });
-            },
-            .l_paren => {
-                const expr = try self.parseExpression(0);
-                if (self.match(.comma)) {
-                    var elements = std.ArrayListUnmanaged(ast.NodeIndex){};
-                    try elements.append(allocator, expr);
-                    while (self.peek().tag != .r_paren) {
-                        const elem = try self.parseExpression(0);
-                        try elements.append(allocator, elem);
-                        if (self.peek().tag != .r_paren) {
-                            _ = try self.expect(.comma);
-                        }
-                    }
-                    _ = try self.expect(.r_paren);
-                    return self.tree.addNode(allocator, .{
-                        .tag = .tuple_literal,
-                        .main_token = @as(u32, @intCast(self.pos - 1)),
-                        .data = .{ .tuple_literal = .{ .elements = try allocator.dupe(ast.NodeIndex, elements.items) } },
-                    });
-                }
-                _ = try self.expect(.r_paren);
-                return expr;
-            },
-            .dot => {
-                const tok_next = self.peek();
-                if (tok_next.tag == .identifier) {
-                    _ = self.advance();
-                    const name = self.tree.source[tok_next.loc.start..tok_next.loc.end];
-                    return self.tree.addNode(allocator, .{
-                        .tag = .identifier,
-                        .main_token = @as(u32, @intCast(self.pos - 1)),
-                        .data = .{ .identifier = .{ .name = name, .attr = .{} } },
-                    });
-                } else if (tok_next.tag == .literal_int) {
-                    _ = self.advance();
-                    const name = self.tree.source[tok_next.loc.start..tok_next.loc.end];
-                    return self.tree.addNode(allocator, .{
-                        .tag = .identifier,
-                        .main_token = @as(u32, @intCast(self.pos - 1)),
-                        .data = .{ .identifier = .{ .name = name, .attr = .{} } },
-                    });
-                }
-                return error.ExpectedToken;
-            },
-            .kw_if => return self.parseIfExpr(),
-            .kw_loop => return self.parseLoopExpr(),
-            else => return error.UnexpectedToken,
+    fn parseIdentifierOrBuiltin(self: *Parser) ParseError!ast.NodeIndex {
+        const tok = self.advance();
+        const text = self.tree.source[tok.loc.start..tok.loc.end];
+        return self.tree.addNode(self.arena.allocator(), .{
+            .tag = .identifier,
+            .main_token = @intCast(self.pos - 1),
+            .data = .{ .identifier = .{ .name = text, .attr = self.getIdentifierAttr(text) } },
+        });
+    }
+
+    fn parseUnionLiteral(self: *Parser) ParseError!ast.NodeIndex {
+        _ = try self.expect(.dot);
+        const tok = try self.expect(.identifier);
+        const name = self.tree.source[tok.loc.start..tok.loc.end];
+        return self.tree.addNode(self.arena.allocator(), .{
+            .tag = .union_literal,
+            .main_token = @intCast(self.pos - 1),
+            .data = .{ .union_literal = name },
+        });
+    }
+
+    fn parseArrayLiteral(self: *Parser) ParseError!ast.NodeIndex {
+        const allocator = self.arena.allocator();
+        _ = try self.expect(.l_bracket);
+        var elements = std.ArrayListUnmanaged(ast.NodeIndex){};
+        while (self.peek().tag != .r_bracket) {
+            try elements.append(allocator, try self.parseExpression(0));
+            if (!self.match(.comma)) break;
         }
+        _ = try self.expect(.r_bracket);
+        return self.tree.addNode(allocator, .{
+            .tag = .array_literal,
+            .main_token = @intCast(self.pos - 1),
+            .data = .{ .array_literal = .{ .elements = try allocator.dupe(ast.NodeIndex, elements.items) } },
+        });
+    }
+
+    fn parseGroupOrTuple(self: *Parser) ParseError!ast.NodeIndex {
+        const allocator = self.arena.allocator();
+        _ = try self.expect(.l_paren);
+        const first = try self.parseExpression(0);
+        if (self.match(.comma)) {
+            var elements = std.ArrayListUnmanaged(ast.NodeIndex){};
+            try elements.append(allocator, first);
+            while (self.peek().tag != .r_paren) {
+                try elements.append(allocator, try self.parseExpression(0));
+                if (!self.match(.comma)) break;
+            }
+            _ = try self.expect(.r_paren);
+            return self.tree.addNode(allocator, .{
+                .tag = .tuple_literal,
+                .main_token = @intCast(self.pos - 1),
+                .data = .{ .tuple_literal = .{ .elements = try allocator.dupe(ast.NodeIndex, elements.items) } },
+            });
+        }
+        _ = try self.expect(.r_paren);
+        return first;
     }
 
     fn parseStructInit(self: *Parser, type_node_idx: ast.NodeIndex) ParseError!ast.NodeIndex {
         const allocator = self.arena.allocator();
-        std.debug.print("DEBUG: parseStructInit starting with type_node_idx: {d}\\n", .{type_node_idx});
         _ = try self.expect(.l_brace);
         var entries = std.ArrayListUnmanaged(ast.NodeIndex){};
         while (!self.match(.r_brace)) {
@@ -571,10 +573,17 @@ pub const Parser = struct {
         const allocator = self.arena.allocator();
         const path = if (self.peek().tag == .l_bracket)
             try self.parseExpression(0)
-        else blk: {
+        else if (self.peek().tag == .literal_int) blk: {
+            const key_tok = try self.expect(.literal_int);
+            const key = self.tree.source[key_tok.loc.start..key_tok.loc.end];
+            break :blk try self.tree.addNode(allocator, .{
+                .tag = .literal_int,
+                .main_token = @as(u32, @intCast(self.pos - 1)),
+                .data = .{ .literal_int = try std.fmt.parseInt(i64, key, 0) },
+            });
+        } else blk: {
             const key_tok = try self.expect(.identifier);
             const key = self.tree.source[key_tok.loc.start..key_tok.loc.end];
-            std.debug.print("DEBUG: parseSetEntry key: '{s}', next tok: {any}\\n", .{ key, self.peek().tag });
             break :blk try self.tree.addNode(allocator, .{
                 .tag = .identifier,
                 .main_token = @as(u32, @intCast(self.pos - 1)),
@@ -609,159 +618,80 @@ pub const Parser = struct {
         });
     }
 
-    fn parsePathSequence(self: *Parser) ParseError!ast.NodeIndex {
-        const allocator = self.arena.allocator();
-        var segments = std.ArrayListUnmanaged(ast.NodeIndex){};
-        while (true) {
-            const segment = try self.parseExpression(0);
-            try segments.append(allocator, segment);
-            if (!self.match(.comma)) break;
-        }
-        _ = try self.expect(.r_bracket);
-        return self.tree.addNode(allocator, .{
-            .tag = .path_sequence,
-            .main_token = @as(u32, @intCast(self.pos - 1)),
-            .data = .{ .path_sequence = .{ .segments = try allocator.dupe(ast.NodeIndex, segments.items) } },
-        });
-    }
-
-    fn parsePathSet(self: *Parser) ParseError!ast.NodeIndex {
-        const allocator = self.arena.allocator();
-        _ = try self.expect(.l_paren);
-        const target = try self.parseExpression(0);
-        _ = try self.expect(.comma);
-        if (self.match(.l_brace)) {
-            var entries = std.ArrayListUnmanaged(ast.NodeIndex){};
-            while (true) {
-                const path_seq = try self.parseExpression(0);
-                _ = try self.expect(.colon);
-                const value = try self.parseExpression(0);
-                const entry = try self.tree.addNode(allocator, .{
-                    .tag = .set_entry,
-                    .main_token = @as(u32, @intCast(self.pos - 1)),
-                    .data = .{ .set_entry = .{ .path = path_seq, .value = value } },
-                });
-                try entries.append(allocator, entry);
-                if (!self.match(.comma)) break;
-            }
-            _ = try self.expect(.r_brace);
-            _ = try self.expect(.r_paren);
-            return self.tree.addNode(allocator, .{
-                .tag = .path_set,
-                .main_token = @as(u32, @intCast(self.pos - 1)),
-                .data = .{ .path_set = .{ .target = target, .entries = try allocator.dupe(ast.NodeIndex, entries.items) } },
-            });
-        } else {
-            const field = try self.parseExpression(0);
-            _ = try self.expect(.comma);
-            const value = try self.parseExpression(0);
-            _ = try self.expect(.r_paren);
-
-            const entry = try self.tree.addNode(allocator, .{
-                .tag = .set_entry,
-                .main_token = @as(u32, @intCast(self.pos - 1)),
-                .data = .{ .set_entry = .{ .path = field, .value = value } },
-            });
-            const entries = try allocator.alloc(ast.NodeIndex, 1);
-            entries[0] = entry;
-
-            return self.tree.addNode(allocator, .{
-                .tag = .path_set,
-                .main_token = @as(u32, @intCast(self.pos - 1)),
-                .data = .{ .path_set = .{ .target = target, .entries = entries } },
-            });
-        }
-    }
-
     fn parseInfix(self: *Parser, lhs: ast.NodeIndex, op_tok: token.Token, prec: u8, allow_struct_init: bool) ParseError!ast.NodeIndex {
         const allocator = self.arena.allocator();
-        switch (op_tok.tag) {
-            .plus, .minus, .asterisk, .slash, .equal_equal, .not_equal, .greater, .greater_equal, .less_equal => {
-                const rhs = try self.parseExpressionImpl(prec + 1, allow_struct_init);
-                return self.tree.addNode(allocator, .{
-                    .tag = .binary_op,
-                    .main_token = @as(u32, @intCast(self.pos - 1)),
-                    .data = .{ .binary_op = .{ .lhs = lhs, .rhs = rhs } },
-                });
-            },
-            .assign, .assign_init => {
-                const rhs = try self.parseExpressionImpl(prec - 1, allow_struct_init);
-                return self.tree.addNode(allocator, .{
-                    .tag = if (op_tok.tag == .assign) .assign else .assign_init,
-                    .main_token = @as(u32, @intCast(self.pos - 1)),
-                    .data = if (op_tok.tag == .assign) .{ .assign = .{ .lhs = lhs, .rhs = rhs } } else .{ .assign_init = .{ .lhs = lhs, .rhs = rhs } },
-                });
-            },
-            .l_paren => return self.parseCall(lhs),
-            .l_brace => {
-                const tag = self.tree.nodes.items[lhs].tag;
-                if (tag == .identifier or tag == .type_apply) {
-                    self.pos -= 1;
-                    return self.parseStructInit(lhs);
-                }
-                return error.UnexpectedToken;
-            },
-            .less => {
-                if (self.tree.nodes.items[lhs].tag == .identifier) {
-                    const text = self.tree.nodes.items[lhs].data.identifier.name;
-                    var params = std.ArrayListUnmanaged(ast.NodeIndex){};
-                    while (self.peek().tag != .greater) {
-                        try params.append(allocator, try self.parseType());
-                        if (self.peek().tag != .greater) {
-                            _ = try self.expect(.comma);
-                        }
-                    }
-                    _ = try self.expect(.greater);
-                    return self.tree.addNode(allocator, .{
-                        .tag = .type_apply,
-                        .main_token = @as(u32, @intCast(self.pos - 1)),
-                        .data = .{ .type_apply = .{ .base_name = text, .params = try allocator.dupe(ast.NodeIndex, params.items) } },
-                    });
-                } else {
-                    const rhs = try self.parseExpressionImpl(3 + 1, allow_struct_init);
-                    return self.tree.addNode(allocator, .{
-                        .tag = .binary_op,
-                        .main_token = @as(u32, @intCast(self.pos - 1)),
-                        .data = .{ .binary_op = .{ .lhs = lhs, .rhs = rhs } },
-                    });
-                }
-            },
-            .dot => {
-                const tok_next = self.peek();
-                var name: []const u8 = undefined;
-                if (tok_next.tag == .identifier or tok_next.tag == .literal_int) {
-                    _ = self.advance();
-                    name = self.tree.source[tok_next.loc.start..tok_next.loc.end];
-                } else {
-                    return error.ExpectedToken;
-                }
+        const op_idx = @as(u32, @intCast(self.pos - 1));
+        return switch (op_tok.tag) {
+            .dot => blk: {
+                const tok = try self.expect(.identifier);
+                const name = self.tree.source[tok.loc.start..tok.loc.end];
                 const segment = try self.tree.addNode(allocator, .{
                     .tag = .identifier,
-                    .main_token = @as(u32, @intCast(self.pos - 1)),
+                    .main_token = @intCast(self.pos - 1),
                     .data = .{ .identifier = .{ .name = name, .attr = .{} } },
                 });
                 const path = try allocator.alloc(ast.NodeIndex, 1);
                 path[0] = segment;
-                return self.tree.addNode(allocator, .{
+                break :blk self.tree.addNode(allocator, .{
                     .tag = .path_get,
-                    .main_token = @as(u32, @intCast(self.pos - 1)),
+                    .main_token = op_idx,
                     .data = .{ .path_get = .{ .target = lhs, .path = path } },
                 });
             },
-            .arrow_out => {
-                var label_tok: u32 = 0;
-                if (self.peek().tag == .identifier) {
-                    _ = self.advance();
-                    label_tok = @as(u32, @intCast(self.pos - 1));
-                }
-                return self.tree.addNode(allocator, .{
-                    .tag = .break_expr,
-                    .main_token = @as(u32, @intCast(self.pos - 1)),
-                    .data = .{ .break_expr = .{ .label_token = label_tok, .value = lhs } },
+            .plus, .minus, .asterisk, .slash, .percent, .equal_equal, .not_equal, 
+            .greater, .greater_equal, .less_equal, .l_shift, .r_shift, .pipe => blk: {
+                const rhs = try self.parseExpressionImpl(prec + 1, allow_struct_init);
+                break :blk self.tree.addNode(allocator, .{
+                    .tag = .binary_op,
+                    .main_token = op_idx,
+                    .data = .{ .binary_op = .{ .lhs = lhs, .rhs = rhs } },
                 });
             },
-            else => return lhs,
+            .assign, .assign_init => blk: {
+                const rhs = try self.parseExpressionImpl(prec - 1, allow_struct_init);
+                break :blk self.tree.addNode(allocator, .{
+                    .tag = if (op_tok.tag == .assign) .assign else .assign_init,
+                    .main_token = op_idx,
+                    .data = if (op_tok.tag == .assign) .{ .assign = .{ .lhs = lhs, .rhs = rhs } } else .{ .assign_init = .{ .lhs = lhs, .rhs = rhs } },
+                });
+            },
+            .l_paren => self.parseCall(lhs),
+            .l_brace => self.handleBraceInfix(lhs),
+            .less => self.handleLessInfix(lhs, allow_struct_init),
+            else => lhs,
+        };
+    }
+
+    fn handleBraceInfix(self: *Parser, lhs: ast.NodeIndex) !ast.NodeIndex {
+        const tag = self.tree.nodes.items[lhs].tag;
+        if (tag != .identifier and tag != .type_apply) return error.UnexpectedToken;
+        self.pos -= 1;
+        return self.parseStructInit(lhs);
+    }
+
+    fn handleLessInfix(self: *Parser, lhs: ast.NodeIndex, allow_struct_init: bool) !ast.NodeIndex {
+        const allocator = self.arena.allocator();
+        if (self.tree.nodes.items[lhs].tag != .identifier) {
+            const rhs = try self.parseExpressionImpl(3 + 1, allow_struct_init);
+            return self.tree.addNode(allocator, .{
+                .tag = .binary_op,
+                .main_token = @intCast(self.pos - 1),
+                .data = .{ .binary_op = .{ .lhs = lhs, .rhs = rhs } },
+            });
         }
+        
+        const name = self.tree.nodes.items[lhs].data.identifier.name;
+        var params = std.ArrayListUnmanaged(ast.NodeIndex){};
+        while (self.peek().tag != .greater) {
+            try params.append(allocator, try self.parseType());
+            if (!self.match(.comma)) break;
+        }
+        _ = try self.expect(.greater);
+        return self.tree.addNode(allocator, .{
+            .tag = .type_apply,
+            .main_token = @intCast(self.pos - 1),
+            .data = .{ .type_apply = .{ .base_name = name, .params = try allocator.dupe(ast.NodeIndex, params.items) } },
+        });
     }
 
     fn parseIfExpr(self: *Parser) ParseError!ast.NodeIndex {
@@ -785,12 +715,16 @@ pub const Parser = struct {
 
     fn parseLoopExpr(self: *Parser) ParseError!ast.NodeIndex {
         const allocator = self.arena.allocator();
+        _ = try self.expect(.kw_loop);
+        
         var label_tok: u32 = 0;
-        _ = try self.expect(.l_brace);
         if (self.match(.hash_tag)) {
-            _ = try self.expect(.identifier);
+            const tok = try self.expect(.identifier);
             label_tok = @as(u32, @intCast(self.pos - 1));
+            _ = tok;
         }
+        
+        _ = try self.expect(.l_brace);
 
         var statements = std.ArrayListUnmanaged(ast.NodeIndex){};
         while (!self.match(.r_brace)) {
@@ -826,7 +760,7 @@ pub const Parser = struct {
 
     fn match(self: *Parser, tag: token.TokenTag) bool {
         if (self.peek().tag == tag) {
-            self.pos += 1;
+            _ = self.advance();
             return true;
         }
         return false;
@@ -834,7 +768,9 @@ pub const Parser = struct {
 
     fn expect(self: *Parser, tag: token.TokenTag) !token.Token {
         const tok = self.advance();
-        if (tok.tag != tag) return error.ExpectedToken;
+        if (tok.tag != tag) {
+            return error.ExpectedToken;
+        }
         return tok;
     }
 
@@ -845,9 +781,9 @@ pub const Parser = struct {
             .l_paren, .l_brace => 7,
             .arrow_out => 1,
             .assign, .assign_init => 2,
-            .equal_equal, .not_equal, .greater, .greater_equal, .less_equal => 3,
+            .equal_equal, .not_equal, .greater, .greater_equal, .less_equal, .l_shift, .r_shift, .pipe => 3,
             .plus, .minus => 4,
-            .asterisk, .slash => 5,
+            .asterisk, .slash, .percent => 5,
             else => 0,
         };
     }
@@ -917,6 +853,8 @@ pub const Parser = struct {
     }
 
     fn parseType(self: *Parser) ParseError!ast.NodeIndex {
+        const tok = self.peek();
+        std.debug.print("PARSER: entering parseType at tok: {any}\n", .{tok.tag});
         const allocator = self.arena.allocator();
 
         if (self.match(.l_paren)) {
@@ -936,6 +874,17 @@ pub const Parser = struct {
         }
 
         const base_tok = self.advance();
+        
+        if (base_tok.tag == .literal_int) {
+             const text = self.tree.source[base_tok.loc.start..base_tok.loc.end];
+             const val = try std.fmt.parseInt(i64, text, 0);
+             return self.tree.addNode(allocator, .{
+                 .tag = .literal_int,
+                 .main_token = @as(u32, @intCast(self.pos - 1)),
+                 .data = .{ .literal_int = val },
+             });
+        }
+
         if (base_tok.tag != .identifier and base_tok.tag != .kw_bool) return error.ExpectedToken;
         const base_name = self.tree.source[base_tok.loc.start..base_tok.loc.end];
 

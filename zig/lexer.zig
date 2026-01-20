@@ -14,7 +14,6 @@ pub const Lexer = struct {
     pub fn next(self: *Lexer) token.Token {
         self.skipWhitespace();
         const tok = self.nextImpl();
-        std.debug.print("DEBUG: lexer next: {any} at src[{d}..{d}]\n", .{ tok.tag, tok.loc.start, tok.loc.end });
         return tok;
     }
 
@@ -81,6 +80,7 @@ pub const Lexer = struct {
             '+' => return self.makeToken(.plus, start, start_line, start_col),
             '*' => return self.makeToken(.asterisk, start, start_line, start_col),
             '/' => return self.makeToken(.slash, start, start_line, start_col),
+            '%' => return self.makeToken(.percent, start, start_line, start_col),
             '.' => return self.makeToken(.dot, start, start_line, start_col),
             ';' => return self.makeToken(.semicolon, start, start_line, start_col),
             else => return self.makeToken(.invalid, start, start_line, start_col),

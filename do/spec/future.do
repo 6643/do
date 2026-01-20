@@ -1,8 +1,5 @@
 _start() {
-
-    cx = Context {
-        id: 1
-    }
+    cx = set(Context, {.id: 1})
 
     a = do {
         id = get(cx, .id)
@@ -32,6 +29,8 @@ _start() {
 
     dddd = any_done(a, b, c)
     [e, f, g] = all_done(a, b, c)
+
+ 
 }   
 
 login(cx Context, id u32, t text) bool {

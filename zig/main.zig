@@ -1,51 +1,51 @@
 const std = @import("std");
-const Lexer = @import("lexer.zig").Lexer;
-const Parser = @import("parser.zig").Parser;
-const Sema = @import("sema.zig").Sema;
-const CodegenWasm = @import("codegen_wasm.zig").CodegenWasm;
-const CodegenWat = @import("codegen_wat.zig").CodegenWat;
+const lexer = @import("lexer.zig");
+const parser = @import("parser.zig");
+const sema = @import("sema.zig");
+const codegen_wasm = @import("codegen_wasm.zig");
+const codegen_wat = @import("codegen_wat.zig");
 const token = @import("token.zig");
+const ast = @import("ast.zig");
 
-pub const Compiler = struct {
+const Compiler = struct {
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) Compiler {
         return .{ .allocator = allocator };
     }
 
-    pub const BuildResult = struct {
-        wasm: []u8,
-        wat: []const u8,
-    };
-
     pub fn build(self: *Compiler, source: [:0]const u8) !BuildResult {
-        var lexer = Lexer.init(source);
+        std.debug.print("STAGE: Lexing\n", .{});
+        var l = lexer.Lexer.init(source);
         var tokens = std.ArrayListUnmanaged(token.Token){};
         defer tokens.deinit(self.allocator);
+
         while (true) {
-            const tok = lexer.next();
+            const tok = l.next();
             try tokens.append(self.allocator, tok);
             if (tok.tag == .eof) break;
         }
 
-        var p = Parser.init(self.allocator, source, try self.allocator.dupe(token.Token, tokens.items));
+        std.debug.print("STAGE: Parsing\n", .{});
+        var p = parser.Parser.init(self.allocator, source, try self.allocator.dupe(token.Token, tokens.items));
         defer {
             self.allocator.free(p.tokens);
             p.deinit();
         }
         const root_idx = try p.parse();
 
-        var s = try Sema.init(self.allocator, &p.tree);
+        std.debug.print("STAGE: Sema\n", .{});
+        var s = try sema.Sema.init(self.allocator, &p.tree);
         defer s.deinit();
         try s.analyze(root_idx);
 
-        // 生成 WASM 二进制
-        var cg_wasm = CodegenWasm.init(self.allocator, &p.tree, &s);
+        std.debug.print("STAGE: Codegen WASM\n", .{});
+        var cg_wasm = codegen_wasm.CodegenWasm.init(self.allocator, &p.tree, &s);
         defer cg_wasm.deinit();
         const wasm = try cg_wasm.generate(root_idx);
 
-        // 生成 WAT 文本
-        var cg_wat = CodegenWat.init(self.allocator, &p.tree, &s);
+        std.debug.print("STAGE: Codegen WAT\n", .{});
+        var cg_wat = codegen_wat.CodegenWat.init(self.allocator, &p.tree, &s);
         defer cg_wat.deinit();
         const wat = try cg_wat.generateModule(root_idx);
 
@@ -54,6 +54,11 @@ pub const Compiler = struct {
             .wat = try self.allocator.dupe(u8, wat),
         };
     }
+};
+
+const BuildResult = struct {
+    wasm: []const u8,
+    wat: []const u8,
 };
 
 pub fn main() !void {
@@ -65,12 +70,11 @@ pub fn main() !void {
     defer std.process.argsFree(allocator, args);
 
     if (args.len < 2) {
-        std.debug.print("用法: do <file.do>\n", .{});
+        std.debug.print("Usage: docc <file.do>\n", .{});
         return;
     }
 
-    const file_path = args[1];
-    const raw_source = try std.fs.cwd().readFileAlloc(allocator, file_path, 1024 * 1024);
+    const raw_source = try std.fs.cwd().readFileAlloc(allocator, args[1], 1024 * 1024);
     defer allocator.free(raw_source);
     const source = try allocator.dupeZ(u8, raw_source);
     defer allocator.free(source);
@@ -80,10 +84,13 @@ pub fn main() !void {
     defer allocator.free(result.wasm);
     defer allocator.free(result.wat);
 
-    // 输出 WASM
-    try std.fs.cwd().writeFile(.{ .sub_path = "out.wasm", .data = result.wasm });
-    // 输出 WAT
-    try std.fs.cwd().writeFile(.{ .sub_path = "out.wat", .data = result.wat });
+    const f_wasm = try std.fs.cwd().createFile("out.wasm", .{});
+    defer f_wasm.close();
+    try f_wasm.writeAll(result.wasm);
 
+    const f_wat = try std.fs.cwd().createFile("out.wat", .{});
+    defer f_wat.close();
+    try f_wat.writeAll(result.wat);
+    
     std.debug.print("\nBuild Successful:\n  -> out.wasm ({d} bytes)\n  -> out.wat ({d} bytes)\n", .{ result.wasm.len, result.wat.len });
 }
