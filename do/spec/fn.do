@@ -1,26 +1,52 @@
-Person {
-    id  i32
-    age i32
+// 结构体定义参考
+User {
+    id   i32
+    name Text
 }
 
-#to_string(T) -> Text
-#T{.age i32}
+// 函数签名 (用于声明或约束)
+// get_id(User) -> i32
 
-to_string(p Person) Text {
-    => "ID: ${get(p, .id)}"
+// 函数实现 (无 ->)
+get_id(user User) i32 {
+    return user.id
 }
 
-print_info(p T) {
-    val = get(p, .age)
-    print(to_string(p))
+// 泛型函数
+identity<T>(val T) T {
+    return val
 }
 
-test "generic function with set" {
-    // 实例化 Person
-    p = set(Person, { 
-        .id: 1, 
-        .age: 30 
-    })
+// 匿名返回/隐式返回示例
+to_string(u User) Text {
+    return "ID: ${u.id}"
+}
+
+test "function and struct integration" {
+    // 使用新字面量语法
+    u = User{
+        id: 42,
+        name: "Alice"
+    }
     
-    print_info(p)
+    id = get_id(u)
+    
+    if eq(id, 42) {
+        print("Function call success")
+    }
+    
+    // 泛型调用
+    v = identity<i32>(100)
+}
+
+// 多返回值 (Tuple)
+parse_pair(input Text) Tuple<i32, i32> {
+    return Tuple<i32, i32>{1, 2}
+}
+
+test "multi-return handling" {
+    // 显式处理 Tuple 返回值，不使用解构
+    pair = parse_pair("data")
+    x = pair.0
+    y = pair.1
 }

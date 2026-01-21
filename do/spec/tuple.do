@@ -1,18 +1,20 @@
 test "tuple and positioning" {
     // 实例化
-    t = set(Tuple<i32, bool>, [1, true])
+    t = Tuple<i32, bool>{1, true}
 
-    // 位置访问使用 index (无前缀)
-    v0 = get(t, 0)
-    v1 = get(t, 1)
+    // 位置访问使用 index
+    v0 = t.0
+    v1 = t.1
 
-    // 解构 (内置语义)
-    (a, b) = t
+    // 显式获取 (无解构)
+    a = t.0
+    b = t.1
 
     // 原地更新
-    t2 = set(t, { 1: false })
+    // 假设 Tuple 是不可变的，或者用 set/copy 更新
+    // t2 = set(t, { 1: false })
     
-    if get(t2, 1) == false {
-        print("Tuple update success")
+    if b == true {
+        print("Tuple access success")
     }
 }

@@ -1,6 +1,6 @@
 // 1. 命名联合 (Named Union / Tagged Union)
 // 类似 Rust 的 Enum，每个分支可以携带数据
-Shape = Circle(r f64) | Square(w f64, h f64)
+Shape = Circle{r f64} | Square{w f64, h f64}
 
 // 2. 匿名联合 (Anonymous Union)
 // 常用于简单的逻辑判断或可选值
@@ -9,14 +9,14 @@ ErrorUnion = Text | error
 
 
 test "named union match" {
-    s = Circle(10.5)
+    s = Circle{r: 10.5}
     
     area = match s {
-        Circle(r): mul(3.14, r, r)
-        Square(w, h): mul(w, h)
+        Circle{r}: mul(3.14, r, r)
+        Square{w, h}: mul(w, h)
     }
 
-    if Circle(r) := s {
+    if Circle{r} := s {
         print("Radius: ${r}")
     }
 }
