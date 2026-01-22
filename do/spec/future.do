@@ -1,5 +1,5 @@
 _start() {
-    cx = set(Context, .{.id: 1})
+    cx = Context{id: 1}
 
     a =  do(login, cx, 1, "tocken")
     b =  do(login, cx, 2, "tocken")
@@ -36,8 +36,11 @@ _start() {
     }
 
     dddd = any_done(a, b, c)
-    [e, f, g] = all_done(a, b, c)
+    .{e, f, g} = all_done(a, b, c)
 
+    print(e)
+    print(f)
+    print(g)
  
 }   
 

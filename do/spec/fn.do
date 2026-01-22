@@ -9,19 +9,18 @@ User {
 
 // 函数实现 (无 ->)
 get_id(user User) i32 {
-    => user.id
+    => get(user, .id)
 }
 
 // 泛型约束
 #T{id: i32}
 identity(val T) T {
     //获取字段到变量
-    {id, name} = get(val, {id, name})
+    .{id, name} = get(val, .{.id, .name})
     print("User id: ${id}, name: ${name}")
     => val
 }
 
-// 匿名返回/隐式返回示例
 to_string(u User) Text {
     => "ID: ${get(u, .id)}"
 }
@@ -49,7 +48,7 @@ parse_pair(input Text) Tuple<i32, i32> {
 }
 
 test "multi-return handling" {
-    // 显式处理 Tuple 返回值，不使用解构
+    // 处理 Tuple 返回值，不使用解构
     pair = parse_pair("data")
     x = get(pair, 0)
     y = get(pair, 1)
@@ -61,7 +60,7 @@ fn write_log(text Text) {
     file = open("log.txt")
     // 无论函数如何退出，都会执行关闭
     defer close(file)
-    file.write(text)
+    write(file, text)
 }
 
 test "defer" {

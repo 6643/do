@@ -9,8 +9,10 @@ test "static map" {
     }
     
     // 单个更新
-    put(m, "orange", 3)
+    m = put(m, "orange", 3)
 
+    // 自更新
+    m = put(m, "apple", v => add(v, 1))
 
     // 批量更新
     m = put(m, .{ 

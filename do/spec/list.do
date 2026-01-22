@@ -21,8 +21,10 @@ test "static list instantiation" {
     }
 
 
-    // 显式设置
+    // 设置
     xs = set(xs, 0, 10)
+    // 自更新
+    xs = set(xs, 0, v => add(v, 1))
     print(xs)
 
     // 批量设置
@@ -37,7 +39,7 @@ test "static list instantiation" {
 
     // 获取单个元素
     first = get(xs, 0)
-    // 获取多个元素
+    // 解构
     .{first2, second} = get(xs, .{0, 1})
     print(first)
     print(first2)

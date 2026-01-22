@@ -12,12 +12,12 @@ _start() {
     // 联合类型解构
     // find 返回 User | nil
     if User(u) := find_user(id) {
-        print(u.name) 
+        print(get(u, .name)) 
     } else {
         print("Not found")
     }
 
-    // 显式 nil 检查
+    // nil 检查
     u = find_user(id)
     if nil := u {
         print("User is nil")

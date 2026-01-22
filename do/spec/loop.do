@@ -17,10 +17,10 @@ test "loops and labels" {
         loop {
             total = add(total, 1)
             if gt(total, 100) {
-                // 显式 break 到标签 #outer
+                // break 到标签 #outer
                 -> #outer
             }else{
-                // 显式 continue 到标签 #outer
+                // continue 到标签 #outer
                 #outer <- 
             }
         }

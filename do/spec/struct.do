@@ -25,26 +25,19 @@ test "static struct instantiation" {
         print("Static Generic User success")
     }
 
-    // 显式解构
-    .{name, age} = get(u, {name, age})
+    // 解构
+    .{name, age} = get(u, .{.name, .age})
     print("User name: ${name}, age: ${age}")
 
 
-    // 显式设置
+    // 设置
     u = set(u, .name, "LiSi")
     u = set(u, .age, 20)
     print(u)
 
-    // 批量设置
+    // 批量
     u = set(u, {.name: "LiSi", .age: 20})
     print(u)
-
-    // 批量设置
-    u = set(u, {.name: "LiSi", .age: 20})
-    print(u)
-
-
-
 
 
 }
@@ -62,23 +55,31 @@ test "nested static structs" {
         print("Nested Static Struct success")
     }
 
-    // 显式设置
-    set(au, .goods, 0, .name, "Boos")
+
+
+
+    // 设置
+    au = set(au, .goods, 0, .name, "Boos")
     print(au)
 
     // 批量设置
-    set(au, .goods, 0, {.name: "Boos", .id: 2})
+    au = set(au, .goods, 0, {.name: "Boos", .id: 2})
+    print(au)
+
+    // 自更新
+    au = set(au, .age, age => add(age, 1))
     print(au)
 
 
+
     // 批量设置
-    set(au, .goods, .{
+    au = set(au, .goods, .{
         0: {.name: "Boos", .id: 2}, 
         1: {.name: "Boos", .id: 2}
     })
     
     // 批量设置
-    set(au, .{
+    au = set(au, .{
         .name: "LiSi", 
         .age: 20,
         .goods: {
@@ -89,10 +90,9 @@ test "nested static structs" {
     print(au)
 }
 
-// 显式返回
-add_age(u User) User => set(u, .age, add(u.age, 1))
-// 隐式返回, 返回值自动推导
-// add_age(u User) => set(u, .age, add(u.age, 1))
+
+
+add_age(u User) User => set(u, .age, add(get(u, .age), 1))
 
 
 test "struct and function integration" {
@@ -117,7 +117,7 @@ default_user() User {
 
 
 // 局部更新（你之前的 set 函数的另一种写法）
-new_user_add_age(u User) => User{ ...u, age: add(.age, 1) }
+new_user_add_age(u User) => User{ ...u, age: add(get(u, .age), 1) }
 
 test "struct and function integration" {
     u = User<u32>{
