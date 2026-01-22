@@ -1,12 +1,12 @@
 _start() {
     id = 1
-    if id == 1 {
+    if eq(id, 1) {
         print("id==1")
     } else {
         print("id!=1")
     }
 
-    count = if id == 1 { 1 } else { 2 }
+    count = if eq(id, 1) { 1 } else { 2 }
     
     // 联合类型解构
     // find 返回 User | nil
@@ -18,7 +18,7 @@ _start() {
 
     // 显式 nil 检查
     u = find_user(id)
-    if u == nil {
+    if nil := u {
         print("User is nil")
     }
 }

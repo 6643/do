@@ -8,8 +8,24 @@ test "static map" {
         "banana": 2
     }
     
-    // 空 Map
-    m2 = Map<i32, f64>{}
+    // 单个更新
+    put(m, "orange", 3)
 
-    m = put(m, { "orange": 3 })
+
+    // 批量更新
+    m = put(m, .{ 
+        "banana": 8,
+        "grape": 10,
+        "melon": 11,
+        "pear": 12,
+        "apple": 13
+    })
+
+    if eq(get(m, "apple"), 13) {
+        print("Static Map success")
+    }
+
+    // 批量获取
+    {apple, banana} = get(m, {"apple", "banana"})
+    print("apple: ${apple}, banana: ${banana}")
 }

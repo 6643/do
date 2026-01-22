@@ -7,7 +7,6 @@ Shape = Circle{r f64} | Square{w f64, h f64}
 Result = i32 | nil
 ErrorUnion = Text | error
 
-
 test "named union match" {
     s = Circle{r: 10.5}
     
@@ -30,6 +29,7 @@ test "anonymous union and nil" {
         i32(v): "Value is ${v}"
         nil:    "No value"
     }
+    print(msg)
 
     // 快捷解构
     if i32(v) := val {
@@ -45,10 +45,49 @@ test "error handling pattern" {
         Text(t): t
         error(e): "Failed: ${e}"
     }
-    
+    print(output)
+
     // 模拟失败
     fail_res Text | error = error("Network Timeout")
     if error(e) := fail_res {
         print("Error occurred: ${e}")
+    }
+}
+
+Book{id: i32, price: f64}
+
+get_book() Book | nil {
+    => Book{id: 1, price: 100}
+}
+
+get_book_or_nil() Book | nil {
+    => nil
+}
+
+test "get book or nil" {
+    b = get_book()
+    if Book(book) := b {
+        print(get(b, .price))
+    }
+    b2 = get_book_or_nil()
+    if Book(book) := b2 {
+        print(get(b2, .price))
+    } else {
+        print("No book")
+    }
+}
+
+
+
+get_geometry() Shape {
+    s = Square{w: 10.5, h: 10.5}
+    => s
+}
+
+
+test "get geometry" {
+    s = get_geometry()
+    if Square(square) := s {
+        print("Square width: ${get(s, .w)}")
     }
 }

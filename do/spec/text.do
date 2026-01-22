@@ -14,14 +14,3 @@ test "string literals" {
 
     print(info)
 }
-
-test "raw multi-line" {
-    // 这种语法非常适合存放 HTML, SQL 或 原始文本
-    html = 
-        \\<div>
-        \\  <h1>Title</h1>
-        \\</div>
-
-    print(html)
-}
-
