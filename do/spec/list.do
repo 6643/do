@@ -38,7 +38,7 @@ test "static list instantiation" {
     // 获取单个元素
     first = get(xs, 0)
     // 获取多个元素
-    {first2, second} = get(xs, .{0, 1})
+    .{first2, second} = get(xs, .{0, 1})
     print(first)
     print(first2)
     print(second)

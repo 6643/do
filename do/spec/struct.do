@@ -26,7 +26,7 @@ test "static struct instantiation" {
     }
 
     // 显式解构
-    {name, age} = get(u, {name, age})
+    .{name, age} = get(u, {name, age})
     print("User name: ${name}, age: ${age}")
 
 

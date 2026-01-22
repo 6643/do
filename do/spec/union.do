@@ -80,8 +80,7 @@ test "get book or nil" {
 
 
 get_geometry() Shape {
-    s = Square{w: 10.5, h: 10.5}
-    => s
+    => Square{w: 10.5, h: 10.5}
 }
 
 

@@ -7,7 +7,7 @@ test "tuple and positioning" {
     v1 = get(t, 1)
 
     // 显式获取 (解构)
-    {a, b} = get(t, {0, 1})
+    .{a, b} = get(t, .{0, 1})
 
 
     // 原地更新
