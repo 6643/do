@@ -6,8 +6,9 @@ _start() {
         print("id!=1")
     }
 
-    count = if eq(id, 1) { 1 } else { 2 }
-    
+    count = if eq(id, 122) { 1 } else { 2 }
+    print(count)
+
     // 联合类型解构
     // find 返回 User | nil
     if User(u) := find_user(id) {

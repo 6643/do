@@ -62,11 +62,9 @@ test "list and struct integration" {
     // 实例化
     l = List<i32>{1, 2, 3}
 
-    s = @pipe(l, {
-        filter(n => eq(n % 2, 0)),
-        map(n => n * 10),
-        join(", ")
-    })
+    l = filter(l, n => eq(n % 2, 0))
+    l = map(l, n => n * 10)
+    s = join(l, ", ")
 
     print(s)
 }
@@ -90,10 +88,10 @@ test "spread and merge" {
     l3 = combined_i32_list(l1, ...l2, 7, 8, 9)
     print(l3)
 
-    s = @pipe(l1, {
-        combined_i32_list(10, 20, 30), 
-        map(n => n * 2)
-    })
+    l4 = map(l3, n => n * 2)
+    print(l4)
+
+    s = join(l4, ", ")
     print(s)
 }
 
