@@ -46,8 +46,8 @@ _start() {
 
 login(cx Context, id u32, t text) bool {
     id = get(cx, .id)
-    if eq(id, 1) {=> true}
-    => false
+    if eq(id, 1) {return true}
+    return false
 }
 
 

@@ -4,11 +4,11 @@ test "loops and labels" {
         count = add(count, 1)
         if eq(count, 5) {
             // continue 当前循环
-            <- 
+            continue 
         }
         if eq(count, 10) {
             // break 当前循环
-            -> 
+            break 
         }
     }
 
@@ -18,10 +18,10 @@ test "loops and labels" {
             total = add(total, 1)
             if gt(total, 100) {
                 // break 到标签 #outer
-                -> #outer
-            }else{
+                break #outer
+            } else {
                 // continue 到标签 #outer
-                #outer <- 
+                continue #outer 
             }
         }
     }

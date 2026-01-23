@@ -57,11 +57,11 @@ test "error handling pattern" {
 Book{id: i32, price: f64}
 
 get_book() Book | nil {
-    => Book{id: 1, price: 100}
+    return Book{id: 1, price: 100}
 }
 
 get_book_or_nil() Book | nil {
-    => nil
+    return nil
 }
 
 test "get book or nil" {
@@ -80,7 +80,7 @@ test "get book or nil" {
 
 
 get_geometry() Shape {
-    => Square{w: 10.5, h: 10.5}
+    return Square{w: 10.5, h: 10.5}
 }
 
 

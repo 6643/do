@@ -23,5 +23,5 @@ test "tuple and positioning" {
 
 new_tuple() Tuple<i32, bool> {
     // 自动推导类型
-    => .{1, true}
+    return .{1, true}
 }

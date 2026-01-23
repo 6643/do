@@ -6,7 +6,12 @@ _start() {
         print("id!=1")
     }
 
-    count = if eq(id, 122) { 1 } else { 2 }
+    count = 0
+    if eq(id, 122) { 
+        count = 1 
+    } else {
+        count = 2 
+    }
     print(count)
 
     // 联合类型解构
@@ -22,11 +27,15 @@ _start() {
     if nil := u {
         print("User is nil")
     }
+
+    // 短路语法
+    if eq(id, 1) return true 
 }
+
 
 find_user(id i32) User | nil {
     // 模拟逻辑
-    => nil
+    return nil
 }
 
 User {

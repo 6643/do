@@ -10,6 +10,6 @@
 
 
 // ffi
-// {WasiIovec{buf_ptr i32, buf_len i32}, fd_write(i32, WasiIovec, i32, i32) -> i32}
+// {WasiIovec{buf_ptr i32, buf_len i32}, fd_write(i32, WasiIovec, i32, i32) => i32}
 .{WasiIovec, fd_write} = #("wasi_snapshot_preview1")
 

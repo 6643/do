@@ -14,7 +14,7 @@ User<T> {
 }
 
 test "static struct instantiation" {
-    // 实例化时，编译器根据 <u32> 查找或生成对应的结构体 ID
+    // 使用 Type.{ ... } 语法进行实例化
     u = User<u32>{
         _uid: 1
         aid: 1001,
@@ -29,7 +29,6 @@ test "static struct instantiation" {
     .{name, age} = get(u, .{.name, .age})
     print("User name: ${name}, age: ${age}")
 
-
     // 设置
     u = set(u, .name, "LiSi")
     u = set(u, .age, 20)
@@ -38,25 +37,20 @@ test "static struct instantiation" {
     // 批量
     u = set(u, {.name: "LiSi", .age: 20})
     print(u)
-
-
 }
 
 test "nested static structs" {
     r = list<Role>{
-        Role{name: "Admin", id: 1},
-        Role{name: "User", id: 2}
+        Role.{name: "Admin", id: 1},
+        Role.{name: "User", id: 2}
     }
     
-    // 嵌套也遵循静态特化
+    // 嵌套实例化
     au = User<Role>{goods: r, name: "ZhangSan", age: 40, _uid: 1002}
 
     if eq(get(au, .goods, 0, .name), "Admin") {
         print("Nested Static Struct success")
     }
-
-
-
 
     // 设置
     au = set(au, .goods, 0, .name, "Boos")
@@ -70,30 +64,25 @@ test "nested static structs" {
     au = set(au, .age, age => add(age, 1))
     print(au)
 
-
-
     // 批量设置
     au = set(au, .goods, .{
-        0: {.name: "Boos", .id: 2}, 
-        1: {.name: "Boos", .id: 2}
+        0: .{ .name: "Boos", .id: 2 }, 
+        1: .{ .name: "Boos", .id: 2 }
     })
     
-    // 批量设置
+    // 嵌套批量设置
     au = set(au, .{
         .name: "LiSi", 
         .age: 20,
-        .goods: {
-            0: {.name: "Boos22", .id: 22}, 
-            1: {.name: "Boos23", .id: 23}
+        .goods: .{
+            0: .{ .name: "Boos22", .id: 22 }, 
+            1: .{ .name: "Boos23", .id: 23 }
         }
     })
     print(au)
 }
 
-
-
 add_age(u User) User => set(u, .age, add(get(u, .age), 1))
-
 
 test "struct and function integration" {
     u = User<u32>{
@@ -105,26 +94,13 @@ test "struct and function integration" {
     print(u)
 }
 
-
 default_user() User {
-
-    // 自动推导类型   
-    => .{
+    // 自动推导类型，使用 .{}
+    return .{
         .name: "LiSi",
         .age: 20
     }
 }
 
-
-// 局部更新（你之前的 set 函数的另一种写法）
-new_user_add_age(u User) => User{ ...u, age: add(get(u, .age), 1) }
-
-test "struct and function integration" {
-    u = User<u32>{
-        _uid: 1
-        aid: 1001,
-        name: "ZhangSan",
-    }
-    u = new_user_add_age(u)
-    print(u)
-}
+// 局部更新语法
+new_user_add_age(u User) => User.{ ...u, age: add(get(u, .age), 1) }

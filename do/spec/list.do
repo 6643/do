@@ -75,7 +75,7 @@ test "list and struct integration" {
 
 new_i32_list() List<i32> {
     // 自动推导类型
-    => .{1, 2, 3}
+    return .{1, 2, 3}
 }
 
 
