@@ -30,6 +30,13 @@ _start() {
 
     // 短路语法
     if eq(id, 1) return true 
+    if eq(id, 1) call_abc()
+
+
+}
+
+call_abc(){
+    print("call_abc")
 }
 
 
