@@ -1,6 +1,7 @@
 _start() {
     cx = Context{id: 1}
 
+    // 异步的三种语法 最终三选一
     a =  do(login, cx, 1, "tocken")
     b =  do(login, cx, 2, "tocken")
     c =  do(login, cx, 3, "tocken")
@@ -27,7 +28,8 @@ _start() {
 
     //suspend
     //resume
- 
+
+    // 等待结果
     cccc = done(a)
     if cccc {
         print("login success")
@@ -35,14 +37,16 @@ _start() {
         print("login failed")
     }
 
+    // 等待任意
     dddd = any_done(a, b, c)
-    .{e, f, g} = all_done(a, b, c)
+    // 等待所有并解构
+    {e, f, g} = all_done(a, b, c)
 
     print(e)
     print(f)
     print(g)
- 
-}   
+
+}
 
 login(cx Context, id u32, t text) bool {
     id = get(cx, .id)
@@ -54,5 +58,3 @@ login(cx Context, id u32, t text) bool {
 Context {
     id u32
 }
-
- 

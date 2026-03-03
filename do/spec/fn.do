@@ -23,25 +23,23 @@ to_string(u User) Text {
 }
 
 test "function and struct integration" {
-    // 实例化：Type.{ ... }
-    u = User.{
+    // 实例化：Type{ ... }
+    u = User{
         id: 42,
         name: "Alice"
     }
-    
+
     id = get_id(u)
-    
+
     if eq(id, 42) {
         print("Function call success")
     }
-    
-    // 泛型调用
-    v = identity<i32>(100)
 }
 
-// 多返回值 (Tuple)
+// 返回 (Tuple)
 parse_pair(input Text) Tuple<i32, i32> {
-    return .{1, 2}
+    t = Tuple<i32, i32>{1, 2}
+    return t
 }
 
 test "multi-return handling" {
@@ -51,7 +49,7 @@ test "multi-return handling" {
     y = get(pair, 1)
 }
 
-fn write_log(text Text) {
+write_log(text Text) {
     file = open("log.txt")
     // 无论函数如何退出，都会执行关闭
     defer close(file)

@@ -4,19 +4,19 @@
 test "static list instantiation" {
     // 使用新字面量语法实例化
     xs = List<i32>{1, 2, 3}
-    
-    // 方法调用 (假设支持 .push) 或者函数调用
+
+    // 添加到尾部
     xs = push(xs, 4)
 
-    // 批量更新
-    xs = push(xs, .{ 5, 6, 7 })
+    // 批量添加
+    xs = push(xs, 5, 6, 7 )
 
     // 遍历
     loop v := next(xs) {
         print(v)
     }
     // 遍历带索引
-    loop i, v := next(xs) {
+    loop val, index := next(xs) {
         print(i, v)
     }
 
@@ -28,7 +28,7 @@ test "static list instantiation" {
     print(xs)
 
     // 批量设置
-    xs = set(xs, .{ 0: 10, 1: 20 })
+    xs = set(xs, .{ 0: v => add(v, 20), 1: 20 })
     print(xs)
 
 
@@ -96,7 +96,3 @@ test "spread and merge" {
     s = join(l4, ", ")
     print(s)
 }
-
-
-
- 

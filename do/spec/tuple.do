@@ -8,20 +8,26 @@ test "tuple and positioning" {
 
     // 解构
     .{a, b} = get(t, .{0, 1})
-
-
-    // 原地更新
-    t2 = set(t, .{ 0: 2, 1: false })
-    t3 = set(t, 0, 2)
-    t4 = set(t, 1, false)
-
     if eq(b, true) {
         print("Tuple access success")
     }
+
+    // 更新
+    t = set(t, 0, 2)
+    t = set(t, 1, false)
+
+    // 原地更新
+    t = set(t, .{ 0: 2, 1: false })
+
+    // 原地自更新
+    t = set(t, .{ 0: v => add(v, 1), 1: v => not(v) })
 }
 
 
 new_tuple() Tuple<i32, bool> {
-    // 自动推导类型
-    return .{1, true}
+    t = Tuple<i32, bool>{1, true}
+    t = set(t, 0, 2)
+    t = set(t, 1, false)
+    // 等效
+    return t
 }

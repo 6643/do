@@ -44,7 +44,7 @@ test "nested static structs" {
         Role.{name: "Admin", id: 1},
         Role.{name: "User", id: 2}
     }
-    
+
     // 嵌套实例化
     au = User<Role>{goods: r, name: "ZhangSan", age: 40, _uid: 1002}
 
@@ -66,23 +66,23 @@ test "nested static structs" {
 
     // 批量设置
     au = set(au, .goods, .{
-        0: .{ .name: "Boos", .id: 2 }, 
+        0: .{ .name: "Boos", .id: 2 },
         1: .{ .name: "Boos", .id: 2 }
     })
-    
+
     // 嵌套批量设置
     au = set(au, .{
-        .name: "LiSi", 
+        .name: "LiSi",
         .age: 20,
         .goods: .{
-            0: .{ .name: "Boos22", .id: 22 }, 
+            0: .{ .name: "Boos22", .id: 22 },
             1: .{ .name: "Boos23", .id: 23 }
         }
     })
     print(au)
 }
 
-add_age(u User) User => set(u, .age, add(get(u, .age), 1))
+add_age(u User) => set(u, .age, add(get(u, .age), 1))
 
 test "struct and function integration" {
     u = User<u32>{

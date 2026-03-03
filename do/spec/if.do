@@ -7,17 +7,17 @@ _start() {
     }
 
     count = 0
-    if eq(id, 122) { 
-        count = 1 
+    if eq(id, 122) {
+        count = 1
     } else {
-        count = 2 
+        count = 2
     }
     print(count)
 
     // 联合类型解构
     // find 返回 User | nil
     if User(u) := find_user(id) {
-        print(get(u, .name)) 
+        print(get(u, .name))
     } else {
         print("Not found")
     }
@@ -28,8 +28,8 @@ _start() {
         print("User is nil")
     }
 
-    // 短路语法
-    if eq(id, 1) return true 
+    // 单行短路
+    if eq(id, 1) return true
     if eq(id, 1) call_abc()
 }
 
@@ -44,5 +44,5 @@ find_user(id i32) User | nil {
 }
 
 User {
-    name text
+    name Text
 }
