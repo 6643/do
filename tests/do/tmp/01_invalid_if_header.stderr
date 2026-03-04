@@ -1,0 +1,5 @@
+error[InvalidIfHeader]: if 头部语法无效
+ --> /._/doc/do/tests/do/cases/err/01_invalid_if_header.do:2:11
+ hint: if 头部只允许 `Expr` 或 `TypePattern := Expr`.
+ 2 |     if ok bad {
+   |           ^

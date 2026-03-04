@@ -1,0 +1,5 @@
+error[InvalidMapLiteral]: Map 字面量语法无效
+ --> /._/doc/do/tests/do/cases/err/05_invalid_map_literal.do:2:26
+ hint: Map 字面量只允许 `key: value` 项.
+ 2 |     kv = Map<Text, i32>{1, 2}
+   |                          ^

@@ -1,0 +1,5 @@
+error[MultiReturnInIfCondition]: if 条件位不能直接使用多返回调用
+ --> /._/doc/do/tests/do/cases/err/06_multi_return_if.do:6:8
+ hint: 先接收多返回值, 再在 if 使用单值变量.
+ 6 |     if pair(1, 2) {
+   |        ^
