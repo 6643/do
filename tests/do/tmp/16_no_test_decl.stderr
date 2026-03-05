@@ -1,0 +1,5 @@
+error[NoTestDecl]: 测试文件缺少顶层 test 声明
+ --> /._/doc/do/tests/do/cases/err/16_no_test_decl.do:1:1
+ hint: 在文件顶层添加 `test "name" { ... }`.
+ 1 | _start() {
+   | ^

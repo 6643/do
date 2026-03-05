@@ -1,0 +1,5 @@
+error[InvalidAssignExpr]: 编译失败
+ --> /._/doc/do/tests/do/cases/err/27_invalid_assign_rhs_tail.do:2:11
+ hint: 查看语法规范并修正后重试.
+ 2 |     x = 1 foo
+   |           ^

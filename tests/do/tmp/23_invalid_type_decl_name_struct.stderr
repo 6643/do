@@ -1,0 +1,5 @@
+error[InvalidTypeDeclName]: 类型声明命名不合法
+ --> /._/doc/do/tests/do/cases/err/23_invalid_type_decl_name_struct.do:1:1
+ hint: 自建类型名使用 UpperCamel, 仅允许字母数字, 且首字母大写.
+ 1 | user_profile {
+   | ^

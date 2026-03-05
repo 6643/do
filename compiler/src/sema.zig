@@ -40,9 +40,11 @@ pub fn checkProgram(
     if (program.token_count == 0) return error.EmptyTokenStream;
     if (program.top_level_count == 0) return markErrorAt(tokens, 0, error.NoTopLevelDecl);
 
+    try checkTypeDeclNaming(tokens);
     try checkSingleValuePositions(program, tokens);
-    try checkAsyncControlArity(tokens);
+    try checkAsyncControlArity(program.func_sigs, tokens);
     try checkIfPatternBind(tokens);
+    try checkLoopHeader(tokens);
     try checkAssignmentConstraints(allocator, tokens);
 }
 
@@ -131,7 +133,7 @@ fn isArgCountCompatible(sig: parser.FuncSig, arg_count: usize) bool {
     return true;
 }
 
-fn checkAsyncControlArity(tokens: []const lexer.Token) !void {
+fn checkAsyncControlArity(func_sigs: []const parser.FuncSig, tokens: []const lexer.Token) !void {
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
         if (tokEq(tokens[i], "{")) {
@@ -146,25 +148,39 @@ fn checkAsyncControlArity(tokens: []const lexer.Token) !void {
         if (i + 1 >= tokens.len) continue;
         if (!tokEq(tokens[i + 1], "(")) continue;
 
+        const argc = try parseCallArgCount(tokens, i + 1);
+        if (hasUserFuncMatch(func_sigs, t.lexeme, argc)) continue;
+
         if (tokEq(t, "done")) {
-            const argc = try parseCallArgCount(tokens, i + 1);
             if (argc == 0) return markErrorAt(tokens, i, error.DoneCallNeedsArg);
             if (argc != 1) return markErrorAt(tokens, i, error.DoneCallArity);
             continue;
         }
 
-        if (tokEq(t, "wait") or tokEq(t, "cancel") or tokEq(t, "status")) {
-            const argc = try parseCallArgCount(tokens, i + 1);
+        if (tokEq(t, "wait")) {
+            if (argc != 1 and argc != 2) return markErrorAt(tokens, i, error.AsyncCtrlArity);
+            continue;
+        }
+
+        if (tokEq(t, "cancel") or tokEq(t, "status")) {
             if (argc != 1) return markErrorAt(tokens, i, error.AsyncCtrlArity);
             continue;
         }
 
-        if (tokEq(t, "wait_timeout")) {
-            const argc = try parseCallArgCount(tokens, i + 1);
-            if (argc != 2) return markErrorAt(tokens, i, error.AsyncCtrlArity);
+        if (tokEq(t, "wait_one") or tokEq(t, "wait_any") or tokEq(t, "wait_all")) {
+            if (argc < 2) return markErrorAt(tokens, i, error.AsyncCtrlArity);
             continue;
         }
     }
+}
+
+fn hasUserFuncMatch(func_sigs: []const parser.FuncSig, name: []const u8, argc: usize) bool {
+    for (func_sigs) |sig| {
+        if (!std.mem.eql(u8, sig.name, name)) continue;
+        if (!isArgCountCompatible(sig, argc)) continue;
+        return true;
+    }
+    return false;
 }
 
 fn parseCallArgCount(tokens: []const lexer.Token, open_paren_idx: usize) !usize {
@@ -298,6 +314,196 @@ fn checkIfPatternBind(tokens: []const lexer.Token) !void {
     }
 }
 
+fn checkTypeDeclNaming(tokens: []const lexer.Token) !void {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (depth_brace == 0) {
+                if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                    i = next_idx - 1;
+                    continue;
+                }
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+
+        const t = tokens[i];
+        if (t.kind != .ident) continue;
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (isKeyword(t.lexeme)) continue;
+        if (!isTypeDeclStart(tokens, i)) continue;
+        if (isValidDeclaredTypeName(t.lexeme)) continue;
+        return markErrorAt(tokens, i, error.InvalidTypeDeclName);
+    }
+}
+
+fn isTopLevelDeclHead(tokens: []const lexer.Token, idx: usize) bool {
+    if (idx == 0) return true;
+    if (tokens[idx - 1].line == tokens[idx].line) return false;
+
+    const prev = tokens[idx - 1];
+    if (tokEq(prev, "=")) return false;
+    if (tokEq(prev, "|")) return false;
+    if (tokEq(prev, ",")) return false;
+    if (tokEq(prev, ":")) return false;
+    return true;
+}
+
+fn isTypeDeclStart(tokens: []const lexer.Token, idx: usize) bool {
+    if (idx + 1 >= tokens.len) return false;
+    if (tokEq(tokens[idx + 1], "(")) return false; // func decl
+
+    var next_idx = idx + 1;
+    if (tokEq(tokens[next_idx], "<")) {
+        const close_angle = findMatching(tokens, next_idx, "<", ">") catch return false;
+        next_idx = close_angle + 1;
+        if (next_idx >= tokens.len) return false;
+    }
+
+    if (tokEq(tokens[next_idx], "{")) return true; // struct decl
+    if (tokEq(tokens[next_idx], "=")) return true; // alias / union / typeset alias
+    return false;
+}
+
+fn isValidDeclaredTypeName(name: []const u8) bool {
+    if (name.len == 0) return false;
+    if (!std.ascii.isUpper(name[0])) return false;
+
+    var i: usize = 1;
+    while (i < name.len) : (i += 1) {
+        if (std.ascii.isAlphabetic(name[i])) continue;
+        if (std.ascii.isDigit(name[i])) continue;
+        return false;
+    }
+    return true;
+}
+
+fn checkLoopHeader(tokens: []const lexer.Token) !void {
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                i = next_idx - 1;
+                continue;
+            }
+        }
+
+        if (!tokEq(tokens[i], "loop")) continue;
+        const open_brace = findLoopBlockOpen(tokens, i) orelse return markErrorAt(tokens, i, error.InvalidLoopHeader);
+        if (open_brace <= i) return markErrorAt(tokens, i, error.InvalidLoopHeader);
+
+        const header_start = i + 1;
+        if (open_brace == header_start) {
+            i = open_brace;
+            continue; // loop { ... }
+        }
+
+        const bind = findLoopBindAssign(tokens, header_start, open_brace);
+        if (bind == null) {
+            i = open_brace;
+            continue; // loop cond { ... }
+        }
+
+        const bind_idx = bind.?;
+        try validateLoopBindLhs(tokens, header_start, bind_idx);
+        if (bind_idx + 2 >= open_brace) return markErrorAt(tokens, bind_idx, error.InvalidLoopHeader);
+        i = open_brace;
+    }
+}
+
+fn findLoopBlockOpen(tokens: []const lexer.Token, loop_idx: usize) ?usize {
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_angle: usize = 0;
+    var i = loop_idx + 1;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "{")) {
+            if (depth_paren == 0 and depth_brace == 0 and depth_angle == 0) return i;
+            depth_brace += 1;
+            continue;
+        }
+        if (!tokEq(tokens[i], "}")) continue;
+        if (depth_brace > 0) depth_brace -= 1;
+    }
+    return null;
+}
+
+fn findLoopBindAssign(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_angle: usize = 0;
+    var found: ?usize = null;
+    var i = start_idx;
+    while (i + 1 < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "{")) {
+            if (depth_paren == 0 and depth_brace == 0 and depth_angle == 0) break;
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+
+        if (depth_paren != 0 or depth_brace != 0 or depth_angle != 0) continue;
+        if (!tokEq(tokens[i], ":") or !tokEq(tokens[i + 1], "=")) continue;
+        if (found != null) return null;
+        found = i;
+    }
+    return found;
+}
+
+fn validateLoopBindLhs(tokens: []const lexer.Token, start_idx: usize, bind_idx: usize) !void {
+    if (start_idx >= bind_idx) return markErrorAt(tokens, bind_idx, error.InvalidLoopHeader);
+    if (tokens[start_idx].kind != .ident) return markErrorAt(tokens, start_idx, error.InvalidLoopHeader);
+    if (isKeyword(tokens[start_idx].lexeme)) return markErrorAt(tokens, start_idx, error.InvalidLoopHeader);
+
+    if (start_idx + 1 == bind_idx) return;
+    if (start_idx + 3 != bind_idx) return markErrorAt(tokens, start_idx + 1, error.InvalidLoopHeader);
+    if (!tokEq(tokens[start_idx + 1], ",")) return markErrorAt(tokens, start_idx + 1, error.InvalidLoopHeader);
+    if (tokens[start_idx + 2].kind != .ident) return markErrorAt(tokens, start_idx + 2, error.InvalidLoopHeader);
+    if (isKeyword(tokens[start_idx + 2].lexeme)) return markErrorAt(tokens, start_idx + 2, error.InvalidLoopHeader);
+}
+
 fn checkAssignmentConstraints(allocator: std.mem.Allocator, tokens: []const lexer.Token) !void {
     var scopes: std.ArrayListUnmanaged(Scope) = .{};
     defer {
@@ -356,6 +562,25 @@ fn tokEq(t: lexer.Token, s: []const u8) bool {
     return std.mem.eql(u8, t.lexeme, s);
 }
 
+fn isKeyword(name: []const u8) bool {
+    const keywords = [_][]const u8{
+        "if",
+        "else",
+        "loop",
+        "break",
+        "continue",
+        "return",
+        "defer",
+        "match",
+        "do",
+        "test",
+    };
+    for (keywords) |kw| {
+        if (std.mem.eql(u8, name, kw)) return true;
+    }
+    return false;
+}
+
 fn isTypeName(name: []const u8) bool {
     if (name.len == 0) return false;
     return std.ascii.isUpper(name[0]);
@@ -370,112 +595,4 @@ fn markErrorAt(tokens: []const lexer.Token, idx: usize, err: anyerror) anyerror 
         };
     }
     return err;
-}
-
-fn runCheck(source: []const u8) !void {
-    const allocator = std.testing.allocator;
-    const tokens = try lexer.tokenize(allocator, source);
-    defer allocator.free(tokens);
-
-    var program = try parser.parseProgram(allocator, tokens, source.len);
-    defer program.deinit(allocator);
-
-    try checkProgram(allocator, program, tokens);
-}
-
-test "done call must have one arg" {
-    const src =
-        \\_start(a i32) {
-        \\    if done() return
-        \\}
-    ;
-    try std.testing.expectError(error.DoneCallNeedsArg, runCheck(src));
-}
-
-test "if pattern bind must use type pattern" {
-    const src =
-        \\_start(a i32) {
-        \\    if ok := a {
-        \\        return
-        \\    }
-        \\}
-    ;
-    try std.testing.expectError(error.InvalidIfPatternBind, runCheck(src));
-}
-
-test "future control arity checks" {
-    const src =
-        \\_start(a i32) {
-        \\    f = do work(a)
-        \\    _s = status(f)
-        \\    _ok = cancel(f)
-        \\    _r = wait(f)
-        \\    _v = wait_timeout(f, 1000)
-        \\    if done(f) return
-        \\}
-    ;
-    try runCheck(src);
-}
-
-test "import rename should not trigger if-pattern scan" {
-    const src =
-        \\{kw_if:if} := @("math")
-        \\
-        \\_start() {
-        \\    return
-        \\}
-    ;
-    try runCheck(src);
-}
-
-test "if multi-return error site points to call token" {
-    const src =
-        \\pair(a i32, b i32) i32, i32 {
-        \\    return a, b
-        \\}
-        \\
-        \\_start() {
-        \\    if pair(1, 2) {
-        \\        return
-        \\    }
-        \\}
-    ;
-
-    const allocator = std.testing.allocator;
-    const tokens = try lexer.tokenize(allocator, src);
-    defer allocator.free(tokens);
-
-    var program = try parser.parseProgram(allocator, tokens, src.len);
-    defer program.deinit(allocator);
-
-    try std.testing.expectError(error.MultiReturnInIfCondition, checkProgram(allocator, program, tokens));
-    const site = takeLastErrorSite().?;
-    try std.testing.expectEqual(@as(usize, 6), site.line);
-    try std.testing.expectEqual(@as(usize, 8), site.col);
-}
-
-test "match multi-return error site points to call token" {
-    const src =
-        \\pair(a i32, b i32) i32, i32 {
-        \\    return a, b
-        \\}
-        \\
-        \\_start() {
-        \\    match pair(1, 2) {
-        \\        _ => return,
-        \\    }
-        \\}
-    ;
-
-    const allocator = std.testing.allocator;
-    const tokens = try lexer.tokenize(allocator, src);
-    defer allocator.free(tokens);
-
-    var program = try parser.parseProgram(allocator, tokens, src.len);
-    defer program.deinit(allocator);
-
-    try std.testing.expectError(error.MultiReturnInMatchTarget, checkProgram(allocator, program, tokens));
-    const site = takeLastErrorSite().?;
-    try std.testing.expectEqual(@as(usize, 6), site.line);
-    try std.testing.expectEqual(@as(usize, 11), site.col);
 }

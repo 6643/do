@@ -36,6 +36,15 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
             i += 1;
             continue;
         }
+        if (ch == '/' and i + 1 < source.len and source[i + 1] == '/') {
+            i += 2;
+            col += 2;
+            while (i < source.len and source[i] != '\n') {
+                i += 1;
+                col += 1;
+            }
+            continue;
+        }
 
         const start = i;
         const start_col = col;
@@ -62,6 +71,14 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
             while (i < source.len and std.ascii.isDigit(source[i])) {
                 i += 1;
                 col += 1;
+            }
+            if (i + 1 < source.len and source[i] == '.' and std.ascii.isDigit(source[i + 1])) {
+                i += 1;
+                col += 1;
+                while (i < source.len and std.ascii.isDigit(source[i])) {
+                    i += 1;
+                    col += 1;
+                }
             }
             try out.append(allocator, .{
                 .kind = .number,
@@ -111,23 +128,4 @@ fn isIdentStart(ch: u8) bool {
 
 fn isIdentContinue(ch: u8) bool {
     return isIdentStart(ch) or std.ascii.isDigit(ch) or ch == '\'';
-}
-
-test "tokenize basic lexemes" {
-    const src = "if .name _x'1 = to_i32(1)\n";
-    const tokens = try tokenize(std.testing.allocator, src);
-    defer std.testing.allocator.free(tokens);
-
-    try std.testing.expect(tokens.len >= 8);
-    try std.testing.expectEqual(TokenKind.ident, tokens[0].kind);
-    try std.testing.expectEqualStrings("if", tokens[0].lexeme);
-    try std.testing.expectEqual(TokenKind.ident, tokens[1].kind);
-    try std.testing.expectEqualStrings(".name", tokens[1].lexeme);
-    try std.testing.expectEqual(TokenKind.ident, tokens[2].kind);
-    try std.testing.expectEqualStrings("_x'1", tokens[2].lexeme);
-}
-
-test "unterminated string is rejected" {
-    const src = "a = \"oops\n";
-    try std.testing.expectError(error.UnterminatedString, tokenize(std.testing.allocator, src));
 }

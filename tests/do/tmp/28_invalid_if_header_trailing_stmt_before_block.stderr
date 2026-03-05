@@ -1,0 +1,5 @@
+error[InvalidIfHeader]: if 头部语法无效
+ --> /._/doc/do/tests/do/cases/err/28_invalid_if_header_trailing_stmt_before_block.do:4:17
+ hint: if 头部只允许 `Expr` 或 `TypePattern := Expr`.
+ 4 |     if ge(a, b) and(ok_flag) {
+   |                 ^

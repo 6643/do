@@ -1,0 +1,5 @@
+error[DoneCallArity]: done 只允许 1 个参数
+ --> /._/doc/do/tests/do/cases/err/33_done_user_func_mismatch_arity.do:5:8
+ hint: 将 `done(...)` 参数个数收敛为 1.
+ 5 |     if done(f, 1) return
+   |        ^

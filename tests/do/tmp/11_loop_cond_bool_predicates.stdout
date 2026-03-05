@@ -1,0 +1,2 @@
+test "loop cond bool predicates" ... ok
+ok: 1 passed; 0 failed

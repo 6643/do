@@ -1,0 +1,2 @@
+test "float and comment lexing" ... ok
+ok: 1 passed; 0 failed

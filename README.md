@@ -15,7 +15,7 @@
 - **WASM 原生**: 基于 WASM 64KB page 和 4KB 子页架构优化。小对象使用 Slab 分配，大对象使用连续页面分配。
 - **大小数据分层策略**: 基础/小对象直接拷贝，大对象采用共享 + COW（初始阈值 64B）。
 - **无环运行时图**: Future/Task/FFI 采用 ID 关联与显式资源释放，最终目标是不引入循环 GC。
-- **无色异步语义**: `do` 负责创建任务并返回 Future，控制面统一通过 `done/wait/wait_timeout/cancel/status`，统一收敛在 `doc/syntax.md`。
+- **无色异步语义**: `do` 负责创建任务并返回 Future，控制面统一通过 `done/wait/wait_one/wait_any/wait_all/cancel/status`，统一收敛在 `doc/syntax.md`。
 - **语法基线**: 核心语法统一见 `doc/syntax.md`（`v1.0` 冻结，私有前置 `.`, `do` 单入口, 无守卫 `match`）。
 - **程序入口固定**: 可执行程序入口函数固定为 `_start() { ... }`，`main` 不是入口函数。
 - **目录结构**: `doc` 文档, `bin` 编译器二进制, `lib` 标准库(扁平), `compiler/src` 编译器源码(扁平)。

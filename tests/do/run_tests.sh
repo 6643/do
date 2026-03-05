@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TEST_DIR="$ROOT_DIR/tests/do"
 OK_DIR="$TEST_DIR/cases/ok"
 ERR_DIR="$TEST_DIR/cases/err"
+COMPILE_OK_DIR="$TEST_DIR/cases/compile_ok"
+COMPILE_ERR_DIR="$TEST_DIR/cases/compile_err"
 TMP_DIR="$TEST_DIR/tmp"
 
 ZIG_BIN="${ZIG_BIN:-/home/_/_/zig/zig}"
@@ -14,7 +16,7 @@ pass_count=0
 fail_count=0
 
 mkdir -p "$TMP_DIR"
-rm -f "$TMP_DIR"/*.stdout "$TMP_DIR"/*.stderr 2>/dev/null || true
+rm -f "$TMP_DIR"/*.stdout "$TMP_DIR"/*.stderr "$TMP_DIR"/compile_*.wat 2>/dev/null || true
 
 if [[ ! -x "$ZIG_BIN" ]]; then
     echo "[FAIL] zig binary not found: $ZIG_BIN"
@@ -104,6 +106,78 @@ run_err_case() {
     ((fail_count += 1))
 }
 
+run_compile_ok_case() {
+    local case_file="$1"
+    local name
+    name="$(basename "$case_file" .do)"
+
+    local stdout_file="$TMP_DIR/compile_${name}.stdout"
+    local stderr_file="$TMP_DIR/compile_${name}.stderr"
+    local wat_file="$TMP_DIR/compile_${name}.wat"
+
+    if "$DO_BIN" "$case_file" -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
+        if grep -Fq "ok:" "$stdout_file" && [[ -s "$wat_file" ]]; then
+            echo "[PASS] compile ok  $name"
+            ((pass_count += 1))
+            return
+        fi
+
+        echo "[FAIL] compile ok  $name (missing success marker or wat output)"
+        cat "$stdout_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    echo "[FAIL] compile ok  $name (unexpected non-zero exit)"
+    cat "$stderr_file"
+    ((fail_count += 1))
+}
+
+run_compile_err_case() {
+    local case_file="$1"
+    local name
+    name="$(basename "$case_file" .do)"
+
+    local stdout_file="$TMP_DIR/compile_${name}.stdout"
+    local stderr_file="$TMP_DIR/compile_${name}.stderr"
+    local wat_file="$TMP_DIR/compile_${name}.wat"
+    local expect_file="${case_file%.do}.expect"
+
+    if [[ ! -f "$expect_file" ]]; then
+        echo "[FAIL] compile err $name (missing expect file: $expect_file)"
+        ((fail_count += 1))
+        return
+    fi
+
+    if "$DO_BIN" "$case_file" -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
+        echo "[FAIL] compile err $name (expected failure, got success)"
+        cat "$stdout_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    local missing=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -z "$line" ]] && continue
+        [[ "${line:0:1}" == "#" ]] && continue
+        if grep -Fq "$line" "$stderr_file"; then
+            continue
+        fi
+        echo "[FAIL] compile err $name (missing expected text: $line)"
+        missing=1
+    done < "$expect_file"
+
+    if [[ "$missing" -eq 0 ]]; then
+        echo "[PASS] compile err $name"
+        ((pass_count += 1))
+        return
+    fi
+
+    echo "[INFO] stderr output for $name:"
+    cat "$stderr_file"
+    ((fail_count += 1))
+}
+
 echo "[INFO] run ok cases"
 for case_file in "$OK_DIR"/*.do; do
     [[ -e "$case_file" ]] || continue
@@ -114,6 +188,18 @@ echo "[INFO] run err cases"
 for case_file in "$ERR_DIR"/*.do; do
     [[ -e "$case_file" ]] || continue
     run_err_case "$case_file"
+done
+
+echo "[INFO] run compile ok cases"
+for case_file in "$COMPILE_OK_DIR"/*.do; do
+    [[ -e "$case_file" ]] || continue
+    run_compile_ok_case "$case_file"
+done
+
+echo "[INFO] run compile err cases"
+for case_file in "$COMPILE_ERR_DIR"/*.do; do
+    [[ -e "$case_file" ]] || continue
+    run_compile_err_case "$case_file"
 done
 
 echo "[INFO] summary: pass=$pass_count fail=$fail_count"

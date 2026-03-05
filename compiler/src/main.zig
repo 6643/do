@@ -3,6 +3,7 @@ const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
 const sema = @import("sema.zig");
 const codegen = @import("codegen.zig");
+const cmd_test = @import("cmd/test.zig");
 
 const SourceLoc = struct {
     line: usize,
@@ -18,12 +19,6 @@ const CliArgs = struct {
     mode: CliMode,
     input_path: []const u8,
     output_path: []const u8,
-};
-
-const TestDecl = struct {
-    name_lexeme: []const u8,
-    line: usize,
-    col: usize,
 };
 
 pub fn main() !void {
@@ -98,17 +93,10 @@ pub fn main() !void {
             try out.interface.flush();
         },
         .test_mode => {
-            const test_decls = collectTopLevelTests(allocator, tokens) catch |err| {
+            cmd_test.run(allocator, tokens) catch |err| {
                 try printCompileError(cli.input_path, source, tokens, err, null);
                 std.process.exit(1);
             };
-            defer allocator.free(test_decls);
-
-            if (test_decls.len == 0) {
-                try printCompileError(cli.input_path, source, tokens, error.NoTestDecl, null);
-                std.process.exit(1);
-            }
-            try printTestReport(test_decls);
         },
     }
 }
@@ -175,81 +163,6 @@ fn printUsage() !void {
         \\
     , .{});
     try out.interface.flush();
-}
-
-fn printTestReport(test_decls: []const TestDecl) !void {
-    var out_buffer: [4096]u8 = undefined;
-    var out = std.fs.File.stdout().writer(&out_buffer);
-
-    for (test_decls) |decl| {
-        try out.interface.print("test {s} ... ok\n", .{decl.name_lexeme});
-    }
-    try out.interface.print("ok: {d} passed; 0 failed\n", .{test_decls.len});
-    try out.interface.flush();
-}
-
-fn collectTopLevelTests(allocator: std.mem.Allocator, tokens: []const lexer.Token) ![]TestDecl {
-    var out = try std.ArrayList(TestDecl).initCapacity(allocator, 0);
-    defer out.deinit(allocator);
-
-    var depth_brace: usize = 0;
-    var i: usize = 0;
-    while (i < tokens.len) {
-        if (tokEqToken(tokens[i], "{")) {
-            depth_brace += 1;
-            i += 1;
-            continue;
-        }
-        if (tokEqToken(tokens[i], "}")) {
-            if (depth_brace > 0) depth_brace -= 1;
-            i += 1;
-            continue;
-        }
-        if (depth_brace != 0) {
-            i += 1;
-            continue;
-        }
-
-        if (tokens[i].kind != .ident or !std.mem.eql(u8, tokens[i].lexeme, "test")) {
-            i += 1;
-            continue;
-        }
-        if (i + 2 >= tokens.len) return error.InvalidTestDecl;
-        if (tokens[i + 1].kind != .string) return error.InvalidTestDecl;
-        if (!tokEqToken(tokens[i + 2], "{")) return error.InvalidTestDecl;
-
-        const close_brace = try findMatchingToken(tokens, i + 2, "{", "}");
-        try out.append(allocator, .{
-            .name_lexeme = tokens[i + 1].lexeme,
-            .line = tokens[i].line,
-            .col = tokens[i].col,
-        });
-        i = close_brace + 1;
-    }
-
-    return out.toOwnedSlice(allocator);
-}
-
-fn findMatchingToken(tokens: []const lexer.Token, open_idx: usize, open: []const u8, close: []const u8) !usize {
-    if (open_idx >= tokens.len or !tokEqToken(tokens[open_idx], open)) return error.InvalidGroupStart;
-
-    var depth: usize = 0;
-    var i = open_idx;
-    while (i < tokens.len) : (i += 1) {
-        if (tokEqToken(tokens[i], open)) {
-            depth += 1;
-            continue;
-        }
-        if (!tokEqToken(tokens[i], close)) continue;
-        if (depth == 0) return error.InvalidGroupDepth;
-        depth -= 1;
-        if (depth == 0) return i;
-    }
-    return error.UnterminatedGroup;
-}
-
-fn tokEqToken(tok: lexer.Token, lexeme: []const u8) bool {
-    return std.mem.eql(u8, tok.lexeme, lexeme);
 }
 
 fn printCliError(err: anyerror) !void {
@@ -364,7 +277,10 @@ fn locateTokenError(err: anyerror, tokens: []const lexer.Token) ?SourceLoc {
         error.MultiReturnInIfBindRhs,
         => return tokenSite(findFirstToken(tokens, "if") orelse tokens[0]),
 
-        error.MultiReturnInMatchTarget => return tokenSite(findFirstToken(tokens, "match") orelse tokens[0]),
+        error.InvalidLoopHeader => return tokenSite(findFirstToken(tokens, "loop") orelse tokens[0]),
+        error.InvalidMatchHeader,
+        error.MultiReturnInMatchTarget,
+        => return tokenSite(findFirstToken(tokens, "match") orelse tokens[0]),
         error.InvalidTestDecl => return tokenSite(findFirstToken(tokens, "test") orelse tokens[0]),
         error.InvalidImportDecl => return tokenSite(findFirstToken(tokens, "@") orelse tokens[0]),
         error.InvalidStartEntrySig, error.DuplicateStartEntry => return tokenSite(findFirstToken(tokens, "_start") orelse tokens[0]),
@@ -372,6 +288,7 @@ fn locateTokenError(err: anyerror, tokens: []const lexer.Token) ?SourceLoc {
         error.InvalidDoExpr => return tokenSite(findFirstToken(tokens, "do") orelse tokens[0]),
         error.DoneCallNeedsArg, error.DoneCallArity => return tokenSite(findFirstToken(tokens, "done") orelse tokens[0]),
         error.AsyncCtrlArity => return tokenSite(findFirstAsyncCtrlToken(tokens) orelse tokens[0]),
+        error.InvalidBraceExpr => return tokenSite(findFirstToken(tokens, "{") orelse tokens[0]),
         error.InvalidListLiteral => return tokenSite(findFirstToken(tokens, "List") orelse tokens[0]),
         error.InvalidMapLiteral => return tokenSite(findFirstToken(tokens, "Map") orelse tokens[0]),
         error.InvalidTupleLiteral => return tokenSite(findFirstToken(tokens, "Tuple") orelse tokens[0]),
@@ -398,7 +315,9 @@ fn findFirstToken(tokens: []const lexer.Token, lexeme: []const u8) ?lexer.Token 
 fn findFirstAsyncCtrlToken(tokens: []const lexer.Token) ?lexer.Token {
     for (tokens) |tok| {
         if (std.mem.eql(u8, tok.lexeme, "wait")) return tok;
-        if (std.mem.eql(u8, tok.lexeme, "wait_timeout")) return tok;
+        if (std.mem.eql(u8, tok.lexeme, "wait_one")) return tok;
+        if (std.mem.eql(u8, tok.lexeme, "wait_any")) return tok;
+        if (std.mem.eql(u8, tok.lexeme, "wait_all")) return tok;
         if (std.mem.eql(u8, tok.lexeme, "cancel")) return tok;
         if (std.mem.eql(u8, tok.lexeme, "status")) return tok;
     }
@@ -475,7 +394,12 @@ fn errorSummary(err: anyerror) []const u8 {
     return switch (err) {
         error.UnterminatedString => "字符串未闭合",
         error.InvalidIfHeader => "if 头部语法无效",
+        error.InvalidMatchHeader => "match 头部语法无效",
+        error.InvalidLoopHeader => "loop 头部语法无效",
         error.InvalidStructLiteral => "结构体字面量语法无效",
+        error.InvalidTypeDeclName => "类型声明命名不合法",
+        error.InvalidTypedLiteral => "集合字面量语法无效",
+        error.InvalidBraceExpr => "花括号表达式语法无效",
         error.InvalidListLiteral => "List 字面量语法无效",
         error.InvalidMapLiteral => "Map 字面量语法无效",
         error.InvalidTupleLiteral => "Tuple 字面量语法无效",
@@ -506,21 +430,26 @@ fn errorHint(err: anyerror) []const u8 {
     return switch (err) {
         error.UnterminatedString => "补全字符串右侧的双引号.",
         error.InvalidIfHeader => "if 头部只允许 `Expr` 或 `TypePattern := Expr`.",
+        error.InvalidMatchHeader => "match 头部固定为 `match Expr { ... }`, 不允许目标表达式后残留 token.",
+        error.InvalidLoopHeader => "loop 头部支持 `loop {}`, `loop cond {}`, `loop v := iterable {}`, `loop v, i := iterable {}`.",
         error.InvalidStructLiteral => "结构体字面量必须使用 `name: value`.",
+        error.InvalidTypeDeclName => "自建类型名使用 UpperCamel, 仅允许字母数字, 且首字母大写.",
+        error.InvalidTypedLiteral => "集合字面量写法使用 `Type<...>{...}`; 空值写 `Type<...>{}`.",
+        error.InvalidBraceExpr => "花括号表达式仅允许纯表达式列表或纯 `key: value` 列表, 不允许混用.",
         error.InvalidListLiteral => "List 字面量只允许表达式列表, 不允许 `k:v`.",
         error.InvalidMapLiteral => "Map 字面量只允许 `key: value` 项.",
         error.InvalidTupleLiteral => "Tuple 字面量只允许表达式列表.",
         error.InvalidCallArgList => "检查逗号分隔, 允许尾逗号但不允许空实参.",
         error.DoneCallNeedsArg => "将 `done()` 改为 `done(future)`.",
         error.DoneCallArity => "将 `done(...)` 参数个数收敛为 1.",
-        error.AsyncCtrlArity => "wait/cancel/status 需 1 参, wait_timeout 需 2 参.",
+        error.AsyncCtrlArity => "同名普通函数仅在实参数匹配时优先; 不匹配时回退内建规则: wait 需 1 或 2 参, cancel/status 需 1 参, wait_one/wait_any/wait_all 需 >=2 参(首参为 timeout).",
         error.InvalidIfPatternBind => "使用 `if Type(x) := expr` 或 `if Type{...} := expr`.",
         error.PrivateIdentCannotBeLValue => "将 `.x = ...` 改为普通变量或 set 接口.",
         error.DuplicateImmutableBinding => "同一作用域内 `_name` 仅允许声明 1 次.",
         error.MultiReturnInIfCondition => "先接收多返回值, 再在 if 使用单值变量.",
         error.MultiReturnInIfBindRhs => "if 模式绑定右侧改为单值表达式.",
         error.MultiReturnInMatchTarget => "先接收多返回值, 再把单值变量传给 match.",
-        error.InvalidImportDecl => "使用 `{item, ...} := @(\"path\")`; 冲突名(关键字/async 控制名)需显式重命名.",
+        error.InvalidImportDecl => "使用 `{item, ...} := @(\"path\")`; 冲突名(关键字)需显式重命名.",
         error.NoTopLevelDecl => "至少声明 1 个 top-level 项: import/type/func/test.",
         error.NoTestDecl => "在文件顶层添加 `test \"name\" { ... }`.",
         error.InvalidTestDecl => "使用 `test \"name\" { ... }` 顶层声明.",
@@ -531,97 +460,4 @@ fn errorHint(err: anyerror) []const u8 {
         error.MissingTestInputPath => "示例: `do test sample.do`.",
         else => "查看语法规范并修正后重试.",
     };
-}
-
-test "locate source error for unterminated string" {
-    const src =
-        \\_start() {
-        \\    x = "abc
-        \\}
-    ;
-    const loc = locateSourceError(error.UnterminatedString, src).?;
-    try std.testing.expectEqual(@as(usize, 2), loc.line);
-}
-
-test "locate token error for do expr" {
-    const src =
-        \\_start() {
-        \\    x = do
-        \\}
-    ;
-    const tokens = try lexer.tokenize(std.testing.allocator, src);
-    defer std.testing.allocator.free(tokens);
-
-    const loc = locateTokenError(error.InvalidDoExpr, tokens).?;
-    try std.testing.expectEqual(@as(usize, 2), loc.line);
-}
-
-test "collect top-level tests" {
-    const src =
-        \\helper() {
-        \\    return
-        \\}
-        \\
-        \\test "a" {
-        \\    x = 1
-        \\}
-        \\
-        \\test "b" {
-        \\    y = 2
-        \\}
-    ;
-    const tokens = try lexer.tokenize(std.testing.allocator, src);
-    defer std.testing.allocator.free(tokens);
-
-    const decls = try collectTopLevelTests(std.testing.allocator, tokens);
-    defer std.testing.allocator.free(decls);
-
-    try std.testing.expectEqual(@as(usize, 2), decls.len);
-    try std.testing.expectEqualStrings("\"a\"", decls[0].name_lexeme);
-    try std.testing.expectEqualStrings("\"b\"", decls[1].name_lexeme);
-}
-
-test "validate _start entry accepts zero-arg no-return" {
-    const src =
-        \\_start() {
-        \\    return
-        \\}
-    ;
-    const tokens = try lexer.tokenize(std.testing.allocator, src);
-    defer std.testing.allocator.free(tokens);
-
-    var program = try parser.parseProgram(std.testing.allocator, tokens, src.len);
-    defer program.deinit(std.testing.allocator);
-
-    try validateStartEntry(program);
-}
-
-test "validate _start entry rejects missing _start" {
-    const src =
-        \\helper() {
-        \\    return
-        \\}
-    ;
-    const tokens = try lexer.tokenize(std.testing.allocator, src);
-    defer std.testing.allocator.free(tokens);
-
-    var program = try parser.parseProgram(std.testing.allocator, tokens, src.len);
-    defer program.deinit(std.testing.allocator);
-
-    try std.testing.expectError(error.MissingStartEntry, validateStartEntry(program));
-}
-
-test "validate _start entry rejects invalid signature" {
-    const src =
-        \\_start(a i32) i32 {
-        \\    return a
-        \\}
-    ;
-    const tokens = try lexer.tokenize(std.testing.allocator, src);
-    defer std.testing.allocator.free(tokens);
-
-    var program = try parser.parseProgram(std.testing.allocator, tokens, src.len);
-    defer program.deinit(std.testing.allocator);
-
-    try std.testing.expectError(error.InvalidStartEntrySig, validateStartEntry(program));
 }

@@ -1,0 +1,5 @@
+error[InvalidMatchHeader]: match 头部语法无效
+ --> /._/doc/do/tests/do/cases/err/29_invalid_match_header_trailing_token.do:3:13
+ hint: match 头部固定为 `match Expr { ... }`, 不允许目标表达式后残留 token.
+ 3 |     match x bad {
+   |             ^

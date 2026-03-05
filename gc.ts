@@ -53,9 +53,19 @@ runAnalysis("A");
 runAnalysis("B");
 runAnalysis("C");
 
-/*
-// ffi
-// {WasiIovec{buf_ptr i32, buf_len i32}, fd_write(i32, WasiIovec, i32, i32) => i32}
-.{WasiIovec, fd_write} = @("wasi_snapshot_preview1")
+const abc = () => {
+  let count = 0;
+  const a = () => {
+    count++;
+    console.log(count);
+  };
 
-*/
+  console.log(count);
+  a();
+  a();
+
+  a();
+  a();
+  a();
+  a();
+};

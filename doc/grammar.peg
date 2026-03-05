@@ -1,0 +1,220 @@
+# do language PEG grammar draft
+# Source of truth for prose rules: doc/syntax.md
+
+Program             <- _ TopLevel* EOF
+TopLevel            <- ImportDecl / TypeDecl / FuncDecl / TestDecl
+
+# ----------------------------
+# Top-level declarations
+# ----------------------------
+
+ImportDecl          <- LBRACE ImportItemList? RBRACE BIND ImportSource
+ImportSource        <- AT LPAREN String RPAREN
+ImportItemList      <- ImportItem (COMMA ImportItem)* COMMA?
+ImportItem          <- ImportFunc / ImportType / ImportValue / ImportSymbol
+ImportSymbol        <- Ident (COLON Ident)?
+ImportValue         <- Ident TypeExpr
+ImportType          <- TypeName LBRACE ImportFieldList? RBRACE
+ImportFieldList     <- ImportField (COMMA ImportField)* COMMA?
+ImportField         <- Ident TypeExpr
+ImportFunc          <- Ident LPAREN ImportTypeList? RPAREN ARROW TypeExpr
+ImportTypeList      <- TypeExpr (COMMA TypeExpr)* COMMA?
+
+TypeDecl            <- StructDecl / UnionDecl / TypeSetAliasDecl / AliasDecl
+StructDecl          <- TypeName TypeParams? LBRACE FieldDecl* RBRACE
+FieldDecl           <- FieldName TypeExpr
+FieldName           <- Ident
+
+UnionDecl           <- TypeName EQ Variant (PIPE Variant)+
+Variant             <- TypeName (LBRACE VariantFields? RBRACE)?
+VariantFields       <- VariantField (COMMA VariantField)* COMMA?
+VariantField        <- Ident TypeExpr
+
+AliasDecl           <- TypeName EQ TypeExpr
+TypeSetAliasDecl    <- TypeName EQ TypeSetExpr
+TypeSetExpr         <- TypeExpr (PIPE TypeExpr)+
+
+TypeParams          <- LT TypeParam (COMMA TypeParam)* COMMA? GT
+TypeParam           <- Ident (COLON TypeSetRef)?
+TypeSetRef          <- TypeName / TypeSetExpr
+TypeExpr            <- TypeName TypeArgs?
+                    / LPAREN TypeExpr RPAREN
+TypeArgs            <- LT TypeList GT
+TypeList            <- TypeExpr (COMMA TypeExpr)* COMMA?
+TypeName            <- Ident
+
+FuncDecl            <- FuncConstraint* FuncName LPAREN Params? RPAREN ReturnSpec? FuncBody
+FuncConstraint      <- HASH (FuncSigConstraint / TypeSetConstraint)
+FuncSigConstraint   <- Ident LPAREN TypeList? RPAREN ARROW ReturnSpec
+TypeSetConstraint   <- TypeVar COLON (TypeSetExpr / TypeName)
+TypeVar             <- Ident
+FuncName            <- Ident
+ReturnSpec          <- MultiReturnSpec / TypeExpr
+MultiReturnSpec     <- TypeExpr COMMA TypeExpr (COMMA TypeExpr)*
+FuncBody            <- Block / (ARROW ArrowExprList)
+ArrowExprList       <- Expr (COMMA Expr)* COMMA?
+
+Params              <- VariadicParam COMMA?
+                    / ParamList (COMMA VariadicParam)? COMMA?
+                    / ParamList COMMA?
+ParamList           <- Param (COMMA Param)*
+Param               <- Ident TypeExpr
+VariadicParam       <- Ident ELLIPSIS TypeExpr
+
+TestDecl            <- KW_TEST String Block
+Block               <- LBRACE Stmt* RBRACE
+
+# ----------------------------
+# Statements
+# ----------------------------
+
+Stmt                <- ReturnStmt
+                    / DeferStmt
+                    / BreakStmt
+                    / ContinueStmt
+                    / IfStmt
+                    / LoopStmt
+                    / MatchStmt
+                    / AssignStmt
+                    / ExprStmt
+
+ReturnStmt          <- KW_RETURN ExprList?
+DeferStmt           <- KW_DEFER Stmt
+BreakStmt           <- KW_BREAK Label?
+ContinueStmt        <- KW_CONTINUE Label?
+Label               <- APOST Ident
+
+AssignStmt          <- AssignLHS EQ Expr
+AssignLHS           <- DestructureLValue / LValueList / LValue
+DestructureLValue   <- LBRACE LValue (COMMA LValue)* COMMA? RBRACE
+LValueList          <- LValue COMMA LValue (COMMA LValue)*
+LValue              <- Ident / UNDERSCORE
+
+ExprStmt            <- Expr
+
+IfStmt              <- KW_IF IfPatternBind
+                    / KW_IF IfExprBranch
+IfPatternBind       <- IfTypePattern BIND Expr Block (KW_ELSE Block)?
+IfExprBranch        <- Expr (Block (KW_ELSE Block)? / Stmt)
+IfTypePattern       <- TypeName LPAREN Ident RPAREN
+                    / TypeName LBRACE PatternFields? RBRACE
+
+LoopStmt            <- KW_LOOP Block
+                    / KW_LOOP LoopCond Block
+                    / KW_LOOP LoopBind BIND Expr Block
+LoopCond            <- Expr
+LoopBind            <- Ident (COMMA Ident)?
+
+MatchStmt           <- KW_MATCH Expr LBRACE MatchArm* RBRACE
+MatchArm            <- Pattern ARROW (Block / Stmt) COMMA?
+Pattern             <- UNDERSCORE
+                    / TypeName LPAREN Ident RPAREN
+                    / TypeName LBRACE PatternFields? RBRACE
+                    / Literal
+PatternFields       <- PatternField (COMMA PatternField)* COMMA?
+PatternField        <- Ident
+
+# ----------------------------
+# Expressions
+# ----------------------------
+
+Expr                <- DoExpr
+                    / LambdaExpr
+                    / ParenExpr
+                    / BraceLit
+                    / TypedCollectionLit
+                    / StructLit
+                    / CallExpr
+                    / Ident
+                    / Literal
+
+DoExpr              <- KW_DO CallExpr
+LambdaExpr          <- PIPE Params? PIPE Expr
+ParenExpr           <- LPAREN Expr RPAREN
+
+BraceLit            <- LBRACE BraceItems? RBRACE
+BraceItems          <- PairList / ExprList
+
+TypedCollectionLit  <- ListLit / MapLit / TupleLit
+ListLit             <- KW_LIST LT TypeExpr GT LBRACE ExprList? RBRACE
+MapLit              <- KW_MAP LT TypeExpr COMMA TypeExpr GT LBRACE PairList? RBRACE
+TupleLit            <- KW_TUPLE LT TypeList GT LBRACE ExprList? RBRACE
+
+StructLit           <- TypeName LBRACE NamedArgs? RBRACE
+NamedArgs           <- NamedArg (COMMA NamedArg)* COMMA?
+NamedArg            <- Ident COLON Expr
+
+CallExpr            <- Ident LPAREN Args? RPAREN
+Args                <- Expr (COMMA Expr)* COMMA?
+
+ExprList            <- Expr (COMMA Expr)* COMMA?
+PairList            <- Pair (COMMA Pair)* COMMA?
+Pair                <- Expr COLON Expr
+
+Literal             <- Number / String / KW_TRUE / KW_FALSE / KW_NIL
+
+# ----------------------------
+# Lexical
+# ----------------------------
+
+Ident               <- !Keyword (PrivateName / Name) _
+PrivateName         <- DOT Name
+Name                <- [A-Za-z] [A-Za-z0-9_]*
+                    / '_' [A-Za-z0-9] [A-Za-z0-9_]*
+UNDERSCORE          <- '_' ![A-Za-z0-9_] _
+
+Number              <- Float / Int
+Int                 <- [0-9]+ _
+Float               <- [0-9]+ '.' [0-9]+ _
+
+String              <- '"' StringChar* '"' _
+StringChar          <- '\\"' / '\\\\' / !'"' .
+
+Keyword             <- KW_IF / KW_ELSE / KW_LOOP / KW_BREAK / KW_CONTINUE
+                    / KW_RETURN / KW_DEFER / KW_MATCH / KW_DO / KW_TEST
+                    / KW_TRUE / KW_FALSE / KW_NIL
+
+KW_IF               <- 'if' !IdentChar _
+KW_ELSE             <- 'else' !IdentChar _
+KW_LOOP             <- 'loop' !IdentChar _
+KW_BREAK            <- 'break' !IdentChar _
+KW_CONTINUE         <- 'continue' !IdentChar _
+KW_RETURN           <- 'return' !IdentChar _
+KW_DEFER            <- 'defer' !IdentChar _
+KW_MATCH            <- 'match' !IdentChar _
+KW_DO               <- 'do' !IdentChar _
+KW_TEST             <- 'test' !IdentChar _
+KW_TRUE             <- 'true' !IdentChar _
+KW_FALSE            <- 'false' !IdentChar _
+KW_NIL              <- 'nil' !IdentChar _
+
+KW_LIST             <- 'List' !IdentChar _
+KW_MAP              <- 'Map' !IdentChar _
+KW_TUPLE            <- 'Tuple' !IdentChar _
+
+LBRACE              <- '{' _
+RBRACE              <- '}' _
+LPAREN              <- '(' _
+RPAREN              <- ')' _
+LT                  <- '<' _
+GT                  <- '>' _
+COMMA               <- ',' _
+COLON               <- ':' _
+EQ                  <- '=' _
+PIPE                <- '|' _
+APOST               <- '\'' _
+AT                  <- '@' _
+HASH                <- '#' _
+DOT                 <- '.' _
+ELLIPSIS            <- '...' _
+
+BIND                <- ':=' _
+ARROW               <- '=>' _
+
+IdentChar           <- [A-Za-z0-9_]
+
+_                   <- (Space / Comment)*
+Space               <- [ \t\r\n]+
+Comment             <- '//' (!EOL .)* EOL?
+EOL                 <- '\r\n' / '\n' / '\r'
+EOF                 <- !.

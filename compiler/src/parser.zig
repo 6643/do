@@ -26,6 +26,7 @@ pub const ExprKind = enum {
     call,
     do_call,
     lambda,
+    brace_lit,
     struct_lit,
     list_lit,
     map_lit,
@@ -152,6 +153,16 @@ pub fn parseProgram(
             i += 1;
             continue;
         }
+        if (isTestDeclStart(tokens, i)) {
+            i = try parseTopLevelTestDecl(
+                allocator,
+                &cond_exprs_list,
+                &expr_nodes_list,
+                tokens,
+                i,
+            );
+            continue;
+        }
         if (!isFuncDeclStart(tokens, i)) {
             i += 1;
             continue;
@@ -223,6 +234,12 @@ fn countTopLevel(tokens: []const lexer.Token) !usize {
     return top_level;
 }
 
+fn isTestDeclStart(tokens: []const lexer.Token, i: usize) bool {
+    if (i >= tokens.len) return false;
+    if (tokens[i].kind != .ident) return false;
+    return tokEq(tokens[i], "test");
+}
+
 fn isFuncDeclStart(tokens: []const lexer.Token, i: usize) bool {
     if (i + 1 >= tokens.len) return false;
     if (tokens[i].kind != .ident) return false;
@@ -252,6 +269,31 @@ fn parseTopLevelFuncDecl(
         );
     }
     return parsed.next_idx;
+}
+
+fn parseTopLevelTestDecl(
+    allocator: std.mem.Allocator,
+    out_conds: *std.ArrayList(ConditionExpr),
+    out_nodes: *std.ArrayList(ExprNode),
+    tokens: []const lexer.Token,
+    start_idx: usize,
+) !usize {
+    if (start_idx + 2 >= tokens.len) return markErrorAt(tokens, start_idx, error.InvalidTestDecl);
+    if (tokens[start_idx + 1].kind != .string) return markErrorAt(tokens, start_idx + 1, error.InvalidTestDecl);
+    if (!tokEq(tokens[start_idx + 2], "{")) return markErrorAt(tokens, start_idx + 2, error.InvalidTestDecl);
+
+    const close_brace = findMatching(tokens, start_idx + 2, "{", "}") catch
+        return markErrorAt(tokens, start_idx + 2, error.InvalidTestDecl);
+
+    try collectConditionExprs(
+        allocator,
+        out_conds,
+        out_nodes,
+        tokens,
+        start_idx + 2,
+        close_brace,
+    );
+    return close_brace + 1;
 }
 
 fn parseFunctionDecl(tokens: []const lexer.Token, start_idx: usize) !FuncParseResult {
@@ -450,7 +492,7 @@ fn parseBodyStmt(
         return parseMatchStmt(allocator, out_conds, out_nodes, tokens, stmt_idx, limit_idx);
     }
     if (tokEq(tokens[stmt_idx], "loop")) {
-        return parseLoopStmt(tokens, stmt_idx, limit_idx);
+        return parseLoopStmt(allocator, out_nodes, tokens, stmt_idx, limit_idx);
     }
     if (tokEq(tokens[stmt_idx], "=")) {
         return parseAssignStmt(allocator, out_nodes, tokens, stmt_idx, limit_idx);
@@ -482,10 +524,119 @@ fn parseMatchStmt(
     return match_idx + 1;
 }
 
-fn parseLoopStmt(tokens: []const lexer.Token, loop_idx: usize, limit_idx: usize) usize {
-    _ = tokens;
-    _ = limit_idx;
-    return loop_idx + 1;
+fn parseLoopStmt(
+    allocator: std.mem.Allocator,
+    out_nodes: *std.ArrayList(ExprNode),
+    tokens: []const lexer.Token,
+    loop_idx: usize,
+    limit_idx: usize,
+) !usize {
+    const header_start = loop_idx + 1;
+    if (header_start >= limit_idx) return markErrorAt(tokens, loop_idx, error.InvalidLoopHeader);
+
+    if (tokEq(tokens[header_start], "{")) return header_start + 1; // loop { ... }
+
+    if (try parseLoopBindHeader(
+        allocator,
+        out_nodes,
+        tokens,
+        header_start,
+        limit_idx,
+    )) |open_brace_idx| {
+        return open_brace_idx + 1; // loop <bind> := <expr> { ... }
+    }
+
+    const cond = parseExpr(allocator, out_nodes, tokens, header_start, limit_idx) catch
+        return markErrorAt(tokens, header_start, error.InvalidLoopHeader);
+    if (cond.next_idx >= limit_idx) return markErrorAt(tokens, cond.next_idx, error.InvalidLoopHeader);
+    if (!tokEq(tokens[cond.next_idx], "{")) return markErrorAt(tokens, cond.next_idx, error.InvalidLoopHeader);
+    return cond.next_idx + 1; // loop <cond-expr> { ... }
+}
+
+fn parseLoopBindHeader(
+    allocator: std.mem.Allocator,
+    out_nodes: *std.ArrayList(ExprNode),
+    tokens: []const lexer.Token,
+    header_start: usize,
+    limit_idx: usize,
+) !?usize {
+    const bind_idx = findLoopBindAssign(tokens, header_start, limit_idx) orelse return null;
+    try validateLoopBindLhs(tokens, header_start, bind_idx);
+
+    const rhs_start = bind_idx + 2;
+    if (rhs_start >= limit_idx) return markErrorAt(tokens, bind_idx, error.InvalidLoopHeader);
+
+    const rhs = parseExpr(allocator, out_nodes, tokens, rhs_start, limit_idx) catch
+        return markErrorAt(tokens, rhs_start, error.InvalidLoopHeader);
+    if (rhs.next_idx >= limit_idx) return markErrorAt(tokens, rhs.next_idx, error.InvalidLoopHeader);
+    if (!tokEq(tokens[rhs.next_idx], "{")) return markErrorAt(tokens, rhs.next_idx, error.InvalidLoopHeader);
+    return rhs.next_idx;
+}
+
+fn findLoopBindAssign(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_angle: usize = 0;
+    var found: ?usize = null;
+    var i = start_idx;
+    while (i + 1 < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "{")) {
+            if (depth_paren == 0 and depth_brace == 0 and depth_angle == 0) break;
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+
+        if (depth_paren != 0 or depth_brace != 0 or depth_angle != 0) continue;
+        if (!tokEq(tokens[i], ":") or !tokEq(tokens[i + 1], "=")) continue;
+        if (found != null) return null;
+        found = i;
+    }
+    return found;
+}
+
+fn validateLoopBindLhs(tokens: []const lexer.Token, start_idx: usize, bind_idx: usize) !void {
+    if (start_idx >= bind_idx) return markErrorAt(tokens, bind_idx, error.InvalidLoopHeader);
+    if (tokens[start_idx].kind != .ident) return markErrorAt(tokens, start_idx, error.InvalidLoopHeader);
+    if (isKeyword(tokens[start_idx].lexeme)) return markErrorAt(tokens, start_idx, error.InvalidLoopHeader);
+
+    if (start_idx + 1 == bind_idx) return;
+    if (start_idx + 3 != bind_idx) return markErrorAt(tokens, start_idx + 1, error.InvalidLoopHeader);
+    if (!tokEq(tokens[start_idx + 1], ",")) return markErrorAt(tokens, start_idx + 1, error.InvalidLoopHeader);
+    if (tokens[start_idx + 2].kind != .ident) return markErrorAt(tokens, start_idx + 2, error.InvalidLoopHeader);
+    if (isKeyword(tokens[start_idx + 2].lexeme)) return markErrorAt(tokens, start_idx + 2, error.InvalidLoopHeader);
+}
+
+fn validateLoopBindRhsExpr(
+    allocator: std.mem.Allocator,
+    out_nodes: *std.ArrayList(ExprNode),
+    tokens: []const lexer.Token,
+    rhs_start: usize,
+    rhs_end: usize,
+) !void {
+    if (rhs_start >= rhs_end) return markErrorAt(tokens, rhs_start, error.InvalidLoopHeader);
+    const parsed = parseExpr(allocator, out_nodes, tokens, rhs_start, rhs_end) catch
+        return markErrorAt(tokens, rhs_start, error.InvalidLoopHeader);
+    if (parsed.next_idx != rhs_end) return markErrorAt(tokens, parsed.next_idx, error.InvalidLoopHeader);
 }
 
 fn parseAssignStmt(
@@ -496,9 +647,46 @@ fn parseAssignStmt(
     limit_idx: usize,
 ) !usize {
     if (isNonAssignEqual(tokens, eq_idx)) return eq_idx + 1;
-    if (eq_idx + 1 >= limit_idx) return markErrorAt(tokens, eq_idx, error.InvalidAssignExpr);
-    _ = try parseExpr(allocator, out_nodes, tokens, eq_idx + 1, limit_idx);
-    return eq_idx + 1;
+    const rhs_start = eq_idx + 1;
+    if (rhs_start >= limit_idx) return markErrorAt(tokens, eq_idx, error.InvalidAssignExpr);
+
+    const rhs_end = findAssignRhsEnd(tokens, rhs_start, limit_idx);
+    if (rhs_start >= rhs_end) return markErrorAt(tokens, eq_idx, error.InvalidAssignExpr);
+
+    const parsed = try parseExpr(allocator, out_nodes, tokens, rhs_start, rhs_end);
+    if (parsed.next_idx != rhs_end) return markErrorAt(tokens, parsed.next_idx, error.InvalidAssignExpr);
+    return rhs_end;
+}
+
+fn findAssignRhsEnd(tokens: []const lexer.Token, start_idx: usize, limit_idx: usize) usize {
+    if (start_idx >= limit_idx) return start_idx;
+
+    const start_line = tokens[start_idx].line;
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var i = start_idx;
+
+    while (i < limit_idx) : (i += 1) {
+        if (tokens[i].line != start_line and depth_paren == 0 and depth_brace == 0) break;
+
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (!tokEq(tokens[i], "}")) continue;
+
+        if (depth_brace == 0 and depth_paren == 0) break;
+        if (depth_brace > 0) depth_brace -= 1;
+    }
+    return i;
 }
 
 fn maybeRecordIfConditionExpr(
@@ -511,7 +699,7 @@ fn maybeRecordIfConditionExpr(
 ) !void {
     if (if_idx + 1 >= limit_idx) return;
     const parsed = try parseIfHeaderCondition(allocator, out_nodes, tokens, if_idx + 1, limit_idx);
-    try validateIfHeaderTail(tokens, parsed.next_idx, limit_idx);
+    try validateIfHeaderTail(allocator, out_nodes, tokens, parsed.next_idx, limit_idx);
 
     try out_conds.append(allocator, .{
         .root_expr_idx = parsed.root_expr_idx,
@@ -530,12 +718,19 @@ fn maybeRecordMatchConditionExpr(
 ) !void {
     if (match_idx + 1 >= limit_idx) return;
     const parsed = try parseExpr(allocator, out_nodes, tokens, match_idx + 1, limit_idx);
+    try validateMatchHeaderTail(tokens, parsed.next_idx, limit_idx);
 
     try out_conds.append(allocator, .{
         .root_expr_idx = parsed.node_idx,
         .context = .match_target,
         .line = tokens[match_idx].line,
     });
+}
+
+fn validateMatchHeaderTail(tokens: []const lexer.Token, next_idx: usize, limit_idx: usize) !void {
+    if (next_idx >= limit_idx) return markErrorAt(tokens, next_idx, error.InvalidMatchHeader);
+    if (tokEq(tokens[next_idx], "{")) return;
+    return markErrorAt(tokens, next_idx, error.InvalidMatchHeader);
 }
 
 fn parseIfHeaderCondition(
@@ -567,16 +762,80 @@ fn parseIfHeaderCondition(
     };
 }
 
-fn validateIfHeaderTail(tokens: []const lexer.Token, next_idx: usize, limit_idx: usize) !void {
+fn validateIfHeaderTail(
+    allocator: std.mem.Allocator,
+    out_nodes: *std.ArrayList(ExprNode),
+    tokens: []const lexer.Token,
+    next_idx: usize,
+    limit_idx: usize,
+) !void {
     if (next_idx >= limit_idx) return markErrorAt(tokens, next_idx, error.InvalidIfHeader);
     if (tokEq(tokens[next_idx], "{")) return;
+    if (next_idx + 1 < limit_idx and tokEq(tokens[next_idx], ":") and tokEq(tokens[next_idx + 1], "=")) return;
 
-    // `if cond x {` 会让 `x` 被误吃成单行语句起点, 这里提前拒绝.
-    if (next_idx + 1 >= limit_idx) return;
-    if (tokens[next_idx].kind != .ident) return;
-    if (isTypeName(tokens[next_idx].lexeme)) return;
-    if (!tokEq(tokens[next_idx + 1], "{")) return;
-    return markErrorAt(tokens, next_idx, error.InvalidIfHeader);
+    const line_end = findLineEnd(tokens, next_idx, limit_idx);
+    if (line_end <= next_idx) return markErrorAt(tokens, next_idx, error.InvalidIfHeader);
+    if (isOneLineIfStmtKeyword(tokens[next_idx])) return;
+
+    if (findTopLevelAssignEq(tokens, next_idx, line_end)) |eq_idx| {
+        if (eq_idx + 1 >= line_end) return markErrorAt(tokens, eq_idx, error.InvalidIfHeader);
+        const rhs = parseExpr(allocator, out_nodes, tokens, eq_idx + 1, line_end) catch
+            return markErrorAt(tokens, eq_idx + 1, error.InvalidIfHeader);
+        if (rhs.next_idx != line_end) return markErrorAt(tokens, rhs.next_idx, error.InvalidIfHeader);
+        return;
+    }
+
+    const stmt = parseExpr(allocator, out_nodes, tokens, next_idx, line_end) catch
+        return markErrorAt(tokens, next_idx, error.InvalidIfHeader);
+    if (stmt.next_idx == line_end) return;
+    if (tokEq(tokens[stmt.next_idx], "{")) return markErrorAt(tokens, next_idx, error.InvalidIfHeader);
+    return markErrorAt(tokens, stmt.next_idx, error.InvalidIfHeader);
+}
+
+fn findLineEnd(tokens: []const lexer.Token, start_idx: usize, limit_idx: usize) usize {
+    if (start_idx >= limit_idx) return start_idx;
+    const line = tokens[start_idx].line;
+    var i = start_idx;
+    while (i < limit_idx and tokens[i].line == line) : (i += 1) {}
+    return i;
+}
+
+fn isOneLineIfStmtKeyword(tok: lexer.Token) bool {
+    if (tok.kind != .ident) return false;
+    if (tokEq(tok, "return")) return true;
+    if (tokEq(tok, "defer")) return true;
+    if (tokEq(tok, "break")) return true;
+    if (tokEq(tok, "continue")) return true;
+    return false;
+}
+
+fn findTopLevelAssignEq(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_paren != 0 or depth_brace != 0) continue;
+        if (!tokEq(tokens[i], "=")) continue;
+        if (isNonAssignEqual(tokens, i)) continue;
+        return i;
+    }
+    return null;
 }
 
 fn parseIfTypePattern(tokens: []const lexer.Token, start_idx: usize, limit_idx: usize) anyerror!?usize {
@@ -639,6 +898,10 @@ fn parseExpr(
             .data = .{ .child = inner.node_idx },
         });
         return .{ .next_idx = end_idx, .node_idx = idx };
+    }
+
+    if (tokEq(t, "{")) {
+        return parseBraceLiteral(allocator, out_nodes, tokens, start_idx, limit_idx);
     }
 
     if (t.kind == .ident) {
@@ -754,6 +1017,70 @@ fn parseStructLiteral(
     return .{ .next_idx = close_brace + 1, .node_idx = idx };
 }
 
+fn parseBraceLiteral(
+    allocator: std.mem.Allocator,
+    out_nodes: *std.ArrayList(ExprNode),
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    limit_idx: usize,
+) anyerror!ExprParse {
+    if (start_idx >= limit_idx or !tokEq(tokens[start_idx], "{")) {
+        return markErrorAt(tokens, start_idx, error.InvalidExpr);
+    }
+
+    const close_brace = try findMatchingInRange(tokens, start_idx, "{", "}", limit_idx);
+    if (hasTopLevelColon(tokens, start_idx + 1, close_brace)) {
+        try parsePairItems(allocator, out_nodes, tokens, start_idx + 1, close_brace, error.InvalidBraceExpr);
+    } else {
+        try parseExprItems(allocator, out_nodes, tokens, start_idx + 1, close_brace, error.InvalidExpr);
+    }
+
+    const idx = try appendExprNode(allocator, out_nodes, .{
+        .kind = .brace_lit,
+        .start_tok = start_idx,
+        .end_tok = close_brace + 1,
+        .data = .{ .none = {} },
+    });
+    return .{ .next_idx = close_brace + 1, .node_idx = idx };
+}
+
+fn hasTopLevelColon(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_angle: usize = 0;
+
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (depth_paren != 0 or depth_brace != 0 or depth_angle != 0) continue;
+        if (tokEq(tokens[i], ":")) return true;
+    }
+    return false;
+}
+
 fn parseTypedCollectionLiteral(
     allocator: std.mem.Allocator,
     out_nodes: *std.ArrayList(ExprNode),
@@ -775,7 +1102,7 @@ fn parseTypedCollectionLiteral(
     if (std.mem.eql(u8, name, "List")) {
         try parseExprItems(allocator, out_nodes, tokens, close_angle + 2, close_brace, error.InvalidListLiteral);
     } else if (std.mem.eql(u8, name, "Map")) {
-        try parsePairItems(allocator, out_nodes, tokens, close_angle + 2, close_brace);
+        try parsePairItems(allocator, out_nodes, tokens, close_angle + 2, close_brace, error.InvalidMapLiteral);
     } else {
         try parseExprItems(allocator, out_nodes, tokens, close_angle + 2, close_brace, error.InvalidTupleLiteral);
     }
@@ -842,6 +1169,7 @@ fn parsePairItems(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    invalid_err: anyerror,
 ) anyerror!void {
     if (start_idx >= end_idx) return;
 
@@ -849,14 +1177,14 @@ fn parsePairItems(
     while (i < end_idx) {
         const key = try parseExpr(allocator, out_nodes, tokens, i, end_idx);
         i = key.next_idx;
-        if (i >= end_idx or !tokEq(tokens[i], ":")) return markErrorAt(tokens, i, error.InvalidMapLiteral);
+        if (i >= end_idx or !tokEq(tokens[i], ":")) return markErrorAt(tokens, i, invalid_err);
         i += 1;
-        if (i >= end_idx) return markErrorAt(tokens, i, error.InvalidMapLiteral);
+        if (i >= end_idx) return markErrorAt(tokens, i, invalid_err);
 
         const value = try parseExpr(allocator, out_nodes, tokens, i, end_idx);
         i = value.next_idx;
         if (i >= end_idx) break;
-        if (!tokEq(tokens[i], ",")) return markErrorAt(tokens, i, error.InvalidMapLiteral);
+        if (!tokEq(tokens[i], ",")) return markErrorAt(tokens, i, invalid_err);
         i += 1;
         if (i >= end_idx) return; // allow trailing comma
     }
@@ -1164,13 +1492,7 @@ fn parseImportTypeList(tokens: []const lexer.Token, start_idx: usize, end_idx: u
 }
 
 fn isImportConflictName(name: []const u8) bool {
-    if (isKeyword(name)) return true;
-    if (std.mem.eql(u8, name, "done")) return true;
-    if (std.mem.eql(u8, name, "wait")) return true;
-    if (std.mem.eql(u8, name, "wait_timeout")) return true;
-    if (std.mem.eql(u8, name, "cancel")) return true;
-    if (std.mem.eql(u8, name, "status")) return true;
-    return false;
+    return isKeyword(name);
 }
 
 fn markErrorAt(tokens: []const lexer.Token, idx: usize, err: anyerror) anyerror {
@@ -1182,22 +1504,4 @@ fn markErrorAt(tokens: []const lexer.Token, idx: usize, err: anyerror) anyerror 
         };
     }
     return err;
-}
-
-fn parseSourceForTest(source: []const u8) !Program {
-    const allocator = std.testing.allocator;
-    const tokens = try lexer.tokenize(allocator, source);
-    defer allocator.free(tokens);
-    return parseProgram(allocator, tokens, source.len);
-}
-
-test "import-only file counts as one top-level decl" {
-    var program = try parseSourceForTest("{sqrt} := @(\"math\")\n");
-    defer program.deinit(std.testing.allocator);
-    try std.testing.expectEqual(@as(usize, 1), program.top_level_count);
-}
-
-test "import async control name requires rename" {
-    const src = "{wait} := @(\"math\")\n";
-    try std.testing.expectError(error.InvalidImportDecl, parseSourceForTest(src));
 }

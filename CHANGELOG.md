@@ -1,5 +1,302 @@
 # CHANGELOG
 
+## [2026-03-05 21:52:07] [type: docs] [scope: doc-grammar-peg]
+- [新增 `doc/grammar.peg`, 以 PEG 形式收敛 Program/TopLevel/Stmt/Expr/Type 主干语法, 作为 `doc/syntax.md` 的机器可读草案.]
+- [语法文件补齐词法层(关键字/标识符/注释/空白)与常用符号规则, 便于后续 parser 对齐与自动化校验.]
+
+## [2026-03-05 21:38:51] [type: docs] [scope: example-tuple-all-in-one-spec]
+- [新增 `example/tuple.do` tuple 语法总览单文件, 集中收纳 TupleLit 与多返回值策略关系的规则与示例.]
+- [文件保持"设计规则注释 + 可执行正向示例"结构, 并通过 `do test example/tuple.do` 定向验证.]
+
+## [2026-03-05 21:00:57] [type: chore] [scope: full-regression-after-example-expr]
+- [执行 `./tests/do/run_tests.sh` 全量回归, 验证新增 `example/import.do` 与 `example/expr.do` 后基线稳定.]
+- [回归结果 `pass=55 fail=0`, `ok/err/compile_ok/compile_err` 四类用例全部通过.]
+
+## [2026-03-05 20:54:29] [type: docs] [scope: example-expr-all-in-one-spec]
+- [新增 `example/expr.do` 表达式语法总览单文件, 集中收纳 Call/Do/AsyncCtrl/Struct/List/Map/Tuple/Brace/Literal 规则与示例.]
+- [文件保持"设计规则注释 + 可执行正向示例"结构, 并通过 `do test example/expr.do` 定向验证.]
+
+## [2026-03-05 20:50:36] [type: docs] [scope: example-import-all-in-one-spec]
+- [新增 `example/import.do` import 语法总览单文件, 集中收纳 ImportDecl/ImportItem/重命名/FFI 混合导入规则.]
+- [文件保持"设计规则注释 + 可执行正向示例"结构, 并通过 `do test example/import.do` 定向验证.]
+
+## [2026-03-05 20:15:08] [type: chore] [scope: full-regression-after-example-series]
+- [执行 `./tests/do/run_tests.sh` 全量回归, 验证新增 `example/if.do` 与 `example/async.do` 后基线稳定.]
+- [回归结果 `pass=55 fail=0`, `ok/err/compile_ok/compile_err` 四类用例全部通过.]
+
+## [2026-03-05 20:10:33] [type: docs] [scope: example-async-all-in-one-spec]
+- [新增 `example/async.do` async 语法总览单文件, 集中收纳 `do` 并发入口与 Future 控制面规则.]
+- [文件保持"设计规则注释 + 可执行正向示例"结构, 并通过 `do test example/async.do` 定向验证.]
+
+## [2026-03-05 20:04:09] [type: docs] [scope: example-if-all-in-one-spec]
+- [新增 `example/if.do` if 语法总览单文件, 集中收纳 IfStmt/IfTypePattern 规则与单值条件约束.]
+- [文件保持"设计规则注释 + 可执行正向示例"结构, 并通过 `do test example/if.do` 定向验证.]
+
+## [2026-03-05 19:59:49] [type: docs] [scope: example-match-all-in-one-spec]
+- [新增 `example/match.do` match 语法总览单文件, 集中收纳 MatchStmt/Pattern/PatternFields 规则与单值目标位约束.]
+- [文件保持"设计规则注释 + 可执行正向示例"结构, 并通过 `do test example/match.do` 定向验证.]
+
+## [2026-03-05 19:57:14] [type: docs] [scope: example-loop-all-in-one-spec]
+- [新增 `example/loop.do` loop 语法总览单文件, 集中收纳 LoopStmt/LoopCond/LoopBind 规则与头部约束.]
+- [文件保持"设计规则注释 + 可执行正向示例"结构, 并通过 `do test example/loop.do` 定向验证.]
+
+## [2026-03-05 19:53:21] [type: docs] [scope: example-struct-all-in-one-spec]
+- [新增 `example/struct.do` 结构语法总览单文件, 集中收纳 Struct/Alias/TypeSetAlias 设计规则与示例.]
+- [文件保持"设计规则注释 + 可执行正向示例"结构, 并通过 `do test example/struct.do` 定向验证.]
+
+## [2026-03-05 19:48:27] [type: docs] [scope: example-func-runnable-snippets]
+- [example/func.do 将 `.normalize_name(name Text) Text { ... }` 从注释示例提升为可执行函数声明, 保持 do 文件内函数样例可直接运行.]
+- [example/func.do 将 `total = add(a, b, c)` 形态落到 test 代码中(`total_flat = add(a, b, c)`), 作为可运行的扁平调用示例.]
+
+## [2026-03-05 19:31:18] [type: docs] [scope: example-func-all-in-one-spec]
+- [重构 `example/func.do` 为函数语法总览单文件, 集中收纳 `5/5.1/5.2` 的函数声明语法, 约束规则, 重载优先级与扁平化设计示例.]
+- [文件保持"设计规则注释 + 可执行正向示例"结构, 既可集中查阅语法设计, 也可用 `do test` 做快速验证.]
+
+## [2026-03-05 19:18:04] [type: docs] [scope: example-func-positive]
+- [新增 `example/func.do` 正向示例, 聚焦函数声明与调用, 并在文件头标注使用类型与语法表达式设计点.]
+- [示例覆盖 `CallExpr`/`ArrowExprList`/`ReturnExprList` 与 `if` 条件调用形态, 用于按主题拆分后的 `func` 参考模板.]
+
+## [2026-03-05 19:06:00] [type: chore] [scope: final-full-regression-after-wait-zero-arg]
+- [执行 `./tests/do/run_tests.sh` 全量回归, 验证新增 `39_wait_no_arg_arity` 后基线稳定.]
+- [回归结果 `pass=55 fail=0`, 覆盖 `ok/err/compile_ok/compile_err` 四类用例全部通过.]
+
+## [2026-03-05 19:00:59] [type: test] [scope: wait-no-arg-arity]
+- [tests/do/cases/err 新增 `39_wait_no_arg_arity.do(.expect)`, 覆盖内建 `wait` 调用 0 参数时的 arity 错误路径.]
+- [用例断言 `AsyncCtrlArity`, 固化 `wait` 仅允许 1 或 2 参数的下界约束.]
+
+## [2026-03-05 18:58:22] [type: chore] [scope: full-regression-after-wait-any-all-cases]
+- [执行 `./tests/do/run_tests.sh` 全量回归, 验证新增 `37_wait_any_user_func_mismatch_arity` 与 `38_wait_all_user_func_mismatch_arity` 后基线稳定.]
+- [回归结果 `pass=54 fail=0`, 覆盖 `ok/err/compile_ok/compile_err` 四类用例全部通过.]
+
+## [2026-03-05 18:54:58] [type: test] [scope: wait-all-user-func-mismatch-arity]
+- [tests/do/cases/err 新增 `38_wait_all_user_func_mismatch_arity.do(.expect)`, 覆盖同名用户函数 `wait_all` 签名不匹配时回退内建 `wait_all` arity 规则.]
+- [用例断言 `AsyncCtrlArity`, 防止 `hasUserFuncMatch` 在 `wait_all` 路径误匹配放行.]
+
+## [2026-03-05 18:48:41] [type: test] [scope: wait-any-user-func-mismatch-arity]
+- [tests/do/cases/err 新增 `37_wait_any_user_func_mismatch_arity.do(.expect)`, 覆盖同名用户函数 `wait_any` 签名不匹配时回退内建 `wait_any` arity 规则.]
+- [用例断言 `AsyncCtrlArity`, 防止 `hasUserFuncMatch` 在 `wait_any` 路径误匹配放行.]
+
+## [2026-03-05 18:45:45] [type: chore] [scope: full-regression-after-wait-mismatch-case]
+- [执行 `./tests/do/run_tests.sh` 全量回归, 验证新增 `36_wait_user_func_mismatch_arity` 后基线稳定.]
+- [回归结果 `pass=52 fail=0`, 覆盖 `ok/err/compile_ok/compile_err` 四类用例全部通过.]
+
+## [2026-03-05 18:39:45] [type: test] [scope: wait-user-func-mismatch-arity]
+- [tests/do/cases/err 新增 `36_wait_user_func_mismatch_arity.do(.expect)`, 覆盖同名用户函数 `wait` 签名不匹配时回退内建 `wait` arity 规则.]
+- [用例断言 `AsyncCtrlArity`, 防止 `hasUserFuncMatch` 在 `wait` 路径误匹配放行.]
+
+## [2026-03-05 18:37:22] [type: chore] [scope: final-full-regression-baseline]
+- [执行 `./tests/do/run_tests.sh` 全量回归, 覆盖 `ok/err/compile_ok/compile_err` 四类用例.]
+- [回归结果 `pass=51 fail=0`, 含 `err/33`、`err/34`、`err/35` 全部通过, 基线稳定.]
+
+## [2026-03-05 18:34:19] [type: docs] [scope: done-arity-error-semantics-clarify]
+- [doc/syntax.md 在 `7.2` 与 `12.3` 补充 `done` arity 错误语义: 无同名可匹配普通函数时, `0` 参数报 `DoneCallNeedsArg`, `>1` 参数报 `DoneCallArity`.]
+- [文档约束与 `sema.checkAsyncControlArity` 及现有 `err/12`、`err/33` 回归断言保持一致.]
+
+## [2026-03-05 18:29:28] [type: chore] [scope: full-regression-after-cancel-status-cases]
+- [执行 `./tests/do/run_tests.sh` 全量回归, 验证新增 `34_cancel_user_func_mismatch_arity` 与 `35_status_user_func_mismatch_arity` 后基线稳定.]
+- [回归结果 `pass=51 fail=0`, `ok/err/compile_ok/compile_err` 四类用例全部通过.]
+
+## [2026-03-05 18:25:16] [type: test] [scope: status-user-func-mismatch-arity]
+- [tests/do/cases/err 新增 `35_status_user_func_mismatch_arity.do(.expect)`, 覆盖同名用户函数 `status` 签名不匹配时回退内建 `status(f)` arity 规则.]
+- [用例断言 `AsyncCtrlArity`, 防止 `hasUserFuncMatch` 在 `status` 路径误匹配放行.]
+
+## [2026-03-05 18:21:00] [type: test] [scope: cancel-user-func-mismatch-arity]
+- [tests/do/cases/err 新增 `34_cancel_user_func_mismatch_arity.do(.expect)`, 覆盖同名用户函数 `cancel` 签名不匹配时回退内建 `cancel(f)` arity 规则.]
+- [用例断言 `AsyncCtrlArity`, 防止 `hasUserFuncMatch` 在 `cancel` 路径误匹配放行.]
+
+## [2026-03-05 18:17:17] [type: chore] [scope: full-regression-after-done-arity-case]
+- [执行 `./tests/do/run_tests.sh` 全量回归, 验证新增 `33_done_user_func_mismatch_arity` 后基线稳定.]
+- [回归结果 `pass=49 fail=0`, `ok/err/compile_ok/compile_err` 四类用例全部通过.]
+
+## [2026-03-05 18:11:50] [type: test] [scope: done-user-func-mismatch-arity]
+- [tests/do/cases/err 新增 `33_done_user_func_mismatch_arity.do(.expect)`, 覆盖同名用户函数 `done` 签名不匹配时回退内建 `done(f)` arity 规则.]
+- [用例断言 `DoneCallArity`, 防止 `hasUserFuncMatch` 在 `done` 路径发生误匹配放行.]
+
+## [2026-03-05 18:03:46] [type: docs] [scope: async-builtin-fallback-signatures]
+- [doc/syntax.md 对齐 `7.2` 与 `12.3`: 无同名可匹配普通函数时, 内建 `done/wait/wait_one/wait_any/wait_all/cancel/status` 全量签名规则固定生效.]
+- [补充 `wait(f)|wait(ms,f)` 与 `wait_*` 形态的回退签名清单, 统一文档与 sema 的参数校验口径.]
+
+## [2026-03-05 17:59:23] [type: docs] [scope: syntax-bracelit-ebnf-alignment]
+- [doc/syntax.md 在 `Expr` 产生式补充 `BraceLit`/`BraceItems`, 对齐 parser 已支持的裸花括号表达式语法.]
+- [doc/syntax.md 增加 `BraceLit` 两种合法形态示例与混用非法规则, 明确 `{ExprList}` 与 `{PairList}` 不可混写.]
+
+## [2026-03-05 17:48:54] [type: chore] [scope: full-regression-run-tests]
+- [执行 `./tests/do/run_tests.sh` 全量回归, 覆盖 ok/err/compile_ok/compile_err 四类用例.]
+- [回归结果 `pass=48 fail=0`, 含新增 `31_invalid_brace_expr_mixed` 与 `32_async_control_user_func_mismatch` 均通过.]
+
+## [2026-03-05 17:44:24] [type: docs] [scope: async-ctrl-arity-hint-fallback]
+- [compiler/src/main.zig 更新 `AsyncCtrlArity` hint, 明确同名普通函数仅在实参数匹配时优先, 不匹配时回退内建控制面参数规则.]
+- [诊断文案与 `hasUserFuncMatch` 行为对齐, 降低 `wait/wait_one` 同名函数场景下的理解偏差.]
+
+## [2026-03-05 17:37:07] [type: test] [scope: async-control-user-func-mismatch]
+- [tests/do/cases/err 新增 `32_async_control_user_func_mismatch.do(.expect)`, 覆盖同名用户函数签名不匹配时回退内建 `wait_one` arity 校验路径.]
+- [用例断言固定为 `AsyncCtrlArity`, 防止 `hasUserFuncMatch` 误放行导致控制面规则失效.]
+
+## [2026-03-05 17:20:49] [type: fix] [scope: brace-expr-diagnostic-split]
+- [compiler/src/parser.zig 将裸花括号 `k:v` 路径错误从 `InvalidMapLiteral` 分流为 `InvalidBraceExpr`, 保持 `Map<...>{...}` 仍使用 `InvalidMapLiteral`.]
+- [compiler/src/main.zig 新增 `InvalidBraceExpr` 的定位/摘要/hint, 并同步 tests/do/cases/err/31_invalid_brace_expr_mixed.expect 断言.]
+
+## [2026-03-05 17:03:20] [type: fix] [scope: brace-expr-invalid-mixed-regression]
+- [tests/do/cases/err 新增 `31_invalid_brace_expr_mixed.do(.expect)`, 覆盖裸花括号表达式中 `k:v` 与单项混用的非法路径.]
+- [固定期望错误为 `InvalidMapLiteral`, 保障 `.x` 字段选择批量参数能力引入后的非法输入回归可验证.]
+
+## [2026-03-05 16:52:46] [type: fix] [scope: parser-dot-selector-brace-expr]
+- [compiler/src/parser.zig 新增裸花括号表达式解析, 支持 `{.name, .age}` 与 `{k: v}` 作为普通表达式参与调用参数与赋值 RHS.]
+- [tests/do/cases/ok/14_dot_selector_batch_expr.do 新增回归, 覆盖 `.x` 字段选择批量参数与批量更新表达式写法.]
+
+## [2026-03-05 16:45:34] [type: docs] [scope: dot-ident-dual-role]
+- [doc/syntax.md 将前置 `.` 标识符规则统一为双语义: 私有命名位与字段选择符共存.]
+- [doc/syntax.md 更新绑定规则与收窄示例, 明确 `get(u, .name)` 和 `{.name}` 字段选择写法合法.]
+
+## [2026-03-05 16:07:12] [type: fix] [scope: async-control-name-user-func]
+- [compiler/src/sema.zig 异步控制参数校验改为"无同名可匹配普通函数时才应用内建控制面规则", 允许 `done/wait/wait_one/wait_any/wait_all/cancel/status` 作为普通函数名.]
+- [compiler/src/parser.zig 导入项冲突名校验仅保留关键字互斥, 允许 `{wait, done, status} := @(\"...\")` 直接导入.]
+- [compiler/src/main.zig 诊断提示同步更新: `InvalidImportDecl` 冲突名提示改为仅关键字.]
+- [doc/syntax.md 同步规则: 导入名与关键字互斥, 内建控制面与同名普通函数按签名匹配优先级共存.]
+- [tests/do/cases/ok 新增 `12_async_control_name_as_user_func.do` 与 `13_import_async_control_names_plain.do` 回归用例.]
+
+## [2026-03-05 15:34:26] [type: fix] [scope: sema-loop-header-depth-scan]
+- [compiler/src/sema.zig 对齐 loop 头部扫描策略: `findLoopBlockOpen/findLoopBindAssign` 增加括号/花括号/尖括号深度感知, 避免把条件表达式内部 `{}` 误判为循环体起始.]
+- [语义检查与 parser loop 头部识别口径保持一致, 降低 cond 含结构体字面量场景下的误判风险.]
+
+## [2026-03-05 15:22:14] [type: fix] [scope: parser-loop-header-brace-aware]
+- [compiler/src/parser.zig 调整 loop 头部识别顺序, 先解析 cond/bind 表达式, 再定位循环体 `{`, 修复 cond 中结构体字面量误判.]
+- [tests/do/cases/ok/11_loop_cond_bool_predicates.do 新增回归, 覆盖 `loop is_valid(User{...})` 与 `loop has(user_map, uid)` 两种 bool 条件形态.]
+
+## [2026-03-05 15:08:58] [type: docs] [scope: loop-condition-bool-semantics]
+- [doc/syntax.md 明确 `loop cond {}` 仅要求条件表达式返回 `bool`, 不限制函数参数个数.]
+- [doc/syntax.md 在 `loop` 章节补充 `has(user_map, uid)` 与 `is_valid(user)` 条件示例, 统一谓词语义表达.]
+
+## 2026-03-05 13:52:20 | fix | loop-cond-expression-full-consume
+
+- `compiler/src/parser.zig` 收紧 `loop cond {}` 头部校验: 条件位表达式必须完整消费到 `{` 前, 残留 token 统一报 `InvalidLoopHeader`.
+- `tests/do/cases/ok/07_loop_header_forms.do` 条件循环示例更新为函数调用式布尔条件: `loop lt(count, 3) { ... }`.
+- 新增反例: `tests/do/cases/err/30_invalid_loop_condition_operator_style.do(.expect)`, 覆盖 `loop count < 3 { ... }` 头部残留路径.
+- 回归通过: `./tests/do/run_tests.sh(pass=42 fail=0)`.
+
+## 2026-03-05 13:43:03 | docs | syntax-ebnf-conflict-alignment
+
+- `doc/syntax.md` 对齐 `AssignStmt` 与解构章节口径: `AssignStmt` 增补 `DestructureLValue "=" Expr`, 与 `{x, y} = value` 写法一致.
+- `doc/syntax.md` 修正 `LoopStmt` EBNF 产生式, 条件循环与绑定循环形态补齐 `Stmt* "}"` 体结构.
+- `doc/syntax.md` 将 `loop` 条件示例和冻结条款改为函数调用式布尔条件(`loop lt(count, 3) { ... }`), 去除 `<` 比较符号示例.
+- 文档自检通过: 语法章节内 `语句/解构/loop` 三处规则口径一致, 无新增实现差异描述.
+
+## 2026-03-05 13:35:03 | fix | match-header-tail-guard
+
+- `compiler/src/parser.zig` 为 `match` 头部新增尾随校验: 目标表达式后必须直接进入 `{`, 其余残留 token 统一报 `InvalidMatchHeader`.
+- `compiler/src/main.zig` 新增 `InvalidMatchHeader` 诊断摘要与 hint, 错误定位锚定到 `match` 关键字.
+- 新增回归: `tests/do/cases/err/29_invalid_match_header_trailing_token.do(.expect)`, 覆盖 `match x bad { ... }` 头部残留路径.
+- 回归通过: `./tests/do/run_tests.sh(pass=41 fail=0)`.
+
+## 2026-03-05 13:25:25 | fix | if-header-tail-strict-guard
+
+- `compiler/src/parser.zig` 收紧 `if` 头部尾随校验: 条件表达式后若非块体, 按同一行单语句做完整消费校验, 残留 token 统一报 `InvalidIfHeader`.
+- `compiler/src/parser.zig` 新增 `findLineEnd/findTopLevelAssignEq/isOneLineIfStmtKeyword` 辅助函数, 使 `if` 头部与单行体边界判定可验证.
+- 新增回归: `tests/do/cases/err/28_invalid_if_header_trailing_stmt_before_block.do(.expect)`, 覆盖 `if ge(a, b) and(ok_flag) { ... }` 头部残留路径.
+- 回归通过: `./tests/do/run_tests.sh(pass=40 fail=0)`.
+
+## 2026-03-05 13:10:20 | fix | lexer-float-and-line-comment
+
+- `compiler/src/lexer.zig` 新增单行注释词法规则: `//` 到行尾全部跳过, 不再参与语法解析.
+- `compiler/src/lexer.zig` 新增浮点字面量词法识别: `Digit+ "." Digit+` 作为单个 `number` token 产出.
+- `doc/syntax.md` 新增 `2.4 注释与数值字面量`, 固化 `//` 注释与浮点字面量词法写法.
+- 新增回归: `tests/do/cases/ok/10_float_and_comment_lexing.do`, 覆盖“注释内括号噪声 + 浮点字面量 + 行尾注释”组合路径.
+- 回归通过: `./tests/do/run_tests.sh(pass=39 fail=0)`.
+
+## 2026-03-05 13:01:37 | fix | assign-rhs-tail-guard
+
+- `compiler/src/parser.zig` 收紧赋值语句 RHS 解析边界: 按当前语句边界截断 RHS, 解析后必须完整消费, 尾随残留 token 统一报 `InvalidAssignExpr`.
+- `compiler/src/parser.zig` `parseAssignStmt` 返回值改为 RHS 结束位, 避免重复扫描 RHS 内 token.
+- 新增回归: `tests/do/cases/err/27_invalid_assign_rhs_tail.do(.expect)`, 覆盖 `x = 1 foo` 这类尾随垃圾 token 不再静默通过.
+- 回归通过: `./tests/do/run_tests.sh(pass=38 fail=0)`.
+
+## 2026-03-05 12:50:47 | fix | parser-test-body-syntax-validation
+
+- `compiler/src/parser.zig` 顶层分发新增 `test` 声明解析路径, `test` 代码块复用函数体语句校验链(`if/match/loop/assign/expr`).
+- `compiler/src/parser.zig` 新增 `InvalidTestDecl` 头部校验收敛, `test` 声明缺失字符串名或块体时在 parser 阶段直接报错.
+- 新增回归: `tests/do/cases/err/26_invalid_struct_literal_in_test_body.do(.expect)`, 覆盖 `do test` 下 `test` 体非法结构体字面量不再静默通过.
+- 回归通过: `./tests/do/run_tests.sh(pass=37 fail=0)`.
+
+## 2026-03-05 09:31:22 | feat | type-decl-naming-guard
+
+- `compiler/src/sema.zig` 新增顶层类型声明命名校验: `Struct/Union/Alias/TypeSetAlias` 左值名称必须满足 `UpperCamel + 字母数字`.
+- `compiler/src/main.zig` 新增 `InvalidTypeDeclName` 诊断摘要与修复提示, 明确自建类型命名约束.
+- `doc/syntax.md` 更新“类型命名/类型声明”规则, 固化自建类型声明名规范.
+- 新增回归: `tests/do/cases/ok/09_type_decl_name_valid.do`.
+- 新增反例: `tests/do/cases/err/23_invalid_type_decl_name_struct.do(.expect)`, `24_invalid_type_decl_name_alias.do(.expect)`, `25_invalid_type_decl_name_typeset_alias.do(.expect)`.
+- 回归通过: `tests/do/run_tests.sh(pass=36 fail=0)`.
+
+## 2026-03-04 23:19:42 | refactor | future-wait-timeout-naming
+
+- `compiler/src/sema.zig` 调整异步控制参数规则: `wait` 支持 `1|2` 参数, `wait_one/wait_any/wait_all` 调整为 `>=2` 参数且首参数为超时值.
+- `compiler/src/main.zig` 更新 `AsyncCtrlArity` 提示与异步控制定位 token 集, 移除 `wait_timeout/*_timeout` 控制名依赖.
+- `compiler/src/parser.zig` 更新 import 冲突名集合, 控制面收敛为 `done/wait/wait_one/wait_any/wait_all/cancel/status`.
+- `doc/syntax.md` 与 `README.md` 同步控制面语法: 去除 `wait_timeout/wait_*_timeout`, 改为 `wait(ms, f)` 与 `wait_one/wait_any/wait_all(ms, ...)`.
+- 更新回归: `tests/do/cases/ok/08_future_wait_many_controls.do`; 新增 `tests/do/cases/err/22_invalid_wait_arity.do(.expect)`; `21_invalid_wait_many_timeout_arity.do` 改为 `wait_one(f1)` 参数错误路径.
+- 回归通过: `tests/do/run_tests.sh(pass=32 fail=0)`.
+
+## 2026-03-04 23:07:55 | feat | future-wait-timeout-controls
+
+- `compiler/src/sema.zig` 扩展异步控制参数约束: 新增 `wait_one_timeout/wait_any_timeout/wait_all_timeout` 形态, 参数个数统一为 `>= 2`.
+- `compiler/src/main.zig` 更新 `AsyncCtrlArity` 诊断提示, 明确三组 `*_timeout` 控制函数的参数规则.
+- `compiler/src/parser.zig` 扩展 import 冲突名集合, 新增 `wait_one_timeout/wait_any_timeout/wait_all_timeout`, 冲突导入需显式重命名.
+- `doc/syntax.md` 与 `README.md` 同步控制面定义、EBNF、约束与示例, 固化多 Future 超时等待语法.
+- 更新回归: `tests/do/cases/ok/08_future_wait_many_controls.do`; 新增 `tests/do/cases/err/21_invalid_wait_many_timeout_arity.do(.expect)`.
+- 回归通过: `tests/do/run_tests.sh(pass=31 fail=0)`.
+
+## 2026-03-04 22:58:26 | feat | future-wait-many-controls
+
+- `compiler/src/sema.zig` 扩展异步控制函数参数校验: `wait_one/wait_any/wait_all` 统一要求 `>= 1` 个参数, 不满足时报 `AsyncCtrlArity`.
+- `compiler/src/main.zig` 更新 `AsyncCtrlArity` 诊断提示, 明确 `wait/cancel/status=1`, `wait_timeout=2`, `wait_one/wait_any/wait_all>=1`.
+- `compiler/src/parser.zig` 更新 import 冲突名集合, 新增 `wait_one/wait_any/wait_all`, 冲突项需显式重命名.
+- `doc/syntax.md` 与 `README.md` 同步控制面定义与 EBNF, 固化 `wait_one/wait_any/wait_all` 语法与约束.
+- 新增回归: `tests/do/cases/ok/08_future_wait_many_controls.do`, `tests/do/cases/err/20_invalid_wait_many_arity.do(.expect)`.
+- 回归通过: `tests/do/run_tests.sh(pass=30 fail=0)`.
+
+## 2026-03-04 22:51:42 | fix | typed-literal-requires-braces
+
+- `doc/syntax.md` 补充集合字面量规则: `List/Map/Tuple` 统一使用完整写法 `Type<...>{...}`, 空值固定写 `Type<...>{}`.
+- `compiler/src/main.zig` 为 `InvalidTypedLiteral` 增加专用诊断摘要与修复提示, 明确缺失 `{}` 的修复方向.
+- 新增回归 `tests/do/cases/err/19_invalid_typed_literal_missing_brace.do(.expect)`, 覆盖 `Map<i32, i32>` 无 `{}` 的不完整表达式路径.
+- 回归通过: `tests/do/run_tests.sh(pass=28 fail=0)`.
+
+## 2026-03-04 22:47:41 | feat | loop-header-cond-iter-range
+
+- `doc/syntax.md` 扩展 loop 语法: 支持 `loop cond {}` 与 `loop v := iterable {}`/`loop v, i := iterable {}` 头部形态, 并补充 `range(...)` 迭代示例.
+- `compiler/src/parser.zig` 新增 loop 头部解析校验: 支持块循环/条件循环/绑定迭代三类头部, 非法头部统一报 `InvalidLoopHeader`.
+- `compiler/src/sema.zig` 增加全 token 流 loop 头部约束检查, 覆盖 `test` 声明体与函数体两种上下文.
+- `compiler/src/main.zig` 新增 `InvalidLoopHeader` 诊断摘要与 hint, 错误定位锚定到 `loop` 关键字位点.
+- 新增回归: `tests/do/cases/ok/07_loop_header_forms.do`, `tests/do/cases/err/18_invalid_loop_header.do(.expect)`.
+- 回归通过: `tests/do/run_tests.sh(pass=27 fail=0)`.
+
+## 2026-03-04 22:10:23 | refactor | test-strategy-do-side-only
+
+- `compiler/src/{lexer,parser,sema,main,cmd/test}.zig` 移除全部 Zig `test` 代码块, 编译器源码不再承载单元测试代码.
+- `tests/do/run_tests.sh` 扩展为双通道回归: `do test <file.do>` + `do <file.do> -o out.wat` 编译模式.
+- 新增 `tests/do/cases/compile_ok` 与 `tests/do/cases/compile_err` 用例目录, 覆盖 `_start` 入口规则(缺失/签名错误/重复定义).
+- 新增 do 侧错误用例: `DoneCallNeedsArg`, `InvalidIfPatternBind`, `UnterminatedString`, `NoTestDecl`, `InvalidTestDecl`.
+- `tests/do/README.md` 同步更新目录与执行口径说明.
+- 回归通过: `tests/do/run_tests.sh(pass=25 fail=0)`.
+
+## 2026-03-04 21:59:27 | refactor | cli-test-subcommand-module-split
+
+- 新增 `compiler/src/cmd/test.zig`, 将 `do test <input.do>` 的顶层测试收集与报告输出逻辑独立为命令模块.
+- `compiler/src/main.zig` 的 `test_mode` 分支改为调用 `cmd_test.run(...)`, CLI 入口只保留参数解析与错误诊断分发.
+- `collectTopLevelTests` 单测迁移到 `cmd/test.zig`, 保持 `test` 声明扫描行为覆盖.
+- 回归通过: `zig test src/{main,parser,sema,lexer}.zig`, `tests/do/run_tests.sh(pass=16 fail=0)`.
+
+## 2026-03-04 21:50:24 | docs | syntax-fully-positive-style
+
+- `doc/syntax.md` 规范文本改为全正向表达风格: 规则统一使用“固定语法/闭集/互斥/触发条件”描述, 移除否定式约束语句.
+- `doc/syntax.md` 删除 `if/do/match` 章节中的反例块, 示例区仅保留可直接执行的规范写法.
+- `doc/syntax.md` 术语与约束同步正向化: `不可变` 统一为 `只读`, `不可重叠` 改为 `交集为空`, `as` 规则改为“按普通标识符使用”.
+
+## 2026-03-04 21:42:05 | docs | syntax-whitelist-style
+
+- `doc/syntax.md` 新增“规范表达策略”, 明确语法规则默认采用白名单表述(`只支持/固定为/必须`), 未列出写法按未定义处理.
+- `doc/syntax.md` 将 import、函数约束、重载、绑定、if/match、异步入口、类型转换等章节改写为正向约束表达, 降低“禁止条款”噪音.
+- 保留高冲突反例为显式提示: `do(...)`, `done()`, `if check_auth(user)`, `match decode(msg)` 等误用路径.
+
 ## 2026-03-04 21:27:19 | docs | syntax-v1-freeze
 
 - `doc/syntax.md` 版本头由 `v0.8` 升级为 `v1.0` 冻结口径, 新增“版本状态”章节, 明确文档与实现的一致性约束.

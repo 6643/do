@@ -1,0 +1,5 @@
+error[UnterminatedString]: 字符串未闭合
+ --> /._/doc/do/tests/do/cases/err/14_unterminated_string.do:2:9
+ hint: 补全字符串右侧的双引号.
+ 2 |     x = "abc
+   |         ^

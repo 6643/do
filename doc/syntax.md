@@ -5,12 +5,19 @@
 1. 本文是 `do` 语法 `v1.0` 冻结规范.
 2. `compiler/src` 的 parser/sema 行为以本文为准.
 3. 新语法进入主干前必须先补 `tests/do` 集成用例.
-4. 若规范与实现冲突, 先修文档再修实现, 禁止双口径并存.
+4. 规范与实现保持单一口径: 先修文档, 再修实现.
+
+### 0.1 规范表达策略
+
+1. 语法规则默认使用白名单表达: `只支持/固定为/必须`.
+2. 语法集合由本文产生式与规则完整定义, 编译器按该集合验收.
+3. 示例统一给出规范写法, 便于直接对照实现.
+4. 新增语法时同时给出唯一基线写法与最小可运行示例.
 
 ## 1. 设计目标
 
 1. 语法路径最短, 解析规则稳定, 避免同义多写法.
-2. 以值语义为外观, 语法层不暴露引用/指针.
+2. 以值语义为外观, 语法层聚焦值与函数调用表达.
 3. 保持无色异步, 并发入口唯一为 `do call(...)`.
 4. 保留语言特色, 私有成员/私有函数采用前置 `.`.
 
@@ -21,20 +28,28 @@
 ### 2.1 标识符
 
 1. 可变标识符: `name`, `user_id`.
-2. 不可变标识符: 前置 `_`, 例如 `_uid`, `_config`.
+2. 只读标识符: 前置 `_`, 例如 `_uid`, `_config`.
 3. 丢弃位标识符: `_`.
-4. 私有标识符: 前置 `.`, 仅用于顶层私有函数名和结构私有字段名, 例如 `.aid`, `.normalize_name`.
+4. 前置 `.` 标识符支持双语义: 顶层私有函数/私有字段命名位, 以及字段选择符(如 `.name`), 例如 `.aid`, `.normalize_name`.
 5. 循环标签: 前置 `'`, 例如 `'outer`.
 
 ### 2.2 类型命名
 
 1. 基础类型小写: `i32`, `u32`, `f64`, `bool`, `nil`.
 2. 受管类型大写: `Text`, `List`, `Map`, `User`, `Future`.
-3. 不允许 `text/list` 作为类型名.
+3. 类型位统一使用 `Text/List`; `text/list` 按普通标识符处理.
+4. 自建类型声明名(Struct/Union/Alias/TypeSetAlias 的左值)固定为 `UpperCamel`.
+5. 自建类型声明名仅允许字母数字, 首字母必须是大写字母.
 
 ### 2.3 关键字
 
 `if else loop break continue return defer match do test`
+
+### 2.4 注释与数值字面量
+
+1. 单行注释语法固定为 `// comment`, 作用域到行尾.
+2. 整数字面量语法固定为 `Digit+`.
+3. 浮点字面量语法固定为 `Digit+ "." Digit+`.
 
 ---
 
@@ -102,13 +117,13 @@ test "sum basic" {
 导入规则:
 
 1. 导入只使用解构绑定语法: `{item, ...} := @source`.
-2. 不使用 `import` 关键字.
+2. 导入语法固定为 `@` 解构绑定: `{...} := @("path")`.
 3. `ImportItem` 支持 4 类: `ImportSymbol`/`ImportValue`/`ImportType`/`ImportFunc`.
 4. 符号导入支持重命名: `{local:exported}`.
-5. `ImportFunc` 只写类型位形, 不写形参名, 例如 `fd_write(i32, WasiIovec, i32, i32) => i32`.
+5. `ImportFunc` 采用纯类型位形, 例如 `fd_write(i32, WasiIovec, i32, i32) => i32`.
 6. `ImportType` 仅用于声明外部布局字段, 例如 `WasiIovec{buf_ptr i32, buf_len i32}`.
-7. `ImportItem` 的本地名(每项第 1 个标识符)禁止使用冲突名: 关键字与 `done/wait/wait_timeout/cancel/status`.
-8. 遇到冲突名时必须显式重命名.
+7. `ImportItem` 的本地名(每项第 1 个标识符)与关键字互斥.
+8. 遇到冲突名一律显式重命名.
 9. `ImportSymbol` 重命名语法固定为 `{local:exported}`.
 10. `ImportValue/ImportType/ImportFunc` 通过改写本地声明名重命名, 例如 `ffi_wait(...) => i32`.
 11. FFI 场景推荐把常量、外部类型、外部函数声明集中在同一个 import 块中.
@@ -153,8 +168,9 @@ TypeName          := Ident
 1. `TypeSetAliasDecl` 右侧必须至少包含 1 个 `|`.
 2. `UnionDecl` 用于代数数据类型变体, `TypeSetAliasDecl` 用于约束类型集合.
 3. 结构体泛型参数约束只允许类型集引用 `TypeSetRef`.
-4. 不支持 `Any` 关键字. 无约束泛型参数直接写 `T`.
-5. 结构体声明不承载函数签名约束, 函数能力约束仅放在函数 `#` 约束区.
+4. 无约束泛型参数直接写 `T`; 约束位只使用 `TypeSetRef`.
+5. 函数能力约束统一放在函数 `#` 约束区.
+6. 自建类型声明名遵循 `UpperCamel` + 字母数字集合.
 
 ```do
 // 1. 结构体声明(Type.Struct)
@@ -215,20 +231,20 @@ VariadicParam       := Ident "..." TypeExpr
 约束规则:
 
 1. `#` 约束只作用于其后紧邻的 1 个函数声明.
-2. `TypeVar` 通过约束和函数参数自动引入, 不再使用函数级 `<T: ...>`.
+2. `TypeVar` 通过约束和函数参数自动引入.
 3. 约束中出现的 `TypeVar` 必须在函数签名中可解.
-4. 不支持结构约束写法 `#T{...}`.
+4. 约束语法固定为 `#T: ...` 或函数签名约束 `#f(T1, T2, ...) => R`.
 5. `#T: ...` 支持直接类型集字面量和类型集别名.
 6. 类型集约束用于“限制一类类型”, 例如 `i8 | i16 | i32 | i64`.
 7. 未满足约束时, 编译期报错.
-8. `FuncSigConstraint` 只写类型列表, 不写形参名.
+8. `FuncSigConstraint` 采用类型列表位形.
 9. `VariadicParam` 只能出现在参数列表末尾.
-10. 不定参数的所有实参类型必须与 `...` 后类型一致.
-11. 不定参数函数可接收 `>= 固定参数个数` 的实参数量.
+10. 变长参数位的所有实参类型与 `...` 后类型保持一致.
+11. 变长参数函数可接收 `>= 固定参数个数` 的实参数量.
 12. 当签名满足 `f(a T, b T, rest ...T) T` 时, 该重载实例支持扁平化语义.
-13. 扁平化能力只由签名决定, 不引入白名单或额外标注.
+13. 扁平化能力由签名形态直接决定.
 14. 支持 Go 风格多返回值声明: `f(...) T1, T2, ...`.
-15. 多返回声明不使用圆括号.
+15. 多返回声明写法为 `f(...) T1, T2, ...`.
 16. 箭头函数支持多表达式: `=> e1, e2, ...`, 返回位数需与 `ReturnSpec` 一致.
 
 ```do
@@ -279,7 +295,7 @@ abs(a T) T {
 #T: SignedInt
 neg(a T) T => sub(0, a)
 
-// 9. 同类型不定参数函数(Func.Variadic.SameType)
+// 9. 同类型变长参数函数(Func.Variadic.SameType)
 add(a i32, b i32, rest ...i32) i32 => reduce_add(a, b, rest)
 ```
 
@@ -288,15 +304,15 @@ add(a i32, b i32, rest ...i32) i32 => reduce_add(a, b, rest)
 规则:
 
 1. 允许同名重载, 由参数个数和参数类型区分.
-2. 不允许仅靠返回类型区分重载.
-3. 决议顺序全局固定, 不随文件或上下文变化.
+2. 重载决议键固定为参数列表(个数+类型).
+3. 决议顺序全局固定, 与文件或上下文无关.
 4. 解析优先级: 精确类型 > `#` 约束泛型 > 无约束泛型.
 5. `具体类型` 与 `类型集约束` 重叠时, `具体类型` 优先.
 6. 同名同签名位形的两个类型集约束若存在交集, 编译期报错.
-7. 同一文件中不允许两个可重叠的函数签名约束重载.
+7. 同一文件中, 同名函数签名约束重载必须互斥(交集为空).
 8. 多个变参候选并列时, 固定参数前缀更长者优先.
 9. 若多个候选同优先级仍并列, 编译期报 `AmbiguousOverload`.
-10. 不做隐式数值拓宽参与重载决议 (例如 `i32` 不自动匹配 `i64`).
+10. 重载决议按实参已定型类型直接匹配.
 11. 字面量先按默认类型定型后再参与重载决议.
 
 ```do
@@ -326,14 +342,14 @@ merge(a i32, rest ...i32) i32 => fold_add(a, rest)
 merge(a i32, b i32, rest ...i32) i32 => fold_add2(a, b, rest)
 ```
 
-### 5.2 同类型不定参数与扁平化
+### 5.2 同类型变长参数与扁平化
 
 规则:
 
 1. 对同一目标函数和同一重载实例, 可写多参数调用: `add(a, b, c, d)`.
 2. 若该重载签名满足 `f(a T, b T, rest ...T) T`, 则允许扁平化.
 3. 扁平化等价: `f(f(x1, x2), x3)` => `f(x1, x2, x3)`.
-4. 若签名不满足该形态, 不做扁平化改写.
+4. 扁平化改写触发条件为签名满足该形态.
 
 ```do
 // 1. 手写扁平调用(Variadic.FlatCall)
@@ -362,10 +378,12 @@ Stmt           := AssignStmt
                | ExprStmt
 
 AssignStmt     := LValueList "=" Expr
+               | DestructureLValue "=" Expr
+DestructureLValue := "{" LValueList [","] "}"
 LValueList     := LValue ("," LValue)*
 LValue         := Ident | "_"
 
-ReturnStmt     := "return" ReturnExprList
+ReturnStmt     := "return" [ReturnExprList]
 ReturnExprList := Expr ("," Expr)* [","]
 DeferStmt      := "defer" Expr
 ExprStmt       := Expr
@@ -377,7 +395,7 @@ ExprStmt       := Expr
 // 1. 赋值语句(Stmt.Assign)
 x = 1
 
-// 1.0 不可变绑定(Stmt.Assign.ImmutableBind)
+// 1.0 只读绑定(Stmt.Assign.ImmutableBind)
 _limit = 10
 
 // 1.1 多返回接收(Stmt.Assign.MultiReturn)
@@ -388,6 +406,8 @@ defer close(file)
 print(x)
 // 4. 返回语句(Stmt.Return)
 return x
+// 4.0 空返回语句(Stmt.Return.Empty)
+return
 // 4.1 多值返回语句(Stmt.Return.Multi)
 return q, r
 ```
@@ -395,16 +415,16 @@ return q, r
 赋值与绑定约束:
 
 1. `a = expr`: 绑定或更新可变标识符 `a`.
-2. `_a = expr`: 创建不可变绑定 `_a`, 后续禁止再次赋值.
-3. 丢弃位 `_` 仅用于接收时占位, 不形成可读绑定.
-4. `.x` 不可作为变量左值, 仅允许顶层私有函数名与结构私有字段名.
+2. `_a = expr`: 创建只读绑定 `_a`, 生命周期内保持只读.
+3. 丢弃位 `_` 用于接收占位.
+4. `.x` 支持双语义: 顶层私有函数名/结构私有字段名, 以及字段选择符(如 `get(u, .name)`).
 5. `_a` 在同一作用域内只能声明 1 次, 重复声明为编译错误.
 
 多返回约束:
 
 1. `a, b = f()` 左值数量必须与 `f` 返回值数量一致.
-2. 左值可使用 `_` 丢弃不关心的返回位.
-3. 多返回值调用不会隐式打包为 `Tuple`.
+2. 左值可使用 `_` 占位无需接收的返回位.
+3. 多返回值调用保持多值形态.
 4. 需要容器值时显式构造 `Tuple<...>{...}`.
 
 ### 6.2 if 语句
@@ -420,7 +440,7 @@ IfTypePattern  := TypeName "(" Ident ")"
 约束:
 
 1. `if` 条件位必须是单值表达式.
-2. `if` 条件位不允许直接使用多返回值表达式.
+2. 多返回函数结果先接收再使用, `if` 条件位只接收单值.
 3. 若函数返回多值, 必须先接收到变量后再在 `if` 中使用.
 4. `if P := expr` 的 `P` 仅允许类型模式(`Type(...)` 或 `Type{...}`).
 5. `if P := expr` 的 `expr` 必须是单值表达式, `f_multi(...)` 直接使用为编译错误.
@@ -446,32 +466,83 @@ ok, code = check_auth(user)
 if ok {
     print(code)
 }
-
-// 不允许: if check_auth(user) { ... }
 ```
 
 ### 6.3 loop 语句
 
 ```ebnf
 LoopStmt       := "loop" "{" [Label] Stmt* "}"
+               | "loop" LoopCond "{" Stmt* "}"
+               | "loop" LoopBind ":=" Expr "{" Stmt* "}"
+LoopCond       := Expr
+LoopBind       := Ident | Ident "," Ident
 Label          := "'" Ident
 BreakStmt      := "break" [Label]
 ContinueStmt   := "continue" [Label]
 ```
 
+约束:
+
+1. `loop cond {}` 的 `cond` 只要求结果为 `bool`.
+2. `cond` 可为任意返回 `bool` 的表达式, 不限制函数参数个数.
+
 ```do
-// 1. 基础循环(Loop.Basic)
+// 1. 基础块循环(Loop.Basic)
 loop {
     if done(fid) break
     tick()
 }
 
-// 2. 右置标签循环(Loop.LabelRightSide)
+// 2. 条件循环(Loop.Cond)
+count = 0
+loop lt(count, 3) {
+    print("count = $count")
+    count = add(count, 1)
+}
+
+// 2.1 条件循环-二元谓词(Loop.Cond.BinaryPredicate)
+loop has(user_map, uid) {
+    break
+}
+
+// 2.2 条件循环-一元谓词(Loop.Cond.UnaryPredicate)
+loop is_valid(user) {
+    break
+}
+
+// 3. 集合迭代-值与索引(Loop.IterListWithIndex)
+list_a = List<i8>{1, 2, 3}
+loop val, index := list_a {
+    print(val, index)
+}
+
+// 4. 集合迭代-仅值(Loop.IterListValueOnly)
+loop val := list_a {
+    print(val)
+}
+
+// 5. 映射迭代(Loop.IterMapKeyValue)
+map_a = Map<i32, i32>{}
+loop key, val := map_a {
+    print(key, val)
+}
+
+// 6. range 递增迭代(Loop.IterRangeAsc)
+loop i := range(1, 10, 1) {
+    print(i)
+}
+
+// 7. range 递减迭代(Loop.IterRangeDesc)
+loop i := range(10, 1, 2) {
+    print(i)
+}
+
+// 8. 右置标签循环(Loop.LabelRightSide)
 loop { 'outer
     loop {
-        // 3. 无标签继续(Continue.NoLabel)
+        // 9. 无标签继续(Continue.NoLabel)
         if need_skip() continue
-        // 4. 带标签跳出(Break.WithLabel)
+        // 10. 带标签跳出(Break.WithLabel)
         if need_exit() break 'outer
         work()
     }
@@ -487,6 +558,7 @@ Expr           := CallExpr
                | DoExpr
                | AsyncCtrlExpr
                | LambdaExpr
+               | BraceLit
                | StructLit
                | ListLit
                | MapLit
@@ -499,15 +571,22 @@ Args           := Expr ("," Expr)* [","]
 DoExpr         := "do" CallExpr
 AsyncCtrlExpr  := DoneExpr
                | WaitExpr
-               | WaitTimeoutExpr
+               | WaitOneExpr
+               | WaitAnyExpr
+               | WaitAllExpr
                | CancelExpr
                | StatusExpr
 DoneExpr       := "done" "(" Expr ")"
-WaitExpr       := "wait" "(" Expr ")"
-WaitTimeoutExpr := "wait_timeout" "(" Expr "," Expr ")"
+WaitExpr       := "wait" "(" Expr ["," Expr] ")"
+WaitOneExpr    := "wait_one" "(" Expr "," Expr ("," Expr)* [","] ")"
+WaitAnyExpr    := "wait_any" "(" Expr "," Expr ("," Expr)* [","] ")"
+WaitAllExpr    := "wait_all" "(" Expr "," Expr ("," Expr)* [","] ")"
 CancelExpr     := "cancel" "(" Expr ")"
 StatusExpr     := "status" "(" Expr ")"
 LambdaExpr     := "|" Params? "|" Expr
+
+BraceLit       := "{" BraceItems? "}"
+BraceItems     := ExprList | PairList
 
 StructLit      := TypeName "{" NamedArgs? "}"
 NamedArgs      := NamedArg ("," NamedArg)* [","]
@@ -537,10 +616,16 @@ z = inc(3)
 
 // 4. 结构体字面量(Expr.StructLit)
 u = User{id: 1, name: "tom"}
+// 4.1 花括号表达式-表达式列表(Expr.BraceList)
+fields = {.name, .age}
+// 4.2 花括号表达式-键值对列表(Expr.BracePair)
+patch = {0: 10, 1: 20}
 // 5. 列表字面量(Expr.ListLit)
 xs = List<i32>{1, 2, 3}
 // 6. 映射字面量(Expr.MapLit)
 kv = Map<Text, i32>{"a": 1, "b": 2}
+// 6.1 空映射字面量(Expr.MapLitEmpty)
+empty_map = Map<i32, i32>{}
 // 7. 元组字面量(Expr.TupleLit)
 t = Tuple<i32, Text>{1, "ok"}
 
@@ -552,7 +637,10 @@ none = nil
 // 10. Future 控制表达式(Expr.AsyncControl)
 done_flag = done(f)
 out = wait(f)
-out2 = wait_timeout(f, 1000)
+out2 = wait(1000, f)
+one = wait_one(1000, f1, f2, f3)
+any = wait_any(1000, f1, f2, f3)
+all = wait_all(1000, f1, f2, f3)
 cancel(f)
 s = status(f)
 
@@ -570,32 +658,35 @@ f64_v = to_f64(i64_v)
 1. `IntLit` 默认类型为 `i32`.
 2. `FloatLit` 默认类型为 `f64`.
 
+集合字面量规则:
+
+1. `List/Map/Tuple` 采用完整字面量写法: `Type<...>{...}`.
+2. 空集合写法固定为 `Type<...>{}`.
+3. `BraceLit` 只支持纯 `ExprList` 或纯 `PairList`, 不支持混用.
+4. `BraceLit` 混用示例 `{.name: "tom", .age}` 语法无效.
+
 类型转换规则:
 
-1. `as` 不是关键字, 也不是专用转换语法.
-2. 不支持隐式数值提升, 需要显式调用转换函数.
+1. `as` 作为普通标识符参与解析.
+2. 数值转换采用显式函数调用.
 3. 转换函数是普通函数, 推荐命名: `to_i8/to_i16/to_i32/to_i64/to_f32/to_f64`.
 4. 同名转换函数允许按参数类型重载, 例如 `to_i8(i32) => i8`, `to_i8(i64) => i8`.
-5. 转换函数声明与调用都走普通函数规则, 不引入额外语法分支.
-6. `to_*` 仅是命名约定, 不是关键字.
+5. 转换函数声明与调用统一走普通函数规则.
+6. `to_*` 是命名约定.
 7. `as` 可作为普通标识符, 例如函数名 `as(...)`.
 
 ### 7.1 并发入口约束
 
 ```do
-// 允许
+// 固定写法
 a = do fetch_user(1)
-
-// 不允许
-// a = do(fetch_user, 1)
-// a = do(fetch_user, {1})
 ```
 
 语义:
 
-1. `f(args...)` 在当前执行流内同步执行, 不创建 `Future`.
+1. `f(args...)` 在当前执行流内同步执行, 返回普通结果.
 2. `do f(args...)` 创建异步执行单元并返回 `Future<T>`.
-3. `do` 是唯一并发入口, 不允许隐式并发入口.
+3. 并发入口固定为 `do f(args...)`.
 
 ### 7.2 Future 控制语法
 
@@ -603,17 +694,31 @@ a = do fetch_user(1)
 
 1. `done(f) -> bool`: 查询 Future 是否终态.
 2. `wait(f) -> T | Error`: 等待 Future 完成并返回结果.
-3. `wait_timeout(f, ms) -> T | Timeout | Error`: 带超时等待结果.
-4. `cancel(f) -> bool`: 发起协作取消请求, 幂等.
-5. `status(f) -> Pending | Running | Done | Canceled | Failed`: 查询 Future 状态.
+3. `wait(ms, f) -> T | Timeout | Error`: 带超时等待结果.
+4. `wait_one(ms, f1, f2, ..., fn) -> T | Timeout | Error`: 等待多个 Future 中首个完成结果.
+5. `wait_any(ms, f1, f2, ..., fn) -> T | Timeout | Error`: 等待多个 Future 中任意一个完成结果.
+6. `wait_all(ms, f1, f2, ..., fn) -> List<T> | Timeout | Error`: 等待多个 Future 全部完成结果.
+7. `cancel(f) -> bool`: 发起协作取消请求, 幂等.
+8. `status(f) -> Pending | Running | Done | Canceled | Failed`: 查询 Future 状态.
 
 约束:
 
-1. 删除 `retry`, 不提供重试控制语法.
-2. `wait` 仅等待, 不隐式触发重试.
-3. 取消生效点由任务安全点检查.
-4. 取消后必须执行 `defer` 清理逻辑.
-5. `done` 必须为 1 参调用, 不允许 `done()`.
+1. 内建控制面函数集合固定为 `done/wait/wait_one/wait_any/wait_all/cancel/status`.
+2. `wait` 表示等待完成并返回结果.
+3. `wait` 参数个数固定为 `1` 或 `2`; `2` 参数形态的第 1 个参数为超时值.
+4. `wait_one/wait_any/wait_all` 至少接收 `2` 个参数, 第 1 个参数为超时值.
+5. 取消生效点由任务安全点检查.
+6. 取消后必须执行 `defer` 清理逻辑.
+7. 允许声明同名普通函数; 当存在同名且签名可匹配的普通函数时, 按普通函数解析.
+8. 无同名可匹配普通函数时, 内建控制面签名固定为:
+9. `done(f)`.
+10. `wait(f)` 或 `wait(ms, f)`.
+11. `wait_one(ms, f1, ..., fn)` 且 `n >= 1`.
+12. `wait_any(ms, f1, ..., fn)` 且 `n >= 1`.
+13. `wait_all(ms, f1, ..., fn)` 且 `n >= 1`.
+14. `cancel(f)`.
+15. `status(f)`.
+16. 无同名可匹配普通函数时, `done` 参数个数固定为 `1`: `0` 参数报 `DoneCallNeedsArg`, `>1` 参数报 `DoneCallArity`.
 
 ```do
 // 1. 创建异步任务(Async.Spawn)
@@ -623,7 +728,10 @@ fb = do fetch_profile(cx, 1)
 // 2. 查询与等待(Async.QueryWait)
 ready = done(fa)
 out = wait(fa)
-out2 = wait_timeout(fb, 1000)
+out2 = wait(1000, fb)
+one = wait_one(1000, fa, fb)
+any = wait_any(1000, fa, fb)
+all = wait_all(1000, fa, fb)
 
 // 3. 取消与状态(Async.CancelStatus)
 cancel(fb)
@@ -636,7 +744,7 @@ st = status(fb)
 
 规则:
 
-1. 解构统一使用 `{a, b}`, 不使用 `.{a, b}`.
+1. 解构左值写法固定为 `{a, b} = expr`.
 2. 批量字段访问参数使用 `{.name, .age}`.
 3. 批量更新统一使用 `{key: value, ...}`.
 
@@ -667,12 +775,12 @@ PatternField   := Ident
 
 约束:
 
-1. `match` 不使用守卫语法 (`if guard`).
-2. 模式内不写谓词表达式 (`price: gt(...)`).
-3. `match` 是语句语法, 不支持 `n = match ...`.
+1. `match` 分支模式固定为 `_`/类型模式/字面量模式.
+2. 复杂谓词放在分支体内部语句中.
+3. `match` 作为语句节点使用.
 4. 复杂条件放到分支语句内部处理.
 5. `match` 目标位必须是单值表达式.
-6. `match` 目标位不允许直接使用多返回值表达式.
+6. 多返回函数结果先接收再使用, `match` 目标位只接收单值.
 7. 若函数返回多值, 必须先接收到变量后再 `match`.
 
 ```do
@@ -694,8 +802,6 @@ match tag {
     0 => print("ok"),
     _ => print("other"),
 }
-
-// 不允许: match decode(msg) { ... }
 ```
 
 ---
@@ -704,7 +810,7 @@ match tag {
 
 1. 列表, 映射, 结构体字面量使用逗号分隔.
 2. 最后一项允许尾逗号.
-3. 换行不改变语义, 不作为隐式分隔规则.
+3. 语义分隔以显式分隔符和语法结构为准, 换行用于排版.
 4. 新增语法糖必须先给出等价的单一基线写法.
 
 示例:
@@ -722,7 +828,7 @@ u = User{
 
 1. 异步语法与控制语义已内嵌在本文第 7 章.
 2. 内存与 COW 策略见 `gc.md`.
-3. 本文不展开运行时调度实现细节.
+3. 运行时调度实现细节见独立文档.
 
 ---
 
@@ -732,11 +838,11 @@ u = User{
 
 1. 决议顺序全局固定.
 2. 非泛型精确匹配优先于泛型匹配.
-3. 删除结构约束 `#T{...}`, 仅保留 `#T: ...` 与函数签名约束.
+3. 约束语法位使用 `#T: ...` 与函数签名约束.
 4. 变参匹配顺序在固定参数匹配之后.
 5. 具体类型与类型集重叠时, 具体类型优先.
 6. 类型集约束重叠时报编译错误.
-7. 同文件不允许两个可重叠签名约束重载.
+7. 同文件签名约束重载必须互斥(交集为空).
 8. 多变参候选并列时, 固定前缀更长优先.
 9. 同优先级并列候选报 `AmbiguousOverload`.
 10. 字面量先按默认类型定型后参与重载.
@@ -750,53 +856,73 @@ u = User{
 
 ### 12.3 异步控制面
 
-1. 外部最小控制面: `done/wait/wait_timeout/cancel/status`.
-2. 删除 `retry`.
-3. 取消为幂等信号, 在任务安全点生效.
-4. 取消后必须执行 `defer` 清理.
-5. 所有控制面统一作用于 `Future`, 不引入独立 `TaskId` 控制层.
-6. `done` 仅支持单参数调用, 禁止 `done()`.
+1. 外部最小控制面: `done/wait/wait_one/wait_any/wait_all/cancel/status`.
+2. 控制面函数集合收敛为 `done/wait/wait_one/wait_any/wait_all/cancel/status`.
+3. `wait` 调用参数个数范围为 `1..2`; `2` 参数形态第 1 个参数固定为超时值.
+4. `wait_one/wait_any/wait_all` 调用参数个数范围为 `>= 2`, 且第 1 个参数固定为超时值.
+5. 取消为幂等信号, 在任务安全点生效.
+6. 取消后必须执行 `defer` 清理.
+7. 所有控制面统一作用于 `Future`.
+8. 允许声明同名普通函数; 当存在同名且签名可匹配的普通函数时, 按普通函数解析.
+9. 无同名可匹配普通函数时, 内建控制面签名固定为:
+10. `done(f)`.
+11. `wait(f)` 或 `wait(ms, f)`.
+12. `wait_one(ms, f1, ..., fn)` 且 `n >= 1`.
+13. `wait_any(ms, f1, ..., fn)` 且 `n >= 1`.
+14. `wait_all(ms, f1, ..., fn)` 且 `n >= 1`.
+15. `cancel(f)`.
+16. `status(f)`.
+17. 无同名可匹配普通函数时, `done` 参数个数固定为 `1`: `0` 参数报 `DoneCallNeedsArg`, `>1` 参数报 `DoneCallArity`.
 
 ### 12.4 导入语法
 
 1. 导入统一语法: `{...} := @("path")`.
 2. `@` 仅允许顶层语句起始位置.
-3. 禁止隐式全局导入.
+3. 导入通过显式顶层声明引入, 无隐式全局导入机制.
 4. `ImportItem` 固定为 `ImportSymbol`/`ImportValue`/`ImportType`/`ImportFunc`.
 5. `ImportFunc` 采用类型位形: `name(T1, T2, ...) => R`.
-6. 导入项本地名禁止使用冲突名: 关键字与 `done/wait/wait_timeout/cancel/status`.
+6. 导入项本地名只与关键字互斥.
 7. 冲突名必须显式重命名: `ImportSymbol` 用 `{local:exported}`, 其他项改写为安全本地名.
 8. 支持标准库与相对路径导入.
 9. 导出同名冲突通过解构重命名解决: `{local:exported}`.
 
 ### 12.5 数值与转换
 
-1. 不支持隐式类型提升.
+1. 数值转换只通过显式转换函数调用完成.
 2. 整数字面量默认类型为 `i32`.
 3. 浮点字面量默认类型为 `f64`.
-4. 类型转换通过普通函数调用, 不保留 `as(T, value)` 专用语法.
+4. 类型转换语法位使用普通函数调用.
 5. 推荐使用 `to_i8/to_i16/to_i32/to_i64/to_f32/to_f64` 命名转换函数.
 6. 同名转换函数按参数类型重载, 示例: `to_i8(i32) => i8`, `to_i8(i64) => i8`.
-7. `as` 不是关键字, 可作为普通标识符使用.
+7. `as` 按普通标识符使用.
 
 ### 12.6 多返回值策略
 
 1. 支持 Go 风格多返回值声明与接收.
 2. 函数声明使用无括号返回列表: `f(...) T1, T2, ...`.
-3. 返回语句支持 `return e1, e2, ...`.
+3. 返回语句支持 `return` 或 `return e1, e2, ...`.
 4. 接收语句支持 `a, b, ... = f(...)`.
-5. 多返回值与 `Tuple` 语义分离, 不做隐式互转.
+5. 多返回值与 `Tuple` 通过显式构造/解构转换.
 6. `if` 条件位与 `match` 目标位仅接受单值表达式.
 7. 多返回函数在 `if/match` 中必须先显式接收再使用.
 
 ### 12.7 绑定可变性
 
 1. 可变绑定使用普通标识符: `a`.
-2. 不可变绑定使用前缀 `_`: `_a`.
-3. 丢弃位 `_` 仅作占位, 不形成变量绑定.
-4. 不可变绑定初始化后禁止再次赋值.
-5. `_a` 在同一作用域内禁止重复声明.
-6. `.x` 不作为变量绑定名, 仅用于顶层私有函数名与结构私有字段名.
+2. 只读绑定使用前缀 `_`: `_a`.
+3. 丢弃位 `_` 用于占位接收.
+4. 只读绑定初始化后保持只读, 再赋值为编译错误.
+5. `_a` 在同一作用域内只声明 1 次, 重复声明为编译错误.
+6. `.x` 支持双语义: 顶层私有函数名/结构私有字段名, 以及字段选择符(如 `get(u, .name)`).
+
+### 12.8 loop 头部
+
+1. `loop` 头部固定支持 3 类: `loop {}`, `loop cond {}`, `loop bind := iterable {}`.
+2. `bind` 固定支持 `v` 或 `v, i` 两种形态.
+3. `iterable` 位置支持标识符与调用表达式, 例如 `list_a`, `map_a`, `range(1, 10, 1)`.
+4. 条件循环支持任意返回 `bool` 的表达式, 不限制函数参数个数.
+5. 条件位谓词可按语义命名, 例如 `loop has(user_map, uid) { ... }`, `loop is_valid(user) { ... }`.
+6. 标签语法沿用 `loop { 'outer ... }`, 与新头部写法并存.
 
 ---
 
@@ -822,9 +948,9 @@ if ok {
 f = do fetch_user(1)
 cancel(f)
 st = status(f)
-out = wait_timeout(f, 1000)
+out = wait(1000, f)
 
-// 4. 不可变绑定同域唯一(Bind.ImmutableUniqueInScope)
+// 4. 只读绑定同域唯一(Bind.ImmutableUniqueInScope)
 _limit = 10
 loop {
     _limit_inner = 20
@@ -837,11 +963,12 @@ loop {
 // 6. 箭头函数支持多表达式返回(Func.ArrowMultiExpr)
 pair(a i32, b i32) i32, i32 => a, b
 
-// 7. .x 仅用于私有函数名和私有字段名(Private.DotNameOnly)
+// 7. .x 双语义: 私有命名位 + 字段选择符(Private.DotDualRole)
 User {
     .aid u32
     name Text
 }
 
 .normalize_name(name Text) Text => trim(name)
+{name} = get(u, {.name})
 ```
