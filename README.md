@@ -65,3 +65,4 @@ zig build -Doptimize=ReleaseSmall
 - [ ] **CLI 工具**: `do build`, `do test`, `do run`。
 - [ ] **LSP 服务**: 提供代码补全、跳转与实时错误检查。
 - [ ] **标准库**: 完善 IO, 网络, 异步任务 (`future.do`) 支持。 
+line added by user
