@@ -1,5 +1,5 @@
 error[DoneCallNeedsArg]: done 调用缺少参数
- --> /._/doc/do/tests/do/cases/err/12_done_call_needs_arg.do:2:8
+ --> /._/do/tests/do/cases/err/12_done_call_needs_arg.do:2:8
  hint: 将 `done()` 改为 `done(future)`.
  2 |     if done() return
    |        ^

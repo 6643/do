@@ -1,5 +1,5 @@
 error[DuplicateStartEntry]: 入口函数 _start 重复定义
- --> /._/doc/do/tests/do/cases/compile_err/03_duplicate_start_entry.do:1:1
+ --> /._/do/tests/do/cases/compile_err/03_duplicate_start_entry.do:1:1
  hint: 保留且仅保留 1 个顶层 `_start` 声明.
  1 | _start() {
    | ^

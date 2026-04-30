@@ -1,5 +1,5 @@
 error[InvalidListLiteral]: List 字面量语法无效
- --> /._/doc/do/tests/do/cases/err/04_invalid_list_literal.do:2:21
+ --> /._/do/tests/do/cases/err/04_invalid_list_literal.do:2:21
  hint: List 字面量只允许表达式列表, 不允许 `k:v`.
  2 |     xs = List<i32>{1: 2}
    |                     ^

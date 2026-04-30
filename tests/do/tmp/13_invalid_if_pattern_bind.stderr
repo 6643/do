@@ -1,5 +1,5 @@
 error[InvalidIfPatternBind]: if 模式绑定必须使用类型模式
- --> /._/doc/do/tests/do/cases/err/13_invalid_if_pattern_bind.do:2:8
+ --> /._/do/tests/do/cases/err/13_invalid_if_pattern_bind.do:2:8
  hint: 使用 `if Type(x) := expr` 或 `if Type{...} := expr`.
  2 |     if ok := 1 {
    |        ^

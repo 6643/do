@@ -1,5 +1,5 @@
 error[InvalidImportDecl]: 导入声明语法无效
- --> /._/doc/do/tests/do/cases/err/11_import_conflict_name.do:1:2
- hint: 使用 `{item, ...} := @("path")`; 冲突名(关键字)需显式重命名.
+ --> /._/do/tests/do/cases/err/11_import_conflict_name.do:1:2
+ hint: 使用 `{item, ...} := @("path")`; 冲突名(关键字/字面量保留字)需显式重命名.
  1 | {if} := @("ffi_mod")
    |  ^

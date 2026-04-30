@@ -1,5 +1,5 @@
 error[DuplicateImmutableBinding]: 不可变绑定在同一作用域重复声明
- --> /._/doc/do/tests/do/cases/err/08_duplicate_immutable.do:3:5
+ --> /._/do/tests/do/cases/err/08_duplicate_immutable.do:3:5
  hint: 同一作用域内 `_name` 仅允许声明 1 次.
  3 |     _x = 2
    |     ^

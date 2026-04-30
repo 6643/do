@@ -1,5 +1,5 @@
 error[InvalidTestDecl]: test 声明语法无效
- --> /._/doc/do/tests/do/cases/err/17_invalid_test_decl_header.do:1:6
+ --> /._/do/tests/do/cases/err/17_invalid_test_decl_header.do:1:6
  hint: 使用 `test "name" { ... }` 顶层声明.
  1 | test bad {
    |      ^

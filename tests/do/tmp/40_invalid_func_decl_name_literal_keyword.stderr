@@ -1,0 +1,5 @@
+error[InvalidFuncDeclName]: 函数声明命名不合法
+ --> /._/do/tests/do/cases/err/40_invalid_func_decl_name_literal_keyword.do:1:1
+ hint: 函数声明名不能使用关键字或字面量保留字.
+ 1 | true(a i32) i32 => a
+   | ^

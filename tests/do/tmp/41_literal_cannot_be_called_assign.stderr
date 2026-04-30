@@ -1,0 +1,5 @@
+error[LiteralCannotBeCalled]: 字面量不能作为函数调用
+ --> /._/do/tests/do/cases/err/41_literal_cannot_be_called_assign.do:2:9
+ hint: 去掉字面量后的 `(...)`; 若要调用函数, 使用合法标识符作为被调用者.
+ 2 |     x = true(1)
+   |         ^

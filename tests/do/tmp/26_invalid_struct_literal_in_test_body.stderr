@@ -1,5 +1,5 @@
 error[InvalidStructLiteral]: 结构体字面量语法无效
- --> /._/doc/do/tests/do/cases/err/26_invalid_struct_literal_in_test_body.do:2:14
+ --> /._/do/tests/do/cases/err/26_invalid_struct_literal_in_test_body.do:2:14
  hint: 结构体字面量必须使用 `name: value`.
  2 |     u = User{1, 2}
    |              ^

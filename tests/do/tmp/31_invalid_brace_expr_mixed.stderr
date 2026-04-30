@@ -1,5 +1,5 @@
 error[InvalidBraceExpr]: 花括号表达式语法无效
- --> /._/doc/do/tests/do/cases/err/31_invalid_brace_expr_mixed.do:2:28
+ --> /._/do/tests/do/cases/err/31_invalid_brace_expr_mixed.do:2:28
  hint: 花括号表达式仅允许纯表达式列表或纯 `key: value` 列表, 不允许混用.
  2 |     x = {.name: "tom", .age}
    |                            ^

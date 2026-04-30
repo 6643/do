@@ -8,7 +8,7 @@
 // FuncSigConstraint   := Ident "(" TypeList? ")" "=>" ReturnSpec
 // TypeSetConstraint   := TypeVar ":" (TypeSetExpr | TypeName)
 // TypeVar             := Ident
-// FuncName            := Ident | "." Ident
+// FuncName            := Ident
 // ReturnSpec          := TypeExpr | MultiReturnSpec
 // MultiReturnSpec     := TypeExpr "," TypeExpr ("," TypeExpr)*
 // ArrowExprList       := Expr ("," Expr)* [","]

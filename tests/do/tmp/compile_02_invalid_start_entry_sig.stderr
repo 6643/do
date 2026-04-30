@@ -1,5 +1,5 @@
 error[InvalidStartEntrySig]: _start 函数签名无效
- --> /._/doc/do/tests/do/cases/compile_err/02_invalid_start_entry_sig.do:1:1
+ --> /._/do/tests/do/cases/compile_err/02_invalid_start_entry_sig.do:1:1
  hint: 将入口签名改为 `_start() { ... }` (无参、无返回).
  1 | _start(a i32) i32 {
    | ^

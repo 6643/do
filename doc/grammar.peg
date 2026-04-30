@@ -1,5 +1,7 @@
 # do language PEG grammar draft
 # Source of truth for prose rules: doc/syntax.md
+# Line-sensitive statement/declaration boundaries are specified in prose.
+# Overload fallback such as async builtins vs user functions is also prose-only.
 
 Program             <- _ TopLevel* EOF
 TopLevel            <- ImportDecl / TypeDecl / FuncDecl / TestDecl
@@ -8,7 +10,7 @@ TopLevel            <- ImportDecl / TypeDecl / FuncDecl / TestDecl
 # Top-level declarations
 # ----------------------------
 
-ImportDecl          <- LBRACE ImportItemList? RBRACE BIND ImportSource
+ImportDecl          <- LBRACE ImportItemList RBRACE BIND ImportSource
 ImportSource        <- AT LPAREN String RPAREN
 ImportItemList      <- ImportItem (COMMA ImportItem)* COMMA?
 ImportItem          <- ImportFunc / ImportType / ImportValue / ImportSymbol
@@ -79,7 +81,7 @@ Stmt                <- ReturnStmt
                     / ExprStmt
 
 ReturnStmt          <- KW_RETURN ExprList?
-DeferStmt           <- KW_DEFER Stmt
+DeferStmt           <- KW_DEFER Expr
 BreakStmt           <- KW_BREAK Label?
 ContinueStmt        <- KW_CONTINUE Label?
 Label               <- APOST Ident
@@ -99,7 +101,7 @@ IfExprBranch        <- Expr (Block (KW_ELSE Block)? / Stmt)
 IfTypePattern       <- TypeName LPAREN Ident RPAREN
                     / TypeName LBRACE PatternFields? RBRACE
 
-LoopStmt            <- KW_LOOP Block
+LoopStmt            <- KW_LOOP LBRACE Label? Stmt* RBRACE
                     / KW_LOOP LoopCond Block
                     / KW_LOOP LoopBind BIND Expr Block
 LoopCond            <- Expr
@@ -119,16 +121,25 @@ PatternField        <- Ident
 # ----------------------------
 
 Expr                <- DoExpr
+                    / AsyncCtrlExpr
                     / LambdaExpr
                     / ParenExpr
                     / BraceLit
                     / TypedCollectionLit
                     / StructLit
                     / CallExpr
-                    / Ident
                     / Literal
+                    / Ident
 
 DoExpr              <- KW_DO CallExpr
+AsyncCtrlExpr       <- DoneExpr / WaitExpr / WaitOneExpr / WaitAnyExpr / WaitAllExpr / CancelExpr / StatusExpr
+DoneExpr            <- 'done' !IdentChar _ LPAREN Expr RPAREN
+WaitExpr            <- 'wait' !IdentChar _ LPAREN Expr (COMMA Expr)? RPAREN
+WaitOneExpr         <- 'wait_one' !IdentChar _ LPAREN Expr COMMA Expr (COMMA Expr)* COMMA? RPAREN
+WaitAnyExpr         <- 'wait_any' !IdentChar _ LPAREN Expr COMMA Expr (COMMA Expr)* COMMA? RPAREN
+WaitAllExpr         <- 'wait_all' !IdentChar _ LPAREN Expr COMMA Expr (COMMA Expr)* COMMA? RPAREN
+CancelExpr          <- 'cancel' !IdentChar _ LPAREN Expr RPAREN
+StatusExpr          <- 'status' !IdentChar _ LPAREN Expr RPAREN
 LambdaExpr          <- PIPE Params? PIPE Expr
 ParenExpr           <- LPAREN Expr RPAREN
 

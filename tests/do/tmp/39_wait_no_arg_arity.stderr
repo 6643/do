@@ -1,5 +1,5 @@
 error[AsyncCtrlArity]: 异步控制函数参数个数不合法
- --> /._/doc/do/tests/do/cases/err/39_wait_no_arg_arity.do:2:10
+ --> /._/do/tests/do/cases/err/39_wait_no_arg_arity.do:2:10
  hint: 同名普通函数仅在实参数匹配时优先; 不匹配时回退内建规则: wait 需 1 或 2 参, cancel/status 需 1 参, wait_one/wait_any/wait_all 需 >=2 参(首参为 timeout).
  2 |     _x = wait()
    |          ^

@@ -1,1 +1,1 @@
-ok: /._/doc/do/tests/do/cases/compile_ok/01_start_entry_valid.do -> /._/doc/do/tests/do/tmp/compile_01_start_entry_valid.wat (tokens=6, items=1)
+ok: /._/do/tests/do/cases/compile_ok/01_start_entry_valid.do -> /._/do/tests/do/tmp/compile_01_start_entry_valid.wat (tokens=6, items=1)

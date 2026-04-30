@@ -1,5 +1,5 @@
 error[MissingStartEntry]: 缺少入口函数 _start
- --> /._/doc/do/tests/do/cases/compile_err/01_missing_start_entry.do:1:1
+ --> /._/do/tests/do/cases/compile_err/01_missing_start_entry.do:1:1
  hint: 编译入口必须声明为 `_start() { ... }`.
  1 | helper() {
    | ^

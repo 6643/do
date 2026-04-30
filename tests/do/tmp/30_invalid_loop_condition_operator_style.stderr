@@ -1,5 +1,5 @@
 error[InvalidLoopHeader]: loop 头部语法无效
- --> /._/doc/do/tests/do/cases/err/30_invalid_loop_condition_operator_style.do:3:16
+ --> /._/do/tests/do/cases/err/30_invalid_loop_condition_operator_style.do:3:16
  hint: loop 头部支持 `loop {}`, `loop cond {}`, `loop v := iterable {}`, `loop v, i := iterable {}`.
  3 |     loop count < 3 {
    |                ^

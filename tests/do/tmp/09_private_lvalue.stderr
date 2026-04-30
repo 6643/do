@@ -1,5 +1,5 @@
 error[PrivateIdentCannotBeLValue]: 私有标识符不能作为赋值左值
- --> /._/doc/do/tests/do/cases/err/09_private_lvalue.do:2:5
+ --> /._/do/tests/do/cases/err/09_private_lvalue.do:2:5
  hint: 将 `.x = ...` 改为普通变量或 set 接口.
  2 |     .x = 1
    |     ^

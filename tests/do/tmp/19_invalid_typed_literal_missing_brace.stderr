@@ -1,5 +1,5 @@
 error[InvalidTypedLiteral]: 集合字面量语法无效
- --> /._/doc/do/tests/do/cases/err/19_invalid_typed_literal_missing_brace.do:2:25
+ --> /._/do/tests/do/cases/err/19_invalid_typed_literal_missing_brace.do:2:25
  hint: 集合字面量写法使用 `Type<...>{...}`; 空值写 `Type<...>{}`.
  2 |     map_a = Map<i32, i32>
    |                         ^

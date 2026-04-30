@@ -43,13 +43,15 @@
 
 ### 2.3 关键字
 
-`if else loop break continue return defer match do test`
+`if else loop break continue return defer match do test true false nil`
 
 ### 2.4 注释与数值字面量
 
 1. 单行注释语法固定为 `// comment`, 作用域到行尾.
 2. 整数字面量语法固定为 `Digit+`.
 3. 浮点字面量语法固定为 `Digit+ "." Digit+`.
+4. 布尔字面量固定为 `true` 或 `false`.
+5. 空值字面量固定为 `nil`.
 
 ---
 
@@ -122,7 +124,7 @@ test "sum basic" {
 4. 符号导入支持重命名: `{local:exported}`.
 5. `ImportFunc` 采用纯类型位形, 例如 `fd_write(i32, WasiIovec, i32, i32) => i32`.
 6. `ImportType` 仅用于声明外部布局字段, 例如 `WasiIovec{buf_ptr i32, buf_len i32}`.
-7. `ImportItem` 的本地名(每项第 1 个标识符)与关键字互斥.
+7. `ImportItem` 的本地名(每项第 1 个标识符)与关键字/字面量保留字互斥.
 8. 遇到冲突名一律显式重命名.
 9. `ImportSymbol` 重命名语法固定为 `{local:exported}`.
 10. `ImportValue/ImportType/ImportFunc` 通过改写本地声明名重命名, 例如 `ffi_wait(...) => i32`.
@@ -142,7 +144,7 @@ TypeDecl          := StructDecl | UnionDecl | AliasDecl | TypeSetAliasDecl
 
 StructDecl        := TypeName [ "<" TypeParams ">" ] "{" FieldDecl* "}"
 FieldDecl         := FieldName TypeExpr
-FieldName         := Ident | "." Ident
+FieldName         := Ident
 
 UnionDecl         := TypeName "=" Variant ("|" Variant)+
 Variant           := TypeName [ "{" VariantFields "}" ]
@@ -216,7 +218,7 @@ FuncConstraint      := "#" (FuncSigConstraint | TypeSetConstraint)
 FuncSigConstraint   := Ident "(" TypeList? ")" "=>" ReturnSpec
 TypeSetConstraint   := TypeVar ":" (TypeSetExpr | TypeName)
 TypeVar             := Ident
-FuncName            := Ident | "." Ident
+FuncName            := Ident
 ReturnSpec          := TypeExpr | MultiReturnSpec
 MultiReturnSpec     := TypeExpr "," TypeExpr ("," TypeExpr)*
 ArrowExprList       := Expr ("," Expr)* [","]
@@ -444,6 +446,7 @@ IfTypePattern  := TypeName "(" Ident ")"
 3. 若函数返回多值, 必须先接收到变量后再在 `if` 中使用.
 4. `if P := expr` 的 `P` 仅允许类型模式(`Type(...)` 或 `Type{...}`).
 5. `if P := expr` 的 `expr` 必须是单值表达式, `f_multi(...)` 直接使用为编译错误.
+6. 单行写法 `if Expr Stmt` 的 `Stmt` 固定收敛到当前行尾.
 
 ```do
 // 1. 条件分支-块体(If.ExprBlock)
@@ -657,6 +660,7 @@ f64_v = to_f64(i64_v)
 
 1. `IntLit` 默认类型为 `i32`.
 2. `FloatLit` 默认类型为 `f64`.
+3. 字面量不是可调用对象, `true()`/`nil()`/`1()`/`"x"()` 均为语法错误.
 
 集合字面量规则:
 
@@ -810,8 +814,10 @@ match tag {
 
 1. 列表, 映射, 结构体字面量使用逗号分隔.
 2. 最后一项允许尾逗号.
-3. 语义分隔以显式分隔符和语法结构为准, 换行用于排版.
-4. 新增语法糖必须先给出等价的单一基线写法.
+3. 顶层声明与块内简单语句在未进入 `()/{}/<>` 等嵌套结构时, 以换行作为分隔.
+4. 单行 `if Expr Stmt` 的 `Stmt` 固定收敛到当前行尾.
+5. `AssignStmt` 的 RHS 固定收敛到当前行尾; 若 `()/{}/<>` 尚未闭合, 则继续吸收直到外层结构闭合.
+6. 新增语法糖必须先给出等价的单一基线写法.
 
 示例:
 
@@ -881,7 +887,7 @@ u = User{
 3. 导入通过显式顶层声明引入, 无隐式全局导入机制.
 4. `ImportItem` 固定为 `ImportSymbol`/`ImportValue`/`ImportType`/`ImportFunc`.
 5. `ImportFunc` 采用类型位形: `name(T1, T2, ...) => R`.
-6. 导入项本地名只与关键字互斥.
+6. 导入项本地名只与关键字/字面量保留字互斥.
 7. 冲突名必须显式重命名: `ImportSymbol` 用 `{local:exported}`, 其他项改写为安全本地名.
 8. 支持标准库与相对路径导入.
 9. 导出同名冲突通过解构重命名解决: `{local:exported}`.

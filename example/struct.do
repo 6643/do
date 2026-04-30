@@ -7,7 +7,7 @@
 //
 // StructDecl        := TypeName [ "<" TypeParams ">" ] "{" FieldDecl* "}"
 // FieldDecl         := FieldName TypeExpr
-// FieldName         := Ident | "." Ident
+// FieldName         := Ident
 //
 // UnionDecl         := TypeName "=" Variant ("|" Variant)+
 // Variant           := TypeName [ "{" VariantFields "}" ]
