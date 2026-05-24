@@ -8,7 +8,6 @@ This repository contains the `do` language compiler and its regression suite.
 - `compiler/build.zig`: Zig build entrypoint. It installs the compiler binary to the repository `bin/` directory.
 - `bin/do`: Built compiler executable.
 - `doc/`: Language syntax and semantic references, centered on `doc/syntax.md`.
-- `example/`: Small `.do` examples for language features.
 - `tests/do/`: Integration regression tests and expected diagnostics.
 - `gc.md` and `gc.ts`: Runtime and GC design notes/prototypes.
 
@@ -23,11 +22,11 @@ cd compiler && zig build -Doptimize=ReleaseSmall
 Builds the compiler and installs `bin/do`.
 
 ```bash
-./bin/do example/expr.do -o /tmp/expr.wat
-./bin/do test example/func.do
+./bin/do tests/do/cases/compile_ok/01_start_entry_valid.do -o /tmp/start.wat
+./bin/do test tests/do/cases/ok/01_import_only.do
 ```
 
-Compiles a `.do` file to WAT, or runs `test` declarations in a `.do` file.
+Compiles a regression fixture to WAT, or runs `test` declarations in a `.do` fixture.
 
 ```bash
 ./tests/do/run_tests.sh
