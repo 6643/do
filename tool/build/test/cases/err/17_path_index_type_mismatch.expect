@@ -1,2 +1,0 @@
-InvalidPathIndex
-路径索引写作 `get(value, .{index})`；字段段写作 `get(value, .field)`

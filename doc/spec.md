@@ -13,12 +13,12 @@
 2. 静态约束只定义可通过规则，不重复书写 parser 结构。
 3. 运行层按 `native -> core -> std` 分层；依赖只能向下。
 4. `native` 是编译器/Wasm/host 桥接层，提供 special form 与底层 primitive；`core` 和 `std` 通过它使用这些能力。
-5. `core` 是默认可见核心库，封装 `native` 并提供语言最小可用函数值、数值函数、结构字段操作与 opaque storage primitive。
+5. `core` 是默认可见核心库，封装 `native` 并提供语言最小可用函数值、数值函数、结构字段操作与连续存储 primitive。
 6. `std` 是可导入标准库，基于 `core` 提供扩展能力。
 7. `is/and/or/not` 属于 `native` special form。
 8. `eq/ne/lt/le/gt/ge` 由 `core` 预定义并固定提供。
-9. 数值与位运算基础函数（如 `add/sub/mul/div/rem`）属于 `core`，由 `native` primitive 支撑。
-10. `[T]` 是 `core` opaque storage 类型，不是集合类型；标准库或用户库可用它实现 `List/Map` 等普通泛型结构体或类型别名。
+9. 数值与位运算基础函数（如 `add/sub/mul/div/rem`）属于 `core`，由 `native` primitive 支撑；`add/sub/mul/div/rem` 接收同类型 2 个及以上参数。
+10. `[T]` 是 `core` 连续存储 primitive，表示任意多个连续的 `T` 值；它不是集合类型，也不携带长度信息，标准库或用户库可用它实现 `List/Map` 等普通泛型结构体或类型别名。
 11. `Text` 不是 `core` 预导入类型；标准库里它按 `Text = [u8]` 的别名形态提供，底层就是字节序列。
 12. 时间换算函数（如 `ms/sec/day`）属于 `std` 时间库。
 13. `Error` 由编译器合成，聚合当前可达模块中所有对外可见的 `*Error` 联合类型，以及内建运行时错误分支。
@@ -171,9 +171,11 @@ TypeExpr         <- UnionExpr
 UnionExpr        <- TypeAtom ('|' TypeAtom)*
 TypeAtom         <- BaseType
                   / StorageType
+                  / FuncType
                   / RefTypeName TypeArgs?
                   / '(' SoftGap TypeExpr SoftGap ')'
                   / LiteralType
+FuncType         <- '(' SoftGap TypeExprList? SoftGap ')' SoftGap '->' SoftGap ReturnSpec
 TypeArgs         <- '<' SoftGap TypeExpr (CommaSep TypeExpr)* TrailComma? SoftGap '>'
 StorageType      <- '[' SoftGap TypeExpr SoftGap ']'
 BaseType         <- 'i8' / 'i16' / 'i32' / 'i64'
@@ -201,8 +203,12 @@ TypeParamName    <- UpperIdent
 ConstraintFuncName <- LowerIdent
 TypeExprList     <- TypeExpr (CommaSep TypeExpr)* TrailComma?
 
-ParamList        <- Param (CommaSep Param)* TrailComma?
+ParamList        <- FixedParamList (CommaSep VariadicParam)? TrailComma?
+                  / VariadicParam TrailComma?
+FixedParamList   <- Param (CommaSep Param)*
 Param            <- ParamName TypeExpr
+VariadicParam    <- ParamName VariadicType
+VariadicType     <- '...' TypeExpr
 ParamName        <- LowerIdent / '_'
 
 Block            <- '{' StmtGap? StmtList? StmtGap? '}'
@@ -297,7 +303,10 @@ FieldSeg         <- '.' LowerIdent
 
 CallExpr         <- Callee '(' SoftGap ArgList? SoftGap ')'
 Callee           <- Ident
-ArgList          <- Expr (CommaSep Expr)* TrailComma?
+ArgList          <- FixedArgList (CommaSep SpreadArg)? TrailComma?
+                  / SpreadArg TrailComma?
+FixedArgList     <- Expr (CommaSep Expr)*
+SpreadArg        <- '...' Expr
 
 LambdaExpr       <- '(' SoftGap LambdaParamList? SoftGap ')' SoftGap LambdaTail
 LambdaParamList  <- LambdaParam (CommaSep LambdaParam)* TrailComma?
@@ -352,13 +361,24 @@ NL               <- '\n'
 18. `*Error` 类型名出现在类型位或 `is(value, *Error)` 中。
 19. `*Error` 的分支名是值，可用于赋值、返回和 `eq/ne` 比较。
 
+## 4.4 数值函数族
+
+1. `add/sub/mul/div/rem` 属于 `core`，默认可见。
+2. 这些函数只接受同类型参数，参数个数为 2 个及以上。
+3. `add(a, b, c)` 等价于 `add(add(a, b), c)`。
+4. `mul(a, b, c)` 等价于 `mul(mul(a, b), c)`。
+5. `sub(a, b, c)` 等价于 `sub(sub(a, b), c)`。
+6. `div(a, b, c)` 等价于 `div(div(a, b), c)`。
+7. `rem(a, b, c)` 等价于 `rem(rem(a, b), c)`。
+8. 数值函数族可在泛型约束中写作 `#add(T, ...T) -> T`。
+
 ## 5. 结构操作族
 
 ### 5.1 定位
 
-1. `get/set/put/len/at` 作为开放函数族使用；`core` 只提供 struct 字段路径和 opaque storage 的基础读写 primitive，`std` 或用户库可按普通函数定义具体重载。
-2. 多段结构路径使用受限路径形态，因此语法层单列 `PathSpec`；它只服务字段/索引路径，集合设计由库层承载。
-3. 结构字段读写使用 `get/set` 路径形态，例如 `get(x, .name)`、`set(x, .name, value)`。
+1. `get/set/put/len/at` 作为开放函数族使用；`core` 只提供 struct 字段路径和 `[T]` 连续存储的基础读写 primitive，`std` 或用户库可按普通函数定义具体重载。
+2. 多段结构路径使用受限路径形态，因此语法层单列 `PathSpec`；字段/索引路径统一从 `get/set` 进入，集合设计由库层承载。
+3. 结构字段读写统一只走 `get/set` 路径形态，例如 `get(x, .name)`、`set(x, .name, value)`。
 4. `put` 由 `std` 或用户库按普通函数定义；它可用于集合追加、插入、键写入或其他库自定义更新语义。
 5. `update` 作为普通库函数定义；需要时可由 `std` 基于 `get/set` 提供。
 
@@ -428,7 +448,8 @@ Text = [u8]
 20. host import 使用 `@host/path(...) -> ...` 形式，并由编译器桥接到宿主实现。
 21. host import 签名是 ABI 签名；参数使用 `i32/i64/f32/f64`，返回使用 `nil` 或单个 `i32/i64/f32/f64`。
 22. 函数族唯一性由函数名与参数类型序列决定；同一函数名配合同一参数类型序列对应唯一定义。
-23. 公开内建常量采用前置 `_` 和类型前缀命名：`_i8_max`、`_i8_min`、`_f32_pi`、`_f64_pi`；不采用 `max_i8`、`pi_f32` 或无 `_` 的常量名。
+23. 不定参数参与函数族唯一性；`rest ...T` 的签名尾部记作 `...T`，不同于单个 `T`。
+24. 公开内建常量采用前置 `_` 和类型前缀命名：`_i8_max`、`_i8_min`、`_f32_pi`、`_f64_pi`；不采用 `max_i8`、`pi_f32` 或无 `_` 的常量名。
 
 ### 6.2 定型与字面量
 
@@ -442,27 +463,31 @@ Text = [u8]
 8. 若函数名与参数个数只对应唯一候选，该候选的参数类型可为实参字面量提供上下文。
 9. 若存在多个同名同参数个数候选，实参必须先各自定型，再用实参类型序列选择唯一候选。
 10. 外层期望类型只用于检查已选中调用的返回值类型，重载选择只看实参类型序列。
-11. 普通字符串和行字符串同样无默认类型；字符串字面量由目标类型上下文定型。
-12. 字符串字面量可在目标类型为 `[u8]` 或库定义文本类型时由上下文定型；语法层按库类型解析。
-13. 裸 `{...}` 不是表达式；聚合值写成 `.{...}` 或 `Type{...}`。
-14. `.{...}` 省略目标聚合类型，由左侧标注、既有绑定、参数或返回上下文唯一确定。
-15. `Type{...}` 在右侧显式给出聚合类型，可用于创建新绑定。
-16. `name Type = .{...}` 与 `name = Type{...}` 是等价的创建形式。
-17. `Type{...}` 的 `Type` 是具名类型及其类型参数。
-18. 联合返回位要求右侧表达式自身先定型到唯一分支。
-19. 结构体字段声明位的 `.field` 表示私有；字段真实名字仍是 `field`，同一结构体内同一字段写作 `field` 或 `.field`。
-20. 当前模块内构造结构体时，字段初始化使用裸字段名 `field = value`；`.field` 出现在路径位或声明位。
-21. 外部模块构造 public struct 时填写 public 字段；private 字段由默认值提供。
-22. 聚合字面量 body 接受字段项；`Map/List` 的 body 也按泛型结构体字段构造解释，`Type<...>{...}` 同样如此。
-23. 结构体字段构造使用 `field = value`。
-24. 字段默认值在结构体构造时求值；默认表达式结果类型与字段类型一致。
-25. 结构体构造发生在 CTFE 上下文时，字段默认值也走 CTFE；运行时构造可执行运行时默认表达式。
-26. `Tuple` 按普通泛型结构体字段构造解释；库若定义 `Tuple`，同样采用字段构造。
-27. 名称以 `Error` 结尾的类型别名声明错误分支集合，右侧分支使用裸 `UpperIdent` 值名，例如 `FileError = FileNotFound | PermissionDenied`。
-28. 普通 union 由类型表达式组成；错误分支集合使用名称以 `Error` 结尾的类型别名声明。
-29. `*Error` 类型名用于类型位；值位使用具体分支值。
-30. `*Error` 分支值是可导入的 public 值；跨文件构造或精确比较分支值时导入该分支值。
-31. `*Error` 分支值导入时可以改名以避免冲突，本地别名使用 `UpperIdent`。
+11. 不定参数候选匹配固定前缀实参数量后，剩余实参逐个按 `...T` 的 `T` 定型；第一版只支持同类型不定参数。
+12. `...expr` 只在函数调用实参位生效，只能出现在实参列表最后，一次调用最多一个展开。
+13. `...expr` 的表达式必须是当前函数的不定参数绑定，或类型为 `[T]` / 库定义同类型连续序列且目标参数为 `...T`。
+14. 展开调用只匹配被调函数最后一个不定参数位；展开后不能再接普通实参。
+15. 普通字符串和行字符串同样无默认类型；字符串字面量由目标类型上下文定型。
+16. 字符串字面量可在目标类型为 `[u8]` 或库定义文本类型时由上下文定型；语法层按库类型解析。
+17. 裸 `{...}` 不是表达式；聚合值写成 `.{...}` 或 `Type{...}`。
+18. `.{...}` 省略目标聚合类型，由左侧标注、既有绑定、参数或返回上下文唯一确定。
+19. `Type{...}` 在右侧显式给出聚合类型，可用于创建新绑定。
+20. `name Type = .{...}` 与 `name = Type{...}` 是等价的创建形式。
+21. `Type{...}` 的 `Type` 是具名类型及其类型参数。
+22. 联合返回位要求右侧表达式自身先定型到唯一分支。
+23. 结构体字段声明位的 `.field` 表示私有；字段真实名字仍是 `field`，同一结构体内同一字段写作 `field` 或 `.field`。
+24. 当前模块内构造结构体时，字段初始化使用裸字段名 `field = value`；`.field` 出现在路径位或声明位。
+25. 外部模块构造 public struct 时填写 public 字段；private 字段由默认值提供。
+26. 聚合字面量 body 接受字段项；`Map/List` 的 body 也按泛型结构体字段构造解释，`Type<...>{...}` 同样如此。
+27. 结构体字段构造使用 `field = value`。
+28. 字段默认值在结构体构造时求值；默认表达式结果类型与字段类型一致。
+29. 结构体构造发生在 CTFE 上下文时，字段默认值也走 CTFE；运行时构造可执行运行时默认表达式。
+30. `Tuple` 按普通泛型结构体字段构造解释；库若定义 `Tuple`，同样采用字段构造。
+31. 名称以 `Error` 结尾的类型别名声明错误分支集合，右侧分支使用裸 `UpperIdent` 值名，例如 `FileError = FileNotFound | PermissionDenied`。
+32. 普通 union 由类型表达式组成；错误分支集合使用名称以 `Error` 结尾的类型别名声明。
+33. `*Error` 类型名用于类型位；值位使用具体分支值。
+34. `*Error` 分支值是可导入的 public 值；跨文件构造或精确比较分支值时导入该分支值。
+35. `*Error` 分支值导入时可以改名以避免冲突，本地别名使用 `UpperIdent`。
 
 ### 6.3 绑定与赋值
 
@@ -480,6 +505,9 @@ Text = [u8]
 12. 函数参数、lambda 参数和 `loop` 绑定是普通可变本地绑定；参数赋值只改变当前调用帧。
 13. 参数位使用 `_` 表示丢弃参数；该参数仍计入函数签名的参数个数和类型序列。
 14. 参数位与 loop 绑定位使用 `LowerIdent` 或 `_`；`_name` 用于顶层常量和局部只读绑定。
+15. 不定参数写作 `rest ...T`，只能出现在函数参数列表最后，且一个函数最多一个不定参数。
+16. 不定参数在函数体内作为同类型序列读取，可用于 `loop` 或在调用尾部写作 `...rest` 转发。
+17. lambda 参数不支持不定参数；host import 参数不支持不定参数。
 
 ### 6.4 返回与多返回
 
@@ -517,7 +545,7 @@ Text = [u8]
 
 1. `get/set` 的路径在类型上逐段解释：
    - 结构体接收字段段。
-   - opaque storage `[T]` 的索引由 core 函数处理，不通过结构路径暴露。
+   - `[T]` 连续存储的索引由 core 函数处理，不通过结构路径暴露。
 2. 私有字段路径段在声明该结构体的模块内使用。
 3. 字段段写作 `.lower_ident`。
 4. 索引段允许 `Expr`，但只有目标类型声明了对应结构操作时才合法；普通 struct 字段段使用 `.lower_ident`。
@@ -551,6 +579,8 @@ Text = [u8]
 5. 后续若扩展 host ABI，应先定义资源句柄、buffer 传递、错误编码和关闭语义，再在 `std` 中提供普通 do 函数封装。
 6. 这与 Go/Rust/Zig 的标准库分层方向一致：地址类型、TCP listener/stream 和 UDP socket 分离；差异是 `do` 的最终目标是 wasm，因此系统调用能力必须由宿主桥接提供。
 7. `lib/binary.do` 属于 `std` 字节编解码辅助库；hash/encoding 库按需显式 import。
+8. 高阶组合函数属于 `std`，不属于 `core`；例如 `lib/pipe.do` 提供同类型串联 `pipe(value T, funcs ...(T) -> T) -> T`。
+9. `lib/list.do` 提供 `map/filter/fold/reduce/find/find_index/any/all/count` 等函数式集合工具；这些函数基于 `List<T>`、inline callback 和 `len/at/put` 实现。
 
 ## 7. 诊断与测试约定
 
@@ -567,7 +597,7 @@ Text = [u8]
 
 1. 规范示例分为 `ok` 与 `err` 两类。
 2. `err` 示例必须给出期望诊断关键字；纯语法错误优先落在 7.1 的统一诊断烟测。
-3. 所有进入主线的示例都必须对应 `tool/build/test/cases/ok` 或 `tool/build/test/cases/err`。
+3. 所有进入主线的示例都必须对应 `tool/build/test/ok` 或 `tool/build/test/err`；编译模式用例对应 `tool/build/test/compile_ok` 或 `tool/build/test/compile_err`。
 4. 建议统一采用如下 fenced code 块约定，便于脚本提取：
 
 ````markdown
@@ -903,10 +933,24 @@ t Pair = .{a = 1, b = 2}
 
 ```do ok name=func_constraint_prefix_line
 #T = i32 | i64
-#add(T, T) -> T
+#add(T, ...T) -> T
 sum(a T, b T) -> T {
     return add(a, b)
 }
+```
+
+```do ok name=core_numeric_variadic
+#T = i32 | i64
+#add(T, ...T) -> T
+sum_many(first T, rest ...T) -> T {
+    return add(first, ...rest)
+}
+
+a i32 = add(1, 2, 3)
+b i32 = mul(2, 3, 4)
+c i32 = sub(10, 3, 2)
+d i32 = div(24, 3, 2)
+e i32 = rem(29, 5, 2)
 ```
 
 ```do ok name=generic_type_param_unconstrained
@@ -940,6 +984,27 @@ map_with(xs List<T>, p P, f (T, P) -> U) -> List<U> {
 }
 ```
 
+```do ok name=list_functional_ops
+list_map = @/list.do/map
+list_filter = @/list.do/filter
+list_fold = @/list.do/fold
+
+xs List<i32> = List<i32>{}
+ys List<i64> = list_map(xs, (x i32) -> i64 => to_i64(add(x, 1)))
+even List<i32> = list_filter(xs, (x i32) -> bool => eq(rem(x, 2), 0))
+sum i32 = list_fold(xs, 0, (acc i32, x i32) -> i32 => add(acc, x))
+```
+
+```do ok name=std_pipe_same_type_chain
+pipe = @/pipe.do/pipe
+
+result i32 = pipe(
+    2,
+    (x i32) -> i32 => add(x, 1),
+    (x i32) -> i32 => mul(x, 3),
+)
+```
+
 ```do ok name=generic_struct_list_storage
 #T
 List {
@@ -948,7 +1013,7 @@ List {
 }
 ```
 
-`storage() -> [T]` 是 core opaque storage 构造 primitive；由已知目标类型提供 `T`，用户代码只通过库函数操作它。
+`storage() -> [T]` 是 core 连续存储构造 primitive；由已知目标类型提供 `T`，用户代码只通过库函数操作它。
 
 ```do ok name=generic_struct_map_storage
 #K
@@ -1139,7 +1204,7 @@ str = \\abc
 ```
 
 ```do ok name=lambda_callback_site
-result = map(xs, (x i32) => add(x, 1))
+result = map(xs, (x i32) -> i32 => add(x, 1))
 ```
 
 ```do err name=lambda_value_bind
@@ -1149,6 +1214,24 @@ f = (x i32) => add(x, 1)
 ```do err name=lambda_local_capture
 step i32 = 1
 result = map(xs, (x i32) => add(x, step))
+```
+
+```do ok name=generic_variadic_sum
+#T
+#add(T, ...T) -> T
+add_many(first T, rest ...T) -> T {
+    out T = first
+    loop x, _ = rest {
+        out = add(out, x)
+    }
+    return out
+}
+```
+
+```do ok name=variadic_spread_call
+print_all(prefix Text, rest ...Text) {
+    print(prefix, ...rest)
+}
 ```
 
 ```do ok name=top_const_read

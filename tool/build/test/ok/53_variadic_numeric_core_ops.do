@@ -1,0 +1,15 @@
+#T = i32 | i64
+#add(T, ...T) -> T
+sum_many(first T, rest ...T) -> T {
+    return add(first, ...rest)
+}
+
+test "variadic numeric core ops" {
+    a i32 = add(1, 2, 3)
+    b i32 = mul(2, 3, 4)
+    c i32 = sub(10, 3, 2)
+    d i32 = div(24, 3, 2)
+    e i32 = rem(29, 5, 2)
+    f i32 = sum_many(1, 2, 3)
+    return
+}

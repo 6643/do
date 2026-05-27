@@ -2,6 +2,7 @@
 
 **版本**: 5.1 (Implicit RC + Perceus + Acyclic Runtime Graph)  
 **核心目标**: 值语义不变, 运行时确定性释放, 低停顿, 面向 WASM 32 位环境, 最终不引入循环 GC
+**状态**: 运行时草案, 仅作实现参考, 需与 `doc/spec.md` 同步校准
 
 ---
 
@@ -22,7 +23,7 @@
 1. **Stack 层**: 基础类型与不逃逸临时值, 无 RC 成本。
 2. **Region 层**: 表达式短生命周期对象 (函数内 arena), 作用域退出批量释放。
 3. **RC Heap 层**: `Text/List/Map/Struct/Union` 等受管对象。
-4. **Runtime Graph 约束层**: 约束 Future/Task/FFI 关系为无强环图。
+4. **Runtime Graph 约束层**: 仅在后续引入 Future/Task/FFI 时约束其关系为无强环图。
 
 ### 2.2 分页策略
 
@@ -141,7 +142,7 @@ else:
 
 ---
 
-## 6. Future/Task/FFI 去环约束 (无循环 GC 前提)
+## 6. Future/Task/FFI 去环约束 (后续预留, 无循环 GC 前提)
 
 ### 6.1 核心约束
 

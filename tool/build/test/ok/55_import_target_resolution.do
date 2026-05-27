@@ -1,0 +1,7 @@
+User = @fixture/user_profile.do/User
+empty = @/list.do/empty
+_f32_pi = @/math.do/_f32_pi
+
+test "import target resolution" {
+    return
+}

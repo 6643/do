@@ -24,8 +24,8 @@ cd tool && zig build -Doptimize=ReleaseSmall
 Builds the compiler and installs `bin/do`.
 
 ```bash
-./bin/do build tool/build/test/cases/compile_ok/01_start_entry_valid.do -o /tmp/start.wat
-./bin/do test tool/build/test/cases/ok/01_path_get_single.do
+./bin/do build tool/build/test/compile_ok/01_start_entry_valid.do -o /tmp/start.wat
+./bin/do test tool/build/test/ok/01_path_get_single.do
 ```
 
 Compiles a regression fixture to WAT, or runs `test` declarations in a `.do` fixture.
@@ -45,7 +45,7 @@ For `.do` fixtures, use numbered names that describe the behavior, for example `
 
 ## Testing Guidelines
 
-Add behavior tests under `tool/build/test/cases/ok` for successful `do test` runs, and under `tool/build/test/cases/err` for expected `do test` failures. Add compile-mode tests under `compile_ok` or `compile_err`. Every failing case must include a matching `.expect` file with diagnostic substrings, one per line.
+Add behavior tests under `tool/build/test/ok` for successful `do test` runs, and under `tool/build/test/err` for expected `do test` failures. Add compile-mode tests under `compile_ok` or `compile_err`. Every failing case must include a matching `.expect` file with diagnostic substrings, one per line.
 
 Run `./tool/build/test/run_tests.sh` before handing off changes that touch syntax, parsing, semantic analysis, code generation, diagnostics, or CLI behavior.
 

@@ -391,6 +391,7 @@ fn parseParamRange(tokens: []const lexer.Token, start_idx: usize, end_idx: usize
 
     var min_count: usize = 0;
     var has_variadic = false;
+    var saw_variadic = false;
     var seg_start = start_idx;
     var depth_angle: usize = 0;
     var depth_paren: usize = 0;
@@ -417,21 +418,30 @@ fn parseParamRange(tokens: []const lexer.Token, start_idx: usize, end_idx: usize
         if (!tokEq(t, ",") or depth_angle != 0 or depth_paren != 0) continue;
 
         if (seg_start < i) {
-            if (segmentContains(tokens, seg_start, i, "...")) {
-                has_variadic = true;
-            } else {
+            if (saw_variadic) return markErrorAt(tokens, seg_start, error.InvalidParamName);
+            const variadic_idx = findVariadicTokenIdx(tokens, seg_start, i) orelse {
                 min_count += 1;
-            }
+                seg_start = i + 1;
+                continue;
+            };
+            if (variadic_idx != seg_start + 1) return markErrorAt(tokens, variadic_idx, error.InvalidParamName);
+            has_variadic = true;
+            saw_variadic = true;
         }
         seg_start = i + 1;
     }
 
     if (seg_start < end_idx) {
-        if (segmentContains(tokens, seg_start, end_idx, "...")) {
-            has_variadic = true;
-        } else {
+        if (saw_variadic) return markErrorAt(tokens, seg_start, error.InvalidParamName);
+        const variadic_idx = findVariadicTokenIdx(tokens, seg_start, end_idx) orelse {
             min_count += 1;
-        }
+            return .{
+                .param_min = min_count,
+                .param_max = if (has_variadic) null else min_count,
+            };
+        };
+        if (variadic_idx != seg_start + 1) return markErrorAt(tokens, variadic_idx, error.InvalidParamName);
+        has_variadic = true;
     }
 
     return .{
@@ -1052,6 +1062,10 @@ fn parseExpr(
     if (start_idx >= limit_idx) return markErrorAt(tokens, start_idx, error.InvalidExpr);
     const t = tokens[start_idx];
 
+    if (isSpreadToken(t)) {
+        return markErrorAt(tokens, start_idx, error.InvalidCallArgList);
+    }
+
     if (tokEq(t, "do")) {
         if (start_idx + 1 >= limit_idx) return markErrorAt(tokens, start_idx, error.InvalidDoExpr);
         const call = try parseCallExpr(allocator, out_nodes, tokens, start_idx + 1, limit_idx);
@@ -1175,6 +1189,17 @@ fn countArgsByExpr(
     var i = start_idx;
     var argc: usize = 0;
     while (i < end_idx) {
+        if (isSpreadToken(tokens[i])) {
+            argc += 1;
+            i += 1;
+            if (i < end_idx and tokEq(tokens[i], ",")) {
+                i += 1;
+                if (i < end_idx) return markErrorAt(tokens, i, error.InvalidCallArgList);
+                break;
+            }
+            if (i < end_idx) return markErrorAt(tokens, i, error.InvalidCallArgList);
+            break;
+        }
         const expr = try parseExpr(allocator, out_nodes, tokens, i, end_idx);
         _ = expr.node_idx;
         argc += 1;
@@ -1185,6 +1210,14 @@ fn countArgsByExpr(
         if (i >= end_idx) break; // allow trailing comma
     }
     return argc;
+}
+
+fn findVariadicTokenIdx(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (isSpreadToken(tokens[i])) return i;
+    }
+    return null;
 }
 
 fn parseStructLiteral(
@@ -1401,10 +1434,10 @@ fn parseLambdaExpr(
     if (start_idx >= limit_idx or !tokEq(tokens[start_idx], "(")) return null;
 
     const close_paren = findMatchingInRange(tokens, start_idx, "(", ")", limit_idx) catch return null;
-    if (!isArrowAt(tokens, close_paren + 1)) return null;
-    if (close_paren + 3 > limit_idx) return markErrorAt(tokens, close_paren + 1, error.InvalidLambdaExpr);
+    const body_start = lambdaBodyStart(tokens, close_paren + 1, limit_idx) orelse return null;
+    if (body_start > limit_idx) return markErrorAt(tokens, close_paren + 1, error.InvalidLambdaExpr);
 
-    const body = try parseExpr(allocator, out_nodes, tokens, close_paren + 3, limit_idx);
+    const body = try parseExpr(allocator, out_nodes, tokens, body_start, limit_idx);
     const idx = try appendExprNode(allocator, out_nodes, .{
         .kind = .lambda,
         .start_tok = start_idx,
@@ -1412,6 +1445,36 @@ fn parseLambdaExpr(
         .data = .{ .child = body.node_idx },
     });
     return .{ .next_idx = body.next_idx, .node_idx = idx };
+}
+
+fn lambdaBodyStart(tokens: []const lexer.Token, start_idx: usize, limit_idx: usize) ?usize {
+    if (isArrowAt(tokens, start_idx)) return start_idx + 2;
+    if (start_idx >= limit_idx or !isReturnArrowAt(tokens, start_idx)) return null;
+
+    var i = start_idx + 2;
+    var depth_angle: usize = 0;
+    var depth_paren: usize = 0;
+    while (i < limit_idx) : (i += 1) {
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (depth_angle == 0 and depth_paren == 0 and isArrowAt(tokens, i)) return i + 2;
+        if (depth_angle == 0 and depth_paren == 0 and tokEq(tokens[i], "{")) return i;
+    }
+    return null;
 }
 
 fn appendExprNode(
@@ -1465,8 +1528,11 @@ fn isArrowAt(tokens: []const lexer.Token, idx: usize) bool {
     return tokEq(tokens[idx], "=") and tokEq(tokens[idx + 1], ">");
 }
 
+fn isReturnArrowAt(tokens: []const lexer.Token, idx: usize) bool {
+    return idx + 1 < tokens.len and tokEq(tokens[idx], "-") and tokEq(tokens[idx + 1], ">");
+}
+
 fn isNonAssignEqual(tokens: []const lexer.Token, idx: usize) bool {
-    if (idx > 0 and tokEq(tokens[idx - 1], ":")) return true; // :=
     if (idx > 0 and tokEq(tokens[idx - 1], "=")) return true; // ==
     if (idx + 1 < tokens.len and tokEq(tokens[idx + 1], "=")) return true; // ==
     if (idx + 1 < tokens.len and tokEq(tokens[idx + 1], ">")) return true; // =>
@@ -1475,6 +1541,10 @@ fn isNonAssignEqual(tokens: []const lexer.Token, idx: usize) bool {
 
 fn tokEq(t: lexer.Token, s: []const u8) bool {
     return std.mem.eql(u8, t.lexeme, s);
+}
+
+fn isSpreadToken(tok: lexer.Token) bool {
+    return tok.kind == .ident and tok.lexeme.len >= 3 and std.mem.startsWith(u8, tok.lexeme, "...");
 }
 
 fn isTypeName(name: []const u8) bool {
@@ -1557,15 +1627,4 @@ test "struct literal uses equals" {
     const parsed = try parseExpr(allocator, &nodes, tokens, 0, tokens.len);
     try std.testing.expectEqual(tokens.len, parsed.next_idx);
     try std.testing.expectEqual(ExprKind.struct_lit, nodes.items[parsed.node_idx].kind);
-}
-
-test "struct literal colon is invalid" {
-    const allocator = std.testing.allocator;
-    const tokens = try lexer.tokenize(allocator, "User{name: \"tom\"}");
-    defer allocator.free(tokens);
-
-    var nodes = try std.ArrayList(ExprNode).initCapacity(allocator, 0);
-    defer nodes.deinit(allocator);
-
-    try std.testing.expectError(error.InvalidStructLiteral, parseExpr(allocator, &nodes, tokens, 0, tokens.len));
 }

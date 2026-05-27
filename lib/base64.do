@@ -71,7 +71,7 @@ encode_with(enc Encoding, data Text) -> Text {
             b0 u8 = at(data, i)
             b1 u8 = at(data, add(i, 1))
             b2 u8 = at(data, add(i, 2))
-            n u32 = add(add(mul(to_u32(b0), 65536), mul(to_u32(b1), 256)), to_u32(b2))
+            n u32 = add(mul(to_u32(b0), 65536), mul(to_u32(b1), 256), to_u32(b2))
             out = list_put(out, at(alphabet, to_usize(div(n, 262144))))
             out = list_put(out, at(alphabet, to_usize(rem(div(n, 4096), 64))))
             out = list_put(out, at(alphabet, to_usize(rem(div(n, 64), 64))))
@@ -172,7 +172,7 @@ decode_with(enc Encoding, data Text) -> Text | Base64Error {
                 if is(v1, Base64Error) return v1
                 v2 = decode_digit(c2, alphabet)
                 if is(v2, Base64Error) return v2
-                n u32 = add(add(mul(to_u32(v0), 262144), mul(to_u32(v1), 4096)), mul(to_u32(v2), 64))
+                n u32 = add(mul(to_u32(v0), 262144), mul(to_u32(v1), 4096), mul(to_u32(v2), 64))
                 out = list_put(out, to_u8(div(n, 65536)))
                 out = list_put(out, to_u8(rem(div(n, 256), 256)))
                 return get(out, .items)
@@ -186,7 +186,7 @@ decode_with(enc Encoding, data Text) -> Text | Base64Error {
             if is(v2, Base64Error) return v2
             v3 = decode_digit(c3, alphabet)
             if is(v3, Base64Error) return v3
-            n u32 = add(add(add(mul(to_u32(v0), 262144), mul(to_u32(v1), 4096)), mul(to_u32(v2), 64)), to_u32(v3))
+            n u32 = add(mul(to_u32(v0), 262144), mul(to_u32(v1), 4096), mul(to_u32(v2), 64), to_u32(v3))
             out = list_put(out, to_u8(div(n, 65536)))
             out = list_put(out, to_u8(rem(div(n, 256), 256)))
             out = list_put(out, to_u8(rem(n, 256)))
@@ -217,7 +217,7 @@ decode_with(enc Encoding, data Text) -> Text | Base64Error {
             if is(v1, Base64Error) return v1
             v2 = decode_digit(c2, alphabet)
             if is(v2, Base64Error) return v2
-            n u32 = add(add(mul(to_u32(v0), 262144), mul(to_u32(v1), 4096)), mul(to_u32(v2), 64))
+            n u32 = add(mul(to_u32(v0), 262144), mul(to_u32(v1), 4096), mul(to_u32(v2), 64))
             out = list_put(out, to_u8(div(n, 65536)))
             out = list_put(out, to_u8(rem(div(n, 256), 256)))
             return get(out, .items)

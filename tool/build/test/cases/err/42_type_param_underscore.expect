@@ -1,2 +1,0 @@
-InvalidConstraintDecl
-约束独立成行；类型参数名写作 `UpperIdent`，类型约束在前，函数约束在后

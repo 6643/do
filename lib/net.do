@@ -7,10 +7,9 @@ SocketAddr {
 
 socket_addr_v4(a u8, b u8, c u8, d u8, port u16) -> SocketAddr {
     ip u32 = add(
-        add(
-            add(mul(to_u32(a), 16777216), mul(to_u32(b), 65536)),
-            mul(to_u32(c), 256),
-        ),
+        mul(to_u32(a), 16777216),
+        mul(to_u32(b), 65536),
+        mul(to_u32(c), 256),
         to_u32(d),
     )
     return SocketAddr{

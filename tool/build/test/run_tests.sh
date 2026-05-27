@@ -3,12 +3,12 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TEST_DIR="$ROOT_DIR/tool/build/test"
-OK_DIR="$TEST_DIR/cases/ok"
-ERR_DIR="$TEST_DIR/cases/err"
-COMPILE_OK_DIR="$TEST_DIR/cases/compile_ok"
-COMPILE_ERR_DIR="$TEST_DIR/cases/compile_err"
-PENDING_OK_DIR="$TEST_DIR/cases/pending/ok"
-PENDING_ERR_DIR="$TEST_DIR/cases/pending/err"
+OK_DIR="$TEST_DIR/ok"
+ERR_DIR="$TEST_DIR/err"
+COMPILE_OK_DIR="$TEST_DIR/compile_ok"
+COMPILE_ERR_DIR="$TEST_DIR/compile_err"
+PENDING_OK_DIR="$TEST_DIR/pending/ok"
+PENDING_ERR_DIR="$TEST_DIR/pending/err"
 TMP_DIR="$TEST_DIR/tmp"
 RUN_PENDING="${RUN_PENDING:-0}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
@@ -123,9 +123,28 @@ run_compile_ok_case() {
     local stdout_file="$TMP_DIR/compile_${name}.stdout"
     local stderr_file="$TMP_DIR/compile_${name}.stderr"
     local wat_file="$TMP_DIR/compile_${name}.wat"
+    local expect_file="${case_file%.do}.expect"
 
     if "$DO_BIN" build "$case_file" -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
         if grep -Fq "ok:" "$stdout_file" && [[ -s "$wat_file" ]]; then
+            if [[ -f "$expect_file" ]]; then
+                local missing=0
+                while IFS= read -r line || [[ -n "$line" ]]; do
+                    [[ -z "$line" ]] && continue
+                    [[ "${line:0:1}" == "#" ]] && continue
+                    if grep -Fq "$line" "$wat_file"; then
+                        continue
+                    fi
+                    echo "[FAIL] compile ok  $name (missing expected wat text: $line)"
+                    missing=1
+                done < "$expect_file"
+                if [[ "$missing" -ne 0 ]]; then
+                    echo "[INFO] wat output for $name:"
+                    cat "$wat_file"
+                    ((fail_count += 1))
+                    return
+                fi
+            fi
             echo "[PASS] compile ok  $name"
             ((pass_count += 1))
             return

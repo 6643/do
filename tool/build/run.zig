@@ -3,6 +3,7 @@ const cli = @import("cli.zig");
 const codegen = @import("codegen.zig");
 const diag = @import("diag.zig");
 const entry = @import("entry.zig");
+const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
 const sema = @import("sema.zig");
@@ -37,6 +38,11 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
 
     sema.checkProgram(allocator, program, tokens) catch |err| {
         try diag.printCompileError(io, parsed_cli.input_path, source, tokens, err, semaErrorLoc());
+        std.process.exit(1);
+    };
+
+    imports.check(io, allocator, parsed_cli.input_path, tokens) catch |err| {
+        try diag.printCompileError(io, parsed_cli.input_path, source, tokens, err, importsErrorLoc());
         std.process.exit(1);
     };
 
@@ -75,6 +81,11 @@ pub fn runTest(init: std.process.Init, args: []const []const u8) !void {
         std.process.exit(1);
     };
 
+    imports.check(io, allocator, parsed_cli.input_path, tokens) catch |err| {
+        try diag.printCompileError(io, parsed_cli.input_path, source, tokens, err, importsErrorLoc());
+        std.process.exit(1);
+    };
+
     try runTests(io, allocator, parsed_cli, source, tokens);
 }
 
@@ -91,7 +102,7 @@ fn compileProgram(
         std.process.exit(1);
     };
 
-    const wat = codegen.emitWat(allocator, program) catch |err| {
+    const wat = codegen.emitWat(allocator, program, tokens) catch |err| {
         try diag.printCompileError(io, parsed_cli.input_path, source, tokens, err, null);
         std.process.exit(1);
     };
@@ -135,5 +146,10 @@ fn parserErrorLoc() ?diag.SourceLoc {
 
 fn semaErrorLoc() ?diag.SourceLoc {
     const site = sema.takeLastErrorSite() orelse return null;
+    return .{ .line = site.line, .col = site.col };
+}
+
+fn importsErrorLoc() ?diag.SourceLoc {
+    const site = imports.takeLastErrorSite() orelse return null;
     return .{ .line = site.line, .col = site.col };
 }

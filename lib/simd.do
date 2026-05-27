@@ -87,13 +87,9 @@ mul4(a Vec4<T>, b Vec4<T>) -> Vec4<T> {
 #T = i32 | i64 | f32 | f64
 dot4(a Vec4<T>, b Vec4<T>) -> T {
     return add(
-        add(
-            mul(get(a, .x), get(b, .x)),
-            mul(get(a, .y), get(b, .y)),
-        ),
-        add(
-            mul(get(a, .z), get(b, .z)),
-            mul(get(a, .w), get(b, .w)),
-        ),
+        mul(get(a, .x), get(b, .x)),
+        mul(get(a, .y), get(b, .y)),
+        mul(get(a, .z), get(b, .z)),
+        mul(get(a, .w), get(b, .w)),
     )
 }

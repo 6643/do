@@ -152,6 +152,8 @@ fn checkFuncParamNames(tokens: []const lexer.Token) !void {
 
 fn validateFuncParamNames(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !void {
     var expect_name = true;
+    var saw_variadic = false;
+    var expect_variadic_type = false;
     var depth_angle: usize = 0;
     var depth_paren: usize = 0;
     var i = start_idx;
@@ -175,11 +177,27 @@ fn validateFuncParamNames(tokens: []const lexer.Token, start_idx: usize, end_idx
             }
             if (depth_angle == 0 and depth_paren == 0 and tokEq(tokens[i], ",")) {
                 expect_name = true;
+                expect_variadic_type = false;
             }
             continue;
         }
 
+        if (expect_variadic_type) {
+            if (tokens[i].kind != .ident) return markErrorAt(tokens, i, error.InvalidParamName);
+            if (!isValidFuncParamTypeName(tokens[i].lexeme)) return markErrorAt(tokens, i, error.InvalidParamName);
+            expect_name = false;
+            expect_variadic_type = false;
+            continue;
+        }
+
         if (tokens[i].kind != .ident) return markErrorAt(tokens, i, error.InvalidParamName);
+        if (isSpreadToken(tokens[i])) {
+            if (saw_variadic) return markErrorAt(tokens, i, error.InvalidParamName);
+            saw_variadic = true;
+            expect_name = false;
+            expect_variadic_type = true;
+            continue;
+        }
         if (!isValidFuncParamName(tokens[i].lexeme)) return markErrorAt(tokens, i, error.InvalidParamName);
         expect_name = false;
     }
@@ -294,19 +312,48 @@ fn checkOneLambdaUsage(
 
     const close_paren = findMatching(tokens, node.start_tok, "(", ")") catch
         return markErrorAt(tokens, node.start_tok, error.InvalidLambdaExpr);
-    if (!isArrowAt(tokens, close_paren + 1)) {
+    const body_start = lambdaBodyStart(tokens, close_paren + 1, node.end_tok) orelse {
         return markErrorAt(tokens, close_paren, error.InvalidLambdaExpr);
-    }
+    };
 
     const params = try collectLambdaParamNames(allocator, tokens, node.start_tok + 1, close_paren);
     defer allocator.free(params);
 
-    const body_start = close_paren + 3;
     if (body_start > node.end_tok) return markErrorAt(tokens, close_paren, error.InvalidLambdaExpr);
 
     if (findLambdaCapture(tokens, body_start, node.end_tok, params)) |bad_idx| {
         return markErrorAt(tokens, bad_idx, error.InvalidLambdaExpr);
     }
+}
+
+fn lambdaBodyStart(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    if (isArrowAt(tokens, start_idx)) return start_idx + 2;
+    if (start_idx >= end_idx or !isReturnArrowAt(tokens, start_idx)) return null;
+
+    var i = start_idx + 2;
+    var depth_angle: usize = 0;
+    var depth_paren: usize = 0;
+    while (i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (depth_angle == 0 and depth_paren == 0 and isArrowAt(tokens, i)) return i + 2;
+        if (depth_angle == 0 and depth_paren == 0 and tokEq(tokens[i], "{")) return i;
+    }
+    return null;
 }
 
 fn isInlineLambdaSite(tokens: []const lexer.Token, start_idx: usize) bool {
@@ -413,6 +460,10 @@ fn containsName(names: []const []const u8, needle: []const u8) bool {
 
 fn isArrowAt(tokens: []const lexer.Token, idx: usize) bool {
     return idx + 1 < tokens.len and tokEq(tokens[idx], "=") and tokEq(tokens[idx + 1], ">");
+}
+
+fn isReturnArrowAt(tokens: []const lexer.Token, idx: usize) bool {
+    return idx + 1 < tokens.len and tokEq(tokens[idx], "-") and tokEq(tokens[idx + 1], ">");
 }
 
 fn rootExprStartTok(program: parser.Program, root_idx: usize) usize {
@@ -987,17 +1038,24 @@ fn checkTopValueDeclNames(tokens: []const lexer.Token) !void {
 }
 
 fn checkStructFieldNames(allocator: std.mem.Allocator, tokens: []const lexer.Token) !void {
+    var depth_brace: usize = 0;
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
         if (tokEq(tokens[i], "{")) {
-            if (parseImportDeclEnd(tokens, i)) |next_idx| {
-                i = next_idx - 1;
-                continue;
+            if (depth_brace == 0) {
+                if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                    i = next_idx - 1;
+                    continue;
+                }
             }
-        }
-        if (tokEq(tokens[i], "}")) {
+            depth_brace += 1;
             continue;
         }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
         if (!isTopLevelDeclHead(tokens, i)) continue;
         if (!isTypeDeclStart(tokens, i)) continue;
         if (i + 1 >= tokens.len or !tokEq(tokens[i + 1], "{")) continue;
@@ -1386,6 +1444,14 @@ fn isValidLoopBindingName(name: []const u8) bool {
 
 fn isValidFuncParamName(name: []const u8) bool {
     return std.mem.eql(u8, name, "_") or isLowerIdentName(name);
+}
+
+fn isValidFuncParamTypeName(name: []const u8) bool {
+    return name.len != 0 and (std.ascii.isUpper(name[0]) or name[0] == '[' or name[0] == '(' or name[0] == '.');
+}
+
+fn isSpreadToken(tok: lexer.Token) bool {
+    return tok.kind == .ident and tok.lexeme.len >= 3 and std.mem.startsWith(u8, tok.lexeme, "...");
 }
 
 fn checkTypeRefs(tokens: []const lexer.Token) !void {
@@ -1926,7 +1992,6 @@ fn isStructDeclBodyOpen(tokens: []const lexer.Token, open_idx: usize) bool {
 }
 
 fn isNonAssignEqual(tokens: []const lexer.Token, idx: usize) bool {
-    if (idx > 0 and tokEq(tokens[idx - 1], ":")) return true; // :=
     if (idx > 0 and tokEq(tokens[idx - 1], "=")) return true; // ==
     if (idx + 1 < tokens.len and tokEq(tokens[idx + 1], "=")) return true; // ==
     if (idx + 1 < tokens.len and tokEq(tokens[idx + 1], ">")) return true; // =>
