@@ -1,0 +1,2 @@
+DuplicateStructFieldName
+结构体字段名按去掉私有标记后的名字唯一; 每个字段名保留 1 个声明

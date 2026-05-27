@@ -1,0 +1,2 @@
+InvalidBraceExpr
+聚合构造语法: `Type{field = value}`
