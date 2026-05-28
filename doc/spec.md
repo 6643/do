@@ -378,7 +378,7 @@ NL               <- '\n'
 
 ### 5.1 定位
 
-1. `get/set/put/del/len/at` 作为开放函数族使用；`core` 只提供 struct 字段路径和 `[T]` 连续存储的基础读写 primitive，`std` 或用户库可按普通函数定义具体重载。
+1. `get/set/put/update/del/len/at` 作为开放函数族使用；`core` 只提供 struct 字段路径和 `[T]` 连续存储的基础读写 primitive，`std` 或用户库可按普通函数定义具体重载。
 2. 多段结构路径使用扁平参数形态；字段/索引路径统一从 `get/set` 进入，集合设计由库层承载。
 3. 结构字段读写统一只走 `get/set` 路径形态，例如 `get(x, .name)`、`set(x, .name, value)`。
 4. `put` 由 `std` 或用户库按普通函数定义；它可用于集合追加、插入、键写入或其他库自定义更新语义。
@@ -420,7 +420,7 @@ Text = [u8]
 7. `set(target, path, value) -> T | Error`，其中 `Error` 是 4.3 定义的合成错误聚合类型，`T` 是原始目标类型。
 8. `set` 只更新既有路径。
 9. `set` 遇到字段不存在、索引越界、用户集合键不存在或联合类型当前分支不匹配路径时返回 `Error`。
-10. `Struct` 支持 `get/set`；是否支持 `put/del` 由具体库函数决定，不由语法层限定。
+10. `Struct` 支持 `get/set`；是否支持 `put/update/del` 由具体库函数决定，不由语法层限定。
 11. `List/HashMap` 作为普通库类型存在；对应操作由 `std` 或用户库以普通函数提供。
 12. `HashMap` 作为循环源时使用库显式提供的 `keys(m)`、`values(m)` 或 `entries(m)` 这类返回可循环集合的函数。
 
@@ -582,8 +582,9 @@ Text = [u8]
 6. 这与 Go/Rust/Zig 的标准库分层方向一致：地址类型、TCP listener/stream 和 UDP socket 分离；差异是 `do` 的最终目标是 wasm，因此系统调用能力必须由宿主桥接提供。
 7. `lib/binary.do` 属于 `std` 字节编解码辅助库；hash/encoding 库按需显式 import。
 8. 高阶组合函数属于 `std`，不属于 `core`；例如 `lib/pipe.do` 提供同类型串联 `pipe(value T, funcs ...(T) -> T) -> T`。
-9. `lib/list.do` 提供 `len/items/at/get/put/set/del/clear` 等基础集合操作，以及 `map/filter/fold/reduce/find/find_index/any/all/count` 等函数式集合工具；这些函数基于 `List<T>`、inline callback 和 `len/at/put` 实现。
-10. `lib/hash_map.do` 提供 `len/keys/values/has/get/put/set/del/entries` 等基础映射操作；`del` 删除既有 key，缺失时返回 `MapError`。
+9. `lib/list.do` 提供 `len/items/at/get/put/set/update/del/clear` 等基础集合操作，以及 `map/filter/fold/reduce/find/find_index/any/all/count` 等函数式集合工具；这些函数基于 `List<T>`、inline callback 和 `len/at/put` 实现。
+10. `lib/hash_map.do` 提供 `len/keys/values/has/get/put/set/update/del/entries` 等基础映射操作；`update/del` 只作用于既有 key，缺失时返回 `MapError`。
+11. 当前 `lib/hash_map.do` 是标准库语义草案实现，可用连续 key/value 存储先锁定公开 API；真实 hash bucket、冲突处理和扩容策略后续在不改变公开函数族的前提下替换内部实现。
 
 ## 7. 诊断与测试约定
 
@@ -598,10 +599,10 @@ Text = [u8]
 
 ### 7.2 示例与测试提取
 
-1. 规范示例分为 `ok` 与 `err` 两类。
-2. `err` 示例必须给出期望诊断关键字；纯语法错误优先落在 7.1 的统一诊断烟测。
-3. 所有进入主线的示例都必须对应 `tool/build/test/ok` 或 `tool/build/test/err`；编译模式用例对应 `tool/build/test/compile_ok` 或 `tool/build/test/compile_err`。
-4. 建议统一采用如下 fenced code 块约定，便于脚本提取：
+1. 规范示例只展示合法写法。
+2. 语法或语义错误不在本文列反例；编译器在错误位置报告诊断，并展示对应的合法语法形态。
+3. 错误回归放在 `tool/build/test/err` 或 `tool/build/test/compile_err`；合法示例放在 `tool/build/test/ok` 或 `tool/build/test/compile_ok`。
+4. 建议统一采用如下 fenced code 块约定，便于脚本提取合法示例：
 
 ````markdown
 ```do ok name=path_get_single
@@ -614,10 +615,6 @@ first_name = get(users, 0, .name)
 
 ```do ok name=path_index_call_expr_segment
 first_name = get(users, add(i, 1), .name)
-```
-
-```do err name=path_index_type_mismatch
-first_name = get(users, .{0, .name})
 ```
 
 ```do ok name=put_list_append
@@ -642,10 +639,11 @@ xs = put(xs, 2)
 xs = del(xs, 0)
 ```
 
-```do ok name=set_map_missing_key
-m HashMap<Text, i32> = HashMap<Text, i32>{}
-result = set(m, "a", 1)
-if eq(result, MissingKey) return
+```do ok name=list_update
+xs List<i32> = List<i32>{}
+xs = put(xs, 1)
+xs = put(xs, 2)
+xs = update(xs, 1, (x i32) -> i32 => add(x, 40))
 ```
 
 ```do ok name=put_map_key
@@ -659,6 +657,12 @@ m = put(m, "a", 1)
 m = del(m, "a")
 ```
 
+```do ok name=hash_map_update
+m HashMap<Text, i32> = HashMap<Text, i32>{}
+m = put(m, "a", 1)
+m = update(m, "a", (x i32) -> i32 => add(x, 40))
+```
+
 ```do ok name=put_struct_field
 user = put(user, .name, "tom")
 ```
@@ -666,7 +670,7 @@ user = put(user, .name, "tom")
 
 5. 新语法进入主干前，必须补对应 `tool/build/test` 用例并更新本文。
 6. `loop` 支持无限循环 `loop { ... }`、集合循环 `loop v, i = xs` / `loop _, i = xs` / `loop v, _ = xs`，以及消费循环 `loop v = recv(ch)`；集合源由可见库提供 `len(source) -> usize` 与 `at(source, usize) -> V`。
-7. 建议同时覆盖下列正例与语义/契约错误:
+7. 建议同时覆盖下列正例:
 
 ````markdown
 ```do ok name=call_multiline_trailing_comma
@@ -706,26 +710,6 @@ _f32_pi = @/math.do/_f32_pi
 console_log = @env/console_log(i32, i32) -> nil
 ```
 
-```do err name=duplicate_func_param_types
-same(a User, b User) -> bool {
-    return true
-}
-
-same(x User, y User) -> bool {
-    return true
-}
-```
-
-```do err name=return_type_not_overload_key
-parse(s Text) -> i32 {
-    return 0
-}
-
-parse(s Text) -> f64 {
-    return 0
-}
-```
-
 ```do ok name=func_omit_nil_return
 log(msg Text) {
     return
@@ -758,16 +742,6 @@ map(xs, (x i32) -> i32 {
 })
 ```
 
-```do err name=func_omit_return_value
-f() {
-    return 1
-}
-```
-
-```do err name=arrow_omit_return_value
-f() => add(1, 2)
-```
-
 ```do ok name=test_return_nil
 test "early return" {
     if ok return
@@ -781,30 +755,6 @@ test "explicit nil" {
 }
 ```
 
-```do err name=test_return_value
-test "bad value" {
-    return 1
-}
-```
-
-```do err name=test_return_multi
-test "bad multi" {
-    return 1, 2
-}
-```
-
-```do err name=overload_literal_expected_return_no_arg_context
-foo(x i32) -> i32 {
-    return x
-}
-
-foo(x i64) -> i64 {
-    return x
-}
-
-b i32 = foo(1)
-```
-
 ```do ok name=overload_typed_arg_selects_candidate
 foo(x i32) -> i32 {
     return x
@@ -816,18 +766,6 @@ foo(x i64) -> i64 {
 
 a i32 = 1
 b i32 = foo(a)
-```
-
-```do err name=overload_literal_ambiguous_same_return
-bar(x i32) -> i32 {
-    return x
-}
-
-bar(x i64) -> i32 {
-    return 0
-}
-
-b i32 = bar(1)
 ```
 
 ```do ok name=typed_bind_drives_call
@@ -850,10 +788,6 @@ a = double(v)
 if is(v, i32 | i64) return
 ```
 
-```do err name=is_nil_value
-if is(v, nil) return
-```
-
 ```do ok name=eq_nil_guard_narrows
 if eq(v, nil) return
 name = get(v, .name)
@@ -867,21 +801,6 @@ if and(ne(v, nil), eq(get(v, .name), "tom")) return
 FileError = FileNotFound | PermissionDenied | Unknown
 v i32 | FileError = FileNotFound
 if eq(v, FileNotFound) return
-```
-
-```do err name=error_type_name_value
-FileError = FileNotFound | PermissionDenied | Unknown
-v i32 | FileError = FileError
-```
-
-```do err name=non_error_bare_branch
-Status = Open | Closed
-```
-
-```do err name=union_return_literal_ambiguous
-fun() -> i32 | i8 {
-    return 0
-}
 ```
 
 ```do ok name=multi_return_assign
@@ -900,42 +819,6 @@ div_mod(a i32, b i32) -> i32, i32 {
 wrap() -> i32, i32 {
     return div_mod(7, 3)
 }
-```
-
-```do err name=multi_return_single_bind
-div_mod(a i32, b i32) -> i32, i32 {
-    return 1, 2
-}
-
-x = div_mod(7, 3)
-```
-
-```do err name=multi_return_as_arg
-div_mod(a i32, b i32) -> i32, i32 {
-    return 1, 2
-}
-
-Pair {
-    value i32
-}
-
-use_pair(pair Pair) -> nil {
-    return
-}
-
-use_pair(div_mod(7, 3))
-```
-
-```do err name=multi_return_in_aggregate
-div_mod(a i32, b i32) -> i32, i32 {
-    return 1, 2
-}
-
-Pair {
-    value i32
-}
-
-x Pair = .{value = div_mod(7, 3)}
 ```
 
 ```do ok name=struct_explicit_value
@@ -1158,16 +1041,6 @@ make_user() -> User {
 }
 ```
 
-```do err name=field_default_type_mismatch
-read_time() -> i64 | Error {
-    return FileNotFound
-}
-
-User {
-    created_at i64 = read_time()
-}
-```
-
 ```do ok name=if_guard_return
 if ok return
 ```
@@ -1212,14 +1085,6 @@ str Text =
 str Text = \\a\nb
 ```
 
-```do err name=normal_string_untyped_new_bind
-str = "abc"
-```
-
-```do err name=line_string_untyped_new_bind
-str = \\abc
-```
-
 ```do ok name=lambda_callback_site
 result = map(xs, (x i32) -> i32 => add(x, 1))
 ```
@@ -1227,15 +1092,6 @@ result = map(xs, (x i32) -> i32 => add(x, 1))
 ```do ok name=inline_lambda_local_capture
 step i32 = 1
 result = map(xs, _(x i32) => add(x, step))
-```
-
-```do err name=lambda_value_bind
-f = (x i32) => add(x, 1)
-```
-
-```do err name=lambda_local_capture
-step i32 = 1
-result = map(xs, (x i32) => add(x, step))
 ```
 
 ```do ok name=generic_variadic_sum

@@ -121,6 +121,20 @@ set(m HashMap<K, V>, key K, value V) -> HashMap<K, V> | MapError {
 
 #K
 #V
+update(m HashMap<K, V>, key K, f (V) -> V) -> HashMap<K, V> | MapError {
+    idx = .index_of(m, key)
+    if eq(idx, nil) return MissingKey
+    index usize = idx
+    next_vals [V] = set(get(m, .vals), index, f(at(get(m, .vals), index)))
+    return HashMap<K, V>{
+        len = len(m),
+        keys = get(m, .keys),
+        vals = next_vals,
+    }
+}
+
+#K
+#V
 del(m HashMap<K, V>, key K) -> HashMap<K, V> | MapError {
     idx = .index_of(m, key)
     if eq(idx, nil) return MissingKey

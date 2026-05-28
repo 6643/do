@@ -1,4 +1,6 @@
 List = @/list.do/List
+list_len = @/list.do/len
+list_get = @/list.do/get
 list_put = @/list.do/put
 list_map = @/list.do/map
 list_filter = @/list.do/filter
@@ -25,5 +27,18 @@ test "list functional ops" {
     has_even bool = list_any(xs, (x i32) -> bool => eq(rem(x, 2), 0))
     all_pos bool = list_all(xs, (x i32) -> bool => gt(x, 0))
     even_count usize = list_count(xs, (x i32) -> bool => eq(rem(x, 2), 0))
-    return
+
+    ok bool = true
+    ok = and(ok, eq(list_len(ys), 3))
+    ok = and(ok, eq(list_get(ys, 2), 4))
+    ok = and(ok, eq(list_len(even), 1))
+    ok = and(ok, eq(list_get(even, 0), 2))
+    ok = and(ok, eq(sum, 6))
+    ok = and(ok, eq(reduced, 6))
+    ok = and(ok, eq(found, 2))
+    ok = and(ok, eq(found_i, 1))
+    ok = and(ok, has_even)
+    ok = and(ok, all_pos)
+    ok = and(ok, eq(even_count, 1))
+    if ok return
 }

@@ -49,6 +49,12 @@ set(xs List<T>, i usize, value T) -> List<T> | ListError {
 }
 
 #T
+update(xs List<T>, i usize, f (T) -> T) -> List<T> | ListError {
+    if ge(i, len(xs)) return OutOfBounds
+    return set(xs, i, f(at(xs, i)))
+}
+
+#T
 del(xs List<T>, i usize) -> List<T> | ListError {
     if ge(i, len(xs)) return OutOfBounds
     next_items [T] = .{}
