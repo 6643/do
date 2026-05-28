@@ -378,11 +378,12 @@ NL               <- '\n'
 
 ### 5.1 定位
 
-1. `get/set/put/len/at` 作为开放函数族使用；`core` 只提供 struct 字段路径和 `[T]` 连续存储的基础读写 primitive，`std` 或用户库可按普通函数定义具体重载。
+1. `get/set/put/del/len/at` 作为开放函数族使用；`core` 只提供 struct 字段路径和 `[T]` 连续存储的基础读写 primitive，`std` 或用户库可按普通函数定义具体重载。
 2. 多段结构路径使用扁平参数形态；字段/索引路径统一从 `get/set` 进入，集合设计由库层承载。
 3. 结构字段读写统一只走 `get/set` 路径形态，例如 `get(x, .name)`、`set(x, .name, value)`。
 4. `put` 由 `std` 或用户库按普通函数定义；它可用于集合追加、插入、键写入或其他库自定义更新语义。
-5. `update` 作为普通库函数定义；需要时可由 `std` 基于 `get/set` 提供。
+5. `del` 由 `std` 或用户库按普通函数定义；它可用于列表索引删除、映射 key 删除或其他库自定义删除语义。
+6. `update` 作为普通库函数定义；需要时可由 `std` 基于 `get/set` 提供。
 
 ### 5.2 路径形态
 
@@ -419,7 +420,7 @@ Text = [u8]
 7. `set(target, path, value) -> T | Error`，其中 `Error` 是 4.3 定义的合成错误聚合类型，`T` 是原始目标类型。
 8. `set` 只更新既有路径。
 9. `set` 遇到字段不存在、索引越界、用户集合键不存在或联合类型当前分支不匹配路径时返回 `Error`。
-10. `Struct` 支持 `get/set`；是否支持 `put` 由具体库函数决定，不由语法层限定。
+10. `Struct` 支持 `get/set`；是否支持 `put/del` 由具体库函数决定，不由语法层限定。
 11. `List/HashMap` 作为普通库类型存在；对应操作由 `std` 或用户库以普通函数提供。
 12. `HashMap` 作为循环源时使用库显式提供的 `keys(m)`、`values(m)` 或 `entries(m)` 这类返回可循环集合的函数。
 
@@ -581,7 +582,8 @@ Text = [u8]
 6. 这与 Go/Rust/Zig 的标准库分层方向一致：地址类型、TCP listener/stream 和 UDP socket 分离；差异是 `do` 的最终目标是 wasm，因此系统调用能力必须由宿主桥接提供。
 7. `lib/binary.do` 属于 `std` 字节编解码辅助库；hash/encoding 库按需显式 import。
 8. 高阶组合函数属于 `std`，不属于 `core`；例如 `lib/pipe.do` 提供同类型串联 `pipe(value T, funcs ...(T) -> T) -> T`。
-9. `lib/list.do` 提供 `map/filter/fold/reduce/find/find_index/any/all/count` 等函数式集合工具；这些函数基于 `List<T>`、inline callback 和 `len/at/put` 实现。
+9. `lib/list.do` 提供 `len/items/at/get/put/set/del/clear` 等基础集合操作，以及 `map/filter/fold/reduce/find/find_index/any/all/count` 等函数式集合工具；这些函数基于 `List<T>`、inline callback 和 `len/at/put` 实现。
+10. `lib/hash_map.do` 提供 `len/keys/values/has/get/put/set/del/entries` 等基础映射操作；`del` 删除既有 key，缺失时返回 `MapError`。
 
 ## 7. 诊断与测试约定
 
@@ -633,6 +635,13 @@ xs = set(xs, 1, 9)
 xs = put(xs, 8)
 ```
 
+```do ok name=list_del
+xs List<i32> = List<i32>{}
+xs = put(xs, 1)
+xs = put(xs, 2)
+xs = del(xs, 0)
+```
+
 ```do ok name=set_map_missing_key
 m HashMap<Text, i32> = HashMap<Text, i32>{}
 result = set(m, "a", 1)
@@ -642,6 +651,12 @@ if eq(result, MissingKey) return
 ```do ok name=put_map_key
 m HashMap<Text, i32> = HashMap<Text, i32>{}
 m = put(m, "a", 1)
+```
+
+```do ok name=hash_map_del
+m HashMap<Text, i32> = HashMap<Text, i32>{}
+m = put(m, "a", 1)
+m = del(m, "a")
 ```
 
 ```do ok name=put_struct_field

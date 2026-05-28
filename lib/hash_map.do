@@ -121,6 +121,27 @@ set(m HashMap<K, V>, key K, value V) -> HashMap<K, V> | MapError {
 
 #K
 #V
+del(m HashMap<K, V>, key K) -> HashMap<K, V> | MapError {
+    idx = .index_of(m, key)
+    if eq(idx, nil) return MissingKey
+    index usize = idx
+    next_keys [K] = .{}
+    next_vals [V] = .{}
+    loop k, i = get(m, .keys) {
+        if ne(i, index) {
+            next_keys = put(next_keys, k)
+            next_vals = put(next_vals, at(get(m, .vals), i))
+        }
+    }
+    return HashMap<K, V>{
+        len = sub(len(m), 1),
+        keys = next_keys,
+        vals = next_vals,
+    }
+}
+
+#K
+#V
 entries(m HashMap<K, V>) -> List<Entry<K, V>> {
     out List<Entry<K, V>> = List<Entry<K, V>>{}
     i usize = 0
