@@ -1,0 +1,2 @@
+InvalidImportDecl
+导入使用 `name = @path/file.do/symbol`

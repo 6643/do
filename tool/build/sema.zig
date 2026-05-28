@@ -42,7 +42,7 @@ pub fn checkProgram(
     try checkFuncDeclNaming(tokens);
     try checkFuncParamNames(tokens);
     try checkPathAccess(tokens);
-    try checkModernImports(tokens);
+    try checkHostImports(tokens);
     if (program.top_level_count == 0) return markErrorAt(tokens, 0, error.NoTopLevelDecl);
 
     try checkTypeDeclNaming(tokens);
@@ -1110,13 +1110,21 @@ fn isTopLevelDeclHead(tokens: []const lexer.Token, idx: usize) bool {
     return true;
 }
 
-fn checkModernImports(tokens: []const lexer.Token) !void {
+fn checkHostImports(tokens: []const lexer.Token) !void {
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
         if (!isTopLevelDeclHead(tokens, i)) continue;
-        if (!isModernImportAssign(tokens, i)) continue;
-        try validateModernImport(tokens, i);
+        if (!isHostImportDeclStart(tokens, i)) continue;
+        try validateHostImportDecl(tokens, i);
     }
+}
+
+fn isHostImportDeclStart(tokens: []const lexer.Token, idx: usize) bool {
+    const eq_idx = topLevelLineAssignIdx(tokens, idx) orelse return false;
+    const line_end = findLineEndIdx(tokens, idx);
+    const at_idx = eq_idx + 1;
+    if (at_idx >= line_end or !tokEq(tokens[at_idx], "@")) return false;
+    return isHostImportLine(tokens, at_idx, line_end);
 }
 
 fn isModernImportAssign(tokens: []const lexer.Token, idx: usize) bool {
@@ -1124,7 +1132,7 @@ fn isModernImportAssign(tokens: []const lexer.Token, idx: usize) bool {
     return eq_idx + 1 < tokens.len and tokEq(tokens[eq_idx + 1], "@");
 }
 
-fn validateModernImport(tokens: []const lexer.Token, name_idx: usize) !void {
+fn validateHostImportDecl(tokens: []const lexer.Token, name_idx: usize) !void {
     if (tokens[name_idx].kind != .ident) return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
     if (tokens[name_idx].lexeme.len != 0 and tokens[name_idx].lexeme[0] == '.') {
         return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
@@ -1139,17 +1147,10 @@ fn validateModernImport(tokens: []const lexer.Token, name_idx: usize) !void {
     if (at_idx >= line_end or !tokEq(tokens[at_idx], "@")) return markErrorAt(tokens, eq_idx, error.InvalidImportDecl);
     if (at_idx + 1 >= line_end) return markErrorAt(tokens, at_idx, error.InvalidImportDecl);
 
-    if (isHostImportLine(tokens, at_idx, line_end)) {
-        if (!isLowerIdentName(tokens[name_idx].lexeme)) {
-            return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
-        }
-        try validateHostImportLine(tokens, at_idx, line_end);
-    } else {
-        const target_idx = try validateLocalImportPath(tokens, at_idx + 1, line_end);
-        if (!importAliasMatchesTarget(tokens[name_idx].lexeme, tokens[target_idx].lexeme)) {
-            return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
-        }
+    if (!isLowerIdentName(tokens[name_idx].lexeme)) {
+        return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
     }
+    try validateHostImportLine(tokens, at_idx, line_end);
 }
 
 fn isValidImportName(name: []const u8) bool {

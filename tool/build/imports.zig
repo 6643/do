@@ -21,6 +21,54 @@ const DeclKind = enum {
     value,
 };
 
+const ModuleRecord = struct {
+    path: []const u8,
+    source: ?[]const u8,
+    owns_source: bool,
+    tokens: []const lexer.Token,
+    owns_tokens: bool,
+};
+
+const Context = struct {
+    io: std.Io,
+    allocator: std.mem.Allocator,
+    modules: std.ArrayList(ModuleRecord),
+    stack: std.ArrayList([]const u8),
+
+    fn init(io: std.Io, allocator: std.mem.Allocator) Context {
+        return .{
+            .io = io,
+            .allocator = allocator,
+            .modules = std.ArrayList(ModuleRecord).empty,
+            .stack = std.ArrayList([]const u8).empty,
+        };
+    }
+
+    fn deinit(self: *Context) void {
+        for (self.modules.items) |module| {
+            if (module.owns_source) self.allocator.free(module.source.?);
+            if (module.owns_tokens) self.allocator.free(module.tokens);
+            self.allocator.free(module.path);
+        }
+        self.modules.deinit(self.allocator);
+        self.stack.deinit(self.allocator);
+    }
+
+    fn findModule(self: *const Context, path: []const u8) ?usize {
+        for (self.modules.items, 0..) |module, idx| {
+            if (std.mem.eql(u8, module.path, path)) return idx;
+        }
+        return null;
+    }
+
+    fn isLoading(self: *const Context, path: []const u8) bool {
+        for (self.stack.items) |it| {
+            if (std.mem.eql(u8, it, path)) return true;
+        }
+        return false;
+    }
+};
+
 pub const ErrorSite = struct {
     line: usize,
     col: usize,
@@ -41,37 +89,9 @@ pub fn check(
     tokens: []const lexer.Token,
 ) !void {
     last_error_site = null;
-    var i: usize = 0;
-    while (i < tokens.len) : (i += 1) {
-        const import_ref = parseLocalImport(tokens, i) orelse continue;
-        try checkOne(io, allocator, input_path, tokens, import_ref);
-        i = findLineEndIdx(tokens, i) - 1;
-    }
-}
-
-fn checkOne(
-    io: std.Io,
-    allocator: std.mem.Allocator,
-    input_path: []const u8,
-    tokens: []const lexer.Token,
-    import_ref: ImportRef,
-) !void {
-    const path = try resolvePath(io, allocator, input_path, tokens, import_ref);
-    defer allocator.free(path);
-
-    const source = std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(16 * 1024 * 1024)) catch
-        return markErrorAt(tokens, import_ref.path_start_idx, error.InvalidImportDecl);
-    defer allocator.free(source);
-
-    const imported_tokens = lexer.tokenize(allocator, source) catch
-        return markErrorAt(tokens, import_ref.path_start_idx, error.InvalidImportDecl);
-    defer allocator.free(imported_tokens);
-
-    const target_kind = findPublicDeclKind(imported_tokens, import_ref.target) orelse
-        return markErrorAt(tokens, import_ref.path_start_idx, error.InvalidImportDecl);
-    if (!aliasMatchesKind(tokens[import_ref.alias_idx].lexeme, target_kind)) {
-        return markErrorAt(tokens, import_ref.alias_idx, error.InvalidImportDecl);
-    }
+    var ctx = Context.init(io, allocator);
+    defer ctx.deinit();
+    try loadModule(&ctx, input_path, tokens, false);
 }
 
 fn parseLocalImport(tokens: []const lexer.Token, idx: usize) ?ImportRef {
@@ -88,6 +108,8 @@ fn parseLocalImport(tokens: []const lexer.Token, idx: usize) ?ImportRef {
     var prefix: ImportPrefix = .local;
     if (start_idx < line_end and tokEq(tokens[start_idx], "~")) {
         prefix = .lib;
+        start_idx += 1;
+        if (start_idx >= line_end or !tokEq(tokens[start_idx], "/")) return null;
         start_idx += 1;
     } else if (start_idx < line_end and tokEq(tokens[start_idx], "/")) {
         prefix = .std;
@@ -141,6 +163,73 @@ fn resolvePath(
             return std.fs.path.join(allocator, &.{ "src", rel });
         },
     }
+}
+
+fn loadModule(
+    ctx: *Context,
+    path: []const u8,
+    tokens_opt: ?[]const lexer.Token,
+    owns_tokens: bool,
+) !void {
+    if (ctx.findModule(path) != null) return;
+    if (ctx.isLoading(path)) return error.InvalidImportDecl;
+
+    try ctx.stack.append(ctx.allocator, path);
+    defer _ = ctx.stack.pop();
+
+    var source_opt: ?[]const u8 = null;
+    var tokens_opt_owned: ?[]const lexer.Token = null;
+    const tokens = if (tokens_opt) |tokens| tokens else blk: {
+        const source = std.Io.Dir.cwd().readFileAlloc(ctx.io, path, ctx.allocator, .limited(16 * 1024 * 1024)) catch
+            return error.InvalidImportDecl;
+        source_opt = source;
+        const loaded_tokens = lexer.tokenize(ctx.allocator, source) catch {
+            ctx.allocator.free(source);
+            return error.InvalidImportDecl;
+        };
+        tokens_opt_owned = loaded_tokens;
+
+        break :blk loaded_tokens;
+    };
+    const owned = if (tokens_opt == null) true else owns_tokens;
+    if (tokens_opt == null) {
+        errdefer {
+            if (tokens_opt_owned) |owned_tokens| ctx.allocator.free(owned_tokens);
+            if (source_opt) |src| ctx.allocator.free(src);
+        }
+    }
+
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        const import_ref = parseLocalImport(tokens, i) orelse continue;
+        const child_path = resolvePath(ctx.io, ctx.allocator, path, tokens, import_ref) catch
+            return markErrorAt(tokens, import_ref.alias_idx, error.InvalidImportDecl);
+        defer ctx.allocator.free(child_path);
+
+        loadModule(ctx, child_path, null, false) catch
+            return markErrorAt(tokens, import_ref.alias_idx, error.InvalidImportDecl);
+
+        const child_idx = ctx.findModule(child_path) orelse
+            return markErrorAt(tokens, import_ref.alias_idx, error.InvalidImportDecl);
+        const child_tokens = ctx.modules.items[child_idx].tokens;
+        const target_kind = findPublicDeclKind(child_tokens, import_ref.target) orelse
+            return markErrorAt(tokens, import_ref.alias_idx, error.InvalidImportDecl);
+        if (!aliasMatchesKind(tokens[import_ref.alias_idx].lexeme, target_kind)) {
+            return markErrorAt(tokens, import_ref.alias_idx, error.InvalidImportDecl);
+        }
+
+        i = findLineEndIdx(tokens, i) - 1;
+    }
+
+    const cache_path = try ctx.allocator.dupe(u8, path);
+    errdefer ctx.allocator.free(cache_path);
+    try ctx.modules.append(ctx.allocator, .{
+        .path = cache_path,
+        .source = source_opt,
+        .owns_source = source_opt != null,
+        .tokens = tokens,
+        .owns_tokens = owned,
+    });
 }
 
 fn importPathText(
