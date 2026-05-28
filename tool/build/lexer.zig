@@ -49,6 +49,18 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
         const start = i;
         const start_col = col;
 
+        if (ch == '.' and i + 2 < source.len and source[i + 1] == '.' and source[i + 2] == '.') {
+            i += 3;
+            col += 3;
+            try out.append(allocator, .{
+                .kind = .symbol,
+                .lexeme = source[start..i],
+                .line = line,
+                .col = start_col,
+            });
+            continue;
+        }
+
         if (isIdentStart(ch)) {
             i += 1;
             col += 1;
@@ -204,6 +216,18 @@ test "dot prefixed names tokenize as single identifiers" {
     try std.testing.expectEqualStrings(".name", tokens[0].lexeme);
     try std.testing.expectEqual(TokenKind.ident, tokens[1].kind);
     try std.testing.expectEqualStrings(".normalize_name", tokens[1].lexeme);
+}
+
+test "spread token is separate from identifier" {
+    const allocator = std.testing.allocator;
+    const tokens = try tokenize(allocator, "...rest");
+    defer allocator.free(tokens);
+
+    try std.testing.expectEqual(@as(usize, 2), tokens.len);
+    try std.testing.expectEqual(TokenKind.symbol, tokens[0].kind);
+    try std.testing.expectEqualStrings("...", tokens[0].lexeme);
+    try std.testing.expectEqual(TokenKind.ident, tokens[1].kind);
+    try std.testing.expectEqualStrings("rest", tokens[1].lexeme);
 }
 
 test "loop labels keep apostrophe as separate symbol" {

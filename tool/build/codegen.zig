@@ -179,7 +179,7 @@ fn findStartFunc(tokens: []const lexer.Token) ?usize {
             continue;
         }
         if (depth_brace != 0) continue;
-        if (tokens[i].kind == .ident and std.mem.eql(u8, tokens[i].lexeme, "_start") and tokEq(tokens[i + 1], "(")) return i;
+        if (tokens[i].kind == .ident and std.mem.eql(u8, tokens[i].lexeme, "start") and tokEq(tokens[i + 1], "(")) return i;
     }
     return null;
 }

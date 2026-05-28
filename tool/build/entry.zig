@@ -6,7 +6,7 @@ pub fn validateStart(program: parser.Program) !void {
     var start_sig: ?parser.FuncSig = null;
 
     for (program.func_sigs) |sig| {
-        if (!std.mem.eql(u8, sig.name, "_start")) continue;
+        if (!std.mem.eql(u8, sig.name, "start")) continue;
         start_count += 1;
         if (start_sig == null) start_sig = sig;
     }

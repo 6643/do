@@ -1,5 +1,6 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
+const parser = @import("parser.zig");
 
 const ImportRef = struct {
     alias_idx: usize,
@@ -27,6 +28,36 @@ const ModuleRecord = struct {
     owns_source: bool,
     tokens: []const lexer.Token,
     owns_tokens: bool,
+};
+
+const FuncParamShape = union(enum) {
+    other,
+    value: ?[]const u8,
+    func: FuncTypeShape,
+};
+
+const FuncTypeShape = struct {
+    param_count: usize,
+    param_types: []?[]const u8,
+    return_type: ?[]const u8,
+};
+
+const FuncShape = struct {
+    name: []const u8,
+    start_idx: usize,
+    param_shapes: []FuncParamShape,
+    return_type: ?[]const u8,
+};
+
+const CallArgShape = union(enum) {
+    other,
+    ident: []const u8,
+};
+
+const CallShape = struct {
+    name: []const u8,
+    start_idx: usize,
+    arg_shapes: []CallArgShape,
 };
 
 const Context = struct {
@@ -199,6 +230,12 @@ fn loadModule(
         }
     }
 
+    var imported_func_shapes = std.ArrayList(FuncShape).empty;
+    defer {
+        freeFuncShapeItems(ctx.allocator, imported_func_shapes.items);
+        imported_func_shapes.deinit(ctx.allocator);
+    }
+
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
         const import_ref = parseLocalImport(tokens, i) orelse continue;
@@ -217,9 +254,21 @@ fn loadModule(
         if (!aliasMatchesKind(tokens[import_ref.alias_idx].lexeme, target_kind)) {
             return markErrorAt(tokens, import_ref.alias_idx, error.InvalidImportDecl);
         }
+        if (target_kind == .func) {
+            try checkImportedFuncCalls(ctx, tokens, import_ref, child_tokens);
+            try appendImportedAliasFuncShapes(
+                ctx.allocator,
+                &imported_func_shapes,
+                tokens[import_ref.alias_idx].lexeme,
+                import_ref.target,
+                child_tokens,
+            );
+        }
 
         i = findLineEndIdx(tokens, i) - 1;
     }
+
+    try checkImportedFunctionValueResolution(ctx.allocator, tokens, imported_func_shapes.items);
 
     const cache_path = try ctx.allocator.dupe(u8, path);
     errdefer ctx.allocator.free(cache_path);
@@ -286,6 +335,584 @@ fn findPublicDeclKind(tokens: []const lexer.Token, target: []const u8) ?DeclKind
     return null;
 }
 
+fn checkImportedFuncCalls(
+    ctx: *Context,
+    tokens: []const lexer.Token,
+    import_ref: ImportRef,
+    child_tokens: []const lexer.Token,
+) !void {
+    var program = parser.parseProgram(ctx.allocator, child_tokens, child_tokens.len) catch
+        return markErrorAt(tokens, import_ref.alias_idx, error.InvalidImportDecl);
+    defer program.deinit(ctx.allocator);
+
+    const alias = tokens[import_ref.alias_idx].lexeme;
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (tokens[i].kind != .ident) continue;
+        if (!std.mem.eql(u8, tokens[i].lexeme, alias)) continue;
+        if (i + 1 >= tokens.len or !tokEq(tokens[i + 1], "(")) continue;
+        if (depth_brace == 0 and isFuncDeclStart(tokens, i)) continue;
+
+        const close_paren = findMatching(tokens, i + 1, "(", ")") catch
+            return markErrorAt(tokens, i, error.InvalidCallArgList);
+        const arg_count = try countCallArgs(tokens, i + 2, close_paren);
+        if (!hasCompatibleFuncSig(program.func_sigs, import_ref.target, arg_count)) {
+            return markErrorAt(tokens, i, error.NoMatchingCall);
+        }
+        i = close_paren;
+    }
+}
+
+fn hasCompatibleFuncSig(func_sigs: []const parser.FuncSig, target: []const u8, arg_count: usize) bool {
+    for (func_sigs) |sig| {
+        if (!std.mem.eql(u8, sig.name, target)) continue;
+        if (sig.param_min > arg_count) continue;
+        if (sig.param_max) |max_count| {
+            if (arg_count > max_count) continue;
+        }
+        return true;
+    }
+    return false;
+}
+
+fn checkImportedFunctionValueResolution(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    imported_funcs: []const FuncShape,
+) !void {
+    if (imported_funcs.len == 0) return;
+
+    const local_funcs = try collectFuncShapes(allocator, tokens);
+    defer freeFuncShapes(allocator, local_funcs);
+
+    var program = parser.parseProgram(allocator, tokens, tokens.len) catch
+        return markErrorAt(tokens, 0, error.InvalidImportDecl);
+    defer program.deinit(allocator);
+
+    var calls = std.ArrayList(CallShape).empty;
+    defer {
+        for (calls.items) |call| allocator.free(call.arg_shapes);
+        calls.deinit(allocator);
+    }
+
+    try collectCallShapesFromProgram(allocator, program, tokens, &calls);
+    for (calls.items) |call| {
+        if (!callUsesImportedFunctionValue(local_funcs, imported_funcs, call)) continue;
+        if (countCompatibleFunctionValueCandidates(local_funcs, imported_funcs, call) != 1) {
+            return markErrorAt(tokens, call.start_idx, error.NoMatchingCall);
+        }
+    }
+
+    try checkBareImportedOverloadedFuncAssign(tokens, local_funcs, imported_funcs);
+}
+
+fn checkBareImportedOverloadedFuncAssign(
+    tokens: []const lexer.Token,
+    local_funcs: []const FuncShape,
+    imported_funcs: []const FuncShape,
+) !void {
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (!tokEq(tokens[i], "=") or isNonAssignEqual(tokens, i)) continue;
+
+        const line_start = lineStartIdx(tokens, i);
+        const line_end = findLineEndIdx(tokens, i);
+        const rhs_start = i + 1;
+        if (rhs_start + 1 != line_end) continue;
+        if (tokens[rhs_start].kind != .ident) continue;
+
+        const rhs_name = tokens[rhs_start].lexeme;
+        if (!hasKnownFuncCandidate(imported_funcs, rhs_name)) continue;
+        if (countFuncsByName(local_funcs, imported_funcs, rhs_name) < 2) continue;
+        if (line_start + 1 != i) continue;
+        if (tokens[line_start].kind != .ident) continue;
+        return markErrorAt(tokens, rhs_start, error.NoMatchingCall);
+    }
+}
+
+fn appendImportedAliasFuncShapes(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(FuncShape),
+    alias: []const u8,
+    target: []const u8,
+    child_tokens: []const lexer.Token,
+) !void {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < child_tokens.len) : (i += 1) {
+        if (tokEq(child_tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(child_tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isTopLevelDeclHead(child_tokens, i)) continue;
+        if (!isFuncDeclStart(child_tokens, i)) continue;
+
+        const decl_name = child_tokens[i].lexeme;
+        if (isPrivateDeclName(decl_name)) continue;
+        if (!std.mem.eql(u8, decl_name, target)) continue;
+
+        const close_paren = findMatching(child_tokens, i + 1, "(", ")") catch continue;
+        const params = try parseFuncParamShapes(allocator, child_tokens, i + 2, close_paren);
+        try out.append(allocator, .{
+            .name = alias,
+            .start_idx = i,
+            .param_shapes = params,
+            .return_type = parseTopLevelFuncReturnType(child_tokens, close_paren + 1),
+        });
+        i = close_paren;
+    }
+}
+
+fn collectFuncShapes(allocator: std.mem.Allocator, tokens: []const lexer.Token) ![]FuncShape {
+    var out = std.ArrayList(FuncShape).empty;
+    errdefer {
+        freeFuncShapeItems(allocator, out.items);
+        out.deinit(allocator);
+    }
+
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isTopLevelDeclHead(tokens, i) or !isFuncDeclStart(tokens, i)) continue;
+
+        const close_paren = findMatching(tokens, i + 1, "(", ")") catch continue;
+        const params = try parseFuncParamShapes(allocator, tokens, i + 2, close_paren);
+        try out.append(allocator, .{
+            .name = publicFuncName(tokens[i].lexeme),
+            .start_idx = i,
+            .param_shapes = params,
+            .return_type = parseTopLevelFuncReturnType(tokens, close_paren + 1),
+        });
+        i = close_paren;
+    }
+
+    return out.toOwnedSlice(allocator);
+}
+
+fn freeFuncShapes(allocator: std.mem.Allocator, funcs: []const FuncShape) void {
+    freeFuncShapeItems(allocator, funcs);
+    allocator.free(funcs);
+}
+
+fn freeFuncShapeItems(allocator: std.mem.Allocator, funcs: []const FuncShape) void {
+    for (funcs) |shape| {
+        freeFuncParamShapes(allocator, shape.param_shapes);
+    }
+}
+
+fn freeFuncParamShapes(allocator: std.mem.Allocator, shapes: []const FuncParamShape) void {
+    for (shapes) |shape| {
+        switch (shape) {
+            .other => {},
+            .value => {},
+            .func => |func_type| allocator.free(func_type.param_types),
+        }
+    }
+    allocator.free(shapes);
+}
+
+fn parseFuncParamShapes(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+) ![]FuncParamShape {
+    var out = std.ArrayList(FuncParamShape).empty;
+    errdefer out.deinit(allocator);
+
+    var seg_start = start_idx;
+    var i = start_idx;
+    while (i <= end_idx) : (i += 1) {
+        if (i < end_idx and !isTopLevelCommaAny(tokens, i, start_idx, end_idx)) continue;
+        if (seg_start < i) {
+            try out.append(allocator, try parseFuncParamShape(allocator, tokens, seg_start, i));
+        }
+        seg_start = i + 1;
+    }
+
+    return out.toOwnedSlice(allocator);
+}
+
+fn parseFuncParamShape(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+) !FuncParamShape {
+    if (start_idx + 1 >= end_idx) return .other;
+    const type_start = start_idx + 1;
+    if (!tokEq(tokens[type_start], "(")) {
+        return .{ .value = simpleTypeName(tokens, type_start, end_idx) };
+    }
+
+    const close_param_types = findMatching(tokens, type_start, "(", ")") catch return .other;
+    if (close_param_types >= end_idx) return .other;
+    if (!isReturnArrowAt(tokens, close_param_types + 1)) return .other;
+
+    const param_types = try parseTypeNameList(allocator, tokens, type_start + 1, close_param_types);
+    return .{ .func = .{
+        .param_count = param_types.len,
+        .param_types = param_types,
+        .return_type = simpleTypeName(tokens, close_param_types + 3, end_idx),
+    } };
+}
+
+fn parseTypeNameList(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+) ![]?[]const u8 {
+    var out = std.ArrayList(?[]const u8).empty;
+    errdefer out.deinit(allocator);
+
+    var seg_start = start_idx;
+    var i = start_idx;
+    while (i <= end_idx) : (i += 1) {
+        if (i < end_idx and !isTopLevelCommaAny(tokens, i, start_idx, end_idx)) continue;
+        if (seg_start < i) {
+            try out.append(allocator, simpleTypeName(tokens, seg_start, i));
+        }
+        seg_start = i + 1;
+    }
+    return out.toOwnedSlice(allocator);
+}
+
+fn collectCallShapesFromProgram(
+    allocator: std.mem.Allocator,
+    program: parser.Program,
+    tokens: []const lexer.Token,
+    out: *std.ArrayList(CallShape),
+) !void {
+    for (program.expr_nodes) |node| {
+        switch (node.kind) {
+            .call, .do_call => {},
+            else => continue,
+        }
+
+        const call_start = if (node.kind == .do_call) node.start_tok + 1 else node.start_tok;
+        if (call_start + 1 >= node.end_tok) continue;
+        if (!tokEq(tokens[call_start + 1], "(")) continue;
+
+        const args_start = call_start + 2;
+        const args_end = node.end_tok - 1;
+        const args = try parseCallArgShapes(allocator, tokens, args_start, args_end);
+        try out.append(allocator, .{
+            .name = if (node.kind == .do_call) node.data.call.func_name else tokens[call_start].lexeme,
+            .start_idx = node.start_tok,
+            .arg_shapes = args,
+        });
+    }
+}
+
+fn parseCallArgShapes(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+) ![]CallArgShape {
+    var out = std.ArrayList(CallArgShape).empty;
+    errdefer out.deinit(allocator);
+
+    var seg_start = start_idx;
+    var i = start_idx;
+    while (i <= end_idx) : (i += 1) {
+        if (i < end_idx and !isTopLevelCommaAny(tokens, i, start_idx, end_idx)) continue;
+        if (seg_start < i) {
+            if (seg_start + 1 == i and tokens[seg_start].kind == .ident) {
+                try out.append(allocator, .{ .ident = tokens[seg_start].lexeme });
+            } else {
+                try out.append(allocator, .other);
+            }
+        }
+        seg_start = i + 1;
+    }
+
+    return out.toOwnedSlice(allocator);
+}
+
+fn callUsesImportedFunctionValue(
+    local_funcs: []const FuncShape,
+    imported_funcs: []const FuncShape,
+    call: CallShape,
+) bool {
+    for (call.arg_shapes, 0..) |arg, arg_index| {
+        if (arg != .ident) continue;
+        const name = arg.ident;
+        if (!hasKnownFuncCandidate(imported_funcs, name)) continue;
+        if (callHasFuncParamCandidateAtIndex(local_funcs, imported_funcs, call, arg_index)) return true;
+    }
+    return false;
+}
+
+fn callHasFuncParamCandidateAtIndex(
+    local_funcs: []const FuncShape,
+    imported_funcs: []const FuncShape,
+    call: CallShape,
+    arg_index: usize,
+) bool {
+    for (local_funcs) |func| {
+        if (!std.mem.eql(u8, func.name, call.name)) continue;
+        if (func.param_shapes.len != call.arg_shapes.len) continue;
+        if (arg_index >= func.param_shapes.len) continue;
+        if (func.param_shapes[arg_index] == .func) return true;
+    }
+    for (imported_funcs) |func| {
+        if (!std.mem.eql(u8, func.name, call.name)) continue;
+        if (func.param_shapes.len != call.arg_shapes.len) continue;
+        if (arg_index >= func.param_shapes.len) continue;
+        if (func.param_shapes[arg_index] == .func) return true;
+    }
+    return false;
+}
+
+fn countCompatibleFunctionValueCandidates(
+    local_funcs: []const FuncShape,
+    imported_funcs: []const FuncShape,
+    call: CallShape,
+) usize {
+    var count: usize = 0;
+    for (local_funcs) |func| {
+        if (!std.mem.eql(u8, func.name, call.name)) continue;
+        if (func.param_shapes.len != call.arg_shapes.len) continue;
+        if (!functionValueArgsMatchFunc(local_funcs, imported_funcs, func, call)) continue;
+        count += 1;
+    }
+    for (imported_funcs) |func| {
+        if (!std.mem.eql(u8, func.name, call.name)) continue;
+        if (func.param_shapes.len != call.arg_shapes.len) continue;
+        if (!functionValueArgsMatchFunc(local_funcs, imported_funcs, func, call)) continue;
+        count += 1;
+    }
+    return count;
+}
+
+fn functionValueArgsMatchFunc(
+    local_funcs: []const FuncShape,
+    imported_funcs: []const FuncShape,
+    func: FuncShape,
+    call: CallShape,
+) bool {
+    for (call.arg_shapes, 0..) |arg, arg_index| {
+        if (arg != .ident) continue;
+        const name = arg.ident;
+        if (!hasKnownFuncCandidate(local_funcs, name) and !hasKnownFuncCandidate(imported_funcs, name)) continue;
+        if (arg_index >= func.param_shapes.len) return false;
+
+        const target = func.param_shapes[arg_index];
+        switch (target) {
+            .func => |target_func| {
+                if (countFuncsMatchingTarget(local_funcs, imported_funcs, name, target_func) != 1) return false;
+            },
+            else => continue,
+        }
+    }
+    return true;
+}
+
+fn countFuncsMatchingTarget(
+    local_funcs: []const FuncShape,
+    imported_funcs: []const FuncShape,
+    name: []const u8,
+    target_func: FuncTypeShape,
+) usize {
+    var count: usize = 0;
+    for (local_funcs) |func| {
+        if (!std.mem.eql(u8, func.name, name)) continue;
+        if (!functionMatchesTarget(func, target_func)) continue;
+        count += 1;
+    }
+    for (imported_funcs) |func| {
+        if (!std.mem.eql(u8, func.name, name)) continue;
+        if (!functionMatchesTarget(func, target_func)) continue;
+        count += 1;
+    }
+    return count;
+}
+
+fn functionMatchesTarget(func: FuncShape, target: FuncTypeShape) bool {
+    if (func.param_shapes.len != target.param_count) return false;
+    for (target.param_types, 0..) |target_type, idx| {
+        const expected = target_type orelse continue;
+        const actual = switch (func.param_shapes[idx]) {
+            .value => |value_type| value_type orelse return false,
+            else => return false,
+        };
+        if (!std.mem.eql(u8, actual, expected)) return false;
+    }
+    if (target.return_type) |expected_ret| {
+        const actual_ret = func.return_type orelse return false;
+        if (!std.mem.eql(u8, actual_ret, expected_ret)) return false;
+    }
+    return true;
+}
+
+fn countFuncsByName(local_funcs: []const FuncShape, imported_funcs: []const FuncShape, name: []const u8) usize {
+    var count: usize = 0;
+    for (local_funcs) |func| {
+        if (std.mem.eql(u8, func.name, name)) count += 1;
+    }
+    for (imported_funcs) |func| {
+        if (std.mem.eql(u8, func.name, name)) count += 1;
+    }
+    return count;
+}
+
+fn parseTopLevelFuncReturnType(tokens: []const lexer.Token, start_idx: usize) ?[]const u8 {
+    if (start_idx >= tokens.len) return null;
+    if (tokEq(tokens[start_idx], "{") or isArrowAt(tokens, start_idx)) return null;
+
+    if (isReturnArrowAt(tokens, start_idx)) {
+        return simpleTypeName(tokens, start_idx + 2, findReturnTypeEnd(tokens, start_idx + 2));
+    }
+
+    return simpleTypeName(tokens, start_idx, findReturnTypeEnd(tokens, start_idx));
+}
+
+fn findReturnTypeEnd(tokens: []const lexer.Token, start_idx: usize) usize {
+    var i = start_idx;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) return i;
+        if (isArrowAt(tokens, i)) return i;
+        if (tokens[i].line != tokens[start_idx].line) return i;
+    }
+    return i;
+}
+
+fn simpleTypeName(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?[]const u8 {
+    if (start_idx + 1 != end_idx) return null;
+    if (tokens[start_idx].kind != .ident) return null;
+    return tokens[start_idx].lexeme;
+}
+
+fn isTopLevelCommaAny(tokens: []const lexer.Token, idx: usize, start_idx: usize, end_idx: usize) bool {
+    if (!tokEq(tokens[idx], ",")) return false;
+
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_angle: usize = 0;
+    var i = start_idx;
+    while (i < idx and i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+    }
+
+    return depth_paren == 0 and depth_brace == 0 and depth_angle == 0;
+}
+
+fn hasKnownFuncCandidate(funcs: []const FuncShape, name: []const u8) bool {
+    for (funcs) |func| {
+        if (std.mem.eql(u8, func.name, name)) return true;
+    }
+    return false;
+}
+
+fn lineStartIdx(tokens: []const lexer.Token, idx: usize) usize {
+    var out = idx;
+    while (out > 0 and tokens[out - 1].line == tokens[idx].line) : (out -= 1) {}
+    return out;
+}
+
+fn publicFuncName(name: []const u8) []const u8 {
+    if (name.len != 0 and name[0] == '.') return name[1..];
+    return name;
+}
+
+fn isArrowAt(tokens: []const lexer.Token, idx: usize) bool {
+    return idx + 1 < tokens.len and tokEq(tokens[idx], "=") and tokEq(tokens[idx + 1], ">");
+}
+
+fn isReturnArrowAt(tokens: []const lexer.Token, idx: usize) bool {
+    return idx + 1 < tokens.len and tokEq(tokens[idx], "-") and tokEq(tokens[idx + 1], ">");
+}
+
+fn countCallArgs(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !usize {
+    if (start_idx >= end_idx) return 0;
+
+    var count: usize = 1;
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_angle: usize = 0;
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren == 0) return error.InvalidCallArgList;
+            depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace == 0) return error.InvalidCallArgList;
+            depth_brace -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (depth_paren != 0 or depth_brace != 0 or depth_angle != 0) continue;
+        if (tokEq(tokens[i], ",")) count += 1;
+    }
+    if (depth_paren != 0 or depth_brace != 0 or depth_angle != 0) return error.InvalidCallArgList;
+    return count;
+}
+
 fn findPublicUnionMember(tokens: []const lexer.Token, line_start_idx: usize, target: []const u8) bool {
     if (tokens[line_start_idx].lexeme.len == 0) return false;
     if (!std.mem.endsWith(u8, tokens[line_start_idx].lexeme, "Error")) return false;
@@ -313,9 +940,14 @@ fn isPrivateDeclName(name: []const u8) bool {
     return name.len != 0 and name[0] == '.';
 }
 
+fn isPrivateFuncDeclName(name: []const u8) bool {
+    return name.len > 1 and name[0] == '.' and isLowerIdentName(name[1..]);
+}
+
 fn isFuncDeclStart(tokens: []const lexer.Token, idx: usize) bool {
     if (idx + 1 >= tokens.len) return false;
     if (isKeyword(tokens[idx].lexeme)) return false;
+    if (!isLowerIdentName(tokens[idx].lexeme) and !isPrivateFuncDeclName(tokens[idx].lexeme)) return false;
     return tokEq(tokens[idx + 1], "(");
 }
 

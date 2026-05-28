@@ -6,9 +6,9 @@ test "lambda callback site" {
     return
 }
 
-test "inline lambda captures local" {
+test "lambda explicit env arg" {
     xs List<i32> = List<i32>{}
     step i32 = 1
-    result = map(xs, _(x i32) => add(x, step))
+    result = map(xs, step, (x i32, step i32) => add(x, step))
     return
 }

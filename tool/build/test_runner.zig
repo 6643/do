@@ -118,7 +118,7 @@ fn collectTopLevelFuncs(allocator: std.mem.Allocator, tokens: []const lexer.Toke
         if (tokEqToken(tokens[body_start], "{")) {
             const body_end = try findMatchingToken(tokens, body_start, "{", "}");
             try out.append(allocator, .{
-                .name = tokens[i].lexeme,
+                .name = publicFuncName(tokens[i].lexeme),
                 .params_start = i + 2,
                 .params_end = close_params,
                 .param_count = countParamSlots(tokens, i + 2, close_params),
@@ -132,7 +132,7 @@ fn collectTopLevelFuncs(allocator: std.mem.Allocator, tokens: []const lexer.Toke
 
         const body_end = findLineEnd(tokens, body_start, tokens.len);
         try out.append(allocator, .{
-            .name = tokens[i].lexeme,
+            .name = publicFuncName(tokens[i].lexeme),
             .params_start = i + 2,
             .params_end = close_params,
             .param_count = countParamSlots(tokens, i + 2, close_params),
@@ -667,7 +667,20 @@ fn isFuncDeclStart(tokens: []const lexer.Token, i: usize) bool {
     if (i + 1 >= tokens.len) return false;
     if (tokens[i].kind != .ident) return false;
     if (tokEqToken(tokens[i], "test")) return false;
+    if (!isFuncDeclName(tokens[i].lexeme)) return false;
     return tokEqToken(tokens[i + 1], "(");
+}
+
+fn publicFuncName(name: []const u8) []const u8 {
+    if (name.len != 0 and name[0] == '.') return name[1..];
+    return name;
+}
+
+fn isFuncDeclName(name: []const u8) bool {
+    if (name.len == 0) return false;
+    if (isLowerIdentName(name)) return true;
+    if (name[0] == '.') return isLowerIdentName(name[1..]);
+    return false;
 }
 
 fn isBindingName(name: []const u8) bool {
@@ -675,6 +688,40 @@ fn isBindingName(name: []const u8) bool {
     return std.ascii.isLower(name[0]) or name[0] == '_';
 }
 
+fn isLowerIdentName(name: []const u8) bool {
+    if (name.len == 0) return false;
+    if (!std.ascii.isLower(name[0])) return false;
+
+    var prev_underscore = false;
+    for (name[1..]) |ch| {
+        if (ch == '_') {
+            if (prev_underscore) return false;
+            prev_underscore = true;
+            continue;
+        }
+        if (!std.ascii.isLower(ch) and !std.ascii.isDigit(ch)) return false;
+        prev_underscore = false;
+    }
+
+    return !prev_underscore;
+}
+
 fn tokEqToken(tok: lexer.Token, lexeme: []const u8) bool {
     return std.mem.eql(u8, tok.lexeme, lexeme);
+}
+
+test "private function declaration is callable by public name" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\.double(x i32) i32 => mul(x, 2)
+    ;
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+
+    const funcs = try collectTopLevelFuncs(allocator, tokens);
+    defer allocator.free(funcs);
+
+    try std.testing.expectEqual(@as(usize, 1), funcs.len);
+    try std.testing.expectEqualStrings("double", funcs[0].name);
+    try std.testing.expect(findFunc(funcs, "double", 1) != null);
 }

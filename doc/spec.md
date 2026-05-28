@@ -40,6 +40,7 @@
 ```ebnf
 LowerIdent    := [a-z][a-z0-9]* ("_" [a-z0-9]+)*
 UpperIdent    := [A-Z][A-Za-z0-9]*
+ErrorTypeName := [A-Z][A-Za-z0-9]* "Error"
 ReadonlyIdent := "_" LowerIdent
 Ident         := LowerIdent | UpperIdent | ReadonlyIdent
 PathSeg       := [a-z] ([a-z0-9]* ('_' [a-z0-9]+)*)?
@@ -78,11 +79,15 @@ LineStringChar := ? any character except LF, CR ?
 19. 顶层声明与块内语句使用换行分隔；一行一个声明或语句。
 20. 关键字按整 token 匹配，不做前缀匹配；例如 `dof` 是一个 `Ident`，不是 `do` + `f`。
 21. `Text/List/HashMap` 等库类型由 `std` 或用户库定义，并按普通 `RefTypeName` 解析；其中 `Text` 的标准形态是 `[u8]` 别名。
-22. `LambdaExpr` 只出现在调用实参位，作为内联回调；语法形如 `(x i32) => add(x, 1)`、`(x i32) -> i32 => add(x, 1)` 或 `(x i32) -> i32 { ... }`。
-23. 普通 `LambdaExpr` 只读自身参数、体内绑定、顶层常量和当前可见函数，不形成闭包，不能捕获外层局部绑定，也不能绑定到变量或作为值返回。
-24. `_` 前缀的行内 lambda 形如 `_(x i32) => add(x, step)`；它可读取调用点外层局部绑定，并由编译器按行内代码处理，不暴露运行时闭包值。
-25. 算术、比较和逻辑组合使用函数或 `native` 判断族表达。
-26. import 路径段使用 `PathSeg`；路径段由小写字母开头，可含数字，单词之间用单个 `_` 分隔。
+22. `LambdaExpr` 只出现在调用实参位，作为回调表达式；语法形如 `(x i32) => add(x, 1)`、`(x i32) -> i32 => add(x, 1)` 或 `(x i32) -> i32 { ... }`。
+23. `LambdaExpr` 只读自身参数、体内绑定、顶层常量和当前可见函数，不形成闭包，不能捕获外层局部绑定，也不能绑定到变量或作为值返回。
+24. 顶层函数的 `=>` 函数体是函数声明短写，不是 `LambdaExpr`，不产生可传递函数值。
+25. 函数名可在已有目标 `FuncType` 的值位作为函数值传递，例如高阶函数实参、字段初始化或返回位。
+26. lambda 参数类型可省略；省略时必须由已选调用候选的目标 `FuncType` 提供参数类型，不能由 lambda body 反推。
+27. lambda 返回类型可省略；省略时在调用候选已选定、参数类型已确定后，由 lambda body 推出返回类型。
+28. 块体 lambda 内的 `return` 只返回当前 lambda，不返回外层函数或测试体。
+29. 算术、比较和逻辑组合使用函数或 `native` 判断族表达。
+30. import 路径段使用 `PathSeg`；路径段由小写字母开头，可含数字，单词之间用单个 `_` 分隔。
 
 ### 2.2 保留词与保留标识符
 
@@ -127,9 +132,6 @@ TopDecl          <- TypeDecl
                   / ValueDecl
                   / TestDecl
 
-TopName          <- UserDeclName / PrivateName
-PrivateName      <- '.' UserDeclName
-
 ValueDecl        <- ConstName TypeAnn? '=' Expr
 ConstName        <- ReadonlyIdent
 TypeAnn          <- TypeExpr
@@ -153,10 +155,13 @@ AbiType          <- 'i32' / 'i64' / 'f32' / 'f64'
 
 TestDecl         <- 'test' String Block
 
-TypeDecl         <- GenericStructDecl / StructDecl / AliasDecl
+TypeDecl         <- GenericStructDecl / StructDecl / ErrorDecl / AliasDecl
 GenericStructDecl <- TypeConstraintList StructDecl
 StructDecl       <- DeclTypeName '{' StmtGap? FieldDeclList? StmtGap? '}'
+ErrorDecl        <- ErrorTypeName '=' ErrorBranchList
 AliasDecl        <- DeclTypeName '=' TypeExpr
+ErrorBranchList  <- ErrorBranchName (SoftGap '|' SoftGap ErrorBranchName)*
+ErrorBranchName  <- UpperIdent
 DeclTypeName     <- PublicTypeName / PrivateTypeName
 PublicTypeName   <- UpperIdent
 PrivateTypeName  <- '.' UpperIdent
@@ -190,7 +195,9 @@ String           <- NormalString / LineStringBlock
 LineStringBlock  <- LineStringLine (LineGap LineStringLine)*
 
 FuncDecl         <- FuncConstraintList? FuncName '(' SoftGap ParamList? SoftGap ')' FuncResult FuncBody
-FuncName         <- TopName
+FuncName         <- PublicFuncName / PrivateFuncName
+PublicFuncName   <- !ReservedDeclName LowerIdent
+PrivateFuncName  <- '.' PublicFuncName
 FuncResult       <- (SoftGap '->' SoftGap ReturnSpec)?
 ReturnSpec       <- MultiReturnSpec / 'nil' / TypeExpr
 MultiReturnSpec  <- TypeExpr CommaSep TypeExpr (CommaSep TypeExpr)*
@@ -200,9 +207,13 @@ ArrowExprList    <- Expr (CommaSep Expr)* TrailComma?
 FuncConstraintList <- TypeConstraintList FuncSigConstraintLine*
 TypeConstraintList <- TypeConstraintLine+
 TypeConstraintLine <- '#' TypeParamName (SoftGap '=' SoftGap UnionExpr)? LineGap
-FuncSigConstraintLine <- '#' ConstraintFuncName '(' SoftGap TypeExprList? SoftGap ')' SoftGap '->' SoftGap ReturnSpec LineGap
+FuncSigConstraintLine <- '#' ConstraintFuncName '(' SoftGap ConstraintParamList? SoftGap ')' SoftGap '->' SoftGap ReturnSpec LineGap
 TypeParamName    <- UpperIdent
 ConstraintFuncName <- LowerIdent
+ConstraintParamList <- ConstraintFixedParamList (CommaSep ConstraintVariadicParam)? TrailComma?
+                  / ConstraintVariadicParam TrailComma?
+ConstraintFixedParamList <- TypeExpr (CommaSep TypeExpr)*
+ConstraintVariadicParam <- '...' TypeExpr
 TypeExprList     <- TypeExpr (CommaSep TypeExpr)* TrailComma?
 
 ParamList        <- FixedParamList (CommaSep VariadicParam)? TrailComma?
@@ -260,8 +271,6 @@ Expr             <- DoExpr
                   / PredExpr
                   / CoreAccessExpr
                   / CallExpr
-                  / LambdaExpr
-                  / InlineLambdaExpr
                   / InferredAggLit
                   / TypedAggLit
                   / ParenExpr
@@ -295,10 +304,12 @@ NotExpr          <- 'not' '(' SoftGap Expr SoftGap ')'
 
 CoreAccessExpr   <- GetExpr / SetExpr
 GetExpr          <- 'get' '(' SoftGap Expr CommaSep PathArgList SoftGap ')'
-SetExpr          <- 'set' '(' SoftGap Expr CommaSep PathArgList CommaSep Expr SoftGap ')'
+SetExpr          <- 'set' '(' SoftGap Expr CommaSep SetArgList SoftGap ')'
 
 PathArgList      <- PathArg (CommaSep PathArg)* TrailComma?
 PathArg          <- FieldSeg / IndexSeg
+SetArgList       <- SetArg (CommaSep SetArg)+ TrailComma?
+SetArg           <- FieldSeg / Expr
 IndexSeg         <- Expr
 FieldSeg         <- '.' LowerIdent
 
@@ -306,27 +317,29 @@ CallExpr         <- Callee '(' SoftGap ArgList? SoftGap ')'
 Callee           <- Ident
 ArgList          <- FixedArgList (CommaSep SpreadArg)? TrailComma?
                   / SpreadArg TrailComma?
-FixedArgList     <- Expr (CommaSep Expr)*
+FixedArgList     <- Arg (CommaSep Arg)*
+Arg              <- LambdaArg / Expr
+LambdaArg        <- LambdaExpr
 SpreadArg        <- '...' Expr
 
-InlineLambdaExpr <- '_' LambdaExpr
 LambdaExpr       <- '(' SoftGap LambdaParamList? SoftGap ')' SoftGap LambdaTail
 LambdaParamList  <- LambdaParam (CommaSep LambdaParam)* TrailComma?
 LambdaParam      <- ParamName (SoftGap TypeExpr)?
 LambdaTail       <- ReturnTailAnn? (Block / '=>' ArrowExprList)
 ReturnTailAnn    <- SoftGap '->' SoftGap ReturnSpec
 
-InferredAggLit   <- '.' AggBody
-TypedAggLit      <- TypeCtor AggBody
+InferredAggLit   <- '.' InferredAggBody
+TypedAggLit      <- TypeCtor TypedAggBody
 TypeCtor         <- RefTypeName TypeArgs?
-AggBody          <- '{' SoftGap FieldInitList? SoftGap '}'
+InferredAggBody  <- '{' SoftGap (FieldInitList / AggExprList)? SoftGap '}'
+TypedAggBody     <- '{' SoftGap FieldInitList? SoftGap '}'
 FieldInitList    <- FieldInit (CommaSep FieldInit)* TrailComma?
 FieldInit        <- FieldInitName SoftGap '=' SoftGap Expr
 FieldInitName    <- LowerIdent
+AggExprList      <- Expr (CommaSep Expr)* TrailComma?
 
 Literal          <- IntLit / FloatLit / String / 'true' / 'false' / 'nil'
 
-UserDeclName     <- !ReservedDeclName (LowerIdent / ReadonlyIdent)
 ReservedDeclName <- 'eq' / 'ne' / 'lt' / 'le' / 'gt' / 'ge'
 NL               <- '\n'
 ```
@@ -378,22 +391,26 @@ NL               <- '\n'
 
 ### 5.1 定位
 
-1. `get/set/put/update/del/len/at` 作为开放函数族使用；`core` 只提供 struct 字段路径和 `[T]` 连续存储的基础读写 primitive，`std` 或用户库可按普通函数定义具体重载。
-2. 多段结构路径使用扁平参数形态；字段/索引路径统一从 `get/set` 进入，集合设计由库层承载。
-3. 结构字段读写统一只走 `get/set` 路径形态，例如 `get(x, .name)`、`set(x, .name, value)`。
-4. `put` 由 `std` 或用户库按普通函数定义；它可用于集合追加、插入、键写入或其他库自定义更新语义。
-5. `del` 由 `std` 或用户库按普通函数定义；它可用于列表索引删除、映射 key 删除或其他库自定义删除语义。
-6. `update` 作为普通库函数定义；需要时可由 `std` 基于 `get/set` 提供。
+1. `get/set` 是语言识别的结构访问形式，语法上使用 `CoreAccessExpr`，语义上按开放结构操作协议分派。
+2. `core` 只提供 struct 字段路径和 `[T]` 连续存储的基础读写 primitive；`std` 或用户库可通过可见的 `get/set` 定义接入对应类型。
+3. `put/update/del/len/at` 是普通开放函数族，由 `core`、`std` 或用户库按普通函数定义具体重载。
+4. 多段结构路径使用扁平参数形态；字段/索引路径统一从 `get/set` 进入，集合设计由库层承载。
+5. 结构字段读写统一只走 `get/set` 路径形态，例如 `get(x, .name)`、`set(x, .name, value)`。
+6. `put` 可用于集合追加、插入、键写入或其他库自定义更新语义；例如 `List` 可把 `put(xs, value, rest ...T)` 作为批量追加重载。
+7. `del` 可用于列表索引删除、映射 key 删除或其他库自定义删除语义。
+8. `update` 作为普通库函数定义；需要时可由 `std` 基于 `get/set` 提供。
 
 ### 5.2 路径形态
 
 1. 单段字段路径写作 `FieldSeg`，例如 `.name`。
 2. 多段路径写作扁平实参，例如 `get(users, 0, .name)` 或 `set(users, add(i, 1), .name, value)`。
-3. 路径段列表为 `PathArgList`，单段为 `PathArg`。
-4. `PathArg` 分为字段段与索引段：字段段是前置点加单个 `LowerIdent`；索引段是 `Expr`。
-5. 路径段是 `get/set` 的原语级语法，不暴露为 `core` 或 `std` 的值类型。
-6. 字段段只用于结构体字段访问；索引段只用于 `[T]` 连续存储或库类型定义的索引访问。
-7. 复杂表达式段在路径求值时直接计算；字段段按 `.lower_ident` 展示，索引段按其可读表达展示。
+3. `get` 使用 `PathArgList`，全部尾部参数都是路径段。
+4. `set` 使用 `SetArgList`，第一个参数是目标值，尾部参数列表最后一项是待写入值，之前的所有项都是路径段。
+5. `set(target, path..., value)` 至少包含一个路径段和一个待写入值；PEG 不用贪婪 `PathArgList` 切分最终值。
+6. 路径段单段为 `PathArg`，分为字段段与索引段：字段段是前置点加单个 `LowerIdent`；索引段是 `Expr`。
+7. 路径段是 `get/set` 的原语级语法，不暴露为 `core` 或 `std` 的值类型。
+8. 字段段只用于结构体字段访问；索引段只用于 `[T]` 连续存储或库类型定义的索引访问。
+9. 复杂表达式段在路径求值时直接计算；字段段按 `.lower_ident` 展示，索引段按其可读表达展示。
 
 ### 5.3 调用示例
 
@@ -428,10 +445,10 @@ Text = [u8]
 
 ### 6.1 命名、导入与可见性
 
-1. 类型声明名使用 `UpperIdent`，风格为 UpperCamel；普通函数与字段名使用 `LowerIdent` 或 `ReadonlyIdent`。
+1. 类型声明名使用 `UpperIdent`，风格为 UpperCamel；普通函数名使用 `LowerIdent`；私有普通函数声明名使用 `.lower_name`；字段名使用 `LowerIdent`。
 2. 私有类型名出现在类型声明左侧（`DeclTypeName`）；类型引用位统一去点。
 3. 私有声明在声明位使用前置 `.`；访问时统一去点（字段路径段除外）。
-4. core 保留判断函数名由语言预定义；开放函数族如 `get/set/put/len` 可按普通重载规则扩展。
+4. core 保留判断函数名由语言预定义；`get/set` 使用结构访问语法并按协议分派，`put/update/del/len/at` 可按普通重载规则扩展。
 5. 顶层名字共享同一名字空间；仅同名函数族允许重名。
 6. 公开签名使用 public 类型。
 7. 保留词与保留类型名 `Error` 只用于语言保留位置。
@@ -457,7 +474,7 @@ Text = [u8]
 
 1. 字面量无默认类型，由上下文唯一定型或显式类型标注。
 2. `nil` 只能定型为 `nil` 或包含 `nil` 的联合类型。
-3. `InferredAggLit` 与 `TypedAggLit` 只按结构体字段构造解释；集合类型若由 struct 实现，也使用字段构造。
+3. `TypedAggLit` 只按结构体字段构造解释；`InferredAggLit` 在目标为结构体时使用字段构造，在目标为 `[T]` 时可使用元素构造（例如 `.{1, 2, 3}`）。
 4. 显式标量类型通过绑定位、参数位、返回位或已知目标上下文提供。
 5. 无上下文或多重解释冲突时报编译错误。
 6. 定型来源只有两类：左侧或外层上下文提供已知目标类型，或右侧表达式自身能唯一推出类型。
@@ -465,31 +482,33 @@ Text = [u8]
 8. 若函数名与参数个数只对应唯一候选，该候选的参数类型可为实参字面量提供上下文。
 9. 若存在多个同名同参数个数候选，实参必须先各自定型，再用实参类型序列选择唯一候选。
 10. 外层期望类型只用于检查已选中调用的返回值类型，重载选择只看实参类型序列。
-11. 不定参数候选匹配固定前缀实参数量后，剩余实参逐个按 `...T` 的 `T` 定型；第一版只支持同类型不定参数。
-12. `...expr` 只在函数调用实参位生效，只能出现在实参列表最后，一次调用最多一个展开。
-13. `...expr` 的表达式必须是当前函数的不定参数绑定，或类型为 `[T]` / 库定义同类型连续序列且目标参数为 `...T`。
-14. 展开调用只匹配被调函数最后一个不定参数位；展开后不能再接普通实参。
-15. 普通字符串和行字符串同样无默认类型；字符串字面量由目标类型上下文定型。
-16. 字符串字面量可在目标类型为 `[u8]` 或库定义文本类型时由上下文定型；语法层按库类型解析。
-17. 裸 `{...}` 不是表达式；聚合值写成 `.{...}` 或 `Type{...}`。
-18. `.{...}` 省略目标聚合类型，由左侧标注、既有绑定、参数或返回上下文唯一确定。
-19. `Type{...}` 在右侧显式给出聚合类型，可用于创建新绑定。
-20. `name Type = .{...}` 与 `name = Type{...}` 是等价的创建形式。
-21. `Type{...}` 的 `Type` 是具名类型及其类型参数。
-22. 联合返回位要求右侧表达式自身先定型到唯一分支。
-23. 结构体字段声明位的 `.field` 表示私有；字段真实名字仍是 `field`，同一结构体内同一字段写作 `field` 或 `.field`。
-24. 当前模块内构造结构体时，字段初始化使用裸字段名 `field = value`；`.field` 出现在路径位或声明位。
-25. 外部模块构造 public struct 时填写 public 字段；private 字段由默认值提供。
-26. 聚合字面量 body 接受字段项；`HashMap/List` 的 body 也按泛型结构体字段构造解释，`Type<...>{...}` 同样如此。
-27. 结构体字段构造使用 `field = value`。
-28. 字段默认值在结构体构造时求值；默认表达式结果类型与字段类型一致。
-29. 结构体构造发生在 CTFE 上下文时，字段默认值也走 CTFE；运行时构造可执行运行时默认表达式。
-30. `Tuple` 按普通泛型结构体字段构造解释；库若定义 `Tuple`，同样采用字段构造。
-31. 名称以 `Error` 结尾的类型别名声明错误分支集合，右侧分支使用裸 `UpperIdent` 值名，例如 `FileError = FileNotFound | PermissionDenied`。
-32. 普通 union 由类型表达式组成；错误分支集合使用名称以 `Error` 结尾的类型别名声明。
-33. `*Error` 类型名用于类型位；值位使用具体分支值。
-34. `*Error` 分支值是可导入的 public 值；跨文件构造或精确比较分支值时导入该分支值。
-35. `*Error` 分支值导入时可以改名以避免冲突，本地别名使用 `UpperIdent`。
+11. lambda 实参参与重载选择时，只提供参数个数、显式参数类型和显式返回类型；lambda body 不参与重载候选选择。
+12. 调用候选唯一确定后，lambda body 才进入类型检查；省略的 lambda 参数类型从目标 `FuncType` 补齐，省略的 lambda 返回类型可在此阶段推出。
+13. 不定参数候选匹配固定前缀实参数量后，剩余实参逐个按 `...T` 的 `T` 定型；第一版只支持同类型不定参数。
+14. `...expr` 只在函数调用实参位生效，只能出现在实参列表最后，一次调用最多一个展开。
+15. `...expr` 的表达式必须定型为 `[T]` 或库定义同类型连续序列，且目标参数为 `...T`。
+16. 展开调用只匹配被调函数最后一个不定参数位；展开后不能再接普通实参。
+17. 普通字符串和行字符串同样无默认类型；字符串字面量由目标类型上下文定型。
+18. 字符串字面量可在目标类型为 `[u8]` 或库定义文本类型时由上下文定型；语法层按库类型解析。
+19. 裸 `{...}` 不是表达式；聚合值写成 `.{...}` 或 `Type{...}`。
+20. `.{...}` 省略目标聚合类型，由左侧标注、既有绑定、参数或返回上下文唯一确定。
+21. `Type{...}` 在右侧显式给出聚合类型，可用于创建新绑定。
+22. `name Type = .{...}` 与 `name = Type{...}` 是等价的创建形式。
+23. `Type{...}` 的 `Type` 是具名类型及其类型参数。
+24. 联合返回位要求右侧表达式自身先定型到唯一分支。
+25. 结构体字段声明位的 `.field` 表示私有；字段真实名字仍是 `field`，同一结构体内同一字段写作 `field` 或 `.field`。
+26. 当前模块内构造结构体时，字段初始化使用裸字段名 `field = value`；`.field` 出现在路径位或声明位。
+27. 外部模块构造 public struct 时填写 public 字段；private 字段由默认值提供。
+28. `TypedAggLit` 的 body 只接受字段项；`InferredAggLit` 可接受字段项或元素项，元素项仅在目标上下文为 `[T]` 时成立。
+29. 结构体字段构造使用 `field = value`。
+30. 字段默认值在结构体构造时求值；默认表达式结果类型与字段类型一致。
+31. 结构体构造发生在 CTFE 上下文时，字段默认值也走 CTFE；运行时构造可执行运行时默认表达式。
+32. `Tuple` 按普通泛型结构体字段构造解释；库若定义 `Tuple`，同样采用字段构造。
+33. `ErrorDecl` 声明错误分支集合，名称使用 `ErrorTypeName`，右侧分支使用裸 `UpperIdent` 值名，例如 `FileError = FileNotFound | PermissionDenied`。
+34. 普通 union 由类型表达式组成；错误分支集合只通过 `ErrorDecl` 声明。
+35. `*Error` 类型名用于类型位；值位使用具体分支值。
+36. `*Error` 分支值是可导入的 public 值；跨文件构造或精确比较分支值时导入该分支值。
+37. `*Error` 分支值导入时可以改名以避免冲突，本地别名使用 `UpperIdent`。
 
 ### 6.3 绑定与赋值
 
@@ -497,7 +516,7 @@ Text = [u8]
 2. 未命中时创建新绑定，右侧表达式已经能唯一确定类型；新绑定创建使用已定型右侧表达式，`.{...}` 在存在目标类型上下文时使用。
 3. 命中已有绑定时，既有绑定类型为右侧表达式提供目标上下文，例如 `y = 3` 中 `3` 由 `y` 的类型定型。
 4. 绑定与赋值规则只适用于块内局部绑定；顶层 `ValueDecl` 只作为常量声明。
-5. 局部绑定名使用 `LowerIdent` 或 `ReadonlyIdent`；`UpperIdent` 用于类型名、类型参数名、错误分支值和同类 import alias。
+5. 局部绑定名使用 `LowerIdent` 或 `ReadonlyIdent`；`ReadonlyIdent` 不用于函数名；`UpperIdent` 用于类型名、类型参数名、错误分支值和同类 import alias。
 6. `TypedBind` 永远声明新绑定；如果同名绑定已可见，编译器报告重复声明或遮蔽错误。
 7. 新绑定不得遮蔽外层可见绑定。
 8. 局部 `_name` 是运行期只读绑定；首次绑定满足普通定型规则。
@@ -507,9 +526,15 @@ Text = [u8]
 12. 函数参数、lambda 参数和 `loop` 绑定是普通可变本地绑定；参数赋值只改变当前调用帧。
 13. 参数位使用 `_` 表示丢弃参数；该参数仍计入函数签名的参数个数和类型序列。
 14. 参数位与 loop 绑定位使用 `LowerIdent` 或 `_`；`_name` 用于顶层常量和局部只读绑定。
-15. 不定参数写作 `rest ...T`，只能出现在函数参数列表最后，且一个函数最多一个不定参数。
-16. 不定参数在函数体内作为同类型序列读取，可用于 `loop` 或在调用尾部写作 `...rest` 转发。
+15. 不定参数声明写作 `rest ...T`，只能出现在函数参数列表最后，且一个函数最多一个不定参数。
+16. 不定参数在函数体内的绑定类型是 `[T]`，可用于 `loop` 或在调用尾部写作 `...rest` 转发。
 17. lambda 参数不支持不定参数；host import 参数不支持不定参数。
+18. 函数名在值位解析为函数值时，必须由上下文提供目标 `FuncType`；候选集合同时包含当前文件可见函数和已导入函数族，并按函数名加参数类型序列选择唯一声明。
+19. lambda 参数省略类型时，必须先由函数名、实参数量、非 lambda 实参、lambda 显式签名或唯一候选确定目标 `FuncType`；lambda body 只用于检查返回值，不参与参数类型反推。
+20. lambda 返回类型省略时，可由 body 推出返回类型或绑定目标函数类型中的返回类型参数；该结果不参与重载候选选择。
+21. 块体 lambda 拥有独立返回边界；其 `return` 只结束当前 lambda 调用。
+22. 函数名值位若缺少目标 `FuncType`（例如 `f = inc`）且该名字对应多个重载候选，报告 `NoMatchingCall`。
+23. 函数名值位若目标 `FuncType` 不唯一（例如 `use(inc)` 且 `use` 自身重载且都可接收函数参数），报告 `NoMatchingCall`。
 
 ### 6.4 返回与多返回
 
@@ -559,18 +584,19 @@ Text = [u8]
 3. 顶层常量 CTFE 求值路径由可 CTFE 的本地表达式与普通函数组成；递归与循环受编译期求值预算限制。
 4. host import 属于运行时边界；build 时宿主与运行时宿主可以不同。
 5. 普通函数、`test` 和 lambda 可读取顶层常量，可调用当前可见函数。
-6. 字段默认值按构造上下文求值；顶层常量构造要求字段默认值可 CTFE，运行时构造允许运行时默认值。
-7. `#T` 是无约束类型参数；`#T = TypeSet` 是受限类型参数；`#name(...) -> Return` 是函数声明前的接口函数签名约束。
-8. 类型约束绑定紧随其后的一个函数或结构体；接口函数约束绑定函数。
-9. 约束独立成行，连续贴合其绑定的声明头。
-10. 函数约束列表先写所有类型约束，再写接口函数约束。
-11. 类型参数名使用 `UpperIdent`，接口函数名使用 `LowerIdent`。
-12. 类型参数名使用当前可见类型名、`core` 预导入类型名和保留类型名之外的新名字。
-13. 每个类型参数至少出现在一个参数类型里。
-14. 类型集合由当前可见的具体类型表达式和已声明类型参数组成。
-15. 泛型函数体中对类型参数调用函数时，由对应接口函数签名约束提供能力；`#T` 只声明泛型类型参数。
-16. 接口约束里的函数名只从当前文件可见名字解析；`core` 默认可见，`std` 和用户模块需要显式 import。
-17. 泛型结构体声明类型参数；能力约束放在使用该类型的函数上。
+6. 编译入口写作 `start()`，无参数且无返回；wasm 导出名 `_start` 是编译器生成细节。
+7. 字段默认值按构造上下文求值；顶层常量构造要求字段默认值可 CTFE，运行时构造允许运行时默认值。
+8. `#T` 是无约束类型参数；`#T = TypeSet` 是受限类型参数；`#name(...) -> Return` 是函数声明前的接口函数签名约束。
+9. 类型约束绑定紧随其后的一个函数或结构体；接口函数约束绑定函数。
+10. 约束独立成行，连续贴合其绑定的声明头。
+11. 函数约束列表先写所有类型约束，再写接口函数约束。
+12. 类型参数名使用 `UpperIdent`，接口函数名使用 `LowerIdent`。
+13. 类型参数名使用当前可见类型名、`core` 预导入类型名和保留类型名之外的新名字。
+14. 每个类型参数至少出现在一个参数类型里。
+15. 类型集合由当前可见的具体类型表达式和已声明类型参数组成。
+16. 泛型函数体中对类型参数调用函数时，由对应接口函数签名约束提供能力；`#T` 只声明泛型类型参数。
+17. 接口约束里的函数名只从当前文件可见名字解析；`core` 默认可见，`std` 和用户模块需要显式 import。
+18. 泛型结构体声明类型参数；能力约束放在使用该类型的函数上。
 
 ### 6.8 标准库草案边界
 
@@ -582,9 +608,10 @@ Text = [u8]
 6. 这与 Go/Rust/Zig 的标准库分层方向一致：地址类型、TCP listener/stream 和 UDP socket 分离；差异是 `do` 的最终目标是 wasm，因此系统调用能力必须由宿主桥接提供。
 7. `lib/binary.do` 属于 `std` 字节编解码辅助库；hash/encoding 库按需显式 import。
 8. 高阶组合函数属于 `std`，不属于 `core`；例如 `lib/pipe.do` 提供同类型串联 `pipe(value T, funcs ...(T) -> T) -> T`。
-9. `lib/list.do` 提供 `len/items/at/get/put/set/update/del/clear` 等基础集合操作，以及 `map/filter/fold/reduce/find/find_index/any/all/count` 等函数式集合工具；这些函数基于 `List<T>`、inline callback 和 `len/at/put` 实现。
-10. `lib/hash_map.do` 提供 `len/keys/values/has/get/put/set/update/del/entries` 等基础映射操作；`update/del` 只作用于既有 key，缺失时返回 `MapError`。
-11. 当前 `lib/hash_map.do` 是标准库语义草案实现，可用连续 key/value 存储先锁定公开 API；真实 hash bucket、冲突处理和扩容策略后续在不改变公开函数族的前提下替换内部实现。
+9. `lib/list.do` 提供 `len/items/at/get/put/set/update/del/clear` 等基础集合操作，以及 `map/filter/fold/reduce/find/find_index/any/all/count` 等函数式集合工具；这些函数基于 `List<T>`、lambda callback 和 `len/at/put` 实现。
+10. 删除闭包捕获后，`map/filter/find/find_index/any/all/count/update` 提供显式 `env` 重载，例如 `map(xs, env, (x, env) => ...)`。
+11. `lib/hash_map.do` 提供 `len/keys/values/has/get/put/set/update/del/entries` 等基础映射操作；`update/del` 只作用于既有 key，缺失时返回 `MapError`。
+12. 当前 `lib/hash_map.do` 是标准库语义草案实现，可用连续 key/value 存储先锁定公开 API；真实 hash bucket、冲突处理和扩容策略后续在不改变公开函数族的前提下替换内部实现。
 
 ## 7. 诊断与测试约定
 
@@ -596,6 +623,7 @@ Text = [u8]
 4. 编译器只接受本文列出的写法；其他输入触发语法错误诊断。
 5. 语法错误测试保留少量 parser 诊断烟测，用于锁定“首错停止 + 位置 + 正确语法示例”的输出契约。
 6. 语义、类型和语言契约错误仍可维护针对性 `err` 用例，例如类型不匹配、不可见名字、导出边界、重复声明和协议不满足。
+7. 当前 typecheck 第一阶段验证导入函数别名调用的重载实参数量，并验证本文件 lambda 实参对本地函数重载的参数形状匹配；完整参数类型、跨模块 lambda 目标类型和泛型返回推导后续纳入同一阶段。
 
 ### 7.2 示例与测试提取
 
@@ -619,9 +647,7 @@ first_name = get(users, add(i, 1), .name)
 
 ```do ok name=put_list_append
 xs List<i32> = List<i32>{}
-xs = put(xs, 1)
-xs = put(xs, 2)
-xs = put(xs, 3)
+xs = put(xs, 1, 2, 3)
 ```
 
 ```do ok name=list_set_vs_put
@@ -892,7 +918,7 @@ step i32 = 1
 ys List<i64> = list_map(xs, (x i32) -> i64 => to_i64(add(x, 1)))
 even List<i32> = list_filter(xs, (x i32) -> bool => eq(rem(x, 2), 0))
 sum i32 = list_fold(xs, 0, (acc i32, x i32) -> i32 => add(acc, x))
-shifted List<i32> = list_map(xs, _(x i32) -> i32 => add(x, step))
+shifted List<i32> = list_map(xs, step, (x i32, step i32) -> i32 => add(x, step))
 ```
 
 ```do ok name=std_pipe_same_type_chain
@@ -913,7 +939,7 @@ List {
 }
 ```
 
-`.{}` 可在已知目标类型为 `[T]` 时构造空连续存储；由目标类型提供 `T`，用户代码只通过库函数操作它。
+`.{}` 与 `.{v1, v2, ...}` 可在已知目标类型为 `[T]` 时构造连续存储；由目标类型提供 `T`，用户代码只通过库函数操作它。
 
 ```do ok name=generic_struct_map_storage
 #K
@@ -1089,9 +1115,28 @@ str Text = \\a\nb
 result = map(xs, (x i32) -> i32 => add(x, 1))
 ```
 
-```do ok name=inline_lambda_local_capture
+```do ok name=lambda_explicit_env
 step i32 = 1
-result = map(xs, _(x i32) => add(x, step))
+result = map(xs, step, (x i32, step i32) => add(x, step))
+```
+
+```do ok name=func_name_value_target_select
+inc(x i32) -> i32 { return add(x, 1) }
+inc(x i64) -> i64 { return add(x, 1) }
+apply(f (i32) -> i32) -> i32 { return f(1) }
+v = apply(inc)
+```
+
+```do ok name=import_func_name_value_target_select
+inc = @fixture/import_overload_func.do/inc
+apply(f (i32) -> i32) -> i32 { return f(1) }
+v = apply(inc)
+```
+
+```do err name=func_name_value_no_target
+inc(x i32) -> i32 { return add(x, 1) }
+inc(x i64) -> i64 { return add(x, 1) }
+f = inc
 ```
 
 ```do ok name=generic_variadic_sum

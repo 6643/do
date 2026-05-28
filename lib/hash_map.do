@@ -1,9 +1,5 @@
 List = @/list.do/List
-list_len = @/list.do/len
 list_put = @/list.do/put
-list_get = @/list.do/get
-list_set = @/list.do/set
-list_items = @/list.do/items
 Text = @/text.do/Text
 
 MapError = MissingKey
@@ -87,8 +83,8 @@ get(m HashMap<K, V>, key K) -> V | nil {
 put(m HashMap<K, V>, key K, value V) -> HashMap<K, V> {
     idx = .index_of(m, key)
     if eq(idx, nil) {
-        next_keys [K] = list_put(keys(m), key)
-        next_vals [V] = list_put(values(m), value)
+        next_keys List<K> = list_put(keys(m), key)
+        next_vals List<V> = list_put(values(m), value)
         return HashMap<K, V>{
             len = add(len(m), 1),
             keys = get(next_keys, .items),

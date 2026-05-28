@@ -1,7 +1,7 @@
-_start() {
+start() {
     return
 }
 
-_start() {
+start() {
     return
 }

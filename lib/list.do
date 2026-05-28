@@ -28,11 +28,16 @@ get(xs List<T>, i usize) -> T | nil {
 }
 
 #T
-put(xs List<T>, value T) -> List<T> {
+put(xs List<T>, value T, rest ...T) -> List<T> {
     data [T] = get(xs, .items)
     next_data [T] = put(data, value)
+    next_len usize = add(len(xs), 1)
+    loop x, _ = rest {
+        next_data = put(next_data, x)
+        next_len = add(next_len, 1)
+    }
     return List<T>{
-        len = add(len(xs), 1),
+        len = next_len,
         items = next_data,
     }
 }
@@ -52,6 +57,13 @@ set(xs List<T>, i usize, value T) -> List<T> | ListError {
 update(xs List<T>, i usize, f (T) -> T) -> List<T> | ListError {
     if ge(i, len(xs)) return OutOfBounds
     return set(xs, i, f(at(xs, i)))
+}
+
+#T
+#P
+update(xs List<T>, i usize, env P, f (T, P) -> T) -> List<T> | ListError {
+    if ge(i, len(xs)) return OutOfBounds
+    return set(xs, i, f(at(xs, i), env))
 }
 
 #T
@@ -85,10 +97,33 @@ map(xs List<T>, f (T) -> U) -> List<U> {
 }
 
 #T
+#P
+#U
+map(xs List<T>, env P, f (T, P) -> U) -> List<U> {
+    out List<U> = List<U>{}
+    loop x, _ = xs {
+        out = put(out, f(x, env))
+    }
+    return out
+}
+
+#T
 filter(xs List<T>, f (T) -> bool) -> List<T> {
     out List<T> = List<T>{}
     loop x, _ = xs {
         if f(x) {
+            out = put(out, x)
+        }
+    }
+    return out
+}
+
+#T
+#P
+filter(xs List<T>, env P, f (T, P) -> bool) -> List<T> {
+    out List<T> = List<T>{}
+    loop x, _ = xs {
+        if f(x, env) {
             out = put(out, x)
         }
     }
@@ -127,9 +162,27 @@ find(xs List<T>, f (T) -> bool) -> T | nil {
 }
 
 #T
+#P
+find(xs List<T>, env P, f (T, P) -> bool) -> T | nil {
+    loop x, _ = xs {
+        if f(x, env) return x
+    }
+    return nil
+}
+
+#T
 find_index(xs List<T>, f (T) -> bool) -> usize | nil {
     loop x, i = xs {
         if f(x) return i
+    }
+    return nil
+}
+
+#T
+#P
+find_index(xs List<T>, env P, f (T, P) -> bool) -> usize | nil {
+    loop x, i = xs {
+        if f(x, env) return i
     }
     return nil
 }
@@ -143,9 +196,27 @@ any(xs List<T>, f (T) -> bool) -> bool {
 }
 
 #T
+#P
+any(xs List<T>, env P, f (T, P) -> bool) -> bool {
+    loop x, _ = xs {
+        if f(x, env) return true
+    }
+    return false
+}
+
+#T
 all(xs List<T>, f (T) -> bool) -> bool {
     loop x, _ = xs {
         if not(f(x)) return false
+    }
+    return true
+}
+
+#T
+#P
+all(xs List<T>, env P, f (T, P) -> bool) -> bool {
+    loop x, _ = xs {
+        if not(f(x, env)) return false
     }
     return true
 }
@@ -155,6 +226,18 @@ count(xs List<T>, f (T) -> bool) -> usize {
     out usize = 0
     loop x, _ = xs {
         if f(x) {
+            out = add(out, 1)
+        }
+    }
+    return out
+}
+
+#T
+#P
+count(xs List<T>, env P, f (T, P) -> bool) -> usize {
+    out usize = 0
+    loop x, _ = xs {
+        if f(x, env) {
             out = add(out, 1)
         }
     }

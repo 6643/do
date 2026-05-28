@@ -1091,9 +1091,7 @@ fn parseExpr(
     }
 
     if (tokEq(t, "(")) {
-        if (try parseLambdaExpr(allocator, out_nodes, tokens, start_idx, limit_idx)) |lambda| {
-            return lambda;
-        }
+        if (isLambdaSyntax(tokens, start_idx, limit_idx)) return markErrorAt(tokens, start_idx, error.InvalidLambdaExpr);
         const inner = try parseExpr(allocator, out_nodes, tokens, start_idx + 1, limit_idx);
         if (inner.next_idx >= limit_idx or !tokEq(tokens[inner.next_idx], ")")) {
             return markErrorAt(tokens, start_idx, error.InvalidParenExpr);
@@ -1109,9 +1107,6 @@ fn parseExpr(
     }
 
     if (tokEq(t, "_") and start_idx + 1 < limit_idx and tokEq(tokens[start_idx + 1], "(")) {
-        if (try parseLambdaExpr(allocator, out_nodes, tokens, start_idx, limit_idx)) |lambda| {
-            return lambda;
-        }
         return markErrorAt(tokens, start_idx, error.InvalidLambdaExpr);
     }
 
@@ -1199,6 +1194,10 @@ fn countArgsByExpr(
         if (isSpreadToken(tokens[i])) {
             argc += 1;
             i += 1;
+            if (i >= end_idx) return markErrorAt(tokens, i - 1, error.InvalidCallArgList);
+            const expr = try parseExpr(allocator, out_nodes, tokens, i, end_idx);
+            _ = expr.node_idx;
+            i = expr.next_idx;
             if (i < end_idx and tokEq(tokens[i], ",")) {
                 i += 1;
                 if (i < end_idx) return markErrorAt(tokens, i, error.InvalidCallArgList);
@@ -1207,7 +1206,7 @@ fn countArgsByExpr(
             if (i < end_idx) return markErrorAt(tokens, i, error.InvalidCallArgList);
             break;
         }
-        const expr = try parseExpr(allocator, out_nodes, tokens, i, end_idx);
+        const expr = try parseCallArg(allocator, out_nodes, tokens, i, end_idx);
         _ = expr.node_idx;
         argc += 1;
         i = expr.next_idx;
@@ -1217,6 +1216,21 @@ fn countArgsByExpr(
         if (i >= end_idx) break; // allow trailing comma
     }
     return argc;
+}
+
+fn parseCallArg(
+    allocator: std.mem.Allocator,
+    out_nodes: *std.ArrayList(ExprNode),
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+) anyerror!ExprParse {
+    if (start_idx < end_idx and tokEq(tokens[start_idx], "(")) {
+        if (try parseLambdaExpr(allocator, out_nodes, tokens, start_idx, end_idx)) |lambda| {
+            return lambda;
+        }
+    }
+    return parseExpr(allocator, out_nodes, tokens, start_idx, end_idx);
 }
 
 fn findVariadicTokenIdx(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
@@ -1439,12 +1453,23 @@ fn parseLambdaExpr(
     limit_idx: usize,
 ) anyerror!?ExprParse {
     if (start_idx >= limit_idx) return null;
-    const open_idx = if (tokEq(tokens[start_idx], "_")) start_idx + 1 else start_idx;
-    if (open_idx >= limit_idx or !tokEq(tokens[open_idx], "(")) return null;
+    const open_idx = start_idx;
+    if (!tokEq(tokens[open_idx], "(")) return null;
 
     const close_paren = findMatchingInRange(tokens, open_idx, "(", ")", limit_idx) catch return null;
     const body_start = lambdaBodyStart(tokens, close_paren + 1, limit_idx) orelse return null;
     if (body_start > limit_idx) return markErrorAt(tokens, close_paren + 1, error.InvalidLambdaExpr);
+
+    if (tokEq(tokens[body_start], "{")) {
+        const close_block = try findMatchingInRange(tokens, body_start, "{", "}", limit_idx);
+        const idx = try appendExprNode(allocator, out_nodes, .{
+            .kind = .lambda,
+            .start_tok = start_idx,
+            .end_tok = close_block + 1,
+            .data = .{ .none = {} },
+        });
+        return .{ .next_idx = close_block + 1, .node_idx = idx };
+    }
 
     const body = try parseExpr(allocator, out_nodes, tokens, body_start, limit_idx);
     const idx = try appendExprNode(allocator, out_nodes, .{
@@ -1454,6 +1479,15 @@ fn parseLambdaExpr(
         .data = .{ .child = body.node_idx },
     });
     return .{ .next_idx = body.next_idx, .node_idx = idx };
+}
+
+fn isLambdaSyntax(tokens: []const lexer.Token, start_idx: usize, limit_idx: usize) bool {
+    if (start_idx >= limit_idx) return false;
+    const open_idx = start_idx;
+    if (!tokEq(tokens[open_idx], "(")) return false;
+
+    const close_paren = findMatchingInRange(tokens, open_idx, "(", ")", limit_idx) catch return false;
+    return lambdaBodyStart(tokens, close_paren + 1, limit_idx) != null;
 }
 
 fn lambdaBodyStart(tokens: []const lexer.Token, start_idx: usize, limit_idx: usize) ?usize {
@@ -1553,7 +1587,7 @@ fn tokEq(t: lexer.Token, s: []const u8) bool {
 }
 
 fn isSpreadToken(tok: lexer.Token) bool {
-    return tok.kind == .ident and tok.lexeme.len >= 3 and std.mem.startsWith(u8, tok.lexeme, "...");
+    return tok.kind == .symbol and tokEq(tok, "...");
 }
 
 fn isTypeName(name: []const u8) bool {
@@ -1623,6 +1657,88 @@ test "literal cannot be called" {
     defer nodes.deinit(allocator);
 
     try std.testing.expectError(error.LiteralCannotBeCalled, parseExpr(allocator, &nodes, tokens, 0, tokens.len));
+}
+
+test "lambda is rejected outside call arguments" {
+    const allocator = std.testing.allocator;
+    const tokens = try lexer.tokenize(allocator, "(x i32) => add(x, 1)");
+    defer allocator.free(tokens);
+
+    var nodes = try std.ArrayList(ExprNode).initCapacity(allocator, 0);
+    defer nodes.deinit(allocator);
+
+    try std.testing.expectError(error.InvalidLambdaExpr, parseExpr(allocator, &nodes, tokens, 0, tokens.len));
+}
+
+test "lambda is accepted as call argument" {
+    const allocator = std.testing.allocator;
+    const tokens = try lexer.tokenize(allocator, "map(xs, (x i32) => add(x, 1))");
+    defer allocator.free(tokens);
+
+    var nodes = try std.ArrayList(ExprNode).initCapacity(allocator, 0);
+    defer nodes.deinit(allocator);
+
+    const parsed = try parseExpr(allocator, &nodes, tokens, 0, tokens.len);
+    try std.testing.expectEqual(tokens.len, parsed.next_idx);
+    try std.testing.expectEqual(ExprKind.call, nodes.items[parsed.node_idx].kind);
+}
+
+test "lambda parameter type can be omitted syntactically" {
+    const allocator = std.testing.allocator;
+    const tokens = try lexer.tokenize(allocator, "map(xs, (x) => add(x, 1))");
+    defer allocator.free(tokens);
+
+    var nodes = try std.ArrayList(ExprNode).initCapacity(allocator, 0);
+    defer nodes.deinit(allocator);
+
+    const parsed = try parseExpr(allocator, &nodes, tokens, 0, tokens.len);
+    try std.testing.expectEqual(tokens.len, parsed.next_idx);
+    try std.testing.expectEqual(ExprKind.call, nodes.items[parsed.node_idx].kind);
+}
+
+test "lambda block body is accepted syntactically" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\map(xs, (x i32) -> i32 {
+        \\    y = add(x, 1)
+        \\    return y
+        \\})
+    ;
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+
+    var nodes = try std.ArrayList(ExprNode).initCapacity(allocator, 0);
+    defer nodes.deinit(allocator);
+
+    const parsed = try parseExpr(allocator, &nodes, tokens, 0, tokens.len);
+    try std.testing.expectEqual(tokens.len, parsed.next_idx);
+    try std.testing.expectEqual(ExprKind.call, nodes.items[parsed.node_idx].kind);
+}
+
+test "spread accepts expression operand" {
+    const allocator = std.testing.allocator;
+    const tokens = try lexer.tokenize(allocator, "sum(1, ...tail(xs))");
+    defer allocator.free(tokens);
+
+    var nodes = try std.ArrayList(ExprNode).initCapacity(allocator, 0);
+    defer nodes.deinit(allocator);
+
+    const parsed = try parseExpr(allocator, &nodes, tokens, 0, tokens.len);
+    try std.testing.expectEqual(tokens.len, parsed.next_idx);
+    try std.testing.expectEqual(ExprKind.call, nodes.items[parsed.node_idx].kind);
+}
+
+test "function name is accepted as call argument" {
+    const allocator = std.testing.allocator;
+    const tokens = try lexer.tokenize(allocator, "map(xs, inc)");
+    defer allocator.free(tokens);
+
+    var nodes = try std.ArrayList(ExprNode).initCapacity(allocator, 0);
+    defer nodes.deinit(allocator);
+
+    const parsed = try parseExpr(allocator, &nodes, tokens, 0, tokens.len);
+    try std.testing.expectEqual(tokens.len, parsed.next_idx);
+    try std.testing.expectEqual(ExprKind.call, nodes.items[parsed.node_idx].kind);
 }
 
 test "struct literal uses equals" {

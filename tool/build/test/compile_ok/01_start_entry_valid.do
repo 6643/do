@@ -1,3 +1,3 @@
-_start() {
+start() {
     return
 }
