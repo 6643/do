@@ -1,6 +1,5 @@
 Text = @/text.do/Text
 List = @/list.do/List
-list_empty = @/list.do/empty
 list_put = @/list.do/put
 now = @/time.do/now
 
@@ -42,7 +41,7 @@ range(r Random, max u64) -> Random, u64 {
 }
 
 fill_bytes(r Random, count usize) -> Random, Text {
-    out List<u8> = list_empty()
+    out List<u8> = List<u8>{}
     i usize = 0
     state Random = r
     loop {

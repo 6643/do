@@ -1,5 +1,5 @@
 test "loop map direct" {
-    m Map<Text, i32> = Map<Text, i32>{}
+    m HashMap<Text, i32> = HashMap<Text, i32>{}
     loop v, k = m {
         consume(k, v)
     }

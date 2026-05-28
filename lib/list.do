@@ -3,12 +3,7 @@ ListError = OutOfBounds
 #T
 List {
     .len usize = 0
-    .items [T] = storage()
-}
-
-#T
-empty() -> List<T> {
-    return List<T>{}
+    .items [T] = .{}
 }
 
 #T

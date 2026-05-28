@@ -1,6 +1,5 @@
 Text = @/text.do/Text
 List = @/list.do/List
-list_empty = @/list.do/empty
 list_put = @/list.do/put
 list_len = @/list.do/len
 list_items = @/list.do/items
@@ -26,7 +25,7 @@ encode_upper(data Text) -> Text {
 }
 
 encode_with(data Text, alphabet Text) -> Text {
-    out List<u8> = list_empty()
+    out List<u8> = List<u8>{}
     i usize = 0
     loop {
         if eq(i, len(data)) return get(out, .items)
@@ -48,7 +47,7 @@ decode_digit(c u8) -> u8 | HexError {
 
 decode(text Text) -> Text | HexError {
     if ne(rem(len(text), 2), 0) return InvalidLength
-    out List<u8> = list_empty()
+    out List<u8> = List<u8>{}
     i usize = 0
     loop {
         if eq(i, len(text)) return get(out, .items)

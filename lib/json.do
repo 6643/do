@@ -1,6 +1,5 @@
 Text = @/text.do/Text
 List = @/list.do/List
-list_empty = @/list.do/empty
 list_put = @/list.do/put
 
 JsonError = InvalidEscape | UnterminatedEscape
@@ -12,7 +11,7 @@ _carriage u8 = 13
 _tab u8 = 9
 
 escape(text Text) -> Text {
-    out List<u8> = list_empty()
+    out List<u8> = List<u8>{}
     i usize = 0
     loop {
         if eq(i, len(text)) return get(out, .items)
@@ -40,7 +39,7 @@ escape(text Text) -> Text {
 }
 
 quote(text Text) -> Text {
-    out List<u8> = list_empty()
+    out List<u8> = List<u8>{}
     out = list_put(out, _quote)
     escaped Text = escape(text)
     loop ch, _ = escaped {
@@ -51,7 +50,7 @@ quote(text Text) -> Text {
 }
 
 unescape(text Text) -> Text | JsonError {
-    out List<u8> = list_empty()
+    out List<u8> = List<u8>{}
     i usize = 0
     loop {
         if eq(i, len(text)) return get(out, .items)

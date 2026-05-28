@@ -1,8 +1,7 @@
 List = @/list.do/List
-empty = @/list.do/empty
 
 test "upper loop bind" {
-    xs List<i32> = empty()
+    xs List<i32> = List<i32>{}
     loop Value, i = xs {
         return
     }

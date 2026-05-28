@@ -18,7 +18,7 @@
 7. `is/and/or/not` 属于 `native` special form。
 8. `eq/ne/lt/le/gt/ge` 由 `core` 预定义并固定提供。
 9. 数值与位运算基础函数（如 `add/sub/mul/div/rem`）属于 `core`，由 `native` primitive 支撑；`add/sub/mul/div/rem` 接收同类型 2 个及以上参数。
-10. `[T]` 是 `core` 连续存储 primitive，表示任意多个连续的 `T` 值；它不是集合类型，也不携带长度信息，标准库或用户库可用它实现 `List/Map` 等普通泛型结构体或类型别名。
+10. `[T]` 是 `core` 连续存储 primitive，表示任意多个连续的 `T` 值；它不是集合类型，也不携带长度信息，标准库或用户库可用它实现 `List/HashMap` 等普通泛型结构体或类型别名。
 11. `Text` 不是 `core` 预导入类型；标准库里它按 `Text = [u8]` 的别名形态提供，底层就是字节序列。
 12. 时间换算函数（如 `ms/sec/day`）属于 `std` 时间库。
 13. `Error` 由编译器合成，聚合当前可达模块中所有对外可见的 `*Error` 联合类型，以及内建运行时错误分支。
@@ -77,10 +77,12 @@ LineStringChar := ? any character except LF, CR ?
 18. parser 输入是 token 流；空格与制表符在词法阶段剔除，换行保留为 `NL` token。
 19. 顶层声明与块内语句使用换行分隔；一行一个声明或语句。
 20. 关键字按整 token 匹配，不做前缀匹配；例如 `dof` 是一个 `Ident`，不是 `do` + `f`。
-21. `Text/List/Map` 等库类型由 `std` 或用户库定义，并按普通 `RefTypeName` 解析；其中 `Text` 的标准形态是 `[u8]` 别名。
-22. `LambdaExpr` 只出现在调用实参位，作为内联回调；它可读取自身参数、体内绑定和顶层常量，并可调用当前可见函数。
-23. 算术、比较和逻辑组合使用函数或 `native` 判断族表达。
-24. import 路径段使用 `PathSeg`；路径段由小写字母开头，可含数字，单词之间用单个 `_` 分隔。
+21. `Text/List/HashMap` 等库类型由 `std` 或用户库定义，并按普通 `RefTypeName` 解析；其中 `Text` 的标准形态是 `[u8]` 别名。
+22. `LambdaExpr` 只出现在调用实参位，作为内联回调；语法形如 `(x i32) => add(x, 1)`、`(x i32) -> i32 => add(x, 1)` 或 `(x i32) -> i32 { ... }`。
+23. 普通 `LambdaExpr` 只读自身参数、体内绑定、顶层常量和当前可见函数，不形成闭包，不能捕获外层局部绑定，也不能绑定到变量或作为值返回。
+24. `_` 前缀的行内 lambda 形如 `_(x i32) => add(x, step)`；它可读取调用点外层局部绑定，并由编译器按行内代码处理，不暴露运行时闭包值。
+25. 算术、比较和逻辑组合使用函数或 `native` 判断族表达。
+26. import 路径段使用 `PathSeg`；路径段由小写字母开头，可含数字，单词之间用单个 `_` 分隔。
 
 ### 2.2 保留词与保留标识符
 
@@ -259,6 +261,7 @@ Expr             <- DoExpr
                   / CoreAccessExpr
                   / CallExpr
                   / LambdaExpr
+                  / InlineLambdaExpr
                   / InferredAggLit
                   / TypedAggLit
                   / ParenExpr
@@ -291,13 +294,11 @@ OrExpr           <- 'or' '(' SoftGap Expr CommaSep Expr SoftGap ')'
 NotExpr          <- 'not' '(' SoftGap Expr SoftGap ')'
 
 CoreAccessExpr   <- GetExpr / SetExpr
-GetExpr          <- 'get' '(' SoftGap Expr CommaSep PathSpec SoftGap ')'
-SetExpr          <- 'set' '(' SoftGap Expr CommaSep PathSpec CommaSep Expr SoftGap ')'
+GetExpr          <- 'get' '(' SoftGap Expr CommaSep PathArgList SoftGap ')'
+SetExpr          <- 'set' '(' SoftGap Expr CommaSep PathArgList CommaSep Expr SoftGap ')'
 
-PathSpec         <- FieldSeg / PathLit
-PathLit          <- '.' '{' SoftGap PathElemList? SoftGap '}'
-PathElemList     <- PathElem (CommaSep PathElem)* TrailComma?
-PathElem         <- FieldSeg / IndexSeg
+PathArgList      <- PathArg (CommaSep PathArg)* TrailComma?
+PathArg          <- FieldSeg / IndexSeg
 IndexSeg         <- Expr
 FieldSeg         <- '.' LowerIdent
 
@@ -308,6 +309,7 @@ ArgList          <- FixedArgList (CommaSep SpreadArg)? TrailComma?
 FixedArgList     <- Expr (CommaSep Expr)*
 SpreadArg        <- '...' Expr
 
+InlineLambdaExpr <- '_' LambdaExpr
 LambdaExpr       <- '(' SoftGap LambdaParamList? SoftGap ')' SoftGap LambdaTail
 LambdaParamList  <- LambdaParam (CommaSep LambdaParam)* TrailComma?
 LambdaParam      <- ParamName (SoftGap TypeExpr)?
@@ -377,28 +379,27 @@ NL               <- '\n'
 ### 5.1 定位
 
 1. `get/set/put/len/at` 作为开放函数族使用；`core` 只提供 struct 字段路径和 `[T]` 连续存储的基础读写 primitive，`std` 或用户库可按普通函数定义具体重载。
-2. 多段结构路径使用受限路径形态，因此语法层单列 `PathSpec`；字段/索引路径统一从 `get/set` 进入，集合设计由库层承载。
+2. 多段结构路径使用扁平参数形态；字段/索引路径统一从 `get/set` 进入，集合设计由库层承载。
 3. 结构字段读写统一只走 `get/set` 路径形态，例如 `get(x, .name)`、`set(x, .name, value)`。
 4. `put` 由 `std` 或用户库按普通函数定义；它可用于集合追加、插入、键写入或其他库自定义更新语义。
 5. `update` 作为普通库函数定义；需要时可由 `std` 基于 `get/set` 提供。
 
 ### 5.2 路径形态
 
-1. 单段路径: `FieldSeg`，例如 `.name`。
-2. 多段路径: `PathLit`，例如 `.{.user, .address, .city}`。
-3. 路径段列表为 `PathElemList`，单段为 `PathElem`。
-4. `PathElem` 分为字段段与索引段：字段段是前置点加单个 `LowerIdent`；索引段是 `Expr`。
-5. `PathLit` 仅在 `get/set` 的路径参数位生效；其他表达式位的 `.{...}` 视为 `InferredAggLit`。
-6. `PathLit` 是语法上的受限路径，使用位置是 `get/set` 的路径参数位。
-7. `PathLit` 在语义上规约为字段段/索引段序列；复杂表达式段在路径求值时直接计算。它可按固定样式渲染为可视文本用于展示和诊断。
-8. `PathLit` 的可视文本采用点与方括号连写：字段段显示为 `.lower_ident`，索引段显示为 `[expr]`；表达式段按其可读表达展示。
+1. 单段字段路径写作 `FieldSeg`，例如 `.name`。
+2. 多段路径写作扁平实参，例如 `get(users, 0, .name)` 或 `set(users, add(i, 1), .name, value)`。
+3. 路径段列表为 `PathArgList`，单段为 `PathArg`。
+4. `PathArg` 分为字段段与索引段：字段段是前置点加单个 `LowerIdent`；索引段是 `Expr`。
+5. 路径段是 `get/set` 的原语级语法，不暴露为 `core` 或 `std` 的值类型。
+6. 字段段只用于结构体字段访问；索引段只用于 `[T]` 连续存储或库类型定义的索引访问。
+7. 复杂表达式段在路径求值时直接计算；字段段按 `.lower_ident` 展示，索引段按其可读表达展示。
 
 ### 5.3 调用示例
 
 ```do
 name Text = get(user, .name)
-state = set(state, .{.user, .name}, "tom")
-item = get(user, .{.abc, add(i, 1), .name})
+state = set(state, .user, .name, "tom")
+item = get(user, .abc, add(i, 1), .name)
 ```
 
 ```do
@@ -419,8 +420,8 @@ Text = [u8]
 8. `set` 只更新既有路径。
 9. `set` 遇到字段不存在、索引越界、用户集合键不存在或联合类型当前分支不匹配路径时返回 `Error`。
 10. `Struct` 支持 `get/set`；是否支持 `put` 由具体库函数决定，不由语法层限定。
-11. `List/Map` 作为普通库类型存在；对应操作由 `std` 或用户库以普通函数提供。
-12. `Map` 作为循环源时使用库显式提供的 `keys(m)`、`values(m)` 或 `entries(m)` 这类返回可循环集合的函数。
+11. `List/HashMap` 作为普通库类型存在；对应操作由 `std` 或用户库以普通函数提供。
+12. `HashMap` 作为循环源时使用库显式提供的 `keys(m)`、`values(m)` 或 `entries(m)` 这类返回可循环集合的函数。
 
 ## 6. 静态约束
 
@@ -445,7 +446,7 @@ Text = [u8]
 17. import 路径段统一使用 `PathSeg`。
 18. local import 使用显式 symbol import：`name = @path/file.do/symbol`；目标模块会递归加载其自身依赖。
 19. 模块依赖图是无环图；local import 会递归解析目标模块，缺失目标符号或任意层级的 import cycle 都是错误。
-20. host import 使用 `@host/path(...) -> ...` 形式，并由编译器桥接到宿主实现。
+20. host import 使用 `@env/console_log(...) -> nil` 这类形式，并由编译器桥接到宿主实现；`@` 后的路径是宿主命名空间或模块路径。
 21. host import 签名是 ABI 签名；参数使用 `i32/i64/f32/f64`，返回使用 `nil` 或单个 `i32/i64/f32/f64`。
 22. 函数族唯一性由函数名与参数类型序列决定；同一函数名配合同一参数类型序列对应唯一定义。
 23. 不定参数参与函数族唯一性；`rest ...T` 的签名尾部记作 `...T`，不同于单个 `T`。
@@ -478,7 +479,7 @@ Text = [u8]
 23. 结构体字段声明位的 `.field` 表示私有；字段真实名字仍是 `field`，同一结构体内同一字段写作 `field` 或 `.field`。
 24. 当前模块内构造结构体时，字段初始化使用裸字段名 `field = value`；`.field` 出现在路径位或声明位。
 25. 外部模块构造 public struct 时填写 public 字段；private 字段由默认值提供。
-26. 聚合字面量 body 接受字段项；`Map/List` 的 body 也按泛型结构体字段构造解释，`Type<...>{...}` 同样如此。
+26. 聚合字面量 body 接受字段项；`HashMap/List` 的 body 也按泛型结构体字段构造解释，`Type<...>{...}` 同样如此。
 27. 结构体字段构造使用 `field = value`。
 28. 字段默认值在结构体构造时求值；默认表达式结果类型与字段类型一致。
 29. 结构体构造发生在 CTFE 上下文时，字段默认值也走 CTFE；运行时构造可执行运行时默认表达式。
@@ -606,15 +607,15 @@ name = get(user, .name)
 ```
 
 ```do ok name=path_index_expr_segment
-first_name = get(users, .{0, .name})
+first_name = get(users, 0, .name)
 ```
 
 ```do ok name=path_index_call_expr_segment
-first_name = get(users, .{add(i, 1), .name})
+first_name = get(users, add(i, 1), .name)
 ```
 
 ```do err name=path_index_type_mismatch
-first_name = get(users, .{"0", .name})
+first_name = get(users, .{0, .name})
 ```
 
 ```do ok name=put_list_append
@@ -633,13 +634,13 @@ xs = put(xs, 8)
 ```
 
 ```do ok name=set_map_missing_key
-m Map<Text, i32> = Map<Text, i32>{}
+m HashMap<Text, i32> = HashMap<Text, i32>{}
 result = set(m, "a", 1)
 if eq(result, MissingKey) return
 ```
 
 ```do ok name=put_map_key
-m Map<Text, i32> = Map<Text, i32>{}
+m HashMap<Text, i32> = HashMap<Text, i32>{}
 m = put(m, "a", 1)
 ```
 
@@ -968,15 +969,14 @@ map(xs List<T>, f (T) -> U) -> List<U> {
 }
 ```
 
-```do ok name=generic_type_param_with_env
+```do ok name=generic_type_param_inline_env
 #T
-#P
 #U
-map_with(xs List<T>, p P, f (T, P) -> U) -> List<U> {
+map_env(xs List<T>, step i32, f (T) -> U) -> List<U> {
     ys List<U> = .{}
 
     loop x, _ = xs {
-        y U = f(x, p)
+        y U = f(x)
         ys = put(ys, y)
     }
 
@@ -990,9 +990,11 @@ list_filter = @/list.do/filter
 list_fold = @/list.do/fold
 
 xs List<i32> = List<i32>{}
+step i32 = 1
 ys List<i64> = list_map(xs, (x i32) -> i64 => to_i64(add(x, 1)))
 even List<i32> = list_filter(xs, (x i32) -> bool => eq(rem(x, 2), 0))
 sum i32 = list_fold(xs, 0, (acc i32, x i32) -> i32 => add(acc, x))
+shifted List<i32> = list_map(xs, _(x i32) -> i32 => add(x, step))
 ```
 
 ```do ok name=std_pipe_same_type_chain
@@ -1009,23 +1011,23 @@ result i32 = pipe(
 #T
 List {
     .len usize = 0
-    .items [T] = storage()
+    .items [T] = .{}
 }
 ```
 
-`storage() -> [T]` 是 core 连续存储构造 primitive；由已知目标类型提供 `T`，用户代码只通过库函数操作它。
+`.{}` 可在已知目标类型为 `[T]` 时构造空连续存储；由目标类型提供 `T`，用户代码只通过库函数操作它。
 
 ```do ok name=generic_struct_map_storage
 #K
 #V
-Map {
+HashMap {
     .len usize = 0
-    .keys [K] = storage()
-    .vals [V] = storage()
+    .keys [K] = .{}
+    .vals [V] = .{}
 }
 ```
 
-`List/Map` 在这里只是普通库类型示例，不是保留类型名，也不享有特殊字面量 body。
+`List/HashMap` 在这里只是普通库类型示例，不是保留类型名，也不享有特殊字面量 body。
 
 ```do ok name=loop_recv_value
 loop v = recv(ch) {
@@ -1205,6 +1207,11 @@ str = \\abc
 
 ```do ok name=lambda_callback_site
 result = map(xs, (x i32) -> i32 => add(x, 1))
+```
+
+```do ok name=inline_lambda_local_capture
+step i32 = 1
+result = map(xs, _(x i32) => add(x, step))
 ```
 
 ```do err name=lambda_value_bind

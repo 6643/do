@@ -1,6 +1,5 @@
 Text = @/text.do/Text
 List = @/list.do/List
-list_empty = @/list.do/empty
 list_put = @/list.do/put
 list_len = @/list.do/len
 list_items = @/list.do/items
@@ -60,7 +59,7 @@ _append_u32_be(out List<u8>, value u32) -> List<u8> {
 }
 
 _sha256_k_table() -> [u32] {
-    out [u32] = storage()
+    out [u32] = .{}
     out = put(out, 1116352408)
     out = put(out, 1899447441)
     out = put(out, 3049323471)
@@ -131,7 +130,7 @@ _sha256_k_table() -> [u32] {
 _sha256_k [u32] = _sha256_k_table()
 
 _pad(text Text) -> List<u8> {
-    out List<u8> = list_empty()
+    out List<u8> = List<u8>{}
     loop b, _ = text {
         out = list_put(out, b)
     }
@@ -144,7 +143,7 @@ _pad(text Text) -> List<u8> {
 
 _block(h0 u32, h1 u32, h2 u32, h3 u32, h4 u32, h5 u32, h6 u32, h7 u32, block List<u8>, base usize) -> u32, u32, u32, u32, u32, u32, u32, u32 {
     items [u8] = list_items(block)
-    w [u32] = storage()
+    w [u32] = .{}
     w = put(w, read_u32_be(items, base))
     w = put(w, read_u32_be(items, add(base, 4)))
     w = put(w, read_u32_be(items, add(base, 8)))
@@ -230,7 +229,7 @@ sum(text Text) -> Text {
     i usize = 0
     loop {
         if ge(i, list_len(padded)) {
-            out List<u8> = list_empty()
+            out List<u8> = List<u8>{}
             out = _append_u32_be(out, a)
             out = _append_u32_be(out, b)
             out = _append_u32_be(out, c)

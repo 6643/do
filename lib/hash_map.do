@@ -1,5 +1,4 @@
 List = @/list.do/List
-list_empty = @/list.do/empty
 list_len = @/list.do/len
 list_put = @/list.do/put
 list_get = @/list.do/get
@@ -11,10 +10,10 @@ MapError = MissingKey
 
 #K
 #V
-Map {
+HashMap {
     .len usize = 0
-    .keys [K] = storage()
-    .vals [V] = storage()
+    .keys [K] = .{}
+    .vals [V] = .{}
 }
 
 #K
@@ -34,19 +33,13 @@ hash(text Text) -> u64 {
 
 #K
 #V
-empty() -> Map<K, V> {
-    return Map<K, V>{}
-}
-
-#K
-#V
-len(m Map<K, V>) -> usize {
+len(m HashMap<K, V>) -> usize {
     return get(m, .len)
 }
 
 #K
 #V
-keys(m Map<K, V>) -> List<K> {
+keys(m HashMap<K, V>) -> List<K> {
     return List<K>{
         len = len(m),
         items = get(m, .keys),
@@ -55,7 +48,7 @@ keys(m Map<K, V>) -> List<K> {
 
 #K
 #V
-values(m Map<K, V>) -> List<V> {
+values(m HashMap<K, V>) -> List<V> {
     return List<V>{
         len = len(m),
         items = get(m, .vals),
@@ -64,7 +57,7 @@ values(m Map<K, V>) -> List<V> {
 
 #K
 #V
-.index_of(m Map<K, V>, key K) -> usize | nil {
+.index_of(m HashMap<K, V>, key K) -> usize | nil {
     i usize = 0
     loop {
         if ge(i, len(m)) return nil
@@ -75,14 +68,14 @@ values(m Map<K, V>) -> List<V> {
 
 #K
 #V
-has(m Map<K, V>, key K) -> bool {
+has(m HashMap<K, V>, key K) -> bool {
     idx = .index_of(m, key)
     return ne(idx, nil)
 }
 
 #K
 #V
-get(m Map<K, V>, key K) -> V | nil {
+get(m HashMap<K, V>, key K) -> V | nil {
     idx = .index_of(m, key)
     if eq(idx, nil) return nil
     index usize = idx
@@ -91,12 +84,12 @@ get(m Map<K, V>, key K) -> V | nil {
 
 #K
 #V
-put(m Map<K, V>, key K, value V) -> Map<K, V> {
+put(m HashMap<K, V>, key K, value V) -> HashMap<K, V> {
     idx = .index_of(m, key)
     if eq(idx, nil) {
         next_keys [K] = list_put(keys(m), key)
         next_vals [V] = list_put(values(m), value)
-        return Map<K, V>{
+        return HashMap<K, V>{
             len = add(len(m), 1),
             keys = get(next_keys, .items),
             vals = get(next_vals, .items),
@@ -105,7 +98,7 @@ put(m Map<K, V>, key K, value V) -> Map<K, V> {
 
     index usize = idx
     next_vals [V] = set(get(m, .vals), index, value)
-    return Map<K, V>{
+    return HashMap<K, V>{
         len = len(m),
         keys = get(m, .keys),
         vals = next_vals,
@@ -114,12 +107,12 @@ put(m Map<K, V>, key K, value V) -> Map<K, V> {
 
 #K
 #V
-set(m Map<K, V>, key K, value V) -> Map<K, V> | MapError {
+set(m HashMap<K, V>, key K, value V) -> HashMap<K, V> | MapError {
     idx = .index_of(m, key)
     if eq(idx, nil) return MissingKey
     index usize = idx
     next_vals [V] = set(get(m, .vals), index, value)
-    return Map<K, V>{
+    return HashMap<K, V>{
         len = len(m),
         keys = get(m, .keys),
         vals = next_vals,
@@ -128,8 +121,8 @@ set(m Map<K, V>, key K, value V) -> Map<K, V> | MapError {
 
 #K
 #V
-entries(m Map<K, V>) -> List<Entry<K, V>> {
-    out List<Entry<K, V>> = list_empty()
+entries(m HashMap<K, V>) -> List<Entry<K, V>> {
+    out List<Entry<K, V>> = List<Entry<K, V>>{}
     i usize = 0
     loop {
         if eq(i, len(m)) return out

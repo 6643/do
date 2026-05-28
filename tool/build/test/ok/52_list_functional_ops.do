@@ -1,5 +1,4 @@
 List = @/list.do/List
-list_empty = @/list.do/empty
 list_put = @/list.do/put
 list_map = @/list.do/map
 list_filter = @/list.do/filter
@@ -12,7 +11,7 @@ list_all = @/list.do/all
 list_count = @/list.do/count
 
 test "list functional ops" {
-    xs List<i32> = list_empty()
+    xs List<i32> = List<i32>{}
     xs = list_put(xs, 1)
     xs = list_put(xs, 2)
     xs = list_put(xs, 3)

@@ -1,2 +1,2 @@
 InvalidPathIndex
-路径索引写作 `get(value, .{index})`；字段段写作 `get(value, .field)`
+路径参数写作 `get(value, index, .field)`；字段段写作 `.field`

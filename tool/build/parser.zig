@@ -1108,6 +1108,13 @@ fn parseExpr(
         return .{ .next_idx = end_idx, .node_idx = idx };
     }
 
+    if (tokEq(t, "_") and start_idx + 1 < limit_idx and tokEq(tokens[start_idx + 1], "(")) {
+        if (try parseLambdaExpr(allocator, out_nodes, tokens, start_idx, limit_idx)) |lambda| {
+            return lambda;
+        }
+        return markErrorAt(tokens, start_idx, error.InvalidLambdaExpr);
+    }
+
     if (t.kind == .number or t.kind == .string or tokEq(t, "true") or tokEq(t, "false") or tokEq(t, "nil")) {
         if (start_idx + 1 < limit_idx and tokEq(tokens[start_idx + 1], "(")) {
             return markErrorAt(tokens, start_idx, error.LiteralCannotBeCalled);
@@ -1431,9 +1438,11 @@ fn parseLambdaExpr(
     start_idx: usize,
     limit_idx: usize,
 ) anyerror!?ExprParse {
-    if (start_idx >= limit_idx or !tokEq(tokens[start_idx], "(")) return null;
+    if (start_idx >= limit_idx) return null;
+    const open_idx = if (tokEq(tokens[start_idx], "_")) start_idx + 1 else start_idx;
+    if (open_idx >= limit_idx or !tokEq(tokens[open_idx], "(")) return null;
 
-    const close_paren = findMatchingInRange(tokens, start_idx, "(", ")", limit_idx) catch return null;
+    const close_paren = findMatchingInRange(tokens, open_idx, "(", ")", limit_idx) catch return null;
     const body_start = lambdaBodyStart(tokens, close_paren + 1, limit_idx) orelse return null;
     if (body_start > limit_idx) return markErrorAt(tokens, close_paren + 1, error.InvalidLambdaExpr);
 

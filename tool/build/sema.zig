@@ -310,20 +310,31 @@ fn checkOneLambdaUsage(
         return markErrorAt(tokens, node.start_tok, error.InvalidLambdaExpr);
     }
 
-    const close_paren = findMatching(tokens, node.start_tok, "(", ")") catch
+    const open_paren = lambdaParamOpen(tokens, node.start_tok) orelse
+        return markErrorAt(tokens, node.start_tok, error.InvalidLambdaExpr);
+    const close_paren = findMatching(tokens, open_paren, "(", ")") catch
         return markErrorAt(tokens, node.start_tok, error.InvalidLambdaExpr);
     const body_start = lambdaBodyStart(tokens, close_paren + 1, node.end_tok) orelse {
         return markErrorAt(tokens, close_paren, error.InvalidLambdaExpr);
     };
 
-    const params = try collectLambdaParamNames(allocator, tokens, node.start_tok + 1, close_paren);
+    const params = try collectLambdaParamNames(allocator, tokens, open_paren + 1, close_paren);
     defer allocator.free(params);
 
     if (body_start > node.end_tok) return markErrorAt(tokens, close_paren, error.InvalidLambdaExpr);
 
-    if (findLambdaCapture(tokens, body_start, node.end_tok, params)) |bad_idx| {
-        return markErrorAt(tokens, bad_idx, error.InvalidLambdaExpr);
+    if (!isCaptureInlineLambda(tokens, node.start_tok)) {
+        if (findLambdaCapture(tokens, body_start, node.end_tok, params)) |bad_idx| {
+            return markErrorAt(tokens, bad_idx, error.InvalidLambdaExpr);
+        }
     }
+}
+
+fn lambdaParamOpen(tokens: []const lexer.Token, start_idx: usize) ?usize {
+    if (start_idx >= tokens.len) return null;
+    if (tokEq(tokens[start_idx], "(")) return start_idx;
+    if (tokEq(tokens[start_idx], "_") and start_idx + 1 < tokens.len and tokEq(tokens[start_idx + 1], "(")) return start_idx + 1;
+    return null;
 }
 
 fn lambdaBodyStart(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
@@ -364,6 +375,10 @@ fn isInlineLambdaSite(tokens: []const lexer.Token, start_idx: usize) bool {
     if (start_idx < 2) return false;
     const before_prev = tokens[start_idx - 2];
     return before_prev.kind == .ident or tokEq(before_prev, ")") or tokEq(before_prev, "]");
+}
+
+fn isCaptureInlineLambda(tokens: []const lexer.Token, start_idx: usize) bool {
+    return start_idx < tokens.len and tokEq(tokens[start_idx], "_");
 }
 
 fn collectLambdaParamNames(
@@ -699,7 +714,9 @@ fn checkPathArgIndexSegments(tokens: []const lexer.Token, start_idx: usize, end_
     const path_start = findPathArgStart(tokens, start_idx, end_idx) orelse return;
     if (path_start + 1 >= end_idx or !tokEq(tokens[path_start], ".") or !tokEq(tokens[path_start + 1], "{")) return;
     const path_close = findMatching(tokens, path_start + 1, "{", "}") catch return markErrorAt(tokens, path_start, error.InvalidPathIndex);
-    try checkPathListIndexSegments(tokens, path_start + 2, path_close);
+    if (isLegacyPathList(tokens, path_start + 2, path_close)) {
+        return markErrorAt(tokens, path_start, error.InvalidPathIndex);
+    }
 }
 
 fn findPathArgStart(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
@@ -742,27 +759,22 @@ fn findPathArgStart(tokens: []const lexer.Token, start_idx: usize, end_idx: usiz
     return null;
 }
 
-fn checkPathListIndexSegments(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !void {
+fn isLegacyPathList(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     var i = start_idx;
-    while (i < end_idx) {
-        const seg_start = i;
-        const seg_end = findPathSegmentEnd(tokens, i, end_idx);
-        if (seg_start < seg_end and isInvalidPathIndexSegment(tokens, seg_start, seg_end)) {
-            return markErrorAt(tokens, seg_start, error.InvalidPathIndex);
-        }
-        i = seg_end;
-        if (i >= end_idx) break;
-        if (!tokEq(tokens[i], ",")) return markErrorAt(tokens, i, error.InvalidPathIndex);
-        i += 1;
+    while (i < end_idx) : (i += 1) {
+        if (isTopLevelPathFieldInit(tokens, i, start_idx, end_idx)) return false;
     }
+    return true;
 }
 
-fn findPathSegmentEnd(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) usize {
+fn isTopLevelPathFieldInit(tokens: []const lexer.Token, eq_idx: usize, start_idx: usize, end_idx: usize) bool {
+    if (!tokEq(tokens[eq_idx], "=")) return false;
+
     var depth_paren: usize = 0;
     var depth_brace: usize = 0;
     var depth_angle: usize = 0;
     var i = start_idx;
-    while (i < end_idx) : (i += 1) {
+    while (i < eq_idx and i < end_idx) : (i += 1) {
         if (tokEq(tokens[i], "(")) {
             depth_paren += 1;
             continue;
@@ -787,16 +799,8 @@ fn findPathSegmentEnd(tokens: []const lexer.Token, start_idx: usize, end_idx: us
             if (depth_angle > 0) depth_angle -= 1;
             continue;
         }
-        if (depth_paren == 0 and depth_brace == 0 and depth_angle == 0 and tokEq(tokens[i], ",")) break;
     }
-    return i;
-}
-
-fn isInvalidPathIndexSegment(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
-    if (end_idx == start_idx + 1 and tokens[start_idx].kind == .ident and tokens[start_idx].lexeme.len > 1 and tokens[start_idx].lexeme[0] == '.') {
-        return false;
-    }
-    return end_idx == start_idx + 1 and tokens[start_idx].kind == .string;
+    return depth_paren == 0 and depth_brace == 0 and depth_angle == 0;
 }
 
 fn classifyCallBool(func_sigs: []const parser.FuncSig, call: parser.FuncCallRef) KnownBool {
@@ -1670,7 +1674,7 @@ fn isRecvLoopSource(tokens: []const lexer.Token, start_idx: usize, end_idx: usiz
 }
 
 fn isUnsupportedDirectLoopSource(type_name: []const u8) bool {
-    return std.mem.eql(u8, type_name, "Map");
+    return std.mem.eql(u8, type_name, "HashMap");
 }
 
 fn checkConstraintLayout(tokens: []const lexer.Token) !void {

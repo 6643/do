@@ -1,6 +1,5 @@
 Text = @/text.do/Text
 List = @/list.do/List
-list_empty = @/list.do/empty
 list_put = @/list.do/put
 
 Base64Error = InvalidLength | InvalidDigit | InvalidPadding
@@ -58,7 +57,7 @@ encode_raw_url(data Text) -> Text {
 }
 
 encode_with(enc Encoding, data Text) -> Text {
-    out List<u8> = list_empty()
+    out List<u8> = List<u8>{}
     alphabet Text = get(enc, .alphabet)
     pad bool = get(enc, .pad)
     padding u8 = get(enc, .padding)
@@ -139,7 +138,7 @@ decode_with(enc Encoding, data Text) -> Text | Base64Error {
         if eq(rem(len(data), 4), 1) return InvalidLength
     }
 
-    out List<u8> = list_empty()
+    out List<u8> = List<u8>{}
     i usize = 0
     loop {
         if eq(i, len(data)) return get(out, .items)

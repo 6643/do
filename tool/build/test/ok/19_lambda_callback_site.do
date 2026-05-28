@@ -5,3 +5,10 @@ test "lambda callback site" {
     result = map(xs, (x i32) => add(x, 1))
     return
 }
+
+test "inline lambda captures local" {
+    xs List<i32> = List<i32>{}
+    step i32 = 1
+    result = map(xs, _(x i32) => add(x, step))
+    return
+}

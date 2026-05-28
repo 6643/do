@@ -1,6 +1,5 @@
 Text = @/text.do/Text
 List = @/list.do/List
-list_empty = @/list.do/empty
 list_put = @/list.do/put
 list_len = @/list.do/len
 list_items = @/list.do/items
@@ -48,7 +47,7 @@ _append_u64_le(out List<u8>, value u64) -> List<u8> {
 }
 
 _pad(data Text) -> List<u8> {
-    out List<u8> = list_empty()
+    out List<u8> = List<u8>{}
     loop b, _ = data {
         out = list_put(out, b)
     }
@@ -164,7 +163,7 @@ sum(text Text) -> Text {
     i usize = 0
     loop {
         if ge(i, list_len(padded)) {
-            out List<u8> = list_empty()
+            out List<u8> = List<u8>{}
             out = _append_u32_le(out, a)
             out = _append_u32_le(out, b)
             out = _append_u32_le(out, c)
