@@ -443,8 +443,8 @@ Text = [u8]
 15. local import 目标是来源 `.do` 文件的 public 顶层声明。
 16. local import 只支持三种入口：`@path/file.do/name` 为当前文件目录向下查找，`@~/path/file.do/name` 为当前项目 `/lib` 目录向下查找，`@/path/file.do/name` 为标准库根目录向下查找。
 17. import 路径段统一使用 `PathSeg`。
-18. local import 使用显式 symbol import：`name = @path/file.do/symbol`。
-19. 模块依赖图是无环图；自导入属于 import cycle。
+18. local import 使用显式 symbol import：`name = @path/file.do/symbol`；目标模块会递归加载其自身依赖。
+19. 模块依赖图是无环图；local import 会递归解析目标模块，缺失目标符号或任意层级的 import cycle 都是错误。
 20. host import 使用 `@host/path(...) -> ...` 形式，并由编译器桥接到宿主实现。
 21. host import 签名是 ABI 签名；参数使用 `i32/i64/f32/f64`，返回使用 `nil` 或单个 `i32/i64/f32/f64`。
 22. 函数族唯一性由函数名与参数类型序列决定；同一函数名配合同一参数类型序列对应唯一定义。
