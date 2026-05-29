@@ -17,15 +17,14 @@
 - **运行时资源管理**: 采用显式资源释放和 ID 关联，目标是不引入循环 GC。
 - **语言规范基线**: 语法、内建判断族、核心库特型与静态约束统一见 `doc/spec.md`。
 - **程序入口固定**: 可执行程序入口函数固定为 `_start() { ... }`，`main` 不是入口函数。
-- **目录结构**: `tool/build` 编译器源码, `src` 核心库, `lib` 标准库, `bin/do` 唯一二进制。
+- **目录结构**: `tool/build` 编译器源码, `src` builtin/core 总表与标准库, `bin/do` 唯一二进制。
 
 ## 📁 目录结构
 
 ```txt
 doc/            语法, 语义和运行时设计文档
 bin/            zig 编译出的 do 编译器二进制
-lib/            do 标准库(扁平, 支持单文件库)
-src/            do 核心库
+src/            do builtin/core 总表与标准库
 tool/main.zig    唯一二进制 CLI 分派入口
 tool/build.zig   Zig 构建入口
 tool/build/      do build 逻辑实现和编译器源码

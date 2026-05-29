@@ -12,7 +12,7 @@ const ImportRef = struct {
 
 const ImportPrefix = enum {
     local,
-    lib,
+    project,
     std,
 };
 
@@ -138,7 +138,7 @@ fn parseLocalImport(tokens: []const lexer.Token, idx: usize) ?ImportRef {
     var start_idx = at_idx + 1;
     var prefix: ImportPrefix = .local;
     if (start_idx < line_end and tokEq(tokens[start_idx], "~")) {
-        prefix = .lib;
+        prefix = .project;
         start_idx += 1;
         if (start_idx >= line_end or !tokEq(tokens[start_idx], "/")) return null;
         start_idx += 1;
@@ -172,7 +172,6 @@ fn parseLocalImport(tokens: []const lexer.Token, idx: usize) ?ImportRef {
 }
 
 fn resolvePath(
-    io: std.Io,
     allocator: std.mem.Allocator,
     input_path: []const u8,
     tokens: []const lexer.Token,
@@ -186,13 +185,7 @@ fn resolvePath(
             const base = std.fs.path.dirname(input_path) orelse ".";
             return std.fs.path.join(allocator, &.{ base, rel });
         },
-        .lib => return std.fs.path.join(allocator, &.{ "lib", rel }),
-        .std => {
-            const lib_path = try std.fs.path.join(allocator, &.{ "lib", rel });
-            if (fileExists(io, lib_path)) return lib_path;
-            allocator.free(lib_path);
-            return std.fs.path.join(allocator, &.{ "src", rel });
-        },
+        .project, .std => return std.fs.path.join(allocator, &.{ "src", rel }),
     }
 }
 
@@ -239,7 +232,7 @@ fn loadModule(
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
         const import_ref = parseLocalImport(tokens, i) orelse continue;
-        const child_path = resolvePath(ctx.io, ctx.allocator, path, tokens, import_ref) catch
+        const child_path = resolvePath(ctx.allocator, path, tokens, import_ref) catch
             return markErrorAt(tokens, import_ref.alias_idx, error.InvalidImportDecl);
         defer ctx.allocator.free(child_path);
 
@@ -301,11 +294,6 @@ fn importPathText(
         }
     }
     return out.toOwnedSlice(allocator);
-}
-
-fn fileExists(io: std.Io, path: []const u8) bool {
-    std.Io.Dir.cwd().access(io, path, .{}) catch return false;
-    return true;
 }
 
 fn findPublicDeclKind(tokens: []const lexer.Token, target: []const u8) ?DeclKind {

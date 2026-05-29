@@ -91,8 +91,7 @@ pi = @/math.do/pi
 │   ├── push/               # do push 的逻辑实现 (上传工具)
 │   ├── fmt/                # do fmt 的逻辑实现 (格式化工具)
 │   └── lsp/                # do lsp 的逻辑实现 (语言服务)
-├── lib/                    # std
-├── src/                    # core
+├── src/                    # builtin/core/std
 ├── bin/                    # 产物 (编译出的唯一工具)
 │   └── do                  # 这是唯一的二进制文件，它包含了上述所有功能
 
