@@ -1,4 +1,4 @@
-log(msg Text) {
+log(msg [u8]) {
     return
 }
 

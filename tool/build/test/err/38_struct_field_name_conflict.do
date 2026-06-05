@@ -1,5 +1,5 @@
 User {
-    name Text
+    name [u8]
     .name i32
 }
 

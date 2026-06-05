@@ -3,8 +3,10 @@
 
 // Special forms
 // is(value, TypeExpr) -> bool
-// and(a bool, b bool, rest ...bool) -> bool
-// or(a bool, b bool, rest ...bool) -> bool
+// and(a bool, b bool, ...) -> bool
+//   source args: 2+, no spread
+// or(a bool, b bool, ...) -> bool
+//   source args: 2+, no spread
 // not(value bool) -> bool
 
 // Core predicates
@@ -16,17 +18,19 @@
 // ge(a T, b T) -> bool
 
 // Core numeric operators
-// add(a T, b T, rest ...T) -> T
-// sub(a T, b T, rest ...T) -> T
-// mul(a T, b T, rest ...T) -> T
-// div(a T, b T, rest ...T) -> T
-// rem(a T, b T, rest ...T) -> T
+// add(a T, b T) -> T
+// sub(a T, b T) -> T
+// mul(a T, b T) -> T
+// div(a T, b T) -> T
+// rem(a T, b T) -> T
+//   source calls with 3+ args lower left-associatively
+//   spread requires at least two fixed source args before ...rest
 
 // Core storage primitives
 // len(xs [T]) -> usize
-// at(xs [T], i usize) -> T
 // get(xs [T], i usize) -> T
 // set(xs [T], i usize, value T) -> [T]
+// put(xs [T], value T, rest ...T) -> [T]
 
 // Structure field primitives
 // get(value T, .name) -> U
@@ -46,6 +50,7 @@
 // to_f64(x T) -> f64
 
 // Notes:
-// - `to_*` names are ordinary API surface, not reserved builtin names.
-// - `to_text` and `Text` live in std and are intentionally not listed here.
+// - builtin/core names are fixed and cannot be user-declared, imported as aliases,
+//   shadowed, or used as interface constraint names.
+// - `to_text` lives in std and is intentionally not listed here.
 // - Library types like `List` and `HashMap` stay in `src/*.do`.

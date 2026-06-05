@@ -55,7 +55,7 @@ zig build -Doptimize=ReleaseSmall
 ### 阶段一：运行时基石 (Runtime Foundation)
 - [ ] **内存分配器**: 实现 `doc/rc.md` 描述的 64KB/4KB 分页架构与 Slab 分配器。
 - [ ] **对象模型**: 实现统一对象头 (Header)，支持 TypeID 与 RC 管理。
-- [ ] **库层边界**: `Text`, `List`, `Map` 的具体实现归入标准库/运行时边界，语言规则以 `doc/spec.md` 为准。
+- [ ] **库层边界**: `[u8]`, `List`, `Map` 的具体实现归入 core/标准库/运行时边界，语言规则以 `doc/spec.md` 为准。
 - [ ] **FFI**: 实现基于 WASI 的宿主互操作接口。
 
 ### 阶段二：编译器前端 (Compiler Frontend)

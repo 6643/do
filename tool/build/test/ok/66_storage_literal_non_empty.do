@@ -3,7 +3,7 @@ test "storage literal non-empty" {
 
     ok bool = true
     ok = and(ok, eq(len(xs), 4))
-    ok = and(ok, eq(at(xs, 0), 7))
-    ok = and(ok, eq(at(xs, 3), 22))
+    ok = and(ok, eq(get(xs, 0), 7))
+    ok = and(ok, eq(get(xs, 3), 22))
     if ok return
 }

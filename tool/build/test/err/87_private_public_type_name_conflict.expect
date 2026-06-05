@@ -1,0 +1,2 @@
+DuplicateTypeDeclName
+类型名按去掉私有标记后的名字唯一

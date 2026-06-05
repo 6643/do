@@ -1,9 +1,9 @@
-Text = @/text.do/Text
-List = @/list.do/List
-list_put = @/list.do/put
-list_len = @/list.do/len
-list_items = @/list.do/items
-read_u32_le = @/binary.do/read_u32_le
+List = @list.do/List
+empty_list = @list.do/empty_list
+list_add = @list.do/list_add
+list_len = @list.do/list_len
+list_items = @list.do/items
+read_u32_le = @binary.do/read_u32_le
 
 _md5_a0 u32 = 1732584193
 _md5_b0 u32 = 4023233417
@@ -59,78 +59,33 @@ _md5_k [u32] = .{
 }
 
 .step(a u32, b u32, mix u32, word u32, k u32, s u32) -> u32 {
-    return add_wrap_u32(
-        b,
-        rotl_u32(
-            add_wrap_u32(
-                add_wrap_u32(
-                    add_wrap_u32(mix, a),
-                    word,
-                ),
-                k,
-            ),
-            s,
-        ),
-    )
+    return add_wrap_u32(b, rotl_u32(add_wrap_u32(add_wrap_u32(add_wrap_u32(mix, a), word), k), s))
 }
 
 .append_u32_le(out List<u8>, value u32) -> List<u8> {
-    return list_put(
-        out,
-        to_u8(rem(value, 256)),
-        to_u8(rem(div(value, 256), 256)),
-        to_u8(rem(div(value, 65536), 256)),
-        to_u8(rem(div(value, 16777216), 256)),
-    )
+    return list_add(out, to_u8(rem(value, 256)), to_u8(rem(div(value, 256), 256)), to_u8(rem(div(value, 65536), 256)), to_u8(rem(div(value, 16777216), 256)))
 }
 
 .append_u64_le(out List<u8>, value u64) -> List<u8> {
-    return list_put(
-        out,
-        to_u8(rem(value, 256)),
-        to_u8(rem(div(value, 256), 256)),
-        to_u8(rem(div(value, 65536), 256)),
-        to_u8(rem(div(value, 16777216), 256)),
-        to_u8(rem(div(value, 4294967296), 256)),
-        to_u8(rem(div(value, 1099511627776), 256)),
-        to_u8(rem(div(value, 281474976710656), 256)),
-        to_u8(rem(div(value, 72057594037927936), 256)),
-    )
+    return list_add(out, to_u8(rem(value, 256)), to_u8(rem(div(value, 256), 256)), to_u8(rem(div(value, 65536), 256)), to_u8(rem(div(value, 16777216), 256)), to_u8(rem(div(value, 4294967296), 256)), to_u8(rem(div(value, 1099511627776), 256)), to_u8(rem(div(value, 281474976710656), 256)), to_u8(rem(div(value, 72057594037927936), 256)))
 }
 
-.pad(data Text) -> List<u8> {
-    out List<u8> = List<u8>{}
-    loop b, _ = data {
-        out = list_put(out, b)
+.pad(data [u8]) -> List<u8> {
+    seed u8 = 0
+    out List<u8> = empty_list(seed)
+    loop byte, _ = data {
+        out = list_add(out, byte)
     }
-    out = list_put(out, 128)
+    out = list_add(out, 128)
     loop {
         if eq(rem(list_len(out), 64), 56) return append_u64_le(out, mul(to_u64(len(data)), 8))
-        out = list_put(out, 0)
+        out = list_add(out, 0)
     }
 }
 
 .block(a u32, b u32, c u32, d u32, block List<u8>, base usize) -> u32, u32, u32, u32 {
     items [u8] = list_items(block)
-    words [u32] = put(
-        .{},
-        read_u32_le(items, base),
-        read_u32_le(items, add(base, 4)),
-        read_u32_le(items, add(base, 8)),
-        read_u32_le(items, add(base, 12)),
-        read_u32_le(items, add(base, 16)),
-        read_u32_le(items, add(base, 20)),
-        read_u32_le(items, add(base, 24)),
-        read_u32_le(items, add(base, 28)),
-        read_u32_le(items, add(base, 32)),
-        read_u32_le(items, add(base, 36)),
-        read_u32_le(items, add(base, 40)),
-        read_u32_le(items, add(base, 44)),
-        read_u32_le(items, add(base, 48)),
-        read_u32_le(items, add(base, 52)),
-        read_u32_le(items, add(base, 56)),
-        read_u32_le(items, add(base, 60)),
-    )
+    words [u32] = put(.{}, read_u32_le(items, base), read_u32_le(items, add(base, 4)), read_u32_le(items, add(base, 8)), read_u32_le(items, add(base, 12)), read_u32_le(items, add(base, 16)), read_u32_le(items, add(base, 20)), read_u32_le(items, add(base, 24)), read_u32_le(items, add(base, 28)), read_u32_le(items, add(base, 32)), read_u32_le(items, add(base, 36)), read_u32_le(items, add(base, 40)), read_u32_le(items, add(base, 44)), read_u32_le(items, add(base, 48)), read_u32_le(items, add(base, 52)), read_u32_le(items, add(base, 56)), read_u32_le(items, add(base, 60)))
 
     aa u32 = a
     bb u32 = b
@@ -143,7 +98,7 @@ _md5_k [u32] = .{
 
         index usize = word_index(i)
         mix u32 = round_mix(i, bb, cc, dd)
-        next u32 = step(aa, bb, mix, at(words, index), at(_md5_k, i), at(_md5_s, i))
+        next u32 = step(aa, bb, mix, get(words, index), get(_md5_k, i), get(_md5_s, i))
 
         aa = dd
         dd = cc
@@ -153,7 +108,7 @@ _md5_k [u32] = .{
     }
 }
 
-sum(text Text) -> Text {
+sum(text [u8]) -> [u8] {
     padded List<u8> = pad(text)
     a u32 = _md5_a0
     b u32 = _md5_b0
@@ -163,12 +118,13 @@ sum(text Text) -> Text {
     i usize = 0
     loop {
         if ge(i, list_len(padded)) {
-            out List<u8> = List<u8>{}
+            seed u8 = 0
+            out List<u8> = empty_list(seed)
             out = append_u32_le(out, a)
             out = append_u32_le(out, b)
             out = append_u32_le(out, c)
             out = append_u32_le(out, d)
-            return get(out, .items)
+            return list_items(out)
         }
         a, b, c, d = block(a, b, c, d, padded, i)
         i = add(i, 64)

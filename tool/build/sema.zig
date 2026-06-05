@@ -17,6 +17,23 @@ const Scope = struct {
     }
 };
 
+const CallArgInfo = struct {
+    name: []const u8,
+    arg_index: usize,
+    arg_count: usize,
+};
+
+const LocalImportPrefix = enum {
+    local,
+    dep,
+    std,
+};
+
+const HostImportKind = enum {
+    env,
+    wasi,
+};
+
 pub const ErrorSite = struct {
     line: usize,
     col: usize,
@@ -40,23 +57,45 @@ pub fn checkProgram(
     if (program.token_count == 0) return error.EmptyTokenStream;
     try checkPrivateLValueAssign(tokens);
     try checkFuncDeclNaming(tokens);
+    try checkFuncReturnArrowSyntax(tokens);
+    try checkStartDeclSyntax(tokens);
     try checkFuncParamNames(tokens);
+    try checkInlineFuncParamTypes(tokens);
+    try checkFuncParamTypeRestrictions(tokens);
+    try checkFuncSignatureConflicts(allocator, tokens);
     try checkPathAccess(tokens);
+    try checkFieldSegmentPositions(tokens);
     try checkHostImports(tokens);
+    try checkLocalImports(tokens);
     if (program.top_level_count == 0) return markErrorAt(tokens, 0, error.NoTopLevelDecl);
 
     try checkTypeDeclNaming(tokens);
+    try checkTypeDeclNameConflicts(allocator, tokens);
+    try checkErrorDeclBranches(tokens);
     try checkTopValueDeclNames(tokens);
     try checkStructFieldNames(allocator, tokens);
     try checkTypeRefs(tokens);
+    try checkParenthesizedTypeArgs(tokens);
+    try checkParenthesizedTypes(tokens);
+    try checkGenericTypeArgArity(tokens);
+    try checkGenericStructCtorTypeArgs(tokens);
+    try checkBareNilTypes(tokens);
+    try checkInlineFuncTypeUnionBranches(tokens);
+    try checkDuplicateUnionBranches(tokens);
     try checkPathIndexSegments(tokens);
+    try checkDirectPathSource(tokens);
     try checkConstraintLayout(tokens);
-    try checkSingleValuePositions(program, tokens);
-    try checkKnownConditionBoolSites(program, tokens);
+    try checkUnboundTypeParamRefs(tokens);
+    try checkSpreadCallTargets(allocator, tokens);
+    try checkGenericCallInference(allocator, program, tokens);
+    try checkSynthErrorTypePositions(tokens);
+    try checkLineStringRootPositions(program, tokens);
+    try checkUpperValueExprs(program, tokens);
+    try checkSingleValuePositions(allocator, program, tokens);
+    try checkKnownConditionBoolSites(allocator, program, tokens);
     try checkLambdaUsage(allocator, program, tokens);
     try checkLambdaOverloadCalls(allocator, program, tokens);
     try checkIsTypeArgs(tokens);
-    try checkIfPatternBind(tokens);
     try checkLoopHeader(tokens);
     try checkLoopLabels(allocator, tokens);
     try checkAssignmentConstraints(allocator, tokens);
@@ -71,9 +110,18 @@ fn checkPrivateLValueAssign(tokens: []const lexer.Token) !void {
         const line_end = findLineEndIdx(tokens, i);
         const eq_idx = findPlainEqOnLine(tokens, i + 1, line_end) orelse continue;
         if (isTopLevelDeclHead(tokens, i) and isTypeDeclStart(tokens, i)) continue;
+        if (isPrivateTopValueDeclStart(tokens, i, eq_idx)) continue;
         if (isStructFieldDeclDefault(tokens, i, eq_idx)) continue;
         return markErrorAt(tokens, i, error.PrivateIdentCannotBeLValue);
     }
+}
+
+fn isPrivateTopValueDeclStart(tokens: []const lexer.Token, idx: usize, eq_idx: usize) bool {
+    if (!isTopLevelDeclHead(tokens, idx)) return false;
+    if (eq_idx <= idx + 1) return false;
+    if (tokens[idx].kind != .ident) return false;
+    const name = tokens[idx].lexeme;
+    return name.len > 1 and name[0] == '.' and isLowerIdentName(name[1..]) and !isReservedFuncName(name[1..]);
 }
 
 fn findPlainEqOnLine(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
@@ -113,6 +161,7 @@ fn checkFuncDeclNaming(tokens: []const lexer.Token) !void {
         if (!isValidFuncDeclName(t.lexeme)) {
             return markErrorAt(tokens, i, error.InvalidFuncDeclName);
         }
+        if (std.mem.eql(u8, t.lexeme, "start")) continue;
         if (!isReservedFuncName(t.lexeme)) continue;
         return markErrorAt(tokens, i, error.InvalidFuncDeclName);
     }
@@ -204,6 +253,133 @@ fn validateFuncParamNames(tokens: []const lexer.Token, start_idx: usize, end_idx
     }
 }
 
+fn checkInlineFuncParamTypes(tokens: []const lexer.Token) !void {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (depth_brace == 0) {
+                if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                    i = next_idx - 1;
+                    continue;
+                }
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (!isFuncDeclStart(tokens, i)) continue;
+
+        const close_paren = findMatching(tokens, i + 1, "(", ")") catch
+            return markErrorAt(tokens, i, error.InvalidFuncDeclName);
+        if (findInlineFuncTypeInParams(tokens, i + 2, close_paren)) |type_start| {
+            return markErrorAt(tokens, type_start, error.InvalidFuncDeclName);
+        }
+        i = close_paren;
+    }
+}
+
+fn checkFuncParamTypeRestrictions(tokens: []const lexer.Token) !void {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (depth_brace == 0) {
+                if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                    i = next_idx - 1;
+                    continue;
+                }
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (!isFuncDeclStart(tokens, i)) continue;
+
+        const close_paren = findMatching(tokens, i + 1, "(", ")") catch
+            return markErrorAt(tokens, i + 1, error.InvalidParamName);
+        try checkParamTypeRange(tokens, i + 2, close_paren);
+        i = close_paren;
+    }
+}
+
+fn checkParamTypeRange(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !void {
+    var seg_start = start_idx;
+    var i = start_idx;
+    while (i <= end_idx) : (i += 1) {
+        if (i < end_idx and !isTopLevelCommaAny(tokens, i, start_idx, end_idx)) continue;
+        if (seg_start < i) try checkOneParamType(tokens, seg_start, i);
+        seg_start = i + 1;
+    }
+}
+
+fn checkOneParamType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !void {
+    if (start_idx + 1 >= end_idx) return;
+    const type_start = if (isSpreadToken(tokens[start_idx + 1])) start_idx + 2 else start_idx + 1;
+    if (type_start >= end_idx) return;
+    if (findTopLevelPipe(tokens, type_start, end_idx)) |pipe_idx| {
+        return markErrorAt(tokens, pipe_idx, error.InvalidTypeRef);
+    }
+    if (tokEq(tokens[type_start], "nil")) {
+        return markErrorAt(tokens, type_start, error.InvalidTypeRef);
+    }
+    if (directParamTypeName(tokens, type_start, end_idx)) |name| {
+        if (isLocalUnionAlias(tokens, name)) return markErrorAt(tokens, type_start, error.InvalidTypeRef);
+    }
+}
+
+fn directParamTypeName(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?[]const u8 {
+    if (start_idx + 1 != end_idx) return null;
+    if (tokens[start_idx].kind != .ident) return null;
+    if (!isValidDeclaredTypeName(tokens[start_idx].lexeme)) return null;
+    return publicTypeName(tokens[start_idx].lexeme);
+}
+
+fn findTopLevelPipe(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    var depth_paren: usize = 0;
+    var depth_bracket: usize = 0;
+    var depth_angle: usize = 0;
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "[")) {
+            depth_bracket += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "]")) {
+            if (depth_bracket > 0) depth_bracket -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (depth_paren == 0 and depth_bracket == 0 and depth_angle == 0 and tokEq(tokens[i], "|")) return i;
+    }
+    return null;
+}
+
 fn checkPathAccess(tokens: []const lexer.Token) !void {
     for (tokens, 0..) |t, i| {
         if (t.kind != .ident) continue;
@@ -213,6 +389,146 @@ fn checkPathAccess(tokens: []const lexer.Token) !void {
         if (std.mem.indexOfScalar(u8, t.lexeme, '.') == null) continue;
         return markErrorAt(tokens, i, error.InvalidPathAccess);
     }
+}
+
+fn checkFieldSegmentPositions(tokens: []const lexer.Token) !void {
+    for (tokens, 0..) |t, i| {
+        if (t.kind != .ident) continue;
+        if (t.lexeme.len == 0 or t.lexeme[0] != '.') continue;
+        if (t.lexeme.len == 1) continue; // `.{...}` inferred aggregate prefix.
+        if (isImportPathToken(tokens, i)) continue;
+        if (isTopLevelDeclHead(tokens, i) and isTypeDeclStart(tokens, i)) continue;
+        if (!std.ascii.isLower(t.lexeme[1])) continue;
+        if (!isDotLowerIdent(t.lexeme)) return markErrorAt(tokens, i, error.InvalidPathAccess);
+        if (isAllowedFieldSegmentPosition(tokens, i)) continue;
+        return markErrorAt(tokens, i, error.InvalidPathAccess);
+    }
+}
+
+fn isAllowedFieldSegmentPosition(tokens: []const lexer.Token, idx: usize) bool {
+    if (isPrivateFuncDeclName(tokens, idx)) return true;
+    if (isStructFieldDeclName(tokens, idx)) return true;
+    return isGetSetPathFieldSegment(tokens, idx);
+}
+
+fn isPrivateFuncDeclName(tokens: []const lexer.Token, idx: usize) bool {
+    if (!isTopLevelToken(tokens, idx)) return false;
+    if (!isTopLevelDeclHead(tokens, idx)) return false;
+    return isFuncDeclStart(tokens, idx);
+}
+
+fn isStructFieldDeclName(tokens: []const lexer.Token, idx: usize) bool {
+    if (lineStartIdx(tokens, idx) != idx) return false;
+    if (!isStructFieldName(tokens[idx].lexeme)) return false;
+    return isInsideStructDecl(tokens, idx);
+}
+
+fn isGetSetPathFieldSegment(tokens: []const lexer.Token, idx: usize) bool {
+    const info = callArgInfo(tokens, idx) orelse return false;
+    if (std.mem.eql(u8, info.name, "get")) return info.arg_index >= 1;
+    if (std.mem.eql(u8, info.name, "set")) return info.arg_index >= 1 and info.arg_index + 1 < info.arg_count;
+    return false;
+}
+
+fn callArgInfo(tokens: []const lexer.Token, idx: usize) ?CallArgInfo {
+    const open_idx = findEnclosingCallOpen(tokens, idx) orelse return null;
+    if (open_idx == 0) return null;
+    const name_idx = open_idx - 1;
+    if (tokens[name_idx].kind != .ident) return null;
+
+    const close_idx = findMatching(tokens, open_idx, "(", ")") catch return null;
+    if (idx <= open_idx or idx >= close_idx) return null;
+
+    var current_arg: usize = 0;
+    var arg_count: usize = 0;
+    var saw_arg_token = false;
+    var target_arg: ?usize = null;
+    var target_top_level = false;
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_angle: usize = 0;
+
+    var i = open_idx + 1;
+    while (i < close_idx) : (i += 1) {
+        if (depth_paren == 0 and depth_brace == 0 and depth_angle == 0 and tokEq(tokens[i], ",")) {
+            if (saw_arg_token) arg_count += 1;
+            saw_arg_token = false;
+            current_arg += 1;
+            continue;
+        }
+
+        saw_arg_token = true;
+        if (i == idx) {
+            target_arg = current_arg;
+            target_top_level = depth_paren == 0 and depth_brace == 0 and depth_angle == 0;
+        }
+
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+    }
+    if (saw_arg_token) arg_count += 1;
+
+    const arg_index = target_arg orelse return null;
+    if (!target_top_level) return null;
+    return .{
+        .name = tokens[name_idx].lexeme,
+        .arg_index = arg_index,
+        .arg_count = arg_count,
+    };
+}
+
+fn findEnclosingCallOpen(tokens: []const lexer.Token, idx: usize) ?usize {
+    var depth: usize = 0;
+    var i = idx;
+    while (i > 0) {
+        i -= 1;
+        if (tokEq(tokens[i], ")")) {
+            depth += 1;
+            continue;
+        }
+        if (!tokEq(tokens[i], "(")) continue;
+        if (depth == 0) return i;
+        depth -= 1;
+    }
+    return null;
+}
+
+fn isTopLevelToken(tokens: []const lexer.Token, idx: usize) bool {
+    var depth: usize = 0;
+    var i: usize = 0;
+    while (i < idx) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            depth += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth > 0) depth -= 1;
+            continue;
+        }
+    }
+    return depth == 0;
 }
 
 fn isImportPathToken(tokens: []const lexer.Token, idx: usize) bool {
@@ -229,28 +545,75 @@ const DirectCallSite = struct {
     start_tok_idx: usize,
 };
 
-fn checkSingleValuePositions(program: parser.Program, tokens: []const lexer.Token) !void {
+fn checkSingleValuePositions(
+    allocator: std.mem.Allocator,
+    program: parser.Program,
+    tokens: []const lexer.Token,
+) !void {
+    for (program.value_exprs) |site| {
+        if (site.expected_arity <= 1) continue;
+
+        const resolved = rootExprReturnArity(program, site.root_expr_idx);
+        const allowed = switch (resolved) {
+            .unknown => true,
+            .ambiguous => false,
+            .arity => |arity| arity == site.expected_arity,
+        };
+        if (allowed) continue;
+
+        const start_tok = rootExprStartTok(program, site.root_expr_idx);
+        const err = switch (site.context) {
+            .assign => error.InvalidAssignExpr,
+            .rhs => error.MultiReturnInSingleValuePosition,
+            .return_value => error.InvalidReturnStmt,
+            .single => error.MultiReturnInSingleValuePosition,
+        };
+        return markErrorAt(tokens, start_tok, err);
+    }
+
     for (program.condition_exprs) |site| {
         const call_site = findDirectCallAtRoot(program, site.root_expr_idx);
         if (call_site == null) continue;
 
-        const resolved = resolveConditionCallReturnArity(
+        const resolved = resolveCallReturnArity(
             program.func_sigs,
             call_site.?.call.func_name,
             call_site.?.call.arg_count,
         );
         switch (resolved) {
             .unknown => continue, // 可能是外部导入函数, 此阶段不阻断
-            .single => continue,
-            .multi => {
+            .arity => |arity| {
+                if (arity <= 1) continue;
                 switch (site.context) {
                     .if_cond => return markErrorAt(tokens, call_site.?.start_tok_idx, error.MultiReturnInIfCondition),
-                    .if_bind_rhs => return markErrorAt(tokens, call_site.?.start_tok_idx, error.MultiReturnInIfBindRhs),
                     .loop_cond => return markErrorAt(tokens, call_site.?.start_tok_idx, error.MultiReturnInLoopCondition),
                 }
             },
             .ambiguous => return markErrorAt(tokens, call_site.?.start_tok_idx, error.AmbiguousConditionCallReturnArity),
         }
+    }
+
+    var i: usize = 0;
+    while (i + 1 < tokens.len) : (i += 1) {
+        if (!isCallHead(tokens, i)) continue;
+        if (isTopLevelDeclHead(tokens, i) and (isFuncDeclStart(tokens, i) or isStartDeclStart(tokens, i))) continue;
+        if (isFuncConstraintHead(tokens, i)) continue;
+
+        const close_paren = findMatching(tokens, i + 1, "(", ")") catch
+            return markErrorAt(tokens, i + 1, error.InvalidCallArgList);
+        const args = try parseCallArgShapes(allocator, tokens, i + 2, close_paren);
+        defer freeCallArgShapes(allocator, args);
+
+        const resolved = resolveCallReturnArity(program.func_sigs, tokens[i].lexeme, args.len);
+        const arity = switch (resolved) {
+            .unknown => continue,
+            .ambiguous => return markErrorAt(tokens, i, error.AmbiguousConditionCallReturnArity),
+            .arity => |value| value,
+        };
+        if (arity <= 1) continue;
+        if (valueExprAllowsArityAt(program, i, arity)) continue;
+
+        return markErrorAt(tokens, i, error.MultiReturnInSingleValuePosition);
     }
 }
 
@@ -258,24 +621,53 @@ const KnownBool = enum {
     yes,
     no,
     unknown,
+    no_matching_call,
 };
 
-fn checkKnownConditionBoolSites(program: parser.Program, tokens: []const lexer.Token) !void {
+fn checkKnownConditionBoolSites(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token) !void {
+    const funcs = try collectFuncShapes(allocator, tokens);
+    defer freeFuncShapes(allocator, funcs);
+
     for (program.condition_exprs) |site| {
         const err = switch (site.context) {
             .if_cond => error.NonBoolIfCondition,
             .loop_cond => error.NonBoolLoopCondition,
-            else => continue,
         };
 
-        switch (classifyKnownBool(program, tokens, site.root_expr_idx)) {
+        switch (try classifyKnownBool(allocator, program, funcs, tokens, site.root_expr_idx)) {
             .yes, .unknown => continue,
+            .no_matching_call => {
+                const start_tok = rootExprStartTok(program, site.root_expr_idx);
+                return markErrorAt(tokens, start_tok, error.NoMatchingCall);
+            },
             .no => {
                 const start_tok = rootExprStartTok(program, site.root_expr_idx);
                 return markErrorAt(tokens, start_tok, err);
             },
         }
     }
+}
+
+fn checkLineStringRootPositions(program: parser.Program, tokens: []const lexer.Token) !void {
+    for (program.expr_nodes) |node| {
+        if (node.kind != .literal) continue;
+        if (!isLineStringToken(tokens[node.start_tok])) continue;
+        if (isLineStringRootExpr(program, node.start_tok)) continue;
+        return markErrorAt(tokens, node.start_tok, error.UnsupportedExpr);
+    }
+}
+
+fn isLineStringRootExpr(program: parser.Program, start_tok: usize) bool {
+    for (program.value_exprs) |site| {
+        if (site.context != .rhs) continue;
+        if (site.root_expr_idx >= program.expr_nodes.len) continue;
+        if (program.expr_nodes[site.root_expr_idx].start_tok == start_tok) return true;
+    }
+    return false;
+}
+
+fn isLineStringToken(tok: lexer.Token) bool {
+    return tok.kind == .string and tok.lexeme.len >= 2 and tok.lexeme[0] == '\\' and tok.lexeme[1] == '\\';
 }
 
 fn checkLambdaUsage(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token) !void {
@@ -299,7 +691,120 @@ fn checkIsTypeArgs(tokens: []const lexer.Token) !void {
         if (isValueLiteralToken(tokens[type_arg])) {
             return markErrorAt(tokens, type_arg, error.InvalidCallArgList);
         }
+        if (findInlineFuncTypeInIsArg(tokens, type_arg, close_paren)) |func_type_idx| {
+            return markErrorAt(tokens, func_type_idx, error.InvalidCallArgList);
+        }
+        if (findTopLevelComma(tokens, type_arg, close_paren)) |extra_comma| {
+            return markErrorAt(tokens, extra_comma, error.InvalidCallArgList);
+        }
+        if (findTopLevelNilInIsArg(tokens, type_arg, close_paren)) |nil_idx| {
+            return markErrorAt(tokens, nil_idx, error.InvalidCallArgList);
+        }
+        if (validateIsTypeExpr(tokens, type_arg, close_paren) == null) {
+            return markErrorAt(tokens, type_arg, error.InvalidCallArgList);
+        }
     }
+}
+
+fn validateIsTypeExpr(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    var i = validateIsTypeAtom(tokens, start_idx, end_idx) orelse return null;
+    while (i < end_idx) {
+        if (!tokEq(tokens[i], "|")) return null;
+        i = validateIsTypeAtom(tokens, i + 1, end_idx) orelse return null;
+    }
+    return i;
+}
+
+fn validateIsTypeAtom(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    if (start_idx >= end_idx) return null;
+    if (tokEq(tokens[start_idx], "(")) return null;
+    if (tokEq(tokens[start_idx], "[")) {
+        const close_bracket = findMatching(tokens, start_idx, "[", "]") catch return null;
+        if (validateIsTypeExpr(tokens, start_idx + 1, close_bracket) != close_bracket) return null;
+        return close_bracket + 1;
+    }
+    if (tokens[start_idx].kind != .ident) return null;
+    if (tokEq(tokens[start_idx], "nil")) return start_idx + 1;
+    if (isValueLiteralToken(tokens[start_idx])) return null;
+    if (!isBaseTypeName(tokens[start_idx].lexeme) and !isValidDeclaredTypeName(tokens[start_idx].lexeme)) return null;
+
+    var next_idx = start_idx + 1;
+    if (next_idx < end_idx and tokEq(tokens[next_idx], "<")) {
+        const close_angle = findMatching(tokens, next_idx, "<", ">") catch return null;
+        if (validateIsTypeArgList(tokens, next_idx + 1, close_angle) == null) return null;
+        next_idx = close_angle + 1;
+    }
+    if (next_idx < end_idx and tokEq(tokens[next_idx], "(")) return null;
+    return next_idx;
+}
+
+fn validateIsTypeArgList(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    if (start_idx >= end_idx) return null;
+    var i = start_idx;
+    while (i < end_idx) {
+        const next_idx = validateIsTypeExprUntilComma(tokens, i, end_idx) orelse return null;
+        if (next_idx >= end_idx) return next_idx;
+        if (!tokEq(tokens[next_idx], ",")) return null;
+        i = next_idx + 1;
+        if (i >= end_idx) return null;
+    }
+    return i;
+}
+
+fn validateIsTypeExprUntilComma(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    var i = validateIsTypeAtom(tokens, start_idx, end_idx) orelse return null;
+    while (i < end_idx and !tokEq(tokens[i], ",")) {
+        if (!tokEq(tokens[i], "|")) return null;
+        i = validateIsTypeAtom(tokens, i + 1, end_idx) orelse return null;
+    }
+    return i;
+}
+
+fn findInlineFuncTypeInIsArg(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (!tokEq(tokens[i], "(")) continue;
+        const close_paren = findMatching(tokens, i, "(", ")") catch return null;
+        if (close_paren + 2 < end_idx and isReturnArrowAt(tokens, close_paren + 1)) return i;
+        if (findInlineFuncTypeInIsArg(tokens, i + 1, close_paren)) |func_type_idx| return func_type_idx;
+        i = close_paren;
+    }
+    return null;
+}
+
+fn findTopLevelNilInIsArg(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    var depth_angle: usize = 0;
+    var depth_bracket: usize = 0;
+    var depth_paren: usize = 0;
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "[")) {
+            depth_bracket += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "]")) {
+            if (depth_bracket > 0) depth_bracket -= 1;
+            continue;
+        }
+        if (depth_angle == 0 and depth_bracket == 0 and depth_paren == 0 and tokEq(tokens[i], "nil")) return i;
+    }
+    return null;
 }
 
 fn checkOneLambdaUsage(
@@ -333,11 +838,13 @@ const LambdaArgShape = struct {
     arg_index: usize,
     param_count: usize,
     param_types: []?[]const u8,
+    return_type: ?[]const u8,
 };
 
 const FuncParamShape = union(enum) {
     other,
     value: ?[]const u8,
+    variadic: ?[]const u8,
     func: FuncTypeShape,
 };
 
@@ -347,10 +854,22 @@ const FuncTypeShape = struct {
     return_type: ?[]const u8,
 };
 
+const ResolvedFuncTypeShape = struct {
+    shape: FuncTypeShape,
+    owned: bool,
+};
+
+const SigTypeParamPair = struct {
+    a: []const u8,
+    b: []const u8,
+};
+
 const FuncShape = struct {
     name: []const u8,
     start_idx: usize,
     param_shapes: []FuncParamShape,
+    param_min: usize,
+    param_max: ?usize,
     return_type: ?[]const u8,
 };
 
@@ -358,6 +877,7 @@ const CallArgShape = union(enum) {
     other,
     lambda: LambdaArgShape,
     ident: []const u8,
+    spread: usize,
 };
 
 const CallShape = struct {
@@ -384,15 +904,66 @@ fn checkLambdaOverloadCalls(
 
     try collectCallShapesFromProgram(allocator, program, tokens, &calls);
     for (calls.items) |call| {
-        if (!callHasTargetFunctionValue(funcs, call)) continue;
+        if (isSetUpdateLambdaCall(call)) continue;
+        if (!callHasTargetFunctionValue(tokens, funcs, call)) continue;
         if (!hasKnownFuncCandidate(funcs, call.name)) continue;
-        if (countCompatibleFunctionValueCandidates(funcs, call) != 1) {
+        if (try countCompatibleFunctionValueCandidates(allocator, tokens, funcs, call) != 1) {
             return markErrorAt(tokens, call.start_idx, error.NoMatchingCall);
         }
     }
 
     try checkBareOverloadedFuncAssign(tokens, funcs);
+}
 
+fn isSetUpdateLambdaCall(call: CallShape) bool {
+    if (!std.mem.eql(u8, call.name, "set")) return false;
+    if (call.arg_shapes.len < 3) return false;
+    return call.arg_shapes[call.arg_shapes.len - 1] == .lambda;
+}
+
+fn checkGenericCallInference(
+    allocator: std.mem.Allocator,
+    program: parser.Program,
+    tokens: []const lexer.Token,
+) !void {
+    const funcs = try collectFuncShapes(allocator, tokens);
+    defer freeFuncShapes(allocator, funcs);
+
+    if (funcs.len == 0) return;
+
+    var calls = std.ArrayList(CallShape).empty;
+    defer {
+        for (calls.items) |call| freeCallArgShapes(allocator, call.arg_shapes);
+        calls.deinit(allocator);
+    }
+
+    try collectCallShapesFromProgram(allocator, program, tokens, &calls);
+    for (calls.items) |call| {
+        var has_plain_candidate = false;
+        var has_direct_generic_candidate = false;
+        var has_inferred_generic_candidate = false;
+
+        for (funcs) |func| {
+            if (!std.mem.eql(u8, func.name, call.name)) continue;
+            if (func.param_shapes.len != call.arg_shapes.len) continue;
+
+            if (!funcHasTypeConstraints(tokens, func.start_idx)) {
+                has_plain_candidate = true;
+                continue;
+            }
+            if (!funcHasDirectTypeParamParam(tokens, func)) continue;
+
+            has_direct_generic_candidate = true;
+            if (genericCallInfersDirectTypeParams(tokens, func, call)) {
+                has_inferred_generic_candidate = true;
+            }
+        }
+
+        if (!has_direct_generic_candidate) continue;
+        if (has_inferred_generic_candidate) continue;
+        if (has_plain_candidate) continue;
+        return markErrorAt(tokens, call.start_idx, error.NoMatchingCall);
+    }
 }
 
 fn collectFuncShapes(allocator: std.mem.Allocator, tokens: []const lexer.Token) ![]FuncShape {
@@ -431,16 +1002,206 @@ fn collectFuncShapes(allocator: std.mem.Allocator, tokens: []const lexer.Token) 
             continue;
         };
         const params = try parseFuncParamShapes(allocator, tokens, i + 2, close_paren);
+        const arity = parseFuncParamArity(tokens, i + 2, close_paren);
         try out.append(allocator, .{
             .name = publicFuncName(tokens[i].lexeme),
             .start_idx = i,
             .param_shapes = params,
+            .param_min = arity.param_min,
+            .param_max = arity.param_max,
             .return_type = parseTopLevelFuncReturnType(tokens, close_paren + 1),
         });
         i = close_paren + 1;
     }
 
     return out.toOwnedSlice(allocator);
+}
+
+fn checkFuncReturnArrowSyntax(tokens: []const lexer.Token) !void {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (depth_brace == 0) {
+                if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                    i = next_idx - 1;
+                    continue;
+                }
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (!isFuncDeclStart(tokens, i) and !isStartDeclStart(tokens, i)) continue;
+
+        const close_paren = findMatching(tokens, i + 1, "(", ")") catch continue;
+        const next_idx = close_paren + 1;
+        if (next_idx >= tokens.len) continue;
+        if (tokEq(tokens[next_idx], "{") or isArrowAt(tokens, next_idx) or isReturnArrowAt(tokens, next_idx)) continue;
+        return markErrorAt(tokens, i, error.InvalidFuncDeclName);
+    }
+}
+
+fn checkStartDeclSyntax(tokens: []const lexer.Token) !void {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (!isStartDeclStart(tokens, i)) continue;
+
+        const close_paren = findMatching(tokens, i + 1, "(", ")") catch
+            return markErrorAt(tokens, i, error.InvalidStartEntrySig);
+        if (close_paren != i + 2) return markErrorAt(tokens, i, error.InvalidStartEntrySig);
+        if (close_paren + 1 >= tokens.len or !tokEq(tokens[close_paren + 1], "{")) {
+            return markErrorAt(tokens, i, error.InvalidStartEntrySig);
+        }
+    }
+}
+
+fn checkFuncSignatureConflicts(allocator: std.mem.Allocator, tokens: []const lexer.Token) !void {
+    const funcs = try collectFuncShapes(allocator, tokens);
+    defer freeFuncShapes(allocator, funcs);
+
+    for (funcs, 0..) |func, idx| {
+        for (funcs[idx + 1 ..]) |next| {
+            if (!std.mem.eql(u8, func.name, next.name)) continue;
+            if (!(try funcParamShapesEqual(allocator, tokens, func, next))) continue;
+            return markErrorAt(tokens, next.start_idx, error.DuplicateFuncSignature);
+        }
+    }
+
+    for (funcs, 0..) |func, idx| {
+        for (funcs[idx + 1 ..]) |next| {
+            if (!std.mem.eql(u8, func.name, next.name)) continue;
+            if (func.param_shapes.len != next.param_shapes.len) continue;
+            if (!funcHasGenericSignatureParam(tokens, func) and !funcHasGenericSignatureParam(tokens, next)) continue;
+            return markErrorAt(tokens, next.start_idx, error.DuplicateFuncSignature);
+        }
+    }
+}
+
+fn funcParamShapesEqual(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    a: FuncShape,
+    b: FuncShape,
+) !bool {
+    if (a.param_shapes.len != b.param_shapes.len) return false;
+    var type_param_pairs = std.ArrayList(SigTypeParamPair).empty;
+    defer type_param_pairs.deinit(allocator);
+
+    for (a.param_shapes, 0..) |item, idx| {
+        if (!(try funcParamShapeEqual(allocator, tokens, a, item, b, b.param_shapes[idx], &type_param_pairs))) return false;
+    }
+    return true;
+}
+
+fn funcParamShapeEqual(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    a_func: FuncShape,
+    a: FuncParamShape,
+    b_func: FuncShape,
+    b: FuncParamShape,
+    type_param_pairs: *std.ArrayList(SigTypeParamPair),
+) !bool {
+    const a_resolved = try resolveFuncParamTypeShape(allocator, tokens, a_func, a);
+    defer freeResolvedFuncTypeShape(allocator, a_resolved);
+    const b_resolved = try resolveFuncParamTypeShape(allocator, tokens, b_func, b);
+    defer freeResolvedFuncTypeShape(allocator, b_resolved);
+
+    if (a_resolved != null or b_resolved != null) {
+        const a_func_type = if (a_resolved) |resolved| resolved.shape else return false;
+        const b_func_type = if (b_resolved) |resolved| resolved.shape else return false;
+        return funcTypeShapeEqual(a_func_type, b_func_type);
+    }
+
+    return try funcParamShapeEqualLexical(allocator, tokens, a_func, a, b_func, b, type_param_pairs);
+}
+
+fn funcParamShapeEqualLexical(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    a_func: FuncShape,
+    a: FuncParamShape,
+    b_func: FuncShape,
+    b: FuncParamShape,
+    type_param_pairs: *std.ArrayList(SigTypeParamPair),
+) !bool {
+    return switch (a) {
+        .other => switch (b) {
+            .other => true,
+            else => false,
+        },
+        .value => |a_type| switch (b) {
+            .value => |b_type| try funcParamValueTypesEqual(allocator, tokens, a_func, a_type, b_func, b_type, type_param_pairs),
+            else => false,
+        },
+        .variadic => |a_type| switch (b) {
+            .variadic => |b_type| try funcParamValueTypesEqual(allocator, tokens, a_func, a_type, b_func, b_type, type_param_pairs),
+            else => false,
+        },
+        .func => |a_func_type| switch (b) {
+            .func => |b_func_type| funcTypeShapeEqual(a_func_type, b_func_type),
+            else => false,
+        },
+    };
+}
+
+fn funcParamValueTypesEqual(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    a_func: FuncShape,
+    a_type: ?[]const u8,
+    b_func: FuncShape,
+    b_type: ?[]const u8,
+    type_param_pairs: *std.ArrayList(SigTypeParamPair),
+) !bool {
+    const a_name = a_type orelse return b_type == null;
+    const b_name = b_type orelse return false;
+
+    const a_is_param = isFuncTypeParam(tokens, a_func.start_idx, a_name);
+    const b_is_param = isFuncTypeParam(tokens, b_func.start_idx, b_name);
+    if (!a_is_param and !b_is_param) return std.mem.eql(u8, a_name, b_name);
+    if (a_is_param != b_is_param) return false;
+
+    for (type_param_pairs.items) |pair| {
+        if (std.mem.eql(u8, pair.a, a_name)) return std.mem.eql(u8, pair.b, b_name);
+        if (std.mem.eql(u8, pair.b, b_name)) return false;
+    }
+    try type_param_pairs.append(allocator, .{ .a = a_name, .b = b_name });
+    return true;
+}
+
+fn funcTypeShapeEqual(a: FuncTypeShape, b: FuncTypeShape) bool {
+    if (a.param_count != b.param_count) return false;
+    if (a.param_types.len != b.param_types.len) return false;
+    for (a.param_types, 0..) |a_type, idx| {
+        if (!optionalTypeNameEqual(a_type, b.param_types[idx])) return false;
+    }
+    return optionalTypeNameEqual(a.return_type, b.return_type);
+}
+
+fn optionalTypeNameEqual(a: ?[]const u8, b: ?[]const u8) bool {
+    if (a) |a_name| {
+        const b_name = b orelse return false;
+        return std.mem.eql(u8, a_name, b_name);
+    }
+    return b == null;
 }
 
 fn freeFuncShapes(allocator: std.mem.Allocator, funcs: []FuncShape) void {
@@ -453,6 +1214,7 @@ fn freeFuncParamShapes(allocator: std.mem.Allocator, shapes: []FuncParamShape) v
         switch (shape) {
             .other => {},
             .value => {},
+            .variadic => {},
             .func => |func_type| allocator.free(func_type.param_types),
         }
     }
@@ -465,6 +1227,7 @@ fn freeCallArgShapes(allocator: std.mem.Allocator, shapes: []CallArgShape) void 
             .other => {},
             .lambda => |lambda| allocator.free(lambda.param_types),
             .ident => {},
+            .spread => {},
         }
     }
     allocator.free(shapes);
@@ -499,9 +1262,12 @@ fn parseFuncParamShape(
     end_idx: usize,
 ) !FuncParamShape {
     if (start_idx + 1 >= end_idx) return .other;
-    const type_start = start_idx + 1;
+    const type_start = if (isSpreadToken(tokens[start_idx + 1])) start_idx + 2 else start_idx + 1;
+    if (type_start >= end_idx) return .other;
     if (!tokEq(tokens[type_start], "(")) {
-        return .{ .value = simpleTypeName(tokens, type_start, end_idx) };
+        const type_name = simpleTypeName(tokens, type_start, end_idx);
+        if (type_start != start_idx + 1) return .{ .variadic = type_name };
+        return .{ .value = type_name };
     }
     const close_param_types = findMatching(tokens, type_start, "(", ")") catch return .other;
     if (close_param_types >= end_idx) return .other;
@@ -513,6 +1279,28 @@ fn parseFuncParamShape(
         .param_types = param_types,
         .return_type = simpleTypeName(tokens, close_param_types + 3, end_idx),
     } };
+}
+
+fn parseFuncParamArity(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) struct { param_min: usize, param_max: ?usize } {
+    var min_count: usize = 0;
+    var has_variadic = false;
+    var seg_start = start_idx;
+    var i = start_idx;
+    while (i <= end_idx) : (i += 1) {
+        if (i < end_idx and !isTopLevelCommaAny(tokens, i, start_idx, end_idx)) continue;
+        if (seg_start < i) {
+            if (seg_start + 1 < i and isSpreadToken(tokens[seg_start + 1])) {
+                has_variadic = true;
+            } else {
+                min_count += 1;
+            }
+        }
+        seg_start = i + 1;
+    }
+    return .{
+        .param_min = min_count,
+        .param_max = if (has_variadic) null else min_count,
+    };
 }
 
 fn parseTopLevelFuncReturnType(tokens: []const lexer.Token, start_idx: usize) ?[]const u8 {
@@ -544,11 +1332,11 @@ fn collectCallShapesFromProgram(
 ) !void {
     for (program.expr_nodes) |node| {
         switch (node.kind) {
-            .call, .do_call => {},
+            .call => {},
             else => continue,
         }
 
-        const call_start = if (node.kind == .do_call) node.start_tok + 1 else node.start_tok;
+        const call_start = node.start_tok;
         if (call_start + 1 >= node.end_tok) continue;
         if (!tokEq(tokens[call_start + 1], "(")) continue;
 
@@ -556,7 +1344,7 @@ fn collectCallShapesFromProgram(
         const args_end = node.end_tok - 1;
         const args = try parseCallArgShapes(allocator, tokens, args_start, args_end);
         try out.append(allocator, .{
-            .name = if (node.kind == .do_call) node.data.call.func_name else tokens[call_start].lexeme,
+            .name = tokens[call_start].lexeme,
             .start_idx = node.start_tok,
             .arg_shapes = args,
         });
@@ -594,6 +1382,8 @@ fn parseCallArgShape(
     end_idx: usize,
     arg_index: usize,
 ) !CallArgShape {
+    if (start_idx < end_idx and isSpreadToken(tokens[start_idx])) return .{ .spread = start_idx };
+
     const close_params = lambdaParamClose(tokens, start_idx, end_idx);
     if (close_params) |close_idx| {
         if (lambdaBodyStart(tokens, close_idx + 1, end_idx) != null) {
@@ -602,6 +1392,7 @@ fn parseCallArgShape(
                 .arg_index = arg_index,
                 .param_count = param_types.len,
                 .param_types = param_types,
+                .return_type = lambdaReturnTypeName(tokens, close_idx, end_idx),
             } };
         }
     }
@@ -613,11 +1404,134 @@ fn parseCallArgShape(
     return .other;
 }
 
+fn checkSpreadCallTargets(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+) !void {
+    const funcs = try collectFuncShapes(allocator, tokens);
+    defer freeFuncShapes(allocator, funcs);
+
+    var i: usize = 0;
+    while (i + 1 < tokens.len) : (i += 1) {
+        if (!isCallHead(tokens, i)) continue;
+        if (isTopLevelDeclHead(tokens, i) and (isFuncDeclStart(tokens, i) or isStartDeclStart(tokens, i))) continue;
+        if (isFuncConstraintHead(tokens, i)) continue;
+
+        const close_paren = findMatching(tokens, i + 1, "(", ")") catch
+            return markErrorAt(tokens, i + 1, error.InvalidCallArgList);
+        const args = try parseCallArgShapes(allocator, tokens, i + 2, close_paren);
+        defer freeCallArgShapes(allocator, args);
+
+        const spread_idx = callArgSpreadIndex(args) orelse continue;
+        const spread_token_idx = callArgSpreadTokenIdx(args) orelse i;
+        const call_name = tokens[i].lexeme;
+        if (isHostImportFuncName(tokens, call_name)) {
+            return markErrorAt(tokens, spread_token_idx, error.InvalidCallArgList);
+        }
+        if (builtinSpreadCallAllowed(call_name, spread_idx)) |allowed| {
+            if (!allowed) return markErrorAt(tokens, spread_token_idx, error.InvalidCallArgList);
+            continue;
+        }
+        if (!hasKnownFuncCandidate(funcs, call_name)) continue;
+
+        for (funcs) |func| {
+            if (!std.mem.eql(u8, func.name, call_name)) continue;
+            if (callSpreadCompatibleWithFunc(func, args.len, spread_idx)) break;
+        } else {
+            return markErrorAt(tokens, spread_token_idx, error.InvalidCallArgList);
+        }
+    }
+}
+
+fn callArgSpreadIndex(args: []const CallArgShape) ?usize {
+    for (args, 0..) |arg, arg_idx| {
+        if (arg == .spread) return arg_idx;
+    }
+    return null;
+}
+
+fn callArgSpreadTokenIdx(args: []const CallArgShape) ?usize {
+    for (args) |arg| {
+        if (arg == .spread) return arg.spread;
+    }
+    return null;
+}
+
+fn callSpreadCompatibleWithFunc(func: FuncShape, arg_count: usize, spread_idx: usize) bool {
+    if (!callArityCompatibleWithFunc(func, arg_count)) return false;
+    if (func.param_max != null) return false;
+    return spread_idx >= func.param_min;
+}
+
+fn builtinSpreadCallAllowed(name: []const u8, spread_idx: usize) ?bool {
+    if (isNumericCoreName(name)) return spread_idx >= 2;
+    if (isBuiltinCallName(name)) return false;
+    return null;
+}
+
+fn isHostImportFuncName(tokens: []const lexer.Token, name: []const u8) bool {
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (tokens[i].kind != .ident) continue;
+        if (!std.mem.eql(u8, tokens[i].lexeme, name)) continue;
+        if (isHostImportDeclStart(tokens, i)) return true;
+    }
+    return false;
+}
+
+fn isNumericCoreName(name: []const u8) bool {
+    const names = [_][]const u8{ "add", "sub", "mul", "div", "rem" };
+    for (names) |it| {
+        if (std.mem.eql(u8, it, name)) return true;
+    }
+    return false;
+}
+
+fn isBuiltinCallName(name: []const u8) bool {
+    const names = [_][]const u8{
+        "is",
+        "and",
+        "or",
+        "not",
+        "eq",
+        "ne",
+        "lt",
+        "le",
+        "gt",
+        "ge",
+        "add",
+        "sub",
+        "mul",
+        "div",
+        "rem",
+        "get",
+        "set",
+        "len",
+    };
+    for (names) |it| {
+        if (std.mem.eql(u8, it, name)) return true;
+    }
+    return false;
+}
+
 fn lambdaParamClose(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
     if (start_idx >= end_idx or !tokEq(tokens[start_idx], "(")) return null;
     const close_idx = findMatching(tokens, start_idx, "(", ")") catch return null;
     if (close_idx >= end_idx) return null;
     return close_idx;
+}
+
+fn lambdaReturnTypeName(tokens: []const lexer.Token, close_params_idx: usize, end_idx: usize) ?[]const u8 {
+    const return_arrow_idx = close_params_idx + 1;
+    if (!isReturnArrowAt(tokens, return_arrow_idx)) return null;
+
+    const body_start = lambdaBodyStart(tokens, return_arrow_idx, end_idx) orelse return null;
+    const return_end = if (body_start >= 2 and isArrowAt(tokens, body_start - 2))
+        body_start - 2
+    else
+        body_start;
+    return simpleTypeName(tokens, return_arrow_idx + 2, return_end);
 }
 
 fn hasKnownFuncCandidate(funcs: []const FuncShape, name: []const u8) bool {
@@ -627,42 +1541,47 @@ fn hasKnownFuncCandidate(funcs: []const FuncShape, name: []const u8) bool {
     return false;
 }
 
-fn countCompatibleFunctionValueCandidates(funcs: []const FuncShape, call: CallShape) usize {
+fn countCompatibleFunctionValueCandidates(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    funcs: []const FuncShape,
+    call: CallShape,
+) !usize {
     var count: usize = 0;
     for (funcs) |func| {
         if (!std.mem.eql(u8, func.name, call.name)) continue;
-        if (func.param_shapes.len != call.arg_shapes.len) continue;
-        if (!functionValueArgsMatchFunc(funcs, func, call)) continue;
+        if (!callArityCompatibleWithFunc(func, call.arg_shapes.len)) continue;
+        if (!(try functionValueArgsMatchFunc(allocator, tokens, funcs, func, call))) continue;
         count += 1;
     }
     return count;
 }
 
-fn functionValueArgsMatchFunc(funcs: []const FuncShape, func: FuncShape, call: CallShape) bool {
+fn functionValueArgsMatchFunc(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    funcs: []const FuncShape,
+    func: FuncShape,
+    call: CallShape,
+) !bool {
     for (call.arg_shapes, 0..) |arg, arg_index| {
         switch (arg) {
             .other => continue,
+            .spread => continue,
             .lambda => |lambda| {
                 if (lambda.arg_index >= func.param_shapes.len) return false;
-                const target = func.param_shapes[lambda.arg_index];
-                switch (target) {
-                    .other => return false,
-                    .value => return false,
-                    .func => |func_type| {
-                        if (func_type.param_count != lambda.param_count) return false;
-                        if (!explicitLambdaTypesMatch(func_type.param_types, lambda.param_types)) return false;
-                    },
-                }
+                const target = try resolveFuncParamTypeShape(allocator, tokens, func, func.param_shapes[lambda.arg_index]);
+                defer freeResolvedFuncTypeShape(allocator, target);
+                const func_type = if (target) |resolved| resolved.shape else return false;
+                if (func_type.param_count != lambda.param_count) return false;
+                if (!explicitLambdaTypesMatch(func_type.param_types, lambda.param_types)) return false;
             },
             .ident => |name| {
                 if (arg_index >= func.param_shapes.len) return false;
-                const target = func.param_shapes[arg_index];
-                switch (target) {
-                    .func => |target_func| {
-                        if (countFuncsMatchingTarget(funcs, name, target_func) != 1) return false;
-                    },
-                    else => continue,
-                }
+                const target = try resolveFuncParamTypeShape(allocator, tokens, func, func.param_shapes[arg_index]);
+                defer freeResolvedFuncTypeShape(allocator, target);
+                const target_func = if (target) |resolved| resolved.shape else continue;
+                if (countFuncsMatchingTarget(funcs, name, target_func) != 1) return false;
             },
         }
     }
@@ -689,6 +1608,7 @@ fn functionMatchesTarget(func: FuncShape, target: FuncTypeShape) bool {
         const expected = target_type orelse continue;
         const actual = switch (func.param_shapes[idx]) {
             .value => |value_type| value_type orelse return false,
+            .variadic => |value_type| value_type orelse return false,
             else => return false,
         };
         if (!std.mem.eql(u8, actual, expected)) return false;
@@ -700,23 +1620,145 @@ fn functionMatchesTarget(func: FuncShape, target: FuncTypeShape) bool {
     return true;
 }
 
-fn callHasTargetFunctionValue(funcs: []const FuncShape, call: CallShape) bool {
+fn callHasTargetFunctionValue(tokens: []const lexer.Token, funcs: []const FuncShape, call: CallShape) bool {
     for (call.arg_shapes, 0..) |arg, arg_index| {
-        if (arg == .lambda) return true;
+        if (arg == .lambda and callHasFuncParamCandidateAtIndex(tokens, funcs, call, arg_index)) return true;
         if (arg != .ident) continue;
         const ident = arg.ident;
         if (!hasKnownFuncCandidate(funcs, ident)) continue;
-        if (callHasFuncParamCandidateAtIndex(funcs, call, arg_index)) return true;
+        if (callHasFuncParamCandidateAtIndex(tokens, funcs, call, arg_index)) return true;
     }
     return false;
 }
 
-fn callHasFuncParamCandidateAtIndex(funcs: []const FuncShape, call: CallShape, arg_index: usize) bool {
+fn callHasFuncParamCandidateAtIndex(tokens: []const lexer.Token, funcs: []const FuncShape, call: CallShape, arg_index: usize) bool {
     for (funcs) |func| {
         if (!std.mem.eql(u8, func.name, call.name)) continue;
-        if (func.param_shapes.len != call.arg_shapes.len) continue;
+        if (!callArityCompatibleWithFunc(func, call.arg_shapes.len)) continue;
         if (arg_index >= func.param_shapes.len) continue;
-        if (func.param_shapes[arg_index] == .func) return true;
+        if (funcParamShapeIsFunctionLike(tokens, func, func.param_shapes[arg_index])) return true;
+    }
+    return false;
+}
+
+fn funcParamShapeIsFunctionLike(tokens: []const lexer.Token, func: FuncShape, param: FuncParamShape) bool {
+    return switch (param) {
+        .func => true,
+        .value => |type_name| if (type_name) |name|
+            typeConstraintIsConcreteFunctionType(tokens, func.start_idx, name)
+        else
+            false,
+        .variadic => |type_name| if (type_name) |name|
+            typeConstraintIsConcreteFunctionType(tokens, func.start_idx, name)
+        else
+            false,
+        else => false,
+    };
+}
+
+fn resolveFuncParamTypeShape(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    func: FuncShape,
+    param: FuncParamShape,
+) !?ResolvedFuncTypeShape {
+    return switch (param) {
+        .func => |func_type| .{ .shape = func_type, .owned = false },
+        .value => |type_name| if (type_name) |name|
+            try parseConcreteFuncTypeConstraintShape(allocator, tokens, func.start_idx, name)
+        else
+            null,
+        .variadic => |type_name| if (type_name) |name|
+            try parseConcreteFuncTypeConstraintShape(allocator, tokens, func.start_idx, name)
+        else
+            null,
+        .other => null,
+    };
+}
+
+fn freeResolvedFuncTypeShape(allocator: std.mem.Allocator, resolved: ?ResolvedFuncTypeShape) void {
+    const item = resolved orelse return;
+    if (!item.owned) return;
+    allocator.free(item.shape.param_types);
+}
+
+fn parseConcreteFuncTypeConstraintShape(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    func_start_idx: usize,
+    constraint_name: []const u8,
+) !?ResolvedFuncTypeShape {
+    const block_start = findConstraintBlockStartBefore(tokens, func_start_idx) orelse return null;
+
+    var i = block_start;
+    while (i < func_start_idx) {
+        if (!tokEq(tokens[i], "#")) {
+            i += 1;
+            continue;
+        }
+        const line_end = findLineEndIdx(tokens, i);
+        const is_func_constraint = i + 2 < line_end and tokEq(tokens[i + 2], "(");
+        if (is_func_constraint or i + 1 >= line_end or !std.mem.eql(u8, tokens[i + 1].lexeme, constraint_name)) {
+            i = line_end;
+            continue;
+        }
+
+        const eq_idx = findTopLevelAssignEqOnLine(tokens, i + 2, line_end) orelse return null;
+        if (!isFuncTypeRange(tokens, eq_idx + 1, line_end)) return null;
+        if (funcTypeConstraintUsesPriorTypeParam(tokens, block_start, i, eq_idx + 1, line_end)) return null;
+
+        const close_params = findMatching(tokens, eq_idx + 1, "(", ")") catch return null;
+        const param_types = try parseTypeNameList(allocator, tokens, eq_idx + 2, close_params);
+        return .{
+            .shape = .{
+                .param_count = param_types.len,
+                .param_types = param_types,
+                .return_type = simpleTypeName(tokens, close_params + 3, line_end),
+            },
+            .owned = true,
+        };
+    }
+    return null;
+}
+
+fn typeConstraintIsConcreteFunctionType(
+    tokens: []const lexer.Token,
+    func_start_idx: usize,
+    constraint_name: []const u8,
+) bool {
+    const block_start = findConstraintBlockStartBefore(tokens, func_start_idx) orelse return false;
+
+    var i = block_start;
+    while (i < func_start_idx) {
+        if (!tokEq(tokens[i], "#")) {
+            i += 1;
+            continue;
+        }
+        const line_end = findLineEndIdx(tokens, i);
+        const is_func_constraint = i + 2 < line_end and tokEq(tokens[i + 2], "(");
+        if (is_func_constraint or i + 1 >= line_end or !std.mem.eql(u8, tokens[i + 1].lexeme, constraint_name)) {
+            i = line_end;
+            continue;
+        }
+
+        const eq_idx = findTopLevelAssignEqOnLine(tokens, i + 2, line_end) orelse return false;
+        if (!isFuncTypeRange(tokens, eq_idx + 1, line_end)) return false;
+        return !funcTypeConstraintUsesPriorTypeParam(tokens, block_start, i, eq_idx + 1, line_end);
+    }
+    return false;
+}
+
+fn funcTypeConstraintUsesPriorTypeParam(
+    tokens: []const lexer.Token,
+    block_start: usize,
+    constraint_idx: usize,
+    type_start: usize,
+    type_end: usize,
+) bool {
+    var i = type_start;
+    while (i < type_end) : (i += 1) {
+        if (tokens[i].kind != .ident) continue;
+        if (hasTypeConstraintName(tokens, block_start, constraint_idx, tokens[i].lexeme)) return true;
     }
     return false;
 }
@@ -737,6 +1779,227 @@ fn checkBareOverloadedFuncAssign(tokens: []const lexer.Token, funcs: []const Fun
         if (tokens[line_start].kind != .ident) continue;
         return markErrorAt(tokens, rhs_start, error.NoMatchingCall);
     }
+}
+
+fn funcHasTypeConstraints(tokens: []const lexer.Token, func_start_idx: usize) bool {
+    return findConstraintBlockStartBefore(tokens, func_start_idx) != null;
+}
+
+fn funcHasDirectTypeParamParam(tokens: []const lexer.Token, func: FuncShape) bool {
+    for (func.param_shapes) |param| {
+        const type_name = switch (param) {
+            .value => |value_type| value_type orelse continue,
+            .variadic => |value_type| value_type orelse continue,
+            else => continue,
+        };
+        if (typeConstraintIsFunctionType(tokens, func.start_idx, type_name)) continue;
+        if (isFuncTypeParam(tokens, func.start_idx, type_name)) return true;
+    }
+    return false;
+}
+
+fn funcHasGenericSignatureParam(tokens: []const lexer.Token, func: FuncShape) bool {
+    for (func.param_shapes) |param| {
+        const type_name = switch (param) {
+            .value => |value_type| value_type orelse continue,
+            .variadic => |value_type| value_type orelse continue,
+            else => continue,
+        };
+        if (!isFuncTypeParam(tokens, func.start_idx, type_name)) continue;
+        if (typeConstraintIsConcreteFunctionType(tokens, func.start_idx, type_name)) continue;
+        return true;
+    }
+    return false;
+}
+
+fn genericCallInfersDirectTypeParams(
+    tokens: []const lexer.Token,
+    func: FuncShape,
+    call: CallShape,
+) bool {
+    if (!genericCallHasRequiredLambdaReturnTypes(tokens, func, call)) return false;
+
+    for (func.param_shapes, 0..) |param, param_idx| {
+        const type_name = switch (param) {
+            .value => |value_type| value_type orelse continue,
+            .variadic => |value_type| value_type orelse continue,
+            else => continue,
+        };
+        if (typeConstraintIsFunctionType(tokens, func.start_idx, type_name)) continue;
+        if (!isFuncTypeParam(tokens, func.start_idx, type_name)) continue;
+        if (hasPriorDirectTypeParam(func, param_idx, type_name)) continue;
+        if (!callHasKnownArgForDirectTypeParam(tokens, func, call, type_name)) return false;
+    }
+    return true;
+}
+
+fn genericCallHasRequiredLambdaReturnTypes(
+    tokens: []const lexer.Token,
+    func: FuncShape,
+    call: CallShape,
+) bool {
+    for (func.param_shapes, 0..) |param, param_idx| {
+        const param_type = switch (param) {
+            .value => |value_type| value_type orelse continue,
+            .variadic => |value_type| value_type orelse continue,
+            else => continue,
+        };
+        if (!typeConstraintFuncReturnHasTypeParam(tokens, func.start_idx, param_type)) continue;
+        if (param_idx >= call.arg_shapes.len) return false;
+
+        switch (call.arg_shapes[param_idx]) {
+            .lambda => |lambda| if (lambda.return_type == null) return false,
+            else => {},
+        }
+    }
+    return true;
+}
+
+fn hasPriorDirectTypeParam(func: FuncShape, before_param_idx: usize, type_name: []const u8) bool {
+    var i: usize = 0;
+    while (i < before_param_idx) : (i += 1) {
+        const prior = switch (func.param_shapes[i]) {
+            .value => |value_type| value_type orelse continue,
+            .variadic => |value_type| value_type orelse continue,
+            else => continue,
+        };
+        if (std.mem.eql(u8, prior, type_name)) return true;
+    }
+    return false;
+}
+
+fn callHasKnownArgForDirectTypeParam(
+    tokens: []const lexer.Token,
+    func: FuncShape,
+    call: CallShape,
+    type_name: []const u8,
+) bool {
+    for (func.param_shapes, 0..) |param, param_idx| {
+        const param_type = switch (param) {
+            .value => |value_type| value_type orelse continue,
+            .variadic => |value_type| value_type orelse continue,
+            else => continue,
+        };
+        if (!std.mem.eql(u8, param_type, type_name)) continue;
+        if (param_idx >= call.arg_shapes.len) return false;
+
+        const arg_name = switch (call.arg_shapes[param_idx]) {
+            .ident => |ident| ident,
+            else => continue,
+        };
+        if (hasKnownValueTypeBefore(tokens, call.start_idx, arg_name)) return true;
+    }
+    return false;
+}
+
+fn hasKnownValueTypeBefore(tokens: []const lexer.Token, before_idx: usize, name: []const u8) bool {
+    if (findNearestValueTypeName(tokens, before_idx, name) != null) return true;
+    return findEnclosingFuncParamTypeName(tokens, before_idx, name) != null;
+}
+
+fn isFuncTypeParam(tokens: []const lexer.Token, func_start_idx: usize, name: []const u8) bool {
+    const block_start = findConstraintBlockStartBefore(tokens, func_start_idx) orelse return false;
+
+    var i = block_start;
+    while (i < func_start_idx) {
+        if (!tokEq(tokens[i], "#")) {
+            i += 1;
+            continue;
+        }
+        const line_end = findLineEndIdx(tokens, i);
+        const is_func_constraint = i + 2 < line_end and tokEq(tokens[i + 2], "(");
+        if (!is_func_constraint and i + 1 < line_end and std.mem.eql(u8, tokens[i + 1].lexeme, name)) {
+            return true;
+        }
+        i = line_end;
+    }
+    return false;
+}
+
+fn typeConstraintFuncReturnHasTypeParam(
+    tokens: []const lexer.Token,
+    func_start_idx: usize,
+    constraint_name: []const u8,
+) bool {
+    const block_start = findConstraintBlockStartBefore(tokens, func_start_idx) orelse return false;
+
+    var i = block_start;
+    while (i < func_start_idx) {
+        if (!tokEq(tokens[i], "#")) {
+            i += 1;
+            continue;
+        }
+        const line_end = findLineEndIdx(tokens, i);
+        const is_func_constraint = i + 2 < line_end and tokEq(tokens[i + 2], "(");
+        if (is_func_constraint or i + 1 >= line_end or !std.mem.eql(u8, tokens[i + 1].lexeme, constraint_name)) {
+            i = line_end;
+            continue;
+        }
+
+        const eq_idx = findTopLevelAssignEqOnLine(tokens, i + 2, line_end) orelse return false;
+        if (eq_idx + 1 >= line_end or !tokEq(tokens[eq_idx + 1], "(")) return false;
+        const close_params = findMatching(tokens, eq_idx + 1, "(", ")") catch return false;
+        if (!isReturnArrowAt(tokens, close_params + 1)) return false;
+
+        var ret_idx = close_params + 3;
+        while (ret_idx < line_end) : (ret_idx += 1) {
+            if (tokens[ret_idx].kind != .ident) continue;
+            if (isFuncTypeParam(tokens, func_start_idx, tokens[ret_idx].lexeme)) return true;
+        }
+        return false;
+    }
+    return false;
+}
+
+fn typeConstraintIsFunctionType(
+    tokens: []const lexer.Token,
+    func_start_idx: usize,
+    constraint_name: []const u8,
+) bool {
+    const block_start = findConstraintBlockStartBefore(tokens, func_start_idx) orelse return false;
+
+    var i = block_start;
+    while (i < func_start_idx) {
+        if (!tokEq(tokens[i], "#")) {
+            i += 1;
+            continue;
+        }
+        const line_end = findLineEndIdx(tokens, i);
+        const is_func_constraint = i + 2 < line_end and tokEq(tokens[i + 2], "(");
+        if (is_func_constraint or i + 1 >= line_end or !std.mem.eql(u8, tokens[i + 1].lexeme, constraint_name)) {
+            i = line_end;
+            continue;
+        }
+
+        const eq_idx = findTopLevelAssignEqOnLine(tokens, i + 2, line_end) orelse return false;
+        if (eq_idx + 1 >= line_end or !tokEq(tokens[eq_idx + 1], "(")) return false;
+        const close_params = findMatching(tokens, eq_idx + 1, "(", ")") catch return false;
+        return isReturnArrowAt(tokens, close_params + 1);
+    }
+    return false;
+}
+
+fn findConstraintBlockStartBefore(tokens: []const lexer.Token, decl_start_idx: usize) ?usize {
+    if (decl_start_idx == 0 or decl_start_idx >= tokens.len) return null;
+
+    var scan_idx = decl_start_idx;
+    var expected_line = tokens[decl_start_idx].line;
+    var block_start: ?usize = null;
+
+    while (scan_idx > 0) {
+        const prev_idx = scan_idx - 1;
+        const prev_line = tokens[prev_idx].line;
+        if (prev_line + 1 != expected_line) break;
+
+        const line_start = lineStartIdx(tokens, prev_idx);
+        if (!tokEq(tokens[line_start], "#")) break;
+
+        block_start = line_start;
+        scan_idx = line_start;
+        expected_line = prev_line;
+    }
+
+    return block_start;
 }
 
 fn lineStartIdx(tokens: []const lexer.Token, idx: usize) usize {
@@ -875,11 +2138,23 @@ fn isCallHead(tokens: []const lexer.Token, idx: usize) bool {
     return tokEq(tokens[idx + 1], "(");
 }
 
+fn isFuncConstraintHead(tokens: []const lexer.Token, idx: usize) bool {
+    if (idx == 0 or !tokEq(tokens[idx - 1], "#")) return false;
+    return tokens[idx - 1].line == tokens[idx].line;
+}
+
 fn isFuncDeclStart(tokens: []const lexer.Token, idx: usize) bool {
     if (idx + 1 >= tokens.len) return false;
     if (tokens[idx].kind != .ident) return false;
     if (!isValidFuncDeclName(tokens[idx].lexeme)) return false;
+    if (isReservedFuncName(tokens[idx].lexeme)) return false;
     return tokEq(tokens[idx + 1], "(");
+}
+
+fn isStartDeclStart(tokens: []const lexer.Token, idx: usize) bool {
+    if (idx + 1 >= tokens.len) return false;
+    if (tokens[idx].kind != .ident) return false;
+    return tokEq(tokens[idx], "start") and tokEq(tokens[idx + 1], "(");
 }
 
 fn publicFuncName(name: []const u8) []const u8 {
@@ -924,6 +2199,7 @@ fn lambdaBodyStart(tokens: []const lexer.Token, start_idx: usize, end_idx: usize
 }
 
 fn isLambdaCallArgSite(tokens: []const lexer.Token, start_idx: usize) bool {
+    if (isDisallowedSetPathLambda(tokens, start_idx)) return false;
     if (start_idx == 0) return false;
     const prev = tokens[start_idx - 1];
     if (tokEq(prev, ",")) return true;
@@ -931,6 +2207,12 @@ fn isLambdaCallArgSite(tokens: []const lexer.Token, start_idx: usize) bool {
     if (start_idx < 2) return false;
     const before_prev = tokens[start_idx - 2];
     return before_prev.kind == .ident or tokEq(before_prev, ")") or tokEq(before_prev, "]");
+}
+
+fn isDisallowedSetPathLambda(tokens: []const lexer.Token, start_idx: usize) bool {
+    const info = callArgInfo(tokens, start_idx) orelse return false;
+    if (!std.mem.eql(u8, info.name, "set")) return false;
+    return info.arg_index + 1 < info.arg_count;
 }
 
 fn collectLambdaParamNames(
@@ -993,8 +2275,8 @@ fn collectLambdaParamNames(
 fn isLambdaParamNameToken(tok: lexer.Token) bool {
     if (tok.kind != .ident) return false;
     if (tok.lexeme.len == 0) return false;
-    if (tok.lexeme[0] == '_') return tok.lexeme.len == 1;
-    return std.ascii.isLower(tok.lexeme[0]) and !isKeyword(tok.lexeme);
+    if (tok.lexeme[0] == '_') return false;
+    return std.ascii.isLower(tok.lexeme[0]) and !isReservedFuncName(tok.lexeme);
 }
 
 fn findLambdaCapture(
@@ -1029,6 +2311,7 @@ fn findLambdaCapture(
 
 fn isLambdaLocalBindName(tokens: []const lexer.Token, idx: usize, body_start: usize) bool {
     if (!isLowerIdentName(tokens[idx].lexeme)) return false;
+    if (isReservedFuncName(tokens[idx].lexeme)) return false;
 
     const line_start = lambdaLineStart(tokens, idx, body_start);
     const line_end = findLineEndIdx(tokens, idx);
@@ -1069,15 +2352,21 @@ fn rootExprStartTok(program: parser.Program, root_idx: usize) usize {
     };
 }
 
-fn classifyKnownBool(program: parser.Program, tokens: []const lexer.Token, root_idx: usize) KnownBool {
+fn classifyKnownBool(
+    allocator: std.mem.Allocator,
+    program: parser.Program,
+    funcs: []const FuncShape,
+    tokens: []const lexer.Token,
+    root_idx: usize,
+) !KnownBool {
     if (root_idx >= program.expr_nodes.len) return .unknown;
     const node = program.expr_nodes[root_idx];
 
     return switch (node.kind) {
-        .paren => classifyKnownBool(program, tokens, node.data.child),
+        .paren => try classifyKnownBool(allocator, program, funcs, tokens, node.data.child),
         .literal => classifyLiteralBool(tokens, node.start_tok),
         .ident => classifyTypedIdentBool(tokens, node.start_tok),
-        .call, .do_call => classifyCallBool(program.func_sigs, node.data.call),
+        .call => try classifyCallBool(allocator, funcs, tokens, node),
         .lambda,
         .inferred_agg_lit,
         .struct_lit,
@@ -1168,9 +2457,61 @@ fn findNearestValueTypeName(tokens: []const lexer.Token, before_idx: usize, name
 
         const line_end = findLineEndIdx(tokens, i);
         const eq_idx = findTopLevelAssignEqOnLine(tokens, i + 1, line_end) orelse continue;
-        if (eq_idx > i + 1 and tokens[i + 1].kind == .ident and isDeclaredTypeName(tokens[i + 1].lexeme)) return tokens[i + 1].lexeme;
+        if (eq_idx > i + 1 and tokens[i + 1].kind == .ident and isValueTypeName(tokens[i + 1].lexeme)) return tokens[i + 1].lexeme;
         if (eq_idx > i + 1 and tokens[i + 1].kind == .ident and isGenericTypeStart(tokens, i + 1, eq_idx)) return tokens[i + 1].lexeme;
         if (tokens[eq_idx + 1].kind == .ident and eq_idx + 2 < line_end and tokEq(tokens[eq_idx + 2], "{")) return tokens[eq_idx + 1].lexeme;
+    }
+    return null;
+}
+
+fn findEnclosingFuncParamTypeName(tokens: []const lexer.Token, before_idx: usize, name: []const u8) ?[]const u8 {
+    var skip_depth: usize = 0;
+    var i = before_idx;
+    while (i > 0) {
+        i -= 1;
+
+        if (tokEq(tokens[i], "}")) {
+            skip_depth += 1;
+            continue;
+        }
+        if (!tokEq(tokens[i], "{")) continue;
+        if (skip_depth > 0) {
+            skip_depth -= 1;
+            continue;
+        }
+        if (findFuncParamTypeNameBeforeBody(tokens, i, name)) |type_name| return type_name;
+    }
+    return null;
+}
+
+fn findFuncParamTypeNameBeforeBody(
+    tokens: []const lexer.Token,
+    body_open_idx: usize,
+    name: []const u8,
+) ?[]const u8 {
+    const line_start = lineStartIdx(tokens, body_open_idx);
+    if (line_start >= body_open_idx) return null;
+    if (!isFuncDeclStart(tokens, line_start)) return null;
+
+    const close_paren = findMatching(tokens, line_start + 1, "(", ")") catch return null;
+    if (close_paren >= body_open_idx) return null;
+    return findParamTypeName(tokens, line_start + 2, close_paren, name);
+}
+
+fn findParamTypeName(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    name: []const u8,
+) ?[]const u8 {
+    var seg_start = start_idx;
+    var i = start_idx;
+    while (i <= end_idx) : (i += 1) {
+        if (i < end_idx and !isTopLevelCommaAny(tokens, i, start_idx, end_idx)) continue;
+        if (seg_start + 1 < i and tokens[seg_start].kind == .ident and std.mem.eql(u8, tokens[seg_start].lexeme, name)) {
+            if (tokens[seg_start + 1].kind == .ident) return tokens[seg_start + 1].lexeme;
+        }
+        seg_start = i + 1;
     }
     return null;
 }
@@ -1206,21 +2547,27 @@ fn findStructFieldBoolType(tokens: []const lexer.Token, type_name: []const u8, f
 
 fn findFieldBoolType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, field_name: []const u8) ?bool {
     var i = start_idx;
-    while (i + 1 < end_idx) {
-        if (tokens[i].kind != .ident or tokens[i + 1].kind != .ident) {
+    while (i < end_idx) {
+        if (tokens[i].kind != .ident) {
             i += 1;
             continue;
         }
         const name = if (tokens[i].lexeme.len != 0 and tokens[i].lexeme[0] == '.') tokens[i].lexeme[1..] else tokens[i].lexeme;
-        if (std.mem.eql(u8, name, field_name)) return isBoolTypeSpec(tokens, i + 1, i + 2);
-        i += 2;
-        while (i < end_idx and tokens[i].line == tokens[i - 1].line) : (i += 1) {}
+        const type_start = i + 1;
+        const line_end = @min(findLineEndIdx(tokens, i), end_idx);
+        const type_end = findTopLevelAssignEqOnLine(tokens, type_start, line_end) orelse line_end;
+        if (std.mem.eql(u8, name, field_name)) return isBoolTypeSpec(tokens, type_start, type_end);
+        i = line_end;
     }
     return null;
 }
 
 fn isDeclaredTypeName(name: []const u8) bool {
     return name.len != 0 and std.ascii.isUpper(name[0]);
+}
+
+fn isValueTypeName(name: []const u8) bool {
+    return isDeclaredTypeName(name) or isBaseTypeName(name);
 }
 
 fn publicTypeName(name: []const u8) []const u8 {
@@ -1285,6 +2632,22 @@ fn checkPathIndexSegments(tokens: []const lexer.Token) !void {
         if (i + 1 >= tokens.len or !tokEq(tokens[i + 1], "(")) continue;
         const close_paren = findMatching(tokens, i + 1, "(", ")") catch continue;
         try checkPathArgIndexSegments(tokens, i + 2, close_paren);
+        i = close_paren;
+    }
+}
+
+fn checkDirectPathSource(tokens: []const lexer.Token) !void {
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (!tokEq(tokens[i], "get") and !tokEq(tokens[i], "set")) continue;
+        if (i + 1 >= tokens.len or !tokEq(tokens[i + 1], "(")) continue;
+        const close_paren = findMatching(tokens, i + 1, "(", ")") catch continue;
+        const first_arg = firstNonGap(tokens, i + 2, close_paren) orelse continue;
+        if (first_arg >= close_paren or tokens[first_arg].kind != .ident) continue;
+        const source_type = findNearestValueTypeName(tokens, i, tokens[first_arg].lexeme) orelse continue;
+        if (std.mem.eql(u8, source_type, "List") or std.mem.eql(u8, source_type, "HashMap")) {
+            return markErrorAt(tokens, first_arg, error.InvalidPathAccess);
+        }
         i = close_paren;
     }
 }
@@ -1382,28 +2745,95 @@ fn isTopLevelPathFieldInit(tokens: []const lexer.Token, eq_idx: usize, start_idx
     return depth_paren == 0 and depth_brace == 0 and depth_angle == 0;
 }
 
-fn classifyCallBool(func_sigs: []const parser.FuncSig, call: parser.FuncCallRef) KnownBool {
+fn classifyCallBool(
+    allocator: std.mem.Allocator,
+    funcs: []const FuncShape,
+    tokens: []const lexer.Token,
+    node: parser.ExprNode,
+) !KnownBool {
+    const call = node.data.call;
     if (isBuiltinBoolCall(call.func_name)) return .yes;
 
-    var saw_candidate = false;
-    var saw_bool = false;
-    var saw_non_bool = false;
+    const call_start = node.start_tok;
+    if (call_start + 1 >= node.end_tok or !tokEq(tokens[call_start + 1], "(")) return .unknown;
 
-    for (func_sigs) |sig| {
-        if (!std.mem.eql(u8, sig.name, call.func_name)) continue;
-        if (!isArgCountCompatible(sig, call.arg_count)) continue;
-        saw_candidate = true;
-        if (sig.return_arity == 1 and sig.returns_bool) {
-            saw_bool = true;
+    const args_start = call_start + 2;
+    const args_end = node.end_tok - 1;
+    const args = try parseCallArgShapes(allocator, tokens, args_start, args_end);
+    defer freeCallArgShapes(allocator, args);
+
+    var matched_fixed_count: usize = 0;
+    var fixed_return_type: ?[]const u8 = null;
+    var best_variadic_min: ?usize = null;
+    var best_variadic_count: usize = 0;
+    var variadic_return_type: ?[]const u8 = null;
+
+    for (funcs) |func| {
+        if (!std.mem.eql(u8, func.name, call.func_name)) continue;
+        if (!callArityCompatibleWithFunc(func, args.len)) continue;
+        if (!conditionCallArgsMatchFunc(tokens, func, args, call_start)) continue;
+        if (func.param_max != null) {
+            matched_fixed_count += 1;
+            fixed_return_type = func.return_type;
         } else {
-            saw_non_bool = true;
+            if (best_variadic_min == null or func.param_min > best_variadic_min.?) {
+                best_variadic_min = func.param_min;
+                best_variadic_count = 1;
+                variadic_return_type = func.return_type;
+            } else if (func.param_min == best_variadic_min.?) {
+                best_variadic_count += 1;
+            }
         }
     }
 
-    if (!saw_candidate) return .unknown;
-    if (saw_bool and saw_non_bool) return .unknown;
-    if (saw_bool) return .yes;
-    return .no;
+    if (matched_fixed_count > 1) return .no_matching_call;
+    if (matched_fixed_count == 1) {
+        const return_type = fixed_return_type orelse return .no;
+        return if (std.mem.eql(u8, return_type, "bool")) .yes else .no;
+    }
+    if (best_variadic_min == null) return .unknown;
+    if (best_variadic_count > 1) return .no_matching_call;
+    const return_type = variadic_return_type orelse return .no;
+    return if (std.mem.eql(u8, return_type, "bool")) .yes else .no;
+}
+
+fn callArityCompatibleWithFunc(func: FuncShape, arg_count: usize) bool {
+    if (arg_count < func.param_min) return false;
+    if (func.param_max) |max_count| return arg_count <= max_count;
+    return true;
+}
+
+fn conditionCallArgsMatchFunc(
+    tokens: []const lexer.Token,
+    func: FuncShape,
+    args: []const CallArgShape,
+    call_start: usize,
+) bool {
+    for (args, 0..) |arg, arg_index| {
+        if (arg_index >= func.param_shapes.len) return false;
+        switch (func.param_shapes[arg_index]) {
+            .other => continue,
+            .func => continue,
+            .value => |param_type| {
+                const expected = param_type orelse continue;
+                const actual = conditionCallArgValueType(tokens, arg, call_start) orelse continue;
+                if (!std.mem.eql(u8, actual, expected)) return false;
+            },
+            .variadic => |param_type| {
+                const expected = param_type orelse continue;
+                const actual = conditionCallArgValueType(tokens, arg, call_start) orelse continue;
+                if (!std.mem.eql(u8, actual, expected)) return false;
+            },
+        }
+    }
+    return true;
+}
+
+fn conditionCallArgValueType(tokens: []const lexer.Token, arg: CallArgShape, call_start: usize) ?[]const u8 {
+    return switch (arg) {
+        .ident => |name| findNearestValueTypeName(tokens, call_start, name),
+        else => null,
+    };
 }
 
 fn isBuiltinBoolCall(name: []const u8) bool {
@@ -1434,42 +2864,69 @@ fn findDirectCallAtRoot(program: parser.Program, root_idx: usize) ?DirectCallSit
             .call = node.data.call,
             .start_tok_idx = node.start_tok,
         },
-        .paren => findDirectCallAtRoot(program, node.data.child),
         else => null,
     };
 }
 
-const ReturnArityResolve = enum {
+fn rootExprReturnArity(program: parser.Program, root_idx: usize) ReturnArityResolve {
+    if (root_idx >= program.expr_nodes.len) return .{ .arity = 1 };
+    const node = program.expr_nodes[root_idx];
+
+    return switch (node.kind) {
+        .call => resolveCallReturnArity(
+            program.func_sigs,
+            node.data.call.func_name,
+            node.data.call.arg_count,
+        ),
+        else => .{ .arity = 1 },
+    };
+}
+
+const ReturnArityResolve = union(enum) {
     unknown,
-    single,
-    multi,
+    arity: usize,
     ambiguous,
 };
 
-fn resolveConditionCallReturnArity(
+fn resolveCallReturnArity(
     func_sigs: []const parser.FuncSig,
     func_name: []const u8,
     arg_count: usize,
 ) ReturnArityResolve {
-    var seen = false;
-    var seen_single = false;
-    var seen_multi = false;
+    var matched_arity: ?usize = null;
 
     for (func_sigs) |sig| {
         if (!std.mem.eql(u8, sig.name, func_name)) continue;
         if (!isArgCountCompatible(sig, arg_count)) continue;
-        seen = true;
-        if (sig.return_arity <= 1) {
-            seen_single = true;
-        } else {
-            seen_multi = true;
+
+        if (matched_arity) |arity| {
+            if (arity != sig.return_arity) return .ambiguous;
+            continue;
         }
+        matched_arity = sig.return_arity;
     }
 
-    if (!seen) return .unknown;
-    if (seen_single and seen_multi) return .ambiguous;
-    if (seen_multi) return .multi;
-    return .single;
+    if (matched_arity) |arity| return .{ .arity = arity };
+    return .unknown;
+}
+
+fn valueExprAllowsArityAt(program: parser.Program, start_tok: usize, arity: usize) bool {
+    for (program.value_exprs) |site| {
+        if (site.expected_arity != arity) continue;
+        if (site.context != .assign and site.context != .return_value) continue;
+        if (!rootExprMatchesCallStart(program, site.root_expr_idx, start_tok)) continue;
+        return true;
+    }
+    return false;
+}
+
+fn rootExprMatchesCallStart(program: parser.Program, root_idx: usize, start_tok: usize) bool {
+    if (root_idx >= program.expr_nodes.len) return false;
+    const node = program.expr_nodes[root_idx];
+    return switch (node.kind) {
+        .call => node.start_tok == start_tok,
+        else => false,
+    };
 }
 
 fn isArgCountCompatible(sig: parser.FuncSig, arg_count: usize) bool {
@@ -1516,44 +2973,6 @@ fn findMatching(tokens: []const lexer.Token, open_idx: usize, open: []const u8, 
     return error.UnterminatedGroup;
 }
 
-fn checkIfPatternBind(tokens: []const lexer.Token) !void {
-    var i: usize = 0;
-    while (i < tokens.len) : (i += 1) {
-        if (tokEq(tokens[i], "{")) {
-            if (parseImportDeclEnd(tokens, i)) |next_idx| {
-                i = next_idx - 1;
-                continue;
-            }
-        }
-
-        if (!tokEq(tokens[i], "if")) continue;
-
-        var bind_colon_idx: ?usize = null;
-        var j = i + 1;
-        while (j < tokens.len and (j - i) <= 48) : (j += 1) {
-            if (tokEq(tokens[j], "{")) break;
-            if (tokEq(tokens[j], ":") and j + 1 < tokens.len and tokEq(tokens[j + 1], "=")) {
-                bind_colon_idx = j;
-                break;
-            }
-        }
-        if (bind_colon_idx == null) continue;
-
-        const bind_idx = bind_colon_idx.?;
-        if (i + 1 >= bind_idx) return markErrorAt(tokens, i, error.InvalidIfPatternBind);
-        const first = tokens[i + 1];
-        if (first.kind != .ident) return markErrorAt(tokens, i + 1, error.InvalidIfPatternBind);
-        if (!isTypeName(first.lexeme)) return markErrorAt(tokens, i + 1, error.InvalidIfPatternBind);
-        if (i + 2 >= bind_idx) return markErrorAt(tokens, i + 2, error.InvalidIfPatternBind);
-
-        const open = tokens[i + 2];
-        const close = tokens[bind_idx - 1];
-        if (tokEq(open, "(") and tokEq(close, ")")) continue;
-        if (tokEq(open, "{") and tokEq(close, "}")) continue;
-        return markErrorAt(tokens, bind_idx, error.InvalidIfPatternBind);
-    }
-}
-
 fn checkTypeDeclNaming(tokens: []const lexer.Token) !void {
     var depth_brace: usize = 0;
     var i: usize = 0;
@@ -1580,9 +2999,365 @@ fn checkTypeDeclNaming(tokens: []const lexer.Token) !void {
         if (isKeyword(t.lexeme)) continue;
         if (isModernImportAssign(tokens, i)) continue;
         if (!isTypeDeclStart(tokens, i)) continue;
+        if ((isErrorTypeName(t.lexeme) or isPrivateErrorTypeName(t.lexeme)) and isStructDeclStart(tokens, i)) {
+            return markErrorAt(tokens, i, error.InvalidTypeDeclName);
+        }
         if (isValidDeclaredTypeName(t.lexeme)) continue;
         return markErrorAt(tokens, i, error.InvalidTypeDeclName);
     }
+}
+
+fn isStructDeclStart(tokens: []const lexer.Token, idx: usize) bool {
+    return idx + 1 < tokens.len and tokEq(tokens[idx + 1], "{");
+}
+
+fn checkTypeDeclNameConflicts(allocator: std.mem.Allocator, tokens: []const lexer.Token) !void {
+    var seen = try std.ArrayList([]const u8).initCapacity(allocator, 0);
+    defer seen.deinit(allocator);
+
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (depth_brace == 0) {
+                if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                    i = next_idx - 1;
+                    continue;
+                }
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (tokens[i].kind != .ident) continue;
+        if (isModernImportAssign(tokens, i)) continue;
+        if (!isTypeDeclStart(tokens, i)) continue;
+        if (!isValidDeclaredTypeName(tokens[i].lexeme)) continue;
+
+        const name = publicTypeName(tokens[i].lexeme);
+        for (seen.items) |prev| {
+            if (std.mem.eql(u8, prev, name)) {
+                return markErrorAt(tokens, i, error.DuplicateTypeDeclName);
+            }
+        }
+        try seen.append(allocator, name);
+    }
+}
+
+fn checkErrorDeclBranches(tokens: []const lexer.Token) !void {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (depth_brace == 0) {
+                if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                    i = next_idx - 1;
+                    continue;
+                }
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (tokens[i].kind != .ident) continue;
+        if (isModernImportAssign(tokens, i)) continue;
+        if (isPrivateErrorTypeName(tokens[i].lexeme) and i + 1 < tokens.len and
+            (tokEq(tokens[i + 1], "=") or tokEq(tokens[i + 1], "error")))
+        {
+            return markErrorAt(tokens, i, error.InvalidErrorBranchName);
+        }
+        if (isErrorTypeName(tokens[i].lexeme)) {
+            if (!isErrorEnumDeclStart(tokens, i)) {
+                if (isTypeDeclStart(tokens, i)) return markErrorAt(tokens, i, error.InvalidErrorBranchName);
+                continue;
+            }
+
+            try validateErrorEnumBranches(tokens, i, i + 3);
+            i = findLineEndIdx(tokens, i) - 1;
+            continue;
+        }
+        if (isValueEnumDeclStart(tokens, i)) {
+            try validateValueEnumBranches(tokens, i, i + 3);
+            i = findLineEndIdx(tokens, i) - 1;
+            continue;
+        }
+    }
+}
+
+fn validateErrorEnumBranches(tokens: []const lexer.Token, enum_idx: usize, start_idx: usize) !void {
+    const line_end = findLineEndIdx(tokens, enum_idx);
+    var expect_branch = true;
+    var j = start_idx;
+    while (j < line_end) : (j += 1) {
+        if (!expect_branch) {
+            if (!tokEq(tokens[j], "|")) return markErrorAt(tokens, j, error.InvalidErrorBranchName);
+            expect_branch = true;
+            continue;
+        }
+        if (!isValidErrorBranchName(tokens[j])) return markErrorAt(tokens, j, error.InvalidErrorBranchName);
+        expect_branch = false;
+    }
+    if (expect_branch) return markErrorAt(tokens, line_end - 1, error.InvalidErrorBranchName);
+}
+
+fn validateValueEnumBranches(tokens: []const lexer.Token, enum_idx: usize, start_idx: usize) !void {
+    const line_end = findLineEndIdx(tokens, enum_idx);
+    var expect_branch = true;
+    var j = start_idx;
+    while (j < line_end) {
+        if (!expect_branch) {
+            if (!tokEq(tokens[j], "|")) return markErrorAt(tokens, j, error.InvalidErrorBranchName);
+            expect_branch = true;
+            j += 1;
+            continue;
+        }
+        if (!isValidEnumBranchName(tokens[j])) return markErrorAt(tokens, j, error.InvalidErrorBranchName);
+        if (j + 4 > line_end or !tokEq(tokens[j + 1], "(") or !tokEq(tokens[j + 3], ")")) {
+            return markErrorAt(tokens, j, error.InvalidErrorBranchName);
+        }
+        if (tokens[j + 2].kind != .number) return markErrorAt(tokens, j + 2, error.InvalidErrorBranchName);
+        const value = parseEnumCarrierValue(tokens[j + 2].lexeme) orelse return markErrorAt(tokens, j + 2, error.InvalidErrorBranchName);
+        if (!enumCarrierValueInRange(tokens[enum_idx + 1].lexeme, value)) {
+            return markErrorAt(tokens, j + 2, error.InvalidErrorBranchName);
+        }
+        if (hasPriorEnumCarrierValue(tokens, start_idx, j, value)) {
+            return markErrorAt(tokens, j + 2, error.InvalidErrorBranchName);
+        }
+        j += 4;
+        expect_branch = false;
+    }
+    if (expect_branch) return markErrorAt(tokens, line_end - 1, error.InvalidErrorBranchName);
+}
+
+fn hasPriorEnumCarrierValue(tokens: []const lexer.Token, start_idx: usize, before_idx: usize, value: i128) bool {
+    var j = start_idx;
+    while (j + 3 < before_idx) {
+        if (tokens[j].kind == .ident and tokEq(tokens[j + 1], "(") and tokens[j + 2].kind == .number and tokEq(tokens[j + 3], ")")) {
+            if (parseEnumCarrierValue(tokens[j + 2].lexeme)) |prev| {
+                if (prev == value) return true;
+            }
+            j += 4;
+            continue;
+        }
+        j += 1;
+    }
+    return false;
+}
+
+fn parseEnumCarrierValue(raw: []const u8) ?i128 {
+    return std.fmt.parseInt(i128, raw, 10) catch null;
+}
+
+fn enumCarrierValueInRange(carrier: []const u8, value: i128) bool {
+    if (std.mem.eql(u8, carrier, "i8")) return value >= -128 and value <= 127;
+    if (std.mem.eql(u8, carrier, "i16")) return value >= -32768 and value <= 32767;
+    if (std.mem.eql(u8, carrier, "i32")) return value >= -2147483648 and value <= 2147483647;
+    if (std.mem.eql(u8, carrier, "i64") or std.mem.eql(u8, carrier, "isize")) {
+        return value >= -9223372036854775808 and value <= 9223372036854775807;
+    }
+    if (std.mem.eql(u8, carrier, "u8")) return value >= 0 and value <= 255;
+    if (std.mem.eql(u8, carrier, "u16")) return value >= 0 and value <= 65535;
+    if (std.mem.eql(u8, carrier, "u32")) return value >= 0 and value <= 4294967295;
+    if (std.mem.eql(u8, carrier, "u64") or std.mem.eql(u8, carrier, "usize")) {
+        return value >= 0 and value <= 18446744073709551615;
+    }
+    return false;
+}
+
+fn isErrorEnumDeclStart(tokens: []const lexer.Token, idx: usize) bool {
+    return idx + 2 < tokens.len and
+        isErrorTypeName(tokens[idx].lexeme) and
+        tokEq(tokens[idx + 1], "error") and
+        tokEq(tokens[idx + 2], "=");
+}
+
+fn isValueEnumDeclStart(tokens: []const lexer.Token, idx: usize) bool {
+    return idx + 2 < tokens.len and
+        isValidDeclaredTypeName(tokens[idx].lexeme) and
+        !isErrorTypeName(tokens[idx].lexeme) and
+        isBaseIntTypeName(tokens[idx + 1].lexeme) and
+        tokEq(tokens[idx + 2], "=");
+}
+
+fn isLocalUnionAlias(tokens: []const lexer.Token, name: []const u8) bool {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (depth_brace == 0) {
+                if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                    i = next_idx - 1;
+                    continue;
+                }
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (tokens[i].kind != .ident) continue;
+        if (!std.mem.eql(u8, publicTypeName(tokens[i].lexeme), name)) continue;
+        if (isModernImportAssign(tokens, i)) return false;
+        if (isErrorEnumDeclStart(tokens, i) or isValueEnumDeclStart(tokens, i)) return false;
+        const line_end = findLineEndIdx(tokens, i);
+        const eq_idx = findTopLevelAssignEqOnLine(tokens, i + 1, line_end) orelse return false;
+        return findTokenOnLine(tokens, eq_idx + 1, line_end, "|") != null;
+    }
+    return false;
+}
+
+fn isValidErrorBranchName(tok: lexer.Token) bool {
+    if (tok.kind != .ident) return false;
+    if (!isValidDeclaredTypeName(tok.lexeme)) return false;
+    if (std.mem.eql(u8, tok.lexeme, "Error")) return false;
+    if (isErrorTypeName(tok.lexeme)) return false;
+    return true;
+}
+
+fn isValidEnumBranchName(tok: lexer.Token) bool {
+    if (tok.kind != .ident) return false;
+    const name = publicTypeName(tok.lexeme);
+    if (!isValidDeclaredTypeName(name)) return false;
+    if (std.mem.eql(u8, name, "Error")) return false;
+    if (isErrorTypeName(name)) return false;
+    return true;
+}
+
+fn isErrorTypeName(name: []const u8) bool {
+    if (name.len == 0 or name[0] == '.') return false;
+    if (!isValidDeclaredTypeName(name)) return false;
+    if (std.mem.eql(u8, name, "Error")) return false;
+    return std.mem.endsWith(u8, name, "Error");
+}
+
+fn isPrivateErrorTypeName(name: []const u8) bool {
+    if (name.len < 2 or name[0] != '.') return false;
+    return isErrorTypeName(name[1..]);
+}
+
+fn checkSynthErrorTypePositions(tokens: []const lexer.Token) !void {
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokens[i].kind != .ident) continue;
+        if (!std.mem.eql(u8, tokens[i].lexeme, "Error")) continue;
+
+        const line_start = lineStartIdx(tokens, i);
+        if (line_start == i and isModernImportAssign(tokens, i)) {
+            i = findLineEndIdx(tokens, i) - 1;
+            continue;
+        }
+        return markErrorAt(tokens, i, error.InvalidSynthErrorType);
+    }
+}
+
+fn checkUpperValueExprs(program: parser.Program, tokens: []const lexer.Token) !void {
+    for (program.expr_nodes) |node| {
+        if (node.kind != .ident) continue;
+        const tok = tokens[node.start_tok];
+        if (!isValidDeclaredTypeName(tok.lexeme)) continue;
+        if (isTypeConstructorExpr(tokens, node.start_tok)) continue;
+        if (isLocalErrorBranchValue(tokens, tok.lexeme)) continue;
+        if (isImportedUpperAlias(tokens, tok.lexeme)) continue;
+        return markErrorAt(tokens, node.start_tok, error.InvalidTypeRef);
+    }
+}
+
+fn isTypeConstructorExpr(tokens: []const lexer.Token, start_idx: usize) bool {
+    var idx = start_idx + 1;
+    if (idx < tokens.len and tokEq(tokens[idx], "<")) {
+        const close_angle = findMatching(tokens, idx, "<", ">") catch return false;
+        idx = close_angle + 1;
+    }
+    return idx < tokens.len and tokEq(tokens[idx], "{");
+}
+
+fn isLocalErrorBranchValue(tokens: []const lexer.Token, name: []const u8) bool {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (depth_brace == 0) {
+                if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                    i = next_idx - 1;
+                    continue;
+                }
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (tokens[i].kind != .ident) continue;
+        if (isModernImportAssign(tokens, i)) continue;
+        if (!isErrorEnumDeclStart(tokens, i) and !isValueEnumDeclStart(tokens, i)) continue;
+        if (enumDeclHasBranch(tokens, i, name)) return true;
+    }
+    return false;
+}
+
+fn isImportedUpperAlias(tokens: []const lexer.Token, name: []const u8) bool {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (depth_brace == 0) {
+                if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                    i = next_idx - 1;
+                    continue;
+                }
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (tokens[i].kind != .ident) continue;
+        if (!std.mem.eql(u8, tokens[i].lexeme, name)) continue;
+        if (!isValidDeclaredTypeName(tokens[i].lexeme)) continue;
+        if (isModernImportAssign(tokens, i)) return true;
+    }
+    return false;
+}
+
+fn enumDeclHasBranch(tokens: []const lexer.Token, line_start_idx: usize, name: []const u8) bool {
+    const eq_idx = enumDeclAssignIdx(tokens, line_start_idx) orelse return false;
+    const line_end = findLineEndIdx(tokens, line_start_idx);
+
+    var i = eq_idx + 1;
+    while (i < line_end) : (i += 1) {
+        if (tokens[i].kind != .ident) continue;
+        if (std.mem.eql(u8, publicTypeName(tokens[i].lexeme), name)) return true;
+    }
+    return false;
+}
+
+fn enumDeclAssignIdx(tokens: []const lexer.Token, line_start_idx: usize) ?usize {
+    if (isErrorEnumDeclStart(tokens, line_start_idx) or isValueEnumDeclStart(tokens, line_start_idx)) {
+        return line_start_idx + 2;
+    }
+    return null;
 }
 
 fn checkTopValueDeclNames(tokens: []const lexer.Token) !void {
@@ -1614,10 +3389,17 @@ fn checkTopValueDeclNames(tokens: []const lexer.Token) !void {
         if (i + 1 < tokens.len and tokEq(tokens[i + 1], "(")) continue;
 
         const line_end = findLineEndIdx(tokens, i);
-        if (findTopLevelAssignEqOnLine(tokens, i + 1, line_end) == null) continue;
-        if (isReadonlyIdentName(t.lexeme)) continue;
+        const eq_idx = findTopLevelAssignEqOnLine(tokens, i + 1, line_end) orelse continue;
+        if (eq_idx <= i + 1) return markErrorAt(tokens, i, error.InvalidBindingName);
+        if (isValidTopValueDeclName(t.lexeme)) continue;
         return markErrorAt(tokens, i, error.InvalidBindingName);
     }
+}
+
+fn isValidTopValueDeclName(name: []const u8) bool {
+    if (isReadonlyIdentName(name)) return true;
+    if (isLowerIdentName(name) and !isReservedFuncName(name)) return true;
+    return name.len > 1 and name[0] == '.' and isLowerIdentName(name[1..]) and !isReservedFuncName(name[1..]);
 }
 
 fn checkStructFieldNames(allocator: std.mem.Allocator, tokens: []const lexer.Token) !void {
@@ -1702,6 +3484,22 @@ fn checkHostImports(tokens: []const lexer.Token) !void {
     }
 }
 
+fn checkLocalImports(tokens: []const lexer.Token) !void {
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (!isModernImportAssign(tokens, i)) continue;
+
+        const eq_idx = topLevelLineAssignIdx(tokens, i) orelse return markErrorAt(tokens, i, error.InvalidImportDecl);
+        const line_end = findLineEndIdx(tokens, i);
+        const at_idx = eq_idx + 1;
+        if (isHostImportLine(tokens, at_idx, line_end)) continue;
+
+        try validateLocalImportDecl(tokens, i, at_idx, line_end);
+        i = line_end - 1;
+    }
+}
+
 fn isHostImportDeclStart(tokens: []const lexer.Token, idx: usize) bool {
     const eq_idx = topLevelLineAssignIdx(tokens, idx) orelse return false;
     const line_end = findLineEndIdx(tokens, idx);
@@ -1737,7 +3535,7 @@ fn validateHostImportDecl(tokens: []const lexer.Token, name_idx: usize) !void {
 }
 
 fn isValidImportName(name: []const u8) bool {
-    return isValidDeclaredTypeName(name) or isLowerIdentName(name) or isReadonlyIdentName(name);
+    return (isValidDeclaredTypeName(name) or isLowerIdentName(name) or isReadonlyIdentName(name)) and !isReservedFuncName(name);
 }
 
 fn importAliasMatchesTarget(alias: []const u8, target: []const u8) bool {
@@ -1754,76 +3552,129 @@ fn topLevelLineAssignIdx(tokens: []const lexer.Token, line_start: usize) ?usize 
 
 fn isHostImportLine(tokens: []const lexer.Token, at_idx: usize, line_end: usize) bool {
     if (at_idx + 2 >= line_end) return false;
-    if (tokens[at_idx + 1].kind != .ident or !tokEq(tokens[at_idx + 2], "/")) return false;
+    if (tokens[at_idx + 1].kind != .ident) return false;
     if (std.mem.indexOf(u8, tokens[at_idx + 1].lexeme, ".do") != null) return false;
-    return findTokenOnLine(tokens, at_idx + 3, line_end, "(") != null;
-}
-
-fn validateLocalImportPath(tokens: []const lexer.Token, start_idx: usize, line_end: usize) !usize {
-    var i = start_idx;
-    if (i < line_end and tokEq(tokens[i], "~")) i += 1;
-    if (i < line_end and tokEq(tokens[i], "/")) i += 1;
-    if (i >= line_end) return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
-
-    var saw_file = false;
-    while (i < line_end) {
-        if (tokens[i].kind != .ident) return markErrorAt(tokens, i, error.InvalidImportDecl);
-        const is_file = try validateImportPathIdent(tokens, i);
-        i += 1;
-        if (i >= line_end) return markErrorAt(tokens, i - 1, error.InvalidImportDecl);
-        if (!tokEq(tokens[i], "/")) return markErrorAt(tokens, i, error.InvalidImportDecl);
-        i += 1;
-        if (i >= line_end) return markErrorAt(tokens, i - 1, error.InvalidImportDecl);
-        if (!is_file) continue;
-
-        saw_file = true;
-        if (tokens[i].kind != .ident) return markErrorAt(tokens, i, error.InvalidImportDecl);
-        if (!isValidImportName(tokens[i].lexeme)) return markErrorAt(tokens, i, error.InvalidImportDecl);
-        if (i + 1 != line_end) return markErrorAt(tokens, i + 1, error.InvalidImportDecl);
-        return i;
+    if (std.mem.eql(u8, tokens[at_idx + 1].lexeme, "env")) {
+        return tokEq(tokens[at_idx + 2], "/") and findTokenOnLine(tokens, at_idx + 3, line_end, "(") != null;
     }
-    if (!saw_file) return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
-    return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
+    if (std.mem.eql(u8, tokens[at_idx + 1].lexeme, "wasi")) {
+        return tokEq(tokens[at_idx + 2], "/") and findTokenOnLine(tokens, at_idx + 3, line_end, "(") != null;
+    }
+    return false;
 }
 
-fn validateImportPathIdent(tokens: []const lexer.Token, idx: usize) !bool {
+fn validateLocalImportDecl(tokens: []const lexer.Token, name_idx: usize, at_idx: usize, line_end: usize) !void {
+    if (tokens[name_idx].kind != .ident) return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
+    if (tokens[name_idx].lexeme.len != 0 and tokens[name_idx].lexeme[0] == '.') {
+        return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
+    }
+    if (!isValidImportName(tokens[name_idx].lexeme)) {
+        return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
+    }
+
+    var i = at_idx + 1;
+    var prefix: LocalImportPrefix = .std;
+    if (i + 1 < line_end and tokEq(tokens[i], ".") and tokEq(tokens[i + 1], "/")) {
+        prefix = .local;
+        i += 2;
+    } else if (i < line_end and tokEq(tokens[i], "~")) {
+        prefix = .dep;
+        i += 1;
+        if (i >= line_end or !tokEq(tokens[i], "/")) return markErrorAt(tokens, i - 1, error.InvalidImportDecl);
+        i += 1;
+    } else if (i < line_end and tokEq(tokens[i], "/")) {
+        return markErrorAt(tokens, i, error.InvalidImportDecl);
+    }
+
+    if (i >= line_end or tokens[i].kind != .ident) return markErrorAt(tokens, @min(i, line_end - 1), error.InvalidImportDecl);
+    try validateImportFileName(tokens, i, prefix);
+
+    if (i + 1 >= line_end or !tokEq(tokens[i + 1], "/")) return markErrorAt(tokens, i, error.InvalidImportDecl);
+    const target_idx = i + 2;
+    if (target_idx >= line_end or tokens[target_idx].kind != .ident) return markErrorAt(tokens, @min(target_idx, line_end - 1), error.InvalidImportDecl);
+    if (!isValidImportName(tokens[target_idx].lexeme)) return markErrorAt(tokens, target_idx, error.InvalidImportDecl);
+    if (!importAliasMatchesTarget(tokens[name_idx].lexeme, tokens[target_idx].lexeme)) return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
+    if (target_idx + 1 != line_end) return markErrorAt(tokens, target_idx + 1, error.InvalidImportDecl);
+}
+
+fn validateImportFileName(tokens: []const lexer.Token, idx: usize, prefix: LocalImportPrefix) !void {
     const s = tokens[idx].lexeme;
-    const dot_idx = std.mem.indexOf(u8, s, ".do") orelse {
-        try validatePathSegToken(tokens, idx, s);
-        return false;
+    if (!std.mem.endsWith(u8, s, ".do")) return markErrorAt(tokens, idx, error.InvalidImportDecl);
+
+    const stem = s[0 .. s.len - 3];
+    const ok = switch (prefix) {
+        .local, .std => isValidFlatFileStem(stem),
+        .dep => isValidDepFileStem(stem),
     };
-    try validatePathSegToken(tokens, idx, s[0..dot_idx]);
-    if (dot_idx + 3 != s.len) return markErrorAt(tokens, idx, error.InvalidImportDecl);
+    if (!ok) return markErrorAt(tokens, idx, error.InvalidImportDecl);
+}
+
+fn isValidFlatFileStem(stem: []const u8) bool {
+    var count: usize = 0;
+    var start: usize = 0;
+    while (start <= stem.len) {
+        const dot_idx = std.mem.indexOfScalarPos(u8, stem, start, '.') orelse stem.len;
+        if (!isValidPathSeg(stem[start..dot_idx])) return false;
+        count += 1;
+        if (dot_idx == stem.len) break;
+        start = dot_idx + 1;
+    }
+    return count != 0;
+}
+
+fn isValidDepFileStem(stem: []const u8) bool {
+    var count: usize = 0;
+    var start: usize = 0;
+    while (start <= stem.len) {
+        const dot_idx = std.mem.indexOfScalarPos(u8, stem, start, '.') orelse stem.len;
+        const seg = stem[start..dot_idx];
+        if (!isAllDigits(seg) and !isValidPathSeg(seg)) return false;
+        count += 1;
+        if (dot_idx == stem.len) break;
+        start = dot_idx + 1;
+    }
+    return count >= 2;
+}
+
+fn isAllDigits(seg: []const u8) bool {
+    if (seg.len == 0) return false;
+    for (seg) |ch| {
+        if (ch < '0' or ch > '9') return false;
+    }
     return true;
 }
 
-fn validatePathSegToken(tokens: []const lexer.Token, idx: usize, seg: []const u8) !void {
-    if (seg.len == 0) return markErrorAt(tokens, idx, error.InvalidImportDecl);
-    if (seg[0] == '_' or seg[seg.len - 1] == '_') return markErrorAt(tokens, idx, error.InvalidImportDecl);
+fn isValidPathSeg(seg: []const u8) bool {
+    if (seg.len == 0) return false;
+    if (seg[0] < 'a' or seg[0] > 'z') return false;
+    if (seg[seg.len - 1] == '_') return false;
+
     var prev_underscore = false;
-    for (seg, 0..) |ch, i| {
+    for (seg[1..]) |ch| {
         if (ch >= 'a' and ch <= 'z') {
             prev_underscore = false;
             continue;
         }
-        if (i != 0 and ch >= '0' and ch <= '9') {
+        if (ch >= '0' and ch <= '9') {
             prev_underscore = false;
             continue;
         }
         if (ch == '_') {
-            if (prev_underscore) return markErrorAt(tokens, idx, error.InvalidImportDecl);
+            if (prev_underscore) return false;
             prev_underscore = true;
             continue;
         }
-        return markErrorAt(tokens, idx, error.InvalidImportDecl);
+        return false;
     }
+    return true;
 }
 
 fn validateHostImportLine(tokens: []const lexer.Token, at_idx: usize, line_end: usize) !void {
     const open_idx = findTokenOnLine(tokens, at_idx + 1, line_end, "(") orelse return markErrorAt(tokens, at_idx, error.InvalidImportDecl);
+    const kind = try validateHostImportTarget(tokens, at_idx, open_idx);
     const close_idx = findMatching(tokens, open_idx, "(", ")") catch return markErrorAt(tokens, open_idx, error.InvalidImportDecl);
     if (close_idx >= line_end) return markErrorAt(tokens, open_idx, error.InvalidImportDecl);
-    try validateHostImportParams(tokens, open_idx + 1, close_idx);
+    try validateHostImportParams(tokens, open_idx + 1, close_idx, kind);
 
     if (close_idx + 3 > line_end or !tokEq(tokens[close_idx + 1], "-") or !tokEq(tokens[close_idx + 2], ">")) {
         return markErrorAt(tokens, close_idx, error.InvalidImportDecl);
@@ -1831,21 +3682,47 @@ fn validateHostImportLine(tokens: []const lexer.Token, at_idx: usize, line_end: 
     const ret_start = close_idx + 3;
     if (ret_start >= line_end) return markErrorAt(tokens, close_idx, error.InvalidImportDecl);
     if (hasTopLevelComma(tokens, ret_start, line_end)) return markErrorAt(tokens, ret_start, error.InvalidImportDecl);
-    try validateHostReturnType(tokens, ret_start, line_end);
+    try validateHostReturnType(tokens, ret_start, line_end, kind);
 }
 
-fn findParamTypeEnd(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) usize {
-    var i = start_idx;
-    while (i < end_idx and !tokEq(tokens[i], ",")) : (i += 1) {}
-    return i;
+fn validateHostImportTarget(tokens: []const lexer.Token, at_idx: usize, open_idx: usize) !HostImportKind {
+    if (at_idx + 3 >= open_idx) return markErrorAt(tokens, at_idx, error.InvalidImportDecl);
+    if (tokens[at_idx + 1].kind != .ident) return markErrorAt(tokens, at_idx + 1, error.InvalidImportDecl);
+
+    if (std.mem.eql(u8, tokens[at_idx + 1].lexeme, "env")) {
+        if (!tokEq(tokens[at_idx + 2], "/")) return markErrorAt(tokens, at_idx + 2, error.InvalidImportDecl);
+        if (at_idx + 4 != open_idx) return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
+        if (tokens[at_idx + 3].kind != .ident or !isValidPathSeg(tokens[at_idx + 3].lexeme)) {
+            return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
+        }
+        return .env;
+    }
+
+    if (std.mem.eql(u8, tokens[at_idx + 1].lexeme, "wasi")) {
+        if (!tokEq(tokens[at_idx + 2], "/")) return markErrorAt(tokens, at_idx + 2, error.InvalidImportDecl);
+        var i = at_idx + 3;
+        i = parseWitName(tokens, i, open_idx) orelse return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
+        if (i >= open_idx or !tokEq(tokens[i], "/")) return markErrorAt(tokens, @min(i, open_idx - 1), error.InvalidImportDecl);
+        i += 1;
+        i = parseWitName(tokens, i, open_idx) orelse return markErrorAt(tokens, @min(i, open_idx - 1), error.InvalidImportDecl);
+        if (i >= open_idx or !tokEq(tokens[i], "/")) return markErrorAt(tokens, @min(i, open_idx - 1), error.InvalidImportDecl);
+        i += 1;
+        const member_end = parseWitName(tokens, i, open_idx) orelse return markErrorAt(tokens, @min(i, open_idx - 1), error.InvalidImportDecl);
+        if (member_end != open_idx) {
+            return markErrorAt(tokens, member_end, error.InvalidImportDecl);
+        }
+        return .wasi;
+    }
+
+    return markErrorAt(tokens, at_idx + 1, error.InvalidImportDecl);
 }
 
-fn validateHostImportParams(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !void {
+fn validateHostImportParams(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, kind: HostImportKind) !void {
     if (start_idx >= end_idx) return;
     var i = start_idx;
     while (i < end_idx) {
-        const type_end = findParamTypeEnd(tokens, i, end_idx);
-        try validateHostParamType(tokens, i, type_end);
+        const type_end = findTopLevelComma(tokens, i, end_idx) orelse end_idx;
+        try validateHostParamType(tokens, i, type_end, kind);
         i = type_end;
         if (i >= end_idx) break;
         if (!tokEq(tokens[i], ",")) return markErrorAt(tokens, i, error.InvalidImportDecl);
@@ -1853,16 +3730,32 @@ fn validateHostImportParams(tokens: []const lexer.Token, start_idx: usize, end_i
     }
 }
 
-fn validateHostParamType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !void {
-    if (end_idx != start_idx + 1 or tokens[start_idx].kind != .ident) return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
-    if (isHostParamType(tokens[start_idx].lexeme)) return;
-    return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
+fn validateHostParamType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, kind: HostImportKind) !void {
+    switch (kind) {
+        .env => {
+            if (end_idx != start_idx + 1 or tokens[start_idx].kind != .ident) return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
+            if (isHostParamType(tokens[start_idx].lexeme)) return;
+            return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
+        },
+        .wasi => {
+            const next_idx = parseWitType(tokens, start_idx, end_idx) orelse return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
+            if (next_idx != end_idx) return markErrorAt(tokens, next_idx, error.InvalidImportDecl);
+        },
+    }
 }
 
-fn validateHostReturnType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !void {
-    if (end_idx != start_idx + 1 or tokens[start_idx].kind != .ident) return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
-    if (isHostReturnType(tokens[start_idx].lexeme)) return;
-    return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
+fn validateHostReturnType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, kind: HostImportKind) !void {
+    switch (kind) {
+        .env => {
+            if (end_idx != start_idx + 1 or tokens[start_idx].kind != .ident) return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
+            if (isHostReturnType(tokens[start_idx].lexeme)) return;
+            return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
+        },
+        .wasi => {
+            const next_idx = parseWitType(tokens, start_idx, end_idx) orelse return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
+            if (next_idx != end_idx) return markErrorAt(tokens, next_idx, error.InvalidImportDecl);
+        },
+    }
 }
 
 fn isHostParamType(name: []const u8) bool {
@@ -1881,6 +3774,75 @@ fn isHostParamType(name: []const u8) bool {
 fn isHostReturnType(name: []const u8) bool {
     if (std.mem.eql(u8, name, "nil")) return true;
     return isHostParamType(name);
+}
+
+fn parseWitType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    if (start_idx >= end_idx or tokens[start_idx].kind != .ident) return null;
+    const name = tokens[start_idx].lexeme;
+
+    if (std.mem.eql(u8, name, "list")) {
+        if (start_idx + 2 >= end_idx or !tokEq(tokens[start_idx + 1], "<")) return null;
+        const item_end = parseWitType(tokens, start_idx + 2, end_idx) orelse return null;
+        if (item_end >= end_idx or !tokEq(tokens[item_end], ">")) return null;
+        return item_end + 1;
+    }
+
+    if (std.mem.eql(u8, name, "result")) {
+        if (start_idx + 4 >= end_idx or !tokEq(tokens[start_idx + 1], "<")) return null;
+        const ok_end = parseWitType(tokens, start_idx + 2, end_idx) orelse return null;
+        if (ok_end >= end_idx or !tokEq(tokens[ok_end], ",")) return null;
+        const err_end = parseWitType(tokens, ok_end + 1, end_idx) orelse return null;
+        if (err_end >= end_idx or !tokEq(tokens[err_end], ">")) return null;
+        return err_end + 1;
+    }
+
+    if (std.mem.eql(u8, name, "tuple")) {
+        if (start_idx + 4 >= end_idx or !tokEq(tokens[start_idx + 1], "<")) return null;
+        var i = start_idx + 2;
+        var count: usize = 0;
+        while (i < end_idx) {
+            const next = parseWitType(tokens, i, end_idx) orelse return null;
+            count += 1;
+            i = next;
+            if (i >= end_idx) return null;
+            if (tokEq(tokens[i], ">")) return if (count >= 2) i + 1 else null;
+            if (!tokEq(tokens[i], ",")) return null;
+            i += 1;
+        }
+        return null;
+    }
+
+    if (std.mem.eql(u8, name, "option") or std.mem.eql(u8, name, "borrow") or std.mem.eql(u8, name, "own")) {
+        if (start_idx + 2 >= end_idx or !tokEq(tokens[start_idx + 1], "<")) return null;
+        const item_end = parseWitType(tokens, start_idx + 2, end_idx) orelse return null;
+        if (item_end >= end_idx or !tokEq(tokens[item_end], ">")) return null;
+        return item_end + 1;
+    }
+
+    if (std.mem.eql(u8, name, "_")) return start_idx + 1;
+
+    return parseWitName(tokens, start_idx, end_idx);
+}
+
+fn parseWitName(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    if (tokens[start_idx].kind != .ident or !isValidWitPathName(tokens[start_idx].lexeme)) return null;
+    var i = start_idx + 1;
+    while (i + 1 < end_idx and tokEq(tokens[i], "-")) {
+        if (tokens[i + 1].kind != .ident or !isValidWitPathName(tokens[i + 1].lexeme)) return null;
+        i += 2;
+    }
+    return i;
+}
+
+fn isValidWitPathName(name: []const u8) bool {
+    var start: usize = 0;
+    while (start <= name.len) {
+        const dot_idx = std.mem.indexOfScalarPos(u8, name, start, '.') orelse name.len;
+        if (!isValidPathSeg(name[start..dot_idx])) return false;
+        if (dot_idx == name.len) return true;
+        start = dot_idx + 1;
+    }
+    return false;
 }
 
 fn findTokenOnLine(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, s: []const u8) ?usize {
@@ -1961,6 +3923,7 @@ fn isValueLiteralToken(t: lexer.Token) bool {
 fn isTypeDeclStart(tokens: []const lexer.Token, idx: usize) bool {
     if (idx + 1 >= tokens.len) return false;
     if (tokEq(tokens[idx + 1], "(")) return false; // func decl
+    if (isErrorEnumDeclStart(tokens, idx) or isValueEnumDeclStart(tokens, idx)) return true;
 
     var next_idx = idx + 1;
     if (tokEq(tokens[next_idx], "<")) {
@@ -1977,6 +3940,7 @@ fn isTypeDeclStart(tokens: []const lexer.Token, idx: usize) bool {
 fn isValidDeclaredTypeName(name: []const u8) bool {
     if (name.len == 0) return false;
     if (name[0] == '.') return isValidDeclaredTypeName(name[1..]);
+    if (std.mem.eql(u8, name, "Error")) return false;
     if (!std.ascii.isUpper(name[0])) return false;
 
     var i: usize = 1;
@@ -2019,15 +3983,15 @@ fn isSnakeLowerName(name: []const u8) bool {
 }
 
 fn isValidLocalBindingName(name: []const u8) bool {
-    return isLowerIdentName(name) or isReadonlyIdentName(name);
+    return (isLowerIdentName(name) or isReadonlyIdentName(name)) and !isReservedFuncName(name);
 }
 
 fn isValidLoopBindingName(name: []const u8) bool {
-    return std.mem.eql(u8, name, "_") or isLowerIdentName(name);
+    return std.mem.eql(u8, name, "_") or (isLowerIdentName(name) and !isReservedFuncName(name));
 }
 
 fn isValidFuncParamName(name: []const u8) bool {
-    return std.mem.eql(u8, name, "_") or isLowerIdentName(name);
+    return isLowerIdentName(name) and !isReservedFuncName(name);
 }
 
 fn isValidFuncParamTypeName(name: []const u8) bool {
@@ -2063,8 +4027,905 @@ fn checkTypeRefs(tokens: []const lexer.Token) !void {
         if (t.lexeme.len < 2 or t.lexeme[0] != '.') continue;
         if (!std.ascii.isUpper(t.lexeme[1])) continue;
         if (isTopLevelDeclHead(tokens, i) and isTypeDeclStart(tokens, i)) continue;
+        if (isValueEnumBranchDeclToken(tokens, i)) continue;
         return markErrorAt(tokens, i, error.InvalidTypeRef);
     }
+}
+
+fn isValueEnumBranchDeclToken(tokens: []const lexer.Token, idx: usize) bool {
+    if (idx + 2 >= tokens.len) return false;
+    if (!tokEq(tokens[idx + 1], "(")) return false;
+
+    var line_start = idx;
+    while (line_start > 0 and tokens[line_start - 1].line == tokens[idx].line) {
+        line_start -= 1;
+    }
+    if (!isValueEnumDeclStart(tokens, line_start)) return false;
+
+    const branch_start = line_start + 3;
+    if (idx == branch_start) return true;
+    return idx > branch_start and tokEq(tokens[idx - 1], "|");
+}
+
+fn checkBareNilTypes(tokens: []const lexer.Token) !void {
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (!tokEq(tokens[i], "nil")) continue;
+        if (isNilUnionBranch(tokens, i)) {
+            if (hasDuplicateNilInUnionSegment(tokens, i)) {
+                return markErrorAt(tokens, i, error.InvalidTypeRef);
+            }
+            continue;
+        }
+        if (isNilReturnSpec(tokens, i)) continue;
+        if (isParenthesizedNilType(tokens, i)) return markErrorAt(tokens, i, error.InvalidTypeRef);
+        if (isUntypedNilAssignment(tokens, i)) return markErrorAt(tokens, i, error.InvalidTypeRef);
+        if (!isBareNilTypeContext(tokens, i)) continue;
+        return markErrorAt(tokens, i, error.InvalidTypeRef);
+    }
+}
+
+fn isParenthesizedNilType(tokens: []const lexer.Token, idx: usize) bool {
+    if (idx == 0 or idx + 1 >= tokens.len) return false;
+    if (tokens[idx - 1].line != tokens[idx].line or tokens[idx + 1].line != tokens[idx].line) return false;
+    if (!tokEq(tokens[idx - 1], "(") or !tokEq(tokens[idx + 1], ")")) return false;
+    const close_idx = findMatchingOpen(tokens, idx + 1, "(", ")") orelse return false;
+    return close_idx == idx - 1;
+}
+
+fn isUntypedNilAssignment(tokens: []const lexer.Token, idx: usize) bool {
+    if (idx == 0 or tokens[idx - 1].line != tokens[idx].line) return false;
+    const eq_idx = idx - 1;
+    if (!tokEq(tokens[eq_idx], "=") or isNonAssignEqual(tokens, eq_idx)) return false;
+
+    const line_start = lineStartIdx(tokens, idx);
+    const line_end = findLineEndIdx(tokens, idx);
+    const assign_eq = findTopLevelAssignEqOnLine(tokens, line_start, line_end) orelse return false;
+    if (assign_eq != eq_idx) return false;
+    if (idx + 1 != line_end) return false;
+    return !assignmentLhsHasTypeAnnotation(tokens, line_start, eq_idx);
+}
+
+fn assignmentLhsHasTypeAnnotation(tokens: []const lexer.Token, start_idx: usize, eq_idx: usize) bool {
+    var i = start_idx + 1;
+    while (i < eq_idx) : (i += 1) {
+        if (isTypeAtomStart(tokens[i])) return true;
+        if (isSpreadToken(tokens[i])) return true;
+    }
+    return false;
+}
+
+fn checkParenthesizedTypeArgs(tokens: []const lexer.Token) !void {
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (!tokEq(tokens[i], "(")) continue;
+        if (!isTypeArgStartAfterSeparator(tokens, i)) continue;
+        return markErrorAt(tokens, i, error.InvalidTypeRef);
+    }
+}
+
+fn checkParenthesizedTypes(tokens: []const lexer.Token) !void {
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (!tokEq(tokens[i], "(")) continue;
+        if (isFuncTypeStart(tokens, i)) continue;
+        const close_idx = findMatching(tokens, i, "(", ")") catch continue;
+        if (!isParenthesizedTypeContext(tokens, i, close_idx)) continue;
+        if (!isTypeExprRangeAllowParens(tokens, i + 1, close_idx)) continue;
+        return markErrorAt(tokens, i, error.InvalidTypeRef);
+    }
+}
+
+fn isParenthesizedTypeContext(tokens: []const lexer.Token, open_idx: usize, close_idx: usize) bool {
+    const prev_idx = previousTokenSameLine(tokens, open_idx) orelse return false;
+    const prev = tokens[prev_idx];
+
+    if (tokEq(prev, "[") or tokEq(prev, "<") or tokEq(prev, "|")) return true;
+    if (tokEq(prev, "=")) return isTypeDeclOrConstraintLine(tokens, open_idx);
+    if (tokEq(prev, ">") and prev_idx > 0 and tokEq(tokens[prev_idx - 1], "-")) return true;
+    if (tokEq(prev, ",") and hasReturnArrowBeforeOnLine(tokens, open_idx)) return true;
+    if (tokEq(prev, ",") and isInsideFuncTypeParamList(tokens, open_idx)) return true;
+    if (tokEq(prev, ",") and isSecondIsArg(tokens, open_idx)) return true;
+    if (tokEq(prev, "(") and isInsideFuncTypeParamList(tokens, open_idx)) return true;
+    if (isSpreadToken(prev)) return true;
+    if (prev.kind == .ident and canParenthesizedTypeFollowName(tokens, close_idx)) return true;
+    return false;
+}
+
+fn previousTokenSameLine(tokens: []const lexer.Token, idx: usize) ?usize {
+    if (idx == 0) return null;
+    const prev_idx = idx - 1;
+    if (tokens[prev_idx].line != tokens[idx].line) return null;
+    return prev_idx;
+}
+
+fn canParenthesizedTypeFollowName(tokens: []const lexer.Token, close_idx: usize) bool {
+    const next_idx = close_idx + 1;
+    if (next_idx >= tokens.len) return true;
+    if (tokens[next_idx].line != tokens[close_idx].line) return true;
+    const next = tokens[next_idx];
+    if (tokEq(next, "=") or tokEq(next, "|") or tokEq(next, ",") or tokEq(next, ")") or tokEq(next, "{")) return true;
+    return false;
+}
+
+fn hasReturnArrowBeforeOnLine(tokens: []const lexer.Token, idx: usize) bool {
+    var i = lineStartIdx(tokens, idx);
+    while (i + 1 < idx) : (i += 1) {
+        if (isReturnArrowAt(tokens, i)) return true;
+    }
+    return false;
+}
+
+fn isInsideFuncTypeParamList(tokens: []const lexer.Token, idx: usize) bool {
+    var i = idx;
+    while (i > 0 and tokens[i - 1].line == tokens[idx].line) {
+        i -= 1;
+        if (!tokEq(tokens[i], "(")) continue;
+        const close_idx = findMatching(tokens, i, "(", ")") catch continue;
+        if (close_idx <= idx) continue;
+        if (close_idx + 2 >= tokens.len) continue;
+        if (isReturnArrowAt(tokens, close_idx + 1)) return true;
+    }
+    return false;
+}
+
+fn isSecondIsArg(tokens: []const lexer.Token, idx: usize) bool {
+    const info = callArgInfo(tokens, idx) orelse return false;
+    return std.mem.eql(u8, info.name, "is") and info.arg_index == 1;
+}
+
+fn isTypeExprRangeAllowParens(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    if (start_idx >= end_idx) return false;
+    var idx = parseTypeAtomAllowParens(tokens, start_idx, end_idx) orelse return false;
+    while (idx < end_idx) {
+        if (!tokEq(tokens[idx], "|")) return false;
+        idx = parseTypeAtomAllowParens(tokens, idx + 1, end_idx) orelse return false;
+    }
+    return idx == end_idx;
+}
+
+fn parseTypeAtomAllowParens(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    if (start_idx >= end_idx) return null;
+
+    if (tokEq(tokens[start_idx], "(")) {
+        if (isFuncTypeStart(tokens, start_idx)) return null;
+        const close_idx = findMatching(tokens, start_idx, "(", ")") catch return null;
+        if (close_idx >= end_idx) return null;
+        if (!isTypeExprRangeAllowParens(tokens, start_idx + 1, close_idx)) return null;
+        return close_idx + 1;
+    }
+
+    if (tokEq(tokens[start_idx], "[")) {
+        const close_idx = findMatching(tokens, start_idx, "[", "]") catch return null;
+        if (close_idx >= end_idx) return null;
+        if (!isTypeExprRangeAllowParens(tokens, start_idx + 1, close_idx)) return null;
+        return close_idx + 1;
+    }
+
+    if (tokens[start_idx].kind != .ident) return null;
+    if (!isTypeAtomName(tokens[start_idx].lexeme)) return null;
+
+    var idx = start_idx + 1;
+    if (idx < end_idx and tokEq(tokens[idx], "<")) {
+        const close_angle = findMatching(tokens, idx, "<", ">") catch return null;
+        if (close_angle >= end_idx) return null;
+        if (!isTypeArgListRange(tokens, idx + 1, close_angle)) return null;
+        idx = close_angle + 1;
+    }
+    return idx;
+}
+
+fn isTypeAtomName(name: []const u8) bool {
+    if (isBaseTypeName(name) or std.mem.eql(u8, name, "nil")) return true;
+    return isValidDeclaredTypeName(name);
+}
+
+fn isTypeArgListRange(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    if (start_idx >= end_idx) return false;
+    var idx = parseTypeAtomAllowParens(tokens, start_idx, end_idx) orelse return false;
+    while (idx < end_idx) {
+        if (!tokEq(tokens[idx], "|") and !tokEq(tokens[idx], ",")) return false;
+        idx = parseTypeAtomAllowParens(tokens, idx + 1, end_idx) orelse return false;
+    }
+    return idx == end_idx;
+}
+
+fn checkGenericStructCtorTypeArgs(tokens: []const lexer.Token) !void {
+    var i: usize = 0;
+    while (i + 1 < tokens.len) : (i += 1) {
+        if (tokens[i].kind != .ident) continue;
+        if (!isValidDeclaredTypeName(tokens[i].lexeme)) continue;
+        if (!tokEq(tokens[i + 1], "{")) continue;
+        if (isTopLevelDeclHead(tokens, i) and isStructDeclStart(tokens, i)) continue;
+        if (!isGenericStructTypeName(tokens, publicTypeName(tokens[i].lexeme))) continue;
+        return markErrorAt(tokens, i, error.InvalidTypeRef);
+    }
+}
+
+fn checkGenericTypeArgArity(tokens: []const lexer.Token) !void {
+    var i: usize = 0;
+    while (i + 1 < tokens.len) : (i += 1) {
+        if (tokens[i].kind != .ident) continue;
+        if (!isValidDeclaredTypeName(tokens[i].lexeme)) continue;
+        if (!tokEq(tokens[i + 1], "<")) continue;
+
+        const close_angle = findMatching(tokens, i + 1, "<", ">") catch continue;
+        const type_name = publicTypeName(tokens[i].lexeme);
+        const expected_count = localStructTypeParamCount(tokens, type_name) orelse {
+            if (isLocalNonStructTypeName(tokens, type_name)) return markErrorAt(tokens, i, error.InvalidTypeRef);
+            i = close_angle;
+            continue;
+        };
+        const actual_count = countTypeArgs(tokens, i + 2, close_angle);
+        if (actual_count != expected_count) return markErrorAt(tokens, i, error.InvalidTypeRef);
+        i = close_angle;
+    }
+}
+
+fn countTypeArgs(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) usize {
+    if (start_idx >= end_idx) return 0;
+
+    var depth_paren: usize = 0;
+    var depth_bracket: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_angle: usize = 0;
+    var count: usize = 1;
+
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "[")) {
+            depth_bracket += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "]")) {
+            if (depth_bracket > 0) depth_bracket -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (i > start_idx and tokEq(tokens[i - 1], "-")) continue;
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ",") and depth_paren == 0 and depth_bracket == 0 and depth_brace == 0 and depth_angle == 0) {
+            count += 1;
+        }
+    }
+    return count;
+}
+
+fn isGenericStructTypeName(tokens: []const lexer.Token, name: []const u8) bool {
+    return genericStructTypeParamCount(tokens, name) != null;
+}
+
+fn genericStructTypeParamCount(tokens: []const lexer.Token, name: []const u8) ?usize {
+    const count = localStructTypeParamCount(tokens, name) orelse return null;
+    return if (count == 0) null else count;
+}
+
+fn localStructTypeParamCount(tokens: []const lexer.Token, name: []const u8) ?usize {
+    var depth_brace: usize = 0;
+    var in_constraint_block = false;
+    var type_constraint_count: usize = 0;
+    var last_constraint_line: usize = 0;
+
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (depth_brace == 0) {
+                if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                    i = next_idx - 1;
+                    continue;
+                }
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+
+        if (!tokEq(tokens[i], "#")) {
+            if (tokens[i].kind == .ident and isStructDeclStart(tokens, i) and
+                std.mem.eql(u8, publicTypeName(tokens[i].lexeme), name))
+            {
+                if (in_constraint_block and tokens[i].line == last_constraint_line + 1 and type_constraint_count > 0) {
+                    return type_constraint_count;
+                }
+                return 0;
+            }
+            if (in_constraint_block) {
+                in_constraint_block = false;
+                type_constraint_count = 0;
+            }
+            continue;
+        }
+
+        const line_end = findLineEndIdx(tokens, i);
+        const is_func_constraint = (i + 2 < line_end and tokEq(tokens[i + 2], "("));
+        if (!is_func_constraint) type_constraint_count += 1;
+        in_constraint_block = true;
+        last_constraint_line = tokens[i].line;
+        i = line_end - 1;
+    }
+    return null;
+}
+
+fn isLocalNonStructTypeName(tokens: []const lexer.Token, name: []const u8) bool {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (depth_brace == 0) {
+                if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                    i = next_idx - 1;
+                    continue;
+                }
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (tokens[i].kind != .ident) continue;
+        if (!std.mem.eql(u8, publicTypeName(tokens[i].lexeme), name)) continue;
+        if (isModernImportAssign(tokens, i)) continue;
+        if (!isTypeDeclStart(tokens, i)) continue;
+        return !isStructDeclStart(tokens, i);
+    }
+    return false;
+}
+
+fn checkUnboundTypeParamRefs(tokens: []const lexer.Token) !void {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (depth_brace == 0) {
+                if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                    i = next_idx - 1;
+                    continue;
+                }
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+
+        if (isFuncDeclStart(tokens, i)) {
+            const close_paren = findMatching(tokens, i + 1, "(", ")") catch continue;
+            try checkUnboundTypeNamesInRange(tokens, i, i + 2, close_paren);
+            try checkUnboundTypeNamesInRange(tokens, i, close_paren + 1, findFuncDeclSignatureEnd(tokens, close_paren + 1));
+            i = close_paren;
+            continue;
+        }
+
+        if (isStructDeclStart(tokens, i)) {
+            const close_brace = findMatching(tokens, i + 1, "{", "}") catch continue;
+            try checkUnboundStructFieldTypeNames(tokens, i, i + 2, close_brace);
+            i = close_brace;
+        }
+    }
+}
+
+fn checkUnboundStructFieldTypeNames(
+    tokens: []const lexer.Token,
+    decl_start_idx: usize,
+    field_start: usize,
+    field_end: usize,
+) !void {
+    var i = field_start;
+    while (i < field_end) {
+        const line_start = i;
+        const line_end = @min(findLineEndIdx(tokens, i), field_end);
+        if (line_start + 1 < line_end and tokens[line_start].kind == .ident and isStructFieldName(tokens[line_start].lexeme)) {
+            const type_end = findStructFieldTypeEnd(tokens, line_start + 1, line_end);
+            try checkUnboundTypeNamesInRange(tokens, decl_start_idx, line_start + 1, type_end);
+        }
+        i = line_end;
+    }
+}
+
+fn checkUnboundTypeNamesInRange(
+    tokens: []const lexer.Token,
+    decl_start_idx: usize,
+    start_idx: usize,
+    end_idx: usize,
+) !void {
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokens[i].kind != .ident) continue;
+        if (!isValidDeclaredTypeName(tokens[i].lexeme)) continue;
+        const name = publicTypeName(tokens[i].lexeme);
+        if (hasConcreteTypeName(tokens, name)) continue;
+        if (declHasTypeConstraintName(tokens, decl_start_idx, name)) continue;
+        if (!hasPriorTypeConstraintName(tokens, decl_start_idx, name)) continue;
+        return markErrorAt(tokens, i, error.InvalidTypeRef);
+    }
+}
+
+fn declHasTypeConstraintName(tokens: []const lexer.Token, decl_start_idx: usize, name: []const u8) bool {
+    const block_start = findConstraintBlockStartBefore(tokens, decl_start_idx) orelse return false;
+    return hasTypeConstraintName(tokens, block_start, decl_start_idx, name);
+}
+
+fn hasPriorTypeConstraintName(tokens: []const lexer.Token, before_idx: usize, name: []const u8) bool {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < before_idx and i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (depth_brace == 0) {
+                if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                    i = next_idx - 1;
+                    continue;
+                }
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!tokEq(tokens[i], "#")) continue;
+
+        const line_end = findLineEndIdx(tokens, i);
+        const is_func_constraint = i + 2 < line_end and tokEq(tokens[i + 2], "(");
+        if (!is_func_constraint and i + 1 < line_end and std.mem.eql(u8, tokens[i + 1].lexeme, name)) return true;
+        i = line_end - 1;
+    }
+    return false;
+}
+
+fn findFuncDeclSignatureEnd(tokens: []const lexer.Token, start_idx: usize) usize {
+    var i = start_idx;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) return i;
+        if (isArrowAt(tokens, i)) return i;
+    }
+    return i;
+}
+
+fn isTypeArgStartAfterSeparator(tokens: []const lexer.Token, idx: usize) bool {
+    if (idx == 0) return false;
+    const prev = tokens[idx - 1];
+    if (!tokEq(prev, "<") and !tokEq(prev, ",")) return false;
+    return hasOpenTypeArgAngleBefore(tokens, idx);
+}
+
+fn hasOpenTypeArgAngleBefore(tokens: []const lexer.Token, idx: usize) bool {
+    var depth_angle: usize = 0;
+    var i = lineStartIdx(tokens, idx);
+    while (i < idx) : (i += 1) {
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (!tokEq(tokens[i], ">")) continue;
+        if (i > 0 and tokEq(tokens[i - 1], "-")) continue;
+        if (depth_angle > 0) depth_angle -= 1;
+    }
+    return depth_angle > 0;
+}
+
+fn isNilUnionBranch(tokens: []const lexer.Token, idx: usize) bool {
+    if (idx > 0 and tokens[idx - 1].line == tokens[idx].line and tokEq(tokens[idx - 1], "|")) return true;
+    if (idx + 1 < tokens.len and tokens[idx + 1].line == tokens[idx].line and tokEq(tokens[idx + 1], "|")) return true;
+    return false;
+}
+
+fn hasDuplicateNilInUnionSegment(tokens: []const lexer.Token, idx: usize) bool {
+    const start = nilUnionSegmentStart(tokens, idx);
+    const end = nilUnionSegmentEnd(tokens, idx);
+    var nil_count: usize = 0;
+    var saw_pipe = false;
+
+    var i = start;
+    while (i < end) : (i += 1) {
+        if (tokEq(tokens[i], "|")) {
+            saw_pipe = true;
+            continue;
+        }
+        if (tokEq(tokens[i], "nil")) nil_count += 1;
+    }
+
+    return saw_pipe and nil_count > 1;
+}
+
+fn nilUnionSegmentStart(tokens: []const lexer.Token, idx: usize) usize {
+    var start = idx;
+    while (start > 0 and tokens[start - 1].line == tokens[idx].line) {
+        if (isNilUnionBoundaryBefore(tokens, start)) break;
+        start -= 1;
+    }
+    return start;
+}
+
+fn nilUnionSegmentEnd(tokens: []const lexer.Token, idx: usize) usize {
+    var end = idx + 1;
+    while (end < tokens.len and tokens[end].line == tokens[idx].line) : (end += 1) {
+        if (isNilUnionBoundaryToken(tokens[end])) break;
+        if (tokEq(tokens[end], "{")) break;
+    }
+    return end;
+}
+
+fn isNilUnionBoundaryBefore(tokens: []const lexer.Token, idx: usize) bool {
+    const prev = tokens[idx - 1];
+    if (isNilUnionBoundaryToken(prev)) return true;
+    return idx >= 2 and tokEq(tokens[idx - 2], "-") and tokEq(tokens[idx - 1], ">");
+}
+
+fn isNilUnionBoundaryToken(tok: lexer.Token) bool {
+    return tokEq(tok, ",") or tokEq(tok, "(") or tokEq(tok, ")") or tokEq(tok, "=");
+}
+
+fn checkDuplicateUnionBranches(tokens: []const lexer.Token) !void {
+    var i: usize = 0;
+    while (i < tokens.len) {
+        if (!tokEq(tokens[i], "|")) {
+            i += 1;
+            continue;
+        }
+
+        const start = unionSegmentStart(tokens, i);
+        const end = unionSegmentEnd(tokens, i);
+        try checkDuplicateUnionBranchSegment(tokens, start, end);
+        i = end;
+    }
+}
+
+fn unionSegmentStart(tokens: []const lexer.Token, idx: usize) usize {
+    var depth_paren: usize = 0;
+    var depth_angle: usize = 0;
+    var depth_bracket: usize = 0;
+    var start = idx;
+
+    while (start > 0 and tokens[start - 1].line == tokens[idx].line) {
+        if (depth_paren == 0 and depth_angle == 0 and depth_bracket == 0 and isUnionSegmentBoundaryBefore(tokens, start)) break;
+
+        const prev_idx = start - 1;
+        if (tokEq(tokens[prev_idx], ")")) {
+            depth_paren += 1;
+        } else if (tokEq(tokens[prev_idx], "(")) {
+            if (depth_paren == 0) break;
+            depth_paren -= 1;
+        } else if (tokEq(tokens[prev_idx], ">")) {
+            depth_angle += 1;
+        } else if (tokEq(tokens[prev_idx], "<")) {
+            if (depth_angle == 0) break;
+            depth_angle -= 1;
+        } else if (tokEq(tokens[prev_idx], "]")) {
+            depth_bracket += 1;
+        } else if (tokEq(tokens[prev_idx], "[")) {
+            if (depth_bracket == 0) break;
+            depth_bracket -= 1;
+        }
+
+        start = prev_idx;
+    }
+
+    return start;
+}
+
+fn unionSegmentEnd(tokens: []const lexer.Token, idx: usize) usize {
+    var depth_paren: usize = 0;
+    var depth_angle: usize = 0;
+    var depth_bracket: usize = 0;
+    var end = idx + 1;
+
+    while (end < tokens.len and tokens[end].line == tokens[idx].line) : (end += 1) {
+        if (depth_paren == 0 and depth_angle == 0 and depth_bracket == 0 and isUnionSegmentEndBoundary(tokens[end])) break;
+
+        if (tokEq(tokens[end], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[end], ")")) {
+            if (depth_paren == 0) break;
+            depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[end], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[end], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (tokEq(tokens[end], "[")) {
+            depth_bracket += 1;
+            continue;
+        }
+        if (tokEq(tokens[end], "]")) {
+            if (depth_bracket == 0) break;
+            depth_bracket -= 1;
+            continue;
+        }
+    }
+
+    return end;
+}
+
+fn isUnionSegmentBoundaryBefore(tokens: []const lexer.Token, idx: usize) bool {
+    const prev = tokens[idx - 1];
+    if (tokEq(prev, ",") or tokEq(prev, "=") or tokEq(prev, "{")) return true;
+    return idx >= 2 and tokEq(tokens[idx - 2], "-") and tokEq(tokens[idx - 1], ">");
+}
+
+fn isUnionSegmentEndBoundary(tok: lexer.Token) bool {
+    return tokEq(tok, ",") or tokEq(tok, "=") or tokEq(tok, "{") or tokEq(tok, ")");
+}
+
+fn checkInlineFuncTypeUnionBranches(tokens: []const lexer.Token) !void {
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (!tokEq(tokens[i], "|")) continue;
+        if (inlineFuncTypeBranchBeforePipe(tokens, i)) |site| return markErrorAt(tokens, site, error.InvalidTypeRef);
+        if (inlineFuncTypeBranchAfterPipe(tokens, i)) |site| return markErrorAt(tokens, site, error.InvalidTypeRef);
+    }
+}
+
+fn inlineFuncTypeBranchBeforePipe(tokens: []const lexer.Token, pipe_idx: usize) ?usize {
+    if (pipe_idx == 0) return null;
+    const close_idx = pipe_idx - 1;
+    if (!tokEq(tokens[close_idx], ")")) return null;
+    const open_idx = findMatchingOpen(tokens, close_idx, "(", ")") orelse return null;
+    if (!isParenthesizedFuncTypeBranch(tokens, open_idx, pipe_idx)) return null;
+    return open_idx;
+}
+
+fn inlineFuncTypeBranchAfterPipe(tokens: []const lexer.Token, pipe_idx: usize) ?usize {
+    const start_idx = pipe_idx + 1;
+    if (start_idx >= tokens.len) return null;
+    if (!tokEq(tokens[start_idx], "(")) return null;
+    if (isFuncTypeStart(tokens, start_idx)) return start_idx;
+    if (!isParenthesizedFuncTypeBranchStart(tokens, start_idx)) return null;
+    return start_idx;
+}
+
+fn isParenthesizedFuncTypeBranchStart(tokens: []const lexer.Token, start_idx: usize) bool {
+    const close_idx = findMatching(tokens, start_idx, "(", ")") catch return false;
+    return isParenthesizedFuncTypeBranch(tokens, start_idx, close_idx + 1);
+}
+
+fn isParenthesizedFuncTypeBranch(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var start = start_idx;
+    var end = end_idx;
+    while (start < end and tokEq(tokens[start], "(")) {
+        const close_idx = findMatching(tokens, start, "(", ")") catch return false;
+        if (close_idx + 1 != end) return false;
+        const inner_start = start + 1;
+        const inner_end = close_idx;
+        if (isFuncTypeRange(tokens, inner_start, inner_end)) return true;
+        start = inner_start;
+        end = inner_end;
+    }
+    return false;
+}
+
+fn isFuncTypeStart(tokens: []const lexer.Token, start_idx: usize) bool {
+    const close_idx = findMatching(tokens, start_idx, "(", ")") catch return false;
+    return close_idx + 2 < tokens.len and isReturnArrowAt(tokens, close_idx + 1);
+}
+
+fn isFuncTypeRange(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    if (start_idx >= end_idx or !tokEq(tokens[start_idx], "(")) return false;
+    const close_idx = findMatching(tokens, start_idx, "(", ")") catch return false;
+    return close_idx + 2 < end_idx and isReturnArrowAt(tokens, close_idx + 1);
+}
+
+fn findMatchingOpen(tokens: []const lexer.Token, close_idx: usize, open: []const u8, close: []const u8) ?usize {
+    if (close_idx >= tokens.len or !tokEq(tokens[close_idx], close)) return null;
+
+    var depth: usize = 0;
+    var i = close_idx + 1;
+    while (i > 0) {
+        i -= 1;
+        if (tokEq(tokens[i], close)) {
+            depth += 1;
+            continue;
+        }
+        if (!tokEq(tokens[i], open)) continue;
+
+        if (depth == 0) return null;
+        depth -= 1;
+        if (depth == 0) return i;
+    }
+    return null;
+}
+
+const TokenRange = struct {
+    start: usize,
+    end: usize,
+};
+
+fn checkDuplicateUnionBranchSegment(tokens: []const lexer.Token, start: usize, end: usize) !void {
+    var branch_start = start;
+    while (branch_start < end) {
+        const branch_end = findNextUnionPipe(tokens, branch_start, end);
+        const branch_range = normalizedUnionBranchRange(tokens, branch_start, branch_end);
+
+        var prev_start = start;
+        while (prev_start < branch_start) {
+            const prev_end = findNextUnionPipe(tokens, prev_start, end);
+            const prev_range = normalizedUnionBranchRange(tokens, prev_start, prev_end);
+            if (unionBranchesEqual(tokens, prev_range, branch_range)) {
+                return markErrorAt(tokens, branch_range.start, error.InvalidTypeRef);
+            }
+            prev_start = if (prev_end < end) prev_end + 1 else end;
+        }
+
+        branch_start = if (branch_end < end) branch_end + 1 else end;
+    }
+}
+
+fn findNextUnionPipe(tokens: []const lexer.Token, start: usize, end: usize) usize {
+    var depth_paren: usize = 0;
+    var depth_angle: usize = 0;
+    var depth_bracket: usize = 0;
+
+    var i = start;
+    while (i < end) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "[")) {
+            depth_bracket += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "]")) {
+            if (depth_bracket > 0) depth_bracket -= 1;
+            continue;
+        }
+        if (depth_paren == 0 and depth_angle == 0 and depth_bracket == 0 and tokEq(tokens[i], "|")) return i;
+    }
+    return end;
+}
+
+fn normalizedUnionBranchRange(tokens: []const lexer.Token, start: usize, end: usize) TokenRange {
+    var out = TokenRange{
+        .start = normalizedUnionBranchStart(tokens, start, end),
+        .end = end,
+    };
+
+    while (out.start + 1 < out.end and tokEq(tokens[out.start], "(")) {
+        const close_idx = findMatching(tokens, out.start, "(", ")") catch break;
+        if (close_idx + 1 != out.end) break;
+        out.start += 1;
+        out.end -= 1;
+    }
+
+    return out;
+}
+
+fn normalizedUnionBranchStart(tokens: []const lexer.Token, start: usize, end: usize) usize {
+    if (start + 1 >= end) return start;
+    if (tokens[start].kind != .ident) return start;
+    if (!isLowerIdentName(tokens[start].lexeme)) return start;
+    if (!isTypeAtomStart(tokens[start + 1])) return start;
+    return start + 1;
+}
+
+fn isTypeAtomStart(tok: lexer.Token) bool {
+    if (tokEq(tok, "[") or tokEq(tok, "(")) return true;
+    if (tok.kind != .ident or tok.lexeme.len == 0) return false;
+    if (std.ascii.isUpper(tok.lexeme[0])) return true;
+    return isBaseTypeName(tok.lexeme) or tokEq(tok, "nil");
+}
+
+fn isBaseTypeName(name: []const u8) bool {
+    const base_types = [_][]const u8{
+        "i8",    "i16",   "i32", "i64",
+        "u8",    "u16",   "u32", "u64",
+        "isize", "usize", "f32", "f64",
+        "bool",
+    };
+    for (base_types) |it| {
+        if (std.mem.eql(u8, it, name)) return true;
+    }
+    return false;
+}
+
+fn isBaseIntTypeName(name: []const u8) bool {
+    const base_int_types = [_][]const u8{
+        "i8",    "i16",   "i32", "i64",
+        "u8",    "u16",   "u32", "u64",
+        "isize", "usize",
+    };
+    for (base_int_types) |it| {
+        if (std.mem.eql(u8, it, name)) return true;
+    }
+    return false;
+}
+
+fn unionBranchesEqual(
+    tokens: []const lexer.Token,
+    a: TokenRange,
+    b: TokenRange,
+) bool {
+    if (a.end - a.start != b.end - b.start) return false;
+    var offset: usize = 0;
+    while (offset < a.end - a.start) : (offset += 1) {
+        if (!std.mem.eql(u8, tokens[a.start + offset].lexeme, tokens[b.start + offset].lexeme)) return false;
+    }
+    return true;
+}
+
+fn isNilReturnSpec(tokens: []const lexer.Token, idx: usize) bool {
+    return idx >= 2 and
+        tokens[idx - 2].line == tokens[idx].line and
+        tokens[idx - 1].line == tokens[idx].line and
+        tokEq(tokens[idx - 2], "-") and
+        tokEq(tokens[idx - 1], ">");
+}
+
+fn isBareNilTypeContext(tokens: []const lexer.Token, idx: usize) bool {
+    if (idx > 0 and tokens[idx - 1].line == tokens[idx].line) {
+        const prev = tokens[idx - 1];
+        if (tokEq(prev, "=")) return isTypeDeclOrConstraintLine(tokens, idx);
+        if (tokEq(prev, "[") or tokEq(prev, "<")) return true;
+        if (prev.kind == .ident and !isKeyword(prev.lexeme)) return true;
+    }
+    if (idx + 1 < tokens.len and tokens[idx + 1].line == tokens[idx].line) {
+        const next = tokens[idx + 1];
+        if (tokEq(next, "]") or tokEq(next, ">")) return true;
+    }
+    return false;
+}
+
+fn isTypeDeclOrConstraintLine(tokens: []const lexer.Token, idx: usize) bool {
+    const line_start = lineStartIdx(tokens, idx);
+    if (tokEq(tokens[line_start], "#")) return true;
+    if (tokens[line_start].kind != .ident) return false;
+    if (!isValidDeclaredTypeName(tokens[line_start].lexeme)) return false;
+    if (!isTopLevelDeclHead(tokens, line_start)) return false;
+    return isTypeDeclStart(tokens, line_start);
 }
 
 fn checkLoopHeader(tokens: []const lexer.Token) !void {
@@ -2253,14 +5114,17 @@ fn isRecvLoopSource(tokens: []const lexer.Token, start_idx: usize, end_idx: usiz
 }
 
 fn isUnsupportedDirectLoopSource(type_name: []const u8) bool {
-    return std.mem.eql(u8, type_name, "HashMap");
+    return std.mem.eql(u8, type_name, "List") or std.mem.eql(u8, type_name, "HashMap");
 }
 
 fn checkConstraintLayout(tokens: []const lexer.Token) !void {
     var depth_brace: usize = 0;
     var in_constraint_block = false;
+    var saw_type_constraint = false;
+    var saw_func_type_constraint = false;
     var saw_func_constraint = false;
     var last_constraint_line: usize = 0;
+    var constraint_block_start: ?usize = null;
 
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
@@ -2285,8 +5149,33 @@ fn checkConstraintLayout(tokens: []const lexer.Token) !void {
                 if (tokens[i].line != last_constraint_line + 1) {
                     return markErrorAt(tokens, i, error.InvalidConstraintDecl);
                 }
+                if ((saw_func_type_constraint or saw_func_constraint) and !isFuncDeclStart(tokens, i)) {
+                    return markErrorAt(tokens, i, error.InvalidConstraintDecl);
+                }
+                if (!isFuncDeclStart(tokens, i) and !isStructDeclStart(tokens, i)) {
+                    return markErrorAt(tokens, i, error.InvalidConstraintDecl);
+                }
+                if (isFuncDeclStart(tokens, i)) {
+                    const close_paren = findMatching(tokens, i + 1, "(", ")") catch
+                        return markErrorAt(tokens, i, error.InvalidConstraintDecl);
+                    if (findInlineFuncTypeInParams(tokens, i + 2, close_paren)) |name_idx| {
+                        return markErrorAt(tokens, name_idx, error.InvalidConstraintDecl);
+                    }
+                    if (findUnusedTypeConstraintInFuncParams(tokens, constraint_block_start.?, i, i + 2, close_paren)) |name_idx| {
+                        return markErrorAt(tokens, name_idx, error.InvalidConstraintDecl);
+                    }
+                } else if (isStructDeclStart(tokens, i)) {
+                    const close_brace = findMatching(tokens, i + 1, "{", "}") catch
+                        return markErrorAt(tokens, i, error.InvalidConstraintDecl);
+                    if (findUnusedTypeConstraintInStructFields(tokens, constraint_block_start.?, i, i + 2, close_brace)) |name_idx| {
+                        return markErrorAt(tokens, name_idx, error.InvalidConstraintDecl);
+                    }
+                }
                 in_constraint_block = false;
+                saw_type_constraint = false;
+                saw_func_type_constraint = false;
                 saw_func_constraint = false;
+                constraint_block_start = null;
             }
             continue;
         }
@@ -2324,22 +5213,380 @@ fn checkConstraintLayout(tokens: []const lexer.Token) !void {
             }
         }
 
-        const is_func_constraint = (i + 2 < line_end and tokEq(tokens[i + 2], "("));
+        const eq_idx = findTopLevelAssignEqOnLine(tokens, i + 2, line_end);
+        const is_func_type_constraint = eq_idx != null;
+        const is_func_constraint = (!is_func_type_constraint and i + 2 < line_end and tokEq(tokens[i + 2], "("));
+        const is_type_constraint = !is_func_type_constraint and !is_func_constraint;
+
         if (!is_func_constraint and !isValidDeclaredTypeName(tokens[i + 1].lexeme)) {
             return markErrorAt(tokens, i + 1, error.InvalidConstraintDecl);
         }
-        if (is_func_constraint and !isLowerIdentName(tokens[i + 1].lexeme)) {
-            return markErrorAt(tokens, i + 1, error.InvalidConstraintDecl);
-        }
-        if (!is_func_constraint and saw_func_constraint) {
+        if (is_type_constraint and line_end != i + 2) {
             return markErrorAt(tokens, i, error.InvalidConstraintDecl);
         }
+        if (is_func_type_constraint) {
+            const assign_idx = eq_idx.?;
+            if (assign_idx != i + 2) return markErrorAt(tokens, i, error.InvalidConstraintDecl);
+            if (!isFuncTypeRange(tokens, assign_idx + 1, line_end)) {
+                return markErrorAt(tokens, assign_idx + 1, error.InvalidConstraintDecl);
+            }
+        }
+        if (is_func_constraint and !isAllowedConstraintFuncName(tokens[i + 1].lexeme)) {
+            return markErrorAt(tokens, i + 1, error.InvalidConstraintDecl);
+        }
+        if (is_type_constraint and (saw_func_type_constraint or saw_func_constraint)) {
+            return markErrorAt(tokens, i, error.InvalidConstraintDecl);
+        }
+        if (is_func_type_constraint and saw_func_constraint) {
+            return markErrorAt(tokens, i, error.InvalidConstraintDecl);
+        }
+        if (is_func_constraint and !saw_type_constraint) {
+            return markErrorAt(tokens, i, error.InvalidConstraintDecl);
+        }
+        const block_start = constraint_block_start orelse i;
+        if (constraint_block_start == null) constraint_block_start = i;
+        if (!is_func_constraint and hasConcreteTypeName(tokens, publicTypeName(tokens[i + 1].lexeme))) {
+            return markErrorAt(tokens, i + 1, error.InvalidConstraintDecl);
+        }
+        if (!is_func_constraint and hasDuplicateTypeConstraintName(tokens, block_start, i, tokens[i + 1].lexeme)) {
+            return markErrorAt(tokens, i + 1, error.InvalidConstraintDecl);
+        }
+        if (is_func_type_constraint) {
+            if (findImplicitTypeParamInTypeConstraint(tokens, block_start, i, line_end)) |name_idx| {
+                return markErrorAt(tokens, name_idx, error.InvalidConstraintDecl);
+            }
+        }
+        if (is_type_constraint) {
+            if (findImplicitTypeParamInTypeConstraint(tokens, block_start, i, line_end)) |name_idx| {
+                return markErrorAt(tokens, name_idx, error.InvalidConstraintDecl);
+            }
+        }
+        if (is_func_constraint and hasDuplicateFuncConstraintSignature(tokens, block_start, i, line_end)) {
+            return markErrorAt(tokens, i + 1, error.InvalidConstraintDecl);
+        }
+        if (is_func_constraint) {
+            if (findImplicitTypeParamInFuncConstraint(tokens, block_start, i, line_end)) |name_idx| {
+                return markErrorAt(tokens, name_idx, error.InvalidConstraintDecl);
+            }
+        }
+        if (is_type_constraint) saw_type_constraint = true;
+        if (is_func_type_constraint) saw_func_type_constraint = true;
         if (is_func_constraint) saw_func_constraint = true;
 
         in_constraint_block = true;
         last_constraint_line = line;
         i = line_end - 1;
     }
+}
+
+fn hasDuplicateTypeConstraintName(
+    tokens: []const lexer.Token,
+    block_start: usize,
+    before_idx: usize,
+    name: []const u8,
+) bool {
+    var i = block_start;
+    while (i < before_idx) {
+        if (!tokEq(tokens[i], "#")) {
+            i += 1;
+            continue;
+        }
+        const line_end = findLineEndIdx(tokens, i);
+        const is_func_constraint = (i + 2 < line_end and tokEq(tokens[i + 2], "("));
+        if (!is_func_constraint and i + 1 < line_end and std.mem.eql(u8, tokens[i + 1].lexeme, name)) {
+            return true;
+        }
+        i = line_end;
+    }
+    return false;
+}
+
+fn hasDuplicateFuncConstraintSignature(
+    tokens: []const lexer.Token,
+    block_start: usize,
+    current_idx: usize,
+    current_line_end: usize,
+) bool {
+    var i = block_start;
+    while (i < current_idx) {
+        if (!tokEq(tokens[i], "#")) {
+            i += 1;
+            continue;
+        }
+        const line_end = findLineEndIdx(tokens, i);
+        const is_func_constraint = (i + 2 < line_end and tokEq(tokens[i + 2], "("));
+        if (is_func_constraint and
+            std.mem.eql(u8, tokens[i + 1].lexeme, tokens[current_idx + 1].lexeme) and
+            funcConstraintParamsEqual(tokens, i, line_end, current_idx, current_line_end))
+        {
+            return true;
+        }
+        i = line_end;
+    }
+    return false;
+}
+
+fn funcConstraintParamsEqual(
+    tokens: []const lexer.Token,
+    a_idx: usize,
+    a_line_end: usize,
+    b_idx: usize,
+    b_line_end: usize,
+) bool {
+    const a_open = a_idx + 2;
+    const b_open = b_idx + 2;
+    if (a_open >= a_line_end or b_open >= b_line_end) return false;
+    const a_close = findMatching(tokens, a_open, "(", ")") catch return false;
+    const b_close = findMatching(tokens, b_open, "(", ")") catch return false;
+    if (a_close > a_line_end or b_close > b_line_end) return false;
+    return tokenRangesEqual(tokens, a_open + 1, a_close, b_open + 1, b_close);
+}
+
+fn findImplicitTypeParamInTypeConstraint(
+    tokens: []const lexer.Token,
+    block_start: usize,
+    constraint_idx: usize,
+    line_end: usize,
+) ?usize {
+    const eq_idx = findTopLevelAssignEqOnLine(tokens, constraint_idx + 2, line_end) orelse return null;
+    var i = eq_idx + 1;
+    while (i < line_end) : (i += 1) {
+        if (!isValidDeclaredTypeName(tokens[i].lexeme)) continue;
+        const name = publicTypeName(tokens[i].lexeme);
+        if (hasTypeConstraintName(tokens, block_start, constraint_idx, name)) continue;
+        if (hasConcreteTypeName(tokens, name)) continue;
+        return i;
+    }
+    return null;
+}
+
+fn findImplicitTypeParamInFuncConstraint(
+    tokens: []const lexer.Token,
+    block_start: usize,
+    constraint_idx: usize,
+    line_end: usize,
+) ?usize {
+    var i = constraint_idx + 2;
+    while (i < line_end) : (i += 1) {
+        if (!isValidDeclaredTypeName(tokens[i].lexeme)) continue;
+        const name = publicTypeName(tokens[i].lexeme);
+        if (hasTypeConstraintName(tokens, block_start, constraint_idx, name)) continue;
+        if (hasConcreteTypeName(tokens, name)) continue;
+        return i;
+    }
+    return null;
+}
+
+fn hasTypeConstraintName(
+    tokens: []const lexer.Token,
+    block_start: usize,
+    before_idx: usize,
+    name: []const u8,
+) bool {
+    var i = block_start;
+    while (i < before_idx) {
+        if (!tokEq(tokens[i], "#")) {
+            i += 1;
+            continue;
+        }
+        const line_end = findLineEndIdx(tokens, i);
+        const is_func_constraint = (i + 2 < line_end and tokEq(tokens[i + 2], "("));
+        if (!is_func_constraint and i + 1 < line_end and std.mem.eql(u8, tokens[i + 1].lexeme, name)) {
+            return true;
+        }
+        i = line_end;
+    }
+    return false;
+}
+
+fn hasConcreteTypeName(tokens: []const lexer.Token, name: []const u8) bool {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (depth_brace == 0) {
+                if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                    i = next_idx - 1;
+                    continue;
+                }
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (tokens[i].kind != .ident) continue;
+        if (!std.mem.eql(u8, publicTypeName(tokens[i].lexeme), name)) continue;
+        if (isModernImportAssign(tokens, i)) return true;
+        if (isTypeDeclStart(tokens, i)) return true;
+    }
+    return false;
+}
+
+fn tokenRangesEqual(
+    tokens: []const lexer.Token,
+    a_start: usize,
+    a_end: usize,
+    b_start: usize,
+    b_end: usize,
+) bool {
+    if (a_end - a_start != b_end - b_start) return false;
+    var offset: usize = 0;
+    while (offset < a_end - a_start) : (offset += 1) {
+        if (!std.mem.eql(u8, tokens[a_start + offset].lexeme, tokens[b_start + offset].lexeme)) return false;
+    }
+    return true;
+}
+
+fn findUnusedTypeConstraintInFuncParams(
+    tokens: []const lexer.Token,
+    block_start: usize,
+    before_idx: usize,
+    param_start: usize,
+    param_end: usize,
+) ?usize {
+    var i = block_start;
+    while (i < before_idx) {
+        if (!tokEq(tokens[i], "#")) {
+            i += 1;
+            continue;
+        }
+        const line_end = findLineEndIdx(tokens, i);
+        const is_func_constraint = (i + 2 < line_end and tokEq(tokens[i + 2], "("));
+        if (!is_func_constraint and i + 1 < line_end) {
+            const name = tokens[i + 1].lexeme;
+            if (!tokenNameAppearsInRange(tokens, param_start, param_end, name) and
+                !typeConstraintFeedsFuncParam(tokens, block_start, before_idx, param_start, param_end, name))
+            {
+                return i + 1;
+            }
+        }
+        i = line_end;
+    }
+    return null;
+}
+
+fn findInlineFuncTypeInParams(
+    tokens: []const lexer.Token,
+    param_start: usize,
+    param_end: usize,
+) ?usize {
+    var seg_start = param_start;
+    var i = param_start;
+    while (i <= param_end) : (i += 1) {
+        if (i < param_end and !isTopLevelCommaAny(tokens, i, param_start, param_end)) continue;
+        if (seg_start + 1 < i) {
+            const type_start = seg_start + 1;
+            if (isFuncTypeRange(tokens, type_start, i)) return type_start;
+            if (type_start + 1 < i and isSpreadToken(tokens[type_start]) and isFuncTypeRange(tokens, type_start + 1, i)) {
+                return type_start + 1;
+            }
+        }
+        seg_start = i + 1;
+    }
+    return null;
+}
+
+fn typeConstraintFeedsFuncParam(
+    tokens: []const lexer.Token,
+    block_start: usize,
+    before_idx: usize,
+    param_start: usize,
+    param_end: usize,
+    name: []const u8,
+) bool {
+    var i = block_start;
+    while (i < before_idx) {
+        if (!tokEq(tokens[i], "#")) {
+            i += 1;
+            continue;
+        }
+        const line_end = findLineEndIdx(tokens, i);
+        const is_func_constraint = (i + 2 < line_end and tokEq(tokens[i + 2], "("));
+        if (is_func_constraint or i + 1 >= line_end) {
+            i = line_end;
+            continue;
+        }
+
+        const carrier = tokens[i + 1].lexeme;
+        if (tokenNameAppearsInRange(tokens, param_start, param_end, carrier) and
+            tokenNameAppearsInRange(tokens, i + 2, line_end, name))
+        {
+            return true;
+        }
+        i = line_end;
+    }
+    return false;
+}
+
+fn findUnusedTypeConstraintInStructFields(
+    tokens: []const lexer.Token,
+    block_start: usize,
+    before_idx: usize,
+    field_start: usize,
+    field_end: usize,
+) ?usize {
+    var i = block_start;
+    while (i < before_idx) {
+        if (!tokEq(tokens[i], "#")) {
+            i += 1;
+            continue;
+        }
+        const line_end = findLineEndIdx(tokens, i);
+        const is_func_constraint = (i + 2 < line_end and tokEq(tokens[i + 2], "("));
+        if (!is_func_constraint and i + 1 < line_end) {
+            const name = tokens[i + 1].lexeme;
+            if (!structFieldTypeContainsName(tokens, field_start, field_end, name)) return i + 1;
+        }
+        i = line_end;
+    }
+    return null;
+}
+
+fn structFieldTypeContainsName(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    name: []const u8,
+) bool {
+    var i = start_idx;
+    while (i < end_idx) {
+        const line_end = findLineEndIdx(tokens, i);
+        if (tokens[i].kind != .ident or !isStructFieldName(tokens[i].lexeme) or i + 1 >= line_end) {
+            i = line_end;
+            continue;
+        }
+
+        const type_end = findStructFieldTypeEnd(tokens, i + 1, line_end);
+        if (tokenNameAppearsInRange(tokens, i + 1, type_end, name)) return true;
+        i = line_end;
+    }
+    return false;
+}
+
+fn findStructFieldTypeEnd(tokens: []const lexer.Token, start_idx: usize, line_end: usize) usize {
+    var i = start_idx;
+    while (i < line_end) : (i += 1) {
+        if (tokEq(tokens[i], "=")) return i;
+    }
+    return line_end;
+}
+
+fn tokenNameAppearsInRange(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    name: []const u8,
+) bool {
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokens[i].kind == .ident and std.mem.eql(u8, tokens[i].lexeme, name)) return true;
+    }
+    return false;
 }
 
 fn findLoopBlockOpen(tokens: []const lexer.Token, loop_idx: usize) ?usize {
@@ -2485,6 +5732,9 @@ fn checkAssignmentConstraints(allocator: std.mem.Allocator, tokens: []const lexe
         if (isStructFieldDeclDefault(tokens, line_start, i)) {
             continue;
         }
+        if (tokEq(tokens[line_start], "loop")) {
+            continue;
+        }
 
         try validateAssignmentLhsNames(tokens, line_start, stmt_eq_idx);
 
@@ -2540,6 +5790,10 @@ fn isStructFieldName(name: []const u8) bool {
     if (name.len == 0) return false;
     const body = if (name[0] == '.') name[1..] else name;
     return isSnakeLowerName(body);
+}
+
+fn isDotLowerIdent(name: []const u8) bool {
+    return name.len > 1 and name[0] == '.' and isSnakeLowerName(name[1..]);
 }
 
 fn isInsideStructDecl(tokens: []const lexer.Token, idx: usize) bool {
@@ -2609,21 +5863,44 @@ fn isKeyword(name: []const u8) bool {
 
 fn isReservedFuncName(name: []const u8) bool {
     const public_name = if (name.len != 0 and name[0] == '.') name[1..] else name;
+    if (std.mem.eql(u8, public_name, "start")) return true;
     if (isKeyword(public_name)) return true;
-    const reserved = [_][]const u8{
-        "is",
-        "eq",
-        "ne",
-        "lt",
-        "le",
-        "gt",
-        "ge",
-        "and",
-        "or",
-        "not",
+    return isBuiltinSpecialOrCoreName(public_name);
+}
+
+fn isDeclOnlyName(name: []const u8) bool {
+    const public_name = if (name.len != 0 and name[0] == '.') name[1..] else name;
+    return std.mem.eql(u8, public_name, "start") or std.mem.eql(u8, public_name, "test");
+}
+
+fn isAllowedConstraintFuncName(name: []const u8) bool {
+    if (!isLowerIdentName(name)) return false;
+    if (isDeclOnlyName(name)) return false;
+    if (isBuiltinSpecialOrCoreName(name)) return false;
+    return !isKeyword(name);
+}
+
+fn isNumericCoreFuncName(name: []const u8) bool {
+    const names = [_][]const u8{ "add", "sub", "mul", "div", "rem" };
+    for (names) |it| {
+        if (std.mem.eql(u8, it, name)) return true;
+    }
+    return false;
+}
+
+fn isBuiltinSpecialOrCoreName(name: []const u8) bool {
+    const names = [_][]const u8{
+        "is",  "and", "or",  "not", "recv",
+        "get", "set",
+        "eq",  "ne",  "lt",  "le",  "gt",  "ge",
+        "add", "sub", "mul", "div", "rem",
+        "len", "put",
+        "to_u8", "to_u16", "to_u32", "to_u64", "to_usize",
+        "to_i8", "to_i16", "to_i32", "to_i64",
+        "to_f32", "to_f64",
     };
-    for (reserved) |it| {
-        if (std.mem.eql(u8, it, public_name)) return true;
+    for (names) |it| {
+        if (std.mem.eql(u8, it, name)) return true;
     }
     return false;
 }

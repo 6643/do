@@ -1,4 +1,4 @@
-.double(x i32) i32 => mul(x, 2)
+.double(x i32) -> i32 => mul(x, 2)
 
 test "private func decl" {
     got = double(3)

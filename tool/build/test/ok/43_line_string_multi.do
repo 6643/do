@@ -1,5 +1,5 @@
 test "line string multi" {
-    str Text =
+    str [u8] =
         \\abc
         \\def
     return

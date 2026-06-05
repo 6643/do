@@ -1,5 +1,5 @@
 test "line string explicit blank line" {
-    str Text =
+    str [u8] =
         \\abc
         \\
         \\def

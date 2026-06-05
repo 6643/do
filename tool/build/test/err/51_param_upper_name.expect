@@ -1,2 +1,2 @@
 InvalidParamName
-参数名写作 `snake_case` 或 `_`; `_name` 写作顶层常量和局部只读绑定
+参数名写作 `snake_case`; `_name` 写作顶层常量和局部只读绑定

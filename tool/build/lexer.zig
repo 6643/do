@@ -25,6 +25,16 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
     while (i < source.len) {
         const ch = source[i];
 
+        if (ch == '\r') {
+            if (i + 1 < source.len and source[i + 1] == '\n') {
+                i += 2;
+            } else {
+                i += 1;
+            }
+            line += 1;
+            col = 1;
+            continue;
+        }
         if (ch == '\n') {
             line += 1;
             col = 1;
@@ -37,12 +47,48 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
             continue;
         }
         if (ch == '/' and i + 1 < source.len and source[i + 1] == '/') {
+            if (!isLineStart(source, i)) return error.InvalidComment;
             i += 2;
             col += 2;
-            while (i < source.len and source[i] != '\n') {
+            while (i < source.len and source[i] != '\n' and source[i] != '\r') {
                 i += 1;
                 col += 1;
             }
+            continue;
+        }
+        if (ch == '/' and i + 1 < source.len and source[i + 1] == '*') {
+            if (!isLineStart(source, i)) return error.InvalidComment;
+            i += 2;
+            col += 2;
+            var closed = false;
+            while (i < source.len) {
+                if (source[i] == '*' and i + 1 < source.len and source[i + 1] == '/') {
+                    i += 2;
+                    col += 2;
+                    closed = true;
+                    break;
+                }
+                if (source[i] == '\r') {
+                    if (i + 1 < source.len and source[i + 1] == '\n') {
+                        i += 2;
+                    } else {
+                        i += 1;
+                    }
+                    line += 1;
+                    col = 1;
+                    continue;
+                }
+                if (source[i] == '\n') {
+                    i += 1;
+                    line += 1;
+                    col = 1;
+                    continue;
+                }
+                i += 1;
+                col += 1;
+            }
+            if (!closed) return error.InvalidComment;
+            if (!restOfLineIsWhitespace(source, i)) return error.InvalidComment;
             continue;
         }
 
@@ -77,7 +123,11 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
             continue;
         }
 
-        if (std.ascii.isDigit(ch)) {
+        if ((ch == '-' and i + 1 < source.len and std.ascii.isDigit(source[i + 1])) or std.ascii.isDigit(ch)) {
+            if (ch == '-') {
+                i += 1;
+                col += 1;
+            }
             i += 1;
             col += 1;
             while (i < source.len and std.ascii.isDigit(source[i])) {
@@ -105,7 +155,27 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
             i += 1;
             col += 1;
             while (i < source.len and source[i] != '"') {
-                if (source[i] == '\n') return error.UnterminatedString;
+                if (source[i] == '\n' or source[i] == '\r') return error.UnterminatedString;
+                if (source[i] == '\\') {
+                    i += 1;
+                    col += 1;
+                    if (i >= source.len) return error.UnterminatedString;
+                    const esc = source[i];
+                    if (esc == '"' or esc == '\\' or esc == 'n' or esc == 'r' or esc == 't') {
+                        i += 1;
+                        col += 1;
+                        continue;
+                    }
+                    if (esc == 'x') {
+                        if (i + 2 >= source.len or !std.ascii.isHex(source[i + 1]) or !std.ascii.isHex(source[i + 2])) {
+                            return error.InvalidStringEscape;
+                        }
+                        i += 3;
+                        col += 3;
+                        continue;
+                    }
+                    return error.InvalidStringEscape;
+                }
                 i += 1;
                 col += 1;
             }
@@ -134,7 +204,7 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
                 while (true) {
                     cur_i += 2;
                     cur_col += 2;
-                    while (cur_i < source.len and source[cur_i] != '\n') {
+                    while (cur_i < source.len and source[cur_i] != '\n' and source[cur_i] != '\r') {
                         cur_i += 1;
                         cur_col += 1;
                     }
@@ -142,6 +212,9 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
                     if (cur_i >= source.len) break;
 
                     var next_i = cur_i + 1;
+                    if (source[cur_i] == '\r' and next_i < source.len and source[next_i] == '\n') {
+                        next_i += 1;
+                    }
                     var next_col: usize = 1;
                     while (next_i < source.len and (source[next_i] == ' ' or source[next_i] == '\t')) : (next_i += 1) {
                         next_col += 1;
@@ -157,7 +230,7 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
             } else {
                 cur_i += 2;
                 cur_col += 2;
-                while (cur_i < source.len and source[cur_i] != '\n') {
+                while (cur_i < source.len and source[cur_i] != '\n' and source[cur_i] != '\r') {
                     cur_i += 1;
                     cur_col += 1;
                 }
@@ -200,8 +273,18 @@ fn isLineStart(source: []const u8, idx: usize) bool {
     var i = idx;
     while (i > 0) : (i -= 1) {
         const prev = source[i - 1];
-        if (prev == '\n') return true;
+        if (prev == '\n' or prev == '\r') return true;
         if (prev != ' ' and prev != '\t') return false;
+    }
+    return true;
+}
+
+fn restOfLineIsWhitespace(source: []const u8, idx: usize) bool {
+    var i = idx;
+    while (i < source.len) : (i += 1) {
+        const ch = source[i];
+        if (ch == '\n' or ch == '\r') return true;
+        if (ch != ' ' and ch != '\t') return false;
     }
     return true;
 }

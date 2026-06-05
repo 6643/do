@@ -41,7 +41,10 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
         std.process.exit(1);
     };
 
-    imports.check(io, allocator, parsed_cli.input_path, tokens) catch |err| {
+    const dep_root = try resolveDepRoot(allocator, init.environ_map);
+    defer dep_root.deinit(allocator);
+
+    imports.check(io, allocator, parsed_cli.input_path, tokens, dep_root.path) catch |err| {
         try diag.printCompileError(io, parsed_cli.input_path, source, tokens, err, importsErrorLoc());
         std.process.exit(1);
     };
@@ -81,7 +84,10 @@ pub fn runTest(init: std.process.Init, args: []const []const u8) !void {
         std.process.exit(1);
     };
 
-    imports.check(io, allocator, parsed_cli.input_path, tokens) catch |err| {
+    const dep_root = try resolveDepRoot(allocator, init.environ_map);
+    defer dep_root.deinit(allocator);
+
+    imports.check(io, allocator, parsed_cli.input_path, tokens, dep_root.path) catch |err| {
         try diag.printCompileError(io, parsed_cli.input_path, source, tokens, err, importsErrorLoc());
         std.process.exit(1);
     };
@@ -126,6 +132,27 @@ fn runTests(
     test_runner.run(io, allocator, tokens) catch |err| {
         try diag.printCompileError(io, parsed_cli.input_path, source, tokens, err, null);
         std.process.exit(1);
+    };
+}
+
+const DepRoot = struct {
+    path: []const u8,
+    owned: bool,
+
+    fn deinit(self: DepRoot, allocator: std.mem.Allocator) void {
+        if (self.owned) allocator.free(self.path);
+    }
+};
+
+fn resolveDepRoot(allocator: std.mem.Allocator, environ_map: *std.process.Environ.Map) !DepRoot {
+    if (environ_map.get("DO_LIB_ROOT")) |path| {
+        return .{ .path = path, .owned = false };
+    }
+
+    const home = environ_map.get("HOME") orelse ".";
+    return .{
+        .path = try std.fs.path.join(allocator, &.{ home, ".do", "lib" }),
+        .owned = true,
     };
 }
 

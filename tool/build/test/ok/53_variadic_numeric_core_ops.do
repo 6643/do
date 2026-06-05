@@ -1,7 +1,5 @@
-#T = i32 | i64
-#add(T, ...T) -> T
-sum_many(first T, rest ...T) -> T {
-    return add(first, ...rest)
+sum_many(first i32, second i32, rest ...i32) -> i32 {
+    return add(first, second, ...rest)
 }
 
 test "variadic numeric core ops" {

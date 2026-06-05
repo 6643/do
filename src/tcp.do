@@ -1,4 +1,4 @@
-TcpError = Closed | UnsupportedAddress | HostError
+TcpError error = Closed | UnsupportedAddress | HostFailure
 
 TcpListener {
     .fd i32

@@ -1,13 +1,16 @@
-#T = i32 | i64
-#add(T, T) -> T
+#T
+#combine(T, T) -> T
 sum(a T, b T) -> T {
+    return combine(a, b)
+}
+
+combine(a i32, b i32) -> i32 {
     return add(a, b)
 }
 
-add(a i32, b i32) i32 => a
-add(a i64, b i64) i64 => a
-
 test "func constraint prefix line" {
-    expected i32 = 1
-    if eq(sum(1, 2), expected) return
+    a i32 = 1
+    b i32 = 2
+    expected i32 = 3
+    if eq(sum(a, b), expected) return
 }

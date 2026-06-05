@@ -1,4 +1,4 @@
 test "line string no escape" {
-    str Text = \\a\\nb
+    str [u8] = \\a\\nb
     return
 }

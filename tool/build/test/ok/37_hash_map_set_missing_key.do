@@ -1,10 +1,12 @@
-HashMap = @/hash_map.do/HashMap
-set = @/hash_map.do/set
-MissingKey = @/hash_map.do/MissingKey
-Text = @/text.do/Text
+HashMap = @hash_map.do/HashMap
+empty_hash_map = @hash_map.do/empty_hash_map
+hash_len = @hash_map.do/hash_len
+hash_set_or = @hash_map.do/hash_set_or
 
 test "hash map set missing key" {
-    m HashMap<Text, i32> = HashMap<Text, i32>{}
-    result = set(m, "a", 1)
-    if eq(result, MissingKey) return
+    key [u8] = ""
+    value i32 = 0
+    m HashMap<[u8], i32> = empty_hash_map(key, value)
+    next, ok = hash_set_or(m, "a", 1)
+    if and(not(ok), eq(hash_len(next), 0)) return
 }

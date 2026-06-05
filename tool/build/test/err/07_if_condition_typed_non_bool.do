@@ -1,9 +1,9 @@
 User {
-    name Text
+    name [u8]
 }
 
 test "if condition typed non bool" {
     user = User{name = "tom"}
-    name Text = get(user, .name)
+    name [u8] = get(user, .name)
     if name return
 }

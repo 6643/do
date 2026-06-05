@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TEST_DIR="$ROOT_DIR/tool/build/test"
 OK_DIR="$TEST_DIR/ok"
 ERR_DIR="$TEST_DIR/err"
+LIB_DIR="$TEST_DIR/lib"
 COMPILE_OK_DIR="$TEST_DIR/compile_ok"
 COMPILE_ERR_DIR="$TEST_DIR/compile_err"
 PENDING_OK_DIR="$TEST_DIR/pending/ok"
@@ -53,7 +54,7 @@ run_ok_case() {
     local stdout_file="$TMP_DIR/${name}.stdout"
     local stderr_file="$TMP_DIR/${name}.stderr"
 
-    if "$DO_BIN" test "$case_file" >"$stdout_file" 2>"$stderr_file"; then
+    if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" test "$case_file" >"$stdout_file" 2>"$stderr_file"; then
         if grep -Fq 'test "' "$stdout_file" && grep -Fq " ... ok" "$stdout_file" && grep -Fq "ok:" "$stdout_file"; then
             echo "[PASS] ok  $name"
             ((pass_count += 1))
@@ -86,7 +87,7 @@ run_err_case() {
         return
     fi
 
-    if "$DO_BIN" test "$case_file" >"$stdout_file" 2>"$stderr_file"; then
+    if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" test "$case_file" >"$stdout_file" 2>"$stderr_file"; then
         echo "[FAIL] err $name (expected failure, got success)"
         cat "$stdout_file"
         ((fail_count += 1))
@@ -125,7 +126,7 @@ run_compile_ok_case() {
     local wat_file="$TMP_DIR/compile_${name}.wat"
     local expect_file="${case_file%.do}.expect"
 
-    if "$DO_BIN" build "$case_file" -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
+    if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$case_file" -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
         if grep -Fq "ok:" "$stdout_file" && [[ -s "$wat_file" ]]; then
             if [[ -f "$expect_file" ]]; then
                 local missing=0
@@ -177,7 +178,7 @@ run_compile_err_case() {
         return
     fi
 
-    if "$DO_BIN" build "$case_file" -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
+    if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$case_file" -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
         echo "[FAIL] compile err $name (expected failure, got success)"
         cat "$stdout_file"
         ((fail_count += 1))
@@ -209,12 +210,14 @@ run_compile_err_case() {
 echo "[INFO] run ok cases"
 for case_file in "$OK_DIR"/*.do; do
     [[ -e "$case_file" ]] || continue
+    [[ "$(basename "$case_file")" == fixture.*.do ]] && continue
     run_ok_case "$case_file"
 done
 
 echo "[INFO] run err cases"
 for case_file in "$ERR_DIR"/*.do; do
     [[ -e "$case_file" ]] || continue
+    [[ "$(basename "$case_file")" == fixture.*.do ]] && continue
     run_err_case "$case_file"
 done
 

@@ -1,3 +1,3 @@
-missing = @/list.do/missing
+missing = @list.do/missing
 
 test "import missing target" {}

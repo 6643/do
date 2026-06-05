@@ -1,32 +1,41 @@
-HashMap = @/hash_map.do/HashMap
-len = @/hash_map.do/len
-get = @/hash_map.do/get
-put = @/hash_map.do/put
-has = @/hash_map.do/has
+HashMap = @hash_map.do/HashMap
+empty_hash_map = @hash_map.do/empty_hash_map
+hash_len = @hash_map.do/hash_len
+hash_get = @hash_map.do/hash_get
+hash_put = @hash_map.do/hash_put
+has = @hash_map.do/has
 
 test "hash map lib ops" {
-    m HashMap<Text, i32> = HashMap<Text, i32>{}
-    m = put(m, "a", 1)
-    m = put(m, "b", 2)
+    key [u8] = ""
+    value i32 = 0
+    m HashMap<[u8], i32> = empty_hash_map(key, value)
+    m = hash_put(m, "a", 1)
+    m = hash_put(m, "b", 2)
     return
 }
 
 test "hash map len" {
-    m HashMap<Text, i32> = HashMap<Text, i32>{}
-    m = put(m, "a", 1)
-    m = put(m, "b", 2)
-    if eq(len(m), 2) return
+    key [u8] = ""
+    value i32 = 0
+    m HashMap<[u8], i32> = empty_hash_map(key, value)
+    m = hash_put(m, "a", 1)
+    m = hash_put(m, "b", 2)
+    if eq(hash_len(m), 2) return
 }
 
 test "hash map get" {
-    m HashMap<Text, i32> = HashMap<Text, i32>{}
-    m = put(m, "a", 1)
+    key [u8] = ""
+    value i32 = 0
+    m HashMap<[u8], i32> = empty_hash_map(key, value)
+    m = hash_put(m, "a", 1)
     expected i32 = 1
-    if eq(get(m, "a"), expected) return
+    if eq(hash_get(m, "a"), expected) return
 }
 
 test "hash map has" {
-    m HashMap<Text, i32> = HashMap<Text, i32>{}
-    m = put(m, "b", 2)
+    key [u8] = ""
+    value i32 = 0
+    m HashMap<[u8], i32> = empty_hash_map(key, value)
+    m = hash_put(m, "b", 2)
     if has(m, "b") return
 }

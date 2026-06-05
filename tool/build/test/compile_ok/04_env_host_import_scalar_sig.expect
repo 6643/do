@@ -1,0 +1,3 @@
+(import "env" "file_close" (func $host_file_close (param i64) (result i32)))
+(import "env" "mix" (func $host_mix (param f32 f64) (result i64)))
+(import "env" "now" (func $host_now (result f64)))

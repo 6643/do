@@ -1,5 +1,6 @@
 #T
-pipe_stub(value T, funcs ...(T) -> T) -> T {
+#Q = (T) -> T
+pipe_stub(value T, funcs ...Q) -> T {
     return value
 }
 

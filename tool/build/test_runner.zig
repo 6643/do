@@ -7,9 +7,15 @@ const Value = union(enum) {
     bool: bool,
     int: i128,
     text: []const u8,
+    object: []const FieldValue,
 };
 
 const Binding = struct {
+    name: []const u8,
+    value: Value,
+};
+
+const FieldValue = struct {
     name: []const u8,
     value: Value,
 };
@@ -18,7 +24,8 @@ const FuncDecl = struct {
     name: []const u8,
     params_start: usize,
     params_end: usize,
-    param_count: usize,
+    param_min: usize,
+    param_max: ?usize,
     body_start: usize,
     body_end: usize,
     arrow: bool,
@@ -121,7 +128,8 @@ fn collectTopLevelFuncs(allocator: std.mem.Allocator, tokens: []const lexer.Toke
                 .name = publicFuncName(tokens[i].lexeme),
                 .params_start = i + 2,
                 .params_end = close_params,
-                .param_count = countParamSlots(tokens, i + 2, close_params),
+                .param_min = countFixedParams(tokens, i + 2, close_params),
+                .param_max = if (hasVariadicParam(tokens, i + 2, close_params)) null else countFixedParams(tokens, i + 2, close_params),
                 .body_start = body_start + 1,
                 .body_end = body_end,
                 .arrow = false,
@@ -135,7 +143,8 @@ fn collectTopLevelFuncs(allocator: std.mem.Allocator, tokens: []const lexer.Toke
             .name = publicFuncName(tokens[i].lexeme),
             .params_start = i + 2,
             .params_end = close_params,
-            .param_count = countParamSlots(tokens, i + 2, close_params),
+            .param_min = countFixedParams(tokens, i + 2, close_params),
+            .param_max = if (hasVariadicParam(tokens, i + 2, close_params)) null else countFixedParams(tokens, i + 2, close_params),
             .body_start = body_start,
             .body_end = body_end,
             .arrow = true,
@@ -189,7 +198,10 @@ fn evalTest(
     if (hasUnsupportedControlFlow(tokens, decl.body_start, decl.body_end)) return true;
 
     var bindings = std.ArrayList(Binding).empty;
-    defer bindings.deinit(allocator);
+    defer {
+        freeBindings(allocator, bindings.items);
+        bindings.deinit(allocator);
+    }
 
     var saw_known_false = false;
     var saw_unknown = false;
@@ -273,7 +285,7 @@ fn evalBindingLine(
     if (!isBindingName(tokens[name_idx].lexeme)) return null;
 
     const value = try evalExpr(allocator, tokens, funcs, bindings.items, eq_idx + 1, line_end);
-    try bindings.append(allocator, .{ .name = tokens[name_idx].lexeme, .value = value });
+    try setBinding(allocator, bindings, tokens[name_idx].lexeme, value);
     return line_end;
 }
 
@@ -288,6 +300,10 @@ fn evalExpr(
     const trimmed = trimParens(tokens, start_idx, end_idx);
     if (trimmed.start >= trimmed.end) return .unknown;
     if (trimmed.end == trimmed.start + 1) return evalAtom(tokens[trimmed.start], bindings);
+
+    if (isStructLiteralStart(tokens, trimmed.start, trimmed.end)) {
+        return evalStructLiteral(allocator, tokens, funcs, bindings, trimmed.start, trimmed.end);
+    }
 
     if (tokens[trimmed.start].kind == .ident and trimmed.start + 1 < trimmed.end and tokEqToken(tokens[trimmed.start + 1], "(")) {
         const close_paren = findMatchingInRange(tokens, trimmed.start + 1, "(", ")", trimmed.end) catch return .unknown;
@@ -337,6 +353,13 @@ fn evalCall(
     args_end: usize,
 ) anyerror!Value {
     const name = tokens[name_idx].lexeme;
+    if (std.mem.eql(u8, name, "get")) {
+        return evalGetCall(allocator, tokens, funcs, bindings, args_start, args_end);
+    }
+    if (std.mem.eql(u8, name, "set")) {
+        return evalSetCall(allocator, tokens, funcs, bindings, args_start, args_end);
+    }
+
     var args = std.ArrayList(Value).empty;
     defer args.deinit(allocator);
     try evalArgs(allocator, tokens, funcs, bindings, args_start, args_end, &args);
@@ -389,14 +412,17 @@ fn evalUserFunc(
 ) anyerror!Value {
     const func = findFunc(funcs, name, args.len) orelse return .unknown;
     var bindings = std.ArrayList(Binding).empty;
-    defer bindings.deinit(allocator);
+    defer {
+        freeBindings(allocator, bindings.items);
+        bindings.deinit(allocator);
+    }
 
     var arg_idx: usize = 0;
     var i = func.params_start;
     while (i < func.params_end and arg_idx < args.len) {
         const seg_end = findArgEnd(tokens, i, func.params_end);
         if (tokens[i].kind == .ident and isBindingName(tokens[i].lexeme)) {
-            try bindings.append(allocator, .{ .name = tokens[i].lexeme, .value = args[arg_idx] });
+            try setBinding(allocator, &bindings, tokens[i].lexeme, try cloneValue(allocator, args[arg_idx]));
         }
         arg_idx += 1;
         i = seg_end;
@@ -411,6 +437,13 @@ fn evalUserFunc(
 
     i = func.body_start;
     while (i < func.body_end) {
+        if (tokEqToken(tokens[i], "if")) {
+            const parsed = try evalFuncIfReturn(allocator, tokens, funcs, &bindings, i, func.body_end);
+            if (parsed.returned) return parsed.value;
+            if (parsed.unknown) return .unknown;
+            i = parsed.next_idx;
+            continue;
+        }
         if (tokEqToken(tokens[i], "return")) {
             const line_end = findLineEnd(tokens, i, func.body_end);
             return evalExpr(allocator, tokens, funcs, bindings.items, i + 1, line_end);
@@ -422,6 +455,38 @@ fn evalUserFunc(
         i = findLineEnd(tokens, i, func.body_end);
     }
     return .unknown;
+}
+
+const FuncIfEval = struct {
+    next_idx: usize,
+    returned: bool,
+    unknown: bool,
+    value: Value,
+};
+
+fn evalFuncIfReturn(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    funcs: []const FuncDecl,
+    bindings: *std.ArrayList(Binding),
+    if_idx: usize,
+    limit_idx: usize,
+) !FuncIfEval {
+    const line_end = findLineEnd(tokens, if_idx, limit_idx);
+    const return_idx = findTopLevelToken(tokens, if_idx + 1, line_end, "return") orelse
+        return .{ .next_idx = line_end, .returned = false, .unknown = true, .value = .unknown };
+    const cond = try evalExpr(allocator, tokens, funcs, bindings.items, if_idx + 1, return_idx);
+    if (cond != .bool) {
+        return .{ .next_idx = line_end, .returned = false, .unknown = true, .value = .unknown };
+    }
+    if (!cond.bool) {
+        return .{ .next_idx = line_end, .returned = false, .unknown = false, .value = .unknown };
+    }
+    const value = if (return_idx + 1 < line_end)
+        try evalExpr(allocator, tokens, funcs, bindings.items, return_idx + 1, line_end)
+    else
+        Value.nil;
+    return .{ .next_idx = line_end, .returned = true, .unknown = false, .value = value };
 }
 
 fn evalAnd(args: []const Value) Value {
@@ -477,7 +542,17 @@ fn valueEq(a: Value, b: Value) bool {
     if (a == .bool and b == .bool) return a.bool == b.bool;
     if (a == .int and b == .int) return a.int == b.int;
     if (a == .text and b == .text) return std.mem.eql(u8, a.text, b.text);
+    if (a == .object and b == .object) return objectEq(a.object, b.object);
     return false;
+}
+
+fn objectEq(a: []const FieldValue, b: []const FieldValue) bool {
+    if (a.len != b.len) return false;
+    for (a, 0..) |field, idx| {
+        if (!std.mem.eql(u8, field.name, b[idx].name)) return false;
+        if (!valueEq(field.value, b[idx].value)) return false;
+    }
+    return true;
 }
 
 fn lookupBinding(bindings: []const Binding, name: []const u8) ?Value {
@@ -489,25 +564,293 @@ fn lookupBinding(bindings: []const Binding, name: []const u8) ?Value {
     return null;
 }
 
-fn findFunc(funcs: []const FuncDecl, name: []const u8, arg_count: usize) ?FuncDecl {
-    for (funcs) |func| {
-        if (!std.mem.eql(u8, func.name, name)) continue;
-        if (func.param_count != arg_count) continue;
-        return func;
+fn setBinding(allocator: std.mem.Allocator, bindings: *std.ArrayList(Binding), name: []const u8, value: Value) !void {
+    var i = bindings.items.len;
+    while (i > 0) {
+        i -= 1;
+        if (!std.mem.eql(u8, bindings.items[i].name, name)) continue;
+        freeValue(allocator, bindings.items[i].value);
+        bindings.items[i].value = value;
+        return;
+    }
+    try bindings.append(allocator, .{ .name = name, .value = value });
+}
+
+fn freeBindings(allocator: std.mem.Allocator, bindings: []Binding) void {
+    for (bindings) |binding| freeValue(allocator, binding.value);
+}
+
+fn freeValue(allocator: std.mem.Allocator, value: Value) void {
+    switch (value) {
+        .object => |fields| {
+            for (fields) |field| freeValue(allocator, field.value);
+            allocator.free(fields);
+        },
+        else => {},
+    }
+}
+
+fn cloneValue(allocator: std.mem.Allocator, value: Value) std.mem.Allocator.Error!Value {
+    return switch (value) {
+        .object => |fields| .{ .object = try cloneFields(allocator, fields) },
+        else => value,
+    };
+}
+
+fn cloneFields(allocator: std.mem.Allocator, fields: []const FieldValue) std.mem.Allocator.Error![]FieldValue {
+    const out = try allocator.alloc(FieldValue, fields.len);
+    errdefer allocator.free(out);
+    var idx: usize = 0;
+    errdefer {
+        for (out[0..idx]) |field| freeValue(allocator, field.value);
+    }
+    for (fields, 0..) |field, i| {
+        out[i] = .{ .name = field.name, .value = try cloneValue(allocator, field.value) };
+        idx += 1;
+    }
+    return out;
+}
+
+fn isStructLiteralStart(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    if (start_idx + 1 >= end_idx) return false;
+    if (tokens[start_idx].kind != .ident) return false;
+    if (!std.ascii.isUpper(tokens[start_idx].lexeme[0])) return false;
+    return tokEqToken(tokens[start_idx + 1], "{");
+}
+
+fn evalStructLiteral(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    funcs: []const FuncDecl,
+    bindings: []const Binding,
+    start_idx: usize,
+    end_idx: usize,
+) anyerror!Value {
+    const open_idx = start_idx + 1;
+    const close_idx = findMatchingInRange(tokens, open_idx, "{", "}", end_idx) catch return .unknown;
+    if (close_idx + 1 != end_idx) return .unknown;
+
+    var fields = std.ArrayList(FieldValue).empty;
+    errdefer {
+        for (fields.items) |field| freeValue(allocator, field.value);
+        fields.deinit(allocator);
+    }
+
+    var i = open_idx + 1;
+    while (i < close_idx) {
+        const field_end = findArgEnd(tokens, i, close_idx);
+        const eq_idx = findTopLevelToken(tokens, i, field_end, "=") orelse return .unknown;
+        if (tokens[i].kind != .ident) return .unknown;
+        const value = try evalExpr(allocator, tokens, funcs, bindings, eq_idx + 1, field_end);
+        try fields.append(allocator, .{ .name = tokens[i].lexeme, .value = value });
+        i = field_end;
+        if (i < close_idx and tokEqToken(tokens[i], ",")) i += 1;
+    }
+
+    return .{ .object = try fields.toOwnedSlice(allocator) };
+}
+
+fn evalGetCall(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    funcs: []const FuncDecl,
+    bindings: []const Binding,
+    args_start: usize,
+    args_end: usize,
+) anyerror!Value {
+    const first_end = findArgEnd(tokens, args_start, args_end);
+    const target = try evalExpr(allocator, tokens, funcs, bindings, args_start, first_end);
+    if (target != .object) return .unknown;
+
+    var current = target;
+    var i = first_end;
+    if (i < args_end and tokEqToken(tokens[i], ",")) i += 1;
+    while (i < args_end) {
+        const arg_end = findArgEnd(tokens, i, args_end);
+        if (i + 1 != arg_end or !isFieldSeg(tokens[i])) return .unknown;
+        current = getObjectField(current, tokens[i].lexeme[1..]) orelse return .unknown;
+        i = arg_end;
+        if (i < args_end and tokEqToken(tokens[i], ",")) i += 1;
+    }
+    return cloneValue(allocator, current);
+}
+
+fn evalSetCall(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    funcs: []const FuncDecl,
+    bindings: []const Binding,
+    args_start: usize,
+    args_end: usize,
+) anyerror!Value {
+    const first_end = findArgEnd(tokens, args_start, args_end);
+    const target = try evalExpr(allocator, tokens, funcs, bindings, args_start, first_end);
+    if (target != .object) return .unknown;
+
+    const value_start = findFinalArgStart(tokens, first_end, args_end) orelse return .unknown;
+    const path_start = nextArgStart(tokens, first_end, args_end) orelse return .unknown;
+    if (path_start >= value_start) return .unknown;
+    if (!singleFieldPath(tokens, path_start, value_start)) return .unknown;
+    const field_name = tokens[path_start].lexeme[1..];
+    const old_value = getObjectField(target, field_name) orelse return .unknown;
+    const new_value = if (isLambdaExpr(tokens, value_start, args_end))
+        try evalSetLambdaValue(allocator, tokens, funcs, old_value, value_start, args_end)
+    else
+        try evalExpr(allocator, tokens, funcs, bindings, value_start, args_end);
+
+    return setObjectField(allocator, target.object, field_name, new_value);
+}
+
+fn getObjectField(value: Value, name: []const u8) ?Value {
+    if (value != .object) return null;
+    for (value.object) |field| {
+        if (std.mem.eql(u8, field.name, name)) return field.value;
     }
     return null;
 }
 
-fn countParamSlots(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) usize {
+fn setObjectField(allocator: std.mem.Allocator, fields: []const FieldValue, name: []const u8, new_value: Value) !Value {
+    const out = try allocator.alloc(FieldValue, fields.len);
+    errdefer allocator.free(out);
+    var idx: usize = 0;
+    errdefer {
+        for (out[0..idx]) |field| freeValue(allocator, field.value);
+    }
+    for (fields, 0..) |field, i| {
+        out[i].name = field.name;
+        out[i].value = if (std.mem.eql(u8, field.name, name))
+            new_value
+        else
+            try cloneValue(allocator, field.value);
+        idx += 1;
+    }
+    return .{ .object = out };
+}
+
+fn evalSetLambdaValue(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    funcs: []const FuncDecl,
+    old_value: Value,
+    start_idx: usize,
+    end_idx: usize,
+) anyerror!Value {
+    const close_params = findMatchingInRange(tokens, start_idx, "(", ")", end_idx) catch return .unknown;
+    const body_start = lambdaBodyStart(tokens, close_params + 1, end_idx) orelse return .unknown;
+    if (tokens[start_idx + 1].kind != .ident) return .unknown;
+
+    var lambda_bindings = std.ArrayList(Binding).empty;
+    defer {
+        freeBindings(allocator, lambda_bindings.items);
+        lambda_bindings.deinit(allocator);
+    }
+    try setBinding(allocator, &lambda_bindings, tokens[start_idx + 1].lexeme, try cloneValue(allocator, old_value));
+    return evalExpr(allocator, tokens, funcs, lambda_bindings.items, body_start, end_idx);
+}
+
+fn isFieldSeg(tok: lexer.Token) bool {
+    return tok.kind == .ident and tok.lexeme.len > 1 and tok.lexeme[0] == '.' and std.ascii.isLower(tok.lexeme[1]);
+}
+
+fn singleFieldPath(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    const path_end = findArgEnd(tokens, start_idx, end_idx);
+    return path_end == end_idx - 1 and isFieldSeg(tokens[start_idx]) and tokEqToken(tokens[path_end], ",");
+}
+
+fn findFinalArgStart(tokens: []const lexer.Token, first_end: usize, args_end: usize) ?usize {
+    var current = nextArgStart(tokens, first_end, args_end) orelse return null;
+    var last = current;
+    while (current < args_end) {
+        const arg_end = findArgEnd(tokens, current, args_end);
+        last = current;
+        current = nextArgStart(tokens, arg_end, args_end) orelse break;
+    }
+    return last;
+}
+
+fn nextArgStart(tokens: []const lexer.Token, arg_end: usize, args_end: usize) ?usize {
+    if (arg_end >= args_end) return null;
+    if (!tokEqToken(tokens[arg_end], ",")) return null;
+    const next = arg_end + 1;
+    if (next >= args_end) return null;
+    return next;
+}
+
+fn isLambdaExpr(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    if (start_idx >= end_idx or !tokEqToken(tokens[start_idx], "(")) return false;
+    const close_params = findMatchingInRange(tokens, start_idx, "(", ")", end_idx) catch return false;
+    return lambdaBodyStart(tokens, close_params + 1, end_idx) != null;
+}
+
+fn lambdaBodyStart(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    if (isArrowAt(tokens, start_idx)) return start_idx + 2;
+    if (!isReturnArrowAt(tokens, start_idx)) return null;
+    var i = start_idx + 2;
+    while (i < end_idx) : (i += 1) {
+        if (isArrowAt(tokens, i)) return i + 2;
+    }
+    return null;
+}
+
+fn isArrowAt(tokens: []const lexer.Token, idx: usize) bool {
+    return idx + 1 < tokens.len and tokEqToken(tokens[idx], "=") and tokEqToken(tokens[idx + 1], ">");
+}
+
+fn isReturnArrowAt(tokens: []const lexer.Token, idx: usize) bool {
+    return idx + 1 < tokens.len and tokEqToken(tokens[idx], "-") and tokEqToken(tokens[idx + 1], ">");
+}
+
+fn findFunc(funcs: []const FuncDecl, name: []const u8, arg_count: usize) ?FuncDecl {
+    for (funcs) |func| {
+        if (!std.mem.eql(u8, func.name, name)) continue;
+        if (func.param_max == null) continue;
+        if (func.param_min != arg_count) continue;
+        return func;
+    }
+    var best_func: ?FuncDecl = null;
+    for (funcs) |func| {
+        if (!std.mem.eql(u8, func.name, name)) continue;
+        if (arg_count < func.param_min) continue;
+        if (func.param_max) |max_count| {
+            if (arg_count > max_count) continue;
+        }
+        if (best_func == null or func.param_min > best_func.?.param_min) {
+            best_func = func;
+        }
+    }
+    return best_func;
+}
+
+fn countFixedParams(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) usize {
     var count: usize = 0;
     var i = start_idx;
     while (i < end_idx) {
         const seg_end = findArgEnd(tokens, i, end_idx);
+        if (seg_end > i and isVariadicParam(tokens, i, seg_end)) return count;
         if (seg_end > i) count += 1;
         i = seg_end;
         if (i < end_idx and tokEqToken(tokens[i], ",")) i += 1;
     }
     return count;
+}
+
+fn hasVariadicParam(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var i = start_idx;
+    while (i < end_idx) {
+        const seg_end = findArgEnd(tokens, i, end_idx);
+        if (seg_end > i and isVariadicParam(tokens, i, seg_end)) return true;
+        i = seg_end;
+        if (i < end_idx and tokEqToken(tokens[i], ",")) i += 1;
+    }
+    return false;
+}
+
+fn isVariadicParam(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    return start_idx + 2 < end_idx and isSpreadToken(tokens[start_idx + 1]);
+}
+
+fn isSpreadToken(tok: lexer.Token) bool {
+    return tok.kind == .symbol and tokEqToken(tok, "...");
 }
 
 fn findFuncBodyStart(tokens: []const lexer.Token, start_idx: usize) ?usize {
@@ -724,4 +1067,50 @@ test "private function declaration is callable by public name" {
     try std.testing.expectEqual(@as(usize, 1), funcs.len);
     try std.testing.expectEqualStrings("double", funcs[0].name);
     try std.testing.expect(findFunc(funcs, "double", 1) != null);
+}
+
+test "variadic function matches zero trailing args" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\count(rest ...i32) -> i32 => 0
+    ;
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+
+    const funcs = try collectTopLevelFuncs(allocator, tokens);
+    defer allocator.free(funcs);
+
+    try std.testing.expect(findFunc(funcs, "count", 0) != null);
+}
+
+test "fixed arity function wins over variadic function" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\pick(rest ...i32) -> i32 => 2
+        \\pick(x i32) -> i32 => 1
+    ;
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+
+    const funcs = try collectTopLevelFuncs(allocator, tokens);
+    defer allocator.free(funcs);
+
+    const func = findFunc(funcs, "pick", 1) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqualStrings("1", tokens[func.body_start].lexeme);
+}
+
+test "longer fixed prefix variadic wins over shorter prefix variadic" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\pick(rest ...i32) -> i32 => 1
+        \\pick(x i32, rest ...i32) -> i32 => 2
+    ;
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+
+    const funcs = try collectTopLevelFuncs(allocator, tokens);
+    defer allocator.free(funcs);
+
+    const func = findFunc(funcs, "pick", 2) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqualStrings("2", tokens[func.body_start].lexeme);
 }

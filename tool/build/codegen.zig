@@ -7,20 +7,43 @@ const Local = struct {
     ty: []const u8,
 };
 
+const HostImport = struct {
+    alias: []const u8,
+    field: []const u8,
+    params: []const []const u8,
+    result: ?[]const u8,
+};
+
 pub fn emitWat(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token) ![]u8 {
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
+
+    try checkUnsupportedWasiHostImports(tokens);
+
+    var host_imports = std.ArrayList(HostImport).empty;
+    defer {
+        freeHostImports(allocator, host_imports.items);
+        host_imports.deinit(allocator);
+    }
+    try collectEnvHostImports(allocator, tokens, &host_imports);
+    try validateHostImportBuildUses(tokens, host_imports.items);
 
     try out.appendSlice(allocator, "(module\n");
     try appendFmt(allocator, &out, "  ;; source_len={d}\n", .{program.source_len});
     try appendFmt(allocator, &out, "  ;; token_count={d}\n", .{program.token_count});
     try appendFmt(allocator, &out, "  ;; top_level_count={d}\n", .{program.top_level_count});
-    try emitStartFunc(allocator, tokens, &out);
+    try emitHostImports(allocator, &out, host_imports.items);
+    try emitStartFunc(allocator, tokens, host_imports.items, &out);
     try out.appendSlice(allocator, ")\n");
     return out.toOwnedSlice(allocator);
 }
 
-fn emitStartFunc(allocator: std.mem.Allocator, tokens: []const lexer.Token, out: *std.ArrayList(u8)) !void {
+fn emitStartFunc(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    host_imports: []const HostImport,
+    out: *std.ArrayList(u8),
+) !void {
     const start_idx = findStartFunc(tokens) orelse return;
     const open_params = start_idx + 1;
     const close_params = try findMatching(tokens, open_params, "(", ")");
@@ -35,7 +58,7 @@ fn emitStartFunc(allocator: std.mem.Allocator, tokens: []const lexer.Token, out:
     for (locals.items) |local| {
         try appendFmt(allocator, out, "    (local ${s} {s})\n", .{ local.name, wasmType(local.ty) });
     }
-    try emitBody(allocator, tokens, open_body + 1, close_body, locals.items, out);
+    try emitBody(allocator, tokens, open_body + 1, close_body, locals.items, host_imports, out);
     try out.appendSlice(allocator, "  )\n");
     try out.appendSlice(allocator, "  (export \"_start\" (func $_start))\n");
 }
@@ -63,6 +86,7 @@ fn emitBody(
     start_idx: usize,
     end_idx: usize,
     locals: []const Local,
+    host_imports: []const HostImport,
     out: *std.ArrayList(u8),
 ) !void {
     var i = start_idx;
@@ -73,7 +97,7 @@ fn emitBody(
                 i = stmt_end;
                 continue;
             };
-            try emitExpr(allocator, tokens, eq_idx + 1, stmt_end, locals, out);
+            try emitExpr(allocator, tokens, eq_idx + 1, stmt_end, locals, host_imports, out);
             try appendFmt(allocator, out, "    local.set ${s}\n", .{tokens[i].lexeme});
         }
         i = stmt_end;
@@ -86,6 +110,7 @@ fn emitExpr(
     start_idx: usize,
     end_idx: usize,
     locals: []const Local,
+    host_imports: []const HostImport,
     out: *std.ArrayList(u8),
 ) !void {
     const range = trimParens(tokens, start_idx, end_idx);
@@ -108,17 +133,251 @@ fn emitExpr(
     const close_paren = findMatchingInRange(tokens, range.start + 1, "(", ")", range.end) catch return;
     if (close_paren + 1 != range.end) return;
 
-    const op = numericWasmOp(tokens[range.start].lexeme) orelse return;
+    if (numericWasmOp(tokens[range.start].lexeme)) |op| {
+        var arg_start = range.start + 2;
+        var emitted = false;
+        while (arg_start < close_paren) {
+            const arg_end = findArgEnd(tokens, arg_start, close_paren);
+            try emitExpr(allocator, tokens, arg_start, arg_end, locals, host_imports, out);
+            if (emitted) try appendFmt(allocator, out, "    {s}\n", .{op});
+            emitted = true;
+            arg_start = arg_end;
+            if (arg_start < close_paren and tokEq(tokens[arg_start], ",")) arg_start += 1;
+        }
+        return;
+    }
+
+    const host_import = findHostImport(host_imports, tokens[range.start].lexeme) orelse return;
     var arg_start = range.start + 2;
-    var emitted = false;
     while (arg_start < close_paren) {
         const arg_end = findArgEnd(tokens, arg_start, close_paren);
-        try emitExpr(allocator, tokens, arg_start, arg_end, locals, out);
-        if (emitted) try appendFmt(allocator, out, "    {s}\n", .{op});
-        emitted = true;
+        try emitExpr(allocator, tokens, arg_start, arg_end, locals, host_imports, out);
         arg_start = arg_end;
         if (arg_start < close_paren and tokEq(tokens[arg_start], ",")) arg_start += 1;
     }
+    try appendFmt(allocator, out, "    call ${s}\n", .{host_import.alias});
+}
+
+fn collectEnvHostImports(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    out: *std.ArrayList(HostImport),
+) !void {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isLineStart(tokens, i)) continue;
+        if (!isEnvHostImportStart(tokens, i)) continue;
+
+        const line_end = findLineEnd(tokens, i);
+        const import = try parseEnvHostImport(allocator, tokens, i, line_end);
+        errdefer allocator.free(import.params);
+        try out.append(allocator, import);
+        i = line_end - 1;
+    }
+}
+
+fn parseEnvHostImport(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    line_end: usize,
+) !HostImport {
+    const alias = tokens[start_idx].lexeme;
+    const field = tokens[start_idx + 5].lexeme;
+    const open_idx = start_idx + 6;
+    const close_idx = try findMatchingInRange(tokens, open_idx, "(", ")", line_end);
+
+    var params = std.ArrayList([]const u8).empty;
+    errdefer params.deinit(allocator);
+
+    var i = open_idx + 1;
+    while (i < close_idx) {
+        if (tokEq(tokens[i], ",")) {
+            i += 1;
+            continue;
+        }
+        try params.append(allocator, tokens[i].lexeme);
+        i += 1;
+        if (i < close_idx and tokEq(tokens[i], ",")) i += 1;
+    }
+
+    if (close_idx + 3 >= line_end or !tokEq(tokens[close_idx + 1], "-") or !tokEq(tokens[close_idx + 2], ">")) {
+        return error.InvalidImportDecl;
+    }
+    const result_tok = tokens[close_idx + 3].lexeme;
+    const result: ?[]const u8 = if (std.mem.eql(u8, result_tok, "nil")) null else result_tok;
+
+    return .{
+        .alias = alias,
+        .field = field,
+        .params = try params.toOwnedSlice(allocator),
+        .result = result,
+    };
+}
+
+fn emitHostImports(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    host_imports: []const HostImport,
+) !void {
+    for (host_imports) |host_import| {
+        try appendFmt(allocator, out, "  (import \"env\" \"{s}\" (func ${s}", .{ host_import.field, host_import.alias });
+        if (host_import.params.len != 0) {
+            try out.appendSlice(allocator, " (param");
+            for (host_import.params) |param| {
+                try appendFmt(allocator, out, " {s}", .{wasmType(param)});
+            }
+            try out.appendSlice(allocator, ")");
+        }
+        if (host_import.result) |result| {
+            try appendFmt(allocator, out, " (result {s})", .{wasmType(result)});
+        }
+        try out.appendSlice(allocator, "))\n");
+    }
+}
+
+fn validateHostImportBuildUses(tokens: []const lexer.Token, host_imports: []const HostImport) !void {
+    if (host_imports.len == 0) return;
+
+    var i: usize = 0;
+    while (i + 1 < tokens.len) : (i += 1) {
+        if (tokens[i].kind != .ident) continue;
+        const host_import = findHostImport(host_imports, tokens[i].lexeme) orelse continue;
+        if (i + 1 >= tokens.len or !tokEq(tokens[i + 1], "(")) continue;
+
+        const close_paren = findMatching(tokens, i + 1, "(", ")") catch return error.InvalidCallArgList;
+        const arg_count = countCallArgs(tokens, i + 2, close_paren);
+        if (arg_count != host_import.params.len) return error.NoMatchingCall;
+        if (isTypedBindingRhsCall(tokens, i) and host_import.result == null) return error.NoMatchingCall;
+        i = close_paren;
+    }
+}
+
+fn freeHostImports(allocator: std.mem.Allocator, host_imports: []const HostImport) void {
+    for (host_imports) |host_import| {
+        allocator.free(host_import.params);
+    }
+}
+
+fn checkUnsupportedWasiHostImports(tokens: []const lexer.Token) !void {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isLineStart(tokens, i)) continue;
+        if (isWasiHostImportStart(tokens, i)) return error.UnsupportedWasiHostImport;
+    }
+}
+
+fn findHostImport(host_imports: []const HostImport, alias: []const u8) ?HostImport {
+    for (host_imports) |host_import| {
+        if (std.mem.eql(u8, host_import.alias, alias)) return host_import;
+    }
+    return null;
+}
+
+fn isEnvHostImportStart(tokens: []const lexer.Token, idx: usize) bool {
+    const line_end = findLineEnd(tokens, idx);
+    if (idx + 6 >= line_end) return false;
+    if (tokens[idx].kind != .ident) return false;
+    if (!tokEq(tokens[idx + 1], "=")) return false;
+    if (!tokEq(tokens[idx + 2], "@")) return false;
+    if (tokens[idx + 3].kind != .ident or !std.mem.eql(u8, tokens[idx + 3].lexeme, "env")) return false;
+    if (!tokEq(tokens[idx + 4], "/")) return false;
+    if (tokens[idx + 5].kind != .ident) return false;
+    return tokEq(tokens[idx + 6], "(");
+}
+
+fn isWasiHostImportStart(tokens: []const lexer.Token, idx: usize) bool {
+    const line_end = findLineEnd(tokens, idx);
+    if (idx + 4 >= line_end) return false;
+    if (tokens[idx].kind != .ident) return false;
+    if (!tokEq(tokens[idx + 1], "=")) return false;
+    if (!tokEq(tokens[idx + 2], "@")) return false;
+    if (tokens[idx + 3].kind != .ident or !std.mem.eql(u8, tokens[idx + 3].lexeme, "wasi")) return false;
+    return tokEq(tokens[idx + 4], "/");
+}
+
+fn isLineStart(tokens: []const lexer.Token, idx: usize) bool {
+    return idx == 0 or tokens[idx - 1].line != tokens[idx].line;
+}
+
+fn findLineEnd(tokens: []const lexer.Token, start_idx: usize) usize {
+    const line = tokens[start_idx].line;
+    var i = start_idx;
+    while (i < tokens.len and tokens[i].line == line) : (i += 1) {}
+    return i;
+}
+
+fn countCallArgs(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) usize {
+    if (start_idx >= end_idx) return 0;
+
+    var count: usize = 1;
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_angle: usize = 0;
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (depth_paren == 0 and depth_brace == 0 and depth_angle == 0 and tokEq(tokens[i], ",")) count += 1;
+    }
+    return count;
+}
+
+fn isTypedBindingRhsCall(tokens: []const lexer.Token, call_idx: usize) bool {
+    const line_start = findLineStart(tokens, call_idx);
+    if (line_start + 3 > call_idx) return false;
+    if (tokens[line_start].kind != .ident) return false;
+    if (tokens[line_start + 1].kind != .ident) return false;
+    const eq_idx = findTopLevelToken(tokens, line_start + 2, call_idx, "=") orelse return false;
+    return eq_idx + 1 == call_idx;
+}
+
+fn findLineStart(tokens: []const lexer.Token, idx: usize) usize {
+    var i = idx;
+    while (i > 0 and tokens[i - 1].line == tokens[idx].line) : (i -= 1) {}
+    return i;
 }
 
 const Range = struct {
@@ -147,6 +406,9 @@ fn isTypedI32Binding(tokens: []const lexer.Token, start_idx: usize, end_idx: usi
 
 fn wasmType(ty: []const u8) []const u8 {
     if (std.mem.eql(u8, ty, "i32")) return "i32";
+    if (std.mem.eql(u8, ty, "i64")) return "i64";
+    if (std.mem.eql(u8, ty, "f32")) return "f32";
+    if (std.mem.eql(u8, ty, "f64")) return "f64";
     return "i32";
 }
 

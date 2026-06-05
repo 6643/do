@@ -1,7 +1,8 @@
-Text = @/text.do/Text
-List = @/list.do/List
-list_put = @/list.do/put
-now = @/time.do/now
+List = @list.do/List
+empty_list = @list.do/empty_list
+list_add = @list.do/list_add
+list_items = @list.do/items
+now = @time.do/now
 
 Random {
     .state u64 = 1
@@ -40,14 +41,15 @@ range(r Random, max u64) -> Random, u64 {
     return next_r, rem(value, max)
 }
 
-fill_bytes(r Random, count usize) -> Random, Text {
-    out List<u8> = List<u8>{}
+fill_bytes(r Random, count usize) -> Random, [u8] {
+    seed u8 = 0
+    out List<u8> = empty_list(seed)
     i usize = 0
     state Random = r
     loop {
-        if eq(i, count) return state, get(out, .items)
+        if eq(i, count) return state, list_items(out)
         state, value = next_u64(state)
-        out = list_put(out, to_u8(rem(value, 256)))
+        out = list_add(out, to_u8(rem(value, 256)))
         i = add(i, 1)
     }
 }

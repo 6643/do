@@ -1,9 +1,9 @@
-Text = @/text.do/Text
-List = @/list.do/List
-list_put = @/list.do/put
-list_len = @/list.do/len
-list_items = @/list.do/items
-read_u32_be = @/binary.do/read_u32_be
+List = @list.do/List
+empty_list = @list.do/empty_list
+list_add = @list.do/list_add
+list_len = @list.do/list_len
+list_items = @list.do/items
+read_u32_be = @binary.do/read_u32_be
 
 _sha256_h0 u32 = 1779033703
 _sha256_h1 u32 = 3144134277
@@ -39,86 +39,35 @@ sha256_small_sigma1(x u32) -> u32 {
 }
 
 .append_u64_be(out List<u8>, value u64) -> List<u8> {
-    return list_put(
-        out,
-        to_u8(rem(div(value, 72057594037927936), 256)),
-        to_u8(rem(div(value, 281474976710656), 256)),
-        to_u8(rem(div(value, 1099511627776), 256)),
-        to_u8(rem(div(value, 4294967296), 256)),
-        to_u8(rem(div(value, 16777216), 256)),
-        to_u8(rem(div(value, 65536), 256)),
-        to_u8(rem(div(value, 256), 256)),
-        to_u8(rem(value, 256)),
-    )
+    return list_add(out, to_u8(rem(div(value, 72057594037927936), 256)), to_u8(rem(div(value, 281474976710656), 256)), to_u8(rem(div(value, 1099511627776), 256)), to_u8(rem(div(value, 4294967296), 256)), to_u8(rem(div(value, 16777216), 256)), to_u8(rem(div(value, 65536), 256)), to_u8(rem(div(value, 256), 256)), to_u8(rem(value, 256)))
 }
 
 .append_u32_be(out List<u8>, value u32) -> List<u8> {
-    return list_put(
-        out,
-        to_u8(rem(div(value, 16777216), 256)),
-        to_u8(rem(div(value, 65536), 256)),
-        to_u8(rem(div(value, 256), 256)),
-        to_u8(rem(value, 256)),
-    )
+    return list_add(out, to_u8(rem(div(value, 16777216), 256)), to_u8(rem(div(value, 65536), 256)), to_u8(rem(div(value, 256), 256)), to_u8(rem(value, 256)))
 }
 
 .sha256_k_table() -> [u32] {
-    return list_put(
-        .{},
-        1116352408, 1899447441, 3049323471, 3921009573,
-        961987163, 1508970993, 2453635748, 2870763221,
-        3624381080, 310598401, 607225278, 1426881987,
-        1925078388, 2162078206, 2614888103, 3248222580,
-        3835390401, 4022224774, 264347078, 604807628,
-        770255983, 1249150122, 1555081692, 1996064986,
-        2554220882, 2821834349, 2952996808, 3210313671,
-        3336571891, 3584528711, 113926993, 338241895,
-        666307205, 773529912, 1294757372, 1396182291,
-        1695183700, 1986661051, 2177026350, 2456956037,
-        2730485921, 2820302411, 3259730800, 3345764771,
-        3516065817, 3600352804, 4094571909, 275423344,
-        430227734, 506948616, 659060556, 883997877,
-        958139571, 1322822218, 1537002063, 1747873779,
-        1955562222, 2024104815, 2227730452, 2361852424,
-        2428436474, 2756734187, 3204031479, 3329325298,
-    )
+    return list_add(.{}, 1116352408, 1899447441, 3049323471, 3921009573, 961987163, 1508970993, 2453635748, 2870763221, 3624381080, 310598401, 607225278, 1426881987, 1925078388, 2162078206, 2614888103, 3248222580, 3835390401, 4022224774, 264347078, 604807628, 770255983, 1249150122, 1555081692, 1996064986, 2554220882, 2821834349, 2952996808, 3210313671, 3336571891, 3584528711, 113926993, 338241895, 666307205, 773529912, 1294757372, 1396182291, 1695183700, 1986661051, 2177026350, 2456956037, 2730485921, 2820302411, 3259730800, 3345764771, 3516065817, 3600352804, 4094571909, 275423344, 430227734, 506948616, 659060556, 883997877, 958139571, 1322822218, 1537002063, 1747873779, 1955562222, 2024104815, 2227730452, 2361852424, 2428436474, 2756734187, 3204031479, 3329325298)
 }
 
 _sha256_k [u32] = sha256_k_table()
 
-.pad(text Text) -> List<u8> {
-    out List<u8> = List<u8>{}
-    loop b, _ = text {
-        out = list_put(out, b)
+.pad(text [u8]) -> List<u8> {
+    seed u8 = 0
+    out List<u8> = empty_list(seed)
+    loop byte, _ = text {
+        out = list_add(out, byte)
     }
-    out = list_put(out, 128)
+    out = list_add(out, 128)
     loop {
         if eq(rem(list_len(out), 64), 56) return append_u64_be(out, mul(to_u64(len(text)), 8))
-        out = list_put(out, 0)
+        out = list_add(out, 0)
     }
 }
 
 .block(h0 u32, h1 u32, h2 u32, h3 u32, h4 u32, h5 u32, h6 u32, h7 u32, block List<u8>, base usize) -> u32, u32, u32, u32, u32, u32, u32, u32 {
     items [u8] = list_items(block)
-    w [u32] = list_put(
-        .{},
-        read_u32_be(items, base),
-        read_u32_be(items, add(base, 4)),
-        read_u32_be(items, add(base, 8)),
-        read_u32_be(items, add(base, 12)),
-        read_u32_be(items, add(base, 16)),
-        read_u32_be(items, add(base, 20)),
-        read_u32_be(items, add(base, 24)),
-        read_u32_be(items, add(base, 28)),
-        read_u32_be(items, add(base, 32)),
-        read_u32_be(items, add(base, 36)),
-        read_u32_be(items, add(base, 40)),
-        read_u32_be(items, add(base, 44)),
-        read_u32_be(items, add(base, 48)),
-        read_u32_be(items, add(base, 52)),
-        read_u32_be(items, add(base, 56)),
-        read_u32_be(items, add(base, 60)),
-    )
+    w [u32] = list_add(.{}, read_u32_be(items, base), read_u32_be(items, add(base, 4)), read_u32_be(items, add(base, 8)), read_u32_be(items, add(base, 12)), read_u32_be(items, add(base, 16)), read_u32_be(items, add(base, 20)), read_u32_be(items, add(base, 24)), read_u32_be(items, add(base, 28)), read_u32_be(items, add(base, 32)), read_u32_be(items, add(base, 36)), read_u32_be(items, add(base, 40)), read_u32_be(items, add(base, 44)), read_u32_be(items, add(base, 48)), read_u32_be(items, add(base, 52)), read_u32_be(items, add(base, 56)), read_u32_be(items, add(base, 60)))
 
     a u32 = h0
     b u32 = h1
@@ -137,29 +86,14 @@ _sha256_k [u32] = sha256_k_table()
 
         idx usize = rem(i, 16)
         if ge(i, 16) {
-            s0 u32 = sha256_small_sigma0(at(w, rem(sub(i, 15), 16)))
-            s1 u32 = sha256_small_sigma1(at(w, rem(sub(i, 2), 16)))
-            next u32 = add_wrap_u32(
-                add_wrap_u32(
-                    add_wrap_u32(s1, at(w, rem(sub(i, 7), 16))),
-                    s0,
-                ),
-                at(w, idx),
-            )
+            s0 u32 = sha256_small_sigma0(get(w, rem(sub(i, 15), 16)))
+            s1 u32 = sha256_small_sigma1(get(w, rem(sub(i, 2), 16)))
+            next u32 = add_wrap_u32(add_wrap_u32(add_wrap_u32(s1, get(w, rem(sub(i, 7), 16))), s0), get(w, idx))
             w = set(w, idx, next)
         }
 
-        wi u32 = at(w, idx)
-        t1 u32 = add_wrap_u32(
-            add_wrap_u32(
-                add_wrap_u32(
-                    add_wrap_u32(h, sha256_big_sigma1(e)),
-                    sha256_ch(e, f, g),
-                ),
-                at(_sha256_k, i),
-            ),
-            wi,
-        )
+        wi u32 = get(w, idx)
+        t1 u32 = add_wrap_u32(add_wrap_u32(add_wrap_u32(add_wrap_u32(h, sha256_big_sigma1(e)), sha256_ch(e, f, g)), get(_sha256_k, i)), wi)
         t2 u32 = add_wrap_u32(sha256_big_sigma0(a), sha256_maj(a, b, c))
 
         h = g
@@ -174,7 +108,7 @@ _sha256_k [u32] = sha256_k_table()
     }
 }
 
-sum(text Text) -> Text {
+sum(text [u8]) -> [u8] {
     padded List<u8> = pad(text)
     a u32 = _sha256_h0
     b u32 = _sha256_h1
@@ -188,7 +122,8 @@ sum(text Text) -> Text {
     i usize = 0
     loop {
         if ge(i, list_len(padded)) {
-            out List<u8> = List<u8>{}
+            seed u8 = 0
+            out List<u8> = empty_list(seed)
             out = append_u32_be(out, a)
             out = append_u32_be(out, b)
             out = append_u32_be(out, c)
@@ -197,7 +132,7 @@ sum(text Text) -> Text {
             out = append_u32_be(out, f)
             out = append_u32_be(out, g)
             out = append_u32_be(out, h)
-            return get(out, .items)
+            return list_items(out)
         }
         a, b, c, d, e, f, g, h = block(a, b, c, d, e, f, g, h, padded, i)
         i = add(i, 64)

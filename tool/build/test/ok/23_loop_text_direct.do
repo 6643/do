@@ -1,7 +1,6 @@
-Text = @/text.do/Text
 
 test "loop text direct" {
-    s Text = "abc"
+    s [u8] = "abc"
     loop v, i = s {
         if eq(i, 0) return
         consume(v)

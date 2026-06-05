@@ -10,7 +10,7 @@ pub fn printCliError(io: std.Io, err: anyerror) !void {
     var err_buffer: [512]u8 = undefined;
     var out = std.Io.File.stderr().writer(io, &err_buffer);
     try out.interface.print("error[{s}]: {s}\n", .{ @errorName(err), errorSummary(err) });
-    try out.interface.print("hint: {s}\n", .{ errorHint(err) });
+    try out.interface.print("hint: {s}\n", .{errorHint(err)});
     try out.interface.flush();
 }
 
@@ -18,8 +18,8 @@ pub fn printIoError(io: std.Io, path: []const u8, err: anyerror) !void {
     var err_buffer: [768]u8 = undefined;
     var out = std.Io.File.stderr().writer(io, &err_buffer);
     try out.interface.print("error[{s}]: {s}\n", .{ @errorName(err), errorSummary(err) });
-    try out.interface.print("at: {s}\n", .{ path });
-    try out.interface.print("hint: {s}\n", .{ errorHint(err) });
+    try out.interface.print("at: {s}\n", .{path});
+    try out.interface.print("hint: {s}\n", .{errorHint(err)});
     try out.interface.flush();
 }
 
@@ -39,7 +39,7 @@ pub fn printCompileError(
     var out = std.Io.File.stderr().writer(io, &err_buffer);
     try out.interface.print("error[{s}]: {s}\n", .{ @errorName(err), errorSummary(err) });
     try out.interface.print(" --> {s}:{d}:{d}\n", .{ path, loc.line, loc.col });
-    try out.interface.print(" hint: {s}\n", .{ errorHint(err) });
+    try out.interface.print(" hint: {s}\n", .{errorHint(err)});
     if (line_text.len != 0) {
         try out.interface.print(" {d} | {s}\n", .{ loc.line, line_text });
         try out.interface.print("   | ", .{});
@@ -117,6 +117,8 @@ fn locateTokenError(err: anyerror, tokens: []const lexer.Token) ?SourceLoc {
         error.InvalidIfPatternBind,
         error.MultiReturnInIfCondition,
         error.MultiReturnInIfBindRhs,
+        error.MultiReturnInLoopCondition,
+        error.AmbiguousConditionCallReturnArity,
         error.InvalidBindingName,
         => return tokenSite(findFirstToken(tokens, "if") orelse tokens[0]),
 
@@ -127,7 +129,6 @@ fn locateTokenError(err: anyerror, tokens: []const lexer.Token) ?SourceLoc {
         error.InvalidImportDecl => return tokenSite(findFirstToken(tokens, "@") orelse tokens[0]),
         error.InvalidStartEntrySig, error.DuplicateStartEntry => return tokenSite(findFirstToken(tokens, "start") orelse tokens[0]),
         error.MissingStartEntry => return tokenSite(tokens[0]),
-        error.InvalidDoExpr => return tokenSite(findFirstToken(tokens, "do") orelse tokens[0]),
         error.InvalidBraceExpr => return tokenSite(findFirstToken(tokens, "{") orelse tokens[0]),
         error.InvalidReturnStmt => return tokenSite(findFirstTokenOnLine(tokens, "return") orelse findFirstToken(tokens, "return") orelse tokens[0]),
         error.InvalidStructLiteral => return tokenSite(findFirstStructLitToken(tokens) orelse tokens[0]),
@@ -229,36 +230,48 @@ fn getLineText(source: []const u8, target_line: usize) []const u8 {
 fn errorSummary(err: anyerror) []const u8 {
     return switch (err) {
         error.UnterminatedString => "字符串语法: `\"text\"`",
+        error.InvalidStringEscape => "字符串 escape 只支持 `\\\"`, `\\\\`, `\\n`, `\\r`, `\\t`, `\\xNN`",
+        error.InvalidComment => "注释只能独立成行；行注释写 `// ...`，块注释写 `/* ... */`",
         error.InvalidIfHeader => "if 语法: `if expr { ... }`, `if expr return`, `if expr break`, `if expr continue`",
         error.InvalidLoopHeader => "loop 语法: `loop { ... }`, `loop v, i = source { ... }`, `loop v = recv(ch) { ... }`; 绑定名使用 snake_case 或 `_`",
-        error.InvalidLoopSource => "集合循环源协议: `len(source) -> usize` 与 `at(source, usize) -> V`",
+        error.InvalidLoopSource => "集合循环源必须是 `[T]` 或显式 `[T]` 视图函数结果",
         error.InvalidStructLiteral => "结构体构造语法: `Type{field = value}` 或已知目标类型的 `.{field = value}`",
-        error.InvalidTypeDeclName => "类型声明位使用 UpperCamel；私有类型只在声明位写前置 `.`",
-        error.InvalidTypeRef => "类型引用写作 `Type`；私有类型声明写作 `.Type`",
+        error.InvalidTypeDeclName => "类型声明位使用 UpperCamel；私有类型只在声明位写前置 `.`；`XxxError` 名只用于错误枚举",
+        error.InvalidErrorBranchName => "错误枚举不支持私有声明；错误枚举写作 `XxxError error = Branch | OtherBranch`；value enum 承载值必须在范围内且唯一",
+        error.InvalidSynthErrorType => "源码类型位不能使用合成 `Error`",
+        error.InvalidTypeRef => "类型引用写作 `Type`；参数位不接收 union/nullable；私有类型声明写作 `.Type`；裸 `nil` 类型非法；重复 union 分支非法；`nil` 分支最多一次；匿名函数类型不能直接作为 union 分支；TypeArgs 不接受 `(T)` 或匿名函数类型",
         error.InvalidPathIndex => "路径参数写作 `get(value, index, .field)`；字段段写作 `.field`",
-        error.InvalidPathAccess => "字段读取语法: `get(value, .field)`; 字段写入语法: `set(value, .field, new_value)`",
+        error.InvalidPathAccess => "字段读取语法: `get(value, .field)`; 字段写入语法: `set(value, .field, new_value)`；字段段只用于 get/set 路径参数",
         error.InvalidFuncDeclName => "函数声明名语法: `lower_name(...) -> Type { ... }` 或 `.lower_name(...) -> Type { ... }`",
         error.InvalidTypedLiteral => "聚合构造语法: `Type{field = value}` 或 `Type<...>{field = value}`",
         error.InvalidBraceExpr => "聚合构造语法: `Type{field = value}`、已知目标类型的 `.{field = value}` 或 `.{expr, ...}`",
         error.NoMatchingCall => "函数调用需要匹配可见函数签名",
+        error.InvalidCallExpr => "函数调用语法: `name(arg, next_arg)`；私有函数调用去掉声明位前置点",
         error.InvalidCallArgList => "调用语法: `name(arg, next_arg)` 或 `name(arg, ...rest)`; `is` 语法: `is(value, Type)`",
+        error.InvalidReservedName => "内建名和声明专用名只能用于保留位置",
         error.LiteralCannotBeCalled => "函数调用语法: `name(arg, next_arg)`",
         error.InvalidIfPatternBind => "if 语法: `if expr { ... }`, `if expr return`, `if expr break`, `if expr continue`",
-        error.InvalidBindingName => "顶层常量名使用 `_snake_case`; 局部绑定名使用 `snake_case` 或 `_snake_case`",
+        error.InvalidBindingName => "顶层值写作 `_snake_case Type = expr`、`snake_case Type = expr` 或 `.snake_case Type = expr`; 局部绑定名使用 `snake_case` 或 `_snake_case`",
         error.PrivateIdentCannotBeLValue => "赋值语法: `name = expr`; 字段写入语法: `set(value, .field, new_value)`",
         error.DuplicateImmutableBinding => "同一作用域内 `_name` 写作 1 次",
+        error.DuplicateTypeDeclName => "类型名按去掉私有标记后的名字唯一",
+        error.DuplicateFuncSignature => "函数签名按去掉私有标记后的名字和参数类型序列唯一",
         error.DuplicateStructFieldName => "结构体字段名按去掉私有标记后的名字唯一; 每个字段名保留 1 个声明",
         error.MultiReturnInIfCondition => "先接收多返回值, 再在 if 使用单值变量",
         error.MultiReturnInIfBindRhs => "if 条件语法使用单值 bool 表达式",
-        error.InvalidImportDecl => "导入使用 `name = @path/file.do/symbol`; 函数 alias 和 host import 左侧使用 `LowerIdent`",
-        error.NoTopLevelDecl => "top-level 项写作 import/type/func/test",
+        error.MultiReturnInLoopCondition => "先接收多返回值, 再在 loop 条件使用单值变量",
+        error.MultiReturnInSingleValuePosition => "多返回调用只能用于多左值赋值右侧或完整 return 位",
+        error.AmbiguousConditionCallReturnArity => "调用返回位数不唯一, 需要先显式接收或选择具体重载",
+        error.InvalidImportDecl => "导入使用 `name = @./file.do/symbol`, `name = @~/vendor.name.do/symbol`, `name = @file.do/symbol`；host import 左侧使用 `LowerIdent`，右侧使用 `@env/foo(...) -> ...` 或 `@wasi/pkg/iface/member(...) -> ...`",
+        error.NoTopLevelDecl => "top-level 项写作 import/type/value/start/func/test",
         error.NoTestDecl => "在文件顶层添加 `test \"name\" { ... }`",
         error.InvalidTestDecl => "使用 `test \"name\" { ... }` 顶层声明",
-        error.InvalidConstraintDecl => "约束独立成行；类型参数名写作 `UpperIdent`，类型约束在前，函数约束在后",
-        error.InvalidParamName => "参数名写作 `snake_case` 或 `_`; `_name` 写作顶层常量和局部只读绑定",
+        error.InvalidConstraintDecl => "约束独立成行；类型参数名写作 `UpperIdent`，函数约束前必须先有类型约束",
+        error.InvalidParamName => "参数名写作 `snake_case`; `_name` 写作顶层常量和局部只读绑定",
         error.MissingStartEntry => "编译入口写作 `start() { ... }`",
         error.InvalidStartEntrySig => "入口签名写作 `start() { ... }` (无参、无返回)",
         error.DuplicateStartEntry => "顶层 `start` 写作 1 次",
+        error.UnsupportedWasiHostImport => "WIT host import 需要 Wasm component lowering，当前 `do build` 只输出 core WAT",
         error.MissingOutputPath => "示例: `do build input.do -o out.wat`",
         error.MissingTestInputPath => "示例: `do test sample.do`",
         else => "编译失败",
@@ -268,37 +281,49 @@ fn errorSummary(err: anyerror) []const u8 {
 fn errorHint(err: anyerror) []const u8 {
     return switch (err) {
         error.UnterminatedString => "字符串语法: `\"text\"`",
+        error.InvalidStringEscape => "普通字符串 escape 写作 `\\\"`, `\\\\`, `\\n`, `\\r`, `\\t` 或 `\\xNN`",
+        error.InvalidComment => "行尾注释非法；把 `// ...` 或 `/* ... */` 放到独立注释行",
         error.InvalidIfHeader => "if 语法: `if expr { ... }`, `if expr return`, `if expr break`, `if expr continue`",
         error.InvalidLoopHeader => "loop 语法: `loop { ... }`, `loop v, i = source { ... }`, `loop v = recv(ch) { ... }`; 绑定名使用 snake_case 或 `_`",
-        error.InvalidLoopSource => "集合循环源协议: `len(source) -> usize` 与 `at(source, usize) -> V`",
+        error.InvalidLoopSource => "集合循环源必须是 `[T]` 或显式 `[T]` 视图函数结果",
         error.InvalidStructLiteral => "结构体构造语法: `Type{field = value}` 或已知目标类型的 `.{field = value}`",
-        error.InvalidTypeDeclName => "类型声明位使用 UpperCamel；私有类型只在声明位写前置 `.`",
-        error.InvalidTypeRef => "类型引用写作 `Type`；私有类型声明写作 `.Type`",
+        error.InvalidTypeDeclName => "类型声明位使用 UpperCamel；私有类型只在声明位写前置 `.`；错误枚举写作 `XxxError error = ...`",
+        error.InvalidErrorBranchName => "错误枚举写作 public `XxxError error = NotFound | PermissionDenied`；value enum 写作 `Status i8 = Ready(1) | Done(2)`，承载值按基础整数类型检查范围且不能重复",
+        error.InvalidSynthErrorType => "返回、字段、局部绑定和 alias 使用具体错误枚举类型；源码类型位不能直接写合成 `Error`",
+        error.InvalidTypeRef => "类型引用写作 `Type`；参数位不接收 union/nullable；私有类型声明写作 `.Type`；使用 `T | nil` 表达可空类型；同一 union 内分支唯一，`nil` 分支最多一次；函数类型入 union 前先命名；TypeArgs 写 `List<T>`",
         error.InvalidPathIndex => "路径参数写作 `get(value, index, .field)`；字段段写作 `.field`",
-        error.InvalidPathAccess => "字段读取语法: `get(value, .field)`; 字段写入语法: `set(value, .field, new_value)`",
+        error.InvalidPathAccess => "字段段只用于 get/set 路径参数；普通函数参数使用有类型表达式",
         error.InvalidFuncDeclName => "函数声明名语法: `lower_name(...) -> Type { ... }` 或 `.lower_name(...) -> Type { ... }`",
         error.InvalidTypedLiteral => "聚合构造语法: `Type{field = value}` 或 `Type<...>{field = value}`",
         error.InvalidBraceExpr => "聚合构造语法: `Type{field = value}`、已知目标类型的 `.{field = value}` 或 `.{expr, ...}`",
         error.NoMatchingCall => "函数调用语法: `name(arg, next_arg)`；实参数量需匹配可见重载",
         error.InvalidReturnStmt => "return 语句返回位数不匹配",
+        error.InvalidCallExpr => "私有函数声明写 `.name(...)`，调用写 `name(...)`",
         error.InvalidCallArgList => "调用语法: `name(arg, next_arg)` 或 `name(arg, ...rest)`; `is` 语法: `is(value, Type)`",
+        error.InvalidReservedName => "内建名按固定调用语法使用；入口和测试使用 `start() { ... }` 或 `test \"name\" { ... }`",
         error.LiteralCannotBeCalled => "函数调用语法: `name(arg, next_arg)`",
         error.InvalidIfPatternBind => "if 语法: `if expr { ... }`, `if expr return`, `if expr break`, `if expr continue`",
-        error.InvalidBindingName => "顶层常量名使用 `_snake_case`; 局部绑定名使用 `snake_case` 或 `_snake_case`",
+        error.InvalidBindingName => "顶层值必须显式写类型；常量用 `_snake_case`，模块变量用 `snake_case` 或 `.snake_case`",
         error.PrivateIdentCannotBeLValue => "赋值语法: `name = expr`; 字段写入语法: `set(value, .field, new_value)`",
         error.DuplicateImmutableBinding => "同一作用域内 `_name` 写作 1 次",
+        error.DuplicateTypeDeclName => "`.` 只表示可见性，类型命名冲突按去点后的实际 name 判断",
+        error.DuplicateFuncSignature => "`.` 只表示可见性，函数重载身份按去点后的 name 和参数类型序列判断",
         error.DuplicateStructFieldName => "结构体字段名按去掉私有标记后的名字唯一; 每个字段名保留 1 个声明",
         error.MultiReturnInIfCondition => "先接收多返回值, 再在 if 使用单值变量",
         error.MultiReturnInIfBindRhs => "if 条件语法使用单值 bool 表达式",
-        error.InvalidImportDecl => "导入使用 `name = @path/file.do/symbol`; 函数 alias 和 host import 左侧使用 `LowerIdent`",
-        error.NoTopLevelDecl => "至少声明 1 个 top-level 项: import/type/func/test",
+        error.MultiReturnInLoopCondition => "先接收多返回值, 再在 loop 条件使用单值变量",
+        error.MultiReturnInSingleValuePosition => "写作 `a, b = f()` 或 `return f()`; 单变量、实参和聚合元素位不能隐式承载多返回",
+        error.AmbiguousConditionCallReturnArity => "给实参加类型或先绑定到具体签名, 让调用返回位数唯一",
+        error.InvalidImportDecl => "导入语法: `name = @./file.do/symbol`, `name = @~/vendor.name.do/symbol`, `name = @file.do/symbol`; host import 左侧使用 `LowerIdent`，右侧使用 `@env/foo(...) -> ...` 或 `@wasi/pkg/iface/member(...) -> ...`",
+        error.NoTopLevelDecl => "至少声明 1 个 top-level 项: import/type/value/start/func/test",
         error.NoTestDecl => "在文件顶层添加 `test \"name\" { ... }`",
         error.InvalidTestDecl => "使用 `test \"name\" { ... }` 顶层声明",
-        error.InvalidConstraintDecl => "约束独立成行；类型参数名写作 `UpperIdent`，类型约束在前，函数约束在后",
-        error.InvalidParamName => "参数名写作 `snake_case` 或 `_`; `_name` 写作顶层常量和局部只读绑定",
+        error.InvalidConstraintDecl => "约束独立成行；类型参数名写作 `UpperIdent`，函数约束前必须先有类型约束",
+        error.InvalidParamName => "参数名写作 `snake_case`; `_name` 写作顶层常量和局部只读绑定",
         error.MissingStartEntry => "编译入口写作 `start() { ... }`",
         error.InvalidStartEntrySig => "入口签名写作 `start() { ... }` (无参、无返回)",
         error.DuplicateStartEntry => "顶层 `start` 写作 1 次",
+        error.UnsupportedWasiHostImport => "`@wasi/` 签名先用于 WIT 边界声明；实现 component/WIT lowering 前不要在 `do build` 输出普通 core WAT",
         error.MissingOutputPath => "示例: `do build input.do -o out.wat`",
         error.MissingTestInputPath => "示例: `do test sample.do`",
         else => "语法示例: `if expr { ... }`, `loop { ... }`, `get(value, .field)`, `Type{field = value}`",

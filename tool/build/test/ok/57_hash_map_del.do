@@ -1,8 +1,14 @@
-HashMap = @/hash_map.do/HashMap
-hash_map_del = @/hash_map.do/del
+HashMap = @hash_map.do/HashMap
+empty_hash_map = @hash_map.do/empty_hash_map
+hash_map_del = @hash_map.do/del
+hash_len = @hash_map.do/hash_len
+hash_put = @hash_map.do/hash_put
 
 test "hash map del import" {
-    m HashMap<Text, i32> = HashMap<Text, i32>{}
+    key [u8] = ""
+    value i32 = 0
+    m HashMap<[u8], i32> = empty_hash_map(key, value)
+    m = hash_put(m, "a", 1)
     m = hash_map_del(m, "a")
-    return
+    if eq(hash_len(m), 0) return
 }

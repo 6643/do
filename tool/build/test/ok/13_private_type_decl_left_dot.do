@@ -1,12 +1,12 @@
 .InternalUser = User | nil
 
 User {
-    name Text
+    name [u8]
 }
 
 test "private type decl left dot" {
     user = User{name = "tom"}
     name = get(user, .name)
-    expected Text = "tom"
+    expected [u8] = "tom"
     if eq(name, expected) return
 }

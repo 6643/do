@@ -1,0 +1,2 @@
+InvalidTypeRef
+匿名函数类型不能直接作为 union 分支

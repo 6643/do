@@ -1,14 +1,39 @@
-ListError = OutOfBounds
+fp_map = @fp.do/map
+fp_filter = @fp.do/filter
+fp_fold = @fp.do/fold
+fp_reduce = @fp.do/reduce
+fp_find = @fp.do/find
+fp_find_index = @fp.do/find_index
+fp_any = @fp.do/any
+fp_all = @fp.do/all
+fp_count = @fp.do/count
 
 #T
 List {
-    .len usize = 0
-    .items [T] = .{}
+    .len usize
+    .items [T]
 }
 
 #T
-len(xs List<T>) -> usize {
+list_from_items(data [T]) -> List<T> {
+    return List<T>{len = len(data), items = data}
+}
+
+#T
+empty_list(seed T) -> List<T> {
+    _ = seed
+    data [T] = .{}
+    return list_from_items(data)
+}
+
+#T
+list_len(xs List<T>) -> usize {
     return get(xs, .len)
+}
+
+#T
+list_is_empty(xs List<T>) -> bool {
+    return eq(list_len(xs), 0)
 }
 
 #T
@@ -17,229 +42,236 @@ items(xs List<T>) -> [T] {
 }
 
 #T
-at(xs List<T>, i usize) -> T {
-    return at(get(xs, .items), i)
+list_index_of(xs List<T>, value T) -> usize | nil {
+    loop item, index = items(xs) {
+        if eq(item, value) return index
+    }
+    return nil
 }
 
 #T
-get(xs List<T>, i usize) -> T | nil {
-    if ge(i, len(xs)) return nil
-    return at(xs, i)
+list_has(xs List<T>, value T) -> bool {
+    return ne(list_index_of(xs, value), nil)
 }
 
 #T
-put(xs List<T>, value T, rest ...T) -> List<T> {
+list_get(xs List<T>, i usize) -> T {
+    return get(get(xs, .items), i)
+}
+
+#T
+list_get_or(xs List<T>, i usize, fallback T) -> T, bool {
+    if ge(i, list_len(xs)) return fallback, false
+    return list_get(xs, i), true
+}
+
+#T
+list_first(xs List<T>) -> T {
+    return list_get(xs, 0)
+}
+
+#T
+list_first_or(xs List<T>, fallback T) -> T, bool {
+    return list_get_or(xs, 0, fallback)
+}
+
+#T
+list_last(xs List<T>) -> T {
+    return list_get(xs, sub(list_len(xs), 1))
+}
+
+#T
+list_last_or(xs List<T>, fallback T) -> T, bool {
+    if eq(list_len(xs), 0) return fallback, false
+    return list_last(xs), true
+}
+
+#T
+list_add(xs List<T>, value T, rest ...T) -> List<T> {
     data [T] = get(xs, .items)
     next_data [T] = put(data, value)
-    next_len usize = add(len(xs), 1)
-    loop x, _ = rest {
-        next_data = put(next_data, x)
-        next_len = add(next_len, 1)
+    loop item, _ = rest {
+        next_data = put(next_data, item)
     }
-    return List<T>{
-        len = next_len,
-        items = next_data,
-    }
+    next List<T> = set(xs, .items, next_data)
+    next = set(next, .len, (count usize) => add(count, add(1, len(rest))))
+    return next
 }
 
 #T
-set(xs List<T>, i usize, value T) -> List<T> | ListError {
-    if ge(i, len(xs)) return OutOfBounds
+list_set(xs List<T>, i usize, value T) -> List<T> {
     data [T] = get(xs, .items)
     next_data [T] = set(data, i, value)
-    return List<T>{
-        len = len(xs),
-        items = next_data,
-    }
+    return List<T>{len = list_len(xs), items = next_data}
 }
 
 #T
-update(xs List<T>, i usize, f (T) -> T) -> List<T> | ListError {
-    if ge(i, len(xs)) return OutOfBounds
-    return set(xs, i, f(at(xs, i)))
+list_set_or(xs List<T>, i usize, value T) -> List<T>, bool {
+    if ge(i, list_len(xs)) return xs, false
+    return list_set(xs, i, value), true
+}
+
+#T
+#Q = (T) -> T
+update(xs List<T>, i usize, f Q) -> List<T> {
+    value T = f(list_get(xs, i))
+    return list_set(xs, i, value)
 }
 
 #T
 #P
-update(xs List<T>, i usize, env P, f (T, P) -> T) -> List<T> | ListError {
-    if ge(i, len(xs)) return OutOfBounds
-    return set(xs, i, f(at(xs, i), env))
+#Q = (T, P) -> T
+update(xs List<T>, i usize, env P, f Q) -> List<T> {
+    value T = f(list_get(xs, i), env)
+    return list_set(xs, i, value)
 }
 
 #T
-del(xs List<T>, i usize) -> List<T> | ListError {
-    if ge(i, len(xs)) return OutOfBounds
+#Q = (T) -> T
+update_or(xs List<T>, i usize, f Q) -> List<T>, bool {
+    if ge(i, list_len(xs)) return xs, false
+    return update(xs, i, f), true
+}
+
+#T
+#P
+#Q = (T, P) -> T
+update_or(xs List<T>, i usize, env P, f Q) -> List<T>, bool {
+    if ge(i, list_len(xs)) return xs, false
+    return update(xs, i, env, f), true
+}
+
+#T
+del(xs List<T>, i usize) -> List<T> {
+    _ = list_get(xs, i)
     next_items [T] = .{}
-    loop x, idx = xs {
-        if ne(idx, i) {
-            next_items = put(next_items, x)
+    loop item, index = items(xs) {
+        if ne(index, i) {
+            next_items = put(next_items, item)
         }
     }
-    return List<T>{
-        len = sub(len(xs), 1),
-        items = next_items,
-    }
+    return List<T>{len = sub(list_len(xs), 1), items = next_items}
 }
 
 #T
-clear(_ List<T>) -> List<T> {
-    return List<T>{}
+del_or(xs List<T>, i usize) -> List<T>, bool {
+    if ge(i, list_len(xs)) return xs, false
+    return del(xs, i), true
+}
+
+#T
+clear(xs List<T>) -> List<T> {
+    _ = xs
+    data [T] = .{}
+    return list_from_items(data)
 }
 
 #T
 #U
-map(xs List<T>, f (T) -> U) -> List<U> {
-    out List<U> = List<U>{}
-    loop x, _ = xs {
-        out = put(out, f(x))
-    }
-    return out
+#Q = (T) -> U
+map(xs List<T>, f Q) -> List<U> {
+    out [U] = fp_map(items(xs), f)
+    return List<U>{len = len(out), items = out}
 }
 
 #T
 #P
 #U
-map(xs List<T>, env P, f (T, P) -> U) -> List<U> {
-    out List<U> = List<U>{}
-    loop x, _ = xs {
-        out = put(out, f(x, env))
-    }
-    return out
+#Q = (T, P) -> U
+map(xs List<T>, env P, f Q) -> List<U> {
+    out [U] = fp_map(items(xs), env, f)
+    return List<U>{len = len(out), items = out}
 }
 
 #T
-filter(xs List<T>, f (T) -> bool) -> List<T> {
-    out List<T> = List<T>{}
-    loop x, _ = xs {
-        if f(x) {
-            out = put(out, x)
-        }
-    }
-    return out
+#Q = (T) -> bool
+filter(xs List<T>, f Q) -> List<T> {
+    out [T] = fp_filter(items(xs), f)
+    return List<T>{len = len(out), items = out}
 }
 
 #T
 #P
-filter(xs List<T>, env P, f (T, P) -> bool) -> List<T> {
-    out List<T> = List<T>{}
-    loop x, _ = xs {
-        if f(x, env) {
-            out = put(out, x)
-        }
-    }
-    return out
+#Q = (T, P) -> bool
+filter(xs List<T>, env P, f Q) -> List<T> {
+    out [T] = fp_filter(items(xs), env, f)
+    return List<T>{len = len(out), items = out}
 }
 
 #T
 #U
-fold(xs List<T>, init U, f (U, T) -> U) -> U {
-    out U = init
-    loop x, _ = xs {
-        out = f(out, x)
-    }
-    return out
+#Q = (U, T) -> U
+fold(xs List<T>, init U, f Q) -> U {
+    return fp_fold(items(xs), init, f)
 }
 
 #T
-reduce(xs List<T>, f (T, T) -> T) -> T | nil {
-    if eq(len(xs), 0) return nil
-
-    out T = at(xs, 0)
-    i usize = 1
-    loop {
-        if ge(i, len(xs)) return out
-        out = f(out, at(xs, i))
-        i = add(i, 1)
-    }
+#Q = (T, T) -> T
+reduce(xs List<T>, fallback T, f Q) -> T, bool {
+    return fp_reduce(items(xs), fallback, f)
 }
 
 #T
-find(xs List<T>, f (T) -> bool) -> T | nil {
-    loop x, _ = xs {
-        if f(x) return x
-    }
-    return nil
+#Q = (T) -> bool
+find(xs List<T>, fallback T, f Q) -> T, bool {
+    return fp_find(items(xs), fallback, f)
 }
 
 #T
 #P
-find(xs List<T>, env P, f (T, P) -> bool) -> T | nil {
-    loop x, _ = xs {
-        if f(x, env) return x
-    }
-    return nil
+#Q = (T, P) -> bool
+find(xs List<T>, fallback T, env P, f Q) -> T, bool {
+    return fp_find(items(xs), fallback, env, f)
 }
 
 #T
-find_index(xs List<T>, f (T) -> bool) -> usize | nil {
-    loop x, i = xs {
-        if f(x) return i
-    }
-    return nil
+#Q = (T) -> bool
+find_index(xs List<T>, f Q) -> usize | nil {
+    return fp_find_index(items(xs), f)
 }
 
 #T
 #P
-find_index(xs List<T>, env P, f (T, P) -> bool) -> usize | nil {
-    loop x, i = xs {
-        if f(x, env) return i
-    }
-    return nil
+#Q = (T, P) -> bool
+find_index(xs List<T>, env P, f Q) -> usize | nil {
+    return fp_find_index(items(xs), env, f)
 }
 
 #T
-any(xs List<T>, f (T) -> bool) -> bool {
-    loop x, _ = xs {
-        if f(x) return true
-    }
-    return false
+#Q = (T) -> bool
+any(xs List<T>, f Q) -> bool {
+    return fp_any(items(xs), f)
 }
 
 #T
 #P
-any(xs List<T>, env P, f (T, P) -> bool) -> bool {
-    loop x, _ = xs {
-        if f(x, env) return true
-    }
-    return false
+#Q = (T, P) -> bool
+any(xs List<T>, env P, f Q) -> bool {
+    return fp_any(items(xs), env, f)
 }
 
 #T
-all(xs List<T>, f (T) -> bool) -> bool {
-    loop x, _ = xs {
-        if not(f(x)) return false
-    }
-    return true
+#Q = (T) -> bool
+all(xs List<T>, f Q) -> bool {
+    return fp_all(items(xs), f)
 }
 
 #T
 #P
-all(xs List<T>, env P, f (T, P) -> bool) -> bool {
-    loop x, _ = xs {
-        if not(f(x, env)) return false
-    }
-    return true
+#Q = (T, P) -> bool
+all(xs List<T>, env P, f Q) -> bool {
+    return fp_all(items(xs), env, f)
 }
 
 #T
-count(xs List<T>, f (T) -> bool) -> usize {
-    out usize = 0
-    loop x, _ = xs {
-        if f(x) {
-            out = add(out, 1)
-        }
-    }
-    return out
+#Q = (T) -> bool
+count(xs List<T>, f Q) -> usize {
+    return fp_count(items(xs), f)
 }
 
 #T
 #P
-count(xs List<T>, env P, f (T, P) -> bool) -> usize {
-    out usize = 0
-    loop x, _ = xs {
-        if f(x, env) {
-            out = add(out, 1)
-        }
-    }
-    return out
+#Q = (T, P) -> bool
+count(xs List<T>, env P, f Q) -> usize {
+    return fp_count(items(xs), env, f)
 }

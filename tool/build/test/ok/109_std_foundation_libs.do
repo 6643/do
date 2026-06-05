@@ -1,0 +1,301 @@
+binary_read_u16_be = @binary.do/read_u16_be
+binary_read_u16_le = @binary.do/read_u16_le
+binary_read_u32_be = @binary.do/read_u32_be
+binary_read_u32_le = @binary.do/read_u32_le
+binary_read_u64_be = @binary.do/read_u64_be
+binary_read_u64_le = @binary.do/read_u64_le
+binary_write_u16_be = @binary.do/write_u16_be
+binary_write_u16_le = @binary.do/write_u16_le
+binary_write_u32_be = @binary.do/write_u32_be
+binary_write_u32_le = @binary.do/write_u32_le
+binary_write_u64_be = @binary.do/write_u64_be
+binary_write_u64_le = @binary.do/write_u64_le
+
+math_abs_i32 = @math.do/abs_i32
+math_abs_i8 = @math.do/abs_i8
+math_add_checked_u32 = @math.do/add_checked_u32
+math_add_saturating_u32 = @math.do/add_saturating_u32
+math_clamp_i32 = @math.do/clamp_i32
+math_clamp_u8 = @math.do/clamp_u8
+math_max_i16 = @math.do/max_i16
+math_min_usize = @math.do/min_usize
+math_min_u16 = @math.do/min_u16
+math_mul_saturating_u32 = @math.do/mul_saturating_u32
+
+HashMap = @hash_map.do/HashMap
+empty_hash_map = @hash_map.do/empty_hash_map
+hash_has = @hash_map.do/hash_has
+hash_is_empty = @hash_map.do/hash_is_empty
+hash_put = @hash_map.do/hash_put
+clear_hash_map = @hash_map.do/clear
+
+List = @list.do/List
+empty_list = @list.do/empty_list
+list_add = @list.do/list_add
+list_first = @list.do/list_first
+list_first_or = @list.do/list_first_or
+list_has = @list.do/list_has
+list_index_of = @list.do/list_index_of
+list_is_empty = @list.do/list_is_empty
+list_last = @list.do/list_last
+list_last_or = @list.do/list_last_or
+list_len = @list.do/list_len
+
+path_basename = @path.do/basename
+path_dirname = @path.do/dirname
+path_extname = @path.do/extname
+path_is_absolute = @path.do/is_absolute
+path_join = @path.do/join
+
+range_i32 = @range.do/range_i32
+range_repeat_usize = @range.do/repeat_usize
+range_usize = @range.do/range_usize
+
+SliceError = @slice.do/SliceError
+SliceInvalidRange = @slice.do/SliceInvalidRange
+slice_drop = @slice.do/drop
+slice_first = @slice.do/first
+slice_first_or = @slice.do/first_or
+slice_last = @slice.do/last
+slice_last_or = @slice.do/last_or
+slice_slice = @slice.do/slice
+slice_slice_or = @slice.do/slice_or
+slice_take = @slice.do/take
+
+Set = @set.do/Set
+clear_set = @set.do/clear
+empty_set = @set.do/empty_set
+set_add = @set.do/set_add
+set_add_many = @set.do/set_add_many
+set_del = @set.do/set_del
+set_difference = @set.do/set_difference
+set_from_items = @set.do/set_from_items
+set_has = @set.do/set_has
+set_intersection = @set.do/set_intersection
+set_is_empty = @set.do/set_is_empty
+set_items = @set.do/items
+set_len = @set.do/set_len
+set_union = @set.do/set_union
+
+text_count_utf8 = @text.do/count_utf8
+text_contains = @text.do/contains
+text_concat = @text.do/concat
+text_copy = @text.do/copy
+text_drop = @text.do/drop
+text_ends_with = @text.do/ends_with
+text_first = @text.do/first
+text_first_or = @text.do/first_or
+text_index_of = @text.do/index_of
+text_is_valid_utf8 = @text.do/is_valid_utf8
+text_last = @text.do/last
+text_last_or = @text.do/last_or
+text_last_index_of = @text.do/last_index_of
+text_replace = @text.do/replace
+text_repeat_byte = @text.do/repeat_byte
+text_take = @text.do/take
+text_starts_with = @text.do/starts_with
+text_trim_left_byte = @text.do/trim_left_byte
+text_trim_byte = @text.do/trim_byte
+text_trim_right_byte = @text.do/trim_right_byte
+text_validate_utf8 = @text.do/validate_utf8
+
+UrlError = @url.do/UrlError
+UrlInvalidEscape = @url.do/UrlInvalidEscape
+url_decode = @url.do/url_decode
+url_encode = @url.do/url_encode
+
+test "binary read write" {
+    data [u8] = .{1, 2, 3, 4, 5, 6, 7, 8}
+    ok bool = true
+    ok = and(ok, eq(binary_read_u16_be(data, 0), 258))
+    ok = and(ok, eq(binary_read_u16_le(data, 0), 513))
+    ok = and(ok, eq(binary_read_u32_be(data, 0), 16909060))
+    ok = and(ok, eq(binary_read_u32_le(data, 0), 67305985))
+    ok = and(ok, eq(binary_read_u64_be(data, 0), 72623859790382856))
+    ok = and(ok, eq(binary_read_u64_le(data, 0), 578437695752307201))
+    ok = and(ok, eq(binary_write_u16_be(258), .{1, 2}))
+    ok = and(ok, eq(binary_write_u16_le(258), .{2, 1}))
+    ok = and(ok, eq(binary_write_u32_be(16909060), .{1, 2, 3, 4}))
+    ok = and(ok, eq(binary_write_u32_le(16909060), .{4, 3, 2, 1}))
+    ok = and(ok, eq(binary_write_u64_be(72623859790382856), data))
+    ok = and(ok, eq(binary_write_u64_le(72623859790382856), .{8, 7, 6, 5, 4, 3, 2, 1}))
+    if ok return
+}
+
+test "math helpers" {
+    value, ok = math_add_checked_u32(4294967295, 1, 7)
+    passed bool = true
+    passed = and(passed, eq(math_abs_i32(-7), 7))
+    passed = and(passed, eq(math_abs_i8(-8), 8))
+    passed = and(passed, eq(math_clamp_i32(12, 0, 10), 10))
+    passed = and(passed, eq(math_clamp_u8(12, 1, 9), 9))
+    passed = and(passed, eq(math_max_i16(-40, 70), 70))
+    passed = and(passed, eq(math_min_u16(40, 70), 40))
+    passed = and(passed, eq(math_min_usize(9, 3), 3))
+    passed = and(passed, eq(math_add_saturating_u32(4294967295, 1), 4294967295))
+    passed = and(passed, eq(math_mul_saturating_u32(4294967295, 2), 4294967295))
+    passed = and(passed, not(ok))
+    passed = and(passed, eq(value, 7))
+    if passed return
+}
+
+test "path helpers" {
+    ok bool = true
+    ok = and(ok, path_is_absolute("/tmp/a.txt"))
+    ok = and(ok, eq(path_join("/tmp", "a", "b.txt"), "/tmp/a/b.txt"))
+    ok = and(ok, eq(path_basename("/tmp/a.txt"), "a.txt"))
+    ok = and(ok, eq(path_dirname("/tmp/a.txt"), "/tmp"))
+    ok = and(ok, eq(path_extname("/tmp/a.txt"), ".txt"))
+    if ok return
+}
+
+test "list helpers" {
+    seed i32 = 0
+    empty List<i32> = empty_list(seed)
+    xs List<i32> = list_add(empty, 4, 5, 4)
+
+    ok bool = true
+    ok = and(ok, list_is_empty(empty))
+    ok = and(ok, not(list_is_empty(xs)))
+    ok = and(ok, eq(list_len(xs), 3))
+    ok = and(ok, list_has(xs, 5))
+    ok = and(ok, not(list_has(xs, 9)))
+    ok = and(ok, eq(list_index_of(xs, 4), 0))
+    ok = and(ok, eq(list_index_of(xs, 9), nil))
+    first_value, first_ok = list_first_or(xs, 9)
+    missing_first, missing_first_ok = list_first_or(empty, 9)
+    last_value, last_ok = list_last_or(xs, 9)
+    missing_last, missing_last_ok = list_last_or(empty, 9)
+    ok = and(ok, eq(list_first(xs), 4))
+    ok = and(ok, first_ok)
+    ok = and(ok, eq(first_value, 4))
+    ok = and(ok, not(missing_first_ok))
+    ok = and(ok, eq(missing_first, 9))
+    ok = and(ok, eq(list_last(xs), 4))
+    ok = and(ok, last_ok)
+    ok = and(ok, eq(last_value, 4))
+    ok = and(ok, not(missing_last_ok))
+    ok = and(ok, eq(missing_last, 9))
+    if ok return
+}
+
+test "hash map helpers" {
+    key [u8] = ""
+    value i32 = 0
+    empty HashMap<[u8], i32> = empty_hash_map(key, value)
+    m HashMap<[u8], i32> = hash_put(empty, "score", 9)
+
+    ok bool = true
+    ok = and(ok, hash_is_empty(empty))
+    ok = and(ok, not(hash_is_empty(m)))
+    ok = and(ok, hash_has(m, "score"))
+    ok = and(ok, not(hash_has(m, "missing")))
+    cleared HashMap<[u8], i32> = clear_hash_map(m)
+    ok = and(ok, hash_is_empty(cleared))
+    ok = and(ok, not(hash_has(cleared, "score")))
+    if ok return
+}
+
+test "range slice set text url" {
+    nums [i32] = range_i32(2, 5)
+    ids [usize] = range_usize(1, 4)
+    repeated [usize] = range_repeat_usize(7, 3)
+    part = slice_slice(nums, 1, 3)
+    taken = slice_take(nums, 2)
+    dropped = slice_drop(nums, 1)
+    fallback [i32] = .{9}
+    fallback_value, fallback_ok = slice_slice_or(nums, 3, 1, fallback)
+    missing i32 = 9
+    slice_first_value, slice_first_ok = slice_first_or(nums, missing)
+    slice_missing_first, slice_missing_first_ok = slice_first_or(.{}, missing)
+    slice_last_value, slice_last_ok = slice_last_or(nums, missing)
+    slice_missing_last, slice_missing_last_ok = slice_last_or(.{}, missing)
+
+    seed i32 = 0
+    xs Set<i32> = empty_set(seed)
+    xs = set_add(xs, 1)
+    xs = set_add(xs, 1)
+    xs = set_add(xs, 2)
+    xs = set_del(xs, 1)
+    from_items Set<i32> = set_from_items(seed, .{1, 1, 2})
+    cleared Set<i32> = clear_set(from_items)
+    many Set<i32> = set_add_many(cleared, 2, 3, 3)
+    merged Set<i32> = set_union(from_items, many)
+    shared Set<i32> = set_intersection(from_items, many)
+    left_only Set<i32> = set_difference(from_items, many)
+
+    encoded [u8] = url_encode("a b?")
+    decoded = url_decode(encoded)
+    bad = url_decode("%zz")
+    utf8_err = text_validate_utf8(.{255})
+
+    ok bool = true
+    ok = and(ok, eq(nums, .{2, 3, 4}))
+    ok = and(ok, eq(ids, .{1, 2, 3}))
+    ok = and(ok, eq(repeated, .{7, 7, 7}))
+    ok = and(ok, eq(part, .{3, 4}))
+    ok = and(ok, eq(taken, .{2, 3}))
+    ok = and(ok, eq(dropped, .{3, 4}))
+    ok = and(ok, not(fallback_ok))
+    ok = and(ok, eq(fallback_value, fallback))
+    ok = and(ok, eq(slice_first(nums), 2))
+    ok = and(ok, slice_first_ok)
+    ok = and(ok, eq(slice_first_value, 2))
+    ok = and(ok, not(slice_missing_first_ok))
+    ok = and(ok, eq(slice_missing_first, missing))
+    ok = and(ok, eq(slice_last(nums), 4))
+    ok = and(ok, slice_last_ok)
+    ok = and(ok, eq(slice_last_value, 4))
+    ok = and(ok, not(slice_missing_last_ok))
+    ok = and(ok, eq(slice_missing_last, missing))
+    ok = and(ok, eq(set_len(xs), 1))
+    ok = and(ok, set_has(xs, 2))
+    ok = and(ok, eq(set_items(xs), .{2}))
+    ok = and(ok, eq(set_len(from_items), 2))
+    ok = and(ok, set_has(from_items, 1))
+    ok = and(ok, set_has(from_items, 2))
+    ok = and(ok, eq(set_len(cleared), 0))
+    ok = and(ok, set_is_empty(cleared))
+    ok = and(ok, not(set_is_empty(from_items)))
+    ok = and(ok, eq(set_items(many), .{2, 3}))
+    ok = and(ok, eq(set_len(merged), 3))
+    ok = and(ok, set_has(merged, 1))
+    ok = and(ok, set_has(merged, 3))
+    ok = and(ok, eq(set_items(shared), .{2}))
+    ok = and(ok, eq(set_items(left_only), .{1}))
+    ok = and(ok, text_is_valid_utf8("a€"))
+    ok = and(ok, eq(text_count_utf8("a€"), 2))
+    ok = and(ok, text_starts_with("abcdef", "abc"))
+    ok = and(ok, text_ends_with("abcdef", "def"))
+    ok = and(ok, text_contains("abcdef", "cd"))
+    ok = and(ok, eq(text_index_of("abcabc", "bc"), 1))
+    ok = and(ok, eq(text_last_index_of("abcabc", "bc"), 4))
+    ok = and(ok, eq(text_copy("abc"), "abc"))
+    ok = and(ok, eq(text_concat("ab", "cd", "ef"), "abcdef"))
+    ok = and(ok, eq(text_repeat_byte(120, 3), "xxx"))
+    ok = and(ok, eq(text_take("abcdef", 3), "abc"))
+    ok = and(ok, eq(text_drop("abcdef", 3), "def"))
+    text_first_value, text_first_ok = text_first_or("abc", 0)
+    text_missing_first, text_missing_first_ok = text_first_or("", 9)
+    text_last_value, text_last_ok = text_last_or("abc", 0)
+    text_missing_last, text_missing_last_ok = text_last_or("", 9)
+    ok = and(ok, eq(text_first("abc"), 97))
+    ok = and(ok, text_first_ok)
+    ok = and(ok, eq(text_first_value, 97))
+    ok = and(ok, not(text_missing_first_ok))
+    ok = and(ok, eq(text_missing_first, 9))
+    ok = and(ok, eq(text_last("abc"), 99))
+    ok = and(ok, text_last_ok)
+    ok = and(ok, eq(text_last_value, 99))
+    ok = and(ok, not(text_missing_last_ok))
+    ok = and(ok, eq(text_missing_last, 9))
+    ok = and(ok, eq(text_trim_left_byte("  abc  ", 32), "abc  "))
+    ok = and(ok, eq(text_trim_byte("  abc  ", 32), "abc"))
+    ok = and(ok, eq(text_trim_right_byte("  abc  ", 32), "  abc"))
+    ok = and(ok, eq(text_replace("a-b-c", "-", "/"), "a/b/c"))
+    ok = and(ok, ne(utf8_err, nil))
+    ok = and(ok, eq(encoded, "a%20b%3F"))
+    ok = and(ok, eq(decoded, "a b?"))
+    ok = and(ok, eq(bad, UrlInvalidEscape))
+    if ok return
+}

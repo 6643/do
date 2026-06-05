@@ -1,12 +1,15 @@
-HashMap = @/hash_map.do/HashMap
-Text = @/text.do/Text
-hash_get = @/hash_map.do/get
-hash_put = @/hash_map.do/put
-hash_update = @/hash_map.do/update
-MissingKey = @/hash_map.do/MissingKey
+HashMap = @hash_map.do/HashMap
+empty_hash_map = @hash_map.do/empty_hash_map
+hash_get = @hash_map.do/hash_get
+hash_put = @hash_map.do/hash_put
+hash_update = @hash_map.do/update
+hash_update_or = @hash_map.do/update_or
+hash_len = @hash_map.do/hash_len
 
 test "hash map update existing key" {
-    m HashMap<Text, i32> = HashMap<Text, i32>{}
+    key [u8] = ""
+    value i32 = 0
+    m HashMap<[u8], i32> = empty_hash_map(key, value)
     m = hash_put(m, "score", 2)
     m = hash_update(m, "score", (x i32) -> i32 => add(x, 40))
 
@@ -14,8 +17,10 @@ test "hash map update existing key" {
 }
 
 test "hash map update missing key" {
-    m HashMap<Text, i32> = HashMap<Text, i32>{}
-    result = hash_update(m, "score", (x i32) -> i32 => add(x, 1))
+    key [u8] = ""
+    value i32 = 0
+    m HashMap<[u8], i32> = empty_hash_map(key, value)
+    next, ok = hash_update_or(m, "score", (x i32) -> i32 => add(x, 1))
 
-    if eq(result, MissingKey) return
+    if and(not(ok), eq(hash_len(next), 0)) return
 }

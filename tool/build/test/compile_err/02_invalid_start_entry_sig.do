@@ -1,3 +1,3 @@
-start(a i32) i32 {
+start(a i32) -> i32 {
     return a
 }

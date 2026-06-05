@@ -1,4 +1,4 @@
-is_one(a i32) bool {
+is_one(a i32) -> bool {
     return and(eq(a, 1), not(ne(a, 1)))
 }
 

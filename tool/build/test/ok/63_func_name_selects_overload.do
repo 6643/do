@@ -6,7 +6,8 @@ inc(x i64) -> i64 {
     return add(x, 1)
 }
 
-apply(f (i32) -> i32) -> i32 {
+#F = (i32) -> i32
+apply(f F) -> i32 {
     return f(1)
 }
 

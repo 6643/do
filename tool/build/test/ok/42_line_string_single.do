@@ -1,4 +1,4 @@
 test "line string single" {
-    str Text = \\abc
+    str [u8] = \\abc
     return
 }

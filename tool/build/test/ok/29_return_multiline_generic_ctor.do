@@ -5,9 +5,7 @@ Box {
 
 #T
 make(value T) -> Box<T> {
-    return Box<T>{
-        value = value,
-    }
+    return Box<T>{value = value}
 }
 
 test "return multiline generic ctor" {
