@@ -182,6 +182,7 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
             if (i >= source.len) return error.UnterminatedString;
             i += 1;
             col += 1;
+            try validateQuotedStringUtf8(allocator, source[start..i]);
             try out.append(allocator, .{
                 .kind = .string,
                 .lexeme = source[start..i],
@@ -236,6 +237,7 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
                 }
             }
 
+            if (!std.unicode.utf8ValidateSlice(source[block_start..cur_i])) return error.InvalidStringUtf8;
             try out.append(allocator, .{
                 .kind = .string,
                 .lexeme = source[block_start..cur_i],
@@ -266,7 +268,7 @@ fn isIdentStart(ch: u8) bool {
 }
 
 fn isIdentContinue(ch: u8) bool {
-    return isIdentStart(ch) or std.ascii.isDigit(ch);
+    return std.ascii.isAlphabetic(ch) or ch == '_' or std.ascii.isDigit(ch);
 }
 
 fn isLineStart(source: []const u8, idx: usize) bool {
@@ -289,6 +291,53 @@ fn restOfLineIsWhitespace(source: []const u8, idx: usize) bool {
     return true;
 }
 
+fn validateQuotedStringUtf8(allocator: std.mem.Allocator, raw: []const u8) !void {
+    if (raw.len < 2 or raw[0] != '"' or raw[raw.len - 1] != '"') return error.UnterminatedString;
+
+    var decoded = try std.ArrayList(u8).initCapacity(allocator, 0);
+    defer decoded.deinit(allocator);
+
+    var i: usize = 1;
+    const end = raw.len - 1;
+    while (i < end) {
+        const ch = raw[i];
+        if (ch != '\\') {
+            try decoded.append(allocator, ch);
+            i += 1;
+            continue;
+        }
+
+        i += 1;
+        if (i >= end) return error.UnterminatedString;
+        const esc = raw[i];
+        switch (esc) {
+            '"' => try decoded.append(allocator, '"'),
+            '\\' => try decoded.append(allocator, '\\'),
+            'n' => try decoded.append(allocator, '\n'),
+            'r' => try decoded.append(allocator, '\r'),
+            't' => try decoded.append(allocator, '\t'),
+            'x' => {
+                if (i + 2 >= end) return error.InvalidStringEscape;
+                const hi = hexValue(raw[i + 1]) orelse return error.InvalidStringEscape;
+                const lo = hexValue(raw[i + 2]) orelse return error.InvalidStringEscape;
+                try decoded.append(allocator, hi * 16 + lo);
+                i += 2;
+            },
+            else => return error.InvalidStringEscape,
+        }
+        i += 1;
+    }
+
+    if (!std.unicode.utf8ValidateSlice(decoded.items)) return error.InvalidStringUtf8;
+}
+
+fn hexValue(ch: u8) ?u8 {
+    if (ch >= '0' and ch <= '9') return ch - '0';
+    if (ch >= 'a' and ch <= 'f') return ch - 'a' + 10;
+    if (ch >= 'A' and ch <= 'F') return ch - 'A' + 10;
+    return null;
+}
+
 test "dot prefixed names tokenize as single identifiers" {
     const allocator = std.testing.allocator;
     const tokens = try tokenize(allocator, ".name .normalize_name");
@@ -299,6 +348,18 @@ test "dot prefixed names tokenize as single identifiers" {
     try std.testing.expectEqualStrings(".name", tokens[0].lexeme);
     try std.testing.expectEqual(TokenKind.ident, tokens[1].kind);
     try std.testing.expectEqualStrings(".normalize_name", tokens[1].lexeme);
+}
+
+test "internal dot starts a new dot identifier" {
+    const allocator = std.testing.allocator;
+    const tokens = try tokenize(allocator, ".a.b");
+    defer allocator.free(tokens);
+
+    try std.testing.expectEqual(@as(usize, 2), tokens.len);
+    try std.testing.expectEqual(TokenKind.ident, tokens[0].kind);
+    try std.testing.expectEqualStrings(".a", tokens[0].lexeme);
+    try std.testing.expectEqual(TokenKind.ident, tokens[1].kind);
+    try std.testing.expectEqualStrings(".b", tokens[1].lexeme);
 }
 
 test "spread token is separate from identifier" {
@@ -335,6 +396,20 @@ test "apostrophe after identifier is separate symbol" {
     try std.testing.expectEqualStrings("x", tokens[0].lexeme);
     try std.testing.expectEqual(TokenKind.symbol, tokens[1].kind);
     try std.testing.expectEqualStrings("'", tokens[1].lexeme);
+}
+
+test "string escape bytes must decode valid utf8" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidStringUtf8, tokenize(allocator, "\"\\xFF\""));
+}
+
+test "string escape bytes may form valid utf8" {
+    const allocator = std.testing.allocator;
+    const tokens = try tokenize(allocator, "\"\\xE4\\xB8\\xAD\"");
+    defer allocator.free(tokens);
+
+    try std.testing.expectEqual(@as(usize, 1), tokens.len);
+    try std.testing.expectEqual(TokenKind.string, tokens[0].kind);
 }
 
 test "line string blocks tokenize as one token" {

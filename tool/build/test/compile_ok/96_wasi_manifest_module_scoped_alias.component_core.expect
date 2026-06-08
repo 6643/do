@@ -1,0 +1,6 @@
+;; wasi-bind source="src/time.do" alias="host_now" target="clocks/system-clock/now" params="" result="Datetime"
+;; wasi-bind source="entry" alias="host_now" target="random/random/get-random-u64" params="" result="u64"
+  (memory 1)
+  (export "cm32p2_memory" (memory 0))
+  (import "cm32p2|wasi:clocks/system-clock" "now" (func $__wasi_import_clocks_system_clock_now (param i32)))
+  (import "cm32p2|wasi:random/random" "get-random-u64" (func $__wasi_import_random_random_get_random_u64 (result i64)))

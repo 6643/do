@@ -4,6 +4,6 @@ User {
 
 test "path index type mismatch" {
     users [User] = .{User{name = "tom"}}
-    first_name = get(users, .{0, 1})
+    first_name = @get(users, .{0, 1})
     return
 }

@@ -1,12 +1,12 @@
-fp_map = @fp.do/map
-fp_filter = @fp.do/filter
-fp_fold = @fp.do/fold
-fp_reduce = @fp.do/reduce
-fp_find = @fp.do/find
-fp_find_index = @fp.do/find_index
-fp_any = @fp.do/any
-fp_all = @fp.do/all
-fp_count = @fp.do/count
+fp_map = @lib("fp.do", map)
+fp_filter = @lib("fp.do", filter)
+fp_fold = @lib("fp.do", fold)
+fp_reduce = @lib("fp.do", reduce)
+fp_find = @lib("fp.do", find)
+fp_find_index = @lib("fp.do", find_index)
+fp_any = @lib("fp.do", any)
+fp_all = @lib("fp.do", all)
+fp_count = @lib("fp.do", count)
 
 #T
 List {
@@ -16,7 +16,7 @@ List {
 
 #T
 list_from_items(data [T]) -> List<T> {
-    return List<T>{len = len(data), items = data}
+    return List<T>{len = @len(data), items = data}
 }
 
 #T
@@ -28,40 +28,40 @@ empty_list(seed T) -> List<T> {
 
 #T
 list_len(xs List<T>) -> usize {
-    return get(xs, .len)
+    return @get(xs, .len)
 }
 
 #T
 list_is_empty(xs List<T>) -> bool {
-    return eq(list_len(xs), 0)
+    return @eq(list_len(xs), 0)
 }
 
 #T
 items(xs List<T>) -> [T] {
-    return get(xs, .items)
+    return @get(xs, .items)
 }
 
 #T
 list_index_of(xs List<T>, value T) -> usize | nil {
     loop item, index = items(xs) {
-        if eq(item, value) return index
+        if @eq(item, value) return index
     }
     return nil
 }
 
 #T
 list_has(xs List<T>, value T) -> bool {
-    return ne(list_index_of(xs, value), nil)
+    return @ne(list_index_of(xs, value), nil)
 }
 
 #T
 list_get(xs List<T>, i usize) -> T {
-    return get(get(xs, .items), i)
+    return @get(@get(xs, .items), i)
 }
 
 #T
 list_get_or(xs List<T>, i usize, fallback T) -> T, bool {
-    if ge(i, list_len(xs)) return fallback, false
+    if @ge(i, list_len(xs)) return fallback, false
     return list_get(xs, i), true
 }
 
@@ -77,37 +77,37 @@ list_first_or(xs List<T>, fallback T) -> T, bool {
 
 #T
 list_last(xs List<T>) -> T {
-    return list_get(xs, sub(list_len(xs), 1))
+    return list_get(xs, @sub(list_len(xs), 1))
 }
 
 #T
 list_last_or(xs List<T>, fallback T) -> T, bool {
-    if eq(list_len(xs), 0) return fallback, false
+    if @eq(list_len(xs), 0) return fallback, false
     return list_last(xs), true
 }
 
 #T
 list_add(xs List<T>, value T, rest ...T) -> List<T> {
-    data [T] = get(xs, .items)
-    next_data [T] = put(data, value)
+    data [T] = @get(xs, .items)
+    next_data [T] = @put(data, value)
     loop item, _ = rest {
-        next_data = put(next_data, item)
+        next_data = @put(next_data, item)
     }
-    next List<T> = set(xs, .items, next_data)
-    next = set(next, .len, (count usize) => add(count, add(1, len(rest))))
+    next List<T> = @set(xs, .items, next_data)
+    next = @set(next, .len, @add(list_len(xs), @add(1, @len(rest))))
     return next
 }
 
 #T
 list_set(xs List<T>, i usize, value T) -> List<T> {
-    data [T] = get(xs, .items)
-    next_data [T] = set(data, i, value)
+    data [T] = @get(xs, .items)
+    next_data [T] = @set(data, i, value)
     return List<T>{len = list_len(xs), items = next_data}
 }
 
 #T
 list_set_or(xs List<T>, i usize, value T) -> List<T>, bool {
-    if ge(i, list_len(xs)) return xs, false
+    if @ge(i, list_len(xs)) return xs, false
     return list_set(xs, i, value), true
 }
 
@@ -129,7 +129,7 @@ update(xs List<T>, i usize, env P, f Q) -> List<T> {
 #T
 #Q = (T) -> T
 update_or(xs List<T>, i usize, f Q) -> List<T>, bool {
-    if ge(i, list_len(xs)) return xs, false
+    if @ge(i, list_len(xs)) return xs, false
     return update(xs, i, f), true
 }
 
@@ -137,7 +137,7 @@ update_or(xs List<T>, i usize, f Q) -> List<T>, bool {
 #P
 #Q = (T, P) -> T
 update_or(xs List<T>, i usize, env P, f Q) -> List<T>, bool {
-    if ge(i, list_len(xs)) return xs, false
+    if @ge(i, list_len(xs)) return xs, false
     return update(xs, i, env, f), true
 }
 
@@ -146,16 +146,16 @@ del(xs List<T>, i usize) -> List<T> {
     _ = list_get(xs, i)
     next_items [T] = .{}
     loop item, index = items(xs) {
-        if ne(index, i) {
-            next_items = put(next_items, item)
+        if @ne(index, i) {
+            next_items = @put(next_items, item)
         }
     }
-    return List<T>{len = sub(list_len(xs), 1), items = next_items}
+    return List<T>{len = @sub(list_len(xs), 1), items = next_items}
 }
 
 #T
 del_or(xs List<T>, i usize) -> List<T>, bool {
-    if ge(i, list_len(xs)) return xs, false
+    if @ge(i, list_len(xs)) return xs, false
     return del(xs, i), true
 }
 
@@ -171,7 +171,7 @@ clear(xs List<T>) -> List<T> {
 #Q = (T) -> U
 map(xs List<T>, f Q) -> List<U> {
     out [U] = fp_map(items(xs), f)
-    return List<U>{len = len(out), items = out}
+    return List<U>{len = @len(out), items = out}
 }
 
 #T
@@ -180,14 +180,14 @@ map(xs List<T>, f Q) -> List<U> {
 #Q = (T, P) -> U
 map(xs List<T>, env P, f Q) -> List<U> {
     out [U] = fp_map(items(xs), env, f)
-    return List<U>{len = len(out), items = out}
+    return List<U>{len = @len(out), items = out}
 }
 
 #T
 #Q = (T) -> bool
 filter(xs List<T>, f Q) -> List<T> {
     out [T] = fp_filter(items(xs), f)
-    return List<T>{len = len(out), items = out}
+    return List<T>{len = @len(out), items = out}
 }
 
 #T
@@ -195,7 +195,7 @@ filter(xs List<T>, f Q) -> List<T> {
 #Q = (T, P) -> bool
 filter(xs List<T>, env P, f Q) -> List<T> {
     out [T] = fp_filter(items(xs), env, f)
-    return List<T>{len = len(out), items = out}
+    return List<T>{len = @len(out), items = out}
 }
 
 #T

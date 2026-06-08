@@ -1,7 +1,7 @@
-List = @list.do/List
-list_from_items = @list.do/list_from_items
-list_add = @list.do/list_add
-items = @list.do/items
+List = @lib("list.do", List)
+list_from_items = @lib("list.do", list_from_items)
+list_add = @lib("list.do", list_add)
+items = @lib("list.do", items)
 
 User {
     name [u8]
@@ -13,7 +13,7 @@ test "path index complex expr segment" {
     users = list_add(users, User{name = "tom"})
     users = list_add(users, User{name = "amy"})
     i usize = 0
-    first_name = get(items(users), add(i, 1), .name)
+    first_name = @get(items(users), @add(i, 1), .name)
     expected [u8] = "amy"
-    if eq(first_name, expected) return
+    if @eq(first_name, expected) return
 }

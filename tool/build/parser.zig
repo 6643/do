@@ -359,19 +359,39 @@ fn isTopLevelValueDeclStart(tokens: []const lexer.Token, idx: usize) bool {
     if (isKeyword(tokens[idx].lexeme)) return false;
     if (idx + 1 < tokens.len and tokEq(tokens[idx + 1], "(")) return false;
     if (isTopLevelTypeDeclStart(tokens, idx)) return false;
-    const eq_idx = topLevelLineAssignIdx(tokens, idx) orelse return false;
-    return eq_idx + 1 >= tokens.len or !tokEq(tokens[eq_idx + 1], "@");
+    _ = topLevelLineAssignIdx(tokens, idx) orelse return false;
+    return !isModernImportAssign(tokens, idx);
 }
 
 fn isModernImportAssign(tokens: []const lexer.Token, idx: usize) bool {
     if (idx >= tokens.len or tokens[idx].kind != .ident) return false;
     if (!isTopLevelDeclHead(tokens, idx)) return false;
     const eq_idx = topLevelLineAssignIdx(tokens, idx) orelse return false;
-    return eq_idx + 1 < tokens.len and tokEq(tokens[eq_idx + 1], "@");
+    const line_end = findLineEnd(tokens, idx, tokens.len);
+    const at_idx = eq_idx + 1;
+    return isImportCallHead(tokens, at_idx, line_end);
 }
 
 fn skipModernImportLine(tokens: []const lexer.Token, idx: usize) usize {
-    return findLineEnd(tokens, idx, tokens.len);
+    return parseImportDeclEnd(tokens, idx) orelse findLineEnd(tokens, idx, tokens.len);
+}
+
+fn parseImportDeclEnd(tokens: []const lexer.Token, start_idx: usize) ?usize {
+    const eq_idx = topLevelLineAssignIdx(tokens, start_idx) orelse return null;
+    const at_idx = eq_idx + 1;
+    const line_end = findLineEnd(tokens, start_idx, tokens.len);
+    if (!isImportCallHead(tokens, at_idx, line_end)) return null;
+    const close_idx = findMatching(tokens, at_idx + 2, "(", ")") catch return null;
+    return close_idx + 1;
+}
+
+fn isImportCallHead(tokens: []const lexer.Token, at_idx: usize, line_end: usize) bool {
+    if (at_idx + 2 >= line_end or !tokEq(tokens[at_idx], "@")) return false;
+    if (tokens[at_idx + 1].kind != .ident) return false;
+    if (!tokEq(tokens[at_idx + 2], "(")) return false;
+    return std.mem.eql(u8, tokens[at_idx + 1].lexeme, "lib") or
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "env") or
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "wasi");
 }
 
 fn topLevelLineAssignIdx(tokens: []const lexer.Token, line_start: usize) ?usize {
@@ -740,6 +760,9 @@ fn parseBodyStmt(
     if (tokEq(tokens[stmt_idx], "return")) {
         return parseReturnStmt(allocator, out_values, out_nodes, tokens, stmt_idx, limit_idx, return_ctx);
     }
+    if (tokEq(tokens[stmt_idx], "defer")) {
+        return parseDeferStmt(allocator, out_conds, out_values, out_nodes, tokens, stmt_idx, limit_idx);
+    }
     const line_end = findLineEnd(tokens, stmt_idx, limit_idx);
     if (findTopLevelAssignEq(tokens, stmt_idx, line_end)) |eq_idx| {
         return parseAssignStmt(allocator, out_values, out_nodes, tokens, eq_idx, limit_idx);
@@ -750,6 +773,35 @@ fn parseBodyStmt(
     if (expr.next_idx != line_end) return markErrorAt(tokens, expr.next_idx, error.InvalidExpr);
     const node = out_nodes.items[expr.node_idx];
     if (node.kind != .call) return markErrorAt(tokens, stmt_idx, error.InvalidExpr);
+    return line_end;
+}
+
+fn parseDeferStmt(
+    allocator: std.mem.Allocator,
+    out_conds: *std.ArrayList(ConditionExpr),
+    out_values: *std.ArrayList(ValueExpr),
+    out_nodes: *std.ArrayList(ExprNode),
+    tokens: []const lexer.Token,
+    defer_idx: usize,
+    limit_idx: usize,
+) !usize {
+    const body_idx = defer_idx + 1;
+    if (body_idx >= limit_idx) return markErrorAt(tokens, defer_idx, error.InvalidExpr);
+    if (tokEq(tokens[body_idx], "{")) {
+        const close_block = try findMatchingInRange(tokens, body_idx, "{", "}", limit_idx);
+        if (close_block + 1 < limit_idx and tokens[close_block + 1].line == tokens[defer_idx].line) {
+            return markErrorAt(tokens, close_block + 1, error.InvalidExpr);
+        }
+        try collectConditionExprs(allocator, out_conds, out_values, out_nodes, tokens, body_idx, close_block, TestReturnContext);
+        return close_block + 1;
+    }
+
+    const line_end = findLineEnd(tokens, body_idx, limit_idx);
+    const expr = parseExpr(allocator, out_nodes, tokens, body_idx, line_end) catch
+        return markErrorAt(tokens, body_idx, error.InvalidExpr);
+    if (expr.next_idx != line_end) return markErrorAt(tokens, expr.next_idx, error.InvalidExpr);
+    const node = out_nodes.items[expr.node_idx];
+    if (node.kind != .call) return markErrorAt(tokens, body_idx, error.InvalidExpr);
     return line_end;
 }
 
@@ -1379,6 +1431,32 @@ fn parseExpr(
         return markErrorAt(tokens, start_idx, error.InvalidLambdaExpr);
     }
 
+    if (tokEq(t, "@")) {
+        if (start_idx + 1 >= limit_idx or tokens[start_idx + 1].kind != .ident) {
+            return markErrorAt(tokens, start_idx, error.UnsupportedExpr);
+        }
+        const name_idx = start_idx + 1;
+        if (!isBuiltinCallName(tokens[name_idx].lexeme)) {
+            return markErrorAt(tokens, start_idx, error.UnsupportedExpr);
+        }
+        if (name_idx + 1 >= limit_idx or !tokEq(tokens[name_idx + 1], "(")) {
+            return markErrorAt(tokens, name_idx, error.InvalidCallExpr);
+        }
+        const call = try parseBuiltinCallExpr(allocator, out_nodes, tokens, name_idx, limit_idx);
+        const idx = try appendExprNode(allocator, out_nodes, .{
+            .kind = .call,
+            .start_tok = name_idx,
+            .end_tok = call.next_idx,
+            .data = .{
+                .call = .{
+                    .func_name = tokens[name_idx].lexeme,
+                    .arg_count = call.arg_count,
+                },
+            },
+        });
+        return .{ .next_idx = call.next_idx, .node_idx = idx };
+    }
+
     if (t.kind == .number or t.kind == .string or tokEq(t, "true") or tokEq(t, "false") or tokEq(t, "nil")) {
         if (start_idx + 1 < limit_idx and tokEq(tokens[start_idx + 1], "(")) {
             return markErrorAt(tokens, start_idx, error.LiteralCannotBeCalled);
@@ -1397,22 +1475,7 @@ fn parseExpr(
             return markErrorAt(tokens, start_idx, error.InvalidReservedName);
         }
         if (isBuiltinCallName(t.lexeme)) {
-            if (start_idx + 1 >= limit_idx or !tokEq(tokens[start_idx + 1], "(")) {
-                return markErrorAt(tokens, start_idx, error.InvalidReservedName);
-            }
-            const call = try parseBuiltinCallExpr(allocator, out_nodes, tokens, start_idx, limit_idx);
-            const idx = try appendExprNode(allocator, out_nodes, .{
-                .kind = .call,
-                .start_tok = start_idx,
-                .end_tok = call.next_idx,
-                .data = .{
-                    .call = .{
-                        .func_name = t.lexeme,
-                        .arg_count = call.arg_count,
-                    },
-                },
-            });
-            return .{ .next_idx = call.next_idx, .node_idx = idx };
+            return markErrorAt(tokens, start_idx, error.InvalidReservedName);
         }
         if (isDeclOnlyName(t.lexeme)) {
             return markErrorAt(tokens, start_idx, error.InvalidReservedName);
@@ -1536,12 +1599,40 @@ fn parseCallExprRaw(
 
 fn validateBuiltinCallArity(tokens: []const lexer.Token, name_idx: usize, argc: usize) !void {
     const name = tokens[name_idx].lexeme;
-    if (std.mem.eql(u8, name, "not") or std.mem.eql(u8, name, "len")) {
+    if (std.mem.eql(u8, name, "not") or std.mem.eql(u8, name, "len") or isScalarConvertName(name)) {
         if (argc == 1) return;
         return markErrorAt(tokens, name_idx, error.InvalidCallArgList);
     }
-    if (std.mem.eql(u8, name, "get")) {
+    if (std.mem.eql(u8, name, "and") or std.mem.eql(u8, name, "or")) {
         if (argc >= 2) return;
+        return markErrorAt(tokens, name_idx, error.InvalidCallArgList);
+    }
+    if (std.mem.eql(u8, name, "get") or std.mem.eql(u8, name, "put")) {
+        if (argc >= 2) return;
+        return markErrorAt(tokens, name_idx, error.InvalidCallArgList);
+    }
+    if (isMemoryLoadName(name)) {
+        if (argc == 2) return;
+        return markErrorAt(tokens, name_idx, error.InvalidCallArgList);
+    }
+    if (isBitwiseName(name)) {
+        if (argc == 2) return;
+        return markErrorAt(tokens, name_idx, error.InvalidCallArgList);
+    }
+    if (isCountBitsName(name)) {
+        if (argc == 1) return;
+        return markErrorAt(tokens, name_idx, error.InvalidCallArgList);
+    }
+    if (isUnaryFixedCoreName(name)) {
+        if (argc == 1) return;
+        return markErrorAt(tokens, name_idx, error.InvalidCallArgList);
+    }
+    if (isVariadicSelectCoreName(name)) {
+        if (argc >= 2) return;
+        return markErrorAt(tokens, name_idx, error.InvalidCallArgList);
+    }
+    if (isBinaryFixedCoreName(name)) {
+        if (argc == 2) return;
         return markErrorAt(tokens, name_idx, error.InvalidCallArgList);
     }
     if (std.mem.eql(u8, name, "set")) {
@@ -1592,7 +1683,10 @@ fn countArgsByExpr(
         argc += 1;
         i = expr.next_idx;
         if (i >= end_idx) break;
-        if (!tokEq(tokens[i], ",")) return markErrorAt(tokens, i, error.InvalidCallArgList);
+        if (!tokEq(tokens[i], ",")) {
+            if (isDotPrefixedName(tokens[i].lexeme)) return markErrorAt(tokens, i, error.InvalidPathAccess);
+            return markErrorAt(tokens, i, error.InvalidCallArgList);
+        }
         i += 1;
         if (i >= end_idx) break; // allow trailing comma
     }
@@ -2030,9 +2124,9 @@ fn isErrorTypeName(name: []const u8) bool {
 
 fn isBaseIntTypeName(name: []const u8) bool {
     const names = [_][]const u8{
-        "i8",    "i16",   "i32", "i64",
-        "u8",    "u16",   "u32", "u64",
-        "isize", "usize",
+        "i8",    "i16", "i32", "i64",
+        "u8",    "u16", "u32", "u64",
+        "usize",
     };
     for (names) |it| {
         if (std.mem.eql(u8, it, name)) return true;
@@ -2085,8 +2179,144 @@ fn isBuiltinCallName(name: []const u8) bool {
         "get",
         "set",
         "len",
+        "put",
+        "to_u8",
+        "to_u16",
+        "to_u32",
+        "to_u64",
+        "to_usize",
+        "to_isize",
+        "to_i8",
+        "to_i16",
+        "to_i32",
+        "to_i64",
+        "to_f32",
+        "to_f64",
+        "load_u8",
+        "load_i8",
+        "load_u16_le",
+        "load_i16_le",
+        "load_u32_le",
+        "load_i32_le",
+        "load_u64_le",
+        "load_i64_le",
+        "xor",
+        "shl",
+        "shr",
+        "rotl",
+        "rotr",
+        "clz",
+        "ctz",
+        "popcnt",
+        "abs",
+        "neg",
+        "sqrt",
+        "ceil",
+        "floor",
+        "trunc",
+        "nearest",
+        "min",
+        "max",
+        "copysign",
     };
     for (builtin_names) |it| {
+        if (std.mem.eql(u8, it, name)) return true;
+    }
+    return false;
+}
+
+fn isMemoryLoadName(name: []const u8) bool {
+    const names = [_][]const u8{
+        "load_u8",
+        "load_i8",
+        "load_u16_le",
+        "load_i16_le",
+        "load_u32_le",
+        "load_i32_le",
+        "load_u64_le",
+        "load_i64_le",
+    };
+    for (names) |it| {
+        if (std.mem.eql(u8, it, name)) return true;
+    }
+    return false;
+}
+
+fn isBitwiseName(name: []const u8) bool {
+    const names = [_][]const u8{
+        "and",
+        "or",
+        "xor",
+        "shl",
+        "shr",
+        "rotl",
+        "rotr",
+    };
+    for (names) |it| {
+        if (std.mem.eql(u8, it, name)) return true;
+    }
+    return false;
+}
+
+fn isCountBitsName(name: []const u8) bool {
+    const names = [_][]const u8{
+        "clz",
+        "ctz",
+        "popcnt",
+    };
+    for (names) |it| {
+        if (std.mem.eql(u8, it, name)) return true;
+    }
+    return false;
+}
+
+fn isUnaryFixedCoreName(name: []const u8) bool {
+    const names = [_][]const u8{
+        "abs",
+        "neg",
+        "sqrt",
+        "ceil",
+        "floor",
+        "trunc",
+        "nearest",
+    };
+    for (names) |it| {
+        if (std.mem.eql(u8, it, name)) return true;
+    }
+    return false;
+}
+
+fn isBinaryFixedCoreName(name: []const u8) bool {
+    const names = [_][]const u8{
+        "copysign",
+    };
+    for (names) |it| {
+        if (std.mem.eql(u8, it, name)) return true;
+    }
+    return false;
+}
+
+fn isVariadicSelectCoreName(name: []const u8) bool {
+    return std.mem.eql(u8, name, "min") or
+        std.mem.eql(u8, name, "max");
+}
+
+fn isScalarConvertName(name: []const u8) bool {
+    const names = [_][]const u8{
+        "to_u8",
+        "to_u16",
+        "to_u32",
+        "to_u64",
+        "to_usize",
+        "to_isize",
+        "to_i8",
+        "to_i16",
+        "to_i32",
+        "to_i64",
+        "to_f32",
+        "to_f64",
+    };
+    for (names) |it| {
         if (std.mem.eql(u8, it, name)) return true;
     }
     return false;
@@ -2145,7 +2375,7 @@ test "literal cannot be called" {
 
 test "lambda is rejected outside call arguments" {
     const allocator = std.testing.allocator;
-    const tokens = try lexer.tokenize(allocator, "(x i32) => add(x, 1)");
+    const tokens = try lexer.tokenize(allocator, "(x i32) => @add(x, 1)");
     defer allocator.free(tokens);
 
     var nodes = try std.ArrayList(ExprNode).initCapacity(allocator, 0);
@@ -2156,7 +2386,7 @@ test "lambda is rejected outside call arguments" {
 
 test "lambda is accepted as call argument" {
     const allocator = std.testing.allocator;
-    const tokens = try lexer.tokenize(allocator, "map(xs, (x i32) => add(x, 1))");
+    const tokens = try lexer.tokenize(allocator, "map(xs, (x i32) => @add(x, 1))");
     defer allocator.free(tokens);
 
     var nodes = try std.ArrayList(ExprNode).initCapacity(allocator, 0);
@@ -2169,7 +2399,7 @@ test "lambda is accepted as call argument" {
 
 test "lambda parameter type can be omitted syntactically" {
     const allocator = std.testing.allocator;
-    const tokens = try lexer.tokenize(allocator, "map(xs, (x) => add(x, 1))");
+    const tokens = try lexer.tokenize(allocator, "map(xs, (x) => @add(x, 1))");
     defer allocator.free(tokens);
 
     var nodes = try std.ArrayList(ExprNode).initCapacity(allocator, 0);
@@ -2184,7 +2414,7 @@ test "lambda block body is accepted syntactically" {
     const allocator = std.testing.allocator;
     const source =
         \\map(xs, (x i32) -> i32 {
-        \\    y = add(x, 1)
+        \\    y = @add(x, 1)
         \\    return y
         \\})
     ;

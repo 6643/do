@@ -2,8 +2,12 @@ User {
     name [u8]
 }
 
+take(user User, name [u8]) -> User {
+    return user
+}
+
 test "field segment ordinary call" {
     user = User{name = "tom"}
-    user = put(user, .name, "amy")
+    user = take(user, .name)
     return
 }

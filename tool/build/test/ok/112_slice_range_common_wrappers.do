@@ -1,10 +1,10 @@
-repeat_i32 = @range.do/repeat_i32
-slice_first = @slice.do/first
-slice_first_or = @slice.do/first_or
-slice_last = @slice.do/last
-slice_last_or = @slice.do/last_or
-slice_drop_or = @slice.do/drop_or
-slice_take_or = @slice.do/take_or
+repeat_i32 = @lib("range.do", repeat_i32)
+slice_first = @lib("slice.do", first)
+slice_first_or = @lib("slice.do", first_or)
+slice_last = @lib("slice.do", last)
+slice_last_or = @lib("slice.do", last_or)
+slice_drop_or = @lib("slice.do", drop_or)
+slice_take_or = @lib("slice.do", take_or)
 
 test "slice range common wrappers" {
     nums [i32] = .{1, 2, 3}
@@ -22,24 +22,24 @@ test "slice range common wrappers" {
     repeated [i32] = repeat_i32(7, 3)
 
     ok bool = true
-    ok = and(ok, head_ok)
-    ok = and(ok, eq(head, .{1, 2}))
-    ok = and(ok, not(bad_head_ok))
-    ok = and(ok, eq(bad_head, fallback))
-    ok = and(ok, tail_ok)
-    ok = and(ok, eq(tail, .{2, 3}))
-    ok = and(ok, not(bad_tail_ok))
-    ok = and(ok, eq(bad_tail, fallback))
-    ok = and(ok, eq(slice_first(nums), 1))
-    ok = and(ok, first_ok)
-    ok = and(ok, eq(first_value, 1))
-    ok = and(ok, not(missing_first_ok))
-    ok = and(ok, eq(missing_first, missing))
-    ok = and(ok, eq(slice_last(nums), 3))
-    ok = and(ok, last_ok)
-    ok = and(ok, eq(last_value, 3))
-    ok = and(ok, not(missing_last_ok))
-    ok = and(ok, eq(missing_last, missing))
-    ok = and(ok, eq(repeated, .{7, 7, 7}))
+    ok = @and(ok, head_ok)
+    ok = @and(ok, @eq(head, .{1, 2}))
+    ok = @and(ok, @not(bad_head_ok))
+    ok = @and(ok, @eq(bad_head, fallback))
+    ok = @and(ok, tail_ok)
+    ok = @and(ok, @eq(tail, .{2, 3}))
+    ok = @and(ok, @not(bad_tail_ok))
+    ok = @and(ok, @eq(bad_tail, fallback))
+    ok = @and(ok, @eq(slice_first(nums), 1))
+    ok = @and(ok, first_ok)
+    ok = @and(ok, @eq(first_value, 1))
+    ok = @and(ok, @not(missing_first_ok))
+    ok = @and(ok, @eq(missing_first, missing))
+    ok = @and(ok, @eq(slice_last(nums), 3))
+    ok = @and(ok, last_ok)
+    ok = @and(ok, @eq(last_value, 3))
+    ok = @and(ok, @not(missing_last_ok))
+    ok = @and(ok, @eq(missing_last, missing))
+    ok = @and(ok, @eq(repeated, .{7, 7, 7}))
     if ok return
 }

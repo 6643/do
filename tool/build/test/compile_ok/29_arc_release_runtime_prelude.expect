@@ -1,0 +1,5 @@
+;; arc-runtime release worklist v1
+(func $__do_arc_release (param $object i32)
+local.get $object
+call $__do_arc_release_managed_children
+call $__do_arc_release

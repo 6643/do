@@ -1,0 +1,8 @@
+;; compiled-test 0 "compiled guard return"
+(func $__do_test_0
+(export "__do_test_0" (func $__do_test_0))
+(local $value i32)
+i32.add
+if
+return
+unreachable

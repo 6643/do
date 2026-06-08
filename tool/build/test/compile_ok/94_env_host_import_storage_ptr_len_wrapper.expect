@@ -1,0 +1,9 @@
+(func $log_bytes (param $data i32)
+local.get $data
+call $__do_arc_payload
+i32.const 8
+i32.add
+local.get $data
+call $__do_arc_payload
+i32.load
+call $host_log

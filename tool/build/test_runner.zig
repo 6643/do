@@ -234,6 +234,7 @@ fn hasUnsupportedControlFlow(tokens: []const lexer.Token, start_idx: usize, end_
     while (i < end_idx) : (i += 1) {
         if (tokEqToken(tokens[i], "else")) return true;
         if (tokEqToken(tokens[i], "loop")) return true;
+        if (tokEqToken(tokens[i], "defer")) return true;
         if (!tokEqToken(tokens[i], "if")) continue;
         const line_end = findLineEnd(tokens, i, end_idx);
         if (findTopLevelToken(tokens, i + 1, line_end, "{") != null) return true;
@@ -259,13 +260,16 @@ fn evalIfReturn(
     const return_idx = findTopLevelToken(tokens, if_idx + 1, line_end, "return") orelse
         return .{ .next_idx = line_end, .returned = false, .unknown = true };
     const cond = try evalExpr(allocator, tokens, funcs, bindings.items, if_idx + 1, return_idx);
+    defer freeValue(allocator, cond);
     if (cond == .unknown) {
+        if (isSingleUnboundIdent(tokens, bindings.items, if_idx + 1, return_idx)) return error.NoMatchingCall;
         return .{ .next_idx = line_end, .returned = false, .unknown = true };
     }
+    if (cond != .bool) return error.NonBoolIfCondition;
     return .{
         .next_idx = line_end,
-        .returned = cond == .bool and cond.bool,
-        .unknown = cond != .bool,
+        .returned = cond.bool,
+        .unknown = false,
     };
 }
 
@@ -279,14 +283,87 @@ fn evalBindingLine(
 ) !?usize {
     const line_end = findStmtEnd(tokens, start_idx, limit_idx);
     const eq_idx = findTopLevelToken(tokens, start_idx, line_end, "=") orelse return null;
+    if (try evalMultiBindingLine(allocator, tokens, funcs, bindings, start_idx, eq_idx, line_end)) {
+        return line_end;
+    }
     if (eq_idx == start_idx) return null;
     const name_idx = start_idx;
     if (tokens[name_idx].kind != .ident) return null;
     if (!isBindingName(tokens[name_idx].lexeme)) return null;
 
     const value = try evalExpr(allocator, tokens, funcs, bindings.items, eq_idx + 1, line_end);
+    errdefer freeValue(allocator, value);
     try setBinding(allocator, bindings, tokens[name_idx].lexeme, value);
     return line_end;
+}
+
+fn evalMultiBindingLine(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    funcs: []const FuncDecl,
+    bindings: *std.ArrayList(Binding),
+    start_idx: usize,
+    eq_idx: usize,
+    line_end: usize,
+) !bool {
+    if (findTopLevelToken(tokens, start_idx, eq_idx, ",") == null) return false;
+    const call = parseSimpleCall(tokens, eq_idx + 1, line_end) orelse return false;
+    const lhs_count = try countMultiBindingLhs(tokens, start_idx, eq_idx);
+    if (findFunc(funcs, call.name, countArgs(tokens, call.args_start, call.args_end)) == null) {
+        try bindUnknownValues(allocator, tokens, bindings, start_idx, eq_idx);
+        return true;
+    }
+    const values = try evalUserFuncMulti(allocator, tokens, funcs, call.name, call.args_start, call.args_end, bindings.items, lhs_count);
+    defer {
+        freeValues(allocator, values);
+        allocator.free(values);
+    }
+    if (lhs_count != values.len) return error.NoMatchingCall;
+
+    var value_idx: usize = 0;
+    var lhs_start = start_idx;
+    while (lhs_start < eq_idx) {
+        const lhs_end = findArgEnd(tokens, lhs_start, eq_idx);
+        const value = try cloneValue(allocator, values[value_idx]);
+        errdefer freeValue(allocator, value);
+        try setBinding(allocator, bindings, tokens[lhs_start].lexeme, value);
+        value_idx += 1;
+        lhs_start = lhs_end;
+        if (lhs_start < eq_idx and tokEqToken(tokens[lhs_start], ",")) lhs_start += 1;
+    }
+    return true;
+}
+
+fn countMultiBindingLhs(tokens: []const lexer.Token, start_idx: usize, eq_idx: usize) !usize {
+    var count: usize = 0;
+    var lhs_start = start_idx;
+    while (lhs_start < eq_idx) {
+        const lhs_end = findArgEnd(tokens, lhs_start, eq_idx);
+        if (lhs_end != lhs_start + 1 or tokens[lhs_start].kind != .ident or !isBindingName(tokens[lhs_start].lexeme)) {
+            return error.NoMatchingCall;
+        }
+        count += 1;
+        lhs_start = lhs_end;
+        if (lhs_start < eq_idx and tokEqToken(tokens[lhs_start], ",")) lhs_start += 1;
+    }
+    if (count <= 1) return error.NoMatchingCall;
+    return count;
+}
+
+fn bindUnknownValues(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    bindings: *std.ArrayList(Binding),
+    start_idx: usize,
+    eq_idx: usize,
+) !void {
+    var lhs_start = start_idx;
+    while (lhs_start < eq_idx) {
+        const lhs_end = findArgEnd(tokens, lhs_start, eq_idx);
+        try setBinding(allocator, bindings, tokens[lhs_start].lexeme, .unknown);
+        lhs_start = lhs_end;
+        if (lhs_start < eq_idx and tokEqToken(tokens[lhs_start], ",")) lhs_start += 1;
+    }
 }
 
 fn evalExpr(
@@ -299,7 +376,7 @@ fn evalExpr(
 ) anyerror!Value {
     const trimmed = trimParens(tokens, start_idx, end_idx);
     if (trimmed.start >= trimmed.end) return .unknown;
-    if (trimmed.end == trimmed.start + 1) return evalAtom(tokens[trimmed.start], bindings);
+    if (trimmed.end == trimmed.start + 1) return evalAtom(allocator, tokens[trimmed.start], bindings);
 
     if (isStructLiteralStart(tokens, trimmed.start, trimmed.end)) {
         return evalStructLiteral(allocator, tokens, funcs, bindings, trimmed.start, trimmed.end);
@@ -310,6 +387,11 @@ fn evalExpr(
         if (close_paren + 1 != trimmed.end) return .unknown;
         return evalCall(allocator, tokens, funcs, bindings, trimmed.start, trimmed.start + 2, close_paren);
     }
+    if (tokEqToken(tokens[trimmed.start], "@") and trimmed.start + 2 < trimmed.end and tokens[trimmed.start + 1].kind == .ident and tokEqToken(tokens[trimmed.start + 2], "(")) {
+        const close_paren = findMatchingInRange(tokens, trimmed.start + 2, "(", ")", trimmed.end) catch return .unknown;
+        if (close_paren + 1 != trimmed.end) return .unknown;
+        return evalCall(allocator, tokens, funcs, bindings, trimmed.start + 1, trimmed.start + 3, close_paren);
+    }
 
     return .unknown;
 }
@@ -317,6 +399,12 @@ fn evalExpr(
 const Range = struct {
     start: usize,
     end: usize,
+};
+
+const SimpleCall = struct {
+    name: []const u8,
+    args_start: usize,
+    args_end: usize,
 };
 
 fn trimParens(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) Range {
@@ -331,14 +419,28 @@ fn trimParens(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) Ran
     return .{ .start = start, .end = end };
 }
 
-fn evalAtom(tok: lexer.Token, bindings: []const Binding) Value {
+fn parseSimpleCall(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?SimpleCall {
+    const trimmed = trimParens(tokens, start_idx, end_idx);
+    if (trimmed.start + 2 > trimmed.end) return null;
+    if (tokens[trimmed.start].kind != .ident) return null;
+    if (!tokEqToken(tokens[trimmed.start + 1], "(")) return null;
+    const close_paren = findMatchingInRange(tokens, trimmed.start + 1, "(", ")", trimmed.end) catch return null;
+    if (close_paren + 1 != trimmed.end) return null;
+    return .{
+        .name = tokens[trimmed.start].lexeme,
+        .args_start = trimmed.start + 2,
+        .args_end = close_paren,
+    };
+}
+
+fn evalAtom(allocator: std.mem.Allocator, tok: lexer.Token, bindings: []const Binding) anyerror!Value {
     if (tok.kind == .number) return .{ .int = parseInt(tok.lexeme) orelse return .unknown };
-    if (tok.kind == .string) return .{ .text = stringBody(tok.lexeme) };
+    if (tok.kind == .string) return .{ .text = try decodeStringLiteral(allocator, tok.lexeme) };
     if (tokEqToken(tok, "true")) return .{ .bool = true };
     if (tokEqToken(tok, "false")) return .{ .bool = false };
     if (tokEqToken(tok, "nil")) return .nil;
     if (tok.kind == .ident) {
-        if (lookupBinding(bindings, tok.lexeme)) |value| return value;
+        if (lookupBinding(bindings, tok.lexeme)) |value| return cloneValue(allocator, value);
     }
     return .unknown;
 }
@@ -361,7 +463,10 @@ fn evalCall(
     }
 
     var args = std.ArrayList(Value).empty;
-    defer args.deinit(allocator);
+    defer {
+        freeValues(allocator, args.items);
+        args.deinit(allocator);
+    }
     try evalArgs(allocator, tokens, funcs, bindings, args_start, args_end, &args);
 
     if (std.mem.eql(u8, name, "eq")) {
@@ -372,8 +477,8 @@ fn evalCall(
         if (args.items.len != 2 or args.items[0] == .unknown or args.items[1] == .unknown) return .unknown;
         return .{ .bool = !valueEq(args.items[0], args.items[1]) };
     }
-    if (std.mem.eql(u8, name, "and")) return evalAnd(args.items);
-    if (std.mem.eql(u8, name, "or")) return evalOr(args.items);
+    if (std.mem.eql(u8, name, "and") and allBoolValues(args.items)) return evalAnd(args.items);
+    if (std.mem.eql(u8, name, "or") and allBoolValues(args.items)) return evalOr(args.items);
     if (std.mem.eql(u8, name, "not")) {
         if (args.items.len != 1 or args.items[0] != .bool) return .unknown;
         return .{ .bool = !args.items[0].bool };
@@ -381,7 +486,10 @@ fn evalCall(
     if (findFunc(funcs, name, args.items.len) != null) {
         return evalUserFunc(allocator, tokens, funcs, name, args.items);
     }
+    if (std.mem.eql(u8, name, "abs")) return evalAbsCore(args.items);
     if (isNumericCoreName(name)) return evalNumericCore(name, args.items);
+    if (isBitwiseCoreName(name)) return evalBitwiseCore(name, args.items);
+    if (isCountBitsCoreName(name)) return evalCountBitsCore(name, args.items);
     return .unknown;
 }
 
@@ -397,7 +505,11 @@ fn evalArgs(
     var i = start_idx;
     while (i < end_idx) {
         const arg_end = findArgEnd(tokens, i, end_idx);
-        try out.append(allocator, try evalExpr(allocator, tokens, funcs, bindings, i, arg_end));
+        {
+            const value = try evalExpr(allocator, tokens, funcs, bindings, i, arg_end);
+            errdefer freeValue(allocator, value);
+            try out.append(allocator, value);
+        }
         i = arg_end;
         if (i < end_idx and tokEqToken(tokens[i], ",")) i += 1;
     }
@@ -422,7 +534,9 @@ fn evalUserFunc(
     while (i < func.params_end and arg_idx < args.len) {
         const seg_end = findArgEnd(tokens, i, func.params_end);
         if (tokens[i].kind == .ident and isBindingName(tokens[i].lexeme)) {
-            try setBinding(allocator, &bindings, tokens[i].lexeme, try cloneValue(allocator, args[arg_idx]));
+            const value = try cloneValue(allocator, args[arg_idx]);
+            errdefer freeValue(allocator, value);
+            try setBinding(allocator, &bindings, tokens[i].lexeme, value);
         }
         arg_idx += 1;
         i = seg_end;
@@ -457,6 +571,84 @@ fn evalUserFunc(
     return .unknown;
 }
 
+fn evalUserFuncMulti(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    funcs: []const FuncDecl,
+    name: []const u8,
+    args_start: usize,
+    args_end: usize,
+    outer_bindings: []const Binding,
+    expected_count: usize,
+) ![]Value {
+    var args = std.ArrayList(Value).empty;
+    defer {
+        freeValues(allocator, args.items);
+        args.deinit(allocator);
+    }
+    try evalArgs(allocator, tokens, funcs, outer_bindings, args_start, args_end, &args);
+
+    const func = findFunc(funcs, name, args.items.len) orelse return error.NoMatchingCall;
+    var bindings = std.ArrayList(Binding).empty;
+    defer {
+        freeBindings(allocator, bindings.items);
+        bindings.deinit(allocator);
+    }
+
+    var arg_idx: usize = 0;
+    var i = func.params_start;
+    while (i < func.params_end and arg_idx < args.items.len) {
+        const seg_end = findArgEnd(tokens, i, func.params_end);
+        if (tokens[i].kind == .ident and isBindingName(tokens[i].lexeme)) {
+            const value = try cloneValue(allocator, args.items[arg_idx]);
+            errdefer freeValue(allocator, value);
+            try setBinding(allocator, &bindings, tokens[i].lexeme, value);
+        }
+        arg_idx += 1;
+        i = seg_end;
+        if (i < func.params_end and tokEqToken(tokens[i], ",")) i += 1;
+    }
+
+    const range = if (func.arrow) Range{ .start = func.body_start, .end = func.body_end } else blk: {
+        if (hasUnsupportedControlFlow(tokens, func.body_start, func.body_end)) return error.NoMatchingCall;
+        if (func.body_start >= func.body_end or !tokEqToken(tokens[func.body_start], "return")) return error.NoMatchingCall;
+        const line_end = findLineEnd(tokens, func.body_start, func.body_end);
+        if (line_end != func.body_end) return error.NoMatchingCall;
+        break :blk Range{ .start = func.body_start + 1, .end = line_end };
+    };
+
+    if (parseSimpleCall(tokens, range.start, range.end)) |nested| {
+        if (findFunc(funcs, nested.name, countArgs(tokens, nested.args_start, nested.args_end)) == null) {
+            return allocUnknownValues(allocator, expected_count);
+        }
+        return evalUserFuncMulti(allocator, tokens, funcs, nested.name, nested.args_start, nested.args_end, bindings.items, expected_count);
+    }
+
+    var out = std.ArrayList(Value).empty;
+    errdefer {
+        freeValues(allocator, out.items);
+        out.deinit(allocator);
+    }
+    var expr_start = range.start;
+    while (expr_start < range.end) {
+        const expr_end = findArgEnd(tokens, expr_start, range.end);
+        const value = try evalExpr(allocator, tokens, funcs, bindings.items, expr_start, expr_end);
+        errdefer freeValue(allocator, value);
+        try out.append(allocator, value);
+        expr_start = expr_end;
+        if (expr_start < range.end and tokEqToken(tokens[expr_start], ",")) expr_start += 1;
+    }
+    if (out.items.len <= 1) return error.NoMatchingCall;
+    return out.toOwnedSlice(allocator);
+}
+
+fn allocUnknownValues(allocator: std.mem.Allocator, count: usize) ![]Value {
+    if (count <= 1) return error.NoMatchingCall;
+    const out = try allocator.alloc(Value, count);
+    @memset(out, .unknown);
+    return out;
+}
+
 const FuncIfEval = struct {
     next_idx: usize,
     returned: bool,
@@ -476,9 +668,12 @@ fn evalFuncIfReturn(
     const return_idx = findTopLevelToken(tokens, if_idx + 1, line_end, "return") orelse
         return .{ .next_idx = line_end, .returned = false, .unknown = true, .value = .unknown };
     const cond = try evalExpr(allocator, tokens, funcs, bindings.items, if_idx + 1, return_idx);
-    if (cond != .bool) {
+    defer freeValue(allocator, cond);
+    if (cond == .unknown) {
+        if (isSingleUnboundIdent(tokens, bindings.items, if_idx + 1, return_idx)) return error.NoMatchingCall;
         return .{ .next_idx = line_end, .returned = false, .unknown = true, .value = .unknown };
     }
+    if (cond != .bool) return error.NonBoolIfCondition;
     if (!cond.bool) {
         return .{ .next_idx = line_end, .returned = false, .unknown = false, .value = .unknown };
     }
@@ -504,6 +699,28 @@ fn evalAnd(args: []const Value) Value {
     return .{ .bool = true };
 }
 
+fn allBoolValues(args: []const Value) bool {
+    if (args.len == 0) return false;
+    for (args) |arg| {
+        if (arg != .bool) return false;
+    }
+    return true;
+}
+
+fn isSingleUnboundIdent(
+    tokens: []const lexer.Token,
+    bindings: []const Binding,
+    start_idx: usize,
+    end_idx: usize,
+) bool {
+    const trimmed = trimParens(tokens, start_idx, end_idx);
+    if (trimmed.end != trimmed.start + 1) return false;
+    const tok = tokens[trimmed.start];
+    if (tok.kind != .ident) return false;
+    if (tokEqToken(tok, "true") or tokEqToken(tok, "false") or tokEqToken(tok, "nil")) return false;
+    return lookupBinding(bindings, tok.lexeme) == null;
+}
+
 fn evalOr(args: []const Value) Value {
     if (args.len == 0) return .{ .bool = false };
     var saw_unknown = false;
@@ -525,7 +742,11 @@ fn evalNumericCore(name: []const u8, args: []const Value) Value {
     var out = args[0].int;
     for (args[1..]) |arg| {
         if (arg != .int) return .unknown;
-        if (std.mem.eql(u8, name, "add")) out += arg.int else if (std.mem.eql(u8, name, "sub")) out -= arg.int else if (std.mem.eql(u8, name, "mul")) out *= arg.int else if (std.mem.eql(u8, name, "div")) {
+        if (std.mem.eql(u8, name, "add")) out += arg.int else if (std.mem.eql(u8, name, "sub")) out -= arg.int else if (std.mem.eql(u8, name, "mul")) out *= arg.int else if (std.mem.eql(u8, name, "min")) {
+            if (arg.int < out) out = arg.int;
+        } else if (std.mem.eql(u8, name, "max")) {
+            if (arg.int > out) out = arg.int;
+        } else if (std.mem.eql(u8, name, "div")) {
             if (arg.int == 0) return .unknown;
             out = @divTrunc(out, arg.int);
         } else if (std.mem.eql(u8, name, "rem")) {
@@ -534,6 +755,53 @@ fn evalNumericCore(name: []const u8, args: []const Value) Value {
         } else return .unknown;
     }
     return .{ .int = out };
+}
+
+fn evalAbsCore(args: []const Value) Value {
+    if (args.len != 1 or args[0] != .int) return .unknown;
+    if (args[0].int == std.math.minInt(i128)) return .unknown;
+    if (args[0].int < 0) return .{ .int = -args[0].int };
+    return args[0];
+}
+
+fn evalBitwiseCore(name: []const u8, args: []const Value) Value {
+    if (args.len != 2 or args[0] != .int or args[1] != .int) return .unknown;
+    if (args[0].int < 0 or args[1].int < 0) return .unknown;
+    const a = std.math.cast(u64, args[0].int) orelse return .unknown;
+    const rhs = std.math.cast(u64, args[1].int) orelse return .unknown;
+    const b = std.math.cast(u6, args[1].int & 63) orelse return .unknown;
+    const out: u64 = if (std.mem.eql(u8, name, "and"))
+        a & rhs
+    else if (std.mem.eql(u8, name, "or"))
+        a | rhs
+    else if (std.mem.eql(u8, name, "xor"))
+        a ^ rhs
+    else if (std.mem.eql(u8, name, "shl"))
+        a << b
+    else if (std.mem.eql(u8, name, "shr"))
+        a >> b
+    else if (std.mem.eql(u8, name, "rotl"))
+        std.math.rotl(u64, a, b)
+    else if (std.mem.eql(u8, name, "rotr"))
+        std.math.rotr(u64, a, b)
+    else
+        return .unknown;
+    return .{ .int = @as(i128, @intCast(out)) };
+}
+
+fn evalCountBitsCore(name: []const u8, args: []const Value) Value {
+    if (args.len != 1 or args[0] != .int or args[0].int < 0) return .unknown;
+    const value = std.math.cast(u64, args[0].int) orelse return .unknown;
+    if (value > std.math.maxInt(u32)) return .unknown;
+    const out = evalCountBitsU32(name, @as(u32, @intCast(value))) orelse return .unknown;
+    return .{ .int = out };
+}
+
+fn evalCountBitsU32(name: []const u8, value: u32) ?u7 {
+    if (std.mem.eql(u8, name, "clz")) return @as(u7, @intCast(@clz(value)));
+    if (std.mem.eql(u8, name, "ctz")) return @as(u7, @intCast(@ctz(value)));
+    if (std.mem.eql(u8, name, "popcnt")) return @as(u7, @intCast(@popCount(value)));
+    return null;
 }
 
 fn valueEq(a: Value, b: Value) bool {
@@ -580,8 +848,13 @@ fn freeBindings(allocator: std.mem.Allocator, bindings: []Binding) void {
     for (bindings) |binding| freeValue(allocator, binding.value);
 }
 
+fn freeValues(allocator: std.mem.Allocator, values: []const Value) void {
+    for (values) |value| freeValue(allocator, value);
+}
+
 fn freeValue(allocator: std.mem.Allocator, value: Value) void {
     switch (value) {
+        .text => |text| allocator.free(text),
         .object => |fields| {
             for (fields) |field| freeValue(allocator, field.value);
             allocator.free(fields);
@@ -592,6 +865,7 @@ fn freeValue(allocator: std.mem.Allocator, value: Value) void {
 
 fn cloneValue(allocator: std.mem.Allocator, value: Value) std.mem.Allocator.Error!Value {
     return switch (value) {
+        .text => |text| .{ .text = try allocator.dupe(u8, text) },
         .object => |fields| .{ .object = try cloneFields(allocator, fields) },
         else => value,
     };
@@ -641,8 +915,11 @@ fn evalStructLiteral(
         const field_end = findArgEnd(tokens, i, close_idx);
         const eq_idx = findTopLevelToken(tokens, i, field_end, "=") orelse return .unknown;
         if (tokens[i].kind != .ident) return .unknown;
-        const value = try evalExpr(allocator, tokens, funcs, bindings, eq_idx + 1, field_end);
-        try fields.append(allocator, .{ .name = tokens[i].lexeme, .value = value });
+        {
+            const value = try evalExpr(allocator, tokens, funcs, bindings, eq_idx + 1, field_end);
+            errdefer freeValue(allocator, value);
+            try fields.append(allocator, .{ .name = tokens[i].lexeme, .value = value });
+        }
         i = field_end;
         if (i < close_idx and tokEqToken(tokens[i], ",")) i += 1;
     }
@@ -660,6 +937,7 @@ fn evalGetCall(
 ) anyerror!Value {
     const first_end = findArgEnd(tokens, args_start, args_end);
     const target = try evalExpr(allocator, tokens, funcs, bindings, args_start, first_end);
+    defer freeValue(allocator, target);
     if (target != .object) return .unknown;
 
     var current = target;
@@ -685,6 +963,7 @@ fn evalSetCall(
 ) anyerror!Value {
     const first_end = findArgEnd(tokens, args_start, args_end);
     const target = try evalExpr(allocator, tokens, funcs, bindings, args_start, first_end);
+    defer freeValue(allocator, target);
     if (target != .object) return .unknown;
 
     const value_start = findFinalArgStart(tokens, first_end, args_end) orelse return .unknown;
@@ -697,6 +976,7 @@ fn evalSetCall(
         try evalSetLambdaValue(allocator, tokens, funcs, old_value, value_start, args_end)
     else
         try evalExpr(allocator, tokens, funcs, bindings, value_start, args_end);
+    errdefer freeValue(allocator, new_value);
 
     return setObjectField(allocator, target.object, field_name, new_value);
 }
@@ -744,7 +1024,9 @@ fn evalSetLambdaValue(
         freeBindings(allocator, lambda_bindings.items);
         lambda_bindings.deinit(allocator);
     }
-    try setBinding(allocator, &lambda_bindings, tokens[start_idx + 1].lexeme, try cloneValue(allocator, old_value));
+    const value = try cloneValue(allocator, old_value);
+    errdefer freeValue(allocator, value);
+    try setBinding(allocator, &lambda_bindings, tokens[start_idx + 1].lexeme, value);
     return evalExpr(allocator, tokens, funcs, lambda_bindings.items, body_start, end_idx);
 }
 
@@ -827,6 +1109,19 @@ fn countFixedParams(tokens: []const lexer.Token, start_idx: usize, end_idx: usiz
     while (i < end_idx) {
         const seg_end = findArgEnd(tokens, i, end_idx);
         if (seg_end > i and isVariadicParam(tokens, i, seg_end)) return count;
+        if (seg_end > i) count += 1;
+        i = seg_end;
+        if (i < end_idx and tokEqToken(tokens[i], ",")) i += 1;
+    }
+    return count;
+}
+
+fn countArgs(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) usize {
+    if (start_idx >= end_idx) return 0;
+    var count: usize = 0;
+    var i = start_idx;
+    while (i < end_idx) {
+        const seg_end = findArgEnd(tokens, i, end_idx);
         if (seg_end > i) count += 1;
         i = seg_end;
         if (i < end_idx and tokEqToken(tokens[i], ",")) i += 1;
@@ -993,9 +1288,87 @@ fn parseInt(raw: []const u8) ?i128 {
     return std.fmt.parseInt(i128, raw, 10) catch null;
 }
 
-fn stringBody(raw: []const u8) []const u8 {
-    if (raw.len >= 2 and raw[0] == '"' and raw[raw.len - 1] == '"') return raw[1 .. raw.len - 1];
-    return raw;
+fn decodeStringLiteral(allocator: std.mem.Allocator, raw: []const u8) ![]const u8 {
+    if (raw.len >= 2 and raw[0] == '"' and raw[raw.len - 1] == '"') {
+        return decodeQuotedString(allocator, raw[1 .. raw.len - 1]);
+    }
+    if (raw.len >= 2 and raw[0] == '\\' and raw[1] == '\\') {
+        return decodeLineString(allocator, raw);
+    }
+    return allocator.dupe(u8, raw);
+}
+
+fn decodeQuotedString(allocator: std.mem.Allocator, body: []const u8) ![]const u8 {
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+
+    var i: usize = 0;
+    while (i < body.len) {
+        if (body[i] != '\\') {
+            try out.append(allocator, body[i]);
+            i += 1;
+            continue;
+        }
+
+        i += 1;
+        if (i >= body.len) return error.InvalidStringEscape;
+        const esc = body[i];
+        switch (esc) {
+            '"' => try out.append(allocator, '"'),
+            '\\' => try out.append(allocator, '\\'),
+            'n' => try out.append(allocator, '\n'),
+            'r' => try out.append(allocator, '\r'),
+            't' => try out.append(allocator, '\t'),
+            'x' => {
+                if (i + 2 >= body.len) return error.InvalidStringEscape;
+                const hi = hexValue(body[i + 1]) orelse return error.InvalidStringEscape;
+                const lo = hexValue(body[i + 2]) orelse return error.InvalidStringEscape;
+                try out.append(allocator, (hi << 4) | lo);
+                i += 2;
+            },
+            else => return error.InvalidStringEscape,
+        }
+        i += 1;
+    }
+
+    return out.toOwnedSlice(allocator);
+}
+
+fn decodeLineString(allocator: std.mem.Allocator, raw: []const u8) ![]const u8 {
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+
+    var line_start: usize = 0;
+    var first = true;
+    while (line_start <= raw.len) {
+        var line_end = line_start;
+        while (line_end < raw.len and raw[line_end] != '\n' and raw[line_end] != '\r') : (line_end += 1) {}
+
+        var text_start = line_start;
+        while (text_start < line_end and (raw[text_start] == ' ' or raw[text_start] == '\t')) : (text_start += 1) {}
+        if (text_start + 1 >= line_end or raw[text_start] != '\\' or raw[text_start + 1] != '\\') {
+            return error.InvalidStringEscape;
+        }
+
+        if (!first) try out.append(allocator, '\n');
+        first = false;
+        try out.appendSlice(allocator, raw[text_start + 2 .. line_end]);
+
+        if (line_end >= raw.len) break;
+        line_start = line_end + 1;
+        if (raw[line_end] == '\r' and line_start < raw.len and raw[line_start] == '\n') {
+            line_start += 1;
+        }
+    }
+
+    return out.toOwnedSlice(allocator);
+}
+
+fn hexValue(ch: u8) ?u8 {
+    if (ch >= '0' and ch <= '9') return ch - '0';
+    if (ch >= 'a' and ch <= 'f') return ch - 'a' + 10;
+    if (ch >= 'A' and ch <= 'F') return ch - 'A' + 10;
+    return null;
 }
 
 fn isNumericCoreName(name: []const u8) bool {
@@ -1003,7 +1376,25 @@ fn isNumericCoreName(name: []const u8) bool {
         std.mem.eql(u8, name, "sub") or
         std.mem.eql(u8, name, "mul") or
         std.mem.eql(u8, name, "div") or
-        std.mem.eql(u8, name, "rem");
+        std.mem.eql(u8, name, "rem") or
+        std.mem.eql(u8, name, "min") or
+        std.mem.eql(u8, name, "max");
+}
+
+fn isBitwiseCoreName(name: []const u8) bool {
+    return std.mem.eql(u8, name, "and") or
+        std.mem.eql(u8, name, "or") or
+        std.mem.eql(u8, name, "xor") or
+        std.mem.eql(u8, name, "shl") or
+        std.mem.eql(u8, name, "shr") or
+        std.mem.eql(u8, name, "rotl") or
+        std.mem.eql(u8, name, "rotr");
+}
+
+fn isCountBitsCoreName(name: []const u8) bool {
+    return std.mem.eql(u8, name, "clz") or
+        std.mem.eql(u8, name, "ctz") or
+        std.mem.eql(u8, name, "popcnt");
 }
 
 fn isFuncDeclStart(tokens: []const lexer.Token, i: usize) bool {

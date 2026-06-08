@@ -1,0 +1,8 @@
+;; arc-runtime free span merge v1
+(func $__do_free_span_merge_neighbors (param $block i32) (result i32)
+(local $candidate i32)
+(local $candidate_span i32)
+(local $block_end i32)
+call $__do_free_span_unlink
+call $__do_free_span_merge_neighbors
+call $__do_free_span_push

@@ -1,0 +1,14 @@
+(func $make (param $x i32) (result i32)
+;; arc-return-move x
+local.get $x
+return
+local.get $data
+call $__do_arc_inc
+call $make
+local.set $out
+;; arc-release-local out
+local.get $out
+call $__do_arc_dec
+;; arc-release-local data
+local.get $data
+call $__do_arc_dec

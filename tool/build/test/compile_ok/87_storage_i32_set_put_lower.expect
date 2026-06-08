@@ -1,0 +1,5 @@
+;; storage-set-scalar
+;; storage-put-scalar
+i32.const 4
+i32.mul
+i32.store

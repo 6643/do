@@ -1,9 +1,9 @@
-text(ok bool) -> [u8] {
+line_value(ok bool) -> text {
     if ok return
         \\hello
     return "fallback"
 }
 
-test "guard return line string" {
+test "guard return line text" {
     return
 }

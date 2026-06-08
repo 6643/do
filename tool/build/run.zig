@@ -44,12 +44,13 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
     const dep_root = try resolveDepRoot(allocator, init.environ_map);
     defer dep_root.deinit(allocator);
 
-    imports.check(io, allocator, parsed_cli.input_path, tokens, dep_root.path) catch |err| {
+    var module_graph = imports.checkAndLoad(io, allocator, parsed_cli.input_path, tokens, dep_root.path) catch |err| {
         try diag.printCompileError(io, parsed_cli.input_path, source, tokens, err, importsErrorLoc());
         std.process.exit(1);
     };
+    defer module_graph.deinit();
 
-    try compileProgram(io, allocator, parsed_cli, source, tokens, program);
+    try compileProgram(io, allocator, parsed_cli, source, tokens, program, &module_graph);
 }
 
 pub fn runTest(init: std.process.Init, args: []const []const u8) !void {
@@ -87,12 +88,17 @@ pub fn runTest(init: std.process.Init, args: []const []const u8) !void {
     const dep_root = try resolveDepRoot(allocator, init.environ_map);
     defer dep_root.deinit(allocator);
 
-    imports.check(io, allocator, parsed_cli.input_path, tokens, dep_root.path) catch |err| {
+    var module_graph = imports.checkAndLoad(io, allocator, parsed_cli.input_path, tokens, dep_root.path) catch |err| {
         try diag.printCompileError(io, parsed_cli.input_path, source, tokens, err, importsErrorLoc());
         std.process.exit(1);
     };
+    defer module_graph.deinit();
 
-    try runTests(io, allocator, parsed_cli, source, tokens);
+    if (parsed_cli.compiled_test) {
+        try compileTests(io, allocator, parsed_cli, source, tokens, program, &module_graph);
+    } else {
+        try runTests(io, allocator, parsed_cli, source, tokens);
+    }
 }
 
 fn compileProgram(
@@ -102,13 +108,16 @@ fn compileProgram(
     source: []const u8,
     tokens: []const lexer.Token,
     program: parser.Program,
+    module_graph: *const imports.ModuleGraph,
 ) !void {
     entry.validateStart(program) catch |err| {
         try diag.printCompileError(io, parsed_cli.input_path, source, tokens, err, null);
         std.process.exit(1);
     };
 
-    const wat = codegen.emitWat(allocator, program, tokens) catch |err| {
+    const wat = codegen.emitWatWithOptions(allocator, program, tokens, module_graph, .{
+        .component_core = parsed_cli.component_core,
+    }) catch |err| {
         try diag.printCompileError(io, parsed_cli.input_path, source, tokens, err, null);
         std.process.exit(1);
     };
@@ -133,6 +142,39 @@ fn runTests(
         try diag.printCompileError(io, parsed_cli.input_path, source, tokens, err, null);
         std.process.exit(1);
     };
+}
+
+fn compileTests(
+    io: std.Io,
+    allocator: std.mem.Allocator,
+    parsed_cli: cli.Args,
+    source: []const u8,
+    tokens: []const lexer.Token,
+    program: parser.Program,
+    module_graph: *const imports.ModuleGraph,
+) !void {
+    const test_decls = test_runner.collectTopLevelTests(allocator, tokens) catch |err| {
+        try diag.printCompileError(io, parsed_cli.input_path, source, tokens, err, null);
+        std.process.exit(1);
+    };
+    defer allocator.free(test_decls);
+    if (test_decls.len == 0) {
+        try diag.printCompileError(io, parsed_cli.input_path, source, tokens, error.NoTestDecl, null);
+        std.process.exit(1);
+    }
+
+    const wat = codegen.emitTestWat(allocator, program, tokens, module_graph) catch |err| {
+        try diag.printCompileError(io, parsed_cli.input_path, source, tokens, err, null);
+        std.process.exit(1);
+    };
+    defer allocator.free(wat);
+
+    std.Io.Dir.cwd().writeFile(io, .{ .sub_path = parsed_cli.output_path, .data = wat }) catch |err| {
+        try diag.printIoError(io, parsed_cli.output_path, err);
+        std.process.exit(1);
+    };
+
+    try printCompiledTestOk(io, parsed_cli, test_decls.len);
 }
 
 const DepRoot = struct {
@@ -162,6 +204,16 @@ fn printCompileOk(io: std.Io, parsed_cli: cli.Args, program: parser.Program) !vo
     try out.interface.print(
         "ok: {s} -> {s} (tokens={d}, items={d})\n",
         .{ parsed_cli.input_path, parsed_cli.output_path, program.token_count, program.top_level_count },
+    );
+    try out.interface.flush();
+}
+
+fn printCompiledTestOk(io: std.Io, parsed_cli: cli.Args, test_count: usize) !void {
+    var out_buffer: [1024]u8 = undefined;
+    var out = std.Io.File.stdout().writer(io, &out_buffer);
+    try out.interface.print(
+        "ok: {s} -> {s} (compiled_tests={d})\n",
+        .{ parsed_cli.input_path, parsed_cli.output_path, test_count },
     );
     try out.interface.flush();
 }

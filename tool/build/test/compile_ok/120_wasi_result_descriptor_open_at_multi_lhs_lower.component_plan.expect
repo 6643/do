@@ -1,0 +1,15 @@
+"target": "filesystem/types/descriptor.open-at"
+"member": "descriptor.open-at"
+"kind": "result-descriptor-error-code"
+"params": [
+            "i32",
+            "i32",
+            "i32",
+            "i32",
+            "i32",
+            "i32",
+            "i32"
+"ok": "descriptor"
+"err": "error-code"
+"payload_offset": 4
+"size": 8

@@ -1,0 +1,5 @@
+(memory (export "memory") 1)
+(global $__do_heap_base i32 (i32.const 2048))
+(global $__do_heap_cursor (mut i32) (i32.const 2048))
+(global $__do_wasi_result_area_base i32 (i32.const 1472))
+(global $__do_release_worklist_base i32 (i32.const 1536))

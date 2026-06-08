@@ -1,5 +1,5 @@
 pick(x i32) -> i32 {
-    return add(x, 1)
+    return @add(x, 1)
 }
 
 #T

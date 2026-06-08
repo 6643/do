@@ -1,0 +1,10 @@
+;; arc-runtime small slot release v1
+(func $__do_small_block_for_object (param $object i32) (result i32)
+(func $__do_small_slot_for_object (param $object i32) (result i32)
+(func $__do_arc_release_small (param $object i32)
+call $__do_small_block_for_object
+call $__do_small_slot_for_object
+i32.xor
+i32.and
+i32.store8
+call $__do_arc_release_small

@@ -1,4 +1,4 @@
-test "invalid string escape" {
-    text [u8] = "bad\q"
+test "invalid text escape" {
+    bytes [u8] = "bad\q"
     return
 }

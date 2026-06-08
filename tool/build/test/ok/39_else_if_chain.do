@@ -10,5 +10,5 @@ f(a bool, b bool) -> i32 {
 
 test "else if chain" {
     expected i32 = 2
-    if eq(f(false, true), expected) return
+    if @eq(f(false, true), expected) return
 }

@@ -1,0 +1,9 @@
+"target": "io/streams/output-stream.write"
+"target": "io/streams/output-stream.flush"
+"member": "output-stream.write"
+"member": "output-stream.flush"
+"kind": "result-unit-stream-error"
+"ok": "_"
+"err": "stream-error"
+"payload_offset": 4
+"size": 8

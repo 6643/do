@@ -1,0 +1,6 @@
+(import "cm32p2|wasi:io/streams" "[method]output-stream.write" (func $__wasi_import_io_streams_output_stream_write (param i32 i32 i32 i32)))
+(import "cm32p2|wasi:io/streams" "[method]output-stream.flush" (func $__wasi_import_io_streams_output_stream_flush (param i32 i32)))
+(func $__wasi_shim_entry_host_output_write (param $p0 i32) (param $p1 i32) (param $p2 i32) (param $__result_area i32)
+call $__wasi_import_io_streams_output_stream_write
+(func $__wasi_shim_entry_host_output_flush (param $p0 i32) (param $__result_area i32)
+call $__wasi_import_io_streams_output_stream_flush

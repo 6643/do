@@ -5,18 +5,18 @@
 ## 🌟 核心理念
 
 - **纯值语义**: 变量传递即拷贝，消除指针复杂度。
-- **Perceus 优化**: 实现 FBIP 优化。当对象引用计数 (RC) 为 1 时，自动转化为原地修改。
-- **隐式 RC 生命周期管理**: 编译器在 IR 阶段自动插入 `inc/dec`，并做冗余消除与末次使用优化。
-- **静态泛型特化**: 类型采用 `Name<T>`，函数采用 `#` 约束前置行，并支持类型集约束与聚合别名（如 `SignedInt = i8 | i16 | i32 | i64`）。结构体泛型的无约束类型参数直接写 `T`。编译时通过 Monomorphization 生成具体代码与唯一 `typeid`。
+- **Perceus 优化**: 实现 FBIP 优化。当对象 `rc` 字段为 1 时，自动转化为原地修改。
+- **隐式 ARC 生命周期管理**: 编译器在 IR 阶段自动插入 `inc/dec`，并做冗余消除与末次使用优化。
+- **静态泛型特化**: 类型采用 `Name<T>`，函数采用 `#` 约束前置行，并支持受约束泛型接口。结构体泛型的无约束类型参数直接写 `#T` 紧贴结构声明。编译时通过 Monomorphization 生成具体代码与唯一 `type_id`。
 - **函数式与重载**: 函数是一等值，支持约束泛型函数与同名重载；重载只按参数签名决议。
-- **同类型不定参数**: 支持 `rest ...T` 形态的同类型可变参数调用，聚合函数可写成 `add(a, b, c)`，是否可扁平化完全由函数签名决定。
-- **显式数据流**: 成员访问统一使用 `get`/`set` 函数和显式路径，控制流保持显式。这确保了编译器能确定地分析引用计数和原地修改机会。
+- **同类型不定参数**: 支持 `rest ...T` 形态的同类型可变参数调用，core 聚合函数可写成 `@add(a, b, c)`，是否可扁平化完全由函数签名决定。
+- **显式数据流**: 成员访问统一使用 `@get/@set(...)` 路径 primitive 和显式路径，控制流保持显式。这确保了编译器能确定地分析 ARC 生命周期和原地修改机会。
 - **大小写语义**: 基础类型小写，类型名与绑定名遵循 `doc/spec.md` 的命名规则。
-- **WASM 原生**: 基于 WASM 64KB page 和 4KB 子页架构优化。小对象使用 Slab 分配，大对象使用连续页面分配。
+- **WASM 原生**: Wasm memory grow 以 64KB page 为粒度，v1 allocator 在 page 内切成 64 个 1KB block；小对象使用 bitmap small block，大对象使用连续 block span。
 - **大小数据分层策略**: 基础/小对象直接拷贝，大对象采用共享 + COW（初始阈值 64B）。
 - **运行时资源管理**: 采用显式资源释放和 ID 关联，目标是不引入循环 GC。
 - **语言规范基线**: 语法、内建判断族、核心库特型与静态约束统一见 `doc/spec.md`。
-- **程序入口固定**: 可执行程序入口函数固定为 `_start() { ... }`，`main` 不是入口函数。
+- **程序入口固定**: 源码入口声明固定为 `start() { ... }`，`main` 不是入口函数；构建输出会导出 wasm `_start`。
 - **目录结构**: `tool/build` 编译器源码, `src` builtin/core 总表与标准库, `bin/do` 唯一二进制。
 
 ## 📁 目录结构
@@ -52,23 +52,22 @@ zig build -Doptimize=ReleaseSmall
 ```
 ## 🛠 开发计划 (Roadmap)
 
-### 阶段一：运行时基石 (Runtime Foundation)
-- [ ] **内存分配器**: 实现 `doc/rc.md` 描述的 64KB/4KB 分页架构与 Slab 分配器。
-- [ ] **对象模型**: 实现统一对象头 (Header)，支持 TypeID 与 RC 管理。
-- [ ] **库层边界**: `[u8]`, `List`, `Map` 的具体实现归入 core/标准库/运行时边界，语言规则以 `doc/spec.md` 为准。
-- [ ] **FFI**: 实现基于 WASI 的宿主互操作接口。
+状态口径: `已完成` 表示当前编译器和回归测试已覆盖对应 v1 子集; `进行中` 表示已有实现但未收敛到完整运行时或完整优化; `延后` 表示现阶段不作为主目标。WASI / Component Model 放到最后单独处理。
 
-### 阶段二：编译器前端 (Compiler Frontend)
-- [ ] **语法解析**: 实现 Parser，支持当前 `doc/spec.md` 中的 Struct, Lambda, guard `if`, `loop`, 泛型约束和聚合字面量语法。
-- [ ] **语义分析**: 实现类型推导与泛型单态化 (Monomorphization)。
-- [ ] **Perceus 分析**: 实现静态引用计数分析，自动插入 `inc`/`dec` 并识别原地复用点 (`reuse`)。
+### 已完成
+- [x] **规范基线**: `doc/spec.md` 已作为单文件规范，包含 parser PEG、语义约束、示例标签和 `defer` 规则。
+- [x] **编译器前端主线**: Parser / Sema 支持当前 build/test 子集，包括 Struct、Lambda、guard `if`、`loop`、泛型约束、聚合字面量、import / host import 和测试声明。
+- [x] **`defer` 阶段**: 支持 `defer abc()` 和 `defer { ... }`；离开词法区域时按 LIFO 执行，覆盖正常落出、`return`、`break` 和 `continue`；cleanup 在被离开区域的 ARC release 之前执行，调用结果必须是 `nil`。
+- [x] **WAT 代码生成子集**: 当前 build 子集能输出 WAT，覆盖标量、结构体 flatten、storage / text ARC handle、多返回、`@get/@set/@put` 和控制流。
+- [x] **测试入口**: `do build`、`do test` 和 `do test --compiled` 黑盒回归入口已落地；`RUN_WASM=1` smoke 用于执行 wasm run 用例。
 
-### 阶段三：编译器后端 (Compiler Backend)
-- [ ] **WASM 代码生成**: 将 IR 编译为 WAT/WASM 二进制。
-- [ ] **控制流优化**: 针对 `if/else` 生成高效的分支跳转代码。
-- [ ] **内联优化**: 针对小函数与属性访问 (`get`/`set`) 进行激进内联。
+### 进行中
+- [ ] **运行时内存模型**: 先按 `doc/memory.md` 收敛 v1 managed handle、对象头、`type_id` 与 ARC 管理。
+- [ ] **内存分配器**: 按 `doc/memory_layout_structs.md` 收敛 1KB block、bitmap small block、large span 和 free span 合并；后续再评估 header 压缩优化。
+- [ ] **ARC / Perceus 完整分析**: 已有 managed storage `inc/dec`、局部释放和 `defer` cleanup 顺序；还需完整静态插入、冗余消除、末次使用优化和 FBIP `reuse`。
+- [ ] **标准库边界**: `[u8]`、`List`、`Map`、IO、网络和文本 runtime 继续归入 core / std / runtime 边界，语言规则以 `doc/spec.md` 为准。
+- [ ] **后端优化**: 继续收敛 `if/else`、循环、`@get/@set` 和小函数内联优化；WAT 输出已可用，WASM 二进制输出仍待补。
 
-### 阶段四：工具链与生态 (Tooling & Ecosystem)
-- [ ] **CLI 工具**: `do build`, `do test`, `do run`。
-- [ ] **LSP 服务**: 提供代码补全、跳转与实时错误检查。
-- [ ] **标准库**: 完善 IO 和网络支持。
+### 最后处理
+- [ ] **WASI / Component Model FFI**: 当前只保留已登记 `@wasi` manifest、shim、component-core 输入与标准库 wrapper 子集；完整 binding source / alias、component lowering、result-area、resource / variant / future 支持放到最后单独审查。
+- [ ] **生态工具**: `do run`、LSP、fmt、get / push 等工具链能力仍待实现。

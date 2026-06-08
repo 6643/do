@@ -9,6 +9,6 @@ apply(f F64) -> i64 {
 }
 
 test "lambda omitted param ambiguous overload" {
-    v = apply((x) => add(x, 1))
+    v = apply((x) => @add(x, 1))
     return
 }

@@ -7,6 +7,6 @@ project(x T, f Q) -> U {
 
 test "generic callback inferred params" {
     i i32 = 1
-    out = project(i, (x) -> bool => gt(x, 0))
+    out = project(i, (x) -> bool => @gt(x, 0))
     return
 }

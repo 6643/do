@@ -1,9 +1,9 @@
 
-len_text(text [u8]) -> usize {
-    return len(text)
+len_text(bytes [u8]) -> usize {
+    return @len(bytes)
 }
 
-test "line string call arg" {
+test "line text call arg" {
     n = len_text(
         \\hello
     )

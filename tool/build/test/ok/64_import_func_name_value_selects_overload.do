@@ -1,4 +1,4 @@
-inc = @./fixture.import_overload_func.do/inc
+inc = @lib("./fixture.import_overload_func.do", inc)
 
 #F = (i32) -> i32
 apply(f F) -> i32 {

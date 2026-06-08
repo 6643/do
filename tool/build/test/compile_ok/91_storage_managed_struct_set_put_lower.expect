@@ -1,0 +1,6 @@
+;; storage-set-managed
+;; storage-put-managed
+;; storage-managed-clone-inc
+;; storage-managed-overwrite-dec
+;; storage-managed-write-inc
+;; storage-managed-get-inc

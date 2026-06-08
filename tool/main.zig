@@ -38,8 +38,9 @@ fn printUsage(io: std.Io) !void {
     try out.interface.print(
         \\do toolchain
         \\usage:
-        \\  do build <input.do> [-o out.wat]
+        \\  do build <input.do> [--component-core] [-o out.wat]
         \\  do test <input.do>
+        \\  do test <input.do> --compiled [-o out.wat]
         \\
     , .{});
     try out.interface.flush();
@@ -48,6 +49,6 @@ fn printUsage(io: std.Io) !void {
 fn printCommandError(io: std.Io, err: anyerror) !void {
     var err_buffer: [512]u8 = undefined;
     var out = std.Io.File.stderr().writer(io, &err_buffer);
-    try out.interface.print("error[{s}]: 命令语法: `do build ...` 或 `do test ...`\n", .{ @errorName(err) });
+    try out.interface.print("error[{s}]: 命令语法: `do build ...` 或 `do test ...`\n", .{@errorName(err)});
     try out.interface.flush();
 }

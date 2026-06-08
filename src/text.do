@@ -1,32 +1,50 @@
-Utf8Error = @utf8.do/Utf8Error
-BytesError = @bytes.do/BytesError
-utf8_count = @utf8.do/count
-utf8_is_valid = @utf8.do/is_valid
-utf8_validate = @utf8.do/validate
-bytes_contains = @bytes.do/contains
-bytes_concat = @bytes.do/concat
-bytes_copy = @bytes.do/copy
-bytes_drop = @bytes.do/drop
-bytes_drop_or = @bytes.do/drop_or
-bytes_ends_with = @bytes.do/ends_with
-bytes_first = @bytes.do/first
-bytes_first_or = @bytes.do/first_or
-bytes_index_of = @bytes.do/index_of
-bytes_last = @bytes.do/last
-bytes_last_or = @bytes.do/last_or
-bytes_last_index_of = @bytes.do/last_index_of
-bytes_replace = @bytes.do/replace
-bytes_repeat_byte = @bytes.do/repeat_byte
-bytes_slice_or = @bytes.do/slice_or
-bytes_starts_with = @bytes.do/starts_with
-bytes_take = @bytes.do/take
-bytes_take_or = @bytes.do/take_or
-bytes_trim_left_byte = @bytes.do/trim_left_byte
-bytes_trim_byte = @bytes.do/trim_byte
-bytes_trim_right_byte = @bytes.do/trim_right_byte
+Utf8Error = @lib("utf8.do", Utf8Error)
+BytesError = @lib("bytes.do", BytesError)
+utf8_count = @lib("utf8.do", count)
+utf8_is_valid = @lib("utf8.do", is_valid)
+utf8_validate = @lib("utf8.do", validate)
+bytes_contains = @lib("bytes.do", contains)
+bytes_concat = @lib("bytes.do", concat)
+bytes_copy = @lib("bytes.do", copy)
+bytes_drop = @lib("bytes.do", drop)
+bytes_drop_or = @lib("bytes.do", drop_or)
+bytes_ends_with = @lib("bytes.do", ends_with)
+bytes_first = @lib("bytes.do", first)
+bytes_first_or = @lib("bytes.do", first_or)
+bytes_index_of = @lib("bytes.do", index_of)
+bytes_last = @lib("bytes.do", last)
+bytes_last_or = @lib("bytes.do", last_or)
+bytes_last_index_of = @lib("bytes.do", last_index_of)
+bytes_replace = @lib("bytes.do", replace)
+bytes_repeat_byte = @lib("bytes.do", repeat_byte)
+bytes_slice_or = @lib("bytes.do", slice_or)
+bytes_starts_with = @lib("bytes.do", starts_with)
+bytes_take = @lib("bytes.do", take)
+bytes_take_or = @lib("bytes.do", take_or)
+bytes_trim_left_byte = @lib("bytes.do", trim_left_byte)
+bytes_trim_byte = @lib("bytes.do", trim_byte)
+bytes_trim_right_byte = @lib("bytes.do", trim_right_byte)
+
+bytes_of(s text) -> [u8] {
+    return s
+}
+
+text_from(bytes [u8]) -> text | Utf8Error {
+    err = validate_utf8(bytes)
+    if @is(err, Utf8Error) return err
+    return bytes
+}
+
+byte_len(s text) -> usize {
+    return @len(bytes_of(s))
+}
+
+char_len(s text) -> usize | Utf8Error {
+    return utf8_count(bytes_of(s))
+}
 
 is_empty(s [u8]) -> bool {
-    return eq(len(s), 0)
+    return @eq(@len(s), 0)
 }
 
 is_valid_utf8(s [u8]) -> bool {

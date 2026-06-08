@@ -3,7 +3,7 @@ User {
 }
 
 len(a User) -> u32 {
-    return get(a, .id)
+    return @get(a, .id)
 }
 
 test "core len decl" {}

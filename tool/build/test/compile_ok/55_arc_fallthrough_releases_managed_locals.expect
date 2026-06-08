@@ -1,0 +1,4 @@
+;; arc-fallthrough-release
+;; arc-release-local data
+local.get $data
+call $__do_arc_dec

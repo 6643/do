@@ -7,6 +7,6 @@ project(x T, f Q) -> U {
 
 test "generic callback explicit return" {
     i i32 = 1
-    out = project(i, (x i32) -> bool => gt(x, 0))
+    out = project(i, (x i32) -> bool => @gt(x, 0))
     return
 }

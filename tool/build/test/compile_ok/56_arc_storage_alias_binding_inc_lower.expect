@@ -1,0 +1,9 @@
+local.get $data
+call $__do_arc_inc
+local.set $alias
+;; arc-release-local alias
+local.get $alias
+call $__do_arc_dec
+;; arc-release-local data
+local.get $data
+call $__do_arc_dec

@@ -1,5 +1,5 @@
 .double(x i32) -> i32 {
-    return add(x, x)
+    return @add(x, x)
 }
 
 test "private func call with dot" {

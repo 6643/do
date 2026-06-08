@@ -1,2 +1,2 @@
 InvalidImportDecl
-导入使用 `name = @./file.do/symbol`
+导入使用 `name = @lib("file.do", symbol)`

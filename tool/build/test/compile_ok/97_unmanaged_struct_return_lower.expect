@@ -1,0 +1,11 @@
+(func $make_point (result i32 i32)
+local.get $p.x
+local.get $p.y
+return
+call $make_point
+local.set $p.y
+local.set $p.x
+local.get $p.x
+local.set $x
+local.get $p.y
+local.set $y

@@ -1,0 +1,7 @@
+;; compiled-test 0 "compiled struct get"
+local.set $user.id
+local.get $user.id
+local.set $got
+if
+return
+unreachable

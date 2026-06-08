@@ -8,5 +8,5 @@ find_user() -> User | nil | nil {
 
 test "duplicate nil union" {
     u = find_user()
-    if eq(u, nil) return
+    if @eq(u, nil) return
 }

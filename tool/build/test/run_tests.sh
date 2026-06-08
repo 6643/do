@@ -3,11 +3,16 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TEST_DIR="$ROOT_DIR/tool/build/test"
+SRC_DIR="$ROOT_DIR/src"
+WASI_REGISTRY="$ROOT_DIR/doc/wit/wasi_registry.json"
 OK_DIR="$TEST_DIR/ok"
 ERR_DIR="$TEST_DIR/err"
 LIB_DIR="$TEST_DIR/lib"
 COMPILE_OK_DIR="$TEST_DIR/compile_ok"
 COMPILE_ERR_DIR="$TEST_DIR/compile_err"
+COMPILED_OK_DIR="$TEST_DIR/compiled_ok"
+COMPILED_ERR_DIR="$TEST_DIR/compiled_err"
+COMPILED_TRAP_DIR="$TEST_DIR/compiled_trap"
 PENDING_OK_DIR="$TEST_DIR/pending/ok"
 PENDING_ERR_DIR="$TEST_DIR/pending/err"
 TMP_DIR="$TEST_DIR/tmp"
@@ -17,6 +22,8 @@ SKIP_BUILD="${SKIP_BUILD:-0}"
 ZIG_BIN="${ZIG_BIN:-$(command -v zig || true)}"
 ZIG_BIN="${ZIG_BIN:-/home/_/_/zig/zig}"
 DO_BIN="$ROOT_DIR/bin/do"
+WASM_TOOLS="${WASM_TOOLS:-$(command -v wasm-tools || true)}"
+NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
 
 pass_count=0
 fail_count=0
@@ -45,6 +52,75 @@ if [[ ! -x "$DO_BIN" ]]; then
     echo "[FAIL] compiler binary not found: $DO_BIN"
     exit 1
 fi
+
+run_wasi_bind_manifest_tool_test() {
+    local stdout_file="$TMP_DIR/wasi_bind_manifest_tool.stdout"
+    local stderr_file="$TMP_DIR/wasi_bind_manifest_tool.stderr"
+
+    if [[ -z "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
+        echo "[FAIL] tool wasi_bind_manifest (node not found)"
+        ((fail_count += 1))
+        return
+    fi
+
+    if "$NODE_BIN" "$TEST_DIR/test_wasi_bind_manifest_tool.mjs" "$TEST_DIR/validate_wasi_bind_manifest.mjs" "$TMP_DIR" >"$stdout_file" 2>"$stderr_file"; then
+        if grep -Fq "ok: wasi-bind manifest tool" "$stdout_file"; then
+            echo "[PASS] tool wasi_bind_manifest"
+            ((pass_count += 1))
+            return
+        fi
+
+        echo "[FAIL] tool wasi_bind_manifest (missing success marker)"
+        cat "$stdout_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    echo "[FAIL] tool wasi_bind_manifest (unexpected non-zero exit)"
+    cat "$stderr_file"
+    ((fail_count += 1))
+}
+
+run_cli_output_order_case() {
+    local case_file="$COMPILE_OK_DIR/01_start_entry_valid.do"
+    local build_out="$TMP_DIR/cli_build_pre_output.wat"
+    local test_out="$TMP_DIR/cli_test_pre_output.wat"
+    local build_stdout="$TMP_DIR/cli_build_pre_output.stdout"
+    local build_stderr="$TMP_DIR/cli_build_pre_output.stderr"
+    local test_stdout="$TMP_DIR/cli_test_pre_output.stdout"
+    local test_stderr="$TMP_DIR/cli_test_pre_output.stderr"
+
+    rm -f "$build_out" "$test_out"
+
+    if ! DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build -o "$build_out" "$case_file" >"$build_stdout" 2>"$build_stderr"; then
+        echo "[FAIL] cli output_order build (unexpected non-zero exit)"
+        cat "$build_stderr"
+        ((fail_count += 1))
+        return
+    fi
+    if [[ ! -s "$build_out" ]]; then
+        echo "[FAIL] cli output_order build (missing requested output)"
+        cat "$build_stdout"
+        ((fail_count += 1))
+        return
+    fi
+
+    if ! DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" test --compiled -o "$test_out" "$COMPILED_OK_DIR/01_compiled_test_entry.do" >"$test_stdout" 2>"$test_stderr"; then
+        echo "[FAIL] cli output_order test --compiled (unexpected non-zero exit)"
+        cat "$test_stderr"
+        ((fail_count += 1))
+        return
+    fi
+    if [[ ! -s "$test_out" ]]; then
+        echo "[FAIL] cli output_order test --compiled (missing requested output)"
+        cat "$test_stdout"
+        ((fail_count += 1))
+        return
+    fi
+
+    echo "[PASS] cli output_order"
+    ((pass_count += 1))
+}
 
 run_ok_case() {
     local case_file="$1"
@@ -116,6 +192,44 @@ run_err_case() {
     ((fail_count += 1))
 }
 
+run_std_src_case() {
+    local case_file="$1"
+    local name
+    name="$(basename "$case_file" .do)"
+
+    if [[ "$(basename "$case_file")" == "_.do" ]]; then
+        echo "[PASS] std src $name (metadata table skipped)"
+        ((pass_count += 1))
+        return
+    fi
+
+    local stdout_file="$TMP_DIR/std_${name}.stdout"
+    local stderr_file="$TMP_DIR/std_${name}.stderr"
+
+    if DO_LIB_ROOT="$SRC_DIR" "$DO_BIN" test "$case_file" >"$stdout_file" 2>"$stderr_file"; then
+        if grep -Fq 'test "' "$stdout_file" && grep -Fq " ... ok" "$stdout_file" && grep -Fq "ok:" "$stdout_file"; then
+            echo "[PASS] std src $name"
+            ((pass_count += 1))
+            return
+        fi
+
+        echo "[FAIL] std src $name (missing success marker)"
+        cat "$stdout_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if grep -Fq "NoTestDecl" "$stderr_file"; then
+        echo "[PASS] std src $name (NoTestDecl)"
+        ((pass_count += 1))
+        return
+    fi
+
+    echo "[FAIL] std src $name (unexpected non-zero exit)"
+    cat "$stderr_file"
+    ((fail_count += 1))
+}
+
 run_compile_ok_case() {
     local case_file="$1"
     local name
@@ -125,6 +239,12 @@ run_compile_ok_case() {
     local stderr_file="$TMP_DIR/compile_${name}.stderr"
     local wat_file="$TMP_DIR/compile_${name}.wat"
     local expect_file="${case_file%.do}.expect"
+    local component_plan_expect_file="${case_file%.do}.component_plan.expect"
+    local wit_dir_expect_file="${case_file%.do}.wit_dir.expect"
+    local core_imports_expect_file="${case_file%.do}.core_imports.expect"
+    local core_shims_expect_file="${case_file%.do}.core_shims.expect"
+    local component_input_expect_file="${case_file%.do}.component_input.expect"
+    local component_core_expect_file="${case_file%.do}.component_core.expect"
 
     if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$case_file" -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
         if grep -Fq "ok:" "$stdout_file" && [[ -s "$wat_file" ]]; then
@@ -144,6 +264,325 @@ run_compile_ok_case() {
                     cat "$wat_file"
                     ((fail_count += 1))
                     return
+                fi
+            fi
+            if grep -Fq ";; wasi-bind " "$wat_file"; then
+                if [[ -z "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
+                    echo "[FAIL] compile ok  $name (node not found for wasi-bind manifest validation)"
+                    ((fail_count += 1))
+                    return
+                fi
+                if ! "$NODE_BIN" "$TEST_DIR/validate_wasi_bind_manifest.mjs" --registry "$WASI_REGISTRY" "$wat_file" >"$TMP_DIR/compile_${name}.wasi_bind.stdout" 2>"$TMP_DIR/compile_${name}.wasi_bind.stderr"; then
+                    echo "[FAIL] compile ok  $name (wasi-bind manifest validation failed)"
+                    cat "$TMP_DIR/compile_${name}.wasi_bind.stderr"
+                    ((fail_count += 1))
+                    return
+                fi
+            fi
+            if [[ -f "$component_plan_expect_file" ]]; then
+                if [[ -z "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
+                    echo "[FAIL] compile ok  $name (node not found for wasi component plan validation)"
+                    ((fail_count += 1))
+                    return
+                fi
+                local component_plan_file="$TMP_DIR/compile_${name}.component_plan.json"
+                if ! "$NODE_BIN" "$TEST_DIR/validate_wasi_bind_manifest.mjs" --registry "$WASI_REGISTRY" --component-plan "$wat_file" >"$component_plan_file" 2>"$TMP_DIR/compile_${name}.component_plan.stderr"; then
+                    echo "[FAIL] compile ok  $name (wasi component plan validation failed)"
+                    cat "$TMP_DIR/compile_${name}.component_plan.stderr"
+                    ((fail_count += 1))
+                    return
+                fi
+                local component_missing=0
+                while IFS= read -r line || [[ -n "$line" ]]; do
+                    [[ -z "$line" ]] && continue
+                    [[ "${line:0:1}" == "#" ]] && continue
+                    if grep -Fq "$line" "$component_plan_file"; then
+                        continue
+                    fi
+                    echo "[FAIL] compile ok  $name (missing expected component plan text: $line)"
+                    component_missing=1
+                done < "$component_plan_expect_file"
+                if [[ "$component_missing" -ne 0 ]]; then
+                    echo "[INFO] component plan output for $name:"
+                    cat "$component_plan_file"
+                    ((fail_count += 1))
+                    return
+                fi
+                if [[ ! -f "$wit_dir_expect_file" ]]; then
+                    local wit_file="$TMP_DIR/compile_${name}.wit"
+                    if ! "$NODE_BIN" "$TEST_DIR/validate_wasi_bind_manifest.mjs" --registry "$WASI_REGISTRY" --wit "$wat_file" >"$wit_file" 2>"$TMP_DIR/compile_${name}.wit.stderr"; then
+                        echo "[FAIL] compile ok  $name (wasi WIT generation failed)"
+                        cat "$TMP_DIR/compile_${name}.wit.stderr"
+                        ((fail_count += 1))
+                        return
+                    fi
+                    if [[ -n "$WASM_TOOLS" && -x "$WASM_TOOLS" ]]; then
+                        if ! "$WASM_TOOLS" component wit "$wit_file" >"$TMP_DIR/compile_${name}.wit.stdout" 2>"$TMP_DIR/compile_${name}.wit.parse.stderr"; then
+                            echo "[FAIL] compile ok  $name (generated WIT failed wasm-tools validation)"
+                            cat "$TMP_DIR/compile_${name}.wit.parse.stderr"
+                            ((fail_count += 1))
+                            return
+                        fi
+                    fi
+                fi
+            fi
+            if [[ -f "$wit_dir_expect_file" ]]; then
+                if [[ -z "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
+                    echo "[FAIL] compile ok  $name (node not found for wasi WIT directory validation)"
+                    ((fail_count += 1))
+                    return
+                fi
+                local wit_dir="$TMP_DIR/compile_${name}.wit_dir"
+                if ! "$NODE_BIN" "$TEST_DIR/validate_wasi_bind_manifest.mjs" --registry "$WASI_REGISTRY" --wit-dir "$wit_dir" "$wat_file" >"$TMP_DIR/compile_${name}.wit_dir.stdout" 2>"$TMP_DIR/compile_${name}.wit_dir.stderr"; then
+                    echo "[FAIL] compile ok  $name (wasi WIT directory generation failed)"
+                    cat "$TMP_DIR/compile_${name}.wit_dir.stderr"
+                    ((fail_count += 1))
+                    return
+                fi
+                local wit_dir_output="$TMP_DIR/compile_${name}.wit_dir.parsed"
+                if [[ -n "$WASM_TOOLS" && -x "$WASM_TOOLS" ]]; then
+                    if ! "$WASM_TOOLS" component wit "$wit_dir" >"$wit_dir_output" 2>"$TMP_DIR/compile_${name}.wit_dir.parse.stderr"; then
+                        echo "[FAIL] compile ok  $name (generated WIT directory failed wasm-tools validation)"
+                        cat "$TMP_DIR/compile_${name}.wit_dir.parse.stderr"
+                        ((fail_count += 1))
+                        return
+                    fi
+                else
+                    {
+                        find "$wit_dir" -type f -name '*.wit' | sort | while IFS= read -r file; do
+                            cat "$file"
+                        done
+                    } >"$wit_dir_output"
+                fi
+                local wit_dir_missing=0
+                while IFS= read -r line || [[ -n "$line" ]]; do
+                    [[ -z "$line" ]] && continue
+                    [[ "${line:0:1}" == "#" ]] && continue
+                    if grep -Fq "$line" "$wit_dir_output"; then
+                        continue
+                    fi
+                    echo "[FAIL] compile ok  $name (missing expected WIT directory text: $line)"
+                    wit_dir_missing=1
+                done < "$wit_dir_expect_file"
+                if [[ "$wit_dir_missing" -ne 0 ]]; then
+                    echo "[INFO] WIT directory output for $name:"
+                    cat "$wit_dir_output"
+                    ((fail_count += 1))
+                    return
+                fi
+            fi
+            if [[ -f "$core_imports_expect_file" ]]; then
+                if [[ -z "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
+                    echo "[FAIL] compile ok  $name (node not found for wasi core import validation)"
+                    ((fail_count += 1))
+                    return
+                fi
+                local core_imports_file="$TMP_DIR/compile_${name}.core_imports.wat"
+                if ! "$NODE_BIN" "$TEST_DIR/validate_wasi_bind_manifest.mjs" --registry "$WASI_REGISTRY" --core-imports "$wat_file" >"$core_imports_file" 2>"$TMP_DIR/compile_${name}.core_imports.stderr"; then
+                    echo "[FAIL] compile ok  $name (wasi core import generation failed)"
+                    cat "$TMP_DIR/compile_${name}.core_imports.stderr"
+                    ((fail_count += 1))
+                    return
+                fi
+                local core_imports_missing=0
+                while IFS= read -r line || [[ -n "$line" ]]; do
+                    [[ -z "$line" ]] && continue
+                    [[ "${line:0:1}" == "#" ]] && continue
+                    if grep -Fq "$line" "$core_imports_file"; then
+                        continue
+                    fi
+                    echo "[FAIL] compile ok  $name (missing expected wasi core import text: $line)"
+                    core_imports_missing=1
+                done < "$core_imports_expect_file"
+                if [[ "$core_imports_missing" -ne 0 ]]; then
+                    echo "[INFO] wasi core imports output for $name:"
+                    cat "$core_imports_file"
+                    ((fail_count += 1))
+                    return
+                fi
+            fi
+            if [[ -f "$core_shims_expect_file" ]]; then
+                if [[ -z "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
+                    echo "[FAIL] compile ok  $name (node not found for wasi core shim validation)"
+                    ((fail_count += 1))
+                    return
+                fi
+                local core_shims_file="$TMP_DIR/compile_${name}.core_shims.wat"
+                if ! "$NODE_BIN" "$TEST_DIR/validate_wasi_bind_manifest.mjs" --registry "$WASI_REGISTRY" --core-shims "$wat_file" >"$core_shims_file" 2>"$TMP_DIR/compile_${name}.core_shims.stderr"; then
+                    echo "[FAIL] compile ok  $name (wasi core shim generation failed)"
+                    cat "$TMP_DIR/compile_${name}.core_shims.stderr"
+                    ((fail_count += 1))
+                    return
+                fi
+                local core_shims_missing=0
+                while IFS= read -r line || [[ -n "$line" ]]; do
+                    [[ -z "$line" ]] && continue
+                    [[ "${line:0:1}" == "#" ]] && continue
+                    if grep -Fq "$line" "$core_shims_file"; then
+                        continue
+                    fi
+                    echo "[FAIL] compile ok  $name (missing expected wasi core shim text: $line)"
+                    core_shims_missing=1
+                done < "$core_shims_expect_file"
+                if [[ "$core_shims_missing" -ne 0 ]]; then
+                    echo "[INFO] wasi core shims output for $name:"
+                    cat "$core_shims_file"
+                    ((fail_count += 1))
+                    return
+                fi
+                if [[ -n "$WASM_TOOLS" && -x "$WASM_TOOLS" ]]; then
+                    local core_shims_module_file="$TMP_DIR/compile_${name}.core_shims.module.wat"
+                    {
+                        printf '(module\n'
+                        cat "$core_shims_file"
+                        printf ')\n'
+                    } >"$core_shims_module_file"
+                    if ! "$WASM_TOOLS" parse "$core_shims_module_file" -o "$TMP_DIR/compile_${name}.core_shims.module.wasm" >"$TMP_DIR/compile_${name}.core_shims.parse.stdout" 2>"$TMP_DIR/compile_${name}.core_shims.parse.stderr"; then
+                        echo "[FAIL] compile ok  $name (generated wasi core shims failed wasm-tools parse)"
+                        cat "$TMP_DIR/compile_${name}.core_shims.parse.stderr"
+                        ((fail_count += 1))
+                        return
+                    fi
+                fi
+            fi
+            if [[ -f "$component_input_expect_file" ]]; then
+                if [[ -z "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
+                    echo "[FAIL] compile ok  $name (node not found for wasi component input validation)"
+                    ((fail_count += 1))
+                    return
+                fi
+                local component_input_dir="$TMP_DIR/compile_${name}.component_input"
+                if ! "$NODE_BIN" "$TEST_DIR/validate_wasi_bind_manifest.mjs" --registry "$WASI_REGISTRY" --component-input-dir "$component_input_dir" "$wat_file" >"$TMP_DIR/compile_${name}.component_input.stdout" 2>"$TMP_DIR/compile_${name}.component_input.stderr"; then
+                    echo "[FAIL] compile ok  $name (wasi component input directory generation failed)"
+                    cat "$TMP_DIR/compile_${name}.component_input.stderr"
+                    ((fail_count += 1))
+                    return
+                fi
+                local component_input_output="$TMP_DIR/compile_${name}.component_input.txt"
+                {
+                    cat "$component_input_dir/metadata.json"
+                    cat "$component_input_dir/component_plan.json"
+                    cat "$component_input_dir/core_imports.wat"
+                    cat "$component_input_dir/core_shims.wat"
+                } >"$component_input_output"
+                if [[ -n "$WASM_TOOLS" && -x "$WASM_TOOLS" ]]; then
+                    if ! "$WASM_TOOLS" component wit "$component_input_dir/wit" >>"$component_input_output" 2>"$TMP_DIR/compile_${name}.component_input.wit.stderr"; then
+                        echo "[FAIL] compile ok  $name (component input WIT directory failed wasm-tools validation)"
+                        cat "$TMP_DIR/compile_${name}.component_input.wit.stderr"
+                        ((fail_count += 1))
+                        return
+                    fi
+                    local component_input_shims_module_file="$TMP_DIR/compile_${name}.component_input.shims.module.wat"
+                    {
+                        printf '(module\n'
+                        cat "$component_input_dir/core_shims.wat"
+                        printf ')\n'
+                    } >"$component_input_shims_module_file"
+                    if ! "$WASM_TOOLS" parse "$component_input_shims_module_file" -o "$TMP_DIR/compile_${name}.component_input.shims.module.wasm" >"$TMP_DIR/compile_${name}.component_input.shims.parse.stdout" 2>"$TMP_DIR/compile_${name}.component_input.shims.parse.stderr"; then
+                        echo "[FAIL] compile ok  $name (component input core shims failed wasm-tools parse)"
+                        cat "$TMP_DIR/compile_${name}.component_input.shims.parse.stderr"
+                        ((fail_count += 1))
+                        return
+                    fi
+                    local component_input_embedded_file="$TMP_DIR/compile_${name}.component_input.embedded.wasm"
+                    local component_input_component_file="$TMP_DIR/compile_${name}.component_input.component.wasm"
+                    if ! "$WASM_TOOLS" component embed "$component_input_dir/wit" "$component_input_dir/core_component.wat" -o "$component_input_embedded_file" >"$TMP_DIR/compile_${name}.component_input.embed.stdout" 2>"$TMP_DIR/compile_${name}.component_input.embed.stderr"; then
+                        echo "[FAIL] compile ok  $name (component input embed failed)"
+                        cat "$TMP_DIR/compile_${name}.component_input.embed.stderr"
+                        ((fail_count += 1))
+                        return
+                    fi
+                    if ! "$WASM_TOOLS" component new "$component_input_embedded_file" -o "$component_input_component_file" >"$TMP_DIR/compile_${name}.component_input.new.stdout" 2>"$TMP_DIR/compile_${name}.component_input.new.stderr"; then
+                        echo "[FAIL] compile ok  $name (component input component generation failed)"
+                        cat "$TMP_DIR/compile_${name}.component_input.new.stderr"
+                        ((fail_count += 1))
+                        return
+                    fi
+                    if ! "$WASM_TOOLS" validate "$component_input_component_file" >"$TMP_DIR/compile_${name}.component_input.validate.stdout" 2>"$TMP_DIR/compile_${name}.component_input.validate.stderr"; then
+                        echo "[FAIL] compile ok  $name (component input component validation failed)"
+                        cat "$TMP_DIR/compile_${name}.component_input.validate.stderr"
+                        ((fail_count += 1))
+                        return
+                    fi
+                else
+                    find "$component_input_dir/wit" -type f -name '*.wit' | sort | while IFS= read -r file; do
+                        cat "$file"
+                    done >>"$component_input_output"
+                fi
+                local component_input_missing=0
+                while IFS= read -r line || [[ -n "$line" ]]; do
+                    [[ -z "$line" ]] && continue
+                    [[ "${line:0:1}" == "#" ]] && continue
+                    if grep -Fq "$line" "$component_input_output"; then
+                        continue
+                    fi
+                    echo "[FAIL] compile ok  $name (missing expected component input text: $line)"
+                    component_input_missing=1
+                done < "$component_input_expect_file"
+                if [[ "$component_input_missing" -ne 0 ]]; then
+                    echo "[INFO] component input output for $name:"
+                    cat "$component_input_output"
+                    ((fail_count += 1))
+                    return
+                fi
+            fi
+            if [[ -f "$component_core_expect_file" ]]; then
+                local component_core_file="$TMP_DIR/compile_${name}.component_core.wat"
+                if ! DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$case_file" --component-core -o "$component_core_file" >"$TMP_DIR/compile_${name}.component_core.stdout" 2>"$TMP_DIR/compile_${name}.component_core.stderr"; then
+                    echo "[FAIL] compile ok  $name (component-core build failed)"
+                    cat "$TMP_DIR/compile_${name}.component_core.stderr"
+                    ((fail_count += 1))
+                    return
+                fi
+                local component_core_missing=0
+                while IFS= read -r line || [[ -n "$line" ]]; do
+                    [[ -z "$line" ]] && continue
+                    [[ "${line:0:1}" == "#" ]] && continue
+                    if grep -Fq "$line" "$component_core_file"; then
+                        continue
+                    fi
+                    echo "[FAIL] compile ok  $name (missing expected component-core text: $line)"
+                    component_core_missing=1
+                done < "$component_core_expect_file"
+                if [[ "$component_core_missing" -ne 0 ]]; then
+                    echo "[INFO] component-core output for $name:"
+                    cat "$component_core_file"
+                    ((fail_count += 1))
+                    return
+                fi
+                if grep -Fq '(memory (export "memory")' "$component_core_file"; then
+                    echo "[FAIL] compile ok  $name (component-core still exports plain memory)"
+                    ((fail_count += 1))
+                    return
+                fi
+                if [[ -n "$WASM_TOOLS" && -x "$WASM_TOOLS" && -f "$component_input_expect_file" ]]; then
+                    local component_core_input_dir="$TMP_DIR/compile_${name}.component_core_input"
+                    if ! "$NODE_BIN" "$TEST_DIR/validate_wasi_bind_manifest.mjs" --registry "$WASI_REGISTRY" --wit-dir "$component_core_input_dir/wit" "$component_core_file" >"$TMP_DIR/compile_${name}.component_core.wit_dir.stdout" 2>"$TMP_DIR/compile_${name}.component_core.wit_dir.stderr"; then
+                        echo "[FAIL] compile ok  $name (component-core WIT directory generation failed)"
+                        cat "$TMP_DIR/compile_${name}.component_core.wit_dir.stderr"
+                        ((fail_count += 1))
+                        return
+                    fi
+                    local component_core_embedded_file="$TMP_DIR/compile_${name}.component_core.embedded.wasm"
+                    local component_core_component_file="$TMP_DIR/compile_${name}.component_core.component.wasm"
+                    if ! "$WASM_TOOLS" component embed "$component_core_input_dir/wit" "$component_core_file" -o "$component_core_embedded_file" >"$TMP_DIR/compile_${name}.component_core.embed.stdout" 2>"$TMP_DIR/compile_${name}.component_core.embed.stderr"; then
+                        echo "[FAIL] compile ok  $name (component-core embed failed)"
+                        cat "$TMP_DIR/compile_${name}.component_core.embed.stderr"
+                        ((fail_count += 1))
+                        return
+                    fi
+                    if ! "$WASM_TOOLS" component new "$component_core_embedded_file" -o "$component_core_component_file" >"$TMP_DIR/compile_${name}.component_core.new.stdout" 2>"$TMP_DIR/compile_${name}.component_core.new.stderr"; then
+                        echo "[FAIL] compile ok  $name (component-core component generation failed)"
+                        cat "$TMP_DIR/compile_${name}.component_core.new.stderr"
+                        ((fail_count += 1))
+                        return
+                    fi
+                    if ! "$WASM_TOOLS" validate "$component_core_component_file" >"$TMP_DIR/compile_${name}.component_core.validate.stdout" 2>"$TMP_DIR/compile_${name}.component_core.validate.stderr"; then
+                        echo "[FAIL] compile ok  $name (component-core component validation failed)"
+                        cat "$TMP_DIR/compile_${name}.component_core.validate.stderr"
+                        ((fail_count += 1))
+                        return
+                    fi
                 fi
             fi
             echo "[PASS] compile ok  $name"
@@ -207,6 +646,180 @@ run_compile_err_case() {
     ((fail_count += 1))
 }
 
+run_compiled_ok_case() {
+    local case_file="$1"
+    local name
+    name="$(basename "$case_file" .do)"
+
+    local stdout_file="$TMP_DIR/compiled_${name}.stdout"
+    local stderr_file="$TMP_DIR/compiled_${name}.stderr"
+    local wat_file="$TMP_DIR/compiled_${name}.wat"
+    local wasm_file="$TMP_DIR/compiled_${name}.wasm"
+    local wasm_stdout_file="$TMP_DIR/compiled_${name}.wasm.stdout"
+    local wasm_stderr_file="$TMP_DIR/compiled_${name}.wasm.stderr"
+    local expect_file="${case_file%.do}.expect"
+
+    if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" test "$case_file" --compiled -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
+        if grep -Fq "ok:" "$stdout_file" && [[ -s "$wat_file" ]]; then
+            if [[ -f "$expect_file" ]]; then
+                local missing=0
+                while IFS= read -r line || [[ -n "$line" ]]; do
+                    [[ -z "$line" ]] && continue
+                    [[ "${line:0:1}" == "#" ]] && continue
+                    if grep -Fq "$line" "$wat_file"; then
+                        continue
+                    fi
+                    echo "[FAIL] compiled ok  $name (missing expected wat text: $line)"
+                    missing=1
+                done < "$expect_file"
+                if [[ "$missing" -ne 0 ]]; then
+                    echo "[INFO] wat output for $name:"
+                    cat "$wat_file"
+                    ((fail_count += 1))
+                    return
+                fi
+            fi
+            if [[ "${RUN_WASM:-0}" == "1" ]]; then
+                if [[ -z "$WASM_TOOLS" || ! -x "$WASM_TOOLS" ]]; then
+                    echo "[FAIL] compiled ok  $name (wasm-tools not found)"
+                    ((fail_count += 1))
+                    return
+                fi
+                if [[ -z "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
+                    echo "[FAIL] compiled ok  $name (node not found)"
+                    ((fail_count += 1))
+                    return
+                fi
+                if ! "$WASM_TOOLS" parse "$wat_file" -o "$wasm_file" >"$TMP_DIR/compiled_${name}.parse.stdout" 2>"$TMP_DIR/compiled_${name}.parse.stderr"; then
+                    echo "[FAIL] compiled ok  $name (wat parse failed)"
+                    cat "$TMP_DIR/compiled_${name}.parse.stderr"
+                    ((fail_count += 1))
+                    return
+                fi
+                if ! "$NODE_BIN" "$TEST_DIR/run_compiled_test_case.mjs" "$wasm_file" "$wat_file" >"$wasm_stdout_file" 2>"$wasm_stderr_file"; then
+                    echo "[FAIL] compiled ok  $name (execution failed)"
+                    cat "$wasm_stderr_file"
+                    ((fail_count += 1))
+                    return
+                fi
+                if ! grep -Fq 'test "' "$wasm_stdout_file" || ! grep -Fq " ... ok" "$wasm_stdout_file" || ! grep -Fq "ok:" "$wasm_stdout_file"; then
+                    echo "[FAIL] compiled ok  $name (missing compiled test report marker)"
+                    cat "$wasm_stdout_file"
+                    ((fail_count += 1))
+                    return
+                fi
+            fi
+            echo "[PASS] compiled ok  $name"
+            ((pass_count += 1))
+            return
+        fi
+
+        echo "[FAIL] compiled ok  $name (missing success marker or wat output)"
+        cat "$stdout_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    echo "[FAIL] compiled ok  $name (unexpected non-zero exit)"
+    cat "$stderr_file"
+    ((fail_count += 1))
+}
+
+run_compiled_err_case() {
+    local case_file="$1"
+    local name
+    name="$(basename "$case_file" .do)"
+
+    local stdout_file="$TMP_DIR/compiled_err_${name}.stdout"
+    local stderr_file="$TMP_DIR/compiled_err_${name}.stderr"
+    local wat_file="$TMP_DIR/compiled_err_${name}.wat"
+    local expect_file="${case_file%.do}.expect"
+
+    if [[ ! -f "$expect_file" ]]; then
+        echo "[FAIL] compiled err $name (missing expect file: $expect_file)"
+        ((fail_count += 1))
+        return
+    fi
+
+    if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" test "$case_file" --compiled -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
+        echo "[FAIL] compiled err $name (expected failure, got success)"
+        cat "$stdout_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    local missing=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -z "$line" ]] && continue
+        [[ "${line:0:1}" == "#" ]] && continue
+        if grep -Fq "$line" "$stderr_file"; then
+            continue
+        fi
+        echo "[FAIL] compiled err $name (missing expected text: $line)"
+        missing=1
+    done < "$expect_file"
+
+    if [[ "$missing" -eq 0 ]]; then
+        echo "[PASS] compiled err $name"
+        ((pass_count += 1))
+        return
+    fi
+
+    echo "[INFO] stderr output for $name:"
+    cat "$stderr_file"
+    ((fail_count += 1))
+}
+
+run_compiled_trap_case() {
+    local case_file="$1"
+    local name
+    name="$(basename "$case_file" .do)"
+
+    local stdout_file="$TMP_DIR/compiled_trap_${name}.stdout"
+    local stderr_file="$TMP_DIR/compiled_trap_${name}.stderr"
+    local wat_file="$TMP_DIR/compiled_trap_${name}.wat"
+    local wasm_file="$TMP_DIR/compiled_trap_${name}.wasm"
+    local wasm_stdout_file="$TMP_DIR/compiled_trap_${name}.wasm.stdout"
+    local wasm_stderr_file="$TMP_DIR/compiled_trap_${name}.wasm.stderr"
+
+    if [[ -z "$WASM_TOOLS" || ! -x "$WASM_TOOLS" ]]; then
+        echo "[FAIL] compiled trap $name (wasm-tools not found)"
+        ((fail_count += 1))
+        return
+    fi
+    if [[ -z "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
+        echo "[FAIL] compiled trap $name (node not found)"
+        ((fail_count += 1))
+        return
+    fi
+
+    if ! DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" test "$case_file" --compiled -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
+        echo "[FAIL] compiled trap $name (compiled test generation failed)"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+    if ! "$WASM_TOOLS" parse "$wat_file" -o "$wasm_file" >"$TMP_DIR/compiled_trap_${name}.parse.stdout" 2>"$TMP_DIR/compiled_trap_${name}.parse.stderr"; then
+        echo "[FAIL] compiled trap $name (wat parse failed)"
+        cat "$TMP_DIR/compiled_trap_${name}.parse.stderr"
+        ((fail_count += 1))
+        return
+    fi
+    if "$NODE_BIN" "$TEST_DIR/run_compiled_test_case.mjs" "$wasm_file" "$wat_file" >"$wasm_stdout_file" 2>"$wasm_stderr_file"; then
+        echo "[FAIL] compiled trap $name (expected trap, got success)"
+        cat "$wasm_stdout_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    echo "[PASS] compiled trap $name"
+    ((pass_count += 1))
+}
+
+echo "[INFO] run tool cases"
+run_wasi_bind_manifest_tool_test
+run_cli_output_order_case
+
 echo "[INFO] run ok cases"
 for case_file in "$OK_DIR"/*.do; do
     [[ -e "$case_file" ]] || continue
@@ -221,6 +834,12 @@ for case_file in "$ERR_DIR"/*.do; do
     run_err_case "$case_file"
 done
 
+echo "[INFO] run std src cases"
+for case_file in "$SRC_DIR"/*.do; do
+    [[ -e "$case_file" ]] || continue
+    run_std_src_case "$case_file"
+done
+
 echo "[INFO] run compile ok cases"
 for case_file in "$COMPILE_OK_DIR"/*.do; do
     [[ -e "$case_file" ]] || continue
@@ -232,6 +851,26 @@ for case_file in "$COMPILE_ERR_DIR"/*.do; do
     [[ -e "$case_file" ]] || continue
     run_compile_err_case "$case_file"
 done
+
+echo "[INFO] run compiled ok cases"
+for case_file in "$COMPILED_OK_DIR"/*.do; do
+    [[ -e "$case_file" ]] || continue
+    run_compiled_ok_case "$case_file"
+done
+
+echo "[INFO] run compiled err cases"
+for case_file in "$COMPILED_ERR_DIR"/*.do; do
+    [[ -e "$case_file" ]] || continue
+    run_compiled_err_case "$case_file"
+done
+
+if [[ "${RUN_WASM:-0}" == "1" ]]; then
+    echo "[INFO] run compiled trap cases"
+    for case_file in "$COMPILED_TRAP_DIR"/*.do; do
+        [[ -e "$case_file" ]] || continue
+        run_compiled_trap_case "$case_file"
+    done
+fi
 
 if [[ "$RUN_PENDING" == "1" ]]; then
     echo "[INFO] pending cases track spec/impl gaps; failures here are expected until implementation catches up"
@@ -246,6 +885,13 @@ if [[ "$RUN_PENDING" == "1" ]]; then
         [[ -e "$case_file" ]] || continue
         run_err_case "$case_file"
     done
+fi
+
+if [[ "${RUN_WASM:-0}" == "1" ]]; then
+    echo "[INFO] run wasm smoke cases"
+    if ! SKIP_BUILD=1 "$TEST_DIR/run_wasm_smoke.sh"; then
+        ((fail_count += 1))
+    fi
 fi
 
 echo "[INFO] summary: pass=$pass_count fail=$fail_count"

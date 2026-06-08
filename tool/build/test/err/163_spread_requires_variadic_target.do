@@ -1,5 +1,5 @@
 pair(a i32, b i32) -> i32 {
-    return add(a, b)
+    return @add(a, b)
 }
 
 call_pair(xs [i32]) -> i32 {

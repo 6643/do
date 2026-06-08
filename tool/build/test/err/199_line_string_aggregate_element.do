@@ -1,5 +1,5 @@
 
-test "line string aggregate element" {
+test "line text aggregate element" {
     xs [[u8]] = .{
         \\hello
     }

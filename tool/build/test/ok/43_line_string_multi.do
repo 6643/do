@@ -1,4 +1,4 @@
-test "line string multi" {
+test "line text multi" {
     str [u8] =
         \\abc
         \\def

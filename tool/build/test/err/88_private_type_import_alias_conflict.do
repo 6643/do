@@ -1,6 +1,6 @@
 .InternalUser = User | nil
 
-InternalUser = @./fixture.type_profile.do/Profile
+InternalUser = @lib("./fixture.type_profile.do", Profile)
 
 User {
     name [u8]

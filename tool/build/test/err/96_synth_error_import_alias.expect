@@ -1,2 +1,2 @@
 InvalidImportDecl
-name = @./file.do/symbol
+name = @lib("./file.do", symbol)

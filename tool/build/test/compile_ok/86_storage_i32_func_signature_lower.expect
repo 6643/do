@@ -1,0 +1,6 @@
+(func $make_nums (result i32)
+;; arc-return-move xs
+(func $first (param $xs i32) (result i32)
+call $__do_arc_inc
+call $first
+;; arc-release-local xs

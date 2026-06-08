@@ -8,6 +8,6 @@ make_user() -> User {
 
 test "is call type arg" {
     v User | i32 = 1
-    if is(v, make_user()) return
+    if @is(v, make_user()) return
     return
 }

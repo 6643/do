@@ -4,7 +4,7 @@ zero() -> i32 {
 
 #F = () -> i32
 accept(v F | i32) {
-    if is(v, () -> i32) return
+    if @is(v, () -> i32) return
     return
 }
 

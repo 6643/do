@@ -9,6 +9,6 @@ apply(f F64) -> i64 {
 }
 
 test "lambda explicit param selects overload" {
-    v = apply((x i32) => add(x, 1))
+    v = apply((x i32) => @add(x, 1))
     return
 }

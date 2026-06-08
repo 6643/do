@@ -1,0 +1,8 @@
+;; arc-runtime free span unlink v1
+(func $__do_free_span_unlink (param $target i32)
+(local $prev i32)
+(local $block i32)
+global.get $__do_free_span_head
+global.set $__do_free_span_head
+call $__do_free_span_unlink
+call $__do_arc_alloc_from_large_block

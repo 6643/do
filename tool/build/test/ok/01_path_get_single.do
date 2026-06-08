@@ -4,7 +4,7 @@ User {
 
 test "path get single" {
     user = User{name = "tom"}
-    name = get(user, .name)
+    name = @get(user, .name)
     expected [u8] = "tom"
-    if eq(name, expected) return
+    if @eq(name, expected) return
 }

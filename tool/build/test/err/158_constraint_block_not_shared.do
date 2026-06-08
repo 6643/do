@@ -8,6 +8,6 @@ twice(f F) -> i32 {
 }
 
 test "constraint block not shared" {
-    out = twice((x i32) -> i32 => add(x, 1))
+    out = twice((x i32) -> i32 => @add(x, 1))
     return
 }

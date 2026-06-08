@@ -6,5 +6,5 @@ id(x T) -> T {
 
 test "constraint start name" {
     value i32 = id(1)
-    if eq(value, 1) return
+    if @eq(value, 1) return
 }

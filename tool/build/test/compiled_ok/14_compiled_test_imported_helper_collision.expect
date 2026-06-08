@@ -1,0 +1,4 @@
+(func $__do_mod_1__helper (result i32)
+call $__do_mod_1__helper
+(func $__do_mod_0__helper (result i32)
+call $__do_mod_0__helper

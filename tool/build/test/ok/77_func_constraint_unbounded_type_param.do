@@ -5,12 +5,12 @@ sum(a T, b T) -> T {
 }
 
 combine(a i32, b i32) -> i32 {
-    return add(a, b)
+    return @add(a, b)
 }
 
 test "func constraint unbounded type param" {
     a i32 = 1
     b i32 = 2
     expected i32 = 3
-    if eq(sum(a, b), expected) return
+    if @eq(sum(a, b), expected) return
 }

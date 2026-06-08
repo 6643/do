@@ -2,6 +2,6 @@
 
 test "private value enum branch" {
     status InternalStatus = Hidden
-    if eq(status, Hidden) return
+    if @eq(status, Hidden) return
     return
 }

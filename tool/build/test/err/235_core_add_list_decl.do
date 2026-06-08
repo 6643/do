@@ -1,4 +1,4 @@
-List = @list.do/List
+List = @lib("list.do", List)
 
 #T
 add(xs List<T>, value T, rest ...T) -> List<T> {

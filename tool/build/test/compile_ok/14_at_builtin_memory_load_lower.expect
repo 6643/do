@@ -1,0 +1,34 @@
+(memory (export "memory") 1)
+(data (i32.const 1024) "abcdefgh")
+local.get $data
+call $__do_arc_payload
+i32.const 8
+i32.add
+i32.const 0
+i32.add
+i32.load8_u
+local.set $a
+local.get $data
+call $__do_arc_payload
+i32.const 8
+i32.add
+i32.const 1
+i32.add
+i32.load16_u
+local.set $b
+local.get $data
+call $__do_arc_payload
+i32.const 8
+i32.add
+i32.const 2
+i32.add
+i32.load
+local.set $c
+local.get $data
+call $__do_arc_payload
+i32.const 8
+i32.add
+i32.const 0
+i32.add
+i64.load
+local.set $d

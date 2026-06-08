@@ -5,7 +5,7 @@ sum(a T, b T) -> T {
 }
 
 combine(a i32, b i32) -> i32 {
-    return add(a, b)
+    return @add(a, b)
 }
 
 test "generic call mixed literal" {

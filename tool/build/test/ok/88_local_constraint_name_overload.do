@@ -9,6 +9,6 @@ apply(f F) -> i64 {
 }
 
 test "local constraint name overload" {
-    out = apply((x i32) -> i32 => add(x, 1))
+    out = apply((x i32) -> i32 => @add(x, 1))
     return
 }

@@ -1,3 +1,3 @@
 test "builtin get fallback" {
-    _ = get(1)
+    _ = @get(1)
 }

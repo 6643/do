@@ -1,8 +1,8 @@
-List = @list.do/List
-empty_list = @list.do/empty_list
-list_add = @list.do/list_add
-list_len = @list.do/list_len
-list_items = @list.do/items
+List = @lib("list.do", List)
+empty_list = @lib("list.do", empty_list)
+list_add = @lib("list.do", list_add)
+list_len = @lib("list.do", list_len)
+list_items = @lib("list.do", items)
 
 HexError error = InvalidLength | InvalidDigit
 
@@ -29,35 +29,35 @@ encode_with(data [u8], alphabet [u8]) -> [u8] {
     out List<u8> = empty_list(seed)
     i usize = 0
     loop {
-        if eq(i, len(data)) return list_items(out)
-        b u8 = get(data, i)
-        hi u8 = to_u8(div(b, 16))
-        lo u8 = to_u8(rem(b, 16))
-        out = list_add(out, get(alphabet, to_usize(hi)))
-        out = list_add(out, get(alphabet, to_usize(lo)))
-        i = add(i, 1)
+        if @eq(i, @len(data)) return list_items(out)
+        b u8 = @get(data, i)
+        hi u8 = @to_u8(@div(b, 16))
+        lo u8 = @to_u8(@rem(b, 16))
+        out = list_add(out, @get(alphabet, @to_usize(hi)))
+        out = list_add(out, @get(alphabet, @to_usize(lo)))
+        i = @add(i, 1)
     }
 }
 
 decode_digit(c u8) -> u8 | HexError {
-    if and(ge(c, _hex_0), le(c, _hex_9)) return sub(c, _hex_0)
-    if and(ge(c, _hex_a), le(c, _hex_f)) return add(sub(c, _hex_a), 10)
-    if and(ge(c, _hex_upper_a), le(c, _hex_upper_f)) return add(sub(c, _hex_upper_a), 10)
+    if @and(@ge(c, _hex_0), @le(c, _hex_9)) return @sub(c, _hex_0)
+    if @and(@ge(c, _hex_a), @le(c, _hex_f)) return @add(@sub(c, _hex_a), 10)
+    if @and(@ge(c, _hex_upper_a), @le(c, _hex_upper_f)) return @add(@sub(c, _hex_upper_a), 10)
     return InvalidDigit
 }
 
-decode(text [u8]) -> [u8] | HexError {
-    if ne(rem(len(text), 2), 0) return InvalidLength
+decode(bytes [u8]) -> [u8] | HexError {
+    if @ne(@rem(@len(bytes), 2), 0) return InvalidLength
     seed u8 = 0
     out List<u8> = empty_list(seed)
     i usize = 0
     loop {
-        if eq(i, len(text)) return list_items(out)
-        hi = decode_digit(get(text, i))
-        if is(hi, HexError) return hi
-        lo = decode_digit(get(text, add(i, 1)))
-        if is(lo, HexError) return lo
-        out = list_add(out, add(mul(hi, 16), lo))
-        i = add(i, 2)
+        if @eq(i, @len(bytes)) return list_items(out)
+        hi = decode_digit(@get(bytes, i))
+        if @is(hi, HexError) return hi
+        lo = decode_digit(@get(bytes, @add(i, 1)))
+        if @is(lo, HexError) return lo
+        out = list_add(out, @add(@mul(hi, 16), lo))
+        i = @add(i, 2)
     }
 }

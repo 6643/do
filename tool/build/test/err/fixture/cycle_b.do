@@ -1,4 +1,4 @@
-a = @cycle_a.do/a
+a = @lib("cycle_a.do", a)
 
 b() {
     return

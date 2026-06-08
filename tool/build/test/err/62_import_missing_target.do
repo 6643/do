@@ -1,3 +1,3 @@
-missing = @list.do/missing
+missing = @lib("list.do", missing)
 
 test "import missing target" {}

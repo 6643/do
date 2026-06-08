@@ -1,0 +1,19 @@
+;; arc-runtime storage write helpers v1
+(func $__do_storage_set_u8 (param $storage i32) (param $index i32) (param $value i32) (result i32)
+call $__do_storage_check_range
+call $__do_arc_rc
+call $__do_arc_alloc
+memory.copy
+i32.store8
+)
+(func $__do_storage_put_u8 (param $storage i32) (param $value i32) (result i32)
+call $__do_arc_rc
+i32.lt_u
+call $__do_arc_alloc
+memory.copy
+i32.store8
+)
+call $__do_storage_set_u8
+local.set $next
+call $__do_storage_put_u8
+local.set $next

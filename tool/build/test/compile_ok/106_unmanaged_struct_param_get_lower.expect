@@ -1,0 +1,3 @@
+(func $file_id (param $file.id i64) (result i64)
+local.get $file.id
+return

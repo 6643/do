@@ -1,0 +1,2 @@
+InvalidImportDecl
+@lib("file.do", symbol)

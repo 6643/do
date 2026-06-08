@@ -1,2 +1,2 @@
 InvalidImportDecl
-name = @~/vendor.name.do/symbol
+name = @lib("~/vendor.name.do", symbol)

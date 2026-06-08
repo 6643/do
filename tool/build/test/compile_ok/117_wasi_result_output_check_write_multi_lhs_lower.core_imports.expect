@@ -1,0 +1,1 @@
+(import "cm32p2|wasi:io/streams" "[method]output-stream.check-write" (func $__wasi_import_io_streams_output_stream_check_write (param i32 i32)))

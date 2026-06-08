@@ -18,9 +18,9 @@ repeat(value A, times usize, p P) -> A {
     out A = value
     i usize = 0
     loop {
-        if ge(i, times) return out
+        if @ge(i, times) return out
         out = p(out)
-        i = add(i, 1)
+        i = @add(i, 1)
     }
 }
 
@@ -30,7 +30,7 @@ repeat(value A, times usize, p P) -> A {
 map(xs [T], p P) -> [U] {
     out [U] = .{}
     loop value, _ = xs {
-        out = put(out, p(value))
+        out = @put(out, p(value))
     }
     return out
 }
@@ -42,7 +42,7 @@ map(xs [T], p P) -> [U] {
 map(xs [T], env E, p P) -> [U] {
     out [U] = .{}
     loop value, _ = xs {
-        out = put(out, p(value, env))
+        out = @put(out, p(value, env))
     }
     return out
 }
@@ -53,7 +53,7 @@ filter(xs [T], p P) -> [T] {
     out [T] = .{}
     loop value, _ = xs {
         if p(value) {
-            out = put(out, value)
+            out = @put(out, value)
         }
     }
     return out
@@ -66,7 +66,7 @@ filter(xs [T], env E, p P) -> [T] {
     out [T] = .{}
     loop value, _ = xs {
         if p(value, env) {
-            out = put(out, value)
+            out = @put(out, value)
         }
     }
     return out
@@ -86,14 +86,14 @@ fold(xs [T], init U, p P) -> U {
 #T
 #P = (T, T) -> T
 reduce(xs [T], fallback T, p P) -> T, bool {
-    if eq(len(xs), 0) return fallback, false
+    if @eq(@len(xs), 0) return fallback, false
 
-    out T = get(xs, 0)
+    out T = @get(xs, 0)
     i usize = 1
     loop {
-        if ge(i, len(xs)) return out, true
-        out = p(out, get(xs, i))
-        i = add(i, 1)
+        if @ge(i, @len(xs)) return out, true
+        out = p(out, @get(xs, i))
+        i = @add(i, 1)
     }
 }
 
@@ -158,7 +158,7 @@ any(xs [T], env E, p P) -> bool {
 #P = (T) -> bool
 all(xs [T], p P) -> bool {
     loop value, _ = xs {
-        if not(p(value)) return false
+        if @not(p(value)) return false
     }
     return true
 }
@@ -168,7 +168,7 @@ all(xs [T], p P) -> bool {
 #P = (T, E) -> bool
 all(xs [T], env E, p P) -> bool {
     loop value, _ = xs {
-        if not(p(value, env)) return false
+        if @not(p(value, env)) return false
     }
     return true
 }
@@ -179,7 +179,7 @@ count(xs [T], p P) -> usize {
     out usize = 0
     loop value, _ = xs {
         if p(value) {
-            out = add(out, 1)
+            out = @add(out, 1)
         }
     }
     return out
@@ -192,7 +192,7 @@ count(xs [T], env E, p P) -> usize {
     out usize = 0
     loop value, _ = xs {
         if p(value, env) {
-            out = add(out, 1)
+            out = @add(out, 1)
         }
     }
     return out

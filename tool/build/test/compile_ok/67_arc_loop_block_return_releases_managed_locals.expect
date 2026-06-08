@@ -1,0 +1,8 @@
+;; loop-block
+loop $loop_body
+;; arc-release-local data
+local.get $data
+call $__do_arc_dec
+return
+br $loop_body
+end

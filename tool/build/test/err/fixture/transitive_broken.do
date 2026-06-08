@@ -1,4 +1,4 @@
-missing = @missing_dep.do/missing
+missing = @lib("missing_dep.do", missing)
 
 broken() {
     return

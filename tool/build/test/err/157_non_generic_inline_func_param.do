@@ -3,6 +3,6 @@ apply(f (i32) -> i32) -> i32 {
 }
 
 test "non generic inline func param" {
-    x = apply((v i32) -> i32 => add(v, 1))
+    x = apply((v i32) -> i32 => @add(v, 1))
     return
 }

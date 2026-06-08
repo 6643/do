@@ -1,0 +1,10 @@
+"target": "io/streams/output-stream.check-write"
+"member": "output-stream.check-write"
+"kind": "result-u64-stream-error"
+"params": [
+            "i32",
+            "i32"
+"ok": "u64"
+"err": "stream-error"
+"payload_offset": 8
+"size": 16

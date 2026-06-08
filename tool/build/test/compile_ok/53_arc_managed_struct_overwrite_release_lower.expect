@@ -1,0 +1,14 @@
+(local $__do_storage_overwrite_tmp i32)
+local.get $next_box
+call $__do_arc_inc
+local.set $__do_storage_overwrite_tmp
+;; arc-overwrite-release box
+local.get $__do_storage_overwrite_tmp
+local.get $box
+i32.ne
+if
+local.get $box
+call $__do_arc_dec
+end
+local.get $__do_storage_overwrite_tmp
+local.set $box

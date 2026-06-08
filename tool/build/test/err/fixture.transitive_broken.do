@@ -1,4 +1,4 @@
-missing = @./fixture.missing_dep.do/missing
+missing = @lib("./fixture.missing_dep.do", missing)
 
 broken() {
     return

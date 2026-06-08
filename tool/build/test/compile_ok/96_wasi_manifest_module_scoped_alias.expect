@@ -1,0 +1,2 @@
+;; wasi-bind source="src/time.do" alias="host_now" target="clocks/system-clock/now" params="" result="Datetime"
+;; wasi-bind source="entry" alias="host_now" target="random/random/get-random-u64" params="" result="u64"

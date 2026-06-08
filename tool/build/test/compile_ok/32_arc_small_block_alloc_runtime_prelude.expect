@@ -1,0 +1,16 @@
+;; arc-runtime small block allocator v1
+(func $__do_arc_alloc_small (param $payload_bytes i32) (param $type_id i32) (result i32)
+(local $object_bytes i32)
+(local $slot_units i32)
+(local $cap i32)
+(local $block i32)
+(local $data_start i32)
+i32.const 504
+i32.gt_u
+call $__do_arc_alloc_large
+i32.const 1024
+call $__do_memory_grow_to
+i32.store8
+i32.const -1
+i32.store
+i32.store8

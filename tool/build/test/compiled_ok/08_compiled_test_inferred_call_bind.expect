@@ -1,0 +1,7 @@
+;; compiled-test 0 "compiled inferred call bind"
+(func $double (param $x i32) (result i32)
+call $double
+local.set $got
+if
+return
+unreachable

@@ -8,5 +8,5 @@ load_user() -> User | User {
 
 test "duplicate named union" {
     user = load_user()
-    if is(user, User) return
+    if @is(user, User) return
 }

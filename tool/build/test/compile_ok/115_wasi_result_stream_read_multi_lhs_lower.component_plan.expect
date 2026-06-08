@@ -1,0 +1,4 @@
+"target": "io/streams/input-stream.read"
+"kind": "result-list-u8-stream-error"
+"module": "cm32p2|wasi:io/streams"
+"name": "[method]input-stream.read"

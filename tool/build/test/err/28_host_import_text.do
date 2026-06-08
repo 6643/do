@@ -1,3 +1,3 @@
-log = @env/log([u8]) -> nil
+log = @env("log", ([u8]) -> nil)
 
 test "host import text" {}

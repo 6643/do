@@ -79,6 +79,7 @@ pub fn checkProgram(
     try checkParenthesizedTypes(tokens);
     try checkGenericTypeArgArity(tokens);
     try checkGenericStructCtorTypeArgs(tokens);
+    try checkForbiddenSourceTypeNames(tokens);
     try checkBareNilTypes(tokens);
     try checkInlineFuncTypeUnionBranches(tokens);
     try checkDuplicateUnionBranches(tokens);
@@ -98,21 +99,25 @@ pub fn checkProgram(
     try checkIsTypeArgs(tokens);
     try checkLoopHeader(tokens);
     try checkLoopLabels(allocator, tokens);
+    try checkDeferStmts(allocator, tokens);
     try checkAssignmentConstraints(allocator, tokens);
 }
 
 fn checkPrivateLValueAssign(tokens: []const lexer.Token) !void {
     var i: usize = 0;
-    while (i < tokens.len) : (i += 1) {
-        const t = tokens[i];
+    while (i < tokens.len) {
+        const line_start = i;
+        const line_end = findLineEndIdx(tokens, line_start);
+        defer i = line_end;
+
+        const t = tokens[line_start];
         if (t.kind != .ident) continue;
         if (t.lexeme.len < 2 or t.lexeme[0] != '.') continue;
-        const line_end = findLineEndIdx(tokens, i);
-        const eq_idx = findPlainEqOnLine(tokens, i + 1, line_end) orelse continue;
-        if (isTopLevelDeclHead(tokens, i) and isTypeDeclStart(tokens, i)) continue;
-        if (isPrivateTopValueDeclStart(tokens, i, eq_idx)) continue;
-        if (isStructFieldDeclDefault(tokens, i, eq_idx)) continue;
-        return markErrorAt(tokens, i, error.PrivateIdentCannotBeLValue);
+        const eq_idx = findTopLevelAssignEqOnLine(tokens, line_start, line_end) orelse continue;
+        if (isTopLevelDeclHead(tokens, line_start) and isTypeDeclStart(tokens, line_start)) continue;
+        if (isPrivateTopValueDeclStart(tokens, line_start, eq_idx)) continue;
+        if (isStructFieldDeclDefault(tokens, line_start, eq_idx)) continue;
+        return markErrorAt(tokens, line_start, error.PrivateIdentCannotBeLValue);
     }
 }
 
@@ -333,6 +338,12 @@ fn checkOneParamType(tokens: []const lexer.Token, start_idx: usize, end_idx: usi
     if (tokEq(tokens[type_start], "nil")) {
         return markErrorAt(tokens, type_start, error.InvalidTypeRef);
     }
+    if (tokens[type_start].kind == .ident and isLegacyBaseTypeName(tokens[type_start].lexeme)) {
+        return markErrorAt(tokens, type_start, error.InvalidTypeRef);
+    }
+    if (tokens[type_start].kind == .ident and isWitOnlySourceTypeName(tokens[type_start].lexeme)) {
+        return markErrorAt(tokens, type_start, error.InvalidTypeRef);
+    }
     if (directParamTypeName(tokens, type_start, end_idx)) |name| {
         if (isLocalUnionAlias(tokens, name)) return markErrorAt(tokens, type_start, error.InvalidTypeRef);
     }
@@ -419,8 +430,14 @@ fn isPrivateFuncDeclName(tokens: []const lexer.Token, idx: usize) bool {
 
 fn isStructFieldDeclName(tokens: []const lexer.Token, idx: usize) bool {
     if (lineStartIdx(tokens, idx) != idx) return false;
-    if (!isStructFieldName(tokens[idx].lexeme)) return false;
+    if (!isStructFieldDeclSyntaxName(tokens[idx].lexeme)) return false;
     return isInsideStructDecl(tokens, idx);
+}
+
+fn isStructFieldDeclSyntaxName(name: []const u8) bool {
+    if (name.len == 0) return false;
+    const body = if (name[0] == '.') name[1..] else name;
+    return isSnakeLowerName(body);
 }
 
 fn isGetSetPathFieldSegment(tokens: []const lexer.Token, idx: usize) bool {
@@ -432,9 +449,7 @@ fn isGetSetPathFieldSegment(tokens: []const lexer.Token, idx: usize) bool {
 
 fn callArgInfo(tokens: []const lexer.Token, idx: usize) ?CallArgInfo {
     const open_idx = findEnclosingCallOpen(tokens, idx) orelse return null;
-    if (open_idx == 0) return null;
-    const name_idx = open_idx - 1;
-    if (tokens[name_idx].kind != .ident) return null;
+    const name_idx = callNameIdxBeforeOpen(tokens, open_idx) orelse return null;
 
     const close_idx = findMatching(tokens, open_idx, "(", ")") catch return null;
     if (idx <= open_idx or idx >= close_idx) return null;
@@ -497,6 +512,13 @@ fn callArgInfo(tokens: []const lexer.Token, idx: usize) ?CallArgInfo {
         .arg_index = arg_index,
         .arg_count = arg_count,
     };
+}
+
+fn callNameIdxBeforeOpen(tokens: []const lexer.Token, open_idx: usize) ?usize {
+    if (open_idx == 0) return null;
+    const name_idx = open_idx - 1;
+    if (tokens[name_idx].kind != .ident) return null;
+    return name_idx;
 }
 
 fn findEnclosingCallOpen(tokens: []const lexer.Token, idx: usize) ?usize {
@@ -595,7 +617,7 @@ fn checkSingleValuePositions(
 
     var i: usize = 0;
     while (i + 1 < tokens.len) : (i += 1) {
-        if (!isCallHead(tokens, i)) continue;
+        if (!isCallHead(tokens, i) and !isBuiltinIntrinsicCallHead(tokens, i)) continue;
         if (isTopLevelDeclHead(tokens, i) and (isFuncDeclStart(tokens, i) or isStartDeclStart(tokens, i))) continue;
         if (isFuncConstraintHead(tokens, i)) continue;
 
@@ -1413,7 +1435,7 @@ fn checkSpreadCallTargets(
 
     var i: usize = 0;
     while (i + 1 < tokens.len) : (i += 1) {
-        if (!isCallHead(tokens, i)) continue;
+        if (!isCallHead(tokens, i) and !isBuiltinIntrinsicCallHead(tokens, i)) continue;
         if (isTopLevelDeclHead(tokens, i) and (isFuncDeclStart(tokens, i) or isStartDeclStart(tokens, i))) continue;
         if (isFuncConstraintHead(tokens, i)) continue;
 
@@ -1441,6 +1463,105 @@ fn checkSpreadCallTargets(
             return markErrorAt(tokens, spread_token_idx, error.InvalidCallArgList);
         }
     }
+}
+
+fn checkDeferStmts(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+) !void {
+    const funcs = try collectFuncShapes(allocator, tokens);
+    defer freeFuncShapes(allocator, funcs);
+
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (!tokEq(tokens[i], "defer")) continue;
+        const body_idx = i + 1;
+        if (body_idx >= tokens.len) return markErrorAt(tokens, i, error.NoMatchingCall);
+        if (tokEq(tokens[body_idx], "{")) {
+            const close_block = findMatching(tokens, body_idx, "{", "}") catch return markErrorAt(tokens, body_idx, error.NoMatchingCall);
+            i = close_block;
+            continue;
+        }
+        try checkDeferCallStmt(allocator, funcs, tokens, body_idx);
+    }
+}
+
+fn checkDeferCallStmt(
+    allocator: std.mem.Allocator,
+    funcs: []const FuncShape,
+    tokens: []const lexer.Token,
+    call_idx: usize,
+) !void {
+    if (tokEq(tokens[call_idx], "@")) return markErrorAt(tokens, call_idx, error.NoMatchingCall);
+    if (tokens[call_idx].kind != .ident) return markErrorAt(tokens, call_idx, error.NoMatchingCall);
+    if (call_idx + 1 >= tokens.len or !tokEq(tokens[call_idx + 1], "(")) return markErrorAt(tokens, call_idx, error.NoMatchingCall);
+
+    const line_end = findLineEndIdx(tokens, call_idx);
+    const close_paren = findMatching(tokens, call_idx + 1, "(", ")") catch return markErrorAt(tokens, call_idx, error.NoMatchingCall);
+    if (close_paren + 1 != line_end) return markErrorAt(tokens, call_idx, error.NoMatchingCall);
+
+    const args = try parseCallArgShapes(allocator, tokens, call_idx + 2, close_paren);
+    defer freeCallArgShapes(allocator, args);
+
+    const name = tokens[call_idx].lexeme;
+    var saw_func_candidate = false;
+    for (funcs) |func| {
+        if (!std.mem.eql(u8, func.name, name)) continue;
+        if (!callArityCompatibleWithFunc(func, args.len)) continue;
+        saw_func_candidate = true;
+        if (funcReturnIsNil(func.return_type)) return;
+    }
+    if (saw_func_candidate) return markErrorAt(tokens, call_idx, error.NoMatchingCall);
+
+    if (hostImportReturnIsNil(tokens, name)) |is_nil| {
+        if (is_nil) return;
+        return markErrorAt(tokens, call_idx, error.NoMatchingCall);
+    }
+}
+
+fn funcReturnIsNil(return_type: ?[]const u8) bool {
+    const ty = return_type orelse return true;
+    return std.mem.eql(u8, ty, "nil");
+}
+
+fn hostImportReturnIsNil(tokens: []const lexer.Token, name: []const u8) ?bool {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (depth_brace == 0) {
+                if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                    i = next_idx - 1;
+                    continue;
+                }
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (tokens[i].kind != .ident) continue;
+        if (!std.mem.eql(u8, publicFuncName(tokens[i].lexeme), name)) continue;
+        if (!isHostImportDeclStart(tokens, i)) continue;
+
+        const eq_idx = topLevelLineAssignIdx(tokens, i) orelse return null;
+        const at_idx = eq_idx + 1;
+        const import_end = parseImportDeclEnd(tokens, i) orelse return null;
+        const comma_idx = findTopLevelComma(tokens, at_idx + 4, import_end - 1) orelse return null;
+        const sig_start = comma_idx + 1;
+        if (sig_start >= import_end or !tokEq(tokens[sig_start], "(")) return null;
+        const close_params = findMatching(tokens, sig_start, "(", ")") catch return null;
+        if (!isReturnArrowAt(tokens, close_params + 1)) return null;
+
+        const return_start = close_params + 3;
+        const return_end = import_end - 1;
+        return return_start + 1 == return_end and tokEq(tokens[return_start], "nil");
+    }
+    return null;
 }
 
 fn callArgSpreadIndex(args: []const CallArgShape) ?usize {
@@ -1474,14 +1595,14 @@ fn isHostImportFuncName(tokens: []const lexer.Token, name: []const u8) bool {
     while (i < tokens.len) : (i += 1) {
         if (!isTopLevelDeclHead(tokens, i)) continue;
         if (tokens[i].kind != .ident) continue;
-        if (!std.mem.eql(u8, tokens[i].lexeme, name)) continue;
+        if (!std.mem.eql(u8, publicFuncName(tokens[i].lexeme), name)) continue;
         if (isHostImportDeclStart(tokens, i)) return true;
     }
     return false;
 }
 
 fn isNumericCoreName(name: []const u8) bool {
-    const names = [_][]const u8{ "add", "sub", "mul", "div", "rem" };
+    const names = [_][]const u8{ "add", "sub", "mul", "div", "rem", "min", "max" };
     for (names) |it| {
         if (std.mem.eql(u8, it, name)) return true;
     }
@@ -1508,6 +1629,45 @@ fn isBuiltinCallName(name: []const u8) bool {
         "get",
         "set",
         "len",
+        "put",
+        "to_u8",
+        "to_u16",
+        "to_u32",
+        "to_u64",
+        "to_usize",
+        "to_isize",
+        "to_i8",
+        "to_i16",
+        "to_i32",
+        "to_i64",
+        "to_f32",
+        "to_f64",
+        "load_u8",
+        "load_i8",
+        "load_u16_le",
+        "load_i16_le",
+        "load_u32_le",
+        "load_i32_le",
+        "load_u64_le",
+        "load_i64_le",
+        "xor",
+        "shl",
+        "shr",
+        "rotl",
+        "rotr",
+        "clz",
+        "ctz",
+        "popcnt",
+        "abs",
+        "neg",
+        "sqrt",
+        "ceil",
+        "floor",
+        "trunc",
+        "nearest",
+        "min",
+        "max",
+        "copysign",
     };
     for (names) |it| {
         if (std.mem.eql(u8, it, name)) return true;
@@ -2134,7 +2294,16 @@ fn isTopLevelCommaAny(tokens: []const lexer.Token, idx: usize, start_idx: usize,
 fn isCallHead(tokens: []const lexer.Token, idx: usize) bool {
     if (idx + 1 >= tokens.len) return false;
     if (tokens[idx].kind != .ident) return false;
+    if (idx > 0 and tokEq(tokens[idx - 1], "@") and tokens[idx - 1].line == tokens[idx].line) return false;
     if (isKeyword(tokens[idx].lexeme)) return false;
+    return tokEq(tokens[idx + 1], "(");
+}
+
+fn isBuiltinIntrinsicCallHead(tokens: []const lexer.Token, idx: usize) bool {
+    if (idx == 0 or idx + 1 >= tokens.len) return false;
+    if (tokens[idx].kind != .ident) return false;
+    if (!tokEq(tokens[idx - 1], "@") or tokens[idx - 1].line != tokens[idx].line) return false;
+    if (!isBuiltinCallName(tokens[idx].lexeme)) return false;
     return tokEq(tokens[idx + 1], "(");
 }
 
@@ -2645,11 +2814,33 @@ fn checkDirectPathSource(tokens: []const lexer.Token) !void {
         const first_arg = firstNonGap(tokens, i + 2, close_paren) orelse continue;
         if (first_arg >= close_paren or tokens[first_arg].kind != .ident) continue;
         const source_type = findNearestValueTypeName(tokens, i, tokens[first_arg].lexeme) orelse continue;
-        if (std.mem.eql(u8, source_type, "List") or std.mem.eql(u8, source_type, "HashMap")) {
+        if ((std.mem.eql(u8, source_type, "List") or std.mem.eql(u8, source_type, "HashMap")) and
+            !hasLocalStructDecl(tokens, source_type))
+        {
             return markErrorAt(tokens, first_arg, error.InvalidPathAccess);
         }
         i = close_paren;
     }
+}
+
+fn hasLocalStructDecl(tokens: []const lexer.Token, name: []const u8) bool {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i + 1 < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (!std.mem.eql(u8, publicTypeName(tokens[i].lexeme), name)) continue;
+        if (i + 1 < tokens.len and tokEq(tokens[i + 1], "{")) return true;
+    }
+    return false;
 }
 
 fn checkPathArgIndexSegments(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !void {
@@ -2938,19 +3129,12 @@ fn isArgCountCompatible(sig: parser.FuncSig, arg_count: usize) bool {
 }
 
 fn parseImportDeclEnd(tokens: []const lexer.Token, start_idx: usize) ?usize {
-    if (!tokEq(tokens[start_idx], "{")) return null;
-    const close_brace = findMatching(tokens, start_idx, "{", "}") catch return null;
-    if (close_brace + 5 >= tokens.len) return null;
-
-    const colon_idx = close_brace + 1;
-    if (!tokEq(tokens[colon_idx], ":")) return null;
-    if (!tokEq(tokens[colon_idx + 1], "=")) return null;
-    if (!tokEq(tokens[colon_idx + 2], "@")) return null;
-    if (!tokEq(tokens[colon_idx + 3], "(")) return null;
-    if (tokens[colon_idx + 4].kind != .string) return null;
-
-    const close_paren = findMatching(tokens, colon_idx + 3, "(", ")") catch return null;
-    if (close_paren != colon_idx + 5) return null;
+    const eq_idx = topLevelLineAssignIdx(tokens, start_idx) orelse return null;
+    const at_idx = eq_idx + 1;
+    if (at_idx + 2 >= tokens.len or !tokEq(tokens[at_idx], "@")) return null;
+    if (tokens[at_idx + 1].kind != .ident) return null;
+    if (!tokEq(tokens[at_idx + 2], "(")) return null;
+    const close_paren = findMatching(tokens, at_idx + 2, "(", ")") catch return null;
     return close_paren + 1;
 }
 
@@ -3162,15 +3346,15 @@ fn enumCarrierValueInRange(carrier: []const u8, value: i128) bool {
     if (std.mem.eql(u8, carrier, "i8")) return value >= -128 and value <= 127;
     if (std.mem.eql(u8, carrier, "i16")) return value >= -32768 and value <= 32767;
     if (std.mem.eql(u8, carrier, "i32")) return value >= -2147483648 and value <= 2147483647;
-    if (std.mem.eql(u8, carrier, "i64") or std.mem.eql(u8, carrier, "isize")) {
+    if (std.mem.eql(u8, carrier, "isize")) return value >= -2147483648 and value <= 2147483647;
+    if (std.mem.eql(u8, carrier, "i64")) {
         return value >= -9223372036854775808 and value <= 9223372036854775807;
     }
     if (std.mem.eql(u8, carrier, "u8")) return value >= 0 and value <= 255;
     if (std.mem.eql(u8, carrier, "u16")) return value >= 0 and value <= 65535;
     if (std.mem.eql(u8, carrier, "u32")) return value >= 0 and value <= 4294967295;
-    if (std.mem.eql(u8, carrier, "u64") or std.mem.eql(u8, carrier, "usize")) {
-        return value >= 0 and value <= 18446744073709551615;
-    }
+    if (std.mem.eql(u8, carrier, "usize")) return value >= 0 and value <= 4294967295;
+    if (std.mem.eql(u8, carrier, "u64")) return value >= 0 and value <= 18446744073709551615;
     return false;
 }
 
@@ -3444,6 +3628,9 @@ fn checkOneStructFieldNames(
     var i = start_idx;
     while (i < end_idx) {
         if (tokens[i].kind != .ident or !isStructFieldName(tokens[i].lexeme)) {
+            if (tokens[i].kind == .ident and isReservedSourceName(normalizeStructFieldName(tokens[i].lexeme))) {
+                return markErrorAt(tokens, i, error.InvalidTypeRef);
+            }
             i = findLineEndIdx(tokens, i);
             continue;
         }
@@ -3476,62 +3663,79 @@ fn isTopLevelDeclHead(tokens: []const lexer.Token, idx: usize) bool {
 }
 
 fn checkHostImports(tokens: []const lexer.Token) !void {
+    var depth_brace: usize = 0;
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
         if (!isTopLevelDeclHead(tokens, i)) continue;
         if (!isHostImportDeclStart(tokens, i)) continue;
         try validateHostImportDecl(tokens, i);
+        i = (parseImportDeclEnd(tokens, i) orelse i + 1) - 1;
     }
 }
 
 fn checkLocalImports(tokens: []const lexer.Token) !void {
+    var depth_brace: usize = 0;
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
         if (!isTopLevelDeclHead(tokens, i)) continue;
         if (!isModernImportAssign(tokens, i)) continue;
 
         const eq_idx = topLevelLineAssignIdx(tokens, i) orelse return markErrorAt(tokens, i, error.InvalidImportDecl);
-        const line_end = findLineEndIdx(tokens, i);
         const at_idx = eq_idx + 1;
-        if (isHostImportLine(tokens, at_idx, line_end)) continue;
+        if (isHostImportLine(tokens, at_idx)) {
+            i = (parseImportDeclEnd(tokens, i) orelse i + 1) - 1;
+            continue;
+        }
 
-        try validateLocalImportDecl(tokens, i, at_idx, line_end);
-        i = line_end - 1;
+        try validateLocalImportDecl(tokens, i, at_idx);
+        i = (parseImportDeclEnd(tokens, i) orelse i + 1) - 1;
     }
 }
 
 fn isHostImportDeclStart(tokens: []const lexer.Token, idx: usize) bool {
     const eq_idx = topLevelLineAssignIdx(tokens, idx) orelse return false;
-    const line_end = findLineEndIdx(tokens, idx);
     const at_idx = eq_idx + 1;
-    if (at_idx >= line_end or !tokEq(tokens[at_idx], "@")) return false;
-    return isHostImportLine(tokens, at_idx, line_end);
+    if (at_idx >= tokens.len or !tokEq(tokens[at_idx], "@")) return false;
+    return isHostImportLine(tokens, at_idx);
 }
 
 fn isModernImportAssign(tokens: []const lexer.Token, idx: usize) bool {
     const eq_idx = topLevelLineAssignIdx(tokens, idx) orelse return false;
-    return eq_idx + 1 < tokens.len and tokEq(tokens[eq_idx + 1], "@");
+    const at_idx = eq_idx + 1;
+    if (at_idx + 1 >= tokens.len or !tokEq(tokens[at_idx], "@")) return false;
+    if (tokens[at_idx + 1].kind != .ident) return false;
+    return std.mem.eql(u8, tokens[at_idx + 1].lexeme, "lib") or
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "env") or
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "wasi");
 }
 
 fn validateHostImportDecl(tokens: []const lexer.Token, name_idx: usize) !void {
     if (tokens[name_idx].kind != .ident) return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
-    if (tokens[name_idx].lexeme.len != 0 and tokens[name_idx].lexeme[0] == '.') {
-        return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
-    }
-    if (!isValidImportName(tokens[name_idx].lexeme)) {
-        return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
-    }
+    const alias = publicFuncName(tokens[name_idx].lexeme);
+    if (!isValidImportName(alias)) return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
+    if (!isLowerIdentName(alias)) return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
 
     const eq_idx = topLevelLineAssignIdx(tokens, name_idx) orelse return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
-    const line_end = findLineEndIdx(tokens, name_idx);
     const at_idx = eq_idx + 1;
-    if (at_idx >= line_end or !tokEq(tokens[at_idx], "@")) return markErrorAt(tokens, eq_idx, error.InvalidImportDecl);
-    if (at_idx + 1 >= line_end) return markErrorAt(tokens, at_idx, error.InvalidImportDecl);
-
-    if (!isLowerIdentName(tokens[name_idx].lexeme)) {
-        return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
-    }
-    try validateHostImportLine(tokens, at_idx, line_end);
+    try validateHostImportLine(tokens, at_idx, parseImportDeclEnd(tokens, name_idx) orelse return markErrorAt(tokens, at_idx, error.InvalidImportDecl));
 }
 
 fn isValidImportName(name: []const u8) bool {
@@ -3550,63 +3754,57 @@ fn topLevelLineAssignIdx(tokens: []const lexer.Token, line_start: usize) ?usize 
     return findTopLevelAssignEqOnLine(tokens, line_start + 1, line_end);
 }
 
-fn isHostImportLine(tokens: []const lexer.Token, at_idx: usize, line_end: usize) bool {
-    if (at_idx + 2 >= line_end) return false;
+fn isHostImportLine(tokens: []const lexer.Token, at_idx: usize) bool {
+    if (at_idx + 2 >= tokens.len) return false;
+    if (!tokEq(tokens[at_idx], "@")) return false;
     if (tokens[at_idx + 1].kind != .ident) return false;
-    if (std.mem.indexOf(u8, tokens[at_idx + 1].lexeme, ".do") != null) return false;
-    if (std.mem.eql(u8, tokens[at_idx + 1].lexeme, "env")) {
-        return tokEq(tokens[at_idx + 2], "/") and findTokenOnLine(tokens, at_idx + 3, line_end, "(") != null;
-    }
-    if (std.mem.eql(u8, tokens[at_idx + 1].lexeme, "wasi")) {
-        return tokEq(tokens[at_idx + 2], "/") and findTokenOnLine(tokens, at_idx + 3, line_end, "(") != null;
-    }
-    return false;
+    if (!tokEq(tokens[at_idx + 2], "(")) return false;
+    return std.mem.eql(u8, tokens[at_idx + 1].lexeme, "env") or std.mem.eql(u8, tokens[at_idx + 1].lexeme, "wasi");
 }
 
-fn validateLocalImportDecl(tokens: []const lexer.Token, name_idx: usize, at_idx: usize, line_end: usize) !void {
+fn validateLocalImportDecl(tokens: []const lexer.Token, name_idx: usize, at_idx: usize) !void {
     if (tokens[name_idx].kind != .ident) return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
-    if (tokens[name_idx].lexeme.len != 0 and tokens[name_idx].lexeme[0] == '.') {
-        return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
-    }
-    if (!isValidImportName(tokens[name_idx].lexeme)) {
-        return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
-    }
+    if (tokens[name_idx].lexeme.len != 0 and tokens[name_idx].lexeme[0] == '.') return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
+    if (!isValidImportName(tokens[name_idx].lexeme)) return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
 
-    var i = at_idx + 1;
+    const close_idx = parseImportDeclEnd(tokens, name_idx) orelse return markErrorAt(tokens, at_idx, error.InvalidImportDecl);
+    if (at_idx + 7 != close_idx) return markErrorAt(tokens, at_idx, error.InvalidImportDecl);
+    if (tokens[at_idx + 1].kind != .ident or !std.mem.eql(u8, tokens[at_idx + 1].lexeme, "lib")) return markErrorAt(tokens, at_idx, error.InvalidImportDecl);
+    if (!tokEq(tokens[at_idx + 2], "(")) return markErrorAt(tokens, at_idx + 2, error.InvalidImportDecl);
+    if (tokens[at_idx + 3].kind != .string) return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
+    if (!tokEq(tokens[at_idx + 4], ",")) return markErrorAt(tokens, at_idx + 4, error.InvalidImportDecl);
+    if (tokens[at_idx + 5].kind != .ident) return markErrorAt(tokens, at_idx + 5, error.InvalidImportDecl);
+
+    var file_path = stringTokenBody(tokens[at_idx + 3].lexeme) orelse return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
+    const target = tokens[at_idx + 5].lexeme;
     var prefix: LocalImportPrefix = .std;
-    if (i + 1 < line_end and tokEq(tokens[i], ".") and tokEq(tokens[i + 1], "/")) {
+    if (std.mem.startsWith(u8, file_path, "./")) {
         prefix = .local;
-        i += 2;
-    } else if (i < line_end and tokEq(tokens[i], "~")) {
+        file_path = file_path[2..];
+    } else if (std.mem.startsWith(u8, file_path, "~/")) {
         prefix = .dep;
-        i += 1;
-        if (i >= line_end or !tokEq(tokens[i], "/")) return markErrorAt(tokens, i - 1, error.InvalidImportDecl);
-        i += 1;
-    } else if (i < line_end and tokEq(tokens[i], "/")) {
-        return markErrorAt(tokens, i, error.InvalidImportDecl);
+        file_path = file_path[2..];
+    } else if (std.mem.startsWith(u8, file_path, "/")) {
+        return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
     }
 
-    if (i >= line_end or tokens[i].kind != .ident) return markErrorAt(tokens, @min(i, line_end - 1), error.InvalidImportDecl);
-    try validateImportFileName(tokens, i, prefix);
-
-    if (i + 1 >= line_end or !tokEq(tokens[i + 1], "/")) return markErrorAt(tokens, i, error.InvalidImportDecl);
-    const target_idx = i + 2;
-    if (target_idx >= line_end or tokens[target_idx].kind != .ident) return markErrorAt(tokens, @min(target_idx, line_end - 1), error.InvalidImportDecl);
-    if (!isValidImportName(tokens[target_idx].lexeme)) return markErrorAt(tokens, target_idx, error.InvalidImportDecl);
-    if (!importAliasMatchesTarget(tokens[name_idx].lexeme, tokens[target_idx].lexeme)) return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
-    if (target_idx + 1 != line_end) return markErrorAt(tokens, target_idx + 1, error.InvalidImportDecl);
+    try validateImportFileNameText(tokens, at_idx + 3, file_path, prefix);
+    if (!isValidImportName(target)) return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
+    if (!importAliasMatchesTarget(tokens[name_idx].lexeme, target)) return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
 }
 
-fn validateImportFileName(tokens: []const lexer.Token, idx: usize, prefix: LocalImportPrefix) !void {
-    const s = tokens[idx].lexeme;
-    if (!std.mem.endsWith(u8, s, ".do")) return markErrorAt(tokens, idx, error.InvalidImportDecl);
-
+fn validateImportFileNameText(tokens: []const lexer.Token, site_idx: usize, s: []const u8, prefix: LocalImportPrefix) !void {
+    if (!std.mem.endsWith(u8, s, ".do")) return markErrorAt(tokens, site_idx, error.InvalidImportDecl);
     const stem = s[0 .. s.len - 3];
     const ok = switch (prefix) {
         .local, .std => isValidFlatFileStem(stem),
         .dep => isValidDepFileStem(stem),
     };
-    if (!ok) return markErrorAt(tokens, idx, error.InvalidImportDecl);
+    if (!ok) return markErrorAt(tokens, site_idx, error.InvalidImportDecl);
+}
+
+fn validateImportFileName(tokens: []const lexer.Token, idx: usize, prefix: LocalImportPrefix) !void {
+    try validateImportFileNameText(tokens, idx, tokens[idx].lexeme, prefix);
 }
 
 fn isValidFlatFileStem(stem: []const u8) bool {
@@ -3651,7 +3849,7 @@ fn isValidPathSeg(seg: []const u8) bool {
 
     var prev_underscore = false;
     for (seg[1..]) |ch| {
-        if (ch >= 'a' and ch <= 'z') {
+        if ((ch >= 'a' and ch <= 'z') or (ch >= '0' and ch <= '9')) {
             prev_underscore = false;
             continue;
         }
@@ -3669,93 +3867,248 @@ fn isValidPathSeg(seg: []const u8) bool {
     return true;
 }
 
-fn validateHostImportLine(tokens: []const lexer.Token, at_idx: usize, line_end: usize) !void {
-    const open_idx = findTokenOnLine(tokens, at_idx + 1, line_end, "(") orelse return markErrorAt(tokens, at_idx, error.InvalidImportDecl);
-    const kind = try validateHostImportTarget(tokens, at_idx, open_idx);
-    const close_idx = findMatching(tokens, open_idx, "(", ")") catch return markErrorAt(tokens, open_idx, error.InvalidImportDecl);
-    if (close_idx >= line_end) return markErrorAt(tokens, open_idx, error.InvalidImportDecl);
-    try validateHostImportParams(tokens, open_idx + 1, close_idx, kind);
+fn validateHostImportLine(tokens: []const lexer.Token, at_idx: usize, import_end: usize) !void {
+    if (at_idx + 5 > import_end) return markErrorAt(tokens, at_idx, error.InvalidImportDecl);
+    if (!tokEq(tokens[at_idx], "@")) return markErrorAt(tokens, at_idx, error.InvalidImportDecl);
+    if (tokens[at_idx + 1].kind != .ident) return markErrorAt(tokens, at_idx + 1, error.InvalidImportDecl);
+    if (!tokEq(tokens[at_idx + 2], "(")) return markErrorAt(tokens, at_idx + 2, error.InvalidImportDecl);
+    if (tokens[at_idx + 3].kind != .string) return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
 
-    if (close_idx + 3 > line_end or !tokEq(tokens[close_idx + 1], "-") or !tokEq(tokens[close_idx + 2], ">")) {
-        return markErrorAt(tokens, close_idx, error.InvalidImportDecl);
+    const target = stringTokenBody(tokens[at_idx + 3].lexeme) orelse return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
+    const kind = try validateHostImportTarget(tokens, at_idx, at_idx + 1);
+    const comma_idx = findTopLevelComma(tokens, at_idx + 4, import_end - 1) orelse return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
+    if (comma_idx + 1 >= import_end - 1) return markErrorAt(tokens, comma_idx, error.InvalidImportDecl);
+    try validateHostSignature(tokens, comma_idx + 1, import_end - 1, kind);
+    if (kind == .wasi) {
+        try validateKnownWasiSignature(tokens, at_idx + 3, target, comma_idx + 1, import_end - 1);
     }
-    const ret_start = close_idx + 3;
-    if (ret_start >= line_end) return markErrorAt(tokens, close_idx, error.InvalidImportDecl);
-    if (hasTopLevelComma(tokens, ret_start, line_end)) return markErrorAt(tokens, ret_start, error.InvalidImportDecl);
-    try validateHostReturnType(tokens, ret_start, line_end, kind);
 }
 
-fn validateHostImportTarget(tokens: []const lexer.Token, at_idx: usize, open_idx: usize) !HostImportKind {
-    if (at_idx + 3 >= open_idx) return markErrorAt(tokens, at_idx, error.InvalidImportDecl);
-    if (tokens[at_idx + 1].kind != .ident) return markErrorAt(tokens, at_idx + 1, error.InvalidImportDecl);
-
-    if (std.mem.eql(u8, tokens[at_idx + 1].lexeme, "env")) {
-        if (!tokEq(tokens[at_idx + 2], "/")) return markErrorAt(tokens, at_idx + 2, error.InvalidImportDecl);
-        if (at_idx + 4 != open_idx) return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
-        if (tokens[at_idx + 3].kind != .ident or !isValidPathSeg(tokens[at_idx + 3].lexeme)) {
-            return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
-        }
+fn validateHostImportTarget(tokens: []const lexer.Token, at_idx: usize, name_idx: usize) !HostImportKind {
+    const target = stringTokenBody(tokens[at_idx + 3].lexeme) orelse return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
+    if (std.mem.eql(u8, tokens[name_idx].lexeme, "env")) {
+        if (!isValidPathSeg(target)) return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
         return .env;
     }
-
-    if (std.mem.eql(u8, tokens[at_idx + 1].lexeme, "wasi")) {
-        if (!tokEq(tokens[at_idx + 2], "/")) return markErrorAt(tokens, at_idx + 2, error.InvalidImportDecl);
-        var i = at_idx + 3;
-        i = parseWitName(tokens, i, open_idx) orelse return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
-        if (i >= open_idx or !tokEq(tokens[i], "/")) return markErrorAt(tokens, @min(i, open_idx - 1), error.InvalidImportDecl);
-        i += 1;
-        i = parseWitName(tokens, i, open_idx) orelse return markErrorAt(tokens, @min(i, open_idx - 1), error.InvalidImportDecl);
-        if (i >= open_idx or !tokEq(tokens[i], "/")) return markErrorAt(tokens, @min(i, open_idx - 1), error.InvalidImportDecl);
-        i += 1;
-        const member_end = parseWitName(tokens, i, open_idx) orelse return markErrorAt(tokens, @min(i, open_idx - 1), error.InvalidImportDecl);
-        if (member_end != open_idx) {
-            return markErrorAt(tokens, member_end, error.InvalidImportDecl);
-        }
+    if (std.mem.eql(u8, tokens[name_idx].lexeme, "wasi")) {
+        if (!isValidWitTargetPath(target)) return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
         return .wasi;
     }
+    return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
+}
 
-    return markErrorAt(tokens, at_idx + 1, error.InvalidImportDecl);
+fn validateHostSignature(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, kind: HostImportKind) !void {
+    if (start_idx >= end_idx) return markErrorAt(tokens, @min(start_idx, tokens.len - 1), error.InvalidImportDecl);
+    if (!tokEq(tokens[start_idx], "(")) return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
+    const close_idx = findMatching(tokens, start_idx, "(", ")") catch return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
+    if (close_idx + 3 >= end_idx or !tokEq(tokens[close_idx + 1], "-") or !tokEq(tokens[close_idx + 2], ">")) return markErrorAt(tokens, close_idx, error.InvalidImportDecl);
+    try validateHostImportParams(tokens, start_idx + 1, close_idx, kind);
+    try validateHostReturnType(tokens, close_idx + 3, end_idx, kind);
+}
+
+const KnownWasiSignature = struct {
+    target: []const u8,
+    params: []const u8,
+    result: []const u8,
+    result_record: ?KnownWasiRecord = null,
+};
+
+const KnownWasiRecord = struct {
+    name: []const u8,
+    fields: []const KnownWasiRecordField,
+};
+
+const KnownWasiRecordField = struct {
+    name: []const u8,
+    ty: []const u8,
+};
+
+const WIT_DATETIME_FIELDS = [_]KnownWasiRecordField{
+    .{ .name = "seconds", .ty = "i64" },
+    .{ .name = "nanoseconds", .ty = "u32" },
+};
+
+fn validateKnownWasiSignature(
+    tokens: []const lexer.Token,
+    site_idx: usize,
+    target: []const u8,
+    sig_start: usize,
+    sig_end: usize,
+) !void {
+    const known = findKnownWasiSignature(target) orelse return;
+    const close_idx = findMatching(tokens, sig_start, "(", ")") catch
+        return markErrorAt(tokens, sig_start, error.InvalidImportDecl);
+    if (close_idx + 3 >= sig_end or !tokEq(tokens[close_idx + 1], "-") or !tokEq(tokens[close_idx + 2], ">")) {
+        return markErrorAt(tokens, sig_start, error.InvalidImportDecl);
+    }
+    if (!compactTokenRangeEquals(tokens, sig_start + 1, close_idx, known.params)) {
+        return markErrorAt(tokens, site_idx, error.InvalidImportDecl);
+    }
+    if (!compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.result)) {
+        return markErrorAt(tokens, site_idx, error.InvalidImportDecl);
+    }
+    if (known.result_record) |record| {
+        if (!knownWasiRecordMirrorMatches(tokens, record)) return markErrorAt(tokens, site_idx, error.InvalidImportDecl);
+    }
+}
+
+fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
+    const known = [_]KnownWasiSignature{
+        .{ .target = "filesystem/types/descriptor.write", .params = "descriptor,list<u8>,filesize", .result = "result<filesize,error-code>" },
+        .{ .target = "filesystem/types/descriptor.read", .params = "descriptor,filesize,filesize", .result = "result<tuple<list<u8>,bool>,error-code>" },
+        .{ .target = "filesystem/types/descriptor.sync", .params = "descriptor", .result = "result<_,error-code>" },
+        .{ .target = "filesystem/types/descriptor.link-at", .params = "descriptor,path-flags,text,borrow<descriptor>,text", .result = "result<_,error-code>" },
+        .{ .target = "filesystem/types/descriptor.create-directory-at", .params = "descriptor,text", .result = "result<_,error-code>" },
+        .{ .target = "filesystem/types/descriptor.open-at", .params = "descriptor,path-flags,text,open-flags,descriptor-flags", .result = "result<descriptor,error-code>" },
+        .{ .target = "filesystem/types/descriptor.remove-directory-at", .params = "descriptor,text", .result = "result<_,error-code>" },
+        .{ .target = "filesystem/types/descriptor.read-directory", .params = "descriptor", .result = "tuple<stream<directory-entry>,future<result<_,error-code>>>" },
+        .{ .target = "filesystem/types/descriptor.drop", .params = "descriptor", .result = "nil" },
+        .{ .target = "filesystem/preopens/get-directories", .params = "", .result = "list<tuple<descriptor,text>>" },
+        .{ .target = "io/streams/input-stream.read", .params = "input-stream,u64", .result = "result<list<u8>,stream-error>" },
+        .{ .target = "io/streams/output-stream.check-write", .params = "output-stream", .result = "result<u64,stream-error>" },
+        .{ .target = "io/streams/output-stream.write", .params = "output-stream,list<u8>", .result = "result<_,stream-error>" },
+        .{ .target = "io/streams/output-stream.flush", .params = "output-stream", .result = "result<_,stream-error>" },
+        .{ .target = "sockets/types/tcp-socket.create", .params = "ip-address-family", .result = "result<tcp-socket,error-code>" },
+        .{ .target = "sockets/types/tcp-socket.bind", .params = "tcp-socket,ip-socket-address", .result = "result<_,error-code>" },
+        .{ .target = "sockets/types/udp-socket.create", .params = "ip-address-family", .result = "result<udp-socket,error-code>" },
+        .{ .target = "sockets/types/udp-socket.bind", .params = "udp-socket,ip-socket-address", .result = "result<_,error-code>" },
+        .{ .target = "http/client/send", .params = "request", .result = "result<response,error-code>" },
+        .{ .target = "text/char/echo", .params = "char", .result = "char" },
+        .{
+            .target = "clocks/system-clock/now",
+            .params = "",
+            .result = "Datetime",
+            .result_record = .{ .name = "Datetime", .fields = &WIT_DATETIME_FIELDS },
+        },
+        .{ .target = "clocks/system-clock/get-resolution", .params = "", .result = "u64" },
+        .{ .target = "clocks/monotonic-clock/now", .params = "", .result = "u64" },
+        .{ .target = "clocks/monotonic-clock/get-resolution", .params = "", .result = "u64" },
+        .{ .target = "random/random/get-random-bytes", .params = "u64", .result = "list<u8>" },
+        .{ .target = "random/random/get-random-u64", .params = "", .result = "u64" },
+    };
+    for (known) |item| {
+        if (std.mem.eql(u8, item.target, target)) return item;
+    }
+    return null;
+}
+
+fn compactTokenRangeEquals(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, expected: []const u8) bool {
+    var pos: usize = 0;
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        const lexeme = tokens[i].lexeme;
+        if (pos + lexeme.len > expected.len) return false;
+        if (!std.mem.eql(u8, expected[pos .. pos + lexeme.len], lexeme)) return false;
+        pos += lexeme.len;
+    }
+    return pos == expected.len;
+}
+
+const StructDeclRange = struct {
+    open_idx: usize,
+    close_idx: usize,
+};
+
+fn knownWasiRecordMirrorMatches(tokens: []const lexer.Token, record: KnownWasiRecord) bool {
+    const decl = findPublicStructDecl(tokens, record.name) orelse return false;
+
+    var field_idx: usize = 0;
+    var i = decl.open_idx + 1;
+    while (i < decl.close_idx) {
+        const line_end = findLineEndIdx(tokens, i);
+        if (tokens[i].kind != .ident or !isStructFieldName(tokens[i].lexeme) or i + 1 >= line_end) {
+            i = line_end;
+            continue;
+        }
+        if (field_idx >= record.fields.len) return false;
+
+        const expected = record.fields[field_idx];
+        if (!std.mem.eql(u8, normalizeStructFieldName(tokens[i].lexeme), expected.name)) return false;
+
+        const type_end = findStructFieldTypeEnd(tokens, i + 1, line_end);
+        if (!compactTokenRangeEquals(tokens, i + 1, type_end, expected.ty)) return false;
+
+        field_idx += 1;
+        i = line_end;
+    }
+
+    return field_idx == record.fields.len;
 }
 
 fn validateHostImportParams(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, kind: HostImportKind) !void {
-    if (start_idx >= end_idx) return;
     var i = start_idx;
     while (i < end_idx) {
-        const type_end = findTopLevelComma(tokens, i, end_idx) orelse end_idx;
-        try validateHostParamType(tokens, i, type_end, kind);
-        i = type_end;
-        if (i >= end_idx) break;
-        if (!tokEq(tokens[i], ",")) return markErrorAt(tokens, i, error.InvalidImportDecl);
-        i += 1;
-    }
-}
+        if (tokEq(tokens[i], ",")) {
+            i += 1;
+            continue;
+        }
 
-fn validateHostParamType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, kind: HostImportKind) !void {
-    switch (kind) {
-        .env => {
-            if (end_idx != start_idx + 1 or tokens[start_idx].kind != .ident) return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
-            if (isHostParamType(tokens[start_idx].lexeme)) return;
-            return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
-        },
-        .wasi => {
-            const next_idx = parseWitType(tokens, start_idx, end_idx) orelse return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
-            if (next_idx != end_idx) return markErrorAt(tokens, next_idx, error.InvalidImportDecl);
-        },
+        const next = try validateHostParamType(tokens, i, end_idx, kind);
+        i = next;
+        if (i < end_idx) {
+            if (!tokEq(tokens[i], ",")) return markErrorAt(tokens, i, error.InvalidImportDecl);
+            i += 1;
+        }
     }
 }
 
 fn validateHostReturnType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, kind: HostImportKind) !void {
+    const next = try validateHostReturnTypeAt(tokens, start_idx, end_idx, kind);
+    if (next != end_idx) return markErrorAt(tokens, next, error.InvalidImportDecl);
+}
+
+fn validateHostParamType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, kind: HostImportKind) !usize {
+    if (start_idx >= end_idx) return markErrorAt(tokens, @min(start_idx, tokens.len - 1), error.InvalidImportDecl);
     switch (kind) {
         .env => {
-            if (end_idx != start_idx + 1 or tokens[start_idx].kind != .ident) return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
-            if (isHostReturnType(tokens[start_idx].lexeme)) return;
+            if (tokens[start_idx].kind == .ident and isHostParamType(tokens[start_idx].lexeme)) {
+                return start_idx + 1;
+            }
             return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
         },
         .wasi => {
-            const next_idx = parseWitType(tokens, start_idx, end_idx) orelse return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
-            if (next_idx != end_idx) return markErrorAt(tokens, next_idx, error.InvalidImportDecl);
+            const next = parseWitType(tokens, start_idx, end_idx) orelse
+                return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
+            return next;
         },
     }
+}
+
+fn validateHostReturnTypeAt(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, kind: HostImportKind) !usize {
+    if (start_idx >= end_idx) return markErrorAt(tokens, @min(start_idx, tokens.len - 1), error.InvalidImportDecl);
+    switch (kind) {
+        .env => {
+            if (tokens[start_idx].kind == .ident and isHostReturnType(tokens[start_idx].lexeme)) {
+                return start_idx + 1;
+            }
+            return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
+        },
+        .wasi => {
+            const next = parseWitType(tokens, start_idx, end_idx) orelse
+                return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
+            return next;
+        },
+    }
+}
+
+fn stringTokenBody(s: []const u8) ?[]const u8 {
+    if (s.len < 2) return null;
+    if (s[0] != '"' or s[s.len - 1] != '"') return null;
+    return s[1 .. s.len - 1];
+}
+
+fn isValidWitTargetPath(path: []const u8) bool {
+    var count: usize = 0;
+    var start: usize = 0;
+    while (start <= path.len) {
+        const slash_idx = std.mem.indexOfScalarPos(u8, path, start, '/') orelse path.len;
+        const seg = path[start..slash_idx];
+        if (!isValidWitPathName(seg)) return false;
+        count += 1;
+        if (slash_idx == path.len) break;
+        start = slash_idx + 1;
+    }
+    return count >= 3;
 }
 
 fn isHostParamType(name: []const u8) bool {
@@ -3820,8 +4173,44 @@ fn parseWitType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?
     }
 
     if (std.mem.eql(u8, name, "_")) return start_idx + 1;
+    if (hasPublicStructDecl(tokens, name)) return start_idx + 1;
 
     return parseWitName(tokens, start_idx, end_idx);
+}
+
+fn hasPublicStructDecl(tokens: []const lexer.Token, name: []const u8) bool {
+    return findPublicStructDecl(tokens, name) != null;
+}
+
+fn findPublicStructDecl(tokens: []const lexer.Token, name: []const u8) ?StructDeclRange {
+    if (!isValidDeclaredTypeName(name)) return null;
+
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (depth_brace == 0) {
+                if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                    i = next_idx - 1;
+                    continue;
+                }
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (tokens[i].kind != .ident) continue;
+        if (!std.mem.eql(u8, tokens[i].lexeme, name)) continue;
+        if (i + 1 >= tokens.len or !tokEq(tokens[i + 1], "{")) continue;
+        const close_idx = findMatching(tokens, i + 1, "{", "}") catch return null;
+        return .{ .open_idx = i + 1, .close_idx = close_idx };
+    }
+    return null;
 }
 
 fn parseWitName(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
@@ -3838,11 +4227,36 @@ fn isValidWitPathName(name: []const u8) bool {
     var start: usize = 0;
     while (start <= name.len) {
         const dot_idx = std.mem.indexOfScalarPos(u8, name, start, '.') orelse name.len;
-        if (!isValidPathSeg(name[start..dot_idx])) return false;
+        if (!isValidWitNamePart(name[start..dot_idx])) return false;
         if (dot_idx == name.len) return true;
         start = dot_idx + 1;
     }
     return false;
+}
+
+fn isValidWitNamePart(name: []const u8) bool {
+    if (name.len == 0) return false;
+    if (name[0] < 'a' or name[0] > 'z') return false;
+    if (name[name.len - 1] == '-') return false;
+
+    var prev_dash = false;
+    for (name[1..]) |ch| {
+        if (ch >= 'a' and ch <= 'z') {
+            prev_dash = false;
+            continue;
+        }
+        if (ch >= '0' and ch <= '9') {
+            prev_dash = false;
+            continue;
+        }
+        if (ch == '-') {
+            if (prev_dash) return false;
+            prev_dash = true;
+            continue;
+        }
+        return false;
+    }
+    return true;
 }
 
 fn findTokenOnLine(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, s: []const u8) ?usize {
@@ -4030,6 +4444,50 @@ fn checkTypeRefs(tokens: []const lexer.Token) !void {
         if (isValueEnumBranchDeclToken(tokens, i)) continue;
         return markErrorAt(tokens, i, error.InvalidTypeRef);
     }
+}
+
+fn checkForbiddenSourceTypeNames(tokens: []const lexer.Token) !void {
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokens[i].kind != .ident) continue;
+        if (!isForbiddenSourceTypeName(tokens[i].lexeme)) continue;
+        if (!isSourceTypeNameContext(tokens, i)) continue;
+        return markErrorAt(tokens, i, error.InvalidTypeRef);
+    }
+}
+
+fn isForbiddenSourceTypeName(name: []const u8) bool {
+    return isLegacyBaseTypeName(name) or isWitOnlySourceTypeName(name);
+}
+
+fn isSourceTypeNameContext(tokens: []const lexer.Token, idx: usize) bool {
+    if (isInsideHostImportCall(tokens, idx)) return false;
+    if (isSecondIsArg(tokens, idx)) return true;
+
+    if (idx > 0 and tokens[idx - 1].line == tokens[idx].line) {
+        const prev = tokens[idx - 1];
+        if (tokEq(prev, "=")) return isTypeDeclOrConstraintLine(tokens, idx);
+        if (tokEq(prev, "[") or tokEq(prev, "<") or tokEq(prev, "|") or tokEq(prev, ",")) return true;
+        if (idx >= 2 and isReturnArrowAt(tokens, idx - 2)) return true;
+        if (prev.kind == .ident and !isKeyword(prev.lexeme)) return true;
+        if (isSpreadToken(prev)) return true;
+    }
+
+    if (idx + 1 < tokens.len and tokens[idx + 1].line == tokens[idx].line) {
+        const next = tokens[idx + 1];
+        if (tokEq(next, "]") or tokEq(next, ">") or tokEq(next, "|") or tokEq(next, ",") or tokEq(next, "{")) return true;
+    }
+
+    return false;
+}
+
+fn isInsideHostImportCall(tokens: []const lexer.Token, idx: usize) bool {
+    const open_idx = findEnclosingCallOpen(tokens, idx) orelse return false;
+    if (open_idx < 2) return false;
+    if (!tokEq(tokens[open_idx - 2], "@")) return false;
+    if (tokens[open_idx - 1].kind != .ident) return false;
+    const name = tokens[open_idx - 1].lexeme;
+    return std.mem.eql(u8, name, "env") or std.mem.eql(u8, name, "wasi");
 }
 
 fn isValueEnumBranchDeclToken(tokens: []const lexer.Token, idx: usize) bool {
@@ -4465,6 +4923,12 @@ fn checkUnboundTypeNamesInRange(
     var i = start_idx;
     while (i < end_idx) : (i += 1) {
         if (tokens[i].kind != .ident) continue;
+        if (isLegacyBaseTypeName(tokens[i].lexeme)) {
+            return markErrorAt(tokens, i, error.InvalidTypeRef);
+        }
+        if (isWitOnlySourceTypeName(tokens[i].lexeme)) {
+            return markErrorAt(tokens, i, error.InvalidTypeRef);
+        }
         if (!isValidDeclaredTypeName(tokens[i].lexeme)) continue;
         const name = publicTypeName(tokens[i].lexeme);
         if (hasConcreteTypeName(tokens, name)) continue;
@@ -4864,12 +5328,26 @@ fn isBaseTypeName(name: []const u8) bool {
         "i8",    "i16",   "i32", "i64",
         "u8",    "u16",   "u32", "u64",
         "isize", "usize", "f32", "f64",
-        "bool",
+        "bool",  "text",
     };
     for (base_types) |it| {
         if (std.mem.eql(u8, it, name)) return true;
     }
     return false;
+}
+
+fn isLegacyBaseTypeName(name: []const u8) bool {
+    const legacy_types = [_][]const u8{
+        "s8", "s16", "s32", "s64", "string",
+    };
+    for (legacy_types) |it| {
+        if (std.mem.eql(u8, it, name)) return true;
+    }
+    return false;
+}
+
+fn isWitOnlySourceTypeName(name: []const u8) bool {
+    return std.mem.eql(u8, name, "char");
 }
 
 fn isBaseIntTypeName(name: []const u8) bool {
@@ -5757,10 +6235,39 @@ fn checkAssignmentConstraints(allocator: std.mem.Allocator, tokens: []const lexe
 
 fn validateAssignmentLhsNames(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !void {
     var expect_name = true;
+    var depth_paren: usize = 0;
+    var depth_bracket: usize = 0;
+    var depth_angle: usize = 0;
     var i = start_idx;
     while (i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "[")) {
+            depth_bracket += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "]")) {
+            if (depth_bracket > 0) depth_bracket -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+
+        const at_top_level = depth_paren == 0 and depth_bracket == 0 and depth_angle == 0;
         if (!expect_name) {
-            if (tokEq(tokens[i], ",")) expect_name = true;
+            if (at_top_level and tokEq(tokens[i], ",")) expect_name = true;
             continue;
         }
 
@@ -5789,7 +6296,7 @@ fn isStructFieldDeclDefault(tokens: []const lexer.Token, line_start: usize, eq_i
 fn isStructFieldName(name: []const u8) bool {
     if (name.len == 0) return false;
     const body = if (name[0] == '.') name[1..] else name;
-    return isSnakeLowerName(body);
+    return isSnakeLowerName(body) and !isReservedFuncName(body);
 }
 
 fn isDotLowerIdent(name: []const u8) bool {
@@ -5865,7 +6372,12 @@ fn isReservedFuncName(name: []const u8) bool {
     const public_name = if (name.len != 0 and name[0] == '.') name[1..] else name;
     if (std.mem.eql(u8, public_name, "start")) return true;
     if (isKeyword(public_name)) return true;
+    if (isReservedSourceName(public_name)) return true;
     return isBuiltinSpecialOrCoreName(public_name);
+}
+
+fn isReservedSourceName(name: []const u8) bool {
+    return isBaseTypeName(name) or isLegacyBaseTypeName(name) or isWitOnlySourceTypeName(name);
 }
 
 fn isDeclOnlyName(name: []const u8) bool {
@@ -5877,6 +6389,7 @@ fn isAllowedConstraintFuncName(name: []const u8) bool {
     if (!isLowerIdentName(name)) return false;
     if (isDeclOnlyName(name)) return false;
     if (isBuiltinSpecialOrCoreName(name)) return false;
+    if (isReservedSourceName(name)) return false;
     return !isKeyword(name);
 }
 
@@ -5890,14 +6403,18 @@ fn isNumericCoreFuncName(name: []const u8) bool {
 
 fn isBuiltinSpecialOrCoreName(name: []const u8) bool {
     const names = [_][]const u8{
-        "is",  "and", "or",  "not", "recv",
-        "get", "set",
-        "eq",  "ne",  "lt",  "le",  "gt",  "ge",
-        "add", "sub", "mul", "div", "rem",
-        "len", "put",
-        "to_u8", "to_u16", "to_u32", "to_u64", "to_usize",
-        "to_i8", "to_i16", "to_i32", "to_i64",
-        "to_f32", "to_f64",
+        "is",          "and",         "or",          "not",         "recv",
+        "get",         "set",         "eq",          "ne",          "lt",
+        "le",          "gt",          "ge",          "add",         "sub",
+        "mul",         "div",         "rem",         "len",         "put",
+        "to_u8",       "to_u16",      "to_u32",      "to_u64",      "to_usize",
+        "to_isize",    "to_i8",       "to_i16",      "to_i32",      "to_i64",
+        "to_f32",      "to_f64",      "load_u8",     "load_i8",     "load_u16_le",
+        "load_i16_le", "load_u32_le", "load_i32_le", "load_u64_le", "load_i64_le",
+        "xor",         "shl",         "shr",         "rotl",        "rotr",
+        "clz",         "ctz",         "popcnt",      "abs",         "neg",
+        "sqrt",        "ceil",        "floor",       "trunc",       "nearest",
+        "min",         "max",         "copysign",
     };
     for (names) |it| {
         if (std.mem.eql(u8, it, name)) return true;

@@ -3,5 +3,5 @@ User {
 }
 
 test "type name call arg" {
-    if eq(User, User) return
+    if @eq(User, User) return
 }

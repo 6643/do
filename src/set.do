@@ -22,23 +22,23 @@ empty_set(seed T) -> Set<T> {
 
 #T
 set_len(xs Set<T>) -> usize {
-    return get(xs, .len)
+    return @get(xs, .len)
 }
 
 #T
 set_is_empty(xs Set<T>) -> bool {
-    return eq(set_len(xs), 0)
+    return @eq(set_len(xs), 0)
 }
 
 #T
 items(xs Set<T>) -> [T] {
-    return get(xs, .items)
+    return @get(xs, .items)
 }
 
 #T
 set_has(xs Set<T>, value T) -> bool {
     loop item, _ = items(xs) {
-        if eq(item, value) return true
+        if @eq(item, value) return true
     }
     return false
 }
@@ -46,8 +46,8 @@ set_has(xs Set<T>, value T) -> bool {
 #T
 set_add(xs Set<T>, value T) -> Set<T> {
     if set_has(xs, value) return xs
-    data [T] = put(items(xs), value)
-    return Set<T>{len = add(set_len(xs), 1), items = data}
+    data [T] = @put(items(xs), value)
+    return Set<T>{len = @add(set_len(xs), 1), items = data}
 }
 
 #T
@@ -61,20 +61,21 @@ set_add_many(xs Set<T>, value T, rest ...T) -> Set<T> {
 
 #T
 set_del(xs Set<T>, value T) -> Set<T> {
-    if not(set_has(xs, value)) return xs
+    if @not(set_has(xs, value)) return xs
     data [T] = .{}
     loop item, _ = items(xs) {
-        if ne(item, value) {
-            data = put(data, item)
+        if @ne(item, value) {
+            data = @put(data, item)
         }
     }
-    return Set<T>{len = sub(set_len(xs), 1), items = data}
+    return Set<T>{len = @sub(set_len(xs), 1), items = data}
 }
 
 #T
 set_union(a Set<T>, b Set<T>) -> Set<T> {
     out Set<T> = a
-    loop item, _ = items(b) {
+    b_items [T] = items(b)
+    loop item, _ = b_items {
         out = set_add(out, item)
     }
     return out
@@ -83,7 +84,8 @@ set_union(a Set<T>, b Set<T>) -> Set<T> {
 #T
 set_intersection(a Set<T>, b Set<T>) -> Set<T> {
     out Set<T> = clear(a)
-    loop item, _ = items(a) {
+    a_items [T] = items(a)
+    loop item, _ = a_items {
         if set_has(b, item) {
             out = set_add(out, item)
         }
@@ -94,8 +96,9 @@ set_intersection(a Set<T>, b Set<T>) -> Set<T> {
 #T
 set_difference(a Set<T>, b Set<T>) -> Set<T> {
     out Set<T> = clear(a)
-    loop item, _ = items(a) {
-        if not(set_has(b, item)) {
+    a_items [T] = items(a)
+    loop item, _ = a_items {
+        if @not(set_has(b, item)) {
             out = set_add(out, item)
         }
     }

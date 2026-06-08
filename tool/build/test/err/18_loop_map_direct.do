@@ -1,5 +1,5 @@
-HashMap = @hash_map.do/HashMap
-empty_hash_map = @hash_map.do/empty_hash_map
+HashMap = @lib("hash_map.do", HashMap)
+empty_hash_map = @lib("hash_map.do", empty_hash_map)
 
 test "loop map direct" {
     key [u8] = ""

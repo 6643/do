@@ -1,0 +1,8 @@
+(func $double (param $x i32) (result i32)
+local.get $x
+local.get $x
+i32.add
+return
+i32.const 21
+call $double
+local.set $y

@@ -1,0 +1,7 @@
+(local $data i32)
+;; if-block
+local.set $data
+;; arc-release-local data
+local.get $data
+call $__do_arc_dec
+return

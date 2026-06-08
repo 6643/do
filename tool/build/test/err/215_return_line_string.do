@@ -1,8 +1,8 @@
-text() -> [u8] {
+line_value() -> text {
     return
         \\hello
 }
 
-test "return line string" {
+test "return line text" {
     return
 }

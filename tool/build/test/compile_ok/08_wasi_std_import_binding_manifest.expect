@@ -1,0 +1,4 @@
+;; wasi-bind source="src/time.do" alias="host_now" target="clocks/system-clock/now" params="" result="Datetime"
+;; wasi-bind source="src/time.do" alias="host_resolution" target="clocks/system-clock/get-resolution" params="" result="u64"
+;; wasi-bind source="src/time.do" alias="host_monotonic_now" target="clocks/monotonic-clock/now" params="" result="u64"
+;; wasi-bind source="src/time.do" alias="host_monotonic_resolution" target="clocks/monotonic-clock/get-resolution" params="" result="u64"

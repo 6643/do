@@ -1,0 +1,7 @@
+;; arc-overwrite-release data
+local.get $data
+call $__do_arc_dec
+i32.const 11
+i32.const 1
+call $__do_arc_alloc
+local.set $data

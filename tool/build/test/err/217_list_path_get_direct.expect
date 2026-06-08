@@ -1,2 +1,2 @@
 InvalidPathAccess
-字段段只用于 get/set 路径参数
+字段段只用于 @get/@set 路径参数

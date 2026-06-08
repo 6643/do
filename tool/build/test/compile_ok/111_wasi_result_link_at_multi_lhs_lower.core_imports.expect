@@ -1,0 +1,1 @@
+(import "cm32p2|wasi:filesystem/types" "[method]descriptor.link-at" (func $__wasi_import_filesystem_types_descriptor_link_at (param i32 i32 i32 i32 i32 i32 i32 i32)))

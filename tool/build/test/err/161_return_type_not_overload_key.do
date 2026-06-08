@@ -3,7 +3,7 @@ pick(x i32) -> i32 {
 }
 
 pick(x i32) -> bool {
-    return gt(x, 0)
+    return @gt(x, 0)
 }
 
 test "return type not overload key" {

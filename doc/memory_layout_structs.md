@@ -1,7 +1,7 @@
 # do v1 内存布局 Zig 结构伪代码
 
-**状态**: 待确认草案
-**目标**: 只描述 allocator block 与 managed object 的字段和作用。最终字段、大小和对齐确认后, 再同步到 `doc/memory.md`。
+**状态**: v1 当前草案, 已与 `doc/memory.md` 对齐。
+**目标**: 只描述 allocator block、managed object、layout table 和 ARC release/COW 原型的字段与作用。
 
 ---
 
@@ -44,8 +44,8 @@ slot_class_state = slot_classes[slot_units]
 
 说明:
 
-1. `head_block` 是同 `slot_units` 的 `SmallBlock` 链表头, 0 表示没有。
-2. `cursor_block` 是下次分配优先扫描的 block, 0 表示从 `head_block` 开始。
+1. `head_block` 是同 `slot_units` 的 `SmallBlock` 链表头, `0xffff_ffff` 表示没有。
+2. `cursor_block` 是下次分配优先扫描的 block, `0xffff_ffff` 表示从 `head_block` 开始。
 3. `head_block/cursor_block` 不进入每个 `SmallBlock`, 而是每个规格一个外置状态。
 4. 分配时先按 object size 算出 `slot_units`, 再读取 `slot_classes[slot_units]`。
 5. 找到可用 block 后, 用 CAS 把 `cursor_block` 更新成这个 block。
@@ -60,6 +60,8 @@ slot_classes[8] = pack(head_block = block_a, cursor_block = block_c)
 
 block_a -> block_b -> block_c -> nil
 ```
+
+注意: block index `0` 是有效 block, 不能作为空链表哨兵。slot class 链表和 free span 链表统一使用 `0xffff_ffff` 表示 none。
 
 ---
 
@@ -253,9 +255,9 @@ const Object = extern struct {
 
 ```zig
 const StorageKind = enum {
-    scalar,       // u8/s8/u16/s16/u32/s32/u64/s64/f32/f64/bool/enum/error
+    scalar,       // u8/i8/u16/i16/u32/i32/u64/i64/f32/f64/bool/enum/error
     inline_bytes, // inline struct 或固定布局 bytes
-    handle,       // string, List<T>, managed struct
+    handle,       // text, List<T>, managed struct
 };
 ```
 
@@ -275,7 +277,7 @@ const StorageKind = enum {
 
 ```zig
 const ObjectDataKind = enum {
-    string_data, // string: len + UTF-8 bytes
+    text_data, // text: len + UTF-8 bytes
     list_data,   // List<T>: len + cap + element storage
     struct_data, // managed struct: fixed fields
 };
@@ -287,7 +289,7 @@ const ObjectDataKind = enum {
 
 ## 10. Payload layout
 
-### string
+### text
 
 ```text
 Object
@@ -296,7 +298,7 @@ data:
   utf8 bytes...
 ```
 
-`string` 是可变字节长度对象, 所以需要 `len` 表示 UTF-8 byte length。v1 字符串按不可变值处理, 不需要通用 `cap`。
+`text` 是可变字节长度对象, 所以需要 `len` 表示 UTF-8 byte length。v1 字符串按不可变值处理, 不需要通用 `cap`。
 
 ### List<T>
 
@@ -340,7 +342,7 @@ List<User> where User is managed:
 ```do
 User {
     id u64
-    name string
+    name text
 }
 ```
 
@@ -353,7 +355,7 @@ data:
 
 固定布局的 managed struct 不需要 `len/cap`。它的 data layout 完全由 `type_id` 指向的 layout table 决定。
 
-`name_handle` 指向独立的 string object。释放 `User` 时, layout table 指示 runtime 对 `name_handle` 执行 `dec`。
+`name_handle` 指向独立的 text object。释放 `User` 时, layout table 指示 runtime 对 `name_handle` 执行 `dec`。
 
 ---
 
@@ -376,7 +378,36 @@ dec(handle)
 
 ---
 
-## 12. 关键约束
+## 12. release worklist
+
+释放必须用显式 worklist, 不用递归释放深层对象:
+
+```text
+release(handle):
+  worklist.push(handle)
+  while worklist not empty:
+      h = worklist.pop()
+      object = object_from_handle(h)
+      object.rc -= 1
+      if object.rc > 0:
+          continue
+      layout = layout_table[object.type_id]
+      for child in managed_children(object, layout):
+          worklist.push(child)
+      allocator.free(object)
+```
+
+说明:
+
+1. `inc/dec` 是编译器插桩和 runtime 内部操作, 源码不可见。
+2. `rc == 0` 后必须先通过 layout table 找 managed child, 再归还 allocator。
+3. managed 字段只存 `u32 handle`; child object 的生命周期由自己的 `rc` 决定。
+4. worklist 能避免 `List<List<...>>` 或嵌套 managed struct 释放时递归栈溢出。
+5. double free / unknown handle 属于 runtime safety failure。
+
+---
+
+## 13. 关键约束
 
 1. `Block.cap == 0` 表示 free span head。
 2. `Block.cap == 1` 表示 large object span head。
@@ -389,7 +420,28 @@ dec(handle)
 9. inline 字段没有独立 reference count, 生命周期跟随外层 object 或外层 inline value。
 10. managed 字段在外层 payload 里只存 `u32 handle`, 被 handle 指向的对象仍然有自己的 reference count。
 11. `Object` v1 草案只保留 `rc + type_id + data`; `len/cap` 不属于通用 object 头。
-12. 固定布局 struct 的 data 不需要 `len/cap`; `string` 需要 `len`; `List<T>` 需要 `len/cap`。
+12. 固定布局 struct 的 data 不需要 `len/cap`; `text` 需要 `len`; `List<T>` 需要 `len/cap`。
 13. `ObjectDataKind` 不单独进入 `Object`; 由 `type_id` 查 layout table 得到。
 14. `popcount(SmallBlock.bitmap) == 0` 时, block 不再保留原规格, 转回可复用空闲状态。
 15. `slot_classes[slot_units]` 是全局 allocator 外置状态; v1 可以普通写入, shared memory 阶段使用 `AtomicU64`。
+
+---
+
+## 14. 原型与验证
+
+当前草案有四个文档侧原型:
+
+1. `doc/arc.ts`: 计算 1KB SmallBlock 的 4B 步进 slot class 和利用率。
+2. `doc/arc_allocator.ts`: 验证 64KB page 切成 64 个 1KB block、bitmap small block、large span、free span 合并和 slot class state。
+3. `doc/arc_object_runtime.ts`: 验证 `Object rc/type_id/data`、layout table、`inc/dec`、release worklist、managed child drop 和释放后 allocator slot 复用。
+4. `doc/arc_cow_runtime.ts`: 验证 `[T]` 写入时的值语义 COW: `rc == 1` 且容量足够时复用, `rc > 1` 或容量不足时 clone/grow。
+
+验证入口:
+
+```bash
+bun doc/arc.ts
+bun doc/arc_allocator.test.ts
+bun doc/arc_object_runtime.test.ts
+bun doc/arc_cow_runtime.test.ts
+tsc --noEmit --target ES2020 --module commonjs doc/arc.ts doc/arc_allocator.ts doc/arc_allocator.test.ts doc/arc_object_runtime.ts doc/arc_object_runtime.test.ts doc/arc_cow_runtime.ts doc/arc_cow_runtime.test.ts
+```

@@ -1,0 +1,7 @@
+(func $open_sample (param $dir.id i64) (result i64 i32)
+call $open_file_at
+(func $open_file_at (param $dir.id i64) (param $path i32) (result i64 i32)
+call $__wasi_import_filesystem_types_descriptor_open_at
+local.set $status
+local.set $descriptor
+call $__do_mod_0__file_status_to_open_result

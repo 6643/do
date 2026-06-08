@@ -1,4 +1,4 @@
-pair = @./fixture.import_multi_return.do/pair
+pair = @lib("./fixture.import_multi_return.do", pair)
 
 bad(x i32) -> i32, bool, i32 {
     return pair(x)

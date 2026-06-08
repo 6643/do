@@ -1,0 +1,19 @@
+"schema_version": 1
+"imports": [
+"target": "clocks/system-clock/now"
+"target": "clocks/system-clock/get-resolution"
+"target": "clocks/monotonic-clock/now"
+"target": "clocks/monotonic-clock/get-resolution"
+"shims": [
+"identity": "src/time.do/host_now"
+"kind": "record-result"
+"core_import": {
+"module": "cm32p2|wasi:clocks/system-clock"
+"name": "now"
+"results": []
+"results": [
+"i64"
+"i32"
+"identity": "src/time.do/host_resolution"
+"kind": "scalar-result"
+"name": "get-resolution"
