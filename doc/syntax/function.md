@@ -32,9 +32,11 @@ pair() -> i32, bool {
 ## 表达式体
 
 ```do
-add(a i32, b i32) -> i32 => @add(a, b) // 单返回表达式体
+// 单返回表达式体
+add(a i32, b i32) -> i32 => @add(a, b)
 
-pair() -> i32, bool => 1, true // 多返回表达式体
+// 多返回表达式体
+pair() -> i32, bool => 1, true
 ```
 
 ## 参数

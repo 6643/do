@@ -21,9 +21,14 @@ Entry {
 ## 泛型类型使用
 
 ```do
-Box<i32>          // 单类型实参
-Box<User | nil>   // 联合类型实参
-Entry<text, User> // 多类型实参
+// 单类型实参
+Box<i32>
+
+// 联合类型实参
+Box<User | nil>
+
+// 多类型实参
+Entry<text, User>
 ```
 
 ## 泛型函数

@@ -51,6 +51,8 @@ new_user(id i64, token text) -> User {
 }
 ```
 
+规则: `.token` 只出现在字段声明位和路径位; 同模块构造 private 字段时使用实际字段名 `token = ...`, 不写 `.token = ...`。外部模块不能显式初始化、读取或更新 private 字段; 若 public struct 含无默认值 private 字段, 外部只能通过定义模块提供的构造函数获得值。
+
 ## 泛型结构
 
 ```do
@@ -72,12 +74,20 @@ Entry {
 ## 构造
 
 ```do
-User{}                                      // 空 typed 构造
-User{id = 1, name = "tom", active = true}   // typed 字段构造
-User{id = 1, name = "tom", active = true,}  // typed 字段构造带尾逗号
+// 空 typed 构造
+User{}
 
-user User = .{id = 1, name = "tom", active = true} // 推导结构构造
-box Box<i32> = .{value = 1}                        // 泛型结构推导构造
+// typed 字段构造
+User{id = 1, name = "tom", active = true}
+
+// typed 字段构造带尾逗号
+User{id = 1, name = "tom", active = true,}
+
+// 推导结构构造
+user User = .{id = 1, name = "tom", active = true}
+
+// 泛型结构推导构造
+box Box<i32> = .{value = 1}
 ```
 
 规则: 字段名只禁止关键字、声明专用名、路径 primitive 名 `get/set` 和保留类型名。`len/add/to_i32` 这类 core builtin 名可作为字段实际名, 因 core 调用必须带 `@` 前缀。
@@ -85,10 +95,48 @@ box Box<i32> = .{value = 1}                        // 泛型结构推导构造
 ## 字段读取和更新
 
 ```do
-name text = @get(user, .name)          // 字段读取
-first_name text = @get(users, 0, .name) // 索引后字段读取
+// 字段读取
+name text = @get(user, .name)
 
-user = @set(user, .name, "amy")                         // 字段更新
-users = @set(users, 0, .name, "amy")                    // 索引后字段更新
-counter = @set(counter, .count, (value i32) => @add(value, 1)) // lambda 更新
+// 索引后字段读取
+first_name text = @get(users, 0, .name)
+
+// 字段更新
+user = @set(user, .name, "amy")
+
+// 索引后字段更新
+users = @set(users, 0, .name, "amy")
+
+// lambda 更新
+counter = @set(counter, .count, (value i32) => @add(value, 1))
 ```
+
+## 字段反射
+
+```do
+User {
+    id i32
+    name text = "tom"
+    active bool
+}
+
+test "struct fields each" {
+    user User = User{id = 7, active = true}
+
+    loop field = fields(User) {
+        name text = @field_name(field)
+        index usize = @field_index(field)
+        has_default bool = @field_has_default(field)
+
+        if @eq(name, "id") {
+            id_value i32 = @field_get(user, field)
+        }
+        if @eq(name, "name") {
+            name_value text = @field_get(user, field)
+        }
+    }
+    return
+}
+```
+
+规则: `fields(User)` 按声明顺序枚举当前模块可见字段; `@field_index` 是可见字段序列中的 0-based index, 不是持久化 schema id。`@field_get/@field_set` 的结果按每个字段静态定型, 不返回 `any`。异构字段推荐先用 `@field_name` 或 `@field_index` 分支, 再在分支内绑定具体类型。

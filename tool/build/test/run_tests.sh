@@ -174,6 +174,7 @@ run_ok_case() {
     local name
     name="$(basename "$case_file" .do)"
     local must_pass_file="${case_file%.do}.must_pass"
+    local compiled_must_pass_file="${case_file%.do}.compiled_must_pass"
 
     local stdout_file="$TMP_DIR/${name}.stdout"
     local stderr_file="$TMP_DIR/${name}.stderr"
@@ -192,6 +193,10 @@ run_ok_case() {
                     ((fail_count += 1))
                     return
                 fi
+                if [[ -f "$compiled_must_pass_file" ]]; then
+                    run_ok_compiled_must_pass_case "$case_file"
+                    return
+                fi
                 echo "[SKIP] ok  $name"
                 ((skip_count += 1))
                 return
@@ -207,6 +212,58 @@ run_ok_case() {
     echo "[FAIL] ok  $name (unexpected non-zero exit)"
     cat "$stderr_file"
     ((fail_count += 1))
+}
+
+run_ok_compiled_must_pass_case() {
+    local case_file="$1"
+    local name
+    name="$(basename "$case_file" .do)"
+
+    local stdout_file="$TMP_DIR/${name}.compiled.stdout"
+    local stderr_file="$TMP_DIR/${name}.compiled.stderr"
+    local wat_file="$TMP_DIR/${name}.compiled.wat"
+    local wasm_file="$TMP_DIR/${name}.compiled.wasm"
+    local wasm_stdout_file="$TMP_DIR/${name}.compiled.wasm.stdout"
+    local wasm_stderr_file="$TMP_DIR/${name}.compiled.wasm.stderr"
+
+    if [[ -z "$WASM_TOOLS" || ! -x "$WASM_TOOLS" ]]; then
+        echo "[FAIL] ok  $name (compiled_must_pass requires wasm-tools)"
+        ((fail_count += 1))
+        return
+    fi
+    if [[ -z "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
+        echo "[FAIL] ok  $name (compiled_must_pass requires node)"
+        ((fail_count += 1))
+        return
+    fi
+
+    if ! DO_LIB_ROOT="$SRC_DIR" "$DO_BIN" test "$case_file" --compiled -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
+        echo "[FAIL] ok  $name (compiled_must_pass generation failed)"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+    if ! "$WASM_TOOLS" parse "$wat_file" -o "$wasm_file" >"$TMP_DIR/${name}.compiled.parse.stdout" 2>"$TMP_DIR/${name}.compiled.parse.stderr"; then
+        echo "[FAIL] ok  $name (compiled_must_pass wat parse failed)"
+        cat "$TMP_DIR/${name}.compiled.parse.stderr"
+        ((fail_count += 1))
+        return
+    fi
+    if ! "$NODE_BIN" "$TEST_DIR/run_compiled_test_case.mjs" "$wasm_file" "$wat_file" >"$wasm_stdout_file" 2>"$wasm_stderr_file"; then
+        echo "[FAIL] ok  $name (compiled_must_pass execution failed)"
+        cat "$wasm_stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+    if ! grep -Fq 'test "' "$wasm_stdout_file" || ! grep -Fq " ... ok" "$wasm_stdout_file" || ! grep -Fq "ok:" "$wasm_stdout_file"; then
+        echo "[FAIL] ok  $name (compiled_must_pass missing report marker)"
+        cat "$wasm_stdout_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    echo "[PASS] ok  $name (compiled)"
+    ((pass_count += 1))
 }
 
 run_ok_or_skip_output() {

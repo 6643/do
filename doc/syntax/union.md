@@ -3,15 +3,21 @@
 ## 联合别名
 
 ```do
-ReadResult = [u8] | FileError // 值或错误联合别名
-Value = User | Admin          // 多结构分支联合别名
+// 值或错误联合别名
+ReadResult = [u8] | FileError
+
+// 多结构分支联合别名
+Value = User | Admin
 ```
 
 ## 可空类型
 
 ```do
-MaybeUser = User | nil // 结构体可空类型
-MaybeText = text | nil // 文本可空类型
+// 结构体可空类型
+MaybeUser = User | nil
+
+// 文本可空类型
+MaybeText = text | nil
 ```
 
 ## 联合返回
@@ -36,8 +42,11 @@ read_optional(path text) -> [u8] | FileError | nil {
 ## 联合绑定
 
 ```do
-user User | nil = find_user(1)          // 可空联合绑定
-result [u8] | FileError = read_file("a.txt") // 值或错误联合绑定
+// 可空联合绑定
+user User | nil = find_user(1)
+
+// 值或错误联合绑定
+result [u8] | FileError = read_file("a.txt")
 ```
 
 ## 分支判断

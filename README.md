@@ -11,11 +11,11 @@
 - **函数式与重载**: 函数是一等值，支持约束泛型函数与同名重载；重载只按参数签名决议。
 - **同类型不定参数**: 支持 `rest ...T` 形态的同类型可变参数调用，core 聚合函数可写成 `@add(a, b, c)`，是否可扁平化完全由函数签名决定。
 - **显式数据流**: 成员访问统一使用 `@get/@set(...)` 路径 primitive 和显式路径，控制流保持显式。这确保了编译器能确定地分析 ARC 生命周期和原地修改机会。
-- **大小写语义**: 基础类型小写，类型名与绑定名遵循 `doc/spec.md` 的命名规则。
+- **大小写语义**: 基础类型小写，类型名与绑定名遵循 `doc/spec_rules.md` 的命名规则。
 - **WASM 原生**: Wasm memory grow 以 64KB page 为粒度，v1 allocator 在 page 内切成 64 个 1KB block；小对象使用 bitmap small block，大对象使用连续 block span。
 - **大小数据分层策略**: 基础/小对象直接拷贝，大对象采用共享 + COW（初始阈值 64B）。
 - **运行时资源管理**: 采用显式资源释放和 ID 关联，目标是不引入循环 GC。
-- **语言规范基线**: 语法设计见 `doc/syntax/README.md`; 语义、内建判断族、核心库特型与静态约束见 `doc/spec.md`。
+- **语言规范基线**: 规范入口见 `doc/spec.md`; 语法设计见 `doc/syntax/README.md`; parser PEG 见 `doc/grammar.peg`; 语义、内建判断族、核心库特型与静态约束见 `doc/spec_rules.md`。
 - **程序入口固定**: 源码入口声明固定为 `start() { ... }`，`main` 不是入口函数；构建输出会导出 wasm `_start`。
 - **目录结构**: `tool/build` 编译器源码, `src` builtin/core 总表与标准库, `bin/do` 唯一二进制。
 
@@ -55,7 +55,7 @@ zig build -Doptimize=ReleaseSmall
 状态口径: `已完成` 表示当前编译器和回归测试已覆盖对应 v1 子集; `进行中` 表示已有实现但未收敛到完整运行时或完整优化; `暂跳过` 表示当前缺少前置条件, 原因记录在 `doc/roadmap_status.md`; `延后` 表示现阶段不作为主目标。WASI / Component Model 放到最后单独处理。
 
 ### 已完成
-- [x] **规范基线**: `doc/syntax/` 已按功能拆分语法设计；`doc/spec.md` 保留 parser PEG、语义约束、示例标签和 `defer` 规则。
+- [x] **规范基线**: `doc/spec.md` 是规范入口；`doc/syntax/` 已按功能拆分语法设计；`doc/grammar.peg` 保留 parser PEG；`doc/spec_rules.md` 保留语义约束、示例标签和 `defer` 规则。
 - [x] **编译器前端主线**: Parser / Sema 支持当前 build/test 子集，包括 Struct、Lambda、guard `if`、`loop`、泛型约束、聚合字面量、import / host import 和测试声明。
 - [x] **`defer` 基础语法和前端校验**: 支持 `defer abc()` 和 `defer { ... }`；本地和导入函数调用都会校验 cleanup 调用返回 `nil`。
 - [x] **运行时内存模型**: 已按 `doc/memory.md` 收敛 v1 managed handle、对象头、`type_id`、layout table 和 ARC `inc/dec/release` 管理。
@@ -67,9 +67,9 @@ zig build -Doptimize=ReleaseSmall
 ### 进行中
 
 ### 暂跳过
-- [ ] **`defer` 完整控制流与 ARC**: `defer` 的 LIFO cleanup、跨 `return/break/continue` lowering、cleanup 块内控制流限制和 ARC release 顺序仍在 `doc/review_blockers.md` 中跟踪。
+- [ ] **`defer` 完整控制流与 ARC**: `defer` 的 LIFO cleanup、跨 `return/break/continue` lowering、cleanup 块内控制流限制和 ARC release 顺序的剩余状态在 `doc/roadmap_status.md` 中跟踪。
 - [ ] **ARC / Perceus 完整分析**: 当前已有 managed storage `inc/dec`、局部释放和 `defer` cleanup 顺序；完整静态插入、冗余消除、末次使用优化和 FBIP `reuse` 暂跳过, 原因见 `doc/roadmap_status.md`。
-- [ ] **后端控制流和优化**: guard `break/continue`、带标签循环、集合/消费循环 lowering、`if/else`、`@get/@set` 和小函数内联优化暂跳过；WAT 输出已可用, WASM 二进制输出仍待补, 原因见 `doc/review_blockers.md` 和 `doc/roadmap_status.md`。
+- [ ] **后端控制流和优化**: guard `break/continue`、带标签循环、集合/消费循环 lowering、`if/else`、`@get/@set` 和小函数内联优化暂跳过；WAT 输出已可用, WASM 二进制输出仍待补, 原因见 `doc/roadmap_status.md`。
 - [ ] **生态工具**: `do run`、LSP、fmt、get / push 等工具链能力暂跳过, 原因见 `doc/roadmap_status.md`。
 
 ### 最后处理

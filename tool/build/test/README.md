@@ -24,12 +24,12 @@
 - `compiled_trap`: 期望 compiled test WAT 可生成和 parse, 但执行 `__do_test_N` export 时触发 trap 的用例; 只在 `RUN_WASM=1` 下执行.
 - `run`: 期望编译后 wasm 可执行的 smoke 用例, 由 `RUN_WASM=1 ./tool/build/test/run_tests.sh` 或 `./tool/build/test/run_wasm_smoke.sh` 触发.
 - `run_tests.sh`: 编译 `tool` 下的编译器, 然后执行 `do test` 与编译模式两类用例.
-- `do test` 输出约定: 每个测试打印 `test "name" ... ok`、`test "name" ... failed` 或 `test "name" ... skipped`; 最后打印汇总 `ok: N passed; 0 failed; M skipped` 或 `failed: N passed; F failed; M skipped`. 默认静态 runner 遇到未支持控制流、导入调用或复杂表达式时输出 `skipped`; 已支持断言确定失败或进入 `unknown` 时输出 `failed`. `ok/*.must_pass` 标记该同名 `.do` 用例不允许输出 skipped, 用于逐步收回静态 runner 已支持语义的旧 skip.
+- `do test` 输出约定: 每个测试打印 `test "name" ... ok`、`test "name" ... failed` 或 `test "name" ... skipped`; 最后打印汇总 `ok: N passed; 0 failed; M skipped` 或 `failed: N passed; F failed; M skipped`. 默认静态 runner 遇到未支持控制流、导入调用或复杂表达式时输出 `skipped`; 已支持断言确定失败或进入 `unknown` 时输出 `failed`. `ok/*.must_pass` 标记该同名 `.do` 用例不允许输出 skipped, 用于逐步收回静态 runner 已支持语义的旧 skip. `ok/*.compiled_must_pass` 标记该同名 `.do` 用例允许静态 runner skip, 但 `run_tests.sh` 必须通过 `do test --compiled` 生成 WAT、parse wasm 并执行 `__do_test_N` 通过。
 - `do test --compiled` 输出约定: 生成 WAT 文件, 其中每个 `test "name" { ... }` 会写入 `;; compiled-test N "name"` manifest 注释, lower 成内部 `__do_test_N` 函数并导出同名 export, `_start` 仍依次调用它们; 测试体执行到 `return` 表示通过, 落到块末尾会触发 `unreachable`.
 
 同步原则:
 
-- 以 `doc/spec.md` 第 7 章为准维护用例.
+- 以 `doc/spec_rules.md` 第 7 章为准维护用例.
 - 语法错误统一按 parser 诊断契约处理: 首个错误立即停止, 输出文件/行/列、源码位置和支持的正确语法示例.
 - 可保留少量语法错误烟测, 只用于锁定诊断输出格式.
 

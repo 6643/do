@@ -1,6 +1,6 @@
 # 循环
 
-规则: build lowering 覆盖无限循环、标签跳转、guard `break/continue`、集合循环和消费循环。标签只绑定紧随其后的 `loop`; `break #label` 和 `continue #label` 只能跳转到可见 loop label。集合循环源必须是 `[T]` 或后续明确声明的 collection type; `text` 不作为集合循环源, 需要显式转换为 `[u8]` 或通过文本库遍历。
+规则: build lowering 覆盖无限循环、标签跳转、guard `break/continue`、集合循环、字段反射循环和当前 `[T]` storage-backed 消费循环。标签只绑定紧随其后的 `loop`; `break #label` 和 `continue #label` 只能跳转到可见 loop label。集合循环源必须是 `[T]` 或后续明确声明的 collection type; `text` 不作为集合循环源, 需要显式转换为 `[u8]` 或通过文本库遍历。`recv(...)` 是消费循环专用形态, 不是普通函数调用; `fields(Type)` 是字段反射循环专用形态, 不是普通函数调用; 真实 channel/stream receive ABI 后续单独扩展。
 
 ## 无限循环
 
@@ -38,7 +38,7 @@ loop _, _ = items {
 ## 消费循环
 
 ```do
-// 接收值循环
+// 当前 build lowering: 从 [T] source 按顺序接收值
 loop value = recv(ch) {
     use(value)
 }
@@ -54,6 +54,21 @@ loop _, count = recv(ch) {
 }
 ```
 
+规则: `recv(ch)` 只能出现在消费循环头部, 不能作为普通函数调用出现在赋值右侧、调用实参或返回值位置。
+
+## 字段反射循环
+
+```do
+// 按 User 的可见字段做编译期展开
+loop field = fields(User) {
+    name text = @field_name(field)
+    index usize = @field_index(field)
+    has_default bool = @field_has_default(field)
+}
+```
+
+规则: `fields(Type)` 只能出现在字段反射循环头部。循环绑定是编译器字段元数据, 只能交给 `@field_name/@field_index/@field_has_default/@field_get/@field_set` 使用。
+
 ## 标签
 
 ```do
@@ -63,9 +78,14 @@ loop {
     // 内层循环标签
     #inner
     loop {
-        if done break #outer     // 跳出外层标签
-        if skip continue #inner  // 继续内层标签
-        break                    // 跳出当前循环
+        // 跳出外层标签
+        if done break #outer
+
+        // 继续内层标签
+        if skip continue #inner
+
+        // 跳出当前循环
+        break
     }
 }
 ```
@@ -73,10 +93,17 @@ loop {
 ## break 和 continue
 
 ```do
-break           // 跳出当前循环
-continue        // 继续当前循环
-break #outer    // 跳出指定标签循环
-continue #outer // 继续指定标签循环
+// 跳出当前循环
+break
+
+// 继续当前循环
+continue
+
+// 跳出指定标签循环
+break #outer
+
+// 继续指定标签循环
+continue #outer
 ```
 
 ## 条件循环写法

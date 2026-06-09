@@ -1048,6 +1048,10 @@ fn parseLoopBindHeader(
     const rhs_start = bind_idx + 1;
     if (rhs_start >= limit_idx) return markErrorAt(tokens, bind_idx, error.InvalidLoopHeader);
 
+    if (isFieldsLoopSource(tokens, rhs_start, limit_idx)) |open_brace_idx| {
+        return open_brace_idx;
+    }
+
     const rhs = if (isRecvExprStart(tokens, rhs_start, limit_idx))
         try parseRecvExpr(allocator, out_nodes, tokens, rhs_start, limit_idx)
     else
@@ -1061,6 +1065,16 @@ fn parseLoopBindHeader(
 
 fn isRecvExprStart(tokens: []const lexer.Token, start_idx: usize, limit_idx: usize) bool {
     return start_idx + 1 < limit_idx and tokEq(tokens[start_idx], "recv") and tokEq(tokens[start_idx + 1], "(");
+}
+
+fn isFieldsLoopSource(tokens: []const lexer.Token, start_idx: usize, limit_idx: usize) ?usize {
+    if (start_idx + 4 >= limit_idx) return null;
+    if (tokens[start_idx].kind != .ident or !std.mem.eql(u8, tokens[start_idx].lexeme, "fields")) return null;
+    if (!tokEq(tokens[start_idx + 1], "(")) return null;
+    if (tokens[start_idx + 2].kind != .ident) return null;
+    if (!tokEq(tokens[start_idx + 3], ")")) return null;
+    if (!tokEq(tokens[start_idx + 4], "{")) return null;
+    return start_idx + 4;
 }
 
 fn parseRecvExpr(
@@ -1471,7 +1485,7 @@ fn parseExpr(
     }
 
     if (t.kind == .ident) {
-        if (std.mem.eql(u8, t.lexeme, "recv")) {
+        if (isLoopSourceSpecialName(t.lexeme)) {
             return markErrorAt(tokens, start_idx, error.InvalidReservedName);
         }
         if (isBuiltinCallName(t.lexeme)) {
@@ -1599,7 +1613,13 @@ fn parseCallExprRaw(
 
 fn validateBuiltinCallArity(tokens: []const lexer.Token, name_idx: usize, argc: usize) !void {
     const name = tokens[name_idx].lexeme;
-    if (std.mem.eql(u8, name, "not") or std.mem.eql(u8, name, "len") or isScalarConvertName(name)) {
+    if (std.mem.eql(u8, name, "not") or
+        std.mem.eql(u8, name, "len") or
+        std.mem.eql(u8, name, "field_name") or
+        std.mem.eql(u8, name, "field_index") or
+        std.mem.eql(u8, name, "field_has_default") or
+        isScalarConvertName(name))
+    {
         if (argc == 1) return;
         return markErrorAt(tokens, name_idx, error.InvalidCallArgList);
     }
@@ -1607,7 +1627,13 @@ fn validateBuiltinCallArity(tokens: []const lexer.Token, name_idx: usize, argc: 
         if (argc >= 2) return;
         return markErrorAt(tokens, name_idx, error.InvalidCallArgList);
     }
-    if (std.mem.eql(u8, name, "get") or std.mem.eql(u8, name, "put")) {
+    if (std.mem.eql(u8, name, "field_get")) {
+        if (argc == 2) return;
+        return markErrorAt(tokens, name_idx, error.InvalidCallArgList);
+    }
+    if (std.mem.eql(u8, name, "get") or
+        std.mem.eql(u8, name, "put"))
+    {
         if (argc >= 2) return;
         return markErrorAt(tokens, name_idx, error.InvalidCallArgList);
     }
@@ -1633,6 +1659,10 @@ fn validateBuiltinCallArity(tokens: []const lexer.Token, name_idx: usize, argc: 
     }
     if (isBinaryFixedCoreName(name)) {
         if (argc == 2) return;
+        return markErrorAt(tokens, name_idx, error.InvalidCallArgList);
+    }
+    if (std.mem.eql(u8, name, "field_set")) {
+        if (argc == 3) return;
         return markErrorAt(tokens, name_idx, error.InvalidCallArgList);
     }
     if (std.mem.eql(u8, name, "set")) {
@@ -2182,6 +2212,11 @@ fn isBuiltinCallName(name: []const u8) bool {
         "rem",
         "get",
         "set",
+        "field_name",
+        "field_index",
+        "field_has_default",
+        "field_get",
+        "field_set",
         "len",
         "put",
         "to_u8",
@@ -2327,7 +2362,11 @@ fn isScalarConvertName(name: []const u8) bool {
 }
 
 fn isReservedExprName(name: []const u8) bool {
-    return isDeclOnlyName(name) or isBuiltinCallName(name);
+    return isDeclOnlyName(name) or isBuiltinCallName(name) or isLoopSourceSpecialName(name);
+}
+
+fn isLoopSourceSpecialName(name: []const u8) bool {
+    return std.mem.eql(u8, name, "recv") or std.mem.eql(u8, name, "fields");
 }
 
 fn isDotPrefixedName(name: []const u8) bool {

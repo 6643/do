@@ -38,21 +38,39 @@ if ready {
 ## guard if
 
 ```do
-if ready return          // guard return
-if ready return value    // guard 单值 return
-if ready return a, b     // guard 多值 return
-if done break            // guard break
-if skip continue         // guard continue
-if done break #outer     // guard 带标签 break
-if skip continue #outer  // guard 带标签 continue
+// guard return
+if ready return
+
+// guard 单值 return
+if ready return value
+
+// guard 多值 return
+if ready return a, b
+
+// guard break
+if done break
+
+// guard continue
+if skip continue
+
+// guard 带标签 break
+if done break #outer
+
+// guard 带标签 continue
+if skip continue #outer
 ```
 
 ## return
 
 ```do
-return       // nil return
-return value // 单值 return
-return a, b  // 多值 return
+// nil return
+return
+
+// 单值 return
+return value
+
+// 多值 return
+return a, b
 ```
 
 ## defer
@@ -64,10 +82,12 @@ abc() -> nil {
 }
 
 work() -> nil {
-    defer abc() // defer 调用
+    // defer 调用
+    defer abc()
 
+    // defer 块
     defer {
-        print("defer") // defer 块
+        print("defer")
     }
 
     return
@@ -79,10 +99,18 @@ work() -> nil {
 ## 绑定和赋值
 
 ```do
-value i32 = 1  // 局部变量绑定
-_limit i32 = 10 // 局部不可变绑定
+// 局部变量绑定
+value i32 = 1
 
-value = 2     // 单目标赋值
-a, b = pair() // 多目标赋值
-_, ok = check() // 丢弃第一个返回值
+// 局部不可变绑定
+_limit i32 = 10
+
+// 单目标赋值
+value = 2
+
+// 多目标赋值
+a, b = pair()
+
+// 丢弃第一个返回值
+_, ok = check()
 ```

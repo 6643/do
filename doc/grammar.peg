@@ -1,0 +1,404 @@
+# do parser executable grammar (spec v1)
+#
+# This file is the single PEG source referenced by doc/spec.md.
+# It is written over lexer tokens, not raw bytes. Whitespace and comments
+# are removed by the lexer; line-sensitive rules such as DeclSep, LineGap,
+# StmtGap, SoftGap, NextLine, and TokenGap are token metadata predicates.
+
+LowerIdent     <- [a-z][a-z0-9]* ('_' [a-z0-9]+)*
+UpperIdent     <- [A-Z][A-Za-z0-9]*
+DotLowerIdent  <- '.' LowerIdent
+DotUpperIdent  <- '.' UpperIdent
+ErrorEnumName  <- ? UpperIdent lexeme ending with "Error" and lexeme != "Error" ?
+ReadonlyIdent  <- '_' LowerIdent
+Ident          <- LowerIdent / UpperIdent / ReadonlyIdent
+PathSeg        <- [a-z] ([a-z0-9]* ('_' [a-z0-9]+)*)?
+FileExtSlash   <- 'do' '/'
+FileExt        <- '.do'
+FlatFileSeg    <- PathSeg ('.' !FileExtSlash PathSeg)*
+DepPathSeg     <- PathSeg / [0-9]+
+DepNameSeg     <- DepPathSeg ('.' !FileExtSlash DepPathSeg)+
+
+IntLit         <- '-'? [0-9]+
+FloatLit       <- '-'? [0-9]+ '.' [0-9]+
+NormalString   <- '"' StringChar* '"'
+StringChar     <- NormalChar / EscapeSeq
+NormalChar     <- ? any character except '"', '\', LF, CR ?
+EscapeSeq      <- '\\' ('"' / '\\' / 'n' / 'r' / 't' / 'x' HexDigit HexDigit)
+HexDigit       <- [0-9A-Fa-f]
+LineStringToken <- ? lexer-merged consecutive LineStringLine block ?
+LineStringLine <- '\\\\' LineStringChar*
+LineStringChar <- ? any character except LF, CR ?
+
+Program          <- DeclSep? (ImportDeclList (DeclSep TopDeclList)? / TopDeclList)? DeclSep? EOF
+EOF              <- !.
+
+ImportDeclList   <- ImportDecl (DeclSep ImportDecl)*
+TopDeclList      <- TopDecl (DeclSep TopDecl)*
+DeclSep          <- TopDeclLineSep
+LineGap          <- NextLine
+SoftGap          <- TokenGap
+CommaSep         <- SoftGap ',' SoftGap
+InlineCommaSep   <- ','
+TrailComma       <- SoftGap ','
+
+TopDecl          <- TypeDecl
+                  / StartDecl
+                  / TestDecl
+                  / FuncDecl
+                  / ValueDecl
+
+ValueDecl        <- ConstDecl / GlobalVarDecl
+ConstDecl        <- ConstName TypeAnn '=' RhsExpr
+GlobalVarDecl    <- GlobalVarName TypeAnn '=' RhsExpr
+ConstName        <- ReadonlyIdent
+GlobalVarName    <- PublicGlobalVarName / PrivateGlobalVarName
+PublicGlobalVarName <- !ReservedName LowerIdent
+PrivateGlobalVarName <- !DotReservedName DotLowerIdent
+TypeAnn          <- ValueTypeExpr
+RhsExpr          <- LineStringBlock / LineGap LineStringBlock / SameLineExpr
+SameLineExpr     <- ? expression whose every token is on the owning syntax head line ? Expr
+
+ImportDecl       <- HostImportDecl / LocalImportDecl
+HostImportDecl   <- HostImportName '=' HostImport
+HostImportName   <- !ReservedName LowerIdent / !DotReservedName DotLowerIdent
+LocalImportDecl  <- UpperImportDecl / ReadonlyImportDecl / ValueImportDecl
+UpperImportDecl  <- UpperImportName '=' UpperImport
+UpperImportName  <- !'Error' UpperIdent
+ReadonlyImportDecl <- ReadonlyIdent '=' ReadonlyImport
+ValueImportDecl  <- !ReservedName LowerIdent '=' ValueImport
+UpperImport      <- '@lib' '(' StringModuleFile InlineCommaSep UpperImportTarget ')'
+UpperImportTarget <- !'Error' UpperIdent
+ReadonlyImport   <- '@lib' '(' StringModuleFile InlineCommaSep ReadonlyIdent ')'
+ValueImport      <- '@lib' '(' StringModuleFile InlineCommaSep ValueImportTarget ')'
+ValueImportTarget <- !ReservedName LowerIdent
+HostImport       <- EnvHostImport / WasiHostImport
+EnvHostImport    <- '@env' '(' StringHostName InlineCommaSep EnvHostSig ')'
+WasiHostImport   <- '@wasi' '(' StringWitTarget InlineCommaSep WasiHostSig ')'
+ModuleFile       <- DepFile / RelativeFile / StdFile
+DepFile          <- '~/' DepNameSeg FileExt
+RelativeFile     <- './' FlatFileSeg FileExt
+StdFile          <- FlatFileSeg FileExt
+StringModuleFile <- '"' ModuleFile '"'
+StringHostName   <- '"' HostName '"'
+StringWitTarget  <- '"' WitName '/' WitName '/' WitName '"'
+HostName         <- PathSeg
+EnvHostSig       <- '(' AbiParamList? ')' '->' AbiReturn
+AbiParamList     <- AbiType (InlineCommaSep AbiType)* InlineCommaSep?
+AbiReturn        <- 'nil' / AbiType
+AbiType          <- 'i32' / 'i64' / 'f32' / 'f64'
+WasiHostSig      <- '(' WitParamList? ')' '->' WitType
+WitParamList     <- WitType (InlineCommaSep WitType)* InlineCommaSep?
+WitType          <- 'list' '<' WitType '>'
+                  / 'result' '<' WitType InlineCommaSep WitType '>'
+                  / 'tuple' '<' WitType InlineCommaSep WitType (InlineCommaSep WitType)* '>'
+                  / 'option' '<' WitType '>'
+                  / 'borrow' '<' WitType '>'
+                  / 'own' '<' WitType '>'
+                  / '_'
+                  / PublicTypeName
+                  / WitName
+WitName          <- WitPathName ('-' WitPathName)*
+WitPathName      <- PathSeg ('.' PathSeg)*
+
+
+TypeDecl         <- GenericStructDecl / StructDecl / EnumDecl / AliasDecl
+GenericStructDecl <- StructTypeConstraintList StructDecl
+StructDecl       <- DeclTypeName '{' StmtGap? FieldDeclList? StmtGap? '}'
+EnumDecl         <- ErrorEnumDecl / ValueEnumDecl
+ErrorEnumDecl    <- ErrorEnumName 'error' '=' ErrorEnumBranchList
+ValueEnumDecl    <- DeclTypeName BaseIntType '=' ValueEnumBranchList
+AliasDecl        <- DeclTypeName '=' AliasTypeExpr
+AliasTypeExpr    <- AliasNullableTypeExpr / AliasNonNilUnionExpr
+AliasNullableTypeExpr <- NonNilUnionExpr SoftGap '|' SoftGap NilType
+AliasNonNilUnionExpr <- NonNilTypeAtom SoftGap '|' SoftGap NonNilTypeAtom (SoftGap '|' SoftGap NonNilTypeAtom)*
+ErrorEnumBranchList <- ErrorEnumBranchName (SoftGap '|' SoftGap ErrorEnumBranchName)*
+ValueEnumBranchList <- ValueEnumBranch (SoftGap '|' SoftGap ValueEnumBranch)*
+ValueEnumBranch  <- ValueEnumBranchName EnumBranchValue
+EnumBranchValue  <- '(' IntLit ')'
+ErrorEnumBranchName <- !'Error' !ErrorEnumName UpperIdent
+ValueEnumBranchName <- ErrorEnumBranchName / PrivateEnumBranchName
+EnumBranchName   <- ErrorEnumBranchName
+PrivateEnumBranchName <- !'.Error' !DotErrorEnumName DotUpperIdent
+DeclTypeName     <- PublicTypeName / PrivateTypeName
+PublicTypeName   <- !'Error' !ErrorEnumName UpperIdent
+PrivateTypeName  <- !'.Error' !DotErrorEnumName DotUpperIdent
+DotErrorEnumName <- ? DotUpperIdent whose lexeme without leading "." matches ErrorEnumName ?
+FieldDeclList    <- FieldDecl (StmtGap FieldDecl)* StmtGap?
+FieldDecl        <- FieldName ValueTypeExpr FieldDefault?
+FieldDefault     <- '=' RhsExpr
+FieldName        <- PublicFieldName / PrivateFieldName
+PublicFieldName  <- !FieldReservedName LowerIdent
+PrivateFieldName <- !DotFieldReservedName DotLowerIdent
+
+StructRefType    <- PublicTypeName TypeArgs?
+
+ValueTypeExpr    <- NullableTypeExpr / NonNilUnionExpr
+NullableTypeExpr <- NonNilUnionExpr SoftGap '|' SoftGap NilType
+NonNilUnionExpr  <- NonNilTypeAtom (SoftGap '|' SoftGap NonNilTypeAtom)*
+NonNilTypeAtom   <- BaseType
+                  / StorageType
+                  / StructRefType
+                  / ErrorEnumName
+FuncType         <- '(' InlineParamTypeExprList? ')' '->' InlineReturnSpec
+InlineReturnSpec <- InlineMultiReturnSpec / InlineValueTypeExpr / 'nil'
+InlineMultiReturnSpec <- InlineValueTypeExpr InlineCommaSep InlineValueTypeExpr (InlineCommaSep InlineValueTypeExpr)*
+InlineValueTypeExpr <- InlineNullableTypeExpr / InlineNonNilUnionExpr
+InlineNullableTypeExpr <- InlineNonNilUnionExpr '|' NilType
+InlineNonNilUnionExpr <- InlineNonNilTypeAtom ('|' InlineNonNilTypeAtom)*
+InlineNonNilTypeAtom <- BaseType
+                  / InlineStorageType
+                  / InlineStructRefType
+                  / ErrorEnumName
+InlineStructRefType <- PublicTypeName InlineTypeArgs?
+InlineTypeArgs   <- '<' InlineTypeArg (InlineCommaSep InlineTypeArg)* '>'
+InlineTypeArg    <- InlineValueTypeExpr
+InlineStorageType <- '[' InlineValueTypeExpr ']'
+InlineValueTypeExprList <- InlineValueTypeExpr (InlineCommaSep InlineValueTypeExpr)* InlineCommaSep?
+ParamTypeExpr    <- ParamTypeAtom
+ParamTypeAtom    <- BaseType
+                  / ParamStorageType
+                  / StructRefType
+                  / ErrorEnumName
+ParamStorageType <- '[' SoftGap ValueTypeExpr SoftGap ']'
+InlineParamTypeExpr <- InlineParamTypeAtom
+InlineParamTypeAtom <- BaseType
+                  / InlineParamStorageType
+                  / InlineStructRefType
+                  / ErrorEnumName
+InlineParamStorageType <- '[' InlineValueTypeExpr ']'
+InlineParamTypeExprList <- InlineParamTypeExpr (InlineCommaSep InlineParamTypeExpr)* InlineCommaSep?
+TypeArgs         <- '<' SoftGap TypeArg (CommaSep TypeArg)* SoftGap '>'
+TypeArg          <- ValueTypeExpr
+StorageType      <- '[' SoftGap ValueTypeExpr SoftGap ']'
+BaseType         <- BaseTypeName
+BaseIntType      <- 'i8' / 'i16' / 'i32' / 'i64'
+                  / 'u8' / 'u16' / 'u32' / 'u64'
+                  / 'isize' / 'usize'
+BaseTypeName     <- 'i8' / 'i16' / 'i32' / 'i64'
+                  / 'u8' / 'u16' / 'u32' / 'u64'
+                  / 'isize' / 'usize'
+                  / 'f32' / 'f64'
+                  / 'bool' / 'text'
+NilType          <- 'nil'
+String           <- NormalString
+LineStringBlock  <- LineStringToken
+
+FuncDecl         <- FuncConstraintList? FuncName '(' SoftGap ParamList? SoftGap ')' FuncResult FuncBody
+FuncName         <- PublicFuncName / PrivateFuncName
+PublicFuncName   <- !ReservedName LowerIdent
+PrivateFuncName  <- !DotReservedName DotLowerIdent
+StartDecl        <- 'start' '(' SoftGap ')' Block
+TestDecl         <- 'test' NormalString Block
+FuncResult       <- (SoftGap '->' SoftGap ReturnSpec)?
+ReturnSpec       <- MultiReturnSpec / ValueTypeExpr / 'nil'
+MultiReturnSpec  <- ValueTypeExpr CommaSep ValueTypeExpr (CommaSep ValueTypeExpr)*
+FuncBody         <- Block / '=>' ArrowExprList
+ArrowExprList    <- SameLineExpr (InlineCommaSep SameLineExpr)*
+
+FuncConstraintList <- FuncConstraintWithSig / FuncConstraintNoSig / FuncConstraintTypeOnly
+FuncConstraintWithSig <- TypeParamConstraintLine+ FuncTypeConstraintLine* FuncSigConstraintLine+
+FuncConstraintNoSig <- TypeParamConstraintLine* FuncTypeConstraintLine+
+FuncConstraintTypeOnly <- TypeParamConstraintLine+
+StructTypeConstraintList <- TypeParamConstraintLine+
+TypeParamConstraintLine <- '#' TypeParamName LineGap
+FuncTypeConstraintLine <- '#' TypeParamName '=' FuncType LineGap
+FuncSigConstraintLine <- '#' ConstraintFuncName '(' ConstraintParamList? ')' '->' InlineReturnSpec LineGap
+TypeParamName    <- PublicTypeName
+ConstraintFuncName <- UserConstraintFuncName
+UserConstraintFuncName <- !ReservedName LowerIdent
+ConstraintParamList <- ConstraintFixedParamList (InlineCommaSep ConstraintVariadicParam)? InlineCommaSep?
+                  / ConstraintVariadicParam InlineCommaSep?
+ConstraintFixedParamList <- InlineParamTypeExpr (InlineCommaSep InlineParamTypeExpr)*
+ConstraintVariadicParam <- '...' InlineVariadicElemType
+ValueTypeExprList <- ValueTypeExpr (CommaSep ValueTypeExpr)* TrailComma?
+VariadicElemType  <- ParamTypeExpr
+InlineVariadicElemType <- InlineParamTypeExpr
+
+ParamList        <- FixedParamList (CommaSep VariadicParam)? TrailComma?
+                  / VariadicParam TrailComma?
+FixedParamList   <- Param (CommaSep Param)*
+Param            <- ParamName ParamTypeExpr
+VariadicParam    <- ParamName VariadicType
+VariadicType     <- '...' VariadicElemType
+ParamName        <- !ReservedName LowerIdent
+
+Block            <- '{' StmtGap? StmtList? StmtGap? '}'
+StmtList         <- Stmt (StmtGap Stmt)* StmtGap?
+StmtGap          <- StmtLineSep
+
+Stmt             <- IfStmt
+                  / LoopLabelStmt
+                  / LoopStmt
+                  / BreakStmt
+                  / ContinueStmt
+                  / ReturnStmt
+                  / DeferStmt
+                  / AssignStmt
+                  / ExprStmt
+
+DeferStmt       <- 'defer' (DeferCall / DeferBlock)
+DeferCall       <- CallExpr
+DeferBlock      <- Block
+
+AssignStmt       <- TypedBind '=' RhsExpr
+                  / AssignTargetList '=' RhsExpr
+TypedBind        <- BindName ValueTypeExpr
+AssignTargetList <- AssignTarget (CommaSep AssignTarget)*
+AssignTarget     <- BindName / DiscardTarget
+DiscardTarget    <- '_'
+BindName         <- !ReservedName LowerIdent / ReadonlyIdent
+
+ReturnStmt       <- 'return' ReturnTail?
+ReturnTail       <- SameLineExpr (InlineCommaSep SameLineExpr)*
+ExprStmt         <- CallExpr
+
+IfStmt           <- 'if' IfCondExpr Block ElseTail?
+                  / 'if' IfCondExpr GuardStmt
+ElseTail         <- SoftGap 'else' SoftGap (IfStmt / Block)
+GuardStmt        <- GuardReturnStmt / BreakStmt / ContinueStmt
+GuardReturnStmt  <- 'return' ReturnTail?
+
+LoopLabelStmt    <- LoopLabel LineGap LoopStmt
+LoopStmt         <- 'loop' LoopHead? LoopBlock
+LoopHead         <- LoopFieldReflect / LoopCollection / LoopConsumer
+LoopFieldReflect <- LoopBindName '=' FieldReflectLoopSource
+LoopCollection   <- LoopBindName CommaSep LoopBindName '=' Expr
+LoopConsumer     <- LoopBindName (CommaSep LoopBindName)? '=' RecvExpr
+RecvExpr         <- 'recv' '(' SoftGap Expr TrailComma? SoftGap ')'
+FieldReflectLoopSource <- 'fields' '(' SoftGap FieldReflectType SoftGap ')'
+FieldReflectType <- PublicTypeName
+LoopBindName     <- !ReservedName LowerIdent / '_'
+LoopBlock        <- '{' StmtGap? StmtList? StmtGap? '}'
+LoopLabel        <- '#' !ReservedWord LowerIdent
+BreakStmt        <- 'break' LoopLabel?
+ContinueStmt     <- 'continue' LoopLabel?
+
+IfCondExpr       <- CondExpr
+CondExpr         <- IsExpr / CondPredExpr / ExprNoParen
+
+Expr             <- ExprNoParen
+                  / ParenExpr
+ExprNoParen      <- BuiltinCallExpr
+                  / CallExpr
+                  / InferredAggLit
+                  / TypedAggLit
+                  / UpperValueExpr
+                  / ExprIdent
+                  / Literal
+
+UpperValueExpr   <- EnumBranchName
+ExprIdent        <- !ReservedName LowerIdent / ReadonlyIdent
+ParenExpr        <- '(' SoftGap Expr SoftGap ')'
+
+BuiltinCallExpr  <- IsExpr / ValueLogicExpr / FieldReflectExpr / CoreAccessExpr / CoreFixedCallExpr
+
+ValueLogicExpr   <- ValueAndExpr
+                  / ValueOrExpr
+                  / ValueNotExpr
+CondPredExpr     <- CondAndExpr
+                  / CondOrExpr
+                  / CondNotExpr
+
+IsExpr           <- '@' 'is' '(' SoftGap Expr CommaSep IsTypeExpr TrailComma? SoftGap ')'
+IsTypeExpr       <- IsUnionExpr
+IsUnionExpr      <- IsTypeAtom (SoftGap '|' SoftGap IsTypeAtom)*
+IsTypeAtom       <- BaseType
+                  / IsStorageType
+                  / IsNamedType
+                  / ErrorEnumName
+IsStorageType    <- '[' SoftGap IsTypeExpr SoftGap ']'
+IsNamedType      <- PublicTypeName IsTypeArgs?
+IsTypeArgs       <- '<' SoftGap IsTypeArg (CommaSep IsTypeArg)* SoftGap '>'
+IsTypeArg        <- ValueTypeExpr
+ValueAndExpr     <- '@' 'and' '(' SoftGap ExprNoParen CommaSep ExprNoParen (CommaSep ExprNoParen)* TrailComma? SoftGap ')'
+ValueOrExpr      <- '@' 'or' '(' SoftGap ExprNoParen CommaSep ExprNoParen (CommaSep ExprNoParen)* TrailComma? SoftGap ')'
+ValueNotExpr     <- '@' 'not' '(' SoftGap ExprNoParen TrailComma? SoftGap ')'
+CondAndExpr      <- '@' 'and' '(' SoftGap CondExpr CommaSep CondExpr (CommaSep CondExpr)* TrailComma? SoftGap ')'
+CondOrExpr       <- '@' 'or' '(' SoftGap CondExpr CommaSep CondExpr (CommaSep CondExpr)* TrailComma? SoftGap ')'
+CondNotExpr      <- '@' 'not' '(' SoftGap CondExpr TrailComma? SoftGap ')'
+
+FieldReflectExpr <- FieldReflectMetaExpr / FieldReflectGetExpr / FieldReflectSetExpr
+FieldReflectMetaExpr <- '@' FieldReflectMetaName '(' SoftGap FieldMetaArg TrailComma? SoftGap ')'
+FieldReflectGetExpr <- '@' 'field_get' '(' SoftGap Expr CommaSep FieldMetaArg TrailComma? SoftGap ')'
+FieldReflectSetExpr <- '@' 'field_set' '(' SoftGap Expr CommaSep FieldMetaArg CommaSep Expr TrailComma? SoftGap ')'
+FieldReflectMetaName <- 'field_name' / 'field_index' / 'field_has_default'
+FieldMetaArg      <- Expr
+
+CoreAccessExpr   <- GetExpr / SetExpr
+GetExpr          <- '@' 'get' '(' SoftGap CoreAccessTarget CommaSep CoreAccessArgList TrailComma? SoftGap ')'
+SetExpr          <- '@' 'set' '(' SoftGap SetRawArgList TrailComma? SoftGap ')'
+SetRawArgList    <- SetTarget CommaSep SetPathArgList CommaSep SetValueArg
+SetTarget        <- Expr
+SetPathArgList   <- PathArg (CommaSep PathArg)*
+SetValueArg      <- LambdaArg / Expr
+
+CoreAccessTarget <- Expr
+CoreAccessArgList <- CoreAccessArg (CommaSep CoreAccessArg)*
+PathArg          <- FieldSeg / IndexSeg
+CoreAccessArg    <- PathArg
+IndexSeg         <- Expr
+FieldSeg         <- !DotFieldReservedName DotLowerIdent
+
+CoreFixedCallExpr <- '@' CoreFixedFuncName '(' SoftGap ArgList? SoftGap ')'
+
+CallExpr         <- Callee '(' SoftGap ArgList? SoftGap ')'
+Callee           <- !ReservedName LowerIdent
+ArgList          <- FixedArgList (CommaSep SpreadArg)? TrailComma?
+                  / SpreadArg TrailComma?
+FixedArgList     <- Arg (CommaSep Arg)*
+Arg              <- LambdaArg / Expr
+LambdaArg        <- LambdaExpr
+SpreadArg        <- '...' Expr
+
+LambdaExpr       <- '(' SoftGap LambdaParamList? SoftGap ')' SoftGap LambdaTail
+LambdaParamList  <- LambdaParam (CommaSep LambdaParam)* TrailComma?
+LambdaParam      <- ParamName (SoftGap ParamTypeExpr)?
+LambdaTail       <- ReturnTailAnn? (Block / '=>' ArrowExprList)
+ReturnTailAnn    <- SoftGap '->' SoftGap ReturnSpec
+
+InferredAggLit   <- '.' InferredAggBody
+TypedAggLit      <- TypeCtor TypedAggBody
+TypeCtor         <- StructRefType
+InferredAggBody  <- '{' SoftGap (FieldInitList / AggExprList)? SoftGap '}'
+TypedAggBody     <- '{' SoftGap FieldInitList? SoftGap '}'
+FieldInitList    <- FieldInit (CommaSep FieldInit)* TrailComma?
+FieldInit        <- FieldInitName '=' SameLineExpr
+FieldInitName    <- !FieldReservedName LowerIdent
+AggExprList      <- Expr (CommaSep Expr)* TrailComma?
+
+Literal          <- IntLit / FloatLit / String / 'true' / 'false' / 'nil'
+
+ReservedWord     <- 'if' / 'else' / 'loop' / 'break' / 'continue' / 'return' / 'defer' / 'do'
+                  / 'true' / 'false' / 'nil'
+BuiltinSpecialName <- 'is' / 'and' / 'or' / 'not' / 'recv' / 'fields'
+ReservedCoreAccessName <- 'get' / 'set'
+FieldReflectFuncName <- FieldReflectMetaName / 'field_get' / 'field_set'
+CoreFixedFuncName <- CorePredicateName / CoreNumericName / CoreBitwiseName / CoreFloatName / CoreStorageFuncName / CoreMemoryLoadName / CoreConvertName
+CorePredicateName <- 'eq' / 'ne' / 'lt' / 'le' / 'gt' / 'ge'
+CoreNumericName  <- 'add' / 'sub' / 'mul' / 'div' / 'rem'
+                  / 'abs' / 'min' / 'max'
+CoreBitwiseName  <- 'and' / 'or' / 'xor'
+                  / 'shl' / 'shr' / 'rotl' / 'rotr'
+                  / 'clz' / 'ctz' / 'popcnt'
+CoreFloatName    <- 'neg' / 'sqrt' / 'ceil' / 'floor' / 'trunc' / 'nearest'
+                  / 'copysign'
+CoreStorageFuncName <- 'len' / 'put'
+CoreMemoryLoadName <- 'load_u8' / 'load_i8'
+                  / 'load_u16_le' / 'load_i16_le'
+                  / 'load_u32_le' / 'load_i32_le'
+                  / 'load_u64_le' / 'load_i64_le'
+CoreConvertName  <- 'to_u8' / 'to_u16' / 'to_u32' / 'to_u64' / 'to_usize'
+                  / 'to_isize' / 'to_i8' / 'to_i16' / 'to_i32' / 'to_i64'
+                  / 'to_f32' / 'to_f64'
+DeclOnlyName     <- 'start' / 'test'
+ReservedDeclName <- BuiltinSpecialName / ReservedCoreAccessName / FieldReflectFuncName / CoreFixedFuncName / DeclOnlyName
+ReservedTypeName <- BaseTypeName / 'Error' / 'char'
+ReservedName     <- ReservedWord / ReservedDeclName / ReservedTypeName
+DotReservedName  <- ? DotLowerIdent or DotUpperIdent whose lexeme without leading "." matches ReservedName ?
+FieldReservedName <- ReservedWord / ReservedCoreAccessName / DeclOnlyName / ReservedTypeName
+DotFieldReservedName <- ? DotLowerIdent whose lexeme without leading "." matches FieldReservedName ?
+TopDeclLineSep   <- ? next top-level declaration starts on a later line than the previous top-level declaration end ?
+StmtLineSep      <- ? next block statement or field declaration starts on a later line than the previous item end ?
+NextLine         <- ? next token starts on a later line than previous token ?
+TokenGap         <- ? no token consumed; whitespace and comments were removed before parsing ?

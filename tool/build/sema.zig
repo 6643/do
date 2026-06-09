@@ -1688,6 +1688,11 @@ fn isBuiltinCallName(name: []const u8) bool {
         "rem",
         "get",
         "set",
+        "field_name",
+        "field_index",
+        "field_has_default",
+        "field_get",
+        "field_set",
         "len",
         "put",
         "to_u8",
@@ -4967,12 +4972,30 @@ fn checkParenthesizedTypes(tokens: []const lexer.Token) !void {
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
         if (!tokEq(tokens[i], "(")) continue;
+        if (isFieldsLoopSourceTypeParen(tokens, i)) continue;
         if (isFuncTypeStart(tokens, i)) continue;
         const close_idx = findMatching(tokens, i, "(", ")") catch continue;
         if (!isParenthesizedTypeContext(tokens, i, close_idx)) continue;
         if (!isTypeExprRangeAllowParens(tokens, i + 1, close_idx)) continue;
         return markErrorAt(tokens, i, error.InvalidTypeRef);
     }
+}
+
+fn isFieldsLoopSourceTypeParen(tokens: []const lexer.Token, open_idx: usize) bool {
+    if (open_idx == 0 or tokens[open_idx - 1].line != tokens[open_idx].line) return false;
+    if (tokens[open_idx - 1].kind != .ident or !std.mem.eql(u8, tokens[open_idx - 1].lexeme, "fields")) return false;
+    const close_idx = findMatching(tokens, open_idx, "(", ")") catch return false;
+    if (open_idx + 2 != close_idx) return false;
+    if (tokens[open_idx + 1].kind != .ident or !isValidDeclaredTypeName(tokens[open_idx + 1].lexeme)) return false;
+    if (close_idx + 1 >= tokens.len or tokens[close_idx + 1].line != tokens[open_idx].line or !tokEq(tokens[close_idx + 1], "{")) return false;
+
+    const line_start = lineStartIdx(tokens, open_idx);
+    const line_end = findLineEndIdx(tokens, open_idx);
+    if (!tokEq(tokens[line_start], "loop")) return false;
+    const bind_idx = findTopLevelAssignEqOnLine(tokens, line_start + 1, line_end) orelse return false;
+    if (bind_idx + 1 != open_idx - 1) return false;
+    if (line_start + 2 != bind_idx) return false;
+    return tokens[line_start + 1].kind == .ident and !isKeyword(tokens[line_start + 1].lexeme);
 }
 
 fn isParenthesizedTypeContext(tokens: []const lexer.Token, open_idx: usize, close_idx: usize) bool {
@@ -6002,7 +6025,7 @@ fn isValidLoopLabelName(name: []const u8) bool {
 
 fn checkLoopSource(tokens: []const lexer.Token, header_start: usize, bind_idx: usize, open_brace: usize) !void {
     if (header_start + 1 == bind_idx) {
-        if (!isRecvLoopSource(tokens, bind_idx + 1, open_brace)) {
+        if (!isRecvLoopSource(tokens, bind_idx + 1, open_brace) and !isFieldsLoopSource(tokens, bind_idx + 1, open_brace)) {
             return markErrorAt(tokens, bind_idx + 1, error.InvalidLoopHeader);
         }
         return;
@@ -6023,6 +6046,15 @@ fn isRecvLoopSource(tokens: []const lexer.Token, start_idx: usize, end_idx: usiz
     if (!tokEq(tokens[start_idx + 1], "(")) return false;
     const close_idx = findMatching(tokens, start_idx + 1, "(", ")") catch return false;
     return close_idx + 1 == end_idx;
+}
+
+fn isFieldsLoopSource(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    if (start_idx + 4 != end_idx) return false;
+    if (tokens[start_idx].kind != .ident or !std.mem.eql(u8, tokens[start_idx].lexeme, "fields")) return false;
+    if (!tokEq(tokens[start_idx + 1], "(")) return false;
+    if (tokens[start_idx + 2].kind != .ident) return false;
+    if (!isValidDeclaredTypeName(tokens[start_idx + 2].lexeme)) return false;
+    return tokEq(tokens[start_idx + 3], ")");
 }
 
 fn isUnsupportedDirectLoopSource(type_name: []const u8) bool {
@@ -6837,18 +6869,19 @@ fn isNumericCoreFuncName(name: []const u8) bool {
 
 fn isBuiltinSpecialOrCoreName(name: []const u8) bool {
     const names = [_][]const u8{
-        "is",          "and",         "or",          "not",         "recv",
-        "get",         "set",         "eq",          "ne",          "lt",
-        "le",          "gt",          "ge",          "add",         "sub",
-        "mul",         "div",         "rem",         "len",         "put",
-        "to_u8",       "to_u16",      "to_u32",      "to_u64",      "to_usize",
-        "to_isize",    "to_i8",       "to_i16",      "to_i32",      "to_i64",
-        "to_f32",      "to_f64",      "load_u8",     "load_i8",     "load_u16_le",
-        "load_i16_le", "load_u32_le", "load_i32_le", "load_u64_le", "load_i64_le",
-        "xor",         "shl",         "shr",         "rotl",        "rotr",
-        "clz",         "ctz",         "popcnt",      "abs",         "neg",
-        "sqrt",        "ceil",        "floor",       "trunc",       "nearest",
-        "min",         "max",         "copysign",
+        "is",                "and",         "or",          "not",         "recv",
+        "fields",            "get",         "set",         "field_name",  "field_index",
+        "field_has_default", "field_get",   "field_set",   "eq",          "ne",
+        "lt",                "le",          "gt",          "ge",          "add",
+        "sub",               "mul",         "div",         "rem",         "len",
+        "put",               "to_u8",       "to_u16",      "to_u32",      "to_u64",
+        "to_usize",          "to_isize",    "to_i8",       "to_i16",      "to_i32",
+        "to_i64",            "to_f32",      "to_f64",      "load_u8",     "load_i8",
+        "load_u16_le",       "load_i16_le", "load_u32_le", "load_i32_le", "load_u64_le",
+        "load_i64_le",       "xor",         "shl",         "shr",         "rotl",
+        "rotr",              "clz",         "ctz",         "popcnt",      "abs",
+        "neg",               "sqrt",        "ceil",        "floor",       "trunc",
+        "nearest",           "min",         "max",         "copysign",
     };
     for (names) |it| {
         if (std.mem.eql(u8, it, name)) return true;

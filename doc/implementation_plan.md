@@ -1,6 +1,6 @@
 # Do Wasm Mainline Implementation Plan
 
-> 状态: 当前计划用于推进编译到 wasm 的主线实现。`doc/spec.md` 仍是语言规范入口；本文件只记录阶段优先级, 验收边界和执行顺序。
+> 状态: 当前计划用于推进编译到 wasm 的主线实现。`doc/spec.md` 是语言规范入口, `doc/spec_rules.md` 是详细规则；本文件只记录阶段优先级, 验收边界和执行顺序。
 
 ## P0: Phase 1, 规范冻结与残留清理
 
@@ -8,6 +8,8 @@
 
 范围:
 - `doc/spec.md`
+- `doc/spec_rules.md`
+- `doc/grammar.peg`
 - `doc/spec_examples.md`
 - `src/*.do`
 - `tool/build/test/**/*`
@@ -280,6 +282,7 @@
 - compiled runner 已覆盖普通 block 函数调用、单表达式箭头函数调用、私有函数声明调用和单返回调用结果的标量推断绑定, 例如 `keep(a bool) -> bool => a` 可在 `test` 体内作为 guard 条件执行, `.double(...)` 声明可按 `double(...)` 调用, `got = double(3)` 可推断为标量局部并写入调用结果。
 - `tool/build/test/compiled_err` 固化 compiled runner 的 lowering 诊断; 当前已覆盖 test body 通过导入 wrapper 触达 `@wasi` alias 时提前报 `UnsupportedWasiHostImport`。
 - `tool/build/test/compiled_trap` 固化 compiled test 失败表达; 测试体落到块末尾时, 单独执行对应 `__do_test_N` export 会触发 wasm trap, harness 会用 manifest 中的源码测试名输出失败行。
+- `tool/build/test/ok/*.compiled_must_pass` 已作为迁移标记接入 `run_tests.sh`: 默认静态 runner 仍可输出 skip, 但带标记用例必须通过 `do test --compiled` 生成 WAT, 再经 `wasm-tools parse` 和 `run_compiled_test_case.mjs` 执行通过。当前已有 21 个 `ok` 用例用该路径从静态 skip 收回为 compiled pass, 覆盖集合循环、text/storage、value enum、泛型约束、defer 语法和 `src/math.do` 常量/helper 等切片。
 
 待完成:
 - 将 compiled test runner 从 opt-in 输出路径推进到默认执行路径; 当前默认 `do test` 仍保留静态 runner。
@@ -327,7 +330,7 @@
 验收:
 - `src` 中涉及 raw WIT 复杂签名的内容只允许出现在标准库内部 `.host_* = @wasi(...)` binding, 例如 `src/io.stream.do` 的 `input-stream.read` 和 `output-stream.check-write/write/flush`。
 - 公开标准库 API 不把 WIT `resource/result/variant/flags/future` 当成普通 do 源码类型暴露。
-- `doc/spec.md` 明确记录当前只保留 do 层公开类型和后续私有绑定层方向。
+- `doc/spec_rules.md` 明确记录当前只保留 do 层公开类型和后续私有绑定层方向。
 
 ### P3-b: 私有 WASI binding / component lowering
 

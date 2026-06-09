@@ -2,7 +2,7 @@
 
 **版本**: 5.1 (Implicit ARC + Perceus + Acyclic Runtime Graph)
 **核心目标**: 值语义不变, 运行时确定性释放, 低停顿, 面向 WASM 32 位环境, 最终不引入循环 GC
-**状态**: 长期运行时草案, 仅作优化参考; v1 可实现内存模型以 `doc/memory.md` 为准, 需与 `doc/spec.md` 同步校准。
+**状态**: 长期运行时草案, 仅作优化参考; v1 可实现内存模型以 `doc/memory.md` 为准, 需与 `doc/spec_rules.md` 同步校准。
 
 > 本文保留 Implicit ARC、Perceus、Region、无环 runtime graph、header 压缩和未来并发方向。
 > 当前实现不直接按本文全部落地; 先按 `doc/memory.md` 的 v1 边界实现 managed handle、ARC、`[T]`、`text` 和 host ABI 基础模型。

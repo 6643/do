@@ -2,7 +2,7 @@
 
 **状态**: v1 实现规格草案
 **目标**: 在不向用户暴露指针/引用的前提下, 为 Wasm lowering、`[T]`、`text`、结构体、ARC、host ABI 和未来 store/atomic 设计提供统一边界。
-**关系**: `doc/spec.md` 定义源码语义; 本文定义运行时表示和编译器实现边界; `doc/arc.md` 保留长期 ARC/Perceus/并发优化设想。
+**关系**: `doc/spec.md` 是规范入口; `doc/spec_rules.md` 定义源码语义; 本文定义运行时表示和编译器实现边界; `doc/arc.md` 保留长期 ARC/Perceus/并发优化设想。
 
 ---
 

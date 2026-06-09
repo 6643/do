@@ -8,10 +8,10 @@ This repository contains the `do` language compiler and its regression suite.
 - `tool/main.zig`: Single CLI dispatch entrypoint for the `bin/do` tool.
 - `tool/build.zig`: Zig build entrypoint. It installs the compiler binary to the repository `bin/` directory.
 - `bin/do`: Built compiler executable.
-- `doc/`: Language syntax, runtime, and memory design references, centered on `doc/spec.md`.
+- `doc/`: Language syntax, parser grammar, runtime, and memory design references, centered on `doc/spec.md` and `doc/grammar.peg`.
 - `tool/build/test/`: Current compiler and build-output regression tests and expected diagnostics.
 - `tool/test/`: Reserved implementation directory for the future `do test` command.
-- `doc/rc.md` and `doc/gc.ts`: Runtime and memory design notes/prototypes.
+- `doc/memory.md`, `doc/arc.md`, and `doc/arc_*.ts`: Runtime and memory design notes/prototypes.
 
 ## Build, Test, and Development Commands
 
@@ -53,4 +53,4 @@ Run `./tool/build/test/run_tests.sh` before handing off changes that touch synta
 
 Recent history uses short imperative or status-style subjects, including `Auto save: YYYY-MM-DD HH:MM:SS` and direct summaries such as `Update README for do language with version note`. Prefer concise subjects that name the changed area.
 
-Pull requests should describe the compiler behavior changed, list updated test cases, and include the exact verification command and result. For syntax or semantic changes, update `doc/spec.md` in the same change.
+Pull requests should describe the compiler behavior changed, list updated test cases, and include the exact verification command and result. For parser syntax changes, update `doc/grammar.peg`; for semantic changes, update `doc/spec_rules.md` in the same change.
