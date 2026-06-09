@@ -1,10 +1,10 @@
-StreamError error = StreamClosed | StreamReadFailed | StreamWriteFailed | StreamFlushFailed
-StreamOutcome = StreamError | nil
-
 .host_input_read = @wasi("io/streams/input-stream.read", (input-stream, u64) -> result<list<u8>,stream-error>)
 .host_output_check_write = @wasi("io/streams/output-stream.check-write", (output-stream) -> result<u64,stream-error>)
 .host_output_write = @wasi("io/streams/output-stream.write", (output-stream, list<u8>) -> result<_,stream-error>)
 .host_output_flush = @wasi("io/streams/output-stream.flush", (output-stream) -> result<_,stream-error>)
+
+StreamError error = StreamClosed | StreamReadFailed | StreamWriteFailed | StreamFlushFailed
+StreamOutcome = StreamError | nil
 
 InputStream {
     .id i64

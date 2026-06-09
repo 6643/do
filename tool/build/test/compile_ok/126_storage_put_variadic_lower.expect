@@ -1,0 +1,5 @@
+;; storage-put-scalar
+;; storage-put-managed
+call $__do_storage_put_u8
+local.set $__do_storage_overwrite_tmp
+local.get $__do_storage_overwrite_tmp

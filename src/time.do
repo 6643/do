@@ -1,12 +1,12 @@
-Datetime {
-    seconds i64
-    nanoseconds u32
-}
-
 .host_now = @wasi("clocks/system-clock/now", () -> Datetime)
 .host_resolution = @wasi("clocks/system-clock/get-resolution", () -> u64)
 .host_monotonic_now = @wasi("clocks/monotonic-clock/now", () -> u64)
 .host_monotonic_resolution = @wasi("clocks/monotonic-clock/get-resolution", () -> u64)
+
+Datetime {
+    seconds i64
+    nanoseconds u32
+}
 
 now() -> Datetime {
     return host_now()

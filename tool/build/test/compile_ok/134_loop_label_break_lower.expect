@@ -1,0 +1,5 @@
+;; loop-block
+block $__do_loop_break_
+loop $__do_loop_body_
+;; loop-break-release
+br $__do_loop_break_

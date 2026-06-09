@@ -196,45 +196,35 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
             const line_start = line;
             const col_start = col;
             const block_start = i;
-            const allow_block = isLineStart(source, i);
             var cur_i = i;
             var cur_line = line;
             var cur_col = col;
 
-            if (allow_block) {
-                while (true) {
-                    cur_i += 2;
-                    cur_col += 2;
-                    while (cur_i < source.len and source[cur_i] != '\n' and source[cur_i] != '\r') {
-                        cur_i += 1;
-                        cur_col += 1;
-                    }
-
-                    if (cur_i >= source.len) break;
-
-                    var next_i = cur_i + 1;
-                    if (source[cur_i] == '\r' and next_i < source.len and source[next_i] == '\n') {
-                        next_i += 1;
-                    }
-                    var next_col: usize = 1;
-                    while (next_i < source.len and (source[next_i] == ' ' or source[next_i] == '\t')) : (next_i += 1) {
-                        next_col += 1;
-                    }
-                    if (next_i + 1 < source.len and source[next_i] == '\\' and source[next_i + 1] == '\\') {
-                        cur_i = next_i;
-                        cur_line += 1;
-                        cur_col = next_col;
-                        continue;
-                    }
-                    break;
-                }
-            } else {
+            while (true) {
                 cur_i += 2;
                 cur_col += 2;
                 while (cur_i < source.len and source[cur_i] != '\n' and source[cur_i] != '\r') {
                     cur_i += 1;
                     cur_col += 1;
                 }
+
+                if (cur_i >= source.len) break;
+
+                var next_i = cur_i + 1;
+                if (source[cur_i] == '\r' and next_i < source.len and source[next_i] == '\n') {
+                    next_i += 1;
+                }
+                var next_col: usize = 1;
+                while (next_i < source.len and (source[next_i] == ' ' or source[next_i] == '\t')) : (next_i += 1) {
+                    next_col += 1;
+                }
+                if (next_i + 1 < source.len and source[next_i] == '\\' and source[next_i + 1] == '\\') {
+                    cur_i = next_i;
+                    cur_line += 1;
+                    cur_col = next_col;
+                    continue;
+                }
+                break;
             }
 
             if (!std.unicode.utf8ValidateSlice(source[block_start..cur_i])) return error.InvalidStringUtf8;
@@ -420,6 +410,16 @@ test "line string blocks tokenize as one token" {
     try std.testing.expectEqual(@as(usize, 1), tokens.len);
     try std.testing.expectEqual(TokenKind.string, tokens[0].kind);
     try std.testing.expectEqualStrings("\\\\abc\n  \\\\def", tokens[0].lexeme);
+}
+
+test "inline rhs line string blocks tokenize as one token" {
+    const allocator = std.testing.allocator;
+    const tokens = try tokenize(allocator, "value text = \\\\abc\n  \\\\def");
+    defer allocator.free(tokens);
+
+    try std.testing.expectEqual(@as(usize, 4), tokens.len);
+    try std.testing.expectEqual(TokenKind.string, tokens[3].kind);
+    try std.testing.expectEqualStrings("\\\\abc\n  \\\\def", tokens[3].lexeme);
 }
 
 test "blank line breaks line string block" {

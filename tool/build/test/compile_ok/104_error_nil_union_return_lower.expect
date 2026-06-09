@@ -1,8 +1,8 @@
-(func $status_to_error (param $code i32) (param $fallback i32) (result i32)
+(func $status_to_error (param $code i32) (param $fallback i32) (result i32 i32)
 i32.const 0
 i32.const 1
 return
 local.get $fallback
-(func $wrap_status (param $code i32) (result i32)
+(func $wrap_status (param $code i32) (result i32 i32)
 i32.const 2
 call $status_to_error

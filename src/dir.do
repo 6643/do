@@ -1,9 +1,9 @@
-DirError error = DirOpenFailed | DirReadFailed | DirCreateFailed | DirRemoveFailed | DirClosed
-
 .host_dir_create_at = @wasi("filesystem/types/descriptor.create-directory-at", (descriptor, text) -> result<_,error-code>)
 .host_dir_open_at = @wasi("filesystem/types/descriptor.open-at", (descriptor, path-flags, text, open-flags, descriptor-flags) -> result<descriptor,error-code>)
 .host_dir_remove_at = @wasi("filesystem/types/descriptor.remove-directory-at", (descriptor, text) -> result<_,error-code>)
 .host_dir_drop = @wasi("filesystem/types/descriptor.drop", (descriptor) -> nil)
+
+DirError error = DirOpenFailed | DirReadFailed | DirCreateFailed | DirRemoveFailed | DirClosed
 
 Dir {
     .id i64

@@ -1,0 +1,5 @@
+(func $local_value (result i32)
+i32.const 11
+(func $dep_value (result i32)
+i32.const 22
+call $dep_value

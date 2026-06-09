@@ -1873,7 +1873,11 @@ fn isStructFieldInitName(name: []const u8) bool {
         return false;
     }
 
-    return !prev_underscore;
+    return !prev_underscore and !isReservedStructFieldInitName(name);
+}
+
+fn isReservedStructFieldInitName(name: []const u8) bool {
+    return std.mem.eql(u8, name, "get") or std.mem.eql(u8, name, "set");
 }
 
 fn findTopLevelCommaInRange(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
@@ -2124,9 +2128,9 @@ fn isErrorTypeName(name: []const u8) bool {
 
 fn isBaseIntTypeName(name: []const u8) bool {
     const names = [_][]const u8{
-        "i8",    "i16", "i32", "i64",
-        "u8",    "u16", "u32", "u64",
-        "usize",
+        "i8",    "i16",   "i32", "i64",
+        "u8",    "u16",   "u32", "u64",
+        "isize", "usize",
     };
     for (names) |it| {
         if (std.mem.eql(u8, it, name)) return true;

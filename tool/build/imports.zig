@@ -137,6 +137,7 @@ const Context = struct {
         self.stack.deinit(self.allocator);
         return .{
             .allocator = self.allocator,
+            .dep_root = self.dep_root,
             .modules = modules,
         };
     }
@@ -144,6 +145,7 @@ const Context = struct {
 
 pub const ModuleGraph = struct {
     allocator: std.mem.Allocator,
+    dep_root: []const u8,
     modules: []ModuleRecord,
 
     pub fn deinit(self: *ModuleGraph) void {
@@ -288,7 +290,6 @@ fn loadModule(
         freeFuncShapeItems(ctx.allocator, imported_func_shapes.items);
         imported_func_shapes.deinit(ctx.allocator);
     }
-
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
         const import_ref = parseLocalImport(tokens, i) orelse {
@@ -336,6 +337,7 @@ fn loadModule(
     }
 
     try checkImportedFunctionValueResolution(ctx.allocator, tokens, imported_func_shapes.items);
+    try checkImportedDeferStmts(ctx.allocator, tokens, imported_func_shapes.items);
 
     const cache_path = try ctx.allocator.dupe(u8, path);
     errdefer ctx.allocator.free(cache_path);
@@ -379,6 +381,7 @@ fn checkImportedPrivateFieldCtors(
     }
 
     try checkImportedPrivateFieldInferredCtors(tokens, import_ref.alias_idx, private_fields.items, has_required_private);
+    try checkImportedPrivateFieldPathAccess(tokens, import_ref, private_fields.items);
 }
 
 fn hasRequiredPrivateField(fields: []const PrivateField) bool {
@@ -640,6 +643,50 @@ fn checkImportedPrivateFieldInferredCtors(
     }
 }
 
+fn checkImportedPrivateFieldPathAccess(
+    tokens: []const lexer.Token,
+    import_ref: ImportRef,
+    private_fields: []const PrivateField,
+) !void {
+    const alias = tokens[import_ref.alias_idx].lexeme;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (!tokEq(tokens[i], "get") and !tokEq(tokens[i], "set")) continue;
+        if (i == 0 or !tokEq(tokens[i - 1], "@") or tokens[i - 1].line != tokens[i].line) continue;
+        if (i + 1 >= tokens.len or !tokEq(tokens[i + 1], "(")) continue;
+
+        const close_paren = findMatching(tokens, i + 1, "(", ")") catch continue;
+        const first_start = i + 2;
+        const first_end = findTopLevelArgEnd(tokens, first_start, close_paren);
+        if (first_end != first_start + 1 or tokens[first_start].kind != .ident) {
+            i = close_paren;
+            continue;
+        }
+        if (!valueHasImportedTypeAlias(tokens, i, tokens[first_start].lexeme, alias)) {
+            i = close_paren;
+            continue;
+        }
+
+        var arg_start = first_end;
+        while (arg_start < close_paren) {
+            if (!tokEq(tokens[arg_start], ",")) break;
+            arg_start += 1;
+            const arg_end = findTopLevelArgEnd(tokens, arg_start, close_paren);
+            if (arg_end == arg_start + 1 and tokens[arg_start].kind == .ident and isPrivatePathField(private_fields, tokens[arg_start].lexeme)) {
+                return markErrorAt(tokens, arg_start, error.InvalidPathAccess);
+            }
+            arg_start = arg_end;
+        }
+
+        i = close_paren;
+    }
+}
+
+fn isPrivatePathField(private_fields: []const PrivateField, name: []const u8) bool {
+    if (name.len < 2 or name[0] != '.') return false;
+    return isPrivateFieldName(private_fields, name[1..]);
+}
+
 fn findPrivateFieldInit(
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -761,6 +808,89 @@ fn valueHasNearestTypeAlias(tokens: []const lexer.Token, before_idx: usize, name
     return false;
 }
 
+fn valueHasImportedTypeAlias(tokens: []const lexer.Token, before_idx: usize, name: []const u8, alias: []const u8) bool {
+    if (valueHasNearestTypeAlias(tokens, before_idx, name, alias)) return true;
+    return enclosingFuncParamHasTypeAlias(tokens, before_idx, name, alias);
+}
+
+fn enclosingFuncParamHasTypeAlias(tokens: []const lexer.Token, before_idx: usize, name: []const u8, alias: []const u8) bool {
+    var skip_depth: usize = 0;
+    var i = before_idx;
+    while (i > 0) {
+        i -= 1;
+        if (tokEq(tokens[i], "}")) {
+            skip_depth += 1;
+            continue;
+        }
+        if (!tokEq(tokens[i], "{")) continue;
+        if (skip_depth > 0) {
+            skip_depth -= 1;
+            continue;
+        }
+        return funcParamHasTypeAliasBeforeBody(tokens, i, name, alias);
+    }
+    return false;
+}
+
+fn funcParamHasTypeAliasBeforeBody(tokens: []const lexer.Token, body_open_idx: usize, name: []const u8, alias: []const u8) bool {
+    const line_start = lineStartIdx(tokens, body_open_idx);
+    if (line_start >= body_open_idx) return false;
+    if (!isFuncDeclStart(tokens, line_start)) return false;
+    const close_params = findMatching(tokens, line_start + 1, "(", ")") catch return false;
+    if (close_params >= body_open_idx) return false;
+    return paramListHasTypeAlias(tokens, line_start + 2, close_params, name, alias);
+}
+
+fn paramListHasTypeAlias(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, name: []const u8, alias: []const u8) bool {
+    var seg_start = start_idx;
+    var i = start_idx;
+    while (i <= end_idx) : (i += 1) {
+        if (i < end_idx and !isTopLevelCommaAny(tokens, i, start_idx, end_idx)) continue;
+        if (seg_start + 1 < i and tokens[seg_start].kind == .ident and std.mem.eql(u8, tokens[seg_start].lexeme, name)) {
+            var type_start = seg_start + 1;
+            if (type_start < i and isSpreadToken(tokens[type_start])) type_start += 1;
+            if (type_start < i and tokens[type_start].kind == .ident and std.mem.eql(u8, tokens[type_start].lexeme, alias)) return true;
+        }
+        seg_start = i + 1;
+    }
+    return false;
+}
+
+fn findTopLevelArgEnd(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) usize {
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_angle: usize = 0;
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (depth_paren == 0 and depth_brace == 0 and depth_angle == 0 and tokEq(tokens[i], ",")) return i;
+    }
+    return end_idx;
+}
+
 fn findTopLevelEq(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
     var depth_paren: usize = 0;
     var depth_brace: usize = 0;
@@ -833,12 +963,12 @@ fn findPublicDeclKind(tokens: []const lexer.Token, target: []const u8) ?DeclKind
         if (depth_brace != 0) continue;
         if (!isTopLevelDeclHead(tokens, i)) continue;
         if (tokens[i].kind != .ident) continue;
+        if (isModernImportAssign(tokens, i)) continue;
         if (findPublicEnumMemberKind(tokens, i, target)) |kind| return kind;
         if (!std.mem.eql(u8, tokens[i].lexeme, target)) continue;
         if (isPrivateDeclName(tokens[i].lexeme)) continue;
 
         if (isFuncDeclStart(tokens, i)) return .func;
-        if (isHostImportDeclStart(tokens, i)) return .func;
         if (isErrorEnumDeclStart(tokens, i)) return .error_type;
         if (isValueEnumDeclStart(tokens, i)) return .value_enum_type;
         if (isValidDeclaredTypeName(tokens[i].lexeme) and isTypeDeclStart(tokens, i)) return .type;
@@ -955,6 +1085,51 @@ fn checkImportedFunctionValueResolution(
     }
 
     try checkBareImportedOverloadedFuncAssign(tokens, local_funcs, imported_funcs);
+}
+
+fn checkImportedDeferStmts(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    imported_funcs: []const FuncShape,
+) !void {
+    if (imported_funcs.len == 0) return;
+
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (!tokEq(tokens[i], "defer")) continue;
+        const call_idx = i + 1;
+        if (call_idx >= tokens.len) return markErrorAt(tokens, i, error.NoMatchingCall);
+        if (tokEq(tokens[call_idx], "{")) {
+            const close_block = findMatching(tokens, call_idx, "{", "}") catch return markErrorAt(tokens, call_idx, error.NoMatchingCall);
+            i = close_block;
+            continue;
+        }
+        if (tokens[call_idx].kind != .ident) continue;
+        if (call_idx + 1 >= tokens.len or !tokEq(tokens[call_idx + 1], "(")) continue;
+
+        const name = tokens[call_idx].lexeme;
+        if (!hasKnownFuncCandidate(imported_funcs, name)) continue;
+        const line_end = findLineEndIdx(tokens, call_idx);
+        const close_paren = findMatching(tokens, call_idx + 1, "(", ")") catch return markErrorAt(tokens, call_idx, error.NoMatchingCall);
+        if (close_paren + 1 != line_end) return markErrorAt(tokens, call_idx, error.NoMatchingCall);
+
+        const args = try parseCallArgShapes(allocator, tokens, call_idx + 2, close_paren);
+        defer allocator.free(args);
+
+        var saw_func_candidate = false;
+        for (imported_funcs) |func| {
+            if (!std.mem.eql(u8, func.name, name)) continue;
+            if (!callArityCompatibleWithFunc(func, args.len)) continue;
+            saw_func_candidate = true;
+            if (funcReturnIsNil(func.return_type)) return;
+        }
+        if (saw_func_candidate) return markErrorAt(tokens, call_idx, error.NoMatchingCall);
+    }
+}
+
+fn funcReturnIsNil(return_type: ?[]const u8) bool {
+    const ty = return_type orelse return true;
+    return std.mem.eql(u8, ty, "nil");
 }
 
 fn checkBareImportedOverloadedFuncAssign(
@@ -2418,9 +2593,9 @@ fn isValidDeclaredTypeName(name: []const u8) bool {
 
 fn isBaseIntTypeName(name: []const u8) bool {
     const base_int_types = [_][]const u8{
-        "i8",    "i16", "i32", "i64",
-        "u8",    "u16", "u32", "u64",
-        "usize",
+        "i8",    "i16",   "i32", "i64",
+        "u8",    "u16",   "u32", "u64",
+        "isize", "usize",
     };
     for (base_int_types) |it| {
         if (std.mem.eql(u8, it, name)) return true;

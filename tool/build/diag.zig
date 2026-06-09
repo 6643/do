@@ -73,8 +73,16 @@ fn locateCompileError(
 }
 
 fn locateSourceError(err: anyerror, source: []const u8) ?SourceLoc {
-    if (err != error.UnterminatedString) return null;
+    return switch (err) {
+        error.UnterminatedString => locateUnterminatedString(source),
+        error.InvalidStringEscape => locateInvalidStringEscape(source),
+        error.InvalidStringUtf8 => locateInvalidStringUtf8(source),
+        error.InvalidComment => locateInvalidComment(source),
+        else => null,
+    };
+}
 
+fn locateUnterminatedString(source: []const u8) ?SourceLoc {
     var in_string = false;
     var line: usize = 1;
     var col: usize = 1;
@@ -82,30 +90,127 @@ fn locateSourceError(err: anyerror, source: []const u8) ?SourceLoc {
     var str_col: usize = 1;
 
     var i: usize = 0;
-    while (i < source.len) : (i += 1) {
+    while (i < source.len) {
         const ch = source[i];
         if (!in_string and ch == '"') {
             in_string = true;
             str_line = line;
             str_col = col;
             col += 1;
+            i += 1;
             continue;
         }
         if (in_string and ch == '"') {
             in_string = false;
             col += 1;
+            i += 1;
             continue;
         }
-        if (ch == '\n') {
+        if (isLineBreak(source, i)) {
             if (in_string) return .{ .line = str_line, .col = str_col };
+            i = skipLineBreak(source, i);
             line += 1;
             col = 1;
             continue;
         }
         col += 1;
+        i += 1;
     }
 
     if (in_string) return .{ .line = str_line, .col = str_col };
+    return null;
+}
+
+fn locateInvalidStringEscape(source: []const u8) ?SourceLoc {
+    var in_string = false;
+    var line: usize = 1;
+    var col: usize = 1;
+    var i: usize = 0;
+    while (i < source.len) {
+        const ch = source[i];
+        if (!in_string and ch == '"') {
+            in_string = true;
+            i += 1;
+            col += 1;
+            continue;
+        }
+        if (in_string and ch == '"') {
+            in_string = false;
+            i += 1;
+            col += 1;
+            continue;
+        }
+        if (isLineBreak(source, i)) {
+            i = skipLineBreak(source, i);
+            line += 1;
+            col = 1;
+            in_string = false;
+            continue;
+        }
+        if (in_string and ch == '\\') {
+            if (i + 1 >= source.len) return .{ .line = line, .col = col };
+            const esc = source[i + 1];
+            if (esc == '"' or esc == '\\' or esc == 'n' or esc == 'r' or esc == 't') {
+                i += 2;
+                col += 2;
+                continue;
+            }
+            if (esc == 'x') {
+                if (i + 3 >= source.len or !std.ascii.isHex(source[i + 2]) or !std.ascii.isHex(source[i + 3])) {
+                    return .{ .line = line, .col = col };
+                }
+                i += 4;
+                col += 4;
+                continue;
+            }
+            return .{ .line = line, .col = col };
+        }
+        i += 1;
+        col += 1;
+    }
+    return null;
+}
+
+fn locateInvalidStringUtf8(source: []const u8) ?SourceLoc {
+    var line: usize = 1;
+    var col: usize = 1;
+    var i: usize = 0;
+    while (i < source.len) {
+        if (isLineBreak(source, i)) {
+            i = skipLineBreak(source, i);
+            line += 1;
+            col = 1;
+            continue;
+        }
+        if (source[i] == '"' or (source[i] == '\\' and i + 1 < source.len and source[i + 1] == '\\')) {
+            return .{ .line = line, .col = col };
+        }
+        i += 1;
+        col += 1;
+    }
+    return null;
+}
+
+fn locateInvalidComment(source: []const u8) ?SourceLoc {
+    var line: usize = 1;
+    var col: usize = 1;
+    var i: usize = 0;
+    while (i + 1 < source.len) {
+        if (isLineBreak(source, i)) {
+            i = skipLineBreak(source, i);
+            line += 1;
+            col = 1;
+            continue;
+        }
+        if (source[i] == '/' and (source[i + 1] == '/' or source[i + 1] == '*')) {
+            if (!isCommentLineStart(source, i)) return .{ .line = line, .col = col };
+            if (source[i + 1] == '*') {
+                if (!blockCommentClosesCleanly(source, i)) return .{ .line = line, .col = col };
+            }
+        }
+        i += 1;
+        col += 1;
+    }
     return null;
 }
 
@@ -217,14 +322,52 @@ fn getLineText(source: []const u8, target_line: usize) []const u8 {
     var line: usize = 1;
     var start: usize = 0;
     var i: usize = 0;
-    while (i < source.len) : (i += 1) {
-        if (source[i] != '\n') continue;
+    while (i < source.len) {
+        if (!isLineBreak(source, i)) {
+            i += 1;
+            continue;
+        }
         if (line == target_line) return source[start..i];
+        i = skipLineBreak(source, i);
         line += 1;
-        start = i + 1;
+        start = i;
     }
     if (line == target_line) return source[start..source.len];
     return "";
+}
+
+fn isLineBreak(source: []const u8, idx: usize) bool {
+    return source[idx] == '\n' or source[idx] == '\r';
+}
+
+fn skipLineBreak(source: []const u8, idx: usize) usize {
+    if (source[idx] == '\r' and idx + 1 < source.len and source[idx + 1] == '\n') return idx + 2;
+    return idx + 1;
+}
+
+fn isCommentLineStart(source: []const u8, idx: usize) bool {
+    var i = idx;
+    while (i > 0) : (i -= 1) {
+        const prev = source[i - 1];
+        if (prev == '\n' or prev == '\r') return true;
+        if (prev != ' ' and prev != '\t') return false;
+    }
+    return true;
+}
+
+fn blockCommentClosesCleanly(source: []const u8, start_idx: usize) bool {
+    var i = start_idx + 2;
+    while (i + 1 < source.len) : (i += 1) {
+        if (source[i] != '*' or source[i + 1] != '/') continue;
+        i += 2;
+        while (i < source.len) : (i += 1) {
+            const ch = source[i];
+            if (ch == '\n' or ch == '\r') return true;
+            if (ch != ' ' and ch != '\t') return false;
+        }
+        return true;
+    }
+    return false;
 }
 
 fn errorSummary(err: anyerror) []const u8 {
@@ -254,7 +397,7 @@ fn errorSummary(err: anyerror) []const u8 {
         error.InvalidIfPatternBind => "if 语法: `if expr { ... }`, `if expr return`, `if expr break`, `if expr continue`",
         error.InvalidBindingName => "顶层值写作 `_snake_case Type = expr`、`snake_case Type = expr` 或 `.snake_case Type = expr`; 局部绑定名使用 `snake_case` 或 `_snake_case`",
         error.PrivateIdentCannotBeLValue => "赋值语法: `name = expr`; 字段写入语法: `@set(value, .field, new_value)`",
-        error.DuplicateImmutableBinding => "同一作用域内 `_name` 写作 1 次",
+        error.DuplicateImmutableBinding => "可见作用域内 `_name` 只能绑定 1 次",
         error.DuplicateTypeDeclName => "类型名按去掉私有标记后的名字唯一",
         error.DuplicateFuncSignature => "函数签名按去掉私有标记后的名字和参数类型序列唯一",
         error.DuplicateStructFieldName => "结构体字段名按去掉私有标记后的名字唯一; 每个字段名保留 1 个声明",
@@ -275,6 +418,8 @@ fn errorSummary(err: anyerror) []const u8 {
         error.UnsupportedWasiHostImport => "这个 WIT host import 签名尚未支持 lowering",
         error.MissingOutputPath => "示例: `do build input.do -o out.wat` 或 `do test sample.do --compiled -o sample.wat`",
         error.MissingTestInputPath => "示例: `do test sample.do` 或 `do test sample.do --compiled -o sample.wat`",
+        error.UnexpectedCliArg => "命令只接受一个输入文件和已声明的选项",
+        error.OutputRequiresCompiledTest => "`do test -o out.wat` 需要同时写 `--compiled`",
         else => "编译失败",
     };
 }
@@ -307,7 +452,7 @@ fn errorHint(err: anyerror) []const u8 {
         error.InvalidIfPatternBind => "if 语法: `if expr { ... }`, `if expr return`, `if expr break`, `if expr continue`",
         error.InvalidBindingName => "顶层值必须显式写类型；常量用 `_snake_case`，模块变量用 `snake_case` 或 `.snake_case`",
         error.PrivateIdentCannotBeLValue => "赋值语法: `name = expr`; 字段写入语法: `@set(value, .field, new_value)`",
-        error.DuplicateImmutableBinding => "同一作用域内 `_name` 写作 1 次",
+        error.DuplicateImmutableBinding => "可见作用域内 `_name` 只能绑定 1 次",
         error.DuplicateTypeDeclName => "`.` 只表示可见性，类型命名冲突按去点后的实际 name 判断",
         error.DuplicateFuncSignature => "`.` 只表示可见性，函数重载身份按去点后的 name 和参数类型序列判断",
         error.DuplicateStructFieldName => "结构体字段名按去掉私有标记后的名字唯一; 每个字段名保留 1 个声明",
@@ -328,6 +473,8 @@ fn errorHint(err: anyerror) []const u8 {
         error.UnsupportedWasiHostImport => "已登记的 scalar/record/list<u8>、descriptor.sync 语句调用和 descriptor.write 多左值调用可 lower；复杂 result/resource/variant/flags 需要后续 component lowering",
         error.MissingOutputPath => "示例: `do build input.do -o out.wat` 或 `do test sample.do --compiled -o sample.wat`",
         error.MissingTestInputPath => "示例: `do test sample.do` 或 `do test sample.do --compiled -o sample.wat`",
+        error.UnexpectedCliArg => "build 写作 `do build input.do [-o out.wat]`; test 写作 `do test input.do` 或 `do test input.do --compiled [-o out.wat]`",
+        error.OutputRequiresCompiledTest => "生成 WAT 的测试入口写作 `do test input.do --compiled -o out.wat`",
         else => "语法示例: `if expr { ... }`, `loop { ... }`, `@get(value, .field)`, `Type{field = value}`",
     };
 }

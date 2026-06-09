@@ -4,7 +4,7 @@
 
 ## P0: Phase 1, 规范冻结与残留清理
 
-目标: 固化当前已定语法, 删除旧语法和旧命名残留。
+目标: 固化当前已定语法, 收敛命名和文档残留。
 
 范围:
 - `doc/spec.md`
@@ -13,8 +13,7 @@
 - `tool/build/test/**/*`
 
 验收:
-- 源码和测试中的普通类型命名使用当前 Do 源码标量: `u8/u16/u32/u64/usize/i8/i16/i32/i64/isize/f32/f64/bool/text`。`char` 和 WIT `string` 只作为 ABI 边界 token 使用。
-- 旧源码类型名 `s8/s16/s32/s64/string/Text` 不再作为合法普通源码类型出现。
+- 源码和测试中的普通类型命名使用当前 Do 源码标量: `u8/u16/u32/u64/usize/i8/i16/i32/i64/isize/f32/f64/bool/text`。
 - `text` 与 `[u8]` 的边界保持明确: `text` 是 UTF-8 文本, `[u8]` 是原始字节。
 - `@lib(...)`, `@env(...)`, `@wasi(...)` 的语法在规范, 诊断和测试中一致。
 - `./tool/build/test/run_tests.sh` 通过。
@@ -159,7 +158,7 @@
   - 写回前比较新旧 handle; 只有 handle 不同时才 `dec` 旧 struct object, 最后把 scratch handle 写回目标局部。
 
 未完成:
-- Phase 2.5 当前没有已知的 build lowering 阻断项; 后续若扩展 collection/consumer loop 的 wasm lowering, 需要按同一 ARC cleanup 规则补独立回归。
+- Phase 2.5 当前没有已知的 build lowering 阻断项; 后续若把消费循环从当前 `[T]` storage-backed lowering 扩展到真实 channel/stream receive ABI, 需要按同一 ARC cleanup 规则补独立回归。
 
 验收:
 - compiler IR 能区分 inline / managed / function symbol。
@@ -364,7 +363,7 @@
 - `tool/build/test/compile_ok/118_wasi_result_output_write_flush_status_lower.do` 已覆盖 `io/streams/[method]output-stream.write` 和 `io/streams/[method]output-stream.flush` 的显式 `_, status` 读取。同用例已接入 component-plan、WIT resource method、core-imports 和 core-shims gates。
 - `tool/build/test/compile_ok/112_source_text_literal_lower.do` 已覆盖 build 端 `s text = "..."` 的 ARC storage handle lowering: 字符串字面量进入 data segment, 局部值按 managed handle 分配和释放；`tool/build/test/compile_ok/114_source_text_call_return_lower.do` 进一步覆盖 `text` 参数和返回位的字面量 lowering，例如 `return "abc"` 与 `echo("xy")`。这不是完整文本 runtime。
 - `src/file.do/write_file(file File, data [u8], offset usize) -> FileError | nil` 已接到 `descriptor.write` 多左值桥；`src/file.do/flush_file(file File) -> FileError | nil` 已接到 `descriptor.sync` 的 `_,status` 桥；`src/file.do/read_file(file File, offset usize, size usize) -> [u8], bool, FileOutcome` 已接到 `descriptor.read` 的 `data,done,status` 桥；`src/file.do/link_file(old_file File, old_path text, new_file File, new_path text) -> FileError | nil` 已接到 `descriptor.link-at` 的 `_,status` 桥；`src/file.do/open_file_at(dir File, path text) -> File | FileError` 已接到 `descriptor.open-at` 的 `descriptor,status` 桥；`src/file.do/close_file(file File) -> FileError | nil` 已接到 `descriptor.drop` 的 `[resource-drop]descriptor` direct core import, 成功调用后返回 `nil`。`write/flush/read/link` wrapper 用 `file_status_to_error` 把 status 转成公开 `FileError | nil` / `FileOutcome`；`open_file_at` 只在 status 为 0 时构造 `File`, 失败时返回 `FileOpenFailed`；`close_file` 当前无普通错误 payload。`src/dir.do/open_dir_at(parent Dir, path text) -> Dir | DirError` 已复用 `descriptor.open-at` 并设置 `directory` open flag；`src/dir.do/close_dir(dir Dir) -> DirError | nil` 已复用 `descriptor.drop` resource-drop direct lowering；`src/dir.do/create_dir_at(parent Dir, path text) -> DirError | nil` 与 `src/dir.do/remove_dir_at(parent Dir, path text) -> DirError | nil` 已分别复用 `descriptor.create-directory-at/remove-directory-at` 的 `_,status` 桥。`src/io.stream.do/read_stream(stream InputStream, size usize) -> [u8], StreamOutcome` 已接到 `input-stream.read` 的 `data,status` 桥；`src/io.stream.do/check_write_stream(stream OutputStream) -> u64, StreamOutcome`、`write_stream(stream OutputStream, data [u8]) -> StreamOutcome` 和 `flush_stream(stream OutputStream) -> StreamOutcome` 已分别接到 `output-stream.check-write/write/flush` 桥。stream wrapper 用 `stream_status_to_error` 把 status 转成公开 `StreamOutcome`。`tool/build/test/ok/96_file_lib_resource_shape.do` 与 `tool/build/test/ok/118_wasi_p3_std_wrappers.do` 固化公开 API 形状；`tool/build/test/compile_ok/103_wasi_file_write_std_manifest.do` 固化标准库导入链中的 `src/file.do/host_file_read`、`src/file.do/host_file_sync`、`src/file.do/host_file_write` 与 `src/file.do/host_file_link_at` manifest/component-plan/core-import/core-shim。
-- `tool/build/test/compile_ok/104_error_nil_union_return_lower.do` 固化当前 build 子集的 `ErrorEnum | nil` 返回编码: `nil = 0`, 错误分支按 enum 声明顺序从 1 开始。这个能力只覆盖错误可空 union, 不表示任意 union 已可 lower。
+- `tool/build/test/compile_ok/104_error_nil_union_return_lower.do`、`110_imported_file_read_wrapper_lower.do`、`116_imported_stream_read_wrapper_lower.do`、`119_imported_stream_output_wrapper_lower.do`、`136_union_nullable_struct_tag_lower.do`、`137_union_scalar_error_nil_tag_lower.do` 和 `138_union_managed_error_nil_tag_lower.do` 固化当前 build 子集的 union 返回与 union 局部编码: payload slots 后跟 `i32` runtime tag, `nil = 0`, 非 `nil` 分支按源码顺序从 1 开始。单值返回和多返回列表中的 union alias 使用同一 payload+tag ABI; 多返回显式值 return 与同 ABI 函数调用透传都按展开后的 ABI slots 对齐。
 - `tool/build/test/compile_ok/105_imported_file_write_wrapper_lower.do` 固化 `write_sample -> file.do/write_file -> descriptor.write` 的真实导入 wrapper lowering；`tool/build/test/compile_ok/108_imported_file_flush_wrapper_lower.do` 固化 `flush_sample -> file.do/flush_file -> descriptor.sync` 的真实导入 wrapper lowering；`tool/build/test/compile_ok/110_imported_file_read_wrapper_lower.do` 固化 `read_sample -> file.do/read_file -> descriptor.read` 的真实导入 wrapper lowering；`tool/build/test/compile_ok/113_imported_file_link_wrapper_lower.do` 固化 `link_sample -> file.do/link_file -> descriptor.link-at` 的真实导入 wrapper lowering；`tool/build/test/compile_ok/116_imported_stream_read_wrapper_lower.do` 固化 `read_sample -> io.stream.do/read_stream -> input-stream.read` 的真实导入 wrapper lowering；`tool/build/test/compile_ok/119_imported_stream_output_wrapper_lower.do` 固化 `check/write/flush sample -> io.stream.do output wrapper -> output-stream.check-write/write/flush` 的真实导入 wrapper lowering；`tool/build/test/compile_ok/123_imported_dir_open_close_wrapper_lower.do` 固化 `open/close dir sample -> dir.do/open_dir_at/close_dir -> descriptor.open-at/drop` 的真实导入 wrapper lowering；`tool/build/test/compile_ok/124_imported_dir_create_remove_wrapper_lower.do` 固化 `create/remove dir sample -> dir.do/create_dir_at/remove_dir_at -> descriptor.create-directory-at/remove-directory-at` 的真实导入 wrapper lowering；`tool/build/test/compile_ok/106_unmanaged_struct_param_get_lower.do` 固化非托管结构体参数 flatten, 例如 `File{ .id i64 }` 参数降成 `$file.id i64`。
 - `do build` 会拒绝未知或复杂 `@wasi` alias 的实际调用链, 避免把 WIT resource/result 错误生成为普通 core call。
 - `tool/build/test/test_wasi_bind_manifest_tool.mjs` 已固定 `filesystem/types/descriptor.read-directory`、`filesystem/preopens/get-directories`、`sockets/types/tcp-socket.create/bind`、`sockets/types/udp-socket.create/bind` 和 `http/client/send` 的 known-but-unsupported 行为: `--json` 解析出 registry signature, `--component-plan` 必须拒绝, 防止 stream/future、list-of-tuple resource、sockets variant/resource 或 HTTP async resource 签名被误当成普通 lowerable binding。
@@ -404,6 +403,8 @@
 当前已完成:
 - 已删除没有任何公开 API 的零字节 std 占位模块: `aes.do`、`csv.do`、`heap.do`、`http.do`、`io.do`、`ipv4.do`、`ipv6.do`、`log.do`、`ring.do`、`stream.do`、`websocket.do`、`xml.do`。
 - 当前保留的 `src/*.do` 要么提供纯 do 基础库 API, 要么提供 Phase 6/P3 前置的 do 层公开类型形态, 不再用空文件表达未来计划。
+- `tool/build/test/ok/130_static_unsupported_skip.must_pass` 已把静态 runner 可判定的 `loop { break }` 从 skip 收回为 pass；更复杂的标签循环、条件循环和导入函数执行仍保留 skip。
+- `tool/build/test/compile_ok/140_imported_math_const_lower.do` 固化 build 端导入 std 标量常量的 lowering；`tool/build/test/compiled_ok/17_compiled_test_math_constants.do` 固化 `src/math.do` 整数和浮点常量在 compiled test 路径中的可执行形态；`tool/build/test/compiled_ok/18_compiled_test_math_small_int_helpers.do` 固化 `src/math.do` 小整数 bit/clamp helper 在 compiled test 路径中的可执行形态, 包括导入函数体内的本模块常量和 helper 调用。
 
 验收:
 - `list/hash_map/set/range/text/bytes/mem/atomic/math` 的 API 与当前语法一致。

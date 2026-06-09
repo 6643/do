@@ -1,6 +1,6 @@
-(func $read_sample (param $stream.id i64) (result i32 i32)
+(func $read_sample (param $stream.id i64) (result i32 i32 i32)
 call $read_stream
-(func $read_stream (param $stream.id i64) (param $size i32) (result i32 i32)
+(func $read_stream (param $stream.id i64) (param $size i32) (result i32 i32 i32)
 call $__wasi_import_io_streams_input_stream_read
 if (result i32 i32)
 local.set $status

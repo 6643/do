@@ -1,5 +1,5 @@
-block $loop_break
-loop $loop_body
+block $__do_loop_break_
+loop $__do_loop_body_
 local.set $data
 ;; loop-continue-release
 ;; arc-block-release
@@ -8,6 +8,6 @@ local.get $data
 call $__do_arc_dec
 i32.const 0
 local.set $data
-br $loop_body
+br $__do_loop_body_
 end
 end

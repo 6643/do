@@ -2,6 +2,7 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 
 const Value = union(enum) {
+    unsupported,
     unknown,
     nil,
     bool: bool,
@@ -29,6 +30,12 @@ const FuncDecl = struct {
     body_start: usize,
     body_end: usize,
     arrow: bool,
+};
+
+const TestStatus = enum {
+    pass,
+    fail,
+    skip,
 };
 
 pub const TestDecl = struct {
@@ -167,24 +174,32 @@ fn runAndPrintTestReport(
 
     var passed: usize = 0;
     var failed: usize = 0;
+    var skipped: usize = 0;
     for (test_decls) |decl| {
-        const ok = try evalTest(allocator, tokens, funcs, decl);
-        if (ok) {
-            passed += 1;
-            try out.interface.print("test {s} ... ok\n", .{decl.name_lexeme});
-        } else {
-            failed += 1;
-            try out.interface.print("test {s} ... failed\n", .{decl.name_lexeme});
+        const status = try evalTest(allocator, tokens, funcs, decl);
+        switch (status) {
+            .pass => {
+                passed += 1;
+                try out.interface.print("test {s} ... ok\n", .{decl.name_lexeme});
+            },
+            .fail => {
+                failed += 1;
+                try out.interface.print("test {s} ... failed\n", .{decl.name_lexeme});
+            },
+            .skip => {
+                skipped += 1;
+                try out.interface.print("test {s} ... skipped\n", .{decl.name_lexeme});
+            },
         }
     }
 
     if (failed == 0) {
-        try out.interface.print("ok: {d} passed; 0 failed\n", .{passed});
+        try out.interface.print("ok: {d} passed; 0 failed; {d} skipped\n", .{ passed, skipped });
         try out.interface.flush();
         return;
     }
 
-    try out.interface.print("failed: {d} passed; {d} failed\n", .{ passed, failed });
+    try out.interface.print("failed: {d} passed; {d} failed; {d} skipped\n", .{ passed, failed, skipped });
     try out.interface.flush();
     return error.TestFailed;
 }
@@ -194,8 +209,8 @@ fn evalTest(
     tokens: []const lexer.Token,
     funcs: []const FuncDecl,
     decl: TestDecl,
-) !bool {
-    if (hasUnsupportedControlFlow(tokens, decl.body_start, decl.body_end)) return true;
+) !TestStatus {
+    if (hasUnsupportedControlFlow(tokens, decl.body_start, decl.body_end)) return .skip;
 
     var bindings = std.ArrayList(Binding).empty;
     defer {
@@ -205,12 +220,15 @@ fn evalTest(
 
     var saw_known_false = false;
     var saw_unknown = false;
+    var saw_unsupported = false;
     var i = decl.body_start;
     while (i < decl.body_end) {
         if (tokEqToken(tokens[i], "if")) {
             const parsed = try evalIfReturn(allocator, tokens, funcs, &bindings, i, decl.body_end);
-            if (parsed.returned) return true;
-            if (parsed.unknown) {
+            if (parsed.returned) return if (saw_unsupported) .skip else .pass;
+            if (parsed.unsupported) {
+                saw_unsupported = true;
+            } else if (parsed.unknown) {
                 saw_unknown = true;
             } else {
                 saw_known_false = true;
@@ -218,33 +236,59 @@ fn evalTest(
             i = parsed.next_idx;
             continue;
         }
-        if (tokEqToken(tokens[i], "return")) return true;
-        if (try evalBindingLine(allocator, tokens, funcs, &bindings, i, decl.body_end)) |next_idx| {
-            i = next_idx;
+        if (tokEqToken(tokens[i], "return")) return if (saw_unsupported) .skip else .pass;
+        if (try evalBindingLine(allocator, tokens, funcs, &bindings, i, decl.body_end)) |line| {
+            if (line.unsupported) saw_unsupported = true;
+            i = line.next_idx;
             continue;
         }
         i = findLineEnd(tokens, i, decl.body_end);
     }
 
-    return saw_unknown or !saw_known_false;
+    if (saw_unknown or saw_known_false) return .fail;
+    if (saw_unsupported) return .skip;
+    return .pass;
 }
 
 fn hasUnsupportedControlFlow(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     var i = start_idx;
-    while (i < end_idx) : (i += 1) {
+    while (i < end_idx) {
         if (tokEqToken(tokens[i], "else")) return true;
-        if (tokEqToken(tokens[i], "loop")) return true;
         if (tokEqToken(tokens[i], "defer")) return true;
-        if (!tokEqToken(tokens[i], "if")) continue;
+        if (tokEqToken(tokens[i], "loop")) {
+            const static_loop = staticNoopBreakLoop(tokens, i, end_idx) orelse return true;
+            i = static_loop.next_idx;
+            continue;
+        }
+        if (!tokEqToken(tokens[i], "if")) {
+            i += 1;
+            continue;
+        }
         const line_end = findLineEnd(tokens, i, end_idx);
         if (findTopLevelToken(tokens, i + 1, line_end, "{") != null) return true;
+        i += 1;
     }
     return false;
+}
+
+const StaticLoop = struct {
+    next_idx: usize,
+};
+
+fn staticNoopBreakLoop(tokens: []const lexer.Token, loop_idx: usize, end_idx: usize) ?StaticLoop {
+    const open_idx = loop_idx + 1;
+    if (open_idx >= end_idx or !tokEqToken(tokens[open_idx], "{")) return null;
+    const close_idx = findMatchingInRange(tokens, open_idx, "{", "}", end_idx) catch return null;
+    const break_idx = open_idx + 1;
+    if (break_idx >= close_idx or !tokEqToken(tokens[break_idx], "break")) return null;
+    if (break_idx + 1 != close_idx) return null;
+    return .{ .next_idx = close_idx + 1 };
 }
 
 const IfEval = struct {
     next_idx: usize,
     returned: bool,
+    unsupported: bool,
     unknown: bool,
 };
 
@@ -258,20 +302,30 @@ fn evalIfReturn(
 ) !IfEval {
     const line_end = findLineEnd(tokens, if_idx, limit_idx);
     const return_idx = findTopLevelToken(tokens, if_idx + 1, line_end, "return") orelse
-        return .{ .next_idx = line_end, .returned = false, .unknown = true };
+        return .{ .next_idx = line_end, .returned = false, .unsupported = true, .unknown = false };
     const cond = try evalExpr(allocator, tokens, funcs, bindings.items, if_idx + 1, return_idx);
     defer freeValue(allocator, cond);
+    if (cond == .unsupported) {
+        if (isSingleUnboundIdent(tokens, bindings.items, if_idx + 1, return_idx)) return error.NoMatchingCall;
+        return .{ .next_idx = line_end, .returned = false, .unsupported = true, .unknown = false };
+    }
     if (cond == .unknown) {
         if (isSingleUnboundIdent(tokens, bindings.items, if_idx + 1, return_idx)) return error.NoMatchingCall;
-        return .{ .next_idx = line_end, .returned = false, .unknown = true };
+        return .{ .next_idx = line_end, .returned = false, .unsupported = false, .unknown = true };
     }
     if (cond != .bool) return error.NonBoolIfCondition;
     return .{
         .next_idx = line_end,
         .returned = cond.bool,
+        .unsupported = false,
         .unknown = false,
     };
 }
+
+const LineEval = struct {
+    next_idx: usize,
+    unsupported: bool,
+};
 
 fn evalBindingLine(
     allocator: std.mem.Allocator,
@@ -280,11 +334,11 @@ fn evalBindingLine(
     bindings: *std.ArrayList(Binding),
     start_idx: usize,
     limit_idx: usize,
-) !?usize {
+) !?LineEval {
     const line_end = findStmtEnd(tokens, start_idx, limit_idx);
     const eq_idx = findTopLevelToken(tokens, start_idx, line_end, "=") orelse return null;
-    if (try evalMultiBindingLine(allocator, tokens, funcs, bindings, start_idx, eq_idx, line_end)) {
-        return line_end;
+    if (try evalMultiBindingLine(allocator, tokens, funcs, bindings, start_idx, eq_idx, line_end)) |line| {
+        return line;
     }
     if (eq_idx == start_idx) return null;
     const name_idx = start_idx;
@@ -293,8 +347,9 @@ fn evalBindingLine(
 
     const value = try evalExpr(allocator, tokens, funcs, bindings.items, eq_idx + 1, line_end);
     errdefer freeValue(allocator, value);
+    const unsupported = value == .unsupported;
     try setBinding(allocator, bindings, tokens[name_idx].lexeme, value);
-    return line_end;
+    return .{ .next_idx = line_end, .unsupported = unsupported };
 }
 
 fn evalMultiBindingLine(
@@ -305,13 +360,13 @@ fn evalMultiBindingLine(
     start_idx: usize,
     eq_idx: usize,
     line_end: usize,
-) !bool {
-    if (findTopLevelToken(tokens, start_idx, eq_idx, ",") == null) return false;
-    const call = parseSimpleCall(tokens, eq_idx + 1, line_end) orelse return false;
+) !?LineEval {
+    if (findTopLevelToken(tokens, start_idx, eq_idx, ",") == null) return null;
+    const call = parseSimpleCall(tokens, eq_idx + 1, line_end) orelse return null;
     const lhs_count = try countMultiBindingLhs(tokens, start_idx, eq_idx);
     if (findFunc(funcs, call.name, countArgs(tokens, call.args_start, call.args_end)) == null) {
-        try bindUnknownValues(allocator, tokens, bindings, start_idx, eq_idx);
-        return true;
+        try bindUnsupportedValues(allocator, tokens, bindings, start_idx, eq_idx);
+        return .{ .next_idx = line_end, .unsupported = true };
     }
     const values = try evalUserFuncMulti(allocator, tokens, funcs, call.name, call.args_start, call.args_end, bindings.items, lhs_count);
     defer {
@@ -319,6 +374,7 @@ fn evalMultiBindingLine(
         allocator.free(values);
     }
     if (lhs_count != values.len) return error.NoMatchingCall;
+    const unsupported = hasUnsupportedValue(values);
 
     var value_idx: usize = 0;
     var lhs_start = start_idx;
@@ -331,7 +387,7 @@ fn evalMultiBindingLine(
         lhs_start = lhs_end;
         if (lhs_start < eq_idx and tokEqToken(tokens[lhs_start], ",")) lhs_start += 1;
     }
-    return true;
+    return .{ .next_idx = line_end, .unsupported = unsupported };
 }
 
 fn countMultiBindingLhs(tokens: []const lexer.Token, start_idx: usize, eq_idx: usize) !usize {
@@ -350,7 +406,7 @@ fn countMultiBindingLhs(tokens: []const lexer.Token, start_idx: usize, eq_idx: u
     return count;
 }
 
-fn bindUnknownValues(
+fn bindUnsupportedValues(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     bindings: *std.ArrayList(Binding),
@@ -360,7 +416,7 @@ fn bindUnknownValues(
     var lhs_start = start_idx;
     while (lhs_start < eq_idx) {
         const lhs_end = findArgEnd(tokens, lhs_start, eq_idx);
-        try setBinding(allocator, bindings, tokens[lhs_start].lexeme, .unknown);
+        try setBinding(allocator, bindings, tokens[lhs_start].lexeme, .unsupported);
         lhs_start = lhs_end;
         if (lhs_start < eq_idx and tokEqToken(tokens[lhs_start], ",")) lhs_start += 1;
     }
@@ -441,6 +497,7 @@ fn evalAtom(allocator: std.mem.Allocator, tok: lexer.Token, bindings: []const Bi
     if (tokEqToken(tok, "nil")) return .nil;
     if (tok.kind == .ident) {
         if (lookupBinding(bindings, tok.lexeme)) |value| return cloneValue(allocator, value);
+        return .unsupported;
     }
     return .unknown;
 }
@@ -470,16 +527,19 @@ fn evalCall(
     try evalArgs(allocator, tokens, funcs, bindings, args_start, args_end, &args);
 
     if (std.mem.eql(u8, name, "eq")) {
+        if (hasUnsupportedValue(args.items)) return .unsupported;
         if (args.items.len != 2 or args.items[0] == .unknown or args.items[1] == .unknown) return .unknown;
         return .{ .bool = valueEq(args.items[0], args.items[1]) };
     }
     if (std.mem.eql(u8, name, "ne")) {
+        if (hasUnsupportedValue(args.items)) return .unsupported;
         if (args.items.len != 2 or args.items[0] == .unknown or args.items[1] == .unknown) return .unknown;
         return .{ .bool = !valueEq(args.items[0], args.items[1]) };
     }
-    if (std.mem.eql(u8, name, "and") and allBoolValues(args.items)) return evalAnd(args.items);
-    if (std.mem.eql(u8, name, "or") and allBoolValues(args.items)) return evalOr(args.items);
+    if (std.mem.eql(u8, name, "and")) return evalAndOrCore("and", args.items);
+    if (std.mem.eql(u8, name, "or")) return evalAndOrCore("or", args.items);
     if (std.mem.eql(u8, name, "not")) {
+        if (hasUnsupportedValue(args.items)) return .unsupported;
         if (args.items.len != 1 or args.items[0] != .bool) return .unknown;
         return .{ .bool = !args.items[0].bool };
     }
@@ -487,10 +547,11 @@ fn evalCall(
         return evalUserFunc(allocator, tokens, funcs, name, args.items);
     }
     if (std.mem.eql(u8, name, "abs")) return evalAbsCore(args.items);
+    if (isConvertCoreName(name)) return evalConvertCore(args.items);
     if (isNumericCoreName(name)) return evalNumericCore(name, args.items);
     if (isBitwiseCoreName(name)) return evalBitwiseCore(name, args.items);
     if (isCountBitsCoreName(name)) return evalCountBitsCore(name, args.items);
-    return .unknown;
+    return .unsupported;
 }
 
 fn evalArgs(
@@ -522,7 +583,7 @@ fn evalUserFunc(
     name: []const u8,
     args: []const Value,
 ) anyerror!Value {
-    const func = findFunc(funcs, name, args.len) orelse return .unknown;
+    const func = findFunc(funcs, name, args.len) orelse return .unsupported;
     var bindings = std.ArrayList(Binding).empty;
     defer {
         freeBindings(allocator, bindings.items);
@@ -547,13 +608,14 @@ fn evalUserFunc(
         return evalExpr(allocator, tokens, funcs, bindings.items, func.body_start, func.body_end);
     }
 
-    if (hasUnsupportedControlFlow(tokens, func.body_start, func.body_end)) return .unknown;
+    if (hasUnsupportedControlFlow(tokens, func.body_start, func.body_end)) return .unsupported;
 
     i = func.body_start;
     while (i < func.body_end) {
         if (tokEqToken(tokens[i], "if")) {
             const parsed = try evalFuncIfReturn(allocator, tokens, funcs, &bindings, i, func.body_end);
             if (parsed.returned) return parsed.value;
+            if (parsed.unsupported) return .unsupported;
             if (parsed.unknown) return .unknown;
             i = parsed.next_idx;
             continue;
@@ -562,13 +624,14 @@ fn evalUserFunc(
             const line_end = findLineEnd(tokens, i, func.body_end);
             return evalExpr(allocator, tokens, funcs, bindings.items, i + 1, line_end);
         }
-        if (try evalBindingLine(allocator, tokens, funcs, &bindings, i, func.body_end)) |next_idx| {
-            i = next_idx;
+        if (try evalBindingLine(allocator, tokens, funcs, &bindings, i, func.body_end)) |line| {
+            if (line.unsupported) return .unsupported;
+            i = line.next_idx;
             continue;
         }
         i = findLineEnd(tokens, i, func.body_end);
     }
-    return .unknown;
+    return .unsupported;
 }
 
 fn evalUserFuncMulti(
@@ -619,7 +682,7 @@ fn evalUserFuncMulti(
 
     if (parseSimpleCall(tokens, range.start, range.end)) |nested| {
         if (findFunc(funcs, nested.name, countArgs(tokens, nested.args_start, nested.args_end)) == null) {
-            return allocUnknownValues(allocator, expected_count);
+            return allocUnsupportedValues(allocator, expected_count);
         }
         return evalUserFuncMulti(allocator, tokens, funcs, nested.name, nested.args_start, nested.args_end, bindings.items, expected_count);
     }
@@ -642,16 +705,17 @@ fn evalUserFuncMulti(
     return out.toOwnedSlice(allocator);
 }
 
-fn allocUnknownValues(allocator: std.mem.Allocator, count: usize) ![]Value {
+fn allocUnsupportedValues(allocator: std.mem.Allocator, count: usize) ![]Value {
     if (count <= 1) return error.NoMatchingCall;
     const out = try allocator.alloc(Value, count);
-    @memset(out, .unknown);
+    @memset(out, .unsupported);
     return out;
 }
 
 const FuncIfEval = struct {
     next_idx: usize,
     returned: bool,
+    unsupported: bool,
     unknown: bool,
     value: Value,
 };
@@ -666,28 +730,37 @@ fn evalFuncIfReturn(
 ) !FuncIfEval {
     const line_end = findLineEnd(tokens, if_idx, limit_idx);
     const return_idx = findTopLevelToken(tokens, if_idx + 1, line_end, "return") orelse
-        return .{ .next_idx = line_end, .returned = false, .unknown = true, .value = .unknown };
+        return .{ .next_idx = line_end, .returned = false, .unsupported = true, .unknown = false, .value = .unsupported };
     const cond = try evalExpr(allocator, tokens, funcs, bindings.items, if_idx + 1, return_idx);
     defer freeValue(allocator, cond);
+    if (cond == .unsupported) {
+        if (isSingleUnboundIdent(tokens, bindings.items, if_idx + 1, return_idx)) return error.NoMatchingCall;
+        return .{ .next_idx = line_end, .returned = false, .unsupported = true, .unknown = false, .value = .unsupported };
+    }
     if (cond == .unknown) {
         if (isSingleUnboundIdent(tokens, bindings.items, if_idx + 1, return_idx)) return error.NoMatchingCall;
-        return .{ .next_idx = line_end, .returned = false, .unknown = true, .value = .unknown };
+        return .{ .next_idx = line_end, .returned = false, .unsupported = false, .unknown = true, .value = .unknown };
     }
     if (cond != .bool) return error.NonBoolIfCondition;
     if (!cond.bool) {
-        return .{ .next_idx = line_end, .returned = false, .unknown = false, .value = .unknown };
+        return .{ .next_idx = line_end, .returned = false, .unsupported = false, .unknown = false, .value = .unknown };
     }
     const value = if (return_idx + 1 < line_end)
         try evalExpr(allocator, tokens, funcs, bindings.items, return_idx + 1, line_end)
     else
         Value.nil;
-    return .{ .next_idx = line_end, .returned = true, .unknown = false, .value = value };
+    return .{ .next_idx = line_end, .returned = true, .unsupported = false, .unknown = false, .value = value };
 }
 
 fn evalAnd(args: []const Value) Value {
     if (args.len == 0) return .{ .bool = true };
     var saw_unknown = false;
+    var saw_unsupported = false;
     for (args) |arg| {
+        if (arg == .unsupported) {
+            saw_unsupported = true;
+            continue;
+        }
         if (arg == .unknown) {
             saw_unknown = true;
             continue;
@@ -695,14 +768,21 @@ fn evalAnd(args: []const Value) Value {
         if (arg != .bool) return .unknown;
         if (!arg.bool) return .{ .bool = false };
     }
+    if (saw_unsupported) return .unsupported;
     if (saw_unknown) return .unknown;
     return .{ .bool = true };
 }
 
-fn allBoolValues(args: []const Value) bool {
+fn evalAndOrCore(name: []const u8, args: []const Value) Value {
+    if (allIntValues(args)) return evalBitwiseCore(name, args);
+    if (std.mem.eql(u8, name, "and")) return evalAnd(args);
+    return evalOr(args);
+}
+
+fn allIntValues(args: []const Value) bool {
     if (args.len == 0) return false;
     for (args) |arg| {
-        if (arg != .bool) return false;
+        if (arg != .int) return false;
     }
     return true;
 }
@@ -724,7 +804,12 @@ fn isSingleUnboundIdent(
 fn evalOr(args: []const Value) Value {
     if (args.len == 0) return .{ .bool = false };
     var saw_unknown = false;
+    var saw_unsupported = false;
     for (args) |arg| {
+        if (arg == .unsupported) {
+            saw_unsupported = true;
+            continue;
+        }
         if (arg == .unknown) {
             saw_unknown = true;
             continue;
@@ -732,11 +817,20 @@ fn evalOr(args: []const Value) Value {
         if (arg != .bool) return .unknown;
         if (arg.bool) return .{ .bool = true };
     }
+    if (saw_unsupported) return .unsupported;
     if (saw_unknown) return .unknown;
     return .{ .bool = false };
 }
 
+fn hasUnsupportedValue(values: []const Value) bool {
+    for (values) |value| {
+        if (value == .unsupported) return true;
+    }
+    return false;
+}
+
 fn evalNumericCore(name: []const u8, args: []const Value) Value {
+    if (hasUnsupportedValue(args)) return .unsupported;
     if (args.len < 2) return .unknown;
     if (args[0] != .int) return .unknown;
     var out = args[0].int;
@@ -758,13 +852,21 @@ fn evalNumericCore(name: []const u8, args: []const Value) Value {
 }
 
 fn evalAbsCore(args: []const Value) Value {
+    if (hasUnsupportedValue(args)) return .unsupported;
     if (args.len != 1 or args[0] != .int) return .unknown;
     if (args[0].int == std.math.minInt(i128)) return .unknown;
     if (args[0].int < 0) return .{ .int = -args[0].int };
     return args[0];
 }
 
+fn evalConvertCore(args: []const Value) Value {
+    if (hasUnsupportedValue(args)) return .unsupported;
+    if (args.len != 1 or args[0] != .int) return .unknown;
+    return args[0];
+}
+
 fn evalBitwiseCore(name: []const u8, args: []const Value) Value {
+    if (hasUnsupportedValue(args)) return .unsupported;
     if (args.len != 2 or args[0] != .int or args[1] != .int) return .unknown;
     if (args[0].int < 0 or args[1].int < 0) return .unknown;
     const a = std.math.cast(u64, args[0].int) orelse return .unknown;
@@ -790,6 +892,7 @@ fn evalBitwiseCore(name: []const u8, args: []const Value) Value {
 }
 
 fn evalCountBitsCore(name: []const u8, args: []const Value) Value {
+    if (hasUnsupportedValue(args)) return .unsupported;
     if (args.len != 1 or args[0] != .int or args[0].int < 0) return .unknown;
     const value = std.math.cast(u64, args[0].int) orelse return .unknown;
     if (value > std.math.maxInt(u32)) return .unknown;
@@ -938,6 +1041,7 @@ fn evalGetCall(
     const first_end = findArgEnd(tokens, args_start, args_end);
     const target = try evalExpr(allocator, tokens, funcs, bindings, args_start, first_end);
     defer freeValue(allocator, target);
+    if (target == .unsupported) return .unsupported;
     if (target != .object) return .unknown;
 
     var current = target;
@@ -964,6 +1068,7 @@ fn evalSetCall(
     const first_end = findArgEnd(tokens, args_start, args_end);
     const target = try evalExpr(allocator, tokens, funcs, bindings, args_start, first_end);
     defer freeValue(allocator, target);
+    if (target == .unsupported) return .unsupported;
     if (target != .object) return .unknown;
 
     const value_start = findFinalArgStart(tokens, first_end, args_end) orelse return .unknown;
@@ -977,6 +1082,7 @@ fn evalSetCall(
     else
         try evalExpr(allocator, tokens, funcs, bindings, value_start, args_end);
     errdefer freeValue(allocator, new_value);
+    if (new_value == .unsupported) return .unsupported;
 
     return setObjectField(allocator, target.object, field_name, new_value);
 }
@@ -1379,6 +1485,21 @@ fn isNumericCoreName(name: []const u8) bool {
         std.mem.eql(u8, name, "rem") or
         std.mem.eql(u8, name, "min") or
         std.mem.eql(u8, name, "max");
+}
+
+fn isConvertCoreName(name: []const u8) bool {
+    return std.mem.eql(u8, name, "to_u8") or
+        std.mem.eql(u8, name, "to_u16") or
+        std.mem.eql(u8, name, "to_u32") or
+        std.mem.eql(u8, name, "to_u64") or
+        std.mem.eql(u8, name, "to_usize") or
+        std.mem.eql(u8, name, "to_isize") or
+        std.mem.eql(u8, name, "to_i8") or
+        std.mem.eql(u8, name, "to_i16") or
+        std.mem.eql(u8, name, "to_i32") or
+        std.mem.eql(u8, name, "to_i64") or
+        std.mem.eql(u8, name, "to_f32") or
+        std.mem.eql(u8, name, "to_f64");
 }
 
 fn isBitwiseCoreName(name: []const u8) bool {

@@ -23,7 +23,9 @@ pub fn parseBuild(args: []const []const u8) !Args {
             output_path = args[i];
             continue;
         }
-        if (input_path == null) input_path = args[i];
+        if (std.mem.startsWith(u8, args[i], "-")) return error.UnexpectedCliArg;
+        if (input_path != null) return error.UnexpectedCliArg;
+        input_path = args[i];
     }
     const path = input_path orelse return error.MissingInputPath;
     return .{
@@ -37,6 +39,7 @@ pub fn parseTest(args: []const []const u8) !Args {
     var input_path: ?[]const u8 = null;
     var output_path: []const u8 = "out.wat";
     var compiled_test = false;
+    var has_output_path = false;
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
         if (std.mem.eql(u8, args[i], "--compiled")) {
@@ -47,10 +50,14 @@ pub fn parseTest(args: []const []const u8) !Args {
             if (i + 1 >= args.len) return error.MissingOutputPath;
             i += 1;
             output_path = args[i];
+            has_output_path = true;
             continue;
         }
-        if (input_path == null) input_path = args[i];
+        if (std.mem.startsWith(u8, args[i], "-")) return error.UnexpectedCliArg;
+        if (input_path != null) return error.UnexpectedCliArg;
+        input_path = args[i];
     }
+    if (has_output_path and !compiled_test) return error.OutputRequiresCompiledTest;
     const path = input_path orelse return error.MissingTestInputPath;
     return .{
         .input_path = path,

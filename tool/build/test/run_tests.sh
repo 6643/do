@@ -27,6 +27,7 @@ NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
 
 pass_count=0
 fail_count=0
+skip_count=0
 
 mkdir -p "$TMP_DIR"
 rm -f "$TMP_DIR"/*.stdout "$TMP_DIR"/*.stderr "$TMP_DIR"/compile_*.wat 2>/dev/null || true
@@ -122,22 +123,82 @@ run_cli_output_order_case() {
     ((pass_count += 1))
 }
 
+run_cli_strict_arg_case() {
+    local case_file="$COMPILE_OK_DIR/01_start_entry_valid.do"
+    local test_case_file="$OK_DIR/01_path_get_single.do"
+    local stdout_file="$TMP_DIR/cli_strict_args.stdout"
+    local stderr_file="$TMP_DIR/cli_strict_args.stderr"
+
+    if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$case_file" --bad >"$stdout_file" 2>"$stderr_file"; then
+        echo "[FAIL] cli strict_args build unknown flag (expected failure)"
+        ((fail_count += 1))
+        return
+    fi
+    if ! grep -Fq "error[UnexpectedCliArg]" "$stderr_file"; then
+        echo "[FAIL] cli strict_args build unknown flag (missing diagnostic)"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$case_file" "$case_file" >"$stdout_file" 2>"$stderr_file"; then
+        echo "[FAIL] cli strict_args build extra input (expected failure)"
+        ((fail_count += 1))
+        return
+    fi
+    if ! grep -Fq "error[UnexpectedCliArg]" "$stderr_file"; then
+        echo "[FAIL] cli strict_args build extra input (missing diagnostic)"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" test "$test_case_file" -o "$TMP_DIR/cli_strict_args.wat" >"$stdout_file" 2>"$stderr_file"; then
+        echo "[FAIL] cli strict_args test output without compiled (expected failure)"
+        ((fail_count += 1))
+        return
+    fi
+    if ! grep -Fq "error[OutputRequiresCompiledTest]" "$stderr_file"; then
+        echo "[FAIL] cli strict_args test output without compiled (missing diagnostic)"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    echo "[PASS] cli strict_args"
+    ((pass_count += 1))
+}
+
 run_ok_case() {
     local case_file="$1"
     local name
     name="$(basename "$case_file" .do)"
+    local must_pass_file="${case_file%.do}.must_pass"
 
     local stdout_file="$TMP_DIR/${name}.stdout"
     local stderr_file="$TMP_DIR/${name}.stderr"
 
     if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" test "$case_file" >"$stdout_file" 2>"$stderr_file"; then
-        if grep -Fq 'test "' "$stdout_file" && grep -Fq " ... ok" "$stdout_file" && grep -Fq "ok:" "$stdout_file"; then
-            echo "[PASS] ok  $name"
-            ((pass_count += 1))
-            return
+        if grep -Fq 'test "' "$stdout_file" && grep -Fq "ok:" "$stdout_file"; then
+            if grep -Fq " ... ok" "$stdout_file"; then
+                echo "[PASS] ok  $name"
+                ((pass_count += 1))
+                return
+            fi
+            if grep -Fq " ... skipped" "$stdout_file"; then
+                if [[ -f "$must_pass_file" ]]; then
+                    echo "[FAIL] ok  $name (must pass, got skip)"
+                    cat "$stdout_file"
+                    ((fail_count += 1))
+                    return
+                fi
+                echo "[SKIP] ok  $name"
+                ((skip_count += 1))
+                return
+            fi
         fi
 
-        echo "[FAIL] ok  $name (missing success marker)"
+        echo "[FAIL] ok  $name (missing success or skip marker)"
         cat "$stdout_file"
         ((fail_count += 1))
         return
@@ -146,6 +207,19 @@ run_ok_case() {
     echo "[FAIL] ok  $name (unexpected non-zero exit)"
     cat "$stderr_file"
     ((fail_count += 1))
+}
+
+run_ok_or_skip_output() {
+    local stdout_file="$1"
+    if grep -Fq 'test "' "$stdout_file" && grep -Fq "ok:" "$stdout_file"; then
+        if grep -Fq " ... ok" "$stdout_file"; then
+            return 0
+        fi
+        if grep -Fq " ... skipped" "$stdout_file"; then
+            return 2
+        fi
+    fi
+    return 1
 }
 
 run_err_case() {
@@ -207,21 +281,28 @@ run_std_src_case() {
     local stderr_file="$TMP_DIR/std_${name}.stderr"
 
     if DO_LIB_ROOT="$SRC_DIR" "$DO_BIN" test "$case_file" >"$stdout_file" 2>"$stderr_file"; then
-        if grep -Fq 'test "' "$stdout_file" && grep -Fq " ... ok" "$stdout_file" && grep -Fq "ok:" "$stdout_file"; then
-            echo "[PASS] std src $name"
+        run_ok_or_skip_output "$stdout_file"
+        local status=$?
+        if [[ "$status" -eq 0 ]]; then
+            echo "[PASS] ok  $name"
             ((pass_count += 1))
             return
         fi
+        if [[ "$status" -eq 2 ]]; then
+            echo "[SKIP] std src $name"
+            ((skip_count += 1))
+            return
+        fi
 
-        echo "[FAIL] std src $name (missing success marker)"
+        echo "[FAIL] std src $name (missing success or skip marker)"
         cat "$stdout_file"
         ((fail_count += 1))
         return
     fi
 
     if grep -Fq "NoTestDecl" "$stderr_file"; then
-        echo "[PASS] std src $name (NoTestDecl)"
-        ((pass_count += 1))
+        echo "[SKIP] std src $name (NoTestDecl)"
+        ((skip_count += 1))
         return
     fi
 
@@ -819,6 +900,7 @@ run_compiled_trap_case() {
 echo "[INFO] run tool cases"
 run_wasi_bind_manifest_tool_test
 run_cli_output_order_case
+run_cli_strict_arg_case
 
 echo "[INFO] run ok cases"
 for case_file in "$OK_DIR"/*.do; do
@@ -843,12 +925,14 @@ done
 echo "[INFO] run compile ok cases"
 for case_file in "$COMPILE_OK_DIR"/*.do; do
     [[ -e "$case_file" ]] || continue
+    [[ "$(basename "$case_file")" == fixture.*.do ]] && continue
     run_compile_ok_case "$case_file"
 done
 
 echo "[INFO] run compile err cases"
 for case_file in "$COMPILE_ERR_DIR"/*.do; do
     [[ -e "$case_file" ]] || continue
+    [[ "$(basename "$case_file")" == fixture.*.do ]] && continue
     run_compile_err_case "$case_file"
 done
 
@@ -894,7 +978,7 @@ if [[ "${RUN_WASM:-0}" == "1" ]]; then
     fi
 fi
 
-echo "[INFO] summary: pass=$pass_count fail=$fail_count"
+echo "[INFO] summary: pass=$pass_count fail=$fail_count skip=$skip_count"
 if [[ "$fail_count" -ne 0 ]]; then
     exit 1
 fi

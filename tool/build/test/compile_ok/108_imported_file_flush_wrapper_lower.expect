@@ -1,6 +1,6 @@
-(func $flush_sample (param $file.id i64) (result i32)
+(func $flush_sample (param $file.id i64) (result i32 i32)
 call $flush_file
-(func $flush_file (param $file.id i64) (result i32)
+(func $flush_file (param $file.id i64) (result i32 i32)
 call $__wasi_import_filesystem_types_descriptor_sync
 if (result i32)
 local.set $status

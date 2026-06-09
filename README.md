@@ -15,7 +15,7 @@
 - **WASM 原生**: Wasm memory grow 以 64KB page 为粒度，v1 allocator 在 page 内切成 64 个 1KB block；小对象使用 bitmap small block，大对象使用连续 block span。
 - **大小数据分层策略**: 基础/小对象直接拷贝，大对象采用共享 + COW（初始阈值 64B）。
 - **运行时资源管理**: 采用显式资源释放和 ID 关联，目标是不引入循环 GC。
-- **语言规范基线**: 语法、内建判断族、核心库特型与静态约束统一见 `doc/spec.md`。
+- **语言规范基线**: 语法设计见 `doc/syntax/README.md`; 语义、内建判断族、核心库特型与静态约束见 `doc/spec.md`。
 - **程序入口固定**: 源码入口声明固定为 `start() { ... }`，`main` 不是入口函数；构建输出会导出 wasm `_start`。
 - **目录结构**: `tool/build` 编译器源码, `src` builtin/core 总表与标准库, `bin/do` 唯一二进制。
 
@@ -52,22 +52,25 @@ zig build -Doptimize=ReleaseSmall
 ```
 ## 🛠 开发计划 (Roadmap)
 
-状态口径: `已完成` 表示当前编译器和回归测试已覆盖对应 v1 子集; `进行中` 表示已有实现但未收敛到完整运行时或完整优化; `延后` 表示现阶段不作为主目标。WASI / Component Model 放到最后单独处理。
+状态口径: `已完成` 表示当前编译器和回归测试已覆盖对应 v1 子集; `进行中` 表示已有实现但未收敛到完整运行时或完整优化; `暂跳过` 表示当前缺少前置条件, 原因记录在 `doc/roadmap_status.md`; `延后` 表示现阶段不作为主目标。WASI / Component Model 放到最后单独处理。
 
 ### 已完成
-- [x] **规范基线**: `doc/spec.md` 已作为单文件规范，包含 parser PEG、语义约束、示例标签和 `defer` 规则。
+- [x] **规范基线**: `doc/syntax/` 已按功能拆分语法设计；`doc/spec.md` 保留 parser PEG、语义约束、示例标签和 `defer` 规则。
 - [x] **编译器前端主线**: Parser / Sema 支持当前 build/test 子集，包括 Struct、Lambda、guard `if`、`loop`、泛型约束、聚合字面量、import / host import 和测试声明。
-- [x] **`defer` 阶段**: 支持 `defer abc()` 和 `defer { ... }`；离开词法区域时按 LIFO 执行，覆盖正常落出、`return`、`break` 和 `continue`；cleanup 在被离开区域的 ARC release 之前执行，调用结果必须是 `nil`。
-- [x] **WAT 代码生成子集**: 当前 build 子集能输出 WAT，覆盖标量、结构体 flatten、storage / text ARC handle、多返回、`@get/@set/@put` 和控制流。
+- [x] **`defer` 基础语法和前端校验**: 支持 `defer abc()` 和 `defer { ... }`；本地和导入函数调用都会校验 cleanup 调用返回 `nil`。
+- [x] **运行时内存模型**: 已按 `doc/memory.md` 收敛 v1 managed handle、对象头、`type_id`、layout table 和 ARC `inc/dec/release` 管理。
+- [x] **内存分配器**: 已按 `doc/memory_layout_structs.md` 收敛 1KB block、bitmap small block、large span、free span split / merge 和空 small block 回收。
+- [x] **标准库边界**: `[u8]`、`List`、`Map`、IO、网络和 `text` runtime 已归入 core / std / runtime 边界；完整 I/O 执行能力继续归入后续 WASI / Component Model。
+- [x] **WAT 代码生成子集**: 当前 build 子集能输出 WAT，覆盖标量、value enum carrier、结构体 flatten、storage / text ARC handle、多返回和基础 `@get/@set/@put`。
 - [x] **测试入口**: `do build`、`do test` 和 `do test --compiled` 黑盒回归入口已落地；`RUN_WASM=1` smoke 用于执行 wasm run 用例。
 
 ### 进行中
-- [ ] **运行时内存模型**: 先按 `doc/memory.md` 收敛 v1 managed handle、对象头、`type_id` 与 ARC 管理。
-- [ ] **内存分配器**: 按 `doc/memory_layout_structs.md` 收敛 1KB block、bitmap small block、large span 和 free span 合并；后续再评估 header 压缩优化。
-- [ ] **ARC / Perceus 完整分析**: 已有 managed storage `inc/dec`、局部释放和 `defer` cleanup 顺序；还需完整静态插入、冗余消除、末次使用优化和 FBIP `reuse`。
-- [ ] **标准库边界**: `[u8]`、`List`、`Map`、IO、网络和文本 runtime 继续归入 core / std / runtime 边界，语言规则以 `doc/spec.md` 为准。
-- [ ] **后端优化**: 继续收敛 `if/else`、循环、`@get/@set` 和小函数内联优化；WAT 输出已可用，WASM 二进制输出仍待补。
+
+### 暂跳过
+- [ ] **`defer` 完整控制流与 ARC**: `defer` 的 LIFO cleanup、跨 `return/break/continue` lowering、cleanup 块内控制流限制和 ARC release 顺序仍在 `doc/review_blockers.md` 中跟踪。
+- [ ] **ARC / Perceus 完整分析**: 当前已有 managed storage `inc/dec`、局部释放和 `defer` cleanup 顺序；完整静态插入、冗余消除、末次使用优化和 FBIP `reuse` 暂跳过, 原因见 `doc/roadmap_status.md`。
+- [ ] **后端控制流和优化**: guard `break/continue`、带标签循环、集合/消费循环 lowering、`if/else`、`@get/@set` 和小函数内联优化暂跳过；WAT 输出已可用, WASM 二进制输出仍待补, 原因见 `doc/review_blockers.md` 和 `doc/roadmap_status.md`。
+- [ ] **生态工具**: `do run`、LSP、fmt、get / push 等工具链能力暂跳过, 原因见 `doc/roadmap_status.md`。
 
 ### 最后处理
 - [ ] **WASI / Component Model FFI**: 当前只保留已登记 `@wasi` manifest、shim、component-core 输入与标准库 wrapper 子集；完整 binding source / alias、component lowering、result-area、resource / variant / future 支持放到最后单独审查。
-- [ ] **生态工具**: `do run`、LSP、fmt、get / push 等工具链能力仍待实现。

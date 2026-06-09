@@ -1,0 +1,7 @@
+;; compiled-test 0 "compiled math small int helpers"
+call $math_bit_at_u32
+call $math_bit_not_u32
+call $math_clamp_i8
+call $math_clamp_i16
+call $math_clamp_u8
+call $math_clamp_u16

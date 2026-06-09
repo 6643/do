@@ -1,0 +1,16 @@
+(func $find_user (param $found i32) (result i32 i32)
+local.get $user.id
+i32.const 1
+i32.const 0
+i32.const 0
+(local $user.__do_union_payload_0 i32)
+(local $user.__do_union_tag i32)
+call $find_user
+local.set $user.__do_union_tag
+local.set $user.__do_union_payload_0
+local.get $user.__do_union_tag
+i32.const 1
+i32.eq
+local.get $user.__do_union_tag
+i32.const 0
+i32.eq

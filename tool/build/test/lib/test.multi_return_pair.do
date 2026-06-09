@@ -1,3 +1,5 @@
+host_add = @env("dep_add", (i32, i32) -> i32)
+
 pair(x i32) -> i32, bool {
     return x, true
 }
@@ -12,8 +14,6 @@ make_byte_pair() -> [u8], [u8] {
     right [u8] = "right_lib"
     return left, right
 }
-
-host_add = @env("dep_add", (i32, i32) -> i32)
 
 use_host_add(x i32) -> i32 {
     return host_add(x, 1)
