@@ -66,6 +66,7 @@ const FuncShape = struct {
     param_max: ?usize,
     return_type: ?[]const u8,
     return_arity: usize,
+    is_generic: bool = false,
 };
 
 const CallArgShape = union(enum) {
@@ -1394,6 +1395,7 @@ fn appendImportedAliasFuncShapes(
             .param_max = arity.param_max,
             .return_type = parseTopLevelFuncReturnType(child_tokens, close_paren + 1),
             .return_arity = return_arity,
+            .is_generic = funcHasGenericSignatureParam(child_tokens, i, params),
         });
         i = close_paren;
     }
@@ -1432,6 +1434,7 @@ fn collectFuncShapes(allocator: std.mem.Allocator, tokens: []const lexer.Token) 
             .param_max = arity.param_max,
             .return_type = parseTopLevelFuncReturnType(tokens, close_paren + 1),
             .return_arity = return_arity,
+            .is_generic = funcHasGenericSignatureParam(tokens, i, params),
         });
         i = close_paren;
     }
@@ -1469,14 +1472,36 @@ fn checkImportedFuncSignatureConflicts(
 ) !void {
     for (imported_funcs, 0..) |imported, idx| {
         for (local_funcs) |local| {
-            if (!funcSignaturesEqual(imported, local)) continue;
+            if (!funcSignaturesConflict(imported, local)) continue;
             return markErrorAt(tokens, imported.start_idx, error.DuplicateFuncSignature);
         }
         for (imported_funcs[0..idx]) |prev| {
-            if (!funcSignaturesEqual(imported, prev)) continue;
+            if (!funcSignaturesConflict(imported, prev)) continue;
             return markErrorAt(tokens, imported.start_idx, error.DuplicateFuncSignature);
         }
     }
+}
+
+fn funcSignaturesConflict(a: FuncShape, b: FuncShape) bool {
+    if (!std.mem.eql(u8, a.name, b.name)) return false;
+    if (funcParamShapesEqual(a.param_shapes, b.param_shapes)) return true;
+    if (a.param_shapes.len != b.param_shapes.len) return false;
+    if (!a.is_generic and !b.is_generic) return false;
+    return a.is_generic == b.is_generic;
+}
+
+fn funcHasGenericSignatureParam(tokens: []const lexer.Token, func_start_idx: usize, params: []const FuncParamShape) bool {
+    for (params) |param| {
+        const type_name = switch (param) {
+            .value => |value_type| value_type orelse continue,
+            .variadic => |value_type| value_type orelse continue,
+            else => continue,
+        };
+        if (!isFuncTypeParam(tokens, func_start_idx, type_name)) continue;
+        if (typeConstraintIsConcreteFunctionType(tokens, func_start_idx, type_name)) continue;
+        return true;
+    }
+    return false;
 }
 
 fn funcSignaturesEqual(a: FuncShape, b: FuncShape) bool {
@@ -1897,6 +1922,25 @@ fn typeConstraintIsConcreteFunctionType(
         const eq_idx = findTopLevelAssignEqOnLine(tokens, i + 2, line_end) orelse return false;
         if (!isFuncTypeRange(tokens, eq_idx + 1, line_end)) return false;
         return !funcTypeConstraintUsesPriorTypeParam(tokens, block_start, i, eq_idx + 1, line_end);
+    }
+    return false;
+}
+
+fn isFuncTypeParam(tokens: []const lexer.Token, func_start_idx: usize, name: []const u8) bool {
+    const block_start = findConstraintBlockStartBefore(tokens, func_start_idx) orelse return false;
+
+    var i = block_start;
+    while (i < func_start_idx) {
+        if (!tokEq(tokens[i], "#")) {
+            i += 1;
+            continue;
+        }
+        const line_end = findLineEndIdx(tokens, i);
+        const is_func_constraint = i + 2 < line_end and tokEq(tokens[i + 2], "(");
+        if (!is_func_constraint and i + 1 < line_end and std.mem.eql(u8, tokens[i + 1].lexeme, name)) {
+            return true;
+        }
+        i = line_end;
     }
     return false;
 }

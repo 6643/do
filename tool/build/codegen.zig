@@ -2075,6 +2075,30 @@ fn cloneUnionLayout(allocator: std.mem.Allocator, layout: UnionLayout) !UnionLay
     };
 }
 
+fn cloneUnionLayoutSubstituted(
+    allocator: std.mem.Allocator,
+    layout: UnionLayout,
+    bindings: []const GenericTypeBinding,
+) !UnionLayout {
+    const branches = try allocator.dupe(UnionBranch, layout.branches);
+    errdefer allocator.free(branches);
+    for (branches) |*branch| {
+        branch.ty = substituteGenericType(branch.ty, bindings);
+    }
+
+    const payload_tys = try allocator.dupe([]const u8, layout.payload_tys);
+    errdefer allocator.free(payload_tys);
+    for (payload_tys) |*payload_ty| {
+        payload_ty.* = substituteGenericType(payload_ty.*, bindings);
+    }
+
+    return .{
+        .source_ty = substituteGenericType(layout.source_ty, bindings),
+        .branches = branches,
+        .payload_tys = payload_tys,
+    };
+}
+
 fn findUnionBranchByType(layout: UnionLayout, ty: []const u8) ?UnionBranch {
     for (layout.branches) |branch| {
         if (std.mem.eql(u8, branch.ty, ty)) return branch;
@@ -7715,7 +7739,7 @@ fn collectStructLayouts(
         for (decl.fields) |field| {
             const field_align = typePayloadAlignment(field.ty);
             offset = alignUp(offset, field_align);
-            if (isManagedPayloadType(field.ty)) {
+            if (try fieldTypeHasManagedLayout(allocator, structs, field.ty)) {
                 try managed_fields.append(allocator, .{
                     .name = publicDeclName(field.name),
                     .offset = offset,
@@ -7737,6 +7761,40 @@ fn collectStructLayouts(
         });
         next_type_id += 1;
     }
+}
+
+fn fieldTypeHasManagedLayout(allocator: std.mem.Allocator, structs: []const StructDecl, ty: []const u8) !bool {
+    if (isManagedPayloadType(ty)) return true;
+    var stack = std.ArrayList([]const u8).empty;
+    defer stack.deinit(allocator);
+    return try structTypeHasManagedLayout(allocator, structs, ty, &stack);
+}
+
+fn structTypeHasManagedLayout(
+    allocator: std.mem.Allocator,
+    structs: []const StructDecl,
+    ty: []const u8,
+    stack: *std.ArrayList([]const u8),
+) !bool {
+    const name = typeBaseName(ty);
+    if (hasTypeName(stack.items, name)) return true;
+    const decl = findStructDecl(structs, name) orelse return false;
+
+    try stack.append(allocator, name);
+    defer _ = stack.pop();
+
+    for (decl.fields) |field| {
+        if (isManagedPayloadType(field.ty)) return true;
+        if (try structTypeHasManagedLayout(allocator, structs, field.ty, stack)) return true;
+    }
+    return false;
+}
+
+fn hasTypeName(names: []const []const u8, needle: []const u8) bool {
+    for (names) |name| {
+        if (std.mem.eql(u8, name, needle)) return true;
+    }
+    return false;
 }
 
 fn cloneManagedFields(
@@ -8198,7 +8256,11 @@ fn collectGenericFuncInstancesInRange(
         if (i > start_idx and tokEq(tokens[i - 1], "@")) continue;
         if (!tokEq(tokens[i + 1], "(")) continue;
         const close_paren = findMatchingInRange(tokens, i + 1, "(", ")", end_idx) catch continue;
-        const template = findGenericTemplate(functions.items, publicDeclName(tokens[i].lexeme)) orelse continue;
+        if (findFuncDeclForCall(tokens, i + 2, close_paren, locals, ctx, tokens[i].lexeme) != null) {
+            i = close_paren;
+            continue;
+        }
+        const template = findGenericTemplateForCall(functions.items, tokens, ctx, publicDeclName(tokens[i].lexeme)) orelse continue;
         try collectGenericFuncInstanceForCall(allocator, tokens, i + 2, close_paren, locals, ctx, template, functions);
         i = close_paren;
     }
@@ -8268,23 +8330,20 @@ fn collectGenericFuncInstanceForCall(
     }
     const result_tys = try results.toOwnedSlice(allocator);
     errdefer allocator.free(result_tys);
-    const result_items = try allocator.alloc(FuncResultItem, result_tys.len);
-    errdefer allocator.free(result_items);
-    for (result_items, 0..) |*item, idx| {
-        item.* = .{ .ty = result_tys[idx], .abi_start = idx, .abi_len = 1 };
-    }
+    const parsed_results = try instantiateGenericFuncResultItems(allocator, template, result_tys, bindings.items);
+    errdefer freeFuncResultItems(allocator, parsed_results.items, parsed_results.result_union);
     const type_bindings = try allocator.dupe(GenericTypeBinding, bindings.items);
     errdefer allocator.free(type_bindings);
 
     try functions.append(allocator, .{
         .name = instance_name,
-        .source_name = template.name,
+        .source_name = template.source_name,
         .params = param_items,
         .result = if (result_tys.len == 1) result_tys[0] else null,
         .results = result_tys,
-        .result_items = result_items,
+        .result_items = parsed_results.items,
         .result_struct = null,
-        .result_union = null,
+        .result_union = parsed_results.result_union,
         .type_bindings = type_bindings,
         .owned_name = true,
         .tokens = template.tokens,
@@ -8292,6 +8351,52 @@ fn collectGenericFuncInstanceForCall(
         .body_start = template.body_start,
         .body_end = template.body_end,
     });
+}
+
+fn instantiateGenericFuncResultItems(
+    allocator: std.mem.Allocator,
+    template: FuncDecl,
+    result_tys: []const []const u8,
+    bindings: []const GenericTypeBinding,
+) !FuncResultParse {
+    if (template.result_union) |layout| {
+        const next_layout = try cloneUnionLayoutSubstituted(allocator, layout, bindings);
+        errdefer freeUnionLayout(allocator, next_layout);
+        const item = try allocator.alloc(FuncResultItem, 1);
+        errdefer allocator.free(item);
+        var abi_len: usize = 0;
+        for (next_layout.payload_tys) |payload_ty| {
+            abi_len += resultTypeAbiLen(payload_ty);
+        }
+        abi_len += 1;
+        item[0] = .{
+            .ty = next_layout.source_ty,
+            .abi_start = 0,
+            .abi_len = abi_len,
+            .union_layout = next_layout,
+        };
+        return .{
+            .types = result_tys,
+            .items = item,
+            .result_union = next_layout,
+        };
+    }
+
+    const items = try allocator.alloc(FuncResultItem, result_tys.len);
+    errdefer allocator.free(items);
+    for (items, 0..) |*item, idx| {
+        item.* = .{ .ty = result_tys[idx], .abi_start = idx, .abi_len = 1 };
+    }
+    return .{
+        .types = result_tys,
+        .items = items,
+    };
+}
+
+fn resultTypeAbiLen(ty: []const u8) usize {
+    if (storageElemTypeFromName(ty) != null) return 1;
+    if (isManagedPayloadType(ty)) return 1;
+    return 1;
 }
 
 fn bindGenericFuncCall(
@@ -8309,11 +8414,11 @@ fn bindGenericFuncCall(
     while (arg_start < args_end) {
         if (param_idx >= template.params.len) return false;
         const arg_end = findArgEnd(tokens, arg_start, args_end);
-        const arg_ty = inferExprType(tokens, arg_start, arg_end, locals, ctx) orelse return false;
         const param_ty = template.params[param_idx].ty;
         if (hasTypeParamName(template.type_params, param_ty)) {
+            const arg_ty = inferExprType(tokens, arg_start, arg_end, locals, ctx) orelse return false;
             if (!try bindGenericType(allocator, bindings, param_ty, arg_ty)) return false;
-        } else if (!std.mem.eql(u8, param_ty, arg_ty)) {
+        } else if (!callArgMatchesParam(tokens, arg_start, arg_end, locals, ctx, param_ty)) {
             return false;
         }
         param_idx += 1;
@@ -8398,10 +8503,22 @@ fn appendMangledTypeName(
     }
 }
 
-fn findGenericTemplate(functions: []const FuncDecl, name: []const u8) ?FuncDecl {
+fn findGenericTemplateForCall(functions: []const FuncDecl, tokens: []const lexer.Token, ctx: CodegenContext, name: []const u8) ?FuncDecl {
     for (functions) |func| {
         if (!func.is_generic_template) continue;
-        if (std.mem.eql(u8, func.name, name)) return func;
+        if (!moduleTokensEqual(func.tokens, tokens)) continue;
+        if (std.mem.eql(u8, func.name, name) or std.mem.eql(u8, func.source_name, name)) return func;
+    }
+
+    const import_ref = findCodegenImportByAlias(tokens, name) orelse return null;
+    const import_ctx = importedAliasContextForTokens(ctx.imported_alias_ctx, tokens) orelse return null;
+    const child_idx = findImportedModuleIndexNoAlloc(import_ctx.graph, import_ctx.module_idx, import_ref) orelse return null;
+    const child_tokens = import_ctx.graph.modules[child_idx].tokens;
+    for (functions) |func| {
+        if (!func.is_generic_template) continue;
+        if (!moduleTokensEqual(func.tokens, child_tokens)) continue;
+        if (std.mem.eql(u8, func.name, import_ref.alias)) return func;
+        if (std.mem.eql(u8, func.source_name, publicDeclName(import_ref.target))) return func;
     }
     return null;
 }

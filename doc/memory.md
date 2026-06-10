@@ -91,7 +91,7 @@ v1 默认对象头只保存 ARC 和 layout 所需的公共字段:
 5. `[T]` 元素是否含 managed 子值。
 6. drop/trace 函数入口或等价布局描述。
 
-释放时 runtime 通过 `type_id` 找到 layout, 对 managed 字段或 managed 元素执行 `dec`。
+释放时 runtime 通过 `type_id` 找到 layout, 对 managed 字段或 managed 元素执行 `dec`。结构字段的 managed child 列表既包含 `text`、`[T]` 这类直接 managed payload 字段，也包含字段类型自身是 managed struct 的字段；后者按字段 handle 做一次 `dec`，由被引用结构体自己的 layout 继续释放内部 managed 字段。
 
 ---
 
@@ -332,7 +332,7 @@ Wasm linear memory 是 runtime 实现细节。源码不暴露地址。
    - slot class 状态已有通用内存表, `slot_units` 映射到该规格 SmallBlock 链表头; `$__do_slot_class_4` 只是当前 WAT 回归保留的 4 号规格镜像。
    - `__do_arc_alloc_large` 已写入 LargeBlock `cap = 1`、`span_len` 和 Object header; 分配时优先复用 free span, 命中更大 span 时会 split tail, 否则按 `span_len * 1024` 推进 heap cursor。
    - `__do_arc_release(object)` release worklist v1: 当前通过 layout helper 扫 managed child offset, child `dec` 到 0 时进入固定容量 worklist, drain 时再逐个释放。
-   - layout helper 保留 `[u8]` 的 `type_id = 1` 且 managed child count 为 0; 同时已能从源码结构声明生成含 managed 字段的 struct layout 分支, 输出 `type_id`、payload size 和 managed field offset。
+   - layout helper 保留 `[u8]` 的 `type_id = 1` 且 managed child count 为 0; 同时已能从源码结构声明生成含 managed 字段或嵌套 managed struct 字段的 struct layout 分支, 输出 `type_id`、payload size 和 managed field offset。
    - `__do_arc_release(object)` 回收当前 object 时能在 small object 场景反推 SmallBlock/slot 后清 bitmap; 当 SmallBlock bitmap 为空时, 会从 slot class 链摘除并转成 1KB FreeBlock; large span 释放后会进入 free span list 并做相邻 span merge。
    - `__do_arc_inc(object)` / `__do_arc_dec(object)` refcount v1; `dec` 到 0 时先 push release worklist, 再 drain worklist。
    - `__do_arc_payload(object)` / `__do_arc_rc(object)` / `__do_arc_type_id(object)` header accessor。

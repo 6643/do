@@ -76,7 +76,7 @@ collect(rest ...i32) -> [i32] {
 }
 ```
 
-规则: 函数 ABI symbol 按模块、参数签名和泛型实例 mangle。overload resolution 按实参形状筛唯一候选, 不能只靠返回类型区分 overload。`...T` 只表达同类型尾参, 不表达异构参数链; variadic 和 generic instance 参与同一套 mangle 与候选筛选规则。
+规则: 函数 ABI symbol 按模块、参数签名和泛型实例 mangle。overload resolution 按实参形状筛唯一候选, 不能只靠返回类型区分 overload。同名同 arity 的具体 overload 可以和泛型 fallback 共存; 调用先选精确具体签名, 无具体匹配时才实例化泛型 fallback。两个泛型同名同 arity 直接视为重复或歧义。`...T` 只表达同类型尾参, 不表达异构参数链; variadic 和 generic instance 参与同一套 mangle 与候选筛选规则。
 
 ## 返回
 

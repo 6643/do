@@ -1,4 +1,6 @@
-JsonError error = InvalidEscape | UnterminatedEscape
+JsonError error = InvalidEscape | UnterminatedEscape | MaxDepth
+
+_default_max_depth usize = 128
 
 _quote u8 = 34
 _slash u8 = 47
@@ -149,7 +151,7 @@ quote(bytes [u8]) -> [u8] {
     }
 }
 
-.encode_value(value i32) -> [u8] {
+.encode_value(value i32, depth usize) -> [u8] | JsonError {
     out [u8] = .{}
     if @eq(value, -2147483648) return "-2147483648"
     if @lt(value, 0) {
@@ -159,21 +161,38 @@ quote(bytes [u8]) -> [u8] {
     return append_u32(out, @to_u32(value))
 }
 
-.encode_value(value text) -> [u8] {
+.encode_value(value text, depth usize) -> [u8] | JsonError {
     return quote(text_bytes(value))
 }
 
-.encode_value(value [u8]) -> [u8] {
+.encode_value(value [u8], depth usize) -> [u8] | JsonError {
     return quote(value)
 }
 
-.encode_value(value bool) -> [u8] {
+.encode_value(value bool, depth usize) -> [u8] | JsonError {
     if value return "true"
     return "false"
 }
 
 #T
-stringify(value T) -> [u8] {
+stringify(value T) -> [u8] | JsonError {
+    return stringify_with_depth(value, _default_max_depth)
+}
+
+#T
+stringify_with_depth(value T, max_depth usize) -> [u8] | JsonError {
+    return stringify_depth(value, max_depth)
+}
+
+#T
+.encode_value(value T, depth usize) -> [u8] | JsonError {
+    return stringify_depth(value, depth)
+}
+
+#T
+.stringify_depth(value T, depth usize) -> [u8] | JsonError {
+    if @eq(depth, 0) return MaxDepth
+
     out [u8] = .{}
     out = @put(out, 123)
     first bool = true
@@ -185,7 +204,9 @@ stringify(value T) -> [u8] {
         }
         out = append_bytes(out, quote(text_bytes(@field_name(field))))
         out = @put(out, 58)
-        out = append_bytes(out, encode_value(@field_get(value, field)))
+        encoded = encode_value(@field_get(value, field), @sub(depth, 1))
+        if @is(encoded, JsonError) return encoded
+        out = append_bytes(out, encoded)
     }
     out = @put(out, 125)
     return out

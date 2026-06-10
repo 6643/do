@@ -1159,7 +1159,10 @@ fn checkFuncSignatureConflicts(allocator: std.mem.Allocator, tokens: []const lex
         for (funcs[idx + 1 ..]) |next| {
             if (!std.mem.eql(u8, func.name, next.name)) continue;
             if (func.param_shapes.len != next.param_shapes.len) continue;
-            if (!funcHasGenericSignatureParam(tokens, func) and !funcHasGenericSignatureParam(tokens, next)) continue;
+            const func_is_generic = funcHasGenericSignatureParam(tokens, func);
+            const next_is_generic = funcHasGenericSignatureParam(tokens, next);
+            if (!func_is_generic and !next_is_generic) continue;
+            if (func_is_generic != next_is_generic) continue;
             return markErrorAt(tokens, next.start_idx, error.DuplicateFuncSignature);
         }
     }
@@ -2528,6 +2531,7 @@ fn findLambdaCapture(
         const tok = tokens[i];
         if (tok.kind != .ident) continue;
         if (tok.lexeme.len == 0) continue;
+        if (tok.lexeme[0] == '.') continue;
         if (tok.lexeme[0] == '_') continue;
         if (std.ascii.isUpper(tok.lexeme[0])) continue;
         if (isKeyword(tok.lexeme)) continue;
