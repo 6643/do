@@ -15,6 +15,18 @@ _upper_f u8 = 70
 _lower_a u8 = 97
 _lower_f u8 = 102
 
+.append_bytes(out [u8], part [u8]) -> [u8] {
+    next [u8] = out
+    loop byte, _ = part {
+        next = @put(next, byte)
+    }
+    return next
+}
+
+.text_bytes(value text) -> [u8] {
+    return value
+}
+
 .hex_digit(value u8) -> u8 {
     if @lt(value, 10) return @add(_zero, value)
     return @add(_upper_a, @sub(value, 10))
@@ -111,6 +123,71 @@ quote(bytes [u8]) -> [u8] {
         out = @put(out, byte)
     }
     out = @put(out, _quote)
+    return out
+}
+
+.append_u32(out [u8], value u32) -> [u8] {
+    if @eq(value, 0) {
+        out = @put(out, _zero)
+        return out
+    }
+
+    digits [u8] = .{}
+    n u32 = value
+    loop {
+        if @eq(n, 0) {
+            i usize = @len(digits)
+            loop {
+                if @eq(i, 0) return out
+                i = @sub(i, 1)
+                out = @put(out, @get(digits, i))
+            }
+        }
+        digit u8 = @to_u8(@rem(n, 10))
+        digits = @put(digits, @add(_zero, digit))
+        n = @div(n, 10)
+    }
+}
+
+.encode_value(value i32) -> [u8] {
+    out [u8] = .{}
+    if @eq(value, -2147483648) return "-2147483648"
+    if @lt(value, 0) {
+        out = @put(out, 45)
+        return append_u32(out, @to_u32(@sub(0, value)))
+    }
+    return append_u32(out, @to_u32(value))
+}
+
+.encode_value(value text) -> [u8] {
+    return quote(text_bytes(value))
+}
+
+.encode_value(value [u8]) -> [u8] {
+    return quote(value)
+}
+
+.encode_value(value bool) -> [u8] {
+    if value return "true"
+    return "false"
+}
+
+#T
+stringify(value T) -> [u8] {
+    out [u8] = .{}
+    out = @put(out, 123)
+    first bool = true
+    loop field = fields(T) {
+        if first {
+            first = false
+        } else {
+            out = @put(out, 44)
+        }
+        out = append_bytes(out, quote(text_bytes(@field_name(field))))
+        out = @put(out, 58)
+        out = append_bytes(out, encode_value(@field_get(value, field)))
+    }
+    out = @put(out, 125)
     return out
 }
 

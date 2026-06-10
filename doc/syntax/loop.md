@@ -1,6 +1,6 @@
 # 循环
 
-规则: build lowering 覆盖无限循环、标签跳转、guard `break/continue`、集合循环、字段反射循环和当前 `[T]` storage-backed 消费循环。标签只绑定紧随其后的 `loop`; `break #label` 和 `continue #label` 只能跳转到可见 loop label。集合循环源必须是 `[T]` 或后续明确声明的 collection type; `text` 不作为集合循环源, 需要显式转换为 `[u8]` 或通过文本库遍历。`recv(...)` 是消费循环专用形态, 不是普通函数调用; `fields(Type)` 是字段反射循环专用形态, 不是普通函数调用; 真实 channel/stream receive ABI 后续单独扩展。
+规则: build lowering 覆盖无限循环、标签跳转、guard `break/continue`、集合循环、字段反射循环和当前 `[T]` storage-backed 消费循环。标签只绑定紧随其后的 `loop`; `break #label` 和 `continue #label` 只能跳转到可见 loop label。集合循环源必须是 `[T]` 或后续明确声明的 collection type; `text` 不作为集合循环源, 需要显式转换为 `[u8]` 或通过文本库遍历。`recv(...)` 是消费循环专用形态, 不是普通函数调用; `fields(TypeOrTypeParam)` 是字段反射循环专用形态, 不是普通函数调用; 真实 channel/stream receive ABI 后续单独扩展。
 
 ## 无限循环
 
@@ -65,9 +65,19 @@ loop field = fields(User) {
     index usize = @field_index(field)
     has_default bool = @field_has_default(field)
 }
+
+// 泛型函数实例内按 T 绑定到的具体结构体展开
+#T
+field_count(value T) -> usize {
+    count usize = 0
+    loop field = fields(T) {
+        count = @add(count, 1)
+    }
+    return count
+}
 ```
 
-规则: `fields(Type)` 只能出现在字段反射循环头部。循环绑定是编译器字段元数据, 只能交给 `@field_name/@field_index/@field_has_default/@field_get/@field_set` 使用。
+规则: `fields(TypeOrTypeParam)` 只能出现在字段反射循环头部。`TypeOrTypeParam` 只能是具体结构体名, 或泛型函数中已实例化为具体结构体的单个类型参数名; 不接收 `Box<T>`、`[T]` 或 union 类型表达式。循环绑定是编译器字段元数据, 只能交给 `@field_name/@field_index/@field_has_default/@field_get/@field_set` 使用。
 
 ## 标签
 

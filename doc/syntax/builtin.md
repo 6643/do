@@ -227,7 +227,7 @@
 user = @field_set(user, field, value)
 ```
 
-规则: 字段反射内建只能使用 `fields(Type)` 循环绑定产生的字段元数据。`@field_get/@field_set` 在每个字段展开点使用该字段的静态类型; 不提供 `@field_type`、`@field_default_value` 或 `@field_default_type`。
+规则: 字段反射内建只能使用 `fields(TypeOrTypeParam)` 循环绑定产生的字段元数据。`TypeOrTypeParam` 是具体结构体名, 或泛型函数实例中已绑定为具体结构体的单个类型参数名。`@field_get/@field_set` 在每个字段展开点使用该字段的静态类型; `@field_get(value, field)` 作为普通调用实参时按字段类型参与重载分派。不提供 `@field_type`、`@field_default_value` 或 `@field_default_type`。
 
 ## 定宽读取
 

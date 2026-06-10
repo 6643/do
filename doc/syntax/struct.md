@@ -137,6 +137,15 @@ test "struct fields each" {
     }
     return
 }
+
+#T
+to_json_object(value T) -> [u8] {
+    out [u8] = .{}
+    loop field = fields(T) {
+        out = append_json_field(out, @field_name(field), @field_get(value, field))
+    }
+    return out
+}
 ```
 
-规则: `fields(User)` 按声明顺序枚举当前模块可见字段; `@field_index` 是可见字段序列中的 0-based index, 不是持久化 schema id。`@field_get/@field_set` 的结果按每个字段静态定型, 不返回 `any`。异构字段推荐先用 `@field_name` 或 `@field_index` 分支, 再在分支内绑定具体类型。
+规则: `fields(TypeOrTypeParam)` 按声明顺序枚举当前模块可见字段; `TypeOrTypeParam` 可以是具体结构体名, 也可以是泛型函数实例中已绑定为具体结构体的单个类型参数名。`fields` 不是运行时 iterator, 循环体按字段在编译期展开。`@field_index` 是可见字段序列中的 0-based index, 不是持久化 schema id。`@field_get/@field_set` 的结果按每个字段静态定型, 不返回 `any`; `@field_get(value, field)` 作为实参时会按字段静态类型自然触发普通重载分派。异构字段推荐交给具体类型重载处理, 或先用 `@field_name` / `@field_index` 分支, 再在分支内绑定具体类型。
