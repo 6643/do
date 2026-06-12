@@ -62,7 +62,7 @@ Box<i32>
 Entry<text, User>
 
 // 泛型参数内使用连续存储
-Map<text, [User]>
+HashMap<text, [User]>
 ```
 
 ## 函数类型约束
@@ -81,12 +81,4 @@ Map<text, [User]>
 #P = (i32) -> i32, bool
 ```
 
-## 类型别名
-
-```do
-// 可空联合别名
-MaybeUser = User | nil
-
-// 值或错误联合别名
-ReadResult = [u8] | FileError
-```
+规则: 顶层 type alias / union alias 已取消。需要组合类型时, 在返回位、字段、局部绑定、storage 元素或 type args 里直接写 `T | nil` / `A | B`; 需要强类型别名时用单字段 struct 表达。

@@ -2,7 +2,7 @@
 
 **状态**: v1 实现规格草案
 **目标**: 在不向用户暴露指针/引用的前提下, 为 Wasm lowering、`[T]`、`text`、结构体、ARC、host ABI 和未来 store/atomic 设计提供统一边界。
-**关系**: `doc/spec.md` 是规范入口; `doc/spec_rules.md` 定义源码语义; 本文定义运行时表示和编译器实现边界; `doc/arc.md` 保留长期 ARC/Perceus/并发优化设想。
+**关系**: `doc/spec.md` 是规范入口; `doc/spec_rules.md` 定义源码语义; 本文定义运行时表示和编译器实现边界; `doc/arc.md` 保留长期 ARC/Perceus/并发优化设想; `doc/arc_*.ts` 只是文档侧分析/验证原型, 不作为 v1 权威实现规格。
 
 ---
 
@@ -320,6 +320,8 @@ Wasm linear memory 是 runtime 实现细节。源码不暴露地址。
 ---
 
 ## 12. 实施顺序
+
+以下 `doc/arc_*.ts` 只是文档侧分析/验证原型: 用来验证 slot class、allocator、release worklist 和 COW 行为。当前权威边界仍以本文、`doc/memory_layout_structs.md`、`doc/roadmap_status.md` 和编译器回归为准。
 
 1. 已有文档侧 allocator 原型: `doc/arc_allocator.ts`。
 2. 已有文档侧 Object/LayoutTable/ARC release 原型: `doc/arc_object_runtime.ts`。

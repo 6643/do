@@ -529,6 +529,7 @@ fn parseParamRange(tokens: []const lexer.Token, start_idx: usize, end_idx: usize
         if (!tokEq(t, ",") or depth_angle != 0 or depth_paren != 0) continue;
 
         if (seg_start < i) {
+            try validateParamSegmentHasType(tokens, seg_start, i);
             if (saw_variadic) return markErrorAt(tokens, seg_start, error.InvalidParamName);
             const variadic_idx = findVariadicTokenIdx(tokens, seg_start, i) orelse {
                 min_count += 1;
@@ -543,6 +544,7 @@ fn parseParamRange(tokens: []const lexer.Token, start_idx: usize, end_idx: usize
     }
 
     if (seg_start < end_idx) {
+        try validateParamSegmentHasType(tokens, seg_start, end_idx);
         if (saw_variadic) return markErrorAt(tokens, seg_start, error.InvalidParamName);
         const variadic_idx = findVariadicTokenIdx(tokens, seg_start, end_idx) orelse {
             min_count += 1;
@@ -559,6 +561,12 @@ fn parseParamRange(tokens: []const lexer.Token, start_idx: usize, end_idx: usize
         .param_min = min_count,
         .param_max = if (has_variadic) null else min_count,
     };
+}
+
+fn validateParamSegmentHasType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !void {
+    if (start_idx + 1 >= end_idx) return markErrorAt(tokens, start_idx, error.InvalidParamName);
+    const variadic_idx = findVariadicTokenIdx(tokens, start_idx, end_idx) orelse return;
+    if (variadic_idx + 1 >= end_idx) return markErrorAt(tokens, variadic_idx, error.InvalidParamName);
 }
 
 fn parseReturnSpec(tokens: []const lexer.Token, input_start_idx: usize) !ReturnSpecParse {
@@ -1194,7 +1202,10 @@ fn parseAssignStmt(
 
     const rhs_end = findAssignRhsEnd(tokens, rhs_start, limit_idx);
     if (rhs_start >= rhs_end) return markErrorAt(tokens, eq_idx, error.InvalidAssignExpr);
-    if (!isLineStringToken(tokens[rhs_start]) and !rangeIsOnLine(tokens, rhs_start, rhs_end, tokens[eq_idx].line)) {
+    if (!isLineStringToken(tokens[rhs_start]) and
+        !rangeIsOnLine(tokens, rhs_start, rhs_end, tokens[eq_idx].line) and
+        !rangeContainsBlockLambda(tokens, rhs_start, rhs_end))
+    {
         return markErrorAt(tokens, rhs_start, error.InvalidAssignExpr);
     }
 
@@ -1215,6 +1226,17 @@ fn rangeIsOnLine(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, 
         if (tokens[i].line != line) return false;
     }
     return true;
+}
+
+fn rangeContainsBlockLambda(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (!tokEq(tokens[i], "(")) continue;
+        const close_paren = findMatchingInRange(tokens, i, "(", ")", end_idx) catch continue;
+        const body_start = lambdaBodyStart(tokens, close_paren + 1, end_idx) orelse continue;
+        if (tokEq(tokens[body_start], "{")) return true;
+    }
+    return false;
 }
 
 fn lhsValueCount(tokens: []const lexer.Token, eq_idx: usize) usize {
@@ -1498,7 +1520,7 @@ fn parseExpr(
             return markErrorAt(tokens, start_idx, error.InvalidReservedName);
         }
 
-        if (start_idx + 1 < limit_idx and tokEq(tokens[start_idx + 1], "(")) {
+        if (callOpenParenIdx(tokens, start_idx, limit_idx) != null) {
             const call = try parseCallExpr(allocator, out_nodes, tokens, start_idx, limit_idx);
             const idx = try appendExprNode(allocator, out_nodes, .{
                 .kind = .call,
@@ -1601,14 +1623,25 @@ fn parseCallExprRaw(
     if (name_idx + 1 >= limit_idx) return markErrorAt(tokens, name_idx, error.InvalidCallExpr);
     if (tokens[name_idx].kind != .ident) return markErrorAt(tokens, name_idx, error.InvalidCallExpr);
     if (isDotPrefixedName(tokens[name_idx].lexeme)) return markErrorAt(tokens, name_idx, error.InvalidCallExpr);
-    if (!tokEq(tokens[name_idx + 1], "(")) return markErrorAt(tokens, name_idx + 1, error.InvalidCallExpr);
+    const open_paren = callOpenParenIdx(tokens, name_idx, limit_idx) orelse
+        return markErrorAt(tokens, name_idx + 1, error.InvalidCallExpr);
 
-    const close_paren = try findMatchingInRange(tokens, name_idx + 1, "(", ")", limit_idx);
-    const argc = try countArgsByExpr(allocator, out_nodes, tokens, name_idx + 2, close_paren);
+    const close_paren = try findMatchingInRange(tokens, open_paren, "(", ")", limit_idx);
+    const argc = try countArgsByExpr(allocator, out_nodes, tokens, open_paren + 1, close_paren);
     return .{
         .next_idx = close_paren + 1,
         .arg_count = argc,
     };
+}
+
+fn callOpenParenIdx(tokens: []const lexer.Token, name_idx: usize, limit_idx: usize) ?usize {
+    if (name_idx + 1 >= limit_idx) return null;
+    if (tokEq(tokens[name_idx + 1], "(")) return name_idx + 1;
+    if (!tokEq(tokens[name_idx + 1], "<")) return null;
+
+    const close_angle = findMatchingInRange(tokens, name_idx + 1, "<", ">", limit_idx) catch return null;
+    if (close_angle + 1 >= limit_idx or !tokEq(tokens[close_angle + 1], "(")) return null;
+    return close_angle + 1;
 }
 
 fn validateBuiltinCallArity(tokens: []const lexer.Token, name_idx: usize, argc: usize) !void {
@@ -2041,6 +2074,7 @@ fn isLambdaSyntax(tokens: []const lexer.Token, start_idx: usize, limit_idx: usiz
 
 fn lambdaBodyStart(tokens: []const lexer.Token, start_idx: usize, limit_idx: usize) ?usize {
     if (isArrowAt(tokens, start_idx)) return start_idx + 2;
+    if (start_idx < limit_idx and tokEq(tokens[start_idx], "{")) return start_idx;
     if (start_idx >= limit_idx or !isReturnArrowAt(tokens, start_idx)) return null;
 
     var i = start_idx + 2;

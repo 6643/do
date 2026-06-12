@@ -1,6 +1,6 @@
 # 循环
 
-规则: build lowering 覆盖无限循环、标签跳转、guard `break/continue`、集合循环、字段反射循环和当前 `[T]` storage-backed 消费循环。标签只绑定紧随其后的 `loop`; `break #label` 和 `continue #label` 只能跳转到可见 loop label。集合循环源必须是 `[T]` 或后续明确声明的 collection type; `text` 不作为集合循环源, 需要显式转换为 `[u8]` 或通过文本库遍历。`recv(...)` 是消费循环专用形态, 不是普通函数调用; `fields(TypeOrTypeParam)` 是字段反射循环专用形态, 不是普通函数调用; 真实 channel/stream receive ABI 后续单独扩展。
+规则: build lowering 覆盖无限循环、标签跳转、guard `break/continue`、集合循环、字段反射循环和当前 `[T]` storage-backed 消费循环。标签只绑定紧随其后的 `loop`; `break #label` 和 `continue #label` 只能跳转到可见 loop label。当前集合循环源只接受 `[T]`; `List<T>`、`HashMap<K, V>` 等库类型需要先经 `items/keys/values/entries` 这类视图函数显式转成 `[T]`。`text` 不作为集合循环源, 需要显式转换为 `[u8]` 或通过文本库遍历。`loop` 头部绑定只读, 循环体内不能给该绑定赋值; 需要修改元素时更新源集合或先声明新的局部绑定。`recv(...)` 是消费循环专用形态, 不是普通函数调用; `fields(TypeOrTypeParam)` 是字段反射循环专用形态, 不是普通函数调用; 真实 channel/stream receive ABI 后续单独扩展。
 
 ## 无限循环
 
@@ -17,6 +17,12 @@ loop {
 // 值和索引绑定
 loop value, index = items {
     use(value, index)
+}
+
+// 需要修改集合元素时, 更新源集合
+loop value, index = items {
+    next = update(value)
+    items = @set(items, index, next)
 }
 
 // 丢弃索引

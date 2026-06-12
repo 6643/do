@@ -250,7 +250,7 @@ choose(fallback T, value Q) -> text {
 }
 ```
 
-函数约束块里不支持 `#T = A | B` 受限数据类型参数，也不支持 `#Q = T | User` 这类局部派生候选集合。具体 union 需要命名时使用普通顶层 union alias；依赖未知类型参数的派生 union 第一版不提供局部命名语法。
+函数约束块里不支持 `#T = A | B` 受限数据类型参数，也不支持 `#Q = T | User` 这类局部派生候选集合。需要具体 union 时，直接在返回位、字段、局部绑定、storage 元素或 type args 里写平铺 union；依赖未知类型参数的派生 union 第一版不提供局部命名语法。
 
 ### 函数类型约束
 
@@ -337,29 +337,6 @@ User {
     id i32
 }
 
-MaybeUser = User | nil
-
-collect(rest ...MaybeUser) -> i32 {
-    return 0
-}
-```
-
-```do decl err
-User {
-    id i32
-}
-
-#MaybeUser = User | nil
-collect(rest ...MaybeUser) -> i32 {
-    return 0
-}
-```
-
-```do decl err
-User {
-    id i32
-}
-
 collect(rest ...User | nil) -> i32 {
     return 0
 }
@@ -373,7 +350,69 @@ use(x T) -> i32 {
 }
 ```
 
-变参元素类型属于参数位，实际类型不得是 union/nullable。`rest ...User | nil` 和通过 `MaybeUser = User | nil` 间接写出的 `rest ...MaybeUser` 都非法。需要处理可空元素时，把 union 放在 storage 元素里，例如参数写 `xs [User | nil]`，或让调用方先过滤/收窄后再传入 `rest ...User`。
+变参元素类型属于参数位，实际类型不得是 union/nullable。`rest ...User | nil` 非法。需要处理可空元素时，把 union 放在 storage 元素里，例如参数写 `xs [User | nil]`，或让调用方先过滤/收窄后再传入 `rest ...User`。
+
+### 参数显式类型
+
+```do decl ok
+id(value i32) -> i32 {
+    return value
+}
+```
+
+```do decl err
+id(value) -> i32 {
+    return value
+}
+```
+
+函数参数必须显式写类型；`value` 这类只写参数名的形式非法。这个规则同样适用于泛型函数声明里的普通参数。
+
+```do decl err
+#T
+identity(value) -> T {
+    return value
+}
+```
+
+### 局部重声明与遮蔽
+
+```do stmt ok
+name text = "a"
+name = "b"
+```
+
+```do stmt err
+name = "a"
+name text = "b"
+```
+
+```do stmt err
+a i32 = 1
+{
+    a bool = false
+}
+```
+
+`name Type = expr` 永远声明新绑定；当前作用域或任何外层可见作用域里只要已经有同名绑定，都不能再次写 typed bind，必须改用 `name = expr` 赋值。局部声明也不能遮蔽外层局部绑定、函数参数、loop 绑定、模块级变量或顶层常量。
+
+### loop 绑定只读
+
+```do stmt err
+xs [i32] = .{1}
+loop value, index = xs {
+    value = value
+}
+```
+
+```do stmt err
+xs [i32] = .{1}
+loop value, index = xs {
+    index = 1
+}
+```
+
+集合循环和消费循环的头部绑定都是只读绑定；需要修改结果时，先声明新的局部绑定，或更新源集合。
 
 ## is / eq / ne
 
@@ -460,6 +499,36 @@ if @eq(err, NotFound) return
 
 `eq/ne` 做值判断。`nil` 只能用 `eq/ne` 判断，不能写进 `is` 的第二参数。
 
+## lambda
+
+```do program ok
+tap = @lib("fp.do", tap)
+
+test "lambda block nil return" {
+    value i32 = 1
+    next = tap(value, (x i32) -> nil {
+        _ = @add(x, 1)
+        return
+    })
+    if @eq(next, 1) return
+}
+```
+
+```do program ok
+tap = @lib("fp.do", tap)
+
+test "lambda block nil sugar" {
+    value i32 = 1
+    next = tap(value, (x i32) {
+        _ = @add(x, 2)
+        return
+    })
+    if @eq(next, 1) return
+}
+```
+
+block lambda 的目标返回类型若已经确定为 `nil`，可以省略 `-> nil` 直接写 `(x T) { ... }`。若省略参数类型，则仍必须由已选中的目标 `FuncType` 提供参数类型。
+
 ## 错误枚举
 
 ```do program ok
@@ -485,7 +554,7 @@ NetworkError error = NetworkTimeout | NetworkClosed
 App = FileError | NetworkError
 ```
 
-错误枚举右侧只接收 enum 分支值，不接收已知错误枚举类型；也不能通过普通 union alias 把多个错误枚举重新命名成新的纯错误聚合。需要组合多个错误来源时, 在返回位、字段或局部绑定里直接写具体来源；参数位仍不接收这种 union。
+错误枚举右侧只接收 enum 分支值，不接收已知错误枚举类型；顶层 type alias / union alias 已取消，不能把多个错误枚举重新命名成新的纯错误聚合。需要组合多个错误来源时, 在返回位、字段或局部绑定里直接写具体来源；参数位仍不接收这种 union。
 
 ## 函数值展示
 

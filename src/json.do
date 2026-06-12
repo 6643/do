@@ -1,4 +1,4 @@
-JsonError error = InvalidEscape | UnterminatedEscape | MaxDepth
+JsonError error = InvalidEscape | UnterminatedEscape | MaxDepth | InvalidJson | UnexpectedEnd | ExpectedObject | ExpectedField | ExpectedColon | ExpectedComma | ExpectedValue
 
 _default_max_depth usize = 128
 
@@ -16,6 +16,48 @@ _upper_a u8 = 65
 _upper_f u8 = 70
 _lower_a u8 = 97
 _lower_f u8 = 102
+_upper_e u8 = 69
+_lower_e u8 = 101
+_plus u8 = 43
+_minus u8 = 45
+_dot u8 = 46
+_comma u8 = 44
+_colon u8 = 58
+_open_bracket u8 = 91
+_close_bracket u8 = 93
+_open_brace u8 = 123
+_close_brace u8 = 125
+
+.is_ws(byte u8) -> bool {
+    if @eq(byte, 32) return true
+    if @eq(byte, _newline) return true
+    if @eq(byte, _carriage) return true
+    if @eq(byte, _tab) return true
+    return false
+}
+
+.skip_ws(bytes [u8], offset usize) -> usize {
+    i usize = offset
+    loop {
+        if @eq(i, @len(bytes)) return i
+        if @not(is_ws(@get(bytes, i))) return i
+        i = @add(i, 1)
+    }
+}
+
+.is_digit(byte u8) -> bool {
+    return @and(@ge(byte, _zero), @le(byte, _nine))
+}
+
+.bytes_eq(a [u8], b [u8]) -> bool {
+    if @ne(@len(a), @len(b)) return false
+    i usize = 0
+    loop {
+        if @eq(i, @len(a)) return true
+        if @ne(@get(a, i), @get(b, i)) return false
+        i = @add(i, 1)
+    }
+}
 
 .append_bytes(out [u8], part [u8]) -> [u8] {
     next [u8] = out
@@ -269,4 +311,341 @@ unescape(bytes [u8]) -> [u8] | JsonError {
         }
         i = @add(i, 2)
     }
+}
+
+.parse_string_token(bytes [u8], offset usize) -> [u8], usize, JsonError | nil {
+    i usize = skip_ws(bytes, offset)
+    if @ge(i, @len(bytes)) return .{}, i, UnexpectedEnd
+    if @ne(@get(bytes, i), _quote) return .{}, i, ExpectedValue
+
+    out [u8] = .{}
+    i = @add(i, 1)
+    loop {
+        if @ge(i, @len(bytes)) return .{}, i, UnterminatedEscape
+        ch u8 = @get(bytes, i)
+        if @eq(ch, _quote) return out, @add(i, 1), nil
+        if @ne(ch, _backslash) {
+            if @lt(ch, 32) return .{}, i, InvalidEscape
+            out = @put(out, ch)
+            i = @add(i, 1)
+            continue
+        }
+
+        if @eq(@add(i, 1), @len(bytes)) return .{}, i, UnterminatedEscape
+        next u8 = @get(bytes, @add(i, 1))
+        if @eq(next, _quote) {
+            out = @put(out, _quote)
+        } else if @eq(next, _backslash) {
+            out = @put(out, _backslash)
+        } else if @eq(next, _slash) {
+            out = @put(out, _slash)
+        } else if @eq(next, 98) {
+            out = @put(out, _backspace)
+        } else if @eq(next, 102) {
+            out = @put(out, _form_feed)
+        } else if @eq(next, 110) {
+            out = @put(out, _newline)
+        } else if @eq(next, 114) {
+            out = @put(out, _carriage)
+        } else if @eq(next, 116) {
+            out = @put(out, _tab)
+        } else if @eq(next, 117) {
+            unit = decode_hex4(bytes, @add(i, 2))
+            if @is(unit, JsonError) return .{}, i, unit
+            if is_high_surrogate(unit) {
+                if @or(@ge(@add(i, 7), @len(bytes)), @ne(@get(bytes, @add(i, 6)), _backslash), @ne(@get(bytes, @add(i, 7)), 117)) return .{}, i, InvalidEscape
+                low = decode_hex4(bytes, @add(i, 8))
+                if @is(low, JsonError) return .{}, i, low
+                if @not(is_low_surrogate(low)) return .{}, i, InvalidEscape
+                code u32 = @add(65536, @mul(@to_u32(@sub(unit, 55296)), 1024), @to_u32(@sub(low, 56320)))
+                encoded = append_utf8(out, code)
+                if @is(encoded, JsonError) return .{}, i, encoded
+                out = encoded
+                i = @add(i, 12)
+                continue
+            }
+            if is_low_surrogate(unit) return .{}, i, InvalidEscape
+            encoded = append_utf8(out, @to_u32(unit))
+            if @is(encoded, JsonError) return .{}, i, encoded
+            out = encoded
+            i = @add(i, 6)
+            continue
+        } else {
+            return .{}, i, InvalidEscape
+        }
+        i = @add(i, 2)
+    }
+}
+
+.match_literal(bytes [u8], offset usize, lit [u8]) -> usize | JsonError {
+    if @gt(@add(offset, @len(lit)), @len(bytes)) return UnexpectedEnd
+    i usize = 0
+    loop {
+        if @eq(i, @len(lit)) return @add(offset, @len(lit))
+        if @ne(@get(bytes, @add(offset, i)), @get(lit, i)) return ExpectedValue
+        i = @add(i, 1)
+    }
+}
+
+.skip_number(bytes [u8], offset usize) -> usize | JsonError {
+    i usize = offset
+    if @ge(i, @len(bytes)) return UnexpectedEnd
+    if @eq(@get(bytes, i), _minus) {
+        i = @add(i, 1)
+    }
+    if @or(@ge(i, @len(bytes)), @not(is_digit(@get(bytes, i)))) return ExpectedValue
+    loop {
+        if @ge(i, @len(bytes)) return i
+        if @not(is_digit(@get(bytes, i))) break
+        i = @add(i, 1)
+    }
+    if @lt(i, @len(bytes)) {
+        if @eq(@get(bytes, i), _dot) {
+            i = @add(i, 1)
+            if @or(@ge(i, @len(bytes)), @not(is_digit(@get(bytes, i)))) return ExpectedValue
+            loop {
+                if @ge(i, @len(bytes)) return i
+                if @not(is_digit(@get(bytes, i))) break
+                i = @add(i, 1)
+            }
+        }
+    }
+    if @lt(i, @len(bytes)) {
+        if @or(@eq(@get(bytes, i), _lower_e), @eq(@get(bytes, i), _upper_e)) {
+            i = @add(i, 1)
+            if @lt(i, @len(bytes)) {
+                if @or(@eq(@get(bytes, i), _plus), @eq(@get(bytes, i), _minus)) {
+                    i = @add(i, 1)
+                }
+            }
+            if @or(@ge(i, @len(bytes)), @not(is_digit(@get(bytes, i)))) return ExpectedValue
+            loop {
+                if @ge(i, @len(bytes)) return i
+                if @not(is_digit(@get(bytes, i))) return i
+                i = @add(i, 1)
+            }
+        }
+    }
+    return i
+}
+
+.skip_array(bytes [u8], offset usize) -> usize | JsonError {
+    i usize = skip_ws(bytes, offset)
+    if @ge(i, @len(bytes)) return UnexpectedEnd
+    if @ne(@get(bytes, i), _open_bracket) return ExpectedValue
+    i = skip_ws(bytes, @add(i, 1))
+    if @ge(i, @len(bytes)) return UnexpectedEnd
+    if @eq(@get(bytes, i), _close_bracket) return @add(i, 1)
+    loop {
+        next = skip_value(bytes, i)
+        if @is(next, JsonError) return next
+        i = skip_ws(bytes, next)
+        if @ge(i, @len(bytes)) return UnexpectedEnd
+        if @eq(@get(bytes, i), _comma) {
+            i = skip_ws(bytes, @add(i, 1))
+            continue
+        }
+        if @eq(@get(bytes, i), _close_bracket) return @add(i, 1)
+        return ExpectedComma
+    }
+}
+
+.skip_object(bytes [u8], offset usize) -> usize | JsonError {
+    i usize = skip_ws(bytes, offset)
+    if @ge(i, @len(bytes)) return UnexpectedEnd
+    if @ne(@get(bytes, i), _open_brace) return ExpectedObject
+    i = skip_ws(bytes, @add(i, 1))
+    if @ge(i, @len(bytes)) return UnexpectedEnd
+    if @eq(@get(bytes, i), _close_brace) return @add(i, 1)
+    loop {
+        name [u8] = .{}
+        next usize = i
+        status JsonError | nil = nil
+        name, next, status = parse_string_token(bytes, i)
+        if @is(status, JsonError) return status
+
+        i = skip_ws(bytes, next)
+        if @ge(i, @len(bytes)) return UnexpectedEnd
+        if @ne(@get(bytes, i), _colon) return ExpectedColon
+        i = skip_ws(bytes, @add(i, 1))
+
+        next_value = skip_value(bytes, i)
+        if @is(next_value, JsonError) return next_value
+        i = skip_ws(bytes, next_value)
+        if @ge(i, @len(bytes)) return UnexpectedEnd
+        if @eq(@get(bytes, i), _comma) {
+            i = skip_ws(bytes, @add(i, 1))
+            continue
+        }
+        if @eq(@get(bytes, i), _close_brace) return @add(i, 1)
+        return ExpectedComma
+    }
+}
+
+.skip_value(bytes [u8], offset usize) -> usize | JsonError {
+    i usize = skip_ws(bytes, offset)
+    if @ge(i, @len(bytes)) return UnexpectedEnd
+    ch u8 = @get(bytes, i)
+    if @eq(ch, _quote) {
+        value [u8] = .{}
+        next usize = i
+        status JsonError | nil = nil
+        value, next, status = parse_string_token(bytes, i)
+        if @is(status, JsonError) return status
+        return next
+    }
+    if @eq(ch, _open_brace) return skip_object(bytes, i)
+    if @eq(ch, _open_bracket) return skip_array(bytes, i)
+    if @or(@eq(ch, _minus), is_digit(ch)) return skip_number(bytes, i)
+    if @eq(ch, 116) return match_literal(bytes, i, "true")
+    if @eq(ch, 102) return match_literal(bytes, i, "false")
+    if @eq(ch, 110) return match_literal(bytes, i, "null")
+    return ExpectedValue
+}
+
+.find_field_value_at(bytes [u8], object_offset usize, key_name text) -> usize | JsonError | nil {
+    i usize = skip_ws(bytes, object_offset)
+    if @ge(i, @len(bytes)) return UnexpectedEnd
+    if @ne(@get(bytes, i), _open_brace) return ExpectedObject
+    i = skip_ws(bytes, @add(i, 1))
+    if @ge(i, @len(bytes)) return UnexpectedEnd
+    if @eq(@get(bytes, i), _close_brace) return nil
+    loop {
+        name [u8] = .{}
+        next usize = i
+        status JsonError | nil = nil
+        name, next, status = parse_string_token(bytes, i)
+        if @is(status, JsonError) return status
+
+        i = skip_ws(bytes, next)
+        if @ge(i, @len(bytes)) return UnexpectedEnd
+        if @ne(@get(bytes, i), _colon) return ExpectedColon
+        i = skip_ws(bytes, @add(i, 1))
+        if bytes_eq(name, text_bytes(key_name)) return i
+
+        next_value = skip_value(bytes, i)
+        if @is(next_value, JsonError) return next_value
+        i = skip_ws(bytes, next_value)
+        if @ge(i, @len(bytes)) return UnexpectedEnd
+        if @eq(@get(bytes, i), _comma) {
+            i = skip_ws(bytes, @add(i, 1))
+            continue
+        }
+        if @eq(@get(bytes, i), _close_brace) return nil
+        return ExpectedComma
+    }
+}
+
+.parse_i32_token(bytes [u8], offset usize) -> i32, usize, JsonError | nil {
+    i usize = skip_ws(bytes, offset)
+    if @ge(i, @len(bytes)) return 0, i, UnexpectedEnd
+    negative bool = false
+    if @eq(@get(bytes, i), _minus) {
+        negative = true
+        i = @add(i, 1)
+    }
+    if @or(@ge(i, @len(bytes)), @not(is_digit(@get(bytes, i)))) return 0, i, ExpectedValue
+
+    value i32 = 0
+    loop {
+        if @ge(i, @len(bytes)) {
+            if negative return @sub(0, value), i, nil
+            return value, i, nil
+        }
+        ch u8 = @get(bytes, i)
+        if @not(is_digit(ch)) break
+        value = @add(@mul(value, 10), @to_i32(@sub(ch, _zero)))
+        i = @add(i, 1)
+    }
+    if @lt(i, @len(bytes)) {
+        if @or(@eq(@get(bytes, i), _dot), @eq(@get(bytes, i), _lower_e), @eq(@get(bytes, i), _upper_e)) return 0, i, ExpectedValue
+    }
+    if negative return @sub(0, value), i, nil
+    return value, i, nil
+}
+
+.parse_bool_token(bytes [u8], offset usize) -> bool, usize, JsonError | nil {
+    i usize = skip_ws(bytes, offset)
+    if @ge(i, @len(bytes)) return false, i, UnexpectedEnd
+    if @eq(@get(bytes, i), 116) {
+        next = match_literal(bytes, i, "true")
+        if @is(next, JsonError) return false, i, next
+        return true, next, nil
+    }
+    if @eq(@get(bytes, i), 102) {
+        next = match_literal(bytes, i, "false")
+        if @is(next, JsonError) return false, i, next
+        return false, next, nil
+    }
+    return false, i, ExpectedValue
+}
+
+.parse_value(seed i32, bytes [u8], offset usize) -> i32 | JsonError {
+    value i32 = 0
+    next usize = offset
+    status JsonError | nil = nil
+    value, next, status = parse_i32_token(bytes, offset)
+    if @is(status, JsonError) return status
+    return value
+}
+
+.parse_value(seed bool, bytes [u8], offset usize) -> bool | JsonError {
+    value bool = false
+    next usize = offset
+    status JsonError | nil = nil
+    value, next, status = parse_bool_token(bytes, offset)
+    if @is(status, JsonError) return status
+    return value
+}
+
+.parse_value(seed text, bytes [u8], offset usize) -> text | JsonError {
+    value [u8] = .{}
+    next usize = offset
+    status JsonError | nil = nil
+    value, next, status = parse_string_token(bytes, offset)
+    if @is(status, JsonError) return status
+    return value
+}
+
+.parse_value(seed [u8], bytes [u8], offset usize) -> [u8] | JsonError {
+    value [u8] = .{}
+    next usize = offset
+    status JsonError | nil = nil
+    value, next, status = parse_string_token(bytes, offset)
+    if @is(status, JsonError) return status
+    return value
+}
+
+#T
+.parse_value(seed T, bytes [u8], offset usize) -> T | JsonError {
+    return parse_object(seed, bytes, offset)
+}
+
+#T
+.parse_object(seed T, bytes [u8], offset usize) -> T | JsonError {
+    end = skip_object(bytes, offset)
+    if @is(end, JsonError) return end
+
+    out T = seed
+    loop field = fields(T) {
+        value_offset = find_field_value_at(bytes, offset, @field_name(field))
+        if @is(value_offset, JsonError) return value_offset
+        if @eq(value_offset, nil) continue
+        parsed = parse_value(@field_get(out, field), bytes, value_offset)
+        if @is(parsed, JsonError) return parsed
+        out = @field_set(out, field, parsed)
+    }
+    return out
+}
+
+#T
+from_json(bytes [u8]) -> T | JsonError {
+    seed T = .{}
+    out = parse_object(seed, bytes, 0)
+    if @is(out, JsonError) return out
+    end = skip_object(bytes, 0)
+    if @is(end, JsonError) return end
+    rest usize = skip_ws(bytes, end)
+    if @ne(rest, @len(bytes)) return InvalidJson
+    return out
 }

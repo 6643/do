@@ -4,7 +4,6 @@ start() {
     loop value, index = xs {
         if @eq(index, 0) continue #outer
         if @eq(value, 2) break #outer
-        value = value
     }
     return
 }

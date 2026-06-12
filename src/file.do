@@ -6,7 +6,6 @@
 .host_file_drop = @wasi("filesystem/types/descriptor.drop", (descriptor) -> nil)
 
 FileError error = FileOpenFailed | FileClosed | FileReadFailed | FileWriteFailed | FileFlushFailed | FileCloseFailed | FileLinkFailed
-FileOutcome = FileError | nil
 
 File {
     .id i64
@@ -47,7 +46,7 @@ flush_file(file File) -> FileError | nil {
     return file_status_to_error(status, FileFlushFailed)
 }
 
-read_file(file File, offset usize, size usize) -> [u8], bool, FileOutcome {
+read_file(file File, offset usize, size usize) -> [u8], bool, FileError | nil {
     data [u8] = .{}
     done bool = false
     status i32 = 0

@@ -156,7 +156,7 @@ Error
 2. 私有类型名出现在类型声明左侧（`DeclTypeName`）；类型引用位统一去点。
 3. 私有声明在声明位使用前置 `.`；`.` 只表示可见性，去点后的部分才是实际 name；访问时统一去点（字段路径段除外）。
 4. builtin special form 名、core 路径 primitive 名、core 固定函数名、声明专用名与保留类型名不得用于顶层声明、导入别名、参数名或局部绑定。字段实际 name 按字段保留集合处理，允许复用 `len/add/to_i32` 这类 core 固定函数名。core 固定函数名只在调用位按固定 core 规则使用；不能声明同名普通函数，不能通过 local function import alias 或 host import alias 引入同名符号，也不能在当前模块用普通函数声明显式包装成同名新签名。
-5. 顶层名字共享同一名字空间；仅同名函数族允许重名。枚举分支值也是顶层 public 值名，必须参与同一命名冲突检查。普通类型名可以使用 `NotFound`、`Ready` 这类看起来像枚举分支值的 `UpperIdent`，只要当前可见范围里没有同名枚举分支值、错误枚举类型名或同类 type import alias。同一模块内类型声明名、type import alias、顶层模块级可变变量名、顶层常量名、value import alias、readonly import alias、host import alias、普通函数声明和函数 import alias 的签名先整体收集，再检查字段类型、alias RHS、初始化表达式、函数签名、函数体、lambda 体、测试体和接口函数约束；因此顶层类型、值与函数声明顺序不影响可见性。
+5. 顶层名字共享同一名字空间；仅同名函数族允许重名。枚举分支值也是顶层 public 值名，必须参与同一命名冲突检查。普通类型名可以使用 `NotFound`、`Ready` 这类看起来像枚举分支值的 `UpperIdent`，只要当前可见范围里没有同名枚举分支值、错误枚举类型名或同类 type import alias。同一模块内类型声明名、type import alias、顶层模块级可变变量名、顶层常量名、value import alias、readonly import alias、host import alias、普通函数声明和函数 import alias 的签名先整体收集，再检查字段类型、类型实参、初始化表达式、函数签名、函数体、lambda 体、测试体和接口函数约束；因此顶层类型、值与函数声明顺序不影响可见性。
    ```do decl ok
    UserBox {
        value User
@@ -275,7 +275,7 @@ Error
     ```
 22. `@env` 宿主函数名遵循 `PathSeg`，仅允许小写字母、数字与单个下划线分词；下划线不能连续出现，也不能出现在开头或结尾。`@wasi` 的 `package`、`interface` 和 `member` 使用 WIT 名字，可用 `.` 表示 WIT 名字里的平级分段，也可用 `-` 表达外部名字，例如 `system-clock`、`descriptor.write`、`descriptor.link-at`。当前 `@wasi` 不在源码里写 WIT 版本号；版本选择属于工具链依赖解析和组件绑定问题，不放进 host import 语法。
 23. host import 签名是 ABI 声明，必须 inline 写在导入语句里。`@env` 参数只允许 `i32/i64/f32/f64`，不支持 `bool`；返回只允许 `nil` 或单个 `i32/i64/f32/f64`，同样不支持 `bool`，也不支持 `@env("pair", () -> i32, i32)` 这类多返回签名。`do build` 当前输出 core WAT 时会把 `@env` 函数导入降成普通 Wasm import，例如 `(import "env" "add" (func $host_add ...))`。当普通字符串字面量直接作为 `@env` 调用实参出现，且该位置正好对应连续两个 `i32` ABI 参数时，`do build` 会把字面量解码为 UTF-8 data segment，导出 linear memory，并在调用位传入 `ptr,len`。`do build` 也支持 `s text = "..."` 这类 typed text literal binding，并把 `text` 局部、参数和返回值作为 ARC storage handle 传递；底层 payload 复用 `[u8]` 布局并保持有效 UTF-8 语义，但这仍不是完整文本 runtime，例如 Unicode 操作和任意表达式位置的字符串字面量 lowering 仍要按具体能力逐步落地。当单个 `[u8]` 或 `text` storage local/参数作为 `@env` 调用实参出现，且该位置同样对应连续两个 `i32` ABI 参数时，`do build` 会把它展开为 storage payload 的 data pointer 与当前 `len`；这用于标准库 wrapper 把字节缓冲或文本传给宿主，不表示源码层暴露裸 pointer。该展开不适用于 `[i32]`、结构体或任意标量 local。direct `@lib(...)` 导入函数内部出现的 host 字符串字面量、`text` storage wrapper 和 `[u8]` wrapper 调用也按同一规则参与当前 WAT 模块的 data segment 与 host call lowering。`@wasi` 参数和返回使用 WIT type：普通 WIT 名字、`list<T>`、`result<T, E>`、`tuple<A, B, ...>`、`option<T>`、`borrow<T>`、`own<T>`、`_`，以及当前模块中直接声明的 public do 结构体名。do 结构体名在 `@wasi` 签名里只表示 WIT `record` 的本地镜像，字段名、顺序和字段类型必须与目标 WIT record 可验证地一致；它不是新的 WIT 类型声明，也不能用来表达 WIT `resource`、`variant`、`flags` 或 `result`。`@wasi` 只是外部签名声明；标准库面向 do 源码的公开 API 仍应包装成普通 do 类型、结构和错误枚举，例如把 WIT `result<filesize, error-code>` 转成 `usize | FileError` 或更具体的公开函数返回设计，而不是把 WIT `result<...>` 当作普通源码类型到处传播。当前 `do build` 已允许入口模块和递归导入模块中的合法 `@wasi` 声明进入私有 binding manifest，并在 core WAT 中输出 `;; wasi-bind source="entry" alias="name" target="package/interface/member" params="..." result="..."` 或 `;; wasi-bind source="module-path" alias="name" target="package/interface/member" params="..." result="..."` 记录，供后续 component/WIT lowering 消费；`params` 是逗号分隔的 WIT 参数类型文本，空参数写成空字符串，`result` 是单个 WIT 返回类型文本。`source="entry"` 固定表示编译入口模块，导入模块使用解析后的模块路径。`@wasi` alias 仍是模块内局部名字，因此后续 binding generator 必须同时使用 `source + alias` 定位声明，不能只看 `alias`。当前语义层只对已经进入最小 registry 的 WASI target 做精确 `params/result` 校验；如果已知 target 的返回是已登记的 WIT record 镜像，例如 `clocks/system-clock/now -> Datetime`，还会检查 Do struct 字段名、顺序和字段类型；未知 target 只做 WIT 类型语法校验，不能视为可执行绑定。P3 lowering 细节见 `doc/wit/wasi_p3_lowering.md`。`validate_wasi_bind_manifest.mjs --json` 会输出已知 binding 的 `resolved` 和 `shim` 信息；其中 scalar 参数 + scalar 返回、已登记 record 返回、已登记 `list<u8>` 返回或已登记 `descriptor.sync` / `descriptor.write` / `descriptor.read` / `descriptor.link-at` result-area 形态会带 `shim.lowering`，记录 component import 身份、concrete cm32p2 core import、canonical ABI core 参数/返回，以及 Do 结果布局。`--component-plan` 只接受全部已知且可 lower 的 binding，并输出 component builder 可消费的 imports/shims 计划；遇到未知 target 或复杂 WIT 签名会失败。`--wit` 复用同一严格入口，为单个 WIT package 生成 imports world；当前覆盖普通函数 imports 和已登记的 `descriptor.sync` / `descriptor.write` / `descriptor.read` / `descriptor.link-at` resource method；如果输出跨多个 WIT package 或遇到尚未登记的 resource method 形态，则先失败，直到后续支持目录/package graph 和更多 method 输出。`--core-imports` 也复用同一严格入口，生成去重后的 `cm32p2` core import WAT 片段，用于锁定后续 component builder 要嵌入的导入 ABI。`--core-shims` 在此基础上生成按 `source + alias` 命名的 canonical ABI shim 片段。当前 `do build` 已把已登记的 scalar/record/list<u8> 子集和 `result<_,error-code>` / `result<filesize,error-code>` / `result<tuple<list<u8>,bool>,error-code>` 裸调用接入 direct codegen：scalar result 直接接 core result；`Datetime` 这类 record-result 使用预留 result-area scratch 调用 `cm32p2` import，再按字段 load 成 Do 的 flattened struct 返回；`descriptor.sync` 的 `result<_,error-code>` 允许 statement position 忽略结果，也允许显式多左值读取为 `_, status = host_file_sync(...)`，其中 `status i32 == 0` 表示 ok，非 0 表示 `error-code` 枚举索引加 1；`descriptor.write` 的 `result<filesize,error-code>` 允许 statement position 忽略结果，也允许显式多左值读取为 `written, status = host_file_write(...)`，其中 `written u64` 接收 ok payload，`status i32 == 0` 表示 ok，非 0 表示 `error-code` 枚举索引加 1；`descriptor.read` 的 `result<tuple<list<u8>,bool>,error-code>` 允许显式三左值读取为 `data, done, status = host_file_read(...)`，其中 `data [u8]` 接收 ok payload 的 `list<u8>` 拷贝，`done bool` 接收 ok payload 的 bool，`status i32 == 0` 表示 ok，非 0 表示 `error-code` 枚举索引加 1；`descriptor.link-at` 的 `result<_,error-code>` 允许显式多左值读取为 `_, status = host_file_link_at(old_file, flags, old_path, new_file, new_path)`，两个 WIT `string` 参数接受直接字符串字面量或 Do `text` local/param 并降成 canonical ABI `ptr,len`；`[u8]` 不会被当作 WIT `string`。`status i32 == 0` 表示 ok，非 0 表示 `error-code` 枚举索引加 1；单值绑定、返回位或普通表达式位仍不允许。这个能力不表示所有 WASI 都已可执行；未知 target 或 `result/resource/variant/flags` 等复杂签名在源码直接调用 `@wasi` alias，或经由导入的标准库 wrapper 调用链触达该 alias 时，仍会报 `UnsupportedWasiHostImport`，避免把 WIT resource/result 错误生成为普通 core call。第一版不支持先声明 `#F = (...) -> ...`，再写 `name F = @env("foo")` 或 `name F = @wasi("...")` 这种 host import 缩写。
-    补充: 当前 `cm32p2` canonical ABI 下，WIT record 返回值使用间接结果区；例如 `clocks/system-clock/now -> Datetime` 的 core import 形态是 `params = ["i32"], results = []`，由调用方传入结果区指针，再按 Do record layout 读取字段。scalar 返回值仍直接映射到 core result，例如 `u64 -> i64`。当前 build 子集里，非托管结构体参数按字段 flatten，例如 `File{ .id i64 }` 参数降成 `$file.id i64`；单值 union 返回、union 局部和多返回列表中的 union alias 使用统一 payload+tag lowering: 先按分支顺序输出各分支 payload slot, 最后跟一个 `i32` runtime tag；`nil` tag 固定为 0, 非 `nil` 分支按源码分支顺序从 1 开始。标量、错误枚举和 managed storage 分支各占一个 payload slot；非 managed struct 分支按字段 flatten 后占多个 payload slot。例如 `FileError | nil` lowering 为错误 payload 加 tag, `File | FileError` lowering 为 `File.id` payload、错误 payload 和 tag。`@is(value, TypeExpr)` 读取 tag 判断类型分支；`@eq(value, nil)` / `@ne(value, nil)` 读取 tag 判断 `nil` 值分支。显式多返回 `return` 和同 ABI 函数调用透传都按展开后的 ABI slots 对齐。
+    补充: 当前 `cm32p2` canonical ABI 下，WIT record 返回值使用间接结果区；例如 `clocks/system-clock/now -> Datetime` 的 core import 形态是 `params = ["i32"], results = []`，由调用方传入结果区指针，再按 Do record layout 读取字段。scalar 返回值仍直接映射到 core result，例如 `u64 -> i64`。当前 build 子集里，非托管结构体参数按字段 flatten，例如 `File{ .id i64 }` 参数降成 `$file.id i64`；单值 union 返回、union 局部和多返回列表中的 union 类型使用统一 payload+tag lowering: 先按分支顺序输出各分支 payload slot, 最后跟一个 `i32` runtime tag；`nil` tag 固定为 0, 非 `nil` 分支按源码分支顺序从 1 开始。标量、错误枚举和 managed storage 分支各占一个 payload slot；非 managed struct 分支按字段 flatten 后占多个 payload slot。例如 `FileError | nil` lowering 为错误 payload 加 tag, `File | FileError` lowering 为 `File.id` payload、错误 payload 和 tag。`@is(value, TypeExpr)` 读取 tag 判断类型分支；`@eq(value, nil)` / `@ne(value, nil)` 读取 tag 判断 `nil` 值分支。显式多返回 `return` 和同 ABI 函数调用透传都按展开后的 ABI slots 对齐。
     补充: `descriptor.drop` 这类 resource-drop 不是 WIT 普通 resource method；标准库内部可用 `.host_file_drop = @wasi("filesystem/types/descriptor.drop", (descriptor) -> nil)` 表达当前 direct lowering, codegen 生成 `[resource-drop]descriptor` core import。公开 API 仍包装成 `close_file(file File) -> FileError | nil` 这类 Do 函数；当前 resource-drop 没有普通错误结果, wrapper 成功调用后返回 `nil`。该能力只表示 direct core import lowering, 不表示完整 component resource lifetime 已完成。
     正例:
     ```do fragment ok
@@ -314,7 +314,7 @@ Error
 本章定义类型位可出现的形态、类型声明、结构体、enum/error enum、union/nil、函数类型边界和类型大小约束。
 
 1. `List/HashMap` 等库类型由 `std` 或用户库定义，并按普通 `StructRefType` 解析；`[u8]` 是 core storage 类型表达式 `[T]` 的具体实例，不是可声明或可导入的命名类型。
-2. 只有 `StructDecl` 支持前置 `#T` 声明泛型类型参数；`StructDecl` 的类型参数只表达数据类型，不接受函数类型约束；`AliasDecl` 与 `EnumDecl` 当前不支持泛型声明；`TypeArgs` 按声明顺序绑定类型参数，数量必须与声明的类型参数数量完全一致；没有前置类型参数的本地 `StructDecl` 不接受 `TypeArgs`。
+2. 只有 `StructDecl` 支持前置 `#T` 声明泛型类型参数；`StructDecl` 的类型参数只表达数据类型，不接受函数类型约束；`EnumDecl` 不支持泛型声明；顶层 type alias / union alias 语法已取消。`TypeArgs` 按声明顺序绑定类型参数，数量必须与声明的类型参数数量完全一致；没有前置类型参数的本地 `StructDecl` 不接受 `TypeArgs`。
     ```do program ok
     #T
     #U
@@ -332,10 +332,8 @@ Error
         id i32
     }
 
-    MaybeUser = User | nil
-
-    test "union alias no type args" {
-        u MaybeUser = nil
+    test "direct nullable type" {
+        u User | nil = nil
         return
     }
 
@@ -376,10 +374,8 @@ Error
         return
     }
 
-    MaybeUser = User | nil
-
-    test "alias type args" {
-        u MaybeUser<i32> = nil
+    test "top level alias removed" {
+        MaybeUser = User | nil
         return
     }
 
@@ -392,7 +388,7 @@ Error
         return
     }
     ```
-3. 普通类型位写类型特征本身，不接受外层无意义括号；写 `x i32`、`f F`、`#F = (i32) -> i32`，不写 `x (i32)`、`f (F)`、`#F = ((i32) -> i32)`。函数、lambda、`FuncType` 与接口约束的参数位使用 `ParamTypeExpr`，不接收 union/nullable；返回位、字段、局部绑定、storage 元素和 type args 仍使用 `ValueTypeExpr`。函数类型只在前置类型约束 RHS、绑定函数参数位和接口函数约束参数位使用；顶层 `AliasDecl`、`ValueDecl`、字段、局部绑定、storage 和函数返回位不直接承载函数类型。这些限制按实际类型判断，不能通过 alias 间接绕过。
+3. 普通类型位写类型特征本身，不接受外层无意义括号；写 `x i32`、`f F`、`#F = (i32) -> i32`，不写 `x (i32)`、`f (F)`、`#F = ((i32) -> i32)`。函数、lambda、`FuncType` 与接口约束的参数位使用 `ParamTypeExpr`，不接收 union/nullable；返回位、字段、局部绑定、storage 元素和 type args 仍使用 `ValueTypeExpr`。函数类型只在前置类型约束 RHS、绑定函数参数位和接口函数约束参数位使用；顶层 type alias、`ValueDecl`、字段、局部绑定、storage 和函数返回位不直接承载函数类型。
    ```do fragment err name=struct_function_field
    Callback = (i32) -> i32
    Handler {
@@ -418,21 +414,21 @@ Error
        f F | nil
    }
    ```
-4. `TypeArgs` 入口同样写类型特征本身，不接受外层括号分组、匿名函数类型或尾逗号；写 `List<i32>`、`List<i32 | nil>`，不写 `List<(i32)>`、`List<(i32 | nil)>`、`List<() -> i32>` 或 `List<i32,>`。函数类型先用紧贴的 `#F = ...` 约束命名，再在函数参数位直接用 `F`，不要把函数类型放进顶层 `AliasDecl`、`ValueDecl`、字段、局部绑定、storage、type args、union 或函数返回位。
+4. `TypeArgs` 入口同样写类型特征本身，不接受外层括号分组、匿名函数类型或尾逗号；写 `List<i32>`、`List<i32 | nil>`，不写 `List<(i32)>`、`List<(i32 | nil)>`、`List<() -> i32>` 或 `List<i32,>`。函数类型先用紧贴的 `#F = ...` 约束命名，再在函数参数位直接用 `F`，不要把函数类型放进顶层 type alias、`ValueDecl`、字段、局部绑定、storage、type args、union 或函数返回位。
 5. `nil` 同时承担值位与签名位语义，但在语法上仍是同一个 token：
    - 值位 `nil`：空值分支，可作为表达式值参与赋值与返回；函数参数位不接收 nullable，因此 `nil` 不能直接作为用户函数实参。
    - `nil` 没有默认类型；`x = nil` 这类无目标类型绑定非法，需写 `x T | nil = nil`，或放在字段、返回、聚合初始化等已知目标类型位置。
    - 联合类型位 `T | nil`：声明可空值分支，`nil` 固定写在 union 末位。它仍是类型表达式，不是 `-> nil` 的缩写。
    - 返回签名位 `-> nil`：声明无返回值上下文。
-   - 裸类型位 `nil` 非法；`(nil)` 这种只包一层括号的写法也非法；参数、字段、局部绑定、alias RHS 和类型约束不能只写 `nil`。
+   - 裸类型位 `nil` 非法；`(nil)` 这种只包一层括号的写法也非法；参数、字段、局部绑定和类型约束不能只写 `nil`。
    - 同一个 union 内 `nil` 分支最多出现一次，必须写在末位，且 union 至少还有一个非 `nil` 分支；`(nil)` 不能当作合法替身。
    - 同一个 union 内所有分支按类型身份唯一；`i32 | i32`、`User | User` 这类重复分支非法；普通类型位不支持外层无意义括号，`(i32) | i32` 直接非法。
-   - union 是类似 enum 的平铺类型集合，不做嵌套和展开归一化。已知普通 union alias、已知 nullable/union 类型或绑定为 union 的类型参数，不能再作为另一个 union 的分支写入 `A | B`；例如 `MaybeUser = User | nil` 后不能写 `ReadResult = MaybeUser | FileError` 或 `Again = MaybeUser | nil`。需要组合时直接声明一个新的平铺 union，例如 `ReadResult = User | FileError | nil`。
-   - 函数参数、lambda 参数、匿名函数类型参数和接口函数约束参数都属于参数位，实际类型不得是 union/nullable；即使通过 `MaybeUser = User | nil` 这类 alias 间接引用也非法。返回位、字段、局部绑定、storage 元素和 type args 仍可使用 union/nullable。
+   - union 是类似 enum 的平铺类型集合，不做嵌套和展开归一化。已知 nullable/union 类型或绑定为 union 的类型参数，不能再作为另一个 union 的分支写入 `A | B`。需要组合时在目标类型位直接写一个新的平铺 union，例如 `User | FileError | nil`。
+   - 函数参数、lambda 参数、匿名函数类型参数和接口函数约束参数都属于参数位，实际类型不得是 union/nullable。返回位、字段、局部绑定、storage 元素和 type args 仍可使用 union/nullable。
    - `()-> T | nil` 返回空分支时必须写 `return nil`；`()-> nil` 可写 `return` 或 `return nil`。
    - 泛型字段需要空分支时，在字段声明位写 `value T | nil`，实例化仍写 `Box<i32>`；构造值可写 `Box<i32>{value = nil}`。
 6. 联合返回位要求右侧表达式自身先定型到唯一分支。
-7. 结构体值必须有有限静态大小；非空值字段不能形成结构体布局闭环。`T | nil`、`[T]` 和普通索引/id 字段会打断结构体大小依赖；直接字段 `next Node` 或互相嵌套字段 `A.b B` / `B.a A` 不会打断。`AliasDecl` 也不能形成循环引用；union alias 的每个分支必须是当前规则下合法的非嵌套分支类型，不通过展开打断布局闭环。
+7. 结构体值必须有有限静态大小；非空值字段不能形成结构体布局闭环。`T | nil`、`[T]` 和普通索引/id 字段会打断结构体大小依赖；直接字段 `next Node` 或互相嵌套字段 `A.b B` / `B.a A` 不会打断。顶层 type alias / union alias 已取消，不能通过 alias 间接打断或隐藏布局闭环。
     ```do decl ok
     Node {
         next Node | nil
@@ -463,14 +459,13 @@ Error
     A = B | nil
     B = A | nil
     ```
-8. `ErrorEnumDecl` 声明 public 错误枚举，名称使用 `ErrorEnumName`，允许 `CError` 这类一字母前缀名，不支持私有 `.XxxError error = ...` 声明；`ErrorEnumName` 只能用于错误枚举声明，不能用于 `StructDecl`、`ValueEnumDecl` 或普通 `AliasDecl`；右侧分支使用裸 `EnumBranchName` 值名，例如 `FileError error = FileNotFound | FilePermissionDenied`。错误枚举右侧分支是值，不是类型。
+8. `ErrorEnumDecl` 声明 public 错误枚举，名称使用 `ErrorEnumName`，允许 `CError` 这类一字母前缀名，不支持私有 `.XxxError error = ...` 声明；`ErrorEnumName` 只能用于错误枚举声明，不能用于 `StructDecl`、`ValueEnumDecl` 或顶层 type alias；右侧分支使用裸 `EnumBranchName` 值名，例如 `FileError error = FileNotFound | FilePermissionDenied`。错误枚举右侧分支是值，不是类型。
 9. `ValueEnumDecl` 声明带整数承载值的 enum，名称使用普通 `DeclTypeName`，承载类型只接收 `BaseIntType`；public value enum 写 `OrderStatus i8 = OrderCreated(1) | OrderPaid(2)`，private value enum 写 `.InternalStatus i8 = Ready(1) | .Hidden(2)`。private value enum 类型和 private enum 分支值只能在当前模块文件内使用，不能导入，也不能通过 import alias 间接导出；同模块内引用 private 类型或 private 分支时使用去点后的实际名，例如 `InternalStatus` 与 `Hidden`。右侧每个分支都必须显式给出整数值，承载值必须落在该 `BaseIntType` 的范围内，且同一 enum 内承载值唯一。enum 分支实际 name 不得与当前可见类型名、enum 类型名、其他 enum 分支名或同类 import alias 重名。
 10. enum 类型可出现在类型位、返回位、字段、局部绑定、storage 元素、type args、`is` 目标和函数参数位。enum 分支值只出现在值位，可赋值、返回或用 `eq/ne` 精确比较；源码只写裸 `UpperIdent`，不支持 `Type.Branch` 或其他 `xxx.xxx` 限定名写法（字段路径段除外）。
-11. 错误枚举不能聚合已知错误枚举或 enum 类型；例如 `AppError error = FileError | NetworkError` 非法，因为错误枚举右侧只接收分支值。普通 `AliasDecl` 也不能把一个或多个错误枚举类型命名成新的纯错误聚合；例如 `App = FileError | NetworkError` 非法。需要组合多个错误来源时，在返回、字段、局部绑定或 storage/type args 里直接写具体来源，例如 `[u8] | FileError | NetworkError`。参数位仍不接收这种 union。
-12. 源码类型位不能直接写合成 `Error`；返回、字段、局部绑定、alias RHS、type args、storage 元素和类型约束都使用具体错误枚举类型。Primitive trap / safety failure 不属于 `Error`，不能通过返回 `Error` 捕获。
+11. 错误枚举不能聚合已知错误枚举或 enum 类型；例如 `AppError error = FileError | NetworkError` 非法，因为错误枚举右侧只接收分支值。顶层 type alias / union alias 已取消，因此 `App = FileError | NetworkError` 也非法。需要组合多个错误来源时，在返回、字段、局部绑定或 storage/type args 里直接写具体来源，例如 `[u8] | FileError | NetworkError`。参数位仍不接收这种 union。
+12. 源码类型位不能直接写合成 `Error`；返回、字段、局部绑定、type args、storage 元素和类型约束都使用具体错误枚举类型。Primitive trap / safety failure 不属于 `Error`，不能通过返回 `Error` 捕获。
 13. public enum 分支值是可导入的 public 值；private enum 分支值只能在声明所在模块文件内使用。跨文件构造或精确比较 public 分支值时导入该分支值。enum 分支值导入时可以改名以避免冲突，本地 alias 仍写 `UpperImportName`，但 alias 不能使用 `*Error` 后缀；例如 `FileMissing = @lib("fs.do", FileNotFound)` 合法，`file_missing = @lib("fs.do", FileNotFound)` 与 `FileNotFoundError = @lib("fs.do", FileNotFound)` 非法。
-14. union 不做展开规范化，也不能嵌套。普通 `AliasDecl` 声明的是一个命名的平铺 union 类型，语义类似 enum；它可以整体出现在返回、字段、局部绑定、`is` 目标、type args 或 storage 元素类型里，但不能作为函数参数、lambda 参数、匿名函数类型参数、接口函数约束参数或变参元素类型，也不能作为另一个 union 的分支继续写入 `A | B`。泛型实例化后若某个 `T | nil`、`T | U` 或其他 union 组合会把已知 union 放进外层 union，直接拒绝该次实例化，不做展开、去重或移动 `nil`。源码直接写出的重复分支仍非法，例如 `User | User`、`User | nil | nil` 非法。
-    普通 `AliasDecl` 只用于声明一个命名的平铺 union 类型；它的语义类似 enum，只能整体作为一个 union 类型使用，不会在其他 union 中展开，也不能作为另一个 union 的分支嵌套使用。`AliasDecl` 不用于给单个类型、基础类型、storage 类型、泛型实例或当前模块已经可见的具名类型再起名字。因此 `UserId = i32`、`RawBytes = [u8]`、`Profile = User`、`Users = List<User>` 和 `AliasProfile = Profile` 都非法。需要给外部声明改名时，只能在 import 左侧直接改名；需要 `UserId` 与 `OrderId` 这类强类型时，用单字段 struct 等显式数据结构表达。
+14. union 不做展开规范化，也不能嵌套。顶层 type alias / union alias 已取消；`TypeName = A | B`、`TypeName = T | nil`、`UserId = i32`、`RawBytes = [u8]`、`Profile = User`、`Users = List<User>` 和 `AliasProfile = Profile` 都非法。需要组合类型时，在返回、字段、局部绑定、storage 元素或 type args 里直接写平铺 union；需要给外部声明改名时，只能在 import 左侧直接改名；需要 `UserId` 与 `OrderId` 这类强类型时，用单字段 struct 等显式数据结构表达。源码直接写出的重复分支仍非法，例如 `User | User`、`User | nil | nil` 非法。
     ```do program err
     // user.do
     User {
@@ -489,18 +484,7 @@ Error
 
     Profile = User
     ```
-    上例同样非法；当前模块自己声明的具名类型不允许再用单分支 `AliasDecl` 改名。
-    ```do program ok
-    // user.do
-    User {
-        id i32
-    }
-
-    // main.do
-    User = @lib("./user.do", User)
-    MaybeUser = User | nil
-    ```
-    上例合法；`MaybeUser` 是 union alias，不是单分支别名。
+    上例同样非法；当前模块自己声明的具名类型不允许再用顶层 alias 改名。
     ```do program ok
     // user.do
     User {
@@ -509,15 +493,17 @@ Error
 
     // main.do
     Profile = @lib("./user.do", User)
-    MaybeProfile = Profile | nil
+    load() -> Profile | nil {
+        return nil
+    }
     ```
-    上例同样合法；type import alias 可以参与 union alias，但不能再写成 `AliasProfile = Profile` 这种单分支别名。
+    上例合法；type import alias 可以直接参与返回、字段、局部绑定、storage 元素和 type args 里的 union，但不能再写成 `MaybeProfile = Profile | nil` 或 `AliasProfile = Profile`。
     ```do fragment err
     RawId = i32
     UserId = RawId
     OrderId = UserId
     ```
-    上例三行都非法；普通 `AliasDecl` 不能给单个类型起名。
+    上例三行都非法；顶层 type alias 语法已取消，不能给单个类型起名。
 
 15. 泛型结构体声明的每个类型参数至少出现在一个字段类型里；不支持没有字段承载的 phantom type 参数。能力约束放在使用该类型的函数上。
 
@@ -577,7 +563,7 @@ Error
 
 ## 6. 绑定、赋值与作用域
 
-本章定义局部绑定、只读绑定、丢弃位、参数和 loop 绑定的不可变性，以及模块级值的读写边界。
+本章定义局部绑定、只读绑定、丢弃位、参数和 loop 绑定的读写规则，以及模块级值的读写边界。
 
 1. 赋值左侧先查最近可见绑定；命中则更新，未命中则创建。
 2. 未命中时创建新绑定，右侧表达式已经能唯一确定类型；新绑定创建使用已定型右侧表达式，`.{...}` 在存在目标类型上下文时使用。
@@ -609,7 +595,7 @@ Error
 13. 命中当前可见模块级可变变量或其 value import alias 时，赋值直接更新对应模块存储，不创建新的局部绑定。通过 import 引入的模块级可变变量同样按原存储读写。
 14. `_` 为丢弃位；在赋值左侧通过 `DiscardTarget` 出现，在 loop 绑定位按 loop 语法出现；函数参数和 lambda 参数不能使用 `_`。`_` 不进入 `BindName`、`ParamName` 或 `ExprIdent`，不创建绑定，不能作为值表达式读取，也不能 `return _`。多个 `_` 彼此独立，只表示逐位丢弃。
 15. 局部绑定采用块作用域；`if`、`loop`、lambda 体内创建的绑定只在该块内可见。
-16. 函数参数、lambda 参数和 `loop` 绑定是只读本地绑定，不能被重新赋值；需要修改时先创建新的局部绑定。
+16. 函数参数是可写本地绑定；命中后赋值会更新当前参数绑定，不创建新的局部绑定。`loop` 头部绑定是只读循环绑定，循环体内不能给该绑定赋值；需要修改元素时更新源集合，或先声明新的局部绑定承接计算结果。`_name` 仍是只读绑定；参数名和 loop 绑定位不能写 `_name`。lambda 参数不支持 `_name`，并按 lambda 当前支持的函数体子集处理。
    ```do decl ok
    make() -> i32 {
        return 1
@@ -669,12 +655,12 @@ Error
 
 本章定义普通函数、函数名值位、lambda、调用定型、重载、不定参数、spread、表达式语句和返回/多返回规则。
 
-1. `LambdaExpr` 只出现在普通调用实参位，以及 PEG 明确列出的 primitive value 位，例如 `@set(target, path..., lambda)` 的最终 value 位；语法形如 `(x i32) => @add(x, 1)`、`(x i32) -> i32 => @add(x, 1)` 或 `(x i32) -> i32 { ... }`。
+1. `LambdaExpr` 只出现在普通调用实参位，以及 PEG 明确列出的 primitive value 位，例如 `@set(target, path..., lambda)` 的最终 value 位；语法形如 `(x i32) => @add(x, 1)`、`(x i32) -> i32 => @add(x, 1)`、`(x i32) -> i32 { ... }`，以及目标返回类型已知为 `nil` 时的省略写法 `(x i32) { ... }`。
 2. `LambdaExpr` 可读取顶层常量、可读写当前可见的模块级可变变量，并可调用当前可见函数；它不形成闭包，不能捕获外层局部绑定，也不能绑定到变量或作为值返回。访问模块级名字不算捕获。
 3. 顶层函数的 `=>` 函数体是函数声明短写，不是 `LambdaExpr`，不产生可传递函数值。
 4. 函数名可在已有目标 `FuncType` 的值位作为函数值传递，仅用于高阶函数实参。
 5. lambda 参数类型可省略；省略时必须由已选调用候选的目标 `FuncType` 提供参数类型，不能由 lambda body 反推。
-6. lambda 返回类型可省略；省略时要求目标 `FuncType` 的返回类型已经完全确定，并在调用候选已选定、参数类型已确定后由 lambda body 检查是否匹配该返回类型；lambda body 不能绑定目标函数类型里的泛型返回参数。
+6. lambda 返回类型可省略；省略时要求目标 `FuncType` 的返回类型已经完全确定，并在调用候选已选定、参数类型已确定后由 lambda body 检查是否匹配该返回类型；lambda body 不能绑定目标函数类型里的泛型返回参数。若目标返回类型确定为 `nil`，块体 lambda 可进一步省略 `-> nil`，直接写成 `(x T) { ... }`。
 7. 块体 lambda 内的 `return` 只返回当前 lambda，不返回外层函数或测试体。
 8. 调用表达式的 callee 只接受 `LowerIdent`；函数声明名、函数 import alias 和 host import alias 也使用 `LowerIdent`，私有函数调用时去掉声明位的前置 `.`。语义上，callee 必须解析为当前可见函数族名字、当前可见 host import alias，或当前静态类型已经确定为命名函数类型 `F` 的局部名；局部绑定名、函数参数名、lambda 参数名和 loop 绑定位不得与当前可见普通函数族名、函数 import alias 或 host import alias 同名，因此 callee 不存在“局部函数值”和“顶层可调用 lower 符号”同名优先级规则。函数参数位不接收 union/nullable，因此没有 `F | nil` 形参或可选回调 callee 规则；需要回调时直接传入已定型为 `F` 的函数值。例如 `.double(...)` 是声明写法，调用写 `double(...)`；`.double(...)` 调用非法。host import alias 只支持这种直接调用形态，不进入普通函数值解析。
 9. 函数族唯一性由去掉声明位前置 `.` 后的函数名与参数类型序列决定；返回类型不参与重载身份，不能通过不同返回类型构成重载；普通函数重载只在当前模块的普通函数声明之间形成。同一实际函数名不能混合 public 与 private overload；若存在 `convert(...)`，就不能再声明 `.convert(...)`，反之亦然。带接口函数签名约束 `#name(...) -> Return` 的接口函数不参与普通函数重载，也不和其他接口函数彼此重载；接口函数的实际函数名在当前模块内必须唯一，不能和普通函数声明、函数 import alias 或 host import alias 共用同名。函数 import alias 不参与本地重载拼装；`alias = @lib("./file.do", name)` 绑定的是目标模块里实际函数名 `name` 对应的 public 普通函数族，它可以是单个声明，也可以是目标模块内已经存在的同名 public 普通重载族，但不包含目标模块内同名 private overload 或同名接口函数。但同一个 alias 仍只能指向一个来源模块里的这一个实际函数名，不能靠多个 import 把不同来源或不同实际名字的人为拼成同名重载族。函数 import alias 也不能和当前模块的普通函数声明同名共存；若需要同时保留两者，必须改其中一方的名字。host import alias 同样不能和当前模块的普通函数声明、函数 import alias 或其他 host import alias 同名共存。同一实际函数名配合同一参数类型序列对应唯一定义。函数参数位使用 `ParamTypeExpr`，实际类型不得是 union/nullable；重载只在单一参数类型序列之间选择。enum 类型是普通参数类型，可参与重载；enum 分支值不是类型，不能写在参数类型位。调用时只按实参的静态参数类型序列精确选择，不做 nullable/union 包含关系扩展。
@@ -732,11 +718,11 @@ Error
         return
     }
 
-    from_json(text [u8]) -> User {
+    from_json(bytes [u8]) -> User {
         return User{}
     }
 
-    from_json(text [u8]) -> Game {
+    from_json(bytes [u8]) -> Game {
         return Game{}
     }
 
@@ -766,15 +752,16 @@ Error
     ```
     推荐:
     ```do decl ok
-    from_json_user(text [u8]) -> User {
-        return User{}
+    #T
+    from_json(bytes [u8]) -> T | JsonError {
+        return .{}
     }
 
-    from_json_game(text [u8]) -> Game {
-        return Game{}
+    read_user(bytes [u8]) -> User | JsonError {
+        return from_json<User>(bytes)
     }
     ```
-    `to_json(User) -> [u8]` / `to_json(Game) -> [u8]` 这类接口已经可以靠参数重载表达；真正想借返回类型区分的通常只有 `from_json([u8]) -> User` / `from_json([u8]) -> Game` 这类同输入不同输出接口。规范仍不让返回值参与重载，因为一旦放开，`x = from_json(text)`、`save(from_json(text))`、`return from_json(text)` 这类调用都要依赖外层期望类型反向参与候选选择，重载解析会从“只看输入实参”变成上下文敏感规则，复杂度会扩散到普通调用、泛型和错误联合返回。
+    `to_json(User) -> [u8]` / `to_json(Game) -> [u8]` 这类接口已经可以靠参数重载表达；真正想借返回类型区分的通常只有 `from_json([u8]) -> User` / `from_json([u8]) -> Game` 这类同输入不同输出接口。规范仍不让返回值参与重载，也不靠左侧目标类型反推普通调用；这类泛型解码入口应写成单个 `#T from_json(bytes [u8]) -> T | JsonError`，调用点用显式类型实参 `from_json<User>(bytes)` 绑定 `T`。这样目标类型仍在调用表达式内可见，不把 `x = from_json(text)`、`save(from_json(text))`、`return from_json(text)` 这类调用扩展成上下文敏感候选选择。
 10. 不定参数参与函数族唯一性；`rest ...T` 的签名尾部记作 `...T`，不同于单个 `T`。
 11. 重载调用先让输入实参定型，再用实参的静态参数类型序列精确挑选候选；参数类型必须完全一致才匹配，不按 union/nullable 包含关系扩展候选。同名同 arity 下，具体参数签名与泛型 fallback 可以共存；存在精确具体签名时优先选择具体签名，只有没有具体匹配时才实例化泛型 fallback。两个泛型声明若同名且同 arity，直接视为重复或歧义并在声明期拒绝。
 12. 若函数名与参数个数只对应唯一候选，该候选的参数类型可为实参字面量提供上下文。
@@ -783,7 +770,7 @@ Error
 15. lambda 实参参与重载选择时，只提供参数个数、显式参数类型和显式返回类型；lambda body 不参与重载候选选择。
 16. 调用候选唯一确定后，lambda body 才进入类型检查；省略的 lambda 参数类型从目标 `FuncType` 补齐。省略的 lambda 返回类型只在目标返回类型已经完全确定时可由 body 检查推出；若省略返回类型会绑定目标函数类型中的泛型返回参数，必须显式写 `-> Return`。
 17. 不定参数候选匹配固定前缀实参数量后，剩余实参逐个按 `...T` 的 `T` 定型；`rest ...T` 接收 0 个或多个尾部实参，函数体内的 `rest` 绑定类型为 `[T]`；第一版只支持同类型不定参数。同名函数族中固定 arity 候选和不定参数候选同时匹配时，固定 arity 候选优先；多个不定参数候选同时匹配时，固定前缀更长的候选优先。同名不定参数声明若固定前缀长度和参数类型序列相同，则签名重复，声明非法；返回类型不参与区分。
-   变参元素类型同样属于参数位，实际类型不得是 union/nullable；`collect(rest ...User | nil)` 与通过 `MaybeUser = User | nil` 间接写 `collect(rest ...MaybeUser)` 都非法。若 `...F` 中的 `F` 解析为函数类型约束名，语法可进入 `VariadicElemType` 的名字分支，但语义上会形成 `[F]` rest 绑定；由于函数类型不能作为 storage 元素类型，该声明按 storage/function-type 规则拒绝，不为变参入口额外设计特判。接口约束里的变参元素复用同一参数位规则。
+   变参元素类型同样属于参数位，实际类型不得是 union/nullable；`collect(rest ...User | nil)` 非法。若 `...F` 中的 `F` 解析为函数类型约束名，语法可进入 `VariadicElemType` 的名字分支，但语义上会形成 `[F]` rest 绑定；由于函数类型不能作为 storage 元素类型，该声明按 storage/function-type 规则拒绝，不为变参入口额外设计特判。接口约束里的变参元素复用同一参数位规则。
 18. `...expr` 只在函数调用实参位生效，只能出现在实参列表最后，一次调用最多一个展开。
 19. `...expr` 的表达式必须定型为 `[T]` 或库定义同类型连续序列，且目标函数的对应实参位必须落在 `...T` 尾部；固定参数、host import 固定 ABI 参数和非变参 import 目标都不能接收展开实参。`@add/@sub/@mul/@div/@rem` 的 core 原始数值调用接收尾部展开时，展开前必须已有两个固定实参；这些 core 名不接受用户或标准库补充的同名变参重载。非 core 普通变参函数仍按普通变参规则匹配。
 20. 展开调用只匹配被调函数最后一个不定参数位；展开后不能再接普通实参。
@@ -803,7 +790,7 @@ Error
 33. 多返回函数内写 `return a, b` 时，逗号分隔的是当前函数要返回的多个单值；写 `return other()` 时，`other()` 必须是等位数多返回调用。`return` 与 `=>` 的返回列表都使用同一行内逗号分隔，不接受逗号换行或尾逗号；写 `return a, b`、`pair() -> i32, bool => a, b`，不写 `return a,\n b`、`pair() -> i32, bool => a,\n b` 或 `return a, b,`。`return` 位置不直接接收行字符串；需要返回行字符串内容时，先把行字符串绑定到局部值，再返回该绑定。
 34. 多返回签名按顶层逗号分隔；每个返回项各自是完整 `ValueTypeExpr`，返回项内部可以包含联合类型。返回签名不接受尾逗号；写 `-> A, B`，不写 `-> A, B,`。返回项不接收函数类型；即使函数类型已命名为 `F`，也不能写 `-> F` 或 `-> T | F`。
 35. `FuncType` 中一旦匹配到 `->`，`->` 后的顶层逗号归属 `InlineReturnSpec`，用于分隔返回项；返回项内部的 `|` 仍归属该返回项的 `InlineValueTypeExpr`。例如 `() -> i8, bool | i32` 表示返回两个值：`i8` 与 `bool | i32`。
-36. 匿名函数类型只作为函数前置类型约束局部名使用；`#F = (...) -> ...` 绑定紧随其后的一个函数，不会进入顶层类型名字空间。顶层 `AliasDecl` 不接收函数类型，因此不能写 `F = (...) -> ...`，也不能从其他文件 import 函数类型 alias。函数参数中的函数类型只允许写成紧贴约束块声明的 `F`；`F | nil`、`F | i32`、`T | F` 这类 nullable/union 参数都非法。顶层 `AliasDecl`、`ValueDecl`、字段、局部绑定、storage 元素、type args 与函数返回位不直接承载函数类型。匿名函数类型不能直接作为外层 union 分支。需要可选回调时用普通数据状态字段或调用方分支控制是否传入回调，不通过函数参数位的 `F | nil` 或函数字段表达。
+36. 匿名函数类型只作为函数前置类型约束局部名使用；`#F = (...) -> ...` 绑定紧随其后的一个函数，不会进入顶层类型名字空间。顶层 type alias 已取消，因此不能写 `F = (...) -> ...`，也不能从其他文件 import 函数类型 alias。函数参数中的函数类型只允许写成紧贴约束块声明的 `F`；`F | nil`、`F | i32`、`T | F` 这类 nullable/union 参数都非法。`ValueDecl`、字段、局部绑定、storage 元素、type args 与函数返回位不直接承载函数类型。匿名函数类型不能直接作为外层 union 分支。需要可选回调时用普通数据状态字段或调用方分支控制是否传入回调，不通过函数参数位的 `F | nil` 或函数字段表达。
 37. 表达式体函数与块体函数都遵循同一返回匹配规则。
 38. `nil` 返回上下文允许 `return` 与 `return nil` 等价。
 39. `-> T | nil` 的函数在返回 `nil` 分支时必须显式写 `return nil`；裸 `return` 只适用于 `-> nil` 返回上下文。
@@ -834,7 +821,7 @@ Error
 本章定义结构体泛型、函数前置约束块、函数类型约束、接口函数约束和泛型求解规则。
 
 1. 类型声明与 type import alias 按去掉声明位前置 `.` 后的实际 name 唯一；例如 `.InternalUser` 与 `InternalUser` 不能同时作为类型名出现。函数或结构体前置约束块里的局部约束名共享一个局部名字空间；同一约束块内不得重复声明同名 `#T` 或 `#F = ...`，也不得和当前可见的类型声明名、错误枚举类型名、type import alias 或枚举分支值同名。约束块局部名不提供遮蔽规则；需要泛型类型参数时使用不冲突的 `T/U/F/Q` 这类局部名。
-2. 只有 `StructDecl` 支持前置 `#T` 声明泛型类型参数；`StructDecl` 的类型参数只表达数据类型，不接受函数类型约束；`AliasDecl` 与 `EnumDecl` 当前不支持泛型声明；`TypeArgs` 按声明顺序绑定类型参数，数量必须与声明的类型参数数量完全一致；没有前置类型参数的本地 `StructDecl` 不接受 `TypeArgs`。
+2. 只有 `StructDecl` 支持前置 `#T` 声明泛型类型参数；`StructDecl` 的类型参数只表达数据类型，不接受函数类型约束；`EnumDecl` 不支持泛型声明；顶层 type alias / union alias 语法已取消。`TypeArgs` 按声明顺序绑定类型参数，数量必须与声明的类型参数数量完全一致；没有前置类型参数的本地 `StructDecl` 不接受 `TypeArgs`。
     ```do program ok
     #T
     #U
@@ -852,10 +839,8 @@ Error
         id i32
     }
 
-    MaybeUser = User | nil
-
-    test "union alias no type args" {
-        u MaybeUser = nil
+    test "direct nullable type" {
+        u User | nil = nil
         return
     }
 
@@ -896,10 +881,8 @@ Error
         return
     }
 
-    MaybeUser = User | nil
-
-    test "alias type args" {
-        u MaybeUser<i32> = nil
+    test "top level alias removed" {
+        MaybeUser = User | nil
         return
     }
 
@@ -937,20 +920,20 @@ Handler {
     f F | nil
 }
 ```
-3. `#T` 是普通数据类型参数声明，只声明未知数据类型参数名，不提供能力约束；普通类型参数的实际绑定结果必须是数据类型，不能是 `#F = FuncType` 声明出的函数类型，也不能是接口约束本身。当前不支持受限数据类型参数或派生候选集合，因此函数约束块里不能写 `#T = i32 | i64`、`#T = i32`、`#Q = T | User` 或任何 `#Name = ValueTypeExpr`。具体 union 需要命名时使用普通顶层 union alias，例如 `MaybeUser = User | nil`。`#F = FuncType` 是函数声明前的函数类型约束，RHS 只接收匿名函数类型，不接收普通具体类型、联合类型或已有函数类型约束名。结构体声明前只支持 `#T` 这类普通数据类型参数，不支持 `= ...` 形式或函数类型约束。`#name(...) -> Return` 是函数声明前的接口函数签名约束。
+3. `#T` 是普通数据类型参数声明，只声明未知数据类型参数名，不提供能力约束；普通类型参数的实际绑定结果必须是数据类型，不能是 `#F = FuncType` 声明出的函数类型，也不能是接口约束本身。当前不支持受限数据类型参数或派生候选集合，因此函数约束块里不能写 `#T = i32 | i64`、`#T = i32`、`#Q = T | User` 或任何 `#Name = ValueTypeExpr`。需要具体 union 时，直接在返回位、字段、局部绑定、storage 元素或 type args 里写平铺 union；依赖未知类型参数的派生 union 第一版不提供局部命名语法。`#F = FuncType` 是函数声明前的函数类型约束，RHS 只接收匿名函数类型，不接收普通具体类型、联合类型或已有函数类型约束名。结构体声明前只支持 `#T` 这类普通数据类型参数，不支持 `= ...` 形式或函数类型约束。`#name(...) -> Return` 是函数声明前的接口函数签名约束。
 4. 约束块绑定紧随其后的一个函数或结构体；绑定完成后不继续作用于后续声明，后续声明若需要同名约束必须重复写约束块。同名约束在不同绑定声明中是局部名；同一约束块内普通类型参数名和函数类型约束名共享局部名字空间，不能重复，也不能遮蔽当前可见类型名、错误枚举类型名、type import alias 或 enum 分支值。顶层不支持共享函数类型 alias；只写 `#F = (...) -> ...` 不会把 `F` 带到下一个声明，后续声明必须重新写自己的紧贴约束块。约束块内不允许给已有函数类型约束再起局部别名、可选别名或 storage 包装别名；`#F = (...) -> ...` 之后不能再写 `#G = F`、`#G = F | nil` 或 `#G = [F]`。函数类型约束必须在绑定函数的参数类型里至少出现一次，且只能以单一参数类型 `F` 出现，不能作为 nullable/union 参数出现。每条函数类型约束都必须至少有一个对应函数参数在函数体里按该函数类型签名被实际调用，或被传给另一个同签名且自身合法的函数；这里的同签名按实际 `FuncType` 签名比较，不按两个声明里的局部约束名字符串比较。唯一例外是用户显式为具体命名函数类型定义的函数值文本化重载 `to_text(f F) -> text`；只有这个签名可把函数值当作不透明值处理而不调用。`debug_func(f F) -> text`、`inspect(f F) -> text` 这类名字没有例外，必须调用或转发。若回调返回值携带类型参数，返回值必须被返回、赋值、传参，或用 `_ = f(...)` 显式丢弃，裸调用后隐式丢弃不算实际使用；多返回回调的显式丢弃仍按多左值赋值规则逐位匹配，不能用单个 `_` 丢弃整个多返回结果。绑定函数时，每个无等号普通数据类型参数都必须能从参数侧信息唯一求解；普通数据泛型可以只做传递、包装或返回，不要求虚构接口能力约束。绑定结构体时，每个无等号普通数据类型参数都必须在该结构体字段类型里至少出现一次；未被字段实际使用的结构体类型参数非法。普通类型参数只是局部泛型名，不参与函数名唯一性判断。接口函数约束只绑定函数声明，不能绑定结构体；接口函数约束前必须至少已有一个同块普通类型参数声明，且每条接口函数约束都必须引用同块里更早声明的至少一个普通类型参数名；不支持纯具体签名断言。具体函数直接按普通可见函数规则调用。约束块不能绑定 alias、enum、value 或 import 声明。
 5. 同一约束块内约束名唯一；同一个名字一旦在当前约束块里声明，就不能再以另一种约束形态重复声明。接口函数约束按函数名和参数类型序列唯一，返回类型不参与唯一性判断；同名但参数类型序列不同的接口函数约束允许并存，表示同一次接口实例化要求当前可见普通函数族里同时存在这些参数签名；这只是能力要求，不让绑定出来的接口函数参与普通重载。因此同名同参数的接口约束不能只靠返回值不同并存，这种约束组合本身就不存在。普通类型参数名和函数类型约束名不得与当前可见具体类型名、错误枚举类型名、type import alias 或 enum 分支值重名；若当前已可见 `User` 这类结构体、`FileError` 这类错误枚举、`Profile` 这类 type import alias，或 `FileNotFound` 这类 enum 分支值，都不能再写成 `#User`、`#User = (...) -> ...`、`#FileError`、`#FileError = (...) -> ...`、`#Profile`、`#Profile = (...) -> ...`、`#FileNotFound` 或 `#FileNotFound = (...) -> ...`。若同一约束块内有多个函数类型约束，且它们按实际 `FuncType` 参数类型序列与返回签名完全一致，也视为重复声明，非法。
 6. 约束独立成行，必须连续贴合其绑定的声明头；约束与声明之间不能有空行或注释行。若需要注释，放在整个约束块之前。函数类型约束和接口函数签名约束本身必须单行 inline；签名内部不允许换行。
 7. 函数约束列表先写所有无等号的普通类型参数声明；随后写本地 `#F = FuncType` 函数类型约束，并按 RHS 依赖顺序只引用更早声明的普通类型参数；最后写接口函数签名约束。PEG 不再接收 `#Name = ValueTypeExpr`。
 8. 类型参数名使用 `PublicTypeName` 形态，接口函数名使用非保留 `LowerIdent`；因此类型参数名不能使用错误枚举名形态，`#FileError`、`#ResultError` 这类写法非法。
 9. 普通类型参数名使用当前可见 UpperIdent 名字、`core` 预导入类型名和保留类型名之外的新名字；不能遮蔽同文件声明或 import 引入的具体类型名、错误枚举类型名、enum 分支值或同类 import alias。该限制同时适用于结构体前置类型参数和函数前置普通类型参数。
-10. 函数声明的每个无等号普通数据类型参数都必须能从参数侧信息求解：要么直接出现在某个参数类型里，要么虽只出现在返回位，但能通过同一约束块里的函数类型约束或接口函数约束、结合其他已由参数定住的类型参数继续解出。多个前置约束可以对同一个类型参数联合求解；只有联合后的绑定唯一且一致时，该泛型声明才成立。普通数据类型参数的求解结果必须是数据类型；即使当前可见普通函数族里存在 `to_text(F) -> text` 这类接收函数类型的实现，也不能把 `T` 求解成函数类型 `F` 来满足 `#to_text(T) -> text`。普通调用只从已定型实参与由这些实参触发的前置约束推导无等号普通数据类型参数；不能只靠调用点左侧目标类型反向推断。若某个无等号普通数据类型参数既不出现在参数位，也不能经由这些约束从参数侧唯一解出，则该泛型声明非法。函数调用语法不支持显式 `name<TypeArgs>(...)`。函数名作为函数值实参时，可在目标 `FuncType` 中按唯一函数候选的参数类型与返回类型绑定类型参数。泛型签名比较按类型参数结构做 alpha 等价，局部类型参数名不进入重载身份。普通函数重载只看参数签名，不看返回类型；参数签名完全一致而只靠返回类型区分的同名函数非法。带接口函数签名约束的绑定函数是接口函数，不参与普通函数重载；接口函数实际名必须独立，不能和普通函数族、函数 import alias、host import alias 或另一个接口函数共用同名。只有不带接口函数约束的普通函数声明才进入普通函数族；单独使用 `#F = FuncType` 的函数仍按普通函数处理。同名普通函数族中，具体参数签名可与同 arity 泛型 fallback 共存；调用时先尝试精确具体候选，再用泛型 fallback 实例化。两个泛型声明若同名同 arity，直接视为重复或歧义并在声明期拒绝；返回类型不参与区分。当前语言不支持函数类型作为独立顶层 alias、字段类型、局部绑定类型、storage 元素类型或返回类型；函数类型只在函数参数位与前置类型约束里命名和使用；顶层 `AliasDecl`、`ValueDecl`、字段、局部绑定、storage 和函数返回位不接收函数类型。命名函数类型约束的 lambda 实参可省略参数类型，但返回类型绑定泛型参数时必须显式写出。
+10. 函数声明的每个无等号普通数据类型参数都必须能从参数侧信息求解：要么直接出现在某个参数类型里，要么虽只出现在返回位，但能通过同一约束块里的函数类型约束或接口函数约束、结合其他已由参数定住的类型参数继续解出。多个前置约束可以对同一个类型参数联合求解；只有联合后的绑定唯一且一致时，该泛型声明才成立。普通数据类型参数的求解结果必须是数据类型；即使当前可见普通函数族里存在 `to_text(F) -> text` 这类接收函数类型的实现，也不能把 `T` 求解成函数类型 `F` 来满足 `#to_text(T) -> text`。普通调用只从已定型实参与由这些实参触发的前置约束推导无等号普通数据类型参数；不能只靠调用点左侧目标类型反向推断。若某个无等号普通数据类型参数既不出现在参数位，也不能经由这些约束从参数侧唯一解出，则该泛型声明只能通过显式调用类型实参实例化，调用写作 `name<TypeArgs>(args)`，例如 `from_json<User>(bytes)`；未写显式类型实参的 `name(args)` 仍按参数侧信息推导，不使用返回上下文。显式调用类型实参只用于普通泛型函数调用，不用于 builtin、core 固定调用、host import、函数值调用或非泛型普通函数；类型实参数量必须与声明的普通数据类型参数数量一致。函数名作为函数值实参时，可在目标 `FuncType` 中按唯一函数候选的参数类型与返回类型绑定类型参数。泛型签名比较按类型参数结构做 alpha 等价，局部类型参数名不进入重载身份。普通函数重载只看参数签名，不看返回类型；参数签名完全一致而只靠返回类型区分的同名函数非法。带接口函数签名约束的绑定函数是接口函数，不参与普通函数重载；接口函数实际名必须独立，不能和普通函数族、函数 import alias、host import alias 或另一个接口函数共用同名。只有不带接口函数约束的普通函数声明才进入普通函数族；单独使用 `#F = FuncType` 的函数仍按普通函数处理。同名普通函数族中，具体参数签名可与同 arity 泛型 fallback 共存；调用时先尝试精确具体候选，再用泛型 fallback 实例化。两个泛型声明若同名同 arity，直接视为重复或歧义并在声明期拒绝；返回类型不参与区分。当前语言不支持函数类型作为独立顶层 alias、字段类型、局部绑定类型、storage 元素类型或返回类型；函数类型只在函数参数位与前置类型约束里命名和使用；顶层 type alias、`ValueDecl`、字段、局部绑定、storage 和函数返回位不接收函数类型。命名函数类型约束的 lambda 实参可省略参数类型，但返回类型绑定泛型参数时必须显式写出。
 11. `#F = FuncType` 的 RHS 只能是匿名函数类型；该函数类型内部的参数位和返回位可引用同一约束块内更早声明的数据类型参数，不允许前向引用后续 `#U`，也不从 RHS 隐式声明类型参数。`#F = FuncType` 的 RHS 不能在任何层级引用另一个函数类型约束名，因此不能写 `#G = F`、`#G = F | nil` 或 `#G = [F]` 来表达函数类型别名、可选回调别名或函数 storage 包装。可选回调不通过函数参数位表达；需要时由调用方分支选择是否调用，或用普通数据结构承载状态。比如 `#F = () -> i8, bool | i32` 约束 `F` 为无参函数类型，返回 `i8` 与 `bool | i32` 两个值。
 12. 泛型函数体中对数据类型参数调用函数时，由对应接口函数签名约束提供能力；`#T` 只声明数据类型参数。
 13. 接口约束里的函数名只能引用当前文件可见的非保留普通函数名，且不得等于该约束块最终绑定函数的实际函数名；即使前面已经存在同名可见重载族，也不能用 `#show(T) -> [u8]` 约束紧随其后的 `show(...)`。builtin special form 名、core 固定调用名、host import alias、声明专用名和保留类型名不能作为接口约束名，因此 `#is(...)`、`#recv(...)`、`#get(...)`、`#set(...)`、`#eq(...)`、`#add(...)`、`#len(...)`、`#put(...)`、`#to_u8(...)`、`#start(...)`、`#test(...)`、`#text(...)`、`#string(...)`、`#char(...)` 非法。泛型若需要加法、长度、相等或排序能力，必须定义或 import 非 core 普通函数族，例如 `#combine(T, T) -> T`、`#size(T) -> usize`、`#same(T, T) -> bool` 或 `#before(T, T) -> bool`。`copy` 不属于内建能力；若要写 `#copy(T) -> T`，当前文件必须显式定义或 import 一个可见的普通 `copy` 函数族；`std` 和用户模块需要显式 import。
     通过 local import 或标准库 import 引入的函数 alias，同样算当前文件可见的普通函数名，可以写进接口约束；若该 alias 绑定的是目标模块里现成的同名重载族，则它在接口约束里也按这个重载族参与匹配。同文件 private 普通函数在声明位写 `.name`，但接口约束位与调用位都使用去点后的实际名字 `name`；跨文件 private 函数仍然不可见，不能拿来满足接口约束。`host import` 虽然也在当前文件里形成 `LowerIdent` 名字，但它不属于普通函数族，不能作为接口约束名。
-    接口约束也支持尾部变参签名，例如 `#sum(T, T, ...T) -> T`；匹配时复用普通函数族的变参签名规则。尾部变参位里的元素类型使用 `VariadicElemType`，因此 `#copy_boxes(...Box<T>) -> [Box<T>]` 这类复合类型变参合法；但变参元素仍属于参数位，实际类型不得是 union/nullable；`#collect(...T | nil) -> i32` 和通过 union alias 间接写出的等价签名都非法。
-    type import alias 参与接口约束匹配时，归一到来源 public 类型身份后比较。普通 union alias 是命名 union 类型，但接口约束参数位复用普通参数类型表达式，实际类型不得是 union/nullable，因此 union alias 不能出现在接口约束参数位；`#has_user(T | nil) -> bool` 或 `#has_user(MaybeUser) -> bool` 都非法。`[T]`、`Box<T>`、公开 type import alias 和更深组合合法，前提是最终参数类型本身不是 union/nullable。匹配时每个参数位的类型都必须完全一致。
+    接口约束也支持尾部变参签名，例如 `#sum(T, T, ...T) -> T`；匹配时复用普通函数族的变参签名规则。尾部变参位里的元素类型使用 `VariadicElemType`，因此 `#copy_boxes(...Box<T>) -> [Box<T>]` 这类复合类型变参合法；但变参元素仍属于参数位，实际类型不得是 union/nullable；`#collect(...T | nil) -> i32` 非法。
+    type import alias 参与接口约束匹配时，归一到来源 public 类型身份后比较。接口约束参数位复用普通参数类型表达式，实际类型不得是 union/nullable，因此 `#has_user(T | nil) -> bool` 非法。`[T]`、`Box<T>`、公开 type import alias 和更深组合合法，前提是最终参数类型本身不是 union/nullable。匹配时每个参数位的类型都必须完全一致。
     接口约束返回位使用 inline 返回签名，可写 `-> nil`、单返回或多返回，但签名内部不允许换行；这里的单返回也包含联合类型单返回，例如 `-> T | nil` 或 `-> [u8] | FileError`，它们仍然算一位返回，不是多返回。多返回时每一位返回槽仍然各自复用 inline 类型表达式，因此 `-> T | nil, bool` 是合法的两位返回。匹配时返回位数与每一位返回类型也都必须完全一致。
     接口约束写出的整条参数签名必须和被约束的实际函数声明签名完全一致；`#count(...T)` 只匹配 `count(rest ...T)`，不匹配 `count(first T, rest ...T)`，`#sum(T, T, ...T)` 也不匹配 `sum(T, T, T)`。同一个接口约束里的同一个类型参数只绑定一个具体数据类型，并贯穿该约束整条签名；因此 `#same(T, T)` 要求两个参数位都是同一个具体数据类型，`#echo(T) -> T` 也要求参数位和返回位绑定到同一个具体数据类型，`#pair(T) -> T, T` 则要求所有对应返回位保持同一个具体数据类型。
     同一约束块里先由 `#T`、`#U` 等声明出的类型参数在后续所有接口函数约束和最终函数签名中共享；接口约束不会为每一条 `#name(...) -> ...` 重新引入一份局部同名类型参数。接口函数约束里的不同类型参数按名字独立绑定；若同一条 `#name(...) -> ...` 同时出现 `T` 和 `U`，它们可以在某次实例化里分别落成不同具体数据类型，例如 `#cast(T) -> U` 可以绑定成 `T = i32`、`U = i64`。这种独立绑定规则只作用于 `#name(...) -> ...` 接口函数约束，和 `#F = (T) -> U` 的函数类型约束保持一致。
@@ -1218,7 +1201,7 @@ item = @get(user, .abc, @add(i, 1), .name)
 4. `src/binary.do` 属于 `std` 字节编解码辅助库，提供 `read_u16_le/read_u16_be/read_u32_le/read_u32_be/read_u64_le/read_u64_be` 与 `write_u16_le/write_u16_be/write_u32_le/write_u32_be/write_u64_le/write_u64_be` 这类显式大小端函数；little-endian read 包装 core `@load_*_le`，big-endian read 显式组合字节；越界仍由底层 storage 前置条件处理，不返回额外错误枚举。`src/mem.do` 属于 `std` 缓冲区辅助库，公开 `mem_len/mem_can_access/mem_read_*/mem_write_*/mem_read_bytes/mem_write_bytes/mem_fill/mem_copy` 及对应 `_or` checked 包装；little-endian 定宽 read 包装 core `@load_*_le`，未带 `_or` 的函数遵守前置条件，带 `_or` 的函数在越界时返回 fallback 或原 buffer 加 `false`。当前 `mem.do` 的内存载体是 `[u8]`，不暴露裸指针或线性内存 index。
 5. `src/atomic.do` 属于 `std` 原子语义辅助库，当前公开 u32 little-endian 形态的 `atomic_load_u32/atomic_store_u32/atomic_exchange_u32/atomic_compare_exchange_u32/atomic_fetch_add_u32/atomic_fetch_sub_u32/atomic_fetch_or_u32/atomic_fetch_and_u32/atomic_fetch_xor_u32`。第一版实现基于 `[u8]` 和 `mem.do` 锁定 API 与返回值形态，不承诺生成硬件 shared-memory atomic 指令；未来若编译器引入真实 shared memory/atomic lowering，优先保持这些公开函数签名不变。
 6. `src/bytes.do` 面向原始 `[u8]`，提供 `is_empty/copy/concat/repeat_byte/slice/slice_or/take/take_or/drop/drop_or/first/first_or/last/last_or/starts_with/ends_with/contains/index_of/last_index_of/trim_left_byte/trim_byte/trim_right_byte/replace` 这类字节序列辅助；`src/text.do` 不声明 `Text` 类型，公开 `bytes_of(s text) -> [u8]`、`text_from(bytes [u8]) -> text | Utf8Error`、`byte_len(s text) -> usize`、`char_len(s text) -> usize | Utf8Error` 作为 `text` 与 `[u8]` 的显式边界，并继续提供 `is_empty/is_valid_utf8/validate_utf8/count_utf8/copy/concat/repeat_byte/starts_with/ends_with/contains/index_of/last_index_of/slice_or/take/take_or/drop/drop_or/first/first_or/last/last_or/trim_left_byte/trim_byte/trim_right_byte/replace` 这类 `[u8]` 文本辅助。`first/last` 是前置条件包装，`first_or/last_or` 在空 `[u8]` 时返回 fallback 加 `false`。
-7. `src/hex.do` 提供 `encode/encode_upper/decode`，错误通过 `HexError` 的具体分支值返回；`src/base64.do` 提供 `encode/encode_raw/encode_url/encode_raw_url/decode/decode_raw/decode_url/decode_raw_url`，并保留 `Encoding/new/with_padding/without_padding/encode_with/decode_with` 用于显式 alphabet 和 padding 策略；`src/url.do` 提供 `url_encode/url_decode`；`src/json.do` 提供 JSON 字符串层面的 `escape/quote/unescape`，并提供 `stringify(value T) -> [u8] | JsonError` 和 `stringify_with_depth(value T, max_depth usize) -> [u8] | JsonError` 的结构体字段序列化入口。默认最大嵌套深度为 128；深度耗尽返回 `JsonError` 的 `MaxDepth` 分支。当前 `stringify` 按可见字段声明顺序输出 object，字段名使用 JSON string quote，字段值编码覆盖 `i32`、`text`、`[u8]`、`bool` 以及嵌套结构体；嵌套结构体通过字段反射和普通重载递归编码。不声明 JSON AST 或 parser。上述库都以 `[u8]` 为主要输入输出，错误分支值判断使用 `eq/ne`。
+7. `src/hex.do` 提供 `encode/encode_upper/decode`，错误通过 `HexError` 的具体分支值返回；`src/base64.do` 提供 `encode/encode_raw/encode_url/encode_raw_url/decode/decode_raw/decode_url/decode_raw_url`，并保留 `Encoding/new/with_padding/without_padding/encode_with/decode_with` 用于显式 alphabet 和 padding 策略；`src/url.do` 提供 `url_encode/url_decode`；`src/json.do` 提供 JSON 字符串层面的 `escape/quote/unescape`，并提供 `stringify(value T) -> [u8] | JsonError`、`stringify_with_depth(value T, max_depth usize) -> [u8] | JsonError` 和 `from_json(bytes [u8]) -> T | JsonError` 的结构体字段序列化/反序列化入口。`from_json` 调用必须显式绑定目标类型，例如 `from_json<User>(bytes)`。默认最大嵌套深度为 128；深度耗尽返回 `JsonError` 的 `MaxDepth` 分支。当前 `stringify` 按可见字段声明顺序输出 object，字段名使用 JSON string quote，字段值编码覆盖 `i32`、`text`、`[u8]`、`bool` 以及嵌套结构体；嵌套结构体通过字段反射和普通重载递归编码。当前 `from_json` 覆盖 object 字段解码，字段值覆盖 `i32`、`text`、`[u8]`、`bool` 以及嵌套结构体；缺失字段保留构造默认值。不声明 JSON AST。上述库都以 `[u8]` 为主要输入输出，错误分支值判断使用 `eq/ne`。
 8. `src/path.do` 是纯字节路径字符串辅助库，当前只做语法级路径拼接和拆分，不访问文件系统；提供 `is_absolute/is_empty/join/basename/dirname/extname`。这些函数不判断路径是否存在，也不处理工作目录、符号链接、权限或平台文件系统状态。
 9. `src/range.do` 提供 `range_usize/range_i32/repeat_usize/repeat_i32` 这类生成 `[T]` 的基础函数；区间统一为左闭右开 `[from, end)`。当前只提供明确类型后缀的函数，不引入依赖返回值反推的泛型 range。
 10. `src/slice.do` 是 `[T]` 的 checked 切片辅助库，`slice/take/drop` 在越界或区间非法时返回 `SliceError`，`slice_or/take_or/drop_or` 使用 fallback 加 `bool`；`first/last` 是前置条件包装，`first_or/last_or` 在空 storage 时返回 fallback 加 `false`。它不改变 core `get/set` 的前置条件语义，只为调用者提供显式 checked 包装。

@@ -10,26 +10,31 @@
 4. `doc/spec_examples.md`: 正例、反例、推荐写法和回归提取素材。
 5. `doc/syntax/`: 按功能拆分的语法速查, 只展示当前正确语法。
 6. `doc/memory.md`: v1 可实现运行时内存模型。
-7. `doc/arc.md`: 长期 ARC/Perceus/并发优化草案, 不作为 v1 直接实现规格。
-8. `doc/roadmap_status.md`: roadmap 项目的当前状态、证据、跳过原因和恢复条件。
+7. `doc/memory_layout_structs.md`: allocator block、managed object 和 layout table 的结构布局伪代码。
+8. `doc/arc.md`: 长期 ARC/Perceus/并发优化草案, 不作为 v1 直接实现规格。
+9. `doc/wit/wasi_p3_lowering.md`: `@wasi` / WIT / component lowering 的 compiler-facing 合同和当前可验证产物。
+10. `doc/wit/wasi_registry.json`: 当前已登记的 WIT target / record mirror registry, 供 manifest 校验和 component-plan 工具消费。
+11. `doc/roadmap_status.md`: roadmap 项目的当前状态、证据、跳过原因和恢复条件。
 
 ## 1. 阅读路径
 
 1. 查语法是否可解析: 先看 `doc/grammar.peg`, 再看 `doc/syntax/` 对应功能页。
 2. 查语义是否允许: 看 `doc/spec_rules.md` 对应章节。
 3. 查正反例: 看 `doc/spec_examples.md`。
-4. 查运行时表示、ARC、storage 或 text lowering: 看 `doc/memory.md`。
-5. 查当前实现状态和暂跳过项: 看 `doc/roadmap_status.md`。
-6. 改 parser 语法时, 同步 `doc/grammar.peg`、`doc/syntax/`、测试和必要的 `doc/spec_rules.md` 语义约束。
-7. 改语义或静态约束时, 同步 `doc/spec_rules.md`、示例、测试和必要的 `doc/syntax/` 速查。
+4. 查运行时表示、ARC、storage 或 text lowering: 看 `doc/memory.md`; 查 allocator/block/object/layout 结构字段看 `doc/memory_layout_structs.md`。
+5. 查 `@wasi` / WIT / component lowering 边界: 看 `doc/wit/wasi_p3_lowering.md`; 查当前已登记 target 和 record mirror 看 `doc/wit/wasi_registry.json`。
+6. 查当前实现状态和暂跳过项: 看 `doc/roadmap_status.md`。
+7. 改 parser 语法时, 同步 `doc/grammar.peg`、`doc/syntax/`、测试和必要的 `doc/spec_rules.md` 语义约束。
+8. 改语义或静态约束时, 同步 `doc/spec_rules.md`、示例、测试和必要的 `doc/syntax/` 速查。
 
 ## 2. 规则索引
 
 | 主题 | 详细规则 | 速查 / 示例 |
 | --- | --- | --- |
-| 分层模型 | `doc/spec_rules.md` 第 1 章 | `doc/grammar.peg`, `doc/memory.md` |
+| 分层模型 | `doc/spec_rules.md` 第 1 章 | `doc/grammar.peg`, `doc/memory.md`, `doc/memory_layout_structs.md` |
 | 词法、命名、保留名 | `doc/spec_rules.md` 第 2 章 | `doc/grammar.peg`, `doc/syntax/README.md` |
 | 模块、导入、可见性 | `doc/spec_rules.md` 第 3 章 | `doc/syntax/module.md` |
+| Host ABI / `@wasi` / WIT lowering | `doc/spec_rules.md` 第 3, 13-14 章 | `doc/wit/wasi_p3_lowering.md`, `doc/wit/wasi_registry.json` |
 | 类型、结构体、union、enum、error | `doc/spec_rules.md` 第 4 章 | `doc/syntax/type.md`, `doc/syntax/struct.md`, `doc/syntax/union.md`, `doc/syntax/enum.md`, `doc/syntax/error.md` |
 | 表达式、字面量、定型 | `doc/spec_rules.md` 第 5 章 | `doc/syntax/expression.md`, `doc/spec_examples.md` |
 | 绑定、赋值、作用域 | `doc/spec_rules.md` 第 6 章 | `doc/spec_examples.md` |
@@ -53,12 +58,13 @@
 4. `builtin` special form、core 路径 primitive 和 core 固定函数名都必须通过保留形态调用, 不参与普通函数声明、重载、遮蔽或 import alias。
 5. `[T]` 是 core 连续存储 primitive; `text` 是源码文本基础类型, 语义要求有效 UTF-8。二者边界必须显式转换。
 6. `Error` 是编译器内部合成诊断/工具视图, 源码类型位不能直接写 `Error`。
-7. union 是命名的平铺类型集合; 函数参数位不接收 union/nullable。
+7. union 只以内联平铺类型表达式出现; 顶层 type alias / union alias 已取消。返回位、字段、局部绑定、storage 元素和 type args 可写 union/nullable, 参数位不接收 union/nullable。
 8. 函数重载只按参数类型序列决议; 返回类型不参与重载身份。
 9. `@get/@set` 只承载结构字段和 `[T]` storage 路径 primitive; `List/HashMap` 等高层集合由 `std` 或用户库提供普通函数。
-10. `loop` 分为无限循环、集合循环和预留消费循环; v1 不提供通用 iterator 协议。
-11. 顶层入口固定为 `start() { ... }`; 测试声明固定为 `test "name" { ... }`。
-12. runtime trap / safety failure 与源码可见错误枚举分离; 越界、primitive safety failure 不通过 `Error` 或普通错误枚举返回。
+10. `loop` 分为无限循环、集合循环、消费循环和字段反射循环; v1 不提供通用 iterator 协议。
+11. `@wasi` 声明的是 WIT binding, 不是普通 core Wasm import; 当前只开放已登记的 scalar/record/list<u8> 与少量 result-area wrapper 子集进入 lowering, 完整 component/resource/future/variant 支持仍后置。
+12. 顶层入口固定为 `start() { ... }`; 测试声明固定为 `test "name" { ... }`。
+13. runtime trap / safety failure 与源码可见错误枚举分离; 越界、primitive safety failure 不通过 `Error` 或普通错误枚举返回。
 
 ## 4. 维护规则
 

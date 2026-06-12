@@ -1,23 +1,15 @@
 # 联合类型
 
-## 联合别名
-
-```do
-// 值或错误联合别名
-ReadResult = [u8] | FileError
-
-// 多结构分支联合别名
-Value = User | Admin
-```
+规则: 顶层 type alias / union alias 已取消; 不写 `ReadResult = [u8] | FileError` 或 `MaybeUser = User | nil`。需要 union 时, 直接在返回位、字段、局部绑定、storage 元素或 type args 中写平铺 union。
 
 ## 可空类型
 
 ```do
 // 结构体可空类型
-MaybeUser = User | nil
+user User | nil = nil
 
 // 文本可空类型
-MaybeText = text | nil
+name text | nil = nil
 ```
 
 ## 联合返回

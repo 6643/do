@@ -6,5 +6,5 @@ id(x T) -> T {
 test "generic call explicit type args" {
     i i32 = 1
     x = id<i32>(i)
-    return
+    if @eq(x, 1) return
 }

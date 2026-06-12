@@ -51,7 +51,7 @@
 
 状态: done
 
-结论: `[u8]`、`List`、`Map`、IO、网络和 `text` runtime 的 core / std / runtime 边界已收敛到当前 v1 子集。完整 I/O 执行能力和复杂 WIT lowering 不在本项内, 继续归入最后的 WASI / Component Model。
+结论: `[u8]`、`List`、`HashMap`、IO、网络类型形态和 `text` runtime 的 core / std / runtime 边界已收敛到当前 v1 子集。完整 I/O 执行能力、真实网络 host ABI 和复杂 WIT lowering 不在本项内, 继续归入最后的 WASI / Component Model。
 
 证据:
 
@@ -83,7 +83,15 @@
 
 状态: deferred
 
-延后原因: 用户已明确要求 WASI 不是现阶段目标, 放到最后处理。当前只保留已登记 `@wasi` manifest、shim、component-core 输入与标准库 wrapper 子集作为守门。
+延后原因: 用户已明确要求 WASI 不是现阶段目标, 放到最后处理。
+
+当前保留的守门能力:
+
+- `doc/wit/wasi_p3_lowering.md` 固定当前 `@wasi` / WIT / component lowering 的 compiler-facing 合同, 明确哪些 binding 已可 lower, 哪些仍是 unsupported。
+- `doc/wit/wasi_registry.json` 是当前已登记 WIT target / record mirror registry, 供 manifest 校验与 component-plan 工具消费。
+- `tool/build/test/validate_wasi_bind_manifest.mjs` 已能对 `wasi-bind` manifest 做 registry 校验, 并生成 `--json`、`--component-plan`、`--wit`、`--core-imports`、`--core-shims` 和 `--component-input-dir` 产物。
+- `tool/build/test/run_tests.sh` 已把 `doc/wit/wasi_registry.json` 接入 WASI manifest / component-input / component-core 回归 gate。
+- `tool/build/test/ok/118_wasi_p3_std_wrappers.do` 与相关 `compile_ok/*.component_*` 用例覆盖当前公开 wrapper 子集和 component builder 输入验证链。
 
 ## 07. 生态工具
 

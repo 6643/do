@@ -47,6 +47,16 @@ first(value T, rest ...T) -> T {
 }
 ```
 
+## 显式泛型调用
+
+```do
+// 调用点显式绑定函数类型参数
+x = id<i32>(1)
+
+// `from_json` 不使用返回上下文反推目标类型, 调用点显式写类型实参
+user = from_json<User>(bytes)
+```
+
 ## 函数类型参数
 
 ```do

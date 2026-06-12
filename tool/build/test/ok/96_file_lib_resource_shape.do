@@ -1,6 +1,5 @@
 File = @lib("file.do", File)
 FileError = @lib("file.do", FileError)
-FileOutcome = @lib("file.do", FileOutcome)
 FileClosed = @lib("file.do", FileClosed)
 FileOpenFailed = @lib("file.do", FileOpenFailed)
 FileReadFailed = @lib("file.do", FileReadFailed)
@@ -22,7 +21,7 @@ accept_file(file File) {
 test "file lib resource shape" {
     err FileError = FileClosed
     link_err FileError = FileLinkFailed
-    outcome FileOutcome = nil
+    outcome FileError | nil = nil
     ok bool = @eq(outcome, nil)
     ok = @and(ok, is_file_closed(err))
     ok = @and(ok, @eq(link_err, FileLinkFailed))

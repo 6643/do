@@ -6,7 +6,6 @@ random_u64 = @lib("random.do", random_u64)
 random_bytes = @lib("random.do", random_bytes)
 File = @lib("file.do", File)
 FileError = @lib("file.do", FileError)
-FileOutcome = @lib("file.do", FileOutcome)
 FileClosed = @lib("file.do", FileClosed)
 FileLinkFailed = @lib("file.do", FileLinkFailed)
 is_file_closed = @lib("file.do", is_file_closed)
@@ -26,7 +25,6 @@ remove_dir_at = @lib("dir.do", remove_dir_at)
 InputStream = @lib("io.stream.do", InputStream)
 OutputStream = @lib("io.stream.do", OutputStream)
 StreamError = @lib("io.stream.do", StreamError)
-StreamOutcome = @lib("io.stream.do", StreamOutcome)
 StreamClosed = @lib("io.stream.do", StreamClosed)
 is_stream_closed = @lib("io.stream.do", is_stream_closed)
 read_stream = @lib("io.stream.do", read_stream)
@@ -88,10 +86,6 @@ accept_output_stream(value OutputStream) {
     return
 }
 
-accept_stream_outcome(value StreamOutcome) {
-    return
-}
-
 accept_tcp_listener(value TcpListener) {
     return
 }
@@ -116,10 +110,10 @@ test "wasi p3 std wrapper shapes" {
     ok bool = true
     file_err FileError = FileClosed
     file_link_err FileError = FileLinkFailed
-    file_outcome FileOutcome = nil
+    file_outcome FileError | nil = nil
     dir_err DirError = DirClosed
     stream_err StreamError = StreamClosed
-    stream_outcome StreamOutcome = nil
+    stream_outcome StreamError | nil = nil
     tcp_err TcpError = TcpClosed
     udp_err UdpError = UdpClosed
     http_err HttpClientError = HttpTimeout

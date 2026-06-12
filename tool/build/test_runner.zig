@@ -364,6 +364,10 @@ fn evalMultiBindingLine(
     if (findTopLevelToken(tokens, start_idx, eq_idx, ",") == null) return null;
     const call = parseSimpleCall(tokens, eq_idx + 1, line_end) orelse return null;
     const lhs_count = try countMultiBindingLhs(tokens, start_idx, eq_idx);
+    if (call.has_type_args) {
+        try bindUnsupportedValues(allocator, tokens, bindings, start_idx, eq_idx);
+        return .{ .next_idx = line_end, .unsupported = true };
+    }
     if (findFunc(funcs, call.name, countArgs(tokens, call.args_start, call.args_end)) == null) {
         try bindUnsupportedValues(allocator, tokens, bindings, start_idx, eq_idx);
         return .{ .next_idx = line_end, .unsupported = true };
@@ -438,10 +442,9 @@ fn evalExpr(
         return evalStructLiteral(allocator, tokens, funcs, bindings, trimmed.start, trimmed.end);
     }
 
-    if (tokens[trimmed.start].kind == .ident and trimmed.start + 1 < trimmed.end and tokEqToken(tokens[trimmed.start + 1], "(")) {
-        const close_paren = findMatchingInRange(tokens, trimmed.start + 1, "(", ")", trimmed.end) catch return .unknown;
-        if (close_paren + 1 != trimmed.end) return .unknown;
-        return evalCall(allocator, tokens, funcs, bindings, trimmed.start, trimmed.start + 2, close_paren);
+    if (parseSimpleCall(tokens, trimmed.start, trimmed.end)) |call| {
+        if (call.has_type_args) return .unsupported;
+        return evalCall(allocator, tokens, funcs, bindings, trimmed.start, call.args_start, call.args_end);
     }
     if (tokEqToken(tokens[trimmed.start], "@") and trimmed.start + 2 < trimmed.end and tokens[trimmed.start + 1].kind == .ident and tokEqToken(tokens[trimmed.start + 2], "(")) {
         const close_paren = findMatchingInRange(tokens, trimmed.start + 2, "(", ")", trimmed.end) catch return .unknown;
@@ -461,6 +464,7 @@ const SimpleCall = struct {
     name: []const u8,
     args_start: usize,
     args_end: usize,
+    has_type_args: bool = false,
 };
 
 fn trimParens(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) Range {
@@ -479,13 +483,21 @@ fn parseSimpleCall(tokens: []const lexer.Token, start_idx: usize, end_idx: usize
     const trimmed = trimParens(tokens, start_idx, end_idx);
     if (trimmed.start + 2 > trimmed.end) return null;
     if (tokens[trimmed.start].kind != .ident) return null;
-    if (!tokEqToken(tokens[trimmed.start + 1], "(")) return null;
-    const close_paren = findMatchingInRange(tokens, trimmed.start + 1, "(", ")", trimmed.end) catch return null;
+    var open_paren = trimmed.start + 1;
+    var has_type_args = false;
+    if (tokEqToken(tokens[open_paren], "<")) {
+        const close_angle = findMatchingInRange(tokens, open_paren, "<", ">", trimmed.end) catch return null;
+        open_paren = close_angle + 1;
+        has_type_args = true;
+    }
+    if (open_paren >= trimmed.end or !tokEqToken(tokens[open_paren], "(")) return null;
+    const close_paren = findMatchingInRange(tokens, open_paren, "(", ")", trimmed.end) catch return null;
     if (close_paren + 1 != trimmed.end) return null;
     return .{
         .name = tokens[trimmed.start].lexeme,
-        .args_start = trimmed.start + 2,
+        .args_start = open_paren + 1,
         .args_end = close_paren,
+        .has_type_args = has_type_args,
     };
 }
 
@@ -681,6 +693,7 @@ fn evalUserFuncMulti(
     };
 
     if (parseSimpleCall(tokens, range.start, range.end)) |nested| {
+        if (nested.has_type_args) return allocUnsupportedValues(allocator, expected_count);
         if (findFunc(funcs, nested.name, countArgs(tokens, nested.args_start, nested.args_end)) == null) {
             return allocUnsupportedValues(allocator, expected_count);
         }

@@ -97,6 +97,12 @@ map(items, (value i32) -> i32 {
     return @add(value, 1)
 })
 
+// 目标返回类型是 nil 时, block lambda 可省略 `-> nil`
+tap(value, (item i32) {
+    _ = @add(item, 1)
+    return
+})
+
 // 带类型参数的表达式体 lambda 实参
 map(items, (value i32) -> i32 => @add(value, 1))
 
@@ -104,7 +110,7 @@ map(items, (value i32) -> i32 => @add(value, 1))
 state = @set(state, .count, (value) => @add(value, 1))
 ```
 
-规则: lambda 不是闭包, 不能捕获外层局部绑定, 不能绑定到变量或作为值返回。lambda 只出现在普通调用实参位, 或 `@set(..., lambda)` 这类 primitive 明确接收 value 的位置。
+规则: lambda 不是闭包, 不能捕获外层局部绑定, 不能绑定到变量或作为值返回。lambda 只出现在普通调用实参位, 或 `@set(..., lambda)` 这类 primitive 明确接收 value 的位置。参数类型省略时, 必须由已选中的目标 `FuncType` 提供参数类型; block lambda 省略返回类型时, 只允许目标返回类型已经确定, 且为 `nil` 时可进一步省略 `-> nil` 写成 `(x T) { ... }`。
 
 ## 聚合
 

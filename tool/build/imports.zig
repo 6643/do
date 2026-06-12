@@ -319,7 +319,7 @@ fn loadModule(
         }
         if (isTypeLikeKind(target_kind)) {
             try checkImportedPrivateFieldCtors(ctx, tokens, import_ref, child_tokens);
-            try checkImportedTypeValueExprs(tokens, import_ref.alias_idx);
+            try checkImportedTypeValueExprs(ctx.allocator, tokens, import_ref.alias_idx);
             try checkImportedStdContainerDirectAccess(tokens, import_ref);
         }
         if (target_kind == .func) {
@@ -392,116 +392,18 @@ fn hasRequiredPrivateField(fields: []const PrivateField) bool {
     return false;
 }
 
-fn checkImportedTypeValueExprs(tokens: []const lexer.Token, alias_idx: usize) !void {
+fn checkImportedTypeValueExprs(allocator: std.mem.Allocator, tokens: []const lexer.Token, alias_idx: usize) !void {
     const alias = tokens[alias_idx].lexeme;
-    var i: usize = 0;
-    while (i < tokens.len) : (i += 1) {
-        if (isModernImportAssign(tokens, i)) {
-            i = findLineEndIdx(tokens, i) - 1;
-            continue;
-        }
-        if (tokens[i].kind != .ident) continue;
-        if (!std.mem.eql(u8, tokens[i].lexeme, alias)) continue;
-        if (!isValueExprIdent(tokens, i)) continue;
-        return markErrorAt(tokens, i, error.InvalidTypeRef);
+    var program = parser.parseProgram(allocator, tokens, tokens.len) catch
+        return markErrorAt(tokens, alias_idx, error.InvalidImportDecl);
+    defer program.deinit(allocator);
+
+    for (program.expr_nodes) |node| {
+        if (node.kind != .ident) continue;
+        const tok = tokens[node.start_tok];
+        if (!std.mem.eql(u8, tok.lexeme, alias)) continue;
+        return markErrorAt(tokens, node.start_tok, error.InvalidTypeRef);
     }
-}
-
-fn isValueExprIdent(tokens: []const lexer.Token, idx: usize) bool {
-    if (isTypeConstructorExpr(tokens, idx)) return false;
-    if (isIsTypeArgIdent(tokens, idx)) return false;
-    if (idx + 1 < tokens.len and tokEq(tokens[idx + 1], "(")) return false;
-    if (isTopLevelDeclHead(tokens, idx)) return false;
-
-    const prev_idx = previousTokenOnLine(tokens, idx) orelse return false;
-    const prev = tokens[prev_idx];
-    if (tokEq(prev, "=")) return true;
-    if (tokEq(prev, "(")) return true;
-    if (tokEq(prev, ",")) return true;
-    if (tokEq(prev, "return")) return true;
-    if (tokEq(prev, "if")) return true;
-    if (tokEq(prev, "do")) return true;
-    return false;
-}
-
-fn isIsTypeArgIdent(tokens: []const lexer.Token, idx: usize) bool {
-    const open_idx = findEnclosingCallOpen(tokens, idx) orelse return false;
-    if (open_idx == 0 or tokens[open_idx - 1].kind != .ident) return false;
-    if (!std.mem.eql(u8, tokens[open_idx - 1].lexeme, "is")) return false;
-    const close_idx = findMatching(tokens, open_idx, "(", ")") catch return false;
-    if (idx <= open_idx or idx >= close_idx) return false;
-
-    var current_arg: usize = 0;
-    var target_arg: ?usize = null;
-    var target_top_level = false;
-    var depth_paren: usize = 0;
-    var depth_brace: usize = 0;
-    var depth_angle: usize = 0;
-    var depth_bracket: usize = 0;
-
-    var i = open_idx + 1;
-    while (i < close_idx) : (i += 1) {
-        if (depth_paren == 0 and depth_brace == 0 and depth_angle == 0 and depth_bracket == 0 and tokEq(tokens[i], ",")) {
-            current_arg += 1;
-            continue;
-        }
-
-        if (i == idx) {
-            target_arg = current_arg;
-            target_top_level = depth_paren == 0 and depth_brace == 0 and depth_angle == 0 and depth_bracket == 0;
-        }
-
-        if (tokEq(tokens[i], "(")) {
-            depth_paren += 1;
-            continue;
-        }
-        if (tokEq(tokens[i], ")")) {
-            if (depth_paren > 0) depth_paren -= 1;
-            continue;
-        }
-        if (tokEq(tokens[i], "{")) {
-            depth_brace += 1;
-            continue;
-        }
-        if (tokEq(tokens[i], "}")) {
-            if (depth_brace > 0) depth_brace -= 1;
-            continue;
-        }
-        if (tokEq(tokens[i], "<")) {
-            depth_angle += 1;
-            continue;
-        }
-        if (tokEq(tokens[i], ">")) {
-            if (depth_angle > 0) depth_angle -= 1;
-            continue;
-        }
-        if (tokEq(tokens[i], "[")) {
-            depth_bracket += 1;
-            continue;
-        }
-        if (tokEq(tokens[i], "]")) {
-            if (depth_bracket > 0) depth_bracket -= 1;
-            continue;
-        }
-    }
-
-    return target_arg != null and target_arg.? == 1 and target_top_level;
-}
-
-fn findEnclosingCallOpen(tokens: []const lexer.Token, idx: usize) ?usize {
-    var depth: usize = 0;
-    var i = idx;
-    while (i > 0) {
-        i -= 1;
-        if (tokEq(tokens[i], ")")) {
-            depth += 1;
-            continue;
-        }
-        if (!tokEq(tokens[i], "(")) continue;
-        if (depth == 0) return i;
-        depth -= 1;
-    }
-    return null;
 }
 
 fn isTypeConstructorExpr(tokens: []const lexer.Token, start_idx: usize) bool {
@@ -528,18 +430,6 @@ fn isReturnTypeBeforeFuncBody(tokens: []const lexer.Token, type_idx: usize, open
         if (isReturnArrowAt(tokens, i)) return true;
     }
     return false;
-}
-
-fn previousTokenOnLine(tokens: []const lexer.Token, idx: usize) ?usize {
-    if (idx == 0) return null;
-    const line = tokens[idx].line;
-    var i = idx;
-    while (i > 0) {
-        i -= 1;
-        if (tokens[i].line != line) return null;
-        return i;
-    }
-    return null;
 }
 
 fn collectPrivateStructFields(

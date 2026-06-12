@@ -102,16 +102,12 @@ WitName          <- WitPathName ('-' WitPathName)*
 WitPathName      <- PathSeg ('.' PathSeg)*
 
 
-TypeDecl         <- GenericStructDecl / StructDecl / EnumDecl / AliasDecl
+TypeDecl         <- GenericStructDecl / StructDecl / EnumDecl
 GenericStructDecl <- StructTypeConstraintList StructDecl
 StructDecl       <- DeclTypeName '{' StmtGap? FieldDeclList? StmtGap? '}'
 EnumDecl         <- ErrorEnumDecl / ValueEnumDecl
 ErrorEnumDecl    <- ErrorEnumName 'error' '=' ErrorEnumBranchList
 ValueEnumDecl    <- DeclTypeName BaseIntType '=' ValueEnumBranchList
-AliasDecl        <- DeclTypeName '=' AliasTypeExpr
-AliasTypeExpr    <- AliasNullableTypeExpr / AliasNonNilUnionExpr
-AliasNullableTypeExpr <- NonNilUnionExpr SoftGap '|' SoftGap NilType
-AliasNonNilUnionExpr <- NonNilTypeAtom SoftGap '|' SoftGap NonNilTypeAtom (SoftGap '|' SoftGap NonNilTypeAtom)*
 ErrorEnumBranchList <- ErrorEnumBranchName (SoftGap '|' SoftGap ErrorEnumBranchName)*
 ValueEnumBranchList <- ValueEnumBranch (SoftGap '|' SoftGap ValueEnumBranch)*
 ValueEnumBranch  <- ValueEnumBranchName EnumBranchValue
@@ -342,8 +338,9 @@ FieldSeg         <- !DotFieldReservedName DotLowerIdent
 
 CoreFixedCallExpr <- '@' CoreFixedFuncName '(' SoftGap ArgList? SoftGap ')'
 
-CallExpr         <- Callee '(' SoftGap ArgList? SoftGap ')'
+CallExpr         <- Callee CallTypeArgs? '(' SoftGap ArgList? SoftGap ')'
 Callee           <- !ReservedName LowerIdent
+CallTypeArgs     <- '<' SoftGap TypeArg (CommaSep TypeArg)* SoftGap '>'
 ArgList          <- FixedArgList (CommaSep SpreadArg)? TrailComma?
                   / SpreadArg TrailComma?
 FixedArgList     <- Arg (CommaSep Arg)*

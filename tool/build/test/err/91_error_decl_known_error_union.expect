@@ -1,2 +1,1 @@
-InvalidErrorBranchName
-错误枚举写作 `XxxError error = Branch | OtherBranch`
+InvalidTypeDeclName

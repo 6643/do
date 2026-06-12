@@ -429,6 +429,8 @@ release(handle):
 
 ## 14. 原型与验证
 
+以下四个原型用于验证本节布局草案与运行时算法, 不是额外规范来源。字段布局和 v1 实现边界仍以本文件、`doc/memory.md`、`doc/roadmap_status.md` 和编译器回归为准。
+
 当前草案有四个文档侧原型:
 
 1. `doc/arc.ts`: 计算 1KB SmallBlock 的 4B 步进 slot class 和利用率。
