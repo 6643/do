@@ -4,4 +4,4 @@ call $open_file_at
 call $__wasi_import_filesystem_types_descriptor_open_at
 local.set $status
 local.set $descriptor
-call $__do_mod_0__file_status_to_open_result
+call $__mod_0__file_status_to_open_result

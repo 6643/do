@@ -1,12 +1,12 @@
 ;; arc-runtime generic slot class table v1
-(func $__do_slot_class_table_addr (param $slot_units i32) (result i32)
-(func $__do_slot_class_table_get (param $slot_units i32) (result i32)
+(func $__slot_class_table_addr (param $slot_units i32) (result i32)
+(func $__slot_class_table_get (param $slot_units i32) (result i32)
 ;; zero table slot means no block
-(func $__do_slot_class_table_get (param $slot_units i32) (result i32)
-(func $__do_slot_class_table_set (param $slot_units i32) (param $head i32)
+(func $__slot_class_table_get (param $slot_units i32) (result i32)
+(func $__slot_class_table_set (param $slot_units i32) (param $head i32)
 i32.const 2
 i32.shl
 i32.load
 i32.store
-call $__do_slot_class_table_get
-call $__do_slot_class_table_set
+call $__slot_class_table_get
+call $__slot_class_table_set

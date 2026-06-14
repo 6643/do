@@ -1,7 +1,7 @@
 ;; arc-runtime release worklist v1
-(func $__do_arc_release (param $object i32)
+(func $__arc_release (param $object i32)
 ;; arc-runtime refcount primitives v1
-(func $__do_arc_inc (param $object i32) (result i32)
+(func $__arc_inc (param $object i32) (result i32)
 ;; arc-inc-zero-sentinel
 local.get $object
 i32.load
@@ -10,7 +10,7 @@ i32.add
 i32.store
 local.get $object
 )
-(func $__do_arc_dec_no_drain (param $object i32)
+(func $__arc_dec_no_drain (param $object i32)
 (local $next_rc i32)
 ;; arc-dec-zero-sentinel
 local.get $object
@@ -23,10 +23,10 @@ local.get $next_rc
 i32.eqz
 if
 local.get $object
-call $__do_release_worklist_push
+call $__release_worklist_push
 end
 )
-(func $__do_arc_drain_release_worklist
-(func $__do_arc_dec (param $object i32)
-call $__do_arc_dec_no_drain
-call $__do_arc_drain_release_worklist
+(func $__arc_drain_release_worklist
+(func $__arc_dec (param $object i32)
+call $__arc_dec_no_drain
+call $__arc_drain_release_worklist

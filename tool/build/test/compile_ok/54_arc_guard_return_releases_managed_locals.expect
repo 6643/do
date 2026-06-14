@@ -2,6 +2,6 @@ if
 ;; arc-guard-return-release
 ;; arc-release-local data
 local.get $data
-call $__do_arc_dec
+call $__arc_dec
 return
 end

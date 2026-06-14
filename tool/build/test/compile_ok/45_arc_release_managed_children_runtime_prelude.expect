@@ -1,10 +1,10 @@
 ;; arc-runtime managed child release v1
-(func $__do_arc_release_managed_children (param $object i32)
+(func $__arc_release_managed_children (param $object i32)
 (local $type_id i32)
 (local $count i32)
 (local $index i32)
 (local $child i32)
-call $__do_layout_managed_count
-call $__do_layout_managed_offset
-call $__do_arc_dec
-call $__do_arc_release_managed_children
+call $__layout_managed_count
+call $__layout_managed_offset
+call $__arc_dec
+call $__arc_release_managed_children

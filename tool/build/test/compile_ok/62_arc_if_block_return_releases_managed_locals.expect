@@ -3,10 +3,10 @@ i32.eq
 if
 ;; arc-release-local data
 local.get $data
-call $__do_arc_dec
+call $__arc_dec
 return
 end
 ;; arc-release-local data
 local.get $data
-call $__do_arc_dec
+call $__arc_dec
 return

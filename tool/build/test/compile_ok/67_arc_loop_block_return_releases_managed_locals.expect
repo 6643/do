@@ -1,8 +1,7 @@
 ;; loop-block
-loop $__do_loop_body_
+loop $__loop_body_
 ;; arc-release-local data
 local.get $data
-call $__do_arc_dec
+call $__arc_dec
 return
-br $__do_loop_body_
 end

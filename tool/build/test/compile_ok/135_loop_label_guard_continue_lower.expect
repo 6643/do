@@ -1,6 +1,6 @@
 ;; loop-collection
-block $__do_loop_continue_
+block $__loop_continue_
 ;; loop-continue-release
-br $__do_loop_continue_
+br $__loop_continue_
 ;; loop-break-release
-br $__do_loop_break_
+br $__loop_break_

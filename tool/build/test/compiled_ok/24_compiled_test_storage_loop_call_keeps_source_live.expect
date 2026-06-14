@@ -1,0 +1,2 @@
+;; compiled-test 0 "compiled storage loop call keeps source live"
+call $__arc_inc

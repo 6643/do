@@ -1,0 +1,4 @@
+count=1 call $__arc_inc
+;; field-set-move next
+count=1 ;; arc-overwrite-release box.value
+count=1 ;; arc-release-local next

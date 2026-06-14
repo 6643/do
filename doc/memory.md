@@ -326,18 +326,18 @@ Wasm linear memory 是 runtime 实现细节。源码不暴露地址。
 1. 已有文档侧 allocator 原型: `doc/arc_allocator.ts`。
 2. 已有文档侧 Object/LayoutTable/ARC release 原型: `doc/arc_object_runtime.ts`。
 3. 已有文档侧 COW 值语义原型: `doc/arc_cow_runtime.ts`。
-4. 已有 compiler WAT runtime prelude: 输出 1KB 对齐的 `__do_heap_base` 和可变 `__do_heap_cursor`。
+4. 已有 compiler WAT runtime prelude: 输出 1KB 对齐的 `__heap_base` 和可变 `__heap_cursor`。
 5. 已有最小 WAT runtime primitives:
-   - `__do_memory_grow_to(end)`。
-   - `__do_arc_alloc(payload_bytes, type_id)` allocator v1: 先按 `object_bytes < 1024` 分流到 `__do_arc_alloc_small` / `__do_arc_alloc_large`。
-   - `__do_arc_alloc_small` 已写入 SmallBlock header、bitmap 和 Object, 并通过 slot class 外置状态扫描/复用同规格 SmallBlock 的空 slot; 如果链上没有空 slot, 再新建 1KB SmallBlock 并挂到对应 slot class 链。
-   - slot class 状态已有通用内存表, `slot_units` 映射到该规格 SmallBlock 链表头; `$__do_slot_class_4` 只是当前 WAT 回归保留的 4 号规格镜像。
-   - `__do_arc_alloc_large` 已写入 LargeBlock `cap = 1`、`span_len` 和 Object header; 分配时优先复用 free span, 命中更大 span 时会 split tail, 否则按 `span_len * 1024` 推进 heap cursor。
-   - `__do_arc_release(object)` release worklist v1: 当前通过 layout helper 扫 managed child offset, child `dec` 到 0 时进入固定容量 worklist, drain 时再逐个释放。
+   - `__memory_grow_to(end)`。
+   - `__arc_alloc(payload_bytes, type_id)` allocator v1: 先按 `object_bytes < 1024` 分流到 `__arc_alloc_small` / `__arc_alloc_large`。
+   - `__arc_alloc_small` 已写入 SmallBlock header、bitmap 和 Object, 并通过 slot class 外置状态扫描/复用同规格 SmallBlock 的空 slot; 如果链上没有空 slot, 再新建 1KB SmallBlock 并挂到对应 slot class 链。
+   - slot class 状态已有通用内存表, `slot_units` 映射到该规格 SmallBlock 链表头; `$__slot_class_4` 只是当前 WAT 回归保留的 4 号规格镜像。
+   - `__arc_alloc_large` 已写入 LargeBlock `cap = 1`、`span_len` 和 Object header; 分配时优先复用 free span, 命中更大 span 时会 split tail, 否则按 `span_len * 1024` 推进 heap cursor。
+   - `__arc_release(object)` release worklist v1: 当前通过 layout helper 扫 managed child offset, child `dec` 到 0 时进入固定容量 worklist, drain 时再逐个释放。
    - layout helper 保留 `[u8]` 的 `type_id = 1` 且 managed child count 为 0; 同时已能从源码结构声明生成含 managed 字段或嵌套 managed struct 字段的 struct layout 分支, 输出 `type_id`、payload size 和 managed field offset。
-   - `__do_arc_release(object)` 回收当前 object 时能在 small object 场景反推 SmallBlock/slot 后清 bitmap; 当 SmallBlock bitmap 为空时, 会从 slot class 链摘除并转成 1KB FreeBlock; large span 释放后会进入 free span list 并做相邻 span merge。
-   - `__do_arc_inc(object)` / `__do_arc_dec(object)` refcount v1; `dec` 到 0 时先 push release worklist, 再 drain worklist。
-   - `__do_arc_payload(object)` / `__do_arc_rc(object)` / `__do_arc_type_id(object)` header accessor。
+   - `__arc_release(object)` 回收当前 object 时能在 small object 场景反推 SmallBlock/slot 后清 bitmap; 当 SmallBlock bitmap 为空时, 会从 slot class 链摘除并转成 1KB FreeBlock; large span 释放后会进入 free span list 并做相邻 span merge。
+   - `__arc_inc(object)` / `__arc_dec(object)` refcount v1; `dec` 到 0 时先 push release worklist, 再 drain worklist。
+   - `__arc_payload(object)` / `__arc_rc(object)` / `__arc_type_id(object)` header accessor。
 6. 已有 `[u8]` 字符串字面量和 alias binding 的 build 最小 lowering: 局部变量保存 managed handle, payload 为 `len u32 + cap u32 + bytes`; `alias [u8] = data` 会对 RHS 执行 `inc`; `@len/@get/@load_*` 从 payload 读取, `@get/@load_*` 已插入 bounds check。
 7. 已有 `[u8]` 写路径的 COW lowering:
    - `@set` 在 `RC == 1` 时原地写入, 否则 clone 后写入。
@@ -348,14 +348,15 @@ Wasm linear memory 是 runtime 实现细节。源码不暴露地址。
 10. 已有含 managed 字段 struct 的最小 allocation/get/set lowering: 局部变量保存 struct object handle, payload 按 layout 读写字段, managed child 字段写入前会按 RHS 所有权执行必要 `inc`, typed alias binding 会 `inc` RHS handle, 更新时会把 RHS 单次求值到 scratch local, 再 `dec` 旧 child 并写入新 child。
 11. 已有显式 `return`、guard return、最小 `if/else/else if` 块内 return 和 fallthrough 前的最小 managed local release lowering: 按局部声明逆序对非返回值的 `[u8]` 和 managed struct handle 调用 `dec`; `return x` 直接返回 managed local 时按 ownership move 处理, callee 不释放 `x`。
 12. `if/else/else if` 和最小 `loop` 块内声明的 managed local 会在块正常落出时释放并写回 0 sentinel; 如果块内提前 `return`, 当前 return 清理路径已经释放该 local, 后续块末尾释放处于不可达路径。loop body 内的 `break/continue` 会先释放 loop body 递归收集到的 managed locals, 再跳转到 break/continue label。复杂循环回边平衡仍是后续项。
-13. 已有 `[u8]` 参数调用的最小 ownership lowering: call site 对直接 managed local 实参执行 `inc`, callee 把 `[u8]` 参数登记为 storage local 并在清理路径中 `dec`。
-14. 已有 `[u8]` 和 managed struct 覆盖赋值的最小 release lowering: 字符串 overwrite 先释放旧 storage; `@set/@put` overwrite 和 managed struct handle overwrite 先把 RHS 写入 scratch local, 再按新旧 handle 是否相同决定是否释放旧值。
-15. 继续接入分支合流、循环回边平衡、通用 `[T]` allocation/release lowering。
-16. 按 handle 模型重写通用 `[T]` 的 `@len/@get/@set/@put` lowering。
-17. 接入 `text` runtime 表示和 `[u8]` 边界函数。
-18. 插入 ARC 生命周期操作并做基础相消优化。
-19. 补通用 `@set/@put` 的写路径释放平衡; 当前只覆盖 `[u8]` 跨变量写入的临时 `inc/dec` 和 `[u8]` 覆盖赋值条件释放。
-20. 最后再评估 `@store_*`、真实 atomic 和 host/WASI 复杂 ABI。
+13. 已有独立 ownership exit plan foundation: `tool/build/ownership.zig` 先构造 `return`、guard `return`、fallthrough、block exit 和 `break/continue` 的 `ExitPlan` / `ReleaseStep`，再由 `tool/build/codegen.zig` 消费这些 steps 发出 `__arc_dec` 和必要的 0 sentinel 写回。当前这只是退出路径清理边界，不等于完整 ownership IR，也不做 escape analysis 或 region。
+14. 已有死 alias `inc/dec` 相消: 对后续不再使用的 managed alias 绑定，不再生成无意义的 alias retain/release；相关 WAT 回归已锁住 live-source 场景继续保守。
+15. 已有保守 last-use move 子集: direct storage / managed struct overwrite、用户函数 call 参数、binding、assignment、return call、union guard / nil expr、plain struct field read、field reflection read 和 managed struct field write，在可证明本地末次使用且当前 `defer` / loop 边界安全时跳过部分冗余 `inc` 并清空 source。参数、借用、helper/shared-source 字段读取、loop-carried source 仍保持保守。
+16. 已有 `[u8]` 参数调用的最小 ownership lowering: call site 对非 move 的直接 managed local 实参执行 `inc`, callee 把 `[u8]` 参数登记为 storage local并在清理路径中 `dec`。
+17. 已有 `[u8]` 和 managed struct 覆盖赋值的 release lowering: 字符串 overwrite 先释放旧 storage; `@set/@put` overwrite 和 managed struct handle overwrite 先把 RHS 写入 scratch local, 再按新旧 handle 是否相同决定是否释放旧值。
+18. 已有通用 `[T]` 的 `@len/@get/@set/@put` handle lowering，以及 managed 元素 storage 的 literal/get/release/set/put 最小闭环。
+19. 已有 `text` runtime 表示和 `[u8]` 边界函数的当前 v1 子集；`text` 仍不自动等同于 `[u8]`。
+20. 下一步若继续推进 ARC 优化，先补完整 ownership IR / data-flow 或唯一拥有证明，再扩字段读取 move、loop 内 move 或 FBIP `reuse`。
+21. 最后再评估 `@store_*`、真实 atomic 和 host/WASI 复杂 ABI。
 
 文档侧验证入口:
 

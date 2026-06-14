@@ -1,6 +1,6 @@
 ;; arc-runtime free span split v1
-(func $__do_free_span_split_tail (param $block i32) (param $used_span i32)
+(func $__free_span_split_tail (param $block i32) (param $used_span i32)
 (local $original_span i32)
 (local $tail_block i32)
-call $__do_free_span_split_tail
-call $__do_free_span_push
+call $__free_span_split_tail
+call $__free_span_push

@@ -3,5 +3,5 @@
 ;; arc-return-copy data
 local.get $data
 local.get $data
-call $__do_arc_inc
+call $__arc_inc
 return

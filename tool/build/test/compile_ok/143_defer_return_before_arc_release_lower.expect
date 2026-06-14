@@ -1,0 +1,5 @@
+;; defer-cleanup-call cleanup
+call $cleanup
+;; arc-release-local data
+call $__arc_dec
+return

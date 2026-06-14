@@ -1,3 +1,3 @@
 ;; arc-runtime block_size=1024 object_header=8
-(global $__do_heap_base i32 (i32.const 2048))
-(global $__do_heap_cursor (mut i32) (i32.const 2048))
+(global $__heap_base i32 (i32.const 2048))
+(global $__heap_cursor (mut i32) (i32.const 2048))

@@ -1,12 +1,12 @@
 (func $take (param $x i32) (result i32)
 local.get $x
-call $__do_arc_payload
+call $__arc_payload
 i32.load
 ;; arc-release-local x
 local.get $x
-call $__do_arc_dec
+call $__arc_dec
 return
 local.get $data
-call $__do_arc_inc
 call $take
+;; arc-call-move data
 local.set $n

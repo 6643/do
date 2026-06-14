@@ -96,6 +96,21 @@ work() -> nil {
 
 `defer` 离开当前词法区域时执行。
 
+```do
+cleanup() -> nil {
+    return
+}
+
+use() {
+    loop {
+        defer cleanup()
+        if @eq(1, 1) break
+        continue
+    }
+    return
+}
+```
+
 ## 绑定和赋值
 
 ```do

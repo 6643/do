@@ -2,6 +2,6 @@
 (local $s i32)
 i32.const 11
 i32.const 1
-call $__do_arc_alloc
+call $__arc_alloc
 local.set $s
 ;; arc-release-local s

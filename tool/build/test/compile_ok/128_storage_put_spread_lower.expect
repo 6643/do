@@ -1,5 +1,5 @@
 storage-put-spread-scalar
 loop $storage_put_spread_scan
 local.get $rest
-local.get $__do_storage_put_source_tmp
+local.get $__storage_put_source_tmp
 local.set $xs

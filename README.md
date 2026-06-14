@@ -7,8 +7,8 @@
 ## 核心理念
 
 - **纯值语义**: 变量传递即拷贝，消除指针复杂度。
-- **Perceus / FBIP 方向**: 目标是在唯一引用 (`rc == 1`) 时优先复用对象并做原地修改；当前只保留 v1 正确性子集，完整 FBIP `reuse` 仍按 `doc/roadmap_status.md` 暂跳过。
-- **隐式 ARC 生命周期管理**: 编译器当前已覆盖 managed storage / struct 的基础 `inc/dec`、局部释放、return ownership 和部分 COW 写路径；完整冗余消除与末次使用优化仍按 `doc/roadmap_status.md` 暂跳过。
+- **Perceus / FBIP 方向**: 目标是在唯一引用 (`rc == 1`) 时优先复用对象并做原地修改；当前已覆盖 ownership exit plan、死 alias 消除和保守 last-use move 子集，完整 FBIP `reuse` 仍按 `doc/roadmap_status.md` 后置。
+- **隐式 ARC 生命周期管理**: 编译器当前已覆盖 managed storage / struct 的基础 `inc/dec`、局部释放、return ownership、部分 COW 写路径、死 alias `inc/dec` 相消和 direct managed last-use move 子集；跨函数唯一性证明、借用/共享来源字段读取 move 和 FBIP `reuse` 仍未完成。
 - **静态泛型特化**: 类型采用 `Name<T>`，函数采用 `#` 约束前置行，并支持受约束泛型接口。结构体泛型的无约束类型参数直接写 `#T` 紧贴结构声明。编译时通过 Monomorphization 生成具体代码与唯一 `type_id`。
 - **函数值与重载**: 普通函数名可在有目标 `FuncType` 的上下文中解析为函数值；lambda 只出现在回调槽位。支持约束泛型函数与同名重载；重载只按参数签名决议。
 - **同类型不定参数**: 支持 `rest ...T` 形态的同类型可变参数调用，core 聚合函数可写成 `@add(a, b, c)`，是否可扁平化完全由函数签名决定。
@@ -57,7 +57,7 @@ zig build -Doptimize=ReleaseSmall
 cd ..
 ./tool/build/test/run_tests.sh
 
-# 启用 wasm / compiled / component 相关 gate
+# 启用 wasm 执行、compiled wasm 和 trap/smoke 增量 gate
 RUN_WASM=1 ./tool/build/test/run_tests.sh
 ```
 ## 开发计划 (Roadmap)
@@ -72,12 +72,12 @@ RUN_WASM=1 ./tool/build/test/run_tests.sh
 - [x] **内存分配器**: 已按 `doc/memory_layout_structs.md` 收敛 1KB block、bitmap small block、large span、free span split / merge 和空 small block 回收。
 - [x] **标准库边界**: `[u8]`、`List`、`HashMap`、IO、网络类型形态和 `text` runtime 已归入 core / std / runtime 边界；完整 I/O 执行能力和真实网络 host ABI 继续归入后续 WASI / Component Model。
 - [x] **WAT 代码生成子集**: `do build` / `do test --compiled` 当前可验证的 WAT 输出已覆盖标量、value enum carrier、结构体 flatten、storage / text ARC handle、多返回和基础 `@get/@set/@put`；这不表示完整后端优化或直接 wasm 二进制输出已经完成。
-- [x] **测试入口**: `do build`、`do test` 和 `do test --compiled` 作为用户侧黑盒入口已落地；仓库级完整回归入口是 `./tool/build/test/run_tests.sh`。`RUN_WASM=1` 会在该入口上额外执行 wasm run、compiled wasm 执行、compiled trap 和可用时的 component/embed/validate gate。
+- [x] **测试入口**: `do build`、`do test` 和 `do test --compiled` 作为用户侧黑盒入口已落地；仓库级完整回归入口是 `./tool/build/test/run_tests.sh`。默认入口已覆盖 `compile_ok` 中的 WIT / component plan、component input、component core 和可用时的 embed/validate gate；`RUN_WASM=1` 在此基础上额外执行 wasm run、compiled wasm 执行、compiled trap 和 wasm smoke。
 
 ### 暂跳过
-- [ ] **`defer` 完整控制流与 ARC**: `defer` 的 LIFO cleanup、跨 `return/break/continue` lowering、cleanup 块内控制流限制和 ARC release 顺序的剩余状态在 `doc/roadmap_status.md` 中跟踪。
-- [ ] **ARC / Perceus 完整分析**: 当前已有 managed storage `inc/dec`、局部释放和 `defer` cleanup 顺序；完整静态插入、冗余消除、末次使用优化和 FBIP `reuse` 暂跳过, 原因见 `doc/roadmap_status.md`。
-- [ ] **后端控制流和优化**: guard `break/continue`、带标签循环、集合/消费循环 lowering、`if/else`、`@get/@set` 和小函数内联优化暂跳过；WAT 输出已可用, WASM 二进制输出仍待补, 原因见 `doc/roadmap_status.md`。
+- [x] **`defer` 完整控制流与 ARC**: `defer` 的 LIFO cleanup、跨 `return/break/continue` lowering、cleanup 块内控制流限制和 ARC release 顺序已由 `tool/build/test/compile_ok/142_*` 到 `150_*` 及 `tool/build/test/err/267_*`、`274_*`、`288_*` 到 `305_*` 覆盖，状态见 `doc/roadmap_status.md`。
+- [ ] **ARC / Perceus 完整分析**: 当前已落地 `tool/build/ownership.zig`、死 alias 消除和保守 last-use move 子集；完整 ownership IR / data-flow、跨函数唯一性证明和 FBIP `reuse` 仍未完成, 原因见 `doc/roadmap_status.md`。
+- [ ] **后端优化**: 当前保留可验证 WAT lowering；backend instruction model、WAT peephole、小函数内联、`@get/@set` 专门内联优化和 WASM 二进制输出仍待补, 原因见 `doc/roadmap_status.md`。
 - [ ] **生态工具**: `do run`、LSP、fmt、get / push 等工具链能力暂跳过, 原因见 `doc/roadmap_status.md`。
 
 ### 最后处理

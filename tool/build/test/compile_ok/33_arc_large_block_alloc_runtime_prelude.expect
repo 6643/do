@@ -1,5 +1,5 @@
 ;; arc-runtime large block allocator v1
-(func $__do_arc_alloc_large (param $payload_bytes i32) (param $type_id i32) (result i32)
+(func $__arc_alloc_large (param $payload_bytes i32) (param $type_id i32) (result i32)
 (local $object_bytes i32)
 (local $span_len i32)
 (local $block i32)

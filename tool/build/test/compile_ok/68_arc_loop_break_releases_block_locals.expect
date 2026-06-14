@@ -1,17 +1,13 @@
-block $__do_loop_break_
-loop $__do_loop_body_
+block $__loop_break_
+loop $__loop_body_
 local.set $data
 ;; loop-break-release
-;; arc-block-release
 ;; arc-release-local data
 local.get $data
-call $__do_arc_dec
+call $__arc_dec
 i32.const 0
 local.set $data
-br $__do_loop_break_
+br $__loop_break_
 end
 end
-;; arc-release-local data
-local.get $data
-call $__do_arc_dec
 return

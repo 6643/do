@@ -1,0 +1,5 @@
+;; defer-cleanup-call cleanup_b
+call $cleanup_b
+;; defer-cleanup-call cleanup_a
+call $cleanup_a
+return

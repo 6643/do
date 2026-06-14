@@ -1,6 +1,7 @@
 const std = @import("std");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
+const ownership = @import("ownership.zig");
 const parser = @import("parser.zig");
 const test_runner = @import("test_runner.zig");
 
@@ -106,18 +107,18 @@ const TYPE_ID_STORAGE_U8: usize = 1;
 const TYPE_ID_STORAGE_MANAGED: usize = 65535;
 const TYPE_ID_FIRST_STRUCT: usize = TYPE_ID_STORAGE_U8 + 1;
 const STORAGE_PAYLOAD_HEADER_BYTES: usize = 8;
-const STORAGE_OVERWRITE_TMP_LOCAL = "__do_storage_overwrite_tmp";
-const STORAGE_PUT_SOURCE_TMP_LOCAL = "__do_storage_put_source_tmp";
-const VARIADIC_PACK_TMP_LOCAL = "__do_variadic_pack_tmp";
-const STORAGE_WRITE_INDEX_TMP_LOCAL = "__do_storage_write_index_tmp";
-const STORAGE_WRITE_LEN_TMP_LOCAL = "__do_storage_write_len_tmp";
-const STORAGE_WRITE_NEXT_TMP_LOCAL = "__do_storage_write_next_tmp";
-const STORAGE_WRITE_SCAN_TMP_LOCAL = "__do_storage_write_scan_tmp";
-const STRUCT_LITERAL_TMP_LOCAL = "__do_struct_literal_tmp";
-const NUMERIC_SELECT_LEFT_TMP_I32 = "__do_numeric_select_left_i32";
-const NUMERIC_SELECT_RIGHT_TMP_I32 = "__do_numeric_select_right_i32";
-const NUMERIC_SELECT_LEFT_TMP_I64 = "__do_numeric_select_left_i64";
-const NUMERIC_SELECT_RIGHT_TMP_I64 = "__do_numeric_select_right_i64";
+const STORAGE_OVERWRITE_TMP_LOCAL = "__storage_overwrite_tmp";
+const STORAGE_PUT_SOURCE_TMP_LOCAL = "__storage_put_source_tmp";
+const VARIADIC_PACK_TMP_LOCAL = "__variadic_pack_tmp";
+const STORAGE_WRITE_INDEX_TMP_LOCAL = "__storage_write_index_tmp";
+const STORAGE_WRITE_LEN_TMP_LOCAL = "__storage_write_len_tmp";
+const STORAGE_WRITE_NEXT_TMP_LOCAL = "__storage_write_next_tmp";
+const STORAGE_WRITE_SCAN_TMP_LOCAL = "__storage_write_scan_tmp";
+const STRUCT_LITERAL_TMP_LOCAL = "__struct_literal_tmp";
+const NUMERIC_SELECT_LEFT_TMP_I32 = "__numeric_select_left_i32";
+const NUMERIC_SELECT_RIGHT_TMP_I32 = "__numeric_select_right_i32";
+const NUMERIC_SELECT_LEFT_TMP_I64 = "__numeric_select_left_i64";
+const NUMERIC_SELECT_RIGHT_TMP_I64 = "__numeric_select_right_i64";
 
 const NumericSelectTemps = struct {
     left: []const u8,
@@ -345,6 +346,8 @@ const LocalSet = struct {
         }
     }
 };
+
+const EMPTY_LOCAL_SET = LocalSet{};
 
 const FuncParam = struct {
     name: []const u8,
@@ -1032,6 +1035,9 @@ fn emitStartFunc(
     var locals = LocalSet{};
     defer locals.deinit(allocator);
     try collectBodyLocals(allocator, tokens, open_body + 1, close_body, ctx, &locals);
+    var cleanup_locals = LocalSet{};
+    defer cleanup_locals.deinit(allocator);
+    try collectDirectBodyLocals(allocator, tokens, open_body + 1, close_body, ctx, &cleanup_locals);
 
     try out.appendSlice(allocator, "  (func $_start\n");
     for (locals.locals.items) |local| {
@@ -1045,9 +1051,9 @@ fn emitStartFunc(
         .end_idx = close_body,
         .registered_end_idx = close_body,
     };
-    try emitBody(allocator, tokens, open_body + 1, close_body, &locals, ctx, no_results, NO_RESULT_ITEMS, null, null, null, &root_defer, null, out);
+    try emitBody(allocator, tokens, open_body + 1, close_body, open_body + 1, &locals, &cleanup_locals, &EMPTY_LOCAL_SET, ctx, no_results, NO_RESULT_ITEMS, null, null, null, &root_defer, null, out);
     if (!bodyEndsWithPlainReturn(tokens, open_body + 1, close_body)) {
-        try emitFallthroughReleaseManagedLocals(allocator, &locals, ctx, out);
+        try emitFallthroughReleaseManagedLocals(allocator, &cleanup_locals, ctx, out);
     }
     try out.appendSlice(allocator, "  )\n");
     try out.appendSlice(allocator, "  (export \"_start\" (func $_start))\n");
@@ -1062,11 +1068,14 @@ fn emitTestFuncs(
 ) !void {
     for (test_decls, 0..) |decl, idx| {
         try appendFmt(allocator, out, "  ;; compiled-test {d} {s}\n", .{ idx, decl.name_lexeme });
-        try appendFmt(allocator, out, "  (func $__do_test_{d}\n", .{idx});
+        try appendFmt(allocator, out, "  (func $__test_{d}\n", .{idx});
 
         var locals = LocalSet{};
         defer locals.deinit(allocator);
         try collectBodyLocals(allocator, tokens, decl.body_start, decl.body_end, ctx, &locals);
+        var cleanup_locals = LocalSet{};
+        defer cleanup_locals.deinit(allocator);
+        try collectDirectBodyLocals(allocator, tokens, decl.body_start, decl.body_end, ctx, &cleanup_locals);
 
         for (locals.locals.items) |local| {
             if (!local.emit_decl) continue;
@@ -1079,13 +1088,13 @@ fn emitTestFuncs(
             .end_idx = decl.body_end,
             .registered_end_idx = decl.body_end,
         };
-        try emitBody(allocator, tokens, decl.body_start, decl.body_end, &locals, ctx, no_results, NO_RESULT_ITEMS, null, null, null, &root_defer, null, out);
+        try emitBody(allocator, tokens, decl.body_start, decl.body_end, decl.body_start, &locals, &cleanup_locals, &EMPTY_LOCAL_SET, ctx, no_results, NO_RESULT_ITEMS, null, null, null, &root_defer, null, out);
         if (!bodyEndsWithPlainReturn(tokens, decl.body_start, decl.body_end)) {
-            try emitFallthroughReleaseManagedLocals(allocator, &locals, ctx, out);
+            try emitFallthroughReleaseManagedLocals(allocator, &cleanup_locals, ctx, out);
         }
         try out.appendSlice(allocator, "    unreachable\n");
         try out.appendSlice(allocator, "  )\n");
-        try appendFmt(allocator, out, "  (export \"__do_test_{d}\" (func $__do_test_{d}))\n", .{ idx, idx });
+        try appendFmt(allocator, out, "  (export \"__test_{d}\" (func $__test_{d}))\n", .{ idx, idx });
     }
 }
 
@@ -1096,7 +1105,7 @@ fn emitTestStartFunc(
 ) !void {
     try out.appendSlice(allocator, "  (func $_start\n");
     for (0..test_count) |idx| {
-        try appendFmt(allocator, out, "    call $__do_test_{d}\n", .{idx});
+        try appendFmt(allocator, out, "    call $__test_{d}\n", .{idx});
     }
     try out.appendSlice(allocator, "  )\n");
     try out.appendSlice(allocator, "  (export \"_start\" (func $_start))\n");
@@ -1156,6 +1165,10 @@ fn emitUserFunc(
     defer locals.deinit(allocator);
     try appendFuncParamLocals(allocator, func, func_ctx, &locals);
     try collectBodyLocals(allocator, tokens, func.body_start, func.body_end, func_ctx, &locals);
+    var cleanup_locals = LocalSet{};
+    defer cleanup_locals.deinit(allocator);
+    try appendFuncParamLocals(allocator, func, func_ctx, &cleanup_locals);
+    try collectDirectBodyLocals(allocator, tokens, func.body_start, func.body_end, func_ctx, &cleanup_locals);
 
     for (locals.locals.items) |local| {
         if (!local.emit_decl) continue;
@@ -1166,7 +1179,7 @@ fn emitUserFunc(
         if (!try emitExpr(allocator, tokens, func.body_start, func.body_end, &locals, func_ctx, func.results[0], out)) {
             return error.NoMatchingCall;
         }
-        try emitFallthroughReleaseManagedLocals(allocator, &locals, func_ctx, out);
+        try emitFallthroughReleaseManagedLocals(allocator, &cleanup_locals, func_ctx, out);
         try out.appendSlice(allocator, "    return\n");
     } else {
         const root_defer = DeferContext{
@@ -1175,9 +1188,9 @@ fn emitUserFunc(
             .end_idx = func.body_end,
             .registered_end_idx = func.body_end,
         };
-        try emitBody(allocator, tokens, func.body_start, func.body_end, &locals, func_ctx, func.results, func.result_items, func.result_struct, func.result_union, null, &root_defer, null, out);
+        try emitBody(allocator, tokens, func.body_start, func.body_end, func.body_start, &locals, &cleanup_locals, &EMPTY_LOCAL_SET, func_ctx, func.results, func.result_items, func.result_struct, func.result_union, null, &root_defer, null, out);
         if (!bodyEndsWithPlainReturn(tokens, func.body_start, func.body_end)) {
-            try emitFallthroughReleaseManagedLocals(allocator, &locals, func_ctx, out);
+            try emitFallthroughReleaseManagedLocals(allocator, &cleanup_locals, func_ctx, out);
         }
     }
     try out.appendSlice(allocator, "  )\n");
@@ -1190,6 +1203,29 @@ fn collectBodyLocals(
     end_idx: usize,
     ctx: CodegenContext,
     out: *LocalSet,
+) !void {
+    try collectBodyLocalsWithMode(allocator, tokens, start_idx, end_idx, ctx, out, true);
+}
+
+fn collectDirectBodyLocals(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    ctx: CodegenContext,
+    out: *LocalSet,
+) !void {
+    try collectBodyLocalsWithMode(allocator, tokens, start_idx, end_idx, ctx, out, false);
+}
+
+fn collectBodyLocalsWithMode(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    ctx: CodegenContext,
+    out: *LocalSet,
+    recurse_nested: bool,
 ) !void {
     var i = start_idx;
     while (i < end_idx) {
@@ -1215,14 +1251,20 @@ fn collectBodyLocals(
         if (stmtContainsNumericSelectIntrinsic(tokens, i, stmt_end)) {
             try out.ensureNumericSelectTemps(allocator);
         }
-        if (try collectLoopBlockLocals(allocator, tokens, i, stmt_end, ctx, out)) {
+        if (try isDeadManagedAliasBinding(allocator, tokens, i, stmt_end, end_idx, out, ctx)) {
+            i = stmt_end;
+            continue;
+        }
+        if (recurse_nested and try collectLoopBlockLocals(allocator, tokens, i, stmt_end, ctx, out)) {
             // Loop block locals collected recursively.
-        } else if (try collectIfBlockLocals(allocator, tokens, i, stmt_end, ctx, out)) {
+        } else if (recurse_nested and try collectIfBlockLocals(allocator, tokens, i, stmt_end, ctx, out)) {
             // Block locals collected recursively.
-        } else if (try collectDeferBlockLocals(allocator, tokens, i, stmt_end, ctx, out)) {
+        } else if (recurse_nested and try collectDeferBlockLocals(allocator, tokens, i, stmt_end, ctx, out)) {
             // Cleanup block locals collected recursively.
         } else if (try typedUnionBindingLayout(allocator, tokens, i, stmt_end, ctx, &out.owned_names)) |layout| {
-            try out.appendUnionLocal(allocator, tokens[i].lexeme, layout, true, true);
+            defer freeUnionLayout(allocator, layout);
+            const local_layout = try cloneUnionLayout(allocator, layout);
+            try out.appendUnionLocal(allocator, tokens[i].lexeme, local_layout, true, true);
         } else if (inferredUnionCallBinding(tokens, i, stmt_end, out, ctx)) |layout| {
             try out.appendUnionLocal(allocator, tokens[i].lexeme, layout, true, false);
         } else if (isTypedScalarBinding(tokens, i, stmt_end, ctx)) {
@@ -1572,7 +1614,7 @@ fn appendLoopIndexLocal(
     out: *LocalSet,
     loop_id: usize,
 ) !void {
-    const name = try std.fmt.allocPrint(allocator, "__do_loop_index_{d}", .{loop_id});
+    const name = try std.fmt.allocPrint(allocator, "__loop_index_{d}", .{loop_id});
     if (hasLocal(out.locals.items, name)) {
         allocator.free(name);
         return;
@@ -1585,7 +1627,7 @@ fn appendLoopCountLocal(
     out: *LocalSet,
     loop_id: usize,
 ) !void {
-    const name = try std.fmt.allocPrint(allocator, "__do_loop_count_{d}", .{loop_id});
+    const name = try std.fmt.allocPrint(allocator, "__loop_count_{d}", .{loop_id});
     if (hasLocal(out.locals.items, name)) {
         allocator.free(name);
         return;
@@ -1621,7 +1663,7 @@ fn appendLoopSourceStorageLocal(
 }
 
 fn loopSourceLocalName(allocator: std.mem.Allocator, loop_id: usize) ![]u8 {
-    return try std.fmt.allocPrint(allocator, "__do_loop_source_{d}", .{loop_id});
+    return try std.fmt.allocPrint(allocator, "__loop_source_{d}", .{loop_id});
 }
 
 fn fieldReflectionLoopHeader(
@@ -1955,11 +1997,11 @@ fn appendLocalField(
 }
 
 fn unionPayloadLocalName(allocator: std.mem.Allocator, base: []const u8, idx: usize) ![]u8 {
-    return std.fmt.allocPrint(allocator, "{s}.__do_union_payload_{d}", .{ base, idx });
+    return std.fmt.allocPrint(allocator, "{s}.__union_payload_{d}", .{ base, idx });
 }
 
 fn unionTagLocalName(allocator: std.mem.Allocator, base: []const u8) ![]u8 {
-    return std.fmt.allocPrint(allocator, "{s}.__do_union_tag", .{base});
+    return std.fmt.allocPrint(allocator, "{s}.__union_tag", .{base});
 }
 
 fn appendUnionPayloadLocalGet(
@@ -1968,7 +2010,7 @@ fn appendUnionPayloadLocalGet(
     base: []const u8,
     idx: usize,
 ) !void {
-    try appendFmt(allocator, out, "    local.get ${s}.__do_union_payload_{d}\n", .{ base, idx });
+    try appendFmt(allocator, out, "    local.get ${s}.__union_payload_{d}\n", .{ base, idx });
 }
 
 fn appendUnionPayloadLocalSet(
@@ -1977,7 +2019,7 @@ fn appendUnionPayloadLocalSet(
     base: []const u8,
     idx: usize,
 ) !void {
-    try appendFmt(allocator, out, "    local.set ${s}.__do_union_payload_{d}\n", .{ base, idx });
+    try appendFmt(allocator, out, "    local.set ${s}.__union_payload_{d}\n", .{ base, idx });
 }
 
 fn appendUnionTagLocalGet(
@@ -1985,7 +2027,7 @@ fn appendUnionTagLocalGet(
     out: *std.ArrayList(u8),
     base: []const u8,
 ) !void {
-    try appendFmt(allocator, out, "    local.get ${s}.__do_union_tag\n", .{base});
+    try appendFmt(allocator, out, "    local.get ${s}.__union_tag\n", .{base});
 }
 
 fn appendUnionTagLocalSet(
@@ -1993,7 +2035,7 @@ fn appendUnionTagLocalSet(
     out: *std.ArrayList(u8),
     base: []const u8,
 ) !void {
-    try appendFmt(allocator, out, "    local.set ${s}.__do_union_tag\n", .{base});
+    try appendFmt(allocator, out, "    local.set ${s}.__union_tag\n", .{base});
 }
 
 fn appendBorrowedLocalField(
@@ -2026,7 +2068,7 @@ fn appendManagedStructFieldMetaLocal(
 }
 
 fn isCompilerLocalName(name: []const u8) bool {
-    return std.mem.startsWith(u8, name, "__do_") or std.mem.indexOf(u8, name, ".__do_") != null;
+    return std.mem.startsWith(u8, name, "__") or std.mem.indexOf(u8, name, ".__") != null;
 }
 
 fn fieldReflectionLocalNamePrefix(
@@ -2034,7 +2076,7 @@ fn fieldReflectionLocalNamePrefix(
     header: FieldReflectionLoopHeader,
     visible_index: usize,
 ) ![]u8 {
-    return std.fmt.allocPrint(allocator, "__do_field_{d}_{d}_", .{ header.open_brace, visible_index });
+    return std.fmt.allocPrint(allocator, "__field_{d}_{d}_", .{ header.open_brace, visible_index });
 }
 
 fn emitReturnStmt(
@@ -2042,7 +2084,9 @@ fn emitReturnStmt(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    body_start: usize,
     locals: *const LocalSet,
+    return_cleanup_locals: *const LocalSet,
     ctx: CodegenContext,
     result_tys: []const []const u8,
     result_items: []const FuncResultItem,
@@ -2065,15 +2109,15 @@ fn emitReturnStmt(
         try move_names.append(allocator, name);
         try appendFmt(allocator, out, "    ;; arc-return-move {s}\n", .{name});
     }
-    if (result_union != null and try emitUnionReturn(allocator, tokens, start_idx, end_idx, locals, ctx, result_union.?, &move_names, out)) {
+    if (result_union != null and try emitUnionReturn(allocator, tokens, start_idx, end_idx, locals, ctx, result_union.?, &move_names, defer_ctx, out)) {
         // Union value emitted as payload slots followed by runtime tag.
-    } else if (try emitUnmanagedStructErrorUnionReturn(allocator, tokens, start_idx, end_idx, locals, ctx, result_tys, result_struct, out)) {
+    } else if (try emitUnmanagedStructErrorUnionReturn(allocator, tokens, start_idx, end_idx, body_start, locals, ctx, result_tys, result_struct, defer_ctx, out)) {
         // Unmanaged struct plus error tag emitted as payload fields followed by status.
     } else if (try emitUnmanagedStructReturnLocal(allocator, tokens, start_idx, end_idx, locals, ctx, result_tys, result_struct, out)) {
         // Unmanaged struct fields emitted in declaration order.
     } else if (try emitWasiRecordReturnCall(allocator, tokens, start_idx + 1, end_idx, locals, ctx, result_tys, result_struct, out)) {
         // WIT record result fields emitted in declaration order.
-    } else if (result_tys.len > 1 and try emitMultiResultReturnCall(allocator, tokens, start_idx + 1, end_idx, locals, ctx, result_tys, out)) {
+    } else if (result_tys.len > 1 and try emitMultiResultReturnCall(allocator, tokens, start_idx + 1, end_idx, locals, ctx, result_tys, defer_ctx, out)) {
         // Multi-result call passthrough emitted.
     } else if (result_tys.len > 1 and result_items.len != 0) {
         try emitMultiResultReturnValues(allocator, tokens, start_idx + 1, end_idx, locals, ctx, result_items, &move_names, out);
@@ -2082,7 +2126,34 @@ fn emitReturnStmt(
     } else if (result_tys.len == 0 and start_idx + 2 == end_idx and tokEq(tokens[start_idx + 1], "nil")) {
         // `return nil` is the explicit spelling of an empty return in test/nil functions.
     } else if (start_idx + 1 < end_idx) {
-        if (!try emitExpr(allocator, tokens, start_idx + 1, end_idx, locals, ctx, expected_ty, out)) {
+        var emitted_move_call = false;
+        var return_move_ctx: ?CallLastUseMoveContext = null;
+        if (expected_ty) |ty| {
+            if (isManagedLocalType(ty, ctx)) {
+                return_move_ctx = .{
+                    .body_start = body_start,
+                    .stmt_end = end_idx,
+                    .body_end = end_idx,
+                    .defer_ctx = defer_ctx,
+                    .allow_last_use_move = true,
+                    .allow_field_read_move = true,
+                };
+                emitted_move_call = try emitManagedHandleCallExprWithMoveContext(
+                    allocator,
+                    tokens,
+                    start_idx + 1,
+                    end_idx,
+                    end_idx,
+                    true,
+                    locals,
+                    defer_ctx,
+                    ctx,
+                    ty,
+                    out,
+                );
+            }
+        }
+        if (!emitted_move_call and !try emitExprWithMoveContext(allocator, tokens, start_idx + 1, end_idx, locals, ctx, expected_ty, if (return_move_ctx) |*move_ctx| move_ctx else null, out)) {
             return error.NoMatchingCall;
         }
     }
@@ -2090,7 +2161,9 @@ fn emitReturnStmt(
     if (return_label) |label| {
         try appendFmt(allocator, out, "    br ${s}\n", .{label});
     } else {
-        try emitReleaseManagedLocalsExceptMany(allocator, locals, ctx, move_names.items, out);
+        const release_plan = try buildReturnOwnershipPlan(allocator, return_cleanup_locals, ctx, move_names.items);
+        defer release_plan.deinit(allocator);
+        try emitOwnershipReleasePlan(allocator, release_plan, out);
         try out.appendSlice(allocator, "    return\n");
     }
     return true;
@@ -2101,10 +2174,12 @@ fn emitUnmanagedStructErrorUnionReturn(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    body_start: usize,
     locals: *const LocalSet,
     ctx: CodegenContext,
     result_tys: []const []const u8,
     result_struct: ?[]const u8,
+    defer_ctx: ?*const DeferContext,
     out: *std.ArrayList(u8),
 ) !bool {
     const error_name = unmanagedStructErrorUnionResult(tokens, ctx, result_tys, result_struct) orelse return false;
@@ -2127,7 +2202,14 @@ fn emitUnmanagedStructErrorUnionReturn(
                     }
                 }
                 if (matches) {
-                    return try emitUserFuncCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, out);
+                    const move_ctx = CallLastUseMoveContext{
+                        .body_start = body_start,
+                        .stmt_end = end_idx,
+                        .body_end = end_idx,
+                        .defer_ctx = defer_ctx,
+                        .allow_last_use_move = true,
+                    };
+                    return try emitUserFuncCallWithMoveContext(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, &move_ctx, out);
                 }
             }
         }
@@ -2180,11 +2262,11 @@ fn emitMultiResultReturnValues(
         const item = result_items[item_idx];
         if (item.union_layout) |layout| {
             try collectUnionReturnMoveNames(allocator, tokens, expr_start, expr_end, locals, ctx, layout, move_names);
-            if (!try emitUnionValue(allocator, tokens, expr_start, expr_end, locals, ctx, layout, false, out)) {
+            if (!try emitUnionValue(allocator, tokens, expr_start, expr_end, locals, ctx, layout, false, null, out)) {
                 return error.NoMatchingCall;
             }
         } else {
-            try emitSingleReturnAbiValue(allocator, tokens, expr_start, expr_end, locals, ctx, item.ty, move_names, out);
+            try emitSingleReturnAbiValue(allocator, tokens, expr_start, expr_end, locals, ctx, item.ty, move_names, null, out);
         }
         item_idx += 1;
         expr_start = expr_end;
@@ -2209,7 +2291,7 @@ fn emitMultiResultReturnAbiValues(
     while (expr_start < end_idx) {
         if (result_idx >= result_tys.len) return error.NoMatchingCall;
         const expr_end = findArgEnd(tokens, expr_start, end_idx);
-        try emitSingleReturnAbiValue(allocator, tokens, expr_start, expr_end, locals, ctx, result_tys[result_idx], move_names, out);
+        try emitSingleReturnAbiValue(allocator, tokens, expr_start, expr_end, locals, ctx, result_tys[result_idx], move_names, null, out);
         result_idx += 1;
         expr_start = expr_end;
         if (expr_start < end_idx and tokEq(tokens[expr_start], ",")) expr_start += 1;
@@ -2226,6 +2308,7 @@ fn emitSingleReturnAbiValue(
     ctx: CodegenContext,
     expected_ty: []const u8,
     move_names: *std.ArrayList([]const u8),
+    move_ctx: ?*const CallLastUseMoveContext,
     out: *std.ArrayList(u8),
 ) CodegenError!void {
     if (try emitStorageAggReturnValue(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, out)) {
@@ -2244,11 +2327,11 @@ fn emitSingleReturnAbiValue(
             }
         }
     }
-    if (!try emitExpr(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, out)) {
+    if (!try emitExprWithMoveContext(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, move_ctx, out)) {
         return error.NoMatchingCall;
     }
     if (copy_returned_managed_local) {
-        try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+        try out.appendSlice(allocator, "    call $__arc_inc\n");
     }
 }
 
@@ -2312,13 +2395,20 @@ fn emitUnionReturn(
     ctx: CodegenContext,
     layout: UnionLayout,
     move_names: *std.ArrayList([]const u8),
+    defer_ctx: ?*const DeferContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     if (start_idx + 1 >= end_idx) return error.NoMatchingCall;
     const expr_start = start_idx + 1;
     const expr_end = end_idx;
     try collectUnionReturnMoveNames(allocator, tokens, expr_start, expr_end, locals, ctx, layout, move_names);
-    return try emitUnionValue(allocator, tokens, expr_start, expr_end, locals, ctx, layout, false, out);
+    const move_ctx = CallLastUseMoveContext{
+        .stmt_end = end_idx,
+        .body_end = end_idx,
+        .defer_ctx = defer_ctx,
+        .allow_last_use_move = true,
+    };
+    return try emitUnionValue(allocator, tokens, expr_start, expr_end, locals, ctx, layout, false, &move_ctx, out);
 }
 
 fn collectUnionReturnMoveNames(
@@ -2360,6 +2450,7 @@ fn emitUnionValue(
     ctx: CodegenContext,
     layout: UnionLayout,
     copy_managed: bool,
+    move_ctx: ?*const CallLastUseMoveContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     const range = trimParens(tokens, start_idx, end_idx);
@@ -2370,7 +2461,7 @@ fn emitUnionValue(
             if (findFuncDeclForCallHead(tokens, call_head, locals, ctx)) |func| {
                 if (func.result_union) |func_union| {
                     if (unionLayoutsEqual(func_union, layout)) {
-                        return try emitUserFuncCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, out);
+                        return try emitUserFuncCallWithMoveContext(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, move_ctx, out);
                     }
                 }
             }
@@ -2392,7 +2483,7 @@ fn emitUnionValue(
                 for (layout.payload_tys, 0..) |payload_ty, idx| {
                     try appendUnionPayloadLocalGet(allocator, out, union_local.name, idx);
                     if (copy_managed and isManagedLocalType(payload_ty, ctx)) {
-                        try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+                        try out.appendSlice(allocator, "    call $__arc_inc\n");
                     }
                 }
                 try appendUnionTagLocalGet(allocator, out, union_local.name);
@@ -2469,7 +2560,7 @@ fn emitUnionBranchPayload(
 
     if (!try emitExpr(allocator, tokens, range.start, range.end, locals, ctx, branch.ty, out)) return false;
     if (copy_managed and isManagedLocalType(branch.ty, ctx) and isDirectManagedLocalExpr(tokens, range.start, range.end, locals, ctx)) {
-        try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+        try out.appendSlice(allocator, "    call $__arc_inc\n");
     }
     return true;
 }
@@ -2587,6 +2678,7 @@ fn emitMultiResultReturnCall(
     locals: *const LocalSet,
     ctx: CodegenContext,
     result_tys: []const []const u8,
+    defer_ctx: ?*const DeferContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     const range = trimParens(tokens, start_idx, end_idx);
@@ -2597,7 +2689,13 @@ fn emitMultiResultReturnCall(
     for (result_tys, 0..) |result_ty, i| {
         if (!std.mem.eql(u8, result_ty, func.results[i])) return false;
     }
-    return try emitUserFuncCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, out);
+    const move_ctx = CallLastUseMoveContext{
+        .stmt_end = end_idx,
+        .body_end = end_idx,
+        .defer_ctx = defer_ctx,
+        .allow_last_use_move = true,
+    };
+    return try emitUserFuncCallWithMoveContext(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, &move_ctx, out);
 }
 
 fn emitReleaseManagedLocals(
@@ -2630,17 +2728,9 @@ fn emitReleaseManagedLocalsExceptMany(
     skip_names: []const []const u8,
     out: *std.ArrayList(u8),
 ) !void {
-    var i = locals.locals.items.len;
-    while (i > 0) {
-        i -= 1;
-        const local = locals.locals.items[i];
-        if (!local.release_on_scope_exit) continue;
-        if (!isManagedLocalType(local.ty, ctx)) continue;
-        if (hasBorrowedName(skip_names, local.name)) continue;
-        try appendFmt(allocator, out, "    ;; arc-release-local {s}\n", .{local.name});
-        try appendFmt(allocator, out, "    local.get ${s}\n", .{local.name});
-        try out.appendSlice(allocator, "    call $__do_arc_dec\n");
-    }
+    const release_plan = try buildReturnOwnershipPlan(allocator, locals, ctx, skip_names);
+    defer release_plan.deinit(allocator);
+    try emitOwnershipReleasePlan(allocator, release_plan, out);
 }
 
 fn emitFallthroughReleaseManagedLocals(
@@ -2649,9 +2739,11 @@ fn emitFallthroughReleaseManagedLocals(
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) !void {
-    if (!hasManagedLocals(locals, ctx)) return;
+    const release_plan = try buildFallthroughOwnershipPlan(allocator, locals, ctx);
+    defer release_plan.deinit(allocator);
+    if (release_plan.release_steps.len == 0) return;
     try out.appendSlice(allocator, "    ;; arc-fallthrough-release\n");
-    try emitReleaseManagedLocals(allocator, locals, ctx, out);
+    try emitOwnershipReleasePlan(allocator, release_plan, out);
 }
 
 fn emitBlockReleaseManagedLocals(
@@ -2660,20 +2752,11 @@ fn emitBlockReleaseManagedLocals(
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) !void {
-    if (!hasManagedLocals(locals, ctx)) return;
+    const release_plan = try buildBlockOwnershipPlan(allocator, locals, ctx);
+    defer release_plan.deinit(allocator);
+    if (release_plan.release_steps.len == 0) return;
     try out.appendSlice(allocator, "    ;; arc-block-release\n");
-    var i = locals.locals.items.len;
-    while (i > 0) {
-        i -= 1;
-        const local = locals.locals.items[i];
-        if (!local.release_on_scope_exit) continue;
-        if (!isManagedLocalType(local.ty, ctx)) continue;
-        try appendFmt(allocator, out, "    ;; arc-release-local {s}\n", .{local.name});
-        try appendFmt(allocator, out, "    local.get ${s}\n", .{local.name});
-        try out.appendSlice(allocator, "    call $__do_arc_dec\n");
-        try out.appendSlice(allocator, "    i32.const 0\n");
-        try appendFmt(allocator, out, "    local.set ${s}\n", .{local.name});
-    }
+    try emitOwnershipReleasePlan(allocator, release_plan, out);
 }
 
 fn hasManagedLocals(locals: *const LocalSet, ctx: CodegenContext) bool {
@@ -2682,6 +2765,136 @@ fn hasManagedLocals(locals: *const LocalSet, ctx: CodegenContext) bool {
         if (isManagedLocalType(local.ty, ctx)) return true;
     }
     return false;
+}
+
+const OwnedLoopFrames = struct {
+    frames: []const ownership.LoopFrame,
+
+    fn deinit(self: OwnedLoopFrames, allocator: std.mem.Allocator) void {
+        for (self.frames) |frame| {
+            if (frame.locals.len != 0) allocator.free(frame.locals);
+        }
+        if (self.frames.len != 0) allocator.free(self.frames);
+    }
+};
+
+fn managedLocalKindForType(ty: []const u8, ctx: CodegenContext) ?ownership.ManagedLocalKind {
+    if (isManagedPayloadType(ty)) return .storage;
+    if (findStructLayout(ctx.struct_layouts, ty) != null) return .managed_struct;
+    return null;
+}
+
+fn collectManagedOwnershipLocals(
+    allocator: std.mem.Allocator,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+) ![]const ownership.ManagedLocal {
+    var managed = std.ArrayList(ownership.ManagedLocal).empty;
+    errdefer managed.deinit(allocator);
+
+    for (locals.locals.items) |local| {
+        if (!local.release_on_scope_exit) continue;
+        const kind = managedLocalKindForType(local.ty, ctx) orelse continue;
+        try managed.append(allocator, .{
+            .name = local.name,
+            .kind = kind,
+        });
+    }
+
+    if (managed.items.len == 0) {
+        managed.deinit(allocator);
+        return &.{};
+    }
+    return try managed.toOwnedSlice(allocator);
+}
+
+fn buildReturnOwnershipPlan(
+    allocator: std.mem.Allocator,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    skip_names: []const []const u8,
+) !ownership.ExitPlan {
+    const managed = try collectManagedOwnershipLocals(allocator, locals, ctx);
+    defer if (managed.len != 0) allocator.free(managed);
+    return ownership.buildReturnExitPlan(allocator, managed, skip_names);
+}
+
+fn buildGuardReturnOwnershipPlan(
+    allocator: std.mem.Allocator,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    skip_names: []const []const u8,
+) !ownership.ExitPlan {
+    const managed = try collectManagedOwnershipLocals(allocator, locals, ctx);
+    defer if (managed.len != 0) allocator.free(managed);
+    return ownership.buildGuardReturnExitPlan(allocator, managed, skip_names);
+}
+
+fn buildFallthroughOwnershipPlan(
+    allocator: std.mem.Allocator,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+) !ownership.ExitPlan {
+    const managed = try collectManagedOwnershipLocals(allocator, locals, ctx);
+    defer if (managed.len != 0) allocator.free(managed);
+    return ownership.buildFallthroughExitPlan(allocator, managed);
+}
+
+fn buildBlockOwnershipPlan(
+    allocator: std.mem.Allocator,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+) !ownership.ExitPlan {
+    const managed = try collectManagedOwnershipLocals(allocator, locals, ctx);
+    defer if (managed.len != 0) allocator.free(managed);
+    return ownership.buildBlockExitPlan(allocator, managed);
+}
+
+fn collectLoopControlFrames(
+    allocator: std.mem.Allocator,
+    start: *const LoopControl,
+    target: *const LoopControl,
+    ctx: CodegenContext,
+) !OwnedLoopFrames {
+    var frames = std.ArrayList(ownership.LoopFrame).empty;
+    errdefer {
+        for (frames.items) |frame| {
+            if (frame.locals.len != 0) allocator.free(frame.locals);
+        }
+        frames.deinit(allocator);
+    }
+
+    var cursor: ?*const LoopControl = start;
+    while (cursor) |control| {
+        const managed = try collectManagedOwnershipLocals(allocator, control.cleanup_locals, ctx);
+        try frames.append(allocator, .{ .locals = managed });
+        if (sameLoopControl(control, target)) break;
+        cursor = control.parent;
+    }
+
+    if (frames.items.len == 0) {
+        frames.deinit(allocator);
+        return .{ .frames = &.{} };
+    }
+
+    return .{
+        .frames = try frames.toOwnedSlice(allocator),
+    };
+}
+
+fn emitOwnershipReleasePlan(
+    allocator: std.mem.Allocator,
+    release_plan: ownership.ExitPlan,
+    out: *std.ArrayList(u8),
+) !void {
+    for (release_plan.release_steps) |step| {
+        try appendFmt(allocator, out, "    ;; arc-release-local {s}\n", .{step.local_name});
+        try appendFmt(allocator, out, "    local.get ${s}\n", .{step.local_name});
+        try out.appendSlice(allocator, "    call $__arc_dec\n");
+        if (!step.clear_after_release) continue;
+        try out.appendSlice(allocator, "    i32.const 0\n");
+        try appendFmt(allocator, out, "    local.set ${s}\n", .{step.local_name});
+    }
 }
 
 fn bodyEndsWithPlainReturn(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
@@ -2694,6 +2907,65 @@ fn bodyEndsWithPlainReturn(tokens: []const lexer.Token, start_idx: usize, end_id
     }
     const idx = last_start orelse return false;
     return tokEq(tokens[idx], "return");
+}
+
+fn bodyCanReachEnd(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var i = start_idx;
+    while (i < end_idx) {
+        const stmt_end = findStmtEnd(tokens, i, end_idx);
+        if (!stmtCanReachEnd(tokens, i, stmt_end)) return false;
+        i = stmt_end;
+    }
+    return true;
+}
+
+fn stmtCanReachEnd(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    if (start_idx >= end_idx) return true;
+    if (tokEq(tokens[start_idx], "return")) return false;
+    if (tokEq(tokens[start_idx], "break") or tokEq(tokens[start_idx], "continue")) return false;
+    if (tokEq(tokens[start_idx], "if")) return ifStmtCanReachEnd(tokens, start_idx, end_idx);
+    if (tokEq(tokens[start_idx], "loop")) return loopStmtCanReachEnd(tokens, start_idx, end_idx);
+    return true;
+}
+
+fn ifStmtCanReachEnd(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    const open_brace = findTopLevelBlockOpen(tokens, start_idx + 1, end_idx) orelse return true;
+    const close_brace = findMatchingInRange(tokens, open_brace, "{", "}", end_idx) catch return true;
+
+    var else_if_start: ?usize = null;
+    var else_open: ?usize = null;
+    var else_close: ?usize = null;
+    if (close_brace + 1 < end_idx and tokEq(tokens[close_brace + 1], "else")) {
+        if (close_brace + 2 >= end_idx) return true;
+        if (tokEq(tokens[close_brace + 2], "if")) {
+            else_if_start = close_brace + 2;
+        } else if (tokEq(tokens[close_brace + 2], "{")) {
+            const close_else = findMatchingInRange(tokens, close_brace + 2, "{", "}", end_idx) catch return true;
+            if (close_else + 1 != end_idx) return true;
+            else_open = close_brace + 2;
+            else_close = close_else;
+        } else {
+            return true;
+        }
+    } else if (close_brace + 1 != end_idx) {
+        return true;
+    }
+
+    const then_can_reach_end = bodyCanReachEnd(tokens, open_brace + 1, close_brace);
+    const else_can_reach_end = if (else_if_start) |nested_if|
+        ifStmtCanReachEnd(tokens, nested_if, end_idx)
+    else if (else_open) |open_else|
+        bodyCanReachEnd(tokens, open_else + 1, else_close orelse return true)
+    else
+        true;
+    return then_can_reach_end or else_can_reach_end;
+}
+
+fn loopStmtCanReachEnd(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    const open_brace = findTopLevelBlockOpen(tokens, start_idx + 1, end_idx) orelse return true;
+    const close_brace = findMatchingInRange(tokens, open_brace, "{", "}", end_idx) catch return true;
+    if (close_brace + 1 != end_idx) return true;
+    return loopBodyCanBreakCurrentLoop(tokens, open_brace + 1, close_brace, labelForLoopStart(tokens, start_idx));
 }
 
 fn isManagedLocalType(ty: []const u8, ctx: CodegenContext) bool {
@@ -2740,13 +3012,234 @@ fn directManagedLocalExprName(
     return findLocalName(locals.locals.items, name);
 }
 
+const LastUseManagedMoveSource = struct {
+    source_name: []const u8,
+    actual_name: []const u8,
+};
+
+const CallLastUseMoveContext = struct {
+    body_start: usize = 0,
+    stmt_end: usize,
+    body_end: usize,
+    defer_ctx: ?*const DeferContext,
+    allow_last_use_move: bool,
+    allow_field_read_move: bool = false,
+};
+
+fn isDeadManagedAliasBinding(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    stmt_end: usize,
+    body_end: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+) CodegenError!bool {
+    if (start_idx >= stmt_end or tokens[start_idx].kind != .ident) return false;
+    const target_name = tokens[start_idx].lexeme;
+    const eq_idx = findTopLevelToken(tokens, start_idx + 1, stmt_end, "=") orelse return false;
+    if (tokenRangeUsesIdent(tokens, stmt_end, body_end, target_name)) return false;
+    if (!isDirectManagedLocalExpr(tokens, eq_idx + 1, stmt_end, locals, ctx)) return false;
+    if (storageBindingElemType(tokens, start_idx, stmt_end) != null) return true;
+    if (managedPayloadBinding(tokens, start_idx, stmt_end) != null) return true;
+
+    var owned_types = std.ArrayList([]const u8).empty;
+    defer {
+        for (owned_types.items) |owned| allocator.free(owned);
+        owned_types.deinit(allocator);
+    }
+    const binding = (try typedStructBinding(allocator, tokens, start_idx, stmt_end, ctx, &owned_types)) orelse return false;
+    return findStructLayout(ctx.struct_layouts, binding.ty) != null;
+}
+
+fn tokenRangeUsesIdent(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    name: []const u8,
+) bool {
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokens[i].kind != .ident) continue;
+        if (std.mem.eql(u8, tokens[i].lexeme, name)) return true;
+    }
+    return false;
+}
+
+fn hasRegisteredDeferStmt(
+    tokens: []const lexer.Token,
+    defer_ctx: ?*const DeferContext,
+) bool {
+    var cursor = defer_ctx;
+    while (cursor) |scope| {
+        const scan_end = @min(scope.registered_end_idx, scope.end_idx);
+        var i = scope.start_idx;
+        while (i < scan_end) {
+            const stmt_end = findStmtEnd(tokens, i, scope.end_idx);
+            if (isDeferStmt(tokens, i, stmt_end)) return true;
+            i = stmt_end;
+        }
+        cursor = scope.parent;
+    }
+    return false;
+}
+
+fn structLocalSourceName(local: StructLocal) []const u8 {
+    return local.source_name orelse local.name;
+}
+
+fn directManagedLastUseMoveSource(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    body_end: usize,
+    target_source_name: []const u8,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    defer_ctx: ?*const DeferContext,
+) ?LastUseManagedMoveSource {
+    if (end_idx != start_idx + 1 or tokens[start_idx].kind != .ident) return null;
+    const source_name = tokens[start_idx].lexeme;
+    if (std.mem.eql(u8, source_name, target_source_name)) return null;
+    if (hasRegisteredDeferStmt(tokens, defer_ctx)) return null;
+    const actual_name = directManagedLocalExprName(tokens, start_idx, end_idx, locals, ctx) orelse return null;
+    if (tokenRangeUsesIdent(tokens, end_idx, body_end, source_name)) return null;
+    return .{
+        .source_name = source_name,
+        .actual_name = actual_name,
+    };
+}
+
+fn freshStructLiteralBindingStmtEnd(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    body_start: usize,
+    expr_start: usize,
+    source_name: []const u8,
+    struct_ty: []const u8,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+) CodegenError!?usize {
+    var i = body_start;
+    while (i < expr_start) {
+        const stmt_end = findStmtEnd(tokens, i, expr_start);
+        if (tokens[i].kind == .ident and std.mem.eql(u8, tokens[i].lexeme, source_name)) {
+            const eq_idx = findTopLevelToken(tokens, i + 1, stmt_end, "=") orelse return null;
+            if (!isStructLiteralRhs(tokens, eq_idx + 1, stmt_end)) return null;
+
+            var owned_types = std.ArrayList([]const u8).empty;
+            defer {
+                for (owned_types.items) |owned| allocator.free(owned);
+                owned_types.deinit(allocator);
+            }
+
+            if (try typedStructBinding(allocator, tokens, i, stmt_end, ctx, &owned_types)) |binding| {
+                if (std.mem.eql(u8, binding.ty, struct_ty)) return stmt_end;
+                return null;
+            }
+            if (inferredStructBinding(tokens, i, stmt_end, locals, ctx)) |binding| {
+                if (std.mem.eql(u8, binding.ty, struct_ty)) return stmt_end;
+            }
+            return null;
+        }
+        i = stmt_end;
+    }
+    return null;
+}
+
+fn fieldGetLastUseMoveSource(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    struct_local: StructLocal,
+    field_ty: []const u8,
+    move_ctx: CallLastUseMoveContext,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+) CodegenError!?[]const u8 {
+    if (!move_ctx.allow_last_use_move or !move_ctx.allow_field_read_move) return null;
+    if (!isManagedLocalType(field_ty, ctx)) return null;
+    if (hasRegisteredDeferStmt(tokens, move_ctx.defer_ctx)) return null;
+
+    const body_start = move_ctx.body_start;
+    const source_name = structLocalSourceName(struct_local);
+    const decl_end = (try freshStructLiteralBindingStmtEnd(
+        allocator,
+        tokens,
+        body_start,
+        start_idx,
+        source_name,
+        struct_local.ty,
+        locals,
+        ctx,
+    )) orelse return null;
+    if (tokenRangeUsesIdent(tokens, decl_end, start_idx, source_name)) return null;
+    if (tokenRangeUsesIdent(tokens, end_idx, move_ctx.stmt_end, source_name)) return null;
+    if (tokenRangeUsesIdent(tokens, move_ctx.stmt_end, move_ctx.body_end, source_name)) return null;
+    return source_name;
+}
+
+fn directManagedCallLastUseMoveSource(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    move_ctx: CallLastUseMoveContext,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+) ?LastUseManagedMoveSource {
+    if (end_idx != start_idx + 1 or tokens[start_idx].kind != .ident) return null;
+    if (!move_ctx.allow_last_use_move) return null;
+    if (hasRegisteredDeferStmt(tokens, move_ctx.defer_ctx)) return null;
+    const source_name = tokens[start_idx].lexeme;
+    const actual_name = directManagedLocalExprName(tokens, start_idx, end_idx, locals, ctx) orelse return null;
+    if (tokenRangeUsesIdent(tokens, end_idx, move_ctx.stmt_end, source_name)) return null;
+    if (tokenRangeUsesIdent(tokens, move_ctx.stmt_end, move_ctx.body_end, source_name)) return null;
+    return .{
+        .source_name = source_name,
+        .actual_name = actual_name,
+    };
+}
+
+fn directManagedUnionBindingCallMoveSource(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    args_end: usize,
+    stmt_end: usize,
+    body_end: usize,
+    allow_last_use_move: bool,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    defer_ctx: ?*const DeferContext,
+) ?LastUseManagedMoveSource {
+    if (end_idx != start_idx + 1 or tokens[start_idx].kind != .ident) return null;
+    if (!allow_last_use_move) return null;
+    if (hasRegisteredDeferStmt(tokens, defer_ctx)) return null;
+    const source_name = tokens[start_idx].lexeme;
+    const actual_name = directManagedLocalExprName(tokens, start_idx, end_idx, locals, ctx) orelse return null;
+    if (tokenRangeUsesIdent(tokens, end_idx, args_end, source_name)) return null;
+    if (tokenRangeUsesIdent(tokens, stmt_end, body_end, source_name)) return null;
+    return .{
+        .source_name = source_name,
+        .actual_name = actual_name,
+    };
+}
+
+fn hasMoveSource(sources: []const LastUseManagedMoveSource, actual_name: []const u8) bool {
+    for (sources) |source| {
+        if (std.mem.eql(u8, source.actual_name, actual_name)) return true;
+    }
+    return false;
+}
+
 fn unionPayloadLocalNameFromLocals(
     locals: []const Local,
     base: []const u8,
     idx: usize,
 ) ?[]const u8 {
     var suffix_buf: [32]u8 = undefined;
-    const suffix = std.fmt.bufPrint(&suffix_buf, ".__do_union_payload_{d}", .{idx}) catch return null;
+    const suffix = std.fmt.bufPrint(&suffix_buf, ".__union_payload_{d}", .{idx}) catch return null;
     for (locals) |local| {
         if (local.name.len != base.len + suffix.len) continue;
         if (!std.mem.startsWith(u8, local.name, base)) continue;
@@ -2763,7 +3256,7 @@ fn isUnionPayloadLocalName(
     for (union_locals) |union_local| {
         for (union_local.layout.payload_tys, 0..) |_, idx| {
             var suffix_buf: [32]u8 = undefined;
-            const suffix = std.fmt.bufPrint(&suffix_buf, ".__do_union_payload_{d}", .{idx}) catch return false;
+            const suffix = std.fmt.bufPrint(&suffix_buf, ".__union_payload_{d}", .{idx}) catch return false;
             if (name.len != union_local.name.len + suffix.len) continue;
             if (!std.mem.startsWith(u8, name, union_local.name)) continue;
             if (!std.mem.eql(u8, name[union_local.name.len..], suffix)) continue;
@@ -2778,7 +3271,11 @@ fn emitStorageBinding(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    body_start: usize,
+    body_end: usize,
+    allow_last_use_move: bool,
     locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) !void {
@@ -2803,9 +3300,22 @@ fn emitStorageBinding(
     }
 
     const expected_ty = findLocalType(locals.locals.items, source_name) orelse return error.NoMatchingCall;
-    if (try emitStorageHandleBindingExpr(allocator, tokens, eq_idx + 1, end_idx, expected_ty, locals, ctx, out)) {
-        if (isDirectManagedLocalExpr(tokens, eq_idx + 1, end_idx, locals, ctx)) {
-            try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+    const emitted_move_call = try emitManagedHandleCallExprWithMoveContext(
+        allocator,
+        tokens,
+        eq_idx + 1,
+        end_idx,
+        body_end,
+        allow_last_use_move,
+        locals,
+        defer_ctx,
+        ctx,
+        expected_ty,
+        out,
+    );
+    if (emitted_move_call or try emitStorageHandleBindingExpr(allocator, tokens, eq_idx + 1, end_idx, body_start, body_end, allow_last_use_move, expected_ty, locals, defer_ctx, ctx, out)) {
+        if (!emitted_move_call and isDirectManagedLocalExpr(tokens, eq_idx + 1, end_idx, locals, ctx)) {
+            try out.appendSlice(allocator, "    call $__arc_inc\n");
         }
         try appendFmt(allocator, out, "    local.set ${s}\n", .{target_name});
         return;
@@ -2819,13 +3329,25 @@ fn emitStorageHandleBindingExpr(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    body_start: usize,
+    body_end: usize,
+    allow_last_use_move: bool,
     expected_ty: []const u8,
     locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     if (!std.mem.eql(u8, inferExprType(tokens, start_idx, end_idx, locals, ctx) orelse "", expected_ty)) return false;
-    if (!try emitExpr(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, out)) return false;
+    const move_ctx = if (allow_last_use_move) CallLastUseMoveContext{
+        .body_start = body_start,
+        .stmt_end = end_idx,
+        .body_end = body_end,
+        .defer_ctx = defer_ctx,
+        .allow_last_use_move = true,
+        .allow_field_read_move = true,
+    } else null;
+    if (!try emitExprWithMoveContext(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, if (move_ctx) |*ctx_info| ctx_info else null, out)) return false;
     return true;
 }
 
@@ -2861,7 +3383,7 @@ fn emitStorageU8RawStringValue(
     const data = ctx.string_data.find(key) orelse return error.NoMatchingCall;
     try appendFmt(allocator, out, "    i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES + data.bytes.len});
     try appendFmt(allocator, out, "    i32.const {d}\n", .{TYPE_ID_STORAGE_U8});
-    try out.appendSlice(allocator, "    call $__do_arc_alloc\n");
+    try out.appendSlice(allocator, "    call $__arc_alloc\n");
     try appendFmt(allocator, out, "    local.set ${s}\n", .{local_name});
     try emitStorageLenPtr(allocator, out, local_name);
     try appendFmt(allocator, out, "    i32.const {d}\n", .{data.bytes.len});
@@ -2887,7 +3409,7 @@ fn emitStorageU8StringLiteralIntoLocal(
     const data = ctx.string_data.find(tokens[string_idx].lexeme) orelse return error.NoMatchingCall;
     try appendFmt(allocator, out, "    i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES + data.bytes.len});
     try appendFmt(allocator, out, "    i32.const {d}\n", .{TYPE_ID_STORAGE_U8});
-    try out.appendSlice(allocator, "    call $__do_arc_alloc\n");
+    try out.appendSlice(allocator, "    call $__arc_alloc\n");
     try appendFmt(allocator, out, "    local.set ${s}\n", .{local_name});
     try emitStorageLenPtr(allocator, out, local_name);
     try appendFmt(allocator, out, "    i32.const {d}\n", .{data.bytes.len});
@@ -2923,7 +3445,7 @@ fn emitStorageAggLiteral(
     const count = countAggLiteralItems(tokens, start_idx + 2, close_brace);
     try appendFmt(allocator, out, "    i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES + count * elem_bytes});
     try appendFmt(allocator, out, "    i32.const {d}\n", .{type_id});
-    try out.appendSlice(allocator, "    call $__do_arc_alloc\n");
+    try out.appendSlice(allocator, "    call $__arc_alloc\n");
     try appendFmt(allocator, out, "    local.set ${s}\n", .{local_name});
     try emitStorageLenPtr(allocator, out, local_name);
     try appendFmt(allocator, out, "    i32.const {d}\n", .{count});
@@ -2949,7 +3471,7 @@ fn emitStorageAggLiteral(
         if (!try emitExpr(allocator, tokens, item_start, item_end, locals, ctx, elem_ty, out)) return error.NoMatchingCall;
         if (isManagedLocalType(elem_ty, ctx) and isDirectManagedLocalExpr(tokens, item_start, item_end, locals, ctx)) {
             try out.appendSlice(allocator, "    ;; storage-managed-element-inc\n");
-            try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+            try out.appendSlice(allocator, "    call $__arc_inc\n");
         }
         try appendStoreForPayloadType(allocator, out, elem_ty);
         item_index += 1;
@@ -2991,7 +3513,7 @@ fn emitStoragePayloadPtr(
     name: []const u8,
 ) !void {
     try appendFmt(allocator, out, "    local.get ${s}\n", .{name});
-    try out.appendSlice(allocator, "    call $__do_arc_payload\n");
+    try out.appendSlice(allocator, "    call $__arc_payload\n");
 }
 
 fn emitStorageLenPtr(
@@ -3049,7 +3571,7 @@ fn emitStoragePayloadPtrWithIndent(
     indent: []const u8,
 ) !void {
     try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, name });
-    try appendFmt(allocator, out, "{s}call $__do_arc_payload\n", .{indent});
+    try appendFmt(allocator, out, "{s}call $__arc_payload\n", .{indent});
 }
 
 fn emitStructBinding(
@@ -3057,7 +3579,10 @@ fn emitStructBinding(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    body_end: usize,
+    allow_last_use_move: bool,
     locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
     ctx: CodegenContext,
     decl: StructDecl,
     out: *std.ArrayList(u8),
@@ -3084,9 +3609,22 @@ fn emitStructBinding(
         if (try emitManagedStructSetBinding(allocator, tokens, eq_idx + 1, end_idx, target_name, locals, ctx, decl, struct_ty, &owned_types, out)) {
             return;
         }
-        if (!try emitExpr(allocator, tokens, eq_idx + 1, end_idx, locals, ctx, struct_ty, out)) return error.NoMatchingCall;
-        if (isDirectManagedLocalExpr(tokens, eq_idx + 1, end_idx, locals, ctx)) {
-            try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+        const emitted_move_call = try emitManagedHandleCallExprWithMoveContext(
+            allocator,
+            tokens,
+            eq_idx + 1,
+            end_idx,
+            body_end,
+            allow_last_use_move,
+            locals,
+            defer_ctx,
+            ctx,
+            struct_ty,
+            out,
+        );
+        if (!emitted_move_call and !try emitExpr(allocator, tokens, eq_idx + 1, end_idx, locals, ctx, struct_ty, out)) return error.NoMatchingCall;
+        if (!emitted_move_call and isDirectManagedLocalExpr(tokens, eq_idx + 1, end_idx, locals, ctx)) {
+            try out.appendSlice(allocator, "    call $__arc_inc\n");
         }
         try appendFmt(allocator, out, "    local.set ${s}\n", .{target_name});
         return;
@@ -3095,7 +3633,20 @@ fn emitStructBinding(
         if (try emitWasiRecordStructBinding(allocator, tokens, start_idx, end_idx, locals, ctx, decl, out)) {
             return;
         }
-        if (try emitUnmanagedStructCallBinding(allocator, tokens, start_idx, end_idx, locals, ctx, decl, struct_ty, out)) {
+        if (try emitUnmanagedStructCallBinding(
+            allocator,
+            tokens,
+            start_idx,
+            end_idx,
+            body_end,
+            allow_last_use_move,
+            locals,
+            defer_ctx,
+            ctx,
+            decl,
+            struct_ty,
+            out,
+        )) {
             return;
         }
         if (!isStructLiteralRhs(tokens, eq_idx + 1, end_idx)) {
@@ -3118,7 +3669,7 @@ fn emitStructBinding(
     if (findStructLayout(ctx.struct_layouts, struct_ty)) |layout| {
         try appendFmt(allocator, out, "    i32.const {d}\n", .{layout.payload_bytes});
         try appendFmt(allocator, out, "    i32.const {d}\n", .{layout.type_id});
-        try out.appendSlice(allocator, "    call $__do_arc_alloc\n");
+        try out.appendSlice(allocator, "    call $__arc_alloc\n");
         try appendFmt(allocator, out, "    local.set ${s}\n", .{target_name});
         try emitManagedStructFields(allocator, tokens, open_brace + 1, close_brace, target_name, locals, ctx, decl, struct_ty, layout, &owned_types, out);
         return;
@@ -3175,7 +3726,7 @@ fn emitManagedStructSetBinding(
 
     try appendFmt(allocator, out, "    i32.const {d}\n", .{layout.payload_bytes});
     try appendFmt(allocator, out, "    i32.const {d}\n", .{layout.type_id});
-    try out.appendSlice(allocator, "    call $__do_arc_alloc\n");
+    try out.appendSlice(allocator, "    call $__arc_alloc\n");
     try appendFmt(allocator, out, "    local.set ${s}\n", .{target_name});
 
     for (decl.fields) |field| {
@@ -3186,7 +3737,7 @@ fn emitManagedStructSetBinding(
         if (std.mem.eql(u8, field_name, target_field)) {
             if (!try emitExpr(allocator, tokens, value_start, value_end, locals, ctx, field_ty, out)) return false;
             if (isManagedStructField(layout, field_name) and isDirectManagedLocalExpr(tokens, value_start, value_end, locals, ctx)) {
-                try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+                try out.appendSlice(allocator, "    call $__arc_inc\n");
             }
             try appendStoreForPayloadType(allocator, out, field_ty);
             continue;
@@ -3195,7 +3746,7 @@ fn emitManagedStructSetBinding(
         try appendManagedStructFieldPtr(allocator, out, source_local.name, field_offset);
         try appendLoadForPayloadType(allocator, out, field_ty);
         if (isManagedStructField(layout, field_name)) {
-            try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+            try out.appendSlice(allocator, "    call $__arc_inc\n");
         }
         try appendStoreForPayloadType(allocator, out, field_ty);
     }
@@ -3241,7 +3792,7 @@ fn emitStructLiteralExpr(
     if (findStructLayout(ctx.struct_layouts, expected_ty)) |layout| {
         try appendFmt(allocator, out, "    i32.const {d}\n", .{layout.payload_bytes});
         try appendFmt(allocator, out, "    i32.const {d}\n", .{layout.type_id});
-        try out.appendSlice(allocator, "    call $__do_arc_alloc\n");
+        try out.appendSlice(allocator, "    call $__arc_alloc\n");
         try appendFmt(allocator, out, "    local.set ${s}\n", .{STRUCT_LITERAL_TMP_LOCAL});
         try emitManagedStructFields(allocator, tokens, open_brace + 1, close_brace, STRUCT_LITERAL_TMP_LOCAL, locals, ctx, decl, expected_ty, layout, &owned_types, out);
         try appendFmt(allocator, out, "    local.get ${s}\n", .{STRUCT_LITERAL_TMP_LOCAL});
@@ -3265,7 +3816,10 @@ fn emitUnmanagedStructCallBinding(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    body_end: usize,
+    allow_last_use_move: bool,
     locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
     ctx: CodegenContext,
     decl: StructDecl,
     struct_ty: []const u8,
@@ -3288,7 +3842,14 @@ fn emitUnmanagedStructCallBinding(
         const field_ty = try substituteStructFieldType(allocator, decl, struct_ty, field.ty, &owned_types);
         if (!std.mem.eql(u8, field_ty, func.results[idx])) return error.NoMatchingCall;
     }
-    if (!try emitUserFuncCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, out)) {
+    const move_ctx = CallLastUseMoveContext{
+        .body_start = 0,
+        .stmt_end = end_idx,
+        .body_end = body_end,
+        .defer_ctx = defer_ctx,
+        .allow_last_use_move = allow_last_use_move,
+    };
+    if (!try emitUserFuncCallWithMoveContext(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, &move_ctx, out)) {
         return error.NoMatchingCall;
     }
 
@@ -3630,7 +4191,7 @@ fn emitWasiRecordResultFields(
     if (findStructLayout(ctx.struct_layouts, struct_name) != null) return false;
     const decl = findStructDecl(ctx.structs, struct_name) orelse return error.NoMatchingCall;
 
-    try out.appendSlice(allocator, "    global.get $__do_wasi_result_area_base\n");
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
     try out.appendSlice(allocator, "    call $");
     try appendWasiImportSymbol(allocator, out, import.target);
     try out.appendSlice(allocator, "\n");
@@ -3638,7 +4199,7 @@ fn emitWasiRecordResultFields(
     for (decl.fields) |field| {
         const field_name = publicDeclName(field.name);
         const field_offset = structFieldPayloadOffset(decl, field_name) orelse return error.NoMatchingCall;
-        try out.appendSlice(allocator, "    global.get $__do_wasi_result_area_base\n");
+        try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
         if (field_offset != 0) {
             try appendFmt(allocator, out, "    i32.const {d}\n", .{field_offset});
             try out.appendSlice(allocator, "    i32.add\n");
@@ -3672,12 +4233,12 @@ fn emitManagedStructFields(
         const field_ty = try substituteStructFieldType(allocator, decl, struct_ty, field.ty, owned_types);
 
         try appendFmt(allocator, out, "    local.get ${s}\n", .{local_name});
-        try out.appendSlice(allocator, "    call $__do_arc_payload\n");
+        try out.appendSlice(allocator, "    call $__arc_payload\n");
         try appendFmt(allocator, out, "    i32.const {d}\n", .{field_offset});
         try out.appendSlice(allocator, "    i32.add\n");
         if (!try emitExpr(allocator, expr_tokens, expr_start, expr_end, locals, ctx, field_ty, out)) return error.NoMatchingCall;
         if (isManagedStructField(layout, field_name) and isDirectManagedLocalExpr(expr_tokens, expr_start, expr_end, locals, ctx)) {
-            try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+            try out.appendSlice(allocator, "    call $__arc_inc\n");
         }
         try appendStoreForPayloadType(allocator, out, field_ty);
     }
@@ -3688,7 +4249,10 @@ fn emitStructSetAssignment(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    body_end: usize,
+    allow_last_use_move: bool,
     locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) !bool {
@@ -3731,17 +4295,22 @@ fn emitStructSetAssignment(
             field_offset,
         });
         if (isManagedStructField(layout, field_name)) {
-            if (!try emitExpr(allocator, tokens, value_start, close_paren, locals, ctx, field_ty, out)) return error.NoMatchingCall;
-            if (isDirectManagedLocalExpr(tokens, value_start, close_paren, locals, ctx)) {
-                try out.appendSlice(allocator, "    call $__do_arc_inc\n");
-            }
-            try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-            try appendManagedStructFieldPtr(allocator, out, tokens[start_idx].lexeme, field_offset);
-            try appendLoadForPayloadType(allocator, out, field_ty);
-            try out.appendSlice(allocator, "    call $__do_arc_dec\n");
-            try appendManagedStructFieldPtr(allocator, out, tokens[start_idx].lexeme, field_offset);
-            try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-            try appendStoreForPayloadType(allocator, out, field_ty);
+            try emitManagedStructFieldSet(
+                allocator,
+                tokens,
+                value_start,
+                close_paren,
+                body_end,
+                allow_last_use_move,
+                tokens[start_idx].lexeme,
+                field_name,
+                field_offset,
+                field_ty,
+                locals,
+                defer_ctx,
+                ctx,
+                out,
+            );
             return true;
         }
         try appendManagedStructFieldPtr(allocator, out, tokens[start_idx].lexeme, field_offset);
@@ -3763,7 +4332,10 @@ fn emitStructFieldMetaSetAssignment(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    body_end: usize,
+    allow_last_use_move: bool,
     locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) !bool {
@@ -3809,17 +4381,22 @@ fn emitStructFieldMetaSetAssignment(
         const decl = findStructDecl(ctx.structs, struct_local.ty) orelse return false;
         const field_offset = structFieldPayloadOffset(decl, field_name) orelse return false;
         if (isManagedStructField(layout, field_name)) {
-            if (!try emitExpr(allocator, tokens, value_start, close_paren, locals, ctx, field_ty, out)) return error.NoMatchingCall;
-            if (isDirectManagedLocalExpr(tokens, value_start, close_paren, locals, ctx)) {
-                try out.appendSlice(allocator, "    call $__do_arc_inc\n");
-            }
-            try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-            try appendManagedStructFieldPtr(allocator, out, tokens[start_idx].lexeme, field_offset);
-            try appendLoadForPayloadType(allocator, out, field_ty);
-            try out.appendSlice(allocator, "    call $__do_arc_dec\n");
-            try appendManagedStructFieldPtr(allocator, out, tokens[start_idx].lexeme, field_offset);
-            try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-            try appendStoreForPayloadType(allocator, out, field_ty);
+            try emitManagedStructFieldSet(
+                allocator,
+                tokens,
+                value_start,
+                close_paren,
+                body_end,
+                allow_last_use_move,
+                tokens[start_idx].lexeme,
+                field_name,
+                field_offset,
+                field_ty,
+                locals,
+                defer_ctx,
+                ctx,
+                out,
+            );
             return true;
         }
         try appendManagedStructFieldPtr(allocator, out, tokens[start_idx].lexeme, field_offset);
@@ -3836,6 +4413,59 @@ fn emitStructFieldMetaSetAssignment(
     return true;
 }
 
+fn emitManagedStructFieldSet(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    value_start: usize,
+    value_end: usize,
+    body_end: usize,
+    allow_last_use_move: bool,
+    target_name: []const u8,
+    field_name: []const u8,
+    field_offset: usize,
+    field_ty: []const u8,
+    locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+) CodegenError!void {
+    const move_ctx = if (allow_last_use_move) CallLastUseMoveContext{
+        .stmt_end = value_end,
+        .body_end = body_end,
+        .defer_ctx = defer_ctx,
+        .allow_last_use_move = true,
+    } else null;
+    if (!try emitExprWithMoveContext(allocator, tokens, value_start, value_end, locals, ctx, field_ty, if (move_ctx) |*ctx_info| ctx_info else null, out)) return error.NoMatchingCall;
+    const move_source = if (allow_last_use_move)
+        directManagedLastUseMoveSource(tokens, value_start, value_end, body_end, target_name, locals, ctx, defer_ctx)
+    else
+        null;
+    if (move_source == null and isDirectManagedLocalExpr(tokens, value_start, value_end, locals, ctx)) {
+        try out.appendSlice(allocator, "    call $__arc_inc\n");
+    }
+    try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+
+    try appendFmt(allocator, out, "    ;; arc-overwrite-release {s}.{s}\n", .{ target_name, field_name });
+    try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try appendManagedStructFieldPtr(allocator, out, target_name, field_offset);
+    try appendLoadForPayloadType(allocator, out, field_ty);
+    try out.appendSlice(allocator, "    i32.ne\n");
+    try out.appendSlice(allocator, "    if\n");
+    try appendManagedStructFieldPtr(allocator, out, target_name, field_offset);
+    try appendLoadForPayloadType(allocator, out, field_ty);
+    try out.appendSlice(allocator, "      call $__arc_dec\n");
+    try out.appendSlice(allocator, "    end\n");
+
+    try appendManagedStructFieldPtr(allocator, out, target_name, field_offset);
+    try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try appendStoreForPayloadType(allocator, out, field_ty);
+    if (move_source) |source| {
+        try appendFmt(allocator, out, "    ;; field-set-move {s}\n", .{source.source_name});
+        try emitZeroValueForType(allocator, ctx, out, field_ty);
+        try appendFmt(allocator, out, "    local.set ${s}\n", .{source.actual_name});
+    }
+}
+
 fn appendManagedStructFieldPtr(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
@@ -3843,7 +4473,7 @@ fn appendManagedStructFieldPtr(
     field_offset: usize,
 ) !void {
     try appendFmt(allocator, out, "    local.get ${s}\n", .{local_name});
-    try out.appendSlice(allocator, "    call $__do_arc_payload\n");
+    try out.appendSlice(allocator, "    call $__arc_payload\n");
     try appendFmt(allocator, out, "    i32.const {d}\n", .{field_offset});
     try out.appendSlice(allocator, "    i32.add\n");
 }
@@ -3853,7 +4483,10 @@ fn emitBody(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    body_start: usize,
     locals: *const LocalSet,
+    return_cleanup_locals: *const LocalSet,
+    control_cleanup_locals: *const LocalSet,
     ctx: CodegenContext,
     result_tys: []const []const u8,
     result_items: []const FuncResultItem,
@@ -3864,6 +4497,7 @@ fn emitBody(
     return_label: ?[]const u8,
     out: *std.ArrayList(u8),
 ) !void {
+    const allow_call_arg_last_use_move = loop_ctx == null;
     var i = start_idx;
     while (i < end_idx) {
         const stmt_end = findStmtEnd(tokens, i, end_idx);
@@ -3880,55 +4514,69 @@ fn emitBody(
 
         if (isDeferStmt(tokens, i, stmt_end)) {
             // Cleanup registration only; execution happens on block exit paths.
-        } else if (try emitLoopControlStmt(allocator, tokens, i, stmt_end, locals, loop_ctx, exit_defer_ctx, ctx, out)) {
+        } else if (try emitLoopControlStmt(allocator, tokens, i, stmt_end, locals, control_cleanup_locals, loop_ctx, exit_defer_ctx, ctx, out)) {
             // Loop control emitted.
-        } else if (try emitGuardLoopControlIf(allocator, tokens, i, stmt_end, locals, loop_ctx, exit_defer_ctx, ctx, out)) {
+        } else if (try emitGuardLoopControlIf(allocator, tokens, i, stmt_end, locals, control_cleanup_locals, loop_ctx, exit_defer_ctx, ctx, out)) {
             // Guard loop control emitted.
-        } else if (try emitLoopBlock(allocator, tokens, i, stmt_end, locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out)) {
+        } else if (try emitLoopBlock(allocator, tokens, i, stmt_end, body_start, locals, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out)) {
             // Loop block emitted.
-        } else if (try emitIfBlock(allocator, tokens, i, stmt_end, locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out)) {
+        } else if (try emitIfBlock(allocator, tokens, i, stmt_end, body_start, locals, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out)) {
             // If block emitted.
-        } else if (try emitGuardReturnIf(allocator, tokens, i, stmt_end, locals, ctx, result_tys, result_items, result_struct, result_union, exit_defer_ctx, return_label, out)) {
+        } else if (try emitGuardReturnIf(allocator, tokens, i, stmt_end, end_idx, body_start, allow_call_arg_last_use_move, locals, return_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, exit_defer_ctx, return_label, out)) {
             // Guard return emitted.
-        } else if (try emitReturnStmt(allocator, tokens, i, stmt_end, locals, ctx, result_tys, result_items, result_struct, result_union, exit_defer_ctx, return_label, out)) {
+        } else if (try emitReturnStmt(allocator, tokens, i, stmt_end, body_start, locals, return_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, exit_defer_ctx, return_label, out)) {
             // Return emitted.
-        } else if (try emitUnionBinding(allocator, tokens, i, stmt_end, locals, ctx, out)) {
+        } else if (try isDeadManagedAliasBinding(allocator, tokens, i, stmt_end, end_idx, locals, ctx)) {
+            // Dead managed alias binding elided.
+        } else if (try emitUnionBinding(allocator, tokens, i, stmt_end, end_idx, allow_call_arg_last_use_move, locals, exit_defer_ctx, ctx, out)) {
             // Union binding emitted.
-        } else if (try emitMultiResultAssignment(allocator, tokens, i, stmt_end, locals, ctx, out)) {
+        } else if (try emitMultiResultAssignment(allocator, tokens, i, stmt_end, end_idx, allow_call_arg_last_use_move, locals, exit_defer_ctx, ctx, out)) {
             // Multi-result assignment emitted.
-        } else if (try emitStructFieldMetaSetAssignment(allocator, tokens, i, stmt_end, locals, ctx, out)) {
+        } else if (try emitStructFieldMetaSetAssignment(allocator, tokens, i, stmt_end, end_idx, allow_call_arg_last_use_move, locals, exit_defer_ctx, ctx, out)) {
             // Struct field metadata assignment emitted.
-        } else if (try emitStructSetAssignment(allocator, tokens, i, stmt_end, locals, ctx, out)) {
+        } else if (try emitStructSetAssignment(allocator, tokens, i, stmt_end, end_idx, allow_call_arg_last_use_move, locals, exit_defer_ctx, ctx, out)) {
             // Struct field assignment emitted.
-        } else if (try emitStorageAssignment(allocator, tokens, i, stmt_end, locals, ctx, out)) {
+        } else if (try emitStorageAssignment(allocator, tokens, i, stmt_end, start_idx, end_idx, locals, exit_defer_ctx, ctx, out)) {
             // Storage assignment emitted.
-        } else if (try emitManagedLocalAssignment(allocator, tokens, i, stmt_end, locals, ctx, out)) {
+        } else if (try emitManagedLocalAssignment(allocator, tokens, i, stmt_end, end_idx, locals, exit_defer_ctx, ctx, out)) {
             // Managed handle assignment emitted.
         } else if (managedPayloadBinding(tokens, i, stmt_end) != null) {
-            try emitStorageBinding(allocator, tokens, i, stmt_end, locals, ctx, out);
+            try emitStorageBinding(allocator, tokens, i, stmt_end, start_idx, end_idx, allow_call_arg_last_use_move, locals, exit_defer_ctx, ctx, out);
         } else if (storageBindingElemType(tokens, i, stmt_end) != null) {
-            try emitStorageBinding(allocator, tokens, i, stmt_end, locals, ctx, out);
+            try emitStorageBinding(allocator, tokens, i, stmt_end, start_idx, end_idx, allow_call_arg_last_use_move, locals, exit_defer_ctx, ctx, out);
         } else if (isCollectedTypedStorageBinding(tokens, i, stmt_end, locals)) {
-            try emitStorageBinding(allocator, tokens, i, stmt_end, locals, ctx, out);
+            try emitStorageBinding(allocator, tokens, i, stmt_end, start_idx, end_idx, allow_call_arg_last_use_move, locals, exit_defer_ctx, ctx, out);
         } else if (try typedStructBindingDecl(allocator, tokens, i, stmt_end, ctx)) |decl| {
-            try emitStructBinding(allocator, tokens, i, stmt_end, locals, ctx, decl, out);
+            try emitStructBinding(allocator, tokens, i, stmt_end, end_idx, allow_call_arg_last_use_move, locals, exit_defer_ctx, ctx, decl, out);
         } else if (inferredStructCtorBinding(tokens, i, stmt_end, ctx.structs)) |decl| {
-            try emitStructBinding(allocator, tokens, i, stmt_end, locals, ctx, decl, out);
+            try emitStructBinding(allocator, tokens, i, stmt_end, end_idx, allow_call_arg_last_use_move, locals, exit_defer_ctx, ctx, decl, out);
         } else if (inferredStructBinding(tokens, i, stmt_end, locals, ctx)) |binding| {
-            try emitStructBinding(allocator, tokens, i, stmt_end, locals, ctx, binding.decl, out);
-        } else if (try emitScalarAssignment(allocator, tokens, i, stmt_end, locals, ctx, out)) {
+            try emitStructBinding(allocator, tokens, i, stmt_end, end_idx, allow_call_arg_last_use_move, locals, exit_defer_ctx, ctx, binding.decl, out);
+        } else if (try emitScalarAssignment(allocator, tokens, i, stmt_end, end_idx, allow_call_arg_last_use_move, locals, exit_defer_ctx, ctx, out)) {
             // Scalar assignment emitted.
         } else if (isTypedScalarBinding(tokens, i, stmt_end, ctx)) {
             const eq_idx = findTopLevelToken(tokens, i, stmt_end, "=") orelse {
                 i = stmt_end;
                 continue;
             };
-            const emitted = try emitExpr(allocator, tokens, eq_idx + 1, stmt_end, locals, ctx, tokens[i + 1].lexeme, out);
+            const emitted = try emitScalarCallExprWithMoveContext(
+                allocator,
+                tokens,
+                eq_idx + 1,
+                stmt_end,
+                end_idx,
+                allow_call_arg_last_use_move,
+                locals,
+                exit_defer_ctx,
+                ctx,
+                tokens[i + 1].lexeme,
+                out,
+            ) or try emitExpr(allocator, tokens, eq_idx + 1, stmt_end, locals, ctx, tokens[i + 1].lexeme, out);
             if (!emitted) return error.NoMatchingCall;
             try appendFmt(allocator, out, "    local.set ${s}\n", .{resolvedLocalName(locals.locals.items, tokens[i].lexeme)});
-        } else if (try emitInferredScalarBinding(allocator, tokens, i, stmt_end, locals, ctx, out)) {
+        } else if (try emitInferredScalarBinding(allocator, tokens, i, stmt_end, end_idx, allow_call_arg_last_use_move, locals, exit_defer_ctx, ctx, out)) {
             // Inferred scalar binding emitted.
-        } else if (try emitBareUserFuncCall(allocator, tokens, i, stmt_end, locals, ctx, out)) {
+        } else if (try emitBareUserFuncCallWithMoveContext(allocator, tokens, i, stmt_end, end_idx, allow_call_arg_last_use_move, locals, exit_defer_ctx, ctx, out)) {
             // Nil-return user function call emitted.
         } else if (try emitBareWasiHostImportCall(allocator, tokens, i, stmt_end, locals, ctx, out)) {
             // Statement-only WASI result-area call emitted.
@@ -4101,7 +4749,7 @@ fn emitDeferCleanupBlock(
     try out.appendSlice(allocator, "    ;; defer-cleanup-block\n");
     var cleanup_locals = LocalSet{};
     defer cleanup_locals.deinit(allocator);
-    try collectBodyLocals(allocator, tokens, open_brace + 1, close_brace, ctx, &cleanup_locals);
+    try collectDirectBodyLocals(allocator, tokens, open_brace + 1, close_brace, ctx, &cleanup_locals);
 
     const no_results: []const []const u8 = &.{};
     const cleanup_defer = DeferContext{
@@ -4111,7 +4759,7 @@ fn emitDeferCleanupBlock(
         .registered_end_idx = close_brace,
     };
     try out.appendSlice(allocator, "    block $defer_cleanup_exit\n");
-    try emitBody(allocator, tokens, open_brace + 1, close_brace, locals, ctx, no_results, NO_RESULT_ITEMS, null, null, null, &cleanup_defer, "defer_cleanup_exit", out);
+    try emitBody(allocator, tokens, open_brace + 1, close_brace, open_brace + 1, locals, &cleanup_locals, &EMPTY_LOCAL_SET, ctx, no_results, NO_RESULT_ITEMS, null, null, null, &cleanup_defer, "defer_cleanup_exit", out);
     try out.appendSlice(allocator, "    end\n");
     try emitBlockReleaseManagedLocals(allocator, &cleanup_locals, ctx, out);
 }
@@ -4121,7 +4769,10 @@ fn emitStorageAssignment(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    body_start: usize,
+    body_end: usize,
     locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) !bool {
@@ -4142,7 +4793,7 @@ fn emitStorageAssignment(
         try emitReplaceManagedLocalFromTmp(allocator, target_name, out);
         return true;
     }
-    if (try emitStorageHandleAssignmentExpr(allocator, tokens, rhs_start, end_idx, target_name, locals, ctx, out)) {
+    if (try emitStorageHandleAssignmentExpr(allocator, tokens, rhs_start, end_idx, body_start, body_end, source_name, target_name, locals, defer_ctx, ctx, out)) {
         return true;
     }
     if (!try emitStorageWriteExpr(allocator, tokens, rhs_start, end_idx, target_name, locals, ctx, out)) {
@@ -4158,7 +4809,10 @@ fn emitMultiResultAssignment(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    body_end: usize,
+    allow_last_use_move: bool,
     locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
@@ -4274,7 +4928,14 @@ fn emitMultiResultAssignment(
     }
     if (item_idx != func.result_items.len) return error.NoMatchingCall;
 
-    if (!try emitUserFuncCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, out)) {
+    const move_ctx = CallLastUseMoveContext{
+        .body_start = 0,
+        .stmt_end = end_idx,
+        .body_end = body_end,
+        .defer_ctx = defer_ctx,
+        .allow_last_use_move = allow_last_use_move,
+    };
+    if (!try emitUserFuncCallWithMoveContext(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, &move_ctx, out)) {
         return error.NoMatchingCall;
     }
 
@@ -4401,21 +5062,33 @@ fn emitStorageHandleAssignmentExpr(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    body_start: usize,
+    body_end: usize,
+    target_source_name: []const u8,
     target_name: []const u8,
     locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     if (end_idx == start_idx + 1 and tokens[start_idx].kind == .ident) {
-        if (std.mem.eql(u8, tokens[start_idx].lexeme, target_name)) return true;
+        if (directManagedLocalExprName(tokens, start_idx, end_idx, locals, ctx)) |actual_name| {
+            if (std.mem.eql(u8, actual_name, target_name)) return true;
+        }
     }
     const expected_ty = findLocalType(locals.locals.items, target_name) orelse return false;
-    if (!try emitStorageHandleBindingExpr(allocator, tokens, start_idx, end_idx, expected_ty, locals, ctx, out)) return false;
-    if (isDirectManagedLocalExpr(tokens, start_idx, end_idx, locals, ctx)) {
-        try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+    if (!try emitStorageHandleBindingExpr(allocator, tokens, start_idx, end_idx, body_start, body_end, true, expected_ty, locals, defer_ctx, ctx, out)) return false;
+    const move_source = directManagedLastUseMoveSource(tokens, start_idx, end_idx, body_end, target_source_name, locals, ctx, defer_ctx);
+    if (move_source == null and isDirectManagedLocalExpr(tokens, start_idx, end_idx, locals, ctx)) {
+        try out.appendSlice(allocator, "    call $__arc_inc\n");
     }
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
     try emitReplaceManagedLocalFromTmp(allocator, target_name, out);
+    if (move_source) |source| {
+        try appendFmt(allocator, out, "    ;; arc-overwrite-move {s}\n", .{source.source_name});
+        try out.appendSlice(allocator, "    i32.const 0\n");
+        try appendFmt(allocator, out, "    local.set ${s}\n", .{source.actual_name});
+    }
     return true;
 }
 
@@ -4430,7 +5103,7 @@ fn emitReplaceManagedLocalFromTmp(
     try out.appendSlice(allocator, "    i32.ne\n");
     try out.appendSlice(allocator, "    if\n");
     try appendFmt(allocator, out, "      local.get ${s}\n", .{name});
-    try out.appendSlice(allocator, "      call $__do_arc_dec\n");
+    try out.appendSlice(allocator, "      call $__arc_dec\n");
     try out.appendSlice(allocator, "    end\n");
     try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
     try appendFmt(allocator, out, "    local.set ${s}\n", .{name});
@@ -4443,7 +5116,7 @@ fn emitOverwriteReleaseManagedLocal(
 ) !void {
     try appendFmt(allocator, out, "    ;; arc-overwrite-release {s}\n", .{name});
     try appendFmt(allocator, out, "    local.get ${s}\n", .{name});
-    try out.appendSlice(allocator, "    call $__do_arc_dec\n");
+    try out.appendSlice(allocator, "    call $__arc_dec\n");
 }
 
 fn emitManagedLocalAssignment(
@@ -4451,7 +5124,9 @@ fn emitManagedLocalAssignment(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    body_end: usize,
     locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
@@ -4462,18 +5137,82 @@ fn emitManagedLocalAssignment(
     const rhs_start = start_idx + 2;
 
     if (end_idx == rhs_start + 1 and tokens[rhs_start].kind == .ident) {
-        if (std.mem.eql(u8, tokens[rhs_start].lexeme, target_name)) return true;
+        if (directManagedLocalExprName(tokens, rhs_start, end_idx, locals, ctx)) |actual_name| {
+            if (std.mem.eql(u8, actual_name, target_local_name)) return true;
+        }
     }
 
     if (!try emitExpr(allocator, tokens, rhs_start, end_idx, locals, ctx, target_ty, out)) {
         return error.NoMatchingCall;
     }
-    if (isDirectManagedLocalExpr(tokens, rhs_start, end_idx, locals, ctx)) {
-        try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+    const move_source = directManagedLastUseMoveSource(tokens, rhs_start, end_idx, body_end, target_name, locals, ctx, defer_ctx);
+    if (move_source == null and isDirectManagedLocalExpr(tokens, rhs_start, end_idx, locals, ctx)) {
+        try out.appendSlice(allocator, "    call $__arc_inc\n");
     }
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
     try emitReplaceManagedLocalFromTmp(allocator, target_local_name, out);
+    if (move_source) |source| {
+        try appendFmt(allocator, out, "    ;; arc-overwrite-move {s}\n", .{source.source_name});
+        try out.appendSlice(allocator, "    i32.const 0\n");
+        try appendFmt(allocator, out, "    local.set ${s}\n", .{source.actual_name});
+    }
     return true;
+}
+
+fn emitScalarCallExprWithMoveContext(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    body_end: usize,
+    allow_last_use_move: bool,
+    locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
+    ctx: CodegenContext,
+    expected_ty: []const u8,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    const range = trimParens(tokens, start_idx, end_idx);
+    const call_head = exprCallHead(tokens, range) orelse return false;
+    if (call_head.is_intrinsic) return false;
+    const func = findFuncDeclForCallHead(tokens, call_head, locals, ctx) orelse return false;
+    if (func.results.len != 1) return false;
+    if (!std.mem.eql(u8, func.results[0], expected_ty)) return false;
+    const move_ctx = CallLastUseMoveContext{
+        .stmt_end = end_idx,
+        .body_end = body_end,
+        .defer_ctx = defer_ctx,
+        .allow_last_use_move = allow_last_use_move,
+    };
+    return try emitUserFuncCallWithMoveContext(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, &move_ctx, out);
+}
+
+fn emitManagedHandleCallExprWithMoveContext(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    body_end: usize,
+    allow_last_use_move: bool,
+    locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
+    ctx: CodegenContext,
+    expected_ty: []const u8,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    const range = trimParens(tokens, start_idx, end_idx);
+    const call_head = exprCallHead(tokens, range) orelse return false;
+    if (call_head.is_intrinsic) return false;
+    const func = findFuncDeclForCallHead(tokens, call_head, locals, ctx) orelse return false;
+    if (func.results.len != 1) return false;
+    if (!std.mem.eql(u8, func.results[0], expected_ty)) return false;
+    const move_ctx = CallLastUseMoveContext{
+        .stmt_end = end_idx,
+        .body_end = body_end,
+        .defer_ctx = defer_ctx,
+        .allow_last_use_move = allow_last_use_move,
+    };
+    return try emitUserFuncCallWithMoveContext(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, &move_ctx, out);
 }
 
 fn emitScalarAssignment(
@@ -4481,7 +5220,10 @@ fn emitScalarAssignment(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    body_end: usize,
+    allow_last_use_move: bool,
     locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
@@ -4492,7 +5234,9 @@ fn emitScalarAssignment(
     const target_ty = findLocalType(locals.locals.items, tokens[start_idx].lexeme) orelse return false;
     const target_name = findLocalName(locals.locals.items, tokens[start_idx].lexeme) orelse return false;
     if (!isCodegenScalarType(ctx, target_ty)) return false;
-    if (!try emitExpr(allocator, tokens, start_idx + 2, end_idx, locals, ctx, target_ty, out)) {
+    if (!try emitScalarCallExprWithMoveContext(allocator, tokens, start_idx + 2, end_idx, body_end, allow_last_use_move, locals, defer_ctx, ctx, target_ty, out) and
+        !try emitExpr(allocator, tokens, start_idx + 2, end_idx, locals, ctx, target_ty, out))
+    {
         return error.NoMatchingCall;
     }
     try appendFmt(allocator, out, "    local.set ${s}\n", .{target_name});
@@ -4504,12 +5248,17 @@ fn emitInferredScalarBinding(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    body_end: usize,
+    allow_last_use_move: bool,
     locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     const ty = inferredScalarBindingType(tokens, start_idx, end_idx, locals, ctx) orelse return false;
-    if (!try emitExpr(allocator, tokens, start_idx + 2, end_idx, locals, ctx, ty, out)) {
+    if (!try emitScalarCallExprWithMoveContext(allocator, tokens, start_idx + 2, end_idx, body_end, allow_last_use_move, locals, defer_ctx, ctx, ty, out) and
+        !try emitExpr(allocator, tokens, start_idx + 2, end_idx, locals, ctx, ty, out))
+    {
         return error.NoMatchingCall;
     }
     const target_name = findLocalName(locals.locals.items, tokens[start_idx].lexeme) orelse return false;
@@ -4525,6 +5274,20 @@ fn emitExpr(
     locals: *const LocalSet,
     ctx: CodegenContext,
     expected_ty: ?[]const u8,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    return emitExprWithMoveContext(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, null, out);
+}
+
+fn emitExprWithMoveContext(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    expected_ty: ?[]const u8,
+    move_ctx: ?*const CallLastUseMoveContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     const range = trimParens(tokens, start_idx, end_idx);
@@ -4644,7 +5407,7 @@ fn emitExpr(
     const call_name = tokens[call_head.name_idx].lexeme;
 
     if (call_head.is_intrinsic) {
-        if (try emitFieldReflectionIntrinsic(allocator, tokens, call_head.args_start, call_head.args_end, call_name, locals, ctx, out)) {
+        if (try emitFieldReflectionIntrinsic(allocator, tokens, call_head.args_start, call_head.args_end, call_name, locals, ctx, move_ctx, out)) {
             return true;
         }
 
@@ -4661,7 +5424,7 @@ fn emitExpr(
         }
 
         if (std.mem.eql(u8, call_name, "eq") or std.mem.eql(u8, call_name, "ne")) {
-            if (try emitUnionNilComparison(allocator, tokens, call_head.args_start, call_head.args_end, call_name, locals, ctx, out)) {
+            if (try emitUnionNilComparison(allocator, tokens, call_head.args_start, call_head.args_end, move_ctx, call_name, locals, ctx, out)) {
                 return true;
             }
             if (try emitUnionErrorBranchComparison(allocator, tokens, call_head.args_start, call_head.args_end, call_name, locals, ctx, out)) {
@@ -4784,7 +5547,7 @@ fn emitExpr(
             return try emitLenCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, out);
         }
         if (std.mem.eql(u8, call_name, "get")) {
-            return try emitGetCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, out);
+            return try emitGetCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, move_ctx, out);
         }
         if (std.mem.eql(u8, call_name, "set")) {
             if (try emitStructSetExpr(allocator, tokens, call_head.args_start, call_head.args_end, expected_ty, locals, ctx, out)) {
@@ -4868,7 +5631,7 @@ fn emitStorageContentComparisonCall(
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
     try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
     try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-    try out.appendSlice(allocator, "    call $__do_storage_equal_u8\n");
+    try out.appendSlice(allocator, "    call $__storage_equal_u8\n");
     if (std.mem.eql(u8, call_name, "ne")) {
         try out.appendSlice(allocator, "    i32.eqz\n");
     }
@@ -5033,12 +5796,33 @@ fn emitBareUserFuncCall(
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
+    return emitBareUserFuncCallWithMoveContext(allocator, tokens, start_idx, end_idx, end_idx, true, locals, null, ctx, out);
+}
+
+fn emitBareUserFuncCallWithMoveContext(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    body_end: usize,
+    allow_last_use_move: bool,
+    locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
     const range = trimParens(tokens, start_idx, end_idx);
     const call_head = exprCallHead(tokens, range) orelse return false;
     if (call_head.is_intrinsic) return false;
     const func = findFuncDeclForCallHead(tokens, call_head, locals, ctx) orelse return false;
     if (func.results.len != 0) return false;
-    if (!try emitUserFuncCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, out)) {
+    const move_ctx = CallLastUseMoveContext{
+        .stmt_end = end_idx,
+        .body_end = body_end,
+        .defer_ctx = defer_ctx,
+        .allow_last_use_move = allow_last_use_move,
+    };
+    if (!try emitUserFuncCallWithMoveContext(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, &move_ctx, out)) {
         return error.NoMatchingCall;
     }
     return true;
@@ -5275,6 +6059,7 @@ fn emitUnionNilComparison(
     tokens: []const lexer.Token,
     args_start: usize,
     args_end: usize,
+    move_ctx: ?*const CallLastUseMoveContext,
     call_name: []const u8,
     locals: *const LocalSet,
     ctx: CodegenContext,
@@ -5296,11 +6081,11 @@ fn emitUnionNilComparison(
     } else if (second_union != null and first_nil) {
         try appendUnionTagLocalGet(allocator, out, second_union.?.name);
     } else if (second_nil) {
-        if (!try emitUnionExprTagAndDiscardPayload(allocator, tokens, args_start, first_end, locals, ctx, out)) {
+        if (!try emitUnionExprTagAndDiscardPayload(allocator, tokens, args_start, first_end, move_ctx, locals, ctx, out)) {
             return false;
         }
     } else if (first_nil) {
-        if (!try emitUnionExprTagAndDiscardPayload(allocator, tokens, second_start, second_end, locals, ctx, out)) {
+        if (!try emitUnionExprTagAndDiscardPayload(allocator, tokens, second_start, second_end, move_ctx, locals, ctx, out)) {
             return false;
         }
     } else {
@@ -5320,6 +6105,7 @@ fn emitUnionExprTagAndDiscardPayload(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    move_ctx: ?*const CallLastUseMoveContext,
     locals: *const LocalSet,
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
@@ -5329,7 +6115,7 @@ fn emitUnionExprTagAndDiscardPayload(
     if (call_head.is_intrinsic) return false;
     const func = findFuncDeclForCallHead(tokens, call_head, locals, ctx) orelse return false;
     const layout = func.result_union orelse return false;
-    if (!try emitUserFuncCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, out)) {
+    if (!try emitUserFuncCallWithMoveContext(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, move_ctx, out)) {
         return false;
     }
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
@@ -5337,7 +6123,7 @@ fn emitUnionExprTagAndDiscardPayload(
     while (idx > 0) {
         idx -= 1;
         if (isManagedLocalType(layout.payload_tys[idx], ctx)) {
-            try out.appendSlice(allocator, "    call $__do_arc_dec\n");
+            try out.appendSlice(allocator, "    call $__arc_dec\n");
         } else {
             try out.appendSlice(allocator, "    drop\n");
         }
@@ -5993,13 +6779,13 @@ fn emitArcRuntimePrelude(
     const wasi_result_area_base = release_worklist_base - WASI_RESULT_AREA_BYTES;
 
     try appendFmt(allocator, out, "  ;; arc-runtime block_size={d} object_header={d}\n", .{ ARC_BLOCK_SIZE, ARC_OBJECT_HEADER_BYTES });
-    try appendFmt(allocator, out, "  (global $__do_heap_base i32 (i32.const {d}))\n", .{heap_base});
-    try appendFmt(allocator, out, "  (global $__do_heap_cursor (mut i32) (i32.const {d}))\n", .{heap_base});
-    try appendFmt(allocator, out, "  (global $__do_wasi_result_area_base i32 (i32.const {d}))\n", .{wasi_result_area_base});
-    try appendFmt(allocator, out, "  (global $__do_release_worklist_base i32 (i32.const {d}))\n", .{release_worklist_base});
+    try appendFmt(allocator, out, "  (global $__heap_base i32 (i32.const {d}))\n", .{heap_base});
+    try appendFmt(allocator, out, "  (global $__heap_cursor (mut i32) (i32.const {d}))\n", .{heap_base});
+    try appendFmt(allocator, out, "  (global $__wasi_result_area_base i32 (i32.const {d}))\n", .{wasi_result_area_base});
+    try appendFmt(allocator, out, "  (global $__release_worklist_base i32 (i32.const {d}))\n", .{release_worklist_base});
     try out.appendSlice(allocator,
         \\  ;; arc-runtime memory grow helper v0
-        \\  (func $__do_memory_grow_to (param $end i32)
+        \\  (func $__memory_grow_to (param $end i32)
         \\    memory.size
         \\    i32.const 16
         \\    i32.shl
@@ -6030,7 +6816,7 @@ fn emitArcRuntimePrelude(
         \\      i32.const 0
         \\      return
         \\    end
-        \\    global.get $__do_heap_cursor
+        \\    global.get $__heap_cursor
         \\    local.get $align
         \\    i32.const 1
         \\    i32.sub
@@ -6045,11 +6831,11 @@ fn emitArcRuntimePrelude(
         \\    local.get $ptr
         \\    local.get $new_size
         \\    i32.add
-        \\    call $__do_memory_grow_to
+        \\    call $__memory_grow_to
         \\    local.get $ptr
         \\    local.get $new_size
         \\    i32.add
-        \\    global.set $__do_heap_cursor
+        \\    global.set $__heap_cursor
         \\    local.get $old_ptr
         \\    i32.eqz
         \\    i32.eqz
@@ -6071,26 +6857,26 @@ fn emitArcRuntimePrelude(
         \\    local.get $ptr
         \\  )
         \\  (func $cm32p2_initialize (export "cm32p2_initialize"))
-        \\  (func $__do_wasi_list_u8_to_storage (param $ptr i32) (param $len i32) (result i32)
+        \\  (func $__wasi_list_u8_to_storage (param $ptr i32) (param $len i32) (result i32)
         \\    (local $object i32)
         \\    local.get $len
         \\    i32.const 8
         \\    i32.add
         \\    i32.const 1
-        \\    call $__do_arc_alloc
+        \\    call $__arc_alloc
         \\    local.set $object
         \\    local.get $object
-        \\    call $__do_arc_payload
+        \\    call $__arc_payload
         \\    local.get $len
         \\    i32.store
         \\    local.get $object
-        \\    call $__do_arc_payload
+        \\    call $__arc_payload
         \\    i32.const 4
         \\    i32.add
         \\    local.get $len
         \\    i32.store
         \\    local.get $object
-        \\    call $__do_arc_payload
+        \\    call $__arc_payload
         \\    i32.const 8
         \\    i32.add
         \\    local.get $ptr
@@ -6099,19 +6885,19 @@ fn emitArcRuntimePrelude(
         \\    local.get $object
         \\  )
         \\  ;; arc-runtime free span list v1
-        \\  (global $__do_free_span_head (mut i32) (i32.const -1))
-        \\  (func $__do_free_span_push (param $block i32)
+        \\  (global $__free_span_head (mut i32) (i32.const -1))
+        \\  (func $__free_span_push (param $block i32)
         \\    local.get $block
         \\    i32.const 8
         \\    i32.add
-        \\    global.get $__do_free_span_head
+        \\    global.get $__free_span_head
         \\    i32.store
         \\    local.get $block
-        \\    global.set $__do_free_span_head
+        \\    global.set $__free_span_head
         \\  )
-        \\  (func $__do_free_span_find (param $required_span i32) (result i32)
+        \\  (func $__free_span_find (param $required_span i32) (result i32)
         \\    (local $block i32)
-        \\    global.get $__do_free_span_head
+        \\    global.get $__free_span_head
         \\    local.set $block
         \\    block $not_found
         \\      loop $scan
@@ -6144,12 +6930,12 @@ fn emitArcRuntimePrelude(
         \\    i32.const -1
         \\  )
         \\  ;; arc-runtime free span unlink v1
-        \\  (func $__do_free_span_unlink (param $target i32)
+        \\  (func $__free_span_unlink (param $target i32)
         \\    (local $prev i32)
         \\    (local $block i32)
         \\    i32.const -1
         \\    local.set $prev
-        \\    global.get $__do_free_span_head
+        \\    global.get $__free_span_head
         \\    local.set $block
         \\    block $done
         \\      loop $scan
@@ -6169,7 +6955,7 @@ fn emitArcRuntimePrelude(
         \\            i32.const 8
         \\            i32.add
         \\            i32.load
-        \\            global.set $__do_free_span_head
+        \\            global.set $__free_span_head
         \\          else
         \\            local.get $prev
         \\            i32.const 8
@@ -6194,7 +6980,7 @@ fn emitArcRuntimePrelude(
         \\    end
         \\  )
         \\  ;; arc-runtime free span split v1
-        \\  (func $__do_free_span_split_tail (param $block i32) (param $used_span i32)
+        \\  (func $__free_span_split_tail (param $block i32) (param $used_span i32)
         \\    (local $original_span i32)
         \\    (local $tail_block i32)
         \\    local.get $block
@@ -6230,7 +7016,7 @@ fn emitArcRuntimePrelude(
         \\    i32.const 0
         \\    i32.store
         \\    local.get $tail_block
-        \\    call $__do_free_span_push
+        \\    call $__free_span_push
         \\    local.get $block
         \\    i32.const 4
         \\    i32.add
@@ -6238,7 +7024,7 @@ fn emitArcRuntimePrelude(
         \\    i32.store
         \\  )
         \\  ;; arc-runtime free span merge v1
-        \\  (func $__do_free_span_merge_neighbors (param $block i32) (result i32)
+        \\  (func $__free_span_merge_neighbors (param $block i32) (result i32)
         \\    (local $candidate i32)
         \\    (local $block_span i32)
         \\    (local $candidate_span i32)
@@ -6257,7 +7043,7 @@ fn emitArcRuntimePrelude(
         \\        i32.mul
         \\        i32.add
         \\        local.set $block_end
-        \\        global.get $__do_free_span_head
+        \\        global.get $__free_span_head
         \\        local.set $candidate
         \\        block $scan_done
         \\          loop $scan
@@ -6296,7 +7082,7 @@ fn emitArcRuntimePrelude(
         \\              i32.eq
         \\              if
         \\                local.get $candidate
-        \\                call $__do_free_span_unlink
+        \\                call $__free_span_unlink
         \\                local.get $block
         \\                i32.const 4
         \\                i32.add
@@ -6311,7 +7097,7 @@ fn emitArcRuntimePrelude(
         \\              i32.eq
         \\              if
         \\                local.get $candidate
-        \\                call $__do_free_span_unlink
+        \\                call $__free_span_unlink
         \\                local.get $candidate
         \\                i32.const 4
         \\                i32.add
@@ -6341,16 +7127,16 @@ fn emitArcRuntimePrelude(
         \\    local.get $block
         \\  )
         \\  ;; arc-runtime generic slot class table v1
-        \\  (func $__do_slot_class_table_addr (param $slot_units i32) (result i32)
+        \\  (func $__slot_class_table_addr (param $slot_units i32) (result i32)
         \\    local.get $slot_units
         \\    i32.const 2
         \\    i32.shl
         \\  )
-        \\  (func $__do_slot_class_table_get (param $slot_units i32) (result i32)
+        \\  (func $__slot_class_table_get (param $slot_units i32) (result i32)
         \\    (local $stored i32)
         \\    ;; zero table slot means no block
         \\    local.get $slot_units
-        \\    call $__do_slot_class_table_addr
+        \\    call $__slot_class_table_addr
         \\    i32.load
         \\    local.tee $stored
         \\    i32.eqz
@@ -6362,46 +7148,46 @@ fn emitArcRuntimePrelude(
         \\      i32.sub
         \\    end
         \\  )
-        \\  (func $__do_slot_class_table_set (param $slot_units i32) (param $head i32)
+        \\  (func $__slot_class_table_set (param $slot_units i32) (param $head i32)
         \\    local.get $slot_units
-        \\    call $__do_slot_class_table_addr
+        \\    call $__slot_class_table_addr
         \\    local.get $head
         \\    i32.const 1
         \\    i32.add
         \\    i32.store
         \\  )
         \\  ;; arc-runtime slot class state v1
-        \\  (global $__do_slot_class_4 (mut i32) (i32.const -1))
-        \\  (func $__do_slot_class_head_ptr (param $slot_units i32) (result i32)
+        \\  (global $__slot_class_4 (mut i32) (i32.const -1))
+        \\  (func $__slot_class_head_ptr (param $slot_units i32) (result i32)
         \\    local.get $slot_units
         \\    i32.const 4
         \\    i32.eq
         \\    if (result i32)
-        \\      global.get $__do_slot_class_4
+        \\      global.get $__slot_class_4
         \\    else
         \\      local.get $slot_units
-        \\      call $__do_slot_class_table_get
+        \\      call $__slot_class_table_get
         \\    end
         \\  )
-        \\  (func $__do_slot_class_set_head (param $slot_units i32) (param $head i32)
+        \\  (func $__slot_class_set_head (param $slot_units i32) (param $head i32)
         \\    local.get $slot_units
         \\    local.get $head
-        \\    call $__do_slot_class_table_set
+        \\    call $__slot_class_table_set
         \\    local.get $slot_units
         \\    i32.const 4
         \\    i32.eq
         \\    if
         \\      local.get $head
-        \\      global.set $__do_slot_class_4
+        \\      global.set $__slot_class_4
         \\    end
         \\  )
-        \\  (func $__do_slot_class_unlink_block (param $slot_units i32) (param $target i32)
+        \\  (func $__slot_class_unlink_block (param $slot_units i32) (param $target i32)
         \\    (local $prev i32)
         \\    (local $block i32)
         \\    i32.const -1
         \\    local.set $prev
         \\    local.get $slot_units
-        \\    call $__do_slot_class_head_ptr
+        \\    call $__slot_class_head_ptr
         \\    local.set $block
         \\    block $done
         \\      loop $scan
@@ -6422,7 +7208,7 @@ fn emitArcRuntimePrelude(
         \\            i32.const 4
         \\            i32.add
         \\            i32.load
-        \\            call $__do_slot_class_set_head
+        \\            call $__slot_class_set_head
         \\          else
         \\            local.get $prev
         \\            i32.const 4
@@ -6447,7 +7233,7 @@ fn emitArcRuntimePrelude(
         \\    end
         \\  )
         \\  ;; arc-runtime small slot reuse v1
-        \\  (func $__do_small_data_start (param $cap i32) (result i32)
+        \\  (func $__small_data_start (param $cap i32) (result i32)
         \\    i32.const 8
         \\    local.get $cap
         \\    i32.const 7
@@ -6460,7 +7246,7 @@ fn emitArcRuntimePrelude(
         \\    i32.const -4
         \\    i32.and
         \\  )
-        \\  (func $__do_small_find_free_slot (param $block i32) (result i32)
+        \\  (func $__small_find_free_slot (param $block i32) (result i32)
         \\    (local $cap i32)
         \\    (local $slot i32)
         \\    (local $byte i32)
@@ -6505,7 +7291,7 @@ fn emitArcRuntimePrelude(
         \\    end
         \\    i32.const -1
         \\  )
-        \\  (func $__do_small_find_block_with_slot (param $start_block i32) (result i32)
+        \\  (func $__small_find_block_with_slot (param $start_block i32) (result i32)
         \\    (local $block i32)
         \\    local.get $start_block
         \\    local.set $block
@@ -6516,7 +7302,7 @@ fn emitArcRuntimePrelude(
         \\        i32.eq
         \\        br_if $not_found
         \\        local.get $block
-        \\        call $__do_small_find_free_slot
+        \\        call $__small_find_free_slot
         \\        i32.const -1
         \\        i32.ne
         \\        if
@@ -6533,7 +7319,7 @@ fn emitArcRuntimePrelude(
         \\    end
         \\    i32.const -1
         \\  )
-        \\  (func $__do_arc_alloc_from_small (param $block i32) (param $type_id i32) (result i32)
+        \\  (func $__arc_alloc_from_small (param $block i32) (param $type_id i32) (result i32)
         \\    (local $cap i32)
         \\    (local $slot i32)
         \\    (local $slot_size i32)
@@ -6542,7 +7328,7 @@ fn emitArcRuntimePrelude(
         \\    (local $data_start i32)
         \\    (local $object i32)
         \\    local.get $block
-        \\    call $__do_small_find_free_slot
+        \\    call $__small_find_free_slot
         \\    local.tee $slot
         \\    i32.const -1
         \\    i32.eq
@@ -6580,7 +7366,7 @@ fn emitArcRuntimePrelude(
         \\    i32.or
         \\    i32.store8
         \\    local.get $cap
-        \\    call $__do_small_data_start
+        \\    call $__small_data_start
         \\    local.set $data_start
         \\    local.get $block
         \\    local.get $data_start
@@ -6601,24 +7387,24 @@ fn emitArcRuntimePrelude(
         \\    local.get $object
         \\  )
         \\  ;; arc-runtime small slot release v1
-        \\  (func $__do_small_block_for_object (param $object i32) (result i32)
+        \\  (func $__small_block_for_object (param $object i32) (result i32)
         \\    local.get $object
         \\    i32.const -1024
         \\    i32.and
         \\  )
-        \\  (func $__do_small_slot_for_object (param $object i32) (result i32)
+        \\  (func $__small_slot_for_object (param $object i32) (result i32)
         \\    (local $block i32)
         \\    (local $cap i32)
         \\    (local $data_start i32)
         \\    (local $slot_size i32)
         \\    local.get $object
-        \\    call $__do_small_block_for_object
+        \\    call $__small_block_for_object
         \\    local.set $block
         \\    local.get $block
         \\    i32.load8_u
         \\    local.set $cap
         \\    local.get $cap
-        \\    call $__do_small_data_start
+        \\    call $__small_data_start
         \\    local.set $data_start
         \\    local.get $block
         \\    i32.const 1
@@ -6635,13 +7421,13 @@ fn emitArcRuntimePrelude(
         \\    local.get $slot_size
         \\    i32.div_u
         \\  )
-        \\  (func $__do_arc_release_small (param $object i32)
+        \\  (func $__arc_release_small (param $object i32)
         \\    (local $block i32)
         \\    (local $slot i32)
         \\    (local $bitmap_addr i32)
         \\    (local $mask i32)
         \\    local.get $object
-        \\    call $__do_small_block_for_object
+        \\    call $__small_block_for_object
         \\    local.tee $block
         \\    i32.load8_u
         \\    i32.const 1
@@ -6650,7 +7436,7 @@ fn emitArcRuntimePrelude(
         \\      return
         \\    end
         \\    local.get $object
-        \\    call $__do_small_slot_for_object
+        \\    call $__small_slot_for_object
         \\    local.set $slot
         \\    local.get $block
         \\    i32.const 8
@@ -6675,14 +7461,14 @@ fn emitArcRuntimePrelude(
         \\    i32.and
         \\    i32.store8
         \\    local.get $block
-        \\    call $__do_small_is_empty
+        \\    call $__small_is_empty
         \\    if
         \\      local.get $block
-        \\      call $__do_reclaim_empty_small_block
+        \\      call $__reclaim_empty_small_block
         \\    end
         \\  )
         \\  ;; arc-runtime empty small block reclaim v1
-        \\  (func $__do_small_is_empty (param $block i32) (result i32)
+        \\  (func $__small_is_empty (param $block i32) (result i32)
         \\    (local $cap i32)
         \\    (local $bitmap_bytes i32)
         \\    (local $byte_index i32)
@@ -6724,7 +7510,7 @@ fn emitArcRuntimePrelude(
         \\    end
         \\    i32.const 1
         \\  )
-        \\  (func $__do_reclaim_empty_small_block (param $block i32)
+        \\  (func $__reclaim_empty_small_block (param $block i32)
         \\    (local $slot_units i32)
         \\    local.get $block
         \\    i32.const 1
@@ -6733,7 +7519,7 @@ fn emitArcRuntimePrelude(
         \\    local.set $slot_units
         \\    local.get $slot_units
         \\    local.get $block
-        \\    call $__do_slot_class_unlink_block
+        \\    call $__slot_class_unlink_block
         \\    local.get $block
         \\    i32.const 0
         \\    i32.store8
@@ -6748,8 +7534,8 @@ fn emitArcRuntimePrelude(
         \\    i32.const 0
         \\    i32.store
         \\    local.get $block
-        \\    call $__do_free_span_merge_neighbors
-        \\    call $__do_free_span_push
+        \\    call $__free_span_merge_neighbors
+        \\    call $__free_span_push
         \\  )
         \\  ;; arc-runtime layout table v1
         \\
@@ -6757,11 +7543,11 @@ fn emitArcRuntimePrelude(
     try emitArcLayoutTable(allocator, out, struct_layouts);
     try out.appendSlice(allocator,
         \\  ;; arc-runtime large span release v1
-        \\  (func $__do_arc_release_large (param $object i32)
+        \\  (func $__arc_release_large (param $object i32)
         \\    (local $block i32)
         \\    (local $span_len i32)
         \\    local.get $object
-        \\    call $__do_small_block_for_object
+        \\    call $__small_block_for_object
         \\    local.set $block
         \\    local.get $block
         \\    i32.const 4
@@ -6782,11 +7568,11 @@ fn emitArcRuntimePrelude(
         \\    i32.const 0
         \\    i32.store
         \\    local.get $block
-        \\    call $__do_free_span_merge_neighbors
-        \\    call $__do_free_span_push
+        \\    call $__free_span_merge_neighbors
+        \\    call $__free_span_push
         \\  )
         \\  ;; arc-runtime allocator v1
-        \\  (func $__do_arc_alloc (param $payload_bytes i32) (param $type_id i32) (result i32)
+        \\  (func $__arc_alloc (param $payload_bytes i32) (param $type_id i32) (result i32)
         \\    (local $object_bytes i32)
         \\    local.get $payload_bytes
         \\    i32.const 8
@@ -6802,15 +7588,15 @@ fn emitArcRuntimePrelude(
         \\    if (result i32)
         \\      local.get $payload_bytes
         \\      local.get $type_id
-        \\      call $__do_arc_alloc_small
+        \\      call $__arc_alloc_small
         \\    else
         \\      local.get $payload_bytes
         \\      local.get $type_id
-        \\      call $__do_arc_alloc_large
+        \\      call $__arc_alloc_large
         \\    end
         \\  )
         \\  ;; arc-runtime small block allocator v1
-        \\  (func $__do_arc_alloc_small (param $payload_bytes i32) (param $type_id i32) (result i32)
+        \\  (func $__arc_alloc_small (param $payload_bytes i32) (param $type_id i32) (result i32)
         \\    (local $object_bytes i32)
         \\    (local $slot_units i32)
         \\    (local $cap i32)
@@ -6850,7 +7636,7 @@ fn emitArcRuntimePrelude(
         \\        i32.le_u
         \\        br_if $cap_done
         \\        local.get $cap
-        \\        call $__do_small_data_start
+        \\        call $__small_data_start
         \\        local.get $cap
         \\        local.get $object_bytes
         \\        i32.mul
@@ -6871,28 +7657,28 @@ fn emitArcRuntimePrelude(
         \\    if (result i32)
         \\      local.get $payload_bytes
         \\      local.get $type_id
-        \\      call $__do_arc_alloc_large
+        \\      call $__arc_alloc_large
         \\    else
-        \\      global.get $__do_heap_cursor
+        \\      global.get $__heap_cursor
         \\      local.set $block
         \\      local.get $slot_units
-        \\      call $__do_slot_class_head_ptr
+        \\      call $__slot_class_head_ptr
         \\      local.set $class_head
         \\      local.get $class_head
-        \\      call $__do_small_find_block_with_slot
+        \\      call $__small_find_block_with_slot
         \\      local.tee $reuse_block
         \\      i32.const -1
         \\      i32.ne
         \\      if
         \\        local.get $reuse_block
         \\        local.get $type_id
-        \\        call $__do_arc_alloc_from_small
+        \\        call $__arc_alloc_from_small
         \\        return
         \\      end
         \\      local.get $block
         \\      i32.const 1024
         \\      i32.add
-        \\      call $__do_memory_grow_to
+        \\      call $__memory_grow_to
         \\      local.get $block
         \\      local.get $cap
         \\      i32.store8
@@ -6922,22 +7708,22 @@ fn emitArcRuntimePrelude(
         \\      i32.const 0
         \\      i32.store8
         \\      local.get $cap
-        \\      call $__do_small_data_start
+        \\      call $__small_data_start
         \\      local.set $data_start
         \\      local.get $block
         \\      i32.const 1024
         \\      i32.add
-        \\      global.set $__do_heap_cursor
+        \\      global.set $__heap_cursor
         \\      local.get $slot_units
         \\      local.get $block
-        \\      call $__do_slot_class_set_head
+        \\      call $__slot_class_set_head
         \\      local.get $block
         \\      local.get $type_id
-        \\      call $__do_arc_alloc_from_small
+        \\      call $__arc_alloc_from_small
         \\    end
         \\  )
         \\  ;; arc-runtime large block allocator v1
-        \\  (func $__do_arc_alloc_large (param $payload_bytes i32) (param $type_id i32) (result i32)
+        \\  (func $__arc_alloc_large (param $payload_bytes i32) (param $type_id i32) (result i32)
         \\    (local $object_bytes i32)
         \\    (local $span_len i32)
         \\    (local $block i32)
@@ -6960,30 +7746,30 @@ fn emitArcRuntimePrelude(
         \\    i32.div_u
         \\    local.set $span_len
         \\    local.get $span_len
-        \\    call $__do_free_span_find
+        \\    call $__free_span_find
         \\    local.tee $free_block
         \\    i32.const -1
         \\    i32.ne
         \\    if
         \\      local.get $free_block
-        \\      call $__do_free_span_unlink
+        \\      call $__free_span_unlink
         \\      local.get $free_block
         \\      local.get $span_len
-        \\      call $__do_free_span_split_tail
+        \\      call $__free_span_split_tail
         \\      local.get $free_block
         \\      local.get $payload_bytes
         \\      local.get $type_id
-        \\      call $__do_arc_alloc_from_large_block
+        \\      call $__arc_alloc_from_large_block
         \\      return
         \\    end
-        \\    global.get $__do_heap_cursor
+        \\    global.get $__heap_cursor
         \\    local.set $block
         \\    local.get $block
         \\    local.get $span_len
         \\    i32.const 1024
         \\    i32.mul
         \\    i32.add
-        \\    call $__do_memory_grow_to
+        \\    call $__memory_grow_to
         \\    local.get $block
         \\    i32.const 1
         \\    i32.store8
@@ -7001,7 +7787,7 @@ fn emitArcRuntimePrelude(
         \\    i32.const 1024
         \\    i32.mul
         \\    i32.add
-        \\    global.set $__do_heap_cursor
+        \\    global.set $__heap_cursor
         \\    local.get $object
         \\    i32.const 1
         \\    i32.store
@@ -7012,7 +7798,7 @@ fn emitArcRuntimePrelude(
         \\    i32.store
         \\    local.get $object
         \\  )
-        \\  (func $__do_arc_alloc_from_large_block (param $block i32) (param $payload_bytes i32) (param $type_id i32) (result i32)
+        \\  (func $__arc_alloc_from_large_block (param $block i32) (param $payload_bytes i32) (param $type_id i32) (result i32)
         \\    (local $object i32)
         \\    local.get $block
         \\    i32.const 1
@@ -7032,10 +7818,10 @@ fn emitArcRuntimePrelude(
         \\    local.get $object
         \\  )
         \\  ;; arc-runtime bump allocator fallback v0
-        \\  (func $__do_arc_alloc_bump (param $payload_bytes i32) (param $type_id i32) (result i32)
+        \\  (func $__arc_alloc_bump (param $payload_bytes i32) (param $type_id i32) (result i32)
         \\    (local $object i32)
         \\    (local $next i32)
-        \\    global.get $__do_heap_cursor
+        \\    global.get $__heap_cursor
         \\    local.set $object
         \\    local.get $object
         \\    i32.const 8
@@ -7048,7 +7834,7 @@ fn emitArcRuntimePrelude(
         \\    i32.add
         \\    local.set $next
         \\    local.get $next
-        \\    call $__do_memory_grow_to
+        \\    call $__memory_grow_to
         \\    local.get $object
         \\    i32.const 1
         \\    i32.store
@@ -7058,42 +7844,42 @@ fn emitArcRuntimePrelude(
         \\    local.get $type_id
         \\    i32.store
         \\    local.get $next
-        \\    global.set $__do_heap_cursor
+        \\    global.set $__heap_cursor
         \\    local.get $object
         \\  )
         \\  ;; arc-runtime release worklist v1
-        \\  (global $__do_release_worklist_top (mut i32) (i32.const 0))
-        \\  (func $__do_release_worklist_push (param $object i32)
-        \\    global.get $__do_release_worklist_top
+        \\  (global $__release_worklist_top (mut i32) (i32.const 0))
+        \\  (func $__release_worklist_push (param $object i32)
+        \\    global.get $__release_worklist_top
         \\    i32.const 128
         \\    i32.ge_u
         \\    if
         \\      unreachable
         \\    end
-        \\    global.get $__do_release_worklist_base
-        \\    global.get $__do_release_worklist_top
+        \\    global.get $__release_worklist_base
+        \\    global.get $__release_worklist_top
         \\    i32.const 2
         \\    i32.shl
         \\    i32.add
         \\    local.get $object
         \\    i32.store
-        \\    global.get $__do_release_worklist_top
+        \\    global.get $__release_worklist_top
         \\    i32.const 1
         \\    i32.add
-        \\    global.set $__do_release_worklist_top
+        \\    global.set $__release_worklist_top
         \\  )
-        \\  (func $__do_release_worklist_pop (result i32)
-        \\    global.get $__do_release_worklist_top
+        \\  (func $__release_worklist_pop (result i32)
+        \\    global.get $__release_worklist_top
         \\    i32.eqz
         \\    if (result i32)
         \\      i32.const 0
         \\    else
-        \\      global.get $__do_release_worklist_top
+        \\      global.get $__release_worklist_top
         \\      i32.const 1
         \\      i32.sub
-        \\      global.set $__do_release_worklist_top
-        \\      global.get $__do_release_worklist_base
-        \\      global.get $__do_release_worklist_top
+        \\      global.set $__release_worklist_top
+        \\      global.get $__release_worklist_base
+        \\      global.get $__release_worklist_top
         \\      i32.const 2
         \\      i32.shl
         \\      i32.add
@@ -7101,12 +7887,12 @@ fn emitArcRuntimePrelude(
         \\    end
         \\  )
         \\  ;; arc-storage-managed-release
-        \\  (func $__do_arc_release_storage_managed_children (param $object i32)
+        \\  (func $__arc_release_storage_managed_children (param $object i32)
         \\    (local $count i32)
         \\    (local $index i32)
         \\    (local $child i32)
         \\    local.get $object
-        \\    call $__do_arc_payload
+        \\    call $__arc_payload
         \\    i32.load
         \\    local.set $count
         \\    i32.const 0
@@ -7118,7 +7904,7 @@ fn emitArcRuntimePrelude(
         \\        i32.ge_u
         \\        br_if $done
         \\        local.get $object
-        \\        call $__do_arc_payload
+        \\        call $__arc_payload
         \\        i32.const 8
         \\        i32.add
         \\        local.get $index
@@ -7131,7 +7917,7 @@ fn emitArcRuntimePrelude(
         \\        if
         \\        else
         \\          local.get $child
-        \\          call $__do_arc_dec_no_drain
+        \\          call $__arc_dec_no_drain
         \\        end
         \\        local.get $index
         \\        i32.const 1
@@ -7142,24 +7928,24 @@ fn emitArcRuntimePrelude(
         \\    end
         \\  )
         \\  ;; arc-runtime managed child release v1
-        \\  (func $__do_arc_release_managed_children (param $object i32)
+        \\  (func $__arc_release_managed_children (param $object i32)
         \\    (local $type_id i32)
         \\    (local $count i32)
         \\    (local $index i32)
         \\    (local $child i32)
         \\    local.get $object
-        \\    call $__do_arc_type_id
+        \\    call $__arc_type_id
         \\    local.set $type_id
         \\    local.get $type_id
         \\    i32.const 65535
         \\    i32.eq
         \\    if
         \\      local.get $object
-        \\      call $__do_arc_release_storage_managed_children
+        \\      call $__arc_release_storage_managed_children
         \\      return
         \\    end
         \\    local.get $type_id
-        \\    call $__do_layout_managed_count
+        \\    call $__layout_managed_count
         \\    local.set $count
         \\    i32.const 0
         \\    local.set $index
@@ -7170,10 +7956,10 @@ fn emitArcRuntimePrelude(
         \\        i32.ge_u
         \\        br_if $done
         \\        local.get $object
-        \\        call $__do_arc_payload
+        \\        call $__arc_payload
         \\        local.get $type_id
         \\        local.get $index
-        \\        call $__do_layout_managed_offset
+        \\        call $__layout_managed_offset
         \\        i32.add
         \\        i32.load
         \\        local.tee $child
@@ -7181,7 +7967,7 @@ fn emitArcRuntimePrelude(
         \\        if
         \\        else
         \\          local.get $child
-        \\          call $__do_arc_dec_no_drain
+        \\          call $__arc_dec_no_drain
         \\        end
         \\        local.get $index
         \\        i32.const 1
@@ -7191,24 +7977,24 @@ fn emitArcRuntimePrelude(
         \\      end
         \\    end
         \\  )
-        \\  (func $__do_arc_release (param $object i32)
+        \\  (func $__arc_release (param $object i32)
         \\    local.get $object
-        \\    call $__do_arc_release_managed_children
+        \\    call $__arc_release_managed_children
         \\    local.get $object
-        \\    call $__do_small_block_for_object
+        \\    call $__small_block_for_object
         \\    i32.load8_u
         \\    i32.const 1
         \\    i32.eq
         \\    if
         \\      local.get $object
-        \\      call $__do_arc_release_large
+        \\      call $__arc_release_large
         \\    else
         \\      local.get $object
-        \\      call $__do_arc_release_small
+        \\      call $__arc_release_small
         \\    end
         \\  )
         \\  ;; arc-runtime refcount primitives v1
-        \\  (func $__do_arc_inc (param $object i32) (result i32)
+        \\  (func $__arc_inc (param $object i32) (result i32)
         \\    ;; arc-inc-zero-sentinel
         \\    local.get $object
         \\    i32.eqz
@@ -7224,7 +8010,7 @@ fn emitArcRuntimePrelude(
         \\      local.get $object
         \\    end
         \\  )
-        \\  (func $__do_arc_dec_no_drain (param $object i32)
+        \\  (func $__arc_dec_no_drain (param $object i32)
         \\    (local $next_rc i32)
         \\    ;; arc-dec-zero-sentinel
         \\    local.get $object
@@ -7243,58 +8029,58 @@ fn emitArcRuntimePrelude(
         \\    i32.eqz
         \\    if
         \\      local.get $object
-        \\      call $__do_release_worklist_push
+        \\      call $__release_worklist_push
         \\    end
         \\  )
-        \\  (func $__do_arc_drain_release_worklist
+        \\  (func $__arc_drain_release_worklist
         \\    (local $object i32)
         \\    block $done
         \\      loop $drain
-        \\        call $__do_release_worklist_pop
+        \\        call $__release_worklist_pop
         \\        local.tee $object
         \\        i32.eqz
         \\        br_if $done
         \\        local.get $object
-        \\        call $__do_arc_release
+        \\        call $__arc_release
         \\        br $drain
         \\      end
         \\    end
         \\  )
-        \\  (func $__do_arc_dec (param $object i32)
+        \\  (func $__arc_dec (param $object i32)
         \\    local.get $object
-        \\    call $__do_arc_dec_no_drain
-        \\    call $__do_arc_drain_release_worklist
+        \\    call $__arc_dec_no_drain
+        \\    call $__arc_drain_release_worklist
         \\  )
         \\  ;; arc-runtime object header accessors v0
-        \\  (func $__do_arc_payload (param $object i32) (result i32)
+        \\  (func $__arc_payload (param $object i32) (result i32)
         \\    local.get $object
         \\    i32.const 8
         \\    i32.add
         \\  )
-        \\  (func $__do_arc_rc (param $object i32) (result i32)
+        \\  (func $__arc_rc (param $object i32) (result i32)
         \\    local.get $object
         \\    i32.load
         \\  )
-        \\  (func $__do_arc_type_id (param $object i32) (result i32)
+        \\  (func $__arc_type_id (param $object i32) (result i32)
         \\    local.get $object
         \\    i32.const 4
         \\    i32.add
         \\    i32.load
         \\  )
         \\  ;; arc-runtime storage range check v0
-        \\  (func $__do_storage_check_range (param $storage i32) (param $offset i32) (param $width i32)
+        \\  (func $__storage_check_range (param $storage i32) (param $offset i32) (param $width i32)
         \\    local.get $offset
         \\    local.get $width
         \\    i32.add
         \\    local.get $storage
-        \\    call $__do_arc_payload
+        \\    call $__arc_payload
         \\    i32.load
         \\    i32.gt_u
         \\    if
         \\      unreachable
         \\    end
         \\  )
-        \\  (func $__do_storage_equal_u8 (param $left i32) (param $right i32) (result i32)
+        \\  (func $__storage_equal_u8 (param $left i32) (param $right i32) (result i32)
         \\    (local $len i32)
         \\    (local $index i32)
         \\    local.get $left
@@ -7305,11 +8091,11 @@ fn emitArcRuntimePrelude(
         \\      return
         \\    end
         \\    local.get $left
-        \\    call $__do_arc_payload
+        \\    call $__arc_payload
         \\    i32.load
         \\    local.tee $len
         \\    local.get $right
-        \\    call $__do_arc_payload
+        \\    call $__arc_payload
         \\    i32.load
         \\    i32.ne
         \\    if
@@ -7325,14 +8111,14 @@ fn emitArcRuntimePrelude(
         \\        i32.ge_u
         \\        br_if $done
         \\        local.get $left
-        \\        call $__do_arc_payload
+        \\        call $__arc_payload
         \\        i32.const 8
         \\        i32.add
         \\        local.get $index
         \\        i32.add
         \\        i32.load8_u
         \\        local.get $right
-        \\        call $__do_arc_payload
+        \\        call $__arc_payload
         \\        i32.const 8
         \\        i32.add
         \\        local.get $index
@@ -7353,24 +8139,24 @@ fn emitArcRuntimePrelude(
         \\    i32.const 1
         \\  )
         \\  ;; arc-runtime storage write helpers v1
-        \\  (func $__do_storage_set_u8 (param $storage i32) (param $index i32) (param $value i32) (result i32)
+        \\  (func $__storage_set_u8 (param $storage i32) (param $index i32) (param $value i32) (result i32)
         \\    (local $len i32)
         \\    (local $next i32)
         \\    local.get $storage
         \\    local.get $index
         \\    i32.const 1
-        \\    call $__do_storage_check_range
+        \\    call $__storage_check_range
         \\    local.get $storage
-        \\    call $__do_arc_payload
+        \\    call $__arc_payload
         \\    i32.load
         \\    local.set $len
         \\    local.get $storage
-        \\    call $__do_arc_rc
+        \\    call $__arc_rc
         \\    i32.const 1
         \\    i32.eq
         \\    if
         \\      local.get $storage
-        \\      call $__do_arc_payload
+        \\      call $__arc_payload
         \\      i32.const 8
         \\      i32.add
         \\      local.get $index
@@ -7384,30 +8170,30 @@ fn emitArcRuntimePrelude(
         \\    i32.const 8
         \\    i32.add
         \\    i32.const 1
-        \\    call $__do_arc_alloc
+        \\    call $__arc_alloc
         \\    local.set $next
         \\    local.get $next
-        \\    call $__do_arc_payload
+        \\    call $__arc_payload
         \\    local.get $len
         \\    i32.store
         \\    local.get $next
-        \\    call $__do_arc_payload
+        \\    call $__arc_payload
         \\    i32.const 4
         \\    i32.add
         \\    local.get $len
         \\    i32.store
         \\    local.get $next
-        \\    call $__do_arc_payload
+        \\    call $__arc_payload
         \\    i32.const 8
         \\    i32.add
         \\    local.get $storage
-        \\    call $__do_arc_payload
+        \\    call $__arc_payload
         \\    i32.const 8
         \\    i32.add
         \\    local.get $len
         \\    memory.copy
         \\    local.get $next
-        \\    call $__do_arc_payload
+        \\    call $__arc_payload
         \\    i32.const 8
         \\    i32.add
         \\    local.get $index
@@ -7416,17 +8202,17 @@ fn emitArcRuntimePrelude(
         \\    i32.store8
         \\    local.get $next
         \\  )
-        \\  (func $__do_storage_put_u8 (param $storage i32) (param $value i32) (result i32)
+        \\  (func $__storage_put_u8 (param $storage i32) (param $value i32) (result i32)
         \\    (local $len i32)
         \\    (local $cap i32)
         \\    (local $next_len i32)
         \\    (local $next i32)
         \\    local.get $storage
-        \\    call $__do_arc_payload
+        \\    call $__arc_payload
         \\    i32.load
         \\    local.set $len
         \\    local.get $storage
-        \\    call $__do_arc_payload
+        \\    call $__arc_payload
         \\    i32.const 4
         \\    i32.add
         \\    i32.load
@@ -7436,7 +8222,7 @@ fn emitArcRuntimePrelude(
         \\    i32.add
         \\    local.set $next_len
         \\    local.get $storage
-        \\    call $__do_arc_rc
+        \\    call $__arc_rc
         \\    i32.const 1
         \\    i32.eq
         \\    local.get $len
@@ -7445,7 +8231,7 @@ fn emitArcRuntimePrelude(
         \\    i32.and
         \\    if
         \\      local.get $storage
-        \\      call $__do_arc_payload
+        \\      call $__arc_payload
         \\      i32.const 8
         \\      i32.add
         \\      local.get $len
@@ -7453,7 +8239,7 @@ fn emitArcRuntimePrelude(
         \\      local.get $value
         \\      i32.store8
         \\      local.get $storage
-        \\      call $__do_arc_payload
+        \\      call $__arc_payload
         \\      local.get $next_len
         \\      i32.store
         \\      local.get $storage
@@ -7463,30 +8249,30 @@ fn emitArcRuntimePrelude(
         \\    i32.const 8
         \\    i32.add
         \\    i32.const 1
-        \\    call $__do_arc_alloc
+        \\    call $__arc_alloc
         \\    local.set $next
         \\    local.get $next
-        \\    call $__do_arc_payload
+        \\    call $__arc_payload
         \\    local.get $next_len
         \\    i32.store
         \\    local.get $next
-        \\    call $__do_arc_payload
+        \\    call $__arc_payload
         \\    i32.const 4
         \\    i32.add
         \\    local.get $next_len
         \\    i32.store
         \\    local.get $next
-        \\    call $__do_arc_payload
+        \\    call $__arc_payload
         \\    i32.const 8
         \\    i32.add
         \\    local.get $storage
-        \\    call $__do_arc_payload
+        \\    call $__arc_payload
         \\    i32.const 8
         \\    i32.add
         \\    local.get $len
         \\    memory.copy
         \\    local.get $next
-        \\    call $__do_arc_payload
+        \\    call $__arc_payload
         \\    i32.const 8
         \\    i32.add
         \\    local.get $len
@@ -7522,7 +8308,7 @@ fn emitArcLayoutTable(
     }
 
     try out.appendSlice(allocator,
-        \\  (func $__do_layout_managed_count (param $type_id i32) (result i32)
+        \\  (func $__layout_managed_count (param $type_id i32) (result i32)
         \\    local.get $type_id
         \\    i32.const 1
         \\    i32.eq
@@ -7548,7 +8334,7 @@ fn emitArcLayoutTable(
     try out.appendSlice(allocator,
         \\    unreachable
         \\  )
-        \\  (func $__do_layout_managed_offset (param $type_id i32) (param $index i32) (result i32)
+        \\  (func $__layout_managed_offset (param $type_id i32) (param $index i32) (result i32)
         \\    local.get $type_id
         \\    i32.const 1
         \\    i32.eq
@@ -9577,7 +10363,7 @@ fn appendFuncParamLocals(
         if (managedPayloadElemTypeFromName(abi_ty)) |elem_ty| {
             try locals.appendBorrowedLocal(allocator, param.name, abi_ty, false);
             try locals.storage_locals.append(allocator, .{ .name = param.name, .ty = abi_ty, .elem_ty = elem_ty });
-            } else if (findStructDecl(ctx.structs, abi_ty)) |decl| {
+        } else if (findStructDecl(ctx.structs, abi_ty)) |decl| {
             try locals.struct_locals.append(allocator, .{ .name = param.name, .ty = abi_ty });
             if (findStructLayout(ctx.struct_layouts, abi_ty) != null) {
                 try locals.appendBorrowedLocal(allocator, param.name, abi_ty, false);
@@ -10809,7 +11595,7 @@ fn moduleScopedSymbolName(
 ) ![]u8 {
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
-    try appendFmt(allocator, &out, "__do_mod_{d}__", .{module_idx});
+    try appendFmt(allocator, &out, "__mod_{d}__", .{module_idx});
     try appendMangledTypeName(allocator, &out, publicDeclName(name));
     return out.toOwnedSlice(allocator);
 }
@@ -12318,7 +13104,8 @@ fn stmtContainsGetIntrinsic(tokens: []const lexer.Token, start_idx: usize, end_i
     while (i + 1 < end_idx) : (i += 1) {
         if (!tokEq(tokens[i], "@")) continue;
         if (tokens[i + 1].kind != .ident) continue;
-        if (std.mem.eql(u8, tokens[i + 1].lexeme, "get")) return true;
+        if (std.mem.eql(u8, tokens[i + 1].lexeme, "get") or
+            std.mem.eql(u8, tokens[i + 1].lexeme, "field_get")) return true;
     }
     return false;
 }
@@ -12530,7 +13317,10 @@ fn emitUnionBinding(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    body_end: usize,
+    allow_last_use_move: bool,
     locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
@@ -12538,7 +13328,50 @@ fn emitUnionBinding(
     if (tokens[start_idx].kind != .ident) return false;
     const union_local = findUnionLocal(locals.union_locals.items, tokens[start_idx].lexeme) orelse return false;
     const eq_idx = findTopLevelToken(tokens, start_idx + 1, end_idx, "=") orelse return false;
-    if (!try emitUnionValue(allocator, tokens, eq_idx + 1, end_idx, locals, ctx, union_local.layout, true, out)) {
+    const move_ctx = CallLastUseMoveContext{
+        .stmt_end = end_idx,
+        .body_end = body_end,
+        .defer_ctx = defer_ctx,
+        .allow_last_use_move = allow_last_use_move,
+    };
+    const rhs_range = trimParens(tokens, eq_idx + 1, end_idx);
+    if (exprCallHead(tokens, rhs_range)) |call_head| {
+        if (!call_head.is_intrinsic) {
+            if (findFuncDeclForCallHead(tokens, call_head, locals, ctx)) |func| {
+                if (func.result_union) |func_union| {
+                    if (unionLayoutsEqual(func_union, union_local.layout)) {
+                        if (!try emitUserFuncCallWithUnionBindingMove(
+                            allocator,
+                            tokens,
+                            call_head.args_start,
+                            call_head.args_end,
+                            end_idx,
+                            body_end,
+                            allow_last_use_move,
+                            locals,
+                            defer_ctx,
+                            ctx,
+                            func,
+                            out,
+                        )) {
+                            return error.NoMatchingCall;
+                        }
+                        var call_idx = union_local.layout.payload_tys.len + 1;
+                        while (call_idx > 0) {
+                            call_idx -= 1;
+                            if (call_idx == union_local.layout.payload_tys.len) {
+                                try appendUnionTagLocalSet(allocator, out, union_local.name);
+                            } else {
+                                try appendUnionPayloadLocalSet(allocator, out, union_local.name, call_idx);
+                            }
+                        }
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    if (!try emitUnionValue(allocator, tokens, eq_idx + 1, end_idx, locals, ctx, union_local.layout, true, &move_ctx, out)) {
         return error.NoMatchingCall;
     }
     var idx = union_local.layout.payload_tys.len + 1;
@@ -12732,6 +13565,7 @@ fn emitGetCall(
     end_idx: usize,
     locals: *const LocalSet,
     ctx: CodegenContext,
+    move_ctx: ?*const CallLastUseMoveContext,
     out: *std.ArrayList(u8),
 ) !bool {
     const first_end = findArgEnd(tokens, start_idx, end_idx);
@@ -12757,7 +13591,7 @@ fn emitGetCall(
         try appendLoadForPayloadType(allocator, out, elem_ty);
         if (isManagedLocalType(elem_ty, ctx)) {
             try out.appendSlice(allocator, "    ;; storage-managed-get-inc\n");
-            try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+            try out.appendSlice(allocator, "    call $__arc_inc\n");
         }
         return true;
     }
@@ -12777,7 +13611,7 @@ fn emitGetCall(
         try appendLoadForPayloadType(allocator, out, storage.elem_ty);
         if (isManagedLocalType(storage.elem_ty, ctx)) {
             try out.appendSlice(allocator, "    ;; storage-managed-get-inc\n");
-            try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+            try out.appendSlice(allocator, "    call $__arc_inc\n");
         }
         return true;
     }
@@ -12790,13 +13624,23 @@ fn emitGetCall(
             const field_ty = findLocalFieldType(locals.locals.items, struct_local.name, field_name) orelse
                 findStructFieldType(decl, field_name) orelse return false;
             const field_offset = structFieldPayloadOffset(decl, field_name) orelse return false;
+            const move_source = if (move_ctx) |ctx_info|
+                try fieldGetLastUseMoveSource(allocator, tokens, start_idx, end_idx, struct_local, field_ty, ctx_info.*, locals, ctx)
+            else
+                null;
             try appendFmt(allocator, out, "    local.get ${s}\n", .{struct_local.name});
-            try out.appendSlice(allocator, "    call $__do_arc_payload\n");
+            try out.appendSlice(allocator, "    call $__arc_payload\n");
             try appendFmt(allocator, out, "    i32.const {d}\n", .{field_offset});
             try out.appendSlice(allocator, "    i32.add\n");
             try appendLoadForPayloadType(allocator, out, field_ty);
-            if (isManagedStructField(layout, field_name)) {
-                try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+            if (isManagedStructField(layout, field_name) and move_source == null) {
+                try out.appendSlice(allocator, "    call $__arc_inc\n");
+            }
+            if (move_source) |source_name| {
+                try appendFmt(allocator, out, "    ;; field-get-move {s}.{s}\n", .{ source_name, field_name });
+                try emitZeroValueForType(allocator, ctx, out, field_ty);
+                try appendManagedStructFieldPtr(allocator, out, struct_local.name, field_offset);
+                try appendStoreForPayloadType(allocator, out, field_ty);
             }
             return true;
         }
@@ -12834,12 +13678,12 @@ fn emitUnionStructFieldGetCall(
         if (findStructLayout(ctx.struct_layouts, payload.decl.name)) |layout| {
             const field_ty = findStructFieldType(payload.decl, field_name) orelse return false;
             try appendUnionPayloadLocalGet(allocator, out, name, payload.branch.payload_start);
-            try out.appendSlice(allocator, "    call $__do_arc_payload\n");
+            try out.appendSlice(allocator, "    call $__arc_payload\n");
             try appendFmt(allocator, out, "    i32.const {d}\n", .{field_offset});
             try out.appendSlice(allocator, "    i32.add\n");
             try appendLoadForPayloadType(allocator, out, field_ty);
             if (isManagedStructField(layout, field_name)) {
-                try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+                try out.appendSlice(allocator, "    call $__arc_inc\n");
             }
             return true;
         }
@@ -12867,6 +13711,7 @@ fn emitFieldReflectionIntrinsic(
     call_name: []const u8,
     locals: *const LocalSet,
     ctx: CodegenContext,
+    move_ctx: ?*const CallLastUseMoveContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     if (std.mem.eql(u8, call_name, "field_name")) {
@@ -12887,7 +13732,7 @@ fn emitFieldReflectionIntrinsic(
         return true;
     }
     if (std.mem.eql(u8, call_name, "field_get")) {
-        return try emitFieldGetCall(allocator, tokens, start_idx, end_idx, locals, ctx, out);
+        return try emitFieldGetCall(allocator, tokens, start_idx, end_idx, locals, ctx, move_ctx, out);
     }
     return false;
 }
@@ -12899,6 +13744,7 @@ fn emitFieldGetCall(
     end_idx: usize,
     locals: *const LocalSet,
     ctx: CodegenContext,
+    move_ctx: ?*const CallLastUseMoveContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     const first_end = findArgEnd(tokens, start_idx, end_idx);
@@ -12919,13 +13765,23 @@ fn emitFieldGetCall(
     if (findStructLayout(ctx.struct_layouts, struct_local.ty)) |layout| {
         const decl = findStructDecl(ctx.structs, struct_local.ty) orelse return false;
         const field_offset = structFieldPayloadOffset(decl, field_name) orelse return false;
+        const move_source = if (move_ctx) |ctx_info|
+            try fieldGetLastUseMoveSource(allocator, tokens, start_idx, end_idx, struct_local, field.ty, ctx_info.*, locals, ctx)
+        else
+            null;
         try appendFmt(allocator, out, "    local.get ${s}\n", .{struct_local.name});
-        try out.appendSlice(allocator, "    call $__do_arc_payload\n");
+        try out.appendSlice(allocator, "    call $__arc_payload\n");
         try appendFmt(allocator, out, "    i32.const {d}\n", .{field_offset});
         try out.appendSlice(allocator, "    i32.add\n");
         try appendLoadForPayloadType(allocator, out, field.ty);
-        if (isManagedStructField(layout, field_name)) {
-            try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+        if (isManagedStructField(layout, field_name) and move_source == null) {
+            try out.appendSlice(allocator, "    call $__arc_inc\n");
+        }
+        if (move_source) |source_name| {
+            try appendFmt(allocator, out, "    ;; field-get-move {s}.{s}\n", .{ source_name, field_name });
+            try emitZeroValueForType(allocator, ctx, out, field.ty);
+            try appendManagedStructFieldPtr(allocator, out, struct_local.name, field_offset);
+            try appendStoreForPayloadType(allocator, out, field.ty);
         }
         return true;
     }
@@ -12981,7 +13837,7 @@ fn emitStorageBoundsCheck(
     try appendFmt(allocator, out, "    local.get ${s}\n", .{storage_name});
     if (!try emitExpr(allocator, tokens, offset_start, offset_end, locals, ctx, "usize", out)) return error.NoMatchingCall;
     try appendFmt(allocator, out, "    i32.const {d}\n", .{width});
-    try out.appendSlice(allocator, "    call $__do_storage_check_range\n");
+    try out.appendSlice(allocator, "    call $__storage_check_range\n");
 }
 
 fn emitStorageWriteExpr(
@@ -13042,7 +13898,7 @@ fn emitStorageSetCall(
     try appendFmt(allocator, out, "    local.get ${s}\n", .{tokens[start_idx].lexeme});
     if (!try emitExpr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return false;
     if (!try emitExpr(allocator, tokens, value_start, value_end, locals, ctx, "u8", out)) return false;
-    try out.appendSlice(allocator, "    call $__do_storage_set_u8\n");
+    try out.appendSlice(allocator, "    call $__storage_set_u8\n");
     try emitStorageAliasRelease(allocator, out, tokens[start_idx].lexeme, target_name);
     return true;
 }
@@ -13190,7 +14046,7 @@ fn emitStoragePutOneCall(
     try emitStorageAliasProtect(allocator, out, source_name, target_name);
     try appendFmt(allocator, out, "    local.get ${s}\n", .{source_name});
     if (!try emitExpr(allocator, tokens, value_start, value_end, locals, ctx, "u8", out)) return false;
-    try out.appendSlice(allocator, "    call $__do_storage_put_u8\n");
+    try out.appendSlice(allocator, "    call $__storage_put_u8\n");
     try emitStorageAliasRelease(allocator, out, source_name, target_name);
     return true;
 }
@@ -13215,7 +14071,7 @@ fn emitStoragePutSpreadCall(
 
     try appendFmt(allocator, out, "    local.get ${s}\n", .{source_name});
     if (isDirectManagedLocalExpr(tokens, spread_start, spread_end, locals, ctx)) {
-        try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+        try out.appendSlice(allocator, "    call $__arc_inc\n");
     }
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
     try out.appendSlice(allocator, "    i32.const 0\n");
@@ -13230,14 +14086,14 @@ fn emitStoragePutSpreadCall(
     if (isManagedLocalType(elem_ty, ctx)) {
         try emitStorageElementPtrFromLocalWithIndent(allocator, out, rest_name, STORAGE_WRITE_INDEX_TMP_LOCAL, 4, "        ");
         try out.appendSlice(allocator, "        i32.load\n");
-        try out.appendSlice(allocator, "        call $__do_arc_inc\n");
+        try out.appendSlice(allocator, "        call $__arc_inc\n");
         try appendFmt(allocator, out, "        local.get ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
-        try out.appendSlice(allocator, "        call $__do_storage_put_managed_borrow\n");
+        try out.appendSlice(allocator, "        call $__storage_put_managed_borrow\n");
     } else if (std.mem.eql(u8, elem_ty, "u8")) {
         try appendFmt(allocator, out, "        local.get ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
         try emitStorageElementPtrFromLocalWithIndent(allocator, out, rest_name, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes, "        ");
         try appendLoadForPayloadTypeWithIndent(allocator, out, elem_ty, "        ");
-        try out.appendSlice(allocator, "        call $__do_storage_put_u8\n");
+        try out.appendSlice(allocator, "        call $__storage_put_u8\n");
     } else {
         try emitStoragePutSpreadScalarElement(allocator, rest_name, elem_ty, elem_bytes, ctx, out);
     }
@@ -13269,7 +14125,7 @@ fn emitReplaceStoragePutSourceTmp(
     try out.appendSlice(allocator, "      i32.ne\n");
     try out.appendSlice(allocator, "      if\n");
     try appendFmt(allocator, out, "        local.get ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
-    try out.appendSlice(allocator, "        call $__do_arc_dec\n");
+    try out.appendSlice(allocator, "        call $__arc_dec\n");
     try out.appendSlice(allocator, "      end\n");
     try out.appendSlice(allocator, "    end\n");
     try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
@@ -13298,9 +14154,9 @@ fn emitStorageSetScalarCall(
     try appendFmt(allocator, out, "    local.get ${s}\n", .{source_name});
     try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
     try out.appendSlice(allocator, "    i32.const 1\n");
-    try out.appendSlice(allocator, "    call $__do_storage_check_range\n");
+    try out.appendSlice(allocator, "    call $__storage_check_range\n");
     try appendFmt(allocator, out, "    local.get ${s}\n", .{source_name});
-    try out.appendSlice(allocator, "    call $__do_arc_rc\n");
+    try out.appendSlice(allocator, "    call $__arc_rc\n");
     try out.appendSlice(allocator, "    i32.const 1\n");
     try out.appendSlice(allocator, "    i32.eq\n");
     try out.appendSlice(allocator, "    if (result i32)\n");
@@ -13330,7 +14186,7 @@ fn emitStoragePutSpreadScalarElement(
     try out.appendSlice(allocator, "        i32.load\n");
     try appendFmt(allocator, out, "        local.set ${s}\n", .{STORAGE_WRITE_LEN_TMP_LOCAL});
     try appendFmt(allocator, out, "        local.get ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
-    try out.appendSlice(allocator, "        call $__do_arc_rc\n");
+    try out.appendSlice(allocator, "        call $__arc_rc\n");
     try out.appendSlice(allocator, "        i32.const 1\n");
     try out.appendSlice(allocator, "        i32.eq\n");
     try appendFmt(allocator, out, "        local.get ${s}\n", .{STORAGE_WRITE_LEN_TMP_LOCAL});
@@ -13379,7 +14235,7 @@ fn emitStoragePutScalarCall(
     try out.appendSlice(allocator, "    i32.load\n");
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
     try appendFmt(allocator, out, "    local.get ${s}\n", .{source_name});
-    try out.appendSlice(allocator, "    call $__do_arc_rc\n");
+    try out.appendSlice(allocator, "    call $__arc_rc\n");
     try out.appendSlice(allocator, "    i32.const 1\n");
     try out.appendSlice(allocator, "    i32.eq\n");
     try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
@@ -13431,9 +14287,9 @@ fn emitStorageSetManagedCall(
     try appendFmt(allocator, out, "    local.get ${s}\n", .{source_name});
     try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
     try out.appendSlice(allocator, "    i32.const 1\n");
-    try out.appendSlice(allocator, "    call $__do_storage_check_range\n");
+    try out.appendSlice(allocator, "    call $__storage_check_range\n");
     try appendFmt(allocator, out, "    local.get ${s}\n", .{source_name});
-    try out.appendSlice(allocator, "    call $__do_arc_rc\n");
+    try out.appendSlice(allocator, "    call $__arc_rc\n");
     try out.appendSlice(allocator, "    i32.const 1\n");
     try out.appendSlice(allocator, "    i32.eq\n");
     try out.appendSlice(allocator, "    if (result i32)\n");
@@ -13445,7 +14301,7 @@ fn emitStorageSetManagedCall(
     try emitStorageElementPtrFromLocal(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, 4);
     try out.appendSlice(allocator, "    i32.load\n");
     try out.appendSlice(allocator, "    ;; storage-managed-overwrite-dec\n");
-    try out.appendSlice(allocator, "    call $__do_arc_dec\n");
+    try out.appendSlice(allocator, "    call $__arc_dec\n");
     try emitStorageElementPtrFromLocal(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, 4);
     if (!try emitManagedStorageValue(allocator, tokens, value_start, value_end, elem_ty, locals, ctx, out)) return false;
     try out.appendSlice(allocator, "    i32.store\n");
@@ -13472,7 +14328,7 @@ fn emitStoragePutManagedCall(
     try out.appendSlice(allocator, "    i32.load\n");
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
     try appendFmt(allocator, out, "    local.get ${s}\n", .{source_name});
-    try out.appendSlice(allocator, "    call $__do_arc_rc\n");
+    try out.appendSlice(allocator, "    call $__arc_rc\n");
     try out.appendSlice(allocator, "    i32.const 1\n");
     try out.appendSlice(allocator, "    i32.eq\n");
     try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
@@ -13516,7 +14372,7 @@ fn emitManagedStorageValue(
     if (!try emitExpr(allocator, tokens, start_idx, end_idx, locals, ctx, elem_ty, out)) return false;
     if (isDirectManagedLocalExpr(tokens, start_idx, end_idx, locals, ctx)) {
         try out.appendSlice(allocator, "    ;; storage-managed-write-inc\n");
-        try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+        try out.appendSlice(allocator, "    call $__arc_inc\n");
     }
     return true;
 }
@@ -13557,24 +14413,24 @@ fn emitStorageCloneManagedWithLenLocal(
     try appendFmt(allocator, out, "      i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
     try out.appendSlice(allocator, "      i32.add\n");
     try appendFmt(allocator, out, "      i32.const {d}\n", .{TYPE_ID_STORAGE_MANAGED});
-    try out.appendSlice(allocator, "      call $__do_arc_alloc\n");
+    try out.appendSlice(allocator, "      call $__arc_alloc\n");
     try appendFmt(allocator, out, "      local.set ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
     try appendFmt(allocator, out, "      local.get ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
-    try out.appendSlice(allocator, "      call $__do_arc_payload\n");
+    try out.appendSlice(allocator, "      call $__arc_payload\n");
     try appendFmt(allocator, out, "      local.get ${s}\n", .{next_len_local});
     try out.appendSlice(allocator, "      i32.store\n");
     try appendFmt(allocator, out, "      local.get ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
-    try out.appendSlice(allocator, "      call $__do_arc_payload\n");
+    try out.appendSlice(allocator, "      call $__arc_payload\n");
     try out.appendSlice(allocator, "      i32.const 4\n");
     try out.appendSlice(allocator, "      i32.add\n");
     try appendFmt(allocator, out, "      local.get ${s}\n", .{next_len_local});
     try out.appendSlice(allocator, "      i32.store\n");
     try appendFmt(allocator, out, "      local.get ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
-    try out.appendSlice(allocator, "      call $__do_arc_payload\n");
+    try out.appendSlice(allocator, "      call $__arc_payload\n");
     try appendFmt(allocator, out, "      i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
     try out.appendSlice(allocator, "      i32.add\n");
     try appendFmt(allocator, out, "      local.get ${s}\n", .{source_name});
-    try out.appendSlice(allocator, "      call $__do_arc_payload\n");
+    try out.appendSlice(allocator, "      call $__arc_payload\n");
     try appendFmt(allocator, out, "      i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
     try out.appendSlice(allocator, "      i32.add\n");
     try appendFmt(allocator, out, "      local.get ${s}\n", .{copy_len_local});
@@ -13601,7 +14457,7 @@ fn emitStorageIncCopiedManagedElements(
     try out.appendSlice(allocator, "          i32.ge_u\n");
     try out.appendSlice(allocator, "          br_if $storage_clone_inc_done\n");
     try appendFmt(allocator, out, "          local.get ${s}\n", .{storage_local});
-    try out.appendSlice(allocator, "          call $__do_arc_payload\n");
+    try out.appendSlice(allocator, "          call $__arc_payload\n");
     try appendFmt(allocator, out, "          i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
     try out.appendSlice(allocator, "          i32.add\n");
     try appendFmt(allocator, out, "          local.get ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
@@ -13609,7 +14465,7 @@ fn emitStorageIncCopiedManagedElements(
     try out.appendSlice(allocator, "          i32.mul\n");
     try out.appendSlice(allocator, "          i32.add\n");
     try out.appendSlice(allocator, "          i32.load\n");
-    try out.appendSlice(allocator, "          call $__do_arc_inc\n");
+    try out.appendSlice(allocator, "          call $__arc_inc\n");
     try out.appendSlice(allocator, "          drop\n");
     try appendFmt(allocator, out, "          local.get ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
     try out.appendSlice(allocator, "          i32.const 1\n");
@@ -13636,24 +14492,24 @@ fn emitStorageCloneWithLenLocal(
     try appendFmt(allocator, out, "      i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
     try out.appendSlice(allocator, "      i32.add\n");
     try appendFmt(allocator, out, "      i32.const {d}\n", .{TYPE_ID_STORAGE_U8});
-    try out.appendSlice(allocator, "      call $__do_arc_alloc\n");
+    try out.appendSlice(allocator, "      call $__arc_alloc\n");
     try appendFmt(allocator, out, "      local.set ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
     try appendFmt(allocator, out, "      local.get ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
-    try out.appendSlice(allocator, "      call $__do_arc_payload\n");
+    try out.appendSlice(allocator, "      call $__arc_payload\n");
     try appendFmt(allocator, out, "      local.get ${s}\n", .{next_len_local});
     try out.appendSlice(allocator, "      i32.store\n");
     try appendFmt(allocator, out, "      local.get ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
-    try out.appendSlice(allocator, "      call $__do_arc_payload\n");
+    try out.appendSlice(allocator, "      call $__arc_payload\n");
     try out.appendSlice(allocator, "      i32.const 4\n");
     try out.appendSlice(allocator, "      i32.add\n");
     try appendFmt(allocator, out, "      local.get ${s}\n", .{next_len_local});
     try out.appendSlice(allocator, "      i32.store\n");
     try appendFmt(allocator, out, "      local.get ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
-    try out.appendSlice(allocator, "      call $__do_arc_payload\n");
+    try out.appendSlice(allocator, "      call $__arc_payload\n");
     try appendFmt(allocator, out, "      i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
     try out.appendSlice(allocator, "      i32.add\n");
     try appendFmt(allocator, out, "      local.get ${s}\n", .{source_name});
-    try out.appendSlice(allocator, "      call $__do_arc_payload\n");
+    try out.appendSlice(allocator, "      call $__arc_payload\n");
     try appendFmt(allocator, out, "      i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
     try out.appendSlice(allocator, "      i32.add\n");
     try appendFmt(allocator, out, "      local.get ${s}\n", .{copy_len_local});
@@ -13673,7 +14529,7 @@ fn emitStorageElementPtrFromLocal(
     elem_bytes: usize,
 ) !void {
     try appendFmt(allocator, out, "    local.get ${s}\n", .{storage_local});
-    try out.appendSlice(allocator, "    call $__do_arc_payload\n");
+    try out.appendSlice(allocator, "    call $__arc_payload\n");
     try appendFmt(allocator, out, "    i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
     try out.appendSlice(allocator, "    i32.add\n");
     try appendFmt(allocator, out, "    local.get ${s}\n", .{index_local});
@@ -13693,7 +14549,7 @@ fn emitStorageElementPtrFromLocalWithIndent(
     indent: []const u8,
 ) !void {
     try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, storage_local });
-    try appendFmt(allocator, out, "{s}call $__do_arc_payload\n", .{indent});
+    try appendFmt(allocator, out, "{s}call $__arc_payload\n", .{indent});
     try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, STORAGE_PAYLOAD_HEADER_BYTES });
     try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
     try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, index_local });
@@ -13712,7 +14568,7 @@ fn emitStorageAliasProtect(
 ) !void {
     if (std.mem.eql(u8, source_name, target_name)) return;
     try appendFmt(allocator, out, "    local.get ${s}\n", .{source_name});
-    try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+    try out.appendSlice(allocator, "    call $__arc_inc\n");
     try out.appendSlice(allocator, "    drop\n");
 }
 
@@ -13724,7 +14580,7 @@ fn emitStorageAliasRelease(
 ) !void {
     if (std.mem.eql(u8, source_name, target_name)) return;
     try appendFmt(allocator, out, "    local.get ${s}\n", .{source_name});
-    try out.appendSlice(allocator, "    call $__do_arc_dec\n");
+    try out.appendSlice(allocator, "    call $__arc_dec\n");
 }
 
 fn emitScalarConvertCall(
@@ -13827,18 +14683,18 @@ fn emitWasiListU8ResultCall(
     const arg_end = findArgEnd(tokens, args_start, args_end);
     if (arg_end == args_start or arg_end != args_end) return error.NoMatchingCall;
     if (!try emitExpr(allocator, tokens, args_start, arg_end, locals, ctx, "u64", out)) return error.NoMatchingCall;
-    try out.appendSlice(allocator, "    global.get $__do_wasi_result_area_base\n");
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
     try out.appendSlice(allocator, "    call $");
     try appendWasiImportSymbol(allocator, out, import.target);
     try out.appendSlice(allocator, "\n");
     try out.appendSlice(allocator,
-        \\    global.get $__do_wasi_result_area_base
+        \\    global.get $__wasi_result_area_base
         \\    i32.load
-        \\    global.get $__do_wasi_result_area_base
+        \\    global.get $__wasi_result_area_base
         \\    i32.const 4
         \\    i32.add
         \\    i32.load
-        \\    call $__do_wasi_list_u8_to_storage
+        \\    call $__wasi_list_u8_to_storage
         \\
     );
     return true;
@@ -13873,7 +14729,7 @@ fn emitWasiResultUnitCall(
     const arg_end = findArgEnd(tokens, args_start, args_end);
     if (arg_end == args_start or arg_end != args_end) return error.NoMatchingCall;
     if (!try emitExpr(allocator, tokens, args_start, arg_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
-    try out.appendSlice(allocator, "    global.get $__do_wasi_result_area_base\n");
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
     try out.appendSlice(allocator, "    call $");
     try appendWasiImportSymbol(allocator, out, import.target);
     try out.appendSlice(allocator, "\n");
@@ -13904,7 +14760,7 @@ fn emitWasiResultDescriptorPathCall(
 
     if (!try emitExpr(allocator, tokens, args_start, descriptor_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
     if (!try emitWasiStringArg(allocator, tokens, path_start, path_end, locals, ctx, out)) return error.NoMatchingCall;
-    try out.appendSlice(allocator, "    global.get $__do_wasi_result_area_base\n");
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
     try out.appendSlice(allocator, "    call $");
     try appendWasiImportSymbol(allocator, out, import.target);
     try out.appendSlice(allocator, "\n");
@@ -13931,7 +14787,7 @@ fn emitWasiResultOutputWriteCall(
 
     if (!try emitExpr(allocator, tokens, args_start, stream_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
     if (!try emitWasiListU8Arg(allocator, tokens, data_start, data_end, locals, out)) return error.NoMatchingCall;
-    try out.appendSlice(allocator, "    global.get $__do_wasi_result_area_base\n");
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
     try out.appendSlice(allocator, "    call $");
     try appendWasiImportSymbol(allocator, out, import.target);
     try out.appendSlice(allocator, "\n");
@@ -13970,7 +14826,7 @@ fn emitWasiResultDescriptorCall(
     if (!try emitWasiStringArg(allocator, tokens, path_start, path_end, locals, ctx, out)) return error.NoMatchingCall;
     if (!try emitExpr(allocator, tokens, open_flags_start, open_flags_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
     if (!try emitExpr(allocator, tokens, descriptor_flags_start, descriptor_flags_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
-    try out.appendSlice(allocator, "    global.get $__do_wasi_result_area_base\n");
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
     try out.appendSlice(allocator, "    call $");
     try appendWasiImportSymbol(allocator, out, import.target);
     try out.appendSlice(allocator, "\n");
@@ -13995,7 +14851,7 @@ fn emitWasiResultLinkAtCall(
     if (!try emitWasiStringArg(allocator, tokens, args.old_path_start, args.old_path_end, locals, ctx, out)) return error.NoMatchingCall;
     if (!try emitExpr(allocator, tokens, args.new_descriptor_start, args.new_descriptor_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
     if (!try emitWasiStringArg(allocator, tokens, args.new_path_start, args.new_path_end, locals, ctx, out)) return error.NoMatchingCall;
-    try out.appendSlice(allocator, "    global.get $__do_wasi_result_area_base\n");
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
     try out.appendSlice(allocator, "    call $");
     try appendWasiImportSymbol(allocator, out, import.target);
     try out.appendSlice(allocator, "\n");
@@ -14090,7 +14946,7 @@ fn emitWasiResultFilesizeCall(
     if (!try emitExpr(allocator, tokens, args_start, descriptor_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
     if (!try emitWasiListU8Arg(allocator, tokens, buffer_start, buffer_end, locals, out)) return error.NoMatchingCall;
     if (!try emitExpr(allocator, tokens, offset_start, offset_end, locals, ctx, "u64", out)) return error.NoMatchingCall;
-    try out.appendSlice(allocator, "    global.get $__do_wasi_result_area_base\n");
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
     try out.appendSlice(allocator, "    call $");
     try appendWasiImportSymbol(allocator, out, import.target);
     try out.appendSlice(allocator, "\n");
@@ -14113,7 +14969,7 @@ fn emitWasiResultU64StreamCall(
     if (stream_end == args_start or stream_end != args_end) return error.NoMatchingCall;
 
     if (!try emitExpr(allocator, tokens, args_start, stream_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
-    try out.appendSlice(allocator, "    global.get $__do_wasi_result_area_base\n");
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
     try out.appendSlice(allocator, "    call $");
     try appendWasiImportSymbol(allocator, out, import.target);
     try out.appendSlice(allocator, "\n");
@@ -14144,7 +15000,7 @@ fn emitWasiResultReadCall(
     if (!try emitExpr(allocator, tokens, args_start, descriptor_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
     if (!try emitExpr(allocator, tokens, length_start, length_end, locals, ctx, "u64", out)) return error.NoMatchingCall;
     if (!try emitExpr(allocator, tokens, offset_start, offset_end, locals, ctx, "u64", out)) return error.NoMatchingCall;
-    try out.appendSlice(allocator, "    global.get $__do_wasi_result_area_base\n");
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
     try out.appendSlice(allocator, "    call $");
     try appendWasiImportSymbol(allocator, out, import.target);
     try out.appendSlice(allocator, "\n");
@@ -14171,7 +15027,7 @@ fn emitWasiResultListU8Call(
 
     if (!try emitExpr(allocator, tokens, args_start, stream_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
     if (!try emitExpr(allocator, tokens, len_start, len_end, locals, ctx, "u64", out)) return error.NoMatchingCall;
-    try out.appendSlice(allocator, "    global.get $__do_wasi_result_area_base\n");
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
     try out.appendSlice(allocator, "    call $");
     try appendWasiImportSymbol(allocator, out, import.target);
     try out.appendSlice(allocator, "\n");
@@ -14183,13 +15039,13 @@ fn emitWasiResultUnitStatusValue(
     out: *std.ArrayList(u8),
 ) !void {
     try out.appendSlice(allocator,
-        \\    global.get $__do_wasi_result_area_base
+        \\    global.get $__wasi_result_area_base
         \\    i32.load
         \\    i32.eqz
         \\    if (result i32)
         \\      i32.const 0
         \\    else
-        \\      global.get $__do_wasi_result_area_base
+        \\      global.get $__wasi_result_area_base
         \\      i32.const 4
         \\      i32.add
         \\      i32.load
@@ -14205,20 +15061,20 @@ fn emitWasiResultReadValues(
     out: *std.ArrayList(u8),
 ) !void {
     try out.appendSlice(allocator,
-        \\    global.get $__do_wasi_result_area_base
+        \\    global.get $__wasi_result_area_base
         \\    i32.load
         \\    i32.eqz
         \\    if (result i32 i32 i32)
-        \\      global.get $__do_wasi_result_area_base
+        \\      global.get $__wasi_result_area_base
         \\      i32.const 4
         \\      i32.add
         \\      i32.load
-        \\      global.get $__do_wasi_result_area_base
+        \\      global.get $__wasi_result_area_base
         \\      i32.const 8
         \\      i32.add
         \\      i32.load
-        \\      call $__do_wasi_list_u8_to_storage
-        \\      global.get $__do_wasi_result_area_base
+        \\      call $__wasi_list_u8_to_storage
+        \\      global.get $__wasi_result_area_base
         \\      i32.const 12
         \\      i32.add
         \\      i32.load8_u
@@ -14228,7 +15084,7 @@ fn emitWasiResultReadValues(
     try emitEmptyStorageU8Value(allocator, out);
     try out.appendSlice(allocator,
         \\      i32.const 0
-        \\      global.get $__do_wasi_result_area_base
+        \\      global.get $__wasi_result_area_base
         \\      i32.const 4
         \\      i32.add
         \\      i32.load
@@ -14244,25 +15100,25 @@ fn emitWasiResultListU8Values(
     out: *std.ArrayList(u8),
 ) !void {
     try out.appendSlice(allocator,
-        \\    global.get $__do_wasi_result_area_base
+        \\    global.get $__wasi_result_area_base
         \\    i32.load
         \\    i32.eqz
         \\    if (result i32 i32)
-        \\      global.get $__do_wasi_result_area_base
+        \\      global.get $__wasi_result_area_base
         \\      i32.const 4
         \\      i32.add
         \\      i32.load
-        \\      global.get $__do_wasi_result_area_base
+        \\      global.get $__wasi_result_area_base
         \\      i32.const 8
         \\      i32.add
         \\      i32.load
-        \\      call $__do_wasi_list_u8_to_storage
+        \\      call $__wasi_list_u8_to_storage
         \\      i32.const 0
         \\    else
     );
     try emitEmptyStorageU8Value(allocator, out);
     try out.appendSlice(allocator,
-        \\      global.get $__do_wasi_result_area_base
+        \\      global.get $__wasi_result_area_base
         \\      i32.const 4
         \\      i32.add
         \\      i32.load
@@ -14278,18 +15134,18 @@ fn emitWasiResultDescriptorValues(
     out: *std.ArrayList(u8),
 ) !void {
     try out.appendSlice(allocator,
-        \\    global.get $__do_wasi_result_area_base
+        \\    global.get $__wasi_result_area_base
         \\    i32.load
         \\    i32.eqz
         \\    if (result i32 i32)
-        \\      global.get $__do_wasi_result_area_base
+        \\      global.get $__wasi_result_area_base
         \\      i32.const 4
         \\      i32.add
         \\      i32.load
         \\      i32.const 0
         \\    else
         \\      i32.const 0
-        \\      global.get $__do_wasi_result_area_base
+        \\      global.get $__wasi_result_area_base
         \\      i32.const 4
         \\      i32.add
         \\      i32.load
@@ -14307,19 +15163,19 @@ fn emitEmptyStorageU8Value(
     try appendFmt(allocator, out, "      i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
     try appendFmt(allocator, out, "      i32.const {d}\n", .{TYPE_ID_STORAGE_U8});
     try out.appendSlice(allocator,
-        \\      call $__do_arc_alloc
-        \\      local.set $__do_storage_overwrite_tmp
-        \\      local.get $__do_storage_overwrite_tmp
-        \\      call $__do_arc_payload
+        \\      call $__arc_alloc
+        \\      local.set $__storage_overwrite_tmp
+        \\      local.get $__storage_overwrite_tmp
+        \\      call $__arc_payload
         \\      i32.const 0
         \\      i32.store
-        \\      local.get $__do_storage_overwrite_tmp
-        \\      call $__do_arc_payload
+        \\      local.get $__storage_overwrite_tmp
+        \\      call $__arc_payload
         \\      i32.const 4
         \\      i32.add
         \\      i32.const 0
         \\      i32.store
-        \\      local.get $__do_storage_overwrite_tmp
+        \\      local.get $__storage_overwrite_tmp
         \\
     );
 }
@@ -14334,19 +15190,19 @@ fn emitEmptyStorageForElemType(
     try appendFmt(allocator, out, "    i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
     try appendFmt(allocator, out, "    i32.const {d}\n", .{type_id});
     try out.appendSlice(allocator,
-        \\    call $__do_arc_alloc
-        \\    local.set $__do_storage_overwrite_tmp
-        \\    local.get $__do_storage_overwrite_tmp
-        \\    call $__do_arc_payload
+        \\    call $__arc_alloc
+        \\    local.set $__storage_overwrite_tmp
+        \\    local.get $__storage_overwrite_tmp
+        \\    call $__arc_payload
         \\    i32.const 0
         \\    i32.store
-        \\    local.get $__do_storage_overwrite_tmp
-        \\    call $__do_arc_payload
+        \\    local.get $__storage_overwrite_tmp
+        \\    call $__arc_payload
         \\    i32.const 4
         \\    i32.add
         \\    i32.const 0
         \\    i32.store
-        \\    local.get $__do_storage_overwrite_tmp
+        \\    local.get $__storage_overwrite_tmp
         \\
     );
 }
@@ -14356,18 +15212,18 @@ fn emitWasiResultFilesizeValues(
     out: *std.ArrayList(u8),
 ) !void {
     try out.appendSlice(allocator,
-        \\    global.get $__do_wasi_result_area_base
+        \\    global.get $__wasi_result_area_base
         \\    i32.load
         \\    i32.eqz
         \\    if (result i64 i32)
-        \\      global.get $__do_wasi_result_area_base
+        \\      global.get $__wasi_result_area_base
         \\      i32.const 8
         \\      i32.add
         \\      i64.load
         \\      i32.const 0
         \\    else
         \\      i64.const 0
-        \\      global.get $__do_wasi_result_area_base
+        \\      global.get $__wasi_result_area_base
         \\      i32.const 8
         \\      i32.add
         \\      i32.load
@@ -14417,9 +15273,30 @@ fn cloneLocalSet(allocator: std.mem.Allocator, locals: *const LocalSet) !LocalSe
     try out.locals.appendSlice(allocator, locals.locals.items);
     try out.struct_locals.appendSlice(allocator, locals.struct_locals.items);
     try out.storage_locals.appendSlice(allocator, locals.storage_locals.items);
-    try out.union_locals.appendSlice(allocator, locals.union_locals.items);
+    for (locals.union_locals.items) |union_local| {
+        try out.union_locals.append(allocator, .{
+            .name = union_local.name,
+            .source_name = union_local.source_name,
+            .layout = union_local.layout,
+            .owns_layout = false,
+        });
+    }
     try out.field_meta_locals.appendSlice(allocator, locals.field_meta_locals.items);
     out.local_name_prefix = locals.local_name_prefix;
+    return out;
+}
+
+fn mergeReturnCleanupLocals(
+    allocator: std.mem.Allocator,
+    parent: *const LocalSet,
+    direct: *const LocalSet,
+) !LocalSet {
+    var out = try cloneLocalSet(allocator, parent);
+    errdefer out.deinit(allocator);
+    for (direct.locals.items) |local| {
+        if (hasLocal(out.locals.items, local.name)) continue;
+        try out.locals.append(allocator, local);
+    }
     return out;
 }
 
@@ -14538,9 +15415,9 @@ fn emitCallbackBindingLambdaCall(
 
     try collectBodyLocals(allocator, binding.arg_tokens, binding.body_start, binding.body_end, lambda_ctx, &lambda_locals);
     if (binding.shape.return_type) |ret_ty| {
-        try appendFmt(allocator, out, "    block $__do_lambda_ret (result {s})\n", .{codegenWasmType(lambda_ctx, ret_ty)});
+        try appendFmt(allocator, out, "    block $__lambda_ret (result {s})\n", .{codegenWasmType(lambda_ctx, ret_ty)});
     } else {
-        try out.appendSlice(allocator, "    block $__do_lambda_ret\n");
+        try out.appendSlice(allocator, "    block $__lambda_ret\n");
     }
     const lambda_defer = DeferContext{
         .parent = null,
@@ -14557,7 +15434,10 @@ fn emitCallbackBindingLambdaCall(
         binding.arg_tokens,
         binding.body_start,
         binding.body_end,
+        binding.body_start,
         &lambda_locals,
+        &lambda_locals,
+        &EMPTY_LOCAL_SET,
         lambda_ctx,
         lambda_results,
         NO_RESULT_ITEMS,
@@ -14565,7 +15445,7 @@ fn emitCallbackBindingLambdaCall(
         null,
         null,
         &lambda_defer,
-        "__do_lambda_ret",
+        "__lambda_ret",
         out,
     );
     try out.appendSlice(allocator, "    end\n");
@@ -14615,7 +15495,23 @@ fn emitUserFuncCall(
     func: FuncDecl,
     out: *std.ArrayList(u8),
 ) !bool {
+    return emitUserFuncCallWithMoveContext(allocator, tokens, start_idx, end_idx, locals, ctx, func, null, out);
+}
+
+fn emitUserFuncCallWithMoveContext(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    func: FuncDecl,
+    move_ctx: ?*const CallLastUseMoveContext,
+    out: *std.ArrayList(u8),
+) !bool {
     const variadic_idx = funcVariadicParamIndex(func);
+    var move_sources = std.ArrayList(LastUseManagedMoveSource).empty;
+    defer move_sources.deinit(allocator);
     var arg_start = start_idx;
     var param_idx: usize = 0;
     while (arg_start < end_idx and (variadic_idx == null or param_idx < variadic_idx.?)) {
@@ -14627,8 +15523,16 @@ fn emitUserFuncCall(
         } else {
             const param_ty: ?[]const u8 = param.ty;
             if (!try emitExpr(allocator, tokens, arg_start, arg_end, locals, ctx, param_ty, out)) return false;
-            if (isDirectManagedLocalExpr(tokens, arg_start, arg_end, locals, ctx)) {
-                try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+            const move_source = if (move_ctx) |ctx_info|
+                directManagedCallLastUseMoveSource(tokens, arg_start, arg_end, ctx_info.*, locals, ctx)
+            else
+                null;
+            if (move_source == null and isDirectManagedLocalExpr(tokens, arg_start, arg_end, locals, ctx)) {
+                try out.appendSlice(allocator, "    call $__arc_inc\n");
+            } else if (move_source) |source| {
+                if (!hasMoveSource(move_sources.items, source.actual_name)) {
+                    try move_sources.append(allocator, source);
+                }
             }
         }
         param_idx += 1;
@@ -14644,6 +15548,80 @@ fn emitUserFuncCall(
         return false;
     }
     try appendFmt(allocator, out, "    call ${s}\n", .{func.name});
+    for (move_sources.items) |source| {
+        try appendFmt(allocator, out, "    ;; arc-call-move {s}\n", .{source.source_name});
+        try out.appendSlice(allocator, "    i32.const 0\n");
+        try appendFmt(allocator, out, "    local.set ${s}\n", .{source.actual_name});
+    }
+    return true;
+}
+
+fn emitUserFuncCallWithUnionBindingMove(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    stmt_end: usize,
+    body_end: usize,
+    allow_last_use_move: bool,
+    locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
+    ctx: CodegenContext,
+    func: FuncDecl,
+    out: *std.ArrayList(u8),
+) !bool {
+    const variadic_idx = funcVariadicParamIndex(func);
+    var move_sources = std.ArrayList(LastUseManagedMoveSource).empty;
+    defer move_sources.deinit(allocator);
+    var arg_start = start_idx;
+    var param_idx: usize = 0;
+    while (arg_start < end_idx and (variadic_idx == null or param_idx < variadic_idx.?)) {
+        if (param_idx >= func.params.len) return false;
+        const arg_end = findArgEnd(tokens, arg_start, end_idx);
+        const param = func.params[param_idx];
+        if (param.callback) |callback| {
+            if (!callArgMatchesCallbackShape(tokens, arg_start, arg_end, locals, ctx, callback.shape)) return false;
+        } else {
+            const param_ty: ?[]const u8 = param.ty;
+            if (!try emitExpr(allocator, tokens, arg_start, arg_end, locals, ctx, param_ty, out)) return false;
+            const move_source = directManagedUnionBindingCallMoveSource(
+                tokens,
+                arg_start,
+                arg_end,
+                end_idx,
+                stmt_end,
+                body_end,
+                allow_last_use_move,
+                locals,
+                ctx,
+                defer_ctx,
+            );
+            if (move_source == null and isDirectManagedLocalExpr(tokens, arg_start, arg_end, locals, ctx)) {
+                try out.appendSlice(allocator, "    call $__arc_inc\n");
+            } else if (move_source) |source| {
+                if (!hasMoveSource(move_sources.items, source.actual_name)) {
+                    try move_sources.append(allocator, source);
+                }
+            }
+        }
+        param_idx += 1;
+        arg_start = arg_end;
+        if (arg_start < end_idx and tokEq(tokens[arg_start], ",")) arg_start += 1;
+    }
+
+    if (variadic_idx) |rest_idx| {
+        if (rest_idx >= func.params.len) return false;
+        if (!try emitVariadicPackArg(allocator, tokens, arg_start, end_idx, func.params[rest_idx].ty, locals, ctx, out)) return false;
+        param_idx = func.params.len;
+    } else if (param_idx != func.params.len) {
+        return false;
+    }
+    try appendFmt(allocator, out, "    call ${s}\n", .{func.name});
+    for (move_sources.items) |source| {
+        try appendFmt(allocator, out, "    ;; arc-call-move {s}\n", .{source.source_name});
+        try out.appendSlice(allocator, "    i32.const 0\n");
+        try appendFmt(allocator, out, "    local.set ${s}\n", .{source.actual_name});
+    }
     return true;
 }
 
@@ -15300,7 +16278,11 @@ fn emitGuardReturnIf(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    body_end: usize,
+    body_start: usize,
+    allow_last_use_move: bool,
     locals: *const LocalSet,
+    return_cleanup_locals: *const LocalSet,
     ctx: CodegenContext,
     result_tys: []const []const u8,
     result_items: []const FuncResultItem,
@@ -15319,13 +16301,28 @@ fn emitGuardReturnIf(
     var move_names = std.ArrayList([]const u8).empty;
     defer move_names.deinit(allocator);
 
-    const emitted = try emitExpr(allocator, tokens, start_idx + 1, return_idx, locals, ctx, "bool", out);
+    const cond_move_ctx = CallLastUseMoveContext{
+        .body_start = body_start,
+        .stmt_end = return_idx,
+        .body_end = body_end,
+        .defer_ctx = defer_ctx,
+        .allow_last_use_move = allow_last_use_move,
+    };
+    const emitted = try emitExprWithMoveContext(allocator, tokens, start_idx + 1, return_idx, locals, ctx, "bool", &cond_move_ctx, out);
     if (!emitted) return error.NoMatchingCall;
     try out.appendSlice(allocator, "    if\n");
     if (has_return_expr) {
         if (result_union) |layout| {
             try collectUnionReturnMoveNames(allocator, tokens, return_idx + 1, end_idx, locals, ctx, layout, &move_names);
-            if (!try emitUnionValue(allocator, tokens, return_idx + 1, end_idx, locals, ctx, layout, false, out)) {
+            const move_ctx = CallLastUseMoveContext{
+                .body_start = body_start,
+                .stmt_end = end_idx,
+                .body_end = end_idx,
+                .defer_ctx = defer_ctx,
+                .allow_last_use_move = true,
+                .allow_field_read_move = true,
+            };
+            if (!try emitUnionValue(allocator, tokens, return_idx + 1, end_idx, locals, ctx, layout, false, &move_ctx, out)) {
                 return error.NoMatchingCall;
             }
         } else if (result_tys.len > 1 and result_items.len != 0) {
@@ -15334,7 +16331,15 @@ fn emitGuardReturnIf(
             try emitMultiResultReturnAbiValues(allocator, tokens, return_idx + 1, end_idx, locals, ctx, result_tys, &move_names, out);
         } else {
             if (result_tys.len != 1) return error.NoMatchingCall;
-            try emitSingleReturnAbiValue(allocator, tokens, return_idx + 1, end_idx, locals, ctx, result_tys[0], &move_names, out);
+            const move_ctx = CallLastUseMoveContext{
+                .body_start = body_start,
+                .stmt_end = end_idx,
+                .body_end = end_idx,
+                .defer_ctx = defer_ctx,
+                .allow_last_use_move = true,
+                .allow_field_read_move = true,
+            };
+            try emitSingleReturnAbiValue(allocator, tokens, return_idx + 1, end_idx, locals, ctx, result_tys[0], &move_names, &move_ctx, out);
         }
     } else if (result_tys.len != 0) {
         return error.NoMatchingCall;
@@ -15344,7 +16349,9 @@ fn emitGuardReturnIf(
         try appendFmt(allocator, out, "      br ${s}\n", .{label});
     } else {
         try out.appendSlice(allocator, "      ;; arc-guard-return-release\n");
-        try emitReleaseManagedLocalsExceptMany(allocator, locals, ctx, move_names.items, out);
+        const release_plan = try buildGuardReturnOwnershipPlan(allocator, return_cleanup_locals, ctx, move_names.items);
+        defer release_plan.deinit(allocator);
+        try emitOwnershipReleasePlan(allocator, release_plan, out);
         try out.appendSlice(allocator, "      return\n");
     }
     try out.appendSlice(allocator, "    end\n");
@@ -15356,7 +16363,10 @@ fn emitLoopBlock(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    body_start: usize,
     locals: *const LocalSet,
+    return_cleanup_locals: *const LocalSet,
+    control_cleanup_locals: *const LocalSet,
     ctx: CodegenContext,
     result_tys: []const []const u8,
     result_items: []const FuncResultItem,
@@ -15374,19 +16384,19 @@ fn emitLoopBlock(
     if (close_brace + 1 != end_idx) return false;
     const loop_label = labelForLoopStart(tokens, start_idx);
     if (fieldReflectionLoopHeader(tokens, start_idx, end_idx, ctx, locals)) |header| {
-        return try emitFieldReflectionLoopBlock(allocator, tokens, header, locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out);
+        return try emitFieldReflectionLoopBlock(allocator, tokens, header, body_start, locals, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out);
     }
     if (collectionLoopHeader(tokens, start_idx, end_idx, ctx, locals)) |header| {
-        return try emitCollectionLoopBlock(allocator, tokens, start_idx, header, loop_label, locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out);
+        return try emitCollectionLoopBlock(allocator, tokens, start_idx, header, body_start, loop_label, locals, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out);
     }
     if (recvLoopHeader(tokens, start_idx, end_idx, ctx, locals)) |header| {
-        return try emitRecvLoopBlock(allocator, tokens, start_idx, header, loop_label, locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out);
+        return try emitRecvLoopBlock(allocator, tokens, start_idx, header, body_start, loop_label, locals, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out);
     }
     if (open_brace != start_idx + 1) return error.UnsupportedExpr;
 
-    const break_label = try std.fmt.allocPrint(allocator, "__do_loop_break_{d}", .{start_idx});
+    const break_label = try std.fmt.allocPrint(allocator, "__loop_break_{d}", .{start_idx});
     defer allocator.free(break_label);
-    const body_label = try std.fmt.allocPrint(allocator, "__do_loop_body_{d}", .{start_idx});
+    const body_label = try std.fmt.allocPrint(allocator, "__loop_body_{d}", .{start_idx});
     defer allocator.free(body_label);
 
     try out.appendSlice(allocator, "    ;; loop-block\n");
@@ -15394,7 +16404,7 @@ fn emitLoopBlock(
     try appendFmt(allocator, out, "    loop ${s}\n", .{body_label});
     var loop_locals = LocalSet{};
     defer loop_locals.deinit(allocator);
-    try collectBodyLocals(allocator, tokens, open_brace + 1, close_brace, ctx, &loop_locals);
+    try collectDirectBodyLocals(allocator, tokens, open_brace + 1, close_brace, ctx, &loop_locals);
     var parent_defer_storage: DeferContext = undefined;
     const parent_defer_ptr: ?*const DeferContext = if (defer_ctx) |scope| blk: {
         parent_defer_storage = .{
@@ -15419,9 +16429,13 @@ fn emitLoopBlock(
         .cleanup_locals = &loop_locals,
         .defer_ctx = &loop_defer,
     };
-    try emitBody(allocator, tokens, open_brace + 1, close_brace, locals, ctx, result_tys, result_items, result_struct, result_union, nested_loop, &loop_defer, return_label, out);
-    try emitBlockReleaseManagedLocals(allocator, &loop_locals, ctx, out);
-    try appendFmt(allocator, out, "    br ${s}\n", .{body_label});
+    var active_return_cleanup_locals = try mergeReturnCleanupLocals(allocator, return_cleanup_locals, &loop_locals);
+    defer active_return_cleanup_locals.deinit(allocator);
+    try emitBody(allocator, tokens, open_brace + 1, close_brace, body_start, locals, &active_return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, nested_loop, &loop_defer, return_label, out);
+    if (bodyCanReachEnd(tokens, open_brace + 1, close_brace)) {
+        try emitBlockReleaseManagedLocals(allocator, &loop_locals, ctx, out);
+        try appendFmt(allocator, out, "    br ${s}\n", .{body_label});
+    }
     try out.appendSlice(allocator, "    end\n");
     try out.appendSlice(allocator, "    end\n");
     if (!loopBodyCanBreakCurrentLoop(tokens, open_brace + 1, close_brace, loop_label)) {
@@ -15434,7 +16448,10 @@ fn emitFieldReflectionLoopBlock(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     header: FieldReflectionLoopHeader,
+    body_start: usize,
     locals: *const LocalSet,
+    return_cleanup_locals: *const LocalSet,
+    control_cleanup_locals: *const LocalSet,
     ctx: CodegenContext,
     result_tys: []const []const u8,
     result_items: []const FuncResultItem,
@@ -15446,7 +16463,7 @@ fn emitFieldReflectionLoopBlock(
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     const source_label = labelForLoopStart(tokens, header.loop_idx);
-    const break_label = try std.fmt.allocPrint(allocator, "__do_field_break_{d}", .{header.loop_idx});
+    const break_label = try std.fmt.allocPrint(allocator, "__field_break_{d}", .{header.loop_idx});
     defer allocator.free(break_label);
 
     try appendFmt(allocator, out, "    ;; field-reflect-loop type={s}\n", .{header.decl.name});
@@ -15456,7 +16473,7 @@ fn emitFieldReflectionLoopBlock(
         if (!fieldVisibleFromTokens(field, header.decl, tokens)) continue;
         const prefix = try fieldReflectionLocalNamePrefix(allocator, header, visible_index);
         defer allocator.free(prefix);
-        const continue_label = try std.fmt.allocPrint(allocator, "__do_field_continue_{d}_{d}", .{ header.loop_idx, visible_index });
+        const continue_label = try std.fmt.allocPrint(allocator, "__field_continue_{d}_{d}", .{ header.loop_idx, visible_index });
         defer allocator.free(continue_label);
         var field_locals = try borrowedFieldMetaLocalSet(allocator, locals, .{
             .name = header.field_name,
@@ -15477,8 +16494,14 @@ fn emitFieldReflectionLoopBlock(
             .defer_ctx = defer_ctx orelse return error.NoMatchingCall,
         };
         try appendFmt(allocator, out, "    block ${s}\n", .{continue_label});
-        try emitFieldReflectionBody(allocator, tokens, header.open_brace + 1, header.close_brace, &field_locals, ctx, result_tys, result_items, result_struct, result_union, field_loop, defer_ctx, return_label, out);
-        try emitBlockReleaseManagedLocals(allocator, &field_cleanup_locals, ctx, out);
+        var active_return_cleanup_locals = try mergeReturnCleanupLocals(allocator, return_cleanup_locals, &field_cleanup_locals);
+        defer active_return_cleanup_locals.deinit(allocator);
+        var active_control_cleanup_locals = try mergeReturnCleanupLocals(allocator, control_cleanup_locals, &field_cleanup_locals);
+        defer active_control_cleanup_locals.deinit(allocator);
+        try emitFieldReflectionBody(allocator, tokens, header.open_brace + 1, header.close_brace, body_start, &field_locals, &active_return_cleanup_locals, &active_control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, field_loop, defer_ctx, return_label, out);
+        if (bodyCanReachEnd(tokens, header.open_brace + 1, header.close_brace)) {
+            try emitBlockReleaseManagedLocals(allocator, &field_cleanup_locals, ctx, out);
+        }
         try out.appendSlice(allocator, "    end\n");
         visible_index += 1;
     }
@@ -15511,7 +16534,10 @@ fn emitFieldReflectionBody(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    body_start: usize,
     locals: *const LocalSet,
+    return_cleanup_locals: *const LocalSet,
+    control_cleanup_locals: *const LocalSet,
     ctx: CodegenContext,
     result_tys: []const []const u8,
     result_items: []const FuncResultItem,
@@ -15528,17 +16554,17 @@ fn emitFieldReflectionBody(
         if (fieldReflectionIfParts(tokens, i, stmt_end)) |parts| {
             if (fieldStaticBoolExpr(tokens, parts.cond_start, parts.cond_end, locals, ctx)) |condition| {
                 if (condition) {
-                    try emitBody(allocator, tokens, parts.then_start, parts.then_end, locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out);
+                    try emitBody(allocator, tokens, parts.then_start, parts.then_end, body_start, locals, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out);
                 } else if (parts.else_if_start) |nested_if| {
-                    try emitFieldReflectionBody(allocator, tokens, nested_if, stmt_end, locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out);
+                    try emitFieldReflectionBody(allocator, tokens, nested_if, stmt_end, body_start, locals, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out);
                 } else if (parts.else_start) |else_start| {
-                    try emitBody(allocator, tokens, else_start, parts.else_end, locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out);
+                    try emitBody(allocator, tokens, else_start, parts.else_end, body_start, locals, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out);
                 }
                 i = stmt_end;
                 continue;
             }
         }
-        try emitBody(allocator, tokens, i, stmt_end, locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out);
+        try emitBody(allocator, tokens, i, stmt_end, body_start, locals, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out);
         i = stmt_end;
     }
 }
@@ -15578,7 +16604,7 @@ fn borrowedFieldMetaLocalSet(
 }
 
 fn fieldReflectionLocalVisible(name: []const u8, scoped_prefix: []const u8) bool {
-    if (!std.mem.startsWith(u8, name, "__do_field_")) return true;
+    if (!std.mem.startsWith(u8, name, "__field_")) return true;
     return std.mem.startsWith(u8, name, scoped_prefix);
 }
 
@@ -15628,8 +16654,11 @@ fn emitCollectionLoopBlock(
     tokens: []const lexer.Token,
     start_idx: usize,
     header: CollectionLoopHeader,
+    body_start: usize,
     loop_label: ?[]const u8,
     locals: *const LocalSet,
+    return_cleanup_locals: *const LocalSet,
+    control_cleanup_locals: *const LocalSet,
     ctx: CodegenContext,
     result_tys: []const []const u8,
     result_items: []const FuncResultItem,
@@ -15640,13 +16669,13 @@ fn emitCollectionLoopBlock(
     return_label: ?[]const u8,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
-    const break_label = try std.fmt.allocPrint(allocator, "__do_loop_break_{d}", .{start_idx});
+    const break_label = try std.fmt.allocPrint(allocator, "__loop_break_{d}", .{start_idx});
     defer allocator.free(break_label);
-    const body_label = try std.fmt.allocPrint(allocator, "__do_loop_body_{d}", .{start_idx});
+    const body_label = try std.fmt.allocPrint(allocator, "__loop_body_{d}", .{start_idx});
     defer allocator.free(body_label);
-    const continue_label = try std.fmt.allocPrint(allocator, "__do_loop_continue_{d}", .{start_idx});
+    const continue_label = try std.fmt.allocPrint(allocator, "__loop_continue_{d}", .{start_idx});
     defer allocator.free(continue_label);
-    const index_local = try std.fmt.allocPrint(allocator, "__do_loop_index_{d}", .{start_idx});
+    const index_local = try std.fmt.allocPrint(allocator, "__loop_index_{d}", .{start_idx});
     defer allocator.free(index_local);
     const owned_source_name = if (header.source_is_expr) try loopSourceLocalName(allocator, start_idx) else null;
     defer if (owned_source_name) |name| allocator.free(name);
@@ -15659,7 +16688,7 @@ fn emitCollectionLoopBlock(
             return error.NoMatchingCall;
         }
         if (isDirectManagedLocalExpr(tokens, header.source_start, header.source_end, locals, ctx)) {
-            try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+            try out.appendSlice(allocator, "    call $__arc_inc\n");
         }
         try appendFmt(allocator, out, "    local.set ${s}\n", .{source_name});
     }
@@ -15684,7 +16713,7 @@ fn emitCollectionLoopBlock(
             try loop_locals.appendBorrowedLocal(allocator, value_name, header.elem_ty, false);
         }
     }
-    try collectBodyLocals(allocator, tokens, header.open_brace + 1, header.close_brace, ctx, &loop_locals);
+    try collectDirectBodyLocals(allocator, tokens, header.open_brace + 1, header.close_brace, ctx, &loop_locals);
     var parent_defer_storage: DeferContext = undefined;
     const parent_defer_ptr: ?*const DeferContext = if (defer_ctx) |scope| blk: {
         parent_defer_storage = .{
@@ -15709,14 +16738,20 @@ fn emitCollectionLoopBlock(
         .cleanup_locals = &loop_locals,
         .defer_ctx = &loop_defer,
     };
-    try emitBody(allocator, tokens, header.open_brace + 1, header.close_brace, locals, ctx, result_tys, result_items, result_struct, result_union, nested_loop, &loop_defer, return_label, out);
-    try emitBlockReleaseManagedLocals(allocator, &loop_locals, ctx, out);
+    var active_return_cleanup_locals = try mergeReturnCleanupLocals(allocator, return_cleanup_locals, &loop_locals);
+    defer active_return_cleanup_locals.deinit(allocator);
+    try emitBody(allocator, tokens, header.open_brace + 1, header.close_brace, body_start, locals, &active_return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, nested_loop, &loop_defer, return_label, out);
+    if (bodyCanReachEnd(tokens, header.open_brace + 1, header.close_brace)) {
+        try emitBlockReleaseManagedLocals(allocator, &loop_locals, ctx, out);
+    }
     try out.appendSlice(allocator, "    end\n");
-    try appendFmt(allocator, out, "    local.get ${s}\n", .{index_local});
-    try out.appendSlice(allocator, "    i32.const 1\n");
-    try out.appendSlice(allocator, "    i32.add\n");
-    try appendFmt(allocator, out, "    local.set ${s}\n", .{index_local});
-    try appendFmt(allocator, out, "    br ${s}\n", .{body_label});
+    if (bodyCanReachEnd(tokens, header.open_brace + 1, header.close_brace)) {
+        try appendFmt(allocator, out, "    local.get ${s}\n", .{index_local});
+        try out.appendSlice(allocator, "    i32.const 1\n");
+        try out.appendSlice(allocator, "    i32.add\n");
+        try appendFmt(allocator, out, "    local.set ${s}\n", .{index_local});
+        try appendFmt(allocator, out, "    br ${s}\n", .{body_label});
+    }
     try out.appendSlice(allocator, "    end\n");
     try out.appendSlice(allocator, "    end\n");
     return true;
@@ -15737,7 +16772,7 @@ fn emitCollectionLoopBindings(
         try emitStorageElementPtrFromLocal(allocator, out, header.source_name, index_local, header.elem_bytes);
         try appendLoadForPayloadType(allocator, out, header.elem_ty);
         if (isManagedLocalType(header.elem_ty, ctx)) {
-            try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+            try out.appendSlice(allocator, "    call $__arc_inc\n");
         }
         try appendFmt(allocator, out, "    local.set ${s}\n", .{value_name});
     }
@@ -15748,8 +16783,11 @@ fn emitRecvLoopBlock(
     tokens: []const lexer.Token,
     start_idx: usize,
     header: RecvLoopHeader,
+    body_start: usize,
     loop_label: ?[]const u8,
     locals: *const LocalSet,
+    return_cleanup_locals: *const LocalSet,
+    control_cleanup_locals: *const LocalSet,
     ctx: CodegenContext,
     result_tys: []const []const u8,
     result_items: []const FuncResultItem,
@@ -15760,13 +16798,13 @@ fn emitRecvLoopBlock(
     return_label: ?[]const u8,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
-    const break_label = try std.fmt.allocPrint(allocator, "__do_loop_break_{d}", .{start_idx});
+    const break_label = try std.fmt.allocPrint(allocator, "__loop_break_{d}", .{start_idx});
     defer allocator.free(break_label);
-    const body_label = try std.fmt.allocPrint(allocator, "__do_loop_body_{d}", .{start_idx});
+    const body_label = try std.fmt.allocPrint(allocator, "__loop_body_{d}", .{start_idx});
     defer allocator.free(body_label);
-    const continue_label = try std.fmt.allocPrint(allocator, "__do_loop_continue_{d}", .{start_idx});
+    const continue_label = try std.fmt.allocPrint(allocator, "__loop_continue_{d}", .{start_idx});
     defer allocator.free(continue_label);
-    const count_local = try std.fmt.allocPrint(allocator, "__do_loop_count_{d}", .{start_idx});
+    const count_local = try std.fmt.allocPrint(allocator, "__loop_count_{d}", .{start_idx});
     defer allocator.free(count_local);
 
     try out.appendSlice(allocator, "    ;; loop-recv\n");
@@ -15789,7 +16827,7 @@ fn emitRecvLoopBlock(
             try loop_locals.appendBorrowedLocal(allocator, value_name, header.elem_ty, false);
         }
     }
-    try collectBodyLocals(allocator, tokens, header.open_brace + 1, header.close_brace, ctx, &loop_locals);
+    try collectDirectBodyLocals(allocator, tokens, header.open_brace + 1, header.close_brace, ctx, &loop_locals);
     var parent_defer_storage: DeferContext = undefined;
     const parent_defer_ptr: ?*const DeferContext = if (defer_ctx) |scope| blk: {
         parent_defer_storage = .{
@@ -15814,14 +16852,20 @@ fn emitRecvLoopBlock(
         .cleanup_locals = &loop_locals,
         .defer_ctx = &loop_defer,
     };
-    try emitBody(allocator, tokens, header.open_brace + 1, header.close_brace, locals, ctx, result_tys, result_items, result_struct, result_union, nested_loop, &loop_defer, return_label, out);
-    try emitBlockReleaseManagedLocals(allocator, &loop_locals, ctx, out);
+    var active_return_cleanup_locals = try mergeReturnCleanupLocals(allocator, return_cleanup_locals, &loop_locals);
+    defer active_return_cleanup_locals.deinit(allocator);
+    try emitBody(allocator, tokens, header.open_brace + 1, header.close_brace, body_start, locals, &active_return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, nested_loop, &loop_defer, return_label, out);
+    if (bodyCanReachEnd(tokens, header.open_brace + 1, header.close_brace)) {
+        try emitBlockReleaseManagedLocals(allocator, &loop_locals, ctx, out);
+    }
     try out.appendSlice(allocator, "    end\n");
-    try appendFmt(allocator, out, "    local.get ${s}\n", .{count_local});
-    try out.appendSlice(allocator, "    i32.const 1\n");
-    try out.appendSlice(allocator, "    i32.add\n");
-    try appendFmt(allocator, out, "    local.set ${s}\n", .{count_local});
-    try appendFmt(allocator, out, "    br ${s}\n", .{body_label});
+    if (bodyCanReachEnd(tokens, header.open_brace + 1, header.close_brace)) {
+        try appendFmt(allocator, out, "    local.get ${s}\n", .{count_local});
+        try out.appendSlice(allocator, "    i32.const 1\n");
+        try out.appendSlice(allocator, "    i32.add\n");
+        try appendFmt(allocator, out, "    local.set ${s}\n", .{count_local});
+        try appendFmt(allocator, out, "    br ${s}\n", .{body_label});
+    }
     try out.appendSlice(allocator, "    end\n");
     try out.appendSlice(allocator, "    end\n");
     return true;
@@ -15842,7 +16886,7 @@ fn emitRecvLoopBindings(
         try emitStorageElementPtrFromLocal(allocator, out, header.source_name, count_local, header.elem_bytes);
         try appendLoadForPayloadType(allocator, out, header.elem_ty);
         if (isManagedLocalType(header.elem_ty, ctx)) {
-            try out.appendSlice(allocator, "    call $__do_arc_inc\n");
+            try out.appendSlice(allocator, "    call $__arc_inc\n");
         }
         try appendFmt(allocator, out, "    local.set ${s}\n", .{value_name});
     }
@@ -15854,6 +16898,7 @@ fn emitLoopControlStmt(
     start_idx: usize,
     end_idx: usize,
     locals: *const LocalSet,
+    control_cleanup_locals: *const LocalSet,
     loop_ctx: ?LoopControl,
     defer_ctx: ?*const DeferContext,
     ctx: CodegenContext,
@@ -15865,7 +16910,7 @@ fn emitLoopControlStmt(
     } else {
         return false;
     }
-    try emitLoopControlJump(allocator, tokens, start_idx, end_idx, loop_ctx, defer_ctx, locals, ctx, out);
+    try emitLoopControlJump(allocator, tokens, start_idx, end_idx, loop_ctx, defer_ctx, locals, control_cleanup_locals, ctx, out);
     return true;
 }
 
@@ -15875,6 +16920,7 @@ fn emitGuardLoopControlIf(
     start_idx: usize,
     end_idx: usize,
     locals: *const LocalSet,
+    control_cleanup_locals: *const LocalSet,
     loop_ctx: ?LoopControl,
     defer_ctx: ?*const DeferContext,
     ctx: CodegenContext,
@@ -15888,7 +16934,7 @@ fn emitGuardLoopControlIf(
         return error.NoMatchingCall;
     }
     try out.appendSlice(allocator, "    if\n");
-    try emitLoopControlJump(allocator, tokens, control_idx, end_idx, loop_ctx, defer_ctx, locals, ctx, out);
+    try emitLoopControlJump(allocator, tokens, control_idx, end_idx, loop_ctx, defer_ctx, locals, control_cleanup_locals, ctx, out);
     try out.appendSlice(allocator, "    end\n");
     return true;
 }
@@ -15901,6 +16947,7 @@ fn emitLoopControlJump(
     loop_ctx: ?LoopControl,
     defer_ctx: ?*const DeferContext,
     locals: *const LocalSet,
+    control_cleanup_locals: *const LocalSet,
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) !void {
@@ -15909,14 +16956,16 @@ fn emitLoopControlJump(
     if (std.mem.eql(u8, tokens[start_idx].lexeme, "break")) {
         try emitDeferCleanupStackThrough(allocator, tokens, defer_ctx, control.defer_ctx, locals, ctx, out);
         try out.appendSlice(allocator, "    ;; loop-break-release\n");
-        try emitLoopControlReleaseChain(allocator, current_control, control, ctx, out);
+        try emitBlockReleaseManagedLocals(allocator, control_cleanup_locals, ctx, out);
+        try emitLoopControlReleaseChain(allocator, current_control, control, ctx, .break_stmt, out);
         try appendFmt(allocator, out, "    br ${s}\n", .{control.break_label});
         return;
     }
     if (std.mem.eql(u8, tokens[start_idx].lexeme, "continue")) {
         try emitDeferCleanupStackThrough(allocator, tokens, defer_ctx, control.defer_ctx, locals, ctx, out);
         try out.appendSlice(allocator, "    ;; loop-continue-release\n");
-        try emitLoopControlReleaseChain(allocator, current_control, control, ctx, out);
+        try emitBlockReleaseManagedLocals(allocator, control_cleanup_locals, ctx, out);
+        try emitLoopControlReleaseChain(allocator, current_control, control, ctx, .continue_stmt, out);
         try appendFmt(allocator, out, "    br ${s}\n", .{control.continue_label});
         return;
     }
@@ -15987,14 +17036,14 @@ fn emitLoopControlReleaseChain(
     start: *const LoopControl,
     target: *const LoopControl,
     ctx: CodegenContext,
+    kind: ownership.ExitKind,
     out: *std.ArrayList(u8),
 ) !void {
-    var cursor: ?*const LoopControl = start;
-    while (cursor) |control| {
-        try emitBlockReleaseManagedLocals(allocator, control.cleanup_locals, ctx, out);
-        if (sameLoopControl(control, target)) return;
-        cursor = control.parent;
-    }
+    const frames = try collectLoopControlFrames(allocator, start, target, ctx);
+    defer frames.deinit(allocator);
+    const release_plan = try ownership.buildLoopControlExitPlan(allocator, kind, frames.frames);
+    defer release_plan.deinit(allocator);
+    try emitOwnershipReleasePlan(allocator, release_plan, out);
 }
 
 fn sameLoopControl(a: *const LoopControl, b: *const LoopControl) bool {
@@ -16006,7 +17055,10 @@ fn emitIfBlock(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
+    body_start: usize,
     locals: *const LocalSet,
+    return_cleanup_locals: *const LocalSet,
+    control_cleanup_locals: *const LocalSet,
     ctx: CodegenContext,
     result_tys: []const []const u8,
     result_items: []const FuncResultItem,
@@ -16053,7 +17105,7 @@ fn emitIfBlock(
     try out.appendSlice(allocator, "    if\n");
     var then_locals = LocalSet{};
     defer then_locals.deinit(allocator);
-    try collectBodyLocals(allocator, tokens, open_brace + 1, close_brace, ctx, &then_locals);
+    try collectDirectBodyLocals(allocator, tokens, open_brace + 1, close_brace, ctx, &then_locals);
     var parent_defer_storage: DeferContext = undefined;
     const parent_defer_ptr: ?*const DeferContext = if (defer_ctx) |scope| blk: {
         parent_defer_storage = .{
@@ -16070,25 +17122,37 @@ fn emitIfBlock(
         .end_idx = close_brace,
         .registered_end_idx = close_brace,
     };
-    try emitBody(allocator, tokens, open_brace + 1, close_brace, locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, &then_defer, return_label, out);
-    try emitBlockReleaseManagedLocals(allocator, &then_locals, ctx, out);
+    var then_return_cleanup_locals = try mergeReturnCleanupLocals(allocator, return_cleanup_locals, &then_locals);
+    defer then_return_cleanup_locals.deinit(allocator);
+    var then_control_cleanup_locals = try mergeReturnCleanupLocals(allocator, control_cleanup_locals, &then_locals);
+    defer then_control_cleanup_locals.deinit(allocator);
+    try emitBody(allocator, tokens, open_brace + 1, close_brace, body_start, locals, &then_return_cleanup_locals, &then_control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, &then_defer, return_label, out);
+    if (bodyCanReachEnd(tokens, open_brace + 1, close_brace)) {
+        try emitBlockReleaseManagedLocals(allocator, &then_locals, ctx, out);
+    }
     if (else_if_start) |nested_if| {
         try out.appendSlice(allocator, "    else\n");
-        if (!try emitIfBlock(allocator, tokens, nested_if, end_idx, locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out)) return false;
+        if (!try emitIfBlock(allocator, tokens, nested_if, end_idx, body_start, locals, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out)) return false;
     } else if (else_open) |open_else| {
         const close_else = else_close orelse return false;
         try out.appendSlice(allocator, "    else\n");
         var else_locals = LocalSet{};
         defer else_locals.deinit(allocator);
-        try collectBodyLocals(allocator, tokens, open_else + 1, close_else, ctx, &else_locals);
+        try collectDirectBodyLocals(allocator, tokens, open_else + 1, close_else, ctx, &else_locals);
         const else_defer = DeferContext{
             .parent = parent_defer_ptr,
             .start_idx = open_else + 1,
             .end_idx = close_else,
             .registered_end_idx = close_else,
         };
-        try emitBody(allocator, tokens, open_else + 1, close_else, locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, &else_defer, return_label, out);
-        try emitBlockReleaseManagedLocals(allocator, &else_locals, ctx, out);
+        var else_return_cleanup_locals = try mergeReturnCleanupLocals(allocator, return_cleanup_locals, &else_locals);
+        defer else_return_cleanup_locals.deinit(allocator);
+        var else_control_cleanup_locals = try mergeReturnCleanupLocals(allocator, control_cleanup_locals, &else_locals);
+        defer else_control_cleanup_locals.deinit(allocator);
+        try emitBody(allocator, tokens, open_else + 1, close_else, body_start, locals, &else_return_cleanup_locals, &else_control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, &else_defer, return_label, out);
+        if (bodyCanReachEnd(tokens, open_else + 1, close_else)) {
+            try emitBlockReleaseManagedLocals(allocator, &else_locals, ctx, out);
+        }
     }
     try out.appendSlice(allocator, "    end\n");
     return true;

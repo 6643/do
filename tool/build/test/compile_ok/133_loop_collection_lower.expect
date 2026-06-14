@@ -1,10 +1,10 @@
 ;; loop-collection
-(local $__do_loop_index_
+(local $__loop_index_
 (local $value i32)
 (local $index i32)
-block $__do_loop_break_
-loop $__do_loop_body_
-br_if $__do_loop_break_
+block $__loop_break_
+loop $__loop_body_
+br_if $__loop_break_
 local.set $index
 local.set $value
-br $__do_loop_body_
+br $__loop_body_

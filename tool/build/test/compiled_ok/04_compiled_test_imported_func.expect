@@ -4,4 +4,4 @@ i32.const 9
 call $other_pair
 local.set $ok
 local.set $n
-(export "__do_test_0" (func $__do_test_0))
+(export "__test_0" (func $__test_0))

@@ -4,9 +4,9 @@
 ;; arc-return-move value
 local.get $value
 (func $make_text (result i32)
-call $__do_arc_alloc
-local.set $__do_storage_overwrite_tmp
-local.get $__do_storage_overwrite_tmp
+call $__arc_alloc
+local.set $__storage_overwrite_tmp
+local.get $__storage_overwrite_tmp
 call $make_text
 local.set $made
 call $echo

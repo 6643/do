@@ -649,6 +649,10 @@ open_file(path [u8]) -> File | FileError {
     return File{id = 1}
 }
 
+release_file(file File) -> nil {
+    return
+}
+
 flush_file(file File) -> FileError | nil {
     return nil
 }
@@ -662,6 +666,8 @@ use(path [u8]) -> FileError | nil {
     if @is(file_result, FileError) return file_result
     file File = file_result
 
+    defer release_file(file)
+
     flush_err = flush_file(file)
     close_err = close_file(file)
 
@@ -672,15 +678,27 @@ use(path [u8]) -> FileError | nil {
 
 ```do decl err
 bad(file File) -> FileError | nil {
-    defer {
-        _ = close_file(file)
-    }
-
+    defer close_file(file)
     return nil
 }
 ```
 
-v1 没有可用 `defer` 语句。资源 cleanup 必须显式调用，并由源码显式保存和处理 close error；如果后续版本启用 `defer`，也不隐式传播、丢弃、聚合或覆盖原返回错误。
+`defer` 已支持返回 `nil` 的 cleanup call 和 cleanup block。返回错误枚举的 cleanup 不能放进 `defer`；资源 cleanup 失败必须由源码显式保存和处理。`defer` 不隐式传播、丢弃、聚合或覆盖原返回错误。
+
+```do program ok
+cleanup() -> nil {
+    return
+}
+
+use_loop() {
+    loop {
+        defer cleanup()
+        if @eq(1, 1) break
+        continue
+    }
+    return
+}
+```
 
 ## CTFE
 

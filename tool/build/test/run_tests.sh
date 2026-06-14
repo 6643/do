@@ -391,6 +391,20 @@ run_compile_ok_case() {
                 while IFS= read -r line || [[ -n "$line" ]]; do
                     [[ -z "$line" ]] && continue
                     [[ "${line:0:1}" == "#" ]] && continue
+                    if [[ "$line" == count=* ]]; then
+                        local count_spec="${line#count=}"
+                        local expected_count="${count_spec%% *}"
+                        local pattern="${line#count=${expected_count} }"
+                        local actual_count
+                        actual_count="$(grep -F -c -- "$pattern" "$wat_file" || true)"
+                        actual_count="${actual_count//[[:space:]]/}"
+                        if [[ "$actual_count" == "$expected_count" ]]; then
+                            continue
+                        fi
+                        echo "[FAIL] compile ok  $name (expected count=$expected_count for wat text: $pattern, got $actual_count)"
+                        missing=1
+                        continue
+                    fi
                     if grep -Fq "$line" "$wat_file"; then
                         continue
                     fi
@@ -804,6 +818,20 @@ run_compiled_ok_case() {
                 while IFS= read -r line || [[ -n "$line" ]]; do
                     [[ -z "$line" ]] && continue
                     [[ "${line:0:1}" == "#" ]] && continue
+                    if [[ "$line" == count=* ]]; then
+                        local count_spec="${line#count=}"
+                        local expected_count="${count_spec%% *}"
+                        local pattern="${line#count=${expected_count} }"
+                        local actual_count
+                        actual_count="$(grep -F -c -- "$pattern" "$wat_file" || true)"
+                        actual_count="${actual_count//[[:space:]]/}"
+                        if [[ "$actual_count" == "$expected_count" ]]; then
+                            continue
+                        fi
+                        echo "[FAIL] compiled ok  $name (expected count=$expected_count for wat text: $pattern, got $actual_count)"
+                        missing=1
+                        continue
+                    fi
                     if grep -Fq "$line" "$wat_file"; then
                         continue
                     fi

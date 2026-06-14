@@ -1,10 +1,10 @@
 ;; arc-runtime free span list v1
-(global $__do_free_span_head (mut i32) (i32.const -1))
-(func $__do_free_span_push (param $block i32)
-(func $__do_free_span_find (param $required_span i32) (result i32)
-(func $__do_arc_alloc_from_large_block (param $block i32) (param $payload_bytes i32) (param $type_id i32) (result i32)
-global.get $__do_free_span_head
-global.set $__do_free_span_head
-call $__do_free_span_find
-call $__do_arc_alloc_from_large_block
-call $__do_free_span_push
+(global $__free_span_head (mut i32) (i32.const -1))
+(func $__free_span_push (param $block i32)
+(func $__free_span_find (param $required_span i32) (result i32)
+(func $__arc_alloc_from_large_block (param $block i32) (param $payload_bytes i32) (param $type_id i32) (result i32)
+global.get $__free_span_head
+global.set $__free_span_head
+call $__free_span_find
+call $__arc_alloc_from_large_block
+call $__free_span_push

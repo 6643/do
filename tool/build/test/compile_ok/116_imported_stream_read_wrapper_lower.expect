@@ -4,4 +4,4 @@ call $read_stream
 call $__wasi_import_io_streams_input_stream_read
 if (result i32 i32)
 local.set $status
-call $__do_mod_0__stream_status_to_error
+call $__mod_0__stream_status_to_error

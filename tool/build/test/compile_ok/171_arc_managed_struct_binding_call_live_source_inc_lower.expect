@@ -1,0 +1,4 @@
+count=3 call $__arc_inc
+count=0 ;; arc-call-move box
+local.set $out
+local.set $again

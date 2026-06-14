@@ -5,9 +5,9 @@ local.get $left
 local.get $right
 return
 call $make_pair
-local.set $__do_storage_overwrite_tmp
+local.set $__storage_overwrite_tmp
 ;; arc-overwrite-release second
 local.set $second
-local.set $__do_storage_overwrite_tmp
+local.set $__storage_overwrite_tmp
 ;; arc-overwrite-release first
 local.set $first

@@ -1,8 +1,8 @@
 (local $out i32)
 local.get $box
-call $__do_arc_payload
+call $__arc_payload
 i32.const 0
 i32.add
 i32.load
-call $__do_arc_inc
+call $__arc_inc
 local.set $out

@@ -9,6 +9,10 @@ make_bytes() -> [u8] {
     return data
 }
 
+echo_bytes(x [u8]) -> [u8] {
+    return x
+}
+
 make_byte_pair() -> [u8], [u8] {
     left [u8] = "left_lib"
     right [u8] = "right_lib"

@@ -1,6 +1,6 @@
 # Roadmap 执行状态
 
-更新时间: 2026-06-09
+更新时间: 2026-06-15
 
 执行原则: 按 `README.md` Roadmap 自上而下推进; 如果某项卡住或需要跳过, 必须在本文记录原因和后续恢复条件。
 
@@ -13,7 +13,7 @@
 证据:
 
 - `doc/memory.md` 已定义 handle、0 sentinel、对象头 `rc/type_id`、layout table、ARC 插桩和 release worklist。
-- `tool/build/codegen.zig` 已生成 `__do_arc_payload`、`__do_arc_rc`、`__do_arc_type_id`、`__do_arc_inc`、`__do_arc_dec`、`__do_arc_release` 和 layout helper。
+- `tool/build/codegen.zig` 已生成 `__arc_payload`、`__arc_rc`、`__arc_type_id`、`__arc_inc`、`__arc_dec`、`__arc_release` 和 layout helper。
 - `tool/build/test/compile_ok/22_arc_bump_alloc_runtime_prelude.do` 到 `47_arc_struct_layout_table_runtime_prelude.do` 覆盖 allocator、对象头、refcount、release worklist 和 layout table。
 - `tool/build/test/compile_ok/48_arc_managed_struct_alloc_lower.do` 到 `74_arc_storage_multi_return_duplicate_local_inc.do` 覆盖 managed struct、storage handle、局部 release、return move/copy 和多返回 ownership。
 - `tool/build/test/compile_ok/121_defer_call_and_arc_block_lower.do` 覆盖 `defer` cleanup 先于被离开区域 ARC release 的 lowering 顺序。
@@ -27,25 +27,52 @@
 证据:
 
 - `doc/memory_layout_structs.md` 已定义 `SlotClassState`、`SmallBlock`、`LargeBlock`、`FreeBlock` 和 managed `Object` 布局。
-- `tool/build/codegen.zig` 已生成 `__do_arc_alloc_small`、`__do_arc_alloc_large`、`__do_free_span_find`、`__do_free_span_split_tail`、`__do_free_span_merge_neighbors`、`__do_arc_release_small` 和 `__do_arc_release_large`。
+- `tool/build/codegen.zig` 已生成 `__arc_alloc_small`、`__arc_alloc_large`、`__free_span_find`、`__free_span_split_tail`、`__free_span_merge_neighbors`、`__arc_release_small` 和 `__arc_release_large`。
 - `tool/build/test/compile_ok/31_arc_allocator_split_runtime_prelude.do` 到 `43_arc_empty_small_block_reclaims_free_span_runtime_prelude.do` 覆盖 small/large allocation、slot class state、slot reuse、large span reclaim、free span reuse、unlink、split、merge 和 empty small block reclaim。
+
+## defer 完整控制流与 ARC
+
+状态: done
+
+结论: `defer` 的 LIFO cleanup、跨 `return/break/continue` lowering、cleanup block 内 managed locals release 和基础 ARC release 顺序已落地到当前 build 子集。
+
+证据:
+
+- `tool/build/test/compile_ok/142_defer_lifo_multiple_cleanups_lower.do` 到 `150_defer_recv_loop_control_lower.do` 覆盖 cleanup 顺序、return、guard return、break、continue、labeled break、cleanup block、collection loop 和 recv loop。
+- `tool/build/test/err/267_defer_call_requires_nil.do`、`274_imported_defer_call_requires_nil.do`、`288_defer_block_return.do`、`289_defer_block_break.do`、`290_defer_block_continue.do`、`304_defer_intrinsic_call.do`、`305_defer_non_call_expr.do` 覆盖非法 cleanup 形态。
+- `tool/build/codegen.zig` 的 `emitDeferCleanupStack(...)`、`emitDeferCleanupStackThrough(...)`、`emitReturnStmt(...)`、`emitGuardReturnIf(...)` 和 `emitLoopControlJump(...)` 是当前 lowering 锚点。
+- `./tool/build/test/run_tests.sh` 当前回归摘要为 `pass=652 fail=0 skip=70`。
 
 ## 03. ARC / Perceus 完整分析
 
-状态: skipped
+状态: in_progress
 
-跳过原因: 当前编译器仍以 token-level lowering 为主, 没有独立 IR、ownership graph 或 data-flow pass。完整静态插入、冗余 `inc/dec` 消除、末次使用优化和 FBIP `reuse` 需要先建立 ownership IR; 直接在现有 codegen 分支里硬补会把优化逻辑混入语法扫描, 风险高且难验证。
+结论: 当前已落地 ownership exit plan foundation、死 alias `inc/dec` 相消和保守 last-use move 子集。`tool/build/ownership.zig` 负责构造 `return`、guard `return`、fallthrough、block exit 和 loop control 的 release steps，`tool/build/codegen.zig` 消费这些 steps 并在可证明本地末次使用时跳过部分冗余 `inc`。完整 ownership IR / data-flow、跨函数唯一性证明和 FBIP `reuse` 仍未完成。
 
-当前已保留的正确性能力:
+当前已完成边界:
 
 - managed storage / managed struct 的 `inc/dec`。
 - return move / copy 的基础 ownership。
 - 局部变量 fallthrough、return、break、continue 和 `defer` cleanup 的 release 顺序。
+- `tool/build/ownership.zig` 已定义 `ExitKind`、`ManagedLocalKind`、`ReleaseReason`、`ReleaseStep`、`ExitPlan` 和对应 builder。
+- `tool/build/test/compile_ok/151_arc_return_partial_multi_move_lower.do` 到 `154_arc_continue_cross_scope_release_chain_lower.do` 已锁住 partial move return、nested fallthrough 和 cross-scope `break/continue` release chain。
+- `tool/build/test/compile_ok/157_arc_storage_dead_alias_binding_elided_lower.do` 和 `158_arc_managed_struct_dead_alias_binding_elided_lower.do` 已锁住死 alias 绑定相消。
+- `tool/build/test/compile_ok/159_*` 到 `212_*` 已覆盖 direct storage / managed struct overwrite、call 参数、binding、assignment、return call、union guard / nil expr、plain struct field read、field reflection read 和 managed struct field write 的保守 last-use move 子集。
+- `tool/build/test/compiled_ok/21_*` 到 `42_*` 已覆盖对应 compiled execution 子集。
+- `RUN_WASM=1 SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 当前回归摘要为 `pass=653 fail=0 skip=70`。
 
-恢复条件:
+当前未完成:
 
-- 先设计并落地 compiler ownership IR 或等价 data-flow pass。
-- 为冗余消除、last-use move 和 FBIP `reuse` 分别补 WAT expect 与 compiled/run 用例。
+- 还没有完整 ownership IR、ownership graph 或跨 block / 跨函数 data-flow pass。
+- last-use move 只覆盖当前可证明的本地 direct managed 子集；参数、借用、helper/shared-source 字段读取仍保持保守 `inc`。
+- loop / collection loop / recv loop / field reflection loop 内的 call 参数 move 仍保持保守，避免把 loop-carried source 误判成末次使用。
+- 还没有 FBIP `reuse`、escape analysis 或 region。
+
+继续条件:
+
+- 若继续扩字段读取 move，先设计唯一拥有 / alias 证明，不能只按语法末次使用放开。
+- 若继续扩 loop 内 move，先建立 loop-carried source 分析或更强的 data-flow 边界。
+- FBIP `reuse` 必须在 ownership、mutability 和 COW 回退条件都明确后单独推进。
 
 ## 04. 标准库边界
 

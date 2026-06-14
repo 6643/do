@@ -4,4 +4,4 @@ call $flush_file
 call $__wasi_import_filesystem_types_descriptor_sync
 if (result i32)
 local.set $status
-call $__do_mod_0__file_status_to_error
+call $__mod_0__file_status_to_error

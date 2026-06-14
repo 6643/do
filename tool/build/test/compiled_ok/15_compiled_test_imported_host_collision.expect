@@ -1,4 +1,4 @@
-(import "env" "one" (func $__do_mod_0__host_value (result i32)))
-(import "env" "two" (func $__do_mod_1__host_value (result i32)))
-call $__do_mod_1__host_value
-call $__do_mod_0__host_value
+(import "env" "one" (func $__mod_0__host_value (result i32)))
+(import "env" "two" (func $__mod_1__host_value (result i32)))
+call $__mod_1__host_value
+call $__mod_0__host_value

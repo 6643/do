@@ -1,5 +1,5 @@
 ;; arc-runtime memory grow helper v0
-(func $__do_memory_grow_to (param $end i32)
+(func $__memory_grow_to (param $end i32)
 memory.size
 i32.const 16
 i32.shl
@@ -22,8 +22,8 @@ end
 end
 local.set $next
 local.get $next
-call $__do_memory_grow_to
+call $__memory_grow_to
 local.get $object
 i32.const 1
 i32.store
-global.set $__do_heap_cursor
+global.set $__heap_cursor

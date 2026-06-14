@@ -2,13 +2,12 @@
 ;; arc-return-move x
 local.get $x
 return
-local.get $data
-call $__do_arc_inc
-call $make
+count=0 call $__arc_inc
+;; arc-call-move data
 local.set $out
 ;; arc-release-local out
 local.get $out
-call $__do_arc_dec
+call $__arc_dec
 ;; arc-release-local data
 local.get $data
-call $__do_arc_dec
+call $__arc_dec

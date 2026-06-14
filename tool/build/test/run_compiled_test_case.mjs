@@ -42,8 +42,8 @@ const loaded = await WebAssembly.instantiate(bytes, imports);
 instance = loaded.instance;
 
 const tests = Object.entries(instance.exports)
-  .filter(([name, fn]) => /^__do_test_[0-9]+$/.test(name) && typeof fn === "function")
-  .sort(([a], [b]) => Number(a.slice("__do_test_".length)) - Number(b.slice("__do_test_".length)));
+  .filter(([name, fn]) => /^__test_[0-9]+$/.test(name) && typeof fn === "function")
+  .sort(([a], [b]) => Number(a.slice("__test_".length)) - Number(b.slice("__test_".length)));
 
 if (tests.length === 0) {
   throw new Error("missing compiled test exports");
@@ -82,5 +82,5 @@ function readTestManifest(path) {
 function testDisplayName(names, tests, fn) {
   const idx = tests.findIndex(([, candidate]) => candidate === fn);
   if (idx < 0) return "\"unknown\"";
-  return names.get(idx) ?? `"__do_test_${idx}"`;
+  return names.get(idx) ?? `"__test_${idx}"`;
 }

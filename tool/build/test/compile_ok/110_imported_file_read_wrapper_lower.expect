@@ -5,4 +5,4 @@ call $__wasi_import_filesystem_types_descriptor_read
 if (result i32 i32 i32)
 local.set $status
 local.set $done
-call $__do_mod_0__file_status_to_error
+call $__mod_0__file_status_to_error

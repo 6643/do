@@ -1,7 +1,7 @@
 ;; loop-recv
-(local $__do_loop_count_
-local.set $__do_loop_count_
-local.get $__do_loop_count_
+(local $__loop_count_
+local.set $__loop_count_
+local.get $__loop_count_
 i32.load
 i32.ge_u
 local.set $count
@@ -9,8 +9,8 @@ local.set $value
 local.get $count
 i32.const 1
 i32.eq
-br $__do_loop_continue_
+br $__loop_continue_
 local.get $value
 i32.const 2
 i32.eq
-br $__do_loop_break_
+br $__loop_break_

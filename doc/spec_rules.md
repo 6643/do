@@ -1252,7 +1252,7 @@ item = @get(user, .abc, @add(i, 1), .name)
 2. 测试块的返回语义等价于 `() -> nil`；本版测试失败通过条件、诊断或 compiled runner trap 触发，不通过返回合成 `Error` 表达。
 3. `return` 或 `return nil` 表示通过。
 4. 测试声明可就近放在被测声明旁边，保持模块内就近测试。
-5. 默认 `do test <input.do>` 当前保留静态 runner，输出三态: `ok` 表示测试体静态执行到通过条件或显式 `return`；`failed` 表示已支持的静态断言确定失败，或断言表达式进入 `unknown`；`skipped` 表示测试体依赖静态 runner 尚未支持的控制流、导入调用、复杂表达式或 lowering 能力。静态 runner 遇到 `failed` 返回非零，只有 `ok/skipped` 时返回零。`do test <input.do> --compiled -o out.wat` 是 opt-in compiled runner 输出路径: 每个测试块写入 `;; compiled-test N "name"` manifest 注释, lower 成内部 `__do_test_N` 函数并导出同名 export, `_start` 仍依次调用这些函数；测试体执行到 `return` 表示通过, 控制流落到测试块末尾会执行 `unreachable` 作为失败 trap。测试 harness 可逐个调用 `__do_test_N` export 并用 manifest 定位到源码测试名。后续默认 runner 可迁移到 compiled 执行, 但不改变测试声明语法。
+5. 默认 `do test <input.do>` 当前保留静态 runner，输出三态: `ok` 表示测试体静态执行到通过条件或显式 `return`；`failed` 表示已支持的静态断言确定失败，或断言表达式进入 `unknown`；`skipped` 表示测试体依赖静态 runner 尚未支持的控制流、导入调用、复杂表达式或 lowering 能力。静态 runner 遇到 `failed` 返回非零，只有 `ok/skipped` 时返回零。`do test <input.do> --compiled -o out.wat` 是 opt-in compiled runner 输出路径: 每个测试块写入 `;; compiled-test N "name"` manifest 注释, lower 成内部 `__test_N` 函数并导出同名 export, `_start` 仍依次调用这些函数；测试体执行到 `return` 表示通过, 控制流落到测试块末尾会执行 `unreachable` 作为失败 trap。测试 harness 可逐个调用 `__test_N` export 并用 manifest 定位到源码测试名。后续默认 runner 可迁移到 compiled 执行, 但不改变测试声明语法。
 6. 执行模型由测试 runner 决定；runner 可支持“同环境连续执行”和“每例新环境执行”两种模式。
 7. `test` 声明不参与模块 public API 导出。
 

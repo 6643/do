@@ -9,8 +9,6 @@ start() {
     defer one()
     defer {
         host_log("block")
-        return
-        host_log("after")
     }
     return
 }

@@ -1,0 +1,3 @@
+count=1 ;; field-get-move user.name
+count=0 call $__arc_inc
+;; field-reflect-loop type=User

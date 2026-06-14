@@ -1,6 +1,6 @@
 ;; compiled-test 0 "compiled test entry"
-(func $__do_test_0
-(export "__do_test_0" (func $__do_test_0))
-call $__do_test_0
+(func $__test_0
+(export "__test_0" (func $__test_0))
+call $__test_0
 (export "_start" (func $_start))
 unreachable

@@ -7,3 +7,7 @@ make_box() -> Box {
     box Box = Box{value = bytes}
     return box
 }
+
+echo_box(box Box) -> Box {
+    return box
+}
