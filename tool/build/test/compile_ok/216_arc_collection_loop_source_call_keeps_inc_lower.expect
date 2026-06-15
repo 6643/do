@@ -1,0 +1,4 @@
+;; loop-collection
+count=0 ;; arc-call-move xs
+count=1 call $__arc_inc
+call $take

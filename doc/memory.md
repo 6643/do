@@ -272,6 +272,101 @@ a = b
 4. 释放完成后把 object allocation 归还给 allocator; small object slot 可以复用, 空 small block 可以转回 free span。
 5. double free、unknown handle、layout 缺失属于 runtime safety failure。
 
+### 8.5 字段读取 move 的唯一拥有 / alias 证明
+
+字段读取 move 指从 managed struct 读取 managed 字段时, 不对字段 handle 执行 `inc`, 而是把该字段 handle 转移给读取结果, 并立即把源结构体对应字段写回 0 sentinel。这样源结构体后续释放时不会再 `dec` 已转移的字段。
+
+这个优化不能只依赖语法末次使用。下面的情况即使 `user` 在语法上最后一次出现, 也不能证明字段可 move:
+
+```do
+take_name(user User) -> text {
+    return @get(user, .name)
+}
+```
+
+`user` 是参数, caller 侧可能仍持有同一个 managed object 的值语义副本; callee 不能把参数字段清空后返回。这个场景必须保守 `inc` 字段。
+
+可行路径对比:
+
+1. 仅按语法末次使用放开字段读取 move: 禁止。它会误伤参数、借用源、helper/shared-source、loop-carried source 和同语句多次读取。
+2. 只放开本地 fresh-owner 证明: v1 采用。只在可证明源结构体由当前函数体内新建 struct literal 唯一拥有、没有别名、读取后不再使用时 move。
+3. 完整 ownership graph / data-flow: 后续再做。它可以覆盖跨 block、跨函数和更复杂循环, 但必须先有独立 IR 或数据流模型。
+
+v1 字段读取 move 的证明条件:
+
+1. 源必须是当前函数体内的 direct managed struct local, 且由同一函数体内的 struct literal 初始化。
+2. 源不能是参数、导入函数返回值、普通 helper 返回值、union payload、借用/共享来源、field meta helper 产生的间接源, 或 loop-carried source。
+3. 从源声明结束到字段读取开始, 源标识符不能再次出现; 这包括 alias 绑定、传参、字段读取、字段写入和任何普通表达式使用。
+4. 字段读取表达式之后, 当前语句剩余部分和当前 body 剩余部分都不能再使用源。
+5. 活跃作用域内不能有已注册 `defer`; `defer` cleanup 会改变离开路径, v1 不在该场景证明字段转移。
+6. 读取字段必须是 managed 字段; inline 字段不需要 ARC move。
+7. 字段读取 move 只能发生在受控上下文中: return / guard return、受控 binding / assignment, 或能证明读取后马上离开源生命周期的 field reflection 展开分支。
+8. 循环内默认不能 move loop-carried source。只有字段读取所在路径确定 `return` / guard `return` / `break` 后不再进入下一轮, 才能考虑放开。
+9. 同一语句内从同一源读取多个 managed 字段暂不放开; 必须等 ownership IR 能表达逐字段 zeroing 和多结果转移后再做。
+
+实现效果必须满足:
+
+1. move 路径: load 字段 handle, 不 `inc`, 立即把源字段写 0 sentinel, 结果值接管该 handle。
+2. copy 路径: load 字段 handle 后执行 `inc`, 源字段保持不变。
+3. 源结构体离开作用域时, layout release 只能 `dec` 仍留在源结构体中的 managed 字段。
+4. 读取结果进入普通 return / binding / assignment ownership 流程, 由现有 cleanup 或 return ownership 负责释放或转移。
+
+03.6 已补齐的回归:
+
+1. 允许: fresh local struct literal 的 direct `@get(user, .field)` return move。
+2. 允许: fresh local struct literal 的 `@field_get(user, field)` return move。
+3. 拒绝: 参数字段读取 move, 继续保守 `inc`。
+4. 拒绝: active `defer` 作用域内字段读取 move。
+5. 拒绝: 字段读取后源仍被使用。
+6. 拒绝: 非退出路径的 loop-carried source 字段读取 move。
+7. 拒绝: helper/shared-source 字段读取 move。
+8. 拒绝: 同一语句内从同一源读取多个 managed 字段 move。
+
+对应证据: compile_ok `202` 到 `215` 覆盖字段读取 move 的允许/拒绝 lowering 边界, compiled_ok `39` 到 `42` 覆盖 fresh local direct `@get`、field reflection `@field_get`、binding 和 assignment 的执行路径。
+
+### 8.6 loop-carried source 与 loop 内 call 参数 move
+
+当前 loop 内 call 参数 move 采用全局保守门: `emitBody(...)` 只在 `loop_ctx == null` 时设置 `allow_call_arg_last_use_move = true`。普通 loop、collection loop、recv loop 和 field reflection loop 都会构造 `LoopControl`, 因此 loop body 内普通 call 参数默认不能触发 direct managed last-use move。
+
+当前证据:
+
+1. 普通 loop: `emitLoopBlock(...)` 为 body 构造 `LoopControl`, body 可回到同一 `loop` 标签; 即使某个 source 在当前语句后没有语法使用, 下一轮仍可能继续需要它。
+2. collection loop: `emitCollectionLoopBlock(...)` 为 value / index 建立每轮 body, managed value 从 storage 元素 load 后立即 `inc`, value binding 是每轮借用出来的本地句柄, source storage 仍属于循环源。
+3. recv loop: `emitRecvLoopBlock(...)` 和 collection loop 同形, value / count 每轮重建, managed value 也在 load 后 `inc`。
+4. field reflection loop: 每个字段分支有独立 `LoopControl` 和 scoped cleanup; 已允许的字段读取 move 只在 return / guard return 等离开路径内成立。
+5. 现有回归 `166`、`167`、compiled `24` 锁住普通 loop 内 call 参数继续 `inc`; `214` 锁住非退出 loop-carried 字段读取不 move。
+6. `216` 到 `218` 锁住 collection loop source、collection loop managed value binding 和 recv loop managed value binding 作为 call 参数时继续 `inc`, 不出现 `arc-call-move`。
+
+设计结论:
+
+1. 03.7 阶段不直接放开 loop body 内 call 参数 move。
+2. collection / recv 的 value binding 视为 borrowed per-iteration source, 不能作为可 move source。
+3. collection / recv 的 source storage 是 loop-carried source, 不能在 body 内按语法末次使用 move。
+4. 只有 path 确定离开循环且不会进入下一轮时, 才能考虑局部放开, 例如当前路径确定 `return` 或确定 `break` 到目标 loop 外层。
+5. `continue` 路径永远不是 move 放开路径, 因为它直接进入下一轮。
+6. 有 active `defer`、source 来自参数/import/helper/shared-source、source 在同语句后续或 body 后续仍可达使用时, 继续保守 `inc`。
+
+后续最小分析需要同时证明:
+
+1. source origin: local fresh-owned source, 且不是参数、helper/shared-source、collection/recv value、hidden loop source 或外层 loop-carried source。
+2. path exit: move 表达式之后当前控制路径必须确定 `return` 或 `break` 离开承载该 source 的循环; 不能 fallthrough 或 `continue`。
+3. use-after: move 后当前语句剩余部分、当前 block 剩余可达语句和相关 cleanup 都不能再使用 source。
+4. cleanup: active `defer` 和 loop control release chain 不会访问已 move source。
+5. field granularity: 同一语句多字段 move 仍等 ownership IR 后再做。
+
+03.7.2 回归已补充, 不改 codegen:
+
+1. collection loop 内用外层 storage / managed struct 做 call 参数, 继续 `inc`, 不出现 `arc-call-move`。
+2. collection loop 的 managed value binding 做 call 参数, 继续 `inc`, 不出现 `arc-call-move`。
+3. recv loop 的 managed value binding 做 call 参数, 继续 `inc`, 不出现 `arc-call-move`。
+4. 验证命令: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh`, 结果 `pass=658 fail=0 skip=70`。
+
+03.7.3 下一步只设计最小 LoopMoveAnalysis 输入/输出:
+
+1. 普通 loop 中 `break` / `return` 路径是否允许 move, 先以设计用例记录, 不在没有 path analysis 前放开。
+2. 输入必须显式包含 source origin、path exit、use-after 和 cleanup 四类证明材料。
+3. 输出只能是局部 allow / reject 和拒绝原因, 不能静默扩大到 collection / recv value、helper/shared-source 或 active defer source。
+
 ---
 
 ## 9. Linear Memory 与 host ABI
@@ -355,7 +450,7 @@ Wasm linear memory 是 runtime 实现细节。源码不暴露地址。
 17. 已有 `[u8]` 和 managed struct 覆盖赋值的 release lowering: 字符串 overwrite 先释放旧 storage; `@set/@put` overwrite 和 managed struct handle overwrite 先把 RHS 写入 scratch local, 再按新旧 handle 是否相同决定是否释放旧值。
 18. 已有通用 `[T]` 的 `@len/@get/@set/@put` handle lowering，以及 managed 元素 storage 的 literal/get/release/set/put 最小闭环。
 19. 已有 `text` runtime 表示和 `[u8]` 边界函数的当前 v1 子集；`text` 仍不自动等同于 `[u8]`。
-20. 下一步若继续推进 ARC 优化，先补完整 ownership IR / data-flow 或唯一拥有证明，再扩字段读取 move、loop 内 move 或 FBIP `reuse`。
+20. 已有字段读取 move 的唯一拥有 / alias 证明设计: v1 只允许本地 fresh-owner 且 alias-free 的字段读取 move; 参数、借用、helper/shared-source、loop-carried source 和同语句多字段读取继续保守。下一步若实现 03.6, 必须先按 8.5 补拒绝/允许回归。
 21. 最后再评估 `@store_*`、真实 atomic 和 host/WASI 复杂 ABI。
 
 文档侧验证入口:
