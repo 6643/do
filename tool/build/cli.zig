@@ -7,6 +7,10 @@ pub const Args = struct {
     component_core: bool = false,
 };
 
+pub const RunArgs = struct {
+    input_path: []const u8,
+};
+
 pub fn parseBuild(args: []const []const u8) !Args {
     var input_path: ?[]const u8 = null;
     var output_path: []const u8 = "out.wat";
@@ -64,4 +68,36 @@ pub fn parseTest(args: []const []const u8) !Args {
         .output_path = output_path,
         .compiled_test = compiled_test,
     };
+}
+
+pub fn parseRun(args: []const []const u8) !RunArgs {
+    var input_path: ?[]const u8 = null;
+    var i: usize = 1;
+    while (i < args.len) : (i += 1) {
+        if (std.mem.startsWith(u8, args[i], "-")) return error.UnexpectedCliArg;
+        if (input_path != null) return error.UnexpectedCliArg;
+        input_path = args[i];
+    }
+    return .{
+        .input_path = input_path orelse return error.MissingInputPath,
+    };
+}
+
+test "parseRun accepts exactly one input path" {
+    const args = [_][]const u8{ "run", "app.do" };
+    const parsed = try parseRun(&args);
+    try std.testing.expectEqualStrings("app.do", parsed.input_path);
+}
+
+test "parseRun rejects extra args and flags" {
+    const extra = [_][]const u8{ "run", "app.do", "extra.do" };
+    try std.testing.expectError(error.UnexpectedCliArg, parseRun(&extra));
+
+    const flag = [_][]const u8{ "run", "--bad" };
+    try std.testing.expectError(error.UnexpectedCliArg, parseRun(&flag));
+}
+
+test "parseRun rejects missing input path" {
+    const args = [_][]const u8{"run"};
+    try std.testing.expectError(error.MissingInputPath, parseRun(&args));
 }
