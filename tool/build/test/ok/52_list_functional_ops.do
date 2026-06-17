@@ -20,7 +20,7 @@ test "list functional ops" {
     xs = list_add(xs, 2)
     xs = list_add(xs, 3)
 
-    ys List<i64> = list_map(xs, (x i32) -> i64 => @to_i64(@add(x, 1)))
+    ys List<i64> = list_map(xs, (x i32) -> i64 => @as(i64, @add(x, 1)))
     even List<i32> = list_filter(xs, (x i32) -> bool => @eq(@rem(x, 2), 0))
     sum i32 = list_fold(xs, 0, (acc i32, x i32) -> i32 => @add(acc, x))
     reduced, reduced_ok = list_reduce(xs, 0, (a i32, b i32) -> i32 => @add(a, b))

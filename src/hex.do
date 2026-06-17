@@ -31,10 +31,10 @@ encode_with(data [u8], alphabet [u8]) -> [u8] {
     loop {
         if @eq(i, @len(data)) return list_items(out)
         b u8 = @get(data, i)
-        hi u8 = @to_u8(@div(b, 16))
-        lo u8 = @to_u8(@rem(b, 16))
-        out = list_add(out, @get(alphabet, @to_usize(hi)))
-        out = list_add(out, @get(alphabet, @to_usize(lo)))
+        hi u8 = @as(u8, @div(b, 16))
+        lo u8 = @as(u8, @rem(b, 16))
+        out = list_add(out, @get(alphabet, @as(usize, hi)))
+        out = list_add(out, @get(alphabet, @as(usize, lo)))
         i = @add(i, 1)
     }
 }

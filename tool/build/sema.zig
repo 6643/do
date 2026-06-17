@@ -804,24 +804,71 @@ fn checkAsTypeArgs(tokens: []const lexer.Token) !void {
             return markErrorAt(tokens, i + 1, error.InvalidCallArgList);
         const comma = findTopLevelComma(tokens, i + 2, close_paren) orelse
             return markErrorAt(tokens, i, error.InvalidCallArgList);
+
+        if (asTypeFirstArg(tokens, i + 2, comma) != null) {
+            if (findTopLevelComma(tokens, comma + 1, close_paren)) |extra_comma| {
+                return markErrorAt(tokens, extra_comma, error.InvalidCallArgList);
+            }
+            if (comma + 1 >= close_paren) return markErrorAt(tokens, comma, error.InvalidCallArgList);
+            continue;
+        }
+
         const type_arg = firstNonGap(tokens, comma + 1, close_paren) orelse
             return markErrorAt(tokens, comma, error.InvalidCallArgList);
-        if (isValueLiteralToken(tokens[type_arg])) {
-            return markErrorAt(tokens, type_arg, error.InvalidCallArgList);
-        }
-        if (findInlineFuncTypeInIsArg(tokens, type_arg, close_paren)) |func_type_idx| {
-            return markErrorAt(tokens, func_type_idx, error.InvalidCallArgList);
-        }
-        if (findTopLevelComma(tokens, type_arg, close_paren)) |extra_comma| {
-            return markErrorAt(tokens, extra_comma, error.InvalidCallArgList);
-        }
-        if (findTopLevelNilInIsArg(tokens, type_arg, close_paren)) |nil_idx| {
-            return markErrorAt(tokens, nil_idx, error.InvalidCallArgList);
-        }
-        if (validateIsTypeAtom(tokens, type_arg, close_paren) != close_paren) {
-            return markErrorAt(tokens, type_arg, error.InvalidCallArgList);
-        }
+        try checkAsPayloadTypeArg(tokens, type_arg, close_paren);
     }
+}
+
+fn asTypeFirstArg(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    const type_arg = firstNonGap(tokens, start_idx, end_idx) orelse return null;
+    if (validateScalarAsTargetType(tokens, type_arg, end_idx) != end_idx) return null;
+    return type_arg;
+}
+
+fn checkAsPayloadTypeArg(tokens: []const lexer.Token, type_arg: usize, close_paren: usize) !void {
+    if (isValueLiteralToken(tokens[type_arg])) {
+        return markErrorAt(tokens, type_arg, error.InvalidCallArgList);
+    }
+    if (findInlineFuncTypeInIsArg(tokens, type_arg, close_paren)) |func_type_idx| {
+        return markErrorAt(tokens, func_type_idx, error.InvalidCallArgList);
+    }
+    if (findTopLevelComma(tokens, type_arg, close_paren)) |extra_comma| {
+        return markErrorAt(tokens, extra_comma, error.InvalidCallArgList);
+    }
+    if (findTopLevelNilInIsArg(tokens, type_arg, close_paren)) |nil_idx| {
+        return markErrorAt(tokens, nil_idx, error.InvalidCallArgList);
+    }
+    if (validateIsTypeAtom(tokens, type_arg, close_paren) != close_paren) {
+        return markErrorAt(tokens, type_arg, error.InvalidCallArgList);
+    }
+}
+
+fn validateScalarAsTargetType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    if (start_idx + 1 != end_idx) return null;
+    if (tokens[start_idx].kind != .ident) return null;
+    if (!isScalarAsTargetTypeName(tokens[start_idx].lexeme)) return null;
+    return end_idx;
+}
+
+fn isScalarAsTargetTypeName(name: []const u8) bool {
+    const names = [_][]const u8{
+        "u8",
+        "u16",
+        "u32",
+        "u64",
+        "usize",
+        "isize",
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "f32",
+        "f64",
+    };
+    for (names) |it| {
+        if (std.mem.eql(u8, it, name)) return true;
+    }
+    return false;
 }
 
 fn validateIsTypeExpr(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
@@ -1755,18 +1802,6 @@ fn isBuiltinCallName(name: []const u8) bool {
         "field_set",
         "len",
         "put",
-        "to_u8",
-        "to_u16",
-        "to_u32",
-        "to_u64",
-        "to_usize",
-        "to_isize",
-        "to_i8",
-        "to_i16",
-        "to_i32",
-        "to_i64",
-        "to_f32",
-        "to_f64",
         "load_u8",
         "load_i8",
         "load_u16_le",
@@ -2748,6 +2783,7 @@ fn findLambdaCapture(
         if (tok.lexeme[0] == '_') continue;
         if (std.ascii.isUpper(tok.lexeme[0])) continue;
         if (isKeyword(tok.lexeme)) continue;
+        if (isAsScalarTypeToken(tokens, i)) continue;
         if (containsName(params, tok.lexeme)) continue;
         if (containsName(locals.items, tok.lexeme)) continue;
         if (isLambdaLocalBindName(tokens, i, start_idx)) {
@@ -2768,6 +2804,12 @@ fn isLambdaLocalBindName(tokens: []const lexer.Token, idx: usize, body_start: us
     const line_end = findLineEndIdx(tokens, idx);
     const eq_idx = findTopLevelAssignEqOnLine(tokens, line_start, line_end) orelse return false;
     return idx < eq_idx;
+}
+
+fn isAsScalarTypeToken(tokens: []const lexer.Token, idx: usize) bool {
+    if (!isScalarAsTargetTypeName(tokens[idx].lexeme)) return false;
+    const info = callArgInfo(tokens, idx) orelse return false;
+    return std.mem.eql(u8, info.name, "as") and (info.arg_index == 0 or info.arg_index == 1);
 }
 
 fn lambdaLineStart(tokens: []const lexer.Token, idx: usize, body_start: usize) usize {
@@ -3842,11 +3884,17 @@ fn checkUpperValueExprs(program: parser.Program, tokens: []const lexer.Token) !v
         if (node.kind != .ident) continue;
         const tok = tokens[node.start_tok];
         if (!isValidDeclaredTypeName(tok.lexeme)) continue;
+        if (isAsPayloadTypeValue(tokens, node.start_tok)) continue;
         if (isTypeConstructorExpr(tokens, node.start_tok)) continue;
         if (isLocalErrorBranchValue(tokens, tok.lexeme)) continue;
         if (isImportedUpperAlias(tokens, tok.lexeme)) continue;
         return markErrorAt(tokens, node.start_tok, error.InvalidTypeRef);
     }
+}
+
+fn isAsPayloadTypeValue(tokens: []const lexer.Token, idx: usize) bool {
+    const info = callArgInfo(tokens, idx) orelse return false;
+    return std.mem.eql(u8, info.name, "as") and info.arg_index == 1;
 }
 
 fn isTypeConstructorExpr(tokens: []const lexer.Token, start_idx: usize) bool {
@@ -7189,19 +7237,17 @@ fn isNumericCoreFuncName(name: []const u8) bool {
 
 fn isBuiltinSpecialOrCoreName(name: []const u8) bool {
     const names = [_][]const u8{
-        "is",                "as",          "and",         "or",          "not",
-        "recv",              "fields",      "get",         "set",         "field_name",
-        "field_index",       "field_has_default", "field_get", "field_set", "eq",
-        "ne",                "lt",          "le",          "gt",          "ge",
-        "add",               "sub",         "mul",         "div",         "rem",
-        "len",               "put",         "to_u8",       "to_u16",      "to_u32",
-        "to_u64",            "to_usize",    "to_isize",    "to_i8",       "to_i16",
-        "to_i32",            "to_i64",      "to_f32",      "to_f64",      "load_u8",
-        "load_i8",           "load_u16_le", "load_i16_le", "load_u32_le", "load_i32_le",
-        "load_u64_le",       "load_i64_le", "xor",         "shl",         "shr",
-        "rotl",              "rotr",        "clz",         "ctz",         "popcnt",
-        "abs",               "neg",         "sqrt",        "ceil",        "floor",
-        "trunc",             "nearest",     "min",         "max",         "copysign",
+        "is",          "as",                "and",         "or",          "not",
+        "recv",        "fields",            "get",         "set",         "field_name",
+        "field_index", "field_has_default", "field_get",   "field_set",   "eq",
+        "ne",          "lt",                "le",          "gt",          "ge",
+        "add",         "sub",               "mul",         "div",         "rem",
+        "len",         "put",               "load_u8",     "load_i8",     "load_u16_le",
+        "load_i16_le", "load_u32_le",       "load_i32_le", "load_u64_le", "load_i64_le",
+        "xor",         "shl",               "shr",         "rotl",        "rotr",
+        "clz",         "ctz",               "popcnt",      "abs",         "neg",
+        "sqrt",        "ceil",              "floor",       "trunc",       "nearest",
+        "min",         "max",               "copysign",
     };
     for (names) |it| {
         if (std.mem.eql(u8, it, name)) return true;

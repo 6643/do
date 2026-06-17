@@ -63,11 +63,11 @@ _md5_k [u32] = .{
 }
 
 .append_u32_le(out List<u8>, value u32) -> List<u8> {
-    return list_add(out, @to_u8(@rem(value, 256)), @to_u8(@rem(@div(value, 256), 256)), @to_u8(@rem(@div(value, 65536), 256)), @to_u8(@rem(@div(value, 16777216), 256)))
+    return list_add(out, @as(u8, @rem(value, 256)), @as(u8, @rem(@div(value, 256), 256)), @as(u8, @rem(@div(value, 65536), 256)), @as(u8, @rem(@div(value, 16777216), 256)))
 }
 
 .append_u64_le(out List<u8>, value u64) -> List<u8> {
-    return list_add(out, @to_u8(@rem(value, 256)), @to_u8(@rem(@div(value, 256), 256)), @to_u8(@rem(@div(value, 65536), 256)), @to_u8(@rem(@div(value, 16777216), 256)), @to_u8(@rem(@div(value, 4294967296), 256)), @to_u8(@rem(@div(value, 1099511627776), 256)), @to_u8(@rem(@div(value, 281474976710656), 256)), @to_u8(@rem(@div(value, 72057594037927936), 256)))
+    return list_add(out, @as(u8, @rem(value, 256)), @as(u8, @rem(@div(value, 256), 256)), @as(u8, @rem(@div(value, 65536), 256)), @as(u8, @rem(@div(value, 16777216), 256)), @as(u8, @rem(@div(value, 4294967296), 256)), @as(u8, @rem(@div(value, 1099511627776), 256)), @as(u8, @rem(@div(value, 281474976710656), 256)), @as(u8, @rem(@div(value, 72057594037927936), 256)))
 }
 
 .pad(data [u8]) -> List<u8> {
@@ -78,7 +78,7 @@ _md5_k [u32] = .{
     }
     out = list_add(out, 128)
     loop {
-        if @eq(@rem(list_len(out), 64), 56) return append_u64_le(out, @mul(@to_u64(@len(data)), 8))
+        if @eq(@rem(list_len(out), 64), 56) return append_u64_le(out, @mul(@as(u64, @len(data)), 8))
         out = list_add(out, 0)
     }
 }

@@ -1577,9 +1577,7 @@ fn parseBuiltinCallExpr(
     name_idx: usize,
     limit_idx: usize,
 ) anyerror!CallExprParse {
-    if (std.mem.eql(u8, tokens[name_idx].lexeme, "is") or
-        std.mem.eql(u8, tokens[name_idx].lexeme, "as"))
-    {
+    if (std.mem.eql(u8, tokens[name_idx].lexeme, "is")) {
         return parseTypeArgBuiltinCallExpr(allocator, out_nodes, tokens, name_idx, limit_idx);
     }
 
@@ -1652,10 +1650,13 @@ fn validateBuiltinCallArity(tokens: []const lexer.Token, name_idx: usize, argc: 
         std.mem.eql(u8, name, "len") or
         std.mem.eql(u8, name, "field_name") or
         std.mem.eql(u8, name, "field_index") or
-        std.mem.eql(u8, name, "field_has_default") or
-        isScalarConvertName(name))
+        std.mem.eql(u8, name, "field_has_default"))
     {
         if (argc == 1) return;
+        return markErrorAt(tokens, name_idx, error.InvalidCallArgList);
+    }
+    if (std.mem.eql(u8, name, "as")) {
+        if (argc == 2) return;
         return markErrorAt(tokens, name_idx, error.InvalidCallArgList);
     }
     if (std.mem.eql(u8, name, "and") or std.mem.eql(u8, name, "or")) {
@@ -2256,18 +2257,6 @@ fn isBuiltinCallName(name: []const u8) bool {
         "field_set",
         "len",
         "put",
-        "to_u8",
-        "to_u16",
-        "to_u32",
-        "to_u64",
-        "to_usize",
-        "to_isize",
-        "to_i8",
-        "to_i16",
-        "to_i32",
-        "to_i64",
-        "to_f32",
-        "to_f64",
         "load_u8",
         "load_i8",
         "load_u16_le",
@@ -2375,27 +2364,6 @@ fn isBinaryFixedCoreName(name: []const u8) bool {
 fn isVariadicSelectCoreName(name: []const u8) bool {
     return std.mem.eql(u8, name, "min") or
         std.mem.eql(u8, name, "max");
-}
-
-fn isScalarConvertName(name: []const u8) bool {
-    const names = [_][]const u8{
-        "to_u8",
-        "to_u16",
-        "to_u32",
-        "to_u64",
-        "to_usize",
-        "to_isize",
-        "to_i8",
-        "to_i16",
-        "to_i32",
-        "to_i64",
-        "to_f32",
-        "to_f64",
-    };
-    for (names) |it| {
-        if (std.mem.eql(u8, it, name)) return true;
-    }
-    return false;
 }
 
 fn isReservedExprName(name: []const u8) bool {

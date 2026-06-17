@@ -17,7 +17,7 @@ seed(value u64) -> Random {
 }
 
 from_time() -> Random {
-    return seed(@rem(@to_u64(unix_ms()), 2147483647))
+    return seed(@rem(@as(u64, unix_ms()), 2147483647))
 }
 
 random_u64() -> u64 {
@@ -25,7 +25,7 @@ random_u64() -> u64 {
 }
 
 random_bytes(count usize) -> [u8] {
-    return host_random_bytes(@to_u64(count))
+    return host_random_bytes(@as(u64, count))
 }
 
 next_u64(r Random) -> Random, u64 {
@@ -36,7 +36,7 @@ next_u64(r Random) -> Random, u64 {
 next_u32(r Random) -> Random, u32 {
     next_r Random = r
     next_r, value = next_u64(next_r)
-    return next_r, @to_u32(value)
+    return next_r, @as(u32, value)
 }
 
 next_bool(r Random) -> Random, bool {
@@ -60,7 +60,7 @@ fill_bytes(r Random, count usize) -> Random, [u8] {
     loop {
         if @eq(i, count) return state, list_items(out)
         state, value = next_u64(state)
-        out = list_add(out, @to_u8(@rem(value, 256)))
+        out = list_add(out, @as(u8, @rem(value, 256)))
         i = @add(i, 1)
     }
 }

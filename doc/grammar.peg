@@ -287,7 +287,7 @@ UpperValueExpr   <- EnumBranchName
 ExprIdent        <- !ReservedName LowerIdent / ReadonlyIdent
 ParenExpr        <- '(' SoftGap Expr SoftGap ')'
 
-BuiltinCallExpr  <- IsExpr / ValueLogicExpr / FieldReflectExpr / CoreAccessExpr / CoreFixedCallExpr
+BuiltinCallExpr  <- IsExpr / AsExpr / ValueLogicExpr / FieldReflectExpr / CoreAccessExpr / CoreFixedCallExpr
 
 ValueLogicExpr   <- ValueAndExpr
                   / ValueOrExpr
@@ -307,6 +307,14 @@ IsStorageType    <- '[' SoftGap IsTypeExpr SoftGap ']'
 IsNamedType      <- PublicTypeName IsTypeArgs?
 IsTypeArgs       <- '<' SoftGap IsTypeArg (CommaSep IsTypeArg)* SoftGap '>'
 IsTypeArg        <- ValueTypeExpr
+AsExpr           <- AsPayloadExpr / AsScalarConvertExpr
+AsPayloadExpr    <- '@' 'as' '(' SoftGap Expr CommaSep AsPayloadType TrailComma? SoftGap ')'
+AsScalarConvertExpr <- '@' 'as' '(' SoftGap ScalarType CommaSep Expr TrailComma? SoftGap ')'
+AsPayloadType    <- BaseType / IsStorageType / IsNamedType / ErrorEnumName
+ScalarType       <- 'i8' / 'i16' / 'i32' / 'i64'
+                  / 'u8' / 'u16' / 'u32' / 'u64'
+                  / 'isize' / 'usize'
+                  / 'f32' / 'f64'
 ValueAndExpr     <- '@' 'and' '(' SoftGap ExprNoParen CommaSep ExprNoParen (CommaSep ExprNoParen)* TrailComma? SoftGap ')'
 ValueOrExpr      <- '@' 'or' '(' SoftGap ExprNoParen CommaSep ExprNoParen (CommaSep ExprNoParen)* TrailComma? SoftGap ')'
 ValueNotExpr     <- '@' 'not' '(' SoftGap ExprNoParen TrailComma? SoftGap ')'
@@ -371,7 +379,7 @@ ReservedWord     <- 'if' / 'else' / 'loop' / 'break' / 'continue' / 'return' / '
 BuiltinSpecialName <- 'is' / 'and' / 'or' / 'not' / 'recv' / 'fields'
 ReservedCoreAccessName <- 'get' / 'set'
 FieldReflectFuncName <- FieldReflectMetaName / 'field_get' / 'field_set'
-CoreFixedFuncName <- CorePredicateName / CoreNumericName / CoreBitwiseName / CoreFloatName / CoreStorageFuncName / CoreMemoryLoadName / CoreConvertName
+CoreFixedFuncName <- CorePredicateName / CoreNumericName / CoreBitwiseName / CoreFloatName / CoreStorageFuncName / CoreMemoryLoadName
 CorePredicateName <- 'eq' / 'ne' / 'lt' / 'le' / 'gt' / 'ge'
 CoreNumericName  <- 'add' / 'sub' / 'mul' / 'div' / 'rem'
                   / 'abs' / 'min' / 'max'
@@ -385,9 +393,6 @@ CoreMemoryLoadName <- 'load_u8' / 'load_i8'
                   / 'load_u16_le' / 'load_i16_le'
                   / 'load_u32_le' / 'load_i32_le'
                   / 'load_u64_le' / 'load_i64_le'
-CoreConvertName  <- 'to_u8' / 'to_u16' / 'to_u32' / 'to_u64' / 'to_usize'
-                  / 'to_isize' / 'to_i8' / 'to_i16' / 'to_i32' / 'to_i64'
-                  / 'to_f32' / 'to_f64'
 DeclOnlyName     <- 'start' / 'test'
 ReservedDeclName <- BuiltinSpecialName / ReservedCoreAccessName / FieldReflectFuncName / CoreFixedFuncName / DeclOnlyName
 ReservedTypeName <- BaseTypeName / 'Error' / 'char'

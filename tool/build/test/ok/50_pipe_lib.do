@@ -28,7 +28,7 @@ test "pipe same type chain" {
 }
 
 test "pipe heterogenous chain" {
-    result i32 = pipe(2, (x i32) -> i64 => @to_i64(@add(x, 1)), (x i64) -> bool => @gt(x, 0), bool_to_i32)
+    result i32 = pipe(2, (x i32) -> i64 => @as(i64, @add(x, 1)), (x i64) -> bool => @gt(x, 0), bool_to_i32)
     if @eq(result, 1) return
 }
 
@@ -55,7 +55,7 @@ test "fp storage functional ops" {
     xs = @put(xs, 2)
     xs = @put(xs, 3)
 
-    ys [i64] = fp_map(xs, (x i32) -> i64 => @to_i64(@add(x, 1)))
+    ys [i64] = fp_map(xs, (x i32) -> i64 => @as(i64, @add(x, 1)))
     even [i32] = fp_filter(xs, (x i32) -> bool => @eq(@rem(x, 2), 0))
     sum i32 = fp_fold(xs, 0, (acc i32, x i32) -> i32 => @add(acc, x))
     reduced, reduced_ok = fp_reduce(xs, 0, (a i32, b i32) -> i32 => @add(a, b))

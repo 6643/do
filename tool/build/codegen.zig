@@ -1596,11 +1596,11 @@ fn collectLoopBlockLocals(
     if (fieldReflectionLoopHeader(tokens, start_idx, end_idx, ctx, out)) |header| {
         try collectFieldReflectionLoopLocals(allocator, tokens, header, ctx, out);
         return true;
-        } else if (collectionLoopHeader(tokens, start_idx, end_idx, ctx, out)) |header| {
-            try appendLoopIndexLocal(allocator, out, start_idx);
-            if (header.source_is_expr) {
-                try appendLoopSourceStorageLocal(allocator, out, start_idx, header.source_ty, header.elem_ty);
-            }
+    } else if (collectionLoopHeader(tokens, start_idx, end_idx, ctx, out)) |header| {
+        try appendLoopIndexLocal(allocator, out, start_idx);
+        if (header.source_is_expr) {
+            try appendLoopSourceStorageLocal(allocator, out, start_idx, header.source_ty, header.elem_ty);
+        }
         if (isManagedLocalType(header.elem_ty, ctx)) {
             try out.ensureStorageWriteTemps(allocator);
         }
@@ -5563,16 +5563,15 @@ fn emitExprWithMoveContext(
             return try emitBoolSpecialCall(allocator, tokens, call_head.args_start, call_head.args_end, call_name, locals, ctx, out);
         }
 
-        if (scalarConvertResultType(call_name)) |target_ty| {
-            return try emitScalarConvertCall(allocator, tokens, call_head.args_start, call_head.args_end, target_ty, locals, ctx, out);
+        if (std.mem.eql(u8, call_name, "as")) {
+            if (try emitScalarAsCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, out)) {
+                return true;
+            }
+            return try emitUnionAsCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, out);
         }
 
         if (std.mem.eql(u8, call_name, "is")) {
             return try emitUnionIsCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, out);
-        }
-
-        if (std.mem.eql(u8, call_name, "as")) {
-            return try emitUnionAsCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, out);
         }
 
         if (std.mem.eql(u8, call_name, "eq") or std.mem.eql(u8, call_name, "ne")) {
@@ -9190,19 +9189,7 @@ fn isCoreWasmCallName(name: []const u8) bool {
         isBitwiseCoreFuncName(name) or
         isCountBitsCoreFuncName(name) or
         isFloatUnaryCoreFuncName(name) or
-        isFloatBinaryCoreFuncName(name) or
-        std.mem.eql(u8, name, "to_u8") or
-        std.mem.eql(u8, name, "to_u16") or
-        std.mem.eql(u8, name, "to_u32") or
-        std.mem.eql(u8, name, "to_u64") or
-        std.mem.eql(u8, name, "to_usize") or
-        std.mem.eql(u8, name, "to_isize") or
-        std.mem.eql(u8, name, "to_i8") or
-        std.mem.eql(u8, name, "to_i16") or
-        std.mem.eql(u8, name, "to_i32") or
-        std.mem.eql(u8, name, "to_i64") or
-        std.mem.eql(u8, name, "to_f32") or
-        std.mem.eql(u8, name, "to_f64");
+        isFloatBinaryCoreFuncName(name);
 }
 
 fn collectStringDataForHostCalls(
@@ -14798,23 +14785,26 @@ fn emitStorageAliasRelease(
     try out.appendSlice(allocator, "    call $__arc_dec\n");
 }
 
-fn emitScalarConvertCall(
+fn emitScalarAsCall(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    target_ty: []const u8,
+    args_start: usize,
+    args_end: usize,
     locals: *const LocalSet,
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) !bool {
-    const arg_end = findArgEnd(tokens, start_idx, end_idx);
-    if (arg_end != end_idx) return false;
-    if (!isCoreWasmScalar(target_ty)) return false;
+    const target_end = findArgEnd(tokens, args_start, args_end);
+    if (target_end == args_start or target_end >= args_end or !tokEq(tokens[target_end], ",")) return false;
+    const target_ty = scalarAsTargetType(tokens, args_start, target_end) orelse return false;
 
-    const source_ty = inferExprType(tokens, start_idx, arg_end, locals, ctx) orelse target_ty;
+    const source_start = target_end + 1;
+    const source_end = trimTrailingComma(tokens, source_start, args_end);
+    if (source_start >= source_end) return false;
+
+    const source_ty = inferExprType(tokens, source_start, source_end, locals, ctx) orelse target_ty;
     if (!isCoreWasmScalar(source_ty)) return false;
-    if (!try emitExpr(allocator, tokens, start_idx, arg_end, locals, ctx, source_ty, out)) return false;
+    if (!try emitExpr(allocator, tokens, source_start, source_end, locals, ctx, source_ty, out)) return false;
     if (scalarConvertWasmOp(source_ty, target_ty)) |op| {
         try appendFmt(allocator, out, "    {s}\n", .{op});
     }
@@ -16946,11 +16936,11 @@ fn emitCollectionLoopBlock(
 
     var loop_locals = LocalSet{};
     defer loop_locals.deinit(allocator);
-        if (header.value_name) |value_name| {
-            if (isManagedLocalType(header.elem_ty, ctx)) {
-                try loop_locals.appendBorrowedLocalWithOrigin(allocator, value_name, header.elem_ty, false, .collection_value);
-            }
+    if (header.value_name) |value_name| {
+        if (isManagedLocalType(header.elem_ty, ctx)) {
+            try loop_locals.appendBorrowedLocalWithOrigin(allocator, value_name, header.elem_ty, false, .collection_value);
         }
+    }
     try collectDirectBodyLocals(allocator, tokens, header.open_brace + 1, header.close_brace, ctx, &loop_locals);
     var parent_defer_storage: DeferContext = undefined;
     const parent_defer_ptr: ?*const DeferContext = if (defer_ctx) |scope| blk: {
@@ -17060,11 +17050,11 @@ fn emitRecvLoopBlock(
 
     var loop_locals = LocalSet{};
     defer loop_locals.deinit(allocator);
-        if (header.value_name) |value_name| {
-            if (isManagedLocalType(header.elem_ty, ctx)) {
-                try loop_locals.appendBorrowedLocalWithOrigin(allocator, value_name, header.elem_ty, false, .recv_value);
-            }
+    if (header.value_name) |value_name| {
+        if (isManagedLocalType(header.elem_ty, ctx)) {
+            try loop_locals.appendBorrowedLocalWithOrigin(allocator, value_name, header.elem_ty, false, .recv_value);
         }
+    }
     try collectDirectBodyLocals(allocator, tokens, header.open_brace + 1, header.close_brace, ctx, &loop_locals);
     var parent_defer_storage: DeferContext = undefined;
     const parent_defer_ptr: ?*const DeferContext = if (defer_ctx) |scope| blk: {
@@ -18000,20 +17990,38 @@ fn scalarConvertWasmOp(source_ty: []const u8, target_ty: []const u8) ?[]const u8
     return null;
 }
 
-fn scalarConvertResultType(name: []const u8) ?[]const u8 {
-    if (std.mem.eql(u8, name, "to_u8")) return "u8";
-    if (std.mem.eql(u8, name, "to_u16")) return "u16";
-    if (std.mem.eql(u8, name, "to_u32")) return "u32";
-    if (std.mem.eql(u8, name, "to_u64")) return "u64";
-    if (std.mem.eql(u8, name, "to_usize")) return "usize";
-    if (std.mem.eql(u8, name, "to_isize")) return "isize";
-    if (std.mem.eql(u8, name, "to_i8")) return "i8";
-    if (std.mem.eql(u8, name, "to_i16")) return "i16";
-    if (std.mem.eql(u8, name, "to_i32")) return "i32";
-    if (std.mem.eql(u8, name, "to_i64")) return "i64";
-    if (std.mem.eql(u8, name, "to_f32")) return "f32";
-    if (std.mem.eql(u8, name, "to_f64")) return "f64";
-    return null;
+fn inferScalarAsCallType(tokens: []const lexer.Token, args_start: usize, args_end: usize) ?[]const u8 {
+    const target_end = findArgEnd(tokens, args_start, args_end);
+    if (target_end == args_start or target_end >= args_end or !tokEq(tokens[target_end], ",")) return null;
+    return scalarAsTargetType(tokens, args_start, target_end);
+}
+
+fn scalarAsTargetType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?[]const u8 {
+    if (start_idx + 1 != end_idx) return null;
+    if (tokens[start_idx].kind != .ident) return null;
+    if (!isScalarAsTargetTypeName(tokens[start_idx].lexeme)) return null;
+    return tokens[start_idx].lexeme;
+}
+
+fn isScalarAsTargetTypeName(name: []const u8) bool {
+    const names = [_][]const u8{
+        "u8",
+        "u16",
+        "u32",
+        "u64",
+        "usize",
+        "isize",
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "f32",
+        "f64",
+    };
+    for (names) |it| {
+        if (std.mem.eql(u8, it, name)) return true;
+    }
+    return false;
 }
 
 fn inferExprType(
@@ -18045,7 +18053,7 @@ fn inferExprType(
     if (call_head.is_intrinsic) {
         if (shouldInferBoolSpecialCall(call_name, tokens, call_head.args_start, call_head.args_end, locals, ctx)) return "bool";
         if (std.mem.eql(u8, call_name, "is")) return "bool";
-        if (std.mem.eql(u8, call_name, "as")) return inferUnionAsCallType(tokens, call_head.args_start, call_head.args_end, locals);
+        if (std.mem.eql(u8, call_name, "as")) return inferScalarAsCallType(tokens, call_head.args_start, call_head.args_end) orelse inferUnionAsCallType(tokens, call_head.args_start, call_head.args_end, locals);
         if (isComparisonCoreFuncName(call_name)) return "bool";
         if (std.mem.eql(u8, call_name, "len")) return "usize";
         if (std.mem.eql(u8, call_name, "set")) return inferSetCallType(tokens, call_head.args_start, call_head.args_end, locals);
@@ -18059,7 +18067,6 @@ fn inferExprType(
         if (std.mem.eql(u8, call_name, "field_set")) {
             return inferFieldSetCallType(tokens, call_head.args_start, call_head.args_end, locals);
         }
-        if (scalarConvertResultType(call_name)) |ty| return ty;
         if (std.mem.eql(u8, call_name, "get")) {
             return inferGetCallType(tokens, call_head.args_start, call_head.args_end, locals, ctx);
         }

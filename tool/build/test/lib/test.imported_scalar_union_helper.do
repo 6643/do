@@ -1,7 +1,7 @@
 TestError error = Bad
 
 .parse_digit(byte u8) -> u16 | TestError {
-    if @and(@ge(byte, 48), @le(byte, 57)) return @to_u16(@sub(byte, 48))
+    if @and(@ge(byte, 48), @le(byte, 57)) return @as(u16, @sub(byte, 48))
     return Bad
 }
 

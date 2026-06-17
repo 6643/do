@@ -48,7 +48,7 @@ url_encode(bytes [u8]) -> [u8] {
         if is_unreserved(byte) {
             out = @put(out, byte)
         } else {
-            out = @put(out, _percent, hex_digit(@to_u8(@div(byte, 16))), hex_digit(@to_u8(@rem(byte, 16))))
+            out = @put(out, _percent, hex_digit(@as(u8, @div(byte, 16))), hex_digit(@as(u8, @rem(byte, 16))))
         }
     }
     return out

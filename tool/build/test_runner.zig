@@ -530,6 +530,9 @@ fn evalCall(
     if (std.mem.eql(u8, name, "set")) {
         return evalSetCall(allocator, tokens, funcs, bindings, args_start, args_end);
     }
+    if (std.mem.eql(u8, name, "as")) {
+        return evalAsCall(allocator, tokens, funcs, bindings, args_start, args_end);
+    }
 
     var args = std.ArrayList(Value).empty;
     defer {
@@ -559,7 +562,6 @@ fn evalCall(
         return evalUserFunc(allocator, tokens, funcs, name, args.items);
     }
     if (std.mem.eql(u8, name, "abs")) return evalAbsCore(args.items);
-    if (isConvertCoreName(name)) return evalConvertCore(args.items);
     if (isNumericCoreName(name)) return evalNumericCore(name, args.items);
     if (isBitwiseCoreName(name)) return evalBitwiseCore(name, args.items);
     if (isCountBitsCoreName(name)) return evalCountBitsCore(name, args.items);
@@ -872,10 +874,55 @@ fn evalAbsCore(args: []const Value) Value {
     return args[0];
 }
 
-fn evalConvertCore(args: []const Value) Value {
-    if (hasUnsupportedValue(args)) return .unsupported;
-    if (args.len != 1 or args[0] != .int) return .unknown;
-    return args[0];
+fn evalAsCall(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    funcs: []const FuncDecl,
+    bindings: []const Binding,
+    start_idx: usize,
+    end_idx: usize,
+) anyerror!Value {
+    const target_end = findArgEnd(tokens, start_idx, end_idx);
+    if (target_end == start_idx or target_end >= end_idx or !tokEqToken(tokens[target_end], ",")) return .unknown;
+    if (!isScalarAsTarget(tokens, start_idx, target_end)) return .unsupported;
+
+    const value_start = target_end + 1;
+    const value_end = findArgEnd(tokens, value_start, end_idx);
+    if (value_end != end_idx) return .unknown;
+    const value = try evalExpr(allocator, tokens, funcs, bindings, value_start, value_end);
+    if (value == .unsupported or value == .unknown) return value;
+    if (value != .int) {
+        freeValue(allocator, value);
+        return .unknown;
+    }
+    return value;
+}
+
+fn isScalarAsTarget(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    if (start_idx + 1 != end_idx) return false;
+    if (tokens[start_idx].kind != .ident) return false;
+    return isScalarTypeName(tokens[start_idx].lexeme);
+}
+
+fn isScalarTypeName(name: []const u8) bool {
+    const names = [_][]const u8{
+        "u8",
+        "u16",
+        "u32",
+        "u64",
+        "usize",
+        "isize",
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "f32",
+        "f64",
+    };
+    for (names) |it| {
+        if (std.mem.eql(u8, it, name)) return true;
+    }
+    return false;
 }
 
 fn evalBitwiseCore(name: []const u8, args: []const Value) Value {
@@ -1498,21 +1545,6 @@ fn isNumericCoreName(name: []const u8) bool {
         std.mem.eql(u8, name, "rem") or
         std.mem.eql(u8, name, "min") or
         std.mem.eql(u8, name, "max");
-}
-
-fn isConvertCoreName(name: []const u8) bool {
-    return std.mem.eql(u8, name, "to_u8") or
-        std.mem.eql(u8, name, "to_u16") or
-        std.mem.eql(u8, name, "to_u32") or
-        std.mem.eql(u8, name, "to_u64") or
-        std.mem.eql(u8, name, "to_usize") or
-        std.mem.eql(u8, name, "to_isize") or
-        std.mem.eql(u8, name, "to_i8") or
-        std.mem.eql(u8, name, "to_i16") or
-        std.mem.eql(u8, name, "to_i32") or
-        std.mem.eql(u8, name, "to_i64") or
-        std.mem.eql(u8, name, "to_f32") or
-        std.mem.eql(u8, name, "to_f64");
 }
 
 fn isBitwiseCoreName(name: []const u8) bool {

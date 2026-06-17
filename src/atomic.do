@@ -4,7 +4,7 @@ add_wrap_u32 = @lib("math.do", add_wrap_u32)
 
 .sub_wrap_u32(a u32, b u32) -> u32 {
     if @ge(a, b) return @sub(a, b)
-    return @to_u32(@sub(@add(@to_u64(a), 4294967296), @to_u64(b)))
+    return @as(u32, @sub(@add(@as(u64, a), 4294967296), @as(u64, b)))
 }
 
 atomic_load_u32(data [u8], offset usize) -> u32 {

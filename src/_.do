@@ -147,150 +147,150 @@
 // @set(value T, .name, value U) -> T
 
 // Core conversions
-// @to_u8(u8) -> u8
-// @to_u8(u16) -> u8
-// @to_u8(u32) -> u8
-// @to_u8(u64) -> u8
-// @to_u8(usize) -> u8
-// @to_u8(i8) -> u8
-// @to_u8(i16) -> u8
-// @to_u8(i32) -> u8
-// @to_u8(i64) -> u8
-// @to_u8(isize) -> u8
-// @to_u8(f32) -> u8
-// @to_u8(f64) -> u8
-// @to_u16(u8) -> u16
-// @to_u16(u16) -> u16
-// @to_u16(u32) -> u16
-// @to_u16(u64) -> u16
-// @to_u16(usize) -> u16
-// @to_u16(i8) -> u16
-// @to_u16(i16) -> u16
-// @to_u16(i32) -> u16
-// @to_u16(i64) -> u16
-// @to_u16(isize) -> u16
-// @to_u16(f32) -> u16
-// @to_u16(f64) -> u16
-// @to_u32(u8) -> u32
-// @to_u32(u16) -> u32
-// @to_u32(u32) -> u32
-// @to_u32(u64) -> u32
-// @to_u32(usize) -> u32
-// @to_u32(i8) -> u32
-// @to_u32(i16) -> u32
-// @to_u32(i32) -> u32
-// @to_u32(i64) -> u32
-// @to_u32(isize) -> u32
-// @to_u32(f32) -> u32
-// @to_u32(f64) -> u32
-// @to_u64(u8) -> u64
-// @to_u64(u16) -> u64
-// @to_u64(u32) -> u64
-// @to_u64(u64) -> u64
-// @to_u64(usize) -> u64
-// @to_u64(i8) -> u64
-// @to_u64(i16) -> u64
-// @to_u64(i32) -> u64
-// @to_u64(i64) -> u64
-// @to_u64(isize) -> u64
-// @to_u64(f32) -> u64
-// @to_u64(f64) -> u64
-// @to_usize(u8) -> usize
-// @to_usize(u16) -> usize
-// @to_usize(u32) -> usize
-// @to_usize(u64) -> usize
-// @to_usize(usize) -> usize
-// @to_usize(i8) -> usize
-// @to_usize(i16) -> usize
-// @to_usize(i32) -> usize
-// @to_usize(i64) -> usize
-// @to_usize(isize) -> usize
-// @to_usize(f32) -> usize
-// @to_usize(f64) -> usize
-// @to_i8(u8) -> i8
-// @to_i8(u16) -> i8
-// @to_i8(u32) -> i8
-// @to_i8(u64) -> i8
-// @to_i8(usize) -> i8
-// @to_i8(i8) -> i8
-// @to_i8(i16) -> i8
-// @to_i8(i32) -> i8
-// @to_i8(i64) -> i8
-// @to_i8(isize) -> i8
-// @to_i8(f32) -> i8
-// @to_i8(f64) -> i8
-// @to_i16(u8) -> i16
-// @to_i16(u16) -> i16
-// @to_i16(u32) -> i16
-// @to_i16(u64) -> i16
-// @to_i16(usize) -> i16
-// @to_i16(i8) -> i16
-// @to_i16(i16) -> i16
-// @to_i16(i32) -> i16
-// @to_i16(i64) -> i16
-// @to_i16(isize) -> i16
-// @to_i16(f32) -> i16
-// @to_i16(f64) -> i16
-// @to_i32(u8) -> i32
-// @to_i32(u16) -> i32
-// @to_i32(u32) -> i32
-// @to_i32(u64) -> i32
-// @to_i32(usize) -> i32
-// @to_i32(i8) -> i32
-// @to_i32(i16) -> i32
-// @to_i32(i32) -> i32
-// @to_i32(i64) -> i32
-// @to_i32(isize) -> i32
-// @to_i32(f32) -> i32
-// @to_i32(f64) -> i32
-// @to_i64(u8) -> i64
-// @to_i64(u16) -> i64
-// @to_i64(u32) -> i64
-// @to_i64(u64) -> i64
-// @to_i64(usize) -> i64
-// @to_i64(i8) -> i64
-// @to_i64(i16) -> i64
-// @to_i64(i32) -> i64
-// @to_i64(i64) -> i64
-// @to_i64(isize) -> i64
-// @to_i64(f32) -> i64
-// @to_i64(f64) -> i64
-// @to_isize(u8) -> isize
-// @to_isize(u16) -> isize
-// @to_isize(u32) -> isize
-// @to_isize(u64) -> isize
-// @to_isize(usize) -> isize
-// @to_isize(i8) -> isize
-// @to_isize(i16) -> isize
-// @to_isize(i32) -> isize
-// @to_isize(i64) -> isize
-// @to_isize(isize) -> isize
-// @to_isize(f32) -> isize
-// @to_isize(f64) -> isize
-// @to_f32(u8) -> f32
-// @to_f32(u16) -> f32
-// @to_f32(u32) -> f32
-// @to_f32(u64) -> f32
-// @to_f32(usize) -> f32
-// @to_f32(i8) -> f32
-// @to_f32(i16) -> f32
-// @to_f32(i32) -> f32
-// @to_f32(i64) -> f32
-// @to_f32(isize) -> f32
-// @to_f32(f32) -> f32
-// @to_f32(f64) -> f32
-// @to_f64(u8) -> f64
-// @to_f64(u16) -> f64
-// @to_f64(u32) -> f64
-// @to_f64(u64) -> f64
-// @to_f64(usize) -> f64
-// @to_f64(i8) -> f64
-// @to_f64(i16) -> f64
-// @to_f64(i32) -> f64
-// @to_f64(i64) -> f64
-// @to_f64(isize) -> f64
-// @to_f64(f32) -> f64
-// @to_f64(f64) -> f64
+// @as(u8, u8) -> u8
+// @as(u8, u16) -> u8
+// @as(u8, u32) -> u8
+// @as(u8, u64) -> u8
+// @as(u8, usize) -> u8
+// @as(u8, i8) -> u8
+// @as(u8, i16) -> u8
+// @as(u8, i32) -> u8
+// @as(u8, i64) -> u8
+// @as(u8, isize) -> u8
+// @as(u8, f32) -> u8
+// @as(u8, f64) -> u8
+// @as(u16, u8) -> u16
+// @as(u16, u16) -> u16
+// @as(u16, u32) -> u16
+// @as(u16, u64) -> u16
+// @as(u16, usize) -> u16
+// @as(u16, i8) -> u16
+// @as(u16, i16) -> u16
+// @as(u16, i32) -> u16
+// @as(u16, i64) -> u16
+// @as(u16, isize) -> u16
+// @as(u16, f32) -> u16
+// @as(u16, f64) -> u16
+// @as(u32, u8) -> u32
+// @as(u32, u16) -> u32
+// @as(u32, u32) -> u32
+// @as(u32, u64) -> u32
+// @as(u32, usize) -> u32
+// @as(u32, i8) -> u32
+// @as(u32, i16) -> u32
+// @as(u32, i32) -> u32
+// @as(u32, i64) -> u32
+// @as(u32, isize) -> u32
+// @as(u32, f32) -> u32
+// @as(u32, f64) -> u32
+// @as(u64, u8) -> u64
+// @as(u64, u16) -> u64
+// @as(u64, u32) -> u64
+// @as(u64, u64) -> u64
+// @as(u64, usize) -> u64
+// @as(u64, i8) -> u64
+// @as(u64, i16) -> u64
+// @as(u64, i32) -> u64
+// @as(u64, i64) -> u64
+// @as(u64, isize) -> u64
+// @as(u64, f32) -> u64
+// @as(u64, f64) -> u64
+// @as(usize, u8) -> usize
+// @as(usize, u16) -> usize
+// @as(usize, u32) -> usize
+// @as(usize, u64) -> usize
+// @as(usize, usize) -> usize
+// @as(usize, i8) -> usize
+// @as(usize, i16) -> usize
+// @as(usize, i32) -> usize
+// @as(usize, i64) -> usize
+// @as(usize, isize) -> usize
+// @as(usize, f32) -> usize
+// @as(usize, f64) -> usize
+// @as(i8, u8) -> i8
+// @as(i8, u16) -> i8
+// @as(i8, u32) -> i8
+// @as(i8, u64) -> i8
+// @as(i8, usize) -> i8
+// @as(i8, i8) -> i8
+// @as(i8, i16) -> i8
+// @as(i8, i32) -> i8
+// @as(i8, i64) -> i8
+// @as(i8, isize) -> i8
+// @as(i8, f32) -> i8
+// @as(i8, f64) -> i8
+// @as(i16, u8) -> i16
+// @as(i16, u16) -> i16
+// @as(i16, u32) -> i16
+// @as(i16, u64) -> i16
+// @as(i16, usize) -> i16
+// @as(i16, i8) -> i16
+// @as(i16, i16) -> i16
+// @as(i16, i32) -> i16
+// @as(i16, i64) -> i16
+// @as(i16, isize) -> i16
+// @as(i16, f32) -> i16
+// @as(i16, f64) -> i16
+// @as(i32, u8) -> i32
+// @as(i32, u16) -> i32
+// @as(i32, u32) -> i32
+// @as(i32, u64) -> i32
+// @as(i32, usize) -> i32
+// @as(i32, i8) -> i32
+// @as(i32, i16) -> i32
+// @as(i32, i32) -> i32
+// @as(i32, i64) -> i32
+// @as(i32, isize) -> i32
+// @as(i32, f32) -> i32
+// @as(i32, f64) -> i32
+// @as(i64, u8) -> i64
+// @as(i64, u16) -> i64
+// @as(i64, u32) -> i64
+// @as(i64, u64) -> i64
+// @as(i64, usize) -> i64
+// @as(i64, i8) -> i64
+// @as(i64, i16) -> i64
+// @as(i64, i32) -> i64
+// @as(i64, i64) -> i64
+// @as(i64, isize) -> i64
+// @as(i64, f32) -> i64
+// @as(i64, f64) -> i64
+// @as(isize, u8) -> isize
+// @as(isize, u16) -> isize
+// @as(isize, u32) -> isize
+// @as(isize, u64) -> isize
+// @as(isize, usize) -> isize
+// @as(isize, i8) -> isize
+// @as(isize, i16) -> isize
+// @as(isize, i32) -> isize
+// @as(isize, i64) -> isize
+// @as(isize, isize) -> isize
+// @as(isize, f32) -> isize
+// @as(isize, f64) -> isize
+// @as(f32, u8) -> f32
+// @as(f32, u16) -> f32
+// @as(f32, u32) -> f32
+// @as(f32, u64) -> f32
+// @as(f32, usize) -> f32
+// @as(f32, i8) -> f32
+// @as(f32, i16) -> f32
+// @as(f32, i32) -> f32
+// @as(f32, i64) -> f32
+// @as(f32, isize) -> f32
+// @as(f32, f32) -> f32
+// @as(f32, f64) -> f32
+// @as(f64, u8) -> f64
+// @as(f64, u16) -> f64
+// @as(f64, u32) -> f64
+// @as(f64, u64) -> f64
+// @as(f64, usize) -> f64
+// @as(f64, i8) -> f64
+// @as(f64, i16) -> f64
+// @as(f64, i32) -> f64
+// @as(f64, i64) -> f64
+// @as(f64, isize) -> f64
+// @as(f64, f32) -> f64
+// @as(f64, f64) -> f64
 
 // Notes:
 // - builtin/core names are fixed and cannot be user-declared, imported as aliases,

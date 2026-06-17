@@ -29,20 +29,20 @@ File {
 
 .file_status_to_open_result(descriptor i32, status i32) -> File | FileError {
     if @eq(status, 0) {
-        file File = File{id = @to_i64(descriptor)}
+        file File = File{id = @as(i64, descriptor)}
         return file
     }
     return FileOpenFailed
 }
 
 close_file(file File) -> FileError | nil {
-    host_file_drop(@to_i32(file_id(file)))
+    host_file_drop(@as(i32, file_id(file)))
     return nil
 }
 
 flush_file(file File) -> FileError | nil {
     status i32 = 0
-    _, status = host_file_sync(@to_i32(file_id(file)))
+    _, status = host_file_sync(@as(i32, file_id(file)))
     return file_status_to_error(status, FileFlushFailed)
 }
 
@@ -50,27 +50,27 @@ read_file(file File, offset usize, size usize) -> [u8], bool, FileError | nil {
     data [u8] = .{}
     done bool = false
     status i32 = 0
-    data, done, status = host_file_read(@to_i32(file_id(file)), @to_u64(size), @to_u64(offset))
+    data, done, status = host_file_read(@as(i32, file_id(file)), @as(u64, size), @as(u64, offset))
     return data, done, file_status_to_error(status, FileReadFailed)
 }
 
 write_file(file File, data [u8], offset usize) -> FileError | nil {
     written u64 = 0
     status i32 = 0
-    written, status = host_file_write(@to_i32(file_id(file)), data, @to_u64(offset))
+    written, status = host_file_write(@as(i32, file_id(file)), data, @as(u64, offset))
     return file_status_to_error(status, FileWriteFailed)
 }
 
 link_file(old_file File, old_path text, new_file File, new_path text) -> FileError | nil {
     status i32 = 0
-    _, status = host_file_link_at(@to_i32(file_id(old_file)), 0, old_path, @to_i32(file_id(new_file)), new_path)
+    _, status = host_file_link_at(@as(i32, file_id(old_file)), 0, old_path, @as(i32, file_id(new_file)), new_path)
     return file_status_to_error(status, FileLinkFailed)
 }
 
 open_file_at(dir File, path text) -> File | FileError {
     descriptor i32 = 0
     status i32 = 0
-    descriptor, status = host_file_open_at(@to_i32(file_id(dir)), 0, path, 0, 0)
+    descriptor, status = host_file_open_at(@as(i32, file_id(dir)), 0, path, 0, 0)
     return file_status_to_open_result(descriptor, status)
 }
 

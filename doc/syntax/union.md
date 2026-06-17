@@ -81,4 +81,4 @@ if @is(result, FileError) {
 }
 ```
 
-规则: `@as(value, Type)` 只做 union payload 提取, 不做类型转换。`Type` 必须是 `value` 静态 union 中唯一的非 `nil` 类型分支; `nil` 分支继续用 `@eq(value, nil)` 判断, 不能提取 payload。提取前推荐使用 `@is(value, Type)` guard, 否则读取到的 payload 是否对应当前 tag 不由 `@as` 自动证明。
+规则: `@as(value, Type)` 只做 union payload 提取, 不做类型转换。`Type` 必须是 `value` 静态 union 中唯一的非 `nil` 类型分支; `nil` 分支继续用 `@eq(value, nil)` 判断, 不能提取 payload。提取前推荐使用 `@is(value, Type)` guard, 否则读取到的 payload 是否对应当前 tag 不由 `@as` 自动证明。标量数值转换使用另一种形态 `@as(Type, value)`。

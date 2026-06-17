@@ -90,7 +90,7 @@ user User = .{id = 1, name = "tom", active = true}
 box Box<i32> = .{value = 1}
 ```
 
-规则: 字段名只禁止关键字、声明专用名、路径 primitive 名 `get/set` 和保留类型名。`len/add/to_i32` 这类 core builtin 名可作为字段实际名, 因 core 调用必须带 `@` 前缀。
+规则: 字段名只禁止关键字、声明专用名、路径 primitive 名 `get/set` 和保留类型名。`len/add/popcnt` 这类 core builtin 名可作为字段实际名, 因 core 调用必须带 `@` 前缀。
 
 ## 字段读取和更新
 

@@ -21,13 +21,13 @@ decode_at(units [u16], offset usize) -> Utf16Decode | Utf16Error {
         if @ge(@add(offset, 1), @len(units)) return Utf16UnexpectedEnd
         u1 u16 = @get(units, @add(offset, 1))
         if @not(is_low_surrogate(u1)) return Utf16UnpairedSurrogate
-        code u32 = @add(65536, @mul(@to_u32(@sub(u0, 55296)), 1024), @to_u32(@sub(u1, 56320)))
+        code u32 = @add(65536, @mul(@as(u32, @sub(u0, 55296)), 1024), @as(u32, @sub(u1, 56320)))
         return Utf16Decode{code = code, size = 2}
     }
 
     if is_low_surrogate(u0) return Utf16UnpairedSurrogate
 
-    return Utf16Decode{code = @to_u32(u0), size = 1}
+    return Utf16Decode{code = @as(u32, u0), size = 1}
 }
 
 code_at(units [u16], offset usize) -> u32 | Utf16Error {
@@ -45,12 +45,12 @@ size_at(units [u16], offset usize) -> usize | Utf16Error {
 encode(code u32) -> [u16] | Utf16Error {
     if @gt(code, 1114111) return Utf16OutOfRange
     if @and(@ge(code, 55296), @le(code, 57343)) return Utf16UnpairedSurrogate
-    if @le(code, 65535) return @put(.{}, @to_u16(code))
+    if @le(code, 65535) return @put(.{}, @as(u16, code))
 
     n u32 = @sub(code, 65536)
     out [u16] = .{}
-    out = @put(out, @to_u16(@add(55296, @div(n, 1024))))
-    out = @put(out, @to_u16(@add(56320, @rem(n, 1024))))
+    out = @put(out, @as(u16, @add(55296, @div(n, 1024))))
+    out = @put(out, @as(u16, @add(56320, @rem(n, 1024))))
     return out
 }
 

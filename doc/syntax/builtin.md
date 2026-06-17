@@ -274,41 +274,14 @@ user = @field_set(user, field, value)
 ## 数值转换
 
 ```do
-// 转 u8
-@to_u8(value)
-
-// 转 u16
-@to_u16(value)
-
-// 转 u32
-@to_u32(value)
-
 // 转 u64
-@to_u64(value)
-
-// 转 usize
-@to_usize(value)
-
-// 转 isize
-@to_isize(value)
-
-// 转 i8
-@to_i8(value)
-
-// 转 i16
-@to_i16(value)
+@as(u64, value)
 
 // 转 i32
-@to_i32(value)
-
-// 转 i64
-@to_i64(value)
-
-// 转 f32
-@to_f32(value)
+@as(i32, value)
 
 // 转 f64
-@to_f64(value)
+@as(f64, value)
 ```
 
-规则: 数值转换继续使用 `@to_u8/@to_i32/@to_f64` 等固定转换函数。`@as(value, Type)` 不是转换函数; 未来保留 `@as(Type, value)` 作为统一转换/cast 入口, 当前不落地。
+规则: 标量数值转换统一使用 `@as(Type, value)`。`Type` 只能是 `u8/u16/u32/u64/usize/isize/i8/i16/i32/i64/f32/f64`。`@as(value, Type)` 是 union/nullable payload 提取形态, 不做数值转换。

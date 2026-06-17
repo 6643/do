@@ -47,6 +47,6 @@ day(n i64) -> i64 {
 unix_ms() -> i64 {
     current Datetime = now()
     sec_ms i64 = @mul(@get(current, .seconds), 1000)
-    ns_ms i64 = @to_i64(@div(@get(current, .nanoseconds), 1000000))
+    ns_ms i64 = @as(i64, @div(@get(current, .nanoseconds), 1000000))
     return @add(sec_ms, ns_ms)
 }

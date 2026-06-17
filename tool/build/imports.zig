@@ -2600,11 +2600,9 @@ fn isReservedFuncName(name: []const u8) bool {
         "load_u8",     "load_i8",     "load_u16_le", "load_i16_le", "load_u32_le",
         "load_i32_le", "load_u64_le", "load_i64_le", "xor",         "shl",
         "shr",         "rotl",        "rotr",        "clz",         "ctz",
-        "popcnt",      "to_u8",       "to_u16",      "to_u32",      "to_u64",
-        "to_usize",    "to_isize",    "to_i8",       "to_i16",      "to_i32",
-        "to_i64",      "to_f32",      "to_f64",      "abs",         "neg",
-        "sqrt",        "ceil",        "floor",       "trunc",       "nearest",
-        "min",         "max",         "copysign",
+        "popcnt",      "abs",         "neg",         "sqrt",        "ceil",
+        "floor",       "trunc",       "nearest",     "min",         "max",
+        "copysign",
     };
     for (reserved) |it| {
         if (std.mem.eql(u8, it, public_name)) return true;

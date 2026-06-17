@@ -40,15 +40,15 @@ pow2_u32(exp usize) -> u32 {
 }
 
 wrap_u32(x u64) -> u32 {
-    return @to_u32(@rem(x, 4294967296))
+    return @as(u32, @rem(x, 4294967296))
 }
 
 add_wrap_u32(a u32, b u32) -> u32 {
-    return wrap_u32(@add(@to_u64(a), @to_u64(b)))
+    return wrap_u32(@add(@as(u64, a), @as(u64, b)))
 }
 
 mul_wrap_u32(a u32, b u32) -> u32 {
-    return wrap_u32(@mul(@to_u64(a), @to_u64(b)))
+    return wrap_u32(@mul(@as(u64, a), @as(u64, b)))
 }
 
 bit_at_u32(value u32, index usize) -> u32 {

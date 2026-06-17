@@ -30,26 +30,26 @@ OutputStream {
 read_stream(stream InputStream, size usize) -> [u8], StreamError | nil {
     data [u8] = .{}
     status i32 = 0
-    data, status = host_input_read(@to_i32(stream_id(stream)), @to_u64(size))
+    data, status = host_input_read(@as(i32, stream_id(stream)), @as(u64, size))
     return data, stream_status_to_error(status, StreamReadFailed)
 }
 
 check_write_stream(stream OutputStream) -> u64, StreamError | nil {
     allowed u64 = 0
     status i32 = 0
-    allowed, status = host_output_check_write(@to_i32(output_stream_id(stream)))
+    allowed, status = host_output_check_write(@as(i32, output_stream_id(stream)))
     return allowed, stream_status_to_error(status, StreamWriteFailed)
 }
 
 write_stream(stream OutputStream, data [u8]) -> StreamError | nil {
     status i32 = 0
-    _, status = host_output_write(@to_i32(output_stream_id(stream)), data)
+    _, status = host_output_write(@as(i32, output_stream_id(stream)), data)
     return stream_status_to_error(status, StreamWriteFailed)
 }
 
 flush_stream(stream OutputStream) -> StreamError | nil {
     status i32 = 0
-    _, status = host_output_flush(@to_i32(output_stream_id(stream)))
+    _, status = host_output_flush(@as(i32, output_stream_id(stream)))
     return stream_status_to_error(status, StreamFlushFailed)
 }
 

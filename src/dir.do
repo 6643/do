@@ -21,33 +21,33 @@ Dir {
 
 .dir_status_to_open_result(descriptor i32, status i32) -> Dir | DirError {
     if @eq(status, 0) {
-        dir Dir = Dir{id = @to_i64(descriptor)}
+        dir Dir = Dir{id = @as(i64, descriptor)}
         return dir
     }
     return DirOpenFailed
 }
 
 close_dir(dir Dir) -> DirError | nil {
-    host_dir_drop(@to_i32(dir_id(dir)))
+    host_dir_drop(@as(i32, dir_id(dir)))
     return nil
 }
 
 create_dir_at(parent Dir, path text) -> DirError | nil {
     status i32 = 0
-    _, status = host_dir_create_at(@to_i32(dir_id(parent)), path)
+    _, status = host_dir_create_at(@as(i32, dir_id(parent)), path)
     return dir_status_to_error(status, DirCreateFailed)
 }
 
 open_dir_at(parent Dir, path text) -> Dir | DirError {
     descriptor i32 = 0
     status i32 = 0
-    descriptor, status = host_dir_open_at(@to_i32(dir_id(parent)), 0, path, 2, 0)
+    descriptor, status = host_dir_open_at(@as(i32, dir_id(parent)), 0, path, 2, 0)
     return dir_status_to_open_result(descriptor, status)
 }
 
 remove_dir_at(parent Dir, path text) -> DirError | nil {
     status i32 = 0
-    _, status = host_dir_remove_at(@to_i32(dir_id(parent)), path)
+    _, status = host_dir_remove_at(@as(i32, dir_id(parent)), path)
     return dir_status_to_error(status, DirRemoveFailed)
 }
 

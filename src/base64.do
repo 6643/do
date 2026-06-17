@@ -64,21 +64,21 @@ encode_with(enc Encoding, data [u8]) -> [u8] {
             b0 u8 = @get(data, i)
             b1 u8 = @get(data, @add(i, 1))
             b2 u8 = @get(data, @add(i, 2))
-            n u32 = @add(@mul(@to_u32(b0), 65536), @mul(@to_u32(b1), 256), @to_u32(b2))
-            out = list_add(out, @get(alphabet, @to_usize(@div(n, 262144))))
-            out = list_add(out, @get(alphabet, @to_usize(@rem(@div(n, 4096), 64))))
-            out = list_add(out, @get(alphabet, @to_usize(@rem(@div(n, 64), 64))))
-            out = list_add(out, @get(alphabet, @to_usize(@rem(n, 64))))
+            n u32 = @add(@mul(@as(u32, b0), 65536), @mul(@as(u32, b1), 256), @as(u32, b2))
+            out = list_add(out, @get(alphabet, @as(usize, @div(n, 262144))))
+            out = list_add(out, @get(alphabet, @as(usize, @rem(@div(n, 4096), 64))))
+            out = list_add(out, @get(alphabet, @as(usize, @rem(@div(n, 64), 64))))
+            out = list_add(out, @get(alphabet, @as(usize, @rem(n, 64))))
             i = @add(i, 3)
             continue
         }
         if @eq(remain, 2) {
             b0 u8 = @get(data, i)
             b1 u8 = @get(data, @add(i, 1))
-            n u32 = @add(@mul(@to_u32(b0), 65536), @mul(@to_u32(b1), 256))
-            out = list_add(out, @get(alphabet, @to_usize(@div(n, 262144))))
-            out = list_add(out, @get(alphabet, @to_usize(@add(@mul(@rem(b0, 4), 16), @div(b1, 16)))))
-            out = list_add(out, @get(alphabet, @to_usize(@mul(@rem(b1, 16), 4))))
+            n u32 = @add(@mul(@as(u32, b0), 65536), @mul(@as(u32, b1), 256))
+            out = list_add(out, @get(alphabet, @as(usize, @div(n, 262144))))
+            out = list_add(out, @get(alphabet, @as(usize, @add(@mul(@rem(b0, 4), 16), @div(b1, 16)))))
+            out = list_add(out, @get(alphabet, @as(usize, @mul(@rem(b1, 16), 4))))
             if pad {
                 out = list_add(out, padding)
             }
@@ -86,8 +86,8 @@ encode_with(enc Encoding, data [u8]) -> [u8] {
             continue
         }
         b0 u8 = @get(data, i)
-        out = list_add(out, @get(alphabet, @to_usize(@div(b0, 4))))
-        out = list_add(out, @get(alphabet, @to_usize(@mul(@rem(b0, 4), 16))))
+        out = list_add(out, @get(alphabet, @as(usize, @div(b0, 4))))
+        out = list_add(out, @get(alphabet, @as(usize, @mul(@rem(b0, 4), 16))))
         if pad {
             out = list_add(out, padding)
             out = list_add(out, padding)
@@ -100,7 +100,7 @@ decode_digit(c u8, alphabet [u8]) -> u8 | Base64Error {
     i usize = 0
     loop {
         if @eq(i, @len(alphabet)) return InvalidDigit
-        if @eq(@get(alphabet, i), c) return @to_u8(i)
+        if @eq(@get(alphabet, i), c) return @as(u8, i)
         i = @add(i, 1)
     }
 }
@@ -152,8 +152,8 @@ decode_with(enc Encoding, data [u8]) -> [u8] | Base64Error {
                 if @is(v0, Base64Error) return v0
                 v1 = decode_digit(c1, alphabet)
                 if @is(v1, Base64Error) return v1
-                n u32 = @add(@mul(@to_u32(v0), 262144), @mul(@to_u32(v1), 4096))
-                out = list_add(out, @to_u8(@div(n, 65536)))
+                n u32 = @add(@mul(@as(u32, v0), 262144), @mul(@as(u32, v1), 4096))
+                out = list_add(out, @as(u8, @div(n, 65536)))
                 return list_items(out)
             }
 
@@ -166,9 +166,9 @@ decode_with(enc Encoding, data [u8]) -> [u8] | Base64Error {
                 if @is(v1, Base64Error) return v1
                 v2 = decode_digit(c2, alphabet)
                 if @is(v2, Base64Error) return v2
-                n u32 = @add(@mul(@to_u32(v0), 262144), @mul(@to_u32(v1), 4096), @mul(@to_u32(v2), 64))
-                out = list_add(out, @to_u8(@div(n, 65536)))
-                out = list_add(out, @to_u8(@rem(@div(n, 256), 256)))
+                n u32 = @add(@mul(@as(u32, v0), 262144), @mul(@as(u32, v1), 4096), @mul(@as(u32, v2), 64))
+                out = list_add(out, @as(u8, @div(n, 65536)))
+                out = list_add(out, @as(u8, @rem(@div(n, 256), 256)))
                 return list_items(out)
             }
 
@@ -180,10 +180,10 @@ decode_with(enc Encoding, data [u8]) -> [u8] | Base64Error {
             if @is(v2, Base64Error) return v2
             v3 = decode_digit(c3, alphabet)
             if @is(v3, Base64Error) return v3
-            n u32 = @add(@mul(@to_u32(v0), 262144), @mul(@to_u32(v1), 4096), @mul(@to_u32(v2), 64), @to_u32(v3))
-            out = list_add(out, @to_u8(@div(n, 65536)))
-            out = list_add(out, @to_u8(@rem(@div(n, 256), 256)))
-            out = list_add(out, @to_u8(@rem(n, 256)))
+            n u32 = @add(@mul(@as(u32, v0), 262144), @mul(@as(u32, v1), 4096), @mul(@as(u32, v2), 64), @as(u32, v3))
+            out = list_add(out, @as(u8, @div(n, 65536)))
+            out = list_add(out, @as(u8, @rem(@div(n, 256), 256)))
+            out = list_add(out, @as(u8, @rem(n, 256)))
             i = @add(i, 4)
             continue
         }
@@ -196,8 +196,8 @@ decode_with(enc Encoding, data [u8]) -> [u8] | Base64Error {
             if @is(v0, Base64Error) return v0
             v1 = decode_digit(c1, alphabet)
             if @is(v1, Base64Error) return v1
-            n u32 = @add(@mul(@to_u32(v0), 262144), @mul(@to_u32(v1), 4096))
-            out = list_add(out, @to_u8(@div(n, 65536)))
+            n u32 = @add(@mul(@as(u32, v0), 262144), @mul(@as(u32, v1), 4096))
+            out = list_add(out, @as(u8, @div(n, 65536)))
             return list_items(out)
         }
 
@@ -211,9 +211,9 @@ decode_with(enc Encoding, data [u8]) -> [u8] | Base64Error {
             if @is(v1, Base64Error) return v1
             v2 = decode_digit(c2, alphabet)
             if @is(v2, Base64Error) return v2
-            n u32 = @add(@mul(@to_u32(v0), 262144), @mul(@to_u32(v1), 4096), @mul(@to_u32(v2), 64))
-            out = list_add(out, @to_u8(@div(n, 65536)))
-            out = list_add(out, @to_u8(@rem(@div(n, 256), 256)))
+            n u32 = @add(@mul(@as(u32, v0), 262144), @mul(@as(u32, v1), 4096), @mul(@as(u32, v2), 64))
+            out = list_add(out, @as(u8, @div(n, 65536)))
+            out = list_add(out, @as(u8, @rem(@div(n, 256), 256)))
             return list_items(out)
         }
 

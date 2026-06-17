@@ -77,14 +77,14 @@ _close_brace u8 = 125
 }
 
 .hex_value(byte u8) -> u16 | JsonError {
-    if @and(@ge(byte, _zero), @le(byte, _nine)) return @to_u16(@sub(byte, _zero))
-    if @and(@ge(byte, _upper_a), @le(byte, _upper_f)) return @to_u16(@add(@sub(byte, _upper_a), 10))
-    if @and(@ge(byte, _lower_a), @le(byte, _lower_f)) return @to_u16(@add(@sub(byte, _lower_a), 10))
+    if @and(@ge(byte, _zero), @le(byte, _nine)) return @as(u16, @sub(byte, _zero))
+    if @and(@ge(byte, _upper_a), @le(byte, _upper_f)) return @as(u16, @add(@sub(byte, _upper_a), 10))
+    if @and(@ge(byte, _lower_a), @le(byte, _lower_f)) return @as(u16, @add(@sub(byte, _lower_a), 10))
     return InvalidEscape
 }
 
 .append_unicode_escape(out [u8], byte u8) -> [u8] {
-    out = @put(out, _backslash, 117, 48, 48, hex_digit(@to_u8(@div(byte, 16))), hex_digit(@to_u8(@rem(byte, 16))))
+    out = @put(out, _backslash, 117, 48, 48, hex_digit(@as(u8, @div(byte, 16))), hex_digit(@as(u8, @rem(byte, 16))))
     return out
 }
 
@@ -98,20 +98,20 @@ _close_brace u8 = 125
 
 .append_utf8(out [u8], code u32) -> [u8] | JsonError {
     if @le(code, 127) {
-        out = @put(out, @to_u8(code))
+        out = @put(out, @as(u8, code))
         return out
     }
     if @le(code, 2047) {
-        out = @put(out, @to_u8(@add(192, @div(code, 64))), @to_u8(@add(128, @rem(code, 64))))
+        out = @put(out, @as(u8, @add(192, @div(code, 64))), @as(u8, @add(128, @rem(code, 64))))
         return out
     }
     if @and(@ge(code, 55296), @le(code, 57343)) return InvalidEscape
     if @le(code, 65535) {
-        out = @put(out, @to_u8(@add(224, @div(code, 4096))), @to_u8(@add(128, @rem(@div(code, 64), 64))), @to_u8(@add(128, @rem(code, 64))))
+        out = @put(out, @as(u8, @add(224, @div(code, 4096))), @as(u8, @add(128, @rem(@div(code, 64), 64))), @as(u8, @add(128, @rem(code, 64))))
         return out
     }
     if @le(code, 1114111) {
-        out = @put(out, @to_u8(@add(240, @div(code, 262144))), @to_u8(@add(128, @rem(@div(code, 4096), 64))), @to_u8(@add(128, @rem(@div(code, 64), 64))), @to_u8(@add(128, @rem(code, 64))))
+        out = @put(out, @as(u8, @add(240, @div(code, 262144))), @as(u8, @add(128, @rem(@div(code, 4096), 64))), @as(u8, @add(128, @rem(@div(code, 64), 64))), @as(u8, @add(128, @rem(code, 64))))
         return out
     }
     return InvalidEscape
@@ -187,7 +187,7 @@ quote(bytes [u8]) -> [u8] {
                 out = @put(out, @get(digits, i))
             }
         }
-        digit u8 = @to_u8(@rem(n, 10))
+        digit u8 = @as(u8, @rem(n, 10))
         digits = @put(digits, @add(_zero, digit))
         n = @div(n, 10)
     }
@@ -198,9 +198,9 @@ quote(bytes [u8]) -> [u8] {
     if @eq(value, -2147483648) return "-2147483648"
     if @lt(value, 0) {
         out = @put(out, 45)
-        return append_u32(out, @to_u32(@sub(0, value)))
+        return append_u32(out, @as(u32, @sub(0, value)))
     }
-    return append_u32(out, @to_u32(value))
+    return append_u32(out, @as(u32, value))
 }
 
 .encode_value(value text, depth usize) -> [u8] | JsonError {
@@ -293,7 +293,7 @@ unescape(bytes [u8]) -> [u8] | JsonError {
                 low = decode_hex4(bytes, @add(i, 8))
                 if @is(low, JsonError) return low
                 if @not(is_low_surrogate(low)) return InvalidEscape
-                code u32 = @add(65536, @mul(@to_u32(@sub(unit, 55296)), 1024), @to_u32(@sub(low, 56320)))
+                code u32 = @add(65536, @mul(@as(u32, @sub(unit, 55296)), 1024), @as(u32, @sub(low, 56320)))
                 encoded = append_utf8(out, code)
                 if @is(encoded, JsonError) return encoded
                 out = encoded
@@ -301,7 +301,7 @@ unescape(bytes [u8]) -> [u8] | JsonError {
                 continue
             }
             if is_low_surrogate(unit) return InvalidEscape
-            encoded = append_utf8(out, @to_u32(unit))
+            encoded = append_utf8(out, @as(u32, unit))
             if @is(encoded, JsonError) return encoded
             out = encoded
             i = @add(i, 6)
@@ -357,7 +357,7 @@ unescape(bytes [u8]) -> [u8] | JsonError {
                 low = decode_hex4(bytes, @add(i, 8))
                 if @is(low, JsonError) return .{}, i, low
                 if @not(is_low_surrogate(low)) return .{}, i, InvalidEscape
-                code u32 = @add(65536, @mul(@to_u32(@sub(unit, 55296)), 1024), @to_u32(@sub(low, 56320)))
+                code u32 = @add(65536, @mul(@as(u32, @sub(unit, 55296)), 1024), @as(u32, @sub(low, 56320)))
                 encoded = append_utf8(out, code)
                 if @is(encoded, JsonError) return .{}, i, encoded
                 out = encoded
@@ -365,7 +365,7 @@ unescape(bytes [u8]) -> [u8] | JsonError {
                 continue
             }
             if is_low_surrogate(unit) return .{}, i, InvalidEscape
-            encoded = append_utf8(out, @to_u32(unit))
+            encoded = append_utf8(out, @as(u32, unit))
             if @is(encoded, JsonError) return .{}, i, encoded
             out = encoded
             i = @add(i, 6)
@@ -554,7 +554,7 @@ unescape(bytes [u8]) -> [u8] | JsonError {
         }
         ch u8 = @get(bytes, i)
         if @not(is_digit(ch)) break
-        value = @add(@mul(value, 10), @to_i32(@sub(ch, _zero)))
+        value = @add(@mul(value, 10), @as(i32, @sub(ch, _zero)))
         i = @add(i, 1)
     }
     if @lt(i, @len(bytes)) {
