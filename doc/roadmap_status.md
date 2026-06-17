@@ -1,6 +1,6 @@
 # Roadmap 执行状态
 
-更新时间: 2026-06-16
+更新时间: 2026-06-17
 
 执行原则: 按 `README.md` Roadmap 自上而下推进; 如果某项卡住或需要跳过, 必须在本文记录原因和后续恢复条件。
 
@@ -192,7 +192,7 @@
 
 状态: partial
 
-当前结论: `do run <input.do>` 第一版已落地, 执行策略固定为外部 `wasm-tools + node` 桥接。`do fmt <input.do>` 第一版已落地, 当前只支持 stdout 输出和 `--check` 检查, 不做原地写回。LSP、get / push 仍缺少当前 spec 中的命令语义、输入输出契约和回归口径, 继续跳过。
+当前结论: `do run <input.do>` 第一版已落地, 执行策略固定为外部 `wasm-tools + node` 桥接。`do fmt <input.do>` 第一版已落地, 当前只支持 stdout 输出和 `--check` 检查, 不做原地写回。`07.3 do lsp` 已完成阶段计划, 推荐先落地 diagnostics-only stdio server。get / push 仍缺少当前 spec 中的命令语义、输入输出契约和回归口径, 继续跳过。
 
 `do run` 当前边界:
 
@@ -209,11 +209,11 @@
 - 回归范围: `tool/build/test/fmt/*.do` / `.expect` 覆盖 stdout、idempotence 和 `error[FormatMismatch]`。
 - 不包含: 原地写回、范围格式化、语法感知 comment/string brace 解析、LSP formatter 接入。
 
-剩余跳过原因: LSP、get / push 直接实现会把工具接口固化在未定义行为上。
+剩余跳过原因: get / push 直接实现会把工具接口固化在未定义行为上。
 
 恢复条件:
 
-- 为 LSP 明确最小能力集, 例如诊断、跳转或补全的优先顺序。
+- 按 `docs/superpowers/plans/2026-06-17-lsp-07-3.md` 推进 LSP diagnostics-only 第一版。
 - 为 get / push 明确包源、版本、认证和发布/回滚规则。
 
 阶段内小任务:
@@ -225,5 +225,12 @@
 - [x] 07.2.4 实现 `tool/fmt/run.zig` 命令 runner。验证: `cd tool && zig test fmt/format.zig` 通过 `3/3`; `cd tool && zig test main.zig` 通过 `3/3`; `cd tool && zig build -Doptimize=Debug` 通过; 临时文件实测 `do fmt` stdout 输出、`do fmt --check` 成功和 mismatch `error[FormatMismatch]` 均符合计划。
 - [x] 07.2.5 接入 fixture 回归、idempotence 和 `--check` 覆盖。验证: `tool/build/test/fmt/01_struct_func_indent.do`、`tool/build/test/fmt/02_comments_line_strings.do`、`tool/build/test/fmt/03_control_blocks.do` 及其 `.expect` 已接入 `tool/build/test/run_tests.sh`; `bash -n tool/build/test/run_tests.sh` 通过; `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, `fmt` 段三例均通过, 总摘要 `pass=669 fail=0 skip=70`。
 - [x] 07.2.6 同步 README、start_here 和最终验证。验证: `README.md` 已记录 `do fmt <input.do>`、`do fmt --check <input.do>` 和 stdout/check-only 边界; `doc/start_here.md` 下一步已切到 `07.3 LSP`; 最终验证通过: `cd tool && zig test build/cli.zig` 6/6, `cd tool && zig test fmt/format.zig` 3/3, `cd tool && zig build -Doptimize=Debug`, `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 摘要 `pass=669 fail=0 skip=70`。
-- [ ] 07.3 明确 LSP 最小能力集和诊断来源。前置: parser/sema 诊断边界稳定。
+- [x] 07.3.0 明确 LSP 最小能力集和诊断来源。结论: 第一版只做 diagnostics-only stdio server, 不做 completion / hover / definition / rename / formatting; 诊断来源复用 lexer/parser/sema/imports fail-fast 链路, 当前每个 document 最多发布一个编译诊断。验证: `docs/superpowers/plans/2026-06-17-lsp-07-3.md`。
+- [ ] 07.3.1 固定 `do lsp [--stdio]` CLI contract。计划: `docs/superpowers/plans/2026-06-17-lsp-07-3.md` Task 1。
+- [ ] 07.3.2 暴露结构化 compiler diagnostics。计划: `docs/superpowers/plans/2026-06-17-lsp-07-3.md` Task 2。
+- [ ] 07.3.3 实现纯 LSP diagnostics collector。计划: `docs/superpowers/plans/2026-06-17-lsp-07-3.md` Task 3。
+- [ ] 07.3.4 实现最小 JSON-RPC/LSP protocol helper。计划: `docs/superpowers/plans/2026-06-17-lsp-07-3.md` Task 4。
+- [ ] 07.3.5 实现 `do lsp` stdio server。计划: `docs/superpowers/plans/2026-06-17-lsp-07-3.md` Task 5。
+- [ ] 07.3.6 接入 LSP smoke regression harness。计划: `docs/superpowers/plans/2026-06-17-lsp-07-3.md` Task 6。
+- [ ] 07.3.7 同步 README、测试说明、roadmap 和 start_here。计划: `docs/superpowers/plans/2026-06-17-lsp-07-3.md` Task 7。
 - [ ] 07.4 明确 get / push 包源、版本、认证和发布/回滚规则。前置: 包管理规范。
