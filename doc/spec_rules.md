@@ -959,19 +959,20 @@ Handler {
 4. `@and/@or/@not` 在 `bool` 条件和 `bool` 表达式上采用短路求值；`@and/@or` 接受 2 个及以上 `bool` 参数并按左到右求值，但不接受 `...rest` 展开，所有参数必须在源码中静态列出；`@not` 固定 1 个 `bool` 参数且不接受 `...rest`。当 `@and/@or` 的目标类型或首参静态类型不是 `bool` 时，它们按整数位运算 primitive 解析，固定 2 个同类型整数参数，分别 lower 到 wasm `and/or` 指令；`@xor` 只表示整数位运算，固定 2 个同类型整数参数。`@and/@or/@not` 在 PEG 中分成条件位形态和普通 `bool` 表达式形态：条件位形态的参数使用 `CondExpr`，可以嵌套 `@is` 并携带收窄证明；普通表达式形态的参数使用不含 `@is` 的 `ExprNoParen`，只返回普通 `bool`，不传播收窄。条件位内部的参数求值证明和复合条件最终分支证明分开处理：`@and` 的每个后续参数继承前面参数的真分支收窄，`@or` 的每个后续参数继承前面参数的假分支收窄；`@and(a, b, ...)` 的真分支携带所有子条件真分支证明，但假分支不传播任一子条件的反向证明；`@or(a, b, ...)` 的假分支携带所有子条件假分支证明，但真分支不传播任一子条件的正向证明；`@not(cond)` 只交换 `cond` 已能安全表达的真假分支证明。v1 不实现复合条件路径状态并集，因此不会把 `@not(@and(A, B))` 错推成 `@and(@not(A), @not(B))`。离开条件位后，它们只是普通 `bool` 组合。和 `if` 条件头一样，每个参数最外层都不接受无意义括号。
 5. `@is(value, TargetType)` 是 builtin special form，不进入普通函数重载。它只在条件位，或嵌套于条件位使用的 `@and/@or/@not` 参数中合法；不能单独作为普通 `Expr` 出现在绑定、赋值、返回、普通函数实参、聚合元素或表达式语句里，也不能出现在非条件位的 `@and/@or/@not` 参数中。写 `if @is(v, User)`、`if @and(@is(v, User), ready())`，不写 `if (@is(v, User))`、`@and((@is(v, User)), ready())` 或 `ok bool = @and(@is(v, User), ready())`。`value` 的静态类型必须已经显式暴露候选集合，例如 `[u8] | FileError`、`User | nil` 或 `User | Order`；若 `value` 的静态类型只是单独的普通数据类型参数 `T`，没有可扣减候选集合，则不能写 `@is(value, T)`。`TargetType` 使用 `IsTypeExpr`，可为普通类型表达式、联合类型表达式，或当前约束块可见的局部数据类型参数名；语义阶段负责判断该名字的类别和可收窄性。`TargetType` 的顶层每个分支都必须和 `value` 的静态类型有交集，任一分支不可达都报错；`TargetType` 还必须是真正收窄，不能覆盖 `value` 的全部静态类型；真分支收窄到 `TargetType`，假分支按原静态类型扣除 `TargetType` 后继续收窄；`TargetType` 不接受外层无意义括号，写 `@is(value, T)` 或 `@is(value, A | B)`，不写 `@is(value, (T))` 或 `@is(value, (A | B))`；函数类型不进入 union 候选集合，因此不能写 `@is(value, F)` 或 `@is(value, () -> i32)`。
 6. `@is` 的顶层目标分支不接受 `nil`；`nil`、字符串、数字、`FileNotFound` 这类值判断使用 `@eq/@ne`，`@is(value, nil)` 与 `@is(value, T | nil)` 视为非法写法。嵌套在 type args 或 storage element 内部的 `nil` 允许出现，例如 `@is(value, Box<User | nil>)` 判断的是外层 `Box<...>` 分支，不是 `nil` 分支。局部类型参数作为 `@is` 顶层目标时，实例化后也必须满足顶层不含 `nil`；若 `T` 被绑定为 `User | nil`，则 `@is(value, T)` 在该次实例化中报错。
-7. 所有带括号的 builtin special form 都允许末尾 trailing comma；`recv(ch,)` 与 `recv(ch)` 等价。尾逗号不改变参数数量。
-8. guard 形式 `if cond return/break/continue` 退出后，后续路径中使用 `cond` 按第 4 条计算出的安全反向信息继续收窄。`break/continue` 产生的收窄只传播到同一轮 loop 内仍可继续执行的后续语句，不传播到 loop 外。
-9. 普通块体 `if` 默认只在分支内部收窄；若某个分支能按结构化局部规则证明必定退出，则后续路径使用该分支条件按第 4 条计算出的安全反向信息继续收窄。结构化退出只认直接 `return/break/continue`，或嵌套 `if/else` 的所有分支都结构化退出；不通过循环分析、函数调用效果、跨 loop 路径合并或间接 no-return 推断退出。
-10. `else if` 支持跨分支收窄：后一分支继承前面条件的反向信息。
-11. `@eq/@ne` 做相等与不等判断；可用于 `nil`、字面量、枚举分支值与一般值比较，并可作为普通 `bool` 表达式赋值、返回或传参。core 提供基础类型默认签名；用户类型若需要领域相等判断，使用非 core 普通函数名，例如 `same_user(user User, other User) -> bool` 与 `different_user(user User, other User) -> bool`。`@eq(value, nil)`、`@eq(value, EnumBranch)` 这类 union 分支判断由判断族的 core 定型路径处理，不对应用户可声明的 union 参数签名。函数值不支持 `@eq/@ne` 身份比较。
-12. `@eq/@ne` 在 `CondExpr` 中只对 `nil` 和枚举分支这类明确单例分支触发 union 或枚举值收窄；普通数字、字符串和 `bool` 字面量只做值比较，不触发类型分支收窄。枚举分支值按单个分支精确收窄，不扩大到所属枚举类型；`@eq(v, FileNotFound)` 只证明或排除 `FileNotFound` 这个值，不代表整个 `FileError`。`@eq/@ne` 的结果离开当前条件表达式后不携带证明，赋给 `bool` 绑定后只保留普通布尔值。
-13. `@lt/@le/@gt/@ge` 适用于可排序类型；它们不携带类型收窄证明。数组边界守卫应放在 `@get/@set` 前面用于避免 runtime trap，但不改变 `@get/@set` 的返回类型。
-14. `@eq/@ne` 对标量、`bool` 与普通聚合值使用值语义；若聚合值包含函数值字段，则整值比较非法。用户库实现的集合或字节文本类型若暴露为结构体值，也按其公开语义参与比较。
-15. 用户类型需要业务相等或排序时，定义领域函数或普通非 core 函数族，例如 `same_user`、`user_before`、`compare_user`；不能重载 `eq/ne/lt/le/gt/ge`。
-16. `@is(value, FileError)` 这类具体 enum 类型判断有效，按 union 成员类型测试处理。
-17. `@eq/@ne` 始终只做精确值比较，不把任何联合类型名当作类型测试的替代。
-18. `ErrorEnumName` 类型名可出现在类型位或 `@is(value, FileError)` 这类条件位中。
-19. enum 分支名是值，可用于赋值、返回和 `@eq/@ne` 比较；右侧分支值不是类型，不能写进 union 类型表达式。
+7. `@as(value, TargetType)` 是 builtin special form, 不进入普通函数重载。它只从静态 union/nullable 局部值中提取一个非 `nil` 类型分支的 payload, 不做数值转换或 cast。`value` 必须是已经有 union layout 的单个局部值; `TargetType` 必须是该 union 中唯一的非 `nil` 类型分支, 不接受顶层 union 目标、`nil` 目标、值枚举分支或函数类型。写 `if @is(v, User) { user User = @as(v, User) }`, 不写 `@as(v, nil)`、`@as(v, User | Admin)` 或 `@as(v, i32)` 试图把非 union 值转换成 `i32`。当前转换仍使用 `@to_i8/@to_i32/...` 固定函数; `@as(Type, value)` 作为未来统一转换/cast 入口保留, 当前不落地。
+8. 所有带括号的 builtin special form 都允许末尾 trailing comma；`recv(ch,)` 与 `recv(ch)` 等价。尾逗号不改变参数数量。
+9. guard 形式 `if cond return/break/continue` 退出后，后续路径中使用 `cond` 按第 4 条计算出的安全反向信息继续收窄。`break/continue` 产生的收窄只传播到同一轮 loop 内仍可继续执行的后续语句，不传播到 loop 外。
+10. 普通块体 `if` 默认只在分支内部收窄；若某个分支能按结构化局部规则证明必定退出，则后续路径使用该分支条件按第 4 条计算出的安全反向信息继续收窄。结构化退出只认直接 `return/break/continue`，或嵌套 `if/else` 的所有分支都结构化退出；不通过循环分析、函数调用效果、跨 loop 路径合并或间接 no-return 推断退出。
+11. `else if` 支持跨分支收窄：后一分支继承前面条件的反向信息。
+12. `@eq/@ne` 做相等与不等判断；可用于 `nil`、字面量、枚举分支值与一般值比较，并可作为普通 `bool` 表达式赋值、返回或传参。core 提供基础类型默认签名；用户类型若需要领域相等判断，使用非 core 普通函数名，例如 `same_user(user User, other User) -> bool` 与 `different_user(user User, other User) -> bool`。`@eq(value, nil)`、`@eq(value, EnumBranch)` 这类 union 分支判断由判断族的 core 定型路径处理，不对应用户可声明的 union 参数签名。函数值不支持 `@eq/@ne` 身份比较。
+13. `@eq/@ne` 在 `CondExpr` 中只对 `nil` 和枚举分支这类明确单例分支触发 union 或枚举值收窄；普通数字、字符串和 `bool` 字面量只做值比较，不触发类型分支收窄。枚举分支值按单个分支精确收窄，不扩大到所属枚举类型；`@eq(v, FileNotFound)` 只证明或排除 `FileNotFound` 这个值，不代表整个 `FileError`。`@eq/@ne` 的结果离开当前条件表达式后不携带证明，赋给 `bool` 绑定后只保留普通布尔值。
+14. `@lt/@le/@gt/@ge` 适用于可排序类型；它们不携带类型收窄证明。数组边界守卫应放在 `@get/@set` 前面用于避免 runtime trap，但不改变 `@get/@set` 的返回类型。
+15. `@eq/@ne` 对标量、`bool` 与普通聚合值使用值语义；若聚合值包含函数值字段，则整值比较非法。用户库实现的集合或字节文本类型若暴露为结构体值，也按其公开语义参与比较。
+16. 用户类型需要业务相等或排序时，定义领域函数或普通非 core 函数族，例如 `same_user`、`user_before`、`compare_user`；不能重载 `eq/ne/lt/le/gt/ge`。
+17. `@is(value, FileError)` 这类具体 enum 类型判断有效，按 union 成员类型测试处理。
+18. `@eq/@ne` 始终只做精确值比较，不把任何联合类型名当作类型测试的替代。
+19. `ErrorEnumName` 类型名可出现在类型位或 `@is(value, FileError)` 这类条件位中。
+20. enum 分支名是值，可用于赋值、返回和 `@eq/@ne` 比较；右侧分支值不是类型，不能写进 union 类型表达式。
 
 
 ## 10. 数值函数族

@@ -21,6 +21,20 @@
 
 规则: `@is(value, TypeExpr)` 只做类型分支判断, 第二个实参必须是类型表达式。`value enum` 的分支值和 `nil` 都是值, 统一使用 `@eq/@ne` 判断, 不写成 `@is(value, ByteDigit)` 或 `@is(value, nil)`。
 
+## 分支提取
+
+```do
+if @is(value, User) {
+    user User = @as(value, User)
+}
+
+if @is(result, FileError) {
+    err FileError = @as(result, FileError)
+}
+```
+
+规则: `@as(value, Type)` 从静态 union/nullable 值中提取一个非 `nil` 类型分支的 payload。第一个实参必须是 union 局部值, 第二个实参必须是该 union 的单个非 `nil` 类型分支; 不写 `@as(value, nil)` 或 `@as(value, User | Admin)`。`@as(value, Type)` 不做数值转换或 cast, 推荐先用 `@is(value, Type)` guard 后再提取。
+
 ## 逻辑
 
 ```do
@@ -296,3 +310,5 @@ user = @field_set(user, field, value)
 // 转 f64
 @to_f64(value)
 ```
+
+规则: 数值转换继续使用 `@to_u8/@to_i32/@to_f64` 等固定转换函数。`@as(value, Type)` 不是转换函数; 未来保留 `@as(Type, value)` 作为统一转换/cast 入口, 当前不落地。

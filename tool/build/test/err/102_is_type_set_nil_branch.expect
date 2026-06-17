@@ -1,2 +1,2 @@
 InvalidCallArgList
-`@is` 语法: `@is(value, Type)`
+`@is/@as` 语法: `@is(value, Type)` / `@as(value, Type)`

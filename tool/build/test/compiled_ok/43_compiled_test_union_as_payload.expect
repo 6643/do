@@ -1,0 +1,5 @@
+;; compiled-test 0 "compiled union as scalar payload"
+;; compiled-test 1 "compiled union as struct payload"
+;; compiled-test 2 "compiled union as error payload"
+local.get $value.__union_payload_0
+local.get $value.__union_payload_1

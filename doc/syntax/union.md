@@ -66,3 +66,19 @@ if @is(box, Box<User | nil>) {
 ```
 
 规则: union lowering 使用统一 runtime tag representation。`@is(value, TypeExpr)` 的第二个实参只能是类型表达式; `nil` 是值分支, 判断 nil 使用 `@eq(value, nil)` 或 nullable helper, 不写成 `@is(value, nil)`。
+
+## 分支提取
+
+```do
+if @is(user, User) {
+    value User = @as(user, User)
+    return value
+}
+
+if @is(result, FileError) {
+    err FileError = @as(result, FileError)
+    return err
+}
+```
+
+规则: `@as(value, Type)` 只做 union payload 提取, 不做类型转换。`Type` 必须是 `value` 静态 union 中唯一的非 `nil` 类型分支; `nil` 分支继续用 `@eq(value, nil)` 判断, 不能提取 payload。提取前推荐使用 `@is(value, Type)` guard, 否则读取到的 payload 是否对应当前 tag 不由 `@as` 自动证明。

@@ -5571,6 +5571,10 @@ fn emitExprWithMoveContext(
             return try emitUnionIsCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, out);
         }
 
+        if (std.mem.eql(u8, call_name, "as")) {
+            return try emitUnionAsCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, out);
+        }
+
         if (std.mem.eql(u8, call_name, "eq") or std.mem.eql(u8, call_name, "ne")) {
             if (try emitUnionNilComparison(allocator, tokens, call_head.args_start, call_head.args_end, move_ctx, call_name, locals, ctx, out)) {
                 return true;
@@ -6202,6 +6206,63 @@ fn collectUnionIsTags(
     _ = ctx;
 }
 
+const UnionAsCall = struct {
+    union_local: UnionLocal,
+    branch: UnionBranch,
+};
+
+fn resolveUnionAsCall(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    args_start: usize,
+    args_end: usize,
+    locals: *const LocalSet,
+) CodegenError!?UnionAsCall {
+    const first_end = findArgEnd(tokens, args_start, args_end);
+    if (first_end != args_start + 1 or tokens[args_start].kind != .ident) return null;
+    if (first_end >= args_end or !tokEq(tokens[first_end], ",")) return null;
+    const union_local = findUnionLocal(locals.union_locals.items, tokens[args_start].lexeme) orelse return null;
+    const type_start = first_end + 1;
+    const type_end = trimTrailingComma(tokens, type_start, args_end);
+    if (type_start >= type_end) return null;
+
+    var owned_types = std.ArrayList([]const u8).empty;
+    defer {
+        for (owned_types.items) |owned| allocator.free(owned);
+        owned_types.deinit(allocator);
+    }
+
+    const parsed_ty = (try parseCodegenTypeExpr(allocator, tokens, type_start, type_end, &owned_types)) orelse return null;
+    if (parsed_ty.next_idx != type_end) return null;
+    if (std.mem.eql(u8, parsed_ty.ty, "nil")) return null;
+    const branch = findUnionBranchByType(union_local.layout, parsed_ty.ty) orelse return null;
+    if (branch.tag == 0) return null;
+    return .{
+        .union_local = union_local,
+        .branch = branch,
+    };
+}
+
+fn emitUnionAsCall(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    args_start: usize,
+    args_end: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    const as_call = (try resolveUnionAsCall(allocator, tokens, args_start, args_end, locals)) orelse return false;
+    if (as_call.branch.payload_len == 0) return false;
+
+    var idx: usize = 0;
+    while (idx < as_call.branch.payload_len) : (idx += 1) {
+        try appendUnionPayloadLocalGet(allocator, out, as_call.union_local.name, as_call.branch.payload_start + idx);
+    }
+    _ = ctx;
+    return true;
+}
+
 fn emitUnionNilComparison(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -6470,6 +6531,11 @@ fn unionLocalSingleIdent(
     const range = trimParens(tokens, start_idx, end_idx);
     if (range.end != range.start + 1 or tokens[range.start].kind != .ident) return null;
     return findUnionLocal(locals.union_locals.items, tokens[range.start].lexeme);
+}
+
+fn trimTrailingComma(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) usize {
+    if (start_idx < end_idx and tokEq(tokens[end_idx - 1], ",")) return end_idx - 1;
+    return end_idx;
 }
 
 fn fieldReflectionIfParts(
@@ -9105,6 +9171,7 @@ fn valueEnumLineHasBranch(tokens: []const lexer.Token, enum_idx: usize, branch_n
 
 fn isCoreWasmCallName(name: []const u8) bool {
     return std.mem.eql(u8, name, "is") or
+        std.mem.eql(u8, name, "as") or
         isBoolSpecialFuncName(name) or
         isNumericCoreFuncName(name) or
         isNumericUnarySelectCoreFuncName(name) or
@@ -13415,7 +13482,7 @@ fn callHeadHasTypeArgs(call_head: ExprCallHead) bool {
 fn isTypedScalarBinding(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext) bool {
     if (start_idx + 3 >= end_idx) return false;
     if (tokens[start_idx].kind != .ident) return false;
-    if (!isCodegenScalarType(ctx, tokens[start_idx + 1].lexeme)) return false;
+    if (!isCodegenScalarOrErrorType(tokens, ctx, tokens[start_idx + 1].lexeme)) return false;
     return findTopLevelToken(tokens, start_idx + 2, end_idx, "=") != null;
 }
 
@@ -17358,6 +17425,10 @@ fn isCodegenScalarType(ctx: CodegenContext, ty: []const u8) bool {
     return isCoreWasmScalar(ty) or valueEnumCarrier(ctx, ty) != null;
 }
 
+fn isCodegenScalarOrErrorType(tokens: []const lexer.Token, ctx: CodegenContext, ty: []const u8) bool {
+    return isCodegenScalarType(ctx, ty) or isErrorLikeType(tokens, ty);
+}
+
 fn valueEnumBranchValue(
     ctx: CodegenContext,
     tokens: []const lexer.Token,
@@ -17974,6 +18045,7 @@ fn inferExprType(
     if (call_head.is_intrinsic) {
         if (shouldInferBoolSpecialCall(call_name, tokens, call_head.args_start, call_head.args_end, locals, ctx)) return "bool";
         if (std.mem.eql(u8, call_name, "is")) return "bool";
+        if (std.mem.eql(u8, call_name, "as")) return inferUnionAsCallType(tokens, call_head.args_start, call_head.args_end, locals);
         if (isComparisonCoreFuncName(call_name)) return "bool";
         if (std.mem.eql(u8, call_name, "len")) return "usize";
         if (std.mem.eql(u8, call_name, "set")) return inferSetCallType(tokens, call_head.args_start, call_head.args_end, locals);
@@ -18030,6 +18102,26 @@ fn inferFirstArgTypeOrDefaultS32(
 ) ?[]const u8 {
     const first_end = findArgEnd(tokens, args_start, args_end);
     return inferExprType(tokens, args_start, first_end, locals, ctx) orelse "i32";
+}
+
+fn inferUnionAsCallType(
+    tokens: []const lexer.Token,
+    args_start: usize,
+    args_end: usize,
+    locals: *const LocalSet,
+) ?[]const u8 {
+    const first_end = findArgEnd(tokens, args_start, args_end);
+    if (first_end != args_start + 1 or tokens[args_start].kind != .ident) return null;
+    if (first_end >= args_end or !tokEq(tokens[first_end], ",")) return null;
+    const union_local = findUnionLocal(locals.union_locals.items, tokens[args_start].lexeme) orelse return null;
+    const type_start = first_end + 1;
+    const type_end = trimTrailingComma(tokens, type_start, args_end);
+    if (type_start >= type_end) return null;
+    for (union_local.layout.branches) |branch| {
+        if (branch.tag == 0) continue;
+        if (tokenTextEqualsCompact(tokens, type_start, type_end, branch.ty)) return branch.ty;
+    }
+    return null;
 }
 
 fn wasiDoResultType(import: WasiHostImport) ?[]const u8 {

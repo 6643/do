@@ -122,6 +122,7 @@ pub fn checkProgram(
     try checkLambdaUsage(allocator, program, tokens);
     try checkLambdaOverloadCalls(allocator, program, tokens);
     try checkIsTypeArgs(tokens);
+    try checkAsTypeArgs(tokens);
     try checkLoopHeader(tokens);
     try checkLoopLabels(allocator, tokens);
     try checkDeferStmts(allocator, tokens);
@@ -789,6 +790,35 @@ fn checkIsTypeArgs(tokens: []const lexer.Token) !void {
             return markErrorAt(tokens, nil_idx, error.InvalidCallArgList);
         }
         if (validateIsTypeExpr(tokens, type_arg, close_paren) == null) {
+            return markErrorAt(tokens, type_arg, error.InvalidCallArgList);
+        }
+    }
+}
+
+fn checkAsTypeArgs(tokens: []const lexer.Token) !void {
+    var i: usize = 0;
+    while (i + 1 < tokens.len) : (i += 1) {
+        if (!tokEq(tokens[i], "as")) continue;
+        if (!tokEq(tokens[i + 1], "(")) continue;
+        const close_paren = findMatching(tokens, i + 1, "(", ")") catch
+            return markErrorAt(tokens, i + 1, error.InvalidCallArgList);
+        const comma = findTopLevelComma(tokens, i + 2, close_paren) orelse
+            return markErrorAt(tokens, i, error.InvalidCallArgList);
+        const type_arg = firstNonGap(tokens, comma + 1, close_paren) orelse
+            return markErrorAt(tokens, comma, error.InvalidCallArgList);
+        if (isValueLiteralToken(tokens[type_arg])) {
+            return markErrorAt(tokens, type_arg, error.InvalidCallArgList);
+        }
+        if (findInlineFuncTypeInIsArg(tokens, type_arg, close_paren)) |func_type_idx| {
+            return markErrorAt(tokens, func_type_idx, error.InvalidCallArgList);
+        }
+        if (findTopLevelComma(tokens, type_arg, close_paren)) |extra_comma| {
+            return markErrorAt(tokens, extra_comma, error.InvalidCallArgList);
+        }
+        if (findTopLevelNilInIsArg(tokens, type_arg, close_paren)) |nil_idx| {
+            return markErrorAt(tokens, nil_idx, error.InvalidCallArgList);
+        }
+        if (validateIsTypeAtom(tokens, type_arg, close_paren) != close_paren) {
             return markErrorAt(tokens, type_arg, error.InvalidCallArgList);
         }
     }
@@ -1701,6 +1731,7 @@ fn isNumericCoreName(name: []const u8) bool {
 fn isBuiltinCallName(name: []const u8) bool {
     const names = [_][]const u8{
         "is",
+        "as",
         "and",
         "or",
         "not",
@@ -7158,19 +7189,19 @@ fn isNumericCoreFuncName(name: []const u8) bool {
 
 fn isBuiltinSpecialOrCoreName(name: []const u8) bool {
     const names = [_][]const u8{
-        "is",                "and",         "or",          "not",         "recv",
-        "fields",            "get",         "set",         "field_name",  "field_index",
-        "field_has_default", "field_get",   "field_set",   "eq",          "ne",
-        "lt",                "le",          "gt",          "ge",          "add",
-        "sub",               "mul",         "div",         "rem",         "len",
-        "put",               "to_u8",       "to_u16",      "to_u32",      "to_u64",
-        "to_usize",          "to_isize",    "to_i8",       "to_i16",      "to_i32",
-        "to_i64",            "to_f32",      "to_f64",      "load_u8",     "load_i8",
-        "load_u16_le",       "load_i16_le", "load_u32_le", "load_i32_le", "load_u64_le",
-        "load_i64_le",       "xor",         "shl",         "shr",         "rotl",
-        "rotr",              "clz",         "ctz",         "popcnt",      "abs",
-        "neg",               "sqrt",        "ceil",        "floor",       "trunc",
-        "nearest",           "min",         "max",         "copysign",
+        "is",                "as",          "and",         "or",          "not",
+        "recv",              "fields",      "get",         "set",         "field_name",
+        "field_index",       "field_has_default", "field_get", "field_set", "eq",
+        "ne",                "lt",          "le",          "gt",          "ge",
+        "add",               "sub",         "mul",         "div",         "rem",
+        "len",               "put",         "to_u8",       "to_u16",      "to_u32",
+        "to_u64",            "to_usize",    "to_isize",    "to_i8",       "to_i16",
+        "to_i32",            "to_i64",      "to_f32",      "to_f64",      "load_u8",
+        "load_i8",           "load_u16_le", "load_i16_le", "load_u32_le", "load_i32_le",
+        "load_u64_le",       "load_i64_le", "xor",         "shl",         "shr",
+        "rotl",              "rotr",        "clz",         "ctz",         "popcnt",
+        "abs",               "neg",         "sqrt",        "ceil",        "floor",
+        "trunc",             "nearest",     "min",         "max",         "copysign",
     };
     for (names) |it| {
         if (std.mem.eql(u8, it, name)) return true;

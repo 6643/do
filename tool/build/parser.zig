@@ -1577,8 +1577,10 @@ fn parseBuiltinCallExpr(
     name_idx: usize,
     limit_idx: usize,
 ) anyerror!CallExprParse {
-    if (std.mem.eql(u8, tokens[name_idx].lexeme, "is")) {
-        return parseIsBuiltinCallExpr(allocator, out_nodes, tokens, name_idx, limit_idx);
+    if (std.mem.eql(u8, tokens[name_idx].lexeme, "is") or
+        std.mem.eql(u8, tokens[name_idx].lexeme, "as"))
+    {
+        return parseTypeArgBuiltinCallExpr(allocator, out_nodes, tokens, name_idx, limit_idx);
     }
 
     const parsed = try parseCallExprRaw(allocator, out_nodes, tokens, name_idx, limit_idx);
@@ -1586,7 +1588,7 @@ fn parseBuiltinCallExpr(
     return parsed;
 }
 
-fn parseIsBuiltinCallExpr(
+fn parseTypeArgBuiltinCallExpr(
     allocator: std.mem.Allocator,
     out_nodes: *std.ArrayList(ExprNode),
     tokens: []const lexer.Token,
@@ -2230,6 +2232,7 @@ fn isDeclOnlyName(name: []const u8) bool {
 fn isBuiltinCallName(name: []const u8) bool {
     const builtin_names = [_][]const u8{
         "is",
+        "as",
         "and",
         "or",
         "not",
