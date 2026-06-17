@@ -13,7 +13,9 @@ COMPILE_ERR_DIR="$TEST_DIR/compile_err"
 COMPILED_OK_DIR="$TEST_DIR/compiled_ok"
 COMPILED_ERR_DIR="$TEST_DIR/compiled_err"
 COMPILED_TRAP_DIR="$TEST_DIR/compiled_trap"
+CHECK_DIR="$TEST_DIR/check"
 FMT_DIR="$TEST_DIR/fmt"
+LSP_DIR="$TEST_DIR/lsp"
 PENDING_OK_DIR="$TEST_DIR/pending/ok"
 PENDING_ERR_DIR="$TEST_DIR/pending/err"
 TMP_DIR="$TEST_DIR/tmp"
@@ -433,6 +435,85 @@ run_fmt_case() {
 
     echo "[PASS] fmt $name"
     ((pass_count += 1))
+}
+
+run_check_case() {
+    local case_file="$1"
+    local name
+    name="$(basename "$case_file" .do)"
+
+    local expect_file="${case_file%.do}.expect"
+    local stdout_file="$TMP_DIR/check_${name}.stdout"
+    local stderr_file="$TMP_DIR/check_${name}.stderr"
+
+    if [[ -f "$expect_file" ]]; then
+        if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" check "$case_file" >"$stdout_file" 2>"$stderr_file"; then
+            echo "[FAIL] check $name (expected failure)"
+            ((fail_count += 1))
+            return
+        fi
+
+        while IFS= read -r expected; do
+            [[ -z "$expected" ]] && continue
+            if ! grep -Fq "$expected" "$stderr_file"; then
+                echo "[FAIL] check $name (missing diagnostic: $expected)"
+                cat "$stderr_file"
+                ((fail_count += 1))
+                return
+            fi
+        done <"$expect_file"
+
+        if [[ -s "$stdout_file" ]]; then
+            echo "[FAIL] check $name (unexpected stdout)"
+            cat "$stdout_file"
+            ((fail_count += 1))
+            return
+        fi
+
+        echo "[PASS] check $name"
+        ((pass_count += 1))
+        return
+    fi
+
+    if ! DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" check "$case_file" >"$stdout_file" 2>"$stderr_file"; then
+        echo "[FAIL] check $name (unexpected non-zero exit)"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if [[ -s "$stdout_file" || -s "$stderr_file" ]]; then
+        echo "[FAIL] check $name (unexpected output)"
+        cat "$stdout_file"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    echo "[PASS] check $name"
+    ((pass_count += 1))
+}
+
+run_lsp_case() {
+    local case_file="$1"
+    local name
+    name="$(basename "$case_file" .json)"
+
+    if [[ -z "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
+        echo "[FAIL] lsp $name (node not found)"
+        ((fail_count += 1))
+        return
+    fi
+
+    if "$NODE_BIN" "$TEST_DIR/run_lsp_case.mjs" "$DO_BIN" "$case_file" >"$TMP_DIR/${name}.lsp.stdout" 2>"$TMP_DIR/${name}.lsp.stderr"; then
+        echo "[PASS] lsp $name"
+        ((pass_count += 1))
+        return
+    fi
+
+    echo "[FAIL] lsp $name"
+    cat "$TMP_DIR/${name}.lsp.stderr"
+    ((fail_count += 1))
 }
 
 run_do_run_missing_wasm_tools_case() {
@@ -1296,6 +1377,18 @@ echo "[INFO] run fmt cases"
 for case_file in "$FMT_DIR"/*.do; do
     [[ -e "$case_file" ]] || continue
     run_fmt_case "$case_file"
+done
+
+echo "[INFO] run check cases"
+for case_file in "$CHECK_DIR"/*.do; do
+    [[ -e "$case_file" ]] || continue
+    run_check_case "$case_file"
+done
+
+echo "[INFO] run lsp cases"
+for case_file in "$LSP_DIR"/*.json; do
+    [[ -e "$case_file" ]] || continue
+    run_lsp_case "$case_file"
 done
 
 if [[ "$RUN_PENDING" == "1" ]]; then

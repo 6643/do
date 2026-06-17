@@ -6,6 +6,33 @@ pub const SourceLoc = struct {
     col: usize,
 };
 
+pub const CompileDiagnostic = struct {
+    path: []const u8,
+    loc: SourceLoc,
+    code: []const u8,
+    message: []const u8,
+    hint: []const u8,
+    line_text: []const u8,
+};
+
+pub fn buildCompileDiagnostic(
+    path: []const u8,
+    source: []const u8,
+    tokens_opt: ?[]const lexer.Token,
+    err: anyerror,
+    explicit_loc: ?SourceLoc,
+) CompileDiagnostic {
+    const loc = locateCompileError(err, source, tokens_opt, explicit_loc);
+    return .{
+        .path = path,
+        .loc = loc,
+        .code = @errorName(err),
+        .message = errorSummary(err),
+        .hint = errorHint(err),
+        .line_text = getLineText(source, loc.line),
+    };
+}
+
 pub fn printCliError(io: std.Io, err: anyerror) !void {
     var err_buffer: [512]u8 = undefined;
     var out = std.Io.File.stderr().writer(io, &err_buffer);
@@ -31,17 +58,20 @@ pub fn printCompileError(
     err: anyerror,
     explicit_loc: ?SourceLoc,
 ) !void {
-    const loc = locateCompileError(err, source, tokens_opt, explicit_loc);
-    const line_text = getLineText(source, loc.line);
-    const caret_col = if (loc.col == 0) 1 else loc.col;
+    const diagnostic = buildCompileDiagnostic(path, source, tokens_opt, err, explicit_loc);
+    try printDiagnostic(io, diagnostic);
+}
+
+pub fn printDiagnostic(io: std.Io, diagnostic: CompileDiagnostic) !void {
+    const caret_col = if (diagnostic.loc.col == 0) 1 else diagnostic.loc.col;
 
     var err_buffer: [4096]u8 = undefined;
     var out = std.Io.File.stderr().writer(io, &err_buffer);
-    try out.interface.print("error[{s}]: {s}\n", .{ @errorName(err), errorSummary(err) });
-    try out.interface.print(" --> {s}:{d}:{d}\n", .{ path, loc.line, loc.col });
-    try out.interface.print(" hint: {s}\n", .{errorHint(err)});
-    if (line_text.len != 0) {
-        try out.interface.print(" {d} | {s}\n", .{ loc.line, line_text });
+    try out.interface.print("error[{s}]: {s}\n", .{ diagnostic.code, diagnostic.message });
+    try out.interface.print(" --> {s}:{d}:{d}\n", .{ diagnostic.path, diagnostic.loc.line, diagnostic.loc.col });
+    try out.interface.print(" hint: {s}\n", .{diagnostic.hint});
+    if (diagnostic.line_text.len != 0) {
+        try out.interface.print(" {d} | {s}\n", .{ diagnostic.loc.line, diagnostic.line_text });
         try out.interface.print("   | ", .{});
         try writeCaret(&out, caret_col);
     }
@@ -371,7 +401,7 @@ fn blockCommentClosesCleanly(source: []const u8, start_idx: usize) bool {
     return false;
 }
 
-fn errorSummary(err: anyerror) []const u8 {
+pub fn errorSummary(err: anyerror) []const u8 {
     return switch (err) {
         error.UnterminatedString => "字符串语法: `\"text\"`",
         error.InvalidStringEscape => "字符串 escape 只支持 `\\\"`, `\\\\`, `\\n`, `\\r`, `\\t`, `\\xNN`",
@@ -427,7 +457,7 @@ fn errorSummary(err: anyerror) []const u8 {
     };
 }
 
-fn errorHint(err: anyerror) []const u8 {
+pub fn errorHint(err: anyerror) []const u8 {
     return switch (err) {
         error.UnterminatedString => "字符串语法: `\"text\"`",
         error.InvalidStringEscape => "普通字符串 escape 写作 `\\\"`, `\\\\`, `\\n`, `\\r`, `\\t` 或 `\\xNN`",
@@ -482,4 +512,41 @@ fn errorHint(err: anyerror) []const u8 {
         error.FormatMismatch => "运行 `do fmt input.do` 查看格式化后的 stdout 输出",
         else => "语法示例: `if expr { ... }`, `loop { ... }`, `@get(value, .field)`, `Type{field = value}`",
     };
+}
+
+test "buildCompileDiagnostic uses explicit source location" {
+    const source =
+        \\one
+        \\two
+        \\three
+        \\
+    ;
+    const diagnostic = buildCompileDiagnostic(
+        "bad.do",
+        source,
+        null,
+        error.InvalidIfHeader,
+        .{ .line = 2, .col = 3 },
+    );
+    try std.testing.expectEqualStrings("bad.do", diagnostic.path);
+    try std.testing.expectEqual(@as(usize, 2), diagnostic.loc.line);
+    try std.testing.expectEqual(@as(usize, 3), diagnostic.loc.col);
+    try std.testing.expectEqualStrings("two", diagnostic.line_text);
+    try std.testing.expectEqualStrings("InvalidIfHeader", diagnostic.code);
+    try std.testing.expectEqualStrings(errorSummary(error.InvalidIfHeader), diagnostic.message);
+    try std.testing.expectEqualStrings(errorHint(error.InvalidIfHeader), diagnostic.hint);
+}
+
+test "buildCompileDiagnostic falls back to source lexer location" {
+    const source = "\"abc";
+    const diagnostic = buildCompileDiagnostic(
+        "bad.do",
+        source,
+        null,
+        error.UnterminatedString,
+        null,
+    );
+    try std.testing.expectEqual(@as(usize, 1), diagnostic.loc.line);
+    try std.testing.expectEqual(@as(usize, 1), diagnostic.loc.col);
+    try std.testing.expectEqualStrings("\"abc", diagnostic.line_text);
 }

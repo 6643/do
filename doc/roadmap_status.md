@@ -1,8 +1,8 @@
 # Roadmap 执行状态
 
-更新时间: 2026-06-17
+更新时间: 2026-06-18
 
-执行原则: 按 `README.md` Roadmap 自上而下推进; 如果某项卡住或需要跳过, 必须在本文记录原因和后续恢复条件。
+执行原则: 按 `doc/master_plan.md` 的阶段规划和 `README.md` Roadmap 自上而下推进; 如果某项卡住或需要跳过, 必须在本文记录原因和后续恢复条件。
 
 推进协议:
 
@@ -11,6 +11,8 @@
 3. 小任务完成后, 立即把状态从 `[ ]` 改为 `[x]`, 并补充验证命令或阻塞原因。
 4. 如果遇到阻塞, 在该小任务后标注 `blocked`, 写清阻塞证据、停止点和恢复条件。
 5. 提交或交付前, 必须确认本文件的状态与代码、测试和文档同步。
+
+总规划入口: `doc/master_plan.md`。历史摘要入口: `CHANGELOG.md`。本文只记录执行状态、证据、跳过原因和恢复条件。
 
 ## 01. 运行时内存模型
 
@@ -192,7 +194,15 @@
 
 状态: partial
 
-当前结论: `do run <input.do>` 第一版已落地, 执行策略固定为外部 `wasm-tools + node` 桥接。`do fmt <input.do>` 第一版已落地, 当前只支持 stdout 输出和 `--check` 检查, 不做原地写回。`07.3 do lsp` 已完成阶段计划, 推荐先落地 diagnostics-only stdio server。get / push 仍缺少当前 spec 中的命令语义、输入输出契约和回归口径, 继续跳过。
+当前结论: `do check <input.do>` 第一版已落地, 当前复用 LSP diagnostics collector 执行 lexer/parser/sema/import 检查, 不编译、不运行、不要求 `start()` 或 `test` 声明。`do run <input.do>` 第一版已落地, 执行策略固定为外部 `wasm-tools + node` 桥接。`do fmt <input.do>` 第一版已落地, 当前只支持 stdout 输出和 `--check` 检查, 不做原地写回。`do lsp [--stdio]` 第一版已落地, 当前只做 diagnostics-only stdio server。get / pkg / push 包管理线已按用户要求暂停, 不作为当前阶段继续目标。
+
+`do check` 当前边界:
+
+- 命令形态: `do check <input.do>`。
+- 诊断来源: 复用 `tool/lsp/diagnostics.zig` 的 lexer/parser/sema/imports fail-fast 链路。
+- 成功行为: 无输出, exit 0。
+- 失败行为: 输出第一条现有 compile diagnostic 格式, exit 1。
+- 不包含: `start()` 入口校验、`test` 声明要求、WAT/codegen、运行测试、watch 模式或多诊断聚合。
 
 `do run` 当前边界:
 
@@ -209,28 +219,50 @@
 - 回归范围: `tool/build/test/fmt/*.do` / `.expect` 覆盖 stdout、idempotence 和 `error[FormatMismatch]`。
 - 不包含: 原地写回、范围格式化、语法感知 comment/string brace 解析、LSP formatter 接入。
 
-剩余跳过原因: get / push 直接实现会把工具接口固化在未定义行为上。
+`do lsp` 当前边界:
 
-恢复条件:
+- 命令形态: `do lsp` 和 `do lsp --stdio` 启动 stdio LSP server。
+- 诊断来源: 复用 lexer/parser/sema/imports fail-fast 链路, 每个 document 当前最多发布一个编译诊断。
+- 回归范围: `tool/build/test/lsp/*.json` 通过 `tool/build/test/run_lsp_case.mjs` 驱动 `bin/do lsp` smoke。
+- 不包含: completion、hover、definition、rename、formatting、workspace index 和完整语言服务。
 
-- 按 `docs/superpowers/plans/2026-06-17-lsp-07-3.md` 推进 LSP diagnostics-only 第一版。
-- 为 get / push 明确包源、版本、认证和发布/回滚规则。
+get / pkg / push 暂停边界:
+
+- 暂停原因: 用户在 2026-06-17 明确要求“先不要搞包管理这一套。get, pkg, get, push”。
+- 当前代码状态: 不注册 `do get` / `do push` CLI, 不保留 `tool/pkg` 包管理实现, 不接入 package smoke regression。
+- 当前文档状态: 包管理设计计划不再作为下次启动入口; 历史 get/push 计划和 spec 文件已清理。
+- 恢复条件: 只有用户明确要求重开包管理线时, 才重新设计并从新计划开始。
 
 阶段内小任务:
 
 - [x] 07.1 落地 `do run` 第一版执行环境、依赖策略、stdout/stderr/exit 行为和 host import 支持范围。验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, `do run missing wasm-tools`、`do run missing node` 和 6 个 `do run` smoke case 均执行, 摘要 `pass=666 fail=0 skip=70`。
-- [x] 07.2.1 明确 fmt 格式化规范和稳定输出回归。验证: `docs/superpowers/specs/2026-06-17-fmt-design.md` 已定义 `do fmt <input.do>`、`do fmt --check <input.do>`、stdout/check-only、idempotence、fixture `.expect` 和缺口边界; `docs/superpowers/plans/2026-06-17-fmt-07-2.md` 已拆出 CLI、formatter core、runner、fixture 回归和文档同步任务。
+- [x] 07.2.1 明确 fmt 格式化规范和稳定输出回归。验证: 当前 formatter 边界已收敛进 README、`CHANGELOG.md` 和本节 `do fmt` 当前边界; 历史 fmt plan/spec 已清理, 不再作为活跃入口。
 - [x] 07.2.2 实现 `do fmt` CLI contract。验证: `cd tool && zig test build/cli.zig` 通过 `6/6`; `cd tool && zig test main.zig` 通过 `3/3`; `cd tool && zig build -Doptimize=Debug` 通过。当前 `tool/fmt/run.zig` 仅为最小 runner 骨架, 真实格式化输出继续按 Task 2/3 推进。
 - [x] 07.2.3 实现 pure formatter core。验证: `tool/fmt/format.zig` 已新增 `formatSource(allocator, source)` 和三条 focused tests; `cd tool && zig test fmt/format.zig` 通过 `3/3`; `cd tool && zig test main.zig` 通过 `3/3`。
 - [x] 07.2.4 实现 `tool/fmt/run.zig` 命令 runner。验证: `cd tool && zig test fmt/format.zig` 通过 `3/3`; `cd tool && zig test main.zig` 通过 `3/3`; `cd tool && zig build -Doptimize=Debug` 通过; 临时文件实测 `do fmt` stdout 输出、`do fmt --check` 成功和 mismatch `error[FormatMismatch]` 均符合计划。
 - [x] 07.2.5 接入 fixture 回归、idempotence 和 `--check` 覆盖。验证: `tool/build/test/fmt/01_struct_func_indent.do`、`tool/build/test/fmt/02_comments_line_strings.do`、`tool/build/test/fmt/03_control_blocks.do` 及其 `.expect` 已接入 `tool/build/test/run_tests.sh`; `bash -n tool/build/test/run_tests.sh` 通过; `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, `fmt` 段三例均通过, 总摘要 `pass=669 fail=0 skip=70`。
 - [x] 07.2.6 同步 README、start_here 和最终验证。验证: `README.md` 已记录 `do fmt <input.do>`、`do fmt --check <input.do>` 和 stdout/check-only 边界; `doc/start_here.md` 下一步已切到 `07.3 LSP`; 最终验证通过: `cd tool && zig test build/cli.zig` 6/6, `cd tool && zig test fmt/format.zig` 3/3, `cd tool && zig build -Doptimize=Debug`, `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 摘要 `pass=669 fail=0 skip=70`。
-- [x] 07.3.0 明确 LSP 最小能力集和诊断来源。结论: 第一版只做 diagnostics-only stdio server, 不做 completion / hover / definition / rename / formatting; 诊断来源复用 lexer/parser/sema/imports fail-fast 链路, 当前每个 document 最多发布一个编译诊断。验证: `docs/superpowers/plans/2026-06-17-lsp-07-3.md`。
-- [ ] 07.3.1 固定 `do lsp [--stdio]` CLI contract。计划: `docs/superpowers/plans/2026-06-17-lsp-07-3.md` Task 1。
-- [ ] 07.3.2 暴露结构化 compiler diagnostics。计划: `docs/superpowers/plans/2026-06-17-lsp-07-3.md` Task 2。
-- [ ] 07.3.3 实现纯 LSP diagnostics collector。计划: `docs/superpowers/plans/2026-06-17-lsp-07-3.md` Task 3。
-- [ ] 07.3.4 实现最小 JSON-RPC/LSP protocol helper。计划: `docs/superpowers/plans/2026-06-17-lsp-07-3.md` Task 4。
-- [ ] 07.3.5 实现 `do lsp` stdio server。计划: `docs/superpowers/plans/2026-06-17-lsp-07-3.md` Task 5。
-- [ ] 07.3.6 接入 LSP smoke regression harness。计划: `docs/superpowers/plans/2026-06-17-lsp-07-3.md` Task 6。
-- [ ] 07.3.7 同步 README、测试说明、roadmap 和 start_here。计划: `docs/superpowers/plans/2026-06-17-lsp-07-3.md` Task 7。
-- [ ] 07.4 明确 get / push 包源、版本、认证和发布/回滚规则。前置: 包管理规范。
+- [x] 07.3.0 明确 LSP 最小能力集和诊断来源。结论: 第一版只做 diagnostics-only stdio server, 不做 completion / hover / definition / rename / formatting; 诊断来源复用 lexer/parser/sema/imports fail-fast 链路, 当前每个 document 最多发布一个编译诊断。验证: 当前 LSP 边界已收敛进 README、`CHANGELOG.md` 和本节 `do lsp` 当前边界; 历史 LSP plan 已清理, 不再作为活跃入口。
+- [x] 07.3.1 固定 `do lsp [--stdio]` CLI contract。验证: `cd tool && zig test build/cli.zig && zig test main.zig` 通过; `cli` 9/9, `main` 3/3。备注: `tool/lsp/run.zig` 当前只是参数解析 stub, 真实 stdio server 留到 07.3.5。
+- [x] 07.3.2 暴露结构化 compiler diagnostics。验证: `cd tool && zig test build/diag.zig && zig test build/cli.zig && zig test main.zig` 通过; `diag` 12/12, `cli` 9/9, `main` 3/3。备注: `printCompileError(...)` 已改为从 `CompileDiagnostic` 打印, 后续 LSP collector 复用同一 summary/hint。
+- [x] 07.3.3 实现纯 LSP diagnostics collector。验证: `cd tool && zig test main.zig && zig test build/diag.zig && zig test build/cli.zig` 通过; `main` 27/27, `diag` 12/12, `cli` 9/9。备注: `tool/lsp/diagnostics.zig` 通过 `main.zig` 聚合测试覆盖; 直接 `zig test lsp/diagnostics.zig` 会因当前 Zig 单文件 import 规则拒绝 `../build/...` sibling import。
+- [x] 07.3.4 实现最小 JSON-RPC/LSP protocol helper。验证: `cd tool && zig test main.zig && zig test build/diag.zig && zig test build/cli.zig` 通过; `main` 29/29, `diag` 12/12, `cli` 9/9。备注: `tool/lsp/protocol.zig` 通过 `main.zig` 聚合测试覆盖; 当前已支持 initialize/shutdown response 和 publishDiagnostics frame 输出。
+- [x] 07.3.5 实现 `do lsp` stdio server。验证: `cd tool && zig test main.zig` 通过 `main` 32/32; `cd tool && zig test build/diag.zig` 通过 `diag` 12/12; `cd tool && zig test build/cli.zig` 通过 `cli` 9/9; `cd tool && zig build -Doptimize=Debug` 通过。附加 smoke: 临时 Node 脚本通过 stdio 驱动 `./bin/do lsp`, initialize / didOpen syntax error / shutdown / exit 通过, stdout 包含 initialize response、publishDiagnostics 和 `UnterminatedString`, stderr 为空。备注: 进程级 fixture harness 留到 07.3.6。
+- [x] 07.3.6 接入 LSP smoke regression harness。验证: `node tool/build/test/run_lsp_case.mjs ./bin/do tool/build/test/lsp/01_open_valid.json`、`02_open_syntax_error.json`、`03_change_clears_diagnostic.json` 均通过; `bash -n tool/build/test/run_tests.sh` 通过; `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, LSP 三例均 PASS, 摘要 `pass=672 fail=0 skip=70`。
+- [x] 07.3.7 同步 README、测试说明、roadmap 和 start_here。验证: `README.md` 已记录 `do lsp [--stdio]` diagnostics-only 边界; `tool/build/test/README.md` 已记录 `lsp/*.json` fixture 和 `run_lsp_case.mjs`; 最终验证通过: `bash -n tool/build/test/run_tests.sh`, `cd tool && zig test main.zig` 32/32, `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 摘要 `pass=672 fail=0 skip=70`。
+- [x] 07.4.0 暂停 get / pkg / push 包管理线并清理活跃实现。验证: `tool/build/cli.zig` 不再导出 `parseGet/parsePush`; `tool/main.zig` 不再注册 `get/push`; `tool/build/test/run_tests.sh` 不再接入 package fixture; `tool/pkg`、`tool/get/run.zig`、`tool/push/run.zig` 和历史 get/push 计划/spec 文件已删除。
+- [x] 07.5.0 落地 `do check <input.do>` 前端诊断命令。验证: TDD 红灯 `cd tool && zig test build/cli.zig` 失败于 `parseCheck` 未定义; `cd tool && zig test main.zig` 失败于 `check/run.zig` 缺失。绿色验证: `cd tool && zig test build/cli.zig` 11/11, `cd tool && zig test main.zig` 33/33, `cd tool && zig test env.zig` 1/1, `cd tool && zig build -Doptimize=Debug`, 手动 `do check` valid fixture 静默成功、syntax fixture 输出 `error[UnterminatedString]`。
+- [x] 07.next 重新制定总规划并细化各阶段小任务。验证: `doc/master_plan.md` 已作为 active 总规划入口, 覆盖阶段 A-H、阶段内小任务、非目标、主要文件和验收命令; 默认下一步固定为阶段 A 的 A1 LSP formatting 第一版; 禁止默认回到 get / pkg / push。
+- [ ] A1.1 新增 LSP formatting 请求 fixture, 先红灯验证当前不支持。计划: `doc/master_plan.md` 阶段 A / A1。
+
+## 文档治理
+
+状态: partial
+
+当前结论: 已新增 `CHANGELOG.md` 作为历史摘要入口, 并删除已完成支线的过期 plan/spec 文档。当前活跃入口收敛为 README、CHANGELOG、start_here、master_plan、roadmap_status、spec/spec_rules、grammar、syntax、memory 和 WIT 文档。
+
+阶段内小任务:
+
+- [x] 新增 changelog 并写入近期已完成能力摘要。验证: `CHANGELOG.md`。
+- [x] 删除已完成支线的过期文档。验证: 已删除 do run 接手清单和历史计划/设计目录; `test ! -e docs` 输出 `docs directory removed`。
+- [x] 清理旧文档残留引用。验证: 旧历史路径关键字扫描无活跃引用。
