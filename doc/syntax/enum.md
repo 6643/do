@@ -34,3 +34,5 @@ is_paid(status OrderStatus) -> bool {
     return @eq(status, OrderPaid)
 }
 ```
+
+规则: `value enum` 的分支值用 `@eq/@ne` 比较; `@is` 只做类型判断, 不用于分支值匹配。

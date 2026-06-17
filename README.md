@@ -31,11 +31,11 @@ src/            do builtin/core 总表与标准库
 tool/main.zig    唯一二进制 CLI 分派入口
 tool/build.zig   Zig 构建入口
 tool/build/      do build 逻辑实现和编译器源码
-tool/run/        do run 逻辑预留目录
+tool/run/        do run 命令实现和 wasm 执行桥接
 tool/build/test/ 当前编译器/构建产物回归测试
 tool/get/        do get 逻辑预留目录
 tool/push/       do push 逻辑预留目录
-tool/fmt/        do fmt 逻辑预留目录
+tool/fmt/        do fmt 命令实现和格式化核心
 tool/lsp/        do lsp 逻辑预留目录
 tool/test/       do test 逻辑预留目录
 ```
@@ -52,6 +52,18 @@ zig build -Doptimize=ReleaseSmall
 
 # 运行 do 文件中的 test 声明
 ../bin/do test app.do
+
+# 运行带 start() 入口的 do 程序
+../bin/do run app.do
+
+# do run 第一版依赖本机 wasm-tools 与 node
+# 当前边界: build -> WAT -> wasm-tools parse -> node 执行 core wasm smoke 子集
+
+# 格式化并输出到 stdout
+../bin/do fmt app.do
+
+# 只检查是否已经格式化
+../bin/do fmt --check app.do
 
 # 仓库回归
 cd ..
@@ -73,12 +85,14 @@ RUN_WASM=1 ./tool/build/test/run_tests.sh
 - [x] **标准库边界**: `[u8]`、`List`、`HashMap`、IO、网络类型形态和 `text` runtime 已归入 core / std / runtime 边界；完整 I/O 执行能力和真实网络 host ABI 继续归入后续 WASI / Component Model。
 - [x] **WAT 代码生成子集**: `do build` / `do test --compiled` 当前可验证的 WAT 输出已覆盖标量、value enum carrier、结构体 flatten、storage / text ARC handle、多返回和基础 `@get/@set/@put`；这不表示完整后端优化或直接 wasm 二进制输出已经完成。
 - [x] **测试入口**: `do build`、`do test` 和 `do test --compiled` 作为用户侧黑盒入口已落地；仓库级完整回归入口是 `./tool/build/test/run_tests.sh`。默认入口已覆盖 `compile_ok` 中的 WIT / component plan、component input、component core 和可用时的 embed/validate gate；`RUN_WASM=1` 在此基础上额外执行 wasm run、compiled wasm 执行、compiled trap 和 wasm smoke。
+- [x] **`do run` 第一版桥接**: `do run <input.do>` 已落地为产品命令，当前走 `do build` 同源 WAT 编译、`wasm-tools parse` 转 wasm、`node tool/run/run_wasm_program.mjs` 执行；覆盖当前 core wasm smoke 子集，不包含 WASI / Component Model / 自定义 host runtime。
+- [x] **`do fmt` 第一版**: `do fmt <input.do>` 和 `do fmt --check <input.do>` 已落地; 当前只输出格式化结果或做检查, 不做原地写回; 回归覆盖 stdout、idempotence 和 `error[FormatMismatch]`。
 
 ### 暂跳过
 - [x] **`defer` 完整控制流与 ARC**: `defer` 的 LIFO cleanup、跨 `return/break/continue` lowering、cleanup 块内控制流限制和 ARC release 顺序已由 `tool/build/test/compile_ok/142_*` 到 `150_*` 及 `tool/build/test/err/267_*`、`274_*`、`288_*` 到 `305_*` 覆盖，状态见 `doc/roadmap_status.md`。
 - [ ] **ARC / Perceus 完整分析**: 当前已落地 `tool/build/ownership.zig`、死 alias 消除和保守 last-use move 子集；完整 ownership IR / data-flow、跨函数唯一性证明和 FBIP `reuse` 仍未完成, 原因见 `doc/roadmap_status.md`。
 - [ ] **后端优化**: 当前保留可验证 WAT lowering；backend instruction model、WAT peephole、小函数内联、`@get/@set` 专门内联优化和 WASM 二进制输出仍待补, 原因见 `doc/roadmap_status.md`。
-- [ ] **生态工具**: `do run`、LSP、fmt、get / push 等工具链能力暂跳过, 原因见 `doc/roadmap_status.md`。
+- [ ] **生态工具**: LSP、get / push 等工具链能力暂跳过, 原因见 `doc/roadmap_status.md`。
 
 ### 最后处理
 - [ ] **WASI / Component Model FFI**: 当前只保留已登记 `@wasi` manifest、shim、component-core 输入与标准库 wrapper 子集；完整 binding source / alias、component lowering、result-area、resource / variant / future 支持放到最后单独审查。

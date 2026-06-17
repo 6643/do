@@ -361,11 +361,259 @@ v1 字段读取 move 的证明条件:
 3. recv loop 的 managed value binding 做 call 参数, 继续 `inc`, 不出现 `arc-call-move`。
 4. 验证命令: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh`, 结果 `pass=658 fail=0 skip=70`。
 
-03.7.3 下一步只设计最小 LoopMoveAnalysis 输入/输出:
+03.7.3 设计已收敛到最小 LoopMoveAnalysis 输入/输出:
 
 1. 普通 loop 中 `break` / `return` 路径是否允许 move, 先以设计用例记录, 不在没有 path analysis 前放开。
 2. 输入必须显式包含 source origin、path exit、use-after 和 cleanup 四类证明材料。
 3. 输出只能是局部 allow / reject 和拒绝原因, 不能静默扩大到 collection / recv value、helper/shared-source 或 active defer source。
+
+### 8.7 LoopMoveAnalysis 最小输入/输出
+
+`LoopMoveAnalysis` 是 03.7.4 之前的设计边界, 不是完整 ownership IR。它只回答一个问题: 在 loop body 内某个 managed 值候选点, 是否可以把现有保守 `inc` 改成 move。默认结果必须是 reject。
+
+调用位置:
+
+1. 只在 `loop_ctx != null` 且候选点原本会因为 `allow_call_arg_last_use_move = false` 保守 `inc` 时考虑。
+2. 候选点先限定为 direct managed call argument。字段读取 move、collection / recv value binding、union payload、多字段 move 和 variadic spread 不纳入最小子集。
+3. 分析发生在 emit 前, 输出只影响当前候选点是否生成 `arc-call-move` 与 zero local, 不能改变 release plan 或 cleanup 顺序。
+
+最小输入:
+
+1. candidate: `source_name`、`actual_name`、source type、表达式 token range、当前语句 token range。
+2. loop frame: 当前 `LoopControl`、父级 loop chain、目标 `break_label` / `continue_label`、当前 loop body range。
+3. function body frame: `body_start`、`body_end`、当前语句之后的可达 token range。
+4. source origin: 显式分类为 `fresh_local`、`param_or_import`、`helper_shared`、`collection_value`、`recv_value`、`loop_source`、`union_payload`、`compiler_temp` 或 `unknown`。
+5. path exit: 候选点之后当前路径的出口分类, 只能是 `return`, `guard_return`, `break_current_or_outer`, `continue`, `fallthrough`, `nested_unknown`。
+6. use-after: 当前语句剩余部分、当前 block 剩余可达语句、目标 break 外层后续语句是否再次使用 source。
+7. cleanup: 当前 `defer_ctx` 是否已有已注册 defer, loop control release chain 是否会释放或读取 source, source 是否在 active cleanup 可见。
+
+source origin 规则:
+
+1. 只有 `fresh_local` 可以进入 allow 判断。`fresh_local` 必须来自当前函数体内直接构造或已证明唯一拥有的本地 managed 值。
+2. `param_or_import`、`helper_shared`、`collection_value`、`recv_value`、`loop_source`、`union_payload`、`compiler_temp` 和 `unknown` 一律 reject。
+3. 现有 `LocalSet` 还没有完整 origin enum, 只靠 `source_name`、`appendBorrowedLocal(...)` 和 token 形态不足以证明唯一拥有。03.7.4 若要实现, 先补显式 origin 元数据, 不能只按名字或语法末次使用放开。
+
+path exit 规则:
+
+1. `return` / `guard_return` 可以作为离开函数路径, 但仍必须通过 source origin、use-after 和 cleanup 证明。
+2. `break_current_or_outer` 只有在目标 break 离开承载该 source 的 loop, 且 break 目标之后没有 source 可达使用时才可以进入 allow 判断。
+3. `continue` 永远 reject, 因为它直接进入下一轮。
+4. `fallthrough` 永远 reject, 因为当前 loop 可能继续下一轮。
+5. `nested_unknown` 永远 reject, 包括嵌套 if / loop 无法证明所有路径都离开承载 loop 的情况。
+
+use-after 规则:
+
+1. 候选表达式结束到当前语句结束之间不能再使用 source。
+2. 当前语句结束到当前 block 结束之间的可达路径不能再使用 source。
+3. 如果出口是 break, break 目标之后到 source 生命周期结束之间不能再使用 source。
+4. 同一语句多个候选点引用同一 actual local 时一律 reject, 等完整 ownership IR 表达逐点 move 后再放开。
+
+cleanup 规则:
+
+1. 只要 active `defer_ctx` 中已有已注册 defer, 一律 reject。
+2. loop control release chain 会释放的 local 不能在同一路径提前 move, 除非 release plan 能显式 skip 并证明 cleanup 不访问 source。
+3. 03.7.4 不修改 release plan, 因此 cleanup 证明不完整时必须 reject。
+
+最小输出:
+
+```text
+LoopMoveDecision {
+    action = allow | reject
+    reason = fresh_exit_return | fresh_exit_break | origin_not_unique | path_not_exit | use_after | cleanup_visible | unsupported_candidate
+    source_name
+    actual_name
+}
+```
+
+allow 的全部必要条件:
+
+1. candidate 是 direct managed call argument。
+2. source origin 是 `fresh_local`。
+3. path exit 是 `return` / `guard_return`, 或可证明离开承载 source loop 的 `break_current_or_outer`。
+4. use-after 三段扫描都无 source 使用。
+5. cleanup 不可见, 或已有 release plan 能显式 skip source。03.7.4 尚未修改 release plan, 因此当前只能接受 cleanup 不可见。
+
+03.7.4 的落地判断:
+
+1. 若不补显式 origin 元数据和 break 目标后 use-after 扫描, 不应放开任何 loop 内 move。
+2. 若只补 return / guard return 路径, 可以先用 fresh local + no active defer + no use-after 的最小子集试点。
+3. 若 break 路径需要跨 loop frame / block 后续扫描, 证据不足时应延后到完整 ownership IR。
+
+### 8.8 03.7.4 loop 内 return / break move 结论
+
+03.7.4 结论: 当前不落地 loop 内 return / break 退出路径的局部 move, 继续保持 loop body 内 call 参数保守 `inc`。后续在 03.8 决定 ownership facts / IR 路径。
+
+不落地的证据:
+
+1. `Local` 只有 `name`、`source_name`、`ty`、`emit_decl` 和 `release_on_scope_exit`, `StructLocal` / `StorageLocal` / `UnionLocal` 也只有 `source_name` 形态信息, 没有 8.7 要求的显式 source origin enum。
+2. `appendBorrowedLocal(...)` 和 `appendOwnedLocal(...)` 只影响 local 登记方式, 不能区分 `fresh_local`、`param_or_import`、`helper_shared`、`collection_value`、`recv_value`、`loop_source` 和 `compiler_temp`。
+3. loop header 中 collection / recv value binding 通过 `appendBorrowedLocal(...)` 登记, emit 阶段又在每轮 load 后 `inc`; 这些 value 仍应视为 borrowed per-iteration source。
+4. `directManagedCallLastUseMoveSource(...)` 只检查 `allow_last_use_move`、active defer 和 token range use-after, 不检查 source origin。
+5. `emitBody(...)` 当前用 `loop_ctx == null` 作为 loop 内 call 参数 move 的全局门。去掉这个门之前, 必须有替代分析覆盖 source origin、path exit、use-after 和 cleanup。
+6. `emitLoopControlJump(...)` 对 break / continue 会执行 defer cleanup、block locals release 和 loop control release chain, 当前没有针对已 move source 的 skip/证明机制。
+7. `buildLoopControlExitPlan(...)` 的 loop control release plan 对 frames 内 locals 使用空 skip list, 不能表达某条 break 路径已经 move 掉某个 source。
+8. 现有 `bodyCanReachEnd(...)`、`loopBodyCanBreakCurrentLoop(...)` 和 `breakTargetsCurrentLoop(...)` 只能帮助判断可达性或 break 目标, 不能证明 break 目标之后到 source 生命周期结束之间无 use-after。
+
+return-only 子集也暂不落地:
+
+1. return / guard return 作为 path exit 足够强, 但 source origin 仍缺显式证明。
+2. 现有 token 扫描能排除部分同 block 后续使用, 但不能把参数、import/helper 返回值、loop source 和 compiler temp 与 fresh local 稳定区分。
+3. 在没有 source origin enum 前放开 return-only move, 会把 8.7 的 `origin_not_unique` 风险变成实现缺陷。
+
+03.8 决策输入:
+
+1. 先决定是否增加 ownership/source-origin 元数据, 或直接进入完整 ownership IR / graph / data-flow。
+2. 若选增量路径, 第一小步必须是给 `Local` / managed source 增加明确 origin 分类, 并补只读回归证明不会改变现有 lowering。
+3. 若选完整 IR 路径, 第一小步必须是定义 ownership node、edge、exit path、cleanup 和 loop-carried source 的 IR 边界。
+4. 在 path/cleanup facts 完成前, 不新增 loop 内 `arc-call-move`。
+
+### 8.9 03.8 ownership IR / source-origin 决策
+
+03.8 结论: 现在不一次性引入完整 ownership IR / graph / data-flow pass。先走增量 `OwnershipFacts` / source-origin metadata 路径, 但把数据形态设计成未来可迁移到完整 IR。完整 IR 作为触发条件保留, 不作为当前下一步。
+
+推荐路径 A: 增量 source-origin metadata。
+
+1. 先给 managed source 建立显式 `SourceOrigin`, 最小覆盖 `fresh_local`、`param_or_import`、`helper_shared`、`collection_value`、`recv_value`、`loop_source`、`union_payload`、`compiler_temp` 和 `unknown`。
+2. 第一阶段只读采集和传递 origin, 不改变 lowering, 不新增 loop 内 `arc-call-move`。
+3. origin 默认必须是 `unknown` / reject, 不能靠名字、token 位置或 `appendBorrowedLocal(...)` 推断唯一拥有。
+4. 只在 origin 采集稳定后, 再判断是否给 return-only loop 路径增加更小的 allow 子集。
+
+路径 A 的依据:
+
+1. 当前主要硬缺口是 `Local` / `StructLocal` / `StorageLocal` / `UnionLocal` 没有显式 origin, 这是 03.7.4 不落地 loop move 的第一个阻断点。
+2. `directManagedCallLastUseMoveSource(...)` 已经有局部候选点和 use-after 扫描入口, 但缺 origin 事实; 先补 facts 比重写 emit pipeline 风险低。
+3. `emitBody(...)` 仍保留 `loop_ctx == null` 的全局门, source-origin 第一阶段不触碰该门, 所以可用现有回归锁住行为不漂移。
+4. 该路径符合当前扁平 codegen 结构, 变更小, 易回滚, 也能为后续 IR 提供真实字段和迁移经验。
+
+路径 A 的限制:
+
+1. 它不能单独解决 `break` 目标后的 use-after 扫描。
+2. 它不能单独解决 loop control release chain 的 skip 证明。
+3. 它不能表达同一语句多个候选点的逐点 move 顺序。
+4. 所以后续如果要放开 loop move, 还必须补 path/cleanup facts。
+
+路径 B: 现在直接引入完整 ownership IR / graph / data-flow pass。
+
+1. 需要定义 ownership node、edge、alias、move、copy、release、cleanup 和 exit path。
+2. 需要构建函数内 CFG, 覆盖 `return`、guard return、fallthrough、block exit、break、continue、defer cleanup、collection loop 和 recv loop。
+3. 需要让 `ownership.zig` 的 release plan 从 graph/data-flow 结果生成或校验。
+4. 需要迁移现有 token-range last-use、field get move、union payload move 和 release skip 逻辑。
+
+路径 B 暂不作为当前下一步的原因:
+
+1. 当前目标只是继续收窄 ARC move 边界, 不是重写 lowering 架构。
+2. 完整 IR 会同时触碰 local 收集、emit、release plan、defer、loop 和测试期望, 单步风险过大。
+3. 现有回归已经覆盖大量保守子集, 直接迁移会扩大验证面, 不符合每次推进一个小任务的协议。
+4. 在缺 source-origin 事实的情况下直接建 graph, 容易把 origin 问题藏到 edge 推断里, 反而更难审查。
+
+完整 IR 的启动触发条件:
+
+1. source-origin metadata 已落地, 但 path/cleanup facts 仍无法表达某个必要优化。
+2. loop `break` / `continue`、`defer` cleanup 和 release plan skip 需要统一证明, 局部 helper 已经开始互相复制逻辑。
+3. FBIP `reuse` 或 COW 需要跨 block / loop / call 的唯一性证明, 增量 facts 无法稳定回答。
+4. 现有 token-range use-after 扫描出现不可维护的 false allow 或 false reject。
+
+03.8 后续小任务:
+
+1. 03.8.1 增加只读 `SourceOrigin` 元数据, 默认 `unknown`, 不改变 lowering。
+2. 03.8.2 盘点并标注现有 move candidate 的 origin 来源, 继续保持旧输出。
+3. 03.8.3 设计 path/cleanup facts 与 release plan skip 的最小接口, 再决定是否允许 return-only loop move。
+4. 03.8.4 若 03.8.3 仍无法表达, 先收口完整 ownership IR 的启动边界与阻断条件, 暂不落实现。
+
+### 8.10 03.8.1 SourceOrigin 只读元数据落地
+
+03.8.1 结论: `tool/build/codegen.zig` 已增加只读 `SourceOrigin` 元数据, 默认 `unknown`, 当前不改变任何 lowering 或 move 判定。
+
+当前已落地的 origin 标注:
+
+1. 函数参数的 managed local / storage / managed struct 入口标为 `param_or_import`。
+2. collection loop 的 value binding 标为 `collection_value`。
+3. recv loop 的 value binding 标为 `recv_value`。
+4. 隐式 `__loop_source_*` storage local 标为 `loop_source`。
+5. 明确的 compiler temp, 包括 `__loop_index_*`、`__loop_count_*`、union payload helper 和显式 `__*` 临时 local, 标为 `compiler_temp` 或 `union_payload`。
+6. 其他现有 local 先保持 `unknown`, 不做超出证据的推断。
+
+本轮故意不做的事:
+
+1. 不把 `appendOwnedLocal(...)` 一律当成 `fresh_local` 事实来源。像 loop index、field helper 和编译器内部名字都可能走 owned 路径, 不能直接等同唯一拥有。
+2. 不修改 `directManagedCallLastUseMoveSource(...)`、`fieldGetLastUseMoveSource(...)`、`emitBody(...)` 或任何 move allow 条件。
+3. 不修改 `ownership.zig` 的 release plan 结构。
+
+### 8.11 03.8.2 move candidate origin 盘点
+
+03.8.2 结论: 当前 move candidate helper 已统一携带显式 `SourceOrigin`, 但只做盘点和传递, 不改变任何 lowering 或 `arc-call-move` 生成条件。
+
+已盘点的 candidate family:
+
+1. `directManagedLastUseMoveSource(...)` 使用 `Local` 的 origin。
+2. `directManagedCallLastUseMoveSource(...)` 使用 `Local` 的 origin。
+3. `directManagedUnionBindingCallMoveSource(...)` 使用 `Local` 的 origin。
+4. `fieldGetLastUseMoveSource(...)` 使用 `StructLocal` 的 origin。
+
+当前仍保持不变的部分:
+
+1. `directManagedLocalExprName(...)` / `findLocalOrigin(...)` 的证明边界不变。
+2. `fieldGetLastUseMoveSource(...)` 仍只在现有 `allow_field_read_move` 条件下工作。
+3. `emitBody(...)`、`emitGetCall(...)`、`emitFieldGetCall(...)` 的 lowering 输出保持原样。
+
+验证证据:
+
+1. `cd tool && zig test build/codegen.zig` 结果 `All 13 tests passed.`。
+2. `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 必须继续保持绿色，证明 lowering 未漂移。
+
+验证证据:
+
+1. 新增 `tool/build/codegen.zig` 内部 Zig 单测, 覆盖 `unknown` 默认值、`param_or_import`、`loop_source` 和 `compiler_temp` 标注。
+2. `cd tool && zig test build/codegen.zig` 结果为 `All 1 tests passed.`。
+3. `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 必须继续保持现有摘要不变, 证明 lowering 未漂移。
+
+### 8.12 03.8.3 path/cleanup facts 最小接口
+
+03.8.3 结论: `tool/build/ownership.zig` 已显式引入 `PathCleanupFacts`, 并把 release-plan skip 从 ad hoc `skip_names` 收敛到统一的 path facts 接口; `tool/build/codegen.zig` 已切到新接口, 但当前仍只传默认 facts, 不改变 lowering, 也不放开 loop 内 `arc-call-move`。
+
+本轮已落地的最小接口:
+
+1. `PathCleanupFacts { cleanup_visible, release_skip_names }` 作为局部 exit plan 的统一输入。
+2. `buildReturnExitPlanWithFacts(...)`、`buildGuardReturnExitPlanWithFacts(...)`、`buildFallthroughExitPlanWithFacts(...)`、`buildBlockExitPlanWithFacts(...)` 作为 facts 版 builder。
+3. `LoopFrame` 增加 `path_facts`, 允许每层 loop-control frame 独立携带 release skip 信息。
+4. `buildLoopControlExitPlan(...)` 已读取 `frame.path_facts.release_skip_names` 参与 release step 生成。
+
+当前故意保持不变的边界:
+
+1. `emitBody(...)` 仍然使用 `loop_ctx == null` 作为 loop 内 call 参数 move 的全局门。
+2. `collectLoopControlFrames(...)` 当前传入的是空 `path_facts`, 所以 loop break / continue 的 release 输出不变。
+3. return / guard return 的 skip 语义只是换成 facts 承载, 现有 `move_names` 行为不变。
+4. 还没有把 `cleanup_visible` 和真实 defer cleanup 可见性接到新的 move allow 判定里。
+
+验证证据:
+
+1. `cd tool && zig test build/ownership.zig` 结果 `All 2 tests passed.`。
+2. `cd tool && zig test build/codegen.zig` 结果 `All 13 tests passed.`。
+3. `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 必须继续保持绿色, 证明 lowering 未漂移。
+
+### 8.13 03.8.4 完整 ownership IR 启动边界
+
+03.8.4 结论: 当前不启动完整 ownership IR / graph / data-flow 实现, 只把启动条件和阻断条件写清楚。现阶段仍留在 `PathCleanupFacts` 这一层。
+
+当前仍然阻断 return-only loop move 的点:
+
+1. `cleanup_visible` 还没有接入 move allow 判定。
+2. `emitBody(...)` 仍然依赖 `loop_ctx == null` 作为 loop 内 call 参数 move 的全局门。
+3. `break` / `continue` 目标之后到 source 生命周期结束之间, 仍没有稳定的 use-after 扫描。
+4. 同一语句多候选点的逐点 move 顺序仍无法表达。
+
+因此完整 ownership IR 只在以下条件满足时才启动:
+
+1. path/cleanup facts 无法继续扩展承载所需证明。
+2. loop cleanup / defer cleanup / release skip 的证明逻辑开始在局部 helper 中重复蔓延。
+3. 需要跨 block / loop / call 的统一唯一性证明。
+4. 现有 token-range use-after 扫描出现不可维护的 false allow 或 false reject。
+
+本轮故意不做的事:
+
+1. 不新增 ownership node / edge / alias / move / copy / release graph。
+2. 不修改 `emitBody(...)` 的 loop 内 call 参数 move 门。
+3. 不放开任何新的 `arc-call-move`。
 
 ---
 
@@ -411,6 +659,46 @@ Wasm linear memory 是 runtime 实现细节。源码不暴露地址。
 4. shared memory 与真实 atomic 指令。
 5. component model 资源生命周期集成。
 6. 闭包环境和捕获变量生命周期设计。
+
+### 11.1 03.9 FBIP reuse 最小设计边界
+
+03.9 结论: `FBIP reuse` 只作为实现优化讨论, 不能改变源码层值语义。当前先收口最小设计边界, 暂不落实现。
+
+`reuse` 的目标:
+
+1. 在 `[T]`、`text` backing 和 managed struct payload 的写路径中, 复用当前 object/backing, 减少 clone 或重新分配。
+2. `reuse` 只优化 allocation / copy 成本, 不改变 ARC 对外语义, 也不改变 `@set/@put`、字段写入或集合写入的结果值。
+
+最小允许条件:
+
+1. 当前对象 `rc == 1`。
+2. 写路径本来就允许原地更新, 或可在当前 object 上安全完成 overwrite / append / field replace。
+3. 被写目标在源码层不可观察到中间状态。
+4. 若 payload 含 managed 子值, 新旧 child 的 retain / release 顺序仍满足现有 ARC 规则。
+
+mutability 边界:
+
+1. 源码层仍然只有值语义, 没有用户可见 mutable reference。
+2. `reuse` 不是“对象变成可变”, 而是“编译器在唯一拥有时选择原地实现”。
+3. 带共享别名、borrowed source、import/param helper source、loop-carried source 的对象一律不能因为 `reuse` 被视为可变。
+
+COW 回退条件:
+
+1. 只要 `rc > 1`, 必须回退到 clone / grow 路径。
+2. 即使 `rc == 1`, 只要容量不足、layout 不支持原地替换、或 child release 次序无法稳定证明, 也必须回退。
+3. 任何可能把旧值可观察行为改掉的情况, 都必须回退到现有 COW / overwrite 逻辑。
+
+`rc == 1` 的使用边界:
+
+1. `rc == 1` 只是必要条件, 不是充分条件。
+2. 不能把临时 `inc/dec` 摆动、defer cleanup 可见性、或 call 边界上的短暂唯一性当作稳定唯一拥有。
+3. `rc == 1` 的判断只能用于当前写路径本地决策, 不能推出跨 block / loop / call 的长期唯一性。
+
+当前明确不做:
+
+1. 不把 `reuse` 扩大成通用 mutability 模型。
+2. 不把 `reuse` 用到 loop move、call 参数 move、或 return-only move 判定。
+3. 不为 `reuse` 启动完整 ownership IR 实现; 若后续发现仅靠局部 `rc == 1` + 现有 ownership facts 无法稳定证明, 再回到 03.8.4 的完整 IR 启动条件。
 
 ---
 

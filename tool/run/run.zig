@@ -13,13 +13,13 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
     };
 
     const wasm_tools = findExecutable(allocator, io, init.environ_map, "wasm-tools") catch |err| {
-        try diag.printIoError(io, "wasm-tools", err);
+        try printToolLookupError(io, "wasm-tools", err);
         std.process.exit(1);
     };
     defer allocator.free(wasm_tools);
 
     const node = findExecutable(allocator, io, init.environ_map, "node") catch |err| {
-        try diag.printIoError(io, "node", err);
+        try printToolLookupError(io, "node", err);
         std.process.exit(1);
     };
     defer allocator.free(node);
@@ -83,6 +83,25 @@ fn exitCode(term: std.process.Child.Term) u8 {
     };
 }
 
+fn printToolLookupError(io: std.Io, name: []const u8, err: anyerror) !void {
+    if (err != error.FileNotFound) {
+        try diag.printIoError(io, name, err);
+        return;
+    }
+
+    var err_buffer: [256]u8 = undefined;
+    const msg = try formatMissingToolDiagnostic(&err_buffer, name);
+
+    var out_buffer: [256]u8 = undefined;
+    var out = std.Io.File.stderr().writer(io, &out_buffer);
+    try out.interface.writeAll(msg);
+    try out.interface.flush();
+}
+
+fn formatMissingToolDiagnostic(buffer: []u8, name: []const u8) ![]const u8 {
+    return std.fmt.bufPrint(buffer, "error[MissingExternalTool]: {s} not found\n", .{name});
+}
+
 fn findExecutable(
     allocator: std.mem.Allocator,
     io: std.Io,
@@ -141,4 +160,11 @@ test "findExecutable preserves PATH launcher path instead of resolving symlink t
     defer allocator.free(expected);
 
     try std.testing.expectEqualStrings(expected, resolved);
+}
+
+test "formatMissingToolDiagnostic prints explicit missing tool error" {
+    var buffer: [128]u8 = undefined;
+    const msg = try formatMissingToolDiagnostic(&buffer, "wasm-tools");
+
+    try std.testing.expectEqualStrings("error[MissingExternalTool]: wasm-tools not found\n", msg);
 }

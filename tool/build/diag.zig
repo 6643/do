@@ -422,6 +422,7 @@ fn errorSummary(err: anyerror) []const u8 {
         error.MissingTestInputPath => "示例: `do test sample.do` 或 `do test sample.do --compiled -o sample.wat`",
         error.UnexpectedCliArg => "命令只接受一个输入文件和已声明的选项",
         error.OutputRequiresCompiledTest => "`do test -o out.wat` 需要同时写 `--compiled`",
+        error.FormatMismatch => "input is not formatted",
         else => "编译失败",
     };
 }
@@ -478,6 +479,7 @@ fn errorHint(err: anyerror) []const u8 {
         error.MissingTestInputPath => "示例: `do test sample.do` 或 `do test sample.do --compiled -o sample.wat`",
         error.UnexpectedCliArg => "build 写作 `do build input.do [-o out.wat]`; test 写作 `do test input.do` 或 `do test input.do --compiled [-o out.wat]`",
         error.OutputRequiresCompiledTest => "生成 WAT 的测试入口写作 `do test input.do --compiled -o out.wat`",
+        error.FormatMismatch => "运行 `do fmt input.do` 查看格式化后的 stdout 输出",
         else => "语法示例: `if expr { ... }`, `loop { ... }`, `@get(value, .field)`, `Type{field = value}`",
     };
 }

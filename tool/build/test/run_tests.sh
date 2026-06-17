@@ -13,6 +13,7 @@ COMPILE_ERR_DIR="$TEST_DIR/compile_err"
 COMPILED_OK_DIR="$TEST_DIR/compiled_ok"
 COMPILED_ERR_DIR="$TEST_DIR/compiled_err"
 COMPILED_TRAP_DIR="$TEST_DIR/compiled_trap"
+FMT_DIR="$TEST_DIR/fmt"
 PENDING_OK_DIR="$TEST_DIR/pending/ok"
 PENDING_ERR_DIR="$TEST_DIR/pending/err"
 TMP_DIR="$TEST_DIR/tmp"
@@ -153,6 +154,30 @@ run_cli_strict_arg_case() {
         return
     fi
 
+    if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" run "$case_file" --bad >"$stdout_file" 2>"$stderr_file"; then
+        echo "[FAIL] cli strict_args run unknown flag (expected failure)"
+        ((fail_count += 1))
+        return
+    fi
+    if ! grep -Fq "error[UnexpectedCliArg]" "$stderr_file"; then
+        echo "[FAIL] cli strict_args run unknown flag (missing diagnostic)"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" run "$case_file" "$case_file" >"$stdout_file" 2>"$stderr_file"; then
+        echo "[FAIL] cli strict_args run extra input (expected failure)"
+        ((fail_count += 1))
+        return
+    fi
+    if ! grep -Fq "error[UnexpectedCliArg]" "$stderr_file"; then
+        echo "[FAIL] cli strict_args run extra input (missing diagnostic)"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
     if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" test "$test_case_file" -o "$TMP_DIR/cli_strict_args.wat" >"$stdout_file" 2>"$stderr_file"; then
         echo "[FAIL] cli strict_args test output without compiled (expected failure)"
         ((fail_count += 1))
@@ -263,6 +288,223 @@ run_ok_compiled_must_pass_case() {
     fi
 
     echo "[PASS] ok  $name (compiled)"
+    ((pass_count += 1))
+}
+
+run_do_run_case() {
+    local case_file="$1"
+    local name
+    name="$(basename "$case_file" .do)"
+
+    local stdout_file="$TMP_DIR/run_${name}.stdout"
+    local stderr_file="$TMP_DIR/run_${name}.stderr"
+    local expect_file="${case_file%.do}.stdout.expect"
+
+    if ! DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" run "$case_file" >"$stdout_file" 2>"$stderr_file"; then
+        echo "[FAIL] do run $name (unexpected non-zero exit)"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if [[ -s "$stderr_file" ]]; then
+        echo "[FAIL] do run $name (unexpected stderr)"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if [[ -f "$expect_file" ]]; then
+        if ! diff -u "$expect_file" "$stdout_file"; then
+            echo "[FAIL] do run $name (stdout mismatch)"
+            ((fail_count += 1))
+            return
+        fi
+    elif [[ -s "$stdout_file" ]]; then
+        echo "[FAIL] do run $name (unexpected stdout)"
+        cat "$stdout_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    echo "[PASS] do run $name"
+    ((pass_count += 1))
+}
+
+run_fmt_case() {
+    local case_file="$1"
+    local name
+    name="$(basename "$case_file" .do)"
+
+    local expect_file="${case_file%.do}.expect"
+    local stdout_file="$TMP_DIR/fmt_${name}.stdout"
+    local stderr_file="$TMP_DIR/fmt_${name}.stderr"
+    local second_stdout_file="$TMP_DIR/fmt_${name}.second.stdout"
+    local second_stderr_file="$TMP_DIR/fmt_${name}.second.stderr"
+    local formatted_file="$TMP_DIR/fmt_${name}.formatted.do"
+
+    if [[ ! -f "$expect_file" ]]; then
+        echo "[FAIL] fmt $name (missing expect file)"
+        ((fail_count += 1))
+        return
+    fi
+
+    if ! DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" fmt "$case_file" >"$stdout_file" 2>"$stderr_file"; then
+        echo "[FAIL] fmt $name (unexpected non-zero exit)"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if [[ -s "$stderr_file" ]]; then
+        echo "[FAIL] fmt $name (unexpected stderr)"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if ! diff -u "$expect_file" "$stdout_file"; then
+        echo "[FAIL] fmt $name (stdout mismatch)"
+        ((fail_count += 1))
+        return
+    fi
+
+    cp "$stdout_file" "$formatted_file"
+    if ! DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" fmt "$formatted_file" >"$second_stdout_file" 2>"$second_stderr_file"; then
+        echo "[FAIL] fmt $name (idempotence command failed)"
+        cat "$second_stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if [[ -s "$second_stderr_file" ]]; then
+        echo "[FAIL] fmt $name (idempotence stderr)"
+        cat "$second_stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if ! diff -u "$stdout_file" "$second_stdout_file"; then
+        echo "[FAIL] fmt $name (idempotence mismatch)"
+        ((fail_count += 1))
+        return
+    fi
+
+    if ! DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" fmt --check "$formatted_file" >"$stdout_file" 2>"$stderr_file"; then
+        echo "[FAIL] fmt $name (--check formatted source failed)"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if [[ -s "$stdout_file" || -s "$stderr_file" ]]; then
+        echo "[FAIL] fmt $name (--check formatted source emitted output)"
+        cat "$stdout_file"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if cmp -s "$case_file" "$expect_file"; then
+        echo "[PASS] fmt $name"
+        ((pass_count += 1))
+        return
+    fi
+
+    if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" fmt --check "$case_file" >"$stdout_file" 2>"$stderr_file"; then
+        echo "[FAIL] fmt $name (--check unformatted source passed)"
+        ((fail_count += 1))
+        return
+    fi
+
+    if ! grep -Fq "error[FormatMismatch]" "$stderr_file"; then
+        echo "[FAIL] fmt $name (--check mismatch diagnostic missing)"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if [[ -s "$stdout_file" ]]; then
+        echo "[FAIL] fmt $name (--check mismatch stdout)"
+        cat "$stdout_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    echo "[PASS] fmt $name"
+    ((pass_count += 1))
+}
+
+run_do_run_missing_wasm_tools_case() {
+    local case_file="$TEST_DIR/run/01_start_scalar.do"
+    local stdout_file="$TMP_DIR/run_missing_wasm_tools.stdout"
+    local stderr_file="$TMP_DIR/run_missing_wasm_tools.stderr"
+    local empty_path="$TMP_DIR/run_missing_wasm_tools_path"
+
+    rm -rf "$empty_path"
+    mkdir -p "$empty_path"
+
+    if PATH="$empty_path" DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" run "$case_file" >"$stdout_file" 2>"$stderr_file"; then
+        echo "[FAIL] do run missing wasm-tools (expected failure)"
+        ((fail_count += 1))
+        return
+    fi
+
+    if ! grep -Fq "error[MissingExternalTool]: wasm-tools not found" "$stderr_file"; then
+        echo "[FAIL] do run missing wasm-tools (missing diagnostic)"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if [[ -s "$stdout_file" ]]; then
+        echo "[FAIL] do run missing wasm-tools (unexpected stdout)"
+        cat "$stdout_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    echo "[PASS] do run missing wasm-tools"
+    ((pass_count += 1))
+}
+
+run_do_run_missing_node_case() {
+    local case_file="$TEST_DIR/run/01_start_scalar.do"
+    local stdout_file="$TMP_DIR/run_missing_node.stdout"
+    local stderr_file="$TMP_DIR/run_missing_node.stderr"
+    local tool_path="$TMP_DIR/run_missing_node_path"
+
+    if [[ -z "$WASM_TOOLS" || ! -x "$WASM_TOOLS" ]]; then
+        echo "[FAIL] do run missing node (wasm-tools not found for setup)"
+        ((fail_count += 1))
+        return
+    fi
+
+    rm -rf "$tool_path"
+    mkdir -p "$tool_path"
+    ln -s "$WASM_TOOLS" "$tool_path/wasm-tools"
+
+    if PATH="$tool_path" DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" run "$case_file" >"$stdout_file" 2>"$stderr_file"; then
+        echo "[FAIL] do run missing node (expected failure)"
+        ((fail_count += 1))
+        return
+    fi
+
+    if ! grep -Fq "error[MissingExternalTool]: node not found" "$stderr_file"; then
+        echo "[FAIL] do run missing node (missing diagnostic)"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if [[ -s "$stdout_file" ]]; then
+        echo "[FAIL] do run missing node (unexpected stdout)"
+        cat "$stdout_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    echo "[PASS] do run missing node"
     ((pass_count += 1))
 }
 
@@ -1040,6 +1282,21 @@ if [[ "${RUN_WASM:-0}" == "1" ]]; then
         run_compiled_trap_case "$case_file"
     done
 fi
+
+echo "[INFO] run do run cases"
+run_do_run_missing_wasm_tools_case
+run_do_run_missing_node_case
+
+for case_file in "$TEST_DIR/run"/*.do; do
+    [[ -e "$case_file" ]] || continue
+    run_do_run_case "$case_file"
+done
+
+echo "[INFO] run fmt cases"
+for case_file in "$FMT_DIR"/*.do; do
+    [[ -e "$case_file" ]] || continue
+    run_fmt_case "$case_file"
+done
 
 if [[ "$RUN_PENDING" == "1" ]]; then
     echo "[INFO] pending cases track spec/impl gaps; failures here are expected until implementation catches up"

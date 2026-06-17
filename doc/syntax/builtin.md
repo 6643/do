@@ -19,7 +19,7 @@
 @is(value, FileError)
 ```
 
-规则: `@is(value, TypeExpr)` 只做类型分支判断, 第二个实参必须是类型表达式。值比较使用 `@eq/@ne`; `nil` 判断使用值比较或 nullable helper, 不写成 `@is(value, nil)`。
+规则: `@is(value, TypeExpr)` 只做类型分支判断, 第二个实参必须是类型表达式。`value enum` 的分支值和 `nil` 都是值, 统一使用 `@eq/@ne` 判断, 不写成 `@is(value, ByteDigit)` 或 `@is(value, nil)`。
 
 ## 逻辑
 

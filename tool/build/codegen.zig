@@ -5,10 +5,23 @@ const ownership = @import("ownership.zig");
 const parser = @import("parser.zig");
 const test_runner = @import("test_runner.zig");
 
+const SourceOrigin = enum {
+    unknown,
+    fresh_local,
+    param_or_import,
+    helper_shared,
+    collection_value,
+    recv_value,
+    loop_source,
+    union_payload,
+    compiler_temp,
+};
+
 const Local = struct {
     name: []const u8,
     source_name: ?[]const u8 = null,
     ty: []const u8,
+    origin: SourceOrigin = .unknown,
     emit_decl: bool = true,
     release_on_scope_exit: bool = true,
 };
@@ -58,6 +71,7 @@ const StructLocal = struct {
     name: []const u8,
     source_name: ?[]const u8 = null,
     ty: []const u8,
+    origin: SourceOrigin = .unknown,
 };
 
 const TypedStructBinding = struct {
@@ -70,6 +84,7 @@ const StorageLocal = struct {
     source_name: ?[]const u8 = null,
     ty: []const u8,
     elem_ty: []const u8,
+    origin: SourceOrigin = .unknown,
 };
 
 const UnionBranch = struct {
@@ -90,6 +105,7 @@ const UnionLocal = struct {
     source_name: ?[]const u8 = null,
     layout: UnionLayout,
     owns_layout: bool = false,
+    origin: SourceOrigin = .unknown,
 };
 
 const FieldMetaLocal = struct {
@@ -156,11 +172,23 @@ const LocalSet = struct {
         ty: []const u8,
         emit_decl: bool,
     ) !void {
+        return self.appendBorrowedLocalWithOrigin(allocator, name, ty, emit_decl, .unknown);
+    }
+
+    fn appendBorrowedLocalWithOrigin(
+        self: *LocalSet,
+        allocator: std.mem.Allocator,
+        name: []const u8,
+        ty: []const u8,
+        emit_decl: bool,
+        origin: SourceOrigin,
+    ) !void {
         const resolved = try self.scopedLocalName(allocator, name, emit_decl);
         try self.locals.append(allocator, .{
             .name = resolved.name,
             .source_name = resolved.source_name,
             .ty = ty,
+            .origin = origin,
             .emit_decl = emit_decl,
         });
     }
@@ -171,12 +199,23 @@ const LocalSet = struct {
         name: []const u8,
         ty: []const u8,
     ) !void {
+        return self.appendOwnedLocalWithOrigin(allocator, name, ty, .fresh_local);
+    }
+
+    fn appendOwnedLocalWithOrigin(
+        self: *LocalSet,
+        allocator: std.mem.Allocator,
+        name: []const u8,
+        ty: []const u8,
+        origin: SourceOrigin,
+    ) !void {
         try self.owned_names.append(allocator, name);
         errdefer allocator.free(name);
         errdefer _ = self.owned_names.pop();
         try self.locals.append(allocator, .{
             .name = name,
             .ty = ty,
+            .origin = origin,
             .emit_decl = true,
         });
     }
@@ -205,17 +244,31 @@ const LocalSet = struct {
         elem_ty: []const u8,
         emit_decl: bool,
     ) !void {
+        return self.appendStorageLocalWithTypeAndOrigin(allocator, name, ty, elem_ty, emit_decl, .unknown);
+    }
+
+    fn appendStorageLocalWithTypeAndOrigin(
+        self: *LocalSet,
+        allocator: std.mem.Allocator,
+        name: []const u8,
+        ty: []const u8,
+        elem_ty: []const u8,
+        emit_decl: bool,
+        origin: SourceOrigin,
+    ) !void {
         const resolved = try self.scopedLocalName(allocator, name, emit_decl);
         try self.storage_locals.append(allocator, .{
             .name = resolved.name,
             .source_name = resolved.source_name,
             .ty = ty,
             .elem_ty = elem_ty,
+            .origin = origin,
         });
         try self.locals.append(allocator, .{
             .name = resolved.name,
             .source_name = resolved.source_name,
             .ty = ty,
+            .origin = origin,
             .emit_decl = emit_decl,
         });
     }
@@ -228,6 +281,18 @@ const LocalSet = struct {
         emit_decl: bool,
         owns_layout: bool,
     ) !void {
+        return self.appendUnionLocalWithOrigin(allocator, name, layout, emit_decl, owns_layout, .unknown);
+    }
+
+    fn appendUnionLocalWithOrigin(
+        self: *LocalSet,
+        allocator: std.mem.Allocator,
+        name: []const u8,
+        layout: UnionLayout,
+        emit_decl: bool,
+        owns_layout: bool,
+        origin: SourceOrigin,
+    ) !void {
         if (findUnionLocalExact(self.union_locals.items, name)) |existing| {
             if (!unionLayoutsEqual(existing.layout, layout)) return error.NoMatchingCall;
             if (owns_layout) freeUnionLayout(allocator, layout);
@@ -239,6 +304,7 @@ const LocalSet = struct {
             .source_name = resolved.source_name,
             .layout = layout,
             .owns_layout = owns_layout,
+            .origin = origin,
         });
         for (layout.payload_tys, 0..) |payload_ty, idx| {
             const payload_name = try unionPayloadLocalName(allocator, resolved.name, idx);
@@ -248,6 +314,7 @@ const LocalSet = struct {
             try self.locals.append(allocator, .{
                 .name = payload_name,
                 .ty = payload_ty,
+                .origin = .union_payload,
                 .emit_decl = emit_decl,
             });
         }
@@ -259,6 +326,7 @@ const LocalSet = struct {
         try self.locals.append(allocator, .{
             .name = tag_name,
             .ty = "i32",
+            .origin = .compiler_temp,
             .emit_decl = emit_decl,
         });
     }
@@ -270,11 +338,23 @@ const LocalSet = struct {
         ty: []const u8,
         emit_decl: bool,
     ) ![]const u8 {
+        return self.appendStructLocalWithOrigin(allocator, name, ty, emit_decl, .unknown);
+    }
+
+    fn appendStructLocalWithOrigin(
+        self: *LocalSet,
+        allocator: std.mem.Allocator,
+        name: []const u8,
+        ty: []const u8,
+        emit_decl: bool,
+        origin: SourceOrigin,
+    ) ![]const u8 {
         const resolved = try self.scopedLocalName(allocator, name, emit_decl);
         try self.struct_locals.append(allocator, .{
             .name = resolved.name,
             .source_name = resolved.source_name,
             .ty = ty,
+            .origin = origin,
         });
         return resolved.name;
     }
@@ -1516,17 +1596,17 @@ fn collectLoopBlockLocals(
     if (fieldReflectionLoopHeader(tokens, start_idx, end_idx, ctx, out)) |header| {
         try collectFieldReflectionLoopLocals(allocator, tokens, header, ctx, out);
         return true;
-    } else if (collectionLoopHeader(tokens, start_idx, end_idx, ctx, out)) |header| {
-        try appendLoopIndexLocal(allocator, out, start_idx);
-        if (header.source_is_expr) {
-            try appendLoopSourceStorageLocal(allocator, out, start_idx, header.source_ty, header.elem_ty);
-        }
+        } else if (collectionLoopHeader(tokens, start_idx, end_idx, ctx, out)) |header| {
+            try appendLoopIndexLocal(allocator, out, start_idx);
+            if (header.source_is_expr) {
+                try appendLoopSourceStorageLocal(allocator, out, start_idx, header.source_ty, header.elem_ty);
+            }
         if (isManagedLocalType(header.elem_ty, ctx)) {
             try out.ensureStorageWriteTemps(allocator);
         }
         if (header.value_name) |value_name| {
             if (!hasLocal(out.locals.items, value_name)) {
-                try out.appendBorrowedLocal(allocator, value_name, header.elem_ty, true);
+                try out.appendBorrowedLocalWithOrigin(allocator, value_name, header.elem_ty, true, .collection_value);
             }
         }
         if (header.index_name) |index_name| {
@@ -1541,7 +1621,7 @@ fn collectLoopBlockLocals(
         }
         if (header.value_name) |value_name| {
             if (!hasLocal(out.locals.items, value_name)) {
-                try out.appendBorrowedLocal(allocator, value_name, header.elem_ty, true);
+                try out.appendBorrowedLocalWithOrigin(allocator, value_name, header.elem_ty, true, .recv_value);
             }
         }
         if (header.count_name) |count_name| {
@@ -1619,7 +1699,7 @@ fn appendLoopIndexLocal(
         allocator.free(name);
         return;
     }
-    try out.appendOwnedLocal(allocator, name, "usize");
+    try out.appendOwnedLocalWithOrigin(allocator, name, "usize", .compiler_temp);
 }
 
 fn appendLoopCountLocal(
@@ -1632,7 +1712,7 @@ fn appendLoopCountLocal(
         allocator.free(name);
         return;
     }
-    try out.appendOwnedLocal(allocator, name, "usize");
+    try out.appendOwnedLocalWithOrigin(allocator, name, "usize", .compiler_temp);
 }
 
 fn appendLoopSourceStorageLocal(
@@ -1653,12 +1733,14 @@ fn appendLoopSourceStorageLocal(
     try out.locals.append(allocator, .{
         .name = name,
         .ty = ty,
+        .origin = .loop_source,
         .emit_decl = true,
     });
     try out.storage_locals.append(allocator, .{
         .name = name,
         .ty = ty,
         .elem_ty = elem_ty,
+        .origin = .loop_source,
     });
 }
 
@@ -1923,6 +2005,7 @@ fn appendDeclOnlyLocals(
             .name = name,
             .source_name = local.source_name,
             .ty = ty,
+            .origin = local.origin,
             .emit_decl = local.emit_decl,
             .release_on_scope_exit = false,
         });
@@ -1949,6 +2032,7 @@ fn appendDeclOnlyLocals(
             .source_name = storage.source_name,
             .ty = ty,
             .elem_ty = elem_ty,
+            .origin = storage.origin,
         });
     }
     for (source.struct_locals.items) |struct_local| {
@@ -1967,6 +2051,7 @@ fn appendDeclOnlyLocals(
             .name = name,
             .source_name = struct_local.source_name,
             .ty = ty,
+            .origin = struct_local.origin,
         });
     }
     for (source.union_locals.items) |union_local| {
@@ -1981,6 +2066,7 @@ fn appendDeclOnlyLocals(
             .source_name = union_local.source_name,
             .layout = layout,
             .owns_layout = true,
+            .origin = union_local.origin,
         });
     }
 }
@@ -2816,7 +2902,10 @@ fn buildReturnOwnershipPlan(
 ) !ownership.ExitPlan {
     const managed = try collectManagedOwnershipLocals(allocator, locals, ctx);
     defer if (managed.len != 0) allocator.free(managed);
-    return ownership.buildReturnExitPlan(allocator, managed, skip_names);
+    return ownership.buildReturnExitPlanWithFacts(allocator, managed, .{
+        .cleanup_visible = true,
+        .release_skip_names = skip_names,
+    });
 }
 
 fn buildGuardReturnOwnershipPlan(
@@ -2827,7 +2916,10 @@ fn buildGuardReturnOwnershipPlan(
 ) !ownership.ExitPlan {
     const managed = try collectManagedOwnershipLocals(allocator, locals, ctx);
     defer if (managed.len != 0) allocator.free(managed);
-    return ownership.buildGuardReturnExitPlan(allocator, managed, skip_names);
+    return ownership.buildGuardReturnExitPlanWithFacts(allocator, managed, .{
+        .cleanup_visible = true,
+        .release_skip_names = skip_names,
+    });
 }
 
 fn buildFallthroughOwnershipPlan(
@@ -2837,7 +2929,7 @@ fn buildFallthroughOwnershipPlan(
 ) !ownership.ExitPlan {
     const managed = try collectManagedOwnershipLocals(allocator, locals, ctx);
     defer if (managed.len != 0) allocator.free(managed);
-    return ownership.buildFallthroughExitPlan(allocator, managed);
+    return ownership.buildFallthroughExitPlanWithFacts(allocator, managed, .{});
 }
 
 fn buildBlockOwnershipPlan(
@@ -2847,7 +2939,7 @@ fn buildBlockOwnershipPlan(
 ) !ownership.ExitPlan {
     const managed = try collectManagedOwnershipLocals(allocator, locals, ctx);
     defer if (managed.len != 0) allocator.free(managed);
-    return ownership.buildBlockExitPlan(allocator, managed);
+    return ownership.buildBlockExitPlanWithFacts(allocator, managed, .{});
 }
 
 fn collectLoopControlFrames(
@@ -2867,7 +2959,10 @@ fn collectLoopControlFrames(
     var cursor: ?*const LoopControl = start;
     while (cursor) |control| {
         const managed = try collectManagedOwnershipLocals(allocator, control.cleanup_locals, ctx);
-        try frames.append(allocator, .{ .locals = managed });
+        try frames.append(allocator, .{
+            .locals = managed,
+            .path_facts = .{},
+        });
         if (sameLoopControl(control, target)) break;
         cursor = control.parent;
     }
@@ -3015,6 +3110,7 @@ fn directManagedLocalExprName(
 const LastUseManagedMoveSource = struct {
     source_name: []const u8,
     actual_name: []const u8,
+    origin: SourceOrigin,
 };
 
 const CallLastUseMoveContext = struct {
@@ -3103,11 +3199,27 @@ fn directManagedLastUseMoveSource(
     if (std.mem.eql(u8, source_name, target_source_name)) return null;
     if (hasRegisteredDeferStmt(tokens, defer_ctx)) return null;
     const actual_name = directManagedLocalExprName(tokens, start_idx, end_idx, locals, ctx) orelse return null;
+    const origin = findLocalOrigin(locals.locals.items, source_name) orelse .unknown;
     if (tokenRangeUsesIdent(tokens, end_idx, body_end, source_name)) return null;
     return .{
         .source_name = source_name,
         .actual_name = actual_name,
+        .origin = origin,
     };
+}
+
+fn directManagedLastUseMoveSourceOrigin(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    body_end: usize,
+    target_source_name: []const u8,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    defer_ctx: ?*const DeferContext,
+) ?SourceOrigin {
+    const source = directManagedLastUseMoveSource(tokens, start_idx, end_idx, body_end, target_source_name, locals, ctx, defer_ctx) orelse return null;
+    return source.origin;
 }
 
 fn freshStructLiteralBindingStmtEnd(
@@ -3157,7 +3269,7 @@ fn fieldGetLastUseMoveSource(
     move_ctx: CallLastUseMoveContext,
     locals: *const LocalSet,
     ctx: CodegenContext,
-) CodegenError!?[]const u8 {
+) CodegenError!?LastUseManagedMoveSource {
     if (!move_ctx.allow_last_use_move or !move_ctx.allow_field_read_move) return null;
     if (!isManagedLocalType(field_ty, ctx)) return null;
     if (hasRegisteredDeferStmt(tokens, move_ctx.defer_ctx)) return null;
@@ -3177,7 +3289,11 @@ fn fieldGetLastUseMoveSource(
     if (tokenRangeUsesIdent(tokens, decl_end, start_idx, source_name)) return null;
     if (tokenRangeUsesIdent(tokens, end_idx, move_ctx.stmt_end, source_name)) return null;
     if (tokenRangeUsesIdent(tokens, move_ctx.stmt_end, move_ctx.body_end, source_name)) return null;
-    return source_name;
+    return .{
+        .source_name = source_name,
+        .actual_name = struct_local.name,
+        .origin = struct_local.origin,
+    };
 }
 
 fn directManagedCallLastUseMoveSource(
@@ -3193,12 +3309,26 @@ fn directManagedCallLastUseMoveSource(
     if (hasRegisteredDeferStmt(tokens, move_ctx.defer_ctx)) return null;
     const source_name = tokens[start_idx].lexeme;
     const actual_name = directManagedLocalExprName(tokens, start_idx, end_idx, locals, ctx) orelse return null;
+    const origin = findLocalOrigin(locals.locals.items, source_name) orelse .unknown;
     if (tokenRangeUsesIdent(tokens, end_idx, move_ctx.stmt_end, source_name)) return null;
     if (tokenRangeUsesIdent(tokens, move_ctx.stmt_end, move_ctx.body_end, source_name)) return null;
     return .{
         .source_name = source_name,
         .actual_name = actual_name,
+        .origin = origin,
     };
+}
+
+fn directManagedCallLastUseMoveSourceOrigin(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    move_ctx: CallLastUseMoveContext,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+) ?SourceOrigin {
+    const source = directManagedCallLastUseMoveSource(tokens, start_idx, end_idx, move_ctx, locals, ctx) orelse return null;
+    return source.origin;
 }
 
 fn directManagedUnionBindingCallMoveSource(
@@ -3218,12 +3348,30 @@ fn directManagedUnionBindingCallMoveSource(
     if (hasRegisteredDeferStmt(tokens, defer_ctx)) return null;
     const source_name = tokens[start_idx].lexeme;
     const actual_name = directManagedLocalExprName(tokens, start_idx, end_idx, locals, ctx) orelse return null;
+    const origin = findLocalOrigin(locals.locals.items, source_name) orelse .unknown;
     if (tokenRangeUsesIdent(tokens, end_idx, args_end, source_name)) return null;
     if (tokenRangeUsesIdent(tokens, stmt_end, body_end, source_name)) return null;
     return .{
         .source_name = source_name,
         .actual_name = actual_name,
+        .origin = origin,
     };
+}
+
+fn directManagedUnionBindingCallMoveSourceOrigin(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    args_end: usize,
+    stmt_end: usize,
+    body_end: usize,
+    allow_last_use_move: bool,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    defer_ctx: ?*const DeferContext,
+) ?SourceOrigin {
+    const source = directManagedUnionBindingCallMoveSource(tokens, start_idx, end_idx, args_end, stmt_end, body_end, allow_last_use_move, locals, ctx, defer_ctx) orelse return null;
+    return source.origin;
 }
 
 fn hasMoveSource(sources: []const LastUseManagedMoveSource, actual_name: []const u8) bool {
@@ -10361,12 +10509,12 @@ fn appendFuncParamLocals(
         if (param.callback != null) continue;
         const abi_ty = funcParamAbiType(param);
         if (managedPayloadElemTypeFromName(abi_ty)) |elem_ty| {
-            try locals.appendBorrowedLocal(allocator, param.name, abi_ty, false);
+            try locals.appendBorrowedLocalWithOrigin(allocator, param.name, abi_ty, false, .param_or_import);
             try locals.storage_locals.append(allocator, .{ .name = param.name, .ty = abi_ty, .elem_ty = elem_ty });
         } else if (findStructDecl(ctx.structs, abi_ty)) |decl| {
-            try locals.struct_locals.append(allocator, .{ .name = param.name, .ty = abi_ty });
+            try locals.struct_locals.append(allocator, .{ .name = param.name, .ty = abi_ty, .origin = .param_or_import });
             if (findStructLayout(ctx.struct_layouts, abi_ty) != null) {
-                try locals.appendBorrowedLocal(allocator, param.name, abi_ty, false);
+                try locals.appendBorrowedLocalWithOrigin(allocator, param.name, abi_ty, false, .param_or_import);
                 for (decl.fields) |field| {
                     const field_ty = try substituteStructFieldType(allocator, decl, abi_ty, field.ty, &locals.owned_names);
                     try appendManagedStructFieldMetaLocal(allocator, locals, param.name, field.name, field_ty);
@@ -10378,7 +10526,7 @@ fn appendFuncParamLocals(
                 }
             }
         } else {
-            try locals.appendBorrowedLocal(allocator, param.name, abi_ty, false);
+            try locals.appendBorrowedLocalWithOrigin(allocator, param.name, abi_ty, false, .param_or_import);
         }
     }
 }
@@ -13636,8 +13784,8 @@ fn emitGetCall(
             if (isManagedStructField(layout, field_name) and move_source == null) {
                 try out.appendSlice(allocator, "    call $__arc_inc\n");
             }
-            if (move_source) |source_name| {
-                try appendFmt(allocator, out, "    ;; field-get-move {s}.{s}\n", .{ source_name, field_name });
+            if (move_source) |source| {
+                try appendFmt(allocator, out, "    ;; field-get-move {s}.{s}\n", .{ source.source_name, field_name });
                 try emitZeroValueForType(allocator, ctx, out, field_ty);
                 try appendManagedStructFieldPtr(allocator, out, struct_local.name, field_offset);
                 try appendStoreForPayloadType(allocator, out, field_ty);
@@ -13777,8 +13925,8 @@ fn emitFieldGetCall(
         if (isManagedStructField(layout, field_name) and move_source == null) {
             try out.appendSlice(allocator, "    call $__arc_inc\n");
         }
-        if (move_source) |source_name| {
-            try appendFmt(allocator, out, "    ;; field-get-move {s}.{s}\n", .{ source_name, field_name });
+        if (move_source) |source| {
+            try appendFmt(allocator, out, "    ;; field-get-move {s}.{s}\n", .{ source.source_name, field_name });
             try emitZeroValueForType(allocator, ctx, out, field.ty);
             try appendManagedStructFieldPtr(allocator, out, struct_local.name, field_offset);
             try appendStoreForPayloadType(allocator, out, field.ty);
@@ -15279,6 +15427,7 @@ fn cloneLocalSet(allocator: std.mem.Allocator, locals: *const LocalSet) !LocalSe
             .source_name = union_local.source_name,
             .layout = union_local.layout,
             .owns_layout = false,
+            .origin = union_local.origin,
         });
     }
     try out.field_meta_locals.appendSlice(allocator, locals.field_meta_locals.items);
@@ -15313,6 +15462,7 @@ fn appendCallbackArgAliasLocals(
             .name = actual_name,
             .source_name = arg.source_name,
             .ty = ty,
+            .origin = findLocalOrigin(parent.locals.items, actual) orelse .unknown,
             .emit_decl = false,
         });
     }
@@ -15321,6 +15471,7 @@ fn appendCallbackArgAliasLocals(
             .name = struct_local.name,
             .source_name = arg.source_name,
             .ty = struct_local.ty,
+            .origin = struct_local.origin,
         });
     }
     if (findStorageLocal(parent.storage_locals.items, actual)) |storage_local| {
@@ -16168,6 +16319,26 @@ fn findStoragePrimitiveLocal(locals: []const StorageLocal, name: []const u8) ?St
     return local;
 }
 
+fn findLocalOrigin(locals: []const Local, name: []const u8) ?SourceOrigin {
+    var i = locals.len;
+    while (i > 0) {
+        i -= 1;
+        const local = locals[i];
+        if (localNameMatches(local.name, local.source_name, name)) return local.origin;
+    }
+    return null;
+}
+
+fn findStorageLocalOrigin(locals: []const StorageLocal, name: []const u8) ?SourceOrigin {
+    var i = locals.len;
+    while (i > 0) {
+        i -= 1;
+        const local = locals[i];
+        if (localNameMatches(local.name, local.source_name, name)) return local.origin;
+    }
+    return null;
+}
+
 fn findLocalType(locals: []const Local, name: []const u8) ?[]const u8 {
     var i = locals.len;
     while (i > 0) {
@@ -16708,11 +16879,11 @@ fn emitCollectionLoopBlock(
 
     var loop_locals = LocalSet{};
     defer loop_locals.deinit(allocator);
-    if (header.value_name) |value_name| {
-        if (isManagedLocalType(header.elem_ty, ctx)) {
-            try loop_locals.appendBorrowedLocal(allocator, value_name, header.elem_ty, false);
+        if (header.value_name) |value_name| {
+            if (isManagedLocalType(header.elem_ty, ctx)) {
+                try loop_locals.appendBorrowedLocalWithOrigin(allocator, value_name, header.elem_ty, false, .collection_value);
+            }
         }
-    }
     try collectDirectBodyLocals(allocator, tokens, header.open_brace + 1, header.close_brace, ctx, &loop_locals);
     var parent_defer_storage: DeferContext = undefined;
     const parent_defer_ptr: ?*const DeferContext = if (defer_ctx) |scope| blk: {
@@ -16822,11 +16993,11 @@ fn emitRecvLoopBlock(
 
     var loop_locals = LocalSet{};
     defer loop_locals.deinit(allocator);
-    if (header.value_name) |value_name| {
-        if (isManagedLocalType(header.elem_ty, ctx)) {
-            try loop_locals.appendBorrowedLocal(allocator, value_name, header.elem_ty, false);
+        if (header.value_name) |value_name| {
+            if (isManagedLocalType(header.elem_ty, ctx)) {
+                try loop_locals.appendBorrowedLocalWithOrigin(allocator, value_name, header.elem_ty, false, .recv_value);
+            }
         }
-    }
     try collectDirectBodyLocals(allocator, tokens, header.open_brace + 1, header.close_brace, ctx, &loop_locals);
     var parent_defer_storage: DeferContext = undefined;
     const parent_defer_ptr: ?*const DeferContext = if (defer_ctx) |scope| blk: {
@@ -18333,4 +18504,100 @@ fn appendFmt(
     const text = try std.fmt.allocPrint(allocator, fmt, args);
     defer allocator.free(text);
     try out.appendSlice(allocator, text);
+}
+
+test "LocalSet records source origin metadata" {
+    const allocator = std.testing.allocator;
+    var locals = LocalSet{};
+    defer locals.deinit(allocator);
+
+    try locals.appendBorrowedLocal(allocator, "plain_value", "[u8]", true);
+    try std.testing.expectEqual(SourceOrigin.unknown, findLocalOrigin(locals.locals.items, "plain_value").?);
+
+    try locals.appendBorrowedLocalWithOrigin(allocator, "param_value", "[u8]", false, .param_or_import);
+    try std.testing.expectEqual(SourceOrigin.param_or_import, findLocalOrigin(locals.locals.items, "param_value").?);
+
+    try appendLoopSourceStorageLocal(allocator, &locals, 7, "[u8]", "u8");
+    try std.testing.expectEqual(SourceOrigin.loop_source, findLocalOrigin(locals.locals.items, "__loop_source_7").?);
+    try std.testing.expectEqual(SourceOrigin.loop_source, findStorageLocalOrigin(locals.storage_locals.items, "__loop_source_7").?);
+
+    try locals.appendBorrowedLocalWithOrigin(allocator, "__tmp", "usize", true, .compiler_temp);
+    try std.testing.expectEqual(SourceOrigin.compiler_temp, findLocalOrigin(locals.locals.items, "__tmp").?);
+}
+
+test "move candidate origin metadata lookup" {
+    const allocator = std.testing.allocator;
+    var locals = LocalSet{};
+    defer locals.deinit(allocator);
+    var string_data = StringDataContext{};
+    defer string_data.deinit(allocator);
+    const ctx = CodegenContext{
+        .functions = &.{},
+        .structs = &.{},
+        .value_enums = &.{},
+        .struct_layouts = &.{},
+        .host_imports = &.{},
+        .wasi_imports = &.{},
+        .string_data = &string_data,
+        .entry_tokens = &.{},
+        .modules = &.{},
+    };
+    const tokens = try lexer.tokenize(allocator, "param_value");
+    defer allocator.free(tokens);
+
+    try locals.appendBorrowedLocalWithOrigin(allocator, "param_value", "[u8]", true, .param_or_import);
+    const origin = directManagedLastUseMoveSourceOrigin(tokens, 0, tokens.len, tokens.len, "target_value", &locals, ctx, null) orelse unreachable;
+    try std.testing.expectEqual(SourceOrigin.param_or_import, origin);
+}
+
+test "field-get move candidate preserves struct local origin" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\user User = User{name = "amy"}
+        \\user, name
+    ;
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+
+    var locals = LocalSet{};
+    defer locals.deinit(allocator);
+    const local_name = try locals.appendStructLocal(allocator, "user", "User", true);
+    try std.testing.expectEqualStrings("user", local_name);
+
+    var string_data = StringDataContext{};
+    defer string_data.deinit(allocator);
+    const fields = [_]StructField{
+        .{ .name = "name", .ty = "text" },
+    };
+    const structs = [_]StructDecl{
+        .{
+            .name = "User",
+            .fields = &fields,
+            .layout_source = null,
+            .tokens = tokens,
+        },
+    };
+    const ctx = CodegenContext{
+        .functions = &.{},
+        .structs = &structs,
+        .value_enums = &.{},
+        .struct_layouts = &.{},
+        .host_imports = &.{},
+        .wasi_imports = &.{},
+        .string_data = &string_data,
+        .entry_tokens = tokens,
+        .modules = &.{},
+    };
+    const move_ctx = CallLastUseMoveContext{
+        .body_start = 0,
+        .stmt_end = tokens.len,
+        .body_end = tokens.len,
+        .defer_ctx = null,
+        .allow_last_use_move = true,
+        .allow_field_read_move = true,
+    };
+    const struct_local = findStructLocal(locals.struct_locals.items, "user") orelse unreachable;
+    const move_source = try fieldGetLastUseMoveSource(allocator, tokens, 8, tokens.len, struct_local, "text", move_ctx, &locals, ctx) orelse unreachable;
+    try std.testing.expectEqual(SourceOrigin.unknown, move_source.origin);
+    try std.testing.expectEqualStrings("user", move_source.source_name);
 }

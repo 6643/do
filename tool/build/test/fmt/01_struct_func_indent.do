@@ -1,0 +1,11 @@
+User {
+id i32
+name text
+}
+
+make_user() -> User {
+return User{
+id = 1,
+name = "Ada",
+}
+}
