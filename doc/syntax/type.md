@@ -81,4 +81,4 @@ HashMap<text, [User]>
 #P = (i32) -> i32, bool
 ```
 
-规则: 顶层 type alias / union alias 已取消。需要组合类型时, 在返回位、字段、局部绑定、storage 元素或 type args 里直接写 `T | nil` / `A | B`; 需要强类型别名时用单字段 struct 表达。
+规则: 源码没有顶层类型别名声明。需要组合类型时, 在返回位、字段、局部绑定、storage 元素或 type args 里直接写 `T | nil` / `A | B`; 需要强类型名时用单字段 struct 表达。

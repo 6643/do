@@ -1,11 +1,11 @@
-#A = i32
+#A
 use(x A) -> i32 {
-    return x
+    return 1
 }
 
-#A = i64
+#A
 use(x A) -> i64 {
-    return x
+    return 2
 }
 
 test "scalar constraint name not signature alias" {

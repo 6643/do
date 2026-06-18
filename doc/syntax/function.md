@@ -64,7 +64,7 @@ many(id i64, name text, active bool) -> User {
 }
 ```
 
-规则: 函数参数必须显式写类型, 不支持 `value` 这种只写参数名的省略形式。参数名使用 `snake_case`, 不使用 `_name` 只读名, 也不能和当前可见普通函数名、函数 import alias 或 host import alias 同名。参数绑定是可写局部绑定, 命中后赋值会更新当前参数值, 不会创建新的同名局部声明。
+规则: 函数参数必须显式写类型, 不支持 `value` 这种只写参数名的省略形式。普通固定数据参数可写平铺 union/nullable, 例如 `value text | nil`; 变参元素、函数类型约束参数、lambda 参数和接口约束参数不接收 union/nullable。参数名使用 `snake_case`, 不使用 `_name` 只读名, 也不能和当前可见普通函数名、函数 import alias 或 host import alias 同名。参数绑定是可写局部绑定, 命中后赋值会更新当前参数值, 不会创建新的同名局部声明。
 
 ## 同类型变参
 
@@ -84,7 +84,7 @@ collect(rest ...i32) -> [i32] {
 }
 ```
 
-规则: 函数 ABI symbol 按模块、参数签名和泛型实例 mangle。overload resolution 按实参形状筛唯一候选, 不能只靠返回类型区分 overload。同名同 arity 的具体 overload 可以和泛型 fallback 共存; 调用先选精确具体签名, 无具体匹配时才实例化泛型 fallback。两个泛型同名同 arity 直接视为重复或歧义。`...T` 只表达同类型尾参, 不表达异构参数链; variadic 和 generic instance 参与同一套 mangle 与候选筛选规则。
+规则: 函数 ABI symbol 按模块、参数签名和泛型实例 mangle。overload resolution 按实参形状筛唯一候选, 不能只靠返回类型区分 overload。同名同 arity 的具体 overload 可以和泛型 fallback 共存; 调用先选精确具体签名, 无具体匹配时才实例化泛型 fallback。两个泛型同名同 arity 直接视为重复或歧义。`...T` 只表达同类型尾参, 不表达异构参数链; `T` 不能是顶层 union/nullable。variadic 和 generic instance 参与同一套 mangle 与候选筛选规则。
 
 ## 返回
 

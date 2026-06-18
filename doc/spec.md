@@ -58,7 +58,7 @@
 4. `builtin` special form、core 路径 primitive 和 core 固定函数名都必须通过保留形态调用, 不参与普通函数声明、重载、遮蔽或 import alias。
 5. `[T]` 是 core 连续存储 primitive; `text` 是源码文本基础类型, 语义要求有效 UTF-8。二者边界必须显式转换。
 6. `Error` 是编译器内部合成诊断/工具视图, 源码类型位不能直接写 `Error`。
-7. union 只以内联平铺类型表达式出现; 顶层 type alias / union alias 已取消。返回位、字段、局部绑定、storage 元素和 type args 可写 union/nullable, 参数位不接收 union/nullable。
+7. union 只以内联平铺类型表达式出现; 源码没有顶层类型别名声明。返回位、字段、局部绑定、storage 元素、type args 和普通固定数据参数可写 union/nullable; 变参元素、函数类型和接口约束参数不接收 union/nullable。
 8. 函数重载只按参数类型序列决议; 返回类型不参与重载身份。
 9. `@get/@set` 只承载结构字段和 `[T]` storage 路径 primitive; `List/HashMap` 等高层集合由 `std` 或用户库提供普通函数。
 10. `loop` 分为无限循环、集合循环、消费循环和字段反射循环; v1 不提供通用 iterator 协议。

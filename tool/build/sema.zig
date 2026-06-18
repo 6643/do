@@ -85,6 +85,7 @@ pub fn checkProgram(
     try checkStartDeclSyntax(tokens);
     try checkFuncParamNames(tokens);
     try checkInlineFuncParamTypes(tokens);
+    try checkSynthErrorFuncParamTypes(tokens);
     try checkFuncParamTypeRestrictions(tokens);
     try checkFuncSignatureConflicts(allocator, tokens);
     try checkPathAccess(tokens);
@@ -140,6 +141,7 @@ fn checkPrivateLValueAssign(tokens: []const lexer.Token) !void {
         if (t.kind != .ident) continue;
         if (t.lexeme.len < 2 or t.lexeme[0] != '.') continue;
         const eq_idx = findTopLevelAssignEqOnLine(tokens, line_start, line_end) orelse continue;
+        if (isModernImportAssign(tokens, line_start)) continue;
         if (isTopLevelDeclHead(tokens, line_start) and isTypeDeclStart(tokens, line_start)) continue;
         if (isPrivateTopValueDeclStart(tokens, line_start, eq_idx)) continue;
         if (isStructFieldDeclDefault(tokens, line_start, eq_idx)) continue;
@@ -379,32 +381,132 @@ fn checkFuncParamTypeRestrictions(tokens: []const lexer.Token) !void {
 
         const close_paren = findMatching(tokens, i + 1, "(", ")") catch
             return markErrorAt(tokens, i + 1, error.InvalidParamName);
-        try checkParamTypeRange(tokens, i + 2, close_paren);
+        try checkParamTypeRange(tokens, i, i + 2, close_paren);
         i = close_paren;
     }
 }
 
-fn checkParamTypeRange(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !void {
+fn checkSynthErrorFuncParamTypes(tokens: []const lexer.Token) !void {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (depth_brace == 0) {
+                if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                    i = next_idx - 1;
+                    continue;
+                }
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (!isFuncDeclStart(tokens, i)) continue;
+
+        const close_paren = findMatching(tokens, i + 1, "(", ")") catch
+            return markErrorAt(tokens, i + 1, error.InvalidParamName);
+        if (findSynthErrorParamType(tokens, i + 2, close_paren)) |bad_idx| {
+            return markErrorAt(tokens, bad_idx, error.InvalidSynthErrorType);
+        }
+        i = close_paren;
+    }
+}
+
+fn findSynthErrorParamType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
     var seg_start = start_idx;
     var i = start_idx;
     while (i <= end_idx) : (i += 1) {
         if (i < end_idx and !isTopLevelCommaAny(tokens, i, start_idx, end_idx)) continue;
-        if (seg_start < i) try checkOneParamType(tokens, seg_start, i);
+        if (seg_start < i) {
+            const type_start = if (seg_start + 1 < i and isSpreadToken(tokens[seg_start + 1])) seg_start + 2 else seg_start + 1;
+            if (findTopLevelTypeName(tokens, type_start, i, "Error")) |bad_idx| return bad_idx;
+        }
+        seg_start = i + 1;
+    }
+    return null;
+}
+
+fn findTopLevelTypeName(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    name: []const u8,
+) ?usize {
+    var depth_paren: usize = 0;
+    var depth_bracket: usize = 0;
+    var depth_angle: usize = 0;
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "[")) {
+            depth_bracket += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "]")) {
+            if (depth_bracket > 0) depth_bracket -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (depth_paren != 0 or depth_bracket != 0 or depth_angle != 0) continue;
+        if (tokens[i].kind == .ident and std.mem.eql(u8, tokens[i].lexeme, name)) return i;
+    }
+    return null;
+}
+
+fn checkParamTypeRange(tokens: []const lexer.Token, func_start_idx: usize, start_idx: usize, end_idx: usize) !void {
+    var seg_start = start_idx;
+    var i = start_idx;
+    while (i <= end_idx) : (i += 1) {
+        if (i < end_idx and !isTopLevelCommaAny(tokens, i, start_idx, end_idx)) continue;
+        if (seg_start < i) try checkOneParamType(tokens, func_start_idx, seg_start, i);
         seg_start = i + 1;
     }
 }
 
-fn checkOneParamType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !void {
+fn checkOneParamType(tokens: []const lexer.Token, func_start_idx: usize, start_idx: usize, end_idx: usize) !void {
     if (start_idx + 1 >= end_idx) return markErrorAt(tokens, start_idx, error.InvalidParamName);
     const type_start = if (isSpreadToken(tokens[start_idx + 1])) start_idx + 2 else start_idx + 1;
+    const is_variadic = type_start != start_idx + 1;
     if (type_start >= end_idx) return markErrorAt(tokens, start_idx + 1, error.InvalidParamName);
-    if (findTopLevelPipe(tokens, type_start, end_idx)) |pipe_idx| {
-        return markErrorAt(tokens, pipe_idx, error.InvalidTypeRef);
+    if (findInlineFuncTypeInIsArg(tokens, type_start, end_idx)) |func_type_idx| {
+        return markErrorAt(tokens, func_type_idx, error.InvalidTypeRef);
     }
-    if (tokEq(tokens[type_start], "nil")) {
+    if (validateIsTypeExpr(tokens, type_start, end_idx) != end_idx) {
         return markErrorAt(tokens, type_start, error.InvalidTypeRef);
     }
-    if (tokens[type_start].kind == .ident and isLegacyBaseTypeName(tokens[type_start].lexeme)) {
+    if (is_variadic) {
+        if (findTopLevelPipe(tokens, type_start, end_idx)) |pipe_idx| {
+            return markErrorAt(tokens, pipe_idx, error.InvalidTypeRef);
+        }
+    }
+    if (findTopLevelPipe(tokens, type_start, end_idx)) |_| {
+        if (findTopLevelNilInIsArg(tokens, type_start, end_idx)) |nil_idx| {
+            if (nil_idx + 1 != end_idx) return markErrorAt(tokens, nil_idx, error.InvalidTypeRef);
+        }
+        if (findFuncTypeConstraintBranchInParam(tokens, func_start_idx, type_start, end_idx)) |bad_idx| {
+            return markErrorAt(tokens, bad_idx, error.InvalidTypeRef);
+        }
+    }
+    if (tokEq(tokens[type_start], "nil")) {
         return markErrorAt(tokens, type_start, error.InvalidTypeRef);
     }
     if (tokens[type_start].kind == .ident and isWitOnlySourceTypeName(tokens[type_start].lexeme)) {
@@ -457,6 +559,86 @@ fn findTopLevelPipe(tokens: []const lexer.Token, start_idx: usize, end_idx: usiz
     return null;
 }
 
+fn findFuncTypeConstraintBranchInParam(
+    tokens: []const lexer.Token,
+    func_start_idx: usize,
+    start_idx: usize,
+    end_idx: usize,
+) ?usize {
+    const block_start = findConstraintBlockStartBefore(tokens, func_start_idx) orelse return null;
+    var branch_start = start_idx;
+    var i = start_idx;
+    while (i <= end_idx) : (i += 1) {
+        if (i < end_idx and !isTopLevelTypePipe(tokens, i, start_idx, end_idx)) continue;
+        if (directParamTypeName(tokens, branch_start, i)) |name| {
+            if (typeConstraintIsFunctionTypeInBlock(tokens, block_start, func_start_idx, name)) return branch_start;
+        }
+        branch_start = i + 1;
+    }
+    return null;
+}
+
+fn isTopLevelTypePipe(tokens: []const lexer.Token, idx: usize, start_idx: usize, end_idx: usize) bool {
+    if (!tokEq(tokens[idx], "|")) return false;
+
+    var depth_paren: usize = 0;
+    var depth_bracket: usize = 0;
+    var depth_angle: usize = 0;
+    var i = start_idx;
+    while (i < idx and i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "[")) {
+            depth_bracket += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "]")) {
+            if (depth_bracket > 0) depth_bracket -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+    }
+    return depth_paren == 0 and depth_bracket == 0 and depth_angle == 0;
+}
+
+fn typeConstraintIsFunctionTypeInBlock(
+    tokens: []const lexer.Token,
+    block_start: usize,
+    func_start_idx: usize,
+    constraint_name: []const u8,
+) bool {
+    var i = block_start;
+    while (i < func_start_idx) {
+        if (!tokEq(tokens[i], "#")) {
+            i += 1;
+            continue;
+        }
+        const line_end = findLineEndIdx(tokens, i);
+        const is_func_constraint = i + 2 < line_end and tokEq(tokens[i + 2], "(");
+        if (is_func_constraint or i + 1 >= line_end or !std.mem.eql(u8, tokens[i + 1].lexeme, constraint_name)) {
+            i = line_end;
+            continue;
+        }
+
+        const eq_idx = findTopLevelAssignEqOnLine(tokens, i + 2, line_end) orelse return false;
+        return isFuncTypeRange(tokens, eq_idx + 1, line_end);
+    }
+    return false;
+}
+
 fn checkPathAccess(tokens: []const lexer.Token) !void {
     for (tokens, 0..) |t, i| {
         if (t.kind != .ident) continue;
@@ -474,6 +656,7 @@ fn checkFieldSegmentPositions(tokens: []const lexer.Token) !void {
         if (t.lexeme.len == 0 or t.lexeme[0] != '.') continue;
         if (t.lexeme.len == 1) continue; // `.{...}` inferred aggregate prefix.
         if (isImportPathToken(tokens, i)) continue;
+        if (isTopLevelDeclHead(tokens, i) and isModernImportAssign(tokens, i)) continue;
         if (isTopLevelDeclHead(tokens, i) and isTypeDeclStart(tokens, i)) continue;
         if (!std.ascii.isLower(t.lexeme[1])) continue;
         if (!isDotLowerIdent(t.lexeme)) return markErrorAt(tokens, i, error.InvalidPathAccess);
@@ -812,10 +995,7 @@ fn checkAsTypeArgs(tokens: []const lexer.Token) !void {
             if (comma + 1 >= close_paren) return markErrorAt(tokens, comma, error.InvalidCallArgList);
             continue;
         }
-
-        const type_arg = firstNonGap(tokens, comma + 1, close_paren) orelse
-            return markErrorAt(tokens, comma, error.InvalidCallArgList);
-        try checkAsPayloadTypeArg(tokens, type_arg, close_paren);
+        return markErrorAt(tokens, i, error.InvalidCallArgList);
     }
 }
 
@@ -823,24 +1003,6 @@ fn asTypeFirstArg(tokens: []const lexer.Token, start_idx: usize, end_idx: usize)
     const type_arg = firstNonGap(tokens, start_idx, end_idx) orelse return null;
     if (validateScalarAsTargetType(tokens, type_arg, end_idx) != end_idx) return null;
     return type_arg;
-}
-
-fn checkAsPayloadTypeArg(tokens: []const lexer.Token, type_arg: usize, close_paren: usize) !void {
-    if (isValueLiteralToken(tokens[type_arg])) {
-        return markErrorAt(tokens, type_arg, error.InvalidCallArgList);
-    }
-    if (findInlineFuncTypeInIsArg(tokens, type_arg, close_paren)) |func_type_idx| {
-        return markErrorAt(tokens, func_type_idx, error.InvalidCallArgList);
-    }
-    if (findTopLevelComma(tokens, type_arg, close_paren)) |extra_comma| {
-        return markErrorAt(tokens, extra_comma, error.InvalidCallArgList);
-    }
-    if (findTopLevelNilInIsArg(tokens, type_arg, close_paren)) |nil_idx| {
-        return markErrorAt(tokens, nil_idx, error.InvalidCallArgList);
-    }
-    if (validateIsTypeAtom(tokens, type_arg, close_paren) != close_paren) {
-        return markErrorAt(tokens, type_arg, error.InvalidCallArgList);
-    }
 }
 
 fn validateScalarAsTargetType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
@@ -1187,7 +1349,8 @@ fn collectFuncShapes(allocator: std.mem.Allocator, tokens: []const lexer.Token) 
         i = close_paren + 1;
     }
 
-    return out.toOwnedSlice(allocator);
+    const owned = try out.toOwnedSlice(allocator);
+    return owned;
 }
 
 fn checkFuncReturnArrowSyntax(tokens: []const lexer.Token) !void {
@@ -1389,12 +1552,19 @@ fn freeFuncParamShapes(allocator: std.mem.Allocator, shapes: []FuncParamShape) v
     for (shapes) |shape| {
         switch (shape) {
             .other => {},
-            .value => {},
-            .variadic => {},
-            .func => |func_type| allocator.free(func_type.param_types),
+            .value => |type_name| if (type_name) |name| allocator.free(name),
+            .variadic => |type_name| if (type_name) |name| allocator.free(name),
+            .func => |func_type| freeFuncTypeParamNames(allocator, func_type.param_types),
         }
     }
     allocator.free(shapes);
+}
+
+fn freeFuncTypeParamNames(allocator: std.mem.Allocator, param_types: []?[]const u8) void {
+    for (param_types) |param_type| {
+        if (param_type) |name| allocator.free(name);
+    }
+    allocator.free(param_types);
 }
 
 fn freeCallArgShapes(allocator: std.mem.Allocator, shapes: []CallArgShape) void {
@@ -1441,7 +1611,7 @@ fn parseFuncParamShape(
     const type_start = if (isSpreadToken(tokens[start_idx + 1])) start_idx + 2 else start_idx + 1;
     if (type_start >= end_idx) return .other;
     if (!tokEq(tokens[type_start], "(")) {
-        const type_name = simpleTypeName(tokens, type_start, end_idx);
+        const type_name = try compactTypeName(allocator, tokens, type_start, end_idx);
         if (type_start != start_idx + 1) return .{ .variadic = type_name };
         return .{ .value = type_name };
     }
@@ -1999,7 +2169,7 @@ fn resolveFuncParamTypeShape(
 fn freeResolvedFuncTypeShape(allocator: std.mem.Allocator, resolved: ?ResolvedFuncTypeShape) void {
     const item = resolved orelse return;
     if (!item.owned) return;
-    allocator.free(item.shape.param_types);
+    freeFuncTypeParamNames(allocator, item.shape.param_types);
 }
 
 fn parseConcreteFuncTypeConstraintShape(
@@ -2501,14 +2671,19 @@ fn parseTypeNameList(
     end_idx: usize,
 ) ![]?[]const u8 {
     var out = std.ArrayList(?[]const u8).empty;
-    errdefer out.deinit(allocator);
+    errdefer {
+        for (out.items) |param_type| {
+            if (param_type) |name| allocator.free(name);
+        }
+        out.deinit(allocator);
+    }
 
     var seg_start = start_idx;
     var i = start_idx;
     while (i <= end_idx) : (i += 1) {
         if (i < end_idx and !isTopLevelCommaAny(tokens, i, start_idx, end_idx)) continue;
         if (seg_start < i) {
-            try out.append(allocator, simpleTypeName(tokens, seg_start, i));
+            try out.append(allocator, try compactTypeName(allocator, tokens, seg_start, i));
         }
         seg_start = i + 1;
     }
@@ -2541,6 +2716,22 @@ fn parseLambdaParamTypeList(
 fn lambdaParamTypeName(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?[]const u8 {
     if (start_idx + 1 >= end_idx) return null;
     return simpleTypeName(tokens, start_idx + 1, end_idx);
+}
+
+fn compactTypeName(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !?[]const u8 {
+    if (start_idx + 1 == end_idx and tokens[start_idx].kind == .ident) {
+        return try allocator.dupe(u8, tokens[start_idx].lexeme);
+    }
+    if (validateIsTypeExpr(tokens, start_idx, end_idx) != end_idx) return null;
+
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        try out.appendSlice(allocator, tokens[i].lexeme);
+    }
+    const owned = try out.toOwnedSlice(allocator);
+    return owned;
 }
 
 fn simpleTypeName(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?[]const u8 {
@@ -3514,9 +3705,6 @@ fn checkTypeDeclNaming(tokens: []const lexer.Token) !void {
         if (!isTopLevelDeclHead(tokens, i)) continue;
         if (isKeyword(t.lexeme)) continue;
         if (isModernImportAssign(tokens, i)) continue;
-        if (isRemovedTypeAliasDeclStart(tokens, i)) {
-            return markErrorAt(tokens, i, error.InvalidTypeDeclName);
-        }
         if (!isTypeDeclStart(tokens, i)) continue;
         if ((isErrorTypeName(t.lexeme) or isPrivateErrorTypeName(t.lexeme)) and isStructDeclStart(tokens, i)) {
             return markErrorAt(tokens, i, error.InvalidTypeDeclName);
@@ -3524,23 +3712,6 @@ fn checkTypeDeclNaming(tokens: []const lexer.Token) !void {
         if (isValidDeclaredTypeName(t.lexeme)) continue;
         return markErrorAt(tokens, i, error.InvalidTypeDeclName);
     }
-}
-
-fn isRemovedTypeAliasDeclStart(tokens: []const lexer.Token, idx: usize) bool {
-    if (idx + 1 >= tokens.len) return false;
-    if (tokens[idx].kind != .ident) return false;
-    if (!isValidDeclaredTypeName(tokens[idx].lexeme)) return false;
-    if (isModernImportAssign(tokens, idx)) return false;
-    if (isErrorEnumDeclStart(tokens, idx) or isValueEnumDeclStart(tokens, idx)) return false;
-
-    var next_idx = idx + 1;
-    if (tokEq(tokens[next_idx], "<")) {
-        const close_angle = findMatching(tokens, next_idx, "<", ">") catch return false;
-        next_idx = close_angle + 1;
-        if (next_idx >= tokens.len) return false;
-    }
-
-    return tokens[next_idx].line == tokens[idx].line and tokEq(tokens[next_idx], "=");
 }
 
 fn isStructDeclStart(tokens: []const lexer.Token, idx: usize) bool {
@@ -5041,9 +5212,7 @@ fn isTypeDeclStart(tokens: []const lexer.Token, idx: usize) bool {
         if (next_idx >= tokens.len) return false;
     }
 
-    if (tokEq(tokens[next_idx], "{")) return true; // struct decl
-    if (tokEq(tokens[next_idx], "=")) return true; // legacy alias, rejected by checkTypeDeclNaming
-    return false;
+    return tokEq(tokens[next_idx], "{");
 }
 
 fn isValidDeclaredTypeName(name: []const u8) bool {
@@ -5152,7 +5321,7 @@ fn checkForbiddenSourceTypeNames(tokens: []const lexer.Token) !void {
 }
 
 fn isForbiddenSourceTypeName(name: []const u8) bool {
-    return isLegacyBaseTypeName(name) or isWitOnlySourceTypeName(name);
+    return isWitOnlySourceTypeName(name);
 }
 
 fn isSourceTypeNameContext(tokens: []const lexer.Token, idx: usize) bool {
@@ -5636,9 +5805,6 @@ fn checkUnboundTypeNamesInRange(
     var i = start_idx;
     while (i < end_idx) : (i += 1) {
         if (tokens[i].kind != .ident) continue;
-        if (isLegacyBaseTypeName(tokens[i].lexeme)) {
-            return markErrorAt(tokens, i, error.InvalidTypeRef);
-        }
         if (isWitOnlySourceTypeName(tokens[i].lexeme)) {
             return markErrorAt(tokens, i, error.InvalidTypeRef);
         }
@@ -6044,16 +6210,6 @@ fn isBaseTypeName(name: []const u8) bool {
         "bool",  "text",
     };
     for (base_types) |it| {
-        if (std.mem.eql(u8, it, name)) return true;
-    }
-    return false;
-}
-
-fn isLegacyBaseTypeName(name: []const u8) bool {
-    const legacy_types = [_][]const u8{
-        "s8", "s16", "s32", "s64", "string",
-    };
-    for (legacy_types) |it| {
         if (std.mem.eql(u8, it, name)) return true;
     }
     return false;
@@ -7211,7 +7367,7 @@ fn isReservedFuncName(name: []const u8) bool {
 }
 
 fn isReservedSourceName(name: []const u8) bool {
-    return isBaseTypeName(name) or isLegacyBaseTypeName(name) or isWitOnlySourceTypeName(name);
+    return isBaseTypeName(name) or isWitOnlySourceTypeName(name);
 }
 
 fn isDeclOnlyName(name: []const u8) bool {
@@ -7276,4 +7432,38 @@ fn markErrorAt(tokens: []const lexer.Token, idx: usize, err: anyerror) anyerror 
         };
     }
     return err;
+}
+
+test "private host import is not a private lvalue assignment" {
+    const source =
+        \\.host_log = @env("console_log", (i32, i32) -> nil)
+        \\
+        \\test "ok" {
+        \\    return
+        \\}
+        \\
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parseProgram(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    try checkProgram(std.testing.allocator, program, tokens);
+}
+
+test "private assignment is rejected" {
+    const source =
+        \\.value = 1
+        \\
+        \\test "bad" {
+        \\    return
+        \\}
+        \\
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parseProgram(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    try std.testing.expectError(error.PrivateIdentCannotBeLValue, checkProgram(std.testing.allocator, program, tokens));
 }

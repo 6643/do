@@ -1,4 +1,4 @@
-#T = i32 | i64
+#T
 #eq(T, T) -> bool
 same(a T, b T) -> bool {
     return @eq(a, b)

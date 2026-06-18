@@ -15,7 +15,7 @@
 - 当前 `do fmt` 是 stdout / check-only line-based formatter。
 - 当前 `do check` 只做 lexer/parser/sema/import diagnostics, 不编译、不运行。
 - 当前 `get / pkg / push` 包管理线暂停, 不作为默认后续任务。
-- 最近完整回归基线: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 为 `pass=674 fail=0 skip=70`。
+- 最近完整回归基线: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 为 `pass=670 fail=0 skip=70`。
 
 当前禁止默认推进:
 
@@ -33,7 +33,7 @@
 4. 阻塞时, 在对应小任务下写清停止点、证据、影响和恢复条件。
 5. 语法或语义变化必须同步 `doc/spec_rules.md`、`doc/grammar.peg`、相关 `doc/syntax/*.md` 和回归测试。
 6. 工具行为变化必须同步 `README.md`、`tool/build/test/README.md` 和黑盒 fixture。
-7. 文档清理只能删除过期入口和旧规则; 不能删除仍被 `doc/start_here.md`、`doc/roadmap_status.md` 或 README 引用的文件。
+7. 文档清理只能删除过期入口和过期规则; 不能删除仍被 `doc/start_here.md`、`doc/roadmap_status.md` 或 README 引用的文件。
 
 ## 2. 推荐阶段顺序
 
@@ -272,23 +272,23 @@
 - 每个落地决定绑定到 err/ok/compile fixture。
 - `SKIP_BUILD=1 ./tool/build/test/run_tests.sh`
 
-### B3. 语法旧文档清理
+### B3. 语法文档治理
 
 范围:
 
-- 清理 `doc/syntax/`、`doc/spec_examples.md` 和过期文档中的旧规则残留。
+- 清理 `doc/syntax/`、`doc/spec_examples.md` 和过期文档中的过期规则残留。
 - 保留仍被入口文档引用的当前文档。
 
 拆分:
 
 - [ ] B3.1 扫描 start_here、README、roadmap_status 的文档引用。
-- [ ] B3.2 找出已被当前规则替代的旧设计描述。
-- [ ] B3.3 更新或删除旧描述。
-- [ ] B3.4 用 `rg` 检查死链和旧规则关键字。
+- [ ] B3.2 找出已被当前规则替代的设计描述。
+- [ ] B3.3 更新或删除过期描述。
+- [ ] B3.4 用 `rg` 检查死链和过期规则关键字。
 
 验收:
 
-- `rg -n "<旧规则关键字>" README.md CHANGELOG.md doc`
+- `rg -n "<过期规则关键字>" README.md CHANGELOG.md doc`
 - `git diff --check -- README.md CHANGELOG.md doc`
 
 ### B4. 语法冻结回归包
@@ -967,7 +967,7 @@
 - skip 数减少或每个 skip 有原因。
 - full regression。
 
-### H2. 文档死链和旧规则扫描
+### H2. 文档死链和过期规则扫描
 
 范围:
 
@@ -976,12 +976,12 @@
 拆分:
 
 - [ ] H2.1 扫描 markdown 链接。
-- [ ] H2.2 扫描旧入口、旧语法和删除文件引用。
+- [ ] H2.2 扫描过期入口、过期规则和删除文件引用。
 - [ ] H2.3 修正或删除过期文档。
 
 验收:
 
-- `rg` 检查旧入口、旧语法、删除文件引用。
+- `rg` 检查过期入口、过期规则、删除文件引用。
 - `git diff --check -- README.md CHANGELOG.md doc`
 
 ### H3. 错误诊断一致性审查

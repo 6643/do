@@ -21,19 +21,19 @@
 
 规则: `@is(value, TypeExpr)` 只做类型分支判断, 第二个实参必须是类型表达式。`value enum` 的分支值和 `nil` 都是值, 统一使用 `@eq/@ne` 判断, 不写成 `@is(value, ByteDigit)` 或 `@is(value, nil)`。
 
-## 分支提取
+## 分支收紧
 
 ```do
 if @is(value, User) {
-    user User = @as(value, User)
+    user User = value
 }
 
 if @is(result, FileError) {
-    err FileError = @as(result, FileError)
+    err FileError = result
 }
 ```
 
-规则: `@as(value, Type)` 从静态 union/nullable 值中提取一个非 `nil` 类型分支的 payload。第一个实参必须是 union 局部值, 第二个实参必须是该 union 的单个非 `nil` 类型分支; 不写 `@as(value, nil)` 或 `@as(value, User | Admin)`。`@as(value, Type)` 不做数值转换或 cast, 推荐先用 `@is(value, Type)` guard 后再提取。
+规则: `@is(value, Type)` 的 true 分支会把 `value` 收紧为 `Type`, 分支内直接使用原变量。
 
 ## 逻辑
 
@@ -284,4 +284,4 @@ user = @field_set(user, field, value)
 @as(f64, value)
 ```
 
-规则: 标量数值转换统一使用 `@as(Type, value)`。`Type` 只能是 `u8/u16/u32/u64/usize/isize/i8/i16/i32/i64/f32/f64`。`@as(value, Type)` 是 union/nullable payload 提取形态, 不做数值转换。
+规则: 标量数值转换统一使用 `@as(Type, value)`。`Type` 只能是 `u8/u16/u32/u64/usize/isize/i8/i16/i32/i64/f32/f64`。

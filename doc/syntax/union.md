@@ -1,6 +1,6 @@
 # 联合类型
 
-规则: 顶层 type alias / union alias 已取消; 不写 `ReadResult = [u8] | FileError` 或 `MaybeUser = User | nil`。需要 union 时, 直接在返回位、字段、局部绑定、storage 元素或 type args 中写平铺 union。
+规则: 源码没有顶层类型别名声明。需要 union 时, 直接在返回位、字段、局部绑定、普通固定数据参数、storage 元素或 type args 中写平铺 union。
 
 ## 可空类型
 
@@ -41,6 +41,17 @@ user User | nil = find_user(1)
 result [u8] | FileError = read_file("a.txt")
 ```
 
+## 联合参数
+
+```do
+emit(value text | nil) -> [u8] {
+    if @eq(value, nil) return "null"
+    return value
+}
+```
+
+规则: 普通固定数据参数可写平铺 union/nullable。变参元素、函数类型约束参数、lambda 参数和接口约束参数不接收 union/nullable; `F | nil` 不能表达可选回调。
+
 ## 分支判断
 
 ```do
@@ -67,18 +78,20 @@ if @is(box, Box<User | nil>) {
 
 规则: union lowering 使用统一 runtime tag representation。`@is(value, TypeExpr)` 的第二个实参只能是类型表达式; `nil` 是值分支, 判断 nil 使用 `@eq(value, nil)` 或 nullable helper, 不写成 `@is(value, nil)`。
 
-## 分支提取
+`@eq(value, nil)` / `@ne(value, nil)` 在条件位对 nullable union 做路径收紧。若 `value` 只有一个非 `nil` 分支, `@ne(value, nil)` 的 true 分支可把 `value` 当作该分支类型使用; `@eq(value, nil)` 的 false 分支和 guard-return 后续路径也同理。复杂 union 使用 `@is(value, Type)` 明确分支。
+
+## 分支收紧
 
 ```do
 if @is(user, User) {
-    value User = @as(user, User)
+    value User = user
     return value
 }
 
 if @is(result, FileError) {
-    err FileError = @as(result, FileError)
+    err FileError = result
     return err
 }
 ```
 
-规则: `@as(value, Type)` 只做 union payload 提取, 不做类型转换。`Type` 必须是 `value` 静态 union 中唯一的非 `nil` 类型分支; `nil` 分支继续用 `@eq(value, nil)` 判断, 不能提取 payload。提取前推荐使用 `@is(value, Type)` guard, 否则读取到的 payload 是否对应当前 tag 不由 `@as` 自动证明。标量数值转换使用另一种形态 `@as(Type, value)`。
+规则: `@is(value, Type)` 的 true 分支会把 `value` 收紧为 `Type`, 分支内直接使用原变量。标量数值转换继续使用 `@as(Type, value)`。

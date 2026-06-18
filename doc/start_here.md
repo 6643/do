@@ -31,7 +31,7 @@
 - 新的总规划入口是 [doc/master_plan.md](/home/_/._/do/doc/master_plan.md); 默认下一步按其中“阶段 A: 工具链体验补齐”推进, 优先 A1 LSP formatting 第一版。
 - 若未来重新触发 ownership 主线，先重读 `doc/memory.md` 第 8.13 节和第 11.1 节。
 
-不要顺手碰:
+变更边界:
 
-- `doc/spec.md` / `doc/spec_rules.md` 的语法规则。
-- 不是当前主线的 `ui.do`、`ui_demo.do`、`js/`。
+- 只有语法、语义或文档治理任务需要时, 才同步 `doc/spec.md`、`doc/spec_rules.md`、`doc/grammar.peg` 和 `doc/syntax/`。
+- 不是当前主线的 `ui.do`、`ui_demo.do`、`js/` 不要顺手改。

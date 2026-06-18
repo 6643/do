@@ -1,4 +1,4 @@
-#T = i32 | i64
+#T
 #add(T, T) -> T
 Box {
     value T

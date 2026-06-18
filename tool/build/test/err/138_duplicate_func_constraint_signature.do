@@ -1,4 +1,4 @@
-#T = i32 | i64
+#T
 #add(T, T) -> T
 #add(T, T) -> T
 sum(a T, b T) -> T {

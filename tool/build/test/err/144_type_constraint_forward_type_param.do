@@ -1,11 +1,9 @@
-#T = U | i32
+#F = (U) -> U
 #U
-Pair {
-    left T
-    right U
+apply(f F, value U) -> U {
+    return f(value)
 }
 
 test "type constraint forward type param" {
-    p = Pair<i32, i32>{left = 1, right = 2}
     return
 }

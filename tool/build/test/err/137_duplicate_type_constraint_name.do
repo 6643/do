@@ -1,5 +1,5 @@
 #T
-#T = i32 | i64
+#T
 id(x T) -> T {
     return x
 }

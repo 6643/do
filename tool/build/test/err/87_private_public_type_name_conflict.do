@@ -1,11 +1,9 @@
-.InternalUser = User | nil
-
 InternalUser {
     name [u8]
 }
 
-User {
-    name [u8]
+.InternalUser {
+    id i32
 }
 
 test "private public type name conflict" {

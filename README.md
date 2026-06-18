@@ -34,8 +34,6 @@ tool/build/      do build 逻辑实现和编译器源码
 tool/check/      do check 前端诊断命令实现
 tool/run/        do run 命令实现和 wasm 执行桥接
 tool/build/test/ 当前编译器/构建产物回归测试
-tool/get/        do get 逻辑预留目录
-tool/push/       do push 逻辑预留目录
 tool/fmt/        do fmt 命令实现和格式化核心
 tool/lsp/        do lsp diagnostics-only server 实现
 tool/test/       do test 逻辑预留目录

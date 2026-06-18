@@ -266,3 +266,5 @@ get / pkg / push 暂停边界:
 - [x] 新增 changelog 并写入近期已完成能力摘要。验证: `CHANGELOG.md`。
 - [x] 删除已完成支线的过期文档。验证: 已删除 do run 接手清单和历史计划/设计目录; `test ! -e docs` 输出 `docs directory removed`。
 - [x] 清理旧文档残留引用。验证: 旧历史路径关键字扫描无活跃引用。
+- [x] 删除暂停包管理线的占位目录。验证: 已删除 `tool/get/.gitkeep` 和 `tool/push/.gitkeep`; README 目录结构不再列出 `tool/get` / `tool/push`。
+- [x] 删除过期旧语法 fixture。验证: 已删除 `tool/build/test/err/244_source_char_alias_type_name.*` 和 `tool/build/test/err/92_synth_error_alias_rhs.*`; `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 摘要 `pass=670 fail=0 skip=70`。

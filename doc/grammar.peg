@@ -151,7 +151,9 @@ InlineTypeArgs   <- '<' InlineTypeArg (InlineCommaSep InlineTypeArg)* '>'
 InlineTypeArg    <- InlineValueTypeExpr
 InlineStorageType <- '[' InlineValueTypeExpr ']'
 InlineValueTypeExprList <- InlineValueTypeExpr (InlineCommaSep InlineValueTypeExpr)* InlineCommaSep?
-ParamTypeExpr    <- ParamTypeAtom
+ParamTypeExpr    <- ParamNullableTypeExpr / ParamNonNilUnionExpr
+ParamNullableTypeExpr <- ParamNonNilUnionExpr SoftGap '|' SoftGap NilType
+ParamNonNilUnionExpr <- ParamTypeAtom (SoftGap '|' SoftGap ParamTypeAtom)*
 ParamTypeAtom    <- BaseType
                   / ParamStorageType
                   / StructRefType
@@ -208,7 +210,7 @@ ConstraintParamList <- ConstraintFixedParamList (InlineCommaSep ConstraintVariad
 ConstraintFixedParamList <- InlineParamTypeExpr (InlineCommaSep InlineParamTypeExpr)*
 ConstraintVariadicParam <- '...' InlineVariadicElemType
 ValueTypeExprList <- ValueTypeExpr (CommaSep ValueTypeExpr)* TrailComma?
-VariadicElemType  <- ParamTypeExpr
+VariadicElemType  <- ParamTypeAtom
 InlineVariadicElemType <- InlineParamTypeExpr
 
 ParamList        <- FixedParamList (CommaSep VariadicParam)? TrailComma?
@@ -358,7 +360,8 @@ SpreadArg        <- '...' Expr
 
 LambdaExpr       <- '(' SoftGap LambdaParamList? SoftGap ')' SoftGap LambdaTail
 LambdaParamList  <- LambdaParam (CommaSep LambdaParam)* TrailComma?
-LambdaParam      <- ParamName (SoftGap ParamTypeExpr)?
+LambdaParam      <- ParamName (SoftGap LambdaParamTypeExpr)?
+LambdaParamTypeExpr <- ParamTypeAtom
 LambdaTail       <- ReturnTailAnn? (Block / '=>' ArrowExprList)
 ReturnTailAnn    <- SoftGap '->' SoftGap ReturnSpec
 

@@ -218,39 +218,30 @@ test "generic id" {
 
 无等号 `#T` 只声明未知数据类型参数。函数上的未知数据类型参数只要能从参数侧唯一求解，就可以只出现在参数或返回类型里；函数体需要调用 `T` 的能力时，才必须通过函数类型约束或接口函数约束承载。接口函数约束必须引用同块更早声明的数据类型参数；不支持 `#to_text(i32) -> text` 这类具体函数签名存在性断言。
 
-### 非法受限和派生约束
+### 数据类型参数和具体 union
 
-```do decl err
+```do decl ok
 to_text(x i32) -> text {
     return "i32"
 }
 
-#T = i32 | i64
-#to_text(T) -> text
-show_number(x T) -> text {
-    return to_text(x)
-}
-```
-
-```do decl err
 User {
     id i32
 }
 
-to_text(x User) -> text {
-    return "user"
+#T
+#to_text(T) -> text
+show_value(x T) -> text {
+    return to_text(x)
 }
 
-#T
-#Q = T | User
-#to_text(T) -> text
-choose(fallback T, value Q) -> text {
-    if @is(value, User) return "user"
-    return to_text(fallback)
+choose_user(value User | nil) -> text {
+    if @eq(value, nil) return "none"
+    return "user"
 }
 ```
 
-函数约束块里不支持 `#T = A | B` 受限数据类型参数，也不支持 `#Q = T | User` 这类局部派生候选集合。需要具体 union 时，直接在返回位、字段、局部绑定、storage 元素或 type args 里写平铺 union；依赖未知类型参数的派生 union 第一版不提供局部命名语法。
+函数约束块里的 `#T` 只声明未知数据类型参数。需要具体 union 时，直接在返回位、字段、局部绑定、storage 元素或 type args 里写平铺 union；依赖未知类型参数的派生 union 第一版不提供局部命名语法。
 
 ### 函数类型约束
 
@@ -547,14 +538,7 @@ NetworkError error = NetworkTimeout | NetworkClosed
 AppError error = FileError | NetworkError
 ```
 
-```do decl err
-FileError error = FileNotFound | FilePermissionDenied
-NetworkError error = NetworkTimeout | NetworkClosed
-
-App = FileError | NetworkError
-```
-
-错误枚举右侧只接收 enum 分支值，不接收已知错误枚举类型；顶层 type alias / union alias 已取消，不能把多个错误枚举重新命名成新的纯错误聚合。需要组合多个错误来源时, 在返回位、字段或局部绑定里直接写具体来源；参数位仍不接收这种 union。
+错误枚举右侧只接收 enum 分支值，不接收已知错误枚举类型。源码没有顶层错误聚合别名；需要组合多个错误来源时, 在返回位、字段或局部绑定里直接写具体来源；参数位仍不接收这种 union。
 
 ## 函数值展示
 

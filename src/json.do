@@ -217,6 +217,12 @@ quote(bytes [u8]) -> [u8] {
 }
 
 #T
+.encode_value(value T | nil, depth usize) -> [u8] | JsonError {
+    if @eq(value, nil) return "null"
+    return encode_value(value, depth)
+}
+
+#T
 stringify(value T) -> [u8] | JsonError {
     return stringify_with_depth(value, _default_max_depth)
 }

@@ -1,4 +1,4 @@
-#T = i32 | i64
+#T
 #start(T) -> T
 id(x T) -> T {
     return x

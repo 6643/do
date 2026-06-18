@@ -1,2 +1,2 @@
 InvalidTypeRef
-参数位不接收 union/nullable
+重复 union 分支非法
