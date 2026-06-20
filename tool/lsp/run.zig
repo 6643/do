@@ -3,7 +3,9 @@ const cli = @import("../build/cli.zig");
 const diag = @import("../build/diag.zig");
 const diagnostics = @import("diagnostics.zig");
 const env = @import("../env.zig");
+const formatter = @import("../fmt/format.zig");
 const protocol = @import("protocol.zig");
+const semantic_tokens = @import("semantic_tokens.zig");
 
 const max_frame_len = 16 * 1024 * 1024;
 
@@ -194,6 +196,28 @@ fn handleMessage(
         try protocol.writePublishDiagnostics(allocator, writer, uri, &.{});
         return;
     }
+    if (std.mem.eql(u8, method, "textDocument/formatting")) {
+        const uri = jsonPathString(root, &.{ "params", "textDocument", "uri" }) orelse return;
+        const doc = state.findDocument(uri) orelse return;
+        const formatted = try formatter.formatSource(allocator, doc.source);
+        defer allocator.free(formatted);
+        const edit = protocol.TextEdit{
+            .range = fullDocumentRange(doc.source),
+            .new_text = formatted,
+        };
+        try protocol.writeTextEditsResponse(allocator, writer, id, &.{edit});
+        return;
+    }
+    if (std.mem.eql(u8, method, "textDocument/semanticTokens/full")) {
+        const uri = jsonPathString(root, &.{ "params", "textDocument", "uri" }) orelse return;
+        const doc = state.findDocument(uri) orelse return;
+        const tokens = try semantic_tokens.collectSemanticTokens(allocator, doc.source);
+        defer allocator.free(tokens);
+        const data = try semantic_tokens.encodeSemanticTokens(allocator, tokens);
+        defer allocator.free(data);
+        try protocol.writeSemanticTokensResponse(allocator, writer, id, data);
+        return;
+    }
     if (std.mem.eql(u8, method, "shutdown")) {
         state.shutdown_requested = true;
         try protocol.writeShutdownResponse(allocator, writer, id);
@@ -288,6 +312,55 @@ fn jsonPath(root: std.json.Value, path: []const []const u8) ?std.json.Value {
     return current;
 }
 
+fn fullDocumentRange(source: []const u8) protocol.Range {
+    if (source.len == 0) {
+        return .{
+            .start = .{ .line = 0, .character = 0 },
+            .end = .{ .line = 0, .character = 0 },
+        };
+    }
+
+    var line: usize = 0;
+    var line_start: usize = 0;
+    var last_line_len: usize = 0;
+
+    for (source, 0..) |ch, idx| {
+        if (ch == '\n') {
+            last_line_len = idx - line_start;
+            line += 1;
+            line_start = idx + 1;
+        }
+    }
+
+    if (source[source.len - 1] != '\n') {
+        last_line_len = source.len - line_start;
+    } else {
+        last_line_len = 0;
+    }
+
+    return .{
+        .start = .{ .line = 0, .character = 0 },
+        .end = .{
+            .line = line,
+            .character = last_line_len,
+        },
+    };
+}
+
+test "fullDocumentRange handles empty and trailing newline sources" {
+    const empty = fullDocumentRange("");
+    try std.testing.expectEqual(@as(usize, 0), empty.end.line);
+    try std.testing.expectEqual(@as(usize, 0), empty.end.character);
+
+    const without_trailing_newline = fullDocumentRange("User {\n    id i32\n}");
+    try std.testing.expectEqual(@as(usize, 2), without_trailing_newline.end.line);
+    try std.testing.expectEqual(@as(usize, 1), without_trailing_newline.end.character);
+
+    const with_trailing_newline = fullDocumentRange("User {\n    id i32\n}\n");
+    try std.testing.expectEqual(@as(usize, 3), with_trailing_newline.end.line);
+    try std.testing.expectEqual(@as(usize, 0), with_trailing_newline.end.character);
+}
+
 test "ServerState stores and updates open documents" {
     var state = ServerState.init(std.testing.allocator, "tool/build/test/lib");
     defer state.deinit();
@@ -345,4 +418,25 @@ test "handleMessage changes document and clears diagnostics" {
     const doc = state.findDocument("file:///tmp/app.do").?;
     try std.testing.expect(std.mem.indexOf(u8, doc.source, "return") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.writer.buffered(), "\"diagnostics\":[]") != null);
+}
+
+test "handleMessage formats open document" {
+    var state = ServerState.init(std.testing.allocator, "tool/build/test/lib");
+    defer state.deinit();
+
+    var out = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer out.deinit();
+
+    try state.didOpen("file:///tmp/app.do", "User {\nid i32\n}");
+    try handleMessage(
+        std.testing.io,
+        std.testing.allocator,
+        &state,
+        &out.writer,
+        "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/formatting\",\"id\":2,\"params\":{\"textDocument\":{\"uri\":\"file:///tmp/app.do\",\"version\":1},\"options\":{\"tabSize\":4,\"insertSpaces\":true}}}",
+    );
+
+    const bytes = out.writer.buffered();
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"result\":[") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"newText\":\"User {\\n    id i32\\n}\\n\"") != null);
 }

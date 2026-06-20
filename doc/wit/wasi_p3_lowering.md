@@ -162,6 +162,13 @@ _, status = host_output_flush(stream)
 `status == 0` means ok. Nonzero status is the WIT `stream-error` variant index
 plus 1. The standard library turns that status into `StreamError | nil` and
 does not expose WIT `result` or resource method signatures as public Do types.
+The Do wrapper keeps `StreamError` slightly broader than the current WIT
+variant: `StreamClosed` mirrors the WIT `stream-error` branch, while
+`StreamReadFailed`, `StreamCheckWriteFailed`, `StreamWriteFailed`, and `StreamFlushFailed` are wrapper-
+local classifications for host bridge failures. There is currently no
+`close_stream` or drop API for streams in the checked-in registry or wrapper.
+`output-stream.check-write` is a capacity query, not a write operation; it
+returns the writable byte count with the same wrapper error mapping.
 
 `doc/wit/wasi_registry.json` is the current checked-in WIT registry subset. It
 contains only the WASI targets and record mirrors that the compiler/test suite

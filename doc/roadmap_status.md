@@ -1,6 +1,6 @@
 # Roadmap 执行状态
 
-更新时间: 2026-06-18
+更新时间: 2026-06-20
 
 执行原则: 按 `doc/master_plan.md` 的阶段规划和 `README.md` Roadmap 自上而下推进; 如果某项卡住或需要跳过, 必须在本文记录原因和后续恢复条件。
 
@@ -194,15 +194,15 @@
 
 状态: partial
 
-当前结论: `do check <input.do>` 第一版已落地, 当前复用 LSP diagnostics collector 执行 lexer/parser/sema/import 检查, 不编译、不运行、不要求 `start()` 或 `test` 声明。`do run <input.do>` 第一版已落地, 执行策略固定为外部 `wasm-tools + node` 桥接。`do fmt <input.do>` 第一版已落地, 当前只支持 stdout 输出和 `--check` 检查, 不做原地写回。`do lsp [--stdio]` 第一版已落地, 当前只做 diagnostics-only stdio server。get / pkg / push 包管理线已按用户要求暂停, 不作为当前阶段继续目标。
+当前结论: `do check <input.do>...` 第一版已落地, 当前复用 LSP diagnostics collector 执行 lexer/parser/sema/import 检查, 支持按命令行顺序检查多个文件, 不编译、不运行、不要求 `start()` 或 `test` 声明。`do run <input.do>` 第一版已落地, 执行策略固定为外部 `wasm-tools + node` 桥接。`do fmt <input.do>` 第一版已落地, 当前支持 stdout 输出、`--check` 检查和 `--write` 单文件原地写回。`do lsp [--stdio]` 第一版已落地, 当前做 diagnostics + formatting + semantic tokens stdio server。get / pkg / push 包管理线已按用户要求暂停, 不作为当前阶段继续目标。
 
 `do check` 当前边界:
 
-- 命令形态: `do check <input.do>`。
+- 命令形态: `do check <input.do>...`。
 - 诊断来源: 复用 `tool/lsp/diagnostics.zig` 的 lexer/parser/sema/imports fail-fast 链路。
-- 成功行为: 无输出, exit 0。
-- 失败行为: 输出第一条现有 compile diagnostic 格式, exit 1。
-- 不包含: `start()` 入口校验、`test` 声明要求、WAT/codegen、运行测试、watch 模式或多诊断聚合。
+- 成功行为: 所有输入成功时无输出, exit 0。
+- 失败行为: 失败输入输出第一条现有 compile diagnostic 格式; 遇错不 fail-fast, 继续检查后续输入; 最终 exit 1。
+- 不包含: `start()` 入口校验、`test` 声明要求、WAT/codegen、运行测试、watch 模式、workspace mode 或多诊断聚合。
 
 `do run` 当前边界:
 
@@ -214,17 +214,19 @@
 
 `do fmt` 当前边界:
 
-- 命令形态: `do fmt <input.do>` 输出格式化后的源码到 stdout; `do fmt --check <input.do>` 只检查输入是否已格式化。
+- 命令形态: `do fmt <input.do>` 输出格式化后的源码到 stdout; `do fmt --check <input.do>` 只检查输入是否已格式化; `do fmt --write <input.do>` 原地写回单文件。
 - 格式化范围: 第一版 line-based formatter, 覆盖 CRLF/CR -> LF、尾随空白清理、基于 `{}` 的 4 空格缩进、最终单换行和当前行字符串缩进保留策略。
-- 回归范围: `tool/build/test/fmt/*.do` / `.expect` 覆盖 stdout、idempotence 和 `error[FormatMismatch]`。
-- 不包含: 原地写回、范围格式化、语法感知 comment/string brace 解析、LSP formatter 接入。
+- 回归范围: `tool/build/test/fmt/*.do` / `.expect` 覆盖 stdout、write、idempotence 和 `error[FormatMismatch]`。
+- 不包含: 多文件批量、stdin/stdout 自动模式、范围格式化、语法感知 comment/string brace 解析。
 
 `do lsp` 当前边界:
 
 - 命令形态: `do lsp` 和 `do lsp --stdio` 启动 stdio LSP server。
 - 诊断来源: 复用 lexer/parser/sema/imports fail-fast 链路, 每个 document 当前最多发布一个编译诊断。
+- 已支持 formatting, 返回全量 `TextEdit` 覆盖整个文档。
+- 已支持 semantic tokens full, legend 固定为 keyword/type/function/parameter/variable/field/property/string/number/comment/operator/builtin, 当前不支持 delta tokens。
 - 回归范围: `tool/build/test/lsp/*.json` 通过 `tool/build/test/run_lsp_case.mjs` 驱动 `bin/do lsp` smoke。
-- 不包含: completion、hover、definition、rename、formatting、workspace index 和完整语言服务。
+- 不包含: completion、hover、definition、rename、workspace index 和完整语言服务。
 
 get / pkg / push 暂停边界:
 
@@ -242,18 +244,120 @@ get / pkg / push 暂停边界:
 - [x] 07.2.4 实现 `tool/fmt/run.zig` 命令 runner。验证: `cd tool && zig test fmt/format.zig` 通过 `3/3`; `cd tool && zig test main.zig` 通过 `3/3`; `cd tool && zig build -Doptimize=Debug` 通过; 临时文件实测 `do fmt` stdout 输出、`do fmt --check` 成功和 mismatch `error[FormatMismatch]` 均符合计划。
 - [x] 07.2.5 接入 fixture 回归、idempotence 和 `--check` 覆盖。验证: `tool/build/test/fmt/01_struct_func_indent.do`、`tool/build/test/fmt/02_comments_line_strings.do`、`tool/build/test/fmt/03_control_blocks.do` 及其 `.expect` 已接入 `tool/build/test/run_tests.sh`; `bash -n tool/build/test/run_tests.sh` 通过; `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, `fmt` 段三例均通过, 总摘要 `pass=669 fail=0 skip=70`。
 - [x] 07.2.6 同步 README、start_here 和最终验证。验证: `README.md` 已记录 `do fmt <input.do>`、`do fmt --check <input.do>` 和 stdout/check-only 边界; `doc/start_here.md` 下一步已切到 `07.3 LSP`; 最终验证通过: `cd tool && zig test build/cli.zig` 6/6, `cd tool && zig test fmt/format.zig` 3/3, `cd tool && zig build -Doptimize=Debug`, `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 摘要 `pass=669 fail=0 skip=70`。
-- [x] 07.3.0 明确 LSP 最小能力集和诊断来源。结论: 第一版只做 diagnostics-only stdio server, 不做 completion / hover / definition / rename / formatting; 诊断来源复用 lexer/parser/sema/imports fail-fast 链路, 当前每个 document 最多发布一个编译诊断。验证: 当前 LSP 边界已收敛进 README、`CHANGELOG.md` 和本节 `do lsp` 当前边界; 历史 LSP plan 已清理, 不再作为活跃入口。
+- [x] 07.3.0 明确 LSP 最小能力集和诊断来源。结论: 当时第一版只覆盖 diagnostics stdio server, 未覆盖 completion / hover / definition / rename / formatting; 后续 A1 已补 `textDocument/formatting`。诊断来源复用 lexer/parser/sema/imports fail-fast 链路, 当前每个 document 最多发布一个编译诊断。验证: 当前 LSP 边界已收敛进 README、`CHANGELOG.md` 和本节 `do lsp` 当前边界; 历史 LSP plan 已清理, 不再作为活跃入口。
 - [x] 07.3.1 固定 `do lsp [--stdio]` CLI contract。验证: `cd tool && zig test build/cli.zig && zig test main.zig` 通过; `cli` 9/9, `main` 3/3。备注: `tool/lsp/run.zig` 当前只是参数解析 stub, 真实 stdio server 留到 07.3.5。
 - [x] 07.3.2 暴露结构化 compiler diagnostics。验证: `cd tool && zig test build/diag.zig && zig test build/cli.zig && zig test main.zig` 通过; `diag` 12/12, `cli` 9/9, `main` 3/3。备注: `printCompileError(...)` 已改为从 `CompileDiagnostic` 打印, 后续 LSP collector 复用同一 summary/hint。
 - [x] 07.3.3 实现纯 LSP diagnostics collector。验证: `cd tool && zig test main.zig && zig test build/diag.zig && zig test build/cli.zig` 通过; `main` 27/27, `diag` 12/12, `cli` 9/9。备注: `tool/lsp/diagnostics.zig` 通过 `main.zig` 聚合测试覆盖; 直接 `zig test lsp/diagnostics.zig` 会因当前 Zig 单文件 import 规则拒绝 `../build/...` sibling import。
 - [x] 07.3.4 实现最小 JSON-RPC/LSP protocol helper。验证: `cd tool && zig test main.zig && zig test build/diag.zig && zig test build/cli.zig` 通过; `main` 29/29, `diag` 12/12, `cli` 9/9。备注: `tool/lsp/protocol.zig` 通过 `main.zig` 聚合测试覆盖; 当前已支持 initialize/shutdown response 和 publishDiagnostics frame 输出。
 - [x] 07.3.5 实现 `do lsp` stdio server。验证: `cd tool && zig test main.zig` 通过 `main` 32/32; `cd tool && zig test build/diag.zig` 通过 `diag` 12/12; `cd tool && zig test build/cli.zig` 通过 `cli` 9/9; `cd tool && zig build -Doptimize=Debug` 通过。附加 smoke: 临时 Node 脚本通过 stdio 驱动 `./bin/do lsp`, initialize / didOpen syntax error / shutdown / exit 通过, stdout 包含 initialize response、publishDiagnostics 和 `UnterminatedString`, stderr 为空。备注: 进程级 fixture harness 留到 07.3.6。
 - [x] 07.3.6 接入 LSP smoke regression harness。验证: `node tool/build/test/run_lsp_case.mjs ./bin/do tool/build/test/lsp/01_open_valid.json`、`02_open_syntax_error.json`、`03_change_clears_diagnostic.json` 均通过; `bash -n tool/build/test/run_tests.sh` 通过; `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, LSP 三例均 PASS, 摘要 `pass=672 fail=0 skip=70`。
-- [x] 07.3.7 同步 README、测试说明、roadmap 和 start_here。验证: `README.md` 已记录 `do lsp [--stdio]` diagnostics-only 边界; `tool/build/test/README.md` 已记录 `lsp/*.json` fixture 和 `run_lsp_case.mjs`; 最终验证通过: `bash -n tool/build/test/run_tests.sh`, `cd tool && zig test main.zig` 32/32, `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 摘要 `pass=672 fail=0 skip=70`。
+- [x] 07.3.7 同步 README、测试说明、roadmap 和 start_here。验证: `README.md` 已记录 `do lsp [--stdio]` diagnostics 边界; `tool/build/test/README.md` 已记录 `lsp/*.json` fixture 和 `run_lsp_case.mjs`; 最终验证通过: `bash -n tool/build/test/run_tests.sh`, `cd tool && zig test main.zig` 32/32, `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 摘要 `pass=672 fail=0 skip=70`。
 - [x] 07.4.0 暂停 get / pkg / push 包管理线并清理活跃实现。验证: `tool/build/cli.zig` 不再导出 `parseGet/parsePush`; `tool/main.zig` 不再注册 `get/push`; `tool/build/test/run_tests.sh` 不再接入 package fixture; `tool/pkg`、`tool/get/run.zig`、`tool/push/run.zig` 和历史 get/push 计划/spec 文件已删除。
 - [x] 07.5.0 落地 `do check <input.do>` 前端诊断命令。验证: TDD 红灯 `cd tool && zig test build/cli.zig` 失败于 `parseCheck` 未定义; `cd tool && zig test main.zig` 失败于 `check/run.zig` 缺失。绿色验证: `cd tool && zig test build/cli.zig` 11/11, `cd tool && zig test main.zig` 33/33, `cd tool && zig test env.zig` 1/1, `cd tool && zig build -Doptimize=Debug`, 手动 `do check` valid fixture 静默成功、syntax fixture 输出 `error[UnterminatedString]`。
-- [x] 07.next 重新制定总规划并细化各阶段小任务。验证: `doc/master_plan.md` 已作为 active 总规划入口, 覆盖阶段 A-H、阶段内小任务、非目标、主要文件和验收命令; 默认下一步固定为阶段 A 的 A1 LSP formatting 第一版; 禁止默认回到 get / pkg / push。
-- [ ] A1.1 新增 LSP formatting 请求 fixture, 先红灯验证当前不支持。计划: `doc/master_plan.md` 阶段 A / A1。
+- [x] 07.next 重新制定总规划并细化各阶段小任务。验证: `doc/master_plan.md` 已作为 active 总规划入口, 覆盖阶段 A-H、阶段内小任务、非目标、主要文件和验收命令; 当时默认从阶段 A 的 A2 LSP semantic tokens 第一版继续, 当前 A2 已完成并切到 A3; 禁止默认回到 get / pkg / push。
+- [x] A1.1 新增 LSP formatting 请求 fixture, 先红灯验证当前不支持。验证: `tool/build/test/lsp/04_formatting_request.json`; 先以旧二进制复现 `Method not found`, 再在新二进制上通过 formatting response.
+- [x] A1.2 扩展 LSP protocol helper, 支持 formatting response 和全量 `TextEdit` 编码。验证: `cd tool && zig test main.zig` 覆盖 `writeTextEditsResponse emits formatting edit payload`。
+- [x] A1.3 在 `tool/lsp/run.zig` 接入 `textDocument/formatting` handler, 复用 `tool/fmt/format.zig`。验证: `cd tool && zig test main.zig` 覆盖 `handleMessage formats open document`; LSP fixture `04_formatting_request.json` 返回格式化文本。
+- [x] A1.4 让 LSP fixture 回归断言 formatting response。验证: `node tool/build/test/run_lsp_case.mjs ./bin/do tool/build/test/lsp/04_formatting_request.json` 通过。
+- [x] A1.5 同步 README、测试说明、master_plan、roadmap 和 start_here。验证: 当时文档已记录 `do lsp` 支持 formatting, 并切到 A2 semantic tokens; 当前 A2 已完成。
+- [x] A2.1 固定 semantic token legend 顺序和 token modifier 空集合。验证: `cd tool && zig test main.zig` 通过, 覆盖 `semantic token legend order is stable`。
+- [x] A2.2 新增纯 token builder 单元测试, 覆盖 delta line / delta start 编码。验证: 先红灯失败于 `legendTokenTypes` / `SemanticToken` 未定义; 最小实现 `tool/lsp/semantic_tokens.zig` 后 `cd tool && zig test main.zig` 通过 `43/43`。
+- [x] A2.3 接入当前文件 lexer token 分类。验证: 先红灯失败于 `collectSemanticTokens` 未定义; 最小实现后 `cd tool && zig test main.zig` 通过 `44/44`, 覆盖 keyword / variable / number / string / operator 分类。
+- [x] A2.4 对 builtin `@xxx`、类型名、函数名和字段名做最小语义覆盖。验证: 先红灯失败于 `User` 仍为 variable; 增加上下文分类后 `cd tool && zig test main.zig` 通过 `45/45`, 覆盖 type / function / builtin / field。
+- [x] A2.5 新增 LSP fixture 检查 initialize legend 和 token data 非空。验证: 先红灯 `node tool/build/test/run_lsp_case.mjs ./bin/do tool/build/test/lsp/05_semantic_tokens_request.json` 缺少 `semanticTokensProvider` 且 full 请求返回 `Method not found`; 接入 protocol/run 后同命令通过。
+- [x] A2.6 同步 README、测试说明、master_plan、roadmap、start_here 和 changelog。验证: `cd tool && zig test main.zig` 通过 `46/46`; `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, LSP 五例均 PASS, 总摘要 `pass=672 fail=0 skip=70`。
+- [x] A3.1 为 CLI 增加 `--write` 解析红灯测试。验证: 先红灯失败于 `FmtArgs` 缺少 `write` 字段; 增加 `--write` 解析和 `--check` 互斥后 `cd tool && zig test build/cli.zig` 通过 `13/13`。
+- [x] A3.2 在 formatter runner 中实现原地写回。验证: 先红灯失败于 `formatPath` 未定义; 抽出可测 `formatPath` 并接入 `--write` 后 `cd tool && zig test main.zig` 通过 `47/47`。
+- [x] A3.3 新增临时目录黑盒测试, 验证写回内容和幂等。验证: `tool/build/test/run_tests.sh` 的 fmt 段已对每个 fmt fixture 执行 `do fmt --write` 临时文件写回、内容 diff 和二次写回幂等; `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, fmt 三例均 PASS, 总摘要 `pass=672 fail=0 skip=70`。
+- [x] A3.4 同步 README、测试说明、roadmap、master_plan、start_here、CLI usage 和 changelog。验证: `cd tool && zig test build/cli.zig && zig test main.zig` 通过; `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 总摘要 `pass=672 fail=0 skip=70`。
+- [x] A4.1 为多个 input 的 CLI parsing 增加红灯测试。验证: 先红灯失败于 `CheckArgs` 缺少 `input_paths`; 改为 `input_paths` 切片并接受多个非 flag 参数后 `cd tool && zig test build/cli.zig` 通过 `14/14`。
+- [x] A4.2 调整 `tool/check/run.zig`, 顺序执行每个文件。验证: 增加 `checkPaths` helper 和多输入单元测试; 当前策略为不 fail-fast, 遇错记录失败后继续检查后续输入, 最后由 CLI exit 1; `cd tool && zig test main.zig` 通过 `48/48`。
+- [x] A4.3 黑盒 fixture 覆盖全部成功、后一个失败、前一个失败后仍继续的策略。验证: `run_check_multi_case` 复用 check fixture 并复制两个不同 bad 文件证明不 fail-fast; `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, `check multi` PASS, 总摘要 `pass=673 fail=0 skip=70`。
+- [x] A4.4 同步 README、测试说明、roadmap、master_plan、start_here、CLI usage 和 changelog。验证: `cd tool && zig test build/cli.zig && zig test main.zig` 通过; stale scan 未发现当前入口仍把 `do check` 描述为单文件-only。
+- [x] A5.1 扫描 README、start_here、roadmap_status 的命令和边界描述。验证: 当前入口已覆盖 `do run`、`do fmt` stdout/check/write、`do check` 单/多文件、`do lsp` diagnostics/formatting/semantic tokens, 未把 get/push 描述为可用命令。
+- [x] A5.2 修正过期的工具链描述。验证: stale scan 未发现活跃入口仍使用 diagnostics-only、fmt 不支持 write、check 单文件-only 或下一步指向 A2/A3/A4 的过期表述。
+- [x] A5.3 执行 full regression 并记录摘要。验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, `fmt` 三例、`check multi`、LSP 五例均 PASS, 总摘要 `pass=673 fail=0 skip=70`。
+
+## 阶段 B: 语法和语义冻结审查
+
+状态: partial
+
+当前结论: B1 grammar / parser 差异审查的五个问题已按用户接受的推荐方案落地。`@as` 只保留 `@as(Type, value)` 标量转换; `@is` 固定为条件位 special form; 普通集合循环必须写 `loop value, index = source`; import 前置区块检查下沉到 parser; 后续 C2 计划已移除 `@field_type` 主线。已解决的问题文件已删除。
+
+B2 spec_rules / sema 差异初审已输出到独立问题文件 `doc/review_sema_freeze.md`, 当前共 6 个问题。第 1 项“绑定遮蔽和重复名”、第 2 项“字段反射 metadata 来源”、第 3 项“`@is(value, A | B)` 目标集合”、第 4 项“复合条件和 enum/nil 收窄”和第 5 项“普通多 payload union 可用边界”已按推荐 b 落地; 剩余待决问题是泛化诊断。
+
+已落地决定:
+
+- P1 `@as`: 删除 PEG 旧 payload 提取形态和 sema 旧兼容判断, 只保留 `@as(Type, value)`。
+- P1 `@is`: 从普通表达式 builtin 中移除, parser 增加条件位解析路径, 并修正冲突 fixture。
+- P1 collection loop: parser 禁止普通集合 RHS 使用单绑定; 单绑定只保留给 `recv(...)` 和 `fields(TypeOrTypeParam)`。
+- P2 import: import 前置区块由 parser 直接校验, sema 不再重复承担该语法边界。
+- P2 field reflection plan: C2 以后按 `fields(...)` + `@field_get/@field_set` 静态展开推进, 不把 `@field_type` 重新纳入 v1 主线。
+
+阶段内小任务:
+
+- [x] B1.1 列出 PEG 有而 parser 没有的语法。验证: 原 B1 问题清单第 1、2、4 项, 已按决策落地后删除问题文件。
+- [x] B1.2 列出 parser 有而 PEG 没有的语法。验证: 原 B1 问题清单第 3、4 项, 已按决策落地后删除问题文件。
+- [x] B1.3 列出文档示例与 parser 行为冲突的语法。验证: 原 B1 问题清单第 2、5 项, 已按决策落地后删除问题文件。
+- [x] B1.4 每个问题给正例、反例、选项 a/b/... 和推荐。验证: 用户接受推荐方案后已删除问题文件。
+- [x] B1.5 用户选定后, 再同步 grammar、parser、doc 和 fixture。验证: `doc/grammar.peg`, `doc/syntax/builtin.md`, `tool/build/parser.zig`, `tool/build/sema.zig`, `tool/build/test/ok/121_source_text_type.do`, err `306` 到 `309`。
+- [x] B2.1 列出文档定义但 sema 未实现的规则。验证: `doc/review_sema_freeze.md` 第 1、2、3、4、5 项。
+- [x] B2.2 列出 sema 已实现但文档未定义的规则。验证: `doc/review_sema_freeze.md` 的 `B2.2 备注`, 本轮聚焦审查未发现独立 P1。
+- [x] B2.3 列出测试期望和文档冲突的规则。验证: `doc/review_sema_freeze.md` 第 3、4、5、6 项记录 union/narrowing/diagnostic 测试覆盖缺口。
+- [x] B2.4 每个问题给正例、反例、选项 a/b/... 和推荐。验证: `doc/review_sema_freeze.md` 6 个编号问题均已包含。
+- [ ] B2.5 用户选定后, 再同步 spec_rules、实现和 fixture。进度: 第 1 项绑定遮蔽和重复名、第 2 项字段反射 metadata 来源、第 3 项 `@is(value, A | B)` 目标集合、第 4 项复合条件和 enum/nil 收窄、第 5 项普通多 payload union 可用边界已落地; 剩余第 6 项待处理。
+
+B1 落地验证:
+
+- `cd tool && zig test build/parser.zig` 通过, `All 22 tests passed.`
+- `cd tool && zig test main.zig` 通过, `All 50 tests passed.`
+- `cd tool && zig test build/diag.zig && zig test build/cli.zig` 通过, diag `12/12`, cli `14/14`。
+- `cd tool && zig build -Doptimize=Debug` 通过。
+- `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `pass=677 fail=0 skip=70`。
+
+B2 初审验证:
+
+- `git diff --check -- doc/review_sema_freeze.md doc/roadmap_status.md` 通过。
+- 本次只新增待决问题文件和进度记录, 未修改正式语法/语义规则和实现, 因此未重跑 full regression。
+
+B2.5 第 1 项落地验证:
+
+- `cd tool && zig test build/parser.zig && zig test build/sema.zig && zig build -Doptimize=Debug` 通过。
+- `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `pass=684 fail=0 skip=70`。
+- 新增 err `310` 到 `316`; 同步 no-shadow 后的 lambda 参数、库私有参数和 `net` 构造参数命名。
+
+B2.5 第 2 项落地验证:
+
+- RED: 新增 err `317` 到 `321` 后, 旧二进制回归失败, 摘要 `pass=684 fail=5 skip=70`; 其中非法 metadata 使用和非法 `fields(...)` 来源未被 sema 稳定拦截。
+- `cd tool && zig test build/parser.zig && zig test build/sema.zig && zig build -Doptimize=Debug` 通过。
+- `./tool/build/test/run_tests.sh` 通过, 摘要 `pass=689 fail=0 skip=70`。
+- 新增 err `317` 到 `321`; `tool/build/sema.zig` 新增字段反射 provenance 校验, `tool/build/diag.zig` 新增 `InvalidFieldReflection` 诊断文案。
+
+B2.5 第 3 项落地验证:
+
+- RED: 新增 err `322_is_union_target` 后, 旧二进制回归失败, 摘要 `pass=689 fail=1 skip=70`; 旧 ok `68_is_union_type_set` 仍把 `@is(v, i32 | i64)` 当作合法用例。
+- `cd tool && zig test build/parser.zig && zig test build/sema.zig && zig build -Doptimize=Debug` 通过。
+- `./tool/build/test/run_tests.sh` 通过, 摘要 `pass=690 fail=0 skip=70`。
+- `doc/spec_rules.md`、`doc/syntax/builtin.md`、`doc/syntax/union.md`、`doc/grammar.peg` 已同步 v1 单目标 `@is` 规则; `tool/build/sema.zig` 只限制 `@is` target 顶层, 不影响普通类型位和 type args 内部 union/nullable。
+
+B2.5 第 4 项落地验证:
+
+- RED: 新增 err `323_is_inside_logic_condition` 后, 旧二进制回归失败, 摘要 `pass=690 fail=1 skip=70`; 旧实现仍接受 `if @and(@is(value, User), ready())`。
+- `tool/build/parser.zig` 已禁止 `@and/@or/@not` 的逻辑条件参数根部直接使用 `@is(...)`。
+- `doc/spec_rules.md`、`doc/syntax/builtin.md`、`doc/syntax/union.md`、`doc/spec_examples.md` 和 `doc/grammar.peg` 已同步 v1 边界: 只承诺直接条件头 `@is(value, Type)` 和直接条件头 `@eq/@ne(value, nil)` 的单非 nil 分支收窄; 复合条件 proof engine 和 enum 分支值收窄保留到 future。
+- 处理第 4 项时发现 `FileError | nil` 未经条件也可直接绑定到 `FileError`; 已记录到 `doc/review_sema_freeze.md` 第 5 项, 后续按 union 支持矩阵单独处理。
+- `cd tool && zig test build/parser.zig && zig test build/sema.zig && zig build -Doptimize=Debug` 通过。
+- `./tool/build/test/run_tests.sh` 通过, 摘要 `pass=691 fail=0 skip=70`。
+
+B2.5 第 5 项落地验证:
+
+- RED: 新增 compile_err `18_union_payload_requires_narrowing` 后, 旧二进制仍成功 build `FileError | nil` 到 `FileError` 的未收窄裸用。
+- `tool/build/codegen.zig` 已要求 scalar/error union payload 提取必须存在当前路径 `narrowed_union_locals` 事实, 和 struct union payload 提取规则一致。
+- `doc/spec_rules.md` 和 `doc/syntax/union.md` 已同步 v1 union 支持矩阵: 未收窄 union 不隐式匹配 payload 类型; 多 payload union 的完整目标集合和复杂路径 proof 保留到 future。
+- 修复严格 payload 提取后暴露的 JSON compiled 路径: 字段反射 loop body 的 locals 收集现在会继承 guard return 和 guard break/continue 的 false-path narrowing; `if @eq(value_offset, nil) continue` 后的 `value_offset` 可作为已收窄 payload 参与 `parse_value(..., value_offset)` 和后续 `@field_set`。
+- 新增 compile_ok `227_field_reflection_nil_continue_payload_lower` 覆盖 `fields(T)` loop 中 `@is(..., JsonError) return`、`@eq(..., nil) continue`、`parse_value`、`@field_set` 的组合 lowering。
+- targeted 验证: `cd tool && zig test build/codegen.zig`、`cd tool && zig build -Doptimize=Debug`、JSON compiled 组 `133/136/137/141/143/144/145/146/147` 均通过。
+- full regression: `./tool/build/test/run_tests.sh` 通过, 摘要 `pass=694 fail=0 skip=70`。
 
 ## 文档治理
 

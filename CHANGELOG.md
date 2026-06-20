@@ -5,6 +5,21 @@
 ## 2026-06-18
 
 - 新增 `CHANGELOG.md` 作为历史变更入口。
+- `do lsp` 补齐 `textDocument/formatting`。
+  - 行为: initialize 暴露 `documentFormattingProvider: true`; formatting 返回全量 `TextEdit`, 复用 `do fmt` formatter core。
+  - 验证记录保留在 `doc/roadmap_status.md` 的 `A1.*`。
+- `do lsp` 补齐 `textDocument/semanticTokens/full`。
+  - 行为: initialize 暴露 semantic tokens legend; full 请求返回 LSP delta encoded token data。
+  - 边界: 不做 delta tokens、workspace index、主题适配、completion、hover、definition 或 rename。
+  - 验证记录保留在 `doc/roadmap_status.md` 的 `A2.*`。
+- `do fmt` 补齐 `--write`。
+  - 行为: `do fmt --write <input.do>` 生成完整 formatted buffer 后原地写回单文件。
+  - 边界: 不做多文件批量、stdin/stdout 自动模式或语法感知 formatter 重写。
+  - 验证记录保留在 `doc/roadmap_status.md` 的 `A3.*`。
+- `do check` 补齐多文件输入。
+  - 行为: `do check a.do b.do` 按命令行顺序检查; 遇到失败继续检查后续输入, 最终 exit 1。
+  - 边界: 不做并发、watch、workspace mode 或多诊断聚合。
+  - 验证记录保留在 `doc/roadmap_status.md` 的 `A4.*`。
 - 清理已完成支线的历史计划和设计文档, 避免 `doc/start_here.md`、`doc/roadmap_status.md` 与旧 plan/spec 双源维护。
 - 当前保留的活跃文档入口:
   - `README.md`
@@ -24,17 +39,17 @@
   - 行为: 复用 LSP diagnostics collector, 只检查 lexer/parser/sema/import diagnostics。
   - 边界: 不编译、不运行、不要求 `start()` 或 `test` 声明。
   - 验证记录保留在 `doc/roadmap_status.md` 的 `07.5.0`。
-- `do lsp [--stdio]` diagnostics-only 第一版落地。
+- `do lsp [--stdio]` diagnostics 第一版落地。
   - 行为: 支持 initialize、initialized、didOpen、didChange、didClose、shutdown、exit。
-  - 边界: 不包含 formatting、semantic tokens、completion、hover、definition、rename 或 workspace index。
+  - 当时边界: 未包含 formatting、semantic tokens、completion、hover、definition、rename 或 workspace index; formatting 和 semantic tokens 已在 2026-06-18 补齐。
   - 验证记录保留在 `doc/roadmap_status.md` 的 `07.3.*`。
 - `do fmt <input.do>` 和 `do fmt --check <input.do>` 第一版落地。
   - 行为: stdout 输出或 check-only。
-  - 边界: 不做原地写回、不做 range formatting、不做语法感知重写。
+  - 当时边界: 未包含原地写回、range formatting 或语法感知重写; `--write` 已在 2026-06-18 补齐。
   - 验证记录保留在 `doc/roadmap_status.md` 的 `07.2.*`。
 - 总规划重做为 `doc/master_plan.md`。
   - 阶段 A-H 已拆为小任务。
-  - 下一步固定为 A1 LSP formatting 第一版。
+  - 当时下一步为 A1 LSP formatting 第一版; A1/A2 已在 2026-06-18 完成, 当前下一步见 `doc/master_plan.md`。
 - get / pkg / push 包管理线暂停。
   - 当前不注册 `do get` / `do push` CLI。
   - 不保留活跃 package 实现和 package smoke regression。

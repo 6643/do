@@ -3,12 +3,16 @@
 .host_output_write = @wasi("io/streams/output-stream.write", (output-stream, list<u8>) -> result<_,stream-error>)
 .host_output_flush = @wasi("io/streams/output-stream.flush", (output-stream) -> result<_,stream-error>)
 
-StreamError error = StreamClosed | StreamReadFailed | StreamWriteFailed | StreamFlushFailed
+// InputStream / OutputStream 是不透明句柄值，不暴露构造或拥有语义。
+// WIT stream-error 当前只对应 closed；其余分支是 wrapper-local 故障分类。
+StreamError error = StreamClosed | StreamReadFailed | StreamCheckWriteFailed | StreamWriteFailed | StreamFlushFailed
 
+// 仅在本模块内以 public struct + private field 形式封装句柄。
 InputStream {
     .id i64
 }
 
+// 仅在本模块内以 public struct + private field 形式封装句柄。
 OutputStream {
     .id i64
 }
@@ -38,7 +42,7 @@ check_write_stream(stream OutputStream) -> u64, StreamError | nil {
     allowed u64 = 0
     status i32 = 0
     allowed, status = host_output_check_write(@as(i32, output_stream_id(stream)))
-    return allowed, stream_status_to_error(status, StreamWriteFailed)
+    return allowed, stream_status_to_error(status, StreamCheckWriteFailed)
 }
 
 write_stream(stream OutputStream, data [u8]) -> StreamError | nil {

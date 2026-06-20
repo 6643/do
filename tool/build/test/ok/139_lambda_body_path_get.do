@@ -11,6 +11,6 @@ project(x T, f Q) -> U {
 
 test "lambda body path get" {
     todo TodoItem = TodoItem{title = 42}
-    value i32 = project(todo, (todo TodoItem) -> i32 => @get(todo, .title))
+    value i32 = project(todo, (item_todo TodoItem) -> i32 => @get(item_todo, .title))
     if @eq(value, 42) return
 }

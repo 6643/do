@@ -1,7 +1,7 @@
 # do toolchain 回归测试
 
 这个目录存放当前编译器/构建产物的黑盒回归测试，目录结构已按当前实现扁平化。
-当前覆盖 `do build`、`do test`、第一版 `do check` 诊断命令、第一版 `do run` 产品命令、第一版 `do fmt` 产品命令和第一版 `do lsp` 产品命令。
+当前覆盖 `do build`、`do test`、第一版 `do check` 诊断命令、第一版 `do run` 产品命令、第一版 `do fmt` 产品命令和第一版 `do lsp` 产品命令; `do lsp` 现已覆盖 formatting 和 semantic tokens。
 
 目录说明:
 
@@ -22,10 +22,10 @@
 - `compiled_ok`: 期望 `do test <input.do> --compiled -o out.wat` 成功生成 compiled test WAT 的用例; 当前覆盖普通 block 函数调用、单表达式箭头函数调用、私有函数声明调用、单返回调用结果的标量推断绑定、导入函数调用、导入标量常量、导入标准库函数体内的本模块常量/helper 调用和 guard return. `RUN_WASM=1` 时会额外 parse, 并通过 `run_compiled_test_case.mjs` 逐个执行 `__test_N` export, 输出 `test "name" ... ok` 与汇总.
 - `compiled_err`: 期望 `do test <input.do> --compiled -o out.wat` 失败的用例, 用于锁定 compiled runner 的 build/lowering 诊断.
 - `compiled_trap`: 期望 compiled test WAT 可生成和 parse, 但执行 `__test_N` export 时触发 trap 的用例; 只在 `RUN_WASM=1` 下执行.
-- `check`: 期望 `do check <input.do>` 执行的黑盒用例; 无 `.expect` 时要求成功且 stdout/stderr 都为空, 有 `.expect` 时要求失败并逐行匹配 stderr 子串。`do check` 只检查 lexer/parser/sema/import diagnostics, 不编译、不运行、不要求 `start()` 或 `test` 声明。
+- `check`: 期望 `do check <input.do>...` 执行的黑盒用例; 无 `.expect` 时要求成功且 stdout/stderr 都为空, 有 `.expect` 时要求失败并逐行匹配 stderr 子串。`run_tests.sh` 还覆盖多输入全部成功、后一个失败、前一个失败后继续检查后续输入并最终失败。`do check` 只检查 lexer/parser/sema/import diagnostics, 不编译、不运行、不要求 `start()` 或 `test` 声明。
 - `run`: 期望 `do run <input.do>` 成功执行的黑盒 smoke 用例; 默认 `./tool/build/test/run_tests.sh` 会逐个运行这些用例, 若存在同名 `.stdout.expect` 则逐行对比 stdout, 并要求 stderr 为空。
-- `fmt`: 期望 `do fmt <input.do>` 成功输出格式化结果的用例; 默认 `./tool/build/test/run_tests.sh` 会逐个运行这些用例, 若存在同名 `.expect` 则逐行对比 stdout, 并要求 stderr 为空。每个 `fmt` 用例还会复跑一次输出以校验 idempotence, 并对同一输入执行 `do fmt --check` 校验格式化命中与 mismatch 诊断。
-- `lsp/*.json`: JSON-RPC smoke fixtures, 由 `run_lsp_case.mjs` 执行。每个 fixture 会向 `bin/do lsp` 发送 framed LSP messages, 并检查 initialize response、publishDiagnostics 或诊断清空输出。
+- `fmt`: 期望 `do fmt <input.do>` 成功输出格式化结果的用例; 默认 `./tool/build/test/run_tests.sh` 会逐个运行这些用例, 若存在同名 `.expect` 则逐行对比 stdout, 并要求 stderr 为空。每个 `fmt` 用例还会复跑一次输出以校验 idempotence, 对同一输入执行 `do fmt --check` 校验格式化命中与 mismatch 诊断, 并用临时文件执行 `do fmt --write` 校验原地写回内容和幂等。
+- `lsp/*.json`: JSON-RPC smoke fixtures, 由 `run_lsp_case.mjs` 执行。每个 fixture 会向 `bin/do lsp` 发送 framed LSP messages, 并检查 initialize response、publishDiagnostics、formatting response、semantic tokens response 或诊断清空输出。
 - `run_wasm_smoke.sh`: 底层 WAT -> `wasm-tools parse` -> Node 执行桥接验证脚本, 只在 `RUN_WASM=1 ./tool/build/test/run_tests.sh` 或手动调用时执行; 它保留为桥接链路 smoke, 不替代产品命令 `do run` 回归。
 - `run_tests.sh`: 编译 `tool` 下的编译器, 然后执行 `do test`、编译模式、`do check`、`do run`、`do fmt` 和 `do lsp` 黑盒用例.
 - `do test` 输出约定: 每个测试打印 `test "name" ... ok`、`test "name" ... failed` 或 `test "name" ... skipped`; 最后打印汇总 `ok: N passed; 0 failed; M skipped` 或 `failed: N passed; F failed; M skipped`. 默认静态 runner 遇到未支持控制流、导入调用或复杂表达式时输出 `skipped`; 已支持断言确定失败或进入 `unknown` 时输出 `failed`. `ok/*.must_pass` 标记该同名 `.do` 用例不允许输出 skipped, 用于逐步收回静态 runner 已支持语义的旧 skip. `ok/*.compiled_must_pass` 标记该同名 `.do` 用例允许静态 runner skip, 但 `run_tests.sh` 必须通过 `do test --compiled` 生成 WAT、parse wasm 并执行 `__test_N` 通过。

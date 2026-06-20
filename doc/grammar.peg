@@ -274,6 +274,7 @@ ContinueStmt     <- 'continue' LoopLabel?
 
 IfCondExpr       <- CondExpr
 CondExpr         <- IsExpr / CondPredExpr / ExprNoParen
+LogicCondExpr    <- CondPredExpr / ExprNoParen
 
 Expr             <- ExprNoParen
                   / ParenExpr
@@ -289,7 +290,7 @@ UpperValueExpr   <- EnumBranchName
 ExprIdent        <- !ReservedName LowerIdent / ReadonlyIdent
 ParenExpr        <- '(' SoftGap Expr SoftGap ')'
 
-BuiltinCallExpr  <- IsExpr / AsExpr / ValueLogicExpr / FieldReflectExpr / CoreAccessExpr / CoreFixedCallExpr
+BuiltinCallExpr  <- AsExpr / ValueLogicExpr / FieldReflectExpr / CoreAccessExpr / CoreFixedCallExpr
 
 ValueLogicExpr   <- ValueAndExpr
                   / ValueOrExpr
@@ -299,8 +300,7 @@ CondPredExpr     <- CondAndExpr
                   / CondNotExpr
 
 IsExpr           <- '@' 'is' '(' SoftGap Expr CommaSep IsTypeExpr TrailComma? SoftGap ')'
-IsTypeExpr       <- IsUnionExpr
-IsUnionExpr      <- IsTypeAtom (SoftGap '|' SoftGap IsTypeAtom)*
+IsTypeExpr       <- IsTypeAtom
 IsTypeAtom       <- BaseType
                   / IsStorageType
                   / IsNamedType
@@ -309,10 +309,7 @@ IsStorageType    <- '[' SoftGap IsTypeExpr SoftGap ']'
 IsNamedType      <- PublicTypeName IsTypeArgs?
 IsTypeArgs       <- '<' SoftGap IsTypeArg (CommaSep IsTypeArg)* SoftGap '>'
 IsTypeArg        <- ValueTypeExpr
-AsExpr           <- AsPayloadExpr / AsScalarConvertExpr
-AsPayloadExpr    <- '@' 'as' '(' SoftGap Expr CommaSep AsPayloadType TrailComma? SoftGap ')'
-AsScalarConvertExpr <- '@' 'as' '(' SoftGap ScalarType CommaSep Expr TrailComma? SoftGap ')'
-AsPayloadType    <- BaseType / IsStorageType / IsNamedType / ErrorEnumName
+AsExpr           <- '@' 'as' '(' SoftGap ScalarType CommaSep Expr TrailComma? SoftGap ')'
 ScalarType       <- 'i8' / 'i16' / 'i32' / 'i64'
                   / 'u8' / 'u16' / 'u32' / 'u64'
                   / 'isize' / 'usize'
@@ -320,9 +317,9 @@ ScalarType       <- 'i8' / 'i16' / 'i32' / 'i64'
 ValueAndExpr     <- '@' 'and' '(' SoftGap ExprNoParen CommaSep ExprNoParen (CommaSep ExprNoParen)* TrailComma? SoftGap ')'
 ValueOrExpr      <- '@' 'or' '(' SoftGap ExprNoParen CommaSep ExprNoParen (CommaSep ExprNoParen)* TrailComma? SoftGap ')'
 ValueNotExpr     <- '@' 'not' '(' SoftGap ExprNoParen TrailComma? SoftGap ')'
-CondAndExpr      <- '@' 'and' '(' SoftGap CondExpr CommaSep CondExpr (CommaSep CondExpr)* TrailComma? SoftGap ')'
-CondOrExpr       <- '@' 'or' '(' SoftGap CondExpr CommaSep CondExpr (CommaSep CondExpr)* TrailComma? SoftGap ')'
-CondNotExpr      <- '@' 'not' '(' SoftGap CondExpr TrailComma? SoftGap ')'
+CondAndExpr      <- '@' 'and' '(' SoftGap LogicCondExpr CommaSep LogicCondExpr (CommaSep LogicCondExpr)* TrailComma? SoftGap ')'
+CondOrExpr       <- '@' 'or' '(' SoftGap LogicCondExpr CommaSep LogicCondExpr (CommaSep LogicCondExpr)* TrailComma? SoftGap ')'
+CondNotExpr      <- '@' 'not' '(' SoftGap LogicCondExpr TrailComma? SoftGap ')'
 
 FieldReflectExpr <- FieldReflectMetaExpr / FieldReflectGetExpr / FieldReflectSetExpr
 FieldReflectMetaExpr <- '@' FieldReflectMetaName '(' SoftGap FieldMetaArg TrailComma? SoftGap ')'

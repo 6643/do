@@ -15,6 +15,8 @@ test "compiled guard union storage return move" {
     second_input [u8] = .{4, 5, 6}
     first = copy_until_end(first_input)
     second = copy_until_end(second_input)
+    if @is(first, GuardError) return
+    if @is(second, GuardError) return
     expect_first [u8] = .{1, 2, 3}
     expect_second [u8] = .{4, 5, 6}
 

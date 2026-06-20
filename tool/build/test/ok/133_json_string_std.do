@@ -1,6 +1,12 @@
+JsonError = @lib("json.do", JsonError)
 json_escape = @lib("json.do", escape)
 json_quote = @lib("json.do", quote)
 json_unescape = @lib("json.do", unescape)
+
+json_bytes_eq(value [u8] | JsonError, expect [u8]) -> bool {
+    if @is(value, JsonError) return false
+    return @eq(value, expect)
+}
 
 test "json string standard escapes" {
     controls [u8] = .{34, 92, 8, 12, 10, 13, 9, 1}
@@ -21,8 +27,8 @@ test "json string standard escapes" {
     ok bool = true
     ok = @and(ok, @eq(escaped, expect_escaped))
     ok = @and(ok, @eq(quoted, expect_quoted))
-    ok = @and(ok, @eq(special, expect_special))
-    ok = @and(ok, @eq(unicode_ascii, expect_ascii))
-    ok = @and(ok, @eq(unicode_pair, expect_pair))
+    ok = @and(ok, json_bytes_eq(special, expect_special))
+    ok = @and(ok, json_bytes_eq(unicode_ascii, expect_ascii))
+    ok = @and(ok, json_bytes_eq(unicode_pair, expect_pair))
     if ok return
 }

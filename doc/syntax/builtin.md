@@ -4,22 +4,27 @@
 
 ```do
 // 判断命名类型分支
-@is(value, User)
-
-// 判断多个类型分支
-@is(value, User | Admin)
+if @is(value, User) {
+    user User = value
+}
 
 // 判断连续存储分支
-@is(value, [User])
+if @is(value, [User]) {
+    handle_users(value)
+}
 
 // 判断泛型类型分支
-@is(value, Box<User | nil>)
+if @is(value, Box<User | nil>) {
+    handle_box(value)
+}
 
 // 判断错误枚举分支
-@is(value, FileError)
+if @is(value, FileError) {
+    return value
+}
 ```
 
-规则: `@is(value, TypeExpr)` 只做类型分支判断, 第二个实参必须是类型表达式。`value enum` 的分支值和 `nil` 都是值, 统一使用 `@eq/@ne` 判断, 不写成 `@is(value, ByteDigit)` 或 `@is(value, nil)`。
+规则: `@is(value, TypeExpr)` 只做条件位类型分支判断, 第二个实参的顶层必须是单个类型表达式。`@is(value, User | Admin)` 这类目标集合暂不属于 v1; 需要逐个分支判断。`value enum` 的分支值和 `nil` 都是值, 统一使用 `@eq/@ne` 判断, 不写成 `@is(value, ByteDigit)` 或 `@is(value, nil)`。`@is` 不能作为普通 bool 表达式绑定、赋值、返回或传参。
 
 ## 分支收紧
 
@@ -33,7 +38,7 @@ if @is(result, FileError) {
 }
 ```
 
-规则: `@is(value, Type)` 的 true 分支会把 `value` 收紧为 `Type`, 分支内直接使用原变量。
+规则: `@is(value, Type)` 只能作为条件头的直接根表达式。true 分支会把 `value` 收紧为 `Type`, 分支内直接使用原变量。`if @and(@is(value, User), ready())` 这类复合条件收窄不属于 v1。
 
 ## 逻辑
 
@@ -54,7 +59,7 @@ if @is(result, FileError) {
 @not(a)
 ```
 
-规则: `@and/@or/@not` 在 bool 条件和 bool 表达式上按逻辑 special form 处理, `@and/@or` 可短路。整数参数上的 `@and/@or` 是位运算 core 固定调用名, 不按 bool 短路语义执行。
+规则: `@and/@or/@not` 在 bool 条件和 bool 表达式上按逻辑 special form 处理, `@and/@or` 可短路。v1 只组合普通 bool, 不接收直接 `@is(...)` 参数, 也不传播类型收窄事实。整数参数上的 `@and/@or` 是位运算 core 固定调用名, 不按 bool 短路语义执行。
 
 ## 比较
 

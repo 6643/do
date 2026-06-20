@@ -13,6 +13,6 @@ test "lambda explicit env arg" {
     seed i32 = 0
     xs List<i32> = empty_list(seed)
     step i32 = 1
-    result = map(xs, step, (x i32, step i32) => @add(x, step))
+    result = map(xs, step, (x i32, item_step i32) => @add(x, item_step))
     return
 }

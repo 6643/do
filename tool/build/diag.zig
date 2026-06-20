@@ -44,9 +44,7 @@ pub fn printCliError(io: std.Io, err: anyerror) !void {
 pub fn printIoError(io: std.Io, path: []const u8, err: anyerror) !void {
     var err_buffer: [768]u8 = undefined;
     var out = std.Io.File.stderr().writer(io, &err_buffer);
-    try out.interface.print("error[{s}]: {s}\n", .{ @errorName(err), errorSummary(err) });
-    try out.interface.print("at: {s}\n", .{path});
-    try out.interface.print("hint: {s}\n", .{errorHint(err)});
+    try writeIoErrorTo(&out.interface, path, err);
     try out.interface.flush();
 }
 
@@ -63,28 +61,38 @@ pub fn printCompileError(
 }
 
 pub fn printDiagnostic(io: std.Io, diagnostic: CompileDiagnostic) !void {
-    const caret_col = if (diagnostic.loc.col == 0) 1 else diagnostic.loc.col;
-
     var err_buffer: [4096]u8 = undefined;
     var out = std.Io.File.stderr().writer(io, &err_buffer);
-    try out.interface.print("error[{s}]: {s}\n", .{ diagnostic.code, diagnostic.message });
-    try out.interface.print(" --> {s}:{d}:{d}\n", .{ diagnostic.path, diagnostic.loc.line, diagnostic.loc.col });
-    try out.interface.print(" hint: {s}\n", .{diagnostic.hint});
-    if (diagnostic.line_text.len != 0) {
-        try out.interface.print(" {d} | {s}\n", .{ diagnostic.loc.line, diagnostic.line_text });
-        try out.interface.print("   | ", .{});
-        try writeCaret(&out, caret_col);
-    }
+    try writeDiagnosticTo(&out.interface, diagnostic);
     try out.interface.flush();
+}
+
+pub fn writeIoErrorTo(writer: anytype, path: []const u8, err: anyerror) !void {
+    try writer.print("error[{s}]: {s}\n", .{ @errorName(err), errorSummary(err) });
+    try writer.print("at: {s}\n", .{path});
+    try writer.print("hint: {s}\n", .{errorHint(err)});
+}
+
+pub fn writeDiagnosticTo(writer: anytype, diagnostic: CompileDiagnostic) !void {
+    const caret_col = if (diagnostic.loc.col == 0) 1 else diagnostic.loc.col;
+
+    try writer.print("error[{s}]: {s}\n", .{ diagnostic.code, diagnostic.message });
+    try writer.print(" --> {s}:{d}:{d}\n", .{ diagnostic.path, diagnostic.loc.line, diagnostic.loc.col });
+    try writer.print(" hint: {s}\n", .{diagnostic.hint});
+    if (diagnostic.line_text.len != 0) {
+        try writer.print(" {d} | {s}\n", .{ diagnostic.loc.line, diagnostic.line_text });
+        try writer.print("   | ", .{});
+        try writeCaret(writer, caret_col);
+    }
 }
 
 fn writeCaret(writer: anytype, col: usize) !void {
     const max_col = if (col > 256) 256 else col;
     var i: usize = 1;
     while (i < max_col) : (i += 1) {
-        try writer.interface.print(" ", .{});
+        try writer.print(" ", .{});
     }
-    try writer.interface.print("^\n", .{});
+    try writer.print("^\n", .{});
 }
 
 fn locateCompileError(
@@ -417,6 +425,7 @@ pub fn errorSummary(err: anyerror) []const u8 {
         error.InvalidTypeRef => "类型引用写作 `Type`；普通固定数据参数可写平铺 union/nullable；变参元素、函数类型和接口约束参数不接收 union/nullable；私有类型声明写作 `.Type`；裸 `nil` 类型非法；重复 union 分支非法；`nil` 分支最多一次；匿名函数类型不能直接作为 union 分支；TypeArgs 不接受 `(T)` 或匿名函数类型",
         error.InvalidPathIndex => "路径参数写作 `@get(value, index, .field)`；字段段写作 `.field`",
         error.InvalidPathAccess => "字段读取语法: `@get(value, .field)`; 字段写入语法: `@set(value, .field, new_value)`；字段段只用于 @get/@set 路径参数",
+        error.InvalidFieldReflection => "字段反射语法: `loop field = fields(StructOrTypeParam) { ... }`; `@field_*` 的 field 参数必须来自当前字段反射循环",
         error.InvalidFuncDeclName => "函数声明名语法: `lower_name(...) -> Type { ... }` 或 `.lower_name(...) -> Type { ... }`",
         error.InvalidTypedLiteral => "聚合构造语法: `Type{field = value}` 或 `Type<...>{field = value}`",
         error.InvalidBraceExpr => "聚合构造语法: `Type{field = value}`、已知目标类型的 `.{field = value}` 或 `.{expr, ...}`",
@@ -473,6 +482,7 @@ pub fn errorHint(err: anyerror) []const u8 {
         error.InvalidTypeRef => "类型引用写作 `Type`；普通固定数据参数可写 `T | nil`；变参元素、函数类型和接口约束参数不接收 union/nullable；私有类型声明写作 `.Type`；同一 union 内分支唯一，`nil` 分支最多一次；函数类型不能写入 union；TypeArgs 写 `List<T>`",
         error.InvalidPathIndex => "路径参数写作 `@get(value, index, .field)`；字段段写作 `.field`",
         error.InvalidPathAccess => "字段段只用于 @get/@set 路径参数；普通函数参数使用有类型表达式",
+        error.InvalidFieldReflection => "`fields(...)` 只接收可见结构体或当前泛型类型参数；`@field_set` 写作 `target = @field_set(target, field, value)`",
         error.InvalidFuncDeclName => "函数声明名语法: `lower_name(...) -> Type { ... }` 或 `.lower_name(...) -> Type { ... }`",
         error.InvalidTypedLiteral => "聚合构造语法: `Type{field = value}` 或 `Type<...>{field = value}`",
         error.InvalidBraceExpr => "聚合构造语法: `Type{field = value}`、已知目标类型的 `.{field = value}` 或 `.{expr, ...}`",

@@ -83,8 +83,8 @@ _md5_k [u32] = .{
     }
 }
 
-.block(a u32, b u32, c u32, d u32, block List<u8>, base usize) -> u32, u32, u32, u32 {
-    items [u8] = list_items(block)
+.block(a u32, b u32, c u32, d u32, chunk List<u8>, base usize) -> u32, u32, u32, u32 {
+    items [u8] = list_items(chunk)
     words [u32] = @put(.{}, read_u32_le(items, base), read_u32_le(items, @add(base, 4)), read_u32_le(items, @add(base, 8)), read_u32_le(items, @add(base, 12)), read_u32_le(items, @add(base, 16)), read_u32_le(items, @add(base, 20)), read_u32_le(items, @add(base, 24)), read_u32_le(items, @add(base, 28)), read_u32_le(items, @add(base, 32)), read_u32_le(items, @add(base, 36)), read_u32_le(items, @add(base, 40)), read_u32_le(items, @add(base, 44)), read_u32_le(items, @add(base, 48)), read_u32_le(items, @add(base, 52)), read_u32_le(items, @add(base, 56)), read_u32_le(items, @add(base, 60)))
 
     aa u32 = a

@@ -435,26 +435,6 @@ use(value T) -> T {
 `@is(value, T)` 只有在 `value` 的静态类型已经显式暴露候选集合时才构成真正收窄。单独的未知数据类型参数 `T` 没有可扣减候选集合，因此不能写 `@is(value, T)`。
 
 ```do program ok
-User {
-    id i32
-}
-
-ready() -> bool {
-    return true
-}
-
-load_user() -> User | nil {
-    return nil
-}
-
-use() -> i32 {
-    v = load_user()
-    if @and(@is(v, User), ready()) return 1
-    return 0
-}
-```
-
-```do program ok
 ready() -> bool {
     return true
 }
@@ -477,12 +457,17 @@ ready() -> bool {
     return true
 }
 
-check(v User | nil) -> bool {
+load_user() -> User | nil {
+    return nil
+}
+
+check() -> bool {
+    v = load_user()
     return @and(@is(v, User), ready())
 }
 ```
 
-`is` 只能出现在条件位, 或嵌套在条件位的 `and/or/not` 参数里。普通 `bool` 表达式可以使用 `and/or/not`, 但参数中不能间接出现 `is`。函数参数位也不接收 `User | nil`；需要判断 union 时，让函数返回 union，或先在调用方的局部值里判断后再传入单一类型。
+`is` 只能作为条件头的直接根表达式。普通 `bool` 表达式可以使用 `and/or/not`, 但参数中不能直接出现 `is`; 复合条件 proof engine 保留到 future。
 
 ```do stmt ok
 if @eq(err, NotFound) return

@@ -57,10 +57,11 @@ fn printUsage(io: std.Io) !void {
         \\  do build <input.do> [--component-core] [-o out.wat]
         \\  do test <input.do>
         \\  do test <input.do> --compiled [-o out.wat]
-        \\  do check <input.do>
+        \\  do check <input.do>...
         \\  do run <input.do>
         \\  do fmt <input.do>
         \\  do fmt --check <input.do>
+        \\  do fmt --write <input.do>
         \\  do lsp [--stdio]
         \\
     , .{});
@@ -81,4 +82,5 @@ test {
     _ = @import("check/run.zig");
     _ = @import("lsp/diagnostics.zig");
     _ = @import("lsp/protocol.zig");
+    _ = @import("lsp/semantic_tokens.zig");
 }

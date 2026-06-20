@@ -1,7 +1,7 @@
 # do 编译器主计划
 
 状态: active
-更新时间: 2026-06-18
+更新时间: 2026-06-19
 
 本文是后续阶段的总规划入口, 用来回答“接下来按什么顺序做、每个阶段拆哪些小任务、每项怎么验收”。实时完成状态、阻塞原因和验证证据记录在 `doc/roadmap_status.md`。
 
@@ -11,11 +11,11 @@
 
 - 规范入口、语义规则、语法速查、PEG、内存模型和 WASI lowering 文档已拆分。
 - `do build`, `do test`, `do test --compiled`, `do check`, `do run`, `do fmt`, `do lsp` 第一版已落地。
-- 当前 `do lsp` 是 diagnostics-only stdio server。
+- 当前 `do lsp` 是 diagnostics + formatting + semantic tokens stdio server。
 - 当前 `do fmt` 是 stdout / check-only line-based formatter。
 - 当前 `do check` 只做 lexer/parser/sema/import diagnostics, 不编译、不运行。
 - 当前 `get / pkg / push` 包管理线暂停, 不作为默认后续任务。
-- 最近完整回归基线: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 为 `pass=670 fail=0 skip=70`。
+- 最近完整回归基线: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 为 `pass=677 fail=0 skip=70`。
 
 当前禁止默认推进:
 
@@ -59,6 +59,8 @@
 
 ## 3. 阶段 A: 工具链体验补齐
 
+状态: done
+
 目标: 让日常开发、编辑器集成和 CI 检查有稳定入口。
 
 当前已完成:
@@ -66,12 +68,12 @@
 - `do check <input.do>`
 - `do fmt <input.do>`
 - `do fmt --check <input.do>`
-- `do lsp [--stdio]` diagnostics-only
+- `do lsp [--stdio]` diagnostics + formatting + semantic tokens
 - `do run <input.do>`
 
 ### A1. LSP formatting 第一版
 
-状态: next
+状态: done
 
 范围:
 
@@ -80,20 +82,20 @@
 - 复用 `tool/fmt/format.zig` 的格式化结果。
 - LSP initialize capability 暴露 `documentFormattingProvider: true`。
 
-不做:
+暂不覆盖:
 
-- 不做 range formatting。
-- 不做 on-type formatting。
+- range formatting。
+- on-type formatting。
 - 不做增量 edit。
 - 不改变 `do fmt` 当前 stdout / check-only 行为。
 
 拆分:
 
-- [ ] A1.1 新增 formatting 请求 LSP fixture, 先红灯验证当前不支持。
-- [ ] A1.2 扩展 LSP protocol helper, 能编码 formatting response 和全量 range。
-- [ ] A1.3 在 `tool/lsp/run.zig` 接入 `textDocument/formatting` handler。
-- [ ] A1.4 让 `tool/build/test/run_lsp_case.mjs` 能断言 response result。
-- [ ] A1.5 同步 README、`tool/build/test/README.md` 和 `doc/roadmap_status.md`。
+- [x] A1.1 新增 formatting 请求 LSP fixture, 先红灯验证当前不支持。
+- [x] A1.2 扩展 LSP protocol helper, 能编码 formatting response 和全量 range。
+- [x] A1.3 在 `tool/lsp/run.zig` 接入 `textDocument/formatting` handler。
+- [x] A1.4 让 `tool/build/test/run_lsp_case.mjs` 能断言 response result。
+- [x] A1.5 同步 README、`tool/build/test/README.md` 和 `doc/roadmap_status.md`。
 
 主要文件:
 
@@ -115,6 +117,8 @@
 
 ### A2. LSP semantic tokens 第一版
 
+状态: done
+
 范围:
 
 - 实现 `textDocument/semanticTokens/full`。
@@ -130,12 +134,12 @@
 
 拆分:
 
-- [ ] A2.1 固定 legend 顺序和 token modifier 空集合。
-- [ ] A2.2 新增纯 token builder 单元测试, 覆盖 delta line / delta start 编码。
-- [ ] A2.3 接入当前文件 lexer token 分类。
-- [ ] A2.4 对 builtin `@xxx`、类型名、函数名和字段名做最小语义覆盖。
-- [ ] A2.5 新增 LSP fixture 检查 initialize legend 和 token data 非空。
-- [ ] A2.6 同步 README、测试说明和 `doc/roadmap_status.md`。
+- [x] A2.1 固定 legend 顺序和 token modifier 空集合。
+- [x] A2.2 新增纯 token builder 单元测试, 覆盖 delta line / delta start 编码。
+- [x] A2.3 接入当前文件 lexer token 分类。
+- [x] A2.4 对 builtin `@xxx`、类型名、函数名和字段名做最小语义覆盖。
+- [x] A2.5 新增 LSP fixture 检查 initialize legend 和 token data 非空。
+- [x] A2.6 同步 README、测试说明和 `doc/roadmap_status.md`。
 
 验收:
 
@@ -144,6 +148,8 @@
 - `SKIP_BUILD=1 ./tool/build/test/run_tests.sh`
 
 ### A3. `do fmt --write`
+
+状态: done
 
 范围:
 
@@ -159,10 +165,10 @@
 
 拆分:
 
-- [ ] A3.1 为 CLI 增加 `--write` 解析红灯测试。
-- [ ] A3.2 在 formatter runner 中实现原地写回。
-- [ ] A3.3 新增临时目录黑盒测试, 验证写回内容和幂等。
-- [ ] A3.4 同步 README、测试说明和 `doc/roadmap_status.md`。
+- [x] A3.1 为 CLI 增加 `--write` 解析红灯测试。
+- [x] A3.2 在 formatter runner 中实现原地写回。
+- [x] A3.3 新增临时目录黑盒测试, 验证写回内容和幂等。
+- [x] A3.4 同步 README、测试说明和 `doc/roadmap_status.md`。
 
 验收:
 
@@ -171,6 +177,8 @@
 - `SKIP_BUILD=1 ./tool/build/test/run_tests.sh`
 
 ### A4. `do check` 多文件批量
+
+状态: done
 
 范围:
 
@@ -188,10 +196,10 @@
 
 拆分:
 
-- [ ] A4.1 为多个 input 的 CLI parsing 增加红灯测试。
-- [ ] A4.2 调整 `tool/check/run.zig`, 顺序执行每个文件。
-- [ ] A4.3 黑盒 fixture 覆盖全部成功、后一个失败、前一个失败后仍继续或 fail-fast 的明确策略。
-- [ ] A4.4 同步 README、测试说明和 `doc/roadmap_status.md`。
+- [x] A4.1 为多个 input 的 CLI parsing 增加红灯测试。
+- [x] A4.2 调整 `tool/check/run.zig`, 顺序执行每个文件。
+- [x] A4.3 黑盒 fixture 覆盖全部成功、后一个失败、前一个失败后仍继续或 fail-fast 的明确策略。
+- [x] A4.4 同步 README、测试说明和 `doc/roadmap_status.md`。
 
 验收:
 
@@ -209,9 +217,9 @@
 
 拆分:
 
-- [ ] A5.1 扫描 README、start_here、roadmap_status 的命令和边界描述。
-- [ ] A5.2 修正过期的工具链描述。
-- [ ] A5.3 执行 full regression 并记录摘要。
+- [x] A5.1 扫描 README、start_here、roadmap_status 的命令和边界描述。
+- [x] A5.2 修正过期的工具链描述。
+- [x] A5.3 执行 full regression 并记录摘要。
 
 验收:
 
@@ -222,7 +230,7 @@
 
 - `do fmt` 支持 check、stdout 和 write。
 - `do check` 支持单文件和多文件前端诊断。
-- `do lsp` 至少支持 diagnostics、formatting、semantic tokens。
+- `do lsp` 至少支持 diagnostics、formatting 和 semantic tokens。
 - README、测试说明、roadmap 和 start_here 同步。
 
 ## 4. 阶段 B: 语法和语义冻结审查
@@ -235,19 +243,19 @@
 
 - 对比 `doc/grammar.peg`、`doc/syntax/*.md` 和 `tool/build/parser.zig`。
 - 覆盖顶层声明、表达式、lambda、return、多返回、line string、comment、loop、defer、import。
-- 输出 `doc/review_syntax_freeze.md`。
+- 审查问题先输出到独立问题文件; 用户选定后同步落地并删除已解决的问题文件。
 
 拆分:
 
-- [ ] B1.1 列出 PEG 有而 parser 没有的语法。
-- [ ] B1.2 列出 parser 有而 PEG 没有的语法。
-- [ ] B1.3 列出文档示例与 parser 行为冲突的语法。
-- [ ] B1.4 每个问题给正例、反例、选项 a/b/... 和推荐。
-- [ ] B1.5 用户选定后, 再同步 grammar、parser、doc 和 fixture。
+- [x] B1.1 列出 PEG 有而 parser 没有的语法。
+- [x] B1.2 列出 parser 有而 PEG 没有的语法。
+- [x] B1.3 列出文档示例与 parser 行为冲突的语法。
+- [x] B1.4 每个问题给正例、反例、选项 a/b/... 和推荐。
+- [x] B1.5 用户选定后, 再同步 grammar、parser、doc 和 fixture。
 
 验收:
 
-- `doc/review_syntax_freeze.md` 中每个问题有编号、证据、选项、推荐。
+- 已处理问题文件删除, 不保留过期语法问题清单。
 - 已落地决定都有对应 `ok` 或 `err` fixture。
 - `SKIP_BUILD=1 ./tool/build/test/run_tests.sh`
 
@@ -268,7 +276,7 @@
 
 验收:
 
-- `doc/review_syntax_freeze.md` 追加 sema 审查结果。
+- sema 审查结果先进入独立问题文件, 用户选定并落地后删除已解决问题文件。
 - 每个落地决定绑定到 err/ok/compile fixture。
 - `SKIP_BUILD=1 ./tool/build/test/run_tests.sh`
 
@@ -353,8 +361,9 @@
 范围:
 
 - 固定 `fields(Type)`。
-- 固定 `@field_name(field)`、`@field_index(field)`、`@field_has_default(field)`、`@field_type(field)`、`@field_get(target, field)`。
-- 只有被 JSON 或序列化证明必要时, 再评估 default value 相关 API。
+- 固定 `@field_name(field)`、`@field_index(field)`、`@field_has_default(field)`、`@field_get(target, field)`、`@field_set(target, field, value)`。
+- 字段类型选择依靠 `@field_get(...)` 在编译期展开后的静态结果触发重载分派。
+- v1 不提供 `@field_type`、`@field_default_value` 或 `@field_default_type`; 只有被 JSON 或序列化证明必要时, 再单独重新评估默认值相关 API。
 
 不做:
 
@@ -365,8 +374,8 @@
 拆分:
 
 - [ ] C2.1 固定 Field 的编译期/运行期边界。
-- [ ] C2.2 固定 `@field_type(field)` 的接收语法和类型约束。
-- [ ] C2.3 固定 `@field_get(target, field)` 如何触发重载分派。
+- [ ] C2.2 固定 `@field_get(target, field)` 的静态展开、重载分派和异构字段接收边界。
+- [ ] C2.3 固定 `@field_set(target, field, value)` 的同名自赋值 lowering 和类型约束。
 - [ ] C2.4 用 JSON fixture 验证 field API 足够表达序列化。
 - [ ] C2.5 同步 spec_rules、syntax/struct 和测试。
 
@@ -886,13 +895,15 @@
 
 范围:
 
-- descriptor / input-stream / output-stream drop 和 wrapper close。
+- descriptor / input-stream / output-stream 资源句柄表达与 wrapper 边界。
+- file / dir 先保留显式 close；stream 当前只保留 read/check_write/write/flush wrapper，不提供 close_stream。
 - 明确资源不是 ARC GC 对象。
 
 不做:
 
 - 不做自动 GC。
 - 不做隐式 host resource drop。
+- 不提前引入未登记的 stream close/drop 语义。
 
 拆分:
 
@@ -1047,25 +1058,21 @@
 
 ## 11. 当前下一步
 
-当前推荐从阶段 A 继续:
+当前推荐从阶段 B 继续:
 
-1. A1 LSP formatting 第一版。
-2. A2 LSP semantic tokens 第一版。
-3. A3 `do fmt --write`。
-4. A4 `do check` 多文件批量。
-5. B1 grammar / parser 差异审查。
-6. B2 spec_rules / sema 差异审查。
-7. C1 JSON stringify / from_json 收口。
+1. B2 spec_rules / sema 差异审查。
+2. B3 语法文档治理。
+3. B4 语法冻结回归包。
+4. C1 JSON stringify / from_json 收口。
 
 推荐理由:
 
-- A1/A2 复用现有 `fmt` 和 LSP 框架, 风险低, 用户价值直接。
-- A3/A4 补齐 CLI 日常开发体验, 改动边界小。
-- B1/B2 在继续扩大实现前冻结规则, 可以减少 JSON、ownership 和 LSP 后续返工。
+- B1 已把 grammar / parser 差异按用户选项落地; 下一步应继续检查 spec_rules / sema, 不直接扩大 JSON 实现面。
+- B2 在继续扩大实现前冻结静态语义规则, 可以减少 JSON、ownership 和 LSP 后续返工。
 - C1 是当前标准库最靠近用户价值的能力, 也会反向验证字段反射和类型边界。
 
 执行方式:
 
-- 用户说 `go` / `next` 时, 默认只推进 A1 的下一个未完成小项。
-- 完成 A1 的任一子项后, 立即在 `doc/roadmap_status.md` 记录进度和验证。
-- 若 A1 发现 formatter 本身缺陷, 先写阻塞说明, 不扩大到重写 formatter。
+- 用户说 `go` / `next` 时, 默认只推进 B2 的下一个未完成小项。
+- 完成 B2 的任一子项后, 立即在 `doc/roadmap_status.md` 记录进度和验证。
+- 若 B2 发现需要用户决策的语义冲突, 先写入独立问题文件, 不直接污染规则正文。

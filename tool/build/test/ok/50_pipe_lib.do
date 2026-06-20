@@ -89,13 +89,13 @@ test "fp storage functional env ops" {
     xs = @put(xs, 3)
 
     step i32 = 1
-    ys [i32] = fp_map(xs, step, (x i32, step i32) -> i32 => @add(x, step))
-    over [i32] = fp_filter(xs, step, (x i32, step i32) -> bool => @gt(x, step))
-    found, found_ok = fp_find(xs, 0, step, (x i32, step i32) -> bool => @eq(x, @add(step, 1)))
-    found_i usize | nil = fp_find_index(xs, step, (x i32, step i32) -> bool => @eq(x, @add(step, 1)))
-    has_gt bool = fp_any(xs, step, (x i32, step i32) -> bool => @gt(x, step))
-    all_gt bool = fp_all(xs, step, (x i32, step i32) -> bool => @gt(x, step))
-    gt_count usize = fp_count(xs, step, (x i32, step i32) -> bool => @gt(x, step))
+    ys [i32] = fp_map(xs, step, (x i32, item_step i32) -> i32 => @add(x, item_step))
+    over [i32] = fp_filter(xs, step, (x i32, item_step i32) -> bool => @gt(x, item_step))
+    found, found_ok = fp_find(xs, 0, step, (x i32, item_step i32) -> bool => @eq(x, @add(item_step, 1)))
+    found_i usize | nil = fp_find_index(xs, step, (x i32, item_step i32) -> bool => @eq(x, @add(item_step, 1)))
+    has_gt bool = fp_any(xs, step, (x i32, item_step i32) -> bool => @gt(x, item_step))
+    all_gt bool = fp_all(xs, step, (x i32, item_step i32) -> bool => @gt(x, item_step))
+    gt_count usize = fp_count(xs, step, (x i32, item_step i32) -> bool => @gt(x, item_step))
 
     ok bool = true
     ok = @and(ok, @eq(@len(ys), 3))

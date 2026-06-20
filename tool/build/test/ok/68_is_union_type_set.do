@@ -1,4 +1,4 @@
-test "is union type set" {
+test "is single type target" {
     v i32 | i64 | bool = 1
-    if @is(v, i32 | i64) return
+    if @is(v, i32) return
 }

@@ -55,13 +55,13 @@ test "list functional env ops" {
     xs = list_add(xs, 3)
 
     step i32 = 1
-    ys List<i32> = list_map(xs, step, (x i32, step i32) -> i32 => @add(x, step))
-    over List<i32> = list_filter(xs, step, (x i32, step i32) -> bool => @gt(x, step))
-    found, found_ok = list_find(xs, 0, step, (x i32, step i32) -> bool => @eq(x, @add(step, 1)))
-    found_i usize | nil = list_find_index(xs, step, (x i32, step i32) -> bool => @eq(x, @add(step, 1)))
-    has_gt bool = list_any(xs, step, (x i32, step i32) -> bool => @gt(x, step))
-    all_gt bool = list_all(xs, step, (x i32, step i32) -> bool => @gt(x, step))
-    gt_count usize = list_count(xs, step, (x i32, step i32) -> bool => @gt(x, step))
+    ys List<i32> = list_map(xs, step, (x i32, item_step i32) -> i32 => @add(x, item_step))
+    over List<i32> = list_filter(xs, step, (x i32, item_step i32) -> bool => @gt(x, item_step))
+    found, found_ok = list_find(xs, 0, step, (x i32, item_step i32) -> bool => @eq(x, @add(item_step, 1)))
+    found_i usize | nil = list_find_index(xs, step, (x i32, item_step i32) -> bool => @eq(x, @add(item_step, 1)))
+    has_gt bool = list_any(xs, step, (x i32, item_step i32) -> bool => @gt(x, item_step))
+    all_gt bool = list_all(xs, step, (x i32, item_step i32) -> bool => @gt(x, item_step))
+    gt_count usize = list_count(xs, step, (x i32, item_step i32) -> bool => @gt(x, item_step))
 
     ok bool = true
     ok = @and(ok, @eq(list_len(ys), 3))
@@ -83,7 +83,7 @@ test "list update env op" {
     xs = list_add(xs, 2)
 
     step i32 = 10
-    next List<i32> = list_update(xs, 1, step, (x i32, step i32) -> i32 => @add(x, step))
+    next List<i32> = list_update(xs, 1, step, (x i32, item_step i32) -> i32 => @add(x, item_step))
     ok bool = @eq(list_get(next, 1), 12)
     if ok return
 }

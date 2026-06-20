@@ -46,6 +46,16 @@ const CallArgInfo = struct {
     arg_count: usize,
 };
 
+const ArgRange = struct {
+    start: usize,
+    end: usize,
+};
+
+const FieldMetaBinding = struct {
+    name: []const u8,
+    body_depth: usize,
+};
+
 const LocalImportPrefix = enum {
     local,
     dep,
@@ -78,12 +88,11 @@ pub fn checkProgram(
     last_error_site = null;
     if (program.source_len == 0) return error.EmptySource;
     if (program.token_count == 0) return error.EmptyTokenStream;
-    try checkImportPrefixBlock(tokens);
     try checkPrivateLValueAssign(tokens);
     try checkFuncDeclNaming(tokens);
     try checkFuncReturnArrowSyntax(tokens);
     try checkStartDeclSyntax(tokens);
-    try checkFuncParamNames(tokens);
+    try checkFuncParamNames(allocator, tokens);
     try checkInlineFuncParamTypes(tokens);
     try checkSynthErrorFuncParamTypes(tokens);
     try checkFuncParamTypeRestrictions(tokens);
@@ -125,6 +134,7 @@ pub fn checkProgram(
     try checkIsTypeArgs(tokens);
     try checkAsTypeArgs(tokens);
     try checkLoopHeader(tokens);
+    try checkFieldReflection(allocator, tokens);
     try checkLoopLabels(allocator, tokens);
     try checkDeferStmts(allocator, tokens);
     try checkAssignmentConstraints(allocator, tokens);
@@ -146,37 +156,6 @@ fn checkPrivateLValueAssign(tokens: []const lexer.Token) !void {
         if (isPrivateTopValueDeclStart(tokens, line_start, eq_idx)) continue;
         if (isStructFieldDeclDefault(tokens, line_start, eq_idx)) continue;
         return markErrorAt(tokens, line_start, error.PrivateIdentCannotBeLValue);
-    }
-}
-
-fn checkImportPrefixBlock(tokens: []const lexer.Token) !void {
-    var brace_depth: usize = 0;
-    var saw_non_import_decl = false;
-    var i: usize = 0;
-    while (i < tokens.len) {
-        const line_start = i;
-        const line_end = findLineEndIdx(tokens, i);
-
-        if (brace_depth == 0 and isTopLevelDeclHead(tokens, line_start)) {
-            if (isModernImportAssign(tokens, line_start)) {
-                if (saw_non_import_decl) return markErrorAt(tokens, line_start, error.InvalidImportDecl);
-            } else if (isTopLevelDeclStart(tokens, line_start)) {
-                saw_non_import_decl = true;
-            }
-        }
-
-        var j = line_start;
-        while (j < line_end) : (j += 1) {
-            if (tokEq(tokens[j], "{")) {
-                brace_depth += 1;
-                continue;
-            }
-            if (tokEq(tokens[j], "}")) {
-                if (brace_depth > 0) brace_depth -= 1;
-            }
-        }
-
-        i = line_end;
     }
 }
 
@@ -240,7 +219,7 @@ fn checkFuncDeclNaming(tokens: []const lexer.Token) !void {
     }
 }
 
-fn checkFuncParamNames(tokens: []const lexer.Token) !void {
+fn checkFuncParamNames(allocator: std.mem.Allocator, tokens: []const lexer.Token) !void {
     var depth_brace: usize = 0;
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
@@ -268,17 +247,20 @@ fn checkFuncParamNames(tokens: []const lexer.Token) !void {
         if (i + 1 >= tokens.len or !tokEq(tokens[i + 1], "(")) continue;
 
         const close_paren = findMatching(tokens, i + 1, "(", ")") catch return markErrorAt(tokens, i + 1, error.InvalidParamName);
-        try validateFuncParamNames(tokens, i + 2, close_paren);
+        try validateFuncParamNames(allocator, tokens, i + 2, close_paren);
         i = close_paren;
     }
 }
 
-fn validateFuncParamNames(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !void {
+fn validateFuncParamNames(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !void {
     var expect_name = true;
     var saw_variadic = false;
     var expect_variadic_type = false;
+    var seen = std.ArrayListUnmanaged([]const u8).empty;
     var depth_angle: usize = 0;
     var depth_paren: usize = 0;
+    defer seen.deinit(allocator);
+
     var i = start_idx;
     while (i < end_idx) : (i += 1) {
         if (!expect_name) {
@@ -321,7 +303,11 @@ fn validateFuncParamNames(tokens: []const lexer.Token, start_idx: usize, end_idx
             expect_variadic_type = true;
             continue;
         }
-        if (!isValidFuncParamName(tokens[i].lexeme)) return markErrorAt(tokens, i, error.InvalidParamName);
+        const name = tokens[i].lexeme;
+        if (!isValidFuncParamName(name)) return markErrorAt(tokens, i, error.InvalidParamName);
+        if (containsName(seen.items, name)) return markErrorAt(tokens, i, error.InvalidParamName);
+        if (isVisibleBindingOrCallableName(tokens, name, start_idx)) return markErrorAt(tokens, i, error.InvalidParamName);
+        try seen.append(allocator, name);
         expect_name = false;
     }
 }
@@ -972,7 +958,7 @@ fn checkIsTypeArgs(tokens: []const lexer.Token) !void {
         if (findTopLevelNilInIsArg(tokens, type_arg, close_paren)) |nil_idx| {
             return markErrorAt(tokens, nil_idx, error.InvalidCallArgList);
         }
-        if (validateIsTypeExpr(tokens, type_arg, close_paren) == null) {
+        if (validateIsTargetTypeExpr(tokens, type_arg, close_paren) != close_paren) {
             return markErrorAt(tokens, type_arg, error.InvalidCallArgList);
         }
     }
@@ -1040,6 +1026,10 @@ fn validateIsTypeExpr(tokens: []const lexer.Token, start_idx: usize, end_idx: us
         i = validateIsTypeAtom(tokens, i + 1, end_idx) orelse return null;
     }
     return i;
+}
+
+fn validateIsTargetTypeExpr(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    return validateIsTypeAtom(tokens, start_idx, end_idx);
 }
 
 fn validateIsTypeAtom(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
@@ -2903,7 +2893,11 @@ fn collectLambdaParamNames(
     var i = start_idx;
     while (i < end_idx) {
         if (!isLambdaParamNameToken(tokens[i])) return markErrorAt(tokens, i, error.InvalidLambdaExpr);
-        try out.append(allocator, tokens[i].lexeme);
+        const name = tokens[i].lexeme;
+        if (containsName(out.items, name)) return markErrorAt(tokens, i, error.InvalidLambdaExpr);
+        if (isVisibleBindingOrCallableName(tokens, name, start_idx)) return markErrorAt(tokens, i, error.InvalidLambdaExpr);
+        if (isVisibleLocalBindingBefore(tokens, name, start_idx)) return markErrorAt(tokens, i, error.InvalidLambdaExpr);
+        try out.append(allocator, name);
         i += 1;
         if (i >= end_idx) break;
 
@@ -3016,6 +3010,106 @@ fn containsName(names: []const []const u8, needle: []const u8) bool {
     for (names) |name| {
         if (std.mem.eql(u8, name, needle)) return true;
     }
+    return false;
+}
+
+fn isVisibleBindingOrCallableName(tokens: []const lexer.Token, name: []const u8, before_idx: usize) bool {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (depth_brace == 0) {
+                if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                    i = next_idx - 1;
+                    continue;
+                }
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (i == before_idx) continue;
+        if (tokens[i].kind != .ident) continue;
+        if (isKeyword(tokens[i].lexeme)) continue;
+
+        const public_name = publicFuncName(tokens[i].lexeme);
+        if (!std.mem.eql(u8, public_name, name)) continue;
+        if (isFuncDeclStart(tokens, i)) return true;
+        if (isModernImportAssign(tokens, i)) {
+            const eq_idx = topLevelLineAssignIdx(tokens, i) orelse continue;
+            if (eq_idx + 2 >= tokens.len) continue;
+            if (!tokEq(tokens[eq_idx + 1], "@")) continue;
+            if (tokens[eq_idx + 2].kind != .ident) continue;
+            const import_kind = tokens[eq_idx + 2].lexeme;
+            if (std.mem.eql(u8, import_kind, "env") or std.mem.eql(u8, import_kind, "wasi")) return true;
+            if (std.mem.eql(u8, import_kind, "lib") and (isLowerIdentName(public_name) or isReadonlyIdentName(tokens[i].lexeme))) return true;
+            continue;
+        }
+        if (isTopLevelValueDeclStart(tokens, i)) return true;
+    }
+    return false;
+}
+
+fn isTopLevelValueDeclStart(tokens: []const lexer.Token, idx: usize) bool {
+    if (!isTopLevelDeclHead(tokens, idx)) return false;
+    if (tokens[idx].kind != .ident) return false;
+    const name = tokens[idx].lexeme;
+    if (!isLowerIdentName(name) and !isReadonlyIdentName(name) and !isDotLowerIdent(name)) return false;
+    if (idx + 1 >= tokens.len) return false;
+    if (tokEq(tokens[idx + 1], "(") or tokEq(tokens[idx + 1], "{")) return false;
+    const line_end = findLineEndIdx(tokens, idx);
+    const eq_idx = findTopLevelAssignEqOnLine(tokens, idx + 1, line_end) orelse return false;
+    return eq_idx > idx + 1;
+}
+
+fn isVisibleLocalBindingBefore(tokens: []const lexer.Token, name: []const u8, before_idx: usize) bool {
+    if (findEnclosingFuncParamTypeName(tokens, before_idx, name) != null) return true;
+
+    var scopes = [_]bool{false} ** 128;
+    var depth: usize = 0;
+    var i: usize = 0;
+    while (i < before_idx and i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (depth + 1 < scopes.len) depth += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth > 0) {
+                scopes[depth] = false;
+                depth -= 1;
+            }
+            continue;
+        }
+        if (tokens[i].kind != .ident) continue;
+        if (!std.mem.eql(u8, tokens[i].lexeme, name)) continue;
+        if (!isLocalBindingIntroducer(tokens, i)) continue;
+        scopes[depth] = true;
+    }
+    var d = depth + 1;
+    while (d > 0) {
+        d -= 1;
+        if (scopes[d]) return true;
+    }
+    return false;
+}
+
+fn isLocalBindingIntroducer(tokens: []const lexer.Token, idx: usize) bool {
+    if (idx >= tokens.len) return false;
+    if (!isLowerIdentName(tokens[idx].lexeme)) return false;
+    if (isReservedFuncName(tokens[idx].lexeme)) return false;
+    const line_start = lineStartIdx(tokens, idx);
+    if (line_start >= tokens.len) return false;
+    if (isTopLevelToken(tokens, line_start) and isTopLevelDeclHead(tokens, line_start)) return false;
+    if (tokEq(tokens[line_start], "loop")) return false;
+    const line_end = findLineEndIdx(tokens, idx);
+    const eq_idx = findTopLevelAssignEqOnLine(tokens, line_start, line_end) orelse return false;
+    if (idx >= eq_idx) return false;
+    if (idx == line_start and eq_idx > idx + 1) return true;
     return false;
 }
 
@@ -4055,17 +4149,11 @@ fn checkUpperValueExprs(program: parser.Program, tokens: []const lexer.Token) !v
         if (node.kind != .ident) continue;
         const tok = tokens[node.start_tok];
         if (!isValidDeclaredTypeName(tok.lexeme)) continue;
-        if (isAsPayloadTypeValue(tokens, node.start_tok)) continue;
         if (isTypeConstructorExpr(tokens, node.start_tok)) continue;
         if (isLocalErrorBranchValue(tokens, tok.lexeme)) continue;
         if (isImportedUpperAlias(tokens, tok.lexeme)) continue;
         return markErrorAt(tokens, node.start_tok, error.InvalidTypeRef);
     }
-}
-
-fn isAsPayloadTypeValue(tokens: []const lexer.Token, idx: usize) bool {
-    const info = callArgInfo(tokens, idx) orelse return false;
-    return std.mem.eql(u8, info.name, "as") and info.arg_index == 1;
 }
 
 fn isTypeConstructorExpr(tokens: []const lexer.Token, start_idx: usize) bool {
@@ -6502,6 +6590,213 @@ fn isFieldsLoopSource(tokens: []const lexer.Token, start_idx: usize, end_idx: us
     return tokEq(tokens[start_idx + 3], ")");
 }
 
+fn checkFieldReflection(allocator: std.mem.Allocator, tokens: []const lexer.Token) !void {
+    var field_bindings = try std.ArrayList(FieldMetaBinding).initCapacity(allocator, 0);
+    defer field_bindings.deinit(allocator);
+
+    var pending_field_loop_opens = try std.ArrayList(FieldMetaBinding).initCapacity(allocator, 0);
+    defer pending_field_loop_opens.deinit(allocator);
+
+    var brace_depth: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "loop")) {
+            if (try fieldReflectionLoopBinding(tokens, i)) |binding| {
+                try pending_field_loop_opens.append(allocator, binding);
+            }
+        }
+
+        if (tokens[i].kind == .ident and isFieldReflectFuncName(tokens[i].lexeme)) {
+            try checkFieldReflectCall(tokens, i, field_bindings.items);
+        }
+
+        if (tokEq(tokens[i], "{")) {
+            brace_depth += 1;
+            while (pending_field_loop_opens.items.len > 0) {
+                const last = pending_field_loop_opens.items[pending_field_loop_opens.items.len - 1];
+                if (last.body_depth != brace_depth) break;
+                const binding = pending_field_loop_opens.pop().?;
+                try field_bindings.append(allocator, binding);
+            }
+            continue;
+        }
+
+        if (tokEq(tokens[i], "}")) {
+            if (brace_depth > 0) brace_depth -= 1;
+            while (field_bindings.items.len > 0 and field_bindings.items[field_bindings.items.len - 1].body_depth > brace_depth) {
+                _ = field_bindings.pop();
+            }
+            continue;
+        }
+    }
+}
+
+fn isFieldReflectFuncName(name: []const u8) bool {
+    return std.mem.eql(u8, name, "field_name") or
+        std.mem.eql(u8, name, "field_index") or
+        std.mem.eql(u8, name, "field_has_default") or
+        std.mem.eql(u8, name, "field_get") or
+        std.mem.eql(u8, name, "field_set");
+}
+
+fn fieldReflectionLoopBinding(tokens: []const lexer.Token, loop_idx: usize) !?FieldMetaBinding {
+    const open_brace = findLoopBlockOpen(tokens, loop_idx) orelse return null;
+    const bind_idx = findLoopBindAssign(tokens, loop_idx + 1, open_brace) orelse return null;
+    if (loop_idx + 2 != bind_idx) return null;
+    if (tokens[loop_idx + 1].kind != .ident) return null;
+    if (!isFieldsLoopSource(tokens, bind_idx + 1, open_brace)) return null;
+
+    const type_idx = bind_idx + 3;
+    if (!fieldReflectionSourceTypeAllowed(tokens, loop_idx, type_idx)) {
+        return markErrorAt(tokens, type_idx, error.InvalidFieldReflection);
+    }
+
+    return .{
+        .name = tokens[loop_idx + 1].lexeme,
+        .body_depth = braceDepthBefore(tokens, open_brace) + 1,
+    };
+}
+
+fn fieldReflectionSourceTypeAllowed(tokens: []const lexer.Token, loop_idx: usize, type_idx: usize) bool {
+    const type_name = publicTypeName(tokens[type_idx].lexeme);
+    if (hasLocalStructDecl(tokens, type_name)) return true;
+    if (isFuncTypeParamAt(tokens, loop_idx, type_name)) return true;
+    if (isImportedUpperAlias(tokens, type_name)) return true;
+    return false;
+}
+
+fn isFuncTypeParamAt(tokens: []const lexer.Token, idx: usize, name: []const u8) bool {
+    const func_start = findEnclosingFuncStart(tokens, idx) orelse return false;
+    return isFuncTypeParam(tokens, func_start, name);
+}
+
+fn findEnclosingFuncStart(tokens: []const lexer.Token, idx: usize) ?usize {
+    var skip_depth: usize = 0;
+    var i = idx;
+    while (i > 0) {
+        i -= 1;
+
+        if (tokEq(tokens[i], "}")) {
+            skip_depth += 1;
+            continue;
+        }
+        if (!tokEq(tokens[i], "{")) continue;
+        if (skip_depth > 0) {
+            skip_depth -= 1;
+            continue;
+        }
+
+        const line_start = lineStartIdx(tokens, i);
+        if (line_start < i and isFuncDeclStart(tokens, line_start)) return line_start;
+    }
+    return null;
+}
+
+fn checkFieldReflectCall(tokens: []const lexer.Token, name_idx: usize, field_bindings: []const FieldMetaBinding) !void {
+    if (name_idx == 0 or !tokEq(tokens[name_idx - 1], "@")) return;
+    if (name_idx + 1 >= tokens.len or !tokEq(tokens[name_idx + 1], "(")) {
+        return markErrorAt(tokens, name_idx, error.InvalidFieldReflection);
+    }
+
+    const close_paren = findMatching(tokens, name_idx + 1, "(", ")") catch
+        return markErrorAt(tokens, name_idx + 1, error.InvalidFieldReflection);
+    const field_arg = fieldReflectFieldArgRange(tokens, name_idx, close_paren) orelse
+        return markErrorAt(tokens, name_idx, error.InvalidFieldReflection);
+    if (!isFieldMetaArg(tokens, field_arg, field_bindings)) {
+        return markErrorAt(tokens, field_arg.start, error.InvalidFieldReflection);
+    }
+    if (std.mem.eql(u8, tokens[name_idx].lexeme, "field_set") and !isFieldSetSelfAssignment(tokens, name_idx, close_paren)) {
+        return markErrorAt(tokens, name_idx, error.InvalidFieldReflection);
+    }
+}
+
+fn fieldReflectFieldArgRange(tokens: []const lexer.Token, name_idx: usize, close_paren: usize) ?ArgRange {
+    if (std.mem.eql(u8, tokens[name_idx].lexeme, "field_name") or
+        std.mem.eql(u8, tokens[name_idx].lexeme, "field_index") or
+        std.mem.eql(u8, tokens[name_idx].lexeme, "field_has_default"))
+    {
+        return singleArgRange(tokens, name_idx + 2, close_paren);
+    }
+
+    if (std.mem.eql(u8, tokens[name_idx].lexeme, "field_get") or
+        std.mem.eql(u8, tokens[name_idx].lexeme, "field_set"))
+    {
+        return nthArgRange(tokens, name_idx + 2, close_paren, 1);
+    }
+
+    return null;
+}
+
+fn isFieldMetaArg(tokens: []const lexer.Token, arg: ArgRange, field_bindings: []const FieldMetaBinding) bool {
+    if (arg.start + 1 != arg.end) return false;
+    if (tokens[arg.start].kind != .ident) return false;
+    for (field_bindings) |binding| {
+        if (std.mem.eql(u8, binding.name, tokens[arg.start].lexeme)) return true;
+    }
+    return false;
+}
+
+fn isFieldSetSelfAssignment(tokens: []const lexer.Token, name_idx: usize, close_paren: usize) bool {
+    const line_start = lineStartIdx(tokens, name_idx);
+    const line_end = findLineEndIdx(tokens, name_idx);
+    if (close_paren + 1 != line_end) return false;
+    const eq_idx = findTopLevelAssignEqOnLine(tokens, line_start, line_end) orelse return false;
+    if (eq_idx + 1 != name_idx - 1) return false;
+    if (line_start + 1 != eq_idx or tokens[line_start].kind != .ident) return false;
+
+    const target_arg = nthArgRange(tokens, name_idx + 2, close_paren, 0) orelse return false;
+    if (target_arg.start + 1 != target_arg.end) return false;
+    if (tokens[target_arg.start].kind != .ident) return false;
+    return std.mem.eql(u8, tokens[line_start].lexeme, tokens[target_arg.start].lexeme);
+}
+
+fn singleArgRange(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?ArgRange {
+    var count: usize = 0;
+    var out: ?ArgRange = null;
+    var seg_start = start_idx;
+    var i = start_idx;
+    while (i <= end_idx) : (i += 1) {
+        if (i < end_idx and !isTopLevelCommaAny(tokens, i, start_idx, end_idx)) continue;
+        if (seg_start < i) {
+            count += 1;
+            out = .{ .start = seg_start, .end = i };
+        }
+        seg_start = i + 1;
+    }
+    if (count != 1) return null;
+    return out;
+}
+
+fn nthArgRange(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, arg_index: usize) ?ArgRange {
+    var current: usize = 0;
+    var seg_start = start_idx;
+    var i = start_idx;
+    while (i <= end_idx) : (i += 1) {
+        if (i < end_idx and !isTopLevelCommaAny(tokens, i, start_idx, end_idx)) continue;
+        if (seg_start < i) {
+            if (current == arg_index) return .{ .start = seg_start, .end = i };
+            current += 1;
+        }
+        seg_start = i + 1;
+    }
+    return null;
+}
+
+fn braceDepthBefore(tokens: []const lexer.Token, before_idx: usize) usize {
+    var depth: usize = 0;
+    var i: usize = 0;
+    while (i < before_idx) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            depth += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth > 0) depth -= 1;
+        }
+    }
+    return depth;
+}
+
 fn isUnsupportedDirectLoopSource(type_name: []const u8) bool {
     return std.mem.eql(u8, type_name, "List") or std.mem.eql(u8, type_name, "HashMap");
 }
@@ -7100,7 +7395,7 @@ fn checkAssignmentConstraints(allocator: std.mem.Allocator, tokens: []const lexe
             var scope: Scope = .{};
             errdefer scope.deinit(allocator);
             if (loopHeaderForBodyOpen(tokens, i)) |loop_idx| {
-                try appendLoopBodyBindings(allocator, &scope, tokens, loop_idx, i);
+                try appendLoopBodyBindings(allocator, &scope, tokens, loop_idx, i, scopes.items);
             }
             try scopes.append(allocator, scope);
             continue;
@@ -7205,21 +7500,33 @@ fn appendLoopBodyBindings(
     tokens: []const lexer.Token,
     loop_idx: usize,
     open_idx: usize,
+    outer_scopes: []const Scope,
 ) !void {
     const header_start = loop_idx + 1;
     if (header_start == open_idx) return;
 
     const bind_idx = findLoopBindAssign(tokens, header_start, open_idx) orelse
         return markErrorAt(tokens, loop_idx, error.InvalidLoopHeader);
-    try appendLoopBindingName(allocator, scope, tokens[header_start].lexeme);
+    try appendLoopBindingName(allocator, scope, tokens, header_start, outer_scopes);
 
     if (header_start + 3 == bind_idx) {
-        try appendLoopBindingName(allocator, scope, tokens[header_start + 2].lexeme);
+        try appendLoopBindingName(allocator, scope, tokens, header_start + 2, outer_scopes);
     }
 }
 
-fn appendLoopBindingName(allocator: std.mem.Allocator, scope: *Scope, name: []const u8) !void {
+fn appendLoopBindingName(
+    allocator: std.mem.Allocator,
+    scope: *Scope,
+    tokens: []const lexer.Token,
+    idx: usize,
+    outer_scopes: []const Scope,
+) !void {
+    const name = tokens[idx].lexeme;
     if (std.mem.eql(u8, name, "_")) return;
+    if (scope.containsLoopBinding(name) or scopesContain(outer_scopes, name) or scopesContainLoopBinding(outer_scopes, name)) {
+        return markErrorAt(tokens, idx, error.InvalidLoopHeader);
+    }
+    if (isVisibleBindingOrCallableName(tokens, name, idx)) return markErrorAt(tokens, idx, error.InvalidLoopHeader);
     try scope.loop_bindings.append(allocator, name);
 }
 

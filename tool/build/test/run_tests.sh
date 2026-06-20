@@ -344,6 +344,9 @@ run_fmt_case() {
     local second_stdout_file="$TMP_DIR/fmt_${name}.second.stdout"
     local second_stderr_file="$TMP_DIR/fmt_${name}.second.stderr"
     local formatted_file="$TMP_DIR/fmt_${name}.formatted.do"
+    local write_file="$TMP_DIR/fmt_${name}.write.do"
+    local write_stdout_file="$TMP_DIR/fmt_${name}.write.stdout"
+    local write_stderr_file="$TMP_DIR/fmt_${name}.write.stderr"
 
     if [[ ! -f "$expect_file" ]]; then
         echo "[FAIL] fmt $name (missing expect file)"
@@ -403,6 +406,49 @@ run_fmt_case() {
         echo "[FAIL] fmt $name (--check formatted source emitted output)"
         cat "$stdout_file"
         cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    cp "$case_file" "$write_file"
+    if ! DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" fmt --write "$write_file" >"$write_stdout_file" 2>"$write_stderr_file"; then
+        echo "[FAIL] fmt $name (--write failed)"
+        cat "$write_stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if [[ -s "$write_stdout_file" || -s "$write_stderr_file" ]]; then
+        echo "[FAIL] fmt $name (--write emitted output)"
+        cat "$write_stdout_file"
+        cat "$write_stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if ! diff -u "$expect_file" "$write_file"; then
+        echo "[FAIL] fmt $name (--write content mismatch)"
+        ((fail_count += 1))
+        return
+    fi
+
+    if ! DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" fmt --write "$write_file" >"$write_stdout_file" 2>"$write_stderr_file"; then
+        echo "[FAIL] fmt $name (--write idempotence failed)"
+        cat "$write_stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if [[ -s "$write_stdout_file" || -s "$write_stderr_file" ]]; then
+        echo "[FAIL] fmt $name (--write idempotence emitted output)"
+        cat "$write_stdout_file"
+        cat "$write_stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if ! diff -u "$expect_file" "$write_file"; then
+        echo "[FAIL] fmt $name (--write idempotence content mismatch)"
         ((fail_count += 1))
         return
     fi
@@ -491,6 +537,76 @@ run_check_case() {
     fi
 
     echo "[PASS] check $name"
+    ((pass_count += 1))
+}
+
+run_check_multi_case() {
+    local valid_file="$CHECK_DIR/01_valid.do"
+    local bad_file="$CHECK_DIR/02_syntax_error.do"
+    local bad_first_file="$TMP_DIR/check_multi_bad_first.do"
+    local bad_second_file="$TMP_DIR/check_multi_bad_second.do"
+    local stdout_file="$TMP_DIR/check_multi.stdout"
+    local stderr_file="$TMP_DIR/check_multi.stderr"
+
+    cp "$bad_file" "$bad_first_file"
+    cp "$bad_file" "$bad_second_file"
+
+    if ! DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" check "$valid_file" "$valid_file" >"$stdout_file" 2>"$stderr_file"; then
+        echo "[FAIL] check multi all valid (unexpected non-zero exit)"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if [[ -s "$stdout_file" || -s "$stderr_file" ]]; then
+        echo "[FAIL] check multi all valid (unexpected output)"
+        cat "$stdout_file"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" check "$valid_file" "$bad_file" >"$stdout_file" 2>"$stderr_file"; then
+        echo "[FAIL] check multi second invalid (expected failure)"
+        ((fail_count += 1))
+        return
+    fi
+
+    if ! grep -Fq "$bad_file" "$stderr_file"; then
+        echo "[FAIL] check multi second invalid (missing bad path)"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if [[ -s "$stdout_file" ]]; then
+        echo "[FAIL] check multi second invalid (unexpected stdout)"
+        cat "$stdout_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" check "$bad_first_file" "$valid_file" "$bad_second_file" >"$stdout_file" 2>"$stderr_file"; then
+        echo "[FAIL] check multi continues after invalid (expected failure)"
+        ((fail_count += 1))
+        return
+    fi
+
+    if ! grep -Fq "$bad_first_file" "$stderr_file" || ! grep -Fq "$bad_second_file" "$stderr_file"; then
+        echo "[FAIL] check multi continues after invalid (did not report later invalid input)"
+        cat "$stderr_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    if [[ -s "$stdout_file" ]]; then
+        echo "[FAIL] check multi continues after invalid (unexpected stdout)"
+        cat "$stdout_file"
+        ((fail_count += 1))
+        return
+    fi
+
+    echo "[PASS] check multi"
     ((pass_count += 1))
 }
 
@@ -1384,6 +1500,7 @@ for case_file in "$CHECK_DIR"/*.do; do
     [[ -e "$case_file" ]] || continue
     run_check_case "$case_file"
 done
+run_check_multi_case
 
 echo "[INFO] run lsp cases"
 for case_file in "$LSP_DIR"/*.json; do

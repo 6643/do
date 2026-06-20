@@ -66,8 +66,8 @@ sha1_f3(b u32, c u32, d u32) -> u32 {
     }
 }
 
-.block(h0 u32, h1 u32, h2 u32, h3 u32, h4 u32, block List<u8>, base usize) -> u32, u32, u32, u32, u32 {
-    items [u8] = list_items(block)
+.block(h0 u32, h1 u32, h2 u32, h3 u32, h4 u32, chunk List<u8>, base usize) -> u32, u32, u32, u32, u32 {
+    items [u8] = list_items(chunk)
     w [u32] = @put(.{}, read_u32_be(items, base), read_u32_be(items, @add(base, 4)), read_u32_be(items, @add(base, 8)), read_u32_be(items, @add(base, 12)), read_u32_be(items, @add(base, 16)), read_u32_be(items, @add(base, 20)), read_u32_be(items, @add(base, 24)), read_u32_be(items, @add(base, 28)), read_u32_be(items, @add(base, 32)), read_u32_be(items, @add(base, 36)), read_u32_be(items, @add(base, 40)), read_u32_be(items, @add(base, 44)), read_u32_be(items, @add(base, 48)), read_u32_be(items, @add(base, 52)), read_u32_be(items, @add(base, 56)), read_u32_be(items, @add(base, 60)))
 
     a u32 = h0
