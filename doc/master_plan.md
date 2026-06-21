@@ -1,7 +1,7 @@
 # do 编译器主计划
 
 状态: active
-更新时间: 2026-06-19
+更新时间: 2026-06-21
 
 本文是后续阶段的总规划入口, 用来回答“接下来按什么顺序做、每个阶段拆哪些小任务、每项怎么验收”。实时完成状态、阻塞原因和验证证据记录在 `doc/roadmap_status.md`。
 
@@ -15,7 +15,7 @@
 - 当前 `do fmt` 是 stdout / check-only line-based formatter。
 - 当前 `do check` 只做 lexer/parser/sema/import diagnostics, 不编译、不运行。
 - 当前 `get / pkg / push` 包管理线暂停, 不作为默认后续任务。
-- 最近完整回归基线: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 为 `pass=677 fail=0 skip=70`。
+- 最近完整回归基线: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 为 `pass=695 fail=0 skip=70`。
 
 当前禁止默认推进:
 
@@ -268,11 +268,11 @@
 
 拆分:
 
-- [ ] B2.1 列出文档定义但 sema 未实现的规则。
-- [ ] B2.2 列出 sema 已实现但文档未定义的规则。
-- [ ] B2.3 列出测试期望和文档冲突的规则。
-- [ ] B2.4 每个问题给正例、反例、选项 a/b/... 和推荐。
-- [ ] B2.5 用户选定后, 再同步 spec_rules、实现和 fixture。
+- [x] B2.1 列出文档定义但 sema 未实现的规则。
+- [x] B2.2 列出 sema 已实现但文档未定义的规则。
+- [x] B2.3 列出测试期望和文档冲突的规则。
+- [x] B2.4 每个问题给正例、反例、选项 a/b/... 和推荐。
+- [x] B2.5 用户选定后, 再同步 spec_rules、实现和 fixture。
 
 验收:
 
@@ -289,10 +289,10 @@
 
 拆分:
 
-- [ ] B3.1 扫描 start_here、README、roadmap_status 的文档引用。
-- [ ] B3.2 找出已被当前规则替代的设计描述。
-- [ ] B3.3 更新或删除过期描述。
-- [ ] B3.4 用 `rg` 检查死链和过期规则关键字。
+- [x] B3.1 扫描 start_here、README、roadmap_status 的文档引用。
+- [x] B3.2 找出已被当前规则替代的设计描述。
+- [x] B3.3 更新或删除过期描述。
+- [x] B3.4 用 `rg` 检查死链和过期规则关键字。
 
 验收:
 
@@ -309,10 +309,10 @@
 
 拆分:
 
-- [ ] B4.1 为 parser-only 规则补 `tool/build/test/err` 或 `ok`。
-- [ ] B4.2 为语义规则补 `ok` / `err`。
-- [ ] B4.3 为 codegen 相关规则补 `compile_ok` / `compile_err` 或 `compiled_ok`。
-- [ ] B4.4 回归并记录摘要。
+- [x] B4.1 为 parser-only 规则补 `tool/build/test/err` 或 `ok`。
+- [x] B4.2 为语义规则补 `ok` / `err`。
+- [x] B4.3 为 codegen 相关规则补 `compile_ok` / `compile_err` 或 `compiled_ok`。
+- [x] B4.4 回归并记录摘要。
 
 验收:
 
@@ -344,8 +344,8 @@
 
 拆分:
 
-- [ ] C1.1 盘点现有 JSON fixture 和 skip 原因。
-- [ ] C1.2 固定 `stringify` 支持矩阵和错误边界。
+- [x] C1.1 盘点现有 JSON fixture 和 skip 原因。
+- [x] C1.2 固定 `stringify` 支持矩阵和错误边界。
 - [ ] C1.3 固定 `from_json` 支持矩阵和错误边界。
 - [ ] C1.4 为 struct 字段、嵌套字段、默认字段补正例。
 - [ ] C1.5 为不支持类型补反例和诊断。
@@ -1058,21 +1058,21 @@
 
 ## 11. 当前下一步
 
-当前推荐从阶段 B 继续:
+当前推荐从阶段 C 继续:
 
-1. B2 spec_rules / sema 差异审查。
-2. B3 语法文档治理。
-3. B4 语法冻结回归包。
-4. C1 JSON stringify / from_json 收口。
+1. C1.3 固定 `from_json` 支持矩阵和错误边界。
+2. C1.4 为 struct 字段、嵌套字段、默认字段补正例。
+3. C2 字段反射 API 收口。
 
 推荐理由:
 
-- B1 已把 grammar / parser 差异按用户选项落地; 下一步应继续检查 spec_rules / sema, 不直接扩大 JSON 实现面。
-- B2 在继续扩大实现前冻结静态语义规则, 可以减少 JSON、ownership 和 LSP 后续返工。
+- 阶段 B 已把 grammar / parser、spec_rules / sema、语法文档治理和语法冻结回归包全部收口。
+- C1.1 已确认现有 JSON fixture 和 skip 边界; C1.2 已固定 stringify 支持矩阵。
 - C1 是当前标准库最靠近用户价值的能力, 也会反向验证字段反射和类型边界。
+- C2/C3 是 C1 暴露出的核心依赖面, 应在 JSON 能力收敛时同步确认。
 
 执行方式:
 
-- 用户说 `go` / `next` 时, 默认只推进 B2 的下一个未完成小项。
-- 完成 B2 的任一子项后, 立即在 `doc/roadmap_status.md` 记录进度和验证。
-- 若 B2 发现需要用户决策的语义冲突, 先写入独立问题文件, 不直接污染规则正文。
+- 用户说 `go` / `next` 时, 默认只推进 C1 的下一个未完成小项。
+- 完成 C1 的任一子项后, 立即在 `doc/roadmap_status.md` 记录进度和验证。
+- 若 C1 暴露出需要用户决策的字段反射、bytes/text 或 JSON 支持矩阵冲突, 先写入 `doc/roadmap_status.md` 的阻塞记录, 不直接扩大语法能力。

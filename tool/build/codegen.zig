@@ -6901,10 +6901,6 @@ fn emitUnionLocalPayloadForType(
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
-    const narrowed_ty = findNarrowedUnionType(locals.narrowed_union_locals.items, name) orelse return false;
-    const concrete_narrowed_ty = substituteGenericType(narrowed_ty, ctx.type_bindings);
-    if (!codegenTypesCompatible(concrete_narrowed_ty, ty)) return false;
-
     const union_local = findUnionLocal(locals.union_locals.items, name) orelse return false;
     var matched: ?UnionBranch = null;
     for (union_local.layout.branches) |branch| {
@@ -6915,6 +6911,12 @@ fn emitUnionLocalPayloadForType(
         matched = branch;
     }
     const branch = matched orelse return false;
+
+    const narrowed_ty = findNarrowedUnionType(locals.narrowed_union_locals.items, name) orelse
+        return error.UnionPayloadRequiresNarrowing;
+    const concrete_narrowed_ty = substituteGenericType(narrowed_ty, ctx.type_bindings);
+    if (!codegenTypesCompatible(concrete_narrowed_ty, ty)) return false;
+
     try appendUnionPayloadLocalGet(allocator, out, union_local.name, branch.payload_start);
     return true;
 }

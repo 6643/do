@@ -1651,7 +1651,7 @@ fn parseBuiltinCallExpr(
     mode: ExprParseMode,
 ) anyerror!CallExprParse {
     if (std.mem.eql(u8, tokens[name_idx].lexeme, "is")) {
-        if (mode != .condition) return markErrorAt(tokens, name_idx, error.InvalidCallArgList);
+        if (mode != .condition) return markErrorAt(tokens, name_idx, error.InvalidNarrowing);
         return parseTypeArgBuiltinCallExpr(allocator, out_nodes, tokens, name_idx, limit_idx);
     }
     if (mode == .condition and isConditionLogicBuiltinName(tokens[name_idx].lexeme)) {
@@ -1863,7 +1863,7 @@ fn countArgsByExprMode(
         else
             try parseCallArg(allocator, out_nodes, tokens, i, end_idx);
         if (mode == .logic_condition and isIsCallRoot(out_nodes.items, expr.node_idx)) {
-            return markErrorAt(tokens, i, error.InvalidCallArgList);
+            return markErrorAt(tokens, i, error.InvalidNarrowing);
         }
         _ = expr.node_idx;
         if ((mode == .condition or mode == .logic_condition) and expr.node_idx < out_nodes.items.len and out_nodes.items[expr.node_idx].kind == .paren) {

@@ -941,25 +941,25 @@ fn checkIsTypeArgs(tokens: []const lexer.Token) !void {
         if (!tokEq(tokens[i], "is")) continue;
         if (!tokEq(tokens[i + 1], "(")) continue;
         const close_paren = findMatching(tokens, i + 1, "(", ")") catch
-            return markErrorAt(tokens, i + 1, error.InvalidCallArgList);
+            return markErrorAt(tokens, i + 1, error.InvalidNarrowing);
         const comma = findTopLevelComma(tokens, i + 2, close_paren) orelse
-            return markErrorAt(tokens, i, error.InvalidCallArgList);
+            return markErrorAt(tokens, i, error.InvalidNarrowing);
         const type_arg = firstNonGap(tokens, comma + 1, close_paren) orelse
-            return markErrorAt(tokens, comma, error.InvalidCallArgList);
+            return markErrorAt(tokens, comma, error.InvalidNarrowing);
         if (isValueLiteralToken(tokens[type_arg])) {
-            return markErrorAt(tokens, type_arg, error.InvalidCallArgList);
+            return markErrorAt(tokens, type_arg, error.InvalidNarrowing);
         }
         if (findInlineFuncTypeInIsArg(tokens, type_arg, close_paren)) |func_type_idx| {
-            return markErrorAt(tokens, func_type_idx, error.InvalidCallArgList);
+            return markErrorAt(tokens, func_type_idx, error.InvalidNarrowing);
         }
         if (findTopLevelComma(tokens, type_arg, close_paren)) |extra_comma| {
-            return markErrorAt(tokens, extra_comma, error.InvalidCallArgList);
+            return markErrorAt(tokens, extra_comma, error.InvalidNarrowing);
         }
         if (findTopLevelNilInIsArg(tokens, type_arg, close_paren)) |nil_idx| {
-            return markErrorAt(tokens, nil_idx, error.InvalidCallArgList);
+            return markErrorAt(tokens, nil_idx, error.InvalidNarrowing);
         }
         if (validateIsTargetTypeExpr(tokens, type_arg, close_paren) != close_paren) {
-            return markErrorAt(tokens, type_arg, error.InvalidCallArgList);
+            return markErrorAt(tokens, type_arg, error.InvalidNarrowing);
         }
     }
 }

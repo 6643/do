@@ -1,2 +1,2 @@
-InvalidCallArgList
-`@is/@as` 语法: `@is(value, Type)` / `@as(Type, value)`
+InvalidNarrowing
+`@is` 不进入普通值表达式

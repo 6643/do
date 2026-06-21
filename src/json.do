@@ -227,9 +227,41 @@ stringify(value T) -> [u8] | JsonError {
     return stringify_with_depth(value, _default_max_depth)
 }
 
+stringify(value i32) -> [u8] | JsonError {
+    return stringify_with_depth(value, _default_max_depth)
+}
+
+stringify(value text) -> [u8] | JsonError {
+    return stringify_with_depth(value, _default_max_depth)
+}
+
+stringify(value [u8]) -> [u8] | JsonError {
+    return stringify_with_depth(value, _default_max_depth)
+}
+
+stringify(value bool) -> [u8] | JsonError {
+    return stringify_with_depth(value, _default_max_depth)
+}
+
 #T
 stringify_with_depth(value T, max_depth usize) -> [u8] | JsonError {
     return stringify_depth(value, max_depth)
+}
+
+stringify_with_depth(value i32, max_depth usize) -> [u8] | JsonError {
+    return encode_value(value, max_depth)
+}
+
+stringify_with_depth(value text, max_depth usize) -> [u8] | JsonError {
+    return encode_value(value, max_depth)
+}
+
+stringify_with_depth(value [u8], max_depth usize) -> [u8] | JsonError {
+    return encode_value(value, max_depth)
+}
+
+stringify_with_depth(value bool, max_depth usize) -> [u8] | JsonError {
+    return encode_value(value, max_depth)
 }
 
 #T

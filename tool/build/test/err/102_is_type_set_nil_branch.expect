@@ -1,2 +1,2 @@
-InvalidCallArgList
-`@is/@as` 语法: `@is(value, Type)` / `@as(Type, value)`
+InvalidNarrowing
+v1 不支持 `@is(value, A | B)` 或 `@is(value, nil)`

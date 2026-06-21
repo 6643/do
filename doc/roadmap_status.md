@@ -1,6 +1,6 @@
 # Roadmap 执行状态
 
-更新时间: 2026-06-20
+更新时间: 2026-06-21
 
 执行原则: 按 `doc/master_plan.md` 的阶段规划和 `README.md` Roadmap 自上而下推进; 如果某项卡住或需要跳过, 必须在本文记录原因和后续恢复条件。
 
@@ -280,11 +280,11 @@ get / pkg / push 暂停边界:
 
 ## 阶段 B: 语法和语义冻结审查
 
-状态: partial
+状态: done
 
-当前结论: B1 grammar / parser 差异审查的五个问题已按用户接受的推荐方案落地。`@as` 只保留 `@as(Type, value)` 标量转换; `@is` 固定为条件位 special form; 普通集合循环必须写 `loop value, index = source`; import 前置区块检查下沉到 parser; 后续 C2 计划已移除 `@field_type` 主线。已解决的问题文件已删除。
+当前结论: 阶段 B 已完成。B1 grammar / parser 差异审查的五个问题已按用户接受的推荐方案落地; B2 spec_rules / sema 差异审查的 6 个问题已按推荐方案全部落地; B3 已完成语法文档治理; B4 已完成语法冻结回归包和 full regression。`@as` 只保留 `@as(Type, value)` 标量转换; `@is` 固定为条件位 special form; 普通集合循环必须写 `loop value, index = source`; import 前置区块检查下沉到 parser; 后续 C2 计划已移除 `@field_type` 主线。已解决的问题文件已删除。
 
-B2 spec_rules / sema 差异初审已输出到独立问题文件 `doc/review_sema_freeze.md`, 当前共 6 个问题。第 1 项“绑定遮蔽和重复名”、第 2 项“字段反射 metadata 来源”、第 3 项“`@is(value, A | B)` 目标集合”、第 4 项“复合条件和 enum/nil 收窄”和第 5 项“普通多 payload union 可用边界”已按推荐 b 落地; 剩余待决问题是泛化诊断。
+B2 spec_rules / sema 差异审查的 6 个问题已按推荐方案全部落地。第 1 项“绑定遮蔽和重复名”、第 2 项“字段反射 metadata 来源”、第 3 项“`@is(value, A | B)` 目标集合”、第 4 项“复合条件和 enum/nil 收窄”、第 5 项“普通多 payload union 可用边界”和第 6 项“泛化诊断”均已同步实现、fixture 和诊断。已解决的 B2 问题清单文件已删除。
 
 已落地决定:
 
@@ -293,6 +293,7 @@ B2 spec_rules / sema 差异初审已输出到独立问题文件 `doc/review_sema
 - P1 collection loop: parser 禁止普通集合 RHS 使用单绑定; 单绑定只保留给 `recv(...)` 和 `fields(TypeOrTypeParam)`。
 - P2 import: import 前置区块由 parser 直接校验, sema 不再重复承担该语法边界。
 - P2 field reflection plan: C2 以后按 `fields(...)` + `@field_get/@field_set` 静态展开推进, 不把 `@field_type` 重新纳入 v1 主线。
+- P2 diagnostics: narrowing 和未收窄 union payload 裸用使用专用诊断 `InvalidNarrowing` / `UnionPayloadRequiresNarrowing`, 不再落到泛化 `InvalidCallArgList` / `NoMatchingCall`。
 
 阶段内小任务:
 
@@ -301,11 +302,11 @@ B2 spec_rules / sema 差异初审已输出到独立问题文件 `doc/review_sema
 - [x] B1.3 列出文档示例与 parser 行为冲突的语法。验证: 原 B1 问题清单第 2、5 项, 已按决策落地后删除问题文件。
 - [x] B1.4 每个问题给正例、反例、选项 a/b/... 和推荐。验证: 用户接受推荐方案后已删除问题文件。
 - [x] B1.5 用户选定后, 再同步 grammar、parser、doc 和 fixture。验证: `doc/grammar.peg`, `doc/syntax/builtin.md`, `tool/build/parser.zig`, `tool/build/sema.zig`, `tool/build/test/ok/121_source_text_type.do`, err `306` 到 `309`。
-- [x] B2.1 列出文档定义但 sema 未实现的规则。验证: `doc/review_sema_freeze.md` 第 1、2、3、4、5 项。
-- [x] B2.2 列出 sema 已实现但文档未定义的规则。验证: `doc/review_sema_freeze.md` 的 `B2.2 备注`, 本轮聚焦审查未发现独立 P1。
-- [x] B2.3 列出测试期望和文档冲突的规则。验证: `doc/review_sema_freeze.md` 第 3、4、5、6 项记录 union/narrowing/diagnostic 测试覆盖缺口。
-- [x] B2.4 每个问题给正例、反例、选项 a/b/... 和推荐。验证: `doc/review_sema_freeze.md` 6 个编号问题均已包含。
-- [ ] B2.5 用户选定后, 再同步 spec_rules、实现和 fixture。进度: 第 1 项绑定遮蔽和重复名、第 2 项字段反射 metadata 来源、第 3 项 `@is(value, A | B)` 目标集合、第 4 项复合条件和 enum/nil 收窄、第 5 项普通多 payload union 可用边界已落地; 剩余第 6 项待处理。
+- [x] B2.1 列出文档定义但 sema 未实现的规则。验证: 原 B2 问题清单第 1、2、3、4、5 项。
+- [x] B2.2 列出 sema 已实现但文档未定义的规则。验证: 原 B2 问题清单的 `B2.2 备注`, 本轮聚焦审查未发现独立 P1。
+- [x] B2.3 列出测试期望和文档冲突的规则。验证: 原 B2 问题清单第 3、4、5、6 项记录 union/narrowing/diagnostic 测试覆盖缺口。
+- [x] B2.4 每个问题给正例、反例、选项 a/b/... 和推荐。验证: 原 B2 问题清单 6 个编号问题均已包含, 用户接受推荐后逐项落地。
+- [x] B2.5 用户选定后, 再同步 spec_rules、实现和 fixture。验证: 6 个问题均已落地; 已解决的 B2 问题清单文件已删除。
 
 B1 落地验证:
 
@@ -317,7 +318,7 @@ B1 落地验证:
 
 B2 初审验证:
 
-- `git diff --check -- doc/review_sema_freeze.md doc/roadmap_status.md` 通过。
+- `git diff --check -- <B2 问题清单> doc/roadmap_status.md` 通过; 问题清单后续已在 B2.5 完成后删除。
 - 本次只新增待决问题文件和进度记录, 未修改正式语法/语义规则和实现, 因此未重跑 full regression。
 
 B2.5 第 1 项落地验证:
@@ -345,7 +346,7 @@ B2.5 第 4 项落地验证:
 - RED: 新增 err `323_is_inside_logic_condition` 后, 旧二进制回归失败, 摘要 `pass=690 fail=1 skip=70`; 旧实现仍接受 `if @and(@is(value, User), ready())`。
 - `tool/build/parser.zig` 已禁止 `@and/@or/@not` 的逻辑条件参数根部直接使用 `@is(...)`。
 - `doc/spec_rules.md`、`doc/syntax/builtin.md`、`doc/syntax/union.md`、`doc/spec_examples.md` 和 `doc/grammar.peg` 已同步 v1 边界: 只承诺直接条件头 `@is(value, Type)` 和直接条件头 `@eq/@ne(value, nil)` 的单非 nil 分支收窄; 复合条件 proof engine 和 enum 分支值收窄保留到 future。
-- 处理第 4 项时发现 `FileError | nil` 未经条件也可直接绑定到 `FileError`; 已记录到 `doc/review_sema_freeze.md` 第 5 项, 后续按 union 支持矩阵单独处理。
+- 处理第 4 项时发现 `FileError | nil` 未经条件也可直接绑定到 `FileError`; 后续已在第 5 项按 union 支持矩阵单独处理。
 - `cd tool && zig test build/parser.zig && zig test build/sema.zig && zig build -Doptimize=Debug` 通过。
 - `./tool/build/test/run_tests.sh` 通过, 摘要 `pass=691 fail=0 skip=70`。
 
@@ -358,6 +359,43 @@ B2.5 第 5 项落地验证:
 - 新增 compile_ok `227_field_reflection_nil_continue_payload_lower` 覆盖 `fields(T)` loop 中 `@is(..., JsonError) return`、`@eq(..., nil) continue`、`parse_value`、`@field_set` 的组合 lowering。
 - targeted 验证: `cd tool && zig test build/codegen.zig`、`cd tool && zig build -Doptimize=Debug`、JSON compiled 组 `133/136/137/141/143/144/145/146/147` 均通过。
 - full regression: `./tool/build/test/run_tests.sh` 通过, 摘要 `pass=694 fail=0 skip=70`。
+
+B2.5 第 6 项落地验证:
+
+- `tool/build/diag.zig` 新增 `InvalidNarrowing` 和 `UnionPayloadRequiresNarrowing` 文案; parser/sema 中 `@is` 非条件位、非法目标集合和复合逻辑条件子项改报 `InvalidNarrowing`; codegen 中未收窄 union payload 裸用改报 `UnionPayloadRequiresNarrowing`。
+- 更新 err fixture `55`、`102`、`103`、`126`、`223`、`224`、`306`、`307`、`322`、`323` 和 compile_err `18` 的期望, 锁住 narrowing / union payload 专用诊断。
+- 已删除已解决的 B2 问题清单文件; 下一个阶段内小任务切到 B3 语法文档治理。
+- targeted 验证: `cd tool && zig test build/parser.zig && zig test build/sema.zig && zig test build/codegen.zig` 通过, parser `23/23`, sema `25/25`, codegen `15/15`。
+- full regression: `./tool/build/test/run_tests.sh` 通过, 摘要 `pass=694 fail=0 skip=70`。
+
+B3 语法文档治理:
+
+- [x] B3.1 扫描 start_here、README、roadmap_status 的文档引用。验证: `rg -n "doc/[A-Za-z0-9_./-]+|README\\.md|CHANGELOG\\.md|master_plan\\.md|roadmap_status\\.md|start_here\\.md|spec_rules\\.md|grammar\\.peg|syntax/[A-Za-z0-9_.-]+" README.md doc/start_here.md doc/roadmap_status.md` 已执行; 入口文档引用均指向现存活跃文件或历史证据条目。`rg -n "review_|next_stage|compiled_task_checklist|internal_prefix_rename_plan|do get|do push|pkg|package|completion|hover|definition|rename|diagnostics-only|单文件-only|fmt.*write|B2.*待|剩余第" README.md doc/start_here.md doc/roadmap_status.md doc/master_plan.md` 已执行; get/pkg/push 与 LSP future 能力只作为明确暂停或 future 边界出现, 未发现当前能力误报。
+- [x] B3.2 找出已被当前规则替代的设计描述。验证: `rg -n "@as\\([^,]+,[^)]*\\)|@is\\([^)]*\\|[^)]*\\)|@and\\([^)]*@is|@or\\([^)]*@is|@not\\([^)]*@is|@field_type|@field_default_value|@field_default_type|loop\\s+[A-Za-z_][A-Za-z0-9_]*\\s*=\\s*[^\\n{]+\\{|do get|do push|tool/pkg|tool/get|tool/push|review_|next_stage|compiled_task_checklist|internal_prefix_rename_plan|diagnostics-only|单文件-only" README.md CHANGELOG.md doc`、`rg -n "@as\\(|@is\\(|@field_|fields\\(|loop .* = |do get|do push|completion|hover|definition|rename" doc/syntax doc/spec_rules.md doc/spec_examples.md doc/spec.md doc/grammar.peg README.md CHANGELOG.md` 和 `rg -n "future|Future|TODO|暂不|后续|不支持|保留到 future|old|旧|历史|过期" doc/syntax doc/spec_rules.md doc/spec_examples.md doc/spec.md doc/grammar.peg README.md CHANGELOG.md` 已执行。结论: `doc/spec_examples.md` 中 `@is(x, F)` 和 `@and(@is(...))` 命中均位于 `decl err` / `program err` 反例块, 与 `doc/spec_rules.md` 当前规则一致; `Box<User | nil>` 命中是外层 `Box<...>` 判断, 不是顶层 `nil` 分支; `@field_type/@field_default_*` 命中均为 v1 不提供的当前边界; get/pkg/push 命中均为暂停或删除历史。未发现必须在 B3.3 修改的过期设计描述。
+- [x] B3.3 更新或删除过期描述。验证: `rg -n "review_sema_freeze|next_stage_plan|compiled_task_checklist|internal_prefix_rename_plan" README.md CHANGELOG.md doc` 和 `rg -n "当前可用|已支持|do get|do push|tool/pkg|@field_type|@field_default_value|@field_default_type|@is\\(value, A \\| B\\)|@is\\(x, F\\)|@and\\(@is" README.md CHANGELOG.md doc/spec_rules.md doc/spec_examples.md doc/syntax doc/master_plan.md doc/start_here.md` 已执行。结论: 命中均为进度记录自身、反例、future 边界、暂停历史或当前能力说明; 没有独立可更新或删除的过期描述。因此本项以 no-op 收口, 不修改语法设计文件。
+- [x] B3.4 用 `rg` 检查死链和过期规则关键字。验证: 本地 Markdown 链接存在性脚本 `perl -MFile::Basename=dirname -MCwd=abs_path -ne '...' README.md CHANGELOG.md doc/*.md doc/syntax/*.md` 无输出; `rg -n "review_sema_freeze|next_stage_plan|compiled_task_checklist|internal_prefix_rename_plan|tool/get|tool/push|tool/pkg|doc/[A-Za-z0-9_./-]*(review|plan|task|checklist)[A-Za-z0-9_./-]*\\.md" README.md CHANGELOG.md doc` 和 `rg -n "diagnostics-only|单文件-only|剩余第|待处理|待决|当前可用.*do get|当前可用.*do push|已支持.*completion|已支持.*hover|已支持.*definition|已支持.*rename|@as\\([^,]+,[^)]*\\)\\s*=\\s*提取|@is\\([^)]*\\|[^)]*\\)|@field_type|@field_default_value|@field_default_type" README.md CHANGELOG.md doc/spec_rules.md doc/spec_examples.md doc/spec.md doc/grammar.peg doc/syntax doc/master_plan.md doc/start_here.md` 已执行。结论: 未发现死链; 旧关键字命中均为当前文档、暂停历史、future 边界或 B3 自身证据。同步 `doc/master_plan.md` 和 `doc/start_here.md` 后, 下一个阶段内小任务切到 B4 语法冻结回归包。
+
+B4 语法冻结回归包:
+
+- [x] B4.1 为 parser-only 规则补 `tool/build/test/err` 或 `ok`。结论: 现有最小 fixture 已覆盖 B1 parser-only 冻结规则, 本项无需新增文件。覆盖矩阵: `@is` 条件位正例 `ok/41_is_value_type_guard.do`, 非值表达式反例 `err/306_is_value_position.do` 和 `err/307_is_non_condition_and_arg.do`; `@as(Type, value)` 旧参数顺序反例 `err/308_as_source_first_rejected.do`; 普通集合循环双绑定正例 `ok/09_loop_each_index_value.do` / `ok/10_loop_each_discard_index.do`, 单绑定反例 `err/309_loop_collection_single_binding.do`; import 前置区块正例 `ok/17_import_forms.do`, import-after-decl 反例 `err/268_import_after_decl.do`; source text / line string 边界正例 `ok/121_source_text_type.do`, return 位 line string 反例 `err/215_return_line_string.do` 和 `err/216_guard_return_line_string.do`。验证: `cd tool && zig test build/parser.zig` 通过 `23/23`; 目标 fixture 手动执行全部通过, ok 组要求 `do test` exit 0, err 组逐行匹配对应 `.expect`。
+- [x] B4.2 为语义规则补 `ok` / `err`。结论: 现有最小 fixture 已覆盖 B2 sema 冻结规则, 本项无需新增文件。覆盖矩阵: 绑定/遮蔽反例 `err/303`、`310` 到 `316`; 字段反射正例 `ok/130_struct_field_reflection.do`、`ok/135_generic_fields_reflection.do`, 反例 `err/317` 到 `321`; `@is` 单目标正例 `ok/41_is_value_type_guard.do`、`ok/68_is_union_type_set.do`, 非法 nil / 目标集合 / 非类型目标反例 `err/55`、`102`、`103`、`126`、`223`、`224`、`322`; 复合条件内 `@is` 反例 `err/323`; union/nil 正例 `ok/71_nil_first_union.do` 和 JSON from_json 的 `ok/143`、`145`、`146`; 重复 union 分支反例 `err/115`、`116`; lambda block nil 正例 `ok/147`、`148`。验证: `cd tool && zig test build/sema.zig` 通过 `25/25`; 目标 fixture 手动执行全部通过, ok 组要求 `do test` exit 0, err 组逐行匹配对应 `.expect`。
+- [x] B4.3 为 codegen 相关规则补 `compile_ok` / `compile_err` 或 `compiled_ok`。新增 `compile_ok/222` 到 `227` 的 `.expect`, 把已有“能 build 即通过”的 nullable/field-reflection lowering fixture 升级为关键输出断言。覆盖矩阵: `@as(Type, value)` lowering `compile_ok/17`; source text lowering `compile_ok/112`、`114`; collection loop lowering `compile_ok/133`; union tag/payload lowering `compile_ok/136` 到 `138`; field reflection set lowering `compile_ok/131`; nil guard / if / else 收窄 `compile_ok/222` 到 `225`; field reflection nullable guard / continue payload lowering `compile_ok/226`、`227`; 未收窄 union payload 诊断 `compile_err/18`; 编译测试执行入口 `compiled_ok/43_compiled_test_union_is_narrowing.do`。验证: `cd tool && zig test build/codegen.zig` 通过 `15/15`; 目标 compile_ok / compile_err / compiled_ok 手动执行全部通过, `.expect` 均逐行匹配输出。
+- [x] B4.4 回归并记录摘要。验证: `./tool/build/test/run_tests.sh` 通过, 摘要 `pass=694 fail=0 skip=70`。阶段 B 收口, 下一步切到 C1 JSON stringify / from_json 收口。
+
+## 阶段 C: 标准库与核心库收口
+
+状态: in_progress
+
+当前结论: C1.2 已完成。C1 主线 JSON fixture `ok/133`、`134`、`136`、`137`、`138`、`141`、`143`、`144`、`145`、`146`、`147` 都带 `.compiled_must_pass`, 若静态 runner 只能 skip, 回归脚本会改走 compiled wasm 执行并要求通过。JSON 相关旧 common wrapper 用例 `ok/117_encoding_json_common_wrappers.do` 当前仍是 static skip, 没有 `.compiled_must_pass`, 不属于 C1 验收里的 `ok/133_*` 到后续 JSON fixture 主线。`src/json.do` 作为标准库源码本身没有 `test` 声明, 在 std src 扫描中属于 `NoTestDecl` 类跳过, 不是 JSON 行为缺陷。下一步进入 C1.3, 固定 `from_json` 支持矩阵和错误边界。
+
+C1 JSON stringify / from_json 收口:
+
+- [x] C1.1 盘点现有 JSON fixture 和 skip 原因。覆盖矩阵: `ok/117_encoding_json_common_wrappers.do` 覆盖 common wrapper, 当前 static skip; `ok/133_json_string_std.do` 覆盖 escape/quote/unescape 标准转义和 unicode; `ok/134_json_string_errors.do` 覆盖非法转义、截断 unicode、非法 surrogate 和 raw control; `ok/136_json_struct_stringify.do` 覆盖 struct 中 i32/text/bool stringify; `ok/137_json_nested_struct_stringify.do` 覆盖嵌套 struct stringify; `ok/138_json_stringify_max_depth.do` 覆盖 max depth; `ok/141_json_struct_from_json.do` 覆盖 `from_json<User>(...)`; `ok/143_json_from_json_defaults.do` 覆盖缺字段保留默认值; `ok/144_json_from_json_nested.do` 覆盖嵌套 struct from_json; `ok/145_json_from_json_errors.do` 覆盖 trailing bytes 和字段类型不匹配; `ok/146_json_from_json_text_and_bytes.do` 覆盖 text/[u8] 字符串解析; `ok/147_json_nullable_stringify.do` 覆盖 nullable field stringify; `compile_ok/216_json_nullable_field_stringify_lower.do` 覆盖 nullable field stringify lowering。skip 结论: `ok/133` 到 `ok/147` 的 C1 主线 JSON fixture 已 compiled PASS; `ok/117` 仍是 static skip; `src/json.do` 的 std src `NoTestDecl` skip 属于库文件无测试声明。已知缺口: 还未把 from_json 非 struct root、不支持 union/list/map/error 等边界整理成明确正反例。验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `pass=694 fail=0 skip=70`; 手动 `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/ok/117_encoding_json_common_wrappers.do` 输出 `skipped`; 手动 `DO_LIB_ROOT=src ./bin/do test src/json.do` 输出 `error[NoTestDecl]`。
+- [x] C1.2 固定 `stringify` 支持矩阵和错误边界。支持矩阵: 顶层 `i32`、`text`、`[u8]`、`bool`; struct 字段中的 `i32/text/[u8]/bool`; nested struct; nullable field `T | nil`; `stringify_with_depth` 的 struct max depth `MaxDepth` 错误。实现: `src/json.do` 的公开 `stringify/stringify_with_depth` 继续保留泛型 struct 入口, 并新增顶层 `i32/text/[u8]/bool` 具体入口, 具体入口复用私有 `encode_value(...)`。不纳入本项: 顶层 nullable `T | nil` 需要 import 函数签名区分 union 参数, 当前多个公开 union overload 会因 import 层把 union 参数归为 `.other` 而触发 `DuplicateFuncSignature`; 非 `i32` 整数宽度、任意 union、list/map/error 自动序列化留到 C1.5 或单独决策。验证: 新增 `ok/149_json_scalar_stringify.do` 和 `.compiled_must_pass`; RED: 旧入口顶层 scalar compiled 失败于 `UnsupportedExpr` / `NoMatchingCall`; GREEN: `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/149_json_scalar_stringify.do --compiled -o /tmp/149_json_scalar_stringify.wat` 通过, `wasm-tools parse /tmp/149_json_scalar_stringify.wat -o /tmp/149_json_scalar_stringify.wasm && node tool/build/test/run_compiled_test_case.mjs /tmp/149_json_scalar_stringify.wasm /tmp/149_json_scalar_stringify.wat` 通过 `1 passed`; 既有 `ok/136_json_struct_stringify.do`、`ok/147_json_nullable_stringify.do` compiled WAT 生成通过; 完整回归 `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `pass=695 fail=0 skip=70`; `git diff --check` 通过。
+- [ ] C1.3 固定 `from_json` 支持矩阵和错误边界。
+- [ ] C1.4 为 struct 字段、嵌套字段、默认字段补正例。
+- [ ] C1.5 为不支持类型补反例和诊断。
+- [ ] C1.6 同步 `src/json.do`、相关核心声明和文档。
 
 ## 文档治理
 
