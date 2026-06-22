@@ -15,7 +15,7 @@
 - 当前 `do fmt` 是 stdout / check-only line-based formatter。
 - 当前 `do check` 只做 lexer/parser/sema/import diagnostics, 不编译、不运行。
 - 当前 `get / pkg / push` 包管理线暂停, 不作为默认后续任务。
-- 最近完整回归基线: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 为 `pass=695 fail=0 skip=70`。
+- 最近完整回归基线: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 为 `pass=706 fail=0 skip=70`。
 
 当前禁止默认推进:
 
@@ -332,7 +332,7 @@
 
 范围:
 
-- 支持普通 struct、text、[u8]、bool、整数、nil、嵌套 struct、默认字段。
+- 支持普通 struct、text、[u8]、bool、i32、nil、嵌套 struct、默认字段。
 - 支持 `from_json<User>(bytes)` 和 `from_json(bytes) -> T | JsonError` 方向的最终签名, 以当前语法规则为准。
 
 不做:
@@ -346,9 +346,9 @@
 
 - [x] C1.1 盘点现有 JSON fixture 和 skip 原因。
 - [x] C1.2 固定 `stringify` 支持矩阵和错误边界。
-- [ ] C1.3 固定 `from_json` 支持矩阵和错误边界。
-- [ ] C1.4 为 struct 字段、嵌套字段、默认字段补正例。
-- [ ] C1.5 为不支持类型补反例和诊断。
+- [x] C1.3 固定 `from_json` 支持矩阵和错误边界。
+- [x] C1.4 为 struct 字段、嵌套字段、默认字段补正例。
+- [x] C1.5 为不支持类型补反例和诊断。
 - [ ] C1.6 同步 `src/json.do`、相关核心声明和文档。
 
 验收:
@@ -1060,14 +1060,14 @@
 
 当前推荐从阶段 C 继续:
 
-1. C1.3 固定 `from_json` 支持矩阵和错误边界。
-2. C1.4 为 struct 字段、嵌套字段、默认字段补正例。
-3. C2 字段反射 API 收口。
+1. C1.6 同步 `src/json.do`、相关核心声明和文档。
+2. C2 字段反射 API 收口。
+3. C3 bytes/text/list/map 边界收口。
 
 推荐理由:
 
 - 阶段 B 已把 grammar / parser、spec_rules / sema、语法文档治理和语法冻结回归包全部收口。
-- C1.1 已确认现有 JSON fixture 和 skip 边界; C1.2 已固定 stringify 支持矩阵。
+- C1.1 已确认现有 JSON fixture 和 skip 边界; C1.2 已固定 stringify 支持矩阵; C1.3 已固定 from_json struct-root 支持矩阵和错误边界; C1.4 已补 struct/nested/default 正例; C1.5 已补不支持类型反例和诊断。
 - C1 是当前标准库最靠近用户价值的能力, 也会反向验证字段反射和类型边界。
 - C2/C3 是 C1 暴露出的核心依赖面, 应在 JSON 能力收敛时同步确认。
 
