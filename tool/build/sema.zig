@@ -53,6 +53,7 @@ const ArgRange = struct {
 
 const FieldMetaBinding = struct {
     name: []const u8,
+    struct_name: []const u8,
     body_depth: usize,
 };
 
@@ -4314,6 +4315,7 @@ fn checkStructFieldNames(allocator: std.mem.Allocator, tokens: []const lexer.Tok
 
 const StructFieldInfo = struct {
     name: []const u8,
+    ty: ?[]const u8,
     has_default: bool,
 };
 
@@ -4398,16 +4400,27 @@ fn collectStructFieldInfos(
     end_idx: usize,
 ) ![]StructFieldInfo {
     var out = std.ArrayList(StructFieldInfo).empty;
-    errdefer out.deinit(allocator);
+    errdefer {
+        for (out.items) |field| {
+            if (field.ty) |ty| allocator.free(ty);
+        }
+        out.deinit(allocator);
+    }
 
     var i = start_idx;
     while (i < end_idx) {
         const line_end = findLineEndIdx(tokens, i);
         if (tokens[i].kind == .ident and isStructFieldName(tokens[i].lexeme)) {
-            try out.append(allocator, .{
-                .name = normalizeStructFieldName(tokens[i].lexeme),
-                .has_default = findTopLevelAssignEqOnLine(tokens, i, line_end) != null,
-            });
+            const type_end = findStructFieldTypeEnd(tokens, i + 1, line_end);
+            {
+                const ty = try compactTypeName(allocator, tokens, i + 1, type_end);
+                errdefer if (ty) |owned| allocator.free(owned);
+                try out.append(allocator, .{
+                    .name = normalizeStructFieldName(tokens[i].lexeme),
+                    .ty = ty,
+                    .has_default = findTopLevelAssignEqOnLine(tokens, i, line_end) != null,
+                });
+            }
         }
         i = line_end;
     }
@@ -4416,7 +4429,12 @@ fn collectStructFieldInfos(
 }
 
 fn freeStructInfos(allocator: std.mem.Allocator, structs: []StructInfo) void {
-    for (structs) |info| allocator.free(info.fields);
+    for (structs) |info| {
+        for (info.fields) |field| {
+            if (field.ty) |ty| allocator.free(ty);
+        }
+        allocator.free(info.fields);
+    }
     allocator.free(structs);
 }
 
@@ -6319,6 +6337,10 @@ fn isBaseIntTypeName(name: []const u8) bool {
     return false;
 }
 
+fn isBaseFloatTypeName(name: []const u8) bool {
+    return std.mem.eql(u8, name, "f32") or std.mem.eql(u8, name, "f64");
+}
+
 fn unionBranchesEqual(
     tokens: []const lexer.Token,
     a: TokenRange,
@@ -6591,6 +6613,12 @@ fn isFieldsLoopSource(tokens: []const lexer.Token, start_idx: usize, end_idx: us
 }
 
 fn checkFieldReflection(allocator: std.mem.Allocator, tokens: []const lexer.Token) !void {
+    const funcs = try collectFuncShapes(allocator, tokens);
+    defer freeFuncShapes(allocator, funcs);
+
+    const structs = try collectStructInfos(allocator, tokens);
+    defer freeStructInfos(allocator, structs);
+
     var field_bindings = try std.ArrayList(FieldMetaBinding).initCapacity(allocator, 0);
     defer field_bindings.deinit(allocator);
 
@@ -6608,6 +6636,17 @@ fn checkFieldReflection(allocator: std.mem.Allocator, tokens: []const lexer.Toke
 
         if (tokens[i].kind == .ident and isFieldReflectFuncName(tokens[i].lexeme)) {
             try checkFieldReflectCall(tokens, i, field_bindings.items);
+            if (std.mem.eql(u8, tokens[i].lexeme, "field_get")) {
+                try checkFieldGetStaticUse(allocator, tokens, i, field_bindings.items, structs, funcs);
+            } else if (std.mem.eql(u8, tokens[i].lexeme, "field_set")) {
+                try checkFieldSetStaticUse(allocator, tokens, i, field_bindings.items, structs, funcs);
+            }
+        }
+
+        if (tokens[i].kind == .ident and isActiveFieldMetaBinding(field_bindings.items, tokens[i].lexeme) and
+            !isAllowedFieldMetaUse(tokens, i))
+        {
+            return markErrorAt(tokens, i, error.InvalidFieldReflection);
         }
 
         if (tokEq(tokens[i], "{")) {
@@ -6631,12 +6670,40 @@ fn checkFieldReflection(allocator: std.mem.Allocator, tokens: []const lexer.Toke
     }
 }
 
+fn isActiveFieldMetaBinding(field_bindings: []const FieldMetaBinding, name: []const u8) bool {
+    return findActiveFieldMetaBinding(field_bindings, name) != null;
+}
+
+fn findActiveFieldMetaBinding(field_bindings: []const FieldMetaBinding, name: []const u8) ?FieldMetaBinding {
+    for (field_bindings) |binding| {
+        if (std.mem.eql(u8, binding.name, name)) return binding;
+    }
+    return null;
+}
+
 fn isFieldReflectFuncName(name: []const u8) bool {
     return std.mem.eql(u8, name, "field_name") or
         std.mem.eql(u8, name, "field_index") or
         std.mem.eql(u8, name, "field_has_default") or
         std.mem.eql(u8, name, "field_get") or
         std.mem.eql(u8, name, "field_set");
+}
+
+fn isAllowedFieldMetaUse(tokens: []const lexer.Token, field_idx: usize) bool {
+    var i = field_idx;
+    while (i > 0) {
+        i -= 1;
+        if (!tokEq(tokens[i], "@")) continue;
+        if (i + 2 >= tokens.len) continue;
+        if (tokens[i + 1].kind != .ident or !isFieldReflectFuncName(tokens[i + 1].lexeme)) continue;
+        if (!tokEq(tokens[i + 2], "(")) continue;
+
+        const close_paren = findMatching(tokens, i + 2, "(", ")") catch return false;
+        if (close_paren < field_idx) continue;
+        const field_arg = fieldReflectFieldArgRange(tokens, i + 1, close_paren) orelse return false;
+        return field_arg.start == field_idx and field_arg.end == field_idx + 1;
+    }
+    return false;
 }
 
 fn fieldReflectionLoopBinding(tokens: []const lexer.Token, loop_idx: usize) !?FieldMetaBinding {
@@ -6653,6 +6720,7 @@ fn fieldReflectionLoopBinding(tokens: []const lexer.Token, loop_idx: usize) !?Fi
 
     return .{
         .name = tokens[loop_idx + 1].lexeme,
+        .struct_name = publicTypeName(tokens[type_idx].lexeme),
         .body_depth = braceDepthBefore(tokens, open_brace) + 1,
     };
 }
@@ -6748,6 +6816,700 @@ fn isFieldSetSelfAssignment(tokens: []const lexer.Token, name_idx: usize, close_
     if (target_arg.start + 1 != target_arg.end) return false;
     if (tokens[target_arg.start].kind != .ident) return false;
     return std.mem.eql(u8, tokens[line_start].lexeme, tokens[target_arg.start].lexeme);
+}
+
+const FieldGetCandidate = struct {
+    name: []const u8,
+    ty: []const u8,
+    index: usize,
+    has_default: bool,
+};
+
+const FieldGetBindingUse = struct {
+    type_start: usize,
+    type_end: usize,
+};
+
+const FieldStaticValue = union(enum) {
+    bool: bool,
+    int: usize,
+    text: []const u8,
+};
+
+const FieldStaticIfParts = struct {
+    cond_start: usize,
+    cond_end: usize,
+    then_start: usize,
+    then_end: usize,
+    else_if_start: ?usize = null,
+    else_start: ?usize = null,
+    else_end: usize = 0,
+};
+
+const FieldExprRange = struct {
+    start: usize,
+    end: usize,
+};
+
+const FieldStaticCallHead = struct {
+    name_idx: usize,
+    args_start: usize,
+    args_end: usize,
+    is_intrinsic: bool,
+};
+
+fn checkFieldGetStaticUse(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    name_idx: usize,
+    field_bindings: []const FieldMetaBinding,
+    structs: []const StructInfo,
+    funcs: []const FuncShape,
+) !void {
+    if (name_idx == 0 or !tokEq(tokens[name_idx - 1], "@")) return;
+    if (name_idx + 1 >= tokens.len or !tokEq(tokens[name_idx + 1], "(")) return;
+
+    const close_paren = findMatching(tokens, name_idx + 1, "(", ")") catch return;
+    const field_arg = fieldReflectFieldArgRange(tokens, name_idx, close_paren) orelse return;
+    if (field_arg.start + 1 != field_arg.end or tokens[field_arg.start].kind != .ident) return;
+
+    const binding = findActiveFieldMetaBinding(field_bindings, tokens[field_arg.start].lexeme) orelse return;
+    const struct_info = findStructInfo(structs, binding.struct_name) orelse return;
+
+    var candidates = try collectFieldGetCandidatesAtUse(allocator, tokens, name_idx, binding, struct_info);
+    defer candidates.deinit(allocator);
+    if (candidates.items.len == 0) return;
+
+    if (fieldGetDirectBindingUse(tokens, name_idx, close_paren)) |binding_use| {
+        if (!fieldGetCandidatesMatchBinding(tokens, candidates.items, binding_use)) {
+            return markErrorAt(tokens, name_idx, error.InvalidFieldReflection);
+        }
+    }
+
+    if (callArgInfo(tokens, name_idx)) |call| {
+        if (hasKnownFuncCandidate(funcs, call.name) and !fieldGetCandidatesMatchCall(tokens, funcs, call, candidates.items)) {
+            return markErrorAt(tokens, name_idx, error.InvalidFieldReflection);
+        }
+    }
+}
+
+fn checkFieldSetStaticUse(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    name_idx: usize,
+    field_bindings: []const FieldMetaBinding,
+    structs: []const StructInfo,
+    funcs: []const FuncShape,
+) !void {
+    if (name_idx == 0 or !tokEq(tokens[name_idx - 1], "@")) return;
+    if (name_idx + 1 >= tokens.len or !tokEq(tokens[name_idx + 1], "(")) return;
+
+    const close_paren = findMatching(tokens, name_idx + 1, "(", ")") catch return;
+    const field_arg = fieldReflectFieldArgRange(tokens, name_idx, close_paren) orelse return;
+    if (field_arg.start + 1 != field_arg.end or tokens[field_arg.start].kind != .ident) return;
+
+    const binding = findActiveFieldMetaBinding(field_bindings, tokens[field_arg.start].lexeme) orelse return;
+    const struct_info = findStructInfo(structs, binding.struct_name) orelse return;
+
+    const value_arg = fieldSetValueArgRange(tokens, name_idx, close_paren) orelse
+        return markErrorAt(tokens, name_idx, error.InvalidFieldReflection);
+
+    var candidates = try collectFieldGetCandidatesAtUse(allocator, tokens, name_idx, binding, struct_info);
+    defer candidates.deinit(allocator);
+    if (candidates.items.len == 0) return;
+
+    if (!fieldSetCandidatesAcceptValue(tokens, funcs, value_arg, candidates.items)) {
+        return markErrorAt(tokens, name_idx, error.InvalidFieldReflection);
+    }
+}
+
+fn fieldSetValueArgRange(tokens: []const lexer.Token, name_idx: usize, close_paren: usize) ?ArgRange {
+    const args_start = name_idx + 2;
+    const first_end = findArgEndAny(tokens, args_start, close_paren);
+    if (first_end >= close_paren or !tokEq(tokens[first_end], ",")) return null;
+    const field_start = first_end + 1;
+    const field_end = findArgEndAny(tokens, field_start, close_paren);
+    if (field_end >= close_paren or !tokEq(tokens[field_end], ",")) return null;
+    const value_start = field_end + 1;
+    const value_end = findArgEndAny(tokens, value_start, close_paren);
+    if (value_start >= value_end or value_end != close_paren) return null;
+    return .{ .start = value_start, .end = value_end };
+}
+
+fn fieldSetCandidatesAcceptValue(
+    tokens: []const lexer.Token,
+    funcs: []const FuncShape,
+    value_arg: ArgRange,
+    candidates: []const FieldGetCandidate,
+) bool {
+    for (candidates) |candidate| {
+        if (!(fieldSetValueCompatibleWithType(tokens, funcs, value_arg.start, value_arg.end, candidate.ty) orelse true)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn fieldSetValueCompatibleWithType(
+    tokens: []const lexer.Token,
+    funcs: []const FuncShape,
+    start_idx: usize,
+    end_idx: usize,
+    expected_ty: []const u8,
+) ?bool {
+    const range = fieldTrimParens(tokens, start_idx, end_idx);
+    if (range.start >= range.end) return null;
+
+    if (range.end == range.start + 1) {
+        const tok = tokens[range.start];
+        if (tok.kind == .string) {
+            return fieldSetExpectedAcceptsKnownType(expected_ty, "text") or fieldSetExpectedAcceptsKnownType(expected_ty, "[u8]");
+        }
+        if (tok.kind == .number) {
+            return fieldSetNumberLiteralAcceptsType(tok.lexeme, expected_ty);
+        }
+        if (tokEq(tok, "true") or tokEq(tok, "false")) {
+            return fieldSetExpectedAcceptsKnownType(expected_ty, "bool");
+        }
+        if (tokEq(tok, "nil")) {
+            return fieldSetExpectedAcceptsKnownType(expected_ty, "nil");
+        }
+        if (tok.kind == .ident) {
+            const actual_ty = findNearestValueTypeName(tokens, range.start, tok.lexeme) orelse return null;
+            return fieldSetExpectedAcceptsKnownType(expected_ty, actual_ty);
+        }
+        return null;
+    }
+
+    const call_head = fieldStaticCallHead(tokens, range) orelse return null;
+    if (call_head.is_intrinsic) return null;
+    const actual_ty = fieldSetCallReturnType(tokens, funcs, call_head) orelse return null;
+    return fieldSetExpectedAcceptsKnownType(expected_ty, actual_ty);
+}
+
+fn fieldSetCallReturnType(tokens: []const lexer.Token, funcs: []const FuncShape, call: FieldStaticCallHead) ?[]const u8 {
+    const arg_count = countFieldStaticCallArgs(tokens, call.args_start, call.args_end) orelse return null;
+    var found: ?[]const u8 = null;
+    for (funcs) |func| {
+        if (!std.mem.eql(u8, func.name, tokens[call.name_idx].lexeme)) continue;
+        if (!callArityCompatibleWithFunc(func, arg_count)) continue;
+        const return_ty = func.return_type orelse return null;
+        if (found) |prev| {
+            if (!std.mem.eql(u8, prev, return_ty)) return null;
+        } else {
+            found = return_ty;
+        }
+    }
+    return found;
+}
+
+fn countFieldStaticCallArgs(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    if (start_idx == end_idx) return 0;
+    var count: usize = 0;
+    var arg_start = start_idx;
+    while (arg_start < end_idx) {
+        const arg_end = findArgEndAny(tokens, arg_start, end_idx);
+        if (arg_end == arg_start) return null;
+        count += 1;
+        arg_start = arg_end;
+        if (arg_start < end_idx) {
+            if (!tokEq(tokens[arg_start], ",")) return null;
+            arg_start += 1;
+        }
+    }
+    return count;
+}
+
+fn fieldSetExpectedAcceptsKnownType(expected_ty: []const u8, actual_ty: []const u8) bool {
+    if (std.mem.eql(u8, expected_ty, actual_ty)) return true;
+    var it = std.mem.splitScalar(u8, expected_ty, '|');
+    while (it.next()) |branch| {
+        if (std.mem.eql(u8, branch, actual_ty)) return true;
+    }
+    return false;
+}
+
+fn fieldSetNumberLiteralAcceptsType(lexeme: []const u8, expected_ty: []const u8) bool {
+    const is_float = std.mem.indexOfScalar(u8, lexeme, '.') != null;
+    if (fieldSetNumericBranchAcceptsLiteral(expected_ty, is_float)) return true;
+    var it = std.mem.splitScalar(u8, expected_ty, '|');
+    while (it.next()) |branch| {
+        if (fieldSetNumericBranchAcceptsLiteral(branch, is_float)) return true;
+    }
+    return false;
+}
+
+fn fieldSetNumericBranchAcceptsLiteral(branch_ty: []const u8, is_float_literal: bool) bool {
+    if (is_float_literal) return isBaseFloatTypeName(branch_ty);
+    return isBaseIntTypeName(branch_ty) or isBaseFloatTypeName(branch_ty);
+}
+
+fn collectFieldGetCandidatesAtUse(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    use_idx: usize,
+    binding: FieldMetaBinding,
+    struct_info: StructInfo,
+) !std.ArrayList(FieldGetCandidate) {
+    var candidates = std.ArrayList(FieldGetCandidate).empty;
+    errdefer candidates.deinit(allocator);
+
+    for (struct_info.fields, 0..) |field, idx| {
+        const ty = field.ty orelse continue;
+        try candidates.append(allocator, .{
+            .name = field.name,
+            .ty = ty,
+            .index = idx,
+            .has_default = field.has_default,
+        });
+    }
+
+    try filterFieldGetCandidatesByStaticGuards(allocator, tokens, use_idx, binding, &candidates);
+    return candidates;
+}
+
+fn filterFieldGetCandidatesByStaticGuards(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    use_idx: usize,
+    binding: FieldMetaBinding,
+    candidates: *std.ArrayList(FieldGetCandidate),
+) !void {
+    var i: usize = 0;
+    while (i < use_idx and i < tokens.len) : (i += 1) {
+        if (!tokEq(tokens[i], "if")) continue;
+        const stmt_end = findFieldStaticStmtEnd(tokens, i, tokens.len);
+        const parts = fieldStaticIfParts(tokens, i, stmt_end) orelse continue;
+
+        if (use_idx >= parts.then_start and use_idx < parts.then_end) {
+            try filterFieldGetCandidatesByCondition(allocator, tokens, parts.cond_start, parts.cond_end, true, binding, candidates);
+            continue;
+        }
+        if (parts.else_if_start) |else_if_start| {
+            if (use_idx >= else_if_start and use_idx < stmt_end) {
+                try filterFieldGetCandidatesByCondition(allocator, tokens, parts.cond_start, parts.cond_end, false, binding, candidates);
+            }
+            continue;
+        }
+        if (parts.else_start) |else_start| {
+            if (use_idx >= else_start and use_idx < parts.else_end) {
+                try filterFieldGetCandidatesByCondition(allocator, tokens, parts.cond_start, parts.cond_end, false, binding, candidates);
+            }
+        }
+    }
+}
+
+fn filterFieldGetCandidatesByCondition(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    cond_start: usize,
+    cond_end: usize,
+    expected: bool,
+    binding: FieldMetaBinding,
+    candidates: *std.ArrayList(FieldGetCandidate),
+) !void {
+    var idx: usize = 0;
+    while (idx < candidates.items.len) {
+        const value = fieldStaticBoolForCandidate(tokens, cond_start, cond_end, binding, candidates.items[idx]) orelse return;
+        if (value == expected) {
+            idx += 1;
+            continue;
+        }
+        _ = candidates.orderedRemove(idx);
+    }
+    _ = allocator;
+}
+
+fn fieldGetCandidatesMatchBinding(
+    tokens: []const lexer.Token,
+    candidates: []const FieldGetCandidate,
+    binding_use: FieldGetBindingUse,
+) bool {
+    if (candidates.len <= 1) {
+        if (binding_use.type_start == binding_use.type_end) return true;
+        return compactTokenRangeEquals(tokens, binding_use.type_start, binding_use.type_end, candidates[0].ty);
+    }
+
+    if (binding_use.type_start == binding_use.type_end) return fieldGetCandidateTypesHomogeneous(candidates);
+    for (candidates) |candidate| {
+        if (!compactTokenRangeEquals(tokens, binding_use.type_start, binding_use.type_end, candidate.ty)) return false;
+    }
+    return true;
+}
+
+fn fieldGetCandidateTypesHomogeneous(candidates: []const FieldGetCandidate) bool {
+    if (candidates.len <= 1) return true;
+    const first = candidates[0].ty;
+    for (candidates[1..]) |candidate| {
+        if (!std.mem.eql(u8, first, candidate.ty)) return false;
+    }
+    return true;
+}
+
+fn fieldGetDirectBindingUse(
+    tokens: []const lexer.Token,
+    name_idx: usize,
+    close_paren: usize,
+) ?FieldGetBindingUse {
+    if (name_idx == 0 or !tokEq(tokens[name_idx - 1], "@")) return null;
+    const line_start = lineStartIdx(tokens, name_idx);
+    const line_end = findLineEndIdx(tokens, name_idx);
+    if (close_paren + 1 != line_end) return null;
+
+    const eq_idx = findTopLevelAssignEqOnLine(tokens, line_start, line_end) orelse return null;
+    if (eq_idx + 1 != name_idx - 1) return null;
+    if (line_start >= eq_idx or tokens[line_start].kind != .ident) return null;
+    if (findTopLevelComma(tokens, line_start, eq_idx) != null) return null;
+
+    if (eq_idx == line_start + 1) {
+        return .{ .type_start = eq_idx, .type_end = eq_idx };
+    }
+    return .{ .type_start = line_start + 1, .type_end = eq_idx };
+}
+
+fn fieldGetCandidatesMatchCall(
+    tokens: []const lexer.Token,
+    funcs: []const FuncShape,
+    call: CallArgInfo,
+    candidates: []const FieldGetCandidate,
+) bool {
+    for (candidates) |candidate| {
+        if (!fieldGetCallAcceptsType(tokens, funcs, call, candidate.ty)) return false;
+    }
+    return true;
+}
+
+fn fieldGetCallAcceptsType(
+    tokens: []const lexer.Token,
+    funcs: []const FuncShape,
+    call: CallArgInfo,
+    actual_ty: []const u8,
+) bool {
+    for (funcs) |func| {
+        if (!std.mem.eql(u8, func.name, call.name)) continue;
+        if (!callArityCompatibleWithFunc(func, call.arg_count)) continue;
+        const param = fieldGetParamShapeForArg(func, call.arg_index) orelse continue;
+        if (fieldGetParamAcceptsType(tokens, func, param, actual_ty)) return true;
+    }
+    return false;
+}
+
+fn fieldGetParamShapeForArg(func: FuncShape, arg_index: usize) ?FuncParamShape {
+    if (arg_index < func.param_shapes.len) return func.param_shapes[arg_index];
+    if (func.param_shapes.len == 0) return null;
+    const last = func.param_shapes[func.param_shapes.len - 1];
+    return switch (last) {
+        .variadic => last,
+        else => null,
+    };
+}
+
+fn fieldGetParamAcceptsType(
+    tokens: []const lexer.Token,
+    func: FuncShape,
+    param: FuncParamShape,
+    actual_ty: []const u8,
+) bool {
+    const expected = switch (param) {
+        .value => |ty| ty orelse return true,
+        .variadic => |ty| ty orelse return true,
+        .other => return true,
+        .func => return false,
+    };
+    if (std.mem.eql(u8, expected, actual_ty)) return true;
+    if (isFuncTypeParam(tokens, func.start_idx, expected) and !typeConstraintIsFunctionType(tokens, func.start_idx, expected)) return true;
+    return fieldGetParamContainsDataTypeParam(tokens, func, expected);
+}
+
+fn fieldGetParamContainsDataTypeParam(tokens: []const lexer.Token, func: FuncShape, expected: []const u8) bool {
+    const close_params = findMatching(tokens, func.start_idx + 1, "(", ")") catch return false;
+    var seg_start = func.start_idx + 2;
+    var i = seg_start;
+    while (i <= close_params) : (i += 1) {
+        if (i < close_params and !isTopLevelCommaAny(tokens, i, func.start_idx + 2, close_params)) continue;
+        const type_start = funcParamTypeStart(tokens, seg_start, i) orelse {
+            seg_start = i + 1;
+            continue;
+        };
+        if (!compactTokenRangeEquals(tokens, type_start, i, expected)) {
+            seg_start = i + 1;
+            continue;
+        }
+        var j = type_start;
+        while (j < i) : (j += 1) {
+            if (tokens[j].kind != .ident) continue;
+            if (isFuncTypeParam(tokens, func.start_idx, tokens[j].lexeme) and !typeConstraintIsFunctionType(tokens, func.start_idx, tokens[j].lexeme)) return true;
+        }
+        return false;
+    }
+    return false;
+}
+
+fn findFieldStaticStmtEnd(tokens: []const lexer.Token, start_idx: usize, limit_idx: usize) usize {
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_angle: usize = 0;
+    var i = start_idx;
+    while (i < limit_idx) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+        } else if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+        } else if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+        } else if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+        } else if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+        } else if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+        }
+
+        if (depth_paren != 0 or depth_brace != 0 or depth_angle != 0) continue;
+        if (i + 1 >= limit_idx or tokens[i + 1].line != tokens[i].line) return i + 1;
+    }
+    return limit_idx;
+}
+
+fn fieldStaticIfParts(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+) ?FieldStaticIfParts {
+    if (start_idx + 4 > end_idx) return null;
+    if (!tokEq(tokens[start_idx], "if")) return null;
+    const open_brace = findFieldStaticBlockOpen(tokens, start_idx + 1, end_idx) orelse return null;
+    const close_brace = findMatchingInRange(tokens, open_brace, "{", "}", end_idx) catch return null;
+    var parts = FieldStaticIfParts{
+        .cond_start = start_idx + 1,
+        .cond_end = open_brace,
+        .then_start = open_brace + 1,
+        .then_end = close_brace,
+    };
+    if (close_brace + 1 == end_idx) return parts;
+    if (close_brace + 1 >= end_idx or !tokEq(tokens[close_brace + 1], "else")) return null;
+    if (close_brace + 2 >= end_idx) return null;
+    if (tokEq(tokens[close_brace + 2], "if")) {
+        parts.else_if_start = close_brace + 2;
+        return parts;
+    }
+    if (!tokEq(tokens[close_brace + 2], "{")) return null;
+    const close_else = findMatchingInRange(tokens, close_brace + 2, "{", "}", end_idx) catch return null;
+    if (close_else + 1 != end_idx) return null;
+    parts.else_start = close_brace + 3;
+    parts.else_end = close_else;
+    return parts;
+}
+
+fn findFieldStaticBlockOpen(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    var depth_paren: usize = 0;
+    var depth_angle: usize = 0;
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (depth_paren == 0 and depth_angle == 0 and tokEq(tokens[i], "{")) return i;
+    }
+    return null;
+}
+
+fn fieldStaticBoolForCandidate(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    binding: FieldMetaBinding,
+    candidate: FieldGetCandidate,
+) ?bool {
+    if (fieldStaticValueForCandidate(tokens, start_idx, end_idx, binding, candidate)) |value| {
+        return switch (value) {
+            .bool => |b| b,
+            else => null,
+        };
+    }
+
+    const range = fieldTrimParens(tokens, start_idx, end_idx);
+    const call_head = fieldStaticCallHead(tokens, range) orelse return null;
+    const call_name = tokens[call_head.name_idx].lexeme;
+    if (!call_head.is_intrinsic) return null;
+
+    if (std.mem.eql(u8, call_name, "not")) {
+        const arg_end = findArgEndAny(tokens, call_head.args_start, call_head.args_end);
+        if (arg_end != call_head.args_end) return null;
+        return !(fieldStaticBoolForCandidate(tokens, call_head.args_start, arg_end, binding, candidate) orelse return null);
+    }
+    if (std.mem.eql(u8, call_name, "and") or std.mem.eql(u8, call_name, "or")) {
+        var arg_start = call_head.args_start;
+        var saw_arg = false;
+        while (arg_start < call_head.args_end) {
+            const arg_end = findArgEndAny(tokens, arg_start, call_head.args_end);
+            const value = fieldStaticBoolForCandidate(tokens, arg_start, arg_end, binding, candidate) orelse return null;
+            saw_arg = true;
+            if (std.mem.eql(u8, call_name, "and") and !value) return false;
+            if (std.mem.eql(u8, call_name, "or") and value) return true;
+            arg_start = arg_end;
+            if (arg_start < call_head.args_end and tokEq(tokens[arg_start], ",")) arg_start += 1;
+        }
+        if (!saw_arg) return null;
+        return std.mem.eql(u8, call_name, "and");
+    }
+    if (std.mem.eql(u8, call_name, "eq") or std.mem.eql(u8, call_name, "ne")) {
+        const first_end = findArgEndAny(tokens, call_head.args_start, call_head.args_end);
+        if (first_end >= call_head.args_end or !tokEq(tokens[first_end], ",")) return null;
+        const second_start = first_end + 1;
+        const second_end = findArgEndAny(tokens, second_start, call_head.args_end);
+        if (second_end != call_head.args_end) return null;
+        const left = fieldStaticValueForCandidate(tokens, call_head.args_start, first_end, binding, candidate) orelse return null;
+        const right = fieldStaticValueForCandidate(tokens, second_start, second_end, binding, candidate) orelse return null;
+        const is_equal = fieldStaticValuesEqual(left, right);
+        return if (std.mem.eql(u8, call_name, "eq")) is_equal else !is_equal;
+    }
+    return null;
+}
+
+fn fieldStaticValueForCandidate(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    binding: FieldMetaBinding,
+    candidate: FieldGetCandidate,
+) ?FieldStaticValue {
+    const range = fieldTrimParens(tokens, start_idx, end_idx);
+    if (range.start >= range.end) return null;
+
+    if (range.end == range.start + 1) {
+        const tok = tokens[range.start];
+        if (tok.kind == .number) return .{ .int = std.fmt.parseUnsigned(usize, tok.lexeme, 10) catch return null };
+        if (tok.kind == .string) return .{ .text = stringTokenBody(tok.lexeme) orelse return null };
+        if (tokEq(tok, "true")) return .{ .bool = true };
+        if (tokEq(tok, "false")) return .{ .bool = false };
+        return null;
+    }
+
+    const call_head = fieldStaticCallHead(tokens, range) orelse return null;
+    if (!call_head.is_intrinsic) return null;
+    const call_name = tokens[call_head.name_idx].lexeme;
+    if (std.mem.eql(u8, call_name, "field_name")) {
+        if (!fieldStaticSingleMetaArgMatches(tokens, call_head.args_start, call_head.args_end, binding.name)) return null;
+        return .{ .text = candidate.name };
+    }
+    if (std.mem.eql(u8, call_name, "field_index")) {
+        if (!fieldStaticSingleMetaArgMatches(tokens, call_head.args_start, call_head.args_end, binding.name)) return null;
+        return .{ .int = candidate.index };
+    }
+    if (std.mem.eql(u8, call_name, "field_has_default")) {
+        if (!fieldStaticSingleMetaArgMatches(tokens, call_head.args_start, call_head.args_end, binding.name)) return null;
+        return .{ .bool = candidate.has_default };
+    }
+    return null;
+}
+
+fn fieldStaticSingleMetaArgMatches(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    binding_name: []const u8,
+) bool {
+    const arg = singleArgRange(tokens, start_idx, end_idx) orelse return false;
+    if (arg.start + 1 != arg.end or tokens[arg.start].kind != .ident) return false;
+    return std.mem.eql(u8, tokens[arg.start].lexeme, binding_name);
+}
+
+fn fieldStaticValuesEqual(left: FieldStaticValue, right: FieldStaticValue) bool {
+    return switch (left) {
+        .bool => |l| switch (right) {
+            .bool => |r| l == r,
+            else => false,
+        },
+        .int => |l| switch (right) {
+            .int => |r| l == r,
+            else => false,
+        },
+        .text => |l| switch (right) {
+            .text => |r| std.mem.eql(u8, l, r),
+            else => false,
+        },
+    };
+}
+
+fn fieldTrimParens(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) FieldExprRange {
+    var start = start_idx;
+    var end = end_idx;
+    while (start + 1 < end and tokEq(tokens[start], "(")) {
+        const close = findMatchingInRange(tokens, start, "(", ")", end) catch break;
+        if (close + 1 != end) break;
+        start += 1;
+        end -= 1;
+    }
+    return .{ .start = start, .end = end };
+}
+
+fn fieldStaticCallHead(tokens: []const lexer.Token, range: FieldExprRange) ?FieldStaticCallHead {
+    if (range.start >= range.end) return null;
+    var name_idx = range.start;
+    var is_intrinsic = false;
+    if (tokEq(tokens[name_idx], "@")) {
+        is_intrinsic = true;
+        name_idx += 1;
+    }
+    if (name_idx >= range.end or tokens[name_idx].kind != .ident) return null;
+    if (name_idx + 1 >= range.end or !tokEq(tokens[name_idx + 1], "(")) return null;
+    const close_paren = findMatchingInRange(tokens, name_idx + 1, "(", ")", range.end) catch return null;
+    if (close_paren + 1 != range.end) return null;
+    return .{
+        .name_idx = name_idx,
+        .args_start = name_idx + 2,
+        .args_end = close_paren,
+        .is_intrinsic = is_intrinsic,
+    };
+}
+
+fn findArgEndAny(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) usize {
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_angle: usize = 0;
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (depth_paren == 0 and depth_brace == 0 and depth_angle == 0 and tokEq(tokens[i], ",")) return i;
+    }
+    return end_idx;
 }
 
 fn singleArgRange(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?ArgRange {

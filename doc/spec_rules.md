@@ -1005,14 +1005,15 @@ item = @get(user, .abc, @add(i, 1), .name)
 2. `fields(TypeOrTypeParam)` 只作为单绑定 loop source 使用，写作 `loop field = fields(User) { ... }` 或泛型函数实例内的 `loop field = fields(T) { ... }`。它不是普通函数调用，不能写在赋值、返回、调用实参或 `@fields(...)` 位置。
 3. `TypeOrTypeParam` 使用已声明结构体的实际类型名，或当前泛型函数的单个类型参数名；私有结构体在同模块内也按去点后的实际类型名引用。泛型参数只在实例化后绑定到具体结构体时合法，并在该具体结构体上做编译期展开。当前 v1 文法不在 `fields(...)` 里接收泛型 type args，因此 `fields(Box<T>)`、`fields([T])` 和 `fields(T | nil)` 都不是字段反射源。
 4. 字段反射循环在编译期按可见字段展开，顺序为结构体声明顺序。同一模块内可见 public 与 private 字段；跨模块只可见 public 字段。
-5. 循环绑定 `field` 是编译器元数据绑定，只能作为 `@field_name/@field_index/@field_has_default/@field_get/@field_set` 的字段参数使用。
+5. 循环绑定 `field` 是编译器元数据绑定，只能作为 `@field_name/@field_index/@field_has_default/@field_get/@field_set` 的字段参数使用；不能作为普通值绑定、普通函数实参、返回值、结构字段或集合元素逃逸。
 6. `@field_name(field) -> text` 返回字段实际 name，不含 private 字段声明位前置点。
 7. `@field_index(field) -> usize` 返回当前可见字段序列里的 0-based index；它不是跨版本稳定 schema id，也不用于持久化格式。
 8. `@field_has_default(field) -> bool` 只表示字段声明是否带默认值，不暴露默认值表达式或默认值类型。
 9. `@field_get(target, field)` 在每一次编译期展开后直接 lower 成具体字段读取，结果类型是该字段的静态类型；它不返回 `any`，也不会在运行时携带字段类型标签。`@field_get(...)` 作为普通调用实参时按该字段静态类型参与重载分派，例如 `encode_value(@field_get(value, field))` 会在每个字段展开点选择对应的 `encode_value` 重载。
-10. `@field_set(target, field, value)` 在每一次编译期展开后直接 lower 成具体字段写入，`value` 必须能定型为该字段静态类型。当前 build lowering 只支持 `target = @field_set(target, field, value)` 这种同名自赋值语句形态。
-11. 处理异构字段时，推荐先用具体类型重载承接 `@field_get`，或用 `@field_name` / `@field_index` 写可静态判定的分支，再在分支内绑定字段值。不要把不同字段类型统一塞进一个无类型 `value` 绑定。
-12. v1 不提供 `@field_type`、`@field_default_value` 或 `@field_default_type`。需要序列化时，使用 `fields(TypeOrTypeParam)` 枚举字段，再通过 `@field_get` 调用具体类型编码函数；泛型序列化函数可以写成 `#T stringify(value T) -> [u8] | JsonError` 并在函数体内使用 `fields(T)`。
+10. 对具体 `fields(User)` 循环里的 `@field_get` 使用点，编译器会用当前可静态判定的字段 guard 过滤候选字段。当前 guard 子集包括 `@field_name/@field_index/@field_has_default` 与字面量之间的 `@eq/@ne`，以及这些 bool 结果上的 `@and/@or/@not`。未 guard 的异构字段不能统一绑定到一个无类型局部；作为普通函数实参时，被调函数族必须能为所有候选字段类型找到可匹配候选。
+11. `@field_set(target, field, value)` 在每一次编译期展开后直接 lower 成具体字段写入，`value` 必须能定型为该字段静态类型。当前 build lowering 只支持 `target = @field_set(target, field, value)` 这种同名自赋值语句形态。对具体 `fields(User)` 循环里的 `@field_set` 使用点，value 必须能写入当前 guard 过滤后的所有候选字段；未 guard 的异构字段写入只有在 value 同时匹配全部候选字段类型时才成立。
+12. 处理异构字段时，推荐先用具体类型重载承接 `@field_get`，或用 `@field_name` / `@field_index` 写可静态判定的分支，再在分支内绑定字段值或执行 `@field_set`。不要把不同字段类型统一塞进一个无类型 `value` 绑定。
+13. v1 不提供 `@field_type`、`@field_default_value` 或 `@field_default_type`。需要序列化时，使用 `fields(TypeOrTypeParam)` 枚举字段，再通过 `@field_get` 调用具体类型编码函数；泛型序列化函数可以写成 `#T stringify(value T) -> [u8] | JsonError` 并在函数体内使用 `fields(T)`。
 
 
 ## 12. 控制流

@@ -83,7 +83,7 @@ field_count(value T) -> usize {
 }
 ```
 
-规则: `fields(TypeOrTypeParam)` 只能出现在字段反射循环头部。`TypeOrTypeParam` 只能是具体结构体名, 或泛型函数中已实例化为具体结构体的单个类型参数名; 不接收 `Box<T>`、`[T]` 或 union 类型表达式。循环绑定是编译器字段元数据, 只能交给 `@field_name/@field_index/@field_has_default/@field_get/@field_set` 使用。
+规则: `fields(TypeOrTypeParam)` 只能出现在字段反射循环头部。`TypeOrTypeParam` 只能是具体结构体名, 或泛型函数中已实例化为具体结构体的单个类型参数名; 不接收 `Box<T>`、`[T]` 或 union 类型表达式。循环绑定是编译器字段元数据, 只能交给 `@field_name/@field_index/@field_has_default/@field_get/@field_set` 使用, 不能作为普通值逃逸。具体结构体字段反射循环中, `@field_name/@field_index/@field_has_default` guard 可用于静态过滤候选字段, 让异构字段读取或写入在分支内按具体字段类型检查。
 
 ## 标签
 

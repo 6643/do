@@ -246,7 +246,7 @@ if @is(result, FileError) {
 user = @field_set(user, field, value)
 ```
 
-规则: 字段反射内建只能使用 `fields(TypeOrTypeParam)` 循环绑定产生的字段元数据。`TypeOrTypeParam` 是具体结构体名, 或泛型函数实例中已绑定为具体结构体的单个类型参数名。`@field_get/@field_set` 在每个字段展开点使用该字段的静态类型; `@field_get(value, field)` 作为普通调用实参时按字段类型参与重载分派。当前 build lowering 只支持 `target = @field_set(target, field, value)` 这种同名自赋值形态。不提供 `@field_type`、`@field_default_value` 或 `@field_default_type`。
+规则: 字段反射内建只能使用 `fields(TypeOrTypeParam)` 循环绑定产生的字段元数据, 该元数据不能作为普通值逃逸。`TypeOrTypeParam` 是具体结构体名, 或泛型函数实例中已绑定为具体结构体的单个类型参数名。`@field_get/@field_set` 在每个字段展开点使用该字段的静态类型; `@field_get(value, field)` 作为普通调用实参时按字段类型参与重载分派。具体 `fields(User)` 循环里, 编译器会用 `@field_name/@field_index/@field_has_default` 组成的静态 guard 过滤候选字段; 异构字段不能无 guard 绑定到一个无类型局部。当前 build lowering 只支持 `target = @field_set(target, field, value)` 这种同名自赋值形态, 且 value 必须匹配当前候选字段类型。不提供 `@field_type`、`@field_default_value` 或 `@field_default_type`。
 
 ## 定宽读取
 
