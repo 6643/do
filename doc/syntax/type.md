@@ -19,6 +19,36 @@
 | `bool` | 布尔类型 |
 | `text` | 文本类型 |
 
+### `text` 与 `[u8]`
+
+`text` 是源码文本类型, 内容必须是有效 UTF-8。`[u8]` 是原始字节连续存储, 不是 `text` 的 alias, 不保证 UTF-8。
+
+```do
+bytes_of = @lib("text.do", bytes_of)
+text_from = @lib("text.do", text_from)
+byte_len = @lib("text.do", byte_len)
+char_len = @lib("text.do", char_len)
+
+name text = "do"
+raw [u8] = bytes_of(name)
+size usize = byte_len(name)
+
+decoded = text_from(raw)
+if @is(decoded, text) {
+    chars = char_len(decoded)
+    if @is(chars, usize) {
+        return
+    }
+}
+```
+
+规则:
+
+1. `@len/@get/@set/@put/@load_*` 只面向 `[T]` 连续存储; `text` 不能直接当 `[u8]` 使用。
+2. 需要字节视图时使用 `bytes_of(s text) -> [u8]`; 需要从字节构造文本时使用 `text_from(bytes [u8]) -> text | Utf8Error`。
+3. 普通字符串和行字符串必须是有效 UTF-8; 非法原始字节写 `[u8]` 聚合, 例如 `bad [u8] = .{255}`。
+4. UTF-16 只作为库级 `[u16]` 编解码能力存在; 它不是 `text` 的核心表示。
+
 ## nil
 
 ```do

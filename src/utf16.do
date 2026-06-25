@@ -45,13 +45,17 @@ size_at(units [u16], offset usize) -> usize | Utf16Error {
 encode(code u32) -> [u16] | Utf16Error {
     if @gt(code, 1114111) return Utf16OutOfRange
     if @and(@ge(code, 55296), @le(code, 57343)) return Utf16UnpairedSurrogate
-    if @le(code, 65535) return @put(.{}, @as(u16, code))
+    if @le(code, 65535) {
+        out_1 [u16] = .{}
+        out_1 = @put(out_1, @as(u16, code))
+        return out_1
+    }
 
     n u32 = @sub(code, 65536)
-    out [u16] = .{}
-    out = @put(out, @as(u16, @add(55296, @div(n, 1024))))
-    out = @put(out, @as(u16, @add(56320, @rem(n, 1024))))
-    return out
+    out_2 [u16] = .{}
+    out_2 = @put(out_2, @as(u16, @add(55296, @div(n, 1024))))
+    out_2 = @put(out_2, @as(u16, @add(56320, @rem(n, 1024))))
+    return out_2
 }
 
 validate(units [u16]) -> Utf16Error | nil {

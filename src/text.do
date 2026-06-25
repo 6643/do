@@ -36,7 +36,8 @@ text_from(bytes [u8]) -> text | Utf8Error {
 }
 
 byte_len(s text) -> usize {
-    return @len(bytes_of(s))
+    raw [u8] = bytes_of(s)
+    return @len(raw)
 }
 
 char_len(s text) -> usize | Utf8Error {

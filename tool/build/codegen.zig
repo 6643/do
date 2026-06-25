@@ -2966,7 +2966,7 @@ fn parseTypeUnionLayoutFromName(
 
 fn findUnionBranchByType(layout: UnionLayout, ty: []const u8) ?UnionBranch {
     for (layout.branches) |branch| {
-        if (std.mem.eql(u8, branch.ty, ty)) return branch;
+        if (codegenTypesCompatible(branch.ty, ty)) return branch;
     }
     return null;
 }
@@ -5095,6 +5095,7 @@ fn emitBody(
             // Loop block emitted.
         } else if (try emitIfBlock(allocator, tokens, i, stmt_end, body_start, active, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out)) {
             // If block emitted.
+            try applyIfBlockFallthroughNarrowing(allocator, tokens, i, stmt_end, active, ctx);
         } else if (try emitGuardReturnIf(allocator, tokens, i, stmt_end, end_idx, body_start, allow_call_arg_last_use_move, active, return_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, exit_defer_ctx, return_label, out)) {
             // Guard return emitted.
             try applyGuardReturnNilNarrowing(allocator, tokens, i, stmt_end, active);
@@ -5274,6 +5275,21 @@ fn applyGuardLoopControlNarrowing(
         const payload_ty = unionLocalSingleRemainingPayloadType(narrowing.union_local, narrowing.payload_ty) orelse return;
         try locals.appendNarrowedUnionLocal(allocator, narrowing.union_local, payload_ty);
     }
+}
+
+fn applyIfBlockFallthroughNarrowing(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    locals: *LocalSet,
+    ctx: CodegenContext,
+) !void {
+    if (start_idx >= end_idx or !tokEq(tokens[start_idx], "if")) return;
+    const open_brace = findTopLevelBlockOpen(tokens, start_idx + 1, end_idx) orelse return;
+    const close_brace = findMatchingInRange(tokens, open_brace, "{", "}", end_idx) catch return;
+    if (bodyCanReachEnd(tokens, open_brace + 1, close_brace)) return;
+    try appendConditionNarrowingForBranch(allocator, tokens, start_idx + 1, open_brace, locals, ctx, false);
 }
 
 fn sameDeferScope(a: *const DeferContext, b: *const DeferContext) bool {
@@ -6292,7 +6308,7 @@ fn storageContentArgCompatible(
     inferred_ty: ?[]const u8,
     target_ty: []const u8,
 ) bool {
-    if (inferred_ty) |ty| return std.mem.eql(u8, ty, target_ty);
+    if (inferred_ty) |ty| return codegenTypesCompatible(target_ty, ty);
     if (isStorageAggLiteralExpr(tokens, start_idx, end_idx)) return true;
     return isStringLiteralArg(tokens, start_idx, end_idx);
 }
@@ -7066,9 +7082,12 @@ fn appendConditionNarrowingForBranch(
     branch_is_true: bool,
 ) !void {
     try appendNilComparisonNarrowingForBranch(allocator, tokens, cond_start, cond_end, locals, branch_is_true);
+    const narrowing = try isComparisonNarrowing(allocator, tokens, cond_start, cond_end, locals, ctx) orelse return;
     if (branch_is_true) {
-        const narrowing = try isComparisonNarrowing(allocator, tokens, cond_start, cond_end, locals, ctx) orelse return;
         try locals.appendNarrowedUnionLocal(allocator, narrowing.union_local, narrowing.payload_ty);
+    } else {
+        const payload_ty = unionLocalSingleRemainingPayloadType(narrowing.union_local, narrowing.payload_ty) orelse return;
+        try locals.appendNarrowedUnionLocal(allocator, narrowing.union_local, payload_ty);
     }
 }
 
@@ -14564,8 +14583,8 @@ fn emitLenCall(
     const arg_end = findArgEnd(tokens, start_idx, end_idx);
     if (arg_end != start_idx + 1 or arg_end != end_idx) return false;
     if (tokens[start_idx].kind != .ident) return false;
-    if (findStoragePrimitiveLocal(locals.storage_locals.items, tokens[start_idx].lexeme) == null) return false;
-    try emitStorageLenPtr(allocator, out, tokens[start_idx].lexeme);
+    const storage_name = findStorageReadableLocalName(tokens, locals, tokens[start_idx].lexeme) orelse return false;
+    try emitStorageLenPtr(allocator, out, storage_name);
     try out.appendSlice(allocator, "    i32.load\n");
     return true;
 }
@@ -14609,6 +14628,10 @@ fn emitGetCall(
     }
 
     const name = tokens[start_idx].lexeme;
+
+    if (try emitUnionStoragePayloadGetCall(allocator, tokens, name, second_start, second_end, locals, ctx, out)) {
+        return true;
+    }
 
     if (findStoragePrimitiveLocal(locals.storage_locals.items, name)) |storage| {
         const elem_bytes = storageElementByteWidthForType(storage.elem_ty, ctx) orelse return false;
@@ -14671,6 +14694,60 @@ fn emitGetCall(
     }
 
     return false;
+}
+
+fn findStorageReadableLocalName(
+    tokens: []const lexer.Token,
+    locals: *const LocalSet,
+    name: []const u8,
+) ?[]const u8 {
+    _ = tokens;
+    if (findStoragePrimitiveLocal(locals.storage_locals.items, name)) |storage| return storage.name;
+
+    const ty = findNarrowedUnionType(locals.narrowed_union_locals.items, name) orelse return null;
+    if (storageElemTypeFromName(ty) == null) return null;
+    const union_local = findUnionLocal(locals.union_locals.items, name) orelse return null;
+
+    var matched: ?UnionBranch = null;
+    for (union_local.layout.branches) |branch| {
+        if (branch.payload_len != 1) continue;
+        if (!codegenTypesCompatible(branch.ty, ty)) continue;
+        if (matched != null) return null;
+        matched = branch;
+    }
+    const branch = matched orelse return null;
+    return unionPayloadLocalNameFromLocals(locals.locals.items, union_local.name, branch.payload_start);
+}
+
+fn emitUnionStoragePayloadGetCall(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    name: []const u8,
+    index_start: usize,
+    index_end: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    const ty = findNarrowedUnionType(locals.narrowed_union_locals.items, name) orelse return false;
+    const elem_ty = storageElemTypeFromName(ty) orelse return false;
+    const elem_bytes = storageElementByteWidthForType(elem_ty, ctx) orelse return false;
+    const storage_name = findStorageReadableLocalName(tokens, locals, name) orelse return false;
+
+    try emitStorageBoundsCheck(allocator, tokens, index_start, index_end, locals, ctx, storage_name, 1, out);
+    try emitStorageDataPtr(allocator, out, storage_name);
+    if (!try emitExpr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return false;
+    if (elem_bytes != 1) {
+        try appendFmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
+        try out.appendSlice(allocator, "    i32.mul\n");
+    }
+    try out.appendSlice(allocator, "    i32.add\n");
+    try appendLoadForPayloadType(allocator, out, elem_ty);
+    if (isManagedLocalType(elem_ty, ctx)) {
+        try out.appendSlice(allocator, "    ;; storage-managed-get-inc\n");
+        try out.appendSlice(allocator, "    call $__arc_inc\n");
+    }
+    return true;
 }
 
 fn emitUnionStructFieldGetCall(
@@ -17070,6 +17147,10 @@ fn callArgMatchesParam(
 
     if (inferExprType(tokens, arg_start, arg_end, locals, ctx)) |arg_ty| {
         return codegenTypesCompatible(param_ty, arg_ty);
+    }
+
+    if (managedPayloadElemTypeFromName(param_ty) != null and isStorageAggLiteralExpr(tokens, arg_start, arg_end)) {
+        return true;
     }
 
     const range = trimParens(tokens, arg_start, arg_end);

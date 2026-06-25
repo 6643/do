@@ -21,14 +21,22 @@ test "source text type" {
     bad = text_from(.{255})
     ok bool = @eq(got, "amy")
     ok = @and(ok, @eq(raw, "amy"))
-    ok = @and(ok, @eq(from_raw, "amy"))
+    if @is(from_raw, text) {
+        ok = @and(ok, @eq(from_raw, "amy"))
+    } else {
+        ok = false
+    }
     if @is(bad, Utf8Error) {
         ok = @and(ok, true)
     } else {
         ok = false
     }
+    chars = text_char_len("中")
     ok = @and(ok, @eq(text_byte_len("中"), 3))
-    ok = @and(ok, @eq(text_char_len("中"), 1))
+    if @is(chars, usize) {
+        ok = @and(ok, @eq(chars, 1))
+    } else {
+        ok = false
+    }
     if ok return
-    return
 }

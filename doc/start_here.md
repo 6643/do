@@ -21,7 +21,7 @@
 
 - `do run`、`do fmt`、`do lsp` 和 `do check` 第一版已完成；其中 `do fmt` 现已支持 `--write`, `do check` 现已支持多文件输入, `do lsp` 现已支持 formatting 和 semantic tokens。历史摘要见 [CHANGELOG.md](/home/_/._/do/CHANGELOG.md), 详细验证证据见 [doc/roadmap_status.md](/home/_/._/do/doc/roadmap_status.md)。
 - `07.5 do check` 第一版已完成；当前行为是复用 LSP diagnostics collector, 成功静默 exit 0, 失败输出第一条 compile diagnostic 并 exit 1。
-- 如果回到全局 roadmap, 先读 `doc/roadmap_status.md` 的阶段 C；B1、B2、B3 和 B4 不要重开, C1.1/C1.2/C1.3/C1.4/C1.5/C1.6、C2.1、C2.2、C2.3、C2.4、C2.5 和 C3.1 已完成, 下一步从 C3.2 补 bytes/text 转换正例开始。
+- 如果回到全局 roadmap, 先读 `doc/roadmap_status.md` 的阶段 C；B1、B2、B3 和 B4 不要重开, C1.1/C1.2/C1.3/C1.4/C1.5/C1.6、C2.1、C2.2、C2.3、C2.4、C2.5、C3.1、C3.2、C3.3、C3.4 和 C4.1 已完成, 下一步从 C4.2 收回 List 基础操作开始。
 - 按 `doc/roadmap_status.md` 顶部的推进协议执行: 每次只推进一个小任务, 完成后马上同步勾选状态和验证证据。
 - `05.4` 已收口为“不做 direct wasm binary emitter”，不要再把它当成未完成任务继续推进。
 - `do run` 当前只覆盖 core wasm smoke 子集, 依赖本机 `wasm-tools` 与 `node`; 不要把它描述成 WASI / Component Model / 自定义 host runtime。
@@ -29,7 +29,7 @@
 - `do lsp` 当前覆盖 diagnostics stdio server、formatting 和 semantic tokens; 不要把它描述成 completion、hover、definition、rename 或完整语言服务。
 - `do check` 当前覆盖单文件和多文件 lexer/parser/sema/import diagnostics; 不要把它描述成 build/codegen/test runner/watch/multi-diagnostic 命令。
 - get / pkg / push 已暂停并从活跃代码线移除; 不要把 `do get` 或 `do push` 描述为当前可用命令。
-- 新的总规划入口是 [doc/master_plan.md](/home/_/._/do/doc/master_plan.md); 默认下一步按其中“阶段 C: 标准库与核心库收口”推进。阶段 B 已完成, C1 JSON stringify / from_json 收口已完成, C2 字段反射 API 收口已完成, C3.1 bytes/text 当前 shape 和测试盘点已完成, 下一步优先 C3.2 bytes/text 转换正例。
+- 新的总规划入口是 [doc/master_plan.md](/home/_/._/do/doc/master_plan.md); 默认下一步按其中“阶段 C: 标准库与核心库收口”推进。阶段 B 已完成, C1 JSON stringify / from_json 收口已完成, C2 字段反射 API 收口已完成, C3 bytes/text 边界已完成, C4.1 skip 分类已完成, 下一步优先 C4.2 收回 List 基础操作。
 - 若未来重新触发 ownership 主线，先重读 `doc/memory.md` 第 8.13 节和第 11.1 节。
 
 变更边界:

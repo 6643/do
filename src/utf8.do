@@ -27,37 +27,37 @@ decode_at(bytes [u8], offset usize) -> Utf8Decode | Utf8Error {
     if @le(b0, 223) {
         err = need(bytes, offset, 2)
         if @is(err, Utf8Error) return err
-        b1 u8 = @get(bytes, @add(offset, 1))
-        if @not(is_continuation(b1)) return Utf8InvalidContinuation
-        return Utf8Decode{code = @add(@mul(@as(u32, @sub(b0, 192)), 64), @as(u32, @sub(b1, 128))), size = 2}
+        b1_2 u8 = @get(bytes, @add(offset, 1))
+        if @not(is_continuation(b1_2)) return Utf8InvalidContinuation
+        return Utf8Decode{code = @add(@mul(@as(u32, @sub(b0, 192)), 64), @as(u32, @sub(b1_2, 128))), size = 2}
     }
 
     if @le(b0, 239) {
         err = need(bytes, offset, 3)
         if @is(err, Utf8Error) return err
-        b1 u8 = @get(bytes, @add(offset, 1))
-        b2 u8 = @get(bytes, @add(offset, 2))
-        if @not(is_continuation(b1)) return Utf8InvalidContinuation
-        if @not(is_continuation(b2)) return Utf8InvalidContinuation
-        if @and(@eq(b0, 224), @lt(b1, 160)) return Utf8Overlong
-        if @and(@eq(b0, 237), @gt(b1, 159)) return Utf8Surrogate
-        code u32 = @add(@mul(@as(u32, @sub(b0, 224)), 4096), @mul(@as(u32, @sub(b1, 128)), 64), @as(u32, @sub(b2, 128)))
-        return Utf8Decode{code = code, size = 3}
+        b1_3 u8 = @get(bytes, @add(offset, 1))
+        b2_3 u8 = @get(bytes, @add(offset, 2))
+        if @not(is_continuation(b1_3)) return Utf8InvalidContinuation
+        if @not(is_continuation(b2_3)) return Utf8InvalidContinuation
+        if @and(@eq(b0, 224), @lt(b1_3, 160)) return Utf8Overlong
+        if @and(@eq(b0, 237), @gt(b1_3, 159)) return Utf8Surrogate
+        code_3 u32 = @add(@mul(@as(u32, @sub(b0, 224)), 4096), @mul(@as(u32, @sub(b1_3, 128)), 64), @as(u32, @sub(b2_3, 128)))
+        return Utf8Decode{code = code_3, size = 3}
     }
 
     if @le(b0, 244) {
         err = need(bytes, offset, 4)
         if @is(err, Utf8Error) return err
-        b1 u8 = @get(bytes, @add(offset, 1))
-        b2 u8 = @get(bytes, @add(offset, 2))
-        b3 u8 = @get(bytes, @add(offset, 3))
-        if @not(is_continuation(b1)) return Utf8InvalidContinuation
-        if @not(is_continuation(b2)) return Utf8InvalidContinuation
-        if @not(is_continuation(b3)) return Utf8InvalidContinuation
-        if @and(@eq(b0, 240), @lt(b1, 144)) return Utf8Overlong
-        if @and(@eq(b0, 244), @gt(b1, 143)) return Utf8OutOfRange
-        code u32 = @add(@mul(@as(u32, @sub(b0, 240)), 262144), @mul(@as(u32, @sub(b1, 128)), 4096), @mul(@as(u32, @sub(b2, 128)), 64), @as(u32, @sub(b3, 128)))
-        return Utf8Decode{code = code, size = 4}
+        b1_4 u8 = @get(bytes, @add(offset, 1))
+        b2_4 u8 = @get(bytes, @add(offset, 2))
+        b3_4 u8 = @get(bytes, @add(offset, 3))
+        if @not(is_continuation(b1_4)) return Utf8InvalidContinuation
+        if @not(is_continuation(b2_4)) return Utf8InvalidContinuation
+        if @not(is_continuation(b3_4)) return Utf8InvalidContinuation
+        if @and(@eq(b0, 240), @lt(b1_4, 144)) return Utf8Overlong
+        if @and(@eq(b0, 244), @gt(b1_4, 143)) return Utf8OutOfRange
+        code_4 u32 = @add(@mul(@as(u32, @sub(b0, 240)), 262144), @mul(@as(u32, @sub(b1_4, 128)), 4096), @mul(@as(u32, @sub(b2_4, 128)), 64), @as(u32, @sub(b3_4, 128)))
+        return Utf8Decode{code = code_4, size = 4}
     }
 
     return Utf8InvalidStart
@@ -76,28 +76,32 @@ size_at(bytes [u8], offset usize) -> usize | Utf8Error {
 }
 
 encode(code u32) -> [u8] | Utf8Error {
-    if @le(code, 127) return @put(.{}, @as(u8, code))
+    if @le(code, 127) {
+        out_1 [u8] = .{}
+        out_1 = @put(out_1, @as(u8, code))
+        return out_1
+    }
     if @le(code, 2047) {
-        out [u8] = .{}
-        out = @put(out, @as(u8, @add(192, @div(code, 64))))
-        out = @put(out, @as(u8, @add(128, @rem(code, 64))))
-        return out
+        out_2 [u8] = .{}
+        out_2 = @put(out_2, @as(u8, @add(192, @div(code, 64))))
+        out_2 = @put(out_2, @as(u8, @add(128, @rem(code, 64))))
+        return out_2
     }
     if @and(@ge(code, 55296), @le(code, 57343)) return Utf8Surrogate
     if @le(code, 65535) {
-        out [u8] = .{}
-        out = @put(out, @as(u8, @add(224, @div(code, 4096))))
-        out = @put(out, @as(u8, @add(128, @rem(@div(code, 64), 64))))
-        out = @put(out, @as(u8, @add(128, @rem(code, 64))))
-        return out
+        out_3 [u8] = .{}
+        out_3 = @put(out_3, @as(u8, @add(224, @div(code, 4096))))
+        out_3 = @put(out_3, @as(u8, @add(128, @rem(@div(code, 64), 64))))
+        out_3 = @put(out_3, @as(u8, @add(128, @rem(code, 64))))
+        return out_3
     }
     if @le(code, 1114111) {
-        out [u8] = .{}
-        out = @put(out, @as(u8, @add(240, @div(code, 262144))))
-        out = @put(out, @as(u8, @add(128, @rem(@div(code, 4096), 64))))
-        out = @put(out, @as(u8, @add(128, @rem(@div(code, 64), 64))))
-        out = @put(out, @as(u8, @add(128, @rem(code, 64))))
-        return out
+        out_4 [u8] = .{}
+        out_4 = @put(out_4, @as(u8, @add(240, @div(code, 262144))))
+        out_4 = @put(out_4, @as(u8, @add(128, @rem(@div(code, 4096), 64))))
+        out_4 = @put(out_4, @as(u8, @add(128, @rem(@div(code, 64), 64))))
+        out_4 = @put(out_4, @as(u8, @add(128, @rem(code, 64))))
+        return out_4
     }
     return Utf8OutOfRange
 }

@@ -1,7 +1,7 @@
 # do 编译器主计划
 
 状态: active
-更新时间: 2026-06-24
+更新时间: 2026-06-25
 
 本文是后续阶段的总规划入口, 用来回答“接下来按什么顺序做、每个阶段拆哪些小任务、每项怎么验收”。实时完成状态、阻塞原因和验证证据记录在 `doc/roadmap_status.md`。
 
@@ -15,7 +15,7 @@
 - 当前 `do fmt` 是 stdout / check-only line-based formatter。
 - 当前 `do check` 只做 lexer/parser/sema/import diagnostics, 不编译、不运行。
 - 当前 `get / pkg / push` 包管理线暂停, 不作为默认后续任务。
-- 最近完整回归基线: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 为 `pass=714 fail=0 skip=70`。
+- 最近完整回归基线: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 为 `pass=717 fail=0 skip=68`。
 
 当前禁止默认推进:
 
@@ -403,9 +403,9 @@
 拆分:
 
 - [x] C3.1 盘点 `src/bytes.do` 和 `src/text.do` 当前 shape 与测试。
-- [ ] C3.2 补 bytes/text 转换正例。
-- [ ] C3.3 补非法 UTF-8 或非法转换反例。
-- [ ] C3.4 同步 spec_rules 和 syntax/type。
+- [x] C3.2 补 bytes/text 转换正例。
+- [x] C3.3 补非法 UTF-8 或非法转换反例。
+- [x] C3.4 同步 spec_rules 和 syntax/type。
 
 验收:
 
@@ -426,7 +426,7 @@
 
 拆分:
 
-- [ ] C4.1 输出 skip 分类: 语法缺口、sema 缺口、codegen 缺口、runtime 缺口。
+- [x] C4.1 输出 skip 分类: 语法缺口、sema 缺口、codegen 缺口、runtime 缺口。
 - [ ] C4.2 先收回 List 基础操作。
 - [ ] C4.3 再收回 Set 基础操作。
 - [ ] C4.4 再收回 HashMap 基础操作。
@@ -1060,9 +1060,7 @@
 
 当前推荐从阶段 C 继续:
 
-1. C3.2 补 bytes/text 转换正例。
-2. C3.3 补非法 UTF-8 或非法转换反例。
-3. C3.4 同步 spec_rules 和 syntax/type。
+1. C4.2 先收回 List 基础操作。
 
 推荐理由:
 
@@ -1070,7 +1068,8 @@
 - C1.1 已确认现有 JSON fixture 和 skip 边界; C1.2 已固定 stringify 支持矩阵; C1.3 已固定 from_json struct-root 支持矩阵和错误边界; C1.4 已补 struct/nested/default 正例; C1.5 已补不支持类型反例和诊断; C1.6 已完成 JSON 源码、core 声明和文档一致性核查。
 - C1 是当前标准库最靠近用户价值的能力, 也会反向验证字段反射和类型边界。
 - C2.1 已固定 Field 元数据只存在于编译期字段反射循环内, 不能作为普通值绑定、传参或逃逸; C2.2 已固定 `@field_get` 的静态展开、重载分派和异构字段接收边界; C2.3 已固定 `@field_set` 的同名自赋值 lowering 和类型约束; C2.4 已用 JSON compiled fixture 验证 field API 足够表达当前序列化/反序列化路径; C2.5 已完成字段反射规则和测试说明同步。
-- C3.1 已盘点 bytes/text 的公开 API、UTF-8 边界和测试矩阵; 下一步应先补直接转换正例, 再补非法 UTF-8 反例。
+- C3.1 已盘点 bytes/text 的公开 API、UTF-8 边界和测试矩阵; C3.2 已把 `ok/121_source_text_type.do` 升级为 compiled bytes/text 转换正例; C3.3 已把 `ok/98_utf_lib.do` 升级为 compiled UTF-8/UTF-16 正反例并补 union storage payload lowering 回归; C3.4 已同步 `spec_rules` 和 `syntax/type` 的 bytes/text/utf8/utf16 规则。
+- C4.1 已确认当前集合 skip 没有 parser/语法缺口, `do check` 全部通过; `49_list_storage_items`、`56_list_del`、`65_list_add_variadic` 已能 compiled 执行, 下一步 C4.2 优先把这批 List 基础操作从 skip 收回。
 
 执行方式:
 
