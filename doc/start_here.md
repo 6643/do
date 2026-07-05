@@ -29,7 +29,7 @@
 - `do lsp` 当前覆盖 diagnostics stdio server、formatting 和 semantic tokens; 不要把它描述成 completion、hover、definition、rename 或完整语言服务。
 - `do check` 当前覆盖单文件和多文件 lexer/parser/sema/import diagnostics; 不要把它描述成 build/codegen/test runner/watch/multi-diagnostic 命令。
 - get / pkg / push 已暂停并从活跃代码线移除; 不要把 `do get` 或 `do push` 描述为当前可用命令。
-- 新的总规划入口是 [doc/master_plan.md](/home/_/._/do/doc/master_plan.md); 默认下一步按其中“阶段 C: 标准库与核心库收口”推进。阶段 B 已完成, C1 JSON stringify / from_json 收口已完成, C2 字段反射 API 收口已完成, C3 bytes/text 边界已完成, C4.1 skip 分类、C4.2 List 基础操作收回、C4.3 Set 基础操作收回、C4.4 HashMap 基础操作收回、C4.5 skip / NoTestDecl 分类更新和 C5.1 `src/*.do` 覆盖盘点已完成, C5.2 已先补 `binary.do` executable fixture。下一步继续 C5.2 的 `path/url/range/slice/bytes/hex` 纯函数库 fixture。
+- 新的总规划入口是 [doc/master_plan.md](/home/_/._/do/doc/master_plan.md); 默认下一步按其中“阶段 C: 标准库与核心库收口”推进。阶段 B 已完成, C1 JSON stringify / from_json 收口已完成, C2 字段反射 API 收口已完成, C3 bytes/text 边界已完成, C4.1 skip 分类、C4.2 List 基础操作收回、C4.3 Set 基础操作收回、C4.4 HashMap 基础操作收回、C4.5 skip / NoTestDecl 分类更新和 C5.1 `src/*.do` 覆盖盘点已完成, C5.2 已先补 `binary.do` 和 `path.do` 非 variadic helper executable fixture。下一步继续 C5.2 的 `url/range/slice/bytes/hex` 纯函数库 fixture。
 - 若未来重新触发 ownership 主线，先重读 `doc/memory.md` 第 8.13 节和第 11.1 节。
 
 变更边界:
