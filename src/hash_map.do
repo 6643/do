@@ -126,22 +126,28 @@ hash_get_or(m HashMap<K, V>, key K, fallback V) -> V, bool {
 hash_put(m HashMap<K, V>, key K, value V) -> HashMap<K, V> {
     idx = index_of(m, key)
     if @eq(idx, nil) {
-        next_keys [K] = @put(keys(m), key)
-        next_vals [V] = @put(values(m), value)
-        return HashMap<K, V>{len = @add(hash_len(m), 1), keys = next_keys, vals = next_vals}
+        add_keys [K] = keys(m)
+        add_vals [V] = values(m)
+        added_keys [K] = @put(add_keys, key)
+        added_vals [V] = @put(add_vals, value)
+        return hash_map_from_parts(added_keys, added_vals)
     }
 
     index usize = idx
-    next_vals [V] = @set(@get(m, .vals), index, value)
-    return HashMap<K, V>{len = hash_len(m), keys = @get(m, .keys), vals = next_vals}
+    set_vals [V] = values(m)
+    updated_vals [V] = @set(set_vals, index, value)
+    set_keys [K] = keys(m)
+    return hash_map_from_parts(set_keys, updated_vals)
 }
 
 #K
 #V
 hash_set(m HashMap<K, V>, key K, value V) -> HashMap<K, V> {
     index usize = require_index(m, key)
-    next_vals [V] = @set(@get(m, .vals), index, value)
-    return HashMap<K, V>{len = hash_len(m), keys = @get(m, .keys), vals = next_vals}
+    data_vals [V] = values(m)
+    next_vals [V] = @set(data_vals, index, value)
+    data_keys [K] = keys(m)
+    return hash_map_from_parts(data_keys, next_vals)
 }
 
 #K
@@ -150,8 +156,10 @@ hash_set_or(m HashMap<K, V>, key K, value V) -> HashMap<K, V>, bool {
     idx = index_of(m, key)
     if @eq(idx, nil) return m, false
     index usize = idx
-    next_vals [V] = @set(@get(m, .vals), index, value)
-    next HashMap<K, V> = hash_map_from_parts(@get(m, .keys), next_vals)
+    data_vals [V] = values(m)
+    next_vals [V] = @set(data_vals, index, value)
+    data_keys [K] = keys(m)
+    next HashMap<K, V> = hash_map_from_parts(data_keys, next_vals)
     return next, true
 }
 

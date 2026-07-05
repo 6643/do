@@ -65,6 +65,7 @@ const StructLayout = struct {
     type_id: usize,
     payload_bytes: usize,
     managed_fields: []const ManagedFieldOffset,
+    owned_name: bool = false,
 };
 
 const StructLocal = struct {
@@ -990,6 +991,7 @@ pub fn emitWatWithOptions(
         imported_alias_ctx,
         &functions,
     );
+    try collectConcreteGenericStructLayouts(allocator, structs.items, functions.items, &struct_layouts);
     try mangleOverloadedFunctionNames(allocator, &functions);
 
     const ctx = CodegenContext{
@@ -1137,6 +1139,7 @@ pub fn emitTestWat(
         imported_alias_ctx,
         &functions,
     );
+    try collectConcreteGenericStructLayouts(allocator, structs.items, functions.items, &struct_layouts);
     try mangleOverloadedFunctionNames(allocator, &functions);
 
     const ctx = CodegenContext{
@@ -1414,6 +1417,10 @@ fn collectBodyLocalsWithMode(
         if (stmtContainsNumericSelectIntrinsic(tokens, i, stmt_end)) {
             try out.ensureNumericSelectTemps(allocator);
         }
+        if (isDiscardAssignment(tokens, i, stmt_end)) {
+            i = stmt_end;
+            continue;
+        }
         if (try isDeadManagedAliasBinding(allocator, tokens, i, stmt_end, end_idx, out, ctx)) {
             i = stmt_end;
             continue;
@@ -1468,6 +1475,9 @@ fn collectBodyLocalsWithMode(
             try out.appendBorrowedLocal(allocator, tokens[i].lexeme, ty, true);
         } else if (!hasLocal(out.locals.items, tokens[i].lexeme) and inferredManagedPayloadBinding(tokens, i, stmt_end, out, ctx) != null) {
             const binding = inferredManagedPayloadBinding(tokens, i, stmt_end, out, ctx).?;
+            try out.appendStorageLocalWithType(allocator, tokens[i].lexeme, binding.ty, binding.elem_ty, true);
+            try out.ensureStorageWriteTemps(allocator);
+        } else if (try typedManagedPayloadBinding(allocator, tokens, i, stmt_end, ctx, &out.owned_names)) |binding| {
             try out.appendStorageLocalWithType(allocator, tokens[i].lexeme, binding.ty, binding.elem_ty, true);
             try out.ensureStorageWriteTemps(allocator);
         } else if (managedPayloadBinding(tokens, i, stmt_end)) |binding| {
@@ -3676,9 +3686,7 @@ fn emitStorageBinding(
         return;
     }
 
-    if (try emitStorageAggLiteral(allocator, tokens, eq_idx + 1, end_idx, target_name, storage.elem_ty, locals, ctx, out)) {
-        return;
-    }
+    if (try emitStorageAggLiteral(allocator, tokens, eq_idx + 1, end_idx, target_name, storage.elem_ty, locals, ctx, out)) return;
 
     if (try emitStorageWriteExpr(allocator, tokens, eq_idx + 1, end_idx, target_name, locals, ctx, out)) {
         try appendFmt(allocator, out, "    local.set ${s}\n", .{target_name});
@@ -3833,10 +3841,18 @@ fn emitStorageAggLiteral(
     try appendFmt(allocator, out, "    i32.const {d}\n", .{type_id});
     try out.appendSlice(allocator, "    call $__arc_alloc\n");
     try appendFmt(allocator, out, "    local.set ${s}\n", .{local_name});
-    try emitStorageLenPtr(allocator, out, local_name);
+    const aggregate_name = if (isManagedLocalType(elem_ty, ctx) and std.mem.eql(u8, local_name, STORAGE_OVERWRITE_TMP_LOCAL))
+        STORAGE_WRITE_NEXT_TMP_LOCAL
+    else
+        local_name;
+    if (!std.mem.eql(u8, aggregate_name, local_name)) {
+        try appendFmt(allocator, out, "    local.get ${s}\n", .{local_name});
+        try appendFmt(allocator, out, "    local.set ${s}\n", .{aggregate_name});
+    }
+    try emitStorageLenPtr(allocator, out, aggregate_name);
     try appendFmt(allocator, out, "    i32.const {d}\n", .{count});
     try out.appendSlice(allocator, "    i32.store\n");
-    try emitStorageCapPtr(allocator, out, local_name);
+    try emitStorageCapPtr(allocator, out, aggregate_name);
     try appendFmt(allocator, out, "    i32.const {d}\n", .{count});
     try out.appendSlice(allocator, "    i32.store\n");
 
@@ -3849,7 +3865,7 @@ fn emitStorageAggLiteral(
         }
         const item_end = findArgEnd(tokens, item_start, close_brace);
         if (item_end == item_start) return error.NoMatchingCall;
-        try emitStorageDataPtr(allocator, out, local_name);
+        try emitStorageDataPtr(allocator, out, aggregate_name);
         if (item_index * elem_bytes != 0) {
             try appendFmt(allocator, out, "    i32.const {d}\n", .{item_index * elem_bytes});
             try out.appendSlice(allocator, "    i32.add\n");
@@ -3865,6 +3881,10 @@ fn emitStorageAggLiteral(
         if (item_start < close_brace and tokEq(tokens[item_start], ",")) item_start += 1;
     }
     if (item_index != count) return error.NoMatchingCall;
+    if (!std.mem.eql(u8, aggregate_name, local_name)) {
+        try appendFmt(allocator, out, "    local.get ${s}\n", .{aggregate_name});
+        try appendFmt(allocator, out, "    local.set ${s}\n", .{local_name});
+    }
     return true;
 }
 
@@ -5102,6 +5122,8 @@ fn emitBody(
             try applyGuardReturnIsNarrowing(allocator, tokens, i, stmt_end, active, ctx);
         } else if (try emitReturnStmt(allocator, tokens, i, stmt_end, body_start, active, return_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, exit_defer_ctx, return_label, out)) {
             // Return emitted.
+        } else if (try emitDiscardAssignment(allocator, tokens, i, stmt_end, end_idx, allow_call_arg_last_use_move, active, exit_defer_ctx, ctx, out)) {
+            // Discard assignment emitted.
         } else if (try isDeadManagedAliasBinding(allocator, tokens, i, stmt_end, end_idx, active, ctx)) {
             // Dead managed alias binding elided.
         } else if (try emitUnionBinding(allocator, tokens, i, stmt_end, end_idx, allow_call_arg_last_use_move, active, exit_defer_ctx, ctx, out)) {
@@ -5188,6 +5210,96 @@ fn isCollectedTypedStorageBinding(
     if (tokEq(tokens[start_idx + 1], "=")) return false;
     if (findStorageLocal(locals.storage_locals.items, tokens[start_idx].lexeme) == null) return false;
     return findTopLevelToken(tokens, start_idx + 1, end_idx, "=") != null;
+}
+
+fn isDiscardAssignment(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    if (start_idx + 3 > end_idx) return false;
+    if (tokens[start_idx].kind != .ident) return false;
+    if (!std.mem.eql(u8, tokens[start_idx].lexeme, "_")) return false;
+    const eq_idx = findTopLevelToken(tokens, start_idx + 1, end_idx, "=") orelse return false;
+    return eq_idx == start_idx + 1 and eq_idx + 1 < end_idx;
+}
+
+fn discardExprIsPureNoop(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    const range = trimParens(tokens, start_idx, end_idx);
+    if (range.start >= range.end) return true;
+    if (range.end == range.start + 1) return true;
+    if (isStorageAggLiteralExpr(tokens, range.start, range.end)) return true;
+    return false;
+}
+
+fn emitDiscardStackValue(
+    allocator: std.mem.Allocator,
+    ty: []const u8,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+) !void {
+    if (isManagedLocalType(ty, ctx)) {
+        try out.appendSlice(allocator, "    call $__arc_dec\n");
+    } else {
+        try out.appendSlice(allocator, "    drop\n");
+    }
+}
+
+fn emitDiscardAssignment(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    body_end: usize,
+    allow_last_use_move: bool,
+    locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    if (!isDiscardAssignment(tokens, start_idx, end_idx)) return false;
+    const eq_idx = start_idx + 1;
+    const rhs_start = eq_idx + 1;
+    if (discardExprIsPureNoop(tokens, rhs_start, end_idx)) return true;
+
+    if (try emitBareUserFuncCallWithMoveContext(allocator, tokens, rhs_start, end_idx, body_end, allow_last_use_move, locals, defer_ctx, ctx, out)) {
+        return true;
+    }
+    if (try emitBareWasiHostImportCall(allocator, tokens, rhs_start, end_idx, locals, ctx, out)) return true;
+
+    const range = trimParens(tokens, rhs_start, end_idx);
+    if (exprCallHead(tokens, range)) |call_head| {
+        if (!call_head.is_intrinsic) {
+            if (findFuncDeclForCallHead(tokens, call_head, locals, ctx)) |func| {
+                if (func.results.len > 1) {
+                    const move_ctx = CallLastUseMoveContext{
+                        .stmt_end = end_idx,
+                        .body_end = body_end,
+                        .defer_ctx = defer_ctx,
+                        .allow_last_use_move = allow_last_use_move,
+                    };
+                    if (!try emitUserFuncCallWithMoveContext(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, &move_ctx, out)) {
+                        return error.NoMatchingCall;
+                    }
+                    var result_idx = func.results.len;
+                    while (result_idx > 0) {
+                        result_idx -= 1;
+                        try emitDiscardStackValue(allocator, func.results[result_idx], ctx, out);
+                    }
+                    return true;
+                }
+            }
+        }
+    }
+
+    const ty = inferExprType(tokens, rhs_start, end_idx, locals, ctx) orelse return error.NoMatchingCall;
+    const move_ctx = CallLastUseMoveContext{
+        .stmt_end = end_idx,
+        .body_end = body_end,
+        .defer_ctx = defer_ctx,
+        .allow_last_use_move = allow_last_use_move,
+    };
+    if (!try emitExprWithMoveContext(allocator, tokens, rhs_start, end_idx, locals, ctx, ty, &move_ctx, out)) {
+        return error.NoMatchingCall;
+    }
+    try emitDiscardStackValue(allocator, ty, ctx, out);
+    return true;
 }
 
 fn isDeferStmt(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
@@ -6267,6 +6379,9 @@ fn emitStorageContentComparisonCall(
     if (second_end != args_end) return false;
 
     const cmp_ty = inferStorageContentComparisonType(tokens, args_start, first_end, second_start, second_end, locals, ctx) orelse return false;
+    if (try emitManagedPayloadStorageContentComparisonCall(allocator, tokens, args_start, first_end, second_start, second_end, cmp_ty, call_name, locals, ctx, out)) {
+        return true;
+    }
     if (!try emitExpr(allocator, tokens, args_start, first_end, locals, ctx, cmp_ty, out)) return false;
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
     if (!try emitExpr(allocator, tokens, second_start, second_end, locals, ctx, cmp_ty, out)) return false;
@@ -6274,6 +6389,99 @@ fn emitStorageContentComparisonCall(
     try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
     try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
     try out.appendSlice(allocator, "    call $__storage_equal_u8\n");
+    if (std.mem.eql(u8, call_name, "ne")) {
+        try out.appendSlice(allocator, "    i32.eqz\n");
+    }
+    return true;
+}
+
+fn emitManagedPayloadStorageContentComparisonCall(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    left_start: usize,
+    left_end: usize,
+    right_start: usize,
+    right_end: usize,
+    cmp_ty: []const u8,
+    call_name: []const u8,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    const elem_ty = storageElemTypeFromName(cmp_ty) orelse return false;
+    const nested_elem_ty = managedPayloadElemTypeFromName(elem_ty) orelse return false;
+    if (!std.mem.eql(u8, nested_elem_ty, "u8")) return false;
+
+    if (!try emitExpr(allocator, tokens, left_start, left_end, locals, ctx, cmp_ty, out)) return false;
+    try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
+    if (!try emitExpr(allocator, tokens, right_start, right_end, locals, ctx, cmp_ty, out)) return false;
+    try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+
+    try appendFmt(allocator, out, "    i32.const 0\n    local.set ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
+    try appendFmt(allocator, out, "    i32.const 1\n    local.set ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
+    try out.appendSlice(allocator, "    block $storage_managed_eq_done\n");
+    try emitStorageLenPtr(allocator, out, STORAGE_PUT_SOURCE_TMP_LOCAL);
+    try out.appendSlice(allocator, "      i32.load\n");
+    try emitStorageLenPtr(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL);
+    try out.appendSlice(allocator,
+        \\      i32.load
+        \\      i32.ne
+        \\      if
+        \\
+    );
+    try appendFmt(allocator, out, "        i32.const 0\n        local.set ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
+    try out.appendSlice(allocator,
+        \\        br $storage_managed_eq_done
+        \\      end
+        \\      loop $storage_managed_eq_loop
+        \\
+    );
+    try appendFmt(allocator, out, "        local.get ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
+    try emitStorageLenPtr(allocator, out, STORAGE_PUT_SOURCE_TMP_LOCAL);
+    try out.appendSlice(allocator,
+        \\        i32.load
+        \\        i32.ge_u
+        \\        br_if $storage_managed_eq_done
+        \\
+    );
+    try emitStorageDataPtr(allocator, out, STORAGE_PUT_SOURCE_TMP_LOCAL);
+    try appendFmt(allocator, out, "        local.get ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
+    try out.appendSlice(allocator,
+        \\        i32.const 4
+        \\        i32.mul
+        \\        i32.add
+        \\        i32.load
+        \\
+    );
+    try emitStorageDataPtr(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL);
+    try appendFmt(allocator, out, "        local.get ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
+    try out.appendSlice(allocator,
+        \\        i32.const 4
+        \\        i32.mul
+        \\        i32.add
+        \\        i32.load
+        \\        call $__storage_equal_u8
+        \\        i32.eqz
+        \\        if
+        \\
+    );
+    try appendFmt(allocator, out, "          i32.const 0\n          local.set ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
+    try out.appendSlice(allocator,
+        \\          br $storage_managed_eq_done
+        \\        end
+        \\
+    );
+    try appendFmt(allocator, out, "        local.get ${s}\n        i32.const 1\n        i32.add\n        local.set ${s}\n", .{
+        STORAGE_WRITE_SCAN_TMP_LOCAL,
+        STORAGE_WRITE_SCAN_TMP_LOCAL,
+    });
+    try out.appendSlice(allocator,
+        \\        br $storage_managed_eq_loop
+        \\      end
+        \\    end
+        \\
+    );
+    try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
     if (std.mem.eql(u8, call_name, "ne")) {
         try out.appendSlice(allocator, "    i32.eqz\n");
     }
@@ -9945,6 +10153,13 @@ fn collectStructDecls(
             i = line_end - 1;
             continue;
         }
+        if (isUserFuncDeclStart(tokens, i)) {
+            pending_type_params.clearRetainingCapacity();
+            const close_params = findMatching(tokens, i + 1, "(", ")") catch continue;
+            const body = parseFuncBodyShape(tokens, close_params) catch continue;
+            i = body.next_idx;
+            continue;
+        }
         if (!isTopLevelStructDeclStart(tokens, i)) continue;
 
         const open_brace = i + 1;
@@ -10075,11 +10290,21 @@ fn collectStructDeclByNameAs(
             i = line_end - 1;
             continue;
         }
+        if (isUserFuncDeclStart(tokens, i)) {
+            pending_type_params.clearRetainingCapacity();
+            const close_params = findMatching(tokens, i + 1, "(", ")") catch continue;
+            const body = parseFuncBodyShape(tokens, close_params) catch continue;
+            i = body.next_idx;
+            continue;
+        }
         if (!isTopLevelStructDeclStart(tokens, i)) continue;
-        if (!std.mem.eql(u8, publicDeclName(tokens[i].lexeme), target_name)) continue;
-
         const open_brace = i + 1;
         const close_brace = try findMatching(tokens, open_brace, "{", "}");
+        if (!std.mem.eql(u8, publicDeclName(tokens[i].lexeme), target_name)) {
+            pending_type_params.clearRetainingCapacity();
+            i = close_brace;
+            continue;
+        }
         const type_params = if (pending_type_params.items.len == 0)
             &[_][]const u8{}
         else
@@ -10286,6 +10511,102 @@ fn collectStructLayouts(
         });
         next_type_id += 1;
     }
+}
+
+fn collectConcreteGenericStructLayouts(
+    allocator: std.mem.Allocator,
+    structs: []const StructDecl,
+    functions: []const FuncDecl,
+    out: *std.ArrayList(StructLayout),
+) !void {
+    var next_type_id = nextStructLayoutTypeId(out.items);
+    for (functions) |func| {
+        if (func.is_generic_template) continue;
+        for (func.params) |param| {
+            try collectConcreteGenericStructLayoutFromType(allocator, structs, funcParamAbiType(param), out, &next_type_id);
+        }
+        for (func.results) |result_ty| {
+            try collectConcreteGenericStructLayoutFromType(allocator, structs, result_ty, out, &next_type_id);
+        }
+        for (func.result_items) |item| {
+            try collectConcreteGenericStructLayoutFromType(allocator, structs, item.ty, out, &next_type_id);
+        }
+    }
+}
+
+fn nextStructLayoutTypeId(layouts: []const StructLayout) usize {
+    var next_type_id: usize = TYPE_ID_FIRST_STRUCT;
+    for (layouts) |layout| {
+        next_type_id = @max(next_type_id, layout.type_id + 1);
+    }
+    return next_type_id;
+}
+
+fn collectConcreteGenericStructLayoutFromType(
+    allocator: std.mem.Allocator,
+    structs: []const StructDecl,
+    ty: []const u8,
+    out: *std.ArrayList(StructLayout),
+    next_type_id: *usize,
+) !void {
+    if (managedPayloadElemTypeFromName(ty)) |elem_ty| {
+        try collectConcreteGenericStructLayoutFromType(allocator, structs, elem_ty, out, next_type_id);
+        return;
+    }
+
+    const args = genericTypeArgsRange(ty) orelse return;
+    const decl = findStructDecl(structs, args.base) orelse return;
+    if (decl.type_params.len == 0) return;
+    if (findStructLayoutExact(out.items, ty) != null) return;
+    if (findStructLayoutExact(out.items, args.base) != null) return;
+
+    var owned_types = std.ArrayList([]const u8).empty;
+    defer {
+        for (owned_types.items) |owned| allocator.free(owned);
+        owned_types.deinit(allocator);
+    }
+    var bindings = std.ArrayList(GenericTypeBinding).empty;
+    defer bindings.deinit(allocator);
+    if (!try bindStructTypeArgs(allocator, decl, ty, &bindings, &owned_types)) return;
+
+    var managed_fields = std.ArrayList(ManagedFieldOffset).empty;
+    errdefer managed_fields.deinit(allocator);
+    var offset: usize = 0;
+    for (decl.fields) |field| {
+        const field_ty = try substituteGenericTypeOwned(allocator, field.ty, bindings.items, &owned_types);
+        try collectConcreteGenericStructLayoutFromType(allocator, structs, field_ty, out, next_type_id);
+
+        const field_align = typePayloadAlignment(field_ty);
+        offset = alignUp(offset, field_align);
+        if (fieldConcreteTypeHasManagedLayout(out.items, field_ty)) {
+            try managed_fields.append(allocator, .{
+                .name = publicDeclName(field.name),
+                .offset = offset,
+            });
+        }
+        offset += typePayloadBytes(field_ty);
+    }
+
+    if (managed_fields.items.len == 0) {
+        managed_fields.deinit(allocator);
+        return;
+    }
+
+    const owned_name = try allocator.dupe(u8, ty);
+    errdefer allocator.free(owned_name);
+    try out.append(allocator, .{
+        .name = owned_name,
+        .type_id = next_type_id.*,
+        .payload_bytes = alignUp(offset, 4),
+        .managed_fields = try managed_fields.toOwnedSlice(allocator),
+        .owned_name = true,
+    });
+    next_type_id.* += 1;
+}
+
+fn fieldConcreteTypeHasManagedLayout(layouts: []const StructLayout, ty: []const u8) bool {
+    if (isManagedPayloadType(ty)) return true;
+    return findStructLayout(layouts, ty) != null;
 }
 
 fn fieldTypeHasManagedLayout(allocator: std.mem.Allocator, structs: []const StructDecl, ty: []const u8) !bool {
@@ -11552,18 +11873,12 @@ fn collectGenericFuncInstanceForCall(
         owned_types.deinit(allocator);
     }
 
-    if (!try bindExplicitGenericCallTypeArgs(allocator, tokens, call_head, template, &bindings, &owned_types)) {
-        return;
-    }
+    if (!try bindExplicitGenericCallTypeArgs(allocator, tokens, call_head, template, &bindings, &owned_types)) return;
 
     var param_tys = std.ArrayList([]const u8).empty;
     defer param_tys.deinit(allocator);
-    if (!try bindGenericFuncCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, template, &bindings, &param_tys, &owned_types)) {
-        return;
-    }
-    if (!genericBindingsCoverTypeParams(template, bindings.items)) {
-        return;
-    }
+    if (!try bindGenericFuncCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, template, &bindings, &param_tys, &owned_types)) return;
+    if (!genericBindingsCoverTypeParams(template, bindings.items)) return;
     if (!callHeadHasTypeArgs(call_head) and concreteOverloadCoversGenericParams(functions.items, template, param_tys.items)) {
         return;
     }
@@ -13663,6 +13978,7 @@ fn freeValueEnumDecls(allocator: std.mem.Allocator, value_enums: []const ValueEn
 
 fn freeStructLayouts(allocator: std.mem.Allocator, layouts: []const StructLayout) void {
     for (layouts) |layout| {
+        if (layout.owned_name) allocator.free(layout.name);
         allocator.free(layout.managed_fields);
     }
 }
@@ -14460,6 +14776,25 @@ const ManagedPayloadBinding = struct {
     elem_ty: []const u8,
 };
 
+fn typedManagedPayloadBinding(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    ctx: CodegenContext,
+    owned_types: *std.ArrayList([]const u8),
+) CodegenError!?ManagedPayloadBinding {
+    if (start_idx + 3 >= end_idx) return null;
+    if (tokens[start_idx].kind != .ident) return null;
+    const eq_idx = findTopLevelToken(tokens, start_idx + 1, end_idx, "=") orelse return null;
+    if (eq_idx <= start_idx + 1) return null;
+    const parsed = (try parseCodegenTypeExpr(allocator, tokens, start_idx + 1, eq_idx, owned_types)) orelse return null;
+    if (parsed.next_idx != eq_idx) return null;
+    const ty = try substituteGenericTypeOwned(allocator, parsed.ty, ctx.type_bindings, owned_types);
+    const elem_ty = managedPayloadElemTypeFromName(ty) orelse return null;
+    return .{ .ty = ty, .elem_ty = elem_ty };
+}
+
 fn managedPayloadBinding(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?ManagedPayloadBinding {
     if (start_idx + 3 >= end_idx) return null;
     if (tokens[start_idx].kind != .ident) return null;
@@ -14605,6 +14940,10 @@ fn emitGetCall(
     const second_end = findArgEnd(tokens, second_start, end_idx);
     if (second_end != end_idx) return false;
 
+    if (try emitManagedStructExprFieldGet(allocator, tokens, start_idx, first_end, second_start, second_end, locals, ctx, out)) {
+        return true;
+    }
+
     if (first_end != start_idx + 1 or tokens[start_idx].kind != .ident) {
         const storage_ty = inferExprType(tokens, start_idx, first_end, locals, ctx) orelse return false;
         const elem_ty = storageElemTypeFromName(storage_ty) orelse return false;
@@ -14694,6 +15033,45 @@ fn emitGetCall(
     }
 
     return false;
+}
+
+fn emitManagedStructExprFieldGet(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    value_start: usize,
+    value_end: usize,
+    field_start: usize,
+    field_end: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    if (field_end != field_start + 1 or !isDotIdent(tokens[field_start].lexeme)) return false;
+    if (value_end == value_start + 1 and tokens[value_start].kind == .ident) return false;
+    const struct_ty = inferExprType(tokens, value_start, value_end, locals, ctx) orelse return false;
+    const layout = findStructLayout(ctx.struct_layouts, struct_ty) orelse return false;
+    const decl = findStructDecl(ctx.structs, struct_ty) orelse return false;
+    const field_name = publicDeclName(tokens[field_start].lexeme);
+    const field = findStructField(decl, field_name) orelse return false;
+    const field_offset = structFieldPayloadOffset(decl, field_name) orelse return false;
+
+    var owned_types = std.ArrayList([]const u8).empty;
+    defer {
+        for (owned_types.items) |owned| allocator.free(owned);
+        owned_types.deinit(allocator);
+    }
+    const field_ty = try substituteStructFieldType(allocator, decl, struct_ty, field.ty, &owned_types);
+
+    if (!try emitExpr(allocator, tokens, value_start, value_end, locals, ctx, struct_ty, out)) return false;
+    try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try appendManagedStructFieldPtr(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, field_offset);
+    try appendLoadForPayloadType(allocator, out, field_ty);
+    if (isManagedStructField(layout, field_name)) {
+        try out.appendSlice(allocator, "    call $__arc_inc\n");
+    }
+    try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try out.appendSlice(allocator, "    call $__arc_dec\n");
+    return true;
 }
 
 fn findStorageReadableLocalName(
@@ -17215,9 +17593,19 @@ fn findStructDecl(structs: []const StructDecl, name: []const u8) ?StructDecl {
 }
 
 fn findStructLayout(layouts: []const StructLayout, name: []const u8) ?StructLayout {
+    for (layouts) |layout| {
+        if (std.mem.eql(u8, layout.name, name)) return layout;
+    }
     const lookup_name = typeBaseName(name);
     for (layouts) |layout| {
         if (std.mem.eql(u8, layout.name, lookup_name)) return layout;
+    }
+    return null;
+}
+
+fn findStructLayoutExact(layouts: []const StructLayout, name: []const u8) ?StructLayout {
+    for (layouts) |layout| {
+        if (std.mem.eql(u8, layout.name, name)) return layout;
     }
     return null;
 }
@@ -17232,6 +17620,13 @@ fn typeBaseName(ty: []const u8) []const u8 {
 fn findStructFieldType(decl: StructDecl, field_name: []const u8) ?[]const u8 {
     for (decl.fields) |field| {
         if (std.mem.eql(u8, publicDeclName(field.name), field_name)) return field.ty;
+    }
+    return null;
+}
+
+fn findStructField(decl: StructDecl, field_name: []const u8) ?StructField {
+    for (decl.fields) |field| {
+        if (std.mem.eql(u8, publicDeclName(field.name), field_name)) return field;
     }
     return null;
 }
@@ -19204,6 +19599,12 @@ fn inferGetCallType(
     const second_end = findArgEnd(tokens, second_start, end_idx);
     if (second_end != end_idx) return null;
 
+    if (second_end == second_start + 1 and isDotIdent(tokens[second_start].lexeme)) {
+        if (inferManagedStructExprFieldType(tokens, start_idx, first_end, tokens[second_start].lexeme, locals, ctx)) |field_ty| {
+            return field_ty;
+        }
+    }
+
     if (first_end != start_idx + 1 or tokens[start_idx].kind != .ident) {
         const storage_ty = inferExprType(tokens, start_idx, first_end, locals, ctx) orelse return null;
         if (storageElemTypeFromName(storage_ty)) |elem_ty| return elem_ty;
@@ -19224,6 +19625,46 @@ fn inferGetCallType(
     if (findUnionLocal(locals.union_locals.items, name)) |union_local| {
         const payload = unionLocalDefaultStructPayload(tokens, ctx, union_local) orelse return null;
         return findStructFieldType(payload.decl, field_name);
+    }
+    return null;
+}
+
+fn inferManagedStructExprFieldType(
+    tokens: []const lexer.Token,
+    value_start: usize,
+    value_end: usize,
+    dot_field: []const u8,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+) ?[]const u8 {
+    if (value_end == value_start + 1 and tokens[value_start].kind == .ident) return null;
+    const struct_ty = inferExprType(tokens, value_start, value_end, locals, ctx) orelse return null;
+    if (findStructLayout(ctx.struct_layouts, struct_ty) == null) return null;
+    const decl = findStructDecl(ctx.structs, struct_ty) orelse return null;
+    return findConcreteStructFieldTypeNoAlloc(decl, struct_ty, publicDeclName(dot_field));
+}
+
+fn findConcreteStructFieldTypeNoAlloc(decl: StructDecl, concrete_ty: []const u8, field_name: []const u8) ?[]const u8 {
+    const field = findStructField(decl, field_name) orelse return null;
+    if (decl.type_params.len == 0) return field.ty;
+    for (decl.type_params, 0..) |type_param, idx| {
+        if (!std.mem.eql(u8, field.ty, type_param)) continue;
+        return genericTypeArgAt(concrete_ty, idx);
+    }
+    return field.ty;
+}
+
+fn genericTypeArgAt(concrete_ty: []const u8, target_idx: usize) ?[]const u8 {
+    const args = genericTypeArgsRange(concrete_ty) orelse return null;
+    var arg_start: usize = 0;
+    var arg_idx: usize = 0;
+    while (arg_start < args.args.len) {
+        const arg_end = findTopLevelTypeSeparatorFrom(args.args, arg_start, ',') orelse args.args.len;
+        if (arg_start == arg_end) return null;
+        if (arg_idx == target_idx) return args.args[arg_start..arg_end];
+        arg_idx += 1;
+        arg_start = arg_end;
+        if (arg_start < args.args.len) arg_start += 1;
     }
     return null;
 }

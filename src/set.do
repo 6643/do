@@ -46,7 +46,8 @@ set_has(xs Set<T>, value T) -> bool {
 #T
 set_add(xs Set<T>, value T) -> Set<T> {
     if set_has(xs, value) return xs
-    data [T] = @put(items(xs), value)
+    data [T] = items(xs)
+    data = @put(data, value)
     return Set<T>{len = @add(set_len(xs), 1), items = data}
 }
 

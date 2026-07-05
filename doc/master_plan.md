@@ -1,7 +1,7 @@
 # do 编译器主计划
 
 状态: active
-更新时间: 2026-06-25
+更新时间: 2026-07-05
 
 本文是后续阶段的总规划入口, 用来回答“接下来按什么顺序做、每个阶段拆哪些小任务、每项怎么验收”。实时完成状态、阻塞原因和验证证据记录在 `doc/roadmap_status.md`。
 
@@ -15,7 +15,7 @@
 - 当前 `do fmt` 是 stdout / check-only line-based formatter。
 - 当前 `do check` 只做 lexer/parser/sema/import diagnostics, 不编译、不运行。
 - 当前 `get / pkg / push` 包管理线暂停, 不作为默认后续任务。
-- 最近完整回归基线: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 为 `pass=717 fail=0 skip=68`。
+- 最近完整回归基线: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 为 `pass=738 fail=0 skip=52`。
 
 当前禁止默认推进:
 
@@ -427,10 +427,10 @@
 拆分:
 
 - [x] C4.1 输出 skip 分类: 语法缺口、sema 缺口、codegen 缺口、runtime 缺口。
-- [ ] C4.2 先收回 List 基础操作。
-- [ ] C4.3 再收回 Set 基础操作。
-- [ ] C4.4 再收回 HashMap 基础操作。
-- [ ] C4.5 更新 NoTestDecl 或 skip 原因。
+- [x] C4.2 先收回 List 基础操作。
+- [x] C4.3 再收回 Set 基础操作。
+- [x] C4.4 再收回 HashMap 基础操作。
+- [x] C4.5 更新 NoTestDecl 或 skip 原因。
 
 验收:
 
@@ -452,7 +452,7 @@
 
 拆分:
 
-- [ ] C5.1 盘点 `src/*.do` 中只有 shape 没有测试的文件。
+- [x] C5.1 盘点 `src/*.do` 中只有 shape 没有测试的文件。
 - [ ] C5.2 为纯函数库补 `do test` fixture。
 - [ ] C5.3 为需要 codegen 的库补 compiled fixture。
 - [ ] C5.4 README 或 spec_rules 只记录稳定公开边界。
@@ -1060,7 +1060,7 @@
 
 当前推荐从阶段 C 继续:
 
-1. C4.2 先收回 List 基础操作。
+1. C5.2 为纯函数库补 `do test` fixture。
 
 推荐理由:
 
@@ -1069,7 +1069,7 @@
 - C1 是当前标准库最靠近用户价值的能力, 也会反向验证字段反射和类型边界。
 - C2.1 已固定 Field 元数据只存在于编译期字段反射循环内, 不能作为普通值绑定、传参或逃逸; C2.2 已固定 `@field_get` 的静态展开、重载分派和异构字段接收边界; C2.3 已固定 `@field_set` 的同名自赋值 lowering 和类型约束; C2.4 已用 JSON compiled fixture 验证 field API 足够表达当前序列化/反序列化路径; C2.5 已完成字段反射规则和测试说明同步。
 - C3.1 已盘点 bytes/text 的公开 API、UTF-8 边界和测试矩阵; C3.2 已把 `ok/121_source_text_type.do` 升级为 compiled bytes/text 转换正例; C3.3 已把 `ok/98_utf_lib.do` 升级为 compiled UTF-8/UTF-16 正反例并补 union storage payload lowering 回归; C3.4 已同步 `spec_rules` 和 `syntax/type` 的 bytes/text/utf8/utf16 规则。
-- C4.1 已确认当前集合 skip 没有 parser/语法缺口, `do check` 全部通过; `49_list_storage_items`、`56_list_del`、`65_list_add_variadic` 已能 compiled 执行, 下一步 C4.2 优先把这批 List 基础操作从 skip 收回。
+- C4.1 已确认当前集合 skip 没有 parser/语法缺口, `do check` 全部通过; C4.2 已把 `49_list_storage_items`、`56_list_del`、`65_list_add_variadic` 固定为 compiled 必过用例并从 skip 收回; C4.3 已把 `113_set_common_ops` 固定为 compiled 必过用例并收回; C4.4 已把 `36_hash_map_lib_ops`、`37_hash_map_set_missing_key`、`57_hash_map_del`、`115_hash_map_common_wrappers` 固定为 compiled 必过用例并收回; C4.5 已收回 8 个漏网 compiled 可执行用例, 并更新剩余 skip / NoTestDecl 分类。C5.1 已完成 `src/*.do` 覆盖盘点; C5.2 已先补 `binary.do` executable fixture。下一步继续 C5.2 的 `path/url/range/slice/bytes/hex` 纯函数库 fixture。
 
 执行方式:
 

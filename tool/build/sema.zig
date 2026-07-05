@@ -2520,7 +2520,34 @@ fn callHasKnownArgForDirectTypeParam(
 
 fn hasKnownValueTypeBefore(tokens: []const lexer.Token, before_idx: usize, name: []const u8) bool {
     if (findNearestValueTypeName(tokens, before_idx, name) != null) return true;
+    if (hasNearestValueTypeExpr(tokens, before_idx, name)) return true;
     return findEnclosingFuncParamTypeName(tokens, before_idx, name) != null;
+}
+
+fn hasNearestValueTypeExpr(tokens: []const lexer.Token, before_idx: usize, name: []const u8) bool {
+    var skip_depth: usize = 0;
+    var i = before_idx;
+    while (i > 0) {
+        i -= 1;
+
+        if (tokEq(tokens[i], "}")) {
+            skip_depth += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "{")) {
+            if (skip_depth > 0) skip_depth -= 1;
+            continue;
+        }
+        if (skip_depth != 0) continue;
+        if (tokens[i].kind != .ident) continue;
+        if (!std.mem.eql(u8, tokens[i].lexeme, name)) continue;
+
+        const line_end = findLineEndIdx(tokens, i);
+        const eq_idx = findTopLevelAssignEqOnLine(tokens, i + 1, line_end) orelse continue;
+        if (eq_idx <= i + 1) continue;
+        return validateIsTypeExpr(tokens, i + 1, eq_idx) == eq_idx;
+    }
+    return false;
 }
 
 fn isFuncTypeParam(tokens: []const lexer.Token, func_start_idx: usize, name: []const u8) bool {
