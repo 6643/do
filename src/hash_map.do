@@ -168,8 +168,12 @@ hash_set_or(m HashMap<K, V>, key K, value V) -> HashMap<K, V>, bool {
 #Q = (V) -> V
 update(m HashMap<K, V>, key K, f Q) -> HashMap<K, V> {
     index usize = require_index(m, key)
-    next_vals [V] = @set(@get(m, .vals), index, f(@get(@get(m, .vals), index)))
-    return HashMap<K, V>{len = hash_len(m), keys = @get(m, .keys), vals = next_vals}
+    data_vals [V] = values(m)
+    old_value V = @get(data_vals, index)
+    new_value V = f(old_value)
+    next_vals [V] = @set(data_vals, index, new_value)
+    data_keys [K] = keys(m)
+    return hash_map_from_parts(data_keys, next_vals)
 }
 
 #K
@@ -179,8 +183,12 @@ update_or(m HashMap<K, V>, key K, f Q) -> HashMap<K, V>, bool {
     idx = index_of(m, key)
     if @eq(idx, nil) return m, false
     index usize = idx
-    next_vals [V] = @set(@get(m, .vals), index, f(@get(@get(m, .vals), index)))
-    next HashMap<K, V> = hash_map_from_parts(@get(m, .keys), next_vals)
+    data_vals [V] = values(m)
+    old_value V = @get(data_vals, index)
+    new_value V = f(old_value)
+    next_vals [V] = @set(data_vals, index, new_value)
+    data_keys [K] = keys(m)
+    next HashMap<K, V> = hash_map_from_parts(data_keys, next_vals)
     return next, true
 }
 

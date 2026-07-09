@@ -1,0 +1,10 @@
+;; compiled-test 0 "compiled managed struct alias set preserves other field"
+count=1 ;; arc-managed-struct-reuse box.value
+count=1 ;; arc-managed-struct-clone-set box.value
+local.set $box
+local.get $alias
+local.set $alias_value
+local.set $alias_tag
+local.get $box
+local.set $box_value
+local.set $box_tag

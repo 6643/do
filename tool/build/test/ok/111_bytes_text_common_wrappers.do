@@ -1,3 +1,4 @@
+BytesError = @lib("bytes.do", BytesError)
 bytes_drop = @lib("bytes.do", drop)
 bytes_drop_or = @lib("bytes.do", drop_or)
 bytes_first = @lib("bytes.do", first)
@@ -26,6 +27,11 @@ text_trim_left_byte = @lib("text.do", trim_left_byte)
 text_trim_byte = @lib("text.do", trim_byte)
 text_trim_right_byte = @lib("text.do", trim_right_byte)
 
+bytes_value_eq(value [u8] | BytesError, expect [u8]) -> bool {
+    if @is(value, BytesError) return false
+    return @eq(value, expect)
+}
+
 test "bytes common wrappers" {
     fallback [u8] = "fallback"
     part, part_ok = bytes_slice_or("abcdef", 1, 4, fallback)
@@ -46,8 +52,8 @@ test "bytes common wrappers" {
     ok = @and(ok, @eq(part, "bcd"))
     ok = @and(ok, @not(bad_ok))
     ok = @and(ok, @eq(bad, fallback))
-    ok = @and(ok, @eq(head, "ab"))
-    ok = @and(ok, @eq(tail, "cdef"))
+    ok = @and(ok, bytes_value_eq(head, "ab"))
+    ok = @and(ok, bytes_value_eq(tail, "cdef"))
     ok = @and(ok, @not(head_or_ok))
     ok = @and(ok, @eq(head_or, fallback))
     ok = @and(ok, @not(tail_or_ok))
@@ -87,8 +93,8 @@ test "text common wrappers" {
     ok bool = true
     ok = @and(ok, part_ok)
     ok = @and(ok, @eq(part, "cde"))
-    ok = @and(ok, @eq(head, "abc"))
-    ok = @and(ok, @eq(tail, "def"))
+    ok = @and(ok, bytes_value_eq(head, "abc"))
+    ok = @and(ok, bytes_value_eq(tail, "def"))
     ok = @and(ok, @eq(copied, "abc"))
     ok = @and(ok, @eq(cat, "abcdef"))
     ok = @and(ok, @eq(repeated, "xxx"))

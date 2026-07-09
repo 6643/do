@@ -16,9 +16,16 @@ slice(xs [T], from usize, end usize) -> [T] | SliceError {
 
 #T
 slice_or(xs [T], from usize, end usize, fallback [T]) -> [T], bool {
-    value = slice(xs, from, end)
-    if @is(value, SliceError) return fallback, false
-    return value, true
+    if @gt(from, end) return fallback, false
+    if @gt(end, @len(xs)) return fallback, false
+
+    out [T] = .{}
+    i usize = from
+    loop {
+        if @ge(i, end) return out, true
+        out = @put(out, @get(xs, i))
+        i = @add(i, 1)
+    }
 }
 
 #T
@@ -51,9 +58,15 @@ take(xs [T], count usize) -> [T] | SliceError {
 
 #T
 take_or(xs [T], count usize, fallback [T]) -> [T], bool {
-    value = take(xs, count)
-    if @is(value, SliceError) return fallback, false
-    return value, true
+    if @gt(count, @len(xs)) return fallback, false
+
+    out [T] = .{}
+    i usize = 0
+    loop {
+        if @ge(i, count) return out, true
+        out = @put(out, @get(xs, i))
+        i = @add(i, 1)
+    }
 }
 
 #T
@@ -64,7 +77,13 @@ drop(xs [T], count usize) -> [T] | SliceError {
 
 #T
 drop_or(xs [T], count usize, fallback [T]) -> [T], bool {
-    value = drop(xs, count)
-    if @is(value, SliceError) return fallback, false
-    return value, true
+    if @gt(count, @len(xs)) return fallback, false
+
+    out [T] = .{}
+    i usize = count
+    loop {
+        if @ge(i, @len(xs)) return out, true
+        out = @put(out, @get(xs, i))
+        i = @add(i, 1)
+    }
 }

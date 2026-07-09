@@ -1,4 +1,5 @@
 const std = @import("std");
+const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 
 const Value = union(enum) {
@@ -30,6 +31,7 @@ const FuncDecl = struct {
     body_start: usize,
     body_end: usize,
     arrow: bool,
+    tokens: []const lexer.Token,
 };
 
 const TestStatus = enum {
@@ -47,12 +49,22 @@ pub const TestDecl = struct {
 };
 
 pub fn run(io: std.Io, allocator: std.mem.Allocator, tokens: []const lexer.Token) !void {
+    return runWithModules(io, allocator, null, tokens, null);
+}
+
+pub fn runWithModules(
+    io: std.Io,
+    allocator: std.mem.Allocator,
+    input_path: ?[]const u8,
+    tokens: []const lexer.Token,
+    module_graph: ?*const imports.ModuleGraph,
+) !void {
     const test_decls = try collectTopLevelTests(allocator, tokens);
     defer allocator.free(test_decls);
 
     if (test_decls.len == 0) return error.NoTestDecl;
 
-    const funcs = try collectTopLevelFuncs(allocator, tokens);
+    const funcs = try collectRunnableFuncs(allocator, input_path, tokens, module_graph);
     defer allocator.free(funcs);
 
     try runAndPrintTestReport(io, allocator, tokens, funcs, test_decls);
@@ -140,6 +152,7 @@ fn collectTopLevelFuncs(allocator: std.mem.Allocator, tokens: []const lexer.Toke
                 .body_start = body_start + 1,
                 .body_end = body_end,
                 .arrow = false,
+                .tokens = tokens,
             });
             i = body_end + 1;
             continue;
@@ -155,11 +168,183 @@ fn collectTopLevelFuncs(allocator: std.mem.Allocator, tokens: []const lexer.Toke
             .body_start = body_start,
             .body_end = body_end,
             .arrow = true,
+            .tokens = tokens,
         });
         i = body_end;
     }
 
     return out.toOwnedSlice(allocator);
+}
+
+fn collectRunnableFuncs(
+    allocator: std.mem.Allocator,
+    input_path: ?[]const u8,
+    tokens: []const lexer.Token,
+    module_graph: ?*const imports.ModuleGraph,
+) ![]FuncDecl {
+    var out = std.ArrayList(FuncDecl).empty;
+    defer out.deinit(allocator);
+
+    const local_funcs = try collectTopLevelFuncs(allocator, tokens);
+    defer allocator.free(local_funcs);
+    try out.appendSlice(allocator, local_funcs);
+
+    if (input_path) |path| {
+        if (module_graph) |graph| {
+            try collectDirectImportedFuncs(allocator, path, tokens, graph, &out);
+        }
+    }
+
+    return out.toOwnedSlice(allocator);
+}
+
+const ImportPrefix = enum {
+    local,
+    dep,
+    std,
+};
+
+const StaticImportRef = struct {
+    alias: []const u8,
+    target: []const u8,
+    file_path: []const u8,
+    prefix: ImportPrefix,
+};
+
+fn collectDirectImportedFuncs(
+    allocator: std.mem.Allocator,
+    input_path: []const u8,
+    entry_tokens: []const lexer.Token,
+    graph: *const imports.ModuleGraph,
+    out: *std.ArrayList(FuncDecl),
+) !void {
+    var i: usize = 0;
+    while (i < entry_tokens.len) : (i += 1) {
+        const import_ref = parseStaticImport(entry_tokens, i) orelse continue;
+        defer i = findLineEnd(entry_tokens, i, entry_tokens.len) - 1;
+
+        const resolved_path = try resolveStaticImportPath(allocator, input_path, graph.dep_root, import_ref);
+        defer allocator.free(resolved_path);
+        const child_tokens = findModuleTokensByPath(graph.modules, resolved_path) orelse continue;
+
+        if (!std.mem.eql(u8, import_ref.alias, import_ref.target) and !hasFuncNamed(out.items, import_ref.target)) {
+            _ = try appendTopLevelFuncByNameAs(allocator, child_tokens, import_ref.target, import_ref.target, out);
+        }
+        if (hasFuncNamed(out.items, import_ref.alias)) continue;
+        _ = try appendTopLevelFuncByNameAs(allocator, child_tokens, import_ref.target, import_ref.alias, out);
+    }
+}
+
+fn parseStaticImport(tokens: []const lexer.Token, idx: usize) ?StaticImportRef {
+    if (idx + 7 >= tokens.len) return null;
+    if (tokens[idx].kind != .ident or !isBindingName(tokens[idx].lexeme)) return null;
+    if (!tokEqToken(tokens[idx + 1], "=")) return null;
+    if (!tokEqToken(tokens[idx + 2], "@")) return null;
+    if (tokens[idx + 3].kind != .ident or !std.mem.eql(u8, tokens[idx + 3].lexeme, "lib")) return null;
+    if (!tokEqToken(tokens[idx + 4], "(")) return null;
+    const close_idx = findMatchingInRange(tokens, idx + 4, "(", ")", tokens.len) catch return null;
+    if (close_idx != idx + 8) return null;
+    if (tokens[idx + 5].kind != .string) return null;
+    if (!tokEqToken(tokens[idx + 6], ",")) return null;
+    if (tokens[idx + 7].kind != .ident) return null;
+    const raw_path = stringTokenBody(tokens[idx + 5].lexeme) orelse return null;
+
+    var prefix: ImportPrefix = .std;
+    var file_path = raw_path;
+    if (std.mem.startsWith(u8, raw_path, "./")) {
+        prefix = .local;
+        file_path = raw_path[2..];
+    } else if (std.mem.startsWith(u8, raw_path, "~/")) {
+        prefix = .dep;
+        file_path = raw_path[2..];
+    }
+
+    return .{
+        .alias = tokens[idx].lexeme,
+        .target = tokens[idx + 7].lexeme,
+        .file_path = file_path,
+        .prefix = prefix,
+    };
+}
+
+fn resolveStaticImportPath(
+    allocator: std.mem.Allocator,
+    input_path: []const u8,
+    dep_root: []const u8,
+    import_ref: StaticImportRef,
+) ![]u8 {
+    return switch (import_ref.prefix) {
+        .local => blk: {
+            const base = std.fs.path.dirname(input_path) orelse ".";
+            break :blk std.fs.path.join(allocator, &.{ base, import_ref.file_path });
+        },
+        .dep => std.fs.path.join(allocator, &.{ dep_root, import_ref.file_path }),
+        .std => std.fs.path.join(allocator, &.{ "src", import_ref.file_path }),
+    };
+}
+
+fn findModuleTokensByPath(modules: []const imports.ModuleRecord, path: []const u8) ?[]const lexer.Token {
+    for (modules) |module| {
+        if (std.mem.eql(u8, module.path, path)) return module.tokens;
+    }
+    return null;
+}
+
+fn hasFuncNamed(funcs: []const FuncDecl, name: []const u8) bool {
+    for (funcs) |func| {
+        if (std.mem.eql(u8, func.name, name)) return true;
+    }
+    return false;
+}
+
+fn appendTopLevelFuncByNameAs(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    target_name: []const u8,
+    emit_name: []const u8,
+    out: *std.ArrayList(FuncDecl),
+) !bool {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEqToken(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEqToken(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0 or !isFuncDeclStart(tokens, i)) continue;
+
+        const close_params = try findMatchingToken(tokens, i + 1, "(", ")");
+        const body_start = findFuncBodyStart(tokens, close_params + 1) orelse {
+            i += 1;
+            continue;
+        };
+        const body_end = if (tokEqToken(tokens[body_start], "{"))
+            try findMatchingToken(tokens, body_start, "{", "}")
+        else
+            findLineEnd(tokens, body_start, tokens.len);
+        if (!std.mem.eql(u8, publicFuncName(tokens[i].lexeme), target_name)) {
+            i = body_end;
+            continue;
+        }
+
+        try out.append(allocator, .{
+            .name = emit_name,
+            .params_start = i + 2,
+            .params_end = close_params,
+            .param_min = countFixedParams(tokens, i + 2, close_params),
+            .param_max = if (hasVariadicParam(tokens, i + 2, close_params)) null else countFixedParams(tokens, i + 2, close_params),
+            .body_start = if (tokEqToken(tokens[body_start], "{")) body_start + 1 else body_start,
+            .body_end = body_end,
+            .arrow = !tokEqToken(tokens[body_start], "{"),
+            .tokens = tokens,
+        });
+        return true;
+    }
+    return false;
 }
 
 fn runAndPrintTestReport(
@@ -551,6 +736,13 @@ fn evalCall(
         if (args.items.len != 2 or args.items[0] == .unknown or args.items[1] == .unknown) return .unknown;
         return .{ .bool = !valueEq(args.items[0], args.items[1]) };
     }
+    if (std.mem.eql(u8, name, "lt") or
+        std.mem.eql(u8, name, "le") or
+        std.mem.eql(u8, name, "gt") or
+        std.mem.eql(u8, name, "ge"))
+    {
+        return evalComparisonCore(name, args.items);
+    }
     if (std.mem.eql(u8, name, "and")) return evalAndOrCore("and", args.items);
     if (std.mem.eql(u8, name, "or")) return evalAndOrCore("or", args.items);
     if (std.mem.eql(u8, name, "not")) {
@@ -592,12 +784,14 @@ fn evalArgs(
 
 fn evalUserFunc(
     allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
+    caller_tokens: []const lexer.Token,
     funcs: []const FuncDecl,
     name: []const u8,
     args: []const Value,
 ) anyerror!Value {
     const func = findFunc(funcs, name, args.len) orelse return .unsupported;
+    const func_tokens = func.tokens;
+    const imported_func = !moduleTokensEqual(func_tokens, caller_tokens);
     var bindings = std.ArrayList(Binding).empty;
     defer {
         freeBindings(allocator, bindings.items);
@@ -607,43 +801,55 @@ fn evalUserFunc(
     var arg_idx: usize = 0;
     var i = func.params_start;
     while (i < func.params_end and arg_idx < args.len) {
-        const seg_end = findArgEnd(tokens, i, func.params_end);
-        if (tokens[i].kind == .ident and isBindingName(tokens[i].lexeme)) {
+        const seg_end = findArgEnd(func_tokens, i, func.params_end);
+        if (func_tokens[i].kind == .ident and isBindingName(func_tokens[i].lexeme)) {
             const value = try cloneValue(allocator, args[arg_idx]);
             errdefer freeValue(allocator, value);
-            try setBinding(allocator, &bindings, tokens[i].lexeme, value);
+            try setBinding(allocator, &bindings, func_tokens[i].lexeme, value);
         }
         arg_idx += 1;
         i = seg_end;
-        if (i < func.params_end and tokEqToken(tokens[i], ",")) i += 1;
+        if (i < func.params_end and tokEqToken(func_tokens[i], ",")) i += 1;
     }
 
     if (func.arrow) {
-        return evalExpr(allocator, tokens, funcs, bindings.items, func.body_start, func.body_end);
+        return evalExpr(allocator, func_tokens, funcs, bindings.items, func.body_start, func.body_end) catch |err| {
+            if (imported_func and err == error.NoMatchingCall) return .unsupported;
+            return err;
+        };
     }
 
-    if (hasUnsupportedControlFlow(tokens, func.body_start, func.body_end)) return .unsupported;
+    if (hasUnsupportedControlFlow(func_tokens, func.body_start, func.body_end)) return .unsupported;
 
     i = func.body_start;
     while (i < func.body_end) {
-        if (tokEqToken(tokens[i], "if")) {
-            const parsed = try evalFuncIfReturn(allocator, tokens, funcs, &bindings, i, func.body_end);
+        if (tokEqToken(func_tokens[i], "if")) {
+            const parsed = evalFuncIfReturn(allocator, func_tokens, funcs, &bindings, i, func.body_end) catch |err| {
+                if (imported_func and err == error.NoMatchingCall) return .unsupported;
+                return err;
+            };
             if (parsed.returned) return parsed.value;
             if (parsed.unsupported) return .unsupported;
             if (parsed.unknown) return .unknown;
             i = parsed.next_idx;
             continue;
         }
-        if (tokEqToken(tokens[i], "return")) {
-            const line_end = findLineEnd(tokens, i, func.body_end);
-            return evalExpr(allocator, tokens, funcs, bindings.items, i + 1, line_end);
+        if (tokEqToken(func_tokens[i], "return")) {
+            const line_end = findLineEnd(func_tokens, i, func.body_end);
+            return evalExpr(allocator, func_tokens, funcs, bindings.items, i + 1, line_end) catch |err| {
+                if (imported_func and err == error.NoMatchingCall) return .unsupported;
+                return err;
+            };
         }
-        if (try evalBindingLine(allocator, tokens, funcs, &bindings, i, func.body_end)) |line| {
+        if (evalBindingLine(allocator, func_tokens, funcs, &bindings, i, func.body_end) catch |err| {
+            if (imported_func and err == error.NoMatchingCall) return .unsupported;
+            return err;
+        }) |line| {
             if (line.unsupported) return .unsupported;
             i = line.next_idx;
             continue;
         }
-        i = findLineEnd(tokens, i, func.body_end);
+        i = findLineEnd(func_tokens, i, func.body_end);
     }
     return .unsupported;
 }
@@ -666,6 +872,8 @@ fn evalUserFuncMulti(
     try evalArgs(allocator, tokens, funcs, outer_bindings, args_start, args_end, &args);
 
     const func = findFunc(funcs, name, args.items.len) orelse return error.NoMatchingCall;
+    const func_tokens = func.tokens;
+    const imported_func = !moduleTokensEqual(func_tokens, tokens);
     var bindings = std.ArrayList(Binding).empty;
     defer {
         freeBindings(allocator, bindings.items);
@@ -675,31 +883,43 @@ fn evalUserFuncMulti(
     var arg_idx: usize = 0;
     var i = func.params_start;
     while (i < func.params_end and arg_idx < args.items.len) {
-        const seg_end = findArgEnd(tokens, i, func.params_end);
-        if (tokens[i].kind == .ident and isBindingName(tokens[i].lexeme)) {
+        const seg_end = findArgEnd(func_tokens, i, func.params_end);
+        if (func_tokens[i].kind == .ident and isBindingName(func_tokens[i].lexeme)) {
             const value = try cloneValue(allocator, args.items[arg_idx]);
             errdefer freeValue(allocator, value);
-            try setBinding(allocator, &bindings, tokens[i].lexeme, value);
+            try setBinding(allocator, &bindings, func_tokens[i].lexeme, value);
         }
         arg_idx += 1;
         i = seg_end;
-        if (i < func.params_end and tokEqToken(tokens[i], ",")) i += 1;
+        if (i < func.params_end and tokEqToken(func_tokens[i], ",")) i += 1;
     }
 
     const range = if (func.arrow) Range{ .start = func.body_start, .end = func.body_end } else blk: {
-        if (hasUnsupportedControlFlow(tokens, func.body_start, func.body_end)) return error.NoMatchingCall;
-        if (func.body_start >= func.body_end or !tokEqToken(tokens[func.body_start], "return")) return error.NoMatchingCall;
-        const line_end = findLineEnd(tokens, func.body_start, func.body_end);
-        if (line_end != func.body_end) return error.NoMatchingCall;
+        if (hasUnsupportedControlFlow(func_tokens, func.body_start, func.body_end)) {
+            if (imported_func) return allocUnsupportedValues(allocator, expected_count);
+            return error.NoMatchingCall;
+        }
+        if (func.body_start >= func.body_end or !tokEqToken(func_tokens[func.body_start], "return")) {
+            if (imported_func) return allocUnsupportedValues(allocator, expected_count);
+            return error.NoMatchingCall;
+        }
+        const line_end = findLineEnd(func_tokens, func.body_start, func.body_end);
+        if (line_end != func.body_end) {
+            if (imported_func) return allocUnsupportedValues(allocator, expected_count);
+            return error.NoMatchingCall;
+        }
         break :blk Range{ .start = func.body_start + 1, .end = line_end };
     };
 
-    if (parseSimpleCall(tokens, range.start, range.end)) |nested| {
+    if (parseSimpleCall(func_tokens, range.start, range.end)) |nested| {
         if (nested.has_type_args) return allocUnsupportedValues(allocator, expected_count);
-        if (findFunc(funcs, nested.name, countArgs(tokens, nested.args_start, nested.args_end)) == null) {
+        if (findFunc(funcs, nested.name, countArgs(func_tokens, nested.args_start, nested.args_end)) == null) {
             return allocUnsupportedValues(allocator, expected_count);
         }
-        return evalUserFuncMulti(allocator, tokens, funcs, nested.name, nested.args_start, nested.args_end, bindings.items, expected_count);
+        return evalUserFuncMulti(allocator, func_tokens, funcs, nested.name, nested.args_start, nested.args_end, bindings.items, expected_count) catch |err| {
+            if (imported_func and err == error.NoMatchingCall) return allocUnsupportedValues(allocator, expected_count);
+            return err;
+        };
     }
 
     var out = std.ArrayList(Value).empty;
@@ -709,14 +929,20 @@ fn evalUserFuncMulti(
     }
     var expr_start = range.start;
     while (expr_start < range.end) {
-        const expr_end = findArgEnd(tokens, expr_start, range.end);
-        const value = try evalExpr(allocator, tokens, funcs, bindings.items, expr_start, expr_end);
+        const expr_end = findArgEnd(func_tokens, expr_start, range.end);
+        const value = evalExpr(allocator, func_tokens, funcs, bindings.items, expr_start, expr_end) catch |err| {
+            if (imported_func and err == error.NoMatchingCall) return allocUnsupportedValues(allocator, expected_count);
+            return err;
+        };
         errdefer freeValue(allocator, value);
         try out.append(allocator, value);
         expr_start = expr_end;
-        if (expr_start < range.end and tokEqToken(tokens[expr_start], ",")) expr_start += 1;
+        if (expr_start < range.end and tokEqToken(func_tokens[expr_start], ",")) expr_start += 1;
     }
-    if (out.items.len <= 1) return error.NoMatchingCall;
+    if (out.items.len <= 1) {
+        if (imported_func) return allocUnsupportedValues(allocator, expected_count);
+        return error.NoMatchingCall;
+    }
     return out.toOwnedSlice(allocator);
 }
 
@@ -864,6 +1090,16 @@ fn evalNumericCore(name: []const u8, args: []const Value) Value {
         } else return .unknown;
     }
     return .{ .int = out };
+}
+
+fn evalComparisonCore(name: []const u8, args: []const Value) Value {
+    if (hasUnsupportedValue(args)) return .unsupported;
+    if (args.len != 2 or args[0] != .int or args[1] != .int) return .unknown;
+    if (std.mem.eql(u8, name, "lt")) return .{ .bool = args[0].int < args[1].int };
+    if (std.mem.eql(u8, name, "le")) return .{ .bool = args[0].int <= args[1].int };
+    if (std.mem.eql(u8, name, "gt")) return .{ .bool = args[0].int > args[1].int };
+    if (std.mem.eql(u8, name, "ge")) return .{ .bool = args[0].int >= args[1].int };
+    return .unknown;
 }
 
 fn evalAbsCore(args: []const Value) Value {
@@ -1449,9 +1685,18 @@ fn findMatchingInRange(tokens: []const lexer.Token, open_idx: usize, open: []con
     return error.UnterminatedGroup;
 }
 
+fn moduleTokensEqual(a: []const lexer.Token, b: []const lexer.Token) bool {
+    return a.ptr == b.ptr and a.len == b.len;
+}
+
 fn parseInt(raw: []const u8) ?i128 {
     if (raw.len == 0) return null;
     return std.fmt.parseInt(i128, raw, 10) catch null;
+}
+
+fn stringTokenBody(s: []const u8) ?[]const u8 {
+    if (s.len >= 2 and s[0] == '"' and s[s.len - 1] == '"') return s[1 .. s.len - 1];
+    return null;
 }
 
 fn decodeStringLiteral(allocator: std.mem.Allocator, raw: []const u8) ![]const u8 {
@@ -1670,4 +1915,83 @@ test "longer fixed prefix variadic wins over shorter prefix variadic" {
 
     const func = findFunc(funcs, "pick", 2) orelse return error.TestExpectedEqual;
     try std.testing.expectEqualStrings("2", tokens[func.body_start].lexeme);
+}
+
+test "recursive guard return static runner passes" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\sum_positive(n i32) -> i32 {
+        \\    if @lt(n, 0) return 0
+        \\    if @eq(n, 0) return 0
+        \\    next i32 = @sub(n, 1)
+        \\    return @add(n, sum_positive(next))
+        \\}
+        \\
+        \\test "recursive guard return" {
+        \\    out i32 = sum_positive(4)
+        \\    if @eq(out, 10) return
+        \\}
+    ;
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+
+    const tests = try collectTopLevelTests(allocator, tokens);
+    defer allocator.free(tests);
+    const funcs = try collectTopLevelFuncs(allocator, tokens);
+    defer allocator.free(funcs);
+
+    try std.testing.expectEqual(@as(usize, 1), tests.len);
+    try std.testing.expectEqual(TestStatus.pass, try evalTest(allocator, tokens, funcs, tests[0]));
+}
+
+test "recursive imported function static runner passes" {
+    const allocator = std.testing.allocator;
+    const entry_source =
+        \\factorial = @lib("./fixture.recursive_math.do", factorial)
+        \\
+        \\test "imported recursive factorial" {
+        \\    out i32 = factorial(5)
+        \\    if @eq(out, 120) return
+        \\}
+    ;
+    const child_source =
+        \\factorial(n i32) -> i32 {
+        \\    if @eq(n, 0) return 1
+        \\    next i32 = @sub(n, 1)
+        \\    return @mul(n, factorial(next))
+        \\}
+    ;
+    const entry_tokens = try lexer.tokenize(allocator, entry_source);
+    defer allocator.free(entry_tokens);
+    const child_tokens = try lexer.tokenize(allocator, child_source);
+    defer allocator.free(child_tokens);
+
+    const tests = try collectTopLevelTests(allocator, entry_tokens);
+    defer allocator.free(tests);
+    var modules = [_]imports.ModuleRecord{
+        .{
+            .path = "tool/build/test/ok/entry.do",
+            .source = null,
+            .owns_source = false,
+            .tokens = entry_tokens,
+            .owns_tokens = false,
+        },
+        .{
+            .path = "tool/build/test/ok/fixture.recursive_math.do",
+            .source = null,
+            .owns_source = false,
+            .tokens = child_tokens,
+            .owns_tokens = false,
+        },
+    };
+    const graph = imports.ModuleGraph{
+        .allocator = allocator,
+        .dep_root = "src",
+        .modules = modules[0..],
+    };
+    const funcs = try collectRunnableFuncs(allocator, "tool/build/test/ok/entry.do", entry_tokens, &graph);
+    defer allocator.free(funcs);
+
+    try std.testing.expectEqual(@as(usize, 1), tests.len);
+    try std.testing.expectEqual(TestStatus.pass, try evalTest(allocator, entry_tokens, funcs, tests[0]));
 }

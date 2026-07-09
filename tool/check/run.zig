@@ -81,10 +81,10 @@ test "checkPaths checks all inputs and reports failure status" {
     try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "ok.do",
         .data =
-            \\test "ok" {
-            \\    return
-            \\}
-            \\
+        \\test "ok" {
+        \\    return
+        \\}
+        \\
         ,
     });
 

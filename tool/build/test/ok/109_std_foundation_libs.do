@@ -94,10 +94,61 @@ text_trim_byte = @lib("text.do", trim_byte)
 text_trim_right_byte = @lib("text.do", trim_right_byte)
 text_validate_utf8 = @lib("text.do", validate_utf8)
 
+BytesError = @lib("bytes.do", BytesError)
+Utf8Error = @lib("utf8.do", Utf8Error)
 UrlError = @lib("url.do", UrlError)
 UrlInvalidEscape = @lib("url.do", UrlInvalidEscape)
 url_decode = @lib("url.do", url_decode)
 url_encode = @lib("url.do", url_encode)
+
+i32_items_eq(actual [i32], expect [i32]) -> bool {
+    if @ne(@len(actual), @len(expect)) return false
+    i usize = 0
+    loop {
+        if @ge(i, @len(actual)) return true
+        if @ne(@get(actual, i), @get(expect, i)) return false
+        i = @add(i, 1)
+    }
+}
+
+usize_items_eq(actual [usize], expect [usize]) -> bool {
+    if @ne(@len(actual), @len(expect)) return false
+    i usize = 0
+    loop {
+        if @ge(i, @len(actual)) return true
+        if @ne(@get(actual, i), @get(expect, i)) return false
+        i = @add(i, 1)
+    }
+}
+
+slice_i32_eq(value [i32] | SliceError, expect [i32]) -> bool {
+    if @is(value, SliceError) return false
+    return i32_items_eq(value, expect)
+}
+
+text_bytes_eq(value [u8] | BytesError, expect [u8]) -> bool {
+    if @is(value, BytesError) return false
+    return @eq(value, expect)
+}
+
+utf8_count_eq(value usize | Utf8Error, expect usize) -> bool {
+    if @is(value, Utf8Error) return false
+    return @eq(value, expect)
+}
+
+utf8_is_error(value Utf8Error | nil) -> bool {
+    return @ne(value, nil)
+}
+
+url_bytes_eq(value [u8] | UrlError, expect [u8]) -> bool {
+    if @is(value, UrlError) return false
+    return @eq(value, expect)
+}
+
+url_is_invalid_escape(value [u8] | UrlError) -> bool {
+    if @is(value, UrlError) return @eq(value, UrlInvalidEscape)
+    return false
+}
 
 test "binary read write" {
     data [u8] = .{1, 2, 3, 4, 5, 6, 7, 8}
@@ -190,9 +241,9 @@ test "range slice set text url" {
     nums [i32] = range_i32(2, 5)
     ids [usize] = range_usize(1, 4)
     repeated [usize] = range_repeat_usize(7, 3)
-    part = slice_slice(nums, 1, 3)
-    taken = slice_take(nums, 2)
-    dropped = slice_drop(nums, 1)
+    part [i32] | SliceError = slice_slice(nums, 1, 3)
+    taken [i32] | SliceError = slice_take(nums, 2)
+    dropped [i32] | SliceError = slice_drop(nums, 1)
     fallback [i32] = .{9}
     fallback_value, fallback_ok = slice_slice_or(nums, 3, 1, fallback)
     missing i32 = 9
@@ -215,17 +266,20 @@ test "range slice set text url" {
     left_only Set<i32> = set_difference(from_items, many)
 
     encoded [u8] = url_encode("a b?")
-    decoded = url_decode(encoded)
-    bad = url_decode("%zz")
-    utf8_err = text_validate_utf8(.{255})
+    decoded [u8] | UrlError = url_decode(encoded)
+    bad [u8] | UrlError = url_decode("%zz")
+    utf8_count usize | Utf8Error = text_count_utf8("a€")
+    utf8_err Utf8Error | nil = text_validate_utf8(.{255})
+    text_taken [u8] | BytesError = text_take("abcdef", 3)
+    text_dropped [u8] | BytesError = text_drop("abcdef", 3)
 
     ok bool = true
-    ok = @and(ok, @eq(nums, .{2, 3, 4}))
-    ok = @and(ok, @eq(ids, .{1, 2, 3}))
-    ok = @and(ok, @eq(repeated, .{7, 7, 7}))
-    ok = @and(ok, @eq(part, .{3, 4}))
-    ok = @and(ok, @eq(taken, .{2, 3}))
-    ok = @and(ok, @eq(dropped, .{3, 4}))
+    ok = @and(ok, i32_items_eq(nums, .{2, 3, 4}))
+    ok = @and(ok, usize_items_eq(ids, .{1, 2, 3}))
+    ok = @and(ok, usize_items_eq(repeated, .{7, 7, 7}))
+    ok = @and(ok, slice_i32_eq(part, .{3, 4}))
+    ok = @and(ok, slice_i32_eq(taken, .{2, 3}))
+    ok = @and(ok, slice_i32_eq(dropped, .{3, 4}))
     ok = @and(ok, @not(fallback_ok))
     ok = @and(ok, @eq(fallback_value, fallback))
     ok = @and(ok, @eq(slice_first(nums), 2))
@@ -240,21 +294,21 @@ test "range slice set text url" {
     ok = @and(ok, @eq(slice_missing_last, missing))
     ok = @and(ok, @eq(set_len(xs), 1))
     ok = @and(ok, set_has(xs, 2))
-    ok = @and(ok, @eq(set_items(xs), .{2}))
+    ok = @and(ok, i32_items_eq(set_items(xs), .{2}))
     ok = @and(ok, @eq(set_len(from_items), 2))
     ok = @and(ok, set_has(from_items, 1))
     ok = @and(ok, set_has(from_items, 2))
     ok = @and(ok, @eq(set_len(cleared), 0))
     ok = @and(ok, set_is_empty(cleared))
     ok = @and(ok, @not(set_is_empty(from_items)))
-    ok = @and(ok, @eq(set_items(many), .{2, 3}))
+    ok = @and(ok, i32_items_eq(set_items(many), .{2, 3}))
     ok = @and(ok, @eq(set_len(merged), 3))
     ok = @and(ok, set_has(merged, 1))
     ok = @and(ok, set_has(merged, 3))
-    ok = @and(ok, @eq(set_items(shared), .{2}))
-    ok = @and(ok, @eq(set_items(left_only), .{1}))
+    ok = @and(ok, i32_items_eq(set_items(shared), .{2}))
+    ok = @and(ok, i32_items_eq(set_items(left_only), .{1}))
     ok = @and(ok, text_is_valid_utf8("a€"))
-    ok = @and(ok, @eq(text_count_utf8("a€"), 2))
+    ok = @and(ok, utf8_count_eq(utf8_count, 2))
     ok = @and(ok, text_starts_with("abcdef", "abc"))
     ok = @and(ok, text_ends_with("abcdef", "def"))
     ok = @and(ok, text_contains("abcdef", "cd"))
@@ -263,8 +317,8 @@ test "range slice set text url" {
     ok = @and(ok, @eq(text_copy("abc"), "abc"))
     ok = @and(ok, @eq(text_concat("ab", "cd", "ef"), "abcdef"))
     ok = @and(ok, @eq(text_repeat_byte(120, 3), "xxx"))
-    ok = @and(ok, @eq(text_take("abcdef", 3), "abc"))
-    ok = @and(ok, @eq(text_drop("abcdef", 3), "def"))
+    ok = @and(ok, text_bytes_eq(text_taken, "abc"))
+    ok = @and(ok, text_bytes_eq(text_dropped, "def"))
     text_first_value, text_first_ok = text_first_or("abc", 0)
     text_missing_first, text_missing_first_ok = text_first_or("", 9)
     text_last_value, text_last_ok = text_last_or("abc", 0)
@@ -283,9 +337,9 @@ test "range slice set text url" {
     ok = @and(ok, @eq(text_trim_byte("  abc  ", 32), "abc"))
     ok = @and(ok, @eq(text_trim_right_byte("  abc  ", 32), "  abc"))
     ok = @and(ok, @eq(text_replace("a-b-c", "-", "/"), "a/b/c"))
-    ok = @and(ok, @ne(utf8_err, nil))
+    ok = @and(ok, utf8_is_error(utf8_err))
     ok = @and(ok, @eq(encoded, "a%20b%3F"))
-    ok = @and(ok, @eq(decoded, "a b?"))
-    ok = @and(ok, @eq(bad, UrlInvalidEscape))
+    ok = @and(ok, url_bytes_eq(decoded, "a b?"))
+    ok = @and(ok, url_is_invalid_escape(bad))
     if ok return
 }

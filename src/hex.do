@@ -1,9 +1,3 @@
-List = @lib("list.do", List)
-empty_list = @lib("list.do", empty_list)
-list_add = @lib("list.do", list_add)
-list_len = @lib("list.do", list_len)
-list_items = @lib("list.do", items)
-
 HexError error = InvalidLength | InvalidDigit
 
 _hex_0 u8 = 48
@@ -13,28 +7,30 @@ _hex_upper_f u8 = 70
 _hex_a u8 = 97
 _hex_f u8 = 102
 
-_lower_alphabet [u8] = "0123456789abcdef"
-_upper_alphabet [u8] = "0123456789ABCDEF"
-
 encode(data [u8]) -> [u8] {
-    return encode_with(data, _lower_alphabet)
+    return encode_with(data, false)
 }
 
 encode_upper(data [u8]) -> [u8] {
-    return encode_with(data, _upper_alphabet)
+    return encode_with(data, true)
 }
 
-encode_with(data [u8], alphabet [u8]) -> [u8] {
-    seed u8 = 0
-    out List<u8> = empty_list(seed)
+encode_digit(value u8, upper bool) -> u8 {
+    if @le(value, 9) return @add(_hex_0, value)
+    if upper return @add(_hex_upper_a, @sub(value, 10))
+    return @add(_hex_a, @sub(value, 10))
+}
+
+encode_with(data [u8], upper bool) -> [u8] {
+    out [u8] = .{}
     i usize = 0
     loop {
-        if @eq(i, @len(data)) return list_items(out)
+        if @eq(i, @len(data)) return out
         b u8 = @get(data, i)
         hi u8 = @as(u8, @div(b, 16))
         lo u8 = @as(u8, @rem(b, 16))
-        out = list_add(out, @get(alphabet, @as(usize, hi)))
-        out = list_add(out, @get(alphabet, @as(usize, lo)))
+        out = @put(out, encode_digit(hi, upper))
+        out = @put(out, encode_digit(lo, upper))
         i = @add(i, 1)
     }
 }
@@ -48,16 +44,15 @@ decode_digit(c u8) -> u8 | HexError {
 
 decode(bytes [u8]) -> [u8] | HexError {
     if @ne(@rem(@len(bytes), 2), 0) return InvalidLength
-    seed u8 = 0
-    out List<u8> = empty_list(seed)
+    out [u8] = .{}
     i usize = 0
     loop {
-        if @eq(i, @len(bytes)) return list_items(out)
+        if @eq(i, @len(bytes)) return out
         hi = decode_digit(@get(bytes, i))
         if @is(hi, HexError) return hi
         lo = decode_digit(@get(bytes, @add(i, 1)))
         if @is(lo, HexError) return lo
-        out = list_add(out, @add(@mul(hi, 16), lo))
+        out = @put(out, @add(@mul(hi, 16), lo))
         i = @add(i, 2)
     }
 }

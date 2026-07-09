@@ -90,7 +90,7 @@ pub fn runTest(init: std.process.Init, args: []const []const u8) !void {
     if (parsed_cli.compiled_test) {
         try compileTests(io, allocator, parsed_cli, source, tokens, program, &module_graph);
     } else {
-        try runTests(io, allocator, parsed_cli, source, tokens);
+        try runTests(io, allocator, parsed_cli, source, tokens, &module_graph);
     }
 }
 
@@ -100,8 +100,9 @@ fn runTests(
     parsed_cli: cli.Args,
     source: []const u8,
     tokens: []const lexer.Token,
+    module_graph: *const imports.ModuleGraph,
 ) !void {
-    test_runner.run(io, allocator, tokens) catch |err| {
+    test_runner.runWithModules(io, allocator, parsed_cli.input_path, tokens, module_graph) catch |err| {
         try diag.printCompileError(io, parsed_cli.input_path, source, tokens, err, null);
         std.process.exit(1);
     };

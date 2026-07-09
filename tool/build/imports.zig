@@ -1347,8 +1347,8 @@ fn freeFuncParamShapes(allocator: std.mem.Allocator, shapes: []const FuncParamSh
     for (shapes) |shape| {
         switch (shape) {
             .other => {},
-            .value => {},
-            .variadic => {},
+            .value => |type_name| if (type_name) |name| allocator.free(name),
+            .variadic => |type_name| if (type_name) |name| allocator.free(name),
             .func => |func_type| allocator.free(func_type.param_types),
         }
     }
@@ -1452,7 +1452,17 @@ fn parseFuncParamShapes(
     end_idx: usize,
 ) ![]FuncParamShape {
     var out = std.ArrayList(FuncParamShape).empty;
-    errdefer out.deinit(allocator);
+    errdefer {
+        for (out.items) |shape| {
+            switch (shape) {
+                .value => |type_name| if (type_name) |name| allocator.free(name),
+                .variadic => |type_name| if (type_name) |name| allocator.free(name),
+                .func => |func_type| allocator.free(func_type.param_types),
+                .other => {},
+            }
+        }
+        out.deinit(allocator);
+    }
 
     var seg_start = start_idx;
     var i = start_idx;
@@ -1477,7 +1487,7 @@ fn parseFuncParamShape(
     const type_start = if (isSpreadToken(tokens[start_idx + 1])) start_idx + 2 else start_idx + 1;
     if (type_start >= end_idx) return .other;
     if (!tokEq(tokens[type_start], "(")) {
-        const type_name = simpleTypeName(tokens, type_start, end_idx);
+        const type_name = try compactTypeName(allocator, tokens, type_start, end_idx);
         if (type_start != start_idx + 1) return .{ .variadic = type_name };
         return .{ .value = type_name };
     }
@@ -1492,6 +1502,23 @@ fn parseFuncParamShape(
         .param_types = param_types,
         .return_type = simpleTypeName(tokens, close_param_types + 3, end_idx),
     } };
+}
+
+fn compactTypeName(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+) !?[]const u8 {
+    if (start_idx >= end_idx) return null;
+
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        try out.appendSlice(allocator, tokens[i].lexeme);
+    }
+    return try out.toOwnedSlice(allocator);
 }
 
 fn parseFuncParamArity(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) struct { param_min: usize, param_max: ?usize } {

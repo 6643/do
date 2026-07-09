@@ -6,6 +6,5 @@ call $open_dir_at
 i32.const 2
 call $__wasi_import_filesystem_types_descriptor_open_at
 call $__mod_0__dir_status_to_open_result
-(func $close_dir (param $dir.id i64) (result i32 i32)
+(func $close_dir (param $dir.id i64)
 call $__wasi_import_filesystem_types_descriptor_drop
-i32.const 0

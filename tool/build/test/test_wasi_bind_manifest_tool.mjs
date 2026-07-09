@@ -307,6 +307,46 @@ assert.deepEqual(parsed.bindings, [
   },
 ]);
 
+const moduleScopedAliasWatPath = path.join(tmpDir, "wasi_bind_manifest_tool_module_scoped_alias.wat");
+fs.writeFileSync(
+  moduleScopedAliasWatPath,
+  [
+    '  ;; wasi-bind source="entry" alias="host_now" target="random/random/get-random-u64" params="" result="u64"',
+    '  ;; wasi-bind source="src/time.do" alias="host_now" target="clocks/system-clock/now" params="" result="Datetime"',
+    "",
+  ].join("\n"),
+);
+
+const moduleScopedAliasResult = spawnSync(process.execPath, [validatorPath, "--registry", registryPath, "--json", moduleScopedAliasWatPath], {
+  encoding: "utf8",
+});
+assert.equal(moduleScopedAliasResult.status, 0, moduleScopedAliasResult.stderr);
+const moduleScopedAliasParsed = JSON.parse(moduleScopedAliasResult.stdout);
+assert.deepEqual(
+  moduleScopedAliasParsed.bindings.map((binding) => binding.identity),
+  ["entry/host_now", "src/time.do/host_now"],
+);
+assert.deepEqual(
+  moduleScopedAliasParsed.bindings.map((binding) => binding.target),
+  ["random/random/get-random-u64", "clocks/system-clock/now"],
+);
+
+const duplicateIdentityWatPath = path.join(tmpDir, "wasi_bind_manifest_tool_duplicate_identity.wat");
+fs.writeFileSync(
+  duplicateIdentityWatPath,
+  [
+    '  ;; wasi-bind source="entry" alias="host_now" target="random/random/get-random-u64" params="" result="u64"',
+    '  ;; wasi-bind source="entry" alias="host_now" target="clocks/system-clock/now" params="" result="Datetime"',
+    "",
+  ].join("\n"),
+);
+
+const duplicateIdentityResult = spawnSync(process.execPath, [validatorPath, "--registry", registryPath, "--json", duplicateIdentityWatPath], {
+  encoding: "utf8",
+});
+assert.notEqual(duplicateIdentityResult.status, 0, "duplicate source+alias should fail");
+assert.match(duplicateIdentityResult.stderr, /duplicate wasi binding identity: entry\/host_now/);
+
 const defaultRegistryReadDirWatPath = path.join(tmpDir, "wasi_bind_manifest_tool_default_read_dir.wat");
 fs.writeFileSync(
   defaultRegistryReadDirWatPath,
@@ -1544,6 +1584,56 @@ assert.equal(
     2,
   )}\n`,
 );
+
+const fakeWasmToolsPath = path.join(tmpDir, "fake_wasm_tools_validate_fails.sh");
+fs.writeFileSync(
+  fakeWasmToolsPath,
+  [
+    "#!/bin/sh",
+    "out=''",
+    "prev=''",
+    "for arg in \"$@\"; do",
+    "  if [ \"$prev\" = '-o' ]; then",
+    "    out=\"$arg\"",
+    "  fi",
+    "  prev=\"$arg\"",
+    "done",
+    "if [ \"$1\" = 'component' ] && [ \"$2\" = 'embed' ]; then",
+    "  printf 'embedded' > \"$out\"",
+    "  exit 0",
+    "fi",
+    "if [ \"$1\" = 'component' ] && [ \"$2\" = 'new' ]; then",
+    "  printf 'component' > \"$out\"",
+    "  exit 0",
+    "fi",
+    "if [ \"$1\" = 'validate' ]; then",
+    "  echo 'forced validate failure' >&2",
+    "  exit 9",
+    "fi",
+    "echo \"unexpected fake wasm-tools args: $*\" >&2",
+    "exit 99",
+    "",
+  ].join("\n"),
+);
+fs.chmodSync(fakeWasmToolsPath, 0o755);
+const fakeValidateFailureResult = spawnSync(
+  process.execPath,
+  [
+    validatorPath,
+    "--registry",
+    registryPath,
+    "--component-wasm",
+    path.join(tmpDir, "component_validate_should_fail.wasm"),
+    componentCoreWatPath,
+  ],
+  {
+    encoding: "utf8",
+    env: { ...process.env, WASM_TOOLS: fakeWasmToolsPath },
+  },
+);
+assert.notEqual(fakeValidateFailureResult.status, 0, "component wasm output should validate generated component");
+assert.match(fakeValidateFailureResult.stderr, /wasm-tools validate failed: forced validate failure/);
+
 if (wasmTools) {
   const embeddedPath = path.join(tmpDir, "component_input_embedded.wasm");
   const componentPath = path.join(tmpDir, "component_input.component.wasm");
@@ -1561,6 +1651,26 @@ if (wasmTools) {
     encoding: "utf8",
   });
   assert.equal(validateComponentResult.status, 0, validateComponentResult.stderr);
+
+  const generatedComponentPath = path.join(tmpDir, "component_tool_output.wasm");
+  const generatedComponentResult = spawnSync(
+    process.execPath,
+    [
+      validatorPath,
+      "--registry",
+      registryPath,
+      "--component-wasm",
+      generatedComponentPath,
+      componentCoreWatPath,
+    ],
+    {
+      encoding: "utf8",
+      env: { ...process.env, WASM_TOOLS: wasmTools },
+    },
+  );
+  assert.equal(generatedComponentResult.status, 0, generatedComponentResult.stderr);
+  assert.equal(generatedComponentResult.stdout, `ok: wrote component wasm ${generatedComponentPath}\n`);
+  assert.ok(fs.statSync(generatedComponentPath).size > 0);
 }
 
 console.log("ok: wasi-bind manifest tool");

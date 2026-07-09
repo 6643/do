@@ -8,8 +8,9 @@ open_dir_sample(parent Dir) -> Dir | DirError {
     return open_dir_at(parent, path)
 }
 
-close_dir_sample(dir Dir) -> DirError | nil {
-    return close_dir(dir)
+close_dir_sample(dir Dir) -> nil {
+    close_dir(dir)
+    return
 }
 
 start() {

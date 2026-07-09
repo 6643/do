@@ -1,11 +1,15 @@
 const std = @import("std");
 const cli = @import("../build/cli.zig");
+const completion = @import("completion.zig");
+const definition = @import("definition.zig");
 const diag = @import("../build/diag.zig");
 const diagnostics = @import("diagnostics.zig");
 const env = @import("../env.zig");
 const formatter = @import("../fmt/format.zig");
+const hover = @import("hover.zig");
 const protocol = @import("protocol.zig");
 const semantic_tokens = @import("semantic_tokens.zig");
+const workspace = @import("workspace.zig");
 
 const max_frame_len = 16 * 1024 * 1024;
 
@@ -18,6 +22,8 @@ pub const ServerState = struct {
     allocator: std.mem.Allocator,
     dep_root: []const u8,
     documents: std.ArrayList(Document),
+    workspace_roots: std.ArrayList([]const u8),
+    workspace_symbols: std.ArrayList(workspace.WorkspaceSymbol),
     shutdown_requested: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, dep_root: []const u8) ServerState {
@@ -25,6 +31,8 @@ pub const ServerState = struct {
             .allocator = allocator,
             .dep_root = dep_root,
             .documents = .empty,
+            .workspace_roots = .empty,
+            .workspace_symbols = .empty,
         };
     }
 
@@ -34,7 +42,34 @@ pub const ServerState = struct {
             self.allocator.free(doc.source);
         }
         self.documents.deinit(self.allocator);
+        self.clearWorkspaceRoots();
+        self.workspace_roots.deinit(self.allocator);
+        self.clearWorkspaceSymbols();
         self.* = .init(self.allocator, self.dep_root);
+    }
+
+    pub fn addWorkspaceRoot(self: *ServerState, uri: []const u8) !void {
+        const owned_uri = try self.allocator.dupe(u8, uri);
+        errdefer self.allocator.free(owned_uri);
+        try self.workspace_roots.append(self.allocator, owned_uri);
+    }
+
+    pub fn clearWorkspaceRoots(self: *ServerState) void {
+        for (self.workspace_roots.items) |uri| {
+            self.allocator.free(uri);
+        }
+        self.workspace_roots.clearRetainingCapacity();
+    }
+
+    pub fn refreshWorkspaceSymbols(self: *ServerState, io: std.Io) !void {
+        const symbols = try workspace.collectWorkspaceSymbols(io, self.allocator, self.workspace_roots.items);
+        self.clearWorkspaceSymbols();
+        self.workspace_symbols = std.ArrayList(workspace.WorkspaceSymbol).fromOwnedSlice(symbols);
+    }
+
+    fn clearWorkspaceSymbols(self: *ServerState) void {
+        workspace.freeWorkspaceSymbolList(self.allocator, &self.workspace_symbols);
+        self.workspace_symbols = .empty;
     }
 
     pub fn didOpen(self: *ServerState, uri: []const u8, text: []const u8) !void {
@@ -172,6 +207,8 @@ fn handleMessage(
     const id = jsonRequestId(root);
 
     if (std.mem.eql(u8, method, "initialize")) {
+        try recordInitializeWorkspaceRoots(state, root);
+        try state.refreshWorkspaceSymbols(io);
         try protocol.writeInitializeResponse(allocator, writer, id);
         return;
     }
@@ -218,6 +255,53 @@ fn handleMessage(
         try protocol.writeSemanticTokensResponse(allocator, writer, id, data);
         return;
     }
+    if (std.mem.eql(u8, method, "textDocument/hover")) {
+        const uri = jsonPathString(root, &.{ "params", "textDocument", "uri" }) orelse return;
+        const line = jsonPathUnsigned(root, &.{ "params", "position", "line" }) orelse return;
+        const character = jsonPathUnsigned(root, &.{ "params", "position", "character" }) orelse return;
+        const doc = state.findDocument(uri) orelse {
+            try protocol.writeHoverResponse(allocator, writer, id, null);
+            return;
+        };
+        const contents = try hover.findHover(allocator, doc.source, .{
+            .line = line,
+            .character = character,
+        });
+        defer if (contents) |value| allocator.free(value);
+        try protocol.writeHoverResponse(allocator, writer, id, contents);
+        return;
+    }
+    if (std.mem.eql(u8, method, "textDocument/completion")) {
+        const uri = jsonPathString(root, &.{ "params", "textDocument", "uri" }) orelse return;
+        const line = jsonPathUnsigned(root, &.{ "params", "position", "line" }) orelse return;
+        const character = jsonPathUnsigned(root, &.{ "params", "position", "character" }) orelse return;
+        const doc = state.findDocument(uri) orelse {
+            try protocol.writeCompletionResponse(allocator, writer, id, &.{});
+            return;
+        };
+        const items = try completion.collectCompletionItemsWithWorkspace(allocator, doc.source, .{
+            .line = line,
+            .character = character,
+        }, state.workspace_symbols.items);
+        defer allocator.free(items);
+        try protocol.writeCompletionResponse(allocator, writer, id, items);
+        return;
+    }
+    if (std.mem.eql(u8, method, "textDocument/definition")) {
+        const uri = jsonPathString(root, &.{ "params", "textDocument", "uri" }) orelse return;
+        const line = jsonPathUnsigned(root, &.{ "params", "position", "line" }) orelse return;
+        const character = jsonPathUnsigned(root, &.{ "params", "position", "character" }) orelse return;
+        const doc = state.findDocument(uri) orelse {
+            try protocol.writeDefinitionResponse(allocator, writer, id, null);
+            return;
+        };
+        const location = try definition.findDefinitionWithWorkspace(allocator, uri, doc.source, .{
+            .line = line,
+            .character = character,
+        }, state.workspace_symbols.items);
+        try protocol.writeDefinitionResponse(allocator, writer, id, location);
+        return;
+    }
     if (std.mem.eql(u8, method, "shutdown")) {
         state.shutdown_requested = true;
         try protocol.writeShutdownResponse(allocator, writer, id);
@@ -239,6 +323,27 @@ fn publishDiagnostics(
     const collected = try diagnostics.collectDiagnostics(io, allocator, uri, text, state.dep_root);
     defer allocator.free(collected);
     try protocol.writePublishDiagnostics(allocator, writer, uri, collected);
+}
+
+fn recordInitializeWorkspaceRoots(state: *ServerState, root: std.json.Value) !void {
+    state.clearWorkspaceRoots();
+    errdefer state.clearWorkspaceRoots();
+
+    if (jsonPath(root, &.{ "params", "workspaceFolders" })) |folders_value| {
+        switch (folders_value) {
+            .array => |folders| {
+                for (folders.items) |folder| {
+                    const uri = jsonPathString(folder, &.{"uri"}) orelse continue;
+                    try state.addWorkspaceRoot(uri);
+                }
+                if (state.workspace_roots.items.len != 0) return;
+            },
+            else => {},
+        }
+    }
+
+    const root_uri = jsonPathString(root, &.{ "params", "rootUri" }) orelse return;
+    try state.addWorkspaceRoot(root_uri);
 }
 
 fn writeMethodNotFound(
@@ -292,6 +397,14 @@ fn jsonPathString(root: std.json.Value, path: []const []const u8) ?[]const u8 {
     const value = jsonPath(root, path) orelse return null;
     return switch (value) {
         .string => |s| s,
+        else => null,
+    };
+}
+
+fn jsonPathUnsigned(root: std.json.Value, path: []const []const u8) ?usize {
+    const value = jsonPath(root, path) orelse return null;
+    return switch (value) {
+        .integer => |i| if (i < 0) null else @as(usize, @intCast(i)),
         else => null,
     };
 }
@@ -378,6 +491,87 @@ test "ServerState stores and updates open documents" {
     try std.testing.expect(std.mem.indexOf(u8, doc.source, "return") != null);
 }
 
+test "handleMessage records initialize workspace folders" {
+    var state = ServerState.init(std.testing.allocator, "tool/build/test/lib");
+    defer state.deinit();
+
+    var out = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer out.deinit();
+
+    try handleMessage(
+        std.testing.io,
+        std.testing.allocator,
+        &state,
+        &out.writer,
+        "{\"jsonrpc\":\"2.0\",\"method\":\"initialize\",\"id\":1,\"params\":{\"workspaceFolders\":[{\"uri\":\"file:///tmp/do-one\",\"name\":\"one\"},{\"uri\":\"file:///tmp/do-two\",\"name\":\"two\"}],\"rootUri\":\"file:///tmp/fallback\"}}",
+    );
+
+    try std.testing.expectEqual(@as(usize, 2), state.workspace_roots.items.len);
+    try std.testing.expectEqualStrings("file:///tmp/do-one", state.workspace_roots.items[0]);
+    try std.testing.expectEqualStrings("file:///tmp/do-two", state.workspace_roots.items[1]);
+    try std.testing.expect(std.mem.indexOf(u8, out.writer.buffered(), "\"capabilities\"") != null);
+}
+
+test "handleMessage records rootUri when workspace folders are absent" {
+    var state = ServerState.init(std.testing.allocator, "tool/build/test/lib");
+    defer state.deinit();
+
+    var out = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer out.deinit();
+
+    try handleMessage(
+        std.testing.io,
+        std.testing.allocator,
+        &state,
+        &out.writer,
+        "{\"jsonrpc\":\"2.0\",\"method\":\"initialize\",\"id\":1,\"params\":{\"rootUri\":\"file:///tmp/do-root\",\"capabilities\":{}}}",
+    );
+
+    try std.testing.expectEqual(@as(usize, 1), state.workspace_roots.items.len);
+    try std.testing.expectEqualStrings("file:///tmp/do-root", state.workspace_roots.items[0]);
+}
+
+test "handleMessage indexes workspace symbols from initialize roots" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "user.do",
+        .data =
+        \\User {
+        \\    title text
+        \\}
+        \\
+        \\get_title(user User) -> text {
+        \\    return @get(user, .title)
+        \\}
+        \\
+        ,
+    });
+
+    const root_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", std.testing.allocator);
+    defer std.testing.allocator.free(root_path);
+    const root_uri = try std.fmt.allocPrint(std.testing.allocator, "file://{s}", .{root_path});
+    defer std.testing.allocator.free(root_uri);
+    const initialize = try std.fmt.allocPrint(
+        std.testing.allocator,
+        "{{\"jsonrpc\":\"2.0\",\"method\":\"initialize\",\"id\":1,\"params\":{{\"rootUri\":\"{s}\",\"capabilities\":{{}}}}}}",
+        .{root_uri},
+    );
+    defer std.testing.allocator.free(initialize);
+
+    var state = ServerState.init(std.testing.allocator, "tool/build/test/lib");
+    defer state.deinit();
+
+    var out = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer out.deinit();
+
+    try handleMessage(std.testing.io, std.testing.allocator, &state, &out.writer, initialize);
+
+    try expectWorkspaceSymbol(state.workspace_symbols.items, "User", .type_name);
+    try expectWorkspaceSymbol(state.workspace_symbols.items, "get_title", .function);
+}
+
 test "handleMessage opens document and publishes diagnostics" {
     var state = ServerState.init(std.testing.allocator, "tool/build/test/lib");
     defer state.deinit();
@@ -439,4 +633,114 @@ test "handleMessage formats open document" {
     const bytes = out.writer.buffered();
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"result\":[") != null);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"newText\":\"User {\\n    id i32\\n}\\n\"") != null);
+}
+
+test "handleMessage returns hover for open document function name" {
+    var state = ServerState.init(std.testing.allocator, "tool/build/test/lib");
+    defer state.deinit();
+
+    var out = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer out.deinit();
+
+    try state.didOpen("file:///tmp/app.do",
+        \\User {
+        \\    title text
+        \\}
+        \\get_title(user User) -> text {
+        \\    return @get(user, .title)
+        \\}
+        \\
+    );
+    try handleMessage(
+        std.testing.io,
+        std.testing.allocator,
+        &state,
+        &out.writer,
+        "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/hover\",\"id\":2,\"params\":{\"textDocument\":{\"uri\":\"file:///tmp/app.do\"},\"position\":{\"line\":3,\"character\":3}}}",
+    );
+
+    const bytes = out.writer.buffered();
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"kind\":\"plaintext\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"value\":\"get_title(user User) -> text\"") != null);
+}
+
+test "handleMessage returns completion items for open document" {
+    var state = ServerState.init(std.testing.allocator, "tool/build/test/lib");
+    defer state.deinit();
+
+    var out = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer out.deinit();
+
+    try state.didOpen("file:///tmp/app.do",
+        \\User {
+        \\    title text
+        \\}
+        \\
+        \\get_title(user User) -> text {
+        \\    return @get(user, .)
+        \\}
+        \\
+    );
+    try handleMessage(
+        std.testing.io,
+        std.testing.allocator,
+        &state,
+        &out.writer,
+        "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/completion\",\"id\":2,\"params\":{\"textDocument\":{\"uri\":\"file:///tmp/app.do\"},\"position\":{\"line\":5,\"character\":23}}}",
+    );
+
+    const bytes = out.writer.buffered();
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"result\":[") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "{\"label\":\"User\",\"kind\":7") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "{\"label\":\"get_title\",\"kind\":3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "{\"label\":\"title\",\"kind\":5") != null);
+}
+
+test "handleMessage returns definition for open document function call" {
+    var state = ServerState.init(std.testing.allocator, "tool/build/test/lib");
+    defer state.deinit();
+
+    var out = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer out.deinit();
+
+    try state.didOpen("file:///tmp/app.do",
+        \\User {
+        \\    title text
+        \\}
+        \\
+        \\get_title(user User) -> text {
+        \\    return @get(user, .title)
+        \\}
+        \\
+        \\test "call" {
+        \\    value text = get_title(User{ title = "a" })
+        \\    return
+        \\}
+        \\
+    );
+    try handleMessage(
+        std.testing.io,
+        std.testing.allocator,
+        &state,
+        &out.writer,
+        "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/definition\",\"id\":2,\"params\":{\"textDocument\":{\"uri\":\"file:///tmp/app.do\"},\"position\":{\"line\":9,\"character\":18}}}",
+    );
+
+    const bytes = out.writer.buffered();
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"result\":{\"uri\":\"file:///tmp/app.do\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"start\":{\"line\":4,\"character\":0}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"end\":{\"line\":4,\"character\":9}") != null);
+}
+
+fn expectWorkspaceSymbol(
+    symbols: []const workspace.WorkspaceSymbol,
+    name: []const u8,
+    kind: workspace.WorkspaceSymbolKind,
+) !void {
+    for (symbols) |symbol| {
+        if (!std.mem.eql(u8, symbol.name, name)) continue;
+        try std.testing.expectEqual(kind, symbol.kind);
+        return;
+    }
+    return error.MissingWorkspaceSymbol;
 }

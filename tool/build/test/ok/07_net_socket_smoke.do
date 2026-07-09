@@ -8,5 +8,5 @@ UdpError = @lib("udp.do", UdpError)
 
 test "net socket smoke" {
     addr SocketAddr = socket_addr_v4(127, 0, 0, 1, 8080)
-    if @not(is_v4(addr)) return
+    if is_v4(addr) return
 }

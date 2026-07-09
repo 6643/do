@@ -10,6 +10,16 @@ bytes_slice = @lib("bytes.do", slice)
 bytes_starts_with = @lib("bytes.do", starts_with)
 bytes_trim_byte = @lib("bytes.do", trim_byte)
 
+bytes_value_eq(value [u8] | BytesError, expect [u8]) -> bool {
+    if @is(value, BytesError) return false
+    return @eq(value, expect)
+}
+
+bytes_is_invalid_range(value [u8] | BytesError) -> bool {
+    if @is(value, BytesError) return @eq(value, BytesInvalidRange)
+    return false
+}
+
 test "bytes sequence ops" {
     bytes [u8] = "  abc abc  "
     cat [u8] = bytes_concat("ab", "cd", "ef")
@@ -20,7 +30,7 @@ test "bytes sequence ops" {
     ok bool = true
     ok = @and(ok, @eq(cat, "abcdef"))
     ok = @and(ok, @eq(repeated, "xxx"))
-    ok = @and(ok, @eq(mid, "abc abc"))
+    ok = @and(ok, bytes_value_eq(mid, "abc abc"))
     ok = @and(ok, @eq(trimmed, "abc abc"))
     ok = @and(ok, bytes_starts_with(bytes, "  a"))
     ok = @and(ok, bytes_ends_with(bytes, "  "))
@@ -32,5 +42,5 @@ test "bytes sequence ops" {
 
 test "bytes invalid slice" {
     bad = bytes_slice("abc", 3, 2)
-    if @eq(bad, BytesInvalidRange) return
+    if bytes_is_invalid_range(bad) return
 }

@@ -1,0 +1,6 @@
+(func $sum_to
+(func $is_even
+(func $is_odd
+call $sum_to
+call $is_even
+call $is_odd

@@ -608,7 +608,7 @@ print(pair())
 ## defer
 
 ```do program ok
-FileError error = FileOpenFailed | FileFlushFailed | FileCloseFailed
+FileError error = FileOpenFailed | FileFlushFailed
 
 File {
     .id i64
@@ -618,16 +618,12 @@ open_file(path [u8]) -> File | FileError {
     return File{id = 1}
 }
 
-release_file(file File) -> nil {
-    return
-}
-
 flush_file(file File) -> FileError | nil {
     return nil
 }
 
-close_file(file File) -> FileError | nil {
-    return nil
+close_file(file File) -> nil {
+    return
 }
 
 use(path [u8]) -> FileError | nil {
@@ -635,19 +631,17 @@ use(path [u8]) -> FileError | nil {
     if @is(file_result, FileError) return file_result
     file File = file_result
 
-    defer release_file(file)
+    defer close_file(file)
 
     flush_err = flush_file(file)
-    close_err = close_file(file)
-
     if @is(flush_err, FileError) return flush_err
-    return close_err
+    return nil
 }
 ```
 
 ```do decl err
 bad(file File) -> FileError | nil {
-    defer close_file(file)
+    defer flush_file(file)
     return nil
 }
 ```

@@ -4,6 +4,8 @@ list_add = @lib("list.do", list_add)
 list_len = @lib("list.do", list_len)
 list_items = @lib("list.do", items)
 read_u32_be = @lib("binary.do", read_u32_be)
+add_wrap_u32 = @lib("math.do", add_wrap_u32)
+bit_not_u32 = @lib("math.do", bit_not_u32)
 
 _sha256_h0 u32 = 1779033703
 _sha256_h1 u32 = 3144134277
@@ -46,12 +48,6 @@ sha256_small_sigma1(x u32) -> u32 {
     return list_add(out, @as(u8, @rem(@div(value, 16777216), 256)), @as(u8, @rem(@div(value, 65536), 256)), @as(u8, @rem(@div(value, 256), 256)), @as(u8, @rem(value, 256)))
 }
 
-.sha256_k_table() -> [u32] {
-    return list_add(.{}, 1116352408, 1899447441, 3049323471, 3921009573, 961987163, 1508970993, 2453635748, 2870763221, 3624381080, 310598401, 607225278, 1426881987, 1925078388, 2162078206, 2614888103, 3248222580, 3835390401, 4022224774, 264347078, 604807628, 770255983, 1249150122, 1555081692, 1996064986, 2554220882, 2821834349, 2952996808, 3210313671, 3336571891, 3584528711, 113926993, 338241895, 666307205, 773529912, 1294757372, 1396182291, 1695183700, 1986661051, 2177026350, 2456956037, 2730485921, 2820302411, 3259730800, 3345764771, 3516065817, 3600352804, 4094571909, 275423344, 430227734, 506948616, 659060556, 883997877, 958139571, 1322822218, 1537002063, 1747873779, 1955562222, 2024104815, 2227730452, 2361852424, 2428436474, 2756734187, 3204031479, 3329325298)
-}
-
-_sha256_k [u32] = sha256_k_table()
-
 .pad(bytes [u8]) -> List<u8> {
     seed u8 = 0
     out List<u8> = empty_list(seed)
@@ -67,7 +63,8 @@ _sha256_k [u32] = sha256_k_table()
 
 .block(h0 u32, h1 u32, h2 u32, h3 u32, h4 u32, h5 u32, h6 u32, h7 u32, chunk List<u8>, base usize) -> u32, u32, u32, u32, u32, u32, u32, u32 {
     items [u8] = list_items(chunk)
-    w [u32] = list_add(.{}, read_u32_be(items, base), read_u32_be(items, @add(base, 4)), read_u32_be(items, @add(base, 8)), read_u32_be(items, @add(base, 12)), read_u32_be(items, @add(base, 16)), read_u32_be(items, @add(base, 20)), read_u32_be(items, @add(base, 24)), read_u32_be(items, @add(base, 28)), read_u32_be(items, @add(base, 32)), read_u32_be(items, @add(base, 36)), read_u32_be(items, @add(base, 40)), read_u32_be(items, @add(base, 44)), read_u32_be(items, @add(base, 48)), read_u32_be(items, @add(base, 52)), read_u32_be(items, @add(base, 56)), read_u32_be(items, @add(base, 60)))
+    w [u32] = .{read_u32_be(items, base), read_u32_be(items, @add(base, 4)), read_u32_be(items, @add(base, 8)), read_u32_be(items, @add(base, 12)), read_u32_be(items, @add(base, 16)), read_u32_be(items, @add(base, 20)), read_u32_be(items, @add(base, 24)), read_u32_be(items, @add(base, 28)), read_u32_be(items, @add(base, 32)), read_u32_be(items, @add(base, 36)), read_u32_be(items, @add(base, 40)), read_u32_be(items, @add(base, 44)), read_u32_be(items, @add(base, 48)), read_u32_be(items, @add(base, 52)), read_u32_be(items, @add(base, 56)), read_u32_be(items, @add(base, 60))}
+    sha256_k [u32] = .{1116352408, 1899447441, 3049323471, 3921009573, 961987163, 1508970993, 2453635748, 2870763221, 3624381080, 310598401, 607225278, 1426881987, 1925078388, 2162078206, 2614888103, 3248222580, 3835390401, 4022224774, 264347078, 604807628, 770255983, 1249150122, 1555081692, 1996064986, 2554220882, 2821834349, 2952996808, 3210313671, 3336571891, 3584528711, 113926993, 338241895, 666307205, 773529912, 1294757372, 1396182291, 1695183700, 1986661051, 2177026350, 2456956037, 2730485921, 2820302411, 3259730800, 3345764771, 3516065817, 3600352804, 4094571909, 275423344, 430227734, 506948616, 659060556, 883997877, 958139571, 1322822218, 1537002063, 1747873779, 1955562222, 2024104815, 2227730452, 2361852424, 2428436474, 2756734187, 3204031479, 3329325298}
 
     a u32 = h0
     b u32 = h1
@@ -93,7 +90,7 @@ _sha256_k [u32] = sha256_k_table()
         }
 
         wi u32 = @get(w, idx)
-        t1 u32 = add_wrap_u32(add_wrap_u32(add_wrap_u32(add_wrap_u32(h, sha256_big_sigma1(e)), sha256_ch(e, f, g)), @get(_sha256_k, i)), wi)
+        t1 u32 = add_wrap_u32(add_wrap_u32(add_wrap_u32(add_wrap_u32(h, sha256_big_sigma1(e)), sha256_ch(e, f, g)), @get(sha256_k, i)), wi)
         t2 u32 = add_wrap_u32(sha256_big_sigma0(a), sha256_maj(a, b, c))
 
         h = g

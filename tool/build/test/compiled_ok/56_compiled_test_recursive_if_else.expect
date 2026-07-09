@@ -1,0 +1,4 @@
+;; compiled-test 0 "compiled recursive if else"
+(func $choose_sum
+call $choose_sum
+i32.add

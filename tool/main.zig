@@ -80,7 +80,16 @@ test {
     _ = @import("fmt/run.zig");
     _ = @import("lsp/run.zig");
     _ = @import("check/run.zig");
+    _ = @import("lsp/completion.zig");
+    _ = @import("lsp/definition.zig");
     _ = @import("lsp/diagnostics.zig");
+    _ = @import("lsp/hover.zig");
     _ = @import("lsp/protocol.zig");
     _ = @import("lsp/semantic_tokens.zig");
+    _ = @import("lsp/workspace.zig");
+    _ = @import("build/backend_ir.zig");
+    _ = @import("build/component_metadata_wat.zig");
+    _ = @import("build/function_body_wat.zig");
+    _ = @import("build/ownership_facts.zig");
+    _ = @import("build/runtime_prelude_wat.zig");
 }

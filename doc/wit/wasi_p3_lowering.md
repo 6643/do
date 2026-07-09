@@ -1,8 +1,9 @@
 # WASI P3 lowering draft
 
-> Status: design draft for Phase 6 / P3-b. This file fixes the compiler-facing
-> lowering contract; it is not a claim that executable WASI component lowering is
-> implemented.
+> Status: Phase G / G2 compiler-facing lowering contract. G1, G2.1, G2.2 and
+> G2.3 are complete for registry-backed result-area metadata, lowering fixtures
+> and component/core validation coverage; this is not a claim that executable
+> WASI component lowering is implemented.
 
 ## References
 
@@ -268,8 +269,9 @@ marked as lowerable. `descriptor.read-directory`,
 WASI 0.3 signatures, but
 `descriptor.read-directory` returns
 `tuple<stream<directory-entry>,future<result<_,error-code>>>`, so the current
-shim plan marks it `unsupported` rather than pretending it can be called as a
-plain core function. `preopens.get-directories` returns
+language/runtime has no async/Future/Task support and the shim plan marks it
+`unsupported` rather than pretending it can be called as a plain core function.
+`preopens.get-directories` returns
 `list<tuple<descriptor,string>>`, which is likewise known but unsupported until
 list-of-tuple resource lowering exists. The sockets create/bind entries contain
 WIT variants and resources (`ip-address-family`, `ip-socket-address`,
@@ -279,6 +281,42 @@ and is async in the WIT world, so it is likewise known but unsupported until HTT
 resource/result/async lowering exists. Other complex unregistered
 `result/tuple/option/resource/borrow/own/stream/future/variant` signatures are
 also marked `unsupported`.
+
+## Registered Result Target Inventory
+
+G2 starts from the checked-in `doc/wit/wasi_registry.json` entries below. This
+table is the current result/result-area worklist, not a promise that every row is
+executable today.
+
+| target | registry result | current status |
+| --- | --- | --- |
+| `filesystem/types/descriptor.sync` | `result<_,error-code>` | lowerable result-area, statement ignore or `_, status` |
+| `filesystem/types/descriptor.write` | `result<filesize,error-code>` | lowerable result-area, statement ignore or `written, status` |
+| `filesystem/types/descriptor.read` | `result<tuple<list<u8>,bool>,error-code>` | lowerable result-area, `data, done, status` |
+| `filesystem/types/descriptor.link-at` | `result<_,error-code>` | lowerable result-area, `_, status`, string/text paths |
+| `filesystem/types/descriptor.open-at` | `result<descriptor,error-code>` | lowerable result-area, `descriptor, status`, string/text path |
+| `filesystem/types/descriptor.create-directory-at` | `result<_,error-code>` | lowerable result-area, `_, status`, text path |
+| `filesystem/types/descriptor.remove-directory-at` | `result<_,error-code>` | lowerable result-area, `_, status`, text path |
+| `filesystem/types/descriptor.drop` | `nil` | lowerable resource-drop, direct `[resource-drop]descriptor`, no ordinary error result |
+| `filesystem/preopens/get-directories` | `list<tuple<descriptor,string>>` | known but unsupported; needs list-of-tuple resource lowering |
+| `io/streams/input-stream.read` | `result<list<u8>,stream-error>` | lowerable result-area, `data, status` |
+| `io/streams/output-stream.check-write` | `result<u64,stream-error>` | lowerable result-area, `allowed, status` |
+| `io/streams/output-stream.write` | `result<_,stream-error>` | lowerable result-area, `_, status` |
+| `io/streams/output-stream.flush` | `result<_,stream-error>` | lowerable result-area, `_, status` |
+| `text/char/echo` | `char` | lowerable scalar, char parameter/result |
+| `clocks/system-clock/now` | `Datetime` | lowerable record-result, registered `Datetime` mirror |
+| `clocks/system-clock/get-resolution` | `u64` | lowerable scalar |
+| `clocks/monotonic-clock/now` | `u64` | lowerable scalar |
+| `clocks/monotonic-clock/get-resolution` | `u64` | lowerable scalar |
+| `random/random/get-random-bytes` | `list<u8>` | lowerable `list<u8>` result |
+| `random/random/get-random-u64` | `u64` | lowerable scalar |
+| `filesystem/types/descriptor.read-directory` | `tuple<stream<directory-entry>,future<result<_,error-code>>>` | known but unsupported; needs async/Future runtime plus stream/future/resource lowering |
+| `sockets/types/tcp-socket.create` | `result<tcp-socket,error-code>` | known but unsupported; needs variant/resource lowering |
+| `sockets/types/tcp-socket.bind` | `result<_,error-code>` | known but unsupported; needs variant/resource lowering |
+| `sockets/types/udp-socket.create` | `result<udp-socket,error-code>` | known but unsupported; needs variant/resource lowering |
+| `sockets/types/udp-socket.bind` | `result<_,error-code>` | known but unsupported; needs variant/resource lowering |
+| `http/client/send` | `result<response,error-code>` | known but unsupported; needs HTTP resource/async lowering |
+
 For lowerable scalar/record/list<u8>/filesystem-result signatures,
 `shim.lowering` records the component import identity, the concrete `cm32p2`
 core import, the canonical ABI core params/results, and the Do-side result
@@ -516,9 +554,9 @@ normal WIT resource method. The standard library may declare it privately as:
 
 Direct codegen lowers it to the compiler-owned core import name
 `[resource-drop]descriptor` with one `i32` handle parameter. The public wrapper
-`close_file(file) -> FileError | nil` returns `nil` after the drop call because
-the current resource-drop ABI has no ordinary error result. This direct lowering
-does not yet imply full component resource lifetime output.
+`close_file(file) -> nil` returns after the drop call because the current
+resource-drop ABI has no ordinary error result. This direct lowering does not
+yet imply full component resource lifetime output.
 
 ## Lowering Pipeline
 
@@ -569,8 +607,9 @@ smoke tests and complex wrapper completion are still pending.
 ## Resource Ownership
 
 Do source still has no pointer/reference syntax and no implicit destructor. A
-WIT resource is represented publicly as a struct with a private scalar handle,
-for example:
+WIT resource is represented publicly as a Do wrapper struct with a private scalar
+handle. The current checked wrappers are `File`, `Dir`, `InputStream`, and
+`OutputStream`; each uses a private `.id i64` field, for example:
 
 ```do
 File {
@@ -580,10 +619,14 @@ File {
 
 Rules:
 
-- External modules can pass `File`, but cannot construct or mutate `.id`.
-- Opening APIs must validate host return handles before constructing `File`.
-- Closing APIs stay explicit, for example `close_file(file) -> FileError | nil`.
-- Dropping a `File` value does not implicitly close the resource.
+- External modules can pass wrapper values, but cannot construct, read or mutate
+  `.id`.
+- Opening APIs must validate host return handles before constructing wrapper
+  values.
+- Closing APIs stay explicit and non-failing, for example
+  `close_file(file) -> nil`.
+- Dropping a wrapper value does not implicitly close the resource and is not an
+  ARC destructor hook.
 - `borrow<T>` cannot be exposed as a public Do reference; it is only a private
   wrapper lowering mode for the duration of one host call.
 - `own<T>` means the wrapper must define who releases or closes the handle.
@@ -623,8 +666,8 @@ Current compiler increment:
   `sockets/types/udp-socket.create/bind` entries, and `http/client/send`, are
   still useful registry entries:
   `--json` resolves and validates their exact WIT signature, while
-  `--component-plan` rejects them until stream/future or list-of-tuple resource
-  and variant/resource/async lowering exists.
+  `--component-plan` rejects them until async/Future stream runtime,
+  list-of-tuple resource, and variant/resource/async lowering exists.
 - Unknown targets still receive syntax-level WIT type validation only; they are
   not treated as executable until the full WIT package resolver exists.
 

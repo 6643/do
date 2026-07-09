@@ -1,4 +1,8 @@
 ;; arc-managed-struct-set name=box field=value offset=0
+call $__arc_rc
+;; arc-managed-struct-reuse box.value
+;; arc-managed-struct-clone-set box.value
+local.set $box
 local.get $next
 call $__arc_inc
 local.set $__storage_overwrite_tmp

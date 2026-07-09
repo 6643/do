@@ -17,13 +17,9 @@ bytes_last_or = @lib("bytes.do", last_or)
 bytes_last_index_of = @lib("bytes.do", last_index_of)
 bytes_replace = @lib("bytes.do", replace)
 bytes_repeat_byte = @lib("bytes.do", repeat_byte)
-bytes_slice_or = @lib("bytes.do", slice_or)
 bytes_starts_with = @lib("bytes.do", starts_with)
 bytes_take = @lib("bytes.do", take)
 bytes_take_or = @lib("bytes.do", take_or)
-bytes_trim_left_byte = @lib("bytes.do", trim_left_byte)
-bytes_trim_byte = @lib("bytes.do", trim_byte)
-bytes_trim_right_byte = @lib("bytes.do", trim_right_byte)
 
 bytes_of(s text) -> [u8] {
     return s
@@ -93,7 +89,16 @@ last_index_of(s [u8], needle [u8]) -> usize | nil {
 }
 
 slice_or(s [u8], from usize, end usize, fallback [u8]) -> [u8], bool {
-    return bytes_slice_or(s, from, end, fallback)
+    if @gt(from, end) return fallback, false
+    if @gt(end, @len(s)) return fallback, false
+
+    out [u8] = .{}
+    i usize = from
+    loop {
+        if @ge(i, end) return out, true
+        out = @put(out, @get(s, i))
+        i = @add(i, 1)
+    }
 }
 
 take(s [u8], count usize) -> [u8] | BytesError {
@@ -129,17 +134,48 @@ last_or(s [u8], fallback u8) -> u8, bool {
 }
 
 trim_left_byte(s [u8], value u8) -> [u8] {
-    return bytes_trim_left_byte(s, value)
+    empty [u8] = .{}
+    from usize = 0
+    loop {
+        if @ge(from, @len(s)) return empty
+        if @ne(@get(s, from), value) return slice_from(s, from, @len(s))
+        from = @add(from, 1)
+    }
 }
 
 trim_byte(s [u8], value u8) -> [u8] {
-    return bytes_trim_byte(s, value)
+    empty [u8] = .{}
+    left [u8] = trim_left_byte(s, value)
+    end usize = @len(left)
+    loop {
+        if @eq(end, 0) return empty
+        prev usize = @sub(end, 1)
+        if @ne(@get(left, prev), value) return slice_from(left, 0, end)
+        end = prev
+    }
 }
 
 trim_right_byte(s [u8], value u8) -> [u8] {
-    return bytes_trim_right_byte(s, value)
+    empty [u8] = .{}
+    end usize = @len(s)
+    loop {
+        if @eq(end, 0) return empty
+        prev usize = @sub(end, 1)
+        if @ne(@get(s, prev), value) return slice_from(s, 0, end)
+        end = prev
+    }
 }
 
 replace(s [u8], needle [u8], replacement [u8]) -> [u8] {
     return bytes_replace(s, needle, replacement)
+}
+
+.slice_from(s [u8], from usize, end usize) -> [u8] {
+    out [u8] = .{}
+    i usize = from
+    loop {
+        if @ge(i, end) return out
+        out = @put(out, @get(s, i))
+        i = @add(i, 1)
+    }
 }

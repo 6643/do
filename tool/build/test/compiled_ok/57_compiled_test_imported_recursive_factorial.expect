@@ -1,0 +1,4 @@
+;; compiled-test 0 "compiled imported recursive factorial"
+(func $factorial
+call $factorial
+i32.mul

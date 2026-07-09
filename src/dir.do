@@ -27,9 +27,9 @@ Dir {
     return DirOpenFailed
 }
 
-close_dir(dir Dir) -> DirError | nil {
+close_dir(dir Dir) -> nil {
     host_dir_drop(@as(i32, dir_id(dir)))
-    return nil
+    return
 }
 
 create_dir_at(parent Dir, path text) -> DirError | nil {
@@ -39,9 +39,12 @@ create_dir_at(parent Dir, path text) -> DirError | nil {
 }
 
 open_dir_at(parent Dir, path text) -> Dir | DirError {
+    path_flags i32 = 0
+    open_flags i32 = 2
+    descriptor_flags i32 = 0
     descriptor i32 = 0
     status i32 = 0
-    descriptor, status = host_dir_open_at(@as(i32, dir_id(parent)), 0, path, 2, 0)
+    descriptor, status = host_dir_open_at(@as(i32, dir_id(parent)), path_flags, path, open_flags, descriptor_flags)
     return dir_status_to_open_result(descriptor, status)
 }
 

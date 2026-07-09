@@ -434,6 +434,7 @@ pub fn errorSummary(err: anyerror) []const u8 {
         error.InvalidTypedLiteral => "聚合构造语法: `Type{field = value}` 或 `Type<...>{field = value}`",
         error.InvalidBraceExpr => "聚合构造语法: `Type{field = value}`、已知目标类型的 `.{field = value}` 或 `.{expr, ...}`",
         error.NoMatchingCall => "函数调用需要匹配可见函数签名",
+        error.InvalidReturnStmt => "return 语句返回位数不匹配",
         error.InvalidCallExpr => "函数调用语法: `name(arg, next_arg)`；内建/core 调用写 `@name(arg, next_arg)`；私有函数调用去掉声明位前置点",
         error.InvalidCallArgList => "调用语法: `name(arg, next_arg)`、`name(arg, ...rest)` 或内建 `@name(...)`; `@is/@as` 语法: `@is(value, Type)` / `@as(Type, value)`",
         error.InvalidReservedName => "内建名和声明专用名只能用于保留位置",
@@ -445,6 +446,7 @@ pub fn errorSummary(err: anyerror) []const u8 {
         error.DuplicateLocalBinding => "局部绑定名不能重声明, 也不能遮蔽可见外层绑定",
         error.DuplicateTypeDeclName => "类型名按去掉私有标记后的名字唯一",
         error.DuplicateFuncSignature => "函数签名按去掉私有标记后的名字和参数类型序列唯一",
+        error.DuplicateHostImportAlias => "host import alias 在同一模块内只能绑定 1 次",
         error.DuplicateStructFieldName => "结构体字段名按去掉私有标记后的名字唯一; 每个字段名保留 1 个声明",
         error.MultiReturnInIfCondition => "先接收多返回值, 再在 if 使用单值变量",
         error.MultiReturnInIfBindRhs => "if 条件语法使用单值 bool 表达式",
@@ -505,6 +507,7 @@ pub fn errorHint(err: anyerror) []const u8 {
         error.DuplicateLocalBinding => "局部绑定写作 `name Type = expr`; 已有同名绑定时只能写 `name = expr` 赋值",
         error.DuplicateTypeDeclName => "`.` 只表示可见性，类型命名冲突按去点后的实际 name 判断",
         error.DuplicateFuncSignature => "`.` 只表示可见性，函数重载身份按去点后的 name 和参数类型序列判断",
+        error.DuplicateHostImportAlias => "`@env` / `@wasi` alias 是当前模块内的 host binding 身份; 同名 binding 要放在不同 source 模块或改名",
         error.DuplicateStructFieldName => "结构体字段名按去掉私有标记后的名字唯一; 每个字段名保留 1 个声明",
         error.MultiReturnInIfCondition => "先接收多返回值, 再在 if 使用单值变量",
         error.MultiReturnInIfBindRhs => "if 条件语法使用单值 bool 表达式",
@@ -551,6 +554,13 @@ test "buildCompileDiagnostic uses explicit source location" {
     try std.testing.expectEqualStrings("InvalidIfHeader", diagnostic.code);
     try std.testing.expectEqualStrings(errorSummary(error.InvalidIfHeader), diagnostic.message);
     try std.testing.expectEqualStrings(errorHint(error.InvalidIfHeader), diagnostic.hint);
+}
+
+test "return statement diagnostic has specific summary" {
+    try std.testing.expectEqualStrings(
+        "return 语句返回位数不匹配",
+        errorSummary(error.InvalidReturnStmt),
+    );
 }
 
 test "buildCompileDiagnostic falls back to source lexer location" {

@@ -1,0 +1,56 @@
+{
+  "name": "completion request",
+  "messages": [
+    {
+      "jsonrpc": "2.0",
+      "method": "initialize",
+      "id": 1,
+      "params": {
+        "capabilities": {}
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "textDocument/didOpen",
+      "params": {
+        "textDocument": {
+          "uri": "file:///tmp/do-lsp-completion.do",
+          "languageId": "do",
+          "version": 1,
+          "text": "User {\n    title text\n    age i32\n}\n\nget_title(user User) -> text {\n    return @get(user, .)\n}\n"
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "textDocument/completion",
+      "id": 2,
+      "params": {
+        "textDocument": {
+          "uri": "file:///tmp/do-lsp-completion.do"
+        },
+        "position": {
+          "line": 6,
+          "character": 23
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "shutdown",
+      "id": 3,
+      "params": null
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "exit",
+      "params": null
+    }
+  ],
+  "expect": [
+    "\"completionProvider\":{\"triggerCharacters\":[\".\"]}",
+    "{\"label\":\"User\",\"kind\":7",
+    "{\"label\":\"get_title\",\"kind\":3",
+    "{\"label\":\"title\",\"kind\":5"
+  ]
+}

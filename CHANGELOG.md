@@ -2,6 +2,799 @@
 
 本文只记录已经完成并仍需要可追溯的阶段性变化。实时执行状态见 `doc/roadmap_status.md`; 下一步入口见 `doc/start_here.md`; 总规划见 `doc/master_plan.md`。
 
+## 2026-07-09
+
+- 推进阶段 I 的 I1.3 / I1.4 静态 runner 收回 slice。
+  - 实现: `tool/build/test_runner.zig` 新增 direct imported func alias 解析、比较 core `lt/le/gt/ge` 求值, 并让静态 runner 在调用 imported function 时按 `FuncDecl.tokens` 解释子模块函数体; `tool/build/run.zig` 的 `do test` 静态路径改为复用已加载的 `ModuleGraph`。
+  - 结论: `ok/186_recursive_guard_return.do`、`ok/187_imported_recursive_factorial.do` 和 `ok/188_imported_self_tail_scalar_tco.do` 现在都能走静态 runner 直接通过; `ok/183_recursive_error_union.do` 与 `ok/189_imported_self_tail_if_else_tco.do` 仍保持 compiled-only 边界。
+  - 验证: `cd tool && zig test build/test_runner.zig` 通过, 输出 `All 16 tests passed.`。
+  - 验证: `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/186_recursive_guard_return.do` 通过, 输出 `ok: 1 passed; 0 failed; 0 skipped`。
+  - 验证: `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/ok/187_imported_recursive_factorial.do` 通过, 输出 `ok: 1 passed; 0 failed; 0 skipped`。
+  - 验证: `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/ok/188_imported_self_tail_scalar_tco.do` 通过, 输出 `ok: 1 passed; 0 failed; 0 skipped`。
+  - 验证: `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/ok/189_imported_self_tail_if_else_tco.do` 当前仍输出 `ok: 0 passed; 0 failed; 1 skipped`。
+- 同步阶段 I 的 I1.2 / I1.6 文档和回归摘要。
+  - 同步: `README.md`、`tool/build/test/README.md`、`doc/master_plan.md`、`doc/roadmap_status.md`、`doc/start_here.md`。
+  - 修正: 阶段 I 的 self-tail TCO fixture 编号和覆盖范围对齐当前工作树, 包括 `253_self_tail_if_else_defer_not_optimized_lower`、`256_self_tail_guard_defer_not_optimized_lower`、`257_generic_self_tail_if_else_tco_lower`、`258_imported_self_tail_if_else_tco_lower`、`compiled_ok/63`、`compiled_ok/64` 和 `ok/189_imported_self_tail_if_else_tco.do`。
+  - 结论: 递归语义规则已在 `doc/spec_rules.md` 固定; 当前 handoff/README/测试说明已对齐阶段 I 真实矩阵; 默认完整回归基线更新为 `pass=874 fail=0 skip=3`。
+  - 验证: `cd tool && zig test main.zig` 通过, 输出 `All 101 tests passed.`。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `[INFO] summary: pass=874 fail=0 skip=3`。
+  - 验证: `git diff --check` 通过。
+- 推进阶段 I 的 I1.1 递归基线盘点。
+  - 新增: `tool/build/test/compiled_ok/53_compiled_test_direct_and_mutual_recursion.do` / `.expect`, 锁住普通直接递归和互递归的 compiled WAT/wasm 路径。
+  - 新增: `tool/build/test/compiled_err/02_recursive_call_no_matching_overload.do` / `.expect`, 锁住递归调用命中错误签名时的 `NoMatchingCall`。
+  - 新增: `tool/build/test/compiled_err/03_generic_recursive_call_currently_unsupported.do` / `.expect`, 锁住当前泛型递归调用仍报 `NoMatchingCall` 的边界。
+  - 结论: 普通直接递归和互递归当前已可执行, 不需要新增编译器修复; 泛型递归仍未进入当前支持矩阵, 先记录为 I1.2/I1.3 之前的边界。
+  - 验证: `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_ok/53_compiled_test_direct_and_mutual_recursion.do --compiled -o /tmp/do_i1_recursion.wat` 通过, `wasm-tools parse` + `node tool/build/test/run_compiled_test_case.mjs` 通过 `1 passed`。
+  - 验证: `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_err/02_recursive_call_no_matching_overload.do --compiled -o /tmp/do_i1_bad_recursive.wat` 失败并匹配 `NoMatchingCall`。
+  - 验证: `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_err/03_generic_recursive_call_currently_unsupported.do --compiled -o /tmp/do_i1_generic_recursive.wat` 失败并匹配 `NoMatchingCall`。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `[INFO] summary: pass=837 fail=0 skip=3`。
+  - 清理: 默认回归后 `tool/build/test/tmp` ignored 产物已清理到生成物计数 `0`, 目录大小 `288K`。
+- 推进阶段 I 的 I1.3 第一批递归产品回归。
+  - 新增: `tool/build/test/ok/182_recursive_sum_and_parity.do`, 锁住普通 `do test` 路径上的递归求和和互递归奇偶判断。
+  - 新增: `tool/build/test/ok/183_recursive_error_union.do` 和 `.compiled_must_pass`, 锁住递归错误分支; 当前静态 runner 仍 skip, 但 compiled 路径可执行通过。
+  - 新增: `tool/build/test/compile_ok/242_recursive_start_sum_lower.do` / `.expect`, 锁住 `start()` build 路径里的递归调用 lowering。
+  - 验证: `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/182_recursive_sum_and_parity.do` 通过, 输出 `1 passed`。
+  - 验证: `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/183_recursive_error_union.do` 当前输出 `skipped`; `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/183_recursive_error_union.do --compiled -o /tmp/do_i1_recursive_error_union.wat` 通过, `wasm-tools parse` + `node tool/build/test/run_compiled_test_case.mjs` 输出 `1 passed`。
+  - 验证: `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_ok/242_recursive_start_sum_lower.do -o /tmp/do_i1_recursive_start.wat` 通过, `.expect` 逐行匹配通过。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `[INFO] summary: pass=840 fail=0 skip=3`。
+- 推进阶段 I 的 I1.2/I1.3 泛型递归当前边界收口。
+  - 新增: `tool/build/test/compiled_ok/54_compiled_test_generic_recursive_known_arg.do` / `.expect`, 锁住参数侧已知类型的泛型递归 compiled 路径。
+  - 新增: `tool/build/test/ok/184_generic_recursive_known_arg.do` / `.compiled_must_pass`, 锁住普通 `do test` 与 compiled 路径下的同一支持形态。
+  - 新增: `tool/build/test/err/329_generic_recursive_target_type_only_uninferred.do` / `.expect`, 锁住普通 `do test` 路径下“左侧目标类型不参与 direct type param 反推”的语义边界。
+  - 保留: `tool/build/test/compiled_err/03_generic_recursive_call_currently_unsupported.do` / `.expect`, 继续锁住“只靠左侧目标类型 + 字面量”仍报 `NoMatchingCall` 的当前边界。
+  - 结论: 当前泛型递归已经支持“参数侧已知 concrete type”这类不需要返回上下文反推的形态; 仅靠左侧目标类型反推 generic param 仍不支持。
+  - 验证: `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_ok/54_compiled_test_generic_recursive_known_arg.do --compiled -o /tmp/do_i1_compiled54.wat` 通过, `wasm-tools parse` + `node tool/build/test/run_compiled_test_case.mjs` 输出 `1 passed`。
+  - 验证: `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/184_generic_recursive_known_arg.do` 通过, 输出 `1 passed`; `--compiled` 路径同样通过。
+  - 验证: `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_err/03_generic_recursive_call_currently_unsupported.do --compiled -o /tmp/do_i1_generic_recursive_old_err.wat` 仍失败并匹配 `NoMatchingCall`。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `[INFO] summary: pass=843 fail=0 skip=3`。
+- 推进阶段 I 的 I1.3 factorial 正例矩阵。
+  - 新增: `tool/build/test/ok/185_recursive_factorial.do`、`tool/build/test/compile_ok/243_recursive_factorial_start_lower.do` / `.expect`、`tool/build/test/compiled_ok/55_compiled_test_recursive_factorial.do` / `.expect`。
+  - 结论: factorial 这类最基础单返回递归现在已经在普通 `do test`、`do build` 和 compiled wasm 执行三条路径上都有正例覆盖。
+  - 验证: `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/185_recursive_factorial.do` 通过, 输出 `1 passed`。
+  - 验证: `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_ok/243_recursive_factorial_start_lower.do -o /tmp/do_i1_factorial_start.wat` 通过, `.expect` 逐行匹配通过。
+  - 验证: `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_ok/55_compiled_test_recursive_factorial.do --compiled -o /tmp/do_i1_factorial_compiled.wat` 通过, `wasm-tools parse` + `node tool/build/test/run_compiled_test_case.mjs` 输出 `1 passed`。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `[INFO] summary: pass=846 fail=0 skip=3`。
+- 推进阶段 I 的 I1.3 branch/guard 递归矩阵。
+  - 新增: `tool/build/test/ok/186_recursive_guard_return.do` / `.compiled_must_pass`、`tool/build/test/compile_ok/244_recursive_if_else_start_lower.do` / `.expect`、`tool/build/test/compiled_ok/56_compiled_test_recursive_if_else.do` / `.expect`。
+  - 结论: `if/else` 分支递归已经在 build 和 compiled 路径进入稳定矩阵; guard-return 递归在静态 runner 上仍 skip, 当前先维持 `.compiled_must_pass` 边界。
+  - 验证: `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/186_recursive_guard_return.do` 当前输出 `skipped`。
+  - 验证: `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_ok/244_recursive_if_else_start_lower.do -o /tmp/do_i1_if_else_start.wat` 通过, `.expect` 逐行匹配通过。
+  - 验证: `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_ok/56_compiled_test_recursive_if_else.do --compiled -o /tmp/do_i1_if_else_compiled.wat` 通过, `wasm-tools parse` + `node tool/build/test/run_compiled_test_case.mjs` 输出 `1 passed`。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `[INFO] summary: pass=849 fail=0 skip=3`。
+- 推进阶段 I 的 I1.3 imported recursion 正例矩阵。
+  - 新增: `tool/build/test/lib/test.recursive_math.do`、`tool/build/test/ok/187_imported_recursive_factorial.do` / `.compiled_must_pass`、`tool/build/test/compile_ok/245_imported_recursive_start_lower.do` / `.expect`、`tool/build/test/compiled_ok/57_compiled_test_imported_recursive_factorial.do` / `.expect`。
+  - 结论: imported recursion 现在已经在 build 和 compiled 路径进入稳定矩阵; 静态 runner 仍 skip imported recursion, 当前先维持 `.compiled_must_pass` 边界。
+  - 验证: `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/ok/187_imported_recursive_factorial.do` 当前输出 `skipped`。
+  - 验证: `DO_LIB_ROOT=tool/build/test/lib ./bin/do build tool/build/test/compile_ok/245_imported_recursive_start_lower.do -o /tmp/do_i1_imported_factorial_start.wat` 通过, `.expect` 逐行匹配通过。
+  - 验证: `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/compiled_ok/57_compiled_test_imported_recursive_factorial.do --compiled -o /tmp/do_i1_imported_factorial_compiled.wat` 通过, `wasm-tools parse` + `node tool/build/test/run_compiled_test_case.mjs` 输出 `1 passed`。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `[INFO] summary: pass=852 fail=0 skip=3`。
+- 推进阶段 I 的 I1.4 最小 self-tail scalar TCO slice。
+  - 新增: `tool/build/test/compile_ok/246_self_tail_scalar_tco_lower.do` / `.expect`、`tool/build/test/compiled_ok/58_compiled_test_self_tail_scalar_tco.do` / `.expect`。
+  - 结论: 当前已支持“单返回标量函数、标量参数、无 defer、无 managed cleanup”的 self-tail recursion lowering 到 loop; 非尾递归和更复杂 cleanup/aggregate 边界保持原样。
+  - 验证: `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_ok/246_self_tail_scalar_tco_lower.do -o /tmp/do_i1_tco_green.wat` 通过, `.expect` 逐行匹配通过。
+  - 验证: `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_ok/58_compiled_test_self_tail_scalar_tco.do --compiled -o /tmp/do_i1_tco_compiled.wat` 通过, `wasm-tools parse` + `node tool/build/test/run_compiled_test_case.mjs` 输出 `1 passed`。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `[INFO] summary: pass=854 fail=0 skip=3`。
+- 推进阶段 I 的 I1.4 branch self-tail TCO slice。
+  - 新增: `tool/build/test/compile_ok/247_self_tail_if_else_tco_lower.do` / `.expect`、`tool/build/test/compiled_ok/59_compiled_test_self_tail_if_else_tco.do` / `.expect`。
+  - 结论: `if/else` 两个分支都 `return self(...)` 的标量函数, 当前也能 lower 到 loop；这仍不覆盖 `defer`、managed cleanup、union/struct payload 或多返回。
+  - 验证: `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_ok/247_self_tail_if_else_tco_lower.do -o /tmp/do_i1_branch_tco_green.wat` 通过, `.expect` 逐行匹配通过。
+  - 验证: `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_ok/59_compiled_test_self_tail_if_else_tco.do --compiled -o /tmp/do_i1_branch_tco_compiled.wat` 通过, `wasm-tools parse` + `node tool/build/test/run_compiled_test_case.mjs` 输出 `1 passed`。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `[INFO] summary: pass=856 fail=0 skip=3`。
+- 推进阶段 I 的 I1.4 generic/imported self-tail scalar TCO slice。
+  - 新增: `tool/build/test/compile_ok/254_generic_self_tail_tco_lower.do` / `.expect`、`tool/build/test/compiled_ok/61_compiled_test_generic_self_tail_tco.do` / `.expect`、`tool/build/test/compile_ok/255_imported_self_tail_scalar_tco_lower.do` / `.expect`、`tool/build/test/compiled_ok/62_compiled_test_imported_self_tail_scalar_tco.do` / `.expect`、`tool/build/test/ok/188_imported_self_tail_scalar_tco.do` / `.compiled_must_pass`。
+  - 结论: 参数侧已定型的 generic self-tail scalar 和 imported self-tail scalar 当前都能 lower 到 loop；静态 runner 对 imported self-tail 仍按 `.compiled_must_pass` 路径保证执行。
+  - 验证: `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_ok/254_generic_self_tail_tco_lower.do -o /tmp/do_i1_generic_tco.wat` 通过, `.expect` 逐行匹配通过。
+  - 验证: `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_ok/61_compiled_test_generic_self_tail_tco.do --compiled -o /tmp/do_i1_generic_tco_compiled.wat` 通过, `wasm-tools parse` + `node tool/build/test/run_compiled_test_case.mjs` 输出 `1 passed`。
+  - 验证: `DO_LIB_ROOT=tool/build/test/lib ./bin/do build tool/build/test/compile_ok/255_imported_self_tail_scalar_tco_lower.do -o /tmp/do_i1_imported_tco_build.wat` 通过, `.expect` 逐行匹配通过。
+  - 验证: `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/compiled_ok/62_compiled_test_imported_self_tail_scalar_tco.do --compiled -o /tmp/do_i1_imported_tco_compiled.wat` 通过, `wasm-tools parse` + `node tool/build/test/run_compiled_test_case.mjs` 输出 `1 passed`。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `[INFO] summary: pass=862 fail=0 skip=3`。
+- 推进阶段 I 的 I1.4 guard self-tail TCO slice。
+  - 新增: `tool/build/test/compile_ok/252_self_tail_guard_tco_lower.do` / `.expect`、`tool/build/test/compiled_ok/60_compiled_test_self_tail_guard_tco.do` / `.expect`。
+  - 结论: `if cond return self(...)` 这类 guard-return self-tail 标量函数, 当前也能 lower 到 loop；这仍不覆盖 `defer`、managed cleanup、aggregate payload 或多返回。
+  - 验证: `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_ok/252_self_tail_guard_tco_lower.do -o /tmp/do_i1_guard_tco_green.wat` 通过, `.expect` 逐行匹配通过。
+  - 验证: `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_ok/60_compiled_test_self_tail_guard_tco.do --compiled -o /tmp/do_i1_guard_tco_compiled.wat` 通过, `wasm-tools parse` + `node tool/build/test/run_compiled_test_case.mjs` 输出 `1 passed`。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `[INFO] summary: pass=863 fail=0 skip=3`。
+- 推进阶段 I 的 I1.5 非优化边界收口。
+  - 新增: `tool/build/test/compile_ok/248_self_tail_defer_not_optimized_lower.do`、`249_self_tail_storage_local_not_optimized_lower.do`、`250_self_tail_managed_struct_not_optimized_lower.do`、`251_self_tail_multi_return_not_optimized_lower.do`、`253_self_tail_if_else_defer_not_optimized_lower.do`。
+  - 结论: 当前明确不对 `defer`、storage local、managed struct、多返回以及 `if/else` 分支 + `defer` 的 self-tail 做 TCO，先把边界锁住，避免 cleanup / ABI 顺序回退。
+  - 验证: 五个 `compile_ok` 边界用例都通过。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `[INFO] summary: pass=862 fail=0 skip=3`。
+- 确认 G6.2 `descriptor.read-directory` 暂时保持阻断。
+  - 决策: 当前语言/运行时没有 async / Future / Task 支持, 不把 WIT `tuple<stream<directory-entry>,future<result<_,error-code>>>` 降成假同步 API。
+  - 同步: `doc/master_plan.md`、`doc/roadmap_status.md`、`doc/start_here.md`、`doc/wit/wasi_p3_lowering.md` 和 `README.md` 已补齐阻断原因和恢复条件。
+- 新增阶段 I 后续语言能力扩展计划。
+  - I1: 支持递归 + self-tail TCO。评估结论是先支持普通直接递归 / 互递归, 再做 self-tail call lowering 到 loop; 第一版不依赖 Wasm tail-call proposal, 不承诺 mutual/general TCO。
+  - I2: 支持源码层 `Tuple<bool, u8>` 这类 `Tuple<...>` 类型。评估结论是使用大写 `Tuple<T0, T1, ...>` 内建泛型类型, 构造写 `Tuple<bool, u8>{flag, code}`, 读取写 `@get(pair, 0)` / `@get(pair, 1)`, 与 `@wasi` 签名里的小写 WIT `tuple<...>` 分离; 第一版不做 `(bool, u8)` 类型语法或 `(true, 7)` 字面量。
+  - 同步: `doc/master_plan.md` 新增阶段 I 完整任务拆分; `doc/roadmap_status.md` 新增 08 planned 状态; `doc/start_here.md` 新增当前计划候选。
+- 收口 D2.1 if/else path-sensitive liveness 阻断残留。
+  - 决策: 用户确认按 B 方案处理; D2.1 原阻断原因是未找到真实红灯缺口, 不能落地伪红灯, 本次改为把已验证绿色路径正式纳入 regression。
+  - 新增: `compile_ok/239_arc_if_else_both_branches_call_last_use_move_lower` 锁住 if/else 两边都 last-use call move, `count=2 ;; arc-call-move data`, `count=0 call $__arc_inc`。
+  - 新增: `compile_ok/240_arc_if_else_one_branch_call_other_borrow_move_lower` 锁住一边 call move、一边 borrow, `count=1 ;; arc-call-move data`, `count=0 call $__arc_inc`。
+  - 新增: `compile_ok/241_arc_if_else_branch_use_after_call_keeps_inc_lower` 锁住一边 call 后继续使用必须 keep inc、另一边可 move, `count=1 ;; arc-call-move data`, `count=1 call $__arc_inc`。
+  - 验证: `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_ok/239_arc_if_else_both_branches_call_last_use_move_lower.do -o /tmp/239_arc_if_else_both_branches_call_last_use_move_lower.wat` 通过。
+  - 验证: `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_ok/240_arc_if_else_one_branch_call_other_borrow_move_lower.do -o /tmp/240_arc_if_else_one_branch_call_other_borrow_move_lower.wat` 通过。
+  - 验证: `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_ok/241_arc_if_else_branch_use_after_call_keeps_inc_lower.do -o /tmp/241_arc_if_else_branch_use_after_call_keeps_inc_lower.wat` 通过。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `[INFO] summary: pass=834 fail=0 skip=3`。
+  - 清理: 默认回归后 `tool/build/test/tmp` ignored 产物已清理到生成物计数 `0`, 目录大小 `288K`。
+  - 复验: `git diff --check` 通过。
+  - 边界: 本项只收口 D2.1 已验证绿色 if/else 路径; 不扩展跨函数 data-flow、escape analysis 或 loop/path move。
+
+## 2026-07-08
+
+- 复跑 writer / ownership / runner focused unit gates。
+  - 验证: `cd tool && zig test build/function_body_wat.zig` 通过, 输出 `All 2 tests passed.`。
+  - 验证: `cd tool && zig test build/ownership.zig` 通过, 输出 `All 2 tests passed.`。
+  - 验证: `cd tool && zig test build/ownership_facts.zig` 通过, 输出 `All 6 tests passed.`。
+  - 验证: `cd tool && zig test build/test_runner.zig` 通过, 输出 `All 14 tests passed.`。
+  - 验证: `cd tool && zig test main.zig --test-filter run.run` 通过, 输出 `All 3 tests passed.`。
+  - 边界: `tool/run/run.zig` 通过 `tool/main.zig` 聚合入口验证; 直接 `zig test run/run.zig` 会因 `../build/*.zig` 超出 Zig 单文件 module path 失败, 不作为当前 gate 入口。
+  - 复验: `git diff --check` 通过; `tool/build/test/tmp` ignored 产物计数仍为 `0`; dirty/UI 边界仍为 tracked `64`, untracked `129`, `ui.do` / `ui_demo.do` 只在 untracked。
+- 复跑 CLI parser unit gate。
+  - 范围: `tool/build/cli.zig` 的 run/fmt/lsp/check 参数解析单元测试。
+  - 验证: `cd tool && zig test build/cli.zig` 通过, 输出 `All 14 tests passed.`。
+  - 覆盖: `parseRun` 单输入和错误参数, `parseFmt` stdout/check/write 及互斥, `parseLsp` stdio 模式, `parseCheck` 单输入/多输入和错误参数。
+  - 复验: 本轮复跑仍输出 `All 14 tests passed.`, 并补齐 `doc/roadmap_status.md` 中该 gate 的复验记录。
+  - 边界: 本项只证明 CLI parser unit gate 通过; build/test 的黑盒严格参数和 output-order 路径由 CLI argument / output path guard gate 覆盖。
+- 复跑 parser unit gate。
+  - 范围: `tool/build/parser.zig` 的 parser focused tests, 以及 parser 导入链上的 lexer tokenization tests。
+  - 验证: `cd tool && zig test build/parser.zig` 通过, 输出 `All 24 tests passed.`。
+  - 覆盖: literal/lambda/spread/struct/import/variadic/collection loop parser 边界, 以及导入链上的 lexer tokenization 边界。
+  - 边界: 本项只证明 parser focused unit gate 通过; 不替代 sema/codegen unit、完整 `run_tests.sh` 或 RUN_WASM 扩展回归。
+- 复跑 sema unit gate。
+  - 范围: `tool/build/sema.zig` 的 focused semantic analysis tests, 以及 sema 导入链上的 lexer/parser unit tests。
+  - 验证: `cd tool && zig test build/sema.zig` 通过, 输出 `All 26 tests passed.`。
+  - 覆盖: private host import / private assignment 语义边界, 以及导入链上的 lexer/parser 边界。
+  - 边界: 本项只证明 sema focused unit gate 通过; 不替代 codegen unit、完整 `run_tests.sh` 或 RUN_WASM 扩展回归。
+- 复跑 codegen unit gate。
+  - 范围: `tool/build/codegen.zig` 的 focused codegen tests, 以及 codegen 导入链上的 lexer、runtime prelude、Backend IR、component metadata writer、test runner 和 ownership tests。
+  - 验证: `cd tool && zig test build/codegen.zig` 通过, 输出 `All 51 tests passed.`。
+  - 覆盖: source origin metadata、generic/variadic ABI、Backend IR lowering、runtime/component writers、test runner 和 ownership facts。
+  - 边界: 本项只证明 codegen focused unit gate 通过; 不替代 Debug build、完整 `run_tests.sh` 或 RUN_WASM 扩展回归。
+- 复跑 backend IR focused unit gate。
+  - 范围: `tool/build/backend_ir.zig` 的 backend IR focused tests。
+  - 验证: `cd tool && zig test build/backend_ir.zig` 通过, 输出 `All 13 tests passed.`。
+  - 覆盖: backend IR block/value/emit/fold/inline 边界。
+  - 边界: 本项只证明 backend IR focused unit gate 通过; 不替代 codegen unit、Debug build、完整 `run_tests.sh` 或 RUN_WASM 扩展回归。
+- 复跑 runtime prelude WAT focused unit gate。
+  - 范围: `tool/build/runtime_prelude_wat.zig` 的 runtime prelude WAT writer focused tests。
+  - 验证: `cd tool && zig test build/runtime_prelude_wat.zig` 通过, 输出 `All 2 tests passed.`。
+  - 覆盖: component core memory/data segment、runtime header 和 ARC layout table 输出边界。
+  - 边界: 本项只证明 runtime prelude WAT writer focused unit gate 通过; 不替代 codegen unit、Debug build、完整 `run_tests.sh` 或 RUN_WASM 扩展回归。
+- 复跑 component metadata WAT focused unit gate。
+  - 范围: `tool/build/component_metadata_wat.zig` 的 component metadata WAT writer focused tests。
+  - 验证: `cd tool && zig test build/component_metadata_wat.zig` 通过, 输出 `All 4 tests passed.`。
+  - 覆盖: WASI bind manifest comments、WASI core imports、env host imports 和 import symbol escaping。
+  - 边界: 本项只证明 component metadata WAT writer focused unit gate 通过; 不替代 codegen unit、Debug build、完整 `run_tests.sh` 或 RUN_WASM 扩展回归。
+- 复跑 diagnostic unit / contract gate。
+  - 范围: `tool/build/diag.zig` focused tests, 以及 `errorSummary` / `errorHint` 显式诊断条目一致性。
+  - 验证: `cd tool && zig test build/diag.zig` 通过, 输出 `All 13 tests passed.`。
+  - 表扫描: Node 只读扫描 `tool/build/diag.zig`, 输出 `summary_entries=55`, `hint_entries=55`, `summary_without_hint=(none)`, `hint_without_summary=(none)`。
+  - 边界: 本项只证明 focused diagnostic contract; 不替代完整 `run_tests.sh`、Debug build 或 RUN_WASM 扩展回归。
+- 复跑 shell harness syntax gate。
+  - 范围: tracked shell 脚本 2 个: `tool/build/test/run_tests.sh`、`tool/build/test/run_wasm_smoke.sh`; untracked shell 脚本 1 个: `tool/build/test/run_release_smoke.sh`。
+  - shebang/strict mode: 三个脚本首行均为 `#!/usr/bin/env bash`, 且开头均包含 `set -euo pipefail`。
+  - 验证: 三个脚本 `bash -n` 均通过, 输出 `bash_n=pass`。
+  - mode: 三个脚本当前权限均为 `775`。
+  - 边界: 本项只证明 shell harness 当前语法和脚本入口边界; 不执行 release smoke 或 full regression; `run_release_smoke.sh` 仍是 untracked executable。
+- 复跑 JS/MJS helper syntax gate。
+  - 环境: Node `v24.18.0`。
+  - 范围: `git ls-files '*.mjs'` 当前输出 6 个 tracked `.mjs` 文件; `git ls-files --others --exclude-standard '*.mjs'` 输出 0。
+  - 验证: `tool/build/test/run_compiled_test_case.mjs`、`tool/build/test/run_lsp_case.mjs`、`tool/build/test/run_wasm_case.mjs`、`tool/build/test/test_wasi_bind_manifest_tool.mjs`、`tool/build/test/validate_wasi_bind_manifest.mjs` 和 `tool/run/run_wasm_program.mjs` 均通过 `node --check`。
+  - 边界: 本项只证明当前 tracked `.mjs` helper/runtime 脚本语法通过; 不替代 Node runner 行为测试、black-box fixture regression 或 release smoke。
+- 复跑 Zig aggregate unit gate。
+  - 环境: Zig `0.16.0`。
+  - 验证: `cd tool && zig test main.zig` 通过。
+  - 结果: `All 101 tests passed.`
+  - 覆盖: CLI/run/fmt/check/LSP、backend IR、component metadata writer、function body writer、ownership facts、runtime prelude、lexer、diag、parser、sema 和 formatter 聚合单元测试。
+  - 边界: 本项只证明 `tool/main.zig` 聚合单元测试通过; 不替代 Debug build、完整 `run_tests.sh` 或 RUN_WASM 扩展回归。
+- 复跑 Zig fmt gate。
+  - 环境: Zig `0.16.0`。
+  - 范围: `rg --files -g '*.zig'` 当前输出 `31` 个 Zig 文件, 其中 tracked `23`, untracked `8`。
+  - 验证: `rg --files -g '*.zig' -0 | xargs -0 zig fmt --check` 通过, 输出 `zig_fmt_check=pass`。
+  - 边界: 本项只证明 Zig 源文件格式符合 `zig fmt --check`; 不替代 Zig unit test、Debug build 或 full regression。
+- 复跑 Test README matrix boundary gate。
+  - 范围: `tool/build/test/README.md` 与 `tool/build/test` 当前顶层目录、脚本/helper 文件的说明一致性。
+  - 目录扫描: 当前顶层目录 `check`、`compile_err`、`compile_ok`、`compiled_err`、`compiled_ok`、`compiled_trap`、`err`、`fmt`、`lib`、`lsp`、`ok`、`pending`、`run`、`tmp` 均已在 README 命中。
+  - helper 扫描: `run_compiled_test_case.mjs`、`run_lsp_case.mjs`、`run_release_smoke.sh`、`run_tests.sh`、`run_wasm_case.mjs`、`run_wasm_smoke.sh`、`test_wasi_bind_manifest_tool.mjs` 和 `validate_wasi_bind_manifest.mjs` 均已在 README 命中。
+  - 关键边界: `DO_LIB_ROOT=tool/build/test/lib`、`tmp` 生成目录和 `run_wasm_case.mjs` helper 均已明确。
+  - 结果: `test_readme_dir_missing=0`, `test_readme_helper_missing=0`。
+  - 边界: 本项只证明测试说明矩阵没有新增漂移; 不执行 fixture, 不解除 D2.1 / G6.1-G6.3 阻断。
+- 复跑 delivery boundary inventory gate。
+  - tracked: `64`; 分类为 CHANGELOG `1`、README `1`、bin `1`、doc `7`、src `11`、tool `2`、tool/build `6`、tool/build/test `33`、tool/lsp `2`。
+  - untracked: `129`; 分类为 tool/build `4`、tool/build/test `119`、tool/lsp `4`、`ui.do` `1`、`ui_demo.do` `1`。
+  - UI 边界: `ui.do` / `ui_demo.do` 不在 tracked diff, 只在 untracked。
+  - tmp 边界: `tool/build/test/tmp` ignored 产物计数为 `0`, 目录大小 `288K`。
+  - 边界: 本项只证明当前交付边界没有新增漂移; 不 stage、不删除、不修改 `ui.do` / `ui_demo.do`。
+- 复跑 handoff docs consistency gate。
+  - 入口验证: README、CHANGELOG、`doc/master_plan.md`、`doc/roadmap_status.md`、`doc/start_here.md` 和 `doc/memory.md` 均存在。
+  - 旧 artifact 验证: `doc/review_blockers.md`、`doc/review_issues.md`、`compiled_task_checklist.md`、`next_stage_plan.md` 和 `internal_prefix_rename_plan.md` 均不存在。
+  - Markdown 链接验证: `markdown_files=26`, `local_markdown_links=20`, `missing=0`。
+  - 状态口径: 剩余 `[ ]` 只命中 README 后置非目标、06.2 blocked/decomposed、D2.1 blocked 和 G6.1-G6.3 blocked; 泛化状态扫描无输出。
+  - dirty/UI 边界: tracked `64`, untracked `129`; `ui.do` / `ui_demo.do` 只在 untracked。
+  - 边界: 本项只证明 handoff 入口、旧 artifact 清理状态和交付边界没有新增漂移; 不解除 D2.1 / G6.1-G6.3 阻断。
+- 复跑 active/blocker 状态口径 gate。
+  - 未完成项扫描: 剩余 `[ ]` 只命中 README 后置非目标、06.2 blocked/decomposed、D2.1 blocked 和 G6.1-G6.3 blocked。
+  - 泛化状态扫描: `active/partial/blocked` 旧状态口径无输出。
+  - 旧入口扫描: `当前推荐`、`下次第一步`、`第二版编译器正在实现`、TODO/FIXME 在活跃入口文档中无输出; 旧问题文件名只命中 `doc/start_here.md` 中“旧 artifact 不存在”的当前说明。
+  - 边界: 本项只证明当前 active/blocker 状态口径无新增漂移; 不解除 D2.1 / G6.1-G6.3 阻断。
+- 复跑 Markdown local link gate。
+  - 范围: 只读扫描 `README.md`、`CHANGELOG.md` 和 `doc/**/*.md`。
+  - 结果: `markdown_files=26`, `local_markdown_links=20`, `missing=0`。
+  - 边界: 本项只证明当前活跃文档入口的本地 Markdown 链接无缺失; 不验证外部 URL, 不解除 D2.1 / G6.1-G6.3 阻断。
+- 复跑 release smoke gate。
+  - 范围: ReleaseSmall 编译器构建和发布候选产品命令 smoke, 覆盖 build/test/compiled/check/fmt/run/lsp。
+  - 命令: `./tool/build/test/run_release_smoke.sh`。
+  - 结果: ReleaseSmall build、`do build`、`do test`、`do test --compiled`、`do check`、`do fmt`、`do run`、`do lsp` 均 `[PASS]`, 输出 `[INFO] release smoke passed`。
+  - 清理: 本次 smoke 产生 `tool/build/test/tmp` ignored 产物 44 个、目录大小 `436K`; 已清理到生成物计数 `0`, 目录大小 `288K`。
+  - 边界: 本项不解除 D2.1 / G6.1-G6.3 阻断, 不替代默认完整回归或 RUN_WASM 扩展回归。
+- 复跑 RUN_WASM 扩展回归 gate。
+  - 范围: 最近 fixture rename 后的 `RUN_WASM=1` 扩展 `run_tests.sh` 路径, 使用现有 `bin/do`, 不重复构建编译器。
+  - 命令: `RUN_WASM=1 SKIP_BUILD=1 ./tool/build/test/run_tests.sh`。
+  - 结果: `[INFO] summary: pass=833 fail=0 skip=3`; wasm run summary: `pass=6 fail=0`。
+  - 关键路径: 输出包含 `compiled trap 01_compiled_test_fallthrough_traps`、`compiled trap 02_compiled_managed_struct_alias_set_oob_get_traps`、`compiled ok  52_compiled_test_math_small_int_helpers` 和 `wasm run 06_defer_loop_break`。
+  - 清理: 本次回归产生 `tool/build/test/tmp` ignored 产物 3527 个、目录大小 `25M`; 已清理到生成物计数 `0`, 目录大小 `288K`。
+  - 边界: 本项不包含 release smoke, 不解除 D2.1 / G6.1-G6.3 阻断。
+- 复跑默认回归 gate。
+  - 范围: 最近 fixture rename 后的默认 `run_tests.sh` 路径, 使用现有 `bin/do`, 不重复构建编译器。
+  - 命令: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh`。
+  - 结果: `[INFO] summary: pass=831 fail=0 skip=3`。
+  - 清理: 本次回归产生 `tool/build/test/tmp` ignored 产物 3202 个、目录大小 `24M`; 已清理到生成物计数 `0`, 目录大小 `288K`。
+  - 边界: 本项不包含 `RUN_WASM=1` 扩展回归, 不包含 release smoke, 不解除 D2.1 / G6.1-G6.3 阻断。
+- 复核 renamed compiled_ok targeted compiled build gate。
+  - 范围: 上一项重命名后的 `compiled_ok/52_compiled_test_math_small_int_helpers.do`, 使用当前 `./bin/do test --compiled` 生成 WAT 并逐行匹配同名 `.expect`。
+  - 结果: `renamed_compiled_ok_cases=1`, `renamed_compiled_ok_failures=0`, `renamed_compiled_ok_wat_bytes=38029`, `renamed_compiled_ok_expect_lines=7`。
+  - 边界: 本项只验证这个刚重命名的 compiled_ok fixture; 不执行 wasm, 不替代完整 `run_tests.sh`、RUN_WASM 扩展回归或 release smoke。
+- 复核 renamed compile_ok targeted build gate。
+  - 范围: 上一项重命名后的 `compile_ok/234` 到 `238` 五个 fixture, 使用当前 `./bin/do build` 生成 WAT 并逐行匹配同名 `.expect`。
+  - 结果: `renamed_compile_ok_cases=5`, `renamed_compile_ok_failures=0`, `renamed_compile_ok_expect_lines=23`。
+  - 结果: 五个用例 WAT 字节数分别为 `33811`、`34020`、`34754`、`36744`、`36738`, 合计 `renamed_compile_ok_total_wat_bytes=176067`。
+  - 边界: 本项只验证这 5 个刚重命名的 compile_ok fixture; 不替代完整 `run_tests.sh`、RUN_WASM 扩展回归或 release smoke。
+- 修正并复核 compile_ok 普通 expect companion / numbering inventory gate。
+  - 修正: `121_defer_call_and_arc_block_lower`、`131_struct_field_reflection_set_lower`、`216_arc_collection_loop_source_call_keeps_inc_lower`、`217_arc_collection_loop_managed_value_call_keeps_inc_lower`、`218_arc_recv_loop_managed_value_call_keeps_inc_lower` 分别重命名为 `234_` 到 `238_` 对应 fixture, 消除 `compile_ok` 重复编号; 文件内容未改。
+  - 同步: `doc/roadmap_status.md` 中 `defer` lowering fixture 引用已更新到 `234_defer_call_and_arc_block_lower.do`。
+  - 范围: `tool/build/test/compile_ok` 普通 `.expect`、特殊 WASI/component expect companion、编号唯一性和 tracked/untracked 边界。
+  - 结果: `compile_ok_do_files=239`, `compile_ok_numbered_do_files=238`, `compile_ok_support_do_files=1`, `compile_ok_plain_expect_files=231`, `compile_ok_special_expect_files=40`。
+  - 结果: `compile_ok_plain_expect_orphans=0`, `compile_ok_special_expect_orphans=0`, `compile_ok_duplicate_numbers=0`, `compile_ok_missing_numbers=0`。
+  - 边界: `compile_ok_missing_plain_expect=7` 属于可选 WAT 期望 inventory; 本项不补空 expect, 不执行 compile_ok fixture, 不验证 WAT 内容。
+- 修正并复核 compiled fixture companion / numbering gate。
+  - 修正: `tool/build/test/compiled_ok/18_compiled_test_math_small_int_helpers.{do,expect}` 重命名为 `52_compiled_test_math_small_int_helpers.{do,expect}`, 消除 `compiled_ok` 的重复 `18_` 编号; 文件内容未改。
+  - 范围: `tool/build/test/compiled_ok` 和 `tool/build/test/compiled_trap` 的 `.do` / `.expect` companion、编号唯一性和 tracked/untracked 边界。
+  - 结果: `compiled_ok_do_files=52`, `compiled_ok_expect_files=52`, `compiled_trap_do_files=2`, `compiled_trap_expect_files=0`。
+  - 结果: `compiled_fixture_missing_required_expect=0`, `compiled_fixture_orphan_expect=0`, `compiled_fixture_duplicate_numbers=0`, `compiled_fixture_missing_numbers=0`。
+  - 边界: 本项只做 compiled fixture companion / numbering 检查和文件重命名; 不执行 compiled runner, 不验证 WAT/wasm 输出, 不解除 D2.1 / G6.1-G6.3 阻断。
+- 复核 pending fixture inventory gate。
+  - 范围: `tool/build/test/run_tests.sh` 的 `RUN_PENDING=1` 路径引用的 `pending/ok`、`pending/err`、`pending/compile_ok` 目录和其中 `.do` / `.expect` companion 关系。
+  - 结果: `pending_dirs_defined=3`, `pending_dirs_existing=1`, 当前仅 `tool/build/test/pending/compile_ok` 目录存在。
+  - 结果: `pending_do_files=0`, `pending_expect_files=0`, `pending_tracked_files=0`, `pending_untracked_files=0`。
+  - 结果: `pending_missing_required_expect=0`, `pending_orphan_expect=0`, `pending_unexpected_files=0`。
+  - 边界: 本项只做 pending inventory 只读检查; 不创建 pending 目录, 不执行 `RUN_PENDING=1`, 不改变默认回归范围。
+- 复核 run/fmt/check black-box fixture companion gate。
+  - 范围: `tool/build/test/run`、`tool/build/test/fmt` 和 `tool/build/test/check` 的黑盒产品命令 fixture 编号、`.do` / expect companion 关系和 tracked/untracked 边界。
+  - 结果: `run_do_files=6`, `run_expect_files=5`; `fmt_do_files=3`, `fmt_expect_files=3`; `check_do_files=2`, `check_expect_files=1`。
+  - 总计: `blackbox_do_files=11`, `blackbox_expect_files=9`, `blackbox_tracked_do=11`, `blackbox_untracked_do=0`, `blackbox_tracked_expect=9`, `blackbox_untracked_expect=0`。
+  - 结果: `blackbox_missing_required_expect=0`, `blackbox_orphan_expect=0`, `blackbox_unexpected_expect=0`, `blackbox_numbering_gaps=0`, `blackbox_duplicate_numbers=0`。
+  - 边界: 本项只做黑盒 fixture companion 只读检查; 不执行 `do run` / `do fmt` / `do check`, 不验证输出内容, 不替代对应 product command smoke gate。
+- 复核 LSP JSON fixture naming/order gate。
+  - 范围: `tool/build/test/lsp/*.json` 的文件编号、基础 fixture schema、JSON-RPC request id 顺序和 tracked/untracked 边界。
+  - 结果: `lsp_json_files=9`, `lsp_json_tracked=5`, `lsp_json_untracked=4`, `lsp_number_min=1`, `lsp_number_max=9`。
+  - 结果: `lsp_number_gaps=0`, `lsp_duplicate_numbers=0`, `lsp_json_parse_fail=0`, `lsp_schema_errors=0`, `lsp_request_id_errors=0`, `lsp_non_sequential_id_fixtures=0`。
+  - 结果: `lsp_message_count=44`, `lsp_expect_entries=24`, `lsp_workspace_fixtures=1`。
+  - 边界: 本项只做 LSP fixture 文件和 JSON-RPC 请求形态只读检查; 不启动 LSP server, 不验证响应内容, 不替代 LSP smoke gate。
+- 复核 compile_err / compiled_err expect companion gate。
+  - 范围: `tool/build/test/compile_err` 与 `tool/build/test/compiled_err` 负向 compile fixture 的 `.do` / `.expect` 双向伴随关系。
+  - 结果: `negative_compile_do_files=31`, `negative_compile_expect_files=31`。
+  - 结果: `negative_compile_tracked_do=30`, `negative_compile_untracked_do=1`, `negative_compile_tracked_expect=30`, `negative_compile_untracked_expect=1`。
+  - 结果: `negative_compile_missing_expect=0`, `negative_compile_orphan_expect=0`。
+  - 边界: 本项只做负向 compile companion 只读检查; 不执行 fixture, 不验证诊断文本内容, 不解除 D2.1 / G6.1-G6.3 阻断。
+- 复核 compile_ok WASI/component expect companion gate。
+  - 范围: `tool/build/test/compile_ok` 下 `.component_plan.expect`、`.core_imports.expect`、`.core_shims.expect`、`.component_input.expect`、`.wit_dir.expect` 和 `.component_core.expect` 到同名 `.do` fixture 的伴随关系。
+  - 结果: `compile_ok_do_files=239`, `compile_ok_wasi_expect_files=40`, `compile_ok_wasi_expect_bases=14`。
+  - 结果: `compile_ok_wasi_expect_tracked=34`, `compile_ok_wasi_expect_untracked=6`, `compile_ok_wasi_expect_orphans=0`, `compile_ok_wasi_unknown_component_like_expects=0`。
+  - 边界: 本项只做 component/WASI expect companion 只读检查; 不执行 fixture, 不验证 expect 内容, 不解除 G6.1-G6.3 阻断。
+- 复核 ok marker companion gate。
+  - 范围: `tool/build/test/ok/*.must_pass` 和 `tool/build/test/ok/*.compiled_must_pass` marker 到同名 `.do` fixture 的伴随关系。
+  - 结果: `ok_do_files=180`, `ok_must_pass_markers=1`, `ok_compiled_must_pass_markers=111`。
+  - 结果: `ok_must_pass_orphans=0`, `ok_compiled_must_pass_orphans=0`, `ok_marker_overlap=0`。
+  - 边界: 本项只做 marker companion 只读检查; 不执行 fixture, 不新增或移除 marker, 不解除 D2.1 / G6.1-G6.3 阻断。
+- 复核 Do `@lib` import graph cycle gate。
+  - 范围: 当前 `rg --files -g '*.do'` 输出的 877 个 `.do` 文件, 按 compiler local/dep/std import 根构建 `@lib` 文件级依赖图。
+  - 结果: `lib_graph_import_hits=890`, `lib_graph_edges=887`, `lib_graph_skipped_missing_targets=3`, `lib_graph_missing_targets=0`。
+  - 结果: `lib_graph_cycles=1`, `lib_graph_expected_cycles=1`, `lib_graph_unexpected_cycles=0`。
+  - 预期 cycle: `tool/build/test/err/fixture.cycle_a.do -> tool/build/test/err/fixture.cycle_b.do`, 由 `err/65_import_cycle.do` 锁定。
+  - 边界: 本项只做只读文件级 cycle 扫描; 不执行 fixture, 不替代 import symbol/category/private 语义检查, 不解除 D2.1 / G6.1-G6.3 阻断。
+- 复核 WASI registry / lowering doc coverage gate。
+  - 范围: `doc/wit/wasi_registry.json` 的 26 个 `functions[].target` 与 `doc/wit/wasi_p3_lowering.md` 正文/表格覆盖。
+  - 结果: `wasi_registry_doc_target_coverage=26/26`, `wasi_registry_table_target_coverage=26/26`。
+  - 结果: `wasi_registry_known_unsupported=7`, `wasi_registry_table_known_unsupported=7`, `wasi_registry_unsupported_mismatch=0`。
+  - 边界: 本项只做 registry target 与 lowering 文档覆盖只读检查; 不修改 lowering 文档, 不执行 component/helper, 不解除 G6.1-G6.3 阻断。
+- 复核 WIT registry schema/uniqueness gate。
+  - 范围: `doc/wit/wasi_registry.json` 的顶层 `records` / `functions` 结构、record 字段形态、function target/params/result/result_record 形态和 target 唯一性。
+  - 结果: `wasi_registry_records=1`, `wasi_registry_functions=26`, `wasi_registry_unique_targets=26`, `wasi_registry_duplicate_targets=0`。
+  - 结果: `wasi_registry_result_records=1`, `wasi_registry_result_record_names=Datetime`, `wasi_registry_known_unsupported=7`, `wasi_registry_shape_errors=0`。
+  - 边界: 本项只做 registry schema/唯一性只读检查; 不验证 lowering 文档覆盖, 不执行 manifest helper, 不解除 G6.1-G6.3 阻断。
+- 复核 JSON source/fixture syntax gate。
+  - 范围: tracked 与 untracked 的当前源码/fixture JSON 文件, 不包含 ignored `tool/build/test/tmp` 生成缓存。
+  - 结果: `json_files=10`, `json_tracked=6`, `json_untracked=4`, `json_parse_fail=0`。
+  - untracked JSON 边界: `tool/build/test/lsp/06_hover_request.json`、`07_completion_request.json`、`08_definition_request.json`、`09_workspace_index_request.json`。
+  - 边界: 本项只做 JSON.parse 语法检查; 不执行 LSP fixture, 不验证 WASI registry schema, 不解除 D2.1 / G6.1-G6.3 阻断。
+
+## 2026-07-07
+
+- 复核 Do `@lib` imported symbol presence gate。
+  - 范围: 当前 890 个 `@lib("...", symbol)` 导入的第二参数 symbol。
+  - 结果: `lib_symbol_checks=887`, `lib_symbol_unique_targets=73`, `lib_symbol_unique_pairs=426`。
+  - 负向边界: 3 个缺失 target 仍属于 `tool/build/test/err/fixture/` support 边界; 7 个缺失 symbol 均属于 `err` 负向导入用例或其支持文件, 计为 `lib_symbol_expected_negative_missing=7`。
+  - 结果: `lib_symbol_missing_targets=0`, `lib_symbol_unexpected_missing=0`。
+  - 边界: 本项只做只读 symbol presence 扫描; 不替代编译器的 import 类别、私有性、重载和语义检查。
+- 复核 Do `@lib` target presence gate。
+  - 范围: 当前 `rg --files -g '*.do'` 输出的 877 个 `.do` 文件。
+  - 结果: 扫描到 `lib_import_hits=890`, `lib_unique_targets=73`; 分类为 bare `770` / tilde `44` / relative `76`。
+  - 例外: `tool/build/test/err/fixture/cycle_a.do`、`cycle_b.do`、`transitive_broken.do` 的 3 个 bare 目标属于负向支持文件边界, 计为 `lib_ignored_support_missing=3`。
+  - 结果: `lib_missing_targets=0`。
+  - 边界: 本项只做只读 `@lib` 目标存在性扫描; 不执行 fixture, 不修改 import 语义, 不解除 D2.1 / G6.1-G6.3 阻断。
+- 复核 Zig import/file presence gate。
+  - 范围: 当前 `rg --files -g '*.zig'` 输出的 31 个 Zig 文件。
+  - 结果: 扫描到 `zig_imports=121`, 其中本地 `.zig` import 为 `zig_local_imports=89`, `zig_missing_local_imports=0`。
+  - 未跟踪 Zig 文件: `zig_untracked_files=8`, 分别是 `tool/build/component_metadata_wat.zig`、`tool/build/function_body_wat.zig`、`tool/build/ownership_facts.zig`、`tool/build/runtime_prelude_wat.zig`、`tool/lsp/completion.zig`、`tool/lsp/definition.zig`、`tool/lsp/hover.zig`、`tool/lsp/workspace.zig`。
+  - 边界: 本项只证明本地 Zig import 目标文件存在; 不执行 Zig test/build, 不 stage 未跟踪文件。
+- 复核 regression fixture companion consistency gate。
+  - 依据: `err/fixture.*.do` 是 import 依赖 fixture, 不要求逐个配 `.expect`; 其他 companion 规则按 `tool/build/test/run_tests.sh` 和 `tool/build/test/README.md` 当前约定执行。
+  - 范围: `err`、`compile_err`、`compiled_ok`、`compiled_err`、`run`、`fmt`、`ok`、`check` 的 `.do` / `.expect` / `.must_pass` / `.compiled_must_pass` 伴随关系。
+  - 结果: `fixture_companion_counts={"err":579,"compile_err":60,"compiled_ok":104,"compiled_err":2,"run":11,"fmt":6,"ok":292,"check":3}`。
+  - 结果: `fixture_companion_missing=0`。
+  - 边界: 本项只做只读 fixture companion 扫描; 不修改 fixture, 不替代默认完整回归或 RUN_WASM 扩展回归。
+- 复核 handoff docs consistency gate。
+  - 入口验证: README、CHANGELOG、`doc/master_plan.md`、`doc/roadmap_status.md`、`doc/start_here.md` 和 `doc/memory.md` 均存在。
+  - 旧 artifact 验证: `doc/review_blockers.md`、`doc/review_issues.md`、`compiled_task_checklist.md`、`next_stage_plan.md` 和 `internal_prefix_rename_plan.md` 均不存在。
+  - Markdown 本地链接: 扫描 `26` 个 `.md` 文件和 `20` 个本地 Markdown 链接, `missing=0`。
+  - 状态口径: 剩余 `[ ]` 只命中 README 后置非目标、06.2 blocked/decomposed、D2.1 blocked 和 G6.1-G6.3 blocked; 旧入口/TODO/FIXME 命中均为历史记录、验证命令或当前旧 artifact 不存在说明。
+  - 边界: 本项只证明当前 handoff 文档入口没有新增漂移; 不解除 D2.1 / G6.1-G6.3 阻断。
+- 复核 delivery boundary inventory gate。
+  - tracked 分类: `git diff --name-only` 当前为 `52`, 分布为 CHANGELOG `1`、README `1`、bin `1`、doc `7`、src `11`、tool `4`、tool/build `6`、tool/build/test `21`。
+  - untracked 分类: `git ls-files --others --exclude-standard` 当前为 `117`, 分布为 tool/build `4`、tool/build/test `107`、tool/lsp `4`、`ui.do` `1`、`ui_demo.do` `1`。
+  - UI 边界: `ui.do` / `ui_demo.do` 只在 untracked, 不在 tracked diff。
+  - 边界: 本项只证明当前交付范围没有新增漂移; 不 stage、不删除、不提交任何文件。
+- 复跑 RUN_WASM extended regression refresh gate。
+  - 验证: `RUN_WASM=1 SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过。
+  - 结果: `pass=833 fail=0 skip=3`, `wasm run summary: pass=6 fail=0`。
+  - 剩余 skip: `118_wasi_p3_std_wrappers`、`16_loop_recv_value`、`96_file_lib_resource_shape`。
+  - 清理: 本次扩展回归生成的 `tool/build/test/tmp` ignored 产物已清理, 除 `.gitignore` 外生成物计数恢复为 `0`。
+  - 边界: 本项不解除 D2.1 / G6.1-G6.3 阻断, 也不替代 release smoke 或 G6 运行时/API 决策。
+- 复跑 default full regression refresh gate。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过。
+  - 结果: `pass=831 fail=0 skip=3`。
+  - 清理: 本次回归生成的 `tool/build/test/tmp` ignored 产物已清理, 除 `.gitignore` 外生成物计数恢复为 `0`。
+  - 边界: 本项不解除 D2.1 / G6.1-G6.3 阻断, 也不替代 RUN_WASM 扩展回归或 release smoke。
+- 复跑 release smoke refresh gate。
+  - 验证: `./tool/build/test/run_release_smoke.sh` 通过。
+  - 输出: ReleaseSmall、`do build`、`do test`、`do test --compiled`、`do check`、`do fmt`、`do run` 和 `do lsp` 全部 `[PASS]`, 结尾为 `[INFO] release smoke passed`。
+  - 清理: 本次 smoke 生成的 `tool/build/test/tmp` ignored 产物已清理, 除 `.gitignore` 外生成物计数恢复为 `0`。
+  - 边界: 本项不解除 D2.1 / G6.1-G6.3 阻断, 也不替代默认完整回归或 RUN_WASM 扩展回归。
+- 复跑 Zig aggregate unit gate。
+  - 验证: `cd tool && zig test main.zig` 通过。
+  - 结果: `All 101 tests passed.`
+  - 覆盖: CLI/run/fmt/check/LSP、backend IR、component/function WAT writer、ownership facts、runtime prelude、lexer/parser/sema/diag 和 formatter 聚合单元测试。
+  - 边界: 本项不替代 Debug build、full regression、RUN_WASM 扩展回归或 release smoke。
+- 复跑 Zig fmt gate。
+  - 环境: Zig `0.16.0`。
+  - 范围: 当前全仓 `31` 个 Zig 文件。
+  - 验证: `rg --files -g '*.zig' -0 | xargs -0 zig fmt --check` 通过, 输出 `zig_fmt_check=pass`。
+  - 边界: 本项只证明 Zig 源文件格式符合 `zig fmt --check`; 不替代 Zig unit test、Debug build 或 full regression。
+- 复跑 JS/MJS helper syntax gate。
+  - 范围: `git ls-files '*.mjs'` 当前输出 6 个 tracked `.mjs` 文件; `git ls-files --others --exclude-standard '*.mjs'` 输出 0。
+  - 验证: Node `v24.18.0`; `run_compiled_test_case.mjs`、`run_lsp_case.mjs`、`run_wasm_case.mjs`、`test_wasi_bind_manifest_tool.mjs`、`validate_wasi_bind_manifest.mjs` 和 `tool/run/run_wasm_program.mjs` 均通过 `node --check`。
+  - 边界: 本项只做 JS/MJS 语法检查; 不执行 LSP、WASI helper、compiled runner 或 wasm runner 行为测试。
+- 复跑 active/blocker 状态口径 gate。
+  - 未完成项扫描: 剩余 `[ ]` 只命中 README 后置非目标、06.2 blocked/decomposed、D2.1 blocked 和 G6.1-G6.3 blocked。
+  - 状态/旧入口扫描: `active`、TODO/FIXME、旧问题文件名和旧入口文案只命中历史记录、验证命令或 `doc/start_here.md` 中“旧 artifact 不存在”的当前说明。
+  - 结果: 当前入口和计划状态未新增活跃漂移; 未新增阻断。
+- 复跑 Markdown local link gate。
+  - 验证: 扫描 `README.md`、`CHANGELOG.md` 和 `doc/**/*.md`, 当前共 `26` 个 Markdown 文件、`20` 个本地 Markdown 链接。
+  - 结果: `missing=0`; 未新增文档死链。
+  - 边界: 本项只检查本地 `.md` 链接存在性, 不检查外链或非 Markdown 路径。
+- 清理 test tmp generated artifacts boundary gate。
+  - 清理: 删除 `tool/build/test/tmp` 下除 `.gitignore` 外的测试运行生成物。
+  - 验证: 清理前该目录除 `.gitignore` 外有 `3576` 个条目、约 `26M`; 清理后剩余生成物计数为 `0`, 目录大小约 `288K`。
+  - 边界: `.gitignore` 保留且仍为 tracked `100644`; 本项没有触碰 fixture、脚本、`ui.do` 或 `ui_demo.do`。
+- 复核 README stdlib boundary matrix gate。
+  - 验证: `src` 当前有 32 个标准库模块加 builtin table; `doc/roadmap_status.md` 已记录这些模块从 std src `NoTestDecl` skip 转为 metadata-only pass。
+  - 修正: README 标准库摘要补齐 `atomic`、`path`、`md5/sha1/sha256`, 并把 `time/random/file/dir/io.stream`、`net/tcp/udp/http.client` 和 `simd` 分别标明为 WASI lowering、shape/check 或 metadata/check 边界。
+  - 边界: 本项只修正文档公开边界; 不新增标准库 API 承诺, 不解除 G6.1-G6.3 或 host runtime 后置项。
+- 复核 shell harness executable boundary gate。
+  - 验证: `tool/build/test/run_tests.sh`、`tool/build/test/run_wasm_smoke.sh` 和 `tool/build/test/run_release_smoke.sh` 均有 `#!/usr/bin/env bash` shebang 和 `set -euo pipefail`。
+  - 验证: 三个脚本 `bash -n` 均通过; 当前文件权限均为 `775`。
+  - 边界: `run_tests.sh`、`run_wasm_smoke.sh` 是 tracked executable; `run_release_smoke.sh` 仍是 untracked executable, 提交前需要按主线范围显式暂存。
+- 复核 README command matrix boundary gate。
+  - 验证: `./bin/do` usage 当前列出 `do build <input.do> [--component-core] [-o out.wat]`、`do test <input.do>`、`do test <input.do> --compiled [-o out.wat]`、`do check <input.do>...`、`do run <input.do>`、`do fmt` 和 `do lsp [--stdio]`。
+  - 修正: README 构建示例补充 `../bin/do test app.do --compiled -o app.test.wat`, 对齐当前已落地的 compiled test WAT 入口。
+  - 边界: 本项只修正文档示例; 不改变 CLI 行为、脚本行为或发布 gate 范围。
+- 复核 test README matrix boundary gate。
+  - 验证: `tool/build/test` 顶层 fixture 目录中除生成目录 `tmp` 外, `check`、`compile_err`、`compile_ok`、`compiled_err`、`compiled_ok`、`compiled_trap`、`err`、`fmt`、`lib`、`lsp`、`ok`、`pending` 和 `run` 均已在 `tool/build/test/README.md` 说明。
+  - 修正: 补充 `lib` fixture 专用导入根、`tmp` 生成目录和 `run_wasm_case.mjs` helper 的说明。
+  - 边界: 本项只同步测试说明和实际目录/helper 角色; 不改变测试脚本或 fixture 行为。
+- 复核 release candidate handoff boundary gate。
+  - 验证: `README.md`、`CHANGELOG.md`、`doc/master_plan.md`、`doc/roadmap_status.md`、`doc/start_here.md` 和 `doc/memory.md` 均存在。
+  - 验证: `doc/review_blockers.md`、`doc/review_issues.md`、`compiled_task_checklist.md`、`next_stage_plan.md` 和 `internal_prefix_rename_plan.md` 均不存在。
+  - 结果: 未完成项扫描只命中 README 后置非目标、06.2 blocked/decomposed、D2.1 blocked 和 G6.1-G6.3 blocked; dirty/UI 边界仍为 tracked `52`、untracked `117`, `ui.do` / `ui_demo.do` 只在 untracked。
+  - 边界: 本项只证明 handoff 入口和旧 artifact 清理状态没有漂移; 不解除 D2.1/G6/06.2 阻断。
+- 复跑 compiled trap smoke gate。
+  - 验证: `tool/build/test/compiled_trap/01_compiled_test_fallthrough_traps.do` 生成 `33386` bytes WAT, parse 为 `5844` bytes wasm, Node compiled runner 按预期非 0 trap。
+  - 验证: `tool/build/test/compiled_trap/02_compiled_managed_struct_alias_set_oob_get_traps.do` 生成 `36879` bytes WAT, parse 为 `6218` bytes wasm, Node compiled runner 按预期非 0 trap。
+  - 结果: `compiled_trap_cases=2`, `compiled_trap_failures=0`; 未新增阻断。
+  - 边界: 该 gate 的正确结果是运行期 trap, 不是测试通过。
+- 复跑 run_wasm_smoke bridge gate。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_wasm_smoke.sh` 通过, stderr 为空。
+  - 覆盖: `01_start_scalar`、`02_env_host_import_string_literal`、`03_env_host_import_storage_wrapper`、`04_defer_lifo`、`05_defer_block` 和 `06_defer_loop_break` 共 6 个 wasm run smoke。
+  - 结果: 6 个用例全部 `[PASS]`, 输出 `wasm run summary: pass=6 fail=0`, `run_wasm_smoke_cases=6`, `run_wasm_smoke_failures=0`; 未新增阻断。
+  - 边界: 本项只证明底层 WAT -> `wasm-tools parse` -> Node 执行桥接链路仍可用; 不替代 `do run` 产品命令回归。
+- 复跑 WASI component wasm generation / validate gate。
+  - 验证: `DO_LIB_ROOT=tool/build/test/lib ./bin/do build tool/build/test/compile_ok/96_wasi_manifest_module_scoped_alias.do -o <tmp>/96_wasi_manifest_module_scoped_alias.wat` 成功生成 WAT。
+  - 验证: `WASM_TOOLS=$(command -v wasm-tools) node tool/build/test/validate_wasi_bind_manifest.mjs --registry doc/wit/wasi_registry.json --component-wasm <tmp>/96_wasi_manifest_module_scoped_alias.component.wasm <tmp>/96_wasi_manifest_module_scoped_alias.wat` 成功生成真实 component wasm。
+  - 验证: `wasm-tools validate <tmp>/96_wasi_manifest_module_scoped_alias.component.wasm` 通过, stderr 为空。
+  - 结果: `component_wasm_96_wasi_manifest_module_scoped_alias=1`, `wasi_component_wat_bytes=34110`, `wasi_component_wasm_bytes=7893`, `wasi_component_wasm_failures=0`; 未新增阻断。
+  - 边界: 本项只证明当前 component input 可生成并 validate 真实 component wasm; 不证明 WASI host runtime 执行, 也不解除 G6.1-G6.3。
+- 复跑 WASI bind manifest helper gate。
+  - 验证: `node tool/build/test/test_wasi_bind_manifest_tool.mjs tool/build/test/validate_wasi_bind_manifest.mjs <tmp-dir>` 通过, stderr 为空。
+  - 覆盖: manifest JSON、known/unsupported、component-plan、core imports/shims、component input 和 component wasm helper 行为。
+  - 结果: stdout 为 `ok: wasi-bind manifest tool`, 临时目录生成 `37` 个文件, `wasi_bind_manifest_helper=1`; 未新增阻断。
+  - 边界: 本项只证明现有 manifest/component helper 行为, 不解除 G6.1-G6.3 的公开 API 或运行时设计阻断。
+- 复跑 CLI argument / output path guard gate。
+  - 验证: `DO_LIB_ROOT=tool/build/test/lib ./bin/do build -o <tmp>/cli_build_pre_output.wat tool/build/test/compile_ok/01_start_entry_valid.do` 成功, 生成非空 WAT。
+  - 验证: `DO_LIB_ROOT=tool/build/test/lib ./bin/do test --compiled -o <tmp>/cli_test_pre_output.wat tool/build/test/compiled_ok/01_compiled_test_entry.do` 成功, 生成非空 WAT。
+  - 验证: build/run 的未知 flag 和额外 input 均按预期失败, stdout 为空, stderr 包含 `error[UnexpectedCliArg]`; `do test -o` 无 `--compiled` 按预期失败, stdout 为空, stderr 包含 `error[OutputRequiresCompiledTest]`。
+  - 结果: `cli_output_build_wat_bytes=32806`, `cli_output_test_wat_bytes=32924`, `cli_argument_output_guard=pass`; 未新增阻断。
+- 复跑 `do test` product command smoke gate。
+  - 验证: `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/ok/01_path_get_single.do` 静态 runner 通过, 输出 `test "path get single" ... ok` 和 `ok: 1 passed; 0 failed; 0 skipped`。
+  - 验证: `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/compiled_ok/01_compiled_test_entry.do --compiled -o <tmp>/compiled.wat` 成功生成 WAT, `wasm-tools parse` 成功生成 wasm, Node compiled runner 执行通过。
+  - 验证: `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/ok/01_path_get_single.do -o <tmp>/no_compiled.wat` 按预期失败, stdout 为空, stderr 包含 `error[OutputRequiresCompiledTest]`。
+  - 结果: `compiled_wat_bytes=32924`, `compiled_wasm_bytes=5638`, `do_test_smoke=pass`; 未新增阻断。
+- 复跑 `do build` product command smoke gate。
+  - 验证: `DO_LIB_ROOT=tool/build/test/lib ./bin/do build tool/build/test/compile_ok/01_start_entry_valid.do -o <tmp>/start.wat` 成功, stderr 为空, WAT 输出非空。
+  - 验证: `DO_LIB_ROOT=tool/build/test/lib ./bin/do build tool/build/test/compile_err/01_missing_start_entry.do -o <tmp>/missing.wat` 按预期失败, stdout 为空, stderr 匹配 `.expect` 的 2 行诊断。
+  - 结果: 正向 WAT 为 `32806` bytes; 当前 `do build` product command smoke gate 仍通过; 未新增阻断。
+- 复跑 release smoke gate。
+  - 验证: `./tool/build/test/run_release_smoke.sh` 通过。
+  - 覆盖: ReleaseSmall build、`do build`、`do test`、`do test --compiled`、`do check`、`do fmt`、`do run` 和 `do lsp` 全部 `[PASS]`。
+  - 结果: 输出 `[INFO] release smoke passed`。
+- 复跑 `RUN_WASM=1` 扩展回归矩阵。
+  - 验证: `RUN_WASM=1 SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `pass=833 fail=0 skip=3`。
+  - 覆盖: 默认回归矩阵外, 额外执行 compiled trap、compiled wasm execution 和 6 个 wasm run smoke。
+  - 结果: `wasm run summary: pass=6 fail=0`; 剩余 skip 仍是 `118_wasi_p3_std_wrappers`、`16_loop_recv_value`、`96_file_lib_resource_shape`。
+- 复跑默认回归矩阵。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `pass=831 fail=0 skip=3`。
+  - 覆盖: tool、ok、err、std src metadata、compile ok、compile err、compiled ok/err、do run、fmt、check 和 lsp cases。
+  - 剩余 skip: `118_wasi_p3_std_wrappers`、`16_loop_recv_value`、`96_file_lib_resource_shape`, 与已记录 runner / WASI resource 后置边界一致。
+- 刷新 LSP fixture 和 WASI bind manifest helper gates。
+  - LSP 范围: `tool/build/test/lsp/*.json` 当前共 9 个 fixture。
+  - LSP 验证: 逐个执行 `node tool/build/test/run_lsp_case.mjs ./bin/do <case>` 均通过, 摘要 `lsp_cases=9`。
+  - WASI helper 验证: `node tool/build/test/test_wasi_bind_manifest_tool.mjs tool/build/test/validate_wasi_bind_manifest.mjs <tmp-dir>` 通过, 输出 `ok: wasi-bind manifest tool`。
+  - 边界: WASI helper gate 只证明现有 manifest/component helper 行为, 不解除 G6.1-G6.3 的公开 API 或运行时设计阻断。
+- 刷新 Markdown link 和 active/blocker 状态口径 gates。
+  - Markdown 验证: Node 只读扫描 README、CHANGELOG 和 `doc/**/*.md`, 输出 `markdown_files=26`, `local_markdown_links=20`, `missing=0`。
+  - 状态扫描: `rg -n "\\[ \\]|状态: (active|partial|blocked)|blocked:|TODO|FIXME|当前推荐|下次第一步|第二版编译器正在实现" README.md CHANGELOG.md doc/master_plan.md doc/roadmap_status.md doc/start_here.md`。
+  - 结论: 剩余 `[ ]` 只指向 README 后置非目标、06.2 blocked/decomposed、D2.1 blocked 和 G6.1-G6.3 blocked; `active/partial/blocked` 泛化状态扫描无输出。
+  - 边界: 本项只证明文档入口、链接和状态口径没有新增漂移, 不解除 D2.1/G6/06.2 阻断。
+- 刷新 JS/MJS 和 shell syntax gates。
+  - JS/MJS 范围: tracked diff 只包含 `tool/build/test/run_lsp_case.mjs`、`tool/build/test/test_wasi_bind_manifest_tool.mjs` 和 `tool/build/test/validate_wasi_bind_manifest.mjs`; 无 untracked JS/MJS。
+  - JS/MJS 验证: 三个 `.mjs` 文件分别执行 `node --check` 均通过。
+  - Shell 范围: tracked diff 只包含 `tool/build/test/run_tests.sh`; untracked shell 只包含 `tool/build/test/run_release_smoke.sh`。
+  - Shell 验证: `bash -n tool/build/test/run_tests.sh` 和 `bash -n tool/build/test/run_release_smoke.sh` 均通过。
+- 刷新 Zig fmt / Debug build gates。
+  - 环境: Zig `0.16.0`。
+  - 验证: `rg --files -g '*.zig' -0 | xargs -0 zig fmt --check` 通过, 当前全仓 Zig 文件数为 31。
+  - 验证: `cd tool && zig build -Doptimize=Debug` 通过。
+  - 边界: 本项只证明 Zig 格式和 Debug build, 不替代 unit tests、fixture regression 或 release smoke。
+- 刷新 Zig aggregate unit gate。
+  - 验证: `cd tool && zig test main.zig` 通过, 输出 `All 101 tests passed.`。
+  - 覆盖: CLI/run/fmt/check/LSP、backend IR、component metadata writer、function body writer、ownership facts、runtime prelude、lexer、diag、parser、sema 和 formatter 聚合单元测试。
+  - 边界: 该 gate 不替代 `zig build -Doptimize=Debug`、fixture regression 或 wasm execution gate。
+- 刷新 backend / writer / ownership / runner focused unit gates。
+  - 验证: `cd tool && zig test build/backend_ir.zig` 通过, 输出 `All 13 tests passed.`。
+  - 验证: `cd tool && zig test build/runtime_prelude_wat.zig` 通过, 输出 `All 2 tests passed.`。
+  - 验证: `cd tool && zig test build/component_metadata_wat.zig` 通过, 输出 `All 4 tests passed.`。
+  - 验证: `cd tool && zig test build/function_body_wat.zig` 通过, 输出 `All 2 tests passed.`。
+  - 验证: `cd tool && zig test build/ownership.zig` 通过, 输出 `All 2 tests passed.`; `cd tool && zig test build/ownership_facts.zig` 通过, 输出 `All 6 tests passed.`。
+  - 验证: `cd tool && zig test build/test_runner.zig` 通过, 输出 `All 14 tests passed.`; `cd tool && zig test build/run.zig` 通过, 输出 `All 27 tests passed.`。
+  - 覆盖: Backend IR、runtime prelude WAT writer、component metadata WAT writer、function body WAT writer、ownership exit/facts、static test runner dispatch 和 normal compile path start-entry enforcement。
+- 刷新 codegen unit gate。
+  - 范围: `tool/build/codegen.zig` 的 focused codegen tests。
+  - 验证: `cd tool && zig test build/codegen.zig` 通过, 输出 `All 51 tests passed.`。
+  - 覆盖: source origin metadata、move candidate metadata、generic union/callback binding、variadic storage ABI、Backend IR scalar lowering、runtime prelude、component metadata、test runner variadic dispatch 和 ownership facts。
+  - 边界: 该 gate 会执行导入模块的 unit tests; 不替代完整 fixture regression 或 wasm execution gate。
+- 刷新 sema unit gate。
+  - 范围: `tool/build/sema.zig` 的 focused semantic analysis tests。
+  - 验证: `cd tool && zig test build/sema.zig` 通过, 输出 `All 26 tests passed.`。
+  - 覆盖: private host import 不被误判为 private lvalue assignment, private assignment rejection, 以及 sema 导入链上的 lexer/parser unit tests。
+  - 边界: 该 gate 不替代完整 sema fixture regression 或 codegen regression。
+- 刷新 parser unit gate。
+  - 范围: `tool/build/parser.zig` 的 focused parser tests。
+  - 验证: `cd tool && zig test build/parser.zig` 通过, 输出 `All 24 tests passed.`。
+  - 覆盖: bool/nil literals、literal-call rejection、lambda placement/call args、lambda omitted param type/block body、spread、function name call args、struct literal equals、generic bind arity、import ordering、storage variadic arity 和 collection loop two-binding parser rule。
+  - 边界: 该测试文件会导入 lexer tests, 因此 24 项里包含 parser 直接用例和 lexer/tokenization 用例。
+- 刷新 lexer / tokenization unit gate。
+  - 范围: `tool/build/lexer.zig` 的 focused tokenizer tests。
+  - 验证: `cd tool && zig test build/lexer.zig` 通过, 输出 `All 10 tests passed.`。
+  - 覆盖: dot/private 标识符、spread、loop label apostrophe、字符串 escape UTF-8 校验和 line string block tokenization。
+- 刷新 CLI parser unit gate。
+  - 范围: `tool/build/cli.zig` 的 run/fmt/lsp/check 参数解析单元测试。
+  - 验证: `cd tool && zig test build/cli.zig` 通过, 输出 `All 14 tests passed.`。
+  - 边界: 本项是 CLI parser unit gate; build/test 的黑盒严格参数和 output-order 路径由 CLI argument / output path guard gate 覆盖。
+- 刷新 diagnostic unit / contract gate。
+  - 范围: `tool/build/diag.zig` focused tests, 以及 `errorSummary` / `errorHint` 显式诊断条目一致性。
+  - 验证: `cd tool && zig test build/diag.zig` 通过, 输出 `All 13 tests passed.`。
+  - 验证: Node 只读扫描确认 `summary_entries=55`, `hint_entries=55`, `summary_without_hint=(none)`, `hint_without_summary=(none)`。
+- 刷新 compiled trap smoke gate。
+  - 范围: `tool/build/test/compiled_trap/*.do` 共 2 个 fixture。
+  - 验证: 两个 fixture 均成功执行 `do test --compiled -o <tmp>.wat`, WAT 非空且 `wasm-tools parse` 通过; 随后 Node compiled test runner 执行均按预期非 0 退出。
+  - 边界: 该 gate 的正确结果是运行期 trap, 不是测试通过。
+- 刷新 run_wasm_smoke bridge gate。
+  - 范围: `tool/build/test/run_wasm_smoke.sh` 的底层 WAT -> `wasm-tools parse` -> Node 执行桥接。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_wasm_smoke.sh` 通过, 6 个 `tool/build/test/run/*.do` fixture 全部 `[PASS]`, 摘要 `wasm run summary: pass=6 fail=0`。
+  - 边界: 该 gate 不替代 `do run` 产品命令回归, 只证明底层 wasm 桥接链路仍可用。
+- 刷新 WASI bind manifest helper gate。
+  - 范围: `test_wasi_bind_manifest_tool.mjs` 驱动 `validate_wasi_bind_manifest.mjs` 的 helper 自测。
+  - 验证: `node tool/build/test/test_wasi_bind_manifest_tool.mjs tool/build/test/validate_wasi_bind_manifest.mjs <tmp-dir>` 通过, stdout 输出 `ok: wasi-bind manifest tool`, stderr 为空。
+  - 边界: 该 gate 只证明现有 manifest / component helper 行为仍通过, 不解除 G6.1-G6.3 的公开 API 或运行时设计阻断。
+- 刷新 CLI argument / output path guard gate。
+  - 范围: `build -o <out> <input>`、`test --compiled -o <out> <input>` 的输出参数顺序, 以及 build/run 的未知 flag 和额外 input 保护、`test -o` 无 `--compiled` 保护。
+  - 验证: 两条 output-order 路径均生成非空 WAT; build/run 的未知 flag 和额外 input 均返回 `error[UnexpectedCliArg]`; `test -o` 无 `--compiled` 返回 `error[OutputRequiresCompiledTest]`; 失败路径 stdout 为空。
+- 刷新 do test product command smoke gate。
+  - 范围: 静态 runner `ok/01_path_get_single.do`, compiled runner `compiled_ok/01_compiled_test_entry.do`, 以及 `do test -o` 必须搭配 `--compiled` 的 CLI 保护。
+  - 验证: 静态路径输出 `test "path get single" ... ok` 和 `ok: 1 passed; 0 failed; 0 skipped`; compiled 路径生成非空 WAT, 包含 compiled-test manifest, 经 `wasm-tools parse` 和 Node runner 执行通过; `-o` 无 `--compiled` 返回 `error[OutputRequiresCompiledTest]`。
+- 刷新 do build product command smoke gate。
+  - 范围: 最小成功入口 `compile_ok/01_start_entry_valid.do` 和最小失败诊断 `compile_err/01_missing_start_entry.do`。
+  - 验证: 成功路径 stdout 包含 `ok:`, stderr 为空, WAT 产物非空且包含 `(module`; 失败路径 stderr 逐行匹配 `.expect`, stdout 为空且未生成 WAT。
+- 刷新 do check product command gate。
+  - 范围: `tool/build/test/check/*.do` 共 2 个 fixture, 另覆盖多文件输入策略。
+  - 验证: `01_valid` 静默成功; `02_syntax_error` 失败并逐行匹配 `.expect`, stdout 为空; 多文件覆盖全部成功、后一个失败、前一个失败后继续检查后续输入并最终失败。
+- 刷新 do run product command gate。
+  - 范围: `tool/build/test/run/*.do` 共 6 个 fixture, 加上缺失 `wasm-tools` 和缺失 `node` 两个诊断路径。
+  - 验证: 正常执行用例均 stderr 为空, stdout 按 `.stdout.expect` 对比或保持为空; 缺失工具路径分别输出 `error[MissingExternalTool]: wasm-tools not found` 和 `error[MissingExternalTool]: node not found`, stdout 为空。
+- 刷新 do fmt fixture gate。
+  - 范围: `tool/build/test/fmt/*.do` 共 3 个 fixture。
+  - 验证: 逐个覆盖 stdout `.expect` 对比、二次格式化幂等、`--check` 已格式化输入静默成功、`--write` 内容和幂等, 以及未格式化输入的 `error[FormatMismatch]`。
+- 刷新 LSP smoke fixture gate。
+  - 验证: `tool/build/test/lsp/*.json` 共 9 个 fixture 均通过 `node tool/build/test/run_lsp_case.mjs ./bin/do <case>`。
+  - 覆盖: open diagnostics、change clear、formatting、semantic tokens、hover、completion、definition 和 workspace index。
+- 刷新 Zig unit/build gate。
+  - 环境: Zig `0.16.0`。
+  - 验证: `cd tool && zig test main.zig` 通过, 输出 `All 101 tests passed.`; `zig build -Doptimize=Debug` 成功。
+- 刷新 shell harness syntax gate。
+  - 范围: 当前 shell 脚本 diff 为 tracked `tool/build/test/run_tests.sh` 和 untracked `tool/build/test/run_release_smoke.sh`。
+  - 验证: 两个脚本均 `bash -n` 通过。
+- 刷新 JS/MJS test helper syntax gate。
+  - 范围: 当前 tracked JS/MJS diff 为 `run_lsp_case.mjs`、`test_wasi_bind_manifest_tool.mjs` 和 `validate_wasi_bind_manifest.mjs`; 无 untracked JS/MJS。
+  - 验证: 上述 3 个 `.mjs` 文件均 `node --check` 通过。
+- 复核剩余 skip 边界。
+  - 验证: `16_loop_recv_value`、`96_file_lib_resource_shape`、`118_wasi_p3_std_wrappers` 均 `do check` 通过。
+  - 结果: 三个用例 `do test` 均返回 `0 failed` 且 skipped, skipped 数分别为 `3/1/1`。
+- 复跑 `RUN_WASM=1` 扩展回归矩阵。
+  - 验证: `RUN_WASM=1 SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `pass=833 fail=0 skip=3`。
+  - 覆盖: compiled trap、compiled wasm execution 和 6 个 wasm run smoke, `wasm run summary: pass=6 fail=0`。
+  - 剩余 skip: `118_wasi_p3_std_wrappers`、`16_loop_recv_value`、`96_file_lib_resource_shape`, 与 H1.4 记录一致。
+- 复跑默认回归矩阵。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `pass=831 fail=0 skip=3`。
+  - 剩余 skip: `118_wasi_p3_std_wrappers`、`16_loop_recv_value`、`96_file_lib_resource_shape`, 与 H1.4 记录一致。
+- 复跑 release smoke gate。
+  - 验证: `./tool/build/test/run_release_smoke.sh` 通过, ReleaseSmall、`do build`、`do test`、`do test --compiled`、`do check`、`do fmt`、`do run` 和 `do lsp` 全部 `[PASS]`。
+- 刷新 Markdown local link gate。
+  - 验证: 扫描 26 个 `.md` 文件、20 个本地 Markdown 链接, `missing=0`。
+- 刷新 dirty worktree 交付边界。
+  - 取证: `git diff --name-only | wc -l` 为 52; `git ls-files --others --exclude-standard | wc -l` 为 117。
+  - 边界: `ui.do` 和 `ui_demo.do` 只在 untracked 列表中, 不在 tracked diff; 继续不纳入当前主线。
+- 复核活跃未完成项和状态口径。
+  - 修正: `doc/roadmap_status.md` 的 `06. WASI / Component Model FFI` 从 `blocked/partial` 收窄为 `blocked-residual`。
+  - 修正: `doc/roadmap_status.md` 的 `07. 生态工具` 从 `partial` 收窄为 `done/paused`, 对齐 v1 工具链入口已完成且 get/pkg/push 暂停的事实。
+  - 结论: 剩余 `[ ]` 只指向已记录阻断或 README 后置非目标。
+- 刷新 Zig fmt gate。
+  - 修正: `tool/check/run.zig` 经过 `zig fmt` 机械格式化。
+  - 验证: 全仓 31 个 `.zig` 文件 `zig fmt --check` 通过; `cd tool && zig test main.zig` 输出 `All 101 tests passed.`; `zig build -Doptimize=Debug` 成功。
+- 收口当前未提交交付范围。
+  - 文档: `doc/start_here.md` 新增 dirty worktree 范围说明, 明确当前累计主线改动不是单一文档变更。
+  - 边界: `ui.do` 和 `ui_demo.do` 是未跟踪且非当前主线文件, 不得默认 stage、修改或删除。
+- 收口总规划顶部状态。
+  - 修正: `doc/master_plan.md` 顶部不再标泛化 `active`, 改为 v1 子集发布候选已收口且剩余 G6/D2.1 blocked residual。
+- 复核活跃文档本地链接和旧入口残留。
+  - 验证: README、CHANGELOG、`doc/*.md`、`doc/syntax/*.md` 和 `doc/wit/*.md` 中 20 个本地 Markdown 链接全部存在。
+  - 结论: 旧入口关键字只命中历史记录或验证命令, 未发现新的活跃入口漂移。
+- 刷新 release smoke 轻量 gate。
+  - 验证: `./tool/build/test/run_release_smoke.sh` 通过, ReleaseSmall 和 build/test/compiled/check/fmt/run/lsp smoke 全部 `[PASS]`。
+- 刷新默认完整回归 gate。
+  - 验证: `./tool/build/test/run_tests.sh` 通过, 摘要 `pass=831 fail=0 skip=3`。
+  - 剩余 skip: `118_wasi_p3_std_wrappers`、`16_loop_recv_value`、`96_file_lib_resource_shape`, 与 H1.4 记录一致。
+- 刷新 `RUN_WASM=1` 扩展回归 gate。
+  - 验证: `RUN_WASM=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `pass=833 fail=0 skip=3`。
+  - 覆盖: compiled trap、compiled wasm execution 和 6 个 wasm run smoke, `wasm run summary: pass=6 fail=0`。
+  - 剩余 skip: `118_wasi_p3_std_wrappers`、`16_loop_recv_value`、`96_file_lib_resource_shape`, 与 H1.4 记录一致。
+- 刷新 repo-wide diff whitespace gate。
+  - 验证: `git diff --check` 通过, 当前 tracked diff 未发现 trailing whitespace 或 conflict marker。
+- 复核剩余 skip 边界。
+  - 验证: `16_loop_recv_value`、`96_file_lib_resource_shape`、`118_wasi_p3_std_wrappers` 均 `do check` 通过, `do test` 返回 `0 failed` 且 skipped。
+  - 结论: 剩余 skip 仍符合 H1.4 记录的 runner / WASI resource 后置边界。
+- 同步 `start_here` 最新验证证据。
+  - 文档: `doc/start_here.md` 当前停点补充 repo-wide diff whitespace gate 和剩余 3 个 skip 的边界复核结果。
+- 刷新 JS/MJS test helper syntax gate。
+  - 验证: `node --check` 通过 `run_lsp_case.mjs`、`test_wasi_bind_manifest_tool.mjs` 和 `validate_wasi_bind_manifest.mjs`。
+- 刷新 Zig unit/build gate。
+  - 验证: `cd tool && zig test main.zig` 通过, 输出 `All 101 tests passed.`; `zig build -Doptimize=Debug` 成功。
+- 刷新 shell harness syntax gate。
+  - 验证: `bash -n` 通过 `tool/build/test/run_tests.sh` 和 `tool/build/test/run_release_smoke.sh`。
+- 同步 `start_here` syntax gate 证据。
+  - 文档: `doc/start_here.md` 当前停点补充 JS/MJS test helper syntax gate 和 shell harness syntax gate。
+- 收口 `start_here` 接手入口。
+  - 修正: `doc/start_here.md` 删除旧编号和重复“下次第一步”长段, 改为当前停点、下一步规则、当前阻断、当前边界和变更边界。
+- 收口活跃计划状态口径。
+  - 修正: `doc/master_plan.md` 的 D3 子项从 `active` 改为 `done`。
+  - 修正: `doc/roadmap_status.md` 的 06、阶段 D、阶段 E、阶段 F 不再泛化标 `active`, 改为当前的 blocked-residual、done/paused 或 done 状态。
+- 收口接手入口状态口径。
+  - 修正: README 顶部从“第二版编译器正在实现”改为 v1 子集发布候选已收口。
+  - 修正: `doc/start_here.md` 不再指向继续阶段 H, 改为按 `doc/master_plan.md` 的“当前下一步”检查发布候选回归、文档漂移或可独立收口小项。
+- 收口总规划阶段顺序口径。
+  - 修正: `doc/master_plan.md` 第 2 节不再把阶段 A 描述成当前首选, 改为列出 A/B/C/E/F/H 已完成、D 只剩 D2.1 blocked 残留、G 只剩 G6.1-G6.3 决策项。
+- 刷新发布候选 `RUN_WASM=1` 扩展回归基线。
+  - 验证: `RUN_WASM=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `pass=833 fail=0 skip=3`。
+  - 覆盖: compiled trap、compiled wasm execution 和 6 个 wasm run smoke, `wasm run summary: pass=6 fail=0`。
+- 完成活跃未完成项和旧下一步指针审计。
+  - 修正: `C5.3` 阶段清单从旧 `[ ]` 改为 `[x]`, 与 C5.3.1-C5.3.33 已完成事实一致。
+  - 补充: `06.2` 标记为 `blocked/decomposed`, 明确已完成的 result-area/resource/variant 评估部分和 G6.1/G6.2/G6.3 的剩余阻断。
+  - 修正: `doc/master_plan.md` 的当前入口从“继续阶段 H”改为当前状态和 G6/D2.1 阻断边界。
+- 完成文档治理状态收口。
+  - 修正: `doc/roadmap_status.md` 的文档治理段落从 `partial` 改为 `done`, 因该段阶段内小任务均已完成。
+- 完成阶段 H 最终验证。
+  - 静态检查: `git diff --check -- README.md CHANGELOG.md doc/master_plan.md doc/start_here.md doc/roadmap_status.md tool/build/test/README.md tool/build/test/run_release_smoke.sh` 通过; `bash -n tool/build/test/run_release_smoke.sh` 通过。
+  - 完整回归: `./tool/build/test/run_tests.sh` 通过, 摘要 `pass=831 fail=0 skip=3`。
+  - Release smoke: `./tool/build/test/run_release_smoke.sh` 通过, ReleaseSmall 和 build/test/compiled/check/fmt/run/lsp smoke 全部 `[PASS]`。
+- 完成 H5.3 下一阶段计划。
+  - 文档: README 新增 `下一阶段计划`, 顺序为发布候选收口、G6 WASI/Component 决策、host runtime smoke、JSON/序列化扩展、ownership 深化、编辑器/格式化增强和后端输出实验。
+  - 后续: 阶段 H 最终验证已完成。
+- 完成 H5.2 v1 非目标汇总。
+  - 文档: README 新增 `v1 非目标`, 单独列出完整 ownership IR、direct wasm binary emitter、完整 WASI / Component Model runtime、完整自动序列化、包管理、完整 formatter、完整 LSP 和完整 host runtime 等后置边界。
+  - 后续: H5.3 已完成。
+- 完成 H5.1 已完成能力汇总。
+  - 文档: README 新增 `当前 v1 子集摘要`, 汇总语言前端、内存与所有权、标准库、后端与 WASI、工具链和验证入口。
+  - 边界: 非目标不混入完成口径, 留到 H5.2 单独汇总。
+  - 后续: H5.2 已完成。
+- 完成 H4 release smoke。
+  - 新增: `tool/build/test/run_release_smoke.sh`, 覆盖 ReleaseSmall 构建以及 `do build`、`do test`、`do test --compiled`、`do check`、`do fmt`、`do run`、`do lsp` 最小链路。
+  - 验证: `./tool/build/test/run_release_smoke.sh` 通过, `ReleaseSmall build`、`do build`、`do test`、`do test --compiled`、`do check`、`do fmt`、`do run`、`do lsp` 全部 `[PASS]`。
+  - 后续: H5.1 已完成。
+- 完成 H3.4 full regression。
+  - 验证: `./tool/build/test/run_tests.sh` 重新构建编译器并通过, 摘要 `pass=831 fail=0 skip=3`。
+  - 后续: H4 release smoke 已完成。
+- 完成 H3.3 诊断一致性修复。
+  - 修复: `InvalidReturnStmt` 已加入 `errorSummary`, summary/hint 显式条目现在都是 55 个且一一对应。
+  - 测试: 新增 `return statement diagnostic has specific summary`; `cd tool && zig test build/diag.zig` 通过。
+  - 后续: H3.4 full regression。
+- 完成 H3.2 诊断一致性审查。
+  - 结论: `InvalidReturnStmt` 是真实不一致, 需要 H3.3 修复; `TestFailed` 属于静态 test runner 失败输出, 不进入 compile diagnostic summary。
+  - 后续: H3.3 已完成。
+- 完成 H3.1 错误诊断 code/message 清单。
+  - 结果: `tool/build/diag.zig` 的 `errorSummary` 和 `errorHint` 当前均显式列出 55 个条目。
+  - 待审查: `TestFailed` 出现在 `.expect` 里但不是 compile diagnostic summary 条目; H3.2 已判定为 test runner 输出。
+  - 后续: H3.2/H3.3 已完成, 当前进入 H3.4。
+- 完成 H2.3 README 过期状态修正。
+  - 修正: README 已区分 D5 最小 FBIP reuse 已完成与完整 ownership IR / 跨函数唯一性证明仍后置。
+  - 修正: README 已把 backend instruction model、控制流优化、copy fold、trivial inline、writer 拆分和 direct binary emitter 评估移入已完成口径。
+  - 修正: README 已把 WASI / Component Model 状态更新为 G1-G5 已完成、G6 复杂 WIT 类型阻断。
+  - 后续: H3.1 错误诊断 code/message 清单。
+- 完成 H2.2 过期入口、过期规则和删除文件引用扫描。
+  - 结果: 未发现 `review_blockers`、`review_issues`、`compiled_task_checklist`、`next_stage_plan`、`internal_prefix_rename_plan` 等旧文档入口的活跃引用; `get / pkg / push` 只保留暂停说明。
+  - 发现: README Roadmap 的 ARC/FBIP、后端优化和 WASI/Component Model 状态口径落后于当前 `master_plan` / `roadmap_status`。
+  - 后续: H2.3 修正 README 的过期状态描述。
+- 完成 H2.1 markdown 链接扫描。
+  - 范围: `README.md`、`CHANGELOG.md` 和 `doc/**/*.md`。
+  - 结果: 扫描 26 个 markdown 文件, 检查 21 个本地 markdown 链接, 缺失本地链接为 0。
+  - 后续: H2.2 扫描过期入口、过期规则和删除文件引用。
+- 完成 H1.4 剩余 skip 原因记录。
+  - 结论: 默认完整回归剩余 3 个 skip 均不是语法/sema 缺口; `do check` 可通过, `do test` 仍因静态 runner / WASI resource runtime 边界输出 skipped。
+  - 记录: `16_loop_recv_value` 归 recv runtime / runner; `96_file_lib_resource_shape` 归 file resource wrapper 静态执行边界; `118_wasi_p3_std_wrappers` 归 WASI P3 resource wrapper / host runtime 边界。
+  - 后续: H2.1 文档死链扫描。
+- 完成 H1.3 低风险 skip 转 pass。
+  - 行为: `run_tests.sh` 对标准库源码入口遇到 `NoTestDecl` 时改为 `[PASS] std src <module> (NoTestDecl metadata only)`, 不再把无顶层 `test` 的库模块计入 skip。
+  - 结果: 默认完整回归从 `pass=799 fail=0 skip=35` 收敛到 `pass=831 fail=0 skip=3`。
+  - 剩余: `16_loop_recv_value`、`96_file_lib_resource_shape`、`118_wasi_p3_std_wrappers` 继续归 recv runtime / WASI resource wrapper 后置线。
+  - 后续: H1.4 已完成, 当前进入 H2.1 文档死链扫描。
+- 完成 G5.4 可选回归 gate。
+  - 行为: `run_tests.sh` 在存在 `.component_input.expect` 且 `wasm-tools` 可用时, 额外调用 `validate_wasi_bind_manifest.mjs --component-wasm <file.wasm>` 生成并验证真实 component wasm。
+  - 验证: `bash -n tool/build/test/run_tests.sh`; `node tool/build/test/test_wasi_bind_manifest_tool.mjs tool/build/test/validate_wasi_bind_manifest.mjs /tmp/do-wasi-bind-g54-pre`; `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 摘要 `pass=799 fail=0 skip=35`。
+  - 后续: G6.1 preopens `list<tuple<descriptor,string>>` / wrapper struct 设计。
+- 完成 G5.3 `wasm-tools validate`。
+  - 行为: `validate_wasi_bind_manifest.mjs --component-wasm` 在 `component new` 后会执行顶层 `wasm-tools validate <component.wasm>`, validate 失败则返回非 0 并输出失败上下文。
+  - 测试: manifest tool 用 fake `wasm-tools` 锁住 embed/new 成功但 validate 失败时必须失败; 真实 `wasm-tools` 路径继续生成并验证 component wasm。
+  - 后续: G5.4 已完成, 当前进入 G6.1 preopens 设计。
+- 完成 G5.2 生成 component wasm。
+  - 行为: `validate_wasi_bind_manifest.mjs --component-wasm <file.wasm> <file.wat>` 会复用 component input 计划, 调用 `wasm-tools component embed` 和 `wasm-tools component new` 生成真实 component wasm。
+  - 验证: manifest tool 目标测试通过; 生成的 `/tmp/do-wasi-bind-g52-green/component_tool_output.wasm` 通过 `wasm-tools validate`。
+  - 后续: G5.3/G5.4 已完成, 当前进入 G6.1 preopens 设计。
+- 完成 G5.1 本机 component 工具链要求固定。
+  - 工具: `wasm-tools 1.251.0`, `node v24.18.0`, `zig 0.16.0`。
+  - 结论: 当前 `wasm-tools component` 有 `embed/new/wit`, 没有 `component validate`; component wasm 验证使用顶层 `wasm-tools validate`。
+  - 固定链路: `wasm-tools component embed <wit-dir> <core_component.wat> -o embedded.wasm` -> `wasm-tools component new embedded.wasm -o component.wasm` -> `wasm-tools validate component.wasm`。
+  - 后续: G5.2/G5.3/G5.4 已完成, 当前进入 G6.1 preopens 设计。
+- 完成 G4.4 最小实现计划/后置决策。
+  - 结论: G4 不继续实现通用 variant / public flags / list<record>; 当前保持已验证的 scalar/record/list<u8>/result-area/resource-drop 子集。
+  - 决策: 先进入 G5, 把现有 component input dir 变成真实可 validate 的 component wasm, 再基于真实 component pipeline 扩复杂 WIT 类型。
+  - 后置顺序: preopens/list-of-tuple-resource 优先于 read-directory stream/future; sockets 需要 resource + variant 后再做; public flags 只在公开 API 真需要时由领域 wrapper 引入。
+  - 后续: G5.2/G5.3/G5.4 已完成, 当前进入 G6.1 preopens 设计。
+- 完成 G4.3 list<record> 支持评估。
+  - 结论: 当前 registry 没有可单独落地的普通 `list<record>` 子集; `preopens.get-directories` 是 `list<tuple<descriptor,string>>`, `descriptor.read-directory` 是 `stream<directory-entry>` + `future<result<_,error-code>>`。
+  - 边界: 这两项都不能只靠 list<record> lowering 完成, 还需要 resource ownership、tuple/list lowering 或 stream/future 设计。
+  - 验证: registry 盘点和 manifest tool 既有 known-but-unsupported 断言; 最近完整回归 `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `pass=799 fail=0 skip=35`。
+  - 后续: G5.2/G5.3/G5.4 已完成, 当前进入 G6.1 preopens 设计。
+- 完成 G4.2 flags 支持评估。
+  - 结论: 当前不新增公开 WIT flags 类型; file/dir wrapper 继续把 `path-flags`、`open-flags` 和 `descriptor-flags` 当作 wrapper 内部 `i32` bitset 承接。
+  - 实现: `src/file.do` 和 `src/dir.do` 去掉 raw host call 位上的裸 flags 数字, 改为局部 `path_flags/open_flags/descriptor_flags` 绑定后传入私有 `@wasi` binding。
+  - 验证: `src/file.do`、`src/dir.do` 通过 `do check`; `113/121/123_*` compile_ok 重新 build 并逐行匹配 `.expect` 通过; `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `pass=799 fail=0 skip=35`。
+  - 后续: G4.3/G4.4/G5.1/G5.2/G5.3/G5.4 已完成, 当前进入 G6.1 preopens 设计。
+- 完成 G4.1 variant 支持评估。
+  - 结论: 当前不引入通用 WIT variant lowering; 已 lower 的 `error-code` / `stream-error` 只保留在 result-area status 编码和标准库 wrapper-local enum/error 转换内。
+  - 边界: `tcp-socket.create/bind` 与 `udp-socket.create/bind` 仍是 known-but-unsupported, 因为需要 variant + resource 组合; 不能只补 variant 就宣称 sockets 可 lower。
+  - 验证: `node tool/build/test/test_wasi_bind_manifest_tool.mjs tool/build/test/validate_wasi_bind_manifest.mjs /tmp/do-wasi-bind-g41` 通过。
+  - 后续: G4.2/G4.3/G4.4/G5.1/G5.2/G5.3/G5.4 已完成, 当前进入 G6.1 preopens 设计。
+- 完成 G3.3 std wrapper compiled_ok 收口。
+  - 行为: 当前 file / dir / input-stream / output-stream 公开 resource wrapper 均已有 compile_ok lowering 覆盖。
+  - 覆盖: `105/108/110/113/116/119/121/122/123/124_*` 锁住 file write/flush/read/link/open/close、stream read/check-write/write/flush、dir open/close/create/remove。
+  - 验证: targeted `DO_LIB_ROOT=src ./bin/do build` 全部通过; `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `pass=799 fail=0 skip=35`。
+  - 后续: G4.1/G4.2/G4.3/G4.4/G5.1/G5.2/G5.3/G5.4 已完成, 当前进入 G6.1 preopens 设计。
+- 完成 G3.2 close/drop 错误边界固定。
+  - 行为: `close_file(file File)` 和 `close_dir(dir Dir)` 固定返回 `nil`, 因为当前 WIT `descriptor.drop` resource-drop 没有普通错误结果。
+  - 清理: 删除不可达的 `FileCloseFailed` 分支, 同步 close wrapper compile_ok 和 defer/resource 文档示例。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `pass=799 fail=0 skip=35`。
+  - 后续: G3.3/G4.1/G4.2/G4.3/G4.4/G5.1/G5.2/G5.3/G5.4 已完成, 当前进入 G6.1 preopens 设计。
+- 完成 G3.1 resource handle 表达固定。
+  - 规则: `File`、`Dir`、`InputStream` 和 `OutputStream` 统一为带私有 `.id i64` 的 Do wrapper struct; 外部只能传递 wrapper 值, 不能构造或修改 `.id`, 资源不会因 ARC drop 自动关闭。
+  - 测试: 新增资源句柄专用负例, 锁住外部构造 `File{id = ...}`、读取 `.id` 和导入 `file_id` private helper 均失败。
+  - 文档: `doc/spec_rules.md` 和 `doc/wit/wasi_p3_lowering.md` 已同步。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `pass=799 fail=0 skip=35`。
+  - 后续: G3.2 固定 close/drop 错误边界。
+- 完成 G2.3 component plan / core imports / core shims 验证补齐。
+  - 行为: 为 `descriptor.sync` 和 `descriptor.read` 的 direct result-area fixture 补齐 `.component_plan.expect`、`.core_imports.expect` 和 `.core_shims.expect`, 使 11 个 lowerable result-area target 都有 target 级 component/core 验证覆盖。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `pass=796 fail=0 skip=35`。
+  - 后续: G3.1/G3.2/G3.3/G4.1/G4.2/G4.3/G4.4/G5.1/G5.2/G5.3/G5.4 已完成, 当前进入 G6.1 preopens 设计。
+- 完成 G2.2 result-area lowering fixture 覆盖核查。
+  - 行为: 11 个 lowerable result-area target 均已有 compile_ok lowering 覆盖; `descriptor.create-directory-at` 和 `descriptor.remove-directory-at` 当前通过 `124_imported_dir_create_remove_wrapper_lower` 的 std wrapper fixture 覆盖。
+  - 验证记录保留在 `doc/roadmap_status.md` 的 `G2.*`。
+- 完成 G2.1 已登记 result target 盘点。
+  - 行为: `doc/wit/wasi_p3_lowering.md` 新增 `Registered Result Target Inventory`, 列出当前已 lower 的 result-area target、known unsupported socket/http result target 和 `descriptor.read-directory` 的 future/result 复合形态。
+  - 后续: 已完成 G2.2/G2.3, 当前进入 G3 resource lifecycle。
+  - 验证记录保留在 `doc/roadmap_status.md` 的 `G2.*`。
+- 完成 G1 binding source / alias 规则冻结。
+  - 行为: `@wasi` binding identity 固定为 `source + alias`; 同一 source module 内 host import alias 必须唯一, 入口模块和递归导入模块可以各自使用同名 alias。
+  - 修复: 同一入口模块重复 `@wasi` alias 现在在 sema 阶段报 `DuplicateHostImportAlias`, 不再等到 manifest validator 才失败。
+  - 验证记录保留在 `doc/roadmap_status.md` 的 `G1.*`。
+- 完成 F5 rename 评估。
+  - 结论: v1 不支持 `textDocument/rename`, 当前继续不声明 `renameProvider`。
+  - 理由: 当前 workspace index 足够支撑 completion / definition, 但缺少可靠 references graph、import-aware identity 和增量索引, 不足以安全生成跨文件 `WorkspaceEdit`。
+  - 验证记录保留在 `doc/roadmap_status.md` 的 `F5.*`。
+- `do lsp` 补齐 F4.4 多文件 workspace index fixture。
+  - 行为: LSP fixture harness 支持临时 workspace 文件和 `{{workspaceUri}}` 占位; 回归覆盖跨文件 completion 和 definition。
+  - 边界: 这是黑盒回归覆盖增强, 不改变 F4.3 的扫描范围和增量边界。
+  - 验证记录保留在 `doc/roadmap_status.md` 的 `F4.*`。
+- `do lsp` 补齐 F4.3 completion / definition 复用 workspace index。
+  - 行为: completion 会追加 workspace 顶层函数/类型候选; definition 当前文件未命中时回退 workspace symbol 的 URI/range。
+  - 边界: workspace index 仍只来自 initialize 时的一层 `.do` 扫描, 不做增量刷新、递归扫描、import-aware resolution 或 rename。
+  - 验证记录保留在 `doc/roadmap_status.md` 的 `F4.*`。
+- `do lsp` 补齐 F4.2 workspace top-level symbol 扫描。
+  - 行为: initialize 后扫描 `file:///abs/path` workspace root 的一层 `.do` 文件, 记录顶层函数和类型 symbol。
+  - 边界: 不递归, 不处理非 file URI、host URI 或 percent-encoded URI; completion/definition 复用已在 F4.3 补齐。
+  - 验证记录保留在 `doc/roadmap_status.md` 的 `F4.*`。
+- `do lsp` 补齐 F4.1 workspace root 输入记录。
+  - 行为: initialize 记录 `workspaceFolders[*].uri`; 没有有效 workspaceFolders 时回退 `rootUri`。
+  - 边界: 只保存 URI 字符串, 不读取 `rootPath`, 不扫描 workspace 文件, 不建立 symbol index。
+  - 验证记录保留在 `doc/roadmap_status.md` 的 `F4.*`。
+- `do lsp` 补齐 F3 最小版 `textDocument/definition`。
+  - 行为: initialize 暴露 `definitionProvider: true`; definition 返回当前文件函数名和类型名的 `Location`。
+  - 边界: 不做 workspace index、import 跳转、字段/local definition 或 rename。
+  - 验证记录保留在 `doc/roadmap_status.md` 的 `F3.*`。
+- `do lsp` 补齐 F2 最小版 `textDocument/completion`。
+  - 行为: initialize 暴露 `completionProvider` 和 `.` trigger; completion 返回当前文件函数名、类型名和字段段候选。
+  - 边界: 不做排序打分、snippet、workspace index、跨文件索引、字段 receiver 类型收窄或 rename; definition 已在 F3 最小版补齐。
+  - 验证记录保留在 `doc/roadmap_status.md` 的 `F2.*`。
+- `do lsp` 补齐 F1 最小版 `textDocument/hover`。
+  - 行为: initialize 暴露 `hoverProvider: true`; hover 返回 `MarkupContent(kind=plaintext)`; 当前支持打开文件内的 top-level 函数声明签名和函数调用回查声明。
+  - 边界: 不做跨文件索引、类型推导、字段/local/type hover 或 rename; completion 已在 F2 最小版补齐, definition 已在 F3 最小版补齐。
+  - 验证记录保留在 `doc/roadmap_status.md` 的 `F1.*`。
+
 ## 2026-06-18
 
 - 新增 `CHANGELOG.md` 作为历史变更入口。
@@ -10,7 +803,7 @@
   - 验证记录保留在 `doc/roadmap_status.md` 的 `A1.*`。
 - `do lsp` 补齐 `textDocument/semanticTokens/full`。
   - 行为: initialize 暴露 semantic tokens legend; full 请求返回 LSP delta encoded token data。
-  - 边界: 不做 delta tokens、workspace index、主题适配、completion、hover、definition 或 rename。
+  - 当时边界: 不做 delta tokens、workspace index、主题适配、completion、hover、definition 或 rename; hover、completion 和 definition 已在 2026-07-07 补齐最小版。
   - 验证记录保留在 `doc/roadmap_status.md` 的 `A2.*`。
 - `do fmt` 补齐 `--write`。
   - 行为: `do fmt --write <input.do>` 生成完整 formatted buffer 后原地写回单文件。
@@ -41,7 +834,7 @@
   - 验证记录保留在 `doc/roadmap_status.md` 的 `07.5.0`。
 - `do lsp [--stdio]` diagnostics 第一版落地。
   - 行为: 支持 initialize、initialized、didOpen、didChange、didClose、shutdown、exit。
-  - 当时边界: 未包含 formatting、semantic tokens、completion、hover、definition、rename 或 workspace index; formatting 和 semantic tokens 已在 2026-06-18 补齐。
+  - 当时边界: 未包含 formatting、semantic tokens、completion、hover、definition、rename 或 workspace index; formatting 和 semantic tokens 已在 2026-06-18 补齐, hover 和 completion 已在 2026-07-07 补齐最小版。
   - 验证记录保留在 `doc/roadmap_status.md` 的 `07.3.*`。
 - `do fmt <input.do>` 和 `do fmt --check <input.do>` 第一版落地。
   - 行为: stdout 输出或 check-only。

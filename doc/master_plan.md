@@ -1,7 +1,7 @@
 # do 编译器主计划
 
-状态: active
-更新时间: 2026-07-05
+状态: v1 子集发布候选已收口, 剩余 G6 blocked residual
+更新时间: 2026-07-07
 
 本文是后续阶段的总规划入口, 用来回答“接下来按什么顺序做、每个阶段拆哪些小任务、每项怎么验收”。实时完成状态、阻塞原因和验证证据记录在 `doc/roadmap_status.md`。
 
@@ -11,11 +11,12 @@
 
 - 规范入口、语义规则、语法速查、PEG、内存模型和 WASI lowering 文档已拆分。
 - `do build`, `do test`, `do test --compiled`, `do check`, `do run`, `do fmt`, `do lsp` 第一版已落地。
-- 当前 `do lsp` 是 diagnostics + formatting + semantic tokens stdio server。
+- 当前 `do lsp` 是 diagnostics + formatting + semantic tokens + 最小函数 hover + 最小 completion + 最小 definition stdio server。
 - 当前 `do fmt` 是 stdout / check-only line-based formatter。
 - 当前 `do check` 只做 lexer/parser/sema/import diagnostics, 不编译、不运行。
 - 当前 `get / pkg / push` 包管理线暂停, 不作为默认后续任务。
-- 最近完整回归基线: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 为 `pass=739 fail=0 skip=52`。
+- 最近完整回归基线: `./tool/build/test/run_tests.sh` 为 `pass=874 fail=0 skip=3`。
+- 最近扩展回归基线: `RUN_WASM=1 ./tool/build/test/run_tests.sh` 为 `pass=833 fail=0 skip=3`。
 
 当前禁止默认推进:
 
@@ -35,9 +36,9 @@
 6. 工具行为变化必须同步 `README.md`、`tool/build/test/README.md` 和黑盒 fixture。
 7. 文档清理只能删除过期入口和过期规则; 不能删除仍被 `doc/start_here.md`、`doc/roadmap_status.md` 或 README 引用的文件。
 
-## 2. 推荐阶段顺序
+## 2. 阶段顺序和当前状态
 
-推荐主线:
+历史主线顺序:
 
 1. 阶段 A: 工具链体验补齐。
 2. 阶段 B: 语法和语义冻结审查。
@@ -47,15 +48,15 @@
 6. 阶段 F: LSP 编辑器体验升级。
 7. 阶段 G: WASI / Component Model 最后处理。
 8. 阶段 H: 发布前治理。
+9. 阶段 I: 后续语言能力扩展。
 
-依赖关系:
+当前状态:
 
-- 阶段 A 可以立即推进, 当前首选 A1。
-- 阶段 B 应在继续扩大语言能力前推进, 用来减少后续返工。
-- 阶段 C 可以和 B 交替推进, 但 JSON 中暴露出的语法/语义问题要回填到 B。
-- 阶段 D / E 不应在 B 基本冻结前大规模展开。
-- 阶段 G 明确后置, 除非用户重新指定 WASI / Component Model 为当前主线。
-- 阶段 H 在 A/B/C/D/E 至少形成稳定子集后推进。
+- 阶段 A、B、C、E、F、H 已完成。
+- 阶段 D 的 D1-D5 可推进项已完成; D2.1 已按用户确认的 B 方案绿色 regression 收口, 阶段 D 当前无剩余 blocked 残留。
+- 阶段 G 的 G1-G5 和 G6.4 已完成; G6.1、G6.3 仍等待公开 API 决策; G6.2 因当前无 async/Future runtime 暂时阻断。
+- 阶段 I 已进入实现: I1.1 递归基线盘点、I1.2 规则收敛与 I1.6 文档同步已完成; I1.3-I1.5 回归扩展继续推进。
+- 用户说 `go` / `next` 时, 默认按第 12 节执行: 先检查发布候选回归、文档漂移或可独立收口的小项; 没有新小项时不绕过 G6 阻断。
 
 ## 3. 阶段 A: 工具链体验补齐
 
@@ -68,7 +69,7 @@
 - `do check <input.do>`
 - `do fmt <input.do>`
 - `do fmt --check <input.do>`
-- `do lsp [--stdio]` diagnostics + formatting + semantic tokens
+- `do lsp [--stdio]` diagnostics + formatting + semantic tokens + hover + completion + definition
 - `do run <input.do>`
 
 ### A1. LSP formatting 第一版
@@ -230,7 +231,7 @@
 
 - `do fmt` 支持 check、stdout 和 write。
 - `do check` 支持单文件和多文件前端诊断。
-- `do lsp` 至少支持 diagnostics、formatting 和 semantic tokens。
+- `do lsp` 至少支持 diagnostics、formatting、semantic tokens、最小函数 hover、最小 completion 和最小 definition。
 - README、测试说明、roadmap 和 start_here 同步。
 
 ## 4. 阶段 B: 语法和语义冻结审查
@@ -453,9 +454,9 @@
 拆分:
 
 - [x] C5.1 盘点 `src/*.do` 中只有 shape 没有测试的文件。
-- [ ] C5.2 为纯函数库补 `do test` fixture。
-- [ ] C5.3 为需要 codegen 的库补 compiled fixture。
-- [ ] C5.4 README 或 spec_rules 只记录稳定公开边界。
+- [x] C5.2 为纯函数库补 `do test` fixture。
+- [x] C5.3 为需要 codegen / imported helper 链支持的库补 compiled fixture。
+- [x] C5.4 README 或 spec_rules 只记录稳定公开边界。
 
 验收:
 
@@ -487,10 +488,10 @@
 
 拆分:
 
-- [ ] D1.1 盘点当前 last-use / move 判断分散点。
-- [ ] D1.2 设计 `ownership_facts` 数据结构。
-- [ ] D1.3 把一个现有判断迁移到 facts。
-- [ ] D1.4 用现有 ARC fixture 锁住 WAT 不回退。
+- [x] D1.1 盘点当前 last-use / move 判断分散点。
+- [x] D1.2 设计 `ownership_facts` 数据结构。
+- [x] D1.3 把一个现有判断迁移到 facts。
+- [x] D1.4 用现有 ARC fixture 锁住 WAT 不回退。
 
 验收:
 
@@ -511,10 +512,10 @@
 
 拆分:
 
-- [ ] D2.1 为 if/else 两边不同使用路径补红灯 fixture。
-- [ ] D2.2 为 guard return 后续路径补红灯 fixture。
-- [ ] D2.3 实现函数内 data-flow 最小 pass。
-- [ ] D2.4 回归 ARC WAT pattern 和 compiled execution。
+- [x] D2.1 为 if/else 两边不同使用路径补红灯 fixture。未找到真实红灯缺口, 已经用户确认按 B 方案绿色 regression 收口到 compile_ok `239` 到 `241`。
+- [x] D2.2 为 guard return 后续路径补红灯 fixture。
+- [x] D2.3 实现函数内 data-flow 最小 pass。
+- [x] D2.4 回归 ARC WAT pattern 和 compiled execution。
 
 验收:
 
@@ -523,10 +524,13 @@
 
 ### D3. 字段读取 move 扩展
 
+状态: done
+
 范围:
 
 - 只对 fresh owner / 唯一 owner 可证明场景放开。
 - helper/shared-source 字段读取继续保守。
+- 当前 D3 剩余目标是把已有 codegen-local field-get 决策迁移到 `ownership_facts`, 不重复实现旧 `03.5/03.6` 字段读取 move 能力。
 
 不做:
 
@@ -535,10 +539,11 @@
 
 拆分:
 
-- [ ] D3.1 补 fresh owner 字段读取可 move 正例。
-- [ ] D3.2 补 shared source 字段读取必须 copy 反例。
-- [ ] D3.3 在 facts 中表达 source ownership。
-- [ ] D3.4 codegen 根据 facts 选择 move / copy。
+- [x] D3.0 对齐当前 D3 计划与历史字段读取 move 实现, 明确哪些小项已由旧 03.5/03.6 满足, 哪些仍需要迁移到 `ownership_facts`。
+- [x] D3.1 补 fresh owner 字段读取可 move 正例。已有 compile_ok `202`、`204`、`207`、`210` 和 compiled_ok `39` 到 `42` 覆盖。
+- [x] D3.2 补 shared source 字段读取必须 copy 反例。已有 compile_ok `206`、`213`、`214`、`215` 覆盖参数、helper/shared-source、loop-carried source 和同语句多字段读取拒绝边界。
+- [x] D3.3 在 facts 中表达 source ownership。
+- [x] D3.4 codegen 根据 facts 选择 move / copy。
 
 验收:
 
@@ -561,10 +566,10 @@
 
 拆分:
 
-- [ ] D4.1 审查当前参数赋值和 call lowering 行为。
-- [ ] D4.2 在 `doc/spec_rules.md` 固定参数 ownership 规则。
-- [ ] D4.3 补参数 move/copy 正反例。
-- [ ] D4.4 同步 codegen tests。
+- [x] D4.1 审查当前参数赋值和 call lowering 行为。
+- [x] D4.2 在 `doc/spec_rules.md` 固定参数 ownership 规则。
+- [x] D4.3 补参数 move/copy 正反例。
+- [x] D4.4 同步 codegen tests。
 
 验收:
 
@@ -585,11 +590,11 @@
 
 拆分:
 
-- [ ] D5.1 固定 reuse eligibility 规则。
-- [ ] D5.2 补 `rc == 1` 可 reuse WAT pattern。
-- [ ] D5.3 补 `rc > 1` 必须 COW 反例。
-- [ ] D5.4 实现最小 helper 和 lowering。
-- [ ] D5.5 补 trap smoke。
+- [x] D5.1 固定 reuse eligibility 规则。
+- [x] D5.2 补 `rc == 1` 可 reuse WAT pattern。
+- [x] D5.3 补 `rc > 1` 必须 COW 反例。
+- [x] D5.4 实现最小 helper 和 lowering。
+- [x] D5.5 补 trap smoke。
 
 验收:
 
@@ -620,9 +625,9 @@
 
 拆分:
 
-- [ ] E1.1 扩展 `tool/build/backend_ir.zig` 指令集合。
-- [ ] E1.2 补 IR builder 单元测试。
-- [ ] E1.3 补 WAT emitter 单元测试或 fixture。
+- [x] E1.1 扩展 `tool/build/backend_ir.zig` 指令集合。
+- [x] E1.2 补 IR builder 单元测试。
+- [x] E1.3 补 WAT emitter 单元测试或 fixture。
 
 验收:
 
@@ -642,9 +647,9 @@
 
 拆分:
 
-- [ ] E2.1 选定最小 compiled_ok case。
-- [ ] E2.2 新增 IR lowering 路径。
-- [ ] E2.3 对比 WAT 输出和执行结果。
+- [x] E2.1 选定最小 compiled_ok case。
+- [x] E2.2 新增 IR lowering 路径。
+- [x] E2.3 对比 WAT 输出和执行结果。
 
 验收:
 
@@ -666,10 +671,10 @@
 
 拆分:
 
-- [ ] E3.1 为 const fold 补 IR test。
-- [ ] E3.2 为 local copy fold 补 IR test。
-- [ ] E3.3 为 trivial call inline 补 IR test。
-- [ ] E3.4 如已接入 E2, 增加 WAT pattern 验证。
+- [x] E3.1 为 const fold 补 IR test。
+- [x] E3.2 为 local copy fold 补 IR test。
+- [x] E3.3 为 trivial call inline 补 IR test。
+- [x] E3.4 如已接入 E2, 增加 WAT pattern 验证。
 
 验收:
 
@@ -690,11 +695,11 @@
 
 拆分:
 
-- [ ] E4.1 盘点 codegen 输出片段边界。
-- [ ] E4.2 抽出 runtime prelude writer。
-- [ ] E4.3 抽出 function body writer。
-- [ ] E4.4 抽出 component metadata writer。
-- [ ] E4.5 full regression。
+- [x] E4.1 盘点 codegen 输出片段边界。
+- [x] E4.2 抽出 runtime prelude writer。
+- [x] E4.3 抽出 function body writer。
+- [x] E4.4 抽出 component metadata writer。
+- [x] E4.5 full regression。
 
 验收:
 
@@ -710,9 +715,9 @@
 
 拆分:
 
-- [ ] E5.1 评估继续 WAT 的成本。
-- [ ] E5.2 评估 direct binary emitter 的收益和测试代价。
-- [ ] E5.3 给出继续保留、实验性引入或正式引入的推荐。
+- [x] E5.1 评估继续 WAT 的成本。
+- [x] E5.2 评估 direct binary emitter 的收益和测试代价。
+- [x] E5.3 给出继续保留、实验性引入或正式引入的推荐。
 
 验收:
 
@@ -738,19 +743,20 @@
 
 范围:
 
-- 对当前文件内顶层类型、函数、字段、局部绑定返回基础信息。
+- 对当前文件内顶层函数声明和函数调用回查返回基础签名。
 
 不做:
 
 - 不做文档注释。
 - 不做跨模块深度搜索。
+- 不做类型、字段、局部绑定 hover。
 
 拆分:
 
-- [ ] F1.1 设计 hover 内容格式。
-- [ ] F1.2 新增 hover fixture。
-- [ ] F1.3 接入当前文件 symbol lookup。
-- [ ] F1.4 同步 README 和 roadmap。
+- [x] F1.1 设计 hover 内容格式。
+- [x] F1.2 新增 hover fixture。
+- [x] F1.3 接入当前文件 symbol lookup。
+- [x] F1.4 同步 README 和 roadmap。
 
 验收:
 
@@ -761,20 +767,21 @@
 
 范围:
 
-- 当前文件内可见类型名、函数名、局部绑定、字段段。
+- 当前文件内可见类型名、函数名和字段段候选。
 
 不做:
 
 - 不做排序打分。
 - 不做 snippet。
 - 不做 workspace index。
+- 不做局部绑定 completion。
 
 拆分:
 
-- [ ] F2.1 completion item 编码测试。
-- [ ] F2.2 当前文件 symbol collection。
-- [ ] F2.3 字段 completion 最小支持。
-- [ ] F2.4 fixture 回归。
+- [x] F2.1 completion item 编码测试。
+- [x] F2.2 当前文件 symbol collection。
+- [x] F2.3 字段 completion 最小支持。
+- [x] F2.4 fixture 回归。
 
 验收:
 
@@ -785,18 +792,19 @@
 
 范围:
 
-- 当前文件顶层类型 / 函数 / 局部绑定。
+- 当前文件顶层类型 / 函数。
 
 不做:
 
 - 不做 workspace index。
 - 不做 imported module 深跳转。
+- 不做字段 / 局部绑定 definition。
 
 拆分:
 
-- [ ] F3.1 location 编码测试。
-- [ ] F3.2 symbol span collection。
-- [ ] F3.3 definition fixture。
+- [x] F3.1 location 编码测试。
+- [x] F3.2 symbol span collection。
+- [x] F3.3 definition fixture。
 
 验收:
 
@@ -816,10 +824,10 @@
 
 拆分:
 
-- [ ] F4.1 定义 workspace root 输入。
-- [ ] F4.2 扫描 `.do` 文件 top-level symbols。
-- [ ] F4.3 completion / definition 复用 index。
-- [ ] F4.4 多文件 LSP fixture。
+- [x] F4.1 定义 workspace root 输入。
+- [x] F4.2 扫描 `.do` 文件 top-level symbols。
+- [x] F4.3 completion / definition 复用 index。
+- [x] F4.4 多文件 LSP fixture。
 
 验收:
 
@@ -835,8 +843,8 @@
 
 拆分:
 
-- [ ] F5.1 列出 rename 误改风险。
-- [ ] F5.2 给出 v1 是否支持的推荐。
+- [x] F5.1 列出 rename 误改风险。
+- [x] F5.2 给出 v1 是否支持的推荐。
 
 验收:
 
@@ -860,9 +868,9 @@
 
 拆分:
 
-- [ ] G1.1 审查 `doc/wit/wasi_p3_lowering.md` 与实现。
-- [ ] G1.2 审查 `doc/wit/wasi_registry.json` 与 manifest tool。
-- [ ] G1.3 补 alias 正反例。
+- [x] G1.1 审查 `doc/wit/wasi_p3_lowering.md` 与实现。
+- [x] G1.2 审查 `doc/wit/wasi_registry.json` 与 manifest tool。
+- [x] G1.3 补 alias 正反例。
 
 验收:
 
@@ -882,9 +890,9 @@
 
 拆分:
 
-- [ ] G2.1 盘点已登记 result target。
-- [ ] G2.2 补 result-area lowering fixture。
-- [ ] G2.3 补 component plan/core shims 验证。
+- [x] G2.1 盘点已登记 result target。
+- [x] G2.2 补 result-area lowering fixture。
+- [x] G2.3 补 component plan/core shims 验证。
 
 验收:
 
@@ -907,9 +915,9 @@
 
 拆分:
 
-- [ ] G3.1 固定 resource handle 表达。
-- [ ] G3.2 固定 close/drop 错误边界。
-- [ ] G3.3 std wrapper compiled_ok。
+- [x] G3.1 固定 resource handle 表达。
+- [x] G3.2 固定 close/drop 错误边界。
+- [x] G3.3 std wrapper compiled_ok。
 
 验收:
 
@@ -924,10 +932,10 @@
 
 拆分:
 
-- [ ] G4.1 variant 支持评估。
-- [ ] G4.2 flags 支持评估。
-- [ ] G4.3 list<record> 支持评估。
-- [ ] G4.4 输出最小实现计划或明确后置。
+- [x] G4.1 variant 支持评估。
+- [x] G4.2 flags 支持评估。
+- [x] G4.3 list<record> 支持评估。
+- [x] G4.4 输出最小实现计划或明确后置。
 
 验收:
 
@@ -941,14 +949,32 @@
 
 拆分:
 
-- [ ] G5.1 固定本机工具链要求。
-- [ ] G5.2 生成 component wasm。
-- [ ] G5.3 `wasm-tools component validate`。
-- [ ] G5.4 接入可选回归 gate。
+- [x] G5.1 固定本机工具链要求。
+- [x] G5.2 生成 component wasm。
+- [x] G5.3 `wasm-tools validate`。
+- [x] G5.4 接入可选回归 gate。
 
 验收:
 
-- `wasm-tools component embed/new/validate` 或当前工具链等价命令。
+- `wasm-tools component embed`, `wasm-tools component new` 和顶层 `wasm-tools validate`。
+
+### G6. 后置复杂 WIT 类型分批展开
+
+范围:
+
+- G5 已证明真实 component wasm 路径后, 按依赖顺序扩展复杂 WIT 类型。
+- 每一项先设计公开 wrapper 和 ownership 边界, 再决定是否落地 codegen。
+
+拆分:
+
+- [ ] G6.1 preopens `list<tuple<descriptor,string>>` / wrapper struct 设计。blocked, 需要用户确认公开 API。
+- [ ] G6.2 `descriptor.read-directory` stream/future 设计。blocked, 当前语言/运行时没有 async / Future / Task 支持, 需要未来 async/Future runtime 与 resource stream 设计。
+- [ ] G6.3 sockets resource + variant 设计。blocked, 需要 socket resource wrapper 和 address variant 映射决策。
+- [x] G6.4 public flags API 是否需要公开。
+
+验收:
+
+- 每项都有 registry 证据、公开 API 边界、测试计划和明确做/不做结论。
 
 阶段 G 完成标准:
 
@@ -968,10 +994,10 @@
 
 拆分:
 
-- [ ] H1.1 输出 skip 列表。
-- [ ] H1.2 按语法、sema、codegen、runtime、外部工具分类。
-- [ ] H1.3 选择一批低风险 skip 转 pass。
-- [ ] H1.4 为剩余 skip 写原因。
+- [x] H1.1 输出 skip 列表。
+- [x] H1.2 按语法、sema、codegen、runtime、外部工具分类。
+- [x] H1.3 选择一批低风险 skip 转 pass。
+- [x] H1.4 为剩余 skip 写原因。
 
 验收:
 
@@ -986,9 +1012,9 @@
 
 拆分:
 
-- [ ] H2.1 扫描 markdown 链接。
-- [ ] H2.2 扫描过期入口、过期规则和删除文件引用。
-- [ ] H2.3 修正或删除过期文档。
+- [x] H2.1 扫描 markdown 链接。
+- [x] H2.2 扫描过期入口、过期规则和删除文件引用。
+- [x] H2.3 修正或删除过期文档。
 
 验收:
 
@@ -1005,10 +1031,10 @@
 
 拆分:
 
-- [ ] H3.1 列出错误 code 和 message。
-- [ ] H3.2 找出同类错误不一致的地方。
-- [ ] H3.3 修正实现或 `.expect`。
-- [ ] H3.4 full regression。
+- [x] H3.1 列出错误 code 和 message。
+- [x] H3.2 找出同类错误不一致的地方。
+- [x] H3.3 修正实现或 `.expect`。
+- [x] H3.4 full regression。
 
 验收:
 
@@ -1021,11 +1047,21 @@
 - ReleaseSmall build。
 - sample app build/test/check/fmt/run/lsp smoke。
 
+当前选定输入:
+
+- build: `tool/build/test/compile_ok/01_start_entry_valid.do`。
+- test: `tool/build/test/ok/01_path_get_single.do`。
+- compiled test: `tool/build/test/compiled_ok/01_compiled_test_entry.do`。
+- check: `tool/build/test/check/01_valid.do`。
+- fmt: `tool/build/test/fmt/01_struct_func_indent.do` 与同名 `.expect`。
+- run: `tool/build/test/run/01_start_scalar.do`。
+- lsp: `tool/build/test/lsp/*.json`。
+
 拆分:
 
-- [ ] H4.1 确定 smoke 输入文件。
-- [ ] H4.2 新增 release smoke script 或文档化命令。
-- [ ] H4.3 在本机执行并记录结果。
+- [x] H4.1 确定 smoke 输入文件。
+- [x] H4.2 新增 release smoke script 或文档化命令。
+- [x] H4.3 在本机执行并记录结果。
 
 验收:
 
@@ -1042,9 +1078,9 @@
 
 拆分:
 
-- [ ] H5.1 汇总已完成能力。
-- [ ] H5.2 汇总 v1 非目标。
-- [ ] H5.3 写下一阶段计划。
+- [x] H5.1 汇总已完成能力。
+- [x] H5.2 汇总 v1 非目标。
+- [x] H5.3 写下一阶段计划。
 
 验收:
 
@@ -1056,11 +1092,98 @@
 - full regression 和 smoke 都通过。
 - 文档、代码、测试没有明显双源冲突。
 
-## 11. 当前下一步
+## 11. 阶段 I: 后续语言能力扩展
 
-当前推荐从阶段 C 继续:
+状态: in-progress
 
-1. C5.2 为纯函数库补 `do test` fixture。
+目标: 在 v1 子集发布候选稳定后, 分批补齐两个高价值语言能力: 递归 / self-tail TCO, 以及源码层 `Tuple<...>` 类型语法。阶段 I 不解除 G6.1-G6.3 的 WASI/API 阻断, 也不默认重开 get / pkg / push 或 direct wasm binary emitter。
+
+### I1. 递归与 self-tail TCO
+
+评估:
+
+- 递归本身是语言表达力缺口, 对 JSON、树、解析器和递归数据处理都直接有价值。
+- 风险集中在函数解析 / 重载候选 / 泛型实例化 / codegen 调用图 / ARC cleanup。不能只让 parser 接受自调用就宣布支持。
+- TCO 推荐先做 self-tail call lowering 到 `loop`, 不依赖 Wasm tail-call proposal。这样输出仍是当前 WAT 主路径, 也不要求运行时或宿主支持新特性。
+- 第一版不做 mutual TCO、general TCO、闭包递归或跨模块泛型递归展开。泛型递归必须有明确的实例化上限或诊断, 防止无限 monomorphization。
+- Tail position 先限定为 `return f(args)` 和所有分支都以同一 self-tail call 结束的简单形态。带 `defer`、managed local、ARC release 或多返回的场景必须先有单独回归证明 cleanup 顺序正确。
+
+推荐方案:
+
+- 先支持直接递归和互递归的普通函数调用解析 / sema / codegen。
+- 再支持 self-tail recursion 优化, 把 `return f(new_args)` 降成参数重赋值 + loop continue。
+- 递归支持和 TCO 分开验收: 递归正确性先过, TCO 只改变可证明的尾递归 WAT pattern。
+
+拆分:
+
+- [x] I1.1 盘点当前递归行为。结论: 普通直接递归和互递归当前已能走通 compiled WAT/wasm 路径; 参数侧已定型的泛型递归当前可执行, 仅靠左侧目标类型反推的形态仍报 `NoMatchingCall`; 递归未命中 overload 已补 compiled_err 负例。
+- [x] I1.2 固定递归语义规则。`doc/spec_rules.md` 已固定普通直接/互递归、递归未命中 overload 报 `NoMatchingCall`、参数侧已知 concrete type 的泛型递归可执行, 以及“只靠左侧目标类型反推 direct type param”当前仍拒绝的边界; 本 slice 不引入新语法, `doc/grammar.peg` 无需变更。
+- [ ] I1.3 落地递归调用支持。已补 `compiled_ok/53`、`compiled_ok/54`、`compiled_ok/55`、`compiled_ok/56`、`compiled_ok/57`、`ok/182`、`ok/183`、`ok/184`、`ok/185`、`ok/186`、`ok/187` 和 `compile_ok/242`、`243`、`244`、`245` 五批回归, 覆盖递归求和、互递归奇偶判断、递归错误分支、`start()` build lowering、参数侧已定型的泛型递归、factorial 基本形态、`if/else` 分支递归和 imported recursion; 静态 runner 已收回 guard-return 与 imported recursion, 剩余 recursive error-union 和更复杂 control-flow 矩阵继续后置推进。
+- [ ] I1.4 落地 self-tail TCO 第一版。当前已补 `compile_ok/246_self_tail_scalar_tco_lower`、`247_self_tail_if_else_tco_lower`、`252_self_tail_guard_tco_lower`、`254_generic_self_tail_tco_lower`、`255_imported_self_tail_scalar_tco_lower`、`257_generic_self_tail_if_else_tco_lower`、`258_imported_self_tail_if_else_tco_lower`, `compiled_ok/58` 到 `64`, 以及 `ok/188`、`ok/189` 回归, 覆盖最小 self-tail scalar path、generic scalar / `if/else` self-tail path、imported scalar / `if/else` self-tail path、`if/else` 分支 self-tail path 与 guard-return self-tail path; 更复杂 cleanup/aggregate 边界继续后置。
+- [ ] I1.5 扩展 TCO 边界或明确后置。当前已补 `compile_ok/248_self_tail_defer_not_optimized_lower`、`249_self_tail_storage_local_not_optimized_lower`、`250_self_tail_managed_struct_not_optimized_lower`、`251_self_tail_multi_return_not_optimized_lower`、`253_self_tail_if_else_defer_not_optimized_lower`、`256_self_tail_guard_defer_not_optimized_lower` 六条边界回归, 固定当前对 `defer`、storage local、managed struct、多返回、`if/else` 分支 + `defer` 与 guard + `defer` 的“不优化”策略; 证据不足则继续保守后置。
+- [x] I1.6 同步 README、语法文档、测试说明和回归摘要。当前 README、`tool/build/test/README.md`、`doc/start_here.md`、`doc/roadmap_status.md` 和 `CHANGELOG.md` 已对齐阶段 I 当前回归矩阵; 递归 / self-tail TCO 不引入新的源码语法, 因而无需改 `doc/syntax/*`; 最近默认完整回归基线已更新为 `pass=874 fail=0 skip=3`。
+
+验收:
+
+- `cd tool && zig test main.zig`
+- `SKIP_BUILD=1 ./tool/build/test/run_tests.sh`
+- 针对 TCO 的 `compile_ok` WAT pattern 明确区分 optimized self-tail 与 non-tail call。
+
+### I2. `Tuple<bool, u8>` 源码层 Tuple 类型
+
+评估:
+
+- 当前源码层没有 Tuple 类型; 只有 `@wasi` host 签名里的小写 `tuple<...>` WIT 类型。二者不能混用, 否则会把外部 ABI 类型泄漏到普通 do 源码。
+- 不推荐用 `(bool, u8)` 作为类型语法, 因为当前括号已经用于函数类型参数、函数调用、表达式分组和多返回语境, 容易引入歧义。
+- 不推荐第一版支持裸 `(true, 7)` tuple literal, 因为它会和多返回表达式、调用实参列表、return list 的心智模型冲突。
+- 推荐 `Tuple<T0, T1, ...>` 作为源码层大写内建泛型类型, 例如 `Tuple<bool, u8>`。大写 `Tuple` 与 WIT 小写 `tuple<...>` 大小写区分, 也符合当前命名类型 / 泛型类型参数写法。
+- 第一版建议固定 2 个及以上元素, 构造使用类型化位置构造器: `Tuple<bool, u8>{flag, code}`。读取使用数字位置索引: `@get(pair, 0)` / `@get(pair, 1)`。不支持 `Tuple<bool, u8>{v0 = flag, v1 = code}` 这种命名字段构造, 也不支持 `.v0/.v1` 字段段访问。
+- 代价是需要把 `Tuple` 设为保留类型名或内建类型名。若用户已有 `Tuple` 结构体, 后续实现必须给出明确冲突诊断。
+
+推荐方案:
+
+- 先做类型和构造器, 不做 tuple literal、destructuring、pattern matching 或匿名字段名。
+- 作为编译器内建泛型 record lower 到现有 struct-like layout, 复用字段访问、ARC、storage 和 type args 规则。
+- 与多返回保持边界: 多返回仍是函数 ABI / return list; `Tuple<A, B>` 是单个值。
+
+示例:
+
+```do
+make_pair(flag bool, code u8) -> Tuple<bool, u8> {
+    return Tuple<bool, u8>{flag, code}
+}
+
+test "tuple pair" {
+    pair Tuple<bool, u8> = make_pair(true, 7)
+    ok bool = @get(pair, 0)
+    code u8 = @get(pair, 1)
+    return
+}
+```
+
+拆分:
+
+- [ ] I2.1 固定 `Tuple` 规格。明确 arity 下限、位置构造器参数顺序、数字索引访问规则、是否允许嵌套 `Tuple<Tuple<i32, bool>, u8>`、是否允许 `Tuple` 作为 struct 字段 / storage 元素 / union 分支。
+- [ ] I2.2 更新 grammar / parser。让 `Tuple<...>` 进入 `ValueTypeExpr`、`InlineValueTypeExpr`、`ParamTypeExpr` 和 type args, 并拒绝小写 `tuple<...>` 出现在普通源码类型位置。
+- [ ] I2.3 更新 sema。把 `Tuple` 作为保留内建泛型类型处理, 校验 type arity、位置构造器实参数量 / 类型顺序、数字索引边界和重载匹配。
+- [ ] I2.4 更新 codegen。为 `Tuple<...>` 生成稳定 layout / field access / return / param / storage lowering, 并覆盖 scalar + managed payload。
+- [ ] I2.5 补正反例回归。正例覆盖 `Tuple<bool, u8>{flag, code}`、`@get(pair, 0)`、`@get(pair, 1)`、嵌套 Tuple、Tuple 作为单返回和 struct 字段; 反例覆盖 `Tuple<>`、`Tuple<T>`、位置构造实参数量不匹配、命名字段构造、越界数字索引、小写 `tuple<...>` 源码误用。
+- [ ] I2.6 同步 README、`doc/syntax/type.md`、`doc/spec_rules.md`、`doc/grammar.peg` 和测试说明。
+
+验收:
+
+- `cd tool && zig test main.zig`
+- `SKIP_BUILD=1 ./tool/build/test/run_tests.sh`
+- Tuple 正反例必须同时覆盖 `do test`、`do build` WAT pattern 和错误诊断。
+
+## 12. 当前下一步
+
+当前状态:
+
+1. 阶段 H 已完成最终验证; 当前无新的未记录阻断。
+2. D2.1 已按用户确认的 B 方案绿色 regression 收口, 阶段 D 当前无剩余 blocked 残留。
+3. G6.1/G6.3 仍等待用户决策; G6.2 因当前无 async/Future runtime 暂时阻断, 不在未确认 API/运行时边界前扩 codegen。
+4. 阶段 I 已进入实现; I1.1、I1.2 和 I1.6 已完成, 当前继续推进 I1.3-I1.5 的更完整回归矩阵, 以及 I2 `Tuple<...>` 设计后实现。
 
 推荐理由:
 
@@ -1069,10 +1192,11 @@
 - C1 是当前标准库最靠近用户价值的能力, 也会反向验证字段反射和类型边界。
 - C2.1 已固定 Field 元数据只存在于编译期字段反射循环内, 不能作为普通值绑定、传参或逃逸; C2.2 已固定 `@field_get` 的静态展开、重载分派和异构字段接收边界; C2.3 已固定 `@field_set` 的同名自赋值 lowering 和类型约束; C2.4 已用 JSON compiled fixture 验证 field API 足够表达当前序列化/反序列化路径; C2.5 已完成字段反射规则和测试说明同步。
 - C3.1 已盘点 bytes/text 的公开 API、UTF-8 边界和测试矩阵; C3.2 已把 `ok/121_source_text_type.do` 升级为 compiled bytes/text 转换正例; C3.3 已把 `ok/98_utf_lib.do` 升级为 compiled UTF-8/UTF-16 正反例并补 union storage payload lowering 回归; C3.4 已同步 `spec_rules` 和 `syntax/type` 的 bytes/text/utf8/utf16 规则。
-- C4.1 已确认当前集合 skip 没有 parser/语法缺口, `do check` 全部通过; C4.2 已把 `49_list_storage_items`、`56_list_del`、`65_list_add_variadic` 固定为 compiled 必过用例并从 skip 收回; C4.3 已把 `113_set_common_ops` 固定为 compiled 必过用例并收回; C4.4 已把 `36_hash_map_lib_ops`、`37_hash_map_set_missing_key`、`57_hash_map_del`、`115_hash_map_common_wrappers` 固定为 compiled 必过用例并收回; C4.5 已收回 8 个漏网 compiled 可执行用例, 并更新剩余 skip / NoTestDecl 分类。C5.1 已完成 `src/*.do` 覆盖盘点; C5.2 已先补 `binary.do` 和 `path.do` 非 variadic helper executable fixture。下一步继续 C5.2 的 `url/range/slice/bytes/hex` 纯函数库 fixture。
+- C4.1 已确认当前集合 skip 没有 parser/语法缺口, `do check` 全部通过; C4.2 已把 `49_list_storage_items`、`56_list_del`、`65_list_add_variadic` 固定为 compiled 必过用例并从 skip 收回; C4.3 已把 `113_set_common_ops` 固定为 compiled 必过用例并收回; C4.4 已把 `36_hash_map_lib_ops`、`37_hash_map_set_missing_key`、`57_hash_map_del`、`115_hash_map_common_wrappers` 固定为 compiled 必过用例并收回; C4.5 已收回 8 个漏网 compiled 可执行用例, 并更新剩余 skip / NoTestDecl 分类。C5.1 已完成 `src/*.do` 覆盖盘点; C5.2 已为 `binary.do`、`path.do` 非 variadic helper、`url.do` encode 子集、`range.do`、`slice.do` 访问 helper、`bytes.do` sequence helper 和 `hex.do` encode 子集补 executable fixture; C5.3 已完成基础库 executable/compiled fixture 收口; C5.4 已把 README/spec_rules 收窄到当前稳定公开边界。H1.3 已把标准库源码 `NoTestDecl` 从 skip 改为 metadata-only pass, H1.4 已为剩余 3 个 skip 记录原因和恢复条件, H2.1 已确认当前 markdown 本地链接无缺失, H2.2 已发现 README Roadmap 状态漂移, H2.3 已修正 README 过期状态描述, H3.1 已列出 55 个显式诊断 code/message, H3.2/H3.3 已修复 `InvalidReturnStmt` summary/hint 不一致, H3.4 full regression 已通过, H4 release smoke 已通过, H5.1 已把当前 v1 已完成能力汇总到 README, H5.2 已把 v1 非目标单独汇总到 README, H5.3 已把下一阶段计划写入 README, 阶段 H 最终验证已通过, 当前默认完整回归为 `pass=874 fail=0 skip=3`; `RUN_WASM=1` 扩展回归为 `pass=833 fail=0 skip=3`; `16/96/118` 等 recv/WASI/resource wrapper 继续后置。阶段 C 已完成, D1-D5 可推进项已完成, D2.1 已按用户确认 B 方案绿色 regression 收口, E1-E5 已完成, 阶段 F 已完成到 rename 评估并决定 v1 不支持 rename; G1-G5 已完成; G6.1、G6.3 已按阻断记录等待用户决策; G6.2 因当前无 async/Future runtime 暂时阻断; G6.4 已完成 public flags API 决策。
 
 执行方式:
 
-- 用户说 `go` / `next` 时, 默认只推进阶段 C 的下一个未完成小项。
-- 完成阶段 C 的任一子项后, 立即在 `doc/roadmap_status.md` 记录进度和验证。
-- 若阶段 C 暴露出需要用户决策的字段反射、bytes/text 或 JSON 支持矩阵冲突, 先写入 `doc/roadmap_status.md` 的阻塞记录, 不直接扩大语法能力。
+- 用户说 `go` / `next` 时, 默认先检查是否有新的发布候选回归、文档漂移或可独立收口的小项。
+- 完成任一子项后, 立即在 `doc/roadmap_status.md` 记录进度和验证。
+- 若没有新的可独立收口小项, 不绕过当前阻断: G6.1/G6.3 需要用户决策; G6.2 需要未来 async/Future runtime 支持。
+- 若阶段 D 暴露出需要用户决策的 ownership / ARC / FBIP 语义冲突, 先写入 `doc/roadmap_status.md` 的阻塞记录, 不直接扩大源码语法能力。

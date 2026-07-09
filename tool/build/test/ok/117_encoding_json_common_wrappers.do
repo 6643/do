@@ -21,6 +21,36 @@ json_escape = @lib("json.do", escape)
 json_quote = @lib("json.do", quote)
 json_unescape = @lib("json.do", unescape)
 
+base64_bytes_eq(value [u8] | Base64Error, expect [u8]) -> bool {
+    if @is(value, Base64Error) return false
+    return @eq(value, expect)
+}
+
+base64_is_bad_length(value [u8] | Base64Error) -> bool {
+    if @is(value, Base64Error) return @eq(value, Base64BadLength)
+    return false
+}
+
+hex_bytes_eq(value [u8] | HexError, expect [u8]) -> bool {
+    if @is(value, HexError) return false
+    return @eq(value, expect)
+}
+
+hex_is_bad_length(value [u8] | HexError) -> bool {
+    if @is(value, HexError) return @eq(value, HexBadLength)
+    return false
+}
+
+json_bytes_eq(value [u8] | JsonError, expect [u8]) -> bool {
+    if @is(value, JsonError) return false
+    return @eq(value, expect)
+}
+
+json_is_bad_escape(value [u8] | JsonError) -> bool {
+    if @is(value, JsonError) return @eq(value, JsonBadEscape)
+    return false
+}
+
 test "hex base64 json common wrappers" {
     b64 [u8] = base64_encode("hello")
     b64_raw [u8] = base64_encode_raw("hello")
@@ -47,18 +77,18 @@ test "hex base64 json common wrappers" {
     ok = @and(ok, @eq(b64_raw, "aGVsbG8"))
     ok = @and(ok, @eq(b64_url, "-_8="))
     ok = @and(ok, @eq(b64_raw_url, "-_8"))
-    ok = @and(ok, @eq(b64_dec, "hello"))
-    ok = @and(ok, @eq(b64_raw_dec, "hello"))
-    ok = @and(ok, @eq(b64_url_dec, .{251, 255}))
-    ok = @and(ok, @eq(b64_raw_url_dec, .{251, 255}))
-    ok = @and(ok, @eq(b64_bad, Base64BadLength))
+    ok = @and(ok, base64_bytes_eq(b64_dec, "hello"))
+    ok = @and(ok, base64_bytes_eq(b64_raw_dec, "hello"))
+    ok = @and(ok, base64_bytes_eq(b64_url_dec, .{251, 255}))
+    ok = @and(ok, base64_bytes_eq(b64_raw_url_dec, .{251, 255}))
+    ok = @and(ok, base64_is_bad_length(b64_bad))
     ok = @and(ok, @eq(hex, "000fff"))
     ok = @and(ok, @eq(hex_upper, "000FFF"))
-    ok = @and(ok, @eq(hex_dec, .{0, 15, 255}))
-    ok = @and(ok, @eq(hex_bad, HexBadLength))
+    ok = @and(ok, hex_bytes_eq(hex_dec, .{0, 15, 255}))
+    ok = @and(ok, hex_is_bad_length(hex_bad))
     ok = @and(ok, @eq(escaped, "a\\\"b\\\\c\\n"))
     ok = @and(ok, @eq(quoted, "\"a\\\"\""))
-    ok = @and(ok, @eq(unescaped, "a\"b\\c\n"))
-    ok = @and(ok, @eq(json_bad, JsonBadEscape))
+    ok = @and(ok, json_bytes_eq(unescaped, "a\"b\\c\n"))
+    ok = @and(ok, json_is_bad_escape(json_bad))
     if ok return
 }

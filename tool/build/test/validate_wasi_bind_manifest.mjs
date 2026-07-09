@@ -1,17 +1,30 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const args = process.argv.slice(2);
 const parsedArgs = parseArgs(args);
 if (!parsedArgs) {
-  console.error("usage: validate_wasi_bind_manifest.mjs [--registry file.json] [--json|--component-plan|--wit|--wit-dir dir|--core-imports|--core-shims|--component-input-dir dir] <file.wat>");
+  console.error("usage: validate_wasi_bind_manifest.mjs [--registry file.json] [--json|--component-plan|--wit|--wit-dir dir|--core-imports|--core-shims|--component-input-dir dir|--component-wasm file.wasm] <file.wat>");
   process.exit(2);
 }
 
-const { jsonOutput, componentPlanOutput, witOutput, witDirOutput, coreImportsOutput, coreShimsOutput, componentInputDirOutput, watPath, registryPath } = parsedArgs;
+const {
+  jsonOutput,
+  componentPlanOutput,
+  witOutput,
+  witDirOutput,
+  coreImportsOutput,
+  coreShimsOutput,
+  componentInputDirOutput,
+  componentWasmOutput,
+  watPath,
+  registryPath,
+} = parsedArgs;
 const witRegistry = loadRegistry(registryPath);
 const wat = fs.readFileSync(watPath, "utf8");
 const lines = wat.split(/\r?\n/);
@@ -71,6 +84,9 @@ if (witOutput) {
 } else if (componentInputDirOutput) {
   emitComponentInputDir(buildComponentPlan(bindings), componentInputDirOutput, wat);
   console.log(`ok: wrote component input directory ${componentInputDirOutput}`);
+} else if (componentWasmOutput) {
+  emitComponentWasm(buildComponentPlan(bindings), componentWasmOutput, wat);
+  console.log(`ok: wrote component wasm ${componentWasmOutput}`);
 } else if (componentPlanOutput) {
   console.log(JSON.stringify(buildComponentPlan(bindings), null, 2));
 } else if (jsonOutput) {
@@ -87,6 +103,7 @@ function parseArgs(items) {
   let coreImportsOutput = false;
   let coreShimsOutput = false;
   let componentInputDirOutput = null;
+  let componentWasmOutput = null;
   let registryPath = defaultRegistryPath();
   let watPath = null;
   for (let i = 0; i < items.length; i += 1) {
@@ -123,6 +140,12 @@ function parseArgs(items) {
       componentInputDirOutput = items[i];
       continue;
     }
+    if (item === "--component-wasm") {
+      i += 1;
+      if (i >= items.length) return null;
+      componentWasmOutput = items[i];
+      continue;
+    }
     if (item === "--registry") {
       i += 1;
       if (i >= items.length) return null;
@@ -140,9 +163,21 @@ function parseArgs(items) {
     Number(witDirOutput !== null) +
     Number(coreImportsOutput) +
     Number(coreShimsOutput) +
-    Number(componentInputDirOutput !== null);
+    Number(componentInputDirOutput !== null) +
+    Number(componentWasmOutput !== null);
   if (outputModeCount > 1) return null;
-  return { jsonOutput, componentPlanOutput, witOutput, witDirOutput, coreImportsOutput, coreShimsOutput, componentInputDirOutput, registryPath, watPath };
+  return {
+    jsonOutput,
+    componentPlanOutput,
+    witOutput,
+    witDirOutput,
+    coreImportsOutput,
+    coreShimsOutput,
+    componentInputDirOutput,
+    componentWasmOutput,
+    registryPath,
+    watPath,
+  };
 }
 
 function defaultRegistryPath() {
@@ -526,6 +561,46 @@ function emitComponentInputDir(plan, dirPath, coreWat) {
       2,
     )}\n`,
   );
+}
+
+function emitComponentWasm(plan, outputPath, coreWat) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "do-component-wasm-"));
+  try {
+    emitComponentInputDir(plan, tmpDir, coreWat);
+
+    const embeddedPath = path.join(tmpDir, "embedded.wasm");
+    const componentPath = path.join(tmpDir, "component.wasm");
+    runWasmTools(
+      [
+        "component",
+        "embed",
+        path.join(tmpDir, "wit"),
+        path.join(tmpDir, "core_component.wat"),
+        "-o",
+        embeddedPath,
+      ],
+      "wasm-tools component embed",
+    );
+    runWasmTools(["component", "new", embeddedPath, "-o", componentPath], "wasm-tools component new");
+    runWasmTools(["validate", componentPath], "wasm-tools validate");
+
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+    fs.copyFileSync(componentPath, outputPath);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+function runWasmTools(args, label) {
+  const wasmTools = process.env.WASM_TOOLS || "wasm-tools";
+  const result = spawnSync(wasmTools, args, { encoding: "utf8" });
+  if (result.error) {
+    failPlan(`${label} failed: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    const detail = [result.stderr, result.stdout].filter(Boolean).join("\n").trim();
+    failPlan(`${label} failed${detail.length > 0 ? `: ${detail}` : ""}`);
+  }
 }
 
 function componentCoreWat(coreWat) {

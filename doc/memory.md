@@ -558,11 +558,6 @@ return-only 子集也暂不落地:
 
 验证证据:
 
-1. `cd tool && zig test build/codegen.zig` 结果 `All 13 tests passed.`。
-2. `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 必须继续保持绿色，证明 lowering 未漂移。
-
-验证证据:
-
 1. 新增 `tool/build/codegen.zig` 内部 Zig 单测, 覆盖 `unknown` 默认值、`param_or_import`、`loop_source` 和 `compiler_temp` 标注。
 2. `cd tool && zig test build/codegen.zig` 结果为 `All 1 tests passed.`。
 3. `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 必须继续保持现有摘要不变, 证明 lowering 未漂移。
@@ -615,6 +610,54 @@ return-only 子集也暂不落地:
 2. 不修改 `emitBody(...)` 的 loop 内 call 参数 move 门。
 3. 不放开任何新的 `arc-call-move`。
 
+### 8.14 D1.2 ownership facts 数据结构
+
+D1.2 结论: 已新增内部 `ownership_facts` 数据结构, 只记录 move / copy / release-skip 决策所需事实。D1.2 完成时暂未接入 `codegen.zig`; D1.3 已把普通 call 参数 last-use move 判断接入 facts helper, 仍不改变当前保守 lowering。
+
+当前数据结构:
+
+1. `tool/build/ownership_facts.zig` 定义 `SourceOrigin`, 镜像当前 codegen-local origin 分类, 为后续迁移 `Local` / `StructLocal` / `StorageLocal` / `UnionLocal` 的 origin 字段做准备。
+2. `MoveCandidateKind` 覆盖 direct、call arg、union-binding call arg、field get、field set、return value 和 dead alias 这几类当前分散判断。
+3. `MoveContext` 统一承载 body / statement / arg / args token range、`PathCleanupFacts`、defer 可见性、loop 上下文和 allow gate。
+4. `MoveUseWindows` 显式承载 fresh source gap、after expr、after arg、after stmt 和 body rest, 避免 D1.3 继续把 use-after window 隐式散落在各 helper。
+5. `MoveDecision` 显式区分 accept / reject, reject 使用 `MoveRejectReason`; accept 携带 zero source、zero field 和 release-skip action。
+
+当前 D1.2 完成时故意保持不变的边界:
+
+1. `tool/build/codegen.zig` 仍使用原有 `directManagedLastUseMoveSource(...)`、`directManagedCallLastUseMoveSource(...)`、`directManagedUnionBindingCallMoveSource(...)` 和 `fieldGetLastUseMoveSource(...)`。
+2. `emitBody(...)` 仍使用 `loop_ctx == null` 作为 loop 内 call 参数 move 的全局门。
+3. 不放开新的 move 场景, 不改变任何 WAT pattern。
+
+验证证据:
+
+1. RED: `cd tool && zig test build/ownership_facts.zig` 失败于 `use of undeclared identifier 'MoveCandidate'`。
+2. GREEN: `cd tool && zig test build/ownership_facts.zig` 结果为 `All 4 tests passed.`。
+3. 聚合验证: `cd tool && zig test main.zig` 结果为 `All 56 tests passed.`。
+
+### 8.15 D1.3 call 参数 move 判断迁移到 facts
+
+D1.3 结论: 普通用户函数 call 参数 last-use move 的 allow/defer/use-after 判断已从 `directManagedCallLastUseMoveSource(...)` 迁移到 `ownership_facts.decideCallArgMove(...)`。迁移只改变内部判断入口, 不改变 WAT lowering。
+
+当前实现:
+
+1. `tool/build/ownership_facts.zig` 新增 `decideCallArgMove(...)`, 对 `.call_arg` candidate 统一判断 disabled、defer visible、after-arg use、after-stmt use 和 body-rest use。
+2. `tool/build/codegen.zig` 新增 `ownership_facts` import 和 `factsSourceOrigin(...)` 显式映射, 暂不整体搬迁 codegen-local `SourceOrigin`。
+3. `directManagedCallLastUseMoveSource(...)` 仍负责 direct managed local 识别、source/origin 查找和旧返回结构构造; move 是否接受改由 `MoveCandidate` + `decideCallArgMove(...)` 决定。
+
+当前故意保持不变的边界:
+
+1. `emitBody(...)` 仍使用 `loop_ctx == null` 作为 loop 内 call 参数 move 的全局门。
+2. union-binding call、field-get、field-set、return move 和 dead alias 仍未迁移到 facts helper。
+3. 不放开新的 `arc-call-move`, 不改变 source 清零和 `arc_inc` emit 位置。
+
+验证证据:
+
+1. RED: `cd tool && zig test build/ownership_facts.zig` 失败于 `use of undeclared identifier 'decideCallArgMove'`。
+2. GREEN: `cd tool && zig test build/ownership_facts.zig` 结果为 `All 5 tests passed.`。
+3. Focused codegen: `cd tool && zig test build/codegen.zig` 结果为 `All 30 tests passed.`。
+4. ARC WAT pattern: `161_arc_storage_bare_call_last_use_move_lower` 仍包含 `arc-call-move data`; `162_arc_storage_param_call_live_source_inc_lower` 仍不包含 `arc-call-move data`。
+5. Full regression: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 结果为 `pass=784 fail=0 skip=35`。
+
 ---
 
 ## 9. Linear Memory 与 host ABI
@@ -660,7 +703,7 @@ Wasm linear memory 是 runtime 实现细节。源码不暴露地址。
 5. component model 资源生命周期集成。
 6. 闭包环境和捕获变量生命周期设计。
 
-### 11.1 03.9 FBIP reuse 最小设计边界
+### 11.1 03.9 / D5.1 FBIP reuse 最小设计边界
 
 03.9 结论: `FBIP reuse` 只作为实现优化讨论, 不能改变源码层值语义。当前先收口最小设计边界, 暂不落实现。
 
@@ -675,30 +718,37 @@ Wasm linear memory 是 runtime 实现细节。源码不暴露地址。
 2. 写路径本来就允许原地更新, 或可在当前 object 上安全完成 overwrite / append / field replace。
 3. 被写目标在源码层不可观察到中间状态。
 4. 若 payload 含 managed 子值, 新旧 child 的 retain / release 顺序仍满足现有 ARC 规则。
+5. 写路径必须同时有保守 COW / clone 回退分支; 没有回退分支的直接 payload 写入不能标记为 FBIP reuse。
+6. 跨变量写入必须有 alias protection: 当源码 source local 和 target local 不是同一个 handle local 时, 在调用 runtime helper 或执行写分支前临时 `inc` source, 写入完成后再 `dec` source, 防止仍可见旧值被 runtime `rc == 1` 误判为唯一对象。
 
 mutability 边界:
 
 1. 源码层仍然只有值语义, 没有用户可见 mutable reference。
 2. `reuse` 不是“对象变成可变”, 而是“编译器在唯一拥有时选择原地实现”。
-3. 带共享别名、borrowed source、import/param helper source、loop-carried source 的对象一律不能因为 `reuse` 被视为可变。
+3. 共享别名、borrowed source、import/param helper source、loop-carried source 不能只凭静态 origin 被当成唯一对象; 它们最多进入带 runtime `rc == 1` 检查和 COW 回退的写路径。
+4. `rc == 1` 只能决定当前写 helper 的分支, 不能反向放宽 field-get move、call 参数 move、return move 或 loop 内 move。
 
 COW 回退条件:
 
 1. 只要 `rc > 1`, 必须回退到 clone / grow 路径。
 2. 即使 `rc == 1`, 只要容量不足、layout 不支持原地替换、或 child release 次序无法稳定证明, 也必须回退。
 3. 任何可能把旧值可观察行为改掉的情况, 都必须回退到现有 COW / overwrite 逻辑。
+4. 若 clone 分支需要复制 managed child, clone 后必须 `inc` 被复制 child; 若原地 overwrite managed child, 必须先把 RHS 放入 scratch local, 再在新旧 child 不同的时候 `dec` 旧 child, 最后写入新 child。
 
 `rc == 1` 的使用边界:
 
 1. `rc == 1` 只是必要条件, 不是充分条件。
 2. 不能把临时 `inc/dec` 摆动、defer cleanup 可见性、或 call 边界上的短暂唯一性当作稳定唯一拥有。
 3. `rc == 1` 的判断只能用于当前写路径本地决策, 不能推出跨 block / loop / call 的长期唯一性。
+4. 对 storage `@set/@put`, 当前合格复用分支是: index/range 或 len/cap 条件先通过; `rc == 1` 且 `@put` 时 `len < cap`; 然后原地写 element / append 并更新 len。否则 clone / grow 后写入。
+5. 对 managed struct field update, D5 合格形态必须是 `rc == 1` 时原地替换字段, `rc > 1` 时分配新 struct object、复制其他字段并按 managed child 规则 retain/release; 当前仅有直接 payload 写入的路径不算完整 FBIP reuse 实现。
 
 当前明确不做:
 
 1. 不把 `reuse` 扩大成通用 mutability 模型。
 2. 不把 `reuse` 用到 loop move、call 参数 move、或 return-only move 判定。
 3. 不为 `reuse` 启动完整 ownership IR 实现; 若后续发现仅靠局部 `rc == 1` + 现有 ownership facts 无法稳定证明, 再回到 03.8.4 的完整 IR 启动条件。
+4. 不为 D5.1 修改用户可见语法、`@set/@put` 返回值语义、函数参数 ownership contract 或 loop binding 规则。
 
 ---
 
@@ -738,7 +788,7 @@ COW 回退条件:
 17. 已有 `[u8]` 和 managed struct 覆盖赋值的 release lowering: 字符串 overwrite 先释放旧 storage; `@set/@put` overwrite 和 managed struct handle overwrite 先把 RHS 写入 scratch local, 再按新旧 handle 是否相同决定是否释放旧值。
 18. 已有通用 `[T]` 的 `@len/@get/@set/@put` handle lowering，以及 managed 元素 storage 的 literal/get/release/set/put 最小闭环。
 19. 已有 `text` runtime 表示和 `[u8]` 边界函数的当前 v1 子集；`text` 仍不自动等同于 `[u8]`。
-20. 已有字段读取 move 的唯一拥有 / alias 证明设计: v1 只允许本地 fresh-owner 且 alias-free 的字段读取 move; 参数、借用、helper/shared-source、loop-carried source 和同语句多字段读取继续保守。下一步若实现 03.6, 必须先按 8.5 补拒绝/允许回归。
+20. 已有字段读取 move 的唯一拥有 / alias 证明设计和实现边界: v1 只允许本地 fresh-owner 且 alias-free 的字段读取 move; 参数、借用、helper/shared-source、loop-carried source 和同语句多字段读取继续保守。后续继续扩展时, 必须先按 8.5 边界保留拒绝/允许回归。
 21. 最后再评估 `@store_*`、真实 atomic 和 host/WASI 复杂 ABI。
 
 文档侧验证入口:

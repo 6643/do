@@ -12,6 +12,7 @@ list_find_index = @lib("list.do", find_index)
 list_any = @lib("list.do", any)
 list_all = @lib("list.do", all)
 list_count = @lib("list.do", count)
+list_update = @lib("list.do", update)
 
 test "list functional ops" {
     seed i32 = 0

@@ -5,7 +5,7 @@
 .host_file_open_at = @wasi("filesystem/types/descriptor.open-at", (descriptor, path-flags, text, open-flags, descriptor-flags) -> result<descriptor,error-code>)
 .host_file_drop = @wasi("filesystem/types/descriptor.drop", (descriptor) -> nil)
 
-FileError error = FileOpenFailed | FileClosed | FileReadFailed | FileWriteFailed | FileFlushFailed | FileCloseFailed | FileLinkFailed
+FileError error = FileOpenFailed | FileClosed | FileReadFailed | FileWriteFailed | FileFlushFailed | FileLinkFailed
 
 File {
     .id i64
@@ -35,9 +35,9 @@ File {
     return FileOpenFailed
 }
 
-close_file(file File) -> FileError | nil {
+close_file(file File) -> nil {
     host_file_drop(@as(i32, file_id(file)))
-    return nil
+    return
 }
 
 flush_file(file File) -> FileError | nil {
@@ -62,15 +62,19 @@ write_file(file File, data [u8], offset usize) -> FileError | nil {
 }
 
 link_file(old_file File, old_path text, new_file File, new_path text) -> FileError | nil {
+    path_flags i32 = 0
     status i32 = 0
-    _, status = host_file_link_at(@as(i32, file_id(old_file)), 0, old_path, @as(i32, file_id(new_file)), new_path)
+    _, status = host_file_link_at(@as(i32, file_id(old_file)), path_flags, old_path, @as(i32, file_id(new_file)), new_path)
     return file_status_to_error(status, FileLinkFailed)
 }
 
 open_file_at(dir File, path text) -> File | FileError {
+    path_flags i32 = 0
+    open_flags i32 = 0
+    descriptor_flags i32 = 0
     descriptor i32 = 0
     status i32 = 0
-    descriptor, status = host_file_open_at(@as(i32, file_id(dir)), 0, path, 0, 0)
+    descriptor, status = host_file_open_at(@as(i32, file_id(dir)), path_flags, path, open_flags, descriptor_flags)
     return file_status_to_open_result(descriptor, status)
 }
 

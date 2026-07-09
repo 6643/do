@@ -5,4 +5,5 @@ test "loop label break" {
             break #outer
         }
     }
+    return
 }

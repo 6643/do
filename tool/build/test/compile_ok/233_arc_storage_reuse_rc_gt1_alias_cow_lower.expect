@@ -1,0 +1,16 @@
+count=2 call $__arc_inc
+count=1 call $__storage_set_u8
+count=1 local.set $alias
+local.get $data
+call $__arc_inc
+local.set $alias
+local.get $data
+call $__arc_inc
+drop
+local.get $data
+i32.const 1
+i32.const 90
+call $__storage_set_u8
+local.get $data
+call $__arc_dec
+local.set $next

@@ -18,6 +18,7 @@ FMT_DIR="$TEST_DIR/fmt"
 LSP_DIR="$TEST_DIR/lsp"
 PENDING_OK_DIR="$TEST_DIR/pending/ok"
 PENDING_ERR_DIR="$TEST_DIR/pending/err"
+PENDING_COMPILE_OK_DIR="$TEST_DIR/pending/compile_ok"
 TMP_DIR="$TEST_DIR/tmp"
 RUN_PENDING="${RUN_PENDING:-0}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
@@ -797,8 +798,8 @@ run_std_src_case() {
     fi
 
     if grep -Fq "NoTestDecl" "$stderr_file"; then
-        echo "[SKIP] std src $name (NoTestDecl)"
-        ((skip_count += 1))
+        echo "[PASS] std src $name (NoTestDecl metadata only)"
+        ((pass_count += 1))
         return
     fi
 
@@ -1092,6 +1093,19 @@ run_compile_ok_case() {
                     if ! "$WASM_TOOLS" validate "$component_input_component_file" >"$TMP_DIR/compile_${name}.component_input.validate.stdout" 2>"$TMP_DIR/compile_${name}.component_input.validate.stderr"; then
                         echo "[FAIL] compile ok  $name (component input component validation failed)"
                         cat "$TMP_DIR/compile_${name}.component_input.validate.stderr"
+                        ((fail_count += 1))
+                        return
+                    fi
+                    local component_input_tool_component_file="$TMP_DIR/compile_${name}.component_input.tool.component.wasm"
+                    if ! WASM_TOOLS="$WASM_TOOLS" "$NODE_BIN" "$TEST_DIR/validate_wasi_bind_manifest.mjs" --registry "$WASI_REGISTRY" --component-wasm "$component_input_tool_component_file" "$wat_file" >"$TMP_DIR/compile_${name}.component_input.tool_component.stdout" 2>"$TMP_DIR/compile_${name}.component_input.tool_component.stderr"; then
+                        echo "[FAIL] compile ok  $name (component input tool component wasm generation failed)"
+                        cat "$TMP_DIR/compile_${name}.component_input.tool_component.stderr"
+                        ((fail_count += 1))
+                        return
+                    fi
+                    if [[ ! -s "$component_input_tool_component_file" ]]; then
+                        echo "[FAIL] compile ok  $name (component input tool component wasm missing output)"
+                        cat "$TMP_DIR/compile_${name}.component_input.tool_component.stdout"
                         ((fail_count += 1))
                         return
                     fi
@@ -1520,6 +1534,13 @@ if [[ "$RUN_PENDING" == "1" ]]; then
     for case_file in "$PENDING_ERR_DIR"/*.do; do
         [[ -e "$case_file" ]] || continue
         run_err_case "$case_file"
+    done
+
+    echo "[INFO] run pending compile ok cases"
+    for case_file in "$PENDING_COMPILE_OK_DIR"/*.do; do
+        [[ -e "$case_file" ]] || continue
+        [[ "$(basename "$case_file")" == fixture.*.do ]] && continue
+        run_compile_ok_case "$case_file"
     done
 fi
 

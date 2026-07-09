@@ -2702,6 +2702,24 @@ test "consecutive imports before declarations are accepted" {
     try std.testing.expectEqual(@as(usize, 3), program.top_level_count);
 }
 
+test "storage variadic param records open arity" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\concat(a [u8], b [u8], rest ...[u8]) -> [u8] {
+        \\    return a
+        \\}
+    ;
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+
+    var program = try parseProgram(allocator, tokens, source.len);
+    defer program.deinit(allocator);
+
+    try std.testing.expectEqual(@as(usize, 1), program.func_sigs.len);
+    try std.testing.expectEqual(@as(usize, 2), program.func_sigs[0].param_min);
+    try std.testing.expectEqual(@as(?usize, null), program.func_sigs[0].param_max);
+}
+
 test "collection loop requires value and index bindings in parser" {
     const allocator = std.testing.allocator;
     const source =

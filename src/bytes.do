@@ -49,31 +49,64 @@ slice(xs [u8], from usize, end usize) -> [u8] | BytesError {
 }
 
 slice_or(xs [u8], from usize, end usize, fallback [u8]) -> [u8], bool {
-    value = slice(xs, from, end)
-    if @is(value, BytesError) return fallback, false
-    return value, true
+    if @gt(from, end) return fallback, false
+    if @gt(end, @len(xs)) return fallback, false
+
+    out [u8] = .{}
+    i usize = from
+    loop {
+        if @ge(i, end) return out, true
+        out = @put(out, @get(xs, i))
+        i = @add(i, 1)
+    }
 }
 
 take(xs [u8], count usize) -> [u8] | BytesError {
     if @gt(count, @len(xs)) return BytesOutOfBounds
-    return slice(xs, 0, count)
+
+    out [u8] = .{}
+    i usize = 0
+    loop {
+        if @ge(i, count) return out
+        out = @put(out, @get(xs, i))
+        i = @add(i, 1)
+    }
 }
 
 take_or(xs [u8], count usize, fallback [u8]) -> [u8], bool {
-    value = take(xs, count)
-    if @is(value, BytesError) return fallback, false
-    return value, true
+    if @gt(count, @len(xs)) return fallback, false
+
+    out [u8] = .{}
+    i usize = 0
+    loop {
+        if @ge(i, count) return out, true
+        out = @put(out, @get(xs, i))
+        i = @add(i, 1)
+    }
 }
 
 drop(xs [u8], count usize) -> [u8] | BytesError {
     if @gt(count, @len(xs)) return BytesOutOfBounds
-    return slice(xs, count, @len(xs))
+
+    out [u8] = .{}
+    i usize = count
+    loop {
+        if @ge(i, @len(xs)) return out
+        out = @put(out, @get(xs, i))
+        i = @add(i, 1)
+    }
 }
 
 drop_or(xs [u8], count usize, fallback [u8]) -> [u8], bool {
-    value = drop(xs, count)
-    if @is(value, BytesError) return fallback, false
-    return value, true
+    if @gt(count, @len(xs)) return fallback, false
+
+    out [u8] = .{}
+    i usize = count
+    loop {
+        if @ge(i, @len(xs)) return out, true
+        out = @put(out, @get(xs, i))
+        i = @add(i, 1)
+    }
 }
 
 first(xs [u8]) -> u8 {
@@ -144,36 +177,22 @@ contains(xs [u8], needle [u8]) -> bool {
 }
 
 trim_left_byte(xs [u8], value u8) -> [u8] {
+    empty [u8] = .{}
     from usize = 0
     loop {
-        if @ge(from, @len(xs)) return .{}
-        if @ne(@get(xs, from), value) {
-            out [u8] = .{}
-            i usize = from
-            loop {
-                if @ge(i, @len(xs)) return out
-                out = @put(out, @get(xs, i))
-                i = @add(i, 1)
-            }
-        }
+        if @ge(from, @len(xs)) return empty
+        if @ne(@get(xs, from), value) return slice_from(xs, from, @len(xs))
         from = @add(from, 1)
     }
 }
 
 trim_right_byte(xs [u8], value u8) -> [u8] {
+    empty [u8] = .{}
     end usize = @len(xs)
     loop {
-        if @eq(end, 0) return .{}
+        if @eq(end, 0) return empty
         prev usize = @sub(end, 1)
-        if @ne(@get(xs, prev), value) {
-            out [u8] = .{}
-            i usize = 0
-            loop {
-                if @ge(i, end) return out
-                out = @put(out, @get(xs, i))
-                i = @add(i, 1)
-            }
-        }
+        if @ne(@get(xs, prev), value) return slice_from(xs, 0, end)
         end = prev
     }
 }
@@ -196,5 +215,15 @@ replace(xs [u8], needle [u8], replacement [u8]) -> [u8] {
             out = @put(out, @get(xs, i))
             i = @add(i, 1)
         }
+    }
+}
+
+.slice_from(xs [u8], from usize, end usize) -> [u8] {
+    out [u8] = .{}
+    i usize = from
+    loop {
+        if @ge(i, end) return out
+        out = @put(out, @get(xs, i))
+        i = @add(i, 1)
     }
 }

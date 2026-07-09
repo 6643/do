@@ -1,8 +1,13 @@
 const std = @import("std");
+const backend_ir = @import("backend_ir.zig");
+const component_metadata_wat = @import("component_metadata_wat.zig");
+const function_body_wat = @import("function_body_wat.zig");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const ownership = @import("ownership.zig");
+const ownership_facts = @import("ownership_facts.zig");
 const parser = @import("parser.zig");
+const runtime_prelude_wat = @import("runtime_prelude_wat.zig");
 const test_runner = @import("test_runner.zig");
 
 const SourceOrigin = enum {
@@ -55,18 +60,8 @@ const ValueEnumDecl = struct {
     owned_name: bool = false,
 };
 
-const ManagedFieldOffset = struct {
-    name: []const u8,
-    offset: usize,
-};
-
-const StructLayout = struct {
-    name: []const u8,
-    type_id: usize,
-    payload_bytes: usize,
-    managed_fields: []const ManagedFieldOffset,
-    owned_name: bool = false,
-};
+const ManagedFieldOffset = runtime_prelude_wat.ManagedFieldOffset;
+const StructLayout = runtime_prelude_wat.StructLayout;
 
 const StructLocal = struct {
     name: []const u8,
@@ -142,6 +137,7 @@ const STORAGE_WRITE_INDEX_TMP_LOCAL = "__storage_write_index_tmp";
 const STORAGE_WRITE_LEN_TMP_LOCAL = "__storage_write_len_tmp";
 const STORAGE_WRITE_NEXT_TMP_LOCAL = "__storage_write_next_tmp";
 const STORAGE_WRITE_SCAN_TMP_LOCAL = "__storage_write_scan_tmp";
+const STORAGE_WRITE_TARGET_TMP_LOCAL = "__storage_write_target_tmp";
 const STRUCT_LITERAL_TMP_LOCAL = "__struct_literal_tmp";
 const NUMERIC_SELECT_LEFT_TMP_I32 = "__numeric_select_left_i32";
 const NUMERIC_SELECT_RIGHT_TMP_I32 = "__numeric_select_right_i32";
@@ -198,6 +194,10 @@ const LocalSet = struct {
         origin: SourceOrigin,
     ) !void {
         const resolved = try self.scopedLocalName(allocator, name, emit_decl);
+        if (findLocalType(self.locals.items, resolved.name)) |existing_ty| {
+            if (!std.mem.eql(u8, existing_ty, ty)) return error.NoMatchingCall;
+            return;
+        }
         try self.locals.append(allocator, .{
             .name = resolved.name,
             .source_name = resolved.source_name,
@@ -436,6 +436,9 @@ const LocalSet = struct {
         if (!hasLocal(self.locals.items, STORAGE_WRITE_SCAN_TMP_LOCAL)) {
             try self.appendBorrowedLocal(allocator, STORAGE_WRITE_SCAN_TMP_LOCAL, "usize", true);
         }
+        if (!hasLocal(self.locals.items, STORAGE_WRITE_TARGET_TMP_LOCAL)) {
+            try self.appendBorrowedLocal(allocator, STORAGE_WRITE_TARGET_TMP_LOCAL, "usize", true);
+        }
     }
 
     fn ensureVariadicPackTmp(self: *LocalSet, allocator: std.mem.Allocator) !void {
@@ -484,6 +487,7 @@ const EMPTY_LOCAL_SET = LocalSet{};
 const FuncParam = struct {
     name: []const u8,
     ty: []const u8,
+    abi_ty: ?[]const u8 = null,
     variadic: bool = false,
     callback: ?OwnedFuncTypeShape = null,
 };
@@ -647,6 +651,11 @@ const LoopControl = struct {
     defer_ctx: *const DeferContext,
 };
 
+const SelfTailTco = struct {
+    func: FuncDecl,
+    loop_label: []const u8,
+};
+
 const CollectionLoopHeader = struct {
     value_name: ?[]const u8,
     index_name: ?[]const u8,
@@ -749,22 +758,7 @@ const WasiHostImport = struct {
     result: []const u8,
 };
 
-const WasiLowering = struct {
-    module: []const u8,
-    name: []const u8,
-    param: ?[]const u8 = null,
-    result: ?[]const u8 = null,
-    result_record: ?[]const u8 = null,
-    result_storage_elem: ?[]const u8 = null,
-    result_unit_error: bool = false,
-    result_link_at_error: bool = false,
-    result_filesize_error: bool = false,
-    result_descriptor_error: bool = false,
-    result_u64_stream_error: bool = false,
-    result_read_error: bool = false,
-    result_list_u8_error: bool = false,
-    resource_drop: bool = false,
-};
+const WasiLowering = component_metadata_wat.WasiLowering;
 
 const WasiLinkAtArgs = struct {
     descriptor_start: usize,
@@ -805,16 +799,7 @@ const ReachVisit = struct {
     call_idx: ?usize = null,
 };
 
-const StringData = struct {
-    lexeme: []const u8,
-    bytes: []const u8,
-    ptr: usize,
-};
-
-const ARC_BLOCK_SIZE: usize = 1024;
-const ARC_OBJECT_HEADER_BYTES: usize = 8;
-const ARC_RELEASE_WORKLIST_BYTES: usize = 512;
-const WASI_RESULT_AREA_BYTES: usize = 64;
+const StringData = runtime_prelude_wat.StringData;
 
 const StringDataContext = struct {
     items: std.ArrayList(StringData) = .empty,
@@ -1011,11 +996,11 @@ pub fn emitWatWithOptions(
     try appendFmt(allocator, &out, "  ;; source_len={d}\n", .{program.source_len});
     try appendFmt(allocator, &out, "  ;; token_count={d}\n", .{program.token_count});
     try appendFmt(allocator, &out, "  ;; top_level_count={d}\n", .{program.top_level_count});
-    try emitWasiBindings(allocator, &out, wasi_imports.items);
-    try emitWasiCoreImports(allocator, &out, wasi_imports.items);
-    try emitHostImports(allocator, &out, host_imports.items);
-    try emitStringDataMemory(allocator, &out, string_data.items.items, options);
-    try emitArcRuntimePrelude(allocator, &out, string_data.items.items, struct_layouts.items);
+    try component_metadata_wat.emitWasiBindings(allocator, &out, wasi_imports.items);
+    try component_metadata_wat.emitWasiCoreImports(allocator, &out, wasi_imports.items);
+    try component_metadata_wat.emitHostImports(allocator, &out, host_imports.items);
+    try runtime_prelude_wat.emitStringDataMemory(allocator, &out, string_data.items.items, .{ .component_core = options.component_core });
+    try runtime_prelude_wat.emitArcRuntimePrelude(allocator, &out, string_data.items.items, struct_layouts.items);
     try emitUserFuncs(allocator, ctx, &out);
     try emitStartFunc(allocator, tokens, ctx, &out);
     try out.appendSlice(allocator, ")\n");
@@ -1160,14 +1145,14 @@ pub fn emitTestWat(
     try appendFmt(allocator, &out, "  ;; token_count={d}\n", .{program.token_count});
     try appendFmt(allocator, &out, "  ;; top_level_count={d}\n", .{program.top_level_count});
     try appendFmt(allocator, &out, "  ;; compiled_test_count={d}\n", .{test_decls.len});
-    try emitWasiBindings(allocator, &out, wasi_imports.items);
-    try emitWasiCoreImports(allocator, &out, wasi_imports.items);
-    try emitHostImports(allocator, &out, host_imports.items);
-    try emitStringDataMemory(allocator, &out, string_data.items.items, .{});
-    try emitArcRuntimePrelude(allocator, &out, string_data.items.items, struct_layouts.items);
+    try component_metadata_wat.emitWasiBindings(allocator, &out, wasi_imports.items);
+    try component_metadata_wat.emitWasiCoreImports(allocator, &out, wasi_imports.items);
+    try component_metadata_wat.emitHostImports(allocator, &out, host_imports.items);
+    try runtime_prelude_wat.emitStringDataMemory(allocator, &out, string_data.items.items, .{});
+    try runtime_prelude_wat.emitArcRuntimePrelude(allocator, &out, string_data.items.items, struct_layouts.items);
     try emitUserFuncs(allocator, ctx, &out);
     try emitTestFuncs(allocator, tokens, test_decls, ctx, &out);
-    try emitTestStartFunc(allocator, test_decls.len, &out);
+    try function_body_wat.emitTestStartFunc(allocator, &out, test_decls.len);
     try out.appendSlice(allocator, ")\n");
     return out.toOwnedSlice(allocator);
 }
@@ -1191,10 +1176,10 @@ fn emitStartFunc(
     defer cleanup_locals.deinit(allocator);
     try collectDirectBodyLocals(allocator, tokens, open_body + 1, close_body, ctx, &cleanup_locals);
 
-    try out.appendSlice(allocator, "  (func $_start\n");
+    try function_body_wat.emitFuncOpen(allocator, out, "_start");
     for (locals.locals.items) |local| {
         if (!local.emit_decl) continue;
-        try appendFmt(allocator, out, "    (local ${s} {s})\n", .{ local.name, codegenWasmType(ctx, local.ty) });
+        try function_body_wat.emitLocalDecl(allocator, out, local.name, codegenWasmType(ctx, local.ty));
     }
     const no_results: []const []const u8 = &.{};
     const root_defer = DeferContext{
@@ -1203,12 +1188,145 @@ fn emitStartFunc(
         .end_idx = close_body,
         .registered_end_idx = close_body,
     };
-    try emitBody(allocator, tokens, open_body + 1, close_body, open_body + 1, &locals, &cleanup_locals, &EMPTY_LOCAL_SET, ctx, no_results, NO_RESULT_ITEMS, null, null, null, &root_defer, null, out);
+    var backend_ir_body = std.ArrayList(u8).empty;
+    defer backend_ir_body.deinit(allocator);
+    const emitted_backend_ir = try emitScalarNumericStartWithBackendIr(allocator, tokens, open_body + 1, close_body, &locals, ctx, &backend_ir_body);
+    if (emitted_backend_ir) {
+        try out.appendSlice(allocator, "    ;; backend-ir-lowering scalar-numeric-start\n");
+        try out.appendSlice(allocator, backend_ir_body.items);
+    }
+    if (!emitted_backend_ir) {
+        try emitBody(allocator, tokens, open_body + 1, close_body, open_body + 1, &locals, &cleanup_locals, &EMPTY_LOCAL_SET, ctx, no_results, NO_RESULT_ITEMS, null, null, null, &root_defer, null, null, out);
+    }
     if (!bodyEndsWithPlainReturn(tokens, open_body + 1, close_body)) {
         try emitFallthroughReleaseManagedLocals(allocator, &cleanup_locals, ctx, out);
     }
-    try out.appendSlice(allocator, "  )\n");
-    try out.appendSlice(allocator, "  (export \"_start\" (func $_start))\n");
+    try function_body_wat.emitFuncClose(allocator, out);
+    try function_body_wat.emitFuncExport(allocator, out, "_start", "_start");
+}
+
+const BackendIrLocal = struct {
+    name: []const u8,
+    value: backend_ir.ValueId,
+};
+
+fn emitScalarNumericStartWithBackendIr(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    var func = try backend_ir.Function.create(allocator, "_start_ir");
+    defer func.deinit(allocator);
+    const block_id = try func.addBlockId(allocator);
+
+    var ir_locals = std.ArrayList(BackendIrLocal).empty;
+    defer ir_locals.deinit(allocator);
+
+    var i = start_idx;
+    var saw_return = false;
+    while (i < end_idx) {
+        const stmt_end = findStmtEnd(tokens, i, end_idx);
+        if (isPlainNilReturnStmt(tokens, i, stmt_end)) {
+            try func.setTerminator(block_id, .ret);
+            saw_return = true;
+            i = stmt_end;
+            continue;
+        }
+
+        const scalar_ty = typedScalarBindingType(tokens, i, stmt_end, ctx) orelse return false;
+        if (!std.mem.eql(u8, scalar_ty, "i32")) return false;
+        const eq_idx = findTopLevelToken(tokens, i + 1, stmt_end, "=") orelse return false;
+        const target_source_name = tokens[i].lexeme;
+        const target_name = resolvedLocalName(locals.locals.items, target_source_name);
+        const value = func.allocValue();
+        try func.setValueName(allocator, value, target_name);
+        try ir_locals.append(allocator, .{ .name = target_source_name, .value = value });
+        try ir_locals.append(allocator, .{ .name = target_name, .value = value });
+
+        if (!try appendScalarNumericExprIr(allocator, tokens, eq_idx + 1, stmt_end, "i32", &func, block_id, ir_locals.items)) {
+            return false;
+        }
+        try func.appendInstr(allocator, block_id, .{ .local_set = value });
+        i = stmt_end;
+    }
+    if (!saw_return) return false;
+
+    const body = try backend_ir.emitFunctionBodyWat(allocator, &func);
+    defer allocator.free(body);
+    try out.appendSlice(allocator, body);
+    return true;
+}
+
+fn isPlainNilReturnStmt(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    return start_idx + 1 == end_idx and tokEq(tokens[start_idx], "return");
+}
+
+fn appendScalarNumericExprIr(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    expected_ty: []const u8,
+    func: *backend_ir.Function,
+    block_id: backend_ir.BlockId,
+    ir_locals: []const BackendIrLocal,
+) CodegenError!bool {
+    if (!std.mem.eql(u8, expected_ty, "i32")) return false;
+    const range = trimParens(tokens, start_idx, end_idx);
+    if (range.start >= range.end) return false;
+
+    if (range.start + 1 == range.end) {
+        const tok = tokens[range.start];
+        if (tok.kind == .number) {
+            const value = std.fmt.parseInt(i32, tok.lexeme, 0) catch return false;
+            try func.appendInstr(allocator, block_id, .{ .const_value = .{ .i32 = value } });
+            return true;
+        }
+        if (tok.kind == .ident) {
+            const local = findBackendIrLocal(ir_locals, tok.lexeme) orelse return false;
+            try func.appendInstr(allocator, block_id, .{ .local_get = local });
+            return true;
+        }
+        return false;
+    }
+
+    const call_head = exprCallHead(tokens, range) orelse return false;
+    if (!call_head.is_intrinsic) return false;
+    const op = numericCoreIrOp(tokens[call_head.name_idx].lexeme) orelse return false;
+
+    var arg_start = call_head.args_start;
+    var emitted = false;
+    while (arg_start < call_head.args_end) {
+        const arg_end = findArgEnd(tokens, arg_start, call_head.args_end);
+        if (!try appendScalarNumericExprIr(allocator, tokens, arg_start, arg_end, expected_ty, func, block_id, ir_locals)) {
+            return false;
+        }
+        if (emitted) {
+            try func.appendInstr(allocator, block_id, .{ .numeric = .{ .ty = .i32, .op = op } });
+        }
+        emitted = true;
+        arg_start = arg_end;
+        if (arg_start < call_head.args_end and tokEq(tokens[arg_start], ",")) arg_start += 1;
+    }
+    return emitted;
+}
+
+fn findBackendIrLocal(ir_locals: []const BackendIrLocal, name: []const u8) ?backend_ir.ValueId {
+    for (ir_locals) |local| {
+        if (std.mem.eql(u8, local.name, name)) return local.value;
+    }
+    return null;
+}
+
+fn numericCoreIrOp(name: []const u8) ?backend_ir.NumericOp {
+    if (std.mem.eql(u8, name, "add")) return .add;
+    if (std.mem.eql(u8, name, "sub")) return .sub;
+    if (std.mem.eql(u8, name, "mul")) return .mul;
+    return null;
 }
 
 fn emitTestFuncs(
@@ -1219,8 +1337,7 @@ fn emitTestFuncs(
     out: *std.ArrayList(u8),
 ) !void {
     for (test_decls, 0..) |decl, idx| {
-        try appendFmt(allocator, out, "  ;; compiled-test {d} {s}\n", .{ idx, decl.name_lexeme });
-        try appendFmt(allocator, out, "  (func $__test_{d}\n", .{idx});
+        try function_body_wat.emitCompiledTestOpen(allocator, out, idx, decl.name_lexeme);
 
         var locals = LocalSet{};
         defer locals.deinit(allocator);
@@ -1231,7 +1348,7 @@ fn emitTestFuncs(
 
         for (locals.locals.items) |local| {
             if (!local.emit_decl) continue;
-            try appendFmt(allocator, out, "    (local ${s} {s})\n", .{ local.name, codegenWasmType(ctx, local.ty) });
+            try function_body_wat.emitLocalDecl(allocator, out, local.name, codegenWasmType(ctx, local.ty));
         }
         const no_results: []const []const u8 = &.{};
         const root_defer = DeferContext{
@@ -1240,27 +1357,14 @@ fn emitTestFuncs(
             .end_idx = decl.body_end,
             .registered_end_idx = decl.body_end,
         };
-        try emitBody(allocator, tokens, decl.body_start, decl.body_end, decl.body_start, &locals, &cleanup_locals, &EMPTY_LOCAL_SET, ctx, no_results, NO_RESULT_ITEMS, null, null, null, &root_defer, null, out);
+        try emitBody(allocator, tokens, decl.body_start, decl.body_end, decl.body_start, &locals, &cleanup_locals, &EMPTY_LOCAL_SET, ctx, no_results, NO_RESULT_ITEMS, null, null, null, &root_defer, null, null, out);
         if (!bodyEndsWithPlainReturn(tokens, decl.body_start, decl.body_end)) {
             try emitFallthroughReleaseManagedLocals(allocator, &cleanup_locals, ctx, out);
         }
         try out.appendSlice(allocator, "    unreachable\n");
-        try out.appendSlice(allocator, "  )\n");
-        try appendFmt(allocator, out, "  (export \"__test_{d}\" (func $__test_{d}))\n", .{ idx, idx });
+        try function_body_wat.emitFuncClose(allocator, out);
+        try function_body_wat.emitCompiledTestExport(allocator, out, idx);
     }
-}
-
-fn emitTestStartFunc(
-    allocator: std.mem.Allocator,
-    test_count: usize,
-    out: *std.ArrayList(u8),
-) !void {
-    try out.appendSlice(allocator, "  (func $_start\n");
-    for (0..test_count) |idx| {
-        try appendFmt(allocator, out, "    call $__test_{d}\n", .{idx});
-    }
-    try out.appendSlice(allocator, "  )\n");
-    try out.appendSlice(allocator, "  (export \"_start\" (func $_start))\n");
 }
 
 fn emitUserFuncs(
@@ -1336,9 +1440,21 @@ fn emitUserFunc(
     try appendFuncParamLocals(allocator, func, func_ctx, &cleanup_locals);
     try collectDirectBodyLocals(allocator, tokens, func.body_start, func.body_end, func_ctx, &cleanup_locals);
 
+    const self_tail_tco = try buildSelfTailTco(allocator, func, tokens, &locals, &cleanup_locals, func_ctx);
+    defer if (self_tail_tco) |tco| allocator.free(tco.loop_label);
+
     for (locals.locals.items) |local| {
         if (!local.emit_decl) continue;
-        try appendFmt(allocator, out, "    (local ${s} {s})\n", .{ local.name, codegenWasmType(func_ctx, local.ty) });
+        try function_body_wat.emitLocalDecl(allocator, out, local.name, codegenWasmType(func_ctx, local.ty));
+    }
+    if (self_tail_tco) |tco| {
+        for (tco.func.params) |param| {
+            if (param.callback != null) continue;
+            try appendFmt(allocator, out, "    (local $__tail_arg_{s} {s})\n", .{
+                param.name,
+                codegenWasmType(func_ctx, param.ty),
+            });
+        }
     }
     if (func.arrow) {
         if (func.results.len != 1) return error.NoMatchingCall;
@@ -1354,12 +1470,115 @@ fn emitUserFunc(
             .end_idx = func.body_end,
             .registered_end_idx = func.body_end,
         };
-        try emitBody(allocator, tokens, func.body_start, func.body_end, func.body_start, &locals, &cleanup_locals, &EMPTY_LOCAL_SET, func_ctx, func.results, func.result_items, func.result_struct, func.result_union, null, &root_defer, null, out);
+        const can_reach_end = bodyCanReachEnd(tokens, func.body_start, func.body_end);
+        if (self_tail_tco) |tco| {
+            try appendFmt(allocator, out, "    loop ${s}\n", .{tco.loop_label});
+            try emitSelfTailLoopLocalReset(allocator, tco.func, &locals, func_ctx, out);
+            try emitBody(allocator, tokens, func.body_start, func.body_end, func.body_start, &locals, &cleanup_locals, &EMPTY_LOCAL_SET, func_ctx, func.results, func.result_items, func.result_struct, func.result_union, null, &root_defer, null, &tco, out);
+            try out.appendSlice(allocator, "    end\n");
+            if (func.results.len != 0 and !can_reach_end) {
+                try out.appendSlice(allocator, "    unreachable\n");
+            }
+        } else {
+            try emitBody(allocator, tokens, func.body_start, func.body_end, func.body_start, &locals, &cleanup_locals, &EMPTY_LOCAL_SET, func_ctx, func.results, func.result_items, func.result_struct, func.result_union, null, &root_defer, null, null, out);
+        }
         if (!bodyEndsWithPlainReturn(tokens, func.body_start, func.body_end)) {
             try emitFallthroughReleaseManagedLocals(allocator, &cleanup_locals, func_ctx, out);
+            if (func.results.len != 0 and !can_reach_end) {
+                try out.appendSlice(allocator, "    unreachable\n");
+            }
         }
     }
-    try out.appendSlice(allocator, "  )\n");
+    try function_body_wat.emitFuncClose(allocator, out);
+}
+
+fn buildSelfTailTco(
+    allocator: std.mem.Allocator,
+    func: FuncDecl,
+    tokens: []const lexer.Token,
+    locals: *const LocalSet,
+    cleanup_locals: *const LocalSet,
+    ctx: CodegenContext,
+) !?SelfTailTco {
+    if (func.arrow) return null;
+    if (func.results.len != 1) return null;
+    if (!isCodegenScalarType(ctx, func.results[0])) return null;
+    if (!funcHasSelfTailReturn(tokens, func.body_start, func.body_end, func)) return null;
+    if (funcHasDeferStmt(tokens, func.body_start, func.body_end)) return null;
+    for (func.params) |param| {
+        if (param.callback != null) return null;
+        if (param.variadic) return null;
+        if (!isCodegenScalarType(ctx, param.ty)) return null;
+    }
+    for (locals.locals.items) |local| {
+        if (!local.emit_decl) continue;
+        if (!isCodegenScalarType(ctx, local.ty)) return null;
+    }
+    for (cleanup_locals.locals.items) |local| {
+        if (!local.emit_decl) continue;
+        if (!isCodegenScalarType(ctx, local.ty)) return null;
+    }
+    if (hasManagedCleanupLocals(cleanup_locals, ctx)) return null;
+    return .{
+        .func = func,
+        .loop_label = try std.fmt.allocPrint(allocator, "__tail_{s}", .{func.name}),
+    };
+}
+
+fn funcHasSelfTailReturn(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, func: FuncDecl) bool {
+    var i = start_idx;
+    while (i < end_idx) {
+        if (tokEq(tokens[i], "return")) {
+            const stmt_end = findStmtEnd(tokens, i, end_idx);
+            const range = trimParens(tokens, i + 1, stmt_end);
+            if (exprCallHead(tokens, range)) |call_head| {
+                if (!call_head.is_intrinsic and sameCallableSourceName(func.source_name, publicDeclName(tokens[call_head.name_idx].lexeme))) {
+                    return true;
+                }
+            }
+        }
+        i += 1;
+    }
+    return false;
+}
+
+fn funcHasDeferStmt(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "defer")) return true;
+    }
+    return false;
+}
+
+fn hasManagedCleanupLocals(locals: *const LocalSet, ctx: CodegenContext) bool {
+    for (locals.locals.items) |local| {
+        if (!local.release_on_scope_exit) continue;
+        if (managedLocalKindForType(local.ty, ctx) != null) return true;
+    }
+    return false;
+}
+
+fn emitSelfTailLoopLocalReset(
+    allocator: std.mem.Allocator,
+    func: FuncDecl,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+) !void {
+    for (locals.locals.items) |local| {
+        if (!local.emit_decl) continue;
+        var is_param = false;
+        for (func.params) |param| {
+            if (param.callback != null) continue;
+            if (std.mem.eql(u8, local.name, param.name)) {
+                is_param = true;
+                break;
+            }
+        }
+        if (is_param) continue;
+        try emitZeroValueForType(allocator, ctx, out, local.ty);
+        try appendFmt(allocator, out, "    local.set ${s}\n", .{local.name});
+    }
 }
 
 fn collectBodyLocals(
@@ -1438,8 +1657,8 @@ fn collectBodyLocalsWithMode(
         } else if (try inferredUnionCallBinding(allocator, tokens, i, stmt_end, out, ctx, &out.owned_names)) |binding| {
             errdefer if (binding.owns_layout) freeUnionLayout(allocator, binding.layout);
             try out.appendUnionLocal(allocator, tokens[i].lexeme, binding.layout, true, binding.owns_layout);
-        } else if (isTypedScalarBinding(tokens, i, stmt_end, ctx)) {
-            try out.appendBorrowedLocal(allocator, tokens[i].lexeme, tokens[i + 1].lexeme, true);
+        } else if (typedScalarBindingType(tokens, i, stmt_end, ctx)) |ty| {
+            try out.appendBorrowedLocal(allocator, tokens[i].lexeme, ty, true);
         } else if (!hasLocal(out.locals.items, tokens[i].lexeme) and inferredStructCtorBinding(tokens, i, stmt_end, ctx.structs) != null) {
             const decl = inferredStructCtorBinding(tokens, i, stmt_end, ctx.structs).?;
             const local_name = try out.appendStructLocal(allocator, tokens[i].lexeme, decl.name, true);
@@ -2327,9 +2546,15 @@ fn emitReturnStmt(
     result_union: ?UnionLayout,
     defer_ctx: ?*const DeferContext,
     return_label: ?[]const u8,
+    self_tail_tco: ?*const SelfTailTco,
     out: *std.ArrayList(u8),
 ) !bool {
     if (start_idx >= end_idx or !tokEq(tokens[start_idx], "return")) return false;
+    if (self_tail_tco) |tco| {
+        if (try emitSelfTailReturn(allocator, tokens, start_idx, end_idx, locals, ctx, tco.*, out)) {
+            return true;
+        }
+    }
     const expected_ty: ?[]const u8 = if (result_tys.len == 1) result_tys[0] else null;
     var move_names = std.ArrayList([]const u8).empty;
     defer move_names.deinit(allocator);
@@ -2399,6 +2624,48 @@ fn emitReturnStmt(
         try emitOwnershipReleasePlan(allocator, release_plan, out);
         try out.appendSlice(allocator, "    return\n");
     }
+    return true;
+}
+
+fn emitSelfTailReturn(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    tco: SelfTailTco,
+    out: *std.ArrayList(u8),
+) !bool {
+    const range = trimParens(tokens, start_idx + 1, end_idx);
+    const call_head = exprCallHead(tokens, range) orelse return false;
+    if (call_head.is_intrinsic) return false;
+    if (!sameCallableSourceName(tco.func.source_name, publicDeclName(tokens[call_head.name_idx].lexeme))) return false;
+    if (!callArgsMatchFuncParams(tokens, call_head.args_start, call_head.args_end, locals, ctx, tco.func)) return false;
+
+    var arg_start = call_head.args_start;
+    var param_idx: usize = 0;
+    while (arg_start < call_head.args_end) {
+        if (param_idx >= tco.func.params.len) return false;
+        const param = tco.func.params[param_idx];
+        if (param.callback != null or param.variadic) return false;
+        const arg_end = findArgEnd(tokens, arg_start, call_head.args_end);
+        if (!try emitExpr(allocator, tokens, arg_start, arg_end, locals, ctx, param.ty, out)) {
+            return error.NoMatchingCall;
+        }
+        try appendFmt(allocator, out, "    local.set $__tail_arg_{s}\n", .{param.name});
+        param_idx += 1;
+        arg_start = arg_end;
+        if (arg_start < call_head.args_end and tokEq(tokens[arg_start], ",")) arg_start += 1;
+    }
+    if (param_idx != tco.func.params.len) return false;
+
+    for (tco.func.params) |param| {
+        if (param.callback != null) continue;
+        try appendFmt(allocator, out, "    local.get $__tail_arg_{s}\n", .{param.name});
+        try appendFmt(allocator, out, "    local.set ${s}\n", .{param.name});
+    }
+    try appendFmt(allocator, out, "    br ${s}\n", .{tco.loop_label});
     return true;
 }
 
@@ -2555,7 +2822,25 @@ fn emitSingleReturnAbiValue(
             }
         }
     }
-    if (!try emitExprWithMoveContext(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, move_ctx, out)) {
+    var emitted_move_call = false;
+    if (isManagedLocalType(expected_ty, ctx)) {
+        if (move_ctx) |ctx_info| {
+            emitted_move_call = try emitManagedHandleCallExprWithMoveContext(
+                allocator,
+                tokens,
+                start_idx,
+                end_idx,
+                ctx_info.body_end,
+                ctx_info.allow_last_use_move,
+                locals,
+                ctx_info.defer_ctx,
+                ctx,
+                expected_ty,
+                out,
+            );
+        }
+    }
+    if (!emitted_move_call and !try emitExprWithMoveContext(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, move_ctx, out)) {
         return error.NoMatchingCall;
     }
     if (copy_returned_managed_local) {
@@ -2653,7 +2938,7 @@ fn collectUnionReturnMoveNames(
     if (range.end != range.start + 1 or tokens[range.start].kind != .ident) return;
     const name = tokens[range.start].lexeme;
     if (findUnionLocal(locals.union_locals.items, name)) |union_local| {
-        if (!unionLayoutsEqual(union_local.layout, layout)) return;
+        if (!unionLayoutsAbiCompatible(ctx, union_local.layout, layout)) return;
         for (layout.payload_tys, 0..) |payload_ty, idx| {
             if (!isManagedLocalType(payload_ty, ctx)) continue;
             const payload_name = try unionPayloadLocalName(allocator, union_local.name, idx);
@@ -2663,10 +2948,21 @@ fn collectUnionReturnMoveNames(
         }
         return;
     }
-    const ty = findLocalType(locals.locals.items, name) orelse return;
+    const raw_ty = findLocalType(locals.locals.items, name) orelse return;
+    const ty = substituteGenericType(raw_ty, ctx.type_bindings);
     if (!isManagedLocalType(ty, ctx)) return;
-    if (findUnionBranchByCompatibleType(layout, ty) == null) return;
+    if (findUnionBranchByCompatibleType(layout, ty) == null and !unionLayoutHasSinglePayloadAbiType(ctx, layout, ty)) return;
     try move_names.append(allocator, findLocalName(locals.locals.items, name) orelse name);
+}
+
+fn unionLayoutHasSinglePayloadAbiType(ctx: CodegenContext, layout: UnionLayout, ty: []const u8) bool {
+    const target_wasm_ty = codegenWasmType(ctx, ty);
+    for (layout.branches) |branch| {
+        if (branch.payload_len != 1) continue;
+        const payload_ty = layout.payload_tys[branch.payload_start];
+        if (std.mem.eql(u8, codegenWasmType(ctx, payload_ty), target_wasm_ty)) return true;
+    }
+    return false;
 }
 
 fn emitUnionValue(
@@ -2693,7 +2989,7 @@ fn emitUnionValue(
         } else {
             if (findFuncDeclForCallHead(tokens, call_head, locals, ctx)) |func| {
                 if (func.result_union) |func_union| {
-                    if (unionLayoutsEqual(func_union, layout)) {
+                    if (unionLayoutsAbiCompatible(ctx, func_union, layout)) {
                         return try emitUserFuncCallWithMoveContext(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, move_ctx, out);
                     }
                 }
@@ -2856,6 +3152,21 @@ fn unionLayoutsEqual(a: UnionLayout, b: UnionLayout) bool {
     for (a.branches, 0..) |branch, idx| {
         const other = b.branches[idx];
         if (!std.mem.eql(u8, branch.ty, other.ty)) return false;
+        if (branch.tag != other.tag) return false;
+        if (branch.payload_start != other.payload_start) return false;
+        if (branch.payload_len != other.payload_len) return false;
+    }
+    return true;
+}
+
+fn unionLayoutsAbiCompatible(ctx: CodegenContext, a: UnionLayout, b: UnionLayout) bool {
+    if (a.branches.len != b.branches.len) return false;
+    if (a.payload_tys.len != b.payload_tys.len) return false;
+    for (a.payload_tys, 0..) |ty, idx| {
+        if (!std.mem.eql(u8, codegenWasmType(ctx, ty), codegenWasmType(ctx, b.payload_tys[idx]))) return false;
+    }
+    for (a.branches, 0..) |branch, idx| {
+        const other = b.branches[idx];
         if (branch.tag != other.tag) return false;
         if (branch.payload_start != other.payload_start) return false;
         if (branch.payload_len != other.payload_len) return false;
@@ -3432,6 +3743,20 @@ fn structLocalSourceName(local: StructLocal) []const u8 {
     return local.source_name orelse local.name;
 }
 
+fn factsSourceOrigin(origin: SourceOrigin) ownership_facts.SourceOrigin {
+    return switch (origin) {
+        .unknown => .unknown,
+        .fresh_local => .fresh_local,
+        .param_or_import => .param_or_import,
+        .helper_shared => .helper_shared,
+        .collection_value => .collection_value,
+        .recv_value => .recv_value,
+        .loop_source => .loop_source,
+        .union_payload => .union_payload,
+        .compiler_temp => .compiler_temp,
+    };
+}
+
 fn directManagedLastUseMoveSource(
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -3518,9 +3843,7 @@ fn fieldGetLastUseMoveSource(
     locals: *const LocalSet,
     ctx: CodegenContext,
 ) CodegenError!?LastUseManagedMoveSource {
-    if (!move_ctx.allow_last_use_move or !move_ctx.allow_field_read_move) return null;
     if (!isManagedLocalType(field_ty, ctx)) return null;
-    if (hasRegisteredDeferStmt(tokens, move_ctx.defer_ctx)) return null;
 
     const body_start = move_ctx.body_start;
     const source_name = structLocalSourceName(struct_local);
@@ -3534,9 +3857,32 @@ fn fieldGetLastUseMoveSource(
         locals,
         ctx,
     )) orelse return null;
-    if (tokenRangeUsesIdent(tokens, decl_end, start_idx, source_name)) return null;
-    if (tokenRangeUsesIdent(tokens, end_idx, move_ctx.stmt_end, source_name)) return null;
-    if (tokenRangeUsesIdent(tokens, move_ctx.stmt_end, move_ctx.body_end, source_name)) return null;
+    const fresh_source_gap = tokenRangeUsesIdent(tokens, decl_end, start_idx, source_name);
+    const after_expr_use = tokenRangeUsesIdent(tokens, end_idx, move_ctx.stmt_end, source_name);
+    const body_rest_use = tokenRangeUsesIdent(tokens, move_ctx.stmt_end, move_ctx.body_end, source_name);
+    const candidate = ownership_facts.MoveCandidate{
+        .kind = .field_get,
+        .source = .{
+            .source_name = source_name,
+            .actual_name = struct_local.name,
+            .origin = .fresh_local,
+        },
+        .expr_range = .{ .start = start_idx, .end = end_idx },
+        .context = .{
+            .body = .{ .start = move_ctx.body_start, .end = move_ctx.body_end },
+            .statement = .{ .end = move_ctx.stmt_end },
+            .defer_visible = hasRegisteredDeferStmt(tokens, move_ctx.defer_ctx),
+            .allow_last_use_move = move_ctx.allow_last_use_move,
+            .allow_field_read_move = move_ctx.allow_field_read_move,
+        },
+        .future_use = .{
+            .fresh_source_gap = if (fresh_source_gap) .{ .start = decl_end, .end = start_idx } else null,
+            .after_expr = if (after_expr_use) .{ .start = end_idx, .end = move_ctx.stmt_end } else null,
+            .body_rest = if (body_rest_use) .{ .start = move_ctx.stmt_end, .end = move_ctx.body_end } else null,
+        },
+    };
+    const decision = ownership_facts.decideFieldGetMove(candidate);
+    if (!decision.accepted) return null;
     return .{
         .source_name = source_name,
         .actual_name = struct_local.name,
@@ -3553,13 +3899,33 @@ fn directManagedCallLastUseMoveSource(
     ctx: CodegenContext,
 ) ?LastUseManagedMoveSource {
     if (end_idx != start_idx + 1 or tokens[start_idx].kind != .ident) return null;
-    if (!move_ctx.allow_last_use_move) return null;
-    if (hasRegisteredDeferStmt(tokens, move_ctx.defer_ctx)) return null;
     const source_name = tokens[start_idx].lexeme;
     const actual_name = directManagedLocalExprName(tokens, start_idx, end_idx, locals, ctx) orelse return null;
     const origin = findLocalOrigin(locals.locals.items, source_name) orelse .unknown;
-    if (tokenRangeUsesIdent(tokens, end_idx, move_ctx.stmt_end, source_name)) return null;
-    if (tokenRangeUsesIdent(tokens, move_ctx.stmt_end, move_ctx.body_end, source_name)) return null;
+    const after_arg_use = tokenRangeUsesIdent(tokens, end_idx, move_ctx.stmt_end, source_name);
+    const after_stmt_use = tokenRangeUsesIdent(tokens, move_ctx.stmt_end, move_ctx.body_end, source_name);
+    const candidate = ownership_facts.MoveCandidate{
+        .kind = .call_arg,
+        .source = .{
+            .source_name = source_name,
+            .actual_name = actual_name,
+            .origin = factsSourceOrigin(origin),
+        },
+        .expr_range = .{ .start = start_idx, .end = end_idx },
+        .context = .{
+            .body = .{ .start = move_ctx.body_start, .end = move_ctx.body_end },
+            .statement = .{ .end = move_ctx.stmt_end },
+            .arg = .{ .start = start_idx, .end = end_idx },
+            .defer_visible = hasRegisteredDeferStmt(tokens, move_ctx.defer_ctx),
+            .allow_last_use_move = move_ctx.allow_last_use_move,
+        },
+        .future_use = .{
+            .after_arg = if (after_arg_use) .{ .start = end_idx, .end = move_ctx.stmt_end } else null,
+            .after_stmt = if (after_stmt_use) .{ .start = move_ctx.stmt_end, .end = move_ctx.body_end } else null,
+        },
+    };
+    const decision = ownership_facts.decideCallArgMove(candidate);
+    if (!decision.accepted) return null;
     return .{
         .source_name = source_name,
         .actual_name = actual_name,
@@ -4100,6 +4466,7 @@ fn emitUserFuncArg(
     arg_start: usize,
     arg_end: usize,
     param_ty: []const u8,
+    copy_managed: bool,
     locals: *const LocalSet,
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
@@ -4111,7 +4478,7 @@ fn emitUserFuncArg(
     }
     if (try parseTypeUnionLayoutFromName(allocator, tokens, param_ty, ctx.structs, ctx.struct_layouts, &owned_types)) |layout| {
         defer freeUnionLayout(allocator, layout);
-        return try emitUnionValue(allocator, tokens, arg_start, arg_end, locals, ctx, layout, false, null, out);
+        return try emitUnionValue(allocator, tokens, arg_start, arg_end, locals, ctx, layout, copy_managed, null, out);
     }
     const range = trimParens(tokens, arg_start, arg_end);
     if (range.end == range.start + 1 and tokens[range.start].kind == .ident) {
@@ -5034,25 +5401,85 @@ fn emitManagedStructFieldSet(
     }
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
 
-    try appendFmt(allocator, out, "    ;; arc-overwrite-release {s}.{s}\n", .{ target_name, field_name });
-    try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-    try appendManagedStructFieldPtr(allocator, out, target_name, field_offset);
-    try appendLoadForPayloadType(allocator, out, field_ty);
-    try out.appendSlice(allocator, "    i32.ne\n");
-    try out.appendSlice(allocator, "    if\n");
-    try appendManagedStructFieldPtr(allocator, out, target_name, field_offset);
-    try appendLoadForPayloadType(allocator, out, field_ty);
-    try out.appendSlice(allocator, "      call $__arc_dec\n");
-    try out.appendSlice(allocator, "    end\n");
+    const struct_local = findStructLocal(locals.struct_locals.items, target_name) orelse return error.NoMatchingCall;
+    const decl = findStructDecl(ctx.structs, struct_local.ty) orelse return error.NoMatchingCall;
+    const layout = findStructLayout(ctx.struct_layouts, struct_local.ty) orelse return error.NoMatchingCall;
 
+    try appendFmt(allocator, out, "    local.get ${s}\n", .{target_name});
+    try out.appendSlice(allocator, "    call $__arc_rc\n");
+    try out.appendSlice(allocator, "    i32.const 1\n");
+    try out.appendSlice(allocator, "    i32.eq\n");
+    try out.appendSlice(allocator, "    if (result i32)\n");
+    try appendFmt(allocator, out, "      ;; arc-managed-struct-reuse {s}.{s}\n", .{ target_name, field_name });
+    try appendFmt(allocator, out, "      ;; arc-overwrite-release {s}.{s}\n", .{ target_name, field_name });
+    try appendFmt(allocator, out, "      local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
     try appendManagedStructFieldPtr(allocator, out, target_name, field_offset);
-    try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try appendLoadForPayloadType(allocator, out, field_ty);
+    try out.appendSlice(allocator, "      i32.ne\n");
+    try out.appendSlice(allocator, "      if\n");
+    try appendManagedStructFieldPtr(allocator, out, target_name, field_offset);
+    try appendLoadForPayloadType(allocator, out, field_ty);
+    try out.appendSlice(allocator, "        call $__arc_dec\n");
+    try out.appendSlice(allocator, "      end\n");
+    try appendManagedStructFieldPtr(allocator, out, target_name, field_offset);
+    try appendFmt(allocator, out, "      local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
     try appendStoreForPayloadType(allocator, out, field_ty);
+    try appendFmt(allocator, out, "      local.get ${s}\n", .{target_name});
+    try out.appendSlice(allocator, "    else\n");
+    try appendFmt(allocator, out, "      ;; arc-managed-struct-clone-set {s}.{s}\n", .{ target_name, field_name });
+    try emitManagedStructCloneWithFieldSet(allocator, target_name, field_name, decl, struct_local.ty, layout, out);
+    try out.appendSlice(allocator, "    end\n");
+    try appendFmt(allocator, out, "    local.set ${s}\n", .{target_name});
     if (move_source) |source| {
         try appendFmt(allocator, out, "    ;; field-set-move {s}\n", .{source.source_name});
         try emitZeroValueForType(allocator, ctx, out, field_ty);
         try appendFmt(allocator, out, "    local.set ${s}\n", .{source.actual_name});
     }
+}
+
+fn emitManagedStructCloneWithFieldSet(
+    allocator: std.mem.Allocator,
+    target_name: []const u8,
+    target_field_name: []const u8,
+    decl: StructDecl,
+    struct_ty: []const u8,
+    layout: StructLayout,
+    out: *std.ArrayList(u8),
+) CodegenError!void {
+    var owned_types = std.ArrayList([]const u8).empty;
+    defer {
+        for (owned_types.items) |owned| allocator.free(owned);
+        owned_types.deinit(allocator);
+    }
+
+    try appendFmt(allocator, out, "      i32.const {d}\n", .{layout.payload_bytes});
+    try appendFmt(allocator, out, "      i32.const {d}\n", .{layout.type_id});
+    try out.appendSlice(allocator, "      call $__arc_alloc\n");
+    try appendFmt(allocator, out, "      local.set ${s}\n", .{STORAGE_WRITE_TARGET_TMP_LOCAL});
+
+    for (decl.fields) |field| {
+        const field_name = publicDeclName(field.name);
+        const field_ty = try substituteStructFieldType(allocator, decl, struct_ty, field.ty, &owned_types);
+        const field_offset = structFieldPayloadOffset(decl, field_name) orelse return error.NoMatchingCall;
+
+        try appendManagedStructFieldPtr(allocator, out, STORAGE_WRITE_TARGET_TMP_LOCAL, field_offset);
+        if (std.mem.eql(u8, field_name, target_field_name)) {
+            try appendFmt(allocator, out, "      local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+            try appendStoreForPayloadType(allocator, out, field_ty);
+            continue;
+        }
+
+        try appendManagedStructFieldPtr(allocator, out, target_name, field_offset);
+        try appendLoadForPayloadType(allocator, out, field_ty);
+        if (isManagedStructField(layout, field_name)) {
+            try out.appendSlice(allocator, "      call $__arc_inc\n");
+        }
+        try appendStoreForPayloadType(allocator, out, field_ty);
+    }
+
+    try appendFmt(allocator, out, "      local.get ${s}\n", .{target_name});
+    try out.appendSlice(allocator, "      call $__arc_dec\n");
+    try appendFmt(allocator, out, "      local.get ${s}\n", .{STORAGE_WRITE_TARGET_TMP_LOCAL});
 }
 
 fn appendManagedStructFieldPtr(
@@ -5084,6 +5511,7 @@ fn emitBody(
     loop_ctx: ?LoopControl,
     defer_ctx: ?*const DeferContext,
     return_label: ?[]const u8,
+    self_tail_tco: ?*const SelfTailTco,
     out: *std.ArrayList(u8),
 ) !void {
     const allow_call_arg_last_use_move = loop_ctx == null;
@@ -5113,14 +5541,14 @@ fn emitBody(
             try applyGuardLoopControlNarrowing(allocator, tokens, i, stmt_end, active, ctx);
         } else if (try emitLoopBlock(allocator, tokens, i, stmt_end, body_start, active, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out)) {
             // Loop block emitted.
-        } else if (try emitIfBlock(allocator, tokens, i, stmt_end, body_start, active, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out)) {
+        } else if (try emitIfBlock(allocator, tokens, i, stmt_end, body_start, active, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, self_tail_tco, out)) {
             // If block emitted.
             try applyIfBlockFallthroughNarrowing(allocator, tokens, i, stmt_end, active, ctx);
-        } else if (try emitGuardReturnIf(allocator, tokens, i, stmt_end, end_idx, body_start, allow_call_arg_last_use_move, active, return_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, exit_defer_ctx, return_label, out)) {
+        } else if (try emitGuardReturnIf(allocator, tokens, i, stmt_end, end_idx, body_start, allow_call_arg_last_use_move, active, return_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, exit_defer_ctx, return_label, self_tail_tco, out)) {
             // Guard return emitted.
             try applyGuardReturnNilNarrowing(allocator, tokens, i, stmt_end, active);
             try applyGuardReturnIsNarrowing(allocator, tokens, i, stmt_end, active, ctx);
-        } else if (try emitReturnStmt(allocator, tokens, i, stmt_end, body_start, active, return_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, exit_defer_ctx, return_label, out)) {
+        } else if (try emitReturnStmt(allocator, tokens, i, stmt_end, body_start, active, return_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, exit_defer_ctx, return_label, self_tail_tco, out)) {
             // Return emitted.
         } else if (try emitDiscardAssignment(allocator, tokens, i, stmt_end, end_idx, allow_call_arg_last_use_move, active, exit_defer_ctx, ctx, out)) {
             // Discard assignment emitted.
@@ -5152,7 +5580,7 @@ fn emitBody(
             try emitStructBinding(allocator, tokens, i, stmt_end, end_idx, allow_call_arg_last_use_move, active, exit_defer_ctx, ctx, binding.decl, out);
         } else if (try emitScalarAssignment(allocator, tokens, i, stmt_end, end_idx, allow_call_arg_last_use_move, active, exit_defer_ctx, ctx, out)) {
             // Scalar assignment emitted.
-        } else if (isTypedScalarBinding(tokens, i, stmt_end, ctx)) {
+        } else if (typedScalarBindingType(tokens, i, stmt_end, ctx)) |scalar_ty| {
             const eq_idx = findTopLevelToken(tokens, i, stmt_end, "=") orelse {
                 i = stmt_end;
                 continue;
@@ -5167,9 +5595,9 @@ fn emitBody(
                 active,
                 exit_defer_ctx,
                 ctx,
-                tokens[i + 1].lexeme,
+                scalar_ty,
                 out,
-            ) or try emitExpr(allocator, tokens, eq_idx + 1, stmt_end, active, ctx, tokens[i + 1].lexeme, out);
+            ) or try emitExpr(allocator, tokens, eq_idx + 1, stmt_end, active, ctx, scalar_ty, out);
             if (!emitted) return error.NoMatchingCall;
             try appendFmt(allocator, out, "    local.set ${s}\n", .{resolvedLocalName(active.locals.items, tokens[i].lexeme)});
         } else if (try emitInferredScalarBinding(allocator, tokens, i, stmt_end, end_idx, allow_call_arg_last_use_move, active, exit_defer_ctx, ctx, out)) {
@@ -5515,7 +5943,7 @@ fn emitDeferCleanupBlock(
         .registered_end_idx = close_brace,
     };
     try out.appendSlice(allocator, "    block $defer_cleanup_exit\n");
-    try emitBody(allocator, tokens, open_brace + 1, close_brace, open_brace + 1, locals, &cleanup_locals, &EMPTY_LOCAL_SET, ctx, no_results, NO_RESULT_ITEMS, null, null, null, &cleanup_defer, "defer_cleanup_exit", out);
+    try emitBody(allocator, tokens, open_brace + 1, close_brace, open_brace + 1, locals, &cleanup_locals, &EMPTY_LOCAL_SET, ctx, no_results, NO_RESULT_ITEMS, null, null, null, &cleanup_defer, "defer_cleanup_exit", null, out);
     try out.appendSlice(allocator, "    end\n");
     try emitBlockReleaseManagedLocals(allocator, &cleanup_locals, ctx, out);
 }
@@ -6097,10 +6525,16 @@ fn emitExprWithMoveContext(
             }
         }
         if (tok.kind == .ident and std.mem.eql(u8, tok.lexeme, "true")) {
+            if (expected_ty) |ty| {
+                if (!std.mem.eql(u8, ty, "bool")) return false;
+            }
             try out.appendSlice(allocator, "    i32.const 1\n");
             return true;
         }
         if (tok.kind == .ident and std.mem.eql(u8, tok.lexeme, "false")) {
+            if (expected_ty) |ty| {
+                if (!std.mem.eql(u8, ty, "bool")) return false;
+            }
             try out.appendSlice(allocator, "    i32.const 0\n");
             return true;
         }
@@ -6179,6 +6613,9 @@ fn emitExprWithMoveContext(
 
         if (std.mem.eql(u8, call_name, "eq") or std.mem.eql(u8, call_name, "ne")) {
             if (try emitUnionNilComparison(allocator, tokens, call_head.args_start, call_head.args_end, move_ctx, call_name, locals, ctx, out)) {
+                return true;
+            }
+            if (try emitUnionPayloadComparisonLocal(allocator, tokens, call_head.args_start, call_head.args_end, call_name, locals, ctx, out)) {
                 return true;
             }
             if (try emitUnionErrorBranchComparison(allocator, tokens, call_head.args_start, call_head.args_end, call_name, locals, ctx, out)) {
@@ -7062,6 +7499,65 @@ fn emitUnionPayloadComparisonCall(
     return true;
 }
 
+fn emitUnionPayloadComparisonLocal(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    args_start: usize,
+    args_end: usize,
+    call_name: []const u8,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    const first_end = findArgEnd(tokens, args_start, args_end);
+    if (first_end == args_start or first_end >= args_end or !tokEq(tokens[first_end], ",")) return false;
+    const second_start = first_end + 1;
+    const second_end = findArgEnd(tokens, second_start, args_end);
+    if (second_end != args_end) return false;
+
+    const first_union = unionLocalSingleIdent(tokens, args_start, first_end, locals);
+    const second_union = unionLocalSingleIdent(tokens, second_start, second_end, locals);
+    if (first_union != null and second_union != null) return false;
+
+    const union_local = first_union orelse second_union orelse return false;
+    const value_start = if (first_union != null) second_start else args_start;
+    const value_end = if (first_union != null) second_end else first_end;
+    const branch = unionPayloadComparisonBranchForLocalValue(tokens, value_start, value_end, locals, ctx, union_local.layout) orelse return false;
+
+    try appendUnionPayloadLocalGet(allocator, out, union_local.name, branch.payload_start);
+    if (!try emitExpr(allocator, tokens, value_start, value_end, locals, ctx, branch.ty, out)) {
+        return false;
+    }
+    const op_ty = codegenScalarType(ctx, branch.ty);
+    const eq_op = comparisonWasmOp("eq", op_ty) orelse return false;
+    try appendFmt(allocator, out, "    {s}\n", .{eq_op});
+    try appendUnionTagLocalGet(allocator, out, union_local.name);
+    try appendFmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
+    try out.appendSlice(allocator, "    i32.eq\n");
+    try out.appendSlice(allocator, "    i32.and\n");
+    if (std.mem.eql(u8, call_name, "ne")) {
+        try out.appendSlice(allocator, "    i32.eqz\n");
+    }
+    return true;
+}
+
+fn unionPayloadComparisonBranchForLocalValue(
+    tokens: []const lexer.Token,
+    value_start: usize,
+    value_end: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    layout: UnionLayout,
+) ?UnionBranch {
+    for (layout.branches) |branch| {
+        if (branch.tag == 0 or branch.payload_len != 1) continue;
+        if (!isCodegenScalarType(ctx, branch.ty)) continue;
+        if (!callArgMatchesParam(tokens, value_start, value_end, locals, ctx, branch.ty)) continue;
+        return branch;
+    }
+    return null;
+}
+
 fn emitUnionErrorBranchComparison(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -7685,1715 +8181,6 @@ fn parseWasiHostImport(
         .params = params,
         .result = result,
     };
-}
-
-fn emitWasiBindings(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    wasi_imports: []const WasiHostImport,
-) !void {
-    for (wasi_imports) |import| {
-        try appendFmt(allocator, out, "  ;; wasi-bind source=\"{s}\" alias=\"{s}\" target=\"{s}\" params=\"", .{
-            import.source,
-            import.alias,
-            import.target,
-        });
-        try appendDoSignatureAsWit(allocator, out, import.params);
-        try out.appendSlice(allocator, "\" result=\"");
-        try appendDoSignatureAsWit(allocator, out, import.result);
-        try out.appendSlice(allocator, "\"\n");
-    }
-}
-
-fn emitWasiCoreImports(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    wasi_imports: []const WasiHostImport,
-) !void {
-    var seen = std.ArrayList([]const u8).empty;
-    defer seen.deinit(allocator);
-
-    for (wasi_imports) |import| {
-        const lowering = wasiLowering(import) orelse continue;
-        if (hasString(seen.items, import.target)) continue;
-        try seen.append(allocator, import.target);
-
-        try appendFmt(allocator, out, "  (import \"{s}\" \"{s}\" (func $", .{
-            lowering.module,
-            lowering.name,
-        });
-        try appendWasiImportSymbol(allocator, out, import.target);
-        if (lowering.param != null) {
-            try appendFmt(allocator, out, " (param {s})", .{lowering.param.?});
-        }
-        if (lowering.result != null) {
-            try appendFmt(allocator, out, " (result {s})", .{lowering.result.?});
-        }
-        try out.appendSlice(allocator, "))\n");
-    }
-}
-
-fn emitHostImports(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    host_imports: []const HostImport,
-) !void {
-    for (host_imports) |host_import| {
-        try appendFmt(allocator, out, "  (import \"env\" \"{s}\" (func ${s}", .{ host_import.field, host_import.alias });
-        if (host_import.params.len != 0) {
-            try out.appendSlice(allocator, " (param");
-            for (host_import.params) |param| {
-                try appendFmt(allocator, out, " {s}", .{wasmType(param)});
-            }
-            try out.appendSlice(allocator, ")");
-        }
-        if (host_import.result) |result| {
-            try appendFmt(allocator, out, " (result {s})", .{wasmType(result)});
-        }
-        try out.appendSlice(allocator, "))\n");
-    }
-}
-
-fn emitStringDataMemory(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    string_data: []const StringData,
-    options: EmitOptions,
-) !void {
-    if (options.component_core) {
-        try out.appendSlice(allocator, "  (memory 1)\n");
-    } else {
-        try out.appendSlice(allocator, "  (memory (export \"memory\") 1)\n");
-    }
-    try out.appendSlice(allocator, "  (export \"cm32p2_memory\" (memory 0))\n");
-    for (string_data) |data| {
-        try appendFmt(allocator, out, "  (data (i32.const {d}) ", .{data.ptr});
-        try appendWatStringLiteral(allocator, out, data.bytes);
-        try out.appendSlice(allocator, ")\n");
-    }
-}
-
-fn emitArcRuntimePrelude(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    string_data: []const StringData,
-    struct_layouts: []const StructLayout,
-) !void {
-    const heap_base = alignedArcHeapBase(string_data);
-    const release_worklist_base = heap_base - ARC_RELEASE_WORKLIST_BYTES;
-    const wasi_result_area_base = release_worklist_base - WASI_RESULT_AREA_BYTES;
-
-    try appendFmt(allocator, out, "  ;; arc-runtime block_size={d} object_header={d}\n", .{ ARC_BLOCK_SIZE, ARC_OBJECT_HEADER_BYTES });
-    try appendFmt(allocator, out, "  (global $__heap_base i32 (i32.const {d}))\n", .{heap_base});
-    try appendFmt(allocator, out, "  (global $__heap_cursor (mut i32) (i32.const {d}))\n", .{heap_base});
-    try appendFmt(allocator, out, "  (global $__wasi_result_area_base i32 (i32.const {d}))\n", .{wasi_result_area_base});
-    try appendFmt(allocator, out, "  (global $__release_worklist_base i32 (i32.const {d}))\n", .{release_worklist_base});
-    try out.appendSlice(allocator,
-        \\  ;; arc-runtime memory grow helper v0
-        \\  (func $__memory_grow_to (param $end i32)
-        \\    memory.size
-        \\    i32.const 16
-        \\    i32.shl
-        \\    local.get $end
-        \\    i32.lt_u
-        \\    if
-        \\      local.get $end
-        \\      i32.const 65535
-        \\      i32.add
-        \\      i32.const 16
-        \\      i32.shr_u
-        \\      memory.size
-        \\      i32.sub
-        \\      memory.grow
-        \\      i32.const -1
-        \\      i32.eq
-        \\      if
-        \\        unreachable
-        \\      end
-        \\    end
-        \\  )
-        \\  (func $cm32p2_realloc (export "cm32p2_realloc") (param $old_ptr i32) (param $old_size i32) (param $align i32) (param $new_size i32) (result i32)
-        \\    (local $ptr i32)
-        \\    (local $copy_len i32)
-        \\    local.get $new_size
-        \\    i32.eqz
-        \\    if
-        \\      i32.const 0
-        \\      return
-        \\    end
-        \\    global.get $__heap_cursor
-        \\    local.get $align
-        \\    i32.const 1
-        \\    i32.sub
-        \\    i32.add
-        \\    local.get $align
-        \\    i32.const 1
-        \\    i32.sub
-        \\    i32.const -1
-        \\    i32.xor
-        \\    i32.and
-        \\    local.set $ptr
-        \\    local.get $ptr
-        \\    local.get $new_size
-        \\    i32.add
-        \\    call $__memory_grow_to
-        \\    local.get $ptr
-        \\    local.get $new_size
-        \\    i32.add
-        \\    global.set $__heap_cursor
-        \\    local.get $old_ptr
-        \\    i32.eqz
-        \\    i32.eqz
-        \\    if
-        \\      local.get $old_size
-        \\      local.set $copy_len
-        \\      local.get $new_size
-        \\      local.get $old_size
-        \\      i32.lt_u
-        \\      if
-        \\        local.get $new_size
-        \\        local.set $copy_len
-        \\      end
-        \\      local.get $ptr
-        \\      local.get $old_ptr
-        \\      local.get $copy_len
-        \\      memory.copy
-        \\    end
-        \\    local.get $ptr
-        \\  )
-        \\  (func $cm32p2_initialize (export "cm32p2_initialize"))
-        \\  (func $__wasi_list_u8_to_storage (param $ptr i32) (param $len i32) (result i32)
-        \\    (local $object i32)
-        \\    local.get $len
-        \\    i32.const 8
-        \\    i32.add
-        \\    i32.const 1
-        \\    call $__arc_alloc
-        \\    local.set $object
-        \\    local.get $object
-        \\    call $__arc_payload
-        \\    local.get $len
-        \\    i32.store
-        \\    local.get $object
-        \\    call $__arc_payload
-        \\    i32.const 4
-        \\    i32.add
-        \\    local.get $len
-        \\    i32.store
-        \\    local.get $object
-        \\    call $__arc_payload
-        \\    i32.const 8
-        \\    i32.add
-        \\    local.get $ptr
-        \\    local.get $len
-        \\    memory.copy
-        \\    local.get $object
-        \\  )
-        \\  ;; arc-runtime free span list v1
-        \\  (global $__free_span_head (mut i32) (i32.const -1))
-        \\  (func $__free_span_push (param $block i32)
-        \\    local.get $block
-        \\    i32.const 8
-        \\    i32.add
-        \\    global.get $__free_span_head
-        \\    i32.store
-        \\    local.get $block
-        \\    global.set $__free_span_head
-        \\  )
-        \\  (func $__free_span_find (param $required_span i32) (result i32)
-        \\    (local $block i32)
-        \\    global.get $__free_span_head
-        \\    local.set $block
-        \\    block $not_found
-        \\      loop $scan
-        \\        local.get $block
-        \\        i32.const -1
-        \\        i32.eq
-        \\        br_if $not_found
-        \\        local.get $block
-        \\        i32.load8_u
-        \\        i32.eqz
-        \\        local.get $block
-        \\        i32.const 4
-        \\        i32.add
-        \\        i32.load
-        \\        local.get $required_span
-        \\        i32.ge_u
-        \\        i32.and
-        \\        if
-        \\          local.get $block
-        \\          return
-        \\        end
-        \\        local.get $block
-        \\        i32.const 8
-        \\        i32.add
-        \\        i32.load
-        \\        local.set $block
-        \\        br $scan
-        \\      end
-        \\    end
-        \\    i32.const -1
-        \\  )
-        \\  ;; arc-runtime free span unlink v1
-        \\  (func $__free_span_unlink (param $target i32)
-        \\    (local $prev i32)
-        \\    (local $block i32)
-        \\    i32.const -1
-        \\    local.set $prev
-        \\    global.get $__free_span_head
-        \\    local.set $block
-        \\    block $done
-        \\      loop $scan
-        \\        local.get $block
-        \\        i32.const -1
-        \\        i32.eq
-        \\        br_if $done
-        \\        local.get $block
-        \\        local.get $target
-        \\        i32.eq
-        \\        if
-        \\          local.get $prev
-        \\          i32.const -1
-        \\          i32.eq
-        \\          if
-        \\            local.get $block
-        \\            i32.const 8
-        \\            i32.add
-        \\            i32.load
-        \\            global.set $__free_span_head
-        \\          else
-        \\            local.get $prev
-        \\            i32.const 8
-        \\            i32.add
-        \\            local.get $block
-        \\            i32.const 8
-        \\            i32.add
-        \\            i32.load
-        \\            i32.store
-        \\          end
-        \\          return
-        \\        end
-        \\        local.get $block
-        \\        local.set $prev
-        \\        local.get $block
-        \\        i32.const 8
-        \\        i32.add
-        \\        i32.load
-        \\        local.set $block
-        \\        br $scan
-        \\      end
-        \\    end
-        \\  )
-        \\  ;; arc-runtime free span split v1
-        \\  (func $__free_span_split_tail (param $block i32) (param $used_span i32)
-        \\    (local $original_span i32)
-        \\    (local $tail_block i32)
-        \\    local.get $block
-        \\    i32.const 4
-        \\    i32.add
-        \\    i32.load
-        \\    local.set $original_span
-        \\    local.get $original_span
-        \\    local.get $used_span
-        \\    i32.le_u
-        \\    if
-        \\      return
-        \\    end
-        \\    local.get $block
-        \\    local.get $used_span
-        \\    i32.const 1024
-        \\    i32.mul
-        \\    i32.add
-        \\    local.set $tail_block
-        \\    local.get $tail_block
-        \\    i32.const 0
-        \\    i32.store8
-        \\    local.get $tail_block
-        \\    i32.const 4
-        \\    i32.add
-        \\    local.get $original_span
-        \\    local.get $used_span
-        \\    i32.sub
-        \\    i32.store
-        \\    local.get $tail_block
-        \\    i32.const 8
-        \\    i32.add
-        \\    i32.const 0
-        \\    i32.store
-        \\    local.get $tail_block
-        \\    call $__free_span_push
-        \\    local.get $block
-        \\    i32.const 4
-        \\    i32.add
-        \\    local.get $used_span
-        \\    i32.store
-        \\  )
-        \\  ;; arc-runtime free span merge v1
-        \\  (func $__free_span_merge_neighbors (param $block i32) (result i32)
-        \\    (local $candidate i32)
-        \\    (local $block_span i32)
-        \\    (local $candidate_span i32)
-        \\    (local $block_end i32)
-        \\    (local $candidate_end i32)
-        \\    block $done
-        \\      loop $restart
-        \\        local.get $block
-        \\        i32.const 4
-        \\        i32.add
-        \\        i32.load
-        \\        local.set $block_span
-        \\        local.get $block
-        \\        local.get $block_span
-        \\        i32.const 1024
-        \\        i32.mul
-        \\        i32.add
-        \\        local.set $block_end
-        \\        global.get $__free_span_head
-        \\        local.set $candidate
-        \\        block $scan_done
-        \\          loop $scan
-        \\            local.get $candidate
-        \\            i32.const -1
-        \\            i32.eq
-        \\            br_if $scan_done
-        \\            local.get $candidate
-        \\            local.get $block
-        \\            i32.eq
-        \\            if
-        \\              local.get $candidate
-        \\              i32.const 8
-        \\              i32.add
-        \\              i32.load
-        \\              local.set $candidate
-        \\              br $scan
-        \\            end
-        \\            local.get $candidate
-        \\            i32.load8_u
-        \\            i32.eqz
-        \\            if
-        \\              local.get $candidate
-        \\              i32.const 4
-        \\              i32.add
-        \\              i32.load
-        \\              local.set $candidate_span
-        \\              local.get $candidate
-        \\              local.get $candidate_span
-        \\              i32.const 1024
-        \\              i32.mul
-        \\              i32.add
-        \\              local.set $candidate_end
-        \\              local.get $block_end
-        \\              local.get $candidate
-        \\              i32.eq
-        \\              if
-        \\                local.get $candidate
-        \\                call $__free_span_unlink
-        \\                local.get $block
-        \\                i32.const 4
-        \\                i32.add
-        \\                local.get $block_span
-        \\                local.get $candidate_span
-        \\                i32.add
-        \\                i32.store
-        \\                br $restart
-        \\              end
-        \\              local.get $candidate_end
-        \\              local.get $block
-        \\              i32.eq
-        \\              if
-        \\                local.get $candidate
-        \\                call $__free_span_unlink
-        \\                local.get $candidate
-        \\                i32.const 4
-        \\                i32.add
-        \\                local.get $candidate_span
-        \\                local.get $block_span
-        \\                i32.add
-        \\                i32.store
-        \\                local.get $block
-        \\                i32.const 0
-        \\                i32.store8
-        \\                local.get $candidate
-        \\                local.set $block
-        \\                br $restart
-        \\              end
-        \\            end
-        \\            local.get $candidate
-        \\            i32.const 8
-        \\            i32.add
-        \\            i32.load
-        \\            local.set $candidate
-        \\            br $scan
-        \\          end
-        \\        end
-        \\        br $done
-        \\      end
-        \\    end
-        \\    local.get $block
-        \\  )
-        \\  ;; arc-runtime generic slot class table v1
-        \\  (func $__slot_class_table_addr (param $slot_units i32) (result i32)
-        \\    local.get $slot_units
-        \\    i32.const 2
-        \\    i32.shl
-        \\  )
-        \\  (func $__slot_class_table_get (param $slot_units i32) (result i32)
-        \\    (local $stored i32)
-        \\    ;; zero table slot means no block
-        \\    local.get $slot_units
-        \\    call $__slot_class_table_addr
-        \\    i32.load
-        \\    local.tee $stored
-        \\    i32.eqz
-        \\    if (result i32)
-        \\      i32.const -1
-        \\    else
-        \\      local.get $stored
-        \\      i32.const 1
-        \\      i32.sub
-        \\    end
-        \\  )
-        \\  (func $__slot_class_table_set (param $slot_units i32) (param $head i32)
-        \\    local.get $slot_units
-        \\    call $__slot_class_table_addr
-        \\    local.get $head
-        \\    i32.const 1
-        \\    i32.add
-        \\    i32.store
-        \\  )
-        \\  ;; arc-runtime slot class state v1
-        \\  (global $__slot_class_4 (mut i32) (i32.const -1))
-        \\  (func $__slot_class_head_ptr (param $slot_units i32) (result i32)
-        \\    local.get $slot_units
-        \\    i32.const 4
-        \\    i32.eq
-        \\    if (result i32)
-        \\      global.get $__slot_class_4
-        \\    else
-        \\      local.get $slot_units
-        \\      call $__slot_class_table_get
-        \\    end
-        \\  )
-        \\  (func $__slot_class_set_head (param $slot_units i32) (param $head i32)
-        \\    local.get $slot_units
-        \\    local.get $head
-        \\    call $__slot_class_table_set
-        \\    local.get $slot_units
-        \\    i32.const 4
-        \\    i32.eq
-        \\    if
-        \\      local.get $head
-        \\      global.set $__slot_class_4
-        \\    end
-        \\  )
-        \\  (func $__slot_class_unlink_block (param $slot_units i32) (param $target i32)
-        \\    (local $prev i32)
-        \\    (local $block i32)
-        \\    i32.const -1
-        \\    local.set $prev
-        \\    local.get $slot_units
-        \\    call $__slot_class_head_ptr
-        \\    local.set $block
-        \\    block $done
-        \\      loop $scan
-        \\        local.get $block
-        \\        i32.const -1
-        \\        i32.eq
-        \\        br_if $done
-        \\        local.get $block
-        \\        local.get $target
-        \\        i32.eq
-        \\        if
-        \\          local.get $prev
-        \\          i32.const -1
-        \\          i32.eq
-        \\          if
-        \\            local.get $slot_units
-        \\            local.get $block
-        \\            i32.const 4
-        \\            i32.add
-        \\            i32.load
-        \\            call $__slot_class_set_head
-        \\          else
-        \\            local.get $prev
-        \\            i32.const 4
-        \\            i32.add
-        \\            local.get $block
-        \\            i32.const 4
-        \\            i32.add
-        \\            i32.load
-        \\            i32.store
-        \\          end
-        \\          return
-        \\        end
-        \\        local.get $block
-        \\        local.set $prev
-        \\        local.get $block
-        \\        i32.const 4
-        \\        i32.add
-        \\        i32.load
-        \\        local.set $block
-        \\        br $scan
-        \\      end
-        \\    end
-        \\  )
-        \\  ;; arc-runtime small slot reuse v1
-        \\  (func $__small_data_start (param $cap i32) (result i32)
-        \\    i32.const 8
-        \\    local.get $cap
-        \\    i32.const 7
-        \\    i32.add
-        \\    i32.const 3
-        \\    i32.shr_u
-        \\    i32.add
-        \\    i32.const 3
-        \\    i32.add
-        \\    i32.const -4
-        \\    i32.and
-        \\  )
-        \\  (func $__small_find_free_slot (param $block i32) (result i32)
-        \\    (local $cap i32)
-        \\    (local $slot i32)
-        \\    (local $byte i32)
-        \\    local.get $block
-        \\    i32.load8_u
-        \\    local.set $cap
-        \\    i32.const 0
-        \\    local.set $slot
-        \\    block $not_found
-        \\      loop $scan
-        \\        local.get $slot
-        \\        local.get $cap
-        \\        i32.ge_u
-        \\        br_if $not_found
-        \\        local.get $block
-        \\        i32.const 8
-        \\        i32.add
-        \\        local.get $slot
-        \\        i32.const 3
-        \\        i32.shr_u
-        \\        i32.add
-        \\        i32.load8_u
-        \\        local.set $byte
-        \\        local.get $byte
-        \\        i32.const 1
-        \\        local.get $slot
-        \\        i32.const 7
-        \\        i32.and
-        \\        i32.shl
-        \\        i32.and
-        \\        i32.eqz
-        \\        if
-        \\          local.get $slot
-        \\          return
-        \\        end
-        \\        local.get $slot
-        \\        i32.const 1
-        \\        i32.add
-        \\        local.set $slot
-        \\        br $scan
-        \\      end
-        \\    end
-        \\    i32.const -1
-        \\  )
-        \\  (func $__small_find_block_with_slot (param $start_block i32) (result i32)
-        \\    (local $block i32)
-        \\    local.get $start_block
-        \\    local.set $block
-        \\    block $not_found
-        \\      loop $scan
-        \\        local.get $block
-        \\        i32.const -1
-        \\        i32.eq
-        \\        br_if $not_found
-        \\        local.get $block
-        \\        call $__small_find_free_slot
-        \\        i32.const -1
-        \\        i32.ne
-        \\        if
-        \\          local.get $block
-        \\          return
-        \\        end
-        \\        local.get $block
-        \\        i32.const 4
-        \\        i32.add
-        \\        i32.load
-        \\        local.set $block
-        \\        br $scan
-        \\      end
-        \\    end
-        \\    i32.const -1
-        \\  )
-        \\  (func $__arc_alloc_from_small (param $block i32) (param $type_id i32) (result i32)
-        \\    (local $cap i32)
-        \\    (local $slot i32)
-        \\    (local $slot_size i32)
-        \\    (local $bitmap_addr i32)
-        \\    (local $mask i32)
-        \\    (local $data_start i32)
-        \\    (local $object i32)
-        \\    local.get $block
-        \\    call $__small_find_free_slot
-        \\    local.tee $slot
-        \\    i32.const -1
-        \\    i32.eq
-        \\    if
-        \\      unreachable
-        \\    end
-        \\    local.get $block
-        \\    i32.load8_u
-        \\    local.set $cap
-        \\    local.get $block
-        \\    i32.const 1
-        \\    i32.add
-        \\    i32.load8_u
-        \\    i32.const 2
-        \\    i32.shl
-        \\    local.set $slot_size
-        \\    local.get $block
-        \\    i32.const 8
-        \\    i32.add
-        \\    local.get $slot
-        \\    i32.const 3
-        \\    i32.shr_u
-        \\    i32.add
-        \\    local.set $bitmap_addr
-        \\    i32.const 1
-        \\    local.get $slot
-        \\    i32.const 7
-        \\    i32.and
-        \\    i32.shl
-        \\    local.set $mask
-        \\    local.get $bitmap_addr
-        \\    local.get $bitmap_addr
-        \\    i32.load8_u
-        \\    local.get $mask
-        \\    i32.or
-        \\    i32.store8
-        \\    local.get $cap
-        \\    call $__small_data_start
-        \\    local.set $data_start
-        \\    local.get $block
-        \\    local.get $data_start
-        \\    i32.add
-        \\    local.get $slot
-        \\    local.get $slot_size
-        \\    i32.mul
-        \\    i32.add
-        \\    local.set $object
-        \\    local.get $object
-        \\    i32.const 1
-        \\    i32.store
-        \\    local.get $object
-        \\    i32.const 4
-        \\    i32.add
-        \\    local.get $type_id
-        \\    i32.store
-        \\    local.get $object
-        \\  )
-        \\  ;; arc-runtime small slot release v1
-        \\  (func $__small_block_for_object (param $object i32) (result i32)
-        \\    local.get $object
-        \\    i32.const -1024
-        \\    i32.and
-        \\  )
-        \\  (func $__small_slot_for_object (param $object i32) (result i32)
-        \\    (local $block i32)
-        \\    (local $cap i32)
-        \\    (local $data_start i32)
-        \\    (local $slot_size i32)
-        \\    local.get $object
-        \\    call $__small_block_for_object
-        \\    local.set $block
-        \\    local.get $block
-        \\    i32.load8_u
-        \\    local.set $cap
-        \\    local.get $cap
-        \\    call $__small_data_start
-        \\    local.set $data_start
-        \\    local.get $block
-        \\    i32.const 1
-        \\    i32.add
-        \\    i32.load8_u
-        \\    i32.const 2
-        \\    i32.shl
-        \\    local.set $slot_size
-        \\    local.get $object
-        \\    local.get $block
-        \\    i32.sub
-        \\    local.get $data_start
-        \\    i32.sub
-        \\    local.get $slot_size
-        \\    i32.div_u
-        \\  )
-        \\  (func $__arc_release_small (param $object i32)
-        \\    (local $block i32)
-        \\    (local $slot i32)
-        \\    (local $bitmap_addr i32)
-        \\    (local $mask i32)
-        \\    local.get $object
-        \\    call $__small_block_for_object
-        \\    local.tee $block
-        \\    i32.load8_u
-        \\    i32.const 1
-        \\    i32.le_u
-        \\    if
-        \\      return
-        \\    end
-        \\    local.get $object
-        \\    call $__small_slot_for_object
-        \\    local.set $slot
-        \\    local.get $block
-        \\    i32.const 8
-        \\    i32.add
-        \\    local.get $slot
-        \\    i32.const 3
-        \\    i32.shr_u
-        \\    i32.add
-        \\    local.set $bitmap_addr
-        \\    i32.const 1
-        \\    local.get $slot
-        \\    i32.const 7
-        \\    i32.and
-        \\    i32.shl
-        \\    i32.const -1
-        \\    i32.xor
-        \\    local.set $mask
-        \\    local.get $bitmap_addr
-        \\    local.get $bitmap_addr
-        \\    i32.load8_u
-        \\    local.get $mask
-        \\    i32.and
-        \\    i32.store8
-        \\    local.get $block
-        \\    call $__small_is_empty
-        \\    if
-        \\      local.get $block
-        \\      call $__reclaim_empty_small_block
-        \\    end
-        \\  )
-        \\  ;; arc-runtime empty small block reclaim v1
-        \\  (func $__small_is_empty (param $block i32) (result i32)
-        \\    (local $cap i32)
-        \\    (local $bitmap_bytes i32)
-        \\    (local $byte_index i32)
-        \\    local.get $block
-        \\    i32.load8_u
-        \\    local.set $cap
-        \\    local.get $cap
-        \\    i32.const 7
-        \\    i32.add
-        \\    i32.const 3
-        \\    i32.shr_u
-        \\    local.set $bitmap_bytes
-        \\    i32.const 0
-        \\    local.set $byte_index
-        \\    block $empty
-        \\      loop $scan
-        \\        local.get $byte_index
-        \\        local.get $bitmap_bytes
-        \\        i32.ge_u
-        \\        br_if $empty
-        \\        local.get $block
-        \\        i32.const 8
-        \\        i32.add
-        \\        local.get $byte_index
-        \\        i32.add
-        \\        i32.load8_u
-        \\        i32.eqz
-        \\        if
-        \\        else
-        \\          i32.const 0
-        \\          return
-        \\        end
-        \\        local.get $byte_index
-        \\        i32.const 1
-        \\        i32.add
-        \\        local.set $byte_index
-        \\        br $scan
-        \\      end
-        \\    end
-        \\    i32.const 1
-        \\  )
-        \\  (func $__reclaim_empty_small_block (param $block i32)
-        \\    (local $slot_units i32)
-        \\    local.get $block
-        \\    i32.const 1
-        \\    i32.add
-        \\    i32.load8_u
-        \\    local.set $slot_units
-        \\    local.get $slot_units
-        \\    local.get $block
-        \\    call $__slot_class_unlink_block
-        \\    local.get $block
-        \\    i32.const 0
-        \\    i32.store8
-        \\    local.get $block
-        \\    i32.const 4
-        \\    i32.add
-        \\    i32.const 1
-        \\    i32.store
-        \\    local.get $block
-        \\    i32.const 8
-        \\    i32.add
-        \\    i32.const 0
-        \\    i32.store
-        \\    local.get $block
-        \\    call $__free_span_merge_neighbors
-        \\    call $__free_span_push
-        \\  )
-        \\  ;; arc-runtime layout table v1
-        \\
-    );
-    try emitArcLayoutTable(allocator, out, struct_layouts);
-    try out.appendSlice(allocator,
-        \\  ;; arc-runtime large span release v1
-        \\  (func $__arc_release_large (param $object i32)
-        \\    (local $block i32)
-        \\    (local $span_len i32)
-        \\    local.get $object
-        \\    call $__small_block_for_object
-        \\    local.set $block
-        \\    local.get $block
-        \\    i32.const 4
-        \\    i32.add
-        \\    i32.load
-        \\    local.set $span_len
-        \\    local.get $block
-        \\    i32.const 0
-        \\    i32.store8
-        \\    local.get $block
-        \\    i32.const 4
-        \\    i32.add
-        \\    local.get $span_len
-        \\    i32.store
-        \\    local.get $block
-        \\    i32.const 8
-        \\    i32.add
-        \\    i32.const 0
-        \\    i32.store
-        \\    local.get $block
-        \\    call $__free_span_merge_neighbors
-        \\    call $__free_span_push
-        \\  )
-        \\  ;; arc-runtime allocator v1
-        \\  (func $__arc_alloc (param $payload_bytes i32) (param $type_id i32) (result i32)
-        \\    (local $object_bytes i32)
-        \\    local.get $payload_bytes
-        \\    i32.const 8
-        \\    i32.add
-        \\    i32.const 3
-        \\    i32.add
-        \\    i32.const -4
-        \\    i32.and
-        \\    local.set $object_bytes
-        \\    local.get $object_bytes
-        \\    i32.const 1024
-        \\    i32.lt_u
-        \\    if (result i32)
-        \\      local.get $payload_bytes
-        \\      local.get $type_id
-        \\      call $__arc_alloc_small
-        \\    else
-        \\      local.get $payload_bytes
-        \\      local.get $type_id
-        \\      call $__arc_alloc_large
-        \\    end
-        \\  )
-        \\  ;; arc-runtime small block allocator v1
-        \\  (func $__arc_alloc_small (param $payload_bytes i32) (param $type_id i32) (result i32)
-        \\    (local $object_bytes i32)
-        \\    (local $slot_units i32)
-        \\    (local $cap i32)
-        \\    (local $block i32)
-        \\    (local $class_head i32)
-        \\    (local $reuse_block i32)
-        \\    (local $data_start i32)
-        \\    local.get $payload_bytes
-        \\    i32.const 8
-        \\    i32.add
-        \\    i32.const 3
-        \\    i32.add
-        \\    i32.const -4
-        \\    i32.and
-        \\    local.set $object_bytes
-        \\    local.get $object_bytes
-        \\    i32.const 2
-        \\    i32.add
-        \\    i32.const 2
-        \\    i32.shr_u
-        \\    local.set $slot_units
-        \\    i32.const 1024
-        \\    local.get $object_bytes
-        \\    i32.div_u
-        \\    local.set $cap
-        \\    local.get $cap
-        \\    i32.const 504
-        \\    i32.gt_u
-        \\    if
-        \\      i32.const 504
-        \\      local.set $cap
-        \\    end
-        \\    block $cap_done
-        \\      loop $cap_scan
-        \\        local.get $cap
-        \\        i32.const 1
-        \\        i32.le_u
-        \\        br_if $cap_done
-        \\        local.get $cap
-        \\        call $__small_data_start
-        \\        local.get $cap
-        \\        local.get $object_bytes
-        \\        i32.mul
-        \\        i32.add
-        \\        i32.const 1024
-        \\        i32.le_u
-        \\        br_if $cap_done
-        \\        local.get $cap
-        \\        i32.const 1
-        \\        i32.sub
-        \\        local.set $cap
-        \\        br $cap_scan
-        \\      end
-        \\    end
-        \\    local.get $cap
-        \\    i32.const 1
-        \\    i32.le_u
-        \\    if (result i32)
-        \\      local.get $payload_bytes
-        \\      local.get $type_id
-        \\      call $__arc_alloc_large
-        \\    else
-        \\      global.get $__heap_cursor
-        \\      local.set $block
-        \\      local.get $slot_units
-        \\      call $__slot_class_head_ptr
-        \\      local.set $class_head
-        \\      local.get $class_head
-        \\      call $__small_find_block_with_slot
-        \\      local.tee $reuse_block
-        \\      i32.const -1
-        \\      i32.ne
-        \\      if
-        \\        local.get $reuse_block
-        \\        local.get $type_id
-        \\        call $__arc_alloc_from_small
-        \\        return
-        \\      end
-        \\      local.get $block
-        \\      i32.const 1024
-        \\      i32.add
-        \\      call $__memory_grow_to
-        \\      local.get $block
-        \\      local.get $cap
-        \\      i32.store8
-        \\      local.get $block
-        \\      i32.const 1
-        \\      i32.add
-        \\      local.get $slot_units
-        \\      i32.store8
-        \\      local.get $block
-        \\      i32.const 2
-        \\      i32.add
-        \\      i32.const 0
-        \\      i32.store8
-        \\      local.get $block
-        \\      i32.const 3
-        \\      i32.add
-        \\      i32.const 0
-        \\      i32.store8
-        \\      local.get $block
-        \\      i32.const 4
-        \\      i32.add
-        \\      local.get $class_head
-        \\      i32.store
-        \\      local.get $block
-        \\      i32.const 8
-        \\      i32.add
-        \\      i32.const 0
-        \\      i32.store8
-        \\      local.get $cap
-        \\      call $__small_data_start
-        \\      local.set $data_start
-        \\      local.get $block
-        \\      i32.const 1024
-        \\      i32.add
-        \\      global.set $__heap_cursor
-        \\      local.get $slot_units
-        \\      local.get $block
-        \\      call $__slot_class_set_head
-        \\      local.get $block
-        \\      local.get $type_id
-        \\      call $__arc_alloc_from_small
-        \\    end
-        \\  )
-        \\  ;; arc-runtime large block allocator v1
-        \\  (func $__arc_alloc_large (param $payload_bytes i32) (param $type_id i32) (result i32)
-        \\    (local $object_bytes i32)
-        \\    (local $span_len i32)
-        \\    (local $block i32)
-        \\    (local $free_block i32)
-        \\    (local $object i32)
-        \\    local.get $payload_bytes
-        \\    i32.const 8
-        \\    i32.add
-        \\    i32.const 3
-        \\    i32.add
-        \\    i32.const -4
-        \\    i32.and
-        \\    local.set $object_bytes
-        \\    local.get $object_bytes
-        \\    i32.const 8
-        \\    i32.add
-        \\    i32.const 1023
-        \\    i32.add
-        \\    i32.const 1024
-        \\    i32.div_u
-        \\    local.set $span_len
-        \\    local.get $span_len
-        \\    call $__free_span_find
-        \\    local.tee $free_block
-        \\    i32.const -1
-        \\    i32.ne
-        \\    if
-        \\      local.get $free_block
-        \\      call $__free_span_unlink
-        \\      local.get $free_block
-        \\      local.get $span_len
-        \\      call $__free_span_split_tail
-        \\      local.get $free_block
-        \\      local.get $payload_bytes
-        \\      local.get $type_id
-        \\      call $__arc_alloc_from_large_block
-        \\      return
-        \\    end
-        \\    global.get $__heap_cursor
-        \\    local.set $block
-        \\    local.get $block
-        \\    local.get $span_len
-        \\    i32.const 1024
-        \\    i32.mul
-        \\    i32.add
-        \\    call $__memory_grow_to
-        \\    local.get $block
-        \\    i32.const 1
-        \\    i32.store8
-        \\    local.get $block
-        \\    i32.const 4
-        \\    i32.add
-        \\    local.get $span_len
-        \\    i32.store
-        \\    local.get $block
-        \\    i32.const 8
-        \\    i32.add
-        \\    local.set $object
-        \\    local.get $block
-        \\    local.get $span_len
-        \\    i32.const 1024
-        \\    i32.mul
-        \\    i32.add
-        \\    global.set $__heap_cursor
-        \\    local.get $object
-        \\    i32.const 1
-        \\    i32.store
-        \\    local.get $object
-        \\    i32.const 4
-        \\    i32.add
-        \\    local.get $type_id
-        \\    i32.store
-        \\    local.get $object
-        \\  )
-        \\  (func $__arc_alloc_from_large_block (param $block i32) (param $payload_bytes i32) (param $type_id i32) (result i32)
-        \\    (local $object i32)
-        \\    local.get $block
-        \\    i32.const 1
-        \\    i32.store8
-        \\    local.get $block
-        \\    i32.const 8
-        \\    i32.add
-        \\    local.set $object
-        \\    local.get $object
-        \\    i32.const 1
-        \\    i32.store
-        \\    local.get $object
-        \\    i32.const 4
-        \\    i32.add
-        \\    local.get $type_id
-        \\    i32.store
-        \\    local.get $object
-        \\  )
-        \\  ;; arc-runtime bump allocator fallback v0
-        \\  (func $__arc_alloc_bump (param $payload_bytes i32) (param $type_id i32) (result i32)
-        \\    (local $object i32)
-        \\    (local $next i32)
-        \\    global.get $__heap_cursor
-        \\    local.set $object
-        \\    local.get $object
-        \\    i32.const 8
-        \\    i32.add
-        \\    local.get $payload_bytes
-        \\    i32.const 3
-        \\    i32.add
-        \\    i32.const -4
-        \\    i32.and
-        \\    i32.add
-        \\    local.set $next
-        \\    local.get $next
-        \\    call $__memory_grow_to
-        \\    local.get $object
-        \\    i32.const 1
-        \\    i32.store
-        \\    local.get $object
-        \\    i32.const 4
-        \\    i32.add
-        \\    local.get $type_id
-        \\    i32.store
-        \\    local.get $next
-        \\    global.set $__heap_cursor
-        \\    local.get $object
-        \\  )
-        \\  ;; arc-runtime release worklist v1
-        \\  (global $__release_worklist_top (mut i32) (i32.const 0))
-        \\  (func $__release_worklist_push (param $object i32)
-        \\    global.get $__release_worklist_top
-        \\    i32.const 128
-        \\    i32.ge_u
-        \\    if
-        \\      unreachable
-        \\    end
-        \\    global.get $__release_worklist_base
-        \\    global.get $__release_worklist_top
-        \\    i32.const 2
-        \\    i32.shl
-        \\    i32.add
-        \\    local.get $object
-        \\    i32.store
-        \\    global.get $__release_worklist_top
-        \\    i32.const 1
-        \\    i32.add
-        \\    global.set $__release_worklist_top
-        \\  )
-        \\  (func $__release_worklist_pop (result i32)
-        \\    global.get $__release_worklist_top
-        \\    i32.eqz
-        \\    if (result i32)
-        \\      i32.const 0
-        \\    else
-        \\      global.get $__release_worklist_top
-        \\      i32.const 1
-        \\      i32.sub
-        \\      global.set $__release_worklist_top
-        \\      global.get $__release_worklist_base
-        \\      global.get $__release_worklist_top
-        \\      i32.const 2
-        \\      i32.shl
-        \\      i32.add
-        \\      i32.load
-        \\    end
-        \\  )
-        \\  ;; arc-storage-managed-release
-        \\  (func $__arc_release_storage_managed_children (param $object i32)
-        \\    (local $count i32)
-        \\    (local $index i32)
-        \\    (local $child i32)
-        \\    local.get $object
-        \\    call $__arc_payload
-        \\    i32.load
-        \\    local.set $count
-        \\    i32.const 0
-        \\    local.set $index
-        \\    block $done
-        \\      loop $scan
-        \\        local.get $index
-        \\        local.get $count
-        \\        i32.ge_u
-        \\        br_if $done
-        \\        local.get $object
-        \\        call $__arc_payload
-        \\        i32.const 8
-        \\        i32.add
-        \\        local.get $index
-        \\        i32.const 4
-        \\        i32.mul
-        \\        i32.add
-        \\        i32.load
-        \\        local.tee $child
-        \\        i32.eqz
-        \\        if
-        \\        else
-        \\          local.get $child
-        \\          call $__arc_dec_no_drain
-        \\        end
-        \\        local.get $index
-        \\        i32.const 1
-        \\        i32.add
-        \\        local.set $index
-        \\        br $scan
-        \\      end
-        \\    end
-        \\  )
-        \\  ;; arc-runtime managed child release v1
-        \\  (func $__arc_release_managed_children (param $object i32)
-        \\    (local $type_id i32)
-        \\    (local $count i32)
-        \\    (local $index i32)
-        \\    (local $child i32)
-        \\    local.get $object
-        \\    call $__arc_type_id
-        \\    local.set $type_id
-        \\    local.get $type_id
-        \\    i32.const 65535
-        \\    i32.eq
-        \\    if
-        \\      local.get $object
-        \\      call $__arc_release_storage_managed_children
-        \\      return
-        \\    end
-        \\    local.get $type_id
-        \\    call $__layout_managed_count
-        \\    local.set $count
-        \\    i32.const 0
-        \\    local.set $index
-        \\    block $done
-        \\      loop $scan
-        \\        local.get $index
-        \\        local.get $count
-        \\        i32.ge_u
-        \\        br_if $done
-        \\        local.get $object
-        \\        call $__arc_payload
-        \\        local.get $type_id
-        \\        local.get $index
-        \\        call $__layout_managed_offset
-        \\        i32.add
-        \\        i32.load
-        \\        local.tee $child
-        \\        i32.eqz
-        \\        if
-        \\        else
-        \\          local.get $child
-        \\          call $__arc_dec_no_drain
-        \\        end
-        \\        local.get $index
-        \\        i32.const 1
-        \\        i32.add
-        \\        local.set $index
-        \\        br $scan
-        \\      end
-        \\    end
-        \\  )
-        \\  (func $__arc_release (param $object i32)
-        \\    local.get $object
-        \\    call $__arc_release_managed_children
-        \\    local.get $object
-        \\    call $__small_block_for_object
-        \\    i32.load8_u
-        \\    i32.const 1
-        \\    i32.eq
-        \\    if
-        \\      local.get $object
-        \\      call $__arc_release_large
-        \\    else
-        \\      local.get $object
-        \\      call $__arc_release_small
-        \\    end
-        \\  )
-        \\  ;; arc-runtime refcount primitives v1
-        \\  (func $__arc_inc (param $object i32) (result i32)
-        \\    ;; arc-inc-zero-sentinel
-        \\    local.get $object
-        \\    i32.eqz
-        \\    if (result i32)
-        \\      i32.const 0
-        \\    else
-        \\      local.get $object
-        \\      local.get $object
-        \\      i32.load
-        \\      i32.const 1
-        \\      i32.add
-        \\      i32.store
-        \\      local.get $object
-        \\    end
-        \\  )
-        \\  (func $__arc_dec_no_drain (param $object i32)
-        \\    (local $next_rc i32)
-        \\    ;; arc-dec-zero-sentinel
-        \\    local.get $object
-        \\    i32.eqz
-        \\    if
-        \\      return
-        \\    end
-        \\    local.get $object
-        \\    local.get $object
-        \\    i32.load
-        \\    i32.const 1
-        \\    i32.sub
-        \\    local.tee $next_rc
-        \\    i32.store
-        \\    local.get $next_rc
-        \\    i32.eqz
-        \\    if
-        \\      local.get $object
-        \\      call $__release_worklist_push
-        \\    end
-        \\  )
-        \\  (func $__arc_drain_release_worklist
-        \\    (local $object i32)
-        \\    block $done
-        \\      loop $drain
-        \\        call $__release_worklist_pop
-        \\        local.tee $object
-        \\        i32.eqz
-        \\        br_if $done
-        \\        local.get $object
-        \\        call $__arc_release
-        \\        br $drain
-        \\      end
-        \\    end
-        \\  )
-        \\  (func $__arc_dec (param $object i32)
-        \\    local.get $object
-        \\    call $__arc_dec_no_drain
-        \\    call $__arc_drain_release_worklist
-        \\  )
-        \\  ;; arc-runtime object header accessors v0
-        \\  (func $__arc_payload (param $object i32) (result i32)
-        \\    local.get $object
-        \\    i32.const 8
-        \\    i32.add
-        \\  )
-        \\  (func $__arc_rc (param $object i32) (result i32)
-        \\    local.get $object
-        \\    i32.load
-        \\  )
-        \\  (func $__arc_type_id (param $object i32) (result i32)
-        \\    local.get $object
-        \\    i32.const 4
-        \\    i32.add
-        \\    i32.load
-        \\  )
-        \\  ;; arc-runtime storage range check v0
-        \\  (func $__storage_check_range (param $storage i32) (param $offset i32) (param $width i32)
-        \\    local.get $offset
-        \\    local.get $width
-        \\    i32.add
-        \\    local.get $storage
-        \\    call $__arc_payload
-        \\    i32.load
-        \\    i32.gt_u
-        \\    if
-        \\      unreachable
-        \\    end
-        \\  )
-        \\  (func $__storage_equal_u8 (param $left i32) (param $right i32) (result i32)
-        \\    (local $len i32)
-        \\    (local $index i32)
-        \\    local.get $left
-        \\    local.get $right
-        \\    i32.eq
-        \\    if
-        \\      i32.const 1
-        \\      return
-        \\    end
-        \\    local.get $left
-        \\    call $__arc_payload
-        \\    i32.load
-        \\    local.tee $len
-        \\    local.get $right
-        \\    call $__arc_payload
-        \\    i32.load
-        \\    i32.ne
-        \\    if
-        \\      i32.const 0
-        \\      return
-        \\    end
-        \\    i32.const 0
-        \\    local.set $index
-        \\    block $done
-        \\      loop $scan
-        \\        local.get $index
-        \\        local.get $len
-        \\        i32.ge_u
-        \\        br_if $done
-        \\        local.get $left
-        \\        call $__arc_payload
-        \\        i32.const 8
-        \\        i32.add
-        \\        local.get $index
-        \\        i32.add
-        \\        i32.load8_u
-        \\        local.get $right
-        \\        call $__arc_payload
-        \\        i32.const 8
-        \\        i32.add
-        \\        local.get $index
-        \\        i32.add
-        \\        i32.load8_u
-        \\        i32.ne
-        \\        if
-        \\          i32.const 0
-        \\          return
-        \\        end
-        \\        local.get $index
-        \\        i32.const 1
-        \\        i32.add
-        \\        local.set $index
-        \\        br $scan
-        \\      end
-        \\    end
-        \\    i32.const 1
-        \\  )
-        \\  ;; arc-runtime storage write helpers v1
-        \\  (func $__storage_set_u8 (param $storage i32) (param $index i32) (param $value i32) (result i32)
-        \\    (local $len i32)
-        \\    (local $next i32)
-        \\    local.get $storage
-        \\    local.get $index
-        \\    i32.const 1
-        \\    call $__storage_check_range
-        \\    local.get $storage
-        \\    call $__arc_payload
-        \\    i32.load
-        \\    local.set $len
-        \\    local.get $storage
-        \\    call $__arc_rc
-        \\    i32.const 1
-        \\    i32.eq
-        \\    if
-        \\      local.get $storage
-        \\      call $__arc_payload
-        \\      i32.const 8
-        \\      i32.add
-        \\      local.get $index
-        \\      i32.add
-        \\      local.get $value
-        \\      i32.store8
-        \\      local.get $storage
-        \\      return
-        \\    end
-        \\    local.get $len
-        \\    i32.const 8
-        \\    i32.add
-        \\    i32.const 1
-        \\    call $__arc_alloc
-        \\    local.set $next
-        \\    local.get $next
-        \\    call $__arc_payload
-        \\    local.get $len
-        \\    i32.store
-        \\    local.get $next
-        \\    call $__arc_payload
-        \\    i32.const 4
-        \\    i32.add
-        \\    local.get $len
-        \\    i32.store
-        \\    local.get $next
-        \\    call $__arc_payload
-        \\    i32.const 8
-        \\    i32.add
-        \\    local.get $storage
-        \\    call $__arc_payload
-        \\    i32.const 8
-        \\    i32.add
-        \\    local.get $len
-        \\    memory.copy
-        \\    local.get $next
-        \\    call $__arc_payload
-        \\    i32.const 8
-        \\    i32.add
-        \\    local.get $index
-        \\    i32.add
-        \\    local.get $value
-        \\    i32.store8
-        \\    local.get $next
-        \\  )
-        \\  (func $__storage_put_u8 (param $storage i32) (param $value i32) (result i32)
-        \\    (local $len i32)
-        \\    (local $cap i32)
-        \\    (local $next_len i32)
-        \\    (local $next i32)
-        \\    local.get $storage
-        \\    call $__arc_payload
-        \\    i32.load
-        \\    local.set $len
-        \\    local.get $storage
-        \\    call $__arc_payload
-        \\    i32.const 4
-        \\    i32.add
-        \\    i32.load
-        \\    local.set $cap
-        \\    local.get $len
-        \\    i32.const 1
-        \\    i32.add
-        \\    local.set $next_len
-        \\    local.get $storage
-        \\    call $__arc_rc
-        \\    i32.const 1
-        \\    i32.eq
-        \\    local.get $len
-        \\    local.get $cap
-        \\    i32.lt_u
-        \\    i32.and
-        \\    if
-        \\      local.get $storage
-        \\      call $__arc_payload
-        \\      i32.const 8
-        \\      i32.add
-        \\      local.get $len
-        \\      i32.add
-        \\      local.get $value
-        \\      i32.store8
-        \\      local.get $storage
-        \\      call $__arc_payload
-        \\      local.get $next_len
-        \\      i32.store
-        \\      local.get $storage
-        \\      return
-        \\    end
-        \\    local.get $next_len
-        \\    i32.const 8
-        \\    i32.add
-        \\    i32.const 1
-        \\    call $__arc_alloc
-        \\    local.set $next
-        \\    local.get $next
-        \\    call $__arc_payload
-        \\    local.get $next_len
-        \\    i32.store
-        \\    local.get $next
-        \\    call $__arc_payload
-        \\    i32.const 4
-        \\    i32.add
-        \\    local.get $next_len
-        \\    i32.store
-        \\    local.get $next
-        \\    call $__arc_payload
-        \\    i32.const 8
-        \\    i32.add
-        \\    local.get $storage
-        \\    call $__arc_payload
-        \\    i32.const 8
-        \\    i32.add
-        \\    local.get $len
-        \\    memory.copy
-        \\    local.get $next
-        \\    call $__arc_payload
-        \\    i32.const 8
-        \\    i32.add
-        \\    local.get $len
-        \\    i32.add
-        \\    local.get $value
-        \\    i32.store8
-        \\    local.get $next
-        \\  )
-        \\
-    );
-}
-
-fn emitArcLayoutTable(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    struct_layouts: []const StructLayout,
-) !void {
-    for (struct_layouts) |layout| {
-        try appendFmt(allocator, out, "  ;; arc-layout type_id={d} name={s} managed_count={d} payload_bytes={d}\n", .{
-            layout.type_id,
-            layout.name,
-            layout.managed_fields.len,
-            layout.payload_bytes,
-        });
-        for (layout.managed_fields, 0..) |field, index| {
-            try appendFmt(allocator, out, "  ;; arc-layout-managed-offset type_id={d} index={d} offset={d} field={s}\n", .{
-                layout.type_id,
-                index,
-                field.offset,
-                field.name,
-            });
-        }
-    }
-
-    try out.appendSlice(allocator,
-        \\  (func $__layout_managed_count (param $type_id i32) (result i32)
-        \\    local.get $type_id
-        \\    i32.const 1
-        \\    i32.eq
-        \\    if
-        \\      i32.const 0
-        \\      return
-        \\    end
-        \\
-    );
-    for (struct_layouts, 0..) |layout, index| {
-        if (hasEarlierLayoutTypeId(struct_layouts[0..index], layout.type_id)) continue;
-        try appendFmt(allocator, out,
-            \\    local.get $type_id
-            \\    i32.const {d}
-            \\    i32.eq
-            \\    if
-            \\      i32.const {d}
-            \\      return
-            \\    end
-            \\
-        , .{ layout.type_id, layout.managed_fields.len });
-    }
-    try out.appendSlice(allocator,
-        \\    unreachable
-        \\  )
-        \\  (func $__layout_managed_offset (param $type_id i32) (param $index i32) (result i32)
-        \\    local.get $type_id
-        \\    i32.const 1
-        \\    i32.eq
-        \\    if
-        \\      unreachable
-        \\    end
-        \\
-    );
-    for (struct_layouts, 0..) |layout, index| {
-        if (hasEarlierLayoutTypeId(struct_layouts[0..index], layout.type_id)) continue;
-        try appendFmt(allocator, out,
-            \\    local.get $type_id
-            \\    i32.const {d}
-            \\    i32.eq
-            \\    if
-            \\
-        , .{layout.type_id});
-        for (layout.managed_fields, 0..) |field, field_index| {
-            try appendFmt(allocator, out,
-                \\      local.get $index
-                \\      i32.const {d}
-                \\      i32.eq
-                \\      if
-                \\        i32.const {d}
-                \\        return
-                \\      end
-                \\
-            , .{ field_index, field.offset });
-        }
-        try out.appendSlice(allocator,
-            \\      unreachable
-            \\    end
-            \\
-        );
-    }
-    try out.appendSlice(allocator,
-        \\    unreachable
-        \\  )
-    );
-}
-
-fn hasEarlierLayoutTypeId(layouts: []const StructLayout, type_id: usize) bool {
-    for (layouts) |layout| {
-        if (layout.type_id == type_id) return true;
-    }
-    return false;
-}
-
-fn alignedArcHeapBase(string_data: []const StringData) usize {
-    var end: usize = ARC_BLOCK_SIZE;
-    for (string_data) |data| {
-        end = @max(end, data.ptr + data.bytes.len);
-    }
-    return alignUp(end + WASI_RESULT_AREA_BYTES + ARC_RELEASE_WORKLIST_BYTES, ARC_BLOCK_SIZE);
 }
 
 fn alignUp(value: usize, alignment: usize) usize {
@@ -11694,6 +10481,7 @@ fn cloneFuncParams(allocator: std.mem.Allocator, params: []const FuncParam) ![]c
         try out.append(allocator, .{
             .name = param.name,
             .ty = param.ty,
+            .abi_ty = param.abi_ty,
             .variadic = param.variadic,
             .callback = if (param.callback) |callback| blk: {
                 const param_types = try allocator.alloc(?[]const u8, callback.shape.param_types.len);
@@ -11756,7 +10544,13 @@ fn collectGenericFuncInstancesInRange(
             i = call_head.args_end;
             continue;
         }
-        try collectGenericFuncInstancesForCall(allocator, tokens, call_head, &active_locals, current_ctx, functions);
+        var expected_owned_types = std.ArrayList([]const u8).empty;
+        defer {
+            for (expected_owned_types.items) |owned| allocator.free(owned);
+            expected_owned_types.deinit(allocator);
+        }
+        const expected_result_ty = try directCallExpectedResultType(allocator, tokens, call_head.name_idx, stmt_end, current_ctx, &expected_owned_types);
+        try collectGenericFuncInstancesForCall(allocator, tokens, call_head, &active_locals, current_ctx, expected_result_ty, functions);
         try applyCollectGuardReturnNarrowing(allocator, tokens, i, stmt_end, &active_locals, current_ctx);
         i = call_head.args_end;
     }
@@ -11855,6 +10649,36 @@ fn collectGenericFuncInstancesInFieldReflectionLoop(
     }
 }
 
+fn directCallExpectedResultType(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    call_start: usize,
+    stmt_end: usize,
+    ctx: CodegenContext,
+    owned_types: *std.ArrayList([]const u8),
+) CodegenError!?[]const u8 {
+    const stmt_start = findLineStart(tokens, call_start);
+    const eq_idx = findTopLevelToken(tokens, stmt_start, stmt_end, "=") orelse return null;
+    const rhs = trimParens(tokens, eq_idx + 1, stmt_end);
+    if (rhs.start != call_start) return null;
+    return typedBindingExpectedType(allocator, tokens, stmt_start, eq_idx, ctx, owned_types);
+}
+
+fn typedBindingExpectedType(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    stmt_start: usize,
+    eq_idx: usize,
+    ctx: CodegenContext,
+    owned_types: *std.ArrayList([]const u8),
+) CodegenError!?[]const u8 {
+    if (stmt_start + 2 >= eq_idx) return null;
+    if (tokens[stmt_start].kind != .ident) return null;
+    const parsed = (try parseFuncParamTypeExpr(allocator, tokens, stmt_start + 1, eq_idx, owned_types)) orelse return null;
+    if (parsed.next_idx != eq_idx) return null;
+    return try substituteGenericTypeOwned(allocator, parsed.ty, ctx.type_bindings, owned_types);
+}
+
 fn collectGenericFuncInstanceForCall(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -11862,6 +10686,7 @@ fn collectGenericFuncInstanceForCall(
     locals: *const LocalSet,
     ctx: CodegenContext,
     template: FuncDecl,
+    expected_result_ty: ?[]const u8,
     functions: *std.ArrayList(FuncDecl),
 ) !void {
     var bindings = std.ArrayList(GenericTypeBinding).empty;
@@ -11878,10 +10703,8 @@ fn collectGenericFuncInstanceForCall(
     var param_tys = std.ArrayList([]const u8).empty;
     defer param_tys.deinit(allocator);
     if (!try bindGenericFuncCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, template, &bindings, &param_tys, &owned_types)) return;
+    if (!try bindGenericExpectedResult(allocator, template, expected_result_ty, &bindings, &owned_types)) return;
     if (!genericBindingsCoverTypeParams(template, bindings.items)) return;
-    if (!callHeadHasTypeArgs(call_head) and concreteOverloadCoversGenericParams(functions.items, template, param_tys.items)) {
-        return;
-    }
     if (!callHeadHasTypeArgs(call_head) and try genericOverloadCoversGenericParams(allocator, functions.items, template, param_tys.items)) {
         return;
     }
@@ -11896,9 +10719,14 @@ fn collectGenericFuncInstanceForCall(
         params.deinit(allocator);
     }
     for (template.params, 0..) |param, idx| {
+        const instance_param_abi_ty = if (param.variadic)
+            try storageTypeNameForElemOwned(allocator, param_tys.items[idx], &owned_types)
+        else
+            null;
         try params.append(allocator, .{
             .name = param.name,
             .ty = param_tys.items[idx],
+            .abi_ty = instance_param_abi_ty,
             .variadic = param.variadic,
             .callback = try instantiateCallbackShape(allocator, param, bindings.items, &owned_types),
         });
@@ -11910,6 +10738,10 @@ fn collectGenericFuncInstanceForCall(
     const callback_bindings = try callbackBindingsForCall(allocator, tokens, call_head, param_items, ctx);
     var callback_bindings_owned = true;
     defer if (callback_bindings_owned) freeCallbackBindings(allocator, callback_bindings);
+
+    if (!callHeadHasTypeArgs(call_head) and concreteOverloadCoversGenericParams(functions.items, template, param_items, callback_bindings)) {
+        return;
+    }
 
     const instance_name = try genericInstanceName(allocator, template, bindings.items, param_tys.items, callback_bindings);
     var instance_name_owned = true;
@@ -11974,12 +10806,35 @@ fn collectGenericFuncInstanceForCall(
     instance_name_owned = false;
 }
 
+fn bindGenericExpectedResult(
+    allocator: std.mem.Allocator,
+    template: FuncDecl,
+    expected_result_ty: ?[]const u8,
+    bindings: *std.ArrayList(GenericTypeBinding),
+    owned_types: *std.ArrayList([]const u8),
+) CodegenError!bool {
+    const expected = expected_result_ty orelse return true;
+    const template_result = genericTemplateLogicalResultType(template) orelse return true;
+    if (!typeContainsTypeParam(template.type_params, template_result)) {
+        return codegenTypesCompatible(template_result, expected);
+    }
+    return try bindGenericTypeFromConcrete(allocator, template_result, expected, template.type_params, bindings, owned_types);
+}
+
+fn genericTemplateLogicalResultType(template: FuncDecl) ?[]const u8 {
+    if (template.result_union) |layout| return layout.source_ty;
+    if (template.result_items.len == 1) return template.result_items[0].ty;
+    if (template.results.len == 1) return template.results[0];
+    return null;
+}
+
 fn collectGenericFuncInstancesForCall(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     call_head: ExprCallHead,
     locals: *const LocalSet,
     ctx: CodegenContext,
+    expected_result_ty: ?[]const u8,
     functions: *std.ArrayList(FuncDecl),
 ) !void {
     const name = publicDeclName(tokens[call_head.name_idx].lexeme);
@@ -11988,7 +10843,7 @@ fn collectGenericFuncInstancesForCall(
     while (idx < initial_len) : (idx += 1) {
         const template = functions.items[idx];
         if (!genericTemplateMatchesCallSite(template, tokens, ctx, name)) continue;
-        try collectGenericFuncInstanceForCall(allocator, tokens, call_head, locals, ctx, template, functions);
+        try collectGenericFuncInstanceForCall(allocator, tokens, call_head, locals, ctx, template, expected_result_ty, functions);
     }
 }
 
@@ -12106,21 +10961,19 @@ fn collectConcreteCallbackFuncInstanceForCall(
 fn concreteOverloadCoversGenericParams(
     functions: []const FuncDecl,
     template: FuncDecl,
-    param_tys: []const []const u8,
+    params: []const FuncParam,
+    callback_bindings: []const CallbackBinding,
 ) bool {
     for (functions) |func| {
         if (func.is_generic_template) continue;
         if (!moduleTokensEqual(func.tokens, template.tokens)) continue;
         if (!sameCallableSourceName(func.source_name, template.source_name)) continue;
-        if (func.params.len != param_tys.len) continue;
+        if (func.params.len != params.len) continue;
+        if (!callbackBindingsHaveSameConcreteArgs(func.callback_bindings, callback_bindings)) continue;
 
         var matches = true;
         for (func.params, 0..) |param, idx| {
-            if (param.variadic) {
-                matches = false;
-                break;
-            }
-            if (!std.mem.eql(u8, funcParamAbiType(param), param_tys[idx])) {
+            if (!funcParamsHaveSameConcreteCallShape(param, params[idx])) {
                 matches = false;
                 break;
             }
@@ -12128,6 +10981,37 @@ fn concreteOverloadCoversGenericParams(
         if (matches) return true;
     }
     return false;
+}
+
+fn callbackBindingsHaveSameConcreteArgs(left: []const CallbackBinding, right: []const CallbackBinding) bool {
+    if (left.len != right.len) return false;
+    for (left, 0..) |left_binding, idx| {
+        if (!callbackBindingHasSameConcreteArg(left_binding, right[idx])) return false;
+    }
+    return true;
+}
+
+fn callbackBindingHasSameConcreteArg(left: CallbackBinding, right: CallbackBinding) bool {
+    if (left.kind != right.kind) return false;
+    if (!callbackBindingsHaveSameShape(left.shape, right.shape)) return false;
+    return switch (left.kind) {
+        .lambda => moduleTokensEqual(left.arg_tokens, right.arg_tokens) and left.arg_start == right.arg_start and left.arg_end == right.arg_end,
+        .func_ref => blk: {
+            const left_name = left.func_name orelse break :blk false;
+            const right_name = right.func_name orelse break :blk false;
+            break :blk moduleTokensEqual(left.arg_tokens, right.arg_tokens) and sameCallableSourceName(left_name, right_name);
+        },
+    };
+}
+
+fn funcParamsHaveSameConcreteCallShape(left: FuncParam, right: FuncParam) bool {
+    if (left.variadic != right.variadic) return false;
+    if (left.callback != null or right.callback != null) {
+        const left_callback = left.callback orelse return false;
+        const right_callback = right.callback orelse return false;
+        return callbackBindingsHaveSameShape(left_callback.shape, right_callback.shape);
+    }
+    return std.mem.eql(u8, funcParamAbiType(left), funcParamAbiType(right));
 }
 
 fn genericOverloadCoversGenericParams(
@@ -12282,6 +11166,10 @@ fn bindGenericFuncCall(
     param_tys: *std.ArrayList([]const u8),
     owned_types: *std.ArrayList([]const u8),
 ) !bool {
+    if (!try prebindGenericCallbackArgs(allocator, tokens, args_start, args_end, ctx, template, bindings, owned_types)) {
+        return false;
+    }
+
     var arg_start = args_start;
     var param_idx: usize = 0;
     while (arg_start < args_end) {
@@ -12360,6 +11248,119 @@ fn bindGenericFuncCall(
         return param_tys.items.len == template.params.len;
     }
     return false;
+}
+
+fn prebindGenericCallbackArgs(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    args_start: usize,
+    args_end: usize,
+    ctx: CodegenContext,
+    template: FuncDecl,
+    bindings: *std.ArrayList(GenericTypeBinding),
+    owned_types: *std.ArrayList([]const u8),
+) !bool {
+    var arg_start = args_start;
+    var param_idx: usize = 0;
+    while (arg_start < args_end and param_idx < template.params.len) {
+        const arg_end = findArgEnd(tokens, arg_start, args_end);
+        const param = template.params[param_idx];
+        if (param.callback) |callback| {
+            if (!try prebindGenericCallbackArg(allocator, tokens, arg_start, arg_end, ctx, template, callback.shape, bindings, owned_types)) {
+                return false;
+            }
+        }
+        param_idx += 1;
+        arg_start = arg_end;
+        if (arg_start < args_end and tokEq(tokens[arg_start], ",")) arg_start += 1;
+    }
+    return true;
+}
+
+fn prebindGenericCallbackArg(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    arg_start: usize,
+    arg_end: usize,
+    ctx: CodegenContext,
+    template: FuncDecl,
+    shape: FuncTypeShape,
+    bindings: *std.ArrayList(GenericTypeBinding),
+    owned_types: *std.ArrayList([]const u8),
+) !bool {
+    if (lambdaExprShape(tokens, arg_start, arg_end)) |lambda| {
+        const lambda_param_types = try parseLambdaParamTypes(allocator, tokens, lambda.open_params + 1, lambda.close_params);
+        defer allocator.free(lambda_param_types);
+        if (lambda_param_types.len != shape.param_types.len) return false;
+
+        for (shape.param_types, 0..) |shape_ty, idx| {
+            const expected_ty = shape_ty orelse continue;
+            const explicit_ty = lambda_param_types[idx] orelse continue;
+            if (!typeContainsTypeParam(template.type_params, expected_ty)) continue;
+            if (!try bindGenericTypeFromConcrete(allocator, expected_ty, explicit_ty, template.type_params, bindings, owned_types)) return false;
+        }
+        if (shape.return_type) |ret_ty| {
+            if (lambdaExplicitReturnType(tokens, lambda)) |lambda_ret| {
+                if (typeContainsTypeParam(template.type_params, ret_ty)) {
+                    if (!try bindGenericTypeFromConcrete(allocator, ret_ty, lambda_ret, template.type_params, bindings, owned_types)) return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    if (arg_end == arg_start + 1 and tokens[arg_start].kind == .ident) {
+        const binding = findCallbackBinding(ctx.callback_bindings, tokens[arg_start].lexeme) orelse {
+            return try prebindGenericCallbackFuncRef(allocator, tokens, ctx, template, shape, tokens[arg_start].lexeme, bindings, owned_types);
+        };
+        if (binding.shape.param_types.len != shape.param_types.len) return false;
+        for (shape.param_types, 0..) |shape_ty, idx| {
+            const expected_ty = shape_ty orelse continue;
+            const upstream_ty = binding.shape.param_types[idx] orelse continue;
+            if (!typeContainsTypeParam(template.type_params, expected_ty)) continue;
+            if (!try bindGenericTypeFromConcrete(allocator, expected_ty, upstream_ty, template.type_params, bindings, owned_types)) return false;
+        }
+        if (shape.return_type) |ret_ty| {
+            if (binding.shape.return_type) |upstream_ret| {
+                if (typeContainsTypeParam(template.type_params, ret_ty)) {
+                    if (!try bindGenericTypeFromConcrete(allocator, ret_ty, upstream_ret, template.type_params, bindings, owned_types)) return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+fn prebindGenericCallbackFuncRef(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    ctx: CodegenContext,
+    template: FuncDecl,
+    shape: FuncTypeShape,
+    func_name: []const u8,
+    bindings: *std.ArrayList(GenericTypeBinding),
+    owned_types: *std.ArrayList([]const u8),
+) !bool {
+    for (ctx.functions) |func| {
+        if (func.is_generic_template) continue;
+        if (!moduleTokensEqual(func.tokens, tokens)) continue;
+        if (!sameCallableSourceName(func.source_name, func_name)) continue;
+        if (func.params.len != shape.param_types.len) continue;
+
+        for (shape.param_types, 0..) |shape_ty, idx| {
+            const expected_ty = shape_ty orelse continue;
+            if (!typeContainsTypeParam(template.type_params, expected_ty)) continue;
+            if (!try bindGenericTypeFromConcrete(allocator, expected_ty, funcParamAbiType(func.params[idx]), template.type_params, bindings, owned_types)) return false;
+        }
+        if (shape.return_type) |ret_ty| {
+            if (typeContainsTypeParam(template.type_params, ret_ty)) {
+                const func_ret = genericTemplateLogicalResultType(func) orelse return false;
+                if (!try bindGenericTypeFromConcrete(allocator, ret_ty, func_ret, template.type_params, bindings, owned_types)) return false;
+            }
+        }
+        return true;
+    }
+    return true;
 }
 
 fn bindGenericVariadicTail(
@@ -12445,6 +11446,9 @@ fn bindGenericCallbackArg(
             }
             return binding.shape.return_type == null;
         }
+        const concrete_shape = try instantiateFuncTypeShape(allocator, callback.shape, bindings.items, owned_types);
+        defer allocator.free(concrete_shape.param_types);
+        return findCallbackRefFunc(tokens, ctx, tokens[arg_start].lexeme, concrete_shape) != null;
     }
     if (lambdaExprShape(tokens, arg_start, arg_end)) |lambda| {
         const lambda_param_types = try parseLambdaParamTypes(allocator, tokens, lambda.open_params + 1, lambda.close_params);
@@ -14039,57 +13043,6 @@ fn compactTokenText(allocator: std.mem.Allocator, tokens: []const lexer.Token, s
     return out.toOwnedSlice(allocator);
 }
 
-fn appendWitTokenText(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-) !void {
-    var i = start_idx;
-    while (i < end_idx) : (i += 1) {
-        if (tokens[i].kind == .ident and std.mem.eql(u8, tokens[i].lexeme, "text")) {
-            try out.appendSlice(allocator, "string");
-        } else {
-            try out.appendSlice(allocator, tokens[i].lexeme);
-        }
-    }
-}
-
-fn compactWitTokenText(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ![]u8 {
-    var out = std.ArrayList(u8).empty;
-    errdefer out.deinit(allocator);
-    try appendWitTokenText(allocator, &out, tokens, start_idx, end_idx);
-    return out.toOwnedSlice(allocator);
-}
-
-fn appendDoSignatureAsWit(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    signature: []const u8,
-) !void {
-    var i: usize = 0;
-    while (i < signature.len) {
-        if (isWitIdentChar(signature[i])) {
-            const start = i;
-            while (i < signature.len and isWitIdentChar(signature[i])) : (i += 1) {}
-            const ident = signature[start..i];
-            if (std.mem.eql(u8, ident, "text")) {
-                try out.appendSlice(allocator, "string");
-            } else {
-                try out.appendSlice(allocator, ident);
-            }
-            continue;
-        }
-        try out.append(allocator, signature[i]);
-        i += 1;
-    }
-}
-
-fn isWitIdentChar(ch: u8) bool {
-    return std.ascii.isAlphanumeric(ch) or ch == '_' or ch == '-';
-}
-
 fn findHostImport(host_imports: []const HostImport, alias: []const u8) ?HostImport {
     for (host_imports) |host_import| {
         if (std.mem.eql(u8, host_import.alias, alias)) return host_import;
@@ -14121,126 +13074,7 @@ fn findWasiHostImportBySource(wasi_imports: []const WasiHostImport, source: []co
 }
 
 fn wasiLowering(import: WasiHostImport) ?WasiLowering {
-    if (std.mem.eql(u8, import.target, "clocks/system-clock/now") and
-        std.mem.eql(u8, import.params, "") and
-        std.mem.eql(u8, import.result, "Datetime"))
-    {
-        return .{
-            .module = "cm32p2|wasi:clocks/system-clock",
-            .name = "now",
-            .param = "i32",
-            .result_record = "Datetime",
-        };
-    }
-    if (std.mem.eql(u8, import.target, "clocks/system-clock/get-resolution") and
-        std.mem.eql(u8, import.params, "") and
-        std.mem.eql(u8, import.result, "u64"))
-    {
-        return .{ .module = "cm32p2|wasi:clocks/system-clock", .name = "get-resolution", .result = "i64" };
-    }
-    if (std.mem.eql(u8, import.target, "clocks/monotonic-clock/now") and
-        std.mem.eql(u8, import.params, "") and
-        std.mem.eql(u8, import.result, "u64"))
-    {
-        return .{ .module = "cm32p2|wasi:clocks/monotonic-clock", .name = "now", .result = "i64" };
-    }
-    if (std.mem.eql(u8, import.target, "clocks/monotonic-clock/get-resolution") and
-        std.mem.eql(u8, import.params, "") and
-        std.mem.eql(u8, import.result, "u64"))
-    {
-        return .{ .module = "cm32p2|wasi:clocks/monotonic-clock", .name = "get-resolution", .result = "i64" };
-    }
-    if (std.mem.eql(u8, import.target, "random/random/get-random-u64") and
-        std.mem.eql(u8, import.params, "") and
-        std.mem.eql(u8, import.result, "u64"))
-    {
-        return .{ .module = "cm32p2|wasi:random/random", .name = "get-random-u64", .result = "i64" };
-    }
-    if (std.mem.eql(u8, import.target, "random/random/get-random-bytes") and
-        std.mem.eql(u8, import.params, "u64") and
-        std.mem.eql(u8, import.result, "list<u8>"))
-    {
-        return .{ .module = "cm32p2|wasi:random/random", .name = "get-random-bytes", .param = "i64 i32", .result_storage_elem = "u8" };
-    }
-    if (std.mem.eql(u8, import.target, "filesystem/types/descriptor.sync") and
-        std.mem.eql(u8, import.params, "descriptor") and
-        std.mem.eql(u8, import.result, "result<_,error-code>"))
-    {
-        return .{ .module = "cm32p2|wasi:filesystem/types", .name = "[method]descriptor.sync", .param = "i32 i32", .result_unit_error = true };
-    }
-    if (std.mem.eql(u8, import.target, "filesystem/types/descriptor.link-at") and
-        std.mem.eql(u8, import.params, "descriptor,path-flags,text,borrow<descriptor>,text") and
-        std.mem.eql(u8, import.result, "result<_,error-code>"))
-    {
-        return .{
-            .module = "cm32p2|wasi:filesystem/types",
-            .name = "[method]descriptor.link-at",
-            .param = "i32 i32 i32 i32 i32 i32 i32 i32",
-            .result_unit_error = true,
-            .result_link_at_error = true,
-        };
-    }
-    if (std.mem.eql(u8, import.target, "filesystem/types/descriptor.create-directory-at") and
-        std.mem.eql(u8, import.params, "descriptor,text") and
-        std.mem.eql(u8, import.result, "result<_,error-code>"))
-    {
-        return .{ .module = "cm32p2|wasi:filesystem/types", .name = "[method]descriptor.create-directory-at", .param = "i32 i32 i32 i32", .result_unit_error = true };
-    }
-    if (std.mem.eql(u8, import.target, "filesystem/types/descriptor.remove-directory-at") and
-        std.mem.eql(u8, import.params, "descriptor,text") and
-        std.mem.eql(u8, import.result, "result<_,error-code>"))
-    {
-        return .{ .module = "cm32p2|wasi:filesystem/types", .name = "[method]descriptor.remove-directory-at", .param = "i32 i32 i32 i32", .result_unit_error = true };
-    }
-    if (std.mem.eql(u8, import.target, "filesystem/types/descriptor.write") and
-        std.mem.eql(u8, import.params, "descriptor,list<u8>,filesize") and
-        std.mem.eql(u8, import.result, "result<filesize,error-code>"))
-    {
-        return .{ .module = "cm32p2|wasi:filesystem/types", .name = "[method]descriptor.write", .param = "i32 i32 i32 i64 i32", .result_filesize_error = true };
-    }
-    if (std.mem.eql(u8, import.target, "filesystem/types/descriptor.read") and
-        std.mem.eql(u8, import.params, "descriptor,filesize,filesize") and
-        std.mem.eql(u8, import.result, "result<tuple<list<u8>,bool>,error-code>"))
-    {
-        return .{ .module = "cm32p2|wasi:filesystem/types", .name = "[method]descriptor.read", .param = "i32 i64 i64 i32", .result_read_error = true };
-    }
-    if (std.mem.eql(u8, import.target, "filesystem/types/descriptor.open-at") and
-        std.mem.eql(u8, import.params, "descriptor,path-flags,text,open-flags,descriptor-flags") and
-        std.mem.eql(u8, import.result, "result<descriptor,error-code>"))
-    {
-        return .{ .module = "cm32p2|wasi:filesystem/types", .name = "[method]descriptor.open-at", .param = "i32 i32 i32 i32 i32 i32 i32", .result_descriptor_error = true };
-    }
-    if (std.mem.eql(u8, import.target, "filesystem/types/descriptor.drop") and
-        std.mem.eql(u8, import.params, "descriptor") and
-        std.mem.eql(u8, import.result, "nil"))
-    {
-        return .{ .module = "cm32p2|wasi:filesystem/types", .name = "[resource-drop]descriptor", .param = "i32", .resource_drop = true };
-    }
-    if (std.mem.eql(u8, import.target, "io/streams/input-stream.read") and
-        std.mem.eql(u8, import.params, "input-stream,u64") and
-        std.mem.eql(u8, import.result, "result<list<u8>,stream-error>"))
-    {
-        return .{ .module = "cm32p2|wasi:io/streams", .name = "[method]input-stream.read", .param = "i32 i64 i32", .result_list_u8_error = true };
-    }
-    if (std.mem.eql(u8, import.target, "io/streams/output-stream.check-write") and
-        std.mem.eql(u8, import.params, "output-stream") and
-        std.mem.eql(u8, import.result, "result<u64,stream-error>"))
-    {
-        return .{ .module = "cm32p2|wasi:io/streams", .name = "[method]output-stream.check-write", .param = "i32 i32", .result_u64_stream_error = true };
-    }
-    if (std.mem.eql(u8, import.target, "io/streams/output-stream.write") and
-        std.mem.eql(u8, import.params, "output-stream,list<u8>") and
-        std.mem.eql(u8, import.result, "result<_,stream-error>"))
-    {
-        return .{ .module = "cm32p2|wasi:io/streams", .name = "[method]output-stream.write", .param = "i32 i32 i32 i32", .result_unit_error = true };
-    }
-    if (std.mem.eql(u8, import.target, "io/streams/output-stream.flush") and
-        std.mem.eql(u8, import.params, "output-stream") and
-        std.mem.eql(u8, import.result, "result<_,stream-error>"))
-    {
-        return .{ .module = "cm32p2|wasi:io/streams", .name = "[method]output-stream.flush", .param = "i32 i32", .result_unit_error = true };
-    }
-    return null;
+    return component_metadata_wat.wasiLowering(import);
 }
 
 fn appendWasiImportSymbol(
@@ -14248,14 +13082,7 @@ fn appendWasiImportSymbol(
     out: *std.ArrayList(u8),
     target: []const u8,
 ) !void {
-    try out.appendSlice(allocator, "__wasi_import_");
-    for (target) |ch| {
-        if (std.ascii.isAlphanumeric(ch) or ch == '_') {
-            try out.append(allocator, ch);
-        } else {
-            try out.append(allocator, '_');
-        }
-    }
+    try component_metadata_wat.appendWasiImportSymbol(allocator, out, target);
 }
 
 fn hasString(items: []const []const u8, target: []const u8) bool {
@@ -14563,10 +13390,16 @@ fn callHeadHasTypeArgs(call_head: ExprCallHead) bool {
 }
 
 fn isTypedScalarBinding(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext) bool {
-    if (start_idx + 3 >= end_idx) return false;
-    if (tokens[start_idx].kind != .ident) return false;
-    if (!isCodegenScalarOrErrorType(tokens, ctx, tokens[start_idx + 1].lexeme)) return false;
-    return findTopLevelToken(tokens, start_idx + 2, end_idx, "=") != null;
+    return typedScalarBindingType(tokens, start_idx, end_idx, ctx) != null;
+}
+
+fn typedScalarBindingType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext) ?[]const u8 {
+    if (start_idx + 3 >= end_idx) return null;
+    if (tokens[start_idx].kind != .ident) return null;
+    const ty = substituteGenericType(tokens[start_idx + 1].lexeme, ctx.type_bindings);
+    if (!isCodegenScalarOrErrorType(tokens, ctx, ty)) return null;
+    if (findTopLevelToken(tokens, start_idx + 2, end_idx, "=") == null) return null;
+    return ty;
 }
 
 fn typedUnionBindingLayout(
@@ -14686,7 +13519,7 @@ fn emitUnionBinding(
         if (!call_head.is_intrinsic) {
             if (findFuncDeclForCallHead(tokens, call_head, locals, ctx)) |func| {
                 if (func.result_union) |func_union| {
-                    if (unionLayoutsEqual(func_union, union_local.layout)) {
+                    if (unionLayoutsAbiCompatible(ctx, func_union, union_local.layout)) {
                         if (!try emitUserFuncCallWithUnionBindingMove(
                             allocator,
                             tokens,
@@ -14938,7 +13771,9 @@ fn emitGetCall(
     if (first_end >= end_idx or !tokEq(tokens[first_end], ",")) return false;
     const second_start = first_end + 1;
     const second_end = findArgEnd(tokens, second_start, end_idx);
-    if (second_end != end_idx) return false;
+    if (second_end != end_idx) {
+        return try emitPathGetCall(allocator, tokens, start_idx, end_idx, first_end, locals, ctx, out);
+    }
 
     if (try emitManagedStructExprFieldGet(allocator, tokens, start_idx, first_end, second_start, second_end, locals, ctx, out)) {
         return true;
@@ -15033,6 +13868,210 @@ fn emitGetCall(
     }
 
     return false;
+}
+
+fn emitPathGetCall(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    first_end: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    var owned_types = std.ArrayList([]const u8).empty;
+    defer {
+        for (owned_types.items) |owned| allocator.free(owned);
+        owned_types.deinit(allocator);
+    }
+
+    var current = PathGetValue{
+        .expr_start = start_idx,
+        .expr_end = first_end,
+        .ty = inferExprType(tokens, start_idx, first_end, locals, ctx) orelse return false,
+        .local_name = null,
+        .owned = false,
+    };
+
+    var segment_start = first_end + 1;
+    while (segment_start < end_idx) {
+        const segment_end = findArgEnd(tokens, segment_start, end_idx);
+        if (segment_end == segment_start) return false;
+        const has_more = segment_end < end_idx;
+        if (has_more and !tokEq(tokens[segment_end], ",")) return false;
+
+        const next_ty = if (try emitPathGetSegment(
+            allocator,
+            tokens,
+            &current,
+            segment_start,
+            segment_end,
+            has_more,
+            locals,
+            ctx,
+            &owned_types,
+            out,
+        )) |ty| ty else return false;
+
+        current = .{
+            .expr_start = 0,
+            .expr_end = 0,
+            .ty = next_ty,
+            .local_name = if (has_more) STORAGE_OVERWRITE_TMP_LOCAL else null,
+            .owned = has_more and isManagedLocalType(next_ty, ctx),
+        };
+
+        if (!has_more) return true;
+        segment_start = segment_end + 1;
+    }
+
+    return false;
+}
+
+const PathGetValue = struct {
+    expr_start: usize,
+    expr_end: usize,
+    ty: []const u8,
+    local_name: ?[]const u8,
+    owned: bool,
+};
+
+fn emitPathGetSegment(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    current: *PathGetValue,
+    segment_start: usize,
+    segment_end: usize,
+    has_more: bool,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    owned_types: *std.ArrayList([]const u8),
+    out: *std.ArrayList(u8),
+) CodegenError!?[]const u8 {
+    if (segment_end == segment_start + 1 and isDotIdent(tokens[segment_start].lexeme)) {
+        return try emitPathGetFieldSegment(
+            allocator,
+            tokens,
+            current,
+            tokens[segment_start].lexeme,
+            has_more,
+            locals,
+            ctx,
+            owned_types,
+            out,
+        );
+    }
+
+    return try emitPathGetIndexSegment(
+        allocator,
+        tokens,
+        current,
+        segment_start,
+        segment_end,
+        has_more,
+        locals,
+        ctx,
+        out,
+    );
+}
+
+fn emitPathGetIndexSegment(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    current: *PathGetValue,
+    index_start: usize,
+    index_end: usize,
+    has_more: bool,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+) CodegenError!?[]const u8 {
+    const elem_ty = storageElemTypeFromName(current.ty) orelse return null;
+    const elem_bytes = storageElementByteWidthForType(elem_ty, ctx) orelse return null;
+    const storage_name = try ensurePathGetCurrentLocal(allocator, tokens, current, locals, ctx, out);
+
+    try emitStorageBoundsCheck(allocator, tokens, index_start, index_end, locals, ctx, storage_name, 1, out);
+    try emitStorageDataPtr(allocator, out, storage_name);
+    if (!try emitExpr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return error.NoMatchingCall;
+    if (elem_bytes != 1) {
+        try appendFmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
+        try out.appendSlice(allocator, "    i32.mul\n");
+    }
+    try out.appendSlice(allocator, "    i32.add\n");
+    try appendLoadForPayloadType(allocator, out, elem_ty);
+    if (isManagedLocalType(elem_ty, ctx)) {
+        try out.appendSlice(allocator, "    ;; path-storage-managed-get-inc\n");
+        try out.appendSlice(allocator, "    call $__arc_inc\n");
+    }
+    try releasePathGetCurrentIfOwned(allocator, current.*, ctx, out);
+    if (has_more) {
+        try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    }
+    return elem_ty;
+}
+
+fn emitPathGetFieldSegment(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    current: *PathGetValue,
+    dot_field: []const u8,
+    has_more: bool,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    owned_types: *std.ArrayList([]const u8),
+    out: *std.ArrayList(u8),
+) CodegenError!?[]const u8 {
+    const layout = findStructLayout(ctx.struct_layouts, current.ty) orelse return null;
+    const decl = findStructDecl(ctx.structs, current.ty) orelse return null;
+    const field_name = publicDeclName(dot_field);
+    const field = findStructField(decl, field_name) orelse return null;
+    const field_ty = try substituteStructFieldType(allocator, decl, current.ty, field.ty, owned_types);
+    const field_offset = structFieldPayloadOffset(decl, field_name) orelse return null;
+    const struct_name = try ensurePathGetCurrentLocal(allocator, tokens, current, locals, ctx, out);
+
+    try appendManagedStructFieldPtr(allocator, out, struct_name, field_offset);
+    try appendLoadForPayloadType(allocator, out, field_ty);
+    if (isManagedStructField(layout, field_name)) {
+        try out.appendSlice(allocator, "    ;; path-field-managed-get-inc\n");
+        try out.appendSlice(allocator, "    call $__arc_inc\n");
+    }
+    try releasePathGetCurrentIfOwned(allocator, current.*, ctx, out);
+    if (has_more) {
+        try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    }
+    return field_ty;
+}
+
+fn ensurePathGetCurrentLocal(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    current: *PathGetValue,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+) CodegenError![]const u8 {
+    if (current.local_name) |name| return name;
+    if (!try emitExpr(allocator, tokens, current.expr_start, current.expr_end, locals, ctx, current.ty, out)) {
+        return error.NoMatchingCall;
+    }
+    current.owned = isManagedLocalType(current.ty, ctx) and !isDirectManagedLocalExpr(tokens, current.expr_start, current.expr_end, locals, ctx);
+    current.local_name = STORAGE_OVERWRITE_TMP_LOCAL;
+    try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    return STORAGE_OVERWRITE_TMP_LOCAL;
+}
+
+fn releasePathGetCurrentIfOwned(
+    allocator: std.mem.Allocator,
+    current: PathGetValue,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+) !void {
+    if (!current.owned or !isManagedLocalType(current.ty, ctx)) return;
+    const local_name = current.local_name orelse return;
+    try appendFmt(allocator, out, "    ;; path-get-release {s}\n", .{local_name});
+    try appendFmt(allocator, out, "    local.get ${s}\n", .{local_name});
+    try out.appendSlice(allocator, "    call $__arc_dec\n");
 }
 
 fn emitManagedStructExprFieldGet(
@@ -15850,16 +14889,18 @@ fn emitStoragePutManagedCall(
     try emitStorageCloneManagedWithLenLocal(allocator, out, source_name, STORAGE_WRITE_LEN_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL);
     try out.appendSlice(allocator, "    end\n");
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-    try emitStorageElementPtrFromLocal(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, 4);
+    try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_WRITE_TARGET_TMP_LOCAL});
+    try emitStorageElementPtrFromLocal(allocator, out, STORAGE_WRITE_TARGET_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, 4);
     if (!try emitManagedStorageValue(allocator, tokens, value_start, value_end, elem_ty, locals, ctx, out)) return false;
     try out.appendSlice(allocator, "    i32.store\n");
-    try emitStorageLenPtr(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL);
+    try emitStorageLenPtr(allocator, out, STORAGE_WRITE_TARGET_TMP_LOCAL);
     try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
     try out.appendSlice(allocator, "    i32.const 1\n");
     try out.appendSlice(allocator, "    i32.add\n");
     try out.appendSlice(allocator, "    i32.store\n");
     try emitStorageAliasRelease(allocator, out, source_name, target_name);
-    try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_WRITE_TARGET_TMP_LOCAL});
     return true;
 }
 
@@ -16957,6 +15998,7 @@ fn emitCallbackBindingLambdaCall(
         null,
         &lambda_defer,
         "__lambda_ret",
+        null,
         out,
     );
     try out.appendSlice(allocator, "    end\n");
@@ -16977,7 +16019,7 @@ fn emitCallbackBindingFuncRefCall(
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     const func_name = binding.func_name orelse return false;
-    const target = findCallbackRefFunc(tokens, ctx, func_name, binding.shape) orelse return false;
+    const target = findCallbackRefFunc(binding.arg_tokens, ctx, func_name, binding.shape) orelse return false;
     return try emitUserFuncCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, target, out);
 }
 
@@ -17033,12 +16075,13 @@ fn emitUserFuncCallWithMoveContext(
             if (!callArgMatchesCallbackShape(tokens, arg_start, arg_end, locals, ctx, callback.shape)) return false;
         } else {
             const param_ty = param.ty;
-            if (!try emitUserFuncArg(allocator, tokens, arg_start, arg_end, param_ty, locals, ctx, out)) return false;
             const move_source = if (move_ctx) |ctx_info|
                 directManagedCallLastUseMoveSource(tokens, arg_start, arg_end, ctx_info.*, locals, ctx)
             else
                 null;
-            if (move_source == null and isDirectManagedLocalExpr(tokens, arg_start, arg_end, locals, ctx)) {
+            const param_is_union = findTopLevelTypeSeparator(param_ty, '|') != null;
+            if (!try emitUserFuncArg(allocator, tokens, arg_start, arg_end, param_ty, move_source == null, locals, ctx, out)) return false;
+            if (!param_is_union and move_source == null and isDirectManagedLocalExpr(tokens, arg_start, arg_end, locals, ctx)) {
                 try out.appendSlice(allocator, "    call $__arc_inc\n");
             } else if (move_source) |source| {
                 if (!hasMoveSource(move_sources.items, source.actual_name)) {
@@ -17053,7 +16096,7 @@ fn emitUserFuncCallWithMoveContext(
 
     if (variadic_idx) |rest_idx| {
         if (rest_idx >= func.params.len) return false;
-        if (!try emitVariadicPackArg(allocator, tokens, arg_start, end_idx, func.params[rest_idx].ty, locals, ctx, out)) return false;
+        if (!try emitVariadicPackArg(allocator, tokens, arg_start, end_idx, funcVariadicElemType(func.params[rest_idx]), locals, ctx, out)) return false;
         param_idx = func.params.len;
     } else if (param_idx != func.params.len) {
         return false;
@@ -17094,7 +16137,6 @@ fn emitUserFuncCallWithUnionBindingMove(
             if (!callArgMatchesCallbackShape(tokens, arg_start, arg_end, locals, ctx, callback.shape)) return false;
         } else {
             const param_ty = param.ty;
-            if (!try emitUserFuncArg(allocator, tokens, arg_start, arg_end, param_ty, locals, ctx, out)) return false;
             const move_source = directManagedUnionBindingCallMoveSource(
                 tokens,
                 arg_start,
@@ -17107,7 +16149,9 @@ fn emitUserFuncCallWithUnionBindingMove(
                 ctx,
                 defer_ctx,
             );
-            if (move_source == null and isDirectManagedLocalExpr(tokens, arg_start, arg_end, locals, ctx)) {
+            const param_is_union = findTopLevelTypeSeparator(param_ty, '|') != null;
+            if (!try emitUserFuncArg(allocator, tokens, arg_start, arg_end, param_ty, move_source == null, locals, ctx, out)) return false;
+            if (!param_is_union and move_source == null and isDirectManagedLocalExpr(tokens, arg_start, arg_end, locals, ctx)) {
                 try out.appendSlice(allocator, "    call $__arc_inc\n");
             } else if (move_source) |source| {
                 if (!hasMoveSource(move_sources.items, source.actual_name)) {
@@ -17122,7 +16166,7 @@ fn emitUserFuncCallWithUnionBindingMove(
 
     if (variadic_idx) |rest_idx| {
         if (rest_idx >= func.params.len) return false;
-        if (!try emitVariadicPackArg(allocator, tokens, arg_start, end_idx, func.params[rest_idx].ty, locals, ctx, out)) return false;
+        if (!try emitVariadicPackArg(allocator, tokens, arg_start, end_idx, funcVariadicElemType(func.params[rest_idx]), locals, ctx, out)) return false;
         param_idx = func.params.len;
     } else if (param_idx != func.params.len) {
         return false;
@@ -17341,8 +16385,14 @@ fn funcVariadicParamIndex(func: FuncDecl) ?usize {
 }
 
 fn funcParamAbiType(param: FuncParam) []const u8 {
+    if (param.abi_ty) |abi_ty| return abi_ty;
     if (!param.variadic) return param.ty;
     return storageTypeNameForElem(param.ty) orelse param.ty;
+}
+
+fn funcVariadicElemType(param: FuncParam) []const u8 {
+    if (!param.variadic) return param.ty;
+    return param.ty;
 }
 
 fn callArgsMatchFuncParams(
@@ -17359,6 +16409,9 @@ fn callArgsMatchFuncParams(
         const arg_end = findArgEnd(tokens, arg_start, args_end);
         if (func.params[param_idx].callback) |callback| {
             if (!callArgMatchesCallbackShape(tokens, arg_start, arg_end, locals, ctx, callback.shape)) return false;
+            if (findCallbackBinding(func.callback_bindings, func.params[param_idx].name)) |binding| {
+                if (!callArgMatchesConcreteCallbackBinding(tokens, arg_start, arg_end, ctx, callback.shape, binding)) return false;
+            }
         } else if (!callArgMatchesParam(tokens, arg_start, arg_end, locals, ctx, func.params[param_idx].ty)) {
             return false;
         }
@@ -17369,7 +16422,31 @@ fn callArgsMatchFuncParams(
     if (param_idx == func.params.len) return arg_start >= args_end;
     if (!func.params[param_idx].variadic) return false;
     if (param_idx + 1 != func.params.len) return false;
-    return callArgsMatchVariadicTail(tokens, arg_start, args_end, locals, ctx, func.params[param_idx].ty);
+    return callArgsMatchVariadicTail(tokens, arg_start, args_end, locals, ctx, funcVariadicElemType(func.params[param_idx]));
+}
+
+fn callArgMatchesConcreteCallbackBinding(
+    tokens: []const lexer.Token,
+    arg_start: usize,
+    arg_end: usize,
+    ctx: CodegenContext,
+    shape: FuncTypeShape,
+    binding: CallbackBinding,
+) bool {
+    if (!callbackBindingsHaveSameShape(binding.shape, shape)) return false;
+    if (lambdaExprShape(tokens, arg_start, arg_end) != null) {
+        return binding.kind == .lambda and moduleTokensEqual(binding.arg_tokens, tokens) and binding.arg_start == arg_start and binding.arg_end == arg_end;
+    }
+
+    const range = trimParens(tokens, arg_start, arg_end);
+    if (range.end != range.start + 1 or tokens[range.start].kind != .ident) return false;
+    const name = tokens[range.start].lexeme;
+    if (findCallbackBinding(ctx.callback_bindings, name)) |upstream| {
+        return callbackBindingHasSameConcreteArg(binding, upstream);
+    }
+    if (binding.kind != .func_ref) return false;
+    const func_name = binding.func_name orelse return false;
+    return moduleTokensEqual(binding.arg_tokens, tokens) and sameCallableSourceName(func_name, name);
 }
 
 fn callbackFunctionMatchesShape(func: FuncDecl, shape: FuncTypeShape) bool {
@@ -17379,6 +16456,9 @@ fn callbackFunctionMatchesShape(func: FuncDecl, shape: FuncTypeShape) bool {
         if (!std.mem.eql(u8, func.params[idx].ty, expected)) return false;
     }
     if (shape.return_type) |ret_ty| {
+        if (std.mem.eql(u8, ret_ty, "nil")) {
+            return func.result == null or std.mem.eql(u8, func.result.?, "nil");
+        }
         const actual_ret = func.result orelse return false;
         if (!std.mem.eql(u8, actual_ret, ret_ty)) return false;
     }
@@ -17531,6 +16611,10 @@ fn callArgMatchesParam(
         return true;
     }
 
+    if (structLiteralExprMatchesType(tokens, arg_start, arg_end, param_ty, ctx)) {
+        return true;
+    }
+
     const range = trimParens(tokens, arg_start, arg_end);
     if (range.end != range.start + 1) return false;
 
@@ -17552,6 +16636,23 @@ fn callArgMatchesParam(
         return std.mem.eql(u8, param_ty, "bool");
     }
     return false;
+}
+
+fn structLiteralExprMatchesType(
+    tokens: []const lexer.Token,
+    arg_start: usize,
+    arg_end: usize,
+    param_ty: []const u8,
+    ctx: CodegenContext,
+) bool {
+    const range = trimParens(tokens, arg_start, arg_end);
+    const open_brace = structLiteralOpenRhs(tokens, range.start, range.end) orelse return false;
+    const close_brace = findMatchingInRange(tokens, open_brace, "{", "}", range.end) catch return false;
+    if (close_brace + 1 != range.end) return false;
+    if (tokens[range.start].kind != .ident) return false;
+    const literal_base = tokens[range.start].lexeme;
+    if (!std.mem.eql(u8, typeBaseName(param_ty), literal_base)) return false;
+    return findStructDecl(ctx.structs, param_ty) != null;
 }
 
 fn callArgMatchesUnionParam(
@@ -17915,6 +17016,7 @@ fn emitGuardReturnIf(
     result_union: ?UnionLayout,
     defer_ctx: ?*const DeferContext,
     return_label: ?[]const u8,
+    self_tail_tco: ?*const SelfTailTco,
     out: *std.ArrayList(u8),
 ) !bool {
     _ = result_struct;
@@ -17939,6 +17041,12 @@ fn emitGuardReturnIf(
     var return_active_locals = try cloneLocalSet(allocator, locals);
     defer return_active_locals.deinit(allocator);
     try appendConditionNarrowingForBranch(allocator, tokens, start_idx + 1, return_idx, &return_active_locals, ctx, true);
+    if (self_tail_tco) |tco| {
+        if (try emitSelfTailReturn(allocator, tokens, return_idx, end_idx, &return_active_locals, ctx, tco.*, out)) {
+            try out.appendSlice(allocator, "    end\n");
+            return true;
+        }
+    }
     if (has_return_expr) {
         if (result_union) |layout| {
             try collectUnionReturnMoveNames(allocator, tokens, return_idx + 1, end_idx, &return_active_locals, ctx, layout, &move_names);
@@ -18061,7 +17169,7 @@ fn emitLoopBlock(
     };
     var active_return_cleanup_locals = try mergeReturnCleanupLocals(allocator, return_cleanup_locals, &loop_locals);
     defer active_return_cleanup_locals.deinit(allocator);
-    try emitBody(allocator, tokens, open_brace + 1, close_brace, body_start, locals, &active_return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, nested_loop, &loop_defer, return_label, out);
+    try emitBody(allocator, tokens, open_brace + 1, close_brace, body_start, locals, &active_return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, nested_loop, &loop_defer, return_label, null, out);
     if (bodyCanReachEnd(tokens, open_brace + 1, close_brace)) {
         try emitBlockReleaseManagedLocals(allocator, &loop_locals, ctx, out);
         try appendFmt(allocator, out, "    br ${s}\n", .{body_label});
@@ -18186,7 +17294,7 @@ fn emitFieldReflectionBody(
         if (fieldReflectionIfParts(tokens, i, stmt_end)) |parts| {
             if (fieldStaticBoolExpr(tokens, parts.cond_start, parts.cond_end, locals, ctx)) |condition| {
                 if (segment_start < i) {
-                    try emitBody(allocator, tokens, segment_start, i, body_start, locals, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out);
+                    try emitBody(allocator, tokens, segment_start, i, body_start, locals, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, null, out);
                 }
                 if (condition) {
                     try emitFieldReflectionBody(allocator, tokens, parts.then_start, parts.then_end, body_start, locals, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out);
@@ -18203,7 +17311,7 @@ fn emitFieldReflectionBody(
         i = stmt_end;
     }
     if (segment_start < end_idx) {
-        try emitBody(allocator, tokens, segment_start, end_idx, body_start, locals, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out);
+        try emitBody(allocator, tokens, segment_start, end_idx, body_start, locals, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, null, out);
     }
 }
 
@@ -18252,6 +17360,10 @@ fn loopBodyCanBreakCurrentLoop(
     end_idx: usize,
     loop_label: ?[]const u8,
 ) bool {
+    if (loop_label) |label| {
+        if (tokenRangeContainsLabeledBreak(tokens, start_idx, end_idx, label)) return true;
+    }
+
     var i = start_idx;
     while (i < end_idx) {
         const stmt_end = findStmtEnd(tokens, i, end_idx);
@@ -18285,6 +17397,34 @@ fn breakTargetsCurrentLoop(
     if (end_idx != start_idx + 3 or !tokEq(tokens[start_idx + 1], "#")) return false;
     const label = loop_label orelse return false;
     return tokens[start_idx + 2].kind == .ident and std.mem.eql(u8, tokens[start_idx + 2].lexeme, label);
+}
+
+fn tokenRangeContainsLabeledBreak(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    label: []const u8,
+) bool {
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "loop")) {
+            if (labelForLoopStart(tokens, i)) |nested_label| {
+                if (std.mem.eql(u8, nested_label, label)) {
+                    const open_brace = findTopLevelBlockOpen(tokens, i + 1, end_idx) orelse continue;
+                    const close_brace = findMatchingInRange(tokens, open_brace, "{", "}", end_idx) catch continue;
+                    i = close_brace;
+                    continue;
+                }
+            }
+        }
+
+        if (i + 2 >= end_idx) continue;
+        if (!tokEq(tokens[i], "break")) continue;
+        if (!tokEq(tokens[i + 1], "#")) continue;
+        if (tokens[i + 2].kind != .ident) continue;
+        if (std.mem.eql(u8, tokens[i + 2].lexeme, label)) return true;
+    }
+    return false;
 }
 
 fn emitCollectionLoopBlock(
@@ -18378,7 +17518,7 @@ fn emitCollectionLoopBlock(
     };
     var active_return_cleanup_locals = try mergeReturnCleanupLocals(allocator, return_cleanup_locals, &loop_locals);
     defer active_return_cleanup_locals.deinit(allocator);
-    try emitBody(allocator, tokens, header.open_brace + 1, header.close_brace, body_start, locals, &active_return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, nested_loop, &loop_defer, return_label, out);
+    try emitBody(allocator, tokens, header.open_brace + 1, header.close_brace, body_start, locals, &active_return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, nested_loop, &loop_defer, return_label, null, out);
     if (bodyCanReachEnd(tokens, header.open_brace + 1, header.close_brace)) {
         try emitBlockReleaseManagedLocals(allocator, &loop_locals, ctx, out);
     }
@@ -18492,7 +17632,7 @@ fn emitRecvLoopBlock(
     };
     var active_return_cleanup_locals = try mergeReturnCleanupLocals(allocator, return_cleanup_locals, &loop_locals);
     defer active_return_cleanup_locals.deinit(allocator);
-    try emitBody(allocator, tokens, header.open_brace + 1, header.close_brace, body_start, locals, &active_return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, nested_loop, &loop_defer, return_label, out);
+    try emitBody(allocator, tokens, header.open_brace + 1, header.close_brace, body_start, locals, &active_return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, nested_loop, &loop_defer, return_label, null, out);
     if (bodyCanReachEnd(tokens, header.open_brace + 1, header.close_brace)) {
         try emitBlockReleaseManagedLocals(allocator, &loop_locals, ctx, out);
     }
@@ -18705,6 +17845,7 @@ fn emitIfBlock(
     loop_ctx: ?LoopControl,
     defer_ctx: ?*const DeferContext,
     return_label: ?[]const u8,
+    self_tail_tco: ?*const SelfTailTco,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     if (start_idx + 4 > end_idx) return false;
@@ -18767,7 +17908,7 @@ fn emitIfBlock(
     var then_active_locals = try cloneLocalSet(allocator, locals);
     defer then_active_locals.deinit(allocator);
     try appendConditionNarrowingForBranch(allocator, tokens, start_idx + 1, open_brace, &then_active_locals, ctx, true);
-    try emitBody(allocator, tokens, open_brace + 1, close_brace, body_start, &then_active_locals, &then_return_cleanup_locals, &then_control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, &then_defer, return_label, out);
+    try emitBody(allocator, tokens, open_brace + 1, close_brace, body_start, &then_active_locals, &then_return_cleanup_locals, &then_control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, &then_defer, return_label, self_tail_tco, out);
     if (bodyCanReachEnd(tokens, open_brace + 1, close_brace)) {
         try emitBlockReleaseManagedLocals(allocator, &then_locals, ctx, out);
     }
@@ -18776,7 +17917,7 @@ fn emitIfBlock(
         var else_if_active_locals = try cloneLocalSet(allocator, locals);
         defer else_if_active_locals.deinit(allocator);
         try appendConditionNarrowingForBranch(allocator, tokens, start_idx + 1, open_brace, &else_if_active_locals, ctx, false);
-        if (!try emitIfBlock(allocator, tokens, nested_if, end_idx, body_start, &else_if_active_locals, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out)) return false;
+        if (!try emitIfBlock(allocator, tokens, nested_if, end_idx, body_start, &else_if_active_locals, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, self_tail_tco, out)) return false;
     } else if (else_open) |open_else| {
         const close_else = else_close orelse return false;
         try out.appendSlice(allocator, "    else\n");
@@ -18796,7 +17937,7 @@ fn emitIfBlock(
         var else_active_locals = try cloneLocalSet(allocator, locals);
         defer else_active_locals.deinit(allocator);
         try appendConditionNarrowingForBranch(allocator, tokens, start_idx + 1, open_brace, &else_active_locals, ctx, false);
-        try emitBody(allocator, tokens, open_else + 1, close_else, body_start, &else_active_locals, &else_return_cleanup_locals, &else_control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, &else_defer, return_label, out);
+        try emitBody(allocator, tokens, open_else + 1, close_else, body_start, &else_active_locals, &else_return_cleanup_locals, &else_control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, &else_defer, return_label, self_tail_tco, out);
         if (bodyCanReachEnd(tokens, open_else + 1, close_else)) {
             try emitBlockReleaseManagedLocals(allocator, &else_locals, ctx, out);
         }
@@ -18935,7 +18076,32 @@ fn storageTypeNameForElem(elem_ty: []const u8) ?[]const u8 {
     if (std.mem.eql(u8, elem_ty, "u64")) return "[u64]";
     if (std.mem.eql(u8, elem_ty, "f32")) return "[f32]";
     if (std.mem.eql(u8, elem_ty, "f64")) return "[f64]";
+    if (std.mem.eql(u8, elem_ty, "[bool]")) return "[[bool]]";
+    if (std.mem.eql(u8, elem_ty, "[i8]")) return "[[i8]]";
+    if (std.mem.eql(u8, elem_ty, "[u8]")) return "[[u8]]";
+    if (std.mem.eql(u8, elem_ty, "[i16]")) return "[[i16]]";
+    if (std.mem.eql(u8, elem_ty, "[u16]")) return "[[u16]]";
+    if (std.mem.eql(u8, elem_ty, "[i32]")) return "[[i32]]";
+    if (std.mem.eql(u8, elem_ty, "[u32]")) return "[[u32]]";
+    if (std.mem.eql(u8, elem_ty, "[isize]")) return "[[isize]]";
+    if (std.mem.eql(u8, elem_ty, "[usize]")) return "[[usize]]";
+    if (std.mem.eql(u8, elem_ty, "[i64]")) return "[[i64]]";
+    if (std.mem.eql(u8, elem_ty, "[u64]")) return "[[u64]]";
+    if (std.mem.eql(u8, elem_ty, "[f32]")) return "[[f32]]";
+    if (std.mem.eql(u8, elem_ty, "[f64]")) return "[[f64]]";
     return null;
+}
+
+fn storageTypeNameForElemOwned(
+    allocator: std.mem.Allocator,
+    elem_ty: []const u8,
+    owned_types: *std.ArrayList([]const u8),
+) ![]const u8 {
+    if (storageTypeNameForElem(elem_ty)) |ty| return ty;
+    const owned = try std.fmt.allocPrint(allocator, "[{s}]", .{elem_ty});
+    errdefer allocator.free(owned);
+    try owned_types.append(allocator, owned);
+    return owned;
 }
 
 fn isStorageTypeName(ty: []const u8) bool {
@@ -19597,7 +18763,9 @@ fn inferGetCallType(
 
     const second_start = first_end + 1;
     const second_end = findArgEnd(tokens, second_start, end_idx);
-    if (second_end != end_idx) return null;
+    if (second_end != end_idx) {
+        return inferPathGetCallType(tokens, start_idx, end_idx, first_end, locals, ctx);
+    }
 
     if (second_end == second_start + 1 and isDotIdent(tokens[second_start].lexeme)) {
         if (inferManagedStructExprFieldType(tokens, start_idx, first_end, tokens[second_start].lexeme, locals, ctx)) |field_ty| {
@@ -19625,6 +18793,36 @@ fn inferGetCallType(
     if (findUnionLocal(locals.union_locals.items, name)) |union_local| {
         const payload = unionLocalDefaultStructPayload(tokens, ctx, union_local) orelse return null;
         return findStructFieldType(payload.decl, field_name);
+    }
+    return null;
+}
+
+fn inferPathGetCallType(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    first_end: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+) ?[]const u8 {
+    var current_ty = inferExprType(tokens, start_idx, first_end, locals, ctx) orelse return null;
+    var segment_start = first_end + 1;
+    while (segment_start < end_idx) {
+        const segment_end = findArgEnd(tokens, segment_start, end_idx);
+        if (segment_end == segment_start) return null;
+        const has_more = segment_end < end_idx;
+        if (has_more and !tokEq(tokens[segment_end], ",")) return null;
+
+        if (segment_end == segment_start + 1 and isDotIdent(tokens[segment_start].lexeme)) {
+            const decl = findStructDecl(ctx.structs, current_ty) orelse return null;
+            const field_ty = findConcreteStructFieldTypeNoAlloc(decl, current_ty, publicDeclName(tokens[segment_start].lexeme)) orelse return null;
+            current_ty = substituteGenericType(field_ty, ctx.type_bindings);
+        } else {
+            current_ty = storageElemTypeFromName(current_ty) orelse return null;
+        }
+
+        if (!has_more) return current_ty;
+        segment_start = segment_end + 1;
     }
     return null;
 }
@@ -20006,33 +19204,6 @@ fn decodeQuotedStringToken(allocator: std.mem.Allocator, raw: []const u8) ![]u8 
     return out.toOwnedSlice(allocator);
 }
 
-fn appendWatStringLiteral(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    bytes: []const u8,
-) !void {
-    try out.append(allocator, '"');
-    for (bytes) |byte| {
-        if (byte >= 0x20 and byte <= 0x7e and byte != '"' and byte != '\\') {
-            try out.append(allocator, byte);
-            continue;
-        }
-        try appendWatByteEscape(allocator, out, byte);
-    }
-    try out.append(allocator, '"');
-}
-
-fn appendWatByteEscape(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    byte: u8,
-) !void {
-    const digits = "0123456789abcdef";
-    try out.append(allocator, '\\');
-    try out.append(allocator, digits[byte >> 4]);
-    try out.append(allocator, digits[byte & 0x0f]);
-}
-
 fn hexValue(ch: u8) ?u8 {
     if (ch >= '0' and ch <= '9') return ch - '0';
     if (ch >= 'a' and ch <= 'f') return ch - 'a' + 10;
@@ -20161,13 +19332,49 @@ test "generic union binding extracts nullable payload type" {
         allocator,
         "T|nil",
         "text|nil",
-        &.{ "T" },
+        &.{"T"},
         &bindings,
         &owned_types,
     ));
     try std.testing.expectEqual(@as(usize, 1), bindings.items.len);
     try std.testing.expectEqualStrings("T", bindings.items[0].name);
     try std.testing.expectEqualStrings("text", bindings.items[0].ty);
+}
+
+test "variadic storage param uses nested storage abi" {
+    const param = FuncParam{
+        .name = "rest",
+        .ty = "[u8]",
+        .variadic = true,
+    };
+
+    try std.testing.expectEqualStrings("[[u8]]", funcParamAbiType(param));
+}
+
+test "variadic storage param keeps storage element type" {
+    const param = FuncParam{
+        .name = "rest",
+        .ty = "[u8]",
+        .variadic = true,
+    };
+
+    try std.testing.expectEqualStrings("[u8]", funcVariadicElemType(param));
+}
+
+test "cloneFuncParams preserves variadic abi type" {
+    const allocator = std.testing.allocator;
+    const params = [_]FuncParam{.{
+        .name = "rest",
+        .ty = "[u8]",
+        .abi_ty = "[[u8]]",
+        .variadic = true,
+    }};
+
+    const cloned = try cloneFuncParams(allocator, &params);
+    defer freeFuncParams(allocator, cloned);
+
+    try std.testing.expectEqualStrings("[[u8]]", funcParamAbiType(cloned[0]));
+    try std.testing.expectEqualStrings("[u8]", funcVariadicElemType(cloned[0]));
 }
 
 test "inferred generic union call binding returns substituted union layout" {
@@ -20246,4 +19453,374 @@ test "inferred generic union call binding returns substituted union layout" {
 
     const encoded = findUnionLocal(locals.union_locals.items, "encoded") orelse unreachable;
     try std.testing.expectEqualStrings("[u8]|JsonError", encoded.layout.source_ty);
+}
+
+test "generic callback prebinds literal argument type from lambda" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\#A
+        \\#B
+        \\#P = (A) -> B
+        \\apply_value(value A, p P) -> B {
+        \\    return p(value)
+        \\}
+        \\
+        \\test "apply" {
+        \\    result i32 = apply_value(2, (x i32) -> i32 => @add(x, 1))
+        \\    if @eq(result, 3) return
+        \\}
+    ;
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+
+    var functions = std.ArrayList(FuncDecl).empty;
+    defer {
+        freeFuncDecls(allocator, functions.items);
+        functions.deinit(allocator);
+    }
+    try collectFuncDecls(allocator, tokens, &.{}, &.{}, null, &functions);
+
+    var string_data = StringDataContext{};
+    defer string_data.deinit(allocator);
+    const ctx = CodegenContext{
+        .functions = functions.items,
+        .structs = &.{},
+        .value_enums = &.{},
+        .struct_layouts = &.{},
+        .host_imports = &.{},
+        .wasi_imports = &.{},
+        .string_data = &string_data,
+        .entry_tokens = tokens,
+        .modules = &.{},
+    };
+    const template = findGenericTemplateForCall(functions.items, tokens, ctx, "apply_value") orelse unreachable;
+
+    const first_call_idx = findToken(tokens, 0, tokens.len, "apply_value") orelse unreachable;
+    const call_idx = findToken(tokens, first_call_idx + 1, tokens.len, "apply_value") orelse unreachable;
+    const call_head = callHeadAt(tokens, call_idx, tokens.len) orelse unreachable;
+
+    var locals = LocalSet{};
+    defer locals.deinit(allocator);
+    var bindings = std.ArrayList(GenericTypeBinding).empty;
+    defer bindings.deinit(allocator);
+    var param_tys = std.ArrayList([]const u8).empty;
+    defer param_tys.deinit(allocator);
+    var owned_types = std.ArrayList([]const u8).empty;
+    defer {
+        for (owned_types.items) |owned| allocator.free(owned);
+        owned_types.deinit(allocator);
+    }
+
+    try std.testing.expect(try bindGenericFuncCall(allocator, tokens, call_head.args_start, call_head.args_end, &locals, ctx, template, &bindings, &param_tys, &owned_types));
+    try std.testing.expectEqualStrings("i32", findGenericBinding(bindings.items, "A").?.ty);
+    try std.testing.expectEqualStrings("i32", findGenericBinding(bindings.items, "B").?.ty);
+
+    try collectGenericFuncInstanceForCall(allocator, tokens, call_head, &locals, ctx, template, "i32", &functions);
+    try std.testing.expect(findFuncDeclForCallHead(tokens, call_head, &locals, .{
+        .functions = functions.items,
+        .structs = &.{},
+        .value_enums = &.{},
+        .struct_layouts = &.{},
+        .host_imports = &.{},
+        .wasi_imports = &.{},
+        .string_data = &string_data,
+        .entry_tokens = tokens,
+        .modules = &.{},
+    }) != null);
+
+    var collected_functions = std.ArrayList(FuncDecl).empty;
+    defer {
+        freeFuncDecls(allocator, collected_functions.items);
+        collected_functions.deinit(allocator);
+    }
+    try collectFuncDecls(allocator, tokens, &.{}, &.{}, null, &collected_functions);
+    const tests = try test_runner.collectTopLevelTests(allocator, tokens);
+    defer allocator.free(tests);
+    try collectGenericFuncInstancesForTests(
+        allocator,
+        tokens,
+        tests,
+        &.{},
+        &.{},
+        &.{},
+        &.{},
+        &.{},
+        &string_data,
+        &.{},
+        null,
+        &collected_functions,
+    );
+    var collected_locals = LocalSet{};
+    defer collected_locals.deinit(allocator);
+    try collectBodyLocals(allocator, tokens, tests[0].body_start, tests[0].body_end, .{
+        .functions = collected_functions.items,
+        .structs = &.{},
+        .value_enums = &.{},
+        .struct_layouts = &.{},
+        .host_imports = &.{},
+        .wasi_imports = &.{},
+        .string_data = &string_data,
+        .entry_tokens = tokens,
+        .modules = &.{},
+    }, &collected_locals);
+    try std.testing.expect(findFuncDeclForCallHead(tokens, call_head, &collected_locals, .{
+        .functions = collected_functions.items,
+        .structs = &.{},
+        .value_enums = &.{},
+        .struct_layouts = &.{},
+        .host_imports = &.{},
+        .wasi_imports = &.{},
+        .string_data = &string_data,
+        .entry_tokens = tokens,
+        .modules = &.{},
+    }) != null);
+
+    var wat = std.ArrayList(u8).empty;
+    defer wat.deinit(allocator);
+    try std.testing.expect(try emitExpr(allocator, tokens, call_head.name_idx, call_head.args_end + 1, &collected_locals, .{
+        .functions = collected_functions.items,
+        .structs = &.{},
+        .value_enums = &.{},
+        .struct_layouts = &.{},
+        .host_imports = &.{},
+        .wasi_imports = &.{},
+        .string_data = &string_data,
+        .entry_tokens = tokens,
+        .modules = &.{},
+    }, "i32", &wat));
+}
+
+test "generic callback prebinds literal argument type from function ref" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\#A
+        \\#B
+        \\#P = (A) -> B
+        \\apply_value(value A, p P) -> B {
+        \\    return p(value)
+        \\}
+        \\
+        \\bool_to_i32(x bool) -> i32 {
+        \\    if x return 1
+        \\    return 0
+        \\}
+        \\
+        \\test "apply" {
+        \\    result i32 = apply_value(true, bool_to_i32)
+        \\    if @eq(result, 1) return
+        \\}
+    ;
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+
+    var functions = std.ArrayList(FuncDecl).empty;
+    defer {
+        freeFuncDecls(allocator, functions.items);
+        functions.deinit(allocator);
+    }
+    try collectFuncDecls(allocator, tokens, &.{}, &.{}, null, &functions);
+
+    var string_data = StringDataContext{};
+    defer string_data.deinit(allocator);
+    const tests = try test_runner.collectTopLevelTests(allocator, tokens);
+    defer allocator.free(tests);
+    try collectGenericFuncInstancesForTests(
+        allocator,
+        tokens,
+        tests,
+        &.{},
+        &.{},
+        &.{},
+        &.{},
+        &.{},
+        &string_data,
+        &.{},
+        null,
+        &functions,
+    );
+    var locals = LocalSet{};
+    defer locals.deinit(allocator);
+    const ctx = CodegenContext{
+        .functions = functions.items,
+        .structs = &.{},
+        .value_enums = &.{},
+        .struct_layouts = &.{},
+        .host_imports = &.{},
+        .wasi_imports = &.{},
+        .string_data = &string_data,
+        .entry_tokens = tokens,
+        .modules = &.{},
+    };
+    try collectBodyLocals(allocator, tokens, tests[0].body_start, tests[0].body_end, ctx, &locals);
+    const first_call_idx = findToken(tokens, 0, tokens.len, "apply_value") orelse unreachable;
+    const call_idx = findToken(tokens, first_call_idx + 1, tokens.len, "apply_value") orelse unreachable;
+    const call_head = callHeadAt(tokens, call_idx, tokens.len) orelse unreachable;
+    const template = findGenericTemplateForCall(functions.items, tokens, ctx, "apply_value") orelse unreachable;
+    var bindings = std.ArrayList(GenericTypeBinding).empty;
+    defer bindings.deinit(allocator);
+    var param_tys = std.ArrayList([]const u8).empty;
+    defer param_tys.deinit(allocator);
+    var owned_types = std.ArrayList([]const u8).empty;
+    defer {
+        for (owned_types.items) |owned| allocator.free(owned);
+        owned_types.deinit(allocator);
+    }
+    try std.testing.expect(try bindGenericFuncCall(allocator, tokens, call_head.args_start, call_head.args_end, &locals, ctx, template, &bindings, &param_tys, &owned_types));
+    try std.testing.expectEqualStrings("bool", findGenericBinding(bindings.items, "A").?.ty);
+    try std.testing.expectEqualStrings("i32", findGenericBinding(bindings.items, "B").?.ty);
+    try collectGenericFuncInstanceForCall(allocator, tokens, call_head, &locals, ctx, template, "i32", &functions);
+    const direct_func = findFuncDeclForCallHead(tokens, call_head, &locals, .{
+        .functions = functions.items,
+        .structs = &.{},
+        .value_enums = &.{},
+        .struct_layouts = &.{},
+        .host_imports = &.{},
+        .wasi_imports = &.{},
+        .string_data = &string_data,
+        .entry_tokens = tokens,
+        .modules = &.{},
+    }) orelse unreachable;
+    try std.testing.expect(direct_func.callback_bindings.len == 1);
+    const func = findFuncDeclForCallHead(tokens, call_head, &locals, ctx) orelse unreachable;
+    try std.testing.expect(func.callback_bindings.len == 1);
+    try std.testing.expect(func.callback_bindings[0].kind == .func_ref);
+
+    var wat = std.ArrayList(u8).empty;
+    defer wat.deinit(allocator);
+    try std.testing.expect(try emitExpr(allocator, tokens, call_head.name_idx, call_head.args_end + 1, &locals, ctx, "i32", &wat));
+}
+
+test "generic multi callback instances collect" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\#A
+        \\#B
+        \\#C
+        \\#P = (A) -> B
+        \\#Q = (B) -> C
+        \\compose(value A, p P, q Q) -> C {
+        \\    return q(p(value))
+        \\}
+        \\
+        \\test "compose multi" {
+        \\    same i32 = compose(2, (x i32) -> i32 => @add(x, 1), (x i32) -> i32 => @mul(x, 3))
+        \\    hetero bool = compose(2, (x i32) -> i64 => @as(i64, @add(x, 1)), (x i64) -> bool => @gt(x, 0))
+        \\    ok bool = true
+        \\    ok = @and(ok, @eq(same, 9))
+        \\    ok = @and(ok, hetero)
+        \\    if ok return
+        \\}
+    ;
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+
+    var functions = std.ArrayList(FuncDecl).empty;
+    defer {
+        freeFuncDecls(allocator, functions.items);
+        functions.deinit(allocator);
+    }
+    try collectFuncDecls(allocator, tokens, &.{}, &.{}, null, &functions);
+
+    var string_data = StringDataContext{};
+    defer string_data.deinit(allocator);
+    const tests = try test_runner.collectTopLevelTests(allocator, tokens);
+    defer allocator.free(tests);
+    try collectGenericFuncInstancesForTests(
+        allocator,
+        tokens,
+        tests,
+        &.{},
+        &.{},
+        &.{},
+        &.{},
+        &.{},
+        &string_data,
+        &.{},
+        null,
+        &functions,
+    );
+    const ctx = CodegenContext{
+        .functions = functions.items,
+        .structs = &.{},
+        .value_enums = &.{},
+        .struct_layouts = &.{},
+        .host_imports = &.{},
+        .wasi_imports = &.{},
+        .string_data = &string_data,
+        .entry_tokens = tokens,
+        .modules = &.{},
+    };
+    var locals = LocalSet{};
+    defer locals.deinit(allocator);
+    try collectBodyLocals(allocator, tokens, tests[0].body_start, tests[0].body_end, ctx, &locals);
+
+    const def_idx = findToken(tokens, 0, tokens.len, "compose") orelse unreachable;
+    const same_idx = findToken(tokens, def_idx + 1, tokens.len, "compose") orelse unreachable;
+    const hetero_idx = findToken(tokens, same_idx + 1, tokens.len, "compose") orelse unreachable;
+    const same_head = callHeadAt(tokens, same_idx, tokens.len) orelse unreachable;
+    const hetero_head = callHeadAt(tokens, hetero_idx, tokens.len) orelse unreachable;
+    try std.testing.expect(findFuncDeclForCallHead(tokens, same_head, &locals, ctx) != null);
+    try std.testing.expect(findFuncDeclForCallHead(tokens, hetero_head, &locals, ctx) != null);
+
+    var same_wat = std.ArrayList(u8).empty;
+    defer same_wat.deinit(allocator);
+    try std.testing.expect(try emitExpr(allocator, tokens, same_idx, same_head.args_end + 1, &locals, ctx, "i32", &same_wat));
+
+    var hetero_wat = std.ArrayList(u8).empty;
+    defer hetero_wat.deinit(allocator);
+    try std.testing.expect(try emitExpr(allocator, tokens, hetero_idx, hetero_head.args_end + 1, &locals, ctx, "bool", &hetero_wat));
+}
+
+test "backend ir lowering emits selected scalar numeric start body" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\start() {
+        \\    x i32 = @add(1, 2, 3)
+        \\    y i32 = @mul(x, 4)
+        \\    return
+        \\}
+    ;
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+
+    var string_data = StringDataContext{};
+    defer string_data.deinit(allocator);
+    const ctx = CodegenContext{
+        .functions = &.{},
+        .structs = &.{},
+        .value_enums = &.{},
+        .struct_layouts = &.{},
+        .host_imports = &.{},
+        .wasi_imports = &.{},
+        .string_data = &string_data,
+        .entry_tokens = tokens,
+        .modules = &.{},
+    };
+    const start_idx = findStartFunc(tokens) orelse unreachable;
+    const open_params = start_idx + 1;
+    const close_params = try findMatching(tokens, open_params, "(", ")");
+    const open_body = findToken(tokens, close_params + 1, tokens.len, "{") orelse unreachable;
+    const close_body = try findMatching(tokens, open_body, "{", "}");
+
+    var locals = LocalSet{};
+    defer locals.deinit(allocator);
+    try collectBodyLocals(allocator, tokens, open_body + 1, close_body, ctx, &locals);
+
+    var out = std.ArrayList(u8).empty;
+    defer out.deinit(allocator);
+    try std.testing.expect(try emitScalarNumericStartWithBackendIr(allocator, tokens, open_body + 1, close_body, &locals, ctx, &out));
+    try std.testing.expectEqualStrings(
+        \\    i32.const 1
+        \\    i32.const 2
+        \\    i32.add
+        \\    i32.const 3
+        \\    i32.add
+        \\    local.set $x
+        \\    local.get $x
+        \\    i32.const 4
+        \\    i32.mul
+        \\    local.set $y
+        \\    return
+        \\
+    , out.items);
 }

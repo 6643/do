@@ -66,8 +66,9 @@ open_dir_shape(parent Dir, path text) -> Dir | DirError {
     return open_dir_at(parent, path)
 }
 
-close_dir_shape(dir Dir) -> DirError | nil {
-    return close_dir(dir)
+close_dir_shape(dir Dir) -> nil {
+    close_dir(dir)
+    return
 }
 
 create_dir_shape(parent Dir, path text) -> DirError | nil {

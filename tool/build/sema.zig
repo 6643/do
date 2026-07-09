@@ -100,7 +100,7 @@ pub fn checkProgram(
     try checkFuncSignatureConflicts(allocator, tokens);
     try checkPathAccess(tokens);
     try checkFieldSegmentPositions(tokens);
-    try checkHostImports(tokens);
+    try checkHostImports(allocator, tokens);
     try checkLocalImports(tokens);
     if (program.top_level_count == 0) return markErrorAt(tokens, 0, error.NoTopLevelDecl);
 
@@ -1280,7 +1280,7 @@ fn checkGenericCallInference(
             }
 
             has_direct_generic_candidate = true;
-            if (genericCallInfersDirectTypeParams(tokens, func, call)) {
+            if (genericCallInfersDirectTypeParams(tokens, funcs, func, call)) {
                 has_inferred_generic_candidate = true;
             }
         }
@@ -2295,6 +2295,7 @@ fn funcHasGenericSignatureParam(tokens: []const lexer.Token, func: FuncShape) bo
 
 fn genericCallInfersDirectTypeParams(
     tokens: []const lexer.Token,
+    funcs: []const FuncShape,
     func: FuncShape,
     call: CallShape,
 ) bool {
@@ -2310,7 +2311,7 @@ fn genericCallInfersDirectTypeParams(
         if (typeConstraintIsFunctionType(tokens, func.start_idx, type_name)) continue;
         if (!isFuncTypeParam(tokens, func.start_idx, type_name)) continue;
         if (hasPriorDirectTypeParam(func, param_idx, type_name)) continue;
-        if (!callHasKnownArgForDirectTypeParam(tokens, func, call, type_name)) return false;
+        if (!callHasKnownArgForDirectTypeParam(tokens, funcs, func, call, type_name)) return false;
     }
     return true;
 }
@@ -2496,6 +2497,7 @@ fn hasPriorDirectTypeParam(func: FuncShape, before_param_idx: usize, type_name: 
 
 fn callHasKnownArgForDirectTypeParam(
     tokens: []const lexer.Token,
+    funcs: []const FuncShape,
     func: FuncShape,
     call: CallShape,
     type_name: []const u8,
@@ -2514,6 +2516,144 @@ fn callHasKnownArgForDirectTypeParam(
             else => continue,
         };
         if (hasKnownValueTypeBefore(tokens, call.start_idx, arg_name)) return true;
+    }
+    if (callHasKnownCallbackArgForTypeParam(tokens, funcs, func, call, type_name)) return true;
+    return false;
+}
+
+fn callHasKnownCallbackArgForTypeParam(
+    tokens: []const lexer.Token,
+    funcs: []const FuncShape,
+    func: FuncShape,
+    call: CallShape,
+    type_name: []const u8,
+) bool {
+    for (func.param_shapes, 0..) |param, param_idx| {
+        const constraint_name = switch (param) {
+            .value => |value_type| value_type orelse continue,
+            .variadic => |value_type| value_type orelse continue,
+            .func => continue,
+            .other => continue,
+        };
+        if (!typeConstraintIsFunctionType(tokens, func.start_idx, constraint_name)) continue;
+        if (param_idx >= call.arg_shapes.len) return false;
+        switch (call.arg_shapes[param_idx]) {
+            .lambda => |lambda| {
+                if (lambdaBindsTypeParamThroughConstraint(tokens, func.start_idx, constraint_name, type_name, lambda)) return true;
+            },
+            .ident => |name| {
+                if (functionRefBindsTypeParamThroughConstraint(tokens, funcs, func.start_idx, constraint_name, type_name, name)) return true;
+            },
+            else => {},
+        }
+    }
+    return false;
+}
+
+fn functionRefBindsTypeParamThroughConstraint(
+    tokens: []const lexer.Token,
+    funcs: []const FuncShape,
+    func_start_idx: usize,
+    constraint_name: []const u8,
+    type_name: []const u8,
+    func_ref_name: []const u8,
+) bool {
+    const block_start = findConstraintBlockStartBefore(tokens, func_start_idx) orelse return false;
+
+    var i = block_start;
+    while (i < func_start_idx) {
+        if (!tokEq(tokens[i], "#")) {
+            i += 1;
+            continue;
+        }
+        const line_end = findLineEndIdx(tokens, i);
+        const is_func_constraint = i + 2 < line_end and tokEq(tokens[i + 2], "(");
+        if (is_func_constraint or i + 1 >= line_end or !std.mem.eql(u8, tokens[i + 1].lexeme, constraint_name)) {
+            i = line_end;
+            continue;
+        }
+
+        const eq_idx = findTopLevelAssignEqOnLine(tokens, i + 2, line_end) orelse return false;
+        if (eq_idx + 1 >= line_end or !tokEq(tokens[eq_idx + 1], "(")) return false;
+        const close_params = findMatching(tokens, eq_idx + 1, "(", ")") catch return false;
+
+        for (funcs) |candidate| {
+            if (!std.mem.eql(u8, candidate.name, func_ref_name)) continue;
+            var seg_start = eq_idx + 2;
+            var seg_idx: usize = 0;
+            var seg = seg_start;
+            while (seg <= close_params) : (seg += 1) {
+                if (seg < close_params and !isTopLevelCommaAny(tokens, seg, eq_idx + 2, close_params)) continue;
+                if (seg_start < seg) {
+                    if (seg_idx < candidate.param_shapes.len and tokenNameAppearsInRange(tokens, seg_start, seg, type_name)) {
+                        switch (candidate.param_shapes[seg_idx]) {
+                            .value => |value_type| if (value_type != null) return true,
+                            .variadic => |value_type| if (value_type != null) return true,
+                            else => {},
+                        }
+                    }
+                    seg_idx += 1;
+                }
+                seg_start = seg + 1;
+            }
+
+            if (isReturnArrowAt(tokens, close_params + 1) and candidate.return_type != null and
+                tokenNameAppearsInRange(tokens, close_params + 3, line_end, type_name))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    return false;
+}
+
+fn lambdaBindsTypeParamThroughConstraint(
+    tokens: []const lexer.Token,
+    func_start_idx: usize,
+    constraint_name: []const u8,
+    type_name: []const u8,
+    lambda: LambdaArgShape,
+) bool {
+    const block_start = findConstraintBlockStartBefore(tokens, func_start_idx) orelse return false;
+
+    var i = block_start;
+    while (i < func_start_idx) {
+        if (!tokEq(tokens[i], "#")) {
+            i += 1;
+            continue;
+        }
+        const line_end = findLineEndIdx(tokens, i);
+        const is_func_constraint = i + 2 < line_end and tokEq(tokens[i + 2], "(");
+        if (is_func_constraint or i + 1 >= line_end or !std.mem.eql(u8, tokens[i + 1].lexeme, constraint_name)) {
+            i = line_end;
+            continue;
+        }
+
+        const eq_idx = findTopLevelAssignEqOnLine(tokens, i + 2, line_end) orelse return false;
+        if (eq_idx + 1 >= line_end or !tokEq(tokens[eq_idx + 1], "(")) return false;
+        const close_params = findMatching(tokens, eq_idx + 1, "(", ")") catch return false;
+
+        var seg_start = eq_idx + 2;
+        var seg_idx: usize = 0;
+        var seg = seg_start;
+        while (seg <= close_params) : (seg += 1) {
+            if (seg < close_params and !isTopLevelCommaAny(tokens, seg, eq_idx + 2, close_params)) continue;
+            if (seg_start < seg) {
+                if (seg_idx < lambda.param_types.len and lambda.param_types[seg_idx] != null and tokenNameAppearsInRange(tokens, seg_start, seg, type_name)) {
+                    return true;
+                }
+                seg_idx += 1;
+            }
+            seg_start = seg + 1;
+        }
+
+        if (isReturnArrowAt(tokens, close_params + 1) and lambda.return_type != null and
+            tokenNameAppearsInRange(tokens, close_params + 3, line_end, type_name))
+        {
+            return true;
+        }
+        return false;
     }
     return false;
 }
@@ -4661,7 +4801,10 @@ fn isTopLevelDeclHead(tokens: []const lexer.Token, idx: usize) bool {
     return true;
 }
 
-fn checkHostImports(tokens: []const lexer.Token) !void {
+fn checkHostImports(allocator: std.mem.Allocator, tokens: []const lexer.Token) !void {
+    var seen_aliases = std.ArrayList([]const u8).empty;
+    defer seen_aliases.deinit(allocator);
+
     var depth_brace: usize = 0;
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
@@ -4677,6 +4820,9 @@ fn checkHostImports(tokens: []const lexer.Token) !void {
         if (!isTopLevelDeclHead(tokens, i)) continue;
         if (!isHostImportDeclStart(tokens, i)) continue;
         try validateHostImportDecl(tokens, i);
+        const alias = publicFuncName(tokens[i].lexeme);
+        if (containsName(seen_aliases.items, alias)) return markErrorAt(tokens, i, error.DuplicateHostImportAlias);
+        try seen_aliases.append(allocator, alias);
         i = (parseImportDeclEnd(tokens, i) orelse i + 1) - 1;
     }
 }
