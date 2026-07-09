@@ -300,7 +300,7 @@ get / pkg / push 暂停边界:
 
 - [x] I1.1 盘点当前递归行为和失败点。验证: `compiled_ok/53_compiled_test_direct_and_mutual_recursion` 与 `compiled_ok/54_compiled_test_generic_recursive_known_arg` 通过 compiled WAT/wasm; `compiled_err/02_recursive_call_no_matching_overload` 与 `compiled_err/03_generic_recursive_call_currently_unsupported` 均稳定报 `NoMatchingCall`。
 - [x] I1.2 固定递归语义规则和泛型递归边界。`doc/spec_rules.md` 已写明普通直接/互递归、递归未命中 overload 报 `NoMatchingCall`, 参数侧已知 concrete type 的泛型递归可执行, 以及“返回上下文不参与 direct type param 反推”的当前边界; 该 slice 不引入新语法, `doc/grammar.peg` 无需变更。
-- [ ] I1.3 落地普通递归调用支持。当前已补 `ok/182_recursive_sum_and_parity`、`ok/183_recursive_error_union`、`ok/184_generic_recursive_known_arg`、`ok/185_recursive_factorial`、`ok/186_recursive_guard_return`、`ok/187_imported_recursive_factorial`、`compile_ok/242_recursive_start_sum_lower`、`compile_ok/243_recursive_factorial_start_lower`、`compile_ok/244_recursive_if_else_start_lower`、`compile_ok/245_imported_recursive_start_lower`、`compiled_ok/53_compiled_test_direct_and_mutual_recursion`、`compiled_ok/54_compiled_test_generic_recursive_known_arg`、`compiled_ok/55_compiled_test_recursive_factorial`、`compiled_ok/56_compiled_test_recursive_if_else` 和 `compiled_ok/57_compiled_test_imported_recursive_factorial`; 静态 runner 已收回 guard-return 与 imported recursion, 剩余 recursive error-union 和更复杂 control-flow 矩阵继续后置推进。
+- [ ] I1.3 落地普通递归调用支持。当前已补 `ok/182_recursive_sum_and_parity`、`ok/183_recursive_error_union`、`ok/184_generic_recursive_known_arg`、`ok/185_recursive_factorial`、`ok/186_recursive_guard_return`、`ok/187_imported_recursive_factorial`、`compile_ok/242_recursive_start_sum_lower`、`compile_ok/243_recursive_factorial_start_lower`、`compile_ok/244_recursive_if_else_start_lower`、`compile_ok/245_imported_recursive_start_lower`、`compiled_ok/53_compiled_test_direct_and_mutual_recursion`、`compiled_ok/54_compiled_test_generic_recursive_known_arg`、`compiled_ok/55_compiled_test_recursive_factorial`、`compiled_ok/56_compiled_test_recursive_if_else` 和 `compiled_ok/57_compiled_test_imported_recursive_factorial`; 当前已登记递归静态 runner 矩阵已收口, 更复杂 control-flow / aggregate 边界继续后置推进。
 - [ ] I1.4 落地 self-tail TCO 第一版。当前已补 `compile_ok/246_self_tail_scalar_tco_lower`、`247_self_tail_if_else_tco_lower`、`252_self_tail_guard_tco_lower`、`254_generic_self_tail_tco_lower`、`255_imported_self_tail_scalar_tco_lower`、`257_generic_self_tail_if_else_tco_lower`、`258_imported_self_tail_if_else_tco_lower`, `compiled_ok/58` 到 `64`, 以及 `ok/188`、`ok/189`, 证明 scalar、`if/else`、guard、generic、imported 和 generic/imported `if/else` self-tail path 已能 lower 到 loop; 更复杂 cleanup/aggregate 边界继续后置。
 - [ ] I1.5 评估 storage / managed / defer / 多返回 TCO 边界。当前已补 `compile_ok/248_self_tail_defer_not_optimized_lower`、`249_self_tail_storage_local_not_optimized_lower`、`250_self_tail_managed_struct_not_optimized_lower`、`251_self_tail_multi_return_not_optimized_lower`、`253_self_tail_if_else_defer_not_optimized_lower`、`256_self_tail_guard_defer_not_optimized_lower`, 锁住这六条“不优化”边界; 更激进放开前先保持保守。
 - [x] I1.6 同步文档和回归摘要。README、`tool/build/test/README.md`、`doc/master_plan.md`、`doc/start_here.md` 和本文已对齐阶段 I 当前回归矩阵; 递归 / self-tail TCO 不引入新语法, 因此无 `doc/syntax/*` 变更; 最新默认完整回归基线为 `pass=874 fail=0 skip=3`。
@@ -317,7 +317,7 @@ get / pkg / push 暂停边界:
 - `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_err/02_recursive_call_no_matching_overload.do --compiled -o /tmp/do_i1_bad_recursive.wat` 失败并匹配 `NoMatchingCall`。
 - `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_err/03_generic_recursive_call_currently_unsupported.do --compiled -o /tmp/do_i1_generic_recursive.wat` 失败并匹配 `NoMatchingCall`。
 - `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/182_recursive_sum_and_parity.do` 通过, 输出 `1 passed`。
-- `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/183_recursive_error_union.do` 当前输出 `skipped`; `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/183_recursive_error_union.do --compiled -o /tmp/do_i1_recursive_error_union.wat` 通过, `wasm-tools parse` + `node tool/build/test/run_compiled_test_case.mjs` 输出 `1 passed`。
+- `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/183_recursive_error_union.do` 通过, 输出 `1 passed`; `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/183_recursive_error_union.do --compiled -o /tmp/do_i1_recursive_error_union.wat` 通过, `wasm-tools parse` + `node tool/build/test/run_compiled_test_case.mjs` 输出 `1 passed`。
 - `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/184_generic_recursive_known_arg.do` 通过, 输出 `1 passed`; `--compiled` 路径同样通过。
 - `DO_LIB_ROOT=src ./bin/do test tool/build/test/err/329_generic_recursive_target_type_only_uninferred.do` 失败并匹配 `NoMatchingCall`。
 - `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_ok/242_recursive_start_sum_lower.do -o /tmp/do_i1_recursive_start.wat` 通过, `.expect` 逐行匹配通过。
@@ -337,7 +337,7 @@ get / pkg / push 暂停边界:
 
 下一步:
 
-- 继续扩 I1.3 静态 runner 矩阵, 优先评估 `ok/183_recursive_error_union.do` 的 error-union 路径是否值得收回。
+- 若继续扩 I1, 下一步优先评估 cleanup/aggregate 相关的静态 runner 价值是否足够; 若不继续扩静态 runner, 则切到 I2.1 `Tuple<...>` 规格固定。
 - 若 I1 暂无新的可独立收口小项, 则切到 I2.1 `Tuple<...>` 规格固定, 先把 arity、位置构造器和数字索引规则写实。
 
 ## 阶段 B: 语法和语义冻结审查

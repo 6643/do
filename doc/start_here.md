@@ -93,7 +93,7 @@
 
 - I1: 支持普通直接递归 / 互递归, 再落地 self-tail TCO; 第一版 TCO 只做 `return self(new_args)` 到 loop 的 lowering, 不依赖 Wasm tail-call proposal。
 - I1 当前边界: 普通直接递归 / 互递归已补回归; 参数侧已知 concrete type 的泛型递归已补正例; 仅靠左侧目标类型 + 字面量反推 generic param 的递归调用当前仍在 compiled 路径报 `NoMatchingCall`。
-- I1 当前缺口: 递归错误分支在 `ok/183_recursive_error_union.do` 上仍会被静态 runner skip。当前先由 `.compiled_must_pass` 保证 compiled 路径执行通过。
+- I1 当前缺口: 当前递归 / self-tail 的已登记静态 runner 用例已收口; 更复杂 cleanup/aggregate 形态仍以后置 compile/compiled 回归为主。
 - I2: 支持源码层大写 `Tuple<T0, T1, ...>` 类型, 例如 `Tuple<bool, u8>{flag, code}`; 第一版不做 `(bool, u8)` 类型语法或 `(true, 7)` 字面量, 读取使用 `@get(pair, 0)` / `@get(pair, 1)` 数字位置索引。
 
 ## 当前边界

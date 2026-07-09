@@ -9,7 +9,13 @@ const Value = union(enum) {
     bool: bool,
     int: i128,
     text: []const u8,
+    error_branch: ErrorBranchValue,
     object: []const FieldValue,
+};
+
+const ErrorBranchValue = struct {
+    name: []const u8,
+    type_name: []const u8,
 };
 
 const Binding = struct {
@@ -395,43 +401,15 @@ fn evalTest(
     funcs: []const FuncDecl,
     decl: TestDecl,
 ) !TestStatus {
-    if (hasUnsupportedControlFlow(tokens, decl.body_start, decl.body_end)) return .skip;
-
     var bindings = std.ArrayList(Binding).empty;
     defer {
         freeBindings(allocator, bindings.items);
         bindings.deinit(allocator);
     }
-
-    var saw_known_false = false;
-    var saw_unknown = false;
-    var saw_unsupported = false;
-    var i = decl.body_start;
-    while (i < decl.body_end) {
-        if (tokEqToken(tokens[i], "if")) {
-            const parsed = try evalIfReturn(allocator, tokens, funcs, &bindings, i, decl.body_end);
-            if (parsed.returned) return if (saw_unsupported) .skip else .pass;
-            if (parsed.unsupported) {
-                saw_unsupported = true;
-            } else if (parsed.unknown) {
-                saw_unknown = true;
-            } else {
-                saw_known_false = true;
-            }
-            i = parsed.next_idx;
-            continue;
-        }
-        if (tokEqToken(tokens[i], "return")) return if (saw_unsupported) .skip else .pass;
-        if (try evalBindingLine(allocator, tokens, funcs, &bindings, i, decl.body_end)) |line| {
-            if (line.unsupported) saw_unsupported = true;
-            i = line.next_idx;
-            continue;
-        }
-        i = findLineEnd(tokens, i, decl.body_end);
-    }
-
-    if (saw_unknown or saw_known_false) return .fail;
-    if (saw_unsupported) return .skip;
+    const flow = try evalTestStatements(allocator, tokens, funcs, &bindings, decl.body_start, decl.body_end);
+    if (flow.returned) return if (flow.unsupported) .skip else .pass;
+    if (flow.unknown or flow.known_false) return .fail;
+    if (flow.unsupported) return .skip;
     return .pass;
 }
 
@@ -476,6 +454,116 @@ const IfEval = struct {
     unsupported: bool,
     unknown: bool,
 };
+
+const TestFlow = struct {
+    next_idx: usize,
+    returned: bool,
+    unsupported: bool,
+    unknown: bool,
+    known_false: bool,
+};
+
+fn evalTestStatements(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    funcs: []const FuncDecl,
+    bindings: *std.ArrayList(Binding),
+    start_idx: usize,
+    end_idx: usize,
+) anyerror!TestFlow {
+    var flow = TestFlow{
+        .next_idx = end_idx,
+        .returned = false,
+        .unsupported = false,
+        .unknown = false,
+        .known_false = false,
+    };
+    var i = start_idx;
+    while (i < end_idx) {
+        if (tokEqToken(tokens[i], "defer")) {
+            flow.unsupported = true;
+            flow.next_idx = end_idx;
+            return flow;
+        }
+        if (tokEqToken(tokens[i], "loop")) {
+            const static_loop = staticNoopBreakLoop(tokens, i, end_idx) orelse {
+                flow.unsupported = true;
+                flow.next_idx = end_idx;
+                return flow;
+            };
+            i = static_loop.next_idx;
+            continue;
+        }
+        if (tokEqToken(tokens[i], "if")) {
+            if (try evalTestIfElseBlock(allocator, tokens, funcs, bindings, i, end_idx)) |block| {
+                if (block.returned) return block;
+                if (block.unsupported) flow.unsupported = true;
+                if (block.unknown) flow.unknown = true;
+                if (block.known_false) flow.known_false = true;
+                i = block.next_idx;
+                continue;
+            }
+            const parsed = try evalIfReturn(allocator, tokens, funcs, bindings, i, end_idx);
+            if (parsed.returned) {
+                flow.returned = true;
+                flow.unsupported = flow.unsupported or parsed.unsupported;
+                flow.next_idx = parsed.next_idx;
+                return flow;
+            }
+            if (parsed.unsupported) flow.unsupported = true else if (parsed.unknown) flow.unknown = true else flow.known_false = true;
+            i = parsed.next_idx;
+            continue;
+        }
+        if (tokEqToken(tokens[i], "return")) {
+            flow.returned = true;
+            flow.next_idx = findLineEnd(tokens, i, end_idx);
+            return flow;
+        }
+        if (try evalBindingLine(allocator, tokens, funcs, bindings, i, end_idx)) |line| {
+            if (line.unsupported) flow.unsupported = true;
+            i = line.next_idx;
+            continue;
+        }
+        i = findLineEnd(tokens, i, end_idx);
+    }
+    return flow;
+}
+
+fn evalTestIfElseBlock(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    funcs: []const FuncDecl,
+    bindings: *std.ArrayList(Binding),
+    if_idx: usize,
+    limit_idx: usize,
+) anyerror!?TestFlow {
+    const line_end = findLineEnd(tokens, if_idx, limit_idx);
+    const open_then = findTopLevelOpenBrace(tokens, if_idx + 1, line_end) orelse return null;
+    const then_close = try findMatchingToken(tokens, open_then, "{", "}");
+    if (then_close + 2 >= limit_idx or !tokEqToken(tokens[then_close + 1], "else") or !tokEqToken(tokens[then_close + 2], "{")) {
+        return null;
+    }
+    const open_else = then_close + 2;
+    const else_close = try findMatchingToken(tokens, open_else, "{", "}");
+
+    const cond = try evalExpr(allocator, tokens, funcs, bindings.items, if_idx + 1, open_then);
+    defer freeValue(allocator, cond);
+    if (cond == .unsupported) {
+        if (isSingleUnboundIdent(tokens, bindings.items, if_idx + 1, open_then)) return error.NoMatchingCall;
+        return .{ .next_idx = else_close + 1, .returned = false, .unsupported = true, .unknown = false, .known_false = false };
+    }
+    if (cond == .unknown) {
+        if (isSingleUnboundIdent(tokens, bindings.items, if_idx + 1, open_then)) return error.NoMatchingCall;
+        return .{ .next_idx = else_close + 1, .returned = false, .unsupported = false, .unknown = true, .known_false = false };
+    }
+    if (cond != .bool) return error.NonBoolIfCondition;
+
+    const branch_start = if (cond.bool) open_then + 1 else open_else + 1;
+    const branch_end = if (cond.bool) then_close else else_close;
+    var branch = try evalTestStatements(allocator, tokens, funcs, bindings, branch_start, branch_end);
+    branch.next_idx = else_close + 1;
+    return branch;
+}
 
 fn evalIfReturn(
     allocator: std.mem.Allocator,
@@ -621,7 +709,7 @@ fn evalExpr(
 ) anyerror!Value {
     const trimmed = trimParens(tokens, start_idx, end_idx);
     if (trimmed.start >= trimmed.end) return .unknown;
-    if (trimmed.end == trimmed.start + 1) return evalAtom(allocator, tokens[trimmed.start], bindings);
+    if (trimmed.end == trimmed.start + 1) return evalAtom(allocator, tokens, tokens[trimmed.start], bindings);
 
     if (isStructLiteralStart(tokens, trimmed.start, trimmed.end)) {
         return evalStructLiteral(allocator, tokens, funcs, bindings, trimmed.start, trimmed.end);
@@ -686,7 +774,7 @@ fn parseSimpleCall(tokens: []const lexer.Token, start_idx: usize, end_idx: usize
     };
 }
 
-fn evalAtom(allocator: std.mem.Allocator, tok: lexer.Token, bindings: []const Binding) anyerror!Value {
+fn evalAtom(allocator: std.mem.Allocator, tokens: []const lexer.Token, tok: lexer.Token, bindings: []const Binding) anyerror!Value {
     if (tok.kind == .number) return .{ .int = parseInt(tok.lexeme) orelse return .unknown };
     if (tok.kind == .string) return .{ .text = try decodeStringLiteral(allocator, tok.lexeme) };
     if (tokEqToken(tok, "true")) return .{ .bool = true };
@@ -694,6 +782,9 @@ fn evalAtom(allocator: std.mem.Allocator, tok: lexer.Token, bindings: []const Bi
     if (tokEqToken(tok, "nil")) return .nil;
     if (tok.kind == .ident) {
         if (lookupBinding(bindings, tok.lexeme)) |value| return cloneValue(allocator, value);
+        if (findErrorTypeForBranch(tokens, tok.lexeme)) |type_name| {
+            return .{ .error_branch = .{ .name = tok.lexeme, .type_name = type_name } };
+        }
         return .unsupported;
     }
     return .unknown;
@@ -717,6 +808,9 @@ fn evalCall(
     }
     if (std.mem.eql(u8, name, "as")) {
         return evalAsCall(allocator, tokens, funcs, bindings, args_start, args_end);
+    }
+    if (std.mem.eql(u8, name, "is")) {
+        return evalIsCall(allocator, tokens, funcs, bindings, args_start, args_end);
     }
 
     var args = std.ArrayList(Value).empty;
@@ -758,6 +852,38 @@ fn evalCall(
     if (isBitwiseCoreName(name)) return evalBitwiseCore(name, args.items);
     if (isCountBitsCoreName(name)) return evalCountBitsCore(name, args.items);
     return .unsupported;
+}
+
+fn evalIsCall(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    funcs: []const FuncDecl,
+    bindings: []const Binding,
+    start_idx: usize,
+    end_idx: usize,
+) anyerror!Value {
+    const target_end = findArgEnd(tokens, start_idx, end_idx);
+    if (target_end == start_idx or target_end >= end_idx or !tokEqToken(tokens[target_end], ",")) return .unknown;
+    const value = try evalExpr(allocator, tokens, funcs, bindings, start_idx, target_end);
+    defer freeValue(allocator, value);
+    if (value == .unsupported or value == .unknown) return value;
+
+    const type_start = target_end + 1;
+    const type_end = findArgEnd(tokens, type_start, end_idx);
+    if (type_end != end_idx or type_end != type_start + 1 or tokens[type_start].kind != .ident) return .unknown;
+    const type_name = tokens[type_start].lexeme;
+    return .{ .bool = valueMatchesType(value, type_name) };
+}
+
+fn valueMatchesType(value: Value, type_name: []const u8) bool {
+    return switch (value) {
+        .nil => std.mem.eql(u8, type_name, "nil"),
+        .bool => std.mem.eql(u8, type_name, "bool"),
+        .int => isScalarTypeName(type_name),
+        .text => std.mem.eql(u8, type_name, "text"),
+        .error_branch => |branch| std.mem.eql(u8, branch.type_name, type_name),
+        else => false,
+    };
 }
 
 fn evalArgs(
@@ -1040,6 +1166,38 @@ fn findTopLevelOpenBrace(tokens: []const lexer.Token, start_idx: usize, end_idx:
     return null;
 }
 
+fn findErrorTypeForBranch(tokens: []const lexer.Token, branch_name: []const u8) ?[]const u8 {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEqToken(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEqToken(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (i + 3 >= tokens.len) continue;
+        if (tokens[i].kind != .ident or tokens[i + 1].kind != .ident) continue;
+        if (!std.mem.eql(u8, tokens[i + 1].lexeme, "error") or !tokEqToken(tokens[i + 2], "=")) continue;
+
+        const line_end = findLineEnd(tokens, i, tokens.len);
+        var branch_start = i + 3;
+        while (branch_start < line_end) {
+            const branch_end = findArgEnd(tokens, branch_start, line_end);
+            if (branch_end == branch_start + 1 and tokens[branch_start].kind == .ident and std.mem.eql(u8, tokens[branch_start].lexeme, branch_name)) {
+                return tokens[i].lexeme;
+            }
+            branch_start = branch_end;
+            if (branch_start < line_end and tokEqToken(tokens[branch_start], "|")) branch_start += 1;
+        }
+        i = line_end;
+    }
+    return null;
+}
+
 fn evalFuncIfReturn(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -1074,6 +1232,7 @@ fn evalFuncIfReturn(
 
 fn evalAnd(args: []const Value) Value {
     if (args.len == 0) return .{ .bool = true };
+    var saw_false = false;
     var saw_unknown = false;
     var saw_unsupported = false;
     for (args) |arg| {
@@ -1086,10 +1245,11 @@ fn evalAnd(args: []const Value) Value {
             continue;
         }
         if (arg != .bool) return .unknown;
-        if (!arg.bool) return .{ .bool = false };
+        if (!arg.bool) saw_false = true;
     }
     if (saw_unsupported) return .unsupported;
     if (saw_unknown) return .unknown;
+    if (saw_false) return .{ .bool = false };
     return .{ .bool = true };
 }
 
@@ -1288,6 +1448,7 @@ fn valueEq(a: Value, b: Value) bool {
     if (a == .bool and b == .bool) return a.bool == b.bool;
     if (a == .int and b == .int) return a.int == b.int;
     if (a == .text and b == .text) return std.mem.eql(u8, a.text, b.text);
+    if (a == .error_branch and b == .error_branch) return std.mem.eql(u8, a.error_branch.name, b.error_branch.name) and std.mem.eql(u8, a.error_branch.type_name, b.error_branch.type_name);
     if (a == .object and b == .object) return objectEq(a.object, b.object);
     return false;
 }
@@ -2092,6 +2253,46 @@ test "recursive if else block static runner passes" {
         \\test "recursive if else block" {
         \\    out i32 = sum_branch(5, 0, true)
         \\    if @eq(out, 15) return
+        \\}
+    ;
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+
+    const tests = try collectTopLevelTests(allocator, tokens);
+    defer allocator.free(tests);
+    const funcs = try collectTopLevelFuncs(allocator, tokens);
+    defer allocator.free(funcs);
+
+    try std.testing.expectEqual(@as(usize, 1), tests.len);
+    try std.testing.expectEqual(TestStatus.pass, try evalTest(allocator, tokens, funcs, tests[0]));
+}
+
+test "recursive error union static runner passes" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\DepthError error = Negative
+        \\
+        \\sum_checked(n i32) -> i32 | DepthError {
+        \\    if @lt(n, 0) return Negative
+        \\    if @eq(n, 0) return 0
+        \\    next i32 = @sub(n, 1)
+        \\    partial = sum_checked(next)
+        \\    if @is(partial, DepthError) return partial
+        \\    return @add(n, partial)
+        \\}
+        \\
+        \\test "recursive error union" {
+        \\    total = sum_checked(4)
+        \\    fail = sum_checked(-1)
+        \\
+        \\    ok bool = true
+        \\    if @is(total, i32) {
+        \\        ok = @and(ok, @eq(total, 10))
+        \\    } else {
+        \\        ok = false
+        \\    }
+        \\    ok = @and(ok, @eq(fail, Negative))
+        \\    if ok return
         \\}
     ;
     const tokens = try lexer.tokenize(allocator, source);

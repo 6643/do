@@ -4,6 +4,11 @@
 
 ## 2026-07-09
 
+- 推进阶段 I 的 `ok/183_recursive_error_union` 静态 runner 收口。
+  - 实现: `tool/build/test_runner.zig` 新增 test body `if/else` block 执行、`@is(...)` 求值、本地 error branch 值表示与比较, 让递归 error-union 路径能在静态 runner 里跑通。
+  - 结论: `ok/183_recursive_error_union.do` 现在也能走静态 runner 直接通过; 当前已登记的递归 / self-tail 静态 runner 矩阵已收口。
+  - 验证: `cd tool && zig test build/test_runner.zig --test-filter 'recursive error union static runner passes'` 通过。
+  - 验证: `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/183_recursive_error_union.do` 通过, 输出 `ok: 1 passed; 0 failed; 0 skipped`。
 - 推进阶段 I 的 I1.3 / I1.4 静态 runner 收回 slice。
   - 实现: `tool/build/test_runner.zig` 新增 direct imported func alias 解析、比较 core `lt/le/gt/ge` 求值, 并让静态 runner 在调用 imported function 时按 `FuncDecl.tokens` 解释子模块函数体; `tool/build/run.zig` 的 `do test` 静态路径改为复用已加载的 `ModuleGraph`。
   - 结论: `ok/186_recursive_guard_return.do`、`ok/187_imported_recursive_factorial.do`、`ok/188_imported_self_tail_scalar_tco.do` 和 `ok/189_imported_self_tail_if_else_tco.do` 现在都能走静态 runner 直接通过; 当前只剩 `ok/183_recursive_error_union.do` 仍保持 compiled-only 边界。
