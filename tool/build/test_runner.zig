@@ -818,40 +818,7 @@ fn evalUserFunc(
             return err;
         };
     }
-
-    if (hasUnsupportedControlFlow(func_tokens, func.body_start, func.body_end)) return .unsupported;
-
-    i = func.body_start;
-    while (i < func.body_end) {
-        if (tokEqToken(func_tokens[i], "if")) {
-            const parsed = evalFuncIfReturn(allocator, func_tokens, funcs, &bindings, i, func.body_end) catch |err| {
-                if (imported_func and err == error.NoMatchingCall) return .unsupported;
-                return err;
-            };
-            if (parsed.returned) return parsed.value;
-            if (parsed.unsupported) return .unsupported;
-            if (parsed.unknown) return .unknown;
-            i = parsed.next_idx;
-            continue;
-        }
-        if (tokEqToken(func_tokens[i], "return")) {
-            const line_end = findLineEnd(func_tokens, i, func.body_end);
-            return evalExpr(allocator, func_tokens, funcs, bindings.items, i + 1, line_end) catch |err| {
-                if (imported_func and err == error.NoMatchingCall) return .unsupported;
-                return err;
-            };
-        }
-        if (evalBindingLine(allocator, func_tokens, funcs, &bindings, i, func.body_end) catch |err| {
-            if (imported_func and err == error.NoMatchingCall) return .unsupported;
-            return err;
-        }) |line| {
-            if (line.unsupported) return .unsupported;
-            i = line.next_idx;
-            continue;
-        }
-        i = findLineEnd(func_tokens, i, func.body_end);
-    }
-    return .unsupported;
+    return evalReturningBlock(allocator, func_tokens, funcs, &bindings, func.body_start, func.body_end, imported_func);
 }
 
 fn evalUserFuncMulti(
@@ -960,6 +927,118 @@ const FuncIfEval = struct {
     unknown: bool,
     value: Value,
 };
+
+fn evalReturningBlock(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    funcs: []const FuncDecl,
+    bindings: *std.ArrayList(Binding),
+    start_idx: usize,
+    end_idx: usize,
+    imported_func: bool,
+) anyerror!Value {
+    var i = start_idx;
+    while (i < end_idx) {
+        if (tokEqToken(tokens[i], "defer") or tokEqToken(tokens[i], "loop") or tokEqToken(tokens[i], "else")) return .unsupported;
+        if (tokEqToken(tokens[i], "if")) {
+            if (try evalFuncIfElseBlockReturn(allocator, tokens, funcs, bindings, i, end_idx, imported_func)) |block| {
+                if (block.returned) return block.value;
+                if (block.unsupported) return .unsupported;
+                if (block.unknown) return .unknown;
+                i = block.next_idx;
+                continue;
+            }
+            const parsed = evalFuncIfReturn(allocator, tokens, funcs, bindings, i, end_idx) catch |err| {
+                if (imported_func and err == error.NoMatchingCall) return .unsupported;
+                return err;
+            };
+            if (parsed.returned) return parsed.value;
+            if (parsed.unsupported) return .unsupported;
+            if (parsed.unknown) return .unknown;
+            i = parsed.next_idx;
+            continue;
+        }
+        if (tokEqToken(tokens[i], "return")) {
+            const line_end = findLineEnd(tokens, i, end_idx);
+            return evalExpr(allocator, tokens, funcs, bindings.items, i + 1, line_end) catch |err| {
+                if (imported_func and err == error.NoMatchingCall) return .unsupported;
+                return err;
+            };
+        }
+        if (evalBindingLine(allocator, tokens, funcs, bindings, i, end_idx) catch |err| {
+            if (imported_func and err == error.NoMatchingCall) return .unsupported;
+            return err;
+        }) |line| {
+            if (line.unsupported) return .unsupported;
+            i = line.next_idx;
+            continue;
+        }
+        return .unsupported;
+    }
+    return .unsupported;
+}
+
+fn evalFuncIfElseBlockReturn(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    funcs: []const FuncDecl,
+    bindings: *std.ArrayList(Binding),
+    if_idx: usize,
+    limit_idx: usize,
+    imported_func: bool,
+) !?FuncIfEval {
+    const line_end = findLineEnd(tokens, if_idx, limit_idx);
+    const open_then = findTopLevelOpenBrace(tokens, if_idx + 1, line_end) orelse return null;
+    const then_close = try findMatchingToken(tokens, open_then, "{", "}");
+    if (then_close + 2 >= limit_idx or !tokEqToken(tokens[then_close + 1], "else") or !tokEqToken(tokens[then_close + 2], "{")) {
+        return null;
+    }
+    const open_else = then_close + 2;
+    const else_close = try findMatchingToken(tokens, open_else, "{", "}");
+
+    const cond = try evalExpr(allocator, tokens, funcs, bindings.items, if_idx + 1, open_then);
+    defer freeValue(allocator, cond);
+    if (cond == .unsupported) {
+        if (isSingleUnboundIdent(tokens, bindings.items, if_idx + 1, open_then)) return error.NoMatchingCall;
+        return .{ .next_idx = else_close + 1, .returned = false, .unsupported = true, .unknown = false, .value = .unsupported };
+    }
+    if (cond == .unknown) {
+        if (isSingleUnboundIdent(tokens, bindings.items, if_idx + 1, open_then)) return error.NoMatchingCall;
+        return .{ .next_idx = else_close + 1, .returned = false, .unsupported = false, .unknown = true, .value = .unknown };
+    }
+    if (cond != .bool) return error.NonBoolIfCondition;
+
+    const branch_start = if (cond.bool) open_then + 1 else open_else + 1;
+    const branch_end = if (cond.bool) then_close else else_close;
+    const value = try evalReturningBlock(allocator, tokens, funcs, bindings, branch_start, branch_end, imported_func);
+    return .{ .next_idx = else_close + 1, .returned = true, .unsupported = false, .unknown = false, .value = value };
+}
+
+fn findTopLevelOpenBrace(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    var depth_paren: usize = 0;
+    var depth_angle: usize = 0;
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokEqToken(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEqToken(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEqToken(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEqToken(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (depth_paren == 0 and depth_angle == 0 and tokEqToken(tokens[i], "{")) return i;
+    }
+    return null;
+}
 
 fn evalFuncIfReturn(
     allocator: std.mem.Allocator,
@@ -1994,4 +2073,35 @@ test "recursive imported function static runner passes" {
 
     try std.testing.expectEqual(@as(usize, 1), tests.len);
     try std.testing.expectEqual(TestStatus.pass, try evalTest(allocator, entry_tokens, funcs, tests[0]));
+}
+
+test "recursive if else block static runner passes" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\sum_branch(n i32, acc i32, include bool) -> i32 {
+        \\    if @eq(n, 0) return acc
+        \\    next_n i32 = @sub(n, 1)
+        \\    if include {
+        \\        next_acc i32 = @add(acc, n)
+        \\        return sum_branch(next_n, next_acc, include)
+        \\    } else {
+        \\        return sum_branch(next_n, acc, include)
+        \\    }
+        \\}
+        \\
+        \\test "recursive if else block" {
+        \\    out i32 = sum_branch(5, 0, true)
+        \\    if @eq(out, 15) return
+        \\}
+    ;
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+
+    const tests = try collectTopLevelTests(allocator, tokens);
+    defer allocator.free(tests);
+    const funcs = try collectTopLevelFuncs(allocator, tokens);
+    defer allocator.free(funcs);
+
+    try std.testing.expectEqual(@as(usize, 1), tests.len);
+    try std.testing.expectEqual(TestStatus.pass, try evalTest(allocator, tokens, funcs, tests[0]));
 }

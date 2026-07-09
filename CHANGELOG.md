@@ -6,12 +6,12 @@
 
 - 推进阶段 I 的 I1.3 / I1.4 静态 runner 收回 slice。
   - 实现: `tool/build/test_runner.zig` 新增 direct imported func alias 解析、比较 core `lt/le/gt/ge` 求值, 并让静态 runner 在调用 imported function 时按 `FuncDecl.tokens` 解释子模块函数体; `tool/build/run.zig` 的 `do test` 静态路径改为复用已加载的 `ModuleGraph`。
-  - 结论: `ok/186_recursive_guard_return.do`、`ok/187_imported_recursive_factorial.do` 和 `ok/188_imported_self_tail_scalar_tco.do` 现在都能走静态 runner 直接通过; `ok/183_recursive_error_union.do` 与 `ok/189_imported_self_tail_if_else_tco.do` 仍保持 compiled-only 边界。
-  - 验证: `cd tool && zig test build/test_runner.zig` 通过, 输出 `All 16 tests passed.`。
+  - 结论: `ok/186_recursive_guard_return.do`、`ok/187_imported_recursive_factorial.do`、`ok/188_imported_self_tail_scalar_tco.do` 和 `ok/189_imported_self_tail_if_else_tco.do` 现在都能走静态 runner 直接通过; 当前只剩 `ok/183_recursive_error_union.do` 仍保持 compiled-only 边界。
+  - 验证: `cd tool && zig test build/test_runner.zig` 通过, 输出 `All 17 tests passed.`。
   - 验证: `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/186_recursive_guard_return.do` 通过, 输出 `ok: 1 passed; 0 failed; 0 skipped`。
   - 验证: `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/ok/187_imported_recursive_factorial.do` 通过, 输出 `ok: 1 passed; 0 failed; 0 skipped`。
   - 验证: `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/ok/188_imported_self_tail_scalar_tco.do` 通过, 输出 `ok: 1 passed; 0 failed; 0 skipped`。
-  - 验证: `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/ok/189_imported_self_tail_if_else_tco.do` 当前仍输出 `ok: 0 passed; 0 failed; 1 skipped`。
+  - 验证: `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/ok/189_imported_self_tail_if_else_tco.do` 通过, 输出 `ok: 1 passed; 0 failed; 0 skipped`。
 - 同步阶段 I 的 I1.2 / I1.6 文档和回归摘要。
   - 同步: `README.md`、`tool/build/test/README.md`、`doc/master_plan.md`、`doc/roadmap_status.md`、`doc/start_here.md`。
   - 修正: 阶段 I 的 self-tail TCO fixture 编号和覆盖范围对齐当前工作树, 包括 `253_self_tail_if_else_defer_not_optimized_lower`、`256_self_tail_guard_defer_not_optimized_lower`、`257_generic_self_tail_if_else_tco_lower`、`258_imported_self_tail_if_else_tco_lower`、`compiled_ok/63`、`compiled_ok/64` 和 `ok/189_imported_self_tail_if_else_tco.do`。

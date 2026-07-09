@@ -331,13 +331,13 @@ get / pkg / push 暂停边界:
 - `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/ok/188_imported_self_tail_scalar_tco.do` 通过, 输出 `1 passed`; `DO_LIB_ROOT=tool/build/test/lib ./bin/do build tool/build/test/compile_ok/255_imported_self_tail_scalar_tco_lower.do -o /tmp/do_i1_imported_tco_build.wat` 通过, `.expect` 逐行匹配通过; `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/compiled_ok/62_compiled_test_imported_self_tail_scalar_tco.do --compiled -o /tmp/do_i1_imported_tco_compiled.wat` 通过且 wasm 执行 `1 passed`。
 - `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_ok/257_generic_self_tail_if_else_tco_lower.do -o /tmp/do_i1_generic_if_else_tco.wat` 通过, `.expect` 逐行匹配通过; `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_ok/63_compiled_test_generic_self_tail_if_else_tco.do --compiled -o /tmp/do_i1_generic_if_else_tco_compiled.wat` 通过且 wasm 执行 `1 passed`。
 - `DO_LIB_ROOT=tool/build/test/lib ./bin/do build tool/build/test/compile_ok/258_imported_self_tail_if_else_tco_lower.do -o /tmp/do_i1_imported_if_else_tco.wat` 通过, `.expect` 逐行匹配通过; `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/compiled_ok/64_compiled_test_imported_self_tail_if_else_tco.do --compiled -o /tmp/do_i1_imported_if_else_tco_compiled.wat` 通过且 wasm 执行 `1 passed`。
-- `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/ok/189_imported_self_tail_if_else_tco.do` 当前输出 `skipped`; 该静态 runner 边界仍停在函数体 `if/else` block 未支持, 当前继续由 compiled 路径兜底。
+- `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/ok/189_imported_self_tail_if_else_tco.do` 通过, 输出 `1 passed`; imported self-tail `if/else` 的静态 runner 边界已收回。
 - `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_ok/54_compiled_test_generic_recursive_known_arg.do --compiled -o /tmp/do_i1_compiled54.wat` 通过, `wasm-tools parse` + `node tool/build/test/run_compiled_test_case.mjs` 输出 `1 passed`。
 - `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `pass=874 fail=0 skip=3`; 回归后的 `tool/build/test/tmp` ignored 产物已清理到 `0`。
 
 下一步:
 
-- 继续扩 I1.3 / I1.4 静态 runner 矩阵, 优先评估 `ok/183_recursive_error_union.do` 与 `ok/189_imported_self_tail_if_else_tco.do` 的 `error-union` / 函数体 `if/else` block 支持是否值得收回。
+- 继续扩 I1.3 静态 runner 矩阵, 优先评估 `ok/183_recursive_error_union.do` 的 error-union 路径是否值得收回。
 - 若 I1 暂无新的可独立收口小项, 则切到 I2.1 `Tuple<...>` 规格固定, 先把 arity、位置构造器和数字索引规则写实。
 
 ## 阶段 B: 语法和语义冻结审查
