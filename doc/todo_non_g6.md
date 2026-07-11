@@ -134,19 +134,19 @@ cd src && zig test main.zig
 - [x] D0 门禁复跑
 - [x] D1 文档漂移（I2 已落地）
 - [x] D2 诊断/文档一致性
-- [x] D3 产品小增强（圈选: **A** / B / C / D / E ）→ `UnsupportedTupleStorageLeaf` + `compile_err/339`
-- [ ] D4 架构小拆（可选: R1 / R2 / R3 / R4 / R5）— 本日未做
-- [x] D5 收口 CHANGELOG + 基线
+- [x] D3 产品小增强（圈选: **A** / B / C / D / E ）→ `UnsupportedTupleStorageLeaf` + `compile_err/339` (push `14a55d2`)
+- [ ] D4 架构小拆（R4 unit 补强优先; R5 审计; R1 见 §9 deferred）
+- [x] D5 收口 CHANGELOG + 基线 (随 D3-A push)
 
 ### 近期待选（第二天起，仍非 G6）
 
-- [ ] B Tuple bare-struct pack 决策 + 实现或正式后置说明
+- [x] B Tuple bare-struct pack → **deferred** 正式后置 (`UnsupportedTupleStorageLeaf` + §9); 不实现真 pack
 - [ ] C JSON 单一类型扩展
 - [ ] D Ownership 单一场景少 inc
 - [ ] E LSP/fmt 边角
-- [ ] R1–R2 codegen 再拆
-- [ ] F 泛型递归左侧反推：仅笔记+fixture 或完整实现（单独立项）
-- [ ] 诊断码表：真 overload `NoMatchingCall` vs 能力边界 `UnsupportedLowering` 抽样对齐（不做大爆炸批量改）
+- [ ] R1–R2 codegen 再拆 (R1 deferred §9; R2 待做或再 defer)
+- [x] F 泛型递归左侧反推 → **deferred** 单独立项 (§9); 边界仍 `NoMatchingCall`
+- [ ] 诊断码表：真 overload `NoMatchingCall` vs 能力边界 `Unsupported*` 抽样对齐（不做大爆炸批量改）
 
 ---
 
@@ -170,4 +170,19 @@ cd src && zig test main.zig
 2. 语法/语义变 → 同步 `spec_rules` / 相关 `syntax/*` / fixture。  
 3. 工具行为变 → 同步 `README` / `src/build/test/README.md`。  
 4. 完成后更新本文件勾选状态，并回写 `doc/start_here.md` 基线数字（若变化）。  
-5. commit/push **仅当用户明确要求**。
+5. **每完成一步可验证闭环 → commit + push `origin/main`** (正常推送, 不 force-push)。  
+6. 无法完成的项必须在本文件标 **blocked/deferred** 并写恢复条件; G6.1–G6.3 永不静默删除。  
+7. 阻断项同步到 `doc/start_here.md` 或 `doc/roadmap_status.md`。
+
+## 9. 阻断与后置登记（非静默缺口）
+
+| ID | 状态 | 原因 | 恢复条件 |
+| --- | --- | --- | --- |
+| G6.1 | **blocked** | preopens `list<tuple<descriptor,string>>` 公开 API 未确认 | 用户确认 API |
+| G6.2 | **blocked** | `read-directory` 依赖 stream/future; 无 async runtime | async/Future/Task 立项 |
+| G6.3 | **blocked** | sockets resource + variant 映射未定 | 用户确认 wrapper/address variant |
+| skip 16/96/118 | **deferred** | 依赖 recv/WASI/host; 非 G6 日路径不收回 | G6 + host smoke 后单独开项 |
+| B bare-struct pack | **deferred** | 需宽度/对齐/ARC 子字段产品决策; 当前正式后置为 `UnsupportedTupleStorageLeaf` | 用户授权 + 决策页后实现 |
+| F 左侧泛型递归 | **deferred** | 高风险 sema; 日路径只保留边界说明 | 单独立项 (半天+) |
+| 完整 ownership IR | **blocked** | `doc/memory.md` 启动条件未满足 | 见 memory 03.8.4 |
+| R1 大拆 WASI emit | **deferred** | 多小时零行为搬迁; 日路径优先小 R 项 | 单独授权垂直切片 |

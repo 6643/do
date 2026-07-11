@@ -324,3 +324,28 @@ test "scalar and storage type helpers" {
     try std.testing.expectEqual(@as(?usize, 4), tupleElementPackOffset("Tuple<i32,u8>", 1));
     try std.testing.expectEqual(@as(?usize, 6), tupleScalarLeafStorageByteWidth("Tuple<Tuple<i32,u8>,u8>"));
 }
+
+test "tuple packable leaf and non-packable storage width table" {
+    // Packable leaves: core scalars + managed payload handles.
+    try std.testing.expect(isTuplePackableLeafType("i32"));
+    try std.testing.expect(isTuplePackableLeafType("u8"));
+    try std.testing.expect(isTuplePackableLeafType("bool"));
+    try std.testing.expect(isTuplePackableLeafType("f64"));
+    try std.testing.expect(isTuplePackableLeafType("text"));
+    try std.testing.expect(isTuplePackableLeafType("[u8]"));
+    // Bare user struct names are not packable leaves (scheme A boundary).
+    try std.testing.expect(!isTuplePackableLeafType("Point"));
+    try std.testing.expect(!isTuplePackableLeafType("PairBox"));
+    // Width: packable ok; non-packable leaf → null (drives UnsupportedTupleStorageLeaf).
+    try std.testing.expectEqual(@as(?usize, 5), tupleScalarLeafStorageByteWidth("Tuple<i32,u8>"));
+    try std.testing.expectEqual(@as(?usize, 5), tupleScalarLeafStorageByteWidth("Tuple<text,u8>"));
+    try std.testing.expectEqual(@as(?usize, 8), tupleScalarLeafStorageByteWidth("Tuple<text,[u8]>"));
+    try std.testing.expect(tupleScalarLeafStorageByteWidth("Tuple<Point,u8>") == null);
+    try std.testing.expect(tupleScalarLeafStorageByteWidth("Tuple<i32,Point>") == null);
+    // Offsets sum preceding packable widths; a non-packable *preceding* leaf nulls later offsets.
+    try std.testing.expectEqual(@as(?usize, 0), tupleElementPackOffset("Tuple<Point,u8>", 0));
+    try std.testing.expect(tupleElementPackOffset("Tuple<Point,u8>", 1) == null);
+    try std.testing.expectEqual(@as(?usize, 4), tupleElementPackOffset("Tuple<i32,Point>", 1));
+    try std.testing.expectEqual(@as(?usize, 0), tupleElementPackOffset("Tuple<text,u8>", 0));
+    try std.testing.expectEqual(@as(?usize, 4), tupleElementPackOffset("Tuple<text,u8>", 1));
+}
