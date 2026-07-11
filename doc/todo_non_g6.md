@@ -1,7 +1,7 @@
 # 非 G6 可推进 Todo（约 1 天量）
 
 更新时间: 2026-07-12  
-基线: 回归 `pass=912 fail=0 skip=3`; unit `119/119`  
+基线: 回归 `pass=913 fail=0 skip=3`; unit `119/119`  
 约束: **不处理 G6.1–G6.3** (preopens API / read-directory async / sockets variant)  
 权威入口: `doc/start_here.md` · 总规划: `doc/master_plan.md`
 
@@ -142,6 +142,7 @@ cd src && zig test main.zig
 
 - [x] B Tuple bare-struct pack → **deferred** 正式后置 (`UnsupportedTupleStorageLeaf` + §9); 不实现真 pack
 - [x] C JSON 单一类型扩展 → `u8` 字段 stringify/from_json (`ok/190`, push `a3f79b2`)
+- [x] pure-scalar `field_set` return → **fixed** collect 跳过已有 struct rebinding (`ok/191`)
 - [x] D Ownership 单一场景少 inc → **deferred** 无安全可证明单点 (loop/defer/IR 门槛见 memory 03.8); 恢复: 授权 ownership 小项
 - [x] E LSP/fmt 边角 → LSP 类型名 hover (`src/lsp/hover.zig`, push `a3f79b2`); fmt 无新增边角
 - [x] R1–R2 codegen 再拆 → **R1 deferred** §9; **R2 deferred** 零行为大搬迁非日路径; 恢复: 单独授权垂直切片
@@ -189,4 +190,4 @@ cd src && zig test main.zig
 | R2 path/pack 再抽 | **deferred** | 零行为搬迁; 已有 payload/storage 旁路够用 | 单独授权垂直切片 |
 | D ownership 少 inc | **deferred** | 无证据充分的单场景; 完整 IR 门槛未满足 | 用户授权 + 可证明 call/return 场景 |
 | M4 RUN_WASM 全量 | **deferred** | 耗时长; 不阻塞默认回归 | 发布前显式 `RUN_WASM=1` |
-| pure-scalar struct `field_set` return | **deferred** | `from_json` 纯标量单字段 struct 返回 seed 而非更新后字段 (WAT 用错 local); `ok/190` 用 managed `text` 字段绕过 | 单独 codegen field-reflect 小修 |
+| pure-scalar struct `field_set` return | **fixed** | field 反射循环误把 `out = @field_set(...)` 收集为 scoped shadow (`__field_*_out`); 写 `$out.n` 读 shadow | 已修: collect 跳过已有 `struct_locals`; fixture `ok/191` |

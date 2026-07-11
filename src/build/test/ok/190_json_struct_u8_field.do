@@ -7,8 +7,8 @@ json_bytes_eq(value [u8] | JsonError, expect [u8]) -> bool {
     return @eq(value, expect)
 }
 
-// Include a managed `text` field so from_json uses the managed-struct path
-// (pure scalar-only structs hit a separate field_set return bug, not json u8).
+// Mixed scalar + managed field (managed path for from_json ARC).
+// Pure-scalar-only from_json is locked by ok/191.
 Cell {
     n u8 = 0
     label text = ""

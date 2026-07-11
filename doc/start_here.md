@@ -39,7 +39,7 @@
 ```bash
 # 默认完整回归 (当前基线)
 ./src/build/test/run_tests.sh
-# 期望: pass=912 fail=0 skip=3
+# 期望: pass=913 fail=0 skip=3
 
 # 聚合单元测试
 cd src && zig test main.zig
@@ -58,7 +58,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 
 | 基线项 | 最近值 |
 | --- | --- |
-| 默认回归 | `pass=912 fail=0 skip=3` |
+| 默认回归 | `pass=913 fail=0 skip=3` |
 | 聚合 unit | `119/119` |
 | `compile_ok` / `compiled_ok` / `compile_err` | do≈`272` / `77` / `39` |
 | 剩余 skip | `16_loop_recv_value`、`96_file_lib_resource_shape`、`118_wasi_p3_std_wrappers` (recv/WASI 后置) |
@@ -97,7 +97,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 
 - 裸 struct 等非 packable 叶子的 `[Tuple]` storage 仍 → `UnsupportedTupleStorageLeaf` (`compile_err/339`)
 - managed/`text` 叶子 storage 与 `@get(storage, i, j)` path chaining **已支持** (`compile_ok/270`–`271`, `compiled_ok/75`–`77`)
-- 纯标量 struct 的 field-reflect `field_set` 返回路径有已知缺陷 (from_json 用 managed 字段绕过; 见 todo §9)
+- 纯标量 struct 的 field-reflect `field_set` 返回路径 **已修** (`ok/191`; 不再误 shadow `out`)
 
 ## 6. 当前计划候选
 

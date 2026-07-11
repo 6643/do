@@ -17,7 +17,7 @@
 - `do check`: lexer/parser/sema/import diagnostics only; 诊断收集在 `src/build/diagnostics.zig`。
 - 阶段 A–F、H 已完成; D 可推进项与 D2.1 已收口; G1–G5、G6.4 已完成; **阶段 I (I1+I2) 已关闭**。
 - 架构扁平拆分已落地: `type_name` / `sema_error` / `diagnostics` / `codegen_payload_wat` / `codegen_storage_wat`。
-- 最近回归: `./src/build/test/run_tests.sh` → `pass=912 fail=0 skip=3`; unit `119/119`。
+- 最近回归: `./src/build/test/run_tests.sh` → `pass=913 fail=0 skip=3`; unit `119/119`。
 
 当前禁止默认推进:
 

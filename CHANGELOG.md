@@ -5,7 +5,12 @@
 
 ## 2026-07-12
 
-- JSON: struct 字段 `u8` stringify/from_json 重载 (`ok/190_json_struct_u8_field`; from_json 用例含 managed `text` 字段以绕过纯标量 field_set 返回缺陷)
+- codegen: 修复纯标量 struct 在 field 反射循环内 `out = @field_set(...)` 写错 local
+  - 根因: 循环 collect 把已有 `struct_locals` 的 reassignment 误收成 `__field_*_` shadow; 写 `$out.n` 而 return 读 shadow
+  - 修: `collectBodyLocals` 对已登记 `struct_locals` 跳过 inferred struct rebinding
+  - 正例: `ok/191_json_from_json_pure_scalar` (`compiled_must_pass`)
+
+- JSON: struct 字段 `u8` stringify/from_json 重载 (`ok/190_json_struct_u8_field`; 混合 managed 字段路径)
 - LSP: hover 对当前文件类型声明/引用返回类型名 head (`src/lsp/hover.zig`)
 - 非 G6 todo 清单 drain: push-on-advance 协议 + §9 阻断登记; release smoke 绿- 非 G6 日路径: `UnsupportedTupleStorageLeaf` 专用诊断 + 文档漂移收口
   - 裸 struct 等非 packable 叶子 `[Tuple]` storage 从泛化 `UnsupportedLowering` 拆出独立 code/summary/hint
@@ -25,7 +30,7 @@
 cd src && zig test main.zig
   → All 119 tests passed.
 ./src/build/test/run_tests.sh
-  → pass=912 fail=0 skip=3
+  → pass=913 fail=0 skip=3
 ./src/build/test/run_release_smoke.sh
   → release smoke passed
 ```

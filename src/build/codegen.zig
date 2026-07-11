@@ -1701,7 +1701,13 @@ fn collectBodyLocalsWithMode(
             try out.appendUnionLocal(allocator, tokens[i].lexeme, binding.layout, true, binding.owns_layout);
         } else if (typedScalarBindingType(tokens, i, stmt_end, ctx)) |ty| {
             try out.appendBorrowedLocal(allocator, tokens[i].lexeme, ty, true);
-        } else if (!hasLocal(out.locals.items, tokens[i].lexeme) and inferredStructCtorBinding(tokens, i, stmt_end, ctx.structs) != null) {
+        } else if (!hasLocal(out.locals.items, tokens[i].lexeme) and
+            findStructLocal(out.struct_locals.items, tokens[i].lexeme) == null and
+            inferredStructCtorBinding(tokens, i, stmt_end, ctx.structs) != null)
+        {
+            // Unmanaged pure-scalar structs live in struct_locals + field slots (`out.n`),
+            // not as a single `out` scalar local. Reassignment (e.g. `out = @field_set(...)`)
+            // must not invent a field-reflection-scoped shadow binding.
             const decl = inferredStructCtorBinding(tokens, i, stmt_end, ctx.structs).?;
             const local_name = try out.appendStructLocal(allocator, tokens[i].lexeme, decl.name, true);
             if (findStructLayout(ctx.struct_layouts, decl.name) != null) {
@@ -1715,7 +1721,10 @@ fn collectBodyLocalsWithMode(
                     try appendLocalField(allocator, out, tokens, ctx, local_name, field.name, field.ty);
                 }
             }
-        } else if (!hasLocal(out.locals.items, tokens[i].lexeme) and inferredStructBinding(tokens, i, stmt_end, out, ctx) != null) {
+        } else if (!hasLocal(out.locals.items, tokens[i].lexeme) and
+            findStructLocal(out.struct_locals.items, tokens[i].lexeme) == null and
+            inferredStructBinding(tokens, i, stmt_end, out, ctx) != null)
+        {
             const binding = inferredStructBinding(tokens, i, stmt_end, out, ctx).?;
             const local_name = try out.appendStructLocal(allocator, tokens[i].lexeme, binding.ty, true);
             if (findStructLayout(ctx.struct_layouts, binding.ty) != null) {
@@ -5445,7 +5454,7 @@ fn emitStructSetAssignment(
 
     if (!try emitExpr(allocator, tokens, value_start, close_paren, locals, ctx, field_ty, out)) return error.NoMatchingCall;
     try appendFmt(allocator, out, "    local.set ${s}.{s}\n", .{
-        tokens[start_idx].lexeme,
+        struct_local.name,
         field_name,
     });
     return true;
@@ -5531,7 +5540,7 @@ fn emitStructFieldMetaSetAssignment(
 
     if (!try emitExpr(allocator, tokens, value_start, close_paren, locals, ctx, field_ty, out)) return error.NoMatchingCall;
     try appendFmt(allocator, out, "    local.set ${s}.{s}\n", .{
-        tokens[start_idx].lexeme,
+        struct_local.name,
         field_name,
     });
     return true;

@@ -31,7 +31,7 @@ cd src && zig test main.zig
   → All 119 tests passed.
 
 ./src/build/test/run_tests.sh
-  → pass=912 fail=0 skip=3
+  → pass=913 fail=0 skip=3
 
 RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
   → pass=833 fail=0 skip=3; wasm run summary: pass=6 fail=0
