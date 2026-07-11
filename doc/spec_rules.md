@@ -525,7 +525,8 @@ Error
     - 允许嵌套 `Tuple<Tuple<i32, bool>, u8>`, 以及作为局部绑定、参数、单返回、struct 字段和标量叶子 `[Tuple<...>]` storage 元素。
     - 标量叶子 storage 采用内联 pack (scheme A): 元素按叶子 payload 连续写入 storage data, 不是 managed handle。
     - 当前后置边界: managed payload 叶子的 storage、`text` 等 managed 叶子 storage、`@get(storage, i, j)` path chaining, 以及 `loop v, i = items { @get(v, 0) }` 对 loop 绑定的数字索引读取; 这些边界当前仍报 `NoMatchingCall`。
-    - 元素类型不匹配的位置构造当前仍可能落到 `NoMatchingCall`; 后续可收敛为更精确的类型诊断。
+    - 位置构造中明显字面量与类型参数不匹配 (例如 `bool` 位写整数字面量、`u8` 位写 `true`) 报 `InvalidTypedLiteral`; 复杂表达式的类型检查仍可能落到后续阶段的 `NoMatchingCall`。
+    - 位置构造允许尾逗号, 尾逗号不计入 arity。
 
 ## 6. 绑定、赋值与作用域
 

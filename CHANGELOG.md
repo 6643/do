@@ -4,6 +4,13 @@
 
 ## 2026-07-12
 
+- 审查修复: Tuple 位置构造 sema 完备性
+  - P1: `checkTupleCtorArity` 不再跳过 body, 嵌套 `Tuple<...>{...}` arity 可诊断 (`compile_err/338`)
+  - P2: 尾逗号不计入 arity (`compile_ok/268`); 明显字面量元素类型不匹配报 `InvalidTypedLiteral` (`compile_err/337`); diag hint / 命名字段注释对齐
+  - 验证: `cd tool && zig test main.zig` 通过 (`All 103 tests passed.`); `./tool/build/test/run_tests.sh` 通过, 摘要 `pass=903 fail=0 skip=3`
+
+## 2026-07-12
+
 - 关闭阶段 I (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版)
   - I2.3 sema: `checkTupleCtorArity` / `checkTupleGetIndex`; 位置构造 arity -> `InvalidTypedLiteral`; 越界/非字面量索引 -> `InvalidPathIndex`; 修复 `-> Tuple<...>{` 函数体误判为构造器 (lexer 将 `->` 拆为 `-`/`>`)
   - I2.4 后置阻断已记录: managed payload / `text` 叶子 storage、`@get(storage, i, j)` path chaining、loop 绑定 `@get(v, N)`

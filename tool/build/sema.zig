@@ -5890,7 +5890,9 @@ fn checkGenericTypeArgArity(tokens: []const lexer.Token) !void {
 }
 
 /// Position-ctor arity for `Tuple<T0,...>{v0,...}` must equal type-arg count.
-/// Named field inits in a Tuple body are rejected as InvalidTypedLiteral.
+/// Nested ctors are scanned by not skipping the body after the outer ctor.
+/// Named field inits are usually rejected earlier as InvalidStructLiteral by the parser;
+/// this path remains as a defensive fallback (InvalidTypedLiteral).
 fn checkTupleCtorArity(tokens: []const lexer.Token) !void {
     var i: usize = 0;
     while (i + 1 < tokens.len) : (i += 1) {
@@ -5920,7 +5922,8 @@ fn checkTupleCtorArity(tokens: []const lexer.Token) !void {
         const expected = countTypeArgs(tokens, i + 2, close_angle);
         if (expected < 2) {
             // arity floor already reported by checkGenericTypeArgArity when reachable.
-            i = close_brace;
+            // Still walk the body so nested Tuple ctors are checked.
+            i = open_brace;
             continue;
         }
         if (tupleCtorBodyHasNamedField(tokens, open_brace + 1, close_brace)) {
@@ -5928,7 +5931,9 @@ fn checkTupleCtorArity(tokens: []const lexer.Token) !void {
         }
         const actual = countTupleCtorPositionalArgs(tokens, open_brace + 1, close_brace);
         if (actual != expected) return markErrorAt(tokens, i, error.InvalidTypedLiteral);
-        i = close_brace;
+        try checkTupleCtorElemLiteralTypes(tokens, i + 2, close_angle, open_brace + 1, close_brace);
+        // Do not jump to close_brace: nested `Tuple<...>{...}` lives inside the body.
+        i = open_brace;
     }
 }
 
@@ -6012,6 +6017,8 @@ fn countTupleCtorPositionalArgs(tokens: []const lexer.Token, start_idx: usize, e
             continue;
         }
         if (depth_paren == 0 and depth_brace == 0 and depth_angle == 0 and tokEq(tokens[i], ",")) {
+            // Trailing comma is not an extra positional arg.
+            if (!tupleCtorHasTopLevelTokenAfter(tokens, i + 1, end_idx)) continue;
             count += 1;
             continue;
         }
@@ -6019,6 +6026,208 @@ fn countTupleCtorPositionalArgs(tokens: []const lexer.Token, start_idx: usize, e
     }
     if (!saw_token) return 0;
     return count;
+}
+
+fn tupleCtorHasTopLevelTokenAfter(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_angle: usize = 0;
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            return true;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            return true;
+        }
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            return true;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            return true;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            return true;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            return true;
+        }
+        if (depth_paren == 0 and depth_brace == 0 and depth_angle == 0 and tokEq(tokens[i], ",")) {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+
+/// Lightweight literal-vs-type-arg checks for position ctors.
+/// Covers obvious mismatches (bool vs integer, etc.); complex exprs stay for later phases.
+fn checkTupleCtorElemLiteralTypes(
+    tokens: []const lexer.Token,
+    type_args_start: usize,
+    type_args_end: usize,
+    body_start: usize,
+    body_end: usize,
+) !void {
+    var arg_idx: usize = 0;
+    var seg_start = body_start;
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_angle: usize = 0;
+    var i = body_start;
+    while (i <= body_end) : (i += 1) {
+        const at_end = i == body_end;
+        const at_top_comma = !at_end and depth_paren == 0 and depth_brace == 0 and depth_angle == 0 and tokEq(tokens[i], ",");
+        if (!at_end and !at_top_comma) {
+            if (tokEq(tokens[i], "(")) {
+                depth_paren += 1;
+                continue;
+            }
+            if (tokEq(tokens[i], ")")) {
+                if (depth_paren > 0) depth_paren -= 1;
+                continue;
+            }
+            if (tokEq(tokens[i], "{")) {
+                depth_brace += 1;
+                continue;
+            }
+            if (tokEq(tokens[i], "}")) {
+                if (depth_brace > 0) depth_brace -= 1;
+                continue;
+            }
+            if (tokEq(tokens[i], "<")) {
+                depth_angle += 1;
+                continue;
+            }
+            if (tokEq(tokens[i], ">")) {
+                if (depth_angle > 0) depth_angle -= 1;
+                continue;
+            }
+            continue;
+        }
+
+        const seg_end = i;
+        if (seg_start < seg_end) {
+            if (nthTypeArgRange(tokens, type_args_start, type_args_end, arg_idx)) |type_range| {
+                if (!tuplePositionalArgCompatibleWithType(tokens, seg_start, seg_end, type_range.start, type_range.end)) {
+                    return markErrorAt(tokens, seg_start, error.InvalidTypedLiteral);
+                }
+            }
+            arg_idx += 1;
+        }
+        seg_start = i + 1;
+    }
+}
+
+const TypeArgRange = struct { start: usize, end: usize };
+
+fn nthTypeArgRange(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, want: usize) ?TypeArgRange {
+    if (start_idx >= end_idx) return null;
+    var depth_paren: usize = 0;
+    var depth_bracket: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_angle: usize = 0;
+    var idx: usize = 0;
+    var seg_start = start_idx;
+    var i = start_idx;
+    while (i <= end_idx) : (i += 1) {
+        const at_end = i == end_idx;
+        const at_top_comma = !at_end and depth_paren == 0 and depth_bracket == 0 and depth_brace == 0 and depth_angle == 0 and tokEq(tokens[i], ",");
+        if (!at_end and !at_top_comma) {
+            if (tokEq(tokens[i], "(")) {
+                depth_paren += 1;
+                continue;
+            }
+            if (tokEq(tokens[i], ")")) {
+                if (depth_paren > 0) depth_paren -= 1;
+                continue;
+            }
+            if (tokEq(tokens[i], "[")) {
+                depth_bracket += 1;
+                continue;
+            }
+            if (tokEq(tokens[i], "]")) {
+                if (depth_bracket > 0) depth_bracket -= 1;
+                continue;
+            }
+            if (tokEq(tokens[i], "{")) {
+                depth_brace += 1;
+                continue;
+            }
+            if (tokEq(tokens[i], "}")) {
+                if (depth_brace > 0) depth_brace -= 1;
+                continue;
+            }
+            if (tokEq(tokens[i], "<")) {
+                depth_angle += 1;
+                continue;
+            }
+            if (tokEq(tokens[i], ">")) {
+                if (depth_angle > 0) depth_angle -= 1;
+                continue;
+            }
+            continue;
+        }
+        if (idx == want and seg_start < i) return .{ .start = seg_start, .end = i };
+        idx += 1;
+        seg_start = i + 1;
+    }
+    return null;
+}
+
+fn tuplePositionalArgCompatibleWithType(
+    tokens: []const lexer.Token,
+    arg_start: usize,
+    arg_end: usize,
+    type_start: usize,
+    type_end: usize,
+) bool {
+    if (arg_start >= arg_end or type_start >= type_end) return true;
+
+    // Nested position ctor: `Tuple<...>{...}` against a Tuple type arg.
+    if (tokens[arg_start].kind == .ident and
+        std.mem.eql(u8, publicTypeName(tokens[arg_start].lexeme), "Tuple") and
+        arg_start + 1 < arg_end and tokEq(tokens[arg_start + 1], "<"))
+    {
+        if (tokens[type_start].kind != .ident) return true;
+        if (!std.mem.eql(u8, publicTypeName(tokens[type_start].lexeme), "Tuple")) return false;
+        return true;
+    }
+
+    // Single-token literal against a simple type name.
+    if (arg_end != arg_start + 1) return true;
+    if (type_end != type_start + 1 or tokens[type_start].kind != .ident) return true;
+
+    const ty = publicTypeName(tokens[type_start].lexeme);
+    const lit = tokens[arg_start];
+
+    if (std.mem.eql(u8, lit.lexeme, "true") or std.mem.eql(u8, lit.lexeme, "false")) {
+        return std.mem.eql(u8, ty, "bool");
+    }
+    if (lit.kind == .number) {
+        return isIntegerTypeName(ty) or isFloatTypeName(ty);
+    }
+    if (lit.kind == .string) {
+        return std.mem.eql(u8, ty, "text");
+    }
+    return true;
+}
+
+fn isIntegerTypeName(ty: []const u8) bool {
+    return std.mem.eql(u8, ty, "i8") or std.mem.eql(u8, ty, "i16") or std.mem.eql(u8, ty, "i32") or
+        std.mem.eql(u8, ty, "i64") or std.mem.eql(u8, ty, "u8") or std.mem.eql(u8, ty, "u16") or
+        std.mem.eql(u8, ty, "u32") or std.mem.eql(u8, ty, "u64") or std.mem.eql(u8, ty, "isize") or
+        std.mem.eql(u8, ty, "usize");
+}
+
+fn isFloatTypeName(ty: []const u8) bool {
+    return std.mem.eql(u8, ty, "f32") or std.mem.eql(u8, ty, "f64");
 }
 
 /// `@get(tuple, N)` requires compile-time integer N in `0..arity-1` when the source is Tuple.

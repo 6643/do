@@ -11,7 +11,7 @@
 ## 当前停点
 
 - v1 子集发布候选已收口。
-- 默认回归矩阵最近通过: `./tool/build/test/run_tests.sh`, 摘要 `pass=901 fail=0 skip=3`; 阶段 I (I1 递归/self-tail TCO + I2 `Tuple<...>`) 已关闭, 后置边界见下文与 `doc/roadmap_status.md`。
+- 默认回归矩阵最近通过: `./tool/build/test/run_tests.sh`, 摘要 `pass=903 fail=0 skip=3`; 阶段 I (I1 递归/self-tail TCO + I2 `Tuple<...>`) 已关闭, 后置边界见下文与 `doc/roadmap_status.md`。
 
 - 扩展回归最近通过: `RUN_WASM=1 SKIP_BUILD=1 ./tool/build/test/run_tests.sh`, 摘要 `pass=833 fail=0 skip=3`, `wasm run summary: pass=6 fail=0`; 最近一次复跑验证了 fixture rename 后的 RUN_WASM 路径和 compiled trap smoke, 本次复跑后的 `tool/build/test/tmp` ignored 产物已清理到 `0`。
 - Release smoke 最近通过: `./tool/build/test/run_release_smoke.sh`, ReleaseSmall、build/test/compiled/check/fmt/run/lsp 全部 `[PASS]`, 输出 `[INFO] release smoke passed`; 本次 smoke 产生 `tool/build/test/tmp` ignored 产物 44 个、目录大小 `436K`, 已清理到生成物计数 `0`, 目录大小 `288K`。
@@ -74,7 +74,7 @@
 - renamed compile_ok targeted build gate 最近通过: `renamed_compile_ok_cases=5`, `renamed_compile_ok_failures=0`, `renamed_compile_ok_total_wat_bytes=176067`, `renamed_compile_ok_expect_lines=23`。
 - renamed compiled_ok targeted compiled build gate 最近通过: `renamed_compiled_ok_cases=1`, `renamed_compiled_ok_failures=0`, `renamed_compiled_ok_wat_bytes=38029`, `renamed_compiled_ok_expect_lines=7`。
 - D2.1 if/else path-sensitive liveness closure gate 最近通过: 用户确认 B 方案后新增 compile_ok `239` 到 `241`, targeted build 全部通过, 作为绿色 regression 收口, 不再列为当前阻断。
-- 默认回归 gate 最近通过: `./tool/build/test/run_tests.sh`, 摘要 `pass=901 fail=0 skip=3`; 回归生成的 `tool/build/test/tmp` ignored 产物已清理到 `0`。
+- 默认回归 gate 最近通过: `./tool/build/test/run_tests.sh`, 摘要 `pass=903 fail=0 skip=3`; 回归生成的 `tool/build/test/tmp` ignored 产物已清理到 `0`。
 
 - RUN_WASM 扩展回归 gate 最近通过: `RUN_WASM=1 SKIP_BUILD=1 ./tool/build/test/run_tests.sh`, 摘要 `pass=833 fail=0 skip=3`, `wasm run summary: pass=6 fail=0`; 回归生成的 `tool/build/test/tmp` ignored 产物已清理到 `0`。
 - 阶段 I 已完成: I1 递归 / self-tail TCO 与 I2 `Tuple<...>` 第一版均已收口 (I1.1–I1.6、I2.1–I2.6 全部 [x]); 后置边界见「当前阻断」与 `doc/roadmap_status.md`。

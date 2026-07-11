@@ -307,7 +307,7 @@ get / pkg / push 暂停边界:
 - [x] I1.6 同步文档和回归摘要。README、`tool/build/test/README.md`、`doc/master_plan.md`、`doc/start_here.md` 和本文已对齐阶段 I 关闭状态; 递归 / self-tail TCO 不引入新语法。
 - [x] I2.1 固定 `Tuple` 规格、arity、位置构造器和数字索引读取规则。结论: 第一版采用源码层大写内建泛型类型 `Tuple<T0, T1, ...>`; arity 下限为 2, 当前不设上限; 允许嵌套 `Tuple<Tuple<i32, bool>, u8>`; 允许作为局部绑定、参数、单返回、struct 字段、storage 元素和 union 分支。构造固定为 `Tuple<T0, T1, ...>{v0, v1, ...}` 的位置构造器, 实参数量必须与 arity 完全一致; 读取固定为 `@get(tuple_value, <index>)`, `<index>` 必须是编译期整数字面量且落在 `0..arity-1`。第一版不支持命名字段构造、`.v0/.v1` 字段段访问、`@set(tuple_value, <index>, value)` 数字索引写入、tuple literal、destructuring 或 pattern matching。`Tuple` 进入保留内建类型集合, 不能再被普通类型声明或 import alias 占用; 小写 `tuple<...>` 继续只保留给 WIT / `@wasi` 签名。
 - [x] I2.2 更新 grammar / parser。结论: `Tuple<...>` 继续复用现有大写类型名 + type args 路径进入普通源码类型位; parser 现已接受 `Tuple<bool, u8>{true, 7}` 这类位置构造器语法, 并在 typed bind 左侧把小写 `tuple<bool, u8>` 拒绝为 `InvalidTypeRef`。这一轮只收语法层: 还不保证 sema/codegen 已能解释 `Tuple` 构造、索引访问或布局。
-- [x] I2.3 更新 sema 内建类型、构造器和字段访问规则。`checkTupleCtorArity` / `checkTupleGetIndex` 已落地: 位置构造 arity 不匹配 -> `InvalidTypedLiteral`; 越界/非字面量索引 -> `InvalidPathIndex`; arity 下限与小写 `tuple` -> `InvalidTypeRef`; 命名字段构造 -> parser `InvalidStructLiteral`; 元素类型不匹配当前仍 `NoMatchingCall`。`diag.zig` summary/hint 已同步。证据: `compile_err/331`/`334`–`337`、`err/330`/`334`。
+- [x] I2.3 更新 sema 内建类型、构造器和字段访问规则。`checkTupleCtorArity` / `checkTupleGetIndex` 已落地: 位置构造 arity 不匹配 -> `InvalidTypedLiteral` (含嵌套 ctor, `compile_err/338`); 越界/非字面量索引 -> `InvalidPathIndex`; arity 下限与小写 `tuple` -> `InvalidTypeRef`; 命名字段构造 -> parser `InvalidStructLiteral`; 明显字面量元素类型不匹配 -> `InvalidTypedLiteral` (`compile_err/337`); 尾逗号不计入 arity (`compile_ok/268`)。复杂表达式类型检查仍可能 `NoMatchingCall`。
 - [x] I2.4 更新 codegen layout / access / return / param / storage lowering。已完成 local/struct/return/param multi-value、嵌套叶子 ABI 展平与标量叶子 storage 内联 pack (scheme A): `compile_ok/259`–`267`、`compiled_ok/65`–`73`。实现: `tupleScalarLeafStorageByteWidth` + pack/unpack temps (`$__tuple_pack_*`)。**后置阻断 (均 `NoMatchingCall`)**:
   1. managed payload 叶子 storage: `[Tuple<Point, u8>] = .{}` / `[Tuple<text, u8>] = .{}` (local `Tuple<Point, u8>` / `Tuple<text, u8>` 已可构造)。
   2. path chaining: `@get(xs, 0, 0)` 对 `[Tuple<bool, u8>]` 数字索引链式读取。
@@ -326,7 +326,7 @@ get / pkg / push 暂停边界:
 - `DO_LIB_ROOT=src ./bin/do test tool/build/test/err/329_generic_recursive_target_type_only_uninferred.do` 失败并匹配 `NoMatchingCall`。
 - `cd tool && zig test build/parser.zig` 通过, 输出 `All 26 tests passed.`; 新增 parser red/green 覆盖 `Tuple<bool, u8>{true, 7}` 位置构造器语法和 typed bind 左侧小写 `tuple<bool, u8>` 的 `InvalidTypeRef`。
 - `cd tool && zig test main.zig` 通过, 输出 `All 103 tests passed.`。
-- `./tool/build/test/run_tests.sh` 通过, 摘要 `[INFO] summary: pass=901 fail=0 skip=3` (阶段 I 关闭复验)。
+- `./tool/build/test/run_tests.sh` 通过, 摘要 `[INFO] summary: pass=903 fail=0 skip=3` (阶段 I 关闭复验)。
 
 - probe: `test "tuple lower type" { other tuple<bool, u8> = nil return }` 当前前端返回 `error[InvalidTypeRef]`; `test "tuple ctor" { other Tuple<bool, u8> = Tuple<bool, u8>{true, 7} return }` 当前 `do check` 前端不再报 `InvalidStructLiteral`。
 - `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_ok/259_tuple_pair_get_lower.do -o /tmp/259_tuple_pair_get_lower.wat` 通过, WAT 中已出现 `local.set $pair.v0` / `local.set $pair.v1` 与后续 `local.get $pair.v0` / `local.get $pair.v1`。

@@ -1166,9 +1166,9 @@ test "tuple pair" {
 
 - [x] I2.1 固定 `Tuple` 规格。第一版固定为源码层大写内建泛型类型 `Tuple<T0, T1, ...>`: arity 下限为 2, 当前不设上限; 允许嵌套 `Tuple<Tuple<i32, bool>, u8>`; 允许作为单值类型出现在局部绑定、参数、单返回、struct 字段、`[Tuple<...>]` storage 元素和 union 分支。构造固定为按类型参数顺序的位置构造器 `Tuple<T0, T1, ...>{v0, v1, ...}`，实参数量必须与 arity 完全一致; 第一版不支持命名字段构造。读取固定为 `@get(tuple_value, <index>)`，其中 `<index>` 必须是编译期整数字面量，范围是 `0..arity-1`; 第一版不支持 `.v0/.v1` 字段段访问，也不支持 `@set(tuple_value, <index>, value)` 数字索引写入。`Tuple` 作为用户可写源码类型名进入保留内建类型集合，不能再被普通类型声明或 import alias 占用; 小写 `tuple<...>` 继续只保留给 WIT / `@wasi` 签名，不进入普通源码类型位。
 - [x] I2.2 更新 grammar / parser。`Tuple<...>` 已通过现有大写类型名 + type args 路径进入 `ValueTypeExpr`、`InlineValueTypeExpr`、`ParamTypeExpr` 和 type args；parser 额外接受 `Tuple<bool, u8>{true, 7}` 这类位置构造器语法，并在 typed bind 左侧把小写 `tuple<bool, u8>` 拒绝为 `InvalidTypeRef`。`doc/grammar.peg` 已同步 `TupleCtor` / `TupleAggBody`; 本项只保证 parser 层接受该语法, 不代表 sema/codegen 已经理解 `Tuple` 构造与访问语义。
-- [x] I2.3 更新 sema。`checkTupleCtorArity` / `checkTupleGetIndex` 已落地: 位置构造 arity 不匹配报 `InvalidTypedLiteral`, 越界/非字面量索引报 `InvalidPathIndex`, arity 下限与小写 `tuple` 继续报 `InvalidTypeRef`; 命名字段构造由 parser 报 `InvalidStructLiteral`; 元素类型不匹配当前仍为 `NoMatchingCall`。诊断 summary/hint 已同步 `tool/build/diag.zig`。
-- [x] I2.4 更新 codegen。已完成 local/struct/return/param multi-value、嵌套叶子 ABI 展平与标量叶子 `[Tuple<...>]` storage 内联 pack (scheme A): `compile_ok/259`–`267`、`compiled_ok/65`–`73`。**后置阻断**: managed payload 叶子 storage (`[Tuple<Point, u8>]` / `[Tuple<text, u8>]`)、`@get(storage, i, j)` path chaining、loop 绑定上的 `@get(v, N)` 数字索引读取 (当前均 `NoMatchingCall`)。
-- [x] I2.5 补正反例回归。正例: `compile_ok/259`–`267`、`compiled_ok/65`–`73` (静态 runner 不解释 `Tuple`)。反例: `err/330`、`compile_err/331`–`337`、`err/334`。
+- [x] I2.3 更新 sema。`checkTupleCtorArity` / `checkTupleGetIndex` 已落地: 位置构造 arity (含嵌套) 与明显字面量类型不匹配报 `InvalidTypedLiteral`; 越界/非字面量索引报 `InvalidPathIndex`; arity 下限与小写 `tuple` 报 `InvalidTypeRef`; 命名字段由 parser 报 `InvalidStructLiteral`; 尾逗号不计入 arity。
+- [x] I2.4 更新 codegen。已完成 local/struct/return/param multi-value、嵌套叶子 ABI 展平与标量叶子 `[Tuple<...>]` storage 内联 pack (scheme A): `compile_ok/259`–`268`、`compiled_ok/65`–`73`。**后置阻断**: managed payload 叶子 storage (`[Tuple<Point, u8>]` / `[Tuple<text, u8>]`)、`@get(storage, i, j)` path chaining、loop 绑定上的 `@get(v, N)` 数字索引读取 (当前均 `NoMatchingCall`)。
+- [x] I2.5 补正反例回归。正例: `compile_ok/259`–`268`、`compiled_ok/65`–`73` (静态 runner 不解释 `Tuple`)。反例: `err/330`、`compile_err/331`–`338`、`err/334`。
 - [x] I2.6 同步 README、`doc/syntax/type.md`、`doc/spec_rules.md`、`doc/grammar.peg` 和测试说明。阶段 I 关闭; 后置边界记入 `doc/roadmap_status.md`。
 
 验收:
