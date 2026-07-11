@@ -93,11 +93,14 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | G6.3 | sockets resource + variant | socket wrapper 与 address variant 映射决策 |
 | 06.2 | 已拆到 G2–G6; 剩余由 G6.1–G6.3 承接 | 同上 |
 
-**非发布阻断** (阶段 I 后置已收窄; 细节见 `doc/todo_non_g6.md` §9):
+**非发布后置** (阶段 I 后置已收窄; 非 G6 日路径清单已 drain 并删除):
 
-- 裸 struct 等非 packable 叶子的 `[Tuple]` storage 仍 → `UnsupportedTupleStorageLeaf` (`compile_err/339`)
+- 裸 struct 等非 packable 叶子的 `[Tuple]` storage 仍 → `UnsupportedTupleStorageLeaf` (`compile_err/339`); 真 pack 需单独授权 + 宽度/对齐/ARC 决策
 - managed/`text` 叶子 storage 与 `@get(storage, i, j)` path chaining **已支持** (`compile_ok/270`–`271`, `compiled_ok/75`–`77`)
-- 纯标量 struct 的 field-reflect `field_set` 返回路径 **已修** (`ok/191`; 不再误 shadow `out`)
+- 纯标量 struct 的 field-reflect `field_set` **已修** (`ok/191`)
+- 仅靠左侧目标类型反推的泛型递归仍 `NoMatchingCall` (单独立项)
+- 完整 ownership IR / 激进少 inc: 门槛见 `doc/memory.md`; 默认不自动开做
+- `RUN_WASM=1` 全量扩展回归: 耗时长, 发布前显式跑; 默认回归不含
 
 ## 6. 当前计划候选
 
@@ -108,8 +111,6 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 3. **可选小项** (不绕过 G6, 需单独授权):
    - codegen 垂直再拆 (如 WASI emit 切片) — 先 parse/validate, 再搬实现
    - 继续 ownership / JSON / LSP 增强 — 见 README「下一阶段计划」, 默认不自动开做
-
-**非 G6 可推进一天拆分**: 见 [todo_non_g6.md](todo_non_g6.md) (暂缓 G6 时的 D0–D5 与菜单 A–F / R1–R5)。
 
 **已关闭边界速查**:
 

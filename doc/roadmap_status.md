@@ -60,4 +60,4 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 1. 发布候选维护 (回归 / 文档漂移 / 独立小修)。
 2. 等待 G6 决策; 不绕过阻断扩 codegen。
 3. 可选授权项见 `doc/master_plan.md` §4 与 README「下一阶段计划」。
-4. 非 G6 清单已 drain: 完成项与 **blocked/deferred** 登记见 `doc/todo_non_g6.md` §6–§9。
+4. 非 G6 日路径清单已 drain 并删除 (`doc/todo_non_g6.md`); 后置/可选见 `doc/start_here.md` §5–§6。

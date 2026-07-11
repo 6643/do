@@ -5,6 +5,8 @@
 
 ## 2026-07-12
 
+- 文档: 删除已 drain 的 `doc/todo_non_g6.md`; 后置/可选并入 `start_here` §5–§6 与 `roadmap_status`
+
 - codegen: 修复纯标量 struct 在 field 反射循环内 `out = @field_set(...)` 写错 local
   - 根因: 循环 collect 把已有 `struct_locals` 的 reassignment 误收成 `__field_*_` shadow; 写 `$out.n` 而 return 读 shadow
   - 修: `collectBodyLocals` 对已登记 `struct_locals` 跳过 inferred struct rebinding
