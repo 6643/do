@@ -525,7 +525,7 @@ Error
     - 允许嵌套 `Tuple<Tuple<i32, bool>, u8>`, 以及作为局部绑定、参数、单返回、struct 字段和 scheme-A packable 叶子 `[Tuple<...>]` storage 元素。
     - scheme A storage pack: 叶子按 payload 连续写入 storage data; 标量按自身宽度, managed payload (`text` / `[T]` handle) 按 4 字节 handle; 含 managed 叶子的 storage 使用合成 layout (`is_storage_pack`) 做 clone/free 时的叶子 inc/dec。
     - `@get(storage, i, j, ...)` path chaining: 先取 storage 元素基址, 再按 Tuple 直接元素索引取叶子 (嵌套 Tuple 可继续链式索引)。
-    - 后置边界: 非 packable 叶子 (如裸 struct 值) 的 `[Tuple]` storage 报 `UnsupportedLowering` (不是重载失败)。`loop v, i = items { @get(v, N) }` 已支持。
+    - 后置边界: 非 packable 叶子 (如裸 struct 值) 的 `[Tuple]` storage 报 `UnsupportedTupleStorageLeaf` (不是重载失败; 与泛化 `UnsupportedLowering` 区分)。`loop v, i = items { @get(v, N) }` 已支持。
     - 位置构造中明显字面量与类型参数不匹配 (例如 `bool` 位写整数字面量、`u8` 位写 `true`) 报 `InvalidTypedLiteral`; 复杂表达式的类型检查仍可能落到后续阶段的 `NoMatchingCall`。
     - 位置构造允许尾逗号, 尾逗号不计入 arity。
 

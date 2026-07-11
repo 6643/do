@@ -1,0 +1,7 @@
+error[UnsupportedTupleStorageLeaf]
+非 packable 叶子
+scheme-A pack
+hint:
+裸 struct
+扁平字段
+不是重载匹配失败

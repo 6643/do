@@ -48,12 +48,12 @@ src/lsp/        do lsp diagnostics + formatting + semantic tokens + hover + comp
 
 ## 当前 v1 子集摘要
 
-- 语言前端: 当前 parser / sema 已覆盖结构体、错误枚举、value enum、plain union / nullable union、字段反射、lambda、泛型约束、同名重载、同类型 variadic、`loop`、`defer`、import / host import 和 `test` 声明的回归子集; 普通直接递归、互递归、参数侧已定型的泛型递归和 self-tail TCO 第一版已补回归, 仅靠左侧目标类型反推的泛型递归仍后置; 源码层 `Tuple<T0, T1, ...>` 位置构造 + `@get` 数字索引已落地 (local/struct/return/param/nested/标量与 managed/`text` 叶子 storage、`@get(storage, i, j)` path chaining, 以及 loop 绑定上的 `@get(v, N)`); 裸 struct 等非 packable 叶子 storage 仍报 `UnsupportedLowering`。
+- 语言前端: 当前 parser / sema 已覆盖结构体、错误枚举、value enum、plain union / nullable union、字段反射、lambda、泛型约束、同名重载、同类型 variadic、`loop`、`defer`、import / host import 和 `test` 声明的回归子集; 普通直接递归、互递归、参数侧已定型的泛型递归和 self-tail TCO 第一版已补回归, 仅靠左侧目标类型反推的泛型递归仍后置; 源码层 `Tuple<T0, T1, ...>` 位置构造 + `@get` 数字索引已落地 (local/struct/return/param/nested/标量与 managed/`text` 叶子 storage、`@get(storage, i, j)` path chaining, 以及 loop 绑定上的 `@get(v, N)`); 裸 struct 等非 packable 叶子 storage 仍报 `UnsupportedTupleStorageLeaf`。
 - 内存与所有权: 已落地 managed handle、对象头、layout table、ARC `inc/dec/release`、ownership exit plan、死 alias 消除、保守 last-use move、字段/参数 ownership facts 和 managed struct 最小 clone/reuse lowering; Tuple storage pack 合成 layout 负责 managed 叶子 clone/free。
 - 标准库: 已验证 JSON struct stringify/from_json、bytes/text/utf8/utf16、hex/base64/url、math/binary/mem/atomic/range/slice/path/fp/list/set/hash_map/hash、md5/sha1/sha256 等基础库; time/random/file/dir/io.stream 只承诺已登记 WASI wrapper lowering; net/tcp/udp/http.client 只承诺当前 shape/check smoke, 真实 host I/O 后置。
 - 后端与 WASI: 公开输出仍以 WAT 为主; 当前 build/test 子集已覆盖标量、结构体 flatten、storage/text ARC handle、多返回、基础 `@get/@set/@put`、WASI result-area/resource-drop lowering、component plan/core imports/core shims/component input 和真实 component wasm validate gate。
 - 工具链: `do build`、`do test`、`do test --compiled`、`do check`、`do run`、`do fmt` 和 `do lsp` 第一版均已落地; LSP 当前覆盖 diagnostics、formatting、semantic tokens、hover、completion、definition 和最小 workspace index。
-- 验证入口: 默认完整回归基线为 `pass=910 fail=0 skip=3`; `RUN_WASM=1` 扩展回归基线为 `pass=833 fail=0 skip=3` (未在本轮重跑); 发布前 smoke 入口是 `./src/build/test/run_release_smoke.sh`。
+- 验证入口: 默认完整回归基线为 `pass=911 fail=0 skip=3`; `RUN_WASM=1` 扩展回归基线为 `pass=833 fail=0 skip=3` (未在本轮重跑); 发布前 smoke 入口是 `./src/build/test/run_release_smoke.sh`。
 
 
 ## v1 非目标
@@ -78,7 +78,7 @@ src/lsp/        do lsp diagnostics + formatting + semantic tokens + hover + comp
 5. **Ownership 深化**: runtime 边界稳定后再重开完整 ownership IR、跨函数唯一性证明、escape analysis、region 与更激进 move/reuse。
 6. **编辑器与格式化增强**: LSP rename/references、import-aware definition、range/on-type formatting、语法感知 formatter — v1 后单独推进。
 7. **后端输出实验**: direct wasm binary emitter 仅作并行评估, 不替换 WAT 主输出与 golden 基线。
-8. **可选 (需单独授权)**: I2 后置 Tuple managed 叶子 storage / path chaining; codegen 垂直再拆; `backend_ir` 主路径立项。
+8. **可选 (需单独授权)**: codegen 垂直再拆; `backend_ir` 主路径立项; Tuple 裸 struct 等非 packable 叶子 storage pack (当前 `UnsupportedTupleStorageLeaf`)。
 
 ## 构建
 
@@ -138,7 +138,7 @@ RUN_WASM=1 ./src/build/test/run_tests.sh
 - [x] **规范基线**: `doc/spec.md` 是规范入口；`doc/syntax/` 已按功能拆分语法设计；`doc/grammar.peg` 保留 parser PEG；`doc/spec_rules.md` 保留语义约束、示例标签和 `defer` 规则。
 - [x] **编译器前端主线**: Parser / Sema 已覆盖当前回归正在使用的 build/test 子集，包括 Struct、Lambda、guard `if`、`loop`、泛型约束、聚合字面量、import / host import 和测试声明；这表示当前回归子集可用，不表示前端语法/语义边界已经全部封顶。
 - [x] **递归与 self-tail TCO 第一版子集**: 已覆盖普通直接递归、互递归、参数侧已知 concrete type 的泛型递归，以及 self-tail scalar / `if/else` / guard / generic / imported lowering；`src/build/test/compile_ok/248_*` 到 `258_*` 继续锁住 `defer`、storage local、managed struct、多返回和 cleanup 相关的不优化边界，且“只靠左侧目标类型反推”的泛型递归仍按 `NoMatchingCall` 后置。
-- [x] **源码层 `Tuple<...>` 第一版子集**: 已覆盖位置构造 `Tuple<T0, T1, ...>{...}`、编译期数字索引 `@get` (含 loop 绑定标量叶子)、struct field、return/param multi-value ABI、嵌套叶子 ABI 与标量叶子 `[Tuple<...>]` storage pack；sema 诊断覆盖 arity / 越界 / 非字面量索引 / 小写 `tuple` 误用；managed payload / `text` 叶子 storage 与 `@get(storage, i, j)` path chaining 后置并报 `UnsupportedLowering`。
+- [x] **源码层 `Tuple<...>` 第一版子集**: 已覆盖位置构造 `Tuple<T0, T1, ...>{...}`、编译期数字索引 `@get` (含 loop 绑定与 `@get(storage, i, j)` path chaining)、struct field、return/param multi-value ABI、嵌套叶子 ABI、标量与 managed/`text` 叶子 `[Tuple<...>]` storage pack；sema 诊断覆盖 arity / 越界 / 非字面量索引 / 小写 `tuple` 误用；裸 struct 等非 packable 叶子 storage 报 `UnsupportedTupleStorageLeaf`。
 - [x] **`defer` 基础语法和前端校验**: 支持 `defer abc()` 和 `defer { ... }`；本地和导入函数调用都会校验 cleanup 调用返回 `nil`。
 - [x] **`defer` 完整控制流与 ARC**: `defer` 的 LIFO cleanup、跨 `return/break/continue` lowering、cleanup 块内控制流限制和 ARC release 顺序已由 `src/build/test/compile_ok/142_*` 到 `150_*` 及 `src/build/test/err/267_*`、`274_*`、`288_*` 到 `305_*` 覆盖，状态见 `doc/roadmap_status.md`。
 - [x] **运行时内存模型**: 已按 `doc/memory.md` 收敛 v1 managed handle、对象头、`type_id`、layout table 和 ARC `inc/dec/release` 管理。

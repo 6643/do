@@ -1737,7 +1737,7 @@ fn collectBodyLocalsWithMode(
         } else if (!hasLocal(out.locals.items, tokens[i].lexeme) and inferredManagedPayloadBinding(tokens, i, stmt_end, out, ctx) != null) {
             const binding = inferredManagedPayloadBinding(tokens, i, stmt_end, out, ctx).?;
             if (isTupleTypeName(binding.elem_ty) and tupleScalarLeafStorageByteWidth(binding.elem_ty) == null) {
-                return error.UnsupportedLowering;
+                return error.UnsupportedTupleStorageLeaf;
             }
             try out.appendStorageLocalWithType(allocator, tokens[i].lexeme, binding.ty, binding.elem_ty, true);
             try out.ensureStorageWriteTemps(allocator);
@@ -1746,7 +1746,7 @@ fn collectBodyLocalsWithMode(
             }
         } else if (try typedManagedPayloadBinding(allocator, tokens, i, stmt_end, ctx, &out.owned_names)) |binding| {
             if (isTupleTypeName(binding.elem_ty) and tupleScalarLeafStorageByteWidth(binding.elem_ty) == null) {
-                return error.UnsupportedLowering;
+                return error.UnsupportedTupleStorageLeaf;
             }
             try out.appendStorageLocalWithType(allocator, tokens[i].lexeme, binding.ty, binding.elem_ty, true);
             try out.ensureStorageWriteTemps(allocator);
@@ -1755,7 +1755,7 @@ fn collectBodyLocalsWithMode(
             }
         } else if (managedPayloadBinding(tokens, i, stmt_end)) |binding| {
             if (isTupleTypeName(binding.elem_ty) and tupleScalarLeafStorageByteWidth(binding.elem_ty) == null) {
-                return error.UnsupportedLowering;
+                return error.UnsupportedTupleStorageLeaf;
             }
             try out.appendStorageLocalWithType(allocator, tokens[i].lexeme, binding.ty, binding.elem_ty, true);
             try out.ensureStorageWriteTemps(allocator);
@@ -1766,7 +1766,7 @@ fn collectBodyLocalsWithMode(
             const elem_ty = try substituteGenericTypeOwned(allocator, raw_elem_ty, ctx.type_bindings, &out.owned_names);
             // Scheme A: only packable leaves (scalar + managed payload); bare struct leaves still unsupported.
             if (isTupleTypeName(elem_ty) and tupleScalarLeafStorageByteWidth(elem_ty) == null) {
-                return error.UnsupportedLowering;
+                return error.UnsupportedTupleStorageLeaf;
             }
             try out.appendStorageLocal(allocator, tokens[i].lexeme, elem_ty, true);
             try out.ensureStorageWriteTemps(allocator);

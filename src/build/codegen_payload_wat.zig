@@ -188,7 +188,7 @@ pub fn appendStoreTupleScalarLeavesFromStack(
     var offset: usize = 0;
     for (leaf_types.items, 0..) |leaf_ty, i| {
         if (!type_util.isTuplePackableLeafType(leaf_ty)) {
-            return error.UnsupportedLowering;
+            return error.UnsupportedTupleStorageLeaf;
         }
         offsets[i] = offset;
         offset += type_util.typePayloadBytes(leaf_ty);
@@ -227,7 +227,7 @@ pub fn appendLoadTupleScalarLeavesToStack(
     var offset: usize = 0;
     for (leaf_types.items) |leaf_ty| {
         if (!type_util.isTuplePackableLeafType(leaf_ty)) {
-            return error.UnsupportedLowering;
+            return error.UnsupportedTupleStorageLeaf;
         }
         try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
         if (offset != 0) {
@@ -294,7 +294,7 @@ pub fn appendLoadTupleElementFromPackedBase(
         try appendLoadTupleScalarLeavesToStack(allocator, out, elem_ty, base_local, indent);
         return;
     }
-    if (!type_util.isTuplePackableLeafType(elem_ty)) return error.UnsupportedLowering;
+    if (!type_util.isTuplePackableLeafType(elem_ty)) return error.UnsupportedTupleStorageLeaf;
     try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
     if (elem_offset != 0) {
         try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_offset });

@@ -464,6 +464,7 @@ pub fn errorSummary(err: anyerror) []const u8 {
         error.DuplicateStartEntry => "顶层 `start` 写作 1 次",
         error.UnsupportedWasiHostImport => "这个 WIT host import 签名尚未支持 lowering",
         error.UnsupportedLowering => "当前编译路径尚未支持该 lowering",
+        error.UnsupportedTupleStorageLeaf => "非 packable 叶子的 `[Tuple]` storage 尚未支持 scheme-A pack",
         error.MissingOutputPath => "示例: `do build input.do -o out.wat` 或 `do test sample.do --compiled -o sample.wat`",
         error.MissingTestInputPath => "示例: `do test sample.do` 或 `do test sample.do --compiled -o sample.wat`",
         error.UnexpectedCliArg => "命令只接受一个输入文件和已声明的选项",
@@ -526,6 +527,7 @@ pub fn errorHint(err: anyerror) []const u8 {
         error.DuplicateStartEntry => "顶层 `start` 写作 1 次",
         error.UnsupportedWasiHostImport => "已登记的 scalar/record/list<u8>、descriptor.sync 语句调用和 descriptor.write 多左值调用可 lower；复杂 result/resource/variant/flags 需要后续 component lowering",
         error.UnsupportedLowering => "常见后置边界: 非 packable 叶子 (如裸 struct) 的 `[Tuple]` storage；该错误不是重载匹配失败",
+        error.UnsupportedTupleStorageLeaf => "叶子须为标量或 managed handle (`text` / `[T]`); 裸 struct 请改扁平字段或拆出独立 storage；该错误不是重载匹配失败",
         error.MissingOutputPath => "示例: `do build input.do -o out.wat` 或 `do test sample.do --compiled -o sample.wat`",
         error.MissingTestInputPath => "示例: `do test sample.do` 或 `do test sample.do --compiled -o sample.wat`",
         error.UnexpectedCliArg => "build 写作 `do build input.do [-o out.wat]`; test 写作 `do test input.do` 或 `do test input.do --compiled [-o out.wat]`",
@@ -563,6 +565,27 @@ test "return statement diagnostic has specific summary" {
         "return 语句返回位数不匹配",
         errorSummary(error.InvalidReturnStmt),
     );
+}
+
+test "tuple non-packable storage leaf has dedicated diagnostic" {
+    try std.testing.expectEqualStrings(
+        "非 packable 叶子的 `[Tuple]` storage 尚未支持 scheme-A pack",
+        errorSummary(error.UnsupportedTupleStorageLeaf),
+    );
+    try std.testing.expectEqualStrings(
+        "叶子须为标量或 managed handle (`text` / `[T]`); 裸 struct 请改扁平字段或拆出独立 storage；该错误不是重载匹配失败",
+        errorHint(error.UnsupportedTupleStorageLeaf),
+    );
+    const diagnostic = buildCompileDiagnostic(
+        "tuple_storage.do",
+        "items [Tuple<Point, u8>] = .{}\n",
+        null,
+        error.UnsupportedTupleStorageLeaf,
+        .{ .line = 1, .col = 1 },
+    );
+    try std.testing.expectEqualStrings("UnsupportedTupleStorageLeaf", diagnostic.code);
+    try std.testing.expectEqualStrings(errorSummary(error.UnsupportedTupleStorageLeaf), diagnostic.message);
+    try std.testing.expectEqualStrings(errorHint(error.UnsupportedTupleStorageLeaf), diagnostic.hint);
 }
 
 test "buildCompileDiagnostic falls back to source lexer location" {

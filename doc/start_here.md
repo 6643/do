@@ -39,11 +39,11 @@
 ```bash
 # 默认完整回归 (当前基线)
 ./src/build/test/run_tests.sh
-# 期望: pass=910 fail=0 skip=3
+# 期望: pass=911 fail=0 skip=3
 
 # 聚合单元测试
 cd src && zig test main.zig
-# 期望: All 116 tests passed.
+# 期望: All 117 tests passed.
 
 # 发布前 smoke
 ./src/build/test/run_release_smoke.sh
@@ -58,11 +58,11 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 
 | 基线项 | 最近值 |
 | --- | --- |
-| 默认回归 | `pass=910 fail=0 skip=3` |
-| 聚合 unit | `116/116` |
-| `compile_ok` / `compiled_ok` / `compile_err` | do≈`272` / `77` / `38` |
+| 默认回归 | `pass=911 fail=0 skip=3` |
+| 聚合 unit | `117/117` |
+| `compile_ok` / `compiled_ok` / `compile_err` | do≈`272` / `77` / `39` |
 | 剩余 skip | `16_loop_recv_value`、`96_file_lib_resource_shape`、`118_wasi_p3_std_wrappers` (recv/WASI 后置) |
-| 诊断 code | `errorSummary` / `errorHint` 各 56 条 (含 `UnsupportedLowering`) |
+| 诊断 code | `errorSummary` / `errorHint` 各 57 条 (含 `UnsupportedLowering` / `UnsupportedTupleStorageLeaf`) |
 
 发布候选的其它一致性检查 (链接、fixture companion、WASI registry、shell harness 等) 在收口交付时按 `doc/roadmap_status.md`「文档治理 / gate 复跑」清单执行; **不必每次把整表抄进本文**。
 
@@ -95,7 +95,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 
 **非发布阻断** (阶段 I 后置已收窄):
 
-- 裸 struct 等非 packable 叶子的 `[Tuple]` storage 仍 → `UnsupportedLowering`
+- 裸 struct 等非 packable 叶子的 `[Tuple]` storage 仍 → `UnsupportedTupleStorageLeaf` (`compile_err/339`)
 - managed/`text` 叶子 storage 与 `@get(storage, i, j)` path chaining **已支持** (`compile_ok/270`–`271`, `compiled_ok/75`–`77`)
 
 ## 6. 当前计划候选
@@ -107,6 +107,8 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 3. **可选小项** (不绕过 G6, 需单独授权):
    - codegen 垂直再拆 (如 WASI emit 切片) — 先 parse/validate, 再搬实现
    - 继续 ownership / JSON / LSP 增强 — 见 README「下一阶段计划」, 默认不自动开做
+
+**非 G6 可推进一天拆分**: 见 [todo_non_g6.md](todo_non_g6.md) (暂缓 G6 时的 D0–D5 与菜单 A–F / R1–R5)。
 
 **已关闭边界速查**:
 
