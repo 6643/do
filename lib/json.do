@@ -203,6 +203,11 @@ quote(bytes [u8]) -> [u8] {
     return append_u32(out, @as(u32, value))
 }
 
+.encode_value(value u8, depth usize) -> [u8] | JsonError {
+    out [u8] = .{}
+    return append_u32(out, @as(u32, value))
+}
+
 .encode_value(value text, depth usize) -> [u8] | JsonError {
     return quote(text_bytes(value))
 }
@@ -231,6 +236,10 @@ stringify(value i32) -> [u8] | JsonError {
     return stringify_with_depth(value, _default_max_depth)
 }
 
+stringify(value u8) -> [u8] | JsonError {
+    return stringify_with_depth(value, _default_max_depth)
+}
+
 stringify(value text) -> [u8] | JsonError {
     return stringify_with_depth(value, _default_max_depth)
 }
@@ -249,6 +258,10 @@ stringify_with_depth(value T, max_depth usize) -> [u8] | JsonError {
 }
 
 stringify_with_depth(value i32, max_depth usize) -> [u8] | JsonError {
+    return encode_value(value, max_depth)
+}
+
+stringify_with_depth(value u8, max_depth usize) -> [u8] | JsonError {
     return encode_value(value, max_depth)
 }
 
@@ -625,6 +638,17 @@ unescape(bytes [u8]) -> [u8] | JsonError {
     value, next, status = parse_i32_token(bytes, offset)
     if @is(status, JsonError) return status
     return value
+}
+
+.parse_value(seed u8, bytes [u8], offset usize) -> u8 | JsonError {
+    value i32 = 0
+    next usize = offset
+    status JsonError | nil = nil
+    value, next, status = parse_i32_token(bytes, offset)
+    if @is(status, JsonError) return status
+    if @lt(value, 0) return ExpectedValue
+    if @gt(value, 255) return ExpectedValue
+    return @as(u8, value)
 }
 
 .parse_value(seed bool, bytes [u8], offset usize) -> bool | JsonError {

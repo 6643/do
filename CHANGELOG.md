@@ -5,6 +5,8 @@
 
 ## 2026-07-12
 
+- JSON: struct 字段 `u8` stringify/from_json 重载 (`ok/190_json_struct_u8_field`)
+- LSP: hover 对当前文件类型声明/引用返回类型名 head (`src/lsp/hover.zig`)
 - 非 G6 日路径: `UnsupportedTupleStorageLeaf` 专用诊断 + 文档漂移收口
   - 裸 struct 等非 packable 叶子 `[Tuple]` storage 从泛化 `UnsupportedLowering` 拆出独立 code/summary/hint
   - 反例: `compile_err/339_tuple_non_packable_leaf_storage`
