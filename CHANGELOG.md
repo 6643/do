@@ -4,6 +4,12 @@
 
 ## 2026-07-12
 
+- 打通阶段 I2.4 的嵌套 Tuple 叶子 ABI 展平。
+  - 实现: `tool/build/codegen.zig` 递归 flatten 嵌套 `Tuple` 的 local set/get、return multi-value 与 param ABI (`$outer.v0.v0` 形态); 调用结果绑定与 `@get` 到内层 Tuple 的绑定均按叶子序处理; 嵌套 Tuple 参数叶子走 borrowed `emit_decl=false`, 避免与 ABI param 重名; 新增 `compile_ok/263_tuple_nested_get_lower`、`264_tuple_nested_return_param_lower`、`compiled_ok/69_compiled_test_tuple_nested`、`70_compiled_test_tuple_nested_return_param`。
+  - 阻断: storage 元素类型 `[Tuple<...>]` 仍报 `NoMatchingCall`, 记入 `doc/roadmap_status.md`, 本切片跳过。
+  - 结论: 嵌套标量 Tuple 现可作 local / return / param 走 `do build` 与 `do test --compiled` 路径。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `[INFO] summary: pass=890 fail=0 skip=3`。
+
 - 打通阶段 I2.4 的 Tuple return / param multi-value lowering。
   - 实现: `tool/build/codegen.zig` 将 `Tuple<...>` 函数返回值 flatten 为 WASM multi-value result, 参数 flatten 为 `$name.vN` ABI, 调用结果经 reverse `local.set` 绑定; 新增 `compile_ok/261_tuple_return_lower`、`262_tuple_param_get_lower`、`compiled_ok/67_compiled_test_tuple_return`、`68_compiled_test_tuple_param`。
   - 结论: 标量元素 Tuple 现可作单返回与参数走 `do build` 与 `do test --compiled` 路径; storage / managed payload 仍后置。

@@ -1,6 +1,6 @@
 # Roadmap 执行状态
 
-更新时间: 2026-07-09
+更新时间: 2026-07-12
 
 执行原则: 按 `doc/master_plan.md` 的阶段规划和 `README.md` Roadmap 自上而下推进; 如果某项卡住或需要跳过, 必须在本文记录原因和后续恢复条件。
 
@@ -308,7 +308,7 @@ get / pkg / push 暂停边界:
 - [x] I2.1 固定 `Tuple` 规格、arity、位置构造器和数字索引读取规则。结论: 第一版采用源码层大写内建泛型类型 `Tuple<T0, T1, ...>`; arity 下限为 2, 当前不设上限; 允许嵌套 `Tuple<Tuple<i32, bool>, u8>`; 允许作为局部绑定、参数、单返回、struct 字段、storage 元素和 union 分支。构造固定为 `Tuple<T0, T1, ...>{v0, v1, ...}` 的位置构造器, 实参数量必须与 arity 完全一致; 读取固定为 `@get(tuple_value, <index>)`, `<index>` 必须是编译期整数字面量且落在 `0..arity-1`。第一版不支持命名字段构造、`.v0/.v1` 字段段访问、`@set(tuple_value, <index>, value)` 数字索引写入、tuple literal、destructuring 或 pattern matching。`Tuple` 进入保留内建类型集合, 不能再被普通类型声明或 import alias 占用; 小写 `tuple<...>` 继续只保留给 WIT / `@wasi` 签名。
 - [x] I2.2 更新 grammar / parser。结论: `Tuple<...>` 继续复用现有大写类型名 + type args 路径进入普通源码类型位; parser 现已接受 `Tuple<bool, u8>{true, 7}` 这类位置构造器语法, 并在 typed bind 左侧把小写 `tuple<bool, u8>` 拒绝为 `InvalidTypeRef`。这一轮只收语法层: 还不保证 sema/codegen 已能解释 `Tuple` 构造、索引访问或布局。
 - [ ] I2.3 更新 sema 内建类型、构造器和字段访问规则。当前已完成最小产品切片所需的前端/类型接线: 小写 `tuple<...>` 在普通 typed bind 左侧被拒绝, `Tuple<>` / `Tuple<T>` 的 arity 下限已在前端校验, `@get(pair, 2)` 这类编译期越界索引已由 `compile_err/331_tuple_get_index_oob` 锁在当前 `NoMatchingCall` 行为; 后续仍需把 `Tuple` 正式提升为内建泛型类型, 系统化校验位置构造器实参数量 / 类型顺序、数字索引边界和更广泛的重载匹配。
-- [ ] I2.4 更新 codegen layout / access / return / param / storage lowering。当前已完成最小 typed tuple build/compiled + arity/index + struct field + return/param multi-value slice: `compile_ok/259_tuple_pair_get_lower`、`260_tuple_struct_field_lower`、`261_tuple_return_lower`、`262_tuple_param_get_lower`、`compiled_ok/65_compiled_test_tuple_pair`、`66_compiled_test_tuple_struct_field`、`67_compiled_test_tuple_return`、`68_compiled_test_tuple_param`、`compile_err/331_tuple_get_index_oob`、`332_tuple_arity_one`、`333_tuple_arity_zero` 已覆盖 `Tuple<bool, u8>{...}`、`@get(pair, 0/1)`、`@get(box, .pair, 0/1)`、单返回 multi-value ABI 与参数 flatten 的 lowering / 运行与一组 arity/index 边界; 后续仍需扩到 storage lowering, 并覆盖 managed payload。
+- [ ] I2.4 更新 codegen layout / access / return / param / storage lowering。当前已完成最小 typed tuple build/compiled + arity/index + struct field + return/param multi-value + 嵌套 Tuple 叶子 ABI 展平: `compile_ok/259_tuple_pair_get_lower`、`260_tuple_struct_field_lower`、`261_tuple_return_lower`、`262_tuple_param_get_lower`、`263_tuple_nested_get_lower`、`264_tuple_nested_return_param_lower`、`compiled_ok/65_compiled_test_tuple_pair`、`66_compiled_test_tuple_struct_field`、`67_compiled_test_tuple_return`、`68_compiled_test_tuple_param`、`69_compiled_test_tuple_nested`、`70_compiled_test_tuple_nested_return_param`、`compile_err/331_tuple_get_index_oob`、`332_tuple_arity_one`、`333_tuple_arity_zero` 已覆盖嵌套 `Tuple<Tuple<bool, u8>, i32>` 的 local set/get、return multi-value 与 param flatten (`$outer.v0.v0`); **阻断(跳过)**: storage 元素 `[Tuple<...>]` 仍报 `NoMatchingCall` (probe 2026-07-12), 恢复条件是补 storage 布局与 element put/get lowering; managed payload 仍后置。
 
 - [ ] I2.5 补 Tuple 正反例回归。
 - [ ] I2.6 同步 README、语法文档、spec rules、grammar 和测试说明。
@@ -357,7 +357,7 @@ get / pkg / push 暂停边界:
 
 下一步:
 
-- 下一步继续 I2.3/I2.4: 在已落地的 local / struct field / return / param multi-value 之上补 storage / managed payload lowering, 并把更多边界从产品级 `NoMatchingCall` 收敛成更明确的语义诊断。
+- 下一步继续 I2.3/I2.4: 嵌套 Tuple 叶子 ABI 已落地; storage 元素 `[Tuple<...>]` 仍 `NoMatchingCall` 已阻断记录; 后续优先 managed payload 或把更多边界从产品级 `NoMatchingCall` 收敛成更明确的语义诊断。
 - 若 I1 暂无新的可独立收口小项, 则切到 I2.1 `Tuple<...>` 规格固定, 先把 arity、位置构造器和数字索引规则写实。
 
 
