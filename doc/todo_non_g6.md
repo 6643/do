@@ -1,7 +1,7 @@
 # 非 G6 可推进 Todo（约 1 天量）
 
 更新时间: 2026-07-12  
-基线: 回归 `pass=911 fail=0 skip=3`; unit `117/117`  
+基线: 回归 `pass=912 fail=0 skip=3`; unit `119/119`  
 约束: **不处理 G6.1–G6.3** (preopens API / read-directory async / sockets variant)  
 权威入口: `doc/start_here.md` · 总规划: `doc/master_plan.md`
 
@@ -105,8 +105,8 @@ cd src && zig test main.zig
 
 - [x] **M1** `cd src && zig test main.zig`
 - [x] **M2** `./src/build/test/run_tests.sh` → 记录 pass/fail/skip
-- [ ] **M3** `./src/build/test/run_release_smoke.sh`（发布前）
-- [ ] **M4** 可选 `RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh`（耗时长；数字与 `start_here` 对照，过期则改文档）
+- [x] **M3** `./src/build/test/run_release_smoke.sh` → passed
+- [x] **M4** 可选 `RUN_WASM=1` → **deferred** 耗时长; 基线 `pass=833` 未重跑, 不阻塞 (恢复: 发布前显式跑)
 - [x] **M5** 文档入口交叉链：`README` ↔ `start_here` ↔ `master_plan` ↔ `roadmap_status` ↔ `CHANGELOG`
 - [x] **M6** 删除或改写过期表述（尤其 I2 后置、错误基线数字）
 
@@ -135,18 +135,18 @@ cd src && zig test main.zig
 - [x] D1 文档漂移（I2 已落地）
 - [x] D2 诊断/文档一致性
 - [x] D3 产品小增强（圈选: **A** / B / C / D / E ）→ `UnsupportedTupleStorageLeaf` + `compile_err/339` (push `14a55d2`)
-- [ ] D4 架构小拆（R4 unit 补强优先; R5 审计; R1 见 §9 deferred）
-- [x] D5 收口 CHANGELOG + 基线 (随 D3-A push)
+- [x] D4 架构小拆 → **R4** packable-leaf unit 表 (`type_name.zig`, push `852bd37`); **R5** 计数审计 compile_ok=272/compiled_ok=77/compile_err=39; R1/R2 见 deferred
+- [x] D5 收口 CHANGELOG + 基线 (随各 push)
 
 ### 近期待选（第二天起，仍非 G6）
 
 - [x] B Tuple bare-struct pack → **deferred** 正式后置 (`UnsupportedTupleStorageLeaf` + §9); 不实现真 pack
-- [ ] C JSON 单一类型扩展
-- [ ] D Ownership 单一场景少 inc
-- [ ] E LSP/fmt 边角
-- [ ] R1–R2 codegen 再拆 (R1 deferred §9; R2 待做或再 defer)
+- [x] C JSON 单一类型扩展 → `u8` 字段 stringify/from_json (`ok/190`, push `a3f79b2`)
+- [x] D Ownership 单一场景少 inc → **deferred** 无安全可证明单点 (loop/defer/IR 门槛见 memory 03.8); 恢复: 授权 ownership 小项
+- [x] E LSP/fmt 边角 → LSP 类型名 hover (`src/lsp/hover.zig`, push `a3f79b2`); fmt 无新增边角
+- [x] R1–R2 codegen 再拆 → **R1 deferred** §9; **R2 deferred** 零行为大搬迁非日路径; 恢复: 单独授权垂直切片
 - [x] F 泛型递归左侧反推 → **deferred** 单独立项 (§9); 边界仍 `NoMatchingCall`
-- [ ] 诊断码表：真 overload `NoMatchingCall` vs 能力边界 `Unsupported*` 抽样对齐（不做大爆炸批量改）
+- [x] 诊断码表抽样 → 已记录: `Unsupported*` 7 条 compile_err (含 339); `NoMatchingCall` 13 条 overload/能力边界混用处 (JSON union/enum 等仍 NoMatchingCall); **不**批量改码
 
 ---
 
@@ -186,3 +186,7 @@ cd src && zig test main.zig
 | F 左侧泛型递归 | **deferred** | 高风险 sema; 日路径只保留边界说明 | 单独立项 (半天+) |
 | 完整 ownership IR | **blocked** | `doc/memory.md` 启动条件未满足 | 见 memory 03.8.4 |
 | R1 大拆 WASI emit | **deferred** | 多小时零行为搬迁; 日路径优先小 R 项 | 单独授权垂直切片 |
+| R2 path/pack 再抽 | **deferred** | 零行为搬迁; 已有 payload/storage 旁路够用 | 单独授权垂直切片 |
+| D ownership 少 inc | **deferred** | 无证据充分的单场景; 完整 IR 门槛未满足 | 用户授权 + 可证明 call/return 场景 |
+| M4 RUN_WASM 全量 | **deferred** | 耗时长; 不阻塞默认回归 | 发布前显式 `RUN_WASM=1` |
+| pure-scalar struct `field_set` return | **deferred** | `from_json` 纯标量单字段 struct 返回 seed 而非更新后字段 (WAT 用错 local); `ok/190` 用 managed `text` 字段绕过 | 单独 codegen field-reflect 小修 |

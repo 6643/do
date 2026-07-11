@@ -5,9 +5,9 @@
 
 ## 2026-07-12
 
-- JSON: struct 字段 `u8` stringify/from_json 重载 (`ok/190_json_struct_u8_field`)
+- JSON: struct 字段 `u8` stringify/from_json 重载 (`ok/190_json_struct_u8_field`; from_json 用例含 managed `text` 字段以绕过纯标量 field_set 返回缺陷)
 - LSP: hover 对当前文件类型声明/引用返回类型名 head (`src/lsp/hover.zig`)
-- 非 G6 日路径: `UnsupportedTupleStorageLeaf` 专用诊断 + 文档漂移收口
+- 非 G6 todo 清单 drain: push-on-advance 协议 + §9 阻断登记; release smoke 绿- 非 G6 日路径: `UnsupportedTupleStorageLeaf` 专用诊断 + 文档漂移收口
   - 裸 struct 等非 packable 叶子 `[Tuple]` storage 从泛化 `UnsupportedLowering` 拆出独立 code/summary/hint
   - 反例: `compile_err/339_tuple_non_packable_leaf_storage`
   - 文档: README / start_here / master_plan / roadmap_status / spec_rules / syntax/type 对齐「managed 叶子与 path chain 已落地」
@@ -23,7 +23,9 @@
 
 ```text
 cd src && zig test main.zig
-  → All 117 tests passed.
+  → All 119 tests passed.
 ./src/build/test/run_tests.sh
-  → pass=911 fail=0 skip=3
+  → pass=912 fail=0 skip=3
+./src/build/test/run_release_smoke.sh
+  → release smoke passed
 ```

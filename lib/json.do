@@ -641,14 +641,12 @@ unescape(bytes [u8]) -> [u8] | JsonError {
 }
 
 .parse_value(seed u8, bytes [u8], offset usize) -> u8 | JsonError {
-    value i32 = 0
-    next usize = offset
-    status JsonError | nil = nil
-    value, next, status = parse_i32_token(bytes, offset)
-    if @is(status, JsonError) return status
-    if @lt(value, 0) return ExpectedValue
-    if @gt(value, 255) return ExpectedValue
-    return @as(u8, value)
+    // Reuse i32 token parse; reject out-of-range before narrowing to u8.
+    parsed = parse_value(0, bytes, offset)
+    if @is(parsed, JsonError) return parsed
+    if @lt(parsed, 0) return ExpectedValue
+    if @gt(parsed, 255) return ExpectedValue
+    return @as(u8, parsed)
 }
 
 .parse_value(seed bool, bytes [u8], offset usize) -> bool | JsonError {
