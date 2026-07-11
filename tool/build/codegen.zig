@@ -138,6 +138,11 @@ const STORAGE_WRITE_LEN_TMP_LOCAL = "__storage_write_len_tmp";
 const STORAGE_WRITE_NEXT_TMP_LOCAL = "__storage_write_next_tmp";
 const STORAGE_WRITE_SCAN_TMP_LOCAL = "__storage_write_scan_tmp";
 const STORAGE_WRITE_TARGET_TMP_LOCAL = "__storage_write_target_tmp";
+const TUPLE_PACK_BASE_TMP_LOCAL = "__tuple_pack_base_tmp";
+const TUPLE_PACK_SPILL_I32 = "__tuple_pack_spill_i32";
+const TUPLE_PACK_SPILL_I64 = "__tuple_pack_spill_i64";
+const TUPLE_PACK_SPILL_F32 = "__tuple_pack_spill_f32";
+const TUPLE_PACK_SPILL_F64 = "__tuple_pack_spill_f64";
 const STRUCT_LITERAL_TMP_LOCAL = "__struct_literal_tmp";
 const NUMERIC_SELECT_LEFT_TMP_I32 = "__numeric_select_left_i32";
 const NUMERIC_SELECT_RIGHT_TMP_I32 = "__numeric_select_right_i32";
@@ -438,6 +443,24 @@ const LocalSet = struct {
         }
         if (!hasLocal(self.locals.items, STORAGE_WRITE_TARGET_TMP_LOCAL)) {
             try self.appendBorrowedLocal(allocator, STORAGE_WRITE_TARGET_TMP_LOCAL, "usize", true);
+        }
+    }
+
+    fn ensureTuplePackTemps(self: *LocalSet, allocator: std.mem.Allocator) !void {
+        if (!hasLocal(self.locals.items, TUPLE_PACK_BASE_TMP_LOCAL)) {
+            try self.appendBorrowedLocal(allocator, TUPLE_PACK_BASE_TMP_LOCAL, "usize", true);
+        }
+        if (!hasLocal(self.locals.items, TUPLE_PACK_SPILL_I32)) {
+            try self.appendBorrowedLocal(allocator, TUPLE_PACK_SPILL_I32, "i32", true);
+        }
+        if (!hasLocal(self.locals.items, TUPLE_PACK_SPILL_I64)) {
+            try self.appendBorrowedLocal(allocator, TUPLE_PACK_SPILL_I64, "i64", true);
+        }
+        if (!hasLocal(self.locals.items, TUPLE_PACK_SPILL_F32)) {
+            try self.appendBorrowedLocal(allocator, TUPLE_PACK_SPILL_F32, "f32", true);
+        }
+        if (!hasLocal(self.locals.items, TUPLE_PACK_SPILL_F64)) {
+            try self.appendBorrowedLocal(allocator, TUPLE_PACK_SPILL_F64, "f64", true);
         }
     }
 
@@ -1700,16 +1723,28 @@ fn collectBodyLocalsWithMode(
             const binding = inferredManagedPayloadBinding(tokens, i, stmt_end, out, ctx).?;
             try out.appendStorageLocalWithType(allocator, tokens[i].lexeme, binding.ty, binding.elem_ty, true);
             try out.ensureStorageWriteTemps(allocator);
+            if (tupleScalarLeafStorageByteWidth(binding.elem_ty) != null) {
+                try out.ensureTuplePackTemps(allocator);
+            }
         } else if (try typedManagedPayloadBinding(allocator, tokens, i, stmt_end, ctx, &out.owned_names)) |binding| {
             try out.appendStorageLocalWithType(allocator, tokens[i].lexeme, binding.ty, binding.elem_ty, true);
             try out.ensureStorageWriteTemps(allocator);
+            if (tupleScalarLeafStorageByteWidth(binding.elem_ty) != null) {
+                try out.ensureTuplePackTemps(allocator);
+            }
         } else if (managedPayloadBinding(tokens, i, stmt_end)) |binding| {
             try out.appendStorageLocalWithType(allocator, tokens[i].lexeme, binding.ty, binding.elem_ty, true);
             try out.ensureStorageWriteTemps(allocator);
+            if (tupleScalarLeafStorageByteWidth(binding.elem_ty) != null) {
+                try out.ensureTuplePackTemps(allocator);
+            }
         } else if (storageBindingElemType(tokens, i, stmt_end)) |raw_elem_ty| {
             const elem_ty = try substituteGenericTypeOwned(allocator, raw_elem_ty, ctx.type_bindings, &out.owned_names);
             try out.appendStorageLocal(allocator, tokens[i].lexeme, elem_ty, true);
             try out.ensureStorageWriteTemps(allocator);
+            if (tupleScalarLeafStorageByteWidth(elem_ty) != null) {
+                try out.ensureTuplePackTemps(allocator);
+            }
         } else if (try collectMultiResultAssignmentLocals(allocator, tokens, i, stmt_end, ctx, out)) {
             // Multi-result inferred locals collected.
         } else if (isManagedLocalAssignmentStmt(tokens, i, stmt_end, out, ctx)) {
@@ -4311,17 +4346,29 @@ fn emitStorageAggLiteral(
         }
         const item_end = findArgEnd(tokens, item_start, close_brace);
         if (item_end == item_start) return error.NoMatchingCall;
-        try emitStorageDataPtr(allocator, out, aggregate_name);
-        if (item_index * elem_bytes != 0) {
-            try appendFmt(allocator, out, "    i32.const {d}\n", .{item_index * elem_bytes});
-            try out.appendSlice(allocator, "    i32.add\n");
+        if (isTupleTypeName(elem_ty)) {
+            // Multi-value leaves cannot sit under a store address; pack via base temp.
+            if (!try emitExpr(allocator, tokens, item_start, item_end, locals, ctx, elem_ty, out)) return error.NoMatchingCall;
+            try emitStorageDataPtr(allocator, out, aggregate_name);
+            if (item_index * elem_bytes != 0) {
+                try appendFmt(allocator, out, "    i32.const {d}\n", .{item_index * elem_bytes});
+                try out.appendSlice(allocator, "    i32.add\n");
+            }
+            try appendFmt(allocator, out, "    local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
+            try appendStoreTupleScalarLeavesFromStack(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ");
+        } else {
+            try emitStorageDataPtr(allocator, out, aggregate_name);
+            if (item_index * elem_bytes != 0) {
+                try appendFmt(allocator, out, "    i32.const {d}\n", .{item_index * elem_bytes});
+                try out.appendSlice(allocator, "    i32.add\n");
+            }
+            if (!try emitExpr(allocator, tokens, item_start, item_end, locals, ctx, elem_ty, out)) return error.NoMatchingCall;
+            if (isManagedLocalType(elem_ty, ctx) and isDirectManagedLocalExpr(tokens, item_start, item_end, locals, ctx)) {
+                try out.appendSlice(allocator, "    ;; storage-managed-element-inc\n");
+                try out.appendSlice(allocator, "    call $__arc_inc\n");
+            }
+            try appendStoreForPayloadType(allocator, out, elem_ty);
         }
-        if (!try emitExpr(allocator, tokens, item_start, item_end, locals, ctx, elem_ty, out)) return error.NoMatchingCall;
-        if (isManagedLocalType(elem_ty, ctx) and isDirectManagedLocalExpr(tokens, item_start, item_end, locals, ctx)) {
-            try out.appendSlice(allocator, "    ;; storage-managed-element-inc\n");
-            try out.appendSlice(allocator, "    call $__arc_inc\n");
-        }
-        try appendStoreForPayloadType(allocator, out, elem_ty);
         item_index += 1;
         item_start = item_end;
         if (item_start < close_brace and tokEq(tokens[item_start], ",")) item_start += 1;
@@ -14214,17 +14261,29 @@ fn emitGetCall(
         if (!try emitExpr(allocator, tokens, start_idx, first_end, locals, ctx, storage_ty, out)) return false;
         try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
         try emitStorageBoundsCheck(allocator, tokens, second_start, second_end, locals, ctx, STORAGE_PUT_SOURCE_TMP_LOCAL, 1, out);
-        try emitStorageDataPtr(allocator, out, STORAGE_PUT_SOURCE_TMP_LOCAL);
-        if (!try emitExpr(allocator, tokens, second_start, second_end, locals, ctx, "usize", out)) return false;
-        if (elem_bytes != 1) {
-            try appendFmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
-            try out.appendSlice(allocator, "    i32.mul\n");
-        }
-        try out.appendSlice(allocator, "    i32.add\n");
-        try appendLoadForPayloadType(allocator, out, elem_ty);
-        if (isManagedLocalType(elem_ty, ctx)) {
-            try out.appendSlice(allocator, "    ;; storage-managed-get-inc\n");
-            try out.appendSlice(allocator, "    call $__arc_inc\n");
+        if (isTupleTypeName(elem_ty)) {
+            try emitStorageDataPtr(allocator, out, STORAGE_PUT_SOURCE_TMP_LOCAL);
+            if (!try emitExpr(allocator, tokens, second_start, second_end, locals, ctx, "usize", out)) return false;
+            if (elem_bytes != 1) {
+                try appendFmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
+                try out.appendSlice(allocator, "    i32.mul\n");
+            }
+            try out.appendSlice(allocator, "    i32.add\n");
+            try appendFmt(allocator, out, "    local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
+            try appendLoadTupleScalarLeavesToStack(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ");
+        } else {
+            try emitStorageDataPtr(allocator, out, STORAGE_PUT_SOURCE_TMP_LOCAL);
+            if (!try emitExpr(allocator, tokens, second_start, second_end, locals, ctx, "usize", out)) return false;
+            if (elem_bytes != 1) {
+                try appendFmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
+                try out.appendSlice(allocator, "    i32.mul\n");
+            }
+            try out.appendSlice(allocator, "    i32.add\n");
+            try appendLoadForPayloadType(allocator, out, elem_ty);
+            if (isManagedLocalType(elem_ty, ctx)) {
+                try out.appendSlice(allocator, "    ;; storage-managed-get-inc\n");
+                try out.appendSlice(allocator, "    call $__arc_inc\n");
+            }
         }
         return true;
     }
@@ -14238,17 +14297,29 @@ fn emitGetCall(
     if (findStoragePrimitiveLocal(locals.storage_locals.items, name)) |storage| {
         const elem_bytes = storageElementByteWidthForType(storage.elem_ty, ctx) orelse return false;
         try emitStorageBoundsCheck(allocator, tokens, second_start, second_end, locals, ctx, name, 1, out);
-        try emitStorageDataPtr(allocator, out, name);
-        if (!try emitExpr(allocator, tokens, second_start, second_end, locals, ctx, "usize", out)) return false;
-        if (elem_bytes != 1) {
-            try appendFmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
-            try out.appendSlice(allocator, "    i32.mul\n");
-        }
-        try out.appendSlice(allocator, "    i32.add\n");
-        try appendLoadForPayloadType(allocator, out, storage.elem_ty);
-        if (isManagedLocalType(storage.elem_ty, ctx)) {
-            try out.appendSlice(allocator, "    ;; storage-managed-get-inc\n");
-            try out.appendSlice(allocator, "    call $__arc_inc\n");
+        if (isTupleTypeName(storage.elem_ty)) {
+            try emitStorageDataPtr(allocator, out, name);
+            if (!try emitExpr(allocator, tokens, second_start, second_end, locals, ctx, "usize", out)) return false;
+            if (elem_bytes != 1) {
+                try appendFmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
+                try out.appendSlice(allocator, "    i32.mul\n");
+            }
+            try out.appendSlice(allocator, "    i32.add\n");
+            try appendFmt(allocator, out, "    local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
+            try appendLoadTupleScalarLeavesToStack(allocator, out, storage.elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ");
+        } else {
+            try emitStorageDataPtr(allocator, out, name);
+            if (!try emitExpr(allocator, tokens, second_start, second_end, locals, ctx, "usize", out)) return false;
+            if (elem_bytes != 1) {
+                try appendFmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
+                try out.appendSlice(allocator, "    i32.mul\n");
+            }
+            try out.appendSlice(allocator, "    i32.add\n");
+            try appendLoadForPayloadType(allocator, out, storage.elem_ty);
+            if (isManagedLocalType(storage.elem_ty, ctx)) {
+                try out.appendSlice(allocator, "    ;; storage-managed-get-inc\n");
+                try out.appendSlice(allocator, "    call $__arc_inc\n");
+            }
         }
         return true;
     }
@@ -14438,20 +14509,33 @@ fn emitPathGetIndexSegment(
     const storage_name = try ensurePathGetCurrentLocal(allocator, tokens, current, locals, ctx, out);
 
     try emitStorageBoundsCheck(allocator, tokens, index_start, index_end, locals, ctx, storage_name, 1, out);
-    try emitStorageDataPtr(allocator, out, storage_name);
-    if (!try emitExpr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return error.NoMatchingCall;
-    if (elem_bytes != 1) {
-        try appendFmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
-        try out.appendSlice(allocator, "    i32.mul\n");
-    }
-    try out.appendSlice(allocator, "    i32.add\n");
-    try appendLoadForPayloadType(allocator, out, elem_ty);
-    if (isManagedLocalType(elem_ty, ctx)) {
-        try out.appendSlice(allocator, "    ;; path-storage-managed-get-inc\n");
-        try out.appendSlice(allocator, "    call $__arc_inc\n");
+    if (isTupleTypeName(elem_ty)) {
+        try emitStorageDataPtr(allocator, out, storage_name);
+        if (!try emitExpr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return error.NoMatchingCall;
+        if (elem_bytes != 1) {
+            try appendFmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
+            try out.appendSlice(allocator, "    i32.mul\n");
+        }
+        try out.appendSlice(allocator, "    i32.add\n");
+        try appendFmt(allocator, out, "    local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
+        try appendLoadTupleScalarLeavesToStack(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ");
+    } else {
+        try emitStorageDataPtr(allocator, out, storage_name);
+        if (!try emitExpr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return error.NoMatchingCall;
+        if (elem_bytes != 1) {
+            try appendFmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
+            try out.appendSlice(allocator, "    i32.mul\n");
+        }
+        try out.appendSlice(allocator, "    i32.add\n");
+        try appendLoadForPayloadType(allocator, out, elem_ty);
+        if (isManagedLocalType(elem_ty, ctx)) {
+            try out.appendSlice(allocator, "    ;; path-storage-managed-get-inc\n");
+            try out.appendSlice(allocator, "    call $__arc_inc\n");
+        }
     }
     try releasePathGetCurrentIfOwned(allocator, current.*, ctx, out);
     if (has_more) {
+        if (isTupleTypeName(elem_ty)) return error.NoMatchingCall;
         try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
     }
     return elem_ty;
@@ -14598,17 +14682,29 @@ fn emitUnionStoragePayloadGetCall(
     const storage_name = findStorageReadableLocalName(tokens, locals, name) orelse return false;
 
     try emitStorageBoundsCheck(allocator, tokens, index_start, index_end, locals, ctx, storage_name, 1, out);
-    try emitStorageDataPtr(allocator, out, storage_name);
-    if (!try emitExpr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return false;
-    if (elem_bytes != 1) {
-        try appendFmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
-        try out.appendSlice(allocator, "    i32.mul\n");
-    }
-    try out.appendSlice(allocator, "    i32.add\n");
-    try appendLoadForPayloadType(allocator, out, elem_ty);
-    if (isManagedLocalType(elem_ty, ctx)) {
-        try out.appendSlice(allocator, "    ;; storage-managed-get-inc\n");
-        try out.appendSlice(allocator, "    call $__arc_inc\n");
+    if (isTupleTypeName(elem_ty)) {
+        try emitStorageDataPtr(allocator, out, storage_name);
+        if (!try emitExpr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return false;
+        if (elem_bytes != 1) {
+            try appendFmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
+            try out.appendSlice(allocator, "    i32.mul\n");
+        }
+        try out.appendSlice(allocator, "    i32.add\n");
+        try appendFmt(allocator, out, "    local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
+        try appendLoadTupleScalarLeavesToStack(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ");
+    } else {
+        try emitStorageDataPtr(allocator, out, storage_name);
+        if (!try emitExpr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return false;
+        if (elem_bytes != 1) {
+            try appendFmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
+            try out.appendSlice(allocator, "    i32.mul\n");
+        }
+        try out.appendSlice(allocator, "    i32.add\n");
+        try appendLoadForPayloadType(allocator, out, elem_ty);
+        if (isManagedLocalType(elem_ty, ctx)) {
+            try out.appendSlice(allocator, "    ;; storage-managed-get-inc\n");
+            try out.appendSlice(allocator, "    call $__arc_inc\n");
+        }
     }
     return true;
 }
@@ -15135,7 +15231,7 @@ fn emitStorageSetScalarCall(
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
-    const elem_bytes = storageElementByteWidth(elem_ty) orelse return false;
+    const elem_bytes = storageElementByteWidthForType(elem_ty, ctx) orelse return false;
     try out.appendSlice(allocator, "    ;; storage-set-scalar\n");
     try emitStorageAliasProtect(allocator, out, source_name, target_name);
     if (!try emitExpr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return false;
@@ -15154,9 +15250,16 @@ fn emitStorageSetScalarCall(
     try emitStorageCloneCurrentLen(allocator, out, source_name, elem_bytes);
     try out.appendSlice(allocator, "    end\n");
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-    try emitStorageElementPtrFromLocal(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes);
-    if (!try emitExpr(allocator, tokens, value_start, value_end, locals, ctx, elem_ty, out)) return false;
-    try appendStoreForPayloadType(allocator, out, elem_ty);
+    if (isTupleTypeName(elem_ty)) {
+        if (!try emitExpr(allocator, tokens, value_start, value_end, locals, ctx, elem_ty, out)) return false;
+        try emitStorageElementPtrFromLocal(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes);
+        try appendFmt(allocator, out, "    local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
+        try appendStoreTupleScalarLeavesFromStack(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ");
+    } else {
+        try emitStorageElementPtrFromLocal(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes);
+        if (!try emitExpr(allocator, tokens, value_start, value_end, locals, ctx, elem_ty, out)) return false;
+        try appendStoreForPayloadType(allocator, out, elem_ty);
+    }
     try emitStorageAliasRelease(allocator, out, source_name, target_name);
     try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
     return true;
@@ -15193,10 +15296,19 @@ fn emitStoragePutSpreadScalarElement(
     try emitStorageCloneWithLenLocal(allocator, out, STORAGE_PUT_SOURCE_TMP_LOCAL, elem_bytes, STORAGE_WRITE_NEXT_TMP_LOCAL, STORAGE_WRITE_LEN_TMP_LOCAL);
     try out.appendSlice(allocator, "        end\n");
     try appendFmt(allocator, out, "        local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-    try emitStorageElementPtrFromLocalWithIndent(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_LEN_TMP_LOCAL, elem_bytes, "        ");
-    try emitStorageElementPtrFromLocalWithIndent(allocator, out, rest_name, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes, "        ");
-    try appendLoadForPayloadTypeWithIndent(allocator, out, elem_ty, "        ");
-    try appendStoreForPayloadTypeWithIndent(allocator, out, elem_ty, "        ");
+    if (isTupleTypeName(elem_ty)) {
+        try emitStorageElementPtrFromLocalWithIndent(allocator, out, rest_name, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes, "        ");
+        try appendFmt(allocator, out, "        local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
+        try appendLoadTupleScalarLeavesToStack(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "        ");
+        try emitStorageElementPtrFromLocalWithIndent(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_LEN_TMP_LOCAL, elem_bytes, "        ");
+        try appendFmt(allocator, out, "        local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
+        try appendStoreTupleScalarLeavesFromStack(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "        ");
+    } else {
+        try emitStorageElementPtrFromLocalWithIndent(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_LEN_TMP_LOCAL, elem_bytes, "        ");
+        try emitStorageElementPtrFromLocalWithIndent(allocator, out, rest_name, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes, "        ");
+        try appendLoadForPayloadTypeWithIndent(allocator, out, elem_ty, "        ");
+        try appendStoreForPayloadTypeWithIndent(allocator, out, elem_ty, "        ");
+    }
     try emitStorageLenPtrWithIndent(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, "        ");
     try appendFmt(allocator, out, "        local.get ${s}\n", .{STORAGE_WRITE_LEN_TMP_LOCAL});
     try out.appendSlice(allocator, "        i32.const 1\n");
@@ -15217,7 +15329,7 @@ fn emitStoragePutScalarCall(
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
-    const elem_bytes = storageElementByteWidth(elem_ty) orelse return false;
+    const elem_bytes = storageElementByteWidthForType(elem_ty, ctx) orelse return false;
     try out.appendSlice(allocator, "    ;; storage-put-scalar\n");
     try emitStorageAliasProtect(allocator, out, source_name, target_name);
     try emitStorageLenPtr(allocator, out, source_name);
@@ -15242,9 +15354,16 @@ fn emitStoragePutScalarCall(
     try emitStorageCloneWithLenLocal(allocator, out, source_name, elem_bytes, STORAGE_WRITE_LEN_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL);
     try out.appendSlice(allocator, "    end\n");
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-    try emitStorageElementPtrFromLocal(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes);
-    if (!try emitExpr(allocator, tokens, value_start, value_end, locals, ctx, elem_ty, out)) return false;
-    try appendStoreForPayloadType(allocator, out, elem_ty);
+    if (isTupleTypeName(elem_ty)) {
+        if (!try emitExpr(allocator, tokens, value_start, value_end, locals, ctx, elem_ty, out)) return false;
+        try emitStorageElementPtrFromLocal(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes);
+        try appendFmt(allocator, out, "    local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
+        try appendStoreTupleScalarLeavesFromStack(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ");
+    } else {
+        try emitStorageElementPtrFromLocal(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes);
+        if (!try emitExpr(allocator, tokens, value_start, value_end, locals, ctx, elem_ty, out)) return false;
+        try appendStoreForPayloadType(allocator, out, elem_ty);
+    }
     try emitStorageLenPtr(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL);
     try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
     try out.appendSlice(allocator, "    i32.const 1\n");
@@ -17993,12 +18112,19 @@ fn emitCollectionLoopBindings(
         try appendFmt(allocator, out, "    local.set ${s}\n", .{index_name});
     }
     if (header.value_name) |value_name| {
-        try emitStorageElementPtrFromLocal(allocator, out, header.source_name, index_local, header.elem_bytes);
-        try appendLoadForPayloadType(allocator, out, header.elem_ty);
-        if (isManagedLocalType(header.elem_ty, ctx)) {
-            try out.appendSlice(allocator, "    call $__arc_inc\n");
+        if (isTupleTypeName(header.elem_ty)) {
+            try emitStorageElementPtrFromLocal(allocator, out, header.source_name, index_local, header.elem_bytes);
+            try appendFmt(allocator, out, "    local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
+            try appendLoadTupleScalarLeavesToStack(allocator, out, header.elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ");
+            try emitTupleLocalSet(allocator, value_name, header.elem_ty, out);
+        } else {
+            try emitStorageElementPtrFromLocal(allocator, out, header.source_name, index_local, header.elem_bytes);
+            try appendLoadForPayloadType(allocator, out, header.elem_ty);
+            if (isManagedLocalType(header.elem_ty, ctx)) {
+                try out.appendSlice(allocator, "    call $__arc_inc\n");
+            }
+            try appendFmt(allocator, out, "    local.set ${s}\n", .{value_name});
         }
-        try appendFmt(allocator, out, "    local.set ${s}\n", .{value_name});
     }
 }
 
@@ -18107,12 +18233,19 @@ fn emitRecvLoopBindings(
         try appendFmt(allocator, out, "    local.set ${s}\n", .{count_name});
     }
     if (header.value_name) |value_name| {
-        try emitStorageElementPtrFromLocal(allocator, out, header.source_name, count_local, header.elem_bytes);
-        try appendLoadForPayloadType(allocator, out, header.elem_ty);
-        if (isManagedLocalType(header.elem_ty, ctx)) {
-            try out.appendSlice(allocator, "    call $__arc_inc\n");
+        if (isTupleTypeName(header.elem_ty)) {
+            try emitStorageElementPtrFromLocal(allocator, out, header.source_name, count_local, header.elem_bytes);
+            try appendFmt(allocator, out, "    local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
+            try appendLoadTupleScalarLeavesToStack(allocator, out, header.elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ");
+            try emitTupleLocalSet(allocator, value_name, header.elem_ty, out);
+        } else {
+            try emitStorageElementPtrFromLocal(allocator, out, header.source_name, count_local, header.elem_bytes);
+            try appendLoadForPayloadType(allocator, out, header.elem_ty);
+            if (isManagedLocalType(header.elem_ty, ctx)) {
+                try out.appendSlice(allocator, "    call $__arc_inc\n");
+            }
+            try appendFmt(allocator, out, "    local.set ${s}\n", .{value_name});
         }
-        try appendFmt(allocator, out, "    local.set ${s}\n", .{value_name});
     }
 }
 
@@ -18572,16 +18705,147 @@ fn storageElementByteWidth(elem_ty: []const u8) ?usize {
     return null;
 }
 
+/// Scheme A: pure scalar-leaf Tuple storage layout is the packed sum of leaf payload sizes.
+/// Nested Tuple is flattened to leaves. Any non-scalar / managed leaf returns null.
+fn tupleScalarLeafStorageByteWidth(tuple_ty: []const u8) ?usize {
+    if (!isTupleTypeName(tuple_ty)) return null;
+    const arity = tupleArity(tuple_ty) orelse return null;
+    var total: usize = 0;
+    var idx: usize = 0;
+    while (idx < arity) : (idx += 1) {
+        const elem_ty = tupleElementTypeAt(tuple_ty, idx) orelse return null;
+        if (isTupleTypeName(elem_ty)) {
+            total += tupleScalarLeafStorageByteWidth(elem_ty) orelse return null;
+            continue;
+        }
+        if (!isCoreWasmScalar(elem_ty) or isManagedPayloadType(elem_ty)) return null;
+        total += typePayloadBytes(elem_ty);
+    }
+    return total;
+}
+
 fn storageElementByteWidthForType(elem_ty: []const u8, ctx: CodegenContext) ?usize {
     if (storageElementByteWidth(elem_ty)) |width| return width;
+    if (tupleScalarLeafStorageByteWidth(elem_ty)) |width| return width;
     if (isManagedLocalType(elem_ty, ctx)) return 4;
     return null;
 }
 
+fn tuplePackSpillLocal(ty: []const u8) []const u8 {
+    const wt = wasmType(ty);
+    if (std.mem.eql(u8, wt, "i64")) return TUPLE_PACK_SPILL_I64;
+    if (std.mem.eql(u8, wt, "f32")) return TUPLE_PACK_SPILL_F32;
+    if (std.mem.eql(u8, wt, "f64")) return TUPLE_PACK_SPILL_F64;
+    return TUPLE_PACK_SPILL_I32;
+}
+
+/// Stack holds leaf0..leafN-1 (top = last). Spill reverse into memory at base_local + leaf offsets.
+fn appendStoreTupleScalarLeavesFromStack(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    tuple_ty: []const u8,
+    base_local: []const u8,
+    indent: []const u8,
+) CodegenError!void {
+    var leaf_types = std.ArrayList([]const u8).empty;
+    defer leaf_types.deinit(allocator);
+    try appendTupleLeafTypes(allocator, tuple_ty, &leaf_types);
+    if (leaf_types.items.len == 0) return error.NoMatchingCall;
+
+    var offsets = try allocator.alloc(usize, leaf_types.items.len);
+    defer allocator.free(offsets);
+    var offset: usize = 0;
+    for (leaf_types.items, 0..) |leaf_ty, i| {
+        if (!isCoreWasmScalar(leaf_ty) or isManagedPayloadType(leaf_ty)) return error.NoMatchingCall;
+        offsets[i] = offset;
+        offset += typePayloadBytes(leaf_ty);
+    }
+
+    var i = leaf_types.items.len;
+    while (i > 0) {
+        i -= 1;
+        const leaf_ty = leaf_types.items[i];
+        const spill = tuplePackSpillLocal(leaf_ty);
+        try appendFmt(allocator, out, "{s}local.set ${s}\n", .{ indent, spill });
+        try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+        if (offsets[i] != 0) {
+            try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offsets[i] });
+            try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
+        }
+        try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, spill });
+        try appendStoreForPayloadTypeWithIndent(allocator, out, leaf_ty, indent);
+    }
+}
+
+/// Load packed scalar leaves from base_local + offsets onto the stack (leaf0..leafN-1).
+fn appendLoadTupleScalarLeavesToStack(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    tuple_ty: []const u8,
+    base_local: []const u8,
+    indent: []const u8,
+) CodegenError!void {
+    var leaf_types = std.ArrayList([]const u8).empty;
+    defer leaf_types.deinit(allocator);
+    try appendTupleLeafTypes(allocator, tuple_ty, &leaf_types);
+    if (leaf_types.items.len == 0) return error.NoMatchingCall;
+
+    var offset: usize = 0;
+    for (leaf_types.items) |leaf_ty| {
+        if (!isCoreWasmScalar(leaf_ty) or isManagedPayloadType(leaf_ty)) return error.NoMatchingCall;
+        try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+        if (offset != 0) {
+            try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });
+            try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
+        }
+        try appendLoadForPayloadTypeWithIndent(allocator, out, leaf_ty, indent);
+        offset += typePayloadBytes(leaf_ty);
+    }
+}
+
+fn appendStorePayloadOrTupleFromStack(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    elem_ty: []const u8,
+    base_local: []const u8,
+    indent: []const u8,
+) CodegenError!void {
+    if (isTupleTypeName(elem_ty)) {
+        try appendStoreTupleScalarLeavesFromStack(allocator, out, elem_ty, base_local, indent);
+        return;
+    }
+    if (indent.len == 0 or std.mem.eql(u8, indent, "    ")) {
+        try appendStoreForPayloadType(allocator, out, elem_ty);
+    } else {
+        try appendStoreForPayloadTypeWithIndent(allocator, out, elem_ty, indent);
+    }
+}
+
+fn appendLoadPayloadOrTupleToStack(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    elem_ty: []const u8,
+    base_local: []const u8,
+    indent: []const u8,
+) CodegenError!void {
+    if (isTupleTypeName(elem_ty)) {
+        try appendLoadTupleScalarLeavesToStack(allocator, out, elem_ty, base_local, indent);
+        return;
+    }
+    try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+    if (indent.len == 0 or std.mem.eql(u8, indent, "    ")) {
+        try appendLoadForPayloadType(allocator, out, elem_ty);
+    } else {
+        try appendLoadForPayloadTypeWithIndent(allocator, out, elem_ty, indent);
+    }
+}
+
 fn storageTypeIdForElement(elem_ty: []const u8, ctx: CodegenContext) usize {
-    if (isManagedLocalType(elem_ty, ctx) and storageElementByteWidth(elem_ty) == null) return TYPE_ID_STORAGE_MANAGED;
+    if (isManagedLocalType(elem_ty, ctx) and storageElementByteWidth(elem_ty) == null and tupleScalarLeafStorageByteWidth(elem_ty) == null)
+        return TYPE_ID_STORAGE_MANAGED;
     return TYPE_ID_STORAGE_U8;
 }
+
 
 fn isCoreWasmScalar(ty: []const u8) bool {
     return std.mem.eql(u8, ty, "bool") or

@@ -4,6 +4,13 @@
 
 ## 2026-07-12
 
+- I2.4 slice: `[Tuple<...>]` 标量叶子 storage 内联 pack (scheme A)
+  - codegen: `tupleScalarLeafStorageByteWidth` + pack/unpack temps; `@put`/`@get`/`@set`/storage literal/spread/path/union/loop 走叶子连续 layout (非 managed handle)
+  - fixtures: `compile_ok/265`–`267`, `compiled_ok/71`–`73` (put/get、nested、literal+set); runtime wasm PASS
+  - 后置: managed payload 叶子、path chaining、更完整 sema 诊断
+
+## 2026-07-12
+
 - 打通阶段 I2.4 的嵌套 Tuple 叶子 ABI 展平。
   - 实现: `tool/build/codegen.zig` 递归 flatten 嵌套 `Tuple` 的 local set/get、return multi-value 与 param ABI (`$outer.v0.v0` 形态); 调用结果绑定与 `@get` 到内层 Tuple 的绑定均按叶子序处理; 嵌套 Tuple 参数叶子走 borrowed `emit_decl=false`, 避免与 ABI param 重名; 新增 `compile_ok/263_tuple_nested_get_lower`、`264_tuple_nested_return_param_lower`、`compiled_ok/69_compiled_test_tuple_nested`、`70_compiled_test_tuple_nested_return_param`。
   - 阻断: storage 元素类型 `[Tuple<...>]` 仍报 `NoMatchingCall`, 记入 `doc/roadmap_status.md`, 本切片跳过。

@@ -77,7 +77,7 @@
 - 默认回归 gate 最近通过: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh`, 摘要 `pass=886 fail=0 skip=3`; 回归生成的 `tool/build/test/tmp` ignored 产物已清理到 `0`。
 
 - RUN_WASM 扩展回归 gate 最近通过: `RUN_WASM=1 SKIP_BUILD=1 ./tool/build/test/run_tests.sh`, 摘要 `pass=833 fail=0 skip=3`, `wasm run summary: pass=6 fail=0`; 回归生成的 `tool/build/test/tmp` ignored 产物已清理到 `0`。
-- 阶段 I 已开始推进: I1.1 递归基线盘点、I1.2 语义规则收敛和 I1.6 文档同步已完成; I1.3 已补五批 `ok/compile_ok/compiled_ok` 递归回归, 证明普通 `do test`、`do build`、compiled 路径、参数侧已定型的泛型递归、factorial、`if/else` 分支递归和 imported recursion 都已覆盖; I1.4 的 scalar、`if/else`、guard、generic、imported 以及 generic/imported `if/else` self-tail slice 都已落地; I1.5 已锁住 `defer`、storage local、managed struct、多返回、guard+defer、`if/else+defer` 6 条不优化边界; I2 已完成 I2.1 规格固定和 I2.2 grammar/parser, 当前 I2.3/I2.4 已打通最小 typed tuple build/compiled + arity/index + struct field + return/param multi-value slice。
+- 阶段 I 已开始推进: I1.1 递归基线盘点、I1.2 语义规则收敛和 I1.6 文档同步已完成; I1.3 已补五批 `ok/compile_ok/compiled_ok` 递归回归, 证明普通 `do test`、`do build`、compiled 路径、参数侧已定型的泛型递归、factorial、`if/else` 分支递归和 imported recursion 都已覆盖; I1.4 的 scalar、`if/else`、guard、generic、imported 以及 generic/imported `if/else` self-tail slice 都已落地; I1.5 已锁住 `defer`、storage local、managed struct、多返回、guard+defer、`if/else+defer` 6 条不优化边界; I2 已完成 I2.1 规格固定和 I2.2 grammar/parser, 当前 I2.3/I2.4 已打通最小 typed tuple build/compiled + arity/index + struct field + return/param multi-value + 嵌套叶子 ABI + 标量叶子 storage pack。
 
 
 ## 下一步规则
@@ -100,7 +100,7 @@
 - I1 当前缺口: 当前递归 / self-tail 的已登记静态 runner 用例已收口; 更复杂 cleanup/aggregate 形态仍以后置 compile/compiled 回归为主。
 - I2: 支持源码层大写 `Tuple<T0, T1, ...>` 类型, 例如 `Tuple<bool, u8>{flag, code}`; 第一版不做 `(bool, u8)` 类型语法或 `(true, 7)` 字面量, 读取使用 `@get(pair, 0)` / `@get(pair, 1)` 数字位置索引。
 - I2 当前规格: `Tuple<T0, T1, ...>` 第一版 arity 下限为 2, 允许嵌套、struct 字段、storage 元素和 union 分支; 构造固定为 `Tuple<...>{...}` 位置构造器, 读取固定为 `@get(tuple_value, <compile-time-int>)`; 第一版不支持命名字段构造、`.v0/.v1` 字段访问或 `@set` 数字索引写入; `Tuple` 进入保留内建类型集合, 小写 `tuple<...>` 继续只保留给 WIT / `@wasi` 签名。
-- I2 当前停点: I2.2 已完成 grammar / parser 收口, 包括 `Tuple<...>{...}` 位置构造器语法和 typed bind 左侧小写 `tuple<...>` 的前端拒绝; 当前 I2.3/I2.4 已打通最小 typed tuple build/compiled + arity/index + struct field + return/param multi-value slice, 包括 `compile_ok/259_tuple_pair_get_lower`、`260_tuple_struct_field_lower`、`261_tuple_return_lower`、`262_tuple_param_get_lower`、`compiled_ok/65_compiled_test_tuple_pair`、`66_compiled_test_tuple_struct_field`、`67_compiled_test_tuple_return`、`68_compiled_test_tuple_param`、`err/330_lowercase_tuple_source_type`、`compile_err/331_tuple_get_index_oob`、`332_tuple_arity_one` 和 `333_tuple_arity_zero`; 下一步继续补 storage / managed payload lowering, 并把更多边界从产品级 `NoMatchingCall` 收敛成更明确的语义诊断。
+- I2 当前停点: I2.2 已完成 grammar / parser 收口; I2.3/I2.4 已打通最小 typed tuple build/compiled + arity/index + struct field + return/param multi-value + 嵌套叶子 ABI + 标量叶子 `[Tuple<...>]` storage put/get/set/literal pack (`compile_ok/259`–`267`, `compiled_ok/65`–`73`, `err/330`, `compile_err/331`–`333`); 下一步继续 managed payload 与更明确的语义诊断。
 
 
 ## 当前边界
