@@ -1,8 +1,10 @@
-Point {
-    x i32
-    y i32
+// Managed fields inside a Tuple direct struct slot remain non-packable (v1).
+// Pure-scalar Point slots are compile_ok/272 + ok/192.
+Cell {
+    n u8 = 0
+    label text = ""
 }
 
 start() {
-    items [Tuple<Point, u8>] = .{}
+    items [Tuple<Cell, u8>] = .{}
 }

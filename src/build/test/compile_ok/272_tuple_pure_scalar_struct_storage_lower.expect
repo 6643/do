@@ -1,0 +1,12 @@
+(local $__tuple_pack_base_tmp i32)
+(local $pair.v0.x i32)
+(local $pair.v0.y i32)
+(local $pair.v1 i32)
+(local $got.v0.x i32)
+(local $got.v0.y i32)
+(local $got.v1 i32)
+(local $a.x i32)
+(local $a.y i32)
+;; storage-put-scalar
+i32.const 9
+local.set $__tuple_pack_base_tmp

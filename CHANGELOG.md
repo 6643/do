@@ -5,7 +5,13 @@
 
 ## 2026-07-12
 
-- 规格: Tuple **永不拍平** 硬约束 — 嵌套 Tuple / 未来 struct 直接元素保持嵌套类型与 `@get` 路径; 禁止与扁平 Tuple 等同或隐式 coerce (`spec_rules` / `syntax/type` / `memory` / `start_here`)
+- codegen: pure-scalar 具名 struct 作为 Tuple storage **嵌套子槽** (永不拍平)
+  - `items [Tuple<Point, u8>]` / `@put` / `@get` / path `@get(items, i, 0)` → `Point`
+  - 局部 `Tuple` 槽展开为 `$t.v0.x` / `$t.v0.y` (嵌套字段, 非单 i32)
+  - 含 managed 字段的 struct 槽仍 `UnsupportedTupleStorageLeaf` (`compile_err/339`)
+  - fixtures: `compile_ok/272`, `ok/192` (`compiled_must_pass`)
+
+- 规格: Tuple **永不拍平** 硬约束 — 嵌套 Tuple / struct 直接元素保持嵌套类型与 `@get` 路径; 禁止与扁平 Tuple 等同或隐式 coerce (`spec_rules` / `syntax/type` / `memory` / `start_here`)
 
 - 文档: 删除已 drain 的 `doc/todo_non_g6.md`; 后置/可选并入 `start_here` §5–§6 与 `roadmap_status`
 
@@ -34,7 +40,7 @@
 cd src && zig test main.zig
   → All 119 tests passed.
 ./src/build/test/run_tests.sh
-  → pass=913 fail=0 skip=3
+  → pass=915 fail=0 skip=3
 ./src/build/test/run_release_smoke.sh
   → release smoke passed
 ```

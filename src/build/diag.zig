@@ -526,8 +526,8 @@ pub fn errorHint(err: anyerror) []const u8 {
         error.InvalidStartEntrySig => "入口签名写作 `start() { ... }` (无参、无返回)",
         error.DuplicateStartEntry => "顶层 `start` 写作 1 次",
         error.UnsupportedWasiHostImport => "已登记的 scalar/record/list<u8>、descriptor.sync 语句调用和 descriptor.write 多左值调用可 lower；复杂 result/resource/variant/flags 需要后续 component lowering",
-        error.UnsupportedLowering => "常见后置边界: 非 packable 叶子 (如裸 struct) 的 `[Tuple]` storage；该错误不是重载匹配失败",
-        error.UnsupportedTupleStorageLeaf => "叶子须为标量或 managed handle (`text` / `[T]`); 裸 struct 请改扁平字段或拆出独立 storage；该错误不是重载匹配失败",
+        error.UnsupportedLowering => "常见后置边界: 非 packable 的 `[Tuple]` storage 直接元素；该错误不是重载匹配失败",
+        error.UnsupportedTupleStorageLeaf => "直接元素须为标量、managed handle (`text` / `[T]`)、嵌套 Tuple、或 pure-scalar 具名 struct 子布局；含 managed 字段的 struct 槽仍不支持；禁止拍平为扁平 Tuple；该错误不是重载匹配失败",
         error.MissingOutputPath => "示例: `do build input.do -o out.wat` 或 `do test sample.do --compiled -o sample.wat`",
         error.MissingTestInputPath => "示例: `do test sample.do` 或 `do test sample.do --compiled -o sample.wat`",
         error.UnexpectedCliArg => "build 写作 `do build input.do [-o out.wat]`; test 写作 `do test input.do` 或 `do test input.do --compiled [-o out.wat]`",
@@ -573,7 +573,7 @@ test "tuple non-packable storage leaf has dedicated diagnostic" {
         errorSummary(error.UnsupportedTupleStorageLeaf),
     );
     try std.testing.expectEqualStrings(
-        "叶子须为标量或 managed handle (`text` / `[T]`); 裸 struct 请改扁平字段或拆出独立 storage；该错误不是重载匹配失败",
+        "直接元素须为标量、managed handle (`text` / `[T]`)、嵌套 Tuple、或 pure-scalar 具名 struct 子布局；含 managed 字段的 struct 槽仍不支持；禁止拍平为扁平 Tuple；该错误不是重载匹配失败",
         errorHint(error.UnsupportedTupleStorageLeaf),
     );
     const diagnostic = buildCompileDiagnostic(

@@ -526,7 +526,7 @@ Error
     - **永不拍平 (硬约束)**: 嵌套 `Tuple`、以及未来作为 Tuple 直接元素的具名 struct, 在类型、路径与用户可见语义上 **永远保持嵌套结构**。禁止把 `Tuple<Tuple<i32,i32>,u8>` 视为或改写成 `Tuple<i32,i32,u8>`; 禁止把 `Tuple<Point,u8>` 视为或要求用户改写成扁平 `Tuple<i32,i32,u8>`; 禁止隐式类型抹平、自动 coerce 或「布局碰巧相同即类型相同」。访问只按 **直接子槽** 下标进入子区域 (`@get(t, 0)` 得到内层 `Tuple` 或 `Point`, 再继续 `@get`); 嵌套就用嵌套方法。实现若在 codegen 内用连续 payload / 偏移表, 只是存储细节, **不得** 暴露为扁平类型或扁平 API。
     - scheme A storage pack: 每个 storage 元素是定宽树状布局 (直接子槽依次占据子区域); 标量 / managed handle 为叶槽, 嵌套 `Tuple` 为子树, 具名 struct 叶子 (若支持) 按其字段子布局成子树。标量按自身宽度, managed payload (`text` / `[T]` handle) 按 4 字节 handle; 含 managed 叶槽的 storage 使用合成 layout (`is_storage_pack`) 做 clone/free 时的叶子 inc/dec。
     - `@get(storage, i, j, ...)` path chaining: 先取 storage 元素基址, 再按 Tuple **直接元素** 索引进入子区域 (嵌套 Tuple / struct 子树可继续链式索引); 每一步的结果类型是该直接子槽的类型, 不拍平。
-    - 后置边界: 非 packable 直接元素 (如当前仍不支持的裸 struct 值) 的 `[Tuple]` storage 报 `UnsupportedTupleStorageLeaf` (不是重载失败; 与泛化 `UnsupportedLowering` 区分)。`loop v, i = items { @get(v, N) }` 已支持。
+    - pure-scalar 具名 struct 可作为 Tuple 直接子槽进入 `[Tuple]` storage: 子区域按字段声明序 + 对齐写入 (嵌套类型/路径不变)。含 managed 字段的 struct 直接子槽仍报 `UnsupportedTupleStorageLeaf`。`loop v, i = items { @get(v, N) }` 已支持。
     - 位置构造中明显字面量与类型参数不匹配 (例如 `bool` 位写整数字面量、`u8` 位写 `true`) 报 `InvalidTypedLiteral`; 复杂表达式的类型检查仍可能落到后续阶段的 `NoMatchingCall`。
     - 位置构造允许尾逗号, 尾逗号不计入 arity。
 

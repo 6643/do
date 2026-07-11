@@ -17,7 +17,7 @@
 - `do check`: lexer/parser/sema/import diagnostics only; 诊断收集在 `src/build/diagnostics.zig`。
 - 阶段 A–F、H 已完成; D 可推进项与 D2.1 已收口; G1–G5、G6.4 已完成; **阶段 I (I1+I2) 已关闭**。
 - 架构扁平拆分已落地: `type_name` / `sema_error` / `diagnostics` / `codegen_payload_wat` / `codegen_storage_wat`。
-- 最近回归: `./src/build/test/run_tests.sh` → `pass=913 fail=0 skip=3`; unit `119/119`。
+- 最近回归: `./src/build/test/run_tests.sh` → `pass=915 fail=0 skip=3`; unit `119/119`。
 
 当前禁止默认推进:
 
@@ -58,7 +58,7 @@
 | G6.2 | `descriptor.read-directory` stream/future | 未来 async/Future/Task runtime |
 | G6.3 | sockets resource + variant | wrapper 与 address variant 映射决策 |
 
-I2 后置已收窄: managed/`text` 叶子 storage 与 path chaining 已落地; 仅裸 struct 等非 packable 叶子仍 `UnsupportedTupleStorageLeaf`。
+I2 后置已收窄: managed/`text` 与 pure-scalar struct 嵌套子槽 storage 已落地; 含 managed 字段的 struct 槽仍 `UnsupportedTupleStorageLeaf`。
 
 ## 4. 当前下一步
 

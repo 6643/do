@@ -39,7 +39,7 @@
 ```bash
 # 默认完整回归 (当前基线)
 ./src/build/test/run_tests.sh
-# 期望: pass=913 fail=0 skip=3
+# 期望: pass=915 fail=0 skip=3
 
 # 聚合单元测试
 cd src && zig test main.zig
@@ -58,7 +58,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 
 | 基线项 | 最近值 |
 | --- | --- |
-| 默认回归 | `pass=913 fail=0 skip=3` |
+| 默认回归 | `pass=915 fail=0 skip=3` |
 | 聚合 unit | `119/119` |
 | `compile_ok` / `compiled_ok` / `compile_err` | do≈`272` / `77` / `39` |
 | 剩余 skip | `16_loop_recv_value`、`96_file_lib_resource_shape`、`118_wasi_p3_std_wrappers` (recv/WASI 后置) |
@@ -95,7 +95,8 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 
 **非发布后置** (阶段 I 后置已收窄; 非 G6 日路径清单已 drain 并删除):
 
-- 裸 struct 等非 packable 直接元素的 `[Tuple]` storage 仍 → `UnsupportedTupleStorageLeaf` (`compile_err/339`); 若做 pack: **嵌套子布局**, **永不拍平** 类型/路径 (见 `spec_rules` Tuple 硬约束)
+- pure-scalar 具名 struct 作为 Tuple storage 直接子槽 **已支持** (嵌套子布局, 永不拍平; `compile_ok/272`, `ok/192`)
+- 含 managed 字段的 struct 直接子槽仍 → `UnsupportedTupleStorageLeaf` (`compile_err/339`)
 - managed/`text` 叶子 storage 与 `@get(storage, i, j)` path chaining **已支持** (`compile_ok/270`–`271`, `compiled_ok/75`–`77`)
 - 纯标量 struct 的 field-reflect `field_set` **已修** (`ok/191`)
 - 仅靠左侧目标类型反推的泛型递归仍 `NoMatchingCall` (单独立项)

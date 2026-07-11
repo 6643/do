@@ -226,14 +226,16 @@ pub fn storageTypeNameForElem(elem_ty: []const u8) ?[]const u8 {
     return null;
 }
 
-/// Whether a Tuple leaf can be packed into scheme-A storage (core scalar or managed payload handle).
+/// Whether a terminal pack leaf is scalar or managed handle (not Tuple/struct names).
+/// Pure-scalar struct slots are resolved in codegen with the struct table (nested sub-layout).
 pub fn isTuplePackableLeafType(elem_ty: []const u8) bool {
     if (isManagedPayloadType(elem_ty)) return true;
     return isCoreWasmScalar(elem_ty);
 }
 
-/// Scheme A: packed Tuple storage width. Nested Tuple flattens; managed payload leaves pack as 4-byte handles.
-/// Non-packable leaves (e.g. bare struct values) → null.
+/// Scheme A: packed Tuple storage width for scalar/managed/nested-Tuple only (no struct table).
+/// Pure-scalar struct direct slots use codegen `tuplePackWidthWithStructs`. Nested Tuple is a sub-tree
+/// (contiguous subregion), not a language-level flatten to a flat Tuple type.
 pub fn tupleScalarLeafStorageByteWidth(tuple_ty: []const u8) ?usize {
     if (!isTupleTypeName(tuple_ty)) return null;
     const arity = tupleArity(tuple_ty) orelse return null;
@@ -326,17 +328,17 @@ test "scalar and storage type helpers" {
 }
 
 test "tuple packable leaf and non-packable storage width table" {
-    // Packable leaves: core scalars + managed payload handles.
+    // Terminal pack leaves: core scalars + managed payload handles.
     try std.testing.expect(isTuplePackableLeafType("i32"));
     try std.testing.expect(isTuplePackableLeafType("u8"));
     try std.testing.expect(isTuplePackableLeafType("bool"));
     try std.testing.expect(isTuplePackableLeafType("f64"));
     try std.testing.expect(isTuplePackableLeafType("text"));
     try std.testing.expect(isTuplePackableLeafType("[u8]"));
-    // Bare user struct names are not packable leaves (scheme A boundary).
+    // Struct type names are not terminal leaves here; codegen resolves pure-scalar struct slots.
     try std.testing.expect(!isTuplePackableLeafType("Point"));
     try std.testing.expect(!isTuplePackableLeafType("PairBox"));
-    // Width: packable ok; non-packable leaf → null (drives UnsupportedTupleStorageLeaf).
+    // Width without struct table: Point slot → null (codegen supplies struct-aware width).
     try std.testing.expectEqual(@as(?usize, 5), tupleScalarLeafStorageByteWidth("Tuple<i32,u8>"));
     try std.testing.expectEqual(@as(?usize, 5), tupleScalarLeafStorageByteWidth("Tuple<text,u8>"));
     try std.testing.expectEqual(@as(?usize, 8), tupleScalarLeafStorageByteWidth("Tuple<text,[u8]>"));
