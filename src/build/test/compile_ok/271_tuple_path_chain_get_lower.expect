@@ -1,0 +1,6 @@
+(local $__tuple_pack_base_tmp i32)
+local.set $__tuple_pack_base_tmp
+i32.load
+i32.load8_u
+local.set $a
+local.set $b

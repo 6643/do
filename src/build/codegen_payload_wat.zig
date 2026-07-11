@@ -170,6 +170,7 @@ pub fn appendLoadForPayloadTypeWithIndent(
 }
 
 /// Stack holds leaf0..leafN-1 (top = last). Spill reverse into memory at base_local + leaf offsets.
+/// Managed payload leaves pack as i32 handles (scheme A).
 pub fn appendStoreTupleScalarLeavesFromStack(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
@@ -186,7 +187,7 @@ pub fn appendStoreTupleScalarLeavesFromStack(
     defer allocator.free(offsets);
     var offset: usize = 0;
     for (leaf_types.items, 0..) |leaf_ty, i| {
-        if (!type_util.isCoreWasmScalar(leaf_ty) or type_util.isManagedPayloadType(leaf_ty)) {
+        if (!type_util.isTuplePackableLeafType(leaf_ty)) {
             return error.UnsupportedLowering;
         }
         offsets[i] = offset;
@@ -209,7 +210,8 @@ pub fn appendStoreTupleScalarLeavesFromStack(
     }
 }
 
-/// Load packed scalar leaves from base_local + offsets onto the stack (leaf0..leafN-1).
+/// Load packed leaves from base_local + offsets onto the stack (leaf0..leafN-1).
+/// Managed payload leaves load as i32 handles; caller decides whether to `__arc_inc`.
 pub fn appendLoadTupleScalarLeavesToStack(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
@@ -224,7 +226,7 @@ pub fn appendLoadTupleScalarLeavesToStack(
 
     var offset: usize = 0;
     for (leaf_types.items) |leaf_ty| {
-        if (!type_util.isCoreWasmScalar(leaf_ty) or type_util.isManagedPayloadType(leaf_ty)) {
+        if (!type_util.isTuplePackableLeafType(leaf_ty)) {
             return error.UnsupportedLowering;
         }
         try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
@@ -235,6 +237,70 @@ pub fn appendLoadTupleScalarLeavesToStack(
         try appendLoadForPayloadTypeWithIndent(allocator, out, leaf_ty, indent);
         offset += type_util.typePayloadBytes(leaf_ty);
     }
+}
+
+/// After leaves are on stack (leaf0..leafN-1, top = last), inc each managed payload leaf in place.
+/// Uses spill temps; stack order preserved.
+pub fn appendIncManagedTupleLeavesOnStack(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    tuple_ty: []const u8,
+    indent: []const u8,
+) !void {
+    if (!type_util.tupleHasManagedPackLeaf(tuple_ty)) return;
+    var leaf_types = std.ArrayList([]const u8).empty;
+    defer leaf_types.deinit(allocator);
+    type_util.appendTupleLeafTypes(allocator, tuple_ty, &leaf_types) catch return error.UnsupportedLowering;
+    if (leaf_types.items.len == 0) return;
+
+    var spills = try allocator.alloc([]const u8, leaf_types.items.len);
+    defer allocator.free(spills);
+    var i = leaf_types.items.len;
+    while (i > 0) {
+        i -= 1;
+        const leaf_ty = leaf_types.items[i];
+        const spill = tuplePackSpillLocal(leaf_ty);
+        spills[i] = spill;
+        try appendFmt(allocator, out, "{s}local.set ${s}\n", .{ indent, spill });
+    }
+    for (leaf_types.items, 0..) |leaf_ty, idx| {
+        try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, spills[idx] });
+        if (type_util.isManagedPayloadType(leaf_ty)) {
+            try appendFmt(allocator, out, "{s};; tuple-pack-managed-leaf-inc\n", .{indent});
+            try appendFmt(allocator, out, "{s}call $__arc_inc\n", .{indent});
+        }
+    }
+}
+
+/// Load a single direct (non-nested-expand) element from packed tuple base.
+/// Nested Tuple elements push all flattened leaves of that element.
+pub fn appendLoadTupleElementFromPackedBase(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    tuple_ty: []const u8,
+    elem_index: usize,
+    base_local: []const u8,
+    indent: []const u8,
+) !void {
+    const elem_ty = type_util.tupleElementTypeAt(tuple_ty, elem_index) orelse return error.UnsupportedLowering;
+    const elem_offset = type_util.tupleElementPackOffset(tuple_ty, elem_index) orelse return error.UnsupportedLowering;
+    if (type_util.isTupleTypeName(elem_ty)) {
+        if (elem_offset != 0) {
+            try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+            try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_offset });
+            try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
+            try appendFmt(allocator, out, "{s}local.set ${s}\n", .{ indent, base_local });
+        }
+        try appendLoadTupleScalarLeavesToStack(allocator, out, elem_ty, base_local, indent);
+        return;
+    }
+    if (!type_util.isTuplePackableLeafType(elem_ty)) return error.UnsupportedLowering;
+    try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+    if (elem_offset != 0) {
+        try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_offset });
+        try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
+    }
+    try appendLoadForPayloadTypeWithIndent(allocator, out, elem_ty, indent);
 }
 
 pub fn appendStorePayloadOrTupleFromStack(
@@ -307,15 +373,31 @@ test "tuple scalar leaf store emits spill and store sequence" {
     try std.testing.expect(std.mem.indexOf(u8, out.items, "i32.store\n") != null);
 }
 
-test "managed leaf tuple pack is UnsupportedLowering" {
+test "managed leaf tuple pack stores i32 handle and u8" {
     var out = std.ArrayList(u8).empty;
     defer out.deinit(std.testing.allocator);
-    const err = appendStoreTupleScalarLeavesFromStack(
+    try appendStoreTupleScalarLeavesFromStack(
         std.testing.allocator,
         &out,
         "Tuple<text,u8>",
         "base",
         "    ",
     );
-    try std.testing.expectError(error.UnsupportedLowering, err);
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "i32.store8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "i32.store\n") != null);
+}
+
+test "load single tuple element from packed base" {
+    var out = std.ArrayList(u8).empty;
+    defer out.deinit(std.testing.allocator);
+    try appendLoadTupleElementFromPackedBase(
+        std.testing.allocator,
+        &out,
+        "Tuple<i32,u8>",
+        1,
+        "base",
+        "    ",
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "i32.const 4") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "i32.load8_u") != null);
 }

@@ -117,9 +117,9 @@ test "tuple pair" {
 1. arity 下限为 2, 当前不设上限; `Tuple<>` / `Tuple<T>` 非法。
 2. 构造固定为位置构造器 `Tuple<T0, T1, ...>{v0, v1, ...}`, 实参数量必须与 arity 完全一致; 第一版不支持命名字段构造。
 3. 读取固定为 `@get(tuple_value, <compile-time-int>)`, 索引必须是编译期整数字面量且落在 `0..arity-1`; 第一版不支持 `.v0/.v1` 字段段访问, 也不支持 `@set(tuple_value, <index>, value)` 数字索引写入。
-4. 允许嵌套 `Tuple<Tuple<i32, bool>, u8>`, 以及作为局部绑定、参数、单返回、struct 字段和标量叶子 `[Tuple<...>]` storage 元素。
+4. 允许嵌套 `Tuple<Tuple<i32, bool>, u8>`, 以及作为局部绑定、参数、单返回、struct 字段和 scheme-A packable 叶子 `[Tuple<...>]` storage 元素 (标量 + managed payload/`text` handle)。
 5. 小写 `tuple<bool, u8>` 在普通 typed bind 左侧报 `InvalidTypeRef`。
-6. 当前后置边界 (报 `UnsupportedLowering`, 不是重载失败): managed payload 叶子的 `[Tuple<Point, u8>]` storage、`text` 等 managed 叶子 storage、`@get(storage, i, j)` path chaining。标量叶子 Tuple 的 `loop v, i = items { @get(v, N) }` 已支持。
+6. `@get(storage, i, j)` path chaining 与 managed/`text` 叶子 storage 已支持。后置边界 (报 `UnsupportedLowering`, 不是重载失败): 裸 struct 等非 packable 叶子的 `[Tuple<Point, u8>]` storage。`loop v, i = items { @get(v, N) }` 已支持。
 
 ## 函数类型约束
 

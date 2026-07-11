@@ -39,11 +39,11 @@
 ```bash
 # 默认完整回归 (当前基线)
 ./src/build/test/run_tests.sh
-# 期望: pass=907 fail=0 skip=3
+# 期望: pass=910 fail=0 skip=3
 
 # 聚合单元测试
 cd src && zig test main.zig
-# 期望: All 115 tests passed.
+# 期望: All 116 tests passed.
 
 # 发布前 smoke
 ./src/build/test/run_release_smoke.sh
@@ -58,9 +58,9 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 
 | 基线项 | 最近值 |
 | --- | --- |
-| 默认回归 | `pass=907 fail=0 skip=3` |
-| 聚合 unit | `115/115` |
-| `compile_ok` / `compiled_ok` / `compile_err` | do≈`270` / `74` / `40` |
+| 默认回归 | `pass=910 fail=0 skip=3` |
+| 聚合 unit | `116/116` |
+| `compile_ok` / `compiled_ok` / `compile_err` | do≈`272` / `77` / `38` |
 | 剩余 skip | `16_loop_recv_value`、`96_file_lib_resource_shape`、`118_wasi_p3_std_wrappers` (recv/WASI 后置) |
 | 诊断 code | `errorSummary` / `errorHint` 各 56 条 (含 `UnsupportedLowering`) |
 
@@ -93,11 +93,10 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | G6.3 | sockets resource + variant | socket wrapper 与 address variant 映射决策 |
 | 06.2 | 已拆到 G2–G6; 剩余由 G6.1–G6.3 承接 | 同上 |
 
-**非发布阻断** (阶段 I 后置):
+**非发布阻断** (阶段 I 后置已收窄):
 
-- managed payload / `text` 叶子 `[Tuple]` storage → `UnsupportedLowering`
-- `@get(storage, i, j)` path chaining → `UnsupportedLowering`
-- loop 绑定上标量叶子 `@get(v, N)` **已支持** (`compile_ok/269`, `compiled_ok/74`)
+- 裸 struct 等非 packable 叶子的 `[Tuple]` storage 仍 → `UnsupportedLowering`
+- managed/`text` 叶子 storage 与 `@get(storage, i, j)` path chaining **已支持** (`compile_ok/270`–`271`, `compiled_ok/75`–`77`)
 
 ## 6. 当前计划候选
 
@@ -106,14 +105,13 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 1. **发布候选维护**: 回归红灯、文档漂移、可独立验证的小修
 2. **等待决策**: G6.1 / G6.3 公开 API; G6.2 依赖 async runtime 立项
 3. **可选小项** (不绕过 G6, 需单独授权):
-   - I2 后置: managed 叶子 Tuple storage 或 path chaining (产品化 lowering, 非诊断伪装)
    - codegen 垂直再拆 (如 WASI emit 切片) — 先 parse/validate, 再搬实现
    - 继续 ownership / JSON / LSP 增强 — 见 README「下一阶段计划」, 默认不自动开做
 
 **已关闭边界速查**:
 
 - I1: 直接/互递归; 参数侧已定型泛型递归; self-tail scalar/`if-else`/guard/generic/imported TCO; 仅靠左侧目标类型反推的泛型递归仍 `NoMatchingCall`; `defer`/storage/managed/多返回/cleanup **不** TCO
-- I2: `Tuple<T0,T1,...>` 位置构造 + `@get` 数字索引; local/struct/return/param/nested/标量叶子 storage + loop get; sema: `InvalidTypedLiteral` / `InvalidPathIndex` / `InvalidTypeRef`
+- I2: `Tuple<T0,T1,...>` 位置构造 + `@get` 数字索引; local/struct/return/param/nested/标量与 managed 叶子 storage + path chain + loop get; sema: `InvalidTypedLiteral` / `InvalidPathIndex` / `InvalidTypeRef`
 
 ## 7. 变更与推进协议
 

@@ -226,7 +226,14 @@ pub fn storageTypeNameForElem(elem_ty: []const u8) ?[]const u8 {
     return null;
 }
 
-/// Scheme A: packed scalar-leaf Tuple storage width. Nested Tuple flattens; non-scalar/managed → null.
+/// Whether a Tuple leaf can be packed into scheme-A storage (core scalar or managed payload handle).
+pub fn isTuplePackableLeafType(elem_ty: []const u8) bool {
+    if (isManagedPayloadType(elem_ty)) return true;
+    return isCoreWasmScalar(elem_ty);
+}
+
+/// Scheme A: packed Tuple storage width. Nested Tuple flattens; managed payload leaves pack as 4-byte handles.
+/// Non-packable leaves (e.g. bare struct values) → null.
 pub fn tupleScalarLeafStorageByteWidth(tuple_ty: []const u8) ?usize {
     if (!isTupleTypeName(tuple_ty)) return null;
     const arity = tupleArity(tuple_ty) orelse return null;
@@ -238,10 +245,46 @@ pub fn tupleScalarLeafStorageByteWidth(tuple_ty: []const u8) ?usize {
             total += tupleScalarLeafStorageByteWidth(elem_ty) orelse return null;
             continue;
         }
-        if (!isCoreWasmScalar(elem_ty) or isManagedPayloadType(elem_ty)) return null;
+        if (!isTuplePackableLeafType(elem_ty)) return null;
         total += typePayloadBytes(elem_ty);
     }
     return total;
+}
+
+/// True when any flattened leaf is a managed payload (text / [T] handle).
+pub fn tupleHasManagedPackLeaf(tuple_ty: []const u8) bool {
+    if (!isTupleTypeName(tuple_ty)) return false;
+    const arity = tupleArity(tuple_ty) orelse return false;
+    var idx: usize = 0;
+    while (idx < arity) : (idx += 1) {
+        const elem_ty = tupleElementTypeAt(tuple_ty, idx) orelse return false;
+        if (isTupleTypeName(elem_ty)) {
+            if (tupleHasManagedPackLeaf(elem_ty)) return true;
+            continue;
+        }
+        if (isManagedPayloadType(elem_ty)) return true;
+    }
+    return false;
+}
+
+/// Byte offset of direct element `index` inside a packed Tuple (not flattened).
+pub fn tupleElementPackOffset(tuple_ty: []const u8, index: usize) ?usize {
+    if (!isTupleTypeName(tuple_ty)) return null;
+    const arity = tupleArity(tuple_ty) orelse return null;
+    if (index >= arity) return null;
+    var offset: usize = 0;
+    var idx: usize = 0;
+    while (idx < index) : (idx += 1) {
+        const elem_ty = tupleElementTypeAt(tuple_ty, idx) orelse return null;
+        if (isTupleTypeName(elem_ty)) {
+            offset += tupleScalarLeafStorageByteWidth(elem_ty) orelse return null;
+        } else if (isTuplePackableLeafType(elem_ty)) {
+            offset += typePayloadBytes(elem_ty);
+        } else {
+            return null;
+        }
+    }
+    return offset;
 }
 
 test "tuple type name helpers" {
@@ -274,6 +317,10 @@ test "scalar and storage type helpers" {
     try std.testing.expectEqual(@as(?usize, 4), storageElementByteWidth("i32"));
     try std.testing.expectEqualStrings("[u8]", storageTypeNameForElem("u8").?);
     try std.testing.expectEqual(@as(?usize, 5), tupleScalarLeafStorageByteWidth("Tuple<i32,u8>"));
-    try std.testing.expect(tupleScalarLeafStorageByteWidth("Tuple<text,u8>") == null);
+    try std.testing.expectEqual(@as(?usize, 5), tupleScalarLeafStorageByteWidth("Tuple<text,u8>"));
+    try std.testing.expect(tupleHasManagedPackLeaf("Tuple<text,u8>"));
+    try std.testing.expect(!tupleHasManagedPackLeaf("Tuple<i32,u8>"));
+    try std.testing.expectEqual(@as(?usize, 0), tupleElementPackOffset("Tuple<i32,u8>", 0));
+    try std.testing.expectEqual(@as(?usize, 4), tupleElementPackOffset("Tuple<i32,u8>", 1));
     try std.testing.expectEqual(@as(?usize, 6), tupleScalarLeafStorageByteWidth("Tuple<Tuple<i32,u8>,u8>"));
 }

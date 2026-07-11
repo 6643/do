@@ -5,25 +5,18 @@
 
 ## 2026-07-12
 
-- 清理旧文档与占位
-  - 删除长期 ARC 草案与 TS 原型: `doc/arc.md`、`doc/arc*.ts`
-  - 删除空占位: `src/test/`、`src/doc/`、`src/build/test/pending/`
-  - 删除非主线样例: `ui.do`、`ui_demo.do`
-  - 收缩 `doc/master_plan.md` / `doc/roadmap_status.md` / 本文件为**当前态 only** (不保留已完成阶段流水账)
-  - 不保留向后兼容路径或旧入口
+- I2 后置 lowering: managed/`text` 叶子 `[Tuple]` storage + `@get(storage,i,j)` path chaining
+  - scheme A 扩展: managed payload 叶子 pack 为 4 字节 handle; 合成 `is_storage_pack` layout 负责 clone/free 叶子 ARC
+  - path chain: storage 元素基址保留在 `$__tuple_pack_base_tmp`, 再按直接元素索引 load
+  - 正例: `compile_ok/270`–`271`, `compiled_ok/75`–`77`; 删除原 `compile_err/339`–`340`
 
-- 目录重命名: 标准库 `src` → `lib`, 工具链 `tool` → `src`
-  - `@lib("file.do")` 根为 `lib/`; WASI `source=` / `__wasi_shim_lib_*`
-  - 回归: `./src/build/test/run_tests.sh`; unit: `cd src && zig test main.zig`
-
-- 架构重构五轮: `diagnostics` / `type_name` / `sema_error` / `codegen_payload_wat` / `codegen_storage_wat`
-  - `UnsupportedLowering`; loop Tuple `@get`; fixture `269`/`74`/`339`/`340`
-
-- 文档与计划规范化: `doc/start_here.md` 接手入口; README / AGENTS 路径对齐
+- 清理旧文档与占位; 目录重命名 `lib`/`src`; 架构扁平拆分; 文档规范化
 
 ### 验证
 
 ```text
-cd src && zig test main.zig          → All 115 tests passed.
-SKIP_BUILD=1 ./src/build/test/run_tests.sh → pass=907 fail=0 skip=3
+cd src && zig test main.zig
+  → All 116 tests passed.
+./src/build/test/run_tests.sh
+  → pass=910 fail=0 skip=3
 ```

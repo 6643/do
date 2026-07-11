@@ -17,7 +17,7 @@
 - `do check`: lexer/parser/sema/import diagnostics only; 诊断收集在 `src/build/diagnostics.zig`。
 - 阶段 A–F、H 已完成; D 可推进项与 D2.1 已收口; G1–G5、G6.4 已完成; **阶段 I (I1+I2) 已关闭**。
 - 架构扁平拆分已落地: `type_name` / `sema_error` / `diagnostics` / `codegen_payload_wat` / `codegen_storage_wat`。
-- 最近回归: `./src/build/test/run_tests.sh` → `pass=907 fail=0 skip=3`; unit `115/115`。
+- 最近回归: `./src/build/test/run_tests.sh` → `pass=910 fail=0 skip=3`; unit `116/116`。
 
 当前禁止默认推进:
 
@@ -58,7 +58,7 @@
 | G6.2 | `descriptor.read-directory` stream/future | 未来 async/Future/Task runtime |
 | G6.3 | sockets resource + variant | wrapper 与 address variant 映射决策 |
 
-I2 后置 (非发布阻断): managed/`text` 叶子 `[Tuple]` storage 与 `@get(storage,i,j)` path chaining → `UnsupportedLowering`。
+I2 后置已收窄: managed/`text` 叶子 storage 与 path chaining 已落地; 仅裸 struct 等非 packable 叶子仍 `UnsupportedLowering`。
 
 ## 4. 当前下一步
 
@@ -66,7 +66,7 @@ I2 后置 (非发布阻断): managed/`text` 叶子 `[Tuple]` storage 与 `@get(s
 
 1. 检查发布候选回归、文档漂移或可独立验证的小修。
 2. 无新小项时 **不** 绕过 G6.1–G6.3。
-3. 可选 (需单独授权): I2 后置 lowering、codegen 垂直再拆、ownership/JSON/LSP 增强、`backend_ir` 主路径。
+3. 可选 (需单独授权): codegen 垂直再拆、ownership/JSON/LSP 增强、`backend_ir` 主路径。
 
 验收命令:
 

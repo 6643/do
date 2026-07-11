@@ -28,10 +28,10 @@
 
 ```text
 cd src && zig test main.zig
-  → All 115 tests passed.
+  → All 116 tests passed.
 
 ./src/build/test/run_tests.sh
-  → pass=907 fail=0 skip=3
+  → pass=910 fail=0 skip=3
 
 RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
   → pass=833 fail=0 skip=3; wasm run summary: pass=6 fail=0
@@ -43,8 +43,8 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 
 - I1: 直接/互递归; 参数侧已定型泛型递归; self-tail scalar / `if-else` / guard / generic / imported TCO。  
   仅靠左侧目标类型反推的泛型递归仍 `NoMatchingCall`; `defer` / storage / managed / 多返回 / cleanup 不 TCO。
-- I2: `Tuple<T0,T1,...>` 位置构造 + `@get` 数字索引; local/struct/return/param/nested/标量叶子 storage + loop get。  
-  后置: managed/`text` 叶子 storage 与 path chaining → `UnsupportedLowering` (`compile_err/339`–`340`)。
+- I2: `Tuple<T0,T1,...>` 位置构造 + `@get` 数字索引; local/struct/return/param/nested/标量与 managed 叶子 storage + path chain + loop get。  
+  后置收窄: 仅裸 struct 等非 packable 叶子 storage → `UnsupportedLowering`。
 
 ## 当前阻断
 

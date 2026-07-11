@@ -11,6 +11,9 @@ pub const StructLayout = struct {
     payload_bytes: usize,
     managed_fields: []const ManagedFieldOffset,
     owned_name: bool = false,
+    /// When true: this layout describes one packed storage element (payload_bytes = elem width;
+    /// managed_fields offsets are relative to element start). Used for `[Tuple<...>]` with managed leaves.
+    is_storage_pack: bool = false,
 };
 
 pub const StringData = struct {
@@ -149,6 +152,59 @@ pub fn emitArcLayoutTable(
             \\    end
             \\
         );
+    }
+    try out.appendSlice(allocator,
+        \\    unreachable
+        \\  )
+        \\  (func $__layout_is_storage_pack (param $type_id i32) (result i32)
+        \\    local.get $type_id
+        \\    i32.const 1
+        \\    i32.eq
+        \\    if
+        \\      i32.const 0
+        \\      return
+        \\    end
+        \\
+    );
+    for (struct_layouts, 0..) |layout, index| {
+        if (hasEarlierLayoutTypeId(struct_layouts[0..index], layout.type_id)) continue;
+        if (!layout.is_storage_pack) continue;
+        try appendFmt(allocator, out,
+            \\    local.get $type_id
+            \\    i32.const {d}
+            \\    i32.eq
+            \\    if
+            \\      i32.const 1
+            \\      return
+            \\    end
+            \\
+        , .{layout.type_id});
+    }
+    try out.appendSlice(allocator,
+        \\    i32.const 0
+        \\  )
+        \\  (func $__layout_storage_pack_elem_bytes (param $type_id i32) (result i32)
+        \\    local.get $type_id
+        \\    i32.const 1
+        \\    i32.eq
+        \\    if
+        \\      unreachable
+        \\    end
+        \\
+    );
+    for (struct_layouts, 0..) |layout, index| {
+        if (hasEarlierLayoutTypeId(struct_layouts[0..index], layout.type_id)) continue;
+        if (!layout.is_storage_pack) continue;
+        try appendFmt(allocator, out,
+            \\    local.get $type_id
+            \\    i32.const {d}
+            \\    i32.eq
+            \\    if
+            \\      i32.const {d}
+            \\      return
+            \\    end
+            \\
+        , .{ layout.type_id, layout.payload_bytes });
     }
     try out.appendSlice(allocator,
         \\    unreachable
@@ -1307,6 +1363,79 @@ pub fn emitArcRuntimePrelude(
         \\      end
         \\    end
         \\  )
+        \\  ;; arc-storage-pack-managed-release: type_id layout has is_storage_pack;
+        \\  ;; payload_bytes = elem width; managed offsets relative to each element.
+        \\  (func $__arc_release_storage_pack_children (param $object i32) (param $type_id i32)
+        \\    (local $count i32)
+        \\    (local $elem_i i32)
+        \\    (local $leaf_i i32)
+        \\    (local $leaf_n i32)
+        \\    (local $elem_bytes i32)
+        \\    (local $base i32)
+        \\    (local $child i32)
+        \\    local.get $object
+        \\    call $__arc_payload
+        \\    i32.load
+        \\    local.set $count
+        \\    local.get $type_id
+        \\    call $__layout_storage_pack_elem_bytes
+        \\    local.set $elem_bytes
+        \\    local.get $type_id
+        \\    call $__layout_managed_count
+        \\    local.set $leaf_n
+        \\    i32.const 0
+        \\    local.set $elem_i
+        \\    block $done
+        \\      loop $scan_elem
+        \\        local.get $elem_i
+        \\        local.get $count
+        \\        i32.ge_u
+        \\        br_if $done
+        \\        local.get $object
+        \\        call $__arc_payload
+        \\        i32.const 8
+        \\        i32.add
+        \\        local.get $elem_i
+        \\        local.get $elem_bytes
+        \\        i32.mul
+        \\        i32.add
+        \\        local.set $base
+        \\        i32.const 0
+        \\        local.set $leaf_i
+        \\        block $leaf_done
+        \\          loop $scan_leaf
+        \\            local.get $leaf_i
+        \\            local.get $leaf_n
+        \\            i32.ge_u
+        \\            br_if $leaf_done
+        \\            local.get $base
+        \\            local.get $type_id
+        \\            local.get $leaf_i
+        \\            call $__layout_managed_offset
+        \\            i32.add
+        \\            i32.load
+        \\            local.tee $child
+        \\            i32.eqz
+        \\            if
+        \\            else
+        \\              local.get $child
+        \\              call $__arc_dec_no_drain
+        \\            end
+        \\            local.get $leaf_i
+        \\            i32.const 1
+        \\            i32.add
+        \\            local.set $leaf_i
+        \\            br $scan_leaf
+        \\          end
+        \\        end
+        \\        local.get $elem_i
+        \\        i32.const 1
+        \\        i32.add
+        \\        local.set $elem_i
+        \\        br $scan_elem
+        \\      end
+        \\    end
+        \\  )
         \\  ;; arc-runtime managed child release v1
         \\  (func $__arc_release_managed_children (param $object i32)
         \\    (local $type_id i32)
@@ -1322,6 +1451,14 @@ pub fn emitArcRuntimePrelude(
         \\    if
         \\      local.get $object
         \\      call $__arc_release_storage_managed_children
+        \\      return
+        \\    end
+        \\    local.get $type_id
+        \\    call $__layout_is_storage_pack
+        \\    if
+        \\      local.get $object
+        \\      local.get $type_id
+        \\      call $__arc_release_storage_pack_children
         \\      return
         \\    end
         \\    local.get $type_id

@@ -189,6 +189,7 @@ pub fn emitEmptyStorageWithTypeId(
 }
 
 /// type_id for scheme-A vs managed storage elements (matches codegen storageTypeIdForElement policy for non-struct).
+/// Managed-leaf Tuple packs use a dedicated layout type_id from codegen (not this helper).
 pub fn storageTypeIdForScalarOrManagedElem(elem_ty: []const u8, treat_as_managed: bool) usize {
     if (treat_as_managed and type_util.storageElementByteWidth(elem_ty) == null and type_util.tupleScalarLeafStorageByteWidth(elem_ty) == null) {
         return TYPE_ID_STORAGE_MANAGED;

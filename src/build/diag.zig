@@ -525,7 +525,7 @@ pub fn errorHint(err: anyerror) []const u8 {
         error.InvalidStartEntrySig => "入口签名写作 `start() { ... }` (无参、无返回)",
         error.DuplicateStartEntry => "顶层 `start` 写作 1 次",
         error.UnsupportedWasiHostImport => "已登记的 scalar/record/list<u8>、descriptor.sync 语句调用和 descriptor.write 多左值调用可 lower；复杂 result/resource/variant/flags 需要后续 component lowering",
-        error.UnsupportedLowering => "常见后置边界: managed/text 叶子的 `[Tuple]` storage、`@get(storage, i, j)` path chaining；该错误不是重载匹配失败",
+        error.UnsupportedLowering => "常见后置边界: 非 packable 叶子 (如裸 struct) 的 `[Tuple]` storage；该错误不是重载匹配失败",
         error.MissingOutputPath => "示例: `do build input.do -o out.wat` 或 `do test sample.do --compiled -o sample.wat`",
         error.MissingTestInputPath => "示例: `do test sample.do` 或 `do test sample.do --compiled -o sample.wat`",
         error.UnexpectedCliArg => "build 写作 `do build input.do [-o out.wat]`; test 写作 `do test input.do` 或 `do test input.do --compiled [-o out.wat]`",
