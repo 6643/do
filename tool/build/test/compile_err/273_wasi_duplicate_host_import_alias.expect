@@ -1,2 +1,0 @@
-error[DuplicateHostImportAlias]
-host import alias 在同一模块内只能绑定 1 次

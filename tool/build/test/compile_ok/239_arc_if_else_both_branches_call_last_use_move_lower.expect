@@ -1,2 +1,0 @@
-count=2 ;; arc-call-move data
-count=0 call $__arc_inc

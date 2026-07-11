@@ -1,0 +1,9 @@
+  (func $__wasi_shim_lib_time_do_host_now (param $__result_area i32)
+    local.get $__result_area
+    call $__wasi_import_clocks_system_clock_now
+  (func $__wasi_shim_lib_time_do_host_resolution (result i64)
+    call $__wasi_import_clocks_system_clock_get_resolution
+  (func $__wasi_shim_lib_time_do_host_monotonic_now (result i64)
+    call $__wasi_import_clocks_monotonic_clock_now
+  (func $__wasi_shim_lib_time_do_host_monotonic_resolution (result i64)
+    call $__wasi_import_clocks_monotonic_clock_get_resolution

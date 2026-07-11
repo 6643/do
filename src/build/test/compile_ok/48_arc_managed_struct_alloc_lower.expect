@@ -1,0 +1,13 @@
+;; arc-layout type_id=2 name=Box managed_count=1 payload_bytes=4
+(local $box i32)
+i32.const 4
+i32.const 2
+call $__arc_alloc
+local.set $box
+local.get $box
+call $__arc_payload
+i32.const 0
+i32.add
+local.get $bytes
+call $__arc_inc
+i32.store

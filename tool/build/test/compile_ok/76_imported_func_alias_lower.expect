@@ -1,5 +1,0 @@
-(func $other_pair (param $x i32) (result i32 i32)
-i32.const 9
-call $other_pair
-local.set $ok
-local.set $n

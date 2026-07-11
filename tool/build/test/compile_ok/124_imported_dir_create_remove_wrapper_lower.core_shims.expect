@@ -1,8 +1,0 @@
-(func $__wasi_shim_src_dir_do_host_dir_create_at (param $p0 i32) (param $p1 i32) (param $p2 i32) (param $__result_area i32)
-call $__wasi_import_filesystem_types_descriptor_create_directory_at
-(func $__wasi_shim_src_dir_do_host_dir_open_at (param $p0 i32) (param $p1 i32) (param $p2 i32) (param $p3 i32) (param $p4 i32) (param $p5 i32) (param $__result_area i32)
-call $__wasi_import_filesystem_types_descriptor_open_at
-(func $__wasi_shim_src_dir_do_host_dir_remove_at (param $p0 i32) (param $p1 i32) (param $p2 i32) (param $__result_area i32)
-call $__wasi_import_filesystem_types_descriptor_remove_directory_at
-(func $__wasi_shim_src_dir_do_host_dir_drop (param $p0 i32)
-call $__wasi_import_filesystem_types_descriptor_drop

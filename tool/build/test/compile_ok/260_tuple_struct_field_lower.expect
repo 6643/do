@@ -1,6 +1,0 @@
-(local $box.pair.v0 i32)
-(local $box.pair.v1 i32)
-local.set $box.pair.v0
-local.set $box.pair.v1
-local.get $box.pair.v0
-local.get $box.pair.v1

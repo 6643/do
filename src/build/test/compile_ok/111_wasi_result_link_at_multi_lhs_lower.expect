@@ -1,0 +1,10 @@
+(import "cm32p2|wasi:filesystem/types" "[method]descriptor.link-at" (func $__wasi_import_filesystem_types_descriptor_link_at
+call $__wasi_import_filesystem_types_descriptor_link_at
+i32.load
+i32.eqz
+if (result i32)
+i32.const 0
+i32.load
+i32.const 1
+i32.add
+local.set $status

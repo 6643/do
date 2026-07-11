@@ -11,7 +11,6 @@
 5. `doc/syntax/`: 按功能拆分的语法速查, 只展示当前正确语法。
 6. `doc/memory.md`: v1 可实现运行时内存模型。
 7. `doc/memory_layout_structs.md`: allocator block、managed object 和 layout table 的结构布局伪代码。
-8. `doc/arc.md`: 长期 ARC/Perceus/并发优化草案, 不作为 v1 直接实现规格。
 9. `doc/wit/wasi_p3_lowering.md`: `@wasi` / WIT / component lowering 的 compiler-facing 合同和当前可验证产物。
 10. `doc/wit/wasi_registry.json`: 当前已登记的 WIT target / record mirror registry, 供 manifest 校验和 component-plan 工具消费。
 11. `doc/roadmap_status.md`: roadmap 项目的当前状态、证据、跳过原因和恢复条件。
@@ -24,8 +23,9 @@
 4. 查运行时表示、ARC、storage 或 text lowering: 看 `doc/memory.md`; 查 allocator/block/object/layout 结构字段看 `doc/memory_layout_structs.md`。
 5. 查 `@wasi` / WIT / component lowering 边界: 看 `doc/wit/wasi_p3_lowering.md`; 查当前已登记 target 和 record mirror 看 `doc/wit/wasi_registry.json`。
 6. 查当前实现状态和暂跳过项: 看 `doc/roadmap_status.md`。
-7. 改 parser 语法时, 同步 `doc/grammar.peg`、`doc/syntax/`、测试和必要的 `doc/spec_rules.md` 语义约束。
-8. 改语义或静态约束时, 同步 `doc/spec_rules.md`、示例、测试和必要的 `doc/syntax/` 速查。
+7. 查编译器模块边界: 流水线在 `src/build/lexer.zig` / `parser.zig` / `sema.zig` / `codegen.zig`; 纯类型/布局 SSOT 在 `src/build/type_name.zig`; storage 指针与 payload/Tuple pack 的纯 WAT 在 `src/build/codegen_storage_wat.zig` / `src/build/codegen_payload_wat.zig` (见 `AGENTS.md` 与 `doc/start_here.md`)。
+8. 改 parser 语法时, 同步 `doc/grammar.peg`、`doc/syntax/`、测试和必要的 `doc/spec_rules.md` 语义约束。
+9. 改语义或静态约束时, 同步 `doc/spec_rules.md`、示例、测试和必要的 `doc/syntax/` 速查。
 
 ## 2. 规则索引
 
@@ -44,10 +44,10 @@
 | `@get/@set` 路径 primitive | `doc/spec_rules.md` 第 11 章 | `doc/syntax/expression.md`, `doc/syntax/builtin.md` |
 | 控制流、`defer`、loop | `doc/spec_rules.md` 第 12 章 | `doc/syntax/control.md`, `doc/syntax/loop.md` |
 | 编译期、入口、运行时边界 | `doc/spec_rules.md` 第 13 章 | `doc/syntax/entry-test.md`, `doc/memory.md` |
-| 标准库边界 | `doc/spec_rules.md` 第 14 章 | `src/*.do`, `doc/roadmap_status.md` |
-| 测试声明模型 | `doc/spec_rules.md` 第 15 章 | `doc/syntax/entry-test.md`, `tool/build/test/README.md` |
+| 标准库边界 | `doc/spec_rules.md` 第 14 章 | `lib/*.do`, `doc/roadmap_status.md` |
+| 测试声明模型 | `doc/spec_rules.md` 第 15 章 | `doc/syntax/entry-test.md`, `src/build/test/README.md` |
 | PEG 主文法说明 | `doc/spec_rules.md` 第 16 章 | `doc/grammar.peg` |
-| 诊断与测试约定 | `doc/spec_rules.md` 第 17 章 | `tool/build/test/README.md` |
+| 诊断与测试约定 | `doc/spec_rules.md` 第 17 章 | `src/build/test/README.md` |
 | 非目标 | `doc/spec_rules.md` 第 18 章 | `doc/roadmap_status.md` |
 
 ## 3. v1 核心边界摘要
@@ -72,5 +72,5 @@
 2. 不在 `doc/spec_rules.md` 内嵌大段 parser PEG; parser 结构进入 `doc/grammar.peg`。
 3. 不在 `doc/spec_rules.md` 内堆叠大量正反例; 示例和推荐写法进入 `doc/spec_examples.md`。
 4. `doc/syntax/` 只放当前正确语法速查, 不放长篇设计争论。
-5. 改语法、语义或实现时, 必须同步对应测试; parser/semantic/build 变更默认用 `./tool/build/test/run_tests.sh` 验证。
+5. 改语法、语义或实现时, 必须同步对应测试; parser/semantic/build 变更默认用 `./src/build/test/run_tests.sh` 验证。
 6. 文档引用章节号时优先引用 `doc/spec_rules.md`, 因为 `doc/spec.md` 只是入口。

@@ -1,4 +1,0 @@
-(func $sum_guard
-loop $__tail_sum_guard
-count=1 call $sum_guard
-br $__tail_sum_guard

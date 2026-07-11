@@ -1,4 +1,0 @@
-(func $sum_branch_with_defer
-;; defer-cleanup-call cleanup
-count=0 loop $__tail_sum_branch_with_defer
-count=3 call $sum_branch_with_defer

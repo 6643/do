@@ -1,0 +1,4 @@
+;; arc-managed-struct-set name=box field=value offset=0
+local.set $__storage_overwrite_tmp
+local.get $__storage_overwrite_tmp
+i32.store

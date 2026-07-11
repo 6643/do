@@ -1,3 +1,0 @@
-count=0 ;; field-get-move pair.left
-count=0 ;; field-get-move pair.right
-count=4 call $__arc_inc

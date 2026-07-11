@@ -1,4 +1,0 @@
-count=1 call $__arc_inc
-count=2 ;; arc-call-move box
-call $move_box
-local.set $box

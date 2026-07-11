@@ -1,0 +1,4 @@
+  (import "cm32p2|wasi:clocks/system-clock" "now" (func $__wasi_import_clocks_system_clock_now (param i32)))
+  (import "cm32p2|wasi:clocks/system-clock" "get-resolution" (func $__wasi_import_clocks_system_clock_get_resolution (result i64)))
+  (import "cm32p2|wasi:clocks/monotonic-clock" "now" (func $__wasi_import_clocks_monotonic_clock_now (result i64)))
+  (import "cm32p2|wasi:clocks/monotonic-clock" "get-resolution" (func $__wasi_import_clocks_monotonic_clock_get_resolution (result i64)))

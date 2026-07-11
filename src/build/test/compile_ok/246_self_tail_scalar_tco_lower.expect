@@ -1,0 +1,4 @@
+(func $sum_tail
+loop $__tail_sum_tail
+count=1 call $sum_tail
+br $__tail_sum_tail

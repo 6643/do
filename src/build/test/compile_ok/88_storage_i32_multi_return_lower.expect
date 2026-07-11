@@ -1,0 +1,6 @@
+(func $pair (result i32 i32)
+;; arc-return-move left
+;; arc-return-move right
+call $pair
+;; arc-overwrite-release b
+;; arc-overwrite-release a

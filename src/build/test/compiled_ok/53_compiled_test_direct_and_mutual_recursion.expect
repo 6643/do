@@ -1,0 +1,7 @@
+;; compiled-test 0 "compiled direct and mutual recursion"
+(func $countdown
+(func $is_even
+(func $is_odd
+call $countdown
+call $is_even
+call $is_odd

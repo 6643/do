@@ -1,0 +1,8 @@
+;; if-else-if-block
+;; if-else-block
+else
+;; arc-release-local data
+local.get $data
+call $__arc_dec
+return
+end

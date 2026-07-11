@@ -1,0 +1,55 @@
+{
+  "name": "change clears diagnostic",
+  "messages": [
+    {
+      "jsonrpc": "2.0",
+      "method": "initialize",
+      "id": 1,
+      "params": {
+        "capabilities": {}
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "textDocument/didOpen",
+      "params": {
+        "textDocument": {
+          "uri": "file:///tmp/do-lsp-change.do",
+          "languageId": "do",
+          "version": 1,
+          "text": "\"abc"
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "textDocument/didChange",
+      "params": {
+        "textDocument": {
+          "uri": "file:///tmp/do-lsp-change.do",
+          "version": 2
+        },
+        "contentChanges": [
+          {
+            "text": "test \"ok\" {\n    return\n}\n"
+          }
+        ]
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "shutdown",
+      "id": 2,
+      "params": null
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "exit",
+      "params": null
+    }
+  ],
+  "expect": [
+    "\"code\":\"UnterminatedString\"",
+    "\"diagnostics\":[]"
+  ]
+}

@@ -1,0 +1,4 @@
+(func $sum_branch
+loop $__tail_sum_branch
+count=1 call $sum_branch
+br $__tail_sum_branch

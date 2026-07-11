@@ -1,0 +1,5 @@
+;; arc-layout type_id=2 name=Box managed_count=1 payload_bytes=4
+;; arc-layout-managed-offset type_id=2 index=0 offset=0 field=value
+i32.const 2
+i32.eq
+i32.const 1

@@ -1,0 +1,10 @@
+local.get $box
+call $__arc_inc
+local.set $alias
+local.get $alias
+;; arc-release-local alias
+local.get $alias
+call $__arc_dec
+;; arc-release-local box
+local.get $box
+call $__arc_dec

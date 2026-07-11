@@ -1,3 +1,0 @@
-;; field-reflect-loop type=User
-;; field-set name=user field=left
-;; field-set name=user field=right

@@ -1,0 +1,5 @@
+;; compiled-test 0 "compiled return nil"
+(func $__test_0
+(export "__test_0" (func $__test_0))
+return
+unreachable

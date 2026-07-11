@@ -1,3 +1,0 @@
-(local $__variadic_pack_tmp i32)
-;; storage-put-scalar
-call $count

@@ -1,2 +1,0 @@
-;; wasi-bind source="entry" alias="host_file_sync" target="filesystem/types/descriptor.sync" params="descriptor" result="result<_,error-code>"
-;; wasi-bind source="entry" alias="host_stream_read" target="io/streams/input-stream.read" params="input-stream,u64" result="result<list<u8>,stream-error>"

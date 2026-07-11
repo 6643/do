@@ -1,8 +1,0 @@
-(import "cm32p2|wasi:filesystem/types" "[method]descriptor.open-at" (func $__wasi_import_filesystem_types_descriptor_open_at (param i32 i32 i32 i32 i32 i32 i32)))
-call $__wasi_import_filesystem_types_descriptor_open_at
-if (result i32 i32)
-i32.const 0
-i32.const 1
-i32.add
-local.set $status
-local.set $descriptor

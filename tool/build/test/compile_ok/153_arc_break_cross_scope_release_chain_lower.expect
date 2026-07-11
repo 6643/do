@@ -1,6 +1,0 @@
-;; loop-break-release
-;; arc-release-local inner
-call $__arc_dec
-;; arc-release-local outer
-call $__arc_dec
-br $__loop_break_

@@ -1,8 +1,0 @@
-(func $emit (param $value.__union_payload_0 i32) (param $value.__union_tag i32) (result i32)
-;; if-else-block
-local.get $value.__union_tag
-i32.const 0
-i32.eq
-else
-;; arc-return-move value.__union_payload_0
-local.get $value.__union_payload_0

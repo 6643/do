@@ -1,6 +1,0 @@
-(func $wrap (result i32 i32)
-call $pair
-return
-call $wrap
-local.set $ok
-local.set $a

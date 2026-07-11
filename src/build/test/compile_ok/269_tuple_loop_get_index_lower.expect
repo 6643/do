@@ -1,0 +1,2 @@
+;; loop-collection
+local.get $v.v0

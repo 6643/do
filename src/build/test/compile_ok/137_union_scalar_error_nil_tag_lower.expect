@@ -1,0 +1,23 @@
+(func $read_code (param $kind i32) (result i32 i32 i32)
+i32.const 0
+i32.const 0
+i32.const 0
+i32.const 42
+i32.const 0
+i32.const 1
+i32.const 0
+i32.const 2
+i32.const 2
+(local $result.__union_payload_0 i32)
+(local $result.__union_payload_1 i32)
+(local $result.__union_tag i32)
+call $read_code
+local.set $result.__union_tag
+local.set $result.__union_payload_1
+local.set $result.__union_payload_0
+local.get $result.__union_tag
+i32.const 2
+i32.eq
+local.get $result.__union_tag
+i32.const 0
+i32.eq

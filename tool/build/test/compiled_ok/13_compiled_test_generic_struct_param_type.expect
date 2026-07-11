@@ -1,3 +1,0 @@
-;; compiled-test 0 "compiled generic struct param type"
-(func $accept
-(export "__test_0" (func $__test_0))

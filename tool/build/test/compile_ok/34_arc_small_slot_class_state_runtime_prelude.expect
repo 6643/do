@@ -1,5 +1,0 @@
-;; arc-runtime slot class state v1
-(global $__slot_class_4 (mut i32) (i32.const -1))
-(func $__slot_class_head_ptr (param $slot_units i32) (result i32)
-global.get $__slot_class_4
-global.set $__slot_class_4

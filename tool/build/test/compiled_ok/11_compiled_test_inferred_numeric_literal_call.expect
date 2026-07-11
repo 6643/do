@@ -1,7 +1,0 @@
-;; compiled-test 0 "compiled inferred numeric literal call"
-(local $x i32)
-i32.add
-local.set $x
-if
-return
-unreachable

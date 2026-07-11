@@ -1,4 +1,0 @@
-count=0 call $__arc_inc
-;; arc-overwrite-move next
-count=1 ;; arc-overwrite-release data
-count=1 ;; arc-release-local next

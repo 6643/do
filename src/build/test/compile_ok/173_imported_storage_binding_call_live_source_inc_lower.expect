@@ -1,0 +1,4 @@
+count=1 call $__arc_inc
+count=0 ;; arc-call-move data
+local.set $out
+local.set $again

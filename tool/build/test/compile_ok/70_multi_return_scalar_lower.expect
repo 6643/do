@@ -1,7 +1,0 @@
-(func $pair (result i32 i32)
-i32.const 1
-i32.const 1
-return
-call $pair
-local.set $ok
-local.set $a

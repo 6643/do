@@ -1,8 +1,0 @@
-(func $emit (param $value.__union_payload_0 i32) (param $value.__union_tag i32) (result i32)
-local.get $value.__union_tag
-i32.const 0
-i32.eq
-local.get $value.__union_payload_0
-call $emit_user
-;; arc-call-move value
-local.set $value.__union_payload_0

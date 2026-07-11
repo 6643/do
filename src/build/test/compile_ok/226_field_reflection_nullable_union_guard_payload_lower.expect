@@ -1,0 +1,8 @@
+(func $stringify_depth__User (param $value.name.__union_payload_0 i32) (param $value.name.__union_tag i32) (param $depth i32) (result i32 i32 i32)
+;; field-reflect-loop type=User
+call $encode_value__text__text_nil__usize
+local.set $__field_122_0_encoded.__union_tag
+local.get $__field_122_0_encoded.__union_tag
+i32.const 2
+i32.eq
+call $append_bytes

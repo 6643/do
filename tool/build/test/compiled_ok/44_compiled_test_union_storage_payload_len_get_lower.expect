@@ -1,2 +1,0 @@
-;; compiled-test 0 "compiled union storage payload len get lower"
-local.get $bytes.__union_payload_0

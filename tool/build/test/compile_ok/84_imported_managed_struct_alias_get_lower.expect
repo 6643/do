@@ -1,9 +1,0 @@
-call $make_profile
-local.set $profile
-local.get $profile
-call $__arc_payload
-i32.load
-call $__arc_inc
-local.set $value
-;; arc-release-local value
-;; arc-release-local profile

@@ -1,2 +1,0 @@
-DuplicateFuncSignature
-函数签名按去掉私有标记后的名字和参数类型序列唯一

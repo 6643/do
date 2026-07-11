@@ -1,8 +1,0 @@
-;; loop-block
-;; defer-cleanup-call cleanup
-call $cleanup
-;; loop-continue-release
-;; arc-release-local data
-call $__arc_dec
-br $__loop_body_
-unreachable

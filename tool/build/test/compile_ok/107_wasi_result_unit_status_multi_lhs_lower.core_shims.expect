@@ -1,5 +1,0 @@
-(import "cm32p2|wasi:filesystem/types" "[method]descriptor.sync" (func $__wasi_import_filesystem_types_descriptor_sync (param i32 i32)))
-(func $__wasi_shim_entry_host_file_sync (param $p0 i32) (param $__result_area i32)
-local.get $p0
-local.get $__result_area
-call $__wasi_import_filesystem_types_descriptor_sync

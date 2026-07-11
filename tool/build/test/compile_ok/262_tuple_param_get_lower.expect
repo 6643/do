@@ -1,4 +1,0 @@
-(func $pair_first (param $pair.v0 i32) (param $pair.v1 i32) (result i32)
-local.get $pair.v0
-return
-call $pair_first

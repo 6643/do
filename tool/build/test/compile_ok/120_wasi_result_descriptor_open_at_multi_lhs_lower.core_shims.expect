@@ -1,3 +1,0 @@
-(import "cm32p2|wasi:filesystem/types" "[method]descriptor.open-at" (func $__wasi_import_filesystem_types_descriptor_open_at (param i32 i32 i32 i32 i32 i32 i32)))
-(func $__wasi_shim_entry_host_file_open_at (param $p0 i32) (param $p1 i32) (param $p2 i32) (param $p3 i32) (param $p4 i32) (param $p5 i32) (param $__result_area i32)
-call $__wasi_import_filesystem_types_descriptor_open_at

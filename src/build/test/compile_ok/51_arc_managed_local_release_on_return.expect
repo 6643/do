@@ -1,0 +1,10 @@
+;; arc-release-local box
+local.get $box
+call $__arc_dec
+;; arc-release-local next
+local.get $next
+call $__arc_dec
+;; arc-release-local bytes
+local.get $bytes
+call $__arc_dec
+return

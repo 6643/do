@@ -1,0 +1,11 @@
+(import "cm32p2|wasi:filesystem/types" "[method]descriptor.link-at" (func $__wasi_import_filesystem_types_descriptor_link_at (param i32 i32 i32 i32 i32 i32 i32 i32)))
+(func $__wasi_shim_entry_host_file_link_at (param $p0 i32) (param $p1 i32) (param $p2 i32) (param $p3 i32) (param $p4 i32) (param $p5 i32) (param $p6 i32) (param $__result_area i32)
+local.get $p0
+local.get $p1
+local.get $p2
+local.get $p3
+local.get $p4
+local.get $p5
+local.get $p6
+local.get $__result_area
+call $__wasi_import_filesystem_types_descriptor_link_at

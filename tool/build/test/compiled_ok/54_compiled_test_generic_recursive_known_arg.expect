@@ -1,3 +1,0 @@
-;; compiled-test 0 "compiled generic recursive known arg"
-(func $generic_countdown__i32
-call $generic_countdown__i32

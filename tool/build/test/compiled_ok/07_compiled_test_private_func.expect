@@ -1,7 +1,0 @@
-;; compiled-test 0 "compiled private func"
-(func $double (param $x i32) (result i32)
-i32.mul
-call $double
-if
-return
-unreachable

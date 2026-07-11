@@ -1,0 +1,4 @@
+count=0 ;; arc-release-local alias
+count=0 local.set $alias
+count=1 ;; arc-release-local box
+count=1 ;; arc-release-local bytes

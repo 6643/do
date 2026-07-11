@@ -1,3 +1,0 @@
-value() -> i32 {
-    return 11
-}

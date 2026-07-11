@@ -1,0 +1,11 @@
+;; arc-runtime large span release v1
+(func $__arc_release_large (param $object i32)
+call $__small_block_for_object
+i32.store8
+local.get $span_len
+i32.store
+i32.const 8
+i32.add
+i32.const 0
+i32.store
+call $__arc_release_large

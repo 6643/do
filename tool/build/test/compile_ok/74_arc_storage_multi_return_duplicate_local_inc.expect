@@ -1,7 +1,0 @@
-(func $dup (result i32 i32)
-;; arc-return-move data
-;; arc-return-copy data
-local.get $data
-local.get $data
-call $__arc_inc
-return

@@ -1,0 +1,16 @@
+;; arc-runtime object header accessors v0
+(func $__arc_payload (param $object i32) (result i32)
+local.get $object
+i32.const 8
+i32.add
+)
+(func $__arc_rc (param $object i32) (result i32)
+local.get $object
+i32.load
+)
+(func $__arc_type_id (param $object i32) (result i32)
+local.get $object
+i32.const 4
+i32.add
+i32.load
+)

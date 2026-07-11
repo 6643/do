@@ -1,5 +1,0 @@
-(func $make_box (result i32)
-;; arc-return-move box
-call $make_box
-local.set $box
-;; arc-release-local box

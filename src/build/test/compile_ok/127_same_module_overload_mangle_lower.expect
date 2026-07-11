@@ -1,0 +1,5 @@
+(func $pick__i32 (param $x i32) (result i32)
+i32.const 11
+(func $pick__i64 (param $x i64) (result i64)
+i64.const 22
+call $pick__i64

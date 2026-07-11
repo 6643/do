@@ -1,0 +1,5 @@
+count=1 ;; arc-call-move data
+count=1 call $__arc_inc
+local.set $first
+local.set $second
+local.set $size

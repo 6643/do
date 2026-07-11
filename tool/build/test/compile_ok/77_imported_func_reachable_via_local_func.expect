@@ -1,9 +1,0 @@
-(func $forward (param $x i32) (result i32 i32)
-local.get $x
-call $pair
-return
-(func $pair (param $x i32) (result i32 i32)
-i32.const 11
-call $forward
-local.set $ok
-local.set $n

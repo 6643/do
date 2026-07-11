@@ -1,0 +1,6 @@
+i32.const 65535
+;; arc-storage-managed-release
+;; storage-managed-element-inc
+;; storage-managed-get-inc
+;; arc-release-local xs
+;; arc-release-local out

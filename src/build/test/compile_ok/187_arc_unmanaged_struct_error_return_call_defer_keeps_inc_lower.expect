@@ -1,0 +1,4 @@
+count=1 call $__arc_inc
+count=0 ;; arc-call-move data
+call $make
+;; defer-cleanup-call nop

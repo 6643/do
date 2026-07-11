@@ -1,2 +1,0 @@
-;; compiled-test 0 "compiled struct get assignment fresh local move"
-count=1 ;; field-get-move box.value

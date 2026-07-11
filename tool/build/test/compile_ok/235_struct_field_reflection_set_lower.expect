@@ -1,3 +1,0 @@
-;; field-reflect-loop type=User
-;; field-set name=user field=id
-;; field-set name=user field=active

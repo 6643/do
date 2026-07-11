@@ -1,8 +1,0 @@
-"target": "filesystem/types/descriptor.sync"
-"kind": "result-unit-error-code"
-"module": "cm32p2|wasi:filesystem/types"
-"name": "[method]descriptor.sync"
-"ok": "_"
-"err": "error-code"
-"payload_offset": 4
-"size": 8

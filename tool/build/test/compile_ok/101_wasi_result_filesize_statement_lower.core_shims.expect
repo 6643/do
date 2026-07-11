@@ -1,4 +1,0 @@
-(import "cm32p2|wasi:filesystem/types" "[method]descriptor.write" (func $__wasi_import_filesystem_types_descriptor_write (param i32 i32 i32 i64 i32)))
-(func $__wasi_shim_entry_host_file_write (param $p0 i32) (param $p1 i32) (param $p2 i32) (param $p3 i64) (param $__result_area i32)
-local.get $__result_area
-call $__wasi_import_filesystem_types_descriptor_write

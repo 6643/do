@@ -1,5 +1,0 @@
-;; compiled-test 0 "compiled is narrows scalar branch"
-;; compiled-test 1 "compiled is narrows struct branch"
-;; compiled-test 2 "compiled is narrows error branch"
-local.get $value.__union_payload_0
-local.get $value.__union_payload_1

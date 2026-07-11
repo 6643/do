@@ -1,3 +1,0 @@
-(func $factorial
-call $factorial
-i32.mul

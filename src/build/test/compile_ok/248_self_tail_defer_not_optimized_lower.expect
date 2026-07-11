@@ -1,0 +1,4 @@
+(func $sum_tail_with_defer
+;; defer-cleanup-call cleanup
+count=0 loop $__tail_sum_tail_with_defer
+count=2 call $sum_tail_with_defer

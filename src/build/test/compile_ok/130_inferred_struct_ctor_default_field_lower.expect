@@ -1,0 +1,6 @@
+i32.const 3
+local.set $cfg.retries
+i32.const 9000
+local.set $cfg.port
+i32.const 0
+local.set $cfg.secure

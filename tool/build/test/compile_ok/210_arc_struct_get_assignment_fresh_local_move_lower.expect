@@ -1,3 +1,0 @@
-count=1 ;; field-get-move box.value
-count=1 call $__arc_inc
-count=1 ;; arc-overwrite-release data

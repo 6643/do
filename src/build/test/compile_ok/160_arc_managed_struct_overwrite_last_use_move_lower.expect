@@ -1,0 +1,4 @@
+count=2 call $__arc_inc
+;; arc-overwrite-move next_box
+count=1 ;; arc-overwrite-release box
+count=1 ;; arc-release-local next_box

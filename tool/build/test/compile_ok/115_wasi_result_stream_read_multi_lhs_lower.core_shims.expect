@@ -1,3 +1,0 @@
-(import "cm32p2|wasi:io/streams" "[method]input-stream.read" (func $__wasi_import_io_streams_input_stream_read (param i32 i64 i32)))
-(func $__wasi_shim_entry_host_input_read (param $p0 i32) (param $p1 i64) (param $__result_area i32)
-call $__wasi_import_io_streams_input_stream_read

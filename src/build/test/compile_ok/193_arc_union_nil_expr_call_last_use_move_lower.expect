@@ -1,0 +1,4 @@
+count=0 call $__arc_inc
+call $maybe
+;; arc-call-move data
+local.set $data

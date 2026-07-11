@@ -1,0 +1,16 @@
+(func $move_box (param $box i32) (result i32)
+;; arc-return-move box
+local.get $box
+return
+count=1 call $__arc_inc
+;; arc-call-move box
+local.set $out
+;; arc-release-local out
+local.get $out
+call $__arc_dec
+;; arc-release-local box
+local.get $box
+call $__arc_dec
+;; arc-release-local bytes
+local.get $bytes
+call $__arc_dec

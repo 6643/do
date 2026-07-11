@@ -1,0 +1,5 @@
+(import "cm32p2|wasi:filesystem/types" "[resource-drop]descriptor" (func $__wasi_import_filesystem_types_descriptor_drop (param i32)))
+(func $close_sample (param $file.id i64)
+call $close_file
+(func $close_file (param $file.id i64)
+call $__wasi_import_filesystem_types_descriptor_drop

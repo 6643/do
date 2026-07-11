@@ -1,5 +1,0 @@
-;; compiled-test 0 "compiled tuple return"
-(func $make_pair (result i32 i32)
-call $make_pair
-local.set $pair.v1
-local.set $pair.v0

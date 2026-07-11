@@ -1,8 +1,0 @@
-(func $make_partial (result i32 i32)
-;; arc-return-move keep
-local.get $keep
-i32.const 7
-;; arc-release-local drop
-local.get $drop
-call $__arc_dec
-return

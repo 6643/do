@@ -1,0 +1,9 @@
+;; arc-runtime storage write helpers v1
+call $__arc_rc
+i32.eq
+i32.lt_u
+local.get $storage
+return
+memory.copy
+call $__storage_set_u8
+call $__storage_put_u8

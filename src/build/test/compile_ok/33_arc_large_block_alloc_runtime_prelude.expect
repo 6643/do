@@ -1,0 +1,17 @@
+;; arc-runtime large block allocator v1
+(func $__arc_alloc_large (param $payload_bytes i32) (param $type_id i32) (result i32)
+(local $object_bytes i32)
+(local $span_len i32)
+(local $block i32)
+(local $object i32)
+i32.const 1024
+i32.div_u
+i32.store8
+i32.const 4
+i32.add
+local.get $span_len
+i32.store
+local.get $block
+i32.const 8
+i32.add
+local.set $object

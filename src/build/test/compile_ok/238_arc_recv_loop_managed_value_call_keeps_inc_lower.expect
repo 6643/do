@@ -1,0 +1,5 @@
+;; loop-recv
+count=0 ;; arc-call-move item
+count=5 call $__arc_inc
+local.set $item
+call $take

@@ -1,3 +1,0 @@
-local.get $rest
-call $count
-call $forward

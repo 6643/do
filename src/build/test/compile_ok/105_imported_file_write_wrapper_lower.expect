@@ -1,0 +1,7 @@
+(func $write_sample (param $file.id i64) (result i32 i32)
+call $write_file
+(func $write_file (param $file.id i64) (param $data i32) (param $offset i32) (result i32 i32)
+call $__wasi_import_filesystem_types_descriptor_write
+if (result i64 i32)
+local.set $status
+call $__mod_0__file_status_to_error

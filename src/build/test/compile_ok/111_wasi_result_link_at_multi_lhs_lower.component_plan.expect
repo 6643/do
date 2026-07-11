@@ -1,0 +1,7 @@
+"target": "filesystem/types/descriptor.link-at"
+"kind": "result-unit-error-code"
+"module": "cm32p2|wasi:filesystem/types"
+"name": "[method]descriptor.link-at"
+"ok": "_"
+"err": "error-code"
+"payload_offset": 4

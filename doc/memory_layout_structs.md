@@ -1,7 +1,7 @@
 # do v1 内存布局 Zig 结构伪代码
 
 **状态**: v1 当前草案, 已与 `doc/memory.md` 对齐。
-**目标**: 只描述 allocator block、managed object、layout table 和 ARC release/COW 原型的字段与作用。
+**目标**: 只描述 allocator block、managed object、layout table 和 ARC release/COW 的字段与作用。
 
 ---
 
@@ -310,6 +310,8 @@ data:
   element storage...
 ```
 
+实现对照 (WAT): `src/build/codegen_storage_wat.zig` 将 `len` 视为 payload+0、`cap` 为 payload+4、元素区为 payload+8 (`STORAGE_PAYLOAD_HEADER_BYTES`); runtime 辅助 `$__arc_payload` / `$__storage_check_range` 在 `src/build/runtime_prelude_wat.zig`。
+
 `List<T>` 是可变元素数量对象:
 
 1. `len` 表示当前有效元素数量, 用于 `@len`、循环和边界检查。
@@ -426,24 +428,3 @@ release(handle):
 15. `slot_classes[slot_units]` 是全局 allocator 外置状态; v1 可以普通写入, shared memory 阶段使用 `AtomicU64`。
 
 ---
-
-## 14. 原型与验证
-
-以下四个原型用于验证本节布局草案与运行时算法, 不是额外规范来源。字段布局和 v1 实现边界仍以本文件、`doc/memory.md`、`doc/roadmap_status.md` 和编译器回归为准。
-
-当前草案有四个文档侧原型:
-
-1. `doc/arc.ts`: 计算 1KB SmallBlock 的 4B 步进 slot class 和利用率。
-2. `doc/arc_allocator.ts`: 验证 64KB page 切成 64 个 1KB block、bitmap small block、large span、free span 合并和 slot class state。
-3. `doc/arc_object_runtime.ts`: 验证 `Object rc/type_id/data`、layout table、`inc/dec`、release worklist、managed child drop 和释放后 allocator slot 复用。
-4. `doc/arc_cow_runtime.ts`: 验证 `[T]` 写入时的值语义 COW: `rc == 1` 且容量足够时复用, `rc > 1` 或容量不足时 clone/grow。
-
-验证入口:
-
-```bash
-bun doc/arc.ts
-bun doc/arc_allocator.test.ts
-bun doc/arc_object_runtime.test.ts
-bun doc/arc_cow_runtime.test.ts
-tsc --noEmit --target ES2020 --module commonjs doc/arc.ts doc/arc_allocator.ts doc/arc_allocator.test.ts doc/arc_object_runtime.ts doc/arc_object_runtime.test.ts doc/arc_cow_runtime.ts doc/arc_cow_runtime.test.ts
-```

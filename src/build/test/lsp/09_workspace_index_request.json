@@ -1,0 +1,78 @@
+{
+  "name": "workspace index request",
+  "workspace": {
+    "files": [
+      {
+        "path": "external.do",
+        "text": "ProjectUser {\n    title text\n}\n\nload_user() -> ProjectUser {\n    return ProjectUser{ title = \"a\" }\n}\n"
+      }
+    ]
+  },
+  "messages": [
+    {
+      "jsonrpc": "2.0",
+      "method": "initialize",
+      "id": 1,
+      "params": {
+        "rootUri": "{{workspaceUri}}",
+        "capabilities": {}
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "textDocument/didOpen",
+      "params": {
+        "textDocument": {
+          "uri": "{{workspaceUri}}/main.do",
+          "languageId": "do",
+          "version": 1,
+          "text": "test \"use workspace\" {\n    value ProjectUser = load_user()\n    return\n}\n"
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "textDocument/completion",
+      "id": 2,
+      "params": {
+        "textDocument": {
+          "uri": "{{workspaceUri}}/main.do"
+        },
+        "position": {
+          "line": 1,
+          "character": 4
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "textDocument/definition",
+      "id": 3,
+      "params": {
+        "textDocument": {
+          "uri": "{{workspaceUri}}/main.do"
+        },
+        "position": {
+          "line": 1,
+          "character": 12
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "shutdown",
+      "id": 4,
+      "params": null
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "exit",
+      "params": null
+    }
+  ],
+  "expect": [
+    "\"label\":\"ProjectUser\",\"kind\":7",
+    "\"label\":\"load_user\",\"kind\":3",
+    "\"result\":{\"uri\":\"{{workspaceUri}}/external.do\",\"range\":{\"start\":{\"line\":0,\"character\":0},\"end\":{\"line\":0,\"character\":11}}}"
+  ]
+}

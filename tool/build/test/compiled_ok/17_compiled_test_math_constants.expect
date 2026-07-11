@@ -1,5 +1,0 @@
-;; compiled-test 0 "compiled math constants"
-i32.const -128
-i64.const 9223372036854775807
-f32.const 3.1415927
-f64.const 3.141592653589793

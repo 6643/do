@@ -1,4 +1,0 @@
-(func $choose_tail__i32
-loop $__tail_choose_tail__i32
-count=1 call $choose_tail__i32
-br $__tail_choose_tail__i32

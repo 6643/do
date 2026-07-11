@@ -1,4 +1,0 @@
-(func $__mod_1__helper (result i32)
-call $__mod_1__helper
-(func $__mod_0__helper (result i32)
-call $__mod_0__helper

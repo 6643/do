@@ -1,7 +1,0 @@
-if
-;; defer-cleanup-call cleanup
-call $cleanup
-;; arc-guard-return-release
-;; arc-release-local data
-call $__arc_dec
-return

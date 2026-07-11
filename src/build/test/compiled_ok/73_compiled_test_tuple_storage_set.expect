@@ -1,0 +1,6 @@
+;; compiled-test 0 "compiled tuple storage set"
+(local $__tuple_pack_base_tmp i32)
+;; storage-put-scalar
+;; storage-set-scalar
+i32.const 5
+local.set $__tuple_pack_base_tmp

@@ -2,7 +2,7 @@
 
 **状态**: v1 实现规格草案
 **目标**: 在不向用户暴露指针/引用的前提下, 为 Wasm lowering、`[T]`、`text`、结构体、ARC、host ABI 和未来 store/atomic 设计提供统一边界。
-**关系**: `doc/spec.md` 是规范入口; `doc/spec_rules.md` 定义源码语义; 本文定义运行时表示和编译器实现边界; `doc/arc.md` 保留长期 ARC/Perceus/并发优化设想; `doc/arc_*.ts` 只是文档侧分析/验证原型, 不作为 v1 权威实现规格。
+**关系**: `doc/spec.md` 是规范入口; `doc/spec_rules.md` 定义源码语义; 本文定义运行时表示和编译器实现边界 (v1 权威规格)。
 
 ---
 
@@ -76,9 +76,10 @@ v1 默认对象头只保存 ARC 和 layout 所需的公共字段:
 2. `type_id` 指向编译器生成的 layout table。
 3. 公共对象头不保存 `len/cap`。`text`、`[T]` 和 managed struct 的 payload 解释由 `type_id -> layout table` 决定。
 4. `text` 的 byte length 放在 `Object.data` 起点。
-5. `[T]` 的 `len/cap` 放在 `Object.data` 起点。
+5. `[T]` 的 `len/cap` 放在 `Object.data` 起点: `len: u32` @0, `cap: u32` @4, 元素数据从 offset 8 起 (共 8 字节 payload header)。
 6. 固定布局 managed struct 不需要 `len/cap`, payload 字节布局完全由 layout table 决定。
 7. header 压缩到 `u16/u16`、尾部 reference count、状态化 header 都是 v2 优化。
+8. 编译器侧与上述 layout 对齐的纯 WAT 访问在 `src/build/codegen_storage_wat.zig` (`STORAGE_PAYLOAD_HEADER_BYTES = 8`, `type_id` `[u8]`-style=`1` / managed-storage=`65535`); 类型/元素宽度分类在 `src/build/type_name.zig`; 业务 `@set/@put`/COW 编排仍在 `src/build/codegen.zig`。
 
 ### 3.3 Layout Table
 
@@ -116,6 +117,7 @@ zs [u8] = @put(xs, 4)
 3. `@set(xs, i, value)` 要求 `i < len`; 返回更新后的 `[T]` 值。
 4. `@put(xs, value, rest...)` 返回追加后的 `[T]` 值。
 5. `loop value, index = xs` 编译为 `0..@len(xs)` 范围内的 `@get(xs, index)`, 语言生成的 index 不越界。
+6. 元素地址 lowering: `payload + 8 + i * elem_bytes` (见 `src/build/codegen_storage_wat.zig` 的 `emitStorageElementPtrFromLocal`); 标量叶子 `[Tuple<...>]` pack 走 scheme A, 见 `src/build/type_name.zig` 的 `tupleScalarLeafStorageByteWidth` 与 `src/build/codegen_payload_wat.zig`。
 
 ### 4.3 COW
 
@@ -359,7 +361,7 @@ v1 字段读取 move 的证明条件:
 1. collection loop 内用外层 storage / managed struct 做 call 参数, 继续 `inc`, 不出现 `arc-call-move`。
 2. collection loop 的 managed value binding 做 call 参数, 继续 `inc`, 不出现 `arc-call-move`。
 3. recv loop 的 managed value binding 做 call 参数, 继续 `inc`, 不出现 `arc-call-move`。
-4. 验证命令: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh`, 结果 `pass=658 fail=0 skip=70`。
+4. 验证命令: `SKIP_BUILD=1 ./src/build/test/run_tests.sh`, 结果 `pass=658 fail=0 skip=70`。
 
 03.7.3 设计已收敛到最小 LoopMoveAnalysis 输入/输出:
 
@@ -522,7 +524,7 @@ return-only 子集也暂不落地:
 
 ### 8.10 03.8.1 SourceOrigin 只读元数据落地
 
-03.8.1 结论: `tool/build/codegen.zig` 已增加只读 `SourceOrigin` 元数据, 默认 `unknown`, 当前不改变任何 lowering 或 move 判定。
+03.8.1 结论: `src/build/codegen.zig` 已增加只读 `SourceOrigin` 元数据, 默认 `unknown`, 当前不改变任何 lowering 或 move 判定。
 
 当前已落地的 origin 标注:
 
@@ -558,13 +560,13 @@ return-only 子集也暂不落地:
 
 验证证据:
 
-1. 新增 `tool/build/codegen.zig` 内部 Zig 单测, 覆盖 `unknown` 默认值、`param_or_import`、`loop_source` 和 `compiler_temp` 标注。
-2. `cd tool && zig test build/codegen.zig` 结果为 `All 1 tests passed.`。
-3. `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 必须继续保持现有摘要不变, 证明 lowering 未漂移。
+1. 新增 `src/build/codegen.zig` 内部 Zig 单测, 覆盖 `unknown` 默认值、`param_or_import`、`loop_source` 和 `compiler_temp` 标注。
+2. `cd src && zig test build/codegen.zig` 结果为 `All 1 tests passed.`。
+3. `SKIP_BUILD=1 ./src/build/test/run_tests.sh` 必须继续保持现有摘要不变, 证明 lowering 未漂移。
 
 ### 8.12 03.8.3 path/cleanup facts 最小接口
 
-03.8.3 结论: `tool/build/ownership.zig` 已显式引入 `PathCleanupFacts`, 并把 release-plan skip 从 ad hoc `skip_names` 收敛到统一的 path facts 接口; `tool/build/codegen.zig` 已切到新接口, 但当前仍只传默认 facts, 不改变 lowering, 也不放开 loop 内 `arc-call-move`。
+03.8.3 结论: `src/build/ownership.zig` 已显式引入 `PathCleanupFacts`, 并把 release-plan skip 从 ad hoc `skip_names` 收敛到统一的 path facts 接口; `src/build/codegen.zig` 已切到新接口, 但当前仍只传默认 facts, 不改变 lowering, 也不放开 loop 内 `arc-call-move`。
 
 本轮已落地的最小接口:
 
@@ -582,9 +584,9 @@ return-only 子集也暂不落地:
 
 验证证据:
 
-1. `cd tool && zig test build/ownership.zig` 结果 `All 2 tests passed.`。
-2. `cd tool && zig test build/codegen.zig` 结果 `All 13 tests passed.`。
-3. `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 必须继续保持绿色, 证明 lowering 未漂移。
+1. `cd src && zig test build/ownership.zig` 结果 `All 2 tests passed.`。
+2. `cd src && zig test build/codegen.zig` 结果 `All 13 tests passed.`。
+3. `SKIP_BUILD=1 ./src/build/test/run_tests.sh` 必须继续保持绿色, 证明 lowering 未漂移。
 
 ### 8.13 03.8.4 完整 ownership IR 启动边界
 
@@ -616,7 +618,7 @@ D1.2 结论: 已新增内部 `ownership_facts` 数据结构, 只记录 move / co
 
 当前数据结构:
 
-1. `tool/build/ownership_facts.zig` 定义 `SourceOrigin`, 镜像当前 codegen-local origin 分类, 为后续迁移 `Local` / `StructLocal` / `StorageLocal` / `UnionLocal` 的 origin 字段做准备。
+1. `src/build/ownership_facts.zig` 定义 `SourceOrigin`, 镜像当前 codegen-local origin 分类, 为后续迁移 `Local` / `StructLocal` / `StorageLocal` / `UnionLocal` 的 origin 字段做准备。
 2. `MoveCandidateKind` 覆盖 direct、call arg、union-binding call arg、field get、field set、return value 和 dead alias 这几类当前分散判断。
 3. `MoveContext` 统一承载 body / statement / arg / args token range、`PathCleanupFacts`、defer 可见性、loop 上下文和 allow gate。
 4. `MoveUseWindows` 显式承载 fresh source gap、after expr、after arg、after stmt 和 body rest, 避免 D1.3 继续把 use-after window 隐式散落在各 helper。
@@ -624,15 +626,15 @@ D1.2 结论: 已新增内部 `ownership_facts` 数据结构, 只记录 move / co
 
 当前 D1.2 完成时故意保持不变的边界:
 
-1. `tool/build/codegen.zig` 仍使用原有 `directManagedLastUseMoveSource(...)`、`directManagedCallLastUseMoveSource(...)`、`directManagedUnionBindingCallMoveSource(...)` 和 `fieldGetLastUseMoveSource(...)`。
+1. `src/build/codegen.zig` 仍使用原有 `directManagedLastUseMoveSource(...)`、`directManagedCallLastUseMoveSource(...)`、`directManagedUnionBindingCallMoveSource(...)` 和 `fieldGetLastUseMoveSource(...)`。
 2. `emitBody(...)` 仍使用 `loop_ctx == null` 作为 loop 内 call 参数 move 的全局门。
 3. 不放开新的 move 场景, 不改变任何 WAT pattern。
 
 验证证据:
 
-1. RED: `cd tool && zig test build/ownership_facts.zig` 失败于 `use of undeclared identifier 'MoveCandidate'`。
-2. GREEN: `cd tool && zig test build/ownership_facts.zig` 结果为 `All 4 tests passed.`。
-3. 聚合验证: `cd tool && zig test main.zig` 结果为 `All 56 tests passed.`。
+1. RED: `cd src && zig test build/ownership_facts.zig` 失败于 `use of undeclared identifier 'MoveCandidate'`。
+2. GREEN: `cd src && zig test build/ownership_facts.zig` 结果为 `All 4 tests passed.`。
+3. 聚合验证: `cd src && zig test main.zig` 结果为 `All 56 tests passed.`。
 
 ### 8.15 D1.3 call 参数 move 判断迁移到 facts
 
@@ -640,8 +642,8 @@ D1.3 结论: 普通用户函数 call 参数 last-use move 的 allow/defer/use-af
 
 当前实现:
 
-1. `tool/build/ownership_facts.zig` 新增 `decideCallArgMove(...)`, 对 `.call_arg` candidate 统一判断 disabled、defer visible、after-arg use、after-stmt use 和 body-rest use。
-2. `tool/build/codegen.zig` 新增 `ownership_facts` import 和 `factsSourceOrigin(...)` 显式映射, 暂不整体搬迁 codegen-local `SourceOrigin`。
+1. `src/build/ownership_facts.zig` 新增 `decideCallArgMove(...)`, 对 `.call_arg` candidate 统一判断 disabled、defer visible、after-arg use、after-stmt use 和 body-rest use。
+2. `src/build/codegen.zig` 新增 `ownership_facts` import 和 `factsSourceOrigin(...)` 显式映射, 暂不整体搬迁 codegen-local `SourceOrigin`。
 3. `directManagedCallLastUseMoveSource(...)` 仍负责 direct managed local 识别、source/origin 查找和旧返回结构构造; move 是否接受改由 `MoveCandidate` + `decideCallArgMove(...)` 决定。
 
 当前故意保持不变的边界:
@@ -652,11 +654,11 @@ D1.3 结论: 普通用户函数 call 参数 last-use move 的 allow/defer/use-af
 
 验证证据:
 
-1. RED: `cd tool && zig test build/ownership_facts.zig` 失败于 `use of undeclared identifier 'decideCallArgMove'`。
-2. GREEN: `cd tool && zig test build/ownership_facts.zig` 结果为 `All 5 tests passed.`。
-3. Focused codegen: `cd tool && zig test build/codegen.zig` 结果为 `All 30 tests passed.`。
+1. RED: `cd src && zig test build/ownership_facts.zig` 失败于 `use of undeclared identifier 'decideCallArgMove'`。
+2. GREEN: `cd src && zig test build/ownership_facts.zig` 结果为 `All 5 tests passed.`。
+3. Focused codegen: `cd src && zig test build/codegen.zig` 结果为 `All 30 tests passed.`。
 4. ARC WAT pattern: `161_arc_storage_bare_call_last_use_move_lower` 仍包含 `arc-call-move data`; `162_arc_storage_param_call_live_source_inc_lower` 仍不包含 `arc-call-move data`。
-5. Full regression: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 结果为 `pass=784 fail=0 skip=35`。
+5. Full regression: `SKIP_BUILD=1 ./src/build/test/run_tests.sh` 结果为 `pass=784 fail=0 skip=35`。
 
 ---
 
@@ -754,11 +756,6 @@ COW 回退条件:
 
 ## 12. 实施顺序
 
-以下 `doc/arc_*.ts` 只是文档侧分析/验证原型: 用来验证 slot class、allocator、release worklist 和 COW 行为。当前权威边界仍以本文、`doc/memory_layout_structs.md`、`doc/roadmap_status.md` 和编译器回归为准。
-
-1. 已有文档侧 allocator 原型: `doc/arc_allocator.ts`。
-2. 已有文档侧 Object/LayoutTable/ARC release 原型: `doc/arc_object_runtime.ts`。
-3. 已有文档侧 COW 值语义原型: `doc/arc_cow_runtime.ts`。
 4. 已有 compiler WAT runtime prelude: 输出 1KB 对齐的 `__heap_base` 和可变 `__heap_cursor`。
 5. 已有最小 WAT runtime primitives:
    - `__memory_grow_to(end)`。
@@ -781,7 +778,7 @@ COW 回退条件:
 10. 已有含 managed 字段 struct 的最小 allocation/get/set lowering: 局部变量保存 struct object handle, payload 按 layout 读写字段, managed child 字段写入前会按 RHS 所有权执行必要 `inc`, typed alias binding 会 `inc` RHS handle, 更新时会把 RHS 单次求值到 scratch local, 再 `dec` 旧 child 并写入新 child。
 11. 已有显式 `return`、guard return、最小 `if/else/else if` 块内 return 和 fallthrough 前的最小 managed local release lowering: 按局部声明逆序对非返回值的 `[u8]` 和 managed struct handle 调用 `dec`; `return x` 直接返回 managed local 时按 ownership move 处理, callee 不释放 `x`。
 12. `if/else/else if` 和最小 `loop` 块内声明的 managed local 会在块正常落出时释放并写回 0 sentinel; 如果块内提前 `return`, 当前 return 清理路径已经释放该 local, 后续块末尾释放处于不可达路径。loop body 内的 `break/continue` 会先释放 loop body 递归收集到的 managed locals, 再跳转到 break/continue label。复杂循环回边平衡仍是后续项。
-13. 已有独立 ownership exit plan foundation: `tool/build/ownership.zig` 先构造 `return`、guard `return`、fallthrough、block exit 和 `break/continue` 的 `ExitPlan` / `ReleaseStep`，再由 `tool/build/codegen.zig` 消费这些 steps 发出 `__arc_dec` 和必要的 0 sentinel 写回。当前这只是退出路径清理边界，不等于完整 ownership IR，也不做 escape analysis 或 region。
+13. 已有独立 ownership exit plan foundation: `src/build/ownership.zig` 先构造 `return`、guard `return`、fallthrough、block exit 和 `break/continue` 的 `ExitPlan` / `ReleaseStep`，再由 `src/build/codegen.zig` 消费这些 steps 发出 `__arc_dec` 和必要的 0 sentinel 写回。当前这只是退出路径清理边界，不等于完整 ownership IR，也不做 escape analysis 或 region。
 14. 已有死 alias `inc/dec` 相消: 对后续不再使用的 managed alias 绑定，不再生成无意义的 alias retain/release；相关 WAT 回归已锁住 live-source 场景继续保守。
 15. 已有保守 last-use move 子集: direct storage / managed struct overwrite、用户函数 call 参数、binding、assignment、return call、union guard / nil expr、plain struct field read、field reflection read 和 managed struct field write，在可证明本地末次使用且当前 `defer` / loop 边界安全时跳过部分冗余 `inc` 并清空 source。参数、借用、helper/shared-source 字段读取、loop-carried source 仍保持保守。
 16. 已有 `[u8]` 参数调用的最小 ownership lowering: call site 对非 move 的直接 managed local 实参执行 `inc`, callee 把 `[u8]` 参数登记为 storage local并在清理路径中 `dec`。
@@ -790,16 +787,6 @@ COW 回退条件:
 19. 已有 `text` runtime 表示和 `[u8]` 边界函数的当前 v1 子集；`text` 仍不自动等同于 `[u8]`。
 20. 已有字段读取 move 的唯一拥有 / alias 证明设计和实现边界: v1 只允许本地 fresh-owner 且 alias-free 的字段读取 move; 参数、借用、helper/shared-source、loop-carried source 和同语句多字段读取继续保守。后续继续扩展时, 必须先按 8.5 边界保留拒绝/允许回归。
 21. 最后再评估 `@store_*`、真实 atomic 和 host/WASI 复杂 ABI。
-
-文档侧验证入口:
-
-```bash
-bun doc/arc.ts
-bun doc/arc_allocator.test.ts
-bun doc/arc_object_runtime.test.ts
-bun doc/arc_cow_runtime.test.ts
-tsc --noEmit --target ES2020 --module commonjs doc/arc.ts doc/arc_allocator.ts doc/arc_allocator.test.ts doc/arc_object_runtime.ts doc/arc_object_runtime.test.ts doc/arc_cow_runtime.ts doc/arc_cow_runtime.test.ts
-```
 
 ---
 

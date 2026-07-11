@@ -1,7 +1,0 @@
-"target": "filesystem/types/descriptor.write"
-"kind": "result-filesize-error-code"
-"module": "cm32p2|wasi:filesystem/types"
-"name": "[method]descriptor.write"
-"ok": "filesize"
-"err": "error-code"
-"payload_offset": 8

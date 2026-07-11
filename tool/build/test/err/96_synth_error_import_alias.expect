@@ -1,2 +1,0 @@
-InvalidImportDecl
-name = @lib("./file.do", symbol)

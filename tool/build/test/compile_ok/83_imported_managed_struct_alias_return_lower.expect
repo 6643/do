@@ -1,7 +1,0 @@
-;; arc-layout type_id=2 name=Box
-;; arc-layout type_id=2 name=Profile
-(func $make_profile (result i32)
-;; arc-return-move box
-call $make_profile
-local.set $profile
-;; arc-release-local profile

@@ -1,0 +1,13 @@
+(func $make_pair (result i32 i32)
+;; arc-return-move left
+;; arc-return-move right
+local.get $left
+local.get $right
+return
+call $make_pair
+local.set $__storage_overwrite_tmp
+;; arc-overwrite-release second
+local.set $second
+local.set $__storage_overwrite_tmp
+;; arc-overwrite-release first
+local.set $first

@@ -1,0 +1,10 @@
+(import "cm32p2|wasi:filesystem/types" "[method]descriptor.open-at" (func $__wasi_import_filesystem_types_descriptor_open_at (param i32 i32 i32 i32 i32 i32 i32)))
+(import "cm32p2|wasi:filesystem/types" "[resource-drop]descriptor" (func $__wasi_import_filesystem_types_descriptor_drop (param i32)))
+(func $open_dir_sample (param $parent.id i64) (result i64 i32 i32)
+call $open_dir_at
+(func $open_dir_at (param $parent.id i64) (param $path i32) (result i64 i32 i32)
+i32.const 2
+call $__wasi_import_filesystem_types_descriptor_open_at
+call $__mod_0__dir_status_to_open_result
+(func $close_dir (param $dir.id i64)
+call $__wasi_import_filesystem_types_descriptor_drop

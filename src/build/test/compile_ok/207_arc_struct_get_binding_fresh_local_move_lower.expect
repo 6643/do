@@ -1,0 +1,2 @@
+count=1 ;; field-get-move box.value
+count=1 call $__arc_inc

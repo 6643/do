@@ -1,2 +1,0 @@
-  (import "cm32p2|wasi:random/random" "get-random-bytes" (func $__wasi_import_random_random_get_random_bytes (param i64 i32)))
-  (import "cm32p2|wasi:random/random" "get-random-u64" (func $__wasi_import_random_random_get_random_u64 (result i64)))

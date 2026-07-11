@@ -173,7 +173,7 @@ returns the writable byte count with the same wrapper error mapping.
 
 `doc/wit/wasi_registry.json` is the current checked-in WIT registry subset. It
 contains only the WASI targets and record mirrors that the compiler/test suite
-currently knows how to validate. `tool/build/test/validate_wasi_bind_manifest.mjs
+currently knows how to validate. `src/build/test/validate_wasi_bind_manifest.mjs
 --registry doc/wit/wasi_registry.json --json <file.wat>` is the current
 BindingResolve input artifact. It parses manifest comments into:
 
@@ -347,8 +347,8 @@ emits the current component-builder input:
   ],
   "shims": [
     {
-      "identity": "src/time.do/host_now",
-      "source": "src/time.do",
+      "identity": "lib/time.do/host_now",
+      "source": "lib/time.do",
       "alias": "host_now",
       "target": "clocks/system-clock/now",
       "kind": "record-result",
@@ -458,7 +458,7 @@ functions; `--core-imports` only creates the shared imported function boundary.
 per `source + alias`. Scalar results directly return the imported core result:
 
 ```wat
-  (func $__wasi_shim_src_time_do_host_resolution (result i64)
+  (func $__wasi_shim_lib_time_do_host_resolution (result i64)
     call $__wasi_import_clocks_system_clock_get_resolution
   )
 ```
@@ -466,7 +466,7 @@ per `source + alias`. Scalar results directly return the imported core result:
 Record results keep the canonical ABI result-area shape:
 
 ```wat
-  (func $__wasi_shim_src_time_do_host_now (param $__result_area i32)
+  (func $__wasi_shim_lib_time_do_host_now (param $__result_area i32)
     local.get $__result_area
     call $__wasi_import_clocks_system_clock_now
   )

@@ -1,7 +1,0 @@
-start() {
-    return
-}
-
-start() {
-    return
-}

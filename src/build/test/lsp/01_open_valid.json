@@ -1,0 +1,40 @@
+{
+  "name": "open valid file",
+  "messages": [
+    {
+      "jsonrpc": "2.0",
+      "method": "initialize",
+      "id": 1,
+      "params": {
+        "capabilities": {}
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "textDocument/didOpen",
+      "params": {
+        "textDocument": {
+          "uri": "file:///tmp/do-lsp-valid.do",
+          "languageId": "do",
+          "version": 1,
+          "text": "test \"ok\" {\n    return\n}\n"
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "shutdown",
+      "id": 2,
+      "params": null
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "exit",
+      "params": null
+    }
+  ],
+  "expect": [
+    "\"method\":\"textDocument/publishDiagnostics\"",
+    "\"diagnostics\":[]"
+  ]
+}

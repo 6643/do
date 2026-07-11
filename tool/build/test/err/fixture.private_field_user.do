@@ -1,4 +1,0 @@
-User {
-    id i32
-    .token i32
-}

@@ -1,8 +1,0 @@
-start() {
-loop {
-if @eq(1, 1) {
-defer cleanup()
-break
-}
-}
-}

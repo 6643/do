@@ -1,0 +1,21 @@
+;; arc-runtime storage range check v0
+(func $__storage_check_range (param $storage i32) (param $offset i32) (param $width i32)
+local.get $offset
+local.get $width
+i32.add
+local.get $storage
+call $__arc_payload
+i32.load
+i32.gt_u
+if
+unreachable
+end
+)
+local.get $data
+i32.const 1
+i32.const 1
+call $__storage_check_range
+local.get $data
+i32.const 0
+i32.const 8
+call $__storage_check_range

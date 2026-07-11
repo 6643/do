@@ -1,9 +1,0 @@
-(func $via_chain (param $x i32) (result i32 i32)
-local.get $x
-call $pair
-return
-(func $pair (param $x i32) (result i32 i32)
-i32.const 13
-call $via_chain
-local.set $ok
-local.set $n

@@ -1,0 +1,6 @@
+(data (i32.const 1024) "abc")
+(func $log_abc
+i32.const 1024
+i32.const 3
+call $__mod_0__host_log
+call $log_abc

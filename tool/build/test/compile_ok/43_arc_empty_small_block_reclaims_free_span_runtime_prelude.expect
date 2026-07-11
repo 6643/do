@@ -1,8 +1,0 @@
-;; arc-runtime empty small block reclaim v1
-(func $__small_is_empty (param $block i32) (result i32)
-(func $__slot_class_unlink_block (param $slot_units i32) (param $target i32)
-(func $__reclaim_empty_small_block (param $block i32)
-call $__slot_class_unlink_block
-call $__free_span_merge_neighbors
-call $__free_span_push
-call $__reclaim_empty_small_block

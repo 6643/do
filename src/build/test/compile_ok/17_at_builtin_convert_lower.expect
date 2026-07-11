@@ -1,0 +1,34 @@
+(local $a i32)
+i32.const 1
+local.set $a
+(local $b i32)
+i32.const 2
+local.set $b
+(local $c i64)
+local.get $b
+i64.extend_i32_u
+local.set $c
+(local $d i64)
+local.get $a
+i64.extend_i32_s
+local.set $d
+(local $e i32)
+local.get $c
+i32.wrap_i64
+local.set $e
+(local $f f64)
+local.get $b
+f64.convert_i32_u
+local.set $f
+(local $g i32)
+local.get $f
+i32.trunc_f64_s
+local.set $g
+(local $h f32)
+local.get $f
+f32.demote_f64
+local.set $h
+(local $i f64)
+local.get $h
+f64.promote_f32
+local.set $i

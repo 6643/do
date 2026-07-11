@@ -1,7 +1,0 @@
-(func $make_bytes (result i32)
-;; arc-return-move data
-local.get $data
-return
-call $make_bytes
-local.set $out
-;; arc-release-local out

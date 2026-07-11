@@ -1,0 +1,6 @@
+(func $make_nums (result i32)
+(func $pair_nums (result i32 i32)
+call $make_nums
+call $pair_nums
+;; arc-overwrite-release b
+;; arc-overwrite-release a

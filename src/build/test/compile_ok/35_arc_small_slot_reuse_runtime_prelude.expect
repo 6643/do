@@ -1,0 +1,9 @@
+;; arc-runtime small slot reuse v1
+(func $__small_data_start (param $cap i32) (result i32)
+(func $__small_find_free_slot (param $block i32) (result i32)
+(func $__small_find_block_with_slot (param $start_block i32) (result i32)
+(func $__arc_alloc_from_small (param $block i32) (param $type_id i32) (result i32)
+call $__small_find_block_with_slot
+call $__arc_alloc_from_small
+i32.load8_u
+i32.store8

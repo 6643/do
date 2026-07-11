@@ -1,0 +1,6 @@
+(func $__wasi_shim_lib_file_do_host_file_read (param $p0 i32) (param $p1 i64) (param $p2 i64) (param $__result_area i32)
+call $__wasi_import_filesystem_types_descriptor_read
+(func $__wasi_shim_lib_file_do_host_file_sync (param $p0 i32) (param $__result_area i32)
+call $__wasi_import_filesystem_types_descriptor_sync
+(func $__wasi_shim_lib_file_do_host_file_write (param $p0 i32) (param $p1 i32) (param $p2 i32) (param $p3 i64) (param $__result_area i32)
+call $__wasi_import_filesystem_types_descriptor_write

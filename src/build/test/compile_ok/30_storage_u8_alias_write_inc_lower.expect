@@ -1,0 +1,25 @@
+local.get $data
+call $__arc_inc
+drop
+local.get $data
+i32.const 1
+i32.const 90
+call $__storage_set_u8
+local.get $data
+call $__arc_dec
+local.set $next
+(local $__storage_overwrite_tmp i32)
+local.get $next
+i32.const 33
+call $__storage_put_u8
+local.set $__storage_overwrite_tmp
+;; arc-overwrite-release next
+local.get $__storage_overwrite_tmp
+local.get $next
+i32.ne
+if
+local.get $next
+call $__arc_dec
+end
+local.get $__storage_overwrite_tmp
+local.set $next

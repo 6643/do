@@ -1,9 +1,0 @@
-;; compiled-test 0 "compiled tuple storage put get"
-(local $__tuple_pack_base_tmp i32)
-(local $pair.v0 i32)
-(local $pair.v1 i32)
-(local $got.v0 i32)
-(local $got.v1 i32)
-;; storage-put-scalar
-i32.const 5
-local.set $__tuple_pack_base_tmp

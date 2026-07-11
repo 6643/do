@@ -1,4 +1,0 @@
-(func $choose_sum
-call $choose_sum
-i32.add
-if

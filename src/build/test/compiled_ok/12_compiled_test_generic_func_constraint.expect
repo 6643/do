@@ -1,0 +1,8 @@
+;; compiled-test 0 "compiled generic func constraint"
+(func $sum__i32 (param $a i32) (param $b i32) (result i32)
+call $combine
+(func $combine (param $a i32) (param $b i32) (result i32)
+call $sum__i32
+if
+return
+unreachable

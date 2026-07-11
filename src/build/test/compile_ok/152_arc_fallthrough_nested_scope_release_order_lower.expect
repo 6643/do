@@ -1,0 +1,6 @@
+;; arc-block-release
+;; arc-release-local inner
+call $__arc_dec
+;; arc-block-release
+;; arc-release-local outer
+call $__arc_dec

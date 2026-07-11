@@ -1,0 +1,7 @@
+(func $parse_object__User (param $seed.id i32) (param $bytes i32) (param $offset i32) (result i32 i32 i32)
+;; field-reflect-loop type=User
+call $find_field_value_at
+local.set $__field_89_0_value_offset.__union_tag
+br $__field_continue_82_0
+call $parse_value
+;; field-set name=out field=id

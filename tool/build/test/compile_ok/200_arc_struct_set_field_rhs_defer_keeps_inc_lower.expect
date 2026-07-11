@@ -1,3 +1,0 @@
-count=2 call $__arc_inc
-count=0 ;; field-set-move next
-count=1 ;; arc-release-local next

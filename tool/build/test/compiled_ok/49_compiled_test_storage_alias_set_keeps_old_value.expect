@@ -1,9 +1,0 @@
-;; compiled-test 0 "compiled storage alias set keeps old value"
-count=2 call $__arc_inc
-count=1 call $__storage_set_u8
-local.get $alias
-i32.const 98
-i32.eq
-local.get $next
-i32.const 90
-i32.eq
