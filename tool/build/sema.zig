@@ -5870,6 +5870,12 @@ fn checkGenericTypeArgArity(tokens: []const lexer.Token) !void {
 
         const close_angle = findMatching(tokens, i + 1, "<", ">") catch continue;
         const type_name = publicTypeName(tokens[i].lexeme);
+        if (std.mem.eql(u8, type_name, "Tuple")) {
+            const actual_count = countTypeArgs(tokens, i + 2, close_angle);
+            if (actual_count < 2) return markErrorAt(tokens, i, error.InvalidTypeRef);
+            i = close_angle;
+            continue;
+        }
         const expected_count = localStructTypeParamCount(tokens, type_name) orelse {
             if (isLocalNonStructTypeName(tokens, type_name)) return markErrorAt(tokens, i, error.InvalidTypeRef);
             i = close_angle;
@@ -6495,7 +6501,7 @@ fn isBaseTypeName(name: []const u8) bool {
 }
 
 fn isWitOnlySourceTypeName(name: []const u8) bool {
-    return std.mem.eql(u8, name, "char");
+    return std.mem.eql(u8, name, "char") or std.mem.eql(u8, name, "tuple");
 }
 
 fn isBaseIntTypeName(name: []const u8) bool {

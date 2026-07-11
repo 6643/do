@@ -363,9 +363,11 @@ LambdaTail       <- ReturnTailAnn? (Block / '=>' ArrowExprList)
 ReturnTailAnn    <- SoftGap '->' SoftGap ReturnSpec
 
 InferredAggLit   <- '.' InferredAggBody
-TypedAggLit      <- TypeCtor TypedAggBody
+TypedAggLit      <- TupleCtor TupleAggBody / TypeCtor TypedAggBody
+TupleCtor        <- 'Tuple' TypeArgs
 TypeCtor         <- StructRefType
 InferredAggBody  <- '{' SoftGap (FieldInitList / AggExprList)? SoftGap '}'
+TupleAggBody     <- '{' SoftGap AggExprList? SoftGap '}'
 TypedAggBody     <- '{' SoftGap FieldInitList? SoftGap '}'
 FieldInitList    <- FieldInit (CommaSep FieldInit)* TrailComma?
 FieldInit        <- FieldInitName '=' SameLineExpr

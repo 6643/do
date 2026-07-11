@@ -1,0 +1,5 @@
+;; compiled-test 0 "compiled tuple pair"
+(local $pair.v0 i32)
+(local $pair.v1 i32)
+local.set $pair.v0
+local.set $pair.v1

@@ -1420,6 +1420,19 @@ fn emitUserFunc(
                 continue;
             }
         }
+        if (isTupleTypeName(abi_ty)) {
+            const arity = tupleArity(abi_ty) orelse return error.NoMatchingCall;
+            var elem_idx: usize = 0;
+            while (elem_idx < arity) : (elem_idx += 1) {
+                const elem_ty = tupleElementTypeAt(abi_ty, elem_idx) orelse return error.NoMatchingCall;
+                try appendFmt(allocator, out, " (param ${s}.v{d} {s})", .{
+                    param.name,
+                    elem_idx,
+                    codegenWasmType(func_ctx, elem_ty),
+                });
+            }
+            continue;
+        }
         try appendFmt(allocator, out, " (param ${s} {s})", .{ param.name, codegenWasmType(func_ctx, abi_ty) });
     }
     if (func.results.len != 0) {
@@ -1729,6 +1742,9 @@ fn collectBodyLocalsWithMode(
                     try appendLocalField(allocator, out, tokens, ctx, local_name, field.name, field_ty);
                 }
             }
+        } else if (try typedTupleBindingType(allocator, tokens, i, stmt_end, ctx, &out.owned_names)) |tuple_ty| {
+            const local_name = try out.appendStructLocal(allocator, tokens[i].lexeme, tuple_ty, true);
+            try appendTupleLocalFields(allocator, out, tokens, ctx, local_name, tuple_ty);
         }
         i = stmt_end;
     }
@@ -2396,6 +2412,12 @@ fn appendLocalField(
     ty: []const u8,
 ) !void {
     const name = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ base, publicDeclName(field) });
+    if (isTupleTypeName(ty)) {
+        try out.owned_names.append(allocator, name);
+        const local_name = try out.appendStructLocal(allocator, name, ty, true);
+        try appendTupleLocalFields(allocator, out, tokens, ctx, local_name, ty);
+        return;
+    }
     if (try parseTypeUnionLayoutFromName(allocator, tokens, ty, ctx.structs, ctx.struct_layouts, &out.owned_names)) |layout| {
         errdefer freeUnionLayout(allocator, layout);
         const exists = findUnionLocalExact(out.union_locals.items, name) != null;
@@ -2463,6 +2485,12 @@ fn appendBorrowedLocalField(
     ty: []const u8,
 ) !void {
     const name = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ base, publicDeclName(field) });
+    if (isTupleTypeName(ty)) {
+        try out.owned_names.append(allocator, name);
+        const local_name = try out.appendStructLocal(allocator, name, ty, false);
+        try appendTupleLocalFields(allocator, out, tokens, ctx, local_name, ty);
+        return;
+    }
     try out.owned_names.append(allocator, name);
     if (try parseTypeUnionLayoutFromName(allocator, tokens, ty, ctx.structs, ctx.struct_layouts, &out.owned_names)) |layout| {
         errdefer freeUnionLayout(allocator, layout);
@@ -2573,10 +2601,14 @@ fn emitReturnStmt(
         // Unmanaged struct plus error tag emitted as payload fields followed by status.
     } else if (try emitUnmanagedStructReturnLocal(allocator, tokens, start_idx, end_idx, locals, ctx, result_tys, result_struct, out)) {
         // Unmanaged struct fields emitted in declaration order.
+    } else if (try emitTupleReturnLocal(allocator, tokens, start_idx, end_idx, locals, result_tys, result_items, out)) {
+        // Tuple elements emitted as multi-value results in declaration order.
     } else if (try emitWasiRecordReturnCall(allocator, tokens, start_idx + 1, end_idx, locals, ctx, result_tys, result_struct, out)) {
         // WIT record result fields emitted in declaration order.
     } else if (result_tys.len > 1 and try emitMultiResultReturnCall(allocator, tokens, start_idx + 1, end_idx, locals, ctx, result_tys, defer_ctx, out)) {
         // Multi-result call passthrough emitted.
+    } else if (result_tys.len > 1 and try emitTupleReturnExpr(allocator, tokens, start_idx + 1, end_idx, locals, ctx, result_tys, result_items, out)) {
+        // Tuple constructor or multi-value expression returned as flattened ABI values.
     } else if (result_tys.len > 1 and result_items.len != 0) {
         try emitMultiResultReturnValues(allocator, tokens, start_idx + 1, end_idx, locals, ctx, result_items, &move_names, out);
     } else if (result_tys.len > 1) {
@@ -2880,6 +2912,7 @@ fn emitUnmanagedStructReturnLocal(
     out: *std.ArrayList(u8),
 ) !bool {
     const struct_name = result_struct orelse return false;
+    if (isTupleTypeName(struct_name)) return false;
     if (start_idx + 2 != end_idx) return false;
     if (tokens[start_idx + 1].kind != .ident) return false;
     const local_name = tokens[start_idx + 1].lexeme;
@@ -2899,7 +2932,61 @@ fn emitUnmanagedStructReturnLocal(
     return true;
 }
 
+fn singleTupleResultItem(result_items: []const FuncResultItem) ?FuncResultItem {
+    if (result_items.len != 1) return null;
+    const item = result_items[0];
+    if (!isTupleTypeName(item.ty)) return null;
+    if (item.abi_len < 2) return null;
+    return item;
+}
+
+fn emitTupleReturnLocal(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    locals: *const LocalSet,
+    result_tys: []const []const u8,
+    result_items: []const FuncResultItem,
+    out: *std.ArrayList(u8),
+) !bool {
+    const item = singleTupleResultItem(result_items) orelse return false;
+    if (item.abi_len != result_tys.len) return false;
+    if (start_idx + 2 != end_idx) return false;
+    if (tokens[start_idx + 1].kind != .ident) return false;
+    const local_name = tokens[start_idx + 1].lexeme;
+    const tuple_local = findStructLocal(locals.struct_locals.items, local_name) orelse return false;
+    if (!std.mem.eql(u8, tuple_local.ty, item.ty)) return false;
+
+    const arity = tupleArity(item.ty) orelse return error.NoMatchingCall;
+    if (arity != result_tys.len) return error.NoMatchingCall;
+    var idx: usize = 0;
+    while (idx < arity) : (idx += 1) {
+        const elem_ty = tupleElementTypeAt(item.ty, idx) orelse return error.NoMatchingCall;
+        if (!std.mem.eql(u8, elem_ty, result_tys[idx])) return error.NoMatchingCall;
+        try appendFmt(allocator, out, "    local.get ${s}.v{d}\n", .{ tuple_local.name, idx });
+    }
+    return true;
+}
+
+fn emitTupleReturnExpr(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    result_tys: []const []const u8,
+    result_items: []const FuncResultItem,
+    out: *std.ArrayList(u8),
+) !bool {
+    const item = singleTupleResultItem(result_items) orelse return false;
+    if (item.abi_len != result_tys.len) return false;
+    return try emitTupleExpr(allocator, tokens, start_idx, end_idx, locals, ctx, item.ty, out);
+}
+
 fn emitUnionReturn(
+
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -4436,6 +4523,9 @@ fn emitStructFieldLocalSet(
         }
         return;
     }
+    if (isTupleTypeName(field_ty)) {
+        return try emitTupleLocalSet(allocator, union_local_name, field_ty, out);
+    }
     try appendFmt(allocator, out, "    local.set ${s}.{s}\n", .{ base, field_name });
 }
 
@@ -4479,6 +4569,11 @@ fn emitUserFuncArg(
     if (try parseTypeUnionLayoutFromName(allocator, tokens, param_ty, ctx.structs, ctx.struct_layouts, &owned_types)) |layout| {
         defer freeUnionLayout(allocator, layout);
         return try emitUnionValue(allocator, tokens, arg_start, arg_end, locals, ctx, layout, copy_managed, null, out);
+    }
+    if (isTupleTypeName(param_ty)) {
+        if (try emitTupleExpr(allocator, tokens, arg_start, arg_end, locals, ctx, param_ty, out)) {
+            return true;
+        }
     }
     const range = trimParens(tokens, arg_start, arg_end);
     if (range.end == range.start + 1 and tokens[range.start].kind == .ident) {
@@ -5572,6 +5667,8 @@ fn emitBody(
             try emitStorageBinding(allocator, tokens, i, stmt_end, start_idx, end_idx, allow_call_arg_last_use_move, active, exit_defer_ctx, ctx, out);
         } else if (isCollectedTypedStorageBinding(tokens, i, stmt_end, active)) {
             try emitStorageBinding(allocator, tokens, i, stmt_end, start_idx, end_idx, allow_call_arg_last_use_move, active, exit_defer_ctx, ctx, out);
+        } else if (try emitTupleBinding(allocator, tokens, i, stmt_end, end_idx, allow_call_arg_last_use_move, active, exit_defer_ctx, ctx, out)) {
+            // Tuple field local binding emitted.
         } else if (try typedStructBindingDecl(allocator, tokens, i, stmt_end, ctx)) |decl| {
             try emitStructBinding(allocator, tokens, i, stmt_end, end_idx, allow_call_arg_last_use_move, active, exit_defer_ctx, ctx, decl, out);
         } else if (inferredStructCtorBinding(tokens, i, stmt_end, ctx.structs)) |decl| {
@@ -5727,6 +5824,117 @@ fn emitDiscardAssignment(
         return error.NoMatchingCall;
     }
     try emitDiscardStackValue(allocator, ty, ctx, out);
+    return true;
+}
+
+fn emitTupleLocalSet(
+    allocator: std.mem.Allocator,
+    base: []const u8,
+    tuple_ty: []const u8,
+    out: *std.ArrayList(u8),
+) !void {
+    const arity = tupleArity(tuple_ty) orelse return error.NoMatchingCall;
+    var idx = arity;
+    while (idx > 0) {
+        idx -= 1;
+        try appendFmt(allocator, out, "    local.set ${s}.v{d}\n", .{ base, idx });
+    }
+}
+
+fn emitTupleBinding(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    body_end: usize,
+    allow_last_use_move: bool,
+    locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    if (start_idx + 3 >= end_idx) return false;
+    if (tokens[start_idx].kind != .ident) return false;
+    const tuple_local = findStructLocal(locals.struct_locals.items, tokens[start_idx].lexeme) orelse return false;
+    if (!isTupleTypeName(tuple_local.ty)) return false;
+    const eq_idx = findTopLevelToken(tokens, start_idx + 1, end_idx, "=") orelse return false;
+    if (try emitTupleCallBinding(
+        allocator,
+        tokens,
+        start_idx,
+        end_idx,
+        body_end,
+        allow_last_use_move,
+        locals,
+        defer_ctx,
+        ctx,
+        tuple_local,
+        out,
+    )) {
+        return true;
+    }
+    const open_brace = structLiteralOpenRhs(tokens, eq_idx + 1, end_idx) orelse return false;
+    const close_brace = findMatchingInRange(tokens, open_brace, "{", "}", end_idx) catch return false;
+    if (close_brace + 1 != end_idx) return false;
+
+    const arity = tupleArity(tuple_local.ty) orelse return false;
+    var expr_start = open_brace + 1;
+    var idx: usize = 0;
+    while (expr_start < close_brace) {
+        const expr_end = findArgEnd(tokens, expr_start, close_brace);
+        if (idx >= arity) return error.NoMatchingCall;
+        const elem_ty = tupleElementTypeAt(tuple_local.ty, idx) orelse return error.NoMatchingCall;
+        if (!try emitExpr(allocator, tokens, expr_start, expr_end, locals, ctx, elem_ty, out)) return error.NoMatchingCall;
+        idx += 1;
+        expr_start = expr_end;
+        if (expr_start < close_brace) {
+            if (!tokEq(tokens[expr_start], ",")) return error.NoMatchingCall;
+            expr_start += 1;
+        }
+    }
+    if (idx != arity) return error.NoMatchingCall;
+    try emitTupleLocalSet(allocator, tuple_local.name, tuple_local.ty, out);
+    return true;
+}
+
+fn emitTupleCallBinding(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    body_end: usize,
+    allow_last_use_move: bool,
+    locals: *const LocalSet,
+    defer_ctx: ?*const DeferContext,
+    ctx: CodegenContext,
+    tuple_local: StructLocal,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    const eq_idx = findTopLevelToken(tokens, start_idx + 1, end_idx, "=") orelse return false;
+    const rhs_range = trimParens(tokens, eq_idx + 1, end_idx);
+    const call_head = exprCallHead(tokens, rhs_range) orelse return false;
+    if (call_head.is_intrinsic) return false;
+    const func = findFuncDeclForCallHead(tokens, call_head, locals, ctx) orelse return false;
+    const result_struct = func.result_struct orelse return false;
+    if (!std.mem.eql(u8, result_struct, tuple_local.ty)) return false;
+    const arity = tupleArity(tuple_local.ty) orelse return false;
+    if (func.results.len != arity) return error.NoMatchingCall;
+    var elem_idx: usize = 0;
+    while (elem_idx < arity) : (elem_idx += 1) {
+        const elem_ty = tupleElementTypeAt(tuple_local.ty, elem_idx) orelse return error.NoMatchingCall;
+        if (!std.mem.eql(u8, elem_ty, func.results[elem_idx])) return error.NoMatchingCall;
+    }
+    const move_ctx = CallLastUseMoveContext{
+        .body_start = 0,
+        .stmt_end = end_idx,
+        .body_end = body_end,
+        .defer_ctx = defer_ctx,
+        .allow_last_use_move = allow_last_use_move,
+    };
+    if (!try emitUserFuncCallWithMoveContext(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, &move_ctx, out)) {
+        return error.NoMatchingCall;
+    }
+    try emitTupleLocalSet(allocator, tuple_local.name, tuple_local.ty, out);
     return true;
 }
 
@@ -6478,6 +6686,9 @@ fn emitExprWithMoveContext(
     if (range.start >= range.end) return false;
 
     if (expected_ty) |ty| {
+        if (try emitTupleExpr(allocator, tokens, range.start, range.end, locals, ctx, ty, out)) {
+            return true;
+        }
         if (managedPayloadElemTypeFromName(ty)) |elem_ty| {
             if (isStorageAggLiteralExpr(tokens, range.start, range.end)) {
                 if (!try emitStorageAggLiteral(allocator, tokens, range.start, range.end, STORAGE_OVERWRITE_TMP_LOCAL, elem_ty, locals, ctx, out)) {
@@ -7191,6 +7402,58 @@ fn emitBoolSpecialCall(
         return try emitShortCircuitOr(allocator, tokens, args_start, args_end, locals, ctx, out);
     }
     return false;
+}
+
+fn emitTupleExpr(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    expected_ty: []const u8,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    if (!isTupleTypeName(expected_ty)) return false;
+    const range = trimParens(tokens, start_idx, end_idx);
+    if (range.start >= range.end) return false;
+
+    if (range.end == range.start + 1 and tokens[range.start].kind == .ident) {
+        const tuple_local = findStructLocal(locals.struct_locals.items, tokens[range.start].lexeme) orelse return false;
+        if (!std.mem.eql(u8, tuple_local.ty, expected_ty)) return false;
+        const arity = tupleArity(expected_ty) orelse return false;
+        var idx: usize = 0;
+        while (idx < arity) : (idx += 1) {
+            try appendFmt(allocator, out, "    local.get ${s}.v{d}\n", .{ tuple_local.name, idx });
+        }
+        return true;
+    }
+
+    const open_brace = structLiteralOpenRhs(tokens, range.start, range.end) orelse return false;
+    const close_brace = findMatchingInRange(tokens, open_brace, "{", "}", range.end) catch return false;
+    if (close_brace + 1 != range.end) return false;
+
+    const literal_ty = compactTokenText(allocator, tokens, range.start, open_brace) catch return false;
+    defer allocator.free(literal_ty);
+    if (!std.mem.eql(u8, literal_ty, expected_ty)) return false;
+
+    const arity = tupleArity(expected_ty) orelse return false;
+    var expr_start = open_brace + 1;
+    var idx: usize = 0;
+    while (expr_start < close_brace) {
+        const expr_end = findArgEnd(tokens, expr_start, close_brace);
+        if (idx >= arity) return error.NoMatchingCall;
+        const elem_ty = tupleElementTypeAt(expected_ty, idx) orelse return error.NoMatchingCall;
+        if (!try emitExpr(allocator, tokens, expr_start, expr_end, locals, ctx, elem_ty, out)) return error.NoMatchingCall;
+        idx += 1;
+        expr_start = expr_end;
+        if (expr_start < close_brace) {
+            if (!tokEq(tokens[expr_start], ",")) return error.NoMatchingCall;
+            expr_start += 1;
+        }
+    }
+    if (idx != arity) return error.NoMatchingCall;
+    return true;
 }
 
 fn shouldEmitBoolSpecialCall(
@@ -10307,6 +10570,16 @@ fn appendFuncParamLocals(
                     try appendBorrowedLocalField(allocator, locals, func.tokens, ctx, param.name, field.name, field_ty);
                 }
             }
+        } else if (isTupleTypeName(abi_ty)) {
+            try locals.struct_locals.append(allocator, .{ .name = param.name, .ty = abi_ty, .origin = .param_or_import });
+            const arity = tupleArity(abi_ty) orelse return error.NoMatchingCall;
+            var elem_idx: usize = 0;
+            while (elem_idx < arity) : (elem_idx += 1) {
+                const elem_ty = tupleElementTypeAt(abi_ty, elem_idx) orelse return error.NoMatchingCall;
+                var field_buf: [32]u8 = undefined;
+                const field_name = try std.fmt.bufPrint(&field_buf, "v{d}", .{elem_idx});
+                try appendBorrowedLocalField(allocator, locals, func.tokens, ctx, param.name, field_name, elem_ty);
+            }
         } else {
             try locals.appendBorrowedLocalWithOrigin(allocator, param.name, abi_ty, false, .param_or_import);
         }
@@ -11122,6 +11395,23 @@ fn instantiateGenericFuncResultItems(
 
     for (result_tys) |result_ty| {
         const abi_start = types.items.len;
+        if (isTupleTypeName(result_ty)) {
+            const arity = tupleArity(result_ty) orelse return error.NoMatchingCall;
+            if (arity < 2) return error.NoMatchingCall;
+            var elem_idx: usize = 0;
+            while (elem_idx < arity) : (elem_idx += 1) {
+                const elem_ty = tupleElementTypeAt(result_ty, elem_idx) orelse return error.NoMatchingCall;
+                if (!isCoreWasmScalar(elem_ty)) return error.NoMatchingCall;
+                try types.append(allocator, elem_ty);
+            }
+            try items.append(allocator, .{
+                .ty = result_ty,
+                .abi_start = abi_start,
+                .abi_len = arity,
+            });
+            if (result_tys.len == 1) result_struct = result_ty;
+            continue;
+        }
         if (findStructDecl(structs, result_ty)) |decl| {
             if (findStructLayout(struct_layouts, result_ty) == null) {
                 for (decl.fields) |field| {
@@ -12426,6 +12716,25 @@ fn parseFuncResultTypes(
 
         const parsed_ty = (try parseCodegenTypeExpr(allocator, tokens, i, end_idx, owned_types)) orelse return null;
         const result_ty = parsed_ty.ty;
+        if (isTupleTypeName(result_ty)) {
+            const arity = tupleArity(result_ty) orelse return null;
+            if (arity < 2) return null;
+            const abi_start = results.items.len;
+            var elem_idx: usize = 0;
+            while (elem_idx < arity) : (elem_idx += 1) {
+                const elem_ty = tupleElementTypeAt(result_ty, elem_idx) orelse return null;
+                if (!isCoreWasmScalar(elem_ty)) return null;
+                try results.append(allocator, elem_ty);
+            }
+            try items.append(allocator, .{
+                .ty = result_ty,
+                .abi_start = abi_start,
+                .abi_len = arity,
+            });
+            i = parsed_ty.next_idx;
+            if (i < end_idx and tokEq(tokens[i], ",")) i += 1;
+            continue;
+        }
         const accepted = isCoreWasmScalar(result_ty) or
             managedPayloadElemTypeFromName(result_ty) != null or
             findStructLayout(struct_layouts, result_ty) != null or
@@ -12440,9 +12749,15 @@ fn parseFuncResultTypes(
         if (i < end_idx and tokEq(tokens[i], ",")) i += 1;
     }
 
+    var result_struct: ?[]const u8 = null;
+    if (items.items.len == 1 and isTupleTypeName(items.items[0].ty) and items.items[0].abi_len >= 2) {
+        result_struct = items.items[0].ty;
+    }
+
     return .{
         .types = try results.toOwnedSlice(allocator),
         .items = try items.toOwnedSlice(allocator),
+        .result_struct = result_struct,
     };
 }
 
@@ -13581,6 +13896,43 @@ fn inferredScalarBindingType(
     return ty;
 }
 
+fn typedTupleBindingType(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    ctx: CodegenContext,
+    owned_types: *std.ArrayList([]const u8),
+) CodegenError!?[]const u8 {
+    if (start_idx + 3 >= end_idx) return null;
+    if (tokens[start_idx].kind != .ident) return null;
+    const eq_idx = findTopLevelToken(tokens, start_idx + 1, end_idx, "=") orelse return null;
+    if (eq_idx <= start_idx + 1) return null;
+    const parsed_ty = (try parseCodegenTypeExpr(allocator, tokens, start_idx + 1, eq_idx, owned_types)) orelse return null;
+    if (parsed_ty.next_idx != eq_idx) return null;
+    const ty = try substituteGenericTypeOwned(allocator, parsed_ty.ty, ctx.type_bindings, owned_types);
+    if (!isTupleTypeName(ty)) return null;
+    return ty;
+}
+
+fn appendTupleLocalFields(
+    allocator: std.mem.Allocator,
+    out: *LocalSet,
+    tokens: []const lexer.Token,
+    ctx: CodegenContext,
+    base: []const u8,
+    tuple_ty: []const u8,
+) CodegenError!void {
+    const arity = tupleArity(tuple_ty) orelse return error.NoMatchingCall;
+    var idx: usize = 0;
+    while (idx < arity) : (idx += 1) {
+        const elem_ty = tupleElementTypeAt(tuple_ty, idx) orelse return error.NoMatchingCall;
+        var field_buf: [32]u8 = undefined;
+        const field_name = try std.fmt.bufPrint(&field_buf, "v{d}", .{idx});
+        try appendLocalField(allocator, out, tokens, ctx, base, field_name, elem_ty);
+    }
+}
+
 fn inferredManagedPayloadBinding(
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -13771,6 +14123,9 @@ fn emitGetCall(
     if (first_end >= end_idx or !tokEq(tokens[first_end], ",")) return false;
     const second_start = first_end + 1;
     const second_end = findArgEnd(tokens, second_start, end_idx);
+    if (try emitTupleFieldPathGetCall(allocator, tokens, start_idx, end_idx, first_end, locals, ctx, out)) {
+        return true;
+    }
     if (second_end != end_idx) {
         return try emitPathGetCall(allocator, tokens, start_idx, end_idx, first_end, locals, ctx, out);
     }
@@ -13823,6 +14178,17 @@ fn emitGetCall(
             try out.appendSlice(allocator, "    call $__arc_inc\n");
         }
         return true;
+    }
+
+    if (findStructLocal(locals.struct_locals.items, name)) |struct_local| {
+        if (isTupleTypeName(struct_local.ty)) {
+            const elem_info = tupleGetElementInfo(tokens, second_start, second_end, struct_local.ty) orelse return false;
+            try appendFmt(allocator, out, "    local.get ${s}.v{d}\n", .{ struct_local.name, elem_info.index });
+            if (isManagedLocalType(elem_info.ty, ctx)) {
+                try out.appendSlice(allocator, "    call $__arc_inc\n");
+            }
+            return true;
+        }
     }
 
     if (findStructLocal(locals.struct_locals.items, name)) |struct_local| {
@@ -18763,6 +19129,7 @@ fn inferGetCallType(
 
     const second_start = first_end + 1;
     const second_end = findArgEnd(tokens, second_start, end_idx);
+    if (inferTupleFieldPathGetType(tokens, start_idx, end_idx, first_end, locals, ctx)) |tuple_ty| return tuple_ty;
     if (second_end != end_idx) {
         return inferPathGetCallType(tokens, start_idx, end_idx, first_end, locals, ctx);
     }
@@ -18781,6 +19148,13 @@ fn inferGetCallType(
 
     const name = tokens[start_idx].lexeme;
     if (findStoragePrimitiveLocal(locals.storage_locals.items, name)) |storage| return storage.elem_ty;
+
+    if (findStructLocal(locals.struct_locals.items, name)) |struct_local| {
+        if (isTupleTypeName(struct_local.ty)) {
+            const elem_info = tupleGetElementInfo(tokens, second_start, second_end, struct_local.ty) orelse return null;
+            return elem_info.ty;
+        }
+    }
 
     if (second_end != second_start + 1 or !isDotIdent(tokens[second_start].lexeme)) return null;
 
@@ -18865,6 +19239,110 @@ fn genericTypeArgAt(concrete_ty: []const u8, target_idx: usize) ?[]const u8 {
         if (arg_start < args.args.len) arg_start += 1;
     }
     return null;
+}
+
+fn isTupleTypeName(ty: []const u8) bool {
+    const args = genericTypeArgsRange(ty) orelse return false;
+    return std.mem.eql(u8, args.base, "Tuple");
+}
+
+fn tupleArity(tuple_ty: []const u8) ?usize {
+    const args = genericTypeArgsRange(tuple_ty) orelse return null;
+    if (!std.mem.eql(u8, args.base, "Tuple")) return null;
+    var count: usize = 0;
+    var arg_start: usize = 0;
+    while (arg_start < args.args.len) {
+        const arg_end = findTopLevelTypeSeparatorFrom(args.args, arg_start, ',') orelse args.args.len;
+        if (arg_start == arg_end) return null;
+        count += 1;
+        arg_start = arg_end;
+        if (arg_start < args.args.len) arg_start += 1;
+    }
+    return count;
+}
+
+fn tupleElementTypeAt(tuple_ty: []const u8, idx: usize) ?[]const u8 {
+    if (!isTupleTypeName(tuple_ty)) return null;
+    return genericTypeArgAt(tuple_ty, idx);
+}
+
+const TupleElementInfo = struct {
+    index: usize,
+    ty: []const u8,
+};
+
+fn tupleGetElementInfo(tokens: []const lexer.Token, second_start: usize, second_end: usize, tuple_ty: []const u8) ?TupleElementInfo {
+    if (second_end != second_start + 1) return null;
+    if (tokens[second_start].kind != .number) return null;
+    const index = std.fmt.parseInt(usize, tokens[second_start].lexeme, 10) catch return null;
+    const ty = tupleElementTypeAt(tuple_ty, index) orelse return null;
+    return .{ .index = index, .ty = ty };
+}
+
+fn tupleFieldPathType(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    first_end: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+) ?[]const u8 {
+    if (first_end != start_idx + 1 or tokens[start_idx].kind != .ident or first_end >= end_idx or !tokEq(tokens[first_end], ",")) return null;
+    const field_start = first_end + 1;
+    const field_end = findArgEnd(tokens, field_start, end_idx);
+    if (field_end != field_start + 1 or !isDotIdent(tokens[field_start].lexeme) or field_end >= end_idx or !tokEq(tokens[field_end], ",")) return null;
+    const index_start = field_end + 1;
+    const index_end = findArgEnd(tokens, index_start, end_idx);
+    if (index_end != end_idx) return null;
+
+    const struct_local = findStructLocal(locals.struct_locals.items, tokens[start_idx].lexeme) orelse return null;
+    const decl = findStructDecl(ctx.structs, struct_local.ty) orelse return null;
+    const field_ty = findLocalFieldType(locals.locals.items, struct_local.name, publicDeclName(tokens[field_start].lexeme)) orelse
+        findStructFieldType(decl, publicDeclName(tokens[field_start].lexeme)) orelse return null;
+    if (!isTupleTypeName(field_ty)) return null;
+    return field_ty;
+}
+
+fn inferTupleFieldPathGetType(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    first_end: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+) ?[]const u8 {
+    const field_ty = tupleFieldPathType(tokens, start_idx, end_idx, first_end, locals, ctx) orelse return null;
+    const field_start = first_end + 1;
+    const field_end = findArgEnd(tokens, field_start, end_idx);
+    const index_start = field_end + 1;
+    const index_end = findArgEnd(tokens, index_start, end_idx);
+    const elem_info = tupleGetElementInfo(tokens, index_start, index_end, field_ty) orelse return null;
+    return elem_info.ty;
+}
+
+fn emitTupleFieldPathGetCall(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    first_end: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    const field_ty = tupleFieldPathType(tokens, start_idx, end_idx, first_end, locals, ctx) orelse return false;
+    const field_start = first_end + 1;
+    const field_end = findArgEnd(tokens, field_start, end_idx);
+    const index_start = field_end + 1;
+    const index_end = findArgEnd(tokens, index_start, end_idx);
+    const elem_info = tupleGetElementInfo(tokens, index_start, index_end, field_ty) orelse return false;
+    const struct_local = findStructLocal(locals.struct_locals.items, tokens[start_idx].lexeme) orelse return false;
+    const field_name = publicDeclName(tokens[field_start].lexeme);
+    try appendFmt(allocator, out, "    local.get ${s}.{s}.v{d}\n", .{ struct_local.name, field_name, elem_info.index });
+    if (isManagedLocalType(elem_info.ty, ctx)) {
+        try out.appendSlice(allocator, "    call $__arc_inc\n");
+    }
+    return true;
 }
 
 fn inferFieldGetCallType(

@@ -1248,6 +1248,7 @@ fn parseAssignStmt(
     limit_idx: usize,
 ) !usize {
     if (isNonAssignEqual(tokens, eq_idx)) return eq_idx + 1;
+    try rejectLowerTupleTypeInAssignLhs(tokens, eq_idx);
     const rhs_start = eq_idx + 1;
     if (rhs_start >= limit_idx) return markErrorAt(tokens, eq_idx, error.InvalidAssignExpr);
 
@@ -1929,7 +1930,11 @@ fn parseStructLiteral(
 
     const open_idx = open_brace.?;
     const close_brace = try findMatchingInRange(tokens, open_idx, "{", "}", limit_idx);
-    try parseStructNamedArgs(allocator, out_nodes, tokens, open_idx + 1, close_brace);
+    if (isTupleTypeCtor(tokens, type_idx)) {
+        try parseExprItems(allocator, out_nodes, tokens, open_idx + 1, close_brace, error.InvalidStructLiteral);
+    } else {
+        try parseStructNamedArgs(allocator, out_nodes, tokens, open_idx + 1, close_brace);
+    }
 
     const idx = try appendExprNode(allocator, out_nodes, .{
         .kind = .struct_lit,
@@ -1952,6 +1957,10 @@ fn parseTypeCtorOpenBrace(tokens: []const lexer.Token, type_idx: usize, limit_id
 
 fn hasTypeCtorBody(tokens: []const lexer.Token, type_idx: usize, limit_idx: usize) bool {
     return (parseTypeCtorOpenBrace(tokens, type_idx, limit_idx) catch null) != null;
+}
+
+fn isTupleTypeCtor(tokens: []const lexer.Token, type_idx: usize) bool {
+    return tokens[type_idx].kind == .ident and std.mem.eql(u8, tokens[type_idx].lexeme, "Tuple");
 }
 
 fn parseInferredAggLiteral(
@@ -2112,6 +2121,38 @@ fn findTopLevelCommaInRange(tokens: []const lexer.Token, start_idx: usize, end_i
         if (depth_paren == 0 and depth_brace == 0 and depth_angle == 0 and tokEq(tokens[i], ",")) return i;
     }
     return null;
+}
+
+fn rejectLowerTupleTypeInAssignLhs(tokens: []const lexer.Token, eq_idx: usize) !void {
+    var line_start = eq_idx;
+    while (line_start > 0 and tokens[line_start - 1].line == tokens[eq_idx].line) {
+        line_start -= 1;
+    }
+
+    var depth_angle: usize = 0;
+    var depth_paren: usize = 0;
+    var i = line_start;
+    while (i < eq_idx) : (i += 1) {
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (depth_angle == 0 and depth_paren == 0 and tokens[i].kind == .ident and std.mem.eql(u8, tokens[i].lexeme, "tuple")) {
+            if (i + 1 < eq_idx and tokEq(tokens[i + 1], "<")) return markErrorAt(tokens, i, error.InvalidTypeRef);
+        }
+    }
 }
 
 fn parseExprItems(
@@ -2649,6 +2690,19 @@ test "struct literal uses equals" {
     try std.testing.expectEqual(ExprKind.struct_lit, nodes.items[parsed.node_idx].kind);
 }
 
+test "tuple positional constructor is accepted syntactically" {
+    const allocator = std.testing.allocator;
+    const tokens = try lexer.tokenize(allocator, "Tuple<bool, u8>{true, 7}");
+    defer allocator.free(tokens);
+
+    var nodes = try std.ArrayList(ExprNode).initCapacity(allocator, 0);
+    defer nodes.deinit(allocator);
+
+    const parsed = try parseExpr(allocator, &nodes, tokens, 0, tokens.len);
+    try std.testing.expectEqual(tokens.len, parsed.next_idx);
+    try std.testing.expectEqual(ExprKind.struct_lit, nodes.items[parsed.node_idx].kind);
+}
+
 test "generic typed bind counts as one lhs value" {
     const allocator = std.testing.allocator;
     const source =
@@ -2665,6 +2719,20 @@ test "generic typed bind counts as one lhs value" {
 
     try std.testing.expectEqual(@as(usize, 1), program.value_exprs.len);
     try std.testing.expectEqual(@as(usize, 1), program.value_exprs[0].expected_arity);
+}
+
+test "lowercase tuple type is rejected by parser" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\test "tuple lower" {
+        \\    pair tuple<bool, u8> = nil
+        \\    return
+        \\}
+    ;
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+
+    try std.testing.expectError(error.InvalidTypeRef, parseProgram(allocator, tokens, source.len));
 }
 
 test "import after top-level declaration is rejected by parser" {

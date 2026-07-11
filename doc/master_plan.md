@@ -15,7 +15,8 @@
 - 当前 `do fmt` 是 stdout / check-only line-based formatter。
 - 当前 `do check` 只做 lexer/parser/sema/import diagnostics, 不编译、不运行。
 - 当前 `get / pkg / push` 包管理线暂停, 不作为默认后续任务。
-- 最近完整回归基线: `./tool/build/test/run_tests.sh` 为 `pass=874 fail=0 skip=3`。
+- 最近完整回归基线: `./tool/build/test/run_tests.sh` 为 `pass=886 fail=0 skip=3`。
+
 - 最近扩展回归基线: `RUN_WASM=1 ./tool/build/test/run_tests.sh` 为 `pass=833 fail=0 skip=3`。
 
 当前禁止默认推进:
@@ -1163,10 +1164,11 @@ test "tuple pair" {
 
 拆分:
 
-- [ ] I2.1 固定 `Tuple` 规格。明确 arity 下限、位置构造器参数顺序、数字索引访问规则、是否允许嵌套 `Tuple<Tuple<i32, bool>, u8>`、是否允许 `Tuple` 作为 struct 字段 / storage 元素 / union 分支。
-- [ ] I2.2 更新 grammar / parser。让 `Tuple<...>` 进入 `ValueTypeExpr`、`InlineValueTypeExpr`、`ParamTypeExpr` 和 type args, 并拒绝小写 `tuple<...>` 出现在普通源码类型位置。
-- [ ] I2.3 更新 sema。把 `Tuple` 作为保留内建泛型类型处理, 校验 type arity、位置构造器实参数量 / 类型顺序、数字索引边界和重载匹配。
-- [ ] I2.4 更新 codegen。为 `Tuple<...>` 生成稳定 layout / field access / return / param / storage lowering, 并覆盖 scalar + managed payload。
+- [x] I2.1 固定 `Tuple` 规格。第一版固定为源码层大写内建泛型类型 `Tuple<T0, T1, ...>`: arity 下限为 2, 当前不设上限; 允许嵌套 `Tuple<Tuple<i32, bool>, u8>`; 允许作为单值类型出现在局部绑定、参数、单返回、struct 字段、`[Tuple<...>]` storage 元素和 union 分支。构造固定为按类型参数顺序的位置构造器 `Tuple<T0, T1, ...>{v0, v1, ...}`，实参数量必须与 arity 完全一致; 第一版不支持命名字段构造。读取固定为 `@get(tuple_value, <index>)`，其中 `<index>` 必须是编译期整数字面量，范围是 `0..arity-1`; 第一版不支持 `.v0/.v1` 字段段访问，也不支持 `@set(tuple_value, <index>, value)` 数字索引写入。`Tuple` 作为用户可写源码类型名进入保留内建类型集合，不能再被普通类型声明或 import alias 占用; 小写 `tuple<...>` 继续只保留给 WIT / `@wasi` 签名，不进入普通源码类型位。
+- [x] I2.2 更新 grammar / parser。`Tuple<...>` 已通过现有大写类型名 + type args 路径进入 `ValueTypeExpr`、`InlineValueTypeExpr`、`ParamTypeExpr` 和 type args；parser 额外接受 `Tuple<bool, u8>{true, 7}` 这类位置构造器语法，并在 typed bind 左侧把小写 `tuple<bool, u8>` 拒绝为 `InvalidTypeRef`。`doc/grammar.peg` 已同步 `TupleCtor` / `TupleAggBody`; 本项只保证 parser 层接受该语法, 不代表 sema/codegen 已经理解 `Tuple` 构造与访问语义。
+- [ ] I2.3 更新 sema。当前已完成最小产品切片所需的前端/类型接线: 小写 `tuple<...>` 在普通 typed bind 左侧被拒绝, `Tuple<>` / `Tuple<T>` 的 arity 下限已经前置校验, `@get(pair, 2)` 这类编译期越界索引已由 `compile_err/331_tuple_get_index_oob` 锁在当前 `NoMatchingCall` 行为; 后续仍需把 `Tuple` 正式提升为内建泛型类型, 系统化校验位置构造器实参数量 / 类型顺序、数字索引边界和更广泛的重载匹配。
+- [ ] I2.4 更新 codegen。当前已完成最小 typed tuple build/compiled + struct field + return/param multi-value slice: `compile_ok/259_tuple_pair_get_lower`、`260_tuple_struct_field_lower`、`261_tuple_return_lower`、`262_tuple_param_get_lower`、`compiled_ok/65_compiled_test_tuple_pair`、`66_compiled_test_tuple_struct_field`、`67_compiled_test_tuple_return`、`68_compiled_test_tuple_param`、`compile_err/331_tuple_get_index_oob`、`332_tuple_arity_one`、`333_tuple_arity_zero` 已覆盖 `Tuple<bool, u8>{...}` 到 `@get(pair, 0/1)` / `@get(box, .pair, 0/1)`、单返回 multi-value ABI 与参数 flatten 的 lowering / 运行与一组 arity/index 边界; 后续仍需扩到 storage lowering, 并覆盖 managed payload。
+
 - [ ] I2.5 补正反例回归。正例覆盖 `Tuple<bool, u8>{flag, code}`、`@get(pair, 0)`、`@get(pair, 1)`、嵌套 Tuple、Tuple 作为单返回和 struct 字段; 反例覆盖 `Tuple<>`、`Tuple<T>`、位置构造实参数量不匹配、命名字段构造、越界数字索引、小写 `tuple<...>` 源码误用。
 - [ ] I2.6 同步 README、`doc/syntax/type.md`、`doc/spec_rules.md`、`doc/grammar.peg` 和测试说明。
 

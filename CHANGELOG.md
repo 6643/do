@@ -2,8 +2,33 @@
 
 本文只记录已经完成并仍需要可追溯的阶段性变化。实时执行状态见 `doc/roadmap_status.md`; 下一步入口见 `doc/start_here.md`; 总规划见 `doc/master_plan.md`。
 
+## 2026-07-12
+
+- 打通阶段 I2.4 的 Tuple return / param multi-value lowering。
+  - 实现: `tool/build/codegen.zig` 将 `Tuple<...>` 函数返回值 flatten 为 WASM multi-value result, 参数 flatten 为 `$name.vN` ABI, 调用结果经 reverse `local.set` 绑定; 新增 `compile_ok/261_tuple_return_lower`、`262_tuple_param_get_lower`、`compiled_ok/67_compiled_test_tuple_return`、`68_compiled_test_tuple_param`。
+  - 结论: 标量元素 Tuple 现可作单返回与参数走 `do build` 与 `do test --compiled` 路径; storage / managed payload 仍后置。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `[INFO] summary: pass=886 fail=0 skip=3`。
+
+## 2026-07-10
+
+- 打通阶段 I 的最小 typed tuple build / compiled + struct field slice。
+  - 实现: `tool/build/codegen.zig` 为 typed tuple binding 和 tuple struct field 建立 field locals, 并让 `@get(pair, 0/1)`、`@get(box, .pair, 0/1)` 都走数字索引路径; 新增 `compile_ok/259_tuple_pair_get_lower`、`compile_ok/260_tuple_struct_field_lower`、`compiled_ok/65_compiled_test_tuple_pair`、`compiled_ok/66_compiled_test_tuple_struct_field` 和 `err/330_lowercase_tuple_source_type`。
+  - 结论: `Tuple<bool, u8>{...}` 现在既能作为 typed local, 也能作为普通 struct field 走 `do build` 与 `do test --compiled` 路径; 小写 `tuple<...>` 在普通源码类型位仍被前端拒绝, `Tuple<>` / `Tuple<T>` 的 arity 下限和 `@get(pair, 2)` 的越界索引也已有回归边界。
+  - 验证: `cd tool && zig test main.zig` 通过, 输出 `All 103 tests passed.`。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `[INFO] summary: pass=882 fail=0 skip=3`。
+- 完成阶段 I 的 I2.2 grammar / parser 收口。
+  - 实现: `tool/build/parser.zig` 新增 `Tuple<...>{...}` 位置构造器语法支持, 并在 typed bind 左侧把小写 `tuple<...>` 拒绝为 `InvalidTypeRef`; `doc/grammar.peg` 同步 `TupleCtor` / `TupleAggBody`。
+  - 结论: `Tuple<...>` 已通过 parser 层进入普通源码类型位, 位置构造器语法也已被 parser 接受; 这一轮仍不包含 `Tuple` 的 sema / codegen 语义。
+  - 验证: `cd tool && zig test build/parser.zig` 通过, 输出 `All 26 tests passed.`。
+  - 验证: `cd tool && zig test main.zig` 通过, 输出 `All 103 tests passed.`。
+  - 验证: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `[INFO] summary: pass=874 fail=0 skip=3`。
+
 ## 2026-07-09
 
+
+- 固定阶段 I2.1 的 `Tuple<...>` 规格。
+  - 结论: 第一版采用源码层大写内建泛型类型 `Tuple<T0, T1, ...>`; arity 下限为 2, 当前不设上限; 允许嵌套、struct 字段、storage 元素和 union 分支。构造固定为 `Tuple<...>{...}` 位置构造器, 读取固定为 `@get(tuple_value, <compile-time-int>)`。第一版不支持命名字段构造、`.v0/.v1` 字段访问、`@set` 数字索引写入、tuple literal、destructuring 或 pattern matching。
+  - 结论: `Tuple` 进入保留内建类型集合, 不能再被普通类型声明或 import alias 占用; 小写 `tuple<...>` 继续只保留给 WIT / `@wasi` 签名。
 - 推进阶段 I 的 `ok/183_recursive_error_union` 静态 runner 收口。
   - 实现: `tool/build/test_runner.zig` 新增 test body `if/else` block 执行、`@is(...)` 求值、本地 error branch 值表示与比较, 让递归 error-union 路径能在静态 runner 里跑通。
   - 结论: `ok/183_recursive_error_union.do` 现在也能走静态 runner 直接通过; 当前已登记的递归 / self-tail 静态 runner 矩阵已收口。

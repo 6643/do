@@ -289,7 +289,8 @@ get / pkg / push 暂停边界:
 
 状态: in-progress
 
-当前结论: 阶段 I 已开始推进。I1.1 递归基线盘点已完成; I1.2 已把普通直接/互递归、递归未命中 overload 报 `NoMatchingCall`、参数侧已知 concrete type 的泛型递归可执行, 以及“左侧目标类型不参与 direct type param 反推”的边界固定到 `doc/spec_rules.md`。I1.3 已补普通 `do test`、`do build` 与 compiled 路径的递归正反例矩阵。I1.4 已补 scalar / `if/else` / guard / generic / imported self-tail TCO, 以及 generic/imported `if/else` self-tail 回归。I1.5 已锁住 `defer`、storage local、managed struct、多返回、guard+defer、`if/else+defer` 的不优化边界。I1.6 已同步 README、测试说明、handoff 文档和最新默认回归摘要。I2 `Tuple<...>` 仍停留在计划阶段, 尚未开始 grammar/parser/sema/codegen 实现。
+当前结论: 阶段 I 已开始推进。I1.1 递归基线盘点已完成; I1.2 已把普通直接/互递归、递归未命中 overload 报 `NoMatchingCall`、参数侧已知 concrete type 的泛型递归可执行, 以及“左侧目标类型不参与 direct type param 反推”的边界固定到 `doc/spec_rules.md`。I1.3 已补普通 `do test`、`do build` 与 compiled 路径的递归正反例矩阵。I1.4 已补 scalar / `if/else` / guard / generic / imported self-tail TCO, 以及 generic/imported `if/else` self-tail 回归。I1.5 已锁住 `defer`、storage local、managed struct、多返回、guard+defer、`if/else+defer` 的不优化边界。I1.6 已同步 README、测试说明、handoff 文档和最新默认回归摘要。I2 已进入实现: I2.1 已固定规格, I2.2 已完成 grammar/parser, 当前 I2.3/I2.4 已打通最小 typed tuple build/compiled + arity/index + struct field + return/param multi-value slice, 后续继续扩到 storage / managed payload 与更完整 sema 规则。
+
 
 需求评估:
 
@@ -304,10 +305,11 @@ get / pkg / push 暂停边界:
 - [ ] I1.4 落地 self-tail TCO 第一版。当前已补 `compile_ok/246_self_tail_scalar_tco_lower`、`247_self_tail_if_else_tco_lower`、`252_self_tail_guard_tco_lower`、`254_generic_self_tail_tco_lower`、`255_imported_self_tail_scalar_tco_lower`、`257_generic_self_tail_if_else_tco_lower`、`258_imported_self_tail_if_else_tco_lower`, `compiled_ok/58` 到 `64`, 以及 `ok/188`、`ok/189`, 证明 scalar、`if/else`、guard、generic、imported 和 generic/imported `if/else` self-tail path 已能 lower 到 loop; 更复杂 cleanup/aggregate 边界继续后置。
 - [ ] I1.5 评估 storage / managed / defer / 多返回 TCO 边界。当前已补 `compile_ok/248_self_tail_defer_not_optimized_lower`、`249_self_tail_storage_local_not_optimized_lower`、`250_self_tail_managed_struct_not_optimized_lower`、`251_self_tail_multi_return_not_optimized_lower`、`253_self_tail_if_else_defer_not_optimized_lower`、`256_self_tail_guard_defer_not_optimized_lower`, 锁住这六条“不优化”边界; 更激进放开前先保持保守。
 - [x] I1.6 同步文档和回归摘要。README、`tool/build/test/README.md`、`doc/master_plan.md`、`doc/start_here.md` 和本文已对齐阶段 I 当前回归矩阵; 递归 / self-tail TCO 不引入新语法, 因此无 `doc/syntax/*` 变更; 最新默认完整回归基线为 `pass=874 fail=0 skip=3`。
-- [ ] I2.1 固定 `Tuple` 规格、arity、位置构造器和数字索引读取规则。
-- [ ] I2.2 更新 grammar / parser。
-- [ ] I2.3 更新 sema 内建类型、构造器和字段访问规则。
-- [ ] I2.4 更新 codegen layout / access / return / param / storage lowering。
+- [x] I2.1 固定 `Tuple` 规格、arity、位置构造器和数字索引读取规则。结论: 第一版采用源码层大写内建泛型类型 `Tuple<T0, T1, ...>`; arity 下限为 2, 当前不设上限; 允许嵌套 `Tuple<Tuple<i32, bool>, u8>`; 允许作为局部绑定、参数、单返回、struct 字段、storage 元素和 union 分支。构造固定为 `Tuple<T0, T1, ...>{v0, v1, ...}` 的位置构造器, 实参数量必须与 arity 完全一致; 读取固定为 `@get(tuple_value, <index>)`, `<index>` 必须是编译期整数字面量且落在 `0..arity-1`。第一版不支持命名字段构造、`.v0/.v1` 字段段访问、`@set(tuple_value, <index>, value)` 数字索引写入、tuple literal、destructuring 或 pattern matching。`Tuple` 进入保留内建类型集合, 不能再被普通类型声明或 import alias 占用; 小写 `tuple<...>` 继续只保留给 WIT / `@wasi` 签名。
+- [x] I2.2 更新 grammar / parser。结论: `Tuple<...>` 继续复用现有大写类型名 + type args 路径进入普通源码类型位; parser 现已接受 `Tuple<bool, u8>{true, 7}` 这类位置构造器语法, 并在 typed bind 左侧把小写 `tuple<bool, u8>` 拒绝为 `InvalidTypeRef`。这一轮只收语法层: 还不保证 sema/codegen 已能解释 `Tuple` 构造、索引访问或布局。
+- [ ] I2.3 更新 sema 内建类型、构造器和字段访问规则。当前已完成最小产品切片所需的前端/类型接线: 小写 `tuple<...>` 在普通 typed bind 左侧被拒绝, `Tuple<>` / `Tuple<T>` 的 arity 下限已在前端校验, `@get(pair, 2)` 这类编译期越界索引已由 `compile_err/331_tuple_get_index_oob` 锁在当前 `NoMatchingCall` 行为; 后续仍需把 `Tuple` 正式提升为内建泛型类型, 系统化校验位置构造器实参数量 / 类型顺序、数字索引边界和更广泛的重载匹配。
+- [ ] I2.4 更新 codegen layout / access / return / param / storage lowering。当前已完成最小 typed tuple build/compiled + arity/index + struct field + return/param multi-value slice: `compile_ok/259_tuple_pair_get_lower`、`260_tuple_struct_field_lower`、`261_tuple_return_lower`、`262_tuple_param_get_lower`、`compiled_ok/65_compiled_test_tuple_pair`、`66_compiled_test_tuple_struct_field`、`67_compiled_test_tuple_return`、`68_compiled_test_tuple_param`、`compile_err/331_tuple_get_index_oob`、`332_tuple_arity_one`、`333_tuple_arity_zero` 已覆盖 `Tuple<bool, u8>{...}`、`@get(pair, 0/1)`、`@get(box, .pair, 0/1)`、单返回 multi-value ABI 与参数 flatten 的 lowering / 运行与一组 arity/index 边界; 后续仍需扩到 storage lowering, 并覆盖 managed payload。
+
 - [ ] I2.5 补 Tuple 正反例回归。
 - [ ] I2.6 同步 README、语法文档、spec rules、grammar 和测试说明。
 
@@ -320,7 +322,25 @@ get / pkg / push 暂停边界:
 - `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/183_recursive_error_union.do` 通过, 输出 `1 passed`; `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/183_recursive_error_union.do --compiled -o /tmp/do_i1_recursive_error_union.wat` 通过, `wasm-tools parse` + `node tool/build/test/run_compiled_test_case.mjs` 输出 `1 passed`。
 - `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/184_generic_recursive_known_arg.do` 通过, 输出 `1 passed`; `--compiled` 路径同样通过。
 - `DO_LIB_ROOT=src ./bin/do test tool/build/test/err/329_generic_recursive_target_type_only_uninferred.do` 失败并匹配 `NoMatchingCall`。
+- `cd tool && zig test build/parser.zig` 通过, 输出 `All 26 tests passed.`; 新增 parser red/green 覆盖 `Tuple<bool, u8>{true, 7}` 位置构造器语法和 typed bind 左侧小写 `tuple<bool, u8>` 的 `InvalidTypeRef`。
+- `cd tool && zig test main.zig` 通过, 输出 `All 103 tests passed.`。
+- `SKIP_BUILD=1 ./tool/build/test/run_tests.sh` 通过, 摘要 `[INFO] summary: pass=886 fail=0 skip=3`。
+
+- probe: `test "tuple lower type" { other tuple<bool, u8> = nil return }` 当前前端返回 `error[InvalidTypeRef]`; `test "tuple ctor" { other Tuple<bool, u8> = Tuple<bool, u8>{true, 7} return }` 当前 `do check` 前端不再报 `InvalidStructLiteral`。
+- `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_ok/259_tuple_pair_get_lower.do -o /tmp/259_tuple_pair_get_lower.wat` 通过, WAT 中已出现 `local.set $pair.v0` / `local.set $pair.v1` 与后续 `local.get $pair.v0` / `local.get $pair.v1`。
+- `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_ok/65_compiled_test_tuple_pair.do --compiled -o /tmp/65_compiled_test_tuple_pair.wat` 通过; `wasm-tools parse` + `node tool/build/test/run_compiled_test_case.mjs` 输出 `test "compiled tuple pair" ... ok`。
+- `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_ok/260_tuple_struct_field_lower.do -o /tmp/260_tuple_struct_field_lower.wat` 通过, WAT 中已出现 `local.set $box.pair.v0` / `local.set $box.pair.v1` 与后续 `local.get $box.pair.v0` / `local.get $box.pair.v1`。
+- `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_ok/66_compiled_test_tuple_struct_field.do --compiled -o /tmp/66_compiled_test_tuple_struct_field.wat` 通过; `wasm-tools parse` + `node tool/build/test/run_compiled_test_case.mjs` 输出 `test "compiled tuple struct field" ... ok`。
+- `DO_LIB_ROOT=src ./bin/do test tool/build/test/err/330_lowercase_tuple_source_type.do` 失败并匹配 `InvalidTypeRef`。
+- `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_err/331_tuple_get_index_oob.do -o /tmp/331_tuple_get_index_oob.wat` 失败并匹配 `NoMatchingCall`。
+- `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_err/332_tuple_arity_one.do -o /tmp/332_tuple_arity_one.wat` 失败并匹配 `InvalidTypeRef`。
+- `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_err/333_tuple_arity_zero.do -o /tmp/333_tuple_arity_zero.wat` 失败并匹配 `InvalidTypeRef`。
+- `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_ok/261_tuple_return_lower.do -o /tmp/261_tuple_return_lower.wat` 通过, WAT 中已出现 `(func $make_pair (result i32 i32)`、`call $make_pair` 后 reverse `local.set $pair.v1` / `local.set $pair.v0`。
+- `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_ok/262_tuple_param_get_lower.do -o /tmp/262_tuple_param_get_lower.wat` 通过, WAT 中已出现 `(func $pair_first (param $pair.v0 i32) (param $pair.v1 i32) (result i32)` 与 `call $pair_first`。
+- `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_ok/67_compiled_test_tuple_return.do --compiled -o /tmp/67_compiled_test_tuple_return.wat` 通过, `.expect` 逐行匹配通过。
+- `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_ok/68_compiled_test_tuple_param.do --compiled -o /tmp/68_compiled_test_tuple_param.wat` 通过, `.expect` 逐行匹配通过。
 - `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_ok/242_recursive_start_sum_lower.do -o /tmp/do_i1_recursive_start.wat` 通过, `.expect` 逐行匹配通过。
+
 - `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/185_recursive_factorial.do` 通过, 输出 `1 passed`; `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_ok/243_recursive_factorial_start_lower.do -o /tmp/do_i1_factorial_start.wat` 通过, `.expect` 逐行匹配通过; `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_ok/55_compiled_test_recursive_factorial.do --compiled -o /tmp/do_i1_factorial_compiled.wat` 通过且 wasm 执行 `1 passed`。
 - `DO_LIB_ROOT=src ./bin/do test tool/build/test/ok/186_recursive_guard_return.do` 通过, 输出 `1 passed`; `DO_LIB_ROOT=src ./bin/do build tool/build/test/compile_ok/244_recursive_if_else_start_lower.do -o /tmp/do_i1_if_else_start.wat` 通过, `.expect` 逐行匹配通过; `DO_LIB_ROOT=src ./bin/do test tool/build/test/compiled_ok/56_compiled_test_recursive_if_else.do --compiled -o /tmp/do_i1_if_else_compiled.wat` 通过且 wasm 执行 `1 passed`。
 - `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/ok/187_imported_recursive_factorial.do` 通过, 输出 `1 passed`; `DO_LIB_ROOT=tool/build/test/lib ./bin/do build tool/build/test/compile_ok/245_imported_recursive_start_lower.do -o /tmp/do_i1_imported_factorial_start.wat` 通过, `.expect` 逐行匹配通过; `DO_LIB_ROOT=tool/build/test/lib ./bin/do test tool/build/test/compiled_ok/57_compiled_test_imported_recursive_factorial.do --compiled -o /tmp/do_i1_imported_factorial_compiled.wat` 通过且 wasm 执行 `1 passed`。
@@ -337,8 +357,9 @@ get / pkg / push 暂停边界:
 
 下一步:
 
-- 若继续扩 I1, 下一步优先评估 cleanup/aggregate 相关的静态 runner 价值是否足够; 若不继续扩静态 runner, 则切到 I2.1 `Tuple<...>` 规格固定。
+- 下一步继续 I2.3/I2.4: 在已落地的 local / struct field / return / param multi-value 之上补 storage / managed payload lowering, 并把更多边界从产品级 `NoMatchingCall` 收敛成更明确的语义诊断。
 - 若 I1 暂无新的可独立收口小项, 则切到 I2.1 `Tuple<...>` 规格固定, 先把 arity、位置构造器和数字索引规则写实。
+
 
 ## 阶段 B: 语法和语义冻结审查
 

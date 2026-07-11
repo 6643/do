@@ -11,7 +11,8 @@
 ## 当前停点
 
 - v1 子集发布候选已收口。
-- 默认回归矩阵最近通过: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh`, 摘要 `pass=874 fail=0 skip=3`; 最近一次复跑验证了阶段 I 递归 / self-tail TCO 新增矩阵与默认 harness 路径, 本次复跑后的 `tool/build/test/tmp` ignored 产物已清理到 `0`。
+- 默认回归矩阵最近通过: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh`, 摘要 `pass=886 fail=0 skip=3`; 最近一次复跑验证了阶段 I 递归 / self-tail TCO 收口和 Tuple 最小 build/compiled + arity/index + struct field + return/param multi-value slice, 本次复跑后的 `tool/build/test/tmp` ignored 产物已清理到 `0`。
+
 - 扩展回归最近通过: `RUN_WASM=1 SKIP_BUILD=1 ./tool/build/test/run_tests.sh`, 摘要 `pass=833 fail=0 skip=3`, `wasm run summary: pass=6 fail=0`; 最近一次复跑验证了 fixture rename 后的 RUN_WASM 路径和 compiled trap smoke, 本次复跑后的 `tool/build/test/tmp` ignored 产物已清理到 `0`。
 - Release smoke 最近通过: `./tool/build/test/run_release_smoke.sh`, ReleaseSmall、build/test/compiled/check/fmt/run/lsp 全部 `[PASS]`, 输出 `[INFO] release smoke passed`; 本次 smoke 产生 `tool/build/test/tmp` ignored 产物 44 个、目录大小 `436K`, 已清理到生成物计数 `0`, 目录大小 `288K`。
 - Repo-wide diff whitespace gate 最近通过: `git diff --check`。
@@ -67,14 +68,17 @@
 - LSP JSON fixture naming/order gate 最近通过: `lsp_json_files=9`, `lsp_number_gaps=0`, `lsp_duplicate_numbers=0`, `lsp_schema_errors=0`, `lsp_request_id_errors=0`。
 - run/fmt/check black-box fixture companion gate 最近通过: `blackbox_do_files=11`, `blackbox_expect_files=9`, `blackbox_missing_required_expect=0`, `blackbox_orphan_expect=0`, `blackbox_numbering_gaps=0`。
 - pending fixture inventory gate 最近通过: `pending_dirs_defined=3`, `pending_dirs_existing=1`, `pending_do_files=0`, `pending_expect_files=0`, `pending_orphan_expect=0`。
-- compiled fixture companion / numbering gate 最近通过: 已将重复编号的 `18_compiled_test_math_small_int_helpers.{do,expect}` 重命名为 `52_compiled_test_math_small_int_helpers.{do,expect}`; 并新增 `53_compiled_test_direct_and_mutual_recursion.{do,expect}`、`54_compiled_test_generic_recursive_known_arg.{do,expect}`、`55_compiled_test_recursive_factorial.{do,expect}`、`56_compiled_test_recursive_if_else.{do,expect}`、`57_compiled_test_imported_recursive_factorial.{do,expect}`、`58_compiled_test_self_tail_scalar_tco.{do,expect}`、`59_compiled_test_self_tail_if_else_tco.{do,expect}`、`60_compiled_test_self_tail_guard_tco.{do,expect}`、`61_compiled_test_generic_self_tail_tco.{do,expect}`、`62_compiled_test_imported_self_tail_scalar_tco.{do,expect}`、`63_compiled_test_generic_self_tail_if_else_tco.{do,expect}`、`64_compiled_test_imported_self_tail_if_else_tco.{do,expect}` 与 `compiled_err/02`、`03` 两个递归负例; `compiled_fixture_do_files=64`, `compiled_fixture_missing_required_expect=0`, `compiled_fixture_orphan_expect=0`, `compiled_fixture_duplicate_numbers=0`, `compiled_fixture_missing_numbers=0`。
-- compile_ok 普通 expect companion / numbering inventory gate 最近通过: 已将 5 组重复编号 fixture 重命名到 `234_` 到 `238_`, 并新增 D2.1 `239_` 到 `241_` 以及 I1 `242_` 到 `258_`; `compile_ok_numbered_do_files=259`, `compile_ok_plain_expect_orphans=0`, `compile_ok_special_expect_orphans=0`, `compile_ok_duplicate_numbers=0`, `compile_ok_missing_numbers=0`。
+- compiled fixture companion / numbering gate 最近通过: 已将重复编号的 `18_compiled_test_math_small_int_helpers.{do,expect}` 重命名为 `52_compiled_test_math_small_int_helpers.{do,expect}`; 并新增 `53_compiled_test_direct_and_mutual_recursion.{do,expect}`、`54_compiled_test_generic_recursive_known_arg.{do,expect}`、`55_compiled_test_recursive_factorial.{do,expect}`、`56_compiled_test_recursive_if_else.{do,expect}`、`57_compiled_test_imported_recursive_factorial.{do,expect}`、`58_compiled_test_self_tail_scalar_tco.{do,expect}`、`59_compiled_test_self_tail_if_else_tco.{do,expect}`、`60_compiled_test_self_tail_guard_tco.{do,expect}`、`61_compiled_test_generic_self_tail_tco.{do,expect}`、`62_compiled_test_imported_self_tail_scalar_tco.{do,expect}`、`63_compiled_test_generic_self_tail_if_else_tco.{do,expect}`、`64_compiled_test_imported_self_tail_if_else_tco.{do,expect}`、`65_compiled_test_tuple_pair.{do,expect}`、`66_compiled_test_tuple_struct_field.{do,expect}`、`67_compiled_test_tuple_return.{do,expect}`、`68_compiled_test_tuple_param.{do,expect}` 与 `compiled_err/02`、`03` 两个递归负例; `compiled_fixture_do_files=68`, `compiled_fixture_missing_required_expect=0`, `compiled_fixture_orphan_expect=0`, `compiled_fixture_duplicate_numbers=0`, `compiled_fixture_missing_numbers=0`。
+- compile_ok 普通 expect companion / numbering inventory gate 最近通过: 已将 5 组重复编号 fixture 重命名到 `234_` 到 `238_`, 并新增 D2.1 `239_` 到 `241_`、I1 `242_` 到 `258_` 以及 I2 `259_` 到 `262_`; `compile_ok_numbered_do_files=262`, `compile_ok_plain_expect_orphans=0`, `compile_ok_special_expect_orphans=0`, `compile_ok_duplicate_numbers=0`, `compile_ok_missing_numbers=0`。
+
 - renamed compile_ok targeted build gate 最近通过: `renamed_compile_ok_cases=5`, `renamed_compile_ok_failures=0`, `renamed_compile_ok_total_wat_bytes=176067`, `renamed_compile_ok_expect_lines=23`。
 - renamed compiled_ok targeted compiled build gate 最近通过: `renamed_compiled_ok_cases=1`, `renamed_compiled_ok_failures=0`, `renamed_compiled_ok_wat_bytes=38029`, `renamed_compiled_ok_expect_lines=7`。
 - D2.1 if/else path-sensitive liveness closure gate 最近通过: 用户确认 B 方案后新增 compile_ok `239` 到 `241`, targeted build 全部通过, 作为绿色 regression 收口, 不再列为当前阻断。
-- 默认回归 gate 最近通过: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh`, 摘要 `pass=874 fail=0 skip=3`; 回归生成的 `tool/build/test/tmp` ignored 产物已清理到 `0`。
+- 默认回归 gate 最近通过: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh`, 摘要 `pass=886 fail=0 skip=3`; 回归生成的 `tool/build/test/tmp` ignored 产物已清理到 `0`。
+
 - RUN_WASM 扩展回归 gate 最近通过: `RUN_WASM=1 SKIP_BUILD=1 ./tool/build/test/run_tests.sh`, 摘要 `pass=833 fail=0 skip=3`, `wasm run summary: pass=6 fail=0`; 回归生成的 `tool/build/test/tmp` ignored 产物已清理到 `0`。
-- 阶段 I 已开始推进: I1.1 递归基线盘点、I1.2 语义规则收敛和 I1.6 文档同步已完成; I1.3 已补五批 `ok/compile_ok/compiled_ok` 递归回归, 证明普通 `do test`、`do build`、compiled 路径、参数侧已定型的泛型递归、factorial、`if/else` 分支递归和 imported recursion 都已覆盖; I1.4 的 scalar、`if/else`、guard、generic、imported 以及 generic/imported `if/else` self-tail slice 都已落地; I1.5 已锁住 `defer`、storage local、managed struct、多返回、guard+defer、`if/else+defer` 6 条不优化边界; I2 `Tuple<...>` 仍未开始实现。
+- 阶段 I 已开始推进: I1.1 递归基线盘点、I1.2 语义规则收敛和 I1.6 文档同步已完成; I1.3 已补五批 `ok/compile_ok/compiled_ok` 递归回归, 证明普通 `do test`、`do build`、compiled 路径、参数侧已定型的泛型递归、factorial、`if/else` 分支递归和 imported recursion 都已覆盖; I1.4 的 scalar、`if/else`、guard、generic、imported 以及 generic/imported `if/else` self-tail slice 都已落地; I1.5 已锁住 `defer`、storage local、managed struct、多返回、guard+defer、`if/else+defer` 6 条不优化边界; I2 已完成 I2.1 规格固定和 I2.2 grammar/parser, 当前 I2.3/I2.4 已打通最小 typed tuple build/compiled + arity/index + struct field + return/param multi-value slice。
+
 
 ## 下一步规则
 
@@ -95,6 +99,9 @@
 - I1 当前边界: 普通直接递归 / 互递归已补回归; 参数侧已知 concrete type 的泛型递归已补正例; 仅靠左侧目标类型 + 字面量反推 generic param 的递归调用当前仍在 compiled 路径报 `NoMatchingCall`。
 - I1 当前缺口: 当前递归 / self-tail 的已登记静态 runner 用例已收口; 更复杂 cleanup/aggregate 形态仍以后置 compile/compiled 回归为主。
 - I2: 支持源码层大写 `Tuple<T0, T1, ...>` 类型, 例如 `Tuple<bool, u8>{flag, code}`; 第一版不做 `(bool, u8)` 类型语法或 `(true, 7)` 字面量, 读取使用 `@get(pair, 0)` / `@get(pair, 1)` 数字位置索引。
+- I2 当前规格: `Tuple<T0, T1, ...>` 第一版 arity 下限为 2, 允许嵌套、struct 字段、storage 元素和 union 分支; 构造固定为 `Tuple<...>{...}` 位置构造器, 读取固定为 `@get(tuple_value, <compile-time-int>)`; 第一版不支持命名字段构造、`.v0/.v1` 字段访问或 `@set` 数字索引写入; `Tuple` 进入保留内建类型集合, 小写 `tuple<...>` 继续只保留给 WIT / `@wasi` 签名。
+- I2 当前停点: I2.2 已完成 grammar / parser 收口, 包括 `Tuple<...>{...}` 位置构造器语法和 typed bind 左侧小写 `tuple<...>` 的前端拒绝; 当前 I2.3/I2.4 已打通最小 typed tuple build/compiled + arity/index + struct field + return/param multi-value slice, 包括 `compile_ok/259_tuple_pair_get_lower`、`260_tuple_struct_field_lower`、`261_tuple_return_lower`、`262_tuple_param_get_lower`、`compiled_ok/65_compiled_test_tuple_pair`、`66_compiled_test_tuple_struct_field`、`67_compiled_test_tuple_return`、`68_compiled_test_tuple_param`、`err/330_lowercase_tuple_source_type`、`compile_err/331_tuple_get_index_oob`、`332_tuple_arity_one` 和 `333_tuple_arity_zero`; 下一步继续补 storage / managed payload lowering, 并把更多边界从产品级 `NoMatchingCall` 收敛成更明确的语义诊断。
+
 
 ## 当前边界
 
