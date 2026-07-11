@@ -517,7 +517,15 @@ Error
     字段初始化名、`=` 和普通表达式起点保持在同一字段初始化项里；字段名和 `=` 之间不能换行，`=` 后的普通表达式也不能换行。
 20. 字段默认值在结构体构造时求值；默认表达式结果类型与字段类型一致。
 21. 结构体构造发生在 CTFE 上下文时，字段默认值也走 CTFE；运行时构造可执行运行时默认表达式。
-22. `Tuple` 按普通泛型结构体字段构造解释；库若定义 `Tuple`，同样采用字段构造。
+22. 源码层大写 `Tuple<T0, T1, ...>` 是编译器内建泛型类型, 不是用户可重定义的普通结构体名。`Tuple` 进入保留内建类型集合, 不能再被普通类型声明或 import alias 占用。小写 `tuple<...>` 只保留给 WIT / `@wasi` 签名, 不能出现在普通源码类型位; 误用报 `InvalidTypeRef`。
+23. `Tuple` 第一版规则:
+    - arity 下限为 2, 当前不设上限; `Tuple<>` / `Tuple<T>` 报 `InvalidTypeRef`。
+    - 构造固定为位置构造器 `Tuple<T0, T1, ...>{v0, v1, ...}`, 实参数量必须与 arity 完全一致; 不匹配报 `InvalidTypedLiteral`。命名字段构造 `Tuple<...>{v0 = ...}` 第一版不支持, 当前前端可在 parser 阶段报 `InvalidStructLiteral`。
+    - 读取固定为 `@get(tuple_value, <compile-time-int>)`, 索引必须是编译期整数字面量且落在 `0..arity-1`; 越界或非字面量索引报 `InvalidPathIndex`。第一版不支持 `.v0/.v1` 字段段访问, 也不支持 `@set(tuple_value, <index>, value)` 数字索引写入。
+    - 允许嵌套 `Tuple<Tuple<i32, bool>, u8>`, 以及作为局部绑定、参数、单返回、struct 字段和标量叶子 `[Tuple<...>]` storage 元素。
+    - 标量叶子 storage 采用内联 pack (scheme A): 元素按叶子 payload 连续写入 storage data, 不是 managed handle。
+    - 当前后置边界: managed payload 叶子的 storage、`text` 等 managed 叶子 storage、`@get(storage, i, j)` path chaining, 以及 `loop v, i = items { @get(v, 0) }` 对 loop 绑定的数字索引读取; 这些边界当前仍报 `NoMatchingCall`。
+    - 元素类型不匹配的位置构造当前仍可能落到 `NoMatchingCall`; 后续可收敛为更精确的类型诊断。
 
 ## 6. 绑定、赋值与作用域
 
@@ -775,6 +783,7 @@ Error
 
 44. 表达式语句只接收普通 `CallExpr`，并且选中的调用返回必须是 `-> nil`；有返回值的表达式必须绑定、赋值、返回或在多左值中显式丢弃，不能作为表达式语句静默丢弃。
 45. 普通函数允许直接递归和互递归；顶层函数收集先完成名字和签名建表，再进入函数体检查，因此 `countdown(...)` / `is_even(...)` / `is_odd(...)` 这类同模块普通递归调用合法。递归调用仍按普通重载规则选候选，命中错误签名时报告 `NoMatchingCall`。泛型递归当前只支持不依赖返回上下文反推的形态，例如参数侧已经有已知 concrete type 的调用，像 `seed i32 = 9; generic_countdown(2, seed)`。仅靠左侧目标类型反推 direct type param 的写法，例如 `out i32 = generic_countdown(2, 9)`，当前仍按 `NoMatchingCall` 边界拒绝；后续若要放开，必须先明确是否允许返回上下文参与这类 direct type param 推导。
+46. self-tail TCO 第一版只优化可证明的 `return self(new_args)` 形态到参数重赋值 + loop continue, 不依赖 Wasm tail-call proposal, 也不承诺 mutual/general TCO。当前已覆盖 scalar、`if/else`、guard、generic 与 imported self-tail path。遇到 `defer`、storage local、managed struct、多返回、`if/else` 分支 + `defer` 或 guard + `defer` 时, 第一版明确不优化, 仍按普通递归 call 生成。
 
 ## 8. 泛型与接口约束
 

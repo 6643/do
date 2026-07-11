@@ -95,6 +95,32 @@ Entry<text, User>
 HashMap<text, [User]>
 ```
 
+## `Tuple<...>` 内建类型
+
+`Tuple<T0, T1, ...>` 是源码层大写内建泛型类型, 表示固定顺序的位置元组。它与 `@wasi` / WIT 签名里的小写 `tuple<...>` 分离, 后者不能出现在普通源码类型位。
+
+```do
+make_pair(flag bool, code u8) -> Tuple<bool, u8> {
+    return Tuple<bool, u8>{flag, code}
+}
+
+test "tuple pair" {
+    pair Tuple<bool, u8> = make_pair(true, 7)
+    first bool = @get(pair, 0)
+    second u8 = @get(pair, 1)
+    if @and(@eq(first, true), @eq(second, 7)) return
+}
+```
+
+规则:
+
+1. arity 下限为 2, 当前不设上限; `Tuple<>` / `Tuple<T>` 非法。
+2. 构造固定为位置构造器 `Tuple<T0, T1, ...>{v0, v1, ...}`, 实参数量必须与 arity 完全一致; 第一版不支持命名字段构造。
+3. 读取固定为 `@get(tuple_value, <compile-time-int>)`, 索引必须是编译期整数字面量且落在 `0..arity-1`; 第一版不支持 `.v0/.v1` 字段段访问, 也不支持 `@set(tuple_value, <index>, value)` 数字索引写入。
+4. 允许嵌套 `Tuple<Tuple<i32, bool>, u8>`, 以及作为局部绑定、参数、单返回、struct 字段和标量叶子 `[Tuple<...>]` storage 元素。
+5. 小写 `tuple<bool, u8>` 在普通 typed bind 左侧报 `InvalidTypeRef`。
+6. 当前后置边界 (仍报 `NoMatchingCall` 或等价失败): managed payload 叶子的 `[Tuple<Point, u8>]` storage、`text` 等 managed 叶子 storage、`@get(storage, i, j)` path chaining, 以及 `loop v, i = items { @get(v, 0) }` 对 loop 绑定的数字索引读取。
+
 ## 函数类型约束
 
 ```do

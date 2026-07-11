@@ -56,7 +56,7 @@
 - 阶段 A、B、C、E、F、H 已完成。
 - 阶段 D 的 D1-D5 可推进项已完成; D2.1 已按用户确认的 B 方案绿色 regression 收口, 阶段 D 当前无剩余 blocked 残留。
 - 阶段 G 的 G1-G5 和 G6.4 已完成; G6.1、G6.3 仍等待公开 API 决策; G6.2 因当前无 async/Future runtime 暂时阻断。
-- 阶段 I 已进入实现: I1.1 递归基线盘点、I1.2 规则收敛与 I1.6 文档同步已完成; I1.3-I1.5 回归扩展继续推进。
+- 阶段 I 已完成: I1 递归 / self-tail TCO 与 I2 `Tuple<...>` 第一版均已收口; 后置边界已记录。
 - 用户说 `go` / `next` 时, 默认按第 12 节执行: 先检查发布候选回归、文档漂移或可独立收口的小项; 没有新小项时不绕过 G6 阻断。
 
 ## 3. 阶段 A: 工具链体验补齐
@@ -1095,7 +1095,7 @@
 
 ## 11. 阶段 I: 后续语言能力扩展
 
-状态: in-progress
+状态: done
 
 目标: 在 v1 子集发布候选稳定后, 分批补齐两个高价值语言能力: 递归 / self-tail TCO, 以及源码层 `Tuple<...>` 类型语法。阶段 I 不解除 G6.1-G6.3 的 WASI/API 阻断, 也不默认重开 get / pkg / push 或 direct wasm binary emitter。
 
@@ -1119,10 +1119,10 @@
 
 - [x] I1.1 盘点当前递归行为。结论: 普通直接递归和互递归当前已能走通 compiled WAT/wasm 路径; 参数侧已定型的泛型递归当前可执行, 仅靠左侧目标类型反推的形态仍报 `NoMatchingCall`; 递归未命中 overload 已补 compiled_err 负例。
 - [x] I1.2 固定递归语义规则。`doc/spec_rules.md` 已固定普通直接/互递归、递归未命中 overload 报 `NoMatchingCall`、参数侧已知 concrete type 的泛型递归可执行, 以及“只靠左侧目标类型反推 direct type param”当前仍拒绝的边界; 本 slice 不引入新语法, `doc/grammar.peg` 无需变更。
-- [ ] I1.3 落地递归调用支持。已补 `compiled_ok/53`、`compiled_ok/54`、`compiled_ok/55`、`compiled_ok/56`、`compiled_ok/57`、`ok/182`、`ok/183`、`ok/184`、`ok/185`、`ok/186`、`ok/187` 和 `compile_ok/242`、`243`、`244`、`245` 五批回归, 覆盖递归求和、互递归奇偶判断、递归错误分支、`start()` build lowering、参数侧已定型的泛型递归、factorial 基本形态、`if/else` 分支递归和 imported recursion; 当前已登记递归静态 runner 矩阵已收口, 更复杂 control-flow / aggregate 边界继续后置推进。
-- [ ] I1.4 落地 self-tail TCO 第一版。当前已补 `compile_ok/246_self_tail_scalar_tco_lower`、`247_self_tail_if_else_tco_lower`、`252_self_tail_guard_tco_lower`、`254_generic_self_tail_tco_lower`、`255_imported_self_tail_scalar_tco_lower`、`257_generic_self_tail_if_else_tco_lower`、`258_imported_self_tail_if_else_tco_lower`, `compiled_ok/58` 到 `64`, 以及 `ok/188`、`ok/189` 回归, 覆盖最小 self-tail scalar path、generic scalar / `if/else` self-tail path、imported scalar / `if/else` self-tail path、`if/else` 分支 self-tail path 与 guard-return self-tail path; 静态 runner 已收回 imported scalar / imported `if/else` self-tail, 更复杂 cleanup/aggregate 边界继续后置。
-- [ ] I1.5 扩展 TCO 边界或明确后置。当前已补 `compile_ok/248_self_tail_defer_not_optimized_lower`、`249_self_tail_storage_local_not_optimized_lower`、`250_self_tail_managed_struct_not_optimized_lower`、`251_self_tail_multi_return_not_optimized_lower`、`253_self_tail_if_else_defer_not_optimized_lower`、`256_self_tail_guard_defer_not_optimized_lower` 六条边界回归, 固定当前对 `defer`、storage local、managed struct、多返回、`if/else` 分支 + `defer` 与 guard + `defer` 的“不优化”策略; 证据不足则继续保守后置。
-- [x] I1.6 同步 README、语法文档、测试说明和回归摘要。当前 README、`tool/build/test/README.md`、`doc/start_here.md`、`doc/roadmap_status.md` 和 `CHANGELOG.md` 已对齐阶段 I 当前回归矩阵; 递归 / self-tail TCO 不引入新的源码语法, 因而无需改 `doc/syntax/*`; 最近默认完整回归基线已更新为 `pass=874 fail=0 skip=3`。
+- [x] I1.3 落地递归调用支持。已补 `compiled_ok/53`–`57`、`ok/182`–`187` 和 `compile_ok/242`–`245` 回归, 覆盖递归求和、互递归奇偶判断、递归错误分支、`start()` build lowering、参数侧已定型的泛型递归、factorial、`if/else` 分支递归和 imported recursion; 已登记递归静态 runner 矩阵已收口。**后置**: 更复杂 control-flow / aggregate 递归形态。
+- [x] I1.4 落地 self-tail TCO 第一版。已补 `compile_ok/246`/`247`/`252`/`254`/`255`/`257`/`258`、`compiled_ok/58`–`64`、`ok/188`/`189`, 覆盖 scalar、`if/else`、guard、generic、imported 及 generic/imported `if/else` self-tail path 的 loop lowering。**后置**: 更复杂 cleanup/aggregate self-tail。
+- [x] I1.5 扩展 TCO 边界或明确后置。已补 `compile_ok/248`–`251`/`253`/`256` 六条边界回归, 固定 `defer`、storage local、managed struct、多返回、`if/else+defer`、guard+defer 的“不优化”策略; 更激进放开前保持保守。
+- [x] I1.6 同步 README、语法文档、测试说明和回归摘要。README、`tool/build/test/README.md`、`doc/start_here.md`、`doc/roadmap_status.md` 和 `CHANGELOG.md` 已对齐阶段 I 回归矩阵; 递归 / self-tail TCO 不引入新语法。
 
 验收:
 
@@ -1166,11 +1166,10 @@ test "tuple pair" {
 
 - [x] I2.1 固定 `Tuple` 规格。第一版固定为源码层大写内建泛型类型 `Tuple<T0, T1, ...>`: arity 下限为 2, 当前不设上限; 允许嵌套 `Tuple<Tuple<i32, bool>, u8>`; 允许作为单值类型出现在局部绑定、参数、单返回、struct 字段、`[Tuple<...>]` storage 元素和 union 分支。构造固定为按类型参数顺序的位置构造器 `Tuple<T0, T1, ...>{v0, v1, ...}`，实参数量必须与 arity 完全一致; 第一版不支持命名字段构造。读取固定为 `@get(tuple_value, <index>)`，其中 `<index>` 必须是编译期整数字面量，范围是 `0..arity-1`; 第一版不支持 `.v0/.v1` 字段段访问，也不支持 `@set(tuple_value, <index>, value)` 数字索引写入。`Tuple` 作为用户可写源码类型名进入保留内建类型集合，不能再被普通类型声明或 import alias 占用; 小写 `tuple<...>` 继续只保留给 WIT / `@wasi` 签名，不进入普通源码类型位。
 - [x] I2.2 更新 grammar / parser。`Tuple<...>` 已通过现有大写类型名 + type args 路径进入 `ValueTypeExpr`、`InlineValueTypeExpr`、`ParamTypeExpr` 和 type args；parser 额外接受 `Tuple<bool, u8>{true, 7}` 这类位置构造器语法，并在 typed bind 左侧把小写 `tuple<bool, u8>` 拒绝为 `InvalidTypeRef`。`doc/grammar.peg` 已同步 `TupleCtor` / `TupleAggBody`; 本项只保证 parser 层接受该语法, 不代表 sema/codegen 已经理解 `Tuple` 构造与访问语义。
-- [ ] I2.3 更新 sema。当前已完成最小产品切片所需的前端/类型接线: 小写 `tuple<...>` 在普通 typed bind 左侧被拒绝, `Tuple<>` / `Tuple<T>` 的 arity 下限已经前置校验, `@get(pair, 2)` 这类编译期越界索引已由 `compile_err/331_tuple_get_index_oob` 锁在当前 `NoMatchingCall` 行为; 后续仍需把 `Tuple` 正式提升为内建泛型类型, 系统化校验位置构造器实参数量 / 类型顺序、数字索引边界和更广泛的重载匹配。
-- [ ] I2.4 更新 codegen。当前已完成最小 typed tuple build/compiled + struct field + return/param multi-value + 嵌套叶子 ABI + 标量叶子 storage 内联 pack: `compile_ok/259`–`267`、`compiled_ok/65`–`73` 与 arity/index `compile_err/331`–`333` 覆盖 local/struct/return/param/nested 与 `[Tuple<...>]` put/get/set/literal; 后续仍需 managed payload 与更完整 sema 诊断。
-
-- [ ] I2.5 补正反例回归。正例覆盖 `Tuple<bool, u8>{flag, code}`、`@get(pair, 0)`、`@get(pair, 1)`、嵌套 Tuple、Tuple 作为单返回和 struct 字段; 反例覆盖 `Tuple<>`、`Tuple<T>`、位置构造实参数量不匹配、命名字段构造、越界数字索引、小写 `tuple<...>` 源码误用。
-- [ ] I2.6 同步 README、`doc/syntax/type.md`、`doc/spec_rules.md`、`doc/grammar.peg` 和测试说明。
+- [x] I2.3 更新 sema。`checkTupleCtorArity` / `checkTupleGetIndex` 已落地: 位置构造 arity 不匹配报 `InvalidTypedLiteral`, 越界/非字面量索引报 `InvalidPathIndex`, arity 下限与小写 `tuple` 继续报 `InvalidTypeRef`; 命名字段构造由 parser 报 `InvalidStructLiteral`; 元素类型不匹配当前仍为 `NoMatchingCall`。诊断 summary/hint 已同步 `tool/build/diag.zig`。
+- [x] I2.4 更新 codegen。已完成 local/struct/return/param multi-value、嵌套叶子 ABI 展平与标量叶子 `[Tuple<...>]` storage 内联 pack (scheme A): `compile_ok/259`–`267`、`compiled_ok/65`–`73`。**后置阻断**: managed payload 叶子 storage (`[Tuple<Point, u8>]` / `[Tuple<text, u8>]`)、`@get(storage, i, j)` path chaining、loop 绑定上的 `@get(v, N)` 数字索引读取 (当前均 `NoMatchingCall`)。
+- [x] I2.5 补正反例回归。正例: `compile_ok/259`–`267`、`compiled_ok/65`–`73` (静态 runner 不解释 `Tuple`)。反例: `err/330`、`compile_err/331`–`337`、`err/334`。
+- [x] I2.6 同步 README、`doc/syntax/type.md`、`doc/spec_rules.md`、`doc/grammar.peg` 和测试说明。阶段 I 关闭; 后置边界记入 `doc/roadmap_status.md`。
 
 验收:
 
@@ -1185,7 +1184,7 @@ test "tuple pair" {
 1. 阶段 H 已完成最终验证; 当前无新的未记录阻断。
 2. D2.1 已按用户确认的 B 方案绿色 regression 收口, 阶段 D 当前无剩余 blocked 残留。
 3. G6.1/G6.3 仍等待用户决策; G6.2 因当前无 async/Future runtime 暂时阻断, 不在未确认 API/运行时边界前扩 codegen。
-4. 阶段 I 已进入实现; I1.1、I1.2 和 I1.6 已完成, 当前继续推进 I1.3-I1.5 的更完整回归矩阵, 以及 I2 `Tuple<...>` 设计后实现。
+4. 阶段 I 已完成 (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版); 后置边界见 `doc/roadmap_status.md`。下一阶段默认回到 G6 决策项或发布候选回归维护。
 
 推荐理由:
 

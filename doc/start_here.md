@@ -11,7 +11,7 @@
 ## 当前停点
 
 - v1 子集发布候选已收口。
-- 默认回归矩阵最近通过: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh`, 摘要 `pass=886 fail=0 skip=3`; 最近一次复跑验证了阶段 I 递归 / self-tail TCO 收口和 Tuple 最小 build/compiled + arity/index + struct field + return/param multi-value slice, 本次复跑后的 `tool/build/test/tmp` ignored 产物已清理到 `0`。
+- 默认回归矩阵最近通过: `./tool/build/test/run_tests.sh`, 摘要 `pass=901 fail=0 skip=3`; 阶段 I (I1 递归/self-tail TCO + I2 `Tuple<...>`) 已关闭, 后置边界见下文与 `doc/roadmap_status.md`。
 
 - 扩展回归最近通过: `RUN_WASM=1 SKIP_BUILD=1 ./tool/build/test/run_tests.sh`, 摘要 `pass=833 fail=0 skip=3`, `wasm run summary: pass=6 fail=0`; 最近一次复跑验证了 fixture rename 后的 RUN_WASM 路径和 compiled trap smoke, 本次复跑后的 `tool/build/test/tmp` ignored 产物已清理到 `0`。
 - Release smoke 最近通过: `./tool/build/test/run_release_smoke.sh`, ReleaseSmall、build/test/compiled/check/fmt/run/lsp 全部 `[PASS]`, 输出 `[INFO] release smoke passed`; 本次 smoke 产生 `tool/build/test/tmp` ignored 产物 44 个、目录大小 `436K`, 已清理到生成物计数 `0`, 目录大小 `288K`。
@@ -74,10 +74,10 @@
 - renamed compile_ok targeted build gate 最近通过: `renamed_compile_ok_cases=5`, `renamed_compile_ok_failures=0`, `renamed_compile_ok_total_wat_bytes=176067`, `renamed_compile_ok_expect_lines=23`。
 - renamed compiled_ok targeted compiled build gate 最近通过: `renamed_compiled_ok_cases=1`, `renamed_compiled_ok_failures=0`, `renamed_compiled_ok_wat_bytes=38029`, `renamed_compiled_ok_expect_lines=7`。
 - D2.1 if/else path-sensitive liveness closure gate 最近通过: 用户确认 B 方案后新增 compile_ok `239` 到 `241`, targeted build 全部通过, 作为绿色 regression 收口, 不再列为当前阻断。
-- 默认回归 gate 最近通过: `SKIP_BUILD=1 ./tool/build/test/run_tests.sh`, 摘要 `pass=886 fail=0 skip=3`; 回归生成的 `tool/build/test/tmp` ignored 产物已清理到 `0`。
+- 默认回归 gate 最近通过: `./tool/build/test/run_tests.sh`, 摘要 `pass=901 fail=0 skip=3`; 回归生成的 `tool/build/test/tmp` ignored 产物已清理到 `0`。
 
 - RUN_WASM 扩展回归 gate 最近通过: `RUN_WASM=1 SKIP_BUILD=1 ./tool/build/test/run_tests.sh`, 摘要 `pass=833 fail=0 skip=3`, `wasm run summary: pass=6 fail=0`; 回归生成的 `tool/build/test/tmp` ignored 产物已清理到 `0`。
-- 阶段 I 已开始推进: I1.1 递归基线盘点、I1.2 语义规则收敛和 I1.6 文档同步已完成; I1.3 已补五批 `ok/compile_ok/compiled_ok` 递归回归, 证明普通 `do test`、`do build`、compiled 路径、参数侧已定型的泛型递归、factorial、`if/else` 分支递归和 imported recursion 都已覆盖; I1.4 的 scalar、`if/else`、guard、generic、imported 以及 generic/imported `if/else` self-tail slice 都已落地; I1.5 已锁住 `defer`、storage local、managed struct、多返回、guard+defer、`if/else+defer` 6 条不优化边界; I2 已完成 I2.1 规格固定和 I2.2 grammar/parser, 当前 I2.3/I2.4 已打通最小 typed tuple build/compiled + arity/index + struct field + return/param multi-value + 嵌套叶子 ABI + 标量叶子 storage pack。
+- 阶段 I 已完成: I1 递归 / self-tail TCO 与 I2 `Tuple<...>` 第一版均已收口 (I1.1–I1.6、I2.1–I2.6 全部 [x]); 后置边界见「当前阻断」与 `doc/roadmap_status.md`。
 
 
 ## 下一步规则
@@ -92,15 +92,14 @@
 - G6.2: `descriptor.read-directory` 暂时阻断; 当前语言/运行时没有 async / Future / Task 支持, 不能把 WIT stream/future 降成假同步 API。
 - G6.3: sockets resource + variant 需要 socket wrapper 和 address variant 映射决策。
 - 06.2: 已拆到 G2-G6; result-area/resource/variant 已完成, 剩余部分由 G6.1-G6.3 承接。
+- I2 后置 (阶段已关闭, 非发布阻断): managed payload / `text` 叶子 `[Tuple]` storage、`@get(storage, i, j)` path chaining、loop 绑定上的 `@get(v, N)` 仍报 `NoMatchingCall`。
 
 ## 当前计划候选
 
-- I1: 支持普通直接递归 / 互递归, 再落地 self-tail TCO; 第一版 TCO 只做 `return self(new_args)` 到 loop 的 lowering, 不依赖 Wasm tail-call proposal。
-- I1 当前边界: 普通直接递归 / 互递归已补回归; 参数侧已知 concrete type 的泛型递归已补正例; 仅靠左侧目标类型 + 字面量反推 generic param 的递归调用当前仍在 compiled 路径报 `NoMatchingCall`。
-- I1 当前缺口: 当前递归 / self-tail 的已登记静态 runner 用例已收口; 更复杂 cleanup/aggregate 形态仍以后置 compile/compiled 回归为主。
-- I2: 支持源码层大写 `Tuple<T0, T1, ...>` 类型, 例如 `Tuple<bool, u8>{flag, code}`; 第一版不做 `(bool, u8)` 类型语法或 `(true, 7)` 字面量, 读取使用 `@get(pair, 0)` / `@get(pair, 1)` 数字位置索引。
-- I2 当前规格: `Tuple<T0, T1, ...>` 第一版 arity 下限为 2, 允许嵌套、struct 字段、storage 元素和 union 分支; 构造固定为 `Tuple<...>{...}` 位置构造器, 读取固定为 `@get(tuple_value, <compile-time-int>)`; 第一版不支持命名字段构造、`.v0/.v1` 字段访问或 `@set` 数字索引写入; `Tuple` 进入保留内建类型集合, 小写 `tuple<...>` 继续只保留给 WIT / `@wasi` 签名。
-- I2 当前停点: I2.2 已完成 grammar / parser 收口; I2.3/I2.4 已打通最小 typed tuple build/compiled + arity/index + struct field + return/param multi-value + 嵌套叶子 ABI + 标量叶子 `[Tuple<...>]` storage put/get/set/literal pack (`compile_ok/259`–`267`, `compiled_ok/65`–`73`, `err/330`, `compile_err/331`–`333`); 下一步继续 managed payload 与更明确的语义诊断。
+- 阶段 I 已关闭; 默认维护发布候选回归, 或等待 G6 决策。
+- I1 已完成边界: 普通直接/互递归、参数侧已定型泛型递归、self-tail scalar/`if/else`/guard/generic/imported TCO; 仅靠左侧目标类型反推的泛型递归仍 `NoMatchingCall`; `defer`/storage/managed/多返回/cleanup 不优化。
+- I2 已完成边界: 源码层 `Tuple<T0, T1, ...>` 位置构造 + `@get` 数字索引; local/struct/return/param/nested/标量叶子 storage; sema 诊断 `InvalidTypedLiteral`/`InvalidPathIndex`/`InvalidTypeRef`。
+- I2 后置 (不阻断): managed payload / `text` 叶子 storage、`@get(storage, i, j)` path chaining、loop 绑定 `@get(v, N)`。
 
 
 ## 当前边界

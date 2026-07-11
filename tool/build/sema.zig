@@ -114,6 +114,8 @@ pub fn checkProgram(
     try checkParenthesizedTypes(tokens);
     try checkGenericTypeArgArity(tokens);
     try checkGenericStructCtorTypeArgs(tokens);
+    try checkTupleCtorArity(tokens);
+    try checkTupleGetIndex(tokens);
     try checkForbiddenSourceTypeNames(tokens);
     try checkBareNilTypes(tokens);
     try checkInlineFuncTypeUnionBranches(tokens);
@@ -5885,6 +5887,265 @@ fn checkGenericTypeArgArity(tokens: []const lexer.Token) !void {
         if (actual_count != expected_count) return markErrorAt(tokens, i, error.InvalidTypeRef);
         i = close_angle;
     }
+}
+
+/// Position-ctor arity for `Tuple<T0,...>{v0,...}` must equal type-arg count.
+/// Named field inits in a Tuple body are rejected as InvalidTypedLiteral.
+fn checkTupleCtorArity(tokens: []const lexer.Token) !void {
+    var i: usize = 0;
+    while (i + 1 < tokens.len) : (i += 1) {
+        if (tokens[i].kind != .ident) continue;
+        if (!std.mem.eql(u8, publicTypeName(tokens[i].lexeme), "Tuple")) continue;
+        if (!tokEq(tokens[i + 1], "<")) continue;
+
+        const close_angle = findMatching(tokens, i + 1, "<", ">") catch continue;
+        if (close_angle + 1 >= tokens.len or !tokEq(tokens[close_angle + 1], "{")) {
+            i = close_angle;
+            continue;
+        }
+        // `f() -> Tuple<...>{ ... }` is a function body brace, not a position ctor.
+        // Lexer emits `->` as two symbol tokens (`-`, `>`).
+        if (i >= 2 and tokEq(tokens[i - 2], "-") and tokEq(tokens[i - 1], ">")) {
+            i = close_angle;
+            continue;
+        }
+        if (isTopLevelDeclHead(tokens, i) and isTypeDeclStart(tokens, i)) {
+            i = close_angle;
+            continue;
+        }
+
+        const open_brace = close_angle + 1;
+        const close_brace = findMatching(tokens, open_brace, "{", "}") catch
+            return markErrorAt(tokens, open_brace, error.InvalidTypedLiteral);
+        const expected = countTypeArgs(tokens, i + 2, close_angle);
+        if (expected < 2) {
+            // arity floor already reported by checkGenericTypeArgArity when reachable.
+            i = close_brace;
+            continue;
+        }
+        if (tupleCtorBodyHasNamedField(tokens, open_brace + 1, close_brace)) {
+            return markErrorAt(tokens, open_brace, error.InvalidTypedLiteral);
+        }
+        const actual = countTupleCtorPositionalArgs(tokens, open_brace + 1, close_brace);
+        if (actual != expected) return markErrorAt(tokens, i, error.InvalidTypedLiteral);
+        i = close_brace;
+    }
+}
+
+fn tupleCtorBodyHasNamedField(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_angle: usize = 0;
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (depth_paren != 0 or depth_brace != 0 or depth_angle != 0) continue;
+        if (!tokEq(tokens[i], "=")) continue;
+        if (isNonAssignEqual(tokens, i)) continue;
+        return true;
+    }
+    return false;
+}
+
+fn countTupleCtorPositionalArgs(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) usize {
+    if (start_idx >= end_idx) return 0;
+
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_angle: usize = 0;
+    var count: usize = 1;
+    var saw_token = false;
+
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            saw_token = true;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            saw_token = true;
+            continue;
+        }
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            saw_token = true;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            saw_token = true;
+            continue;
+        }
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            saw_token = true;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            saw_token = true;
+            continue;
+        }
+        if (depth_paren == 0 and depth_brace == 0 and depth_angle == 0 and tokEq(tokens[i], ",")) {
+            count += 1;
+            continue;
+        }
+        saw_token = true;
+    }
+    if (!saw_token) return 0;
+    return count;
+}
+
+/// `@get(tuple, N)` requires compile-time integer N in `0..arity-1` when the source is Tuple.
+fn checkTupleGetIndex(tokens: []const lexer.Token) !void {
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (!tokEq(tokens[i], "get")) continue;
+        if (i + 1 >= tokens.len or !tokEq(tokens[i + 1], "(")) continue;
+        if (i == 0 or !tokEq(tokens[i - 1], "@") or tokens[i - 1].line != tokens[i].line) continue;
+
+        const close_paren = findMatching(tokens, i + 1, "(", ")") catch continue;
+        const first_end = findTopLevelComma(tokens, i + 2, close_paren) orelse {
+            i = close_paren;
+            continue;
+        };
+        if (first_end <= i + 2) {
+            i = close_paren;
+            continue;
+        }
+        // Only simple two-arg `@get(source, index)` form.
+        if (findTopLevelComma(tokens, first_end + 1, close_paren) != null) {
+            i = close_paren;
+            continue;
+        }
+
+        const source_start = i + 2;
+        const source_end = first_end;
+        if (source_end != source_start + 1 or tokens[source_start].kind != .ident) {
+            i = close_paren;
+            continue;
+        }
+
+        const arity = findNearestTupleArity(tokens, i, tokens[source_start].lexeme) orelse {
+            i = close_paren;
+            continue;
+        };
+
+        const index_start = first_end + 1;
+        const index_end = close_paren;
+        if (index_end != index_start + 1 or tokens[index_start].kind != .number) {
+            return markErrorAt(tokens, index_start, error.InvalidPathIndex);
+        }
+        const index = std.fmt.parseInt(usize, tokens[index_start].lexeme, 10) catch
+            return markErrorAt(tokens, index_start, error.InvalidPathIndex);
+        if (index >= arity) return markErrorAt(tokens, index_start, error.InvalidPathIndex);
+        i = close_paren;
+    }
+}
+
+/// Returns arity when the nearest binding type of `name` before `before_idx` is `Tuple<...>`.
+fn findNearestTupleArity(tokens: []const lexer.Token, before_idx: usize, name: []const u8) ?usize {
+    var skip_depth: usize = 0;
+    var i = before_idx;
+    while (i > 0) {
+        i -= 1;
+
+        if (tokEq(tokens[i], "}")) {
+            skip_depth += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "{")) {
+            if (skip_depth > 0) skip_depth -= 1;
+            continue;
+        }
+        if (skip_depth != 0) continue;
+        if (tokens[i].kind != .ident) continue;
+        if (!std.mem.eql(u8, tokens[i].lexeme, name)) continue;
+
+        const line_end = findLineEndIdx(tokens, i);
+        const eq_idx = findTopLevelAssignEqOnLine(tokens, i + 1, line_end) orelse continue;
+        if (eq_idx <= i + 1) continue;
+        if (tokens[i + 1].kind != .ident) continue;
+        if (!std.mem.eql(u8, publicTypeName(tokens[i + 1].lexeme), "Tuple")) continue;
+        if (i + 2 >= eq_idx or !tokEq(tokens[i + 2], "<")) continue;
+        const close_angle = findMatching(tokens, i + 2, "<", ">") catch continue;
+        if (close_angle > eq_idx) continue;
+        return countTypeArgs(tokens, i + 3, close_angle);
+    }
+
+    // Function param: `name Tuple<...>`
+    return findEnclosingFuncParamTupleArity(tokens, before_idx, name);
+}
+
+fn findEnclosingFuncParamTupleArity(tokens: []const lexer.Token, before_idx: usize, name: []const u8) ?usize {
+    var skip_depth: usize = 0;
+    var i = before_idx;
+    while (i > 0) {
+        i -= 1;
+
+        if (tokEq(tokens[i], "}")) {
+            skip_depth += 1;
+            continue;
+        }
+        if (!tokEq(tokens[i], "{")) continue;
+        if (skip_depth > 0) {
+            skip_depth -= 1;
+            continue;
+        }
+        if (findFuncParamTupleArityBeforeBody(tokens, i, name)) |arity| return arity;
+    }
+    return null;
+}
+
+fn findFuncParamTupleArityBeforeBody(tokens: []const lexer.Token, body_open_idx: usize, name: []const u8) ?usize {
+    const line_start = lineStartIdx(tokens, body_open_idx);
+    if (line_start >= body_open_idx) return null;
+    if (!isFuncDeclStart(tokens, line_start) and !isStartDeclStart(tokens, line_start)) return null;
+
+    const close_paren = findMatching(tokens, line_start + 1, "(", ")") catch return null;
+    if (close_paren >= body_open_idx) return null;
+
+    var seg_start = line_start + 2;
+    var j = seg_start;
+    while (j <= close_paren) : (j += 1) {
+        if (j < close_paren and !isTopLevelCommaAny(tokens, j, line_start + 2, close_paren)) continue;
+        if (seg_start + 1 < j and tokens[seg_start].kind == .ident and std.mem.eql(u8, tokens[seg_start].lexeme, name)) {
+            if (tokens[seg_start + 1].kind == .ident and
+                std.mem.eql(u8, publicTypeName(tokens[seg_start + 1].lexeme), "Tuple") and
+                seg_start + 2 < j and tokEq(tokens[seg_start + 2], "<"))
+            {
+                const close_angle = findMatching(tokens, seg_start + 2, "<", ">") catch return null;
+                if (close_angle < j) return countTypeArgs(tokens, seg_start + 3, close_angle);
+            }
+        }
+        seg_start = j + 1;
+    }
+    return null;
 }
 
 fn countTypeArgs(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) usize {

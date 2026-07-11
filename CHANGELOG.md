@@ -4,6 +4,16 @@
 
 ## 2026-07-12
 
+- 关闭阶段 I (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版)
+  - I2.3 sema: `checkTupleCtorArity` / `checkTupleGetIndex`; 位置构造 arity -> `InvalidTypedLiteral`; 越界/非字面量索引 -> `InvalidPathIndex`; 修复 `-> Tuple<...>{` 函数体误判为构造器 (lexer 将 `->` 拆为 `-`/`>`)
+  - I2.4 后置阻断已记录: managed payload / `text` 叶子 storage、`@get(storage, i, j)` path chaining、loop 绑定 `@get(v, N)`
+  - I2.5 矩阵: `compile_ok/259`–`267`、`compiled_ok/65`–`73`; 反例 `err/330`/`334`、`compile_err/331`–`337` (静态 runner 不解释 `Tuple`)
+  - I2.6 文档: `doc/syntax/type.md`、`doc/spec_rules.md`、`tool/build/test/README.md`、`doc/roadmap_status.md`、`doc/master_plan.md`、`doc/start_here.md`
+  - I1.3–I1.5 以已有回归矩阵 + 后置 deferral 关闭
+  - 验证: `cd tool && zig test main.zig` 通过 (`All 103 tests passed.`); `./tool/build/test/run_tests.sh` 通过, 摘要 `pass=901 fail=0 skip=3`
+
+## 2026-07-12
+
 - I2.4 slice: `[Tuple<...>]` 标量叶子 storage 内联 pack (scheme A)
   - codegen: `tupleScalarLeafStorageByteWidth` + pack/unpack temps; `@put`/`@get`/`@set`/storage literal/spread/path/union/loop 走叶子连续 layout (非 managed handle)
   - fixtures: `compile_ok/265`–`267`, `compiled_ok/71`–`73` (put/get、nested、literal+set); runtime wasm PASS
