@@ -117,7 +117,7 @@ zs [u8] = @put(xs, 4)
 3. `@set(xs, i, value)` 要求 `i < len`; 返回更新后的 `[T]` 值。
 4. `@put(xs, value, rest...)` 返回追加后的 `[T]` 值。
 5. `loop value, index = xs` 编译为 `0..@len(xs)` 范围内的 `@get(xs, index)`, 语言生成的 index 不越界。
-6. 元素地址 lowering: `payload + 8 + i * elem_bytes` (见 `src/build/codegen_storage_wat.zig` 的 `emitStorageElementPtrFromLocal`); scheme-A `[Tuple<...>]` pack 见 `src/build/type_name.zig` 的 `tupleScalarLeafStorageByteWidth` / `tupleHasManagedPackLeaf` 与 `src/build/codegen_payload_wat.zig`。managed 叶子为 4 字节 handle; 含 managed 叶子的 storage 使用 `is_storage_pack` layout 做 clone/free 叶子 inc/dec。
+6. 元素地址 lowering: `payload + 8 + i * elem_bytes` (见 `src/build/codegen_storage_wat.zig` 的 `emitStorageElementPtrFromLocal`); scheme-A `[Tuple<...>]` pack 见 `src/build/type_name.zig` 的 `tupleScalarLeafStorageByteWidth` / `tupleHasManagedPackLeaf` 与 `src/build/codegen_payload_wat.zig`。每个元素是定宽 **树状** 布局 (直接子槽子区域); 嵌套 Tuple / 未来 struct 槽保持嵌套语义, **永不** 在类型或 API 上拍平为扁平 Tuple。managed 叶槽为 4 字节 handle; 含 managed 叶槽的 storage 使用 `is_storage_pack` layout 做 clone/free 叶子 inc/dec。
 
 ### 4.3 COW
 

@@ -95,7 +95,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 
 **非发布后置** (阶段 I 后置已收窄; 非 G6 日路径清单已 drain 并删除):
 
-- 裸 struct 等非 packable 叶子的 `[Tuple]` storage 仍 → `UnsupportedTupleStorageLeaf` (`compile_err/339`); 真 pack 需单独授权 + 宽度/对齐/ARC 决策
+- 裸 struct 等非 packable 直接元素的 `[Tuple]` storage 仍 → `UnsupportedTupleStorageLeaf` (`compile_err/339`); 若做 pack: **嵌套子布局**, **永不拍平** 类型/路径 (见 `spec_rules` Tuple 硬约束)
 - managed/`text` 叶子 storage 与 `@get(storage, i, j)` path chaining **已支持** (`compile_ok/270`–`271`, `compiled_ok/75`–`77`)
 - 纯标量 struct 的 field-reflect `field_set` **已修** (`ok/191`)
 - 仅靠左侧目标类型反推的泛型递归仍 `NoMatchingCall` (单独立项)

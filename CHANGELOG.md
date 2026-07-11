@@ -5,6 +5,8 @@
 
 ## 2026-07-12
 
+- 规格: Tuple **永不拍平** 硬约束 — 嵌套 Tuple / 未来 struct 直接元素保持嵌套类型与 `@get` 路径; 禁止与扁平 Tuple 等同或隐式 coerce (`spec_rules` / `syntax/type` / `memory` / `start_here`)
+
 - 文档: 删除已 drain 的 `doc/todo_non_g6.md`; 后置/可选并入 `start_here` §5–§6 与 `roadmap_status`
 
 - codegen: 修复纯标量 struct 在 field 反射循环内 `out = @field_set(...)` 写错 local
