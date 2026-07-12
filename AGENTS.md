@@ -7,9 +7,15 @@ This repository contains the `do` language compiler and its regression suite.
 - `lib/`: Standard library and builtin/core declaration table (`lib/_.do`). Bare `@lib("file.do")` resolves under this directory.
 - `src/`: Toolchain and compiler sources (formerly `tool/`).
 - `src/build/`: Zig compiler and `do build` source, kept as flat single-purpose modules.
-  - Core pipeline: `src/build/lexer.zig` → `src/build/parser.zig` → `src/build/sema.zig` → `src/build/gen.zig` (+ `gen_util.zig` / `gen_wasi.zig`).
+  - Core pipeline: `src/build/lexer.zig` → `src/build/parser.zig` → `src/build/sema.zig` → `src/build/gen.zig`.
   - Shared pure helpers: `src/build/type_name.zig` (type/layout SSOT), `src/build/sema_error.zig`, `src/build/diagnostics.zig`.
-  - Gen domain: `src/build/gen.zig` (orchestrator); `gen_util.zig` / `gen_wasi.zig` / `gen_union.zig`; `gen_payload_wat.zig` / `gen_storage_wat.zig`; plus `function_body_wat.zig` / `runtime_prelude_wat.zig` / `component_metadata_wat.zig` / `backend_ir.zig`.
+  - Gen domain (flat modules):
+    - `gen.zig` — public entry (`emitWat` / `emitTestWat`) + unit tests
+    - `gen_impl.zig` — expression/call/WASI/union emit and collect helpers
+    - `gen_types.zig` — LocalSet, CodegenContext, decl types
+    - `gen_util.zig` / `gen_wasi.zig` / `gen_union.zig` — token helpers, WASI tables, union layout
+    - `gen_payload_wat.zig` / `gen_storage_wat.zig` — pure WAT fragments
+    - plus `function_body_wat.zig` / `runtime_prelude_wat.zig` / `component_metadata_wat.zig` / `backend_ir.zig`
 - `src/main.zig`: Single CLI dispatch entrypoint for the `bin/do` tool.
 - `src/build.zig`: Zig build entrypoint. It installs the compiler binary to the repository `bin/` directory.
 - `bin/do`: Built compiler executable.

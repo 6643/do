@@ -78,7 +78,10 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | | `sema_error` | ErrorSite 与 sema 错误构造 |
 | | `diagnostics` | check/LSP 共用前端诊断收集 (原 `src/lsp/diagnostics.zig` 已删除) |
 | Gen 域 | `gen.zig` | 主编排 |
-| | `gen_util` / `gen_wasi` | token 工具与 WASI 表/解析 |
+| | `gen.zig` | 公开入口 + 单测 |
+| | `gen_impl.zig` | emit/collect 实现（主逻辑） |
+| | `gen_types.zig` | LocalSet / CodegenContext / 声明类型 |
+| | `gen_util` / `gen_wasi` / `gen_union` | token 工具; WASI 表; union layout |
 | | `gen_payload_wat` | 标量 payload load/store、Tuple 叶子 pack/unpack |
 | | `gen_storage_wat` | storage 指针/header/alias; `HEADER=8` |
 | | `function_body_wat` / `runtime_prelude_wat` / `component_metadata_wat` | WAT 写出切片 |
