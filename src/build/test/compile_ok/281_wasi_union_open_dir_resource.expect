@@ -1,0 +1,6 @@
+;; wasi-bind
+filesystem/types/descriptor.open-at
+result<descriptor,error-code>
+[method]descriptor.open-at
+__union_payload
+__union_tag

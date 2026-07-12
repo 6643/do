@@ -5082,7 +5082,11 @@ const KnownWasiSignature = struct {
     result: []const u8,
     /// Optional do-side signature accepted as sugar for the same target (stored as WIT form for codegen).
     do_params: ?[]const u8 = null,
+    /// Second accepted do-side params form (e.g. resource name vs i32 sugar).
+    do_params_alt: ?[]const u8 = null,
     do_result: ?[]const u8 = null,
+    /// Second accepted do-side result form (e.g. `Dir|i32` vs transitional `result<…>`).
+    do_result_alt: ?[]const u8 = null,
     result_record: ?KnownWasiRecord = null,
 };
 
@@ -5115,9 +5119,11 @@ fn validateKnownWasiSignature(
         return markErrorAt(tokens, sig_start, error.InvalidImportDecl);
     }
     const params_ok = compactTokenRangeEquals(tokens, sig_start + 1, close_idx, known.params) or
-        (known.do_params != null and compactTokenRangeEquals(tokens, sig_start + 1, close_idx, known.do_params.?));
+        (known.do_params != null and compactTokenRangeEquals(tokens, sig_start + 1, close_idx, known.do_params.?)) or
+        (known.do_params_alt != null and compactTokenRangeEquals(tokens, sig_start + 1, close_idx, known.do_params_alt.?));
     const result_ok = compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.result) or
-        (known.do_result != null and compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.do_result.?));
+        (known.do_result != null and compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.do_result.?)) or
+        (known.do_result_alt != null and compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.do_result_alt.?));
     if (!params_ok or !result_ok) {
         return markErrorAt(tokens, site_idx, error.InvalidImportDecl);
     }
@@ -5167,7 +5173,11 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .params = "descriptor,path-flags,text,open-flags,descriptor-flags",
             .result = "result<descriptor,error-code>",
             .do_params = "i32,i32,text,i32,i32",
+            // Resource handle sugar: parent Dir lowers via .id.
+            .do_params_alt = "Dir,i32,text,i32,i32",
             .do_result = "result<i32,error-code>",
+            // Exclusive union: ok = Dir (.id from descriptor), err = status i32 (error-code+1).
+            .do_result_alt = "Dir|i32",
         },
         .{
             .target = "filesystem/types/descriptor.remove-directory-at",

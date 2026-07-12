@@ -14267,9 +14267,19 @@ fn emitUnionBinding(
                     }
                 }
             }
-            // Unit fallible host (`result<_,error-code>`) → exclusive `nil | i32` union.
+            // Fallible host result-area → exclusive do union (`nil|i32`, `Dir|i32`, …).
             if (findWasiHostImportForTokens(ctx, tokens, tokens[call_head.name_idx].lexeme)) |wasi_import| {
                 if (try emitWasiUnitResultAsUnionValue(
+                    allocator,
+                    tokens,
+                    call_head.args_start,
+                    call_head.args_end,
+                    locals,
+                    ctx,
+                    wasi_import,
+                    union_local.layout,
+                    out,
+                ) or try emitWasiDescriptorResultAsUnionValue(
                     allocator,
                     tokens,
                     call_head.args_start,
@@ -16438,7 +16448,7 @@ fn emitWasiResultDescriptorCall(
     const descriptor_flags_end = findArgEnd(tokens, descriptor_flags_start, args_end);
     if (descriptor_flags_end == descriptor_flags_start or descriptor_flags_end != args_end) return error.NoMatchingCall;
 
-    if (!try emitExpr(allocator, tokens, args_start, descriptor_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
+    if (!try emitWasiDescriptorHandleArg(allocator, tokens, args_start, descriptor_end, locals, ctx, out)) return error.NoMatchingCall;
     if (!try emitExpr(allocator, tokens, path_flags_start, path_flags_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
     if (!try emitWasiStringArg(allocator, tokens, path_start, path_end, locals, ctx, out)) return error.NoMatchingCall;
     if (!try emitExpr(allocator, tokens, open_flags_start, open_flags_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
@@ -16448,6 +16458,40 @@ fn emitWasiResultDescriptorCall(
     try appendWasiImportSymbol(allocator, out, import.target);
     try out.appendSlice(allocator, "\n");
     return true;
+}
+
+/// Lower descriptor/resource handle arg: bare i32, or unmanaged resource struct `.id` (i64 → i32).
+fn emitWasiDescriptorHandleArg(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    if (try emitExpr(allocator, tokens, start_idx, end_idx, locals, ctx, "i32", out)) return true;
+
+    const range = trimParens(tokens, start_idx, end_idx);
+    if (range.end != range.start + 1 or tokens[range.start].kind != .ident) return false;
+    const struct_local = findStructLocal(locals.struct_locals.items, tokens[range.start].lexeme) orelse return false;
+    if (findStructLayout(ctx.struct_layouts, struct_local.ty) != null) return false;
+    const decl = findStructDecl(ctx.structs, struct_local.ty) orelse return false;
+    var id_ty: ?[]const u8 = null;
+    for (decl.fields) |field| {
+        if (std.mem.eql(u8, publicDeclName(field.name), "id")) {
+            id_ty = field.ty;
+            break;
+        }
+    }
+    const field_ty = id_ty orelse return false;
+    try appendFmt(allocator, out, "    local.get ${s}.id\n", .{struct_local.name});
+    if (std.mem.eql(u8, field_ty, "i64")) {
+        try out.appendSlice(allocator, "    i32.wrap_i64\n");
+        return true;
+    }
+    if (std.mem.eql(u8, field_ty, "i32")) return true;
+    return false;
 }
 
 fn emitWasiResultLinkAtCall(
@@ -16726,6 +16770,101 @@ fn emitWasiUnitResultAsUnionValue(
         \\      i32.add
         \\
     );
+    try appendFmt(allocator, out, "      i32.const {d}\n", .{err.tag});
+    try out.appendSlice(allocator, "    end\n");
+    return true;
+}
+
+/// Lower `result<descriptor,error-code>` into exclusive union stack: e.g. `Dir | i32`.
+/// Ok arm carries resource payload (Dir.id as i64 from descriptor); err arm is status i32 (error-code+1).
+fn emitWasiDescriptorResultAsUnionValue(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    args_start: usize,
+    args_end: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    import: WasiHostImport,
+    layout: UnionLayout,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    const lowering = wasiLowering(import) orelse return false;
+    if (!lowering.result_descriptor_error) return false;
+    if (layout.branches.len != 2) return false;
+
+    var ok_branch: ?UnionBranch = null;
+    var err_branch: ?UnionBranch = null;
+    for (layout.branches) |branch| {
+        if (std.mem.eql(u8, branch.ty, "i32") and branch.payload_len == 1 and
+            branch.payload_start < layout.payload_tys.len and
+            std.mem.eql(u8, layout.payload_tys[branch.payload_start], "i32"))
+        {
+            if (err_branch != null) return false;
+            err_branch = branch;
+            continue;
+        }
+        if (ok_branch != null) return false;
+        if (branch.payload_len == 0) return false;
+        ok_branch = branch;
+    }
+    const ok = ok_branch orelse return false;
+    const err = err_branch orelse return false;
+    // Ok payload must be a single scalar slot (Dir → i64 id, or bare i32 descriptor sugar).
+    if (ok.payload_len != 1) return false;
+    if (ok.payload_start >= layout.payload_tys.len) return false;
+    const ok_payload_ty = layout.payload_tys[ok.payload_start];
+    if (!std.mem.eql(u8, ok_payload_ty, "i32") and !std.mem.eql(u8, ok_payload_ty, "i64")) return false;
+
+    if (!try emitWasiResultDescriptorCall(allocator, tokens, args_start, args_end, locals, ctx, import, out)) {
+        return error.NoMatchingCall;
+    }
+
+    // Stack: payload slots…, tag (matches emitUnionValue / emitUnionBranchValue order).
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
+    try out.appendSlice(allocator, "    i32.load\n");
+    try out.appendSlice(allocator, "    i32.eqz\n");
+    try out.appendSlice(allocator, "    if (result");
+    for (layout.payload_tys) |payload_ty| {
+        try appendFmt(allocator, out, " {s}", .{codegenWasmType(ctx, payload_ty)});
+    }
+    try out.appendSlice(allocator, " i32)\n");
+
+    // ok: fill ok payload from descriptor; zero other slots; ok tag
+    for (layout.payload_tys, 0..) |payload_ty, idx| {
+        if (idx == ok.payload_start) {
+            try out.appendSlice(allocator,
+                \\      global.get $__wasi_result_area_base
+                \\      i32.const 4
+                \\      i32.add
+                \\      i32.load
+                \\
+            );
+            if (std.mem.eql(u8, payload_ty, "i64")) {
+                try out.appendSlice(allocator, "      i64.extend_i32_s\n");
+            }
+        } else {
+            try appendFmt(allocator, out, "      {s}.const 0\n", .{codegenWasmType(ctx, payload_ty)});
+        }
+    }
+    try appendFmt(allocator, out, "      i32.const {d}\n", .{ok.tag});
+
+    try out.appendSlice(allocator, "    else\n");
+    // err: zero ok slots; status = error-code + 1; err tag
+    for (layout.payload_tys, 0..) |payload_ty, idx| {
+        if (idx == err.payload_start) {
+            try out.appendSlice(allocator,
+                \\      global.get $__wasi_result_area_base
+                \\      i32.const 4
+                \\      i32.add
+                \\      i32.load
+                \\      i32.const 1
+                \\      i32.add
+                \\
+            );
+        } else {
+            try appendFmt(allocator, out, "      {s}.const 0\n", .{codegenWasmType(ctx, payload_ty)});
+        }
+    }
     try appendFmt(allocator, out, "      i32.const {d}\n", .{err.tag});
     try out.appendSlice(allocator, "    end\n");
     return true;
