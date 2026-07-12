@@ -1,2 +1,19 @@
+# Zig build caches
 .zig-cache/
 zig-cache/
+**/zig-cache/
+**/.zig-cache/
+
+# Compiler binary (built by `zig build` into bin/)
+bin/do
+bin/*
+
+# Local commit helper / scratch (not part of the product)
+.commit-git/
+commit-*.bundle
+apply-commit-*.sh
+
+# OS / editor
+.DS_Store
+*.swp
+*~
