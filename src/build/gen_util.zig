@@ -1,5 +1,6 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
+const type_util = @import("type_name.zig");
 
 pub const Range = struct {
     start: usize,
@@ -217,3 +218,15 @@ pub fn hasString(items: []const []const u8, target: []const u8) bool {
     return false;
 }
 
+
+pub fn findTopLevelTypeSeparator(ty: []const u8, sep: u8) ?usize {
+    return findTopLevelTypeSeparatorFrom(ty, 0, sep);
+}
+
+pub fn findTopLevelTypeSeparatorFrom(ty: []const u8, start_idx: usize, sep: u8) ?usize {
+    return type_util.findTopLevelTypeSeparatorFrom(ty, start_idx, sep);
+}
+
+pub fn alignUp(value: usize, alignment: usize) usize {
+    return ((value + alignment - 1) / alignment) * alignment;
+}

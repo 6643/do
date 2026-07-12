@@ -1,5 +1,7 @@
 # Changelog
 
+- Continue gen split: `gen_union.zig` (layout types/helpers); extend `gen_wasi` (call-shape / lowerability) and `gen_util` (type separators)
+
 - Split `gen.zig`: extract `gen_util.zig` (token helpers) and `gen_wasi.zig` (WASI tables/parse)
 
 - Rename codegen modules to `gen_*` prefix: `gen.zig`, `gen_payload_wat.zig`, `gen_storage_wat.zig`

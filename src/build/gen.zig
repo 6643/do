@@ -14,6 +14,7 @@ const test_runner = @import("test_runner.zig");
 const type_util = @import("type_name.zig");
 const gen_util = @import("gen_util.zig");
 const gen_wasi = @import("gen_wasi.zig");
+const gen_union = @import("gen_union.zig");
 
 // --- re-exports / short aliases from gen_util + gen_wasi (file split) ---
 const tokEq = gen_util.tokEq;
@@ -51,6 +52,26 @@ const parseWasiLinkAtArgs = gen_wasi.parseWasiLinkAtArgs;
 const wasiCoarseFailedVariantName = gen_wasi.wasiCoarseFailedVariantName;
 const wasiCoarseClosedVariantName = gen_wasi.wasiCoarseClosedVariantName;
 const wasiCoarseErrorAlwaysFailed = gen_wasi.wasiCoarseErrorAlwaysFailed;
+
+const findTopLevelTypeSeparator = gen_util.findTopLevelTypeSeparator;
+const findTopLevelTypeSeparatorFrom = gen_util.findTopLevelTypeSeparatorFrom;
+const alignUp = gen_util.alignUp;
+
+const UnionBranch = gen_union.UnionBranch;
+const UnionLayout = gen_union.UnionLayout;
+const unionLayoutsEqual = gen_union.unionLayoutsEqual;
+const freeUnionLayout = gen_union.freeUnionLayout;
+const cloneUnionLayout = gen_union.cloneUnionLayout;
+const unionBranchIsStatusI32 = gen_union.unionBranchIsStatusI32;
+
+const isWasiUnionResultBindingCall = gen_wasi.isWasiUnionResultBindingCall;
+const isWasiUnionResultReturnCall = gen_wasi.isWasiUnionResultReturnCall;
+const isBareWasiHostCallStatement = gen_wasi.isBareWasiHostCallStatement;
+const isWasiResultUnitStatusMultiAssignmentCall = gen_wasi.isWasiResultUnitStatusMultiAssignmentCall;
+const isWasiResultReadMultiAssignmentCall = gen_wasi.isWasiResultReadMultiAssignmentCall;
+const isWasiResultListU8StatusMultiAssignmentCall = gen_wasi.isWasiResultListU8StatusMultiAssignmentCall;
+const wasiHostImportUseIsLowerableAtCall = gen_wasi.wasiHostImportUseIsLowerableAtCall;
+const validateWasiHostImportBuildUses = gen_wasi.validateWasiHostImportBuildUses;
 
 
 const SourceOrigin = enum {
@@ -142,21 +163,7 @@ const StorageLocal = struct {
     origin: SourceOrigin = .unknown,
 };
 
-const UnionBranch = struct {
-    /// Flat union: arm type name. Payload enum: case name (Text / Quit).
-    ty: []const u8,
-    tag: usize,
-    payload_start: usize,
-    payload_len: usize,
-    /// When set (payload-enum cases with payload), actual payload type for emit/narrow (e.g. [u8]).
-    payload_type: ?[]const u8 = null,
-};
 
-const UnionLayout = struct {
-    source_ty: []const u8,
-    branches: []const UnionBranch,
-    payload_tys: []const []const u8,
-};
 
 const UnionLocal = struct {
     name: []const u8,
@@ -3517,21 +3524,6 @@ fn emitUnionBranchPayload(
     return true;
 }
 
-fn unionLayoutsEqual(a: UnionLayout, b: UnionLayout) bool {
-    if (a.branches.len != b.branches.len) return false;
-    if (a.payload_tys.len != b.payload_tys.len) return false;
-    for (a.payload_tys, 0..) |ty, idx| {
-        if (!std.mem.eql(u8, ty, b.payload_tys[idx])) return false;
-    }
-    for (a.branches, 0..) |branch, idx| {
-        const other = b.branches[idx];
-        if (!std.mem.eql(u8, branch.ty, other.ty)) return false;
-        if (branch.tag != other.tag) return false;
-        if (branch.payload_start != other.payload_start) return false;
-        if (branch.payload_len != other.payload_len) return false;
-    }
-    return true;
-}
 
 fn unionLayoutsAbiCompatible(ctx: CodegenContext, a: UnionLayout, b: UnionLayout) bool {
     if (a.branches.len != b.branches.len) return false;
@@ -3548,21 +3540,7 @@ fn unionLayoutsAbiCompatible(ctx: CodegenContext, a: UnionLayout, b: UnionLayout
     return true;
 }
 
-fn freeUnionLayout(allocator: std.mem.Allocator, layout: UnionLayout) void {
-    allocator.free(layout.branches);
-    allocator.free(layout.payload_tys);
-}
 
-fn cloneUnionLayout(allocator: std.mem.Allocator, layout: UnionLayout) !UnionLayout {
-    const branches = try allocator.dupe(UnionBranch, layout.branches);
-    errdefer allocator.free(branches);
-    const payload_tys = try allocator.dupe([]const u8, layout.payload_tys);
-    return .{
-        .source_ty = layout.source_ty,
-        .branches = branches,
-        .payload_tys = payload_tys,
-    };
-}
 
 fn cloneUnionLayoutSubstituted(
     allocator: std.mem.Allocator,
@@ -8890,9 +8868,6 @@ fn parseEnvHostImport(
 
 
 
-fn alignUp(value: usize, alignment: usize) usize {
-    return ((value + alignment - 1) / alignment) * alignment;
-}
 
 fn validateHostImportBuildUses(tokens: []const lexer.Token, host_imports: []const HostImport) !void {
     if (host_imports.len == 0) return;
@@ -8911,18 +8886,6 @@ fn validateHostImportBuildUses(tokens: []const lexer.Token, host_imports: []cons
     }
 }
 
-fn validateWasiHostImportBuildUses(tokens: []const lexer.Token, wasi_imports: []const WasiHostImport) !void {
-    if (wasi_imports.len == 0) return;
-
-    var i: usize = 0;
-    while (i + 1 < tokens.len) : (i += 1) {
-        if (tokens[i].kind != .ident) continue;
-        const import = findWasiHostImport(wasi_imports, tokens[i].lexeme) orelse continue;
-        if (!tokEq(tokens[i + 1], "(")) continue;
-        if (wasiHostImportUseIsLowerableAtCall(tokens, i, import)) continue;
-        return error.UnsupportedWasiHostImport;
-    }
-}
 
 fn validateReachableWasiHostImportBuildUses(
     allocator: std.mem.Allocator,
@@ -9152,115 +9115,12 @@ fn isLoopSourceSpecialCallName(name: []const u8) bool {
     return std.mem.eql(u8, name, "fields") or std.mem.eql(u8, name, "recv");
 }
 
-fn wasiHostImportUseIsLowerableAtCall(
-    tokens: []const lexer.Token,
-    call_idx: usize,
-    import: WasiHostImport,
-) bool {
-    const lowering = wasiLowering(import) orelse return false;
-    // link-at: multi-lhs `_, status =`, exclusive-union binding, return host(...), or statement discard.
-    if (lowering.result_link_at_error) {
-        return isWasiResultUnitStatusMultiAssignmentCall(tokens, call_idx) or
-            isWasiUnionResultBindingCall(tokens, call_idx) or
-            isWasiUnionResultReturnCall(tokens, call_idx) or
-            isBareWasiHostCallStatement(tokens, call_idx);
-    }
-    // tuple-in-result: multi-lhs `data, done, status =` or exclusive-union `Tuple<[u8],bool> | i32 =`.
-    if (lowering.result_read_error) {
-        return isWasiResultReadMultiAssignmentCall(tokens, call_idx) or
-            isWasiUnionResultBindingCall(tokens, call_idx) or
-            isWasiUnionResultReturnCall(tokens, call_idx);
-    }
-    // list-in-result: multi-lhs `data, status =` or exclusive-union `[u8] | i32 =`.
-    if (lowering.result_list_u8_error) {
-        return isWasiResultListU8StatusMultiAssignmentCall(tokens, call_idx) or
-            isWasiUnionResultBindingCall(tokens, call_idx) or
-            isWasiUnionResultReturnCall(tokens, call_idx);
-    }
-    return true;
-}
 
-/// Typed exclusive-union binding of a host call: `r T | U = host(...)`.
-fn isWasiUnionResultBindingCall(tokens: []const lexer.Token, call_idx: usize) bool {
-    const line_start = findLineStart(tokens, call_idx);
-    const line_end = findLineEnd(tokens, call_idx);
-    const eq_idx = findTopLevelToken(tokens, line_start, call_idx, "=") orelse return false;
-    // Must look like a typed binding (ident + type with `|`), not multi-lhs.
-    if (findTopLevelToken(tokens, line_start, eq_idx, ",") != null) return false;
-    if (findTopLevelToken(tokens, line_start, eq_idx, "|") == null) return false;
-    const rhs_range = trimParens(tokens, eq_idx + 1, line_end);
-    const call_head = exprCallHead(tokens, rhs_range) orelse return false;
-    return !call_head.is_intrinsic and call_head.name_idx == call_idx;
-}
 
-/// Thin wrapper return of a host call: `return host(...)`.
-fn isWasiUnionResultReturnCall(tokens: []const lexer.Token, call_idx: usize) bool {
-    const line_start = findLineStart(tokens, call_idx);
-    const line_end = findLineEnd(tokens, call_idx);
-    if (line_start >= line_end or !tokEq(tokens[line_start], "return")) return false;
-    const rhs_range = trimParens(tokens, line_start + 1, line_end);
-    const call_head = exprCallHead(tokens, rhs_range) orelse return false;
-    return !call_head.is_intrinsic and call_head.name_idx == call_idx;
-}
 
-fn isBareWasiHostCallStatement(tokens: []const lexer.Token, call_idx: usize) bool {
-    const line_start = findLineStart(tokens, call_idx);
-    const line_end = findLineEnd(tokens, call_idx);
-    // Statement form: host(...) alone on the line (no `=`).
-    if (findTopLevelToken(tokens, line_start, call_idx, "=") != null) return false;
-    const range = trimParens(tokens, line_start, line_end);
-    const call_head = exprCallHead(tokens, range) orelse return false;
-    return !call_head.is_intrinsic and call_head.name_idx == call_idx;
-}
 
-fn isWasiResultUnitStatusMultiAssignmentCall(tokens: []const lexer.Token, call_idx: usize) bool {
-    const line_start = findLineStart(tokens, call_idx);
-    const line_end = findLineEnd(tokens, call_idx);
-    const eq_idx = findTopLevelToken(tokens, line_start, call_idx, "=") orelse return false;
 
-    const first_lhs_end = findArgEnd(tokens, line_start, eq_idx);
-    if (first_lhs_end != line_start + 1 or tokens[line_start].kind != .ident) return false;
-    if (!std.mem.eql(u8, tokens[line_start].lexeme, "_")) return false;
-    if (first_lhs_end >= eq_idx or !tokEq(tokens[first_lhs_end], ",")) return false;
 
-    const status_lhs_start = first_lhs_end + 1;
-    const status_lhs_end = findArgEnd(tokens, status_lhs_start, eq_idx);
-    if (status_lhs_end != status_lhs_start + 1 or status_lhs_end != eq_idx) return false;
-    if (tokens[status_lhs_start].kind != .ident) return false;
-
-    const rhs_range = trimParens(tokens, eq_idx + 1, line_end);
-    const call_head = exprCallHead(tokens, rhs_range) orelse return false;
-    return !call_head.is_intrinsic and call_head.name_idx == call_idx;
-}
-
-fn isWasiResultReadMultiAssignmentCall(tokens: []const lexer.Token, call_idx: usize) bool {
-    const line_start = findLineStart(tokens, call_idx);
-    const line_end = findLineEnd(tokens, call_idx);
-    const eq_idx = findTopLevelToken(tokens, line_start, call_idx, "=") orelse return false;
-    if (findTopLevelToken(tokens, line_start, eq_idx, ",") == null) return false;
-    const rhs_range = trimParens(tokens, eq_idx + 1, line_end);
-    const call_head = exprCallHead(tokens, rhs_range) orelse return false;
-    return !call_head.is_intrinsic and call_head.name_idx == call_idx;
-}
-
-fn isWasiResultListU8StatusMultiAssignmentCall(tokens: []const lexer.Token, call_idx: usize) bool {
-    const line_start = findLineStart(tokens, call_idx);
-    const line_end = findLineEnd(tokens, call_idx);
-    const eq_idx = findTopLevelToken(tokens, line_start, call_idx, "=") orelse return false;
-
-    const data_lhs_end = findArgEnd(tokens, line_start, eq_idx);
-    if (data_lhs_end != line_start + 1 or tokens[line_start].kind != .ident) return false;
-    if (data_lhs_end >= eq_idx or !tokEq(tokens[data_lhs_end], ",")) return false;
-
-    const status_lhs_start = data_lhs_end + 1;
-    const status_lhs_end = findArgEnd(tokens, status_lhs_start, eq_idx);
-    if (status_lhs_end != status_lhs_start + 1 or status_lhs_end != eq_idx) return false;
-    if (tokens[status_lhs_start].kind != .ident) return false;
-
-    const rhs_range = trimParens(tokens, eq_idx + 1, line_end);
-    const call_head = exprCallHead(tokens, rhs_range) orelse return false;
-    return !call_head.is_intrinsic and call_head.name_idx == call_idx;
-}
 
 fn findCodegenImportByAlias(tokens: []const lexer.Token, alias: []const u8) ?CodegenImportRef {
     var i: usize = 0;
@@ -12840,13 +12700,7 @@ fn bindGenericTypeListFromConcrete(
     }
 }
 
-fn findTopLevelTypeSeparator(ty: []const u8, sep: u8) ?usize {
-    return findTopLevelTypeSeparatorFrom(ty, 0, sep);
-}
 
-fn findTopLevelTypeSeparatorFrom(ty: []const u8, start_idx: usize, sep: u8) ?usize {
-    return type_util.findTopLevelTypeSeparatorFrom(ty, start_idx, sep);
-}
 
 fn bindStructTypeArgs(
     allocator: std.mem.Allocator,
@@ -17076,11 +16930,6 @@ fn emitWasiCoarseErrorEnumPayload(
     return true;
 }
 
-fn unionBranchIsStatusI32(layout: UnionLayout, branch: UnionBranch) bool {
-    return std.mem.eql(u8, branch.ty, "i32") and branch.payload_len == 1 and
-        branch.payload_start < layout.payload_tys.len and
-        std.mem.eql(u8, layout.payload_tys[branch.payload_start], "i32");
-}
 
 fn unionBranchIsCoarseError(tokens: []const lexer.Token, layout: UnionLayout, branch: UnionBranch) bool {
     if (!isErrorLikeType(tokens, branch.ty)) return false;
