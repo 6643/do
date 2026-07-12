@@ -2493,7 +2493,7 @@ fn appendLocalField(
         try appendTupleLocalFields(allocator, out, tokens, ctx, local_name, ty);
         return;
     }
-    // Pure-scalar unmanaged struct slot (e.g. Tuple.v0 : Point) — nested field locals, not a single i32.
+    // Pure-scalar unmanaged struct slot (e.g. Tuple.0 : Point) — nested field locals, not a single i32.
     if (findStructDecl(ctx.structs, ty)) |decl| {
         if (findStructLayout(ctx.struct_layouts, ty) == null and pureScalarStructPackWidth(decl, ctx.structs) != null) {
             try out.owned_names.append(allocator, name);
@@ -5946,19 +5946,19 @@ fn emitTupleLocalSet(
         idx -= 1;
         const elem_ty = tupleElementTypeAt(tuple_ty, idx) orelse return error.UnsupportedLowering;
         if (isTupleTypeName(elem_ty)) {
-            const nested_base = try std.fmt.allocPrint(allocator, "{s}.v{d}", .{ base, idx });
+            const nested_base = try std.fmt.allocPrint(allocator, "{s}.{d}", .{ base, idx });
             defer allocator.free(nested_base);
             try emitTupleLocalSet(allocator, nested_base, elem_ty, ctx, out);
         } else if (findStructDecl(ctx.structs, elem_ty)) |decl| {
             if (findStructLayout(ctx.struct_layouts, elem_ty) == null and pureScalarStructPackWidth(decl, ctx.structs) != null) {
-                const nested_base = try std.fmt.allocPrint(allocator, "{s}.v{d}", .{ base, idx });
+                const nested_base = try std.fmt.allocPrint(allocator, "{s}.{d}", .{ base, idx });
                 defer allocator.free(nested_base);
                 try emitPureScalarStructLocalSet(allocator, nested_base, decl, out);
             } else {
-                try appendFmt(allocator, out, "    local.set ${s}.v{d}\n", .{ base, idx });
+                try appendFmt(allocator, out, "    local.set ${s}.{d}\n", .{ base, idx });
             }
         } else {
-            try appendFmt(allocator, out, "    local.set ${s}.v{d}\n", .{ base, idx });
+            try appendFmt(allocator, out, "    local.set ${s}.{d}\n", .{ base, idx });
         }
     }
 }
@@ -6005,19 +6005,19 @@ fn emitTupleLocalGet(
     while (idx < arity) : (idx += 1) {
         const elem_ty = tupleElementTypeAt(tuple_ty, idx) orelse return error.UnsupportedLowering;
         if (isTupleTypeName(elem_ty)) {
-            const nested_base = try std.fmt.allocPrint(allocator, "{s}.v{d}", .{ base, idx });
+            const nested_base = try std.fmt.allocPrint(allocator, "{s}.{d}", .{ base, idx });
             defer allocator.free(nested_base);
             try emitTupleLocalGet(allocator, nested_base, elem_ty, ctx, out);
         } else if (findStructDecl(ctx.structs, elem_ty)) |decl| {
             if (findStructLayout(ctx.struct_layouts, elem_ty) == null and pureScalarStructPackWidth(decl, ctx.structs) != null) {
-                const nested_base = try std.fmt.allocPrint(allocator, "{s}.v{d}", .{ base, idx });
+                const nested_base = try std.fmt.allocPrint(allocator, "{s}.{d}", .{ base, idx });
                 defer allocator.free(nested_base);
                 try emitPureScalarStructLocalGet(allocator, nested_base, decl, out);
             } else {
-                try appendFmt(allocator, out, "    local.get ${s}.v{d}\n", .{ base, idx });
+                try appendFmt(allocator, out, "    local.get ${s}.{d}\n", .{ base, idx });
             }
         } else {
-            try appendFmt(allocator, out, "    local.get ${s}.v{d}\n", .{ base, idx });
+            try appendFmt(allocator, out, "    local.get ${s}.{d}\n", .{ base, idx });
         }
     }
 }
@@ -10891,7 +10891,7 @@ fn appendFuncParamLocals(
             while (elem_idx < arity) : (elem_idx += 1) {
                 const elem_ty = tupleElementTypeAt(abi_ty, elem_idx) orelse return error.UnsupportedLowering;
                 var field_buf: [32]u8 = undefined;
-                const field_name = try std.fmt.bufPrint(&field_buf, "v{d}", .{elem_idx});
+                const field_name = try std.fmt.bufPrint(&field_buf, "{d}", .{elem_idx});
                 try appendBorrowedLocalField(allocator, locals, func.tokens, ctx, param.name, field_name, elem_ty);
             }
         } else {
@@ -14197,7 +14197,7 @@ fn appendTupleLocalFields(
     while (idx < arity) : (idx += 1) {
         const elem_ty = tupleElementTypeAt(tuple_ty, idx) orelse return error.UnsupportedLowering;
         var field_buf: [32]u8 = undefined;
-        const field_name = try std.fmt.bufPrint(&field_buf, "v{d}", .{idx});
+        const field_name = try std.fmt.bufPrint(&field_buf, "{d}", .{idx});
         try appendLocalField(allocator, out, tokens, ctx, base, field_name, elem_ty);
     }
 }
@@ -14215,7 +14215,7 @@ fn appendTupleLocalFieldsBorrowed(
     while (idx < arity) : (idx += 1) {
         const elem_ty = tupleElementTypeAt(tuple_ty, idx) orelse return error.UnsupportedLowering;
         var field_buf: [32]u8 = undefined;
-        const field_name = try std.fmt.bufPrint(&field_buf, "v{d}", .{idx});
+        const field_name = try std.fmt.bufPrint(&field_buf, "{d}", .{idx});
         try appendBorrowedLocalField(allocator, out, tokens, ctx, base, field_name, elem_ty);
     }
 }
@@ -14495,20 +14495,20 @@ fn emitGetCall(
         if (isTupleTypeName(struct_local.ty)) {
             const elem_info = tupleGetElementInfo(tokens, second_start, second_end, struct_local.ty) orelse return false;
             if (isTupleTypeName(elem_info.ty)) {
-                const nested_base = try std.fmt.allocPrint(allocator, "{s}.v{d}", .{ struct_local.name, elem_info.index });
+                const nested_base = try std.fmt.allocPrint(allocator, "{s}.{d}", .{ struct_local.name, elem_info.index });
                 defer allocator.free(nested_base);
                 try emitTupleLocalGet(allocator, nested_base, elem_info.ty, ctx, out);
                 return true;
             }
             if (findStructDecl(ctx.structs, elem_info.ty)) |decl| {
                 if (findStructLayout(ctx.struct_layouts, elem_info.ty) == null and pureScalarStructPackWidth(decl, ctx.structs) != null) {
-                    const nested_base = try std.fmt.allocPrint(allocator, "{s}.v{d}", .{ struct_local.name, elem_info.index });
+                    const nested_base = try std.fmt.allocPrint(allocator, "{s}.{d}", .{ struct_local.name, elem_info.index });
                     defer allocator.free(nested_base);
                     try emitPureScalarStructLocalGet(allocator, nested_base, decl, out);
                     return true;
                 }
             }
-            try appendFmt(allocator, out, "    local.get ${s}.v{d}\n", .{ struct_local.name, elem_info.index });
+            try appendFmt(allocator, out, "    local.get ${s}.{d}\n", .{ struct_local.name, elem_info.index });
             if (isManagedLocalType(elem_info.ty, ctx)) {
                 try out.appendSlice(allocator, "    call $__arc_inc\n");
             }
@@ -20047,7 +20047,7 @@ fn appendTupleParamAbi(
     var idx: usize = 0;
     while (idx < arity) : (idx += 1) {
         const elem_ty = tupleElementTypeAt(tuple_ty, idx) orelse return error.UnsupportedLowering;
-        const nested_base = try std.fmt.allocPrint(allocator, "{s}.v{d}", .{ base, idx });
+        const nested_base = try std.fmt.allocPrint(allocator, "{s}.{d}", .{ base, idx });
         defer allocator.free(nested_base);
         if (isTupleTypeName(elem_ty)) {
             try appendTupleParamAbi(allocator, out, nested_base, elem_ty, ctx);
@@ -20144,7 +20144,7 @@ fn emitTupleFieldPathGetCall(
     const elem_info = tupleGetElementInfo(tokens, index_start, index_end, field_ty) orelse return false;
     const struct_local = findStructLocal(locals.struct_locals.items, tokens[start_idx].lexeme) orelse return false;
     const field_name = publicDeclName(tokens[field_start].lexeme);
-    try appendFmt(allocator, out, "    local.get ${s}.{s}.v{d}\n", .{ struct_local.name, field_name, elem_info.index });
+    try appendFmt(allocator, out, "    local.get ${s}.{s}.{d}\n", .{ struct_local.name, field_name, elem_info.index });
     if (isManagedLocalType(elem_info.ty, ctx)) {
         try out.appendSlice(allocator, "    call $__arc_inc\n");
     }

@@ -1,13 +1,13 @@
 (local $__tuple_pack_base_tmp i32)
 (local $__tuple_pack_spill_i32 i32)
-(local $next.v0 i32)
-(local $next.v1 i32)
-(local $got.v0 i32)
-(local $got.v1 i32)
+(local $next.0 i32)
+(local $next.1 i32)
+(local $got.0 i32)
+(local $got.1 i32)
 ;; storage-set-scalar
 i32.const 5
 local.set $__tuple_pack_base_tmp
 i32.store8
 i32.store
-local.set $got.v1
-local.set $got.v0
+local.set $got.1
+local.set $got.0

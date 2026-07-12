@@ -1,13 +1,13 @@
 ;; compiled-test 0 "compiled nested tuple"
-(local $outer.v0.v0 i32)
-(local $outer.v0.v1 i32)
-(local $outer.v1 i32)
-(local $inner.v0 i32)
-(local $inner.v1 i32)
-local.set $outer.v1
-local.set $outer.v0.v1
-local.set $outer.v0.v0
-local.get $outer.v0.v0
-local.get $outer.v0.v1
-local.set $inner.v1
-local.set $inner.v0
+(local $outer.0.0 i32)
+(local $outer.0.1 i32)
+(local $outer.1 i32)
+(local $inner.0 i32)
+(local $inner.1 i32)
+local.set $outer.1
+local.set $outer.0.1
+local.set $outer.0.0
+local.get $outer.0.0
+local.get $outer.0.1
+local.set $inner.1
+local.set $inner.0

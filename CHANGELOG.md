@@ -7,9 +7,11 @@
 
 - codegen: pure-scalar 具名 struct 作为 Tuple storage **嵌套子槽** (永不拍平)
   - `items [Tuple<Point, u8>]` / `@put` / `@get` / path `@get(items, i, 0)` → `Point`
-  - 局部 `Tuple` 槽展开为 `$t.v0.x` / `$t.v0.y` (嵌套字段, 非单 i32)
+  - 局部 `Tuple` 槽用位置名 `$pair.0.x` / `$pair.0.y` / `$pair.1` (不是假字段 `v0`)
   - 含 managed 字段的 struct 槽仍 `UnsupportedTupleStorageLeaf` (`compile_err/339`)
   - fixtures: `compile_ok/272`, `ok/192` (`compiled_must_pass`)
+
+- codegen: Tuple 局部/参数槽位命名 `vN` → 位置下标 `N` (`$pair.0` 而非 `$pair.v0`)
 
 - 规格: Tuple **永不拍平** 硬约束 — 嵌套 Tuple / struct 直接元素保持嵌套类型与 `@get` 路径; 禁止与扁平 Tuple 等同或隐式 coerce (`spec_rules` / `syntax/type` / `memory` / `start_here`)
 

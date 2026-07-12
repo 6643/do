@@ -1,2 +1,2 @@
 ;; loop-collection
-local.get $v.v0
+local.get $v.0

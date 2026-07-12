@@ -1,5 +1,5 @@
 ;; compiled-test 0 "tuple loop get index"
-(local $v.v0 i32)
-(local $v.v1 i32)
+(local $v.0 i32)
+(local $v.1 i32)
 ;; loop-collection
-local.get $v.v0
+local.get $v.0

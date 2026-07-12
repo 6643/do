@@ -1,7 +1,7 @@
 ;; compiled-test 0 "compiled tuple struct field"
-(local $box.pair.v0 i32)
-(local $box.pair.v1 i32)
-local.set $box.pair.v0
-local.set $box.pair.v1
-local.get $box.pair.v0
-local.get $box.pair.v1
+(local $box.pair.0 i32)
+(local $box.pair.1 i32)
+local.set $box.pair.0
+local.set $box.pair.1
+local.get $box.pair.0
+local.get $box.pair.1

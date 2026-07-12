@@ -1,6 +1,6 @@
-(local $pair.v0 i32)
-(local $pair.v1 i32)
-local.set $pair.v0
-local.set $pair.v1
-local.get $pair.v0
-local.get $pair.v1
+(local $pair.0 i32)
+(local $pair.1 i32)
+local.set $pair.0
+local.set $pair.1
+local.get $pair.0
+local.get $pair.1
