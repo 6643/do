@@ -289,12 +289,44 @@ Stdlib modules declare WASI with:
 
 | Form | Role |
 | --- | --- |
-| `@wasi_func("package/interface/member", sig)` | Sole function binding form (do-side sugar OK for known targets; bare `@wasi(...)` removed) |
+| `@wasi_func("package/interface/member", sig)` | Sole function binding form; **preferred** do types in `sig` (see below); bare `@wasi(...)` removed |
 | `@wasi_resource("…/resource", { .id i64 })` | Resource handle shell (not a WIT record) |
 | `@wasi_record("…", { fields })` | Record mirror (field-aligned) |
 | `@wasi_enum("…/error-code", arms)` | Optional fine error table; coarse `DirError`/`FileError` may stay plain |
 
-Known targets still lower via existing strategies (scalar/record/`list<u8>`/result-area/preopens). Codegen stores **WIT** params/result on the binding even when the source used do sugar (`i32`/`[u8]`). Host imports remain in the module import prefix; type bindings follow them.
+### Preferred do signatures (source)
+
+Host import signatures bind **do types**, not WIT-only wrapper types. Preferred surface:
+
+| Shape | do source | Maps to WIT (manifest) |
+| --- | --- | --- |
+| Infallible / unit | `() -> Datetime`, `(Dir) -> nil` | record / unit |
+| Unit fallible | `(Dir) -> nil \| i32` | `result<_, error-code>` (or stream-error analog) |
+| Payload fallible | `(Dir, …) -> Dir \| i32`, `(File, [u8], u64) -> u64 \| i32` | `result<descriptor, error-code>`, `result<filesize, error-code>`, … |
+| Resource params | `Dir` / `File` (`@wasi_resource`) | `descriptor` (via `.id`) |
+| Bytes / text sugar | `[u8]`, `text` | `list<u8>`, `string` |
+| Structures | do `Tuple<…>`, multi-arg flatten, or `@wasi_record` | `tuple<…>` / record — **no** `@wasi_tuple` |
+
+Rules:
+
+- **Preferred:** exclusive unions `Ok | Err` and `T | nil` (phase-1 err arm is status `i32`; 0 never appears on the err arm).
+- **Forbidden as WASI result model:** multi-return source shapes such as `-> Ok, Err` or treating dual presence as the host result type (language has no zero values).
+- **No type wrappers:** do not introduce `wasi_result` / `wasi_option` / `wasi_list` / `wasi_tuple` (or `@wasi_*` synonyms of those).
+- **Keep `@wasi_*`:** only `wasi_func`, `wasi_resource`, `wasi_record`, and optional later `wasi_enum`.
+- **Transition:** source `result<…>` / WIT sugar is still accepted for known targets until migration finishes; manifest/`result=` strings remain WIT.
+- **Call sites:** whole `Ok|Err` / `nil|i32` values are statement-discardable; multi-lhs unpack may still lower for transitional call patterns, but new code should bind a single union value (or discard the whole call).
+- **Public stdlib API** stays do-facing (`Dir | DirError`, `File | FileError`, …); private host lines use unions + wrappers map status → coarse error.
+
+Example (stdlib-style):
+
+```do
+.host_dir_open_at = @wasi_func("filesystem/types/descriptor.open-at", (Dir, i32, text, i32, i32) -> Dir | i32)
+.host_file_sync = @wasi_func("filesystem/types/descriptor.sync", (File) -> nil | i32)
+.host_file_write = @wasi_func("filesystem/types/descriptor.write", (File, [u8], u64) -> u64 | i32)
+.host_dir_drop = @wasi_func("filesystem/types/descriptor.drop", (Dir) -> nil)
+```
+
+Known targets still lower via existing strategies (scalar/record/`list<u8>`/result-area/preopens). Codegen stores **WIT** params/result on the binding even when the source used do sugar (`Dir`/`[u8]`/`nil|i32`). Host imports remain in the module import prefix; type bindings follow them.
 
 `wasi_registry.json` remains the official known-target directory for validation; private targets may use the same syntax when a lowering strategy exists (future allow_unknown mode).
 
@@ -612,8 +644,8 @@ smoke tests and complex wrapper completion are still pending.
 | `list<T>` | canonical ABI list | `[T]` only when `T` has a Do representation |
 | `record` | field-order-checked mirror | Do `Struct` with matching public fields |
 | `tuple<A, B>` | canonical ABI tuple | prefer multi-return in wrapper |
-| `option<T>` | canonical ABI option | `T | nil` only in wrapper-visible positions allowed by the language |
-| `result<T, E>` | canonical ABI result | `T | SpecificError` or explicit multi-return wrapper |
+| `option<T>` | canonical ABI option | host/private: `T | nil` preferred; public wrappers only where language allows |
+| `result<T, E>` | canonical ABI result | host/private: exclusive `Ok | Err` (e.g. `nil | i32`, `Dir | i32`); public: `T | SpecificError` — **not** multi-return as the WASI result model |
 | `variant` | canonical ABI variant | Do enum/error enum plus wrapper conversion |
 | `flags` | canonical ABI flags | Do value enum or private bitset wrapper |
 | `resource` | canonical ABI resource handle | Do struct with private handle field |

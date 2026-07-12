@@ -5,6 +5,11 @@
 
 ## 2026-07-12
 
+- 文档: WASI host 签名优先 do 联合 `Ok | Err` / `T | nil`
+  - 推荐: resource/record 名 + 排他联合；禁止多返回作为 WASI result 模型；无 `wasi_result`/`wasi_option`/`@wasi_tuple`
+  - 过渡: 已知 target 仍接受源码 `result<>`；manifest 仍存 WIT
+  - 更新: `spec_rules` §21.1/§23、`wasi_p3_lowering` Declarative host surface、`grammar.peg` `WasiHostResult`
+
 - 声明式 WASI 宿主绑定（stdlib 对齐）
   - 新形式: `@wasi_func` / `@wasi_resource` / `@wasi_record`（`@wasi_enum` 语法预留；粗 `DirError`/`FileError` 仍手写）
   - 已移除裸 `@wasi(...)` 别名；codegen 对已知 target 把 do 侧糖（`i32`/`[u8]`）规范为 WIT 签名

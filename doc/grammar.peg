@@ -94,10 +94,15 @@ EnvHostSig       <- '(' AbiParamList? ')' '->' AbiReturn
 AbiParamList     <- AbiType (InlineCommaSep AbiType)* InlineCommaSep?
 AbiReturn        <- 'nil' / AbiType
 AbiType          <- 'i32' / 'i64' / 'f32' / 'f64'
-// Host signature: WIT tokens and/or do-side sugar (`[u8]`, `i32` for handles) accepted when
-// known-target maps normalize to WIT for codegen.
-WasiHostSig      <- '(' WitParamList? ')' '->' WitType
+// Host signature: do-side types preferred (resource/record names, [u8]/text sugar,
+// exclusive unions Ok|Err / T|nil). Transitional WIT result<> / list<> / tuple<> still
+// accepted for known targets; codegen normalizes params/result to WIT in the manifest.
+// No multi-return host result (`-> A, B`); no @wasi_result / @wasi_option / @wasi_tuple wrappers.
+WasiHostSig      <- '(' WitParamList? ')' '->' WasiHostResult
 WitParamList     <- WitType (InlineCommaSep WitType)* InlineCommaSep?
+// Return: exclusive do union of WitType arms, or a single WitType (incl. transitional result<>).
+WasiHostResult   <- WasiHostUnion / WitType
+WasiHostUnion    <- WitType (SoftGap '|' SoftGap WitType)+
 WitType          <- 'list' '<' WitType '>'
                   / 'result' '<' WitType InlineCommaSep WitType '>'
                   / 'tuple' '<' WitType InlineCommaSep WitType (InlineCommaSep WitType)* '>'
@@ -107,6 +112,7 @@ WitType          <- 'list' '<' WitType '>'
                   / '[' TypeName ']'
                   / '_'
                   / PublicTypeName
+                  / NilType
                   / AbiType
                   / WitName
 WitName          <- WitPathName ('-' WitPathName)*
