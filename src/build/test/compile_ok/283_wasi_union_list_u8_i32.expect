@@ -1,0 +1,7 @@
+;; wasi-bind
+io/streams/input-stream.read
+result<list<u8>,stream-error>
+[method]input-stream.read
+__wasi_list_u8_to_storage
+__union_payload
+__union_tag

@@ -1,6 +1,6 @@
 // Declarative stream hosts first (import prefix), then resource shells.
-// Unit/u64 fallible use Ok|Err; read list-union not ready (multi-lhs).
-.host_input_read = @wasi_func("io/streams/input-stream.read", (InputStream, u64) -> result<[u8],stream-error>)
+// Fallible hosts use exclusive Ok|Err unions (err arm = status i32).
+.host_input_read = @wasi_func("io/streams/input-stream.read", (InputStream, u64) -> [u8] | i32)
 .host_output_check_write = @wasi_func("io/streams/output-stream.check-write", (OutputStream) -> u64 | i32)
 .host_output_write = @wasi_func("io/streams/output-stream.write", (OutputStream, [u8]) -> nil | i32)
 .host_output_flush = @wasi_func("io/streams/output-stream.flush", (OutputStream) -> nil | i32)
@@ -31,7 +31,7 @@ StreamError error = StreamClosed | StreamReadFailed | StreamCheckWriteFailed | S
     return fallback
 }
 
-// Read still multi-lhs until list-in-union lands.
+// Host is [u8]|i32; multi-lhs still lowers via list result-area (stable ARC for return).
 read_stream(stream InputStream, size usize) -> [u8], StreamError | nil {
     data [u8] = .{}
     status i32 = 0

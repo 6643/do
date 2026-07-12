@@ -5224,7 +5224,10 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .result = "result<list<u8>,stream-error>",
             .do_params = "i32,u64",
             .do_params_alt = "InputStream,u64",
+            // Transitional multi-lhs form still accepted.
             .do_result = "result<[u8],stream-error>",
+            // Exclusive union: ok = list storage [u8], err = status i32 (stream-error+1).
+            .do_result_alt = "[u8]|i32",
         },
         .{
             .target = "io/streams/output-stream.check-write",
