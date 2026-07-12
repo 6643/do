@@ -6,3 +6,5 @@ call $__wasi_import_filesystem_types_descriptor_open_at
 call $__wasi_import_filesystem_types_descriptor_remove_directory_at
 (func $__wasi_shim_lib_dir_do_host_dir_drop (param $p0 i32)
 call $__wasi_import_filesystem_types_descriptor_drop
+(func $__wasi_shim_lib_dir_do_host_preopens (param $__result_area i32)
+call $__wasi_import_filesystem_preopens_get_directories

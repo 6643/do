@@ -1,4 +1,4 @@
-host_output_check_write = @wasi("io/streams/output-stream.check-write", (output-stream) -> result<u64,stream-error>)
+host_output_check_write = @wasi_func("io/streams/output-stream.check-write", (output-stream) -> result<u64,stream-error>)
 
 start() {
     allowed u64 = 0

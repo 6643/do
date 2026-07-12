@@ -1,0 +1,2 @@
+call $preopen_directories
+local.set $roots

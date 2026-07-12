@@ -1,2 +1,2 @@
 InvalidImportDecl
-@wasi("path/member", (...) -> Type)
+@wasi_func("path/member", (...) -> Type)

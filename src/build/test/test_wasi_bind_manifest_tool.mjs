@@ -402,34 +402,26 @@ const defaultRegistryPreopensResult = spawnSync(process.execPath, [validatorPath
   encoding: "utf8",
 });
 assert.equal(defaultRegistryPreopensResult.status, 0, defaultRegistryPreopensResult.stderr);
-assert.deepEqual(JSON.parse(defaultRegistryPreopensResult.stdout).bindings, [
-  {
-    source: "entry",
-    alias: "host_preopens",
-    target: "filesystem/preopens/get-directories",
-    params: [],
-    result: "list<tuple<descriptor,string>>",
-    identity: "entry/host_preopens",
-    known: true,
-    resolved: {
-      package: "filesystem",
-      interface: "preopens",
-      member: "get-directories",
-      params: [],
-      result: "list<tuple<descriptor,string>>",
-    },
-    shim: {
-      kind: "unsupported",
-      reason: "non-scalar-or-record-signature",
-    },
-  },
-]);
+const preopensJson = JSON.parse(defaultRegistryPreopensResult.stdout).bindings;
+assert.equal(preopensJson.length, 1);
+assert.equal(preopensJson[0].target, "filesystem/preopens/get-directories");
+assert.equal(preopensJson[0].known, true);
+assert.equal(preopensJson[0].shim.kind, "list-preopen-result");
+assert.ok(preopensJson[0].shim.lowering);
+assert.equal(preopensJson[0].shim.lowering.do_result.kind, "list");
+assert.equal(preopensJson[0].shim.lowering.do_result.elem, "tuple<descriptor,string>");
 
 const preopensPlanResult = spawnSync(process.execPath, [validatorPath, "--component-plan", defaultRegistryPreopensWatPath], {
   encoding: "utf8",
 });
-assert.notEqual(preopensPlanResult.status, 0, "preopens should not be lowerable yet");
-assert.match(preopensPlanResult.stderr, /cannot build component plan for unsupported binding: entry\/host_preopens/);
+assert.equal(preopensPlanResult.status, 0, preopensPlanResult.stderr);
+const preopensPlan = JSON.parse(preopensPlanResult.stdout);
+assert.equal(preopensPlan.imports.length, 1);
+assert.equal(preopensPlan.imports[0].target, "filesystem/preopens/get-directories");
+assert.equal(preopensPlan.shims.length, 1);
+assert.equal(preopensPlan.shims[0].kind, "list-preopen-result");
+assert.deepEqual(preopensPlan.shims[0].lowering.core_import.params, ["i32"]);
+assert.deepEqual(preopensPlan.shims[0].lowering.core_import.results, []);
 
 const defaultRegistrySocketsWatPath = path.join(tmpDir, "wasi_bind_manifest_tool_default_sockets.wat");
 fs.writeFileSync(

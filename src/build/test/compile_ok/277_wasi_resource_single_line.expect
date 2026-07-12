@@ -1,0 +1,5 @@
+;; wasi-bind source="entry" alias="host_now" target="clocks/system-clock/now" params="" result="Datetime"
+(import "cm32p2|wasi:clocks/system-clock" "now"
+;; wasi-bind source="entry" alias="host_drop" target="filesystem/types/descriptor.drop" params="descriptor" result="nil"
+[resource-drop]descriptor
+local.set $d.id

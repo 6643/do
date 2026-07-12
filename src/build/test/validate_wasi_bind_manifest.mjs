@@ -441,6 +441,19 @@ function buildShimPlan(resolved) {
       lowering: buildLoweringPlan(resolved, doResult),
     };
   }
+  // G6.1 A: list<tuple<descriptor,string>> — lowerable list result with resource+string elements.
+  if (isListTupleDescriptorStringSignature(resolved)) {
+    const doResult = buildListPreopenResultLayout();
+    return {
+      kind: "list-preopen-result",
+      params: resolved.params,
+      result: {
+        kind: "list",
+        elem: "tuple<descriptor,string>",
+      },
+      lowering: buildLoweringPlan(resolved, doResult),
+    };
+  }
   return unsupportedShim();
 }
 
@@ -613,7 +626,45 @@ function componentCoreWat(coreWat) {
 
 function emitWitPackage(packageName, imports, shimsByTarget, includeWorld) {
   ensureWitIdent(packageName, "package");
-  const interfaces = groupImportsByInterface(imports);
+  // G6.1: preopens references descriptor from types; ensure types is present when needed.
+  let packageImports = imports.slice();
+  if (
+    packageName === "filesystem" &&
+    packageImports.some((item) => item.interface === "preopens") &&
+    !packageImports.some((item) => item.interface === "types")
+  ) {
+    packageImports = packageImports.concat([
+      {
+        target: "filesystem/types/descriptor.drop",
+        package: "filesystem",
+        interface: "types",
+        member: "descriptor.drop",
+        params: ["descriptor"],
+        result: "nil",
+      },
+    ]);
+    if (!shimsByTarget.has("filesystem/types/descriptor.drop")) {
+      shimsByTarget.set("filesystem/types/descriptor.drop", {
+        target: "filesystem/types/descriptor.drop",
+        kind: "resource-drop",
+        lowering: {
+          do_result: { kind: "unit", size: 0, align: 1 },
+          component_import: {
+            package: "filesystem",
+            interface: "types",
+            member: "descriptor.drop",
+          },
+          core_import: {
+            module: "cm32p2|wasi:filesystem/types",
+            name: "[resource-drop]descriptor",
+            params: ["i32"],
+            results: [],
+          },
+        },
+      });
+    }
+  }
+  const interfaces = groupImportsByInterface(packageImports);
   const lines = [`package wasi:${packageName};`, ""];
 
   for (const group of interfaces) {
@@ -634,6 +685,11 @@ function emitWitPackage(packageName, imports, shimsByTarget, includeWorld) {
 function emitWitInterface(lines, group, shimsByTarget) {
   ensureWitIdent(group.interface, "interface");
   lines.push(`interface ${group.interface} {`);
+
+  // preopens.get-directories returns list<tuple<descriptor,string>> — need types.descriptor.
+  if (group.interface === "preopens") {
+    lines.push("  use types.{descriptor};", "");
+  }
 
   if (group.imports.some(isResourceMethodImport)) {
     emitResourceInterfaceBody(lines, group.imports, shimsByTarget);
@@ -1068,6 +1124,38 @@ function buildRecordResultLayout(record) {
     align: 4,
     fields,
   };
+}
+
+function buildListPreopenResultLayout() {
+  // Canonical ABI list{ptr,len} in result area; each element is tuple:
+  // descriptor i32 @0, string {ptr,len} @4/@8 → 12 bytes (align 4).
+  return {
+    kind: "list",
+    elem: "tuple<descriptor,string>",
+    size: 8,
+    align: 4,
+    ptr_offset: 0,
+    len_offset: 4,
+    element: {
+      size: 12,
+      align: 4,
+      fields: [
+        { name: "descriptor", kind: "resource", type: "descriptor", offset: 0, core_type: "i32" },
+        { name: "path", kind: "string", ptr_offset: 4, len_offset: 8 },
+      ],
+    },
+  };
+}
+
+function isListTupleDescriptorStringSignature(resolved) {
+  return (
+    resolved.package === "filesystem" &&
+    resolved.interface === "preopens" &&
+    resolved.member === "get-directories" &&
+    resolved.params.length === 0 &&
+    (resolved.result === "list<tuple<descriptor,string>>" ||
+      resolved.result === "list<tuple<descriptor,string>>")
+  );
 }
 
 function buildListU8ResultLayout() {

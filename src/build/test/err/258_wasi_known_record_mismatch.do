@@ -1,4 +1,4 @@
-host_now = @wasi("clocks/system-clock/now", () -> Datetime)
+host_now = @wasi_func("clocks/system-clock/now", () -> Datetime)
 
 Datetime {
     seconds i64

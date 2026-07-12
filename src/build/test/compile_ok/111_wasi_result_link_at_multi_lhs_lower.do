@@ -1,4 +1,4 @@
-host_file_link_at = @wasi("filesystem/types/descriptor.link-at", (descriptor, path-flags, text, borrow<descriptor>, text) -> result<_, error-code>)
+host_file_link_at = @wasi_func("filesystem/types/descriptor.link-at", (descriptor, path-flags, text, borrow<descriptor>, text) -> result<_, error-code>)
 
 start() {
     status i32 = 0

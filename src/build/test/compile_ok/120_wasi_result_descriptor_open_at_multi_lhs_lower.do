@@ -1,4 +1,4 @@
-host_file_open_at = @wasi("filesystem/types/descriptor.open-at", (descriptor, path-flags, text, open-flags, descriptor-flags) -> result<descriptor,error-code>)
+host_file_open_at = @wasi_func("filesystem/types/descriptor.open-at", (descriptor, path-flags, text, open-flags, descriptor-flags) -> result<descriptor,error-code>)
 
 start() {
     descriptor i32 = 0
