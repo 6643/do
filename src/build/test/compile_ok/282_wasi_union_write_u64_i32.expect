@@ -1,0 +1,6 @@
+;; wasi-bind
+filesystem/types/descriptor.write
+result<filesize,error-code>
+[method]descriptor.write
+__union_payload
+__union_tag

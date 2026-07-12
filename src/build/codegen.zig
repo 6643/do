@@ -14267,7 +14267,7 @@ fn emitUnionBinding(
                     }
                 }
             }
-            // Fallible host result-area → exclusive do union (`nil|i32`, `Dir|i32`, …).
+            // Fallible host result-area → exclusive do union (`nil|i32`, `Dir|i32`, `u64|i32`, …).
             if (findWasiHostImportForTokens(ctx, tokens, tokens[call_head.name_idx].lexeme)) |wasi_import| {
                 if (try emitWasiUnitResultAsUnionValue(
                     allocator,
@@ -14280,6 +14280,16 @@ fn emitUnionBinding(
                     union_local.layout,
                     out,
                 ) or try emitWasiDescriptorResultAsUnionValue(
+                    allocator,
+                    tokens,
+                    call_head.args_start,
+                    call_head.args_end,
+                    locals,
+                    ctx,
+                    wasi_import,
+                    union_local.layout,
+                    out,
+                ) or try emitWasiFilesizeResultAsUnionValue(
                     allocator,
                     tokens,
                     call_head.args_start,
@@ -16770,6 +16780,101 @@ fn emitWasiUnitResultAsUnionValue(
         \\      i32.add
         \\
     );
+    try appendFmt(allocator, out, "      i32.const {d}\n", .{err.tag});
+    try out.appendSlice(allocator, "    end\n");
+    return true;
+}
+
+/// Lower `result<filesize,error-code>` into exclusive union stack: e.g. `u64 | i32`.
+/// Ok arm is written filesize (u64/i64); err arm is status i32 (error-code+1; 0 never on err arm).
+fn emitWasiFilesizeResultAsUnionValue(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    args_start: usize,
+    args_end: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    import: WasiHostImport,
+    layout: UnionLayout,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    const lowering = wasiLowering(import) orelse return false;
+    if (!lowering.result_filesize_error) return false;
+    if (layout.branches.len != 2) return false;
+
+    var ok_branch: ?UnionBranch = null;
+    var err_branch: ?UnionBranch = null;
+    for (layout.branches) |branch| {
+        if (std.mem.eql(u8, branch.ty, "i32") and branch.payload_len == 1 and
+            branch.payload_start < layout.payload_tys.len and
+            std.mem.eql(u8, layout.payload_tys[branch.payload_start], "i32"))
+        {
+            if (err_branch != null) return false;
+            err_branch = branch;
+            continue;
+        }
+        // Ok arm: scalar filesize (u64).
+        if (std.mem.eql(u8, branch.ty, "u64") and branch.payload_len == 1 and
+            branch.payload_start < layout.payload_tys.len and
+            std.mem.eql(u8, layout.payload_tys[branch.payload_start], "u64"))
+        {
+            if (ok_branch != null) return false;
+            ok_branch = branch;
+            continue;
+        }
+        return false;
+    }
+    const ok = ok_branch orelse return false;
+    const err = err_branch orelse return false;
+    if (layout.payload_tys.len != 2) return false;
+
+    if (!try emitWasiResultFilesizeCall(allocator, tokens, args_start, args_end, locals, ctx, import, out)) {
+        return error.NoMatchingCall;
+    }
+
+    // Stack: payload slots…, tag (matches emitUnionValue / emitWasiResultFilesizeValues).
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
+    try out.appendSlice(allocator, "    i32.load\n");
+    try out.appendSlice(allocator, "    i32.eqz\n");
+    try out.appendSlice(allocator, "    if (result");
+    for (layout.payload_tys) |payload_ty| {
+        try appendFmt(allocator, out, " {s}", .{codegenWasmType(ctx, payload_ty)});
+    }
+    try out.appendSlice(allocator, " i32)\n");
+
+    // ok: filesize at result-area +8; zero err slot; ok tag
+    for (layout.payload_tys, 0..) |payload_ty, idx| {
+        if (idx == ok.payload_start) {
+            try out.appendSlice(allocator,
+                \\      global.get $__wasi_result_area_base
+                \\      i32.const 8
+                \\      i32.add
+                \\      i64.load
+                \\
+            );
+        } else {
+            try appendFmt(allocator, out, "      {s}.const 0\n", .{codegenWasmType(ctx, payload_ty)});
+        }
+    }
+    try appendFmt(allocator, out, "      i32.const {d}\n", .{ok.tag});
+
+    try out.appendSlice(allocator, "    else\n");
+    // err: zero ok slot; status = error-code + 1 at +8; err tag
+    for (layout.payload_tys, 0..) |payload_ty, idx| {
+        if (idx == err.payload_start) {
+            try out.appendSlice(allocator,
+                \\      global.get $__wasi_result_area_base
+                \\      i32.const 8
+                \\      i32.add
+                \\      i32.load
+                \\      i32.const 1
+                \\      i32.add
+                \\
+            );
+        } else {
+            try appendFmt(allocator, out, "      {s}.const 0\n", .{codegenWasmType(ctx, payload_ty)});
+        }
+    }
     try appendFmt(allocator, out, "      i32.const {d}\n", .{err.tag});
     try out.appendSlice(allocator, "    end\n");
     return true;

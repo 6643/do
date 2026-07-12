@@ -5139,7 +5139,10 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .params = "descriptor,list<u8>,filesize",
             .result = "result<filesize,error-code>",
             .do_params = "i32,[u8],u64",
+            // Transitional multi-lhs form still accepted.
             .do_result = "result<u64,error-code>",
+            // Exclusive union: ok = filesize u64, err = status i32 (error-code+1).
+            .do_result_alt = "u64|i32",
         },
         .{
             .target = "filesystem/types/descriptor.read",
