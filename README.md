@@ -18,7 +18,7 @@
 - **大小数据分层策略**: 基础/小对象直接拷贝，大对象采用共享 + COW（初始阈值 64B）。
 - **运行时资源管理方向**: 对 host 资源采用显式释放和 ID 关联的设计方向，目标是不引入循环 GC。
 - **语言规范基线**: 规范入口见 `doc/spec.md`; 语法设计见 `doc/syntax/README.md`; parser PEG 见 `doc/grammar.peg`; 语义、内建判断族、核心库特型与静态约束见 `doc/spec_rules.md`。
-- **WASI / WIT lowering 入口**: `@wasi` / WIT / component lowering 的当前 compiler-facing 合同见 `doc/wit/wasi_p3_lowering.md`; 当前已登记 target / record mirror registry 见 `doc/wit/wasi_registry.json`。
+- **WASI / WIT lowering 入口**: `@wasi_func` / WIT / component lowering 的当前 compiler-facing 合同见 `doc/wit/wasi_p3_lowering.md`; 当前已登记 target / record mirror registry 见 `doc/wit/wasi_registry.json`。
 - **程序入口固定**: 源码入口声明固定为 `start() { ... }`，`main` 不是入口函数；构建输出会导出 wasm `_start`。
 - **目录结构**: `src/` 工具链与编译器源码, `lib/` builtin/core 总表与标准库, `bin/do` 唯一二进制。
 
@@ -54,14 +54,14 @@ src/lsp/        do lsp diagnostics + formatting + semantic tokens + hover + comp
 - 标准库: 已验证 JSON struct stringify/from_json、bytes/text/utf8/utf16、hex/base64/url、math/binary/mem/atomic/range/slice/path/fp/list/set/hash_map/hash、md5/sha1/sha256 等基础库; time/random/file/dir/io.stream 只承诺已登记 WASI wrapper lowering; net/tcp/udp/http.client 只承诺当前 shape/check smoke, 真实 host I/O 后置。
 - 后端与 WASI: 公开输出仍以 WAT 为主; 当前 build/test 子集已覆盖标量、结构体 flatten、storage/text ARC handle、多返回、基础 `@get/@set/@put`、WASI result-area/resource-drop lowering、component plan/core imports/core shims/component input 和真实 component wasm validate gate。
 - 工具链: `do build`、`do test`、`do test --compiled`、`do check`、`do run`、`do fmt` 和 `do lsp` 第一版均已落地; LSP 当前覆盖 diagnostics、formatting、semantic tokens、hover、completion、definition 和最小 workspace index。
-- 验证入口: 默认完整回归基线为 `pass=916 fail=0 skip=3`; `RUN_WASM=1` 扩展回归基线为 `pass=833 fail=0 skip=3` (未在本轮重跑); 发布前 smoke 入口是 `./src/build/test/run_release_smoke.sh`。
+- 验证入口: 默认完整回归基线为 `pass=919 fail=0 skip=3`; `RUN_WASM=1` 扩展回归基线为 `pass=833 fail=0 skip=3` (未在本轮重跑); 发布前 smoke 入口是 `./src/build/test/run_release_smoke.sh`。
 
 
 ## v1 非目标
 
 - 不提供完整 ownership IR、跨函数唯一性证明、escape analysis、region 或激进 loop/path move; 当前继续使用已验证的 `OwnershipFacts` 子集和保守回退。
 - 不引入 direct wasm binary emitter; `do build` 和 `do test --compiled` 继续输出 WAT, 执行链路继续通过 `wasm-tools parse`。
-- 不承诺完整 WASI / Component Model 运行时; preopens list-of-tuple-resource、read-directory stream/future(当前无 async/Future runtime)、sockets resource + variant、HTTP async resource 和真实 host runtime 继续后置。
+- 不承诺完整 WASI / Component Model 运行时; preopens (G6.1 A 已 lower: `[Tuple<Dir,text>]` 公开 API) 的真 host smoke、read-directory stream/future(当前无 async/Future runtime)、sockets resource + variant、HTTP async resource 和真实 host runtime 继续后置。
 - 不提供完整自动序列化; JSON 当前只承诺已验证的 struct 字段 stringify/from_json 子集, error/enum/union/复杂 storage 自动支持继续后置。
 - 不重开 get / pkg / push 包管理线。
 - 不把 `do fmt` 扩展成多文件批量、stdin/stdout 自动模式、range/on-type 或完整语法感知 formatter。
@@ -73,7 +73,7 @@ src/lsp/        do lsp diagnostics + formatting + semantic tokens + hover + comp
 默认推进顺序与接手细则见 `doc/start_here.md` 与 `doc/master_plan.md` §12。摘要:
 
 1. **发布候选维护**: `./src/build/test/run_tests.sh`、`./src/build/test/run_release_smoke.sh`、必要时 `RUN_WASM=1 ./src/build/test/run_tests.sh`; 只修阻断发布的回归或文档漂移。
-2. **WASI / Component Model 决策 (G6)**: 先确认 preopens API、read-directory 所需 async/Future runtime、sockets resource + variant 映射, 再落 codegen 或标准库 wrapper。
+2. **WASI / Component Model 决策 (G6)**: G6.1 preopens 已按方案 A 落地; 剩余 G6.2 async/Future (read-directory) 与 G6.3 sockets variant 映射后再落 codegen/wrapper。
 3. **Host runtime smoke**: G6 决策后补真实 file/dir/stream/socket/http host smoke, 再逐步收回 `16/96/118` 相关后置 skip。
 4. **JSON / 序列化扩展**: 以字段反射与已验证 struct JSON 为基础, 再定 error/enum/union/storage 自动序列化边界。
 5. **Ownership 深化**: runtime 边界稳定后再重开完整 ownership IR、跨函数唯一性证明、escape analysis、region 与更激进 move/reuse。
@@ -160,4 +160,4 @@ RUN_WASM=1 ./src/build/test/run_tests.sh
 - [ ] **生态工具剩余项**: get / pkg / push 等工具链能力暂跳过, 原因见 `doc/roadmap_status.md`。
 
 ### 最后处理
-- [ ] **WASI / Component Model FFI**: 当前已完成 `@wasi` binding 的 `source + alias` 身份规则、已登记 result-area lowering、component plan/core imports/core shims、component input dir 和真实 component wasm 生成/validate gate；G6 的 preopens list-of-tuple-resource、read-directory stream/future(当前无 async/Future runtime)、sockets resource + variant 仍因公开 API 或运行时设计未定而阻断。
+- [ ] **WASI / Component Model FFI**: 当前已完成 `@wasi_func` binding 的 `source + alias` 身份规则、已登记 result-area lowering、component plan/core imports/core shims、component input dir 和真实 component wasm 生成/validate gate；G6.1 preopens 方案 A 已 lower (`preopen_directories`); G6.2 read-directory stream/future 与 G6.3 sockets resource + variant 仍因运行时/映射未定而阻断。

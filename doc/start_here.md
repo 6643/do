@@ -29,7 +29,7 @@
 | v1 子集 | 发布候选已收口 |
 | 阶段 A–F、H | 已完成 |
 | 阶段 D | 可推进项已完成; D2.1 已按 B 方案绿色 regression 收口 |
-| 阶段 G | G1–G5、G6.4 完成; **G6.1–G6.3 仍阻断** |
+| 阶段 G | G1–G5、G6.1、G6.4 完成; **G6.2–G6.3 仍阻断** |
 | 阶段 I | **已关闭** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构审查/重构 | 五轮已落地 (见 §4); 默认不继续拆 god module |
 
@@ -40,7 +40,7 @@
 ```bash
 # 默认完整回归 (当前基线)
 ./src/build/test/run_tests.sh
-# 期望: pass=916 fail=0 skip=3
+# 期望: pass=919 fail=0 skip=3
 
 # 聚合单元测试
 cd src && zig test main.zig
@@ -59,7 +59,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 
 | 基线项 | 最近值 |
 | --- | --- |
-| 默认回归 | `pass=916 fail=0 skip=3` |
+| 默认回归 | `pass=919 fail=0 skip=3` |
 | 聚合 unit | `119/119` |
 | `compile_ok` / `compiled_ok` / `compile_err` | do≈`272` / `77` / `39` |
 | 剩余 skip | `16_loop_recv_value`、`96_file_lib_resource_shape`、`118_wasi_p3_std_wrappers` (recv/WASI 后置) |
@@ -89,10 +89,9 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 
 | ID | 说明 | 恢复条件 |
 | --- | --- | --- |
-| G6.1 | preopens `list<tuple<descriptor,string>>` 公开 API 未确认 | 用户确认 API |
 | G6.2 | `descriptor.read-directory` (stream/future) | 未来 async/Future/Task runtime |
 | G6.3 | sockets resource + variant | socket wrapper 与 address variant 映射决策 |
-| 06.2 | 已拆到 G2–G6; 剩余由 G6.1–G6.3 承接 | 同上 |
+| 06.2 | 已拆到 G2–G6; 剩余由 G6.2–G6.3 承接 | 同上 |
 
 **待处理 / 阻断 / 延期**: 权威清单见 [pending_blocked.md](pending_blocked.md) (G6 blocked、P2 泛型左侧反推、skip、deferred 非目标)。
 
@@ -103,7 +102,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 用户说 `go` / `next` 时, 按以下优先级 (细节与恢复条件见 [pending_blocked.md](pending_blocked.md)):
 
 1. **发布候选维护**: 回归红灯、文档漂移、可独立验证的小修
-2. **等待决策**: G6.1 / G6.3 公开 API; G6.2 依赖 async runtime 立项
+2. **等待决策**: G6.3 sockets 映射; G6.2 依赖 async runtime 立项
 3. **可选授权**: deferred 项 (ownership / JSON / LSP / codegen 再拆) — 默认不自动开做
 
 **已关闭边界速查**:

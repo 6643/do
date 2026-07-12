@@ -5,6 +5,20 @@
 
 ## 2026-07-12
 
+- 声明式 WASI 宿主绑定（stdlib 对齐）
+  - 新形式: `@wasi_func` / `@wasi_resource` / `@wasi_record`（`@wasi_enum` 语法预留；粗 `DirError`/`FileError` 仍手写）
+  - 已移除裸 `@wasi(...)` 别名；codegen 对已知 target 把 do 侧糖（`i32`/`[u8]`）规范为 WIT 签名
+  - stdlib: `lib/time.do`、`dir.do`、`file.do`、`random.do`、`io.stream.do` 迁移；host 行保持 import 前缀
+  - fixtures: `compile_ok/276_wasi_func_do_sig_and_resource`；私有字段收集覆盖 wasi_resource 声明
+  - 文档: `grammar.peg`、`spec_rules` §21.1、`wasi_p3_lowering` declarative surface
+
+- WASI G6.1 方案 A: `filesystem/preopens/get-directories`
+  - host: `() -> list<tuple<descriptor,text>>` → do `[Tuple<i32,text>]` (`$__wasi_list_preopen_to_storage`)
+  - 公开: `preopen_directories() -> [Tuple<Dir, text>]` (`lib/dir.do`); 调用方 `close_dir` 各根
+  - component plan / core import / WIT (`use types.{descriptor}`) 可 lower
+  - fixtures: `compile_ok/274`–`275`; 更新 `124` companion expects
+  - 文档: `pending_blocked` G6.1 关闭; `wasi_p3_lowering` / start_here 同步
+
 - codegen: **P1** 含 managed 字段的 struct 作 Tuple storage 直接子槽 (永不拍平)
   - `items [Tuple<Cell, u8>]` 且 `Cell` 含 `text` → pack 为 **4B ARC 句柄叶子** + 标量槽; 类型仍是 `Cell`, 不展开字段
   - put/get/path owning load 与 storage pack clone/free 走 `is_storage_pack` managed offset 表

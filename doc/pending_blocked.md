@@ -1,7 +1,7 @@
 # 待处理与阻断清单
 
 更新时间: 2026-07-12  
-基线: 默认回归 `pass=916 fail=0 skip=3`; unit `119/119`  
+基线: 默认回归 `pass=919 fail=0 skip=3`; unit `119/119`  
 关系: 总规划 `doc/master_plan.md`; 接手 `doc/start_here.md`; 执行状态 `doc/roadmap_status.md`  
 约定: **只记未关闭项**; 完成后从本文件删除或移入「已关闭摘要」, 并同步入口文档与 `CHANGELOG.md`。
 
@@ -20,12 +20,13 @@
 
 | ID | 问题 | 证据 / 停止点 | 恢复条件 |
 | --- | --- | --- | --- |
-| **G6.1** | preopens 公开 API | `list<tuple<descriptor,string>>` 形态未确认 | 用户确认 API 后再落 codegen/wrapper |
 | **G6.2** | `descriptor.read-directory` | 依赖 stream/future; **无** async/Future/Task runtime | 未来 async runtime 设计立项 |
 | **G6.3** | sockets | resource + address variant 映射未定 | 用户确认 wrapper / variant 映射 |
-| **06.2** | 历史总项 | 已拆到 G2–G6; 剩余由 G6.1–G6.3 承接 | 同上 |
+| **06.2** | 历史总项 | 已拆到 G2–G6; 剩余由 G6.2–G6.3 承接 | 同上 |
 
-**规则**: 无新决策时 **不** 绕过 G6.1–G6.3 扩 WASI codegen。
+**规则**: 无新决策时 **不** 绕过 G6.2–G6.3 扩 WASI codegen。
+
+**G6.1 已关闭 (方案 A)**: `preopens.get-directories` → do `[Tuple<i32,text>]` host / 公开 `preopen_directories() -> [Tuple<Dir, text>]`; list-of-tuple resource lowering + `lib/dir.do`; 见 `compile_ok/274`–`275`。
 
 ---
 
@@ -78,7 +79,7 @@
 | --- | --- |
 | Tuple **永不拍平** | 嵌套 `Tuple` / struct 直接子槽保持嵌套类型与 `@get` 路径; 禁止与扁平 Tuple 等同或隐式 coerce |
 | 泛型调用类型已知 | 函数要用的类型在实参侧已知; 不默认左侧反推 direct type param |
-| G6 不绕过 | 无决策不扩 preopens / read-dir / sockets codegen |
+| G6 不绕过 | 无决策不扩 read-dir / sockets codegen |
 
 权威条文: `doc/spec_rules.md` (Tuple 节等)。
 
@@ -90,14 +91,15 @@
 - managed/`text` 作为 Tuple **直接叶子** storage + path chain (`compile_ok/270`–`271`)
 - **P1** 含 managed 字段的 struct 作 Tuple 直接子槽: 句柄叶子 + storage pack ARC (`compile_ok/273`, `ok/193`; 不拍平 `Cell` 字段)
 - pure-scalar field-reflect `field_set` 误 shadow (`ok/191`)
-- 阶段 A–F、H、I (I1+I2) 主线; G1–G5、G6.4
+- 阶段 A–F、H、I (I1+I2) 主线; G1–G5、G6.1、G6.4
+- **G6.1** preopens 方案 A: host `[Tuple<i32,text>]` + `preopen_directories() -> [Tuple<Dir, text>]` (`compile_ok/274`–`275`)
 
 ---
 
 ## 6. 推进顺序建议
 
 1. 发布候选维护 (回归红灯 / 文档漂移)  
-2. **等 G6.1–G6.3 决策** (blocked)  
+2. **等 G6.2–G6.3 决策** (blocked)  
 3. 可选授权: deferred 项 (ownership / JSON / LSP / codegen 再拆) — 默认不自动开做  
 4. **P2** 默认不改; 除非产品明确要左侧反推  
 

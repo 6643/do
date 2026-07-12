@@ -19,7 +19,7 @@
 | v1 子集 | 发布候选已收口 |
 | 阶段 A–F、H | done |
 | 阶段 D | 可推进项 done; D2.1 按 B 方案绿色 regression 收口 |
-| 阶段 G | G1–G5、G6.4 done; G6.1–G6.3 **blocked** |
+| 阶段 G | G1–G5、G6.1、G6.4 done; G6.2–G6.3 **blocked** |
 | 阶段 I | **closed** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构扁平拆分 | 五轮已落地 (`diagnostics` / `type_name` / `sema_error` / `codegen_payload_wat` / `codegen_storage_wat`) |
 | 目录 | 标准库 `lib/`; 工具链 `src/` (原 `tool/`) |
@@ -31,7 +31,7 @@ cd src && zig test main.zig
   → All 119 tests passed.
 
 ./src/build/test/run_tests.sh
-  → pass=916 fail=0 skip=3
+  → pass=919 fail=0 skip=3
 
 RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
   → pass=833 fail=0 skip=3; wasm run summary: pass=6 fail=0
@@ -54,7 +54,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 
 | 类 | 项 |
 | --- | --- |
-| blocked | G6.1 preopens API; G6.2 read-directory/async; G6.3 sockets; 06.2→G6 |
+| blocked | G6.2 read-directory/async; G6.3 sockets; 06.2→G6 |
 | pending | P2 左侧反推泛型 (默认不放开); skip 16/96/118 |
 | deferred | ownership IR、真 host I/O、JSON 扩展、LSP/fmt、wasm emitter 等 (见该文件 §3) |
 

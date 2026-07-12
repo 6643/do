@@ -46,7 +46,7 @@
 | D ARC / ownership | done (可推进项) |
 | E 后端 IR / codegen | done |
 | F LSP | done (v1 无 rename) |
-| G WASI / Component | G1–G5、G6.4 done; **G6.1–G6.3 blocked** |
+| G WASI / Component | G1–G5、G6.1、G6.4 done; **G6.2–G6.3 blocked** |
 | H 发布前治理 | done |
 | I 语言扩展 | **closed** (I1 递归/TCO + I2 Tuple 第一版) |
 
