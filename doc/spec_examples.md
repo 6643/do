@@ -553,13 +553,12 @@ MongoClient = @lib("~/tom.mongo.do", Client)
 Client2 = @lib("~/tom.2024.db.do", Client)
 abs_i32 = @lib("math.do", abs_i32)
 console_log = @env("console_log", (i32, i32) -> nil)
+host_now = @wasi_func("clocks/system-clock/now", () -> Datetime)
 
 Datetime {
     seconds i64
     nanoseconds u32
 }
-
-host_now = @wasi_func("clocks/system-clock/now", () -> Datetime)
 ```
 
 ```do program err

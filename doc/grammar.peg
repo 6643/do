@@ -113,7 +113,7 @@ WitName          <- WitPathName ('-' WitPathName)*
 WitPathName      <- PathSeg ('.' PathSeg)*
 
 
-TypeDecl         <- GenericStructDecl / StructDecl / EnumDecl
+TypeDecl         <- GenericStructDecl / StructDecl / EnumDecl / WasiResourceDecl / WasiRecordDecl / WasiEnumDecl
 GenericStructDecl <- StructTypeConstraintList StructDecl
 StructDecl       <- DeclTypeName '{' StmtGap? FieldDeclList? StmtGap? '}'
 EnumDecl         <- ErrorEnumDecl / ValueEnumDecl
