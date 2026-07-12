@@ -1,21 +1,19 @@
-.host_input_read = @wasi("io/streams/input-stream.read", (input-stream, u64) -> result<list<u8>,stream-error>)
-.host_output_check_write = @wasi("io/streams/output-stream.check-write", (output-stream) -> result<u64,stream-error>)
-.host_output_write = @wasi("io/streams/output-stream.write", (output-stream, list<u8>) -> result<_,stream-error>)
-.host_output_flush = @wasi("io/streams/output-stream.flush", (output-stream) -> result<_,stream-error>)
+// Declarative stream hosts first (import prefix), then resource shells.
+.host_input_read = @wasi_func("io/streams/input-stream.read", (i32, u64) -> result<[u8],stream-error>)
+.host_output_check_write = @wasi_func("io/streams/output-stream.check-write", (i32) -> result<u64,stream-error>)
+.host_output_write = @wasi_func("io/streams/output-stream.write", (i32, [u8]) -> result<_,stream-error>)
+.host_output_flush = @wasi_func("io/streams/output-stream.flush", (i32) -> result<_,stream-error>)
 
-// InputStream / OutputStream 是不透明句柄值，不暴露构造或拥有语义。
+InputStream = @wasi_resource("io/streams/input-stream", {
+    .id i64
+})
+
+OutputStream = @wasi_resource("io/streams/output-stream", {
+    .id i64
+})
+
 // WIT stream-error 当前只对应 closed；其余分支是 wrapper-local 故障分类。
 StreamError error = StreamClosed | StreamReadFailed | StreamCheckWriteFailed | StreamWriteFailed | StreamFlushFailed
-
-// 仅在本模块内以 public struct + private field 形式封装句柄。
-InputStream {
-    .id i64
-}
-
-// 仅在本模块内以 public struct + private field 形式封装句柄。
-OutputStream {
-    .id i64
-}
 
 .stream_id(stream InputStream) -> i64 {
     return @get(stream, .id)

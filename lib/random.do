@@ -4,8 +4,8 @@ list_add = @lib("list.do", list_add)
 list_items = @lib("list.do", items)
 unix_ms = @lib("time.do", unix_ms)
 
-.host_random_bytes = @wasi("random/random/get-random-bytes", (u64) -> list<u8>)
-.host_random_u64 = @wasi("random/random/get-random-u64", () -> u64)
+.host_random_bytes = @wasi_func("random/random/get-random-bytes", (u64) -> [u8])
+.host_random_u64 = @wasi_func("random/random/get-random-u64", () -> u64)
 
 Random {
     .state u64 = 1

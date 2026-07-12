@@ -1,15 +1,16 @@
-.host_file_read = @wasi("filesystem/types/descriptor.read", (descriptor, filesize, filesize) -> result<tuple<list<u8>,bool>,error-code>)
-.host_file_sync = @wasi("filesystem/types/descriptor.sync", (descriptor) -> result<_, error-code>)
-.host_file_write = @wasi("filesystem/types/descriptor.write", (descriptor, list<u8>, filesize) -> result<filesize, error-code>)
-.host_file_link_at = @wasi("filesystem/types/descriptor.link-at", (descriptor, path-flags, text, borrow<descriptor>, text) -> result<_, error-code>)
-.host_file_open_at = @wasi("filesystem/types/descriptor.open-at", (descriptor, path-flags, text, open-flags, descriptor-flags) -> result<descriptor,error-code>)
-.host_file_drop = @wasi("filesystem/types/descriptor.drop", (descriptor) -> nil)
+// Declarative WASI: @wasi_func hosts first, then resource shell. Public wrappers unchanged.
+.host_file_read = @wasi_func("filesystem/types/descriptor.read", (i32, u64, u64) -> result<tuple<[u8],bool>,error-code>)
+.host_file_sync = @wasi_func("filesystem/types/descriptor.sync", (i32) -> result<_,error-code>)
+.host_file_write = @wasi_func("filesystem/types/descriptor.write", (i32, [u8], u64) -> result<u64,error-code>)
+.host_file_link_at = @wasi_func("filesystem/types/descriptor.link-at", (i32, i32, text, i32, text) -> result<_,error-code>)
+.host_file_open_at = @wasi_func("filesystem/types/descriptor.open-at", (i32, i32, text, i32, i32) -> result<i32,error-code>)
+.host_file_drop = @wasi_func("filesystem/types/descriptor.drop", (i32) -> nil)
+
+File = @wasi_resource("filesystem/types/descriptor", {
+    .id i64
+})
 
 FileError error = FileOpenFailed | FileClosed | FileReadFailed | FileWriteFailed | FileFlushFailed | FileLinkFailed
-
-File {
-    .id i64
-}
 
 .file_from_id(id i64) -> File | FileError {
     if @lt(id, 0) return FileOpenFailed
