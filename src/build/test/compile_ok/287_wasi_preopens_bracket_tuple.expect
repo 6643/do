@@ -1,6 +1,5 @@
 ;; wasi-bind
 filesystem/preopens/get-directories
 list<tuple<descriptor,string>>
-get-directories
 call $__wasi_list_preopen_to_storage
 Tuple<Dir,text>

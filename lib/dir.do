@@ -7,7 +7,7 @@
 .host_dir_drop = @wasi_func("filesystem/types/descriptor.drop", (Dir) -> nil)
 // P3: host builds Dir shells in list-of-tuple pack (no guest i32 remap loop).
 // Bracket sugar `[Tuple<Dir,text>]` is not yet valid in @wasi_func result; list form accepted.
-.host_preopens = @wasi_func("filesystem/preopens/get-directories", () -> list<tuple<Dir, text>>)
+.host_preopens = @wasi_func("filesystem/preopens/get-directories", () -> [Tuple<Dir, text>])
 
 Dir = @wasi_resource("filesystem/types/descriptor", {
     .id i64

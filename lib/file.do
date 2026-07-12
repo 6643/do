@@ -1,5 +1,5 @@
 // Declarative WASI: @wasi_func hosts first, then resource shell. Public wrappers unchanged.
-// P4: host Err arms use coarse FileError where public API matches; read stays status i32 for multi-lhs.
+// Host Err arms use coarse FileError where public API matches; read uses Tuple|i32 exclusive union.
 .host_file_read = @wasi_func("filesystem/types/descriptor.read", (File, u64, u64) -> Tuple<[u8], bool> | i32)
 .host_file_sync = @wasi_func("filesystem/types/descriptor.sync", (File) -> FileError | nil)
 .host_file_write = @wasi_func("filesystem/types/descriptor.write", (File, [u8], u64) -> u64 | FileError)
@@ -39,13 +39,15 @@ flush_file(file File) -> FileError | nil {
     return host_file_sync(file)
 }
 
-// Host is Tuple<[u8],bool>|i32; multi-lhs still lowers via tuple result-area (stable ARC for return).
+// Host is Tuple<[u8],bool>|i32; bind exclusive union then unpack ok / map err (no multi-lhs).
 read_file(file File, offset usize, size usize) -> [u8], bool, FileError | nil {
-    data [u8] = .{}
-    done bool = false
-    status i32 = 0
-    data, done, status = host_file_read(file, @as(u64, size), @as(u64, offset))
-    return data, done, file_status_to_error(status, FileReadFailed)
+    r Tuple<[u8], bool> | i32 = host_file_read(file, @as(u64, size), @as(u64, offset))
+    if @is(r, i32) {
+        empty [u8] = .{}
+        return empty, false, file_status_to_error(r, FileReadFailed)
+    }
+    t Tuple<[u8], bool> = r
+    return @get(t, 0), @get(t, 1), nil
 }
 
 // Host returns u64 | FileError; public API is FileError | nil (discard written count on ok).

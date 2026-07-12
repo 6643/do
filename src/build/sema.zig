@@ -5241,7 +5241,7 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             // compactTokenRangeEquals ignores whitespace, so spaces in source are fine.
             .do_result = "list<tuple<Dir,text>>",
             .do_result_alt = "list<tuple<i32,text>>",
-            .do_result_alt2 = "list<tuple<descriptor,text>>",
+            .do_result_alt2 = "[Tuple<Dir,text>]",
         },
         .{
             .target = "io/streams/input-stream.read",
@@ -5458,11 +5458,11 @@ fn isHostReturnType(name: []const u8) bool {
 
 fn parseWitType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
     if (start_idx >= end_idx) return null;
-    // Do storage sugar: [u8] accepted in @wasi_func do-side signatures.
-    if (tokEq(tokens[start_idx], "[") and start_idx + 2 < end_idx and
-        tokens[start_idx + 1].kind == .ident and tokEq(tokens[start_idx + 2], "]"))
-    {
-        return start_idx + 3;
+    // Do storage sugar: `[T]` where T is any parseable host type (u8, Tuple<…>, …).
+    if (tokEq(tokens[start_idx], "[")) {
+        const elem_end = parseWitType(tokens, start_idx + 1, end_idx) orelse return null;
+        if (elem_end >= end_idx or !tokEq(tokens[elem_end], "]")) return null;
+        return elem_end + 1;
     }
     if (tokens[start_idx].kind != .ident) return null;
     const name = tokens[start_idx].lexeme;

@@ -31,12 +31,14 @@ StreamError error = StreamClosed | StreamReadFailed | StreamCheckWriteFailed | S
     return fallback
 }
 
-// Host is [u8]|i32; multi-lhs still lowers via list result-area (stable ARC for return).
+// Host is [u8]|i32; bind exclusive union then map err status (no multi-lhs).
 read_stream(stream InputStream, size usize) -> [u8], StreamError | nil {
-    data [u8] = .{}
-    status i32 = 0
-    data, status = host_input_read(stream, @as(u64, size))
-    return data, stream_status_to_error(status, StreamReadFailed)
+    r [u8] | i32 = host_input_read(stream, @as(u64, size))
+    if @is(r, i32) {
+        empty [u8] = .{}
+        return empty, stream_status_to_error(r, StreamReadFailed)
+    }
+    return r, nil
 }
 
 check_write_stream(stream OutputStream) -> u64, StreamError | nil {
