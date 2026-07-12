@@ -10,4 +10,3 @@ call $flush_stream
 call $__wasi_import_io_streams_output_stream_check_write
 call $__wasi_import_io_streams_output_stream_write
 call $__wasi_import_io_streams_output_stream_flush
-call $__mod_0__stream_status_to_error

@@ -16908,12 +16908,20 @@ fn wasiCoarseFailedVariantName(import: WasiHostImport, err_ty: []const u8) ?[]co
         if (std.mem.eql(u8, target, "filesystem/types/descriptor.read")) return "FileReadFailed";
         return null;
     }
+    if (std.mem.eql(u8, err_ty, "StreamError")) {
+        if (std.mem.eql(u8, target, "io/streams/input-stream.read")) return "StreamReadFailed";
+        if (std.mem.eql(u8, target, "io/streams/output-stream.check-write")) return "StreamCheckWriteFailed";
+        if (std.mem.eql(u8, target, "io/streams/output-stream.write")) return "StreamWriteFailed";
+        if (std.mem.eql(u8, target, "io/streams/output-stream.flush")) return "StreamFlushFailed";
+        return null;
+    }
     return null;
 }
 
 fn wasiCoarseClosedVariantName(err_ty: []const u8) ?[]const u8 {
     if (std.mem.eql(u8, err_ty, "DirError")) return "DirClosed";
     if (std.mem.eql(u8, err_ty, "FileError")) return "FileClosed";
+    if (std.mem.eql(u8, err_ty, "StreamError")) return "StreamClosed";
     return null;
 }
 
@@ -17282,8 +17290,8 @@ fn emitWasiReadResultAsUnionValue(
     return true;
 }
 
-/// Lower `result<list<u8>,stream-error>` into exclusive union stack: e.g. `[u8] | i32`.
-/// Ok arm is storage handle from list{ptr,len}; err arm is status i32 (stream-error+1; 0 never on err arm).
+/// Lower `result<list<u8>,stream-error>` into exclusive union stack: e.g. `[u8] | i32` or `[u8] | StreamError`.
+/// Ok arm is storage handle from list{ptr,len}; err arm is status i32 or coarse StreamError.
 fn emitWasiListU8ResultAsUnionValue(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -17301,13 +17309,18 @@ fn emitWasiListU8ResultAsUnionValue(
 
     var ok_branch: ?UnionBranch = null;
     var err_branch: ?UnionBranch = null;
+    var err_is_coarse = false;
     for (layout.branches) |branch| {
-        if (std.mem.eql(u8, branch.ty, "i32") and branch.payload_len == 1 and
-            branch.payload_start < layout.payload_tys.len and
-            std.mem.eql(u8, layout.payload_tys[branch.payload_start], "i32"))
-        {
+        if (unionBranchIsStatusI32(layout, branch)) {
             if (err_branch != null) return false;
             err_branch = branch;
+            err_is_coarse = false;
+            continue;
+        }
+        if (unionBranchIsCoarseError(tokens, layout, branch)) {
+            if (err_branch != null) return false;
+            err_branch = branch;
+            err_is_coarse = true;
             continue;
         }
         // Ok arm: managed list storage ([u8] handle as i32).
@@ -17364,20 +17377,26 @@ fn emitWasiListU8ResultAsUnionValue(
     try appendFmt(allocator, out, "      i32.const {d}\n", .{ok.tag});
 
     try out.appendSlice(allocator, "    else\n");
-    // err: empty storage in ok slot; status = stream-error + 1 at +4; err tag
+    // err: empty storage in ok slot; status or coarse StreamError at +4; err tag
     for (layout.payload_tys, 0..) |payload_ty, idx| {
         if (idx == ok.payload_start) {
             try emitEmptyStorageU8Value(allocator, out);
         } else if (idx == err.payload_start) {
-            try out.appendSlice(allocator,
-                \\      global.get $__wasi_result_area_base
-                \\      i32.const 4
-                \\      i32.add
-                \\      i32.load
-                \\      i32.const 1
-                \\      i32.add
-                \\
-            );
+            if (err_is_coarse) {
+                if (!try emitWasiCoarseErrorEnumPayload(allocator, tokens, import, err.ty, 4, out)) {
+                    return false;
+                }
+            } else {
+                try out.appendSlice(allocator,
+                    \\      global.get $__wasi_result_area_base
+                    \\      i32.const 4
+                    \\      i32.add
+                    \\      i32.load
+                    \\      i32.const 1
+                    \\      i32.add
+                    \\
+                );
+            }
         } else {
             try appendFmt(allocator, out, "      {s}.const 0\n", .{codegenWasmType(ctx, payload_ty)});
         }

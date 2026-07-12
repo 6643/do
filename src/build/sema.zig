@@ -5251,8 +5251,9 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .do_params_alt = "InputStream,u64",
             // Transitional multi-lhs form still accepted.
             .do_result = "result<[u8],stream-error>",
-            // Exclusive union: ok = list storage [u8], err = status i32 (stream-error+1).
+            // Exclusive union: ok = list storage [u8], err = status i32 or coarse StreamError.
             .do_result_alt = "[u8]|i32",
+            .do_result_alt2 = "[u8]|StreamError",
         },
         .{
             .target = "io/streams/output-stream.check-write",
@@ -5260,8 +5261,9 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .result = "result<u64,stream-error>",
             .do_params = "i32",
             .do_params_alt = "OutputStream",
-            // Same exclusive-union shape as filesize write (ok u64, err status i32).
+            // Same exclusive-union shape as filesize write (ok u64, err status i32 or StreamError).
             .do_result = "u64|i32",
+            .do_result_alt = "u64|StreamError",
         },
         .{
             .target = "io/streams/output-stream.write",
@@ -5270,6 +5272,8 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .do_params = "i32,[u8]",
             .do_params_alt = "OutputStream,[u8]",
             .do_result = "nil|i32",
+            .do_result_alt = "StreamError|nil",
+            .do_result_alt2 = "nil|StreamError",
         },
         .{
             .target = "io/streams/output-stream.flush",
@@ -5278,6 +5282,8 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .do_params = "i32",
             .do_params_alt = "OutputStream",
             .do_result = "nil|i32",
+            .do_result_alt = "StreamError|nil",
+            .do_result_alt2 = "nil|StreamError",
         },
         .{ .target = "sockets/types/tcp-socket.create", .params = "ip-address-family", .result = "result<tcp-socket,error-code>" },
         .{ .target = "sockets/types/tcp-socket.bind", .params = "tcp-socket,ip-socket-address", .result = "result<_,error-code>" },

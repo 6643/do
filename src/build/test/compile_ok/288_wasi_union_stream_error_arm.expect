@@ -1,0 +1,3 @@
+;; wasi-bind
+io/streams/input-stream.read
+result<list<u8>,stream-error>

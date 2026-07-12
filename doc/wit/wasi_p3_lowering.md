@@ -263,17 +263,15 @@ scalar result, registered record result, registered `list<u8>` result, and the
 registered `descriptor.sync`, `descriptor.write`, `descriptor.read`,
 `descriptor.link-at`, `descriptor.create-directory-at`, `descriptor.open-at`,
 `descriptor.remove-directory-at`, and `descriptor.drop` shapes are
-marked as lowerable. `descriptor.read-directory`,
-`preopens.get-directories`, `tcp-socket.create/bind`,
-`udp-socket.create/bind`, and `http/client.send` are also registered as known
-WASI 0.3 signatures, but
+marked as lowerable. `preopens.get-directories` is lowerable to do
+`[Tuple<Dir, text>]` (resource shells in the first element).
+`descriptor.read-directory`, `tcp-socket.create/bind`, `udp-socket.create/bind`,
+and `http/client.send` are also registered as known WASI 0.3 signatures, but
 `descriptor.read-directory` returns
 `tuple<stream<directory-entry>,future<result<_,error-code>>>`, so the current
 language/runtime has no async/Future/Task support and the shim plan marks it
 `unsupported` rather than pretending it can be called as a plain core function.
-`preopens.get-directories` returns
-`list<tuple<descriptor,string>>`, which is likewise known but unsupported until
-list-of-tuple resource lowering exists. The sockets create/bind entries contain
+The sockets create/bind entries contain
 WIT variants and resources (`ip-address-family`, `ip-socket-address`,
 `tcp-socket`, `udp-socket`), so they are known signature boundaries but not
 lowerable direct calls. `http/client.send` uses HTTP request/response resources
@@ -301,15 +299,16 @@ Host import signatures bind **do types**, not WIT-only wrapper types. Preferred 
 | Shape | do source | Maps to WIT (manifest) |
 | --- | --- | --- |
 | Infallible / unit | `() -> Datetime`, `(Dir) -> nil` | record / unit |
-| Unit fallible | `(Dir) -> nil \| i32` | `result<_, error-code>` (or stream-error analog) |
-| Payload fallible | `(Dir, …) -> Dir \| i32`, `(File, [u8], u64) -> u64 \| i32` | `result<descriptor, error-code>`, `result<filesize, error-code>`, … |
+| Unit fallible | `(Dir) -> nil \| DirError` / `StreamError \| nil` | `result<_, error-code>` / stream-error |
+| Payload fallible | `(Dir, …) -> Dir \| DirError`, `(File, [u8], u64) -> u64 \| FileError`, `(InputStream, u64) -> [u8] \| StreamError` | WIT `result<…>` still stored on manifest |
+| Preopens list | `() -> [Tuple<Dir, text>]` | `list<tuple<descriptor,string>>` |
 | Resource params | `Dir` / `File` (`@wasi_resource`) | `descriptor` (via `.id`) |
 | Bytes / text sugar | `[u8]`, `text` | `list<u8>`, `string` |
 | Structures | do `Tuple<…>`, multi-arg flatten, or `@wasi_record` | `tuple<…>` / record — **no** `@wasi_tuple` |
 
 Rules:
 
-- **Preferred:** exclusive unions `Ok | Err` and `T | nil` (phase-1 err arm is status `i32`; 0 never appears on the err arm).
+- **Preferred:** exclusive unions `Ok | Err` and `T | nil`. Err arm is preferably a coarse do error enum (`DirError` / `FileError` / `StreamError`); transitional status `i32` still accepted (0 never appears on the err arm).
 - **Forbidden as WASI result model:** multi-return source shapes such as `-> Ok, Err` or treating dual presence as the host result type (language has no zero values).
 - **No type wrappers:** do not introduce `wasi_result` / `wasi_option` / `wasi_list` / `wasi_tuple` (or `@wasi_*` synonyms of those).
 - **Keep `@wasi_*`:** only `wasi_func`, `wasi_resource`, `wasi_record`, and optional later `wasi_enum`.
@@ -320,9 +319,11 @@ Rules:
 Example (stdlib-style):
 
 ```do
-.host_dir_open_at = @wasi_func("filesystem/types/descriptor.open-at", (Dir, i32, text, i32, i32) -> Dir | i32)
-.host_file_sync = @wasi_func("filesystem/types/descriptor.sync", (File) -> nil | i32)
-.host_file_write = @wasi_func("filesystem/types/descriptor.write", (File, [u8], u64) -> u64 | i32)
+.host_dir_open_at = @wasi_func("filesystem/types/descriptor.open-at", (Dir, i32, text, i32, i32) -> Dir | DirError)
+.host_file_sync = @wasi_func("filesystem/types/descriptor.sync", (File) -> FileError | nil)
+.host_file_write = @wasi_func("filesystem/types/descriptor.write", (File, [u8], u64) -> u64 | FileError)
+.host_input_read = @wasi_func("io/streams/input-stream.read", (InputStream, u64) -> [u8] | StreamError)
+.host_preopens = @wasi_func("filesystem/preopens/get-directories", () -> [Tuple<Dir, text>])
 .host_dir_drop = @wasi_func("filesystem/types/descriptor.drop", (Dir) -> nil)
 ```
 
@@ -339,19 +340,19 @@ executable today.
 
 | target | registry result | current status |
 | --- | --- | --- |
-| `filesystem/types/descriptor.sync` | `result<_,error-code>` | lowerable result-area, statement ignore or `_, status` |
-| `filesystem/types/descriptor.write` | `result<filesize,error-code>` | lowerable result-area, statement ignore or `written, status` |
-| `filesystem/types/descriptor.read` | `result<tuple<list<u8>,bool>,error-code>` | lowerable result-area, `data, done, status` |
+| `filesystem/types/descriptor.sync` | `result<_,error-code>` | lowerable; preferred do `FileError \| nil` |
+| `filesystem/types/descriptor.write` | `result<filesize,error-code>` | lowerable; preferred do `u64 \| FileError` |
+| `filesystem/types/descriptor.read` | `result<tuple<list<u8>,bool>,error-code>` | lowerable; preferred do `Tuple<[u8], bool> \| i32` (err arm may stay status) |
 | `filesystem/types/descriptor.link-at` | `result<_,error-code>` | lowerable result-area, `_, status`, string/text paths |
-| `filesystem/types/descriptor.open-at` | `result<descriptor,error-code>` | lowerable result-area, `descriptor, status`, string/text path |
+| `filesystem/types/descriptor.open-at` | `result<descriptor,error-code>` | lowerable; preferred do `Dir \| DirError` / `File \| FileError` |
 | `filesystem/types/descriptor.create-directory-at` | `result<_,error-code>` | lowerable result-area, `_, status`, text path |
 | `filesystem/types/descriptor.remove-directory-at` | `result<_,error-code>` | lowerable result-area, `_, status`, text path |
 | `filesystem/types/descriptor.drop` | `nil` | lowerable resource-drop, direct `[resource-drop]descriptor`, no ordinary error result |
-| `filesystem/preopens/get-directories` | `list<tuple<descriptor,string>>` | known but unsupported; needs list-of-tuple resource lowering |
-| `io/streams/input-stream.read` | `result<list<u8>,stream-error>` | lowerable result-area, `data, status` |
-| `io/streams/output-stream.check-write` | `result<u64,stream-error>` | lowerable result-area, `allowed, status` |
-| `io/streams/output-stream.write` | `result<_,stream-error>` | lowerable result-area, `_, status` |
-| `io/streams/output-stream.flush` | `result<_,stream-error>` | lowerable result-area, `_, status` |
+| `filesystem/preopens/get-directories` | `list<tuple<descriptor,string>>` | lowerable → do `[Tuple<Dir, text>]` (G6.1 A / P3) |
+| `io/streams/input-stream.read` | `result<list<u8>,stream-error>` | lowerable; preferred do `[u8] \| StreamError` |
+| `io/streams/output-stream.check-write` | `result<u64,stream-error>` | lowerable; preferred do `u64 \| StreamError` |
+| `io/streams/output-stream.write` | `result<_,stream-error>` | lowerable; preferred do `StreamError \| nil` |
+| `io/streams/output-stream.flush` | `result<_,stream-error>` | lowerable; preferred do `StreamError \| nil` |
 | `text/char/echo` | `char` | lowerable scalar, char parameter/result |
 | `clocks/system-clock/now` | `Datetime` | lowerable record-result, registered `Datetime` mirror |
 | `clocks/system-clock/get-resolution` | `u64` | lowerable scalar |
@@ -709,14 +710,14 @@ Current compiler increment:
   known-target check for generated WAT, and can emit the parsed binding list as
   JSON for the next lowering step.
 - Known-but-unsupported targets such as
-  `filesystem/types/descriptor.read-directory` and
-  `filesystem/preopens/get-directories`, plus the current
-  `sockets/types/tcp-socket.create/bind` and
-  `sockets/types/udp-socket.create/bind` entries, and `http/client/send`, are
+  `filesystem/types/descriptor.read-directory`,
+  `sockets/types/tcp-socket.create/bind`,
+  `sockets/types/udp-socket.create/bind`, and `http/client/send` are
   still useful registry entries:
   `--json` resolves and validates their exact WIT signature, while
-  `--component-plan` rejects them until async/Future stream runtime,
-  list-of-tuple resource, and variant/resource/async lowering exists.
+  `--component-plan` rejects them until async/Future stream runtime and
+  variant/resource/async lowering exists.
+  (`filesystem/preopens/get-directories` is lowerable and not in this bucket.)
 - Unknown targets still receive syntax-level WIT type validation only; they are
   not treated as executable until the full WIT package resolver exists.
 
