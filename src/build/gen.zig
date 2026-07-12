@@ -3,16 +3,16 @@ const std = @import("std");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const test_runner = @import("test_runner.zig");
-const gen_impl = @import("gen_impl.zig");
+const gen_lower = @import("gen_lower.zig");
 const gen_types = @import("gen_types.zig");
 const gen_util = @import("gen_util.zig");
 
 pub const EmitOptions = gen_types.EmitOptions;
 pub const CodegenError = gen_types.CodegenError;
 
-pub const emitWat = gen_impl.emitWat;
-pub const emitWatWithOptions = gen_impl.emitWatWithOptions;
-pub const emitTestWat = gen_impl.emitTestWat;
+pub const emitWat = gen_lower.emitWat;
+pub const emitWatWithOptions = gen_lower.emitWatWithOptions;
+pub const emitTestWat = gen_lower.emitTestWat;
 
 // Types for unit tests
 const LocalSet = gen_types.LocalSet;
@@ -32,33 +32,33 @@ const findStructLocal = gen_types.findStructLocal;
 const findMatching = gen_util.findMatching;
 
 // Impl helpers for unit tests
-const bindGenericTypeFromConcrete = gen_impl.bindGenericTypeFromConcrete;
-const funcParamAbiType = gen_impl.funcParamAbiType;
-const funcVariadicElemType = gen_impl.funcVariadicElemType;
-const cloneFuncParams = gen_impl.cloneFuncParams;
-const freeStructDecls = gen_impl.freeStructDecls;
-const freeFuncDecls = gen_impl.freeFuncDecls;
-const freeFuncParams = gen_impl.freeFuncParams;
-const collectStructDecls = gen_impl.collectStructDecls;
-const collectFuncDecls = gen_impl.collectFuncDecls;
-const findStartFunc = gen_impl.findStartFunc;
-const findGenericTemplateForCall = gen_impl.findGenericTemplateForCall;
-const directManagedLastUseMoveSourceOrigin = gen_impl.directManagedLastUseMoveSourceOrigin;
-const CallLastUseMoveContext = gen_impl.CallLastUseMoveContext;
-const collectGenericFuncInstancesForTests = gen_impl.collectGenericFuncInstancesForTests;
-const collectBodyLocals = gen_impl.collectBodyLocals;
-const emitScalarNumericStartWithBackendIr = gen_impl.emitScalarNumericStartWithBackendIr;
-const emitExpr = gen_impl.emitExpr;
-const collectGenericFuncInstanceForCall = gen_impl.collectGenericFuncInstanceForCall;
-const findGenericBinding = gen_impl.findGenericBinding;
-const findFuncDeclForCallHead = gen_impl.findFuncDeclForCallHead;
-const bindGenericFuncCall = gen_impl.bindGenericFuncCall;
+const bindGenericTypeFromConcrete = gen_lower.bindGenericTypeFromConcrete;
+const funcParamAbiType = gen_lower.funcParamAbiType;
+const funcVariadicElemType = gen_lower.funcVariadicElemType;
+const cloneFuncParams = gen_lower.cloneFuncParams;
+const freeStructDecls = gen_lower.freeStructDecls;
+const freeFuncDecls = gen_lower.freeFuncDecls;
+const freeFuncParams = gen_lower.freeFuncParams;
+const collectStructDecls = gen_lower.collectStructDecls;
+const collectFuncDecls = gen_lower.collectFuncDecls;
+const findStartFunc = gen_lower.findStartFunc;
+const findGenericTemplateForCall = gen_lower.findGenericTemplateForCall;
+const directManagedLastUseMoveSourceOrigin = gen_lower.directManagedLastUseMoveSourceOrigin;
+const CallLastUseMoveContext = gen_lower.CallLastUseMoveContext;
+const collectGenericFuncInstancesForTests = gen_lower.collectGenericFuncInstancesForTests;
+const collectBodyLocals = gen_lower.collectBodyLocals;
+const emitScalarNumericStartWithBackendIr = gen_lower.emitScalarNumericStartWithBackendIr;
+const emitExpr = gen_lower.emitExpr;
+const collectGenericFuncInstanceForCall = gen_lower.collectGenericFuncInstanceForCall;
+const findGenericBinding = gen_lower.findGenericBinding;
+const findFuncDeclForCallHead = gen_lower.findFuncDeclForCallHead;
+const bindGenericFuncCall = gen_lower.bindGenericFuncCall;
 const findUnionLocal = gen_types.findUnionLocal;
-const callHeadAt = gen_impl.callHeadAt;
-const collectStructLayouts = gen_impl.collectStructLayouts;
-const findToken = gen_impl.findToken;
-const freeStructLayouts = gen_impl.freeStructLayouts;
-const fieldGetLastUseMoveSource = gen_impl.fieldGetLastUseMoveSource;
+const callHeadAt = gen_lower.callHeadAt;
+const collectStructLayouts = gen_lower.collectStructLayouts;
+const findToken = gen_lower.findToken;
+const freeStructLayouts = gen_lower.freeStructLayouts;
+const fieldGetLastUseMoveSource = gen_lower.fieldGetLastUseMoveSource;
 
 
 test "LocalSet records source origin metadata" {
@@ -384,6 +384,7 @@ test "generic callback prebinds literal argument type from lambda" {
         &.{},
         &.{},
         &.{},
+        &.{},
         &string_data,
         &.{},
         null,
@@ -467,6 +468,7 @@ test "generic callback prebinds literal argument type from function ref" {
         allocator,
         tokens,
         tests,
+        &.{},
         &.{},
         &.{},
         &.{},
@@ -568,6 +570,7 @@ test "generic multi callback instances collect" {
         allocator,
         tokens,
         tests,
+        &.{},
         &.{},
         &.{},
         &.{},

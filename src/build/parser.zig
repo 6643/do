@@ -646,37 +646,68 @@ fn validateParamSegmentHasType(tokens: []const lexer.Token, start_idx: usize, en
     if (variadic_idx + 1 >= end_idx) return markErrorAt(tokens, variadic_idx, error.InvalidParamName);
 }
 
+fn returnSpecBlock(tokens: []const lexer.Token, open_brace: usize, arity: usize, returns_bool: bool) !ReturnSpecParse {
+    const close_brace = try findMatching(tokens, open_brace, "{", "}");
+    return .{
+        .next_idx = close_brace + 1,
+        .return_arity = arity,
+        .returns_bool = arity == 1 and returns_bool,
+        .body_kind = .block,
+        .body_start_idx = open_brace,
+        .body_end_idx = close_brace,
+    };
+}
+
+fn returnSpecArrow(tokens: []const lexer.Token, arrow_idx: usize, arity: usize, returns_bool: bool) ReturnSpecParse {
+    const arrow_end = findArrowEnd(tokens, arrow_idx + 2);
+    return .{
+        .next_idx = arrow_end,
+        .return_arity = arity,
+        .returns_bool = arity == 1 and returns_bool,
+        .body_kind = .arrow,
+        .body_start_idx = arrow_idx + 2,
+        .body_end_idx = arrow_end,
+    };
+}
+
+/// Advance `i` over one return-type segment; stops at top-level `,` / `{` / `=>`.
+fn scanReturnTypeSegmentEnd(tokens: []const lexer.Token, start_i: usize) usize {
+    var i = start_i;
+    var depth_angle: usize = 0;
+    var depth_paren: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        const t = tokens[i];
+        if (tokEq(t, "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(t, ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (tokEq(t, "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(t, ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (depth_angle != 0 or depth_paren != 0) continue;
+        if (tokEq(t, ",") or tokEq(t, "{") or isArrowAt(tokens, i)) break;
+    }
+    return i;
+}
+
 fn parseReturnSpec(tokens: []const lexer.Token, input_start_idx: usize) !ReturnSpecParse {
     var start_idx = input_start_idx;
-    if (isReturnArrowAt(tokens, start_idx)) {
-        start_idx += 2;
-    }
+    if (isReturnArrowAt(tokens, start_idx)) start_idx += 2;
     if (start_idx >= tokens.len) return error.UnterminatedFuncDecl;
 
-    if (tokEq(tokens[start_idx], "{")) {
-        const close_brace = try findMatching(tokens, start_idx, "{", "}");
-        return .{
-            .next_idx = close_brace + 1,
-            .return_arity = 0,
-            .returns_bool = false,
-            .body_kind = .block,
-            .body_start_idx = start_idx,
-            .body_end_idx = close_brace,
-        };
-    }
-    if (isArrowAt(tokens, start_idx)) {
-        const arrow_end = findArrowEnd(tokens, start_idx + 2);
-        return .{
-            .next_idx = arrow_end,
-            .return_arity = 0,
-            .returns_bool = false,
-            .body_kind = .arrow,
-            .body_start_idx = start_idx + 2,
-            .body_end_idx = arrow_end,
-        };
-    }
+    if (tokEq(tokens[start_idx], "{")) return try returnSpecBlock(tokens, start_idx, 0, false);
+    if (isArrowAt(tokens, start_idx)) return returnSpecArrow(tokens, start_idx, 0, false);
 
-    if (start_idx + 1 <= tokens.len and tokEq(tokens[start_idx], "nil")) {
+    if (tokEq(tokens[start_idx], "nil")) {
         if (start_idx + 1 >= tokens.len) {
             return .{
                 .next_idx = start_idx + 1,
@@ -687,28 +718,8 @@ fn parseReturnSpec(tokens: []const lexer.Token, input_start_idx: usize) !ReturnS
                 .body_end_idx = start_idx + 1,
             };
         }
-        if (tokEq(tokens[start_idx + 1], "{")) {
-            const close_brace = try findMatching(tokens, start_idx + 1, "{", "}");
-            return .{
-                .next_idx = close_brace + 1,
-                .return_arity = 0,
-                .returns_bool = false,
-                .body_kind = .block,
-                .body_start_idx = start_idx + 1,
-                .body_end_idx = close_brace,
-            };
-        }
-        if (isArrowAt(tokens, start_idx + 1)) {
-            const arrow_end = findArrowEnd(tokens, start_idx + 3);
-            return .{
-                .next_idx = arrow_end,
-                .return_arity = 0,
-                .returns_bool = false,
-                .body_kind = .arrow,
-                .body_start_idx = start_idx + 3,
-                .body_end_idx = arrow_end,
-            };
-        }
+        if (tokEq(tokens[start_idx + 1], "{")) return try returnSpecBlock(tokens, start_idx + 1, 0, false);
+        if (isArrowAt(tokens, start_idx + 1)) return returnSpecArrow(tokens, start_idx + 1, 0, false);
     }
 
     var arity: usize = 0;
@@ -716,37 +727,9 @@ fn parseReturnSpec(tokens: []const lexer.Token, input_start_idx: usize) !ReturnS
     var i = start_idx;
     while (i < tokens.len) {
         const seg_start = i;
-        var depth_angle: usize = 0;
-        var depth_paren: usize = 0;
-
-        while (i < tokens.len) : (i += 1) {
-            const t = tokens[i];
-            if (tokEq(t, "<")) {
-                depth_angle += 1;
-                continue;
-            }
-            if (tokEq(t, ">")) {
-                if (depth_angle > 0) depth_angle -= 1;
-                continue;
-            }
-            if (tokEq(t, "(")) {
-                depth_paren += 1;
-                continue;
-            }
-            if (tokEq(t, ")")) {
-                if (depth_paren > 0) depth_paren -= 1;
-                continue;
-            }
-            if (depth_angle == 0 and depth_paren == 0 and tokEq(t, ",")) break;
-            if (depth_angle == 0 and depth_paren == 0 and (tokEq(t, "{") or isArrowAt(tokens, i))) break;
-        }
-
+        i = scanReturnTypeSegmentEnd(tokens, i);
         if (seg_start == i) return error.InvalidReturnSpec;
-        if (arity == 0) {
-            returns_bool = isBoolTypeSegment(tokens, seg_start, i);
-        } else {
-            returns_bool = false;
-        }
+        returns_bool = if (arity == 0) isBoolTypeSegment(tokens, seg_start, i) else false;
         arity += 1;
 
         if (i >= tokens.len) return error.UnterminatedFuncDecl;
@@ -754,28 +737,8 @@ fn parseReturnSpec(tokens: []const lexer.Token, input_start_idx: usize) !ReturnS
             i += 1;
             continue;
         }
-        if (tokEq(tokens[i], "{")) {
-            const close_brace = try findMatching(tokens, i, "{", "}");
-            return .{
-                .next_idx = close_brace + 1,
-                .return_arity = arity,
-                .returns_bool = arity == 1 and returns_bool,
-                .body_kind = .block,
-                .body_start_idx = i,
-                .body_end_idx = close_brace,
-            };
-        }
-        if (isArrowAt(tokens, i)) {
-            const arrow_end = findArrowEnd(tokens, i + 2);
-            return .{
-                .next_idx = arrow_end,
-                .return_arity = arity,
-                .returns_bool = arity == 1 and returns_bool,
-                .body_kind = .arrow,
-                .body_start_idx = i + 2,
-                .body_end_idx = arrow_end,
-            };
-        }
+        if (tokEq(tokens[i], "{")) return try returnSpecBlock(tokens, i, arity, returns_bool);
+        if (isArrowAt(tokens, i)) return returnSpecArrow(tokens, i, arity, returns_bool);
     }
 
     return error.UnterminatedFuncDecl;

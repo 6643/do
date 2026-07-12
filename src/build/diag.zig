@@ -186,22 +186,10 @@ fn locateInvalidStringEscape(source: []const u8) ?SourceLoc {
             continue;
         }
         if (in_string and ch == '\\') {
-            if (i + 1 >= source.len) return .{ .line = line, .col = col };
-            const esc = source[i + 1];
-            if (esc == '"' or esc == '\\' or esc == 'n' or esc == 'r' or esc == 't') {
-                i += 2;
-                col += 2;
-                continue;
-            }
-            if (esc == 'x') {
-                if (i + 3 >= source.len or !std.ascii.isHex(source[i + 2]) or !std.ascii.isHex(source[i + 3])) {
-                    return .{ .line = line, .col = col };
-                }
-                i += 4;
-                col += 4;
-                continue;
-            }
-            return .{ .line = line, .col = col };
+            const esc_len = stringEscapeByteLen(source, i) orelse return .{ .line = line, .col = col };
+            i += esc_len;
+            col += esc_len;
+            continue;
         }
         i += 1;
         col += 1;
@@ -242,8 +230,8 @@ fn locateInvalidComment(source: []const u8) ?SourceLoc {
         }
         if (source[i] == '/' and (source[i + 1] == '/' or source[i + 1] == '*')) {
             if (!isCommentLineStart(source, i)) return .{ .line = line, .col = col };
-            if (source[i + 1] == '*') {
-                if (!blockCommentClosesCleanly(source, i)) return .{ .line = line, .col = col };
+            if (source[i + 1] == '*' and !blockCommentClosesCleanly(source, i)) {
+                return .{ .line = line, .col = col };
             }
         }
         i += 1;
@@ -375,6 +363,17 @@ fn getLineText(source: []const u8, target_line: usize) []const u8 {
     }
     if (line == target_line) return source[start..source.len];
     return "";
+}
+
+/// Bytes consumed by a string escape starting at `\` (`source[idx] == '\\'`).
+/// Returns null when the escape is incomplete or invalid.
+fn stringEscapeByteLen(source: []const u8, idx: usize) ?usize {
+    if (idx + 1 >= source.len) return null;
+    const esc = source[idx + 1];
+    if (esc == '"' or esc == '\\' or esc == 'n' or esc == 'r' or esc == 't') return 2;
+    if (esc != 'x') return null;
+    if (idx + 3 >= source.len or !std.ascii.isHex(source[idx + 2]) or !std.ascii.isHex(source[idx + 3])) return null;
+    return 4;
 }
 
 fn isLineBreak(source: []const u8, idx: usize) bool {

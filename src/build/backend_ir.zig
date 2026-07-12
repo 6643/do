@@ -175,21 +175,7 @@ pub const Function = struct {
         if (self.blocks.items.len < 3) return;
 
         for (self.blocks.items) |*block| {
-            if (block.terminator) |term| {
-                switch (term) {
-                    .br => |target| {
-                        block.terminator = .{ .br = self.resolveBranchTarget(target) };
-                    },
-                    .br_if => |branch| {
-                        block.terminator = .{ .br_if = .{
-                            .condition = branch.condition,
-                            .then_block = self.resolveBranchTarget(branch.then_block),
-                            .else_block = self.resolveBranchTarget(branch.else_block),
-                        } };
-                    },
-                    else => {},
-                }
-            }
+            self.foldTerminatorBranchTargets(block);
         }
 
         var i = self.blocks.items.len;
@@ -200,6 +186,23 @@ pub const Function = struct {
             if (i == 0) continue;
             var removed = self.blocks.orderedRemove(i);
             removed.deinit(allocator);
+        }
+    }
+
+    fn foldTerminatorBranchTargets(self: *Function, block: *Block) void {
+        const term = block.terminator orelse return;
+        switch (term) {
+            .br => |target| {
+                block.terminator = .{ .br = self.resolveBranchTarget(target) };
+            },
+            .br_if => |branch| {
+                block.terminator = .{ .br_if = .{
+                    .condition = branch.condition,
+                    .then_block = self.resolveBranchTarget(branch.then_block),
+                    .else_block = self.resolveBranchTarget(branch.else_block),
+                } };
+            },
+            else => {},
         }
     }
 
@@ -280,18 +283,19 @@ pub const Module = struct {
         _ = allocator;
         for (self.functions.items) |*caller| {
             for (caller.blocks.items) |*block| {
-                var i: usize = 0;
-                while (i < block.instrs.items.len) : (i += 1) {
-                    const instr = block.instrs.items[i];
-                    if (instr != .call) continue;
-                    const callee_name = instr.call;
-                    if (self.findFunction(callee_name)) |callee| {
-                        if (trivialConstReturn(callee)) |value| {
-                            block.instrs.items[i] = .{ .const_i32 = value };
-                        }
-                    }
-                }
+                self.inlineTrivialConstCallsInBlock(block);
             }
+        }
+    }
+
+    fn inlineTrivialConstCallsInBlock(self: *Module, block: *Block) void {
+        var i: usize = 0;
+        while (i < block.instrs.items.len) : (i += 1) {
+            const instr = block.instrs.items[i];
+            if (instr != .call) continue;
+            const callee = self.findFunction(instr.call) orelse continue;
+            const value = trivialConstReturn(callee) orelse continue;
+            block.instrs.items[i] = .{ .const_i32 = value };
         }
     }
 

@@ -1,6 +1,6 @@
 # Roadmap 执行状态
 
-更新时间: 2026-07-12
+更新时间: 2026-07-13
 
 **本文只保留当前状态与阻断。** 历史小任务勾选与逐条 gate 证据已从仓库移除; 追溯用 git 历史与 `CHANGELOG.md`。  
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
@@ -21,7 +21,7 @@
 | 阶段 D | 可推进项 done; D2.1 按 B 方案绿色 regression 收口 |
 | 阶段 G | G1–G5、G6.1、G6.4 done; G6.2–G6.3 **blocked** |
 | 阶段 I | **closed** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
-| 架构扁平拆分 | 五轮已落地 (`diagnostics` / `type_name` / `sema_error` / `gen_payload_wat` / `gen_storage_wat`) |
+| 架构扁平拆分 | 已落地: `diagnostics` / `type_name` / `sema_error` / `gen_*` 域竖切 / **`sema_*` 域竖切** (`sema_util`/`types`/`func`/`struct`/`type`/`import`/`ctrl`) |
 | 目录 | 标准库 `lib/`; 工具链 `src/` (原 `tool/`) |
 
 ### 最近验证

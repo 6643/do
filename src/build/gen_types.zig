@@ -1022,3 +1022,113 @@ pub fn loopSourceLocalName(allocator: std.mem.Allocator, loop_id: usize) ![]u8 {
     return try std.fmt.allocPrint(allocator, "__loop_source_{d}", .{loop_id});
 }
 
+// Call-site head parsed from tokens (shared by lower/import).
+pub const ExprCallHead = struct {
+    name_idx: usize,
+    type_args_start: usize = 0,
+    type_args_end: usize = 0,
+    args_start: usize,
+    args_end: usize,
+    is_intrinsic: bool,
+};
+
+// --- free helpers for owned decl/layout slices ---
+
+pub fn freeCallbackBindings(allocator: std.mem.Allocator, bindings: []const CallbackBinding) void {
+    for (bindings) |binding| {
+        if (binding.lambda_params.len != 0) allocator.free(binding.lambda_params);
+    }
+    allocator.free(bindings);
+}
+
+pub fn freeStructDecls(allocator: std.mem.Allocator, structs: []const StructDecl) void {
+    for (structs) |decl| {
+        freeStructDecl(allocator, decl);
+    }
+}
+
+pub fn freeStructDecl(allocator: std.mem.Allocator, decl: StructDecl) void {
+    if (decl.type_params.len != 0) allocator.free(decl.type_params);
+    for (decl.owned_types) |owned| {
+        allocator.free(owned);
+    }
+    if (decl.owned_types.len != 0) allocator.free(decl.owned_types);
+    allocator.free(decl.fields);
+}
+
+pub fn freeValueEnumDecls(allocator: std.mem.Allocator, value_enums: []const ValueEnumDecl) void {
+    for (value_enums) |decl| {
+        if (decl.owned_name) allocator.free(decl.name);
+        allocator.free(decl.branches);
+    }
+}
+
+pub fn freePayloadEnumDecls(allocator: std.mem.Allocator, payload_enums: []const PayloadEnumDecl) void {
+    for (payload_enums) |decl| {
+        if (decl.owned_name) allocator.free(decl.name);
+        for (decl.owned_payload_tys) |owned| allocator.free(owned);
+        if (decl.owned_payload_tys.len != 0) allocator.free(decl.owned_payload_tys);
+        allocator.free(decl.cases);
+    }
+}
+
+pub fn freeStructLayouts(allocator: std.mem.Allocator, layouts: []const StructLayout) void {
+    for (layouts) |layout| {
+        if (layout.owned_name) allocator.free(layout.name);
+        allocator.free(layout.managed_fields);
+    }
+}
+
+pub fn freeFuncParams(allocator: std.mem.Allocator, params: []const FuncParam) void {
+    for (params) |param| {
+        if (param.callback) |callback| {
+            if (callback.owned) allocator.free(callback.shape.param_types);
+        }
+    }
+    allocator.free(params);
+}
+
+pub fn freeFuncDecls(allocator: std.mem.Allocator, funcs: []const FuncDecl) void {
+    for (funcs) |func| {
+        if (func.owned_name) allocator.free(func.name);
+        if (func.type_params.len != 0) allocator.free(func.type_params);
+        if (func.type_bindings.len != 0) allocator.free(func.type_bindings);
+        if (func.callback_bindings.len != 0) freeCallbackBindings(allocator, func.callback_bindings);
+        freeFuncResultItems(allocator, func.result_items, func.result_union);
+        for (func.owned_types) |owned| {
+            allocator.free(owned);
+        }
+        if (func.owned_types.len != 0) allocator.free(func.owned_types);
+        freeFuncParams(allocator, func.params);
+        allocator.free(func.results);
+    }
+}
+
+pub fn freeFuncResultItems(allocator: std.mem.Allocator, items: []const FuncResultItem, result_union: ?UnionLayout) void {
+    for (items) |item| {
+        const layout = item.union_layout orelse continue;
+        if (result_union) |single_layout| {
+            if (unionLayoutsEqual(layout, single_layout)) continue;
+        }
+        freeUnionLayout(allocator, layout);
+    }
+    if (result_union) |layout| freeUnionLayout(allocator, layout);
+    allocator.free(items);
+}
+
+// moved from gen_lower for domain share
+pub const CallLastUseMoveContext = struct {
+    body_start: usize = 0,
+    stmt_end: usize,
+    body_end: usize,
+    defer_ctx: ?*const DeferContext,
+    allow_last_use_move: bool,
+    allow_field_read_move: bool = false,
+};
+
+pub const LastUseManagedMoveSource = struct {
+    source_name: []const u8,
+    actual_name: []const u8,
+    origin: SourceOrigin,
+};
+

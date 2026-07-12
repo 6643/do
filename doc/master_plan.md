@@ -1,7 +1,7 @@
 # do 编译器主计划
 
 状态: v1 子集发布候选已收口; 剩余 G6 blocked residual  
-更新时间: 2026-07-12
+更新时间: 2026-07-13
 
 实时接手入口: `doc/start_here.md`。  
 执行证据与历史勾选不再维护在本文; 需要追溯时查 git 与 `CHANGELOG.md`。
@@ -16,7 +16,7 @@
 - `do fmt`: stdout / check-only / write 单文件。
 - `do check`: lexer/parser/sema/import diagnostics only; 诊断收集在 `src/build/diagnostics.zig`。
 - 阶段 A–F、H 已完成; D 可推进项与 D2.1 已收口; G1–G5、G6.4 已完成; **阶段 I (I1+I2) 已关闭**。
-- 架构扁平拆分已落地: `type_name` / `sema_error` / `diagnostics` / `gen_payload_wat` / `gen_storage_wat`。
+- 架构扁平拆分已落地: `type_name` / `sema_error` / `diagnostics` / `gen_*` 域竖切 / `sema_*` 域竖切 (见 `AGENTS.md`)。
 - 最近回归: `./src/build/test/run_tests.sh` → `pass=915 fail=0 skip=3`; unit `119/119`。
 
 当前禁止默认推进:

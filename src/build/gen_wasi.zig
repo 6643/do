@@ -4,6 +4,7 @@ const component_metadata_wat = @import("component_metadata_wat.zig");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const gen_util = @import("gen_util.zig");
+const moduleTokensEqual = gen_util.moduleTokensEqual;
 
 const tokEq = gen_util.tokEq;
 const findMatchingInRange = gen_util.findMatchingInRange;
@@ -40,10 +41,6 @@ pub const WasiLinkAtArgs = struct {
     new_path_start: usize,
     new_path_end: usize,
 };
-
-fn moduleTokensEqual(a: []const lexer.Token, b: []const lexer.Token) bool {
-    return a.ptr == b.ptr and a.len == b.len;
-}
 
 /// Canonical WIT params/result for known targets (codegen always stores WIT form).
 pub fn knownWasiWitSignature(target: []const u8) ?struct { params: []const u8, result: []const u8 } {

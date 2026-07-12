@@ -40,11 +40,11 @@
 ```bash
 # 默认完整回归 (当前基线)
 ./src/build/test/run_tests.sh
-# 期望: pass=919 fail=0 skip=3
+# 期望: pass=933 fail=0 skip=3
 
-# 聚合单元测试
-cd src && zig test main.zig
-# 期望: All 119 tests passed.
+# gen 单元测试
+cd src && zig test build/gen.zig
+# 期望: All 69 tests passed.
 
 # 发布前 smoke
 ./src/build/test/run_release_smoke.sh
@@ -59,8 +59,8 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 
 | 基线项 | 最近值 |
 | --- | --- |
-| 默认回归 | `pass=919 fail=0 skip=3` |
-| 聚合 unit | `119/119` |
+| 默认回归 | `pass=933 fail=0 skip=3` |
+| `zig test build/gen.zig` | `69/69` |
 | `compile_ok` / `compiled_ok` / `compile_err` | do≈`272` / `77` / `39` |
 | 剩余 skip | `16_loop_recv_value`、`96_file_lib_resource_shape`、`118_wasi_p3_std_wrappers` (recv/WASI 后置) |
 | 诊断 code | `errorSummary` / `errorHint` 各 57 条 (含 `UnsupportedLowering` / `UnsupportedTupleStorageLeaf`) |
@@ -77,17 +77,47 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | 共享纯函数 | `type_name` | 类型/布局 SSOT (scalar/storage/managed/Tuple scheme A) |
 | | `sema_error` | ErrorSite 与 sema 错误构造 |
 | | `diagnostics` | check/LSP 共用前端诊断收集 (原 `src/lsp/diagnostics.zig` 已删除) |
+| Sema 域 | `sema.zig` | 公开入口 (`checkProgram` / `takeLastErrorSite`) + 编排 |
+| | `sema_util.zig` | facade：re-export `sema_scan` + 剩余 shape helpers |
+| | `sema_scan.zig` | token/name/scan 谓词与行扫描 |
+| | `sema_types.zig` | 共享 shape 类型 (`FuncShape` / `StructInfo` / …) |
+| | `sema_func.zig` | func facade（sig/call/lambda re-export） |
+| | `sema_func_sig` / `_call` / `_lambda` / `_shared` | 签名 / 调用·泛型 / lambda / 共享 |
+| | `sema_struct.zig` | struct 字段·ctor / path / Tuple |
+| | `sema_type.zig` | 类型声明 / enum·error·payload / union / type refs |
+| | `sema_import.zig` | host/local import + 已知 WASI 签名校验 |
+| | `sema_ctrl.zig` | loop/label / defer / field reflection / assign / constraint |
 | Gen 域 | `gen.zig` | 公开入口 + 单测 |
-| | `gen_impl.zig` | emit/collect 实现（主逻辑） |
-| | `gen_types.zig` | LocalSet / CodegenContext / 声明类型 |
-| | `gen_util` / `gen_wasi` / `gen_union` | token 工具; WASI 表; union layout |
+| | `gen_lower.zig` | 编排核（`emitWat*` / hooks install）+ 最小 re-export |
+| | `gen_generic.zig` | 泛型实例化 / 类型绑定 / callback prebind（不 import lower） |
+| | `gen_hooks.zig` | 晚绑定 emit 回调（破 ctrl/union→expr、struct→union 反向边） |
+| | `gen_types.zig` | LocalSet / CodegenContext / 声明类型 / free / `ExprCallHead` |
+| | `gen_collect.zig` | collect facade（re-export util/struct/func/type） |
+| | `gen_collect_util` / `_struct` / `_func` / `_type` | 类型 parse·bind / struct·layout / func / enum collect |
+| | `gen_expr.zig` | 表达式/调用 dispatch + re-export body-local collect |
+| | `gen_expr_collect.zig` | body-local / loop / multi-result local collect（不 import expr） |
+| | `gen_ctrl.zig` | 控制流 emit（body/if/loop/defer/guard） |
+| | `gen_storage.zig` | storage emit + re-export tuple pack API |
+| | `gen_tuple.zig` | Tuple / pure-scalar pack helpers（不 import storage） |
+| | `gen_struct.zig` | struct binding / field / literal emit |
+| | `gen_union_emit.zig` | union value / binding emit |
+| | `gen_wasi_emit.zig` | WASI host 调用/结果 emit（`EmitExprFn`/hooks，不 import lower） |
+| | `gen_ownership.zig` | ARC release plan emit / 作用域可达性辅助 |
+| | `gen_util.zig` | token/scan 工具; core-func 名表; mangled 符号 |
+| | `gen_host.zig` | `@env` host import collect/parse |
+| | `gen_import.zig` | 模块 import 解析、reach、string-data |
+| | `gen_wasi` / `gen_union` | WASI 表/parse; union layout |
 | | `gen_payload_wat` | 标量 payload load/store、Tuple 叶子 pack/unpack |
 | | `gen_storage_wat` | storage 指针/header/alias; `HEADER=8` |
-| | `function_body_wat` / `runtime_prelude_wat` / `component_metadata_wat` | WAT 写出切片 |
+| | `runtime_arc_wat` | ARC runtime WAT + layout 类型 SSOT |
+| | `runtime_prelude_wat` | string-data memory emit + re-export ARC API |
+| | `function_body_wat` / `component_metadata_wat` | 其它 WAT 写出切片 |
 | 旁路 | `backend_ir` | **仅**标量 `start` 旁路 + unit; **不是**主 emit 路径 |
 | CLI | `src/main.zig` | 分派; `do test` 经 `runTest` → `loadProgram` |
 
-**刻意未做**: 全量拆 `codegen`/`sema` god module; 批量把真 overload `NoMatchingCall` 改成 `UnsupportedLowering`; 合并静态/compiled 双 runner; 把 `backend_ir` 扩成主路径。
+**刻意未做**: 批量把真 overload `NoMatchingCall` 改成 `UnsupportedLowering`; 合并静态/compiled 双 runner; 把 `backend_ir` 扩成主路径; 继续硬拆 `gen_storage` / `gen_expr` / `parser` / `imports` / `test_runner`（hooks 耦合或高风险，ROI 低）。
+
+**已落地架构竖切**: `sema` 与 `gen` 均已按域拆成扁平 `*_` 模块 (见上表与 `AGENTS.md`); 对外仍经 `sema.zig` / `gen.zig` 入口。Batch B: collect 四叶、sema scan/func 子域、runtime ARC SSOT。
 
 ## 5. 当前阻断
 

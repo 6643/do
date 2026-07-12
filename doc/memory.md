@@ -79,7 +79,7 @@ v1 默认对象头只保存 ARC 和 layout 所需的公共字段:
 5. `[T]` 的 `len/cap` 放在 `Object.data` 起点: `len: u32` @0, `cap: u32` @4, 元素数据从 offset 8 起 (共 8 字节 payload header)。
 6. 固定布局 managed struct 不需要 `len/cap`, payload 字节布局完全由 layout table 决定。
 7. header 压缩到 `u16/u16`、尾部 reference count、状态化 header 都是 v2 优化。
-8. 编译器侧与上述 layout 对齐的纯 WAT 访问在 `src/build/gen_storage_wat.zig` (`STORAGE_PAYLOAD_HEADER_BYTES = 8`, `type_id` `[u8]`-style=`1` / managed-storage=`65535`); 类型/元素宽度分类在 `src/build/type_name.zig`; 业务 `@set/@put`/COW 编排仍在 `src/build/gen.zig` / `src/build/gen_impl.zig` / `src/build/gen_types.zig`。
+8. 编译器侧与上述 layout 对齐的纯 WAT 访问在 `src/build/gen_storage_wat.zig` (`STORAGE_PAYLOAD_HEADER_BYTES = 8`, `type_id` `[u8]`-style=`1` / managed-storage=`65535`); 类型/元素宽度分类在 `src/build/type_name.zig`; 业务 `@set/@put`/COW 编排仍在 `src/build/gen.zig` / `src/build/gen_lower.zig` / `src/build/gen_types.zig`。
 
 ### 3.3 Layout Table
 
@@ -524,7 +524,7 @@ return-only 子集也暂不落地:
 
 ### 8.10 03.8.1 SourceOrigin 只读元数据落地
 
-03.8.1 结论: `src/build/gen.zig` / `src/build/gen_impl.zig` / `src/build/gen_types.zig` 已增加只读 `SourceOrigin` 元数据, 默认 `unknown`, 当前不改变任何 lowering 或 move 判定。
+03.8.1 结论: `src/build/gen.zig` / `src/build/gen_lower.zig` / `src/build/gen_types.zig` 已增加只读 `SourceOrigin` 元数据, 默认 `unknown`, 当前不改变任何 lowering 或 move 判定。
 
 当前已落地的 origin 标注:
 
@@ -560,13 +560,13 @@ return-only 子集也暂不落地:
 
 验证证据:
 
-1. 新增 `src/build/gen.zig` / `src/build/gen_impl.zig` / `src/build/gen_types.zig` 内部 Zig 单测, 覆盖 `unknown` 默认值、`param_or_import`、`loop_source` 和 `compiler_temp` 标注。
+1. 新增 `src/build/gen.zig` / `src/build/gen_lower.zig` / `src/build/gen_types.zig` 内部 Zig 单测, 覆盖 `unknown` 默认值、`param_or_import`、`loop_source` 和 `compiler_temp` 标注。
 2. `cd src && zig test build/gen.zig` 结果为 `All 1 tests passed.`。
 3. `SKIP_BUILD=1 ./src/build/test/run_tests.sh` 必须继续保持现有摘要不变, 证明 lowering 未漂移。
 
 ### 8.12 03.8.3 path/cleanup facts 最小接口
 
-03.8.3 结论: `src/build/ownership.zig` 已显式引入 `PathCleanupFacts`, 并把 release-plan skip 从 ad hoc `skip_names` 收敛到统一的 path facts 接口; `src/build/gen.zig` / `src/build/gen_impl.zig` / `src/build/gen_types.zig` 已切到新接口, 但当前仍只传默认 facts, 不改变 lowering, 也不放开 loop 内 `arc-call-move`。
+03.8.3 结论: `src/build/ownership.zig` 已显式引入 `PathCleanupFacts`, 并把 release-plan skip 从 ad hoc `skip_names` 收敛到统一的 path facts 接口; `src/build/gen.zig` / `src/build/gen_lower.zig` / `src/build/gen_types.zig` 已切到新接口, 但当前仍只传默认 facts, 不改变 lowering, 也不放开 loop 内 `arc-call-move`。
 
 本轮已落地的最小接口:
 
@@ -626,7 +626,7 @@ D1.2 结论: 已新增内部 `ownership_facts` 数据结构, 只记录 move / co
 
 当前 D1.2 完成时故意保持不变的边界:
 
-1. `src/build/gen.zig` / `src/build/gen_impl.zig` / `src/build/gen_types.zig` 仍使用原有 `directManagedLastUseMoveSource(...)`、`directManagedCallLastUseMoveSource(...)`、`directManagedUnionBindingCallMoveSource(...)` 和 `fieldGetLastUseMoveSource(...)`。
+1. `src/build/gen.zig` / `src/build/gen_lower.zig` / `src/build/gen_types.zig` 仍使用原有 `directManagedLastUseMoveSource(...)`、`directManagedCallLastUseMoveSource(...)`、`directManagedUnionBindingCallMoveSource(...)` 和 `fieldGetLastUseMoveSource(...)`。
 2. `emitBody(...)` 仍使用 `loop_ctx == null` 作为 loop 内 call 参数 move 的全局门。
 3. 不放开新的 move 场景, 不改变任何 WAT pattern。
 
@@ -643,7 +643,7 @@ D1.3 结论: 普通用户函数 call 参数 last-use move 的 allow/defer/use-af
 当前实现:
 
 1. `src/build/ownership_facts.zig` 新增 `decideCallArgMove(...)`, 对 `.call_arg` candidate 统一判断 disabled、defer visible、after-arg use、after-stmt use 和 body-rest use。
-2. `src/build/gen.zig` / `src/build/gen_impl.zig` / `src/build/gen_types.zig` 新增 `ownership_facts` import 和 `factsSourceOrigin(...)` 显式映射, 暂不整体搬迁 codegen-local `SourceOrigin`。
+2. `src/build/gen.zig` / `src/build/gen_lower.zig` / `src/build/gen_types.zig` 新增 `ownership_facts` import 和 `factsSourceOrigin(...)` 显式映射, 暂不整体搬迁 codegen-local `SourceOrigin`。
 3. `directManagedCallLastUseMoveSource(...)` 仍负责 direct managed local 识别、source/origin 查找和旧返回结构构造; move 是否接受改由 `MoveCandidate` + `decideCallArgMove(...)` 决定。
 
 当前故意保持不变的边界:
@@ -778,7 +778,7 @@ COW 回退条件:
 10. 已有含 managed 字段 struct 的最小 allocation/get/set lowering: 局部变量保存 struct object handle, payload 按 layout 读写字段, managed child 字段写入前会按 RHS 所有权执行必要 `inc`, typed alias binding 会 `inc` RHS handle, 更新时会把 RHS 单次求值到 scratch local, 再 `dec` 旧 child 并写入新 child。
 11. 已有显式 `return`、guard return、最小 `if/else/else if` 块内 return 和 fallthrough 前的最小 managed local release lowering: 按局部声明逆序对非返回值的 `[u8]` 和 managed struct handle 调用 `dec`; `return x` 直接返回 managed local 时按 ownership move 处理, callee 不释放 `x`。
 12. `if/else/else if` 和最小 `loop` 块内声明的 managed local 会在块正常落出时释放并写回 0 sentinel; 如果块内提前 `return`, 当前 return 清理路径已经释放该 local, 后续块末尾释放处于不可达路径。loop body 内的 `break/continue` 会先释放 loop body 递归收集到的 managed locals, 再跳转到 break/continue label。复杂循环回边平衡仍是后续项。
-13. 已有独立 ownership exit plan foundation: `src/build/ownership.zig` 先构造 `return`、guard `return`、fallthrough、block exit 和 `break/continue` 的 `ExitPlan` / `ReleaseStep`，再由 `src/build/gen.zig` / `src/build/gen_impl.zig` / `src/build/gen_types.zig` 消费这些 steps 发出 `__arc_dec` 和必要的 0 sentinel 写回。当前这只是退出路径清理边界，不等于完整 ownership IR，也不做 escape analysis 或 region。
+13. 已有独立 ownership exit plan foundation: `src/build/ownership.zig` 先构造 `return`、guard `return`、fallthrough、block exit 和 `break/continue` 的 `ExitPlan` / `ReleaseStep`，再由 `src/build/gen.zig` / `src/build/gen_lower.zig` / `src/build/gen_types.zig` 消费这些 steps 发出 `__arc_dec` 和必要的 0 sentinel 写回。当前这只是退出路径清理边界，不等于完整 ownership IR，也不做 escape analysis 或 region。
 14. 已有死 alias `inc/dec` 相消: 对后续不再使用的 managed alias 绑定，不再生成无意义的 alias retain/release；相关 WAT 回归已锁住 live-source 场景继续保守。
 15. 已有保守 last-use move 子集: direct storage / managed struct overwrite、用户函数 call 参数、binding、assignment、return call、union guard / nil expr、plain struct field read、field reflection read 和 managed struct field write，在可证明本地末次使用且当前 `defer` / loop 边界安全时跳过部分冗余 `inc` 并清空 source。参数、借用、helper/shared-source 字段读取、loop-carried source 仍保持保守。
 16. 已有 `[u8]` 参数调用的最小 ownership lowering: call site 对非 move 的直接 managed local 实参执行 `inc`, callee 把 `[u8]` 参数登记为 storage local并在清理路径中 `dec`。

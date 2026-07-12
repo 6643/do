@@ -432,6 +432,25 @@ fn isReturnTypeBeforeFuncBody(tokens: []const lexer.Token, type_idx: usize, open
     return false;
 }
 
+const BraceRange = struct { open: usize, close: usize };
+
+fn wasiRecordFieldsRange(tokens: []const lexer.Token, name_idx: usize) ?BraceRange {
+    if (name_idx + 5 >= tokens.len) return null;
+    if (!tokEq(tokens[name_idx + 1], "=") or !tokEq(tokens[name_idx + 2], "@")) return null;
+    if (tokens[name_idx + 3].kind != .ident) return null;
+    const kind = tokens[name_idx + 3].lexeme;
+    if (!std.mem.eql(u8, kind, "wasi_resource") and !std.mem.eql(u8, kind, "wasi_record")) return null;
+    if (!tokEq(tokens[name_idx + 4], "(")) return null;
+    const close_call = findMatching(tokens, name_idx + 4, "(", ")") catch return null;
+    var j = name_idx + 5;
+    while (j < close_call) : (j += 1) {
+        if (!tokEq(tokens[j], "{")) continue;
+        const close_brace = findMatching(tokens, j, "{", "}") catch return null;
+        return .{ .open = j, .close = close_brace };
+    }
+    return null;
+}
+
 fn collectPrivateStructFields(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(PrivateField),
@@ -463,21 +482,9 @@ fn collectPrivateStructFields(
         }
 
         // Declarative: Name = @wasi_resource|wasi_record("…", { fields })
-        if (i + 5 < tokens.len and tokEq(tokens[i + 1], "=") and tokEq(tokens[i + 2], "@") and
-            tokens[i + 3].kind == .ident and
-            (std.mem.eql(u8, tokens[i + 3].lexeme, "wasi_resource") or
-                std.mem.eql(u8, tokens[i + 3].lexeme, "wasi_record")) and
-            tokEq(tokens[i + 4], "("))
-        {
-            const close_call = findMatching(tokens, i + 4, "(", ")") catch return;
-            var j = i + 5;
-            while (j < close_call) : (j += 1) {
-                if (tokEq(tokens[j], "{")) {
-                    const close_brace = findMatching(tokens, j, "{", "}") catch return;
-                    try collectPrivateFieldNames(allocator, out, tokens, j + 1, close_brace);
-                    return;
-                }
-            }
+        if (wasiRecordFieldsRange(tokens, i)) |fields| {
+            try collectPrivateFieldNames(allocator, out, tokens, fields.open + 1, fields.close);
+            return;
         }
     }
 }
@@ -2002,6 +2009,34 @@ fn parseTopLevelFuncReturnType(tokens: []const lexer.Token, start_idx: usize) ?[
     return simpleTypeName(tokens, start_idx, findReturnTypeEnd(tokens, start_idx));
 }
 
+fn scanTopLevelReturnTypeSegmentEnd(tokens: []const lexer.Token, start_i: usize, start_line: usize) usize {
+    var i = start_i;
+    var depth_angle: usize = 0;
+    var depth_paren: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokens[i].line != start_line) break;
+        if (tokEq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (depth_angle != 0 or depth_paren != 0) continue;
+        if (tokEq(tokens[i], ",") or tokEq(tokens[i], "{") or isArrowAt(tokens, i)) break;
+    }
+    return i;
+}
+
 fn parseTopLevelFuncReturnArity(tokens: []const lexer.Token, input_start_idx: usize) usize {
     var start_idx = input_start_idx;
     if (isReturnArrowAt(tokens, start_idx)) start_idx += 2;
@@ -2015,36 +2050,12 @@ fn parseTopLevelFuncReturnArity(tokens: []const lexer.Token, input_start_idx: us
 
     var arity: usize = 0;
     var i = start_idx;
+    const start_line = tokens[start_idx].line;
     while (i < tokens.len) {
         const seg_start = i;
-        var depth_angle: usize = 0;
-        var depth_paren: usize = 0;
-
-        while (i < tokens.len) : (i += 1) {
-            if (tokEq(tokens[i], "<")) {
-                depth_angle += 1;
-                continue;
-            }
-            if (tokEq(tokens[i], ">")) {
-                if (depth_angle > 0) depth_angle -= 1;
-                continue;
-            }
-            if (tokEq(tokens[i], "(")) {
-                depth_paren += 1;
-                continue;
-            }
-            if (tokEq(tokens[i], ")")) {
-                if (depth_paren > 0) depth_paren -= 1;
-                continue;
-            }
-            if (depth_angle == 0 and depth_paren == 0 and tokEq(tokens[i], ",")) break;
-            if (depth_angle == 0 and depth_paren == 0 and (tokEq(tokens[i], "{") or isArrowAt(tokens, i))) break;
-            if (tokens[i].line != tokens[start_idx].line) break;
-        }
-
+        i = scanTopLevelReturnTypeSegmentEnd(tokens, i, start_line);
         if (seg_start == i) return arity;
         arity += 1;
-
         if (i >= tokens.len) return arity;
         if (tokEq(tokens[i], ",")) {
             i += 1;

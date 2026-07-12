@@ -14,243 +14,257 @@ pub const Token = struct {
     col: usize,
 };
 
+const Cursor = struct {
+    i: usize,
+    line: usize,
+    col: usize,
+};
+
 pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
     var out = try std.ArrayList(Token).initCapacity(allocator, 0);
     defer out.deinit(allocator);
 
-    var i: usize = 0;
-    var line: usize = 1;
-    var col: usize = 1;
+    var cur: Cursor = .{ .i = 0, .line = 1, .col = 1 };
 
-    while (i < source.len) {
-        const ch = source[i];
+    while (cur.i < source.len) {
+        const ch = source[cur.i];
 
-        if (ch == '\r') {
-            if (i + 1 < source.len and source[i + 1] == '\n') {
-                i += 2;
-            } else {
-                i += 1;
-            }
-            line += 1;
-            col = 1;
-            continue;
-        }
-        if (ch == '\n') {
-            line += 1;
-            col = 1;
-            i += 1;
+        if (ch == '\r' or ch == '\n') {
+            advanceLineBreak(source, &cur);
             continue;
         }
         if (std.ascii.isWhitespace(ch)) {
-            col += 1;
-            i += 1;
+            cur.col += 1;
+            cur.i += 1;
             continue;
         }
-        if (ch == '/' and i + 1 < source.len and source[i + 1] == '/') {
-            if (!isLineStart(source, i)) return error.InvalidComment;
-            i += 2;
-            col += 2;
-            while (i < source.len and source[i] != '\n' and source[i] != '\r') {
-                i += 1;
-                col += 1;
-            }
+        if (ch == '/' and cur.i + 1 < source.len and source[cur.i + 1] == '/') {
+            try skipLineComment(source, &cur);
             continue;
         }
-        if (ch == '/' and i + 1 < source.len and source[i + 1] == '*') {
-            if (!isLineStart(source, i)) return error.InvalidComment;
-            i += 2;
-            col += 2;
-            var closed = false;
-            while (i < source.len) {
-                if (source[i] == '*' and i + 1 < source.len and source[i + 1] == '/') {
-                    i += 2;
-                    col += 2;
-                    closed = true;
-                    break;
-                }
-                if (source[i] == '\r') {
-                    if (i + 1 < source.len and source[i + 1] == '\n') {
-                        i += 2;
-                    } else {
-                        i += 1;
-                    }
-                    line += 1;
-                    col = 1;
-                    continue;
-                }
-                if (source[i] == '\n') {
-                    i += 1;
-                    line += 1;
-                    col = 1;
-                    continue;
-                }
-                i += 1;
-                col += 1;
-            }
-            if (!closed) return error.InvalidComment;
-            if (!restOfLineIsWhitespace(source, i)) return error.InvalidComment;
+        if (ch == '/' and cur.i + 1 < source.len and source[cur.i + 1] == '*') {
+            try skipBlockComment(source, &cur);
             continue;
         }
 
-        const start = i;
-        const start_col = col;
+        const start = cur.i;
+        const start_col = cur.col;
 
-        if (ch == '.' and i + 2 < source.len and source[i + 1] == '.' and source[i + 2] == '.') {
-            i += 3;
-            col += 3;
+        if (ch == '.' and cur.i + 2 < source.len and source[cur.i + 1] == '.' and source[cur.i + 2] == '.') {
+            cur.i += 3;
+            cur.col += 3;
             try out.append(allocator, .{
                 .kind = .symbol,
-                .lexeme = source[start..i],
-                .line = line,
+                .lexeme = source[start..cur.i],
+                .line = cur.line,
                 .col = start_col,
             });
             continue;
         }
 
         if (isIdentStart(ch)) {
-            i += 1;
-            col += 1;
-            while (i < source.len and isIdentContinue(source[i])) {
-                i += 1;
-                col += 1;
+            cur.i += 1;
+            cur.col += 1;
+            while (cur.i < source.len and isIdentContinue(source[cur.i])) {
+                cur.i += 1;
+                cur.col += 1;
             }
             try out.append(allocator, .{
                 .kind = .ident,
-                .lexeme = source[start..i],
-                .line = line,
+                .lexeme = source[start..cur.i],
+                .line = cur.line,
                 .col = start_col,
             });
             continue;
         }
 
-        if ((ch == '-' and i + 1 < source.len and std.ascii.isDigit(source[i + 1])) or std.ascii.isDigit(ch)) {
-            if (ch == '-') {
-                i += 1;
-                col += 1;
-            }
-            i += 1;
-            col += 1;
-            while (i < source.len and std.ascii.isDigit(source[i])) {
-                i += 1;
-                col += 1;
-            }
-            if (i + 1 < source.len and source[i] == '.' and std.ascii.isDigit(source[i + 1])) {
-                i += 1;
-                col += 1;
-                while (i < source.len and std.ascii.isDigit(source[i])) {
-                    i += 1;
-                    col += 1;
-                }
-            }
+        if ((ch == '-' and cur.i + 1 < source.len and std.ascii.isDigit(source[cur.i + 1])) or std.ascii.isDigit(ch)) {
+            try scanNumber(source, &cur);
             try out.append(allocator, .{
                 .kind = .number,
-                .lexeme = source[start..i],
-                .line = line,
+                .lexeme = source[start..cur.i],
+                .line = cur.line,
                 .col = start_col,
             });
             continue;
         }
 
         if (ch == '"') {
-            i += 1;
-            col += 1;
-            while (i < source.len and source[i] != '"') {
-                if (source[i] == '\n' or source[i] == '\r') return error.UnterminatedString;
-                if (source[i] == '\\') {
-                    i += 1;
-                    col += 1;
-                    if (i >= source.len) return error.UnterminatedString;
-                    const esc = source[i];
-                    if (esc == '"' or esc == '\\' or esc == 'n' or esc == 'r' or esc == 't') {
-                        i += 1;
-                        col += 1;
-                        continue;
-                    }
-                    if (esc == 'x') {
-                        if (i + 2 >= source.len or !std.ascii.isHex(source[i + 1]) or !std.ascii.isHex(source[i + 2])) {
-                            return error.InvalidStringEscape;
-                        }
-                        i += 3;
-                        col += 3;
-                        continue;
-                    }
-                    return error.InvalidStringEscape;
-                }
-                i += 1;
-                col += 1;
-            }
-            if (i >= source.len) return error.UnterminatedString;
-            i += 1;
-            col += 1;
-            try validateQuotedStringUtf8(allocator, source[start..i]);
+            try scanQuotedString(source, &cur);
+            try validateQuotedStringUtf8(allocator, source[start..cur.i]);
             try out.append(allocator, .{
                 .kind = .string,
-                .lexeme = source[start..i],
-                .line = line,
+                .lexeme = source[start..cur.i],
+                .line = cur.line,
                 .col = start_col,
             });
             continue;
         }
 
-        if (ch == '\\' and i + 1 < source.len and source[i + 1] == '\\') {
-            const line_start = line;
-            const col_start = col;
-            const block_start = i;
-            var cur_i = i;
-            var cur_line = line;
-            var cur_col = col;
-
-            while (true) {
-                cur_i += 2;
-                cur_col += 2;
-                while (cur_i < source.len and source[cur_i] != '\n' and source[cur_i] != '\r') {
-                    cur_i += 1;
-                    cur_col += 1;
-                }
-
-                if (cur_i >= source.len) break;
-
-                var next_i = cur_i + 1;
-                if (source[cur_i] == '\r' and next_i < source.len and source[next_i] == '\n') {
-                    next_i += 1;
-                }
-                var next_col: usize = 1;
-                while (next_i < source.len and (source[next_i] == ' ' or source[next_i] == '\t')) : (next_i += 1) {
-                    next_col += 1;
-                }
-                if (next_i + 1 < source.len and source[next_i] == '\\' and source[next_i + 1] == '\\') {
-                    cur_i = next_i;
-                    cur_line += 1;
-                    cur_col = next_col;
-                    continue;
-                }
-                break;
-            }
-
-            if (!std.unicode.utf8ValidateSlice(source[block_start..cur_i])) return error.InvalidStringUtf8;
+        if (ch == '\\' and cur.i + 1 < source.len and source[cur.i + 1] == '\\') {
+            const block = try scanLineStringBlock(source, &cur);
             try out.append(allocator, .{
                 .kind = .string,
-                .lexeme = source[block_start..cur_i],
-                .line = line_start,
-                .col = col_start,
+                .lexeme = block.lexeme,
+                .line = block.line,
+                .col = block.col,
             });
-            i = cur_i;
-            line = cur_line;
-            col = cur_col;
             continue;
         }
 
-        i += 1;
-        col += 1;
+        cur.i += 1;
+        cur.col += 1;
         try out.append(allocator, .{
             .kind = .symbol,
-            .lexeme = source[start..i],
-            .line = line,
+            .lexeme = source[start..cur.i],
+            .line = cur.line,
             .col = start_col,
         });
     }
 
     return out.toOwnedSlice(allocator);
+}
+
+fn advanceLineBreak(source: []const u8, cur: *Cursor) void {
+    if (source[cur.i] == '\r' and cur.i + 1 < source.len and source[cur.i + 1] == '\n') {
+        cur.i += 2;
+    } else {
+        cur.i += 1;
+    }
+    cur.line += 1;
+    cur.col = 1;
+}
+
+fn skipLineComment(source: []const u8, cur: *Cursor) !void {
+    if (!isLineStart(source, cur.i)) return error.InvalidComment;
+    cur.i += 2;
+    cur.col += 2;
+    while (cur.i < source.len and source[cur.i] != '\n' and source[cur.i] != '\r') {
+        cur.i += 1;
+        cur.col += 1;
+    }
+}
+
+fn skipBlockComment(source: []const u8, cur: *Cursor) !void {
+    if (!isLineStart(source, cur.i)) return error.InvalidComment;
+    cur.i += 2;
+    cur.col += 2;
+    var closed = false;
+    while (cur.i < source.len) {
+        if (source[cur.i] == '*' and cur.i + 1 < source.len and source[cur.i + 1] == '/') {
+            cur.i += 2;
+            cur.col += 2;
+            closed = true;
+            break;
+        }
+        if (source[cur.i] == '\r' or source[cur.i] == '\n') {
+            advanceLineBreak(source, cur);
+            continue;
+        }
+        cur.i += 1;
+        cur.col += 1;
+    }
+    if (!closed) return error.InvalidComment;
+    if (!restOfLineIsWhitespace(source, cur.i)) return error.InvalidComment;
+}
+
+fn scanNumber(source: []const u8, cur: *Cursor) !void {
+    if (source[cur.i] == '-') {
+        cur.i += 1;
+        cur.col += 1;
+    }
+    cur.i += 1;
+    cur.col += 1;
+    while (cur.i < source.len and std.ascii.isDigit(source[cur.i])) {
+        cur.i += 1;
+        cur.col += 1;
+    }
+    if (cur.i + 1 >= source.len or source[cur.i] != '.' or !std.ascii.isDigit(source[cur.i + 1])) return;
+    cur.i += 1;
+    cur.col += 1;
+    while (cur.i < source.len and std.ascii.isDigit(source[cur.i])) {
+        cur.i += 1;
+        cur.col += 1;
+    }
+}
+
+fn scanQuotedString(source: []const u8, cur: *Cursor) !void {
+    cur.i += 1;
+    cur.col += 1;
+    while (cur.i < source.len and source[cur.i] != '"') {
+        if (source[cur.i] == '\n' or source[cur.i] == '\r') return error.UnterminatedString;
+        if (source[cur.i] != '\\') {
+            cur.i += 1;
+            cur.col += 1;
+            continue;
+        }
+        try consumeStringEscape(source, cur);
+    }
+    if (cur.i >= source.len) return error.UnterminatedString;
+    cur.i += 1;
+    cur.col += 1;
+}
+
+fn consumeStringEscape(source: []const u8, cur: *Cursor) !void {
+    cur.i += 1;
+    cur.col += 1;
+    if (cur.i >= source.len) return error.UnterminatedString;
+    const esc = source[cur.i];
+    if (esc == '"' or esc == '\\' or esc == 'n' or esc == 'r' or esc == 't') {
+        cur.i += 1;
+        cur.col += 1;
+        return;
+    }
+    if (esc != 'x') return error.InvalidStringEscape;
+    if (cur.i + 2 >= source.len or !std.ascii.isHex(source[cur.i + 1]) or !std.ascii.isHex(source[cur.i + 2])) {
+        return error.InvalidStringEscape;
+    }
+    cur.i += 3;
+    cur.col += 3;
+}
+
+const LineStringBlock = struct {
+    lexeme: []const u8,
+    line: usize,
+    col: usize,
+};
+
+fn scanLineStringBlock(source: []const u8, cur: *Cursor) !LineStringBlock {
+    const line_start = cur.line;
+    const col_start = cur.col;
+    const block_start = cur.i;
+    var scan = cur.*;
+
+    while (true) {
+        scan.i += 2;
+        scan.col += 2;
+        while (scan.i < source.len and source[scan.i] != '\n' and source[scan.i] != '\r') {
+            scan.i += 1;
+            scan.col += 1;
+        }
+        if (scan.i >= source.len) break;
+
+        var next_i = scan.i + 1;
+        if (source[scan.i] == '\r' and next_i < source.len and source[next_i] == '\n') {
+            next_i += 1;
+        }
+        var next_col: usize = 1;
+        while (next_i < source.len and (source[next_i] == ' ' or source[next_i] == '\t')) : (next_i += 1) {
+            next_col += 1;
+        }
+        if (next_i + 1 >= source.len or source[next_i] != '\\' or source[next_i + 1] != '\\') break;
+        scan.i = next_i;
+        scan.line += 1;
+        scan.col = next_col;
+    }
+
+    if (!std.unicode.utf8ValidateSlice(source[block_start..scan.i])) return error.InvalidStringUtf8;
+    cur.* = scan;
+    return .{
+        .lexeme = source[block_start..scan.i],
+        .line = line_start,
+        .col = col_start,
+    };
 }
 
 fn isIdentStart(ch: u8) bool {
