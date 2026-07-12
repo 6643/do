@@ -1,0 +1,282 @@
+//! WASI host import tables, parse/collect, pure lowering helpers.
+const std = @import("std");
+const component_metadata_wat = @import("component_metadata_wat.zig");
+const imports = @import("imports.zig");
+const lexer = @import("lexer.zig");
+const gen_util = @import("gen_util.zig");
+
+const tokEq = gen_util.tokEq;
+const findMatchingInRange = gen_util.findMatchingInRange;
+const findLineEnd = gen_util.findLineEnd;
+const isLineStart = gen_util.isLineStart;
+const findTopLevelToken = gen_util.findTopLevelToken;
+const findArgEnd = gen_util.findArgEnd;
+const stringTokenBody = gen_util.stringTokenBody;
+const publicDeclName = gen_util.publicDeclName;
+const compactTokenText = gen_util.compactTokenText;
+
+pub const WasiLowering = component_metadata_wat.WasiLowering;
+pub const WASI_BINDING_ENTRY_SOURCE = "entry";
+
+pub const WasiHostImport = struct {
+    source: []const u8,
+    alias: []const u8,
+    target: []const u8,
+    params: []const u8,
+    result: []const u8,
+};
+
+pub const WasiLinkAtArgs = struct {
+    descriptor_start: usize,
+    descriptor_end: usize,
+    old_flags_start: usize,
+    old_flags_end: usize,
+    old_path_start: usize,
+    old_path_end: usize,
+    new_descriptor_start: usize,
+    new_descriptor_end: usize,
+    new_path_start: usize,
+    new_path_end: usize,
+};
+
+fn moduleTokensEqual(a: []const lexer.Token, b: []const lexer.Token) bool {
+    return a.ptr == b.ptr and a.len == b.len;
+}
+
+/// Canonical WIT params/result for known targets (codegen always stores WIT form).
+pub fn knownWasiWitSignature(target: []const u8) ?struct { params: []const u8, result: []const u8 } {
+    const known = [_]struct { target: []const u8, params: []const u8, result: []const u8 }{
+        .{ .target = "filesystem/types/descriptor.write", .params = "descriptor,list<u8>,filesize", .result = "result<filesize,error-code>" },
+        .{ .target = "filesystem/types/descriptor.read", .params = "descriptor,filesize,filesize", .result = "result<tuple<list<u8>,bool>,error-code>" },
+        .{ .target = "filesystem/types/descriptor.sync", .params = "descriptor", .result = "result<_,error-code>" },
+        .{ .target = "filesystem/types/descriptor.link-at", .params = "descriptor,path-flags,text,borrow<descriptor>,text", .result = "result<_,error-code>" },
+        .{ .target = "filesystem/types/descriptor.create-directory-at", .params = "descriptor,text", .result = "result<_,error-code>" },
+        .{ .target = "filesystem/types/descriptor.open-at", .params = "descriptor,path-flags,text,open-flags,descriptor-flags", .result = "result<descriptor,error-code>" },
+        .{ .target = "filesystem/types/descriptor.remove-directory-at", .params = "descriptor,text", .result = "result<_,error-code>" },
+        .{ .target = "filesystem/types/descriptor.drop", .params = "descriptor", .result = "nil" },
+        .{ .target = "filesystem/preopens/get-directories", .params = "", .result = "list<tuple<descriptor,text>>" },
+        .{ .target = "io/streams/input-stream.read", .params = "input-stream,u64", .result = "result<list<u8>,stream-error>" },
+        .{ .target = "io/streams/output-stream.check-write", .params = "output-stream", .result = "result<u64,stream-error>" },
+        .{ .target = "io/streams/output-stream.write", .params = "output-stream,list<u8>", .result = "result<_,stream-error>" },
+        .{ .target = "io/streams/output-stream.flush", .params = "output-stream", .result = "result<_,stream-error>" },
+        .{ .target = "clocks/system-clock/now", .params = "", .result = "Datetime" },
+        .{ .target = "clocks/system-clock/get-resolution", .params = "", .result = "u64" },
+        .{ .target = "clocks/monotonic-clock/now", .params = "", .result = "u64" },
+        .{ .target = "clocks/monotonic-clock/get-resolution", .params = "", .result = "u64" },
+        .{ .target = "random/random/get-random-bytes", .params = "u64", .result = "list<u8>" },
+        .{ .target = "random/random/get-random-u64", .params = "", .result = "u64" },
+    };
+    for (known) |item| {
+        if (std.mem.eql(u8, item.target, target)) return .{ .params = item.params, .result = item.result };
+    }
+    return null;
+}
+
+pub fn wasiLowering(import: WasiHostImport) ?WasiLowering {
+    return component_metadata_wat.wasiLowering(import);
+}
+
+pub fn appendWasiImportSymbol(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    target: []const u8,
+) !void {
+    try component_metadata_wat.appendWasiImportSymbol(allocator, out, target);
+}
+
+pub fn freeWasiHostImports(allocator: std.mem.Allocator, wasi_imports: []const WasiHostImport) void {
+    for (wasi_imports) |import| {
+        allocator.free(import.params);
+        allocator.free(import.result);
+    }
+}
+
+pub fn findWasiHostImport(wasi_imports: []const WasiHostImport, alias: []const u8) ?WasiHostImport {
+    for (wasi_imports) |import| {
+        if (std.mem.eql(u8, import.alias, alias)) return import;
+    }
+    return null;
+}
+
+pub fn findWasiHostImportBySource(wasi_imports: []const WasiHostImport, source: []const u8, alias: []const u8) ?WasiHostImport {
+    for (wasi_imports) |import| {
+        if (!std.mem.eql(u8, import.source, source)) continue;
+        if (std.mem.eql(u8, import.alias, alias)) return import;
+    }
+    return null;
+}
+
+pub fn isWasiHostImportStart(tokens: []const lexer.Token, idx: usize) bool {
+    const line_end = findLineEnd(tokens, idx);
+    if (idx + 4 >= line_end) return false;
+    if (tokens[idx].kind != .ident) return false;
+    if (!tokEq(tokens[idx + 1], "=")) return false;
+    if (!tokEq(tokens[idx + 2], "@")) return false;
+    if (tokens[idx + 3].kind != .ident) return false;
+    const kind = tokens[idx + 3].lexeme;
+    if (!std.mem.eql(u8, kind, "wasi_func")) return false;
+    return tokEq(tokens[idx + 4], "(");
+}
+
+pub fn collectWasiHostImports(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    source: []const u8,
+    out: *std.ArrayList(WasiHostImport),
+) !void {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isLineStart(tokens, i)) continue;
+        if (!isWasiHostImportStart(tokens, i)) continue;
+
+        const line_end = findLineEnd(tokens, i);
+        const import = try parseWasiHostImport(allocator, tokens, i, line_end, source);
+        errdefer allocator.free(import.params);
+        errdefer allocator.free(import.result);
+        try out.append(allocator, import);
+        i = line_end - 1;
+    }
+}
+
+pub fn collectWasiHostImportsFromModules(
+    allocator: std.mem.Allocator,
+    modules: []const imports.ModuleRecord,
+    entry_tokens: []const lexer.Token,
+    out: *std.ArrayList(WasiHostImport),
+) !void {
+    for (modules) |module| {
+        const source = if (moduleTokensEqual(module.tokens, entry_tokens))
+            WASI_BINDING_ENTRY_SOURCE
+        else
+            module.path;
+        try collectWasiHostImports(allocator, module.tokens, source, out);
+    }
+}
+
+pub fn parseWasiHostImport(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    line_end: usize,
+    source: []const u8,
+) !WasiHostImport {
+    const alias = publicDeclName(tokens[start_idx].lexeme);
+    const target = stringTokenBody(tokens[start_idx + 5].lexeme) orelse return error.InvalidImportDecl;
+    const comma_idx = findTopLevelToken(tokens, start_idx + 6, line_end - 1, ",") orelse return error.InvalidImportDecl;
+    const close_idx = findMatchingInRange(tokens, start_idx + 4, "(", ")", line_end) catch return error.InvalidImportDecl;
+    if (close_idx + 1 != line_end) return error.InvalidImportDecl;
+    const open_params = comma_idx + 1;
+    if (open_params >= close_idx or !tokEq(tokens[open_params], "(")) return error.InvalidImportDecl;
+    const close_params = findMatchingInRange(tokens, open_params, "(", ")", close_idx) catch return error.InvalidImportDecl;
+    if (close_params + 3 > close_idx or !tokEq(tokens[close_params + 1], "-") or !tokEq(tokens[close_params + 2], ">")) {
+        return error.InvalidImportDecl;
+    }
+
+    // Prefer canonical WIT signature for known targets so do-side sugar still lowers.
+    if (knownWasiWitSignature(target)) |wit| {
+        return .{
+            .source = source,
+            .alias = alias,
+            .target = target,
+            .params = try allocator.dupe(u8, wit.params),
+            .result = try allocator.dupe(u8, wit.result),
+        };
+    }
+
+    const params = try compactTokenText(allocator, tokens, open_params + 1, close_params);
+    errdefer allocator.free(params);
+    const result = try compactTokenText(allocator, tokens, close_params + 3, close_idx);
+    errdefer allocator.free(result);
+
+    return .{
+        .source = source,
+        .alias = alias,
+        .target = target,
+        .params = params,
+        .result = result,
+    };
+}
+
+pub fn parseWasiLinkAtArgs(tokens: []const lexer.Token, args_start: usize, args_end: usize) ?WasiLinkAtArgs {
+    const descriptor_end = findArgEnd(tokens, args_start, args_end);
+    if (descriptor_end == args_start or descriptor_end >= args_end or !tokEq(tokens[descriptor_end], ",")) return null;
+
+    const old_flags_start = descriptor_end + 1;
+    const old_flags_end = findArgEnd(tokens, old_flags_start, args_end);
+    if (old_flags_end == old_flags_start or old_flags_end >= args_end or !tokEq(tokens[old_flags_end], ",")) return null;
+
+    const old_path_start = old_flags_end + 1;
+    const old_path_end = findArgEnd(tokens, old_path_start, args_end);
+    if (old_path_end == old_path_start or old_path_end >= args_end or !tokEq(tokens[old_path_end], ",")) return null;
+
+    const new_descriptor_start = old_path_end + 1;
+    const new_descriptor_end = findArgEnd(tokens, new_descriptor_start, args_end);
+    if (new_descriptor_end == new_descriptor_start or new_descriptor_end >= args_end or !tokEq(tokens[new_descriptor_end], ",")) return null;
+
+    const new_path_start = new_descriptor_end + 1;
+    const new_path_end = findArgEnd(tokens, new_path_start, args_end);
+    if (new_path_end == new_path_start or new_path_end != args_end) return null;
+
+    return .{
+        .descriptor_start = args_start,
+        .descriptor_end = descriptor_end,
+        .old_flags_start = old_flags_start,
+        .old_flags_end = old_flags_end,
+        .old_path_start = old_path_start,
+        .old_path_end = old_path_end,
+        .new_descriptor_start = new_descriptor_start,
+        .new_descriptor_end = new_descriptor_end,
+        .new_path_start = new_path_start,
+        .new_path_end = new_path_end,
+    };
+}
+
+/// Coarse Failed variant for a fallible WASI host (matches stdlib wrapper fallbacks).
+pub fn wasiCoarseFailedVariantName(import: WasiHostImport, err_ty: []const u8) ?[]const u8 {
+    const target = import.target;
+    if (std.mem.eql(u8, err_ty, "DirError")) {
+        if (std.mem.eql(u8, target, "filesystem/types/descriptor.open-at")) return "DirOpenFailed";
+        if (std.mem.eql(u8, target, "filesystem/types/descriptor.create-directory-at")) return "DirCreateFailed";
+        if (std.mem.eql(u8, target, "filesystem/types/descriptor.remove-directory-at")) return "DirRemoveFailed";
+        return null;
+    }
+    if (std.mem.eql(u8, err_ty, "FileError")) {
+        if (std.mem.eql(u8, target, "filesystem/types/descriptor.open-at")) return "FileOpenFailed";
+        if (std.mem.eql(u8, target, "filesystem/types/descriptor.sync")) return "FileFlushFailed";
+        if (std.mem.eql(u8, target, "filesystem/types/descriptor.write")) return "FileWriteFailed";
+        if (std.mem.eql(u8, target, "filesystem/types/descriptor.link-at")) return "FileLinkFailed";
+        if (std.mem.eql(u8, target, "filesystem/types/descriptor.read")) return "FileReadFailed";
+        return null;
+    }
+    if (std.mem.eql(u8, err_ty, "StreamError")) {
+        if (std.mem.eql(u8, target, "io/streams/input-stream.read")) return "StreamReadFailed";
+        if (std.mem.eql(u8, target, "io/streams/output-stream.check-write")) return "StreamCheckWriteFailed";
+        if (std.mem.eql(u8, target, "io/streams/output-stream.write")) return "StreamWriteFailed";
+        if (std.mem.eql(u8, target, "io/streams/output-stream.flush")) return "StreamFlushFailed";
+        return null;
+    }
+    return null;
+}
+
+pub fn wasiCoarseClosedVariantName(err_ty: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, err_ty, "DirError")) return "DirClosed";
+    if (std.mem.eql(u8, err_ty, "FileError")) return "FileClosed";
+    if (std.mem.eql(u8, err_ty, "StreamError")) return "StreamClosed";
+    return null;
+}
+
+/// Whether this host maps every non-zero status to a single Failed variant (open wrappers).
+pub fn wasiCoarseErrorAlwaysFailed(import: WasiHostImport) bool {
+    return std.mem.eql(u8, import.target, "filesystem/types/descriptor.open-at");
+}
+

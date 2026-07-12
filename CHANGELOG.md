@@ -1,5 +1,7 @@
 # Changelog
 
+- Split `gen.zig`: extract `gen_util.zig` (token helpers) and `gen_wasi.zig` (WASI tables/parse)
+
 - Rename codegen modules to `gen_*` prefix: `gen.zig`, `gen_payload_wat.zig`, `gen_storage_wat.zig`
 
 - Payload enum L1: `Message = Quit | Text([u8]) | Binary([u8])` declare/construct/`@is` narrow (tags by case name)
