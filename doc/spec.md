@@ -11,7 +11,7 @@
 5. `doc/syntax/`: 按功能拆分的语法速查, 只展示当前正确语法。
 6. `doc/memory.md`: v1 可实现运行时内存模型。
 7. `doc/memory_layout_structs.md`: allocator block、managed object 和 layout table 的结构布局伪代码。
-9. `doc/wit/wasi_p3_lowering.md`: `@wasi` / WIT / component lowering 的 compiler-facing 合同和当前可验证产物。
+9. `doc/wit/wasi_p3_lowering.md`: `@wasi_func` / WIT / component lowering 的 compiler-facing 合同和当前可验证产物。
 10. `doc/wit/wasi_registry.json`: 当前已登记的 WIT target / record mirror registry, 供 manifest 校验和 component-plan 工具消费。
 11. `doc/roadmap_status.md`: roadmap 项目的当前状态、证据、跳过原因和恢复条件。
 
@@ -21,7 +21,7 @@
 2. 查语义是否允许: 看 `doc/spec_rules.md` 对应章节。
 3. 查正反例: 看 `doc/spec_examples.md`。
 4. 查运行时表示、ARC、storage 或 text lowering: 看 `doc/memory.md`; 查 allocator/block/object/layout 结构字段看 `doc/memory_layout_structs.md`。
-5. 查 `@wasi` / WIT / component lowering 边界: 看 `doc/wit/wasi_p3_lowering.md`; 查当前已登记 target 和 record mirror 看 `doc/wit/wasi_registry.json`。
+5. 查 `@wasi_func` / WIT / component lowering 边界: 看 `doc/wit/wasi_p3_lowering.md`; 查当前已登记 target 和 record mirror 看 `doc/wit/wasi_registry.json`。
 6. 查当前实现状态和暂跳过项: 看 `doc/roadmap_status.md`。
 7. 查编译器模块边界: 流水线在 `src/build/lexer.zig` / `parser.zig` / `sema.zig` / `codegen.zig`; 纯类型/布局 SSOT 在 `src/build/type_name.zig`; storage 指针与 payload/Tuple pack 的纯 WAT 在 `src/build/codegen_storage_wat.zig` / `src/build/codegen_payload_wat.zig` (见 `AGENTS.md` 与 `doc/start_here.md`)。
 8. 改 parser 语法时, 同步 `doc/grammar.peg`、`doc/syntax/`、测试和必要的 `doc/spec_rules.md` 语义约束。
@@ -34,7 +34,7 @@
 | 分层模型 | `doc/spec_rules.md` 第 1 章 | `doc/grammar.peg`, `doc/memory.md`, `doc/memory_layout_structs.md` |
 | 词法、命名、保留名 | `doc/spec_rules.md` 第 2 章 | `doc/grammar.peg`, `doc/syntax/README.md` |
 | 模块、导入、可见性 | `doc/spec_rules.md` 第 3 章 | `doc/syntax/module.md` |
-| Host ABI / `@wasi` / WIT lowering | `doc/spec_rules.md` 第 3, 13-14 章 | `doc/wit/wasi_p3_lowering.md`, `doc/wit/wasi_registry.json` |
+| Host ABI / `@wasi_func` / WIT lowering | `doc/spec_rules.md` 第 3, 13-14 章 | `doc/wit/wasi_p3_lowering.md`, `doc/wit/wasi_registry.json` |
 | 类型、结构体、union、enum、error | `doc/spec_rules.md` 第 4 章 | `doc/syntax/type.md`, `doc/syntax/struct.md`, `doc/syntax/union.md`, `doc/syntax/enum.md`, `doc/syntax/error.md` |
 | 表达式、字面量、定型 | `doc/spec_rules.md` 第 5 章 | `doc/syntax/expression.md`, `doc/spec_examples.md` |
 | 绑定、赋值、作用域 | `doc/spec_rules.md` 第 6 章 | `doc/spec_examples.md` |
@@ -62,7 +62,7 @@
 8. 函数重载只按参数类型序列决议; 返回类型不参与重载身份。
 9. `@get/@set` 只承载结构字段和 `[T]` storage 路径 primitive; `List/HashMap` 等高层集合由 `std` 或用户库提供普通函数。
 10. `loop` 分为无限循环、集合循环、消费循环和字段反射循环; v1 不提供通用 iterator 协议。
-11. `@wasi` 声明的是 WIT binding, 不是普通 core Wasm import; 当前只开放已登记的 scalar/record/list<u8> 与少量 result-area wrapper 子集进入 lowering, 完整 component/resource/future/variant 支持仍后置。
+11. `@wasi_func` 声明的是 WIT binding, 不是普通 core Wasm import; 当前只开放已登记的 scalar/record/list<u8> 与少量 result-area wrapper 子集进入 lowering, 完整 component/resource/future/variant 支持仍后置。
 12. 顶层入口固定为 `start() { ... }`; 测试声明固定为 `test "name" { ... }`。
 13. runtime trap / safety failure 与源码可见错误枚举分离; 越界、primitive safety failure 不通过 `Error` 或普通错误枚举返回。
 

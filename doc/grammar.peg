@@ -74,7 +74,14 @@ ValueImport      <- '@lib' '(' StringModuleFile InlineCommaSep ValueImportTarget
 ValueImportTarget <- !ReservedName LowerIdent
 HostImport       <- EnvHostImport / WasiHostImport
 EnvHostImport    <- '@env' '(' StringHostName InlineCommaSep EnvHostSig ')'
-WasiHostImport   <- '@wasi' '(' StringWitTarget InlineCommaSep WasiHostSig ')'
+
+WasiHostImport   <- '@wasi_func' '(' StringWitTarget InlineCommaSep WasiHostSig ')'
+// Declarative type bindings (resource shell / record mirror). Host imports stay in import prefix.
+WasiResourceDecl <- TypeName '=' '@wasi_resource' '(' StringWitTarget InlineCommaSep '{' StructField* '}' ')'
+WasiRecordDecl   <- TypeName '=' '@wasi_record' '(' StringWitTarget InlineCommaSep '{' StructField* '}' ')'
+// Optional fine-grained error-code enum; coarse DirError/FileError may remain plain `error =`.
+WasiEnumDecl     <- TypeName 'error' '=' '@wasi_enum' '(' StringWitTarget (InlineCommaSep WasiEnumArms)? ')'
+WasiEnumArms     <- Ident ('|' Ident)*
 ModuleFile       <- DepFile / RelativeFile / StdFile
 DepFile          <- '~/' DepNameSeg FileExt
 RelativeFile     <- './' FlatFileSeg FileExt
@@ -87,6 +94,8 @@ EnvHostSig       <- '(' AbiParamList? ')' '->' AbiReturn
 AbiParamList     <- AbiType (InlineCommaSep AbiType)* InlineCommaSep?
 AbiReturn        <- 'nil' / AbiType
 AbiType          <- 'i32' / 'i64' / 'f32' / 'f64'
+// Host signature: WIT tokens and/or do-side sugar (`[u8]`, `i32` for handles) accepted when
+// known-target maps normalize to WIT for codegen.
 WasiHostSig      <- '(' WitParamList? ')' '->' WitType
 WitParamList     <- WitType (InlineCommaSep WitType)* InlineCommaSep?
 WitType          <- 'list' '<' WitType '>'
@@ -95,8 +104,10 @@ WitType          <- 'list' '<' WitType '>'
                   / 'option' '<' WitType '>'
                   / 'borrow' '<' WitType '>'
                   / 'own' '<' WitType '>'
+                  / '[' TypeName ']'
                   / '_'
                   / PublicTypeName
+                  / AbiType
                   / WitName
 WitName          <- WitPathName ('-' WitPathName)*
 WitPathName      <- PathSeg ('.' PathSeg)*

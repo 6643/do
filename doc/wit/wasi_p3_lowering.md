@@ -13,7 +13,7 @@
 
 ## Boundary
 
-`@wasi("package/interface/member", sig)` is a WIT binding declaration, not a
+`@wasi_func("package/interface/member", sig)` is a WIT binding declaration, not a
 core Wasm import declaration. A Do core WAT module cannot call this directly.
 The compiler must first preserve enough binding metadata, then a component
 lowering step can generate the canonical ABI shims and component imports.
@@ -117,7 +117,7 @@ as `[resource-drop]descriptor`, accepts the resource handle, returns `nil`, and
 does not emit a fake `drop: func` member in generated WIT:
 
 ```do
-.host_file_drop = @wasi("filesystem/types/descriptor.drop", (descriptor) -> nil)
+.host_file_drop = @wasi_func("filesystem/types/descriptor.drop", (descriptor) -> nil)
 host_file_drop(file)
 ```
 
@@ -281,6 +281,23 @@ and is async in the WIT world, so it is likewise known but unsupported until HTT
 resource/result/async lowering exists. Other complex unregistered
 `result/tuple/option/resource/borrow/own/stream/future/variant` signatures are
 also marked `unsupported`.
+
+
+## Declarative host surface (stdlib)
+
+Stdlib modules declare WASI with:
+
+| Form | Role |
+| --- | --- |
+| `@wasi_func("package/interface/member", sig)` | Sole function binding form (do-side sugar OK for known targets; bare `@wasi(...)` removed) |
+| `@wasi_resource("…/resource", { .id i64 })` | Resource handle shell (not a WIT record) |
+| `@wasi_record("…", { fields })` | Record mirror (field-aligned) |
+| `@wasi_enum("…/error-code", arms)` | Optional fine error table; coarse `DirError`/`FileError` may stay plain |
+
+Known targets still lower via existing strategies (scalar/record/`list<u8>`/result-area/preopens). Codegen stores **WIT** params/result on the binding even when the source used do sugar (`i32`/`[u8]`). Host imports remain in the module import prefix; type bindings follow them.
+
+`wasi_registry.json` remains the official known-target directory for validation; private targets may use the same syntax when a lowering strategy exists (future allow_unknown mode).
+
 
 ## Registered Result Target Inventory
 
@@ -549,7 +566,7 @@ host, external WIT package resolution, or the unsupported complex WIT types.
 normal WIT resource method. The standard library may declare it privately as:
 
 ```do
-.host_file_drop = @wasi("filesystem/types/descriptor.drop", (descriptor) -> nil)
+.host_file_drop = @wasi_func("filesystem/types/descriptor.drop", (descriptor) -> nil)
 ```
 
 Direct codegen lowers it to the compiler-owned core import name
@@ -677,12 +694,12 @@ The first executable P3 slices are scalar/record/list<u8> wrappers, because they
 do not require resource lifetime or async lowering:
 
 ```do
+.host_now = @wasi_func("clocks/system-clock/now", () -> Datetime)
+
 Datetime {
     seconds i64
     nanoseconds u32
 }
-
-.host_now = @wasi("clocks/system-clock/now", () -> Datetime)
 
 now() -> Datetime {
     return host_now()

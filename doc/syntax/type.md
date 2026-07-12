@@ -97,7 +97,7 @@ HashMap<text, [User]>
 
 ## `Tuple<...>` 内建类型
 
-`Tuple<T0, T1, ...>` 是源码层大写内建泛型类型, 表示固定顺序的位置元组。它与 `@wasi` / WIT 签名里的小写 `tuple<...>` 分离, 后者不能出现在普通源码类型位。
+`Tuple<T0, T1, ...>` 是源码层大写内建泛型类型, 表示固定顺序的位置元组。它与 `@wasi_func` / WIT 签名里的小写 `tuple<...>` 分离, 后者不能出现在普通源码类型位。
 
 ```do
 make_pair(flag bool, code u8) -> Tuple<bool, u8> {

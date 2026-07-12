@@ -559,7 +559,7 @@ Datetime {
     nanoseconds u32
 }
 
-host_now = @wasi("clocks/system-clock/now", () -> Datetime)
+host_now = @wasi_func("clocks/system-clock/now", () -> Datetime)
 ```
 
 ```do program err
@@ -571,7 +571,7 @@ now = @lib("/time.do", now)
 console_log = @env("console/log", (i32, i32) -> nil)
 ```
 
-local import 只支持 `@lib("file.do", symbol)` 双参数形态里的当前目录单文件、外部依赖根单文件和标准库单文件三类入口。host import 支持固定 `@env("host_name", (...) -> ...)` 和 WIT 目标形态 `@wasi("package/interface/member", (...) -> ...)`；host import alias 只在当前模块内使用，不是 local import target。
+local import 只支持 `@lib("file.do", symbol)` 双参数形态里的当前目录单文件、外部依赖根单文件和标准库单文件三类入口。host import 支持固定 `@env("host_name", (...) -> ...)` 和 WIT 目标形态 `@wasi_func("package/interface/member", (...) -> ...)`；host import alias 只在当前模块内使用，不是 local import target。
 
 ## get / set
 
