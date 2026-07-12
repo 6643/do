@@ -31,7 +31,7 @@ cd src && zig test main.zig
   → All 119 tests passed.
 
 ./src/build/test/run_tests.sh
-  → pass=915 fail=0 skip=3
+  → pass=916 fail=0 skip=3
 
 RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
   → pass=833 fail=0 skip=3; wasm run summary: pass=6 fail=0
@@ -44,7 +44,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 - I1: 直接/互递归; 参数侧已定型泛型递归; self-tail scalar / `if-else` / guard / generic / imported TCO。  
   仅靠左侧目标类型反推的泛型递归仍 `NoMatchingCall`; `defer` / storage / managed / 多返回 / cleanup 不 TCO。
 - I2: `Tuple<T0,T1,...>` 位置构造 + `@get` 数字索引; local/struct/return/param/nested/标量与 managed 叶子 storage + path chain + loop get。  
-  pure-scalar struct 直接子槽 storage 已支持 (永不拍平); 含 managed 字段的 struct 槽仍 `UnsupportedTupleStorageLeaf`。
+  pure-scalar struct 与含 managed 字段的 struct 直接子槽 storage 已支持 (永不拍平; managed struct 为句柄叶子)。
 
 ## 当前阻断与待处理
 
@@ -55,7 +55,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | 类 | 项 |
 | --- | --- |
 | blocked | G6.1 preopens API; G6.2 read-directory/async; G6.3 sockets; 06.2→G6 |
-| pending | P1 含 managed 字段的 struct 作 Tuple storage 子槽; P2 左侧反推泛型 (默认不放开); skip 16/96/118 |
+| pending | P2 左侧反推泛型 (默认不放开); skip 16/96/118 |
 | deferred | ownership IR、真 host I/O、JSON 扩展、LSP/fmt、wasm emitter 等 (见该文件 §3) |
 
 ## 下一步

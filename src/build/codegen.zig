@@ -456,6 +456,16 @@ const LocalSet = struct {
         if (!hasLocal(self.locals.items, TUPLE_PACK_SPILL_I32)) {
             try self.appendBorrowedLocal(allocator, TUPLE_PACK_SPILL_I32, "i32", true);
         }
+        // Extra i32 spills for multi-leaf pack pop/push (e.g. text+u8, Cell+u8).
+        if (!hasLocal(self.locals.items, payload_wat.TUPLE_PACK_SPILL_I32_1)) {
+            try self.appendBorrowedLocal(allocator, payload_wat.TUPLE_PACK_SPILL_I32_1, "i32", true);
+        }
+        if (!hasLocal(self.locals.items, payload_wat.TUPLE_PACK_SPILL_I32_2)) {
+            try self.appendBorrowedLocal(allocator, payload_wat.TUPLE_PACK_SPILL_I32_2, "i32", true);
+        }
+        if (!hasLocal(self.locals.items, payload_wat.TUPLE_PACK_SPILL_I32_3)) {
+            try self.appendBorrowedLocal(allocator, payload_wat.TUPLE_PACK_SPILL_I32_3, "i32", true);
+        }
         if (!hasLocal(self.locals.items, TUPLE_PACK_SPILL_I64)) {
             try self.appendBorrowedLocal(allocator, TUPLE_PACK_SPILL_I64, "i64", true);
         }
@@ -9855,21 +9865,25 @@ fn ensureStoragePackLayoutWithStructs(
     var offset: usize = 0;
     var managed_idx: usize = 0;
     for (leaf_types.items) |leaf_ty| {
-        if (isManagedPayloadType(leaf_ty)) {
+        const leaf_bytes = leafPayloadBytesForPack(leaf_ty, structs) orelse return;
+        if (isPackManagedHandleLeaf(leaf_ty, structs)) {
             try managed_fields.append(allocator, .{
                 .name = managedLeafFieldName(managed_idx),
                 .offset = offset,
             });
             managed_idx += 1;
         }
-        offset += typePayloadBytes(leaf_ty);
+        offset += leaf_bytes;
     }
     if (managed_fields.items.len == 0) {
         managed_fields.deinit(allocator);
         return;
     }
     if (findStructLayoutExact(out.items, elem_ty)) |existing| {
-        if (existing.is_storage_pack) return;
+        if (existing.is_storage_pack) {
+            managed_fields.deinit(allocator);
+            return;
+        }
     }
 
     const owned_name = try allocator.dupe(u8, elem_ty);
@@ -15484,11 +15498,11 @@ fn emitStorageSetScalarCall(
     try out.appendSlice(allocator, "    end\n");
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
     if (isTupleTypeName(elem_ty)) {
-        if (tupleHasManagedPackLeaf(elem_ty)) {
+        if (tupleHasManagedPackLeafCtx(elem_ty, ctx)) {
             // Dec replaced managed leaves before writing new ones.
             try emitStorageElementPtrFromLocal(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes);
             try appendFmt(allocator, out, "    local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
-            try emitDecManagedTupleLeavesAtBase(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ");
+            try emitDecManagedTupleLeavesAtBase(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ", ctx);
         }
         if (!try emitExpr(allocator, tokens, value_start, value_end, locals, ctx, elem_ty, out)) return false;
         try emitStorageElementPtrFromLocal(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes);
@@ -15543,11 +15557,11 @@ fn emitStoragePutSpreadScalarElement(
         try emitStorageElementPtrFromLocalWithIndent(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_LEN_TMP_LOCAL, elem_bytes, "        ");
         try appendFmt(allocator, out, "        local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
         try appendStoreTupleScalarLeavesFromStackCtx(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "        ", ctx);
-        if (tupleHasManagedPackLeaf(elem_ty)) {
+        if (tupleHasManagedPackLeafCtx(elem_ty, ctx)) {
             // Unique-append path copies handles without clone-inc; share ownership with source element.
             try emitStorageElementPtrFromLocalWithIndent(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_LEN_TMP_LOCAL, elem_bytes, "        ");
             try appendFmt(allocator, out, "        local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
-            try emitIncManagedTupleLeavesAtBase(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "        ");
+            try emitIncManagedTupleLeavesAtBase(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "        ", ctx);
         }
     } else {
         try emitStorageElementPtrFromLocalWithIndent(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_LEN_TMP_LOCAL, elem_bytes, "        ");
@@ -18938,6 +18952,8 @@ fn pureScalarStructPackWidth(decl: StructDecl, structs: []const StructDecl) ?usi
             continue;
         }
         if (findStructDecl(structs, field_ty)) |nested| {
+            // Nested managed struct inside pure-scalar parent is not pure-scalar.
+            if (structDeclHasManagedField(nested, structs)) return null;
             const w = pureScalarStructPackWidth(nested, structs) orelse return null;
             offset = alignUp(offset, 1);
             offset += w;
@@ -18950,14 +18966,44 @@ fn pureScalarStructPackWidth(decl: StructDecl, structs: []const StructDecl) ?usi
     return offset;
 }
 
+/// True when a named struct carries managed payload (directly or nested) and lowers as ARC handle.
+fn structDeclHasManagedField(decl: StructDecl, structs: []const StructDecl) bool {
+    for (decl.fields) |field| {
+        if (type_util.isManagedPayloadType(field.ty)) return true;
+        if (findStructDecl(structs, field.ty)) |nested| {
+            if (structDeclHasManagedField(nested, structs)) return true;
+        }
+    }
+    return false;
+}
+
+/// Terminal pack leaf that is a managed object handle (text / [T] / managed struct).
+fn isPackManagedHandleLeaf(ty: []const u8, structs: []const StructDecl) bool {
+    if (type_util.isManagedPayloadType(ty)) return true;
+    const decl = findStructDecl(structs, ty) orelse return false;
+    return structDeclHasManagedField(decl, structs);
+}
+
+/// Terminal leaf storeable in scheme-A pack (scalar, managed payload, or managed-struct handle).
+fn isPackTerminalLeafType(ty: []const u8, structs: []const StructDecl) bool {
+    if (type_util.isTuplePackableLeafType(ty)) return true;
+    return isPackManagedHandleLeaf(ty, structs);
+}
+
 fn packSlotWidth(ty: []const u8, structs: []const StructDecl) ?usize {
     if (isTupleTypeName(ty)) return tuplePackWidthWithStructs(ty, structs);
-    if (findStructDecl(structs, ty)) |decl| return pureScalarStructPackWidth(decl, structs);
+    if (findStructDecl(structs, ty)) |decl| {
+        if (pureScalarStructPackWidth(decl, structs)) |w| return w;
+        // Managed struct direct slot: one i32 ARC handle (never flatten fields into Tuple).
+        if (structDeclHasManagedField(decl, structs)) return 4;
+        return null;
+    }
     if (type_util.isTuplePackableLeafType(ty)) return typePayloadBytes(ty);
     return null;
 }
 
-/// Scheme A element width with pure-scalar struct direct slots (nested sub-layout, never type-flatten).
+/// Scheme A element width: scalar, managed handle, nested Tuple, pure-scalar struct sub-layout,
+/// or managed-struct handle slot (never type-flatten).
 fn tuplePackWidthWithStructs(tuple_ty: []const u8, structs: []const StructDecl) ?usize {
     if (!isTupleTypeName(tuple_ty)) return null;
     const arity = tupleArity(tuple_ty) orelse return null;
@@ -18983,7 +19029,8 @@ fn tupleElementPackOffsetWithStructs(tuple_ty: []const u8, index: usize, structs
     return offset;
 }
 
-/// Append scalar/managed leaf types in pack order (struct fields expand nested; Tuple expands nested).
+/// Append terminal pack leaf types in order.
+/// Pure-scalar struct fields expand nested; managed-struct slots stay one handle leaf (type name).
 fn appendTupleLeafTypesWithStructs(
     allocator: std.mem.Allocator,
     ty: []const u8,
@@ -19000,6 +19047,11 @@ fn appendTupleLeafTypesWithStructs(
         return;
     }
     if (findStructDecl(structs, ty)) |decl| {
+        if (structDeclHasManagedField(decl, structs)) {
+            // Managed struct: single ARC handle leaf; do not expand fields into the pack.
+            try out.append(allocator, ty);
+            return;
+        }
         if (pureScalarStructPackWidth(decl, structs) == null) return error.UnsupportedTupleStorageLeaf;
         for (decl.fields) |field| {
             try appendTupleLeafTypesWithStructs(allocator, field.ty, structs, out);
@@ -19010,7 +19062,7 @@ fn appendTupleLeafTypesWithStructs(
     try out.append(allocator, ty);
 }
 
-/// Scheme A: packed Tuple storage layout (scalar + managed + pure-scalar struct nested slots).
+/// Scheme A: packed Tuple storage layout (scalar + managed + struct nested slots).
 fn tupleScalarLeafStorageByteWidth(tuple_ty: []const u8) ?usize {
     return type_util.tupleScalarLeafStorageByteWidth(tuple_ty);
 }
@@ -19022,6 +19074,32 @@ fn tupleScalarLeafStorageByteWidthCtx(tuple_ty: []const u8, ctx: CodegenContext)
 
 fn tupleHasManagedPackLeaf(tuple_ty: []const u8) bool {
     return type_util.tupleHasManagedPackLeaf(tuple_ty);
+}
+
+fn tupleHasManagedPackLeafWithStructs(tuple_ty: []const u8, structs: []const StructDecl) bool {
+    if (!isTupleTypeName(tuple_ty)) return false;
+    const arity = tupleArity(tuple_ty) orelse return false;
+    var idx: usize = 0;
+    while (idx < arity) : (idx += 1) {
+        const elem_ty = tupleElementTypeAt(tuple_ty, idx) orelse return false;
+        if (isTupleTypeName(elem_ty)) {
+            if (tupleHasManagedPackLeafWithStructs(elem_ty, structs)) return true;
+            continue;
+        }
+        if (isPackManagedHandleLeaf(elem_ty, structs)) return true;
+    }
+    return false;
+}
+
+fn tupleHasManagedPackLeafCtx(tuple_ty: []const u8, ctx: CodegenContext) bool {
+    if (tupleHasManagedPackLeafWithStructs(tuple_ty, ctx.structs)) return true;
+    return tupleHasManagedPackLeaf(tuple_ty);
+}
+
+fn leafPayloadBytesForPack(leaf_ty: []const u8, structs: []const StructDecl) ?usize {
+    if (type_util.isTuplePackableLeafType(leaf_ty)) return typePayloadBytes(leaf_ty);
+    if (isPackManagedHandleLeaf(leaf_ty, structs)) return 4;
+    return null;
 }
 
 fn storageElementByteWidthForType(elem_ty: []const u8, ctx: CodegenContext) ?usize {
@@ -19063,16 +19141,17 @@ fn appendStoreTupleScalarLeavesFromStackCtx(
     defer allocator.free(offsets);
     var offset: usize = 0;
     for (leaf_types.items, 0..) |leaf_ty, i| {
-        if (!type_util.isTuplePackableLeafType(leaf_ty)) return error.UnsupportedTupleStorageLeaf;
+        const leaf_bytes = leafPayloadBytesForPack(leaf_ty, ctx.structs) orelse return error.UnsupportedTupleStorageLeaf;
         offsets[i] = offset;
-        offset += typePayloadBytes(leaf_ty);
+        offset += leaf_bytes;
     }
 
     var i = leaf_types.items.len;
     while (i > 0) {
         i -= 1;
         const leaf_ty = leaf_types.items[i];
-        const spill = tuplePackSpillLocal(leaf_ty);
+        // Managed-struct handles use the i32 spill path (same as text / [T]).
+        const spill = tuplePackSpillLocal(if (isPackManagedHandleLeaf(leaf_ty, ctx.structs)) "i32" else leaf_ty);
         try appendFmt(allocator, out, "{s}local.set ${s}\n", .{ indent, spill });
         try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
         if (offsets[i] != 0) {
@@ -19080,7 +19159,9 @@ fn appendStoreTupleScalarLeavesFromStackCtx(
             try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
         }
         try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, spill });
-        try payload_wat.appendStoreForPayloadTypeWithIndent(allocator, out, leaf_ty, indent);
+        // Handles and scalars both store as i32/i64/f* payload widths.
+        const store_ty = if (isPackManagedHandleLeaf(leaf_ty, ctx.structs)) "i32" else leaf_ty;
+        try payload_wat.appendStoreForPayloadTypeWithIndent(allocator, out, store_ty, indent);
     }
 }
 
@@ -19120,7 +19201,7 @@ fn appendIncManagedTupleLeavesOnStackCtx(
     try appendTupleLeafTypesWithStructs(allocator, tuple_ty, ctx.structs, &leaf_types);
     var has_managed = false;
     for (leaf_types.items) |leaf_ty| {
-        if (isManagedPayloadType(leaf_ty)) {
+        if (isPackManagedHandleLeaf(leaf_ty, ctx.structs)) {
             has_managed = true;
             break;
         }
@@ -19133,13 +19214,15 @@ fn appendIncManagedTupleLeavesOnStackCtx(
     while (i > 0) {
         i -= 1;
         const leaf_ty = leaf_types.items[i];
-        const spill = tuplePackSpillLocal(leaf_ty);
+        const spill_ty = if (isPackManagedHandleLeaf(leaf_ty, ctx.structs)) "i32" else leaf_ty;
+        // Per-leaf spill: same wasm type (text handle + u8) must not share one temp.
+        const spill = payload_wat.tuplePackSpillLocalAt(spill_ty, i);
         spills[i] = spill;
         try appendFmt(allocator, out, "{s}local.set ${s}\n", .{ indent, spill });
     }
     for (leaf_types.items, 0..) |leaf_ty, idx| {
         try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, spills[idx] });
-        if (isManagedPayloadType(leaf_ty)) {
+        if (isPackManagedHandleLeaf(leaf_ty, ctx.structs)) {
             try appendFmt(allocator, out, "{s};; tuple-pack-managed-leaf-inc\n", .{indent});
             try appendFmt(allocator, out, "{s}call $__arc_inc\n", .{indent});
         }
@@ -19171,14 +19254,15 @@ fn appendLoadTupleScalarLeavesToStackCtx(
 
     var offset: usize = 0;
     for (leaf_types.items) |leaf_ty| {
-        if (!type_util.isTuplePackableLeafType(leaf_ty)) return error.UnsupportedTupleStorageLeaf;
+        const leaf_bytes = leafPayloadBytesForPack(leaf_ty, ctx.structs) orelse return error.UnsupportedTupleStorageLeaf;
         try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
         if (offset != 0) {
             try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });
             try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
         }
-        try payload_wat.appendLoadForPayloadTypeWithIndent(allocator, out, leaf_ty, indent);
-        offset += typePayloadBytes(leaf_ty);
+        const load_ty = if (isPackManagedHandleLeaf(leaf_ty, ctx.structs)) "i32" else leaf_ty;
+        try payload_wat.appendLoadForPayloadTypeWithIndent(allocator, out, load_ty, indent);
+        offset += leaf_bytes;
     }
 }
 
@@ -19228,8 +19312,18 @@ fn appendLoadTupleElementFromPackedBaseCtx(
         return;
     }
     if (findStructDecl(ctx.structs, elem_ty)) |decl| {
+        if (structDeclHasManagedField(decl, ctx.structs)) {
+            // Managed struct slot: load one i32 ARC handle (object stays nested type Cell).
+            try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+            if (elem_offset != 0) {
+                try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_offset });
+                try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
+            }
+            try payload_wat.appendLoadForPayloadTypeWithIndent(allocator, out, "i32", indent);
+            return;
+        }
         if (pureScalarStructPackWidth(decl, ctx.structs) == null) return error.UnsupportedTupleStorageLeaf;
-        // Nested struct subregion: load field leaves onto stack (declaration order).
+        // Nested pure-scalar struct subregion: load field leaves onto stack (declaration order).
         if (elem_offset != 0) {
             try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
             try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_offset });
@@ -19313,7 +19407,7 @@ fn appendLoadTupleElementOwningFromPackedBase(
     try appendLoadTupleElementFromPackedBaseCtx(allocator, out, tuple_ty, elem_index, base_local, indent, ctx);
     if (isTupleTypeName(elem_ty)) {
         try appendIncManagedTupleLeavesOnStackCtx(allocator, out, elem_ty, indent, ctx);
-    } else if (isManagedPayloadType(elem_ty)) {
+    } else if (isPackManagedHandleLeaf(elem_ty, ctx.structs)) {
         try out.appendSlice(allocator, indent);
         try out.appendSlice(allocator, ";; tuple-pack-element-managed-inc\n");
         try out.appendSlice(allocator, indent);
@@ -19328,14 +19422,16 @@ fn emitIncManagedTupleLeavesAtBase(
     tuple_ty: []const u8,
     base_local: []const u8,
     indent: []const u8,
+    ctx: CodegenContext,
 ) CodegenError!void {
-    if (!tupleHasManagedPackLeaf(tuple_ty)) return;
+    if (!tupleHasManagedPackLeafCtx(tuple_ty, ctx)) return;
     var leaf_types = std.ArrayList([]const u8).empty;
     defer leaf_types.deinit(allocator);
-    try appendTupleLeafTypes(allocator, tuple_ty, &leaf_types);
+    try appendTupleLeafTypesWithStructs(allocator, tuple_ty, ctx.structs, &leaf_types);
     var offset: usize = 0;
     for (leaf_types.items) |leaf_ty| {
-        if (isManagedPayloadType(leaf_ty)) {
+        const leaf_bytes = leafPayloadBytesForPack(leaf_ty, ctx.structs) orelse return error.UnsupportedTupleStorageLeaf;
+        if (isPackManagedHandleLeaf(leaf_ty, ctx.structs)) {
             try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
             if (offset != 0) {
                 try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });
@@ -19346,7 +19442,7 @@ fn emitIncManagedTupleLeavesAtBase(
             try appendFmt(allocator, out, "{s}call $__arc_inc\n", .{indent});
             try appendFmt(allocator, out, "{s}drop\n", .{indent});
         }
-        offset += typePayloadBytes(leaf_ty);
+        offset += leaf_bytes;
     }
 }
 
@@ -19356,14 +19452,16 @@ fn emitDecManagedTupleLeavesAtBase(
     tuple_ty: []const u8,
     base_local: []const u8,
     indent: []const u8,
+    ctx: CodegenContext,
 ) CodegenError!void {
-    if (!tupleHasManagedPackLeaf(tuple_ty)) return;
+    if (!tupleHasManagedPackLeafCtx(tuple_ty, ctx)) return;
     var leaf_types = std.ArrayList([]const u8).empty;
     defer leaf_types.deinit(allocator);
-    try appendTupleLeafTypes(allocator, tuple_ty, &leaf_types);
+    try appendTupleLeafTypesWithStructs(allocator, tuple_ty, ctx.structs, &leaf_types);
     var offset: usize = 0;
     for (leaf_types.items) |leaf_ty| {
-        if (isManagedPayloadType(leaf_ty)) {
+        const leaf_bytes = leafPayloadBytesForPack(leaf_ty, ctx.structs) orelse return error.UnsupportedTupleStorageLeaf;
+        if (isPackManagedHandleLeaf(leaf_ty, ctx.structs)) {
             try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
             if (offset != 0) {
                 try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });
@@ -19373,7 +19471,7 @@ fn emitDecManagedTupleLeavesAtBase(
             try appendFmt(allocator, out, "{s};; tuple-pack-leaf-dec-at-base\n", .{indent});
             try appendFmt(allocator, out, "{s}call $__arc_dec\n", .{indent});
         }
-        offset += typePayloadBytes(leaf_ty);
+        offset += leaf_bytes;
     }
 }
 
@@ -19398,18 +19496,18 @@ fn appendLoadPayloadOrTupleToStack(
 }
 
 fn storageTypeIdForElement(elem_ty: []const u8, ctx: CodegenContext) usize {
-    if (isTupleTypeName(elem_ty) and tupleHasManagedPackLeaf(elem_ty)) {
+    if (isTupleTypeName(elem_ty) and tupleHasManagedPackLeafCtx(elem_ty, ctx)) {
         if (findStructLayoutExact(ctx.struct_layouts, elem_ty)) |layout| {
             if (layout.is_storage_pack) return layout.type_id;
         }
     }
-    if (isManagedLocalType(elem_ty, ctx) and storageElementByteWidth(elem_ty) == null and tupleScalarLeafStorageByteWidth(elem_ty) == null)
+    if (isManagedLocalType(elem_ty, ctx) and storageElementByteWidth(elem_ty) == null and tupleScalarLeafStorageByteWidthCtx(elem_ty, ctx) == null)
         return TYPE_ID_STORAGE_MANAGED;
     return TYPE_ID_STORAGE_U8;
 }
 
 fn storagePackLayoutForElem(elem_ty: []const u8, ctx: CodegenContext) ?StructLayout {
-    if (!isTupleTypeName(elem_ty) or !tupleHasManagedPackLeaf(elem_ty)) return null;
+    if (!isTupleTypeName(elem_ty) or !tupleHasManagedPackLeafCtx(elem_ty, ctx)) return null;
     const layout = findStructLayoutExact(ctx.struct_layouts, elem_ty) orelse return null;
     if (!layout.is_storage_pack) return null;
     return layout;

@@ -4,6 +4,9 @@ const type_util = @import("type_name.zig");
 /// WAT emission for scalar payload load/store and scheme-A Tuple leaf pack.
 /// Depends only on type_name + std — no LocalSet / CodegenContext / tokens.
 pub const TUPLE_PACK_SPILL_I32 = "__tuple_pack_spill_i32";
+pub const TUPLE_PACK_SPILL_I32_1 = "__tuple_pack_spill_i32_1";
+pub const TUPLE_PACK_SPILL_I32_2 = "__tuple_pack_spill_i32_2";
+pub const TUPLE_PACK_SPILL_I32_3 = "__tuple_pack_spill_i32_3";
 pub const TUPLE_PACK_SPILL_I64 = "__tuple_pack_spill_i64";
 pub const TUPLE_PACK_SPILL_F32 = "__tuple_pack_spill_f32";
 pub const TUPLE_PACK_SPILL_F64 = "__tuple_pack_spill_f64";
@@ -21,11 +24,22 @@ pub fn wasmType(ty: []const u8) []const u8 {
 }
 
 pub fn tuplePackSpillLocal(ty: []const u8) []const u8 {
+    return tuplePackSpillLocalAt(ty, 0);
+}
+
+/// Spill local for pack leaf `index` (0-based). Same wasm type needs distinct slots so
+/// multi-leaf pop/push (managed inc) does not clobber earlier leaves.
+pub fn tuplePackSpillLocalAt(ty: []const u8, index: usize) []const u8 {
     const wt = wasmType(ty);
     if (std.mem.eql(u8, wt, "i64")) return TUPLE_PACK_SPILL_I64;
     if (std.mem.eql(u8, wt, "f32")) return TUPLE_PACK_SPILL_F32;
     if (std.mem.eql(u8, wt, "f64")) return TUPLE_PACK_SPILL_F64;
-    return TUPLE_PACK_SPILL_I32;
+    return switch (index) {
+        0 => TUPLE_PACK_SPILL_I32,
+        1 => TUPLE_PACK_SPILL_I32_1,
+        2 => TUPLE_PACK_SPILL_I32_2,
+        else => TUPLE_PACK_SPILL_I32_3,
+    };
 }
 
 fn appendFmt(
@@ -259,7 +273,8 @@ pub fn appendIncManagedTupleLeavesOnStack(
     while (i > 0) {
         i -= 1;
         const leaf_ty = leaf_types.items[i];
-        const spill = tuplePackSpillLocal(leaf_ty);
+        // Per-leaf spill slot: text+u8 both lower to i32 and must not share one temp.
+        const spill = tuplePackSpillLocalAt(leaf_ty, i);
         spills[i] = spill;
         try appendFmt(allocator, out, "{s}local.set ${s}\n", .{ indent, spill });
     }

@@ -1,0 +1,6 @@
+(local $__tuple_pack_base_tmp i32)
+(local $__tuple_pack_spill_i32 i32)
+;; storage-put-scalar
+tuple-pack-managed-leaf-inc
+local.set $got.1
+local.set $got.0

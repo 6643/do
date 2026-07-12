@@ -5,12 +5,18 @@
 
 ## 2026-07-12
 
-- 文档: 新增 `doc/pending_blocked.md` — 阻断 (G6)、待处理 (P1 managed struct Tuple 子槽 / P2 泛型左侧反推 / skip)、延期非目标与硬约束; `start_here` / `roadmap_status` / `master_plan` / README 指向该文件
+- codegen: **P1** 含 managed 字段的 struct 作 Tuple storage 直接子槽 (永不拍平)
+  - `items [Tuple<Cell, u8>]` 且 `Cell` 含 `text` → pack 为 **4B ARC 句柄叶子** + 标量槽; 类型仍是 `Cell`, 不展开字段
+  - put/get/path owning load 与 storage pack clone/free 走 `is_storage_pack` managed offset 表
+  - 顺带修: multi-leaf pack 共用 `__tuple_pack_spill_i32` 导致 `text+u8` / `Cell+u8` 叶子互相覆盖 → 按叶子索引用 `_1/_2/_3` spill
+  - fixtures: `compile_ok/273`, `ok/193` (`compiled_must_pass`); 删除旧 `compile_err/339`
+  - 文档: `pending_blocked` P1 关闭; README / start_here / master_plan 同步
+
+- 文档: 新增 `doc/pending_blocked.md` — 阻断 (G6)、待处理 (P2 泛型左侧反推 / skip)、延期非目标与硬约束; `start_here` / `roadmap_status` / `master_plan` / README 指向该文件
 
 - codegen: pure-scalar 具名 struct 作为 Tuple storage **嵌套子槽** (永不拍平)
   - `items [Tuple<Point, u8>]` / `@put` / `@get` / path `@get(items, i, 0)` → `Point`
   - 局部 `Tuple` 槽用位置名 `$pair.0.x` / `$pair.0.y` / `$pair.1` (不是假字段 `v0`)
-  - 含 managed 字段的 struct 槽仍 `UnsupportedTupleStorageLeaf` (`compile_err/339`)
   - fixtures: `compile_ok/272`, `ok/192` (`compiled_must_pass`)
 
 - codegen: Tuple 局部/参数槽位命名 `vN` → 位置下标 `N` (`$pair.0` 而非 `$pair.v0`)
@@ -28,7 +34,7 @@
 - LSP: hover 对当前文件类型声明/引用返回类型名 head (`src/lsp/hover.zig`)
 - 非 G6 todo 清单 drain: push-on-advance 协议 + §9 阻断登记; release smoke 绿- 非 G6 日路径: `UnsupportedTupleStorageLeaf` 专用诊断 + 文档漂移收口
   - 裸 struct 等非 packable 叶子 `[Tuple]` storage 从泛化 `UnsupportedLowering` 拆出独立 code/summary/hint
-  - 反例: `compile_err/339_tuple_non_packable_leaf_storage`
+  - 历史反例 `compile_err/339` 已由 P1 收回 (现 `compile_ok/273` / `ok/193`)
   - 文档: README / start_here / master_plan / roadmap_status / spec_rules / syntax/type 对齐「managed 叶子与 path chain 已落地」
 
 - I2 后置 lowering: managed/`text` 叶子 `[Tuple]` storage + `@get(storage,i,j)` path chaining

@@ -1,7 +1,7 @@
 # 待处理与阻断清单
 
 更新时间: 2026-07-12  
-基线: 默认回归 `pass=915 fail=0 skip=3`; unit `119/119`  
+基线: 默认回归 `pass=916 fail=0 skip=3`; unit `119/119`  
 关系: 总规划 `doc/master_plan.md`; 接手 `doc/start_here.md`; 执行状态 `doc/roadmap_status.md`  
 约定: **只记未关闭项**; 完成后从本文件删除或移入「已关闭摘要」, 并同步入口文档与 `CHANGELOG.md`。
 
@@ -30,18 +30,6 @@
 ---
 
 ## 2. 待处理 (pending) — 语言 / codegen 已知缺口
-
-### P1. Tuple storage: 含 managed 字段的 struct 直接子槽
-
-| 项 | 内容 |
-| --- | --- |
-| 状态 | **pending** |
-| 现象 | `items [Tuple<Cell, u8>]` 且 `Cell` 含 `text`/`[T]` 等 → `UnsupportedTupleStorageLeaf` |
-| 锁点 | `compile_err/339_tuple_non_packable_leaf_storage` |
-| 已支持对照 | pure-scalar `Point` 子槽 (`compile_ok/272`, `ok/192`); 叶子级 `text` (`compile_ok/270`) |
-| 根因摘要 | 标量/pure-scalar 只拷字节; managed 要在 pack 元素的 **clone/覆盖/释放** 路径对句柄 inc/dec。叶子级 `text` 已有 `is_storage_pack` offset 表; **struct 子树内** 的 managed 未接同一套路径 |
-| 硬约束 | **永不拍平**: 不得要求改成扁平 `Tuple<u8,text>`; 保持嵌套 `Cell` 类型与 `@get` 路径 (`spec_rules` Tuple 节) |
-| 恢复条件 | 实现嵌套子布局 + 子树 managed 偏移表 + get/put/path owning load; 改 339 为通过或收窄反例; 回归绿 |
 
 ### P2. 泛型递归: 仅靠左侧目标类型反推
 
@@ -100,6 +88,7 @@
 
 - pure-scalar struct 作为 Tuple storage 嵌套子槽 (`compile_ok/272`, `ok/192`; 局部名 `$pair.0.x`)
 - managed/`text` 作为 Tuple **直接叶子** storage + path chain (`compile_ok/270`–`271`)
+- **P1** 含 managed 字段的 struct 作 Tuple 直接子槽: 句柄叶子 + storage pack ARC (`compile_ok/273`, `ok/193`; 不拍平 `Cell` 字段)
 - pure-scalar field-reflect `field_set` 误 shadow (`ok/191`)
 - 阶段 A–F、H、I (I1+I2) 主线; G1–G5、G6.4
 
@@ -109,7 +98,7 @@
 
 1. 发布候选维护 (回归红灯 / 文档漂移)  
 2. **等 G6.1–G6.3 决策** (blocked)  
-3. 可选授权: **P1** managed struct Tuple 子槽 → 再 JSON/ownership/LSP 等 deferred  
+3. 可选授权: deferred 项 (ownership / JSON / LSP / codegen 再拆) — 默认不自动开做  
 4. **P2** 默认不改; 除非产品明确要左侧反推  
 
 用户说 `go` / `next` 时以 `doc/start_here.md` §6 为准, 细节以本文件为准。

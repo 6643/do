@@ -6,7 +6,7 @@
 
 1. [README.md](../README.md) — 能力摘要、非目标、下一阶段计划
 2. [CHANGELOG.md](../CHANGELOG.md) — 近期已完成变更
-3. [doc/pending_blocked.md](pending_blocked.md) — **待处理与阻断** (G6 / P1–P2 / deferred / skip)
+3. [doc/pending_blocked.md](pending_blocked.md) — **待处理与阻断** (G6 / P2 / deferred / skip)
 4. [doc/master_plan.md](master_plan.md) — 当前规划摘要
 5. [doc/roadmap_status.md](roadmap_status.md) — 当前执行状态
 6. [doc/memory.md](memory.md) — 运行时 / ARC 实现 (按需)
@@ -40,7 +40,7 @@
 ```bash
 # 默认完整回归 (当前基线)
 ./src/build/test/run_tests.sh
-# 期望: pass=915 fail=0 skip=3
+# 期望: pass=916 fail=0 skip=3
 
 # 聚合单元测试
 cd src && zig test main.zig
@@ -59,7 +59,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 
 | 基线项 | 最近值 |
 | --- | --- |
-| 默认回归 | `pass=915 fail=0 skip=3` |
+| 默认回归 | `pass=916 fail=0 skip=3` |
 | 聚合 unit | `119/119` |
 | `compile_ok` / `compiled_ok` / `compile_err` | do≈`272` / `77` / `39` |
 | 剩余 skip | `16_loop_recv_value`、`96_file_lib_resource_shape`、`118_wasi_p3_std_wrappers` (recv/WASI 后置) |
@@ -94,7 +94,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | G6.3 | sockets resource + variant | socket wrapper 与 address variant 映射决策 |
 | 06.2 | 已拆到 G2–G6; 剩余由 G6.1–G6.3 承接 | 同上 |
 
-**待处理 / 阻断 / 延期**: 权威清单见 [pending_blocked.md](pending_blocked.md) (G6 blocked、P1 managed struct Tuple 子槽、P2 泛型左侧反推、skip、deferred 非目标)。
+**待处理 / 阻断 / 延期**: 权威清单见 [pending_blocked.md](pending_blocked.md) (G6 blocked、P2 泛型左侧反推、skip、deferred 非目标)。
 
 已落地对照 (勿当待办): pure-scalar Tuple 子槽 `ok/192`; managed 叶子 storage `compile_ok/270`–`271`; field_set `ok/191`。
 
@@ -104,7 +104,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 
 1. **发布候选维护**: 回归红灯、文档漂移、可独立验证的小修
 2. **等待决策**: G6.1 / G6.3 公开 API; G6.2 依赖 async runtime 立项
-3. **可选授权**: P1 managed struct Tuple 子槽; 或 deferred 项 (ownership / JSON / LSP / codegen 再拆) — 默认不自动开做
+3. **可选授权**: deferred 项 (ownership / JSON / LSP / codegen 再拆) — 默认不自动开做
 
 **已关闭边界速查**:
 
