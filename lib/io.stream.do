@@ -1,8 +1,9 @@
 // Declarative stream hosts first (import prefix), then resource shells.
-.host_input_read = @wasi_func("io/streams/input-stream.read", (i32, u64) -> result<[u8],stream-error>)
-.host_output_check_write = @wasi_func("io/streams/output-stream.check-write", (i32) -> result<u64,stream-error>)
-.host_output_write = @wasi_func("io/streams/output-stream.write", (i32, [u8]) -> result<_,stream-error>)
-.host_output_flush = @wasi_func("io/streams/output-stream.flush", (i32) -> result<_,stream-error>)
+// Unit/u64 fallible use Ok|Err; read list-union not ready (multi-lhs).
+.host_input_read = @wasi_func("io/streams/input-stream.read", (InputStream, u64) -> result<[u8],stream-error>)
+.host_output_check_write = @wasi_func("io/streams/output-stream.check-write", (OutputStream) -> u64 | i32)
+.host_output_write = @wasi_func("io/streams/output-stream.write", (OutputStream, [u8]) -> nil | i32)
+.host_output_flush = @wasi_func("io/streams/output-stream.flush", (OutputStream) -> nil | i32)
 
 InputStream = @wasi_resource("io/streams/input-stream", {
     .id i64
@@ -23,36 +24,37 @@ StreamError error = StreamClosed | StreamReadFailed | StreamCheckWriteFailed | S
     return @get(stream, .id)
 }
 
+// status from nil|i32 / u64|i32 err arm is error-code+1 (never 0); 1 => closed.
 .stream_status_to_error(code i32, fallback StreamError) -> StreamError | nil {
     if @eq(code, 0) return nil
     if @eq(code, 1) return StreamClosed
     return fallback
 }
 
+// Read still multi-lhs until list-in-union lands.
 read_stream(stream InputStream, size usize) -> [u8], StreamError | nil {
     data [u8] = .{}
     status i32 = 0
-    data, status = host_input_read(@as(i32, stream_id(stream)), @as(u64, size))
+    data, status = host_input_read(stream, @as(u64, size))
     return data, stream_status_to_error(status, StreamReadFailed)
 }
 
 check_write_stream(stream OutputStream) -> u64, StreamError | nil {
-    allowed u64 = 0
-    status i32 = 0
-    allowed, status = host_output_check_write(@as(i32, output_stream_id(stream)))
-    return allowed, stream_status_to_error(status, StreamCheckWriteFailed)
+    n u64 | i32 = host_output_check_write(stream)
+    if @is(n, u64) return n, nil
+    return 0, stream_status_to_error(n, StreamCheckWriteFailed)
 }
 
 write_stream(stream OutputStream, data [u8]) -> StreamError | nil {
-    status i32 = 0
-    _, status = host_output_write(@as(i32, output_stream_id(stream)), data)
-    return stream_status_to_error(status, StreamWriteFailed)
+    s nil | i32 = host_output_write(stream, data)
+    if @eq(s, nil) return nil
+    return stream_status_to_error(s, StreamWriteFailed)
 }
 
 flush_stream(stream OutputStream) -> StreamError | nil {
-    status i32 = 0
-    _, status = host_output_flush(@as(i32, output_stream_id(stream)))
-    return stream_status_to_error(status, StreamFlushFailed)
+    s nil | i32 = host_output_flush(stream)
+    if @eq(s, nil) return nil
+    return stream_status_to_error(s, StreamFlushFailed)
 }
 
 is_stream_closed(err StreamError) -> bool {

@@ -2,6 +2,5 @@
 call $open_file_at
 (func $open_file_at (param $dir.id i64) (param $path i32) (result i64 i32 i32)
 call $__wasi_import_filesystem_types_descriptor_open_at
-local.set $status
-local.set $descriptor
-call $__mod_0__file_status_to_open_result
+local.set $r.__union_tag
+local.set $r.__union_payload_0

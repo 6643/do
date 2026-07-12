@@ -5082,11 +5082,13 @@ const KnownWasiSignature = struct {
     result: []const u8,
     /// Optional do-side signature accepted as sugar for the same target (stored as WIT form for codegen).
     do_params: ?[]const u8 = null,
-    /// Second accepted do-side params form (e.g. resource name vs i32 sugar).
+    /// Additional accepted do-side params forms (resource names vs i32 sugar).
     do_params_alt: ?[]const u8 = null,
+    do_params_alt2: ?[]const u8 = null,
     do_result: ?[]const u8 = null,
-    /// Second accepted do-side result form (e.g. `Dir|i32` vs transitional `result<…>`).
+    /// Additional accepted do-side result forms (e.g. `Dir|i32` / `File|i32` vs transitional `result<…>`).
     do_result_alt: ?[]const u8 = null,
+    do_result_alt2: ?[]const u8 = null,
     result_record: ?KnownWasiRecord = null,
 };
 
@@ -5120,10 +5122,12 @@ fn validateKnownWasiSignature(
     }
     const params_ok = compactTokenRangeEquals(tokens, sig_start + 1, close_idx, known.params) or
         (known.do_params != null and compactTokenRangeEquals(tokens, sig_start + 1, close_idx, known.do_params.?)) or
-        (known.do_params_alt != null and compactTokenRangeEquals(tokens, sig_start + 1, close_idx, known.do_params_alt.?));
+        (known.do_params_alt != null and compactTokenRangeEquals(tokens, sig_start + 1, close_idx, known.do_params_alt.?)) or
+        (known.do_params_alt2 != null and compactTokenRangeEquals(tokens, sig_start + 1, close_idx, known.do_params_alt2.?));
     const result_ok = compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.result) or
         (known.do_result != null and compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.do_result.?)) or
-        (known.do_result_alt != null and compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.do_result_alt.?));
+        (known.do_result_alt != null and compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.do_result_alt.?)) or
+        (known.do_result_alt2 != null and compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.do_result_alt2.?));
     if (!params_ok or !result_ok) {
         return markErrorAt(tokens, site_idx, error.InvalidImportDecl);
     }
@@ -5139,6 +5143,7 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .params = "descriptor,list<u8>,filesize",
             .result = "result<filesize,error-code>",
             .do_params = "i32,[u8],u64",
+            .do_params_alt = "File,[u8],u64",
             // Transitional multi-lhs form still accepted.
             .do_result = "result<u64,error-code>",
             // Exclusive union: ok = filesize u64, err = status i32 (error-code+1).
@@ -5149,6 +5154,7 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .params = "descriptor,filesize,filesize",
             .result = "result<tuple<list<u8>,bool>,error-code>",
             .do_params = "i32,u64,u64",
+            .do_params_alt = "File,u64,u64",
             .do_result = "result<tuple<[u8],bool>,error-code>",
         },
         .{
@@ -5156,6 +5162,7 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .params = "descriptor",
             .result = "result<_,error-code>",
             .do_params = "i32",
+            .do_params_alt = "File",
             // Do exclusive union sugar: nil = ok, i32 = status (error-code+1; 0 never on err arm).
             .do_result = "nil|i32",
         },
@@ -5164,29 +5171,37 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .params = "descriptor,path-flags,text,borrow<descriptor>,text",
             .result = "result<_,error-code>",
             .do_params = "i32,i32,text,i32,text",
+            .do_params_alt = "File,i32,text,File,text",
+            .do_result = "nil|i32",
         },
         .{
             .target = "filesystem/types/descriptor.create-directory-at",
             .params = "descriptor,text",
             .result = "result<_,error-code>",
             .do_params = "i32,text",
+            .do_params_alt = "Dir,text",
+            .do_result = "nil|i32",
         },
         .{
             .target = "filesystem/types/descriptor.open-at",
             .params = "descriptor,path-flags,text,open-flags,descriptor-flags",
             .result = "result<descriptor,error-code>",
             .do_params = "i32,i32,text,i32,i32",
-            // Resource handle sugar: parent Dir lowers via .id.
+            // Resource handle sugar: parent Dir/File lowers via .id.
             .do_params_alt = "Dir,i32,text,i32,i32",
+            .do_params_alt2 = "File,i32,text,i32,i32",
             .do_result = "result<i32,error-code>",
-            // Exclusive union: ok = Dir (.id from descriptor), err = status i32 (error-code+1).
+            // Exclusive union: ok = Dir/File (.id from descriptor), err = status i32 (error-code+1).
             .do_result_alt = "Dir|i32",
+            .do_result_alt2 = "File|i32",
         },
         .{
             .target = "filesystem/types/descriptor.remove-directory-at",
             .params = "descriptor,text",
             .result = "result<_,error-code>",
             .do_params = "i32,text",
+            .do_params_alt = "Dir,text",
+            .do_result = "nil|i32",
         },
         .{ .target = "filesystem/types/descriptor.read-directory", .params = "descriptor", .result = "tuple<stream<directory-entry>,future<result<_,error-code>>>" },
         .{
@@ -5194,6 +5209,8 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .params = "descriptor",
             .result = "nil",
             .do_params = "i32",
+            .do_params_alt = "Dir",
+            .do_params_alt2 = "File",
         },
         .{
             .target = "filesystem/preopens/get-directories",
@@ -5206,6 +5223,7 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .params = "input-stream,u64",
             .result = "result<list<u8>,stream-error>",
             .do_params = "i32,u64",
+            .do_params_alt = "InputStream,u64",
             .do_result = "result<[u8],stream-error>",
         },
         .{
@@ -5213,18 +5231,25 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .params = "output-stream",
             .result = "result<u64,stream-error>",
             .do_params = "i32",
+            .do_params_alt = "OutputStream",
+            // Same exclusive-union shape as filesize write (ok u64, err status i32).
+            .do_result = "u64|i32",
         },
         .{
             .target = "io/streams/output-stream.write",
             .params = "output-stream,list<u8>",
             .result = "result<_,stream-error>",
             .do_params = "i32,[u8]",
+            .do_params_alt = "OutputStream,[u8]",
+            .do_result = "nil|i32",
         },
         .{
             .target = "io/streams/output-stream.flush",
             .params = "output-stream",
             .result = "result<_,stream-error>",
             .do_params = "i32",
+            .do_params_alt = "OutputStream",
+            .do_result = "nil|i32",
         },
         .{ .target = "sockets/types/tcp-socket.create", .params = "ip-address-family", .result = "result<tcp-socket,error-code>" },
         .{ .target = "sockets/types/tcp-socket.bind", .params = "tcp-socket,ip-socket-address", .result = "result<_,error-code>" },

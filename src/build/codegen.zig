@@ -8947,10 +8947,38 @@ fn wasiHostImportUseIsLowerableAtCall(
     import: WasiHostImport,
 ) bool {
     const lowering = wasiLowering(import) orelse return false;
-    if (lowering.result_link_at_error) return isWasiResultUnitStatusMultiAssignmentCall(tokens, call_idx);
+    // link-at: multi-lhs `_, status =` or exclusive-union binding `s nil|i32 =` / statement discard.
+    if (lowering.result_link_at_error) {
+        return isWasiResultUnitStatusMultiAssignmentCall(tokens, call_idx) or
+            isWasiUnionResultBindingCall(tokens, call_idx) or
+            isBareWasiHostCallStatement(tokens, call_idx);
+    }
     if (lowering.result_read_error) return isWasiResultReadMultiAssignmentCall(tokens, call_idx);
     if (lowering.result_list_u8_error) return isWasiResultListU8StatusMultiAssignmentCall(tokens, call_idx);
     return true;
+}
+
+/// Typed exclusive-union binding of a host call: `r T | U = host(...)`.
+fn isWasiUnionResultBindingCall(tokens: []const lexer.Token, call_idx: usize) bool {
+    const line_start = findLineStart(tokens, call_idx);
+    const line_end = findLineEnd(tokens, call_idx);
+    const eq_idx = findTopLevelToken(tokens, line_start, call_idx, "=") orelse return false;
+    // Must look like a typed binding (ident + type with `|`), not multi-lhs.
+    if (findTopLevelToken(tokens, line_start, eq_idx, ",") != null) return false;
+    if (findTopLevelToken(tokens, line_start, eq_idx, "|") == null) return false;
+    const rhs_range = trimParens(tokens, eq_idx + 1, line_end);
+    const call_head = exprCallHead(tokens, rhs_range) orelse return false;
+    return !call_head.is_intrinsic and call_head.name_idx == call_idx;
+}
+
+fn isBareWasiHostCallStatement(tokens: []const lexer.Token, call_idx: usize) bool {
+    const line_start = findLineStart(tokens, call_idx);
+    const line_end = findLineEnd(tokens, call_idx);
+    // Statement form: host(...) alone on the line (no `=`).
+    if (findTopLevelToken(tokens, line_start, call_idx, "=") != null) return false;
+    const range = trimParens(tokens, line_start, line_end);
+    const call_head = exprCallHead(tokens, range) orelse return false;
+    return !call_head.is_intrinsic and call_head.name_idx == call_idx;
 }
 
 fn isWasiResultUnitStatusMultiAssignmentCall(tokens: []const lexer.Token, call_idx: usize) bool {
@@ -16264,7 +16292,8 @@ fn emitWasiResourceDropCall(
 ) CodegenError!bool {
     const arg_end = findArgEnd(tokens, args_start, args_end);
     if (arg_end != args_end) return error.NoMatchingCall;
-    if (!try emitExpr(allocator, tokens, args_start, arg_end, locals, ctx, "i32", out)) {
+    // Bare i32 or resource shell (Dir/File) via `.id`.
+    if (!try emitWasiDescriptorHandleArg(allocator, tokens, args_start, arg_end, locals, ctx, out)) {
         return error.NoMatchingCall;
     }
     try out.appendSlice(allocator, "    call $");
@@ -16365,7 +16394,8 @@ fn emitWasiResultUnitCall(
     }
     const arg_end = findArgEnd(tokens, args_start, args_end);
     if (arg_end == args_start or arg_end != args_end) return error.NoMatchingCall;
-    if (!try emitExpr(allocator, tokens, args_start, arg_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
+    // Bare i32 or File/OutputStream resource shell via `.id`.
+    if (!try emitWasiDescriptorHandleArg(allocator, tokens, args_start, arg_end, locals, ctx, out)) return error.NoMatchingCall;
     try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
     try out.appendSlice(allocator, "    call $");
     try appendWasiImportSymbol(allocator, out, import.target);
@@ -16395,7 +16425,8 @@ fn emitWasiResultDescriptorPathCall(
     const path_end = findArgEnd(tokens, path_start, args_end);
     if (path_end == path_start or path_end != args_end) return error.NoMatchingCall;
 
-    if (!try emitExpr(allocator, tokens, args_start, descriptor_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
+    // Bare i32 or Dir resource shell via `.id`.
+    if (!try emitWasiDescriptorHandleArg(allocator, tokens, args_start, descriptor_end, locals, ctx, out)) return error.NoMatchingCall;
     if (!try emitWasiStringArg(allocator, tokens, path_start, path_end, locals, ctx, out)) return error.NoMatchingCall;
     try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
     try out.appendSlice(allocator, "    call $");
@@ -16422,7 +16453,8 @@ fn emitWasiResultOutputWriteCall(
     const data_end = findArgEnd(tokens, data_start, args_end);
     if (data_end == data_start or data_end != args_end) return error.NoMatchingCall;
 
-    if (!try emitExpr(allocator, tokens, args_start, stream_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
+    // Bare i32 or OutputStream resource shell via `.id`.
+    if (!try emitWasiDescriptorHandleArg(allocator, tokens, args_start, stream_end, locals, ctx, out)) return error.NoMatchingCall;
     if (!try emitWasiListU8Arg(allocator, tokens, data_start, data_end, locals, out)) return error.NoMatchingCall;
     try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
     try out.appendSlice(allocator, "    call $");
@@ -16517,10 +16549,11 @@ fn emitWasiResultLinkAtCall(
     if (!std.mem.eql(u8, import.target, "filesystem/types/descriptor.link-at")) return false;
     const args = parseWasiLinkAtArgs(tokens, args_start, args_end) orelse return error.NoMatchingCall;
 
-    if (!try emitExpr(allocator, tokens, args.descriptor_start, args.descriptor_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
+    // Bare i32 or File resource shells via `.id` for both descriptor args.
+    if (!try emitWasiDescriptorHandleArg(allocator, tokens, args.descriptor_start, args.descriptor_end, locals, ctx, out)) return error.NoMatchingCall;
     if (!try emitExpr(allocator, tokens, args.old_flags_start, args.old_flags_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
     if (!try emitWasiStringArg(allocator, tokens, args.old_path_start, args.old_path_end, locals, ctx, out)) return error.NoMatchingCall;
-    if (!try emitExpr(allocator, tokens, args.new_descriptor_start, args.new_descriptor_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
+    if (!try emitWasiDescriptorHandleArg(allocator, tokens, args.new_descriptor_start, args.new_descriptor_end, locals, ctx, out)) return error.NoMatchingCall;
     if (!try emitWasiStringArg(allocator, tokens, args.new_path_start, args.new_path_end, locals, ctx, out)) return error.NoMatchingCall;
     try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
     try out.appendSlice(allocator, "    call $");
@@ -16614,7 +16647,8 @@ fn emitWasiResultFilesizeCall(
     const offset_end = findArgEnd(tokens, offset_start, args_end);
     if (offset_end == offset_start or offset_end != args_end) return error.NoMatchingCall;
 
-    if (!try emitExpr(allocator, tokens, args_start, descriptor_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
+    // Bare i32 or File resource shell via `.id`.
+    if (!try emitWasiDescriptorHandleArg(allocator, tokens, args_start, descriptor_end, locals, ctx, out)) return error.NoMatchingCall;
     if (!try emitWasiListU8Arg(allocator, tokens, buffer_start, buffer_end, locals, out)) return error.NoMatchingCall;
     if (!try emitExpr(allocator, tokens, offset_start, offset_end, locals, ctx, "u64", out)) return error.NoMatchingCall;
     try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
@@ -16639,7 +16673,8 @@ fn emitWasiResultU64StreamCall(
     const stream_end = findArgEnd(tokens, args_start, args_end);
     if (stream_end == args_start or stream_end != args_end) return error.NoMatchingCall;
 
-    if (!try emitExpr(allocator, tokens, args_start, stream_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
+    // Bare i32 or OutputStream resource shell via `.id`.
+    if (!try emitWasiDescriptorHandleArg(allocator, tokens, args_start, stream_end, locals, ctx, out)) return error.NoMatchingCall;
     try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
     try out.appendSlice(allocator, "    call $");
     try appendWasiImportSymbol(allocator, out, import.target);
@@ -16668,7 +16703,8 @@ fn emitWasiResultReadCall(
     const offset_end = findArgEnd(tokens, offset_start, args_end);
     if (offset_end == offset_start or offset_end != args_end) return error.NoMatchingCall;
 
-    if (!try emitExpr(allocator, tokens, args_start, descriptor_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
+    // Bare i32 or File resource shell via `.id`.
+    if (!try emitWasiDescriptorHandleArg(allocator, tokens, args_start, descriptor_end, locals, ctx, out)) return error.NoMatchingCall;
     if (!try emitExpr(allocator, tokens, length_start, length_end, locals, ctx, "u64", out)) return error.NoMatchingCall;
     if (!try emitExpr(allocator, tokens, offset_start, offset_end, locals, ctx, "u64", out)) return error.NoMatchingCall;
     try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
@@ -16696,7 +16732,8 @@ fn emitWasiResultListU8Call(
     const len_end = findArgEnd(tokens, len_start, args_end);
     if (len_end == len_start or len_end != args_end) return error.NoMatchingCall;
 
-    if (!try emitExpr(allocator, tokens, args_start, stream_end, locals, ctx, "i32", out)) return error.NoMatchingCall;
+    // Bare i32 or InputStream resource shell via `.id`.
+    if (!try emitWasiDescriptorHandleArg(allocator, tokens, args_start, stream_end, locals, ctx, out)) return error.NoMatchingCall;
     if (!try emitExpr(allocator, tokens, len_start, len_end, locals, ctx, "u64", out)) return error.NoMatchingCall;
     try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
     try out.appendSlice(allocator, "    call $");
@@ -16785,8 +16822,8 @@ fn emitWasiUnitResultAsUnionValue(
     return true;
 }
 
-/// Lower `result<filesize,error-code>` into exclusive union stack: e.g. `u64 | i32`.
-/// Ok arm is written filesize (u64/i64); err arm is status i32 (error-code+1; 0 never on err arm).
+/// Lower `result<filesize,error-code>` / stream check-write into exclusive union: e.g. `u64 | i32`.
+/// Ok arm is written filesize/allowed (u64); err arm is status i32 (error-code+1; 0 never on err arm).
 fn emitWasiFilesizeResultAsUnionValue(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -16799,7 +16836,8 @@ fn emitWasiFilesizeResultAsUnionValue(
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     const lowering = wasiLowering(import) orelse return false;
-    if (!lowering.result_filesize_error) return false;
+    // Same result-area layout for write filesize and stream check-write u64.
+    if (!lowering.result_filesize_error and !lowering.result_u64_stream_error) return false;
     if (layout.branches.len != 2) return false;
 
     var ok_branch: ?UnionBranch = null;
@@ -16828,7 +16866,11 @@ fn emitWasiFilesizeResultAsUnionValue(
     const err = err_branch orelse return false;
     if (layout.payload_tys.len != 2) return false;
 
-    if (!try emitWasiResultFilesizeCall(allocator, tokens, args_start, args_end, locals, ctx, import, out)) {
+    if (lowering.result_filesize_error) {
+        if (!try emitWasiResultFilesizeCall(allocator, tokens, args_start, args_end, locals, ctx, import, out)) {
+            return error.NoMatchingCall;
+        }
+    } else if (!try emitWasiResultU64StreamCall(allocator, tokens, args_start, args_end, locals, ctx, import, out)) {
         return error.NoMatchingCall;
     }
 
