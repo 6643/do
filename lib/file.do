@@ -1,6 +1,6 @@
 // Declarative WASI: @wasi_func hosts first, then resource shell. Public wrappers unchanged.
-// Hosts use Ok|Err / File params where Task 1–3 enable; read tuple-union not ready (multi-lhs).
-.host_file_read = @wasi_func("filesystem/types/descriptor.read", (File, u64, u64) -> result<tuple<[u8],bool>,error-code>)
+// Hosts use Ok|Err / File params; read host is Tuple-in-result union.
+.host_file_read = @wasi_func("filesystem/types/descriptor.read", (File, u64, u64) -> Tuple<[u8], bool> | i32)
 .host_file_sync = @wasi_func("filesystem/types/descriptor.sync", (File) -> nil | i32)
 .host_file_write = @wasi_func("filesystem/types/descriptor.write", (File, [u8], u64) -> u64 | i32)
 .host_file_link_at = @wasi_func("filesystem/types/descriptor.link-at", (File, i32, text, File, text) -> nil | i32)
@@ -41,7 +41,7 @@ flush_file(file File) -> FileError | nil {
     return file_status_to_error(s, FileFlushFailed)
 }
 
-// Read still multi-lhs until Tuple-in-union lands.
+// Host is Tuple<[u8],bool>|i32; multi-lhs still lowers via tuple result-area (stable ARC for return).
 read_file(file File, offset usize, size usize) -> [u8], bool, FileError | nil {
     data [u8] = .{}
     done bool = false

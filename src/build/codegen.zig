@@ -8953,7 +8953,11 @@ fn wasiHostImportUseIsLowerableAtCall(
             isWasiUnionResultBindingCall(tokens, call_idx) or
             isBareWasiHostCallStatement(tokens, call_idx);
     }
-    if (lowering.result_read_error) return isWasiResultReadMultiAssignmentCall(tokens, call_idx);
+    // tuple-in-result: multi-lhs `data, done, status =` or exclusive-union `Tuple<[u8],bool> | i32 =`.
+    if (lowering.result_read_error) {
+        return isWasiResultReadMultiAssignmentCall(tokens, call_idx) or
+            isWasiUnionResultBindingCall(tokens, call_idx);
+    }
     // list-in-result: multi-lhs `data, status =` or exclusive-union `[u8] | i32 =`.
     if (lowering.result_list_u8_error) {
         return isWasiResultListU8StatusMultiAssignmentCall(tokens, call_idx) or
@@ -13477,6 +13481,11 @@ fn appendUnionBranchPayloadTypes(
             return;
         }
     }
+    // Tuple-in-union: flatten leaf ABI slots (e.g. Tuple<[u8],bool> → [u8], bool).
+    if (isTupleTypeName(ty)) {
+        try appendTupleLeafTypesWithStructs(allocator, ty, structs, out);
+        return;
+    }
     if (isCoreWasmScalar(ty) or isErrorLikeType(tokens, ty) or managedPayloadElemTypeFromName(ty) != null or findStructLayout(struct_layouts, ty) != null) {
         try out.append(allocator, ty);
         return;
@@ -14299,7 +14308,7 @@ fn emitUnionBinding(
                     }
                 }
             }
-            // Fallible host result-area → exclusive do union (`nil|i32`, `Dir|i32`, `u64|i32`, `[u8]|i32`, …).
+            // Fallible host result-area → exclusive do union (`nil|i32`, `Dir|i32`, `u64|i32`, `[u8]|i32`, Tuple|i32, …).
             if (findWasiHostImportForTokens(ctx, tokens, tokens[call_head.name_idx].lexeme)) |wasi_import| {
                 if (try emitWasiUnitResultAsUnionValue(
                     allocator,
@@ -14332,6 +14341,16 @@ fn emitUnionBinding(
                     union_local.layout,
                     out,
                 ) or try emitWasiListU8ResultAsUnionValue(
+                    allocator,
+                    tokens,
+                    call_head.args_start,
+                    call_head.args_end,
+                    locals,
+                    ctx,
+                    wasi_import,
+                    union_local.layout,
+                    out,
+                ) or try emitWasiReadResultAsUnionValue(
                     allocator,
                     tokens,
                     call_head.args_start,
@@ -16921,6 +16940,129 @@ fn emitWasiFilesizeResultAsUnionValue(
             try out.appendSlice(allocator,
                 \\      global.get $__wasi_result_area_base
                 \\      i32.const 8
+                \\      i32.add
+                \\      i32.load
+                \\      i32.const 1
+                \\      i32.add
+                \\
+            );
+        } else {
+            try appendFmt(allocator, out, "      {s}.const 0\n", .{codegenWasmType(ctx, payload_ty)});
+        }
+    }
+    try appendFmt(allocator, out, "      i32.const {d}\n", .{err.tag});
+    try out.appendSlice(allocator, "    end\n");
+    return true;
+}
+
+/// Lower `result<tuple<list<u8>,bool>,error-code>` into exclusive union: e.g. `Tuple<[u8], bool> | i32`.
+/// Ok arm is flattened tuple leaves (storage handle + bool); err arm is status i32 (error-code+1).
+fn emitWasiReadResultAsUnionValue(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    args_start: usize,
+    args_end: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    import: WasiHostImport,
+    layout: UnionLayout,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    const lowering = wasiLowering(import) orelse return false;
+    if (!lowering.result_read_error) return false;
+    if (layout.branches.len != 2) return false;
+
+    var ok_branch: ?UnionBranch = null;
+    var err_branch: ?UnionBranch = null;
+    for (layout.branches) |branch| {
+        if (std.mem.eql(u8, branch.ty, "i32") and branch.payload_len == 1 and
+            branch.payload_start < layout.payload_tys.len and
+            std.mem.eql(u8, layout.payload_tys[branch.payload_start], "i32"))
+        {
+            if (err_branch != null) return false;
+            err_branch = branch;
+            continue;
+        }
+        // Ok arm: Tuple<[u8], bool> → two leaf slots.
+        if (isTupleTypeName(branch.ty) and branch.payload_len == 2 and
+            branch.payload_start + 1 < layout.payload_tys.len and
+            std.mem.eql(u8, layout.payload_tys[branch.payload_start], "[u8]") and
+            std.mem.eql(u8, layout.payload_tys[branch.payload_start + 1], "bool"))
+        {
+            if (ok_branch != null) return false;
+            ok_branch = branch;
+            continue;
+        }
+        return false;
+    }
+    const ok = ok_branch orelse return false;
+    const err = err_branch orelse return false;
+    if (layout.payload_tys.len != 3) return false;
+    if (!std.mem.eql(u8, ok.ty, "Tuple<[u8],bool>") and !std.mem.eql(u8, ok.ty, "Tuple<[u8], bool>")) {
+        // Compact source_ty from tokens drops spaces; branch.ty is compact.
+        // Accept only the two-leaf shape already checked above.
+        if (!(isTupleTypeName(ok.ty) and
+            std.mem.eql(u8, layout.payload_tys[ok.payload_start], "[u8]") and
+            std.mem.eql(u8, layout.payload_tys[ok.payload_start + 1], "bool")))
+        {
+            return false;
+        }
+    }
+
+    if (!try emitWasiResultReadCall(allocator, tokens, args_start, args_end, locals, ctx, import, out)) {
+        return error.NoMatchingCall;
+    }
+
+    // Stack: payload slots…, tag (matches emitUnionValue / multi-lhs data,done,status order).
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
+    try out.appendSlice(allocator, "    i32.load\n");
+    try out.appendSlice(allocator, "    i32.eqz\n");
+    try out.appendSlice(allocator, "    if (result");
+    for (layout.payload_tys) |payload_ty| {
+        try appendFmt(allocator, out, " {s}", .{codegenWasmType(ctx, payload_ty)});
+    }
+    try out.appendSlice(allocator, " i32)\n");
+
+    // ok: list→storage + done bool; zero err slot; ok tag
+    for (layout.payload_tys, 0..) |payload_ty, idx| {
+        if (idx == ok.payload_start) {
+            try out.appendSlice(allocator,
+                \\      global.get $__wasi_result_area_base
+                \\      i32.const 4
+                \\      i32.add
+                \\      i32.load
+                \\      global.get $__wasi_result_area_base
+                \\      i32.const 8
+                \\      i32.add
+                \\      i32.load
+                \\      call $__wasi_list_u8_to_storage
+                \\
+            );
+        } else if (idx == ok.payload_start + 1) {
+            try out.appendSlice(allocator,
+                \\      global.get $__wasi_result_area_base
+                \\      i32.const 12
+                \\      i32.add
+                \\      i32.load8_u
+                \\
+            );
+        } else {
+            try appendFmt(allocator, out, "      {s}.const 0\n", .{codegenWasmType(ctx, payload_ty)});
+        }
+    }
+    try appendFmt(allocator, out, "      i32.const {d}\n", .{ok.tag});
+
+    try out.appendSlice(allocator, "    else\n");
+    // err: empty storage + false done in ok slots; status = error-code + 1 at +4; err tag
+    for (layout.payload_tys, 0..) |payload_ty, idx| {
+        if (idx == ok.payload_start) {
+            try emitEmptyStorageU8Value(allocator, out);
+        } else if (idx == ok.payload_start + 1) {
+            try out.appendSlice(allocator, "      i32.const 0\n");
+        } else if (idx == err.payload_start) {
+            try out.appendSlice(allocator,
+                \\      global.get $__wasi_result_area_base
+                \\      i32.const 4
                 \\      i32.add
                 \\      i32.load
                 \\      i32.const 1

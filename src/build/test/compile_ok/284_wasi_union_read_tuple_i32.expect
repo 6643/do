@@ -1,0 +1,7 @@
+;; wasi-bind
+filesystem/types/descriptor.read
+result<tuple<list<u8>,bool>,error-code>
+[method]descriptor.read
+__wasi_list_u8_to_storage
+__union_payload
+__union_tag

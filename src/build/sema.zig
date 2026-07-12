@@ -5155,7 +5155,10 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .result = "result<tuple<list<u8>,bool>,error-code>",
             .do_params = "i32,u64,u64",
             .do_params_alt = "File,u64,u64",
+            // Transitional multi-lhs form still accepted.
             .do_result = "result<tuple<[u8],bool>,error-code>",
+            // Exclusive union: ok = Tuple<[u8],bool> (data+done), err = status i32 (error-code+1).
+            .do_result_alt = "Tuple<[u8],bool>|i32",
         },
         .{
             .target = "filesystem/types/descriptor.sync",
@@ -5458,7 +5461,8 @@ fn parseWitType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?
         return err_end + 1;
     }
 
-    if (std.mem.eql(u8, name, "tuple")) {
+    // WIT `tuple<…>` and do `Tuple<…>` sugar (same shape; do capital-T form for host Ok|Err).
+    if (std.mem.eql(u8, name, "tuple") or std.mem.eql(u8, name, "Tuple")) {
         if (start_idx + 4 >= end_idx or !tokEq(tokens[start_idx + 1], "<")) return null;
         var i = start_idx + 2;
         var count: usize = 0;
