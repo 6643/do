@@ -5,6 +5,8 @@
 
 ## 2026-07-12
 
+- 文档: 新增 `doc/pending_blocked.md` — 阻断 (G6)、待处理 (P1 managed struct Tuple 子槽 / P2 泛型左侧反推 / skip)、延期非目标与硬约束; `start_here` / `roadmap_status` / `master_plan` / README 指向该文件
+
 - codegen: pure-scalar 具名 struct 作为 Tuple storage **嵌套子槽** (永不拍平)
   - `items [Tuple<Point, u8>]` / `@put` / `@get` / path `@get(items, i, 0)` → `Point`
   - 局部 `Tuple` 槽用位置名 `$pair.0.x` / `$pair.0.y` / `$pair.1` (不是假字段 `v0`)

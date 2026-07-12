@@ -46,18 +46,20 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 - I2: `Tuple<T0,T1,...>` 位置构造 + `@get` 数字索引; local/struct/return/param/nested/标量与 managed 叶子 storage + path chain + loop get。  
   pure-scalar struct 直接子槽 storage 已支持 (永不拍平); 含 managed 字段的 struct 槽仍 `UnsupportedTupleStorageLeaf`。
 
-## 当前阻断
+## 当前阻断与待处理
 
-| ID | 证据 / 停止点 | 恢复条件 |
-| --- | --- | --- |
-| G6.1 | preopens `list<tuple<descriptor,string>>` 公开 API 未确认 | 用户确认 API |
-| G6.2 | `descriptor.read-directory` 依赖 stream/future; 无 async runtime | 未来 async/Future/Task 设计 |
-| G6.3 | sockets resource + variant 映射未定 | 用户确认 wrapper / address variant |
-| 06.2 | 已拆到 G2–G6; 剩余由 G6.1–G6.3 承接 | 同上 |
+权威清单 (blocked / pending / deferred / skip): **`doc/pending_blocked.md`**。
+
+摘要:
+
+| 类 | 项 |
+| --- | --- |
+| blocked | G6.1 preopens API; G6.2 read-directory/async; G6.3 sockets; 06.2→G6 |
+| pending | P1 含 managed 字段的 struct 作 Tuple storage 子槽; P2 左侧反推泛型 (默认不放开); skip 16/96/118 |
+| deferred | ownership IR、真 host I/O、JSON 扩展、LSP/fmt、wasm emitter 等 (见该文件 §3) |
 
 ## 下一步
 
 1. 发布候选维护 (回归 / 文档漂移 / 独立小修)。
 2. 等待 G6 决策; 不绕过阻断扩 codegen。
-3. 可选授权项见 `doc/master_plan.md` §4 与 README「下一阶段计划」。
-4. 非 G6 日路径清单已 drain 并删除 (`doc/todo_non_g6.md`); 后置/可选见 `doc/start_here.md` §5–§6。
+3. 可选授权项见 `doc/pending_blocked.md` 与 README「下一阶段计划」。

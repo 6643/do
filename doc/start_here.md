@@ -6,9 +6,10 @@
 
 1. [README.md](../README.md) — 能力摘要、非目标、下一阶段计划
 2. [CHANGELOG.md](../CHANGELOG.md) — 近期已完成变更
-3. [doc/master_plan.md](master_plan.md) — 当前规划与阻断
-4. [doc/roadmap_status.md](roadmap_status.md) — 当前执行状态
-5. [doc/memory.md](memory.md) — 运行时 / ARC 实现 (按需)
+3. [doc/pending_blocked.md](pending_blocked.md) — **待处理与阻断** (G6 / P1–P2 / deferred / skip)
+4. [doc/master_plan.md](master_plan.md) — 当前规划摘要
+5. [doc/roadmap_status.md](roadmap_status.md) — 当前执行状态
+6. [doc/memory.md](memory.md) — 运行时 / ARC 实现 (按需)
 
 模块地图见仓库根 [AGENTS.md](../AGENTS.md)。
 
@@ -93,30 +94,22 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | G6.3 | sockets resource + variant | socket wrapper 与 address variant 映射决策 |
 | 06.2 | 已拆到 G2–G6; 剩余由 G6.1–G6.3 承接 | 同上 |
 
-**非发布后置** (阶段 I 后置已收窄; 非 G6 日路径清单已 drain 并删除):
+**待处理 / 阻断 / 延期**: 权威清单见 [pending_blocked.md](pending_blocked.md) (G6 blocked、P1 managed struct Tuple 子槽、P2 泛型左侧反推、skip、deferred 非目标)。
 
-- pure-scalar 具名 struct 作为 Tuple storage 直接子槽 **已支持** (嵌套子布局, 永不拍平; `compile_ok/272`, `ok/192`)
-- 含 managed 字段的 struct 直接子槽仍 → `UnsupportedTupleStorageLeaf` (`compile_err/339`)
-- managed/`text` 叶子 storage 与 `@get(storage, i, j)` path chaining **已支持** (`compile_ok/270`–`271`, `compiled_ok/75`–`77`)
-- 纯标量 struct 的 field-reflect `field_set` **已修** (`ok/191`)
-- 仅靠左侧目标类型反推的泛型递归仍 `NoMatchingCall` (单独立项)
-- 完整 ownership IR / 激进少 inc: 门槛见 `doc/memory.md`; 默认不自动开做
-- `RUN_WASM=1` 全量扩展回归: 耗时长, 发布前显式跑; 默认回归不含
+已落地对照 (勿当待办): pure-scalar Tuple 子槽 `ok/192`; managed 叶子 storage `compile_ok/270`–`271`; field_set `ok/191`。
 
 ## 6. 当前计划候选
 
-用户说 `go` / `next` 时, 按以下优先级:
+用户说 `go` / `next` 时, 按以下优先级 (细节与恢复条件见 [pending_blocked.md](pending_blocked.md)):
 
 1. **发布候选维护**: 回归红灯、文档漂移、可独立验证的小修
 2. **等待决策**: G6.1 / G6.3 公开 API; G6.2 依赖 async runtime 立项
-3. **可选小项** (不绕过 G6, 需单独授权):
-   - codegen 垂直再拆 (如 WASI emit 切片) — 先 parse/validate, 再搬实现
-   - 继续 ownership / JSON / LSP 增强 — 见 README「下一阶段计划」, 默认不自动开做
+3. **可选授权**: P1 managed struct Tuple 子槽; 或 deferred 项 (ownership / JSON / LSP / codegen 再拆) — 默认不自动开做
 
 **已关闭边界速查**:
 
-- I1: 直接/互递归; 参数侧已定型泛型递归; self-tail scalar/`if-else`/guard/generic/imported TCO; 仅靠左侧目标类型反推的泛型递归仍 `NoMatchingCall`; `defer`/storage/managed/多返回/cleanup **不** TCO
-- I2: `Tuple<T0,T1,...>` 位置构造 + `@get` 数字索引; local/struct/return/param/nested/标量与 managed 叶子 storage + path chain + loop get; sema: `InvalidTypedLiteral` / `InvalidPathIndex` / `InvalidTypeRef`
+- I1: 直接/互递归; 参数侧已定型泛型递归; self-tail TCO 子集; 左侧反推泛型仍后置; `defer`/storage/managed/多返回/cleanup **不** TCO
+- I2: `Tuple` 位置构造 + `@get`; 嵌套永不拍平; pure-scalar struct 子槽 + managed 叶子 storage + path chain
 
 ## 7. 变更与推进协议
 

@@ -50,23 +50,19 @@
 | H 发布前治理 | done |
 | I 语言扩展 | **closed** (I1 递归/TCO + I2 Tuple 第一版) |
 
-## 3. 当前阻断
+## 3. 当前阻断与待处理
 
-| ID | 说明 | 恢复条件 |
-| --- | --- | --- |
-| G6.1 | preopens `list<tuple<descriptor,string>>` 公开 API | 用户确认 API |
-| G6.2 | `descriptor.read-directory` stream/future | 未来 async/Future/Task runtime |
-| G6.3 | sockets resource + variant | wrapper 与 address variant 映射决策 |
+权威清单: **`doc/pending_blocked.md`** (G6 blocked、语言 pending P1/P2、deferred 非目标、skip)。
 
-I2 后置已收窄: managed/`text` 与 pure-scalar struct 嵌套子槽 storage 已落地; 含 managed 字段的 struct 槽仍 `UnsupportedTupleStorageLeaf`。
+I2 已收窄: managed/`text` 叶子与 pure-scalar struct 嵌套子槽 storage 已落地; 含 managed 字段的 struct 槽见该文件 **P1**。
 
 ## 4. 当前下一步
 
-用户说 `go` / `next` 时:
+用户说 `go` / `next` 时 (细节见 `doc/pending_blocked.md` §6 与 `doc/start_here.md` §6):
 
 1. 检查发布候选回归、文档漂移或可独立验证的小修。
 2. 无新小项时 **不** 绕过 G6.1–G6.3。
-3. 可选 (需单独授权): codegen 垂直再拆、ownership/JSON/LSP 增强、`backend_ir` 主路径。
+3. 可选 (需单独授权): P1 managed struct Tuple 子槽; codegen 再拆; ownership/JSON/LSP 等 deferred。
 
 验收命令:
 

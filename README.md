@@ -44,11 +44,12 @@ src/lsp/        do lsp diagnostics + formatting + semantic tokens + hover + comp
 - 当前接手入口: `doc/start_here.md`
 - 总规划: `doc/master_plan.md`
 - 执行状态和验证证据: `doc/roadmap_status.md`
+- **待处理与阻断**: `doc/pending_blocked.md` (G6 / 语言缺口 / deferred / skip)
 - 历史变更摘要: `CHANGELOG.md`
 
 ## 当前 v1 子集摘要
 
-- 语言前端: 当前 parser / sema 已覆盖结构体、错误枚举、value enum、plain union / nullable union、字段反射、lambda、泛型约束、同名重载、同类型 variadic、`loop`、`defer`、import / host import 和 `test` 声明的回归子集; 普通直接递归、互递归、参数侧已定型的泛型递归和 self-tail TCO 第一版已补回归, 仅靠左侧目标类型反推的泛型递归仍后置; 源码层 `Tuple<T0, T1, ...>` 位置构造 + `@get` 数字索引已落地 (local/struct/return/param/nested/标量与 managed/`text` 叶子 storage、`@get(storage, i, j)` path chaining, 以及 loop 绑定上的 `@get(v, N)`); 裸 struct 等非 packable 叶子 storage 仍报 `UnsupportedTupleStorageLeaf`。
+- 语言前端: 当前 parser / sema 已覆盖结构体、错误枚举、value enum、plain union / nullable union、字段反射、lambda、泛型约束、同名重载、同类型 variadic、`loop`、`defer`、import / host import 和 `test` 声明的回归子集; 普通直接递归、互递归、参数侧已定型的泛型递归和 self-tail TCO 第一版已补回归, 仅靠左侧目标类型反推的泛型递归仍后置; 源码层 `Tuple<T0, T1, ...>` 位置构造 + `@get` 数字索引已落地 (local/struct/return/param/nested/标量与 managed/`text` 叶子 storage、pure-scalar struct 嵌套子槽、`@get(storage, i, j)` path chaining, 以及 loop 绑定上的 `@get(v, N)`); 含 managed 字段的 struct 直接子槽仍 `UnsupportedTupleStorageLeaf` (见 `doc/pending_blocked.md` P1)。
 - 内存与所有权: 已落地 managed handle、对象头、layout table、ARC `inc/dec/release`、ownership exit plan、死 alias 消除、保守 last-use move、字段/参数 ownership facts 和 managed struct 最小 clone/reuse lowering; Tuple storage pack 合成 layout 负责 managed 叶子 clone/free。
 - 标准库: 已验证 JSON struct stringify/from_json、bytes/text/utf8/utf16、hex/base64/url、math/binary/mem/atomic/range/slice/path/fp/list/set/hash_map/hash、md5/sha1/sha256 等基础库; time/random/file/dir/io.stream 只承诺已登记 WASI wrapper lowering; net/tcp/udp/http.client 只承诺当前 shape/check smoke, 真实 host I/O 后置。
 - 后端与 WASI: 公开输出仍以 WAT 为主; 当前 build/test 子集已覆盖标量、结构体 flatten、storage/text ARC handle、多返回、基础 `@get/@set/@put`、WASI result-area/resource-drop lowering、component plan/core imports/core shims/component input 和真实 component wasm validate gate。
@@ -78,7 +79,7 @@ src/lsp/        do lsp diagnostics + formatting + semantic tokens + hover + comp
 5. **Ownership 深化**: runtime 边界稳定后再重开完整 ownership IR、跨函数唯一性证明、escape analysis、region 与更激进 move/reuse。
 6. **编辑器与格式化增强**: LSP rename/references、import-aware definition、range/on-type formatting、语法感知 formatter — v1 后单独推进。
 7. **后端输出实验**: direct wasm binary emitter 仅作并行评估, 不替换 WAT 主输出与 golden 基线。
-8. **可选 (需单独授权)**: codegen 垂直再拆; `backend_ir` 主路径立项; Tuple 裸 struct 等非 packable 叶子 storage pack (当前 `UnsupportedTupleStorageLeaf`)。
+8. **可选 (需单独授权)**: 见 `doc/pending_blocked.md` — 如 P1 managed struct Tuple 子槽、codegen 垂直再拆、ownership/JSON/LSP 等 deferred 项。
 
 ## 构建
 
