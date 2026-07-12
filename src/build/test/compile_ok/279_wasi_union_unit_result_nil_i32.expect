@@ -1,0 +1,3 @@
+;; wasi-bind
+filesystem/types/descriptor.sync
+result<_,error-code>

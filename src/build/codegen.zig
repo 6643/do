@@ -14267,6 +14267,31 @@ fn emitUnionBinding(
                     }
                 }
             }
+            // Unit fallible host (`result<_,error-code>`) → exclusive `nil | i32` union.
+            if (findWasiHostImportForTokens(ctx, tokens, tokens[call_head.name_idx].lexeme)) |wasi_import| {
+                if (try emitWasiUnitResultAsUnionValue(
+                    allocator,
+                    tokens,
+                    call_head.args_start,
+                    call_head.args_end,
+                    locals,
+                    ctx,
+                    wasi_import,
+                    union_local.layout,
+                    out,
+                )) {
+                    var wasi_idx = union_local.layout.payload_tys.len + 1;
+                    while (wasi_idx > 0) {
+                        wasi_idx -= 1;
+                        if (wasi_idx == union_local.layout.payload_tys.len) {
+                            try appendUnionTagLocalSet(allocator, out, union_local.name);
+                        } else {
+                            try appendUnionPayloadLocalSet(allocator, out, union_local.name, wasi_idx);
+                        }
+                    }
+                    return true;
+                }
+            }
         }
     }
     if (!try emitUnionValue(allocator, tokens, eq_idx + 1, end_idx, locals, ctx, union_local.layout, true, &move_ctx, out)) {
@@ -16646,6 +16671,64 @@ fn emitWasiResultUnitStatusValue(
         \\    end
         \\
     );
+}
+
+/// Lower unit fallible WASI host into exclusive union stack values: payload slots + tag.
+/// Phase-1 shape: `nil | i32` (nil = ok / tag 0; i32 = status error-code+1 / never 0).
+fn emitWasiUnitResultAsUnionValue(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    args_start: usize,
+    args_end: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    import: WasiHostImport,
+    layout: UnionLayout,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    const lowering = wasiLowering(import) orelse return false;
+    if (!lowering.result_unit_error) return false;
+
+    const nil_branch = findUnionBranchByType(layout, "nil") orelse return false;
+    if (nil_branch.tag != 0) return false;
+
+    var err_branch: ?UnionBranch = null;
+    for (layout.branches) |branch| {
+        if (std.mem.eql(u8, branch.ty, "nil")) continue;
+        if (err_branch != null) return false;
+        if (branch.payload_len != 1) return false;
+        if (branch.payload_start >= layout.payload_tys.len) return false;
+        if (!std.mem.eql(u8, layout.payload_tys[branch.payload_start], "i32")) return false;
+        err_branch = branch;
+    }
+    const err = err_branch orelse return false;
+    // Single i32 payload slot only for this phase.
+    if (layout.payload_tys.len != 1) return false;
+
+    if (!try emitWasiResultUnitCall(allocator, tokens, args_start, args_end, locals, ctx, import, out)) {
+        return error.NoMatchingCall;
+    }
+
+    // Stack: i32 payload, i32 tag (matches emitUnionValue order).
+    try out.appendSlice(allocator,
+        \\    global.get $__wasi_result_area_base
+        \\    i32.load
+        \\    i32.eqz
+        \\    if (result i32 i32)
+        \\      i32.const 0
+        \\      i32.const 0
+        \\    else
+        \\      global.get $__wasi_result_area_base
+        \\      i32.const 4
+        \\      i32.add
+        \\      i32.load
+        \\      i32.const 1
+        \\      i32.add
+        \\
+    );
+    try appendFmt(allocator, out, "      i32.const {d}\n", .{err.tag});
+    try out.appendSlice(allocator, "    end\n");
+    return true;
 }
 
 fn emitWasiResultReadValues(

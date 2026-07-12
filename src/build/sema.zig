@@ -5147,6 +5147,8 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .params = "descriptor",
             .result = "result<_,error-code>",
             .do_params = "i32",
+            // Do exclusive union sugar: nil = ok, i32 = status (error-code+1; 0 never on err arm).
+            .do_result = "nil|i32",
         },
         .{
             .target = "filesystem/types/descriptor.link-at",
@@ -5332,11 +5334,22 @@ fn validateHostReturnTypeAt(tokens: []const lexer.Token, start_idx: usize, end_i
             return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
         },
         .wasi => {
-            const next = parseWitType(tokens, start_idx, end_idx) orelse
+            // Accept WIT types and do exclusive unions (`nil | i32`, `Dir | i32`, …).
+            const next = parseWitOrDoUnionType(tokens, start_idx, end_idx) orelse
                 return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
             return next;
         },
     }
+}
+
+/// WIT type, or do exclusive union of WIT/do arms separated by `|` (spaces ignored by token stream).
+fn parseWitOrDoUnionType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    var next = parseWitType(tokens, start_idx, end_idx) orelse return null;
+    while (next < end_idx and tokEq(tokens[next], "|")) {
+        const arm_end = parseWitType(tokens, next + 1, end_idx) orelse return null;
+        next = arm_end;
+    }
+    return next;
 }
 
 fn stringTokenBody(s: []const u8) ?[]const u8 {
