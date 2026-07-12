@@ -956,6 +956,13 @@ fn checkIsTypeArgs(tokens: []const lexer.Token) !void {
         if (findTopLevelNilInIsArg(tokens, type_arg, close_paren)) |nil_idx| {
             return markErrorAt(tokens, nil_idx, error.InvalidNarrowing);
         }
+        // Payload-enum case name as second arg: @is(m, Text)
+        if (type_arg + 1 == close_paren and tokens[type_arg].kind == .ident and
+            isValidDeclaredTypeName(tokens[type_arg].lexeme) and
+            isLocalPayloadEnumCase(tokens, publicTypeName(tokens[type_arg].lexeme)))
+        {
+            continue;
+        }
         if (validateIsTargetTypeExpr(tokens, type_arg, close_paren) != close_paren) {
             return markErrorAt(tokens, type_arg, error.InvalidNarrowing);
         }
@@ -4058,6 +4065,11 @@ fn checkErrorDeclBranches(tokens: []const lexer.Token) !void {
             i = findLineEndIdx(tokens, i) - 1;
             continue;
         }
+        if (isPayloadEnumDeclStart(tokens, i)) {
+            try validatePayloadEnumBranches(tokens, i, i + 2);
+            i = findLineEndIdx(tokens, i) - 1;
+            continue;
+        }
     }
 }
 
@@ -4115,6 +4127,46 @@ fn validateValueEnumBranches(tokens: []const lexer.Token, enum_idx: usize, start
     if (expect_branch) return markErrorAt(tokens, line_end - 1, error.InvalidErrorBranchName);
 }
 
+fn validatePayloadEnumBranches(tokens: []const lexer.Token, enum_idx: usize, start_idx: usize) !void {
+    const line_end = findLineEndIdx(tokens, enum_idx);
+    var expect_branch = true;
+    var j = start_idx;
+    while (j < line_end) {
+        if (!expect_branch) {
+            if (!tokEq(tokens[j], "|")) return markErrorAt(tokens, j, error.InvalidErrorBranchName);
+            expect_branch = true;
+            j += 1;
+            continue;
+        }
+        if (!isValidEnumBranchName(tokens[j])) return markErrorAt(tokens, j, error.InvalidErrorBranchName);
+        if (hasPriorEnumBranchName(tokens, start_idx, j, publicTypeName(tokens[j].lexeme))) {
+            return markErrorAt(tokens, j, error.InvalidErrorBranchName);
+        }
+        if (hasVisibleEnumBranchNameConflict(tokens, j, publicTypeName(tokens[j].lexeme))) {
+            return markErrorAt(tokens, j, error.InvalidErrorBranchName);
+        }
+        j += 1;
+        if (j < line_end and tokEq(tokens[j], "(")) {
+            const close = findMatching(tokens, j, "(", ")") catch
+                return markErrorAt(tokens, j, error.InvalidErrorBranchName);
+            if (close <= j + 1) return markErrorAt(tokens, j, error.InvalidErrorBranchName);
+            // No value-enum style numeric carriers in payload enums.
+            if (close == j + 2 and tokens[j + 1].kind == .number) {
+                return markErrorAt(tokens, j + 1, error.InvalidErrorBranchName);
+            }
+            if (tokens[j + 1].kind == .number or tokens[j + 1].kind == .string) {
+                return markErrorAt(tokens, j + 1, error.InvalidErrorBranchName);
+            }
+            if (validateIsTypeExpr(tokens, j + 1, close) != close) {
+                return markErrorAt(tokens, j + 1, error.InvalidErrorBranchName);
+            }
+            j = close + 1;
+        }
+        expect_branch = false;
+    }
+    if (expect_branch) return markErrorAt(tokens, line_end - 1, error.InvalidErrorBranchName);
+}
+
 fn hasPriorEnumBranchName(tokens: []const lexer.Token, start_idx: usize, before_idx: usize, name: []const u8) bool {
     var j = start_idx;
     while (j < before_idx) : (j += 1) {
@@ -4159,7 +4211,7 @@ fn hasVisibleEnumBranchNameConflict(tokens: []const lexer.Token, branch_idx: usi
             if (std.mem.eql(u8, publicTypeName(tokens[i].lexeme), name)) return true;
         }
 
-        if (!isErrorEnumDeclStart(tokens, i) and !isValueEnumDeclStart(tokens, i)) continue;
+        if (!isErrorEnumDeclStart(tokens, i) and !isValueEnumDeclStart(tokens, i) and !isPayloadEnumDeclStart(tokens, i)) continue;
         if (enumDeclHasPriorBranch(tokens, i, branch_idx, name)) return true;
         i = findLineEndIdx(tokens, i) - 1;
     }
@@ -4235,6 +4287,51 @@ fn isValueEnumDeclStart(tokens: []const lexer.Token, idx: usize) bool {
         tokEq(tokens[idx + 2], "=");
 }
 
+/// `Message = Quit | Text([u8]) | Binary([u8])` — tagged payload enum (L1).
+/// Disambiguated from value/error enums and from `Name = @wasi_*` bindings.
+fn isPayloadEnumDeclStart(tokens: []const lexer.Token, idx: usize) bool {
+    if (idx + 2 >= tokens.len) return false;
+    if (tokens[idx].kind != .ident) return false;
+    if (!isValidDeclaredTypeName(tokens[idx].lexeme)) return false;
+    if (isErrorTypeName(tokens[idx].lexeme)) return false;
+    if (isErrorEnumDeclStart(tokens, idx) or isValueEnumDeclStart(tokens, idx)) return false;
+    if (!tokEq(tokens[idx + 1], "=")) return false;
+    // WASI / lib binding: Name = @...
+    if (tokEq(tokens[idx + 2], "@")) return false;
+
+    const line_end = findLineEndIdx(tokens, idx);
+    var j = idx + 2;
+    var saw_case = false;
+    var expect_case = true;
+    while (j < line_end) {
+        if (!expect_case) {
+            if (!tokEq(tokens[j], "|")) return false;
+            expect_case = true;
+            j += 1;
+            continue;
+        }
+        if (tokens[j].kind != .ident) return false;
+        if (!isValidEnumBranchName(tokens[j])) return false;
+        j += 1;
+        if (j < line_end and tokEq(tokens[j], "(")) {
+            const close = findMatching(tokens, j, "(", ")") catch return false;
+            if (close <= j + 1) return false;
+            // Value-enum style numeric carrier: Case(0) — not payload enum.
+            if (close == j + 2 and tokens[j + 1].kind == .number) return false;
+            // Payload type must be a type expr, not a bare value literal.
+            if (tokens[j + 1].kind == .number or tokens[j + 1].kind == .string) return false;
+            if (tokEq(tokens[j + 1], "true") or tokEq(tokens[j + 1], "false") or tokEq(tokens[j + 1], "nil")) return false;
+            // Type atom from j+1 .. close must fully consume.
+            if (validateIsTypeExpr(tokens, j + 1, close) != close) return false;
+            j = close + 1;
+        }
+        saw_case = true;
+        expect_case = false;
+    }
+    if (!saw_case or expect_case) return false;
+    return true;
+}
+
 fn isLocalUnionAlias(tokens: []const lexer.Token, name: []const u8) bool {
     var depth_brace: usize = 0;
     var i: usize = 0;
@@ -4258,7 +4355,7 @@ fn isLocalUnionAlias(tokens: []const lexer.Token, name: []const u8) bool {
         if (tokens[i].kind != .ident) continue;
         if (!std.mem.eql(u8, publicTypeName(tokens[i].lexeme), name)) continue;
         if (isModernImportAssign(tokens, i)) return false;
-        if (isErrorEnumDeclStart(tokens, i) or isValueEnumDeclStart(tokens, i)) return false;
+        if (isErrorEnumDeclStart(tokens, i) or isValueEnumDeclStart(tokens, i) or isPayloadEnumDeclStart(tokens, i)) return false;
         const line_end = findLineEndIdx(tokens, i);
         const eq_idx = findTopLevelAssignEqOnLine(tokens, i + 1, line_end) orelse return false;
         return findTokenOnLine(tokens, eq_idx + 1, line_end, "|") != null;
@@ -4316,6 +4413,7 @@ fn checkUpperValueExprs(program: parser.Program, tokens: []const lexer.Token) !v
         const tok = tokens[node.start_tok];
         if (!isValidDeclaredTypeName(tok.lexeme)) continue;
         if (isTypeConstructorExpr(tokens, node.start_tok)) continue;
+        if (isPayloadEnumCaseCtorExpr(tokens, node.start_tok)) continue;
         if (isLocalErrorBranchValue(tokens, tok.lexeme)) continue;
         if (isImportedUpperAlias(tokens, tok.lexeme)) continue;
         return markErrorAt(tokens, node.start_tok, error.InvalidTypeRef);
@@ -4329,6 +4427,44 @@ fn isTypeConstructorExpr(tokens: []const lexer.Token, start_idx: usize) bool {
         idx = close_angle + 1;
     }
     return idx < tokens.len and tokEq(tokens[idx], "{");
+}
+
+/// `Text(buf)` / unit case `Quit` used as payload-enum constructor.
+fn isPayloadEnumCaseCtorExpr(tokens: []const lexer.Token, start_idx: usize) bool {
+    if (start_idx >= tokens.len or tokens[start_idx].kind != .ident) return false;
+    const name = publicTypeName(tokens[start_idx].lexeme);
+    if (!isLocalPayloadEnumCase(tokens, name)) return false;
+    // Unit case: bare Ident. Payload case: Ident(expr).
+    if (start_idx + 1 < tokens.len and tokEq(tokens[start_idx + 1], "(")) return true;
+    return true;
+}
+
+fn isLocalPayloadEnumCase(tokens: []const lexer.Token, name: []const u8) bool {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (depth_brace == 0) {
+                if (parseImportDeclEnd(tokens, i)) |next_idx| {
+                    i = next_idx - 1;
+                    continue;
+                }
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (tokens[i].kind != .ident) continue;
+        if (isModernImportAssign(tokens, i)) continue;
+        if (!isPayloadEnumDeclStart(tokens, i)) continue;
+        if (enumDeclHasBranch(tokens, i, name)) return true;
+    }
+    return false;
 }
 
 fn isLocalErrorBranchValue(tokens: []const lexer.Token, name: []const u8) bool {
@@ -4353,7 +4489,7 @@ fn isLocalErrorBranchValue(tokens: []const lexer.Token, name: []const u8) bool {
         if (!isTopLevelDeclHead(tokens, i)) continue;
         if (tokens[i].kind != .ident) continue;
         if (isModernImportAssign(tokens, i)) continue;
-        if (!isErrorEnumDeclStart(tokens, i) and !isValueEnumDeclStart(tokens, i)) continue;
+        if (!isErrorEnumDeclStart(tokens, i) and !isValueEnumDeclStart(tokens, i) and !isPayloadEnumDeclStart(tokens, i)) continue;
         if (enumDeclHasBranch(tokens, i, name)) return true;
     }
     return false;
@@ -4402,6 +4538,9 @@ fn enumDeclHasBranch(tokens: []const lexer.Token, line_start_idx: usize, name: [
 fn enumDeclAssignIdx(tokens: []const lexer.Token, line_start_idx: usize) ?usize {
     if (isErrorEnumDeclStart(tokens, line_start_idx) or isValueEnumDeclStart(tokens, line_start_idx)) {
         return line_start_idx + 2;
+    }
+    if (isPayloadEnumDeclStart(tokens, line_start_idx)) {
+        return line_start_idx + 1; // Name = …
     }
     return null;
 }
@@ -5700,7 +5839,7 @@ fn isValueLiteralToken(t: lexer.Token) bool {
 fn isTypeDeclStart(tokens: []const lexer.Token, idx: usize) bool {
     if (idx + 1 >= tokens.len) return false;
     if (tokEq(tokens[idx + 1], "(")) return false; // func decl
-    if (isErrorEnumDeclStart(tokens, idx) or isValueEnumDeclStart(tokens, idx)) return true;
+    if (isErrorEnumDeclStart(tokens, idx) or isValueEnumDeclStart(tokens, idx) or isPayloadEnumDeclStart(tokens, idx)) return true;
     // Declarative WASI type binding: Name = @wasi_resource|wasi_record("…", { … })
     if (tokEq(tokens[idx + 1], "=") and idx + 5 < tokens.len and
         tokEq(tokens[idx + 2], "@") and tokens[idx + 3].kind == .ident and
@@ -5938,11 +6077,29 @@ fn checkParenthesizedTypes(tokens: []const lexer.Token) !void {
         if (!tokEq(tokens[i], "(")) continue;
         if (isFieldsLoopSourceTypeParen(tokens, i)) continue;
         if (isFuncTypeStart(tokens, i)) continue;
+        if (isPayloadEnumCasePayloadParen(tokens, i)) continue;
         const close_idx = findMatching(tokens, i, "(", ")") catch continue;
         if (!isParenthesizedTypeContext(tokens, i, close_idx)) continue;
         if (!isTypeExprRangeAllowParens(tokens, i + 1, close_idx)) continue;
         return markErrorAt(tokens, i, error.InvalidTypeRef);
     }
+}
+
+/// `Text([u8])` payload paren on a payload-enum case arm.
+fn isPayloadEnumCasePayloadParen(tokens: []const lexer.Token, open_idx: usize) bool {
+    if (open_idx == 0) return false;
+    if (tokens[open_idx - 1].kind != .ident) return false;
+    if (tokens[open_idx - 1].line != tokens[open_idx].line) return false;
+    if (!isValidEnumBranchName(tokens[open_idx - 1])) return false;
+
+    const line_start = lineStartIdx(tokens, open_idx);
+    if (!isPayloadEnumDeclStart(tokens, line_start)) return false;
+
+    // Case must be at case position after `=` / `|`.
+    const case_idx = open_idx - 1;
+    if (case_idx == line_start + 2) return true; // first case after Name =
+    if (case_idx > line_start + 2 and tokEq(tokens[case_idx - 1], "|")) return true;
+    return false;
 }
 
 fn isFieldsLoopSourceTypeParen(tokens: []const lexer.Token, open_idx: usize) bool {

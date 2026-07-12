@@ -1,0 +1,3 @@
+(local $m.__union_tag i32)
+i32.const 0
+local.set $m.__union_tag

@@ -63,6 +63,22 @@ const ValueEnumDecl = struct {
     owned_name: bool = false,
 };
 
+/// L1 payload enum: `Message = Quit | Text([u8]) | Binary([u8])`.
+/// Tags are by case name order (0..); payload slots use max-payload overlap.
+const PayloadEnumCase = struct {
+    name: []const u8,
+    /// null = unit case (no payload).
+    payload_ty: ?[]const u8,
+};
+
+const PayloadEnumDecl = struct {
+    name: []const u8,
+    cases: []const PayloadEnumCase,
+    /// Owned type strings for non-ident payload type exprs (none in L1 simple forms usually).
+    owned_payload_tys: []const []const u8 = &.{},
+    owned_name: bool = false,
+};
+
 const ManagedFieldOffset = runtime_prelude_wat.ManagedFieldOffset;
 const StructLayout = runtime_prelude_wat.StructLayout;
 
@@ -87,10 +103,13 @@ const StorageLocal = struct {
 };
 
 const UnionBranch = struct {
+    /// Flat union: arm type name. Payload enum: case name (Text / Quit).
     ty: []const u8,
     tag: usize,
     payload_start: usize,
     payload_len: usize,
+    /// When set (payload-enum cases with payload), actual payload type for emit/narrow (e.g. [u8]).
+    payload_type: ?[]const u8 = null,
 };
 
 const UnionLayout = struct {
@@ -666,6 +685,7 @@ const CodegenContext = struct {
     functions: []const FuncDecl,
     structs: []const StructDecl,
     value_enums: []const ValueEnumDecl,
+    payload_enums: []const PayloadEnumDecl = &.{},
     struct_layouts: []const StructLayout,
     host_imports: []const HostImport,
     wasi_imports: []const WasiHostImport,
@@ -979,6 +999,13 @@ pub fn emitWatWithOptions(
         try collectImportedValueEnumDecls(allocator, tokens, graph, &value_enums);
     }
 
+    var payload_enums = std.ArrayList(PayloadEnumDecl).empty;
+    defer {
+        freePayloadEnumDecls(allocator, payload_enums.items);
+        payload_enums.deinit(allocator);
+    }
+    try collectPayloadEnumDecls(allocator, tokens, &payload_enums);
+
     var struct_layouts = std.ArrayList(StructLayout).empty;
     defer {
         freeStructLayouts(allocator, struct_layouts.items);
@@ -1004,6 +1031,7 @@ pub fn emitWatWithOptions(
         tokens,
         structs.items,
         value_enums.items,
+        payload_enums.items,
         struct_layouts.items,
         host_imports.items,
         wasi_imports.items,
@@ -1027,6 +1055,7 @@ pub fn emitWatWithOptions(
         .functions = functions.items,
         .structs = structs.items,
         .value_enums = value_enums.items,
+        .payload_enums = payload_enums.items,
         .struct_layouts = struct_layouts.items,
         .host_imports = host_imports.items,
         .wasi_imports = wasi_imports.items,
@@ -1134,6 +1163,13 @@ pub fn emitTestWat(
         try collectImportedValueEnumDecls(allocator, tokens, graph, &value_enums);
     }
 
+    var payload_enums = std.ArrayList(PayloadEnumDecl).empty;
+    defer {
+        freePayloadEnumDecls(allocator, payload_enums.items);
+        payload_enums.deinit(allocator);
+    }
+    try collectPayloadEnumDecls(allocator, tokens, &payload_enums);
+
     var struct_layouts = std.ArrayList(StructLayout).empty;
     defer {
         freeStructLayouts(allocator, struct_layouts.items);
@@ -1160,6 +1196,7 @@ pub fn emitTestWat(
         test_decls,
         structs.items,
         value_enums.items,
+        payload_enums.items,
         struct_layouts.items,
         host_imports.items,
         wasi_imports.items,
@@ -1182,6 +1219,7 @@ pub fn emitTestWat(
         .functions = functions.items,
         .structs = structs.items,
         .value_enums = value_enums.items,
+        .payload_enums = payload_enums.items,
         .struct_layouts = struct_layouts.items,
         .host_imports = host_imports.items,
         .wasi_imports = wasi_imports.items,
@@ -1450,7 +1488,7 @@ fn emitUserFunc(
     for (func.params) |param| {
         if (param.callback != null) continue;
         const abi_ty = funcParamAbiType(param);
-        if (try parseTypeUnionLayoutFromName(allocator, tokens, abi_ty, func_ctx.structs, func_ctx.struct_layouts, &signature_owned_types)) |layout| {
+        if (try resolveUnionLayoutForTypeName(allocator, tokens, abi_ty, func_ctx, &signature_owned_types)) |layout| {
             defer freeUnionLayout(allocator, layout);
             for (layout.payload_tys, 0..) |payload_ty, idx| {
                 try appendFmt(allocator, out, " (param ${s}.__union_payload_{d} {s})", .{
@@ -2530,6 +2568,20 @@ fn appendLocalField(
         }
         return out.appendUnionLocal(allocator, name, layout, true, true);
     }
+    // Named payload enum type on field/local path
+    if (findPayloadEnumDecl(ctx.payload_enums, ty)) |decl| {
+        const layout = try buildPayloadEnumUnionLayout(allocator, decl, tokens, ctx.structs, ctx.struct_layouts, &out.owned_names);
+        errdefer freeUnionLayout(allocator, layout);
+        const exists = findUnionLocalExact(out.union_locals.items, name) != null;
+        if (!exists) {
+            errdefer allocator.free(name);
+            try out.owned_names.append(allocator, name);
+            errdefer _ = out.owned_names.pop();
+        } else {
+            defer allocator.free(name);
+        }
+        return out.appendUnionLocal(allocator, name, layout, true, true);
+    }
     try out.appendOwnedLocal(allocator, name, ty);
 }
 
@@ -3276,7 +3328,8 @@ fn emitUnionValue(
     }
 
     for (layout.branches) |branch| {
-        if (branch.tag == 0) continue;
+        // Flat unions reserve tag 0 for nil; payload enums use case-order tags including 0.
+        if (branch.tag == 0 and std.mem.eql(u8, branch.ty, "nil")) continue;
         if (try emitUnionBranchValue(allocator, tokens, range.start, range.end, locals, ctx, layout, branch, copy_managed, out)) {
             return true;
         }
@@ -3345,6 +3398,52 @@ fn emitUnionBranchValue(
     copy_managed: bool,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
+    const range = trimParens(tokens, start_idx, end_idx);
+
+    // Payload-enum unit case: bare case name `Quit`.
+    if (branch.payload_len == 0) {
+        if (range.end == range.start + 1 and tokens[range.start].kind == .ident) {
+            if (!std.mem.eql(u8, publicDeclName(tokens[range.start].lexeme), branch.ty)) return false;
+            for (layout.payload_tys) |payload_ty| {
+                try emitZeroValueForType(allocator, ctx, out, payload_ty);
+            }
+            try appendFmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
+            return true;
+        }
+        return false;
+    }
+
+    // Payload-enum ctor: `Text(expr)` where Text is the case name.
+    if (exprCallHead(tokens, range)) |call_head| {
+        if (!call_head.is_intrinsic and
+            tokens[call_head.name_idx].kind == .ident and
+            std.mem.eql(u8, publicDeclName(tokens[call_head.name_idx].lexeme), branch.ty))
+        {
+            const payload_ty = branch.payload_type orelse branch.ty;
+            var branch_payload = std.ArrayList(u8).empty;
+            defer branch_payload.deinit(allocator);
+            if (!try emitExpr(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, payload_ty, &branch_payload)) {
+                return false;
+            }
+            if (copy_managed and isManagedLocalType(payload_ty, ctx) and
+                isDirectManagedLocalExpr(tokens, call_head.args_start, call_head.args_end, locals, ctx))
+            {
+                try branch_payload.appendSlice(allocator, "    call $__arc_inc\n");
+            }
+            for (layout.payload_tys, 0..) |pty, idx| {
+                if (idx == branch.payload_start) {
+                    try out.appendSlice(allocator, branch_payload.items);
+                } else if (idx > branch.payload_start and idx < branch.payload_start + branch.payload_len) {
+                    continue;
+                } else {
+                    try emitZeroValueForType(allocator, ctx, out, pty);
+                }
+            }
+            try appendFmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
+            return true;
+        }
+    }
+
     var branch_payload = std.ArrayList(u8).empty;
     defer branch_payload.deinit(allocator);
     if (!try emitUnionBranchPayload(allocator, tokens, start_idx, end_idx, locals, ctx, branch, copy_managed, &branch_payload)) {
@@ -3377,11 +3476,13 @@ fn emitUnionBranchPayload(
 ) CodegenError!bool {
     if (branch.payload_len == 0) return false;
     const range = trimParens(tokens, start_idx, end_idx);
+    // Payload-enum cases: emit against payload_type when set (case name ≠ payload type).
+    const emit_ty = branch.payload_type orelse branch.ty;
     if (range.end == range.start + 1 and tokens[range.start].kind == .ident) {
         const name = tokens[range.start].lexeme;
         if (findStructLocal(locals.struct_locals.items, name)) |struct_local| {
-            if (std.mem.eql(u8, struct_local.ty, branch.ty) and findStructLayout(ctx.struct_layouts, branch.ty) == null) {
-                const decl = findStructDecl(ctx.structs, branch.ty) orelse return false;
+            if (std.mem.eql(u8, struct_local.ty, emit_ty) and findStructLayout(ctx.struct_layouts, emit_ty) == null) {
+                const decl = findStructDecl(ctx.structs, emit_ty) orelse return false;
                 for (decl.fields) |field| {
                     try appendFmt(allocator, out, "    local.get ${s}.{s}\n", .{ struct_local.name, publicDeclName(field.name) });
                 }
@@ -3390,8 +3491,8 @@ fn emitUnionBranchPayload(
         }
     }
 
-    if (!try emitExpr(allocator, tokens, range.start, range.end, locals, ctx, branch.ty, out)) return false;
-    if (copy_managed and isManagedLocalType(branch.ty, ctx) and isDirectManagedLocalExpr(tokens, range.start, range.end, locals, ctx)) {
+    if (!try emitExpr(allocator, tokens, range.start, range.end, locals, ctx, emit_ty, out)) return false;
+    if (copy_managed and isManagedLocalType(emit_ty, ctx) and isDirectManagedLocalExpr(tokens, range.start, range.end, locals, ctx)) {
         try out.appendSlice(allocator, "    call $__arc_inc\n");
     }
     return true;
@@ -3537,6 +3638,96 @@ fn parseTypeUnionLayoutFromName(
         .branches = try branches.toOwnedSlice(allocator),
         .payload_tys = try payload_tys.toOwnedSlice(allocator),
     };
+}
+
+/// Build UnionLayout for a named payload enum (tags by case order, max payload slots).
+fn buildPayloadEnumUnionLayout(
+    allocator: std.mem.Allocator,
+    decl: PayloadEnumDecl,
+    tokens: []const lexer.Token,
+    structs: []const StructDecl,
+    struct_layouts: []const StructLayout,
+    owned_types: *std.ArrayList([]const u8),
+) !UnionLayout {
+    // Max payload ABI slot count across cases (overlapping slots from 0).
+    var max_slots: usize = 0;
+    var case_slot_counts = try allocator.alloc(usize, decl.cases.len);
+    defer allocator.free(case_slot_counts);
+    var case_payload_types = try allocator.alloc(?[]const u8, decl.cases.len);
+    defer allocator.free(case_payload_types);
+
+    for (decl.cases, 0..) |case, ci| {
+        case_slot_counts[ci] = 0;
+        case_payload_types[ci] = null;
+        if (case.payload_ty) |pty| {
+            var tmp = std.ArrayList([]const u8).empty;
+            defer tmp.deinit(allocator);
+            try appendUnionBranchPayloadTypes(allocator, tokens, pty, structs, struct_layouts, &tmp);
+            case_slot_counts[ci] = tmp.items.len;
+            case_payload_types[ci] = pty;
+            if (tmp.items.len > max_slots) max_slots = tmp.items.len;
+        }
+    }
+
+    // Shared payload slots: take types from the first case that fills each slot.
+    var payload_tys = std.ArrayList([]const u8).empty;
+    errdefer payload_tys.deinit(allocator);
+    if (max_slots > 0) {
+        var filled = try allocator.alloc(bool, max_slots);
+        defer allocator.free(filled);
+        @memset(filled, false);
+        try payload_tys.resize(allocator, max_slots);
+        for (decl.cases) |case| {
+            if (case.payload_ty == null) continue;
+            var tmp = std.ArrayList([]const u8).empty;
+            defer tmp.deinit(allocator);
+            try appendUnionBranchPayloadTypes(allocator, tokens, case.payload_ty.?, structs, struct_layouts, &tmp);
+            for (tmp.items, 0..) |slot_ty, si| {
+                if (!filled[si]) {
+                    payload_tys.items[si] = slot_ty;
+                    filled[si] = true;
+                }
+            }
+        }
+        // Any unfilled slot defaults to i32 (should not happen if max_slots correct).
+        for (filled, 0..) |ok, si| {
+            if (!ok) payload_tys.items[si] = "i32";
+        }
+    }
+
+    var branches = std.ArrayList(UnionBranch).empty;
+    errdefer branches.deinit(allocator);
+    for (decl.cases, 0..) |case, ci| {
+        try branches.append(allocator, .{
+            .ty = case.name,
+            .tag = ci, // case-order tags (0..)
+            .payload_start = 0,
+            .payload_len = case_slot_counts[ci],
+            .payload_type = case_payload_types[ci],
+        });
+    }
+
+    const source_ty = try allocator.dupe(u8, decl.name);
+    errdefer allocator.free(source_ty);
+    try owned_types.append(allocator, source_ty);
+    return .{
+        .source_ty = source_ty,
+        .branches = try branches.toOwnedSlice(allocator),
+        .payload_tys = try payload_tys.toOwnedSlice(allocator),
+    };
+}
+
+fn resolveUnionLayoutForTypeName(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    ty: []const u8,
+    ctx: CodegenContext,
+    owned_types: *std.ArrayList([]const u8),
+) !?UnionLayout {
+    if (findPayloadEnumDecl(ctx.payload_enums, ty)) |decl| {
+        return try buildPayloadEnumUnionLayout(allocator, decl, tokens, ctx.structs, ctx.struct_layouts, owned_types);
+    }
+    return try parseTypeUnionLayoutFromName(allocator, tokens, ty, ctx.structs, ctx.struct_layouts, owned_types);
 }
 
 fn findUnionBranchByType(layout: UnionLayout, ty: []const u8) ?UnionBranch {
@@ -7876,7 +8067,7 @@ fn collectUnionIsTags(
         const parsed_ty = (try parseCodegenTypeExpr(allocator, tokens, branch_start, branch_end, &owned_types)) orelse return error.NoMatchingCall;
         if (parsed_ty.next_idx != branch_end) return error.NoMatchingCall;
         const branch = findUnionBranchByType(layout, parsed_ty.ty) orelse return error.NoMatchingCall;
-        if (branch.tag == 0) return error.NoMatchingCall;
+        if (branch.tag == 0 and std.mem.eql(u8, branch.ty, "nil")) return error.NoMatchingCall;
         try out.append(allocator, branch.tag);
         branch_start = branch_end;
         if (branch_start < end_idx and tokEq(tokens[branch_start], "|")) branch_start += 1;
@@ -8166,20 +8357,46 @@ fn emitUnionLocalPayloadForType(
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     const union_local = findUnionLocal(locals.union_locals.items, name) orelse return false;
-    var matched: ?UnionBranch = null;
-    for (union_local.layout.branches) |branch| {
-        if (branch.payload_len != 1) continue;
-        const concrete_branch_ty = substituteGenericType(branch.ty, ctx.type_bindings);
-        if (!codegenTypesCompatible(concrete_branch_ty, ty)) continue;
-        if (matched != null) return false;
-        matched = branch;
-    }
-    const branch = matched orelse return false;
-
     const narrowed_ty = findNarrowedUnionType(locals.narrowed_union_locals.items, name) orelse
         return error.UnionPayloadRequiresNarrowing;
     const concrete_narrowed_ty = substituteGenericType(narrowed_ty, ctx.type_bindings);
-    if (!codegenTypesCompatible(concrete_narrowed_ty, ty)) return false;
+
+    // Prefer branch matching the narrowed payload/arm type.
+    var matched: ?UnionBranch = null;
+    for (union_local.layout.branches) |branch| {
+        if (branch.payload_len == 0) continue;
+        const branch_payload_ty = branch.payload_type orelse branch.ty;
+        const concrete_branch_ty = substituteGenericType(branch_payload_ty, ctx.type_bindings);
+        // Match narrowed type to case name or payload type.
+        const matches_narrow = codegenTypesCompatible(concrete_branch_ty, concrete_narrowed_ty) or
+            std.mem.eql(u8, branch.ty, concrete_narrowed_ty);
+        if (!matches_narrow) continue;
+        if (!codegenTypesCompatible(concrete_branch_ty, ty) and !codegenTypesCompatible(branch.ty, ty)) continue;
+        if (matched != null) {
+            // Ambiguous (e.g. Text vs Binary both [u8]): require unique match by case... 
+            // but narrowing stores payload type only. For same-payload cases, any matching branch works
+            // for ABI (same slot layout); use first match.
+            break;
+        }
+        matched = branch;
+    }
+    if (matched == null) {
+        for (union_local.layout.branches) |branch| {
+            if (branch.payload_len != 1) continue;
+            const branch_payload_ty = branch.payload_type orelse branch.ty;
+            const concrete_branch_ty = substituteGenericType(branch_payload_ty, ctx.type_bindings);
+            if (!codegenTypesCompatible(concrete_branch_ty, ty) and !codegenTypesCompatible(branch.ty, ty)) continue;
+            if (matched != null) return false;
+            matched = branch;
+        }
+    }
+    const branch = matched orelse return false;
+
+    const branch_payload_ty = branch.payload_type orelse branch.ty;
+    if (!codegenTypesCompatible(concrete_narrowed_ty, ty) and
+        !std.mem.eql(u8, concrete_narrowed_ty, branch.ty) and
+        !codegenTypesCompatible(concrete_narrowed_ty, branch_payload_ty))
+        return false;
 
     try appendUnionPayloadLocalGet(allocator, out, union_local.name, branch.payload_start);
     return true;
@@ -8267,10 +8484,12 @@ fn isComparisonNarrowing(
     const target_ty = try substituteGenericTypeOwned(allocator, parsed_ty.ty, ctx.type_bindings, &owned_types);
     if (std.mem.eql(u8, target_ty, "nil")) return null;
     const branch = findUnionBranchByType(union_local.layout, target_ty) orelse return null;
-    if (branch.tag == 0) return null;
+    if (branch.tag == 0 and std.mem.eql(u8, branch.ty, "nil")) return null;
+    // Narrow to payload type so `x [u8] = m` works after `@is(m, Text)`.
+    // Flat unions: branch.ty is the arm type. Payload enums: payload_type is the arm payload.
     return .{
         .union_local = union_local,
-        .payload_ty = branch.ty,
+        .payload_ty = branch.payload_type orelse branch.ty,
     };
 }
 
@@ -9290,8 +9509,54 @@ fn isValueEnumDeclStart(tokens: []const lexer.Token, idx: usize) bool {
         tokEq(tokens[idx + 2], "=");
 }
 
+/// `Message = Quit | Text([u8])` — mirrors sema `isPayloadEnumDeclStart` (codegen copy).
+fn isPayloadEnumDeclStart(tokens: []const lexer.Token, idx: usize) bool {
+    if (idx + 2 >= tokens.len) return false;
+    if (!isLineStart(tokens, idx)) return false;
+    if (tokens[idx].kind != .ident) return false;
+    if (!isPublicTypeName(publicDeclName(tokens[idx].lexeme))) return false;
+    if (isErrorTypeName(publicDeclName(tokens[idx].lexeme))) return false;
+    if (isValueEnumDeclStart(tokens, idx)) return false;
+    if (idx + 2 < tokens.len and tokEq(tokens[idx + 1], "error") and tokEq(tokens[idx + 2], "=")) return false;
+    if (!tokEq(tokens[idx + 1], "=")) return false;
+    if (tokEq(tokens[idx + 2], "@")) return false;
+
+    const line_end = findLineEnd(tokens, idx);
+    var j = idx + 2;
+    var saw_case = false;
+    var expect_case = true;
+    while (j < line_end) {
+        if (!expect_case) {
+            if (!tokEq(tokens[j], "|")) return false;
+            expect_case = true;
+            j += 1;
+            continue;
+        }
+        if (tokens[j].kind != .ident) return false;
+        if (!isPublicTypeName(publicDeclName(tokens[j].lexeme))) return false;
+        j += 1;
+        if (j < line_end and tokEq(tokens[j], "(")) {
+            const close = findMatching(tokens, j, "(", ")") catch return false;
+            if (close <= j + 1) return false;
+            if (close == j + 2 and tokens[j + 1].kind == .number) return false;
+            if (tokens[j + 1].kind == .number or tokens[j + 1].kind == .string) return false;
+            j = close + 1;
+        }
+        saw_case = true;
+        expect_case = false;
+    }
+    return saw_case and !expect_case;
+}
+
 fn findValueEnumDecl(value_enums: []const ValueEnumDecl, name: []const u8) ?ValueEnumDecl {
     for (value_enums) |decl| {
+        if (std.mem.eql(u8, decl.name, name)) return decl;
+    }
+    return null;
+}
+
+fn findPayloadEnumDecl(payload_enums: []const PayloadEnumDecl, name: []const u8) ?PayloadEnumDecl {
+    for (payload_enums) |decl| {
         if (std.mem.eql(u8, decl.name, name)) return decl;
     }
     return null;
@@ -9897,6 +10162,83 @@ fn collectValueEnumDeclByNameAs(
         return true;
     }
     return false;
+}
+
+fn collectPayloadEnumDecls(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    out: *std.ArrayList(PayloadEnumDecl),
+) !void {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i + 2 < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isPayloadEnumDeclStart(tokens, i)) continue;
+        if (!try collectPayloadEnumDeclAt(allocator, tokens, i, out)) {
+            return error.NoMatchingCall;
+        }
+        i = findLineEnd(tokens, i) - 1;
+    }
+}
+
+fn collectPayloadEnumDeclAt(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    enum_idx: usize,
+    out: *std.ArrayList(PayloadEnumDecl),
+) !bool {
+    if (!isPayloadEnumDeclStart(tokens, enum_idx)) return false;
+    const name = publicDeclName(tokens[enum_idx].lexeme);
+    if (findPayloadEnumDecl(out.items, name) != null) return true;
+
+    const line_end = findLineEnd(tokens, enum_idx);
+    var cases = std.ArrayList(PayloadEnumCase).empty;
+    errdefer cases.deinit(allocator);
+    var owned_payload_tys = std.ArrayList([]const u8).empty;
+    errdefer {
+        for (owned_payload_tys.items) |owned| allocator.free(owned);
+        owned_payload_tys.deinit(allocator);
+    }
+
+    var j = enum_idx + 2; // after Name =
+    while (j < line_end) {
+        if (tokEq(tokens[j], "|")) {
+            j += 1;
+            continue;
+        }
+        if (tokens[j].kind != .ident) return false;
+        const case_name = publicDeclName(tokens[j].lexeme);
+        j += 1;
+        var payload_ty: ?[]const u8 = null;
+        if (j < line_end and tokEq(tokens[j], "(")) {
+            const close = findMatching(tokens, j, "(", ")") catch return false;
+            // Type expr lives strictly inside the parens: tokens[j+1 .. close].
+            const parsed = (try parseCodegenTypeExpr(allocator, tokens, j + 1, close, &owned_payload_tys)) orelse return false;
+            if (parsed.next_idx != close) return false;
+            payload_ty = parsed.ty;
+            j = close + 1;
+        }
+        try cases.append(allocator, .{
+            .name = case_name,
+            .payload_ty = payload_ty,
+        });
+    }
+
+    try out.append(allocator, .{
+        .name = name,
+        .cases = try cases.toOwnedSlice(allocator),
+        .owned_payload_tys = try owned_payload_tys.toOwnedSlice(allocator),
+        .owned_name = false,
+    });
+    return true;
 }
 
 fn collectStructLayouts(
@@ -10937,6 +11279,7 @@ fn collectGenericFuncInstancesForStart(
     tokens: []const lexer.Token,
     structs: []const StructDecl,
     value_enums: []const ValueEnumDecl,
+    payload_enums: []const PayloadEnumDecl,
     struct_layouts: []const StructLayout,
     host_imports: []const HostImport,
     wasi_imports: []const WasiHostImport,
@@ -10959,6 +11302,7 @@ fn collectGenericFuncInstancesForStart(
                         .functions = functions.items,
                         .structs = structs,
                         .value_enums = value_enums,
+                        .payload_enums = payload_enums,
                         .struct_layouts = struct_layouts,
                         .host_imports = host_imports,
                         .wasi_imports = wasi_imports,
@@ -10973,7 +11317,7 @@ fn collectGenericFuncInstancesForStart(
             }
         }
     }
-    try collectGenericFuncInstancesForConcreteFuncs(allocator, tokens, structs, value_enums, struct_layouts, host_imports, wasi_imports, string_data, modules, imported_alias_ctx, functions);
+    try collectGenericFuncInstancesForConcreteFuncs(allocator, tokens, structs, value_enums, payload_enums, struct_layouts, host_imports, wasi_imports, string_data, modules, imported_alias_ctx, functions);
 }
 
 fn collectGenericFuncInstancesForTests(
@@ -10982,6 +11326,7 @@ fn collectGenericFuncInstancesForTests(
     test_decls: []const test_runner.TestDecl,
     structs: []const StructDecl,
     value_enums: []const ValueEnumDecl,
+    payload_enums: []const PayloadEnumDecl,
     struct_layouts: []const StructLayout,
     host_imports: []const HostImport,
     wasi_imports: []const WasiHostImport,
@@ -10997,6 +11342,7 @@ fn collectGenericFuncInstancesForTests(
             .functions = functions.items,
             .structs = structs,
             .value_enums = value_enums,
+            .payload_enums = payload_enums,
             .struct_layouts = struct_layouts,
             .host_imports = host_imports,
             .wasi_imports = wasi_imports,
@@ -11008,7 +11354,7 @@ fn collectGenericFuncInstancesForTests(
         try collectBodyLocals(allocator, tokens, decl.body_start, decl.body_end, ctx, &locals);
         try collectGenericFuncInstancesInRange(allocator, tokens, decl.body_start, decl.body_end, &locals, ctx, functions);
     }
-    try collectGenericFuncInstancesForConcreteFuncs(allocator, tokens, structs, value_enums, struct_layouts, host_imports, wasi_imports, string_data, modules, imported_alias_ctx, functions);
+    try collectGenericFuncInstancesForConcreteFuncs(allocator, tokens, structs, value_enums, payload_enums, struct_layouts, host_imports, wasi_imports, string_data, modules, imported_alias_ctx, functions);
 }
 
 fn collectGenericFuncInstancesForConcreteFuncs(
@@ -11016,6 +11362,7 @@ fn collectGenericFuncInstancesForConcreteFuncs(
     entry_tokens: []const lexer.Token,
     structs: []const StructDecl,
     value_enums: []const ValueEnumDecl,
+    payload_enums: []const PayloadEnumDecl,
     struct_layouts: []const StructLayout,
     host_imports: []const HostImport,
     wasi_imports: []const WasiHostImport,
@@ -11035,6 +11382,7 @@ fn collectGenericFuncInstancesForConcreteFuncs(
             .functions = functions.items,
             .structs = structs,
             .value_enums = value_enums,
+            .payload_enums = payload_enums,
             .struct_layouts = struct_layouts,
             .host_imports = host_imports,
             .wasi_imports = wasi_imports,
@@ -11062,6 +11410,10 @@ fn appendFuncParamLocals(
         const raw_abi_ty = funcParamAbiType(param);
         const abi_ty = try substituteGenericTypeOwned(allocator, raw_abi_ty, ctx.type_bindings, &locals.owned_names);
         if (try parseTypeUnionLayoutFromName(allocator, func.tokens, abi_ty, ctx.structs, ctx.struct_layouts, &locals.owned_names)) |layout| {
+            errdefer freeUnionLayout(allocator, layout);
+            try locals.appendUnionLocalWithOrigin(allocator, param.name, layout, false, true, .param_or_import);
+        } else if (findPayloadEnumDecl(ctx.payload_enums, abi_ty)) |decl| {
+            const layout = try buildPayloadEnumUnionLayout(allocator, decl, func.tokens, ctx.structs, ctx.struct_layouts, &locals.owned_names);
             errdefer freeUnionLayout(allocator, layout);
             try locals.appendUnionLocalWithOrigin(allocator, param.name, layout, false, true, .param_or_import);
         } else if (managedPayloadElemTypeFromName(abi_ty)) |elem_ty| {
@@ -13800,6 +14152,15 @@ fn freeValueEnumDecls(allocator: std.mem.Allocator, value_enums: []const ValueEn
     }
 }
 
+fn freePayloadEnumDecls(allocator: std.mem.Allocator, payload_enums: []const PayloadEnumDecl) void {
+    for (payload_enums) |decl| {
+        if (decl.owned_name) allocator.free(decl.name);
+        for (decl.owned_payload_tys) |owned| allocator.free(owned);
+        if (decl.owned_payload_tys.len != 0) allocator.free(decl.owned_payload_tys);
+        allocator.free(decl.cases);
+    }
+}
+
 fn freeStructLayouts(allocator: std.mem.Allocator, layouts: []const StructLayout) void {
     for (layouts) |layout| {
         if (layout.owned_name) allocator.free(layout.name);
@@ -14265,6 +14626,13 @@ fn typedUnionBindingLayout(
     if (tokens[start_idx].kind != .ident) return null;
     const eq_idx = findTopLevelToken(tokens, start_idx + 1, end_idx, "=") orelse return null;
     if (eq_idx <= start_idx + 1) return null;
+    // Named payload enum: `m Message = …`
+    if (eq_idx == start_idx + 2 and tokens[start_idx + 1].kind == .ident) {
+        const ty_name = publicDeclName(tokens[start_idx + 1].lexeme);
+        if (findPayloadEnumDecl(ctx.payload_enums, ty_name)) |decl| {
+            return try buildPayloadEnumUnionLayout(allocator, decl, tokens, ctx.structs, ctx.struct_layouts, owned_types);
+        }
+    }
     return try parseUnionTypeLayout(
         allocator,
         tokens,

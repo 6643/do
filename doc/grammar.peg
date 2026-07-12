@@ -122,9 +122,15 @@ WitPathName      <- PathSeg ('.' PathSeg)*
 TypeDecl         <- GenericStructDecl / StructDecl / EnumDecl / WasiResourceDecl / WasiRecordDecl / WasiEnumDecl
 GenericStructDecl <- StructTypeConstraintList StructDecl
 StructDecl       <- DeclTypeName '{' StmtGap? FieldDeclList? StmtGap? '}'
-EnumDecl         <- ErrorEnumDecl / ValueEnumDecl
+EnumDecl         <- ErrorEnumDecl / ValueEnumDecl / PayloadEnumDecl
 ErrorEnumDecl    <- ErrorEnumName 'error' '=' ErrorEnumBranchList
 ValueEnumDecl    <- DeclTypeName BaseIntType '=' ValueEnumBranchList
+// L1 payload enum: Message = Quit | Text([u8]) | Binary([u8])
+// Not a type alias; tags by case name; no value-enum numeric carriers mixed in.
+PayloadEnumDecl  <- DeclTypeName '=' PayloadEnumCaseList
+PayloadEnumCaseList <- PayloadEnumCase (SoftGap '|' SoftGap PayloadEnumCase)*
+PayloadEnumCase  <- ValueEnumBranchName PayloadType?
+PayloadType      <- '(' TypeExpr ')'   // type expr only; not IntLit (that is value enum)
 ErrorEnumBranchList <- ErrorEnumBranchName (SoftGap '|' SoftGap ErrorEnumBranchName)*
 ValueEnumBranchList <- ValueEnumBranch (SoftGap '|' SoftGap ValueEnumBranch)*
 ValueEnumBranch  <- ValueEnumBranchName EnumBranchValue

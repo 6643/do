@@ -1,5 +1,9 @@
 # Changelog
 
+- Payload enum L1: `Message = Quit | Text([u8]) | Binary([u8])` declare/construct/`@is` narrow (tags by case name)
+  - sema: `isPayloadEnumDeclStart` + branch validation; codegen: tag+max-payload layout, unit/payload ctors
+  - fixtures: `compile_ok/289`–`290`, `compile_err/339`; docs: `syntax/enum.md`, `grammar.peg`
+
 - WASI C+D: stream hosts use coarse `StreamError` Err arms; docs inventory aligns preopens/stream preferred do forms
   - `lib/io.stream.do`: `[u8] | StreamError`, `u64 | StreamError`, `StreamError | nil`
   - docs: `preopens` lowerable; preferred examples use DirError/FileError/StreamError and `[Tuple<Dir,text>]`
