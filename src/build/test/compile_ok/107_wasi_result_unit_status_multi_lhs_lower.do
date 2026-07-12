@@ -1,4 +1,5 @@
-host_file_sync = @wasi_func("filesystem/types/descriptor.sync", (descriptor) -> result<_, error-code>)
+// Unit fallible host: exclusive union nil|i32; multi-lhs status binding remains lowerable.
+host_file_sync = @wasi_func("filesystem/types/descriptor.sync", (i32) -> nil | i32)
 
 start() {
     status i32 = 0
