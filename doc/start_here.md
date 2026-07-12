@@ -77,8 +77,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | 共享纯函数 | `type_name` | 类型/布局 SSOT (scalar/storage/managed/Tuple scheme A) |
 | | `sema_error` | ErrorSite 与 sema 错误构造 |
 | | `diagnostics` | check/LSP 共用前端诊断收集 (原 `src/lsp/diagnostics.zig` 已删除) |
-| Gen 域 | `gen.zig` | 主编排 |
-| | `gen.zig` | 公开入口 + 单测 |
+| Gen 域 | `gen.zig` | 公开入口 + 单测 |
 | | `gen_impl.zig` | emit/collect 实现（主逻辑） |
 | | `gen_types.zig` | LocalSet / CodegenContext / 声明类型 |
 | | `gen_util` / `gen_wasi` / `gen_union` | token 工具; WASI 表; union layout |
