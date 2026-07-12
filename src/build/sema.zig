@@ -5089,6 +5089,8 @@ const KnownWasiSignature = struct {
     /// Additional accepted do-side result forms (e.g. `Dir|i32` / `File|i32` vs transitional `result<…>`).
     do_result_alt: ?[]const u8 = null,
     do_result_alt2: ?[]const u8 = null,
+    do_result_alt3: ?[]const u8 = null,
+    do_result_alt4: ?[]const u8 = null,
     result_record: ?KnownWasiRecord = null,
 };
 
@@ -5127,7 +5129,9 @@ fn validateKnownWasiSignature(
     const result_ok = compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.result) or
         (known.do_result != null and compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.do_result.?)) or
         (known.do_result_alt != null and compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.do_result_alt.?)) or
-        (known.do_result_alt2 != null and compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.do_result_alt2.?));
+        (known.do_result_alt2 != null and compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.do_result_alt2.?)) or
+        (known.do_result_alt3 != null and compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.do_result_alt3.?)) or
+        (known.do_result_alt4 != null and compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.do_result_alt4.?));
     if (!params_ok or !result_ok) {
         return markErrorAt(tokens, site_idx, error.InvalidImportDecl);
     }
@@ -5148,6 +5152,8 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .do_result = "result<u64,error-code>",
             // Exclusive union: ok = filesize u64, err = status i32 (error-code+1).
             .do_result_alt = "u64|i32",
+            // P4: err arm as coarse FileError (status → FileWriteFailed / FileClosed).
+            .do_result_alt2 = "u64|FileError",
         },
         .{
             .target = "filesystem/types/descriptor.read",
@@ -5168,6 +5174,9 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .do_params_alt = "File",
             // Do exclusive union sugar: nil = ok, i32 = status (error-code+1; 0 never on err arm).
             .do_result = "nil|i32",
+            // P4: match public FileError|nil order for thin wrappers; also accept nil|FileError.
+            .do_result_alt = "FileError|nil",
+            .do_result_alt2 = "nil|FileError",
         },
         .{
             .target = "filesystem/types/descriptor.link-at",
@@ -5176,6 +5185,8 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .do_params = "i32,i32,text,i32,text",
             .do_params_alt = "File,i32,text,File,text",
             .do_result = "nil|i32",
+            .do_result_alt = "FileError|nil",
+            .do_result_alt2 = "nil|FileError",
         },
         .{
             .target = "filesystem/types/descriptor.create-directory-at",
@@ -5184,6 +5195,8 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .do_params = "i32,text",
             .do_params_alt = "Dir,text",
             .do_result = "nil|i32",
+            .do_result_alt = "DirError|nil",
+            .do_result_alt2 = "nil|DirError",
         },
         .{
             .target = "filesystem/types/descriptor.open-at",
@@ -5197,6 +5210,9 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             // Exclusive union: ok = Dir/File (.id from descriptor), err = status i32 (error-code+1).
             .do_result_alt = "Dir|i32",
             .do_result_alt2 = "File|i32",
+            // P4: err arm as coarse DirError / FileError (status → *OpenFailed).
+            .do_result_alt3 = "Dir|DirError",
+            .do_result_alt4 = "File|FileError",
         },
         .{
             .target = "filesystem/types/descriptor.remove-directory-at",
@@ -5205,6 +5221,8 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .do_params = "i32,text",
             .do_params_alt = "Dir,text",
             .do_result = "nil|i32",
+            .do_result_alt = "DirError|nil",
+            .do_result_alt2 = "nil|DirError",
         },
         .{ .target = "filesystem/types/descriptor.read-directory", .params = "descriptor", .result = "tuple<stream<directory-entry>,future<result<_,error-code>>>" },
         .{
@@ -5491,6 +5509,9 @@ fn parseWitType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?
 
     if (std.mem.eql(u8, name, "_")) return start_idx + 1;
     if (hasPublicStructDecl(tokens, name)) return start_idx + 1;
+    // P4: coarse do error enums in host Ok|Err results (DirError / FileError).
+    // Forward refs allowed: name ends with Error (same as resource names in host params).
+    if (isErrorTypeName(name)) return start_idx + 1;
 
     return parseWitName(tokens, start_idx, end_idx);
 }

@@ -5,8 +5,7 @@ call $create_dir_at
 (func $create_dir_at (param $parent.id i64) (param $path i32) (result i32 i32)
 call $__wasi_import_filesystem_types_descriptor_create_directory_at
 i32.const 3
-call $__mod_0__dir_status_to_error
+i32.const 5
 (func $remove_dir_at (param $parent.id i64) (param $path i32) (result i32 i32)
 call $__wasi_import_filesystem_types_descriptor_remove_directory_at
 i32.const 4
-call $__mod_0__dir_status_to_error

@@ -2,5 +2,6 @@
 call $link_file
 (func $link_file (param $old_file.id i64) (param $old_path i32) (param $new_file.id i64) (param $new_path i32) (result i32 i32)
 call $__wasi_import_filesystem_types_descriptor_link_at
-local.set $s.__union_tag
-call $__mod_0__file_status_to_error
+if (result i32 i32)
+i32.const 2
+i32.const 6

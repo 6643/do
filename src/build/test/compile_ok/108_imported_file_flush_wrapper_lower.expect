@@ -3,5 +3,5 @@ call $flush_file
 (func $flush_file (param $file.id i64) (result i32 i32)
 call $__wasi_import_filesystem_types_descriptor_sync
 if (result i32 i32)
-local.set $s.__union_tag
-call $__mod_0__file_status_to_error
+i32.const 2
+i32.const 5

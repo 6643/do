@@ -5,7 +5,6 @@ call $open_dir_at
 (func $open_dir_at (param $parent.id i64) (param $path i32) (result i64 i32 i32)
 i32.const 2
 call $__wasi_import_filesystem_types_descriptor_open_at
-local.set $r.__union_tag
-local.set $r.__union_payload_0
+i32.const 1
 (func $close_dir (param $dir.id i64)
 call $__wasi_import_filesystem_types_descriptor_drop

@@ -3192,6 +3192,62 @@ fn emitUnionValue(
                     }
                 }
             }
+            // Thin `return host_...(…)` / expr-position host → exclusive union (P4 Dir|DirError etc.).
+            if (findWasiHostImportForTokens(ctx, tokens, tokens[call_head.name_idx].lexeme)) |wasi_import| {
+                if (try emitWasiUnitResultAsUnionValue(
+                    allocator,
+                    tokens,
+                    call_head.args_start,
+                    call_head.args_end,
+                    locals,
+                    ctx,
+                    wasi_import,
+                    layout,
+                    out,
+                ) or try emitWasiDescriptorResultAsUnionValue(
+                    allocator,
+                    tokens,
+                    call_head.args_start,
+                    call_head.args_end,
+                    locals,
+                    ctx,
+                    wasi_import,
+                    layout,
+                    out,
+                ) or try emitWasiFilesizeResultAsUnionValue(
+                    allocator,
+                    tokens,
+                    call_head.args_start,
+                    call_head.args_end,
+                    locals,
+                    ctx,
+                    wasi_import,
+                    layout,
+                    out,
+                ) or try emitWasiListU8ResultAsUnionValue(
+                    allocator,
+                    tokens,
+                    call_head.args_start,
+                    call_head.args_end,
+                    locals,
+                    ctx,
+                    wasi_import,
+                    layout,
+                    out,
+                ) or try emitWasiReadResultAsUnionValue(
+                    allocator,
+                    tokens,
+                    call_head.args_start,
+                    call_head.args_end,
+                    locals,
+                    ctx,
+                    wasi_import,
+                    layout,
+                    out,
+                )) {
+                    return true;
+                }
+            }
         }
     }
 
@@ -8950,21 +9006,24 @@ fn wasiHostImportUseIsLowerableAtCall(
     import: WasiHostImport,
 ) bool {
     const lowering = wasiLowering(import) orelse return false;
-    // link-at: multi-lhs `_, status =` or exclusive-union binding `s nil|i32 =` / statement discard.
+    // link-at: multi-lhs `_, status =`, exclusive-union binding, return host(...), or statement discard.
     if (lowering.result_link_at_error) {
         return isWasiResultUnitStatusMultiAssignmentCall(tokens, call_idx) or
             isWasiUnionResultBindingCall(tokens, call_idx) or
+            isWasiUnionResultReturnCall(tokens, call_idx) or
             isBareWasiHostCallStatement(tokens, call_idx);
     }
     // tuple-in-result: multi-lhs `data, done, status =` or exclusive-union `Tuple<[u8],bool> | i32 =`.
     if (lowering.result_read_error) {
         return isWasiResultReadMultiAssignmentCall(tokens, call_idx) or
-            isWasiUnionResultBindingCall(tokens, call_idx);
+            isWasiUnionResultBindingCall(tokens, call_idx) or
+            isWasiUnionResultReturnCall(tokens, call_idx);
     }
     // list-in-result: multi-lhs `data, status =` or exclusive-union `[u8] | i32 =`.
     if (lowering.result_list_u8_error) {
         return isWasiResultListU8StatusMultiAssignmentCall(tokens, call_idx) or
-            isWasiUnionResultBindingCall(tokens, call_idx);
+            isWasiUnionResultBindingCall(tokens, call_idx) or
+            isWasiUnionResultReturnCall(tokens, call_idx);
     }
     return true;
 }
@@ -8978,6 +9037,16 @@ fn isWasiUnionResultBindingCall(tokens: []const lexer.Token, call_idx: usize) bo
     if (findTopLevelToken(tokens, line_start, eq_idx, ",") != null) return false;
     if (findTopLevelToken(tokens, line_start, eq_idx, "|") == null) return false;
     const rhs_range = trimParens(tokens, eq_idx + 1, line_end);
+    const call_head = exprCallHead(tokens, rhs_range) orelse return false;
+    return !call_head.is_intrinsic and call_head.name_idx == call_idx;
+}
+
+/// Thin wrapper return of a host call: `return host(...)`.
+fn isWasiUnionResultReturnCall(tokens: []const lexer.Token, call_idx: usize) bool {
+    const line_start = findLineStart(tokens, call_idx);
+    const line_end = findLineEnd(tokens, call_idx);
+    if (line_start >= line_end or !tokEq(tokens[line_start], "return")) return false;
+    const rhs_range = trimParens(tokens, line_start + 1, line_end);
     const call_head = exprCallHead(tokens, rhs_range) orelse return false;
     return !call_head.is_intrinsic and call_head.name_idx == call_idx;
 }
@@ -16822,8 +16891,90 @@ fn emitWasiResultUnitStatusValue(
     );
 }
 
+/// Coarse Failed variant for a fallible WASI host (matches stdlib wrapper fallbacks).
+fn wasiCoarseFailedVariantName(import: WasiHostImport, err_ty: []const u8) ?[]const u8 {
+    const target = import.target;
+    if (std.mem.eql(u8, err_ty, "DirError")) {
+        if (std.mem.eql(u8, target, "filesystem/types/descriptor.open-at")) return "DirOpenFailed";
+        if (std.mem.eql(u8, target, "filesystem/types/descriptor.create-directory-at")) return "DirCreateFailed";
+        if (std.mem.eql(u8, target, "filesystem/types/descriptor.remove-directory-at")) return "DirRemoveFailed";
+        return null;
+    }
+    if (std.mem.eql(u8, err_ty, "FileError")) {
+        if (std.mem.eql(u8, target, "filesystem/types/descriptor.open-at")) return "FileOpenFailed";
+        if (std.mem.eql(u8, target, "filesystem/types/descriptor.sync")) return "FileFlushFailed";
+        if (std.mem.eql(u8, target, "filesystem/types/descriptor.write")) return "FileWriteFailed";
+        if (std.mem.eql(u8, target, "filesystem/types/descriptor.link-at")) return "FileLinkFailed";
+        if (std.mem.eql(u8, target, "filesystem/types/descriptor.read")) return "FileReadFailed";
+        return null;
+    }
+    return null;
+}
+
+fn wasiCoarseClosedVariantName(err_ty: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, err_ty, "DirError")) return "DirClosed";
+    if (std.mem.eql(u8, err_ty, "FileError")) return "FileClosed";
+    return null;
+}
+
+/// Whether this host maps every non-zero status to a single Failed variant (open wrappers).
+fn wasiCoarseErrorAlwaysFailed(import: WasiHostImport) bool {
+    return std.mem.eql(u8, import.target, "filesystem/types/descriptor.open-at");
+}
+
+/// Emit error-enum payload for WASI err arm: open → always *Failed; unit/write → status 1 (*Closed) else *Failed.
+/// Loads error-code from result-area offset `code_offset` (open-at/unit = 4; filesize write = 8).
+fn emitWasiCoarseErrorEnumPayload(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    import: WasiHostImport,
+    err_ty: []const u8,
+    code_offset: u32,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    const failed_name = wasiCoarseFailedVariantName(import, err_ty) orelse return false;
+    const failed_val = errorEnumBranchValue(tokens, err_ty, failed_name) orelse return false;
+    if (wasiCoarseErrorAlwaysFailed(import)) {
+        try appendFmt(allocator, out, "      i32.const {d}\n", .{failed_val});
+        return true;
+    }
+    const closed_name = wasiCoarseClosedVariantName(err_ty) orelse return false;
+    const closed_val = errorEnumBranchValue(tokens, err_ty, closed_name) orelse return false;
+    // status = error-code+1; 1 ⇒ Closed (same as *status_to_error helpers).
+    try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
+    try appendFmt(allocator, out, "      i32.const {d}\n", .{code_offset});
+    try out.appendSlice(allocator,
+        \\      i32.add
+        \\      i32.load
+        \\      i32.const 1
+        \\      i32.add
+        \\      i32.const 1
+        \\      i32.eq
+        \\      if (result i32)
+        \\
+    );
+    try appendFmt(allocator, out, "        i32.const {d}\n", .{closed_val});
+    try out.appendSlice(allocator, "      else\n");
+    try appendFmt(allocator, out, "        i32.const {d}\n", .{failed_val});
+    try out.appendSlice(allocator, "      end\n");
+    return true;
+}
+
+fn unionBranchIsStatusI32(layout: UnionLayout, branch: UnionBranch) bool {
+    return std.mem.eql(u8, branch.ty, "i32") and branch.payload_len == 1 and
+        branch.payload_start < layout.payload_tys.len and
+        std.mem.eql(u8, layout.payload_tys[branch.payload_start], "i32");
+}
+
+fn unionBranchIsCoarseError(tokens: []const lexer.Token, layout: UnionLayout, branch: UnionBranch) bool {
+    if (!isErrorLikeType(tokens, branch.ty)) return false;
+    if (branch.payload_len != 1) return false;
+    if (branch.payload_start >= layout.payload_tys.len) return false;
+    return isErrorLikeType(tokens, layout.payload_tys[branch.payload_start]);
+}
+
 /// Lower unit fallible WASI host into exclusive union stack values: payload slots + tag.
-/// Phase-1 shape: `nil | i32` (nil = ok / tag 0; i32 = status error-code+1 / never 0).
+/// Shapes: `nil | i32` (status), or `nil | DirError` / `DirError | nil` / FileError variants (coarse).
 fn emitWasiUnitResultAsUnionValue(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -16842,16 +16993,24 @@ fn emitWasiUnitResultAsUnionValue(
     if (nil_branch.tag != 0) return false;
 
     var err_branch: ?UnionBranch = null;
+    var err_is_coarse = false;
     for (layout.branches) |branch| {
         if (std.mem.eql(u8, branch.ty, "nil")) continue;
         if (err_branch != null) return false;
-        if (branch.payload_len != 1) return false;
-        if (branch.payload_start >= layout.payload_tys.len) return false;
-        if (!std.mem.eql(u8, layout.payload_tys[branch.payload_start], "i32")) return false;
-        err_branch = branch;
+        if (unionBranchIsStatusI32(layout, branch)) {
+            err_branch = branch;
+            err_is_coarse = false;
+            continue;
+        }
+        if (unionBranchIsCoarseError(tokens, layout, branch)) {
+            err_branch = branch;
+            err_is_coarse = true;
+            continue;
+        }
+        return false;
     }
     const err = err_branch orelse return false;
-    // Single i32 payload slot only for this phase.
+    // Single i32/error payload slot only for this phase.
     if (layout.payload_tys.len != 1) return false;
 
     if (!try emitWasiResultUnitCall(allocator, tokens, args_start, args_end, locals, ctx, import, out)) {
@@ -16867,21 +17026,30 @@ fn emitWasiUnitResultAsUnionValue(
         \\      i32.const 0
         \\      i32.const 0
         \\    else
-        \\      global.get $__wasi_result_area_base
-        \\      i32.const 4
-        \\      i32.add
-        \\      i32.load
-        \\      i32.const 1
-        \\      i32.add
         \\
     );
+    if (err_is_coarse) {
+        if (!try emitWasiCoarseErrorEnumPayload(allocator, tokens, import, err.ty, 4, out)) {
+            return error.NoMatchingCall;
+        }
+    } else {
+        try out.appendSlice(allocator,
+            \\      global.get $__wasi_result_area_base
+            \\      i32.const 4
+            \\      i32.add
+            \\      i32.load
+            \\      i32.const 1
+            \\      i32.add
+            \\
+        );
+    }
     try appendFmt(allocator, out, "      i32.const {d}\n", .{err.tag});
     try out.appendSlice(allocator, "    end\n");
     return true;
 }
 
-/// Lower `result<filesize,error-code>` / stream check-write into exclusive union: e.g. `u64 | i32`.
-/// Ok arm is written filesize/allowed (u64); err arm is status i32 (error-code+1; 0 never on err arm).
+/// Lower `result<filesize,error-code>` / stream check-write into exclusive union: e.g. `u64 | i32` or `u64 | FileError`.
+/// Ok arm is written filesize/allowed (u64); err arm is status i32 or coarse FileError.
 fn emitWasiFilesizeResultAsUnionValue(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -16900,13 +17068,18 @@ fn emitWasiFilesizeResultAsUnionValue(
 
     var ok_branch: ?UnionBranch = null;
     var err_branch: ?UnionBranch = null;
+    var err_is_coarse = false;
     for (layout.branches) |branch| {
-        if (std.mem.eql(u8, branch.ty, "i32") and branch.payload_len == 1 and
-            branch.payload_start < layout.payload_tys.len and
-            std.mem.eql(u8, layout.payload_tys[branch.payload_start], "i32"))
-        {
+        if (unionBranchIsStatusI32(layout, branch)) {
             if (err_branch != null) return false;
             err_branch = branch;
+            err_is_coarse = false;
+            continue;
+        }
+        if (unionBranchIsCoarseError(tokens, layout, branch)) {
+            if (err_branch != null) return false;
+            err_branch = branch;
+            err_is_coarse = true;
             continue;
         }
         // Ok arm: scalar filesize (u64).
@@ -16959,18 +17132,24 @@ fn emitWasiFilesizeResultAsUnionValue(
     try appendFmt(allocator, out, "      i32.const {d}\n", .{ok.tag});
 
     try out.appendSlice(allocator, "    else\n");
-    // err: zero ok slot; status = error-code + 1 at +8; err tag
+    // err: zero ok slot; status or coarse FileError at +8; err tag
     for (layout.payload_tys, 0..) |payload_ty, idx| {
         if (idx == err.payload_start) {
-            try out.appendSlice(allocator,
-                \\      global.get $__wasi_result_area_base
-                \\      i32.const 8
-                \\      i32.add
-                \\      i32.load
-                \\      i32.const 1
-                \\      i32.add
-                \\
-            );
+            if (err_is_coarse) {
+                if (!try emitWasiCoarseErrorEnumPayload(allocator, tokens, import, err.ty, 8, out)) {
+                    return error.NoMatchingCall;
+                }
+            } else {
+                try out.appendSlice(allocator,
+                    \\      global.get $__wasi_result_area_base
+                    \\      i32.const 8
+                    \\      i32.add
+                    \\      i32.load
+                    \\      i32.const 1
+                    \\      i32.add
+                    \\
+                );
+            }
         } else {
             try appendFmt(allocator, out, "      {s}.const 0\n", .{codegenWasmType(ctx, payload_ty)});
         }
@@ -17208,8 +17387,8 @@ fn emitWasiListU8ResultAsUnionValue(
     return true;
 }
 
-/// Lower `result<descriptor,error-code>` into exclusive union stack: e.g. `Dir | i32`.
-/// Ok arm carries resource payload (Dir.id as i64 from descriptor); err arm is status i32 (error-code+1).
+/// Lower `result<descriptor,error-code>` into exclusive union stack: e.g. `Dir | i32` or `Dir | DirError`.
+/// Ok arm carries resource payload (Dir.id as i64 from descriptor); err arm is status i32 or coarse error enum.
 fn emitWasiDescriptorResultAsUnionValue(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -17227,13 +17406,18 @@ fn emitWasiDescriptorResultAsUnionValue(
 
     var ok_branch: ?UnionBranch = null;
     var err_branch: ?UnionBranch = null;
+    var err_is_coarse = false;
     for (layout.branches) |branch| {
-        if (std.mem.eql(u8, branch.ty, "i32") and branch.payload_len == 1 and
-            branch.payload_start < layout.payload_tys.len and
-            std.mem.eql(u8, layout.payload_tys[branch.payload_start], "i32"))
-        {
+        if (unionBranchIsStatusI32(layout, branch)) {
             if (err_branch != null) return false;
             err_branch = branch;
+            err_is_coarse = false;
+            continue;
+        }
+        if (unionBranchIsCoarseError(tokens, layout, branch)) {
+            if (err_branch != null) return false;
+            err_branch = branch;
+            err_is_coarse = true;
             continue;
         }
         if (ok_branch != null) return false;
@@ -17282,18 +17466,24 @@ fn emitWasiDescriptorResultAsUnionValue(
     try appendFmt(allocator, out, "      i32.const {d}\n", .{ok.tag});
 
     try out.appendSlice(allocator, "    else\n");
-    // err: zero ok slots; status = error-code + 1; err tag
+    // err: zero ok slots; status or coarse *OpenFailed; err tag
     for (layout.payload_tys, 0..) |payload_ty, idx| {
         if (idx == err.payload_start) {
-            try out.appendSlice(allocator,
-                \\      global.get $__wasi_result_area_base
-                \\      i32.const 4
-                \\      i32.add
-                \\      i32.load
-                \\      i32.const 1
-                \\      i32.add
-                \\
-            );
+            if (err_is_coarse) {
+                if (!try emitWasiCoarseErrorEnumPayload(allocator, tokens, import, err.ty, 4, out)) {
+                    return error.NoMatchingCall;
+                }
+            } else {
+                try out.appendSlice(allocator,
+                    \\      global.get $__wasi_result_area_base
+                    \\      i32.const 4
+                    \\      i32.add
+                    \\      i32.load
+                    \\      i32.const 1
+                    \\      i32.add
+                    \\
+                );
+            }
         } else {
             try appendFmt(allocator, out, "      {s}.const 0\n", .{codegenWasmType(ctx, payload_ty)});
         }
