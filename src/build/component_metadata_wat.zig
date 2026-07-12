@@ -14,7 +14,7 @@ pub const WasiLowering = struct {
     result_u64_stream_error: bool = false,
     result_read_error: bool = false,
     result_list_u8_error: bool = false,
-    /// list<tuple<descriptor,string>> → do [Tuple<i32, text>] (G6.1 A).
+    /// list<tuple<descriptor,string>> → do [Tuple<Dir, text>] (G6.1 / P3 Dir shell pack).
     result_list_preopen: bool = false,
     resource_drop: bool = false,
 };

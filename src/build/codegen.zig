@@ -1019,6 +1019,8 @@ pub fn emitWatWithOptions(
             try collectStoragePackLayoutsFromTokens(allocator, module.tokens, structs.items, &struct_layouts);
         }
     }
+    // Preopens always lower to [Tuple<Dir,text>] pack; ensure layout even if type text is only on host result sugar.
+    try ensurePreopenDirTupleStoragePackLayout(allocator, wasi_imports.items, structs.items, &struct_layouts);
     try mangleOverloadedFunctionNames(allocator, &functions);
 
     const ctx = CodegenContext{
@@ -1173,6 +1175,7 @@ pub fn emitTestWat(
             try collectStoragePackLayoutsFromTokens(allocator, module.tokens, structs.items, &struct_layouts);
         }
     }
+    try ensurePreopenDirTupleStoragePackLayout(allocator, wasi_imports.items, structs.items, &struct_layouts);
     try mangleOverloadedFunctionNames(allocator, &functions);
 
     const ctx = CodegenContext{
@@ -9930,6 +9933,26 @@ fn ensureStoragePackLayout(
     try ensureStoragePackLayoutWithStructs(allocator, elem_ty, &.{}, out);
 }
 
+/// When any module binds preopens get-directories, register `[Tuple<Dir,text>]` pack layout.
+fn ensurePreopenDirTupleStoragePackLayout(
+    allocator: std.mem.Allocator,
+    wasi_imports: []const WasiHostImport,
+    structs: []const StructDecl,
+    out: *std.ArrayList(StructLayout),
+) !void {
+    var needs = false;
+    for (wasi_imports) |import| {
+        if (std.mem.eql(u8, import.target, "filesystem/preopens/get-directories")) {
+            needs = true;
+            break;
+        }
+    }
+    if (!needs) return;
+    // Dir shell must be visible so pack expands `.id i64` + text handle (12B).
+    if (findStructDecl(structs, "Dir") == null) return;
+    try ensureStoragePackLayoutWithStructs(allocator, "Tuple<Dir,text>", structs, out);
+}
+
 fn ensureStoragePackLayoutWithStructs(
     allocator: std.mem.Allocator,
     elem_ty: []const u8,
@@ -16366,7 +16389,7 @@ fn emitWasiListU8ResultCall(
     return true;
 }
 
-/// G6.1 A: () -> list<tuple<descriptor,string>> as do [Tuple<i32,text>].
+/// G6.1 / P3: () -> list<tuple<descriptor,string>> as do [Tuple<Dir,text>] (Dir.id i64 + text).
 fn emitWasiListPreopenResultCall(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -16379,9 +16402,10 @@ fn emitWasiListPreopenResultCall(
 ) CodegenError!bool {
     _ = tokens;
     _ = locals;
-    _ = ctx;
     if (!std.mem.eql(u8, import.target, "filesystem/preopens/get-directories")) return false;
     if (args_start != args_end) return error.NoMatchingCall;
+    // Prefer registered storage-pack layout for Tuple<Dir,text>; fall back is wrong for release.
+    const pack_type_id = storageTypeIdForElement("Tuple<Dir,text>", ctx);
     try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
     try out.appendSlice(allocator, "    call $");
     try appendWasiImportSymbol(allocator, out, import.target);
@@ -16393,9 +16417,10 @@ fn emitWasiListPreopenResultCall(
         \\    i32.const 4
         \\    i32.add
         \\    i32.load
-        \\    call $__wasi_list_preopen_to_storage
         \\
     );
+    try appendFmt(allocator, out, "    i32.const {d}\n", .{pack_type_id});
+    try out.appendSlice(allocator, "    call $__wasi_list_preopen_to_storage\n");
     return true;
 }
 
@@ -20744,7 +20769,7 @@ fn inferFirstArgTypeOrDefaultS32(
 fn wasiDoResultType(import: WasiHostImport) ?[]const u8 {
     const lowering = wasiLowering(import) orelse return null;
     if (lowering.result_storage_elem) |elem_ty| return storageTypeNameForElem(elem_ty);
-    if (lowering.result_list_preopen) return "[Tuple<i32,text>]";
+    if (lowering.result_list_preopen) return "[Tuple<Dir,text>]";
     if (lowering.result_record) |record| return record;
     return import.result;
 }

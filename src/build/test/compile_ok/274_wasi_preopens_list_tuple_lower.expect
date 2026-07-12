@@ -1,3 +1,4 @@
 (import "cm32p2|wasi:filesystem/preopens" "get-directories"
 call $__wasi_list_preopen_to_storage
+Tuple<Dir,text>
 local.set $roots

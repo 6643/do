@@ -320,10 +320,10 @@ pub fn emitArcRuntimePrelude(
         \\    memory.copy
         \\    local.get $object
         \\  )
-        \\  ;; G6.1 A: convert host list of (descriptor,string) into [Tuple<i32,text>].
+        \\  ;; G6.1 / P3: host list of (descriptor,string) → [Tuple<Dir,text>] storage pack.
         \\  ;; Element ABI: descriptor@0, string.ptr@4, string.len@8 (12 bytes).
-        \\  ;; Pack slot: i32 descriptor + text handle (8 bytes). text uses storage type_id=1 like [u8].
-        \\  (func $__wasi_list_preopen_to_storage (param $ptr i32) (param $len i32) (result i32)
+        \\  ;; Pack slot: Dir.id i64 @0 + text handle @8 (12 bytes). type_id is storage-pack layout.
+        \\  (func $__wasi_list_preopen_to_storage (param $ptr i32) (param $len i32) (param $type_id i32) (result i32)
         \\    (local $object i32)
         \\    (local $i i32)
         \\    (local $elem i32)
@@ -333,11 +333,11 @@ pub fn emitArcRuntimePrelude(
         \\    (local $path_obj i32)
         \\    (local $fd i32)
         \\    local.get $len
-        \\    i32.const 8
+        \\    i32.const 12
         \\    i32.mul
         \\    i32.const 8
         \\    i32.add
-        \\    i32.const 1
+        \\    local.get $type_id
         \\    call $__arc_alloc
         \\    local.set $object
         \\    local.get $object
@@ -386,15 +386,16 @@ pub fn emitArcRuntimePrelude(
         \\        i32.const 8
         \\        i32.add
         \\        local.get $i
-        \\        i32.const 8
+        \\        i32.const 12
         \\        i32.mul
         \\        i32.add
         \\        local.set $dst
         \\        local.get $dst
         \\        local.get $fd
-        \\        i32.store
+        \\        i64.extend_i32_s
+        \\        i64.store
         \\        local.get $dst
-        \\        i32.const 4
+        \\        i32.const 8
         \\        i32.add
         \\        local.get $path_obj
         \\        i32.store

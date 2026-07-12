@@ -1,12 +1,13 @@
 // Declarative WASI: @wasi_func hosts first (import prefix), then resource shell.
 // Coarse DirError stays a plain do error enum (status map in wrappers).
-// Hosts use Ok|Err / resource params where Task 1–3 enable; preopens keep list sugar.
+// Hosts use Ok|Err / resource params where Task 1–3 enable.
 .host_dir_create_at = @wasi_func("filesystem/types/descriptor.create-directory-at", (Dir, text) -> nil | i32)
 .host_dir_open_at = @wasi_func("filesystem/types/descriptor.open-at", (Dir, i32, text, i32, i32) -> Dir | i32)
 .host_dir_remove_at = @wasi_func("filesystem/types/descriptor.remove-directory-at", (Dir, text) -> nil | i32)
 .host_dir_drop = @wasi_func("filesystem/types/descriptor.drop", (Dir) -> nil)
-// G6.1 A: list-of-tuple resource; public wraps Dir. list-of-Dir not ready.
-.host_preopens = @wasi_func("filesystem/preopens/get-directories", () -> list<tuple<i32,text>>)
+// P3: host builds Dir shells in list-of-tuple pack (no guest i32 remap loop).
+// Bracket sugar `[Tuple<Dir,text>]` is not yet valid in @wasi_func result; list form accepted.
+.host_preopens = @wasi_func("filesystem/preopens/get-directories", () -> list<tuple<Dir, text>>)
 
 Dir = @wasi_resource("filesystem/types/descriptor", {
     .id i64
@@ -52,21 +53,8 @@ is_dir_closed(err DirError) -> bool {
     return @eq(err, DirClosed)
 }
 
-/// G6.1 A: public preopens API — list of (Dir, guest path text).
+/// Preopens API — list of (Dir, guest path text).
 /// Ownership: caller must `close_dir` each Dir; empty list is success (no preopens).
 preopen_directories() -> [Tuple<Dir, text>] {
-    raw [Tuple<i32, text>] = host_preopens()
-    out [Tuple<Dir, text>] = .{}
-    i usize = 0
-    loop {
-        if @ge(i, @len(raw)) break
-        pair Tuple<i32, text> = @get(raw, i)
-        fd i32 = @get(pair, 0)
-        path text = @get(pair, 1)
-        dir Dir = Dir{id = @as(i64, fd)}
-        item Tuple<Dir, text> = Tuple<Dir, text>{dir, path}
-        out = @put(out, item)
-        i = @add(i, 1)
-    }
-    return out
+    return host_preopens()
 }

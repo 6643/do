@@ -5219,7 +5219,11 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .target = "filesystem/preopens/get-directories",
             .params = "",
             .result = "list<tuple<descriptor,text>>",
-            .do_result = "list<tuple<i32,text>>",
+            // Preferred do form packs Dir shells; bracket sugar not yet valid on wasi_func result.
+            // compactTokenRangeEquals ignores whitespace, so spaces in source are fine.
+            .do_result = "list<tuple<Dir,text>>",
+            .do_result_alt = "list<tuple<i32,text>>",
+            .do_result_alt2 = "list<tuple<descriptor,text>>",
         },
         .{
             .target = "io/streams/input-stream.read",
