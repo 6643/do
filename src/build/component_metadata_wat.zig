@@ -14,6 +14,8 @@ pub const WasiLowering = struct {
     result_u64_stream_error: bool = false,
     result_read_error: bool = false,
     result_list_u8_error: bool = false,
+    /// list<tuple<descriptor,string>> → do [Tuple<i32, text>] (G6.1 A).
+    result_list_preopen: bool = false,
     resource_drop: bool = false,
 };
 
@@ -125,6 +127,19 @@ pub fn wasiLowering(import: anytype) ?WasiLowering {
         std.mem.eql(u8, import.result, "list<u8>"))
     {
         return .{ .module = "cm32p2|wasi:random/random", .name = "get-random-bytes", .param = "i64 i32", .result_storage_elem = "u8" };
+    }
+    // G6.1 A: preopens list-of-tuple resource; core import writes list{ptr,len} into result area.
+    if (std.mem.eql(u8, import.target, "filesystem/preopens/get-directories") and
+        std.mem.eql(u8, import.params, "") and
+        (std.mem.eql(u8, import.result, "list<tuple<descriptor,text>>") or
+            std.mem.eql(u8, import.result, "list<tuple<descriptor,string>>")))
+    {
+        return .{
+            .module = "cm32p2|wasi:filesystem/preopens",
+            .name = "get-directories",
+            .param = "i32",
+            .result_list_preopen = true,
+        };
     }
     if (std.mem.eql(u8, import.target, "filesystem/types/descriptor.sync") and
         std.mem.eql(u8, import.params, "descriptor") and

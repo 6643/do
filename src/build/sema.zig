@@ -3211,7 +3211,8 @@ fn isVisibleBindingOrCallableName(tokens: []const lexer.Token, name: []const u8,
             if (!tokEq(tokens[eq_idx + 1], "@")) continue;
             if (tokens[eq_idx + 2].kind != .ident) continue;
             const import_kind = tokens[eq_idx + 2].lexeme;
-            if (std.mem.eql(u8, import_kind, "env") or std.mem.eql(u8, import_kind, "wasi")) return true;
+            if (std.mem.eql(u8, import_kind, "env") or
+                std.mem.eql(u8, import_kind, "wasi_func")) return true;
             if (std.mem.eql(u8, import_kind, "lib") and (isLowerIdentName(public_name) or isReadonlyIdentName(tokens[i].lexeme))) return true;
             continue;
         }
@@ -4544,6 +4545,31 @@ fn collectStructInfos(allocator: std.mem.Allocator, tokens: []const lexer.Token)
         if (depth_brace != 0) continue;
         if (!isTopLevelDeclHead(tokens, i)) continue;
         if (!isTypeDeclStart(tokens, i)) continue;
+
+        // Declarative: Name = @wasi_resource|wasi_record("…", { fields })
+        if (i + 5 < tokens.len and tokEq(tokens[i + 1], "=") and tokEq(tokens[i + 2], "@") and
+            tokens[i + 3].kind == .ident and
+            (std.mem.eql(u8, tokens[i + 3].lexeme, "wasi_resource") or
+                std.mem.eql(u8, tokens[i + 3].lexeme, "wasi_record")) and
+            tokEq(tokens[i + 4], "("))
+        {
+            const close_call = findMatching(tokens, i + 4, "(", ")") catch continue;
+            var j = i + 5;
+            while (j < close_call) : (j += 1) {
+                if (tokEq(tokens[j], "{")) {
+                    const close_brace = findMatching(tokens, j, "{", "}") catch break;
+                    try out.append(allocator, .{
+                        .name = publicTypeName(tokens[i].lexeme),
+                        .fields = try collectStructFieldInfos(allocator, tokens, j + 1, close_brace),
+                    });
+                    i = close_call;
+                    break;
+                }
+            }
+            continue;
+        }
+
+        // Classic: Name { fields }
         if (i + 1 >= tokens.len or !tokEq(tokens[i + 1], "{")) continue;
 
         const close_idx = findMatching(tokens, i + 1, "{", "}") catch continue;
@@ -4573,7 +4599,8 @@ fn collectStructFieldInfos(
 
     var i = start_idx;
     while (i < end_idx) {
-        const line_end = findLineEndIdx(tokens, i);
+        // Clamp to brace end so single-line `{ .id i64 }` does not pull `}` into the type span.
+        const line_end = @min(findLineEndIdx(tokens, i), end_idx);
         if (tokens[i].kind == .ident and isStructFieldName(tokens[i].lexeme)) {
             const type_end = findStructFieldTypeEnd(tokens, i + 1, line_end);
             {
@@ -4866,7 +4893,7 @@ fn isModernImportAssign(tokens: []const lexer.Token, idx: usize) bool {
     if (tokens[at_idx + 1].kind != .ident) return false;
     return std.mem.eql(u8, tokens[at_idx + 1].lexeme, "lib") or
         std.mem.eql(u8, tokens[at_idx + 1].lexeme, "env") or
-        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "wasi");
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "wasi_func");
 }
 
 fn validateHostImportDecl(tokens: []const lexer.Token, name_idx: usize) !void {
@@ -4901,7 +4928,8 @@ fn isHostImportLine(tokens: []const lexer.Token, at_idx: usize) bool {
     if (!tokEq(tokens[at_idx], "@")) return false;
     if (tokens[at_idx + 1].kind != .ident) return false;
     if (!tokEq(tokens[at_idx + 2], "(")) return false;
-    return std.mem.eql(u8, tokens[at_idx + 1].lexeme, "env") or std.mem.eql(u8, tokens[at_idx + 1].lexeme, "wasi");
+    return std.mem.eql(u8, tokens[at_idx + 1].lexeme, "env") or
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "wasi_func");
 }
 
 fn validateLocalImportDecl(tokens: []const lexer.Token, name_idx: usize, at_idx: usize) !void {
@@ -5032,7 +5060,7 @@ fn validateHostImportTarget(tokens: []const lexer.Token, at_idx: usize, name_idx
         if (!isValidPathSeg(target)) return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
         return .env;
     }
-    if (std.mem.eql(u8, tokens[name_idx].lexeme, "wasi")) {
+    if (std.mem.eql(u8, tokens[name_idx].lexeme, "wasi_func")) {
         if (!isValidWitTargetPath(target)) return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
         return .wasi;
     }
@@ -5052,6 +5080,9 @@ const KnownWasiSignature = struct {
     target: []const u8,
     params: []const u8,
     result: []const u8,
+    /// Optional do-side signature accepted as sugar for the same target (stored as WIT form for codegen).
+    do_params: ?[]const u8 = null,
+    do_result: ?[]const u8 = null,
     result_record: ?KnownWasiRecord = null,
 };
 
@@ -5083,10 +5114,11 @@ fn validateKnownWasiSignature(
     if (close_idx + 3 >= sig_end or !tokEq(tokens[close_idx + 1], "-") or !tokEq(tokens[close_idx + 2], ">")) {
         return markErrorAt(tokens, sig_start, error.InvalidImportDecl);
     }
-    if (!compactTokenRangeEquals(tokens, sig_start + 1, close_idx, known.params)) {
-        return markErrorAt(tokens, site_idx, error.InvalidImportDecl);
-    }
-    if (!compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.result)) {
+    const params_ok = compactTokenRangeEquals(tokens, sig_start + 1, close_idx, known.params) or
+        (known.do_params != null and compactTokenRangeEquals(tokens, sig_start + 1, close_idx, known.do_params.?));
+    const result_ok = compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.result) or
+        (known.do_result != null and compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.do_result.?));
+    if (!params_ok or !result_ok) {
         return markErrorAt(tokens, site_idx, error.InvalidImportDecl);
     }
     if (known.result_record) |record| {
@@ -5096,20 +5128,89 @@ fn validateKnownWasiSignature(
 
 fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
     const known = [_]KnownWasiSignature{
-        .{ .target = "filesystem/types/descriptor.write", .params = "descriptor,list<u8>,filesize", .result = "result<filesize,error-code>" },
-        .{ .target = "filesystem/types/descriptor.read", .params = "descriptor,filesize,filesize", .result = "result<tuple<list<u8>,bool>,error-code>" },
-        .{ .target = "filesystem/types/descriptor.sync", .params = "descriptor", .result = "result<_,error-code>" },
-        .{ .target = "filesystem/types/descriptor.link-at", .params = "descriptor,path-flags,text,borrow<descriptor>,text", .result = "result<_,error-code>" },
-        .{ .target = "filesystem/types/descriptor.create-directory-at", .params = "descriptor,text", .result = "result<_,error-code>" },
-        .{ .target = "filesystem/types/descriptor.open-at", .params = "descriptor,path-flags,text,open-flags,descriptor-flags", .result = "result<descriptor,error-code>" },
-        .{ .target = "filesystem/types/descriptor.remove-directory-at", .params = "descriptor,text", .result = "result<_,error-code>" },
+        .{
+            .target = "filesystem/types/descriptor.write",
+            .params = "descriptor,list<u8>,filesize",
+            .result = "result<filesize,error-code>",
+            .do_params = "i32,[u8],u64",
+            .do_result = "result<u64,error-code>",
+        },
+        .{
+            .target = "filesystem/types/descriptor.read",
+            .params = "descriptor,filesize,filesize",
+            .result = "result<tuple<list<u8>,bool>,error-code>",
+            .do_params = "i32,u64,u64",
+            .do_result = "result<tuple<[u8],bool>,error-code>",
+        },
+        .{
+            .target = "filesystem/types/descriptor.sync",
+            .params = "descriptor",
+            .result = "result<_,error-code>",
+            .do_params = "i32",
+        },
+        .{
+            .target = "filesystem/types/descriptor.link-at",
+            .params = "descriptor,path-flags,text,borrow<descriptor>,text",
+            .result = "result<_,error-code>",
+            .do_params = "i32,i32,text,i32,text",
+        },
+        .{
+            .target = "filesystem/types/descriptor.create-directory-at",
+            .params = "descriptor,text",
+            .result = "result<_,error-code>",
+            .do_params = "i32,text",
+        },
+        .{
+            .target = "filesystem/types/descriptor.open-at",
+            .params = "descriptor,path-flags,text,open-flags,descriptor-flags",
+            .result = "result<descriptor,error-code>",
+            .do_params = "i32,i32,text,i32,i32",
+            .do_result = "result<i32,error-code>",
+        },
+        .{
+            .target = "filesystem/types/descriptor.remove-directory-at",
+            .params = "descriptor,text",
+            .result = "result<_,error-code>",
+            .do_params = "i32,text",
+        },
         .{ .target = "filesystem/types/descriptor.read-directory", .params = "descriptor", .result = "tuple<stream<directory-entry>,future<result<_,error-code>>>" },
-        .{ .target = "filesystem/types/descriptor.drop", .params = "descriptor", .result = "nil" },
-        .{ .target = "filesystem/preopens/get-directories", .params = "", .result = "list<tuple<descriptor,text>>" },
-        .{ .target = "io/streams/input-stream.read", .params = "input-stream,u64", .result = "result<list<u8>,stream-error>" },
-        .{ .target = "io/streams/output-stream.check-write", .params = "output-stream", .result = "result<u64,stream-error>" },
-        .{ .target = "io/streams/output-stream.write", .params = "output-stream,list<u8>", .result = "result<_,stream-error>" },
-        .{ .target = "io/streams/output-stream.flush", .params = "output-stream", .result = "result<_,stream-error>" },
+        .{
+            .target = "filesystem/types/descriptor.drop",
+            .params = "descriptor",
+            .result = "nil",
+            .do_params = "i32",
+        },
+        .{
+            .target = "filesystem/preopens/get-directories",
+            .params = "",
+            .result = "list<tuple<descriptor,text>>",
+            .do_result = "list<tuple<i32,text>>",
+        },
+        .{
+            .target = "io/streams/input-stream.read",
+            .params = "input-stream,u64",
+            .result = "result<list<u8>,stream-error>",
+            .do_params = "i32,u64",
+            .do_result = "result<[u8],stream-error>",
+        },
+        .{
+            .target = "io/streams/output-stream.check-write",
+            .params = "output-stream",
+            .result = "result<u64,stream-error>",
+            .do_params = "i32",
+        },
+        .{
+            .target = "io/streams/output-stream.write",
+            .params = "output-stream,list<u8>",
+            .result = "result<_,stream-error>",
+            .do_params = "i32,[u8]",
+        },
+        .{
+            .target = "io/streams/output-stream.flush",
+            .params = "output-stream",
+            .result = "result<_,stream-error>",
+            .do_params = "i32",
+        },
         .{ .target = "sockets/types/tcp-socket.create", .params = "ip-address-family", .result = "result<tcp-socket,error-code>" },
         .{ .target = "sockets/types/tcp-socket.bind", .params = "tcp-socket,ip-socket-address", .result = "result<_,error-code>" },
         .{ .target = "sockets/types/udp-socket.create", .params = "ip-address-family", .result = "result<udp-socket,error-code>" },
@@ -5125,7 +5226,12 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
         .{ .target = "clocks/system-clock/get-resolution", .params = "", .result = "u64" },
         .{ .target = "clocks/monotonic-clock/now", .params = "", .result = "u64" },
         .{ .target = "clocks/monotonic-clock/get-resolution", .params = "", .result = "u64" },
-        .{ .target = "random/random/get-random-bytes", .params = "u64", .result = "list<u8>" },
+        .{
+            .target = "random/random/get-random-bytes",
+            .params = "u64",
+            .result = "list<u8>",
+            .do_result = "[u8]",
+        },
         .{ .target = "random/random/get-random-u64", .params = "", .result = "u64" },
     };
     for (known) |item| {
@@ -5272,7 +5378,14 @@ fn isHostReturnType(name: []const u8) bool {
 }
 
 fn parseWitType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
-    if (start_idx >= end_idx or tokens[start_idx].kind != .ident) return null;
+    if (start_idx >= end_idx) return null;
+    // Do storage sugar: [u8] accepted in @wasi_func do-side signatures.
+    if (tokEq(tokens[start_idx], "[") and start_idx + 2 < end_idx and
+        tokens[start_idx + 1].kind == .ident and tokEq(tokens[start_idx + 2], "]"))
+    {
+        return start_idx + 3;
+    }
+    if (tokens[start_idx].kind != .ident) return null;
     const name = tokens[start_idx].lexeme;
 
     if (std.mem.eql(u8, name, "list")) {
@@ -5348,9 +5461,28 @@ fn findPublicStructDecl(tokens: []const lexer.Token, name: []const u8) ?StructDe
         if (!isTopLevelDeclHead(tokens, i)) continue;
         if (tokens[i].kind != .ident) continue;
         if (!std.mem.eql(u8, tokens[i].lexeme, name)) continue;
-        if (i + 1 >= tokens.len or !tokEq(tokens[i + 1], "{")) continue;
-        const close_idx = findMatching(tokens, i + 1, "{", "}") catch return null;
-        return .{ .open_idx = i + 1, .close_idx = close_idx };
+        // Classic: Name { fields }
+        if (i + 1 < tokens.len and tokEq(tokens[i + 1], "{")) {
+            const close_idx = findMatching(tokens, i + 1, "{", "}") catch return null;
+            return .{ .open_idx = i + 1, .close_idx = close_idx };
+        }
+        // Declarative: Name = @wasi_record|wasi_resource("…", { fields })
+        if (i + 6 < tokens.len and tokEq(tokens[i + 1], "=") and tokEq(tokens[i + 2], "@") and
+            tokens[i + 3].kind == .ident and
+            (std.mem.eql(u8, tokens[i + 3].lexeme, "wasi_record") or
+                std.mem.eql(u8, tokens[i + 3].lexeme, "wasi_resource")) and
+            tokEq(tokens[i + 4], "("))
+        {
+            const close_call = findMatching(tokens, i + 4, "(", ")") catch return null;
+            // Find `{` after the target string / comma
+            var j = i + 5;
+            while (j < close_call) : (j += 1) {
+                if (tokEq(tokens[j], "{")) {
+                    const close_brace = findMatching(tokens, j, "{", "}") catch return null;
+                    return .{ .open_idx = j, .close_idx = close_brace };
+                }
+            }
+        }
     }
     return null;
 }
@@ -5480,6 +5612,15 @@ fn isTypeDeclStart(tokens: []const lexer.Token, idx: usize) bool {
     if (idx + 1 >= tokens.len) return false;
     if (tokEq(tokens[idx + 1], "(")) return false; // func decl
     if (isErrorEnumDeclStart(tokens, idx) or isValueEnumDeclStart(tokens, idx)) return true;
+    // Declarative WASI type binding: Name = @wasi_resource|wasi_record("…", { … })
+    if (tokEq(tokens[idx + 1], "=") and idx + 5 < tokens.len and
+        tokEq(tokens[idx + 2], "@") and tokens[idx + 3].kind == .ident and
+        (std.mem.eql(u8, tokens[idx + 3].lexeme, "wasi_resource") or
+            std.mem.eql(u8, tokens[idx + 3].lexeme, "wasi_record")) and
+        tokEq(tokens[idx + 4], "("))
+    {
+        return isValidDeclaredTypeName(tokens[idx].lexeme);
+    }
 
     var next_idx = idx + 1;
     if (tokEq(tokens[next_idx], "<")) {
@@ -5627,7 +5768,7 @@ fn isInsideHostImportCall(tokens: []const lexer.Token, idx: usize) bool {
     if (!tokEq(tokens[open_idx - 2], "@")) return false;
     if (tokens[open_idx - 1].kind != .ident) return false;
     const name = tokens[open_idx - 1].lexeme;
-    return std.mem.eql(u8, name, "env") or std.mem.eql(u8, name, "wasi");
+    return std.mem.eql(u8, name, "env") or std.mem.eql(u8, name, "wasi_func");
 }
 
 fn isValueEnumBranchDeclToken(tokens: []const lexer.Token, idx: usize) bool {

@@ -378,6 +378,7 @@ fn isTopLevelTypeDeclStart(tokens: []const lexer.Token, idx: usize) bool {
     if (!isTopLevelDeclHead(tokens, idx)) return false;
     if (!isDeclTypeName(tokens[idx].lexeme)) return false;
     if (tokEq(tokens[idx + 1], "{")) return true;
+    if (isWasiStructBindingDeclStart(tokens, idx)) return true;
     if (tokEq(tokens[idx + 1], "=")) return true;
     if (isErrorEnumDeclStart(tokens, idx)) return true;
     if (isValueEnumDeclStart(tokens, idx)) return true;
@@ -385,10 +386,34 @@ fn isTopLevelTypeDeclStart(tokens: []const lexer.Token, idx: usize) bool {
 }
 
 fn isErrorEnumDeclStart(tokens: []const lexer.Token, idx: usize) bool {
-    return idx + 3 < tokens.len and
-        isErrorTypeName(tokens[idx].lexeme) and
-        tokEq(tokens[idx + 1], "error") and
-        tokEq(tokens[idx + 2], "=");
+    if (idx + 3 >= tokens.len) return false;
+    if (!isErrorTypeName(tokens[idx].lexeme)) return false;
+    if (!tokEq(tokens[idx + 1], "error") or !tokEq(tokens[idx + 2], "=")) return false;
+    return true;
+}
+
+/// `Name error = @wasi_enum("target", A | B | …)` — declarative WASI error enum.
+fn isWasiErrorEnumDeclStart(tokens: []const lexer.Token, idx: usize) bool {
+    if (!isErrorEnumDeclStart(tokens, idx)) return false;
+    const line_end = findLineEnd(tokens, idx, tokens.len);
+    if (idx + 5 >= line_end) return false;
+    return tokEq(tokens[idx + 3], "@") and
+        tokens[idx + 4].kind == .ident and
+        std.mem.eql(u8, tokens[idx + 4].lexeme, "wasi_enum");
+}
+
+/// `Name = @wasi_resource("…", { … })` / `@wasi_record("…", { … })`.
+fn isWasiStructBindingDeclStart(tokens: []const lexer.Token, idx: usize) bool {
+    if (idx + 5 >= tokens.len) return false;
+    if (tokens[idx].kind != .ident or !isDeclTypeName(tokens[idx].lexeme)) return false;
+    if (!isTopLevelDeclHead(tokens, idx)) return false;
+    if (!tokEq(tokens[idx + 1], "=")) return false;
+    if (!tokEq(tokens[idx + 2], "@")) return false;
+    if (tokens[idx + 3].kind != .ident or !isWasiTypeBindingName(tokens[idx + 3].lexeme)) return false;
+    if (!std.mem.eql(u8, tokens[idx + 3].lexeme, "wasi_resource") and
+        !std.mem.eql(u8, tokens[idx + 3].lexeme, "wasi_record"))
+        return false;
+    return tokEq(tokens[idx + 4], "(");
 }
 
 fn isValueEnumDeclStart(tokens: []const lexer.Token, idx: usize) bool {
@@ -434,9 +459,16 @@ fn isImportCallHead(tokens: []const lexer.Token, at_idx: usize, line_end: usize)
     if (at_idx + 2 >= line_end or !tokEq(tokens[at_idx], "@")) return false;
     if (tokens[at_idx + 1].kind != .ident) return false;
     if (!tokEq(tokens[at_idx + 2], "(")) return false;
-    return std.mem.eql(u8, tokens[at_idx + 1].lexeme, "lib") or
-        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "env") or
-        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "wasi");
+    const name = tokens[at_idx + 1].lexeme;
+    return std.mem.eql(u8, name, "lib") or
+        std.mem.eql(u8, name, "env") or
+        std.mem.eql(u8, name, "wasi_func");
+}
+
+fn isWasiTypeBindingName(name: []const u8) bool {
+    return std.mem.eql(u8, name, "wasi_resource") or
+        std.mem.eql(u8, name, "wasi_record") or
+        std.mem.eql(u8, name, "wasi_enum");
 }
 
 fn topLevelLineAssignIdx(tokens: []const lexer.Token, line_start: usize) ?usize {

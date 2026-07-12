@@ -454,11 +454,31 @@ fn collectPrivateStructFields(
         if (tokens[i].kind != .ident) continue;
         if (!std.mem.eql(u8, tokens[i].lexeme, target)) continue;
         if (isPrivateDeclName(tokens[i].lexeme)) continue;
-        if (!tokEq(tokens[i + 1], "{")) continue;
 
-        const close_brace = findMatching(tokens, i + 1, "{", "}") catch return;
-        try collectPrivateFieldNames(allocator, out, tokens, i + 2, close_brace);
-        return;
+        // Classic: Name { fields }
+        if (tokEq(tokens[i + 1], "{")) {
+            const close_brace = findMatching(tokens, i + 1, "{", "}") catch return;
+            try collectPrivateFieldNames(allocator, out, tokens, i + 2, close_brace);
+            return;
+        }
+
+        // Declarative: Name = @wasi_resource|wasi_record("…", { fields })
+        if (i + 5 < tokens.len and tokEq(tokens[i + 1], "=") and tokEq(tokens[i + 2], "@") and
+            tokens[i + 3].kind == .ident and
+            (std.mem.eql(u8, tokens[i + 3].lexeme, "wasi_resource") or
+                std.mem.eql(u8, tokens[i + 3].lexeme, "wasi_record")) and
+            tokEq(tokens[i + 4], "("))
+        {
+            const close_call = findMatching(tokens, i + 4, "(", ")") catch return;
+            var j = i + 5;
+            while (j < close_call) : (j += 1) {
+                if (tokEq(tokens[j], "{")) {
+                    const close_brace = findMatching(tokens, j, "{", "}") catch return;
+                    try collectPrivateFieldNames(allocator, out, tokens, j + 1, close_brace);
+                    return;
+                }
+            }
+        }
     }
 }
 
@@ -2286,7 +2306,7 @@ fn isModernImportAssign(tokens: []const lexer.Token, idx: usize) bool {
     if (tokens[at_idx + 1].kind != .ident) return false;
     return std.mem.eql(u8, tokens[at_idx + 1].lexeme, "lib") or
         std.mem.eql(u8, tokens[at_idx + 1].lexeme, "env") or
-        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "wasi");
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "wasi_func");
 }
 
 fn isNonHostImportAssign(tokens: []const lexer.Token, idx: usize) bool {
@@ -2358,10 +2378,9 @@ fn isHostImportLine(tokens: []const lexer.Token, at_idx: usize, line_end: usize)
     if (at_idx + 3 >= line_end) return false;
     if (!tokEq(tokens[at_idx], "@")) return false;
     if (tokens[at_idx + 1].kind != .ident) return false;
-    if (std.mem.eql(u8, tokens[at_idx + 1].lexeme, "env")) {
-        return tokEq(tokens[at_idx + 2], "(");
-    }
-    if (std.mem.eql(u8, tokens[at_idx + 1].lexeme, "wasi")) {
+    if (std.mem.eql(u8, tokens[at_idx + 1].lexeme, "env") or
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "wasi_func"))
+    {
         return tokEq(tokens[at_idx + 2], "(");
     }
     return false;

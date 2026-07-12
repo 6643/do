@@ -320,6 +320,93 @@ pub fn emitArcRuntimePrelude(
         \\    memory.copy
         \\    local.get $object
         \\  )
+        \\  ;; G6.1 A: convert host list of (descriptor,string) into [Tuple<i32,text>].
+        \\  ;; Element ABI: descriptor@0, string.ptr@4, string.len@8 (12 bytes).
+        \\  ;; Pack slot: i32 descriptor + text handle (8 bytes). text uses storage type_id=1 like [u8].
+        \\  (func $__wasi_list_preopen_to_storage (param $ptr i32) (param $len i32) (result i32)
+        \\    (local $object i32)
+        \\    (local $i i32)
+        \\    (local $elem i32)
+        \\    (local $dst i32)
+        \\    (local $path_ptr i32)
+        \\    (local $path_len i32)
+        \\    (local $path_obj i32)
+        \\    (local $fd i32)
+        \\    local.get $len
+        \\    i32.const 8
+        \\    i32.mul
+        \\    i32.const 8
+        \\    i32.add
+        \\    i32.const 1
+        \\    call $__arc_alloc
+        \\    local.set $object
+        \\    local.get $object
+        \\    call $__arc_payload
+        \\    local.get $len
+        \\    i32.store
+        \\    local.get $object
+        \\    call $__arc_payload
+        \\    i32.const 4
+        \\    i32.add
+        \\    local.get $len
+        \\    i32.store
+        \\    i32.const 0
+        \\    local.set $i
+        \\    block $done
+        \\      loop $scan
+        \\        local.get $i
+        \\        local.get $len
+        \\        i32.ge_u
+        \\        br_if $done
+        \\        local.get $ptr
+        \\        local.get $i
+        \\        i32.const 12
+        \\        i32.mul
+        \\        i32.add
+        \\        local.set $elem
+        \\        local.get $elem
+        \\        i32.load
+        \\        local.set $fd
+        \\        local.get $elem
+        \\        i32.const 4
+        \\        i32.add
+        \\        i32.load
+        \\        local.set $path_ptr
+        \\        local.get $elem
+        \\        i32.const 8
+        \\        i32.add
+        \\        i32.load
+        \\        local.set $path_len
+        \\        local.get $path_ptr
+        \\        local.get $path_len
+        \\        call $__wasi_list_u8_to_storage
+        \\        local.set $path_obj
+        \\        local.get $object
+        \\        call $__arc_payload
+        \\        i32.const 8
+        \\        i32.add
+        \\        local.get $i
+        \\        i32.const 8
+        \\        i32.mul
+        \\        i32.add
+        \\        local.set $dst
+        \\        local.get $dst
+        \\        local.get $fd
+        \\        i32.store
+        \\        local.get $dst
+        \\        i32.const 4
+        \\        i32.add
+        \\        local.get $path_obj
+        \\        i32.store
+        \\        local.get $i
+        \\        i32.const 1
+        \\        i32.add
+        \\        local.set $i
+        \\        br $scan
+        \\      end
+        \\    end
+        \\    local.get $object
+        \\  )
         \\  ;; arc-runtime free span list v1
         \\  (global $__free_span_head (mut i32) (i32.const -1))
         \\  (func $__free_span_push (param $block i32)

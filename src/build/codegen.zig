@@ -8654,6 +8654,17 @@ fn parseWasiHostImport(
         return error.InvalidImportDecl;
     }
 
+    // Prefer canonical WIT signature for known targets so do-side sugar still lowers.
+    if (knownWasiWitSignature(target)) |wit| {
+        return .{
+            .source = source,
+            .alias = alias,
+            .target = target,
+            .params = try allocator.dupe(u8, wit.params),
+            .result = try allocator.dupe(u8, wit.result),
+        };
+    }
+
     const params = try compactTokenText(allocator, tokens, open_params + 1, close_params);
     errdefer allocator.free(params);
     const result = try compactTokenText(allocator, tokens, close_params + 3, close_idx);
@@ -9432,6 +9443,39 @@ fn collectStructDecls(
             i = body.next_idx;
             continue;
         }
+        // Declarative: Name = @wasi_resource|wasi_record("…", { fields })
+        if (isWasiStructBindingStructStart(tokens, i)) {
+            const close_call = findMatching(tokens, i + 4, "(", ")") catch continue;
+            var brace_open: ?usize = null;
+            var j = i + 5;
+            while (j < close_call) : (j += 1) {
+                if (tokEq(tokens[j], "{")) {
+                    brace_open = j;
+                    break;
+                }
+            }
+            const open_brace = brace_open orelse continue;
+            const close_brace = findMatching(tokens, open_brace, "{", "}") catch continue;
+            var fields = std.ArrayList(StructField).empty;
+            var owned_types = std.ArrayList([]const u8).empty;
+            errdefer {
+                for (owned_types.items) |owned| allocator.free(owned);
+                owned_types.deinit(allocator);
+                fields.deinit(allocator);
+            }
+            try appendStructFieldsInBraceRange(allocator, tokens, open_brace, close_brace, &fields, &owned_types);
+            try out.append(allocator, .{
+                .name = tokens[i].lexeme,
+                .type_params = &[_][]const u8{},
+                .fields = try fields.toOwnedSlice(allocator),
+                .layout_source = null,
+                .owned_types = try owned_types.toOwnedSlice(allocator),
+                .tokens = tokens,
+            });
+            pending_type_params.clearRetainingCapacity();
+            i = close_call;
+            continue;
+        }
         if (!isTopLevelStructDeclStart(tokens, i)) continue;
 
         const open_brace = i + 1;
@@ -9450,23 +9494,7 @@ fn collectStructDecls(
             fields.deinit(allocator);
         }
 
-        var field_idx = open_brace + 1;
-        while (field_idx < close_brace) {
-            const line_end = findLineEnd(tokens, field_idx);
-            const default_idx = findTopLevelToken(tokens, field_idx + 1, line_end, "=");
-            const type_end = default_idx orelse line_end;
-            if (tokens[field_idx].kind == .ident) {
-                if (try parseStructFieldTypeExpr(allocator, tokens, field_idx + 1, type_end, &owned_types)) |parsed_ty| {
-                    try fields.append(allocator, .{
-                        .name = tokens[field_idx].lexeme,
-                        .ty = parsed_ty,
-                        .default_start = if (default_idx) |idx| idx + 1 else null,
-                        .default_end = line_end,
-                    });
-                }
-            }
-            field_idx = @min(line_end, close_brace);
-        }
+        try appendStructFieldsInBraceRange(allocator, tokens, open_brace, close_brace, &fields, &owned_types);
 
         try out.append(allocator, .{
             .name = tokens[i].lexeme,
@@ -9480,6 +9508,18 @@ fn collectStructDecls(
         pending_type_params.clearRetainingCapacity();
         i = close_brace;
     }
+}
+
+fn isWasiStructBindingStructStart(tokens: []const lexer.Token, idx: usize) bool {
+    if (idx + 5 >= tokens.len) return false;
+    if (!isLineStart(tokens, idx)) return false;
+    if (tokens[idx].kind != .ident) return false;
+    if (!tokEq(tokens[idx + 1], "=")) return false;
+    if (!tokEq(tokens[idx + 2], "@")) return false;
+    if (tokens[idx + 3].kind != .ident) return false;
+    const kind = tokens[idx + 3].lexeme;
+    if (!std.mem.eql(u8, kind, "wasi_resource") and !std.mem.eql(u8, kind, "wasi_record")) return false;
+    return tokEq(tokens[idx + 4], "(");
 }
 
 fn collectImportedStructDecls(
@@ -9591,23 +9631,7 @@ fn collectStructDeclByNameAs(
             fields.deinit(allocator);
         }
 
-        var field_idx = open_brace + 1;
-        while (field_idx < close_brace) {
-            const line_end = findLineEnd(tokens, field_idx);
-            const default_idx = findTopLevelToken(tokens, field_idx + 1, line_end, "=");
-            const type_end = default_idx orelse line_end;
-            if (tokens[field_idx].kind == .ident) {
-                if (try parseStructFieldTypeExpr(allocator, tokens, field_idx + 1, type_end, &owned_types)) |parsed_ty| {
-                    try fields.append(allocator, .{
-                        .name = tokens[field_idx].lexeme,
-                        .ty = parsed_ty,
-                        .default_start = if (default_idx) |idx| idx + 1 else null,
-                        .default_end = line_end,
-                    });
-                }
-            }
-            field_idx = @min(line_end, close_brace);
-        }
+        try appendStructFieldsInBraceRange(allocator, tokens, open_brace, close_brace, &fields, &owned_types);
 
         try out.append(allocator, .{
             .name = emit_name,
@@ -9621,6 +9645,37 @@ fn collectStructDeclByNameAs(
         return true;
     }
     return false;
+}
+
+/// Collect struct fields inside `{ … }`. Clamps each field span to `close_brace` so
+/// single-line bodies like `{ .id i64 }` do not include trailing `}` / `)` in the type span.
+fn appendStructFieldsInBraceRange(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    open_brace: usize,
+    close_brace: usize,
+    fields: *std.ArrayList(StructField),
+    owned_types: *std.ArrayList([]const u8),
+) !void {
+    var field_idx = open_brace + 1;
+    while (field_idx < close_brace) {
+        // Never scan past the closing brace — single-line `{ .id i64 }` would otherwise
+        // treat `} )` as part of the field type and drop the field.
+        const line_end = @min(findLineEnd(tokens, field_idx), close_brace);
+        const default_idx = findTopLevelToken(tokens, field_idx + 1, line_end, "=");
+        const type_end = default_idx orelse line_end;
+        if (tokens[field_idx].kind == .ident) {
+            if (try parseStructFieldTypeExpr(allocator, tokens, field_idx + 1, type_end, owned_types)) |parsed_ty| {
+                try fields.append(allocator, .{
+                    .name = tokens[field_idx].lexeme,
+                    .ty = parsed_ty,
+                    .default_start = if (default_idx) |idx| idx + 1 else null,
+                    .default_end = line_end,
+                });
+            }
+        }
+        field_idx = line_end;
+    }
 }
 
 fn collectValueEnumDecls(
@@ -13536,8 +13591,42 @@ fn errorEnumBranchValue(tokens: []const lexer.Token, enum_name: []const u8, bran
         if (!tokEq(tokens[i + 1], "error") or !tokEq(tokens[i + 2], "=")) continue;
 
         const line_end = findLineEnd(tokens, i);
-        var branch_idx: usize = 1;
         var j = i + 3;
+        // Skip declarative `@wasi_enum("target", …)` prefix when present.
+        if (j < line_end and tokEq(tokens[j], "@") and j + 2 < line_end and
+            tokens[j + 1].kind == .ident and std.mem.eql(u8, tokens[j + 1].lexeme, "wasi_enum") and
+            tokEq(tokens[j + 2], "("))
+        {
+            const close_call = findMatchingInRange(tokens, j + 2, "(", ")", line_end) catch return null;
+            // Arms start after optional target string and comma inside the call.
+            j = j + 3;
+            while (j < close_call) : (j += 1) {
+                if (tokEq(tokens[j], ",")) {
+                    j += 1;
+                    break;
+                }
+            }
+            const arms_end = close_call;
+            var branch_idx: usize = 1;
+            while (j < arms_end) : (j += 1) {
+                if (tokEq(tokens[j], "|") or tokEq(tokens[j], ",")) continue;
+                // Optional explicit discr: Name(1)
+                if (tokens[j].kind != .ident) return null;
+                const arm = tokens[j].lexeme;
+                if (j + 3 < arms_end and tokEq(tokens[j + 1], "(") and tokens[j + 2].kind == .number and tokEq(tokens[j + 3], ")")) {
+                    // Explicit status/discr value — still identity by name for @eq.
+                    if (std.mem.eql(u8, arm, branch_name)) return branch_idx;
+                    j += 3;
+                    branch_idx += 1;
+                    continue;
+                }
+                if (std.mem.eql(u8, arm, branch_name)) return branch_idx;
+                branch_idx += 1;
+            }
+            return null;
+        }
+
+        var branch_idx: usize = 1;
         while (j < line_end) : (j += 1) {
             if (tokEq(tokens[j], "|")) continue;
             if (tokens[j].kind != .ident) return null;
@@ -13708,8 +13797,39 @@ fn isWasiHostImportStart(tokens: []const lexer.Token, idx: usize) bool {
     if (tokens[idx].kind != .ident) return false;
     if (!tokEq(tokens[idx + 1], "=")) return false;
     if (!tokEq(tokens[idx + 2], "@")) return false;
-    if (tokens[idx + 3].kind != .ident or !std.mem.eql(u8, tokens[idx + 3].lexeme, "wasi")) return false;
+    if (tokens[idx + 3].kind != .ident) return false;
+    const kind = tokens[idx + 3].lexeme;
+    if (!std.mem.eql(u8, kind, "wasi_func")) return false;
     return tokEq(tokens[idx + 4], "(");
+}
+
+/// Canonical WIT params/result for known targets (codegen always stores WIT form).
+fn knownWasiWitSignature(target: []const u8) ?struct { params: []const u8, result: []const u8 } {
+    const known = [_]struct { target: []const u8, params: []const u8, result: []const u8 }{
+        .{ .target = "filesystem/types/descriptor.write", .params = "descriptor,list<u8>,filesize", .result = "result<filesize,error-code>" },
+        .{ .target = "filesystem/types/descriptor.read", .params = "descriptor,filesize,filesize", .result = "result<tuple<list<u8>,bool>,error-code>" },
+        .{ .target = "filesystem/types/descriptor.sync", .params = "descriptor", .result = "result<_,error-code>" },
+        .{ .target = "filesystem/types/descriptor.link-at", .params = "descriptor,path-flags,text,borrow<descriptor>,text", .result = "result<_,error-code>" },
+        .{ .target = "filesystem/types/descriptor.create-directory-at", .params = "descriptor,text", .result = "result<_,error-code>" },
+        .{ .target = "filesystem/types/descriptor.open-at", .params = "descriptor,path-flags,text,open-flags,descriptor-flags", .result = "result<descriptor,error-code>" },
+        .{ .target = "filesystem/types/descriptor.remove-directory-at", .params = "descriptor,text", .result = "result<_,error-code>" },
+        .{ .target = "filesystem/types/descriptor.drop", .params = "descriptor", .result = "nil" },
+        .{ .target = "filesystem/preopens/get-directories", .params = "", .result = "list<tuple<descriptor,text>>" },
+        .{ .target = "io/streams/input-stream.read", .params = "input-stream,u64", .result = "result<list<u8>,stream-error>" },
+        .{ .target = "io/streams/output-stream.check-write", .params = "output-stream", .result = "result<u64,stream-error>" },
+        .{ .target = "io/streams/output-stream.write", .params = "output-stream,list<u8>", .result = "result<_,stream-error>" },
+        .{ .target = "io/streams/output-stream.flush", .params = "output-stream", .result = "result<_,stream-error>" },
+        .{ .target = "clocks/system-clock/now", .params = "", .result = "Datetime" },
+        .{ .target = "clocks/system-clock/get-resolution", .params = "", .result = "u64" },
+        .{ .target = "clocks/monotonic-clock/now", .params = "", .result = "u64" },
+        .{ .target = "clocks/monotonic-clock/get-resolution", .params = "", .result = "u64" },
+        .{ .target = "random/random/get-random-bytes", .params = "u64", .result = "list<u8>" },
+        .{ .target = "random/random/get-random-u64", .params = "", .result = "u64" },
+    };
+    for (known) |item| {
+        if (std.mem.eql(u8, item.target, target)) return .{ .params = item.params, .result = item.result };
+    }
+    return null;
 }
 
 fn stringTokenBody(s: []const u8) ?[]const u8 {
@@ -16062,6 +16182,9 @@ fn emitWasiHostImportExpr(
         if (!std.mem.eql(u8, elem_ty, "u8")) return false;
         return try emitWasiListU8ResultCall(allocator, tokens, args_start, args_end, locals, ctx, import, out);
     }
+    if (lowering.result_list_preopen) {
+        return try emitWasiListPreopenResultCall(allocator, tokens, args_start, args_end, locals, ctx, import, out);
+    }
     if (lowering.result_unit_error) {
         if (!allow_statement_result) return false;
         return try emitWasiResultUnitCall(allocator, tokens, args_start, args_end, locals, ctx, import, out);
@@ -16131,6 +16254,39 @@ fn emitWasiListU8ResultCall(
         \\    i32.add
         \\    i32.load
         \\    call $__wasi_list_u8_to_storage
+        \\
+    );
+    return true;
+}
+
+/// G6.1 A: () -> list<tuple<descriptor,string>> as do [Tuple<i32,text>].
+fn emitWasiListPreopenResultCall(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    args_start: usize,
+    args_end: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    import: WasiHostImport,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    _ = tokens;
+    _ = locals;
+    _ = ctx;
+    if (!std.mem.eql(u8, import.target, "filesystem/preopens/get-directories")) return false;
+    if (args_start != args_end) return error.NoMatchingCall;
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
+    try out.appendSlice(allocator, "    call $");
+    try appendWasiImportSymbol(allocator, out, import.target);
+    try out.appendSlice(allocator, "\n");
+    try out.appendSlice(allocator,
+        \\    global.get $__wasi_result_area_base
+        \\    i32.load
+        \\    global.get $__wasi_result_area_base
+        \\    i32.const 4
+        \\    i32.add
+        \\    i32.load
+        \\    call $__wasi_list_preopen_to_storage
         \\
     );
     return true;
@@ -19958,6 +20114,7 @@ fn inferFirstArgTypeOrDefaultS32(
 fn wasiDoResultType(import: WasiHostImport) ?[]const u8 {
     const lowering = wasiLowering(import) orelse return null;
     if (lowering.result_storage_elem) |elem_ty| return storageTypeNameForElem(elem_ty);
+    if (lowering.result_list_preopen) return "[Tuple<i32,text>]";
     if (lowering.result_record) |record| return record;
     return import.result;
 }
