@@ -25,7 +25,7 @@
 **Files:**
 - Create: `src/build/test/compile_ok/283_wasi_union_list_u8_i32.do` + `.expect`
 - Modify: `src/build/sema.zig` known `io/streams/input-stream.read` do_result_alt `[u8]|i32` (and File/stream params as needed)
-- Modify: `src/build/codegen.zig` list result-area → union (`[u8]` ok / i32 err)
+- Modify: `src/build/gen.zig` list result-area → union (`[u8]` ok / i32 err)
 - Modify: `lib/io.stream.do` host + wrapper
 - Migrate fixture `115` if present
 

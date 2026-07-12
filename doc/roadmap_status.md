@@ -21,7 +21,7 @@
 | 阶段 D | 可推进项 done; D2.1 按 B 方案绿色 regression 收口 |
 | 阶段 G | G1–G5、G6.1、G6.4 done; G6.2–G6.3 **blocked** |
 | 阶段 I | **closed** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
-| 架构扁平拆分 | 五轮已落地 (`diagnostics` / `type_name` / `sema_error` / `codegen_payload_wat` / `codegen_storage_wat`) |
+| 架构扁平拆分 | 五轮已落地 (`diagnostics` / `type_name` / `sema_error` / `gen_payload_wat` / `gen_storage_wat`) |
 | 目录 | 标准库 `lib/`; 工具链 `src/` (原 `tool/`) |
 
 ### 最近验证

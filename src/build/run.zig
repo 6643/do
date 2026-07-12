@@ -1,6 +1,6 @@
 const std = @import("std");
 const cli = @import("cli.zig");
-const codegen = @import("codegen.zig");
+const codegen = @import("gen.zig");
 const diag = @import("diag.zig");
 const entry = @import("entry.zig");
 const imports = @import("imports.zig");

@@ -26,7 +26,7 @@
 | Path | Responsibility |
 |------|----------------|
 | `src/build/sema.zig` | known table `do_result`/`do_params`; accept union/resource in host sig compare |
-| `src/build/codegen.zig` | lower `host()` into `Ok\|Err` locals; statement discard; arg `Dir` → id |
+| `src/build/gen.zig` | lower `host()` into `Ok\|Err` locals; statement discard; arg `Dir` → id |
 | `src/build/imports.zig` | host binding type surface if needed |
 | `src/build/diag.zig` | messages mention `Ok\|Err` / `nil\|i32` |
 | `lib/dir.do`, `lib/file.do`, `lib/io.stream.do` | host sigs + thin wrappers |
@@ -41,7 +41,7 @@
 **Files:**
 - Create: `src/build/test/compile_ok/279_wasi_union_unit_result_nil_i32.do`
 - Create: `src/build/test/compile_ok/279_wasi_union_unit_result_nil_i32.expect`
-- Modify (later steps): `src/build/sema.zig` known table + sig compare; `src/build/codegen.zig` if call lower needs union
+- Modify (later steps): `src/build/sema.zig` known table + sig compare; `src/build/gen.zig` if call lower needs union
 - Test: build fixture; suite case 279
 
 **Interfaces:**
@@ -108,7 +108,7 @@ Minimal approach if full union synth is large: **phase 1a** accept sig only + st
 ```bash
 ./bin/do build src/build/test/compile_ok/279_wasi_union_unit_result_nil_i32.do -o /tmp/279.wat
 ./src/build/test/run_tests.sh 2>&1 | tee /tmp/t1.log | tail -5
-git add src/build/test/compile_ok/279_* src/build/sema.zig src/build/codegen.zig
+git add src/build/test/compile_ok/279_* src/build/sema.zig src/build/gen.zig
 git commit -m "feat: accept nil|i32 wasi host result for unit fallible"
 ```
 
@@ -119,7 +119,7 @@ git commit -m "feat: accept nil|i32 wasi host result for unit fallible"
 **Files:**
 - Create: `src/build/test/compile_ok/280_wasi_union_open_dir_i32.do` + `.expect`
 - Create: `src/build/test/compile_ok/281_wasi_union_open_dir_resource.do` + `.expect` (Dir param + Dir|i32 result)
-- Modify: `sema.zig` known `open-at` do_result; `codegen.zig` descriptor+status → `Dir|i32` or `i32|i32` union
+- Modify: `sema.zig` known `open-at` do_result; `gen.zig` descriptor+status → `Dir|i32` or `i32|i32` union
 
 **Interfaces:**
 - Consumes: existing `emitWasiResultDescriptor*` 

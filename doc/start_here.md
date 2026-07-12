@@ -77,8 +77,8 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | 共享纯函数 | `type_name` | 类型/布局 SSOT (scalar/storage/managed/Tuple scheme A) |
 | | `sema_error` | ErrorSite 与 sema 错误构造 |
 | | `diagnostics` | check/LSP 共用前端诊断收集 (原 `src/lsp/diagnostics.zig` 已删除) |
-| Codegen 域 | `codegen_payload_wat` | 标量 payload load/store、Tuple 叶子 pack/unpack |
-| | `codegen_storage_wat` | storage 指针/header/alias; `HEADER=8` |
+| Codegen 域 | `gen_payload_wat` | 标量 payload load/store、Tuple 叶子 pack/unpack |
+| | `gen_storage_wat` | storage 指针/header/alias; `HEADER=8` |
 | | `function_body_wat` / `runtime_prelude_wat` / `component_metadata_wat` | WAT 写出切片 |
 | 旁路 | `backend_ir` | **仅**标量 `start` 旁路 + unit; **不是**主 emit 路径 |
 | CLI | `src/main.zig` | 分派; `do test` 经 `runTest` → `loadProgram` |

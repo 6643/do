@@ -7,9 +7,9 @@ const lexer = @import("lexer.zig");
 const ownership = @import("ownership.zig");
 const ownership_facts = @import("ownership_facts.zig");
 const parser = @import("parser.zig");
-const payload_wat = @import("codegen_payload_wat.zig");
+const payload_wat = @import("gen_payload_wat.zig");
 const runtime_prelude_wat = @import("runtime_prelude_wat.zig");
-const storage_wat = @import("codegen_storage_wat.zig");
+const storage_wat = @import("gen_storage_wat.zig");
 const test_runner = @import("test_runner.zig");
 const type_util = @import("type_name.zig");
 

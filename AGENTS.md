@@ -7,9 +7,9 @@ This repository contains the `do` language compiler and its regression suite.
 - `lib/`: Standard library and builtin/core declaration table (`lib/_.do`). Bare `@lib("file.do")` resolves under this directory.
 - `src/`: Toolchain and compiler sources (formerly `tool/`).
 - `src/build/`: Zig compiler and `do build` source, kept as flat single-purpose modules.
-  - Core pipeline: `src/build/lexer.zig` → `src/build/parser.zig` → `src/build/sema.zig` → `src/build/codegen.zig`.
+  - Core pipeline: `src/build/lexer.zig` → `src/build/parser.zig` → `src/build/sema.zig` → `src/build/gen.zig`.
   - Shared pure helpers: `src/build/type_name.zig` (type/layout SSOT), `src/build/sema_error.zig`, `src/build/diagnostics.zig`.
-  - Codegen domain WAT: `src/build/codegen_payload_wat.zig` (scalar/Tuple pack), `src/build/codegen_storage_wat.zig` (storage ptr/header), plus `src/build/function_body_wat.zig` / `src/build/runtime_prelude_wat.zig` / `src/build/component_metadata_wat.zig` / `src/build/backend_ir.zig` (scalar start 旁路, 非主路径).
+  - Codegen domain WAT: `src/build/gen_payload_wat.zig` (scalar/Tuple pack), `src/build/gen_storage_wat.zig` (storage ptr/header), plus `src/build/function_body_wat.zig` / `src/build/runtime_prelude_wat.zig` / `src/build/component_metadata_wat.zig` / `src/build/backend_ir.zig` (scalar start 旁路, 非主路径).
 - `src/main.zig`: Single CLI dispatch entrypoint for the `bin/do` tool.
 - `src/build.zig`: Zig build entrypoint. It installs the compiler binary to the repository `bin/` directory.
 - `bin/do`: Built compiler executable.
