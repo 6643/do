@@ -423,6 +423,7 @@ const collectImportedStructDecls = gen_collect.collectImportedStructDecls;
 const collectValueEnumDecls = gen_collect.collectValueEnumDecls;
 const collectImportedValueEnumDecls = gen_collect.collectImportedValueEnumDecls;
 const collectPayloadEnumDecls = gen_collect.collectPayloadEnumDecls;
+const collectImportedPayloadEnumDecls = gen_collect.collectImportedPayloadEnumDecls;
 pub const collectStructLayouts = gen_collect.collectStructLayouts;
 const collectConcreteGenericStructLayouts = gen_collect.collectConcreteGenericStructLayouts;
 const collectStoragePackLayoutsFromTokens = gen_collect.collectStoragePackLayoutsFromTokens;
@@ -607,6 +608,9 @@ pub fn emitWatWithOptions(
         payload_enums.deinit(allocator);
     }
     try collectPayloadEnumDecls(allocator, tokens, &payload_enums);
+    if (module_graph) |graph| {
+        try collectImportedPayloadEnumDecls(allocator, tokens, graph, &payload_enums);
+    }
 
     var struct_layouts = std.ArrayList(StructLayout).empty;
     defer {
@@ -773,6 +777,9 @@ pub fn emitTestWat(
         payload_enums.deinit(allocator);
     }
     try collectPayloadEnumDecls(allocator, tokens, &payload_enums);
+    if (module_graph) |graph| {
+        try collectImportedPayloadEnumDecls(allocator, tokens, graph, &payload_enums);
+    }
 
     var struct_layouts = std.ArrayList(StructLayout).empty;
     defer {

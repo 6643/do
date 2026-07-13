@@ -43,24 +43,27 @@ create_tcp_v6() -> TcpSocket | TcpError {
     return host_tcp_create(1)
 }
 
-// Public bind overloads: concrete address types. Pack via inline V4/V6 ctor
-// (import-safe). Intermediate `x IpSocketAddress = V4(addr)` fails under @lib
-// union-local pack emit — keep ctor form at host call site.
+// Public bind overloads: concrete address types. Intermediate total local is
+// supported under @lib after imported payload-enum collect (G6.3 edge fix).
 bind_tcp(sock TcpSocket, addr Ipv4SocketAddress) -> TcpError | nil {
-    return host_tcp_bind(sock, V4(addr))
+    total IpSocketAddress = V4(addr)
+    return host_tcp_bind(sock, total)
 }
 
 bind_tcp(sock TcpSocket, addr Ipv6SocketAddress) -> TcpError | nil {
-    return host_tcp_bind(sock, V6(addr))
+    total IpSocketAddress = V6(addr)
+    return host_tcp_bind(sock, total)
 }
 
 // Explicit names for callers that prefer non-overload aliases.
 bind_tcp_v4(sock TcpSocket, addr Ipv4SocketAddress) -> TcpError | nil {
-    return host_tcp_bind(sock, V4(addr))
+    total IpSocketAddress = V4(addr)
+    return host_tcp_bind(sock, total)
 }
 
 bind_tcp_v6(sock TcpSocket, addr Ipv6SocketAddress) -> TcpError | nil {
-    return host_tcp_bind(sock, V6(addr))
+    total IpSocketAddress = V6(addr)
+    return host_tcp_bind(sock, total)
 }
 
 close_tcp(sock TcpSocket) -> nil {

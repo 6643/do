@@ -23,7 +23,16 @@ ZIG_BIN="${ZIG_BIN:-$(command -v zig || true)}"
 ZIG_BIN="${ZIG_BIN:-/home/_/_/zig/zig}"
 DO_BIN="$ROOT_DIR/bin/do"
 WASM_TOOLS="${WASM_TOOLS:-$(command -v wasm-tools || true)}"
-NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
+# Prefer explicit NODE_BIN; else node; else bun (as node-compatible runner).
+if [[ -z "${NODE_BIN:-}" ]]; then
+    if command -v node >/dev/null 2>&1; then
+        NODE_BIN="$(command -v node)"
+    elif command -v bun >/dev/null 2>&1; then
+        NODE_BIN="$(command -v bun)"
+    else
+        NODE_BIN=""
+    fi
+fi
 
 pass_count=0
 fail_count=0

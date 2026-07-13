@@ -136,8 +136,8 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 用户说 `go` / `next` 时, 按以下优先级 (细节与恢复条件见 [pending_blocked.md](pending_blocked.md)):
 
 1. **发布候选维护**: 回归红灯、文档漂移、可独立验证的小修
-2. **等待决策**: G6.3 sockets 映射; G6.2 依赖 async runtime 立项
-3. **可选授权**: deferred 项 (ownership / JSON / LSP / codegen 再拆) — 默认不自动开做
+2. **等待决策**: G6.2 依赖 async/Future/Task runtime 立项 (`descriptor.read-directory`)
+3. **可选授权**: deferred 项 (D2 真 host / ownership / JSON / LSP / codegen 再拆) — 默认不自动开做
 
 **已关闭边界速查**:
 

@@ -43,22 +43,26 @@ create_udp_v6() -> UdpSocket | UdpError {
     return host_udp_create(1)
 }
 
-// Public bind overloads: concrete address types. Pack via inline V4/V6 ctor
-// (import-safe; same constraint as lib/tcp.do).
+// Public bind overloads: concrete address types. Intermediate total local is
+// supported under @lib after imported payload-enum collect (G6.3 edge fix).
 bind_udp(sock UdpSocket, addr Ipv4SocketAddress) -> UdpError | nil {
-    return host_udp_bind(sock, V4(addr))
+    total IpSocketAddress = V4(addr)
+    return host_udp_bind(sock, total)
 }
 
 bind_udp(sock UdpSocket, addr Ipv6SocketAddress) -> UdpError | nil {
-    return host_udp_bind(sock, V6(addr))
+    total IpSocketAddress = V6(addr)
+    return host_udp_bind(sock, total)
 }
 
 bind_udp_v4(sock UdpSocket, addr Ipv4SocketAddress) -> UdpError | nil {
-    return host_udp_bind(sock, V4(addr))
+    total IpSocketAddress = V4(addr)
+    return host_udp_bind(sock, total)
 }
 
 bind_udp_v6(sock UdpSocket, addr Ipv6SocketAddress) -> UdpError | nil {
-    return host_udp_bind(sock, V6(addr))
+    total IpSocketAddress = V6(addr)
+    return host_udp_bind(sock, total)
 }
 
 close_udp(sock UdpSocket) -> nil {

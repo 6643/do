@@ -18,6 +18,7 @@ const publicDeclName = gen_util.publicDeclName;
 const tokEq = gen_util.tokEq;
 const findImportedModuleIndex = gen_import.findImportedModuleIndex;
 const findPayloadEnumDecl = gen_import.findPayloadEnumDecl;
+const findPayloadEnumDeclLineByName = gen_import.findPayloadEnumDeclLineByName;
 const findRootModuleIndex = gen_import.findRootModuleIndex;
 const findValueEnumDecl = gen_import.findValueEnumDecl;
 const findValueEnumDeclLineByBranch = gen_import.findValueEnumDeclLineByBranch;
@@ -169,6 +170,110 @@ pub fn collectPayloadEnumDecls(
         }
         i = findLineEnd(tokens, i) - 1;
     }
+}
+
+/// Collect payload enums from imported modules so module-local types
+/// (e.g. `IpSocketAddress` in lib/tcp.do) resolve when lowering imported funcs.
+pub fn collectImportedPayloadEnumDecls(
+    allocator: std.mem.Allocator,
+    entry_tokens: []const lexer.Token,
+    graph: *const imports.ModuleGraph,
+    out: *std.ArrayList(PayloadEnumDecl),
+) !void {
+    const root_idx = findRootModuleIndex(graph.modules, entry_tokens) orelse return;
+
+    var i: usize = 0;
+    while (i < entry_tokens.len) : (i += 1) {
+        const import_ref = parseCodegenImport(entry_tokens, i) orelse continue;
+        defer i = findLineEnd(entry_tokens, i) - 1;
+
+        const child_idx = findImportedModuleIndex(allocator, graph, root_idx, import_ref) orelse continue;
+        const child_tokens = graph.modules[child_idx].tokens;
+        const enum_idx = findPayloadEnumDeclLineByName(child_tokens, import_ref.target) orelse continue;
+
+        // Same-name import: collect under target name if missing.
+        if (std.mem.eql(u8, import_ref.alias, import_ref.target)) {
+            if (findPayloadEnumDecl(out.items, import_ref.target) == null) {
+                if (!try collectPayloadEnumDeclAt(allocator, child_tokens, enum_idx, out)) {
+                    return error.NoMatchingCall;
+                }
+            }
+            continue;
+        }
+
+        // Aliased import: ensure both target and alias entries when needed.
+        if (findPayloadEnumDecl(out.items, import_ref.target) == null) {
+            if (!try collectPayloadEnumDeclAt(allocator, child_tokens, enum_idx, out)) {
+                return error.NoMatchingCall;
+            }
+        }
+        if (findPayloadEnumDecl(out.items, import_ref.alias) == null) {
+            if (!try collectPayloadEnumDeclByNameAs(allocator, child_tokens, import_ref.target, import_ref.alias, true, out)) {
+                return error.NoMatchingCall;
+            }
+        }
+    }
+
+    // Module-local payload enums used only inside imported function bodies.
+    for (graph.modules, 0..) |module, idx| {
+        if (idx == root_idx) continue;
+        try collectPayloadEnumDecls(allocator, module.tokens, out);
+    }
+}
+
+pub fn collectPayloadEnumDeclByNameAs(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    target_name: []const u8,
+    emit_name: []const u8,
+    own_emit_name: bool,
+    out: *std.ArrayList(PayloadEnumDecl),
+) !bool {
+    if (findPayloadEnumDecl(out.items, emit_name) != null) return true;
+    const enum_idx = findPayloadEnumDeclLineByName(tokens, target_name) orelse return false;
+    if (!isPayloadEnumDeclStart(tokens, enum_idx)) return false;
+
+    const line_end = findLineEnd(tokens, enum_idx);
+    var cases = std.ArrayList(PayloadEnumCase).empty;
+    errdefer cases.deinit(allocator);
+    var owned_payload_tys = std.ArrayList([]const u8).empty;
+    errdefer {
+        for (owned_payload_tys.items) |owned| allocator.free(owned);
+        owned_payload_tys.deinit(allocator);
+    }
+
+    var j = enum_idx + 2; // after Name =
+    while (j < line_end) {
+        if (tokEq(tokens[j], "|")) {
+            j += 1;
+            continue;
+        }
+        if (tokens[j].kind != .ident) return false;
+        const case_name = publicDeclName(tokens[j].lexeme);
+        j += 1;
+        var payload_ty: ?[]const u8 = null;
+        if (j < line_end and tokEq(tokens[j], "(")) {
+            const close = findMatching(tokens, j, "(", ")") catch return false;
+            const parsed = (try parseCodegenTypeExpr(allocator, tokens, j + 1, close, &owned_payload_tys)) orelse return false;
+            if (parsed.next_idx != close) return false;
+            payload_ty = parsed.ty;
+            j = close + 1;
+        }
+        try cases.append(allocator, .{
+            .name = case_name,
+            .payload_ty = payload_ty,
+        });
+    }
+
+    const owned_name = if (own_emit_name) try allocator.dupe(u8, emit_name) else emit_name;
+    errdefer if (own_emit_name) allocator.free(owned_name);
+    try out.append(allocator, .{
+        .name = owned_name,
+        .cases = try cases.toOwnedSlice(allocator),
+        .owned_payload_tys = try owned_payload_tys.toOwnedSlice(allocator),
+        .owned_name = own_emit_name,
+    });
+    return true;
 }
 
 

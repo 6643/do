@@ -515,6 +515,26 @@ pub fn findPayloadEnumDecl(payload_enums: []const PayloadEnumDecl, name: []const
     return null;
 }
 
+pub fn findPayloadEnumDeclLineByName(tokens: []const lexer.Token, name: []const u8) ?usize {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i + 2 < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isPayloadEnumDeclStart(tokens, i)) continue;
+        if (std.mem.eql(u8, publicDeclName(tokens[i].lexeme), name)) return i;
+        i = findLineEnd(tokens, i) - 1;
+    }
+    return null;
+}
+
 pub fn findValueEnumDeclLineByName(tokens: []const lexer.Token, name: []const u8) ?usize {
     var depth_brace: usize = 0;
     var i: usize = 0;
