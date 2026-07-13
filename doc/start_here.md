@@ -29,7 +29,7 @@
 | v1 子集 | 发布候选已收口 |
 | 阶段 A–F、H | 已完成 |
 | 阶段 D | 可推进项已完成; D2.1 已按 B 方案绿色 regression 收口 |
-| 阶段 G | G1–G5、G6.1、G6.4 完成; **G6.2–G6.3 仍阻断** |
+| 阶段 G | G1–G5、G6.1、G6.3、G6.4 完成; **G6.2 仍阻断** |
 | 阶段 I | **已关闭** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构审查/重构 | 五轮已落地 (见 §4); 默认不继续拆 god module |
 
@@ -124,8 +124,8 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | ID | 说明 | 恢复条件 |
 | --- | --- | --- |
 | G6.2 | `descriptor.read-directory` (stream/future) | 未来 async/Future/Task runtime |
-| G6.3 | sockets resource + variant | socket wrapper 与 address variant 映射决策 |
-| 06.2 | 已拆到 G2–G6; 剩余由 G6.2–G6.3 承接 | 同上 |
+| G6.3 | **已关闭 (方案 B)** create/bind/drop + dual address | 见 `compile_ok/291`–`294`; 真 host 仍属 D2 |
+| 06.2 | 已拆到 G2–G6; 剩余由 G6.2 承接 | 同上 |
 
 **待处理 / 阻断 / 延期**: 权威清单见 [pending_blocked.md](pending_blocked.md) (G6 blocked、P2 泛型左侧反推、skip、deferred 非目标)。
 

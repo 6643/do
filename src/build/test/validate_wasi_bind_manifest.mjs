@@ -348,6 +348,21 @@ function buildShimPlan(resolved) {
       lowering: buildLoweringPlan(resolved, doResult),
     };
   }
+  // G6.3: tcp/udp-socket.create → result<socket,error-code> (same result-area as open-at).
+  if (isResultSocketErrorCodeSignature(resolved)) {
+    const okTy = resolved.result === "result<tcp-socket,error-code>" ? "tcp-socket" : "udp-socket";
+    const doResult = buildResultDescriptorErrorCodeLayout();
+    return {
+      kind: "result-socket-error-code",
+      params: resolved.params,
+      result: {
+        kind: "result",
+        ok: okTy,
+        err: "error-code",
+      },
+      lowering: buildLoweringPlan(resolved, doResult),
+    };
+  }
   if (isResultListU8BoolErrorCodeSignature(resolved)) {
     const doResult = buildResultListU8BoolErrorCodeLayout();
     return {
@@ -1300,6 +1315,18 @@ function isResultUnitErrorCodeSignature(resolved) {
   ) {
     return true;
   }
+  // G6.3: tcp/udp-socket.bind → result<_,error-code> with socket + address pack ptr.
+  if (
+    resolved.package === "sockets" &&
+    resolved.interface === "types" &&
+    (resolved.member === "tcp-socket.bind" || resolved.member === "udp-socket.bind") &&
+    resolved.params.length === 2 &&
+    (resolved.params[0] === "tcp-socket" || resolved.params[0] === "udp-socket") &&
+    resolved.params[1] === "ip-socket-address" &&
+    resolved.result === "result<_,error-code>"
+  ) {
+    return true;
+  }
   return (
     resolved.package === "filesystem" &&
     resolved.interface === "types" &&
@@ -1315,13 +1342,35 @@ function isResultUnitErrorCodeSignature(resolved) {
 }
 
 function isResourceDropSignature(resolved) {
-  return (
+  if (
     resolved.package === "filesystem" &&
     resolved.interface === "types" &&
     resolved.member === "descriptor.drop" &&
     resolved.params.length === 1 &&
     resolved.params[0] === "descriptor" &&
     resolved.result === "nil"
+  ) {
+    return true;
+  }
+  // G6.3: tcp/udp-socket.drop
+  return (
+    resolved.package === "sockets" &&
+    resolved.interface === "types" &&
+    (resolved.member === "tcp-socket.drop" || resolved.member === "udp-socket.drop") &&
+    resolved.params.length === 1 &&
+    (resolved.params[0] === "tcp-socket" || resolved.params[0] === "udp-socket") &&
+    resolved.result === "nil"
+  );
+}
+
+function isResultSocketErrorCodeSignature(resolved) {
+  return (
+    resolved.package === "sockets" &&
+    resolved.interface === "types" &&
+    (resolved.member === "tcp-socket.create" || resolved.member === "udp-socket.create") &&
+    resolved.params.length === 1 &&
+    resolved.params[0] === "ip-address-family" &&
+    (resolved.result === "result<tcp-socket,error-code>" || resolved.result === "result<udp-socket,error-code>")
   );
 }
 
@@ -1408,8 +1457,41 @@ function isResultU64StreamErrorSignature(resolved) {
 }
 
 function coreImportName(resolved) {
-  if (isResourceDropSignature(resolved)) {
+  if (
+    resolved.package === "filesystem" &&
+    resolved.interface === "types" &&
+    resolved.member === "descriptor.drop"
+  ) {
     return "[resource-drop]descriptor";
+  }
+  if (
+    resolved.package === "sockets" &&
+    resolved.interface === "types" &&
+    resolved.member === "tcp-socket.drop"
+  ) {
+    return "[resource-drop]tcp-socket";
+  }
+  if (
+    resolved.package === "sockets" &&
+    resolved.interface === "types" &&
+    resolved.member === "udp-socket.drop"
+  ) {
+    return "[resource-drop]udp-socket";
+  }
+  if (
+    resolved.package === "sockets" &&
+    resolved.interface === "types" &&
+    (resolved.member === "tcp-socket.create" || resolved.member === "udp-socket.create")
+  ) {
+    // Match component_metadata_wat wasiLowering: [static]tcp-socket.create
+    return `[static]${resolved.member}`;
+  }
+  if (
+    resolved.package === "sockets" &&
+    resolved.interface === "types" &&
+    (resolved.member === "tcp-socket.bind" || resolved.member === "udp-socket.bind")
+  ) {
+    return `[method]${resolved.member}`;
   }
   if (resolved.package === "filesystem" && resolved.interface === "types" && resolved.member.startsWith("descriptor.")) {
     return `[method]${resolved.member}`;
@@ -1431,7 +1513,12 @@ function isLowerableParamWitType(type) {
     type === "open-flags" ||
     type === "descriptor-flags" ||
     type === "string" ||
-    type === "list<u8>";
+    type === "list<u8>" ||
+    // G6.3 sockets
+    type === "tcp-socket" ||
+    type === "udp-socket" ||
+    type === "ip-address-family" ||
+    type === "ip-socket-address";
 }
 
 function coreTypesForParamWit(type) {
@@ -1444,6 +1531,11 @@ function coreTypesForParamWit(type) {
   if (type === "descriptor-flags") return ["i32"];
   if (type === "string") return ["i32", "i32"];
   if (type === "list<u8>") return ["i32", "i32"];
+  // G6.3: resource handles and family disc as i32; address is guest-packed ptr.
+  if (type === "tcp-socket") return ["i32"];
+  if (type === "udp-socket") return ["i32"];
+  if (type === "ip-address-family") return ["i32"];
+  if (type === "ip-socket-address") return ["i32"];
   return [coreTypeForScalarWit(type)];
 }
 

@@ -1,5 +1,7 @@
 # Changelog
 
+- **G6.3 sockets scheme B** (create/bind/drop): dual `Ipv4`/`Ipv6` address + payload enum `IpSocketAddress`; resource shells `TcpSocket`/`UdpSocket`; coarse `TcpError`/`UdpError`; stdlib `lib/tcp.do`/`lib/udp.do`/`lib/net.do`; known-table + `wasiLowering` + guest address pack; fixtures `compile_ok/291`–`294`; manifest tool marks sockets create/bind lowerable. Design: `docs/superpowers/specs/2026-07-13-g6-3-sockets-scheme-b-design.md`. Docs: G6.3 closed in `pending_blocked` / start_here / roadmap / wasi_p3_lowering / spec_rules. Non-goals remain: listen/connect, true host smoke (D2), G6.2 async.
+
 - Branch-completeness audit (full `src/**/*.zig`, 2199 fns): check depth-split extracts keep full decision matrices (null/false/true fallthrough, error arms, multi-result LHS). Campaign extracts path-equivalent; tri-state `!?bool` call sites use `|handled| return handled`. No incomplete-branch fix required. Empirical: `zig test gen.zig` 69; suite `pass=933 fail=0 skip=3`.
 
 - Structure flatten (AGENTS): early-return + straight trunk; extract only complete nameable units. Re-inlined peel-off `advanceTupleCtorBodyDepth`. Kept nameable mid-layer units (loop-label stack events, tuple-ctor segment check, WASI error-enum arms, unmanaged struct payload, multi-result LHS). Depth is not a hard quota — do not tear last-layer blocks just to lower nest. Verify: Debug build; `zig test gen.zig` 69 pass; full suite `pass=933 fail=0 skip=3`. No intentional semantic change.

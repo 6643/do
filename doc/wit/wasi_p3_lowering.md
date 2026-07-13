@@ -265,16 +265,20 @@ registered `descriptor.sync`, `descriptor.write`, `descriptor.read`,
 `descriptor.remove-directory-at`, and `descriptor.drop` shapes are
 marked as lowerable. `preopens.get-directories` is lowerable to do
 `[Tuple<Dir, text>]` (resource shells in the first element).
-`descriptor.read-directory`, `tcp-socket.create/bind`, `udp-socket.create/bind`,
-and `http/client.send` are also registered as known WASI 0.3 signatures, but
+`descriptor.read-directory` and `http/client.send` are registered as known
+WASI 0.3 signatures but remain `unsupported` shims.
 `descriptor.read-directory` returns
 `tuple<stream<directory-entry>,future<result<_,error-code>>>`, so the current
 language/runtime has no async/Future/Task support and the shim plan marks it
 `unsupported` rather than pretending it can be called as a plain core function.
-The sockets create/bind entries contain
-WIT variants and resources (`ip-address-family`, `ip-socket-address`,
-`tcp-socket`, `udp-socket`), so they are known signature boundaries but not
-lowerable direct calls. `http/client.send` uses HTTP request/response resources
+**G6.3 (scheme B):** `tcp-socket.create/bind/drop` and `udp-socket.create/bind/drop`
+are lowerable: create reuses open-at style `result_descriptor_error` (family disc +
+result area); bind reuses unit-error with guest-packed `ip-socket-address` pointer;
+drop is resource-drop. Public do types use dual `Ipv4SocketAddress` /
+`Ipv6SocketAddress`, payload enum `IpSocketAddress = V4|V6`, and resource shells
+`TcpSocket` / `UdpSocket` (see `lib/tcp.do`, `lib/udp.do`,
+`docs/superpowers/specs/2026-07-13-g6-3-sockets-scheme-b-design.md`).
+`http/client.send` uses HTTP request/response resources
 and is async in the WIT world, so it is likewise known but unsupported until HTTP
 resource/result/async lowering exists. Other complex unregistered
 `result/tuple/option/resource/borrow/own/stream/future/variant` signatures are
@@ -361,10 +365,12 @@ executable today.
 | `random/random/get-random-bytes` | `list<u8>` | lowerable `list<u8>` result |
 | `random/random/get-random-u64` | `u64` | lowerable scalar |
 | `filesystem/types/descriptor.read-directory` | `tuple<stream<directory-entry>,future<result<_,error-code>>>` | known but unsupported; needs async/Future runtime plus stream/future/resource lowering |
-| `sockets/types/tcp-socket.create` | `result<tcp-socket,error-code>` | known but unsupported; needs variant/resource lowering |
-| `sockets/types/tcp-socket.bind` | `result<_,error-code>` | known but unsupported; needs variant/resource lowering |
-| `sockets/types/udp-socket.create` | `result<udp-socket,error-code>` | known but unsupported; needs variant/resource lowering |
-| `sockets/types/udp-socket.bind` | `result<_,error-code>` | known but unsupported; needs variant/resource lowering |
+| `sockets/types/tcp-socket.create` | `result<tcp-socket,error-code>` | lowerable (G6.3 B): family `u8` + result-area; preferred do `TcpSocket \| TcpError` |
+| `sockets/types/tcp-socket.bind` | `result<_,error-code>` | lowerable (G6.3 B): handle + packed `IpSocketAddress`; preferred do `TcpError \| nil` |
+| `sockets/types/tcp-socket.drop` | `nil` | lowerable resource-drop `[resource-drop]tcp-socket` |
+| `sockets/types/udp-socket.create` | `result<udp-socket,error-code>` | lowerable (G6.3 B): same shape as tcp create; preferred do `UdpSocket \| UdpError` |
+| `sockets/types/udp-socket.bind` | `result<_,error-code>` | lowerable (G6.3 B): same shape as tcp bind; preferred do `UdpError \| nil` |
+| `sockets/types/udp-socket.drop` | `nil` | lowerable resource-drop `[resource-drop]udp-socket` |
 | `http/client/send` | `result<response,error-code>` | known but unsupported; needs HTTP resource/async lowering |
 
 For lowerable scalar/record/list<u8>/filesystem-result signatures,
@@ -710,14 +716,13 @@ Current compiler increment:
   known-target check for generated WAT, and can emit the parsed binding list as
   JSON for the next lowering step.
 - Known-but-unsupported targets such as
-  `filesystem/types/descriptor.read-directory`,
-  `sockets/types/tcp-socket.create/bind`,
-  `sockets/types/udp-socket.create/bind`, and `http/client/send` are
+  `filesystem/types/descriptor.read-directory` and `http/client/send` are
   still useful registry entries:
   `--json` resolves and validates their exact WIT signature, while
   `--component-plan` rejects them until async/Future stream runtime and
-  variant/resource/async lowering exists.
-  (`filesystem/preopens/get-directories` is lowerable and not in this bucket.)
+  HTTP resource/async lowering exists.
+  (`filesystem/preopens/get-directories` and G6.3 sockets create/bind/drop are
+  lowerable and not in this bucket.)
 - Unknown targets still receive syntax-level WIT type validation only; they are
   not treated as executable until the full WIT package resolver exists.
 

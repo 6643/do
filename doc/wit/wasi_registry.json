@@ -93,6 +93,11 @@
             "result": "result<_,error-code>"
         },
         {
+            "target": "sockets/types/tcp-socket.drop",
+            "params": ["tcp-socket"],
+            "result": "nil"
+        },
+        {
             "target": "sockets/types/udp-socket.create",
             "params": ["ip-address-family"],
             "result": "result<udp-socket,error-code>"
@@ -101,6 +106,11 @@
             "target": "sockets/types/udp-socket.bind",
             "params": ["udp-socket", "ip-socket-address"],
             "result": "result<_,error-code>"
+        },
+        {
+            "target": "sockets/types/udp-socket.drop",
+            "params": ["udp-socket"],
+            "result": "nil"
         },
         {
             "target": "http/client/send",

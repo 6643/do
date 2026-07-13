@@ -1,7 +1,7 @@
 # 待处理与阻断清单
 
-更新时间: 2026-07-12  
-基线: 默认回归 `pass=919 fail=0 skip=3`; unit `119/119`  
+更新时间: 2026-07-13  
+基线: 默认回归以 `./src/build/test/run_tests.sh` 最新结果为准  
 关系: 总规划 `doc/master_plan.md`; 接手 `doc/start_here.md`; 执行状态 `doc/roadmap_status.md`  
 约定: **只记未关闭项**; 完成后从本文件删除或移入「已关闭摘要」, 并同步入口文档与 `CHANGELOG.md`。
 
@@ -21,12 +21,13 @@
 | ID | 问题 | 证据 / 停止点 | 恢复条件 |
 | --- | --- | --- | --- |
 | **G6.2** | `descriptor.read-directory` | 依赖 stream/future; **无** async/Future/Task runtime | 未来 async runtime 设计立项 |
-| **G6.3** | sockets | resource + address variant 映射未定 | 用户确认 wrapper / variant 映射 |
-| **06.2** | 历史总项 | 已拆到 G2–G6; 剩余由 G6.2–G6.3 承接 | 同上 |
+| **06.2** | 历史总项 | 已拆到 G2–G6; 剩余由 **G6.2** 承接 | 同上 |
 
-**规则**: 无新决策时 **不** 绕过 G6.2–G6.3 扩 WASI codegen。
+**规则**: 无新决策时 **不** 绕过 G6.2 扩 WASI async/stream codegen。
 
 **G6.1 已关闭 (方案 A)**: `preopens.get-directories` → do `[Tuple<i32,text>]` host / 公开 `preopen_directories() -> [Tuple<Dir, text>]`; list-of-tuple resource lowering + `lib/dir.do`; 见 `compile_ok/274`–`275`。
+
+**G6.3 已关闭 (方案 B)**: sockets `tcp/udp-socket.create|bind|drop` 可 lower; 地址为 dual concrete + `IpSocketAddress = V4|V6` payload enum; resource shell + 粗粒度 `TcpError`/`UdpError`; stdlib `lib/tcp.do` / `lib/udp.do` / `lib/net.do`; 见 `compile_ok/291`–`294` 与 `docs/superpowers/specs/2026-07-13-g6-3-sockets-scheme-b-design.md`。真 host smoke 仍属 **D2**。
 
 ---
 
@@ -60,7 +61,7 @@
 | ID | 项 | 说明 |
 | --- | --- | --- |
 | D1 | 完整 ownership IR | 跨函数唯一性 / escape / region / 激进 loop move; 门槛见 `doc/memory.md` |
-| D2 | 完整 WASI/Component 运行时 | 真 host file/dir/stream/socket/http; 不单靠 G6.1–G6.3 API 决策 |
+| D2 | 完整 WASI/Component 运行时 | 真 host file/dir/stream/socket/http; 不单靠 G6.1–G6.3 API 决策 (G6.3 已 close API 层) |
 | D3 | JSON 自动序列化扩展 | error/enum/union/复杂 storage; 当前仅已验证 struct 字段子集 |
 | D4 | LSP 增强 | rename / references / import-aware 跨模块 / 增量 index |
 | D5 | fmt 增强 | 多文件批量、range/on-type、完整语法感知 |
@@ -79,7 +80,7 @@
 | --- | --- |
 | Tuple **永不拍平** | 嵌套 `Tuple` / struct 直接子槽保持嵌套类型与 `@get` 路径; 禁止与扁平 Tuple 等同或隐式 coerce |
 | 泛型调用类型已知 | 函数要用的类型在实参侧已知; 不默认左侧反推 direct type param |
-| G6 不绕过 | 无决策不扩 read-dir / sockets codegen |
+| G6 不绕过 | 无决策不扩 read-dir (async) codegen; sockets create/bind/drop 已按 G6.3 B 落地 |
 
 权威条文: `doc/spec_rules.md` (Tuple 节等)。
 
@@ -93,14 +94,15 @@
 - pure-scalar field-reflect `field_set` 误 shadow (`ok/191`)
 - 阶段 A–F、H、I (I1+I2) 主线; G1–G5、G6.1、G6.4
 - **G6.1** preopens 方案 A: host `[Tuple<i32,text>]` + `preopen_directories() -> [Tuple<Dir, text>]` (`compile_ok/274`–`275`)
+- **G6.3** sockets 方案 B: create/bind/drop + dual address + payload enum + stdlib wrappers (`compile_ok/291`–`294`)
 
 ---
 
 ## 6. 推进顺序建议
 
 1. 发布候选维护 (回归红灯 / 文档漂移)  
-2. **等 G6.2–G6.3 决策** (blocked)  
-3. 可选授权: deferred 项 (ownership / JSON / LSP / codegen 再拆) — 默认不自动开做  
+2. **等 G6.2 决策** (blocked: read-directory / async)  
+3. 可选授权: deferred 项 (ownership / JSON / LSP / codegen 再拆 / D2 真 host) — 默认不自动开做  
 4. **P2** 默认不改; 除非产品明确要左侧反推  
 
 用户说 `go` / `next` 时以 `doc/start_here.md` §6 为准, 细节以本文件为准。

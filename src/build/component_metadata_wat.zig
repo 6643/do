@@ -219,6 +219,73 @@ pub fn wasiLowering(import: anytype) ?WasiLowering {
     {
         return .{ .module = "cm32p2|wasi:io/streams", .name = "[method]output-stream.flush", .param = "i32 i32", .result_unit_error = true };
     }
+    // G6.3 scheme B: tcp/udp-socket create/bind/drop (resource + family/address variant).
+    if (std.mem.eql(u8, import.target, "sockets/types/tcp-socket.create") and
+        std.mem.eql(u8, import.params, "ip-address-family") and
+        std.mem.eql(u8, import.result, "result<tcp-socket,error-code>"))
+    {
+        return .{
+            .module = "cm32p2|wasi:sockets/types",
+            .name = "[static]tcp-socket.create",
+            .param = "i32 i32",
+            .result_descriptor_error = true,
+        };
+    }
+    if (std.mem.eql(u8, import.target, "sockets/types/udp-socket.create") and
+        std.mem.eql(u8, import.params, "ip-address-family") and
+        std.mem.eql(u8, import.result, "result<udp-socket,error-code>"))
+    {
+        return .{
+            .module = "cm32p2|wasi:sockets/types",
+            .name = "[static]udp-socket.create",
+            .param = "i32 i32",
+            .result_descriptor_error = true,
+        };
+    }
+    if (std.mem.eql(u8, import.target, "sockets/types/tcp-socket.bind") and
+        std.mem.eql(u8, import.params, "tcp-socket,ip-socket-address") and
+        std.mem.eql(u8, import.result, "result<_,error-code>"))
+    {
+        return .{
+            .module = "cm32p2|wasi:sockets/types",
+            .name = "[method]tcp-socket.bind",
+            .param = "i32 i32 i32",
+            .result_unit_error = true,
+        };
+    }
+    if (std.mem.eql(u8, import.target, "sockets/types/udp-socket.bind") and
+        std.mem.eql(u8, import.params, "udp-socket,ip-socket-address") and
+        std.mem.eql(u8, import.result, "result<_,error-code>"))
+    {
+        return .{
+            .module = "cm32p2|wasi:sockets/types",
+            .name = "[method]udp-socket.bind",
+            .param = "i32 i32 i32",
+            .result_unit_error = true,
+        };
+    }
+    if (std.mem.eql(u8, import.target, "sockets/types/tcp-socket.drop") and
+        std.mem.eql(u8, import.params, "tcp-socket") and
+        std.mem.eql(u8, import.result, "nil"))
+    {
+        return .{
+            .module = "cm32p2|wasi:sockets/types",
+            .name = "[resource-drop]tcp-socket",
+            .param = "i32",
+            .resource_drop = true,
+        };
+    }
+    if (std.mem.eql(u8, import.target, "sockets/types/udp-socket.drop") and
+        std.mem.eql(u8, import.params, "udp-socket") and
+        std.mem.eql(u8, import.result, "nil"))
+    {
+        return .{
+            .module = "cm32p2|wasi:sockets/types",
+            .name = "[resource-drop]udp-socket",
+            .param = "i32",
+            .resource_drop = true,
+        };
+    }
     return null;
 }
 

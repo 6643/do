@@ -23,6 +23,7 @@ const isReservedFuncName = sema_util.isReservedFuncName;
 const isStructFieldName = sema_util.isStructFieldName;
 const isTopLevelDeclHead = sema_util.isTopLevelDeclHead;
 const isValidDeclaredTypeName = sema_util.isValidDeclaredTypeName;
+const isPayloadEnumDeclStart = sema_util.isPayloadEnumDeclStart;
 const isValidPathSeg = sema_util.isValidPathSeg;
 const markErrorAt = sema_util.markErrorAt;
 const normalizeStructFieldName = sema_util.normalizeStructFieldName;
@@ -401,10 +402,56 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .do_result_alt = "StreamError|nil",
             .do_result_alt2 = "nil|StreamError",
         },
-        .{ .target = "sockets/types/tcp-socket.create", .params = "ip-address-family", .result = "result<tcp-socket,error-code>" },
-        .{ .target = "sockets/types/tcp-socket.bind", .params = "tcp-socket,ip-socket-address", .result = "result<_,error-code>" },
-        .{ .target = "sockets/types/udp-socket.create", .params = "ip-address-family", .result = "result<udp-socket,error-code>" },
-        .{ .target = "sockets/types/udp-socket.bind", .params = "udp-socket,ip-socket-address", .result = "result<_,error-code>" },
+        .{
+            .target = "sockets/types/tcp-socket.create",
+            .params = "ip-address-family",
+            .result = "result<tcp-socket,error-code>",
+            .do_params = "u8",
+            .do_params_alt = "i32",
+            .do_result = "TcpSocket|i32",
+            .do_result_alt = "TcpSocket|TcpError",
+        },
+        .{
+            .target = "sockets/types/tcp-socket.bind",
+            .params = "tcp-socket,ip-socket-address",
+            .result = "result<_,error-code>",
+            .do_params = "TcpSocket,IpSocketAddress",
+            .do_result = "nil|i32",
+            .do_result_alt = "TcpError|nil",
+            .do_result_alt2 = "nil|TcpError",
+        },
+        .{
+            .target = "sockets/types/tcp-socket.drop",
+            .params = "tcp-socket",
+            .result = "nil",
+            .do_params = "TcpSocket",
+            .do_params_alt = "i32",
+        },
+        .{
+            .target = "sockets/types/udp-socket.create",
+            .params = "ip-address-family",
+            .result = "result<udp-socket,error-code>",
+            .do_params = "u8",
+            .do_params_alt = "i32",
+            .do_result = "UdpSocket|i32",
+            .do_result_alt = "UdpSocket|UdpError",
+        },
+        .{
+            .target = "sockets/types/udp-socket.bind",
+            .params = "udp-socket,ip-socket-address",
+            .result = "result<_,error-code>",
+            .do_params = "UdpSocket,IpSocketAddress",
+            .do_result = "nil|i32",
+            .do_result_alt = "UdpError|nil",
+            .do_result_alt2 = "nil|UdpError",
+        },
+        .{
+            .target = "sockets/types/udp-socket.drop",
+            .params = "udp-socket",
+            .result = "nil",
+            .do_params = "UdpSocket",
+            .do_params_alt = "i32",
+        },
         .{ .target = "http/client/send", .params = "request", .result = "result<response,error-code>" },
         .{ .target = "text/char/echo", .params = "char", .result = "char" },
         .{
@@ -624,6 +671,8 @@ fn parseWitType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?
 
     if (std.mem.eql(u8, name, "_")) return start_idx + 1;
     if (hasPublicStructDecl(tokens, name)) return start_idx + 1;
+    // G6.3: payload enum names in host params (e.g. IpSocketAddress).
+    if (hasPublicPayloadEnumDecl(tokens, name)) return start_idx + 1;
     // P4: coarse do error enums in host Ok|Err results (DirError / FileError).
     // Forward refs allowed: name ends with Error (same as resource names in host params).
     if (isErrorTypeName(name)) return start_idx + 1;
@@ -634,6 +683,30 @@ fn parseWitType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?
 
 fn hasPublicStructDecl(tokens: []const lexer.Token, name: []const u8) bool {
     return findPublicStructDecl(tokens, name) != null;
+}
+
+fn hasPublicPayloadEnumDecl(tokens: []const lexer.Token, name: []const u8) bool {
+    if (!isValidDeclaredTypeName(name)) return false;
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokEq(tokens[i], "{")) {
+            if (skipTopLevelImportBrace(tokens, i, depth_brace)) |skip_i| {
+                i = skip_i;
+                continue;
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tokEq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0) continue;
+        if (!isPayloadEnumDeclStart(tokens, i)) continue;
+        if (std.mem.eql(u8, tokens[i].lexeme, name)) return true;
+    }
+    return false;
 }
 
 

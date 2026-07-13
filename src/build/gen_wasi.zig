@@ -58,6 +58,12 @@ pub fn knownWasiWitSignature(target: []const u8) ?struct { params: []const u8, r
         .{ .target = "io/streams/output-stream.check-write", .params = "output-stream", .result = "result<u64,stream-error>" },
         .{ .target = "io/streams/output-stream.write", .params = "output-stream,list<u8>", .result = "result<_,stream-error>" },
         .{ .target = "io/streams/output-stream.flush", .params = "output-stream", .result = "result<_,stream-error>" },
+        .{ .target = "sockets/types/tcp-socket.create", .params = "ip-address-family", .result = "result<tcp-socket,error-code>" },
+        .{ .target = "sockets/types/tcp-socket.bind", .params = "tcp-socket,ip-socket-address", .result = "result<_,error-code>" },
+        .{ .target = "sockets/types/tcp-socket.drop", .params = "tcp-socket", .result = "nil" },
+        .{ .target = "sockets/types/udp-socket.create", .params = "ip-address-family", .result = "result<udp-socket,error-code>" },
+        .{ .target = "sockets/types/udp-socket.bind", .params = "udp-socket,ip-socket-address", .result = "result<_,error-code>" },
+        .{ .target = "sockets/types/udp-socket.drop", .params = "udp-socket", .result = "nil" },
         .{ .target = "clocks/system-clock/now", .params = "", .result = "Datetime" },
         .{ .target = "clocks/system-clock/get-resolution", .params = "", .result = "u64" },
         .{ .target = "clocks/monotonic-clock/now", .params = "", .result = "u64" },
@@ -264,6 +270,17 @@ pub fn wasiCoarseFailedVariantName(import: WasiHostImport, err_ty: []const u8) ?
         if (std.mem.eql(u8, target, "io/streams/output-stream.flush")) return "StreamFlushFailed";
         return null;
     }
+    // G6.3: TcpError / UdpError — create always *HostFailure; bind uses Closed vs HostFailure.
+    if (std.mem.eql(u8, err_ty, "TcpError")) {
+        if (std.mem.eql(u8, target, "sockets/types/tcp-socket.create")) return "TcpHostFailure";
+        if (std.mem.eql(u8, target, "sockets/types/tcp-socket.bind")) return "TcpHostFailure";
+        return null;
+    }
+    if (std.mem.eql(u8, err_ty, "UdpError")) {
+        if (std.mem.eql(u8, target, "sockets/types/udp-socket.create")) return "UdpHostFailure";
+        if (std.mem.eql(u8, target, "sockets/types/udp-socket.bind")) return "UdpHostFailure";
+        return null;
+    }
     return null;
 }
 
@@ -271,12 +288,16 @@ pub fn wasiCoarseClosedVariantName(err_ty: []const u8) ?[]const u8 {
     if (std.mem.eql(u8, err_ty, "DirError")) return "DirClosed";
     if (std.mem.eql(u8, err_ty, "FileError")) return "FileClosed";
     if (std.mem.eql(u8, err_ty, "StreamError")) return "StreamClosed";
+    if (std.mem.eql(u8, err_ty, "TcpError")) return "TcpClosed";
+    if (std.mem.eql(u8, err_ty, "UdpError")) return "UdpClosed";
     return null;
 }
 
 /// Whether this host maps every non-zero status to a single Failed variant (open wrappers).
 pub fn wasiCoarseErrorAlwaysFailed(import: WasiHostImport) bool {
-    return std.mem.eql(u8, import.target, "filesystem/types/descriptor.open-at");
+    return std.mem.eql(u8, import.target, "filesystem/types/descriptor.open-at") or
+        std.mem.eql(u8, import.target, "sockets/types/tcp-socket.create") or
+        std.mem.eql(u8, import.target, "sockets/types/udp-socket.create");
 }
 
 

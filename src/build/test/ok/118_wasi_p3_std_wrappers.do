@@ -31,15 +31,21 @@ read_stream = @lib("io.stream.do", read_stream)
 check_write_stream = @lib("io.stream.do", check_write_stream)
 write_stream = @lib("io.stream.do", write_stream)
 flush_stream = @lib("io.stream.do", flush_stream)
-TcpListener = @lib("tcp.do", TcpListener)
-TcpStream = @lib("tcp.do", TcpStream)
+TcpSocket = @lib("tcp.do", TcpSocket)
 TcpError = @lib("tcp.do", TcpError)
 TcpClosed = @lib("tcp.do", TcpClosed)
 is_tcp_closed = @lib("tcp.do", is_tcp_closed)
+create_tcp_v4 = @lib("tcp.do", create_tcp_v4)
+bind_tcp_v4 = @lib("tcp.do", bind_tcp_v4)
+close_tcp = @lib("tcp.do", close_tcp)
+Ipv4SocketAddress = @lib("tcp.do", Ipv4SocketAddress)
 UdpSocket = @lib("udp.do", UdpSocket)
 UdpError = @lib("udp.do", UdpError)
 UdpClosed = @lib("udp.do", UdpClosed)
 is_udp_closed = @lib("udp.do", is_udp_closed)
+create_udp_v4 = @lib("udp.do", create_udp_v4)
+bind_udp_v4 = @lib("udp.do", bind_udp_v4)
+close_udp = @lib("udp.do", close_udp)
 HttpRequest = @lib("http.client.do", HttpRequest)
 HttpResponse = @lib("http.client.do", HttpResponse)
 HttpClientError = @lib("http.client.do", HttpClientError)
@@ -87,15 +93,38 @@ accept_output_stream(value OutputStream) {
     return
 }
 
-accept_tcp_listener(value TcpListener) {
-    return
-}
-
-accept_tcp_stream(value TcpStream) {
+accept_tcp_socket(value TcpSocket) {
     return
 }
 
 accept_udp_socket(value UdpSocket) {
+    return
+}
+
+// Shape-only wrappers for G6.3 create/bind/close (no true host I/O in do test).
+create_tcp_shape() -> TcpSocket | TcpError {
+    return create_tcp_v4()
+}
+
+bind_tcp_shape(sock TcpSocket, addr Ipv4SocketAddress) -> TcpError | nil {
+    return bind_tcp_v4(sock, addr)
+}
+
+close_tcp_shape(sock TcpSocket) -> nil {
+    close_tcp(sock)
+    return
+}
+
+create_udp_shape() -> UdpSocket | UdpError {
+    return create_udp_v4()
+}
+
+bind_udp_shape(sock UdpSocket, addr Ipv4SocketAddress) -> UdpError | nil {
+    return bind_udp_v4(sock, addr)
+}
+
+close_udp_shape(sock UdpSocket) -> nil {
+    close_udp(sock)
     return
 }
 

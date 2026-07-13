@@ -804,6 +804,12 @@ pub fn emitWasiResultUnitCall(
     if (std.mem.eql(u8, import.target, "io/streams/output-stream.write")) {
         return try emitWasiResultOutputWriteCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
     }
+    // G6.3: tcp/udp-socket.bind(socket, IpSocketAddress)
+    if (std.mem.eql(u8, import.target, "sockets/types/tcp-socket.bind") or
+        std.mem.eql(u8, import.target, "sockets/types/udp-socket.bind"))
+    {
+        return try emitWasiResultSocketBindCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
+    }
     if (!std.mem.eql(u8, import.target, "filesystem/types/descriptor.sync") and
         !std.mem.eql(u8, import.target, "io/streams/output-stream.flush"))
     {
@@ -817,6 +823,210 @@ pub fn emitWasiResultUnitCall(
     try out.appendSlice(allocator, "    call $");
     try appendWasiImportSymbol(allocator, out, import.target);
     try out.appendSlice(allocator, "\n");
+    return true;
+}
+
+/// Scratch offset past result-area header for packing `ip-socket-address` (G6.3).
+const SOCKET_ADDR_PACK_OFF: u32 = 64;
+
+/// Lower tcp/udp-socket.bind: handle + pack IpSocketAddress (payload enum) + unit result area.
+pub fn emitWasiResultSocketBindCall(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    args_start: usize,
+    args_end: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    import: WasiHostImport,
+    out: *std.ArrayList(u8),
+
+    emit_expr: EmitExprFn,
+) CodegenError!bool {
+    if (!std.mem.eql(u8, import.target, "sockets/types/tcp-socket.bind") and
+        !std.mem.eql(u8, import.target, "sockets/types/udp-socket.bind"))
+        return false;
+
+    const socket_end = findArgEnd(tokens, args_start, args_end);
+    if (socket_end == args_start or socket_end >= args_end or !tokEq(tokens[socket_end], ",")) return error.NoMatchingCall;
+    const addr_start = socket_end + 1;
+    const addr_end = findArgEnd(tokens, addr_start, args_end);
+    if (addr_end == addr_start or addr_end != args_end) return error.NoMatchingCall;
+
+    if (!try emitWasiDescriptorHandleArg(allocator, tokens, args_start, socket_end, locals, ctx, out, emit_expr)) return error.NoMatchingCall;
+    if (!try emitWasiPackIpSocketAddressArg(allocator, tokens, addr_start, addr_end, locals, ctx, out, emit_expr)) return error.NoMatchingCall;
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
+    try out.appendSlice(allocator, "    call $");
+    try appendWasiImportSymbol(allocator, out, import.target);
+    try out.appendSlice(allocator, "\n");
+    return true;
+}
+
+/// Pack IpSocketAddress (payload enum V4|V6 or ctor) into scratch; leave ptr on stack.
+fn emitWasiPackIpSocketAddressArg(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+    emit_expr: EmitExprFn,
+) CodegenError!bool {
+    _ = ctx;
+    _ = emit_expr; // pack uses struct/union locals only in v1
+    const range = trimParens(tokens, start_idx, end_idx);
+
+    // Local payload-enum: name with __union_tag / __union_payload_*
+    if (range.end == range.start + 1 and tokens[range.start].kind == .ident) {
+        const uname = tokens[range.start].lexeme;
+        if (findUnionLocal(locals.union_locals.items, uname) != null) {
+            return try emitWasiPackIpSocketAddressFromUnionLocal(allocator, uname, out);
+        }
+    }
+
+    // Ctor V4(expr) / V6(expr)
+    const call_head = exprCallHead(tokens, range) orelse return false;
+    if (call_head.is_intrinsic) return false;
+    const case_name = publicDeclName(tokens[call_head.name_idx].lexeme);
+    const is_v4 = std.mem.eql(u8, case_name, "V4");
+    const is_v6 = std.mem.eql(u8, case_name, "V6");
+    if (!is_v4 and !is_v6) return false;
+
+    // Payload must be unmanaged struct local for v1 pack.
+    const payload_range = trimParens(tokens, call_head.args_start, call_head.args_end);
+    if (payload_range.end != payload_range.start + 1 or tokens[payload_range.start].kind != .ident) return false;
+    const sname = tokens[payload_range.start].lexeme;
+    const struct_local = findStructLocal(locals.struct_locals.items, sname) orelse return false;
+
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
+    try appendFmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF});
+    try out.appendSlice(allocator, "    i32.add\n");
+    // ptr stays on stack for store sequence via local tee pattern: duplicate with local? Use get/set base each time.
+    // Store disc
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
+    try appendFmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF});
+    try out.appendSlice(allocator, "    i32.add\n");
+    if (is_v4) {
+        try out.appendSlice(allocator, "    i32.const 0\n"); // ipv4 disc
+        try out.appendSlice(allocator, "    i32.store\n");
+        // port u16 @ +4
+        try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
+        try appendFmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 4});
+        try out.appendSlice(allocator, "    i32.add\n");
+        try appendFmt(allocator, out, "    local.get ${s}.port\n", .{struct_local.name});
+        try out.appendSlice(allocator, "    i32.store16\n");
+        // a,b,c,d @ +6..+9
+        inline for (.{ "a", "b", "c", "d" }, 0..) |field, fi| {
+            try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
+            try appendFmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 6 + fi});
+            try out.appendSlice(allocator, "    i32.add\n");
+            try appendFmt(allocator, out, "    local.get ${s}.{s}\n", .{ struct_local.name, field });
+            try out.appendSlice(allocator, "    i32.store8\n");
+        }
+    } else {
+        try out.appendSlice(allocator, "    i32.const 1\n"); // ipv6 disc
+        try out.appendSlice(allocator, "    i32.store\n");
+        // port @ +4
+        try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
+        try appendFmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 4});
+        try out.appendSlice(allocator, "    i32.add\n");
+        try appendFmt(allocator, out, "    local.get ${s}.port\n", .{struct_local.name});
+        try out.appendSlice(allocator, "    i32.store16\n");
+        // flowinfo = 0 @ +8
+        try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
+        try appendFmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 8});
+        try out.appendSlice(allocator, "    i32.add\n");
+        try out.appendSlice(allocator, "    i32.const 0\n");
+        try out.appendSlice(allocator, "    i32.store\n");
+        // addr[16] from hi||lo big-endian @ +12
+        try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
+        try appendFmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 12});
+        try out.appendSlice(allocator, "    i32.add\n");
+        try appendFmt(allocator, out, "    local.get ${s}.hi\n", .{struct_local.name});
+        try out.appendSlice(allocator, "    i64.store\n"); // first 8 bytes (host endian; documented)
+        try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
+        try appendFmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 20});
+        try out.appendSlice(allocator, "    i32.add\n");
+        try appendFmt(allocator, out, "    local.get ${s}.lo\n", .{struct_local.name});
+        try out.appendSlice(allocator, "    i64.store\n");
+        // scope_id = 0 @ +28
+        try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
+        try appendFmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 28});
+        try out.appendSlice(allocator, "    i32.add\n");
+        try out.appendSlice(allocator, "    i32.const 0\n");
+        try out.appendSlice(allocator, "    i32.store\n");
+    }
+    // leave pack ptr on stack
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
+    try appendFmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF});
+    try out.appendSlice(allocator, "    i32.add\n");
+    return true;
+}
+
+fn emitWasiPackIpSocketAddressFromUnionLocal(
+    allocator: std.mem.Allocator,
+    uname: []const u8,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    // Tag 0 = V4, 1 = V6. Payloads: V4 a,b,c,d,port; V6 hi,lo,port (max slots overlap).
+    // For v1, only support packing when tag known at emit is too hard; always emit branch on tag.
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
+    try appendFmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF});
+    try out.appendSlice(allocator, "    i32.add\n");
+    try appendFmt(allocator, out, "    local.get ${s}.__union_tag\n", .{uname});
+    try out.appendSlice(allocator, "    i32.store\n"); // disc = case tag (0=V4, 1=V6)
+
+    // Common: port is last payload field for both — V4 has 5 slots (0..4), V6 has 3 (0..2).
+    // Layout for V4: p0=a p1=b p2=c p3=d p4=port
+    // Layout for V6: p0=hi p1=lo p2=port — different; branch on tag.
+    try appendFmt(allocator, out, "    local.get ${s}.__union_tag\n", .{uname});
+    try out.appendSlice(allocator, "    i32.eqz\n");
+    try out.appendSlice(allocator, "    if\n");
+    // V4 pack
+    try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
+    try appendFmt(allocator, out, "      i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 4});
+    try out.appendSlice(allocator, "      i32.add\n");
+    try appendFmt(allocator, out, "      local.get ${s}.__union_payload_4\n", .{uname});
+    try out.appendSlice(allocator, "      i32.store16\n");
+    inline for (0..4) |fi| {
+        try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
+        try appendFmt(allocator, out, "      i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 6 + fi});
+        try out.appendSlice(allocator, "      i32.add\n");
+        try appendFmt(allocator, out, "      local.get ${s}.__union_payload_{d}\n", .{ uname, fi });
+        try out.appendSlice(allocator, "      i32.store8\n");
+    }
+    try out.appendSlice(allocator, "    else\n");
+    // V6 pack
+    try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
+    try appendFmt(allocator, out, "      i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 4});
+    try out.appendSlice(allocator, "      i32.add\n");
+    try appendFmt(allocator, out, "      local.get ${s}.__union_payload_2\n", .{uname});
+    try out.appendSlice(allocator, "      i32.store16\n");
+    try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
+    try appendFmt(allocator, out, "      i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 8});
+    try out.appendSlice(allocator, "      i32.add\n");
+    try out.appendSlice(allocator, "      i32.const 0\n");
+    try out.appendSlice(allocator, "      i32.store\n");
+    try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
+    try appendFmt(allocator, out, "      i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 12});
+    try out.appendSlice(allocator, "      i32.add\n");
+    try appendFmt(allocator, out, "      local.get ${s}.__union_payload_0\n", .{uname});
+    try out.appendSlice(allocator, "      i64.store\n");
+    try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
+    try appendFmt(allocator, out, "      i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 20});
+    try out.appendSlice(allocator, "      i32.add\n");
+    try appendFmt(allocator, out, "      local.get ${s}.__union_payload_1\n", .{uname});
+    try out.appendSlice(allocator, "      i64.store\n");
+    try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
+    try appendFmt(allocator, out, "      i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 28});
+    try out.appendSlice(allocator, "      i32.add\n");
+    try out.appendSlice(allocator, "      i32.const 0\n");
+    try out.appendSlice(allocator, "      i32.store\n");
+    try out.appendSlice(allocator, "    end\n");
+
+    try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
+    try appendFmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF});
+    try out.appendSlice(allocator, "    i32.add\n");
     return true;
 }
 
@@ -899,6 +1109,26 @@ pub fn emitWasiResultDescriptorCall(
 
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
+    // G6.3: tcp/udp-socket.create(family) -> result<socket, error-code>
+    if (std.mem.eql(u8, import.target, "sockets/types/tcp-socket.create") or
+        std.mem.eql(u8, import.target, "sockets/types/udp-socket.create"))
+    {
+        const family_end = findArgEnd(tokens, args_start, args_end);
+        if (family_end == args_start or family_end != args_end) return error.NoMatchingCall;
+        // family: u8/i32 literal or expr → i32 disc (4/6 map later if needed; pass as i32).
+        if (!try emit_expr(allocator, tokens, args_start, family_end, locals, ctx, "i32", out)) {
+            if (!try emit_expr(allocator, tokens, args_start, family_end, locals, ctx, "u8", out)) return error.NoMatchingCall;
+            try out.appendSlice(allocator, "    i32.extend8_s\n");
+        }
+        // Map do family 4/6 → WIT disc 0/1 when value is common constants is host responsibility;
+        // pass guest family as i32; host/shim may remap. Prefer 0=ipv4 1=ipv6 at API wrappers.
+        try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
+        try out.appendSlice(allocator, "    call $");
+        try appendWasiImportSymbol(allocator, out, import.target);
+        try out.appendSlice(allocator, "\n");
+        return true;
+    }
+
     if (!std.mem.eql(u8, import.target, "filesystem/types/descriptor.open-at")) return false;
 
     const descriptor_end = findArgEnd(tokens, args_start, args_end);
