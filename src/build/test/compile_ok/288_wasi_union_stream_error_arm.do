@@ -1,5 +1,5 @@
 // C: stream read host Err arm is coarse StreamError (not status i32).
-.host_input_read = @wasi_func("io/streams/input-stream.read", (InputStream, u64) -> [u8] | StreamError)
+.host_input_read = @host("wasi:io/streams@0.3.0", "input-stream.read", (InputStream, u64) -> [u8] | StreamError)
 InputStream = @wasi_resource("io/streams/input-stream", { .id i64 })
 StreamError error = StreamClosed | StreamReadFailed | StreamCheckWriteFailed | StreamWriteFailed | StreamFlushFailed
 

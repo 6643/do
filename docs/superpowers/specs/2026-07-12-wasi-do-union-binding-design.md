@@ -1,7 +1,7 @@
 # Design: WASI host signatures as do types (`T | nil`, `Ok | Err`)
 
 **Status:** Approved (session 2026-07-12)  
-**Scope:** Declarative `@wasi_func` parameter/result surface; stdlib dir/file host lines; compiler validate + lower.
+**Scope:** Declarative `@host` WASI parameter/result surface; stdlib dir/file host lines; compiler validate + lower.
 
 ## Goal
 
@@ -77,11 +77,11 @@ open_dir_at(parent Dir, path text) -> Dir | DirError {
 - G6.2 read-directory stream/future
 - G6.3 sockets variant
 - Changing public stdlib API names (`open_dir_at`, `DirError`, …)
-- Reintroducing bare `@wasi(...)`
+- Reintroducing the removed single-locator WASI host form
 
 ## Phased delivery
 
-1. **Compiler:** accept `Ok|Err` / `T|nil` / resource names in `@wasi_func` sigs; map to WIT; lower calls to union (or keep multi-lhs only as internal, not source-required).
+1. **Compiler:** accept `Ok|Err` / `T|nil` / resource names in `@host` sigs; map to WIT; lower calls to union (or keep multi-lhs only as internal, not source-required).
 2. **Known table:** extend `do_params` / `do_result` for union forms.
 3. **Stdlib:** migrate `lib/dir.do`, `lib/file.do`, `lib/io.stream.do` host lines + thin wrappers.
 4. **Fixtures:** migrate compile_ok wasi result cases; keep 100 statement semantics.

@@ -1,4 +1,4 @@
-//! Env host import collect/parse (@env).
+//! Env host import collect/parse (@host("env", member, sig)).
 const std = @import("std");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
@@ -88,10 +88,15 @@ pub fn parseEnvHostImport(
     start_idx: usize,
     line_end: usize,
 ) !HostImport {
+    // name = @host("env", "field", (...) -> T)
     const alias = publicDeclName(tokens[start_idx].lexeme);
-    const field = stringTokenBody(tokens[start_idx + 5].lexeme) orelse return error.InvalidImportDecl;
-    const comma_idx = findTopLevelToken(tokens, start_idx + 6, line_end - 1, ",") orelse return error.InvalidImportDecl;
-    const open_idx = comma_idx + 1;
+    const locator = stringTokenBody(tokens[start_idx + 5].lexeme) orelse return error.InvalidImportDecl;
+    if (!std.mem.eql(u8, locator, "env")) return error.InvalidImportDecl;
+    if (!tokEq(tokens[start_idx + 6], ",")) return error.InvalidImportDecl;
+    const field = stringTokenBody(tokens[start_idx + 7].lexeme) orelse return error.InvalidImportDecl;
+    if (!tokEq(tokens[start_idx + 8], ",")) return error.InvalidImportDecl;
+    const open_idx = start_idx + 9;
+    if (open_idx >= line_end or !tokEq(tokens[open_idx], "(")) return error.InvalidImportDecl;
     const close_idx = try findMatchingInRange(tokens, open_idx, "(", ")", line_end);
     if (close_idx + 1 >= line_end or !tokEq(tokens[close_idx + 1], "-")) return error.InvalidImportDecl;
     if (close_idx + 2 >= line_end or !tokEq(tokens[close_idx + 2], ">")) return error.InvalidImportDecl;
@@ -146,15 +151,21 @@ pub fn findHostImportForTokens(host_imports: []const HostImport, tokens: []const
     return null;
 }
 pub fn isEnvHostImportStart(tokens: []const lexer.Token, idx: usize) bool {
+    // name = @host("env", "field", ...)
     const line_end = findLineEnd(tokens, idx);
-    if (idx + 6 >= line_end) return false;
+    if (idx + 9 >= line_end) return false;
     if (tokens[idx].kind != .ident) return false;
     if (!tokEq(tokens[idx + 1], "=")) return false;
     if (!tokEq(tokens[idx + 2], "@")) return false;
-    if (tokens[idx + 3].kind != .ident or !std.mem.eql(u8, tokens[idx + 3].lexeme, "env")) return false;
+    if (tokens[idx + 3].kind != .ident or !std.mem.eql(u8, tokens[idx + 3].lexeme, "host")) return false;
     if (!tokEq(tokens[idx + 4], "(")) return false;
     if (tokens[idx + 5].kind != .string) return false;
-    return findTopLevelToken(tokens, idx + 6, line_end - 1, ",") != null;
+    const locator = stringTokenBody(tokens[idx + 5].lexeme) orelse return false;
+    if (!std.mem.eql(u8, locator, "env")) return false;
+    if (!tokEq(tokens[idx + 6], ",")) return false;
+    if (tokens[idx + 7].kind != .string) return false;
+    if (!tokEq(tokens[idx + 8], ",")) return false;
+    return true;
 }
 pub fn hostCallArgsMatch(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, host_import: HostImport) bool {
     var param_idx: usize = 0;

@@ -73,9 +73,9 @@ ReadonlyImport   <- '@lib' '(' StringModuleFile InlineCommaSep ReadonlyIdent ')'
 ValueImport      <- '@lib' '(' StringModuleFile InlineCommaSep ValueImportTarget ')'
 ValueImportTarget <- !ReservedName LowerIdent
 HostImport       <- EnvHostImport / WasiHostImport
-EnvHostImport    <- '@env' '(' StringHostName InlineCommaSep EnvHostSig ')'
-
-WasiHostImport   <- '@wasi_func' '(' StringWitTarget InlineCommaSep WasiHostSig ')'
+// Unified host import: @host(locator, member, sig). No legacy @env / @wasi_func.
+EnvHostImport    <- '@host' '(' '"env"' InlineCommaSep StringHostName InlineCommaSep EnvHostSig ')'
+WasiHostImport   <- '@host' '(' StringWasiLocator InlineCommaSep StringWasiMember InlineCommaSep WasiHostSig ')'
 // Declarative type bindings (resource shell / record mirror). Host imports stay in import prefix.
 WasiResourceDecl <- TypeName '=' '@wasi_resource' '(' StringWitTarget InlineCommaSep '{' StructField* '}' ')'
 WasiRecordDecl   <- TypeName '=' '@wasi_record' '(' StringWitTarget InlineCommaSep '{' StructField* '}' ')'
@@ -88,6 +88,11 @@ RelativeFile     <- './' FlatFileSeg FileExt
 StdFile          <- FlatFileSeg FileExt
 StringModuleFile <- '"' ModuleFile '"'
 StringHostName   <- '"' HostName '"'
+// WASI locator: "wasi:package/interface@version" (version required; pin e.g. 0.3.0).
+StringWasiLocator <- '"' 'wasi:' WitName '/' WitName '@' WitVersion '"'
+// WASI member: WIT name, may include '.' segments and '-' (descriptor.write, link-at).
+StringWasiMember <- '"' WitName '"'
+WitVersion       <- [0-9]+ ('.' [0-9]+)*
 StringWitTarget  <- '"' WitName '/' WitName '/' WitName '"'
 HostName         <- PathSeg
 EnvHostSig       <- '(' AbiParamList? ')' '->' AbiReturn

@@ -13,7 +13,7 @@
 
 ## Boundary
 
-`@wasi_func("package/interface/member", sig)` is a WIT binding declaration, not a
+`@host("wasi:package/interface@version", "member", sig)` is a WIT binding declaration, not a
 core Wasm import declaration. A Do core WAT module cannot call this directly.
 The compiler must first preserve enough binding metadata, then a component
 lowering step can generate the canonical ABI shims and component imports.
@@ -117,7 +117,7 @@ as `[resource-drop]descriptor`, accepts the resource handle, returns `nil`, and
 does not emit a fake `drop: func` member in generated WIT:
 
 ```do
-.host_file_drop = @wasi_func("filesystem/types/descriptor.drop", (descriptor) -> nil)
+.host_file_drop = @host("wasi:filesystem/types@0.3.0", "descriptor.drop", (descriptor) -> nil)
 host_file_drop(file)
 ```
 
@@ -291,7 +291,7 @@ Stdlib modules declare WASI with:
 
 | Form | Role |
 | --- | --- |
-| `@wasi_func("package/interface/member", sig)` | Sole function binding form; **preferred** do types in `sig` (see below); bare `@wasi(...)` removed |
+| `@host("wasi:package/interface@version", "member", sig)` | Sole WASI function binding form; **preferred** do types in `sig` (see below); the old single-locator form is removed |
 | `@wasi_resource("…/resource", { .id i64 })` | Resource handle shell (not a WIT record) |
 | `@wasi_record("…", { fields })` | Record mirror (field-aligned) |
 | `@wasi_enum("…/error-code", arms)` | Optional fine error table; coarse `DirError`/`FileError` may stay plain |
@@ -323,12 +323,12 @@ Rules:
 Example (stdlib-style):
 
 ```do
-.host_dir_open_at = @wasi_func("filesystem/types/descriptor.open-at", (Dir, i32, text, i32, i32) -> Dir | DirError)
-.host_file_sync = @wasi_func("filesystem/types/descriptor.sync", (File) -> FileError | nil)
-.host_file_write = @wasi_func("filesystem/types/descriptor.write", (File, [u8], u64) -> u64 | FileError)
-.host_input_read = @wasi_func("io/streams/input-stream.read", (InputStream, u64) -> [u8] | StreamError)
-.host_preopens = @wasi_func("filesystem/preopens/get-directories", () -> [Tuple<Dir, text>])
-.host_dir_drop = @wasi_func("filesystem/types/descriptor.drop", (Dir) -> nil)
+.host_dir_open_at = @host("wasi:filesystem/types@0.3.0", "descriptor.open-at", (Dir, i32, text, i32, i32) -> Dir | DirError)
+.host_file_sync = @host("wasi:filesystem/types@0.3.0", "descriptor.sync", (File) -> FileError | nil)
+.host_file_write = @host("wasi:filesystem/types@0.3.0", "descriptor.write", (File, [u8], u64) -> u64 | FileError)
+.host_input_read = @host("wasi:io/streams@0.3.0", "input-stream.read", (InputStream, u64) -> [u8] | StreamError)
+.host_preopens = @host("wasi:filesystem/preopens@0.3.0", "get-directories", () -> [Tuple<Dir, text>])
+.host_dir_drop = @host("wasi:filesystem/types@0.3.0", "descriptor.drop", (Dir) -> nil)
 ```
 
 Known targets still lower via existing strategies (scalar/record/`list<u8>`/result-area/preopens). Codegen stores **WIT** params/result on the binding even when the source used do sugar (`Dir`/`[u8]`/`nil|i32`). Host imports remain in the module import prefix; type bindings follow them.
@@ -605,7 +605,7 @@ host, external WIT package resolution, or the unsupported complex WIT types.
 normal WIT resource method. The standard library may declare it privately as:
 
 ```do
-.host_file_drop = @wasi_func("filesystem/types/descriptor.drop", (descriptor) -> nil)
+.host_file_drop = @host("wasi:filesystem/types@0.3.0", "descriptor.drop", (descriptor) -> nil)
 ```
 
 Direct codegen lowers it to the compiler-owned core import name
@@ -687,6 +687,23 @@ Rules:
   wrapper lowering mode for the duration of one host call.
 - `own<T>` means the wrapper must define who releases or closes the handle.
 
+## Core Wasm refs vs do syntax (recorded; not implemented)
+
+WASI resource handles (integer table ids) are **not** the same mechanism as
+core Wasm `externref` / JS host objects. Do keeps **no pointer/reference
+syntax** in source. Strategy (decision only — **no implementation in tree**):
+
+| Core Wasm concept | Do syntax strategy | Status |
+| --- | --- | --- |
+| `externref` | Future opaque value shell `@host_ref("…")`, parallel to `@wasi_resource` | deferred |
+| `anyref` | **No** public syntax | permanent (public) |
+| `funcref` | **No** first-class source type; prefer export / callback id; optional later `@host_func` | deferred |
+| `i32` as linear-memory pointer | **Never** a do type; only private `@host` lowering (e.g. ptr,len) | current rule |
+| resource handle id | `@wasi_resource` + private `.id` (existing) | implemented |
+
+Full write-up: `doc/design/wasm_ref_host_syntax.md`. Do not treat `@host_ref` as
+available in stdlib or tests until that doc is promoted and implemented.
+
 ## Validation Required Before Executable Lowering
 
 For every `wasi-bind` item:
@@ -732,7 +749,7 @@ The first executable P3 slices are scalar/record/list<u8> wrappers, because they
 do not require resource lifetime or async lowering:
 
 ```do
-.host_now = @wasi_func("clocks/system-clock/now", () -> Datetime)
+.host_now = @host("wasi:clocks/system-clock@0.3.0", "now", () -> Datetime)
 
 Datetime {
     seconds i64

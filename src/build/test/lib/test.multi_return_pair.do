@@ -1,4 +1,4 @@
-host_add = @env("dep_add", (i32, i32) -> i32)
+host_add = @host("env", "dep_add", (i32, i32) -> i32)
 
 pair(x i32) -> i32, bool {
     return x, true

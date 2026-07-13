@@ -18,7 +18,7 @@ Unblock G6.3 with **scheme B**: dual concrete address structs, ordinary **functi
 | Address total | Payload enum `IpSocketAddress = V4(Ipv4SocketAddress) \| V6(Ipv6SocketAddress)` |
 | Public bind API | Overloads: `bind_tcp(sock, Ipv4…)` / `bind_tcp(sock, Ipv6…)` (+ optional total-type overload) |
 | Public create API | `create_tcp_v4()` / `create_tcp_v6()` (or overload on family); wrappers call single host |
-| Host import | **One** `@wasi_func` alias per target; **no** host overload |
+| Host import | **One** `@host` alias per target; **no** host overload |
 | Host create | `(u8) -> TcpSocket \| TcpError` (family 4/6); codegen maps to WIT `ip-address-family` disc |
 | Host bind | `(TcpSocket, IpSocketAddress) -> TcpError \| nil` |
 | Errors | Coarse `TcpError` / `UdpError` (E1); status→`*HostFailure` / `*UnsupportedAddress` |
@@ -74,9 +74,9 @@ Core bind import receives `socket_handle i32`, `addr_ptr i32`, `result_area i32`
 
 ```do
 // hosts first
-.host_tcp_create = @wasi_func("sockets/types/tcp-socket.create", (u8) -> TcpSocket | TcpError)
-.host_tcp_bind = @wasi_func("sockets/types/tcp-socket.bind", (TcpSocket, IpSocketAddress) -> TcpError | nil)
-.host_tcp_drop = @wasi_func("sockets/types/tcp-socket.drop", (TcpSocket) -> nil)
+.host_tcp_create = @host("wasi:sockets/types@0.3.0", "tcp-socket.create", (u8) -> TcpSocket | TcpError)
+.host_tcp_bind = @host("wasi:sockets/types@0.3.0", "tcp-socket.bind", (TcpSocket, IpSocketAddress) -> TcpError | nil)
+.host_tcp_drop = @host("wasi:sockets/types@0.3.0", "tcp-socket.drop", (TcpSocket) -> nil)
 
 TcpSocket = @wasi_resource("sockets/types/tcp-socket", { .id i64 })
 TcpError error = TcpClosed | TcpUnsupportedAddress | TcpHostFailure

@@ -1,8 +1,8 @@
 // TCP sockets — G6.3 scheme B (create/bind/drop). Value handle + explicit close.
 
-.host_tcp_create = @wasi_func("sockets/types/tcp-socket.create", (u8) -> TcpSocket | TcpError)
-.host_tcp_bind = @wasi_func("sockets/types/tcp-socket.bind", (TcpSocket, IpSocketAddress) -> TcpError | nil)
-.host_tcp_drop = @wasi_func("sockets/types/tcp-socket.drop", (TcpSocket) -> nil)
+.host_tcp_create = @host("wasi:sockets/types@0.3.0", "tcp-socket.create", (u8) -> TcpSocket | TcpError)
+.host_tcp_bind = @host("wasi:sockets/types@0.3.0", "tcp-socket.bind", (TcpSocket, IpSocketAddress) -> TcpError | nil)
+.host_tcp_drop = @host("wasi:sockets/types@0.3.0", "tcp-socket.drop", (TcpSocket) -> nil)
 
 Ipv4SocketAddress {
     .a u8

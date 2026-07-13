@@ -69,6 +69,7 @@
 | D7 | codegen 垂直再拆 | 如 WASI emit 切片; 先 parse/validate 再搬; 需授权 |
 | D8 | 包管理 get/pkg/push | 不重开 |
 | D9 | `RUN_WASM=1` 全量扩展回归 | 耗时长; 发布前显式跑, 非默认日路径 |
+| D10 | `@host_ref` / Wasm ref 语法 | `externref`→将来 `@host_ref`; `anyref` 不做公开; `funcref` 非一等类型; i32 指针永不做 do 类型。**仅记录策略, 不实现**。权威: `doc/design/wasm_ref_host_syntax.md`。扩讨论: `doc/design/2026-07-13-wasm-wasi-support-discussion.md`（已搁置） |
 
 详见 README「v1 非目标」与「下一阶段计划」。
 
@@ -81,6 +82,7 @@
 | Tuple **永不拍平** | 嵌套 `Tuple` / struct 直接子槽保持嵌套类型与 `@get` 路径; 禁止与扁平 Tuple 等同或隐式 coerce |
 | 泛型调用类型已知 | 函数要用的类型在实参侧已知; 不默认左侧反推 direct type param |
 | G6 不绕过 | 无决策不扩 read-dir (async) codegen; sockets create/bind/drop 已按 G6.3 B 落地 |
+| Wasm ref 语法 | 不引入 `*T`/`&T`/公开 `externref`/`anyref`/`funcref`; 策略见 `doc/design/wasm_ref_host_syntax.md` (D10, 未实现) |
 
 权威条文: `doc/spec_rules.md` (Tuple 节等)。
 

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** Use superpowers:subagent-driven-development or execute inline with TDD.
 
-**Goal:** (B) Accept `[Tuple<Dir, text>]` (and general `[T]`) in `@wasi_func` results; (A) Prefer exclusive-union host binds in `read_file` / `read_stream` wrappers instead of multi-lhs where possible.
+**Goal:** (B) Accept `[Tuple<Dir, text>]` (and general `[T]`) in `@host` WASI results; (A) Prefer exclusive-union host binds in `read_file` / `read_stream` wrappers instead of multi-lhs where possible.
 
 **Architecture:** Extend `parseWitType` list-bracket sugar to recursive element types; add known-table alts; rewrite wrappers to `r = host_…` + `@is` / status map. Public multi-return APIs stay for compatibility.
 

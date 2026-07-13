@@ -1,8 +1,8 @@
 // UDP sockets — G6.3 scheme B (create/bind/drop). Value handle + explicit close.
 
-.host_udp_create = @wasi_func("sockets/types/udp-socket.create", (u8) -> UdpSocket | UdpError)
-.host_udp_bind = @wasi_func("sockets/types/udp-socket.bind", (UdpSocket, IpSocketAddress) -> UdpError | nil)
-.host_udp_drop = @wasi_func("sockets/types/udp-socket.drop", (UdpSocket) -> nil)
+.host_udp_create = @host("wasi:sockets/types@0.3.0", "udp-socket.create", (u8) -> UdpSocket | UdpError)
+.host_udp_bind = @host("wasi:sockets/types@0.3.0", "udp-socket.bind", (UdpSocket, IpSocketAddress) -> UdpError | nil)
+.host_udp_drop = @host("wasi:sockets/types@0.3.0", "udp-socket.drop", (UdpSocket) -> nil)
 
 Ipv4SocketAddress {
     .a u8

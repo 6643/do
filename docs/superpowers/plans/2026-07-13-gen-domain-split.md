@@ -51,7 +51,7 @@ Domain files: `gen_collect`, `gen_wasi_emit`, `gen_ownership`, `gen_storage`, `g
 | `gen_util.zig` | 555 | token/scan / core-func 名 / mangled |
 | `gen_wasi.zig` | 451 | WASI 表 / parse / lowerability |
 | `gen_payload_wat` / `gen_storage_wat` | 418 / 246 | 纯 WAT |
-| `gen_host.zig` | 189 | `@env` host |
+| `gen_host.zig` | 189 | `@host("env", member, sig)` host |
 | `gen_union.zig` | 57 | UnionLayout 类型与 clone/free |
 
 `gen_lower` 内粗分（跨域调用已密，不可“整文件剪切即完事”）：

@@ -1,4 +1,4 @@
-host_log = @env("log", (i32, i32) -> nil)
+host_log = @host("env", "log", (i32, i32) -> nil)
 
 outer() -> nil {
     host_log("outer")

@@ -1,6 +1,6 @@
 // G6.3 scheme B: tcp-socket.bind with payload-enum IpSocketAddress + drop.
-.host_tcp_bind = @wasi_func("sockets/types/tcp-socket.bind", (TcpSocket, IpSocketAddress) -> TcpError | nil)
-.host_tcp_drop = @wasi_func("sockets/types/tcp-socket.drop", (TcpSocket) -> nil)
+.host_tcp_bind = @host("wasi:sockets/types@0.3.0", "tcp-socket.bind", (TcpSocket, IpSocketAddress) -> TcpError | nil)
+.host_tcp_drop = @host("wasi:sockets/types@0.3.0", "tcp-socket.drop", (TcpSocket) -> nil)
 TcpSocket = @wasi_resource("sockets/types/tcp-socket", {
     .id i64
 })

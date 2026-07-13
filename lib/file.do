@@ -1,11 +1,11 @@
-// Declarative WASI: @wasi_func hosts first, then resource shell. Public wrappers unchanged.
+// Declarative WASI: @host wasi hosts first, then resource shell. Public wrappers unchanged.
 // Host Err arms use coarse FileError where public API matches; read uses Tuple|i32 exclusive union.
-.host_file_read = @wasi_func("filesystem/types/descriptor.read", (File, u64, u64) -> Tuple<[u8], bool> | i32)
-.host_file_sync = @wasi_func("filesystem/types/descriptor.sync", (File) -> FileError | nil)
-.host_file_write = @wasi_func("filesystem/types/descriptor.write", (File, [u8], u64) -> u64 | FileError)
-.host_file_link_at = @wasi_func("filesystem/types/descriptor.link-at", (File, i32, text, File, text) -> FileError | nil)
-.host_file_open_at = @wasi_func("filesystem/types/descriptor.open-at", (File, i32, text, i32, i32) -> File | FileError)
-.host_file_drop = @wasi_func("filesystem/types/descriptor.drop", (File) -> nil)
+.host_file_read = @host("wasi:filesystem/types@0.3.0", "descriptor.read", (File, u64, u64) -> Tuple<[u8], bool> | i32)
+.host_file_sync = @host("wasi:filesystem/types@0.3.0", "descriptor.sync", (File) -> FileError | nil)
+.host_file_write = @host("wasi:filesystem/types@0.3.0", "descriptor.write", (File, [u8], u64) -> u64 | FileError)
+.host_file_link_at = @host("wasi:filesystem/types@0.3.0", "descriptor.link-at", (File, i32, text, File, text) -> FileError | nil)
+.host_file_open_at = @host("wasi:filesystem/types@0.3.0", "descriptor.open-at", (File, i32, text, i32, i32) -> File | FileError)
+.host_file_drop = @host("wasi:filesystem/types@0.3.0", "descriptor.drop", (File) -> nil)
 
 File = @wasi_resource("filesystem/types/descriptor", {
     .id i64

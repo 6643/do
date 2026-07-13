@@ -461,8 +461,7 @@ fn isImportCallHead(tokens: []const lexer.Token, at_idx: usize, line_end: usize)
     if (!tokEq(tokens[at_idx + 2], "(")) return false;
     const name = tokens[at_idx + 1].lexeme;
     return std.mem.eql(u8, name, "lib") or
-        std.mem.eql(u8, name, "env") or
-        std.mem.eql(u8, name, "wasi_func");
+        std.mem.eql(u8, name, "host");
 }
 
 fn isWasiTypeBindingName(name: []const u8) bool {

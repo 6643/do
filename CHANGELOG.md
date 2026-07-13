@@ -1,5 +1,9 @@
 # Changelog
 
+- **Host import 统一为 `@host(locator, member, sig)`**: 删除 `@env` / `@wasi_func`（零兼容）。env 写作 `@host("env", "name", sig)`；WASI 写作 `@host("wasi:package/interface@version", "member", sig)`（迁移默认 pin `0.3.0`）。内部 target 仍为 `package/interface/member`。stdlib / fixtures / `grammar.peg` / `spec_rules` §21–23 / `wasi_p3_lowering` / 诊断文案同步。
+
+- Docs: record Wasm ref / host syntax strategy (no implementation) — `externref`→future `@host_ref`; no public `anyref`; no first-class `funcref`; i32 memory pointers never do types. See `doc/design/wasm_ref_host_syntax.md`, `pending_blocked` D10, `wasi_p3_lowering` note, `spec_rules` §21.1 pointer.
+
 - G6.3 edge + regression hygiene: collect imported/module-local **payload enums** in codegen (`collectImportedPayloadEnumDecls`) so `@lib` wrappers may use intermediate `total IpSocketAddress = V4(addr)` before host bind; fixture `compile_ok/295`; stdlib tcp/udp bind helpers use intermediate total. `run_tests.sh` falls back to **bun** when `node` is missing; docs: `start_here` plan no longer waits on G6.3.
 
 - **G6.3 sockets scheme B** (create/bind/drop): dual `Ipv4`/`Ipv6` address + payload enum `IpSocketAddress`; resource shells `TcpSocket`/`UdpSocket`; coarse `TcpError`/`UdpError`; stdlib `lib/tcp.do`/`lib/udp.do`/`lib/net.do`; known-table + `wasiLowering` + guest address pack; fixtures `compile_ok/291`–`294`; manifest tool marks sockets create/bind lowerable. Design: `docs/superpowers/specs/2026-07-13-g6-3-sockets-scheme-b-design.md`. Docs: G6.3 closed in `pending_blocked` / start_here / roadmap / wasi_p3_lowering / spec_rules. Non-goals remain: listen/connect, true host smoke (D2), G6.2 async.
@@ -32,7 +36,7 @@
 
 - Gen Task 1: extract `gen_collect.zig` (struct/enum/func/layout collect + pack leaf helpers); `gen_lower` ~19.3k → ~16.9k
 
-- Continue gen split: `gen_host` (`@env` imports); `gen_import` (module resolve / reach / string-data); pure helpers into `gen_util`; free helpers + `ExprCallHead` into `gen_types`; rename `gen_impl` → `gen_lower`
+- Continue gen split: `gen_host` (`@host("env", ...)` imports); `gen_import` (module resolve / reach / string-data); pure helpers into `gen_util`; free helpers + `ExprCallHead` into `gen_types`; rename `gen_impl` → `gen_lower`
 
 - Gen module split: `gen.zig` (entry) + `gen_types.zig` (types/LocalSet) + `gen_lower.zig` (emit/collect); keep `gen_util`/`gen_wasi`/`gen_union`
 
@@ -62,8 +66,8 @@
   - 更新: `spec_rules` §21.1/§23、`wasi_p3_lowering` Declarative host surface、`grammar.peg` `WasiHostResult`
 
 - 声明式 WASI 宿主绑定（stdlib 对齐）
-  - 新形式: `@wasi_func` / `@wasi_resource` / `@wasi_record`（`@wasi_enum` 语法预留；粗 `DirError`/`FileError` 仍手写）
-  - 已移除裸 `@wasi(...)` 别名；codegen 对已知 target 把 do 侧糖（`i32`/`[u8]`）规范为 WIT 签名
+  - 新形式: `@host(wasi locator, member, sig)` / `@wasi_resource` / `@wasi_record`（`@wasi_enum` 语法预留；粗 `DirError`/`FileError` 仍手写）
+  - 已移除旧的裸 WASI host 别名；codegen 对已知 target 把 do 侧糖（`i32`/`[u8]`）规范为 WIT 签名
   - stdlib: `lib/time.do`、`dir.do`、`file.do`、`random.do`、`io.stream.do` 迁移；host 行保持 import 前缀
   - fixtures: `compile_ok/276_wasi_func_do_sig_and_resource`；私有字段收集覆盖 wasi_resource 声明
   - 文档: `grammar.peg`、`spec_rules` §21.1、`wasi_p3_lowering` declarative surface

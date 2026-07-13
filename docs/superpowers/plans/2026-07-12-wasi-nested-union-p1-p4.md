@@ -37,7 +37,7 @@
 
 ```do
 InputStream = @wasi_resource("io/streams/input-stream", { .id i64 })
-.host_input_read = @wasi_func(
+.host_input_read = @host(
   "io/streams/input-stream.read",
   (InputStream, u64) -> [u8] | i32
 )
@@ -75,7 +75,7 @@ git commit -m "feat: [u8]|i32 wasi list-in-result for input-stream.read"
 
 ```do
 File = @wasi_resource("filesystem/types/descriptor", { .id i64 })
-.host_file_read = @wasi_func(
+.host_file_read = @host(
   "filesystem/types/descriptor.read",
   (File, u64, u64) -> Tuple<[u8], bool> | i32
 )
@@ -107,7 +107,7 @@ git commit -m "feat: Tuple<[u8],bool>|i32 wasi descriptor.read union"
 **Target signature (prefer):**
 
 ```do
-.host_preopens = @wasi_func(
+.host_preopens = @host(
   "filesystem/preopens/get-directories",
   () -> [Tuple<Dir, text>]
 )
@@ -135,7 +135,7 @@ git commit -m "feat: preopens list of Tuple<Dir,text> do binding"
 
 ```do
 DirError error = DirOpenFailed | DirCreateFailed | …
-.host_dir_open_at = @wasi_func("…open-at", (Dir, i32, text, i32, i32) -> Dir | DirError)
+.host_dir_open_at = @host("wasi:…@0.3.0", "open-at", (Dir, i32, text, i32, i32) -> Dir | DirError)
 open_dir_at(...) -> Dir | DirError {
     return host_dir_open_at(parent, 0, path, 2, 0)
 }

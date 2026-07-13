@@ -1,2 +1,2 @@
 InvalidImportDecl
-@wasi_func("path/member", (...) -> Type)
+@host("wasi:pkg/iface@0.3.0", "member", (...) -> Type)

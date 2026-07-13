@@ -1,6 +1,6 @@
 // output write/flush: exclusive union nil|i32; multi-lhs status binding remains lowerable.
-host_output_write = @wasi_func("io/streams/output-stream.write", (i32, [u8]) -> nil | i32)
-host_output_flush = @wasi_func("io/streams/output-stream.flush", (i32) -> nil | i32)
+host_output_write = @host("wasi:io/streams@0.3.0", "output-stream.write", (i32, [u8]) -> nil | i32)
+host_output_flush = @host("wasi:io/streams@0.3.0", "output-stream.flush", (i32) -> nil | i32)
 
 start() {
     data [u8] = "abc"

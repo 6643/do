@@ -1,13 +1,13 @@
-// Declarative WASI: @wasi_func hosts first (import prefix), then resource shell.
+// Declarative WASI: @host wasi hosts first (import prefix), then resource shell.
 // P4: host Err arms use coarse DirError (status → *Failed / DirClosed in codegen).
 // Hosts use Ok|Err / resource params; open/create/remove match public API for thin forward.
-.host_dir_create_at = @wasi_func("filesystem/types/descriptor.create-directory-at", (Dir, text) -> DirError | nil)
-.host_dir_open_at = @wasi_func("filesystem/types/descriptor.open-at", (Dir, i32, text, i32, i32) -> Dir | DirError)
-.host_dir_remove_at = @wasi_func("filesystem/types/descriptor.remove-directory-at", (Dir, text) -> DirError | nil)
-.host_dir_drop = @wasi_func("filesystem/types/descriptor.drop", (Dir) -> nil)
+.host_dir_create_at = @host("wasi:filesystem/types@0.3.0", "descriptor.create-directory-at", (Dir, text) -> DirError | nil)
+.host_dir_open_at = @host("wasi:filesystem/types@0.3.0", "descriptor.open-at", (Dir, i32, text, i32, i32) -> Dir | DirError)
+.host_dir_remove_at = @host("wasi:filesystem/types@0.3.0", "descriptor.remove-directory-at", (Dir, text) -> DirError | nil)
+.host_dir_drop = @host("wasi:filesystem/types@0.3.0", "descriptor.drop", (Dir) -> nil)
 // P3: host builds Dir shells in list-of-tuple pack (no guest i32 remap loop).
-// Bracket sugar `[Tuple<Dir,text>]` is not yet valid in @wasi_func result; list form accepted.
-.host_preopens = @wasi_func("filesystem/preopens/get-directories", () -> [Tuple<Dir, text>])
+// Bracket sugar `[Tuple<Dir,text>]` is not yet valid in @host result; list form accepted.
+.host_preopens = @host("wasi:filesystem/preopens@0.3.0", "get-directories", () -> [Tuple<Dir, text>])
 
 Dir = @wasi_resource("filesystem/types/descriptor", {
     .id i64

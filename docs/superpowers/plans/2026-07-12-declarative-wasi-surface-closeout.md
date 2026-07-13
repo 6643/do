@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Close out the already-designed declarative WASI host surface (`@wasi_func` / `@wasi_resource` / `@wasi_record`, stdlib aligned, bare `@wasi` removed) with Superpowers discipline: TDD for residual gaps, verification evidence, no re-open of G6.2–G6.3.
+**Goal:** Close out the already-designed declarative WASI host surface (`@host` / `@wasi_resource` / `@wasi_record`, stdlib aligned, bare `@wasi` removed) with Superpowers discipline: TDD for residual gaps, verification evidence, no re-open of G6.2–G6.3.
 
-**Architecture:** Compiler host import only accepts `@wasi_func`. Type shells use `@wasi_resource` / `@wasi_record` after the import prefix. Field collection clamps to `}`. Known targets still lower via existing result-area / resource-drop / preopens strategies. Coarse `DirError`/`FileError` stay plain `error =`; `@wasi_enum` remains optional grammar/parser stub unless a later task productizes it.
+**Architecture:** Compiler host import only accepts `@host`. Type shells use `@wasi_resource` / `@wasi_record` after the import prefix. Field collection clamps to `}`. Known targets still lower via existing result-area / resource-drop / preopens strategies. Coarse `DirError`/`FileError` stay plain `error =`; `@wasi_enum` remains optional grammar/parser stub unless a later task productizes it.
 
 **Tech Stack:** Zig compiler under `src/build/`, `.do` fixtures under `src/build/test/`, docs under `doc/`, stdlib under `lib/`.
 
@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Do not reintroduce bare `@wasi(...)` as a host import form.
+- Do not reintroduce the removed single-locator WASI host form.
 - Do not expand G6.2 (`read-directory` stream/future) or G6.3 (sockets variant) without separate design.
 - Host imports stay in module import prefix; type bindings after hosts.
 - Behavior changes require red → green fixture cycles under `src/build/test/`.
@@ -23,12 +23,12 @@
 
 | Item | Evidence location |
 |------|-------------------|
-| Stdlib `@wasi_func` + resource/record | `lib/{dir,file,time,random,io.stream}.do` |
+| Stdlib `@host` + resource/record | `lib/{dir,file,time,random,io.stream}.do` |
 | Single-line field clamp | `src/build/gen.zig` `appendStructFieldsInBraceRange`; `sema.zig` `collectStructInfos` |
 | Fixtures multi-line + single-line | `compile_ok/276`, `compile_ok/277` |
 | Bare `@wasi` removed from compiler checks | `parser`/`sema`/`codegen`/`imports`/`diag` only `wasi_func` for host |
 | Docs §21.1 host-first legal sample | `doc/spec_rules.md` |
-| Grammar only `@wasi_func` for host | `doc/grammar.peg` `WasiHostImport` |
+| Grammar only `@host` for host | `doc/grammar.peg` `WasiHostImport` |
 
 ## File map (closeout touches)
 
@@ -36,13 +36,13 @@
 |------|------|
 | `src/build/test/err/278_bare_wasi_alias_rejected.do` + `.expect` | TDD: bare `@wasi` must not parse as host import |
 | `src/build/test/compile_ok/277_*.do` | Already present; re-verify red-green if regressing field scan |
-| `src/build/diag.zig` | Messages already say `@wasi_func`; keep consistent with expect |
+| `src/build/diag.zig` | Messages already say `@host`; keep consistent with expect |
 | `doc/spec_rules.md` / `doc/wit/wasi_p3_lowering.md` / `CHANGELOG.md` | Final doc sync only if drift found |
 | `lib/*.do` | No API change unless host prefix order broken |
 
 ---
 
-### Task 1: TDD lock — bare `@wasi(...)` rejected
+### Task 1: TDD lock — removed single-locator WASI host form rejected
 
 **Files:**
 - Create: `src/build/test/err/278_bare_wasi_alias_rejected.do`
@@ -59,7 +59,7 @@
 `278_bare_wasi_alias_rejected.do`:
 
 ```do
-host_res = @wasi("clocks/system-clock/get-resolution", () -> u64)
+host_res = @legacy_host("clocks/system-clock/get-resolution", () -> u64)
 start() {
     _ = host_res()
 }
@@ -148,7 +148,7 @@ If already green and no code change, skip commit for this task.
 - Do **not** rewrite G6.2/G6.3 blocked text unless factually wrong
 
 **Interfaces:**
-- Spec must say: host form is `@wasi_func` only; no transition `@wasi`
+- Spec must say: host form is `@host` only; no transition `@wasi`
 - Legal sample: all hosts before resource/record
 - `@wasi_enum` documented as optional / not required for stdlib coarse errors
 
@@ -156,10 +156,10 @@ If already green and no code change, skip commit for this task.
 
 ```bash
 rg -n '@wasi\(|过渡|transition alias|bare `@wasi`' doc lib src --glob '!**/CHANGELOG.md' || true
-rg -n 'WasiHostImport|@wasi_func' doc/grammar.peg
+rg -n 'WasiHostImport|@host' doc/grammar.peg
 ```
 
-Expected: no host-form `@wasi(` outside intentional “已移除” changelog notes.
+Expected: no legacy single-locator host form outside historical notes.
 
 - [ ] **Step 2: Fix any remaining doc contradictions**
 
@@ -217,10 +217,10 @@ Expected: `fail=0`; note `pass=` and `skip=` counts in the commit message / hand
 - [ ] **Step 3: Spot-check stdlib host surface**
 
 ```bash
-rg -n '@wasi_func|@wasi_resource|@wasi_record|@wasi\(' lib/*.do
+rg -n '@host|@wasi_resource|@wasi_record|@wasi\(' lib/*.do
 ```
 
-Expected: only `@wasi_func` / `@wasi_resource` / `@wasi_record`; zero bare `@wasi(`.
+Expected: only `@host` / `@wasi_resource` / `@wasi_record` host declarations.
 
 - [ ] **Step 4: Completion claim format**
 
@@ -244,7 +244,7 @@ Group into logical commits if not already committed by Tasks 1–3:
 
 1. compiler: wasi_func-only + field clamp + collectStructInfos  
 2. stdlib: declarative hosts  
-3. fixtures: 274–277 + migrated `@wasi`→`@wasi_func`  
+3. fixtures: 274–277 + migrated `@wasi`→`@host`
 4. docs: grammar/spec/lowering/changelog  
 
 - [ ] **Step 2: User-approved commit only**
@@ -257,7 +257,7 @@ Do not `git push` unless user asks. Prefer project subject style (short imperati
 
 | Design requirement | Task |
 |--------------------|------|
-| `@wasi_func` preferred / only host form | 1, 3 |
+| `@host` preferred / only host form | 1, 3 |
 | `@wasi_resource` / `@wasi_record` | landed + 2 |
 | Import prefix hosts | landed + 3 sample |
 | Single-line field body | 2 |

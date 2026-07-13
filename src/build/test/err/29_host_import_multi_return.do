@@ -1,3 +1,3 @@
-pair = @env("pair", () -> i32, i32)
+pair = @host("env", "pair", () -> i32, i32)
 
 test "host import multi return" {}

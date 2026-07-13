@@ -27,6 +27,8 @@ pub const WasiHostImport = struct {
     target: []const u8,
     params: []const u8,
     result: []const u8,
+    /// When true, `target` was allocated (from @host locator+member).
+    owned_target: bool = false,
 };
 
 pub const WasiLinkAtArgs = struct {
@@ -91,6 +93,7 @@ pub fn appendWasiImportSymbol(
 
 pub fn freeWasiHostImports(allocator: std.mem.Allocator, wasi_imports: []const WasiHostImport) void {
     for (wasi_imports) |import| {
+        if (import.owned_target) allocator.free(import.target);
         allocator.free(import.params);
         allocator.free(import.result);
     }
@@ -112,15 +115,39 @@ pub fn findWasiHostImportBySource(wasi_imports: []const WasiHostImport, source: 
 }
 
 pub fn isWasiHostImportStart(tokens: []const lexer.Token, idx: usize) bool {
+    // name = @host("wasi:pkg/iface@ver", "member", ...)
     const line_end = findLineEnd(tokens, idx);
-    if (idx + 4 >= line_end) return false;
+    if (idx + 9 >= line_end) return false;
     if (tokens[idx].kind != .ident) return false;
     if (!tokEq(tokens[idx + 1], "=")) return false;
     if (!tokEq(tokens[idx + 2], "@")) return false;
-    if (tokens[idx + 3].kind != .ident) return false;
-    const kind = tokens[idx + 3].lexeme;
-    if (!std.mem.eql(u8, kind, "wasi_func")) return false;
-    return tokEq(tokens[idx + 4], "(");
+    if (tokens[idx + 3].kind != .ident or !std.mem.eql(u8, tokens[idx + 3].lexeme, "host")) return false;
+    if (!tokEq(tokens[idx + 4], "(")) return false;
+    if (tokens[idx + 5].kind != .string) return false;
+    const locator = stringTokenBody(tokens[idx + 5].lexeme) orelse return false;
+    if (!std.mem.startsWith(u8, locator, "wasi:")) return false;
+    if (!tokEq(tokens[idx + 6], ",")) return false;
+    if (tokens[idx + 7].kind != .string) return false;
+    if (!tokEq(tokens[idx + 8], ",")) return false;
+    return true;
+}
+
+/// Build internal target key `package/interface/member` from
+/// locator `wasi:package/interface@version` and member name.
+pub fn wasiTargetFromHostParts(allocator: std.mem.Allocator, locator: []const u8, member: []const u8) !?[]const u8 {
+    if (!std.mem.startsWith(u8, locator, "wasi:")) return null;
+    const rest = locator["wasi:".len..];
+    const at_idx = std.mem.lastIndexOfScalar(u8, rest, '@') orelse return null;
+    if (at_idx == 0 or at_idx + 1 >= rest.len) return null;
+    const pkg_iface = rest[0..at_idx];
+    // version is rest[at_idx+1..] — required non-empty; content validated by sema
+    var slash_count: usize = 0;
+    for (pkg_iface) |ch| {
+        if (ch == '/') slash_count += 1;
+    }
+    if (slash_count != 1) return null;
+    if (member.len == 0) return null;
+    return try std.fmt.allocPrint(allocator, "{s}/{s}", .{ pkg_iface, member });
 }
 
 pub fn collectWasiHostImports(
@@ -175,12 +202,18 @@ pub fn parseWasiHostImport(
     line_end: usize,
     source: []const u8,
 ) !WasiHostImport {
+    // name = @host("wasi:pkg/iface@ver", "member", (...) -> T)
     const alias = publicDeclName(tokens[start_idx].lexeme);
-    const target = stringTokenBody(tokens[start_idx + 5].lexeme) orelse return error.InvalidImportDecl;
-    const comma_idx = findTopLevelToken(tokens, start_idx + 6, line_end - 1, ",") orelse return error.InvalidImportDecl;
+    const locator = stringTokenBody(tokens[start_idx + 5].lexeme) orelse return error.InvalidImportDecl;
+    if (!tokEq(tokens[start_idx + 6], ",")) return error.InvalidImportDecl;
+    const member = stringTokenBody(tokens[start_idx + 7].lexeme) orelse return error.InvalidImportDecl;
+    if (!tokEq(tokens[start_idx + 8], ",")) return error.InvalidImportDecl;
+    const target = (try wasiTargetFromHostParts(allocator, locator, member)) orelse return error.InvalidImportDecl;
+    errdefer allocator.free(target);
+
+    const open_params = start_idx + 9;
     const close_idx = findMatchingInRange(tokens, start_idx + 4, "(", ")", line_end) catch return error.InvalidImportDecl;
     if (close_idx + 1 != line_end) return error.InvalidImportDecl;
-    const open_params = comma_idx + 1;
     if (open_params >= close_idx or !tokEq(tokens[open_params], "(")) return error.InvalidImportDecl;
     const close_params = findMatchingInRange(tokens, open_params, "(", ")", close_idx) catch return error.InvalidImportDecl;
     if (close_params + 3 > close_idx or !tokEq(tokens[close_params + 1], "-") or !tokEq(tokens[close_params + 2], ">")) {
@@ -195,6 +228,7 @@ pub fn parseWasiHostImport(
             .target = target,
             .params = try allocator.dupe(u8, wit.params),
             .result = try allocator.dupe(u8, wit.result),
+            .owned_target = true,
         };
     }
 
@@ -209,6 +243,7 @@ pub fn parseWasiHostImport(
         .target = target,
         .params = params,
         .result = result,
+        .owned_target = true,
     };
 }
 

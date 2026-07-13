@@ -588,7 +588,7 @@ fn isInsideHostImportCall(tokens: []const lexer.Token, idx: usize) bool {
     if (!tokEq(tokens[open_idx - 2], "@")) return false;
     if (tokens[open_idx - 1].kind != .ident) return false;
     const name = tokens[open_idx - 1].lexeme;
-    return std.mem.eql(u8, name, "env") or std.mem.eql(u8, name, "wasi_func");
+    return std.mem.eql(u8, name, "host");
 }
 
 

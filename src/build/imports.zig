@@ -2316,8 +2316,7 @@ fn isModernImportAssign(tokens: []const lexer.Token, idx: usize) bool {
     if (at_idx + 1 >= line_end or !tokEq(tokens[at_idx], "@")) return false;
     if (tokens[at_idx + 1].kind != .ident) return false;
     return std.mem.eql(u8, tokens[at_idx + 1].lexeme, "lib") or
-        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "env") or
-        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "wasi_func");
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host");
 }
 
 fn isNonHostImportAssign(tokens: []const lexer.Token, idx: usize) bool {
@@ -2389,8 +2388,7 @@ fn isHostImportLine(tokens: []const lexer.Token, at_idx: usize, line_end: usize)
     if (at_idx + 3 >= line_end) return false;
     if (!tokEq(tokens[at_idx], "@")) return false;
     if (tokens[at_idx + 1].kind != .ident) return false;
-    if (std.mem.eql(u8, tokens[at_idx + 1].lexeme, "env") or
-        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "wasi_func"))
+    if (std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host"))
     {
         return tokEq(tokens[at_idx + 2], "(");
     }

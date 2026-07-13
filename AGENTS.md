@@ -38,7 +38,7 @@ This repository contains the `do` language compiler and its regression suite.
     - `gen_wasi_emit.zig` — WASI host call/result emit (uses `EmitExprFn` / hooks; no import of `gen_lower`)
     - `gen_ownership.zig` — ARC release-plan emit and related scope helpers
     - `gen_util.zig` — token/scan helpers, core-func name tables, mangled symbol names
-    - `gen_host.zig` — `@env` host import collect/parse
+    - `gen_host.zig` — unified `@host("env", member, sig)` host import collect/parse
     - `gen_import.zig` — module import resolve, reachability, string-data collect
     - `gen_wasi.zig` / `gen_union.zig` — WASI tables/parse, union layout
     - `gen_payload_wat.zig` / `gen_storage_wat.zig` — pure WAT fragments

@@ -23,13 +23,13 @@ load_user = @lib("./user.do", load_user)
 
 ```do
 // public host 函数导入
-host_now = @env("now", () -> i64)
+host_now = @host("env", "now", () -> i64)
 
 // 带参数和返回值的 host 函数导入
-host_add = @env("add", (i32, i32) -> i32)
+host_add = @host("env", "add", (i32, i32) -> i32)
 
 // private host 函数导入
-.host_log = @env("log", (i32, i32) -> nil)
+.host_log = @host("env", "log", (i32, i32) -> nil)
 ```
 
 ## 顶层值

@@ -504,8 +504,7 @@ pub fn isVisibleBindingOrCallableName(tokens: []const lexer.Token, name: []const
             if (!tokEq(tokens[eq_idx + 1], "@")) continue;
             if (tokens[eq_idx + 2].kind != .ident) continue;
             const import_kind = tokens[eq_idx + 2].lexeme;
-            if (std.mem.eql(u8, import_kind, "env") or
-                std.mem.eql(u8, import_kind, "wasi_func")) return true;
+            if (std.mem.eql(u8, import_kind, "host")) return true;
             if (std.mem.eql(u8, import_kind, "lib") and (isLowerIdentName(public_name) or isReadonlyIdentName(tokens[i].lexeme))) return true;
             continue;
         }

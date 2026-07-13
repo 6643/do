@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Accept do types in `@wasi_func` signatures—especially `Ok | Err` and `T | nil`—map them to WIT, lower calls as exclusive unions, and migrate stdlib hosts off WIT `result<>` literals.
+**Goal:** Accept do types in `@host` WASI signatures—especially `Ok | Err` and `T | nil`—map them to WIT, lower calls as exclusive unions, and migrate stdlib hosts off WIT `result<>` literals.
 
 **Architecture:** Extend known-target `do_params`/`do_result` and host signature parsing so do sugar includes resource names and unions. Codegen synthesizes `Ok | Err` (payload + tag) from existing result-area/status strategies. No `@wasi_result` type constructor. Transition: keep accepting `result<…>` until fixtures/stdlib migrate.
 
@@ -15,7 +15,7 @@
 - Result model is exclusive `Ok | Err` / `T | nil` — never multi-return `Ok, Err` as source model.
 - Phase-1 Err arm is `i32` status (0 is not an err arm value).
 - No `@wasi_result` / `@wasi_option` / `@wasi_tuple` wrappers.
-- Keep `@wasi_func` / `@wasi_resource` / `@wasi_record` only for entities.
+- Keep `@host` / `@wasi_resource` / `@wasi_record` only for entities.
 - Do not implement G6.2/G6.3 or `@wasi_enum` productization.
 - TDD: red fixture before compiler change; `./src/build/test/run_tests.sh` before done claims.
 - Prefer `src/` paths; do not commit `bin/do` unless already tracked and required.
@@ -53,7 +53,7 @@
 `279_wasi_union_unit_result_nil_i32.do`:
 
 ```do
-host_file_sync = @wasi_func("filesystem/types/descriptor.sync", (i32) -> nil | i32)
+host_file_sync = @host("wasi:filesystem/types@0.3.0", "descriptor.sync", (i32) -> nil | i32)
 
 start() {
     host_file_sync(1)
@@ -128,8 +128,7 @@ git commit -m "feat: accept nil|i32 wasi host result for unit fallible"
 - [ ] **Step 1: Fixture 280 (no resource yet)**
 
 ```do
-host_open = @wasi_func(
-  "filesystem/types/descriptor.open-at",
+host_open = @host("wasi:filesystem/types@0.3.0", "descriptor.open-at",
   (i32, i32, text, i32, i32) -> i32 | i32
 )
 start() {
@@ -150,8 +149,7 @@ Note: both arms `i32` are ambiguous for `@is` — **prefer not shipping `i32|i32
 **Preferred 281 only:**
 
 ```do
-.host_open = @wasi_func(
-  "filesystem/types/descriptor.open-at",
+.host_open = @host("wasi:filesystem/types@0.3.0", "descriptor.open-at",
   (Dir, i32, text, i32, i32) -> Dir | i32
 )
 Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
@@ -191,8 +189,7 @@ git commit -m "feat: Dir|i32 wasi open-at host union result and Dir param"
 - [ ] **Step 1: Fixture**
 
 ```do
-host_write = @wasi_func(
-  "filesystem/types/descriptor.write",
+host_write = @host("wasi:filesystem/types@0.3.0", "descriptor.write",
   (i32, [u8], u64) -> u64 | i32
 )
 start() {
@@ -224,12 +221,12 @@ git commit -m "feat: u64|i32 wasi write host union result"
 - [ ] **Step 1: dir.do hosts**
 
 ```do
-.host_dir_create_at = @wasi_func("…create-directory-at", (Dir, text) -> nil | i32)
-.host_dir_open_at = @wasi_func("…open-at", (Dir, i32, text, i32, i32) -> Dir | i32)
-.host_dir_remove_at = @wasi_func("…remove-directory-at", (Dir, text) -> nil | i32)
-.host_dir_drop = @wasi_func("…descriptor.drop", (Dir) -> nil)
+.host_dir_create_at = @host("wasi:legacy@0.3.0", "…create-directory-at", (Dir, text) -> nil | i32)
+.host_dir_open_at = @host("wasi:legacy@0.3.0", "…open-at", (Dir, i32, text, i32, i32) -> Dir | i32)
+.host_dir_remove_at = @host("wasi:legacy@0.3.0", "…remove-directory-at", (Dir, text) -> nil | i32)
+.host_dir_drop = @host("wasi:legacy@0.3.0", "…descriptor.drop", (Dir) -> nil)
 // preopens: keep list sugar until list-of-Dir lands; may stay list<tuple<i32,text>> or [Tuple<Dir,text>] if ready
-.host_preopens = @wasi_func("…get-directories", () -> list<tuple<i32,text>>)
+.host_preopens = @host("wasi:legacy@0.3.0", "…get-directories", () -> list<tuple<i32,text>>)
 ```
 
 Place **all hosts before** `Dir = @wasi_resource` (import prefix rule). Resource type used in host sigs: if parser requires type already declared, either (a) allow forward ref for wasi_resource names in host sigs, or (b) keep `i32` params until forward-ref works. **Prefer (a)**; if blocked, document and use `i32` params + `Dir|i32` result only.
@@ -283,7 +280,7 @@ git commit -m "test: migrate wasi result fixtures to Ok|Err do unions"
 - Modify: `CHANGELOG.md` brief
 
 **Content to state:**
-- Preferred: `Ok | Err`, `T | nil`, resource/record names in `@wasi_func`
+- Preferred: `Ok | Err`, `T | nil`, resource/record names in `@host`
 - Forbidden: multi-return as WASI result model
 - Transition: `result<…>` still accepted for known targets
 - No `wasi_result` / `wasi_option` wrappers
@@ -340,3 +337,7 @@ Plan saved to `docs/superpowers/plans/2026-07-12-wasi-do-union-binding.md`.
 **2. Inline Execution** — this session with executing-plans  
 
 Which approach?
+
+undefined
+undefined
+undefined

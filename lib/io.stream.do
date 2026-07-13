@@ -1,9 +1,9 @@
 // Declarative stream hosts first (import prefix), then resource shells.
 // Fallible hosts use exclusive Ok|Err with coarse StreamError (aligned with dir/file P4).
-.host_input_read = @wasi_func("io/streams/input-stream.read", (InputStream, u64) -> [u8] | StreamError)
-.host_output_check_write = @wasi_func("io/streams/output-stream.check-write", (OutputStream) -> u64 | StreamError)
-.host_output_write = @wasi_func("io/streams/output-stream.write", (OutputStream, [u8]) -> StreamError | nil)
-.host_output_flush = @wasi_func("io/streams/output-stream.flush", (OutputStream) -> StreamError | nil)
+.host_input_read = @host("wasi:io/streams@0.3.0", "input-stream.read", (InputStream, u64) -> [u8] | StreamError)
+.host_output_check_write = @host("wasi:io/streams@0.3.0", "output-stream.check-write", (OutputStream) -> u64 | StreamError)
+.host_output_write = @host("wasi:io/streams@0.3.0", "output-stream.write", (OutputStream, [u8]) -> StreamError | nil)
+.host_output_flush = @host("wasi:io/streams@0.3.0", "output-stream.flush", (OutputStream) -> StreamError | nil)
 
 InputStream = @wasi_resource("io/streams/input-stream", {
     .id i64

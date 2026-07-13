@@ -156,34 +156,129 @@ fn validateLocalImportDecl(tokens: []const lexer.Token, name_idx: usize, at_idx:
 
 
 fn validateHostImportLine(tokens: []const lexer.Token, at_idx: usize, import_end: usize) !void {
-    if (at_idx + 5 > import_end) return markErrorAt(tokens, at_idx, error.InvalidImportDecl);
+    // @host(locator, member, sig)
+    if (at_idx + 9 > import_end) return markErrorAt(tokens, at_idx, error.InvalidImportDecl);
     if (!tokEq(tokens[at_idx], "@")) return markErrorAt(tokens, at_idx, error.InvalidImportDecl);
     if (tokens[at_idx + 1].kind != .ident) return markErrorAt(tokens, at_idx + 1, error.InvalidImportDecl);
+    if (!std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host")) return markErrorAt(tokens, at_idx + 1, error.InvalidImportDecl);
     if (!tokEq(tokens[at_idx + 2], "(")) return markErrorAt(tokens, at_idx + 2, error.InvalidImportDecl);
     if (tokens[at_idx + 3].kind != .string) return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
+    if (!tokEq(tokens[at_idx + 4], ",")) return markErrorAt(tokens, at_idx + 4, error.InvalidImportDecl);
+    if (tokens[at_idx + 5].kind != .string) return markErrorAt(tokens, at_idx + 5, error.InvalidImportDecl);
+    if (!tokEq(tokens[at_idx + 6], ",")) return markErrorAt(tokens, at_idx + 6, error.InvalidImportDecl);
 
-    const target = stringTokenBody(tokens[at_idx + 3].lexeme) orelse return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
-    const kind = try validateHostImportTarget(tokens, at_idx, at_idx + 1);
-    const comma_idx = findTopLevelComma(tokens, at_idx + 4, import_end - 1) orelse return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
-    if (comma_idx + 1 >= import_end - 1) return markErrorAt(tokens, comma_idx, error.InvalidImportDecl);
-    try validateHostSignature(tokens, comma_idx + 1, import_end - 1, kind);
+    const locator = stringTokenBody(tokens[at_idx + 3].lexeme) orelse return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
+    const member = stringTokenBody(tokens[at_idx + 5].lexeme) orelse return markErrorAt(tokens, at_idx + 5, error.InvalidImportDecl);
+    const kind = try validateHostImportLocatorMember(tokens, at_idx + 3, at_idx + 5, locator, member);
+    const sig_start = at_idx + 7;
+    if (sig_start >= import_end - 1) return markErrorAt(tokens, at_idx + 6, error.InvalidImportDecl);
+    try validateHostSignature(tokens, sig_start, import_end - 1, kind);
     if (kind == .wasi) {
-        try validateKnownWasiSignature(tokens, at_idx + 3, target, comma_idx + 1, import_end - 1);
+        const target = try buildWasiTargetKey(tokens, at_idx + 3, locator, member);
+        try validateKnownWasiSignature(tokens, at_idx + 3, target, sig_start, import_end - 1);
     }
 }
 
-
-fn validateHostImportTarget(tokens: []const lexer.Token, at_idx: usize, name_idx: usize) !HostImportKind {
-    const target = stringTokenBody(tokens[at_idx + 3].lexeme) orelse return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
-    if (std.mem.eql(u8, tokens[name_idx].lexeme, "env")) {
-        if (!isValidPathSeg(target)) return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
+/// Validate locator+member and return host kind. Does not allocate.
+fn validateHostImportLocatorMember(
+    tokens: []const lexer.Token,
+    locator_idx: usize,
+    member_idx: usize,
+    locator: []const u8,
+    member: []const u8,
+) !HostImportKind {
+    if (std.mem.eql(u8, locator, "env")) {
+        if (!isValidPathSeg(member)) return markErrorAt(tokens, member_idx, error.InvalidImportDecl);
         return .env;
     }
-    if (std.mem.eql(u8, tokens[name_idx].lexeme, "wasi_func")) {
-        if (!isValidWitTargetPath(target)) return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
+    if (std.mem.startsWith(u8, locator, "wasi:")) {
+        if (!isValidWasiHostLocator(locator)) return markErrorAt(tokens, locator_idx, error.InvalidImportDecl);
+        if (!isValidWasiHostMember(member)) return markErrorAt(tokens, member_idx, error.InvalidImportDecl);
         return .wasi;
     }
-    return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
+    return markErrorAt(tokens, locator_idx, error.InvalidImportDecl);
+}
+
+fn isValidWasiHostLocator(locator: []const u8) bool {
+    if (!std.mem.startsWith(u8, locator, "wasi:")) return false;
+    const rest = locator["wasi:".len..];
+    const at_idx = std.mem.lastIndexOfScalar(u8, rest, '@') orelse return false;
+    if (at_idx == 0 or at_idx + 1 >= rest.len) return false;
+    const pkg_iface = rest[0..at_idx];
+    const version = rest[at_idx + 1 ..];
+    var slash_count: usize = 0;
+    for (pkg_iface) |ch| {
+        if (ch == '/') slash_count += 1;
+    }
+    if (slash_count != 1) return false;
+    const slash = std.mem.indexOfScalar(u8, pkg_iface, '/') orelse return false;
+    if (!isValidWitPathSeg(pkg_iface[0..slash])) return false;
+    if (!isValidWitPathSeg(pkg_iface[slash + 1 ..])) return false;
+    return isValidWasiVersion(version);
+}
+
+fn isValidWasiHostMember(member: []const u8) bool {
+    if (member.len == 0) return false;
+    // member may contain '.' (descriptor.write) and '-' (get-random-bytes, link-at)
+    var i: usize = 0;
+    while (i < member.len) {
+        const ch = member[i];
+        const ok = (ch >= 'a' and ch <= 'z') or
+            (ch >= '0' and ch <= '9') or
+            ch == '-' or ch == '.';
+        if (!ok) return false;
+        i += 1;
+    }
+    if (member[0] == '.' or member[0] == '-' or member[member.len - 1] == '.' or member[member.len - 1] == '-') return false;
+    return true;
+}
+
+fn isValidWasiVersion(version: []const u8) bool {
+    // Simple semver-ish: digits and dots, non-empty (e.g. 0.3.0)
+    if (version.len == 0) return false;
+    var has_digit = false;
+    for (version) |ch| {
+        if (ch >= '0' and ch <= '9') {
+            has_digit = true;
+            continue;
+        }
+        if (ch == '.') continue;
+        return false;
+    }
+    return has_digit;
+}
+
+fn isValidWitPathSeg(seg: []const u8) bool {
+    if (seg.len == 0) return false;
+    // package/interface segments: lowercase, digits, '-'
+    for (seg) |ch| {
+        const ok = (ch >= 'a' and ch <= 'z') or (ch >= '0' and ch <= '9') or ch == '-';
+        if (!ok) return false;
+    }
+    return true;
+}
+
+/// Build package/interface/member for known-table lookup. Returns stack buffer via static... no, use threadlocal or just reconstruct inline.
+/// Caller uses the returned slice only for lookup (points into a temporary array on stack - must not escape).
+fn buildWasiTargetKey(tokens: []const lexer.Token, site_idx: usize, locator: []const u8, member: []const u8) ![]const u8 {
+    // Use a fixed buffer - targets are short. Store in threadlocal static for this call's validateKnownWasiSignature only.
+    // Safer: allocate is not available without allocator. Reconstruct path without alloc by checking known table with custom compare.
+    // Simpler approach: stack buffer in validateHostImportLine via array and pass slice.
+    return buildWasiTargetKeyBuf(locator, member) orelse return markErrorAt(tokens, site_idx, error.InvalidImportDecl);
+}
+
+var wasi_target_key_buf: [256]u8 = undefined;
+
+fn buildWasiTargetKeyBuf(locator: []const u8, member: []const u8) ?[]const u8 {
+    if (!std.mem.startsWith(u8, locator, "wasi:")) return null;
+    const rest = locator["wasi:".len..];
+    const at_idx = std.mem.lastIndexOfScalar(u8, rest, '@') orelse return null;
+    const pkg_iface = rest[0..at_idx];
+    if (pkg_iface.len + 1 + member.len > wasi_target_key_buf.len) return null;
+    @memcpy(wasi_target_key_buf[0..pkg_iface.len], pkg_iface);
+    wasi_target_key_buf[pkg_iface.len] = '/';
+    @memcpy(wasi_target_key_buf[pkg_iface.len + 1 ..][0..member.len], member);
+    return wasi_target_key_buf[0 .. pkg_iface.len + 1 + member.len];
 }
 
 
@@ -354,7 +449,7 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .target = "filesystem/preopens/get-directories",
             .params = "",
             .result = "list<tuple<descriptor,text>>",
-            // Preferred do form packs Dir shells; bracket sugar not yet valid on wasi_func result.
+            // Preferred do form packs Dir shells; bracket sugar not yet valid on @host wasi result.
             // compactTokenRangeEquals ignores whitespace, so spaces in source are fine.
             .do_result = "list<tuple<Dir,text>>",
             .do_result_alt = "list<tuple<i32,text>>",
@@ -812,5 +907,4 @@ fn isValidWitNamePart(name: []const u8) bool {
     }
     return true;
 }
-
 

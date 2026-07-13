@@ -675,7 +675,7 @@ Wasm linear memory 是 runtime 实现细节。源码不暴露地址。
 
 ### 9.2 Host ABI
 
-1. `@env` v1 只承载标量 ABI 和字符串字面量 `ptr,len` lowering。
+1. `@host("env", member, sig)` v1 只承载标量 ABI 和字符串字面量 `ptr,len` lowering。
 2. `text`、`[u8]`、`List<T>`、结构体传给 host 时必须通过显式 ABI lowering 或标准库 wrapper marshaling。
 3. host resource 用不透明标量句柄封装在 private 字段中, 不暴露 pointer。
 4. WASI component/P3 的 `list/string/record/resource/result/variant` lowering 属于后续阶段; 公开标准库 API 不泄漏 raw WIT resource/result/variant。

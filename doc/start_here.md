@@ -104,7 +104,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | | `gen_wasi_emit.zig` | WASI host 调用/结果 emit（`EmitExprFn`/hooks，不 import lower） |
 | | `gen_ownership.zig` | ARC release plan emit / 作用域可达性辅助 |
 | | `gen_util.zig` | token/scan 工具; core-func 名表; mangled 符号 |
-| | `gen_host.zig` | `@env` host import collect/parse |
+| | `gen_host.zig` | unified `@host("env", member, sig)` host import collect/parse |
 | | `gen_import.zig` | 模块 import 解析、reach、string-data |
 | | `gen_wasi` / `gen_union` | WASI 表/parse; union layout |
 | | `gen_payload_wat` | 标量 payload load/store、Tuple 叶子 pack/unpack |
@@ -128,6 +128,8 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | 06.2 | 已拆到 G2–G6; 剩余由 G6.2 承接 | 同上 |
 
 **待处理 / 阻断 / 延期**: 权威清单见 [pending_blocked.md](pending_blocked.md) (G6 blocked、P2 泛型左侧反推、skip、deferred 非目标)。
+
+**Wasm ref 语法策略 (未实现)**: `externref`→将来 `@host_ref`; 无公开 `anyref`/`funcref` 类型; i32 内存指针不做 do 类型 — [design/wasm_ref_host_syntax.md](design/wasm_ref_host_syntax.md) (D10)。扩讨论存档（已搁置）: [design/2026-07-13-wasm-wasi-support-discussion.md](design/2026-07-13-wasm-wasi-support-discussion.md)。
 
 已落地对照 (勿当待办): pure-scalar Tuple 子槽 `ok/192`; managed 叶子 storage `compile_ok/270`–`271`; field_set `ok/191`。
 

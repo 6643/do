@@ -1,5 +1,5 @@
 // link-at unit fallible: exclusive union nil|i32; multi-lhs status binding remains lowerable.
-host_file_link_at = @wasi_func("filesystem/types/descriptor.link-at", (i32, i32, text, i32, text) -> nil | i32)
+host_file_link_at = @host("wasi:filesystem/types@0.3.0", "descriptor.link-at", (i32, i32, text, i32, text) -> nil | i32)
 
 start() {
     status i32 = 0
