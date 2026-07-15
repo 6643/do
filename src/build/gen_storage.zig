@@ -3863,3 +3863,4 @@ pub fn emitTupleCallBinding(
     try emitTupleLocalSet(allocator, tuple_local.name, tuple_local.ty, ctx, out);
     return true;
 }
+

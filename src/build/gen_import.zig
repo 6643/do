@@ -819,3 +819,4 @@ pub fn exprCallHead(tokens: []const lexer.Token, range: Range) ?ExprCallHead {
 pub fn callHeadHasTypeArgs(call_head: ExprCallHead) bool {
     return call_head.type_args_start != 0 or call_head.type_args_end != 0;
 }
+

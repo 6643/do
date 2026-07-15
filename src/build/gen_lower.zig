@@ -1061,3 +1061,4 @@ pub fn appendLoadPayloadOrTupleToStack(
     try payload_wat.appendLoadPayloadOrTupleToStack(allocator, out, elem_ty, base_local, indent);
 }
 
+

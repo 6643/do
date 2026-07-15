@@ -1,4 +1,4 @@
-//! WASI host call / result emit (no host table parse; see codegen_wasi_registry.zig).
+//! WASI host call / result emit (no host table parse; see gen_wasi.zig).
 const std = @import("std");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
