@@ -2,7 +2,6 @@
 const std = @import("std");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
-const type_util = @import("type_name.zig");
 const payload_wat = @import("wat_payload.zig");
 const storage_wat = @import("wat_storage.zig");
 const codegen_tokens = @import("codegen_tokens.zig");
@@ -14,8 +13,9 @@ const codegen_union_layout = @import("codegen_union_layout.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
 const codegen_collect_util = @import("codegen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
-const codegen_collect_structs = @import("codegen_collect_structs.zig");
 const codegen_imports = @import("codegen_imports.zig");
+const codegen_storage_layout = @import("codegen_storage_layout.zig");
+const codegen_ownership = @import("codegen_ownership.zig");
 
 const tok_eq = codegen_tokens.tok_eq;
 const find_matching = codegen_tokens.find_matching;
@@ -30,10 +30,8 @@ const public_decl_name = codegen_names.public_decl_name;
 const append_fmt = codegen_names.append_fmt;
 const string_literal_arg_lexeme = codegen_tokens.string_literal_arg_lexeme;
 const Range = codegen_tokens.Range;
-const align_up = codegen_tokens.align_up;
 const STORAGE_OVERWRITE_TMP_LOCAL = constants.STORAGE_OVERWRITE_TMP_LOCAL;
 const WASI_FAMILY_TMP_LOCAL = constants.WASI_FAMILY_TMP_LOCAL;
-const find_value_enum_decl = codegen_imports.find_value_enum_decl;
 const is_error_like_type = codegen_collect_util.is_error_like_type;
 const module_tokens_equal = codegen_tokens.module_tokens_equal;
 
@@ -45,18 +43,27 @@ const StructDecl = model.StructDecl;
 const StructField = model.StructField;
 const StructLayout = model.StructLayout;
 const StructLocal = model.StructLocal;
-const StorageLocal = model.StorageLocal;
 const UnionLocal = model.UnionLocal;
 const FuncDecl = model.FuncDecl;
 const HostImport = model.HostImport;
-const TYPE_ID_STORAGE_U8 = constants.TYPE_ID_STORAGE_U8;
-const TYPE_ID_STORAGE_MANAGED = constants.TYPE_ID_STORAGE_MANAGED;
-const TYPE_ID_FIRST_STRUCT = constants.TYPE_ID_FIRST_STRUCT;
 const find_local_type = context.find_local_type;
 const find_storage_local = context.find_storage_local;
 const find_struct_local = context.find_struct_local;
 const find_union_local = context.find_union_local;
 const storage_type_name_for_elem = context.storage_type_name_for_elem;
+
+const find_union_branch_by_type = codegen_storage_layout.find_union_branch_by_type;
+const error_enum_branch_value = codegen_storage_layout.error_enum_branch_value;
+const find_storage_primitive_local = codegen_storage_layout.find_storage_primitive_local;
+const codegen_wasm_type = codegen_storage_layout.codegen_wasm_type;
+const is_storage_type_name = codegen_storage_layout.is_storage_type_name;
+const storage_type_id_for_element = codegen_storage_layout.storage_type_id_for_element;
+const is_tuple_type_name = codegen_storage_layout.is_tuple_type_name;
+const struct_field_payload_offset = codegen_storage_layout.struct_field_payload_offset;
+const append_load_for_payload_type = payload_wat.append_load_for_payload_type;
+const emit_replace_managed_local_from_tmp = codegen_ownership.emit_replace_managed_local_from_tmp;
+const emit_storage_len_ptr = storage_wat.emit_storage_len_ptr;
+const emit_storage_data_ptr = storage_wat.emit_storage_data_ptr;
 
 const UnionLayout = codegen_union_layout.UnionLayout;
 const UnionBranch = codegen_union_layout.UnionBranch;
@@ -112,13 +119,6 @@ fn emit_wasi_family_arg(
 
 const find_struct_decl = codegen_collect_util.find_struct_decl;
 const find_struct_layout = codegen_collect_util.find_struct_layout;
-const find_struct_layout_exact = codegen_collect_structs.find_struct_layout_exact;
-const is_pack_managed_handle_leaf = codegen_collect_structs.is_pack_managed_handle_leaf;
-const leaf_payload_bytes_for_pack = codegen_collect_structs.leaf_payload_bytes_for_pack;
-const pure_scalar_struct_pack_width = codegen_collect_util.pure_scalar_struct_pack_width;
-const pack_slot_width = codegen_collect_util.pack_slot_width;
-const tuple_pack_width_with_structs = codegen_collect_util.tuple_pack_width_with_structs;
-const func_param_abi_type = codegen_collect_util.func_param_abi_type;
 
 /// Callback into codegen_pipeline emit_expr (breaks import cycle).
 pub const EmitExprFn = *const fn (
@@ -131,45 +131,6 @@ pub const EmitExprFn = *const fn (
     expected_ty: ?[]const u8,
     out: *std.ArrayList(u8),
 ) CodegenError!bool;
-
-pub fn find_union_branch_by_type(layout: UnionLayout, ty: []const u8) ?UnionBranch {
-    for (layout.branches) |branch| {
-        if (codegen_types_compatible(branch.ty, ty)) return branch;
-    }
-    return null;
-}
-
-pub fn codegen_types_compatible(expected: []const u8, actual: []const u8) bool {
-    if (std.mem.eql(u8, expected, actual)) return true;
-    if (std.mem.eql(u8, expected, "text") and std.mem.eql(u8, actual, "[u8]")) return true;
-    if (std.mem.eql(u8, expected, "[u8]") and std.mem.eql(u8, actual, "text")) return true;
-    return false;
-}
-
-pub fn is_managed_local_type(ty: []const u8, ctx: CodegenContext) bool {
-    if (is_managed_payload_type(ty)) return true;
-    // Storage-pack layouts describe `[Tuple<...>]` element packing, not a managed object type.
-    if (find_struct_layout_exact(ctx.struct_layouts, ty)) |layout| {
-        if (layout.is_storage_pack) return false;
-    }
-    return find_struct_layout(ctx.struct_layouts, ty) != null;
-}
-
-pub fn emit_storage_len_ptr(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    name: []const u8,
-) !void {
-    try storage_wat.emit_storage_len_ptr(allocator, out, name);
-}
-
-pub fn emit_storage_data_ptr(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    name: []const u8,
-) !void {
-    try storage_wat.emit_storage_data_ptr(allocator, out, name);
-}
 
 pub fn emit_wasi_result_filesize_multi_assignment(
     allocator: std.mem.Allocator,
@@ -522,23 +483,6 @@ pub fn emit_wasi_record_result_fields(
     return true;
 }
 
-pub fn emit_replace_managed_local_from_tmp(
-    allocator: std.mem.Allocator,
-    name: []const u8,
-    out: *std.ArrayList(u8),
-) !void {
-    try append_fmt(allocator, out, "    ;; arc-overwrite-release {s}\n", .{name});
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{name});
-    try out.appendSlice(allocator, "    i32.ne\n");
-    try out.appendSlice(allocator, "    if\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{name});
-    try out.appendSlice(allocator, "      call $__arc_dec\n");
-    try out.appendSlice(allocator, "    end\n");
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{name});
-}
-
 pub fn emit_bare_wasi_host_import_call(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -556,84 +500,6 @@ pub fn emit_bare_wasi_host_import_call(
     const lowering = wasi_lowering(wasi_import) orelse return false;
     if (!lowering.resource_drop and !lowering.result_unit_error and !lowering.result_filesize_error and !lowering.result_u64_stream_error) return false;
     return try emit_wasi_host_import_expr(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, wasi_import, true, out, emit_expr);
-}
-
-/// Branch index inside `@wasi_enum("target", arm|arm(n)|…)` arms (1-based).
-fn branch_value_in_wasi_enum_arms(
-    tokens: []const lexer.Token,
-    arms_start: usize,
-    close_call: usize,
-    branch_name: []const u8,
-) ?usize {
-    var arm_j = arms_start;
-    while (arm_j < close_call) : (arm_j += 1) {
-        if (tok_eq(tokens[arm_j], ",")) {
-            arm_j += 1;
-            break;
-        }
-    }
-    var branch_idx: usize = 1;
-    while (arm_j < close_call) : (arm_j += 1) {
-        if (tok_eq(tokens[arm_j], "|") or tok_eq(tokens[arm_j], ",")) continue;
-        if (tokens[arm_j].kind != .ident) return null;
-        const arm = tokens[arm_j].lexeme;
-        const has_discr = arm_j + 3 < close_call and tok_eq(tokens[arm_j + 1], "(") and
-            tokens[arm_j + 2].kind == .number and tok_eq(tokens[arm_j + 3], ")");
-        if (std.mem.eql(u8, arm, branch_name)) return branch_idx;
-        if (has_discr) arm_j += 3;
-        branch_idx += 1;
-    }
-    return null;
-}
-
-/// Branch index in plain `Name error = a|b|c` arms (1-based).
-fn branch_value_in_plain_error_arms(
-    tokens: []const lexer.Token,
-    arms_start: usize,
-    line_end: usize,
-    branch_name: []const u8,
-) ?usize {
-    var j = arms_start;
-    var branch_idx: usize = 1;
-    while (j < line_end) : (j += 1) {
-        if (tok_eq(tokens[j], "|")) continue;
-        if (tokens[j].kind != .ident) return null;
-        if (std.mem.eql(u8, tokens[j].lexeme, branch_name)) return branch_idx;
-        branch_idx += 1;
-    }
-    return null;
-}
-
-pub fn error_enum_branch_value(tokens: []const lexer.Token, enum_name: []const u8, branch_name: []const u8) ?usize {
-    var depth_brace: usize = 0;
-    var i: usize = 0;
-    while (i + 3 < tokens.len) : (i += 1) {
-        if (tok_eq(tokens[i], "{")) {
-            depth_brace += 1;
-            continue;
-        }
-        if (tok_eq(tokens[i], "}")) {
-            if (depth_brace > 0) depth_brace -= 1;
-            continue;
-        }
-        if (depth_brace != 0) continue;
-        if (tokens[i].kind != .ident) continue;
-        if (!std.mem.eql(u8, tokens[i].lexeme, enum_name)) continue;
-        if (!tok_eq(tokens[i + 1], "error") or !tok_eq(tokens[i + 2], "=")) continue;
-
-        const line_end = find_line_end(tokens, i);
-        const arms_start = i + 3;
-        // Skip declarative `@wasi_enum("target", …)` prefix when present.
-        if (arms_start < line_end and tok_eq(tokens[arms_start], "@") and arms_start + 2 < line_end and
-            tokens[arms_start + 1].kind == .ident and std.mem.eql(u8, tokens[arms_start + 1].lexeme, "wasi_enum") and
-            tok_eq(tokens[arms_start + 2], "("))
-        {
-            const close_call = find_matching_in_range(tokens, arms_start + 2, "(", ")", line_end) catch return null;
-            return branch_value_in_wasi_enum_arms(tokens, arms_start + 3, close_call, branch_name);
-        }
-        return branch_value_in_plain_error_arms(tokens, arms_start, line_end, branch_name);
-    }
-    return null;
 }
 
 pub fn emit_wasi_host_import_expr(
@@ -2113,127 +1979,4 @@ pub fn emit_wasi_list_u8_arg(
     try emit_storage_len_ptr(allocator, out, tokens[range.start].lexeme);
     try out.appendSlice(allocator, "    i32.load\n");
     return true;
-}
-
-pub fn struct_field_payload_offset(decl: StructDecl, field_name: []const u8) ?usize {
-    var offset: usize = 0;
-    for (decl.fields) |field| {
-        offset = align_up(offset, type_payload_alignment(field.ty));
-        if (std.mem.eql(u8, public_decl_name(field.name), field_name)) return offset;
-        offset += type_payload_bytes(field.ty);
-    }
-    return null;
-}
-
-pub fn find_storage_primitive_local(locals: []const StorageLocal, name: []const u8) ?StorageLocal {
-    const local = find_storage_local(locals, name) orelse return null;
-    if (storage_elem_type_from_name(local.ty) == null) return null;
-    return local;
-}
-
-pub fn wasm_type(ty: []const u8) []const u8 {
-    return payload_wat.wasm_type(ty);
-}
-
-pub fn value_enum_carrier(ctx: CodegenContext, ty: []const u8) ?[]const u8 {
-    const decl = find_value_enum_decl(ctx.value_enums, ty) orelse return null;
-    return decl.carrier;
-}
-
-pub fn codegen_scalar_type(ctx: CodegenContext, ty: []const u8) []const u8 {
-    return value_enum_carrier(ctx, ty) orelse ty;
-}
-
-pub fn codegen_wasm_type(ctx: CodegenContext, ty: []const u8) []const u8 {
-    return wasm_type(codegen_scalar_type(ctx, ty));
-}
-
-pub fn type_payload_bytes(ty: []const u8) usize {
-    return type_util.type_payload_bytes(ty);
-}
-
-pub fn type_payload_alignment(ty: []const u8) usize {
-    return type_util.type_payload_alignment(ty);
-}
-
-pub fn is_managed_payload_type(ty: []const u8) bool {
-    return type_util.is_managed_payload_type(ty);
-}
-
-pub fn is_storage_type_name(ty: []const u8) bool {
-    return type_util.is_storage_type_name(ty);
-}
-
-pub fn storage_elem_type_from_name(ty: []const u8) ?[]const u8 {
-    return type_util.storage_elem_type_from_name(ty);
-}
-
-pub fn storage_element_byte_width(elem_ty: []const u8) ?usize {
-    return type_util.storage_element_byte_width(elem_ty);
-}
-
-/// Pure-scalar unmanaged struct nested pack width (declaration order + align_up, no managed fields).
-/// Pure-scalar unmanaged struct nested pack width (declaration order + align_up, no managed fields).
-pub fn tuple_scalar_leaf_storage_byte_width(tuple_ty: []const u8) ?usize {
-    return type_util.tuple_scalar_leaf_storage_byte_width(tuple_ty);
-}
-
-pub fn tuple_scalar_leaf_storage_byte_width_ctx(tuple_ty: []const u8, ctx: CodegenContext) ?usize {
-    if (tuple_pack_width_with_structs(tuple_ty, ctx.structs)) |w| return w;
-    return type_util.tuple_scalar_leaf_storage_byte_width(tuple_ty);
-}
-
-pub fn tuple_has_managed_pack_leaf(tuple_ty: []const u8) bool {
-    return type_util.tuple_has_managed_pack_leaf(tuple_ty);
-}
-
-pub fn tuple_has_managed_pack_leaf_with_structs(tuple_ty: []const u8, structs: []const StructDecl) bool {
-    if (!is_tuple_type_name(tuple_ty)) return false;
-    const arity = tuple_arity(tuple_ty) orelse return false;
-    var idx: usize = 0;
-    while (idx < arity) : (idx += 1) {
-        const elem_ty = tuple_element_type_at(tuple_ty, idx) orelse return false;
-        if (is_tuple_type_name(elem_ty)) {
-            if (tuple_has_managed_pack_leaf_with_structs(elem_ty, structs)) return true;
-            continue;
-        }
-        if (is_pack_managed_handle_leaf(elem_ty, structs)) return true;
-    }
-    return false;
-}
-
-pub fn tuple_has_managed_pack_leaf_ctx(tuple_ty: []const u8, ctx: CodegenContext) bool {
-    if (tuple_has_managed_pack_leaf_with_structs(tuple_ty, ctx.structs)) return true;
-    return tuple_has_managed_pack_leaf(tuple_ty);
-}
-
-pub fn storage_type_id_for_element(elem_ty: []const u8, ctx: CodegenContext) usize {
-    if (is_tuple_type_name(elem_ty) and tuple_has_managed_pack_leaf_ctx(elem_ty, ctx)) {
-        if (find_struct_layout_exact(ctx.struct_layouts, elem_ty)) |layout| {
-            if (layout.is_storage_pack) return layout.type_id;
-        }
-    }
-    if (is_managed_local_type(elem_ty, ctx) and storage_element_byte_width(elem_ty) == null and tuple_scalar_leaf_storage_byte_width_ctx(elem_ty, ctx) == null)
-        return TYPE_ID_STORAGE_MANAGED;
-    return TYPE_ID_STORAGE_U8;
-}
-
-pub fn append_load_for_payload_type(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    ty: []const u8,
-) !void {
-    try payload_wat.append_load_for_payload_type(allocator, out, ty);
-}
-
-pub fn is_tuple_type_name(ty: []const u8) bool {
-    return type_util.is_tuple_type_name(ty);
-}
-
-pub fn tuple_arity(tuple_ty: []const u8) ?usize {
-    return type_util.tuple_arity(tuple_ty);
-}
-
-pub fn tuple_element_type_at(tuple_ty: []const u8, idx: usize) ?[]const u8 {
-    return type_util.tuple_element_type_at(tuple_ty, idx);
 }

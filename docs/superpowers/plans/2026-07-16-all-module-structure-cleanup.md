@@ -55,15 +55,17 @@ Status: skipped as an architecture blocker. `sema_imports.zig` validates WIT hos
 
 ## Task 3: Codegen WASI helper ownership
 
+Status: completed; pure storage/type/layout helpers now live in their physical owners, storage layout no longer imports the WASI emitter, and the full regression remains green.
+
 **Files:**
 - Modify: `src/build/codegen_emit_wasi.zig`, `src/build/codegen_storage_layout.zig`
 - Modify: direct codegen callers currently importing helper aliases
 - Test: socket ABI fixture and `zig test src/build/codegen_api.zig`
 
-- [ ] Move generic type compatibility, wasm type, payload-width, storage-type, and Tuple-layout helpers to `codegen_storage_layout.zig`.
-- [ ] Keep `codegen_emit_wasi.zig` limited to WASI argument/result lowering and ABI packing.
-- [ ] Remove the reverse `codegen_storage_layout -> codegen_emit_wasi` dependency.
-- [ ] Preserve all helper signatures used by codegen through direct owner imports.
+- [x] Move generic type compatibility, wasm type, payload-width, storage-type, and Tuple-layout helpers to `codegen_storage_layout.zig`.
+- [x] Keep `codegen_emit_wasi.zig` limited to WASI argument/result lowering and ABI packing.
+- [x] Remove the reverse `codegen_storage_layout -> codegen_emit_wasi` dependency.
+- [x] Preserve all helper signatures used by codegen through direct owner imports.
 
 ## Task 4: Codegen pipeline facade reduction
 

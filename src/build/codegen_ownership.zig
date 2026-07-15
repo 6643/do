@@ -4,9 +4,10 @@ const lexer = @import("lexer.zig");
 const ownership = @import("ownership.zig");
 const codegen_tokens = @import("codegen_tokens.zig");
 const codegen_names = @import("codegen_names.zig");
+const constants = @import("codegen_constants.zig");
 const model = @import("codegen_model.zig");
 const context = @import("codegen_context.zig");
-const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
+const codegen_storage_layout = @import("codegen_storage_layout.zig");
 const codegen_collect_util = @import("codegen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
@@ -20,6 +21,7 @@ const find_top_level_token = codegen_tokens.find_top_level_token;
 const findTopLevelBlockOpen = codegen_tokens.find_top_level_block_open;
 const find_stmt_end = codegen_tokens.find_stmt_end;
 const append_fmt = codegen_names.append_fmt;
+const STORAGE_OVERWRITE_TMP_LOCAL = constants.STORAGE_OVERWRITE_TMP_LOCAL;
 const Range = codegen_tokens.Range;
 
 const LocalSet = context.LocalSet;
@@ -27,8 +29,25 @@ const CodegenContext = context.CodegenContext;
 const CodegenError = model.CodegenError;
 const LoopControl = context.LoopControl;
 const find_struct_layout = codegen_collect_util.find_struct_layout;
-const is_managed_local_type = codegen_emit_wasi.is_managed_local_type;
-const is_managed_payload_type = codegen_emit_wasi.is_managed_payload_type;
+const is_managed_local_type = codegen_storage_layout.is_managed_local_type;
+const is_managed_payload_type = codegen_storage_layout.is_managed_payload_type;
+
+pub fn emit_replace_managed_local_from_tmp(
+    allocator: std.mem.Allocator,
+    name: []const u8,
+    out: *std.ArrayList(u8),
+) !void {
+    try append_fmt(allocator, out, "    ;; arc-overwrite-release {s}\n", .{name});
+    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.get ${s}\n", .{name});
+    try out.appendSlice(allocator, "    i32.ne\n");
+    try out.appendSlice(allocator, "    if\n");
+    try append_fmt(allocator, out, "      local.get ${s}\n", .{name});
+    try out.appendSlice(allocator, "      call $__arc_dec\n");
+    try out.appendSlice(allocator, "    end\n");
+    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${s}\n", .{name});
+}
 
 pub fn emit_release_managed_locals(allocator: std.mem.Allocator, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
     try emit_release_managed_locals_except(allocator, locals, ctx, null, out);

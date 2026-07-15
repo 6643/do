@@ -13,13 +13,10 @@ const codegen_collect_util = @import("codegen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
 const codegen_imports = @import("codegen_imports.zig");
-const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
+const codegen_storage_layout = @import("codegen_storage_layout.zig");
 const codegen_callbacks = @import("codegen_callbacks.zig");
 
-pub const TupleElementInfo = struct {
-    index: usize,
-    ty: []const u8,
-};
+const TupleElementInfo = codegen_storage_layout.TupleElementInfo;
 
 const find_top_level_token = codegen_tokens.find_top_level_token;
 const trim_parens = codegen_tokens.trim_parens;
@@ -46,12 +43,12 @@ const pack_slot_width = codegen_collect_util.pack_slot_width;
 const append_tuple_leaf_types_with_structs = codegen_collect_util.append_tuple_leaf_types_with_structs;
 const struct_decl_has_managed_field = codegen_collect_util.struct_decl_has_managed_field;
 const expr_call_head = codegen_imports.expr_call_head;
-const type_payload_bytes = codegen_emit_wasi.type_payload_bytes;
-const type_payload_alignment = codegen_emit_wasi.type_payload_alignment;
-const is_tuple_type_name = codegen_emit_wasi.is_tuple_type_name;
-const tuple_arity = codegen_emit_wasi.tuple_arity;
-const tuple_element_type_at = codegen_emit_wasi.tuple_element_type_at;
-const tuple_has_managed_pack_leaf_ctx = codegen_emit_wasi.tuple_has_managed_pack_leaf_ctx;
+const type_payload_bytes = codegen_storage_layout.type_payload_bytes;
+const type_payload_alignment = codegen_storage_layout.type_payload_alignment;
+const is_tuple_type_name = codegen_storage_layout.is_tuple_type_name;
+const tuple_arity = codegen_storage_layout.tuple_arity;
+const tuple_element_type_at = codegen_storage_layout.tuple_element_type_at;
+const tuple_has_managed_pack_leaf_ctx = codegen_storage_layout.tuple_has_managed_pack_leaf_ctx;
 const is_tuple_packable_leaf_type = type_util.is_tuple_packable_leaf_type;
 
 pub fn emit_tuple_return_local(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, result_tys: []const []const u8, result_items: []const FuncResultItem, out: *std.ArrayList(u8)) !bool {
@@ -494,12 +491,4 @@ pub fn tuple_element_pack_offset_with_structs(tuple_ty: []const u8, index: usize
         offset += pack_slot_width(elem_ty, structs) orelse return null;
     }
     return offset;
-}
-
-pub fn tuple_get_element_info(tokens: []const lexer.Token, second_start: usize, second_end: usize, tuple_ty: []const u8) ?TupleElementInfo {
-    if (second_end != second_start + 1) return null;
-    if (tokens[second_start].kind != .number) return null;
-    const index = std.fmt.parseInt(usize, tokens[second_start].lexeme, 10) catch return null;
-    const ty = tuple_element_type_at(tuple_ty, index) orelse return null;
-    return .{ .index = index, .ty = ty };
 }

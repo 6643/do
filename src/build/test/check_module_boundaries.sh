@@ -39,4 +39,9 @@ if ((${#wat_files[@]} > 0)); then
     done < <(rg -n '@import\("codegen_pipeline\.zig"\)' "${wat_files[@]}" || true)
 fi
 
+if rg -n '@import\("codegen_emit_wasi\.zig"\)' "$BUILD_DIR/codegen_storage_layout.zig"; then
+    echo "storage layout must not import WASI emitter" >&2
+    fail=1
+fi
+
 exit "$fail"

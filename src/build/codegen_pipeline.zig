@@ -177,12 +177,12 @@ const codegen_collect_structs = @import("codegen_collect_structs.zig");
 const codegen_collect_declarations = @import("codegen_collect_declarations.zig");
 const codegen_body = @import("codegen_body.zig");
 const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
-const tuple_element_type_at = codegen_emit_wasi.tuple_element_type_at;
-const tuple_scalar_leaf_storage_byte_width_ctx = codegen_emit_wasi.tuple_scalar_leaf_storage_byte_width_ctx;
-const find_storage_primitive_local = codegen_emit_wasi.find_storage_primitive_local;
-const is_storage_type_name = codegen_emit_wasi.is_storage_type_name;
-const tuple_arity = codegen_emit_wasi.tuple_arity;
-const is_tuple_type_name = codegen_emit_wasi.is_tuple_type_name;
+const tuple_element_type_at = codegen_storage_layout.tuple_element_type_at;
+const tuple_scalar_leaf_storage_byte_width_ctx = codegen_storage_layout.tuple_scalar_leaf_storage_byte_width_ctx;
+const find_storage_primitive_local = codegen_storage_layout.find_storage_primitive_local;
+const is_storage_type_name = codegen_storage_layout.is_storage_type_name;
+const tuple_arity = codegen_storage_layout.tuple_arity;
+const is_tuple_type_name = codegen_storage_layout.is_tuple_type_name;
 const codegen_callbacks = @import("codegen_callbacks.zig");
 const codegen_emit_storage_values = @import("codegen_emit_storage_values.zig");
 const codegen_emit_storage_operations = @import("codegen_emit_storage_operations.zig");
@@ -459,7 +459,7 @@ const find_struct_decl = codegen_collect_util.find_struct_decl;
 const find_struct_layout = codegen_collect_util.find_struct_layout;
 const append_tuple_leaf_types = codegen_collect_util.append_tuple_leaf_types;
 // re-export codegen_emit_wasi
-const codegen_types_compatible = codegen_emit_wasi.codegen_types_compatible;
+const codegen_types_compatible = codegen_storage_layout.codegen_types_compatible;
 pub fn emit_wasi_resource_drop_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return codegen_emit_wasi.emit_wasi_resource_drop_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
 }
