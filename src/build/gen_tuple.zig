@@ -2,8 +2,8 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
 const type_util = @import("type_name.zig");
-const payload_wat = @import("gen_payload_wat.zig");
-const storage_wat = @import("gen_storage_wat.zig");
+const payload_wat = @import("wat_payload.zig");
+const storage_wat = @import("wat_storage.zig");
 const gen_util = @import("gen_util.zig");
 const gen_types = @import("gen_types.zig");
 const gen_collect = @import("gen_collect.zig");
@@ -745,7 +745,6 @@ pub fn tupleGetElementInfo(tokens: []const lexer.Token, second_start: usize, sec
     const ty = tupleElementTypeAt(tuple_ty, index) orelse return null;
     return .{ .index = index, .ty = ty };
 }
-
 
 
 

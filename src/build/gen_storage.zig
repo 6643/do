@@ -3,8 +3,8 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
 const type_util = @import("type_name.zig");
-const payload_wat = @import("gen_payload_wat.zig");
-const storage_wat = @import("gen_storage_wat.zig");
+const payload_wat = @import("wat_payload.zig");
+const storage_wat = @import("wat_storage.zig");
 const gen_util = @import("gen_util.zig");
 const gen_types = @import("gen_types.zig");
 const gen_collect = @import("gen_collect.zig");
@@ -17,9 +17,9 @@ const findValueEnumDeclLineByBranch = gen_import.findValueEnumDeclLineByBranch;
 const simpleTypeName = gen_collect.simpleTypeName;
 const isTopLevelCommaAny = gen_collect.isTopLevelCommaAny;
 const isReturnArrowAt = gen_collect.isReturnArrowAt;
-const gen_union = @import("gen_union.zig");
+const gen_union = @import("codegen_union_layout.zig");
 const gen_host = @import("gen_host.zig");
-const gen_wasi = @import("gen_wasi.zig");
+const gen_wasi = @import("codegen_wasi_registry.zig");
 const ownership = @import("ownership.zig");
 const ownership_facts = @import("ownership_facts.zig");
 const imports = @import("imports.zig");
@@ -3863,4 +3863,3 @@ pub fn emitTupleCallBinding(
     try emitTupleLocalSet(allocator, tuple_local.name, tuple_local.ty, ctx, out);
     return true;
 }
-

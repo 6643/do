@@ -14,14 +14,14 @@ const gen_union_emit = @import("gen_union_emit.zig");
 const gen_ctrl = @import("gen_ctrl.zig");
 const gen_ownership = @import("gen_ownership.zig");
 const gen_host = @import("gen_host.zig");
-const gen_wasi = @import("gen_wasi.zig");
-const gen_union = @import("gen_union.zig");
+const gen_wasi = @import("codegen_wasi_registry.zig");
+const gen_union = @import("codegen_union_layout.zig");
 const ownership = @import("ownership.zig");
 const ownership_facts = @import("ownership_facts.zig");
 const imports = @import("imports.zig");
 const test_runner = @import("test_runner.zig");
-const payload_wat = @import("gen_payload_wat.zig");
-const storage_wat = @import("gen_storage_wat.zig");
+const payload_wat = @import("wat_payload.zig");
+const storage_wat = @import("wat_storage.zig");
 
 const appendLoopSourceStorageLocal = gen_types.appendLoopSourceStorageLocal;
 const parseUnionTypeLayout = gen_collect.parseUnionTypeLayout;
@@ -1170,5 +1170,4 @@ pub fn typedTupleBindingType(
     if (!isTupleTypeName(ty)) return null;
     return ty;
 }
-
 

@@ -7,14 +7,14 @@ const lexer = @import("lexer.zig");
 const ownership = @import("ownership.zig");
 const ownership_facts = @import("ownership_facts.zig");
 const parser = @import("parser.zig");
-const payload_wat = @import("gen_payload_wat.zig");
+const payload_wat = @import("wat_payload.zig");
 const runtime_prelude_wat = @import("runtime_prelude_wat.zig");
-const storage_wat = @import("gen_storage_wat.zig");
+const storage_wat = @import("wat_storage.zig");
 const test_runner = @import("test_runner.zig");
 const type_util = @import("type_name.zig");
 const gen_util = @import("gen_util.zig");
-const gen_wasi = @import("gen_wasi.zig");
-const gen_union = @import("gen_union.zig");
+const gen_wasi = @import("codegen_wasi_registry.zig");
+const gen_union = @import("codegen_union_layout.zig");
 const gen_types = @import("gen_types.zig");
 
 const LocalSet = gen_types.LocalSet;
@@ -1060,5 +1060,4 @@ pub fn appendLoadPayloadOrTupleToStack(
     indent: []const u8) CodegenError!void {
     try payload_wat.appendLoadPayloadOrTupleToStack(allocator, out, elem_ty, base_local, indent);
 }
-
 

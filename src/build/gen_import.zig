@@ -4,7 +4,7 @@ const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const gen_util = @import("gen_util.zig");
 const gen_types = @import("gen_types.zig");
-const gen_wasi = @import("gen_wasi.zig");
+const gen_wasi = @import("codegen_wasi_registry.zig");
 const gen_host = @import("gen_host.zig");
 
 const tokEq = gen_util.tokEq;
@@ -819,4 +819,3 @@ pub fn exprCallHead(tokens: []const lexer.Token, range: Range) ?ExprCallHead {
 pub fn callHeadHasTypeArgs(call_head: ExprCallHead) bool {
     return call_head.type_args_start != 0 or call_head.type_args_end != 0;
 }
-

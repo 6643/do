@@ -6,9 +6,9 @@ const test_runner = @import("test_runner.zig");
 const type_util = @import("type_name.zig");
 const gen_util = @import("gen_util.zig");
 const gen_types = @import("gen_types.zig");
-const gen_union = @import("gen_union.zig");
+const gen_union = @import("codegen_union_layout.zig");
 const gen_import = @import("gen_import.zig");
-const gen_wasi = @import("gen_wasi.zig");
+const gen_wasi = @import("codegen_wasi_registry.zig");
 const gen_collect_util = @import("gen_collect_util.zig");
 const parseCodegenTypeExpr = gen_collect_util.parseCodegenTypeExpr;
 
@@ -328,5 +328,4 @@ pub fn collectPayloadEnumDeclAt(
     });
     return true;
 }
-
 

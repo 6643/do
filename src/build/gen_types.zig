@@ -3,12 +3,12 @@ const std = @import("std");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const runtime_prelude_wat = @import("runtime_prelude_wat.zig");
-const storage_wat = @import("gen_storage_wat.zig");
-const payload_wat = @import("gen_payload_wat.zig");
+const storage_wat = @import("wat_storage.zig");
+const payload_wat = @import("wat_payload.zig");
 const type_util = @import("type_name.zig");
 const gen_util = @import("gen_util.zig");
-const gen_union = @import("gen_union.zig");
-const gen_wasi = @import("gen_wasi.zig");
+const gen_union = @import("codegen_union_layout.zig");
+const gen_wasi = @import("codegen_wasi_registry.zig");
 
 const decodeQuotedStringToken = gen_util.decodeQuotedStringToken;
 const freeUnionLayout = gen_union.freeUnionLayout;
@@ -1138,4 +1138,3 @@ pub const LastUseManagedMoveSource = struct {
     actual_name: []const u8,
     origin: SourceOrigin,
 };
-

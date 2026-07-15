@@ -2,7 +2,7 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
 const gen_types = @import("gen_types.zig");
-const gen_union = @import("gen_union.zig");
+const gen_union = @import("codegen_union_layout.zig");
 
 const LocalSet = gen_types.LocalSet;
 const CodegenContext = gen_types.CodegenContext;

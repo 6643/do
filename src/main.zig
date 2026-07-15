@@ -93,7 +93,7 @@ test {
     _ = @import("build/ownership_facts.zig");
     _ = @import("build/runtime_prelude_wat.zig");
     _ = @import("build/type_name.zig");
-    _ = @import("build/gen_payload_wat.zig");
-    _ = @import("build/gen_storage_wat.zig");
+    _ = @import("build/wat_payload.zig");
+    _ = @import("build/wat_storage.zig");
     _ = @import("build/sema_error.zig");
 }
