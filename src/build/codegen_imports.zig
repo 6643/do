@@ -24,8 +24,8 @@ const decodeQuotedStringToken = codegen_tokens.decode_quoted_string_token;
 const append_fmt = codegen_names.append_fmt;
 const Range = codegen_tokens.Range;
 const module_tokens_equal = codegen_tokens.module_tokens_equal;
-const findToken = codegen_tokens.find_token;
-const findStartFunc = codegen_tokens.find_start_func;
+const find_token = codegen_tokens.find_token;
+const find_start_func = codegen_tokens.find_start_func;
 const isUserFuncDeclStart = codegen_tokens.is_user_func_decl_start;
 const isTypedBindingRhsCall = codegen_tokens.is_typed_binding_rhs_call;
 const isBareHostCallStatement = codegen_tokens.is_bare_host_call_statement;
@@ -201,9 +201,9 @@ pub fn collect_start_body_calls(
     module_idx: usize,
     out: *std.ArrayList(ReachVisit),
 ) !void {
-    const start_idx = findStartFunc(tokens) orelse return;
+    const start_idx = find_start_func(tokens) orelse return;
     const close_params = find_matching(tokens, start_idx + 1, "(", ")") catch return;
-    const open_body = findToken(tokens, close_params + 1, tokens.len, "{") orelse return;
+    const open_body = find_token(tokens, close_params + 1, tokens.len, "{") orelse return;
     const close_body = find_matching(tokens, open_body, "{", "}") catch return;
     try collect_call_names_in_range(allocator, tokens, module_idx, open_body + 1, close_body, out);
 }
@@ -229,7 +229,7 @@ pub fn collect_all_function_body_calls(
         if (!isUserFuncDeclStart(tokens, i)) continue;
 
         const close_params = find_matching(tokens, i + 1, "(", ")") catch continue;
-        const open_body = findToken(tokens, close_params + 1, tokens.len, "{") orelse continue;
+        const open_body = find_token(tokens, close_params + 1, tokens.len, "{") orelse continue;
         const close_body = find_matching(tokens, open_body, "{", "}") catch continue;
         try collect_call_names_in_range(allocator, tokens, module_idx, open_body + 1, close_body, out);
         i = close_body;
@@ -274,7 +274,7 @@ pub fn collect_function_body_calls(
         if (!tok_eq(tokens[i + 1], "(")) continue;
 
         const close_params = find_matching(tokens, i + 1, "(", ")") catch continue;
-        const open_body = findToken(tokens, close_params + 1, tokens.len, "{") orelse continue;
+        const open_body = find_token(tokens, close_params + 1, tokens.len, "{") orelse continue;
         const close_body = find_matching(tokens, open_body, "{", "}") catch continue;
         try collect_call_names_in_range(allocator, tokens, module_idx, open_body + 1, close_body, out);
         i = close_body;

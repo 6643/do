@@ -79,7 +79,7 @@ v1 默认对象头只保存 ARC 和 layout 所需的公共字段:
 5. `[T]` 的 `len/cap` 放在 `Object.data` 起点: `len: u32` @0, `cap: u32` @4, 元素数据从 offset 8 起 (共 8 字节 payload header)。
 6. 固定布局 managed struct 不需要 `len/cap`, payload 字节布局完全由 layout table 决定。
 7. header 压缩到 `u16/u16`、尾部 reference count、状态化 header 都是 v2 优化。
-8. 编译器侧与上述 layout 对齐的纯 WAT 访问在 `src/build/gen_storage_wat.zig` (`STORAGE_PAYLOAD_HEADER_BYTES = 8`, `type_id` `[u8]`-style=`1` / managed-storage=`65535`); 类型/元素宽度分类在 `src/build/type_name.zig`; 业务 `@set/@put`/COW 编排仍在 `src/build/codegen_api.zig` / `src/build/codegen_pipeline.zig` / `src/build/gen_types.zig`。
+8. 编译器侧与上述 layout 对齐的纯 WAT 访问在 `src/build/wat_storage.zig` (`STORAGE_PAYLOAD_HEADER_BYTES = 8`, `type_id` `[u8]`-style=`1` / managed-storage=`65535`); 类型/元素宽度分类在 `src/build/type_name.zig`; 业务 `@set/@put`/COW 编排仍在 `src/build/codegen_api.zig` / `src/build/codegen_pipeline.zig` / `src/build/gen_types.zig`。
 
 ### 3.3 Layout Table
 
@@ -117,7 +117,7 @@ zs [u8] = @put(xs, 4)
 3. `@set(xs, i, value)` 要求 `i < len`; 返回更新后的 `[T]` 值。
 4. `@put(xs, value, rest...)` 返回追加后的 `[T]` 值。
 5. `loop value, index = xs` 编译为 `0..@len(xs)` 范围内的 `@get(xs, index)`, 语言生成的 index 不越界。
-6. 元素地址 lowering: `payload + 8 + i * elem_bytes` (见 `src/build/gen_storage_wat.zig` 的 `emitStorageElementPtrFromLocal`); scheme-A `[Tuple<...>]` pack 见 `src/build/type_name.zig` 的 `tupleScalarLeafStorageByteWidth` / `tupleHasManagedPackLeaf` 与 `src/build/gen_payload_wat.zig`。每个元素是定宽 **树状** 布局 (直接子槽子区域); 嵌套 Tuple / 未来 struct 槽保持嵌套语义, **永不** 在类型或 API 上拍平为扁平 Tuple。managed 叶槽为 4 字节 handle; 含 managed 叶槽的 storage 使用 `is_storage_pack` layout 做 clone/free 叶子 inc/dec。
+6. 元素地址 lowering: `payload + 8 + i * elem_bytes` (见 `src/build/wat_storage.zig` 的 `emitStorageElementPtrFromLocal`); scheme-A `[Tuple<...>]` pack 见 `src/build/type_name.zig` 的 `tupleScalarLeafStorageByteWidth` / `tupleHasManagedPackLeaf` 与 `src/build/wat_payload.zig`。每个元素是定宽 **树状** 布局 (直接子槽子区域); 嵌套 Tuple / 未来 struct 槽保持嵌套语义, **永不** 在类型或 API 上拍平为扁平 Tuple。managed 叶槽为 4 字节 handle; 含 managed 叶槽的 storage 使用 `is_storage_pack` layout 做 clone/free 叶子 inc/dec。
 
 ### 4.3 COW
 

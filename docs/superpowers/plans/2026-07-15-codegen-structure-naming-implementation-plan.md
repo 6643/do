@@ -44,8 +44,8 @@
 | `src/build/codegen_imports.zig` | `src/build/codegen_imports.zig` |
 | `src/build/codegen_host_imports.zig` | `src/build/codegen_host_imports.zig` |
 | `src/build/gen_hooks.zig` | `src/build/codegen_callbacks.zig` |
-| `src/build/gen_payload_wat.zig` | `src/build/wat_payload.zig` |
-| `src/build/gen_storage_wat.zig` | `src/build/wat_storage.zig` |
+| `src/build/wat_payload.zig` | `src/build/wat_payload.zig` |
+| `src/build/wat_storage.zig` | `src/build/wat_storage.zig` |
 | `src/build/gen_tuple.zig` | `src/build/codegen_emit_tuple.zig` |
 | `src/build/codegen_generics.zig` | `src/build/codegen_generics.zig` |
 | `src/build/codegen_ownership.zig` | `src/build/codegen_ownership.zig` |
@@ -127,8 +127,8 @@ exit "$fail"
 ## Task 2: Rename Leaf Modules and Split Generic Helpers
 
 **Files:**
-- Rename: `gen_payload_wat.zig` -> `wat_payload.zig`
-- Rename: `gen_storage_wat.zig` -> `wat_storage.zig`
+- Rename: `wat_payload.zig` -> `wat_payload.zig`
+- Rename: `wat_storage.zig` -> `wat_storage.zig`
 - Rename: `gen_union.zig` -> `codegen_union_layout.zig`
 - Rename: `gen_wasi.zig` -> `codegen_wasi_registry.zig`
 - Split: `gen_util.zig` -> `codegen_tokens.zig` and `codegen_names.zig`

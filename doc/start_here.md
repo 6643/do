@@ -108,8 +108,8 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | | `codegen_host_imports.zig` | unified `@host("env", member, sig)` host import collect/parse |
 | | `codegen_imports.zig` | 模块 import 解析、reach、string-data |
 | | `gen_wasi` / `gen_union` | WASI 表/parse; union layout |
-| | `gen_payload_wat` | 标量 payload load/store、Tuple 叶子 pack/unpack |
-| | `gen_storage_wat` | storage 指针/header/alias; `HEADER=8` |
+| | `wat_payload` | 标量 payload load/store、Tuple 叶子 pack/unpack |
+| | `wat_storage` | storage 指针/header/alias; `HEADER=8` |
 | | `runtime_arc_wat` | ARC runtime WAT + layout 类型 SSOT |
 | | `runtime_prelude_wat` | string-data memory emit + re-export ARC API |
 | | `wat_function_body` / `wat_component_metadata` | 其它 WAT 写出切片 |

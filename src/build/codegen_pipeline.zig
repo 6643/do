@@ -356,8 +356,8 @@ const host_param_is_ptr_len = codegen_host_imports.host_param_is_ptr_len;
 const host_arg_could_be_storage_ptr_len_syntax = codegen_host_imports.host_arg_could_be_storage_ptr_len_syntax;
 // Re-export token and name helpers used by lower-level tests.
 const module_tokens_equal = codegen_tokens.module_tokens_equal;
-pub const findStartFunc = codegen_tokens.find_start_func;
-pub const findToken = codegen_tokens.find_token;
+pub const find_start_func = codegen_tokens.find_start_func;
+pub const find_token = codegen_tokens.find_token;
 const findTopLevelBlockOpen = codegen_tokens.find_top_level_block_open;
 const find_stmt_end = codegen_tokens.find_stmt_end;
 const findTypeArgEnd = codegen_tokens.find_type_arg_end;

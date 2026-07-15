@@ -43,7 +43,7 @@ This repository contains the `do` language compiler and its regression suite.
         - `codegen_host_imports.zig` — unified `@host("env", member, sig)` host import collect/parse
         - `codegen_imports.zig` — module import resolve, reachability, string-data collect
         - `codegen_wasi_registry.zig` / `codegen_union_layout.zig` — WASI tables/parse, union layout
-        - `gen_payload_wat.zig` / `gen_storage_wat.zig` — pure WAT fragments
+        - `wat_payload.zig` / `wat_storage.zig` — pure WAT fragments
         - `runtime_arc_wat.zig` — ARC runtime WAT + layout types SSOT (`ManagedFieldOffset` / `StructLayout` / `StringData`)
         - `runtime_prelude_wat.zig` — string-data memory emit + re-exports ARC API
         - plus `wat_function_body.zig` / `wat_component_metadata.zig` / `codegen_ir.zig`

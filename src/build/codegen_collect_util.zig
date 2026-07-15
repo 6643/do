@@ -23,7 +23,7 @@ const find_line_end = codegen_tokens.find_line_end;
 const findLineStart = codegen_tokens.find_line_start;
 const find_matching = codegen_tokens.find_matching;
 const find_matching_in_range = codegen_tokens.find_matching_in_range;
-const findToken = codegen_tokens.find_token;
+const find_token = codegen_tokens.find_token;
 const find_top_level_token = codegen_tokens.find_top_level_token;
 const is_base_int_type_name = codegen_names.is_base_int_type_name;
 const is_core_wasm_scalar = codegen_names.is_core_wasm_scalar;
@@ -313,7 +313,7 @@ pub fn parse_func_body_shape(tokens: []const lexer.Token, close_params: usize) !
     const result_start = after_params + 2;
     if (result_start >= tokens.len) return error.NoMatchingCall;
     const arrow_idx = find_top_level_token(tokens, result_start, find_line_end(tokens, close_params), "=") orelse {
-        const open_body = findToken(tokens, result_start, tokens.len, "{") orelse return error.NoMatchingCall;
+        const open_body = find_token(tokens, result_start, tokens.len, "{") orelse return error.NoMatchingCall;
         const close_body = try find_matching(tokens, open_body, "{", "}");
         return .{
             .result_start = result_start,

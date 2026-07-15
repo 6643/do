@@ -79,8 +79,8 @@ The directory remains flat. File names use lowercase snake case and describe one
 | `codegen_imports.zig` | `codegen_imports.zig` |
 | `codegen_host_imports.zig` | `codegen_host_imports.zig` |
 | `gen_hooks.zig` | `codegen_callbacks.zig` |
-| `gen_payload_wat.zig` | `wat_payload.zig` |
-| `gen_storage_wat.zig` | `wat_storage.zig` |
+| `wat_payload.zig` | `wat_payload.zig` |
+| `wat_storage.zig` | `wat_storage.zig` |
 | `gen_tuple.zig` | `codegen_emit_tuple.zig` |
 | `codegen_generics.zig` | `codegen_generics.zig` |
 | `codegen_ownership.zig` | `codegen_ownership.zig` |

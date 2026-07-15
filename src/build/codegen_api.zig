@@ -45,7 +45,7 @@ const free_func_decls = model.free_func_decls;
 const free_func_params = model.free_func_params;
 const collect_struct_decls = codegen_collect_structs.collect_struct_decls;
 const collect_func_decls = codegen_collect_functions.collect_func_decls;
-const findStartFunc = codegen_tokens.find_start_func;
+const find_start_func = codegen_tokens.find_start_func;
 const find_generic_template_for_call = codegen_pipeline.find_generic_template_for_call;
 const direct_managed_last_use_move_source_origin = codegen_pipeline.direct_managed_last_use_move_source_origin;
 const CallLastUseMoveContext = context.CallLastUseMoveContext;
@@ -60,7 +60,7 @@ const bind_generic_func_call = codegen_pipeline.bind_generic_func_call;
 const find_union_local = context.find_union_local;
 const call_head_at = codegen_pipeline.call_head_at;
 const collect_struct_layouts = codegen_collect_structs.collect_struct_layouts;
-const findToken = codegen_tokens.find_token;
+const find_token = codegen_tokens.find_token;
 const free_struct_layouts = model.free_struct_layouts;
 const field_get_last_use_move_source = codegen_pipeline.field_get_last_use_move_source;
 
@@ -288,8 +288,8 @@ test "inferred generic union call binding returns substituted union layout" {
 
     var locals = LocalSet{};
     defer locals.deinit(allocator);
-    const start_idx = findStartFunc(tokens) orelse unreachable;
-    const start_open = findToken(tokens, start_idx, tokens.len, "{").?;
+    const start_idx = find_start_func(tokens) orelse unreachable;
+    const start_open = find_token(tokens, start_idx, tokens.len, "{").?;
     const start_close = try find_matching(tokens, start_open, "{", "}");
     try collect_body_locals(allocator, tokens, start_open + 1, start_close, ctx, &locals);
 
@@ -337,8 +337,8 @@ test "generic callback prebinds literal argument type from lambda" {
     };
     const template = find_generic_template_for_call(functions.items, tokens, ctx, "apply_value") orelse unreachable;
 
-    const first_call_idx = findToken(tokens, 0, tokens.len, "apply_value") orelse unreachable;
-    const call_idx = findToken(tokens, first_call_idx + 1, tokens.len, "apply_value") orelse unreachable;
+    const first_call_idx = find_token(tokens, 0, tokens.len, "apply_value") orelse unreachable;
+    const call_idx = find_token(tokens, first_call_idx + 1, tokens.len, "apply_value") orelse unreachable;
     const call_head = call_head_at(tokens, call_idx, tokens.len) orelse unreachable;
 
     var locals = LocalSet{};
@@ -496,8 +496,8 @@ test "generic callback prebinds literal argument type from function ref" {
         .modules = &.{},
     };
     try collect_body_locals(allocator, tokens, tests[0].body_start, tests[0].body_end, ctx, &locals);
-    const first_call_idx = findToken(tokens, 0, tokens.len, "apply_value") orelse unreachable;
-    const call_idx = findToken(tokens, first_call_idx + 1, tokens.len, "apply_value") orelse unreachable;
+    const first_call_idx = find_token(tokens, 0, tokens.len, "apply_value") orelse unreachable;
+    const call_idx = find_token(tokens, first_call_idx + 1, tokens.len, "apply_value") orelse unreachable;
     const call_head = call_head_at(tokens, call_idx, tokens.len) orelse unreachable;
     const template = find_generic_template_for_call(functions.items, tokens, ctx, "apply_value") orelse unreachable;
     var bindings = std.ArrayList(GenericTypeBinding).empty;
@@ -599,9 +599,9 @@ test "generic multi callback instances collect" {
     defer locals.deinit(allocator);
     try collect_body_locals(allocator, tokens, tests[0].body_start, tests[0].body_end, ctx, &locals);
 
-    const def_idx = findToken(tokens, 0, tokens.len, "compose") orelse unreachable;
-    const same_idx = findToken(tokens, def_idx + 1, tokens.len, "compose") orelse unreachable;
-    const hetero_idx = findToken(tokens, same_idx + 1, tokens.len, "compose") orelse unreachable;
+    const def_idx = find_token(tokens, 0, tokens.len, "compose") orelse unreachable;
+    const same_idx = find_token(tokens, def_idx + 1, tokens.len, "compose") orelse unreachable;
+    const hetero_idx = find_token(tokens, same_idx + 1, tokens.len, "compose") orelse unreachable;
     const same_head = call_head_at(tokens, same_idx, tokens.len) orelse unreachable;
     const hetero_head = call_head_at(tokens, hetero_idx, tokens.len) orelse unreachable;
     try std.testing.expect(find_func_decl_for_call_head(tokens, same_head, &locals, ctx) != null);
@@ -641,10 +641,10 @@ test "backend ir lowering emits selected scalar numeric start body" {
         .entry_tokens = tokens,
         .modules = &.{},
     };
-    const start_idx = findStartFunc(tokens) orelse unreachable;
+    const start_idx = find_start_func(tokens) orelse unreachable;
     const open_params = start_idx + 1;
     const close_params = try find_matching(tokens, open_params, "(", ")");
-    const open_body = findToken(tokens, close_params + 1, tokens.len, "{") orelse unreachable;
+    const open_body = find_token(tokens, close_params + 1, tokens.len, "{") orelse unreachable;
     const close_body = try find_matching(tokens, open_body, "{", "}");
 
     var locals = LocalSet{};

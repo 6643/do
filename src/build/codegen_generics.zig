@@ -101,8 +101,8 @@ const clone_local_set = codegen_storage_layout.clone_local_set;
 const find_callback_ref_func = codegen_storage_layout.find_callback_ref_func;
 const find_top_level_guard_loop_control = codegen_ownership.find_top_level_guard_loop_control;
 const module_tokens_equal = codegen_tokens.module_tokens_equal;
-pub const findStartFunc = codegen_tokens.find_start_func;
-pub const findToken = codegen_tokens.find_token;
+pub const find_start_func = codegen_tokens.find_start_func;
+pub const find_token = codegen_tokens.find_token;
 const find_stmt_end = codegen_tokens.find_stmt_end;
 const findTypeArgEnd = codegen_tokens.find_type_arg_end;
 const appendMangledTypeName = codegen_names.append_mangled_type_name;
@@ -175,7 +175,7 @@ pub fn explicit_lambda_types_match(target_types: []const ?[]const u8, lambda_typ
 }
 
 pub fn collect_generic_func_instances_for_start(allocator: std.mem.Allocator, tokens: []const lexer.Token, structs: []const StructDecl, value_enums: []const ValueEnumDecl, payload_enums: []const PayloadEnumDecl, struct_layouts: []const StructLayout, host_imports: []const HostImport, wasi_imports: []const WasiHostImport, string_data: *const StringDataContext, modules: []const imports.ModuleRecord, imported_alias_ctx: ?ImportedAliasContext, functions: *std.ArrayList(FuncDecl)) !void {
-    if (findStartFunc(tokens)) |idx| {
+    if (find_start_func(tokens)) |idx| {
         try collect_generic_func_instances_in_start_body(
             allocator,
             tokens,
@@ -211,7 +211,7 @@ pub fn collect_generic_func_instances_in_start_body(
     functions: *std.ArrayList(FuncDecl),
 ) !void {
     const close_params = find_matching(tokens, start_idx + 1, "(", ")") catch return;
-    const open_body = findToken(tokens, close_params + 1, tokens.len, "{") orelse return;
+    const open_body = find_token(tokens, close_params + 1, tokens.len, "{") orelse return;
     const body_end = find_matching(tokens, open_body, "{", "}") catch return;
 
     var locals = LocalSet{};

@@ -310,7 +310,7 @@ data:
   element storage...
 ```
 
-实现对照 (WAT): `src/build/gen_storage_wat.zig` 将 `len` 视为 payload+0、`cap` 为 payload+4、元素区为 payload+8 (`STORAGE_PAYLOAD_HEADER_BYTES`); runtime 辅助 `$__arc_payload` / `$__storage_check_range` 在 `src/build/runtime_prelude_wat.zig`。
+实现对照 (WAT): `src/build/wat_storage.zig` 将 `len` 视为 payload+0、`cap` 为 payload+4、元素区为 payload+8 (`STORAGE_PAYLOAD_HEADER_BYTES`); runtime 辅助 `$__arc_payload` / `$__storage_check_range` 在 `src/build/runtime_prelude_wat.zig`。
 
 `List<T>` 是可变元素数量对象:
 
