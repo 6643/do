@@ -2149,11 +2149,11 @@ pub fn codegen_wasm_type(ctx: CodegenContext, ty: []const u8) []const u8 {
 }
 
 pub fn type_payload_bytes(ty: []const u8) usize {
-    return type_util.type_payload_bytes(ty);
+    return type_util.typePayloadBytes(ty);
 }
 
 pub fn type_payload_alignment(ty: []const u8) usize {
-    return type_util.type_payload_alignment(ty);
+    return type_util.typePayloadAlignment(ty);
 }
 
 pub fn is_managed_payload_type(ty: []const u8) bool {
@@ -2180,7 +2180,7 @@ pub fn tuple_scalar_leaf_storage_byte_width(tuple_ty: []const u8) ?usize {
 
 pub fn tuple_scalar_leaf_storage_byte_width_ctx(tuple_ty: []const u8, ctx: CodegenContext) ?usize {
     if (tuple_pack_width_with_structs(tuple_ty, ctx.structs)) |w| return w;
-    return type_util.tuple_scalar_leaf_storage_byte_width(tuple_ty);
+    return type_util.tupleScalarLeafStorageByteWidth(tuple_ty);
 }
 
 pub fn tuple_has_managed_pack_leaf(tuple_ty: []const u8) bool {

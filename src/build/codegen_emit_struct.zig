@@ -8,11 +8,20 @@ const emit_struct_field_value = struct_fields.emit_struct_field_value;
 const emit_struct_fields_from_local = struct_fields.emit_struct_fields_from_local;
 pub const emit_zero_value_for_type = struct_fields.emit_zero_value_for_type;
 pub const inferred_struct_binding = struct_fields.inferred_struct_binding;
-const is_managed_struct_field = struct_fields.is_managed_struct_field;
-const typed_struct_binding = struct_fields.typed_struct_binding;
+pub const is_managed_struct_field = struct_fields.is_managed_struct_field;
+pub const typed_struct_binding = struct_fields.typed_struct_binding;
 
 pub const nil_comparison_narrowing = struct_fields.nil_comparison_narrowing;
 pub const merge_return_cleanup_locals = struct_fields.merge_return_cleanup_locals;
+pub const is_comparison_narrowing = struct_fields.is_comparison_narrowing;
+pub const append_union_payload_local_get = struct_fields.append_union_payload_local_get;
+pub const append_union_payload_local_set = struct_fields.append_union_payload_local_set;
+pub const append_union_tag_local_get = struct_fields.append_union_tag_local_get;
+pub const append_union_tag_local_set = struct_fields.append_union_tag_local_set;
+pub const apply_guard_return_nil_narrowing = struct_fields.apply_guard_return_nil_narrowing;
+pub const apply_guard_return_is_narrowing = struct_fields.apply_guard_return_is_narrowing;
+pub const trim_trailing_comma = struct_fields.trim_trailing_comma;
+pub const union_local_single_remaining_payload_type = struct_fields.union_local_single_remaining_payload_type;
 
 const std = @import("std");
 const lexer = @import("lexer.zig");

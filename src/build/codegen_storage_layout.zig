@@ -1268,7 +1268,7 @@ pub fn lambda_explicit_types_match_shape(tokens: []const lexer.Token, lambda: La
 }
 
 pub fn type_base_name(ty: []const u8) []const u8 {
-    return type_util.type_base_name(ty);
+    return type_util.typeBaseName(ty);
 }
 
 pub fn value_enum_type_matches_import_alias(ctx: CodegenContext, tokens: []const lexer.Token, enum_idx: usize, expected_name: []const u8) bool {
@@ -1305,7 +1305,7 @@ pub fn value_enum_source_matches_import(tokens: []const lexer.Token, import_ref:
 }
 
 pub fn managed_payload_elem_type_from_name(ty: []const u8) ?[]const u8 {
-    return type_util.managed_payload_elem_type_from_name(ty);
+    return type_util.managedPayloadElemTypeFromName(ty);
 }
 
 pub fn abs_result_type(source_ty: []const u8) ?[]const u8 {
@@ -1409,5 +1409,5 @@ pub fn find_concrete_struct_field_type_no_alloc(decl: StructDecl, concrete_ty: [
 }
 
 pub fn generic_type_arg_at(concrete_ty: []const u8, target_idx: usize) ?[]const u8 {
-    return type_util.generic_type_arg_at(concrete_ty, target_idx);
+    return type_util.genericTypeArgAt(concrete_ty, target_idx);
 }

@@ -883,7 +883,7 @@ fn emit_core_op_args(
 }
 
 /// Mid-layer: entire `@name(...)` intrinsic dispatch (reflection / core ops / len-get-set / memory).
-fn emit_intrinsic_call(
+pub fn emit_intrinsic_call(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     call_head: ExprCallHead,
