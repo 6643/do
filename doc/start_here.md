@@ -103,7 +103,8 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | | `gen_union_emit.zig` | union value / binding emit |
 | | `gen_wasi_emit.zig` | WASI host 调用/结果 emit（`EmitExprFn`/hooks，不 import lower） |
 | | `gen_ownership.zig` | ARC release plan emit / 作用域可达性辅助 |
-| | `gen_util.zig` | token/scan 工具; core-func 名表; mangled 符号 |
+| | `codegen_tokens.zig` | token/range/scan/decode 工具 |
+| | `codegen_names.zig` | public name、core-func 名表、mangled 符号 |
 | | `gen_host.zig` | unified `@host("env", member, sig)` host import collect/parse |
 | | `gen_import.zig` | 模块 import 解析、reach、string-data |
 | | `gen_wasi` / `gen_union` | WASI 表/parse; union layout |
