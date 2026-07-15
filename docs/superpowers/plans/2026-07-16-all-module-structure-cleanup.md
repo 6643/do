@@ -43,6 +43,8 @@ Status: completed; current-state documentation is synchronized. The boundary gua
 
 ## Task 2: Standard-library network ownership
 
+Status: skipped as an architecture blocker. `sema_imports.zig` validates WIT host types against declarations in the current file (`has_public_struct_decl` / `has_public_payload_enum_decl`); imported `@lib` type aliases are not accepted in host signatures. Sharing these types would require a language/compiler semantic change, outside this refactor.
+
 **Files:**
 - Modify: `lib/net.do`, `lib/tcp.do`, `lib/udp.do`
 - Test: `src/build/test/compile_ok/291_wasi_tcp_create_union.do` through `297_wasi_tcp_create_dynamic_family.do`
