@@ -23,20 +23,20 @@ This repository contains the `do` language compiler and its regression suite.
         - `gen.zig` — public entry (`emitWat` / `emitTestWat`) + unit tests
         - `gen_lower.zig` — orchestration (`emitWat*` / hooks install) + minimal re-exports for tests
         - `gen_generic.zig` — generic func instantiate / type bind / prebind callback (no import of gen_lower)
-        - `gen_hooks.zig` — late-bound emit callbacks (break reverse peer edges: ctrl/union→expr, struct→union_emit)
+        - `codegen_callbacks.zig` — late-bound emit callbacks (break reverse peer edges: control/union→expression, struct→union)
         - `codegen_model.zig` — immutable declarations, shape records, ownership/free helpers, `ExprCallHead`
         - `codegen_context.zig` — LocalSet, mutable codegen contexts, local-name helpers
         - `codegen_constants.zig` — ABI/layout IDs and compiler temporary-local names
         - `gen_collect.zig` — collect facade (re-exports util/struct/func/type leaves)
         - `gen_collect_util.zig` / `gen_collect_struct.zig` / `gen_collect_func.zig` / `gen_collect_type.zig` — type parse/bind, struct/layout collect, func collect, enum/value-enum collect
-        - `gen_expr.zig` — expression / call dispatch + re-exports body-local collect API
-        - `gen_expr_collect.zig` — body-local / loop / multi-result local collection (no import of gen_expr)
-        - `gen_ctrl.zig` — control-flow emit (`emitBody` / if / loop / defer / guard); uses hooks for expr/call
-        - `gen_storage.zig` — storage emit (binding/put/set/agg) + re-exports tuple pack API
-        - `gen_tuple.zig` — Tuple / pure-scalar pack helpers (load/store/inc/dec leaves; no import of gen_storage)
-        - `gen_struct.zig` — struct binding / field / literal emit; uses hooks for union payload
-        - `gen_union_emit.zig` — union value / binding emit; uses hooks for user-func call
-        - `gen_wasi_emit.zig` — WASI host call/result emit (uses `EmitExprFn` / hooks; no import of `gen_lower`)
+        - `codegen_emit_expression.zig` / `codegen_emit_call.zig` — expression / call dispatch
+        - `codegen_collect_body.zig` — body-local / loop / multi-result local collection (no import of expression)
+        - `codegen_emit_control.zig` — control-flow emit (`emit_body` / if / loop / defer / guard); uses hooks for expression/call
+        - `codegen_emit_storage_operations.zig` / `codegen_emit_storage_values.zig` / `codegen_storage_layout.zig` — storage emit, layout, and Tuple pack API
+        - `codegen_emit_tuple.zig` — Tuple / pure-scalar pack helpers (load/store/inc/dec leaves)
+        - `codegen_emit_struct.zig` / `codegen_emit_struct_fields.zig` — struct binding / field / literal emit; uses hooks for union payload
+        - `codegen_emit_union.zig` — union value / binding emit; uses hooks for user-func call
+        - `codegen_emit_wasi.zig` — WASI host call/result emit (uses `EmitExprFn` / hooks; no import of `gen_lower`)
         - `gen_ownership.zig` — ARC release-plan emit and related scope helpers
         - `codegen_tokens.zig` — token/range/scan/decode helpers
         - `codegen_names.zig` — public names, core-func name tables, mangled symbols

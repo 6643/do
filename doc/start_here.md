@@ -89,20 +89,20 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | Gen 域 | `gen.zig` | 公开入口 + 单测 |
 | | `gen_lower.zig` | 编排核（`emitWat*` / hooks install）+ 最小 re-export |
 | | `gen_generic.zig` | 泛型实例化 / 类型绑定 / callback prebind（不 import lower） |
-| | `gen_hooks.zig` | 晚绑定 emit 回调（破 ctrl/union→expr、struct→union 反向边） |
+| | `codegen_callbacks.zig` | 晚绑定 emit 回调（破 control/union→expression、struct→union 反向边） |
 | | `codegen_model.zig` | 不可变声明、shape、ownership/free、`ExprCallHead` |
 | | `codegen_context.zig` | LocalSet、可变 codegen context、local-name helpers |
 | | `codegen_constants.zig` | ABI/layout ID 与 compiler temporary-local 名称 |
 | | `gen_collect.zig` | collect facade（re-export util/struct/func/type） |
 | | `gen_collect_util` / `_struct` / `_func` / `_type` | 类型 parse·bind / struct·layout / func / enum collect |
-| | `gen_expr.zig` | 表达式/调用 dispatch + re-export body-local collect |
-| | `gen_expr_collect.zig` | body-local / loop / multi-result local collect（不 import expr） |
-| | `gen_ctrl.zig` | 控制流 emit（body/if/loop/defer/guard） |
-| | `gen_storage.zig` | storage emit + re-export tuple pack API |
-| | `gen_tuple.zig` | Tuple / pure-scalar pack helpers（不 import storage） |
-| | `gen_struct.zig` | struct binding / field / literal emit |
-| | `gen_union_emit.zig` | union value / binding emit |
-| | `gen_wasi_emit.zig` | WASI host 调用/结果 emit（`EmitExprFn`/hooks，不 import lower） |
+| | `codegen_emit_expression.zig` / `codegen_emit_call.zig` | 表达式与调用 dispatch |
+| | `codegen_collect_body.zig` | body-local / loop / multi-result local collect（不 import expression） |
+| | `codegen_emit_control.zig` | 控制流 emit（body/if/loop/defer/guard） |
+| | `codegen_emit_storage_operations.zig` / `codegen_emit_storage_values.zig` / `codegen_storage_layout.zig` | storage emit、layout 与 Tuple pack helpers |
+| | `codegen_emit_tuple.zig` | Tuple / pure-scalar pack helpers |
+| | `codegen_emit_struct.zig` / `codegen_emit_struct_fields.zig` | struct binding / field / literal emit |
+| | `codegen_emit_union.zig` | union value / binding emit |
+| | `codegen_emit_wasi.zig` | WASI host 调用/结果 emit（`EmitExprFn`/hooks，不 import lower） |
 | | `gen_ownership.zig` | ARC release plan emit / 作用域可达性辅助 |
 | | `codegen_tokens.zig` | token/range/scan/decode 工具 |
 | | `codegen_names.zig` | public name、core-func 名表、mangled 符号 |
@@ -117,7 +117,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | 旁路 | `backend_ir` | **仅**标量 `start` 旁路 + unit; **不是**主 emit 路径 |
 | CLI | `src/main.zig` | 分派; `do test` 经 `runTest` → `loadProgram` |
 
-**刻意未做**: 批量把真 overload `NoMatchingCall` 改成 `UnsupportedLowering`; 合并静态/compiled 双 runner; 把 `backend_ir` 扩成主路径; 继续硬拆 `gen_storage` / `gen_expr` / `parser` / `imports` / `test_runner`（hooks 耦合或高风险，ROI 低）。
+**刻意未做**: 批量把真 overload `NoMatchingCall` 改成 `UnsupportedLowering`; 合并静态/compiled 双 runner; 把 `backend_ir` 扩成主路径; 继续硬拆 `codegen_emit_storage_operations` / `codegen_emit_expression` / `parser` / `imports` / `test_runner`（hooks 耦合或高风险，ROI 低）。
 
 **已落地架构竖切**: `sema` 与 `gen` 均已按域拆成扁平 `*_` 模块 (见上表与 `AGENTS.md`); 对外仍经 `sema.zig` / `gen.zig` 入口。Batch B: collect 四叶、sema scan/func 子域、runtime ARC SSOT。
 

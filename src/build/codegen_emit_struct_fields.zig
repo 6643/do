@@ -76,20 +76,20 @@ const codegen_emit_storage_values = @import("codegen_emit_storage_values.zig");
 const emit_storage_u8_raw_string_value = codegen_emit_storage_values.emit_storage_u8_raw_string_value;
 const emit_tuple_local_set = codegen_emit_storage_values.emit_tuple_local_set;
 const append_store_for_payload_type = codegen_emit_storage_values.append_store_for_payload_type;
-const is_direct_managed_local_expr = codegen_emit_storage_values.isDirectManagedLocalExpr;
-const substitute_struct_field_type = codegen_emit_storage_values.substituteStructFieldType;
+const is_direct_managed_local_expr = codegen_emit_storage_values.is_direct_managed_local_expr;
+const substitute_struct_field_type = codegen_emit_storage_values.substitute_struct_field_type;
 const is_struct_literal_rhs = codegen_emit_storage_values.is_struct_literal_rhs;
-const find_local_field_type = codegen_emit_storage_values.findLocalFieldType;
-const infer_expr_type = codegen_emit_storage_values.inferExprType;
+const find_local_field_type = codegen_emit_storage_values.find_local_field_type;
+const infer_expr_type = codegen_emit_storage_values.infer_expr_type;
 const direct_managed_last_use_move_source = codegen_emit_storage_values.direct_managed_last_use_move_source;
 const has_registered_defer_stmt = codegen_emit_storage_values.has_registered_defer_stmt;
 const token_range_uses_ident = codegen_emit_storage_values.token_range_uses_ident;
-const find_field_meta_local = codegen_emit_storage_values.findFieldMetaLocal;
-const field_from_meta = codegen_emit_storage_values.fieldFromMeta;
-const find_struct_field = codegen_emit_storage_values.findStructField;
-const is_dot_ident = codegen_emit_storage_values.isDotIdent;
+const find_field_meta_local = codegen_emit_storage_values.find_field_meta_local;
+const field_from_meta = codegen_emit_storage_values.field_from_meta;
+const find_struct_field = codegen_emit_storage_values.find_struct_field;
+const is_dot_ident = codegen_emit_storage_values.is_dot_ident;
 const clone_local_set = codegen_storage_layout.clone_local_set;
-const type_base_name = codegen_emit_storage_values.typeBaseName;
+const type_base_name = codegen_emit_storage_values.type_base_name;
 pub fn emit_field_reflection_static_if(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
