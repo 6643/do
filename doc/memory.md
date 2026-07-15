@@ -79,7 +79,7 @@ v1 默认对象头只保存 ARC 和 layout 所需的公共字段:
 5. `[T]` 的 `len/cap` 放在 `Object.data` 起点: `len: u32` @0, `cap: u32` @4, 元素数据从 offset 8 起 (共 8 字节 payload header)。
 6. 固定布局 managed struct 不需要 `len/cap`, payload 字节布局完全由 layout table 决定。
 7. header 压缩到 `u16/u16`、尾部 reference count、状态化 header 都是 v2 优化。
-8. 编译器侧与上述 layout 对齐的纯 WAT 访问在 `src/build/wat_storage.zig` (`STORAGE_PAYLOAD_HEADER_BYTES = 8`, `type_id` `[u8]`-style=`1` / managed-storage=`65535`); 类型/元素宽度分类在 `src/build/type_name.zig`; 业务 `@set/@put`/COW 编排仍在 `src/build/codegen_api.zig` / `src/build/codegen_pipeline.zig` / `src/build/gen_types.zig`。
+8. 编译器侧与上述 layout 对齐的纯 WAT 访问在 `src/build/wat_storage.zig` (`STORAGE_PAYLOAD_HEADER_BYTES = 8`, `type_id` `[u8]`-style=`1` / managed-storage=`65535`); 类型/元素宽度分类在 `src/build/type_name.zig`; 业务 `@set/@put`/COW 编排仍在 `src/build/codegen_api.zig` / `src/build/codegen_pipeline.zig` / `src/build/codegen_storage_layout.zig`。
 
 ### 3.3 Layout Table
 

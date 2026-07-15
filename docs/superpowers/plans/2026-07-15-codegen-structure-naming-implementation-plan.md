@@ -1,5 +1,7 @@
 # Compiler Structure and Naming Refactor Implementation Plan
 
+Status: completed in `a78fa4c` on 2026-07-15. The historical task breakdown below is retained for traceability; follow-up cleanup is tracked separately.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Reorganize the compiler implementation under `src/build` around explicit phase/domain boundaries and convert internal Zig function names to lowercase snake_case without changing language behavior, WASI ABI, runtime behavior, or generated instruction strategy.

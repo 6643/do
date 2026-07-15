@@ -23,7 +23,7 @@
 4. 查运行时表示、ARC、storage 或 text lowering: 看 `doc/memory.md`; 查 allocator/block/object/layout 结构字段看 `doc/memory_layout_structs.md`。
 5. 查 `@host` / WIT / component lowering 边界: 看 `doc/wit/wasi_p3_lowering.md`; 查当前已登记 target 和 record mirror 看 `doc/wit/wasi_registry.json`。
 6. 查当前实现状态和暂跳过项: 看 `doc/roadmap_status.md`。
-7. 查编译器模块边界: 流水线入口在 `src/build/lexer.zig` / `parser.zig` / `sema.zig` / `codegen_api.zig`; sema 域模块为 `sema_util` / `sema_types` / `sema_func` / `sema_struct` / `sema_type` / `sema_import` / `sema_ctrl`; 纯类型/布局 SSOT 在 `src/build/type_name.zig`; storage 指针与 payload/Tuple pack 的纯 WAT 在 `src/build/wat_storage.zig` / `src/build/wat_payload.zig` (见 `AGENTS.md` 与 `doc/start_here.md`)。
+7. 查编译器模块边界: 流水线入口在 `src/build/lexer.zig` / `parser.zig` / `sema.zig` / `codegen_api.zig`; sema 域模块为 `sema_tokens` / `sema_shapes` / `sema_function_*` / `sema_structures` / `sema_type_checks` / `sema_imports` / `sema_control`; codegen 域模块以 `codegen_*` / `wat_*` 命名并保持单向依赖; 纯类型/布局 SSOT 在 `src/build/type_name.zig`; storage 指针与 payload/Tuple pack 的纯 WAT 在 `src/build/wat_storage.zig` / `src/build/wat_payload.zig` (见 `AGENTS.md` 与 `doc/start_here.md`)。
 8. 改 parser 语法时, 同步 `doc/grammar.peg`、`doc/syntax/`、测试和必要的 `doc/spec_rules.md` 语义约束。
 9. 改语义或静态约束时, 同步 `doc/spec_rules.md`、示例、测试和必要的 `doc/syntax/` 速查。
 

@@ -21,7 +21,7 @@
 | 阶段 D | 可推进项 done; D2.1 按 B 方案绿色 regression 收口 |
 | 阶段 G | G1–G5、G6.1、G6.3、G6.4 done; G6.2 **blocked** |
 | 阶段 I | **closed** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
-| 架构扁平拆分 | 已落地: `diagnostics` / `type_name` / `sema_error` / `gen_*` 域竖切 / **`sema_*` 域竖切** (`sema_util`/`types`/`func`/`struct`/`type`/`import`/`ctrl`) |
+| 架构扁平拆分 | 已落地: `diagnostics` / `type_name` / `sema_error` / codegen 域竖切 / **`sema_*` 域竖切** (`sema_tokens`/`sema_shapes`/`sema_function_*`/`sema_structures`/`sema_type_checks`/`sema_imports`/`sema_control`) |
 | 目录 | 标准库 `lib/`; 工具链 `src/` (原 `tool/`) |
 
 ### 最近验证
@@ -31,7 +31,7 @@ cd src && zig test main.zig
   → All 119 tests passed.
 
 ./src/build/test/run_tests.sh
-  → pass=919 fail=0 skip=3
+  → pass=941 fail=0 skip=3
 
 RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
   → pass=833 fail=0 skip=3; wasm run summary: pass=6 fail=0

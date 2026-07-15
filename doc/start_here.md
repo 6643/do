@@ -40,9 +40,9 @@
 ```bash
 # 默认完整回归 (当前基线)
 ./src/build/test/run_tests.sh
-# 期望: pass=933 fail=0 skip=3
+# 期望: pass=941 fail=0 skip=3
 
-# gen 单元测试
+# codegen 单元测试
 cd src && zig test build/codegen_api.zig
 # 期望: All 69 tests passed.
 
@@ -59,7 +59,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 
 | 基线项 | 最近值 |
 | --- | --- |
-| 默认回归 | `pass=933 fail=0 skip=3` |
+| 默认回归 | `pass=941 fail=0 skip=3` |
 | `zig test build/codegen_api.zig` | `69/69` |
 | `compile_ok` / `compiled_ok` / `compile_err` | do≈`272` / `77` / `39` |
 | 剩余 skip | `16_loop_recv_value`、`96_file_lib_resource_shape`、`118_wasi_p3_std_wrappers` (recv/WASI 后置) |
@@ -107,7 +107,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | | `codegen_names.zig` | public name、core-func 名表、mangled 符号 |
 | | `codegen_host_imports.zig` | unified `@host("env", member, sig)` host import collect/parse |
 | | `codegen_imports.zig` | 模块 import 解析、reach、string-data |
-| | `gen_wasi` / `gen_union` | WASI 表/parse; union layout |
+| | `codegen_wasi_registry.zig` / `codegen_union_layout.zig` | WASI 表/parse; union layout |
 | | `wat_payload` | 标量 payload load/store、Tuple 叶子 pack/unpack |
 | | `wat_storage` | storage 指针/header/alias; `HEADER=8` |
 | | `runtime_arc_wat` | ARC runtime WAT + layout 类型 SSOT |
