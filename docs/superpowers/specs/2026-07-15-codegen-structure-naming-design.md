@@ -21,7 +21,7 @@ The current compiler has 57 top-level Zig modules under `src/build`. The largest
 | `gen_wasi_emit.zig` | 2342 | WASI ABI lowering and generic codegen helper exports are mixed. |
 | `gen_types.zig` | 1141 | Declaration models, local models, function shapes, context, constants, and cleanup helpers are mixed. |
 
-Recent history shows repeated partial splits of `gen.zig` into `gen_util`, `gen_wasi`, `gen_impl`, `gen_lower`, `gen_collect`, and domain files. The names describe different dimensions at the same level: phase, domain, implementation detail, and generic utility. The result is a broad re-export graph and unclear ownership.
+Recent history shows repeated partial splits of `codegen_api.zig` into `gen_util`, `gen_wasi`, `gen_impl`, `codegen_pipeline`, `gen_collect`, and domain files. The names describe different dimensions at the same level: phase, domain, implementation detail, and generic utility. The result is a broad re-export graph and unclear ownership.
 
 ## Target Architecture
 
@@ -60,8 +60,8 @@ The directory remains flat. File names use lowercase snake case and describe one
 
 | Current file | Target role/name |
 | --- | --- |
-| `gen.zig` | `codegen_api.zig` |
-| `gen_lower.zig` | `codegen_pipeline.zig` |
+| `codegen_api.zig` | `codegen_api.zig` |
+| `codegen_pipeline.zig` | `codegen_pipeline.zig` |
 | `gen_types.zig` | `codegen_model.zig` plus `codegen_context.zig` and `codegen_constants.zig` |
 | `gen_util.zig` | `codegen_tokens.zig` plus `codegen_names.zig` |
 | `gen_collect_func.zig` | `codegen_collect_functions.zig` |
@@ -76,17 +76,17 @@ The directory remains flat. File names use lowercase snake case and describe one
 | `gen_union_emit.zig` | `codegen_emit_union.zig` |
 | `gen_wasi.zig` | `codegen_wasi_registry.zig` |
 | `gen_wasi_emit.zig` | `codegen_emit_wasi.zig` |
-| `gen_import.zig` | `codegen_imports.zig` |
-| `gen_host.zig` | `codegen_host_imports.zig` |
+| `codegen_imports.zig` | `codegen_imports.zig` |
+| `codegen_host_imports.zig` | `codegen_host_imports.zig` |
 | `gen_hooks.zig` | `codegen_callbacks.zig` |
 | `gen_payload_wat.zig` | `wat_payload.zig` |
 | `gen_storage_wat.zig` | `wat_storage.zig` |
 | `gen_tuple.zig` | `codegen_emit_tuple.zig` |
-| `gen_generic.zig` | `codegen_generics.zig` |
-| `gen_ownership.zig` | `codegen_ownership.zig` |
-| `backend_ir.zig` | `codegen_ir.zig` |
-| `component_metadata_wat.zig` | `wat_component_metadata.zig` |
-| `function_body_wat.zig` | `wat_function_body.zig` |
+| `codegen_generics.zig` | `codegen_generics.zig` |
+| `codegen_ownership.zig` | `codegen_ownership.zig` |
+| `codegen_ir.zig` | `codegen_ir.zig` |
+| `wat_component_metadata.zig` | `wat_component_metadata.zig` |
+| `wat_function_body.zig` | `wat_function_body.zig` |
 
 Large domains are split by responsibility during migration. For example, storage code may become storage value emission, storage operations/calls, and storage layout helpers. The exact split is finalized from the actual function clusters during the implementation plan; no new module may be created only to move a random group of functions.
 

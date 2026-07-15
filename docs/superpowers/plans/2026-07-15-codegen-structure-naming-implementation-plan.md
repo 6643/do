@@ -24,8 +24,8 @@
 
 | Current file | Planned file/role |
 | --- | --- |
-| `src/build/gen.zig` | `src/build/codegen_api.zig`; public entry points only |
-| `src/build/gen_lower.zig` | `src/build/codegen_pipeline.zig`; orchestration only |
+| `src/build/codegen_api.zig` | `src/build/codegen_api.zig`; public entry points only |
+| `src/build/codegen_pipeline.zig` | `src/build/codegen_pipeline.zig`; orchestration only |
 | `src/build/gen_types.zig` | `src/build/codegen_model.zig`, `src/build/codegen_context.zig`, `src/build/codegen_constants.zig` |
 | `src/build/gen_util.zig` | `src/build/codegen_tokens.zig`, `src/build/codegen_names.zig` |
 | `src/build/gen_collect.zig` | deleted facade; direct imports from owning collect modules |
@@ -41,17 +41,17 @@
 | `src/build/gen_union_emit.zig` | `src/build/codegen_emit_union.zig` |
 | `src/build/gen_wasi.zig` | `src/build/codegen_wasi_registry.zig` |
 | `src/build/gen_wasi_emit.zig` | `src/build/codegen_emit_wasi.zig` |
-| `src/build/gen_import.zig` | `src/build/codegen_imports.zig` |
-| `src/build/gen_host.zig` | `src/build/codegen_host_imports.zig` |
+| `src/build/codegen_imports.zig` | `src/build/codegen_imports.zig` |
+| `src/build/codegen_host_imports.zig` | `src/build/codegen_host_imports.zig` |
 | `src/build/gen_hooks.zig` | `src/build/codegen_callbacks.zig` |
 | `src/build/gen_payload_wat.zig` | `src/build/wat_payload.zig` |
 | `src/build/gen_storage_wat.zig` | `src/build/wat_storage.zig` |
 | `src/build/gen_tuple.zig` | `src/build/codegen_emit_tuple.zig` |
-| `src/build/gen_generic.zig` | `src/build/codegen_generics.zig` |
-| `src/build/gen_ownership.zig` | `src/build/codegen_ownership.zig` |
-| `src/build/backend_ir.zig` | `src/build/codegen_ir.zig` |
-| `src/build/component_metadata_wat.zig` | `src/build/wat_component_metadata.zig` |
-| `src/build/function_body_wat.zig` | `src/build/wat_function_body.zig` |
+| `src/build/codegen_generics.zig` | `src/build/codegen_generics.zig` |
+| `src/build/codegen_ownership.zig` | `src/build/codegen_ownership.zig` |
+| `src/build/codegen_ir.zig` | `src/build/codegen_ir.zig` |
+| `src/build/wat_component_metadata.zig` | `src/build/wat_component_metadata.zig` |
+| `src/build/wat_function_body.zig` | `src/build/wat_function_body.zig` |
 | `src/build/sema_scan.zig` | `src/build/sema_tokens.zig` |
 | `src/build/sema_types.zig` | `src/build/sema_shapes.zig` |
 | `src/build/sema_func_sig.zig` | `src/build/sema_function_signatures.zig` |
@@ -243,7 +243,7 @@ git commit -m "refactor: name semantic modules by domain"
 - Rename: `gen_collect_type.zig` -> `codegen_collect_declarations.zig`
 - Rename: `gen_expr_collect.zig` -> `codegen_collect_body.zig`
 - Delete: `gen_collect.zig` after direct-import migration
-- Modify: `gen_lower.zig`, `gen_expr.zig`, `gen_generic.zig`, `gen_storage.zig`, `gen_struct.zig`, and all collection import sites
+- Modify: `codegen_pipeline.zig`, `gen_expr.zig`, `codegen_generics.zig`, `gen_storage.zig`, `gen_struct.zig`, and all collection import sites
 
 **Interfaces:**
 - `codegen_collect_functions.zig` owns function declarations, callback shapes, and function-level call collection.
@@ -316,15 +316,15 @@ Stage only the paths and hunks for the domain being committed. For overlapping f
 ## Task 7: Rename Pipeline, Runtime, Import, Generic, and Ownership Modules
 
 **Files:**
-- Rename: `gen_lower.zig` -> `codegen_pipeline.zig`
-- Rename: `gen.zig` -> `codegen_api.zig`
-- Rename: `gen_import.zig` -> `codegen_imports.zig`
-- Rename: `gen_host.zig` -> `codegen_host_imports.zig`
-- Rename: `gen_generic.zig` -> `codegen_generics.zig`
-- Rename: `gen_ownership.zig` -> `codegen_ownership.zig`
-- Rename: `backend_ir.zig` -> `codegen_ir.zig`
-- Rename: `component_metadata_wat.zig` -> `wat_component_metadata.zig`
-- Rename: `function_body_wat.zig` -> `wat_function_body.zig`
+- Rename: `codegen_pipeline.zig` -> `codegen_pipeline.zig`
+- Rename: `codegen_api.zig` -> `codegen_api.zig`
+- Rename: `codegen_imports.zig` -> `codegen_imports.zig`
+- Rename: `codegen_host_imports.zig` -> `codegen_host_imports.zig`
+- Rename: `codegen_generics.zig` -> `codegen_generics.zig`
+- Rename: `codegen_ownership.zig` -> `codegen_ownership.zig`
+- Rename: `codegen_ir.zig` -> `codegen_ir.zig`
+- Rename: `wat_component_metadata.zig` -> `wat_component_metadata.zig`
+- Rename: `wat_function_body.zig` -> `wat_function_body.zig`
 - Modify: `src/build/entry.zig`, `src/build/cli.zig`, and all imports of the renamed API/pipeline modules
 
 **Interfaces:**

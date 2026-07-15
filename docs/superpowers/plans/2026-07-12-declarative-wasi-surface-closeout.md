@@ -24,7 +24,7 @@
 | Item | Evidence location |
 |------|-------------------|
 | Stdlib `@host` + resource/record | `lib/{dir,file,time,random,io.stream}.do` |
-| Single-line field clamp | `src/build/gen.zig` `appendStructFieldsInBraceRange`; `sema.zig` `collectStructInfos` |
+| Single-line field clamp | `src/build/codegen_api.zig` `appendStructFieldsInBraceRange`; `sema.zig` `collectStructInfos` |
 | Fixtures multi-line + single-line | `compile_ok/276`, `compile_ok/277` |
 | Bare `@wasi` removed from compiler checks | `parser`/`sema`/`codegen`/`imports`/`diag` only `wasi_func` for host |
 | Docs §21.1 host-first legal sample | `doc/spec_rules.md` |
@@ -86,7 +86,7 @@ Copy real `error[...]` lines into `.expect` (one substring per line, project con
 
 Only if Step 2 succeeds incorrectly:
 - Ensure `isHostImportLine` / `isWasiHostImportStart` / parser import head reject `"wasi"` (keep `"wasi_func"` only).
-- Minimal change in `src/build/sema.zig`, `imports.zig`, `gen.zig`, `parser.zig` as needed.
+- Minimal change in `src/build/sema.zig`, `imports.zig`, `codegen_api.zig`, `parser.zig` as needed.
 
 - [ ] **Step 4: Run err case via suite**
 
@@ -112,7 +112,7 @@ git commit -m "test: reject bare @wasi host alias after wasi_func-only surface"
 **Files:**
 - Existing: `src/build/test/compile_ok/277_wasi_resource_single_line.do`
 - Existing: `src/build/test/compile_ok/277_wasi_resource_single_line.expect`
-- Modify only if green breaks: `src/build/gen.zig` `appendStructFieldsInBraceRange`, `src/build/sema.zig` `collectStructFieldInfos`
+- Modify only if green breaks: `src/build/codegen_api.zig` `appendStructFieldsInBraceRange`, `src/build/sema.zig` `collectStructFieldInfos`
 
 **Interfaces:**
 - Consumes: `Dir = @wasi_resource("…", { .id i64 })` same-line body

@@ -22,7 +22,7 @@
 
 **Files:**
 - Modify: `src/build/sema_import.zig` (known WASI rows ~404–407)
-- Modify: `src/build/component_metadata_wat.zig` (`WasiLowering`, `wasiLowering`)
+- Modify: `src/build/wat_component_metadata.zig` (`WasiLowering`, `wasiLowering`)
 - Modify: `doc/wit/wasi_registry.json` if drop missing
 - Test: `src/build/test/compile_ok/291_wasi_tcp_create_union.do` (+ `.expect` if needed)
 
@@ -85,7 +85,7 @@ Expected: error (signature / UnsupportedLowering / NoMatchingCall).
 // mirror udp-socket.*
 ```
 
-`component_metadata_wat.zig` — add before `return null`:
+`wat_component_metadata.zig` — add before `return null`:
 
 ```zig
 if (std.mem.eql(u8, import.target, "sockets/types/tcp-socket.create") and

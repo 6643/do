@@ -7,7 +7,7 @@ This repository contains the `do` language compiler and its regression suite.
 - `lib/`: Standard library and builtin/core declaration table (`lib/_.do`). Bare `@lib("file.do")` resolves under this directory.
 - `src/`: Toolchain and compiler sources (formerly `tool/`).
 - `src/build/`: Zig compiler and `do build` source, kept as flat single-purpose modules.
-    - Core pipeline: `src/build/lexer.zig` → `src/build/parser.zig` → `src/build/sema.zig` → `src/build/gen.zig`.
+    - Core pipeline: `src/build/lexer.zig` → `src/build/parser.zig` → `src/build/sema.zig` → `src/build/codegen_api.zig`.
     - Shared pure helpers: `src/build/type_name.zig` (type/layout SSOT), `src/build/sema_error.zig`, `src/build/diagnostics.zig`.
     - Sema domain (flat modules; one-way deps; leaf domains do not import each other):
         - `sema.zig` — public entry (`check_program` / `take_last_error_site` / `ErrorSite`) + orchestration
@@ -19,10 +19,10 @@ This repository contains the `do` language compiler and its regression suite.
         - `sema_type_checks.zig` — type decl naming/conflicts, enum/error/payload, union branches, type refs
         - `sema_imports.zig` — host/local import + known WASI signature validation
         - `sema_control.zig` — loop/label, defer, field reflection, assignment, constraint layout
-    - Gen domain (flat modules; one-way deps; leaf domains do not import `gen_lower`):
-        - `gen.zig` — public entry (`emitWat` / `emitTestWat`) + unit tests
-        - `gen_lower.zig` — orchestration (`emitWat*` / hooks install) + minimal re-exports for tests
-        - `gen_generic.zig` — generic func instantiate / type bind / prebind callback (no import of gen_lower)
+    - Gen domain (flat modules; one-way deps; leaf domains do not import `codegen_pipeline`):
+        - `codegen_api.zig` — public entry (`emit_wat` / `emit_test_wat`) + unit tests
+        - `codegen_pipeline.zig` — orchestration (`emit_wat*` / hooks install) + minimal re-exports for tests
+        - `codegen_generics.zig` — generic func instantiate / type bind / prebind callback (no import of codegen_pipeline)
         - `codegen_callbacks.zig` — late-bound emit callbacks (break reverse peer edges: control/union→expression, struct→union)
         - `codegen_model.zig` — immutable declarations, shape records, ownership/free helpers, `ExprCallHead`
         - `codegen_context.zig` — LocalSet, mutable codegen contexts, local-name helpers
@@ -36,17 +36,17 @@ This repository contains the `do` language compiler and its regression suite.
         - `codegen_emit_tuple.zig` — Tuple / pure-scalar pack helpers (load/store/inc/dec leaves)
         - `codegen_emit_struct.zig` / `codegen_emit_struct_fields.zig` — struct binding / field / literal emit; uses hooks for union payload
         - `codegen_emit_union.zig` — union value / binding emit; uses hooks for user-func call
-        - `codegen_emit_wasi.zig` — WASI host call/result emit (uses `EmitExprFn` / hooks; no import of `gen_lower`)
-        - `gen_ownership.zig` — ARC release-plan emit and related scope helpers
+        - `codegen_emit_wasi.zig` — WASI host call/result emit (uses `EmitExprFn` / hooks; no import of `codegen_pipeline`)
+        - `codegen_ownership.zig` — ARC release-plan emit and related scope helpers
         - `codegen_tokens.zig` — token/range/scan/decode helpers
         - `codegen_names.zig` — public names, core-func name tables, mangled symbols
-        - `gen_host.zig` — unified `@host("env", member, sig)` host import collect/parse
-        - `gen_import.zig` — module import resolve, reachability, string-data collect
+        - `codegen_host_imports.zig` — unified `@host("env", member, sig)` host import collect/parse
+        - `codegen_imports.zig` — module import resolve, reachability, string-data collect
         - `gen_wasi.zig` / `gen_union.zig` — WASI tables/parse, union layout
         - `gen_payload_wat.zig` / `gen_storage_wat.zig` — pure WAT fragments
         - `runtime_arc_wat.zig` — ARC runtime WAT + layout types SSOT (`ManagedFieldOffset` / `StructLayout` / `StringData`)
         - `runtime_prelude_wat.zig` — string-data memory emit + re-exports ARC API
-        - plus `function_body_wat.zig` / `component_metadata_wat.zig` / `backend_ir.zig`
+        - plus `wat_function_body.zig` / `wat_component_metadata.zig` / `codegen_ir.zig`
 - `src/main.zig`: Single CLI dispatch entrypoint for the `bin/do` tool.
 - `src/build.zig`: Zig build entrypoint. It installs the compiler binary to the repository `bin/` directory.
 - `bin/do`: Built compiler executable.

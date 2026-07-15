@@ -43,7 +43,7 @@
 # 期望: pass=933 fail=0 skip=3
 
 # gen 单元测试
-cd src && zig test build/gen.zig
+cd src && zig test build/codegen_api.zig
 # 期望: All 69 tests passed.
 
 # 发布前 smoke
@@ -60,7 +60,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | 基线项 | 最近值 |
 | --- | --- |
 | 默认回归 | `pass=933 fail=0 skip=3` |
-| `zig test build/gen.zig` | `69/69` |
+| `zig test build/codegen_api.zig` | `69/69` |
 | `compile_ok` / `compiled_ok` / `compile_err` | do≈`272` / `77` / `39` |
 | 剩余 skip | `16_loop_recv_value`、`96_file_lib_resource_shape`、`118_wasi_p3_std_wrappers` (recv/WASI 后置) |
 | 诊断 code | `errorSummary` / `errorHint` 各 57 条 (含 `UnsupportedLowering` / `UnsupportedTupleStorageLeaf`) |
@@ -86,9 +86,9 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | | `sema_type_checks.zig` | 类型声明 / enum·error·payload / union / type refs |
 | | `sema_imports.zig` | host/local import + 已知 WASI 签名校验 |
 | | `sema_control.zig` | loop/label / defer / field reflection / assign / constraint |
-| Gen 域 | `gen.zig` | 公开入口 + 单测 |
-| | `gen_lower.zig` | 编排核（`emitWat*` / hooks install）+ 最小 re-export |
-| | `gen_generic.zig` | 泛型实例化 / 类型绑定 / callback prebind（不 import lower） |
+| Gen 域 | `codegen_api.zig` | 公开入口 + 单测 |
+| | `codegen_pipeline.zig` | 编排核（`emit_wat*` / hooks install）+ 最小 re-export |
+| | `codegen_generics.zig` | 泛型实例化 / 类型绑定 / callback prebind（不 import lower） |
 | | `codegen_callbacks.zig` | 晚绑定 emit 回调（破 control/union→expression、struct→union 反向边） |
 | | `codegen_model.zig` | 不可变声明、shape、ownership/free、`ExprCallHead` |
 | | `codegen_context.zig` | LocalSet、可变 codegen context、local-name helpers |
@@ -103,23 +103,23 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | | `codegen_emit_struct.zig` / `codegen_emit_struct_fields.zig` | struct binding / field / literal emit |
 | | `codegen_emit_union.zig` | union value / binding emit |
 | | `codegen_emit_wasi.zig` | WASI host 调用/结果 emit（`EmitExprFn`/hooks，不 import lower） |
-| | `gen_ownership.zig` | ARC release plan emit / 作用域可达性辅助 |
+| | `codegen_ownership.zig` | ARC release plan emit / 作用域可达性辅助 |
 | | `codegen_tokens.zig` | token/range/scan/decode 工具 |
 | | `codegen_names.zig` | public name、core-func 名表、mangled 符号 |
-| | `gen_host.zig` | unified `@host("env", member, sig)` host import collect/parse |
-| | `gen_import.zig` | 模块 import 解析、reach、string-data |
+| | `codegen_host_imports.zig` | unified `@host("env", member, sig)` host import collect/parse |
+| | `codegen_imports.zig` | 模块 import 解析、reach、string-data |
 | | `gen_wasi` / `gen_union` | WASI 表/parse; union layout |
 | | `gen_payload_wat` | 标量 payload load/store、Tuple 叶子 pack/unpack |
 | | `gen_storage_wat` | storage 指针/header/alias; `HEADER=8` |
 | | `runtime_arc_wat` | ARC runtime WAT + layout 类型 SSOT |
 | | `runtime_prelude_wat` | string-data memory emit + re-export ARC API |
-| | `function_body_wat` / `component_metadata_wat` | 其它 WAT 写出切片 |
-| 旁路 | `backend_ir` | **仅**标量 `start` 旁路 + unit; **不是**主 emit 路径 |
+| | `wat_function_body` / `wat_component_metadata` | 其它 WAT 写出切片 |
+| 旁路 | `codegen_ir` | **仅**标量 `start` 旁路 + unit; **不是**主 emit 路径 |
 | CLI | `src/main.zig` | 分派; `do test` 经 `runTest` → `loadProgram` |
 
-**刻意未做**: 批量把真 overload `NoMatchingCall` 改成 `UnsupportedLowering`; 合并静态/compiled 双 runner; 把 `backend_ir` 扩成主路径; 继续硬拆 `codegen_emit_storage_operations` / `codegen_emit_expression` / `parser` / `imports` / `test_runner`（hooks 耦合或高风险，ROI 低）。
+**刻意未做**: 批量把真 overload `NoMatchingCall` 改成 `UnsupportedLowering`; 合并静态/compiled 双 runner; 把 `codegen_ir` 扩成主路径; 继续硬拆 `codegen_emit_storage_operations` / `codegen_emit_expression` / `parser` / `imports` / `test_runner`（hooks 耦合或高风险，ROI 低）。
 
-**已落地架构竖切**: `sema` 与 `gen` 均已按域拆成扁平 `*_` 模块 (见上表与 `AGENTS.md`); 对外仍经 `sema.zig` / `gen.zig` 入口。Batch B: collect 四叶、sema scan/func 子域、runtime ARC SSOT。
+**已落地架构竖切**: `sema` 与 `gen` 均已按域拆成扁平 `*_` 模块 (见上表与 `AGENTS.md`); 对外仍经 `sema.zig` / `codegen_api.zig` 入口。Batch B: collect 四叶、sema scan/func 子域、runtime ARC SSOT。
 
 ## 5. 当前阻断
 

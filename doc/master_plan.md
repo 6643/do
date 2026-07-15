@@ -26,7 +26,7 @@
 - 不默认推进 direct wasm binary emitter。
 - 不默认推进完整 WASI / Component Model (未决部分在 G6)。
 - 不大规模重写 parser / sema / codegen; 必须先拆成可回归小任务。
-- 不把 `backend_ir` 在未独立立项前扩成主 emit 路径。
+- 不把 `codegen_ir` 在未独立立项前扩成主 emit 路径。
 
 ## 1. 推进协议
 

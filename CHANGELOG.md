@@ -8,43 +8,43 @@
 
 - **G6.3 sockets scheme B** (create/bind/drop): dual `Ipv4`/`Ipv6` address + payload enum `IpSocketAddress`; resource shells `TcpSocket`/`UdpSocket`; coarse `TcpError`/`UdpError`; stdlib `lib/tcp.do`/`lib/udp.do`/`lib/net.do`; known-table + `wasiLowering` + guest address pack; fixtures `compile_ok/291`–`294`; manifest tool marks sockets create/bind lowerable. Design: `docs/superpowers/specs/2026-07-13-g6-3-sockets-scheme-b-design.md`. Docs: G6.3 closed in `pending_blocked` / start_here / roadmap / wasi_p3_lowering / spec_rules. Non-goals remain: listen/connect, true host smoke (D2), G6.2 async.
 
-- Branch-completeness audit (full `src/**/*.zig`, 2199 fns): check depth-split extracts keep full decision matrices (null/false/true fallthrough, error arms, multi-result LHS). Campaign extracts path-equivalent; tri-state `!?bool` call sites use `|handled| return handled`. No incomplete-branch fix required. Empirical: `zig test gen.zig` 69; suite `pass=933 fail=0 skip=3`.
+- Branch-completeness audit (full `src/**/*.zig`, 2199 fns): check depth-split extracts keep full decision matrices (null/false/true fallthrough, error arms, multi-result LHS). Campaign extracts path-equivalent; tri-state `!?bool` call sites use `|handled| return handled`. No incomplete-branch fix required. Empirical: `zig test codegen_api.zig` 69; suite `pass=933 fail=0 skip=3`.
 
-- Structure flatten (AGENTS): early-return + straight trunk; extract only complete nameable units. Re-inlined peel-off `advanceTupleCtorBodyDepth`. Kept nameable mid-layer units (loop-label stack events, tuple-ctor segment check, WASI error-enum arms, unmanaged struct payload, multi-result LHS). Depth is not a hard quota — do not tear last-layer blocks just to lower nest. Verify: Debug build; `zig test gen.zig` 69 pass; full suite `pass=933 fail=0 skip=3`. No intentional semantic change.
+- Structure flatten (AGENTS): early-return + straight trunk; extract only complete nameable units. Re-inlined peel-off `advanceTupleCtorBodyDepth`. Kept nameable mid-layer units (loop-label stack events, tuple-ctor segment check, WASI error-enum arms, unmanaged struct payload, multi-result LHS). Depth is not a hard quota — do not tear last-layer blocks just to lower nest. Verify: Debug build; `zig test codegen_api.zig` 69 pass; full suite `pass=933 fail=0 skip=3`. No intentional semantic change.
 
-- Guard-style + mid-layer extract (`src/build`): whole semantic units over peel-off micro-helpers (loop-label two passes, `emitIntrinsicCall` / `emitCoreOpArgs`, param/struct collect). Re-inlined single-call peels that split coherent logic. Aligns with early-return / nameable-boundary rule, not a nest-number quota. Verify: Debug build; `zig test gen.zig` 69 pass; full suite.
+- Guard-style + mid-layer extract (`src/build`): whole semantic units over peel-off micro-helpers (loop-label two passes, `emitIntrinsicCall` / `emitCoreOpArgs`, param/struct collect). Re-inlined single-call peels that split coherent logic. Aligns with early-return / nameable-boundary rule, not a nest-number quota. Verify: Debug build; `zig test codegen_api.zig` 69 pass; full suite.
 
-- Batch B (worth-splitting one-shot): `gen_collect` → facade + `gen_collect_{util,struct,func,type}`; `sema_util` → facade + `sema_scan`; `sema_func` → facade + `sema_func_{sig,call,lambda,shared}`; `runtime_arc_wat` SSOT for ARC WAT/layout types (`runtime_prelude_wat` re-exports). Mutual peer cycles: none. Deferred: further `gen_storage`/`gen_expr`/`parser`/`imports`/`test_runner` splits (hooks coupling / high risk). Verify: Debug build; `zig test gen.zig` 69 pass; full suite `pass=933 fail=0 skip=3`. Docs: `AGENTS.md`, `doc/start_here.md`.
+- Batch B (worth-splitting one-shot): `gen_collect` → facade + `gen_collect_{util,struct,func,type}`; `sema_util` → facade + `sema_scan`; `sema_func` → facade + `sema_func_{sig,call,lambda,shared}`; `runtime_arc_wat` SSOT for ARC WAT/layout types (`runtime_prelude_wat` re-exports). Mutual peer cycles: none. Deferred: further `gen_storage`/`gen_expr`/`parser`/`imports`/`test_runner` splits (hooks coupling / high risk). Verify: Debug build; `zig test codegen_api.zig` 69 pass; full suite `pass=933 fail=0 skip=3`. Docs: `AGENTS.md`, `doc/start_here.md`.
 
-- Gen A3: extract `gen_generic.zig` (~56 fns: generic instantiate/bind/prebind, template match, result ABI) from `gen_lower.zig` (~2.7k → ~1.1k orchestration). `gen_lower` re-exports for tests/call-sites; generic uses `gen_expr.collectBodyLocals` (no import of lower). Docs: `AGENTS.md`, `doc/start_here.md`.
+- Gen A3: extract `codegen_generics.zig` (~56 fns: generic instantiate/bind/prebind, template match, result ABI) from `codegen_pipeline.zig` (~2.7k → ~1.1k orchestration). `codegen_pipeline` re-exports for tests/call-sites; generic uses `gen_expr.collectBodyLocals` (no import of lower). Docs: `AGENTS.md`, `doc/start_here.md`.
 
-- Gen A2: extract `gen_expr_collect.zig` (~36 fns: `collectBodyLocals*`, loop locals, multi-result/callback collect helpers) from `gen_expr.zig` (~4.1k → ~3.2k). `gen_expr` re-exports for call-site stability; collect does not import expr. Verify: Debug build; `zig test gen.zig` 69 pass; full suite.
+- Gen A2: extract `gen_expr_collect.zig` (~36 fns: `collectBodyLocals*`, loop locals, multi-result/callback collect helpers) from `gen_expr.zig` (~4.1k → ~3.2k). `gen_expr` re-exports for call-site stability; collect does not import expr. Verify: Debug build; `zig test codegen_api.zig` 69 pass; full suite.
 
 - Gen A1: extract `gen_tuple.zig` (~28 pack helpers: tuple local get/set, leaf load/store/inc/dec, pure-scalar struct pack) from `gen_storage.zig` (~4.5k → ~3.9k). `gen_storage` re-exports for call-site stability; `TupleElementInfo` SSOT in `gen_tuple`. No mutual import with storage. Docs: `AGENTS.md`, `doc/start_here.md`.
 
-- Guard-style flatten (gen_lower/storage): generic callback prebind/bind (`prebindGenericCallbackArg` / `bindGenericCallbackArg`), start-body collect, unmanaged struct result ABI, `callArgMatchesCallbackShape` — early returns + helpers; no semantic change.
+- Guard-style flatten (codegen_pipeline/storage): generic callback prebind/bind (`prebindGenericCallbackArg` / `bindGenericCallbackArg`), start-body collect, unmanaged struct result ABI, `callArgMatchesCallbackShape` — early returns + helpers; no semantic change.
 
 - Guard-style flatten (AGENTS nest ≤3): rewrite deep optional-if pyramids in `gen_union_emit` (`emitUnionValue` / `emitUnionBinding` / payload-enum ctor), `gen_ctrl` (`emitDiscardAssignment`), `gen_struct` (unmanaged error-union return), `gen_expr` (`collectLoopBlockLocals` / tuple get). Early returns + small helpers; no semantic change.
 
-- Gen emit cycle break + lower thin: extend `gen_hooks` for reverse peer edges (`collectBodyLocalsWithMode`, multi-result assign, bare user-func call, union-binding move, union struct payload); `gen_ctrl` / `gen_union_emit` / `gen_struct` no longer import `gen_expr` / each other for those paths. Drop ~473 unused `gen_lower` pub re-exports (~3.0k → ~2.6k). Mutual peer imports among gen emit modules: none. Verify: Debug build; `zig test gen.zig` 69 pass; full suite.
+- Gen emit cycle break + lower thin: extend `gen_hooks` for reverse peer edges (`collectBodyLocalsWithMode`, multi-result assign, bare user-func call, union-binding move, union struct payload); `gen_ctrl` / `gen_union_emit` / `gen_struct` no longer import `gen_expr` / each other for those paths. Drop ~473 unused `codegen_pipeline` pub re-exports (~3.0k → ~2.6k). Mutual peer imports among gen emit modules: none. Verify: Debug build; `zig test codegen_api.zig` 69 pass; full suite.
 
 - Sema domain split: extract flat modules from `sema.zig` (~9.5k → ~80-line orchestrator). New: `sema_util` (token/name/scan), `sema_types` (shared shapes), `sema_func`, `sema_struct`, `sema_type`, `sema_import`, `sema_ctrl`. Public API unchanged (`checkProgram` / `takeLastErrorSite` / `ErrorSite` via `sema.zig`). One-way deps; no peer mutual imports. Docs: `AGENTS.md`, `doc/start_here.md`, status notes.
 
-- Gen domain split complete (Tasks 1–6): vertical extract of `gen_storage` / `gen_struct` / `gen_union_emit` / `gen_expr` / `gen_ctrl` plus `gen_hooks` late-bound callbacks; leaf domains do not import `gen_lower`. `gen_lower` ~19.3k → ~3.0k (orchestration + generic collect + re-exports). Verify: `zig build` Debug OK; `zig test src/build/gen.zig` 69 pass; `./src/build/test/run_tests.sh` pass=933 fail=0 skip=3.
+- Gen domain split complete (Tasks 1–6): vertical extract of `gen_storage` / `gen_struct` / `gen_union_emit` / `gen_expr` / `gen_ctrl` plus `gen_hooks` late-bound callbacks; leaf domains do not import `codegen_pipeline`. `codegen_pipeline` ~19.3k → ~3.0k (orchestration + generic collect + re-exports). Verify: `zig build` Debug OK; `zig test src/build/codegen_api.zig` 69 pass; `./src/build/test/run_tests.sh` pass=933 fail=0 skip=3.
 
-- Gen domain split (Tasks 1–4 partial): `gen_collect` (decl/layout collect); `gen_wasi_emit` (WASI host emit + `EmitExprFn`); `gen_ownership` (release plans); `gen_lower` ~16.9k→~15.0k. Storage/struct/union/expr vertical splits deferred (import cycles with `emitExpr`); leaf domains do not import `gen_lower`.
+- Gen domain split (Tasks 1–4 partial): `gen_collect` (decl/layout collect); `gen_wasi_emit` (WASI host emit + `EmitExprFn`); `codegen_ownership` (release plans); `codegen_pipeline` ~16.9k→~15.0k. Storage/struct/union/expr vertical splits deferred (import cycles with `emitExpr`); leaf domains do not import `codegen_pipeline`.
 
-- Gen Task 1: extract `gen_collect.zig` (struct/enum/func/layout collect + pack leaf helpers); `gen_lower` ~19.3k → ~16.9k
+- Gen Task 1: extract `gen_collect.zig` (struct/enum/func/layout collect + pack leaf helpers); `codegen_pipeline` ~19.3k → ~16.9k
 
-- Continue gen split: `gen_host` (`@host("env", ...)` imports); `gen_import` (module resolve / reach / string-data); pure helpers into `gen_util`; free helpers + `ExprCallHead` into `gen_types`; rename `gen_impl` → `gen_lower`
+- Continue gen split: `codegen_host_imports` (`@host("env", ...)` imports); `codegen_imports` (module resolve / reach / string-data); pure helpers into `gen_util`; free helpers + `ExprCallHead` into `gen_types`; rename `gen_impl` → `codegen_pipeline`
 
-- Gen module split: `gen.zig` (entry) + `gen_types.zig` (types/LocalSet) + `gen_lower.zig` (emit/collect); keep `gen_util`/`gen_wasi`/`gen_union`
+- Gen module split: `codegen_api.zig` (entry) + `gen_types.zig` (types/LocalSet) + `codegen_pipeline.zig` (emit/collect); keep `gen_util`/`gen_wasi`/`gen_union`
 
 - Continue gen split: `gen_union.zig` (layout types/helpers); extend `gen_wasi` (call-shape / lowerability) and `gen_util` (type separators)
 
-- Split `gen.zig`: extract `gen_util.zig` (token helpers) and `gen_wasi.zig` (WASI tables/parse)
+- Split `codegen_api.zig`: extract `gen_util.zig` (token helpers) and `gen_wasi.zig` (WASI tables/parse)
 
-- Rename codegen modules to `gen_*` prefix: `gen.zig`, `gen_payload_wat.zig`, `gen_storage_wat.zig`
+- Rename codegen modules to `gen_*` prefix: `codegen_api.zig`, `gen_payload_wat.zig`, `gen_storage_wat.zig`
 
 - Payload enum L1: `Message = Quit | Text([u8]) | Binary([u8])` declare/construct/`@is` narrow (tags by case name)
   - sema: `isPayloadEnumDeclStart` + branch validation; codegen: tag+max-payload layout, unit/payload ctors

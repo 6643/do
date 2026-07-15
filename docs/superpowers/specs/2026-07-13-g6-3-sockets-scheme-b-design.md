@@ -98,7 +98,7 @@ Symmetric to tcp with `Udp*` names and udp-socket targets.
 | Area | Change |
 |------|--------|
 | `sema_import.zig` known table | do_params/do_result for create/bind/drop + resource sugar |
-| `component_metadata_wat.zig` `wasiLowering` | lowerable create/bind/drop entries |
+| `wat_component_metadata.zig` `wasiLowering` | lowerable create/bind/drop entries |
 | `gen_wasi_emit.zig` | create call + union value; bind pack + unit union; drop handle |
 | `validate_wasi_bind_manifest.mjs` | shim plans for socket signatures |
 | `test_wasi_bind_manifest_tool.mjs` | update sockets from unsupported → lowerable |
