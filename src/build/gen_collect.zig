@@ -1,7 +1,8 @@
 //! Collect facade — re-exports domain modules + util.
 const std = @import("std");
 const lexer = @import("lexer.zig");
-const gen_util = @import("gen_util.zig");
+const codegen_tokens = @import("codegen_tokens.zig");
+const codegen_names = @import("codegen_names.zig");
 const gen_types = @import("gen_types.zig");
 const gen_collect_util = @import("gen_collect_util.zig");
 const gen_collect_struct = @import("gen_collect_struct.zig");

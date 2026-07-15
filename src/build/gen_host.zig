@@ -2,28 +2,29 @@
 const std = @import("std");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
-const gen_util = @import("gen_util.zig");
+const codegen_tokens = @import("codegen_tokens.zig");
+const codegen_names = @import("codegen_names.zig");
 const gen_types = @import("gen_types.zig");
 
-const tokEq = gen_util.tokEq;
-const findMatchingInRange = gen_util.findMatchingInRange;
-const findLineEnd = gen_util.findLineEnd;
-const isLineStart = gen_util.isLineStart;
-const findArgEnd = gen_util.findArgEnd;
-const findTopLevelToken = gen_util.findTopLevelToken;
-const trimParens = gen_util.trimParens;
-const stringTokenBody = gen_util.stringTokenBody;
-const publicDeclName = gen_util.publicDeclName;
-const appendFmt = gen_util.appendFmt;
+const tokEq = codegen_tokens.tok_eq;
+const findMatchingInRange = codegen_tokens.find_matching_in_range;
+const findLineEnd = codegen_tokens.find_line_end;
+const isLineStart = codegen_tokens.is_line_start;
+const findArgEnd = codegen_tokens.find_arg_end;
+const findTopLevelToken = codegen_tokens.find_top_level_token;
+const trimParens = codegen_tokens.trim_parens;
+const stringTokenBody = codegen_tokens.string_token_body;
+const publicDeclName = codegen_names.public_decl_name;
+const appendFmt = codegen_names.append_fmt;
 
 const HostImport = gen_types.HostImport;
 const CodegenError = gen_types.CodegenError;
 const LocalSet = gen_types.LocalSet;
 const storageTypeNameForElem = gen_types.storageTypeNameForElem;
-const moduleTokensEqual = gen_util.moduleTokensEqual;
-const stringLiteralArgLexeme = gen_util.stringLiteralArgLexeme;
-const appendMangledTypeName = gen_util.appendMangledTypeName;
-const moduleScopedSymbolName = gen_util.moduleScopedSymbolName;
+const moduleTokensEqual = codegen_tokens.module_tokens_equal;
+const stringLiteralArgLexeme = codegen_tokens.string_literal_arg_lexeme;
+const appendMangledTypeName = codegen_names.append_mangled_type_name;
+const moduleScopedSymbolName = codegen_names.module_scoped_symbol_name;
 
 pub fn collectEnvHostImports(
     allocator: std.mem.Allocator,

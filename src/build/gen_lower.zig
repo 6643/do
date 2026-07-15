@@ -12,9 +12,10 @@ const runtime_prelude_wat = @import("runtime_prelude_wat.zig");
 const storage_wat = @import("wat_storage.zig");
 const test_runner = @import("test_runner.zig");
 const type_util = @import("type_name.zig");
-const gen_util = @import("gen_util.zig");
-const gen_wasi = @import("codegen_wasi_registry.zig");
-const gen_union = @import("codegen_union_layout.zig");
+const codegen_tokens = @import("codegen_tokens.zig");
+const codegen_names = @import("codegen_names.zig");
+const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
+const codegen_union_layout = @import("codegen_union_layout.zig");
 const gen_types = @import("gen_types.zig");
 
 const LocalSet = gen_types.LocalSet;
@@ -75,11 +76,11 @@ pub const freeStructLayouts = gen_types.freeStructLayouts;
 pub const freeFuncParams = gen_types.freeFuncParams;
 pub const freeFuncDecls = gen_types.freeFuncDecls;
 const freeFuncResultItems = gen_types.freeFuncResultItems;
-const freeWasiHostImports = gen_wasi.freeWasiHostImports;
-const collectWasiHostImports = gen_wasi.collectWasiHostImports;
-const collectWasiHostImportsFromModules = gen_wasi.collectWasiHostImportsFromModules;
-const wasiLowering = gen_wasi.wasiLowering;
-const appendWasiImportSymbol = gen_wasi.appendWasiImportSymbol;
+const freeWasiHostImports = codegen_wasi_registry.free_wasi_host_imports;
+const collectWasiHostImports = codegen_wasi_registry.collect_wasi_host_imports;
+const collectWasiHostImportsFromModules = codegen_wasi_registry.collect_wasi_host_imports_from_modules;
+const wasiLowering = codegen_wasi_registry.wasi_lowering;
+const appendWasiImportSymbol = codegen_wasi_registry.append_wasi_import_symbol;
 const ManagedPayloadBinding = gen_storage.ManagedPayloadBinding;
 const ParsedStorageType = gen_storage.ParsedStorageType;
 const Local = gen_types.Local;
@@ -135,35 +136,35 @@ const hasLocal = gen_types.hasLocal;
 const storageTypeNameForElem = gen_types.storageTypeNameForElem;
 const storageTypeNameForElemOwned = gen_types.storageTypeNameForElemOwned;
 
-const UnionLayout = gen_union.UnionLayout;
-const UnionBranch = gen_union.UnionBranch;
-const freeUnionLayout = gen_union.freeUnionLayout;
-const cloneUnionLayout = gen_union.cloneUnionLayout;
-const unionLayoutsEqual = gen_union.unionLayoutsEqual;
+const UnionLayout = codegen_union_layout.UnionLayout;
+const UnionBranch = codegen_union_layout.UnionBranch;
+const freeUnionLayout = codegen_union_layout.free_union_layout;
+const cloneUnionLayout = codegen_union_layout.clone_union_layout;
+const unionLayoutsEqual = codegen_union_layout.union_layouts_equal;
 
-const WasiHostImport = gen_wasi.WasiHostImport;
-const validateWasiHostImportBuildUses = gen_wasi.validateWasiHostImportBuildUses;
-const WASI_BINDING_ENTRY_SOURCE = gen_wasi.WASI_BINDING_ENTRY_SOURCE;
+const WasiHostImport = codegen_wasi_registry.WasiHostImport;
+const validateWasiHostImportBuildUses = codegen_wasi_registry.validate_wasi_host_import_build_uses;
+const WASI_BINDING_ENTRY_SOURCE = codegen_wasi_registry.WASI_BINDING_ENTRY_SOURCE;
 
-const tokEq = gen_util.tokEq;
-const findMatching = gen_util.findMatching;
-const findMatchingInRange = gen_util.findMatchingInRange;
-const findLineEnd = gen_util.findLineEnd;
-const findLineStart = gen_util.findLineStart;
-const isLineStart = gen_util.isLineStart;
-const findTopLevelToken = gen_util.findTopLevelToken;
-const findArgEnd = gen_util.findArgEnd;
-const trimParens = gen_util.trimParens;
-const publicDeclName = gen_util.publicDeclName;
-const appendFmt = gen_util.appendFmt;
-const Range = gen_util.Range;
-const alignUp = gen_util.alignUp;
-const compactTokenText = gen_util.compactTokenText;
-const stringTokenBody = gen_util.stringTokenBody;
-const decodeQuotedStringToken = gen_util.decodeQuotedStringToken;
-const hasString = gen_util.hasString;
-const findTopLevelTypeSeparator = gen_util.findTopLevelTypeSeparator;
-const findTopLevelTypeSeparatorFrom = gen_util.findTopLevelTypeSeparatorFrom;
+const tokEq = codegen_tokens.tok_eq;
+const findMatching = codegen_tokens.find_matching;
+const findMatchingInRange = codegen_tokens.find_matching_in_range;
+const findLineEnd = codegen_tokens.find_line_end;
+const findLineStart = codegen_tokens.find_line_start;
+const isLineStart = codegen_tokens.is_line_start;
+const findTopLevelToken = codegen_tokens.find_top_level_token;
+const findArgEnd = codegen_tokens.find_arg_end;
+const trimParens = codegen_tokens.trim_parens;
+const publicDeclName = codegen_names.public_decl_name;
+const appendFmt = codegen_names.append_fmt;
+const Range = codegen_tokens.Range;
+const alignUp = codegen_tokens.align_up;
+const compactTokenText = codegen_tokens.compact_token_text;
+const stringTokenBody = codegen_tokens.string_token_body;
+const decodeQuotedStringToken = codegen_tokens.decode_quoted_string_token;
+const hasString = codegen_names.has_string;
+const findTopLevelTypeSeparator = codegen_tokens.find_top_level_type_separator;
+const findTopLevelTypeSeparatorFrom = codegen_tokens.find_top_level_type_separator_from;
 
 pub const CallLastUseMoveContext = gen_types.CallLastUseMoveContext;
 const gen_host = @import("gen_host.zig");
@@ -343,38 +344,38 @@ const freeHostImports = gen_host.freeHostImports;
 const hostCallArgsMatch = gen_host.hostCallArgsMatch;
 const hostParamIsPtrLen = gen_host.hostParamIsPtrLen;
 const hostArgCouldBeStoragePtrLenSyntax = gen_host.hostArgCouldBeStoragePtrLenSyntax;
-// re-export gen_util helpers moved from lower
-const moduleTokensEqual = gen_util.moduleTokensEqual;
-pub const findStartFunc = gen_util.findStartFunc;
-pub const findToken = gen_util.findToken;
-const findTopLevelBlockOpen = gen_util.findTopLevelBlockOpen;
-const findStmtEnd = gen_util.findStmtEnd;
-const findTypeArgEnd = gen_util.findTypeArgEnd;
-const stringLiteralArgLexeme = gen_util.stringLiteralArgLexeme;
-const isStringLiteralArg = gen_util.isStringLiteralArg;
-const isTypedBindingRhsCall = gen_util.isTypedBindingRhsCall;
-const isBareHostCallStatement = gen_util.isBareHostCallStatement;
-const moduleScopedSymbolName = gen_util.moduleScopedSymbolName;
-const appendMangledTypeName = gen_util.appendMangledTypeName;
-const isPublicTypeName = gen_util.isPublicTypeName;
-const isErrorTypeName = gen_util.isErrorTypeName;
-const isBaseIntTypeName = gen_util.isBaseIntTypeName;
-const isNumericCoreFuncName = gen_util.isNumericCoreFuncName;
-const isBitwiseCoreFuncName = gen_util.isBitwiseCoreFuncName;
-const isCountBitsCoreFuncName = gen_util.isCountBitsCoreFuncName;
-const isNumericUnarySelectCoreFuncName = gen_util.isNumericUnarySelectCoreFuncName;
-const isNumericBinarySelectCoreFuncName = gen_util.isNumericBinarySelectCoreFuncName;
-const isFloatUnaryCoreFuncName = gen_util.isFloatUnaryCoreFuncName;
-const isFloatBinaryCoreFuncName = gen_util.isFloatBinaryCoreFuncName;
-const isBoolSpecialFuncName = gen_util.isBoolSpecialFuncName;
-const isComparisonCoreFuncName = gen_util.isComparisonCoreFuncName;
-const isMemoryLoadName = gen_util.isMemoryLoadName;
-const isCoreWasmCallName = gen_util.isCoreWasmCallName;
-const isCoreWasmScalar = gen_util.isCoreWasmScalar;
-const isCoreIntegerScalar = gen_util.isCoreIntegerScalar;
-const isCoreFloatScalar = gen_util.isCoreFloatScalar;
-const isUserFuncDeclStart = gen_util.isUserFuncDeclStart;
-const tokenTextEqualsCompact = gen_util.tokenTextEqualsCompact;
+// Re-export token and name helpers used by lower-level tests.
+const moduleTokensEqual = codegen_tokens.module_tokens_equal;
+pub const findStartFunc = codegen_tokens.find_start_func;
+pub const findToken = codegen_tokens.find_token;
+const findTopLevelBlockOpen = codegen_tokens.find_top_level_block_open;
+const findStmtEnd = codegen_tokens.find_stmt_end;
+const findTypeArgEnd = codegen_tokens.find_type_arg_end;
+const stringLiteralArgLexeme = codegen_tokens.string_literal_arg_lexeme;
+const isStringLiteralArg = codegen_tokens.is_string_literal_arg;
+const isTypedBindingRhsCall = codegen_tokens.is_typed_binding_rhs_call;
+const isBareHostCallStatement = codegen_tokens.is_bare_host_call_statement;
+const moduleScopedSymbolName = codegen_names.module_scoped_symbol_name;
+const appendMangledTypeName = codegen_names.append_mangled_type_name;
+const isPublicTypeName = codegen_names.is_public_type_name;
+const isErrorTypeName = codegen_names.is_error_type_name;
+const isBaseIntTypeName = codegen_names.is_base_int_type_name;
+const isNumericCoreFuncName = codegen_names.is_numeric_core_func_name;
+const isBitwiseCoreFuncName = codegen_names.is_bitwise_core_func_name;
+const isCountBitsCoreFuncName = codegen_names.is_count_bits_core_func_name;
+const isNumericUnarySelectCoreFuncName = codegen_names.is_numeric_unary_select_core_func_name;
+const isNumericBinarySelectCoreFuncName = codegen_names.is_numeric_binary_select_core_func_name;
+const isFloatUnaryCoreFuncName = codegen_names.is_float_unary_core_func_name;
+const isFloatBinaryCoreFuncName = codegen_names.is_float_binary_core_func_name;
+const isBoolSpecialFuncName = codegen_names.is_bool_special_func_name;
+const isComparisonCoreFuncName = codegen_names.is_comparison_core_func_name;
+const isMemoryLoadName = codegen_names.is_memory_load_name;
+const isCoreWasmCallName = codegen_names.is_core_wasm_call_name;
+const isCoreWasmScalar = codegen_names.is_core_wasm_scalar;
+const isCoreIntegerScalar = codegen_names.is_core_integer_scalar;
+const isCoreFloatScalar = codegen_names.is_core_float_scalar;
+const isUserFuncDeclStart = codegen_tokens.is_user_func_decl_start;
+const tokenTextEqualsCompact = codegen_tokens.token_text_equals_compact;
 // re-export gen_import
 const validateHostImportBuildUses = gen_import.validateHostImportBuildUses;
 const validateReachableWasiHostImportBuildUses = gen_import.validateReachableWasiHostImportBuildUses;
@@ -1049,7 +1050,7 @@ pub fn appendStorePayloadOrTupleFromStack(
     elem_ty: []const u8,
     base_local: []const u8,
     indent: []const u8) CodegenError!void {
-    try payload_wat.appendStorePayloadOrTupleFromStack(allocator, out, elem_ty, base_local, indent);
+    try payload_wat.append_store_payload_or_tuple_from_stack(allocator, out, elem_ty, base_local, indent);
 }
 
 pub fn appendLoadPayloadOrTupleToStack(
@@ -1058,7 +1059,5 @@ pub fn appendLoadPayloadOrTupleToStack(
     elem_ty: []const u8,
     base_local: []const u8,
     indent: []const u8) CodegenError!void {
-    try payload_wat.appendLoadPayloadOrTupleToStack(allocator, out, elem_ty, base_local, indent);
+    try payload_wat.append_load_payload_or_tuple_to_stack(allocator, out, elem_ty, base_local, indent);
 }
-
-

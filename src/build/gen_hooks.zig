@@ -2,7 +2,7 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
 const gen_types = @import("gen_types.zig");
-const gen_union = @import("codegen_union_layout.zig");
+const codegen_union_layout = @import("codegen_union_layout.zig");
 
 const LocalSet = gen_types.LocalSet;
 const CodegenContext = gen_types.CodegenContext;
@@ -13,7 +13,7 @@ const CallLastUseMoveContext = gen_types.CallLastUseMoveContext;
 const DeferContext = gen_types.DeferContext;
 const LoopControl = gen_types.LoopControl;
 const SelfTailTco = gen_types.SelfTailTco;
-const UnionLayout = gen_union.UnionLayout;
+const UnionLayout = codegen_union_layout.UnionLayout;
 
 pub const EmitExprFn = *const fn (
     allocator: std.mem.Allocator,

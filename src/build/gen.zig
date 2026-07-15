@@ -5,7 +5,8 @@ const lexer = @import("lexer.zig");
 const test_runner = @import("test_runner.zig");
 const gen_lower = @import("gen_lower.zig");
 const gen_types = @import("gen_types.zig");
-const gen_util = @import("gen_util.zig");
+const codegen_tokens = @import("codegen_tokens.zig");
+const codegen_names = @import("codegen_names.zig");
 
 pub const EmitOptions = gen_types.EmitOptions;
 pub const CodegenError = gen_types.CodegenError;
@@ -29,7 +30,7 @@ const findLocalOrigin = gen_types.findLocalOrigin;
 const findStorageLocalOrigin = gen_types.findStorageLocalOrigin;
 const appendLoopSourceStorageLocal = gen_types.appendLoopSourceStorageLocal;
 const findStructLocal = gen_types.findStructLocal;
-const findMatching = gen_util.findMatching;
+const findMatching = codegen_tokens.find_matching;
 
 // Impl helpers for unit tests
 const bindGenericTypeFromConcrete = gen_lower.bindGenericTypeFromConcrete;

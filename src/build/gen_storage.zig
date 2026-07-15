@@ -5,7 +5,8 @@ const lexer = @import("lexer.zig");
 const type_util = @import("type_name.zig");
 const payload_wat = @import("wat_payload.zig");
 const storage_wat = @import("wat_storage.zig");
-const gen_util = @import("gen_util.zig");
+const codegen_tokens = @import("codegen_tokens.zig");
+const codegen_names = @import("codegen_names.zig");
 const gen_types = @import("gen_types.zig");
 const gen_collect = @import("gen_collect.zig");
 const gen_import = @import("gen_import.zig");
@@ -17,61 +18,61 @@ const findValueEnumDeclLineByBranch = gen_import.findValueEnumDeclLineByBranch;
 const simpleTypeName = gen_collect.simpleTypeName;
 const isTopLevelCommaAny = gen_collect.isTopLevelCommaAny;
 const isReturnArrowAt = gen_collect.isReturnArrowAt;
-const gen_union = @import("codegen_union_layout.zig");
+const codegen_union_layout = @import("codegen_union_layout.zig");
 const gen_host = @import("gen_host.zig");
-const gen_wasi = @import("codegen_wasi_registry.zig");
+const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
 const ownership = @import("ownership.zig");
 const ownership_facts = @import("ownership_facts.zig");
 const imports = @import("imports.zig");
 const test_runner = @import("test_runner.zig");
 
-const tokEq = gen_util.tokEq;
-const findMatching = gen_util.findMatching;
-const findMatchingInRange = gen_util.findMatchingInRange;
-const findLineEnd = gen_util.findLineEnd;
-const findLineStart = gen_util.findLineStart;
-const isLineStart = gen_util.isLineStart;
-const findTopLevelToken = gen_util.findTopLevelToken;
-const findArgEnd = gen_util.findArgEnd;
-const trimParens = gen_util.trimParens;
-const publicDeclName = gen_util.publicDeclName;
-const appendFmt = gen_util.appendFmt;
-const Range = gen_util.Range;
-const alignUp = gen_util.alignUp;
-const compactTokenText = gen_util.compactTokenText;
-const stringTokenBody = gen_util.stringTokenBody;
-const stringLiteralArgLexeme = gen_util.stringLiteralArgLexeme;
-const isStringLiteralArg = gen_util.isStringLiteralArg;
-const decodeQuotedStringToken = gen_util.decodeQuotedStringToken;
-const findToken = gen_util.findToken;
-const findTopLevelBlockOpen = gen_util.findTopLevelBlockOpen;
-const findStmtEnd = gen_util.findStmtEnd;
-const findTypeArgEnd = gen_util.findTypeArgEnd;
-const moduleTokensEqual = gen_util.moduleTokensEqual;
-const moduleScopedSymbolName = gen_util.moduleScopedSymbolName;
-const appendMangledTypeName = gen_util.appendMangledTypeName;
-const isUserFuncDeclStart = gen_util.isUserFuncDeclStart;
-const isPublicTypeName = gen_util.isPublicTypeName;
-const isErrorTypeName = gen_util.isErrorTypeName;
-const isBaseIntTypeName = gen_util.isBaseIntTypeName;
-const isCoreWasmScalar = gen_util.isCoreWasmScalar;
-const isCoreIntegerScalar = gen_util.isCoreIntegerScalar;
-const isCoreFloatScalar = gen_util.isCoreFloatScalar;
-const isNumericCoreFuncName = gen_util.isNumericCoreFuncName;
-const isBitwiseCoreFuncName = gen_util.isBitwiseCoreFuncName;
-const isCountBitsCoreFuncName = gen_util.isCountBitsCoreFuncName;
-const isNumericUnarySelectCoreFuncName = gen_util.isNumericUnarySelectCoreFuncName;
-const isNumericBinarySelectCoreFuncName = gen_util.isNumericBinarySelectCoreFuncName;
-const isFloatUnaryCoreFuncName = gen_util.isFloatUnaryCoreFuncName;
-const isFloatBinaryCoreFuncName = gen_util.isFloatBinaryCoreFuncName;
-const isBoolSpecialFuncName = gen_util.isBoolSpecialFuncName;
-const isComparisonCoreFuncName = gen_util.isComparisonCoreFuncName;
-const isMemoryLoadName = gen_util.isMemoryLoadName;
-const isCoreWasmCallName = gen_util.isCoreWasmCallName;
-const tokenTextEqualsCompact = gen_util.tokenTextEqualsCompact;
-const findTopLevelTypeSeparator = gen_util.findTopLevelTypeSeparator;
-const findTopLevelTypeSeparatorFrom = gen_util.findTopLevelTypeSeparatorFrom;
-const hasString = gen_util.hasString;
+const tokEq = codegen_tokens.tok_eq;
+const findMatching = codegen_tokens.find_matching;
+const findMatchingInRange = codegen_tokens.find_matching_in_range;
+const findLineEnd = codegen_tokens.find_line_end;
+const findLineStart = codegen_tokens.find_line_start;
+const isLineStart = codegen_tokens.is_line_start;
+const findTopLevelToken = codegen_tokens.find_top_level_token;
+const findArgEnd = codegen_tokens.find_arg_end;
+const trimParens = codegen_tokens.trim_parens;
+const publicDeclName = codegen_names.public_decl_name;
+const appendFmt = codegen_names.append_fmt;
+const Range = codegen_tokens.Range;
+const alignUp = codegen_tokens.align_up;
+const compactTokenText = codegen_tokens.compact_token_text;
+const stringTokenBody = codegen_tokens.string_token_body;
+const stringLiteralArgLexeme = codegen_tokens.string_literal_arg_lexeme;
+const isStringLiteralArg = codegen_tokens.is_string_literal_arg;
+const decodeQuotedStringToken = codegen_tokens.decode_quoted_string_token;
+const findToken = codegen_tokens.find_token;
+const findTopLevelBlockOpen = codegen_tokens.find_top_level_block_open;
+const findStmtEnd = codegen_tokens.find_stmt_end;
+const findTypeArgEnd = codegen_tokens.find_type_arg_end;
+const moduleTokensEqual = codegen_tokens.module_tokens_equal;
+const moduleScopedSymbolName = codegen_names.module_scoped_symbol_name;
+const appendMangledTypeName = codegen_names.append_mangled_type_name;
+const isUserFuncDeclStart = codegen_tokens.is_user_func_decl_start;
+const isPublicTypeName = codegen_names.is_public_type_name;
+const isErrorTypeName = codegen_names.is_error_type_name;
+const isBaseIntTypeName = codegen_names.is_base_int_type_name;
+const isCoreWasmScalar = codegen_names.is_core_wasm_scalar;
+const isCoreIntegerScalar = codegen_names.is_core_integer_scalar;
+const isCoreFloatScalar = codegen_names.is_core_float_scalar;
+const isNumericCoreFuncName = codegen_names.is_numeric_core_func_name;
+const isBitwiseCoreFuncName = codegen_names.is_bitwise_core_func_name;
+const isCountBitsCoreFuncName = codegen_names.is_count_bits_core_func_name;
+const isNumericUnarySelectCoreFuncName = codegen_names.is_numeric_unary_select_core_func_name;
+const isNumericBinarySelectCoreFuncName = codegen_names.is_numeric_binary_select_core_func_name;
+const isFloatUnaryCoreFuncName = codegen_names.is_float_unary_core_func_name;
+const isFloatBinaryCoreFuncName = codegen_names.is_float_binary_core_func_name;
+const isBoolSpecialFuncName = codegen_names.is_bool_special_func_name;
+const isComparisonCoreFuncName = codegen_names.is_comparison_core_func_name;
+const isMemoryLoadName = codegen_names.is_memory_load_name;
+const isCoreWasmCallName = codegen_names.is_core_wasm_call_name;
+const tokenTextEqualsCompact = codegen_tokens.token_text_equals_compact;
+const findTopLevelTypeSeparator = codegen_tokens.find_top_level_type_separator;
+const findTopLevelTypeSeparatorFrom = codegen_tokens.find_top_level_type_separator_from;
+const hasString = codegen_names.has_string;
 
 const LocalSet = gen_types.LocalSet;
 const Local = gen_types.Local;
@@ -133,12 +134,12 @@ const localNameMatches = gen_types.localNameMatches;
 const unionPayloadLocalName = gen_types.unionPayloadLocalName;
 const unionTagLocalName = gen_types.unionTagLocalName;
 
-const UnionLayout = gen_union.UnionLayout;
-const UnionBranch = gen_union.UnionBranch;
-const freeUnionLayout = gen_union.freeUnionLayout;
-const cloneUnionLayout = gen_union.cloneUnionLayout;
-const unionLayoutsEqual = gen_union.unionLayoutsEqual;
-const unionBranchIsStatusI32 = gen_union.unionBranchIsStatusI32;
+const UnionLayout = codegen_union_layout.UnionLayout;
+const UnionBranch = codegen_union_layout.UnionBranch;
+const freeUnionLayout = codegen_union_layout.free_union_layout;
+const cloneUnionLayout = codegen_union_layout.clone_union_layout;
+const unionLayoutsEqual = codegen_union_layout.union_layouts_equal;
+const unionBranchIsStatusI32 = codegen_union_layout.union_branch_is_status_i32;
 
 const findStructDecl = gen_collect.findStructDecl;
 const findStructLayout = gen_collect.findStructLayout;
@@ -218,7 +219,7 @@ const hostParamIsPtrLen = gen_host.hostParamIsPtrLen;
 const hostArgCouldBeStoragePtrLenSyntax = gen_host.hostArgCouldBeStoragePtrLenSyntax;
 const findHostImportForTokens = gen_host.findHostImportForTokens;
 
-const WasiHostImport = gen_wasi.WasiHostImport;
+const WasiHostImport = codegen_wasi_registry.WasiHostImport;
 
 
 
@@ -745,7 +746,7 @@ pub fn emitStoragePayloadPtr(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
     name: []const u8) !void {
-    try storage_wat.emitStoragePayloadPtr(allocator, out, name);
+    try storage_wat.emit_storage_payload_ptr(allocator, out, name);
 }
 
 
@@ -756,7 +757,7 @@ pub fn emitStorageLenPtrWithIndent(
     out: *std.ArrayList(u8),
     name: []const u8,
     indent: []const u8) !void {
-    try storage_wat.emitStorageLenPtrWithIndent(allocator, out, name, indent);
+    try storage_wat.emit_storage_len_ptr_with_indent(allocator, out, name, indent);
 }
 
 
@@ -766,7 +767,7 @@ pub fn emitStorageCapPtr(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
     name: []const u8) !void {
-    try storage_wat.emitStorageCapPtr(allocator, out, name);
+    try storage_wat.emit_storage_cap_ptr(allocator, out, name);
 }
 
 
@@ -777,7 +778,7 @@ pub fn emitStorageCapPtrWithIndent(
     out: *std.ArrayList(u8),
     name: []const u8,
     indent: []const u8) !void {
-    try storage_wat.emitStorageCapPtrWithIndent(allocator, out, name, indent);
+    try storage_wat.emit_storage_cap_ptr_with_indent(allocator, out, name, indent);
 }
 
 
@@ -788,7 +789,7 @@ pub fn emitStoragePayloadPtrWithIndent(
     out: *std.ArrayList(u8),
     name: []const u8,
     indent: []const u8) !void {
-    try storage_wat.emitStoragePayloadPtrWithIndent(allocator, out, name, indent);
+    try storage_wat.emit_storage_payload_ptr_with_indent(allocator, out, name, indent);
 }
 
 
@@ -1677,7 +1678,7 @@ pub fn emitStorageElementPtrFromLocal(
     storage_local: []const u8,
     index_local: []const u8,
     elem_bytes: usize) !void {
-    try storage_wat.emitStorageElementPtrFromLocal(allocator, out, storage_local, index_local, elem_bytes);
+    try storage_wat.emit_storage_element_ptr_from_local(allocator, out, storage_local, index_local, elem_bytes);
 }
 
 
@@ -1690,7 +1691,7 @@ pub fn emitStorageElementPtrFromLocalWithIndent(
     index_local: []const u8,
     elem_bytes: usize,
     indent: []const u8) !void {
-    try storage_wat.emitStorageElementPtrFromLocalWithIndent(allocator, out, storage_local, index_local, elem_bytes, indent);
+    try storage_wat.emit_storage_element_ptr_from_local_with_indent(allocator, out, storage_local, index_local, elem_bytes, indent);
 }
 
 
@@ -1701,7 +1702,7 @@ pub fn emitStorageAliasProtect(
     out: *std.ArrayList(u8),
     source_name: []const u8,
     target_name: []const u8) !void {
-    try storage_wat.emitStorageAliasProtect(allocator, out, source_name, target_name);
+    try storage_wat.emit_storage_alias_protect(allocator, out, source_name, target_name);
 }
 
 
@@ -1712,7 +1713,7 @@ pub fn emitStorageAliasRelease(
     out: *std.ArrayList(u8),
     source_name: []const u8,
     target_name: []const u8) !void {
-    try storage_wat.emitStorageAliasRelease(allocator, out, source_name, target_name);
+    try storage_wat.emit_storage_alias_release(allocator, out, source_name, target_name);
 }
 
 
@@ -1721,7 +1722,7 @@ pub fn emitStorageAliasRelease(
 pub fn emitEmptyStorageU8Value(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8)) !void {
-    try storage_wat.emitEmptyStorageU8Value(allocator, out);
+    try storage_wat.emit_empty_storage_u8_value(allocator, out);
 }
 
 
@@ -1733,7 +1734,7 @@ pub fn emitEmptyStorageForElemType(
     ctx: CodegenContext,
     out: *std.ArrayList(u8)) CodegenError!void {
     const type_id = storageTypeIdForElement(elem_ty, ctx);
-    try storage_wat.emitEmptyStorageWithTypeId(allocator, out, type_id, "    ");
+    try storage_wat.emit_empty_storage_with_type_id(allocator, out, type_id, "    ");
 }
 
 
@@ -3331,30 +3332,30 @@ const appendLoopSourceStorageLocal = gen_types.appendLoopSourceStorageLocal;
 
 
 
-const WasiLinkAtArgs = gen_wasi.WasiLinkAtArgs;
-const WasiLowering = gen_wasi.WasiLowering;
-const WASI_BINDING_ENTRY_SOURCE = gen_wasi.WASI_BINDING_ENTRY_SOURCE;
-const knownWasiWitSignature = gen_wasi.knownWasiWitSignature;
-const wasiLowering = gen_wasi.wasiLowering;
-const appendWasiImportSymbol = gen_wasi.appendWasiImportSymbol;
-const freeWasiHostImports = gen_wasi.freeWasiHostImports;
-const findWasiHostImport = gen_wasi.findWasiHostImport;
-const findWasiHostImportBySource = gen_wasi.findWasiHostImportBySource;
-const isWasiHostImportStart = gen_wasi.isWasiHostImportStart;
-const collectWasiHostImports = gen_wasi.collectWasiHostImports;
-const collectWasiHostImportsFromModules = gen_wasi.collectWasiHostImportsFromModules;
-const parseWasiHostImport = gen_wasi.parseWasiHostImport;
-const parseWasiLinkAtArgs = gen_wasi.parseWasiLinkAtArgs;
-const wasiCoarseFailedVariantName = gen_wasi.wasiCoarseFailedVariantName;
-const wasiCoarseClosedVariantName = gen_wasi.wasiCoarseClosedVariantName;
-const wasiCoarseErrorAlwaysFailed = gen_wasi.wasiCoarseErrorAlwaysFailed;
-const isWasiUnionResultBindingCall = gen_wasi.isWasiUnionResultBindingCall;
-const isWasiUnionResultReturnCall = gen_wasi.isWasiUnionResultReturnCall;
-const isBareWasiHostCallStatement = gen_wasi.isBareWasiHostCallStatement;
-const isWasiResultUnitStatusMultiAssignmentCall = gen_wasi.isWasiResultUnitStatusMultiAssignmentCall;
-const isWasiResultReadMultiAssignmentCall = gen_wasi.isWasiResultReadMultiAssignmentCall;
-const isWasiResultListU8StatusMultiAssignmentCall = gen_wasi.isWasiResultListU8StatusMultiAssignmentCall;
-const wasiHostImportUseIsLowerableAtCall = gen_wasi.wasiHostImportUseIsLowerableAtCall;
+const WasiLinkAtArgs = codegen_wasi_registry.WasiLinkAtArgs;
+const WasiLowering = codegen_wasi_registry.WasiLowering;
+const WASI_BINDING_ENTRY_SOURCE = codegen_wasi_registry.WASI_BINDING_ENTRY_SOURCE;
+const knownWasiWitSignature = codegen_wasi_registry.known_wasi_wit_signature;
+const wasiLowering = codegen_wasi_registry.wasi_lowering;
+const appendWasiImportSymbol = codegen_wasi_registry.append_wasi_import_symbol;
+const freeWasiHostImports = codegen_wasi_registry.free_wasi_host_imports;
+const findWasiHostImport = codegen_wasi_registry.find_wasi_host_import;
+const findWasiHostImportBySource = codegen_wasi_registry.find_wasi_host_import_by_source;
+const isWasiHostImportStart = codegen_wasi_registry.is_wasi_host_import_start;
+const collectWasiHostImports = codegen_wasi_registry.collect_wasi_host_imports;
+const collectWasiHostImportsFromModules = codegen_wasi_registry.collect_wasi_host_imports_from_modules;
+const parseWasiHostImport = codegen_wasi_registry.parse_wasi_host_import;
+const parseWasiLinkAtArgs = codegen_wasi_registry.parse_wasi_link_at_args;
+const wasiCoarseFailedVariantName = codegen_wasi_registry.wasi_coarse_failed_variant_name;
+const wasiCoarseClosedVariantName = codegen_wasi_registry.wasi_coarse_closed_variant_name;
+const wasiCoarseErrorAlwaysFailed = codegen_wasi_registry.wasi_coarse_error_always_failed;
+const isWasiUnionResultBindingCall = codegen_wasi_registry.is_wasi_union_result_binding_call;
+const isWasiUnionResultReturnCall = codegen_wasi_registry.is_wasi_union_result_return_call;
+const isBareWasiHostCallStatement = codegen_wasi_registry.is_bare_wasi_host_call_statement;
+const isWasiResultUnitStatusMultiAssignmentCall = codegen_wasi_registry.is_wasi_result_unit_status_multi_assignment_call;
+const isWasiResultReadMultiAssignmentCall = codegen_wasi_registry.is_wasi_result_read_multi_assignment_call;
+const isWasiResultListU8StatusMultiAssignmentCall = codegen_wasi_registry.is_wasi_result_list_u8_status_multi_assignment_call;
+const wasiHostImportUseIsLowerableAtCall = codegen_wasi_registry.wasi_host_import_use_is_lowerable_at_call;
 
 
 // Types from gen_types
@@ -3863,4 +3864,3 @@ pub fn emitTupleCallBinding(
     try emitTupleLocalSet(allocator, tuple_local.name, tuple_local.ty, ctx, out);
     return true;
 }
-

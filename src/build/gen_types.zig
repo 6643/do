@@ -6,16 +6,17 @@ const runtime_prelude_wat = @import("runtime_prelude_wat.zig");
 const storage_wat = @import("wat_storage.zig");
 const payload_wat = @import("wat_payload.zig");
 const type_util = @import("type_name.zig");
-const gen_util = @import("gen_util.zig");
-const gen_union = @import("codegen_union_layout.zig");
-const gen_wasi = @import("codegen_wasi_registry.zig");
+const codegen_tokens = @import("codegen_tokens.zig");
+const codegen_names = @import("codegen_names.zig");
+const codegen_union_layout = @import("codegen_union_layout.zig");
+const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
 
-const decodeQuotedStringToken = gen_util.decodeQuotedStringToken;
-const freeUnionLayout = gen_union.freeUnionLayout;
-const UnionLayout = gen_union.UnionLayout;
-const UnionBranch = gen_union.UnionBranch;
-const unionLayoutsEqual = gen_union.unionLayoutsEqual;
-const WasiHostImport = gen_wasi.WasiHostImport;
+const decodeQuotedStringToken = codegen_tokens.decode_quoted_string_token;
+const freeUnionLayout = codegen_union_layout.free_union_layout;
+const UnionLayout = codegen_union_layout.UnionLayout;
+const UnionBranch = codegen_union_layout.UnionBranch;
+const unionLayoutsEqual = codegen_union_layout.union_layouts_equal;
+const WasiHostImport = codegen_wasi_registry.WasiHostImport;
 
 pub const SourceOrigin = enum {
     unknown,

@@ -4,7 +4,8 @@ const lexer = @import("lexer.zig");
 const type_util = @import("type_name.zig");
 const payload_wat = @import("wat_payload.zig");
 const storage_wat = @import("wat_storage.zig");
-const gen_util = @import("gen_util.zig");
+const codegen_tokens = @import("codegen_tokens.zig");
+const codegen_names = @import("codegen_names.zig");
 const gen_types = @import("gen_types.zig");
 const gen_collect = @import("gen_collect.zig");
 const gen_import = @import("gen_import.zig");
@@ -16,11 +17,11 @@ pub const TupleElementInfo = struct {
     ty: []const u8,
 };
 
-const findTopLevelToken = gen_util.findTopLevelToken;
-const trimParens = gen_util.trimParens;
-const publicDeclName = gen_util.publicDeclName;
-const appendFmt = gen_util.appendFmt;
-const alignUp = gen_util.alignUp;
+const findTopLevelToken = codegen_tokens.find_top_level_token;
+const trimParens = codegen_tokens.trim_parens;
+const publicDeclName = codegen_names.public_decl_name;
+const appendFmt = codegen_names.append_fmt;
+const alignUp = codegen_tokens.align_up;
 const LocalSet = gen_types.LocalSet;
 const CodegenContext = gen_types.CodegenContext;
 const CodegenError = gen_types.CodegenError;
@@ -229,7 +230,7 @@ pub fn emitStorageIncCopiedPackElements(
 
 
 pub fn tuplePackSpillLocal(ty: []const u8) []const u8 {
-    return payload_wat.tuplePackSpillLocal(ty);
+    return payload_wat.tuple_pack_spill_local(ty);
 }
 
 
@@ -243,7 +244,7 @@ pub fn appendStoreTupleScalarLeavesFromStack(
     base_local: []const u8,
     indent: []const u8) CodegenError!void {
     // Legacy path without struct table (scalar/managed only).
-    try payload_wat.appendStoreTupleScalarLeavesFromStack(allocator, out, tuple_ty, base_local, indent);
+    try payload_wat.append_store_tuple_scalar_leaves_from_stack(allocator, out, tuple_ty, base_local, indent);
 }
 
 
@@ -286,7 +287,7 @@ pub fn appendStoreTupleScalarLeavesFromStackCtx(
         try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, spill });
         // Handles and scalars both store as i32/i64/f* payload widths.
         const store_ty = if (isPackManagedHandleLeaf(leaf_ty, ctx.structs)) "i32" else leaf_ty;
-        try payload_wat.appendStoreForPayloadTypeWithIndent(allocator, out, store_ty, indent);
+        try payload_wat.append_store_for_payload_type_with_indent(allocator, out, store_ty, indent);
     }
 }
 
@@ -302,8 +303,8 @@ pub fn appendStoreTupleLeavesOwningFromStack(
     tuple_ty: []const u8,
     base_local: []const u8,
     indent: []const u8) CodegenError!void {
-    try payload_wat.appendIncManagedTupleLeavesOnStack(allocator, out, tuple_ty, indent);
-    try payload_wat.appendStoreTupleScalarLeavesFromStack(allocator, out, tuple_ty, base_local, indent);
+    try payload_wat.append_inc_managed_tuple_leaves_on_stack(allocator, out, tuple_ty, indent);
+    try payload_wat.append_store_tuple_scalar_leaves_from_stack(allocator, out, tuple_ty, base_local, indent);
 }
 
 
@@ -351,7 +352,7 @@ pub fn appendIncManagedTupleLeavesOnStackCtx(
         const leaf_ty = leaf_types.items[i];
         const spill_ty = if (isPackManagedHandleLeaf(leaf_ty, ctx.structs)) "i32" else leaf_ty;
         // Per-leaf spill: same wasm type (text handle + u8) must not share one temp.
-        const spill = payload_wat.tuplePackSpillLocalAt(spill_ty, i);
+        const spill = payload_wat.tuple_pack_spill_local_at(spill_ty, i);
         spills[i] = spill;
         try appendFmt(allocator, out, "{s}local.set ${s}\n", .{ indent, spill });
     }
@@ -374,7 +375,7 @@ pub fn appendLoadTupleScalarLeavesToStack(
     tuple_ty: []const u8,
     base_local: []const u8,
     indent: []const u8) CodegenError!void {
-    try payload_wat.appendLoadTupleScalarLeavesToStack(allocator, out, tuple_ty, base_local, indent);
+    try payload_wat.append_load_tuple_scalar_leaves_to_stack(allocator, out, tuple_ty, base_local, indent);
 }
 
 
@@ -402,7 +403,7 @@ pub fn appendLoadTupleScalarLeavesToStackCtx(
             try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
         }
         const load_ty = if (isPackManagedHandleLeaf(leaf_ty, ctx.structs)) "i32" else leaf_ty;
-        try payload_wat.appendLoadForPayloadTypeWithIndent(allocator, out, load_ty, indent);
+        try payload_wat.append_load_for_payload_type_with_indent(allocator, out, load_ty, indent);
         offset += leaf_bytes;
     }
 }
@@ -419,8 +420,8 @@ pub fn appendLoadTupleLeavesOwningToStack(
     tuple_ty: []const u8,
     base_local: []const u8,
     indent: []const u8) CodegenError!void {
-    try payload_wat.appendLoadTupleScalarLeavesToStack(allocator, out, tuple_ty, base_local, indent);
-    try payload_wat.appendIncManagedTupleLeavesOnStack(allocator, out, tuple_ty, indent);
+    try payload_wat.append_load_tuple_scalar_leaves_to_stack(allocator, out, tuple_ty, base_local, indent);
+    try payload_wat.append_inc_managed_tuple_leaves_on_stack(allocator, out, tuple_ty, indent);
 }
 
 
@@ -470,7 +471,7 @@ pub fn appendLoadTupleElementFromPackedBaseCtx(
                 try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_offset });
                 try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
             }
-            try payload_wat.appendLoadForPayloadTypeWithIndent(allocator, out, "i32", indent);
+            try payload_wat.append_load_for_payload_type_with_indent(allocator, out, "i32", indent);
             return;
         }
         if (pureScalarStructPackWidth(decl, ctx.structs) == null) return error.UnsupportedTupleStorageLeaf;
@@ -490,7 +491,7 @@ pub fn appendLoadTupleElementFromPackedBaseCtx(
         try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_offset });
         try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
     }
-    try payload_wat.appendLoadForPayloadTypeWithIndent(allocator, out, elem_ty, indent);
+    try payload_wat.append_load_for_payload_type_with_indent(allocator, out, elem_ty, indent);
 }
 
 
@@ -543,7 +544,7 @@ pub fn appendLoadTupleLeafTypesOfStructToStack(
             try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });
             try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
         }
-        try payload_wat.appendLoadForPayloadTypeWithIndent(allocator, out, field_ty, indent);
+        try payload_wat.append_load_for_payload_type_with_indent(allocator, out, field_ty, indent);
         offset += typePayloadBytes(field_ty);
     }
 }
@@ -646,7 +647,7 @@ pub fn appendStoreForPayloadType(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
     ty: []const u8) !void {
-    try payload_wat.appendStoreForPayloadType(allocator, out, ty);
+    try payload_wat.append_store_for_payload_type(allocator, out, ty);
 }
 
 
@@ -658,7 +659,7 @@ pub fn appendStoreForPayloadTypeWithIndent(
     out: *std.ArrayList(u8),
     ty: []const u8,
     indent: []const u8) !void {
-    try payload_wat.appendStoreForPayloadTypeWithIndent(allocator, out, ty, indent);
+    try payload_wat.append_store_for_payload_type_with_indent(allocator, out, ty, indent);
 }
 
 
@@ -670,7 +671,7 @@ pub fn appendLoadForPayloadTypeWithIndent(
     out: *std.ArrayList(u8),
     ty: []const u8,
     indent: []const u8) !void {
-    try payload_wat.appendLoadForPayloadTypeWithIndent(allocator, out, ty, indent);
+    try payload_wat.append_load_for_payload_type_with_indent(allocator, out, ty, indent);
 }
 
 

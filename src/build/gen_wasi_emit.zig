@@ -1,36 +1,37 @@
-//! WASI host call / result emit (no host table parse; see gen_wasi.zig).
+//! WASI host call / result emit (no host table parse; see codegen_wasi_registry.zig).
 const std = @import("std");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const type_util = @import("type_name.zig");
 const payload_wat = @import("wat_payload.zig");
 const storage_wat = @import("wat_storage.zig");
-const gen_util = @import("gen_util.zig");
+const codegen_tokens = @import("codegen_tokens.zig");
+const codegen_names = @import("codegen_names.zig");
 const gen_types = @import("gen_types.zig");
-const gen_union = @import("codegen_union_layout.zig");
-const gen_wasi = @import("codegen_wasi_registry.zig");
+const codegen_union_layout = @import("codegen_union_layout.zig");
+const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
 const gen_collect = @import("gen_collect.zig");
 const gen_import = @import("gen_import.zig");
 
-const tokEq = gen_util.tokEq;
-const findMatching = gen_util.findMatching;
-const findMatchingInRange = gen_util.findMatchingInRange;
-const findLineEnd = gen_util.findLineEnd;
-const findLineStart = gen_util.findLineStart;
-const isLineStart = gen_util.isLineStart;
-const findTopLevelToken = gen_util.findTopLevelToken;
-const findArgEnd = gen_util.findArgEnd;
-const trimParens = gen_util.trimParens;
-const publicDeclName = gen_util.publicDeclName;
-const appendFmt = gen_util.appendFmt;
-const stringLiteralArgLexeme = gen_util.stringLiteralArgLexeme;
-const Range = gen_util.Range;
-const alignUp = gen_util.alignUp;
+const tokEq = codegen_tokens.tok_eq;
+const findMatching = codegen_tokens.find_matching;
+const findMatchingInRange = codegen_tokens.find_matching_in_range;
+const findLineEnd = codegen_tokens.find_line_end;
+const findLineStart = codegen_tokens.find_line_start;
+const isLineStart = codegen_tokens.is_line_start;
+const findTopLevelToken = codegen_tokens.find_top_level_token;
+const findArgEnd = codegen_tokens.find_arg_end;
+const trimParens = codegen_tokens.trim_parens;
+const publicDeclName = codegen_names.public_decl_name;
+const appendFmt = codegen_names.append_fmt;
+const stringLiteralArgLexeme = codegen_tokens.string_literal_arg_lexeme;
+const Range = codegen_tokens.Range;
+const alignUp = codegen_tokens.align_up;
 const STORAGE_OVERWRITE_TMP_LOCAL = gen_types.STORAGE_OVERWRITE_TMP_LOCAL;
 const WASI_FAMILY_TMP_LOCAL = gen_types.WASI_FAMILY_TMP_LOCAL;
 const findValueEnumDecl = gen_import.findValueEnumDecl;
 const isErrorLikeType = gen_collect.isErrorLikeType;
-const moduleTokensEqual = gen_util.moduleTokensEqual;
+const moduleTokensEqual = codegen_tokens.module_tokens_equal;
 
 const LocalSet = gen_types.LocalSet;
 const Local = gen_types.Local;
@@ -53,23 +54,23 @@ const findStructLocal = gen_types.findStructLocal;
 const findUnionLocal = gen_types.findUnionLocal;
 const storageTypeNameForElem = gen_types.storageTypeNameForElem;
 
-const UnionLayout = gen_union.UnionLayout;
-const UnionBranch = gen_union.UnionBranch;
-const unionLayoutsEqual = gen_union.unionLayoutsEqual;
-const freeUnionLayout = gen_union.freeUnionLayout;
-const cloneUnionLayout = gen_union.cloneUnionLayout;
-const unionBranchIsStatusI32 = gen_union.unionBranchIsStatusI32;
+const UnionLayout = codegen_union_layout.UnionLayout;
+const UnionBranch = codegen_union_layout.UnionBranch;
+const unionLayoutsEqual = codegen_union_layout.union_layouts_equal;
+const freeUnionLayout = codegen_union_layout.free_union_layout;
+const cloneUnionLayout = codegen_union_layout.clone_union_layout;
+const unionBranchIsStatusI32 = codegen_union_layout.union_branch_is_status_i32;
 
-const WasiHostImport = gen_wasi.WasiHostImport;
-const wasiLowering = gen_wasi.wasiLowering;
-const appendWasiImportSymbol = gen_wasi.appendWasiImportSymbol;
-const findWasiHostImport = gen_wasi.findWasiHostImport;
-const findWasiHostImportBySource = gen_wasi.findWasiHostImportBySource;
-const parseWasiLinkAtArgs = gen_wasi.parseWasiLinkAtArgs;
-const wasiCoarseFailedVariantName = gen_wasi.wasiCoarseFailedVariantName;
-const wasiCoarseClosedVariantName = gen_wasi.wasiCoarseClosedVariantName;
-const wasiCoarseErrorAlwaysFailed = gen_wasi.wasiCoarseErrorAlwaysFailed;
-const WASI_BINDING_ENTRY_SOURCE = gen_wasi.WASI_BINDING_ENTRY_SOURCE;
+const WasiHostImport = codegen_wasi_registry.WasiHostImport;
+const wasiLowering = codegen_wasi_registry.wasi_lowering;
+const appendWasiImportSymbol = codegen_wasi_registry.append_wasi_import_symbol;
+const findWasiHostImport = codegen_wasi_registry.find_wasi_host_import;
+const findWasiHostImportBySource = codegen_wasi_registry.find_wasi_host_import_by_source;
+const parseWasiLinkAtArgs = codegen_wasi_registry.parse_wasi_link_at_args;
+const wasiCoarseFailedVariantName = codegen_wasi_registry.wasi_coarse_failed_variant_name;
+const wasiCoarseClosedVariantName = codegen_wasi_registry.wasi_coarse_closed_variant_name;
+const wasiCoarseErrorAlwaysFailed = codegen_wasi_registry.wasi_coarse_error_always_failed;
+const WASI_BINDING_ENTRY_SOURCE = codegen_wasi_registry.WASI_BINDING_ENTRY_SOURCE;
 
 const findWasiHostImportForTokens = gen_import.findWasiHostImportForTokens;
 const wasiSourceForTokens = gen_import.wasiSourceForTokens;
@@ -158,7 +159,7 @@ pub fn emitStorageLenPtr(
     out: *std.ArrayList(u8),
     name: []const u8,
 ) !void {
-    try storage_wat.emitStorageLenPtr(allocator, out, name);
+    try storage_wat.emit_storage_len_ptr(allocator, out, name);
 }
 
 
@@ -167,7 +168,7 @@ pub fn emitStorageDataPtr(
     out: *std.ArrayList(u8),
     name: []const u8,
 ) !void {
-    try storage_wat.emitStorageDataPtr(allocator, out, name);
+    try storage_wat.emit_storage_data_ptr(allocator, out, name);
 }
 
 
@@ -1794,7 +1795,7 @@ pub fn emitWasiReadResultAsUnionValue(
     // err: empty storage + false done in ok slots; status = error-code + 1 at +4; err tag
     for (layout.payload_tys, 0..) |payload_ty, idx| {
         if (idx == ok.payload_start) {
-            try storage_wat.emitEmptyStorageU8Value(allocator, out);
+            try storage_wat.emit_empty_storage_u8_value(allocator, out);
         } else if (idx == ok.payload_start + 1) {
             try out.appendSlice(allocator, "      i32.const 0\n");
         } else if (idx == err.payload_start) {
@@ -1911,7 +1912,7 @@ pub fn emitWasiListU8ResultAsUnionValue(
     // err: empty storage in ok slot; status or coarse StreamError at +4; err tag
     for (layout.payload_tys, 0..) |payload_ty, idx| {
         if (idx == ok.payload_start) {
-            try storage_wat.emitEmptyStorageU8Value(allocator, out);
+            try storage_wat.emit_empty_storage_u8_value(allocator, out);
         } else if (idx == err.payload_start and err_is_coarse) {
             if (!try emitWasiCoarseErrorEnumPayload(allocator, tokens, import, err.ty, 4, out)) {
                 return false;
@@ -2070,7 +2071,7 @@ pub fn emitWasiResultReadValues(
         \\      i32.const 0
         \\    else
     );
-    try storage_wat.emitEmptyStorageU8Value(allocator, out);
+    try storage_wat.emit_empty_storage_u8_value(allocator, out);
     try out.appendSlice(allocator,
         \\      i32.const 0
         \\      global.get $__wasi_result_area_base
@@ -2106,7 +2107,7 @@ pub fn emitWasiResultListU8Values(
         \\      i32.const 0
         \\    else
     );
-    try storage_wat.emitEmptyStorageU8Value(allocator, out);
+    try storage_wat.emit_empty_storage_u8_value(allocator, out);
     try out.appendSlice(allocator,
         \\      global.get $__wasi_result_area_base
         \\      i32.const 4
@@ -2216,7 +2217,7 @@ pub fn findStoragePrimitiveLocal(locals: []const StorageLocal, name: []const u8)
 
 
 pub fn wasmType(ty: []const u8) []const u8 {
-    return payload_wat.wasmType(ty);
+    return payload_wat.wasm_type(ty);
 }
 
 
@@ -2323,7 +2324,7 @@ pub fn appendLoadForPayloadType(
     out: *std.ArrayList(u8),
     ty: []const u8,
 ) !void {
-    try payload_wat.appendLoadForPayloadType(allocator, out, ty);
+    try payload_wat.append_load_for_payload_type(allocator, out, ty);
 }
 
 

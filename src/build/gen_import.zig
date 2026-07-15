@@ -2,37 +2,38 @@
 const std = @import("std");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
-const gen_util = @import("gen_util.zig");
+const codegen_tokens = @import("codegen_tokens.zig");
+const codegen_names = @import("codegen_names.zig");
 const gen_types = @import("gen_types.zig");
-const gen_wasi = @import("codegen_wasi_registry.zig");
+const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
 const gen_host = @import("gen_host.zig");
 
-const tokEq = gen_util.tokEq;
-const findMatching = gen_util.findMatching;
-const findMatchingInRange = gen_util.findMatchingInRange;
-const findLineEnd = gen_util.findLineEnd;
-const findLineStart = gen_util.findLineStart;
-const isLineStart = gen_util.isLineStart;
-const findTopLevelToken = gen_util.findTopLevelToken;
-const findArgEnd = gen_util.findArgEnd;
-const trimParens = gen_util.trimParens;
-const stringTokenBody = gen_util.stringTokenBody;
-const publicDeclName = gen_util.publicDeclName;
-const decodeQuotedStringToken = gen_util.decodeQuotedStringToken;
-const appendFmt = gen_util.appendFmt;
-const Range = gen_util.Range;
-const moduleTokensEqual = gen_util.moduleTokensEqual;
-const findToken = gen_util.findToken;
-const findStartFunc = gen_util.findStartFunc;
-const isUserFuncDeclStart = gen_util.isUserFuncDeclStart;
-const isTypedBindingRhsCall = gen_util.isTypedBindingRhsCall;
-const isBareHostCallStatement = gen_util.isBareHostCallStatement;
-const stringLiteralArgLexeme = gen_util.stringLiteralArgLexeme;
-const isPublicTypeName = gen_util.isPublicTypeName;
-const isErrorTypeName = gen_util.isErrorTypeName;
-const isBaseIntTypeName = gen_util.isBaseIntTypeName;
-const isCoreWasmCallName = gen_util.isCoreWasmCallName;
-const isCoreWasmScalar = gen_util.isCoreWasmScalar;
+const tokEq = codegen_tokens.tok_eq;
+const findMatching = codegen_tokens.find_matching;
+const findMatchingInRange = codegen_tokens.find_matching_in_range;
+const findLineEnd = codegen_tokens.find_line_end;
+const findLineStart = codegen_tokens.find_line_start;
+const isLineStart = codegen_tokens.is_line_start;
+const findTopLevelToken = codegen_tokens.find_top_level_token;
+const findArgEnd = codegen_tokens.find_arg_end;
+const trimParens = codegen_tokens.trim_parens;
+const stringTokenBody = codegen_tokens.string_token_body;
+const publicDeclName = codegen_names.public_decl_name;
+const decodeQuotedStringToken = codegen_tokens.decode_quoted_string_token;
+const appendFmt = codegen_names.append_fmt;
+const Range = codegen_tokens.Range;
+const moduleTokensEqual = codegen_tokens.module_tokens_equal;
+const findToken = codegen_tokens.find_token;
+const findStartFunc = codegen_tokens.find_start_func;
+const isUserFuncDeclStart = codegen_tokens.is_user_func_decl_start;
+const isTypedBindingRhsCall = codegen_tokens.is_typed_binding_rhs_call;
+const isBareHostCallStatement = codegen_tokens.is_bare_host_call_statement;
+const stringLiteralArgLexeme = codegen_tokens.string_literal_arg_lexeme;
+const isPublicTypeName = codegen_names.is_public_type_name;
+const isErrorTypeName = codegen_names.is_error_type_name;
+const isBaseIntTypeName = codegen_names.is_base_int_type_name;
+const isCoreWasmCallName = codegen_names.is_core_wasm_call_name;
+const isCoreWasmScalar = codegen_names.is_core_wasm_scalar;
 
 const HostImport = gen_types.HostImport;
 const CodegenContext = gen_types.CodegenContext;
@@ -48,15 +49,15 @@ const PayloadEnumDecl = gen_types.PayloadEnumDecl;
 const StructDecl = gen_types.StructDecl;
 const ExprCallHead = gen_types.ExprCallHead;
 
-const WASI_BINDING_ENTRY_SOURCE = gen_wasi.WASI_BINDING_ENTRY_SOURCE;
-const WasiHostImport = gen_wasi.WasiHostImport;
-const freeWasiHostImports = gen_wasi.freeWasiHostImports;
-const collectWasiHostImports = gen_wasi.collectWasiHostImports;
-const findWasiHostImport = gen_wasi.findWasiHostImport;
-const findWasiHostImportBySource = gen_wasi.findWasiHostImportBySource;
-const wasiHostImportUseIsLowerableAtCall = gen_wasi.wasiHostImportUseIsLowerableAtCall;
-const wasiLowering = gen_wasi.wasiLowering;
-const parseWasiLinkAtArgs = gen_wasi.parseWasiLinkAtArgs;
+const WASI_BINDING_ENTRY_SOURCE = codegen_wasi_registry.WASI_BINDING_ENTRY_SOURCE;
+const WasiHostImport = codegen_wasi_registry.WasiHostImport;
+const freeWasiHostImports = codegen_wasi_registry.free_wasi_host_imports;
+const collectWasiHostImports = codegen_wasi_registry.collect_wasi_host_imports;
+const findWasiHostImport = codegen_wasi_registry.find_wasi_host_import;
+const findWasiHostImportBySource = codegen_wasi_registry.find_wasi_host_import_by_source;
+const wasiHostImportUseIsLowerableAtCall = codegen_wasi_registry.wasi_host_import_use_is_lowerable_at_call;
+const wasiLowering = codegen_wasi_registry.wasi_lowering;
+const parseWasiLinkAtArgs = codegen_wasi_registry.parse_wasi_link_at_args;
 
 const findHostImportForTokens = gen_host.findHostImportForTokens;
 const hostCallArgsMatch = gen_host.hostCallArgsMatch;
@@ -819,4 +820,3 @@ pub fn exprCallHead(tokens: []const lexer.Token, range: Range) ?ExprCallHead {
 pub fn callHeadHasTypeArgs(call_head: ExprCallHead) bool {
     return call_head.type_args_start != 0 or call_head.type_args_end != 0;
 }
-
