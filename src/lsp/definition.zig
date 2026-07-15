@@ -1,6 +1,13 @@
 const std = @import("std");
 const lexer = @import("../build/lexer.zig");
 const protocol = @import("protocol.zig");
+const source_helpers = @import("source_helpers.zig");
+const brace_depth_before = source_helpers.brace_depth_before;
+const token_range = source_helpers.token_range;
+const is_type_name = source_helpers.is_type_name;
+const is_field_name = source_helpers.is_field_name;
+const is_keyword = source_helpers.is_keyword;
+
 const workspace = @import("workspace.zig");
 
 pub fn find_definition(
@@ -98,59 +105,6 @@ fn is_type_decl(tokens: []const lexer.Token, idx: usize) bool {
     const after = tokens[idx + 2];
     if (tokens[idx].line != after.line) return false;
     return after.kind == .symbol and std.mem.eql(u8, after.lexeme, "=");
-}
-
-fn brace_depth_before(tokens: []const lexer.Token, idx: usize) usize {
-    var depth: usize = 0;
-    for (tokens[0..idx]) |token| {
-        if (token.kind != .symbol) continue;
-        if (std.mem.eql(u8, token.lexeme, "{")) {
-            depth += 1;
-            continue;
-        }
-        if (std.mem.eql(u8, token.lexeme, "}")) {
-            if (depth > 0) depth -= 1;
-        }
-    }
-    return depth;
-}
-
-fn token_range(token: lexer.Token) protocol.Range {
-    const line = if (token.line == 0) 0 else token.line - 1;
-    const start = if (token.col == 0) 0 else token.col - 1;
-    return .{
-        .start = .{ .line = line, .character = start },
-        .end = .{ .line = line, .character = start + token.lexeme.len },
-    };
-}
-
-fn is_type_name(name: []const u8) bool {
-    return name.len > 0 and std.ascii.isUpper(name[0]);
-}
-
-fn is_field_name(name: []const u8) bool {
-    return name.len > 1 and name[0] == '.';
-}
-
-fn is_keyword(name: []const u8) bool {
-    const keywords = [_][]const u8{
-        "if",
-        "else",
-        "loop",
-        "break",
-        "continue",
-        "return",
-        "defer",
-        "do",
-        "test",
-        "true",
-        "false",
-        "nil",
-    };
-    for (keywords) |kw| {
-        if (std.mem.eql(u8, kw, name)) return true;
-    }
-    return false;
 }
 
 test "find_definition resolves current file function call" {

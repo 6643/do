@@ -1,5 +1,9 @@
 const std = @import("std");
 const lexer = @import("../build/lexer.zig");
+const source_helpers = @import("source_helpers.zig");
+const is_field_name = source_helpers.is_field_name;
+const is_keyword = source_helpers.is_keyword;
+
 
 pub const legendTokenTypes = [_][]const u8{
     "keyword",
@@ -144,10 +148,6 @@ fn is_builtin_head(tokens: []const lexer.Token, idx: usize) bool {
     return at.col + at.lexeme.len == name.col;
 }
 
-fn is_field_name(name: []const u8) bool {
-    return name.len > 1 and name[0] == '.';
-}
-
 fn is_type_name(name: []const u8) bool {
     if (name.len == 0) return false;
     if (std.ascii.isUpper(name[0])) return true;
@@ -181,27 +181,6 @@ fn is_function_head(tokens: []const lexer.Token, idx: usize) bool {
     if (idx + 1 >= tokens.len) return false;
     if (tokens[idx].line != tokens[idx + 1].line) return false;
     return tokens[idx + 1].kind == .symbol and std.mem.eql(u8, tokens[idx + 1].lexeme, "(");
-}
-
-fn is_keyword(name: []const u8) bool {
-    const keywords = [_][]const u8{
-        "if",
-        "else",
-        "loop",
-        "break",
-        "continue",
-        "return",
-        "defer",
-        "do",
-        "test",
-        "true",
-        "false",
-        "nil",
-    };
-    for (keywords) |kw| {
-        if (std.mem.eql(u8, kw, name)) return true;
-    }
-    return false;
 }
 
 test "semantic token legend order is stable" {

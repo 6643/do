@@ -1,6 +1,15 @@
 const std = @import("std");
 const lexer = @import("../build/lexer.zig");
 const protocol = @import("protocol.zig");
+const source_helpers = @import("source_helpers.zig");
+const token_range = source_helpers.token_range;
+const signature_head = source_helpers.signature_head;
+const declaration_head = source_helpers.declaration_head;
+const line_slice = source_helpers.line_slice;
+const is_type_name = source_helpers.is_type_name;
+const is_field_name = source_helpers.is_field_name;
+const is_keyword = source_helpers.is_keyword;
+
 
 pub const WorkspaceSymbolKind = enum {
     function,
@@ -160,77 +169,6 @@ fn is_type_decl(tokens: []const lexer.Token, idx: usize) bool {
     const after = tokens[idx + 2];
     if (tokens[idx].line != after.line) return false;
     return after.kind == .symbol and std.mem.eql(u8, after.lexeme, "=");
-}
-
-fn token_range(token: lexer.Token) protocol.Range {
-    const line = if (token.line == 0) 0 else token.line - 1;
-    const start = if (token.col == 0) 0 else token.col - 1;
-    return .{
-        .start = .{ .line = line, .character = start },
-        .end = .{ .line = line, .character = start + token.lexeme.len },
-    };
-}
-
-fn signature_head(source: []const u8, one_based_line: usize) ?[]const u8 {
-    const line = line_slice(source, one_based_line) orelse return null;
-    const body_start = if (std.mem.indexOf(u8, line, "{")) |idx|
-        idx
-    else if (std.mem.indexOf(u8, line, "=>")) |idx|
-        idx
-    else
-        line.len;
-    return std.mem.trim(u8, line[0..body_start], " \t\r\n");
-}
-
-fn declaration_head(source: []const u8, one_based_line: usize) ?[]const u8 {
-    const line = line_slice(source, one_based_line) orelse return null;
-    return std.mem.trim(u8, line, " \t\r\n");
-}
-
-fn line_slice(source: []const u8, one_based_line: usize) ?[]const u8 {
-    if (one_based_line == 0) return null;
-
-    var line: usize = 1;
-    var start: usize = 0;
-    for (source, 0..) |ch, idx| {
-        if (line == one_based_line and ch == '\n') return source[start..idx];
-        if (ch == '\n') {
-            line += 1;
-            start = idx + 1;
-        }
-    }
-
-    if (line == one_based_line) return source[start..];
-    return null;
-}
-
-fn is_type_name(name: []const u8) bool {
-    return name.len > 0 and std.ascii.isUpper(name[0]);
-}
-
-fn is_field_name(name: []const u8) bool {
-    return name.len > 1 and name[0] == '.';
-}
-
-fn is_keyword(name: []const u8) bool {
-    const keywords = [_][]const u8{
-        "if",
-        "else",
-        "loop",
-        "break",
-        "continue",
-        "return",
-        "defer",
-        "do",
-        "test",
-        "true",
-        "false",
-        "nil",
-    };
-    for (keywords) |kw| {
-        if (std.mem.eql(u8, kw, name)) return true;
-    }
-    return false;
 }
 
 test "collect_workspace_symbols scans do files under file workspace root" {

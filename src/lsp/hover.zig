@@ -1,6 +1,13 @@
 const std = @import("std");
 const lexer = @import("../build/lexer.zig");
 const protocol = @import("protocol.zig");
+const source_helpers = @import("source_helpers.zig");
+const brace_depth_before = source_helpers.brace_depth_before;
+const line_slice = source_helpers.line_slice;
+const is_type_name = source_helpers.is_type_name;
+const is_field_name = source_helpers.is_field_name;
+const is_keyword = source_helpers.is_keyword;
+
 
 pub fn find_hover(
     allocator: std.mem.Allocator,
@@ -60,10 +67,6 @@ fn is_top_level_function_decl(tokens: []const lexer.Token, idx: usize) bool {
     return brace_depth_before(tokens, idx) == 0;
 }
 
-fn is_type_name(name: []const u8) bool {
-    return name.len > 0 and std.ascii.isUpper(name[0]);
-}
-
 fn is_top_level_type_decl(tokens: []const lexer.Token, idx: usize) bool {
     if (tokens[idx].kind != .ident or !is_type_name(tokens[idx].lexeme)) return false;
     if (brace_depth_before(tokens, idx) != 0) return false;
@@ -86,44 +89,12 @@ fn type_decl_hover(allocator: std.mem.Allocator, source: []const u8, one_based_l
     return try allocator.dupe(u8, head);
 }
 
-fn brace_depth_before(tokens: []const lexer.Token, idx: usize) usize {
-    var depth: usize = 0;
-    for (tokens[0..idx]) |token| {
-        if (token.kind != .symbol) continue;
-        if (std.mem.eql(u8, token.lexeme, "{")) {
-            depth += 1;
-            continue;
-        }
-        if (std.mem.eql(u8, token.lexeme, "}")) {
-            if (depth > 0) depth -= 1;
-        }
-    }
-    return depth;
-}
-
 fn function_signature(allocator: std.mem.Allocator, source: []const u8, one_based_line: usize) !?[]u8 {
     const line = line_slice(source, one_based_line) orelse return null;
     const head = signature_head(line);
     if (head.len == 0) return null;
     if (std.mem.indexOf(u8, head, "->") != null) return try allocator.dupe(u8, head);
     return try std.fmt.allocPrint(allocator, "{s} -> nil", .{head});
-}
-
-fn line_slice(source: []const u8, one_based_line: usize) ?[]const u8 {
-    if (one_based_line == 0) return null;
-
-    var line: usize = 1;
-    var start: usize = 0;
-    for (source, 0..) |ch, idx| {
-        if (line == one_based_line and ch == '\n') return source[start..idx];
-        if (ch == '\n') {
-            line += 1;
-            start = idx + 1;
-        }
-    }
-
-    if (line == one_based_line) return source[start..];
-    return null;
 }
 
 fn signature_head(line: []const u8) []const u8 {
@@ -134,31 +105,6 @@ fn signature_head(line: []const u8) []const u8 {
     else
         line.len;
     return std.mem.trim(u8, line[0..body_start], " \t\r\n");
-}
-
-fn is_field_name(name: []const u8) bool {
-    return name.len > 1 and name[0] == '.';
-}
-
-fn is_keyword(name: []const u8) bool {
-    const keywords = [_][]const u8{
-        "if",
-        "else",
-        "loop",
-        "break",
-        "continue",
-        "return",
-        "defer",
-        "do",
-        "test",
-        "true",
-        "false",
-        "nil",
-    };
-    for (keywords) |kw| {
-        if (std.mem.eql(u8, kw, name)) return true;
-    }
-    return false;
 }
 
 test "find_hover returns current file function declaration signature" {
