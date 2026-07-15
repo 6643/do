@@ -85,12 +85,12 @@ const tuple_element_type_at = codegen_emit_wasi.tuple_element_type_at;
 const tuple_scalar_leaf_storage_byte_width_ctx = codegen_emit_wasi.tuple_scalar_leaf_storage_byte_width_ctx;
 const ManagedPayloadBinding = codegen_storage_layout.ManagedPayloadBinding;
 const stmt_contains_storage_agg_literal = codegen_emit_storage_values.stmt_contains_storage_agg_literal;
-const findLocalName = codegen_emit_storage_values.findLocalName;
+const find_local_name = codegen_emit_storage_values.findLocalName;
 const infer_expr_type = codegen_storage_layout.infer_expr_type;
-const findFuncDeclForCallHead = codegen_emit_storage_values.findFuncDeclForCallHead;
+const find_func_decl_for_call_head = codegen_storage_layout.find_func_decl_for_call_head;
 const substitute_struct_field_type = codegen_storage_layout.substitute_struct_field_type;
 const managed_payload_elem_type_from_name = codegen_storage_layout.managed_payload_elem_type_from_name;
-const emitZeroValueForType = codegen_emit_struct.emitZeroValueForType;
+const emit_zero_value_for_type = codegen_emit_struct.emitZeroValueForType;
 const stmt_contains_struct_literal_expr = codegen_emit_struct.stmt_contains_struct_literal_expr;
 const field_visible_from_tokens = codegen_emit_struct_fields.field_visible_from_tokens;
 const field_reflection_local_name_prefix = codegen_emit_struct_fields.field_reflection_local_name_prefix;
@@ -108,10 +108,10 @@ const is_managed_local_assignment_stmt = codegen_emit_control.is_managed_local_a
 const is_codegen_scalar_type = codegen_emit_union.is_codegen_scalar_type;
 const borrowed_field_meta_local_set = codegen_emit_struct_fields.borrowed_field_meta_local_set;
 const collect_field_reflection_body_locals = codegen_emit_struct_fields.collect_field_reflection_body_locals;
-const inferredStructBinding = codegen_emit_struct.inferredStructBinding;
-const typedStructBinding = codegen_emit_struct.typedStructBinding;
-const appendTypedLocalWithDecl = codegen_emit_storage_values.appendTypedLocalWithDecl;
-const appendManagedStructFieldMetaLocal = codegen_emit_storage_values.appendManagedStructFieldMetaLocal;
+const inferred_struct_binding = codegen_emit_struct.inferredStructBinding;
+const typed_struct_binding = codegen_emit_struct.typedStructBinding;
+const append_typed_local_with_decl = codegen_emit_storage_values.appendTypedLocalWithDecl;
+const append_managed_struct_field_meta_local = codegen_emit_storage_values.appendManagedStructFieldMetaLocal;
 const managed_payload_binding = codegen_storage_layout.managed_payload_binding;
 const storage_binding_elem_type = codegen_storage_layout.storage_binding_elem_type;
 
@@ -146,7 +146,7 @@ pub fn emit_self_tail_loop_local_reset(allocator: std.mem.Allocator, func: FuncD
             }
         }
         if (is_param) continue;
-        try emitZeroValueForType(allocator, ctx, out, local.ty);
+        try emit_zero_value_for_type(allocator, ctx, out, local.ty);
         try appendFmt(allocator, out, "    local.set ${s}\n", .{local.name});
     }
 }
@@ -170,7 +170,7 @@ pub fn multi_result_lhs_for_item(
     if (findStructLocal(locals.struct_locals.items, name)) |struct_local| {
         if (!std.mem.eql(u8, struct_local.ty, item.ty)) return null;
         if (findStructLayout(ctx.struct_layouts, item.ty) != null) {
-            const local_name = findLocalName(locals.locals.items, name) orelse return null;
+            const local_name = find_local_name(locals.locals.items, name) orelse return null;
             const local_ty = findLocalType(locals.locals.items, name) orelse return null;
             if (!std.mem.eql(u8, local_ty, item.ty)) return null;
             if (item.abi_len != 1) return null;
@@ -181,7 +181,7 @@ pub fn multi_result_lhs_for_item(
         return .{ .name = struct_local.name, .ty = item.ty, .item = item, .kind = .unmanaged_struct };
     }
 
-    const local_name = findLocalName(locals.locals.items, name) orelse return null;
+    const local_name = find_local_name(locals.locals.items, name) orelse return null;
     const local_ty = findLocalType(locals.locals.items, name) orelse return null;
     if (!std.mem.eql(u8, local_ty, item.ty)) return null;
     if (item.abi_len != 1) return null;
@@ -249,7 +249,7 @@ fn append_struct_binding_field_locals(
                 try substitute_struct_field_type(allocator, decl, struct_ty, field.ty, &out.owned_names)
             else
                 field.ty;
-            try appendManagedStructFieldMetaLocal(allocator, out, local_name, field.name, field_ty);
+            try append_managed_struct_field_meta_local(allocator, out, local_name, field.name, field_ty);
         }
         try out.ensureStorageWriteTemps(allocator);
         return;
@@ -326,9 +326,9 @@ pub fn collect_body_locals_with_mode(allocator: std.mem.Allocator, tokens: []con
             try append_struct_binding_field_locals(allocator, tokens, ctx, out, local_name, decl.name, decl, false);
         } else if (!hasLocal(out.locals.items, tokens[i].lexeme) and
             findStructLocal(out.struct_locals.items, tokens[i].lexeme) == null and
-            inferredStructBinding(tokens, i, stmt_end, out, ctx) != null)
+            inferred_struct_binding(tokens, i, stmt_end, out, ctx) != null)
         {
-            const binding = inferredStructBinding(tokens, i, stmt_end, out, ctx).?;
+            const binding = inferred_struct_binding(tokens, i, stmt_end, out, ctx).?;
             const local_name = try out.appendStructLocal(allocator, tokens[i].lexeme, binding.ty, true);
             try append_struct_binding_field_locals(allocator, tokens, ctx, out, local_name, binding.ty, binding.decl, true);
         } else if (!hasLocal(out.locals.items, tokens[i].lexeme) and inferred_scalar_binding_type(tokens, i, stmt_end, out, ctx) != null) {
@@ -381,7 +381,7 @@ pub fn collect_body_locals_with_mode(allocator: std.mem.Allocator, tokens: []con
             if (!hasLocal(out.locals.items, STORAGE_OVERWRITE_TMP_LOCAL)) {
                 try out.appendBorrowedLocal(allocator, STORAGE_OVERWRITE_TMP_LOCAL, "usize", true);
             }
-        } else if (try typedStructBinding(allocator, tokens, i, stmt_end, ctx, &out.owned_names)) |binding| {
+        } else if (try typed_struct_binding(allocator, tokens, i, stmt_end, ctx, &out.owned_names)) |binding| {
             const local_name = try out.appendStructLocal(allocator, tokens[i].lexeme, binding.ty, true);
             try append_struct_binding_field_locals(allocator, tokens, ctx, out, local_name, binding.ty, binding.decl, true);
         } else if (try typed_tuple_binding_type(allocator, tokens, i, stmt_end, ctx, &out.owned_names)) |tuple_ty| {
@@ -399,7 +399,7 @@ pub fn stmt_contains_variadic_user_call(tokens: []const lexer.Token, start_idx: 
     while (i + 1 < end_idx) : (i += 1) {
         const call_head = callHeadAt(tokens, i, end_idx) orelse continue;
         if (call_head.is_intrinsic) continue;
-        const func = findFuncDeclForCallHead(tokens, call_head, locals, ctx) orelse {
+        const func = find_func_decl_for_call_head(tokens, call_head, locals, ctx) orelse {
             i = call_head.args_end;
             continue;
         };
@@ -837,7 +837,7 @@ pub fn inferred_union_call_binding(allocator: std.mem.Allocator, tokens: []const
     const range = trimParens(tokens, start_idx + 2, end_idx);
     const call_head = exprCallHead(tokens, range) orelse return null;
     if (call_head.is_intrinsic) return null;
-    if (findFuncDeclForCallHead(tokens, call_head, locals, ctx)) |func| {
+    if (find_func_decl_for_call_head(tokens, call_head, locals, ctx)) |func| {
         if (func.result_union) |layout| {
             return .{ .layout = layout, .owns_layout = false };
         }
@@ -927,7 +927,7 @@ fn collect_one_multi_result_lhs_local(
     if (findLocalType(out.locals.items, name) != null) return;
     if (findStructLocal(out.struct_locals.items, name) != null) return;
     if (findStorageLocal(out.storage_locals.items, name) != null) return;
-    try appendTypedLocalWithDecl(allocator, out, name, item.ty, ctx, true);
+    try append_typed_local_with_decl(allocator, out, name, item.ty, ctx, true);
 }
 
 pub fn collect_multi_result_assignment_locals(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext, out: *LocalSet) CodegenError!bool {
@@ -937,7 +937,7 @@ pub fn collect_multi_result_assignment_locals(allocator: std.mem.Allocator, toke
     const rhs_range = trimParens(tokens, eq_idx + 1, end_idx);
     const call_head = exprCallHead(tokens, rhs_range) orelse return false;
     if (call_head.is_intrinsic) return false;
-    const func = findFuncDeclForCallHead(tokens, call_head, out, ctx) orelse return false;
+    const func = find_func_decl_for_call_head(tokens, call_head, out, ctx) orelse return false;
     if (func.results.len <= 1 or func.result_items.len == 0) return false;
 
     var lhs_start = start_idx;
@@ -963,7 +963,7 @@ pub fn multi_result_assignment_needs_managed_tmp(tokens: []const lexer.Token, st
     const rhs_range = trimParens(tokens, eq_idx + 1, end_idx);
     const call_head = exprCallHead(tokens, rhs_range) orelse return false;
     if (call_head.is_intrinsic) return false;
-    const func = findFuncDeclForCallHead(tokens, call_head, locals, ctx) orelse return false;
+    const func = find_func_decl_for_call_head(tokens, call_head, locals, ctx) orelse return false;
     if (func.results.len <= 1) return false;
     if (func.result_items.len == 0) return false;
 

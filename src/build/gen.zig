@@ -37,8 +37,8 @@ const findMatching = codegen_tokens.find_matching;
 
 // Impl helpers for unit tests
 const bindGenericTypeFromConcrete = gen_lower.bindGenericTypeFromConcrete;
-const funcParamAbiType = gen_lower.funcParamAbiType;
-const funcVariadicElemType = gen_lower.funcVariadicElemType;
+const func_param_abi_type = gen_lower.funcParamAbiType;
+const func_variadic_elem_type = gen_lower.func_variadic_elem_type;
 const cloneFuncParams = gen_lower.cloneFuncParams;
 const freeStructDecls = model.freeStructDecls;
 const freeFuncDecls = model.freeFuncDecls;
@@ -51,18 +51,18 @@ const directManagedLastUseMoveSourceOrigin = gen_lower.directManagedLastUseMoveS
 const CallLastUseMoveContext = context.CallLastUseMoveContext;
 const collectGenericFuncInstancesForTests = gen_lower.collectGenericFuncInstancesForTests;
 const collect_body_locals = gen_lower.collect_body_locals;
-const emitScalarNumericStartWithBackendIr = gen_lower.emitScalarNumericStartWithBackendIr;
-const emitExpr = gen_lower.emitExpr;
+const emit_scalar_numeric_start_with_backend_ir = gen_lower.emit_scalar_numeric_start_with_backend_ir;
+const emit_expr = gen_lower.emit_expr;
 const collectGenericFuncInstanceForCall = gen_lower.collectGenericFuncInstanceForCall;
-const findGenericBinding = gen_lower.findGenericBinding;
-const findFuncDeclForCallHead = gen_lower.findFuncDeclForCallHead;
+const find_generic_binding = gen_lower.findGenericBinding;
+const find_func_decl_for_call_head = gen_lower.find_func_decl_for_call_head;
 const bindGenericFuncCall = gen_lower.bindGenericFuncCall;
 const findUnionLocal = context.findUnionLocal;
-const callHeadAt = gen_lower.callHeadAt;
+const call_head_at = gen_lower.callHeadAt;
 const collect_struct_layouts = codegen_collect_structs.collect_struct_layouts;
 const findToken = codegen_tokens.find_token;
 const freeStructLayouts = model.freeStructLayouts;
-const fieldGetLastUseMoveSource = gen_lower.fieldGetLastUseMoveSource;
+const field_get_last_use_move_source = gen_lower.field_get_last_use_move_source;
 
 test "LocalSet records source origin metadata" {
     const allocator = std.testing.allocator;
@@ -155,7 +155,7 @@ test "field-get move candidate preserves struct local origin" {
         .allow_field_read_move = true,
     };
     const struct_local = findStructLocal(locals.struct_locals.items, "user") orelse unreachable;
-    const move_source = try fieldGetLastUseMoveSource(allocator, tokens, 8, tokens.len, struct_local, "text", move_ctx, &locals, ctx) orelse unreachable;
+    const move_source = try field_get_last_use_move_source(allocator, tokens, 8, tokens.len, struct_local, "text", move_ctx, &locals, ctx) orelse unreachable;
     try std.testing.expectEqual(SourceOrigin.unknown, move_source.origin);
     try std.testing.expectEqualStrings("user", move_source.source_name);
 }
@@ -190,7 +190,7 @@ test "variadic storage param uses nested storage abi" {
         .variadic = true,
     };
 
-    try std.testing.expectEqualStrings("[[u8]]", funcParamAbiType(param));
+    try std.testing.expectEqualStrings("[[u8]]", func_param_abi_type(param));
 }
 
 test "variadic storage param keeps storage element type" {
@@ -200,7 +200,7 @@ test "variadic storage param keeps storage element type" {
         .variadic = true,
     };
 
-    try std.testing.expectEqualStrings("[u8]", funcVariadicElemType(param));
+    try std.testing.expectEqualStrings("[u8]", func_variadic_elem_type(param));
 }
 
 test "cloneFuncParams preserves variadic abi type" {
@@ -215,8 +215,8 @@ test "cloneFuncParams preserves variadic abi type" {
     const cloned = try cloneFuncParams(allocator, &params);
     defer freeFuncParams(allocator, cloned);
 
-    try std.testing.expectEqualStrings("[[u8]]", funcParamAbiType(cloned[0]));
-    try std.testing.expectEqualStrings("[u8]", funcVariadicElemType(cloned[0]));
+    try std.testing.expectEqualStrings("[[u8]]", func_param_abi_type(cloned[0]));
+    try std.testing.expectEqualStrings("[u8]", func_variadic_elem_type(cloned[0]));
 }
 
 test "inferred generic union call binding returns substituted union layout" {
@@ -339,7 +339,7 @@ test "generic callback prebinds literal argument type from lambda" {
 
     const first_call_idx = findToken(tokens, 0, tokens.len, "apply_value") orelse unreachable;
     const call_idx = findToken(tokens, first_call_idx + 1, tokens.len, "apply_value") orelse unreachable;
-    const call_head = callHeadAt(tokens, call_idx, tokens.len) orelse unreachable;
+    const call_head = call_head_at(tokens, call_idx, tokens.len) orelse unreachable;
 
     var locals = LocalSet{};
     defer locals.deinit(allocator);
@@ -354,11 +354,11 @@ test "generic callback prebinds literal argument type from lambda" {
     }
 
     try std.testing.expect(try bindGenericFuncCall(allocator, tokens, call_head.args_start, call_head.args_end, &locals, ctx, template, &bindings, &param_tys, &owned_types));
-    try std.testing.expectEqualStrings("i32", findGenericBinding(bindings.items, "A").?.ty);
-    try std.testing.expectEqualStrings("i32", findGenericBinding(bindings.items, "B").?.ty);
+    try std.testing.expectEqualStrings("i32", find_generic_binding(bindings.items, "A").?.ty);
+    try std.testing.expectEqualStrings("i32", find_generic_binding(bindings.items, "B").?.ty);
 
     try collectGenericFuncInstanceForCall(allocator, tokens, call_head, &locals, ctx, template, "i32", &functions);
-    try std.testing.expect(findFuncDeclForCallHead(tokens, call_head, &locals, .{
+    try std.testing.expect(find_func_decl_for_call_head(tokens, call_head, &locals, .{
         .functions = functions.items,
         .structs = &.{},
         .value_enums = &.{},
@@ -406,7 +406,7 @@ test "generic callback prebinds literal argument type from lambda" {
         .entry_tokens = tokens,
         .modules = &.{},
     }, &collected_locals);
-    try std.testing.expect(findFuncDeclForCallHead(tokens, call_head, &collected_locals, .{
+    try std.testing.expect(find_func_decl_for_call_head(tokens, call_head, &collected_locals, .{
         .functions = collected_functions.items,
         .structs = &.{},
         .value_enums = &.{},
@@ -420,7 +420,7 @@ test "generic callback prebinds literal argument type from lambda" {
 
     var wat = std.ArrayList(u8).empty;
     defer wat.deinit(allocator);
-    try std.testing.expect(try emitExpr(allocator, tokens, call_head.name_idx, call_head.args_end + 1, &collected_locals, .{
+    try std.testing.expect(try emit_expr(allocator, tokens, call_head.name_idx, call_head.args_end + 1, &collected_locals, .{
         .functions = collected_functions.items,
         .structs = &.{},
         .value_enums = &.{},
@@ -498,7 +498,7 @@ test "generic callback prebinds literal argument type from function ref" {
     try collect_body_locals(allocator, tokens, tests[0].body_start, tests[0].body_end, ctx, &locals);
     const first_call_idx = findToken(tokens, 0, tokens.len, "apply_value") orelse unreachable;
     const call_idx = findToken(tokens, first_call_idx + 1, tokens.len, "apply_value") orelse unreachable;
-    const call_head = callHeadAt(tokens, call_idx, tokens.len) orelse unreachable;
+    const call_head = call_head_at(tokens, call_idx, tokens.len) orelse unreachable;
     const template = findGenericTemplateForCall(functions.items, tokens, ctx, "apply_value") orelse unreachable;
     var bindings = std.ArrayList(GenericTypeBinding).empty;
     defer bindings.deinit(allocator);
@@ -510,10 +510,10 @@ test "generic callback prebinds literal argument type from function ref" {
         owned_types.deinit(allocator);
     }
     try std.testing.expect(try bindGenericFuncCall(allocator, tokens, call_head.args_start, call_head.args_end, &locals, ctx, template, &bindings, &param_tys, &owned_types));
-    try std.testing.expectEqualStrings("bool", findGenericBinding(bindings.items, "A").?.ty);
-    try std.testing.expectEqualStrings("i32", findGenericBinding(bindings.items, "B").?.ty);
+    try std.testing.expectEqualStrings("bool", find_generic_binding(bindings.items, "A").?.ty);
+    try std.testing.expectEqualStrings("i32", find_generic_binding(bindings.items, "B").?.ty);
     try collectGenericFuncInstanceForCall(allocator, tokens, call_head, &locals, ctx, template, "i32", &functions);
-    const direct_func = findFuncDeclForCallHead(tokens, call_head, &locals, .{
+    const direct_func = find_func_decl_for_call_head(tokens, call_head, &locals, .{
         .functions = functions.items,
         .structs = &.{},
         .value_enums = &.{},
@@ -525,13 +525,13 @@ test "generic callback prebinds literal argument type from function ref" {
         .modules = &.{},
     }) orelse unreachable;
     try std.testing.expect(direct_func.callback_bindings.len == 1);
-    const func = findFuncDeclForCallHead(tokens, call_head, &locals, ctx) orelse unreachable;
+    const func = find_func_decl_for_call_head(tokens, call_head, &locals, ctx) orelse unreachable;
     try std.testing.expect(func.callback_bindings.len == 1);
     try std.testing.expect(func.callback_bindings[0].kind == .func_ref);
 
     var wat = std.ArrayList(u8).empty;
     defer wat.deinit(allocator);
-    try std.testing.expect(try emitExpr(allocator, tokens, call_head.name_idx, call_head.args_end + 1, &locals, ctx, "i32", &wat));
+    try std.testing.expect(try emit_expr(allocator, tokens, call_head.name_idx, call_head.args_end + 1, &locals, ctx, "i32", &wat));
 }
 
 test "generic multi callback instances collect" {
@@ -602,18 +602,18 @@ test "generic multi callback instances collect" {
     const def_idx = findToken(tokens, 0, tokens.len, "compose") orelse unreachable;
     const same_idx = findToken(tokens, def_idx + 1, tokens.len, "compose") orelse unreachable;
     const hetero_idx = findToken(tokens, same_idx + 1, tokens.len, "compose") orelse unreachable;
-    const same_head = callHeadAt(tokens, same_idx, tokens.len) orelse unreachable;
-    const hetero_head = callHeadAt(tokens, hetero_idx, tokens.len) orelse unreachable;
-    try std.testing.expect(findFuncDeclForCallHead(tokens, same_head, &locals, ctx) != null);
-    try std.testing.expect(findFuncDeclForCallHead(tokens, hetero_head, &locals, ctx) != null);
+    const same_head = call_head_at(tokens, same_idx, tokens.len) orelse unreachable;
+    const hetero_head = call_head_at(tokens, hetero_idx, tokens.len) orelse unreachable;
+    try std.testing.expect(find_func_decl_for_call_head(tokens, same_head, &locals, ctx) != null);
+    try std.testing.expect(find_func_decl_for_call_head(tokens, hetero_head, &locals, ctx) != null);
 
     var same_wat = std.ArrayList(u8).empty;
     defer same_wat.deinit(allocator);
-    try std.testing.expect(try emitExpr(allocator, tokens, same_idx, same_head.args_end + 1, &locals, ctx, "i32", &same_wat));
+    try std.testing.expect(try emit_expr(allocator, tokens, same_idx, same_head.args_end + 1, &locals, ctx, "i32", &same_wat));
 
     var hetero_wat = std.ArrayList(u8).empty;
     defer hetero_wat.deinit(allocator);
-    try std.testing.expect(try emitExpr(allocator, tokens, hetero_idx, hetero_head.args_end + 1, &locals, ctx, "bool", &hetero_wat));
+    try std.testing.expect(try emit_expr(allocator, tokens, hetero_idx, hetero_head.args_end + 1, &locals, ctx, "bool", &hetero_wat));
 }
 
 test "backend ir lowering emits selected scalar numeric start body" {
@@ -653,7 +653,7 @@ test "backend ir lowering emits selected scalar numeric start body" {
 
     var out = std.ArrayList(u8).empty;
     defer out.deinit(allocator);
-    try std.testing.expect(try emitScalarNumericStartWithBackendIr(allocator, tokens, open_body + 1, close_body, &locals, ctx, &out));
+    try std.testing.expect(try emit_scalar_numeric_start_with_backend_ir(allocator, tokens, open_body + 1, close_body, &locals, ctx, &out));
     try std.testing.expectEqualStrings(
         \\    i32.const 1
         \\    i32.const 2

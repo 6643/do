@@ -17,8 +17,8 @@ const codegen_collect_structs = @import("codegen_collect_structs.zig");
 const gen_import = @import("gen_import.zig");
 const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
 const codegen_callbacks = @import("codegen_callbacks.zig");
-const findValueEnumDeclLineByName = gen_import.findValueEnumDeclLineByName;
-const findValueEnumDeclLineByBranch = gen_import.findValueEnumDeclLineByBranch;
+const find_value_enum_decl_line_by_name = gen_import.findValueEnumDeclLineByName;
+const find_value_enum_decl_line_by_branch = gen_import.findValueEnumDeclLineByBranch;
 const simple_type_name = codegen_collect_functions.simple_type_name;
 const is_top_level_comma_any = codegen_collect_functions.is_top_level_comma_any;
 const is_return_arrow_at = codegen_collect_functions.is_return_arrow_at;
@@ -30,53 +30,53 @@ const ownership_facts = @import("ownership_facts.zig");
 const imports = @import("imports.zig");
 const test_runner = @import("test_runner.zig");
 
-const tokEq = codegen_tokens.tok_eq;
-const findMatching = codegen_tokens.find_matching;
-const findMatchingInRange = codegen_tokens.find_matching_in_range;
-const findLineEnd = codegen_tokens.find_line_end;
-const findLineStart = codegen_tokens.find_line_start;
-const isLineStart = codegen_tokens.is_line_start;
-const findTopLevelToken = codegen_tokens.find_top_level_token;
-const findArgEnd = codegen_tokens.find_arg_end;
-const trimParens = codegen_tokens.trim_parens;
-const publicDeclName = codegen_names.public_decl_name;
-const appendFmt = codegen_names.append_fmt;
+const tok_eq = codegen_tokens.tok_eq;
+const find_matching = codegen_tokens.find_matching;
+const find_matching_in_range = codegen_tokens.find_matching_in_range;
+const find_line_end = codegen_tokens.find_line_end;
+const find_line_start = codegen_tokens.find_line_start;
+const is_line_start = codegen_tokens.is_line_start;
+const find_top_level_token = codegen_tokens.find_top_level_token;
+const find_arg_end = codegen_tokens.find_arg_end;
+const trim_parens = codegen_tokens.trim_parens;
+const public_decl_name = codegen_names.public_decl_name;
+const append_fmt = codegen_names.append_fmt;
 const Range = codegen_tokens.Range;
-const alignUp = codegen_tokens.align_up;
-const compactTokenText = codegen_tokens.compact_token_text;
-const stringTokenBody = codegen_tokens.string_token_body;
-const stringLiteralArgLexeme = codegen_tokens.string_literal_arg_lexeme;
-const isStringLiteralArg = codegen_tokens.is_string_literal_arg;
-const decodeQuotedStringToken = codegen_tokens.decode_quoted_string_token;
-const findToken = codegen_tokens.find_token;
-const findTopLevelBlockOpen = codegen_tokens.find_top_level_block_open;
-const findStmtEnd = codegen_tokens.find_stmt_end;
-const findTypeArgEnd = codegen_tokens.find_type_arg_end;
-const moduleTokensEqual = codegen_tokens.module_tokens_equal;
-const moduleScopedSymbolName = codegen_names.module_scoped_symbol_name;
-const appendMangledTypeName = codegen_names.append_mangled_type_name;
-const isUserFuncDeclStart = codegen_tokens.is_user_func_decl_start;
-const isPublicTypeName = codegen_names.is_public_type_name;
-const isErrorTypeName = codegen_names.is_error_type_name;
-const isBaseIntTypeName = codegen_names.is_base_int_type_name;
-const isCoreWasmScalar = codegen_names.is_core_wasm_scalar;
-const isCoreIntegerScalar = codegen_names.is_core_integer_scalar;
-const isCoreFloatScalar = codegen_names.is_core_float_scalar;
-const isNumericCoreFuncName = codegen_names.is_numeric_core_func_name;
-const isBitwiseCoreFuncName = codegen_names.is_bitwise_core_func_name;
-const isCountBitsCoreFuncName = codegen_names.is_count_bits_core_func_name;
-const isNumericUnarySelectCoreFuncName = codegen_names.is_numeric_unary_select_core_func_name;
-const isNumericBinarySelectCoreFuncName = codegen_names.is_numeric_binary_select_core_func_name;
-const isFloatUnaryCoreFuncName = codegen_names.is_float_unary_core_func_name;
-const isFloatBinaryCoreFuncName = codegen_names.is_float_binary_core_func_name;
-const isBoolSpecialFuncName = codegen_names.is_bool_special_func_name;
-const isComparisonCoreFuncName = codegen_names.is_comparison_core_func_name;
-const isMemoryLoadName = codegen_names.is_memory_load_name;
-const isCoreWasmCallName = codegen_names.is_core_wasm_call_name;
-const tokenTextEqualsCompact = codegen_tokens.token_text_equals_compact;
-const findTopLevelTypeSeparator = codegen_tokens.find_top_level_type_separator;
-const findTopLevelTypeSeparatorFrom = codegen_tokens.find_top_level_type_separator_from;
-const hasString = codegen_names.has_string;
+const align_up = codegen_tokens.align_up;
+const compact_token_text = codegen_tokens.compact_token_text;
+const string_token_body = codegen_tokens.string_token_body;
+const string_literal_arg_lexeme = codegen_tokens.string_literal_arg_lexeme;
+const is_string_literal_arg = codegen_tokens.is_string_literal_arg;
+const decode_quoted_string_token = codegen_tokens.decode_quoted_string_token;
+const find_token = codegen_tokens.find_token;
+const find_top_level_block_open = codegen_tokens.find_top_level_block_open;
+const find_stmt_end = codegen_tokens.find_stmt_end;
+const find_type_arg_end = codegen_tokens.find_type_arg_end;
+const module_tokens_equal = codegen_tokens.module_tokens_equal;
+const module_scoped_symbol_name = codegen_names.module_scoped_symbol_name;
+const append_mangled_type_name = codegen_names.append_mangled_type_name;
+const is_user_func_decl_start = codegen_tokens.is_user_func_decl_start;
+const is_public_type_name = codegen_names.is_public_type_name;
+const is_error_type_name = codegen_names.is_error_type_name;
+const is_base_int_type_name = codegen_names.is_base_int_type_name;
+const is_core_wasm_scalar = codegen_names.is_core_wasm_scalar;
+const is_core_integer_scalar = codegen_names.is_core_integer_scalar;
+const is_core_float_scalar = codegen_names.is_core_float_scalar;
+const is_numeric_core_func_name = codegen_names.is_numeric_core_func_name;
+const is_bitwise_core_func_name = codegen_names.is_bitwise_core_func_name;
+const is_count_bits_core_func_name = codegen_names.is_count_bits_core_func_name;
+const is_numeric_unary_select_core_func_name = codegen_names.is_numeric_unary_select_core_func_name;
+const is_numeric_binary_select_core_func_name = codegen_names.is_numeric_binary_select_core_func_name;
+const is_float_unary_core_func_name = codegen_names.is_float_unary_core_func_name;
+const is_float_binary_core_func_name = codegen_names.is_float_binary_core_func_name;
+const is_bool_special_func_name = codegen_names.is_bool_special_func_name;
+const is_comparison_core_func_name = codegen_names.is_comparison_core_func_name;
+const is_memory_load_name = codegen_names.is_memory_load_name;
+const is_core_wasm_call_name = codegen_names.is_core_wasm_call_name;
+const token_text_equals_compact = codegen_tokens.token_text_equals_compact;
+const find_top_level_type_separator = codegen_tokens.find_top_level_type_separator;
+const find_top_level_type_separator_from = codegen_tokens.find_top_level_type_separator_from;
+const has_string = codegen_names.has_string;
 
 const LocalSet = context.LocalSet;
 const Local = model.Local;
@@ -125,62 +125,62 @@ const STORAGE_PAYLOAD_HEADER_BYTES = constants.STORAGE_PAYLOAD_HEADER_BYTES;
 const TYPE_ID_STORAGE_U8 = constants.TYPE_ID_STORAGE_U8;
 const TYPE_ID_STORAGE_MANAGED = constants.TYPE_ID_STORAGE_MANAGED;
 const TYPE_ID_FIRST_STRUCT = constants.TYPE_ID_FIRST_STRUCT;
-const findLocalType = context.findLocalType;
-const findLocalOrigin = context.findLocalOrigin;
-const findStorageLocal = context.findStorageLocal;
-const findStructLocal = context.findStructLocal;
-const findUnionLocal = context.findUnionLocal;
-const hasLocal = context.hasLocal;
-const isCompilerLocalName = context.isCompilerLocalName;
-const storageTypeNameForElem = context.storageTypeNameForElem;
-const storageTypeNameForElemOwned = context.storageTypeNameForElemOwned;
-const localNameMatches = context.localNameMatches;
-const unionPayloadLocalName = context.unionPayloadLocalName;
-const unionTagLocalName = context.unionTagLocalName;
+const find_local_type = context.findLocalType;
+const find_local_origin = context.findLocalOrigin;
+const find_storage_local = context.findStorageLocal;
+const find_struct_local = context.findStructLocal;
+const find_union_local = context.findUnionLocal;
+const has_local = context.hasLocal;
+const is_compiler_local_name = context.isCompilerLocalName;
+const storage_type_name_for_elem = context.storageTypeNameForElem;
+const storage_type_name_for_elem_owned = context.storageTypeNameForElemOwned;
+const local_name_matches = context.localNameMatches;
+const union_payload_local_name = context.unionPayloadLocalName;
+const union_tag_local_name = context.unionTagLocalName;
 
 const UnionLayout = codegen_union_layout.UnionLayout;
 const UnionBranch = codegen_union_layout.UnionBranch;
-const freeUnionLayout = codegen_union_layout.free_union_layout;
-const cloneUnionLayout = codegen_union_layout.clone_union_layout;
-const unionLayoutsEqual = codegen_union_layout.union_layouts_equal;
-const unionBranchIsStatusI32 = codegen_union_layout.union_branch_is_status_i32;
+const free_union_layout = codegen_union_layout.free_union_layout;
+const clone_union_layout = codegen_union_layout.clone_union_layout;
+const union_layouts_equal = codegen_union_layout.union_layouts_equal;
+const union_branch_is_status_i32 = codegen_union_layout.union_branch_is_status_i32;
 
-const findStructDecl = gen_collect_util.findStructDecl;
-const findStructLayout = gen_collect_util.findStructLayout;
+const find_struct_decl = gen_collect_util.findStructDecl;
+const find_struct_layout = gen_collect_util.findStructLayout;
 const find_struct_layout_exact = codegen_collect_structs.find_struct_layout_exact;
 const is_pack_managed_handle_leaf = codegen_collect_structs.is_pack_managed_handle_leaf;
 const leaf_payload_bytes_for_pack = codegen_collect_structs.leaf_payload_bytes_for_pack;
-const pureScalarStructPackWidth = gen_collect_util.pureScalarStructPackWidth;
-const packSlotWidth = gen_collect_util.packSlotWidth;
-const tuplePackWidthWithStructs = gen_collect_util.tuplePackWidthWithStructs;
-const appendTupleLeafTypesWithStructs = gen_collect_util.appendTupleLeafTypesWithStructs;
-const appendTupleLeafTypes = gen_collect_util.appendTupleLeafTypes;
-const structDeclHasManagedField = gen_collect_util.structDeclHasManagedField;
+const pure_scalar_struct_pack_width = gen_collect_util.pureScalarStructPackWidth;
+const pack_slot_width = gen_collect_util.packSlotWidth;
+const tuple_pack_width_with_structs = gen_collect_util.tuplePackWidthWithStructs;
+const append_tuple_leaf_types_with_structs = gen_collect_util.appendTupleLeafTypesWithStructs;
+const append_tuple_leaf_types = gen_collect_util.appendTupleLeafTypes;
+const struct_decl_has_managed_field = gen_collect_util.structDeclHasManagedField;
 const ensure_storage_pack_layout = codegen_collect_structs.ensure_storage_pack_layout;
 const managed_leaf_field_name = codegen_collect_structs.managed_leaf_field_name;
-const isErrorLikeType = gen_collect_util.isErrorLikeType;
-const parseCodegenTypeExpr = gen_collect_util.parseCodegenTypeExpr;
+const is_error_like_type = gen_collect_util.isErrorLikeType;
+const parse_codegen_type_expr = gen_collect_util.parseCodegenTypeExpr;
 const parse_type_union_layout_from_name = codegen_collect_structs.parse_type_union_layout_from_name;
 const bind_struct_type_args = codegen_collect_structs.bind_struct_type_args;
-const substituteGenericTypeOwned = gen_collect_util.substituteGenericTypeOwned;
-const findGenericBinding = gen_collect_util.findGenericBinding;
+const substitute_generic_type_owned = gen_collect_util.substituteGenericTypeOwned;
+const find_generic_binding = gen_collect_util.findGenericBinding;
 const same_callable_source_name = codegen_collect_functions.same_callable_source_name;
-const funcParamAbiType = gen_collect_util.funcParamAbiType;
-const isUnmanagedScalarStruct = gen_collect_util.isUnmanagedScalarStruct;
-const appendUnionBranchPayloadTypes = gen_collect_util.appendUnionBranchPayloadTypes;
+const func_param_abi_type = gen_collect_util.funcParamAbiType;
+const is_unmanaged_scalar_struct = gen_collect_util.isUnmanagedScalarStruct;
+const append_union_branch_payload_types = gen_collect_util.appendUnionBranchPayloadTypes;
 
-const callHeadAt = gen_import.callHeadAt;
-const exprCallHead = gen_import.exprCallHead;
-const callHeadHasTypeArgs = gen_import.callHeadHasTypeArgs;
-const findValueEnumDecl = gen_import.findValueEnumDecl;
-const findCodegenImportByAlias = gen_import.findCodegenImportByAlias;
-const importedAliasContextForTokens = gen_import.importedAliasContextForTokens;
-const localScalarConst = gen_import.localScalarConst;
-const importedScalarConst = gen_import.importedScalarConst;
-const findImportedModuleIndex = gen_import.findImportedModuleIndex;
-const findImportedModuleIndexNoAlloc = gen_import.findImportedModuleIndexNoAlloc;
-const findWasiHostImportForTokens = gen_import.findWasiHostImportForTokens;
-const wasiSourceForTokens = gen_import.wasiSourceForTokens;
+const call_head_at = gen_import.callHeadAt;
+const expr_call_head = gen_import.exprCallHead;
+const call_head_has_type_args = gen_import.callHeadHasTypeArgs;
+const find_value_enum_decl = gen_import.findValueEnumDecl;
+const find_codegen_import_by_alias = gen_import.findCodegenImportByAlias;
+const imported_alias_context_for_tokens = gen_import.importedAliasContextForTokens;
+const local_scalar_const = gen_import.localScalarConst;
+const imported_scalar_const = gen_import.importedScalarConst;
+const find_imported_module_index = gen_import.findImportedModuleIndex;
+const find_imported_module_index_no_alloc = gen_import.findImportedModuleIndexNoAlloc;
+const find_wasi_host_import_for_tokens = gen_import.findWasiHostImportForTokens;
+const wasi_source_for_tokens = gen_import.wasiSourceForTokens;
 
 const is_managed_local_type = codegen_emit_wasi.is_managed_local_type;
 const is_managed_payload_type = codegen_emit_wasi.is_managed_payload_type;
@@ -216,12 +216,12 @@ const emit_wasi_read_result_as_union_value = codegen_emit_wasi.emit_wasi_read_re
 const emit_wasi_list_u8_result_as_union_value = codegen_emit_wasi.emit_wasi_list_u8_result_as_union_value;
 const emit_wasi_descriptor_result_as_union_value = codegen_emit_wasi.emit_wasi_descriptor_result_as_union_value;
 const emit_wasi_record_struct_binding = codegen_emit_wasi.emit_wasi_record_struct_binding;
-const isTuplePackableLeafType = type_util.isTuplePackableLeafType;
-const isCoreWasmScalar_tu = type_util.isCoreWasmScalar;
+const is_tuple_packable_leaf_type = type_util.isTuplePackableLeafType;
+const is_core_wasm_scalar_tu = type_util.isCoreWasmScalar;
 
-const hostParamIsPtrLen = gen_host.hostParamIsPtrLen;
-const hostArgCouldBeStoragePtrLenSyntax = gen_host.hostArgCouldBeStoragePtrLenSyntax;
-const findHostImportForTokens = gen_host.findHostImportForTokens;
+const host_param_is_ptr_len = gen_host.hostParamIsPtrLen;
+const host_arg_could_be_storage_ptr_len_syntax = gen_host.hostArgCouldBeStoragePtrLenSyntax;
+const find_host_import_for_tokens = gen_host.findHostImportForTokens;
 
 const WasiHostImport = codegen_wasi_registry.WasiHostImport;
 
@@ -236,23 +236,23 @@ const emit_tuple_binding = codegen_emit_storage_values.emit_tuple_binding;
 const emit_storage_assignment = codegen_emit_storage_values.emit_storage_assignment;
 const stmt_contains_storage_agg_literal = codegen_emit_storage_values.stmt_contains_storage_agg_literal;
 const emit_storage_agg_return_value = codegen_emit_storage_values.emit_storage_agg_return_value;
-const emitTupleReturnLocal = codegen_emit_storage_values.emitTupleReturnLocal;
+const emit_tuple_return_local = codegen_emit_storage_values.emit_tuple_return_local;
 const emit_tuple_return_expr = codegen_emit_storage_values.emit_tuple_return_expr;
 const emit_storage_u8_string_literal = codegen_emit_storage_values.emit_storage_u8_string_literal;
 const emit_storage_u8_string_literal_value = codegen_emit_storage_values.emit_storage_u8_string_literal_value;
 const emit_storage_u8_raw_string_value = codegen_emit_storage_values.emit_storage_u8_raw_string_value;
 const emit_storage_u8_string_literal_into_local = codegen_emit_storage_values.emit_storage_u8_string_literal_into_local;
 const emit_storage_agg_literal = codegen_emit_storage_values.emit_storage_agg_literal;
-const isStorageAggLiteralExpr = codegen_emit_storage_values.isStorageAggLiteralExpr;
+const is_storage_agg_literal_expr = codegen_emit_storage_values.isStorageAggLiteralExpr;
 const count_agg_literal_items = codegen_emit_storage_values.count_agg_literal_items;
 const emit_storage_payload_ptr = codegen_emit_storage_values.emit_storage_payload_ptr;
-const emitStorageLenPtrWithIndent = codegen_emit_storage_values.emitStorageLenPtrWithIndent;
-const emitStorageCapPtr = codegen_emit_storage_values.emitStorageCapPtr;
-const emitStorageCapPtrWithIndent = codegen_emit_storage_values.emitStorageCapPtrWithIndent;
+const emit_storage_len_ptr_with_indent = codegen_emit_storage_values.emitStorageLenPtrWithIndent;
+const emit_storage_cap_ptr = codegen_emit_storage_values.emitStorageCapPtr;
+const emit_storage_cap_ptr_with_indent = codegen_emit_storage_values.emitStorageCapPtrWithIndent;
 const emit_storage_payload_ptr_with_indent = codegen_emit_storage_values.emit_storage_payload_ptr_with_indent;
-const emitTupleLocalSet = codegen_emit_storage_values.emitTupleLocalSet;
-const emitTupleLocalGet = codegen_emit_storage_values.emitTupleLocalGet;
-const emitTupleGetBinding = codegen_emit_storage_values.emitTupleGetBinding;
+const emit_tuple_local_set = codegen_emit_storage_values.emit_tuple_local_set;
+const emit_tuple_local_get = codegen_emit_storage_values.emit_tuple_local_get;
+const emit_tuple_get_binding = codegen_emit_storage_values.emit_tuple_get_binding;
 const emit_storage_content_comparison_call = codegen_emit_storage_values.emit_storage_content_comparison_call;
 const emit_managed_payload_storage_content_comparison_call = codegen_emit_storage_values.emit_managed_payload_storage_content_comparison_call;
 const infer_storage_content_comparison_type = codegen_storage_layout.infer_storage_content_comparison_type;
@@ -280,7 +280,7 @@ const emit_storage_inc_copied_managed_elements = codegen_emit_storage_operations
 const emit_storage_clone_with_len_local = codegen_emit_storage_operations.emit_storage_clone_with_len_local;
 const emit_storage_clone_with_len_local_for_elem = codegen_emit_storage_operations.emit_storage_clone_with_len_local_for_elem;
 const emit_storage_clone_with_len_local_typed = codegen_emit_storage_operations.emit_storage_clone_with_len_local_typed;
-const emitStorageIncCopiedPackElements = codegen_emit_storage_values.emitStorageIncCopiedPackElements;
+const emit_storage_inc_copied_pack_elements = codegen_emit_storage_values.emit_storage_inc_copied_pack_elements;
 const emit_storage_element_ptr_from_local = codegen_emit_storage_operations.emit_storage_element_ptr_from_local;
 const emit_storage_element_ptr_from_local_with_indent = codegen_emit_storage_operations.emit_storage_element_ptr_from_local_with_indent;
 const emit_storage_alias_protect = codegen_emit_storage_operations.emit_storage_alias_protect;
@@ -288,124 +288,124 @@ const emit_storage_alias_release = codegen_emit_storage_operations.emit_storage_
 const emit_empty_storage_u8_value = codegen_emit_storage_values.emit_empty_storage_u8_value;
 const emit_empty_storage_for_elem_type = codegen_emit_storage_values.emit_empty_storage_for_elem_type;
 const storage_element_byte_width_for_type = codegen_storage_layout.storage_element_byte_width_for_type;
-const tuplePackSpillLocal = codegen_emit_storage_values.tuplePackSpillLocal;
-const appendStoreTupleScalarLeavesFromStack = codegen_emit_storage_values.appendStoreTupleScalarLeavesFromStack;
-const appendStoreTupleScalarLeavesFromStackCtx = codegen_emit_storage_values.appendStoreTupleScalarLeavesFromStackCtx;
-const appendStoreTupleLeavesOwningFromStack = codegen_emit_storage_values.appendStoreTupleLeavesOwningFromStack;
-const appendStoreTupleLeavesOwningFromStackCtx = codegen_emit_storage_values.appendStoreTupleLeavesOwningFromStackCtx;
-const appendIncManagedTupleLeavesOnStackCtx = codegen_emit_storage_values.appendIncManagedTupleLeavesOnStackCtx;
-const appendLoadTupleScalarLeavesToStack = codegen_emit_storage_values.appendLoadTupleScalarLeavesToStack;
-const appendLoadTupleScalarLeavesToStackCtx = codegen_emit_storage_values.appendLoadTupleScalarLeavesToStackCtx;
-const appendLoadTupleLeavesOwningToStack = codegen_emit_storage_values.appendLoadTupleLeavesOwningToStack;
-const appendLoadTupleLeavesOwningToStackCtx = codegen_emit_storage_values.appendLoadTupleLeavesOwningToStackCtx;
-const appendLoadTupleElementFromPackedBaseCtx = codegen_emit_storage_values.appendLoadTupleElementFromPackedBaseCtx;
-const appendLoadTupleLeafTypesOfStructToStack = codegen_emit_storage_values.appendLoadTupleLeafTypesOfStructToStack;
-const appendLoadTupleElementOwningFromPackedBase = codegen_emit_storage_values.appendLoadTupleElementOwningFromPackedBase;
-const emitIncManagedTupleLeavesAtBase = codegen_emit_storage_values.emitIncManagedTupleLeavesAtBase;
-const emitDecManagedTupleLeavesAtBase = codegen_emit_storage_values.emitDecManagedTupleLeavesAtBase;
+const tuple_pack_spill_local = codegen_emit_storage_values.tuple_pack_spill_local;
+const append_store_tuple_scalar_leaves_from_stack = codegen_emit_storage_values.append_store_tuple_scalar_leaves_from_stack;
+const append_store_tuple_scalar_leaves_from_stack_ctx = codegen_emit_storage_values.append_store_tuple_scalar_leaves_from_stack_ctx;
+const append_store_tuple_leaves_owning_from_stack = codegen_emit_storage_values.append_store_tuple_leaves_owning_from_stack;
+const append_store_tuple_leaves_owning_from_stack_ctx = codegen_emit_storage_values.append_store_tuple_leaves_owning_from_stack_ctx;
+const append_inc_managed_tuple_leaves_on_stack_ctx = codegen_emit_storage_values.append_inc_managed_tuple_leaves_on_stack_ctx;
+const append_load_tuple_scalar_leaves_to_stack = codegen_emit_storage_values.append_load_tuple_scalar_leaves_to_stack;
+const append_load_tuple_scalar_leaves_to_stack_ctx = codegen_emit_storage_values.append_load_tuple_scalar_leaves_to_stack_ctx;
+const append_load_tuple_leaves_owning_to_stack = codegen_emit_storage_values.append_load_tuple_leaves_owning_to_stack;
+const append_load_tuple_leaves_owning_to_stack_ctx = codegen_emit_storage_values.append_load_tuple_leaves_owning_to_stack_ctx;
+const append_load_tuple_element_from_packed_base_ctx = codegen_emit_storage_values.append_load_tuple_element_from_packed_base_ctx;
+const append_load_tuple_leaf_types_of_struct_to_stack = codegen_emit_storage_values.append_load_tuple_leaf_types_of_struct_to_stack;
+const append_load_tuple_element_owning_from_packed_base = codegen_emit_storage_values.append_load_tuple_element_owning_from_packed_base;
+const emit_inc_managed_tuple_leaves_at_base = codegen_emit_storage_values.emit_inc_managed_tuple_leaves_at_base;
+const emit_dec_managed_tuple_leaves_at_base = codegen_emit_storage_values.emit_dec_managed_tuple_leaves_at_base;
 const emit_number_const = codegen_emit_storage_values.emit_number_const;
-const appendStoreForPayloadType = codegen_emit_storage_values.appendStoreForPayloadType;
-const appendStoreForPayloadTypeWithIndent = codegen_emit_storage_values.appendStoreForPayloadTypeWithIndent;
-const appendLoadForPayloadTypeWithIndent = codegen_emit_storage_values.appendLoadForPayloadTypeWithIndent;
+const append_store_for_payload_type = codegen_emit_storage_values.append_store_for_payload_type;
+const append_store_for_payload_type_with_indent = codegen_emit_storage_values.append_store_for_payload_type_with_indent;
+const append_load_for_payload_type_with_indent = codegen_emit_storage_values.append_load_for_payload_type_with_indent;
 const emit_tuple_field_path_get_call = codegen_emit_storage_values.emit_tuple_field_path_get_call;
-const emitPureScalarStructLocalSet = codegen_emit_storage_values.emitPureScalarStructLocalSet;
-const emitPureScalarStructLocalGet = codegen_emit_storage_values.emitPureScalarStructLocalGet;
-const singleTupleResultItem = codegen_emit_storage_values.singleTupleResultItem;
-const isDirectManagedLocalExpr = codegen_emit_storage_values.isDirectManagedLocalExpr;
+const emit_pure_scalar_struct_local_set = codegen_emit_storage_values.emit_pure_scalar_struct_local_set;
+const emit_pure_scalar_struct_local_get = codegen_emit_storage_values.emit_pure_scalar_struct_local_get;
+const single_tuple_result_item = codegen_emit_storage_values.single_tuple_result_item;
+const is_direct_managed_local_expr = codegen_emit_storage_values.isDirectManagedLocalExpr;
 const storage_pack_layout_for_elem = codegen_storage_layout.storage_pack_layout_for_elem;
-const tupleElementPackOffsetWithStructs = codegen_emit_storage_values.tupleElementPackOffsetWithStructs;
+const tuple_element_pack_offset_with_structs = codegen_emit_storage_values.tuple_element_pack_offset_with_structs;
 const tuple_field_path_type = codegen_storage_layout.tuple_field_path_type;
 const find_struct_literal_field = codegen_emit_storage_values.find_struct_literal_field;
 const substitute_struct_field_type = codegen_storage_layout.substitute_struct_field_type;
 const is_struct_literal_rhs = codegen_emit_storage_values.is_struct_literal_rhs;
 const emit_replace_storage_put_source_tmp = codegen_emit_storage_operations.emit_replace_storage_put_source_tmp;
-const directManagedLocalExprName = codegen_emit_storage_values.directManagedLocalExprName;
+const direct_managed_local_expr_name = codegen_emit_storage_values.directManagedLocalExprName;
 const emit_overwrite_release_managed_local = codegen_emit_storage_operations.emit_overwrite_release_managed_local;
 const find_local_field_type = codegen_storage_layout.find_local_field_type;
-const tupleGetElementInfo = codegen_emit_storage_values.tupleGetElementInfo;
-const findFuncDeclForCallHead = codegen_emit_storage_values.findFuncDeclForCallHead;
+const tuple_get_element_info = codegen_emit_storage_values.tuple_get_element_info;
+const find_func_decl_for_call_head = codegen_storage_layout.find_func_decl_for_call_head;
 const infer_expr_type = codegen_storage_layout.infer_expr_type;
 const find_struct_literal_field_end = codegen_emit_storage_values.find_struct_literal_field_end;
 const find_struct_field_type = codegen_storage_layout.find_struct_field_type;
-const localFieldNameMatches = codegen_emit_storage_values.localFieldNameMatches;
+const local_field_name_matches = codegen_emit_storage_values.localFieldNameMatches;
 const direct_managed_last_use_move_source = codegen_emit_storage_values.direct_managed_last_use_move_source;
-const structLiteralOpenRhs = codegen_emit_storage_values.structLiteralOpenRhs;
-const unionPayloadLocalNameFromLocals = codegen_emit_storage_values.unionPayloadLocalNameFromLocals;
-const substituteGenericType = codegen_emit_storage_values.substituteGenericType;
-const isUnionPayloadLocalName = codegen_emit_storage_values.isUnionPayloadLocalName;
-const findCallbackCallArg = codegen_emit_storage_values.findCallbackCallArg;
-const appendTupleLocalFieldsBorrowed = codegen_emit_storage_values.appendTupleLocalFieldsBorrowed;
-const findFuncDeclForCall = codegen_emit_storage_values.findFuncDeclForCall;
-const findLocalName = codegen_emit_storage_values.findLocalName;
+const struct_literal_open_rhs = codegen_emit_storage_values.structLiteralOpenRhs;
+const union_payload_local_name_from_locals = codegen_emit_storage_values.unionPayloadLocalNameFromLocals;
+const substitute_generic_type = codegen_emit_storage_values.substituteGenericType;
+const is_union_payload_local_name = codegen_emit_storage_values.isUnionPayloadLocalName;
+const find_callback_call_arg = codegen_emit_storage_values.findCallbackCallArg;
+const append_tuple_local_fields_borrowed = codegen_emit_storage_values.appendTupleLocalFieldsBorrowed;
+const find_func_decl_for_call = codegen_emit_storage_values.findFuncDeclForCall;
+const find_local_name = codegen_emit_storage_values.findLocalName;
 const emit_storage_set_call = codegen_emit_storage_operations.emit_storage_set_call;
 const emit_storage_put_one_call = codegen_emit_storage_operations.emit_storage_put_one_call;
-const callExplicitTypeArgsMatchBindings = codegen_emit_storage_values.callExplicitTypeArgsMatchBindings;
-const callArgsMatchFuncParams = codegen_emit_storage_values.callArgsMatchFuncParams;
+const call_explicit_type_args_match_bindings = codegen_emit_storage_values.callExplicitTypeArgsMatchBindings;
+const call_args_match_func_params = codegen_emit_storage_values.callArgsMatchFuncParams;
 const has_registered_defer_stmt = codegen_emit_storage_values.has_registered_defer_stmt;
-const appendBorrowedLocalField = codegen_emit_storage_values.appendBorrowedLocalField;
+const append_borrowed_local_field = codegen_emit_storage_values.appendBorrowedLocalField;
 const token_range_uses_ident = codegen_emit_storage_values.token_range_uses_ident;
-const shouldInferBoolSpecialCall = codegen_emit_storage_values.shouldInferBoolSpecialCall;
+const should_infer_bool_special_call = codegen_emit_storage_values.shouldInferBoolSpecialCall;
 const is_defer_stmt = codegen_emit_storage_values.is_defer_stmt;
-const callArgMatchesCallbackShape = codegen_emit_storage_values.callArgMatchesCallbackShape;
+const call_arg_matches_callback_shape = codegen_emit_storage_values.callArgMatchesCallbackShape;
 const emit_storage_set_managed_call = codegen_emit_storage_operations.emit_storage_set_managed_call;
 const emit_storage_put_managed_call = codegen_emit_storage_operations.emit_storage_put_managed_call;
-const emitManagedStorageValue = codegen_emit_storage_values.emitManagedStorageValue;
-const inferScalarAsCallType = codegen_emit_storage_values.inferScalarAsCallType;
-const findCallbackBinding = codegen_emit_storage_values.findCallbackBinding;
-const scalarAsTargetType = codegen_emit_storage_values.scalarAsTargetType;
-const callArgMatchesConcreteCallbackBinding = codegen_emit_storage_values.callArgMatchesConcreteCallbackBinding;
-const isScalarAsTargetTypeName = codegen_emit_storage_values.isScalarAsTargetTypeName;
+const emit_managed_storage_value = codegen_emit_storage_values.emitManagedStorageValue;
+const infer_scalar_as_call_type = codegen_emit_storage_values.inferScalarAsCallType;
+const find_callback_binding = codegen_storage_layout.find_callback_binding;
+const scalar_as_target_type = codegen_emit_storage_values.scalarAsTargetType;
+const call_arg_matches_concrete_callback_binding = codegen_emit_storage_values.callArgMatchesConcreteCallbackBinding;
+const is_scalar_as_target_type_name = codegen_emit_storage_values.isScalarAsTargetTypeName;
 const infer_set_call_type = codegen_storage_layout.infer_set_call_type;
-const callbackBindingsHaveSameShape = codegen_emit_storage_values.callbackBindingsHaveSameShape;
-const callArgMatchesParam = codegen_emit_storage_values.callArgMatchesParam;
+const callback_bindings_have_same_shape = codegen_storage_layout.callback_bindings_have_same_shape;
+const call_arg_matches_param = codegen_storage_layout.call_arg_matches_param;
 const infer_put_call_type = codegen_storage_layout.infer_put_call_type;
-const callArgsMatchVariadicTail = codegen_emit_storage_values.callArgsMatchVariadicTail;
-const callArgMatchesUnionParam = codegen_emit_storage_values.callArgMatchesUnionParam;
-const unionTypeNameHasBranch = codegen_emit_storage_values.unionTypeNameHasBranch;
+const call_args_match_variadic_tail = codegen_storage_layout.call_args_match_variadic_tail;
+const call_arg_matches_union_param = codegen_emit_storage_values.callArgMatchesUnionParam;
+const union_type_name_has_branch = codegen_emit_storage_values.unionTypeNameHasBranch;
 const infer_field_get_call_type = codegen_storage_layout.infer_field_get_call_type;
-const funcVariadicElemType = codegen_emit_storage_values.funcVariadicElemType;
+const func_variadic_elem_type = codegen_storage_layout.func_variadic_elem_type;
 const infer_field_set_call_type = codegen_storage_layout.infer_field_set_call_type;
-const findFieldMetaLocal = codegen_emit_storage_values.findFieldMetaLocal;
-const structLiteralExprMatchesType = codegen_emit_storage_values.structLiteralExprMatchesType;
+const find_field_meta_local = codegen_emit_storage_values.findFieldMetaLocal;
+const struct_literal_expr_matches_type = codegen_emit_storage_values.structLiteralExprMatchesType;
 const infer_get_call_type = codegen_storage_layout.infer_get_call_type;
-const lambdaExprShape = codegen_emit_storage_values.lambdaExprShape;
-const lambdaParamCount = codegen_emit_storage_values.lambdaParamCount;
-const callbackBindingHasSameConcreteArg = codegen_emit_storage_values.callbackBindingHasSameConcreteArg;
-const valueEnumBranchValue = codegen_emit_storage_values.valueEnumBranchValue;
+const lambda_expr_shape = codegen_storage_layout.lambda_expr_shape;
+const lambda_param_count = codegen_emit_storage_values.lambdaParamCount;
+const callback_binding_has_same_concrete_arg = codegen_storage_layout.callback_binding_has_same_concrete_arg;
+const value_enum_branch_value = codegen_emit_storage_values.valueEnumBranchValue;
 const infer_tuple_field_path_get_type = codegen_storage_layout.infer_tuple_field_path_get_type;
-const appendManagedStructFieldMetaLocal = codegen_emit_storage_values.appendManagedStructFieldMetaLocal;
-const fieldFromMeta = codegen_emit_storage_values.fieldFromMeta;
+const append_managed_struct_field_meta_local = codegen_emit_storage_values.appendManagedStructFieldMetaLocal;
+const field_from_meta = codegen_emit_storage_values.fieldFromMeta;
 const find_struct_field = codegen_storage_layout.find_struct_field;
 const union_local_default_payload_type = codegen_storage_layout.union_local_default_payload_type;
-const unionLocalDefaultStructPayload = codegen_emit_storage_values.unionLocalDefaultStructPayload;
+const union_local_default_struct_payload = codegen_emit_storage_values.unionLocalDefaultStructPayload;
 const find_narrowed_union_type = codegen_storage_layout.find_narrowed_union_type;
-const isDotIdent = codegen_emit_storage_values.isDotIdent;
-const isArrowAt = codegen_emit_storage_values.isArrowAt;
-const lambdaBodyStart = codegen_emit_storage_values.lambdaBodyStart;
+const is_dot_ident = codegen_emit_storage_values.isDotIdent;
+const is_arrow_at = codegen_emit_storage_values.isArrowAt;
+const lambda_body_start = codegen_emit_storage_values.lambdaBodyStart;
 const lambda_param_type_name = codegen_storage_layout.lambda_param_type_name;
 const lambda_explicit_return_type = codegen_storage_layout.lambda_explicit_return_type;
-const appendTypedLocalWithDecl = codegen_emit_storage_values.appendTypedLocalWithDecl;
-const appendTypedLocal = codegen_emit_storage_values.appendTypedLocal;
+const append_typed_local_with_decl = codegen_emit_storage_values.appendTypedLocalWithDecl;
+const append_typed_local = codegen_emit_storage_values.appendTypedLocal;
 const infer_lambda_expr_return_type = codegen_storage_layout.infer_lambda_expr_return_type;
-const cloneLocalSet = codegen_emit_storage_values.cloneLocalSet;
-const callbackFunctionMatchesShape = codegen_emit_storage_values.callbackFunctionMatchesShape;
-const callbackLambdaReturnMatchesShape = codegen_emit_storage_values.callbackLambdaReturnMatchesShape;
-const findCallbackRefFunc = codegen_emit_storage_values.findCallbackRefFunc;
-const lambdaExplicitTypesMatchShape = codegen_emit_storage_values.lambdaExplicitTypesMatchShape;
-const typeBaseName = codegen_emit_storage_values.typeBaseName;
-const valueEnumTypeMatchesImportAlias = codegen_emit_storage_values.valueEnumTypeMatchesImportAlias;
-const findValueEnumBranchValue = codegen_emit_storage_values.findValueEnumBranchValue;
-const valueEnumBranchValueInLine = codegen_emit_storage_values.valueEnumBranchValueInLine;
-const valueEnumSourceMatchesImport = codegen_emit_storage_values.valueEnumSourceMatchesImport;
+const clone_local_set = codegen_storage_layout.clone_local_set;
+const callback_function_matches_shape = codegen_emit_storage_values.callbackFunctionMatchesShape;
+const callback_lambda_return_matches_shape = codegen_emit_storage_values.callbackLambdaReturnMatchesShape;
+const find_callback_ref_func = codegen_storage_layout.find_callback_ref_func;
+const lambda_explicit_types_match_shape = codegen_emit_storage_values.lambdaExplicitTypesMatchShape;
+const type_base_name = codegen_emit_storage_values.typeBaseName;
+const value_enum_type_matches_import_alias = codegen_emit_storage_values.valueEnumTypeMatchesImportAlias;
+const find_value_enum_branch_value = codegen_emit_storage_values.findValueEnumBranchValue;
+const value_enum_branch_value_in_line = codegen_emit_storage_values.valueEnumBranchValueInLine;
+const value_enum_source_matches_import = codegen_emit_storage_values.valueEnumSourceMatchesImport;
 const managed_payload_elem_type_from_name = codegen_storage_layout.managed_payload_elem_type_from_name;
-const absResultType = codegen_emit_storage_values.absResultType;
-const inferFirstArgTypeOrDefaultS32 = codegen_emit_storage_values.inferFirstArgTypeOrDefaultS32;
-const wasiDoResultType = codegen_emit_storage_values.wasiDoResultType;
-const memoryLoadResultType = codegen_emit_storage_values.memoryLoadResultType;
-const inferPathGetCallType = codegen_emit_storage_values.inferPathGetCallType;
-const inferManagedStructExprFieldType = codegen_emit_storage_values.inferManagedStructExprFieldType;
-const findConcreteStructFieldTypeNoAlloc = codegen_emit_storage_values.findConcreteStructFieldTypeNoAlloc;
-const genericTypeArgAt = codegen_emit_storage_values.genericTypeArgAt;
+const abs_result_type = codegen_emit_storage_values.absResultType;
+const infer_first_arg_type_or_default_s32 = codegen_emit_storage_values.inferFirstArgTypeOrDefaultS32;
+const wasi_do_result_type = codegen_emit_storage_values.wasiDoResultType;
+const memory_load_result_type = codegen_emit_storage_values.memoryLoadResultType;
+const infer_path_get_call_type = codegen_emit_storage_values.inferPathGetCallType;
+const infer_managed_struct_expr_field_type = codegen_emit_storage_values.inferManagedStructExprFieldType;
+const find_concrete_struct_field_type_no_alloc = codegen_emit_storage_values.findConcreteStructFieldTypeNoAlloc;
+const generic_type_arg_at = codegen_emit_storage_values.genericTypeArgAt;
 const emit_managed_handle_call_expr_with_move_context = codegen_emit_storage_values.emit_managed_handle_call_expr_with_move_context;
 const emit_storage_handle_binding_expr = codegen_emit_storage_values.emit_storage_handle_binding_expr;
 const emit_tuple_call_binding = codegen_emit_storage_values.emit_tuple_call_binding;
@@ -422,12 +422,12 @@ const emit_struct_literal_expr = codegen_emit_struct.emit_struct_literal_expr;
 const emit_struct_set_assignment = codegen_emit_struct.emit_struct_set_assignment;
 const field_static_values_equal = codegen_emit_struct_fields.field_static_values_equal;
 const field_reflection_local_visible = codegen_emit_struct_fields.field_reflection_local_visible;
-const appendUnionPayloadLocalGet = codegen_emit_struct.appendUnionPayloadLocalGet;
+const append_union_payload_local_get = codegen_emit_struct.appendUnionPayloadLocalGet;
 const resolved_local_name = codegen_emit_struct.resolved_local_name;
-const appendUnionTagLocalGet = codegen_emit_struct.appendUnionTagLocalGet;
-const appendUnionTagLocalSet = codegen_emit_struct.appendUnionTagLocalSet;
-const isManagedStructField = codegen_emit_struct.isManagedStructField;
-const structLocalSourceName = codegen_emit_struct.structLocalSourceName;
+const append_union_tag_local_get = codegen_emit_struct.appendUnionTagLocalGet;
+const append_union_tag_local_set = codegen_emit_struct.appendUnionTagLocalSet;
+const is_managed_struct_field = codegen_emit_struct.isManagedStructField;
+const struct_local_source_name = codegen_emit_struct.structLocalSourceName;
 const stmt_contains_struct_literal_expr = codegen_emit_struct.stmt_contains_struct_literal_expr;
 const field_reflection_local_name_prefix = codegen_emit_struct_fields.field_reflection_local_name_prefix;
 const emit_unmanaged_struct_return_local = codegen_emit_struct.emit_unmanaged_struct_return_local;
@@ -436,15 +436,15 @@ const emit_struct_field_local_set = codegen_emit_struct_fields.emit_struct_field
 const emit_struct_fields_from_local = codegen_emit_struct_fields.emit_struct_fields_from_local;
 const emit_managed_struct_set_binding = codegen_emit_struct.emit_managed_struct_set_binding;
 const emit_managed_struct_fields = codegen_emit_struct.emit_managed_struct_fields;
-const emitManagedStructCloneWithFieldSet = codegen_emit_struct.emitManagedStructCloneWithFieldSet;
+const emit_managed_struct_clone_with_field_set = codegen_emit_struct.emitManagedStructCloneWithFieldSet;
 const append_managed_struct_field_ptr = codegen_emit_struct_fields.append_managed_struct_field_ptr;
 const field_reflection_if_parts = codegen_emit_struct_fields.field_reflection_if_parts;
 const field_static_bool_expr = codegen_emit_struct_fields.field_static_bool_expr;
 const field_static_value = codegen_emit_struct_fields.field_static_value;
 const field_visible_from_tokens = codegen_emit_struct_fields.field_visible_from_tokens;
 const is_private_field_name = codegen_emit_struct_fields.is_private_field_name;
-const typedStructBinding = codegen_emit_struct.typedStructBinding;
-const inferredStructBinding = codegen_emit_struct.inferredStructBinding;
+const typed_struct_binding = codegen_emit_struct.typedStructBinding;
+const inferred_struct_binding = codegen_emit_struct.inferredStructBinding;
 const emit_managed_struct_expr_field_get = codegen_emit_struct_fields.emit_managed_struct_expr_field_get;
 const emit_field_reflection_intrinsic = codegen_emit_struct_fields.emit_field_reflection_intrinsic;
 const emit_field_get_call = codegen_emit_struct_fields.emit_field_get_call;
@@ -454,32 +454,32 @@ const borrowed_field_meta_local_set = codegen_emit_struct_fields.borrowed_field_
 const single_field_meta_arg = codegen_emit_struct_fields.single_field_meta_arg;
 const field_get_last_use_move_source = codegen_emit_struct_fields.field_get_last_use_move_source;
 const unmanaged_struct_error_union_result = codegen_emit_struct.unmanaged_struct_error_union_result;
-const freshStructLiteralBindingStmtEnd = codegen_emit_struct.freshStructLiteralBindingStmtEnd;
-const emitZeroValueForType = codegen_emit_struct.emitZeroValueForType;
+const fresh_struct_literal_binding_stmt_end = codegen_emit_struct.freshStructLiteralBindingStmtEnd;
+const emit_zero_value_for_type = codegen_emit_struct.emitZeroValueForType;
 const collect_field_reflection_body_locals = codegen_emit_struct_fields.collect_field_reflection_body_locals;
-const appendUnionPayloadLocalSet = codegen_emit_struct.appendUnionPayloadLocalSet;
-const applyGuardReturnNilNarrowing = codegen_emit_struct.applyGuardReturnNilNarrowing;
-const applyGuardReturnIsNarrowing = codegen_emit_struct.applyGuardReturnIsNarrowing;
-const applyGuardLoopControlNarrowing = codegen_emit_struct.applyGuardLoopControlNarrowing;
-const nilComparisonNarrowing = codegen_emit_struct.nilComparisonNarrowing;
-const isComparisonNarrowing = codegen_emit_struct.isComparisonNarrowing;
-const singleIdentExpr = codegen_emit_struct.singleIdentExpr;
-const singleNilExpr = codegen_emit_struct.singleNilExpr;
-const unionLocalSingleNonNilPayloadType = codegen_emit_struct.unionLocalSingleNonNilPayloadType;
-const unionLocalSingleRemainingPayloadType = codegen_emit_struct.unionLocalSingleRemainingPayloadType;
-const trimTrailingComma = codegen_emit_struct.trimTrailingComma;
-const applyCollectGuardReturnNarrowing = codegen_emit_struct.applyCollectGuardReturnNarrowing;
-const mergeReturnCleanupLocals = codegen_emit_struct.mergeReturnCleanupLocals;
+const append_union_payload_local_set = codegen_emit_struct.appendUnionPayloadLocalSet;
+const apply_guard_return_nil_narrowing = codegen_emit_struct.applyGuardReturnNilNarrowing;
+const apply_guard_return_is_narrowing = codegen_emit_struct.applyGuardReturnIsNarrowing;
+const apply_guard_loop_control_narrowing = codegen_emit_struct_fields.apply_guard_loop_control_narrowing;
+const nil_comparison_narrowing = codegen_emit_struct.nilComparisonNarrowing;
+const is_comparison_narrowing = codegen_emit_struct.isComparisonNarrowing;
+const single_ident_expr = codegen_emit_struct.singleIdentExpr;
+const single_nil_expr = codegen_emit_struct.singleNilExpr;
+const union_local_single_non_nil_payload_type = codegen_emit_struct.unionLocalSingleNonNilPayloadType;
+const union_local_single_remaining_payload_type = codegen_emit_struct.unionLocalSingleRemainingPayloadType;
+const trim_trailing_comma = codegen_emit_struct.trimTrailingComma;
+const apply_collect_guard_return_narrowing = codegen_emit_struct_fields.apply_collect_guard_return_narrowing;
+const merge_return_cleanup_locals = codegen_emit_struct.mergeReturnCleanupLocals;
 const field_reflection_scoped_cleanup_local_set = codegen_emit_struct_fields.field_reflection_scoped_cleanup_local_set;
 
-pub const emitWasiResultReadValues = codegen_emit_wasi.emit_wasi_result_read_values;
-pub const emitWasiResultListU8Values = codegen_emit_wasi.emit_wasi_result_list_u8_values;
-pub const emitWasiResultDescriptorValues = codegen_emit_wasi.emit_wasi_result_descriptor_values;
-pub const emitWasiResultFilesizeValues = codegen_emit_wasi.emit_wasi_result_filesize_values;
-pub const emitWasiListU8Arg = codegen_emit_wasi.emit_wasi_list_u8_arg;
-pub const wasmType = codegen_emit_wasi.wasm_type;
-pub const valueEnumCarrier = codegen_emit_wasi.value_enum_carrier;
-pub const codegenScalarType = codegen_emit_wasi.codegen_scalar_type;
+pub const emit_wasi_result_read_values = codegen_emit_wasi.emit_wasi_result_read_values;
+pub const emit_wasi_result_list_u8_values = codegen_emit_wasi.emit_wasi_result_list_u8_values;
+pub const emit_wasi_result_descriptor_values = codegen_emit_wasi.emit_wasi_result_descriptor_values;
+pub const emit_wasi_result_filesize_values = codegen_emit_wasi.emit_wasi_result_filesize_values;
+pub const emit_wasi_list_u8_arg = codegen_emit_wasi.emit_wasi_list_u8_arg;
+pub const wasm_type = codegen_emit_wasi.wasm_type;
+pub const value_enum_carrier = codegen_emit_wasi.value_enum_carrier;
+pub const codegen_scalar_type = codegen_emit_wasi.codegen_scalar_type;
 // re-export codegen_emit_struct
 
 pub fn emit_union_return(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, layout: UnionLayout, move_names: *std.ArrayList([]const u8), defer_ctx: ?*const DeferContext, out: *std.ArrayList(u8)) CodegenError!bool {
@@ -506,7 +506,7 @@ fn emit_union_value_from_user_func(
     move_ctx: ?*const CallLastUseMoveContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
-    const func = findFuncDeclForCallHead(tokens, call_head, locals, ctx) orelse return false;
+    const func = find_func_decl_for_call_head(tokens, call_head, locals, ctx) orelse return false;
     const func_union = func.result_union orelse return false;
     if (!union_layouts_abi_compatible(ctx, func_union, layout)) return false;
     return try codegen_callbacks.emit_user_func_call_with_move_context(
@@ -532,7 +532,7 @@ fn emit_union_value_from_wasi(
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     // Thin `return host_...(…)` / expr-position host → exclusive union.
-    const wasi_import = findWasiHostImportForTokens(ctx, tokens, tokens[call_head.name_idx].lexeme) orelse return false;
+    const wasi_import = find_wasi_host_import_for_tokens(ctx, tokens, tokens[call_head.name_idx].lexeme) orelse return false;
     return try emit_wasi_unit_result_as_union_value(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, wasi_import, layout, out, codegen_callbacks.emit_expr) or
         try emit_wasi_descriptor_result_as_union_value(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, wasi_import, layout, out, codegen_callbacks.emit_expr) or
         try emit_wasi_filesize_result_as_union_value(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, wasi_import, layout, out, codegen_callbacks.emit_expr) or
@@ -551,7 +551,7 @@ fn emit_union_value_from_call(
     move_ctx: ?*const CallLastUseMoveContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
-    const call_head = exprCallHead(tokens, range) orelse return false;
+    const call_head = expr_call_head(tokens, range) orelse return false;
     if (call_head.is_intrinsic) {
         if (!std.mem.eql(u8, tokens[call_head.name_idx].lexeme, "field_get")) return false;
         return try emit_union_field_get_value(
@@ -581,16 +581,16 @@ fn emit_union_value_from_local(
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     if (range.end != range.start + 1 or tokens[range.start].kind != .ident) return false;
-    const union_local = findUnionLocal(locals.union_locals.items, tokens[range.start].lexeme) orelse return false;
-    if (!unionLayoutsEqual(union_local.layout, layout)) return false;
+    const union_local = find_union_local(locals.union_locals.items, tokens[range.start].lexeme) orelse return false;
+    if (!union_layouts_equal(union_local.layout, layout)) return false;
 
     for (layout.payload_tys, 0..) |payload_ty, idx| {
-        try appendUnionPayloadLocalGet(allocator, out, union_local.name, idx);
+        try append_union_payload_local_get(allocator, out, union_local.name, idx);
         if (copy_managed and is_managed_local_type(payload_ty, ctx)) {
             try out.appendSlice(allocator, "    call $__arc_inc\n");
         }
     }
-    try appendUnionTagLocalGet(allocator, out, union_local.name);
+    try append_union_tag_local_get(allocator, out, union_local.name);
     return true;
 }
 
@@ -606,14 +606,14 @@ pub fn emit_union_value(
     move_ctx: ?*const CallLastUseMoveContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
-    const range = trimParens(tokens, start_idx, end_idx);
+    const range = trim_parens(tokens, start_idx, end_idx);
     if (range.start >= range.end) return false;
 
     if (try emit_union_value_from_call(allocator, tokens, range, locals, ctx, layout, copy_managed, move_ctx, out)) return true;
 
-    if (range.end == range.start + 1 and tokEq(tokens[range.start], "nil")) {
+    if (range.end == range.start + 1 and tok_eq(tokens[range.start], "nil")) {
         for (layout.payload_tys) |payload_ty| {
-            try emitZeroValueForType(allocator, ctx, out, payload_ty);
+            try emit_zero_value_for_type(allocator, ctx, out, payload_ty);
         }
         try out.appendSlice(allocator, "    i32.const 0\n");
         return true;
@@ -632,18 +632,18 @@ pub fn emit_union_value(
 }
 
 pub fn emit_union_field_get_value(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, layout: UnionLayout, copy_managed: bool, out: *std.ArrayList(u8)) CodegenError!bool {
-    const first_end = findArgEnd(tokens, start_idx, end_idx);
+    const first_end = find_arg_end(tokens, start_idx, end_idx);
     if (first_end != start_idx + 1 or tokens[start_idx].kind != .ident) return false;
-    if (first_end >= end_idx or !tokEq(tokens[first_end], ",")) return false;
+    if (first_end >= end_idx or !tok_eq(tokens[first_end], ",")) return false;
     const field_start = first_end + 1;
-    const field_end = findArgEnd(tokens, field_start, end_idx);
+    const field_end = find_arg_end(tokens, field_start, end_idx);
     if (field_end != end_idx) return false;
     if (field_end != field_start + 1 or tokens[field_start].kind != .ident) return false;
 
-    const struct_local = findStructLocal(locals.struct_locals.items, tokens[start_idx].lexeme) orelse return false;
-    const meta = findFieldMetaLocal(locals.field_meta_locals.items, tokens[field_start].lexeme) orelse return false;
-    if (!std.mem.eql(u8, typeBaseName(struct_local.ty), meta.struct_name)) return false;
-    const field = fieldFromMeta(ctx, meta) orelse return false;
+    const struct_local = find_struct_local(locals.struct_locals.items, tokens[start_idx].lexeme) orelse return false;
+    const meta = find_field_meta_local(locals.field_meta_locals.items, tokens[field_start].lexeme) orelse return false;
+    if (!std.mem.eql(u8, type_base_name(struct_local.ty), meta.struct_name)) return false;
+    const field = field_from_meta(ctx, meta) orelse return false;
 
     var owned_types = std.ArrayList([]const u8).empty;
     defer {
@@ -651,36 +651,36 @@ pub fn emit_union_field_get_value(allocator: std.mem.Allocator, tokens: []const 
         owned_types.deinit(allocator);
     }
     const field_layout = (try parse_type_union_layout_from_name(allocator, tokens, field.ty, ctx.structs, ctx.struct_layouts, &owned_types)) orelse return false;
-    defer freeUnionLayout(allocator, field_layout);
-    if (!unionLayoutsEqual(field_layout, layout)) return false;
+    defer free_union_layout(allocator, field_layout);
+    if (!union_layouts_equal(field_layout, layout)) return false;
 
-    const field_name = publicDeclName(field.name);
+    const field_name = public_decl_name(field.name);
     const union_local_name = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ struct_local.name, field_name });
     defer allocator.free(union_local_name);
-    const union_local = findUnionLocal(locals.union_locals.items, union_local_name) orelse return false;
-    if (!unionLayoutsEqual(union_local.layout, layout)) return false;
+    const union_local = find_union_local(locals.union_locals.items, union_local_name) orelse return false;
+    if (!union_layouts_equal(union_local.layout, layout)) return false;
 
     for (layout.payload_tys, 0..) |payload_ty, idx| {
-        try appendUnionPayloadLocalGet(allocator, out, union_local.name, idx);
+        try append_union_payload_local_get(allocator, out, union_local.name, idx);
         if (copy_managed and is_managed_local_type(payload_ty, ctx)) {
             try out.appendSlice(allocator, "    call $__arc_inc\n");
         }
     }
-    try appendUnionTagLocalGet(allocator, out, union_local.name);
+    try append_union_tag_local_get(allocator, out, union_local.name);
     return true;
 }
 
 pub fn emit_union_branch_value(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, layout: UnionLayout, branch: UnionBranch, copy_managed: bool, out: *std.ArrayList(u8)) CodegenError!bool {
-    const range = trimParens(tokens, start_idx, end_idx);
+    const range = trim_parens(tokens, start_idx, end_idx);
 
     // Payload-enum unit case: bare case name `Quit`.
     if (branch.payload_len == 0) {
         if (range.end == range.start + 1 and tokens[range.start].kind == .ident) {
-            if (!std.mem.eql(u8, publicDeclName(tokens[range.start].lexeme), branch.ty)) return false;
+            if (!std.mem.eql(u8, public_decl_name(tokens[range.start].lexeme), branch.ty)) return false;
             for (layout.payload_tys) |payload_ty| {
-                try emitZeroValueForType(allocator, ctx, out, payload_ty);
+                try emit_zero_value_for_type(allocator, ctx, out, payload_ty);
             }
-            try appendFmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
+            try append_fmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
             return true;
         }
         return false;
@@ -722,10 +722,10 @@ fn write_union_branch_slots(
         } else if (idx > branch.payload_start and idx < branch.payload_start + branch.payload_len) {
             continue;
         } else {
-            try emitZeroValueForType(allocator, ctx, out, payload_ty);
+            try emit_zero_value_for_type(allocator, ctx, out, payload_ty);
         }
     }
-    try appendFmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
+    try append_fmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
 }
 
 fn emit_payload_enum_ctor_branch(
@@ -739,10 +739,10 @@ fn emit_payload_enum_ctor_branch(
     copy_managed: bool,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
-    const call_head = exprCallHead(tokens, range) orelse return false;
+    const call_head = expr_call_head(tokens, range) orelse return false;
     if (call_head.is_intrinsic) return false;
     if (tokens[call_head.name_idx].kind != .ident) return false;
-    if (!std.mem.eql(u8, publicDeclName(tokens[call_head.name_idx].lexeme), branch.ty)) return false;
+    if (!std.mem.eql(u8, public_decl_name(tokens[call_head.name_idx].lexeme), branch.ty)) return false;
 
     const payload_ty = branch.payload_type orelse branch.ty;
     var branch_payload = std.ArrayList(u8).empty;
@@ -759,7 +759,7 @@ fn emit_payload_enum_ctor_branch(
     )) return false;
 
     if (copy_managed and is_managed_local_type(payload_ty, ctx) and
-        isDirectManagedLocalExpr(tokens, call_head.args_start, call_head.args_end, locals, ctx))
+        is_direct_managed_local_expr(tokens, call_head.args_start, call_head.args_end, locals, ctx))
     {
         try branch_payload.appendSlice(allocator, "    call $__arc_inc\n");
     }
@@ -779,19 +779,19 @@ fn emit_unmanaged_struct_local_as_payload(
     out: *std.ArrayList(u8),
 ) CodegenError!?bool {
     if (range_end != range_start + 1 or tokens[range_start].kind != .ident) return null;
-    const struct_local = findStructLocal(locals.struct_locals.items, tokens[range_start].lexeme) orelse return null;
+    const struct_local = find_struct_local(locals.struct_locals.items, tokens[range_start].lexeme) orelse return null;
     if (!std.mem.eql(u8, struct_local.ty, emit_ty)) return null;
-    if (findStructLayout(ctx.struct_layouts, emit_ty) != null) return null;
-    const decl = findStructDecl(ctx.structs, emit_ty) orelse return false;
+    if (find_struct_layout(ctx.struct_layouts, emit_ty) != null) return null;
+    const decl = find_struct_decl(ctx.structs, emit_ty) orelse return false;
     for (decl.fields) |field| {
-        try appendFmt(allocator, out, "    local.get ${s}.{s}\n", .{ struct_local.name, publicDeclName(field.name) });
+        try append_fmt(allocator, out, "    local.get ${s}.{s}\n", .{ struct_local.name, public_decl_name(field.name) });
     }
     return true;
 }
 
 pub fn emit_union_branch_payload(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, branch: UnionBranch, copy_managed: bool, out: *std.ArrayList(u8)) CodegenError!bool {
     if (branch.payload_len == 0) return false;
-    const range = trimParens(tokens, start_idx, end_idx);
+    const range = trim_parens(tokens, start_idx, end_idx);
     // Payload-enum cases: emit against payload_type when set (case name ≠ payload type).
     const emit_ty = branch.payload_type orelse branch.ty;
 
@@ -800,7 +800,7 @@ pub fn emit_union_branch_payload(allocator: std.mem.Allocator, tokens: []const l
     }
 
     if (!try codegen_callbacks.emit_expr(allocator, tokens, range.start, range.end, locals, ctx, emit_ty, out)) return false;
-    if (copy_managed and is_managed_local_type(emit_ty, ctx) and isDirectManagedLocalExpr(tokens, range.start, range.end, locals, ctx)) {
+    if (copy_managed and is_managed_local_type(emit_ty, ctx) and is_direct_managed_local_expr(tokens, range.start, range.end, locals, ctx)) {
         try out.appendSlice(allocator, "    call $__arc_inc\n");
     }
     return true;
@@ -831,12 +831,12 @@ pub fn clone_union_layout_substituted(allocator: std.mem.Allocator, tokens: []co
 
     for (layout.branches, 0..) |branch, idx| {
         if (idx != 0) try source_ty.append(allocator, '|');
-        const branch_ty = substituteGenericType(branch.ty, bindings);
+        const branch_ty = substitute_generic_type(branch.ty, bindings);
         try source_ty.appendSlice(allocator, branch_ty);
 
         const payload_start = payload_tys.items.len;
         if (branch.tag != 0) {
-            try appendUnionBranchPayloadTypes(allocator, tokens, branch_ty, structs, struct_layouts, &payload_tys);
+            try append_union_branch_payload_types(allocator, tokens, branch_ty, structs, struct_layouts, &payload_tys);
         }
         try branches.append(allocator, .{
             .ty = branch_ty,
@@ -872,7 +872,7 @@ pub fn build_payload_enum_union_layout(allocator: std.mem.Allocator, decl: Paylo
         if (case.payload_ty) |pty| {
             var tmp = std.ArrayList([]const u8).empty;
             defer tmp.deinit(allocator);
-            try appendUnionBranchPayloadTypes(allocator, tokens, pty, structs, struct_layouts, &tmp);
+            try append_union_branch_payload_types(allocator, tokens, pty, structs, struct_layouts, &tmp);
             case_slot_counts[ci] = tmp.items.len;
             case_payload_types[ci] = pty;
             if (tmp.items.len > max_slots) max_slots = tmp.items.len;
@@ -891,7 +891,7 @@ pub fn build_payload_enum_union_layout(allocator: std.mem.Allocator, decl: Paylo
             if (case.payload_ty == null) continue;
             var tmp = std.ArrayList([]const u8).empty;
             defer tmp.deinit(allocator);
-            try appendUnionBranchPayloadTypes(allocator, tokens, case.payload_ty.?, structs, struct_layouts, &tmp);
+            try append_union_branch_payload_types(allocator, tokens, case.payload_ty.?, structs, struct_layouts, &tmp);
             for (tmp.items, 0..) |slot_ty, si| {
                 if (filled[si]) continue;
                 payload_tys.items[si] = slot_ty;
@@ -939,13 +939,13 @@ pub fn emit_union_struct_payload_for_type(allocator: std.mem.Allocator, tokens: 
     } else {
         return false;
     }
-    const union_local = findUnionLocal(locals.union_locals.items, name) orelse return false;
-    const payload = unionLocalDefaultStructPayload(tokens, ctx, union_local) orelse return false;
+    const union_local = find_union_local(locals.union_locals.items, name) orelse return false;
+    const payload = union_local_default_struct_payload(tokens, ctx, union_local) orelse return false;
     if (!std.mem.eql(u8, payload.decl.name, ty)) return false;
 
     if (payload.branch.payload_len == 1) {
-        if (findStructLayout(ctx.struct_layouts, payload.decl.name) != null) {
-            try appendUnionPayloadLocalGet(allocator, out, union_local.name, payload.branch.payload_start);
+        if (find_struct_layout(ctx.struct_layouts, payload.decl.name) != null) {
+            try append_union_payload_local_get(allocator, out, union_local.name, payload.branch.payload_start);
             if (copy_managed) try out.appendSlice(allocator, "    call $__arc_inc\n");
             return true;
         }
@@ -953,7 +953,7 @@ pub fn emit_union_struct_payload_for_type(allocator: std.mem.Allocator, tokens: 
 
     var idx = payload.branch.payload_start;
     for (payload.decl.fields) |field| {
-        try appendUnionPayloadLocalGet(allocator, out, union_local.name, idx);
+        try append_union_payload_local_get(allocator, out, union_local.name, idx);
         if (copy_managed and is_managed_local_type(field.ty, ctx)) {
             try out.appendSlice(allocator, "    call $__arc_inc\n");
         }
@@ -963,10 +963,10 @@ pub fn emit_union_struct_payload_for_type(allocator: std.mem.Allocator, tokens: 
 }
 
 pub fn emit_union_is_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
-    const first_end = findArgEnd(tokens, args_start, args_end);
+    const first_end = find_arg_end(tokens, args_start, args_end);
     if (first_end != args_start + 1 or tokens[args_start].kind != .ident) return false;
-    if (first_end >= args_end or !tokEq(tokens[first_end], ",")) return false;
-    const union_local = findUnionLocal(locals.union_locals.items, tokens[args_start].lexeme) orelse return false;
+    if (first_end >= args_end or !tok_eq(tokens[first_end], ",")) return false;
+    const union_local = find_union_local(locals.union_locals.items, tokens[args_start].lexeme) orelse return false;
     const type_start = first_end + 1;
     const type_end = args_end;
 
@@ -976,8 +976,8 @@ pub fn emit_union_is_call(allocator: std.mem.Allocator, tokens: []const lexer.To
     if (tags.items.len == 0) return false;
 
     for (tags.items, 0..) |tag, idx| {
-        try appendUnionTagLocalGet(allocator, out, union_local.name);
-        try appendFmt(allocator, out, "    i32.const {d}\n", .{tag});
+        try append_union_tag_local_get(allocator, out, union_local.name);
+        try append_fmt(allocator, out, "    i32.const {d}\n", .{tag});
         try out.appendSlice(allocator, "    i32.eq\n");
         if (idx != 0) try out.appendSlice(allocator, "    i32.or\n");
     }
@@ -993,41 +993,41 @@ pub fn collect_union_is_tags(allocator: std.mem.Allocator, tokens: []const lexer
 
     var branch_start = start_idx;
     while (branch_start < end_idx) {
-        if (tokEq(tokens[branch_start], "|")) {
+        if (tok_eq(tokens[branch_start], "|")) {
             branch_start += 1;
             continue;
         }
-        const branch_end = findTopLevelToken(tokens, branch_start, end_idx, "|") orelse end_idx;
+        const branch_end = find_top_level_token(tokens, branch_start, end_idx, "|") orelse end_idx;
         if (branch_end == branch_start) return error.NoMatchingCall;
-        if (branch_end == branch_start + 1 and tokEq(tokens[branch_start], "nil")) return error.NoMatchingCall;
-        const parsed_ty = (try parseCodegenTypeExpr(allocator, tokens, branch_start, branch_end, &owned_types)) orelse return error.NoMatchingCall;
+        if (branch_end == branch_start + 1 and tok_eq(tokens[branch_start], "nil")) return error.NoMatchingCall;
+        const parsed_ty = (try parse_codegen_type_expr(allocator, tokens, branch_start, branch_end, &owned_types)) orelse return error.NoMatchingCall;
         if (parsed_ty.next_idx != branch_end) return error.NoMatchingCall;
         const branch = find_union_branch_by_type(layout, parsed_ty.ty) orelse return error.NoMatchingCall;
         if (branch.tag == 0 and std.mem.eql(u8, branch.ty, "nil")) return error.NoMatchingCall;
         try out.append(allocator, branch.tag);
         branch_start = branch_end;
-        if (branch_start < end_idx and tokEq(tokens[branch_start], "|")) branch_start += 1;
+        if (branch_start < end_idx and tok_eq(tokens[branch_start], "|")) branch_start += 1;
     }
 
     _ = ctx;
 }
 
 pub fn emit_union_nil_comparison(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, move_ctx: ?*const CallLastUseMoveContext, call_name: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
-    const first_end = findArgEnd(tokens, args_start, args_end);
-    if (first_end == args_start or first_end >= args_end or !tokEq(tokens[first_end], ",")) return false;
+    const first_end = find_arg_end(tokens, args_start, args_end);
+    if (first_end == args_start or first_end >= args_end or !tok_eq(tokens[first_end], ",")) return false;
     const second_start = first_end + 1;
-    const second_end = findArgEnd(tokens, second_start, args_end);
+    const second_end = find_arg_end(tokens, second_start, args_end);
     if (second_end != args_end) return false;
 
     const first_union = union_local_single_ident(tokens, args_start, first_end, locals);
     const second_union = union_local_single_ident(tokens, second_start, second_end, locals);
-    const first_nil = first_end == args_start + 1 and tokEq(tokens[args_start], "nil");
-    const second_nil = second_end == second_start + 1 and tokEq(tokens[second_start], "nil");
+    const first_nil = first_end == args_start + 1 and tok_eq(tokens[args_start], "nil");
+    const second_nil = second_end == second_start + 1 and tok_eq(tokens[second_start], "nil");
 
     if (first_union != null and second_nil) {
-        try appendUnionTagLocalGet(allocator, out, first_union.?.name);
+        try append_union_tag_local_get(allocator, out, first_union.?.name);
     } else if (second_union != null and first_nil) {
-        try appendUnionTagLocalGet(allocator, out, second_union.?.name);
+        try append_union_tag_local_get(allocator, out, second_union.?.name);
     } else if (second_nil) {
         if (!try emit_union_expr_tag_and_discard_payload(allocator, tokens, args_start, first_end, move_ctx, locals, ctx, out)) {
             return false;
@@ -1049,15 +1049,15 @@ pub fn emit_union_nil_comparison(allocator: std.mem.Allocator, tokens: []const l
 }
 
 pub fn emit_union_expr_tag_and_discard_payload(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, move_ctx: ?*const CallLastUseMoveContext, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
-    const range = trimParens(tokens, start_idx, end_idx);
-    const call_head = exprCallHead(tokens, range) orelse return false;
+    const range = trim_parens(tokens, start_idx, end_idx);
+    const call_head = expr_call_head(tokens, range) orelse return false;
     if (call_head.is_intrinsic) return false;
-    const func = findFuncDeclForCallHead(tokens, call_head, locals, ctx) orelse return false;
+    const func = find_func_decl_for_call_head(tokens, call_head, locals, ctx) orelse return false;
     const layout = func.result_union orelse return false;
     if (!try codegen_callbacks.emit_user_func_call_with_move_context(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, move_ctx, out)) {
         return false;
     }
-    try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
     var idx = layout.payload_tys.len;
     while (idx > 0) {
         idx -= 1;
@@ -1067,7 +1067,7 @@ pub fn emit_union_expr_tag_and_discard_payload(allocator: std.mem.Allocator, tok
             try out.appendSlice(allocator, "    drop\n");
         }
     }
-    try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
     return true;
 }
 
@@ -1078,24 +1078,24 @@ pub fn union_payload_comparison_call_branch(
     locals: *const LocalSet,
     ctx: CodegenContext,
 ) ?UnionBranch {
-    const first_end = findArgEnd(tokens, args_start, args_end);
-    if (first_end == args_start or first_end >= args_end or !tokEq(tokens[first_end], ",")) return null;
+    const first_end = find_arg_end(tokens, args_start, args_end);
+    if (first_end == args_start or first_end >= args_end or !tok_eq(tokens[first_end], ",")) return null;
     const second_start = first_end + 1;
-    const second_end = findArgEnd(tokens, second_start, args_end);
+    const second_end = find_arg_end(tokens, second_start, args_end);
     if (second_end != args_end) return null;
-    const range = trimParens(tokens, args_start, first_end);
-    const call_head = exprCallHead(tokens, range) orelse return null;
+    const range = trim_parens(tokens, args_start, first_end);
+    const call_head = expr_call_head(tokens, range) orelse return null;
     if (call_head.is_intrinsic) return null;
-    const func = findFuncDeclForCallHead(tokens, call_head, locals, ctx) orelse return null;
+    const func = find_func_decl_for_call_head(tokens, call_head, locals, ctx) orelse return null;
     const layout = func.result_union orelse return null;
     return union_payload_comparison_branch_for_value(tokens, second_start, second_end, locals, ctx, layout);
 }
 
 pub fn emit_union_error_branch_comparison(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, call_name: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
-    const first_end = findArgEnd(tokens, args_start, args_end);
-    if (first_end == args_start or first_end >= args_end or !tokEq(tokens[first_end], ",")) return false;
+    const first_end = find_arg_end(tokens, args_start, args_end);
+    if (first_end == args_start or first_end >= args_end or !tok_eq(tokens[first_end], ",")) return false;
     const second_start = first_end + 1;
-    const second_end = findArgEnd(tokens, second_start, args_end);
+    const second_end = find_arg_end(tokens, second_start, args_end);
     if (second_end != args_end) return false;
 
     const first_union = union_local_single_ident(tokens, args_start, first_end, locals);
@@ -1107,11 +1107,11 @@ pub fn emit_union_error_branch_comparison(allocator: std.mem.Allocator, tokens: 
     for (union_local.layout.branches) |branch| {
         if (branch.tag == 0 or branch.payload_len != 1) continue;
         const branch_value = error_branch_value_for_comparison(allocator, ctx, tokens, value_start, value_end, branch.ty) orelse continue;
-        try appendUnionTagLocalGet(allocator, out, union_local.name);
-        try appendFmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
+        try append_union_tag_local_get(allocator, out, union_local.name);
+        try append_fmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
         try out.appendSlice(allocator, "    i32.eq\n");
-        try appendUnionPayloadLocalGet(allocator, out, union_local.name, branch.payload_start);
-        try appendFmt(allocator, out, "    i32.const {d}\n", .{branch_value});
+        try append_union_payload_local_get(allocator, out, union_local.name, branch.payload_start);
+        try append_fmt(allocator, out, "    i32.const {d}\n", .{branch_value});
         try out.appendSlice(allocator, "    i32.eq\n");
         try out.appendSlice(allocator, "    i32.and\n");
         if (std.mem.eql(u8, call_name, "ne")) {
@@ -1130,7 +1130,7 @@ pub fn error_branch_value_for_comparison(
     end_idx: usize,
     error_ty: []const u8,
 ) ?usize {
-    const range = trimParens(tokens, start_idx, end_idx);
+    const range = trim_parens(tokens, start_idx, end_idx);
     if (range.end != range.start + 1 or tokens[range.start].kind != .ident) return null;
     const name = tokens[range.start].lexeme;
     if (error_enum_branch_value(tokens, error_ty, name)) |value| return value;
@@ -1138,17 +1138,17 @@ pub fn error_branch_value_for_comparison(
 }
 
 pub fn emit_union_local_payload_for_type(allocator: std.mem.Allocator, name: []const u8, ty: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
-    const union_local = findUnionLocal(locals.union_locals.items, name) orelse return false;
+    const union_local = find_union_local(locals.union_locals.items, name) orelse return false;
     const narrowed_ty = find_narrowed_union_type(locals.narrowed_union_locals.items, name) orelse
         return error.UnionPayloadRequiresNarrowing;
-    const concrete_narrowed_ty = substituteGenericType(narrowed_ty, ctx.type_bindings);
+    const concrete_narrowed_ty = substitute_generic_type(narrowed_ty, ctx.type_bindings);
 
     // Prefer branch matching the narrowed payload/arm type.
     var matched: ?UnionBranch = null;
     for (union_local.layout.branches) |branch| {
         if (branch.payload_len == 0) continue;
         const branch_payload_ty = branch.payload_type orelse branch.ty;
-        const concrete_branch_ty = substituteGenericType(branch_payload_ty, ctx.type_bindings);
+        const concrete_branch_ty = substitute_generic_type(branch_payload_ty, ctx.type_bindings);
         // Match narrowed type to case name or payload type.
         const matches_narrow = codegen_types_compatible(concrete_branch_ty, concrete_narrowed_ty) or
             std.mem.eql(u8, branch.ty, concrete_narrowed_ty);
@@ -1166,7 +1166,7 @@ pub fn emit_union_local_payload_for_type(allocator: std.mem.Allocator, name: []c
         for (union_local.layout.branches) |branch| {
             if (branch.payload_len != 1) continue;
             const branch_payload_ty = branch.payload_type orelse branch.ty;
-            const concrete_branch_ty = substituteGenericType(branch_payload_ty, ctx.type_bindings);
+            const concrete_branch_ty = substitute_generic_type(branch_payload_ty, ctx.type_bindings);
             if (!codegen_types_compatible(concrete_branch_ty, ty) and !codegen_types_compatible(branch.ty, ty)) continue;
             if (matched != null) return false;
             matched = branch;
@@ -1180,7 +1180,7 @@ pub fn emit_union_local_payload_for_type(allocator: std.mem.Allocator, name: []c
         !codegen_types_compatible(concrete_narrowed_ty, branch_payload_ty))
         return false;
 
-    try appendUnionPayloadLocalGet(allocator, out, union_local.name, branch.payload_start);
+    try append_union_payload_local_get(allocator, out, union_local.name, branch.payload_start);
     return true;
 }
 
@@ -1194,9 +1194,9 @@ fn store_union_local_from_stack(
     while (idx > 0) {
         idx -= 1;
         if (idx == union_local.layout.payload_tys.len) {
-            try appendUnionTagLocalSet(allocator, out, union_local.name);
+            try append_union_tag_local_set(allocator, out, union_local.name);
         } else {
-            try appendUnionPayloadLocalSet(allocator, out, union_local.name, idx);
+            try append_union_payload_local_set(allocator, out, union_local.name, idx);
         }
     }
 }
@@ -1214,7 +1214,7 @@ fn emit_union_binding_from_user_func(
     union_local: UnionLocal,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
-    const func = findFuncDeclForCallHead(tokens, call_head, locals, ctx) orelse return false;
+    const func = find_func_decl_for_call_head(tokens, call_head, locals, ctx) orelse return false;
     const func_union = func.result_union orelse return false;
     if (!union_layouts_abi_compatible(ctx, func_union, union_local.layout)) return false;
 
@@ -1247,7 +1247,7 @@ fn emit_union_binding_from_wasi(
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     // Fallible host result-area → exclusive do union (`nil|i32`, `Dir|i32`, …).
-    const wasi_import = findWasiHostImportForTokens(ctx, tokens, tokens[call_head.name_idx].lexeme) orelse return false;
+    const wasi_import = find_wasi_host_import_for_tokens(ctx, tokens, tokens[call_head.name_idx].lexeme) orelse return false;
     const emitted =
         try emit_wasi_unit_result_as_union_value(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, wasi_import, union_local.layout, out, codegen_callbacks.emit_expr) or
         try emit_wasi_descriptor_result_as_union_value(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, wasi_import, union_local.layout, out, codegen_callbacks.emit_expr) or
@@ -1273,7 +1273,7 @@ fn emit_union_binding_from_call(
     union_local: UnionLocal,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
-    const call_head = exprCallHead(tokens, rhs_range) orelse return false;
+    const call_head = expr_call_head(tokens, rhs_range) orelse return false;
     if (call_head.is_intrinsic) return false;
 
     if (try emit_union_binding_from_user_func(
@@ -1307,15 +1307,15 @@ pub fn emit_union_binding(
 ) CodegenError!bool {
     if (start_idx + 3 > end_idx) return false;
     if (tokens[start_idx].kind != .ident) return false;
-    const union_local = findUnionLocal(locals.union_locals.items, tokens[start_idx].lexeme) orelse return false;
-    const eq_idx = findTopLevelToken(tokens, start_idx + 1, end_idx, "=") orelse return false;
+    const union_local = find_union_local(locals.union_locals.items, tokens[start_idx].lexeme) orelse return false;
+    const eq_idx = find_top_level_token(tokens, start_idx + 1, end_idx, "=") orelse return false;
     const move_ctx = CallLastUseMoveContext{
         .stmt_end = end_idx,
         .body_end = body_end,
         .defer_ctx = defer_ctx,
         .allow_last_use_move = allow_last_use_move,
     };
-    const rhs_range = trimParens(tokens, eq_idx + 1, end_idx);
+    const rhs_range = trim_parens(tokens, eq_idx + 1, end_idx);
 
     if (try emit_union_binding_from_call(
         allocator,
@@ -1339,21 +1339,21 @@ pub fn emit_union_binding(
 }
 
 pub fn emit_union_struct_field_get_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, name: []const u8, field_tok: lexer.Token, single_field_arg: bool, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
-    if (!single_field_arg or !isDotIdent(field_tok.lexeme)) return false;
-    const union_local = findUnionLocal(locals.union_locals.items, name) orelse return false;
-    const payload = unionLocalDefaultStructPayload(tokens, ctx, union_local) orelse return false;
-    const field_name = publicDeclName(field_tok.lexeme);
+    if (!single_field_arg or !is_dot_ident(field_tok.lexeme)) return false;
+    const union_local = find_union_local(locals.union_locals.items, name) orelse return false;
+    const payload = union_local_default_struct_payload(tokens, ctx, union_local) orelse return false;
+    const field_name = public_decl_name(field_tok.lexeme);
     const field_offset = struct_field_payload_offset(payload.decl, field_name) orelse return false;
 
     if (payload.branch.payload_len == 1) {
-        if (findStructLayout(ctx.struct_layouts, payload.decl.name)) |layout| {
+        if (find_struct_layout(ctx.struct_layouts, payload.decl.name)) |layout| {
             const field_ty = find_struct_field_type(payload.decl, field_name) orelse return false;
-            try appendUnionPayloadLocalGet(allocator, out, name, payload.branch.payload_start);
+            try append_union_payload_local_get(allocator, out, name, payload.branch.payload_start);
             try out.appendSlice(allocator, "    call $__arc_payload\n");
-            try appendFmt(allocator, out, "    i32.const {d}\n", .{field_offset});
+            try append_fmt(allocator, out, "    i32.const {d}\n", .{field_offset});
             try out.appendSlice(allocator, "    i32.add\n");
             try append_load_for_payload_type(allocator, out, field_ty);
-            if (isManagedStructField(layout, field_name)) {
+            if (is_managed_struct_field(layout, field_name)) {
                 try out.appendSlice(allocator, "    call $__arc_inc\n");
             }
             return true;
@@ -1363,9 +1363,9 @@ pub fn emit_union_struct_field_get_call(allocator: std.mem.Allocator, tokens: []
     var idx = payload.branch.payload_start;
     var offset: usize = 0;
     for (payload.decl.fields) |field| {
-        offset = alignUp(offset, type_payload_alignment(field.ty));
-        if (std.mem.eql(u8, publicDeclName(field.name), field_name)) {
-            try appendUnionPayloadLocalGet(allocator, out, name, idx);
+        offset = align_up(offset, type_payload_alignment(field.ty));
+        if (std.mem.eql(u8, public_decl_name(field.name), field_name)) {
+            try append_union_payload_local_get(allocator, out, name, idx);
             return true;
         }
         offset += type_payload_bytes(field.ty);
@@ -1382,31 +1382,31 @@ pub fn imported_error_branch_value(
     enum_name: []const u8,
 ) ?usize {
     const ctx = imported_alias_ctx orelse return null;
-    const import_ref = findCodegenImportByAlias(tokens, name) orelse return null;
-    const child_idx = findImportedModuleIndex(allocator, ctx.graph, ctx.module_idx, import_ref) orelse return null;
+    const import_ref = find_codegen_import_by_alias(tokens, name) orelse return null;
+    const child_idx = find_imported_module_index(allocator, ctx.graph, ctx.module_idx, import_ref) orelse return null;
     return error_enum_branch_value(ctx.graph.modules[child_idx].tokens, enum_name, import_ref.target);
 }
 
 pub fn collect_union_return_move_names(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, layout: UnionLayout, move_names: *std.ArrayList([]const u8)) !void {
-    const range = trimParens(tokens, start_idx, end_idx);
+    const range = trim_parens(tokens, start_idx, end_idx);
     if (range.end != range.start + 1 or tokens[range.start].kind != .ident) return;
     const name = tokens[range.start].lexeme;
-    if (findUnionLocal(locals.union_locals.items, name)) |union_local| {
+    if (find_union_local(locals.union_locals.items, name)) |union_local| {
         if (!union_layouts_abi_compatible(ctx, union_local.layout, layout)) return;
         for (layout.payload_tys, 0..) |payload_ty, idx| {
             if (!is_managed_local_type(payload_ty, ctx)) continue;
-            const payload_name = try unionPayloadLocalName(allocator, union_local.name, idx);
+            const payload_name = try union_payload_local_name(allocator, union_local.name, idx);
             defer allocator.free(payload_name);
-            const local_name = findLocalName(locals.locals.items, payload_name) orelse return;
+            const local_name = find_local_name(locals.locals.items, payload_name) orelse return;
             try move_names.append(allocator, local_name);
         }
         return;
     }
-    const raw_ty = findLocalType(locals.locals.items, name) orelse return;
-    const ty = substituteGenericType(raw_ty, ctx.type_bindings);
+    const raw_ty = find_local_type(locals.locals.items, name) orelse return;
+    const ty = substitute_generic_type(raw_ty, ctx.type_bindings);
     if (!is_managed_local_type(ty, ctx)) return;
     if (find_union_branch_by_compatible_type(layout, ty) == null and !union_layout_has_single_payload_abi_type(ctx, layout, ty)) return;
-    try move_names.append(allocator, findLocalName(locals.locals.items, name) orelse name);
+    try move_names.append(allocator, find_local_name(locals.locals.items, name) orelse name);
 }
 
 pub fn union_layout_has_single_payload_abi_type(ctx: CodegenContext, layout: UnionLayout, ty: []const u8) bool {
@@ -1431,37 +1431,37 @@ pub fn union_payload_comparison_branch_for_value(
     for (layout.branches) |branch| {
         if (branch.tag == 0 or branch.payload_len != 1 or branch.payload_start != 0) continue;
         if (!is_codegen_scalar_type(ctx, branch.ty)) continue;
-        if (!callArgMatchesParam(tokens, value_start, value_end, locals, ctx, branch.ty)) continue;
+        if (!call_arg_matches_param(tokens, value_start, value_end, locals, ctx, branch.ty)) continue;
         return branch;
     }
     return null;
 }
 
 pub fn emit_union_payload_comparison_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, call_name: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
-    const first_end = findArgEnd(tokens, args_start, args_end);
-    if (first_end == args_start or first_end >= args_end or !tokEq(tokens[first_end], ",")) return false;
+    const first_end = find_arg_end(tokens, args_start, args_end);
+    if (first_end == args_start or first_end >= args_end or !tok_eq(tokens[first_end], ",")) return false;
     const second_start = first_end + 1;
-    const second_end = findArgEnd(tokens, second_start, args_end);
+    const second_end = find_arg_end(tokens, second_start, args_end);
     if (second_end != args_end) return false;
-    const range = trimParens(tokens, args_start, first_end);
-    const call_head = exprCallHead(tokens, range) orelse return false;
+    const range = trim_parens(tokens, args_start, first_end);
+    const call_head = expr_call_head(tokens, range) orelse return false;
     if (call_head.is_intrinsic) return false;
-    const func = findFuncDeclForCallHead(tokens, call_head, locals, ctx) orelse return false;
+    const func = find_func_decl_for_call_head(tokens, call_head, locals, ctx) orelse return false;
     const layout = func.result_union orelse return false;
     const branch = union_payload_comparison_branch_for_value(tokens, second_start, second_end, locals, ctx, layout) orelse return false;
 
     if (!try codegen_callbacks.emit_user_func_call_with_move_context(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, null, out)) {
         return false;
     }
-    try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
     if (!try codegen_callbacks.emit_expr(allocator, tokens, second_start, second_end, locals, ctx, branch.ty, out)) {
         return false;
     }
-    const op_ty = codegenScalarType(ctx, branch.ty);
+    const op_ty = codegen_scalar_type(ctx, branch.ty);
     const eq_op = comparison_wasm_op("eq", op_ty) orelse return false;
-    try appendFmt(allocator, out, "    {s}\n", .{eq_op});
-    try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-    try appendFmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
+    try append_fmt(allocator, out, "    {s}\n", .{eq_op});
+    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
     try out.appendSlice(allocator, "    i32.eq\n");
     try out.appendSlice(allocator, "    i32.and\n");
     if (std.mem.eql(u8, call_name, "ne")) {
@@ -1471,10 +1471,10 @@ pub fn emit_union_payload_comparison_call(allocator: std.mem.Allocator, tokens: 
 }
 
 pub fn emit_union_payload_comparison_local(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, call_name: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
-    const first_end = findArgEnd(tokens, args_start, args_end);
-    if (first_end == args_start or first_end >= args_end or !tokEq(tokens[first_end], ",")) return false;
+    const first_end = find_arg_end(tokens, args_start, args_end);
+    if (first_end == args_start or first_end >= args_end or !tok_eq(tokens[first_end], ",")) return false;
     const second_start = first_end + 1;
-    const second_end = findArgEnd(tokens, second_start, args_end);
+    const second_end = find_arg_end(tokens, second_start, args_end);
     if (second_end != args_end) return false;
 
     const first_union = union_local_single_ident(tokens, args_start, first_end, locals);
@@ -1486,15 +1486,15 @@ pub fn emit_union_payload_comparison_local(allocator: std.mem.Allocator, tokens:
     const value_end = if (first_union != null) second_end else first_end;
     const branch = union_payload_comparison_branch_for_local_value(tokens, value_start, value_end, locals, ctx, union_local.layout) orelse return false;
 
-    try appendUnionPayloadLocalGet(allocator, out, union_local.name, branch.payload_start);
+    try append_union_payload_local_get(allocator, out, union_local.name, branch.payload_start);
     if (!try codegen_callbacks.emit_expr(allocator, tokens, value_start, value_end, locals, ctx, branch.ty, out)) {
         return false;
     }
-    const op_ty = codegenScalarType(ctx, branch.ty);
+    const op_ty = codegen_scalar_type(ctx, branch.ty);
     const eq_op = comparison_wasm_op("eq", op_ty) orelse return false;
-    try appendFmt(allocator, out, "    {s}\n", .{eq_op});
-    try appendUnionTagLocalGet(allocator, out, union_local.name);
-    try appendFmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
+    try append_fmt(allocator, out, "    {s}\n", .{eq_op});
+    try append_union_tag_local_get(allocator, out, union_local.name);
+    try append_fmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
     try out.appendSlice(allocator, "    i32.eq\n");
     try out.appendSlice(allocator, "    i32.and\n");
     if (std.mem.eql(u8, call_name, "ne")) {
@@ -1514,7 +1514,7 @@ pub fn union_payload_comparison_branch_for_local_value(
     for (layout.branches) |branch| {
         if (branch.tag == 0 or branch.payload_len != 1) continue;
         if (!is_codegen_scalar_type(ctx, branch.ty)) continue;
-        if (!callArgMatchesParam(tokens, value_start, value_end, locals, ctx, branch.ty)) continue;
+        if (!call_arg_matches_param(tokens, value_start, value_end, locals, ctx, branch.ty)) continue;
         return branch;
     }
     return null;
@@ -1526,9 +1526,9 @@ pub fn union_local_single_ident(
     end_idx: usize,
     locals: *const LocalSet,
 ) ?UnionLocal {
-    const range = trimParens(tokens, start_idx, end_idx);
+    const range = trim_parens(tokens, start_idx, end_idx);
     if (range.end != range.start + 1 or tokens[range.start].kind != .ident) return null;
-    return findUnionLocal(locals.union_locals.items, tokens[range.start].lexeme);
+    return find_union_local(locals.union_locals.items, tokens[range.start].lexeme);
 }
 
 pub fn find_storage_readable_local_name(
@@ -1541,7 +1541,7 @@ pub fn find_storage_readable_local_name(
 
     const ty = find_narrowed_union_type(locals.narrowed_union_locals.items, name) orelse return null;
     if (storage_elem_type_from_name(ty) == null) return null;
-    const union_local = findUnionLocal(locals.union_locals.items, name) orelse return null;
+    const union_local = find_union_local(locals.union_locals.items, name) orelse return null;
 
     var matched: ?UnionBranch = null;
     for (union_local.layout.branches) |branch| {
@@ -1551,7 +1551,7 @@ pub fn find_storage_readable_local_name(
         matched = branch;
     }
     const branch = matched orelse return null;
-    return unionPayloadLocalNameFromLocals(locals.locals.items, union_local.name, branch.payload_start);
+    return union_payload_local_name_from_locals(locals.locals.items, union_local.name, branch.payload_start);
 }
 
 pub fn emit_union_storage_payload_get_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, name: []const u8, index_start: usize, index_end: usize, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
@@ -1565,17 +1565,17 @@ pub fn emit_union_storage_payload_get_call(allocator: std.mem.Allocator, tokens:
         try emit_storage_data_ptr(allocator, out, storage_name);
         if (!try codegen_callbacks.emit_expr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return false;
         if (elem_bytes != 1) {
-            try appendFmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
+            try append_fmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
             try out.appendSlice(allocator, "    i32.mul\n");
         }
         try out.appendSlice(allocator, "    i32.add\n");
-        try appendFmt(allocator, out, "    local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
-        try appendLoadTupleLeavesOwningToStackCtx(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ", ctx);
+        try append_fmt(allocator, out, "    local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
+        try append_load_tuple_leaves_owning_to_stack_ctx(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ", ctx);
     } else {
         try emit_storage_data_ptr(allocator, out, storage_name);
         if (!try codegen_callbacks.emit_expr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return false;
         if (elem_bytes != 1) {
-            try appendFmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
+            try append_fmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
             try out.appendSlice(allocator, "    i32.mul\n");
         }
         try out.appendSlice(allocator, "    i32.add\n");
@@ -1589,7 +1589,7 @@ pub fn emit_union_storage_payload_get_call(allocator: std.mem.Allocator, tokens:
 }
 
 pub fn is_codegen_scalar_type(ctx: CodegenContext, ty: []const u8) bool {
-    return isCoreWasmScalar(ty) or valueEnumCarrier(ctx, ty) != null;
+    return is_core_wasm_scalar(ty) or value_enum_carrier(ctx, ty) != null;
 }
 
 pub fn is_unsigned_scalar(ty: []const u8) bool {
@@ -1601,7 +1601,7 @@ pub fn is_unsigned_scalar(ty: []const u8) bool {
 }
 
 pub fn comparison_wasm_op(name: []const u8, ty: []const u8) ?[]const u8 {
-    const wt = wasmType(ty);
+    const wt = wasm_type(ty);
     if (std.mem.eql(u8, name, "eq")) {
         if (std.mem.eql(u8, wt, "i64")) return "i64.eq";
         if (std.mem.eql(u8, wt, "f32")) return "f32.eq";

@@ -21,11 +21,11 @@ pub const TupleElementInfo = struct {
     ty: []const u8,
 };
 
-const findTopLevelToken = codegen_tokens.find_top_level_token;
-const trimParens = codegen_tokens.trim_parens;
-const publicDeclName = codegen_names.public_decl_name;
-const appendFmt = codegen_names.append_fmt;
-const alignUp = codegen_tokens.align_up;
+const find_top_level_token = codegen_tokens.find_top_level_token;
+const trim_parens = codegen_tokens.trim_parens;
+const public_decl_name = codegen_names.public_decl_name;
+const append_fmt = codegen_names.append_fmt;
+const align_up = codegen_tokens.align_up;
 const LocalSet = context.LocalSet;
 const CodegenContext = context.CodegenContext;
 const CodegenError = model.CodegenError;
@@ -36,23 +36,23 @@ const FuncResultItem = model.FuncResultItem;
 const STORAGE_WRITE_SCAN_TMP_LOCAL = constants.STORAGE_WRITE_SCAN_TMP_LOCAL;
 const TUPLE_PACK_BASE_TMP_LOCAL = constants.TUPLE_PACK_BASE_TMP_LOCAL;
 const STORAGE_PAYLOAD_HEADER_BYTES = constants.STORAGE_PAYLOAD_HEADER_BYTES;
-const findStructLocal = context.findStructLocal;
-const findStructDecl = gen_collect_util.findStructDecl;
-const findStructLayout = gen_collect_util.findStructLayout;
+const find_struct_local = context.findStructLocal;
+const find_struct_decl = gen_collect_util.findStructDecl;
+const find_struct_layout = gen_collect_util.findStructLayout;
 const is_pack_managed_handle_leaf = codegen_collect_structs.is_pack_managed_handle_leaf;
 const leaf_payload_bytes_for_pack = codegen_collect_structs.leaf_payload_bytes_for_pack;
-const pureScalarStructPackWidth = gen_collect_util.pureScalarStructPackWidth;
-const packSlotWidth = gen_collect_util.packSlotWidth;
-const appendTupleLeafTypesWithStructs = gen_collect_util.appendTupleLeafTypesWithStructs;
-const structDeclHasManagedField = gen_collect_util.structDeclHasManagedField;
-const exprCallHead = gen_import.exprCallHead;
+const pure_scalar_struct_pack_width = gen_collect_util.pureScalarStructPackWidth;
+const pack_slot_width = gen_collect_util.packSlotWidth;
+const append_tuple_leaf_types_with_structs = gen_collect_util.appendTupleLeafTypesWithStructs;
+const struct_decl_has_managed_field = gen_collect_util.structDeclHasManagedField;
+const expr_call_head = gen_import.exprCallHead;
 const type_payload_bytes = codegen_emit_wasi.type_payload_bytes;
 const type_payload_alignment = codegen_emit_wasi.type_payload_alignment;
 const is_tuple_type_name = codegen_emit_wasi.is_tuple_type_name;
 const tuple_arity = codegen_emit_wasi.tuple_arity;
 const tuple_element_type_at = codegen_emit_wasi.tuple_element_type_at;
 const tuple_has_managed_pack_leaf_ctx = codegen_emit_wasi.tuple_has_managed_pack_leaf_ctx;
-const isTuplePackableLeafType = type_util.isTuplePackableLeafType;
+const is_tuple_packable_leaf_type = type_util.isTuplePackableLeafType;
 
 pub fn emit_tuple_return_local(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, result_tys: []const []const u8, result_items: []const FuncResultItem, out: *std.ArrayList(u8)) !bool {
     const item = single_tuple_result_item(result_items) orelse return false;
@@ -60,12 +60,12 @@ pub fn emit_tuple_return_local(allocator: std.mem.Allocator, tokens: []const lex
     if (start_idx + 2 != end_idx) return false;
     if (tokens[start_idx + 1].kind != .ident) return false;
     const local_name = tokens[start_idx + 1].lexeme;
-    const tuple_local = findStructLocal(locals.struct_locals.items, local_name) orelse return false;
+    const tuple_local = find_struct_local(locals.struct_locals.items, local_name) orelse return false;
     if (!std.mem.eql(u8, tuple_local.ty, item.ty)) return false;
 
     var leaf_types = std.ArrayList([]const u8).empty;
     defer leaf_types.deinit(allocator);
-    try appendTupleLeafTypesWithStructs(allocator, item.ty, ctx.structs, &leaf_types);
+    try append_tuple_leaf_types_with_structs(allocator, item.ty, ctx.structs, &leaf_types);
     if (leaf_types.items.len != result_tys.len) return error.NoMatchingCall;
     for (leaf_types.items, 0..) |leaf_ty, idx| {
         if (!std.mem.eql(u8, leaf_ty, result_tys[idx])) return error.NoMatchingCall;
@@ -84,16 +84,16 @@ pub fn emit_tuple_local_set(allocator: std.mem.Allocator, base: []const u8, tupl
             const nested_base = try std.fmt.allocPrint(allocator, "{s}.{d}", .{ base, idx });
             defer allocator.free(nested_base);
             try emit_tuple_local_set(allocator, nested_base, elem_ty, ctx, out);
-        } else if (findStructDecl(ctx.structs, elem_ty)) |decl| {
-            if (findStructLayout(ctx.struct_layouts, elem_ty) == null and pureScalarStructPackWidth(decl, ctx.structs) != null) {
+        } else if (find_struct_decl(ctx.structs, elem_ty)) |decl| {
+            if (find_struct_layout(ctx.struct_layouts, elem_ty) == null and pure_scalar_struct_pack_width(decl, ctx.structs) != null) {
                 const nested_base = try std.fmt.allocPrint(allocator, "{s}.{d}", .{ base, idx });
                 defer allocator.free(nested_base);
                 try emit_pure_scalar_struct_local_set(allocator, nested_base, decl, out);
             } else {
-                try appendFmt(allocator, out, "    local.set ${s}.{d}\n", .{ base, idx });
+                try append_fmt(allocator, out, "    local.set ${s}.{d}\n", .{ base, idx });
             }
         } else {
-            try appendFmt(allocator, out, "    local.set ${s}.{d}\n", .{ base, idx });
+            try append_fmt(allocator, out, "    local.set ${s}.{d}\n", .{ base, idx });
         }
     }
 }
@@ -107,24 +107,24 @@ pub fn emit_tuple_local_get(allocator: std.mem.Allocator, base: []const u8, tupl
             const nested_base = try std.fmt.allocPrint(allocator, "{s}.{d}", .{ base, idx });
             defer allocator.free(nested_base);
             try emit_tuple_local_get(allocator, nested_base, elem_ty, ctx, out);
-        } else if (findStructDecl(ctx.structs, elem_ty)) |decl| {
-            if (findStructLayout(ctx.struct_layouts, elem_ty) == null and pureScalarStructPackWidth(decl, ctx.structs) != null) {
+        } else if (find_struct_decl(ctx.structs, elem_ty)) |decl| {
+            if (find_struct_layout(ctx.struct_layouts, elem_ty) == null and pure_scalar_struct_pack_width(decl, ctx.structs) != null) {
                 const nested_base = try std.fmt.allocPrint(allocator, "{s}.{d}", .{ base, idx });
                 defer allocator.free(nested_base);
                 try emit_pure_scalar_struct_local_get(allocator, nested_base, decl, out);
             } else {
-                try appendFmt(allocator, out, "    local.get ${s}.{d}\n", .{ base, idx });
+                try append_fmt(allocator, out, "    local.get ${s}.{d}\n", .{ base, idx });
             }
         } else {
-            try appendFmt(allocator, out, "    local.get ${s}.{d}\n", .{ base, idx });
+            try append_fmt(allocator, out, "    local.get ${s}.{d}\n", .{ base, idx });
         }
     }
 }
 
 pub fn emit_tuple_get_binding(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, tuple_local: StructLocal, out: *std.ArrayList(u8)) CodegenError!bool {
-    const eq_idx = findTopLevelToken(tokens, start_idx + 1, end_idx, "=") orelse return false;
-    const rhs_range = trimParens(tokens, eq_idx + 1, end_idx);
-    const call_head = exprCallHead(tokens, rhs_range) orelse return false;
+    const eq_idx = find_top_level_token(tokens, start_idx + 1, end_idx, "=") orelse return false;
+    const rhs_range = trim_parens(tokens, eq_idx + 1, end_idx);
+    const call_head = expr_call_head(tokens, rhs_range) orelse return false;
     if (!call_head.is_intrinsic) return false;
     if (!std.mem.eql(u8, tokens[call_head.name_idx].lexeme, "get")) return false;
     if (!try codegen_callbacks.emit_expr(allocator, tokens, rhs_range.start, rhs_range.end, locals, ctx, tuple_local.ty, out)) {
@@ -137,34 +137,34 @@ pub fn emit_tuple_get_binding(allocator: std.mem.Allocator, tokens: []const lexe
 pub fn emit_storage_inc_copied_pack_elements(allocator: std.mem.Allocator, out: *std.ArrayList(u8), storage_local: []const u8, copy_len_local: []const u8, layout: StructLayout) !void {
     try out.appendSlice(allocator, "      ;; storage-pack-clone-inc\n");
     try out.appendSlice(allocator, "      i32.const 0\n");
-    try appendFmt(allocator, out, "      local.set ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
+    try append_fmt(allocator, out, "      local.set ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
     try out.appendSlice(allocator, "      block $storage_pack_clone_inc_done\n");
     try out.appendSlice(allocator, "        loop $storage_pack_clone_inc_scan\n");
-    try appendFmt(allocator, out, "          local.get ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
-    try appendFmt(allocator, out, "          local.get ${s}\n", .{copy_len_local});
+    try append_fmt(allocator, out, "          local.get ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
+    try append_fmt(allocator, out, "          local.get ${s}\n", .{copy_len_local});
     try out.appendSlice(allocator, "          i32.ge_u\n");
     try out.appendSlice(allocator, "          br_if $storage_pack_clone_inc_done\n");
     for (layout.managed_fields) |field| {
-        try appendFmt(allocator, out, "          local.get ${s}\n", .{storage_local});
+        try append_fmt(allocator, out, "          local.get ${s}\n", .{storage_local});
         try out.appendSlice(allocator, "          call $__arc_payload\n");
-        try appendFmt(allocator, out, "          i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
+        try append_fmt(allocator, out, "          i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
         try out.appendSlice(allocator, "          i32.add\n");
-        try appendFmt(allocator, out, "          local.get ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
-        try appendFmt(allocator, out, "          i32.const {d}\n", .{layout.payload_bytes});
+        try append_fmt(allocator, out, "          local.get ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
+        try append_fmt(allocator, out, "          i32.const {d}\n", .{layout.payload_bytes});
         try out.appendSlice(allocator, "          i32.mul\n");
         try out.appendSlice(allocator, "          i32.add\n");
         if (field.offset != 0) {
-            try appendFmt(allocator, out, "          i32.const {d}\n", .{field.offset});
+            try append_fmt(allocator, out, "          i32.const {d}\n", .{field.offset});
             try out.appendSlice(allocator, "          i32.add\n");
         }
         try out.appendSlice(allocator, "          i32.load\n");
         try out.appendSlice(allocator, "          call $__arc_inc\n");
         try out.appendSlice(allocator, "          drop\n");
     }
-    try appendFmt(allocator, out, "          local.get ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
+    try append_fmt(allocator, out, "          local.get ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
     try out.appendSlice(allocator, "          i32.const 1\n");
     try out.appendSlice(allocator, "          i32.add\n");
-    try appendFmt(allocator, out, "          local.set ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
+    try append_fmt(allocator, out, "          local.set ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
     try out.appendSlice(allocator, "          br $storage_pack_clone_inc_scan\n");
     try out.appendSlice(allocator, "        end\n");
     try out.appendSlice(allocator, "      end\n");
@@ -182,7 +182,7 @@ pub fn append_store_tuple_scalar_leaves_from_stack(allocator: std.mem.Allocator,
 pub fn append_store_tuple_scalar_leaves_from_stack_ctx(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tuple_ty: []const u8, base_local: []const u8, indent: []const u8, ctx: CodegenContext) CodegenError!void {
     var leaf_types = std.ArrayList([]const u8).empty;
     defer leaf_types.deinit(allocator);
-    try appendTupleLeafTypesWithStructs(allocator, tuple_ty, ctx.structs, &leaf_types);
+    try append_tuple_leaf_types_with_structs(allocator, tuple_ty, ctx.structs, &leaf_types);
     if (leaf_types.items.len == 0) return error.UnsupportedLowering;
 
     var offsets = try allocator.alloc(usize, leaf_types.items.len);
@@ -200,13 +200,13 @@ pub fn append_store_tuple_scalar_leaves_from_stack_ctx(allocator: std.mem.Alloca
         const leaf_ty = leaf_types.items[i];
         // Managed-struct handles use the i32 spill path (same as text / [T]).
         const spill = tuple_pack_spill_local(if (is_pack_managed_handle_leaf(leaf_ty, ctx.structs)) "i32" else leaf_ty);
-        try appendFmt(allocator, out, "{s}local.set ${s}\n", .{ indent, spill });
-        try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+        try append_fmt(allocator, out, "{s}local.set ${s}\n", .{ indent, spill });
+        try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
         if (offsets[i] != 0) {
-            try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offsets[i] });
-            try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
+            try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offsets[i] });
+            try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
         }
-        try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, spill });
+        try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, spill });
         // Handles and scalars both store as i32/i64/f* payload widths.
         const store_ty = if (is_pack_managed_handle_leaf(leaf_ty, ctx.structs)) "i32" else leaf_ty;
         try payload_wat.append_store_for_payload_type_with_indent(allocator, out, store_ty, indent);
@@ -228,7 +228,7 @@ pub fn append_store_tuple_leaves_owning_from_stack_ctx(allocator: std.mem.Alloca
 pub fn append_inc_managed_tuple_leaves_on_stack_ctx(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tuple_ty: []const u8, indent: []const u8, ctx: CodegenContext) CodegenError!void {
     var leaf_types = std.ArrayList([]const u8).empty;
     defer leaf_types.deinit(allocator);
-    try appendTupleLeafTypesWithStructs(allocator, tuple_ty, ctx.structs, &leaf_types);
+    try append_tuple_leaf_types_with_structs(allocator, tuple_ty, ctx.structs, &leaf_types);
     var has_managed = false;
     for (leaf_types.items) |leaf_ty| {
         if (is_pack_managed_handle_leaf(leaf_ty, ctx.structs)) {
@@ -248,13 +248,13 @@ pub fn append_inc_managed_tuple_leaves_on_stack_ctx(allocator: std.mem.Allocator
         // Per-leaf spill: same wasm type (text handle + u8) must not share one temp.
         const spill = payload_wat.tuple_pack_spill_local_at(spill_ty, i);
         spills[i] = spill;
-        try appendFmt(allocator, out, "{s}local.set ${s}\n", .{ indent, spill });
+        try append_fmt(allocator, out, "{s}local.set ${s}\n", .{ indent, spill });
     }
     for (leaf_types.items, 0..) |leaf_ty, idx| {
-        try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, spills[idx] });
+        try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, spills[idx] });
         if (is_pack_managed_handle_leaf(leaf_ty, ctx.structs)) {
-            try appendFmt(allocator, out, "{s};; tuple-pack-managed-leaf-inc\n", .{indent});
-            try appendFmt(allocator, out, "{s}call $__arc_inc\n", .{indent});
+            try append_fmt(allocator, out, "{s};; tuple-pack-managed-leaf-inc\n", .{indent});
+            try append_fmt(allocator, out, "{s}call $__arc_inc\n", .{indent});
         }
     }
 }
@@ -266,16 +266,16 @@ pub fn append_load_tuple_scalar_leaves_to_stack(allocator: std.mem.Allocator, ou
 pub fn append_load_tuple_scalar_leaves_to_stack_ctx(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tuple_ty: []const u8, base_local: []const u8, indent: []const u8, ctx: CodegenContext) CodegenError!void {
     var leaf_types = std.ArrayList([]const u8).empty;
     defer leaf_types.deinit(allocator);
-    try appendTupleLeafTypesWithStructs(allocator, tuple_ty, ctx.structs, &leaf_types);
+    try append_tuple_leaf_types_with_structs(allocator, tuple_ty, ctx.structs, &leaf_types);
     if (leaf_types.items.len == 0) return error.UnsupportedLowering;
 
     var offset: usize = 0;
     for (leaf_types.items) |leaf_ty| {
         const leaf_bytes = leaf_payload_bytes_for_pack(leaf_ty, ctx.structs) orelse return error.UnsupportedTupleStorageLeaf;
-        try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+        try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
         if (offset != 0) {
-            try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });
-            try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
+            try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });
+            try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
         }
         const load_ty = if (is_pack_managed_handle_leaf(leaf_ty, ctx.structs)) "i32" else leaf_ty;
         try payload_wat.append_load_for_payload_type_with_indent(allocator, out, load_ty, indent);
@@ -300,41 +300,41 @@ pub fn append_load_tuple_element_from_packed_base_ctx(allocator: std.mem.Allocat
     const elem_offset = tuple_element_pack_offset_with_structs(tuple_ty, elem_index, ctx.structs) orelse return error.UnsupportedLowering;
     if (is_tuple_type_name(elem_ty)) {
         if (elem_offset != 0) {
-            try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
-            try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_offset });
-            try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
-            try appendFmt(allocator, out, "{s}local.set ${s}\n", .{ indent, base_local });
+            try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+            try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_offset });
+            try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
+            try append_fmt(allocator, out, "{s}local.set ${s}\n", .{ indent, base_local });
         }
         try append_load_tuple_scalar_leaves_to_stack_ctx(allocator, out, elem_ty, base_local, indent, ctx);
         return;
     }
-    if (findStructDecl(ctx.structs, elem_ty)) |decl| {
-        if (structDeclHasManagedField(decl, ctx.structs)) {
+    if (find_struct_decl(ctx.structs, elem_ty)) |decl| {
+        if (struct_decl_has_managed_field(decl, ctx.structs)) {
             // Managed struct slot: load one i32 ARC handle (object stays nested type Cell).
-            try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+            try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
             if (elem_offset != 0) {
-                try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_offset });
-                try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
+                try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_offset });
+                try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
             }
             try payload_wat.append_load_for_payload_type_with_indent(allocator, out, "i32", indent);
             return;
         }
-        if (pureScalarStructPackWidth(decl, ctx.structs) == null) return error.UnsupportedTupleStorageLeaf;
+        if (pure_scalar_struct_pack_width(decl, ctx.structs) == null) return error.UnsupportedTupleStorageLeaf;
         // Nested pure-scalar struct subregion: load field leaves onto stack (declaration order).
         if (elem_offset != 0) {
-            try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
-            try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_offset });
-            try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
-            try appendFmt(allocator, out, "{s}local.set ${s}\n", .{ indent, base_local });
+            try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+            try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_offset });
+            try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
+            try append_fmt(allocator, out, "{s}local.set ${s}\n", .{ indent, base_local });
         }
         try append_load_tuple_leaf_types_of_struct_to_stack(allocator, out, decl, base_local, indent, ctx);
         return;
     }
     if (!type_util.isTuplePackableLeafType(elem_ty)) return error.UnsupportedTupleStorageLeaf;
-    try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+    try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
     if (elem_offset != 0) {
-        try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_offset });
-        try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
+        try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_offset });
+        try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
     }
     try payload_wat.append_load_for_payload_type_with_indent(allocator, out, elem_ty, indent);
 }
@@ -343,41 +343,41 @@ pub fn append_load_tuple_leaf_types_of_struct_to_stack(allocator: std.mem.Alloca
     var offset: usize = 0;
     for (decl.fields) |field| {
         const field_ty = field.ty;
-        offset = alignUp(offset, type_payload_alignment(field_ty));
+        offset = align_up(offset, type_payload_alignment(field_ty));
         if (is_tuple_type_name(field_ty)) {
             // Nested tuple field inside pure-scalar struct: load from sub-base.
             const sub_base = TUPLE_PACK_BASE_TMP_LOCAL;
             if (offset != 0) {
-                try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
-                try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });
-                try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
-                try appendFmt(allocator, out, "{s}local.set ${s}\n", .{ indent, sub_base });
+                try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+                try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });
+                try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
+                try append_fmt(allocator, out, "{s}local.set ${s}\n", .{ indent, sub_base });
                 try append_load_tuple_scalar_leaves_to_stack_ctx(allocator, out, field_ty, sub_base, indent, ctx);
             } else {
                 try append_load_tuple_scalar_leaves_to_stack_ctx(allocator, out, field_ty, base_local, indent, ctx);
             }
-            offset += packSlotWidth(field_ty, ctx.structs) orelse return error.UnsupportedLowering;
+            offset += pack_slot_width(field_ty, ctx.structs) orelse return error.UnsupportedLowering;
             continue;
         }
-        if (findStructDecl(ctx.structs, field_ty)) |nested| {
-            if (pureScalarStructPackWidth(nested, ctx.structs) == null) return error.UnsupportedTupleStorageLeaf;
+        if (find_struct_decl(ctx.structs, field_ty)) |nested| {
+            if (pure_scalar_struct_pack_width(nested, ctx.structs) == null) return error.UnsupportedTupleStorageLeaf;
             const sub_base = TUPLE_PACK_BASE_TMP_LOCAL;
             if (offset != 0) {
-                try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
-                try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });
-                try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
-                try appendFmt(allocator, out, "{s}local.set ${s}\n", .{ indent, sub_base });
+                try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+                try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });
+                try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
+                try append_fmt(allocator, out, "{s}local.set ${s}\n", .{ indent, sub_base });
                 try append_load_tuple_leaf_types_of_struct_to_stack(allocator, out, nested, sub_base, indent, ctx);
             } else {
                 try append_load_tuple_leaf_types_of_struct_to_stack(allocator, out, nested, base_local, indent, ctx);
             }
-            offset += pureScalarStructPackWidth(nested, ctx.structs).?;
+            offset += pure_scalar_struct_pack_width(nested, ctx.structs).?;
             continue;
         }
-        try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+        try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
         if (offset != 0) {
-            try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });
-            try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
+            try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });
+            try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
         }
         try payload_wat.append_load_for_payload_type_with_indent(allocator, out, field_ty, indent);
         offset += type_payload_bytes(field_ty);
@@ -402,20 +402,20 @@ pub fn emit_inc_managed_tuple_leaves_at_base(allocator: std.mem.Allocator, out: 
     if (!tuple_has_managed_pack_leaf_ctx(tuple_ty, ctx)) return;
     var leaf_types = std.ArrayList([]const u8).empty;
     defer leaf_types.deinit(allocator);
-    try appendTupleLeafTypesWithStructs(allocator, tuple_ty, ctx.structs, &leaf_types);
+    try append_tuple_leaf_types_with_structs(allocator, tuple_ty, ctx.structs, &leaf_types);
     var offset: usize = 0;
     for (leaf_types.items) |leaf_ty| {
         const leaf_bytes = leaf_payload_bytes_for_pack(leaf_ty, ctx.structs) orelse return error.UnsupportedTupleStorageLeaf;
         if (is_pack_managed_handle_leaf(leaf_ty, ctx.structs)) {
-            try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+            try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
             if (offset != 0) {
-                try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });
-                try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
+                try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });
+                try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
             }
-            try appendFmt(allocator, out, "{s}i32.load\n", .{indent});
-            try appendFmt(allocator, out, "{s};; tuple-pack-leaf-inc-at-base\n", .{indent});
-            try appendFmt(allocator, out, "{s}call $__arc_inc\n", .{indent});
-            try appendFmt(allocator, out, "{s}drop\n", .{indent});
+            try append_fmt(allocator, out, "{s}i32.load\n", .{indent});
+            try append_fmt(allocator, out, "{s};; tuple-pack-leaf-inc-at-base\n", .{indent});
+            try append_fmt(allocator, out, "{s}call $__arc_inc\n", .{indent});
+            try append_fmt(allocator, out, "{s}drop\n", .{indent});
         }
         offset += leaf_bytes;
     }
@@ -425,19 +425,19 @@ pub fn emit_dec_managed_tuple_leaves_at_base(allocator: std.mem.Allocator, out: 
     if (!tuple_has_managed_pack_leaf_ctx(tuple_ty, ctx)) return;
     var leaf_types = std.ArrayList([]const u8).empty;
     defer leaf_types.deinit(allocator);
-    try appendTupleLeafTypesWithStructs(allocator, tuple_ty, ctx.structs, &leaf_types);
+    try append_tuple_leaf_types_with_structs(allocator, tuple_ty, ctx.structs, &leaf_types);
     var offset: usize = 0;
     for (leaf_types.items) |leaf_ty| {
         const leaf_bytes = leaf_payload_bytes_for_pack(leaf_ty, ctx.structs) orelse return error.UnsupportedTupleStorageLeaf;
         if (is_pack_managed_handle_leaf(leaf_ty, ctx.structs)) {
-            try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+            try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
             if (offset != 0) {
-                try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });
-                try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
+                try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });
+                try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
             }
-            try appendFmt(allocator, out, "{s}i32.load\n", .{indent});
-            try appendFmt(allocator, out, "{s};; tuple-pack-leaf-dec-at-base\n", .{indent});
-            try appendFmt(allocator, out, "{s}call $__arc_dec\n", .{indent});
+            try append_fmt(allocator, out, "{s}i32.load\n", .{indent});
+            try append_fmt(allocator, out, "{s};; tuple-pack-leaf-dec-at-base\n", .{indent});
+            try append_fmt(allocator, out, "{s}call $__arc_dec\n", .{indent});
         }
         offset += leaf_bytes;
     }
@@ -459,18 +459,18 @@ pub fn emit_pure_scalar_struct_local_set(allocator: std.mem.Allocator, base: []c
     var field_idx = decl.fields.len;
     while (field_idx > 0) {
         field_idx -= 1;
-        try appendFmt(allocator, out, "    local.set ${s}.{s}\n", .{
+        try append_fmt(allocator, out, "    local.set ${s}.{s}\n", .{
             base,
-            publicDeclName(decl.fields[field_idx].name),
+            public_decl_name(decl.fields[field_idx].name),
         });
     }
 }
 
 pub fn emit_pure_scalar_struct_local_get(allocator: std.mem.Allocator, base: []const u8, decl: StructDecl, out: *std.ArrayList(u8)) !void {
     for (decl.fields) |field| {
-        try appendFmt(allocator, out, "    local.get ${s}.{s}\n", .{
+        try append_fmt(allocator, out, "    local.get ${s}.{s}\n", .{
             base,
-            publicDeclName(field.name),
+            public_decl_name(field.name),
         });
     }
 }
@@ -491,7 +491,7 @@ pub fn tuple_element_pack_offset_with_structs(tuple_ty: []const u8, index: usize
     var idx: usize = 0;
     while (idx < index) : (idx += 1) {
         const elem_ty = tuple_element_type_at(tuple_ty, idx) orelse return null;
-        offset += packSlotWidth(elem_ty, structs) orelse return null;
+        offset += pack_slot_width(elem_ty, structs) orelse return null;
     }
     return offset;
 }

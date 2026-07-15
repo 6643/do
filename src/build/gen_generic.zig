@@ -83,22 +83,22 @@ const clone_union_layout_substituted = codegen_emit_union.clone_union_layout_sub
 const field_reflection_local_name_prefix = codegen_emit_struct_fields.field_reflection_local_name_prefix;
 const field_visible_from_tokens = codegen_emit_struct_fields.field_visible_from_tokens;
 const borrowed_field_meta_local_set = codegen_emit_struct_fields.borrowed_field_meta_local_set;
-const applyGuardLoopControlNarrowing = codegen_emit_struct.applyGuardLoopControlNarrowing;
-const applyCollectGuardReturnNarrowing = codegen_emit_struct.applyCollectGuardReturnNarrowing;
+const apply_guard_loop_control_narrowing = codegen_emit_struct_fields.apply_guard_loop_control_narrowing;
+const apply_collect_guard_return_narrowing = codegen_emit_struct_fields.apply_collect_guard_return_narrowing;
 const substitute_struct_field_type = codegen_storage_layout.substitute_struct_field_type;
-pub const findFuncDeclForCallHead = codegen_emit_storage_values.findFuncDeclForCallHead;
+pub const find_func_decl_for_call_head = codegen_storage_layout.find_func_decl_for_call_head;
 const infer_expr_type = codegen_storage_layout.infer_expr_type;
-const findCallbackBinding = codegen_emit_storage_values.findCallbackBinding;
-const callbackBindingsHaveSameShape = codegen_emit_storage_values.callbackBindingsHaveSameShape;
-const callArgMatchesParam = codegen_emit_storage_values.callArgMatchesParam;
-const callArgsMatchVariadicTail = codegen_emit_storage_values.callArgsMatchVariadicTail;
-const lambdaExprShape = codegen_emit_storage_values.lambdaExprShape;
-const callbackBindingHasSameConcreteArg = codegen_emit_storage_values.callbackBindingHasSameConcreteArg;
+const find_callback_binding = codegen_storage_layout.find_callback_binding;
+const callback_bindings_have_same_shape = codegen_storage_layout.callback_bindings_have_same_shape;
+const call_arg_matches_param = codegen_storage_layout.call_arg_matches_param;
+const call_args_match_variadic_tail = codegen_storage_layout.call_args_match_variadic_tail;
+const lambda_expr_shape = codegen_storage_layout.lambda_expr_shape;
+const callback_binding_has_same_concrete_arg = codegen_storage_layout.callback_binding_has_same_concrete_arg;
 const lambda_param_type_name = codegen_storage_layout.lambda_param_type_name;
 const lambda_explicit_return_type = codegen_storage_layout.lambda_explicit_return_type;
 const infer_lambda_expr_return_type = codegen_storage_layout.infer_lambda_expr_return_type;
-const cloneLocalSet = codegen_emit_storage_values.cloneLocalSet;
-const findCallbackRefFunc = codegen_emit_storage_values.findCallbackRefFunc;
+const clone_local_set = codegen_storage_layout.clone_local_set;
+const find_callback_ref_func = codegen_storage_layout.find_callback_ref_func;
 const findTopLevelGuardLoopControl = gen_ownership.findTopLevelGuardLoopControl;
 const moduleTokensEqual = codegen_tokens.module_tokens_equal;
 pub const findStartFunc = codegen_tokens.find_start_func;
@@ -336,7 +336,7 @@ pub fn callbackBindingsForCall(allocator: std.mem.Allocator, tokens: []const lex
 }
 
 pub fn resolveCallbackBindingArg(allocator: std.mem.Allocator, tokens: []const lexer.Token, arg_start: usize, arg_end: usize, param_name: []const u8, shape: FuncTypeShape, ctx: ?CodegenContext) !?CallbackBinding {
-    if (lambdaExprShape(tokens, arg_start, arg_end)) |lambda| {
+    if (lambda_expr_shape(tokens, arg_start, arg_end)) |lambda| {
         const lambda_params = try parseLambdaParamNames(allocator, tokens, lambda.open_params + 1, lambda.close_params);
         return .{
             .param_name = param_name,
@@ -355,8 +355,8 @@ pub fn resolveCallbackBindingArg(allocator: std.mem.Allocator, tokens: []const l
 
     // Named callback binding already in scope: clone shape-compatible binding.
     if (ctx) |codegen_ctx| {
-        if (findCallbackBinding(codegen_ctx.callback_bindings, tokens[arg_start].lexeme)) |binding| {
-            if (!callbackBindingsHaveSameShape(binding.shape, shape)) return null;
+        if (find_callback_binding(codegen_ctx.callback_bindings, tokens[arg_start].lexeme)) |binding| {
+            if (!callback_bindings_have_same_shape(binding.shape, shape)) return null;
             const lambda_params = if (binding.lambda_params.len == 0)
                 &[_][]const u8{}
             else
@@ -429,7 +429,7 @@ pub fn collectGenericFuncInstancesInRange(
     ctx: CodegenContext,
     functions: *std.ArrayList(FuncDecl),
 ) anyerror!void {
-    var active_locals = try cloneLocalSet(allocator, locals);
+    var active_locals = try clone_local_set(allocator, locals);
     defer active_locals.deinit(allocator);
 
     var i = start_idx;
@@ -457,11 +457,11 @@ pub fn collectGenericFuncInstancesInRange(
         if (call_head.is_intrinsic) continue;
         try collectGenericFuncInstancesInCallArgs(allocator, tokens, call_head.args_start, call_head.args_end, &active_locals, current_ctx, functions);
         current_ctx.functions = functions.items;
-        if (findFuncDeclForCallHead(tokens, call_head, &active_locals, current_ctx)) |func| {
+        if (find_func_decl_for_call_head(tokens, call_head, &active_locals, current_ctx)) |func| {
             if (func_has_callback_params(func) and func.callback_bindings.len == 0) {
                 try collectConcreteCallbackFuncInstanceForCall(allocator, tokens, call_head, current_ctx, func, functions);
             }
-            try applyCollectGuardReturnNarrowing(allocator, tokens, i, stmt_end, &active_locals, current_ctx);
+            try apply_collect_guard_return_narrowing(allocator, tokens, i, stmt_end, &active_locals, current_ctx);
             i = call_head.args_end;
             continue;
         }
@@ -472,7 +472,7 @@ pub fn collectGenericFuncInstancesInRange(
         }
         const expected_result_ty = try directCallExpectedResultType(allocator, tokens, call_head.name_idx, stmt_end, current_ctx, &expected_owned_types);
         try collectGenericFuncInstancesForCall(allocator, tokens, call_head, &active_locals, current_ctx, expected_result_ty, functions);
-        try applyCollectGuardReturnNarrowing(allocator, tokens, i, stmt_end, &active_locals, current_ctx);
+        try apply_collect_guard_return_narrowing(allocator, tokens, i, stmt_end, &active_locals, current_ctx);
         i = call_head.args_end;
     }
 }
@@ -481,20 +481,20 @@ pub fn collectGenericFuncInstancesInGuardReturn(allocator: std.mem.Allocator, to
     const return_idx = findTopLevelToken(tokens, start_idx + 1, end_idx, "return") orelse return;
     try collectGenericFuncInstancesInRange(allocator, tokens, start_idx + 1, return_idx, locals, ctx, functions);
 
-    var return_locals = try cloneLocalSet(allocator, locals);
+    var return_locals = try clone_local_set(allocator, locals);
     defer return_locals.deinit(allocator);
     try append_condition_narrowing_for_branch(allocator, tokens, start_idx + 1, return_idx, &return_locals, ctx, true);
     if (return_idx + 1 < end_idx) {
         try collectGenericFuncInstancesInRange(allocator, tokens, return_idx + 1, end_idx, &return_locals, ctx, functions);
     }
 
-    try applyCollectGuardReturnNarrowing(allocator, tokens, start_idx, end_idx, locals, ctx);
+    try apply_collect_guard_return_narrowing(allocator, tokens, start_idx, end_idx, locals, ctx);
 }
 
 pub fn collectGenericFuncInstancesInGuardLoopControl(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *LocalSet, ctx: CodegenContext, functions: *std.ArrayList(FuncDecl)) !void {
     const control_idx = findTopLevelGuardLoopControl(tokens, start_idx + 1, end_idx) orelse return;
     try collectGenericFuncInstancesInRange(allocator, tokens, start_idx + 1, control_idx, locals, ctx, functions);
-    try applyGuardLoopControlNarrowing(allocator, tokens, start_idx, end_idx, locals, ctx);
+    try apply_guard_loop_control_narrowing(allocator, tokens, start_idx, end_idx, locals, ctx);
 }
 
 pub fn collectGenericFuncInstancesInCallArgs(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, functions: *std.ArrayList(FuncDecl)) !void {
@@ -822,7 +822,7 @@ pub fn concreteOverloadCoversGenericParams(functions: []const FuncDecl, template
 pub fn callbackBindingsHaveSameConcreteArgs(left: []const CallbackBinding, right: []const CallbackBinding) bool {
     if (left.len != right.len) return false;
     for (left, 0..) |left_binding, idx| {
-        if (!callbackBindingHasSameConcreteArg(left_binding, right[idx])) return false;
+        if (!callback_binding_has_same_concrete_arg(left_binding, right[idx])) return false;
     }
     return true;
 }
@@ -832,7 +832,7 @@ pub fn funcParamsHaveSameConcreteCallShape(left: FuncParam, right: FuncParam) bo
     if (left.callback != null or right.callback != null) {
         const left_callback = left.callback orelse return false;
         const right_callback = right.callback orelse return false;
-        return callbackBindingsHaveSameShape(left_callback.shape, right_callback.shape);
+        return callback_bindings_have_same_shape(left_callback.shape, right_callback.shape);
     }
     return std.mem.eql(u8, funcParamAbiType(left), funcParamAbiType(right));
 }
@@ -1036,7 +1036,7 @@ pub fn bindGenericFuncCall(allocator: std.mem.Allocator, tokens: []const lexer.T
         } else if (typeContainsTypeParam(template.type_params, param_ty)) {
             const concrete_before = try substituteGenericTypeOwned(allocator, param_ty, bindings.items, owned_types);
             if (!typeContainsTypeParam(template.type_params, concrete_before)) {
-                if (!callArgMatchesParam(tokens, arg_start, arg_end, locals, ctx, concrete_before)) return false;
+                if (!call_arg_matches_param(tokens, arg_start, arg_end, locals, ctx, concrete_before)) return false;
                 try param_tys.append(allocator, concrete_before);
                 param_idx += 1;
                 arg_start = arg_end;
@@ -1048,13 +1048,13 @@ pub fn bindGenericFuncCall(allocator: std.mem.Allocator, tokens: []const lexer.T
                 return false;
             }
             const concrete_ty = try substituteGenericTypeOwned(allocator, param_ty, bindings.items, owned_types);
-            if (!callArgMatchesParam(tokens, arg_start, arg_end, locals, ctx, concrete_ty)) {
+            if (!call_arg_matches_param(tokens, arg_start, arg_end, locals, ctx, concrete_ty)) {
                 return false;
             }
             try param_tys.append(allocator, concrete_ty);
         } else {
             const concrete_ty = try substituteGenericTypeOwned(allocator, param_ty, bindings.items, owned_types);
-            if (!callArgMatchesParam(tokens, arg_start, arg_end, locals, ctx, concrete_ty)) {
+            if (!call_arg_matches_param(tokens, arg_start, arg_end, locals, ctx, concrete_ty)) {
                 return false;
             }
             try param_tys.append(allocator, concrete_ty);
@@ -1116,7 +1116,7 @@ pub fn prebindGenericCallbackArg(
     bindings: *std.ArrayList(GenericTypeBinding),
     owned_types: *std.ArrayList([]const u8),
 ) !bool {
-    if (lambdaExprShape(tokens, arg_start, arg_end) != null) {
+    if (lambda_expr_shape(tokens, arg_start, arg_end) != null) {
         return prebindGenericCallbackLambda(allocator, tokens, arg_start, arg_end, template, shape, bindings, owned_types);
     }
     if (arg_end != arg_start + 1 or tokens[arg_start].kind != .ident) return true;
@@ -1154,7 +1154,7 @@ pub fn prebindGenericCallbackLambda(
     bindings: *std.ArrayList(GenericTypeBinding),
     owned_types: *std.ArrayList([]const u8),
 ) !bool {
-    const lambda = lambdaExprShape(tokens, arg_start, arg_end) orelse return false;
+    const lambda = lambda_expr_shape(tokens, arg_start, arg_end) orelse return false;
     const lambda_param_types = try parseLambdaParamTypes(allocator, tokens, lambda.open_params + 1, lambda.close_params);
     defer allocator.free(lambda_param_types);
     if (lambda_param_types.len != shape.param_types.len) return false;
@@ -1181,7 +1181,7 @@ pub fn prebindGenericCallbackIdent(
     bindings: *std.ArrayList(GenericTypeBinding),
     owned_types: *std.ArrayList([]const u8),
 ) !bool {
-    const binding = findCallbackBinding(ctx.callback_bindings, tokens[arg_start].lexeme) orelse {
+    const binding = find_callback_binding(ctx.callback_bindings, tokens[arg_start].lexeme) orelse {
         return prebindGenericCallbackFuncRef(
             allocator,
             tokens,
@@ -1274,7 +1274,7 @@ pub fn bindGenericVariadicTail(allocator: std.mem.Allocator, tokens: []const lex
 
     const concrete_ty = try substituteGenericTypeOwned(allocator, param_ty, bindings.items, owned_types);
     if (typeContainsTypeParam(template.type_params, concrete_ty)) return false;
-    return callArgsMatchVariadicTail(tokens, args_start, args_end, locals, ctx, concrete_ty);
+    return call_args_match_variadic_tail(tokens, args_start, args_end, locals, ctx, concrete_ty);
 }
 
 pub fn bindGenericCallbackArg(
@@ -1341,10 +1341,10 @@ pub fn bindGenericCallbackIdentArg(
     bindings: *std.ArrayList(GenericTypeBinding),
     owned_types: *std.ArrayList([]const u8),
 ) !bool {
-    const binding = findCallbackBinding(ctx.callback_bindings, tokens[arg_start].lexeme) orelse {
+    const binding = find_callback_binding(ctx.callback_bindings, tokens[arg_start].lexeme) orelse {
         const concrete_shape = try instantiateFuncTypeShape(allocator, shape, bindings.items, owned_types);
         defer allocator.free(concrete_shape.param_types);
-        return findCallbackRefFunc(tokens, ctx, tokens[arg_start].lexeme, concrete_shape) != null;
+        return find_callback_ref_func(tokens, ctx, tokens[arg_start].lexeme, concrete_shape) != null;
     };
     if (binding.shape.param_types.len != shape.param_types.len) return false;
 
@@ -1377,7 +1377,7 @@ pub fn bindGenericCallbackLambdaArg(
     bindings: *std.ArrayList(GenericTypeBinding),
     owned_types: *std.ArrayList([]const u8),
 ) !bool {
-    const lambda = lambdaExprShape(tokens, arg_start, arg_end) orelse return false;
+    const lambda = lambda_expr_shape(tokens, arg_start, arg_end) orelse return false;
     const lambda_param_types = try parseLambdaParamTypes(allocator, tokens, lambda.open_params + 1, lambda.close_params);
     defer allocator.free(lambda_param_types);
     if (lambda_param_types.len != shape.param_types.len) return false;
