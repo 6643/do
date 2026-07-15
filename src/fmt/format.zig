@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn formatSource(allocator: std.mem.Allocator, source: []const u8) ![]u8 {
+pub fn format_source(allocator: std.mem.Allocator, source: []const u8) ![]u8 {
     var out = try std.ArrayList(u8).initCapacity(allocator, source.len + 1);
     defer out.deinit(allocator);
 
@@ -10,18 +10,18 @@ pub fn formatSource(allocator: std.mem.Allocator, source: []const u8) ![]u8 {
         const line_start = i;
         while (i < source.len and source[i] != '\n' and source[i] != '\r') : (i += 1) {}
         const raw_line = source[line_start..i];
-        const line = trimRight(raw_line);
-        const body = trimLeft(line);
+        const line = trim_right(raw_line);
+        const body = trim_left(line);
 
         if (body.len == 0) {
             try out.append(allocator, '\n');
         } else {
-            const line_indent = if (startsWithClosingBrace(body) and indent > 0) indent - 1 else indent;
-            try writeIndent(&out, allocator, line_indent);
+            const line_indent = if (starts_with_closing_brace(body) and indent > 0) indent - 1 else indent;
+            try write_indent(&out, allocator, line_indent);
             try out.appendSlice(allocator, body);
             try out.append(allocator, '\n');
 
-            indent = nextIndent(indent, body);
+            indent = next_indent(indent, body);
         }
 
         if (i < source.len and source[i] == '\r') {
@@ -42,14 +42,14 @@ pub fn formatSource(allocator: std.mem.Allocator, source: []const u8) ![]u8 {
     return out.toOwnedSlice(allocator);
 }
 
-fn writeIndent(out: *std.ArrayList(u8), allocator: std.mem.Allocator, level: usize) !void {
+fn write_indent(out: *std.ArrayList(u8), allocator: std.mem.Allocator, level: usize) !void {
     var i: usize = 0;
     while (i < level) : (i += 1) {
         try out.appendSlice(allocator, "    ");
     }
 }
 
-fn nextIndent(current: usize, body: []const u8) usize {
+fn next_indent(current: usize, body: []const u8) usize {
     var indent = current;
     var i: usize = 0;
     while (i < body.len) : (i += 1) {
@@ -64,23 +64,23 @@ fn nextIndent(current: usize, body: []const u8) usize {
     return indent;
 }
 
-fn startsWithClosingBrace(line: []const u8) bool {
+fn starts_with_closing_brace(line: []const u8) bool {
     return line.len != 0 and line[0] == '}';
 }
 
-fn trimLeft(line: []const u8) []const u8 {
+fn trim_left(line: []const u8) []const u8 {
     var start: usize = 0;
     while (start < line.len and (line[start] == ' ' or line[start] == '\t')) : (start += 1) {}
     return line[start..];
 }
 
-fn trimRight(line: []const u8) []const u8 {
+fn trim_right(line: []const u8) []const u8 {
     var end = line.len;
     while (end > 0 and (line[end - 1] == ' ' or line[end - 1] == '\t')) : (end -= 1) {}
     return line[0..end];
 }
 
-test "formatSource normalizes braces indentation and final newline" {
+test "format_source normalizes braces indentation and final newline" {
     const input =
         \\User {
         \\id i32
@@ -94,12 +94,12 @@ test "formatSource normalizes braces indentation and final newline" {
         \\}
         \\
     ;
-    const actual = try formatSource(std.testing.allocator, input);
+    const actual = try format_source(std.testing.allocator, input);
     defer std.testing.allocator.free(actual);
     try std.testing.expectEqualStrings(expected, actual);
 }
 
-test "formatSource preserves line string payload" {
+test "format_source preserves line string payload" {
     const input =
         \\make() -> text {
         \\return
@@ -113,12 +113,12 @@ test "formatSource preserves line string payload" {
         \\}
         \\
     ;
-    const actual = try formatSource(std.testing.allocator, input);
+    const actual = try format_source(std.testing.allocator, input);
     defer std.testing.allocator.free(actual);
     try std.testing.expectEqualStrings(expected, actual);
 }
 
-test "formatSource normalizes CRLF trailing whitespace and is idempotent" {
+test "format_source normalizes CRLF trailing whitespace and is idempotent" {
     const input = "User {\r\n\tid i32   \r\n}\r\n\r\n";
     const expected =
         \\User {
@@ -127,11 +127,11 @@ test "formatSource normalizes CRLF trailing whitespace and is idempotent" {
         \\
     ;
 
-    const actual = try formatSource(std.testing.allocator, input);
+    const actual = try format_source(std.testing.allocator, input);
     defer std.testing.allocator.free(actual);
     try std.testing.expectEqualStrings(expected, actual);
 
-    const again = try formatSource(std.testing.allocator, actual);
+    const again = try format_source(std.testing.allocator, actual);
     defer std.testing.allocator.free(again);
     try std.testing.expectEqualStrings(actual, again);
 }

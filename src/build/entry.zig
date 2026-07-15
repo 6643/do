@@ -1,7 +1,7 @@
 const std = @import("std");
 const parser = @import("parser.zig");
 
-pub fn validateStart(program: parser.Program) !void {
+pub fn validate_start(program: parser.Program) !void {
     var start_count: usize = 0;
     var start_sig: ?parser.FuncSig = null;
 

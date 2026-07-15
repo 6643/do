@@ -194,18 +194,18 @@ pub fn append_store_tuple_scalar_leaves_from_stack(
 ) !void {
     var leaf_types = std.ArrayList([]const u8).empty;
     defer leaf_types.deinit(allocator);
-    type_util.appendTupleLeafTypes(allocator, tuple_ty, &leaf_types) catch return error.UnsupportedLowering;
+    type_util.append_tuple_leaf_types(allocator, tuple_ty, &leaf_types) catch return error.UnsupportedLowering;
     if (leaf_types.items.len == 0) return error.UnsupportedLowering;
 
     var offsets = try allocator.alloc(usize, leaf_types.items.len);
     defer allocator.free(offsets);
     var offset: usize = 0;
     for (leaf_types.items, 0..) |leaf_ty, i| {
-        if (!type_util.isTuplePackableLeafType(leaf_ty)) {
+        if (!type_util.is_tuple_packable_leaf_type(leaf_ty)) {
             return error.UnsupportedTupleStorageLeaf;
         }
         offsets[i] = offset;
-        offset += type_util.typePayloadBytes(leaf_ty);
+        offset += type_util.type_payload_bytes(leaf_ty);
     }
 
     var i = leaf_types.items.len;
@@ -235,12 +235,12 @@ pub fn append_load_tuple_scalar_leaves_to_stack(
 ) !void {
     var leaf_types = std.ArrayList([]const u8).empty;
     defer leaf_types.deinit(allocator);
-    type_util.appendTupleLeafTypes(allocator, tuple_ty, &leaf_types) catch return error.UnsupportedLowering;
+    type_util.append_tuple_leaf_types(allocator, tuple_ty, &leaf_types) catch return error.UnsupportedLowering;
     if (leaf_types.items.len == 0) return error.UnsupportedLowering;
 
     var offset: usize = 0;
     for (leaf_types.items) |leaf_ty| {
-        if (!type_util.isTuplePackableLeafType(leaf_ty)) {
+        if (!type_util.is_tuple_packable_leaf_type(leaf_ty)) {
             return error.UnsupportedTupleStorageLeaf;
         }
         try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
@@ -249,7 +249,7 @@ pub fn append_load_tuple_scalar_leaves_to_stack(
             try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
         }
         try append_load_for_payload_type_with_indent(allocator, out, leaf_ty, indent);
-        offset += type_util.typePayloadBytes(leaf_ty);
+        offset += type_util.type_payload_bytes(leaf_ty);
     }
 }
 
@@ -261,10 +261,10 @@ pub fn append_inc_managed_tuple_leaves_on_stack(
     tuple_ty: []const u8,
     indent: []const u8,
 ) !void {
-    if (!type_util.tupleHasManagedPackLeaf(tuple_ty)) return;
+    if (!type_util.tuple_has_managed_pack_leaf(tuple_ty)) return;
     var leaf_types = std.ArrayList([]const u8).empty;
     defer leaf_types.deinit(allocator);
-    type_util.appendTupleLeafTypes(allocator, tuple_ty, &leaf_types) catch return error.UnsupportedLowering;
+    type_util.append_tuple_leaf_types(allocator, tuple_ty, &leaf_types) catch return error.UnsupportedLowering;
     if (leaf_types.items.len == 0) return;
 
     var spills = try allocator.alloc([]const u8, leaf_types.items.len);
@@ -280,7 +280,7 @@ pub fn append_inc_managed_tuple_leaves_on_stack(
     }
     for (leaf_types.items, 0..) |leaf_ty, idx| {
         try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, spills[idx] });
-        if (type_util.isManagedPayloadType(leaf_ty)) {
+        if (type_util.is_managed_payload_type(leaf_ty)) {
             try append_fmt(allocator, out, "{s};; tuple-pack-managed-leaf-inc\n", .{indent});
             try append_fmt(allocator, out, "{s}call $__arc_inc\n", .{indent});
         }
@@ -297,9 +297,9 @@ pub fn append_load_tuple_element_from_packed_base(
     base_local: []const u8,
     indent: []const u8,
 ) !void {
-    const elem_ty = type_util.tupleElementTypeAt(tuple_ty, elem_index) orelse return error.UnsupportedLowering;
-    const elem_offset = type_util.tupleElementPackOffset(tuple_ty, elem_index) orelse return error.UnsupportedLowering;
-    if (type_util.isTupleTypeName(elem_ty)) {
+    const elem_ty = type_util.tuple_element_type_at(tuple_ty, elem_index) orelse return error.UnsupportedLowering;
+    const elem_offset = type_util.tuple_element_pack_offset(tuple_ty, elem_index) orelse return error.UnsupportedLowering;
+    if (type_util.is_tuple_type_name(elem_ty)) {
         if (elem_offset != 0) {
             try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
             try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_offset });
@@ -309,7 +309,7 @@ pub fn append_load_tuple_element_from_packed_base(
         try append_load_tuple_scalar_leaves_to_stack(allocator, out, elem_ty, base_local, indent);
         return;
     }
-    if (!type_util.isTuplePackableLeafType(elem_ty)) return error.UnsupportedTupleStorageLeaf;
+    if (!type_util.is_tuple_packable_leaf_type(elem_ty)) return error.UnsupportedTupleStorageLeaf;
     try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
     if (elem_offset != 0) {
         try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_offset });
@@ -325,7 +325,7 @@ pub fn append_store_payload_or_tuple_from_stack(
     base_local: []const u8,
     indent: []const u8,
 ) !void {
-    if (type_util.isTupleTypeName(elem_ty)) {
+    if (type_util.is_tuple_type_name(elem_ty)) {
         try append_store_tuple_scalar_leaves_from_stack(allocator, out, elem_ty, base_local, indent);
         return;
     }
@@ -343,7 +343,7 @@ pub fn append_load_payload_or_tuple_to_stack(
     base_local: []const u8,
     indent: []const u8,
 ) !void {
-    if (type_util.isTupleTypeName(elem_ty)) {
+    if (type_util.is_tuple_type_name(elem_ty)) {
         try append_load_tuple_scalar_leaves_to_stack(allocator, out, elem_ty, base_local, indent);
         return;
     }

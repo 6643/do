@@ -1,4 +1,4 @@
-//! Collect domain — struct (extracted from gen_collect).
+//! Collect domain — struct (extracted from codegen_collect).
 const std = @import("std");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
@@ -11,47 +11,47 @@ const constants = @import("codegen_constants.zig");
 const codegen_union_layout = @import("codegen_union_layout.zig");
 const codegen_imports = @import("codegen_imports.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
-const gen_collect_util = @import("gen_collect_util.zig");
-const appendTupleLeafTypes = gen_collect_util.appendTupleLeafTypes;
-const appendTupleLeafTypesWithStructs = gen_collect_util.appendTupleLeafTypesWithStructs;
-const appendUnionBranchPayloadTypes = gen_collect_util.appendUnionBranchPayloadTypes;
-const bindGenericType = gen_collect_util.bindGenericType;
-const findStructDecl = gen_collect_util.findStructDecl;
-const findStructLayout = gen_collect_util.findStructLayout;
-const funcParamAbiType = gen_collect_util.funcParamAbiType;
-const genericTypeArgsRange = gen_collect_util.genericTypeArgsRange;
-const hasTopLevelToken = gen_collect_util.hasTopLevelToken;
-const isTopLevelStructDeclStart = gen_collect_util.isTopLevelStructDeclStart;
-const parseCodegenTypeExpr = gen_collect_util.parseCodegenTypeExpr;
-const parseFuncBodyShape = gen_collect_util.parseFuncBodyShape;
-const structDeclHasManagedField = gen_collect_util.structDeclHasManagedField;
-const substituteGenericTypeOwned = gen_collect_util.substituteGenericTypeOwned;
-const tuplePackWidthWithStructs = gen_collect_util.tuplePackWidthWithStructs;
+const codegen_collect_util = @import("codegen_collect_util.zig");
+const append_tuple_leaf_types = codegen_collect_util.append_tuple_leaf_types;
+const append_tuple_leaf_types_with_structs = codegen_collect_util.append_tuple_leaf_types_with_structs;
+const append_union_branch_payload_types = codegen_collect_util.append_union_branch_payload_types;
+const bind_generic_type = codegen_collect_util.bind_generic_type;
+const find_struct_decl = codegen_collect_util.find_struct_decl;
+const find_struct_layout = codegen_collect_util.find_struct_layout;
+const func_param_abi_type = codegen_collect_util.func_param_abi_type;
+const generic_type_args_range = codegen_collect_util.generic_type_args_range;
+const has_top_level_token = codegen_collect_util.has_top_level_token;
+const is_top_level_struct_decl_start = codegen_collect_util.is_top_level_struct_decl_start;
+const parse_codegen_type_expr = codegen_collect_util.parse_codegen_type_expr;
+const parse_func_body_shape = codegen_collect_util.parse_func_body_shape;
+const struct_decl_has_managed_field = codegen_collect_util.struct_decl_has_managed_field;
+const substitute_generic_type_owned = codegen_collect_util.substitute_generic_type_owned;
+const tuple_pack_width_with_structs = codegen_collect_util.tuple_pack_width_with_structs;
 
-const alignUp = codegen_tokens.align_up;
+const align_up = codegen_tokens.align_up;
 const compactTokenText = codegen_tokens.compact_token_text;
-const findLineEnd = codegen_tokens.find_line_end;
-const findMatching = codegen_tokens.find_matching;
-const findMatchingInRange = codegen_tokens.find_matching_in_range;
-const findTopLevelToken = codegen_tokens.find_top_level_token;
-const isLineStart = codegen_tokens.is_line_start;
+const find_line_end = codegen_tokens.find_line_end;
+const find_matching = codegen_tokens.find_matching;
+const find_matching_in_range = codegen_tokens.find_matching_in_range;
+const find_top_level_token = codegen_tokens.find_top_level_token;
+const is_line_start = codegen_tokens.is_line_start;
 const isUserFuncDeclStart = codegen_tokens.is_user_func_decl_start;
 const publicDeclName = codegen_names.public_decl_name;
-const tokEq = codegen_tokens.tok_eq;
+const tok_eq = codegen_tokens.tok_eq;
 const findTopLevelTypeSeparator = codegen_tokens.find_top_level_type_separator;
-const findTopLevelTypeSeparatorFrom = codegen_tokens.find_top_level_type_separator_from;
-const freeStructDecl = model.freeStructDecl;
-const findImportedModuleIndex = codegen_imports.findImportedModuleIndex;
-const findRootModuleIndex = codegen_imports.findRootModuleIndex;
-const parseCodegenImport = codegen_imports.parseCodegenImport;
-const isManagedPayloadType = type_util.isManagedPayloadType;
-const isTupleTypeName = type_util.isTupleTypeName;
-const isTuplePackableLeafType = type_util.isTuplePackableLeafType;
-const managedPayloadElemTypeFromName = type_util.managedPayloadElemTypeFromName;
-const tupleScalarLeafStorageByteWidth = type_util.tupleScalarLeafStorageByteWidth;
-const typeBaseName = type_util.typeBaseName;
-const typePayloadAlignment = type_util.typePayloadAlignment;
-const typePayloadBytes = type_util.typePayloadBytes;
+const find_top_level_type_separator_from = codegen_tokens.find_top_level_type_separator_from;
+const free_struct_decl = model.free_struct_decl;
+const find_imported_module_index = codegen_imports.find_imported_module_index;
+const find_root_module_index = codegen_imports.find_root_module_index;
+const parse_codegen_import = codegen_imports.parse_codegen_import;
+const is_managed_payload_type = type_util.is_managed_payload_type;
+const is_tuple_type_name = type_util.is_tuple_type_name;
+const is_tuple_packable_leaf_type = type_util.is_tuple_packable_leaf_type;
+const managed_payload_elem_type_from_name = type_util.managed_payload_elem_type_from_name;
+const tuple_scalar_leaf_storage_byte_width = type_util.tuple_scalar_leaf_storage_byte_width;
+const type_base_name = type_util.type_base_name;
+const type_payload_alignment = type_util.type_payload_alignment;
+const type_payload_bytes = type_util.type_payload_bytes;
 const FuncDecl = model.FuncDecl;
 const GenericTypeBinding = model.GenericTypeBinding;
 const ManagedFieldOffset = model.ManagedFieldOffset;
@@ -73,17 +73,17 @@ pub fn collect_struct_decls(
     defer pending_type_params.deinit(allocator);
     var i: usize = 0;
     while (i + 1 < tokens.len) : (i += 1) {
-        if (tokEq(tokens[i], "{")) {
+        if (tok_eq(tokens[i], "{")) {
             depth_brace += 1;
             continue;
         }
-        if (tokEq(tokens[i], "}")) {
+        if (tok_eq(tokens[i], "}")) {
             if (depth_brace > 0) depth_brace -= 1;
             continue;
         }
         if (depth_brace != 0) continue;
-        if (isLineStart(tokens, i) and tokEq(tokens[i], "#")) {
-            const line_end = findLineEnd(tokens, i);
+        if (is_line_start(tokens, i) and tok_eq(tokens[i], "#")) {
+            const line_end = find_line_end(tokens, i);
             if (line_end == i + 2 and tokens[i + 1].kind == .ident) {
                 try pending_type_params.append(allocator, tokens[i + 1].lexeme);
             }
@@ -92,16 +92,16 @@ pub fn collect_struct_decls(
         }
         if (isUserFuncDeclStart(tokens, i)) {
             pending_type_params.clearRetainingCapacity();
-            const close_params = findMatching(tokens, i + 1, "(", ")") catch continue;
-            const body = parseFuncBodyShape(tokens, close_params) catch continue;
+            const close_params = find_matching(tokens, i + 1, "(", ")") catch continue;
+            const body = parse_func_body_shape(tokens, close_params) catch continue;
             i = body.next_idx;
             continue;
         }
         // Declarative: Name = @wasi_resource|wasi_record("…", { fields })
         if (is_wasi_struct_binding_struct_start(tokens, i)) {
-            const close_call = findMatching(tokens, i + 4, "(", ")") catch continue;
+            const close_call = find_matching(tokens, i + 4, "(", ")") catch continue;
             const open_brace = codegen_tokens.find_token(tokens, i + 5, close_call, "{") orelse continue;
-            const close_brace = findMatching(tokens, open_brace, "{", "}") catch continue;
+            const close_brace = find_matching(tokens, open_brace, "{", "}") catch continue;
             var fields = std.ArrayList(StructField).empty;
             var owned_types = std.ArrayList([]const u8).empty;
             errdefer {
@@ -122,10 +122,10 @@ pub fn collect_struct_decls(
             i = close_call;
             continue;
         }
-        if (!isTopLevelStructDeclStart(tokens, i)) continue;
+        if (!is_top_level_struct_decl_start(tokens, i)) continue;
 
         const open_brace = i + 1;
-        const close_brace = try findMatching(tokens, open_brace, "{", "}");
+        const close_brace = try find_matching(tokens, open_brace, "{", "}");
         const type_params = if (pending_type_params.items.len == 0)
             &[_][]const u8{}
         else
@@ -158,14 +158,14 @@ pub fn collect_struct_decls(
 
 pub fn is_wasi_struct_binding_struct_start(tokens: []const lexer.Token, idx: usize) bool {
     if (idx + 5 >= tokens.len) return false;
-    if (!isLineStart(tokens, idx)) return false;
+    if (!is_line_start(tokens, idx)) return false;
     if (tokens[idx].kind != .ident) return false;
-    if (!tokEq(tokens[idx + 1], "=")) return false;
-    if (!tokEq(tokens[idx + 2], "@")) return false;
+    if (!tok_eq(tokens[idx + 1], "=")) return false;
+    if (!tok_eq(tokens[idx + 2], "@")) return false;
     if (tokens[idx + 3].kind != .ident) return false;
     const kind = tokens[idx + 3].lexeme;
     if (!std.mem.eql(u8, kind, "wasi_resource") and !std.mem.eql(u8, kind, "wasi_record")) return false;
-    return tokEq(tokens[idx + 4], "(");
+    return tok_eq(tokens[idx + 4], "(");
 }
 
 pub fn collect_imported_struct_decls(
@@ -174,15 +174,15 @@ pub fn collect_imported_struct_decls(
     graph: *const imports.ModuleGraph,
     out: *std.ArrayList(StructDecl),
 ) !void {
-    const root_idx = findRootModuleIndex(graph.modules, entry_tokens) orelse return;
+    const root_idx = find_root_module_index(graph.modules, entry_tokens) orelse return;
 
     var i: usize = 0;
     while (i < entry_tokens.len) : (i += 1) {
-        const import_ref = parseCodegenImport(entry_tokens, i) orelse continue;
-        defer i = findLineEnd(entry_tokens, i) - 1;
+        const import_ref = parse_codegen_import(entry_tokens, i) orelse continue;
+        defer i = find_line_end(entry_tokens, i) - 1;
 
-        const child_idx = findImportedModuleIndex(allocator, graph, root_idx, import_ref) orelse continue;
-        if (!std.mem.eql(u8, import_ref.alias, import_ref.target) and findStructDecl(out.items, import_ref.target) == null) {
+        const child_idx = find_imported_module_index(allocator, graph, root_idx, import_ref) orelse continue;
+        if (!std.mem.eql(u8, import_ref.alias, import_ref.target) and find_struct_decl(out.items, import_ref.target) == null) {
             _ = try collect_struct_decl_by_name_as(
                 allocator,
                 graph.modules[child_idx].tokens,
@@ -192,7 +192,7 @@ pub fn collect_imported_struct_decls(
                 out,
             );
         }
-        if (findStructDecl(out.items, import_ref.alias) != null) continue;
+        if (find_struct_decl(out.items, import_ref.alias) != null) continue;
         _ = try collect_struct_decl_by_name_as(
             allocator,
             graph.modules[child_idx].tokens,
@@ -209,8 +209,8 @@ pub fn collect_imported_struct_decls(
         defer module_structs.deinit(allocator);
         try collect_struct_decls(allocator, module.tokens, &module_structs);
         for (module_structs.items) |decl| {
-            if (findStructDecl(out.items, decl.name) != null) {
-                freeStructDecl(allocator, decl);
+            if (find_struct_decl(out.items, decl.name) != null) {
+                free_struct_decl(allocator, decl);
                 continue;
             }
             try out.append(allocator, decl);
@@ -231,17 +231,17 @@ pub fn collect_struct_decl_by_name_as(
     defer pending_type_params.deinit(allocator);
     var i: usize = 0;
     while (i + 1 < tokens.len) : (i += 1) {
-        if (tokEq(tokens[i], "{")) {
+        if (tok_eq(tokens[i], "{")) {
             depth_brace += 1;
             continue;
         }
-        if (tokEq(tokens[i], "}")) {
+        if (tok_eq(tokens[i], "}")) {
             if (depth_brace > 0) depth_brace -= 1;
             continue;
         }
         if (depth_brace != 0) continue;
-        if (isLineStart(tokens, i) and tokEq(tokens[i], "#")) {
-            const line_end = findLineEnd(tokens, i);
+        if (is_line_start(tokens, i) and tok_eq(tokens[i], "#")) {
+            const line_end = find_line_end(tokens, i);
             if (line_end == i + 2 and tokens[i + 1].kind == .ident) {
                 try pending_type_params.append(allocator, tokens[i + 1].lexeme);
             }
@@ -250,14 +250,14 @@ pub fn collect_struct_decl_by_name_as(
         }
         if (isUserFuncDeclStart(tokens, i)) {
             pending_type_params.clearRetainingCapacity();
-            const close_params = findMatching(tokens, i + 1, "(", ")") catch continue;
-            const body = parseFuncBodyShape(tokens, close_params) catch continue;
+            const close_params = find_matching(tokens, i + 1, "(", ")") catch continue;
+            const body = parse_func_body_shape(tokens, close_params) catch continue;
             i = body.next_idx;
             continue;
         }
-        if (!isTopLevelStructDeclStart(tokens, i)) continue;
+        if (!is_top_level_struct_decl_start(tokens, i)) continue;
         const open_brace = i + 1;
-        const close_brace = try findMatching(tokens, open_brace, "{", "}");
+        const close_brace = try find_matching(tokens, open_brace, "{", "}");
         if (!std.mem.eql(u8, publicDeclName(tokens[i].lexeme), target_name)) {
             pending_type_params.clearRetainingCapacity();
             i = close_brace;
@@ -309,8 +309,8 @@ pub fn append_struct_fields_in_brace_range(
     while (field_idx < close_brace) {
         // Never scan past the closing brace — single-line `{ .id i64 }` would otherwise
         // treat `} )` as part of the field type and drop the field.
-        const line_end = @min(findLineEnd(tokens, field_idx), close_brace);
-        const default_idx = findTopLevelToken(tokens, field_idx + 1, line_end, "=");
+        const line_end = @min(find_line_end(tokens, field_idx), close_brace);
+        const default_idx = find_top_level_token(tokens, field_idx + 1, line_end, "=");
         const type_end = default_idx orelse line_end;
         if (tokens[field_idx].kind == .ident) {
             if (try parse_struct_field_type_expr(allocator, tokens, field_idx + 1, type_end, owned_types)) |parsed_ty| {
@@ -334,7 +334,7 @@ pub fn collect_struct_layouts(
     var next_type_id: usize = TYPE_ID_FIRST_STRUCT;
     for (structs) |decl| {
         if (decl.layout_source) |source_name| {
-            const source_layout = findStructLayout(out.items, source_name) orelse continue;
+            const source_layout = find_struct_layout(out.items, source_name) orelse continue;
             try out.append(allocator, .{
                 .name = decl.name,
                 .type_id = source_layout.type_id,
@@ -349,15 +349,15 @@ pub fn collect_struct_layouts(
 
         var offset: usize = 0;
         for (decl.fields) |field| {
-            const field_align = typePayloadAlignment(field.ty);
-            offset = alignUp(offset, field_align);
+            const field_align = type_payload_alignment(field.ty);
+            offset = align_up(offset, field_align);
             if (try field_type_has_managed_layout(allocator, structs, field.ty)) {
                 try managed_fields.append(allocator, .{
                     .name = publicDeclName(field.name),
                     .offset = offset,
                 });
             }
-            offset += typePayloadBytes(field.ty);
+            offset += type_payload_bytes(field.ty);
         }
 
         if (managed_fields.items.len == 0) {
@@ -368,7 +368,7 @@ pub fn collect_struct_layouts(
         try out.append(allocator, .{
             .name = decl.name,
             .type_id = next_type_id,
-            .payload_bytes = alignUp(offset, 4),
+            .payload_bytes = align_up(offset, 4),
             .managed_fields = try managed_fields.toOwnedSlice(allocator),
         });
         next_type_id += 1;
@@ -385,7 +385,7 @@ pub fn collect_concrete_generic_struct_layouts(
     for (functions) |func| {
         if (func.is_generic_template) continue;
         for (func.params) |param| {
-            try collect_concrete_generic_struct_layout_from_type(allocator, structs, funcParamAbiType(param), out, &next_type_id);
+            try collect_concrete_generic_struct_layout_from_type(allocator, structs, func_param_abi_type(param), out, &next_type_id);
         }
         for (func.results) |result_ty| {
             try collect_concrete_generic_struct_layout_from_type(allocator, structs, result_ty, out, &next_type_id);
@@ -413,10 +413,10 @@ pub fn collect_storage_pack_layouts_from_tokens(
     }
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
-        if (!tokEq(tokens[i], "[")) continue;
-        const close = findMatchingInRange(tokens, i, "[", "]", tokens.len) catch continue;
+        if (!tok_eq(tokens[i], "[")) continue;
+        const close = find_matching_in_range(tokens, i, "[", "]", tokens.len) catch continue;
         if (close <= i + 1) continue;
-        const parsed = (try parseCodegenTypeExpr(allocator, tokens, i + 1, close, &owned)) orelse continue;
+        const parsed = (try parse_codegen_type_expr(allocator, tokens, i + 1, close, &owned)) orelse continue;
         if (parsed.next_idx != close) continue;
         try ensure_storage_pack_layout_with_structs(allocator, parsed.ty, structs, out);
     }
@@ -448,7 +448,7 @@ pub fn ensure_preopen_dir_tuple_storage_pack_layout(
     }
     if (!needs) return;
     // Dir shell must be visible so pack expands `.id i64` + text handle (12B).
-    if (findStructDecl(structs, "Dir") == null) return;
+    if (find_struct_decl(structs, "Dir") == null) return;
     try ensure_storage_pack_layout_with_structs(allocator, "Tuple<Dir,text>", structs, out);
 }
 
@@ -458,19 +458,19 @@ pub fn ensure_storage_pack_layout_with_structs(
     structs: []const StructDecl,
     out: *std.ArrayList(StructLayout),
 ) !void {
-    if (!isTupleTypeName(elem_ty)) return;
+    if (!is_tuple_type_name(elem_ty)) return;
     const width = if (structs.len != 0)
-        tuplePackWidthWithStructs(elem_ty, structs)
+        tuple_pack_width_with_structs(elem_ty, structs)
     else
-        tupleScalarLeafStorageByteWidth(elem_ty);
+        tuple_scalar_leaf_storage_byte_width(elem_ty);
     const w = width orelse return;
 
     var leaf_types = std.ArrayList([]const u8).empty;
     defer leaf_types.deinit(allocator);
     if (structs.len != 0) {
-        try appendTupleLeafTypesWithStructs(allocator, elem_ty, structs, &leaf_types);
+        try append_tuple_leaf_types_with_structs(allocator, elem_ty, structs, &leaf_types);
     } else {
-        try appendTupleLeafTypes(allocator, elem_ty, &leaf_types);
+        try append_tuple_leaf_types(allocator, elem_ty, &leaf_types);
     }
 
     var managed_fields = std.ArrayList(ManagedFieldOffset).empty;
@@ -540,13 +540,13 @@ pub fn collect_concrete_generic_struct_layout_from_type(
     out: *std.ArrayList(StructLayout),
     next_type_id: *usize,
 ) !void {
-    if (managedPayloadElemTypeFromName(ty)) |elem_ty| {
+    if (managed_payload_elem_type_from_name(ty)) |elem_ty| {
         try collect_concrete_generic_struct_layout_from_type(allocator, structs, elem_ty, out, next_type_id);
         return;
     }
 
-    const args = genericTypeArgsRange(ty) orelse return;
-    const decl = findStructDecl(structs, args.base) orelse return;
+    const args = generic_type_args_range(ty) orelse return;
+    const decl = find_struct_decl(structs, args.base) orelse return;
     if (decl.type_params.len == 0) return;
     if (find_struct_layout_exact(out.items, ty) != null) return;
     if (find_struct_layout_exact(out.items, args.base) != null) return;
@@ -564,18 +564,18 @@ pub fn collect_concrete_generic_struct_layout_from_type(
     errdefer managed_fields.deinit(allocator);
     var offset: usize = 0;
     for (decl.fields) |field| {
-        const field_ty = try substituteGenericTypeOwned(allocator, field.ty, bindings.items, &owned_types);
+        const field_ty = try substitute_generic_type_owned(allocator, field.ty, bindings.items, &owned_types);
         try collect_concrete_generic_struct_layout_from_type(allocator, structs, field_ty, out, next_type_id);
 
-        const field_align = typePayloadAlignment(field_ty);
-        offset = alignUp(offset, field_align);
+        const field_align = type_payload_alignment(field_ty);
+        offset = align_up(offset, field_align);
         if (field_concrete_type_has_managed_layout(out.items, field_ty)) {
             try managed_fields.append(allocator, .{
                 .name = publicDeclName(field.name),
                 .offset = offset,
             });
         }
-        offset += typePayloadBytes(field_ty);
+        offset += type_payload_bytes(field_ty);
     }
 
     if (managed_fields.items.len == 0) {
@@ -588,7 +588,7 @@ pub fn collect_concrete_generic_struct_layout_from_type(
     try out.append(allocator, .{
         .name = owned_name,
         .type_id = next_type_id.*,
-        .payload_bytes = alignUp(offset, 4),
+        .payload_bytes = align_up(offset, 4),
         .managed_fields = try managed_fields.toOwnedSlice(allocator),
         .owned_name = true,
     });
@@ -596,12 +596,12 @@ pub fn collect_concrete_generic_struct_layout_from_type(
 }
 
 pub fn field_concrete_type_has_managed_layout(layouts: []const StructLayout, ty: []const u8) bool {
-    if (isManagedPayloadType(ty)) return true;
-    return findStructLayout(layouts, ty) != null;
+    if (is_managed_payload_type(ty)) return true;
+    return find_struct_layout(layouts, ty) != null;
 }
 
 pub fn field_type_has_managed_layout(allocator: std.mem.Allocator, structs: []const StructDecl, ty: []const u8) !bool {
-    if (isManagedPayloadType(ty)) return true;
+    if (is_managed_payload_type(ty)) return true;
     var stack = std.ArrayList([]const u8).empty;
     defer stack.deinit(allocator);
     return try struct_type_has_managed_layout(allocator, structs, ty, &stack);
@@ -613,15 +613,15 @@ pub fn struct_type_has_managed_layout(
     ty: []const u8,
     stack: *std.ArrayList([]const u8),
 ) !bool {
-    const name = typeBaseName(ty);
+    const name = type_base_name(ty);
     if (has_type_name(stack.items, name)) return true;
-    const decl = findStructDecl(structs, name) orelse return false;
+    const decl = find_struct_decl(structs, name) orelse return false;
 
     try stack.append(allocator, name);
     defer _ = stack.pop();
 
     for (decl.fields) |field| {
-        if (isManagedPayloadType(field.ty)) return true;
+        if (is_managed_payload_type(field.ty)) return true;
         if (try struct_type_has_managed_layout(allocator, structs, field.ty, stack)) return true;
     }
     return false;
@@ -651,13 +651,13 @@ pub fn parse_struct_field_type_expr(
     owned_types: *std.ArrayList([]const u8),
 ) !?[]const u8 {
     if (start_idx >= end_idx) return null;
-    if (hasTopLevelToken(tokens, start_idx, end_idx, "|")) {
+    if (has_top_level_token(tokens, start_idx, end_idx, "|")) {
         const ty = try compactTokenText(allocator, tokens, start_idx, end_idx);
         errdefer allocator.free(ty);
         try owned_types.append(allocator, ty);
         return ty;
     }
-    const parsed = (try parseCodegenTypeExpr(allocator, tokens, start_idx, end_idx, owned_types)) orelse return null;
+    const parsed = (try parse_codegen_type_expr(allocator, tokens, start_idx, end_idx, owned_types)) orelse return null;
     if (parsed.next_idx != end_idx) return null;
     return parsed.ty;
 }
@@ -670,16 +670,16 @@ pub fn bind_struct_type_args(
     owned_types: *std.ArrayList([]const u8),
 ) !bool {
     if (decl.type_params.len == 0) return true;
-    const args = genericTypeArgsRange(concrete_ty) orelse return false;
+    const args = generic_type_args_range(concrete_ty) orelse return false;
     if (!std.mem.eql(u8, args.base, decl.name)) return false;
 
     var arg_start: usize = 0;
     var param_idx: usize = 0;
     while (arg_start < args.args.len) {
         if (param_idx >= decl.type_params.len) return false;
-        const arg_end = findTopLevelTypeSeparatorFrom(args.args, arg_start, ',') orelse args.args.len;
+        const arg_end = find_top_level_type_separator_from(args.args, arg_start, ',') orelse args.args.len;
         if (arg_start == arg_end) return false;
-        if (!try bindGenericType(allocator, bindings, decl.type_params[param_idx], args.args[arg_start..arg_end], owned_types)) return false;
+        if (!try bind_generic_type(allocator, bindings, decl.type_params[param_idx], args.args[arg_start..arg_end], owned_types)) return false;
         param_idx += 1;
         arg_start = arg_end;
         if (arg_start < args.args.len) arg_start += 1;
@@ -695,15 +695,15 @@ pub fn find_struct_layout_exact(layouts: []const StructLayout, name: []const u8)
 }
 
 pub fn is_pack_managed_handle_leaf(ty: []const u8, structs: []const StructDecl) bool {
-    if (type_util.isManagedPayloadType(ty)) return true;
-    const decl = findStructDecl(structs, ty) orelse return false;
-    return structDeclHasManagedField(decl, structs);
+    if (type_util.is_managed_payload_type(ty)) return true;
+    const decl = find_struct_decl(structs, ty) orelse return false;
+    return struct_decl_has_managed_field(decl, structs);
 }
 
 /// Terminal leaf storeable in scheme-A pack (scalar, managed payload, or managed-struct handle).
 /// Terminal leaf storeable in scheme-A pack (scalar, managed payload, or managed-struct handle).
 pub fn leaf_payload_bytes_for_pack(leaf_ty: []const u8, structs: []const StructDecl) ?usize {
-    if (type_util.isTuplePackableLeafType(leaf_ty)) return typePayloadBytes(leaf_ty);
+    if (type_util.is_tuple_packable_leaf_type(leaf_ty)) return type_payload_bytes(leaf_ty);
     if (is_pack_managed_handle_leaf(leaf_ty, structs)) return 4;
     return null;
 }
@@ -725,7 +725,7 @@ pub fn parse_type_union_layout_from_name(
     var next_non_nil_tag: usize = 1;
     var branch_start: usize = 0;
     while (branch_start < ty.len) {
-        const branch_end = findTopLevelTypeSeparatorFrom(ty, branch_start, '|') orelse ty.len;
+        const branch_end = find_top_level_type_separator_from(ty, branch_start, '|') orelse ty.len;
         if (branch_end == branch_start) return error.NoMatchingCall;
         const branch_ty = ty[branch_start..branch_end];
         const payload_start = payload_tys.items.len;
@@ -737,7 +737,7 @@ pub fn parse_type_union_layout_from_name(
                 .payload_len = 0,
             });
         } else {
-            try appendUnionBranchPayloadTypes(allocator, tokens, branch_ty, structs, struct_layouts, &payload_tys);
+            try append_union_branch_payload_types(allocator, tokens, branch_ty, structs, struct_layouts, &payload_tys);
             try branches.append(allocator, .{
                 .ty = branch_ty,
                 .tag = next_non_nil_tag,

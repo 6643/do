@@ -13,15 +13,15 @@ const context = @import("codegen_context.zig");
 const IsComparisonNarrowing = model.IsComparisonNarrowing;
 const NilComparisonNarrowing = model.NilComparisonNarrowing;
 const TypedStructBinding = model.TypedStructBinding;
-const gen_collect_util = @import("gen_collect_util.zig");
+const codegen_collect_util = @import("codegen_collect_util.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
 const codegen_imports = @import("codegen_imports.zig");
 const codegen_storage_layout = @import("codegen_storage_layout.zig");
 const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
 const codegen_callbacks = @import("codegen_callbacks.zig");
 const codegen_ownership = @import("codegen_ownership.zig");
-const find_top_level_guard_loop_control = codegen_ownership.findTopLevelGuardLoopControl;
-const label_for_loop_start = codegen_ownership.labelForLoopStart;
+const find_top_level_guard_loop_control = codegen_ownership.find_top_level_guard_loop_control;
+const label_for_loop_start = codegen_ownership.label_for_loop_start;
 const codegen_union_layout = @import("codegen_union_layout.zig");
 const ownership_facts = @import("ownership_facts.zig");
 const tok_eq = codegen_tokens.tok_eq;
@@ -54,18 +54,18 @@ const FieldStaticValue = context.FieldStaticValue;
 const FieldReflectionIfParts = context.FieldReflectionIfParts;
 const STORAGE_OVERWRITE_TMP_LOCAL = constants.STORAGE_OVERWRITE_TMP_LOCAL;
 const STORAGE_WRITE_TARGET_TMP_LOCAL = constants.STORAGE_WRITE_TARGET_TMP_LOCAL;
-const find_struct_local = context.findStructLocal;
-const find_union_local = context.findUnionLocal;
-const has_local = context.hasLocal;
+const find_struct_local = context.find_struct_local;
+const find_union_local = context.find_union_local;
+const has_local = context.has_local;
 const UnionLayout = codegen_union_layout.UnionLayout;
 const free_union_layout = codegen_union_layout.free_union_layout;
 const union_layouts_equal = codegen_union_layout.union_layouts_equal;
-const find_struct_decl = gen_collect_util.findStructDecl;
-const find_struct_layout = gen_collect_util.findStructLayout;
-const parse_codegen_type_expr = gen_collect_util.parseCodegenTypeExpr;
+const find_struct_decl = codegen_collect_util.find_struct_decl;
+const find_struct_layout = codegen_collect_util.find_struct_layout;
+const parse_codegen_type_expr = codegen_collect_util.parse_codegen_type_expr;
 const parse_type_union_layout_from_name = codegen_collect_structs.parse_type_union_layout_from_name;
-const substitute_generic_type_owned = gen_collect_util.substituteGenericTypeOwned;
-const expr_call_head = codegen_imports.exprCallHead;
+const substitute_generic_type_owned = codegen_collect_util.substitute_generic_type_owned;
+const expr_call_head = codegen_imports.expr_call_head;
 const is_managed_local_type = codegen_emit_wasi.is_managed_local_type;
 const is_tuple_type_name = codegen_emit_wasi.is_tuple_type_name;
 const codegen_wasm_type = codegen_emit_wasi.codegen_wasm_type;
@@ -955,7 +955,7 @@ pub fn field_get_last_use_move_source(allocator: std.mem.Allocator, tokens: []co
             .body_rest = if (body_rest_use) .{ .start = move_ctx.stmt_end, .end = move_ctx.body_end } else null,
         },
     };
-    const decision = ownership_facts.decideFieldGetMove(candidate);
+    const decision = ownership_facts.decide_field_get_move(candidate);
     if (!decision.accepted) return null;
     return .{
         .source_name = source_name,
@@ -993,8 +993,8 @@ pub fn fresh_struct_literal_binding_stmt_end(allocator: std.mem.Allocator, token
 }
 
 // re-export codegen_ownership
-pub const emit_block_release_managed_locals = codegen_ownership.emitBlockReleaseManagedLocals;
-pub const body_can_reach_end = codegen_ownership.bodyCanReachEnd;
+pub const emit_block_release_managed_locals = codegen_ownership.emit_block_release_managed_locals;
+pub const body_can_reach_end = codegen_ownership.body_can_reach_end;
 pub fn emit_zero_value_for_type(allocator: std.mem.Allocator, ctx: CodegenContext, out: *std.ArrayList(u8), ty: []const u8) !void {
     try append_fmt(allocator, out, "    {s}.const 0\n", .{codegen_wasm_type(ctx, ty)});
 }
@@ -1023,7 +1023,7 @@ pub fn apply_guard_return_nil_narrowing(allocator: std.mem.Allocator, tokens: []
     const return_idx = find_top_level_token(tokens, start_idx + 1, end_idx, "return") orelse return;
     const narrowing = nil_comparison_narrowing(tokens, start_idx + 1, return_idx, locals) orelse return;
     if (narrowing.non_nil_when_true) return;
-    try locals.appendNarrowedUnionLocal(allocator, narrowing.union_local, narrowing.payload_ty);
+    try locals.append_narrowed_union_local(allocator, narrowing.union_local, narrowing.payload_ty);
 }
 
 pub fn apply_guard_return_is_narrowing(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *LocalSet, ctx: CodegenContext) !void {
@@ -1031,7 +1031,7 @@ pub fn apply_guard_return_is_narrowing(allocator: std.mem.Allocator, tokens: []c
     const return_idx = find_top_level_token(tokens, start_idx + 1, end_idx, "return") orelse return;
     const narrowing = try is_comparison_narrowing(allocator, tokens, start_idx + 1, return_idx, locals, ctx) orelse return;
     const payload_ty = union_local_single_remaining_payload_type(narrowing.union_local, narrowing.payload_ty) orelse return;
-    try locals.appendNarrowedUnionLocal(allocator, narrowing.union_local, payload_ty);
+    try locals.append_narrowed_union_local(allocator, narrowing.union_local, payload_ty);
 }
 
 pub fn apply_guard_loop_control_narrowing(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *LocalSet, ctx: CodegenContext) !void {
@@ -1040,13 +1040,13 @@ pub fn apply_guard_loop_control_narrowing(allocator: std.mem.Allocator, tokens: 
 
     if (nil_comparison_narrowing(tokens, start_idx + 1, control_idx, locals)) |narrowing| {
         if (!narrowing.non_nil_when_true) {
-            try locals.appendNarrowedUnionLocal(allocator, narrowing.union_local, narrowing.payload_ty);
+            try locals.append_narrowed_union_local(allocator, narrowing.union_local, narrowing.payload_ty);
         }
     }
 
     if (try is_comparison_narrowing(allocator, tokens, start_idx + 1, control_idx, locals, ctx)) |narrowing| {
         const payload_ty = union_local_single_remaining_payload_type(narrowing.union_local, narrowing.payload_ty) orelse return;
-        try locals.appendNarrowedUnionLocal(allocator, narrowing.union_local, payload_ty);
+        try locals.append_narrowed_union_local(allocator, narrowing.union_local, payload_ty);
     }
 }
 

@@ -9,14 +9,14 @@ const codegen_tokens = @import("codegen_tokens.zig");
 const codegen_names = @import("codegen_names.zig");
 const model = @import("codegen_model.zig");
 const context = @import("codegen_context.zig");
-const gen_collect_util = @import("gen_collect_util.zig");
+const codegen_collect_util = @import("codegen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
 const codegen_imports = @import("codegen_imports.zig");
 const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
 const codegen_emit_tuple = @import("codegen_emit_tuple.zig");
-const find_value_enum_decl_line_by_name = codegen_imports.findValueEnumDeclLineByName;
-const find_value_enum_decl_line_by_branch = codegen_imports.findValueEnumDeclLineByBranch;
+const find_value_enum_decl_line_by_name = codegen_imports.find_value_enum_decl_line_by_name;
+const find_value_enum_decl_line_by_branch = codegen_imports.find_value_enum_decl_line_by_branch;
 const simple_type_name = codegen_collect_functions.simple_type_name;
 const is_top_level_comma_any = codegen_collect_functions.is_top_level_comma_any;
 const is_return_arrow_at = codegen_collect_functions.is_return_arrow_at;
@@ -68,31 +68,31 @@ const LambdaExprShape = model.LambdaExprShape;
 const NarrowedUnionLocal = model.NarrowedUnionLocal;
 const UnionStructPayload = model.UnionStructPayload;
 const ExprCallHead = model.ExprCallHead;
-const find_local_type = context.findLocalType;
-const find_struct_local = context.findStructLocal;
-const find_union_local = context.findUnionLocal;
-const storage_type_name_for_elem = context.storageTypeNameForElem;
-const local_name_matches = context.localNameMatches;
+const find_local_type = context.find_local_type;
+const find_struct_local = context.find_struct_local;
+const find_union_local = context.find_union_local;
+const storage_type_name_for_elem = context.storage_type_name_for_elem;
+const local_name_matches = context.local_name_matches;
 const free_union_layout = codegen_union_layout.free_union_layout;
-const find_struct_decl = gen_collect_util.findStructDecl;
-const find_struct_layout = gen_collect_util.findStructLayout;
+const find_struct_decl = codegen_collect_util.find_struct_decl;
+const find_struct_layout = codegen_collect_util.find_struct_layout;
 const find_struct_layout_exact = codegen_collect_structs.find_struct_layout_exact;
-const pure_scalar_struct_pack_width = gen_collect_util.pureScalarStructPackWidth;
-const is_error_like_type = gen_collect_util.isErrorLikeType;
+const pure_scalar_struct_pack_width = codegen_collect_util.pure_scalar_struct_pack_width;
+const is_error_like_type = codegen_collect_util.is_error_like_type;
 const parse_type_union_layout_from_name = codegen_collect_structs.parse_type_union_layout_from_name;
 const bind_struct_type_args = codegen_collect_structs.bind_struct_type_args;
-const substitute_generic_type_owned = gen_collect_util.substituteGenericTypeOwned;
-const find_generic_binding = gen_collect_util.findGenericBinding;
+const substitute_generic_type_owned = codegen_collect_util.substitute_generic_type_owned;
+const find_generic_binding = codegen_collect_util.find_generic_binding;
 const same_callable_source_name = codegen_collect_functions.same_callable_source_name;
-const expr_call_head = codegen_imports.exprCallHead;
-const call_head_has_type_args = codegen_imports.callHeadHasTypeArgs;
-const find_value_enum_decl = codegen_imports.findValueEnumDecl;
-const find_codegen_import_by_alias = codegen_imports.findCodegenImportByAlias;
-const imported_alias_context_for_tokens = codegen_imports.importedAliasContextForTokens;
-const local_scalar_const = codegen_imports.localScalarConst;
-const imported_scalar_const = codegen_imports.importedScalarConst;
-const find_imported_module_index_no_alloc = codegen_imports.findImportedModuleIndexNoAlloc;
-const find_wasi_host_import_for_tokens = codegen_imports.findWasiHostImportForTokens;
+const expr_call_head = codegen_imports.expr_call_head;
+const call_head_has_type_args = codegen_imports.call_head_has_type_args;
+const find_value_enum_decl = codegen_imports.find_value_enum_decl;
+const find_codegen_import_by_alias = codegen_imports.find_codegen_import_by_alias;
+const imported_alias_context_for_tokens = codegen_imports.imported_alias_context_for_tokens;
+const local_scalar_const = codegen_imports.local_scalar_const;
+const imported_scalar_const = codegen_imports.imported_scalar_const;
+const find_imported_module_index_no_alloc = codegen_imports.find_imported_module_index_no_alloc;
+const find_wasi_host_import_for_tokens = codegen_imports.find_wasi_host_import_for_tokens;
 const is_managed_local_type = codegen_emit_wasi.is_managed_local_type;
 const storage_elem_type_from_name = codegen_emit_wasi.storage_elem_type_from_name;
 const storage_element_byte_width = codegen_emit_wasi.storage_element_byte_width;
@@ -104,7 +104,7 @@ const find_storage_primitive_local = codegen_emit_wasi.find_storage_primitive_lo
 const error_enum_branch_value = codegen_emit_wasi.error_enum_branch_value;
 const tuple_scalar_leaf_storage_byte_width_ctx = codegen_emit_wasi.tuple_scalar_leaf_storage_byte_width_ctx;
 const tuple_has_managed_pack_leaf_ctx = codegen_emit_wasi.tuple_has_managed_pack_leaf_ctx;
-const find_host_import_for_tokens = codegen_host_imports.findHostImportForTokens;
+const find_host_import_for_tokens = codegen_host_imports.find_host_import_for_tokens;
 
 const WasiHostImport = codegen_wasi_registry.WasiHostImport;
 
@@ -537,14 +537,14 @@ pub fn append_borrowed_local_field(allocator: std.mem.Allocator, out: *LocalSet,
     const name = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ base, public_decl_name(field) });
     if (is_tuple_type_name(ty)) {
         try out.owned_names.append(allocator, name);
-        const local_name = try out.appendStructLocal(allocator, name, ty, false);
+        const local_name = try out.append_struct_local(allocator, name, ty, false);
         try append_tuple_local_fields_borrowed(allocator, out, tokens, ctx, local_name, ty);
         return;
     }
     if (find_struct_decl(ctx.structs, ty)) |decl| {
         if (find_struct_layout(ctx.struct_layouts, ty) == null and pure_scalar_struct_pack_width(decl, ctx.structs) != null) {
             try out.owned_names.append(allocator, name);
-            const local_name = try out.appendStructLocal(allocator, name, ty, false);
+            const local_name = try out.append_struct_local(allocator, name, ty, false);
             for (decl.fields) |sf| {
                 const field_ty = try substitute_struct_field_type(allocator, decl, ty, sf.ty, &out.owned_names);
                 try append_borrowed_local_field(allocator, out, tokens, ctx, local_name, sf.name, field_ty);
@@ -555,9 +555,9 @@ pub fn append_borrowed_local_field(allocator: std.mem.Allocator, out: *LocalSet,
     try out.owned_names.append(allocator, name);
     if (try parse_type_union_layout_from_name(allocator, tokens, ty, ctx.structs, ctx.struct_layouts, &out.owned_names)) |layout| {
         errdefer free_union_layout(allocator, layout);
-        return out.appendUnionLocal(allocator, name, layout, false, true);
+        return out.append_union_local(allocator, name, layout, false, true);
     }
-    try out.appendBorrowedLocal(allocator, name, ty, false);
+    try out.append_borrowed_local(allocator, name, ty, false);
 }
 
 pub fn should_infer_bool_special_call(name: []const u8, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext) bool {
@@ -1115,7 +1115,7 @@ pub fn lambda_explicit_return_type(tokens: []const lexer.Token, lambda: LambdaEx
 
 pub fn append_typed_local_with_decl(allocator: std.mem.Allocator, locals: *LocalSet, name: []const u8, ty: []const u8, ctx: CodegenContext, emit_decl: bool) !void {
     if (managed_payload_elem_type_from_name(ty)) |elem_ty| {
-        try locals.appendBorrowedLocal(allocator, name, ty, emit_decl);
+        try locals.append_borrowed_local(allocator, name, ty, emit_decl);
         try locals.storage_locals.append(allocator, .{
             .name = name,
             .ty = ty,
@@ -1130,7 +1130,7 @@ pub fn append_typed_local_with_decl(allocator: std.mem.Allocator, locals: *Local
             .ty = ty,
         });
         if (find_struct_layout(ctx.struct_layouts, ty) != null) {
-            try locals.appendBorrowedLocal(allocator, name, ty, emit_decl);
+            try locals.append_borrowed_local(allocator, name, ty, emit_decl);
             for (decl.fields) |field| {
                 const field_ty = try substitute_struct_field_type(allocator, decl, ty, field.ty, &locals.owned_names);
                 try append_managed_struct_field_meta_local(allocator, locals, name, field.name, field_ty);
@@ -1144,7 +1144,7 @@ pub fn append_typed_local_with_decl(allocator: std.mem.Allocator, locals: *Local
         return;
     }
 
-    try locals.appendBorrowedLocal(allocator, name, ty, emit_decl);
+    try locals.append_borrowed_local(allocator, name, ty, emit_decl);
 }
 
 pub fn append_typed_local(allocator: std.mem.Allocator, locals: *LocalSet, name: []const u8, ty: []const u8, ctx: CodegenContext) !void {
@@ -1268,7 +1268,7 @@ pub fn lambda_explicit_types_match_shape(tokens: []const lexer.Token, lambda: La
 }
 
 pub fn type_base_name(ty: []const u8) []const u8 {
-    return type_util.typeBaseName(ty);
+    return type_util.type_base_name(ty);
 }
 
 pub fn value_enum_type_matches_import_alias(ctx: CodegenContext, tokens: []const lexer.Token, enum_idx: usize, expected_name: []const u8) bool {
@@ -1305,7 +1305,7 @@ pub fn value_enum_source_matches_import(tokens: []const lexer.Token, import_ref:
 }
 
 pub fn managed_payload_elem_type_from_name(ty: []const u8) ?[]const u8 {
-    return type_util.managedPayloadElemTypeFromName(ty);
+    return type_util.managed_payload_elem_type_from_name(ty);
 }
 
 pub fn abs_result_type(source_ty: []const u8) ?[]const u8 {
@@ -1409,5 +1409,5 @@ pub fn find_concrete_struct_field_type_no_alloc(decl: StructDecl, concrete_ty: [
 }
 
 pub fn generic_type_arg_at(concrete_ty: []const u8, target_idx: usize) ?[]const u8 {
-    return type_util.genericTypeArgAt(concrete_ty, target_idx);
+    return type_util.generic_type_arg_at(concrete_ty, target_idx);
 }

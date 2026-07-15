@@ -1,4 +1,4 @@
-//! Collect domain — type (extracted from gen_collect).
+//! Collect domain — type (extracted from codegen_collect).
 const std = @import("std");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
@@ -10,23 +10,23 @@ const model = @import("codegen_model.zig");
 const codegen_union_layout = @import("codegen_union_layout.zig");
 const codegen_imports = @import("codegen_imports.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
-const gen_collect_util = @import("gen_collect_util.zig");
-const parseCodegenTypeExpr = gen_collect_util.parseCodegenTypeExpr;
+const codegen_collect_util = @import("codegen_collect_util.zig");
+const parse_codegen_type_expr = codegen_collect_util.parse_codegen_type_expr;
 
-const findLineEnd = codegen_tokens.find_line_end;
-const findMatching = codegen_tokens.find_matching;
+const find_line_end = codegen_tokens.find_line_end;
+const find_matching = codegen_tokens.find_matching;
 const publicDeclName = codegen_names.public_decl_name;
-const tokEq = codegen_tokens.tok_eq;
-const findImportedModuleIndex = codegen_imports.findImportedModuleIndex;
-const findPayloadEnumDecl = codegen_imports.findPayloadEnumDecl;
-const findPayloadEnumDeclLineByName = codegen_imports.findPayloadEnumDeclLineByName;
-const findRootModuleIndex = codegen_imports.findRootModuleIndex;
-const findValueEnumDecl = codegen_imports.findValueEnumDecl;
-const findValueEnumDeclLineByBranch = codegen_imports.findValueEnumDeclLineByBranch;
-const findValueEnumDeclLineByName = codegen_imports.findValueEnumDeclLineByName;
-const isPayloadEnumDeclStart = codegen_imports.isPayloadEnumDeclStart;
-const isValueEnumDeclStart = codegen_imports.isValueEnumDeclStart;
-const parseCodegenImport = codegen_imports.parseCodegenImport;
+const tok_eq = codegen_tokens.tok_eq;
+const find_imported_module_index = codegen_imports.find_imported_module_index;
+const find_payload_enum_decl = codegen_imports.find_payload_enum_decl;
+const find_payload_enum_decl_line_by_name = codegen_imports.find_payload_enum_decl_line_by_name;
+const find_root_module_index = codegen_imports.find_root_module_index;
+const find_value_enum_decl = codegen_imports.find_value_enum_decl;
+const find_value_enum_decl_line_by_branch = codegen_imports.find_value_enum_decl_line_by_branch;
+const find_value_enum_decl_line_by_name = codegen_imports.find_value_enum_decl_line_by_name;
+const is_payload_enum_decl_start = codegen_imports.is_payload_enum_decl_start;
+const is_value_enum_decl_start = codegen_imports.is_value_enum_decl_start;
+const parse_codegen_import = codegen_imports.parse_codegen_import;
 const PayloadEnumCase = model.PayloadEnumCase;
 const PayloadEnumDecl = model.PayloadEnumDecl;
 const ValueEnumBranch = model.ValueEnumBranch;
@@ -40,18 +40,18 @@ pub fn collect_value_enum_decls(
     var depth_brace: usize = 0;
     var i: usize = 0;
     while (i + 2 < tokens.len) : (i += 1) {
-        if (tokEq(tokens[i], "{")) {
+        if (tok_eq(tokens[i], "{")) {
             depth_brace += 1;
             continue;
         }
-        if (tokEq(tokens[i], "}")) {
+        if (tok_eq(tokens[i], "}")) {
             if (depth_brace > 0) depth_brace -= 1;
             continue;
         }
         if (depth_brace != 0) continue;
-        if (!isValueEnumDeclStart(tokens, i)) continue;
+        if (!is_value_enum_decl_start(tokens, i)) continue;
         _ = try collect_value_enum_decl_by_name_as(allocator, tokens, publicDeclName(tokens[i].lexeme), publicDeclName(tokens[i].lexeme), false, out);
-        i = findLineEnd(tokens, i) - 1;
+        i = find_line_end(tokens, i) - 1;
     }
 }
 
@@ -61,28 +61,28 @@ pub fn collect_imported_value_enum_decls(
     graph: *const imports.ModuleGraph,
     out: *std.ArrayList(ValueEnumDecl),
 ) !void {
-    const root_idx = findRootModuleIndex(graph.modules, entry_tokens) orelse return;
+    const root_idx = find_root_module_index(graph.modules, entry_tokens) orelse return;
 
     var i: usize = 0;
     while (i < entry_tokens.len) : (i += 1) {
-        const import_ref = parseCodegenImport(entry_tokens, i) orelse continue;
-        defer i = findLineEnd(entry_tokens, i) - 1;
+        const import_ref = parse_codegen_import(entry_tokens, i) orelse continue;
+        defer i = find_line_end(entry_tokens, i) - 1;
 
-        const child_idx = findImportedModuleIndex(allocator, graph, root_idx, import_ref) orelse continue;
+        const child_idx = find_imported_module_index(allocator, graph, root_idx, import_ref) orelse continue;
         const child_tokens = graph.modules[child_idx].tokens;
-        if (findValueEnumDeclLineByName(child_tokens, import_ref.target)) |_| {
-            if (findValueEnumDecl(out.items, import_ref.alias) == null) {
+        if (find_value_enum_decl_line_by_name(child_tokens, import_ref.target)) |_| {
+            if (find_value_enum_decl(out.items, import_ref.alias) == null) {
                 _ = try collect_value_enum_decl_by_name_as(allocator, child_tokens, import_ref.target, import_ref.alias, !std.mem.eql(u8, import_ref.target, import_ref.alias), out);
             }
-            if (!std.mem.eql(u8, import_ref.alias, import_ref.target) and findValueEnumDecl(out.items, import_ref.target) == null) {
+            if (!std.mem.eql(u8, import_ref.alias, import_ref.target) and find_value_enum_decl(out.items, import_ref.target) == null) {
                 _ = try collect_value_enum_decl_by_name_as(allocator, child_tokens, import_ref.target, import_ref.target, false, out);
             }
             continue;
         }
 
-        if (findValueEnumDeclLineByBranch(child_tokens, import_ref.target)) |enum_idx| {
+        if (find_value_enum_decl_line_by_branch(child_tokens, import_ref.target)) |enum_idx| {
             const enum_name = publicDeclName(child_tokens[enum_idx].lexeme);
-            if (findValueEnumDecl(out.items, enum_name) == null) {
+            if (find_value_enum_decl(out.items, enum_name) == null) {
                 _ = try collect_value_enum_decl_by_name_as(allocator, child_tokens, enum_name, enum_name, false, out);
             }
         }
@@ -100,28 +100,28 @@ pub fn collect_value_enum_decl_by_name_as(
     var depth_brace: usize = 0;
     var i: usize = 0;
     while (i + 2 < tokens.len) : (i += 1) {
-        if (tokEq(tokens[i], "{")) {
+        if (tok_eq(tokens[i], "{")) {
             depth_brace += 1;
             continue;
         }
-        if (tokEq(tokens[i], "}")) {
+        if (tok_eq(tokens[i], "}")) {
             if (depth_brace > 0) depth_brace -= 1;
             continue;
         }
         if (depth_brace != 0) continue;
-        if (!isValueEnumDeclStart(tokens, i)) continue;
+        if (!is_value_enum_decl_start(tokens, i)) continue;
         if (!std.mem.eql(u8, publicDeclName(tokens[i].lexeme), target_name)) continue;
 
-        const line_end = findLineEnd(tokens, i);
+        const line_end = find_line_end(tokens, i);
         var branches = std.ArrayList(ValueEnumBranch).empty;
         errdefer branches.deinit(allocator);
         var j = i + 3;
         while (j + 3 < line_end) {
-            if (tokEq(tokens[j], "|")) {
+            if (tok_eq(tokens[j], "|")) {
                 j += 1;
                 continue;
             }
-            if (tokens[j].kind != .ident or !tokEq(tokens[j + 1], "(") or tokens[j + 2].kind != .number or !tokEq(tokens[j + 3], ")")) {
+            if (tokens[j].kind != .ident or !tok_eq(tokens[j + 1], "(") or tokens[j + 2].kind != .number or !tok_eq(tokens[j + 3], ")")) {
                 return false;
             }
             try branches.append(allocator, .{
@@ -153,20 +153,20 @@ pub fn collect_payload_enum_decls(
     var depth_brace: usize = 0;
     var i: usize = 0;
     while (i + 2 < tokens.len) : (i += 1) {
-        if (tokEq(tokens[i], "{")) {
+        if (tok_eq(tokens[i], "{")) {
             depth_brace += 1;
             continue;
         }
-        if (tokEq(tokens[i], "}")) {
+        if (tok_eq(tokens[i], "}")) {
             if (depth_brace > 0) depth_brace -= 1;
             continue;
         }
         if (depth_brace != 0) continue;
-        if (!isPayloadEnumDeclStart(tokens, i)) continue;
+        if (!is_payload_enum_decl_start(tokens, i)) continue;
         if (!try collect_payload_enum_decl_at(allocator, tokens, i, out)) {
             return error.NoMatchingCall;
         }
-        i = findLineEnd(tokens, i) - 1;
+        i = find_line_end(tokens, i) - 1;
     }
 }
 
@@ -178,20 +178,20 @@ pub fn collect_imported_payload_enum_decls(
     graph: *const imports.ModuleGraph,
     out: *std.ArrayList(PayloadEnumDecl),
 ) !void {
-    const root_idx = findRootModuleIndex(graph.modules, entry_tokens) orelse return;
+    const root_idx = find_root_module_index(graph.modules, entry_tokens) orelse return;
 
     var i: usize = 0;
     while (i < entry_tokens.len) : (i += 1) {
-        const import_ref = parseCodegenImport(entry_tokens, i) orelse continue;
-        defer i = findLineEnd(entry_tokens, i) - 1;
+        const import_ref = parse_codegen_import(entry_tokens, i) orelse continue;
+        defer i = find_line_end(entry_tokens, i) - 1;
 
-        const child_idx = findImportedModuleIndex(allocator, graph, root_idx, import_ref) orelse continue;
+        const child_idx = find_imported_module_index(allocator, graph, root_idx, import_ref) orelse continue;
         const child_tokens = graph.modules[child_idx].tokens;
-        const enum_idx = findPayloadEnumDeclLineByName(child_tokens, import_ref.target) orelse continue;
+        const enum_idx = find_payload_enum_decl_line_by_name(child_tokens, import_ref.target) orelse continue;
 
         // Same-name import: collect under target name if missing.
         if (std.mem.eql(u8, import_ref.alias, import_ref.target)) {
-            if (findPayloadEnumDecl(out.items, import_ref.target) == null) {
+            if (find_payload_enum_decl(out.items, import_ref.target) == null) {
                 if (!try collect_payload_enum_decl_at(allocator, child_tokens, enum_idx, out)) {
                     return error.NoMatchingCall;
                 }
@@ -200,12 +200,12 @@ pub fn collect_imported_payload_enum_decls(
         }
 
         // Aliased import: ensure both target and alias entries when needed.
-        if (findPayloadEnumDecl(out.items, import_ref.target) == null) {
+        if (find_payload_enum_decl(out.items, import_ref.target) == null) {
             if (!try collect_payload_enum_decl_at(allocator, child_tokens, enum_idx, out)) {
                 return error.NoMatchingCall;
             }
         }
-        if (findPayloadEnumDecl(out.items, import_ref.alias) == null) {
+        if (find_payload_enum_decl(out.items, import_ref.alias) == null) {
             if (!try collect_payload_enum_decl_by_name_as(allocator, child_tokens, import_ref.target, import_ref.alias, true, out)) {
                 return error.NoMatchingCall;
             }
@@ -227,11 +227,11 @@ pub fn collect_payload_enum_decl_by_name_as(
     own_emit_name: bool,
     out: *std.ArrayList(PayloadEnumDecl),
 ) !bool {
-    if (findPayloadEnumDecl(out.items, emit_name) != null) return true;
-    const enum_idx = findPayloadEnumDeclLineByName(tokens, target_name) orelse return false;
-    if (!isPayloadEnumDeclStart(tokens, enum_idx)) return false;
+    if (find_payload_enum_decl(out.items, emit_name) != null) return true;
+    const enum_idx = find_payload_enum_decl_line_by_name(tokens, target_name) orelse return false;
+    if (!is_payload_enum_decl_start(tokens, enum_idx)) return false;
 
-    const line_end = findLineEnd(tokens, enum_idx);
+    const line_end = find_line_end(tokens, enum_idx);
     var cases = std.ArrayList(PayloadEnumCase).empty;
     errdefer cases.deinit(allocator);
     var owned_payload_tys = std.ArrayList([]const u8).empty;
@@ -242,7 +242,7 @@ pub fn collect_payload_enum_decl_by_name_as(
 
     var j = enum_idx + 2; // after Name =
     while (j < line_end) {
-        if (tokEq(tokens[j], "|")) {
+        if (tok_eq(tokens[j], "|")) {
             j += 1;
             continue;
         }
@@ -250,9 +250,9 @@ pub fn collect_payload_enum_decl_by_name_as(
         const case_name = publicDeclName(tokens[j].lexeme);
         j += 1;
         var payload_ty: ?[]const u8 = null;
-        if (j < line_end and tokEq(tokens[j], "(")) {
-            const close = findMatching(tokens, j, "(", ")") catch return false;
-            const parsed = (try parseCodegenTypeExpr(allocator, tokens, j + 1, close, &owned_payload_tys)) orelse return false;
+        if (j < line_end and tok_eq(tokens[j], "(")) {
+            const close = find_matching(tokens, j, "(", ")") catch return false;
+            const parsed = (try parse_codegen_type_expr(allocator, tokens, j + 1, close, &owned_payload_tys)) orelse return false;
             if (parsed.next_idx != close) return false;
             payload_ty = parsed.ty;
             j = close + 1;
@@ -280,11 +280,11 @@ pub fn collect_payload_enum_decl_at(
     enum_idx: usize,
     out: *std.ArrayList(PayloadEnumDecl),
 ) !bool {
-    if (!isPayloadEnumDeclStart(tokens, enum_idx)) return false;
+    if (!is_payload_enum_decl_start(tokens, enum_idx)) return false;
     const name = publicDeclName(tokens[enum_idx].lexeme);
-    if (findPayloadEnumDecl(out.items, name) != null) return true;
+    if (find_payload_enum_decl(out.items, name) != null) return true;
 
-    const line_end = findLineEnd(tokens, enum_idx);
+    const line_end = find_line_end(tokens, enum_idx);
     var cases = std.ArrayList(PayloadEnumCase).empty;
     errdefer cases.deinit(allocator);
     var owned_payload_tys = std.ArrayList([]const u8).empty;
@@ -295,7 +295,7 @@ pub fn collect_payload_enum_decl_at(
 
     var j = enum_idx + 2; // after Name =
     while (j < line_end) {
-        if (tokEq(tokens[j], "|")) {
+        if (tok_eq(tokens[j], "|")) {
             j += 1;
             continue;
         }
@@ -303,10 +303,10 @@ pub fn collect_payload_enum_decl_at(
         const case_name = publicDeclName(tokens[j].lexeme);
         j += 1;
         var payload_ty: ?[]const u8 = null;
-        if (j < line_end and tokEq(tokens[j], "(")) {
-            const close = findMatching(tokens, j, "(", ")") catch return false;
+        if (j < line_end and tok_eq(tokens[j], "(")) {
+            const close = find_matching(tokens, j, "(", ")") catch return false;
             // Type expr lives strictly inside the parens: tokens[j+1 .. close].
-            const parsed = (try parseCodegenTypeExpr(allocator, tokens, j + 1, close, &owned_payload_tys)) orelse return false;
+            const parsed = (try parse_codegen_type_expr(allocator, tokens, j + 1, close, &owned_payload_tys)) orelse return false;
             if (parsed.next_idx != close) return false;
             payload_ty = parsed.ty;
             j = close + 1;

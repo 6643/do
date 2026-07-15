@@ -27,45 +27,45 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
     const allocator = init.gpa;
     const io = init.io;
 
-    const parsed_cli = cli.parseBuild(args) catch |err| {
-        try diag.printCliError(io, err);
+    const parsed_cli = cli.parse_build(args) catch |err| {
+        try diag.print_cli_error(io, err);
         std.process.exit(1);
     };
 
-    var loaded = try loadProgram(init, parsed_cli.input_path);
+    var loaded = try load_program(init, parsed_cli.input_path);
     defer loaded.deinit(allocator);
 
-    const wat = try compileProgramWat(io, allocator, parsed_cli.input_path, parsed_cli.component_core, &loaded);
+    const wat = try compile_program_wat(io, allocator, parsed_cli.input_path, parsed_cli.component_core, &loaded);
     defer allocator.free(wat);
 
     std.Io.Dir.cwd().writeFile(io, .{ .sub_path = parsed_cli.output_path, .data = wat }) catch |err| {
-        try diag.printIoError(io, parsed_cli.output_path, err);
+        try diag.print_io_error(io, parsed_cli.output_path, err);
         std.process.exit(1);
     };
 
-    try printCompileOk(io, parsed_cli, loaded.program);
+    try print_compile_ok(io, parsed_cli, loaded.program);
 }
 
-pub fn runTest(init: std.process.Init, args: []const []const u8) !void {
+pub fn run_test(init: std.process.Init, args: []const []const u8) !void {
     const allocator = init.gpa;
     const io = init.io;
 
-    const parsed_cli = cli.parseTest(args) catch |err| {
-        try diag.printCliError(io, err);
+    const parsed_cli = cli.parse_test(args) catch |err| {
+        try diag.print_cli_error(io, err);
         std.process.exit(1);
     };
 
-    var loaded = try loadProgram(init, parsed_cli.input_path);
+    var loaded = try load_program(init, parsed_cli.input_path);
     defer loaded.deinit(allocator);
 
     if (parsed_cli.compiled_test) {
-        try compileTests(io, allocator, parsed_cli, loaded.source, loaded.tokens, loaded.program, &loaded.module_graph);
+        try compile_tests(io, allocator, parsed_cli, loaded.source, loaded.tokens, loaded.program, &loaded.module_graph);
     } else {
-        try runTests(io, allocator, parsed_cli, loaded.source, loaded.tokens, &loaded.module_graph);
+        try run_tests(io, allocator, parsed_cli, loaded.source, loaded.tokens, &loaded.module_graph);
     }
 }
 
-fn runTests(
+fn run_tests(
     io: std.Io,
     allocator: std.mem.Allocator,
     parsed_cli: cli.Args,
@@ -73,13 +73,13 @@ fn runTests(
     tokens: []const lexer.Token,
     module_graph: *const imports.ModuleGraph,
 ) !void {
-    test_runner.runWithModules(io, allocator, parsed_cli.input_path, tokens, module_graph) catch |err| {
-        try diag.printCompileError(io, parsed_cli.input_path, source, tokens, err, null);
+    test_runner.run_with_modules(io, allocator, parsed_cli.input_path, tokens, module_graph) catch |err| {
+        try diag.print_compile_error(io, parsed_cli.input_path, source, tokens, err, null);
         std.process.exit(1);
     };
 }
 
-fn compileTests(
+fn compile_tests(
     io: std.Io,
     allocator: std.mem.Allocator,
     parsed_cli: cli.Args,
@@ -88,62 +88,62 @@ fn compileTests(
     program: parser.Program,
     module_graph: *const imports.ModuleGraph,
 ) !void {
-    const test_decls = test_runner.collectTopLevelTests(allocator, tokens) catch |err| {
-        try diag.printCompileError(io, parsed_cli.input_path, source, tokens, err, null);
+    const test_decls = test_runner.collect_top_level_tests(allocator, tokens) catch |err| {
+        try diag.print_compile_error(io, parsed_cli.input_path, source, tokens, err, null);
         std.process.exit(1);
     };
     defer allocator.free(test_decls);
     if (test_decls.len == 0) {
-        try diag.printCompileError(io, parsed_cli.input_path, source, tokens, error.NoTestDecl, null);
+        try diag.print_compile_error(io, parsed_cli.input_path, source, tokens, error.NoTestDecl, null);
         std.process.exit(1);
     }
 
     const wat = codegen.emit_test_wat(allocator, program, tokens, module_graph) catch |err| {
-        try diag.printCompileError(io, parsed_cli.input_path, source, tokens, err, null);
+        try diag.print_compile_error(io, parsed_cli.input_path, source, tokens, err, null);
         std.process.exit(1);
     };
     defer allocator.free(wat);
 
     std.Io.Dir.cwd().writeFile(io, .{ .sub_path = parsed_cli.output_path, .data = wat }) catch |err| {
-        try diag.printIoError(io, parsed_cli.output_path, err);
+        try diag.print_io_error(io, parsed_cli.output_path, err);
         std.process.exit(1);
     };
 
-    try printCompiledTestOk(io, parsed_cli, test_decls.len);
+    try print_compiled_test_ok(io, parsed_cli, test_decls.len);
 }
 
-pub fn loadProgram(init: std.process.Init, input_path: []const u8) !LoadedProgram {
+pub fn load_program(init: std.process.Init, input_path: []const u8) !LoadedProgram {
     const allocator = init.gpa;
     const io = init.io;
 
     const source = std.Io.Dir.cwd().readFileAlloc(io, input_path, allocator, .limited(16 * 1024 * 1024)) catch |err| {
-        try diag.printIoError(io, input_path, err);
+        try diag.print_io_error(io, input_path, err);
         std.process.exit(1);
     };
     errdefer allocator.free(source);
 
     const tokens = lexer.tokenize(allocator, source) catch |err| {
-        try diag.printCompileError(io, input_path, source, null, err, null);
+        try diag.print_compile_error(io, input_path, source, null, err, null);
         std.process.exit(1);
     };
     errdefer allocator.free(tokens);
 
-    var program = parser.parseProgram(allocator, tokens, source.len) catch |err| {
-        try diag.printCompileError(io, input_path, source, tokens, err, parserErrorLoc());
+    var program = parser.parse_program(allocator, tokens, source.len) catch |err| {
+        try diag.print_compile_error(io, input_path, source, tokens, err, parser_error_loc());
         std.process.exit(1);
     };
     errdefer program.deinit(allocator);
 
     sema.check_program(allocator, program, tokens) catch |err| {
-        try diag.printCompileError(io, input_path, source, tokens, err, semaErrorLoc());
+        try diag.print_compile_error(io, input_path, source, tokens, err, sema_error_loc());
         std.process.exit(1);
     };
 
-    const dep_root = try resolveDepRoot(allocator, init.environ_map);
+    const dep_root = try resolve_dep_root(allocator, init.environ_map);
     defer dep_root.deinit(allocator);
 
-    var module_graph = imports.checkAndLoad(io, allocator, input_path, tokens, dep_root.path) catch |err| {
-        try diag.printCompileError(io, input_path, source, tokens, err, importsErrorLoc());
+    var module_graph = imports.check_and_load(io, allocator, input_path, tokens, dep_root.path) catch |err| {
+        try diag.print_compile_error(io, input_path, source, tokens, err, imports_error_loc());
         std.process.exit(1);
     };
     errdefer module_graph.deinit();
@@ -156,14 +156,14 @@ pub fn loadProgram(init: std.process.Init, input_path: []const u8) !LoadedProgra
     };
 }
 
-pub fn compileProgramWat(
+pub fn compile_program_wat(
     io: std.Io,
     allocator: std.mem.Allocator,
     input_path: []const u8,
     component_core: bool,
     loaded: *const LoadedProgram,
 ) ![]u8 {
-    return compileProgramWatParts(
+    return compile_program_wat_parts(
         io,
         allocator,
         input_path,
@@ -175,7 +175,7 @@ pub fn compileProgramWat(
     );
 }
 
-fn compileProgramWatParts(
+fn compile_program_wat_parts(
     io: std.Io,
     allocator: std.mem.Allocator,
     input_path: []const u8,
@@ -185,15 +185,15 @@ fn compileProgramWatParts(
     program: parser.Program,
     module_graph: *const imports.ModuleGraph,
 ) ![]u8 {
-    entry.validateStart(program) catch |err| {
-        try diag.printCompileError(io, input_path, source, tokens, err, null);
+    entry.validate_start(program) catch |err| {
+        try diag.print_compile_error(io, input_path, source, tokens, err, null);
         std.process.exit(1);
     };
 
     return codegen.emit_wat_with_options(allocator, program, tokens, module_graph, .{
         .component_core = component_core,
     }) catch |err| {
-        try diag.printCompileError(io, input_path, source, tokens, err, null);
+        try diag.print_compile_error(io, input_path, source, tokens, err, null);
         std.process.exit(1);
     };
 }
@@ -207,7 +207,7 @@ const DepRoot = struct {
     }
 };
 
-fn resolveDepRoot(allocator: std.mem.Allocator, environ_map: *std.process.Environ.Map) !DepRoot {
+fn resolve_dep_root(allocator: std.mem.Allocator, environ_map: *std.process.Environ.Map) !DepRoot {
     if (environ_map.get("DO_LIB_ROOT")) |path| {
         return .{ .path = path, .owned = false };
     }
@@ -219,7 +219,7 @@ fn resolveDepRoot(allocator: std.mem.Allocator, environ_map: *std.process.Enviro
     };
 }
 
-fn printCompileOk(io: std.Io, parsed_cli: cli.Args, program: parser.Program) !void {
+fn print_compile_ok(io: std.Io, parsed_cli: cli.Args, program: parser.Program) !void {
     var out_buffer: [1024]u8 = undefined;
     var out = std.Io.File.stdout().writer(io, &out_buffer);
     try out.interface.print(
@@ -229,7 +229,7 @@ fn printCompileOk(io: std.Io, parsed_cli: cli.Args, program: parser.Program) !vo
     try out.interface.flush();
 }
 
-fn printCompiledTestOk(io: std.Io, parsed_cli: cli.Args, test_count: usize) !void {
+fn print_compiled_test_ok(io: std.Io, parsed_cli: cli.Args, test_count: usize) !void {
     var out_buffer: [1024]u8 = undefined;
     var out = std.Io.File.stdout().writer(io, &out_buffer);
     try out.interface.print(
@@ -239,18 +239,18 @@ fn printCompiledTestOk(io: std.Io, parsed_cli: cli.Args, test_count: usize) !voi
     try out.interface.flush();
 }
 
-fn parserErrorLoc() ?diag.SourceLoc {
-    const site = parser.takeLastErrorSite() orelse return null;
+fn parser_error_loc() ?diag.SourceLoc {
+    const site = parser.take_last_error_site() orelse return null;
     return .{ .line = site.line, .col = site.col };
 }
 
-fn semaErrorLoc() ?diag.SourceLoc {
+fn sema_error_loc() ?diag.SourceLoc {
     const site = sema.take_last_error_site() orelse return null;
     return .{ .line = site.line, .col = site.col };
 }
 
-fn importsErrorLoc() ?diag.SourceLoc {
-    const site = imports.takeLastErrorSite() orelse return null;
+fn imports_error_loc() ?diag.SourceLoc {
+    const site = imports.take_last_error_site() orelse return null;
     return .{ .line = site.line, .col = site.col };
 }
 
@@ -265,9 +265,9 @@ test "normal program compile path still enforces start entry" {
     const tokens = try lexer.tokenize(allocator, source);
     defer allocator.free(tokens);
 
-    var program = try parser.parseProgram(allocator, tokens, source.len);
+    var program = try parser.parse_program(allocator, tokens, source.len);
     defer program.deinit(allocator);
 
     try sema.check_program(allocator, program, tokens);
-    try std.testing.expectError(error.MissingStartEntry, entry.validateStart(program));
+    try std.testing.expectError(error.MissingStartEntry, entry.validate_start(program));
 }

@@ -54,75 +54,75 @@ pub const ExitPlan = struct {
     }
 };
 
-pub fn buildReturnExitPlan(
+pub fn build_return_exit_plan(
     allocator: std.mem.Allocator,
     locals: []const ManagedLocal,
     skip_names: []const []const u8,
 ) !ExitPlan {
-    return buildReturnExitPlanWithFacts(allocator, locals, .{
+    return build_return_exit_plan_with_facts(allocator, locals, .{
         .cleanup_visible = true,
         .release_skip_names = skip_names,
     });
 }
 
-pub fn buildGuardReturnExitPlan(
+pub fn build_guard_return_exit_plan(
     allocator: std.mem.Allocator,
     locals: []const ManagedLocal,
     skip_names: []const []const u8,
 ) !ExitPlan {
-    return buildGuardReturnExitPlanWithFacts(allocator, locals, .{
+    return build_guard_return_exit_plan_with_facts(allocator, locals, .{
         .cleanup_visible = true,
         .release_skip_names = skip_names,
     });
 }
 
-pub fn buildFallthroughExitPlan(
+pub fn build_fallthrough_exit_plan(
     allocator: std.mem.Allocator,
     locals: []const ManagedLocal,
 ) !ExitPlan {
-    return buildFallthroughExitPlanWithFacts(allocator, locals, .{});
+    return build_fallthrough_exit_plan_with_facts(allocator, locals, .{});
 }
 
-pub fn buildBlockExitPlan(
+pub fn build_block_exit_plan(
     allocator: std.mem.Allocator,
     locals: []const ManagedLocal,
 ) !ExitPlan {
-    return buildBlockExitPlanWithFacts(allocator, locals, .{});
+    return build_block_exit_plan_with_facts(allocator, locals, .{});
 }
 
-pub fn buildReturnExitPlanWithFacts(
-    allocator: std.mem.Allocator,
-    locals: []const ManagedLocal,
-    facts: PathCleanupFacts,
-) !ExitPlan {
-    return buildLocalExitPlan(allocator, .return_stmt, .return_cleanup, locals, facts, false);
-}
-
-pub fn buildGuardReturnExitPlanWithFacts(
+pub fn build_return_exit_plan_with_facts(
     allocator: std.mem.Allocator,
     locals: []const ManagedLocal,
     facts: PathCleanupFacts,
 ) !ExitPlan {
-    return buildLocalExitPlan(allocator, .guard_return, .guard_return_cleanup, locals, facts, false);
+    return build_local_exit_plan(allocator, .return_stmt, .return_cleanup, locals, facts, false);
 }
 
-pub fn buildFallthroughExitPlanWithFacts(
+pub fn build_guard_return_exit_plan_with_facts(
     allocator: std.mem.Allocator,
     locals: []const ManagedLocal,
     facts: PathCleanupFacts,
 ) !ExitPlan {
-    return buildLocalExitPlan(allocator, .fallthrough, .fallthrough_cleanup, locals, facts, false);
+    return build_local_exit_plan(allocator, .guard_return, .guard_return_cleanup, locals, facts, false);
 }
 
-pub fn buildBlockExitPlanWithFacts(
+pub fn build_fallthrough_exit_plan_with_facts(
     allocator: std.mem.Allocator,
     locals: []const ManagedLocal,
     facts: PathCleanupFacts,
 ) !ExitPlan {
-    return buildLocalExitPlan(allocator, .block_exit, .block_exit, locals, facts, true);
+    return build_local_exit_plan(allocator, .fallthrough, .fallthrough_cleanup, locals, facts, false);
 }
 
-pub fn buildLoopControlExitPlan(
+pub fn build_block_exit_plan_with_facts(
+    allocator: std.mem.Allocator,
+    locals: []const ManagedLocal,
+    facts: PathCleanupFacts,
+) !ExitPlan {
+    return build_local_exit_plan(allocator, .block_exit, .block_exit, locals, facts, true);
+}
+
+pub fn build_loop_control_exit_plan(
     allocator: std.mem.Allocator,
     kind: ExitKind,
     frames: []const LoopFrame,
@@ -131,13 +131,13 @@ pub fn buildLoopControlExitPlan(
     errdefer steps.deinit(allocator);
 
     for (frames) |frame| {
-        try appendReverseLocals(&steps, allocator, frame.locals, releaseSkipNamesForFacts(frame.path_facts), .loop_control, true);
+        try append_reverse_locals(&steps, allocator, frame.locals, release_skip_names_for_facts(frame.path_facts), .loop_control, true);
     }
 
-    return ownedPlan(allocator, kind, &steps);
+    return owned_plan(allocator, kind, &steps);
 }
 
-fn buildLocalExitPlan(
+fn build_local_exit_plan(
     allocator: std.mem.Allocator,
     kind: ExitKind,
     reason: ReleaseReason,
@@ -148,16 +148,16 @@ fn buildLocalExitPlan(
     var steps = std.ArrayList(ReleaseStep).empty;
     errdefer steps.deinit(allocator);
 
-    try appendReverseLocals(&steps, allocator, locals, releaseSkipNamesForFacts(facts), reason, clear_after_release);
-    return ownedPlan(allocator, kind, &steps);
+    try append_reverse_locals(&steps, allocator, locals, release_skip_names_for_facts(facts), reason, clear_after_release);
+    return owned_plan(allocator, kind, &steps);
 }
 
-fn releaseSkipNamesForFacts(facts: PathCleanupFacts) []const []const u8 {
+fn release_skip_names_for_facts(facts: PathCleanupFacts) []const []const u8 {
     if (!facts.cleanup_visible) return &.{};
     return facts.release_skip_names;
 }
 
-fn appendReverseLocals(
+fn append_reverse_locals(
     steps: *std.ArrayList(ReleaseStep),
     allocator: std.mem.Allocator,
     locals: []const ManagedLocal,
@@ -169,7 +169,7 @@ fn appendReverseLocals(
     while (i > 0) {
         i -= 1;
         const local = locals[i];
-        if (hasName(skip_names, local.name)) continue;
+        if (has_name(skip_names, local.name)) continue;
         try steps.append(allocator, .{
             .local_name = local.name,
             .kind = local.kind,
@@ -179,7 +179,7 @@ fn appendReverseLocals(
     }
 }
 
-fn ownedPlan(
+fn owned_plan(
     allocator: std.mem.Allocator,
     kind: ExitKind,
     steps: *std.ArrayList(ReleaseStep),
@@ -198,7 +198,7 @@ fn ownedPlan(
     };
 }
 
-fn hasName(names: []const []const u8, name: []const u8) bool {
+fn has_name(names: []const []const u8, name: []const u8) bool {
     for (names) |candidate| {
         if (std.mem.eql(u8, candidate, name)) return true;
     }
@@ -217,7 +217,7 @@ test "return exit plan facts can skip selected releases" {
         .release_skip_names = &.{"moved_value"},
     };
 
-    const plan = try buildReturnExitPlanWithFacts(allocator, &locals, facts);
+    const plan = try build_return_exit_plan_with_facts(allocator, &locals, facts);
     defer plan.deinit(allocator);
 
     try std.testing.expectEqual(ExitKind.return_stmt, plan.kind);
@@ -248,7 +248,7 @@ test "loop control exit plan honors per-frame release skips" {
         },
     };
 
-    const plan = try buildLoopControlExitPlan(allocator, .break_stmt, &frames);
+    const plan = try build_loop_control_exit_plan(allocator, .break_stmt, &frames);
     defer plan.deinit(allocator);
 
     try std.testing.expectEqual(ExitKind.break_stmt, plan.kind);

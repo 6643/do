@@ -12,7 +12,7 @@ const constants = @import("codegen_constants.zig");
 const context = @import("codegen_context.zig");
 const codegen_union_layout = @import("codegen_union_layout.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
-const gen_collect_util = @import("gen_collect_util.zig");
+const codegen_collect_util = @import("codegen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
 const codegen_imports = @import("codegen_imports.zig");
@@ -33,8 +33,8 @@ const Range = codegen_tokens.Range;
 const align_up = codegen_tokens.align_up;
 const STORAGE_OVERWRITE_TMP_LOCAL = constants.STORAGE_OVERWRITE_TMP_LOCAL;
 const WASI_FAMILY_TMP_LOCAL = constants.WASI_FAMILY_TMP_LOCAL;
-const find_value_enum_decl = codegen_imports.findValueEnumDecl;
-const is_error_like_type = gen_collect_util.isErrorLikeType;
+const find_value_enum_decl = codegen_imports.find_value_enum_decl;
+const is_error_like_type = codegen_collect_util.is_error_like_type;
 const module_tokens_equal = codegen_tokens.module_tokens_equal;
 
 const LocalSet = context.LocalSet;
@@ -52,11 +52,11 @@ const HostImport = model.HostImport;
 const TYPE_ID_STORAGE_U8 = constants.TYPE_ID_STORAGE_U8;
 const TYPE_ID_STORAGE_MANAGED = constants.TYPE_ID_STORAGE_MANAGED;
 const TYPE_ID_FIRST_STRUCT = constants.TYPE_ID_FIRST_STRUCT;
-const find_local_type = context.findLocalType;
-const find_storage_local = context.findStorageLocal;
-const find_struct_local = context.findStructLocal;
-const find_union_local = context.findUnionLocal;
-const storage_type_name_for_elem = context.storageTypeNameForElem;
+const find_local_type = context.find_local_type;
+const find_storage_local = context.find_storage_local;
+const find_struct_local = context.find_struct_local;
+const find_union_local = context.find_union_local;
+const storage_type_name_for_elem = context.storage_type_name_for_elem;
 
 const UnionLayout = codegen_union_layout.UnionLayout;
 const UnionBranch = codegen_union_layout.UnionBranch;
@@ -76,11 +76,11 @@ const wasi_coarse_closed_variant_name = codegen_wasi_registry.wasi_coarse_closed
 const wasi_coarse_error_always_failed = codegen_wasi_registry.wasi_coarse_error_always_failed;
 const WASI_BINDING_ENTRY_SOURCE = codegen_wasi_registry.WASI_BINDING_ENTRY_SOURCE;
 
-const find_wasi_host_import_for_tokens = codegen_imports.findWasiHostImportForTokens;
-const wasi_source_for_tokens = codegen_imports.wasiSourceForTokens;
-const find_root_module_index = codegen_imports.findRootModuleIndex;
-const expr_call_head = codegen_imports.exprCallHead;
-const call_head_at = codegen_imports.callHeadAt;
+const find_wasi_host_import_for_tokens = codegen_imports.find_wasi_host_import_for_tokens;
+const wasi_source_for_tokens = codegen_imports.wasi_source_for_tokens;
+const find_root_module_index = codegen_imports.find_root_module_index;
+const expr_call_head = codegen_imports.expr_call_head;
+const call_head_at = codegen_imports.call_head_at;
 
 fn emit_wasi_family_arg(
     allocator: std.mem.Allocator,
@@ -110,15 +110,15 @@ fn emit_wasi_family_arg(
     return true;
 }
 
-const find_struct_decl = gen_collect_util.findStructDecl;
-const find_struct_layout = gen_collect_util.findStructLayout;
+const find_struct_decl = codegen_collect_util.find_struct_decl;
+const find_struct_layout = codegen_collect_util.find_struct_layout;
 const find_struct_layout_exact = codegen_collect_structs.find_struct_layout_exact;
 const is_pack_managed_handle_leaf = codegen_collect_structs.is_pack_managed_handle_leaf;
 const leaf_payload_bytes_for_pack = codegen_collect_structs.leaf_payload_bytes_for_pack;
-const pure_scalar_struct_pack_width = gen_collect_util.pureScalarStructPackWidth;
-const pack_slot_width = gen_collect_util.packSlotWidth;
-const tuple_pack_width_with_structs = gen_collect_util.tuplePackWidthWithStructs;
-const func_param_abi_type = gen_collect_util.funcParamAbiType;
+const pure_scalar_struct_pack_width = codegen_collect_util.pure_scalar_struct_pack_width;
+const pack_slot_width = codegen_collect_util.pack_slot_width;
+const tuple_pack_width_with_structs = codegen_collect_util.tuple_pack_width_with_structs;
+const func_param_abi_type = codegen_collect_util.func_param_abi_type;
 
 /// Callback into codegen_pipeline emit_expr (breaks import cycle).
 pub const EmitExprFn = *const fn (
@@ -2149,42 +2149,42 @@ pub fn codegen_wasm_type(ctx: CodegenContext, ty: []const u8) []const u8 {
 }
 
 pub fn type_payload_bytes(ty: []const u8) usize {
-    return type_util.typePayloadBytes(ty);
+    return type_util.type_payload_bytes(ty);
 }
 
 pub fn type_payload_alignment(ty: []const u8) usize {
-    return type_util.typePayloadAlignment(ty);
+    return type_util.type_payload_alignment(ty);
 }
 
 pub fn is_managed_payload_type(ty: []const u8) bool {
-    return type_util.isManagedPayloadType(ty);
+    return type_util.is_managed_payload_type(ty);
 }
 
 pub fn is_storage_type_name(ty: []const u8) bool {
-    return type_util.isStorageTypeName(ty);
+    return type_util.is_storage_type_name(ty);
 }
 
 pub fn storage_elem_type_from_name(ty: []const u8) ?[]const u8 {
-    return type_util.storageElemTypeFromName(ty);
+    return type_util.storage_elem_type_from_name(ty);
 }
 
 pub fn storage_element_byte_width(elem_ty: []const u8) ?usize {
-    return type_util.storageElementByteWidth(elem_ty);
+    return type_util.storage_element_byte_width(elem_ty);
 }
 
-/// Pure-scalar unmanaged struct nested pack width (declaration order + alignUp, no managed fields).
-/// Pure-scalar unmanaged struct nested pack width (declaration order + alignUp, no managed fields).
+/// Pure-scalar unmanaged struct nested pack width (declaration order + align_up, no managed fields).
+/// Pure-scalar unmanaged struct nested pack width (declaration order + align_up, no managed fields).
 pub fn tuple_scalar_leaf_storage_byte_width(tuple_ty: []const u8) ?usize {
-    return type_util.tupleScalarLeafStorageByteWidth(tuple_ty);
+    return type_util.tuple_scalar_leaf_storage_byte_width(tuple_ty);
 }
 
 pub fn tuple_scalar_leaf_storage_byte_width_ctx(tuple_ty: []const u8, ctx: CodegenContext) ?usize {
     if (tuple_pack_width_with_structs(tuple_ty, ctx.structs)) |w| return w;
-    return type_util.tupleScalarLeafStorageByteWidth(tuple_ty);
+    return type_util.tuple_scalar_leaf_storage_byte_width(tuple_ty);
 }
 
 pub fn tuple_has_managed_pack_leaf(tuple_ty: []const u8) bool {
-    return type_util.tupleHasManagedPackLeaf(tuple_ty);
+    return type_util.tuple_has_managed_pack_leaf(tuple_ty);
 }
 
 pub fn tuple_has_managed_pack_leaf_with_structs(tuple_ty: []const u8, structs: []const StructDecl) bool {
@@ -2227,13 +2227,13 @@ pub fn append_load_for_payload_type(
 }
 
 pub fn is_tuple_type_name(ty: []const u8) bool {
-    return type_util.isTupleTypeName(ty);
+    return type_util.is_tuple_type_name(ty);
 }
 
 pub fn tuple_arity(tuple_ty: []const u8) ?usize {
-    return type_util.tupleArity(tuple_ty);
+    return type_util.tuple_arity(tuple_ty);
 }
 
 pub fn tuple_element_type_at(tuple_ty: []const u8, idx: usize) ?[]const u8 {
-    return type_util.tupleElementTypeAt(tuple_ty, idx);
+    return type_util.tuple_element_type_at(tuple_ty, idx);
 }

@@ -9,7 +9,7 @@ pub const DepRoot = struct {
     }
 };
 
-pub fn resolveDepRoot(allocator: std.mem.Allocator, environ_map: *std.process.Environ.Map) !DepRoot {
+pub fn resolve_dep_root(allocator: std.mem.Allocator, environ_map: *std.process.Environ.Map) !DepRoot {
     if (environ_map.get("DO_LIB_ROOT")) |path| {
         return .{ .path = path, .owned = false };
     }
@@ -21,12 +21,12 @@ pub fn resolveDepRoot(allocator: std.mem.Allocator, environ_map: *std.process.En
     };
 }
 
-test "resolveDepRoot prefers DO_LIB_ROOT" {
+test "resolve_dep_root prefers DO_LIB_ROOT" {
     var env = std.process.Environ.Map.init(std.testing.allocator);
     defer env.deinit();
     try env.put("DO_LIB_ROOT", "deps/lib");
 
-    const dep_root = try resolveDepRoot(std.testing.allocator, &env);
+    const dep_root = try resolve_dep_root(std.testing.allocator, &env);
     defer dep_root.deinit(std.testing.allocator);
 
     try std.testing.expectEqualStrings("deps/lib", dep_root.path);

@@ -15,16 +15,16 @@ pub const WorkspaceSymbol = struct {
     detail: ?[]const u8 = null,
 };
 
-pub fn collectWorkspaceSymbols(
+pub fn collect_workspace_symbols(
     io: std.Io,
     allocator: std.mem.Allocator,
     root_uris: []const []const u8,
 ) ![]WorkspaceSymbol {
     var symbols = try std.ArrayList(WorkspaceSymbol).initCapacity(allocator, 0);
-    errdefer freeWorkspaceSymbolList(allocator, &symbols);
+    errdefer free_workspace_symbol_list(allocator, &symbols);
 
     for (root_uris) |root_uri| {
-        const root_path = fileUriPath(root_uri) orelse continue;
+        const root_path = file_uri_path(root_uri) orelse continue;
         var dir = std.Io.Dir.openDirAbsolute(io, root_path, .{
             .iterate = true,
             .access_sub_paths = true,
@@ -39,21 +39,21 @@ pub fn collectWorkspaceSymbols(
             const source = dir.readFileAlloc(io, entry.name, allocator, .limited(16 * 1024 * 1024)) catch continue;
             defer allocator.free(source);
 
-            const file_uri = try joinFileUri(allocator, root_uri, entry.name);
+            const file_uri = try join_file_uri(allocator, root_uri, entry.name);
             defer allocator.free(file_uri);
-            try appendSourceSymbols(allocator, &symbols, file_uri, source);
+            try append_source_symbols(allocator, &symbols, file_uri, source);
         }
     }
 
     return symbols.toOwnedSlice(allocator);
 }
 
-pub fn freeWorkspaceSymbols(allocator: std.mem.Allocator, symbols: []WorkspaceSymbol) void {
+pub fn free_workspace_symbols(allocator: std.mem.Allocator, symbols: []WorkspaceSymbol) void {
     var list = std.ArrayList(WorkspaceSymbol).fromOwnedSlice(symbols);
-    freeWorkspaceSymbolList(allocator, &list);
+    free_workspace_symbol_list(allocator, &list);
 }
 
-pub fn freeWorkspaceSymbolList(allocator: std.mem.Allocator, symbols: *std.ArrayList(WorkspaceSymbol)) void {
+pub fn free_workspace_symbol_list(allocator: std.mem.Allocator, symbols: *std.ArrayList(WorkspaceSymbol)) void {
     for (symbols.items) |symbol| {
         allocator.free(symbol.name);
         allocator.free(symbol.uri);
@@ -62,7 +62,7 @@ pub fn freeWorkspaceSymbolList(allocator: std.mem.Allocator, symbols: *std.Array
     symbols.deinit(allocator);
 }
 
-fn fileUriPath(uri: []const u8) ?[]const u8 {
+fn file_uri_path(uri: []const u8) ?[]const u8 {
     const prefix = "file://";
     if (!std.mem.startsWith(u8, uri, prefix)) return null;
     const path = uri[prefix.len..];
@@ -71,14 +71,14 @@ fn fileUriPath(uri: []const u8) ?[]const u8 {
     return path;
 }
 
-fn joinFileUri(allocator: std.mem.Allocator, root_uri: []const u8, file_name: []const u8) ![]const u8 {
+fn join_file_uri(allocator: std.mem.Allocator, root_uri: []const u8, file_name: []const u8) ![]const u8 {
     if (std.mem.endsWith(u8, root_uri, "/")) {
         return std.fmt.allocPrint(allocator, "{s}{s}", .{ root_uri, file_name });
     }
     return std.fmt.allocPrint(allocator, "{s}/{s}", .{ root_uri, file_name });
 }
 
-fn appendSourceSymbols(
+fn append_source_symbols(
     allocator: std.mem.Allocator,
     symbols: *std.ArrayList(WorkspaceSymbol),
     uri: []const u8,
@@ -100,19 +100,19 @@ fn appendSourceSymbols(
             continue;
         }
         if (depth != 0 or token.kind != .ident) continue;
-        if (isKeyword(token.lexeme) or isFieldName(token.lexeme)) continue;
+        if (is_keyword(token.lexeme) or is_field_name(token.lexeme)) continue;
 
-        if (isFunctionHead(tokens, idx)) {
-            try appendSymbol(allocator, symbols, uri, token, .function, signatureHead(source, token.line));
+        if (is_function_head(tokens, idx)) {
+            try append_symbol(allocator, symbols, uri, token, .function, signature_head(source, token.line));
             continue;
         }
-        if (isTypeDecl(tokens, idx)) {
-            try appendSymbol(allocator, symbols, uri, token, .type_name, declarationHead(source, token.line));
+        if (is_type_decl(tokens, idx)) {
+            try append_symbol(allocator, symbols, uri, token, .type_name, declaration_head(source, token.line));
         }
     }
 }
 
-fn appendSymbol(
+fn append_symbol(
     allocator: std.mem.Allocator,
     symbols: *std.ArrayList(WorkspaceSymbol),
     uri: []const u8,
@@ -133,12 +133,12 @@ fn appendSymbol(
         .name = owned_name,
         .kind = kind,
         .uri = owned_uri,
-        .range = tokenRange(token),
+        .range = token_range(token),
         .detail = owned_detail,
     });
 }
 
-fn isFunctionHead(tokens: []const lexer.Token, idx: usize) bool {
+fn is_function_head(tokens: []const lexer.Token, idx: usize) bool {
     if (idx + 1 >= tokens.len) return false;
     const token = tokens[idx];
     const next = tokens[idx + 1];
@@ -147,8 +147,8 @@ fn isFunctionHead(tokens: []const lexer.Token, idx: usize) bool {
     return next.kind == .symbol and std.mem.eql(u8, next.lexeme, "(");
 }
 
-fn isTypeDecl(tokens: []const lexer.Token, idx: usize) bool {
-    if (!isTypeName(tokens[idx].lexeme)) return false;
+fn is_type_decl(tokens: []const lexer.Token, idx: usize) bool {
+    if (!is_type_name(tokens[idx].lexeme)) return false;
     if (tokens[idx].col != 1) return false;
     if (idx + 1 >= tokens.len) return false;
     const next = tokens[idx + 1];
@@ -162,7 +162,7 @@ fn isTypeDecl(tokens: []const lexer.Token, idx: usize) bool {
     return after.kind == .symbol and std.mem.eql(u8, after.lexeme, "=");
 }
 
-fn tokenRange(token: lexer.Token) protocol.Range {
+fn token_range(token: lexer.Token) protocol.Range {
     const line = if (token.line == 0) 0 else token.line - 1;
     const start = if (token.col == 0) 0 else token.col - 1;
     return .{
@@ -171,8 +171,8 @@ fn tokenRange(token: lexer.Token) protocol.Range {
     };
 }
 
-fn signatureHead(source: []const u8, one_based_line: usize) ?[]const u8 {
-    const line = lineSlice(source, one_based_line) orelse return null;
+fn signature_head(source: []const u8, one_based_line: usize) ?[]const u8 {
+    const line = line_slice(source, one_based_line) orelse return null;
     const body_start = if (std.mem.indexOf(u8, line, "{")) |idx|
         idx
     else if (std.mem.indexOf(u8, line, "=>")) |idx|
@@ -182,12 +182,12 @@ fn signatureHead(source: []const u8, one_based_line: usize) ?[]const u8 {
     return std.mem.trim(u8, line[0..body_start], " \t\r\n");
 }
 
-fn declarationHead(source: []const u8, one_based_line: usize) ?[]const u8 {
-    const line = lineSlice(source, one_based_line) orelse return null;
+fn declaration_head(source: []const u8, one_based_line: usize) ?[]const u8 {
+    const line = line_slice(source, one_based_line) orelse return null;
     return std.mem.trim(u8, line, " \t\r\n");
 }
 
-fn lineSlice(source: []const u8, one_based_line: usize) ?[]const u8 {
+fn line_slice(source: []const u8, one_based_line: usize) ?[]const u8 {
     if (one_based_line == 0) return null;
 
     var line: usize = 1;
@@ -204,15 +204,15 @@ fn lineSlice(source: []const u8, one_based_line: usize) ?[]const u8 {
     return null;
 }
 
-fn isTypeName(name: []const u8) bool {
+fn is_type_name(name: []const u8) bool {
     return name.len > 0 and std.ascii.isUpper(name[0]);
 }
 
-fn isFieldName(name: []const u8) bool {
+fn is_field_name(name: []const u8) bool {
     return name.len > 1 and name[0] == '.';
 }
 
-fn isKeyword(name: []const u8) bool {
+fn is_keyword(name: []const u8) bool {
     const keywords = [_][]const u8{
         "if",
         "else",
@@ -233,7 +233,7 @@ fn isKeyword(name: []const u8) bool {
     return false;
 }
 
-test "collectWorkspaceSymbols scans do files under file workspace root" {
+test "collect_workspace_symbols scans do files under file workspace root" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
@@ -264,15 +264,15 @@ test "collectWorkspaceSymbols scans do files under file workspace root" {
     const root_uri = try std.fmt.allocPrint(std.testing.allocator, "file://{s}", .{root_path});
     defer std.testing.allocator.free(root_uri);
 
-    const symbols = try collectWorkspaceSymbols(std.testing.io, std.testing.allocator, &.{root_uri});
-    defer freeWorkspaceSymbols(std.testing.allocator, symbols);
+    const symbols = try collect_workspace_symbols(std.testing.io, std.testing.allocator, &.{root_uri});
+    defer free_workspace_symbols(std.testing.allocator, symbols);
 
-    try expectWorkspaceSymbol(symbols, "User", .type_name, "file://", 0, 0);
-    try expectWorkspaceSymbol(symbols, "get_title", .function, "file://", 4, 0);
-    try expectNoWorkspaceSymbol(symbols, "Ignored");
+    try expect_workspace_symbol(symbols, "User", .type_name, "file://", 0, 0);
+    try expect_workspace_symbol(symbols, "get_title", .function, "file://", 4, 0);
+    try expect_no_workspace_symbol(symbols, "Ignored");
 }
 
-fn expectWorkspaceSymbol(
+fn expect_workspace_symbol(
     symbols: []const WorkspaceSymbol,
     name: []const u8,
     kind: WorkspaceSymbolKind,
@@ -291,7 +291,7 @@ fn expectWorkspaceSymbol(
     return error.MissingWorkspaceSymbol;
 }
 
-fn expectNoWorkspaceSymbol(symbols: []const WorkspaceSymbol, name: []const u8) !void {
+fn expect_no_workspace_symbol(symbols: []const WorkspaceSymbol, name: []const u8) !void {
     for (symbols) |symbol| {
         if (std.mem.eql(u8, symbol.name, name)) return error.UnexpectedWorkspaceSymbol;
     }

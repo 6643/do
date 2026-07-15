@@ -7,7 +7,7 @@ const codegen_names = @import("codegen_names.zig");
 const model = @import("codegen_model.zig");
 const constants = @import("codegen_constants.zig");
 const context = @import("codegen_context.zig");
-const gen_collect_util = @import("gen_collect_util.zig");
+const codegen_collect_util = @import("codegen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
 const codegen_imports = @import("codegen_imports.zig");
@@ -31,22 +31,22 @@ const test_runner = @import("test_runner.zig");
 const payload_wat = @import("wat_payload.zig");
 const storage_wat = @import("wat_storage.zig");
 
-const appendLoopSourceStorageLocal = context.appendLoopSourceStorageLocal;
-const parseUnionTypeLayout = gen_collect_util.parseUnionTypeLayout;
+const append_loop_source_storage_local = context.append_loop_source_storage_local;
+const parse_union_type_layout = codegen_collect_util.parse_union_type_layout;
 const InferredUnionBinding = model.InferredUnionBinding;
-const findUnionLocalExact = context.findUnionLocalExact;
+const find_union_local_exact = context.find_union_local_exact;
 const MultiResultLhs = model.MultiResultLhs;
 const SourceOrigin = model.SourceOrigin;
-const findPayloadEnumDecl = codegen_imports.findPayloadEnumDecl;
-const tokEq = codegen_tokens.tok_eq;
-const findMatchingInRange = codegen_tokens.find_matching_in_range;
-const findTopLevelToken = codegen_tokens.find_top_level_token;
-const findArgEnd = codegen_tokens.find_arg_end;
-const trimParens = codegen_tokens.trim_parens;
+const find_payload_enum_decl = codegen_imports.find_payload_enum_decl;
+const tok_eq = codegen_tokens.tok_eq;
+const find_matching_in_range = codegen_tokens.find_matching_in_range;
+const find_top_level_token = codegen_tokens.find_top_level_token;
+const find_arg_end = codegen_tokens.find_arg_end;
+const trim_parens = codegen_tokens.trim_parens;
 const publicDeclName = codegen_names.public_decl_name;
-const appendFmt = codegen_names.append_fmt;
+const append_fmt = codegen_names.append_fmt;
 const findTopLevelBlockOpen = codegen_tokens.find_top_level_block_open;
-const findStmtEnd = codegen_tokens.find_stmt_end;
+const find_stmt_end = codegen_tokens.find_stmt_end;
 const LocalSet = context.LocalSet;
 const CodegenContext = context.CodegenContext;
 const CodegenError = model.CodegenError;
@@ -60,24 +60,24 @@ const CallbackBinding = model.CallbackBinding;
 const CallbackCallArg = model.CallbackCallArg;
 const ExprCallHead = model.ExprCallHead;
 const STORAGE_OVERWRITE_TMP_LOCAL = constants.STORAGE_OVERWRITE_TMP_LOCAL;
-const findLocalType = context.findLocalType;
-const findStorageLocal = context.findStorageLocal;
-const findStructLocal = context.findStructLocal;
-const findUnionLocal = context.findUnionLocal;
-const hasLocal = context.hasLocal;
+const find_local_type = context.find_local_type;
+const find_storage_local = context.find_storage_local;
+const find_struct_local = context.find_struct_local;
+const find_union_local = context.find_union_local;
+const has_local = context.has_local;
 const UnionLayout = codegen_union_layout.UnionLayout;
 const freeUnionLayout = codegen_union_layout.free_union_layout;
 const cloneUnionLayout = codegen_union_layout.clone_union_layout;
 const unionLayoutsEqual = codegen_union_layout.union_layouts_equal;
-const findStructDecl = gen_collect_util.findStructDecl;
-const findStructLayout = gen_collect_util.findStructLayout;
-const pureScalarStructPackWidth = gen_collect_util.pureScalarStructPackWidth;
-const parseCodegenTypeExpr = gen_collect_util.parseCodegenTypeExpr;
+const find_struct_decl = codegen_collect_util.find_struct_decl;
+const find_struct_layout = codegen_collect_util.find_struct_layout;
+const pure_scalar_struct_pack_width = codegen_collect_util.pure_scalar_struct_pack_width;
+const parse_codegen_type_expr = codegen_collect_util.parse_codegen_type_expr;
 const parse_type_union_layout_from_name = codegen_collect_structs.parse_type_union_layout_from_name;
-const substituteGenericTypeOwned = gen_collect_util.substituteGenericTypeOwned;
-const callHeadAt = codegen_imports.callHeadAt;
-const exprCallHead = codegen_imports.exprCallHead;
-const importedAliasContextForTokens = codegen_imports.importedAliasContextForTokens;
+const substitute_generic_type_owned = codegen_collect_util.substitute_generic_type_owned;
+const call_head_at = codegen_imports.call_head_at;
+const expr_call_head = codegen_imports.expr_call_head;
+const imported_alias_context_for_tokens = codegen_imports.imported_alias_context_for_tokens;
 const is_managed_local_type = codegen_emit_wasi.is_managed_local_type;
 const is_tuple_type_name = codegen_emit_wasi.is_tuple_type_name;
 const tuple_arity = codegen_emit_wasi.tuple_arity;
@@ -123,8 +123,8 @@ fn stmt_contains_wasi_socket_create(
 ) bool {
     var i = start_idx;
     while (i + 1 < end_idx) : (i += 1) {
-        if (tokens[i].kind != .ident or !tokEq(tokens[i + 1], "(")) continue;
-        const import = codegen_imports.findWasiHostImportForTokens(ctx, tokens, tokens[i].lexeme) orelse continue;
+        if (tokens[i].kind != .ident or !tok_eq(tokens[i + 1], "(")) continue;
+        const import = codegen_imports.find_wasi_host_import_for_tokens(ctx, tokens, tokens[i].lexeme) orelse continue;
         if (std.mem.eql(u8, import.target, "sockets/types/tcp-socket.create") or
             std.mem.eql(u8, import.target, "sockets/types/udp-socket.create"))
         {
@@ -147,7 +147,7 @@ pub fn emit_self_tail_loop_local_reset(allocator: std.mem.Allocator, func: FuncD
         }
         if (is_param) continue;
         try emit_zero_value_for_type(allocator, ctx, out, local.ty);
-        try appendFmt(allocator, out, "    local.set ${s}\n", .{local.name});
+        try append_fmt(allocator, out, "    local.set ${s}\n", .{local.name});
     }
 }
 
@@ -162,27 +162,27 @@ pub fn multi_result_lhs_for_item(
     ctx: CodegenContext,
 ) ?MultiResultLhs {
     if (item.union_layout) |layout| {
-        const union_local = findUnionLocal(locals.union_locals.items, name) orelse return null;
+        const union_local = find_union_local(locals.union_locals.items, name) orelse return null;
         if (!unionLayoutsEqual(union_local.layout, layout)) return null;
         return .{ .name = union_local.name, .ty = item.ty, .item = item, .kind = .union_value };
     }
 
-    if (findStructLocal(locals.struct_locals.items, name)) |struct_local| {
+    if (find_struct_local(locals.struct_locals.items, name)) |struct_local| {
         if (!std.mem.eql(u8, struct_local.ty, item.ty)) return null;
-        if (findStructLayout(ctx.struct_layouts, item.ty) != null) {
+        if (find_struct_layout(ctx.struct_layouts, item.ty) != null) {
             const local_name = find_local_name(locals.locals.items, name) orelse return null;
-            const local_ty = findLocalType(locals.locals.items, name) orelse return null;
+            const local_ty = find_local_type(locals.locals.items, name) orelse return null;
             if (!std.mem.eql(u8, local_ty, item.ty)) return null;
             if (item.abi_len != 1) return null;
             return .{ .name = local_name, .ty = local_ty, .item = item, .kind = .managed };
         }
-        const decl = findStructDecl(ctx.structs, item.ty) orelse return null;
+        const decl = find_struct_decl(ctx.structs, item.ty) orelse return null;
         if (item.abi_len != decl.fields.len) return null;
         return .{ .name = struct_local.name, .ty = item.ty, .item = item, .kind = .unmanaged_struct };
     }
 
     const local_name = find_local_name(locals.locals.items, name) orelse return null;
-    const local_ty = findLocalType(locals.locals.items, name) orelse return null;
+    const local_ty = find_local_type(locals.locals.items, name) orelse return null;
     if (!std.mem.eql(u8, local_ty, item.ty)) return null;
     if (item.abi_len != 1) return null;
     if (is_managed_local_type(local_ty, ctx)) {
@@ -202,8 +202,8 @@ pub fn collect_callback_call_args(allocator: std.mem.Allocator, tokens: []const 
     var idx: usize = 0;
     while (arg_start < call_head.args_end) {
         if (idx >= binding.lambda_params.len or idx >= binding.shape.param_types.len) return error.NoMatchingCall;
-        const arg_end = findArgEnd(tokens, arg_start, call_head.args_end);
-        const range = trimParens(tokens, arg_start, arg_end);
+        const arg_end = find_arg_end(tokens, arg_start, call_head.args_end);
+        const range = trim_parens(tokens, arg_start, arg_end);
         const actual_name: ?[]const u8 = if (range.end == range.start + 1 and tokens[range.start].kind == .ident)
             tokens[range.start].lexeme
         else
@@ -219,7 +219,7 @@ pub fn collect_callback_call_args(allocator: std.mem.Allocator, tokens: []const 
         });
         idx += 1;
         arg_start = arg_end;
-        if (arg_start < call_head.args_end and tokEq(tokens[arg_start], ",")) arg_start += 1;
+        if (arg_start < call_head.args_end and tok_eq(tokens[arg_start], ",")) arg_start += 1;
     }
     if (idx != binding.lambda_params.len) return error.NoMatchingCall;
     return out.toOwnedSlice(allocator);
@@ -242,8 +242,8 @@ fn append_struct_binding_field_locals(
     decl: StructDecl,
     substitute: bool,
 ) CodegenError!void {
-    if (findStructLayout(ctx.struct_layouts, struct_ty) != null) {
-        try out.appendBorrowedLocal(allocator, local_name, struct_ty, true);
+    if (find_struct_layout(ctx.struct_layouts, struct_ty) != null) {
+        try out.append_borrowed_local(allocator, local_name, struct_ty, true);
         for (decl.fields) |field| {
             const field_ty = if (substitute)
                 try substitute_struct_field_type(allocator, decl, struct_ty, field.ty, &out.owned_names)
@@ -251,7 +251,7 @@ fn append_struct_binding_field_locals(
                 field.ty;
             try append_managed_struct_field_meta_local(allocator, out, local_name, field.name, field_ty);
         }
-        try out.ensureStorageWriteTemps(allocator);
+        try out.ensure_storage_write_temps(allocator);
         return;
     }
     for (decl.fields) |field| {
@@ -266,7 +266,7 @@ fn append_struct_binding_field_locals(
 pub fn collect_body_locals_with_mode(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext, out: *LocalSet, recurse_nested: bool) !void {
     var i = start_idx;
     while (i < end_idx) {
-        const stmt_end = findStmtEnd(tokens, i, end_idx);
+        const stmt_end = find_stmt_end(tokens, i, end_idx);
         if (stmt_contains_string_literal(tokens, i, stmt_end) or
             stmt_contains_field_name_intrinsic(tokens, i, stmt_end) or
             stmt_contains_storage_agg_literal(tokens, i, stmt_end) or
@@ -276,20 +276,20 @@ pub fn collect_body_locals_with_mode(allocator: std.mem.Allocator, tokens: []con
             stmt_contains_nil_comparison_call(tokens, i, stmt_end) or
             stmt_contains_union_payload_comparison_call(tokens, i, stmt_end, out, ctx))
         {
-            try out.ensureStorageWriteTemps(allocator);
+            try out.ensure_storage_write_temps(allocator);
         }
         if (stmt_contains_struct_literal_expr(tokens, i, stmt_end)) {
-            try out.ensureStructLiteralTmp(allocator);
+            try out.ensure_struct_literal_tmp(allocator);
         }
         if (stmt_contains_variadic_user_call(tokens, i, stmt_end, out, ctx)) {
-            try out.ensureStorageWriteTemps(allocator);
-            try out.ensureVariadicPackTmp(allocator);
+            try out.ensure_storage_write_temps(allocator);
+            try out.ensure_variadic_pack_tmp(allocator);
         }
         if (stmt_contains_numeric_select_intrinsic(tokens, i, stmt_end)) {
-            try out.ensureNumericSelectTemps(allocator);
+            try out.ensure_numeric_select_temps(allocator);
         }
         if (stmt_contains_wasi_socket_create(tokens, i, stmt_end, ctx)) {
-            try out.ensureWasiFamilyTmp(allocator);
+            try out.ensure_wasi_family_tmp(allocator);
         }
         if (is_discard_assignment(tokens, i, stmt_end)) {
             i = stmt_end;
@@ -308,84 +308,84 @@ pub fn collect_body_locals_with_mode(allocator: std.mem.Allocator, tokens: []con
         } else if (try typed_union_binding_layout(allocator, tokens, i, stmt_end, ctx, &out.owned_names)) |layout| {
             defer freeUnionLayout(allocator, layout);
             const local_layout = try cloneUnionLayout(allocator, layout);
-            try out.appendUnionLocal(allocator, tokens[i].lexeme, local_layout, true, true);
+            try out.append_union_local(allocator, tokens[i].lexeme, local_layout, true, true);
         } else if (try inferred_union_call_binding(allocator, tokens, i, stmt_end, out, ctx, &out.owned_names)) |binding| {
             errdefer if (binding.owns_layout) freeUnionLayout(allocator, binding.layout);
-            try out.appendUnionLocal(allocator, tokens[i].lexeme, binding.layout, true, binding.owns_layout);
+            try out.append_union_local(allocator, tokens[i].lexeme, binding.layout, true, binding.owns_layout);
         } else if (typed_scalar_binding_type(tokens, i, stmt_end, ctx)) |ty| {
-            try out.appendBorrowedLocal(allocator, tokens[i].lexeme, ty, true);
-        } else if (!hasLocal(out.locals.items, tokens[i].lexeme) and
-            findStructLocal(out.struct_locals.items, tokens[i].lexeme) == null and
+            try out.append_borrowed_local(allocator, tokens[i].lexeme, ty, true);
+        } else if (!has_local(out.locals.items, tokens[i].lexeme) and
+            find_struct_local(out.struct_locals.items, tokens[i].lexeme) == null and
             inferred_struct_ctor_binding(tokens, i, stmt_end, ctx.structs) != null)
         {
             // Unmanaged pure-scalar structs live in struct_locals + field slots (`out.n`),
             // not as a single `out` scalar local. Reassignment (e.g. `out = @field_set(...)`)
             // must not invent a field-reflection-scoped shadow binding.
             const decl = inferred_struct_ctor_binding(tokens, i, stmt_end, ctx.structs).?;
-            const local_name = try out.appendStructLocal(allocator, tokens[i].lexeme, decl.name, true);
+            const local_name = try out.append_struct_local(allocator, tokens[i].lexeme, decl.name, true);
             try append_struct_binding_field_locals(allocator, tokens, ctx, out, local_name, decl.name, decl, false);
-        } else if (!hasLocal(out.locals.items, tokens[i].lexeme) and
-            findStructLocal(out.struct_locals.items, tokens[i].lexeme) == null and
+        } else if (!has_local(out.locals.items, tokens[i].lexeme) and
+            find_struct_local(out.struct_locals.items, tokens[i].lexeme) == null and
             inferred_struct_binding(tokens, i, stmt_end, out, ctx) != null)
         {
             const binding = inferred_struct_binding(tokens, i, stmt_end, out, ctx).?;
-            const local_name = try out.appendStructLocal(allocator, tokens[i].lexeme, binding.ty, true);
+            const local_name = try out.append_struct_local(allocator, tokens[i].lexeme, binding.ty, true);
             try append_struct_binding_field_locals(allocator, tokens, ctx, out, local_name, binding.ty, binding.decl, true);
-        } else if (!hasLocal(out.locals.items, tokens[i].lexeme) and inferred_scalar_binding_type(tokens, i, stmt_end, out, ctx) != null) {
+        } else if (!has_local(out.locals.items, tokens[i].lexeme) and inferred_scalar_binding_type(tokens, i, stmt_end, out, ctx) != null) {
             const ty = inferred_scalar_binding_type(tokens, i, stmt_end, out, ctx).?;
-            try out.appendBorrowedLocal(allocator, tokens[i].lexeme, ty, true);
-        } else if (!hasLocal(out.locals.items, tokens[i].lexeme) and inferred_managed_payload_binding(tokens, i, stmt_end, out, ctx) != null) {
+            try out.append_borrowed_local(allocator, tokens[i].lexeme, ty, true);
+        } else if (!has_local(out.locals.items, tokens[i].lexeme) and inferred_managed_payload_binding(tokens, i, stmt_end, out, ctx) != null) {
             const binding = inferred_managed_payload_binding(tokens, i, stmt_end, out, ctx).?;
             if (is_tuple_type_name(binding.elem_ty) and tuple_scalar_leaf_storage_byte_width_ctx(binding.elem_ty, ctx) == null) {
                 return error.UnsupportedTupleStorageLeaf;
             }
-            try out.appendStorageLocalWithType(allocator, tokens[i].lexeme, binding.ty, binding.elem_ty, true);
-            try out.ensureStorageWriteTemps(allocator);
+            try out.append_storage_local_with_type(allocator, tokens[i].lexeme, binding.ty, binding.elem_ty, true);
+            try out.ensure_storage_write_temps(allocator);
             if (tuple_scalar_leaf_storage_byte_width_ctx(binding.elem_ty, ctx) != null) {
-                try out.ensureTuplePackTemps(allocator);
+                try out.ensure_tuple_pack_temps(allocator);
             }
         } else if (try typed_managed_payload_binding(allocator, tokens, i, stmt_end, ctx, &out.owned_names)) |binding| {
             if (is_tuple_type_name(binding.elem_ty) and tuple_scalar_leaf_storage_byte_width_ctx(binding.elem_ty, ctx) == null) {
                 return error.UnsupportedTupleStorageLeaf;
             }
-            try out.appendStorageLocalWithType(allocator, tokens[i].lexeme, binding.ty, binding.elem_ty, true);
-            try out.ensureStorageWriteTemps(allocator);
+            try out.append_storage_local_with_type(allocator, tokens[i].lexeme, binding.ty, binding.elem_ty, true);
+            try out.ensure_storage_write_temps(allocator);
             if (tuple_scalar_leaf_storage_byte_width_ctx(binding.elem_ty, ctx) != null) {
-                try out.ensureTuplePackTemps(allocator);
+                try out.ensure_tuple_pack_temps(allocator);
             }
         } else if (managed_payload_binding(tokens, i, stmt_end)) |binding| {
             if (is_tuple_type_name(binding.elem_ty) and tuple_scalar_leaf_storage_byte_width_ctx(binding.elem_ty, ctx) == null) {
                 return error.UnsupportedTupleStorageLeaf;
             }
-            try out.appendStorageLocalWithType(allocator, tokens[i].lexeme, binding.ty, binding.elem_ty, true);
-            try out.ensureStorageWriteTemps(allocator);
+            try out.append_storage_local_with_type(allocator, tokens[i].lexeme, binding.ty, binding.elem_ty, true);
+            try out.ensure_storage_write_temps(allocator);
             if (tuple_scalar_leaf_storage_byte_width_ctx(binding.elem_ty, ctx) != null) {
-                try out.ensureTuplePackTemps(allocator);
+                try out.ensure_tuple_pack_temps(allocator);
             }
         } else if (storage_binding_elem_type(tokens, i, stmt_end)) |raw_elem_ty| {
-            const elem_ty = try substituteGenericTypeOwned(allocator, raw_elem_ty, ctx.type_bindings, &out.owned_names);
+            const elem_ty = try substitute_generic_type_owned(allocator, raw_elem_ty, ctx.type_bindings, &out.owned_names);
             // Scheme A: scalar + managed handle + pure-scalar nested struct slots.
             if (is_tuple_type_name(elem_ty) and tuple_scalar_leaf_storage_byte_width_ctx(elem_ty, ctx) == null) {
                 return error.UnsupportedTupleStorageLeaf;
             }
-            try out.appendStorageLocal(allocator, tokens[i].lexeme, elem_ty, true);
-            try out.ensureStorageWriteTemps(allocator);
+            try out.append_storage_local(allocator, tokens[i].lexeme, elem_ty, true);
+            try out.ensure_storage_write_temps(allocator);
             if (tuple_scalar_leaf_storage_byte_width_ctx(elem_ty, ctx) != null) {
-                try out.ensureTuplePackTemps(allocator);
+                try out.ensure_tuple_pack_temps(allocator);
             }
         } else if (try collect_multi_result_assignment_locals(allocator, tokens, i, stmt_end, ctx, out)) {
             // Multi-result inferred locals collected.
         } else if (is_managed_local_assignment_stmt(tokens, i, stmt_end, out, ctx)) {
-            try out.ensureStorageWriteTemps(allocator);
+            try out.ensure_storage_write_temps(allocator);
         } else if (multi_result_assignment_needs_managed_tmp(tokens, i, stmt_end, out, ctx)) {
-            if (!hasLocal(out.locals.items, STORAGE_OVERWRITE_TMP_LOCAL)) {
-                try out.appendBorrowedLocal(allocator, STORAGE_OVERWRITE_TMP_LOCAL, "usize", true);
+            if (!has_local(out.locals.items, STORAGE_OVERWRITE_TMP_LOCAL)) {
+                try out.append_borrowed_local(allocator, STORAGE_OVERWRITE_TMP_LOCAL, "usize", true);
             }
         } else if (try typed_struct_binding(allocator, tokens, i, stmt_end, ctx, &out.owned_names)) |binding| {
-            const local_name = try out.appendStructLocal(allocator, tokens[i].lexeme, binding.ty, true);
+            const local_name = try out.append_struct_local(allocator, tokens[i].lexeme, binding.ty, true);
             try append_struct_binding_field_locals(allocator, tokens, ctx, out, local_name, binding.ty, binding.decl, true);
         } else if (try typed_tuple_binding_type(allocator, tokens, i, stmt_end, ctx, &out.owned_names)) |tuple_ty| {
-            const local_name = try out.appendStructLocal(allocator, tokens[i].lexeme, tuple_ty, true);
+            const local_name = try out.append_struct_local(allocator, tokens[i].lexeme, tuple_ty, true);
             try append_tuple_local_fields(allocator, out, tokens, ctx, local_name, tuple_ty);
         }
         i = stmt_end;
@@ -397,7 +397,7 @@ pub fn collect_body_locals_with_mode(allocator: std.mem.Allocator, tokens: []con
 pub fn stmt_contains_variadic_user_call(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext) bool {
     var i = start_idx;
     while (i + 1 < end_idx) : (i += 1) {
-        const call_head = callHeadAt(tokens, i, end_idx) orelse continue;
+        const call_head = call_head_at(tokens, i, end_idx) orelse continue;
         if (call_head.is_intrinsic) continue;
         const func = find_func_decl_for_call_head(tokens, call_head, locals, ctx) orelse {
             i = call_head.args_end;
@@ -412,7 +412,7 @@ pub fn stmt_contains_variadic_user_call(tokens: []const lexer.Token, start_idx: 
 pub fn stmt_contains_nil_comparison_call(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     var i = start_idx;
     while (i + 1 < end_idx) : (i += 1) {
-        const call_head = callHeadAt(tokens, i, end_idx) orelse continue;
+        const call_head = call_head_at(tokens, i, end_idx) orelse continue;
         if (!call_head.is_intrinsic) {
             i = call_head.args_end;
             continue;
@@ -422,19 +422,19 @@ pub fn stmt_contains_nil_comparison_call(tokens: []const lexer.Token, start_idx:
             i = call_head.args_end;
             continue;
         }
-        const first_end = findArgEnd(tokens, call_head.args_start, call_head.args_end);
-        if (first_end == call_head.args_start or first_end >= call_head.args_end or !tokEq(tokens[first_end], ",")) {
+        const first_end = find_arg_end(tokens, call_head.args_start, call_head.args_end);
+        if (first_end == call_head.args_start or first_end >= call_head.args_end or !tok_eq(tokens[first_end], ",")) {
             i = call_head.args_end;
             continue;
         }
         const second_start = first_end + 1;
-        const second_end = findArgEnd(tokens, second_start, call_head.args_end);
+        const second_end = find_arg_end(tokens, second_start, call_head.args_end);
         if (second_end != call_head.args_end) {
             i = call_head.args_end;
             continue;
         }
-        const first_nil = first_end == call_head.args_start + 1 and tokEq(tokens[call_head.args_start], "nil");
-        const second_nil = second_end == second_start + 1 and tokEq(tokens[second_start], "nil");
+        const first_nil = first_end == call_head.args_start + 1 and tok_eq(tokens[call_head.args_start], "nil");
+        const second_nil = second_end == second_start + 1 and tok_eq(tokens[second_start], "nil");
         if (first_nil or second_nil) return true;
         i = call_head.args_end;
     }
@@ -444,7 +444,7 @@ pub fn stmt_contains_nil_comparison_call(tokens: []const lexer.Token, start_idx:
 pub fn stmt_contains_union_payload_comparison_call(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext) bool {
     var i = start_idx;
     while (i + 1 < end_idx) : (i += 1) {
-        const call_head = callHeadAt(tokens, i, end_idx) orelse continue;
+        const call_head = call_head_at(tokens, i, end_idx) orelse continue;
         if (!call_head.is_intrinsic) {
             i = call_head.args_end;
             continue;
@@ -469,14 +469,14 @@ pub fn append_loop_value_local(
     elem_ty: []const u8,
     origin: SourceOrigin,
 ) !void {
-    if (hasLocal(out.locals.items, value_name)) return;
+    if (has_local(out.locals.items, value_name)) return;
     if (is_tuple_type_name(elem_ty)) {
-        const local_name = try out.appendStructLocalWithOrigin(allocator, value_name, elem_ty, true, origin);
+        const local_name = try out.append_struct_local_with_origin(allocator, value_name, elem_ty, true, origin);
         try append_tuple_local_fields(allocator, out, tokens, ctx, local_name, elem_ty);
-        try out.ensureTuplePackTemps(allocator);
+        try out.ensure_tuple_pack_temps(allocator);
         return;
     }
-    try out.appendBorrowedLocalWithOrigin(allocator, value_name, elem_ty, true, origin);
+    try out.append_borrowed_local_with_origin(allocator, value_name, elem_ty, true, origin);
 }
 
 pub fn collect_collection_loop_locals(
@@ -489,17 +489,17 @@ pub fn collect_collection_loop_locals(
 ) !void {
     try append_loop_index_local(allocator, out, start_idx);
     if (header.source_is_expr) {
-        try appendLoopSourceStorageLocal(allocator, out, start_idx, header.source_ty, header.elem_ty);
+        try append_loop_source_storage_local(allocator, out, start_idx, header.source_ty, header.elem_ty);
     }
     if (is_managed_local_type(header.elem_ty, ctx)) {
-        try out.ensureStorageWriteTemps(allocator);
+        try out.ensure_storage_write_temps(allocator);
     }
     if (header.value_name) |value_name| {
         try append_loop_value_local(allocator, out, tokens, ctx, value_name, header.elem_ty, .collection_value);
     }
     if (header.index_name) |index_name| {
-        if (!hasLocal(out.locals.items, index_name)) {
-            try out.appendBorrowedLocal(allocator, index_name, "usize", true);
+        if (!has_local(out.locals.items, index_name)) {
+            try out.append_borrowed_local(allocator, index_name, "usize", true);
         }
     }
 }
@@ -514,23 +514,23 @@ pub fn collect_recv_loop_locals(
 ) !void {
     try append_loop_count_local(allocator, out, start_idx);
     if (is_managed_local_type(header.elem_ty, ctx)) {
-        try out.ensureStorageWriteTemps(allocator);
+        try out.ensure_storage_write_temps(allocator);
     }
     if (header.value_name) |value_name| {
         try append_loop_value_local(allocator, out, tokens, ctx, value_name, header.elem_ty, .recv_value);
     }
     if (header.count_name) |count_name| {
-        if (!hasLocal(out.locals.items, count_name)) {
-            try out.appendBorrowedLocal(allocator, count_name, "usize", true);
+        if (!has_local(out.locals.items, count_name)) {
+            try out.append_borrowed_local(allocator, count_name, "usize", true);
         }
     }
 }
 
 pub fn collect_loop_block_locals(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext, out: *LocalSet) CodegenError!bool {
     if (start_idx + 3 > end_idx) return false;
-    if (!tokEq(tokens[start_idx], "loop")) return false;
+    if (!tok_eq(tokens[start_idx], "loop")) return false;
     const open_brace = findTopLevelBlockOpen(tokens, start_idx + 1, end_idx) orelse return false;
-    const close_brace = findMatchingInRange(tokens, open_brace, "{", "}", end_idx) catch return false;
+    const close_brace = find_matching_in_range(tokens, open_brace, "{", "}", end_idx) catch return false;
     if (close_brace + 1 != end_idx) return false;
 
     if (field_reflection_loop_header(tokens, start_idx, end_idx, ctx, out)) |header| {
@@ -569,39 +569,39 @@ pub fn collect_field_reflection_loop_locals(allocator: std.mem.Allocator, tokens
 
 pub fn append_loop_index_local(allocator: std.mem.Allocator, out: *LocalSet, loop_id: usize) !void {
     const name = try std.fmt.allocPrint(allocator, "__loop_index_{d}", .{loop_id});
-    if (hasLocal(out.locals.items, name)) {
+    if (has_local(out.locals.items, name)) {
         allocator.free(name);
         return;
     }
-    try out.appendOwnedLocalWithOrigin(allocator, name, "usize", .compiler_temp);
+    try out.append_owned_local_with_origin(allocator, name, "usize", .compiler_temp);
 }
 
 pub fn append_loop_count_local(allocator: std.mem.Allocator, out: *LocalSet, loop_id: usize) !void {
     const name = try std.fmt.allocPrint(allocator, "__loop_count_{d}", .{loop_id});
-    if (hasLocal(out.locals.items, name)) {
+    if (has_local(out.locals.items, name)) {
         allocator.free(name);
         return;
     }
-    try out.appendOwnedLocalWithOrigin(allocator, name, "usize", .compiler_temp);
+    try out.append_owned_local_with_origin(allocator, name, "usize", .compiler_temp);
 }
 
 pub fn collect_if_block_locals(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext, out: *LocalSet) CodegenError!bool {
     if (start_idx + 4 > end_idx) return false;
-    if (!tokEq(tokens[start_idx], "if")) return false;
+    if (!tok_eq(tokens[start_idx], "if")) return false;
     const open_brace = findTopLevelBlockOpen(tokens, start_idx + 1, end_idx) orelse return false;
-    const close_brace = findMatchingInRange(tokens, open_brace, "{", "}", end_idx) catch return false;
+    const close_brace = find_matching_in_range(tokens, open_brace, "{", "}", end_idx) catch return false;
     try collect_body_locals(allocator, tokens, open_brace + 1, close_brace, ctx, out);
 
     if (close_brace + 1 == end_idx) return true;
-    if (close_brace + 1 >= end_idx or !tokEq(tokens[close_brace + 1], "else")) return false;
+    if (close_brace + 1 >= end_idx or !tok_eq(tokens[close_brace + 1], "else")) return false;
     if (close_brace + 2 >= end_idx) return false;
 
-    if (tokEq(tokens[close_brace + 2], "if")) {
+    if (tok_eq(tokens[close_brace + 2], "if")) {
         _ = try collect_if_block_locals(allocator, tokens, close_brace + 2, end_idx, ctx, out);
         return true;
     }
-    if (!tokEq(tokens[close_brace + 2], "{")) return false;
-    const close_else = findMatchingInRange(tokens, close_brace + 2, "{", "}", end_idx) catch return false;
+    if (!tok_eq(tokens[close_brace + 2], "{")) return false;
+    const close_else = find_matching_in_range(tokens, close_brace + 2, "{", "}", end_idx) catch return false;
     if (close_else + 1 != end_idx) return false;
     try collect_body_locals(allocator, tokens, close_brace + 3, close_else, ctx, out);
     return true;
@@ -609,9 +609,9 @@ pub fn collect_if_block_locals(allocator: std.mem.Allocator, tokens: []const lex
 
 pub fn collect_defer_block_locals(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext, out: *LocalSet) CodegenError!bool {
     if (start_idx + 2 > end_idx) return false;
-    if (!tokEq(tokens[start_idx], "defer")) return false;
-    if (!tokEq(tokens[start_idx + 1], "{")) return false;
-    const close_brace = findMatchingInRange(tokens, start_idx + 1, "{", "}", end_idx) catch return false;
+    if (!tok_eq(tokens[start_idx], "defer")) return false;
+    if (!tok_eq(tokens[start_idx + 1], "{")) return false;
+    const close_brace = find_matching_in_range(tokens, start_idx + 1, "{", "}", end_idx) catch return false;
     var cleanup_locals = LocalSet{};
     defer cleanup_locals.deinit(allocator);
     try collect_body_locals(allocator, tokens, start_idx + 2, close_brace, ctx, &cleanup_locals);
@@ -621,7 +621,7 @@ pub fn collect_defer_block_locals(allocator: std.mem.Allocator, tokens: []const 
 
 pub fn append_decl_only_locals(allocator: std.mem.Allocator, out: *LocalSet, source: *const LocalSet) !void {
     for (source.locals.items) |local| {
-        if (hasLocal(out.locals.items, local.name)) continue;
+        if (has_local(out.locals.items, local.name)) continue;
         const name = try allocator.dupe(u8, local.name);
         errdefer allocator.free(name);
         try out.owned_names.append(allocator, name);
@@ -686,7 +686,7 @@ pub fn append_decl_only_locals(allocator: std.mem.Allocator, out: *LocalSet, sou
         });
     }
     for (source.union_locals.items) |union_local| {
-        if (findUnionLocalExact(out.union_locals.items, union_local.name) != null) continue;
+        if (find_union_local_exact(out.union_locals.items, union_local.name) != null) continue;
         const name = try allocator.dupe(u8, union_local.name);
         errdefer allocator.free(name);
         try out.owned_names.append(allocator, name);
@@ -706,15 +706,15 @@ pub fn append_local_field(allocator: std.mem.Allocator, out: *LocalSet, tokens: 
     const name = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ base, publicDeclName(field) });
     if (is_tuple_type_name(ty)) {
         try out.owned_names.append(allocator, name);
-        const local_name = try out.appendStructLocal(allocator, name, ty, true);
+        const local_name = try out.append_struct_local(allocator, name, ty, true);
         try append_tuple_local_fields(allocator, out, tokens, ctx, local_name, ty);
         return;
     }
     // Pure-scalar unmanaged struct slot (e.g. Tuple.0 : Point) — nested field locals, not a single i32.
-    if (findStructDecl(ctx.structs, ty)) |decl| {
-        if (findStructLayout(ctx.struct_layouts, ty) == null and pureScalarStructPackWidth(decl, ctx.structs) != null) {
+    if (find_struct_decl(ctx.structs, ty)) |decl| {
+        if (find_struct_layout(ctx.struct_layouts, ty) == null and pure_scalar_struct_pack_width(decl, ctx.structs) != null) {
             try out.owned_names.append(allocator, name);
-            const local_name = try out.appendStructLocal(allocator, name, ty, true);
+            const local_name = try out.append_struct_local(allocator, name, ty, true);
             for (decl.fields) |sf| {
                 const field_ty = try substitute_struct_field_type(allocator, decl, ty, sf.ty, &out.owned_names);
                 try append_local_field(allocator, out, tokens, ctx, local_name, sf.name, field_ty);
@@ -724,7 +724,7 @@ pub fn append_local_field(allocator: std.mem.Allocator, out: *LocalSet, tokens: 
     }
     if (try parse_type_union_layout_from_name(allocator, tokens, ty, ctx.structs, ctx.struct_layouts, &out.owned_names)) |layout| {
         errdefer freeUnionLayout(allocator, layout);
-        const exists = findUnionLocalExact(out.union_locals.items, name) != null;
+        const exists = find_union_local_exact(out.union_locals.items, name) != null;
         if (!exists) {
             errdefer allocator.free(name);
             try out.owned_names.append(allocator, name);
@@ -732,13 +732,13 @@ pub fn append_local_field(allocator: std.mem.Allocator, out: *LocalSet, tokens: 
         } else {
             defer allocator.free(name);
         }
-        return out.appendUnionLocal(allocator, name, layout, true, true);
+        return out.append_union_local(allocator, name, layout, true, true);
     }
     // Named payload enum type on field/local path
-    if (findPayloadEnumDecl(ctx.payload_enums, ty)) |decl| {
+    if (find_payload_enum_decl(ctx.payload_enums, ty)) |decl| {
         const layout = try build_payload_enum_union_layout(allocator, decl, tokens, ctx.structs, ctx.struct_layouts, &out.owned_names);
         errdefer freeUnionLayout(allocator, layout);
-        const exists = findUnionLocalExact(out.union_locals.items, name) != null;
+        const exists = find_union_local_exact(out.union_locals.items, name) != null;
         if (!exists) {
             errdefer allocator.free(name);
             try out.owned_names.append(allocator, name);
@@ -746,9 +746,9 @@ pub fn append_local_field(allocator: std.mem.Allocator, out: *LocalSet, tokens: 
         } else {
             defer allocator.free(name);
         }
-        return out.appendUnionLocal(allocator, name, layout, true, true);
+        return out.append_union_local(allocator, name, layout, true, true);
     }
-    try out.appendOwnedLocal(allocator, name, ty);
+    try out.append_owned_local(allocator, name, ty);
 }
 
 pub fn stmt_contains_string_literal(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
@@ -764,7 +764,7 @@ pub fn stmt_contains_string_literal(tokens: []const lexer.Token, start_idx: usiz
 pub fn stmt_contains_storage_comparison_intrinsic(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     var i = start_idx;
     while (i + 1 < end_idx) : (i += 1) {
-        if (!tokEq(tokens[i], "@")) continue;
+        if (!tok_eq(tokens[i], "@")) continue;
         if (tokens[i + 1].kind != .ident) continue;
         const name = tokens[i + 1].lexeme;
         if (std.mem.eql(u8, name, "eq") or std.mem.eql(u8, name, "ne")) return true;
@@ -775,7 +775,7 @@ pub fn stmt_contains_storage_comparison_intrinsic(tokens: []const lexer.Token, s
 pub fn stmt_contains_field_name_intrinsic(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     var i = start_idx;
     while (i + 1 < end_idx) : (i += 1) {
-        if (!tokEq(tokens[i], "@")) continue;
+        if (!tok_eq(tokens[i], "@")) continue;
         if (tokens[i + 1].kind != .ident) continue;
         if (std.mem.eql(u8, tokens[i + 1].lexeme, "field_name")) return true;
     }
@@ -785,7 +785,7 @@ pub fn stmt_contains_field_name_intrinsic(tokens: []const lexer.Token, start_idx
 pub fn stmt_contains_get_intrinsic(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     var i = start_idx;
     while (i + 1 < end_idx) : (i += 1) {
-        if (!tokEq(tokens[i], "@")) continue;
+        if (!tok_eq(tokens[i], "@")) continue;
         if (tokens[i + 1].kind != .ident) continue;
         if (std.mem.eql(u8, tokens[i + 1].lexeme, "get") or
             std.mem.eql(u8, tokens[i + 1].lexeme, "field_get")) return true;
@@ -796,7 +796,7 @@ pub fn stmt_contains_get_intrinsic(tokens: []const lexer.Token, start_idx: usize
 pub fn stmt_contains_numeric_select_intrinsic(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     var i = start_idx;
     while (i + 1 < end_idx) : (i += 1) {
-        if (!tokEq(tokens[i], "@")) continue;
+        if (!tok_eq(tokens[i], "@")) continue;
         if (tokens[i + 1].kind != .ident) continue;
         const name = tokens[i + 1].lexeme;
         if (std.mem.eql(u8, name, "abs") or std.mem.eql(u8, name, "min") or std.mem.eql(u8, name, "max")) {
@@ -809,23 +809,23 @@ pub fn stmt_contains_numeric_select_intrinsic(tokens: []const lexer.Token, start
 pub fn typed_union_binding_layout(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext, owned_types: *std.ArrayList([]const u8)) CodegenError!?UnionLayout {
     if (start_idx + 3 >= end_idx) return null;
     if (tokens[start_idx].kind != .ident) return null;
-    const eq_idx = findTopLevelToken(tokens, start_idx + 1, end_idx, "=") orelse return null;
+    const eq_idx = find_top_level_token(tokens, start_idx + 1, end_idx, "=") orelse return null;
     if (eq_idx <= start_idx + 1) return null;
     // Named payload enum: `m Message = …`
     if (eq_idx == start_idx + 2 and tokens[start_idx + 1].kind == .ident) {
         const ty_name = publicDeclName(tokens[start_idx + 1].lexeme);
-        if (findPayloadEnumDecl(ctx.payload_enums, ty_name)) |decl| {
+        if (find_payload_enum_decl(ctx.payload_enums, ty_name)) |decl| {
             return try build_payload_enum_union_layout(allocator, decl, tokens, ctx.structs, ctx.struct_layouts, owned_types);
         }
     }
-    return try parseUnionTypeLayout(
+    return try parse_union_type_layout(
         allocator,
         tokens,
         start_idx + 1,
         eq_idx,
         ctx.structs,
         ctx.struct_layouts,
-        importedAliasContextForTokens(ctx.imported_alias_ctx, tokens),
+        imported_alias_context_for_tokens(ctx.imported_alias_ctx, tokens),
         owned_types,
     );
 }
@@ -833,9 +833,9 @@ pub fn typed_union_binding_layout(allocator: std.mem.Allocator, tokens: []const 
 pub fn inferred_union_call_binding(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, owned_types: *std.ArrayList([]const u8)) CodegenError!?InferredUnionBinding {
     if (start_idx + 3 > end_idx) return null;
     if (tokens[start_idx].kind != .ident) return null;
-    if (!tokEq(tokens[start_idx + 1], "=")) return null;
-    const range = trimParens(tokens, start_idx + 2, end_idx);
-    const call_head = exprCallHead(tokens, range) orelse return null;
+    if (!tok_eq(tokens[start_idx + 1], "=")) return null;
+    const range = trim_parens(tokens, start_idx + 2, end_idx);
+    const call_head = expr_call_head(tokens, range) orelse return null;
     if (call_head.is_intrinsic) return null;
     if (find_func_decl_for_call_head(tokens, call_head, locals, ctx)) |func| {
         if (func.result_union) |layout| {
@@ -891,7 +891,7 @@ pub fn inferred_managed_payload_binding(
 ) ?ManagedPayloadBinding {
     if (start_idx + 3 > end_idx) return null;
     if (tokens[start_idx].kind != .ident) return null;
-    if (!tokEq(tokens[start_idx + 1], "=")) return null;
+    if (!tok_eq(tokens[start_idx + 1], "=")) return null;
     const ty = infer_expr_type(tokens, start_idx + 2, end_idx, locals, ctx) orelse return null;
     const elem_ty = managed_payload_elem_type_from_name(ty) orelse return null;
     return .{ .ty = ty, .elem_ty = elem_ty };
@@ -900,11 +900,11 @@ pub fn inferred_managed_payload_binding(
 pub fn typed_managed_payload_binding(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext, owned_types: *std.ArrayList([]const u8)) CodegenError!?ManagedPayloadBinding {
     if (start_idx + 3 >= end_idx) return null;
     if (tokens[start_idx].kind != .ident) return null;
-    const eq_idx = findTopLevelToken(tokens, start_idx + 1, end_idx, "=") orelse return null;
+    const eq_idx = find_top_level_token(tokens, start_idx + 1, end_idx, "=") orelse return null;
     if (eq_idx <= start_idx + 1) return null;
-    const parsed = (try parseCodegenTypeExpr(allocator, tokens, start_idx + 1, eq_idx, owned_types)) orelse return null;
+    const parsed = (try parse_codegen_type_expr(allocator, tokens, start_idx + 1, eq_idx, owned_types)) orelse return null;
     if (parsed.next_idx != eq_idx) return null;
-    const ty = try substituteGenericTypeOwned(allocator, parsed.ty, ctx.type_bindings, owned_types);
+    const ty = try substitute_generic_type_owned(allocator, parsed.ty, ctx.type_bindings, owned_types);
     const elem_ty = managed_payload_elem_type_from_name(ty) orelse return null;
     return .{ .ty = ty, .elem_ty = elem_ty };
 }
@@ -919,23 +919,23 @@ fn collect_one_multi_result_lhs_local(
 ) CodegenError!void {
     if (std.mem.eql(u8, name, "_")) return;
     if (item.union_layout) |layout| {
-        if (findUnionLocal(out.union_locals.items, name) != null) return;
+        if (find_union_local(out.union_locals.items, name) != null) return;
         const cloned = try cloneUnionLayout(allocator, layout);
-        try out.appendUnionLocal(allocator, name, cloned, true, true);
+        try out.append_union_local(allocator, name, cloned, true, true);
         return;
     }
-    if (findLocalType(out.locals.items, name) != null) return;
-    if (findStructLocal(out.struct_locals.items, name) != null) return;
-    if (findStorageLocal(out.storage_locals.items, name) != null) return;
+    if (find_local_type(out.locals.items, name) != null) return;
+    if (find_struct_local(out.struct_locals.items, name) != null) return;
+    if (find_storage_local(out.storage_locals.items, name) != null) return;
     try append_typed_local_with_decl(allocator, out, name, item.ty, ctx, true);
 }
 
 pub fn collect_multi_result_assignment_locals(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext, out: *LocalSet) CodegenError!bool {
-    const eq_idx = findTopLevelToken(tokens, start_idx, end_idx, "=") orelse return false;
-    if (findTopLevelToken(tokens, start_idx, eq_idx, ",") == null) return false;
+    const eq_idx = find_top_level_token(tokens, start_idx, end_idx, "=") orelse return false;
+    if (find_top_level_token(tokens, start_idx, eq_idx, ",") == null) return false;
 
-    const rhs_range = trimParens(tokens, eq_idx + 1, end_idx);
-    const call_head = exprCallHead(tokens, rhs_range) orelse return false;
+    const rhs_range = trim_parens(tokens, eq_idx + 1, end_idx);
+    const call_head = expr_call_head(tokens, rhs_range) orelse return false;
     if (call_head.is_intrinsic) return false;
     const func = find_func_decl_for_call_head(tokens, call_head, out, ctx) orelse return false;
     if (func.results.len <= 1 or func.result_items.len == 0) return false;
@@ -944,24 +944,24 @@ pub fn collect_multi_result_assignment_locals(allocator: std.mem.Allocator, toke
     var item_idx: usize = 0;
     while (lhs_start < eq_idx) {
         if (item_idx >= func.result_items.len) return error.NoMatchingCall;
-        const lhs_end = findArgEnd(tokens, lhs_start, eq_idx);
+        const lhs_end = find_arg_end(tokens, lhs_start, eq_idx);
         if (lhs_end != lhs_start + 1 or tokens[lhs_start].kind != .ident) return error.NoMatchingCall;
         try collect_one_multi_result_lhs_local(allocator, tokens[lhs_start].lexeme, func.result_items[item_idx], ctx, out);
 
         item_idx += 1;
         lhs_start = lhs_end;
-        if (lhs_start < eq_idx and tokEq(tokens[lhs_start], ",")) lhs_start += 1;
+        if (lhs_start < eq_idx and tok_eq(tokens[lhs_start], ",")) lhs_start += 1;
     }
     if (item_idx != func.result_items.len) return error.NoMatchingCall;
     return true;
 }
 
 pub fn multi_result_assignment_needs_managed_tmp(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext) bool {
-    const eq_idx = findTopLevelToken(tokens, start_idx, end_idx, "=") orelse return false;
-    if (findTopLevelToken(tokens, start_idx, eq_idx, ",") == null) return false;
+    const eq_idx = find_top_level_token(tokens, start_idx, end_idx, "=") orelse return false;
+    if (find_top_level_token(tokens, start_idx, eq_idx, ",") == null) return false;
 
-    const rhs_range = trimParens(tokens, eq_idx + 1, end_idx);
-    const call_head = exprCallHead(tokens, rhs_range) orelse return false;
+    const rhs_range = trim_parens(tokens, eq_idx + 1, end_idx);
+    const call_head = expr_call_head(tokens, rhs_range) orelse return false;
     if (call_head.is_intrinsic) return false;
     const func = find_func_decl_for_call_head(tokens, call_head, locals, ctx) orelse return false;
     if (func.results.len <= 1) return false;
@@ -971,14 +971,14 @@ pub fn multi_result_assignment_needs_managed_tmp(tokens: []const lexer.Token, st
     var item_idx: usize = 0;
     while (lhs_start < eq_idx) {
         if (item_idx >= func.result_items.len) return false;
-        const lhs_end = findArgEnd(tokens, lhs_start, eq_idx);
+        const lhs_end = find_arg_end(tokens, lhs_start, eq_idx);
         if (lhs_end != lhs_start + 1 or tokens[lhs_start].kind != .ident) return false;
         const lhs = multi_result_lhs_for_item(tokens[lhs_start].lexeme, func.result_items[item_idx], locals, ctx) orelse return false;
         if (lhs.kind == .managed) return true;
 
         item_idx += 1;
         lhs_start = lhs_end;
-        if (lhs_start < eq_idx and tokEq(tokens[lhs_start], ",")) lhs_start += 1;
+        if (lhs_start < eq_idx and tok_eq(tokens[lhs_start], ",")) lhs_start += 1;
     }
     return false;
 }
@@ -986,11 +986,11 @@ pub fn multi_result_assignment_needs_managed_tmp(tokens: []const lexer.Token, st
 pub fn typed_tuple_binding_type(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext, owned_types: *std.ArrayList([]const u8)) CodegenError!?[]const u8 {
     if (start_idx + 3 >= end_idx) return null;
     if (tokens[start_idx].kind != .ident) return null;
-    const eq_idx = findTopLevelToken(tokens, start_idx + 1, end_idx, "=") orelse return null;
+    const eq_idx = find_top_level_token(tokens, start_idx + 1, end_idx, "=") orelse return null;
     if (eq_idx <= start_idx + 1) return null;
-    const parsed_ty = (try parseCodegenTypeExpr(allocator, tokens, start_idx + 1, eq_idx, owned_types)) orelse return null;
+    const parsed_ty = (try parse_codegen_type_expr(allocator, tokens, start_idx + 1, eq_idx, owned_types)) orelse return null;
     if (parsed_ty.next_idx != eq_idx) return null;
-    const ty = try substituteGenericTypeOwned(allocator, parsed_ty.ty, ctx.type_bindings, owned_types);
+    const ty = try substitute_generic_type_owned(allocator, parsed_ty.ty, ctx.type_bindings, owned_types);
     if (!is_tuple_type_name(ty)) return null;
     return ty;
 }

@@ -200,7 +200,7 @@ pub fn find_top_level_type_separator(ty: []const u8, sep: u8) ?usize {
 }
 
 pub fn find_top_level_type_separator_from(ty: []const u8, start_idx: usize, sep: u8) ?usize {
-    return type_util.findTopLevelTypeSeparatorFrom(ty, start_idx, sep);
+    return type_util.find_top_level_type_separator_from(ty, start_idx, sep);
 }
 
 pub fn align_up(value: usize, alignment: usize) usize {

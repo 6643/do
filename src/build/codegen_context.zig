@@ -79,17 +79,17 @@ pub const LocalSet = struct {
         self.locals.deinit(allocator);
     }
 
-    pub fn appendBorrowedLocal(
+    pub fn append_borrowed_local(
         self: *LocalSet,
         allocator: std.mem.Allocator,
         name: []const u8,
         ty: []const u8,
         emit_decl: bool,
     ) !void {
-        return self.appendBorrowedLocalWithOrigin(allocator, name, ty, emit_decl, .unknown);
+        return self.append_borrowed_local_with_origin(allocator, name, ty, emit_decl, .unknown);
     }
 
-    pub fn appendBorrowedLocalWithOrigin(
+    pub fn append_borrowed_local_with_origin(
         self: *LocalSet,
         allocator: std.mem.Allocator,
         name: []const u8,
@@ -97,8 +97,8 @@ pub const LocalSet = struct {
         emit_decl: bool,
         origin: SourceOrigin,
     ) !void {
-        const resolved = try self.scopedLocalName(allocator, name, emit_decl);
-        if (findLocalType(self.locals.items, resolved.name)) |existing_ty| {
+        const resolved = try self.scoped_local_name(allocator, name, emit_decl);
+        if (find_local_type(self.locals.items, resolved.name)) |existing_ty| {
             if (!std.mem.eql(u8, existing_ty, ty)) return error.NoMatchingCall;
             return;
         }
@@ -111,16 +111,16 @@ pub const LocalSet = struct {
         });
     }
 
-    pub fn appendOwnedLocal(
+    pub fn append_owned_local(
         self: *LocalSet,
         allocator: std.mem.Allocator,
         name: []const u8,
         ty: []const u8,
     ) !void {
-        return self.appendOwnedLocalWithOrigin(allocator, name, ty, .fresh_local);
+        return self.append_owned_local_with_origin(allocator, name, ty, .fresh_local);
     }
 
-    pub fn appendOwnedLocalWithOrigin(
+    pub fn append_owned_local_with_origin(
         self: *LocalSet,
         allocator: std.mem.Allocator,
         name: []const u8,
@@ -138,23 +138,23 @@ pub const LocalSet = struct {
         });
     }
 
-    pub fn appendStorageLocal(
+    pub fn append_storage_local(
         self: *LocalSet,
         allocator: std.mem.Allocator,
         name: []const u8,
         elem_ty: []const u8,
         emit_decl: bool,
     ) !void {
-        const ty = storageTypeNameForElem(elem_ty) orelse blk: {
+        const ty = storage_type_name_for_elem(elem_ty) orelse blk: {
             const owned_ty = try std.fmt.allocPrint(allocator, "[{s}]", .{elem_ty});
             errdefer allocator.free(owned_ty);
             try self.owned_names.append(allocator, owned_ty);
             break :blk owned_ty;
         };
-        try self.appendStorageLocalWithType(allocator, name, ty, elem_ty, emit_decl);
+        try self.append_storage_local_with_type(allocator, name, ty, elem_ty, emit_decl);
     }
 
-    pub fn appendStorageLocalWithType(
+    pub fn append_storage_local_with_type(
         self: *LocalSet,
         allocator: std.mem.Allocator,
         name: []const u8,
@@ -162,10 +162,10 @@ pub const LocalSet = struct {
         elem_ty: []const u8,
         emit_decl: bool,
     ) !void {
-        return self.appendStorageLocalWithTypeAndOrigin(allocator, name, ty, elem_ty, emit_decl, .unknown);
+        return self.append_storage_local_with_type_and_origin(allocator, name, ty, elem_ty, emit_decl, .unknown);
     }
 
-    pub fn appendStorageLocalWithTypeAndOrigin(
+    pub fn append_storage_local_with_type_and_origin(
         self: *LocalSet,
         allocator: std.mem.Allocator,
         name: []const u8,
@@ -174,7 +174,7 @@ pub const LocalSet = struct {
         emit_decl: bool,
         origin: SourceOrigin,
     ) !void {
-        const resolved = try self.scopedLocalName(allocator, name, emit_decl);
+        const resolved = try self.scoped_local_name(allocator, name, emit_decl);
         try self.storage_locals.append(allocator, .{
             .name = resolved.name,
             .source_name = resolved.source_name,
@@ -191,7 +191,7 @@ pub const LocalSet = struct {
         });
     }
 
-    pub fn appendUnionLocal(
+    pub fn append_union_local(
         self: *LocalSet,
         allocator: std.mem.Allocator,
         name: []const u8,
@@ -199,10 +199,10 @@ pub const LocalSet = struct {
         emit_decl: bool,
         owns_layout: bool,
     ) !void {
-        return self.appendUnionLocalWithOrigin(allocator, name, layout, emit_decl, owns_layout, .unknown);
+        return self.append_union_local_with_origin(allocator, name, layout, emit_decl, owns_layout, .unknown);
     }
 
-    pub fn appendUnionLocalWithOrigin(
+    pub fn append_union_local_with_origin(
         self: *LocalSet,
         allocator: std.mem.Allocator,
         name: []const u8,
@@ -211,20 +211,20 @@ pub const LocalSet = struct {
         owns_layout: bool,
         origin: SourceOrigin,
     ) !void {
-        return self.appendUnionLocalWithOriginAndRelease(allocator, name, layout, emit_decl, owns_layout, origin, true);
+        return self.append_union_local_with_origin_and_release(allocator, name, layout, emit_decl, owns_layout, origin, true);
     }
 
-    pub fn appendUnionTempLocal(
+    pub fn append_union_temp_local(
         self: *LocalSet,
         allocator: std.mem.Allocator,
         name: []const u8,
         layout: UnionLayout,
         owns_layout: bool,
     ) !void {
-        return self.appendUnionLocalWithOriginAndRelease(allocator, name, layout, true, owns_layout, .compiler_temp, false);
+        return self.append_union_local_with_origin_and_release(allocator, name, layout, true, owns_layout, .compiler_temp, false);
     }
 
-    pub fn appendUnionLocalWithOriginAndRelease(
+    pub fn append_union_local_with_origin_and_release(
         self: *LocalSet,
         allocator: std.mem.Allocator,
         name: []const u8,
@@ -234,12 +234,12 @@ pub const LocalSet = struct {
         origin: SourceOrigin,
         release_on_scope_exit: bool,
     ) !void {
-        if (findUnionLocalExact(self.union_locals.items, name)) |existing| {
+        if (find_union_local_exact(self.union_locals.items, name)) |existing| {
             if (!unionLayoutsEqual(existing.layout, layout)) return error.NoMatchingCall;
             if (owns_layout) freeUnionLayout(allocator, layout);
             return;
         }
-        const resolved = try self.scopedLocalName(allocator, name, emit_decl);
+        const resolved = try self.scoped_local_name(allocator, name, emit_decl);
         try self.union_locals.append(allocator, .{
             .name = resolved.name,
             .source_name = resolved.source_name,
@@ -248,7 +248,7 @@ pub const LocalSet = struct {
             .origin = origin,
         });
         for (layout.payload_tys, 0..) |payload_ty, idx| {
-            const payload_name = try unionPayloadLocalName(allocator, resolved.name, idx);
+            const payload_name = try union_payload_local_name(allocator, resolved.name, idx);
             errdefer allocator.free(payload_name);
             try self.owned_names.append(allocator, payload_name);
             errdefer _ = self.owned_names.pop();
@@ -261,7 +261,7 @@ pub const LocalSet = struct {
             });
         }
 
-        const tag_name = try unionTagLocalName(allocator, resolved.name);
+        const tag_name = try union_tag_local_name(allocator, resolved.name);
         errdefer allocator.free(tag_name);
         try self.owned_names.append(allocator, tag_name);
         errdefer _ = self.owned_names.pop();
@@ -274,17 +274,17 @@ pub const LocalSet = struct {
         });
     }
 
-    pub fn appendStructLocal(
+    pub fn append_struct_local(
         self: *LocalSet,
         allocator: std.mem.Allocator,
         name: []const u8,
         ty: []const u8,
         emit_decl: bool,
     ) ![]const u8 {
-        return self.appendStructLocalWithOrigin(allocator, name, ty, emit_decl, .unknown);
+        return self.append_struct_local_with_origin(allocator, name, ty, emit_decl, .unknown);
     }
 
-    pub fn appendStructLocalWithOrigin(
+    pub fn append_struct_local_with_origin(
         self: *LocalSet,
         allocator: std.mem.Allocator,
         name: []const u8,
@@ -292,7 +292,7 @@ pub const LocalSet = struct {
         emit_decl: bool,
         origin: SourceOrigin,
     ) ![]const u8 {
-        const resolved = try self.scopedLocalName(allocator, name, emit_decl);
+        const resolved = try self.scoped_local_name(allocator, name, emit_decl);
         try self.struct_locals.append(allocator, .{
             .name = resolved.name,
             .source_name = resolved.source_name,
@@ -307,106 +307,106 @@ pub const LocalSet = struct {
         source_name: ?[]const u8,
     };
 
-    pub fn scopedLocalName(
+    pub fn scoped_local_name(
         self: *LocalSet,
         allocator: std.mem.Allocator,
         name: []const u8,
         emit_decl: bool,
     ) !ScopedLocalName {
         const prefix = self.local_name_prefix orelse return .{ .name = name, .source_name = null };
-        if (!emit_decl or isCompilerLocalName(name)) return .{ .name = name, .source_name = null };
+        if (!emit_decl or is_compiler_local_name(name)) return .{ .name = name, .source_name = null };
         const owned = try std.fmt.allocPrint(allocator, "{s}{s}", .{ prefix, name });
         errdefer allocator.free(owned);
         try self.owned_names.append(allocator, owned);
         return .{ .name = owned, .source_name = name };
     }
 
-    pub fn ensureStorageWriteTemps(self: *LocalSet, allocator: std.mem.Allocator) !void {
-        if (!hasLocal(self.locals.items, STORAGE_OVERWRITE_TMP_LOCAL)) {
-            try self.appendBorrowedLocal(allocator, STORAGE_OVERWRITE_TMP_LOCAL, "usize", true);
+    pub fn ensure_storage_write_temps(self: *LocalSet, allocator: std.mem.Allocator) !void {
+        if (!has_local(self.locals.items, STORAGE_OVERWRITE_TMP_LOCAL)) {
+            try self.append_borrowed_local(allocator, STORAGE_OVERWRITE_TMP_LOCAL, "usize", true);
         }
-        if (!hasLocal(self.locals.items, STORAGE_PUT_SOURCE_TMP_LOCAL)) {
-            try self.appendBorrowedLocal(allocator, STORAGE_PUT_SOURCE_TMP_LOCAL, "usize", true);
+        if (!has_local(self.locals.items, STORAGE_PUT_SOURCE_TMP_LOCAL)) {
+            try self.append_borrowed_local(allocator, STORAGE_PUT_SOURCE_TMP_LOCAL, "usize", true);
         }
-        if (!hasLocal(self.locals.items, STORAGE_WRITE_INDEX_TMP_LOCAL)) {
-            try self.appendBorrowedLocal(allocator, STORAGE_WRITE_INDEX_TMP_LOCAL, "usize", true);
+        if (!has_local(self.locals.items, STORAGE_WRITE_INDEX_TMP_LOCAL)) {
+            try self.append_borrowed_local(allocator, STORAGE_WRITE_INDEX_TMP_LOCAL, "usize", true);
         }
-        if (!hasLocal(self.locals.items, STORAGE_WRITE_LEN_TMP_LOCAL)) {
-            try self.appendBorrowedLocal(allocator, STORAGE_WRITE_LEN_TMP_LOCAL, "usize", true);
+        if (!has_local(self.locals.items, STORAGE_WRITE_LEN_TMP_LOCAL)) {
+            try self.append_borrowed_local(allocator, STORAGE_WRITE_LEN_TMP_LOCAL, "usize", true);
         }
-        if (!hasLocal(self.locals.items, STORAGE_WRITE_NEXT_TMP_LOCAL)) {
-            try self.appendBorrowedLocal(allocator, STORAGE_WRITE_NEXT_TMP_LOCAL, "usize", true);
+        if (!has_local(self.locals.items, STORAGE_WRITE_NEXT_TMP_LOCAL)) {
+            try self.append_borrowed_local(allocator, STORAGE_WRITE_NEXT_TMP_LOCAL, "usize", true);
         }
-        if (!hasLocal(self.locals.items, STORAGE_WRITE_SCAN_TMP_LOCAL)) {
-            try self.appendBorrowedLocal(allocator, STORAGE_WRITE_SCAN_TMP_LOCAL, "usize", true);
+        if (!has_local(self.locals.items, STORAGE_WRITE_SCAN_TMP_LOCAL)) {
+            try self.append_borrowed_local(allocator, STORAGE_WRITE_SCAN_TMP_LOCAL, "usize", true);
         }
-        if (!hasLocal(self.locals.items, STORAGE_WRITE_TARGET_TMP_LOCAL)) {
-            try self.appendBorrowedLocal(allocator, STORAGE_WRITE_TARGET_TMP_LOCAL, "usize", true);
-        }
-    }
-
-    pub fn ensureWasiFamilyTmp(self: *LocalSet, allocator: std.mem.Allocator) !void {
-        if (!hasLocal(self.locals.items, WASI_FAMILY_TMP_LOCAL)) {
-            try self.appendBorrowedLocal(allocator, WASI_FAMILY_TMP_LOCAL, "usize", true);
+        if (!has_local(self.locals.items, STORAGE_WRITE_TARGET_TMP_LOCAL)) {
+            try self.append_borrowed_local(allocator, STORAGE_WRITE_TARGET_TMP_LOCAL, "usize", true);
         }
     }
 
-    pub fn ensureTuplePackTemps(self: *LocalSet, allocator: std.mem.Allocator) !void {
-        if (!hasLocal(self.locals.items, TUPLE_PACK_BASE_TMP_LOCAL)) {
-            try self.appendBorrowedLocal(allocator, TUPLE_PACK_BASE_TMP_LOCAL, "usize", true);
+    pub fn ensure_wasi_family_tmp(self: *LocalSet, allocator: std.mem.Allocator) !void {
+        if (!has_local(self.locals.items, WASI_FAMILY_TMP_LOCAL)) {
+            try self.append_borrowed_local(allocator, WASI_FAMILY_TMP_LOCAL, "usize", true);
         }
-        if (!hasLocal(self.locals.items, TUPLE_PACK_SPILL_I32)) {
-            try self.appendBorrowedLocal(allocator, TUPLE_PACK_SPILL_I32, "i32", true);
+    }
+
+    pub fn ensure_tuple_pack_temps(self: *LocalSet, allocator: std.mem.Allocator) !void {
+        if (!has_local(self.locals.items, TUPLE_PACK_BASE_TMP_LOCAL)) {
+            try self.append_borrowed_local(allocator, TUPLE_PACK_BASE_TMP_LOCAL, "usize", true);
+        }
+        if (!has_local(self.locals.items, TUPLE_PACK_SPILL_I32)) {
+            try self.append_borrowed_local(allocator, TUPLE_PACK_SPILL_I32, "i32", true);
         }
         // Extra i32 spills for multi-leaf pack pop/push (e.g. text+u8, Cell+u8).
-        if (!hasLocal(self.locals.items, payload_wat.TUPLE_PACK_SPILL_I32_1)) {
-            try self.appendBorrowedLocal(allocator, payload_wat.TUPLE_PACK_SPILL_I32_1, "i32", true);
+        if (!has_local(self.locals.items, payload_wat.TUPLE_PACK_SPILL_I32_1)) {
+            try self.append_borrowed_local(allocator, payload_wat.TUPLE_PACK_SPILL_I32_1, "i32", true);
         }
-        if (!hasLocal(self.locals.items, payload_wat.TUPLE_PACK_SPILL_I32_2)) {
-            try self.appendBorrowedLocal(allocator, payload_wat.TUPLE_PACK_SPILL_I32_2, "i32", true);
+        if (!has_local(self.locals.items, payload_wat.TUPLE_PACK_SPILL_I32_2)) {
+            try self.append_borrowed_local(allocator, payload_wat.TUPLE_PACK_SPILL_I32_2, "i32", true);
         }
-        if (!hasLocal(self.locals.items, payload_wat.TUPLE_PACK_SPILL_I32_3)) {
-            try self.appendBorrowedLocal(allocator, payload_wat.TUPLE_PACK_SPILL_I32_3, "i32", true);
+        if (!has_local(self.locals.items, payload_wat.TUPLE_PACK_SPILL_I32_3)) {
+            try self.append_borrowed_local(allocator, payload_wat.TUPLE_PACK_SPILL_I32_3, "i32", true);
         }
-        if (!hasLocal(self.locals.items, TUPLE_PACK_SPILL_I64)) {
-            try self.appendBorrowedLocal(allocator, TUPLE_PACK_SPILL_I64, "i64", true);
+        if (!has_local(self.locals.items, TUPLE_PACK_SPILL_I64)) {
+            try self.append_borrowed_local(allocator, TUPLE_PACK_SPILL_I64, "i64", true);
         }
-        if (!hasLocal(self.locals.items, TUPLE_PACK_SPILL_F32)) {
-            try self.appendBorrowedLocal(allocator, TUPLE_PACK_SPILL_F32, "f32", true);
+        if (!has_local(self.locals.items, TUPLE_PACK_SPILL_F32)) {
+            try self.append_borrowed_local(allocator, TUPLE_PACK_SPILL_F32, "f32", true);
         }
-        if (!hasLocal(self.locals.items, TUPLE_PACK_SPILL_F64)) {
-            try self.appendBorrowedLocal(allocator, TUPLE_PACK_SPILL_F64, "f64", true);
-        }
-    }
-
-    pub fn ensureVariadicPackTmp(self: *LocalSet, allocator: std.mem.Allocator) !void {
-        if (!hasLocal(self.locals.items, VARIADIC_PACK_TMP_LOCAL)) {
-            try self.appendBorrowedLocal(allocator, VARIADIC_PACK_TMP_LOCAL, "usize", true);
+        if (!has_local(self.locals.items, TUPLE_PACK_SPILL_F64)) {
+            try self.append_borrowed_local(allocator, TUPLE_PACK_SPILL_F64, "f64", true);
         }
     }
 
-    pub fn ensureStructLiteralTmp(self: *LocalSet, allocator: std.mem.Allocator) !void {
-        if (!hasLocal(self.locals.items, STRUCT_LITERAL_TMP_LOCAL)) {
-            try self.appendBorrowedLocal(allocator, STRUCT_LITERAL_TMP_LOCAL, "usize", true);
+    pub fn ensure_variadic_pack_tmp(self: *LocalSet, allocator: std.mem.Allocator) !void {
+        if (!has_local(self.locals.items, VARIADIC_PACK_TMP_LOCAL)) {
+            try self.append_borrowed_local(allocator, VARIADIC_PACK_TMP_LOCAL, "usize", true);
         }
     }
 
-    pub fn ensureNumericSelectTemps(self: *LocalSet, allocator: std.mem.Allocator) !void {
-        if (!hasLocal(self.locals.items, NUMERIC_SELECT_LEFT_TMP_I32)) {
-            try self.appendBorrowedLocal(allocator, NUMERIC_SELECT_LEFT_TMP_I32, "i32", true);
-        }
-        if (!hasLocal(self.locals.items, NUMERIC_SELECT_RIGHT_TMP_I32)) {
-            try self.appendBorrowedLocal(allocator, NUMERIC_SELECT_RIGHT_TMP_I32, "i32", true);
-        }
-        if (!hasLocal(self.locals.items, NUMERIC_SELECT_LEFT_TMP_I64)) {
-            try self.appendBorrowedLocal(allocator, NUMERIC_SELECT_LEFT_TMP_I64, "i64", true);
-        }
-        if (!hasLocal(self.locals.items, NUMERIC_SELECT_RIGHT_TMP_I64)) {
-            try self.appendBorrowedLocal(allocator, NUMERIC_SELECT_RIGHT_TMP_I64, "i64", true);
+    pub fn ensure_struct_literal_tmp(self: *LocalSet, allocator: std.mem.Allocator) !void {
+        if (!has_local(self.locals.items, STRUCT_LITERAL_TMP_LOCAL)) {
+            try self.append_borrowed_local(allocator, STRUCT_LITERAL_TMP_LOCAL, "usize", true);
         }
     }
 
-    pub fn appendNarrowedUnionLocal(
+    pub fn ensure_numeric_select_temps(self: *LocalSet, allocator: std.mem.Allocator) !void {
+        if (!has_local(self.locals.items, NUMERIC_SELECT_LEFT_TMP_I32)) {
+            try self.append_borrowed_local(allocator, NUMERIC_SELECT_LEFT_TMP_I32, "i32", true);
+        }
+        if (!has_local(self.locals.items, NUMERIC_SELECT_RIGHT_TMP_I32)) {
+            try self.append_borrowed_local(allocator, NUMERIC_SELECT_RIGHT_TMP_I32, "i32", true);
+        }
+        if (!has_local(self.locals.items, NUMERIC_SELECT_LEFT_TMP_I64)) {
+            try self.append_borrowed_local(allocator, NUMERIC_SELECT_LEFT_TMP_I64, "i64", true);
+        }
+        if (!has_local(self.locals.items, NUMERIC_SELECT_RIGHT_TMP_I64)) {
+            try self.append_borrowed_local(allocator, NUMERIC_SELECT_RIGHT_TMP_I64, "i64", true);
+        }
+    }
+
+    pub fn append_narrowed_union_local(
         self: *LocalSet,
         allocator: std.mem.Allocator,
         union_local: UnionLocal,
@@ -546,7 +546,7 @@ pub const StringDataContext = struct {
         return data;
     }
 
-    pub fn internRaw(self: *StringDataContext, allocator: std.mem.Allocator, key: []const u8, bytes: []const u8) !StringData {
+    pub fn intern_raw(self: *StringDataContext, allocator: std.mem.Allocator, key: []const u8, bytes: []const u8) !StringData {
         for (self.items.items) |item| {
             if (std.mem.eql(u8, item.lexeme, key)) return item;
         }
@@ -571,87 +571,87 @@ pub const StringDataContext = struct {
     }
 };
 
-pub fn findLocalType(locals: []const Local, name: []const u8) ?[]const u8 {
+pub fn find_local_type(locals: []const Local, name: []const u8) ?[]const u8 {
     var i = locals.len;
     while (i > 0) {
         i -= 1;
         const local = locals[i];
-        if (localNameMatches(local.name, local.source_name, name)) return local.ty;
+        if (local_name_matches(local.name, local.source_name, name)) return local.ty;
     }
     return null;
 }
 
-pub fn findLocalOrigin(locals: []const Local, name: []const u8) ?SourceOrigin {
+pub fn find_local_origin(locals: []const Local, name: []const u8) ?SourceOrigin {
     var i = locals.len;
     while (i > 0) {
         i -= 1;
         const local = locals[i];
-        if (localNameMatches(local.name, local.source_name, name)) return local.origin;
+        if (local_name_matches(local.name, local.source_name, name)) return local.origin;
     }
     return null;
 }
 
-pub fn findStorageLocalOrigin(locals: []const StorageLocal, name: []const u8) ?SourceOrigin {
+pub fn find_storage_local_origin(locals: []const StorageLocal, name: []const u8) ?SourceOrigin {
     var i = locals.len;
     while (i > 0) {
         i -= 1;
         const local = locals[i];
-        if (localNameMatches(local.name, local.source_name, name)) return local.origin;
+        if (local_name_matches(local.name, local.source_name, name)) return local.origin;
     }
     return null;
 }
 
-pub fn storageTypeNameForElem(elem_ty: []const u8) ?[]const u8 {
-    return type_util.storageTypeNameForElem(elem_ty);
+pub fn storage_type_name_for_elem(elem_ty: []const u8) ?[]const u8 {
+    return type_util.storage_type_name_for_elem(elem_ty);
 }
 
-pub fn storageTypeNameForElemOwned(
+pub fn storage_type_name_for_elem_owned(
     allocator: std.mem.Allocator,
     elem_ty: []const u8,
     owned_types: *std.ArrayList([]const u8),
 ) ![]const u8 {
-    if (storageTypeNameForElem(elem_ty)) |ty| return ty;
+    if (storage_type_name_for_elem(elem_ty)) |ty| return ty;
     const owned = try std.fmt.allocPrint(allocator, "[{s}]", .{elem_ty});
     errdefer allocator.free(owned);
     try owned_types.append(allocator, owned);
     return owned;
 }
 
-pub fn isCompilerLocalName(name: []const u8) bool {
+pub fn is_compiler_local_name(name: []const u8) bool {
     return std.mem.startsWith(u8, name, "__") or std.mem.indexOf(u8, name, ".__") != null;
 }
 
-pub fn unionPayloadLocalName(allocator: std.mem.Allocator, base: []const u8, idx: usize) ![]u8 {
+pub fn union_payload_local_name(allocator: std.mem.Allocator, base: []const u8, idx: usize) ![]u8 {
     return std.fmt.allocPrint(allocator, "{s}.__union_payload_{d}", .{ base, idx });
 }
 
-pub fn unionTagLocalName(allocator: std.mem.Allocator, base: []const u8) ![]u8 {
+pub fn union_tag_local_name(allocator: std.mem.Allocator, base: []const u8) ![]u8 {
     return std.fmt.allocPrint(allocator, "{s}.__union_tag", .{base});
 }
 
-pub fn findUnionLocalExact(locals: []const UnionLocal, name: []const u8) ?UnionLocal {
+pub fn find_union_local_exact(locals: []const UnionLocal, name: []const u8) ?UnionLocal {
     for (locals) |local| {
         if (std.mem.eql(u8, local.name, name)) return local;
     }
     return null;
 }
 
-pub fn hasLocal(locals: []const Local, name: []const u8) bool {
+pub fn has_local(locals: []const Local, name: []const u8) bool {
     for (locals) |local| {
         if (std.mem.eql(u8, local.name, name)) return true;
     }
     return false;
 }
 
-pub fn appendLoopSourceStorageLocal(
+pub fn append_loop_source_storage_local(
     allocator: std.mem.Allocator,
     out: *LocalSet,
     loop_id: usize,
     ty: []const u8,
     elem_ty: []const u8,
 ) !void {
-    const name = try loopSourceLocalName(allocator, loop_id);
-    if (hasLocal(out.locals.items, name)) {
+    const name = try loop_source_local_name(allocator, loop_id);
+    if (has_local(out.locals.items, name)) {
         allocator.free(name);
         return;
     }
@@ -672,43 +672,43 @@ pub fn appendLoopSourceStorageLocal(
     });
 }
 
-pub fn findStructLocal(locals: []const StructLocal, name: []const u8) ?StructLocal {
+pub fn find_struct_local(locals: []const StructLocal, name: []const u8) ?StructLocal {
     var i = locals.len;
     while (i > 0) {
         i -= 1;
         const local = locals[i];
-        if (localNameMatches(local.name, local.source_name, name)) return local;
+        if (local_name_matches(local.name, local.source_name, name)) return local;
     }
     return null;
 }
 
-pub fn findStorageLocal(locals: []const StorageLocal, name: []const u8) ?StorageLocal {
+pub fn find_storage_local(locals: []const StorageLocal, name: []const u8) ?StorageLocal {
     var i = locals.len;
     while (i > 0) {
         i -= 1;
         const local = locals[i];
-        if (localNameMatches(local.name, local.source_name, name)) return local;
+        if (local_name_matches(local.name, local.source_name, name)) return local;
     }
     return null;
 }
 
-pub fn findUnionLocal(locals: []const UnionLocal, name: []const u8) ?UnionLocal {
+pub fn find_union_local(locals: []const UnionLocal, name: []const u8) ?UnionLocal {
     var i = locals.len;
     while (i > 0) {
         i -= 1;
         const local = locals[i];
-        if (localNameMatches(local.name, local.source_name, name)) return local;
+        if (local_name_matches(local.name, local.source_name, name)) return local;
     }
     return null;
 }
 
-pub fn localNameMatches(name: []const u8, source_name: ?[]const u8, needle: []const u8) bool {
+pub fn local_name_matches(name: []const u8, source_name: ?[]const u8, needle: []const u8) bool {
     if (std.mem.eql(u8, name, needle)) return true;
     if (source_name) |source| return std.mem.eql(u8, source, needle);
     return false;
 }
 
-pub fn loopSourceLocalName(allocator: std.mem.Allocator, loop_id: usize) ![]u8 {
+pub fn loop_source_local_name(allocator: std.mem.Allocator, loop_id: usize) ![]u8 {
     return try std.fmt.allocPrint(allocator, "__loop_source_{d}", .{loop_id});
 }
 // moved from codegen_pipeline for domain share

@@ -28,39 +28,39 @@ pub const ARC_OBJECT_HEADER_BYTES: usize = 8;
 pub const ARC_RELEASE_WORKLIST_BYTES: usize = 512;
 pub const WASI_RESULT_AREA_BYTES: usize = 64;
 
-pub fn emitArcRuntimeHeader(
+pub fn emit_arc_runtime_header(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
     string_data: []const StringData,
     struct_layouts: []const StructLayout,
 ) !void {
     _ = struct_layouts;
-    const heap_base = alignedArcHeapBase(string_data);
+    const heap_base = aligned_arc_heap_base(string_data);
     const release_worklist_base = heap_base - ARC_RELEASE_WORKLIST_BYTES;
     const wasi_result_area_base = release_worklist_base - WASI_RESULT_AREA_BYTES;
 
-    try appendFmt(allocator, out, "  ;; arc-runtime block_size={d} object_header={d}\n", .{ ARC_BLOCK_SIZE, ARC_OBJECT_HEADER_BYTES });
-    try appendFmt(allocator, out, "  (global $__heap_base i32 (i32.const {d}))\n", .{heap_base});
-    try appendFmt(allocator, out, "  (global $__heap_cursor (mut i32) (i32.const {d}))\n", .{heap_base});
-    try appendFmt(allocator, out, "  (global $__wasi_result_area_base i32 (i32.const {d}))\n", .{wasi_result_area_base});
-    try appendFmt(allocator, out, "  (global $__release_worklist_base i32 (i32.const {d}))\n", .{release_worklist_base});
+    try append_fmt(allocator, out, "  ;; arc-runtime block_size={d} object_header={d}\n", .{ ARC_BLOCK_SIZE, ARC_OBJECT_HEADER_BYTES });
+    try append_fmt(allocator, out, "  (global $__heap_base i32 (i32.const {d}))\n", .{heap_base});
+    try append_fmt(allocator, out, "  (global $__heap_cursor (mut i32) (i32.const {d}))\n", .{heap_base});
+    try append_fmt(allocator, out, "  (global $__wasi_result_area_base i32 (i32.const {d}))\n", .{wasi_result_area_base});
+    try append_fmt(allocator, out, "  (global $__release_worklist_base i32 (i32.const {d}))\n", .{release_worklist_base});
 }
 
 
-pub fn emitArcLayoutTable(
+pub fn emit_arc_layout_table(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
     struct_layouts: []const StructLayout,
 ) !void {
     for (struct_layouts) |layout| {
-        try appendFmt(allocator, out, "  ;; arc-layout type_id={d} name={s} managed_count={d} payload_bytes={d}\n", .{
+        try append_fmt(allocator, out, "  ;; arc-layout type_id={d} name={s} managed_count={d} payload_bytes={d}\n", .{
             layout.type_id,
             layout.name,
             layout.managed_fields.len,
             layout.payload_bytes,
         });
         for (layout.managed_fields, 0..) |field, index| {
-            try appendFmt(allocator, out, "  ;; arc-layout-managed-offset type_id={d} index={d} offset={d} field={s}\n", .{
+            try append_fmt(allocator, out, "  ;; arc-layout-managed-offset type_id={d} index={d} offset={d} field={s}\n", .{
                 layout.type_id,
                 index,
                 field.offset,
@@ -81,8 +81,8 @@ pub fn emitArcLayoutTable(
         \\
     );
     for (struct_layouts, 0..) |layout, index| {
-        if (hasEarlierLayoutTypeId(struct_layouts[0..index], layout.type_id)) continue;
-        try appendFmt(allocator, out,
+        if (has_earlier_layout_type_id(struct_layouts[0..index], layout.type_id)) continue;
+        try append_fmt(allocator, out,
             \\    local.get $type_id
             \\    i32.const {d}
             \\    i32.eq
@@ -106,8 +106,8 @@ pub fn emitArcLayoutTable(
         \\
     );
     for (struct_layouts, 0..) |layout, index| {
-        if (hasEarlierLayoutTypeId(struct_layouts[0..index], layout.type_id)) continue;
-        try appendFmt(allocator, out,
+        if (has_earlier_layout_type_id(struct_layouts[0..index], layout.type_id)) continue;
+        try append_fmt(allocator, out,
             \\    local.get $type_id
             \\    i32.const {d}
             \\    i32.eq
@@ -115,7 +115,7 @@ pub fn emitArcLayoutTable(
             \\
         , .{layout.type_id});
         for (layout.managed_fields, 0..) |field, field_index| {
-            try appendFmt(allocator, out,
+            try append_fmt(allocator, out,
                 \\      local.get $index
                 \\      i32.const {d}
                 \\      i32.eq
@@ -146,9 +146,9 @@ pub fn emitArcLayoutTable(
         \\
     );
     for (struct_layouts, 0..) |layout, index| {
-        if (hasEarlierLayoutTypeId(struct_layouts[0..index], layout.type_id)) continue;
+        if (has_earlier_layout_type_id(struct_layouts[0..index], layout.type_id)) continue;
         if (!layout.is_storage_pack) continue;
-        try appendFmt(allocator, out,
+        try append_fmt(allocator, out,
             \\    local.get $type_id
             \\    i32.const {d}
             \\    i32.eq
@@ -172,9 +172,9 @@ pub fn emitArcLayoutTable(
         \\
     );
     for (struct_layouts, 0..) |layout, index| {
-        if (hasEarlierLayoutTypeId(struct_layouts[0..index], layout.type_id)) continue;
+        if (has_earlier_layout_type_id(struct_layouts[0..index], layout.type_id)) continue;
         if (!layout.is_storage_pack) continue;
-        try appendFmt(allocator, out,
+        try append_fmt(allocator, out,
             \\    local.get $type_id
             \\    i32.const {d}
             \\    i32.eq
@@ -192,13 +192,13 @@ pub fn emitArcLayoutTable(
 }
 
 
-pub fn emitArcRuntimePrelude(
+pub fn emit_arc_runtime_prelude(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
     string_data: []const StringData,
     struct_layouts: []const StructLayout,
 ) !void {
-    try emitArcRuntimeHeader(allocator, out, string_data, struct_layouts);
+    try emit_arc_runtime_header(allocator, out, string_data, struct_layouts);
     try out.appendSlice(allocator,
         \\  ;; arc-runtime memory grow helper v0
         \\  (func $__memory_grow_to (param $end i32)
@@ -1044,7 +1044,7 @@ pub fn emitArcRuntimePrelude(
         \\  ;; arc-runtime layout table v1
         \\
     );
-    try emitArcLayoutTable(allocator, out, struct_layouts);
+    try emit_arc_layout_table(allocator, out, struct_layouts);
     try out.appendSlice(allocator,
         \\  ;; arc-runtime large span release v1
         \\  (func $__arc_release_large (param $object i32)
@@ -1871,7 +1871,7 @@ pub fn emitArcRuntimePrelude(
 }
 
 
-pub fn hasEarlierLayoutTypeId(layouts: []const StructLayout, type_id: usize) bool {
+pub fn has_earlier_layout_type_id(layouts: []const StructLayout, type_id: usize) bool {
     for (layouts) |layout| {
         if (layout.type_id == type_id) return true;
     }
@@ -1879,21 +1879,21 @@ pub fn hasEarlierLayoutTypeId(layouts: []const StructLayout, type_id: usize) boo
 }
 
 
-pub fn alignedArcHeapBase(string_data: []const StringData) usize {
+pub fn aligned_arc_heap_base(string_data: []const StringData) usize {
     var end: usize = ARC_BLOCK_SIZE;
     for (string_data) |data| {
         end = @max(end, data.ptr + data.bytes.len);
     }
-    return alignUp(end + WASI_RESULT_AREA_BYTES + ARC_RELEASE_WORKLIST_BYTES, ARC_BLOCK_SIZE);
+    return align_up(end + WASI_RESULT_AREA_BYTES + ARC_RELEASE_WORKLIST_BYTES, ARC_BLOCK_SIZE);
 }
 
 
-pub fn alignUp(value: usize, alignment: usize) usize {
+pub fn align_up(value: usize, alignment: usize) usize {
     return ((value + alignment - 1) / alignment) * alignment;
 }
 
 
-pub fn appendFmt(
+pub fn append_fmt(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
     comptime fmt: []const u8,

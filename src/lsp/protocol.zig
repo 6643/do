@@ -41,7 +41,7 @@ pub const RequestId = union(enum) {
     null,
 };
 
-pub fn writeInitializeResponse(
+pub fn write_initialize_response(
     allocator: std.mem.Allocator,
     writer: anytype,
     id: RequestId,
@@ -51,17 +51,17 @@ pub fn writeInitializeResponse(
 
     const body_writer = &body.writer;
     try body_writer.writeAll("{\"jsonrpc\":\"2.0\",\"id\":");
-    try writeRequestId(body_writer, id);
+    try write_request_id(body_writer, id);
     try body_writer.writeAll(",\"result\":{\"capabilities\":{\"textDocumentSync\":2,\"documentFormattingProvider\":true,\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]},\"definitionProvider\":true,\"semanticTokensProvider\":{\"legend\":{\"tokenTypes\":");
-    try writeJsonStringArray(body_writer, &semantic_tokens.legendTokenTypes);
+    try write_json_string_array(body_writer, &semantic_tokens.legendTokenTypes);
     try body_writer.writeAll(",\"tokenModifiers\":");
-    try writeJsonStringArray(body_writer, &semantic_tokens.legendTokenModifiers);
+    try write_json_string_array(body_writer, &semantic_tokens.legendTokenModifiers);
     try body_writer.writeAll("},\"full\":true}},\"serverInfo\":{\"name\":\"do-lsp\"}}}");
 
-    try writeFrame(writer, body_writer.buffered());
+    try write_frame(writer, body_writer.buffered());
 }
 
-pub fn writeShutdownResponse(
+pub fn write_shutdown_response(
     allocator: std.mem.Allocator,
     writer: anytype,
     id: RequestId,
@@ -71,13 +71,13 @@ pub fn writeShutdownResponse(
 
     const body_writer = &body.writer;
     try body_writer.writeAll("{\"jsonrpc\":\"2.0\",\"id\":");
-    try writeRequestId(body_writer, id);
+    try write_request_id(body_writer, id);
     try body_writer.writeAll(",\"result\":null}");
 
-    try writeFrame(writer, body_writer.buffered());
+    try write_frame(writer, body_writer.buffered());
 }
 
-pub fn writePublishDiagnostics(
+pub fn write_publish_diagnostics(
     allocator: std.mem.Allocator,
     writer: anytype,
     uri: []const u8,
@@ -88,18 +88,18 @@ pub fn writePublishDiagnostics(
 
     const body_writer = &body.writer;
     try body_writer.writeAll("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":");
-    try writeJsonString(body_writer, uri);
+    try write_json_string(body_writer, uri);
     try body_writer.writeAll(",\"diagnostics\":[");
     for (diagnostics, 0..) |diagnostic, idx| {
         if (idx != 0) try body_writer.writeAll(",");
-        try writeDiagnostic(body_writer, diagnostic);
+        try write_diagnostic(body_writer, diagnostic);
     }
     try body_writer.writeAll("]}}");
 
-    try writeFrame(writer, body_writer.buffered());
+    try write_frame(writer, body_writer.buffered());
 }
 
-pub fn writeTextEditsResponse(
+pub fn write_text_edits_response(
     allocator: std.mem.Allocator,
     writer: anytype,
     id: RequestId,
@@ -110,18 +110,18 @@ pub fn writeTextEditsResponse(
 
     const body_writer = &body.writer;
     try body_writer.writeAll("{\"jsonrpc\":\"2.0\",\"id\":");
-    try writeRequestId(body_writer, id);
+    try write_request_id(body_writer, id);
     try body_writer.writeAll(",\"result\":[");
     for (edits, 0..) |edit, idx| {
         if (idx != 0) try body_writer.writeAll(",");
-        try writeTextEdit(body_writer, edit);
+        try write_text_edit(body_writer, edit);
     }
     try body_writer.writeAll("]}");
 
-    try writeFrame(writer, body_writer.buffered());
+    try write_frame(writer, body_writer.buffered());
 }
 
-pub fn writeSemanticTokensResponse(
+pub fn write_semantic_tokens_response(
     allocator: std.mem.Allocator,
     writer: anytype,
     id: RequestId,
@@ -132,7 +132,7 @@ pub fn writeSemanticTokensResponse(
 
     const body_writer = &body.writer;
     try body_writer.writeAll("{\"jsonrpc\":\"2.0\",\"id\":");
-    try writeRequestId(body_writer, id);
+    try write_request_id(body_writer, id);
     try body_writer.writeAll(",\"result\":{\"data\":[");
     for (data, 0..) |value, idx| {
         if (idx != 0) try body_writer.writeAll(",");
@@ -140,10 +140,10 @@ pub fn writeSemanticTokensResponse(
     }
     try body_writer.writeAll("]}}");
 
-    try writeFrame(writer, body_writer.buffered());
+    try write_frame(writer, body_writer.buffered());
 }
 
-pub fn writeHoverResponse(
+pub fn write_hover_response(
     allocator: std.mem.Allocator,
     writer: anytype,
     id: RequestId,
@@ -154,20 +154,20 @@ pub fn writeHoverResponse(
 
     const body_writer = &body.writer;
     try body_writer.writeAll("{\"jsonrpc\":\"2.0\",\"id\":");
-    try writeRequestId(body_writer, id);
+    try write_request_id(body_writer, id);
     if (contents) |value| {
         try body_writer.writeAll(",\"result\":{\"contents\":{\"kind\":\"plaintext\",\"value\":");
-        try writeJsonString(body_writer, value);
+        try write_json_string(body_writer, value);
         try body_writer.writeAll("}}}");
     } else {
         try body_writer.writeAll(",\"result\":null");
     }
     try body_writer.writeAll("}");
 
-    try writeFrame(writer, body_writer.buffered());
+    try write_frame(writer, body_writer.buffered());
 }
 
-pub fn writeCompletionResponse(
+pub fn write_completion_response(
     allocator: std.mem.Allocator,
     writer: anytype,
     id: RequestId,
@@ -178,18 +178,18 @@ pub fn writeCompletionResponse(
 
     const body_writer = &body.writer;
     try body_writer.writeAll("{\"jsonrpc\":\"2.0\",\"id\":");
-    try writeRequestId(body_writer, id);
+    try write_request_id(body_writer, id);
     try body_writer.writeAll(",\"result\":[");
     for (items, 0..) |item, idx| {
         if (idx != 0) try body_writer.writeAll(",");
-        try writeCompletionItem(body_writer, item);
+        try write_completion_item(body_writer, item);
     }
     try body_writer.writeAll("]}");
 
-    try writeFrame(writer, body_writer.buffered());
+    try write_frame(writer, body_writer.buffered());
 }
 
-pub fn writeDefinitionResponse(
+pub fn write_definition_response(
     allocator: std.mem.Allocator,
     writer: anytype,
     id: RequestId,
@@ -200,34 +200,34 @@ pub fn writeDefinitionResponse(
 
     const body_writer = &body.writer;
     try body_writer.writeAll("{\"jsonrpc\":\"2.0\",\"id\":");
-    try writeRequestId(body_writer, id);
+    try write_request_id(body_writer, id);
     if (location) |value| {
         try body_writer.writeAll(",\"result\":");
-        try writeLocation(body_writer, value);
+        try write_location(body_writer, value);
     } else {
         try body_writer.writeAll(",\"result\":null");
     }
     try body_writer.writeAll("}");
 
-    try writeFrame(writer, body_writer.buffered());
+    try write_frame(writer, body_writer.buffered());
 }
 
-fn writeFrame(writer: anytype, body: []const u8) !void {
+fn write_frame(writer: anytype, body: []const u8) !void {
     try writer.print("Content-Length: {d}\r\n\r\n", .{body.len});
     try writer.writeAll(body);
 }
 
-fn writeRequestId(writer: anytype, id: RequestId) !void {
+fn write_request_id(writer: anytype, id: RequestId) !void {
     switch (id) {
         .number => |value| try writer.print("{d}", .{value}),
-        .string => |value| try writeJsonString(writer, value),
+        .string => |value| try write_json_string(writer, value),
         .null => try writer.writeAll("null"),
     }
 }
 
-fn writeDiagnostic(writer: anytype, diagnostic: build_diag.CompileDiagnostic) !void {
-    const start_line = zeroBased(diagnostic.loc.line);
-    const start_character = zeroBased(diagnostic.loc.col);
+fn write_diagnostic(writer: anytype, diagnostic: build_diag.CompileDiagnostic) !void {
+    const start_line = zero_based(diagnostic.loc.line);
+    const start_character = zero_based(diagnostic.loc.col);
     const end_character = start_character + 1;
 
     try writer.writeAll("{\"range\":{\"start\":{\"line\":");
@@ -239,54 +239,54 @@ fn writeDiagnostic(writer: anytype, diagnostic: build_diag.CompileDiagnostic) !v
     try writer.writeAll(",\"character\":");
     try writer.print("{d}", .{end_character});
     try writer.writeAll("}},\"severity\":1,\"code\":");
-    try writeJsonString(writer, diagnostic.code);
+    try write_json_string(writer, diagnostic.code);
     try writer.writeAll(",\"message\":");
-    try writeJsonString(writer, diagnostic.message);
+    try write_json_string(writer, diagnostic.message);
     try writer.writeAll(",\"source\":\"do\"}");
 }
 
-fn writeJsonString(writer: anytype, value: []const u8) !void {
+fn write_json_string(writer: anytype, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-fn writeJsonStringArray(writer: anytype, values: []const []const u8) !void {
+fn write_json_string_array(writer: anytype, values: []const []const u8) !void {
     try writer.writeAll("[");
     for (values, 0..) |value, idx| {
         if (idx != 0) try writer.writeAll(",");
-        try writeJsonString(writer, value);
+        try write_json_string(writer, value);
     }
     try writer.writeAll("]");
 }
 
-fn writeTextEdit(writer: anytype, edit: TextEdit) !void {
+fn write_text_edit(writer: anytype, edit: TextEdit) !void {
     try writer.writeAll("{\"range\":");
-    try writeRange(writer, edit.range);
+    try write_range(writer, edit.range);
     try writer.writeAll(",\"newText\":");
-    try writeJsonString(writer, edit.new_text);
+    try write_json_string(writer, edit.new_text);
     try writer.writeAll("}");
 }
 
-fn writeCompletionItem(writer: anytype, item: CompletionItem) !void {
+fn write_completion_item(writer: anytype, item: CompletionItem) !void {
     try writer.writeAll("{\"label\":");
-    try writeJsonString(writer, item.label);
+    try write_json_string(writer, item.label);
     try writer.writeAll(",\"kind\":");
-    try writer.print("{d}", .{completionItemKindValue(item.kind)});
+    try writer.print("{d}", .{completion_item_kind_value(item.kind)});
     if (item.detail) |detail| {
         try writer.writeAll(",\"detail\":");
-        try writeJsonString(writer, detail);
+        try write_json_string(writer, detail);
     }
     try writer.writeAll("}");
 }
 
-fn writeLocation(writer: anytype, location: Location) !void {
+fn write_location(writer: anytype, location: Location) !void {
     try writer.writeAll("{\"uri\":");
-    try writeJsonString(writer, location.uri);
+    try write_json_string(writer, location.uri);
     try writer.writeAll(",\"range\":");
-    try writeRange(writer, location.range);
+    try write_range(writer, location.range);
     try writer.writeAll("}");
 }
 
-fn completionItemKindValue(kind: CompletionItemKind) u8 {
+fn completion_item_kind_value(kind: CompletionItemKind) u8 {
     return switch (kind) {
         .function => 3,
         .field => 5,
@@ -295,15 +295,15 @@ fn completionItemKindValue(kind: CompletionItemKind) u8 {
     };
 }
 
-fn writeRange(writer: anytype, range: Range) !void {
+fn write_range(writer: anytype, range: Range) !void {
     try writer.writeAll("{\"start\":");
-    try writePosition(writer, range.start);
+    try write_position(writer, range.start);
     try writer.writeAll(",\"end\":");
-    try writePosition(writer, range.end);
+    try write_position(writer, range.end);
     try writer.writeAll("}");
 }
 
-fn writePosition(writer: anytype, position: Position) !void {
+fn write_position(writer: anytype, position: Position) !void {
     try writer.writeAll("{\"line\":");
     try writer.print("{d}", .{position.line});
     try writer.writeAll(",\"character\":");
@@ -311,7 +311,7 @@ fn writePosition(writer: anytype, position: Position) !void {
     try writer.writeAll("}");
 }
 
-fn zeroBased(value: usize) usize {
+fn zero_based(value: usize) usize {
     return if (value == 0) 0 else value - 1;
 }
 
@@ -319,7 +319,7 @@ test "writeResponse writes content length framed initialize response" {
     var out = std.Io.Writer.Allocating.init(std.testing.allocator);
     defer out.deinit();
 
-    try writeInitializeResponse(std.testing.allocator, &out.writer, .{ .number = 1 });
+    try write_initialize_response(std.testing.allocator, &out.writer, .{ .number = 1 });
 
     const bytes = out.writer.buffered();
     try std.testing.expect(std.mem.startsWith(u8, bytes, "Content-Length: "));
@@ -334,11 +334,11 @@ test "writeResponse writes content length framed initialize response" {
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"tokenTypes\":[\"keyword\",\"type\",\"function\",\"parameter\",\"variable\",\"field\",\"property\",\"string\",\"number\",\"comment\",\"operator\",\"builtin\"]") != null);
 }
 
-test "writeHoverResponse emits plaintext markup content or null" {
+test "write_hover_response emits plaintext markup content or null" {
     var hit = std.Io.Writer.Allocating.init(std.testing.allocator);
     defer hit.deinit();
 
-    try writeHoverResponse(std.testing.allocator, &hit.writer, .{ .number = 2 }, "get_title(user User) -> text");
+    try write_hover_response(std.testing.allocator, &hit.writer, .{ .number = 2 }, "get_title(user User) -> text");
 
     const hit_bytes = hit.writer.buffered();
     try std.testing.expect(std.mem.indexOf(u8, hit_bytes, "\"result\":{\"contents\":{\"kind\":\"plaintext\",\"value\":\"get_title(user User) -> text\"}}") != null);
@@ -346,13 +346,13 @@ test "writeHoverResponse emits plaintext markup content or null" {
     var miss = std.Io.Writer.Allocating.init(std.testing.allocator);
     defer miss.deinit();
 
-    try writeHoverResponse(std.testing.allocator, &miss.writer, .{ .number = 3 }, null);
+    try write_hover_response(std.testing.allocator, &miss.writer, .{ .number = 3 }, null);
 
     const miss_bytes = miss.writer.buffered();
     try std.testing.expect(std.mem.indexOf(u8, miss_bytes, "\"result\":null") != null);
 }
 
-test "writeCompletionResponse emits completion item array" {
+test "write_completion_response emits completion item array" {
     var out = std.Io.Writer.Allocating.init(std.testing.allocator);
     defer out.deinit();
 
@@ -368,7 +368,7 @@ test "writeCompletionResponse emits completion item array" {
         },
     };
 
-    try writeCompletionResponse(std.testing.allocator, &out.writer, .{ .number = 4 }, &items);
+    try write_completion_response(std.testing.allocator, &out.writer, .{ .number = 4 }, &items);
 
     const bytes = out.writer.buffered();
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"result\":[") != null);
@@ -376,11 +376,11 @@ test "writeCompletionResponse emits completion item array" {
     try std.testing.expect(std.mem.indexOf(u8, bytes, "{\"label\":\"User\",\"kind\":7}") != null);
 }
 
-test "writeDefinitionResponse emits location or null" {
+test "write_definition_response emits location or null" {
     var hit = std.Io.Writer.Allocating.init(std.testing.allocator);
     defer hit.deinit();
 
-    try writeDefinitionResponse(std.testing.allocator, &hit.writer, .{ .number = 5 }, .{
+    try write_definition_response(std.testing.allocator, &hit.writer, .{ .number = 5 }, .{
         .uri = "file:///tmp/app.do",
         .range = .{
             .start = .{ .line = 3, .character = 0 },
@@ -394,13 +394,13 @@ test "writeDefinitionResponse emits location or null" {
     var miss = std.Io.Writer.Allocating.init(std.testing.allocator);
     defer miss.deinit();
 
-    try writeDefinitionResponse(std.testing.allocator, &miss.writer, .{ .number = 6 }, null);
+    try write_definition_response(std.testing.allocator, &miss.writer, .{ .number = 6 }, null);
 
     const miss_bytes = miss.writer.buffered();
     try std.testing.expect(std.mem.indexOf(u8, miss_bytes, "\"result\":null") != null);
 }
 
-test "writePublishDiagnostics emits zero based LSP range" {
+test "write_publish_diagnostics emits zero based LSP range" {
     var out = std.Io.Writer.Allocating.init(std.testing.allocator);
     defer out.deinit();
 
@@ -412,7 +412,7 @@ test "writePublishDiagnostics emits zero based LSP range" {
         .hint = "use if expr",
         .line_text = "    if",
     };
-    try writePublishDiagnostics(
+    try write_publish_diagnostics(
         std.testing.allocator,
         &out.writer,
         "file:///tmp/bad.do",
@@ -425,7 +425,7 @@ test "writePublishDiagnostics emits zero based LSP range" {
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"character\":4") != null);
 }
 
-test "writeTextEditsResponse emits formatting edit payload" {
+test "write_text_edits_response emits formatting edit payload" {
     var out = std.Io.Writer.Allocating.init(std.testing.allocator);
     defer out.deinit();
 
@@ -437,7 +437,7 @@ test "writeTextEditsResponse emits formatting edit payload" {
         .new_text = "User {\n    id i32\n}\n",
     };
 
-    try writeTextEditsResponse(std.testing.allocator, &out.writer, .{ .number = 2 }, &.{edit});
+    try write_text_edits_response(std.testing.allocator, &out.writer, .{ .number = 2 }, &.{edit});
 
     const bytes = out.writer.buffered();
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"result\":[") != null);
@@ -445,11 +445,11 @@ test "writeTextEditsResponse emits formatting edit payload" {
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"line\":2") != null);
 }
 
-test "writeSemanticTokensResponse emits token data payload" {
+test "write_semantic_tokens_response emits token data payload" {
     var out = std.Io.Writer.Allocating.init(std.testing.allocator);
     defer out.deinit();
 
-    try writeSemanticTokensResponse(std.testing.allocator, &out.writer, .{ .number = 2 }, &.{ 0, 0, 4, 0, 0 });
+    try write_semantic_tokens_response(std.testing.allocator, &out.writer, .{ .number = 2 }, &.{ 0, 0, 4, 0, 0 });
 
     const bytes = out.writer.buffered();
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"result\":{\"data\":[0,0,4,0,0]}") != null);

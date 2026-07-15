@@ -42,7 +42,7 @@ pub const TokenRange = struct {
     start: usize = 0,
     end: usize = 0,
 
-    pub fn isEmpty(self: TokenRange) bool {
+    pub fn is_empty(self: TokenRange) bool {
         return self.start == self.end;
     }
 };
@@ -72,7 +72,7 @@ pub const MoveContext = struct {
     allow_last_use_move: bool = true,
     allow_field_read_move: bool = false,
 
-    pub fn cleanupVisible(self: MoveContext) bool {
+    pub fn cleanup_visible(self: MoveContext) bool {
         return self.cleanup.cleanup_visible;
     }
 };
@@ -84,7 +84,7 @@ pub const MoveCandidate = struct {
     context: MoveContext,
     future_use: MoveUseWindows = .{},
 
-    pub fn dedupeKey(self: MoveCandidate) []const u8 {
+    pub fn dedupe_key(self: MoveCandidate) []const u8 {
         return self.source.actual_name;
     }
 };
@@ -120,41 +120,41 @@ pub const MoveDecision = struct {
         };
     }
 
-    pub fn isCopyRequired(self: MoveDecision) bool {
+    pub fn is_copy_required(self: MoveDecision) bool {
         return !self.accepted;
     }
 };
 
-pub fn decideCallArgMove(candidate: MoveCandidate) MoveDecision {
+pub fn decide_call_arg_move(candidate: MoveCandidate) MoveDecision {
     if (candidate.kind != .call_arg) return MoveDecision.reject(&candidate, .unsupported_candidate);
     if (!candidate.context.allow_last_use_move) return MoveDecision.reject(&candidate, .disabled);
     if (candidate.context.defer_visible) return MoveDecision.reject(&candidate, .defer_visible);
-    if (hasUseWindow(candidate.future_use.after_arg)) return MoveDecision.reject(&candidate, .future_use_after_arg);
-    if (hasUseWindow(candidate.future_use.after_stmt)) return MoveDecision.reject(&candidate, .future_use_after_stmt);
-    if (hasUseWindow(candidate.future_use.body_rest)) return MoveDecision.reject(&candidate, .future_use_after_body);
+    if (has_use_window(candidate.future_use.after_arg)) return MoveDecision.reject(&candidate, .future_use_after_arg);
+    if (has_use_window(candidate.future_use.after_stmt)) return MoveDecision.reject(&candidate, .future_use_after_stmt);
+    if (has_use_window(candidate.future_use.body_rest)) return MoveDecision.reject(&candidate, .future_use_after_body);
     return MoveDecision.accept(&candidate, .{
         .zero_source = true,
         .release_skip_name = candidate.source.actual_name,
     });
 }
 
-pub fn decideFieldGetMove(candidate: MoveCandidate) MoveDecision {
+pub fn decide_field_get_move(candidate: MoveCandidate) MoveDecision {
     if (candidate.kind != .field_get) return MoveDecision.reject(&candidate, .unsupported_candidate);
     if (!candidate.context.allow_last_use_move or !candidate.context.allow_field_read_move) return MoveDecision.reject(&candidate, .disabled);
     if (candidate.context.defer_visible) return MoveDecision.reject(&candidate, .defer_visible);
     if (candidate.source.origin != .fresh_local) return MoveDecision.reject(&candidate, .source_not_unique);
-    if (hasUseWindow(candidate.future_use.fresh_source_gap)) return MoveDecision.reject(&candidate, .source_not_unique);
-    if (hasUseWindow(candidate.future_use.after_expr)) return MoveDecision.reject(&candidate, .future_use_after_expr);
-    if (hasUseWindow(candidate.future_use.after_stmt)) return MoveDecision.reject(&candidate, .future_use_after_stmt);
-    if (hasUseWindow(candidate.future_use.body_rest)) return MoveDecision.reject(&candidate, .future_use_after_body);
+    if (has_use_window(candidate.future_use.fresh_source_gap)) return MoveDecision.reject(&candidate, .source_not_unique);
+    if (has_use_window(candidate.future_use.after_expr)) return MoveDecision.reject(&candidate, .future_use_after_expr);
+    if (has_use_window(candidate.future_use.after_stmt)) return MoveDecision.reject(&candidate, .future_use_after_stmt);
+    if (has_use_window(candidate.future_use.body_rest)) return MoveDecision.reject(&candidate, .future_use_after_body);
     return MoveDecision.accept(&candidate, .{
         .zero_field = true,
     });
 }
 
-fn hasUseWindow(range: ?TokenRange) bool {
+fn has_use_window(range: ?TokenRange) bool {
     const value = range orelse return false;
-    return !value.isEmpty();
+    return !value.is_empty();
 }
 
 test "move candidate records source, context, cleanup facts and conservative decision" {
@@ -187,9 +187,9 @@ test "move candidate records source, context, cleanup facts and conservative dec
 
     try std.testing.expectEqual(MoveCandidateKind.call_arg, candidate.kind);
     try std.testing.expectEqual(SourceOrigin.fresh_local, candidate.source.origin);
-    try std.testing.expectEqualStrings("data", candidate.dedupeKey());
-    try std.testing.expect(candidate.context.cleanupVisible());
-    try std.testing.expect(decision.isCopyRequired());
+    try std.testing.expectEqualStrings("data", candidate.dedupe_key());
+    try std.testing.expect(candidate.context.cleanup_visible());
+    try std.testing.expect(decision.is_copy_required());
     try std.testing.expectEqual(MoveRejectReason.loop_context, decision.reject_reason.?);
 }
 
@@ -213,7 +213,7 @@ test "accepted move decision carries zero and release-skip actions" {
         .release_skip_name = candidate.source.actual_name,
     });
 
-    try std.testing.expect(!decision.isCopyRequired());
+    try std.testing.expect(!decision.is_copy_required());
     try std.testing.expectEqualStrings("user", decision.release_skip_name.?);
     try std.testing.expect(decision.zero_source);
     try std.testing.expectEqual(@as(?MoveRejectReason, null), decision.reject_reason);
@@ -235,28 +235,28 @@ test "call arg decision rejects disabled, defer and future-use windows" {
             .allow_last_use_move = true,
         },
     };
-    const safe_decision = decideCallArgMove(safe_candidate);
+    const safe_decision = decide_call_arg_move(safe_candidate);
     try std.testing.expect(safe_decision.accepted);
     try std.testing.expect(safe_decision.zero_source);
 
     var disabled_candidate = safe_candidate;
     disabled_candidate.context.allow_last_use_move = false;
-    const disabled_decision = decideCallArgMove(disabled_candidate);
+    const disabled_decision = decide_call_arg_move(disabled_candidate);
     try std.testing.expectEqual(MoveRejectReason.disabled, disabled_decision.reject_reason.?);
 
     var defer_candidate = safe_candidate;
     defer_candidate.context.defer_visible = true;
-    const defer_decision = decideCallArgMove(defer_candidate);
+    const defer_decision = decide_call_arg_move(defer_candidate);
     try std.testing.expectEqual(MoveRejectReason.defer_visible, defer_decision.reject_reason.?);
 
     var after_arg_candidate = safe_candidate;
     after_arg_candidate.future_use.after_arg = .{ .start = 5, .end = 8 };
-    const after_arg_decision = decideCallArgMove(after_arg_candidate);
+    const after_arg_decision = decide_call_arg_move(after_arg_candidate);
     try std.testing.expectEqual(MoveRejectReason.future_use_after_arg, after_arg_decision.reject_reason.?);
 
     var after_stmt_candidate = safe_candidate;
     after_stmt_candidate.future_use.after_stmt = .{ .start = 8, .end = 12 };
-    const after_stmt_decision = decideCallArgMove(after_stmt_candidate);
+    const after_stmt_decision = decide_call_arg_move(after_stmt_candidate);
     try std.testing.expectEqual(MoveRejectReason.future_use_after_stmt, after_stmt_decision.reject_reason.?);
 }
 
@@ -277,33 +277,33 @@ test "field-get decision requires fresh unique source and field-read permission"
         },
     };
 
-    const safe_decision = decideFieldGetMove(safe_candidate);
+    const safe_decision = decide_field_get_move(safe_candidate);
     try std.testing.expect(safe_decision.accepted);
     try std.testing.expect(safe_decision.zero_field);
     try std.testing.expect(!safe_decision.zero_source);
 
     var disabled_candidate = safe_candidate;
     disabled_candidate.context.allow_field_read_move = false;
-    const disabled_decision = decideFieldGetMove(disabled_candidate);
+    const disabled_decision = decide_field_get_move(disabled_candidate);
     try std.testing.expectEqual(MoveRejectReason.disabled, disabled_decision.reject_reason.?);
 
     var shared_candidate = safe_candidate;
     shared_candidate.source.origin = .helper_shared;
-    const shared_decision = decideFieldGetMove(shared_candidate);
+    const shared_decision = decide_field_get_move(shared_candidate);
     try std.testing.expectEqual(MoveRejectReason.source_not_unique, shared_decision.reject_reason.?);
 
     var alias_candidate = safe_candidate;
     alias_candidate.future_use.fresh_source_gap = .{ .start = 4, .end = 8 };
-    const alias_decision = decideFieldGetMove(alias_candidate);
+    const alias_decision = decide_field_get_move(alias_candidate);
     try std.testing.expectEqual(MoveRejectReason.source_not_unique, alias_decision.reject_reason.?);
 
     var after_expr_candidate = safe_candidate;
     after_expr_candidate.future_use.after_expr = .{ .start = 13, .end = 20 };
-    const after_expr_decision = decideFieldGetMove(after_expr_candidate);
+    const after_expr_decision = decide_field_get_move(after_expr_candidate);
     try std.testing.expectEqual(MoveRejectReason.future_use_after_expr, after_expr_decision.reject_reason.?);
 
     var body_rest_candidate = safe_candidate;
     body_rest_candidate.future_use.body_rest = .{ .start = 20, .end = 30 };
-    const body_rest_decision = decideFieldGetMove(body_rest_candidate);
+    const body_rest_decision = decide_field_get_move(body_rest_candidate);
     try std.testing.expectEqual(MoveRejectReason.future_use_after_body, body_rest_decision.reject_reason.?);
 }

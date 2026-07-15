@@ -19,18 +19,18 @@ pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     if (args.len < 2) {
-        try printUsage(io);
+        try print_usage(io);
         return;
     }
 
-    const command = parseCommand(args[1]) catch |err| {
-        try printCommandError(io, err);
+    const command = parse_command(args[1]) catch |err| {
+        try print_command_error(io, err);
         std.process.exit(1);
     };
 
     switch (command) {
         .build => try build_cmd.run(init, args[1..]),
-        .test_cmd => try build_cmd.runTest(init, args[1..]),
+        .test_cmd => try build_cmd.run_test(init, args[1..]),
         .check => try check_cmd.run(init, args[1..]),
         .run => try run_cmd.run(init, args[1..]),
         .fmt => try fmt_cmd.run(init, args[1..]),
@@ -38,7 +38,7 @@ pub fn main(init: std.process.Init) !void {
     }
 }
 
-fn parseCommand(name: []const u8) !Command {
+fn parse_command(name: []const u8) !Command {
     if (std.mem.eql(u8, name, "build")) return .build;
     if (std.mem.eql(u8, name, "test")) return .test_cmd;
     if (std.mem.eql(u8, name, "check")) return .check;
@@ -48,7 +48,7 @@ fn parseCommand(name: []const u8) !Command {
     return error.UnknownCommand;
 }
 
-fn printUsage(io: std.Io) !void {
+fn print_usage(io: std.Io) !void {
     var out_buffer: [512]u8 = undefined;
     var out = std.Io.File.stdout().writer(io, &out_buffer);
     try out.interface.print(
@@ -68,7 +68,7 @@ fn printUsage(io: std.Io) !void {
     try out.interface.flush();
 }
 
-fn printCommandError(io: std.Io, err: anyerror) !void {
+fn print_command_error(io: std.Io, err: anyerror) !void {
     var err_buffer: [512]u8 = undefined;
     var out = std.Io.File.stderr().writer(io, &err_buffer);
     try out.interface.print("error[{s}]: 命令语法: `do build ...`、`do test ...`、`do check ...`、`do run ...`、`do fmt ...` 或 `do lsp ...`\n", .{@errorName(err)});

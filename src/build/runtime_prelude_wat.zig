@@ -16,15 +16,15 @@ pub const WASI_RESULT_AREA_BYTES = runtime_arc_wat.WASI_RESULT_AREA_BYTES;
 
 
 // Re-export ARC runtime WAT (physical home: runtime_arc_wat.zig).
-pub const alignUp = runtime_arc_wat.alignUp;
-pub const alignedArcHeapBase = runtime_arc_wat.alignedArcHeapBase;
-pub const appendFmt = runtime_arc_wat.appendFmt;
-pub const emitArcLayoutTable = runtime_arc_wat.emitArcLayoutTable;
-pub const emitArcRuntimeHeader = runtime_arc_wat.emitArcRuntimeHeader;
-pub const emitArcRuntimePrelude = runtime_arc_wat.emitArcRuntimePrelude;
-pub const hasEarlierLayoutTypeId = runtime_arc_wat.hasEarlierLayoutTypeId;
+pub const align_up = runtime_arc_wat.align_up;
+pub const aligned_arc_heap_base = runtime_arc_wat.aligned_arc_heap_base;
+pub const append_fmt = runtime_arc_wat.append_fmt;
+pub const emit_arc_layout_table = runtime_arc_wat.emit_arc_layout_table;
+pub const emit_arc_runtime_header = runtime_arc_wat.emit_arc_runtime_header;
+pub const emit_arc_runtime_prelude = runtime_arc_wat.emit_arc_runtime_prelude;
+pub const has_earlier_layout_type_id = runtime_arc_wat.has_earlier_layout_type_id;
 
-pub fn emitStringDataMemory(
+pub fn emit_string_data_memory(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
     string_data: []const StringData,
@@ -37,13 +37,13 @@ pub fn emitStringDataMemory(
     }
     try out.appendSlice(allocator, "  (export \"cm32p2_memory\" (memory 0))\n");
     for (string_data) |data| {
-        try appendFmt(allocator, out, "  (data (i32.const {d}) ", .{data.ptr});
-        try appendWatStringLiteral(allocator, out, data.bytes);
+        try append_fmt(allocator, out, "  (data (i32.const {d}) ", .{data.ptr});
+        try append_wat_string_literal(allocator, out, data.bytes);
         try out.appendSlice(allocator, ")\n");
     }
 }
 
-fn appendWatStringLiteral(
+fn append_wat_string_literal(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
     bytes: []const u8,
@@ -54,12 +54,12 @@ fn appendWatStringLiteral(
             try out.append(allocator, byte);
             continue;
         }
-        try appendWatByteEscape(allocator, out, byte);
+        try append_wat_byte_escape(allocator, out, byte);
     }
     try out.append(allocator, '"');
 }
 
-fn appendWatByteEscape(
+fn append_wat_byte_escape(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
     byte: u8,
@@ -78,7 +78,7 @@ test "runtime prelude writer emits component core memory and data segments" {
     const data = [_]StringData{
         .{ .ptr = 1024, .bytes = "a\nb" },
     };
-    try emitStringDataMemory(allocator, &out, data[0..], .{ .component_core = true });
+    try emit_string_data_memory(allocator, &out, data[0..], .{ .component_core = true });
 
     try std.testing.expect(std.mem.indexOf(u8, out.items, "  (memory 1)\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.items, "  (export \"cm32p2_memory\" (memory 0))\n") != null);
@@ -96,8 +96,8 @@ test "runtime prelude writer emits runtime header and layout table" {
     const layouts = [_]StructLayout{
         .{ .name = "Box", .type_id = 2, .payload_bytes = 16, .managed_fields = fields[0..] },
     };
-    try emitArcRuntimeHeader(allocator, &out, &.{}, layouts[0..]);
-    try emitArcLayoutTable(allocator, &out, layouts[0..]);
+    try emit_arc_runtime_header(allocator, &out, &.{}, layouts[0..]);
+    try emit_arc_layout_table(allocator, &out, layouts[0..]);
 
     try std.testing.expect(std.mem.indexOf(u8, out.items, "  ;; arc-runtime block_size=1024 object_header=8\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.items, "  (global $__heap_base i32 (i32.const 2048))\n") != null);

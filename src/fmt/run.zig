@@ -7,17 +7,17 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
     const allocator = init.gpa;
     const io = init.io;
 
-    const parsed = cli.parseFmt(args) catch |err| {
-        try diag.printCliError(io, err);
+    const parsed = cli.parse_fmt(args) catch |err| {
+        try diag.print_cli_error(io, err);
         std.process.exit(1);
     };
 
     var out_buffer: [4096]u8 = undefined;
     var out = std.Io.File.stdout().writer(io, &out_buffer);
-    formatPath(io, allocator, std.Io.Dir.cwd(), parsed.input_path, .{ .check = parsed.check, .write = parsed.write }, &out.interface) catch |err| {
+    format_path(io, allocator, std.Io.Dir.cwd(), parsed.input_path, .{ .check = parsed.check, .write = parsed.write }, &out.interface) catch |err| {
         switch (err) {
-            error.FormatMismatch => try diag.printCliError(io, err),
-            else => try diag.printIoError(io, parsed.input_path, err),
+            error.FormatMismatch => try diag.print_cli_error(io, err),
+            else => try diag.print_io_error(io, parsed.input_path, err),
         }
         std.process.exit(1);
     };
@@ -29,7 +29,7 @@ const FormatMode = struct {
     write: bool = false,
 };
 
-fn formatPath(
+fn format_path(
     io: std.Io,
     allocator: std.mem.Allocator,
     dir: std.Io.Dir,
@@ -40,7 +40,7 @@ fn formatPath(
     const source = try dir.readFileAlloc(io, input_path, allocator, .limited(16 * 1024 * 1024));
     defer allocator.free(source);
 
-    const formatted = try formatter.formatSource(allocator, source);
+    const formatted = try formatter.format_source(allocator, source);
     defer allocator.free(formatted);
 
     if (mode.check) {
@@ -56,7 +56,7 @@ fn formatPath(
     try writer.writeAll(formatted);
 }
 
-test "formatPath write mode rewrites file and emits no stdout" {
+test "format_path write mode rewrites file and emits no stdout" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
@@ -68,7 +68,7 @@ test "formatPath write mode rewrites file and emits no stdout" {
     var out = std.Io.Writer.Allocating.init(std.testing.allocator);
     defer out.deinit();
 
-    try formatPath(
+    try format_path(
         std.testing.io,
         std.testing.allocator,
         tmp.dir,

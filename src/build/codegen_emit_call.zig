@@ -13,7 +13,7 @@ const model = @import("codegen_model.zig");
 const constants = @import("codegen_constants.zig");
 const context = @import("codegen_context.zig");
 const NilComparisonNarrowing = model.NilComparisonNarrowing;
-const gen_collect_util = @import("gen_collect_util.zig");
+const codegen_collect_util = @import("codegen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
 const codegen_imports = @import("codegen_imports.zig");
@@ -31,10 +31,10 @@ const collect_callback_call_args = codegen_collect_body.collect_callback_call_ar
 const emit_self_tail_loop_local_reset = codegen_collect_body.emit_self_tail_loop_local_reset;
 const func_variadic_param_index = codegen_collect_body.func_variadic_param_index;
 const multi_result_lhs_for_item = codegen_collect_body.multi_result_lhs_for_item;
-const append_loop_source_storage_local = context.appendLoopSourceStorageLocal;
-const parse_union_type_layout = gen_collect_util.parseUnionTypeLayout;
+const append_loop_source_storage_local = context.append_loop_source_storage_local;
+const parse_union_type_layout = codegen_collect_util.parse_union_type_layout;
 const InferredUnionBinding = model.InferredUnionBinding;
-const find_union_local_exact = context.findUnionLocalExact;
+const find_union_local_exact = context.find_union_local_exact;
 const NUMERIC_SELECT_RIGHT_TMP_I32 = constants.NUMERIC_SELECT_RIGHT_TMP_I32;
 const NUMERIC_SELECT_LEFT_TMP_I32 = constants.NUMERIC_SELECT_LEFT_TMP_I32;
 const NUMERIC_SELECT_RIGHT_TMP_I64 = constants.NUMERIC_SELECT_RIGHT_TMP_I64;
@@ -46,10 +46,10 @@ const wasm_type = codegen_emit_wasi.wasm_type;
 const codegen_scalar_type = codegen_emit_wasi.codegen_scalar_type;
 const MultiResultLhs = model.MultiResultLhs;
 const SourceOrigin = model.SourceOrigin;
-const find_payload_enum_decl = codegen_imports.findPayloadEnumDecl;
+const find_payload_enum_decl = codegen_imports.find_payload_enum_decl;
 const find_start_func = codegen_tokens.find_start_func;
-const find_value_enum_decl_line_by_name = codegen_imports.findValueEnumDeclLineByName;
-const find_value_enum_decl_line_by_branch = codegen_imports.findValueEnumDeclLineByBranch;
+const find_value_enum_decl_line_by_name = codegen_imports.find_value_enum_decl_line_by_name;
+const find_value_enum_decl_line_by_branch = codegen_imports.find_value_enum_decl_line_by_branch;
 const simple_type_name = codegen_collect_functions.simple_type_name;
 const is_top_level_comma_any = codegen_collect_functions.is_top_level_comma_any;
 const is_return_arrow_at = codegen_collect_functions.is_return_arrow_at;
@@ -159,18 +159,18 @@ const STORAGE_PAYLOAD_HEADER_BYTES = constants.STORAGE_PAYLOAD_HEADER_BYTES;
 const TYPE_ID_STORAGE_U8 = constants.TYPE_ID_STORAGE_U8;
 const TYPE_ID_STORAGE_MANAGED = constants.TYPE_ID_STORAGE_MANAGED;
 const TYPE_ID_FIRST_STRUCT = constants.TYPE_ID_FIRST_STRUCT;
-const find_local_type = context.findLocalType;
-const find_local_origin = context.findLocalOrigin;
-const find_storage_local = context.findStorageLocal;
-const find_struct_local = context.findStructLocal;
-const find_union_local = context.findUnionLocal;
-const has_local = context.hasLocal;
-const is_compiler_local_name = context.isCompilerLocalName;
-const storage_type_name_for_elem = context.storageTypeNameForElem;
-const storage_type_name_for_elem_owned = context.storageTypeNameForElemOwned;
-const local_name_matches = context.localNameMatches;
-const union_payload_local_name = context.unionPayloadLocalName;
-const union_tag_local_name = context.unionTagLocalName;
+const find_local_type = context.find_local_type;
+const find_local_origin = context.find_local_origin;
+const find_storage_local = context.find_storage_local;
+const find_struct_local = context.find_struct_local;
+const find_union_local = context.find_union_local;
+const has_local = context.has_local;
+const is_compiler_local_name = context.is_compiler_local_name;
+const storage_type_name_for_elem = context.storage_type_name_for_elem;
+const storage_type_name_for_elem_owned = context.storage_type_name_for_elem_owned;
+const local_name_matches = context.local_name_matches;
+const union_payload_local_name = context.union_payload_local_name;
+const union_tag_local_name = context.union_tag_local_name;
 
 const UnionLayout = codegen_union_layout.UnionLayout;
 const UnionBranch = codegen_union_layout.UnionBranch;
@@ -179,42 +179,42 @@ const clone_union_layout = codegen_union_layout.clone_union_layout;
 const union_layouts_equal = codegen_union_layout.union_layouts_equal;
 const union_branch_is_status_i32 = codegen_union_layout.union_branch_is_status_i32;
 
-const find_struct_decl = gen_collect_util.findStructDecl;
-const find_struct_layout = gen_collect_util.findStructLayout;
+const find_struct_decl = codegen_collect_util.find_struct_decl;
+const find_struct_layout = codegen_collect_util.find_struct_layout;
 const find_struct_layout_exact = codegen_collect_structs.find_struct_layout_exact;
 const is_pack_managed_handle_leaf = codegen_collect_structs.is_pack_managed_handle_leaf;
 const leaf_payload_bytes_for_pack = codegen_collect_structs.leaf_payload_bytes_for_pack;
-const pure_scalar_struct_pack_width = gen_collect_util.pureScalarStructPackWidth;
-const pack_slot_width = gen_collect_util.packSlotWidth;
-const tuple_pack_width_with_structs = gen_collect_util.tuplePackWidthWithStructs;
-const append_tuple_leaf_types_with_structs = gen_collect_util.appendTupleLeafTypesWithStructs;
-const append_tuple_leaf_types = gen_collect_util.appendTupleLeafTypes;
-const struct_decl_has_managed_field = gen_collect_util.structDeclHasManagedField;
+const pure_scalar_struct_pack_width = codegen_collect_util.pure_scalar_struct_pack_width;
+const pack_slot_width = codegen_collect_util.pack_slot_width;
+const tuple_pack_width_with_structs = codegen_collect_util.tuple_pack_width_with_structs;
+const append_tuple_leaf_types_with_structs = codegen_collect_util.append_tuple_leaf_types_with_structs;
+const append_tuple_leaf_types = codegen_collect_util.append_tuple_leaf_types;
+const struct_decl_has_managed_field = codegen_collect_util.struct_decl_has_managed_field;
 const ensure_storage_pack_layout = codegen_collect_structs.ensure_storage_pack_layout;
 const managed_leaf_field_name = codegen_collect_structs.managed_leaf_field_name;
-const is_error_like_type = gen_collect_util.isErrorLikeType;
-const parse_codegen_type_expr = gen_collect_util.parseCodegenTypeExpr;
+const is_error_like_type = codegen_collect_util.is_error_like_type;
+const parse_codegen_type_expr = codegen_collect_util.parse_codegen_type_expr;
 const parse_type_union_layout_from_name = codegen_collect_structs.parse_type_union_layout_from_name;
 const bind_struct_type_args = codegen_collect_structs.bind_struct_type_args;
-const substitute_generic_type_owned = gen_collect_util.substituteGenericTypeOwned;
-const find_generic_binding = gen_collect_util.findGenericBinding;
+const substitute_generic_type_owned = codegen_collect_util.substitute_generic_type_owned;
+const find_generic_binding = codegen_collect_util.find_generic_binding;
 const same_callable_source_name = codegen_collect_functions.same_callable_source_name;
-const func_param_abi_type = gen_collect_util.funcParamAbiType;
-const is_unmanaged_scalar_struct = gen_collect_util.isUnmanagedScalarStruct;
-const append_union_branch_payload_types = gen_collect_util.appendUnionBranchPayloadTypes;
+const func_param_abi_type = codegen_collect_util.func_param_abi_type;
+const is_unmanaged_scalar_struct = codegen_collect_util.is_unmanaged_scalar_struct;
+const append_union_branch_payload_types = codegen_collect_util.append_union_branch_payload_types;
 
-const call_head_at = codegen_imports.callHeadAt;
-const expr_call_head = codegen_imports.exprCallHead;
-const call_head_has_type_args = codegen_imports.callHeadHasTypeArgs;
-const find_value_enum_decl = codegen_imports.findValueEnumDecl;
-const find_codegen_import_by_alias = codegen_imports.findCodegenImportByAlias;
-const imported_alias_context_for_tokens = codegen_imports.importedAliasContextForTokens;
-const local_scalar_const = codegen_imports.localScalarConst;
-const imported_scalar_const = codegen_imports.importedScalarConst;
-const find_imported_module_index = codegen_imports.findImportedModuleIndex;
-const find_imported_module_index_no_alloc = codegen_imports.findImportedModuleIndexNoAlloc;
-const find_wasi_host_import_for_tokens = codegen_imports.findWasiHostImportForTokens;
-const wasi_source_for_tokens = codegen_imports.wasiSourceForTokens;
+const call_head_at = codegen_imports.call_head_at;
+const expr_call_head = codegen_imports.expr_call_head;
+const call_head_has_type_args = codegen_imports.call_head_has_type_args;
+const find_value_enum_decl = codegen_imports.find_value_enum_decl;
+const find_codegen_import_by_alias = codegen_imports.find_codegen_import_by_alias;
+const imported_alias_context_for_tokens = codegen_imports.imported_alias_context_for_tokens;
+const local_scalar_const = codegen_imports.local_scalar_const;
+const imported_scalar_const = codegen_imports.imported_scalar_const;
+const find_imported_module_index = codegen_imports.find_imported_module_index;
+const find_imported_module_index_no_alloc = codegen_imports.find_imported_module_index_no_alloc;
+const find_wasi_host_import_for_tokens = codegen_imports.find_wasi_host_import_for_tokens;
+const wasi_source_for_tokens = codegen_imports.wasi_source_for_tokens;
 
 const is_managed_local_type = codegen_emit_wasi.is_managed_local_type;
 const is_managed_payload_type = codegen_emit_wasi.is_managed_payload_type;
@@ -250,12 +250,12 @@ const emit_wasi_read_result_as_union_value = codegen_emit_wasi.emit_wasi_read_re
 const emit_wasi_list_u8_result_as_union_value = codegen_emit_wasi.emit_wasi_list_u8_result_as_union_value;
 const emit_wasi_descriptor_result_as_union_value = codegen_emit_wasi.emit_wasi_descriptor_result_as_union_value;
 const emit_wasi_record_struct_binding = codegen_emit_wasi.emit_wasi_record_struct_binding;
-const is_tuple_packable_leaf_type = type_util.isTuplePackableLeafType;
-const is_core_wasm_scalar_tu = type_util.isCoreWasmScalar;
+const is_tuple_packable_leaf_type = type_util.is_tuple_packable_leaf_type;
+const is_core_wasm_scalar_tu = type_util.is_core_wasm_scalar;
 
-const host_param_is_ptr_len = codegen_host_imports.hostParamIsPtrLen;
-const host_arg_could_be_storage_ptr_len_syntax = codegen_host_imports.hostArgCouldBeStoragePtrLenSyntax;
-const find_host_import_for_tokens = codegen_host_imports.findHostImportForTokens;
+const host_param_is_ptr_len = codegen_host_imports.host_param_is_ptr_len;
+const host_arg_could_be_storage_ptr_len_syntax = codegen_host_imports.host_arg_could_be_storage_ptr_len_syntax;
+const find_host_import_for_tokens = codegen_host_imports.find_host_import_for_tokens;
 
 const WasiHostImport = codegen_wasi_registry.WasiHostImport;
 
@@ -601,32 +601,32 @@ const resolve_loop_control = codegen_emit_control.resolve_loop_control;
 const emit_loop_control_release_chain = codegen_emit_control.emit_loop_control_release_chain;
 const emit_if_block = codegen_emit_control.emit_if_block;
 const is_codegen_scalar_or_error_type = codegen_emit_control.is_codegen_scalar_or_error_type;
-const emit_release_managed_locals = codegen_ownership.emitReleaseManagedLocals;
-const emit_release_managed_locals_except = codegen_ownership.emitReleaseManagedLocalsExcept;
-const emit_release_managed_locals_except_many = codegen_ownership.emitReleaseManagedLocalsExceptMany;
-const emit_fallthrough_release_managed_locals = codegen_ownership.emitFallthroughReleaseManagedLocals;
-const emit_block_release_managed_locals = codegen_ownership.emitBlockReleaseManagedLocals;
-const has_managed_locals = codegen_ownership.hasManagedLocals;
-const managed_local_kind_for_type = codegen_ownership.managedLocalKindForType;
-const collect_managed_ownership_locals = codegen_ownership.collectManagedOwnershipLocals;
-const build_return_ownership_plan = codegen_ownership.buildReturnOwnershipPlan;
-const build_guard_return_ownership_plan = codegen_ownership.buildGuardReturnOwnershipPlan;
-const build_fallthrough_ownership_plan = codegen_ownership.buildFallthroughOwnershipPlan;
-const build_block_ownership_plan = codegen_ownership.buildBlockOwnershipPlan;
-const emit_ownership_release_plan = codegen_ownership.emitOwnershipReleasePlan;
-const body_ends_with_plain_return = codegen_ownership.bodyEndsWithPlainReturn;
-const body_can_reach_end = codegen_ownership.bodyCanReachEnd;
-const stmt_can_reach_end = codegen_ownership.stmtCanReachEnd;
-const if_stmt_can_reach_end = codegen_ownership.ifStmtCanReachEnd;
-const loop_stmt_can_reach_end = codegen_ownership.loopStmtCanReachEnd;
-const loop_body_can_break_current_loop = codegen_ownership.loopBodyCanBreakCurrentLoop;
-const stmt_breaks_current_loop = codegen_ownership.stmtBreaksCurrentLoop;
-const break_targets_current_loop = codegen_ownership.breakTargetsCurrentLoop;
-const token_range_contains_labeled_break = codegen_ownership.tokenRangeContainsLabeledBreak;
-const same_loop_control = codegen_ownership.sameLoopControl;
-const find_top_level_guard_loop_control = codegen_ownership.findTopLevelGuardLoopControl;
-const label_for_loop_start = codegen_ownership.labelForLoopStart;
-const previous_line_start = codegen_ownership.previousLineStart;
+const emit_release_managed_locals = codegen_ownership.emit_release_managed_locals;
+const emit_release_managed_locals_except = codegen_ownership.emit_release_managed_locals_except;
+const emit_release_managed_locals_except_many = codegen_ownership.emit_release_managed_locals_except_many;
+const emit_fallthrough_release_managed_locals = codegen_ownership.emit_fallthrough_release_managed_locals;
+const emit_block_release_managed_locals = codegen_ownership.emit_block_release_managed_locals;
+const has_managed_locals = codegen_ownership.has_managed_locals;
+const managed_local_kind_for_type = codegen_ownership.managed_local_kind_for_type;
+const collect_managed_ownership_locals = codegen_ownership.collect_managed_ownership_locals;
+const build_return_ownership_plan = codegen_ownership.build_return_ownership_plan;
+const build_guard_return_ownership_plan = codegen_ownership.build_guard_return_ownership_plan;
+const build_fallthrough_ownership_plan = codegen_ownership.build_fallthrough_ownership_plan;
+const build_block_ownership_plan = codegen_ownership.build_block_ownership_plan;
+const emit_ownership_release_plan = codegen_ownership.emit_ownership_release_plan;
+const body_ends_with_plain_return = codegen_ownership.body_ends_with_plain_return;
+const body_can_reach_end = codegen_ownership.body_can_reach_end;
+const stmt_can_reach_end = codegen_ownership.stmt_can_reach_end;
+const if_stmt_can_reach_end = codegen_ownership.if_stmt_can_reach_end;
+const loop_stmt_can_reach_end = codegen_ownership.loop_stmt_can_reach_end;
+const loop_body_can_break_current_loop = codegen_ownership.loop_body_can_break_current_loop;
+const stmt_breaks_current_loop = codegen_ownership.stmt_breaks_current_loop;
+const break_targets_current_loop = codegen_ownership.break_targets_current_loop;
+const token_range_contains_labeled_break = codegen_ownership.token_range_contains_labeled_break;
+const same_loop_control = codegen_ownership.same_loop_control;
+const find_top_level_guard_loop_control = codegen_ownership.find_top_level_guard_loop_control;
+const label_for_loop_start = codegen_ownership.label_for_loop_start;
+const previous_line_start = codegen_ownership.previous_line_start;
 
 pub const emit_wasi_record_return_call = codegen_emit_wasi.emit_wasi_record_return_call;
 pub const emit_wasi_record_result_fields = codegen_emit_wasi.emit_wasi_record_result_fields;
@@ -708,7 +708,7 @@ pub fn direct_managed_call_last_use_move_source(
             .after_stmt = if (after_stmt_use) .{ .start = move_ctx.stmt_end, .end = move_ctx.body_end } else null,
         },
     };
-    const decision = ownership_facts.decideCallArgMove(candidate);
+    const decision = ownership_facts.decide_call_arg_move(candidate);
     if (!decision.accepted) return null;
     return .{
         .source_name = source_name,
@@ -1210,7 +1210,7 @@ fn append_func_param_struct_fields(
     decl: StructDecl,
 ) !void {
     if (find_struct_layout(ctx.struct_layouts, abi_ty) != null) {
-        try locals.appendBorrowedLocalWithOrigin(allocator, param_name, abi_ty, false, .param_or_import);
+        try locals.append_borrowed_local_with_origin(allocator, param_name, abi_ty, false, .param_or_import);
         for (decl.fields) |field| {
             const field_ty = try substitute_struct_field_type(allocator, decl, abi_ty, field.ty, &locals.owned_names);
             try append_managed_struct_field_meta_local(allocator, locals, param_name, field.name, field_ty);
@@ -1230,13 +1230,13 @@ pub fn append_func_param_locals(allocator: std.mem.Allocator, func: FuncDecl, ct
         const abi_ty = try substitute_generic_type_owned(allocator, raw_abi_ty, ctx.type_bindings, &locals.owned_names);
         if (try parse_type_union_layout_from_name(allocator, func.tokens, abi_ty, ctx.structs, ctx.struct_layouts, &locals.owned_names)) |layout| {
             errdefer free_union_layout(allocator, layout);
-            try locals.appendUnionLocalWithOrigin(allocator, param.name, layout, false, true, .param_or_import);
+            try locals.append_union_local_with_origin(allocator, param.name, layout, false, true, .param_or_import);
         } else if (find_payload_enum_decl(ctx.payload_enums, abi_ty)) |decl| {
             const layout = try build_payload_enum_union_layout(allocator, decl, func.tokens, ctx.structs, ctx.struct_layouts, &locals.owned_names);
             errdefer free_union_layout(allocator, layout);
-            try locals.appendUnionLocalWithOrigin(allocator, param.name, layout, false, true, .param_or_import);
+            try locals.append_union_local_with_origin(allocator, param.name, layout, false, true, .param_or_import);
         } else if (managed_payload_elem_type_from_name(abi_ty)) |elem_ty| {
-            try locals.appendBorrowedLocalWithOrigin(allocator, param.name, abi_ty, false, .param_or_import);
+            try locals.append_borrowed_local_with_origin(allocator, param.name, abi_ty, false, .param_or_import);
             try locals.storage_locals.append(allocator, .{ .name = param.name, .ty = abi_ty, .elem_ty = elem_ty });
         } else if (find_struct_decl(ctx.structs, abi_ty)) |decl| {
             try locals.struct_locals.append(allocator, .{ .name = param.name, .ty = abi_ty, .origin = .param_or_import });
@@ -1252,7 +1252,7 @@ pub fn append_func_param_locals(allocator: std.mem.Allocator, func: FuncDecl, ct
                 try append_borrowed_local_field(allocator, locals, func.tokens, ctx, param.name, field_name, elem_ty);
             }
         } else {
-            try locals.appendBorrowedLocalWithOrigin(allocator, param.name, abi_ty, false, .param_or_import);
+            try locals.append_borrowed_local_with_origin(allocator, param.name, abi_ty, false, .param_or_import);
         }
     }
 }

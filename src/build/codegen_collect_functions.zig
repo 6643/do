@@ -1,4 +1,4 @@
-//! Collect domain — func (extracted from gen_collect).
+//! Collect domain — func (extracted from codegen_collect).
 const std = @import("std");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
@@ -10,45 +10,45 @@ const model = @import("codegen_model.zig");
 const codegen_union_layout = @import("codegen_union_layout.zig");
 const codegen_imports = @import("codegen_imports.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
-const gen_collect_util = @import("gen_collect_util.zig");
-const appendTupleLeafTypes = gen_collect_util.appendTupleLeafTypes;
-const errorNilAliasTarget = gen_collect_util.errorNilAliasTarget;
-const findStructDecl = gen_collect_util.findStructDecl;
-const findStructLayout = gen_collect_util.findStructLayout;
-const hasTopLevelToken = gen_collect_util.hasTopLevelToken;
-const hasTypeParamName = gen_collect_util.hasTypeParamName;
-const isErrorEnumType = gen_collect_util.isErrorEnumType;
-const isErrorLikeType = gen_collect_util.isErrorLikeType;
-const isTopLevelStructDeclStart = gen_collect_util.isTopLevelStructDeclStart;
-const parseCodegenTypeExpr = gen_collect_util.parseCodegenTypeExpr;
-const parseFuncBodyShape = gen_collect_util.parseFuncBodyShape;
-const parseGenericInlineUnionLayout = gen_collect_util.parseGenericInlineUnionLayout;
-const parseStructErrorResultType = gen_collect_util.parseStructErrorResultType;
-const parseUnionTypeLayout = gen_collect_util.parseUnionTypeLayout;
+const codegen_collect_util = @import("codegen_collect_util.zig");
+const append_tuple_leaf_types = codegen_collect_util.append_tuple_leaf_types;
+const error_nil_alias_target = codegen_collect_util.error_nil_alias_target;
+const find_struct_decl = codegen_collect_util.find_struct_decl;
+const find_struct_layout = codegen_collect_util.find_struct_layout;
+const has_top_level_token = codegen_collect_util.has_top_level_token;
+const has_type_param_name = codegen_collect_util.has_type_param_name;
+const is_error_enum_type = codegen_collect_util.is_error_enum_type;
+const is_error_like_type = codegen_collect_util.is_error_like_type;
+const is_top_level_struct_decl_start = codegen_collect_util.is_top_level_struct_decl_start;
+const parse_codegen_type_expr = codegen_collect_util.parse_codegen_type_expr;
+const parse_func_body_shape = codegen_collect_util.parse_func_body_shape;
+const parse_generic_inline_union_layout = codegen_collect_util.parse_generic_inline_union_layout;
+const parse_struct_error_result_type = codegen_collect_util.parse_struct_error_result_type;
+const parse_union_type_layout = codegen_collect_util.parse_union_type_layout;
 
 const compactTokenText = codegen_tokens.compact_token_text;
-const findArgEnd = codegen_tokens.find_arg_end;
-const findLineEnd = codegen_tokens.find_line_end;
+const find_arg_end = codegen_tokens.find_arg_end;
+const find_line_end = codegen_tokens.find_line_end;
 const findLineStart = codegen_tokens.find_line_start;
-const findMatching = codegen_tokens.find_matching;
-const isCoreWasmScalar = codegen_names.is_core_wasm_scalar;
-const isLineStart = codegen_tokens.is_line_start;
+const find_matching = codegen_tokens.find_matching;
+const is_core_wasm_scalar = codegen_names.is_core_wasm_scalar;
+const is_line_start = codegen_tokens.is_line_start;
 const isUserFuncDeclStart = codegen_tokens.is_user_func_decl_start;
 const moduleScopedSymbolName = codegen_names.module_scoped_symbol_name;
-const moduleTokensEqual = codegen_tokens.module_tokens_equal;
+const module_tokens_equal = codegen_tokens.module_tokens_equal;
 const publicDeclName = codegen_names.public_decl_name;
-const tokEq = codegen_tokens.tok_eq;
-const findCodegenImportByAlias = codegen_imports.findCodegenImportByAlias;
-const collectStartBodyCalls = codegen_imports.collectStartBodyCalls;
-const collectTestBodyCalls = codegen_imports.collectTestBodyCalls;
-const collectAllFunctionBodyCalls = codegen_imports.collectAllFunctionBodyCalls;
-const collectFunctionBodyCalls = codegen_imports.collectFunctionBodyCalls;
-const findImportedModuleIndex = codegen_imports.findImportedModuleIndex;
-const findRootModuleIndex = codegen_imports.findRootModuleIndex;
-const hasReachVisit = codegen_imports.hasReachVisit;
-const isTupleTypeName = type_util.isTupleTypeName;
-const managedPayloadElemTypeFromName = type_util.managedPayloadElemTypeFromName;
-const tupleArity = type_util.tupleArity;
+const tok_eq = codegen_tokens.tok_eq;
+const find_codegen_import_by_alias = codegen_imports.find_codegen_import_by_alias;
+const collect_start_body_calls = codegen_imports.collect_start_body_calls;
+const collect_test_body_calls = codegen_imports.collect_test_body_calls;
+const collect_all_function_body_calls = codegen_imports.collect_all_function_body_calls;
+const collect_function_body_calls = codegen_imports.collect_function_body_calls;
+const find_imported_module_index = codegen_imports.find_imported_module_index;
+const find_root_module_index = codegen_imports.find_root_module_index;
+const has_reach_visit = codegen_imports.has_reach_visit;
+const is_tuple_type_name = type_util.is_tuple_type_name;
+const managed_payload_elem_type_from_name = type_util.managed_payload_elem_type_from_name;
+const tuple_arity = type_util.tuple_arity;
 const FuncDecl = model.FuncDecl;
 const FuncParam = model.FuncParam;
 const FuncResultItem = model.FuncResultItem;
@@ -77,17 +77,17 @@ pub fn parse_func_param_type_expr(
     owned_types: *std.ArrayList([]const u8),
 ) !?ParsedCodegenType {
     if (start_idx >= end_idx) return null;
-    if (hasTopLevelToken(tokens, start_idx, end_idx, "|")) {
+    if (has_top_level_token(tokens, start_idx, end_idx, "|")) {
         const ty = try compactTokenText(allocator, tokens, start_idx, end_idx);
         errdefer allocator.free(ty);
         try owned_types.append(allocator, ty);
         return .{ .ty = ty, .next_idx = end_idx };
     }
-    return parseCodegenTypeExpr(allocator, tokens, start_idx, end_idx, owned_types);
+    return parse_codegen_type_expr(allocator, tokens, start_idx, end_idx, owned_types);
 }
 
 pub fn is_return_arrow_at(tokens: []const lexer.Token, idx: usize) bool {
-    return idx + 1 < tokens.len and tokEq(tokens[idx], "-") and tokEq(tokens[idx + 1], ">");
+    return idx + 1 < tokens.len and tok_eq(tokens[idx], "-") and tok_eq(tokens[idx + 1], ">");
 }
 
 pub fn find_constraint_block_start_before(tokens: []const lexer.Token, decl_start_idx: usize) ?usize {
@@ -102,7 +102,7 @@ pub fn find_constraint_block_start_before(tokens: []const lexer.Token, decl_star
         if (prev_line + 1 != expected_line) break;
 
         const line_start = findLineStart(tokens, prev_idx);
-        if (!tokEq(tokens[line_start], "#")) break;
+        if (!tok_eq(tokens[line_start], "#")) break;
 
         block_start = line_start;
         scan_idx = line_start;
@@ -112,7 +112,7 @@ pub fn find_constraint_block_start_before(tokens: []const lexer.Token, decl_star
 }
 
 pub fn find_line_end_idx(tokens: []const lexer.Token, start_idx: usize) usize {
-    return findLineEnd(tokens, start_idx);
+    return find_line_end(tokens, start_idx);
 }
 
 pub fn find_top_level_assign_eq_on_line(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
@@ -121,31 +121,31 @@ pub fn find_top_level_assign_eq_on_line(tokens: []const lexer.Token, start_idx: 
     var depth_angle: usize = 0;
     var i = start_idx;
     while (i < end_idx) : (i += 1) {
-        if (tokEq(tokens[i], "(")) {
+        if (tok_eq(tokens[i], "(")) {
             depth_paren += 1;
             continue;
         }
-        if (tokEq(tokens[i], ")")) {
+        if (tok_eq(tokens[i], ")")) {
             if (depth_paren > 0) depth_paren -= 1;
             continue;
         }
-        if (tokEq(tokens[i], "{")) {
+        if (tok_eq(tokens[i], "{")) {
             depth_brace += 1;
             continue;
         }
-        if (tokEq(tokens[i], "}")) {
+        if (tok_eq(tokens[i], "}")) {
             if (depth_brace > 0) depth_brace -= 1;
             continue;
         }
-        if (tokEq(tokens[i], "<")) {
+        if (tok_eq(tokens[i], "<")) {
             depth_angle += 1;
             continue;
         }
-        if (tokEq(tokens[i], ">")) {
+        if (tok_eq(tokens[i], ">")) {
             if (depth_angle > 0) depth_angle -= 1;
             continue;
         }
-        if (depth_paren == 0 and depth_brace == 0 and depth_angle == 0 and tokEq(tokens[i], "=")) return i;
+        if (depth_paren == 0 and depth_brace == 0 and depth_angle == 0 and tok_eq(tokens[i], "=")) return i;
     }
     return null;
 }
@@ -157,34 +157,34 @@ pub fn simple_type_name(tokens: []const lexer.Token, start_idx: usize, end_idx: 
 }
 
 pub fn is_top_level_comma_any(tokens: []const lexer.Token, idx: usize, start_idx: usize, end_idx: usize) bool {
-    if (!tokEq(tokens[idx], ",")) return false;
+    if (!tok_eq(tokens[idx], ",")) return false;
 
     var depth_paren: usize = 0;
     var depth_brace: usize = 0;
     var depth_angle: usize = 0;
     var i = start_idx;
     while (i < idx and i < end_idx) : (i += 1) {
-        if (tokEq(tokens[i], "(")) {
+        if (tok_eq(tokens[i], "(")) {
             depth_paren += 1;
             continue;
         }
-        if (tokEq(tokens[i], ")")) {
+        if (tok_eq(tokens[i], ")")) {
             if (depth_paren > 0) depth_paren -= 1;
             continue;
         }
-        if (tokEq(tokens[i], "{")) {
+        if (tok_eq(tokens[i], "{")) {
             depth_brace += 1;
             continue;
         }
-        if (tokEq(tokens[i], "}")) {
+        if (tok_eq(tokens[i], "}")) {
             if (depth_brace > 0) depth_brace -= 1;
             continue;
         }
-        if (tokEq(tokens[i], "<")) {
+        if (tok_eq(tokens[i], "<")) {
             depth_angle += 1;
             continue;
         }
-        if (tokEq(tokens[i], ">")) {
+        if (tok_eq(tokens[i], ">")) {
             if (depth_angle > 0) depth_angle -= 1;
             continue;
         }
@@ -223,12 +223,12 @@ pub fn parse_func_type_constraint_shape(
 
     var i = block_start;
     while (i < func_start_idx) {
-        if (!tokEq(tokens[i], "#")) {
+        if (!tok_eq(tokens[i], "#")) {
             i += 1;
             continue;
         }
         const line_end = find_line_end_idx(tokens, i);
-        const is_func_constraint = i + 2 < line_end and tokEq(tokens[i + 2], "(");
+        const is_func_constraint = i + 2 < line_end and tok_eq(tokens[i + 2], "(");
         if (is_func_constraint or i + 1 >= line_end or !std.mem.eql(u8, tokens[i + 1].lexeme, constraint_name)) {
             i = line_end;
             continue;
@@ -236,7 +236,7 @@ pub fn parse_func_type_constraint_shape(
 
         const eq_idx = find_top_level_assign_eq_on_line(tokens, i + 2, line_end) orelse return null;
         if (!is_func_type_range(tokens, eq_idx + 1, line_end)) return null;
-        const close_params = findMatching(tokens, eq_idx + 1, "(", ")") catch return null;
+        const close_params = find_matching(tokens, eq_idx + 1, "(", ")") catch return null;
         const param_types = try parse_type_name_list(allocator, tokens, eq_idx + 2, close_params);
         return .{
             .shape = .{
@@ -250,8 +250,8 @@ pub fn parse_func_type_constraint_shape(
 }
 
 pub fn is_func_type_range(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
-    if (start_idx >= end_idx or !tokEq(tokens[start_idx], "(")) return false;
-    const close_idx = findMatching(tokens, start_idx, "(", ")") catch return false;
+    if (start_idx >= end_idx or !tok_eq(tokens[start_idx], "(")) return false;
+    const close_idx = find_matching(tokens, start_idx, "(", ")") catch return false;
     return close_idx + 2 < end_idx and is_return_arrow_at(tokens, close_idx + 1);
 }
 
@@ -266,7 +266,7 @@ fn append_one_func_param(
     params: *std.ArrayList(FuncParam),
 ) !usize {
     if (tokens[param_idx].kind != .ident) return error.InvalidParamName;
-    const param_end = findArgEnd(tokens, param_idx, close_params);
+    const param_end = find_arg_end(tokens, param_idx, close_params);
     if (param_end == param_idx + 1) {
         if (type_params.len == 0) return error.InvalidParamName;
         try params.append(allocator, .{
@@ -274,12 +274,12 @@ fn append_one_func_param(
             .ty = "",
         });
         var next = param_end;
-        if (next < close_params and tokEq(tokens[next], ",")) next += 1;
+        if (next < close_params and tok_eq(tokens[next], ",")) next += 1;
         return next;
     }
     var type_start = param_idx + 1;
     var variadic = false;
-    if (type_start < close_params and tokEq(tokens[type_start], "...")) {
+    if (type_start < close_params and tok_eq(tokens[type_start], "...")) {
         variadic = true;
         type_start += 1;
     }
@@ -292,7 +292,7 @@ fn append_one_func_param(
         .callback = callback,
     });
     var next = parsed_ty.next_idx;
-    if (next < close_params and tokEq(tokens[next], ",")) next += 1;
+    if (next < close_params and tok_eq(tokens[next], ",")) next += 1;
     return next;
 }
 
@@ -309,33 +309,33 @@ pub fn collect_func_decls(
     defer pending_type_params.deinit(allocator);
     var i: usize = 0;
     while (i + 1 < tokens.len) : (i += 1) {
-        if (tokEq(tokens[i], "{")) {
+        if (tok_eq(tokens[i], "{")) {
             depth_brace += 1;
             continue;
         }
-        if (tokEq(tokens[i], "}")) {
+        if (tok_eq(tokens[i], "}")) {
             if (depth_brace > 0) depth_brace -= 1;
             continue;
         }
         if (depth_brace != 0) continue;
-        if (isLineStart(tokens, i) and tokEq(tokens[i], "#")) {
-            const line_end = findLineEnd(tokens, i);
+        if (is_line_start(tokens, i) and tok_eq(tokens[i], "#")) {
+            const line_end = find_line_end(tokens, i);
             if (line_end == i + 2 and tokens[i + 1].kind == .ident) {
                 try pending_type_params.append(allocator, tokens[i + 1].lexeme);
             }
             i = line_end - 1;
             continue;
         }
-        if (isTopLevelStructDeclStart(tokens, i)) {
+        if (is_top_level_struct_decl_start(tokens, i)) {
             pending_type_params.clearRetainingCapacity();
-            i = (findMatching(tokens, i + 1, "{", "}") catch i);
+            i = (find_matching(tokens, i + 1, "{", "}") catch i);
             continue;
         }
         if (!isUserFuncDeclStart(tokens, i)) continue;
 
         const open_params = i + 1;
-        const close_params = try findMatching(tokens, open_params, "(", ")");
-        const body = parseFuncBodyShape(tokens, close_params) catch continue;
+        const close_params = try find_matching(tokens, open_params, "(", ")");
+        const body = parse_func_body_shape(tokens, close_params) catch continue;
         var owned_types = std.ArrayList([]const u8).empty;
         errdefer {
             for (owned_types.items) |owned| allocator.free(owned);
@@ -369,7 +369,7 @@ pub fn collect_func_decls(
         errdefer free_func_param_list(allocator, &params);
         var param_idx = open_params + 1;
         while (param_idx < close_params) {
-            if (tokEq(tokens[param_idx], ",")) {
+            if (tok_eq(tokens[param_idx], ",")) {
                 param_idx += 1;
                 continue;
             }
@@ -419,7 +419,7 @@ pub fn collect_direct_imported_func_decls(
     struct_layouts: []const StructLayout,
     out: *std.ArrayList(FuncDecl),
 ) !void {
-    const root_idx = findRootModuleIndex(graph.modules, entry_tokens) orelse return;
+    const root_idx = find_root_module_index(graph.modules, entry_tokens) orelse return;
 
     var stack = std.ArrayList(ReachVisit).empty;
     defer stack.deinit(allocator);
@@ -427,16 +427,16 @@ pub fn collect_direct_imported_func_decls(
     var visited = std.ArrayList(ReachVisit).empty;
     defer visited.deinit(allocator);
 
-    try collectStartBodyCalls(allocator, graph.modules[root_idx].tokens, root_idx, &stack);
-    try collectAllFunctionBodyCalls(allocator, graph.modules[root_idx].tokens, root_idx, &stack);
+    try collect_start_body_calls(allocator, graph.modules[root_idx].tokens, root_idx, &stack);
+    try collect_all_function_body_calls(allocator, graph.modules[root_idx].tokens, root_idx, &stack);
     while (stack.items.len != 0) {
         const visit = stack.pop().?;
-        if (hasReachVisit(visited.items, visit)) continue;
+        if (has_reach_visit(visited.items, visit)) continue;
         try visited.append(allocator, visit);
 
         const module = graph.modules[visit.module_idx];
-        if (findCodegenImportByAlias(module.tokens, visit.name)) |import_ref| {
-            const child_idx = findImportedModuleIndex(allocator, graph, visit.module_idx, import_ref) orelse continue;
+        if (find_codegen_import_by_alias(module.tokens, visit.name)) |import_ref| {
+            const child_idx = find_imported_module_index(allocator, graph, visit.module_idx, import_ref) orelse continue;
             if (find_func_decl(out.items, import_ref.alias) == null) {
                 _ = try collect_func_decl_by_name_as(
                     allocator,
@@ -450,7 +450,7 @@ pub fn collect_direct_imported_func_decls(
                     out,
                 );
             }
-            try collectFunctionBodyCalls(allocator, graph.modules[child_idx].tokens, child_idx, import_ref.target, &stack);
+            try collect_function_body_calls(allocator, graph.modules[child_idx].tokens, child_idx, import_ref.target, &stack);
             continue;
         }
 
@@ -469,7 +469,7 @@ pub fn collect_direct_imported_func_decls(
                 out,
             );
         }
-        try collectFunctionBodyCalls(allocator, module.tokens, visit.module_idx, visit.name, &stack);
+        try collect_function_body_calls(allocator, module.tokens, visit.module_idx, visit.name, &stack);
     }
 }
 
@@ -481,7 +481,7 @@ pub fn collect_direct_imported_func_decls_from_tests(
     struct_layouts: []const StructLayout,
     out: *std.ArrayList(FuncDecl),
 ) !void {
-    const root_idx = findRootModuleIndex(graph.modules, entry_tokens) orelse return;
+    const root_idx = find_root_module_index(graph.modules, entry_tokens) orelse return;
 
     var stack = std.ArrayList(ReachVisit).empty;
     defer stack.deinit(allocator);
@@ -489,16 +489,16 @@ pub fn collect_direct_imported_func_decls_from_tests(
     var visited = std.ArrayList(ReachVisit).empty;
     defer visited.deinit(allocator);
 
-    try collectTestBodyCalls(allocator, graph.modules[root_idx].tokens, root_idx, &stack);
-    try collectAllFunctionBodyCalls(allocator, graph.modules[root_idx].tokens, root_idx, &stack);
+    try collect_test_body_calls(allocator, graph.modules[root_idx].tokens, root_idx, &stack);
+    try collect_all_function_body_calls(allocator, graph.modules[root_idx].tokens, root_idx, &stack);
     while (stack.items.len != 0) {
         const visit = stack.pop().?;
-        if (hasReachVisit(visited.items, visit)) continue;
+        if (has_reach_visit(visited.items, visit)) continue;
         try visited.append(allocator, visit);
 
         const module = graph.modules[visit.module_idx];
-        if (findCodegenImportByAlias(module.tokens, visit.name)) |import_ref| {
-            const child_idx = findImportedModuleIndex(allocator, graph, visit.module_idx, import_ref) orelse continue;
+        if (find_codegen_import_by_alias(module.tokens, visit.name)) |import_ref| {
+            const child_idx = find_imported_module_index(allocator, graph, visit.module_idx, import_ref) orelse continue;
             if (find_func_decl(out.items, import_ref.alias) == null) {
                 _ = try collect_func_decl_by_name_as(
                     allocator,
@@ -512,7 +512,7 @@ pub fn collect_direct_imported_func_decls_from_tests(
                     out,
                 );
             }
-            try collectFunctionBodyCalls(allocator, graph.modules[child_idx].tokens, child_idx, import_ref.target, &stack);
+            try collect_function_body_calls(allocator, graph.modules[child_idx].tokens, child_idx, import_ref.target, &stack);
             continue;
         }
 
@@ -531,7 +531,7 @@ pub fn collect_direct_imported_func_decls_from_tests(
                 out,
             );
         }
-        try collectFunctionBodyCalls(allocator, module.tokens, visit.module_idx, visit.name, &stack);
+        try collect_function_body_calls(allocator, module.tokens, visit.module_idx, visit.name, &stack);
     }
 }
 
@@ -556,35 +556,35 @@ pub fn collect_func_decl_by_name_as(
     var collected = false;
     var i: usize = 0;
     while (i + 1 < tokens.len) : (i += 1) {
-        if (tokEq(tokens[i], "{")) {
+        if (tok_eq(tokens[i], "{")) {
             depth_brace += 1;
             continue;
         }
-        if (tokEq(tokens[i], "}")) {
+        if (tok_eq(tokens[i], "}")) {
             if (depth_brace > 0) depth_brace -= 1;
             continue;
         }
         if (depth_brace != 0) continue;
-        if (isLineStart(tokens, i) and tokEq(tokens[i], "#")) {
-            const line_end = findLineEnd(tokens, i);
+        if (is_line_start(tokens, i) and tok_eq(tokens[i], "#")) {
+            const line_end = find_line_end(tokens, i);
             if (line_end == i + 2 and tokens[i + 1].kind == .ident) {
                 try pending_type_params.append(allocator, tokens[i + 1].lexeme);
             }
             i = line_end - 1;
             continue;
         }
-        if (isTopLevelStructDeclStart(tokens, i)) {
+        if (is_top_level_struct_decl_start(tokens, i)) {
             pending_type_params.clearRetainingCapacity();
-            i = (findMatching(tokens, i + 1, "{", "}") catch i);
+            i = (find_matching(tokens, i + 1, "{", "}") catch i);
             continue;
         }
         if (!isUserFuncDeclStart(tokens, i)) continue;
         const open_params = i + 1;
-        const close_params = findMatching(tokens, open_params, "(", ")") catch {
+        const close_params = find_matching(tokens, open_params, "(", ")") catch {
             pending_type_params.clearRetainingCapacity();
             continue;
         };
-        const body = parseFuncBodyShape(tokens, close_params) catch {
+        const body = parse_func_body_shape(tokens, close_params) catch {
             pending_type_params.clearRetainingCapacity();
             continue;
         };
@@ -626,7 +626,7 @@ pub fn collect_func_decl_by_name_as(
         errdefer free_func_param_list(allocator, &params);
         var param_idx = open_params + 1;
         while (param_idx < close_params) {
-            if (tokEq(tokens[param_idx], ",")) {
+            if (tok_eq(tokens[param_idx], ",")) {
                 param_idx += 1;
                 continue;
             }
@@ -743,11 +743,11 @@ fn parse_single_ident_func_result(
     if (start_idx + 1 != end_idx or tokens[start_idx].kind != .ident) return null;
     const struct_name = tokens[start_idx].lexeme;
 
-    if (findStructLayout(struct_layouts, struct_name) == null) {
-        if (findStructDecl(structs, struct_name)) |decl| {
+    if (find_struct_layout(struct_layouts, struct_name) == null) {
+        if (find_struct_decl(structs, struct_name)) |decl| {
             const abi_start = results.items.len;
             for (decl.fields) |field| {
-                if (!isCoreWasmScalar(field.ty)) return null;
+                if (!is_core_wasm_scalar(field.ty)) return null;
                 try results.append(allocator, field.ty);
             }
             try items.append(allocator, .{ .ty = struct_name, .abi_start = abi_start, .abi_len = decl.fields.len });
@@ -758,7 +758,7 @@ fn parse_single_ident_func_result(
             };
         }
     }
-    if (isErrorEnumType(tokens, struct_name)) {
+    if (is_error_enum_type(tokens, struct_name)) {
         const abi_start = results.items.len;
         try results.append(allocator, struct_name);
         try items.append(allocator, .{ .ty = struct_name, .abi_start = abi_start, .abi_len = 1 });
@@ -767,7 +767,7 @@ fn parse_single_ident_func_result(
             .items = try items.toOwnedSlice(allocator),
         };
     }
-    if (errorNilAliasTarget(tokens, struct_name)) |error_name| {
+    if (error_nil_alias_target(tokens, struct_name)) |error_name| {
         const abi_start = results.items.len;
         try results.append(allocator, error_name);
         try items.append(allocator, .{ .ty = error_name, .abi_start = abi_start, .abi_len = 1 });
@@ -803,14 +803,14 @@ pub fn parse_func_result_types(
     var items = std.ArrayList(FuncResultItem).empty;
     errdefer items.deinit(allocator);
 
-    if (start_idx + 1 == end_idx and tokEq(tokens[start_idx], "nil")) {
+    if (start_idx + 1 == end_idx and tok_eq(tokens[start_idx], "nil")) {
         return .{
             .types = try results.toOwnedSlice(allocator),
             .items = try items.toOwnedSlice(allocator),
         };
     }
 
-    if (try parseUnionTypeLayout(allocator, tokens, start_idx, end_idx, structs, struct_layouts, imported_alias_ctx, owned_types)) |layout| {
+    if (try parse_union_type_layout(allocator, tokens, start_idx, end_idx, structs, struct_layouts, imported_alias_ctx, owned_types)) |layout| {
         const abi_start = results.items.len;
         for (layout.payload_tys) |payload_ty| {
             try results.append(allocator, payload_ty);
@@ -839,11 +839,11 @@ pub fn parse_func_result_types(
         };
     }
 
-    if (parseStructErrorResultType(tokens, start_idx, end_idx, structs, struct_layouts)) |parsed| {
-        const decl = findStructDecl(structs, parsed.struct_name) orelse return null;
+    if (parse_struct_error_result_type(tokens, start_idx, end_idx, structs, struct_layouts)) |parsed| {
+        const decl = find_struct_decl(structs, parsed.struct_name) orelse return null;
         const abi_start = results.items.len;
         for (decl.fields) |field| {
-            if (!isCoreWasmScalar(field.ty)) return null;
+            if (!is_core_wasm_scalar(field.ty)) return null;
             try results.append(allocator, field.ty);
         }
         try results.append(allocator, parsed.error_name);
@@ -871,13 +871,13 @@ pub fn parse_func_result_types(
 
     var i = start_idx;
     while (i < end_idx) {
-        if (tokEq(tokens[i], ",")) {
+        if (tok_eq(tokens[i], ",")) {
             i += 1;
             continue;
         }
 
-        if (try parseUnionTypeLayout(allocator, tokens, i, findArgEnd(tokens, i, end_idx), structs, struct_layouts, imported_alias_ctx, owned_types)) |layout| {
-            const item_end = findArgEnd(tokens, i, end_idx);
+        if (try parse_union_type_layout(allocator, tokens, i, find_arg_end(tokens, i, end_idx), structs, struct_layouts, imported_alias_ctx, owned_types)) |layout| {
+            const item_end = find_arg_end(tokens, i, end_idx);
             if (item_end == i) return null;
             const abi_start = results.items.len;
             for (layout.payload_tys) |payload_ty| {
@@ -891,21 +891,21 @@ pub fn parse_func_result_types(
                 .union_layout = layout,
             });
             i = item_end;
-            if (i < end_idx and tokEq(tokens[i], ",")) i += 1;
+            if (i < end_idx and tok_eq(tokens[i], ",")) i += 1;
             continue;
         }
 
-        const parsed_ty = (try parseCodegenTypeExpr(allocator, tokens, i, end_idx, owned_types)) orelse return null;
+        const parsed_ty = (try parse_codegen_type_expr(allocator, tokens, i, end_idx, owned_types)) orelse return null;
         const result_ty = parsed_ty.ty;
-        if (isTupleTypeName(result_ty)) {
-            const arity = tupleArity(result_ty) orelse return null;
+        if (is_tuple_type_name(result_ty)) {
+            const arity = tuple_arity(result_ty) orelse return null;
             if (arity < 2) return null;
             const abi_start = results.items.len;
             const leaf_start = results.items.len;
-            try appendTupleLeafTypes(allocator, result_ty, &results);
+            try append_tuple_leaf_types(allocator, result_ty, &results);
             if (results.items.len - leaf_start < 2) return null;
             for (results.items[leaf_start..]) |leaf_ty| {
-                if (!isCoreWasmScalar(leaf_ty)) return null;
+                if (!is_core_wasm_scalar(leaf_ty)) return null;
             }
             try items.append(allocator, .{
                 .ty = result_ty,
@@ -913,13 +913,13 @@ pub fn parse_func_result_types(
                 .abi_len = results.items.len - abi_start,
             });
             i = parsed_ty.next_idx;
-            if (i < end_idx and tokEq(tokens[i], ",")) i += 1;
+            if (i < end_idx and tok_eq(tokens[i], ",")) i += 1;
             continue;
         }
-        const accepted = isCoreWasmScalar(result_ty) or
-            managedPayloadElemTypeFromName(result_ty) != null or
-            findStructLayout(struct_layouts, result_ty) != null or
-            (tokens[i].kind == .ident and errorNilAliasTarget(tokens, tokens[i].lexeme) != null) or
+        const accepted = is_core_wasm_scalar(result_ty) or
+            managed_payload_elem_type_from_name(result_ty) != null or
+            find_struct_layout(struct_layouts, result_ty) != null or
+            (tokens[i].kind == .ident and error_nil_alias_target(tokens, tokens[i].lexeme) != null) or
             (tokens[i].kind == .ident and imported_error_nil_alias_target(allocator, imported_alias_ctx, tokens, tokens[i].lexeme) != null);
         if (!accepted) return null;
 
@@ -927,11 +927,11 @@ pub fn parse_func_result_types(
         try results.append(allocator, result_ty);
         try items.append(allocator, .{ .ty = result_ty, .abi_start = abi_start, .abi_len = 1 });
         i = parsed_ty.next_idx;
-        if (i < end_idx and tokEq(tokens[i], ",")) i += 1;
+        if (i < end_idx and tok_eq(tokens[i], ",")) i += 1;
     }
 
     var result_struct: ?[]const u8 = null;
-    if (items.items.len == 1 and isTupleTypeName(items.items[0].ty) and items.items[0].abi_len >= 2) {
+    if (items.items.len == 1 and is_tuple_type_name(items.items[0].ty) and items.items[0].abi_len >= 2) {
         result_struct = items.items[0].ty;
     }
 
@@ -957,14 +957,14 @@ pub fn parse_generic_func_result_types(
     var items = std.ArrayList(FuncResultItem).empty;
     errdefer items.deinit(allocator);
 
-    if (start_idx + 1 == end_idx and tokEq(tokens[start_idx], "nil")) {
+    if (start_idx + 1 == end_idx and tok_eq(tokens[start_idx], "nil")) {
         return .{
             .types = try results.toOwnedSlice(allocator),
             .items = try items.toOwnedSlice(allocator),
         };
     }
 
-    if (try parseGenericInlineUnionLayout(allocator, tokens, start_idx, end_idx, type_params, structs, struct_layouts, owned_types)) |layout| {
+    if (try parse_generic_inline_union_layout(allocator, tokens, start_idx, end_idx, type_params, structs, struct_layouts, owned_types)) |layout| {
         const abi_start = results.items.len;
         for (layout.payload_tys) |payload_ty| {
             try results.append(allocator, payload_ty);
@@ -985,24 +985,24 @@ pub fn parse_generic_func_result_types(
 
     var i = start_idx;
     while (i < end_idx) {
-        if (tokEq(tokens[i], ",")) {
+        if (tok_eq(tokens[i], ",")) {
             i += 1;
             continue;
         }
 
-        const parsed_ty = (try parseCodegenTypeExpr(allocator, tokens, i, end_idx, owned_types)) orelse return null;
+        const parsed_ty = (try parse_codegen_type_expr(allocator, tokens, i, end_idx, owned_types)) orelse return null;
         const result_ty = parsed_ty.ty;
-        const accepted = isCoreWasmScalar(result_ty) or
-            hasTypeParamName(type_params, result_ty) or
-            managedPayloadElemTypeFromName(result_ty) != null or
-            findStructLayout(struct_layouts, result_ty) != null or
-            findStructDecl(structs, result_ty) != null;
+        const accepted = is_core_wasm_scalar(result_ty) or
+            has_type_param_name(type_params, result_ty) or
+            managed_payload_elem_type_from_name(result_ty) != null or
+            find_struct_layout(struct_layouts, result_ty) != null or
+            find_struct_decl(structs, result_ty) != null;
         if (!accepted) return null;
 
         try results.append(allocator, result_ty);
         try items.append(allocator, .{ .ty = result_ty, .abi_start = results.items.len - 1, .abi_len = 1 });
         i = parsed_ty.next_idx;
-        if (i < end_idx and tokEq(tokens[i], ",")) i += 1;
+        if (i < end_idx and tok_eq(tokens[i], ",")) i += 1;
     }
 
     return .{
@@ -1020,18 +1020,18 @@ pub fn type_params_appear_in_range(
     var i = start_idx;
     while (i < end_idx) : (i += 1) {
         if (tokens[i].kind != .ident) continue;
-        if (hasTypeParamName(type_params, tokens[i].lexeme)) return true;
+        if (has_type_param_name(type_params, tokens[i].lexeme)) return true;
     }
     return false;
 }
 
 pub fn parse_error_nil_result_type(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?[]const u8 {
     if (start_idx + 3 != end_idx) return null;
-    if (!tokEq(tokens[start_idx + 1], "|")) return null;
-    if (tokens[start_idx].kind == .ident and tokEq(tokens[start_idx + 2], "nil") and isErrorLikeType(tokens, tokens[start_idx].lexeme)) {
+    if (!tok_eq(tokens[start_idx + 1], "|")) return null;
+    if (tokens[start_idx].kind == .ident and tok_eq(tokens[start_idx + 2], "nil") and is_error_like_type(tokens, tokens[start_idx].lexeme)) {
         return tokens[start_idx].lexeme;
     }
-    if (tokEq(tokens[start_idx], "nil") and tokens[start_idx + 2].kind == .ident and isErrorLikeType(tokens, tokens[start_idx + 2].lexeme)) {
+    if (tok_eq(tokens[start_idx], "nil") and tokens[start_idx + 2].kind == .ident and is_error_like_type(tokens, tokens[start_idx + 2].lexeme)) {
         return tokens[start_idx + 2].lexeme;
     }
     return null;
@@ -1044,9 +1044,9 @@ pub fn imported_error_nil_alias_target(
     name: []const u8,
 ) ?[]const u8 {
     const ctx = imported_alias_ctx orelse return null;
-    const import_ref = findCodegenImportByAlias(tokens, name) orelse return null;
-    const child_idx = findImportedModuleIndex(allocator, ctx.graph, ctx.module_idx, import_ref) orelse return null;
-    return errorNilAliasTarget(ctx.graph.modules[child_idx].tokens, import_ref.target);
+    const import_ref = find_codegen_import_by_alias(tokens, name) orelse return null;
+    const child_idx = find_imported_module_index(allocator, ctx.graph, ctx.module_idx, import_ref) orelse return null;
+    return error_nil_alias_target(ctx.graph.modules[child_idx].tokens, import_ref.target);
 }
 
 pub fn find_func_decl(functions: []const FuncDecl, name: []const u8) ?FuncDecl {
@@ -1058,7 +1058,7 @@ pub fn find_func_decl(functions: []const FuncDecl, name: []const u8) ?FuncDecl {
 
 pub fn find_func_decl_by_source_for_tokens(functions: []const FuncDecl, tokens: []const lexer.Token, source_name: []const u8) ?FuncDecl {
     for (functions) |func| {
-        if (!moduleTokensEqual(func.tokens, tokens)) continue;
+        if (!module_tokens_equal(func.tokens, tokens)) continue;
         if (same_callable_source_name(func.source_name, source_name)) return func;
     }
     return null;

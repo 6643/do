@@ -3,7 +3,7 @@ const lexer = @import("../build/lexer.zig");
 const protocol = @import("protocol.zig");
 const workspace = @import("workspace.zig");
 
-pub fn findDefinition(
+pub fn find_definition(
     allocator: std.mem.Allocator,
     uri: []const u8,
     source: []const u8,
@@ -12,39 +12,39 @@ pub fn findDefinition(
     const tokens = try lexer.tokenize(allocator, source);
     defer allocator.free(tokens);
 
-    const token_idx = tokenAtPosition(tokens, position) orelse return null;
+    const token_idx = token_at_position(tokens, position) orelse return null;
     const token = tokens[token_idx];
     if (token.kind != .ident) return null;
-    if (isKeyword(token.lexeme) or isFieldName(token.lexeme)) return null;
+    if (is_keyword(token.lexeme) or is_field_name(token.lexeme)) return null;
 
     for (tokens, 0..) |candidate, idx| {
         if (!std.mem.eql(u8, candidate.lexeme, token.lexeme)) continue;
-        if (!isDefinitionHead(tokens, idx)) continue;
+        if (!is_definition_head(tokens, idx)) continue;
         return .{
             .uri = uri,
-            .range = tokenRange(candidate),
+            .range = token_range(candidate),
         };
     }
 
     return null;
 }
 
-pub fn findDefinitionWithWorkspace(
+pub fn find_definition_with_workspace(
     allocator: std.mem.Allocator,
     uri: []const u8,
     source: []const u8,
     position: protocol.Position,
     workspace_symbols: []const workspace.WorkspaceSymbol,
 ) !?protocol.Location {
-    if (try findDefinition(allocator, uri, source, position)) |location| return location;
+    if (try find_definition(allocator, uri, source, position)) |location| return location;
 
     const tokens = try lexer.tokenize(allocator, source);
     defer allocator.free(tokens);
 
-    const token_idx = tokenAtPosition(tokens, position) orelse return null;
+    const token_idx = token_at_position(tokens, position) orelse return null;
     const token = tokens[token_idx];
     if (token.kind != .ident) return null;
-    if (isKeyword(token.lexeme) or isFieldName(token.lexeme)) return null;
+    if (is_keyword(token.lexeme) or is_field_name(token.lexeme)) return null;
 
     for (workspace_symbols) |symbol| {
         if (!std.mem.eql(u8, symbol.name, token.lexeme)) continue;
@@ -57,7 +57,7 @@ pub fn findDefinitionWithWorkspace(
     return null;
 }
 
-fn tokenAtPosition(tokens: []const lexer.Token, position: protocol.Position) ?usize {
+fn token_at_position(tokens: []const lexer.Token, position: protocol.Position) ?usize {
     for (tokens, 0..) |token, idx| {
         if (token.line == 0 or token.col == 0) continue;
         if (token.line - 1 != position.line) continue;
@@ -69,24 +69,24 @@ fn tokenAtPosition(tokens: []const lexer.Token, position: protocol.Position) ?us
     return null;
 }
 
-fn isDefinitionHead(tokens: []const lexer.Token, idx: usize) bool {
-    if (braceDepthBefore(tokens, idx) != 0) return false;
-    return isFunctionHead(tokens, idx) or isTypeDecl(tokens, idx);
+fn is_definition_head(tokens: []const lexer.Token, idx: usize) bool {
+    if (brace_depth_before(tokens, idx) != 0) return false;
+    return is_function_head(tokens, idx) or is_type_decl(tokens, idx);
 }
 
-fn isFunctionHead(tokens: []const lexer.Token, idx: usize) bool {
+fn is_function_head(tokens: []const lexer.Token, idx: usize) bool {
     if (idx + 1 >= tokens.len) return false;
     const token = tokens[idx];
     const next = tokens[idx + 1];
     if (token.kind != .ident) return false;
     if (token.col != 1) return false;
-    if (isKeyword(token.lexeme) or isFieldName(token.lexeme)) return false;
+    if (is_keyword(token.lexeme) or is_field_name(token.lexeme)) return false;
     if (token.line != next.line) return false;
     return next.kind == .symbol and std.mem.eql(u8, next.lexeme, "(");
 }
 
-fn isTypeDecl(tokens: []const lexer.Token, idx: usize) bool {
-    if (tokens[idx].kind != .ident or !isTypeName(tokens[idx].lexeme)) return false;
+fn is_type_decl(tokens: []const lexer.Token, idx: usize) bool {
+    if (tokens[idx].kind != .ident or !is_type_name(tokens[idx].lexeme)) return false;
     if (tokens[idx].col != 1) return false;
     if (idx + 1 >= tokens.len) return false;
     const next = tokens[idx + 1];
@@ -100,7 +100,7 @@ fn isTypeDecl(tokens: []const lexer.Token, idx: usize) bool {
     return after.kind == .symbol and std.mem.eql(u8, after.lexeme, "=");
 }
 
-fn braceDepthBefore(tokens: []const lexer.Token, idx: usize) usize {
+fn brace_depth_before(tokens: []const lexer.Token, idx: usize) usize {
     var depth: usize = 0;
     for (tokens[0..idx]) |token| {
         if (token.kind != .symbol) continue;
@@ -115,7 +115,7 @@ fn braceDepthBefore(tokens: []const lexer.Token, idx: usize) usize {
     return depth;
 }
 
-fn tokenRange(token: lexer.Token) protocol.Range {
+fn token_range(token: lexer.Token) protocol.Range {
     const line = if (token.line == 0) 0 else token.line - 1;
     const start = if (token.col == 0) 0 else token.col - 1;
     return .{
@@ -124,15 +124,15 @@ fn tokenRange(token: lexer.Token) protocol.Range {
     };
 }
 
-fn isTypeName(name: []const u8) bool {
+fn is_type_name(name: []const u8) bool {
     return name.len > 0 and std.ascii.isUpper(name[0]);
 }
 
-fn isFieldName(name: []const u8) bool {
+fn is_field_name(name: []const u8) bool {
     return name.len > 1 and name[0] == '.';
 }
 
-fn isKeyword(name: []const u8) bool {
+fn is_keyword(name: []const u8) bool {
     const keywords = [_][]const u8{
         "if",
         "else",
@@ -153,7 +153,7 @@ fn isKeyword(name: []const u8) bool {
     return false;
 }
 
-test "findDefinition resolves current file function call" {
+test "find_definition resolves current file function call" {
     const source =
         \\User {
         \\    title text
@@ -170,7 +170,7 @@ test "findDefinition resolves current file function call" {
         \\
     ;
 
-    const location = (try findDefinition(std.testing.allocator, "file:///tmp/app.do", source, .{ .line = 9, .character = 18 })).?;
+    const location = (try find_definition(std.testing.allocator, "file:///tmp/app.do", source, .{ .line = 9, .character = 18 })).?;
 
     try std.testing.expectEqualStrings("file:///tmp/app.do", location.uri);
     try std.testing.expectEqual(@as(usize, 4), location.range.start.line);
@@ -179,7 +179,7 @@ test "findDefinition resolves current file function call" {
     try std.testing.expectEqual(@as(usize, 9), location.range.end.character);
 }
 
-test "findDefinition resolves current file type reference" {
+test "find_definition resolves current file type reference" {
     const source =
         \\User {
         \\    title text
@@ -191,7 +191,7 @@ test "findDefinition resolves current file type reference" {
         \\
     ;
 
-    const location = (try findDefinition(std.testing.allocator, "file:///tmp/app.do", source, .{ .line = 4, .character = 15 })).?;
+    const location = (try find_definition(std.testing.allocator, "file:///tmp/app.do", source, .{ .line = 4, .character = 15 })).?;
 
     try std.testing.expectEqual(@as(usize, 0), location.range.start.line);
     try std.testing.expectEqual(@as(usize, 0), location.range.start.character);
@@ -199,7 +199,7 @@ test "findDefinition resolves current file type reference" {
     try std.testing.expectEqual(@as(usize, 4), location.range.end.character);
 }
 
-test "findDefinition returns null for unknown token" {
+test "find_definition returns null for unknown token" {
     const source =
         \\User {
         \\    title text
@@ -207,12 +207,12 @@ test "findDefinition returns null for unknown token" {
         \\
     ;
 
-    const location = try findDefinition(std.testing.allocator, "file:///tmp/app.do", source, .{ .line = 1, .character = 4 });
+    const location = try find_definition(std.testing.allocator, "file:///tmp/app.do", source, .{ .line = 1, .character = 4 });
 
     try std.testing.expect(location == null);
 }
 
-test "findDefinitionWithWorkspace resolves workspace type reference" {
+test "find_definition_with_workspace resolves workspace type reference" {
     const source =
         \\make() -> ProjectUser {
         \\    return ProjectUser{}
@@ -229,7 +229,7 @@ test "findDefinitionWithWorkspace resolves workspace type reference" {
         },
     };
 
-    const location = (try findDefinitionWithWorkspace(
+    const location = (try find_definition_with_workspace(
         std.testing.allocator,
         "file:///tmp/project/main.do",
         source,

@@ -30,7 +30,7 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
         const ch = source[cur.i];
 
         if (ch == '\r' or ch == '\n') {
-            advanceLineBreak(source, &cur);
+            advance_line_break(source, &cur);
             continue;
         }
         if (std.ascii.isWhitespace(ch)) {
@@ -39,11 +39,11 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
             continue;
         }
         if (ch == '/' and cur.i + 1 < source.len and source[cur.i + 1] == '/') {
-            try skipLineComment(source, &cur);
+            try skip_line_comment(source, &cur);
             continue;
         }
         if (ch == '/' and cur.i + 1 < source.len and source[cur.i + 1] == '*') {
-            try skipBlockComment(source, &cur);
+            try skip_block_comment(source, &cur);
             continue;
         }
 
@@ -62,10 +62,10 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
             continue;
         }
 
-        if (isIdentStart(ch)) {
+        if (is_ident_start(ch)) {
             cur.i += 1;
             cur.col += 1;
-            while (cur.i < source.len and isIdentContinue(source[cur.i])) {
+            while (cur.i < source.len and is_ident_continue(source[cur.i])) {
                 cur.i += 1;
                 cur.col += 1;
             }
@@ -79,7 +79,7 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
         }
 
         if ((ch == '-' and cur.i + 1 < source.len and std.ascii.isDigit(source[cur.i + 1])) or std.ascii.isDigit(ch)) {
-            try scanNumber(source, &cur);
+            try scan_number(source, &cur);
             try out.append(allocator, .{
                 .kind = .number,
                 .lexeme = source[start..cur.i],
@@ -90,8 +90,8 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
         }
 
         if (ch == '"') {
-            try scanQuotedString(source, &cur);
-            try validateQuotedStringUtf8(allocator, source[start..cur.i]);
+            try scan_quoted_string(source, &cur);
+            try validate_quoted_string_utf8(allocator, source[start..cur.i]);
             try out.append(allocator, .{
                 .kind = .string,
                 .lexeme = source[start..cur.i],
@@ -102,7 +102,7 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
         }
 
         if (ch == '\\' and cur.i + 1 < source.len and source[cur.i + 1] == '\\') {
-            const block = try scanLineStringBlock(source, &cur);
+            const block = try scan_line_string_block(source, &cur);
             try out.append(allocator, .{
                 .kind = .string,
                 .lexeme = block.lexeme,
@@ -125,7 +125,7 @@ pub fn tokenize(allocator: std.mem.Allocator, source: []const u8) ![]Token {
     return out.toOwnedSlice(allocator);
 }
 
-fn advanceLineBreak(source: []const u8, cur: *Cursor) void {
+fn advance_line_break(source: []const u8, cur: *Cursor) void {
     if (source[cur.i] == '\r' and cur.i + 1 < source.len and source[cur.i + 1] == '\n') {
         cur.i += 2;
     } else {
@@ -135,8 +135,8 @@ fn advanceLineBreak(source: []const u8, cur: *Cursor) void {
     cur.col = 1;
 }
 
-fn skipLineComment(source: []const u8, cur: *Cursor) !void {
-    if (!isLineStart(source, cur.i)) return error.InvalidComment;
+fn skip_line_comment(source: []const u8, cur: *Cursor) !void {
+    if (!is_line_start(source, cur.i)) return error.InvalidComment;
     cur.i += 2;
     cur.col += 2;
     while (cur.i < source.len and source[cur.i] != '\n' and source[cur.i] != '\r') {
@@ -145,8 +145,8 @@ fn skipLineComment(source: []const u8, cur: *Cursor) !void {
     }
 }
 
-fn skipBlockComment(source: []const u8, cur: *Cursor) !void {
-    if (!isLineStart(source, cur.i)) return error.InvalidComment;
+fn skip_block_comment(source: []const u8, cur: *Cursor) !void {
+    if (!is_line_start(source, cur.i)) return error.InvalidComment;
     cur.i += 2;
     cur.col += 2;
     var closed = false;
@@ -158,17 +158,17 @@ fn skipBlockComment(source: []const u8, cur: *Cursor) !void {
             break;
         }
         if (source[cur.i] == '\r' or source[cur.i] == '\n') {
-            advanceLineBreak(source, cur);
+            advance_line_break(source, cur);
             continue;
         }
         cur.i += 1;
         cur.col += 1;
     }
     if (!closed) return error.InvalidComment;
-    if (!restOfLineIsWhitespace(source, cur.i)) return error.InvalidComment;
+    if (!rest_of_line_is_whitespace(source, cur.i)) return error.InvalidComment;
 }
 
-fn scanNumber(source: []const u8, cur: *Cursor) !void {
+fn scan_number(source: []const u8, cur: *Cursor) !void {
     if (source[cur.i] == '-') {
         cur.i += 1;
         cur.col += 1;
@@ -188,7 +188,7 @@ fn scanNumber(source: []const u8, cur: *Cursor) !void {
     }
 }
 
-fn scanQuotedString(source: []const u8, cur: *Cursor) !void {
+fn scan_quoted_string(source: []const u8, cur: *Cursor) !void {
     cur.i += 1;
     cur.col += 1;
     while (cur.i < source.len and source[cur.i] != '"') {
@@ -198,14 +198,14 @@ fn scanQuotedString(source: []const u8, cur: *Cursor) !void {
             cur.col += 1;
             continue;
         }
-        try consumeStringEscape(source, cur);
+        try consume_string_escape(source, cur);
     }
     if (cur.i >= source.len) return error.UnterminatedString;
     cur.i += 1;
     cur.col += 1;
 }
 
-fn consumeStringEscape(source: []const u8, cur: *Cursor) !void {
+fn consume_string_escape(source: []const u8, cur: *Cursor) !void {
     cur.i += 1;
     cur.col += 1;
     if (cur.i >= source.len) return error.UnterminatedString;
@@ -229,7 +229,7 @@ const LineStringBlock = struct {
     col: usize,
 };
 
-fn scanLineStringBlock(source: []const u8, cur: *Cursor) !LineStringBlock {
+fn scan_line_string_block(source: []const u8, cur: *Cursor) !LineStringBlock {
     const line_start = cur.line;
     const col_start = cur.col;
     const block_start = cur.i;
@@ -267,15 +267,15 @@ fn scanLineStringBlock(source: []const u8, cur: *Cursor) !LineStringBlock {
     };
 }
 
-fn isIdentStart(ch: u8) bool {
+fn is_ident_start(ch: u8) bool {
     return std.ascii.isAlphabetic(ch) or ch == '_' or ch == '.';
 }
 
-fn isIdentContinue(ch: u8) bool {
+fn is_ident_continue(ch: u8) bool {
     return std.ascii.isAlphabetic(ch) or ch == '_' or std.ascii.isDigit(ch);
 }
 
-fn isLineStart(source: []const u8, idx: usize) bool {
+fn is_line_start(source: []const u8, idx: usize) bool {
     var i = idx;
     while (i > 0) : (i -= 1) {
         const prev = source[i - 1];
@@ -285,7 +285,7 @@ fn isLineStart(source: []const u8, idx: usize) bool {
     return true;
 }
 
-fn restOfLineIsWhitespace(source: []const u8, idx: usize) bool {
+fn rest_of_line_is_whitespace(source: []const u8, idx: usize) bool {
     var i = idx;
     while (i < source.len) : (i += 1) {
         const ch = source[i];
@@ -295,7 +295,7 @@ fn restOfLineIsWhitespace(source: []const u8, idx: usize) bool {
     return true;
 }
 
-fn validateQuotedStringUtf8(allocator: std.mem.Allocator, raw: []const u8) !void {
+fn validate_quoted_string_utf8(allocator: std.mem.Allocator, raw: []const u8) !void {
     if (raw.len < 2 or raw[0] != '"' or raw[raw.len - 1] != '"') return error.UnterminatedString;
 
     var decoded = try std.ArrayList(u8).initCapacity(allocator, 0);
@@ -322,8 +322,8 @@ fn validateQuotedStringUtf8(allocator: std.mem.Allocator, raw: []const u8) !void
             't' => try decoded.append(allocator, '\t'),
             'x' => {
                 if (i + 2 >= end) return error.InvalidStringEscape;
-                const hi = hexValue(raw[i + 1]) orelse return error.InvalidStringEscape;
-                const lo = hexValue(raw[i + 2]) orelse return error.InvalidStringEscape;
+                const hi = hex_value(raw[i + 1]) orelse return error.InvalidStringEscape;
+                const lo = hex_value(raw[i + 2]) orelse return error.InvalidStringEscape;
                 try decoded.append(allocator, hi * 16 + lo);
                 i += 2;
             },
@@ -335,7 +335,7 @@ fn validateQuotedStringUtf8(allocator: std.mem.Allocator, raw: []const u8) !void
     if (!std.unicode.utf8ValidateSlice(decoded.items)) return error.InvalidStringUtf8;
 }
 
-fn hexValue(ch: u8) ?u8 {
+fn hex_value(ch: u8) ?u8 {
     if (ch >= '0' and ch <= '9') return ch - '0';
     if (ch >= 'a' and ch <= 'f') return ch - 'a' + 10;
     if (ch >= 'A' and ch <= 'F') return ch - 'A' + 10;

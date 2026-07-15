@@ -340,20 +340,20 @@ pub const ExprCallHead = struct {
 
 // --- free helpers for owned decl/layout slices ---
 
-pub fn freeCallbackBindings(allocator: std.mem.Allocator, bindings: []const CallbackBinding) void {
+pub fn free_callback_bindings(allocator: std.mem.Allocator, bindings: []const CallbackBinding) void {
     for (bindings) |binding| {
         if (binding.lambda_params.len != 0) allocator.free(binding.lambda_params);
     }
     allocator.free(bindings);
 }
 
-pub fn freeStructDecls(allocator: std.mem.Allocator, structs: []const StructDecl) void {
+pub fn free_struct_decls(allocator: std.mem.Allocator, structs: []const StructDecl) void {
     for (structs) |decl| {
-        freeStructDecl(allocator, decl);
+        free_struct_decl(allocator, decl);
     }
 }
 
-pub fn freeStructDecl(allocator: std.mem.Allocator, decl: StructDecl) void {
+pub fn free_struct_decl(allocator: std.mem.Allocator, decl: StructDecl) void {
     if (decl.type_params.len != 0) allocator.free(decl.type_params);
     for (decl.owned_types) |owned| {
         allocator.free(owned);
@@ -362,14 +362,14 @@ pub fn freeStructDecl(allocator: std.mem.Allocator, decl: StructDecl) void {
     allocator.free(decl.fields);
 }
 
-pub fn freeValueEnumDecls(allocator: std.mem.Allocator, value_enums: []const ValueEnumDecl) void {
+pub fn free_value_enum_decls(allocator: std.mem.Allocator, value_enums: []const ValueEnumDecl) void {
     for (value_enums) |decl| {
         if (decl.owned_name) allocator.free(decl.name);
         allocator.free(decl.branches);
     }
 }
 
-pub fn freePayloadEnumDecls(allocator: std.mem.Allocator, payload_enums: []const PayloadEnumDecl) void {
+pub fn free_payload_enum_decls(allocator: std.mem.Allocator, payload_enums: []const PayloadEnumDecl) void {
     for (payload_enums) |decl| {
         if (decl.owned_name) allocator.free(decl.name);
         for (decl.owned_payload_tys) |owned| allocator.free(owned);
@@ -378,14 +378,14 @@ pub fn freePayloadEnumDecls(allocator: std.mem.Allocator, payload_enums: []const
     }
 }
 
-pub fn freeStructLayouts(allocator: std.mem.Allocator, layouts: []const StructLayout) void {
+pub fn free_struct_layouts(allocator: std.mem.Allocator, layouts: []const StructLayout) void {
     for (layouts) |layout| {
         if (layout.owned_name) allocator.free(layout.name);
         allocator.free(layout.managed_fields);
     }
 }
 
-pub fn freeFuncParams(allocator: std.mem.Allocator, params: []const FuncParam) void {
+pub fn free_func_params(allocator: std.mem.Allocator, params: []const FuncParam) void {
     for (params) |param| {
         if (param.callback) |callback| {
             if (callback.owned) allocator.free(callback.shape.param_types);
@@ -394,23 +394,23 @@ pub fn freeFuncParams(allocator: std.mem.Allocator, params: []const FuncParam) v
     allocator.free(params);
 }
 
-pub fn freeFuncDecls(allocator: std.mem.Allocator, funcs: []const FuncDecl) void {
+pub fn free_func_decls(allocator: std.mem.Allocator, funcs: []const FuncDecl) void {
     for (funcs) |func| {
         if (func.owned_name) allocator.free(func.name);
         if (func.type_params.len != 0) allocator.free(func.type_params);
         if (func.type_bindings.len != 0) allocator.free(func.type_bindings);
-        if (func.callback_bindings.len != 0) freeCallbackBindings(allocator, func.callback_bindings);
-        freeFuncResultItems(allocator, func.result_items, func.result_union);
+        if (func.callback_bindings.len != 0) free_callback_bindings(allocator, func.callback_bindings);
+        free_func_result_items(allocator, func.result_items, func.result_union);
         for (func.owned_types) |owned| {
             allocator.free(owned);
         }
         if (func.owned_types.len != 0) allocator.free(func.owned_types);
-        freeFuncParams(allocator, func.params);
+        free_func_params(allocator, func.params);
         allocator.free(func.results);
     }
 }
 
-pub fn freeFuncResultItems(allocator: std.mem.Allocator, items: []const FuncResultItem, result_union: ?UnionLayout) void {
+pub fn free_func_result_items(allocator: std.mem.Allocator, items: []const FuncResultItem, result_union: ?UnionLayout) void {
     for (items) |item| {
         const layout = item.union_layout orelse continue;
         if (result_union) |single_layout| {

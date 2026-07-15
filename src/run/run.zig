@@ -7,27 +7,27 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
     const allocator = init.gpa;
     const io = init.io;
 
-    const parsed_cli = cli.parseRun(args) catch |err| {
-        try diag.printCliError(io, err);
+    const parsed_cli = cli.parse_run(args) catch |err| {
+        try diag.print_cli_error(io, err);
         std.process.exit(1);
     };
 
-    const wasm_tools = findExecutable(allocator, io, init.environ_map, "wasm-tools") catch |err| {
-        try printToolLookupError(io, "wasm-tools", err);
+    const wasm_tools = find_executable(allocator, io, init.environ_map, "wasm-tools") catch |err| {
+        try print_tool_lookup_error(io, "wasm-tools", err);
         std.process.exit(1);
     };
     defer allocator.free(wasm_tools);
 
-    const node = findExecutable(allocator, io, init.environ_map, "node") catch |err| {
-        try printToolLookupError(io, "node", err);
+    const node = find_executable(allocator, io, init.environ_map, "node") catch |err| {
+        try print_tool_lookup_error(io, "node", err);
         std.process.exit(1);
     };
     defer allocator.free(node);
 
-    var loaded = try build_run.loadProgram(init, parsed_cli.input_path);
+    var loaded = try build_run.load_program(init, parsed_cli.input_path);
     defer loaded.deinit(allocator);
 
-    const wat = try build_run.compileProgramWat(io, allocator, parsed_cli.input_path, false, &loaded);
+    const wat = try build_run.compile_program_wat(io, allocator, parsed_cli.input_path, false, &loaded);
     defer allocator.free(wat);
 
     const tmp_root = init.environ_map.get("TMPDIR") orelse "/tmp";
@@ -52,21 +52,21 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
     defer allocator.free(runner_path);
 
     std.Io.Dir.cwd().writeFile(io, .{ .sub_path = wat_path, .data = wat }) catch |err| {
-        try diag.printIoError(io, wat_path, err);
+        try diag.print_io_error(io, wat_path, err);
         std.process.exit(1);
     };
 
     const parse_argv = [_][]const u8{ wasm_tools, "parse", wat_path, "-o", wasm_path };
-    const parse_term = try spawnForwarding(io, &parse_argv);
-    const parse_exit = exitCode(parse_term);
+    const parse_term = try spawn_forwarding(io, &parse_argv);
+    const parse_exit = exit_code(parse_term);
     if (parse_exit != 0) std.process.exit(parse_exit);
 
     const run_argv = [_][]const u8{ node, runner_path, wasm_path };
-    const run_term = try spawnForwarding(io, &run_argv);
-    std.process.exit(exitCode(run_term));
+    const run_term = try spawn_forwarding(io, &run_argv);
+    std.process.exit(exit_code(run_term));
 }
 
-fn spawnForwarding(io: std.Io, argv: []const []const u8) !std.process.Child.Term {
+fn spawn_forwarding(io: std.Io, argv: []const []const u8) !std.process.Child.Term {
     var child = try std.process.spawn(io, .{
         .argv = argv,
         .stdin = .inherit,
@@ -76,21 +76,21 @@ fn spawnForwarding(io: std.Io, argv: []const []const u8) !std.process.Child.Term
     return child.wait(io);
 }
 
-fn exitCode(term: std.process.Child.Term) u8 {
+fn exit_code(term: std.process.Child.Term) u8 {
     return switch (term) {
         .exited => |code| code,
         .signal, .stopped, .unknown => 1,
     };
 }
 
-fn printToolLookupError(io: std.Io, name: []const u8, err: anyerror) !void {
+fn print_tool_lookup_error(io: std.Io, name: []const u8, err: anyerror) !void {
     if (err != error.FileNotFound) {
-        try diag.printIoError(io, name, err);
+        try diag.print_io_error(io, name, err);
         return;
     }
 
     var err_buffer: [256]u8 = undefined;
-    const msg = try formatMissingToolDiagnostic(&err_buffer, name);
+    const msg = try format_missing_tool_diagnostic(&err_buffer, name);
 
     var out_buffer: [256]u8 = undefined;
     var out = std.Io.File.stderr().writer(io, &out_buffer);
@@ -98,11 +98,11 @@ fn printToolLookupError(io: std.Io, name: []const u8, err: anyerror) !void {
     try out.interface.flush();
 }
 
-fn formatMissingToolDiagnostic(buffer: []u8, name: []const u8) ![]const u8 {
+fn format_missing_tool_diagnostic(buffer: []u8, name: []const u8) ![]const u8 {
     return std.fmt.bufPrint(buffer, "error[MissingExternalTool]: {s} not found\n", .{name});
 }
 
-fn findExecutable(
+fn find_executable(
     allocator: std.mem.Allocator,
     io: std.Io,
     environ_map: *std.process.Environ.Map,
@@ -131,7 +131,7 @@ fn findExecutable(
     return error.FileNotFound;
 }
 
-test "findExecutable preserves PATH launcher path instead of resolving symlink target" {
+test "find_executable preserves PATH launcher path instead of resolving symlink target" {
     if (@import("builtin").os.tag == .windows) return error.SkipZigTest;
 
     const allocator = std.testing.allocator;
@@ -153,7 +153,7 @@ test "findExecutable preserves PATH launcher path instead of resolving symlink t
     defer allocator.free(bin_path);
     try env.put("PATH", bin_path);
 
-    const resolved = try findExecutable(allocator, io, &env, "node");
+    const resolved = try find_executable(allocator, io, &env, "node");
     defer allocator.free(resolved);
 
     const expected = try std.fs.path.join(allocator, &.{ bin_path, "node" });
@@ -162,9 +162,9 @@ test "findExecutable preserves PATH launcher path instead of resolving symlink t
     try std.testing.expectEqualStrings(expected, resolved);
 }
 
-test "formatMissingToolDiagnostic prints explicit missing tool error" {
+test "format_missing_tool_diagnostic prints explicit missing tool error" {
     var buffer: [128]u8 = undefined;
-    const msg = try formatMissingToolDiagnostic(&buffer, "wasm-tools");
+    const msg = try format_missing_tool_diagnostic(&buffer, "wasm-tools");
 
     try std.testing.expectEqualStrings("error[MissingExternalTool]: wasm-tools not found\n", msg);
 }

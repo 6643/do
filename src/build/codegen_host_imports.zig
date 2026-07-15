@@ -7,27 +7,27 @@ const codegen_names = @import("codegen_names.zig");
 const model = @import("codegen_model.zig");
 const context = @import("codegen_context.zig");
 
-const tokEq = codegen_tokens.tok_eq;
-const findMatchingInRange = codegen_tokens.find_matching_in_range;
-const findLineEnd = codegen_tokens.find_line_end;
-const isLineStart = codegen_tokens.is_line_start;
-const findArgEnd = codegen_tokens.find_arg_end;
-const findTopLevelToken = codegen_tokens.find_top_level_token;
-const trimParens = codegen_tokens.trim_parens;
-const stringTokenBody = codegen_tokens.string_token_body;
+const tok_eq = codegen_tokens.tok_eq;
+const find_matching_in_range = codegen_tokens.find_matching_in_range;
+const find_line_end = codegen_tokens.find_line_end;
+const is_line_start = codegen_tokens.is_line_start;
+const find_arg_end = codegen_tokens.find_arg_end;
+const find_top_level_token = codegen_tokens.find_top_level_token;
+const trim_parens = codegen_tokens.trim_parens;
+const string_token_body = codegen_tokens.string_token_body;
 const publicDeclName = codegen_names.public_decl_name;
-const appendFmt = codegen_names.append_fmt;
+const append_fmt = codegen_names.append_fmt;
 
 const HostImport = model.HostImport;
 const CodegenError = model.CodegenError;
 const LocalSet = context.LocalSet;
-const storageTypeNameForElem = context.storageTypeNameForElem;
-const moduleTokensEqual = codegen_tokens.module_tokens_equal;
+const storage_type_name_for_elem = context.storage_type_name_for_elem;
+const module_tokens_equal = codegen_tokens.module_tokens_equal;
 const stringLiteralArgLexeme = codegen_tokens.string_literal_arg_lexeme;
 const appendMangledTypeName = codegen_names.append_mangled_type_name;
 const moduleScopedSymbolName = codegen_names.module_scoped_symbol_name;
 
-pub fn collectEnvHostImports(
+pub fn collect_env_host_imports(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     out: *std.ArrayList(HostImport),
@@ -35,42 +35,42 @@ pub fn collectEnvHostImports(
     var depth_brace: usize = 0;
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
-        if (tokEq(tokens[i], "{")) {
+        if (tok_eq(tokens[i], "{")) {
             depth_brace += 1;
             continue;
         }
-        if (tokEq(tokens[i], "}")) {
+        if (tok_eq(tokens[i], "}")) {
             if (depth_brace > 0) depth_brace -= 1;
             continue;
         }
         if (depth_brace != 0) continue;
-        if (!isLineStart(tokens, i)) continue;
-        if (!isEnvHostImportStart(tokens, i)) continue;
+        if (!is_line_start(tokens, i)) continue;
+        if (!is_env_host_import_start(tokens, i)) continue;
 
-        const line_end = findLineEnd(tokens, i);
-        const import = try parseEnvHostImport(allocator, tokens, i, line_end);
+        const line_end = find_line_end(tokens, i);
+        const import = try parse_env_host_import(allocator, tokens, i, line_end);
         errdefer allocator.free(import.params);
         try out.append(allocator, import);
         i = line_end - 1;
     }
 }
-pub fn collectEnvHostImportsFromModules(
+pub fn collect_env_host_imports_from_modules(
     allocator: std.mem.Allocator,
     modules: []const imports.ModuleRecord,
     entry_tokens: []const lexer.Token,
     out: *std.ArrayList(HostImport),
 ) !void {
     for (modules, 0..) |module, module_idx| {
-        if (moduleTokensEqual(module.tokens, entry_tokens)) continue;
+        if (module_tokens_equal(module.tokens, entry_tokens)) continue;
 
         var module_imports = std.ArrayList(HostImport).empty;
         defer {
-            freeHostImports(allocator, module_imports.items);
+            free_host_imports(allocator, module_imports.items);
             module_imports.deinit(allocator);
         }
-        try collectEnvHostImports(allocator, module.tokens, &module_imports);
+        try collect_env_host_imports(allocator, module.tokens, &module_imports);
         for (module_imports.items) |*host_import| {
-            if (findHostImportForTokens(out.items, module.tokens, host_import.source_alias) != null) continue;
+            if (find_host_import_for_tokens(out.items, module.tokens, host_import.source_alias) != null) continue;
             const emit_alias = try moduleScopedSymbolName(allocator, module_idx, host_import.source_alias);
             var emit_alias_owned = true;
             errdefer if (emit_alias_owned) allocator.free(emit_alias);
@@ -84,7 +84,7 @@ pub fn collectEnvHostImportsFromModules(
         }
     }
 }
-pub fn parseEnvHostImport(
+pub fn parse_env_host_import(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -92,32 +92,32 @@ pub fn parseEnvHostImport(
 ) !HostImport {
     // name = @host("env", "field", (...) -> T)
     const alias = publicDeclName(tokens[start_idx].lexeme);
-    const locator = stringTokenBody(tokens[start_idx + 5].lexeme) orelse return error.InvalidImportDecl;
+    const locator = string_token_body(tokens[start_idx + 5].lexeme) orelse return error.InvalidImportDecl;
     if (!std.mem.eql(u8, locator, "env")) return error.InvalidImportDecl;
-    if (!tokEq(tokens[start_idx + 6], ",")) return error.InvalidImportDecl;
-    const field = stringTokenBody(tokens[start_idx + 7].lexeme) orelse return error.InvalidImportDecl;
-    if (!tokEq(tokens[start_idx + 8], ",")) return error.InvalidImportDecl;
+    if (!tok_eq(tokens[start_idx + 6], ",")) return error.InvalidImportDecl;
+    const field = string_token_body(tokens[start_idx + 7].lexeme) orelse return error.InvalidImportDecl;
+    if (!tok_eq(tokens[start_idx + 8], ",")) return error.InvalidImportDecl;
     const open_idx = start_idx + 9;
-    if (open_idx >= line_end or !tokEq(tokens[open_idx], "(")) return error.InvalidImportDecl;
-    const close_idx = try findMatchingInRange(tokens, open_idx, "(", ")", line_end);
-    if (close_idx + 1 >= line_end or !tokEq(tokens[close_idx + 1], "-")) return error.InvalidImportDecl;
-    if (close_idx + 2 >= line_end or !tokEq(tokens[close_idx + 2], ">")) return error.InvalidImportDecl;
+    if (open_idx >= line_end or !tok_eq(tokens[open_idx], "(")) return error.InvalidImportDecl;
+    const close_idx = try find_matching_in_range(tokens, open_idx, "(", ")", line_end);
+    if (close_idx + 1 >= line_end or !tok_eq(tokens[close_idx + 1], "-")) return error.InvalidImportDecl;
+    if (close_idx + 2 >= line_end or !tok_eq(tokens[close_idx + 2], ">")) return error.InvalidImportDecl;
 
     var params = std.ArrayList([]const u8).empty;
     errdefer params.deinit(allocator);
 
     var i = open_idx + 1;
     while (i < close_idx) {
-        if (tokEq(tokens[i], ",")) {
+        if (tok_eq(tokens[i], ",")) {
             i += 1;
             continue;
         }
         try params.append(allocator, tokens[i].lexeme);
         i += 1;
-        if (i < close_idx and tokEq(tokens[i], ",")) i += 1;
+        if (i < close_idx and tok_eq(tokens[i], ",")) i += 1;
     }
 
-    const result_end = findMatchingInRange(tokens, start_idx + 4, "(", ")", line_end) catch return error.InvalidImportDecl;
+    const result_end = find_matching_in_range(tokens, start_idx + 4, "(", ")", line_end) catch return error.InvalidImportDecl;
     if (result_end + 1 != line_end) {
         return error.InvalidImportDecl;
     }
@@ -133,51 +133,51 @@ pub fn parseEnvHostImport(
         .tokens = tokens,
     };
 }
-pub fn freeHostImports(allocator: std.mem.Allocator, host_imports: []const HostImport) void {
+pub fn free_host_imports(allocator: std.mem.Allocator, host_imports: []const HostImport) void {
     for (host_imports) |host_import| {
         if (host_import.owned_alias) allocator.free(host_import.alias);
         allocator.free(host_import.params);
     }
 }
-pub fn findHostImport(host_imports: []const HostImport, alias: []const u8) ?HostImport {
+pub fn find_host_import(host_imports: []const HostImport, alias: []const u8) ?HostImport {
     for (host_imports) |host_import| {
         if (std.mem.eql(u8, host_import.alias, alias)) return host_import;
     }
     return null;
 }
-pub fn findHostImportForTokens(host_imports: []const HostImport, tokens: []const lexer.Token, alias: []const u8) ?HostImport {
+pub fn find_host_import_for_tokens(host_imports: []const HostImport, tokens: []const lexer.Token, alias: []const u8) ?HostImport {
     for (host_imports) |host_import| {
-        if (!moduleTokensEqual(host_import.tokens, tokens)) continue;
+        if (!module_tokens_equal(host_import.tokens, tokens)) continue;
         if (std.mem.eql(u8, host_import.source_alias, alias)) return host_import;
     }
     return null;
 }
-pub fn isEnvHostImportStart(tokens: []const lexer.Token, idx: usize) bool {
+pub fn is_env_host_import_start(tokens: []const lexer.Token, idx: usize) bool {
     // name = @host("env", "field", ...)
-    const line_end = findLineEnd(tokens, idx);
+    const line_end = find_line_end(tokens, idx);
     if (idx + 9 >= line_end) return false;
     if (tokens[idx].kind != .ident) return false;
-    if (!tokEq(tokens[idx + 1], "=")) return false;
-    if (!tokEq(tokens[idx + 2], "@")) return false;
+    if (!tok_eq(tokens[idx + 1], "=")) return false;
+    if (!tok_eq(tokens[idx + 2], "@")) return false;
     if (tokens[idx + 3].kind != .ident or !std.mem.eql(u8, tokens[idx + 3].lexeme, "host")) return false;
-    if (!tokEq(tokens[idx + 4], "(")) return false;
+    if (!tok_eq(tokens[idx + 4], "(")) return false;
     if (tokens[idx + 5].kind != .string) return false;
-    const locator = stringTokenBody(tokens[idx + 5].lexeme) orelse return false;
+    const locator = string_token_body(tokens[idx + 5].lexeme) orelse return false;
     if (!std.mem.eql(u8, locator, "env")) return false;
-    if (!tokEq(tokens[idx + 6], ",")) return false;
+    if (!tok_eq(tokens[idx + 6], ",")) return false;
     if (tokens[idx + 7].kind != .string) return false;
-    if (!tokEq(tokens[idx + 8], ",")) return false;
+    if (!tok_eq(tokens[idx + 8], ",")) return false;
     return true;
 }
-pub fn hostCallArgsMatch(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, host_import: HostImport) bool {
+pub fn host_call_args_match(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, host_import: HostImport) bool {
     var param_idx: usize = 0;
     var arg_start = start_idx;
     while (arg_start < end_idx) {
-        const arg_end = findArgEnd(tokens, arg_start, end_idx);
+        const arg_end = find_arg_end(tokens, arg_start, end_idx);
         if (stringLiteralArgLexeme(tokens, arg_start, arg_end)) |_| {
-            if (!hostParamIsPtrLen(host_import, param_idx)) return false;
+            if (!host_param_is_ptr_len(host_import, param_idx)) return false;
             param_idx += 2;
-        } else if (hostArgCouldBeStoragePtrLenSyntax(tokens, arg_start, arg_end) and hostParamIsPtrLen(host_import, param_idx)) {
+        } else if (host_arg_could_be_storage_ptr_len_syntax(tokens, arg_start, arg_end) and host_param_is_ptr_len(host_import, param_idx)) {
             param_idx += 2;
         } else {
             if (param_idx >= host_import.params.len) return false;
@@ -185,18 +185,18 @@ pub fn hostCallArgsMatch(tokens: []const lexer.Token, start_idx: usize, end_idx:
         }
         arg_start = arg_end;
         if (arg_start < end_idx) {
-            if (!tokEq(tokens[arg_start], ",")) return false;
+            if (!tok_eq(tokens[arg_start], ",")) return false;
             arg_start += 1;
         }
     }
     return param_idx == host_import.params.len;
 }
-pub fn hostParamIsPtrLen(host_import: HostImport, param_idx: usize) bool {
+pub fn host_param_is_ptr_len(host_import: HostImport, param_idx: usize) bool {
     if (param_idx + 1 >= host_import.params.len) return false;
     return std.mem.eql(u8, host_import.params[param_idx], "i32") and
         std.mem.eql(u8, host_import.params[param_idx + 1], "i32");
 }
-pub fn hostArgCouldBeStoragePtrLenSyntax(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
-    const range = trimParens(tokens, start_idx, end_idx);
+pub fn host_arg_could_be_storage_ptr_len_syntax(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    const range = trim_parens(tokens, start_idx, end_idx);
     return range.end == range.start + 1 and tokens[range.start].kind == .ident;
 }

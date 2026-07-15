@@ -41,7 +41,7 @@ pub const SemanticToken = struct {
     modifiers: u32 = 0,
 };
 
-pub fn encodeSemanticTokens(allocator: std.mem.Allocator, tokens: []const SemanticToken) ![]u32 {
+pub fn encode_semantic_tokens(allocator: std.mem.Allocator, tokens: []const SemanticToken) ![]u32 {
     var data = try std.ArrayList(u32).initCapacity(allocator, tokens.len * 5);
     errdefer data.deinit(allocator);
 
@@ -54,7 +54,7 @@ pub fn encodeSemanticTokens(allocator: std.mem.Allocator, tokens: []const Semant
         try data.append(allocator, delta_line);
         try data.append(allocator, delta_start);
         try data.append(allocator, token.length);
-        try data.append(allocator, tokenTypeIndex(token.token_type));
+        try data.append(allocator, token_type_index(token.token_type));
         try data.append(allocator, token.modifiers);
 
         prev_line = token.line;
@@ -64,7 +64,7 @@ pub fn encodeSemanticTokens(allocator: std.mem.Allocator, tokens: []const Semant
     return data.toOwnedSlice(allocator);
 }
 
-pub fn collectSemanticTokens(allocator: std.mem.Allocator, source: []const u8) ![]SemanticToken {
+pub fn collect_semantic_tokens(allocator: std.mem.Allocator, source: []const u8) ![]SemanticToken {
     const raw_tokens = try lexer.tokenize(allocator, source);
     defer allocator.free(raw_tokens);
 
@@ -74,7 +74,7 @@ pub fn collectSemanticTokens(allocator: std.mem.Allocator, source: []const u8) !
     var idx: usize = 0;
     while (idx < raw_tokens.len) : (idx += 1) {
         const token = raw_tokens[idx];
-        if (isBuiltinHead(raw_tokens, idx)) {
+        if (is_builtin_head(raw_tokens, idx)) {
             const name = raw_tokens[idx + 1];
             try out.append(allocator, .{
                 .line = @as(u32, @intCast(token.line - 1)),
@@ -86,7 +86,7 @@ pub fn collectSemanticTokens(allocator: std.mem.Allocator, source: []const u8) !
             continue;
         }
 
-        const kind = classifyLexerToken(raw_tokens, idx);
+        const kind = classify_lexer_token(raw_tokens, idx);
         try out.append(allocator, .{
             .line = @as(u32, @intCast(token.line - 1)),
             .start = @as(u32, @intCast(token.col - 1)),
@@ -98,7 +98,7 @@ pub fn collectSemanticTokens(allocator: std.mem.Allocator, source: []const u8) !
     return out.toOwnedSlice(allocator);
 }
 
-fn tokenTypeIndex(kind: SemanticTokenKind) u32 {
+fn token_type_index(kind: SemanticTokenKind) u32 {
     return switch (kind) {
         .keyword => 0,
         .type_name => 1,
@@ -115,26 +115,26 @@ fn tokenTypeIndex(kind: SemanticTokenKind) u32 {
     };
 }
 
-fn classifyLexerToken(tokens: []const lexer.Token, idx: usize) SemanticTokenKind {
+fn classify_lexer_token(tokens: []const lexer.Token, idx: usize) SemanticTokenKind {
     const token = tokens[idx];
     return switch (token.kind) {
-        .ident => classifyIdentToken(tokens, idx),
+        .ident => classify_ident_token(tokens, idx),
         .number => .number,
         .string => .string,
         .symbol => .operator,
     };
 }
 
-fn classifyIdentToken(tokens: []const lexer.Token, idx: usize) SemanticTokenKind {
+fn classify_ident_token(tokens: []const lexer.Token, idx: usize) SemanticTokenKind {
     const token = tokens[idx];
-    if (isKeyword(token.lexeme)) return .keyword;
-    if (isFieldName(token.lexeme)) return .field;
-    if (isTypeName(token.lexeme)) return .type_name;
-    if (isFunctionHead(tokens, idx)) return .function;
+    if (is_keyword(token.lexeme)) return .keyword;
+    if (is_field_name(token.lexeme)) return .field;
+    if (is_type_name(token.lexeme)) return .type_name;
+    if (is_function_head(tokens, idx)) return .function;
     return .variable;
 }
 
-fn isBuiltinHead(tokens: []const lexer.Token, idx: usize) bool {
+fn is_builtin_head(tokens: []const lexer.Token, idx: usize) bool {
     if (idx + 1 >= tokens.len) return false;
     const at = tokens[idx];
     const name = tokens[idx + 1];
@@ -144,17 +144,17 @@ fn isBuiltinHead(tokens: []const lexer.Token, idx: usize) bool {
     return at.col + at.lexeme.len == name.col;
 }
 
-fn isFieldName(name: []const u8) bool {
+fn is_field_name(name: []const u8) bool {
     return name.len > 1 and name[0] == '.';
 }
 
-fn isTypeName(name: []const u8) bool {
+fn is_type_name(name: []const u8) bool {
     if (name.len == 0) return false;
     if (std.ascii.isUpper(name[0])) return true;
-    return isBuiltinTypeName(name);
+    return is_builtin_type_name(name);
 }
 
-fn isBuiltinTypeName(name: []const u8) bool {
+fn is_builtin_type_name(name: []const u8) bool {
     const names = [_][]const u8{
         "bool",
         "text",
@@ -177,13 +177,13 @@ fn isBuiltinTypeName(name: []const u8) bool {
     return false;
 }
 
-fn isFunctionHead(tokens: []const lexer.Token, idx: usize) bool {
+fn is_function_head(tokens: []const lexer.Token, idx: usize) bool {
     if (idx + 1 >= tokens.len) return false;
     if (tokens[idx].line != tokens[idx + 1].line) return false;
     return tokens[idx + 1].kind == .symbol and std.mem.eql(u8, tokens[idx + 1].lexeme, "(");
 }
 
-fn isKeyword(name: []const u8) bool {
+fn is_keyword(name: []const u8) bool {
     const keywords = [_][]const u8{
         "if",
         "else",
@@ -213,7 +213,7 @@ test "semantic token legend order is stable" {
     try std.testing.expectEqual(@as(usize, 0), legendTokenModifiers.len);
 }
 
-test "encodeSemanticTokens returns LSP delta encoded five-tuples" {
+test "encode_semantic_tokens returns LSP delta encoded five-tuples" {
     const tokens = [_]SemanticToken{
         .{ .line = 0, .start = 0, .length = 4, .token_type = .keyword },
         .{ .line = 0, .start = 5, .length = 4, .token_type = .function },
@@ -221,7 +221,7 @@ test "encodeSemanticTokens returns LSP delta encoded five-tuples" {
         .{ .line = 2, .start = 10, .length = 1, .token_type = .number },
     };
 
-    const encoded = try encodeSemanticTokens(std.testing.allocator, &tokens);
+    const encoded = try encode_semantic_tokens(std.testing.allocator, &tokens);
     defer std.testing.allocator.free(encoded);
 
     try std.testing.expectEqualSlices(u32, &.{
@@ -232,8 +232,8 @@ test "encodeSemanticTokens returns LSP delta encoded five-tuples" {
     }, encoded);
 }
 
-test "collectSemanticTokens classifies lexer tokens" {
-    const tokens = try collectSemanticTokens(std.testing.allocator,
+test "collect_semantic_tokens classifies lexer tokens" {
+    const tokens = try collect_semantic_tokens(std.testing.allocator,
         \\if true {
         \\    value = 42
         \\}
@@ -252,8 +252,8 @@ test "collectSemanticTokens classifies lexer tokens" {
     try std.testing.expectEqual(SemanticToken{ .line = 2, .start = 0, .length = 1, .token_type = .operator }, tokens[6]);
 }
 
-test "collectSemanticTokens applies minimal semantic classifications" {
-    const tokens = try collectSemanticTokens(std.testing.allocator,
+test "collect_semantic_tokens applies minimal semantic classifications" {
+    const tokens = try collect_semantic_tokens(std.testing.allocator,
         \\User {
         \\    title text
         \\}
@@ -264,16 +264,16 @@ test "collectSemanticTokens applies minimal semantic classifications" {
     );
     defer std.testing.allocator.free(tokens);
 
-    try expectHasSemanticToken(tokens, .{ .line = 0, .start = 0, .length = 4, .token_type = .type_name });
-    try expectHasSemanticToken(tokens, .{ .line = 1, .start = 10, .length = 4, .token_type = .type_name });
-    try expectHasSemanticToken(tokens, .{ .line = 3, .start = 0, .length = 9, .token_type = .function });
-    try expectHasSemanticToken(tokens, .{ .line = 3, .start = 15, .length = 4, .token_type = .type_name });
-    try expectHasSemanticToken(tokens, .{ .line = 3, .start = 24, .length = 4, .token_type = .type_name });
-    try expectHasSemanticToken(tokens, .{ .line = 4, .start = 11, .length = 4, .token_type = .builtin });
-    try expectHasSemanticToken(tokens, .{ .line = 4, .start = 22, .length = 6, .token_type = .field });
+    try expect_has_semantic_token(tokens, .{ .line = 0, .start = 0, .length = 4, .token_type = .type_name });
+    try expect_has_semantic_token(tokens, .{ .line = 1, .start = 10, .length = 4, .token_type = .type_name });
+    try expect_has_semantic_token(tokens, .{ .line = 3, .start = 0, .length = 9, .token_type = .function });
+    try expect_has_semantic_token(tokens, .{ .line = 3, .start = 15, .length = 4, .token_type = .type_name });
+    try expect_has_semantic_token(tokens, .{ .line = 3, .start = 24, .length = 4, .token_type = .type_name });
+    try expect_has_semantic_token(tokens, .{ .line = 4, .start = 11, .length = 4, .token_type = .builtin });
+    try expect_has_semantic_token(tokens, .{ .line = 4, .start = 22, .length = 6, .token_type = .field });
 }
 
-fn expectHasSemanticToken(tokens: []const SemanticToken, expected: SemanticToken) !void {
+fn expect_has_semantic_token(tokens: []const SemanticToken, expected: SemanticToken) !void {
     for (tokens) |token| {
         if (std.meta.eql(token, expected)) return;
     }

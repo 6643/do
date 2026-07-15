@@ -81,7 +81,7 @@ pub fn known_wasi_wit_signature(target: []const u8) ?struct { params: []const u8
 }
 
 pub fn wasi_lowering(import: WasiHostImport) ?WasiLowering {
-    return wat_component_metadata.wasiLowering(import);
+    return wat_component_metadata.wasi_lowering(import);
 }
 
 pub fn append_wasi_import_symbol(
@@ -89,7 +89,7 @@ pub fn append_wasi_import_symbol(
     out: *std.ArrayList(u8),
     target: []const u8,
 ) !void {
-    try wat_component_metadata.appendWasiImportSymbol(allocator, out, target);
+    try wat_component_metadata.append_wasi_import_symbol(allocator, out, target);
 }
 
 pub fn free_wasi_host_imports(allocator: std.mem.Allocator, wasi_imports: []const WasiHostImport) void {
@@ -347,7 +347,7 @@ const ExprCallHead = struct {
     is_intrinsic: bool,
 };
 
-fn exprCallHead(tokens: []const lexer.Token, range: codegen_tokens.Range) ?ExprCallHead {
+fn expr_call_head(tokens: []const lexer.Token, range: codegen_tokens.Range) ?ExprCallHead {
     var name_idx = range.start;
     var is_intrinsic = false;
     if (tok_eq(tokens[name_idx], "@")) {
@@ -392,7 +392,7 @@ pub fn is_wasi_union_result_binding_call(tokens: []const lexer.Token, call_idx: 
     if (find_top_level_token(tokens, line_start, eq_idx, ",") != null) return false;
     if (find_top_level_token(tokens, line_start, eq_idx, "|") == null) return false;
     const rhs_range = trim_parens(tokens, eq_idx + 1, line_end);
-    const call_head = exprCallHead(tokens, rhs_range) orelse return false;
+    const call_head = expr_call_head(tokens, rhs_range) orelse return false;
     return !call_head.is_intrinsic and call_head.name_idx == call_idx;
 }
 
@@ -402,7 +402,7 @@ pub fn is_wasi_union_result_return_call(tokens: []const lexer.Token, call_idx: u
     const line_end = find_line_end(tokens, call_idx);
     if (line_start >= line_end or !tok_eq(tokens[line_start], "return")) return false;
     const rhs_range = trim_parens(tokens, line_start + 1, line_end);
-    const call_head = exprCallHead(tokens, rhs_range) orelse return false;
+    const call_head = expr_call_head(tokens, rhs_range) orelse return false;
     return !call_head.is_intrinsic and call_head.name_idx == call_idx;
 }
 
@@ -412,7 +412,7 @@ pub fn is_bare_wasi_host_call_statement(tokens: []const lexer.Token, call_idx: u
     // Statement form: host(...) alone on the line (no `=`).
     if (find_top_level_token(tokens, line_start, call_idx, "=") != null) return false;
     const range = trim_parens(tokens, line_start, line_end);
-    const call_head = exprCallHead(tokens, range) orelse return false;
+    const call_head = expr_call_head(tokens, range) orelse return false;
     return !call_head.is_intrinsic and call_head.name_idx == call_idx;
 }
 
@@ -432,7 +432,7 @@ pub fn is_wasi_result_unit_status_multi_assignment_call(tokens: []const lexer.To
     if (tokens[status_lhs_start].kind != .ident) return false;
 
     const rhs_range = trim_parens(tokens, eq_idx + 1, line_end);
-    const call_head = exprCallHead(tokens, rhs_range) orelse return false;
+    const call_head = expr_call_head(tokens, rhs_range) orelse return false;
     return !call_head.is_intrinsic and call_head.name_idx == call_idx;
 }
 
@@ -442,7 +442,7 @@ pub fn is_wasi_result_read_multi_assignment_call(tokens: []const lexer.Token, ca
     const eq_idx = find_top_level_token(tokens, line_start, call_idx, "=") orelse return false;
     if (find_top_level_token(tokens, line_start, eq_idx, ",") == null) return false;
     const rhs_range = trim_parens(tokens, eq_idx + 1, line_end);
-    const call_head = exprCallHead(tokens, rhs_range) orelse return false;
+    const call_head = expr_call_head(tokens, rhs_range) orelse return false;
     return !call_head.is_intrinsic and call_head.name_idx == call_idx;
 }
 
@@ -461,7 +461,7 @@ pub fn is_wasi_result_list_u8_status_multi_assignment_call(tokens: []const lexer
     if (tokens[status_lhs_start].kind != .ident) return false;
 
     const rhs_range = trim_parens(tokens, eq_idx + 1, line_end);
-    const call_head = exprCallHead(tokens, rhs_range) orelse return false;
+    const call_head = expr_call_head(tokens, rhs_range) orelse return false;
     return !call_head.is_intrinsic and call_head.name_idx == call_idx;
 }
 

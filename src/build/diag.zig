@@ -15,40 +15,40 @@ pub const CompileDiagnostic = struct {
     line_text: []const u8,
 };
 
-pub fn buildCompileDiagnostic(
+pub fn build_compile_diagnostic(
     path: []const u8,
     source: []const u8,
     tokens_opt: ?[]const lexer.Token,
     err: anyerror,
     explicit_loc: ?SourceLoc,
 ) CompileDiagnostic {
-    const loc = locateCompileError(err, source, tokens_opt, explicit_loc);
+    const loc = locate_compile_error(err, source, tokens_opt, explicit_loc);
     return .{
         .path = path,
         .loc = loc,
         .code = @errorName(err),
-        .message = errorSummary(err),
-        .hint = errorHint(err),
-        .line_text = getLineText(source, loc.line),
+        .message = error_summary(err),
+        .hint = error_hint(err),
+        .line_text = get_line_text(source, loc.line),
     };
 }
 
-pub fn printCliError(io: std.Io, err: anyerror) !void {
+pub fn print_cli_error(io: std.Io, err: anyerror) !void {
     var err_buffer: [512]u8 = undefined;
     var out = std.Io.File.stderr().writer(io, &err_buffer);
-    try out.interface.print("error[{s}]: {s}\n", .{ @errorName(err), errorSummary(err) });
-    try out.interface.print("hint: {s}\n", .{errorHint(err)});
+    try out.interface.print("error[{s}]: {s}\n", .{ @errorName(err), error_summary(err) });
+    try out.interface.print("hint: {s}\n", .{error_hint(err)});
     try out.interface.flush();
 }
 
-pub fn printIoError(io: std.Io, path: []const u8, err: anyerror) !void {
+pub fn print_io_error(io: std.Io, path: []const u8, err: anyerror) !void {
     var err_buffer: [768]u8 = undefined;
     var out = std.Io.File.stderr().writer(io, &err_buffer);
-    try writeIoErrorTo(&out.interface, path, err);
+    try write_io_error_to(&out.interface, path, err);
     try out.interface.flush();
 }
 
-pub fn printCompileError(
+pub fn print_compile_error(
     io: std.Io,
     path: []const u8,
     source: []const u8,
@@ -56,24 +56,24 @@ pub fn printCompileError(
     err: anyerror,
     explicit_loc: ?SourceLoc,
 ) !void {
-    const diagnostic = buildCompileDiagnostic(path, source, tokens_opt, err, explicit_loc);
-    try printDiagnostic(io, diagnostic);
+    const diagnostic = build_compile_diagnostic(path, source, tokens_opt, err, explicit_loc);
+    try print_diagnostic(io, diagnostic);
 }
 
-pub fn printDiagnostic(io: std.Io, diagnostic: CompileDiagnostic) !void {
+pub fn print_diagnostic(io: std.Io, diagnostic: CompileDiagnostic) !void {
     var err_buffer: [4096]u8 = undefined;
     var out = std.Io.File.stderr().writer(io, &err_buffer);
-    try writeDiagnosticTo(&out.interface, diagnostic);
+    try write_diagnostic_to(&out.interface, diagnostic);
     try out.interface.flush();
 }
 
-pub fn writeIoErrorTo(writer: anytype, path: []const u8, err: anyerror) !void {
-    try writer.print("error[{s}]: {s}\n", .{ @errorName(err), errorSummary(err) });
+pub fn write_io_error_to(writer: anytype, path: []const u8, err: anyerror) !void {
+    try writer.print("error[{s}]: {s}\n", .{ @errorName(err), error_summary(err) });
     try writer.print("at: {s}\n", .{path});
-    try writer.print("hint: {s}\n", .{errorHint(err)});
+    try writer.print("hint: {s}\n", .{error_hint(err)});
 }
 
-pub fn writeDiagnosticTo(writer: anytype, diagnostic: CompileDiagnostic) !void {
+pub fn write_diagnostic_to(writer: anytype, diagnostic: CompileDiagnostic) !void {
     const caret_col = if (diagnostic.loc.col == 0) 1 else diagnostic.loc.col;
 
     try writer.print("error[{s}]: {s}\n", .{ diagnostic.code, diagnostic.message });
@@ -82,11 +82,11 @@ pub fn writeDiagnosticTo(writer: anytype, diagnostic: CompileDiagnostic) !void {
     if (diagnostic.line_text.len != 0) {
         try writer.print(" {d} | {s}\n", .{ diagnostic.loc.line, diagnostic.line_text });
         try writer.print("   | ", .{});
-        try writeCaret(writer, caret_col);
+        try write_caret(writer, caret_col);
     }
 }
 
-fn writeCaret(writer: anytype, col: usize) !void {
+fn write_caret(writer: anytype, col: usize) !void {
     const max_col = if (col > 256) 256 else col;
     var i: usize = 1;
     while (i < max_col) : (i += 1) {
@@ -95,7 +95,7 @@ fn writeCaret(writer: anytype, col: usize) !void {
     try writer.print("^\n", .{});
 }
 
-fn locateCompileError(
+fn locate_compile_error(
     err: anyerror,
     source: []const u8,
     tokens_opt: ?[]const lexer.Token,
@@ -103,24 +103,24 @@ fn locateCompileError(
 ) SourceLoc {
     if (explicit_loc) |loc| return loc;
     if (tokens_opt) |tokens| {
-        if (locateTokenError(err, tokens)) |loc| return loc;
+        if (locate_token_error(err, tokens)) |loc| return loc;
         if (tokens.len != 0) return .{ .line = tokens[0].line, .col = tokens[0].col };
     }
-    if (locateSourceError(err, source)) |loc| return loc;
+    if (locate_source_error(err, source)) |loc| return loc;
     return .{ .line = 1, .col = 1 };
 }
 
-fn locateSourceError(err: anyerror, source: []const u8) ?SourceLoc {
+fn locate_source_error(err: anyerror, source: []const u8) ?SourceLoc {
     return switch (err) {
-        error.UnterminatedString => locateUnterminatedString(source),
-        error.InvalidStringEscape => locateInvalidStringEscape(source),
-        error.InvalidStringUtf8 => locateInvalidStringUtf8(source),
-        error.InvalidComment => locateInvalidComment(source),
+        error.UnterminatedString => locate_unterminated_string(source),
+        error.InvalidStringEscape => locate_invalid_string_escape(source),
+        error.InvalidStringUtf8 => locate_invalid_string_utf8(source),
+        error.InvalidComment => locate_invalid_comment(source),
         else => null,
     };
 }
 
-fn locateUnterminatedString(source: []const u8) ?SourceLoc {
+fn locate_unterminated_string(source: []const u8) ?SourceLoc {
     var in_string = false;
     var line: usize = 1;
     var col: usize = 1;
@@ -144,9 +144,9 @@ fn locateUnterminatedString(source: []const u8) ?SourceLoc {
             i += 1;
             continue;
         }
-        if (isLineBreak(source, i)) {
+        if (is_line_break(source, i)) {
             if (in_string) return .{ .line = str_line, .col = str_col };
-            i = skipLineBreak(source, i);
+            i = skip_line_break(source, i);
             line += 1;
             col = 1;
             continue;
@@ -159,7 +159,7 @@ fn locateUnterminatedString(source: []const u8) ?SourceLoc {
     return null;
 }
 
-fn locateInvalidStringEscape(source: []const u8) ?SourceLoc {
+fn locate_invalid_string_escape(source: []const u8) ?SourceLoc {
     var in_string = false;
     var line: usize = 1;
     var col: usize = 1;
@@ -178,15 +178,15 @@ fn locateInvalidStringEscape(source: []const u8) ?SourceLoc {
             col += 1;
             continue;
         }
-        if (isLineBreak(source, i)) {
-            i = skipLineBreak(source, i);
+        if (is_line_break(source, i)) {
+            i = skip_line_break(source, i);
             line += 1;
             col = 1;
             in_string = false;
             continue;
         }
         if (in_string and ch == '\\') {
-            const esc_len = stringEscapeByteLen(source, i) orelse return .{ .line = line, .col = col };
+            const esc_len = string_escape_byte_len(source, i) orelse return .{ .line = line, .col = col };
             i += esc_len;
             col += esc_len;
             continue;
@@ -197,13 +197,13 @@ fn locateInvalidStringEscape(source: []const u8) ?SourceLoc {
     return null;
 }
 
-fn locateInvalidStringUtf8(source: []const u8) ?SourceLoc {
+fn locate_invalid_string_utf8(source: []const u8) ?SourceLoc {
     var line: usize = 1;
     var col: usize = 1;
     var i: usize = 0;
     while (i < source.len) {
-        if (isLineBreak(source, i)) {
-            i = skipLineBreak(source, i);
+        if (is_line_break(source, i)) {
+            i = skip_line_break(source, i);
             line += 1;
             col = 1;
             continue;
@@ -217,20 +217,20 @@ fn locateInvalidStringUtf8(source: []const u8) ?SourceLoc {
     return null;
 }
 
-fn locateInvalidComment(source: []const u8) ?SourceLoc {
+fn locate_invalid_comment(source: []const u8) ?SourceLoc {
     var line: usize = 1;
     var col: usize = 1;
     var i: usize = 0;
     while (i + 1 < source.len) {
-        if (isLineBreak(source, i)) {
-            i = skipLineBreak(source, i);
+        if (is_line_break(source, i)) {
+            i = skip_line_break(source, i);
             line += 1;
             col = 1;
             continue;
         }
         if (source[i] == '/' and (source[i + 1] == '/' or source[i + 1] == '*')) {
-            if (!isCommentLineStart(source, i)) return .{ .line = line, .col = col };
-            if (source[i + 1] == '*' and !blockCommentClosesCleanly(source, i)) {
+            if (!is_comment_line_start(source, i)) return .{ .line = line, .col = col };
+            if (source[i + 1] == '*' and !block_comment_closes_cleanly(source, i)) {
                 return .{ .line = line, .col = col };
             }
         }
@@ -240,7 +240,7 @@ fn locateInvalidComment(source: []const u8) ?SourceLoc {
     return null;
 }
 
-fn locateTokenError(err: anyerror, tokens: []const lexer.Token) ?SourceLoc {
+fn locate_token_error(err: anyerror, tokens: []const lexer.Token) ?SourceLoc {
     if (tokens.len == 0) return null;
 
     switch (err) {
@@ -251,41 +251,41 @@ fn locateTokenError(err: anyerror, tokens: []const lexer.Token) ?SourceLoc {
         error.MultiReturnInLoopCondition,
         error.AmbiguousConditionCallReturnArity,
         error.InvalidBindingName,
-        => return tokenSite(findFirstToken(tokens, "if") orelse tokens[0]),
+        => return token_site(find_first_token(tokens, "if") orelse tokens[0]),
 
-        error.InvalidLoopHeader => return tokenSite(findFirstToken(tokens, "loop") orelse tokens[0]),
-        error.InvalidNarrowing => return tokenSite(findFirstToken(tokens, "is") orelse tokens[0]),
-        error.UnionPayloadRequiresNarrowing => return tokenSite(tokens[0]),
-        error.InvalidTestDecl => return tokenSite(findFirstToken(tokens, "test") orelse tokens[0]),
-        error.InvalidConstraintDecl => return tokenSite(findFirstToken(tokens, "#") orelse tokens[0]),
-        error.InvalidParamName => return tokenSite(findFirstToken(tokens, "(") orelse tokens[0]),
-        error.InvalidImportDecl => return tokenSite(findFirstToken(tokens, "@") orelse tokens[0]),
-        error.InvalidStartEntrySig, error.DuplicateStartEntry => return tokenSite(findFirstToken(tokens, "start") orelse tokens[0]),
-        error.MissingStartEntry => return tokenSite(tokens[0]),
-        error.InvalidBraceExpr => return tokenSite(findFirstToken(tokens, "{") orelse tokens[0]),
-        error.InvalidReturnStmt => return tokenSite(findFirstTokenOnLine(tokens, "return") orelse findFirstToken(tokens, "return") orelse tokens[0]),
-        error.InvalidStructLiteral => return tokenSite(findFirstStructLitToken(tokens) orelse tokens[0]),
-        error.PrivateIdentCannotBeLValue => return tokenSite(findFirstPrivateIdent(tokens) orelse tokens[0]),
-        error.DuplicateImmutableBinding => return tokenSite(findDuplicateImmutable(tokens) orelse tokens[0]),
-        error.DuplicateLocalBinding => return tokenSite(tokens[0]),
-        error.InvalidCallArgList => return tokenSite(findTrailingCommaToken(tokens) orelse tokens[0]),
-        error.NoTopLevelDecl => return tokenSite(tokens[0]),
-        else => return tokenSite(tokens[0]),
+        error.InvalidLoopHeader => return token_site(find_first_token(tokens, "loop") orelse tokens[0]),
+        error.InvalidNarrowing => return token_site(find_first_token(tokens, "is") orelse tokens[0]),
+        error.UnionPayloadRequiresNarrowing => return token_site(tokens[0]),
+        error.InvalidTestDecl => return token_site(find_first_token(tokens, "test") orelse tokens[0]),
+        error.InvalidConstraintDecl => return token_site(find_first_token(tokens, "#") orelse tokens[0]),
+        error.InvalidParamName => return token_site(find_first_token(tokens, "(") orelse tokens[0]),
+        error.InvalidImportDecl => return token_site(find_first_token(tokens, "@") orelse tokens[0]),
+        error.InvalidStartEntrySig, error.DuplicateStartEntry => return token_site(find_first_token(tokens, "start") orelse tokens[0]),
+        error.MissingStartEntry => return token_site(tokens[0]),
+        error.InvalidBraceExpr => return token_site(find_first_token(tokens, "{") orelse tokens[0]),
+        error.InvalidReturnStmt => return token_site(find_first_token_on_line(tokens, "return") orelse find_first_token(tokens, "return") orelse tokens[0]),
+        error.InvalidStructLiteral => return token_site(find_first_struct_lit_token(tokens) orelse tokens[0]),
+        error.PrivateIdentCannotBeLValue => return token_site(find_first_private_ident(tokens) orelse tokens[0]),
+        error.DuplicateImmutableBinding => return token_site(find_duplicate_immutable(tokens) orelse tokens[0]),
+        error.DuplicateLocalBinding => return token_site(tokens[0]),
+        error.InvalidCallArgList => return token_site(find_trailing_comma_token(tokens) orelse tokens[0]),
+        error.NoTopLevelDecl => return token_site(tokens[0]),
+        else => return token_site(tokens[0]),
     }
 }
 
-fn tokenSite(tok: lexer.Token) SourceLoc {
+fn token_site(tok: lexer.Token) SourceLoc {
     return .{ .line = tok.line, .col = tok.col };
 }
 
-fn findFirstToken(tokens: []const lexer.Token, lexeme: []const u8) ?lexer.Token {
+fn find_first_token(tokens: []const lexer.Token, lexeme: []const u8) ?lexer.Token {
     for (tokens) |tok| {
         if (std.mem.eql(u8, tok.lexeme, lexeme)) return tok;
     }
     return null;
 }
 
-fn findFirstTokenOnLine(tokens: []const lexer.Token, lexeme: []const u8) ?lexer.Token {
+fn find_first_token_on_line(tokens: []const lexer.Token, lexeme: []const u8) ?lexer.Token {
     if (tokens.len == 0) return null;
     const target_line = tokens[0].line;
     for (tokens) |tok| {
@@ -295,7 +295,7 @@ fn findFirstTokenOnLine(tokens: []const lexer.Token, lexeme: []const u8) ?lexer.
     return null;
 }
 
-fn findFirstStructLitToken(tokens: []const lexer.Token) ?lexer.Token {
+fn find_first_struct_lit_token(tokens: []const lexer.Token) ?lexer.Token {
     var i: usize = 0;
     while (i + 1 < tokens.len) : (i += 1) {
         if (tokens[i].kind != .ident) continue;
@@ -307,7 +307,7 @@ fn findFirstStructLitToken(tokens: []const lexer.Token) ?lexer.Token {
     return null;
 }
 
-fn findFirstPrivateIdent(tokens: []const lexer.Token) ?lexer.Token {
+fn find_first_private_ident(tokens: []const lexer.Token) ?lexer.Token {
     for (tokens) |tok| {
         if (tok.kind != .ident) continue;
         if (tok.lexeme.len == 0) continue;
@@ -316,7 +316,7 @@ fn findFirstPrivateIdent(tokens: []const lexer.Token) ?lexer.Token {
     return null;
 }
 
-fn findDuplicateImmutable(tokens: []const lexer.Token) ?lexer.Token {
+fn find_duplicate_immutable(tokens: []const lexer.Token) ?lexer.Token {
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
         const tok = tokens[i];
@@ -335,29 +335,29 @@ fn findDuplicateImmutable(tokens: []const lexer.Token) ?lexer.Token {
     return null;
 }
 
-fn findTrailingCommaToken(tokens: []const lexer.Token) ?lexer.Token {
+fn find_trailing_comma_token(tokens: []const lexer.Token) ?lexer.Token {
     var i: usize = 0;
     while (i + 1 < tokens.len) : (i += 1) {
         if (!std.mem.eql(u8, tokens[i].lexeme, ",")) continue;
         if (!std.mem.eql(u8, tokens[i + 1].lexeme, ")")) continue;
         return tokens[i];
     }
-    return findFirstToken(tokens, ",");
+    return find_first_token(tokens, ",");
 }
 
-fn getLineText(source: []const u8, target_line: usize) []const u8 {
+fn get_line_text(source: []const u8, target_line: usize) []const u8 {
     if (target_line == 0) return "";
 
     var line: usize = 1;
     var start: usize = 0;
     var i: usize = 0;
     while (i < source.len) {
-        if (!isLineBreak(source, i)) {
+        if (!is_line_break(source, i)) {
             i += 1;
             continue;
         }
         if (line == target_line) return source[start..i];
-        i = skipLineBreak(source, i);
+        i = skip_line_break(source, i);
         line += 1;
         start = i;
     }
@@ -367,7 +367,7 @@ fn getLineText(source: []const u8, target_line: usize) []const u8 {
 
 /// Bytes consumed by a string escape starting at `\` (`source[idx] == '\\'`).
 /// Returns null when the escape is incomplete or invalid.
-fn stringEscapeByteLen(source: []const u8, idx: usize) ?usize {
+fn string_escape_byte_len(source: []const u8, idx: usize) ?usize {
     if (idx + 1 >= source.len) return null;
     const esc = source[idx + 1];
     if (esc == '"' or esc == '\\' or esc == 'n' or esc == 'r' or esc == 't') return 2;
@@ -376,16 +376,16 @@ fn stringEscapeByteLen(source: []const u8, idx: usize) ?usize {
     return 4;
 }
 
-fn isLineBreak(source: []const u8, idx: usize) bool {
+fn is_line_break(source: []const u8, idx: usize) bool {
     return source[idx] == '\n' or source[idx] == '\r';
 }
 
-fn skipLineBreak(source: []const u8, idx: usize) usize {
+fn skip_line_break(source: []const u8, idx: usize) usize {
     if (source[idx] == '\r' and idx + 1 < source.len and source[idx + 1] == '\n') return idx + 2;
     return idx + 1;
 }
 
-fn isCommentLineStart(source: []const u8, idx: usize) bool {
+fn is_comment_line_start(source: []const u8, idx: usize) bool {
     var i = idx;
     while (i > 0) : (i -= 1) {
         const prev = source[i - 1];
@@ -395,7 +395,7 @@ fn isCommentLineStart(source: []const u8, idx: usize) bool {
     return true;
 }
 
-fn blockCommentClosesCleanly(source: []const u8, start_idx: usize) bool {
+fn block_comment_closes_cleanly(source: []const u8, start_idx: usize) bool {
     var i = start_idx + 2;
     while (i + 1 < source.len) : (i += 1) {
         if (source[i] != '*' or source[i + 1] != '/') continue;
@@ -410,7 +410,7 @@ fn blockCommentClosesCleanly(source: []const u8, start_idx: usize) bool {
     return false;
 }
 
-pub fn errorSummary(err: anyerror) []const u8 {
+pub fn error_summary(err: anyerror) []const u8 {
     return switch (err) {
         error.UnterminatedString => "字符串语法: `\"text\"`",
         error.InvalidStringEscape => "字符串 escape 只支持 `\\\"`, `\\\\`, `\\n`, `\\r`, `\\t`, `\\xNN`",
@@ -473,7 +473,7 @@ pub fn errorSummary(err: anyerror) []const u8 {
     };
 }
 
-pub fn errorHint(err: anyerror) []const u8 {
+pub fn error_hint(err: anyerror) []const u8 {
     return switch (err) {
         error.UnterminatedString => "字符串语法: `\"text\"`",
         error.InvalidStringEscape => "普通字符串 escape 写作 `\\\"`, `\\\\`, `\\n`, `\\r`, `\\t` 或 `\\xNN`",
@@ -536,14 +536,14 @@ pub fn errorHint(err: anyerror) []const u8 {
     };
 }
 
-test "buildCompileDiagnostic uses explicit source location" {
+test "build_compile_diagnostic uses explicit source location" {
     const source =
         \\one
         \\two
         \\three
         \\
     ;
-    const diagnostic = buildCompileDiagnostic(
+    const diagnostic = build_compile_diagnostic(
         "bad.do",
         source,
         null,
@@ -555,27 +555,27 @@ test "buildCompileDiagnostic uses explicit source location" {
     try std.testing.expectEqual(@as(usize, 3), diagnostic.loc.col);
     try std.testing.expectEqualStrings("two", diagnostic.line_text);
     try std.testing.expectEqualStrings("InvalidIfHeader", diagnostic.code);
-    try std.testing.expectEqualStrings(errorSummary(error.InvalidIfHeader), diagnostic.message);
-    try std.testing.expectEqualStrings(errorHint(error.InvalidIfHeader), diagnostic.hint);
+    try std.testing.expectEqualStrings(error_summary(error.InvalidIfHeader), diagnostic.message);
+    try std.testing.expectEqualStrings(error_hint(error.InvalidIfHeader), diagnostic.hint);
 }
 
 test "return statement diagnostic has specific summary" {
     try std.testing.expectEqualStrings(
         "return 语句返回位数不匹配",
-        errorSummary(error.InvalidReturnStmt),
+        error_summary(error.InvalidReturnStmt),
     );
 }
 
 test "tuple non-packable storage leaf has dedicated diagnostic" {
     try std.testing.expectEqualStrings(
         "非 packable 叶子的 `[Tuple]` storage 尚未支持 scheme-A pack",
-        errorSummary(error.UnsupportedTupleStorageLeaf),
+        error_summary(error.UnsupportedTupleStorageLeaf),
     );
     try std.testing.expectEqualStrings(
         "直接元素须为标量、managed handle (`text` / `[T]`)、嵌套 Tuple、pure-scalar 具名 struct 子布局、或含 managed 字段的具名 struct 句柄槽；禁止拍平为扁平 Tuple；该错误不是重载匹配失败",
-        errorHint(error.UnsupportedTupleStorageLeaf),
+        error_hint(error.UnsupportedTupleStorageLeaf),
     );
-    const diagnostic = buildCompileDiagnostic(
+    const diagnostic = build_compile_diagnostic(
         "tuple_storage.do",
         "items [Tuple<Point, u8>] = .{}\n",
         null,
@@ -583,13 +583,13 @@ test "tuple non-packable storage leaf has dedicated diagnostic" {
         .{ .line = 1, .col = 1 },
     );
     try std.testing.expectEqualStrings("UnsupportedTupleStorageLeaf", diagnostic.code);
-    try std.testing.expectEqualStrings(errorSummary(error.UnsupportedTupleStorageLeaf), diagnostic.message);
-    try std.testing.expectEqualStrings(errorHint(error.UnsupportedTupleStorageLeaf), diagnostic.hint);
+    try std.testing.expectEqualStrings(error_summary(error.UnsupportedTupleStorageLeaf), diagnostic.message);
+    try std.testing.expectEqualStrings(error_hint(error.UnsupportedTupleStorageLeaf), diagnostic.hint);
 }
 
-test "buildCompileDiagnostic falls back to source lexer location" {
+test "build_compile_diagnostic falls back to source lexer location" {
     const source = "\"abc";
-    const diagnostic = buildCompileDiagnostic(
+    const diagnostic = build_compile_diagnostic(
         "bad.do",
         source,
         null,

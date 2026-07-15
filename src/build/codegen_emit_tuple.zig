@@ -9,7 +9,7 @@ const codegen_names = @import("codegen_names.zig");
 const model = @import("codegen_model.zig");
 const constants = @import("codegen_constants.zig");
 const context = @import("codegen_context.zig");
-const gen_collect_util = @import("gen_collect_util.zig");
+const codegen_collect_util = @import("codegen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
 const codegen_imports = @import("codegen_imports.zig");
@@ -36,23 +36,23 @@ const FuncResultItem = model.FuncResultItem;
 const STORAGE_WRITE_SCAN_TMP_LOCAL = constants.STORAGE_WRITE_SCAN_TMP_LOCAL;
 const TUPLE_PACK_BASE_TMP_LOCAL = constants.TUPLE_PACK_BASE_TMP_LOCAL;
 const STORAGE_PAYLOAD_HEADER_BYTES = constants.STORAGE_PAYLOAD_HEADER_BYTES;
-const find_struct_local = context.findStructLocal;
-const find_struct_decl = gen_collect_util.findStructDecl;
-const find_struct_layout = gen_collect_util.findStructLayout;
+const find_struct_local = context.find_struct_local;
+const find_struct_decl = codegen_collect_util.find_struct_decl;
+const find_struct_layout = codegen_collect_util.find_struct_layout;
 const is_pack_managed_handle_leaf = codegen_collect_structs.is_pack_managed_handle_leaf;
 const leaf_payload_bytes_for_pack = codegen_collect_structs.leaf_payload_bytes_for_pack;
-const pure_scalar_struct_pack_width = gen_collect_util.pureScalarStructPackWidth;
-const pack_slot_width = gen_collect_util.packSlotWidth;
-const append_tuple_leaf_types_with_structs = gen_collect_util.appendTupleLeafTypesWithStructs;
-const struct_decl_has_managed_field = gen_collect_util.structDeclHasManagedField;
-const expr_call_head = codegen_imports.exprCallHead;
+const pure_scalar_struct_pack_width = codegen_collect_util.pure_scalar_struct_pack_width;
+const pack_slot_width = codegen_collect_util.pack_slot_width;
+const append_tuple_leaf_types_with_structs = codegen_collect_util.append_tuple_leaf_types_with_structs;
+const struct_decl_has_managed_field = codegen_collect_util.struct_decl_has_managed_field;
+const expr_call_head = codegen_imports.expr_call_head;
 const type_payload_bytes = codegen_emit_wasi.type_payload_bytes;
 const type_payload_alignment = codegen_emit_wasi.type_payload_alignment;
 const is_tuple_type_name = codegen_emit_wasi.is_tuple_type_name;
 const tuple_arity = codegen_emit_wasi.tuple_arity;
 const tuple_element_type_at = codegen_emit_wasi.tuple_element_type_at;
 const tuple_has_managed_pack_leaf_ctx = codegen_emit_wasi.tuple_has_managed_pack_leaf_ctx;
-const is_tuple_packable_leaf_type = type_util.isTuplePackableLeafType;
+const is_tuple_packable_leaf_type = type_util.is_tuple_packable_leaf_type;
 
 pub fn emit_tuple_return_local(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, result_tys: []const []const u8, result_items: []const FuncResultItem, out: *std.ArrayList(u8)) !bool {
     const item = single_tuple_result_item(result_items) orelse return false;
@@ -330,7 +330,7 @@ pub fn append_load_tuple_element_from_packed_base_ctx(allocator: std.mem.Allocat
         try append_load_tuple_leaf_types_of_struct_to_stack(allocator, out, decl, base_local, indent, ctx);
         return;
     }
-    if (!type_util.isTuplePackableLeafType(elem_ty)) return error.UnsupportedTupleStorageLeaf;
+    if (!type_util.is_tuple_packable_leaf_type(elem_ty)) return error.UnsupportedTupleStorageLeaf;
     try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
     if (elem_offset != 0) {
         try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_offset });

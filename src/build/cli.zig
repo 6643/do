@@ -25,7 +25,7 @@ pub const CheckArgs = struct {
     input_paths: []const []const u8,
 };
 
-pub fn parseBuild(args: []const []const u8) !Args {
+pub fn parse_build(args: []const []const u8) !Args {
     var input_path: ?[]const u8 = null;
     var output_path: []const u8 = "out.wat";
     var component_core = false;
@@ -53,7 +53,7 @@ pub fn parseBuild(args: []const []const u8) !Args {
     };
 }
 
-pub fn parseTest(args: []const []const u8) !Args {
+pub fn parse_test(args: []const []const u8) !Args {
     var input_path: ?[]const u8 = null;
     var output_path: []const u8 = "out.wat";
     var compiled_test = false;
@@ -84,7 +84,7 @@ pub fn parseTest(args: []const []const u8) !Args {
     };
 }
 
-pub fn parseRun(args: []const []const u8) !RunArgs {
+pub fn parse_run(args: []const []const u8) !RunArgs {
     var input_path: ?[]const u8 = null;
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
@@ -97,7 +97,7 @@ pub fn parseRun(args: []const []const u8) !RunArgs {
     };
 }
 
-pub fn parseFmt(args: []const []const u8) !FmtArgs {
+pub fn parse_fmt(args: []const []const u8) !FmtArgs {
     var input_path: ?[]const u8 = null;
     var check = false;
     var write = false;
@@ -124,7 +124,7 @@ pub fn parseFmt(args: []const []const u8) !FmtArgs {
     };
 }
 
-pub fn parseLsp(args: []const []const u8) !LspArgs {
+pub fn parse_lsp(args: []const []const u8) !LspArgs {
     var saw_stdio = false;
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
@@ -138,7 +138,7 @@ pub fn parseLsp(args: []const []const u8) !LspArgs {
     return .{ .stdio = true };
 }
 
-pub fn parseCheck(args: []const []const u8) !CheckArgs {
+pub fn parse_check(args: []const []const u8) !CheckArgs {
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
         if (std.mem.startsWith(u8, args[i], "-")) return error.UnexpectedCliArg;
@@ -149,104 +149,104 @@ pub fn parseCheck(args: []const []const u8) !CheckArgs {
     };
 }
 
-test "parseRun accepts exactly one input path" {
+test "parse_run accepts exactly one input path" {
     const args = [_][]const u8{ "run", "app.do" };
-    const parsed = try parseRun(&args);
+    const parsed = try parse_run(&args);
     try std.testing.expectEqualStrings("app.do", parsed.input_path);
 }
 
-test "parseRun rejects extra args and flags" {
+test "parse_run rejects extra args and flags" {
     const extra = [_][]const u8{ "run", "app.do", "extra.do" };
-    try std.testing.expectError(error.UnexpectedCliArg, parseRun(&extra));
+    try std.testing.expectError(error.UnexpectedCliArg, parse_run(&extra));
 
     const flag = [_][]const u8{ "run", "--bad" };
-    try std.testing.expectError(error.UnexpectedCliArg, parseRun(&flag));
+    try std.testing.expectError(error.UnexpectedCliArg, parse_run(&flag));
 }
 
-test "parseRun rejects missing input path" {
+test "parse_run rejects missing input path" {
     const args = [_][]const u8{"run"};
-    try std.testing.expectError(error.MissingInputPath, parseRun(&args));
+    try std.testing.expectError(error.MissingInputPath, parse_run(&args));
 }
 
-test "parseFmt accepts stdout mode input path" {
+test "parse_fmt accepts stdout mode input path" {
     const args = [_][]const u8{ "fmt", "app.do" };
-    const parsed = try parseFmt(&args);
+    const parsed = try parse_fmt(&args);
     try std.testing.expectEqualStrings("app.do", parsed.input_path);
     try std.testing.expect(!parsed.check);
     try std.testing.expect(!parsed.write);
 }
 
-test "parseFmt accepts check mode" {
+test "parse_fmt accepts check mode" {
     const args = [_][]const u8{ "fmt", "--check", "app.do" };
-    const parsed = try parseFmt(&args);
+    const parsed = try parse_fmt(&args);
     try std.testing.expectEqualStrings("app.do", parsed.input_path);
     try std.testing.expect(parsed.check);
     try std.testing.expect(!parsed.write);
 }
 
-test "parseFmt accepts write mode" {
+test "parse_fmt accepts write mode" {
     const args = [_][]const u8{ "fmt", "--write", "app.do" };
-    const parsed = try parseFmt(&args);
+    const parsed = try parse_fmt(&args);
     try std.testing.expectEqualStrings("app.do", parsed.input_path);
     try std.testing.expect(parsed.write);
     try std.testing.expect(!parsed.check);
 }
 
-test "parseFmt rejects mixing check and write modes" {
+test "parse_fmt rejects mixing check and write modes" {
     const args = [_][]const u8{ "fmt", "--check", "--write", "app.do" };
-    try std.testing.expectError(error.UnexpectedCliArg, parseFmt(&args));
+    try std.testing.expectError(error.UnexpectedCliArg, parse_fmt(&args));
 }
 
-test "parseFmt rejects missing input, extra input, and unknown flags" {
+test "parse_fmt rejects missing input, extra input, and unknown flags" {
     const missing = [_][]const u8{"fmt"};
-    try std.testing.expectError(error.MissingInputPath, parseFmt(&missing));
+    try std.testing.expectError(error.MissingInputPath, parse_fmt(&missing));
 
     const extra = [_][]const u8{ "fmt", "app.do", "next.do" };
-    try std.testing.expectError(error.UnexpectedCliArg, parseFmt(&extra));
+    try std.testing.expectError(error.UnexpectedCliArg, parse_fmt(&extra));
 
     const flag = [_][]const u8{ "fmt", "--bad", "app.do" };
-    try std.testing.expectError(error.UnexpectedCliArg, parseFmt(&flag));
+    try std.testing.expectError(error.UnexpectedCliArg, parse_fmt(&flag));
 }
 
-test "parseLsp accepts stdio mode without extra args" {
+test "parse_lsp accepts stdio mode without extra args" {
     const args = [_][]const u8{"lsp"};
-    const parsed = try parseLsp(&args);
+    const parsed = try parse_lsp(&args);
     try std.testing.expect(parsed.stdio);
 }
 
-test "parseLsp accepts explicit stdio flag" {
+test "parse_lsp accepts explicit stdio flag" {
     const args = [_][]const u8{ "lsp", "--stdio" };
-    const parsed = try parseLsp(&args);
+    const parsed = try parse_lsp(&args);
     try std.testing.expect(parsed.stdio);
 }
 
-test "parseLsp rejects extra args and unknown flags" {
+test "parse_lsp rejects extra args and unknown flags" {
     const extra = [_][]const u8{ "lsp", "app.do" };
-    try std.testing.expectError(error.UnexpectedCliArg, parseLsp(&extra));
+    try std.testing.expectError(error.UnexpectedCliArg, parse_lsp(&extra));
 
     const bad_flag = [_][]const u8{ "lsp", "--tcp" };
-    try std.testing.expectError(error.UnexpectedCliArg, parseLsp(&bad_flag));
+    try std.testing.expectError(error.UnexpectedCliArg, parse_lsp(&bad_flag));
 }
 
-test "parseCheck accepts exactly one input path" {
+test "parse_check accepts exactly one input path" {
     const args = [_][]const u8{ "check", "app.do" };
-    const parsed = try parseCheck(&args);
+    const parsed = try parse_check(&args);
     try std.testing.expectEqual(@as(usize, 1), parsed.input_paths.len);
     try std.testing.expectEqualStrings("app.do", parsed.input_paths[0]);
 }
 
-test "parseCheck accepts multiple input paths" {
+test "parse_check accepts multiple input paths" {
     const args = [_][]const u8{ "check", "a.do", "b.do" };
-    const parsed = try parseCheck(&args);
+    const parsed = try parse_check(&args);
     try std.testing.expectEqual(@as(usize, 2), parsed.input_paths.len);
     try std.testing.expectEqualStrings("a.do", parsed.input_paths[0]);
     try std.testing.expectEqualStrings("b.do", parsed.input_paths[1]);
 }
 
-test "parseCheck rejects missing input and flags" {
+test "parse_check rejects missing input and flags" {
     const missing = [_][]const u8{"check"};
-    try std.testing.expectError(error.MissingInputPath, parseCheck(&missing));
+    try std.testing.expectError(error.MissingInputPath, parse_check(&missing));
 
     const flag = [_][]const u8{ "check", "--watch", "app.do" };
-    try std.testing.expectError(error.UnexpectedCliArg, parseCheck(&flag));
+    try std.testing.expectError(error.UnexpectedCliArg, parse_check(&flag));
 }

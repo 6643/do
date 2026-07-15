@@ -9,7 +9,7 @@ pub const Diagnostic = build_diag.CompileDiagnostic;
 
 /// Front-end analyze path for check/LSP: lexer → parser → sema → imports.
 /// Returns zero diagnostics on success, or a single fail-fast diagnostic.
-pub fn collectDiagnostics(
+pub fn collect_diagnostics(
     io: std.Io,
     allocator: std.mem.Allocator,
     path: []const u8,
@@ -17,21 +17,21 @@ pub fn collectDiagnostics(
     dep_root: []const u8,
 ) ![]Diagnostic {
     const tokens = lexer.tokenize(allocator, source) catch |err| {
-        return one(allocator, build_diag.buildCompileDiagnostic(path, source, null, err, null));
+        return one(allocator, build_diag.build_compile_diagnostic(path, source, null, err, null));
     };
     defer allocator.free(tokens);
 
-    var program = parser.parseProgram(allocator, tokens, source.len) catch |err| {
-        return one(allocator, build_diag.buildCompileDiagnostic(path, source, tokens, err, parserErrorLoc()));
+    var program = parser.parse_program(allocator, tokens, source.len) catch |err| {
+        return one(allocator, build_diag.build_compile_diagnostic(path, source, tokens, err, parser_error_loc()));
     };
     defer program.deinit(allocator);
 
     sema.check_program(allocator, program, tokens) catch |err| {
-        return one(allocator, build_diag.buildCompileDiagnostic(path, source, tokens, err, semaErrorLoc()));
+        return one(allocator, build_diag.build_compile_diagnostic(path, source, tokens, err, sema_error_loc()));
     };
 
-    var module_graph = imports.checkAndLoad(io, allocator, path, tokens, dep_root) catch |err| {
-        return one(allocator, build_diag.buildCompileDiagnostic(path, source, tokens, err, importsErrorLoc()));
+    var module_graph = imports.check_and_load(io, allocator, path, tokens, dep_root) catch |err| {
+        return one(allocator, build_diag.build_compile_diagnostic(path, source, tokens, err, imports_error_loc()));
     };
     module_graph.deinit();
 
@@ -44,29 +44,29 @@ fn one(allocator: std.mem.Allocator, diagnostic: Diagnostic) ![]Diagnostic {
     return diagnostics;
 }
 
-fn parserErrorLoc() ?build_diag.SourceLoc {
-    const site = parser.takeLastErrorSite() orelse return null;
+fn parser_error_loc() ?build_diag.SourceLoc {
+    const site = parser.take_last_error_site() orelse return null;
     return .{ .line = site.line, .col = site.col };
 }
 
-fn semaErrorLoc() ?build_diag.SourceLoc {
+fn sema_error_loc() ?build_diag.SourceLoc {
     const site = sema.take_last_error_site() orelse return null;
     return .{ .line = site.line, .col = site.col };
 }
 
-fn importsErrorLoc() ?build_diag.SourceLoc {
-    const site = imports.takeLastErrorSite() orelse return null;
+fn imports_error_loc() ?build_diag.SourceLoc {
+    const site = imports.take_last_error_site() orelse return null;
     return .{ .line = site.line, .col = site.col };
 }
 
-test "collectDiagnostics returns empty list for valid test source" {
+test "collect_diagnostics returns empty list for valid test source" {
     const source =
         \\test "ok" {
         \\    return
         \\}
         \\
     ;
-    const diagnostics = try collectDiagnostics(
+    const diagnostics = try collect_diagnostics(
         std.testing.io,
         std.testing.allocator,
         "mem://valid.do",
@@ -77,8 +77,8 @@ test "collectDiagnostics returns empty list for valid test source" {
     try std.testing.expectEqual(@as(usize, 0), diagnostics.len);
 }
 
-test "collectDiagnostics reports lexer error without printing or exiting" {
-    const diagnostics = try collectDiagnostics(
+test "collect_diagnostics reports lexer error without printing or exiting" {
+    const diagnostics = try collect_diagnostics(
         std.testing.io,
         std.testing.allocator,
         "mem://bad.do",

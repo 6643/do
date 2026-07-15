@@ -61,28 +61,28 @@ const IsComparisonNarrowing = model.IsComparisonNarrowing;
 const CodegenImportPrefix = model.CodegenImportPrefix;
 const CodegenImportRef = model.CodegenImportRef;
 const ImportedScalarConst = model.ImportedScalarConst;
-const findStorageLocalOrigin = context.findStorageLocalOrigin;
-const isCompilerLocalName = context.isCompilerLocalName;
-const unionPayloadLocalName = context.unionPayloadLocalName;
-const unionTagLocalName = context.unionTagLocalName;
-const findUnionLocalExact = context.findUnionLocalExact;
-const appendLoopSourceStorageLocal = context.appendLoopSourceStorageLocal;
-const localNameMatches = context.localNameMatches;
-const loopSourceLocalName = context.loopSourceLocalName;
-const freeCallbackBindings = model.freeCallbackBindings;
-const freeStructDecls = model.freeStructDecls;
-const freeStructDecl = model.freeStructDecl;
-const freeValueEnumDecls = model.freeValueEnumDecls;
-const freePayloadEnumDecls = model.freePayloadEnumDecls;
-const freeStructLayouts = model.freeStructLayouts;
-const freeFuncParams = model.freeFuncParams;
-const freeFuncDecls = model.freeFuncDecls;
-const freeFuncResultItems = model.freeFuncResultItems;
+const find_storage_local_origin = context.find_storage_local_origin;
+const is_compiler_local_name = context.is_compiler_local_name;
+const union_payload_local_name = context.union_payload_local_name;
+const union_tag_local_name = context.union_tag_local_name;
+const find_union_local_exact = context.find_union_local_exact;
+const append_loop_source_storage_local = context.append_loop_source_storage_local;
+const local_name_matches = context.local_name_matches;
+const loop_source_local_name = context.loop_source_local_name;
+const free_callback_bindings = model.free_callback_bindings;
+const free_struct_decls = model.free_struct_decls;
+const free_struct_decl = model.free_struct_decl;
+const free_value_enum_decls = model.free_value_enum_decls;
+const free_payload_enum_decls = model.free_payload_enum_decls;
+const free_struct_layouts = model.free_struct_layouts;
+const free_func_params = model.free_func_params;
+const free_func_decls = model.free_func_decls;
+const free_func_result_items = model.free_func_result_items;
 const freeWasiHostImports = codegen_wasi_registry.free_wasi_host_imports;
 const collectWasiHostImports = codegen_wasi_registry.collect_wasi_host_imports;
 const collectWasiHostImportsFromModules = codegen_wasi_registry.collect_wasi_host_imports_from_modules;
-const wasiLowering = codegen_wasi_registry.wasi_lowering;
-const appendWasiImportSymbol = codegen_wasi_registry.append_wasi_import_symbol;
+const wasi_lowering = codegen_wasi_registry.wasi_lowering;
+const append_wasi_import_symbol = codegen_wasi_registry.append_wasi_import_symbol;
 const ManagedPayloadBinding = codegen_storage_layout.ManagedPayloadBinding;
 const ParsedStorageType = codegen_storage_layout.ParsedStorageType;
 const Local = model.Local;
@@ -129,14 +129,14 @@ const SelfTailTco = context.SelfTailTco;
 const ExprCallHead = model.ExprCallHead;
 const STORAGE_OVERWRITE_TMP_LOCAL = constants.STORAGE_OVERWRITE_TMP_LOCAL;
 const STRUCT_LITERAL_TMP_LOCAL = constants.STRUCT_LITERAL_TMP_LOCAL;
-const findLocalType = context.findLocalType;
-const findLocalOrigin = context.findLocalOrigin;
-const findStorageLocal = context.findStorageLocal;
-const findStructLocal = context.findStructLocal;
-const findUnionLocal = context.findUnionLocal;
-const hasLocal = context.hasLocal;
-const storageTypeNameForElem = context.storageTypeNameForElem;
-const storageTypeNameForElemOwned = context.storageTypeNameForElemOwned;
+const find_local_type = context.find_local_type;
+const find_local_origin = context.find_local_origin;
+const find_storage_local = context.find_storage_local;
+const find_struct_local = context.find_struct_local;
+const find_union_local = context.find_union_local;
+const has_local = context.has_local;
+const storage_type_name_for_elem = context.storage_type_name_for_elem;
+const storage_type_name_for_elem_owned = context.storage_type_name_for_elem_owned;
 
 const UnionLayout = codegen_union_layout.UnionLayout;
 const UnionBranch = codegen_union_layout.UnionBranch;
@@ -148,30 +148,30 @@ const WasiHostImport = codegen_wasi_registry.WasiHostImport;
 const validateWasiHostImportBuildUses = codegen_wasi_registry.validate_wasi_host_import_build_uses;
 const WASI_BINDING_ENTRY_SOURCE = codegen_wasi_registry.WASI_BINDING_ENTRY_SOURCE;
 
-const tokEq = codegen_tokens.tok_eq;
-const findMatching = codegen_tokens.find_matching;
-const findMatchingInRange = codegen_tokens.find_matching_in_range;
-const findLineEnd = codegen_tokens.find_line_end;
+const tok_eq = codegen_tokens.tok_eq;
+const find_matching = codegen_tokens.find_matching;
+const find_matching_in_range = codegen_tokens.find_matching_in_range;
+const find_line_end = codegen_tokens.find_line_end;
 const findLineStart = codegen_tokens.find_line_start;
-const isLineStart = codegen_tokens.is_line_start;
-const findTopLevelToken = codegen_tokens.find_top_level_token;
-const findArgEnd = codegen_tokens.find_arg_end;
-const trimParens = codegen_tokens.trim_parens;
+const is_line_start = codegen_tokens.is_line_start;
+const find_top_level_token = codegen_tokens.find_top_level_token;
+const find_arg_end = codegen_tokens.find_arg_end;
+const trim_parens = codegen_tokens.trim_parens;
 const publicDeclName = codegen_names.public_decl_name;
-const appendFmt = codegen_names.append_fmt;
+const append_fmt = codegen_names.append_fmt;
 const Range = codegen_tokens.Range;
-const alignUp = codegen_tokens.align_up;
+const align_up = codegen_tokens.align_up;
 const compactTokenText = codegen_tokens.compact_token_text;
-const stringTokenBody = codegen_tokens.string_token_body;
+const string_token_body = codegen_tokens.string_token_body;
 const decodeQuotedStringToken = codegen_tokens.decode_quoted_string_token;
-const hasString = codegen_names.has_string;
+const has_string = codegen_names.has_string;
 const findTopLevelTypeSeparator = codegen_tokens.find_top_level_type_separator;
-const findTopLevelTypeSeparatorFrom = codegen_tokens.find_top_level_type_separator_from;
+const find_top_level_type_separator_from = codegen_tokens.find_top_level_type_separator_from;
 
 const CallLastUseMoveContext = context.CallLastUseMoveContext;
 const codegen_host_imports = @import("codegen_host_imports.zig");
 const codegen_imports = @import("codegen_imports.zig");
-const gen_collect_util = @import("gen_collect_util.zig");
+const codegen_collect_util = @import("codegen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
 const codegen_collect_declarations = @import("codegen_collect_declarations.zig");
@@ -198,62 +198,62 @@ const emit_test_funcs = codegen_emit_expression.emit_test_funcs;
 const emit_user_funcs = codegen_emit_expression.emit_user_funcs;
 
 // Re-export generic instantiation (physical home: codegen_generics.zig).
-pub const appendUnmanagedStructResultAbi = codegen_generics.appendUnmanagedStructResultAbi;
-pub const bindExplicitGenericCallTypeArgs = codegen_generics.bindExplicitGenericCallTypeArgs;
-pub const bindGenericCallbackArg = codegen_generics.bindGenericCallbackArg;
-pub const bindGenericCallbackIdentArg = codegen_generics.bindGenericCallbackIdentArg;
-pub const bindGenericCallbackLambdaArg = codegen_generics.bindGenericCallbackLambdaArg;
-pub const bindGenericExpectedResult = codegen_generics.bindGenericExpectedResult;
-pub const bindGenericFuncCall = codegen_generics.bindGenericFuncCall;
-pub const bindGenericTypeFromConcrete = codegen_generics.bindGenericTypeFromConcrete;
-pub const bindGenericTypeListFromConcrete = codegen_generics.bindGenericTypeListFromConcrete;
-pub const bindGenericVariadicTail = codegen_generics.bindGenericVariadicTail;
-pub const callbackBindingsForCall = codegen_generics.callbackBindingsForCall;
-pub const callbackBindingsHaveSameConcreteArgs = codegen_generics.callbackBindingsHaveSameConcreteArgs;
-pub const cloneFuncParams = codegen_generics.cloneFuncParams;
-pub const cloneGenericTypeBindingsOwned = codegen_generics.cloneGenericTypeBindingsOwned;
-pub const collectConcreteCallbackFuncInstanceForCall = codegen_generics.collectConcreteCallbackFuncInstanceForCall;
-pub const collectGenericFuncInstanceForCall = codegen_generics.collectGenericFuncInstanceForCall;
-pub const collectGenericFuncInstancesForCall = codegen_generics.collectGenericFuncInstancesForCall;
-pub const collectGenericFuncInstancesForConcreteFuncs = codegen_generics.collectGenericFuncInstancesForConcreteFuncs;
-pub const collectGenericFuncInstancesForStart = codegen_generics.collectGenericFuncInstancesForStart;
-pub const collectGenericFuncInstancesForTests = codegen_generics.collectGenericFuncInstancesForTests;
-pub const collectGenericFuncInstancesInCallArgs = codegen_generics.collectGenericFuncInstancesInCallArgs;
-pub const collectGenericFuncInstancesInFieldReflectionLoop = codegen_generics.collectGenericFuncInstancesInFieldReflectionLoop;
-pub const collectGenericFuncInstancesInGuardLoopControl = codegen_generics.collectGenericFuncInstancesInGuardLoopControl;
-pub const collectGenericFuncInstancesInGuardReturn = codegen_generics.collectGenericFuncInstancesInGuardReturn;
-pub const collectGenericFuncInstancesInRange = codegen_generics.collectGenericFuncInstancesInRange;
-pub const collectGenericFuncInstancesInStartBody = codegen_generics.collectGenericFuncInstancesInStartBody;
-pub const concreteOverloadCoversGenericParams = codegen_generics.concreteOverloadCoversGenericParams;
-pub const directCallExpectedResultType = codegen_generics.directCallExpectedResultType;
-pub const explicitLambdaTypesMatch = codegen_generics.explicitLambdaTypesMatch;
-pub const findGenericTemplateForCall = codegen_generics.findGenericTemplateForCall;
-pub const funcHasUntypedParams = codegen_generics.funcHasUntypedParams;
-pub const funcParamsHaveSameConcreteCallShape = codegen_generics.funcParamsHaveSameConcreteCallShape;
-pub const genericBindingsCoverTypeParams = codegen_generics.genericBindingsCoverTypeParams;
-pub const genericInstanceName = codegen_generics.genericInstanceName;
-pub const genericOverloadCoversGenericParams = codegen_generics.genericOverloadCoversGenericParams;
-pub const genericTemplateLogicalResultType = codegen_generics.genericTemplateLogicalResultType;
-pub const genericTemplateMatchesCallSite = codegen_generics.genericTemplateMatchesCallSite;
-pub const genericTemplateMatchesConcreteParams = codegen_generics.genericTemplateMatchesConcreteParams;
-pub const genericTemplateSpecificity = codegen_generics.genericTemplateSpecificity;
-pub const inferGenericCallUnionResultLayout = codegen_generics.inferGenericCallUnionResultLayout;
-pub const inferUntypedGenericParamAbiType = codegen_generics.inferUntypedGenericParamAbiType;
-pub const instantiateCallbackShape = codegen_generics.instantiateCallbackShape;
-pub const instantiateFuncTypeShape = codegen_generics.instantiateFuncTypeShape;
-pub const instantiateGenericFuncResultItems = codegen_generics.instantiateGenericFuncResultItems;
-pub const matchOrBindGenericType = codegen_generics.matchOrBindGenericType;
-pub const parseLambdaParamNames = codegen_generics.parseLambdaParamNames;
-pub const parseLambdaParamTypes = codegen_generics.parseLambdaParamTypes;
-pub const prebindGenericCallbackArg = codegen_generics.prebindGenericCallbackArg;
-pub const prebindGenericCallbackArgs = codegen_generics.prebindGenericCallbackArgs;
-pub const prebindGenericCallbackFuncRef = codegen_generics.prebindGenericCallbackFuncRef;
-pub const prebindGenericCallbackIdent = codegen_generics.prebindGenericCallbackIdent;
-pub const prebindGenericCallbackLambda = codegen_generics.prebindGenericCallbackLambda;
-pub const prebindGenericTypeIfParam = codegen_generics.prebindGenericTypeIfParam;
-pub const resolveCallbackBindingArg = codegen_generics.resolveCallbackBindingArg;
-pub const typeContainsTypeParam = codegen_generics.typeContainsTypeParam;
-pub const typedBindingExpectedType = codegen_generics.typedBindingExpectedType;
+pub const append_unmanaged_struct_result_abi = codegen_generics.append_unmanaged_struct_result_abi;
+pub const bind_explicit_generic_call_type_args = codegen_generics.bind_explicit_generic_call_type_args;
+pub const bind_generic_callback_arg = codegen_generics.bind_generic_callback_arg;
+pub const bind_generic_callback_ident_arg = codegen_generics.bind_generic_callback_ident_arg;
+pub const bind_generic_callback_lambda_arg = codegen_generics.bind_generic_callback_lambda_arg;
+pub const bind_generic_expected_result = codegen_generics.bind_generic_expected_result;
+pub const bind_generic_func_call = codegen_generics.bind_generic_func_call;
+pub const bind_generic_type_from_concrete = codegen_generics.bind_generic_type_from_concrete;
+pub const bind_generic_type_list_from_concrete = codegen_generics.bind_generic_type_list_from_concrete;
+pub const bind_generic_variadic_tail = codegen_generics.bind_generic_variadic_tail;
+pub const callback_bindings_for_call = codegen_generics.callback_bindings_for_call;
+pub const callback_bindings_have_same_concrete_args = codegen_generics.callback_bindings_have_same_concrete_args;
+pub const clone_func_params = codegen_generics.clone_func_params;
+pub const clone_generic_type_bindings_owned = codegen_generics.clone_generic_type_bindings_owned;
+pub const collect_concrete_callback_func_instance_for_call = codegen_generics.collect_concrete_callback_func_instance_for_call;
+pub const collect_generic_func_instance_for_call = codegen_generics.collect_generic_func_instance_for_call;
+pub const collect_generic_func_instances_for_call = codegen_generics.collect_generic_func_instances_for_call;
+pub const collect_generic_func_instances_for_concrete_funcs = codegen_generics.collect_generic_func_instances_for_concrete_funcs;
+pub const collect_generic_func_instances_for_start = codegen_generics.collect_generic_func_instances_for_start;
+pub const collect_generic_func_instances_for_tests = codegen_generics.collect_generic_func_instances_for_tests;
+pub const collect_generic_func_instances_in_call_args = codegen_generics.collect_generic_func_instances_in_call_args;
+pub const collect_generic_func_instances_in_field_reflection_loop = codegen_generics.collect_generic_func_instances_in_field_reflection_loop;
+pub const collect_generic_func_instances_in_guard_loop_control = codegen_generics.collect_generic_func_instances_in_guard_loop_control;
+pub const collect_generic_func_instances_in_guard_return = codegen_generics.collect_generic_func_instances_in_guard_return;
+pub const collect_generic_func_instances_in_range = codegen_generics.collect_generic_func_instances_in_range;
+pub const collect_generic_func_instances_in_start_body = codegen_generics.collect_generic_func_instances_in_start_body;
+pub const concrete_overload_covers_generic_params = codegen_generics.concrete_overload_covers_generic_params;
+pub const direct_call_expected_result_type = codegen_generics.direct_call_expected_result_type;
+pub const explicit_lambda_types_match = codegen_generics.explicit_lambda_types_match;
+pub const find_generic_template_for_call = codegen_generics.find_generic_template_for_call;
+pub const func_has_untyped_params = codegen_generics.func_has_untyped_params;
+pub const func_params_have_same_concrete_call_shape = codegen_generics.func_params_have_same_concrete_call_shape;
+pub const generic_bindings_cover_type_params = codegen_generics.generic_bindings_cover_type_params;
+pub const generic_instance_name = codegen_generics.generic_instance_name;
+pub const generic_overload_covers_generic_params = codegen_generics.generic_overload_covers_generic_params;
+pub const generic_template_logical_result_type = codegen_generics.generic_template_logical_result_type;
+pub const generic_template_matches_call_site = codegen_generics.generic_template_matches_call_site;
+pub const generic_template_matches_concrete_params = codegen_generics.generic_template_matches_concrete_params;
+pub const generic_template_specificity = codegen_generics.generic_template_specificity;
+pub const infer_generic_call_union_result_layout = codegen_generics.infer_generic_call_union_result_layout;
+pub const infer_untyped_generic_param_abi_type = codegen_generics.infer_untyped_generic_param_abi_type;
+pub const instantiate_callback_shape = codegen_generics.instantiate_callback_shape;
+pub const instantiate_func_type_shape = codegen_generics.instantiate_func_type_shape;
+pub const instantiate_generic_func_result_items = codegen_generics.instantiate_generic_func_result_items;
+pub const match_or_bind_generic_type = codegen_generics.match_or_bind_generic_type;
+pub const parse_lambda_param_names = codegen_generics.parse_lambda_param_names;
+pub const parse_lambda_param_types = codegen_generics.parse_lambda_param_types;
+pub const prebind_generic_callback_arg = codegen_generics.prebind_generic_callback_arg;
+pub const prebind_generic_callback_args = codegen_generics.prebind_generic_callback_args;
+pub const prebind_generic_callback_func_ref = codegen_generics.prebind_generic_callback_func_ref;
+pub const prebind_generic_callback_ident = codegen_generics.prebind_generic_callback_ident;
+pub const prebind_generic_callback_lambda = codegen_generics.prebind_generic_callback_lambda;
+pub const prebind_generic_type_if_param = codegen_generics.prebind_generic_type_if_param;
+pub const resolve_callback_binding_arg = codegen_generics.resolve_callback_binding_arg;
+pub const type_contains_type_param = codegen_generics.type_contains_type_param;
+pub const typed_binding_expected_type = codegen_generics.typed_binding_expected_type;
 
 pub fn collect_body_locals(
     allocator: std.mem.Allocator,
@@ -263,7 +263,7 @@ pub fn collect_body_locals(
     ctx: CodegenContext,
     out: *LocalSet,
 ) anyerror!void {
-    installGenHooks();
+    install_gen_hooks();
     return codegen_collect_body.collect_body_locals(allocator, tokens, start_idx, end_idx, ctx, out);
 }
 const direct_managed_call_last_use_move_source = codegen_emit_call.direct_managed_call_last_use_move_source;
@@ -279,7 +279,7 @@ pub fn emit_expr(
     expected_ty: ?[]const u8,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
-    installGenHooks();
+    install_gen_hooks();
     return codegen_emit_expression.emit_expr(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, out);
 }
 pub fn emit_expr_with_move_context(
@@ -293,7 +293,7 @@ pub fn emit_expr_with_move_context(
     move_ctx: ?*const CallLastUseMoveContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
-    installGenHooks();
+    install_gen_hooks();
     return codegen_emit_expression.emit_expr_with_move_context(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, move_ctx, out);
 }
 const emit_bare_user_func_call = codegen_emit_call.emit_bare_user_func_call;
@@ -341,25 +341,25 @@ const infer_lambda_expr_return_type = codegen_storage_layout.infer_lambda_expr_r
 const clone_local_set = codegen_storage_layout.clone_local_set;
 const find_callback_ref_func = codegen_storage_layout.find_callback_ref_func;
 const codegen_ownership = @import("codegen_ownership.zig");
-const findTopLevelGuardLoopControl = codegen_ownership.findTopLevelGuardLoopControl;
+const find_top_level_guard_loop_control = codegen_ownership.find_top_level_guard_loop_control;
 
 // re-export codegen_host_imports
-const collectEnvHostImports = codegen_host_imports.collectEnvHostImports;
-const collectEnvHostImportsFromModules = codegen_host_imports.collectEnvHostImportsFromModules;
-const parseEnvHostImport = codegen_host_imports.parseEnvHostImport;
-const findHostImport = codegen_host_imports.findHostImport;
-const findHostImportForTokens = codegen_host_imports.findHostImportForTokens;
-const isEnvHostImportStart = codegen_host_imports.isEnvHostImportStart;
-const freeHostImports = codegen_host_imports.freeHostImports;
-const hostCallArgsMatch = codegen_host_imports.hostCallArgsMatch;
-const hostParamIsPtrLen = codegen_host_imports.hostParamIsPtrLen;
-const hostArgCouldBeStoragePtrLenSyntax = codegen_host_imports.hostArgCouldBeStoragePtrLenSyntax;
+const collect_env_host_imports = codegen_host_imports.collect_env_host_imports;
+const collect_env_host_imports_from_modules = codegen_host_imports.collect_env_host_imports_from_modules;
+const parse_env_host_import = codegen_host_imports.parse_env_host_import;
+const find_host_import = codegen_host_imports.find_host_import;
+const find_host_import_for_tokens = codegen_host_imports.find_host_import_for_tokens;
+const is_env_host_import_start = codegen_host_imports.is_env_host_import_start;
+const free_host_imports = codegen_host_imports.free_host_imports;
+const host_call_args_match = codegen_host_imports.host_call_args_match;
+const host_param_is_ptr_len = codegen_host_imports.host_param_is_ptr_len;
+const host_arg_could_be_storage_ptr_len_syntax = codegen_host_imports.host_arg_could_be_storage_ptr_len_syntax;
 // Re-export token and name helpers used by lower-level tests.
-const moduleTokensEqual = codegen_tokens.module_tokens_equal;
+const module_tokens_equal = codegen_tokens.module_tokens_equal;
 pub const findStartFunc = codegen_tokens.find_start_func;
 pub const findToken = codegen_tokens.find_token;
 const findTopLevelBlockOpen = codegen_tokens.find_top_level_block_open;
-const findStmtEnd = codegen_tokens.find_stmt_end;
+const find_stmt_end = codegen_tokens.find_stmt_end;
 const findTypeArgEnd = codegen_tokens.find_type_arg_end;
 const stringLiteralArgLexeme = codegen_tokens.string_literal_arg_lexeme;
 const isStringLiteralArg = codegen_tokens.is_string_literal_arg;
@@ -368,8 +368,8 @@ const isBareHostCallStatement = codegen_tokens.is_bare_host_call_statement;
 const moduleScopedSymbolName = codegen_names.module_scoped_symbol_name;
 const appendMangledTypeName = codegen_names.append_mangled_type_name;
 const isPublicTypeName = codegen_names.is_public_type_name;
-const isErrorTypeName = codegen_names.is_error_type_name;
-const isBaseIntTypeName = codegen_names.is_base_int_type_name;
+const is_error_type_name = codegen_names.is_error_type_name;
+const is_base_int_type_name = codegen_names.is_base_int_type_name;
 const isNumericCoreFuncName = codegen_names.is_numeric_core_func_name;
 const isBitwiseCoreFuncName = codegen_names.is_bitwise_core_func_name;
 const isCountBitsCoreFuncName = codegen_names.is_count_bits_core_func_name;
@@ -379,54 +379,54 @@ const isFloatUnaryCoreFuncName = codegen_names.is_float_unary_core_func_name;
 const isFloatBinaryCoreFuncName = codegen_names.is_float_binary_core_func_name;
 const isBoolSpecialFuncName = codegen_names.is_bool_special_func_name;
 const isComparisonCoreFuncName = codegen_names.is_comparison_core_func_name;
-const isMemoryLoadName = codegen_names.is_memory_load_name;
+const is_memory_load_name = codegen_names.is_memory_load_name;
 const isCoreWasmCallName = codegen_names.is_core_wasm_call_name;
-const isCoreWasmScalar = codegen_names.is_core_wasm_scalar;
-const isCoreIntegerScalar = codegen_names.is_core_integer_scalar;
-const isCoreFloatScalar = codegen_names.is_core_float_scalar;
+const is_core_wasm_scalar = codegen_names.is_core_wasm_scalar;
+const is_core_integer_scalar = codegen_names.is_core_integer_scalar;
+const is_core_float_scalar = codegen_names.is_core_float_scalar;
 const isUserFuncDeclStart = codegen_tokens.is_user_func_decl_start;
 const tokenTextEqualsCompact = codegen_tokens.token_text_equals_compact;
 // re-export codegen_imports
-const validateHostImportBuildUses = codegen_imports.validateHostImportBuildUses;
-const validateReachableWasiHostImportBuildUses = codegen_imports.validateReachableWasiHostImportBuildUses;
-const validateReachableWasiHostImportBuildUsesFromTests = codegen_imports.validateReachableWasiHostImportBuildUsesFromTests;
-const validateReachableWasiHostImportStack = codegen_imports.validateReachableWasiHostImportStack;
-const findRootModuleIndex = codegen_imports.findRootModuleIndex;
-const wasiSourceForTokens = codegen_imports.wasiSourceForTokens;
-const findWasiHostImportForTokens = codegen_imports.findWasiHostImportForTokens;
-const hasReachVisit = codegen_imports.hasReachVisit;
-const pushReachVisit = codegen_imports.pushReachVisit;
-const collectStartBodyCalls = codegen_imports.collectStartBodyCalls;
-const collectAllFunctionBodyCalls = codegen_imports.collectAllFunctionBodyCalls;
-const collectTestBodyCalls = codegen_imports.collectTestBodyCalls;
-const collectFunctionBodyCalls = codegen_imports.collectFunctionBodyCalls;
-const collectCallNamesInRange = codegen_imports.collectCallNamesInRange;
-const isLoopSourceSpecialCallName = codegen_imports.isLoopSourceSpecialCallName;
-const findCodegenImportByAlias = codegen_imports.findCodegenImportByAlias;
-const parseCodegenImport = codegen_imports.parseCodegenImport;
-const importedScalarConst = codegen_imports.importedScalarConst;
-const findImportedModuleIndexNoAlloc = codegen_imports.findImportedModuleIndexNoAlloc;
-const moduleMatchesImportPath = codegen_imports.moduleMatchesImportPath;
-const pathHasBaseAndFile = codegen_imports.pathHasBaseAndFile;
-const localScalarConst = codegen_imports.localScalarConst;
-const findImportedModuleIndex = codegen_imports.findImportedModuleIndex;
-const findModuleByPath = codegen_imports.findModuleByPath;
-const isValueEnumDeclStart = codegen_imports.isValueEnumDeclStart;
-const isPayloadEnumDeclStart = codegen_imports.isPayloadEnumDeclStart;
-const findValueEnumDecl = codegen_imports.findValueEnumDecl;
-const findPayloadEnumDecl = codegen_imports.findPayloadEnumDecl;
-const findValueEnumDeclLineByName = codegen_imports.findValueEnumDeclLineByName;
-const findValueEnumDeclLineByBranch = codegen_imports.findValueEnumDeclLineByBranch;
-const valueEnumLineHasBranch = codegen_imports.valueEnumLineHasBranch;
-const collectStringDataForHostCalls = codegen_imports.collectStringDataForHostCalls;
-const collectStringDataForWasiHostCalls = codegen_imports.collectStringDataForWasiHostCalls;
-const collectStringDataForStorageLiterals = codegen_imports.collectStringDataForStorageLiterals;
-const collectStringDataForStructFieldNames = codegen_imports.collectStringDataForStructFieldNames;
-const hasBorrowedName = codegen_imports.hasBorrowedName;
-const importedAliasContextForTokens = codegen_imports.importedAliasContextForTokens;
-pub const callHeadAt = codegen_imports.callHeadAt;
-const exprCallHead = codegen_imports.exprCallHead;
-const callHeadHasTypeArgs = codegen_imports.callHeadHasTypeArgs;
+const validate_host_import_build_uses = codegen_imports.validate_host_import_build_uses;
+const validate_reachable_wasi_host_import_build_uses = codegen_imports.validate_reachable_wasi_host_import_build_uses;
+const validate_reachable_wasi_host_import_build_uses_from_tests = codegen_imports.validate_reachable_wasi_host_import_build_uses_from_tests;
+const validate_reachable_wasi_host_import_stack = codegen_imports.validate_reachable_wasi_host_import_stack;
+const find_root_module_index = codegen_imports.find_root_module_index;
+const wasi_source_for_tokens = codegen_imports.wasi_source_for_tokens;
+const find_wasi_host_import_for_tokens = codegen_imports.find_wasi_host_import_for_tokens;
+const has_reach_visit = codegen_imports.has_reach_visit;
+const push_reach_visit = codegen_imports.push_reach_visit;
+const collect_start_body_calls = codegen_imports.collect_start_body_calls;
+const collect_all_function_body_calls = codegen_imports.collect_all_function_body_calls;
+const collect_test_body_calls = codegen_imports.collect_test_body_calls;
+const collect_function_body_calls = codegen_imports.collect_function_body_calls;
+const collect_call_names_in_range = codegen_imports.collect_call_names_in_range;
+const is_loop_source_special_call_name = codegen_imports.is_loop_source_special_call_name;
+const find_codegen_import_by_alias = codegen_imports.find_codegen_import_by_alias;
+const parse_codegen_import = codegen_imports.parse_codegen_import;
+const imported_scalar_const = codegen_imports.imported_scalar_const;
+const find_imported_module_index_no_alloc = codegen_imports.find_imported_module_index_no_alloc;
+const module_matches_import_path = codegen_imports.module_matches_import_path;
+const path_has_base_and_file = codegen_imports.path_has_base_and_file;
+const local_scalar_const = codegen_imports.local_scalar_const;
+const find_imported_module_index = codegen_imports.find_imported_module_index;
+const find_module_by_path = codegen_imports.find_module_by_path;
+const is_value_enum_decl_start = codegen_imports.is_value_enum_decl_start;
+const is_payload_enum_decl_start = codegen_imports.is_payload_enum_decl_start;
+const find_value_enum_decl = codegen_imports.find_value_enum_decl;
+const find_payload_enum_decl = codegen_imports.find_payload_enum_decl;
+const find_value_enum_decl_line_by_name = codegen_imports.find_value_enum_decl_line_by_name;
+const find_value_enum_decl_line_by_branch = codegen_imports.find_value_enum_decl_line_by_branch;
+const value_enum_line_has_branch = codegen_imports.value_enum_line_has_branch;
+const collect_string_data_for_host_calls = codegen_imports.collect_string_data_for_host_calls;
+const collect_string_data_for_wasi_host_calls = codegen_imports.collect_string_data_for_wasi_host_calls;
+const collect_string_data_for_storage_literals = codegen_imports.collect_string_data_for_storage_literals;
+const collect_string_data_for_struct_field_names = codegen_imports.collect_string_data_for_struct_field_names;
+const has_borrowed_name = codegen_imports.has_borrowed_name;
+const imported_alias_context_for_tokens = codegen_imports.imported_alias_context_for_tokens;
+pub const call_head_at = codegen_imports.call_head_at;
+const expr_call_head = codegen_imports.expr_call_head;
+const call_head_has_type_args = codegen_imports.call_head_has_type_args;
 // Collection owner aliases used by the pipeline.
 const is_pack_managed_handle_leaf = codegen_collect_structs.is_pack_managed_handle_leaf;
 const collect_struct_decls = codegen_collect_structs.collect_struct_decls;
@@ -439,76 +439,76 @@ const collect_struct_layouts = codegen_collect_structs.collect_struct_layouts;
 const collect_concrete_generic_struct_layouts = codegen_collect_structs.collect_concrete_generic_struct_layouts;
 const collect_storage_pack_layouts_from_tokens = codegen_collect_structs.collect_storage_pack_layouts_from_tokens;
 const ensure_preopen_dir_tuple_storage_pack_layout = codegen_collect_structs.ensure_preopen_dir_tuple_storage_pack_layout;
-const parseCodegenTypeExpr = gen_collect_util.parseCodegenTypeExpr;
+const parse_codegen_type_expr = codegen_collect_util.parse_codegen_type_expr;
 const parse_func_param_type_expr = codegen_collect_functions.parse_func_param_type_expr;
 const is_top_level_comma_any = codegen_collect_functions.is_top_level_comma_any;
 const collect_func_decls = codegen_collect_functions.collect_func_decls;
 const collect_direct_imported_func_decls = codegen_collect_functions.collect_direct_imported_func_decls;
 const collect_direct_imported_func_decls_from_tests = codegen_collect_functions.collect_direct_imported_func_decls_from_tests;
-const bindGenericType = gen_collect_util.bindGenericType;
-pub const findGenericBinding = gen_collect_util.findGenericBinding;
-const substituteGenericTypeOwned = gen_collect_util.substituteGenericTypeOwned;
-const isTypeIdentStart = gen_collect_util.isTypeIdentStart;
-const isTypeIdentPart = gen_collect_util.isTypeIdentPart;
-const genericTypeArgsRange = gen_collect_util.genericTypeArgsRange;
+const bind_generic_type = codegen_collect_util.bind_generic_type;
+pub const find_generic_binding = codegen_collect_util.find_generic_binding;
+const substitute_generic_type_owned = codegen_collect_util.substitute_generic_type_owned;
+const is_type_ident_start = codegen_collect_util.is_type_ident_start;
+const is_type_ident_part = codegen_collect_util.is_type_ident_part;
+const generic_type_args_range = codegen_collect_util.generic_type_args_range;
 const same_callable_source_name = codegen_collect_functions.same_callable_source_name;
-const hasTypeParamName = gen_collect_util.hasTypeParamName;
+const has_type_param_name = codegen_collect_util.has_type_param_name;
 const find_func_decl = codegen_collect_functions.find_func_decl;
-pub const funcParamAbiType = gen_collect_util.funcParamAbiType;
-const findStructDecl = gen_collect_util.findStructDecl;
-const findStructLayout = gen_collect_util.findStructLayout;
-const appendTupleLeafTypes = gen_collect_util.appendTupleLeafTypes;
+pub const func_param_abi_type = codegen_collect_util.func_param_abi_type;
+const find_struct_decl = codegen_collect_util.find_struct_decl;
+const find_struct_layout = codegen_collect_util.find_struct_layout;
+const append_tuple_leaf_types = codegen_collect_util.append_tuple_leaf_types;
 // re-export codegen_emit_wasi
 const codegen_types_compatible = codegen_emit_wasi.codegen_types_compatible;
-pub fn emitWasiResourceDropCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emit_wasi_resource_drop_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return codegen_emit_wasi.emit_wasi_resource_drop_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
 }
 
-pub fn emitWasiListU8ResultCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emit_wasi_list_u8_result_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return codegen_emit_wasi.emit_wasi_list_u8_result_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
 }
 
-pub fn emitWasiResultUnitCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emit_wasi_result_unit_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return codegen_emit_wasi.emit_wasi_result_unit_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
 }
 
-pub fn emitWasiResultDescriptorPathCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emit_wasi_result_descriptor_path_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return codegen_emit_wasi.emit_wasi_result_descriptor_path_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
 }
 
-pub fn emitWasiResultOutputWriteCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emit_wasi_result_output_write_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return codegen_emit_wasi.emit_wasi_result_output_write_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
 }
 
-pub fn emitWasiResultDescriptorCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emit_wasi_result_descriptor_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return codegen_emit_wasi.emit_wasi_result_descriptor_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
 }
 
-pub fn emitWasiDescriptorHandleArg(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emit_wasi_descriptor_handle_arg(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     return codegen_emit_wasi.emit_wasi_descriptor_handle_arg(allocator, tokens, start_idx, end_idx, locals, ctx, out, emit_expr);
 }
 
-pub fn emitWasiResultLinkAtCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emit_wasi_result_link_at_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return codegen_emit_wasi.emit_wasi_result_link_at_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
 }
 
-pub fn emitWasiResultFilesizeCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emit_wasi_result_filesize_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return codegen_emit_wasi.emit_wasi_result_filesize_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
 }
 
-pub fn emitWasiResultU64StreamCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emit_wasi_result_u64_stream_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return codegen_emit_wasi.emit_wasi_result_u64_stream_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
 }
 
-pub fn emitWasiResultReadCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emit_wasi_result_read_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return codegen_emit_wasi.emit_wasi_result_read_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
 }
 
-pub fn emitWasiResultListU8Call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emit_wasi_result_list_u8_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return codegen_emit_wasi.emit_wasi_result_list_u8_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
 }
 
-fn installGenHooks() void {
+fn install_gen_hooks() void {
     codegen_callbacks.install(codegen_emit_expression.emit_expr, codegen_emit_expression.emit_expr_with_move_context, codegen_emit_call.emit_user_func_call_with_move_context);
     codegen_callbacks.install_body(codegen_emit_control.emit_body);
     codegen_callbacks.install_union_value(codegen_emit_union.emit_union_value);
@@ -519,7 +519,7 @@ fn installGenHooks() void {
     codegen_callbacks.install_emit_bare_user_func_call_move(codegen_emit_call.emit_bare_user_func_call_with_move_context);
     codegen_callbacks.install_emit_user_func_call_union_binding_move(codegen_emit_call.emit_user_func_call_with_union_binding_move);
     codegen_callbacks.install_emit_union_struct_payload_for_type(codegen_emit_union.emit_union_struct_payload_for_type);
-    codegen_callbacks.install_infer_generic_call_union_result(inferGenericCallUnionResultLayout);
+    codegen_callbacks.install_infer_generic_call_union_result(infer_generic_call_union_result_layout);
 }
 
 pub fn emit_wat(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph) ![]u8 {
@@ -527,21 +527,21 @@ pub fn emit_wat(allocator: std.mem.Allocator, program: parser.Program, tokens: [
 }
 
 pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph, options: EmitOptions) ![]u8 {
-    installGenHooks();
+    install_gen_hooks();
 
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
 
     var host_imports = std.ArrayList(HostImport).empty;
     defer {
-        freeHostImports(allocator, host_imports.items);
+        free_host_imports(allocator, host_imports.items);
         host_imports.deinit(allocator);
     }
-    try collectEnvHostImports(allocator, tokens, &host_imports);
+    try collect_env_host_imports(allocator, tokens, &host_imports);
     if (module_graph) |graph| {
-        try collectEnvHostImportsFromModules(allocator, graph.modules, tokens, &host_imports);
+        try collect_env_host_imports_from_modules(allocator, graph.modules, tokens, &host_imports);
     }
-    try validateHostImportBuildUses(tokens, host_imports.items);
+    try validate_host_import_build_uses(tokens, host_imports.items);
 
     var wasi_imports = std.ArrayList(WasiHostImport).empty;
     defer {
@@ -561,40 +561,40 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
     try collectWasiHostImports(allocator, tokens, WASI_BINDING_ENTRY_SOURCE, &entry_wasi_imports);
     try validateWasiHostImportBuildUses(tokens, entry_wasi_imports.items);
     if (module_graph) |graph| {
-        try validateReachableWasiHostImportBuildUses(allocator, tokens, graph);
+        try validate_reachable_wasi_host_import_build_uses(allocator, tokens, graph);
     }
 
     var string_data = StringDataContext{};
     defer string_data.deinit(allocator);
-    try collectStringDataForHostCalls(allocator, tokens, host_imports.items, &string_data);
-    try collectStringDataForWasiHostCalls(allocator, tokens, WASI_BINDING_ENTRY_SOURCE, wasi_imports.items, &string_data);
-    try collectStringDataForStorageLiterals(allocator, tokens, &string_data);
+    try collect_string_data_for_host_calls(allocator, tokens, host_imports.items, &string_data);
+    try collect_string_data_for_wasi_host_calls(allocator, tokens, WASI_BINDING_ENTRY_SOURCE, wasi_imports.items, &string_data);
+    try collect_string_data_for_storage_literals(allocator, tokens, &string_data);
     if (module_graph) |graph| {
         for (graph.modules) |module| {
-            const source = if (moduleTokensEqual(module.tokens, tokens))
+            const source = if (module_tokens_equal(module.tokens, tokens))
                 WASI_BINDING_ENTRY_SOURCE
             else
                 module.path;
-            try collectStringDataForHostCalls(allocator, module.tokens, host_imports.items, &string_data);
-            try collectStringDataForWasiHostCalls(allocator, module.tokens, source, wasi_imports.items, &string_data);
-            try collectStringDataForStorageLiterals(allocator, module.tokens, &string_data);
+            try collect_string_data_for_host_calls(allocator, module.tokens, host_imports.items, &string_data);
+            try collect_string_data_for_wasi_host_calls(allocator, module.tokens, source, wasi_imports.items, &string_data);
+            try collect_string_data_for_storage_literals(allocator, module.tokens, &string_data);
         }
     }
 
     var structs = std.ArrayList(StructDecl).empty;
     defer {
-        freeStructDecls(allocator, structs.items);
+        free_struct_decls(allocator, structs.items);
         structs.deinit(allocator);
     }
     try collect_struct_decls(allocator, tokens, &structs);
     if (module_graph) |graph| {
         try collect_imported_struct_decls(allocator, tokens, graph, &structs);
     }
-    try collectStringDataForStructFieldNames(allocator, structs.items, &string_data);
+    try collect_string_data_for_struct_field_names(allocator, structs.items, &string_data);
 
     var value_enums = std.ArrayList(ValueEnumDecl).empty;
     defer {
-        freeValueEnumDecls(allocator, value_enums.items);
+        free_value_enum_decls(allocator, value_enums.items);
         value_enums.deinit(allocator);
     }
     try collect_value_enum_decls(allocator, tokens, &value_enums);
@@ -604,7 +604,7 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
 
     var payload_enums = std.ArrayList(PayloadEnumDecl).empty;
     defer {
-        freePayloadEnumDecls(allocator, payload_enums.items);
+        free_payload_enum_decls(allocator, payload_enums.items);
         payload_enums.deinit(allocator);
     }
     try collect_payload_enum_decls(allocator, tokens, &payload_enums);
@@ -614,25 +614,25 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
 
     var struct_layouts = std.ArrayList(StructLayout).empty;
     defer {
-        freeStructLayouts(allocator, struct_layouts.items);
+        free_struct_layouts(allocator, struct_layouts.items);
         struct_layouts.deinit(allocator);
     }
     try collect_struct_layouts(allocator, structs.items, &struct_layouts);
 
     var functions = std.ArrayList(FuncDecl).empty;
     defer {
-        freeFuncDecls(allocator, functions.items);
+        free_func_decls(allocator, functions.items);
         functions.deinit(allocator);
     }
     const imported_alias_ctx: ?ImportedAliasContext = if (module_graph) |graph|
-        if (findRootModuleIndex(graph.modules, tokens)) |idx| ImportedAliasContext{ .graph = graph, .module_idx = idx } else null
+        if (find_root_module_index(graph.modules, tokens)) |idx| ImportedAliasContext{ .graph = graph, .module_idx = idx } else null
     else
         null;
     try collect_func_decls(allocator, tokens, structs.items, struct_layouts.items, imported_alias_ctx, &functions);
     if (module_graph) |graph| {
         try collect_direct_imported_func_decls(allocator, tokens, graph, structs.items, struct_layouts.items, &functions);
     }
-    try collectGenericFuncInstancesForStart(
+    try collect_generic_func_instances_for_start(
         allocator,
         tokens,
         structs.items,
@@ -655,7 +655,7 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
     }
     // Preopens always lower to [Tuple<Dir,text>] pack; ensure layout even if type text is only on host result sugar.
     try ensure_preopen_dir_tuple_storage_pack_layout(allocator, wasi_imports.items, structs.items, &struct_layouts);
-    try mangleOverloadedFunctionNames(allocator, &functions);
+    try mangle_overloaded_function_names(allocator, &functions);
 
     const ctx = CodegenContext{
         .functions = functions.items,
@@ -672,14 +672,14 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
     };
 
     try out.appendSlice(allocator, "(module\n");
-    try appendFmt(allocator, &out, "  ;; source_len={d}\n", .{program.source_len});
-    try appendFmt(allocator, &out, "  ;; token_count={d}\n", .{program.token_count});
-    try appendFmt(allocator, &out, "  ;; top_level_count={d}\n", .{program.top_level_count});
-    try wat_component_metadata.emitWasiBindings(allocator, &out, wasi_imports.items);
-    try wat_component_metadata.emitWasiCoreImports(allocator, &out, wasi_imports.items);
-    try wat_component_metadata.emitHostImports(allocator, &out, host_imports.items);
-    try runtime_prelude_wat.emitStringDataMemory(allocator, &out, string_data.items.items, .{ .component_core = options.component_core });
-    try runtime_prelude_wat.emitArcRuntimePrelude(allocator, &out, string_data.items.items, struct_layouts.items);
+    try append_fmt(allocator, &out, "  ;; source_len={d}\n", .{program.source_len});
+    try append_fmt(allocator, &out, "  ;; token_count={d}\n", .{program.token_count});
+    try append_fmt(allocator, &out, "  ;; top_level_count={d}\n", .{program.top_level_count});
+    try wat_component_metadata.emit_wasi_bindings(allocator, &out, wasi_imports.items);
+    try wat_component_metadata.emit_wasi_core_imports(allocator, &out, wasi_imports.items);
+    try wat_component_metadata.emit_host_imports(allocator, &out, host_imports.items);
+    try runtime_prelude_wat.emit_string_data_memory(allocator, &out, string_data.items.items, .{ .component_core = options.component_core });
+    try runtime_prelude_wat.emit_arc_runtime_prelude(allocator, &out, string_data.items.items, struct_layouts.items);
     try emit_user_funcs(allocator, ctx, &out);
     try emit_start_func(allocator, tokens, ctx, &out);
     try out.appendSlice(allocator, ")\n");
@@ -687,25 +687,25 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
 }
 
 pub fn emit_test_wat(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph) ![]u8 {
-    installGenHooks();
+    install_gen_hooks();
 
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
 
-    const test_decls = try test_runner.collectTopLevelTests(allocator, tokens);
+    const test_decls = try test_runner.collect_top_level_tests(allocator, tokens);
     defer allocator.free(test_decls);
     if (test_decls.len == 0) return error.NoTestDecl;
 
     var host_imports = std.ArrayList(HostImport).empty;
     defer {
-        freeHostImports(allocator, host_imports.items);
+        free_host_imports(allocator, host_imports.items);
         host_imports.deinit(allocator);
     }
-    try collectEnvHostImports(allocator, tokens, &host_imports);
+    try collect_env_host_imports(allocator, tokens, &host_imports);
     if (module_graph) |graph| {
-        try collectEnvHostImportsFromModules(allocator, graph.modules, tokens, &host_imports);
+        try collect_env_host_imports_from_modules(allocator, graph.modules, tokens, &host_imports);
     }
-    try validateHostImportBuildUses(tokens, host_imports.items);
+    try validate_host_import_build_uses(tokens, host_imports.items);
 
     var wasi_imports = std.ArrayList(WasiHostImport).empty;
     defer {
@@ -725,40 +725,40 @@ pub fn emit_test_wat(allocator: std.mem.Allocator, program: parser.Program, toke
     try collectWasiHostImports(allocator, tokens, WASI_BINDING_ENTRY_SOURCE, &entry_wasi_imports);
     try validateWasiHostImportBuildUses(tokens, entry_wasi_imports.items);
     if (module_graph) |graph| {
-        try validateReachableWasiHostImportBuildUsesFromTests(allocator, tokens, graph);
+        try validate_reachable_wasi_host_import_build_uses_from_tests(allocator, tokens, graph);
     }
 
     var string_data = StringDataContext{};
     defer string_data.deinit(allocator);
-    try collectStringDataForHostCalls(allocator, tokens, host_imports.items, &string_data);
-    try collectStringDataForWasiHostCalls(allocator, tokens, WASI_BINDING_ENTRY_SOURCE, wasi_imports.items, &string_data);
-    try collectStringDataForStorageLiterals(allocator, tokens, &string_data);
+    try collect_string_data_for_host_calls(allocator, tokens, host_imports.items, &string_data);
+    try collect_string_data_for_wasi_host_calls(allocator, tokens, WASI_BINDING_ENTRY_SOURCE, wasi_imports.items, &string_data);
+    try collect_string_data_for_storage_literals(allocator, tokens, &string_data);
     if (module_graph) |graph| {
         for (graph.modules) |module| {
-            const source = if (moduleTokensEqual(module.tokens, tokens))
+            const source = if (module_tokens_equal(module.tokens, tokens))
                 WASI_BINDING_ENTRY_SOURCE
             else
                 module.path;
-            try collectStringDataForHostCalls(allocator, module.tokens, host_imports.items, &string_data);
-            try collectStringDataForWasiHostCalls(allocator, module.tokens, source, wasi_imports.items, &string_data);
-            try collectStringDataForStorageLiterals(allocator, module.tokens, &string_data);
+            try collect_string_data_for_host_calls(allocator, module.tokens, host_imports.items, &string_data);
+            try collect_string_data_for_wasi_host_calls(allocator, module.tokens, source, wasi_imports.items, &string_data);
+            try collect_string_data_for_storage_literals(allocator, module.tokens, &string_data);
         }
     }
 
     var structs = std.ArrayList(StructDecl).empty;
     defer {
-        freeStructDecls(allocator, structs.items);
+        free_struct_decls(allocator, structs.items);
         structs.deinit(allocator);
     }
     try collect_struct_decls(allocator, tokens, &structs);
     if (module_graph) |graph| {
         try collect_imported_struct_decls(allocator, tokens, graph, &structs);
     }
-    try collectStringDataForStructFieldNames(allocator, structs.items, &string_data);
+    try collect_string_data_for_struct_field_names(allocator, structs.items, &string_data);
 
     var value_enums = std.ArrayList(ValueEnumDecl).empty;
     defer {
-        freeValueEnumDecls(allocator, value_enums.items);
+        free_value_enum_decls(allocator, value_enums.items);
         value_enums.deinit(allocator);
     }
     try collect_value_enum_decls(allocator, tokens, &value_enums);
@@ -768,7 +768,7 @@ pub fn emit_test_wat(allocator: std.mem.Allocator, program: parser.Program, toke
 
     var payload_enums = std.ArrayList(PayloadEnumDecl).empty;
     defer {
-        freePayloadEnumDecls(allocator, payload_enums.items);
+        free_payload_enum_decls(allocator, payload_enums.items);
         payload_enums.deinit(allocator);
     }
     try collect_payload_enum_decls(allocator, tokens, &payload_enums);
@@ -778,25 +778,25 @@ pub fn emit_test_wat(allocator: std.mem.Allocator, program: parser.Program, toke
 
     var struct_layouts = std.ArrayList(StructLayout).empty;
     defer {
-        freeStructLayouts(allocator, struct_layouts.items);
+        free_struct_layouts(allocator, struct_layouts.items);
         struct_layouts.deinit(allocator);
     }
     try collect_struct_layouts(allocator, structs.items, &struct_layouts);
 
     var functions = std.ArrayList(FuncDecl).empty;
     defer {
-        freeFuncDecls(allocator, functions.items);
+        free_func_decls(allocator, functions.items);
         functions.deinit(allocator);
     }
     const imported_alias_ctx: ?ImportedAliasContext = if (module_graph) |graph|
-        if (findRootModuleIndex(graph.modules, tokens)) |idx| ImportedAliasContext{ .graph = graph, .module_idx = idx } else null
+        if (find_root_module_index(graph.modules, tokens)) |idx| ImportedAliasContext{ .graph = graph, .module_idx = idx } else null
     else
         null;
     try collect_func_decls(allocator, tokens, structs.items, struct_layouts.items, imported_alias_ctx, &functions);
     if (module_graph) |graph| {
         try collect_direct_imported_func_decls_from_tests(allocator, tokens, graph, structs.items, struct_layouts.items, &functions);
     }
-    try collectGenericFuncInstancesForTests(
+    try collect_generic_func_instances_for_tests(
         allocator,
         tokens,
         test_decls,
@@ -819,7 +819,7 @@ pub fn emit_test_wat(allocator: std.mem.Allocator, program: parser.Program, toke
         }
     }
     try ensure_preopen_dir_tuple_storage_pack_layout(allocator, wasi_imports.items, structs.items, &struct_layouts);
-    try mangleOverloadedFunctionNames(allocator, &functions);
+    try mangle_overloaded_function_names(allocator, &functions);
 
     const ctx = CodegenContext{
         .functions = functions.items,
@@ -836,23 +836,23 @@ pub fn emit_test_wat(allocator: std.mem.Allocator, program: parser.Program, toke
     };
 
     try out.appendSlice(allocator, "(module\n");
-    try appendFmt(allocator, &out, "  ;; source_len={d}\n", .{program.source_len});
-    try appendFmt(allocator, &out, "  ;; token_count={d}\n", .{program.token_count});
-    try appendFmt(allocator, &out, "  ;; top_level_count={d}\n", .{program.top_level_count});
-    try appendFmt(allocator, &out, "  ;; compiled_test_count={d}\n", .{test_decls.len});
-    try wat_component_metadata.emitWasiBindings(allocator, &out, wasi_imports.items);
-    try wat_component_metadata.emitWasiCoreImports(allocator, &out, wasi_imports.items);
-    try wat_component_metadata.emitHostImports(allocator, &out, host_imports.items);
-    try runtime_prelude_wat.emitStringDataMemory(allocator, &out, string_data.items.items, .{});
-    try runtime_prelude_wat.emitArcRuntimePrelude(allocator, &out, string_data.items.items, struct_layouts.items);
+    try append_fmt(allocator, &out, "  ;; source_len={d}\n", .{program.source_len});
+    try append_fmt(allocator, &out, "  ;; token_count={d}\n", .{program.token_count});
+    try append_fmt(allocator, &out, "  ;; top_level_count={d}\n", .{program.top_level_count});
+    try append_fmt(allocator, &out, "  ;; compiled_test_count={d}\n", .{test_decls.len});
+    try wat_component_metadata.emit_wasi_bindings(allocator, &out, wasi_imports.items);
+    try wat_component_metadata.emit_wasi_core_imports(allocator, &out, wasi_imports.items);
+    try wat_component_metadata.emit_host_imports(allocator, &out, host_imports.items);
+    try runtime_prelude_wat.emit_string_data_memory(allocator, &out, string_data.items.items, .{});
+    try runtime_prelude_wat.emit_arc_runtime_prelude(allocator, &out, string_data.items.items, struct_layouts.items);
     try emit_user_funcs(allocator, ctx, &out);
     try emit_test_funcs(allocator, tokens, test_decls, ctx, &out);
-    try wat_function_body.emitTestStartFunc(allocator, &out, test_decls.len);
+    try wat_function_body.emit_test_start_func(allocator, &out, test_decls.len);
     try out.appendSlice(allocator, ")\n");
     return out.toOwnedSlice(allocator);
 }
 
-pub fn directManagedLastUseMoveSourceOrigin(
+pub fn direct_managed_last_use_move_source_origin(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
@@ -866,7 +866,7 @@ pub fn directManagedLastUseMoveSourceOrigin(
     return source.origin;
 }
 
-pub fn directManagedCallLastUseMoveSourceOrigin(
+pub fn direct_managed_call_last_use_move_source_origin(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
@@ -878,7 +878,7 @@ pub fn directManagedCallLastUseMoveSourceOrigin(
     return source.origin;
 }
 
-pub fn directManagedUnionBindingCallMoveSourceOrigin(
+pub fn direct_managed_union_binding_call_move_source_origin(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
@@ -896,12 +896,12 @@ pub fn directManagedUnionBindingCallMoveSourceOrigin(
 
 const GenericTypeArgsRange = type_util.GenericTypeArgsRange;
 
-pub fn mangleOverloadedFunctionNames(allocator: std.mem.Allocator, functions: *std.ArrayList(FuncDecl)) !void {
+pub fn mangle_overloaded_function_names(allocator: std.mem.Allocator, functions: *std.ArrayList(FuncDecl)) !void {
     for (functions.items, 0..) |func, idx| {
         if (func.is_generic_template) continue;
-        if (!functionSourceNameHasMultipleConcreteDecls(functions.items, func.tokens, func.source_name)) continue;
+        if (!function_source_name_has_multiple_concrete_decls(functions.items, func.tokens, func.source_name)) continue;
 
-        const next_name = try functionSignatureSymbolName(allocator, func);
+        const next_name = try function_signature_symbol_name(allocator, func);
         errdefer allocator.free(next_name);
         if (std.mem.eql(u8, next_name, func.name)) {
             allocator.free(next_name);
@@ -913,11 +913,11 @@ pub fn mangleOverloadedFunctionNames(allocator: std.mem.Allocator, functions: *s
     }
 }
 
-pub fn functionSourceNameHasMultipleConcreteDecls(functions: []const FuncDecl, tokens: []const lexer.Token, source_name: []const u8) bool {
+pub fn function_source_name_has_multiple_concrete_decls(functions: []const FuncDecl, tokens: []const lexer.Token, source_name: []const u8) bool {
     var count: usize = 0;
     for (functions) |func| {
         if (func.is_generic_template) continue;
-        if (!moduleTokensEqual(func.tokens, tokens)) continue;
+        if (!module_tokens_equal(func.tokens, tokens)) continue;
         if (!same_callable_source_name(func.source_name, source_name)) continue;
         count += 1;
         if (count > 1) return true;
@@ -925,7 +925,7 @@ pub fn functionSourceNameHasMultipleConcreteDecls(functions: []const FuncDecl, t
     return false;
 }
 
-pub fn functionSignatureSymbolName(allocator: std.mem.Allocator, func: FuncDecl) ![]u8 {
+pub fn function_signature_symbol_name(allocator: std.mem.Allocator, func: FuncDecl) ![]u8 {
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
     try out.appendSlice(allocator, func.name);
@@ -941,24 +941,24 @@ pub fn functionSignatureSymbolName(allocator: std.mem.Allocator, func: FuncDecl)
     return out.toOwnedSlice(allocator);
 }
 
-pub fn isCodegenImportAliasReachable(allocator: std.mem.Allocator, graph: *const imports.ModuleGraph, root_idx: usize, alias: []const u8) !bool {
+pub fn is_codegen_import_alias_reachable(allocator: std.mem.Allocator, graph: *const imports.ModuleGraph, root_idx: usize, alias: []const u8) !bool {
     var stack = std.ArrayList(ReachVisit).empty;
     defer stack.deinit(allocator);
 
     var visited = std.ArrayList(ReachVisit).empty;
     defer visited.deinit(allocator);
 
-    try collectStartBodyCalls(allocator, graph.modules[root_idx].tokens, root_idx, &stack);
+    try collect_start_body_calls(allocator, graph.modules[root_idx].tokens, root_idx, &stack);
     while (stack.items.len != 0) {
         const visit = stack.pop().?;
         if (visit.module_idx == root_idx and std.mem.eql(u8, visit.name, alias)) return true;
-        if (hasReachVisit(visited.items, visit)) continue;
+        if (has_reach_visit(visited.items, visit)) continue;
         try visited.append(allocator, visit);
 
         const module = graph.modules[visit.module_idx];
-        if (findCodegenImportByAlias(module.tokens, visit.name)) |import_ref| {
-            if (findImportedModuleIndex(allocator, graph, visit.module_idx, import_ref)) |child_idx| {
-                try pushReachVisit(allocator, &stack, .{
+        if (find_codegen_import_by_alias(module.tokens, visit.name)) |import_ref| {
+            if (find_imported_module_index(allocator, graph, visit.module_idx, import_ref)) |child_idx| {
+                try push_reach_visit(allocator, &stack, .{
                     .module_idx = child_idx,
                     .name = import_ref.target,
                 });
@@ -966,22 +966,22 @@ pub fn isCodegenImportAliasReachable(allocator: std.mem.Allocator, graph: *const
             continue;
         }
 
-        try collectFunctionBodyCalls(allocator, module.tokens, visit.module_idx, visit.name, &stack);
+        try collect_function_body_calls(allocator, module.tokens, visit.module_idx, visit.name, &stack);
     }
     return false;
 }
 
-pub fn isTypedScalarBinding(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext) bool {
+pub fn is_typed_scalar_binding(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext) bool {
     return typed_scalar_binding_type(tokens, start_idx, end_idx, ctx) != null;
 }
 
-pub fn isStorageU8Type(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+pub fn is_storage_u8_type(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     const parsed = parse_storage_type(tokens, start_idx, end_idx) orelse return false;
     return std.mem.eql(u8, parsed.elem_ty, "u8");
 }
 
-pub fn isPackTerminalLeafType(ty: []const u8, structs: []const StructDecl) bool {
-    if (type_util.isTuplePackableLeafType(ty)) return true;
+pub fn is_pack_terminal_leaf_type(ty: []const u8, structs: []const StructDecl) bool {
+    if (type_util.is_tuple_packable_leaf_type(ty)) return true;
     return is_pack_managed_handle_leaf(ty, structs);
 }
 
@@ -989,10 +989,10 @@ pub fn isPackTerminalLeafType(ty: []const u8, structs: []const StructDecl) bool 
 /// Pure-scalar struct fields expand nested; managed-struct slots stay one handle leaf (type name).
 /// Append terminal pack leaf types in order.
 /// Pure-scalar struct fields expand nested; managed-struct slots stay one handle leaf (type name).
-pub fn appendStorePayloadOrTupleFromStack(allocator: std.mem.Allocator, out: *std.ArrayList(u8), elem_ty: []const u8, base_local: []const u8, indent: []const u8) CodegenError!void {
+pub fn append_store_payload_or_tuple_from_stack(allocator: std.mem.Allocator, out: *std.ArrayList(u8), elem_ty: []const u8, base_local: []const u8, indent: []const u8) CodegenError!void {
     try payload_wat.append_store_payload_or_tuple_from_stack(allocator, out, elem_ty, base_local, indent);
 }
 
-pub fn appendLoadPayloadOrTupleToStack(allocator: std.mem.Allocator, out: *std.ArrayList(u8), elem_ty: []const u8, base_local: []const u8, indent: []const u8) CodegenError!void {
+pub fn append_load_payload_or_tuple_to_stack(allocator: std.mem.Allocator, out: *std.ArrayList(u8), elem_ty: []const u8, base_local: []const u8, indent: []const u8) CodegenError!void {
     try payload_wat.append_load_payload_or_tuple_to_stack(allocator, out, elem_ty, base_local, indent);
 }

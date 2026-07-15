@@ -168,13 +168,13 @@ pub fn is_core_wasm_call_name(name: []const u8) bool {
 }
 
 pub fn is_core_wasm_scalar(ty: []const u8) bool {
-    return type_util.isCoreWasmScalar(ty);
+    return type_util.is_core_wasm_scalar(ty);
 }
 
 pub fn is_core_integer_scalar(ty: []const u8) bool {
-    return type_util.isCoreIntegerScalar(ty);
+    return type_util.is_core_integer_scalar(ty);
 }
 
 pub fn is_core_float_scalar(ty: []const u8) bool {
-    return type_util.isCoreFloatScalar(ty);
+    return type_util.is_core_float_scalar(ty);
 }

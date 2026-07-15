@@ -2,7 +2,7 @@ const std = @import("std");
 const lexer = @import("../build/lexer.zig");
 const protocol = @import("protocol.zig");
 
-pub fn findHover(
+pub fn find_hover(
     allocator: std.mem.Allocator,
     source: []const u8,
     position: protocol.Position,
@@ -10,34 +10,34 @@ pub fn findHover(
     const tokens = try lexer.tokenize(allocator, source);
     defer allocator.free(tokens);
 
-    const token_idx = tokenAtPosition(tokens, position) orelse return null;
+    const token_idx = token_at_position(tokens, position) orelse return null;
     const token = tokens[token_idx];
     if (token.kind != .ident) return null;
-    if (isKeyword(token.lexeme) or isFieldName(token.lexeme)) return null;
+    if (is_keyword(token.lexeme) or is_field_name(token.lexeme)) return null;
 
-    if (isTopLevelFunctionDecl(tokens, token_idx)) {
-        return try functionSignature(allocator, source, token.line);
+    if (is_top_level_function_decl(tokens, token_idx)) {
+        return try function_signature(allocator, source, token.line);
     }
 
     for (tokens, 0..) |candidate, idx| {
         if (!std.mem.eql(u8, candidate.lexeme, token.lexeme)) continue;
-        if (!isTopLevelFunctionDecl(tokens, idx)) continue;
-        return try functionSignature(allocator, source, candidate.line);
+        if (!is_top_level_function_decl(tokens, idx)) continue;
+        return try function_signature(allocator, source, candidate.line);
     }
 
     // Type names (UpperCamel): hover shows the declaration head line.
-    if (isTypeName(token.lexeme)) {
+    if (is_type_name(token.lexeme)) {
         for (tokens, 0..) |candidate, idx| {
             if (!std.mem.eql(u8, candidate.lexeme, token.lexeme)) continue;
-            if (!isTopLevelTypeDecl(tokens, idx)) continue;
-            return try typeDeclHover(allocator, source, candidate.line);
+            if (!is_top_level_type_decl(tokens, idx)) continue;
+            return try type_decl_hover(allocator, source, candidate.line);
         }
     }
 
     return null;
 }
 
-fn tokenAtPosition(tokens: []const lexer.Token, position: protocol.Position) ?usize {
+fn token_at_position(tokens: []const lexer.Token, position: protocol.Position) ?usize {
     for (tokens, 0..) |token, idx| {
         if (token.line == 0 or token.col == 0) continue;
         if (token.line - 1 != position.line) continue;
@@ -49,24 +49,24 @@ fn tokenAtPosition(tokens: []const lexer.Token, position: protocol.Position) ?us
     return null;
 }
 
-fn isTopLevelFunctionDecl(tokens: []const lexer.Token, idx: usize) bool {
+fn is_top_level_function_decl(tokens: []const lexer.Token, idx: usize) bool {
     if (idx + 1 >= tokens.len) return false;
     const token = tokens[idx];
     const next = tokens[idx + 1];
     if (token.kind != .ident) return false;
-    if (isKeyword(token.lexeme) or isFieldName(token.lexeme)) return false;
+    if (is_keyword(token.lexeme) or is_field_name(token.lexeme)) return false;
     if (token.line != next.line) return false;
     if (next.kind != .symbol or !std.mem.eql(u8, next.lexeme, "(")) return false;
-    return braceDepthBefore(tokens, idx) == 0;
+    return brace_depth_before(tokens, idx) == 0;
 }
 
-fn isTypeName(name: []const u8) bool {
+fn is_type_name(name: []const u8) bool {
     return name.len > 0 and std.ascii.isUpper(name[0]);
 }
 
-fn isTopLevelTypeDecl(tokens: []const lexer.Token, idx: usize) bool {
-    if (tokens[idx].kind != .ident or !isTypeName(tokens[idx].lexeme)) return false;
-    if (braceDepthBefore(tokens, idx) != 0) return false;
+fn is_top_level_type_decl(tokens: []const lexer.Token, idx: usize) bool {
+    if (tokens[idx].kind != .ident or !is_type_name(tokens[idx].lexeme)) return false;
+    if (brace_depth_before(tokens, idx) != 0) return false;
     if (tokens[idx].col != 1) return false;
     if (idx + 1 >= tokens.len) return false;
     const next = tokens[idx + 1];
@@ -79,14 +79,14 @@ fn isTopLevelTypeDecl(tokens: []const lexer.Token, idx: usize) bool {
     return after.kind == .symbol and std.mem.eql(u8, after.lexeme, "=");
 }
 
-fn typeDeclHover(allocator: std.mem.Allocator, source: []const u8, one_based_line: usize) !?[]u8 {
-    const line = lineSlice(source, one_based_line) orelse return null;
-    const head = signatureHead(line);
+fn type_decl_hover(allocator: std.mem.Allocator, source: []const u8, one_based_line: usize) !?[]u8 {
+    const line = line_slice(source, one_based_line) orelse return null;
+    const head = signature_head(line);
     if (head.len == 0) return null;
     return try allocator.dupe(u8, head);
 }
 
-fn braceDepthBefore(tokens: []const lexer.Token, idx: usize) usize {
+fn brace_depth_before(tokens: []const lexer.Token, idx: usize) usize {
     var depth: usize = 0;
     for (tokens[0..idx]) |token| {
         if (token.kind != .symbol) continue;
@@ -101,15 +101,15 @@ fn braceDepthBefore(tokens: []const lexer.Token, idx: usize) usize {
     return depth;
 }
 
-fn functionSignature(allocator: std.mem.Allocator, source: []const u8, one_based_line: usize) !?[]u8 {
-    const line = lineSlice(source, one_based_line) orelse return null;
-    const head = signatureHead(line);
+fn function_signature(allocator: std.mem.Allocator, source: []const u8, one_based_line: usize) !?[]u8 {
+    const line = line_slice(source, one_based_line) orelse return null;
+    const head = signature_head(line);
     if (head.len == 0) return null;
     if (std.mem.indexOf(u8, head, "->") != null) return try allocator.dupe(u8, head);
     return try std.fmt.allocPrint(allocator, "{s} -> nil", .{head});
 }
 
-fn lineSlice(source: []const u8, one_based_line: usize) ?[]const u8 {
+fn line_slice(source: []const u8, one_based_line: usize) ?[]const u8 {
     if (one_based_line == 0) return null;
 
     var line: usize = 1;
@@ -126,7 +126,7 @@ fn lineSlice(source: []const u8, one_based_line: usize) ?[]const u8 {
     return null;
 }
 
-fn signatureHead(line: []const u8) []const u8 {
+fn signature_head(line: []const u8) []const u8 {
     const body_start = if (std.mem.indexOf(u8, line, "{")) |idx|
         idx
     else if (std.mem.indexOf(u8, line, "=>")) |idx|
@@ -136,11 +136,11 @@ fn signatureHead(line: []const u8) []const u8 {
     return std.mem.trim(u8, line[0..body_start], " \t\r\n");
 }
 
-fn isFieldName(name: []const u8) bool {
+fn is_field_name(name: []const u8) bool {
     return name.len > 1 and name[0] == '.';
 }
 
-fn isKeyword(name: []const u8) bool {
+fn is_keyword(name: []const u8) bool {
     const keywords = [_][]const u8{
         "if",
         "else",
@@ -161,7 +161,7 @@ fn isKeyword(name: []const u8) bool {
     return false;
 }
 
-test "findHover returns current file function declaration signature" {
+test "find_hover returns current file function declaration signature" {
     const source =
         \\User {
         \\    title text
@@ -173,13 +173,13 @@ test "findHover returns current file function declaration signature" {
         \\
     ;
 
-    const info = (try findHover(std.testing.allocator, source, .{ .line = 3, .character = 3 })).?;
+    const info = (try find_hover(std.testing.allocator, source, .{ .line = 3, .character = 3 })).?;
     defer std.testing.allocator.free(info);
 
     try std.testing.expectEqualStrings("get_title(user User) -> text", info);
 }
 
-test "findHover returns null outside known symbols" {
+test "find_hover returns null outside known symbols" {
     const source =
         \\User {
         \\    title text
@@ -187,11 +187,11 @@ test "findHover returns null outside known symbols" {
         \\
     ;
 
-    const info = try findHover(std.testing.allocator, source, .{ .line = 1, .character = 6 });
+    const info = try find_hover(std.testing.allocator, source, .{ .line = 1, .character = 6 });
     try std.testing.expect(info == null);
 }
 
-test "findHover resolves current file function call to declaration" {
+test "find_hover resolves current file function call to declaration" {
     const source =
         \\get_title(user User) -> text {
         \\    return @get(user, .title)
@@ -204,13 +204,13 @@ test "findHover resolves current file function call to declaration" {
         \\
     ;
 
-    const info = (try findHover(std.testing.allocator, source, .{ .line = 5, .character = 18 })).?;
+    const info = (try find_hover(std.testing.allocator, source, .{ .line = 5, .character = 18 })).?;
     defer std.testing.allocator.free(info);
 
     try std.testing.expectEqualStrings("get_title(user User) -> text", info);
 }
 
-test "findHover returns type declaration head for type references" {
+test "find_hover returns type declaration head for type references" {
     const source =
         \\Point {
         \\    x i32
@@ -223,13 +223,13 @@ test "findHover returns type declaration head for type references" {
     ;
 
     // Hover on `Point` in the binding type position (line index 5).
-    // signatureHead stops before `{`, so the head is the type name.
-    const info = (try findHover(std.testing.allocator, source, .{ .line = 5, .character = 6 })).?;
+    // signature_head stops before `{`, so the head is the type name.
+    const info = (try find_hover(std.testing.allocator, source, .{ .line = 5, .character = 6 })).?;
     defer std.testing.allocator.free(info);
     try std.testing.expectEqualStrings("Point", info);
 
     // Hover on `Point` constructor call also resolves to the decl head.
-    const ctor = (try findHover(std.testing.allocator, source, .{ .line = 5, .character = 14 })).?;
+    const ctor = (try find_hover(std.testing.allocator, source, .{ .line = 5, .character = 14 })).?;
     defer std.testing.allocator.free(ctor);
     try std.testing.expectEqualStrings("Point", ctor);
 }

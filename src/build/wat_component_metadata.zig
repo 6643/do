@@ -19,25 +19,25 @@ pub const WasiLowering = struct {
     resource_drop: bool = false,
 };
 
-pub fn emitWasiBindings(
+pub fn emit_wasi_bindings(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
     wasi_imports: anytype,
 ) !void {
     for (wasi_imports) |import| {
-        try appendFmt(allocator, out, "  ;; wasi-bind source=\"{s}\" alias=\"{s}\" target=\"{s}\" params=\"", .{
+        try append_fmt(allocator, out, "  ;; wasi-bind source=\"{s}\" alias=\"{s}\" target=\"{s}\" params=\"", .{
             import.source,
             import.alias,
             import.target,
         });
-        try appendDoSignatureAsWit(allocator, out, import.params);
+        try append_do_signature_as_wit(allocator, out, import.params);
         try out.appendSlice(allocator, "\" result=\"");
-        try appendDoSignatureAsWit(allocator, out, import.result);
+        try append_do_signature_as_wit(allocator, out, import.result);
         try out.appendSlice(allocator, "\"\n");
     }
 }
 
-pub fn emitWasiCoreImports(
+pub fn emit_wasi_core_imports(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
     wasi_imports: anytype,
@@ -46,47 +46,47 @@ pub fn emitWasiCoreImports(
     defer seen.deinit(allocator);
 
     for (wasi_imports) |import| {
-        const lowering = wasiLowering(import) orelse continue;
-        if (hasString(seen.items, import.target)) continue;
+        const lowering = wasi_lowering(import) orelse continue;
+        if (has_string(seen.items, import.target)) continue;
         try seen.append(allocator, import.target);
 
-        try appendFmt(allocator, out, "  (import \"{s}\" \"{s}\" (func $", .{
+        try append_fmt(allocator, out, "  (import \"{s}\" \"{s}\" (func $", .{
             lowering.module,
             lowering.name,
         });
-        try appendWasiImportSymbol(allocator, out, import.target);
+        try append_wasi_import_symbol(allocator, out, import.target);
         if (lowering.param != null) {
-            try appendFmt(allocator, out, " (param {s})", .{lowering.param.?});
+            try append_fmt(allocator, out, " (param {s})", .{lowering.param.?});
         }
         if (lowering.result != null) {
-            try appendFmt(allocator, out, " (result {s})", .{lowering.result.?});
+            try append_fmt(allocator, out, " (result {s})", .{lowering.result.?});
         }
         try out.appendSlice(allocator, "))\n");
     }
 }
 
-pub fn emitHostImports(
+pub fn emit_host_imports(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
     host_imports: anytype,
 ) !void {
     for (host_imports) |host_import| {
-        try appendFmt(allocator, out, "  (import \"env\" \"{s}\" (func ${s}", .{ host_import.field, host_import.alias });
+        try append_fmt(allocator, out, "  (import \"env\" \"{s}\" (func ${s}", .{ host_import.field, host_import.alias });
         if (host_import.params.len != 0) {
             try out.appendSlice(allocator, " (param");
             for (host_import.params) |param| {
-                try appendFmt(allocator, out, " {s}", .{wasmType(param)});
+                try append_fmt(allocator, out, " {s}", .{wasm_type(param)});
             }
             try out.appendSlice(allocator, ")");
         }
         if (host_import.result) |result| {
-            try appendFmt(allocator, out, " (result {s})", .{wasmType(result)});
+            try append_fmt(allocator, out, " (result {s})", .{wasm_type(result)});
         }
         try out.appendSlice(allocator, "))\n");
     }
 }
 
-pub fn wasiLowering(import: anytype) ?WasiLowering {
+pub fn wasi_lowering(import: anytype) ?WasiLowering {
     if (std.mem.eql(u8, import.target, "clocks/system-clock/now") and
         std.mem.eql(u8, import.params, "") and
         std.mem.eql(u8, import.result, "Datetime"))
@@ -289,7 +289,7 @@ pub fn wasiLowering(import: anytype) ?WasiLowering {
     return null;
 }
 
-pub fn appendWasiImportSymbol(
+pub fn append_wasi_import_symbol(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
     target: []const u8,
@@ -304,16 +304,16 @@ pub fn appendWasiImportSymbol(
     }
 }
 
-fn appendDoSignatureAsWit(
+fn append_do_signature_as_wit(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
     signature: []const u8,
 ) !void {
     var i: usize = 0;
     while (i < signature.len) {
-        if (isWitIdentChar(signature[i])) {
+        if (is_wit_ident_char(signature[i])) {
             const start = i;
-            while (i < signature.len and isWitIdentChar(signature[i])) : (i += 1) {}
+            while (i < signature.len and is_wit_ident_char(signature[i])) : (i += 1) {}
             const ident = signature[start..i];
             if (std.mem.eql(u8, ident, "text")) {
                 try out.appendSlice(allocator, "string");
@@ -327,11 +327,11 @@ fn appendDoSignatureAsWit(
     }
 }
 
-fn isWitIdentChar(ch: u8) bool {
+fn is_wit_ident_char(ch: u8) bool {
     return std.ascii.isAlphanumeric(ch) or ch == '_' or ch == '-';
 }
 
-fn wasmType(ty: []const u8) []const u8 {
+fn wasm_type(ty: []const u8) []const u8 {
     if (std.mem.eql(u8, ty, "bool")) return "i32";
     if (std.mem.eql(u8, ty, "i8") or std.mem.eql(u8, ty, "u8")) return "i32";
     if (std.mem.eql(u8, ty, "i16") or std.mem.eql(u8, ty, "u16")) return "i32";
@@ -343,14 +343,14 @@ fn wasmType(ty: []const u8) []const u8 {
     return "i32";
 }
 
-fn hasString(items: []const []const u8, target: []const u8) bool {
+fn has_string(items: []const []const u8, target: []const u8) bool {
     for (items) |item| {
         if (std.mem.eql(u8, item, target)) return true;
     }
     return false;
 }
 
-fn appendFmt(
+fn append_fmt(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
     comptime fmt: []const u8,
@@ -389,7 +389,7 @@ test "component metadata writer emits wasi bind manifest comments" {
         },
     };
 
-    try emitWasiBindings(allocator, &out, imports[0..]);
+    try emit_wasi_bindings(allocator, &out, imports[0..]);
 
     try std.testing.expectEqualStrings(
         \\  ;; wasi-bind source="entry" alias="host_now" target="clocks/system-clock/now" params="" result="Datetime"
@@ -433,7 +433,7 @@ test "component metadata writer emits deduplicated wasi core imports" {
         },
     };
 
-    try emitWasiCoreImports(allocator, &out, imports[0..]);
+    try emit_wasi_core_imports(allocator, &out, imports[0..]);
 
     try std.testing.expectEqualStrings(
         \\  (import "cm32p2|wasi:clocks/system-clock" "now" (func $__wasi_import_clocks_system_clock_now (param i32)))
@@ -467,7 +467,7 @@ test "component metadata writer emits env host imports" {
         },
     };
 
-    try emitHostImports(allocator, &out, imports[0..]);
+    try emit_host_imports(allocator, &out, imports[0..]);
 
     try std.testing.expectEqualStrings(
         \\  (import "env" "log" (func $host_log (param i32 i32)))
@@ -481,7 +481,7 @@ test "component metadata writer exposes wasi import symbol escaping" {
     var out = std.ArrayList(u8).empty;
     defer out.deinit(allocator);
 
-    try appendWasiImportSymbol(allocator, &out, "filesystem/types/descriptor.link-at");
+    try append_wasi_import_symbol(allocator, &out, "filesystem/types/descriptor.link-at");
 
     try std.testing.expectEqualStrings("__wasi_import_filesystem_types_descriptor_link_at", out.items);
 }
