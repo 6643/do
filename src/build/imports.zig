@@ -2,19 +2,13 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
 const sema = @import("sema.zig");
+const import_graph = @import("import_graph.zig");
+const import_model = @import("import_model.zig");
 
-const ImportRef = struct {
-    alias_idx: usize,
-    target: []const u8,
-    file_path: []const u8,
-    prefix: ImportPrefix,
-};
-
-const ImportPrefix = enum {
-    local,
-    dep,
-    std,
-};
+pub const ModuleRecord = import_model.ModuleRecord;
+pub const ModuleGraph = import_model.ModuleGraph;
+const ImportRef = import_model.ImportRef;
+const ImportPrefix = import_model.ImportPrefix;
 
 const PrivateField = struct {
     name: []const u8,
@@ -30,14 +24,6 @@ const DeclKind = enum {
     func,
     const_value,
     var_value,
-};
-
-pub const ModuleRecord = struct {
-    path: []const u8,
-    source: ?[]const u8,
-    owns_source: bool,
-    tokens: []const lexer.Token,
-    owns_tokens: bool,
 };
 
 const FuncParamShape = union(enum) {
@@ -92,73 +78,6 @@ const ReturnArityResolve = union(enum) {
     ambiguous,
 };
 
-const Context = struct {
-    io: std.Io,
-    allocator: std.mem.Allocator,
-    dep_root: []const u8,
-    modules: std.ArrayList(ModuleRecord),
-    stack: std.ArrayList([]const u8),
-
-    fn init(io: std.Io, allocator: std.mem.Allocator, dep_root: []const u8) Context {
-        return .{
-            .io = io,
-            .allocator = allocator,
-            .dep_root = dep_root,
-            .modules = std.ArrayList(ModuleRecord).empty,
-            .stack = std.ArrayList([]const u8).empty,
-        };
-    }
-
-    fn deinit(self: *Context) void {
-        for (self.modules.items) |module| {
-            if (module.owns_source) self.allocator.free(module.source.?);
-            if (module.owns_tokens) self.allocator.free(module.tokens);
-            self.allocator.free(module.path);
-        }
-        self.modules.deinit(self.allocator);
-        self.stack.deinit(self.allocator);
-    }
-
-    fn find_module(self: *const Context, path: []const u8) ?usize {
-        for (self.modules.items, 0..) |module, idx| {
-            if (std.mem.eql(u8, module.path, path)) return idx;
-        }
-        return null;
-    }
-
-    fn is_loading(self: *const Context, path: []const u8) bool {
-        for (self.stack.items) |it| {
-            if (std.mem.eql(u8, it, path)) return true;
-        }
-        return false;
-    }
-
-    fn into_graph(self: *Context) !ModuleGraph {
-        const modules = try self.modules.toOwnedSlice(self.allocator);
-        self.stack.deinit(self.allocator);
-        return .{
-            .allocator = self.allocator,
-            .dep_root = self.dep_root,
-            .modules = modules,
-        };
-    }
-};
-
-pub const ModuleGraph = struct {
-    allocator: std.mem.Allocator,
-    dep_root: []const u8,
-    modules: []ModuleRecord,
-
-    pub fn deinit(self: *ModuleGraph) void {
-        for (self.modules) |module| {
-            if (module.owns_source) self.allocator.free(module.source.?);
-            if (module.owns_tokens) self.allocator.free(module.tokens);
-            self.allocator.free(module.path);
-        }
-        self.allocator.free(self.modules);
-    }
-};
-
 pub const ErrorSite = struct {
     line: usize,
     col: usize,
@@ -191,10 +110,21 @@ pub fn check_and_load(
     dep_root: []const u8,
 ) !ModuleGraph {
     last_error_site = null;
-    var ctx = Context.init(io, allocator, dep_root);
-    errdefer ctx.deinit();
-    try load_module(&ctx, input_path, tokens, false);
-    return try ctx.into_graph();
+    var graph = try import_graph.load(
+        io,
+        allocator,
+        input_path,
+        tokens,
+        dep_root,
+        parse_local_import,
+        resolve_path,
+        is_non_host_import_assign,
+        validate_loaded_source,
+        mark_error_at,
+    );
+    errdefer graph.deinit();
+    try resolve_imports(allocator, &graph);
+    return graph;
 }
 
 fn parse_local_import(tokens: []const lexer.Token, idx: usize) ?ImportRef {
@@ -247,49 +177,34 @@ fn resolve_path(
     }
 }
 
-fn load_module(
-    ctx: *Context,
+fn validate_loaded_source(
+    allocator: std.mem.Allocator,
     path: []const u8,
-    tokens_opt: ?[]const lexer.Token,
-    owns_tokens: bool,
+    source: []const u8,
+    tokens: []const lexer.Token,
 ) !void {
-    if (ctx.find_module(path) != null) return;
-    if (ctx.is_loading(path)) return error.InvalidImportDecl;
+    _ = path;
+    var program = parser.parse_program(allocator, tokens, source.len) catch return error.InvalidImportDecl;
+    defer program.deinit(allocator);
+    sema.check_program(allocator, program, tokens) catch return error.InvalidImportDecl;
+}
 
-    try ctx.stack.append(ctx.allocator, path);
-    defer _ = ctx.stack.pop();
-
-    var source_opt: ?[]const u8 = null;
-    var tokens_opt_owned: ?[]const lexer.Token = null;
-    const tokens = if (tokens_opt) |tokens| tokens else blk: {
-        const source = std.Io.Dir.cwd().readFileAlloc(ctx.io, path, ctx.allocator, .limited(16 * 1024 * 1024)) catch
-            return error.InvalidImportDecl;
-        source_opt = source;
-        const loaded_tokens = lexer.tokenize(ctx.allocator, source) catch {
-            ctx.allocator.free(source);
-            return error.InvalidImportDecl;
-        };
-        tokens_opt_owned = loaded_tokens;
-
-        break :blk loaded_tokens;
-    };
-    const owned = if (tokens_opt == null) true else owns_tokens;
-    if (tokens_opt == null) {
-        errdefer {
-            if (tokens_opt_owned) |owned_tokens| ctx.allocator.free(owned_tokens);
-            if (source_opt) |src| ctx.allocator.free(src);
-        }
+fn resolve_imports(allocator: std.mem.Allocator, graph: *const ModuleGraph) !void {
+    for (graph.modules) |module| {
+        try resolve_module_imports(allocator, graph, module.path, module.tokens);
     }
-    if (source_opt) |source| {
-        var program = parser.parse_program(ctx.allocator, tokens, source.len) catch return error.InvalidImportDecl;
-        defer program.deinit(ctx.allocator);
-        sema.check_program(ctx.allocator, program, tokens) catch return error.InvalidImportDecl;
-    }
+}
 
+fn resolve_module_imports(
+    allocator: std.mem.Allocator,
+    graph: *const ModuleGraph,
+    path: []const u8,
+    tokens: []const lexer.Token,
+) !void {
     var imported_func_shapes = std.ArrayList(FuncShape).empty;
     defer {
-        free_func_shape_items(ctx.allocator, imported_func_shapes.items);
-        imported_func_shapes.deinit(ctx.allocator);
+        free_func_shape_items(allocator, imported_func_shapes.items);
+        imported_func_shapes.deinit(allocator);
     }
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
@@ -299,16 +214,13 @@ fn load_module(
             }
             continue;
         };
-        const child_path = resolve_path(ctx.allocator, path, import_ref, ctx.dep_root) catch
+        const child_path = resolve_path(allocator, path, import_ref, graph.dep_root) catch
             return mark_error_at(tokens, import_ref.alias_idx, error.InvalidImportDecl);
-        defer ctx.allocator.free(child_path);
+        defer allocator.free(child_path);
 
-        load_module(ctx, child_path, null, false) catch
+        const child_idx = graph.find_module(child_path) orelse
             return mark_error_at(tokens, import_ref.alias_idx, error.InvalidImportDecl);
-
-        const child_idx = ctx.find_module(child_path) orelse
-            return mark_error_at(tokens, import_ref.alias_idx, error.InvalidImportDecl);
-        const child_tokens = ctx.modules.items[child_idx].tokens;
+        const child_tokens = graph.modules[child_idx].tokens;
         const target_kind = find_public_decl_kind(child_tokens, import_ref.target) orelse
             return mark_error_at(tokens, import_ref.alias_idx, error.InvalidImportDecl);
         if (!alias_matches_kind(tokens[import_ref.alias_idx].lexeme, target_kind)) {
@@ -318,14 +230,14 @@ fn load_module(
             return mark_error_at(tokens, import_ref.alias_idx, error.DuplicateTypeDeclName);
         }
         if (is_type_like_kind(target_kind)) {
-            try check_imported_private_field_ctors(ctx, tokens, import_ref, child_tokens);
-            try check_imported_type_value_exprs(ctx.allocator, tokens, import_ref.alias_idx);
+            try check_imported_private_field_ctors(allocator, tokens, import_ref, child_tokens);
+            try check_imported_type_value_exprs(allocator, tokens, import_ref.alias_idx);
             try check_imported_std_container_direct_access(tokens, import_ref);
         }
         if (target_kind == .func) {
-            try check_imported_func_calls(ctx, tokens, import_ref, child_tokens);
+            try check_imported_func_calls(allocator, tokens, import_ref, child_tokens);
             try append_imported_alias_func_shapes(
-                ctx.allocator,
+                allocator,
                 &imported_func_shapes,
                 import_ref.alias_idx,
                 tokens[import_ref.alias_idx].lexeme,
@@ -337,30 +249,20 @@ fn load_module(
         i = find_line_end_idx(tokens, i) - 1;
     }
 
-    try check_imported_function_value_resolution(ctx.allocator, tokens, imported_func_shapes.items);
-    try check_imported_defer_stmts(ctx.allocator, tokens, imported_func_shapes.items);
-
-    const cache_path = try ctx.allocator.dupe(u8, path);
-    errdefer ctx.allocator.free(cache_path);
-    try ctx.modules.append(ctx.allocator, .{
-        .path = cache_path,
-        .source = source_opt,
-        .owns_source = source_opt != null,
-        .tokens = tokens,
-        .owns_tokens = owned,
-    });
+    try check_imported_function_value_resolution(allocator, tokens, imported_func_shapes.items);
+    try check_imported_defer_stmts(allocator, tokens, imported_func_shapes.items);
 }
 
 fn check_imported_private_field_ctors(
-    ctx: *Context,
+    allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     import_ref: ImportRef,
     child_tokens: []const lexer.Token,
 ) !void {
     var private_fields = std.ArrayList(PrivateField).empty;
-    defer private_fields.deinit(ctx.allocator);
+    defer private_fields.deinit(allocator);
 
-    try collect_private_struct_fields(ctx.allocator, &private_fields, child_tokens, import_ref.target);
+    try collect_private_struct_fields(allocator, &private_fields, child_tokens, import_ref.target);
     if (private_fields.items.len == 0) return;
     const has_required_private = has_required_private_field(private_fields.items);
 
@@ -898,14 +800,14 @@ fn find_public_decl_kind(tokens: []const lexer.Token, target: []const u8) ?DeclK
 }
 
 fn check_imported_func_calls(
-    ctx: *Context,
+    allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     import_ref: ImportRef,
     child_tokens: []const lexer.Token,
 ) !void {
-    var program = parser.parse_program(ctx.allocator, child_tokens, child_tokens.len) catch
+    var program = parser.parse_program(allocator, child_tokens, child_tokens.len) catch
         return mark_error_at(tokens, import_ref.alias_idx, error.InvalidImportDecl);
-    defer program.deinit(ctx.allocator);
+    defer program.deinit(allocator);
 
     const alias = tokens[import_ref.alias_idx].lexeme;
     var depth_brace: usize = 0;
@@ -926,8 +828,8 @@ fn check_imported_func_calls(
 
         const close_paren = find_matching(tokens, i + 1, "(", ")") catch
             return mark_error_at(tokens, i, error.InvalidCallArgList);
-        const call_args = try parse_import_call_args(ctx.allocator, tokens, i + 2, close_paren);
-        defer ctx.allocator.free(call_args.shapes);
+        const call_args = try parse_import_call_args(allocator, tokens, i + 2, close_paren);
+        defer allocator.free(call_args.shapes);
 
         if (!has_compatible_func_sig(program.func_sigs, import_ref.target, call_args.shapes.len)) {
             return mark_error_at(tokens, i, error.NoMatchingCall);
