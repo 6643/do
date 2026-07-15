@@ -1,0 +1,1286 @@
+//! Expression emit dispatch and function-body orchestration.
+
+const std = @import("std");
+const function_body_wat = @import("function_body_wat.zig");
+const backend_ir = @import("backend_ir.zig");
+const lexer = @import("lexer.zig");
+const type_util = @import("type_name.zig");
+const payload_wat = @import("wat_payload.zig");
+const storage_wat = @import("wat_storage.zig");
+const codegen_tokens = @import("codegen_tokens.zig");
+const codegen_names = @import("codegen_names.zig");
+const model = @import("codegen_model.zig");
+const constants = @import("codegen_constants.zig");
+const context = @import("codegen_context.zig");
+const NilComparisonNarrowing = model.NilComparisonNarrowing;
+const gen_collect_util = @import("gen_collect_util.zig");
+const codegen_collect_functions = @import("codegen_collect_functions.zig");
+const codegen_collect_structs = @import("codegen_collect_structs.zig");
+const gen_import = @import("gen_import.zig");
+const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
+const emitWasiResultListU8StatusMultiAssignment = codegen_emit_wasi.emitWasiResultListU8StatusMultiAssignment;
+const emitWasiResultReadMultiAssignment = codegen_emit_wasi.emitWasiResultReadMultiAssignment;
+const emitWasiResultUnitStatusMultiAssignment = codegen_emit_wasi.emitWasiResultUnitStatusMultiAssignment;
+const emitWasiResultDescriptorStatusMultiAssignment = codegen_emit_wasi.emitWasiResultDescriptorStatusMultiAssignment;
+const emitWasiResultU64StreamStatusMultiAssignment = codegen_emit_wasi.emitWasiResultU64StreamStatusMultiAssignment;
+const emitWasiResultFilesizeMultiAssignment = codegen_emit_wasi.emitWasiResultFilesizeMultiAssignment;
+const codegen_callbacks = @import("codegen_callbacks.zig");
+const codegen_collect_body = @import("codegen_collect_body.zig");
+const collect_body_locals = codegen_collect_body.collect_body_locals;
+const collect_callback_call_args = codegen_collect_body.collect_callback_call_args;
+const emit_self_tail_loop_local_reset = codegen_collect_body.emit_self_tail_loop_local_reset;
+const func_variadic_param_index = codegen_collect_body.func_variadic_param_index;
+const multi_result_lhs_for_item = codegen_collect_body.multi_result_lhs_for_item;
+const appendLoopSourceStorageLocal = context.appendLoopSourceStorageLocal;
+const parseUnionTypeLayout = gen_collect_util.parseUnionTypeLayout;
+const InferredUnionBinding = model.InferredUnionBinding;
+const findUnionLocalExact = context.findUnionLocalExact;
+const NUMERIC_SELECT_RIGHT_TMP_I32 = constants.NUMERIC_SELECT_RIGHT_TMP_I32;
+const NUMERIC_SELECT_LEFT_TMP_I32 = constants.NUMERIC_SELECT_LEFT_TMP_I32;
+const NUMERIC_SELECT_RIGHT_TMP_I64 = constants.NUMERIC_SELECT_RIGHT_TMP_I64;
+const NUMERIC_SELECT_LEFT_TMP_I64 = constants.NUMERIC_SELECT_LEFT_TMP_I64;
+const VARIADIC_PACK_TMP_LOCAL = constants.VARIADIC_PACK_TMP_LOCAL;
+const NO_RESULT_ITEMS = model.NO_RESULT_ITEMS;
+const NumericSelectTemps = model.NumericSelectTemps;
+const wasmType = codegen_emit_wasi.wasmType;
+const codegenScalarType = codegen_emit_wasi.codegenScalarType;
+const MultiResultLhs = model.MultiResultLhs;
+const SourceOrigin = model.SourceOrigin;
+const findPayloadEnumDecl = gen_import.findPayloadEnumDecl;
+const findStartFunc = codegen_tokens.find_start_func;
+const findValueEnumDeclLineByName = gen_import.findValueEnumDeclLineByName;
+const findValueEnumDeclLineByBranch = gen_import.findValueEnumDeclLineByBranch;
+const simple_type_name = codegen_collect_functions.simple_type_name;
+const is_top_level_comma_any = codegen_collect_functions.is_top_level_comma_any;
+const is_return_arrow_at = codegen_collect_functions.is_return_arrow_at;
+const codegen_union_layout = @import("codegen_union_layout.zig");
+const gen_host = @import("gen_host.zig");
+const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
+const ownership = @import("ownership.zig");
+const ownership_facts = @import("ownership_facts.zig");
+const imports = @import("imports.zig");
+const test_runner = @import("test_runner.zig");
+
+const tokEq = codegen_tokens.tok_eq;
+const findMatching = codegen_tokens.find_matching;
+const findMatchingInRange = codegen_tokens.find_matching_in_range;
+const findLineEnd = codegen_tokens.find_line_end;
+const findLineStart = codegen_tokens.find_line_start;
+const isLineStart = codegen_tokens.is_line_start;
+const findTopLevelToken = codegen_tokens.find_top_level_token;
+const findArgEnd = codegen_tokens.find_arg_end;
+const trimParens = codegen_tokens.trim_parens;
+const publicDeclName = codegen_names.public_decl_name;
+const appendFmt = codegen_names.append_fmt;
+const Range = codegen_tokens.Range;
+const alignUp = codegen_tokens.align_up;
+const compactTokenText = codegen_tokens.compact_token_text;
+const stringTokenBody = codegen_tokens.string_token_body;
+const stringLiteralArgLexeme = codegen_tokens.string_literal_arg_lexeme;
+const isStringLiteralArg = codegen_tokens.is_string_literal_arg;
+const decodeQuotedStringToken = codegen_tokens.decode_quoted_string_token;
+const findToken = codegen_tokens.find_token;
+const findTopLevelBlockOpen = codegen_tokens.find_top_level_block_open;
+const findStmtEnd = codegen_tokens.find_stmt_end;
+const findTypeArgEnd = codegen_tokens.find_type_arg_end;
+const moduleTokensEqual = codegen_tokens.module_tokens_equal;
+const moduleScopedSymbolName = codegen_names.module_scoped_symbol_name;
+const appendMangledTypeName = codegen_names.append_mangled_type_name;
+const isUserFuncDeclStart = codegen_tokens.is_user_func_decl_start;
+const isPublicTypeName = codegen_names.is_public_type_name;
+const isErrorTypeName = codegen_names.is_error_type_name;
+const isBaseIntTypeName = codegen_names.is_base_int_type_name;
+const isCoreWasmScalar = codegen_names.is_core_wasm_scalar;
+const isCoreIntegerScalar = codegen_names.is_core_integer_scalar;
+const isCoreFloatScalar = codegen_names.is_core_float_scalar;
+const isNumericCoreFuncName = codegen_names.is_numeric_core_func_name;
+const isBitwiseCoreFuncName = codegen_names.is_bitwise_core_func_name;
+const isCountBitsCoreFuncName = codegen_names.is_count_bits_core_func_name;
+const isNumericUnarySelectCoreFuncName = codegen_names.is_numeric_unary_select_core_func_name;
+const isNumericBinarySelectCoreFuncName = codegen_names.is_numeric_binary_select_core_func_name;
+const isFloatUnaryCoreFuncName = codegen_names.is_float_unary_core_func_name;
+const isFloatBinaryCoreFuncName = codegen_names.is_float_binary_core_func_name;
+const isBoolSpecialFuncName = codegen_names.is_bool_special_func_name;
+const isComparisonCoreFuncName = codegen_names.is_comparison_core_func_name;
+const isMemoryLoadName = codegen_names.is_memory_load_name;
+const isCoreWasmCallName = codegen_names.is_core_wasm_call_name;
+const tokenTextEqualsCompact = codegen_tokens.token_text_equals_compact;
+const findTopLevelTypeSeparator = codegen_tokens.find_top_level_type_separator;
+const findTopLevelTypeSeparatorFrom = codegen_tokens.find_top_level_type_separator_from;
+const hasString = codegen_names.has_string;
+
+const LocalSet = context.LocalSet;
+const EMPTY_LOCAL_SET = LocalSet{};
+const DeferItem = context.DeferItem;
+const SelfTailTco = context.SelfTailTco;
+const Local = model.Local;
+const CodegenContext = context.CodegenContext;
+const CodegenError = model.CodegenError;
+const StructDecl = model.StructDecl;
+const StructField = model.StructField;
+const StructLayout = model.StructLayout;
+const StructLocal = model.StructLocal;
+const StorageLocal = model.StorageLocal;
+const UnionLocal = model.UnionLocal;
+const FuncDecl = model.FuncDecl;
+const FuncParam = model.FuncParam;
+const FuncResultItem = model.FuncResultItem;
+const HostImport = model.HostImport;
+const DeferContext = context.DeferContext;
+const CallLastUseMoveContext = context.CallLastUseMoveContext;
+const LastUseManagedMoveSource = context.LastUseManagedMoveSource;
+const LoopControl = context.LoopControl;
+const FieldMetaLocal = model.FieldMetaLocal;
+const FieldReflectionLoopHeader = context.FieldReflectionLoopHeader;
+const FieldStaticValue = context.FieldStaticValue;
+const FieldReflectionIfParts = context.FieldReflectionIfParts;
+const GenericTypeBinding = model.GenericTypeBinding;
+const PayloadEnumDecl = model.PayloadEnumDecl;
+const ValueEnumDecl = model.ValueEnumDecl;
+const CallbackBinding = model.CallbackBinding;
+const CallbackCallArg = model.CallbackCallArg;
+const FuncTypeShape = model.FuncTypeShape;
+const LambdaExprShape = model.LambdaExprShape;
+const NarrowedUnionLocal = model.NarrowedUnionLocal;
+const UnionStructPayload = model.UnionStructPayload;
+const ImportedAliasContext = model.ImportedAliasContext;
+const StringDataContext = context.StringDataContext;
+const ExprCallHead = model.ExprCallHead;
+const STORAGE_OVERWRITE_TMP_LOCAL = constants.STORAGE_OVERWRITE_TMP_LOCAL;
+const STORAGE_WRITE_INDEX_TMP_LOCAL = constants.STORAGE_WRITE_INDEX_TMP_LOCAL;
+const STORAGE_PUT_SOURCE_TMP_LOCAL = constants.STORAGE_PUT_SOURCE_TMP_LOCAL;
+const STORAGE_WRITE_LEN_TMP_LOCAL = constants.STORAGE_WRITE_LEN_TMP_LOCAL;
+const STORAGE_WRITE_SCAN_TMP_LOCAL = constants.STORAGE_WRITE_SCAN_TMP_LOCAL;
+const STORAGE_WRITE_TARGET_TMP_LOCAL = constants.STORAGE_WRITE_TARGET_TMP_LOCAL;
+const STORAGE_WRITE_NEXT_TMP_LOCAL = constants.STORAGE_WRITE_NEXT_TMP_LOCAL;
+const TUPLE_PACK_BASE_TMP_LOCAL = constants.TUPLE_PACK_BASE_TMP_LOCAL;
+const STRUCT_LITERAL_TMP_LOCAL = constants.STRUCT_LITERAL_TMP_LOCAL;
+const STORAGE_PAYLOAD_HEADER_BYTES = constants.STORAGE_PAYLOAD_HEADER_BYTES;
+const TYPE_ID_STORAGE_U8 = constants.TYPE_ID_STORAGE_U8;
+const TYPE_ID_STORAGE_MANAGED = constants.TYPE_ID_STORAGE_MANAGED;
+const TYPE_ID_FIRST_STRUCT = constants.TYPE_ID_FIRST_STRUCT;
+const findLocalType = context.findLocalType;
+const findLocalOrigin = context.findLocalOrigin;
+const findStorageLocal = context.findStorageLocal;
+const findStructLocal = context.findStructLocal;
+const findUnionLocal = context.findUnionLocal;
+const hasLocal = context.hasLocal;
+const isCompilerLocalName = context.isCompilerLocalName;
+const storageTypeNameForElem = context.storageTypeNameForElem;
+const storageTypeNameForElemOwned = context.storageTypeNameForElemOwned;
+const localNameMatches = context.localNameMatches;
+const unionPayloadLocalName = context.unionPayloadLocalName;
+const unionTagLocalName = context.unionTagLocalName;
+
+const UnionLayout = codegen_union_layout.UnionLayout;
+const UnionBranch = codegen_union_layout.UnionBranch;
+const freeUnionLayout = codegen_union_layout.free_union_layout;
+const cloneUnionLayout = codegen_union_layout.clone_union_layout;
+const unionLayoutsEqual = codegen_union_layout.union_layouts_equal;
+const unionBranchIsStatusI32 = codegen_union_layout.union_branch_is_status_i32;
+
+const findStructDecl = gen_collect_util.findStructDecl;
+const findStructLayout = gen_collect_util.findStructLayout;
+const find_struct_layout_exact = codegen_collect_structs.find_struct_layout_exact;
+const is_pack_managed_handle_leaf = codegen_collect_structs.is_pack_managed_handle_leaf;
+const leaf_payload_bytes_for_pack = codegen_collect_structs.leaf_payload_bytes_for_pack;
+const pureScalarStructPackWidth = gen_collect_util.pureScalarStructPackWidth;
+const packSlotWidth = gen_collect_util.packSlotWidth;
+const tuplePackWidthWithStructs = gen_collect_util.tuplePackWidthWithStructs;
+const appendTupleLeafTypesWithStructs = gen_collect_util.appendTupleLeafTypesWithStructs;
+const appendTupleLeafTypes = gen_collect_util.appendTupleLeafTypes;
+const structDeclHasManagedField = gen_collect_util.structDeclHasManagedField;
+const ensure_storage_pack_layout = codegen_collect_structs.ensure_storage_pack_layout;
+const managed_leaf_field_name = codegen_collect_structs.managed_leaf_field_name;
+const isErrorLikeType = gen_collect_util.isErrorLikeType;
+const parseCodegenTypeExpr = gen_collect_util.parseCodegenTypeExpr;
+const parse_type_union_layout_from_name = codegen_collect_structs.parse_type_union_layout_from_name;
+const bind_struct_type_args = codegen_collect_structs.bind_struct_type_args;
+const substituteGenericTypeOwned = gen_collect_util.substituteGenericTypeOwned;
+const findGenericBinding = gen_collect_util.findGenericBinding;
+const same_callable_source_name = codegen_collect_functions.same_callable_source_name;
+const funcParamAbiType = gen_collect_util.funcParamAbiType;
+const isUnmanagedScalarStruct = gen_collect_util.isUnmanagedScalarStruct;
+const appendUnionBranchPayloadTypes = gen_collect_util.appendUnionBranchPayloadTypes;
+
+const callHeadAt = gen_import.callHeadAt;
+const exprCallHead = gen_import.exprCallHead;
+const callHeadHasTypeArgs = gen_import.callHeadHasTypeArgs;
+const findValueEnumDecl = gen_import.findValueEnumDecl;
+const findCodegenImportByAlias = gen_import.findCodegenImportByAlias;
+const importedAliasContextForTokens = gen_import.importedAliasContextForTokens;
+const localScalarConst = gen_import.localScalarConst;
+const importedScalarConst = gen_import.importedScalarConst;
+const findImportedModuleIndex = gen_import.findImportedModuleIndex;
+const findImportedModuleIndexNoAlloc = gen_import.findImportedModuleIndexNoAlloc;
+const findWasiHostImportForTokens = gen_import.findWasiHostImportForTokens;
+const wasiSourceForTokens = gen_import.wasiSourceForTokens;
+
+const isManagedLocalType = codegen_emit_wasi.isManagedLocalType;
+const isManagedPayloadType = codegen_emit_wasi.isManagedPayloadType;
+const isStorageTypeName = codegen_emit_wasi.isStorageTypeName;
+const storageElemTypeFromName = codegen_emit_wasi.storageElemTypeFromName;
+const storageElementByteWidth = codegen_emit_wasi.storageElementByteWidth;
+const storageTypeIdForElement = codegen_emit_wasi.storageTypeIdForElement;
+const typePayloadBytes = codegen_emit_wasi.typePayloadBytes;
+const typePayloadAlignment = codegen_emit_wasi.typePayloadAlignment;
+const isTupleTypeName = codegen_emit_wasi.isTupleTypeName;
+const tupleArity = codegen_emit_wasi.tupleArity;
+const tupleElementTypeAt = codegen_emit_wasi.tupleElementTypeAt;
+const codegenWasmType = codegen_emit_wasi.codegenWasmType;
+const codegenTypesCompatible = codegen_emit_wasi.codegenTypesCompatible;
+const findStoragePrimitiveLocal = codegen_emit_wasi.findStoragePrimitiveLocal;
+const emitReplaceManagedLocalFromTmp = codegen_emit_wasi.emitReplaceManagedLocalFromTmp;
+const emitStorageDataPtr = codegen_emit_wasi.emitStorageDataPtr;
+const emitStorageLenPtr = codegen_emit_wasi.emitStorageLenPtr;
+const appendLoadForPayloadType = codegen_emit_wasi.appendLoadForPayloadType;
+const structFieldPayloadOffset = codegen_emit_wasi.structFieldPayloadOffset;
+const findUnionBranchByType = codegen_emit_wasi.findUnionBranchByType;
+const errorEnumBranchValue = codegen_emit_wasi.errorEnumBranchValue;
+const tupleScalarLeafStorageByteWidth = codegen_emit_wasi.tupleScalarLeafStorageByteWidth;
+const tupleScalarLeafStorageByteWidthCtx = codegen_emit_wasi.tupleScalarLeafStorageByteWidthCtx;
+const tupleHasManagedPackLeaf = codegen_emit_wasi.tupleHasManagedPackLeaf;
+const tupleHasManagedPackLeafWithStructs = codegen_emit_wasi.tupleHasManagedPackLeafWithStructs;
+const tupleHasManagedPackLeafCtx = codegen_emit_wasi.tupleHasManagedPackLeafCtx;
+const emitWasiHostImportExpr = codegen_emit_wasi.emitWasiHostImportExpr;
+const emitBareWasiHostImportCall = codegen_emit_wasi.emitBareWasiHostImportCall;
+const emitWasiUnitResultAsUnionValue = codegen_emit_wasi.emitWasiUnitResultAsUnionValue;
+const emitWasiFilesizeResultAsUnionValue = codegen_emit_wasi.emitWasiFilesizeResultAsUnionValue;
+const emitWasiReadResultAsUnionValue = codegen_emit_wasi.emitWasiReadResultAsUnionValue;
+const emitWasiListU8ResultAsUnionValue = codegen_emit_wasi.emitWasiListU8ResultAsUnionValue;
+const emitWasiDescriptorResultAsUnionValue = codegen_emit_wasi.emitWasiDescriptorResultAsUnionValue;
+const emitWasiRecordStructBinding = codegen_emit_wasi.emitWasiRecordStructBinding;
+const isTuplePackableLeafType = type_util.isTuplePackableLeafType;
+const isCoreWasmScalar_tu = type_util.isCoreWasmScalar;
+
+const hostParamIsPtrLen = gen_host.hostParamIsPtrLen;
+const hostArgCouldBeStoragePtrLenSyntax = gen_host.hostArgCouldBeStoragePtrLenSyntax;
+const findHostImportForTokens = gen_host.findHostImportForTokens;
+
+const WasiHostImport = codegen_wasi_registry.WasiHostImport;
+
+const codegen_emit_storage_values = @import("codegen_emit_storage_values.zig");
+const codegen_emit_storage_operations = @import("codegen_emit_storage_operations.zig");
+const codegen_storage_layout = @import("codegen_storage_layout.zig");
+const ManagedPayloadBinding = codegen_storage_layout.ManagedPayloadBinding;
+const codegen_emit_struct = @import("codegen_emit_struct.zig");
+const codegen_emit_struct_fields = @import("codegen_emit_struct_fields.zig");
+const codegen_emit_union = @import("codegen_emit_union.zig");
+const codegen_emit_control = @import("codegen_emit_control.zig");
+const gen_ownership = @import("gen_ownership.zig");
+const emitStorageBinding = codegen_emit_storage_values.emitStorageBinding;
+const emitStorageHandleAssignmentExpr = codegen_emit_storage_values.emitStorageHandleAssignmentExpr;
+const emitTupleBinding = codegen_emit_storage_values.emitTupleBinding;
+const emitStorageAssignment = codegen_emit_storage_values.emitStorageAssignment;
+const stmtContainsStorageAggLiteral = codegen_emit_storage_values.stmtContainsStorageAggLiteral;
+const emitStorageAggReturnValue = codegen_emit_storage_values.emitStorageAggReturnValue;
+const emitTupleReturnLocal = codegen_emit_storage_values.emitTupleReturnLocal;
+const emitTupleReturnExpr = codegen_emit_storage_values.emitTupleReturnExpr;
+const emitStorageU8StringLiteral = codegen_emit_storage_values.emitStorageU8StringLiteral;
+const emitStorageU8StringLiteralValue = codegen_emit_storage_values.emitStorageU8StringLiteralValue;
+const emitStorageU8RawStringValue = codegen_emit_storage_values.emitStorageU8RawStringValue;
+const emitStorageU8StringLiteralIntoLocal = codegen_emit_storage_values.emitStorageU8StringLiteralIntoLocal;
+const emitStorageAggLiteral = codegen_emit_storage_values.emitStorageAggLiteral;
+const isStorageAggLiteralExpr = codegen_emit_storage_values.isStorageAggLiteralExpr;
+const countAggLiteralItems = codegen_emit_storage_values.countAggLiteralItems;
+const emitStoragePayloadPtr = codegen_emit_storage_values.emitStoragePayloadPtr;
+const emitStorageLenPtrWithIndent = codegen_emit_storage_values.emitStorageLenPtrWithIndent;
+const emitStorageCapPtr = codegen_emit_storage_values.emitStorageCapPtr;
+const emitStorageCapPtrWithIndent = codegen_emit_storage_values.emitStorageCapPtrWithIndent;
+const emitStoragePayloadPtrWithIndent = codegen_emit_storage_values.emitStoragePayloadPtrWithIndent;
+const emitTupleLocalSet = codegen_emit_storage_values.emitTupleLocalSet;
+const emitTupleLocalGet = codegen_emit_storage_values.emitTupleLocalGet;
+const emitTupleGetBinding = codegen_emit_storage_values.emitTupleGetBinding;
+const emitStorageContentComparisonCall = codegen_emit_storage_values.emitStorageContentComparisonCall;
+const emitManagedPayloadStorageContentComparisonCall = codegen_emit_storage_values.emitManagedPayloadStorageContentComparisonCall;
+const inferStorageContentComparisonType = codegen_storage_layout.inferStorageContentComparisonType;
+const storageContentArgCompatible = codegen_storage_layout.storageContentArgCompatible;
+const isManagedPayloadComparableType = codegen_storage_layout.isManagedPayloadComparableType;
+const emitStoragePtrLenHostArg = codegen_emit_storage_values.emitStoragePtrLenHostArg;
+const emitTupleExpr = codegen_emit_storage_values.emitTupleExpr;
+const storageBindingElemType = codegen_storage_layout.storageBindingElemType;
+const managedPayloadBinding = codegen_storage_layout.managedPayloadBinding;
+const parseStorageType = codegen_storage_layout.parseStorageType;
+const emitStorageBoundsCheck = codegen_emit_storage_operations.emitStorageBoundsCheck;
+const emitStorageWriteExpr = codegen_emit_storage_operations.emitStorageWriteExpr;
+const emitStorageSetExpr = codegen_emit_storage_operations.emitStorageSetExpr;
+const emitStoragePutCall = codegen_emit_storage_operations.emitStoragePutCall;
+const emitStoragePutExpr = codegen_emit_storage_operations.emitStoragePutExpr;
+const emitStoragePutSpreadCall = codegen_emit_storage_operations.emitStoragePutSpreadCall;
+const emitStorageSetScalarCall = codegen_emit_storage_operations.emitStorageSetScalarCall;
+const emitStoragePutSpreadScalarElement = codegen_emit_storage_operations.emitStoragePutSpreadScalarElement;
+const emitStoragePutScalarCall = codegen_emit_storage_operations.emitStoragePutScalarCall;
+const emitStorageCloneCurrentLen = codegen_emit_storage_operations.emitStorageCloneCurrentLen;
+const emitStorageCloneCurrentLenForElem = codegen_emit_storage_operations.emitStorageCloneCurrentLenForElem;
+const emitStorageCloneManagedCurrentLen = codegen_emit_storage_operations.emitStorageCloneManagedCurrentLen;
+const emitStorageCloneManagedWithLenLocal = codegen_emit_storage_operations.emitStorageCloneManagedWithLenLocal;
+const emitStorageIncCopiedManagedElements = codegen_emit_storage_operations.emitStorageIncCopiedManagedElements;
+const emitStorageCloneWithLenLocal = codegen_emit_storage_operations.emitStorageCloneWithLenLocal;
+const emitStorageCloneWithLenLocalForElem = codegen_emit_storage_operations.emitStorageCloneWithLenLocalForElem;
+const emitStorageCloneWithLenLocalTyped = codegen_emit_storage_operations.emitStorageCloneWithLenLocalTyped;
+const emitStorageIncCopiedPackElements = codegen_emit_storage_values.emitStorageIncCopiedPackElements;
+const emitStorageElementPtrFromLocal = codegen_emit_storage_operations.emitStorageElementPtrFromLocal;
+const emitStorageElementPtrFromLocalWithIndent = codegen_emit_storage_operations.emitStorageElementPtrFromLocalWithIndent;
+const emitStorageAliasProtect = codegen_emit_storage_operations.emitStorageAliasProtect;
+const emitStorageAliasRelease = codegen_emit_storage_operations.emitStorageAliasRelease;
+const emitEmptyStorageU8Value = codegen_emit_storage_values.emitEmptyStorageU8Value;
+const emitEmptyStorageForElemType = codegen_emit_storage_values.emitEmptyStorageForElemType;
+const storageElementByteWidthForType = codegen_storage_layout.storageElementByteWidthForType;
+const tuplePackSpillLocal = codegen_emit_storage_values.tuplePackSpillLocal;
+const appendStoreTupleScalarLeavesFromStack = codegen_emit_storage_values.appendStoreTupleScalarLeavesFromStack;
+const appendStoreTupleScalarLeavesFromStackCtx = codegen_emit_storage_values.appendStoreTupleScalarLeavesFromStackCtx;
+const appendStoreTupleLeavesOwningFromStack = codegen_emit_storage_values.appendStoreTupleLeavesOwningFromStack;
+const appendStoreTupleLeavesOwningFromStackCtx = codegen_emit_storage_values.appendStoreTupleLeavesOwningFromStackCtx;
+const appendIncManagedTupleLeavesOnStackCtx = codegen_emit_storage_values.appendIncManagedTupleLeavesOnStackCtx;
+const appendLoadTupleScalarLeavesToStack = codegen_emit_storage_values.appendLoadTupleScalarLeavesToStack;
+const appendLoadTupleScalarLeavesToStackCtx = codegen_emit_storage_values.appendLoadTupleScalarLeavesToStackCtx;
+const appendLoadTupleLeavesOwningToStack = codegen_emit_storage_values.appendLoadTupleLeavesOwningToStack;
+const appendLoadTupleLeavesOwningToStackCtx = codegen_emit_storage_values.appendLoadTupleLeavesOwningToStackCtx;
+const appendLoadTupleElementFromPackedBaseCtx = codegen_emit_storage_values.appendLoadTupleElementFromPackedBaseCtx;
+const appendLoadTupleLeafTypesOfStructToStack = codegen_emit_storage_values.appendLoadTupleLeafTypesOfStructToStack;
+const appendLoadTupleElementOwningFromPackedBase = codegen_emit_storage_values.appendLoadTupleElementOwningFromPackedBase;
+const emitIncManagedTupleLeavesAtBase = codegen_emit_storage_values.emitIncManagedTupleLeavesAtBase;
+const emitDecManagedTupleLeavesAtBase = codegen_emit_storage_values.emitDecManagedTupleLeavesAtBase;
+const emitNumberConst = codegen_emit_storage_values.emitNumberConst;
+const appendStoreForPayloadType = codegen_emit_storage_values.appendStoreForPayloadType;
+const appendStoreForPayloadTypeWithIndent = codegen_emit_storage_values.appendStoreForPayloadTypeWithIndent;
+const appendLoadForPayloadTypeWithIndent = codegen_emit_storage_values.appendLoadForPayloadTypeWithIndent;
+const emitTupleFieldPathGetCall = codegen_emit_storage_values.emitTupleFieldPathGetCall;
+const emitPureScalarStructLocalSet = codegen_emit_storage_values.emitPureScalarStructLocalSet;
+const emitPureScalarStructLocalGet = codegen_emit_storage_values.emitPureScalarStructLocalGet;
+const singleTupleResultItem = codegen_emit_storage_values.singleTupleResultItem;
+const isDirectManagedLocalExpr = codegen_emit_storage_values.isDirectManagedLocalExpr;
+const storagePackLayoutForElem = codegen_storage_layout.storagePackLayoutForElem;
+const tupleElementPackOffsetWithStructs = codegen_emit_storage_values.tupleElementPackOffsetWithStructs;
+const tupleFieldPathType = codegen_storage_layout.tupleFieldPathType;
+const findStructLiteralField = codegen_emit_storage_values.findStructLiteralField;
+const substituteStructFieldType = codegen_storage_layout.substituteStructFieldType;
+const isStructLiteralRhs = codegen_emit_storage_values.isStructLiteralRhs;
+const emitReplaceStoragePutSourceTmp = codegen_emit_storage_operations.emitReplaceStoragePutSourceTmp;
+const directManagedLocalExprName = codegen_emit_storage_values.directManagedLocalExprName;
+const emitOverwriteReleaseManagedLocal = codegen_emit_storage_operations.emitOverwriteReleaseManagedLocal;
+const findLocalFieldType = codegen_storage_layout.findLocalFieldType;
+const tupleGetElementInfo = codegen_emit_storage_values.tupleGetElementInfo;
+const findFuncDeclForCallHead = codegen_emit_storage_values.findFuncDeclForCallHead;
+const inferExprType = codegen_storage_layout.inferExprType;
+const findStructLiteralFieldEnd = codegen_emit_storage_values.findStructLiteralFieldEnd;
+const findStructFieldType = codegen_storage_layout.findStructFieldType;
+const localFieldNameMatches = codegen_emit_storage_values.localFieldNameMatches;
+const directManagedLastUseMoveSource = codegen_emit_storage_values.directManagedLastUseMoveSource;
+const structLiteralOpenRhs = codegen_emit_storage_values.structLiteralOpenRhs;
+const unionPayloadLocalNameFromLocals = codegen_emit_storage_values.unionPayloadLocalNameFromLocals;
+const substituteGenericType = codegen_emit_storage_values.substituteGenericType;
+const isUnionPayloadLocalName = codegen_emit_storage_values.isUnionPayloadLocalName;
+const findCallbackCallArg = codegen_emit_storage_values.findCallbackCallArg;
+const appendTupleLocalFieldsBorrowed = codegen_emit_storage_values.appendTupleLocalFieldsBorrowed;
+const findFuncDeclForCall = codegen_emit_storage_values.findFuncDeclForCall;
+const findLocalName = codegen_emit_storage_values.findLocalName;
+const emitStorageSetCall = codegen_emit_storage_operations.emitStorageSetCall;
+const emitStoragePutOneCall = codegen_emit_storage_operations.emitStoragePutOneCall;
+const callExplicitTypeArgsMatchBindings = codegen_emit_storage_values.callExplicitTypeArgsMatchBindings;
+const callArgsMatchFuncParams = codegen_emit_storage_values.callArgsMatchFuncParams;
+const hasRegisteredDeferStmt = codegen_emit_storage_values.hasRegisteredDeferStmt;
+const appendBorrowedLocalField = codegen_emit_storage_values.appendBorrowedLocalField;
+const tokenRangeUsesIdent = codegen_emit_storage_values.tokenRangeUsesIdent;
+const shouldInferBoolSpecialCall = codegen_emit_storage_values.shouldInferBoolSpecialCall;
+const isDeferStmt = codegen_emit_storage_values.isDeferStmt;
+const callArgMatchesCallbackShape = codegen_emit_storage_values.callArgMatchesCallbackShape;
+const emitStorageSetManagedCall = codegen_emit_storage_operations.emitStorageSetManagedCall;
+const emitStoragePutManagedCall = codegen_emit_storage_operations.emitStoragePutManagedCall;
+const emitManagedStorageValue = codegen_emit_storage_values.emitManagedStorageValue;
+const inferScalarAsCallType = codegen_emit_storage_values.inferScalarAsCallType;
+const findCallbackBinding = codegen_emit_storage_values.findCallbackBinding;
+const scalarAsTargetType = codegen_emit_storage_values.scalarAsTargetType;
+const callArgMatchesConcreteCallbackBinding = codegen_emit_storage_values.callArgMatchesConcreteCallbackBinding;
+const isScalarAsTargetTypeName = codegen_emit_storage_values.isScalarAsTargetTypeName;
+const inferSetCallType = codegen_storage_layout.inferSetCallType;
+const callbackBindingsHaveSameShape = codegen_emit_storage_values.callbackBindingsHaveSameShape;
+const callArgMatchesParam = codegen_emit_storage_values.callArgMatchesParam;
+const inferPutCallType = codegen_storage_layout.inferPutCallType;
+const callArgsMatchVariadicTail = codegen_emit_storage_values.callArgsMatchVariadicTail;
+const callArgMatchesUnionParam = codegen_emit_storage_values.callArgMatchesUnionParam;
+const unionTypeNameHasBranch = codegen_emit_storage_values.unionTypeNameHasBranch;
+const inferFieldGetCallType = codegen_storage_layout.inferFieldGetCallType;
+const funcVariadicElemType = codegen_emit_storage_values.funcVariadicElemType;
+const inferFieldSetCallType = codegen_storage_layout.inferFieldSetCallType;
+const findFieldMetaLocal = codegen_emit_storage_values.findFieldMetaLocal;
+const structLiteralExprMatchesType = codegen_emit_storage_values.structLiteralExprMatchesType;
+const inferGetCallType = codegen_storage_layout.inferGetCallType;
+const lambdaExprShape = codegen_emit_storage_values.lambdaExprShape;
+const lambdaParamCount = codegen_emit_storage_values.lambdaParamCount;
+const callbackBindingHasSameConcreteArg = codegen_emit_storage_values.callbackBindingHasSameConcreteArg;
+const valueEnumBranchValue = codegen_emit_storage_values.valueEnumBranchValue;
+const inferTupleFieldPathGetType = codegen_storage_layout.inferTupleFieldPathGetType;
+const appendManagedStructFieldMetaLocal = codegen_emit_storage_values.appendManagedStructFieldMetaLocal;
+const fieldFromMeta = codegen_emit_storage_values.fieldFromMeta;
+const findStructField = codegen_storage_layout.findStructField;
+const unionLocalDefaultPayloadType = codegen_storage_layout.unionLocalDefaultPayloadType;
+const unionLocalDefaultStructPayload = codegen_emit_storage_values.unionLocalDefaultStructPayload;
+const findNarrowedUnionType = codegen_storage_layout.findNarrowedUnionType;
+const isDotIdent = codegen_emit_storage_values.isDotIdent;
+const isArrowAt = codegen_emit_storage_values.isArrowAt;
+const lambdaBodyStart = codegen_emit_storage_values.lambdaBodyStart;
+const lambdaParamTypeName = codegen_storage_layout.lambdaParamTypeName;
+const lambdaExplicitReturnType = codegen_storage_layout.lambdaExplicitReturnType;
+const appendTypedLocalWithDecl = codegen_emit_storage_values.appendTypedLocalWithDecl;
+const appendTypedLocal = codegen_emit_storage_values.appendTypedLocal;
+const inferLambdaExprReturnType = codegen_storage_layout.inferLambdaExprReturnType;
+const cloneLocalSet = codegen_emit_storage_values.cloneLocalSet;
+const callbackFunctionMatchesShape = codegen_emit_storage_values.callbackFunctionMatchesShape;
+const callbackLambdaReturnMatchesShape = codegen_emit_storage_values.callbackLambdaReturnMatchesShape;
+const findCallbackRefFunc = codegen_emit_storage_values.findCallbackRefFunc;
+const lambdaExplicitTypesMatchShape = codegen_emit_storage_values.lambdaExplicitTypesMatchShape;
+const typeBaseName = codegen_emit_storage_values.typeBaseName;
+const valueEnumTypeMatchesImportAlias = codegen_emit_storage_values.valueEnumTypeMatchesImportAlias;
+const findValueEnumBranchValue = codegen_emit_storage_values.findValueEnumBranchValue;
+const valueEnumBranchValueInLine = codegen_emit_storage_values.valueEnumBranchValueInLine;
+const valueEnumSourceMatchesImport = codegen_emit_storage_values.valueEnumSourceMatchesImport;
+const managedPayloadElemTypeFromName = codegen_storage_layout.managedPayloadElemTypeFromName;
+const absResultType = codegen_emit_storage_values.absResultType;
+const inferFirstArgTypeOrDefaultS32 = codegen_emit_storage_values.inferFirstArgTypeOrDefaultS32;
+const wasiDoResultType = codegen_emit_storage_values.wasiDoResultType;
+const memoryLoadResultType = codegen_emit_storage_values.memoryLoadResultType;
+const inferPathGetCallType = codegen_emit_storage_values.inferPathGetCallType;
+const inferManagedStructExprFieldType = codegen_emit_storage_values.inferManagedStructExprFieldType;
+const findConcreteStructFieldTypeNoAlloc = codegen_emit_storage_values.findConcreteStructFieldTypeNoAlloc;
+const genericTypeArgAt = codegen_emit_storage_values.genericTypeArgAt;
+const emitManagedHandleCallExprWithMoveContext = codegen_emit_storage_values.emitManagedHandleCallExprWithMoveContext;
+const emitStorageHandleBindingExpr = codegen_emit_storage_values.emitStorageHandleBindingExpr;
+const emitTupleCallBinding = codegen_emit_storage_values.emitTupleCallBinding;
+const emitFieldReflectionBody = codegen_emit_struct_fields.emitFieldReflectionBody;
+const emitFieldReflectionLoopBlock = codegen_emit_struct_fields.emitFieldReflectionLoopBlock;
+const emitManagedStructFieldSet = codegen_emit_struct_fields.emitManagedStructFieldSet;
+const emitStructBinding = codegen_emit_struct.emitStructBinding;
+const emitStructFieldValue = codegen_emit_struct_fields.emitStructFieldValue;
+const emitUnmanagedStructCallBinding = codegen_emit_struct.emitUnmanagedStructCallBinding;
+const emitUnmanagedStructErrorUnionReturn = codegen_emit_struct.emitUnmanagedStructErrorUnionReturn;
+const emitUserFuncArg = codegen_emit_struct.emitUserFuncArg;
+const emitStructFieldMetaSetAssignment = codegen_emit_struct_fields.emitStructFieldMetaSetAssignment;
+const emitStructLiteralExpr = codegen_emit_struct.emitStructLiteralExpr;
+const emitStructSetAssignment = codegen_emit_struct.emitStructSetAssignment;
+const fieldStaticValuesEqual = codegen_emit_struct_fields.fieldStaticValuesEqual;
+const fieldReflectionLocalVisible = codegen_emit_struct_fields.fieldReflectionLocalVisible;
+const appendUnionPayloadLocalGet = codegen_emit_struct.appendUnionPayloadLocalGet;
+const resolvedLocalName = codegen_emit_struct.resolvedLocalName;
+const appendUnionTagLocalGet = codegen_emit_struct.appendUnionTagLocalGet;
+const appendUnionTagLocalSet = codegen_emit_struct.appendUnionTagLocalSet;
+const isManagedStructField = codegen_emit_struct.isManagedStructField;
+const structLocalSourceName = codegen_emit_struct.structLocalSourceName;
+const stmtContainsStructLiteralExpr = codegen_emit_struct.stmtContainsStructLiteralExpr;
+const fieldReflectionLocalNamePrefix = codegen_emit_struct_fields.fieldReflectionLocalNamePrefix;
+const emitUnmanagedStructReturnLocal = codegen_emit_struct.emitUnmanagedStructReturnLocal;
+const emitStructFieldLocalGet = codegen_emit_struct_fields.emitStructFieldLocalGet;
+const emitStructFieldLocalSet = codegen_emit_struct_fields.emitStructFieldLocalSet;
+const emitStructFieldsFromLocal = codegen_emit_struct_fields.emitStructFieldsFromLocal;
+const emitManagedStructSetBinding = codegen_emit_struct.emitManagedStructSetBinding;
+const emitManagedStructFields = codegen_emit_struct.emitManagedStructFields;
+const emitManagedStructCloneWithFieldSet = codegen_emit_struct.emitManagedStructCloneWithFieldSet;
+const appendManagedStructFieldPtr = codegen_emit_struct_fields.appendManagedStructFieldPtr;
+const fieldReflectionIfParts = codegen_emit_struct_fields.fieldReflectionIfParts;
+const fieldStaticBoolExpr = codegen_emit_struct_fields.fieldStaticBoolExpr;
+const fieldStaticValue = codegen_emit_struct_fields.fieldStaticValue;
+const fieldVisibleFromTokens = codegen_emit_struct_fields.fieldVisibleFromTokens;
+const isPrivateFieldName = codegen_emit_struct_fields.isPrivateFieldName;
+const typedStructBinding = codegen_emit_struct.typedStructBinding;
+const inferredStructBinding = codegen_emit_struct.inferredStructBinding;
+const emitManagedStructExprFieldGet = codegen_emit_struct_fields.emitManagedStructExprFieldGet;
+const emitFieldReflectionIntrinsic = codegen_emit_struct_fields.emitFieldReflectionIntrinsic;
+const emitFieldGetCall = codegen_emit_struct_fields.emitFieldGetCall;
+const emitUnmanagedStructFieldGet = codegen_emit_struct_fields.emitUnmanagedStructFieldGet;
+const emitStructSetExpr = codegen_emit_struct.emitStructSetExpr;
+const borrowedFieldMetaLocalSet = codegen_emit_struct_fields.borrowedFieldMetaLocalSet;
+const singleFieldMetaArg = codegen_emit_struct_fields.singleFieldMetaArg;
+const fieldGetLastUseMoveSource = codegen_emit_struct_fields.fieldGetLastUseMoveSource;
+const unmanagedStructErrorUnionResult = codegen_emit_struct.unmanagedStructErrorUnionResult;
+const freshStructLiteralBindingStmtEnd = codegen_emit_struct.freshStructLiteralBindingStmtEnd;
+const emitZeroValueForType = codegen_emit_struct.emitZeroValueForType;
+const collectFieldReflectionBodyLocals = codegen_emit_struct_fields.collectFieldReflectionBodyLocals;
+const appendUnionPayloadLocalSet = codegen_emit_struct.appendUnionPayloadLocalSet;
+const applyGuardReturnNilNarrowing = codegen_emit_struct.applyGuardReturnNilNarrowing;
+const applyGuardReturnIsNarrowing = codegen_emit_struct.applyGuardReturnIsNarrowing;
+const applyGuardLoopControlNarrowing = codegen_emit_struct.applyGuardLoopControlNarrowing;
+const nilComparisonNarrowing = codegen_emit_struct.nilComparisonNarrowing;
+const isComparisonNarrowing = codegen_emit_struct.isComparisonNarrowing;
+const singleIdentExpr = codegen_emit_struct.singleIdentExpr;
+const singleNilExpr = codegen_emit_struct.singleNilExpr;
+const unionLocalSingleNonNilPayloadType = codegen_emit_struct.unionLocalSingleNonNilPayloadType;
+const unionLocalSingleRemainingPayloadType = codegen_emit_struct.unionLocalSingleRemainingPayloadType;
+const trimTrailingComma = codegen_emit_struct.trimTrailingComma;
+const applyCollectGuardReturnNarrowing = codegen_emit_struct.applyCollectGuardReturnNarrowing;
+const mergeReturnCleanupLocals = codegen_emit_struct.mergeReturnCleanupLocals;
+const fieldReflectionScopedCleanupLocalSet = codegen_emit_struct_fields.fieldReflectionScopedCleanupLocalSet;
+const emitUnionReturn = codegen_emit_union.emitUnionReturn;
+const emitUnionValue = codegen_emit_union.emitUnionValue;
+const emitUnionFieldGetValue = codegen_emit_union.emitUnionFieldGetValue;
+const emitUnionBranchValue = codegen_emit_union.emitUnionBranchValue;
+const emitUnionBranchPayload = codegen_emit_union.emitUnionBranchPayload;
+const unionLayoutsAbiCompatible = codegen_emit_union.unionLayoutsAbiCompatible;
+const cloneUnionLayoutSubstituted = codegen_emit_union.cloneUnionLayoutSubstituted;
+const buildPayloadEnumUnionLayout = codegen_emit_union.buildPayloadEnumUnionLayout;
+const findUnionBranchByCompatibleType = codegen_emit_union.findUnionBranchByCompatibleType;
+const emitUnionStructPayloadForType = codegen_emit_union.emitUnionStructPayloadForType;
+const emitUnionIsCall = codegen_emit_union.emitUnionIsCall;
+const collectUnionIsTags = codegen_emit_union.collectUnionIsTags;
+const emitUnionNilComparison = codegen_emit_union.emitUnionNilComparison;
+const emitUnionExprTagAndDiscardPayload = codegen_emit_union.emitUnionExprTagAndDiscardPayload;
+const unionPayloadComparisonCallBranch = codegen_emit_union.unionPayloadComparisonCallBranch;
+const emitUnionErrorBranchComparison = codegen_emit_union.emitUnionErrorBranchComparison;
+const errorBranchValueForComparison = codegen_emit_union.errorBranchValueForComparison;
+const emitUnionLocalPayloadForType = codegen_emit_union.emitUnionLocalPayloadForType;
+const emitUnionBinding = codegen_emit_union.emitUnionBinding;
+const emitUnionStructFieldGetCall = codegen_emit_union.emitUnionStructFieldGetCall;
+const importedErrorBranchValue = codegen_emit_union.importedErrorBranchValue;
+const collectUnionReturnMoveNames = codegen_emit_union.collectUnionReturnMoveNames;
+const unionLayoutHasSinglePayloadAbiType = codegen_emit_union.unionLayoutHasSinglePayloadAbiType;
+const unionPayloadComparisonBranchForValue = codegen_emit_union.unionPayloadComparisonBranchForValue;
+const emitUnionPayloadComparisonCall = codegen_emit_union.emitUnionPayloadComparisonCall;
+const emitUnionPayloadComparisonLocal = codegen_emit_union.emitUnionPayloadComparisonLocal;
+const unionPayloadComparisonBranchForLocalValue = codegen_emit_union.unionPayloadComparisonBranchForLocalValue;
+const unionLocalSingleIdent = codegen_emit_union.unionLocalSingleIdent;
+const findStorageReadableLocalName = codegen_emit_union.findStorageReadableLocalName;
+const emitUnionStoragePayloadGetCall = codegen_emit_union.emitUnionStoragePayloadGetCall;
+const isCodegenScalarType = codegen_emit_union.isCodegenScalarType;
+const isUnsignedScalar = codegen_emit_union.isUnsignedScalar;
+const comparisonWasmOp = codegen_emit_union.comparisonWasmOp;
+const collectDirectBodyLocals = codegen_emit_control.collectDirectBodyLocals;
+const fieldReflectionLoopHeader = codegen_emit_control.fieldReflectionLoopHeader;
+const collectionLoopHeader = codegen_emit_control.collectionLoopHeader;
+const recvLoopHeader = codegen_emit_control.recvLoopHeader;
+const parseCollectionLoopBinds = codegen_emit_control.parseCollectionLoopBinds;
+const parseRecvLoopBinds = codegen_emit_control.parseRecvLoopBinds;
+const loopBindName = codegen_emit_control.loopBindName;
+const emitReturnStmt = codegen_emit_control.emitReturnStmt;
+const emitSelfTailReturn = codegen_emit_control.emitSelfTailReturn;
+const emitMultiResultReturnValues = codegen_emit_control.emitMultiResultReturnValues;
+const emitMultiResultReturnAbiValues = codegen_emit_control.emitMultiResultReturnAbiValues;
+const emitSingleReturnAbiValue = codegen_emit_control.emitSingleReturnAbiValue;
+const emitMultiResultReturnCall = codegen_emit_control.emitMultiResultReturnCall;
+const collectLoopControlFrames = codegen_emit_control.collectLoopControlFrames;
+const isDeadManagedAliasBinding = codegen_emit_control.isDeadManagedAliasBinding;
+const emitBody = codegen_emit_control.emitBody;
+const isCollectedTypedStorageBinding = codegen_emit_control.isCollectedTypedStorageBinding;
+const isDiscardAssignment = codegen_emit_control.isDiscardAssignment;
+const discardExprIsPureNoop = codegen_emit_control.discardExprIsPureNoop;
+const emitDiscardStackValue = codegen_emit_control.emitDiscardStackValue;
+const emitDiscardAssignment = codegen_emit_control.emitDiscardAssignment;
+const emitDeferCleanupStack = codegen_emit_control.emitDeferCleanupStack;
+const emitDeferCleanupStackThrough = codegen_emit_control.emitDeferCleanupStackThrough;
+const applyIfBlockFallthroughNarrowing = codegen_emit_control.applyIfBlockFallthroughNarrowing;
+const sameDeferScope = codegen_emit_control.sameDeferScope;
+const emitDeferredCleanupsForContext = codegen_emit_control.emitDeferredCleanupsForContext;
+const parseDeferItem = codegen_emit_control.parseDeferItem;
+const emitDeferCleanupItem = codegen_emit_control.emitDeferCleanupItem;
+const emitDeferCleanupCall = codegen_emit_control.emitDeferCleanupCall;
+const emitDeferCleanupBlock = codegen_emit_control.emitDeferCleanupBlock;
+const emitManagedLocalAssignment = codegen_emit_control.emitManagedLocalAssignment;
+const emitScalarCallExprWithMoveContext = codegen_emit_control.emitScalarCallExprWithMoveContext;
+const emitScalarAssignment = codegen_emit_control.emitScalarAssignment;
+const emitInferredScalarBinding = codegen_emit_control.emitInferredScalarBinding;
+const appendNilComparisonNarrowingForBranch = codegen_emit_control.appendNilComparisonNarrowingForBranch;
+const appendConditionNarrowingForBranch = codegen_emit_control.appendConditionNarrowingForBranch;
+const isHostImportCallExpr = codegen_emit_control.isHostImportCallExpr;
+const isWasiHostImportCallExpr = codegen_emit_control.isWasiHostImportCallExpr;
+const typedScalarBindingType = codegen_emit_control.typedScalarBindingType;
+const inferredScalarBindingType = codegen_emit_control.inferredScalarBindingType;
+const isManagedLocalAssignmentStmt = codegen_emit_control.isManagedLocalAssignmentStmt;
+const typedStructBindingDecl = codegen_emit_control.typedStructBindingDecl;
+const inferredStructCtorBinding = codegen_emit_control.inferredStructCtorBinding;
+const clearNarrowedUnionLocalsForAssignments = codegen_emit_control.clearNarrowedUnionLocalsForAssignments;
+const clearNarrowedUnionLocal = codegen_emit_control.clearNarrowedUnionLocal;
+const emitGuardReturnIf = codegen_emit_control.emitGuardReturnIf;
+const emitLoopBlock = codegen_emit_control.emitLoopBlock;
+const emitCollectionLoopBlock = codegen_emit_control.emitCollectionLoopBlock;
+const emitCollectionLoopBindings = codegen_emit_control.emitCollectionLoopBindings;
+const emitRecvLoopBlock = codegen_emit_control.emitRecvLoopBlock;
+const emitRecvLoopBindings = codegen_emit_control.emitRecvLoopBindings;
+const emitLoopControlStmt = codegen_emit_control.emitLoopControlStmt;
+const emitGuardLoopControlIf = codegen_emit_control.emitGuardLoopControlIf;
+const emitLoopControlJump = codegen_emit_control.emitLoopControlJump;
+const validLoopControlTail = codegen_emit_control.validLoopControlTail;
+const resolveLoopControl = codegen_emit_control.resolveLoopControl;
+const emitLoopControlReleaseChain = codegen_emit_control.emitLoopControlReleaseChain;
+const emitIfBlock = codegen_emit_control.emitIfBlock;
+const isCodegenScalarOrErrorType = codegen_emit_control.isCodegenScalarOrErrorType;
+const emitReleaseManagedLocals = gen_ownership.emitReleaseManagedLocals;
+const emitReleaseManagedLocalsExcept = gen_ownership.emitReleaseManagedLocalsExcept;
+const emitReleaseManagedLocalsExceptMany = gen_ownership.emitReleaseManagedLocalsExceptMany;
+const emitFallthroughReleaseManagedLocals = gen_ownership.emitFallthroughReleaseManagedLocals;
+const emitBlockReleaseManagedLocals = gen_ownership.emitBlockReleaseManagedLocals;
+const hasManagedLocals = gen_ownership.hasManagedLocals;
+const managedLocalKindForType = gen_ownership.managedLocalKindForType;
+const collectManagedOwnershipLocals = gen_ownership.collectManagedOwnershipLocals;
+const buildReturnOwnershipPlan = gen_ownership.buildReturnOwnershipPlan;
+const buildGuardReturnOwnershipPlan = gen_ownership.buildGuardReturnOwnershipPlan;
+const buildFallthroughOwnershipPlan = gen_ownership.buildFallthroughOwnershipPlan;
+const buildBlockOwnershipPlan = gen_ownership.buildBlockOwnershipPlan;
+const emitOwnershipReleasePlan = gen_ownership.emitOwnershipReleasePlan;
+const bodyEndsWithPlainReturn = gen_ownership.bodyEndsWithPlainReturn;
+const bodyCanReachEnd = gen_ownership.bodyCanReachEnd;
+const stmtCanReachEnd = gen_ownership.stmtCanReachEnd;
+const ifStmtCanReachEnd = gen_ownership.ifStmtCanReachEnd;
+const loopStmtCanReachEnd = gen_ownership.loopStmtCanReachEnd;
+const loopBodyCanBreakCurrentLoop = gen_ownership.loopBodyCanBreakCurrentLoop;
+const stmtBreaksCurrentLoop = gen_ownership.stmtBreaksCurrentLoop;
+const breakTargetsCurrentLoop = gen_ownership.breakTargetsCurrentLoop;
+const tokenRangeContainsLabeledBreak = gen_ownership.tokenRangeContainsLabeledBreak;
+const sameLoopControl = gen_ownership.sameLoopControl;
+const findTopLevelGuardLoopControl = gen_ownership.findTopLevelGuardLoopControl;
+const labelForLoopStart = gen_ownership.labelForLoopStart;
+const previousLineStart = gen_ownership.previousLineStart;
+
+pub const emitWasiRecordReturnCall = codegen_emit_wasi.emitWasiRecordReturnCall;
+pub const emitWasiRecordResultFields = codegen_emit_wasi.emitWasiRecordResultFields;
+
+const codegen_emit_call = @import("codegen_emit_call.zig");
+const appendStructFieldAbiParams = codegen_emit_call.appendStructFieldAbiParams;
+const resolveUnionLayoutForTypeName = codegen_emit_call.resolveUnionLayoutForTypeName;
+const factsSourceOrigin = codegen_emit_call.factsSourceOrigin;
+const directManagedCallLastUseMoveSource = codegen_emit_call.directManagedCallLastUseMoveSource;
+const directManagedUnionBindingCallMoveSource = codegen_emit_call.directManagedUnionBindingCallMoveSource;
+const hasMoveSource = codegen_emit_call.hasMoveSource;
+const emitMultiResultAssignment = codegen_emit_call.emitMultiResultAssignment;
+const emitMultiResultLhsSet = codegen_emit_call.emitMultiResultLhsSet;
+const emitCoreOpArgs = codegen_emit_call.emitCoreOpArgs;
+const emitIntrinsicCall = codegen_emit_call.emitIntrinsicCall;
+const emitNumericUnarySelectCall = codegen_emit_call.emitNumericUnarySelectCall;
+const emitNumericBinarySelectCall = codegen_emit_call.emitNumericBinarySelectCall;
+const appendNumericSelectFromTemps = codegen_emit_call.appendNumericSelectFromTemps;
+const emitBareUserFuncCall = codegen_emit_call.emitBareUserFuncCall;
+const emitBareUserFuncCallWithMoveContext = codegen_emit_call.emitBareUserFuncCallWithMoveContext;
+const emitBoolSpecialCall = codegen_emit_call.emitBoolSpecialCall;
+const shouldEmitBoolSpecialCall = codegen_emit_call.shouldEmitBoolSpecialCall;
+const emitShortCircuitAnd = codegen_emit_call.emitShortCircuitAnd;
+const emitShortCircuitOr = codegen_emit_call.emitShortCircuitOr;
+const appendFuncParamStructFields = codegen_emit_call.appendFuncParamStructFields;
+const appendFuncParamLocals = codegen_emit_call.appendFuncParamLocals;
+const funcHasCallbackParams = codegen_emit_call.funcHasCallbackParams;
+const emitLenCall = codegen_emit_call.emitLenCall;
+const emitTupleStructLocalGet = codegen_emit_call.emitTupleStructLocalGet;
+const emitGetCall = codegen_emit_call.emitGetCall;
+const emitPathGetCall = codegen_emit_call.emitPathGetCall;
+const emitPathGetSegment = codegen_emit_call.emitPathGetSegment;
+const emitPathGetIndexSegment = codegen_emit_call.emitPathGetIndexSegment;
+const emitPathGetFieldSegment = codegen_emit_call.emitPathGetFieldSegment;
+const ensurePathGetCurrentLocal = codegen_emit_call.ensurePathGetCurrentLocal;
+const releasePathGetCurrentIfOwned = codegen_emit_call.releasePathGetCurrentIfOwned;
+const emitMemoryLoadCall = codegen_emit_call.emitMemoryLoadCall;
+const emitScalarAsCall = codegen_emit_call.emitScalarAsCall;
+const appendCallbackArgAliasLocals = codegen_emit_call.appendCallbackArgAliasLocals;
+const emitCallbackBindingLambdaCall = codegen_emit_call.emitCallbackBindingLambdaCall;
+const lambdaShapeIsBlock = codegen_emit_call.lambdaShapeIsBlock;
+const emitCallbackBindingFuncRefCall = codegen_emit_call.emitCallbackBindingFuncRefCall;
+const emitCallbackBindingCall = codegen_emit_call.emitCallbackBindingCall;
+const emitUserFuncCall = codegen_emit_call.emitUserFuncCall;
+const emitUserFuncCallWithMoveContext = codegen_emit_call.emitUserFuncCallWithMoveContext;
+const emitUserFuncCallWithUnionBindingMove = codegen_emit_call.emitUserFuncCallWithUnionBindingMove;
+const emitVariadicPackArg = codegen_emit_call.emitVariadicPackArg;
+const absSourceTypeFromResult = codegen_emit_call.absSourceTypeFromResult;
+const numericSelectTemps = codegen_emit_call.numericSelectTemps;
+const numericSelectLeftTmp = codegen_emit_call.numericSelectLeftTmp;
+const bitwiseWasmOp = codegen_emit_call.bitwiseWasmOp;
+const countBitsWasmOp = codegen_emit_call.countBitsWasmOp;
+const floatUnaryWasmOp = codegen_emit_call.floatUnaryWasmOp;
+const floatBinaryWasmOp = codegen_emit_call.floatBinaryWasmOp;
+const numericWasmOp = codegen_emit_call.numericWasmOp;
+const scalarConvertWasmOp = codegen_emit_call.scalarConvertWasmOp;
+const memoryLoadWasmOp = codegen_emit_call.memoryLoadWasmOp;
+const memoryLoadByteWidth = codegen_emit_call.memoryLoadByteWidth;
+const appendTupleParamAbi = codegen_emit_call.appendTupleParamAbi;
+
+pub fn emitStartFunc(allocator: std.mem.Allocator, tokens: []const lexer.Token, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
+    const start_idx = findStartFunc(tokens) orelse return;
+    const open_params = start_idx + 1;
+    const close_params = try findMatching(tokens, open_params, "(", ")");
+    const open_body = findToken(tokens, close_params + 1, tokens.len, "{") orelse return;
+    const close_body = try findMatching(tokens, open_body, "{", "}");
+
+    var locals = LocalSet{};
+    defer locals.deinit(allocator);
+    try collect_body_locals(allocator, tokens, open_body + 1, close_body, ctx, &locals);
+    var cleanup_locals = LocalSet{};
+    defer cleanup_locals.deinit(allocator);
+    try collectDirectBodyLocals(allocator, tokens, open_body + 1, close_body, ctx, &cleanup_locals);
+
+    try function_body_wat.emitFuncOpen(allocator, out, "_start");
+    for (locals.locals.items) |local| {
+        if (!local.emit_decl) continue;
+        try function_body_wat.emitLocalDecl(allocator, out, local.name, codegenWasmType(ctx, local.ty));
+    }
+    const no_results: []const []const u8 = &.{};
+    const root_defer = DeferContext{
+        .parent = null,
+        .start_idx = open_body + 1,
+        .end_idx = close_body,
+        .registered_end_idx = close_body,
+    };
+    var backend_ir_body = std.ArrayList(u8).empty;
+    defer backend_ir_body.deinit(allocator);
+    const emitted_backend_ir = try emitScalarNumericStartWithBackendIr(allocator, tokens, open_body + 1, close_body, &locals, ctx, &backend_ir_body);
+    if (emitted_backend_ir) {
+        try out.appendSlice(allocator, "    ;; backend-ir-lowering scalar-numeric-start\n");
+        try out.appendSlice(allocator, backend_ir_body.items);
+    }
+    if (!emitted_backend_ir) {
+        try codegen_callbacks.emitBody(allocator, tokens, open_body + 1, close_body, open_body + 1, &locals, &cleanup_locals, &EMPTY_LOCAL_SET, ctx, no_results, NO_RESULT_ITEMS, null, null, null, &root_defer, null, null, out);
+    }
+    if (!bodyEndsWithPlainReturn(tokens, open_body + 1, close_body)) {
+        try emitFallthroughReleaseManagedLocals(allocator, &cleanup_locals, ctx, out);
+    }
+    try function_body_wat.emitFuncClose(allocator, out);
+    try function_body_wat.emitFuncExport(allocator, out, "_start", "_start");
+}
+
+const BackendIrLocal = struct {
+    name: []const u8,
+    value: backend_ir.ValueId,
+};
+
+pub fn emitScalarNumericStartWithBackendIr(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
+    var func = try backend_ir.Function.create(allocator, "_start_ir");
+    defer func.deinit(allocator);
+    const block_id = try func.addBlockId(allocator);
+
+    var ir_locals = std.ArrayList(BackendIrLocal).empty;
+    defer ir_locals.deinit(allocator);
+
+    var i = start_idx;
+    var saw_return = false;
+    while (i < end_idx) {
+        const stmt_end = findStmtEnd(tokens, i, end_idx);
+        if (isPlainNilReturnStmt(tokens, i, stmt_end)) {
+            try func.setTerminator(block_id, .ret);
+            saw_return = true;
+            i = stmt_end;
+            continue;
+        }
+
+        const scalar_ty = typedScalarBindingType(tokens, i, stmt_end, ctx) orelse return false;
+        if (!std.mem.eql(u8, scalar_ty, "i32")) return false;
+        const eq_idx = findTopLevelToken(tokens, i + 1, stmt_end, "=") orelse return false;
+        const target_source_name = tokens[i].lexeme;
+        const target_name = resolvedLocalName(locals.locals.items, target_source_name);
+        const value = func.allocValue();
+        try func.setValueName(allocator, value, target_name);
+        try ir_locals.append(allocator, .{ .name = target_source_name, .value = value });
+        try ir_locals.append(allocator, .{ .name = target_name, .value = value });
+
+        if (!try appendScalarNumericExprIr(allocator, tokens, eq_idx + 1, stmt_end, "i32", &func, block_id, ir_locals.items)) {
+            return false;
+        }
+        try func.appendInstr(allocator, block_id, .{ .local_set = value });
+        i = stmt_end;
+    }
+    if (!saw_return) return false;
+
+    const body = try backend_ir.emitFunctionBodyWat(allocator, &func);
+    defer allocator.free(body);
+    try out.appendSlice(allocator, body);
+    return true;
+}
+
+pub fn isPlainNilReturnStmt(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    return start_idx + 1 == end_idx and tokEq(tokens[start_idx], "return");
+}
+
+pub fn appendScalarNumericExprIr(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, expected_ty: []const u8, func: *backend_ir.Function, block_id: backend_ir.BlockId, ir_locals: []const BackendIrLocal) CodegenError!bool {
+    if (!std.mem.eql(u8, expected_ty, "i32")) return false;
+    const range = trimParens(tokens, start_idx, end_idx);
+    if (range.start >= range.end) return false;
+
+    if (range.start + 1 == range.end) {
+        const tok = tokens[range.start];
+        if (tok.kind == .number) {
+            const value = std.fmt.parseInt(i32, tok.lexeme, 0) catch return false;
+            try func.appendInstr(allocator, block_id, .{ .const_value = .{ .i32 = value } });
+            return true;
+        }
+        if (tok.kind == .ident) {
+            const local = findBackendIrLocal(ir_locals, tok.lexeme) orelse return false;
+            try func.appendInstr(allocator, block_id, .{ .local_get = local });
+            return true;
+        }
+        return false;
+    }
+
+    const call_head = exprCallHead(tokens, range) orelse return false;
+    if (!call_head.is_intrinsic) return false;
+    const op = numericCoreIrOp(tokens[call_head.name_idx].lexeme) orelse return false;
+
+    var arg_start = call_head.args_start;
+    var emitted = false;
+    while (arg_start < call_head.args_end) {
+        const arg_end = findArgEnd(tokens, arg_start, call_head.args_end);
+        if (!try appendScalarNumericExprIr(allocator, tokens, arg_start, arg_end, expected_ty, func, block_id, ir_locals)) {
+            return false;
+        }
+        if (emitted) {
+            try func.appendInstr(allocator, block_id, .{ .numeric = .{ .ty = .i32, .op = op } });
+        }
+        emitted = true;
+        arg_start = arg_end;
+        if (arg_start < call_head.args_end and tokEq(tokens[arg_start], ",")) arg_start += 1;
+    }
+    return emitted;
+}
+
+pub fn findBackendIrLocal(ir_locals: []const BackendIrLocal, name: []const u8) ?backend_ir.ValueId {
+    for (ir_locals) |local| {
+        if (std.mem.eql(u8, local.name, name)) return local.value;
+    }
+    return null;
+}
+
+pub fn numericCoreIrOp(name: []const u8) ?backend_ir.NumericOp {
+    if (std.mem.eql(u8, name, "add")) return .add;
+    if (std.mem.eql(u8, name, "sub")) return .sub;
+    if (std.mem.eql(u8, name, "mul")) return .mul;
+    return null;
+}
+
+pub fn emitTestFuncs(allocator: std.mem.Allocator, tokens: []const lexer.Token, test_decls: []const test_runner.TestDecl, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
+    for (test_decls, 0..) |decl, idx| {
+        try function_body_wat.emitCompiledTestOpen(allocator, out, idx, decl.name_lexeme);
+
+        var locals = LocalSet{};
+        defer locals.deinit(allocator);
+        try collect_body_locals(allocator, tokens, decl.body_start, decl.body_end, ctx, &locals);
+        var cleanup_locals = LocalSet{};
+        defer cleanup_locals.deinit(allocator);
+        try collectDirectBodyLocals(allocator, tokens, decl.body_start, decl.body_end, ctx, &cleanup_locals);
+
+        for (locals.locals.items) |local| {
+            if (!local.emit_decl) continue;
+            try function_body_wat.emitLocalDecl(allocator, out, local.name, codegenWasmType(ctx, local.ty));
+        }
+        const no_results: []const []const u8 = &.{};
+        const root_defer = DeferContext{
+            .parent = null,
+            .start_idx = decl.body_start,
+            .end_idx = decl.body_end,
+            .registered_end_idx = decl.body_end,
+        };
+        try codegen_callbacks.emitBody(allocator, tokens, decl.body_start, decl.body_end, decl.body_start, &locals, &cleanup_locals, &EMPTY_LOCAL_SET, ctx, no_results, NO_RESULT_ITEMS, null, null, null, &root_defer, null, null, out);
+        if (!bodyEndsWithPlainReturn(tokens, decl.body_start, decl.body_end)) {
+            try emitFallthroughReleaseManagedLocals(allocator, &cleanup_locals, ctx, out);
+        }
+        try out.appendSlice(allocator, "    unreachable\n");
+        try function_body_wat.emitFuncClose(allocator, out);
+        try function_body_wat.emitCompiledTestExport(allocator, out, idx);
+    }
+}
+
+pub fn emitUserFuncs(allocator: std.mem.Allocator, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
+    for (ctx.functions) |func| {
+        if (func.is_generic_template) continue;
+        if (funcHasCallbackParams(func) and func.callback_bindings.len == 0) continue;
+        try emitUserFunc(allocator, func, ctx, out);
+    }
+}
+
+pub fn emitUserFunc(allocator: std.mem.Allocator, func: FuncDecl, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
+    var func_ctx = ctx;
+    func_ctx.type_bindings = func.type_bindings;
+    func_ctx.callback_bindings = func.callback_bindings;
+    var signature_owned_types = std.ArrayList([]const u8).empty;
+    defer {
+        for (signature_owned_types.items) |owned| allocator.free(owned);
+        signature_owned_types.deinit(allocator);
+    }
+
+    const tokens = func.tokens;
+    try appendFmt(allocator, out, "  (func ${s}", .{func.name});
+    for (func.params) |param| {
+        if (param.callback != null) continue;
+        const abi_ty = funcParamAbiType(param);
+        if (try resolveUnionLayoutForTypeName(allocator, tokens, abi_ty, func_ctx, &signature_owned_types)) |layout| {
+            defer freeUnionLayout(allocator, layout);
+            for (layout.payload_tys, 0..) |payload_ty, idx| {
+                try appendFmt(allocator, out, " (param ${s}.__union_payload_{d} {s})", .{
+                    param.name,
+                    idx,
+                    codegenWasmType(func_ctx, payload_ty),
+                });
+            }
+            try appendFmt(allocator, out, " (param ${s}.__union_tag i32)", .{param.name});
+            continue;
+        }
+        if (findStructDecl(func_ctx.structs, abi_ty)) |decl| {
+            if (findStructLayout(func_ctx.struct_layouts, abi_ty) == null) {
+                try appendUnmanagedStructParamFields(allocator, tokens, out, param.name, decl, abi_ty, func_ctx, &signature_owned_types);
+                continue;
+            }
+        }
+        if (isTupleTypeName(abi_ty)) {
+            try appendTupleParamAbi(allocator, out, param.name, abi_ty, func_ctx);
+            continue;
+        }
+        try appendFmt(allocator, out, " (param ${s} {s})", .{ param.name, codegenWasmType(func_ctx, abi_ty) });
+    }
+    if (func.results.len != 0) {
+        try out.appendSlice(allocator, " (result");
+        for (func.results) |result| {
+            try appendFmt(allocator, out, " {s}", .{codegenWasmType(func_ctx, result)});
+        }
+        try out.appendSlice(allocator, ")");
+    }
+    try out.appendSlice(allocator, "\n");
+
+    var locals = LocalSet{};
+    defer locals.deinit(allocator);
+    try appendFuncParamLocals(allocator, func, func_ctx, &locals);
+    try collect_body_locals(allocator, tokens, func.body_start, func.body_end, func_ctx, &locals);
+    var cleanup_locals = LocalSet{};
+    defer cleanup_locals.deinit(allocator);
+    try appendFuncParamLocals(allocator, func, func_ctx, &cleanup_locals);
+    try collectDirectBodyLocals(allocator, tokens, func.body_start, func.body_end, func_ctx, &cleanup_locals);
+
+    const self_tail_tco = try buildSelfTailTco(allocator, func, tokens, &locals, &cleanup_locals, func_ctx);
+    defer if (self_tail_tco) |tco| allocator.free(tco.loop_label);
+
+    for (locals.locals.items) |local| {
+        if (!local.emit_decl) continue;
+        try function_body_wat.emitLocalDecl(allocator, out, local.name, codegenWasmType(func_ctx, local.ty));
+    }
+    if (self_tail_tco) |tco| {
+        for (tco.func.params) |param| {
+            if (param.callback != null) continue;
+            try appendFmt(allocator, out, "    (local $__tail_arg_{s} {s})\n", .{
+                param.name,
+                codegenWasmType(func_ctx, param.ty),
+            });
+        }
+    }
+    if (func.arrow) {
+        if (func.results.len != 1) return error.NoMatchingCall;
+        if (!try emitExpr(allocator, tokens, func.body_start, func.body_end, &locals, func_ctx, func.results[0], out)) {
+            return error.NoMatchingCall;
+        }
+        try emitFallthroughReleaseManagedLocals(allocator, &cleanup_locals, func_ctx, out);
+        try out.appendSlice(allocator, "    return\n");
+    } else {
+        const root_defer = DeferContext{
+            .parent = null,
+            .start_idx = func.body_start,
+            .end_idx = func.body_end,
+            .registered_end_idx = func.body_end,
+        };
+        const can_reach_end = bodyCanReachEnd(tokens, func.body_start, func.body_end);
+        if (self_tail_tco) |tco| {
+            try appendFmt(allocator, out, "    loop ${s}\n", .{tco.loop_label});
+            try emit_self_tail_loop_local_reset(allocator, tco.func, &locals, func_ctx, out);
+            try codegen_callbacks.emitBody(allocator, tokens, func.body_start, func.body_end, func.body_start, &locals, &cleanup_locals, &EMPTY_LOCAL_SET, func_ctx, func.results, func.result_items, func.result_struct, func.result_union, null, &root_defer, null, &tco, out);
+            try out.appendSlice(allocator, "    end\n");
+            if (func.results.len != 0 and !can_reach_end) {
+                try out.appendSlice(allocator, "    unreachable\n");
+            }
+        } else {
+            try codegen_callbacks.emitBody(allocator, tokens, func.body_start, func.body_end, func.body_start, &locals, &cleanup_locals, &EMPTY_LOCAL_SET, func_ctx, func.results, func.result_items, func.result_struct, func.result_union, null, &root_defer, null, null, out);
+        }
+        if (!bodyEndsWithPlainReturn(tokens, func.body_start, func.body_end)) {
+            try emitFallthroughReleaseManagedLocals(allocator, &cleanup_locals, func_ctx, out);
+            if (func.results.len != 0 and !can_reach_end) {
+                try out.appendSlice(allocator, "    unreachable\n");
+            }
+        }
+    }
+    try function_body_wat.emitFuncClose(allocator, out);
+}
+
+pub fn buildSelfTailTco(allocator: std.mem.Allocator, func: FuncDecl, tokens: []const lexer.Token, locals: *const LocalSet, cleanup_locals: *const LocalSet, ctx: CodegenContext) !?SelfTailTco {
+    if (func.arrow) return null;
+    if (func.results.len != 1) return null;
+    if (!isCodegenScalarType(ctx, func.results[0])) return null;
+    if (!funcHasSelfTailReturn(tokens, func.body_start, func.body_end, func)) return null;
+    if (funcHasDeferStmt(tokens, func.body_start, func.body_end)) return null;
+    for (func.params) |param| {
+        if (param.callback != null) return null;
+        if (param.variadic) return null;
+        if (!isCodegenScalarType(ctx, param.ty)) return null;
+    }
+    for (locals.locals.items) |local| {
+        if (!local.emit_decl) continue;
+        if (!isCodegenScalarType(ctx, local.ty)) return null;
+    }
+    for (cleanup_locals.locals.items) |local| {
+        if (!local.emit_decl) continue;
+        if (!isCodegenScalarType(ctx, local.ty)) return null;
+    }
+    if (hasManagedCleanupLocals(cleanup_locals, ctx)) return null;
+    return .{
+        .func = func,
+        .loop_label = try std.fmt.allocPrint(allocator, "__tail_{s}", .{func.name}),
+    };
+}
+
+pub fn funcHasSelfTailReturn(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, func: FuncDecl) bool {
+    var i = start_idx;
+    while (i < end_idx) {
+        if (tokEq(tokens[i], "return")) {
+            const stmt_end = findStmtEnd(tokens, i, end_idx);
+            const range = trimParens(tokens, i + 1, stmt_end);
+            const call_head = exprCallHead(tokens, range) orelse {
+                i += 1;
+                continue;
+            };
+            if (!call_head.is_intrinsic and same_callable_source_name(func.source_name, publicDeclName(tokens[call_head.name_idx].lexeme))) {
+                return true;
+            }
+        }
+        i += 1;
+    }
+    return false;
+}
+
+pub fn funcHasDeferStmt(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokEq(tokens[i], "defer")) return true;
+    }
+    return false;
+}
+
+pub fn hasManagedCleanupLocals(locals: *const LocalSet, ctx: CodegenContext) bool {
+    for (locals.locals.items) |local| {
+        if (!local.release_on_scope_exit) continue;
+        if (managedLocalKindForType(local.ty, ctx) != null) return true;
+    }
+    return false;
+}
+
+pub fn emitExpr(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, expected_ty: ?[]const u8, out: *std.ArrayList(u8)) CodegenError!bool {
+    return emitExprWithMoveContext(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, null, out);
+}
+
+fn appendUnmanagedStructParamFields(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    out: *std.ArrayList(u8),
+    param_name: []const u8,
+    decl: StructDecl,
+    abi_ty: []const u8,
+    func_ctx: CodegenContext,
+    signature_owned_types: *std.ArrayList([]const u8),
+) !void {
+    for (decl.fields) |field| {
+        const field_ty = try substituteStructFieldType(allocator, decl, abi_ty, field.ty, signature_owned_types);
+        try appendStructFieldAbiParams(allocator, tokens, out, param_name, field.name, field_ty, func_ctx, signature_owned_types);
+    }
+}
+
+fn emitIdentLiteralOrLocal(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    tok: lexer.Token,
+    expected_ty: ?[]const u8,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+) !bool {
+    if (expected_ty) |ty| {
+        if (errorEnumBranchValue(tokens, ty, tok.lexeme)) |value| {
+            try appendFmt(allocator, out, "    i32.const {d}\n", .{value});
+            return true;
+        }
+        if (valueEnumBranchValue(ctx, tokens, ty, tok.lexeme)) |value| {
+            try emitNumberConst(allocator, ctx, out, value, ty);
+            return true;
+        }
+    }
+    if (std.mem.eql(u8, tok.lexeme, "true")) {
+        if (expected_ty) |ty| {
+            if (!std.mem.eql(u8, ty, "bool")) return false;
+        }
+        try out.appendSlice(allocator, "    i32.const 1\n");
+        return true;
+    }
+    if (std.mem.eql(u8, tok.lexeme, "false")) {
+        if (expected_ty) |ty| {
+            if (!std.mem.eql(u8, ty, "bool")) return false;
+        }
+        try out.appendSlice(allocator, "    i32.const 0\n");
+        return true;
+    }
+    if (expected_ty) |ty| {
+        if (findStructLocal(locals.struct_locals.items, tok.lexeme)) |struct_local| {
+            const same_ty = std.mem.eql(u8, struct_local.ty, ty);
+            const no_layout = findStructLayout(ctx.struct_layouts, ty) == null;
+            if (same_ty and no_layout) {
+                const decl = findStructDecl(ctx.structs, ty) orelse return false;
+                try emitStructFieldsFromLocal(allocator, tokens, struct_local, decl, locals, ctx, false, out);
+                return true;
+            }
+        }
+        if (try emitUnionLocalPayloadForType(allocator, tok.lexeme, ty, locals, ctx, out)) return true;
+    }
+    if (findLocalName(locals.locals.items, tok.lexeme)) |local_name| {
+        try appendFmt(allocator, out, "    local.get ${s}\n", .{local_name});
+        return true;
+    }
+    if (findCallbackCallArg(ctx.callback_call_args, tok.lexeme)) |callback_arg| {
+        return try emitExpr(
+            allocator,
+            callback_arg.expr_tokens,
+            callback_arg.expr_start,
+            callback_arg.expr_end,
+            locals,
+            ctx,
+            callback_arg.ty,
+            out,
+        );
+    }
+    if (localScalarConst(tokens, tok.lexeme)) |local_const| {
+        const ty = expected_ty orelse local_const.ty;
+        try emitNumberConst(allocator, ctx, out, local_const.value, ty);
+        return true;
+    }
+    return false;
+}
+
+fn emitExprWithExpectedTy(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    range: Range,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    expected_ty: ?[]const u8,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    const ty = expected_ty orelse return false;
+    if (try emitTupleExpr(allocator, tokens, range.start, range.end, locals, ctx, ty, out)) return true;
+    if (try emitExpectedStorageAggLiteral(allocator, tokens, range, locals, ctx, ty, out)) return true;
+    if (try emitStructLiteralExpr(allocator, tokens, range.start, range.end, locals, ctx, ty, out)) return true;
+    return false;
+}
+
+fn emitExpectedStorageAggLiteral(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    range: Range,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    ty: []const u8,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    const elem_ty = managedPayloadElemTypeFromName(ty) orelse return false;
+    if (!isStorageAggLiteralExpr(tokens, range.start, range.end)) return false;
+    if (!try emitStorageAggLiteral(allocator, tokens, range.start, range.end, STORAGE_OVERWRITE_TMP_LOCAL, elem_ty, locals, ctx, out)) {
+        return error.NoMatchingCall;
+    }
+    try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    return true;
+}
+
+/// Emit call arguments left-to-right; for n-ary fold ops, apply `op` after the 2nd+ arg.
+/// When `require_arity` is non-null, require exactly that many args and always append one `op`.
+pub fn emitExprWithMoveContext(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, expected_ty: ?[]const u8, move_ctx: ?*const CallLastUseMoveContext, out: *std.ArrayList(u8)) CodegenError!bool {
+    const range = trimParens(tokens, start_idx, end_idx);
+    if (range.start >= range.end) return false;
+
+    if (try emitExprWithExpectedTy(
+        allocator,
+        tokens,
+        range,
+        locals,
+        ctx,
+        expected_ty,
+        out,
+    )) return true;
+
+    if (range.end == range.start + 1) {
+        const tok = tokens[range.start];
+        if (tok.kind == .string) {
+            const ty = expected_ty orelse return false;
+            if (!std.mem.eql(u8, ty, "text") and storageElemTypeFromName(ty) == null) return false;
+            const elem_ty = managedPayloadElemTypeFromName(ty) orelse return false;
+            if (!std.mem.eql(u8, elem_ty, "u8")) return false;
+            try emitStorageU8StringLiteralValue(allocator, tokens, range.start, ctx, out);
+            return true;
+        }
+        if (tok.kind == .number) {
+            try emitNumberConst(allocator, ctx, out, tok.lexeme, expected_ty orelse "i32");
+            return true;
+        }
+        if (tokEq(tok, "nil")) {
+            const ty = expected_ty orelse return false;
+            if (!isErrorLikeType(tokens, ty)) return false;
+            try out.appendSlice(allocator, "    i32.const 0\n");
+            return true;
+        }
+        if (tok.kind == .ident) {
+            if (try emitIdentLiteralOrLocal(
+                allocator,
+                tokens,
+                tok,
+                expected_ty,
+                locals,
+                ctx,
+                out,
+            )) return true;
+        }
+        if (tok.kind == .ident) {
+            const imported_const = importedScalarConst(ctx, tokens, tok.lexeme) orelse return false;
+            const ty = expected_ty orelse imported_const.ty;
+            try emitNumberConst(allocator, ctx, out, imported_const.value, ty);
+            return true;
+        }
+        return false;
+    }
+
+    const call_head = exprCallHead(tokens, range) orelse return false;
+    const call_name = tokens[call_head.name_idx].lexeme;
+
+    if (call_head.is_intrinsic) {
+        return try emitIntrinsicCall(
+            allocator,
+            tokens,
+            call_head,
+            call_name,
+            locals,
+            ctx,
+            expected_ty,
+            move_ctx,
+            out,
+        );
+    }
+
+    if (isCoreWasmCallName(call_name)) return false;
+
+    if (findCallbackBinding(ctx.callback_bindings, call_name)) |binding| {
+        return try emitCallbackBindingCall(allocator, tokens, call_head, locals, ctx, binding, out);
+    }
+
+    if (findFuncDeclForCallHead(tokens, call_head, locals, ctx)) |func| {
+        return try emitUserFuncCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, out);
+    }
+
+    if (findWasiHostImportForTokens(ctx, tokens, call_name)) |wasi_import| {
+        return try emitWasiHostImportExpr(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, wasi_import, false, out, codegen_callbacks.emitExpr);
+    }
+
+    const host_import = findHostImportForTokens(ctx.host_imports, tokens, call_name) orelse return false;
+    var arg_start = call_head.args_start;
+    var param_idx: usize = 0;
+    while (arg_start < call_head.args_end) {
+        const arg_end = findArgEnd(tokens, arg_start, call_head.args_end);
+        if (stringLiteralArgLexeme(tokens, arg_start, arg_end)) |lexeme| {
+            if (!hostParamIsPtrLen(host_import, param_idx)) return error.NoMatchingCall;
+            const data = ctx.string_data.find(lexeme) orelse return error.NoMatchingCall;
+            try appendFmt(allocator, out, "    i32.const {d}\n", .{data.ptr});
+            try appendFmt(allocator, out, "    i32.const {d}\n", .{data.bytes.len});
+            param_idx += 2;
+        } else if (try emitStoragePtrLenHostArg(allocator, tokens, arg_start, arg_end, locals, host_import, param_idx, out)) {
+            param_idx += 2;
+        } else {
+            const param_ty = if (param_idx < host_import.params.len) host_import.params[param_idx] else null;
+            if (!try emitExpr(allocator, tokens, arg_start, arg_end, locals, ctx, param_ty, out)) {
+                return false;
+            }
+            param_idx += 1;
+        }
+        arg_start = arg_end;
+        if (arg_start < call_head.args_end and tokEq(tokens[arg_start], ",")) arg_start += 1;
+    }
+    if (param_idx != host_import.params.len) return error.NoMatchingCall;
+    try appendFmt(allocator, out, "    call ${s}\n", .{host_import.alias});
+    return true;
+}

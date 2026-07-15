@@ -1,4 +1,4 @@
-//! Tuple / pure-scalar pack helpers (extracted from gen_storage).
+//! Tuple / pure-scalar pack helpers (extracted from codegen_emit_storage_values).
 const std = @import("std");
 const lexer = @import("lexer.zig");
 const type_util = @import("type_name.zig");
@@ -13,8 +13,8 @@ const gen_collect_util = @import("gen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
 const gen_import = @import("gen_import.zig");
-const gen_wasi_emit = @import("gen_wasi_emit.zig");
-const gen_hooks = @import("gen_hooks.zig");
+const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
+const codegen_callbacks = @import("codegen_callbacks.zig");
 
 pub const TupleElementInfo = struct {
     index: usize,
@@ -46,12 +46,12 @@ const packSlotWidth = gen_collect_util.packSlotWidth;
 const appendTupleLeafTypesWithStructs = gen_collect_util.appendTupleLeafTypesWithStructs;
 const structDeclHasManagedField = gen_collect_util.structDeclHasManagedField;
 const exprCallHead = gen_import.exprCallHead;
-const typePayloadBytes = gen_wasi_emit.typePayloadBytes;
-const typePayloadAlignment = gen_wasi_emit.typePayloadAlignment;
-const isTupleTypeName = gen_wasi_emit.isTupleTypeName;
-const tupleArity = gen_wasi_emit.tupleArity;
-const tupleElementTypeAt = gen_wasi_emit.tupleElementTypeAt;
-const tupleHasManagedPackLeafCtx = gen_wasi_emit.tupleHasManagedPackLeafCtx;
+const typePayloadBytes = codegen_emit_wasi.typePayloadBytes;
+const typePayloadAlignment = codegen_emit_wasi.typePayloadAlignment;
+const isTupleTypeName = codegen_emit_wasi.isTupleTypeName;
+const tupleArity = codegen_emit_wasi.tupleArity;
+const tupleElementTypeAt = codegen_emit_wasi.tupleElementTypeAt;
+const tupleHasManagedPackLeafCtx = codegen_emit_wasi.tupleHasManagedPackLeafCtx;
 const isTuplePackableLeafType = type_util.isTuplePackableLeafType;
 
 pub fn emitTupleReturnLocal(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, result_tys: []const []const u8, result_items: []const FuncResultItem, out: *std.ArrayList(u8)) !bool {
@@ -127,7 +127,7 @@ pub fn emitTupleGetBinding(allocator: std.mem.Allocator, tokens: []const lexer.T
     const call_head = exprCallHead(tokens, rhs_range) orelse return false;
     if (!call_head.is_intrinsic) return false;
     if (!std.mem.eql(u8, tokens[call_head.name_idx].lexeme, "get")) return false;
-    if (!try gen_hooks.emitExpr(allocator, tokens, rhs_range.start, rhs_range.end, locals, ctx, tuple_local.ty, out)) {
+    if (!try codegen_callbacks.emitExpr(allocator, tokens, rhs_range.start, rhs_range.end, locals, ctx, tuple_local.ty, out)) {
         return false;
     }
     try emitTupleLocalSet(allocator, tuple_local.name, tuple_local.ty, ctx, out);

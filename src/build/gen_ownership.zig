@@ -6,7 +6,7 @@ const codegen_tokens = @import("codegen_tokens.zig");
 const codegen_names = @import("codegen_names.zig");
 const model = @import("codegen_model.zig");
 const context = @import("codegen_context.zig");
-const gen_wasi_emit = @import("gen_wasi_emit.zig");
+const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
 const gen_collect_util = @import("gen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
@@ -27,8 +27,8 @@ const CodegenContext = context.CodegenContext;
 const CodegenError = model.CodegenError;
 const LoopControl = context.LoopControl;
 const findStructLayout = gen_collect_util.findStructLayout;
-const isManagedLocalType = gen_wasi_emit.isManagedLocalType;
-const isManagedPayloadType = gen_wasi_emit.isManagedPayloadType;
+const isManagedLocalType = codegen_emit_wasi.isManagedLocalType;
+const isManagedPayloadType = codegen_emit_wasi.isManagedPayloadType;
 
 pub fn emitReleaseManagedLocals(allocator: std.mem.Allocator, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
     try emitReleaseManagedLocalsExcept(allocator, locals, ctx, null, out);

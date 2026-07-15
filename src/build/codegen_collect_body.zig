@@ -1,4 +1,4 @@
-//! Body-local / loop / multi-result local collection (extracted from gen_expr).
+//! Body-local / loop / multi-result local collection for codegen emit.
 const std = @import("std");
 const lexer = @import("lexer.zig");
 const type_util = @import("type_name.zig");
@@ -11,12 +11,15 @@ const gen_collect_util = @import("gen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
 const gen_import = @import("gen_import.zig");
-const gen_wasi_emit = @import("gen_wasi_emit.zig");
-const gen_hooks = @import("gen_hooks.zig");
-const gen_storage = @import("gen_storage.zig");
-const gen_struct = @import("gen_struct.zig");
-const gen_union_emit = @import("gen_union_emit.zig");
-const gen_ctrl = @import("gen_ctrl.zig");
+const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
+const codegen_callbacks = @import("codegen_callbacks.zig");
+const codegen_emit_storage_values = @import("codegen_emit_storage_values.zig");
+const codegen_emit_storage_operations = @import("codegen_emit_storage_operations.zig");
+const codegen_storage_layout = @import("codegen_storage_layout.zig");
+const codegen_emit_struct = @import("codegen_emit_struct.zig");
+const codegen_emit_struct_fields = @import("codegen_emit_struct_fields.zig");
+const codegen_emit_union = @import("codegen_emit_union.zig");
+const codegen_emit_control = @import("codegen_emit_control.zig");
 const gen_ownership = @import("gen_ownership.zig");
 const gen_host = @import("gen_host.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
@@ -75,42 +78,42 @@ const substituteGenericTypeOwned = gen_collect_util.substituteGenericTypeOwned;
 const callHeadAt = gen_import.callHeadAt;
 const exprCallHead = gen_import.exprCallHead;
 const importedAliasContextForTokens = gen_import.importedAliasContextForTokens;
-const isManagedLocalType = gen_wasi_emit.isManagedLocalType;
-const isTupleTypeName = gen_wasi_emit.isTupleTypeName;
-const tupleArity = gen_wasi_emit.tupleArity;
-const tupleElementTypeAt = gen_wasi_emit.tupleElementTypeAt;
-const tupleScalarLeafStorageByteWidthCtx = gen_wasi_emit.tupleScalarLeafStorageByteWidthCtx;
-const ManagedPayloadBinding = gen_storage.ManagedPayloadBinding;
-const stmtContainsStorageAggLiteral = gen_storage.stmtContainsStorageAggLiteral;
-const findLocalName = gen_storage.findLocalName;
-const inferExprType = gen_storage.inferExprType;
-const findFuncDeclForCallHead = gen_storage.findFuncDeclForCallHead;
-const substituteStructFieldType = gen_storage.substituteStructFieldType;
-const managedPayloadElemTypeFromName = gen_storage.managedPayloadElemTypeFromName;
-const emitZeroValueForType = gen_struct.emitZeroValueForType;
-const stmtContainsStructLiteralExpr = gen_struct.stmtContainsStructLiteralExpr;
-const fieldVisibleFromTokens = gen_struct.fieldVisibleFromTokens;
-const fieldReflectionLocalNamePrefix = gen_struct.fieldReflectionLocalNamePrefix;
-const unionPayloadComparisonCallBranch = gen_union_emit.unionPayloadComparisonCallBranch;
-const buildPayloadEnumUnionLayout = gen_union_emit.buildPayloadEnumUnionLayout;
-const fieldReflectionLoopHeader = gen_ctrl.fieldReflectionLoopHeader;
-const isDiscardAssignment = gen_ctrl.isDiscardAssignment;
-const collectionLoopHeader = gen_ctrl.collectionLoopHeader;
-const recvLoopHeader = gen_ctrl.recvLoopHeader;
-const isDeadManagedAliasBinding = gen_ctrl.isDeadManagedAliasBinding;
-const typedScalarBindingType = gen_ctrl.typedScalarBindingType;
-const inferredStructCtorBinding = gen_ctrl.inferredStructCtorBinding;
-const inferredScalarBindingType = gen_ctrl.inferredScalarBindingType;
-const isManagedLocalAssignmentStmt = gen_ctrl.isManagedLocalAssignmentStmt;
-const isCodegenScalarType = gen_union_emit.isCodegenScalarType;
-const borrowedFieldMetaLocalSet = gen_struct.borrowedFieldMetaLocalSet;
-const collectFieldReflectionBodyLocals = gen_struct.collectFieldReflectionBodyLocals;
-const inferredStructBinding = gen_struct.inferredStructBinding;
-const typedStructBinding = gen_struct.typedStructBinding;
-const appendTypedLocalWithDecl = gen_storage.appendTypedLocalWithDecl;
-const appendManagedStructFieldMetaLocal = gen_storage.appendManagedStructFieldMetaLocal;
-const managedPayloadBinding = gen_storage.managedPayloadBinding;
-const storageBindingElemType = gen_storage.storageBindingElemType;
+const isManagedLocalType = codegen_emit_wasi.isManagedLocalType;
+const isTupleTypeName = codegen_emit_wasi.isTupleTypeName;
+const tupleArity = codegen_emit_wasi.tupleArity;
+const tupleElementTypeAt = codegen_emit_wasi.tupleElementTypeAt;
+const tupleScalarLeafStorageByteWidthCtx = codegen_emit_wasi.tupleScalarLeafStorageByteWidthCtx;
+const ManagedPayloadBinding = codegen_storage_layout.ManagedPayloadBinding;
+const stmtContainsStorageAggLiteral = codegen_emit_storage_values.stmtContainsStorageAggLiteral;
+const findLocalName = codegen_emit_storage_values.findLocalName;
+const inferExprType = codegen_storage_layout.inferExprType;
+const findFuncDeclForCallHead = codegen_emit_storage_values.findFuncDeclForCallHead;
+const substituteStructFieldType = codegen_storage_layout.substituteStructFieldType;
+const managedPayloadElemTypeFromName = codegen_storage_layout.managedPayloadElemTypeFromName;
+const emitZeroValueForType = codegen_emit_struct.emitZeroValueForType;
+const stmtContainsStructLiteralExpr = codegen_emit_struct.stmtContainsStructLiteralExpr;
+const fieldVisibleFromTokens = codegen_emit_struct_fields.fieldVisibleFromTokens;
+const fieldReflectionLocalNamePrefix = codegen_emit_struct_fields.fieldReflectionLocalNamePrefix;
+const unionPayloadComparisonCallBranch = codegen_emit_union.unionPayloadComparisonCallBranch;
+const buildPayloadEnumUnionLayout = codegen_emit_union.buildPayloadEnumUnionLayout;
+const fieldReflectionLoopHeader = codegen_emit_control.fieldReflectionLoopHeader;
+const isDiscardAssignment = codegen_emit_control.isDiscardAssignment;
+const collectionLoopHeader = codegen_emit_control.collectionLoopHeader;
+const recvLoopHeader = codegen_emit_control.recvLoopHeader;
+const isDeadManagedAliasBinding = codegen_emit_control.isDeadManagedAliasBinding;
+const typedScalarBindingType = codegen_emit_control.typedScalarBindingType;
+const inferredStructCtorBinding = codegen_emit_control.inferredStructCtorBinding;
+const inferredScalarBindingType = codegen_emit_control.inferredScalarBindingType;
+const isManagedLocalAssignmentStmt = codegen_emit_control.isManagedLocalAssignmentStmt;
+const isCodegenScalarType = codegen_emit_union.isCodegenScalarType;
+const borrowedFieldMetaLocalSet = codegen_emit_struct_fields.borrowedFieldMetaLocalSet;
+const collectFieldReflectionBodyLocals = codegen_emit_struct_fields.collectFieldReflectionBodyLocals;
+const inferredStructBinding = codegen_emit_struct.inferredStructBinding;
+const typedStructBinding = codegen_emit_struct.typedStructBinding;
+const appendTypedLocalWithDecl = codegen_emit_storage_values.appendTypedLocalWithDecl;
+const appendManagedStructFieldMetaLocal = codegen_emit_storage_values.appendManagedStructFieldMetaLocal;
+const managedPayloadBinding = codegen_storage_layout.managedPayloadBinding;
+const storageBindingElemType = codegen_storage_layout.storageBindingElemType;
 
 fn stmt_contains_wasi_socket_create(
     tokens: []const lexer.Token,
@@ -840,7 +843,7 @@ pub fn inferred_union_call_binding(allocator: std.mem.Allocator, tokens: []const
         }
         return null;
     }
-    if (gen_hooks.infer_generic_call_union_result) |infer_fn| {
+    if (codegen_callbacks.infer_generic_call_union_result) |infer_fn| {
         if (try infer_fn(allocator, tokens, call_head, locals, ctx, owned_types)) |layout| {
             return .{ .layout = layout, .owns_layout = true };
         }

@@ -14,9 +14,9 @@ const gen_collect_util = @import("gen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
 const gen_import = @import("gen_import.zig");
-const gen_wasi_emit = @import("gen_wasi_emit.zig");
-const gen_hooks = @import("gen_hooks.zig");
-const gen_tuple = @import("gen_tuple.zig");
+const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
+const codegen_callbacks = @import("codegen_callbacks.zig");
+const codegen_emit_tuple = @import("codegen_emit_tuple.zig");
 const findValueEnumDeclLineByName = gen_import.findValueEnumDeclLineByName;
 const findValueEnumDeclLineByBranch = gen_import.findValueEnumDeclLineByBranch;
 const simple_type_name = codegen_collect_functions.simple_type_name;
@@ -182,40 +182,40 @@ const findImportedModuleIndexNoAlloc = gen_import.findImportedModuleIndexNoAlloc
 const findWasiHostImportForTokens = gen_import.findWasiHostImportForTokens;
 const wasiSourceForTokens = gen_import.wasiSourceForTokens;
 
-const isManagedLocalType = gen_wasi_emit.isManagedLocalType;
-const isManagedPayloadType = gen_wasi_emit.isManagedPayloadType;
-const isStorageTypeName = gen_wasi_emit.isStorageTypeName;
-const storageElemTypeFromName = gen_wasi_emit.storageElemTypeFromName;
-const storageElementByteWidth = gen_wasi_emit.storageElementByteWidth;
-const storageTypeIdForElement = gen_wasi_emit.storageTypeIdForElement;
-const typePayloadBytes = gen_wasi_emit.typePayloadBytes;
-const typePayloadAlignment = gen_wasi_emit.typePayloadAlignment;
-const isTupleTypeName = gen_wasi_emit.isTupleTypeName;
-const tupleArity = gen_wasi_emit.tupleArity;
-const tupleElementTypeAt = gen_wasi_emit.tupleElementTypeAt;
-const codegenWasmType = gen_wasi_emit.codegenWasmType;
-const codegenTypesCompatible = gen_wasi_emit.codegenTypesCompatible;
-const findStoragePrimitiveLocal = gen_wasi_emit.findStoragePrimitiveLocal;
-const emitReplaceManagedLocalFromTmp = gen_wasi_emit.emitReplaceManagedLocalFromTmp;
-const emitStorageDataPtr = gen_wasi_emit.emitStorageDataPtr;
-const emitStorageLenPtr = gen_wasi_emit.emitStorageLenPtr;
-const appendLoadForPayloadType = gen_wasi_emit.appendLoadForPayloadType;
-const structFieldPayloadOffset = gen_wasi_emit.structFieldPayloadOffset;
-const findUnionBranchByType = gen_wasi_emit.findUnionBranchByType;
-const errorEnumBranchValue = gen_wasi_emit.errorEnumBranchValue;
-const tupleScalarLeafStorageByteWidth = gen_wasi_emit.tupleScalarLeafStorageByteWidth;
-const tupleScalarLeafStorageByteWidthCtx = gen_wasi_emit.tupleScalarLeafStorageByteWidthCtx;
-const tupleHasManagedPackLeaf = gen_wasi_emit.tupleHasManagedPackLeaf;
-const tupleHasManagedPackLeafWithStructs = gen_wasi_emit.tupleHasManagedPackLeafWithStructs;
-const tupleHasManagedPackLeafCtx = gen_wasi_emit.tupleHasManagedPackLeafCtx;
-const emitWasiHostImportExpr = gen_wasi_emit.emitWasiHostImportExpr;
-const emitBareWasiHostImportCall = gen_wasi_emit.emitBareWasiHostImportCall;
-const emitWasiUnitResultAsUnionValue = gen_wasi_emit.emitWasiUnitResultAsUnionValue;
-const emitWasiFilesizeResultAsUnionValue = gen_wasi_emit.emitWasiFilesizeResultAsUnionValue;
-const emitWasiReadResultAsUnionValue = gen_wasi_emit.emitWasiReadResultAsUnionValue;
-const emitWasiListU8ResultAsUnionValue = gen_wasi_emit.emitWasiListU8ResultAsUnionValue;
-const emitWasiDescriptorResultAsUnionValue = gen_wasi_emit.emitWasiDescriptorResultAsUnionValue;
-const emitWasiRecordStructBinding = gen_wasi_emit.emitWasiRecordStructBinding;
+const isManagedLocalType = codegen_emit_wasi.isManagedLocalType;
+const isManagedPayloadType = codegen_emit_wasi.isManagedPayloadType;
+const isStorageTypeName = codegen_emit_wasi.isStorageTypeName;
+const storageElemTypeFromName = codegen_emit_wasi.storageElemTypeFromName;
+const storageElementByteWidth = codegen_emit_wasi.storageElementByteWidth;
+const storageTypeIdForElement = codegen_emit_wasi.storageTypeIdForElement;
+const typePayloadBytes = codegen_emit_wasi.typePayloadBytes;
+const typePayloadAlignment = codegen_emit_wasi.typePayloadAlignment;
+const isTupleTypeName = codegen_emit_wasi.isTupleTypeName;
+const tupleArity = codegen_emit_wasi.tupleArity;
+const tupleElementTypeAt = codegen_emit_wasi.tupleElementTypeAt;
+const codegenWasmType = codegen_emit_wasi.codegenWasmType;
+const codegenTypesCompatible = codegen_emit_wasi.codegenTypesCompatible;
+const findStoragePrimitiveLocal = codegen_emit_wasi.findStoragePrimitiveLocal;
+const emitReplaceManagedLocalFromTmp = codegen_emit_wasi.emitReplaceManagedLocalFromTmp;
+const emitStorageDataPtr = codegen_emit_wasi.emitStorageDataPtr;
+const emitStorageLenPtr = codegen_emit_wasi.emitStorageLenPtr;
+const appendLoadForPayloadType = codegen_emit_wasi.appendLoadForPayloadType;
+const structFieldPayloadOffset = codegen_emit_wasi.structFieldPayloadOffset;
+const findUnionBranchByType = codegen_emit_wasi.findUnionBranchByType;
+const errorEnumBranchValue = codegen_emit_wasi.errorEnumBranchValue;
+const tupleScalarLeafStorageByteWidth = codegen_emit_wasi.tupleScalarLeafStorageByteWidth;
+const tupleScalarLeafStorageByteWidthCtx = codegen_emit_wasi.tupleScalarLeafStorageByteWidthCtx;
+const tupleHasManagedPackLeaf = codegen_emit_wasi.tupleHasManagedPackLeaf;
+const tupleHasManagedPackLeafWithStructs = codegen_emit_wasi.tupleHasManagedPackLeafWithStructs;
+const tupleHasManagedPackLeafCtx = codegen_emit_wasi.tupleHasManagedPackLeafCtx;
+const emitWasiHostImportExpr = codegen_emit_wasi.emitWasiHostImportExpr;
+const emitBareWasiHostImportCall = codegen_emit_wasi.emitBareWasiHostImportCall;
+const emitWasiUnitResultAsUnionValue = codegen_emit_wasi.emitWasiUnitResultAsUnionValue;
+const emitWasiFilesizeResultAsUnionValue = codegen_emit_wasi.emitWasiFilesizeResultAsUnionValue;
+const emitWasiReadResultAsUnionValue = codegen_emit_wasi.emitWasiReadResultAsUnionValue;
+const emitWasiListU8ResultAsUnionValue = codegen_emit_wasi.emitWasiListU8ResultAsUnionValue;
+const emitWasiDescriptorResultAsUnionValue = codegen_emit_wasi.emitWasiDescriptorResultAsUnionValue;
+const emitWasiRecordStructBinding = codegen_emit_wasi.emitWasiRecordStructBinding;
 const isTuplePackableLeafType = type_util.isTuplePackableLeafType;
 const isCoreWasmScalar_tu = type_util.isCoreWasmScalar;
 
@@ -225,35 +225,35 @@ const findHostImportForTokens = gen_host.findHostImportForTokens;
 
 const WasiHostImport = codegen_wasi_registry.WasiHostImport;
 
-// Re-export tuple pack helpers (physical home: gen_tuple.zig).
-pub const appendIncManagedTupleLeavesOnStackCtx = gen_tuple.appendIncManagedTupleLeavesOnStackCtx;
-pub const appendLoadForPayloadTypeWithIndent = gen_tuple.appendLoadForPayloadTypeWithIndent;
-pub const appendLoadTupleElementFromPackedBaseCtx = gen_tuple.appendLoadTupleElementFromPackedBaseCtx;
-pub const appendLoadTupleElementOwningFromPackedBase = gen_tuple.appendLoadTupleElementOwningFromPackedBase;
-pub const appendLoadTupleLeafTypesOfStructToStack = gen_tuple.appendLoadTupleLeafTypesOfStructToStack;
-pub const appendLoadTupleLeavesOwningToStack = gen_tuple.appendLoadTupleLeavesOwningToStack;
-pub const appendLoadTupleLeavesOwningToStackCtx = gen_tuple.appendLoadTupleLeavesOwningToStackCtx;
-pub const appendLoadTupleScalarLeavesToStack = gen_tuple.appendLoadTupleScalarLeavesToStack;
-pub const appendLoadTupleScalarLeavesToStackCtx = gen_tuple.appendLoadTupleScalarLeavesToStackCtx;
-pub const appendStoreForPayloadType = gen_tuple.appendStoreForPayloadType;
-pub const appendStoreForPayloadTypeWithIndent = gen_tuple.appendStoreForPayloadTypeWithIndent;
-pub const appendStoreTupleLeavesOwningFromStack = gen_tuple.appendStoreTupleLeavesOwningFromStack;
-pub const appendStoreTupleLeavesOwningFromStackCtx = gen_tuple.appendStoreTupleLeavesOwningFromStackCtx;
-pub const appendStoreTupleScalarLeavesFromStack = gen_tuple.appendStoreTupleScalarLeavesFromStack;
-pub const appendStoreTupleScalarLeavesFromStackCtx = gen_tuple.appendStoreTupleScalarLeavesFromStackCtx;
-pub const emitDecManagedTupleLeavesAtBase = gen_tuple.emitDecManagedTupleLeavesAtBase;
-pub const emitIncManagedTupleLeavesAtBase = gen_tuple.emitIncManagedTupleLeavesAtBase;
-pub const emitPureScalarStructLocalGet = gen_tuple.emitPureScalarStructLocalGet;
-pub const emitPureScalarStructLocalSet = gen_tuple.emitPureScalarStructLocalSet;
-pub const emitStorageIncCopiedPackElements = gen_tuple.emitStorageIncCopiedPackElements;
-pub const emitTupleGetBinding = gen_tuple.emitTupleGetBinding;
-pub const emitTupleLocalGet = gen_tuple.emitTupleLocalGet;
-pub const emitTupleLocalSet = gen_tuple.emitTupleLocalSet;
-pub const emitTupleReturnLocal = gen_tuple.emitTupleReturnLocal;
-pub const singleTupleResultItem = gen_tuple.singleTupleResultItem;
-pub const tupleElementPackOffsetWithStructs = gen_tuple.tupleElementPackOffsetWithStructs;
-pub const tupleGetElementInfo = gen_tuple.tupleGetElementInfo;
-pub const tuplePackSpillLocal = gen_tuple.tuplePackSpillLocal;
+// Re-export tuple pack helpers (physical home: codegen_emit_tuple.zig).
+pub const appendIncManagedTupleLeavesOnStackCtx = codegen_emit_tuple.appendIncManagedTupleLeavesOnStackCtx;
+pub const appendLoadForPayloadTypeWithIndent = codegen_emit_tuple.appendLoadForPayloadTypeWithIndent;
+pub const appendLoadTupleElementFromPackedBaseCtx = codegen_emit_tuple.appendLoadTupleElementFromPackedBaseCtx;
+pub const appendLoadTupleElementOwningFromPackedBase = codegen_emit_tuple.appendLoadTupleElementOwningFromPackedBase;
+pub const appendLoadTupleLeafTypesOfStructToStack = codegen_emit_tuple.appendLoadTupleLeafTypesOfStructToStack;
+pub const appendLoadTupleLeavesOwningToStack = codegen_emit_tuple.appendLoadTupleLeavesOwningToStack;
+pub const appendLoadTupleLeavesOwningToStackCtx = codegen_emit_tuple.appendLoadTupleLeavesOwningToStackCtx;
+pub const appendLoadTupleScalarLeavesToStack = codegen_emit_tuple.appendLoadTupleScalarLeavesToStack;
+pub const appendLoadTupleScalarLeavesToStackCtx = codegen_emit_tuple.appendLoadTupleScalarLeavesToStackCtx;
+pub const appendStoreForPayloadType = codegen_emit_tuple.appendStoreForPayloadType;
+pub const appendStoreForPayloadTypeWithIndent = codegen_emit_tuple.appendStoreForPayloadTypeWithIndent;
+pub const appendStoreTupleLeavesOwningFromStack = codegen_emit_tuple.appendStoreTupleLeavesOwningFromStack;
+pub const appendStoreTupleLeavesOwningFromStackCtx = codegen_emit_tuple.appendStoreTupleLeavesOwningFromStackCtx;
+pub const appendStoreTupleScalarLeavesFromStack = codegen_emit_tuple.appendStoreTupleScalarLeavesFromStack;
+pub const appendStoreTupleScalarLeavesFromStackCtx = codegen_emit_tuple.appendStoreTupleScalarLeavesFromStackCtx;
+pub const emitDecManagedTupleLeavesAtBase = codegen_emit_tuple.emitDecManagedTupleLeavesAtBase;
+pub const emitIncManagedTupleLeavesAtBase = codegen_emit_tuple.emitIncManagedTupleLeavesAtBase;
+pub const emitPureScalarStructLocalGet = codegen_emit_tuple.emitPureScalarStructLocalGet;
+pub const emitPureScalarStructLocalSet = codegen_emit_tuple.emitPureScalarStructLocalSet;
+pub const emitStorageIncCopiedPackElements = codegen_emit_tuple.emitStorageIncCopiedPackElements;
+pub const emitTupleGetBinding = codegen_emit_tuple.emitTupleGetBinding;
+pub const emitTupleLocalGet = codegen_emit_tuple.emitTupleLocalGet;
+pub const emitTupleLocalSet = codegen_emit_tuple.emitTupleLocalSet;
+pub const emitTupleReturnLocal = codegen_emit_tuple.emitTupleReturnLocal;
+pub const singleTupleResultItem = codegen_emit_tuple.singleTupleResultItem;
+pub const tupleElementPackOffsetWithStructs = codegen_emit_tuple.tupleElementPackOffsetWithStructs;
+pub const tupleGetElementInfo = codegen_emit_tuple.tupleGetElementInfo;
+pub const tuplePackSpillLocal = codegen_emit_tuple.tuplePackSpillLocal;
 
 pub fn emitStorageBinding(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, body_start: usize, body_end: usize, allow_last_use_move: bool, locals: *const LocalSet, defer_ctx: ?*const DeferContext, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
     const source_name = tokens[start_idx].lexeme;
@@ -357,7 +357,7 @@ pub fn emitTupleBinding(allocator: std.mem.Allocator, tokens: []const lexer.Toke
         const expr_end = findArgEnd(tokens, expr_start, close_brace);
         if (idx >= arity) return error.NoMatchingCall;
         const elem_ty = tupleElementTypeAt(tuple_local.ty, idx) orelse return error.UnsupportedLowering;
-        if (!try gen_hooks.emitExpr(allocator, tokens, expr_start, expr_end, locals, ctx, elem_ty, out)) return error.NoMatchingCall;
+        if (!try codegen_callbacks.emitExpr(allocator, tokens, expr_start, expr_end, locals, ctx, elem_ty, out)) return error.NoMatchingCall;
         idx += 1;
         expr_start = expr_end;
         if (expr_start < close_brace) {
@@ -409,7 +409,7 @@ pub const ManagedPayloadBinding = struct {
     elem_ty: []const u8,
 };
 
-pub const TupleElementInfo = gen_tuple.TupleElementInfo;
+pub const TupleElementInfo = codegen_emit_tuple.TupleElementInfo;
 
 pub const StructLiteralFieldRange = struct {
     value_start: usize,
@@ -527,7 +527,7 @@ pub fn emitStorageAggLiteral(allocator: std.mem.Allocator, tokens: []const lexer
         if (item_end == item_start) return error.NoMatchingCall;
         if (isTupleTypeName(elem_ty)) {
             // Multi-value leaves cannot sit under a store address; pack via base temp.
-            if (!try gen_hooks.emitExpr(allocator, tokens, item_start, item_end, locals, ctx, elem_ty, out)) return error.NoMatchingCall;
+            if (!try codegen_callbacks.emitExpr(allocator, tokens, item_start, item_end, locals, ctx, elem_ty, out)) return error.NoMatchingCall;
             try emitStorageDataPtr(allocator, out, aggregate_name);
             if (item_index * elem_bytes != 0) {
                 try appendFmt(allocator, out, "    i32.const {d}\n", .{item_index * elem_bytes});
@@ -541,7 +541,7 @@ pub fn emitStorageAggLiteral(allocator: std.mem.Allocator, tokens: []const lexer
                 try appendFmt(allocator, out, "    i32.const {d}\n", .{item_index * elem_bytes});
                 try out.appendSlice(allocator, "    i32.add\n");
             }
-            if (!try gen_hooks.emitExpr(allocator, tokens, item_start, item_end, locals, ctx, elem_ty, out)) return error.NoMatchingCall;
+            if (!try codegen_callbacks.emitExpr(allocator, tokens, item_start, item_end, locals, ctx, elem_ty, out)) return error.NoMatchingCall;
             if (isManagedLocalType(elem_ty, ctx) and isDirectManagedLocalExpr(tokens, item_start, item_end, locals, ctx)) {
                 try out.appendSlice(allocator, "    ;; storage-managed-element-inc\n");
                 try out.appendSlice(allocator, "    call $__arc_inc\n");
@@ -617,9 +617,9 @@ pub fn emitStorageContentComparisonCall(allocator: std.mem.Allocator, tokens: []
     if (try emitManagedPayloadStorageContentComparisonCall(allocator, tokens, args_start, first_end, second_start, second_end, cmp_ty, call_name, locals, ctx, out)) {
         return true;
     }
-    if (!try gen_hooks.emitExpr(allocator, tokens, args_start, first_end, locals, ctx, cmp_ty, out)) return false;
+    if (!try codegen_callbacks.emitExpr(allocator, tokens, args_start, first_end, locals, ctx, cmp_ty, out)) return false;
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
-    if (!try gen_hooks.emitExpr(allocator, tokens, second_start, second_end, locals, ctx, cmp_ty, out)) return false;
+    if (!try codegen_callbacks.emitExpr(allocator, tokens, second_start, second_end, locals, ctx, cmp_ty, out)) return false;
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
     try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
     try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
@@ -635,9 +635,9 @@ pub fn emitManagedPayloadStorageContentComparisonCall(allocator: std.mem.Allocat
     const nested_elem_ty = managedPayloadElemTypeFromName(elem_ty) orelse return false;
     if (!std.mem.eql(u8, nested_elem_ty, "u8")) return false;
 
-    if (!try gen_hooks.emitExpr(allocator, tokens, left_start, left_end, locals, ctx, cmp_ty, out)) return false;
+    if (!try codegen_callbacks.emitExpr(allocator, tokens, left_start, left_end, locals, ctx, cmp_ty, out)) return false;
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
-    if (!try gen_hooks.emitExpr(allocator, tokens, right_start, right_end, locals, ctx, cmp_ty, out)) return false;
+    if (!try codegen_callbacks.emitExpr(allocator, tokens, right_start, right_end, locals, ctx, cmp_ty, out)) return false;
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
 
     try appendFmt(allocator, out, "    i32.const 0\n    local.set ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
@@ -783,7 +783,7 @@ pub fn emitTupleExpr(allocator: std.mem.Allocator, tokens: []const lexer.Token, 
         const expr_end = findArgEnd(tokens, expr_start, close_brace);
         if (idx >= arity) return error.NoMatchingCall;
         const elem_ty = tupleElementTypeAt(expected_ty, idx) orelse return error.UnsupportedLowering;
-        if (!try gen_hooks.emitExpr(allocator, tokens, expr_start, expr_end, locals, ctx, elem_ty, out)) return error.NoMatchingCall;
+        if (!try codegen_callbacks.emitExpr(allocator, tokens, expr_start, expr_end, locals, ctx, elem_ty, out)) return error.NoMatchingCall;
         idx += 1;
         expr_start = expr_end;
         if (expr_start < close_brace) {
@@ -827,7 +827,7 @@ pub fn parseStorageType(tokens: []const lexer.Token, start_idx: usize, end_idx: 
 
 pub fn emitStorageBoundsCheck(allocator: std.mem.Allocator, tokens: []const lexer.Token, offset_start: usize, offset_end: usize, locals: *const LocalSet, ctx: CodegenContext, storage_name: []const u8, width: usize, out: *std.ArrayList(u8)) !void {
     try appendFmt(allocator, out, "    local.get ${s}\n", .{storage_name});
-    if (!try gen_hooks.emitExpr(allocator, tokens, offset_start, offset_end, locals, ctx, "usize", out)) return error.NoMatchingCall;
+    if (!try codegen_callbacks.emitExpr(allocator, tokens, offset_start, offset_end, locals, ctx, "usize", out)) return error.NoMatchingCall;
     try appendFmt(allocator, out, "    i32.const {d}\n", .{width});
     try out.appendSlice(allocator, "    call $__storage_check_range\n");
 }
@@ -950,7 +950,7 @@ pub fn emitStorageSetScalarCall(allocator: std.mem.Allocator, tokens: []const le
     const elem_bytes = storageElementByteWidthForType(elem_ty, ctx) orelse return false;
     try out.appendSlice(allocator, "    ;; storage-set-scalar\n");
     try emitStorageAliasProtect(allocator, out, source_name, target_name);
-    if (!try gen_hooks.emitExpr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return false;
+    if (!try codegen_callbacks.emitExpr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return false;
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
     try appendFmt(allocator, out, "    local.get ${s}\n", .{source_name});
     try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
@@ -973,13 +973,13 @@ pub fn emitStorageSetScalarCall(allocator: std.mem.Allocator, tokens: []const le
             try appendFmt(allocator, out, "    local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
             try emitDecManagedTupleLeavesAtBase(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ", ctx);
         }
-        if (!try gen_hooks.emitExpr(allocator, tokens, value_start, value_end, locals, ctx, elem_ty, out)) return false;
+        if (!try codegen_callbacks.emitExpr(allocator, tokens, value_start, value_end, locals, ctx, elem_ty, out)) return false;
         try emitStorageElementPtrFromLocal(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes);
         try appendFmt(allocator, out, "    local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
         try appendStoreTupleLeavesOwningFromStackCtx(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ", ctx);
     } else {
         try emitStorageElementPtrFromLocal(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes);
-        if (!try gen_hooks.emitExpr(allocator, tokens, value_start, value_end, locals, ctx, elem_ty, out)) return false;
+        if (!try codegen_callbacks.emitExpr(allocator, tokens, value_start, value_end, locals, ctx, elem_ty, out)) return false;
         try appendStoreForPayloadType(allocator, out, elem_ty);
     }
     try emitStorageAliasRelease(allocator, out, source_name, target_name);
@@ -1065,13 +1065,13 @@ pub fn emitStoragePutScalarCall(allocator: std.mem.Allocator, tokens: []const le
     try out.appendSlice(allocator, "    end\n");
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
     if (isTupleTypeName(elem_ty)) {
-        if (!try gen_hooks.emitExpr(allocator, tokens, value_start, value_end, locals, ctx, elem_ty, out)) return false;
+        if (!try codegen_callbacks.emitExpr(allocator, tokens, value_start, value_end, locals, ctx, elem_ty, out)) return false;
         try emitStorageElementPtrFromLocal(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes);
         try appendFmt(allocator, out, "    local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
         try appendStoreTupleLeavesOwningFromStackCtx(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ", ctx);
     } else {
         try emitStorageElementPtrFromLocal(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes);
-        if (!try gen_hooks.emitExpr(allocator, tokens, value_start, value_end, locals, ctx, elem_ty, out)) return false;
+        if (!try codegen_callbacks.emitExpr(allocator, tokens, value_start, value_end, locals, ctx, elem_ty, out)) return false;
         try appendStoreForPayloadType(allocator, out, elem_ty);
     }
     try emitStorageLenPtr(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL);
@@ -1771,8 +1771,8 @@ pub fn emitStorageSetCall(allocator: std.mem.Allocator, tokens: []const lexer.To
 
     try emitStorageAliasProtect(allocator, out, tokens[start_idx].lexeme, target_name);
     try appendFmt(allocator, out, "    local.get ${s}\n", .{tokens[start_idx].lexeme});
-    if (!try gen_hooks.emitExpr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return false;
-    if (!try gen_hooks.emitExpr(allocator, tokens, value_start, value_end, locals, ctx, "u8", out)) return false;
+    if (!try codegen_callbacks.emitExpr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return false;
+    if (!try codegen_callbacks.emitExpr(allocator, tokens, value_start, value_end, locals, ctx, "u8", out)) return false;
     try out.appendSlice(allocator, "    call $__storage_set_u8\n");
     try emitStorageAliasRelease(allocator, out, tokens[start_idx].lexeme, target_name);
     return true;
@@ -1788,7 +1788,7 @@ pub fn emitStoragePutOneCall(allocator: std.mem.Allocator, tokens: []const lexer
 
     try emitStorageAliasProtect(allocator, out, source_name, target_name);
     try appendFmt(allocator, out, "    local.get ${s}\n", .{source_name});
-    if (!try gen_hooks.emitExpr(allocator, tokens, value_start, value_end, locals, ctx, "u8", out)) return false;
+    if (!try codegen_callbacks.emitExpr(allocator, tokens, value_start, value_end, locals, ctx, "u8", out)) return false;
     try out.appendSlice(allocator, "    call $__storage_put_u8\n");
     try emitStorageAliasRelease(allocator, out, source_name, target_name);
     return true;
@@ -1945,7 +1945,7 @@ fn callArgMatchesCallbackLambda(
 pub fn emitStorageSetManagedCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, index_start: usize, index_end: usize, value_start: usize, value_end: usize, source_name: []const u8, target_name: []const u8, elem_ty: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     try out.appendSlice(allocator, "    ;; storage-set-managed\n");
     try emitStorageAliasProtect(allocator, out, source_name, target_name);
-    if (!try gen_hooks.emitExpr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return false;
+    if (!try codegen_callbacks.emitExpr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return false;
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
     try appendFmt(allocator, out, "    local.get ${s}\n", .{source_name});
     try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
@@ -2014,7 +2014,7 @@ pub fn emitStoragePutManagedCall(allocator: std.mem.Allocator, tokens: []const l
 }
 
 pub fn emitManagedStorageValue(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, elem_ty: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
-    if (!try gen_hooks.emitExpr(allocator, tokens, start_idx, end_idx, locals, ctx, elem_ty, out)) return false;
+    if (!try codegen_callbacks.emitExpr(allocator, tokens, start_idx, end_idx, locals, ctx, elem_ty, out)) return false;
     if (isDirectManagedLocalExpr(tokens, start_idx, end_idx, locals, ctx)) {
         try out.appendSlice(allocator, "    ;; storage-managed-write-inc\n");
         try out.appendSlice(allocator, "    call $__arc_inc\n");
@@ -2911,7 +2911,7 @@ pub fn emitManagedHandleCallExprWithMoveContext(allocator: std.mem.Allocator, to
         .defer_ctx = defer_ctx,
         .allow_last_use_move = allow_last_use_move,
     };
-    return try gen_hooks.emitUserFuncCallWithMoveContext(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, &move_ctx, out);
+    return try codegen_callbacks.emitUserFuncCallWithMoveContext(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, &move_ctx, out);
 }
 
 pub fn emitStorageHandleBindingExpr(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, body_start: usize, body_end: usize, allow_last_use_move: bool, expected_ty: []const u8, locals: *const LocalSet, defer_ctx: ?*const DeferContext, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
@@ -2924,7 +2924,7 @@ pub fn emitStorageHandleBindingExpr(allocator: std.mem.Allocator, tokens: []cons
         .allow_last_use_move = true,
         .allow_field_read_move = true,
     } else null;
-    if (!try gen_hooks.emitExprWithMoveContext(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, if (move_ctx) |*ctx_info| ctx_info else null, out)) return false;
+    if (!try codegen_callbacks.emitExprWithMoveContext(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, if (move_ctx) |*ctx_info| ctx_info else null, out)) return false;
     return true;
 }
 
@@ -2950,7 +2950,7 @@ pub fn emitTupleCallBinding(allocator: std.mem.Allocator, tokens: []const lexer.
         .defer_ctx = defer_ctx,
         .allow_last_use_move = allow_last_use_move,
     };
-    if (!try gen_hooks.emitUserFuncCallWithMoveContext(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, &move_ctx, out)) {
+    if (!try codegen_callbacks.emitUserFuncCallWithMoveContext(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, &move_ctx, out)) {
         return error.NoMatchingCall;
     }
     try emitTupleLocalSet(allocator, tuple_local.name, tuple_local.ty, ctx, out);
