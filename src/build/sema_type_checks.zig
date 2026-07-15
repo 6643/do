@@ -86,8 +86,6 @@ pub fn check_type_decl_naming(tokens: []const lexer.Token) !void {
         return mark_error_at(tokens, i, error.InvalidTypeDeclName);
     }
 }
-
-
 pub fn check_type_decl_name_conflicts(allocator: std.mem.Allocator, tokens: []const lexer.Token) !void {
     var seen = try std.ArrayList([]const u8).initCapacity(allocator, 0);
     defer seen.deinit(allocator);
@@ -1425,4 +1423,3 @@ fn is_type_decl_or_constraint_line(tokens: []const lexer.Token, idx: usize) bool
     if (!is_top_level_decl_head(tokens, line_start)) return false;
     return is_type_decl_start(tokens, line_start);
 }
-

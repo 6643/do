@@ -90,7 +90,7 @@ const Scope = struct {
         return false;
     }
 
-    fn containsLoopBinding(self: *const Scope, name: []const u8) bool {
+    fn contains_loop_binding(self: *const Scope, name: []const u8) bool {
         for (self.loop_bindings.items) |it| {
             if (std.mem.eql(u8, it, name)) return true;
         }
@@ -105,10 +105,9 @@ fn scopes_contain(scopes: []const Scope, name: []const u8) bool {
     return false;
 }
 
-
 fn scopes_contain_loop_binding(scopes: []const Scope, name: []const u8) bool {
     for (scopes) |scope| {
-        if (scope.containsLoopBinding(name)) return true;
+        if (scope.contains_loop_binding(name)) return true;
     }
     return false;
 }
@@ -2218,14 +2217,12 @@ fn append_loop_binding_name(
 ) !void {
     const name = tokens[idx].lexeme;
     if (std.mem.eql(u8, name, "_")) return;
-    if (scope.containsLoopBinding(name) or scopes_contain(outer_scopes, name) or scopes_contain_loop_binding(outer_scopes, name)) {
+    if (scope.contains_loop_binding(name) or scopes_contain(outer_scopes, name) or scopes_contain_loop_binding(outer_scopes, name)) {
         return mark_error_at(tokens, idx, error.InvalidLoopHeader);
     }
     if (is_visible_binding_or_callable_name(tokens, name, idx)) return mark_error_at(tokens, idx, error.InvalidLoopHeader);
     try scope.loop_bindings.append(allocator, name);
 }
-
-
 fn validate_assignment_lhs_names(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !void {
     var expect_name = true;
     var depth_paren: usize = 0;
@@ -2285,5 +2282,3 @@ fn is_allowed_constraint_func_name(name: []const u8) bool {
     if (is_reserved_source_name(name)) return false;
     return !is_keyword(name);
 }
-
-

@@ -138,9 +138,6 @@ pub fn is_scalar_as_target_type_name(name: []const u8) bool {
     }
     return false;
 }
-
-
-
 pub fn find_inline_func_type_in_is_arg(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
     var i = start_idx;
     while (i < end_idx) : (i += 1) {
@@ -1061,5 +1058,3 @@ pub fn has_concrete_type_name(tokens: []const lexer.Token, name: []const u8) boo
     }
     return false;
 }
-
-

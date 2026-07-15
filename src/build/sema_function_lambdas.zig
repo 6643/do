@@ -46,9 +46,6 @@ pub fn check_lambda_usage(allocator: std.mem.Allocator, program: parser.Program,
         try check_one_lambda_usage(allocator, tokens, node);
     }
 }
-
-
-
 pub fn check_one_lambda_usage(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -75,9 +72,6 @@ pub fn check_one_lambda_usage(
         return mark_error_at(tokens, bad_idx, error.InvalidLambdaExpr);
     }
 }
-
-
-
 pub fn check_lambda_overload_calls(
     allocator: std.mem.Allocator,
     program: parser.Program,
@@ -507,6 +501,3 @@ pub fn is_local_binding_introducer(tokens: []const lexer.Token, idx: usize) bool
     if (idx == line_start and eq_idx > idx + 1) return true;
     return false;
 }
-
-
-

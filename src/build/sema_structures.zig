@@ -60,8 +60,6 @@ pub fn check_path_access(tokens: []const lexer.Token) !void {
         return mark_error_at(tokens, i, error.InvalidPathAccess);
     }
 }
-
-
 pub fn check_field_segment_positions(tokens: []const lexer.Token) !void {
     for (tokens, 0..) |t, i| {
         if (t.kind != .ident) continue;
@@ -996,4 +994,3 @@ fn generic_struct_type_param_count(tokens: []const lexer.Token, name: []const u8
     const count = local_struct_type_param_count(tokens, name) orelse return null;
     return if (count == 0) null else count;
 }
-

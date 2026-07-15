@@ -131,9 +131,6 @@ pub fn check_single_value_positions(
         return mark_error_at(tokens, i, error.MultiReturnInSingleValuePosition);
     }
 }
-
-
-
 pub fn check_known_condition_bool_sites(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token) !void {
     const funcs = try collect_func_shapes(allocator, tokens);
     defer free_func_shapes(allocator, funcs);
@@ -157,9 +154,6 @@ pub fn check_known_condition_bool_sites(allocator: std.mem.Allocator, program: p
         }
     }
 }
-
-
-
 pub fn check_line_string_root_positions(program: parser.Program, tokens: []const lexer.Token) !void {
     for (program.expr_nodes) |node| {
         if (node.kind != .literal) continue;
@@ -1393,6 +1387,3 @@ pub fn is_arg_count_compatible(sig: parser.FuncSig, arg_count: usize) bool {
     }
     return true;
 }
-
-
-

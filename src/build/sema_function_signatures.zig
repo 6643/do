@@ -72,9 +72,6 @@ pub fn check_private_l_value_assign(tokens: []const lexer.Token) !void {
         return mark_error_at(tokens, line_start, error.PrivateIdentCannotBeLValue);
     }
 }
-
-
-
 pub fn is_private_top_value_decl_start(tokens: []const lexer.Token, idx: usize, eq_idx: usize) bool {
     if (!is_top_level_decl_head(tokens, idx)) return false;
     if (eq_idx <= idx + 1) return false;
@@ -82,9 +79,6 @@ pub fn is_private_top_value_decl_start(tokens: []const lexer.Token, idx: usize, 
     const name = tokens[idx].lexeme;
     return name.len > 1 and name[0] == '.' and is_lower_ident_name(name[1..]) and !is_reserved_func_name(name[1..]);
 }
-
-
-
 pub fn check_func_decl_naming(tokens: []const lexer.Token) !void {
     var depth_brace: usize = 0;
     var i: usize = 0;
@@ -816,6 +810,3 @@ pub fn is_valid_func_param_name(name: []const u8) bool {
 pub fn is_valid_func_param_type_name(name: []const u8) bool {
     return name.len != 0 and (std.ascii.isUpper(name[0]) or name[0] == '[' or name[0] == '(' or name[0] == '.');
 }
-
-
-
