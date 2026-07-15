@@ -10,7 +10,7 @@ const context = @import("codegen_context.zig");
 const gen_collect_util = @import("gen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
-const gen_import = @import("gen_import.zig");
+const codegen_imports = @import("codegen_imports.zig");
 const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
 const codegen_callbacks = @import("codegen_callbacks.zig");
 const codegen_emit_storage_values = @import("codegen_emit_storage_values.zig");
@@ -20,8 +20,8 @@ const codegen_emit_struct = @import("codegen_emit_struct.zig");
 const codegen_emit_struct_fields = @import("codegen_emit_struct_fields.zig");
 const codegen_emit_union = @import("codegen_emit_union.zig");
 const codegen_emit_control = @import("codegen_emit_control.zig");
-const gen_ownership = @import("gen_ownership.zig");
-const gen_host = @import("gen_host.zig");
+const codegen_ownership = @import("codegen_ownership.zig");
+const codegen_host_imports = @import("codegen_host_imports.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
 const codegen_union_layout = @import("codegen_union_layout.zig");
 const ownership = @import("ownership.zig");
@@ -37,7 +37,7 @@ const InferredUnionBinding = model.InferredUnionBinding;
 const findUnionLocalExact = context.findUnionLocalExact;
 const MultiResultLhs = model.MultiResultLhs;
 const SourceOrigin = model.SourceOrigin;
-const findPayloadEnumDecl = gen_import.findPayloadEnumDecl;
+const findPayloadEnumDecl = codegen_imports.findPayloadEnumDecl;
 const tokEq = codegen_tokens.tok_eq;
 const findMatchingInRange = codegen_tokens.find_matching_in_range;
 const findTopLevelToken = codegen_tokens.find_top_level_token;
@@ -75,9 +75,9 @@ const pureScalarStructPackWidth = gen_collect_util.pureScalarStructPackWidth;
 const parseCodegenTypeExpr = gen_collect_util.parseCodegenTypeExpr;
 const parse_type_union_layout_from_name = codegen_collect_structs.parse_type_union_layout_from_name;
 const substituteGenericTypeOwned = gen_collect_util.substituteGenericTypeOwned;
-const callHeadAt = gen_import.callHeadAt;
-const exprCallHead = gen_import.exprCallHead;
-const importedAliasContextForTokens = gen_import.importedAliasContextForTokens;
+const callHeadAt = codegen_imports.callHeadAt;
+const exprCallHead = codegen_imports.exprCallHead;
+const importedAliasContextForTokens = codegen_imports.importedAliasContextForTokens;
 const is_managed_local_type = codegen_emit_wasi.is_managed_local_type;
 const is_tuple_type_name = codegen_emit_wasi.is_tuple_type_name;
 const tuple_arity = codegen_emit_wasi.tuple_arity;
@@ -124,7 +124,7 @@ fn stmt_contains_wasi_socket_create(
     var i = start_idx;
     while (i + 1 < end_idx) : (i += 1) {
         if (tokens[i].kind != .ident or !tokEq(tokens[i + 1], "(")) continue;
-        const import = gen_import.findWasiHostImportForTokens(ctx, tokens, tokens[i].lexeme) orelse continue;
+        const import = codegen_imports.findWasiHostImportForTokens(ctx, tokens, tokens[i].lexeme) orelse continue;
         if (std.mem.eql(u8, import.target, "sockets/types/tcp-socket.create") or
             std.mem.eql(u8, import.target, "sockets/types/udp-socket.create"))
         {
@@ -392,7 +392,7 @@ pub fn collect_body_locals_with_mode(allocator: std.mem.Allocator, tokens: []con
     }
 }
 
-// --- helpers relocated from gen_lower (domain split) ---
+// --- helpers relocated from codegen_pipeline (domain split) ---
 
 pub fn stmt_contains_variadic_user_call(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext) bool {
     var i = start_idx;
@@ -880,7 +880,7 @@ pub fn find_struct_local_exact(locals: []const StructLocal, name: []const u8) ?S
     return null;
 }
 
-// --- more helpers from gen_lower ---
+// --- more helpers from codegen_pipeline ---
 
 pub fn inferred_managed_payload_binding(
     tokens: []const lexer.Token,

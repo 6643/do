@@ -12,7 +12,7 @@ const context = @import("codegen_context.zig");
 const gen_collect_util = @import("gen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
-const gen_import = @import("gen_import.zig");
+const codegen_imports = @import("codegen_imports.zig");
 const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
 const codegen_callbacks = @import("codegen_callbacks.zig");
 
@@ -45,7 +45,7 @@ const pure_scalar_struct_pack_width = gen_collect_util.pureScalarStructPackWidth
 const pack_slot_width = gen_collect_util.packSlotWidth;
 const append_tuple_leaf_types_with_structs = gen_collect_util.appendTupleLeafTypesWithStructs;
 const struct_decl_has_managed_field = gen_collect_util.structDeclHasManagedField;
-const expr_call_head = gen_import.exprCallHead;
+const expr_call_head = codegen_imports.exprCallHead;
 const type_payload_bytes = codegen_emit_wasi.type_payload_bytes;
 const type_payload_alignment = codegen_emit_wasi.type_payload_alignment;
 const is_tuple_type_name = codegen_emit_wasi.is_tuple_type_name;

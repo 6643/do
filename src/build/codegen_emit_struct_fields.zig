@@ -15,13 +15,13 @@ const NilComparisonNarrowing = model.NilComparisonNarrowing;
 const TypedStructBinding = model.TypedStructBinding;
 const gen_collect_util = @import("gen_collect_util.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
-const gen_import = @import("gen_import.zig");
+const codegen_imports = @import("codegen_imports.zig");
 const codegen_storage_layout = @import("codegen_storage_layout.zig");
 const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
 const codegen_callbacks = @import("codegen_callbacks.zig");
-const gen_ownership = @import("gen_ownership.zig");
-const find_top_level_guard_loop_control = gen_ownership.findTopLevelGuardLoopControl;
-const label_for_loop_start = gen_ownership.labelForLoopStart;
+const codegen_ownership = @import("codegen_ownership.zig");
+const find_top_level_guard_loop_control = codegen_ownership.findTopLevelGuardLoopControl;
+const label_for_loop_start = codegen_ownership.labelForLoopStart;
 const codegen_union_layout = @import("codegen_union_layout.zig");
 const ownership_facts = @import("ownership_facts.zig");
 const tok_eq = codegen_tokens.tok_eq;
@@ -65,7 +65,7 @@ const find_struct_layout = gen_collect_util.findStructLayout;
 const parse_codegen_type_expr = gen_collect_util.parseCodegenTypeExpr;
 const parse_type_union_layout_from_name = codegen_collect_structs.parse_type_union_layout_from_name;
 const substitute_generic_type_owned = gen_collect_util.substituteGenericTypeOwned;
-const expr_call_head = gen_import.exprCallHead;
+const expr_call_head = codegen_imports.exprCallHead;
 const is_managed_local_type = codegen_emit_wasi.is_managed_local_type;
 const is_tuple_type_name = codegen_emit_wasi.is_tuple_type_name;
 const codegen_wasm_type = codegen_emit_wasi.codegen_wasm_type;
@@ -992,9 +992,9 @@ pub fn fresh_struct_literal_binding_stmt_end(allocator: std.mem.Allocator, token
     return null;
 }
 
-// re-export gen_ownership
-pub const emit_block_release_managed_locals = gen_ownership.emitBlockReleaseManagedLocals;
-pub const body_can_reach_end = gen_ownership.bodyCanReachEnd;
+// re-export codegen_ownership
+pub const emit_block_release_managed_locals = codegen_ownership.emitBlockReleaseManagedLocals;
+pub const body_can_reach_end = codegen_ownership.bodyCanReachEnd;
 pub fn emit_zero_value_for_type(allocator: std.mem.Allocator, ctx: CodegenContext, out: *std.ArrayList(u8), ty: []const u8) !void {
     try append_fmt(allocator, out, "    {s}.const 0\n", .{codegen_wasm_type(ctx, ty)});
 }

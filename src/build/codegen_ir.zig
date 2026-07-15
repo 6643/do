@@ -338,24 +338,24 @@ fn foldI32Numeric(left: i32, right: i32, op: NumericOp) ?i32 {
     };
 }
 
-pub fn emitFunctionWat(allocator: std.mem.Allocator, func: *const Function) ![]const u8 {
+pub fn emit_function_wat(allocator: std.mem.Allocator, func: *const Function) ![]const u8 {
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
 
     try appendFmt(&out, allocator, "  (func ${s}\n", .{func.name});
-    try emitFunctionBodyWatInto(&out, allocator, func);
+    try emit_function_body_wat_into(&out, allocator, func);
     try out.appendSlice(allocator, "  )\n");
     return out.toOwnedSlice(allocator);
 }
 
-pub fn emitFunctionBodyWat(allocator: std.mem.Allocator, func: *const Function) ![]const u8 {
+pub fn emit_function_body_wat(allocator: std.mem.Allocator, func: *const Function) ![]const u8 {
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
-    try emitFunctionBodyWatInto(&out, allocator, func);
+    try emit_function_body_wat_into(&out, allocator, func);
     return out.toOwnedSlice(allocator);
 }
 
-fn emitFunctionBodyWatInto(out: *std.ArrayList(u8), allocator: std.mem.Allocator, func: *const Function) !void {
+fn emit_function_body_wat_into(out: *std.ArrayList(u8), allocator: std.mem.Allocator, func: *const Function) !void {
     if (func.blocks.items.len == 1) {
         try emitReturnBlockWat(out, allocator, func, &func.blocks.items[0], "    ");
     } else if (func.blocks.items.len == 3) {
@@ -613,7 +613,7 @@ test "backend ir emits straight line scalar wat" {
     try func.appendInstr(allocator, block_id, .{ .compare = .{ .ty = .i32, .op = .eq } });
     try func.setTerminator(block_id, .ret);
 
-    const wat = try emitFunctionWat(allocator, &func);
+    const wat = try emit_function_wat(allocator, &func);
     defer allocator.free(wat);
 
     try std.testing.expectEqualStrings(
@@ -651,7 +651,7 @@ test "backend ir emits structured if wat for two return blocks" {
     try func.appendInstr(allocator, else_block, .{ .local_set = result });
     try func.setTerminator(else_block, .{ .ret_value = result });
 
-    const wat = try emitFunctionWat(allocator, &func);
+    const wat = try emit_function_wat(allocator, &func);
     defer allocator.free(wat);
 
     try std.testing.expectEqualStrings(

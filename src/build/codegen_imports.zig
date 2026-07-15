@@ -7,7 +7,7 @@ const codegen_names = @import("codegen_names.zig");
 const model = @import("codegen_model.zig");
 const context = @import("codegen_context.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
-const gen_host = @import("gen_host.zig");
+const codegen_host_imports = @import("codegen_host_imports.zig");
 
 const tokEq = codegen_tokens.tok_eq;
 const findMatching = codegen_tokens.find_matching;
@@ -60,10 +60,10 @@ const wasiHostImportUseIsLowerableAtCall = codegen_wasi_registry.wasi_host_impor
 const wasiLowering = codegen_wasi_registry.wasi_lowering;
 const parseWasiLinkAtArgs = codegen_wasi_registry.parse_wasi_link_at_args;
 
-const findHostImportForTokens = gen_host.findHostImportForTokens;
-const hostCallArgsMatch = gen_host.hostCallArgsMatch;
-const hostParamIsPtrLen = gen_host.hostParamIsPtrLen;
-const hostArgCouldBeStoragePtrLenSyntax = gen_host.hostArgCouldBeStoragePtrLenSyntax;
+const findHostImportForTokens = codegen_host_imports.findHostImportForTokens;
+const hostCallArgsMatch = codegen_host_imports.hostCallArgsMatch;
+const hostParamIsPtrLen = codegen_host_imports.hostParamIsPtrLen;
+const hostArgCouldBeStoragePtrLenSyntax = codegen_host_imports.hostArgCouldBeStoragePtrLenSyntax;
 
 const test_runner = @import("test_runner.zig");
 

@@ -3,7 +3,7 @@ const std = @import("std");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const test_runner = @import("test_runner.zig");
-const gen_lower = @import("gen_lower.zig");
+const codegen_pipeline = @import("codegen_pipeline.zig");
 const model = @import("codegen_model.zig");
 const context = @import("codegen_context.zig");
 const codegen_tokens = @import("codegen_tokens.zig");
@@ -14,9 +14,9 @@ const codegen_collect_structs = @import("codegen_collect_structs.zig");
 pub const EmitOptions = model.EmitOptions;
 pub const CodegenError = model.CodegenError;
 
-pub const emitWat = gen_lower.emitWat;
-pub const emitWatWithOptions = gen_lower.emitWatWithOptions;
-pub const emitTestWat = gen_lower.emitTestWat;
+pub const emit_wat = codegen_pipeline.emit_wat;
+pub const emit_wat_with_options = codegen_pipeline.emit_wat_with_options;
+pub const emit_test_wat = codegen_pipeline.emit_test_wat;
 
 // Types for unit tests
 const LocalSet = context.LocalSet;
@@ -36,33 +36,33 @@ const findStructLocal = context.findStructLocal;
 const findMatching = codegen_tokens.find_matching;
 
 // Impl helpers for unit tests
-const bindGenericTypeFromConcrete = gen_lower.bindGenericTypeFromConcrete;
-const func_param_abi_type = gen_lower.funcParamAbiType;
-const func_variadic_elem_type = gen_lower.func_variadic_elem_type;
-const cloneFuncParams = gen_lower.cloneFuncParams;
+const bindGenericTypeFromConcrete = codegen_pipeline.bindGenericTypeFromConcrete;
+const func_param_abi_type = codegen_pipeline.funcParamAbiType;
+const func_variadic_elem_type = codegen_pipeline.func_variadic_elem_type;
+const cloneFuncParams = codegen_pipeline.cloneFuncParams;
 const freeStructDecls = model.freeStructDecls;
 const freeFuncDecls = model.freeFuncDecls;
 const freeFuncParams = model.freeFuncParams;
 const collect_struct_decls = codegen_collect_structs.collect_struct_decls;
 const collect_func_decls = codegen_collect_functions.collect_func_decls;
 const findStartFunc = codegen_tokens.find_start_func;
-const findGenericTemplateForCall = gen_lower.findGenericTemplateForCall;
-const directManagedLastUseMoveSourceOrigin = gen_lower.directManagedLastUseMoveSourceOrigin;
+const findGenericTemplateForCall = codegen_pipeline.findGenericTemplateForCall;
+const directManagedLastUseMoveSourceOrigin = codegen_pipeline.directManagedLastUseMoveSourceOrigin;
 const CallLastUseMoveContext = context.CallLastUseMoveContext;
-const collectGenericFuncInstancesForTests = gen_lower.collectGenericFuncInstancesForTests;
-const collect_body_locals = gen_lower.collect_body_locals;
-const emit_scalar_numeric_start_with_backend_ir = gen_lower.emit_scalar_numeric_start_with_backend_ir;
-const emit_expr = gen_lower.emit_expr;
-const collectGenericFuncInstanceForCall = gen_lower.collectGenericFuncInstanceForCall;
-const find_generic_binding = gen_lower.findGenericBinding;
-const find_func_decl_for_call_head = gen_lower.find_func_decl_for_call_head;
-const bindGenericFuncCall = gen_lower.bindGenericFuncCall;
+const collectGenericFuncInstancesForTests = codegen_pipeline.collectGenericFuncInstancesForTests;
+const collect_body_locals = codegen_pipeline.collect_body_locals;
+const emit_scalar_numeric_start_with_backend_ir = codegen_pipeline.emit_scalar_numeric_start_with_backend_ir;
+const emit_expr = codegen_pipeline.emit_expr;
+const collectGenericFuncInstanceForCall = codegen_pipeline.collectGenericFuncInstanceForCall;
+const find_generic_binding = codegen_pipeline.findGenericBinding;
+const find_func_decl_for_call_head = codegen_pipeline.find_func_decl_for_call_head;
+const bindGenericFuncCall = codegen_pipeline.bindGenericFuncCall;
 const findUnionLocal = context.findUnionLocal;
-const call_head_at = gen_lower.callHeadAt;
+const call_head_at = codegen_pipeline.callHeadAt;
 const collect_struct_layouts = codegen_collect_structs.collect_struct_layouts;
 const findToken = codegen_tokens.find_token;
 const freeStructLayouts = model.freeStructLayouts;
-const field_get_last_use_move_source = gen_lower.field_get_last_use_move_source;
+const field_get_last_use_move_source = codegen_pipeline.field_get_last_use_move_source;
 
 test "LocalSet records source origin metadata" {
     const allocator = std.testing.allocator;

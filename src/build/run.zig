@@ -1,6 +1,6 @@
 const std = @import("std");
 const cli = @import("cli.zig");
-const codegen = @import("gen.zig");
+const codegen = @import("codegen_api.zig");
 const diag = @import("diag.zig");
 const entry = @import("entry.zig");
 const imports = @import("imports.zig");
@@ -98,7 +98,7 @@ fn compileTests(
         std.process.exit(1);
     }
 
-    const wat = codegen.emitTestWat(allocator, program, tokens, module_graph) catch |err| {
+    const wat = codegen.emit_test_wat(allocator, program, tokens, module_graph) catch |err| {
         try diag.printCompileError(io, parsed_cli.input_path, source, tokens, err, null);
         std.process.exit(1);
     };
@@ -190,7 +190,7 @@ fn compileProgramWatParts(
         std.process.exit(1);
     };
 
-    return codegen.emitWatWithOptions(allocator, program, tokens, module_graph, .{
+    return codegen.emit_wat_with_options(allocator, program, tokens, module_graph, .{
         .component_core = component_core,
     }) catch |err| {
         try diag.printCompileError(io, input_path, source, tokens, err, null);

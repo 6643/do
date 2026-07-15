@@ -1483,7 +1483,7 @@ function coreImportName(resolved) {
     resolved.interface === "types" &&
     (resolved.member === "tcp-socket.create" || resolved.member === "udp-socket.create")
   ) {
-    // Match component_metadata_wat wasiLowering: [static]tcp-socket.create
+    // Match wat_component_metadata wasiLowering: [static]tcp-socket.create
     return `[static]${resolved.member}`;
   }
   if (

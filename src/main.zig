@@ -87,9 +87,9 @@ test {
     _ = @import("lsp/protocol.zig");
     _ = @import("lsp/semantic_tokens.zig");
     _ = @import("lsp/workspace.zig");
-    _ = @import("build/backend_ir.zig");
-    _ = @import("build/component_metadata_wat.zig");
-    _ = @import("build/function_body_wat.zig");
+    _ = @import("build/codegen_ir.zig");
+    _ = @import("build/wat_component_metadata.zig");
+    _ = @import("build/wat_function_body.zig");
     _ = @import("build/ownership_facts.zig");
     _ = @import("build/runtime_prelude_wat.zig");
     _ = @import("build/type_name.zig");

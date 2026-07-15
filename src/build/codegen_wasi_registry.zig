@@ -1,6 +1,6 @@
 //! WASI host import tables, parse/collect, pure lowering helpers.
 const std = @import("std");
-const component_metadata_wat = @import("component_metadata_wat.zig");
+const wat_component_metadata = @import("wat_component_metadata.zig");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const codegen_tokens = @import("codegen_tokens.zig");
@@ -19,7 +19,7 @@ const string_token_body = codegen_tokens.string_token_body;
 const public_decl_name = codegen_names.public_decl_name;
 const compact_token_text = codegen_tokens.compact_token_text;
 
-pub const WasiLowering = component_metadata_wat.WasiLowering;
+pub const WasiLowering = wat_component_metadata.WasiLowering;
 pub const WASI_BINDING_ENTRY_SOURCE = "entry";
 
 pub const WasiHostImport = struct {
@@ -81,7 +81,7 @@ pub fn known_wasi_wit_signature(target: []const u8) ?struct { params: []const u8
 }
 
 pub fn wasi_lowering(import: WasiHostImport) ?WasiLowering {
-    return component_metadata_wat.wasiLowering(import);
+    return wat_component_metadata.wasiLowering(import);
 }
 
 pub fn append_wasi_import_symbol(
@@ -89,7 +89,7 @@ pub fn append_wasi_import_symbol(
     out: *std.ArrayList(u8),
     target: []const u8,
 ) !void {
-    try component_metadata_wat.appendWasiImportSymbol(allocator, out, target);
+    try wat_component_metadata.appendWasiImportSymbol(allocator, out, target);
 }
 
 pub fn free_wasi_host_imports(allocator: std.mem.Allocator, wasi_imports: []const WasiHostImport) void {
@@ -372,7 +372,7 @@ fn exprCallHead(tokens: []const lexer.Token, range: codegen_tokens.Range) ?ExprC
     }
     const close_paren = find_matching_in_range(tokens, open_paren, "(", ")", range.end) catch return null;
     if (close_paren + 1 != range.end) return null;
-    // Intrinsic name validation stays in gen.zig; here any @name(...) counts as intrinsic.
+    // Intrinsic name validation stays in codegen_api.zig; here any @name(...) counts as intrinsic.
     return .{
         .name_idx = name_idx,
         .type_args_start = type_args_start,

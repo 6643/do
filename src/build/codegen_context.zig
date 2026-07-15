@@ -711,7 +711,7 @@ pub fn localNameMatches(name: []const u8, source_name: ?[]const u8, needle: []co
 pub fn loopSourceLocalName(allocator: std.mem.Allocator, loop_id: usize) ![]u8 {
     return try std.fmt.allocPrint(allocator, "__loop_source_{d}", .{loop_id});
 }
-// moved from gen_lower for domain share
+// moved from codegen_pipeline for domain share
 pub const CallLastUseMoveContext = struct {
     body_start: usize = 0,
     stmt_end: usize,

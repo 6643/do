@@ -1,8 +1,8 @@
 //! Expression emit dispatch and function-body orchestration.
 
 const std = @import("std");
-const function_body_wat = @import("function_body_wat.zig");
-const backend_ir = @import("backend_ir.zig");
+const wat_function_body = @import("wat_function_body.zig");
+const codegen_ir = @import("codegen_ir.zig");
 const lexer = @import("lexer.zig");
 const type_util = @import("type_name.zig");
 const payload_wat = @import("wat_payload.zig");
@@ -16,7 +16,7 @@ const NilComparisonNarrowing = model.NilComparisonNarrowing;
 const gen_collect_util = @import("gen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
-const gen_import = @import("gen_import.zig");
+const codegen_imports = @import("codegen_imports.zig");
 const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
 const emit_wasi_result_list_u8_status_multi_assignment = codegen_emit_wasi.emit_wasi_result_list_u8_status_multi_assignment;
 const emit_wasi_result_read_multi_assignment = codegen_emit_wasi.emit_wasi_result_read_multi_assignment;
@@ -46,15 +46,15 @@ const wasm_type = codegen_emit_wasi.wasm_type;
 const codegen_scalar_type = codegen_emit_wasi.codegen_scalar_type;
 const MultiResultLhs = model.MultiResultLhs;
 const SourceOrigin = model.SourceOrigin;
-const find_payload_enum_decl = gen_import.findPayloadEnumDecl;
+const find_payload_enum_decl = codegen_imports.findPayloadEnumDecl;
 const find_start_func = codegen_tokens.find_start_func;
-const find_value_enum_decl_line_by_name = gen_import.findValueEnumDeclLineByName;
-const find_value_enum_decl_line_by_branch = gen_import.findValueEnumDeclLineByBranch;
+const find_value_enum_decl_line_by_name = codegen_imports.findValueEnumDeclLineByName;
+const find_value_enum_decl_line_by_branch = codegen_imports.findValueEnumDeclLineByBranch;
 const simple_type_name = codegen_collect_functions.simple_type_name;
 const is_top_level_comma_any = codegen_collect_functions.is_top_level_comma_any;
 const is_return_arrow_at = codegen_collect_functions.is_return_arrow_at;
 const codegen_union_layout = @import("codegen_union_layout.zig");
-const gen_host = @import("gen_host.zig");
+const codegen_host_imports = @import("codegen_host_imports.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
 const ownership = @import("ownership.zig");
 const ownership_facts = @import("ownership_facts.zig");
@@ -203,18 +203,18 @@ const func_param_abi_type = gen_collect_util.funcParamAbiType;
 const is_unmanaged_scalar_struct = gen_collect_util.isUnmanagedScalarStruct;
 const append_union_branch_payload_types = gen_collect_util.appendUnionBranchPayloadTypes;
 
-const call_head_at = gen_import.callHeadAt;
-const expr_call_head = gen_import.exprCallHead;
-const call_head_has_type_args = gen_import.callHeadHasTypeArgs;
-const find_value_enum_decl = gen_import.findValueEnumDecl;
-const find_codegen_import_by_alias = gen_import.findCodegenImportByAlias;
-const imported_alias_context_for_tokens = gen_import.importedAliasContextForTokens;
-const local_scalar_const = gen_import.localScalarConst;
-const imported_scalar_const = gen_import.importedScalarConst;
-const find_imported_module_index = gen_import.findImportedModuleIndex;
-const find_imported_module_index_no_alloc = gen_import.findImportedModuleIndexNoAlloc;
-const find_wasi_host_import_for_tokens = gen_import.findWasiHostImportForTokens;
-const wasi_source_for_tokens = gen_import.wasiSourceForTokens;
+const call_head_at = codegen_imports.callHeadAt;
+const expr_call_head = codegen_imports.exprCallHead;
+const call_head_has_type_args = codegen_imports.callHeadHasTypeArgs;
+const find_value_enum_decl = codegen_imports.findValueEnumDecl;
+const find_codegen_import_by_alias = codegen_imports.findCodegenImportByAlias;
+const imported_alias_context_for_tokens = codegen_imports.importedAliasContextForTokens;
+const local_scalar_const = codegen_imports.localScalarConst;
+const imported_scalar_const = codegen_imports.importedScalarConst;
+const find_imported_module_index = codegen_imports.findImportedModuleIndex;
+const find_imported_module_index_no_alloc = codegen_imports.findImportedModuleIndexNoAlloc;
+const find_wasi_host_import_for_tokens = codegen_imports.findWasiHostImportForTokens;
+const wasi_source_for_tokens = codegen_imports.wasiSourceForTokens;
 
 const is_managed_local_type = codegen_emit_wasi.is_managed_local_type;
 const is_managed_payload_type = codegen_emit_wasi.is_managed_payload_type;
@@ -253,9 +253,9 @@ const emit_wasi_record_struct_binding = codegen_emit_wasi.emit_wasi_record_struc
 const is_tuple_packable_leaf_type = type_util.isTuplePackableLeafType;
 const is_core_wasm_scalar_tu = type_util.isCoreWasmScalar;
 
-const host_param_is_ptr_len = gen_host.hostParamIsPtrLen;
-const host_arg_could_be_storage_ptr_len_syntax = gen_host.hostArgCouldBeStoragePtrLenSyntax;
-const find_host_import_for_tokens = gen_host.findHostImportForTokens;
+const host_param_is_ptr_len = codegen_host_imports.hostParamIsPtrLen;
+const host_arg_could_be_storage_ptr_len_syntax = codegen_host_imports.hostArgCouldBeStoragePtrLenSyntax;
+const find_host_import_for_tokens = codegen_host_imports.findHostImportForTokens;
 
 const WasiHostImport = codegen_wasi_registry.WasiHostImport;
 
@@ -267,7 +267,7 @@ const codegen_emit_struct = @import("codegen_emit_struct.zig");
 const codegen_emit_struct_fields = @import("codegen_emit_struct_fields.zig");
 const codegen_emit_union = @import("codegen_emit_union.zig");
 const codegen_emit_control = @import("codegen_emit_control.zig");
-const gen_ownership = @import("gen_ownership.zig");
+const codegen_ownership = @import("codegen_ownership.zig");
 const emit_storage_binding = codegen_emit_storage_values.emit_storage_binding;
 const emit_storage_handle_assignment_expr = codegen_emit_storage_values.emit_storage_handle_assignment_expr;
 const emit_tuple_binding = codegen_emit_storage_values.emit_tuple_binding;
@@ -601,32 +601,32 @@ const resolve_loop_control = codegen_emit_control.resolve_loop_control;
 const emit_loop_control_release_chain = codegen_emit_control.emit_loop_control_release_chain;
 const emit_if_block = codegen_emit_control.emit_if_block;
 const is_codegen_scalar_or_error_type = codegen_emit_control.is_codegen_scalar_or_error_type;
-const emit_release_managed_locals = gen_ownership.emitReleaseManagedLocals;
-const emit_release_managed_locals_except = gen_ownership.emitReleaseManagedLocalsExcept;
-const emit_release_managed_locals_except_many = gen_ownership.emitReleaseManagedLocalsExceptMany;
-const emit_fallthrough_release_managed_locals = gen_ownership.emitFallthroughReleaseManagedLocals;
-const emit_block_release_managed_locals = gen_ownership.emitBlockReleaseManagedLocals;
-const has_managed_locals = gen_ownership.hasManagedLocals;
-const managed_local_kind_for_type = gen_ownership.managedLocalKindForType;
-const collect_managed_ownership_locals = gen_ownership.collectManagedOwnershipLocals;
-const build_return_ownership_plan = gen_ownership.buildReturnOwnershipPlan;
-const build_guard_return_ownership_plan = gen_ownership.buildGuardReturnOwnershipPlan;
-const build_fallthrough_ownership_plan = gen_ownership.buildFallthroughOwnershipPlan;
-const build_block_ownership_plan = gen_ownership.buildBlockOwnershipPlan;
-const emit_ownership_release_plan = gen_ownership.emitOwnershipReleasePlan;
-const body_ends_with_plain_return = gen_ownership.bodyEndsWithPlainReturn;
-const body_can_reach_end = gen_ownership.bodyCanReachEnd;
-const stmt_can_reach_end = gen_ownership.stmtCanReachEnd;
-const if_stmt_can_reach_end = gen_ownership.ifStmtCanReachEnd;
-const loop_stmt_can_reach_end = gen_ownership.loopStmtCanReachEnd;
-const loop_body_can_break_current_loop = gen_ownership.loopBodyCanBreakCurrentLoop;
-const stmt_breaks_current_loop = gen_ownership.stmtBreaksCurrentLoop;
-const break_targets_current_loop = gen_ownership.breakTargetsCurrentLoop;
-const token_range_contains_labeled_break = gen_ownership.tokenRangeContainsLabeledBreak;
-const same_loop_control = gen_ownership.sameLoopControl;
-const find_top_level_guard_loop_control = gen_ownership.findTopLevelGuardLoopControl;
-const label_for_loop_start = gen_ownership.labelForLoopStart;
-const previous_line_start = gen_ownership.previousLineStart;
+const emit_release_managed_locals = codegen_ownership.emitReleaseManagedLocals;
+const emit_release_managed_locals_except = codegen_ownership.emitReleaseManagedLocalsExcept;
+const emit_release_managed_locals_except_many = codegen_ownership.emitReleaseManagedLocalsExceptMany;
+const emit_fallthrough_release_managed_locals = codegen_ownership.emitFallthroughReleaseManagedLocals;
+const emit_block_release_managed_locals = codegen_ownership.emitBlockReleaseManagedLocals;
+const has_managed_locals = codegen_ownership.hasManagedLocals;
+const managed_local_kind_for_type = codegen_ownership.managedLocalKindForType;
+const collect_managed_ownership_locals = codegen_ownership.collectManagedOwnershipLocals;
+const build_return_ownership_plan = codegen_ownership.buildReturnOwnershipPlan;
+const build_guard_return_ownership_plan = codegen_ownership.buildGuardReturnOwnershipPlan;
+const build_fallthrough_ownership_plan = codegen_ownership.buildFallthroughOwnershipPlan;
+const build_block_ownership_plan = codegen_ownership.buildBlockOwnershipPlan;
+const emit_ownership_release_plan = codegen_ownership.emitOwnershipReleasePlan;
+const body_ends_with_plain_return = codegen_ownership.bodyEndsWithPlainReturn;
+const body_can_reach_end = codegen_ownership.bodyCanReachEnd;
+const stmt_can_reach_end = codegen_ownership.stmtCanReachEnd;
+const if_stmt_can_reach_end = codegen_ownership.ifStmtCanReachEnd;
+const loop_stmt_can_reach_end = codegen_ownership.loopStmtCanReachEnd;
+const loop_body_can_break_current_loop = codegen_ownership.loopBodyCanBreakCurrentLoop;
+const stmt_breaks_current_loop = codegen_ownership.stmtBreaksCurrentLoop;
+const break_targets_current_loop = codegen_ownership.breakTargetsCurrentLoop;
+const token_range_contains_labeled_break = codegen_ownership.tokenRangeContainsLabeledBreak;
+const same_loop_control = codegen_ownership.sameLoopControl;
+const find_top_level_guard_loop_control = codegen_ownership.findTopLevelGuardLoopControl;
+const label_for_loop_start = codegen_ownership.labelForLoopStart;
+const previous_line_start = codegen_ownership.previousLineStart;
 
 pub const emit_wasi_record_return_call = codegen_emit_wasi.emit_wasi_record_return_call;
 pub const emit_wasi_record_result_fields = codegen_emit_wasi.emit_wasi_record_result_fields;
@@ -701,10 +701,10 @@ pub fn emit_start_func(allocator: std.mem.Allocator, tokens: []const lexer.Token
     defer cleanup_locals.deinit(allocator);
     try collect_direct_body_locals(allocator, tokens, open_body + 1, close_body, ctx, &cleanup_locals);
 
-    try function_body_wat.emitFuncOpen(allocator, out, "_start");
+    try wat_function_body.emitFuncOpen(allocator, out, "_start");
     for (locals.locals.items) |local| {
         if (!local.emit_decl) continue;
-        try function_body_wat.emitLocalDecl(allocator, out, local.name, codegen_wasm_type(ctx, local.ty));
+        try wat_function_body.emitLocalDecl(allocator, out, local.name, codegen_wasm_type(ctx, local.ty));
     }
     const no_results: []const []const u8 = &.{};
     const root_defer = DeferContext{
@@ -726,17 +726,17 @@ pub fn emit_start_func(allocator: std.mem.Allocator, tokens: []const lexer.Token
     if (!body_ends_with_plain_return(tokens, open_body + 1, close_body)) {
         try emit_fallthrough_release_managed_locals(allocator, &cleanup_locals, ctx, out);
     }
-    try function_body_wat.emitFuncClose(allocator, out);
-    try function_body_wat.emitFuncExport(allocator, out, "_start", "_start");
+    try wat_function_body.emitFuncClose(allocator, out);
+    try wat_function_body.emitFuncExport(allocator, out, "_start", "_start");
 }
 
 const BackendIrLocal = struct {
     name: []const u8,
-    value: backend_ir.ValueId,
+    value: codegen_ir.ValueId,
 };
 
 pub fn emit_scalar_numeric_start_with_backend_ir(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
-    var func = try backend_ir.Function.create(allocator, "_start_ir");
+    var func = try codegen_ir.Function.create(allocator, "_start_ir");
     defer func.deinit(allocator);
     const block_id = try func.addBlockId(allocator);
 
@@ -772,7 +772,7 @@ pub fn emit_scalar_numeric_start_with_backend_ir(allocator: std.mem.Allocator, t
     }
     if (!saw_return) return false;
 
-    const body = try backend_ir.emitFunctionBodyWat(allocator, &func);
+    const body = try codegen_ir.emit_function_body_wat(allocator, &func);
     defer allocator.free(body);
     try out.appendSlice(allocator, body);
     return true;
@@ -782,7 +782,7 @@ pub fn is_plain_nil_return_stmt(tokens: []const lexer.Token, start_idx: usize, e
     return start_idx + 1 == end_idx and tok_eq(tokens[start_idx], "return");
 }
 
-pub fn append_scalar_numeric_expr_ir(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, expected_ty: []const u8, func: *backend_ir.Function, block_id: backend_ir.BlockId, ir_locals: []const BackendIrLocal) CodegenError!bool {
+pub fn append_scalar_numeric_expr_ir(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, expected_ty: []const u8, func: *codegen_ir.Function, block_id: codegen_ir.BlockId, ir_locals: []const BackendIrLocal) CodegenError!bool {
     if (!std.mem.eql(u8, expected_ty, "i32")) return false;
     const range = trim_parens(tokens, start_idx, end_idx);
     if (range.start >= range.end) return false;
@@ -823,14 +823,14 @@ pub fn append_scalar_numeric_expr_ir(allocator: std.mem.Allocator, tokens: []con
     return emitted;
 }
 
-pub fn find_backend_ir_local(ir_locals: []const BackendIrLocal, name: []const u8) ?backend_ir.ValueId {
+pub fn find_backend_ir_local(ir_locals: []const BackendIrLocal, name: []const u8) ?codegen_ir.ValueId {
     for (ir_locals) |local| {
         if (std.mem.eql(u8, local.name, name)) return local.value;
     }
     return null;
 }
 
-pub fn numeric_core_ir_op(name: []const u8) ?backend_ir.NumericOp {
+pub fn numeric_core_ir_op(name: []const u8) ?codegen_ir.NumericOp {
     if (std.mem.eql(u8, name, "add")) return .add;
     if (std.mem.eql(u8, name, "sub")) return .sub;
     if (std.mem.eql(u8, name, "mul")) return .mul;
@@ -839,7 +839,7 @@ pub fn numeric_core_ir_op(name: []const u8) ?backend_ir.NumericOp {
 
 pub fn emit_test_funcs(allocator: std.mem.Allocator, tokens: []const lexer.Token, test_decls: []const test_runner.TestDecl, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
     for (test_decls, 0..) |decl, idx| {
-        try function_body_wat.emitCompiledTestOpen(allocator, out, idx, decl.name_lexeme);
+        try wat_function_body.emitCompiledTestOpen(allocator, out, idx, decl.name_lexeme);
 
         var locals = LocalSet{};
         defer locals.deinit(allocator);
@@ -850,7 +850,7 @@ pub fn emit_test_funcs(allocator: std.mem.Allocator, tokens: []const lexer.Token
 
         for (locals.locals.items) |local| {
             if (!local.emit_decl) continue;
-            try function_body_wat.emitLocalDecl(allocator, out, local.name, codegen_wasm_type(ctx, local.ty));
+            try wat_function_body.emitLocalDecl(allocator, out, local.name, codegen_wasm_type(ctx, local.ty));
         }
         const no_results: []const []const u8 = &.{};
         const root_defer = DeferContext{
@@ -864,8 +864,8 @@ pub fn emit_test_funcs(allocator: std.mem.Allocator, tokens: []const lexer.Token
             try emit_fallthrough_release_managed_locals(allocator, &cleanup_locals, ctx, out);
         }
         try out.appendSlice(allocator, "    unreachable\n");
-        try function_body_wat.emitFuncClose(allocator, out);
-        try function_body_wat.emitCompiledTestExport(allocator, out, idx);
+        try wat_function_body.emitFuncClose(allocator, out);
+        try wat_function_body.emitCompiledTestExport(allocator, out, idx);
     }
 }
 
@@ -939,7 +939,7 @@ pub fn emit_user_func(allocator: std.mem.Allocator, func: FuncDecl, ctx: Codegen
 
     for (locals.locals.items) |local| {
         if (!local.emit_decl) continue;
-        try function_body_wat.emitLocalDecl(allocator, out, local.name, codegen_wasm_type(func_ctx, local.ty));
+        try wat_function_body.emitLocalDecl(allocator, out, local.name, codegen_wasm_type(func_ctx, local.ty));
     }
     if (self_tail_tco) |tco| {
         for (tco.func.params) |param| {
@@ -983,7 +983,7 @@ pub fn emit_user_func(allocator: std.mem.Allocator, func: FuncDecl, ctx: Codegen
             }
         }
     }
-    try function_body_wat.emitFuncClose(allocator, out);
+    try wat_function_body.emitFuncClose(allocator, out);
 }
 
 pub fn build_self_tail_tco(allocator: std.mem.Allocator, func: FuncDecl, tokens: []const lexer.Token, locals: *const LocalSet, cleanup_locals: *const LocalSet, ctx: CodegenContext) !?SelfTailTco {

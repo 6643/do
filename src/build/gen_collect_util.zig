@@ -11,7 +11,7 @@ const model = @import("codegen_model.zig");
 const constants = @import("codegen_constants.zig");
 const context = @import("codegen_context.zig");
 const codegen_union_layout = @import("codegen_union_layout.zig");
-const gen_import = @import("gen_import.zig");
+const codegen_imports = @import("codegen_imports.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
 
 const alignUp = codegen_tokens.align_up;
@@ -55,22 +55,22 @@ const TokenRange = struct {
     end: usize,
 };
 
-const findCodegenImportByAlias = gen_import.findCodegenImportByAlias;
-const collectStartBodyCalls = gen_import.collectStartBodyCalls;
-const collectTestBodyCalls = gen_import.collectTestBodyCalls;
-const collectAllFunctionBodyCalls = gen_import.collectAllFunctionBodyCalls;
-const collectFunctionBodyCalls = gen_import.collectFunctionBodyCalls;
-const findImportedModuleIndex = gen_import.findImportedModuleIndex;
-const findPayloadEnumDecl = gen_import.findPayloadEnumDecl;
-const findRootModuleIndex = gen_import.findRootModuleIndex;
-const findValueEnumDecl = gen_import.findValueEnumDecl;
-const findValueEnumDeclLineByBranch = gen_import.findValueEnumDeclLineByBranch;
-const findValueEnumDeclLineByName = gen_import.findValueEnumDeclLineByName;
-const hasReachVisit = gen_import.hasReachVisit;
-const importedAliasContextForTokens = gen_import.importedAliasContextForTokens;
-const isPayloadEnumDeclStart = gen_import.isPayloadEnumDeclStart;
-const isValueEnumDeclStart = gen_import.isValueEnumDeclStart;
-const parseCodegenImport = gen_import.parseCodegenImport;
+const findCodegenImportByAlias = codegen_imports.findCodegenImportByAlias;
+const collectStartBodyCalls = codegen_imports.collectStartBodyCalls;
+const collectTestBodyCalls = codegen_imports.collectTestBodyCalls;
+const collectAllFunctionBodyCalls = codegen_imports.collectAllFunctionBodyCalls;
+const collectFunctionBodyCalls = codegen_imports.collectFunctionBodyCalls;
+const findImportedModuleIndex = codegen_imports.findImportedModuleIndex;
+const findPayloadEnumDecl = codegen_imports.findPayloadEnumDecl;
+const findRootModuleIndex = codegen_imports.findRootModuleIndex;
+const findValueEnumDecl = codegen_imports.findValueEnumDecl;
+const findValueEnumDeclLineByBranch = codegen_imports.findValueEnumDeclLineByBranch;
+const findValueEnumDeclLineByName = codegen_imports.findValueEnumDeclLineByName;
+const hasReachVisit = codegen_imports.hasReachVisit;
+const importedAliasContextForTokens = codegen_imports.importedAliasContextForTokens;
+const isPayloadEnumDeclStart = codegen_imports.isPayloadEnumDeclStart;
+const isValueEnumDeclStart = codegen_imports.isValueEnumDeclStart;
+const parseCodegenImport = codegen_imports.parseCodegenImport;
 
 const isManagedPayloadType = type_util.isManagedPayloadType;
 const isTupleTypeName = type_util.isTupleTypeName;

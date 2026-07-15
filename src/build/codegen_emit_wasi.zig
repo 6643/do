@@ -15,7 +15,7 @@ const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
 const gen_collect_util = @import("gen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
-const gen_import = @import("gen_import.zig");
+const codegen_imports = @import("codegen_imports.zig");
 
 const tok_eq = codegen_tokens.tok_eq;
 const find_matching = codegen_tokens.find_matching;
@@ -33,7 +33,7 @@ const Range = codegen_tokens.Range;
 const align_up = codegen_tokens.align_up;
 const STORAGE_OVERWRITE_TMP_LOCAL = constants.STORAGE_OVERWRITE_TMP_LOCAL;
 const WASI_FAMILY_TMP_LOCAL = constants.WASI_FAMILY_TMP_LOCAL;
-const find_value_enum_decl = gen_import.findValueEnumDecl;
+const find_value_enum_decl = codegen_imports.findValueEnumDecl;
 const is_error_like_type = gen_collect_util.isErrorLikeType;
 const module_tokens_equal = codegen_tokens.module_tokens_equal;
 
@@ -76,11 +76,11 @@ const wasi_coarse_closed_variant_name = codegen_wasi_registry.wasi_coarse_closed
 const wasi_coarse_error_always_failed = codegen_wasi_registry.wasi_coarse_error_always_failed;
 const WASI_BINDING_ENTRY_SOURCE = codegen_wasi_registry.WASI_BINDING_ENTRY_SOURCE;
 
-const find_wasi_host_import_for_tokens = gen_import.findWasiHostImportForTokens;
-const wasi_source_for_tokens = gen_import.wasiSourceForTokens;
-const find_root_module_index = gen_import.findRootModuleIndex;
-const expr_call_head = gen_import.exprCallHead;
-const call_head_at = gen_import.callHeadAt;
+const find_wasi_host_import_for_tokens = codegen_imports.findWasiHostImportForTokens;
+const wasi_source_for_tokens = codegen_imports.wasiSourceForTokens;
+const find_root_module_index = codegen_imports.findRootModuleIndex;
+const expr_call_head = codegen_imports.exprCallHead;
+const call_head_at = codegen_imports.callHeadAt;
 
 fn emit_wasi_family_arg(
     allocator: std.mem.Allocator,
@@ -120,7 +120,7 @@ const pack_slot_width = gen_collect_util.packSlotWidth;
 const tuple_pack_width_with_structs = gen_collect_util.tuplePackWidthWithStructs;
 const func_param_abi_type = gen_collect_util.funcParamAbiType;
 
-/// Callback into gen_lower emit_expr (breaks import cycle).
+/// Callback into codegen_pipeline emit_expr (breaks import cycle).
 pub const EmitExprFn = *const fn (
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,

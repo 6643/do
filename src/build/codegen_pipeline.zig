@@ -1,7 +1,7 @@
 const std = @import("std");
-const backend_ir = @import("backend_ir.zig");
-const component_metadata_wat = @import("component_metadata_wat.zig");
-const function_body_wat = @import("function_body_wat.zig");
+const codegen_ir = @import("codegen_ir.zig");
+const wat_component_metadata = @import("wat_component_metadata.zig");
+const wat_function_body = @import("wat_function_body.zig");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const ownership = @import("ownership.zig");
@@ -169,8 +169,8 @@ const findTopLevelTypeSeparator = codegen_tokens.find_top_level_type_separator;
 const findTopLevelTypeSeparatorFrom = codegen_tokens.find_top_level_type_separator_from;
 
 const CallLastUseMoveContext = context.CallLastUseMoveContext;
-const gen_host = @import("gen_host.zig");
-const gen_import = @import("gen_import.zig");
+const codegen_host_imports = @import("codegen_host_imports.zig");
+const codegen_imports = @import("codegen_imports.zig");
 const gen_collect_util = @import("gen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
@@ -189,7 +189,7 @@ const codegen_emit_storage_operations = @import("codegen_emit_storage_operations
 const codegen_storage_layout = @import("codegen_storage_layout.zig");
 const codegen_emit_expression = @import("codegen_emit_expression.zig");
 const codegen_emit_call = @import("codegen_emit_call.zig");
-const gen_generic = @import("gen_generic.zig");
+const codegen_generics = @import("codegen_generics.zig");
 const collect_body_locals_with_mode = codegen_collect_body.collect_body_locals_with_mode;
 // Re-export expression and call emit entry points.
 const emit_start_func = codegen_emit_expression.emit_start_func;
@@ -197,63 +197,63 @@ pub const emit_scalar_numeric_start_with_backend_ir = codegen_emit_expression.em
 const emit_test_funcs = codegen_emit_expression.emit_test_funcs;
 const emit_user_funcs = codegen_emit_expression.emit_user_funcs;
 
-// Re-export generic instantiation (physical home: gen_generic.zig).
-pub const appendUnmanagedStructResultAbi = gen_generic.appendUnmanagedStructResultAbi;
-pub const bindExplicitGenericCallTypeArgs = gen_generic.bindExplicitGenericCallTypeArgs;
-pub const bindGenericCallbackArg = gen_generic.bindGenericCallbackArg;
-pub const bindGenericCallbackIdentArg = gen_generic.bindGenericCallbackIdentArg;
-pub const bindGenericCallbackLambdaArg = gen_generic.bindGenericCallbackLambdaArg;
-pub const bindGenericExpectedResult = gen_generic.bindGenericExpectedResult;
-pub const bindGenericFuncCall = gen_generic.bindGenericFuncCall;
-pub const bindGenericTypeFromConcrete = gen_generic.bindGenericTypeFromConcrete;
-pub const bindGenericTypeListFromConcrete = gen_generic.bindGenericTypeListFromConcrete;
-pub const bindGenericVariadicTail = gen_generic.bindGenericVariadicTail;
-pub const callbackBindingsForCall = gen_generic.callbackBindingsForCall;
-pub const callbackBindingsHaveSameConcreteArgs = gen_generic.callbackBindingsHaveSameConcreteArgs;
-pub const cloneFuncParams = gen_generic.cloneFuncParams;
-pub const cloneGenericTypeBindingsOwned = gen_generic.cloneGenericTypeBindingsOwned;
-pub const collectConcreteCallbackFuncInstanceForCall = gen_generic.collectConcreteCallbackFuncInstanceForCall;
-pub const collectGenericFuncInstanceForCall = gen_generic.collectGenericFuncInstanceForCall;
-pub const collectGenericFuncInstancesForCall = gen_generic.collectGenericFuncInstancesForCall;
-pub const collectGenericFuncInstancesForConcreteFuncs = gen_generic.collectGenericFuncInstancesForConcreteFuncs;
-pub const collectGenericFuncInstancesForStart = gen_generic.collectGenericFuncInstancesForStart;
-pub const collectGenericFuncInstancesForTests = gen_generic.collectGenericFuncInstancesForTests;
-pub const collectGenericFuncInstancesInCallArgs = gen_generic.collectGenericFuncInstancesInCallArgs;
-pub const collectGenericFuncInstancesInFieldReflectionLoop = gen_generic.collectGenericFuncInstancesInFieldReflectionLoop;
-pub const collectGenericFuncInstancesInGuardLoopControl = gen_generic.collectGenericFuncInstancesInGuardLoopControl;
-pub const collectGenericFuncInstancesInGuardReturn = gen_generic.collectGenericFuncInstancesInGuardReturn;
-pub const collectGenericFuncInstancesInRange = gen_generic.collectGenericFuncInstancesInRange;
-pub const collectGenericFuncInstancesInStartBody = gen_generic.collectGenericFuncInstancesInStartBody;
-pub const concreteOverloadCoversGenericParams = gen_generic.concreteOverloadCoversGenericParams;
-pub const directCallExpectedResultType = gen_generic.directCallExpectedResultType;
-pub const explicitLambdaTypesMatch = gen_generic.explicitLambdaTypesMatch;
-pub const findGenericTemplateForCall = gen_generic.findGenericTemplateForCall;
-pub const funcHasUntypedParams = gen_generic.funcHasUntypedParams;
-pub const funcParamsHaveSameConcreteCallShape = gen_generic.funcParamsHaveSameConcreteCallShape;
-pub const genericBindingsCoverTypeParams = gen_generic.genericBindingsCoverTypeParams;
-pub const genericInstanceName = gen_generic.genericInstanceName;
-pub const genericOverloadCoversGenericParams = gen_generic.genericOverloadCoversGenericParams;
-pub const genericTemplateLogicalResultType = gen_generic.genericTemplateLogicalResultType;
-pub const genericTemplateMatchesCallSite = gen_generic.genericTemplateMatchesCallSite;
-pub const genericTemplateMatchesConcreteParams = gen_generic.genericTemplateMatchesConcreteParams;
-pub const genericTemplateSpecificity = gen_generic.genericTemplateSpecificity;
-pub const inferGenericCallUnionResultLayout = gen_generic.inferGenericCallUnionResultLayout;
-pub const inferUntypedGenericParamAbiType = gen_generic.inferUntypedGenericParamAbiType;
-pub const instantiateCallbackShape = gen_generic.instantiateCallbackShape;
-pub const instantiateFuncTypeShape = gen_generic.instantiateFuncTypeShape;
-pub const instantiateGenericFuncResultItems = gen_generic.instantiateGenericFuncResultItems;
-pub const matchOrBindGenericType = gen_generic.matchOrBindGenericType;
-pub const parseLambdaParamNames = gen_generic.parseLambdaParamNames;
-pub const parseLambdaParamTypes = gen_generic.parseLambdaParamTypes;
-pub const prebindGenericCallbackArg = gen_generic.prebindGenericCallbackArg;
-pub const prebindGenericCallbackArgs = gen_generic.prebindGenericCallbackArgs;
-pub const prebindGenericCallbackFuncRef = gen_generic.prebindGenericCallbackFuncRef;
-pub const prebindGenericCallbackIdent = gen_generic.prebindGenericCallbackIdent;
-pub const prebindGenericCallbackLambda = gen_generic.prebindGenericCallbackLambda;
-pub const prebindGenericTypeIfParam = gen_generic.prebindGenericTypeIfParam;
-pub const resolveCallbackBindingArg = gen_generic.resolveCallbackBindingArg;
-pub const typeContainsTypeParam = gen_generic.typeContainsTypeParam;
-pub const typedBindingExpectedType = gen_generic.typedBindingExpectedType;
+// Re-export generic instantiation (physical home: codegen_generics.zig).
+pub const appendUnmanagedStructResultAbi = codegen_generics.appendUnmanagedStructResultAbi;
+pub const bindExplicitGenericCallTypeArgs = codegen_generics.bindExplicitGenericCallTypeArgs;
+pub const bindGenericCallbackArg = codegen_generics.bindGenericCallbackArg;
+pub const bindGenericCallbackIdentArg = codegen_generics.bindGenericCallbackIdentArg;
+pub const bindGenericCallbackLambdaArg = codegen_generics.bindGenericCallbackLambdaArg;
+pub const bindGenericExpectedResult = codegen_generics.bindGenericExpectedResult;
+pub const bindGenericFuncCall = codegen_generics.bindGenericFuncCall;
+pub const bindGenericTypeFromConcrete = codegen_generics.bindGenericTypeFromConcrete;
+pub const bindGenericTypeListFromConcrete = codegen_generics.bindGenericTypeListFromConcrete;
+pub const bindGenericVariadicTail = codegen_generics.bindGenericVariadicTail;
+pub const callbackBindingsForCall = codegen_generics.callbackBindingsForCall;
+pub const callbackBindingsHaveSameConcreteArgs = codegen_generics.callbackBindingsHaveSameConcreteArgs;
+pub const cloneFuncParams = codegen_generics.cloneFuncParams;
+pub const cloneGenericTypeBindingsOwned = codegen_generics.cloneGenericTypeBindingsOwned;
+pub const collectConcreteCallbackFuncInstanceForCall = codegen_generics.collectConcreteCallbackFuncInstanceForCall;
+pub const collectGenericFuncInstanceForCall = codegen_generics.collectGenericFuncInstanceForCall;
+pub const collectGenericFuncInstancesForCall = codegen_generics.collectGenericFuncInstancesForCall;
+pub const collectGenericFuncInstancesForConcreteFuncs = codegen_generics.collectGenericFuncInstancesForConcreteFuncs;
+pub const collectGenericFuncInstancesForStart = codegen_generics.collectGenericFuncInstancesForStart;
+pub const collectGenericFuncInstancesForTests = codegen_generics.collectGenericFuncInstancesForTests;
+pub const collectGenericFuncInstancesInCallArgs = codegen_generics.collectGenericFuncInstancesInCallArgs;
+pub const collectGenericFuncInstancesInFieldReflectionLoop = codegen_generics.collectGenericFuncInstancesInFieldReflectionLoop;
+pub const collectGenericFuncInstancesInGuardLoopControl = codegen_generics.collectGenericFuncInstancesInGuardLoopControl;
+pub const collectGenericFuncInstancesInGuardReturn = codegen_generics.collectGenericFuncInstancesInGuardReturn;
+pub const collectGenericFuncInstancesInRange = codegen_generics.collectGenericFuncInstancesInRange;
+pub const collectGenericFuncInstancesInStartBody = codegen_generics.collectGenericFuncInstancesInStartBody;
+pub const concreteOverloadCoversGenericParams = codegen_generics.concreteOverloadCoversGenericParams;
+pub const directCallExpectedResultType = codegen_generics.directCallExpectedResultType;
+pub const explicitLambdaTypesMatch = codegen_generics.explicitLambdaTypesMatch;
+pub const findGenericTemplateForCall = codegen_generics.findGenericTemplateForCall;
+pub const funcHasUntypedParams = codegen_generics.funcHasUntypedParams;
+pub const funcParamsHaveSameConcreteCallShape = codegen_generics.funcParamsHaveSameConcreteCallShape;
+pub const genericBindingsCoverTypeParams = codegen_generics.genericBindingsCoverTypeParams;
+pub const genericInstanceName = codegen_generics.genericInstanceName;
+pub const genericOverloadCoversGenericParams = codegen_generics.genericOverloadCoversGenericParams;
+pub const genericTemplateLogicalResultType = codegen_generics.genericTemplateLogicalResultType;
+pub const genericTemplateMatchesCallSite = codegen_generics.genericTemplateMatchesCallSite;
+pub const genericTemplateMatchesConcreteParams = codegen_generics.genericTemplateMatchesConcreteParams;
+pub const genericTemplateSpecificity = codegen_generics.genericTemplateSpecificity;
+pub const inferGenericCallUnionResultLayout = codegen_generics.inferGenericCallUnionResultLayout;
+pub const inferUntypedGenericParamAbiType = codegen_generics.inferUntypedGenericParamAbiType;
+pub const instantiateCallbackShape = codegen_generics.instantiateCallbackShape;
+pub const instantiateFuncTypeShape = codegen_generics.instantiateFuncTypeShape;
+pub const instantiateGenericFuncResultItems = codegen_generics.instantiateGenericFuncResultItems;
+pub const matchOrBindGenericType = codegen_generics.matchOrBindGenericType;
+pub const parseLambdaParamNames = codegen_generics.parseLambdaParamNames;
+pub const parseLambdaParamTypes = codegen_generics.parseLambdaParamTypes;
+pub const prebindGenericCallbackArg = codegen_generics.prebindGenericCallbackArg;
+pub const prebindGenericCallbackArgs = codegen_generics.prebindGenericCallbackArgs;
+pub const prebindGenericCallbackFuncRef = codegen_generics.prebindGenericCallbackFuncRef;
+pub const prebindGenericCallbackIdent = codegen_generics.prebindGenericCallbackIdent;
+pub const prebindGenericCallbackLambda = codegen_generics.prebindGenericCallbackLambda;
+pub const prebindGenericTypeIfParam = codegen_generics.prebindGenericTypeIfParam;
+pub const resolveCallbackBindingArg = codegen_generics.resolveCallbackBindingArg;
+pub const typeContainsTypeParam = codegen_generics.typeContainsTypeParam;
+pub const typedBindingExpectedType = codegen_generics.typedBindingExpectedType;
 
 pub fn collect_body_locals(
     allocator: std.mem.Allocator,
@@ -340,20 +340,20 @@ const lambda_explicit_return_type = codegen_storage_layout.lambda_explicit_retur
 const infer_lambda_expr_return_type = codegen_storage_layout.infer_lambda_expr_return_type;
 const clone_local_set = codegen_storage_layout.clone_local_set;
 const find_callback_ref_func = codegen_storage_layout.find_callback_ref_func;
-const gen_ownership = @import("gen_ownership.zig");
-const findTopLevelGuardLoopControl = gen_ownership.findTopLevelGuardLoopControl;
+const codegen_ownership = @import("codegen_ownership.zig");
+const findTopLevelGuardLoopControl = codegen_ownership.findTopLevelGuardLoopControl;
 
-// re-export gen_host
-const collectEnvHostImports = gen_host.collectEnvHostImports;
-const collectEnvHostImportsFromModules = gen_host.collectEnvHostImportsFromModules;
-const parseEnvHostImport = gen_host.parseEnvHostImport;
-const findHostImport = gen_host.findHostImport;
-const findHostImportForTokens = gen_host.findHostImportForTokens;
-const isEnvHostImportStart = gen_host.isEnvHostImportStart;
-const freeHostImports = gen_host.freeHostImports;
-const hostCallArgsMatch = gen_host.hostCallArgsMatch;
-const hostParamIsPtrLen = gen_host.hostParamIsPtrLen;
-const hostArgCouldBeStoragePtrLenSyntax = gen_host.hostArgCouldBeStoragePtrLenSyntax;
+// re-export codegen_host_imports
+const collectEnvHostImports = codegen_host_imports.collectEnvHostImports;
+const collectEnvHostImportsFromModules = codegen_host_imports.collectEnvHostImportsFromModules;
+const parseEnvHostImport = codegen_host_imports.parseEnvHostImport;
+const findHostImport = codegen_host_imports.findHostImport;
+const findHostImportForTokens = codegen_host_imports.findHostImportForTokens;
+const isEnvHostImportStart = codegen_host_imports.isEnvHostImportStart;
+const freeHostImports = codegen_host_imports.freeHostImports;
+const hostCallArgsMatch = codegen_host_imports.hostCallArgsMatch;
+const hostParamIsPtrLen = codegen_host_imports.hostParamIsPtrLen;
+const hostArgCouldBeStoragePtrLenSyntax = codegen_host_imports.hostArgCouldBeStoragePtrLenSyntax;
 // Re-export token and name helpers used by lower-level tests.
 const moduleTokensEqual = codegen_tokens.module_tokens_equal;
 pub const findStartFunc = codegen_tokens.find_start_func;
@@ -386,47 +386,47 @@ const isCoreIntegerScalar = codegen_names.is_core_integer_scalar;
 const isCoreFloatScalar = codegen_names.is_core_float_scalar;
 const isUserFuncDeclStart = codegen_tokens.is_user_func_decl_start;
 const tokenTextEqualsCompact = codegen_tokens.token_text_equals_compact;
-// re-export gen_import
-const validateHostImportBuildUses = gen_import.validateHostImportBuildUses;
-const validateReachableWasiHostImportBuildUses = gen_import.validateReachableWasiHostImportBuildUses;
-const validateReachableWasiHostImportBuildUsesFromTests = gen_import.validateReachableWasiHostImportBuildUsesFromTests;
-const validateReachableWasiHostImportStack = gen_import.validateReachableWasiHostImportStack;
-const findRootModuleIndex = gen_import.findRootModuleIndex;
-const wasiSourceForTokens = gen_import.wasiSourceForTokens;
-const findWasiHostImportForTokens = gen_import.findWasiHostImportForTokens;
-const hasReachVisit = gen_import.hasReachVisit;
-const pushReachVisit = gen_import.pushReachVisit;
-const collectStartBodyCalls = gen_import.collectStartBodyCalls;
-const collectAllFunctionBodyCalls = gen_import.collectAllFunctionBodyCalls;
-const collectTestBodyCalls = gen_import.collectTestBodyCalls;
-const collectFunctionBodyCalls = gen_import.collectFunctionBodyCalls;
-const collectCallNamesInRange = gen_import.collectCallNamesInRange;
-const isLoopSourceSpecialCallName = gen_import.isLoopSourceSpecialCallName;
-const findCodegenImportByAlias = gen_import.findCodegenImportByAlias;
-const parseCodegenImport = gen_import.parseCodegenImport;
-const importedScalarConst = gen_import.importedScalarConst;
-const findImportedModuleIndexNoAlloc = gen_import.findImportedModuleIndexNoAlloc;
-const moduleMatchesImportPath = gen_import.moduleMatchesImportPath;
-const pathHasBaseAndFile = gen_import.pathHasBaseAndFile;
-const localScalarConst = gen_import.localScalarConst;
-const findImportedModuleIndex = gen_import.findImportedModuleIndex;
-const findModuleByPath = gen_import.findModuleByPath;
-const isValueEnumDeclStart = gen_import.isValueEnumDeclStart;
-const isPayloadEnumDeclStart = gen_import.isPayloadEnumDeclStart;
-const findValueEnumDecl = gen_import.findValueEnumDecl;
-const findPayloadEnumDecl = gen_import.findPayloadEnumDecl;
-const findValueEnumDeclLineByName = gen_import.findValueEnumDeclLineByName;
-const findValueEnumDeclLineByBranch = gen_import.findValueEnumDeclLineByBranch;
-const valueEnumLineHasBranch = gen_import.valueEnumLineHasBranch;
-const collectStringDataForHostCalls = gen_import.collectStringDataForHostCalls;
-const collectStringDataForWasiHostCalls = gen_import.collectStringDataForWasiHostCalls;
-const collectStringDataForStorageLiterals = gen_import.collectStringDataForStorageLiterals;
-const collectStringDataForStructFieldNames = gen_import.collectStringDataForStructFieldNames;
-const hasBorrowedName = gen_import.hasBorrowedName;
-const importedAliasContextForTokens = gen_import.importedAliasContextForTokens;
-pub const callHeadAt = gen_import.callHeadAt;
-const exprCallHead = gen_import.exprCallHead;
-const callHeadHasTypeArgs = gen_import.callHeadHasTypeArgs;
+// re-export codegen_imports
+const validateHostImportBuildUses = codegen_imports.validateHostImportBuildUses;
+const validateReachableWasiHostImportBuildUses = codegen_imports.validateReachableWasiHostImportBuildUses;
+const validateReachableWasiHostImportBuildUsesFromTests = codegen_imports.validateReachableWasiHostImportBuildUsesFromTests;
+const validateReachableWasiHostImportStack = codegen_imports.validateReachableWasiHostImportStack;
+const findRootModuleIndex = codegen_imports.findRootModuleIndex;
+const wasiSourceForTokens = codegen_imports.wasiSourceForTokens;
+const findWasiHostImportForTokens = codegen_imports.findWasiHostImportForTokens;
+const hasReachVisit = codegen_imports.hasReachVisit;
+const pushReachVisit = codegen_imports.pushReachVisit;
+const collectStartBodyCalls = codegen_imports.collectStartBodyCalls;
+const collectAllFunctionBodyCalls = codegen_imports.collectAllFunctionBodyCalls;
+const collectTestBodyCalls = codegen_imports.collectTestBodyCalls;
+const collectFunctionBodyCalls = codegen_imports.collectFunctionBodyCalls;
+const collectCallNamesInRange = codegen_imports.collectCallNamesInRange;
+const isLoopSourceSpecialCallName = codegen_imports.isLoopSourceSpecialCallName;
+const findCodegenImportByAlias = codegen_imports.findCodegenImportByAlias;
+const parseCodegenImport = codegen_imports.parseCodegenImport;
+const importedScalarConst = codegen_imports.importedScalarConst;
+const findImportedModuleIndexNoAlloc = codegen_imports.findImportedModuleIndexNoAlloc;
+const moduleMatchesImportPath = codegen_imports.moduleMatchesImportPath;
+const pathHasBaseAndFile = codegen_imports.pathHasBaseAndFile;
+const localScalarConst = codegen_imports.localScalarConst;
+const findImportedModuleIndex = codegen_imports.findImportedModuleIndex;
+const findModuleByPath = codegen_imports.findModuleByPath;
+const isValueEnumDeclStart = codegen_imports.isValueEnumDeclStart;
+const isPayloadEnumDeclStart = codegen_imports.isPayloadEnumDeclStart;
+const findValueEnumDecl = codegen_imports.findValueEnumDecl;
+const findPayloadEnumDecl = codegen_imports.findPayloadEnumDecl;
+const findValueEnumDeclLineByName = codegen_imports.findValueEnumDeclLineByName;
+const findValueEnumDeclLineByBranch = codegen_imports.findValueEnumDeclLineByBranch;
+const valueEnumLineHasBranch = codegen_imports.valueEnumLineHasBranch;
+const collectStringDataForHostCalls = codegen_imports.collectStringDataForHostCalls;
+const collectStringDataForWasiHostCalls = codegen_imports.collectStringDataForWasiHostCalls;
+const collectStringDataForStorageLiterals = codegen_imports.collectStringDataForStorageLiterals;
+const collectStringDataForStructFieldNames = codegen_imports.collectStringDataForStructFieldNames;
+const hasBorrowedName = codegen_imports.hasBorrowedName;
+const importedAliasContextForTokens = codegen_imports.importedAliasContextForTokens;
+pub const callHeadAt = codegen_imports.callHeadAt;
+const exprCallHead = codegen_imports.exprCallHead;
+const callHeadHasTypeArgs = codegen_imports.callHeadHasTypeArgs;
 // Collection owner aliases used by the pipeline.
 const is_pack_managed_handle_leaf = codegen_collect_structs.is_pack_managed_handle_leaf;
 const collect_struct_decls = codegen_collect_structs.collect_struct_decls;
@@ -522,11 +522,11 @@ fn installGenHooks() void {
     codegen_callbacks.install_infer_generic_call_union_result(inferGenericCallUnionResultLayout);
 }
 
-pub fn emitWat(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph) ![]u8 {
-    return emitWatWithOptions(allocator, program, tokens, module_graph, .{});
+pub fn emit_wat(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph) ![]u8 {
+    return emit_wat_with_options(allocator, program, tokens, module_graph, .{});
 }
 
-pub fn emitWatWithOptions(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph, options: EmitOptions) ![]u8 {
+pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph, options: EmitOptions) ![]u8 {
     installGenHooks();
 
     var out = std.ArrayList(u8).empty;
@@ -675,9 +675,9 @@ pub fn emitWatWithOptions(allocator: std.mem.Allocator, program: parser.Program,
     try appendFmt(allocator, &out, "  ;; source_len={d}\n", .{program.source_len});
     try appendFmt(allocator, &out, "  ;; token_count={d}\n", .{program.token_count});
     try appendFmt(allocator, &out, "  ;; top_level_count={d}\n", .{program.top_level_count});
-    try component_metadata_wat.emitWasiBindings(allocator, &out, wasi_imports.items);
-    try component_metadata_wat.emitWasiCoreImports(allocator, &out, wasi_imports.items);
-    try component_metadata_wat.emitHostImports(allocator, &out, host_imports.items);
+    try wat_component_metadata.emitWasiBindings(allocator, &out, wasi_imports.items);
+    try wat_component_metadata.emitWasiCoreImports(allocator, &out, wasi_imports.items);
+    try wat_component_metadata.emitHostImports(allocator, &out, host_imports.items);
     try runtime_prelude_wat.emitStringDataMemory(allocator, &out, string_data.items.items, .{ .component_core = options.component_core });
     try runtime_prelude_wat.emitArcRuntimePrelude(allocator, &out, string_data.items.items, struct_layouts.items);
     try emit_user_funcs(allocator, ctx, &out);
@@ -686,7 +686,7 @@ pub fn emitWatWithOptions(allocator: std.mem.Allocator, program: parser.Program,
     return out.toOwnedSlice(allocator);
 }
 
-pub fn emitTestWat(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph) ![]u8 {
+pub fn emit_test_wat(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph) ![]u8 {
     installGenHooks();
 
     var out = std.ArrayList(u8).empty;
@@ -840,14 +840,14 @@ pub fn emitTestWat(allocator: std.mem.Allocator, program: parser.Program, tokens
     try appendFmt(allocator, &out, "  ;; token_count={d}\n", .{program.token_count});
     try appendFmt(allocator, &out, "  ;; top_level_count={d}\n", .{program.top_level_count});
     try appendFmt(allocator, &out, "  ;; compiled_test_count={d}\n", .{test_decls.len});
-    try component_metadata_wat.emitWasiBindings(allocator, &out, wasi_imports.items);
-    try component_metadata_wat.emitWasiCoreImports(allocator, &out, wasi_imports.items);
-    try component_metadata_wat.emitHostImports(allocator, &out, host_imports.items);
+    try wat_component_metadata.emitWasiBindings(allocator, &out, wasi_imports.items);
+    try wat_component_metadata.emitWasiCoreImports(allocator, &out, wasi_imports.items);
+    try wat_component_metadata.emitHostImports(allocator, &out, host_imports.items);
     try runtime_prelude_wat.emitStringDataMemory(allocator, &out, string_data.items.items, .{});
     try runtime_prelude_wat.emitArcRuntimePrelude(allocator, &out, string_data.items.items, struct_layouts.items);
     try emit_user_funcs(allocator, ctx, &out);
     try emit_test_funcs(allocator, tokens, test_decls, ctx, &out);
-    try function_body_wat.emitTestStartFunc(allocator, &out, test_decls.len);
+    try wat_function_body.emitTestStartFunc(allocator, &out, test_decls.len);
     try out.appendSlice(allocator, ")\n");
     return out.toOwnedSlice(allocator);
 }
