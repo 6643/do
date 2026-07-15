@@ -10,6 +10,7 @@ bin/*
 
 # Local commit helper / scratch (not part of the product)
 .commit-git/
+.worktrees/
 commit-*.bundle
 apply-commit-*.sh
 
