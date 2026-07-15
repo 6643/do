@@ -143,6 +143,7 @@ pub const TYPE_ID_STORAGE_MANAGED: usize = storage_wat.TYPE_ID_STORAGE_MANAGED;
 pub const TYPE_ID_FIRST_STRUCT: usize = storage_wat.TYPE_ID_FIRST_STRUCT;
 pub const STORAGE_PAYLOAD_HEADER_BYTES: usize = storage_wat.STORAGE_PAYLOAD_HEADER_BYTES;
 pub const STORAGE_OVERWRITE_TMP_LOCAL = storage_wat.STORAGE_OVERWRITE_TMP_LOCAL;
+pub const WASI_FAMILY_TMP_LOCAL = "__wasi_family_tmp";
 pub const STORAGE_PUT_SOURCE_TMP_LOCAL = "__storage_put_source_tmp";
 pub const VARIADIC_PACK_TMP_LOCAL = "__variadic_pack_tmp";
 pub const STORAGE_WRITE_INDEX_TMP_LOCAL = "__storage_write_index_tmp";
@@ -455,6 +456,12 @@ pub const LocalSet = struct {
         }
         if (!hasLocal(self.locals.items, STORAGE_WRITE_TARGET_TMP_LOCAL)) {
             try self.appendBorrowedLocal(allocator, STORAGE_WRITE_TARGET_TMP_LOCAL, "usize", true);
+        }
+    }
+
+    pub fn ensureWasiFamilyTmp(self: *LocalSet, allocator: std.mem.Allocator) !void {
+        if (!hasLocal(self.locals.items, WASI_FAMILY_TMP_LOCAL)) {
+            try self.appendBorrowedLocal(allocator, WASI_FAMILY_TMP_LOCAL, "usize", true);
         }
     }
 

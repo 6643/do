@@ -27,6 +27,7 @@ const stringLiteralArgLexeme = gen_util.stringLiteralArgLexeme;
 const Range = gen_util.Range;
 const alignUp = gen_util.alignUp;
 const STORAGE_OVERWRITE_TMP_LOCAL = gen_types.STORAGE_OVERWRITE_TMP_LOCAL;
+const WASI_FAMILY_TMP_LOCAL = gen_types.WASI_FAMILY_TMP_LOCAL;
 const findValueEnumDecl = gen_import.findValueEnumDecl;
 const isErrorLikeType = gen_collect.isErrorLikeType;
 const moduleTokensEqual = gen_util.moduleTokensEqual;
@@ -75,6 +76,34 @@ const wasiSourceForTokens = gen_import.wasiSourceForTokens;
 const findRootModuleIndex = gen_import.findRootModuleIndex;
 const exprCallHead = gen_import.exprCallHead;
 const callHeadAt = gen_import.callHeadAt;
+
+fn emitWasiFamilyArg(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+    emit_expr: EmitExprFn,
+) CodegenError!bool {
+    if (!try emit_expr(allocator, tokens, start_idx, end_idx, locals, ctx, "i32", out)) {
+        if (!try emit_expr(allocator, tokens, start_idx, end_idx, locals, ctx, "u8", out)) return false;
+        try out.appendSlice(allocator, "    i32.extend8_u\n");
+    }
+    try appendFmt(allocator, out, "    local.set ${s}\n", .{WASI_FAMILY_TMP_LOCAL});
+
+    // Accept both the public 4/6 family values and already-canonical 0/1 values.
+    try appendFmt(allocator, out, "    local.get ${s}\n", .{WASI_FAMILY_TMP_LOCAL});
+    try out.appendSlice(allocator, "    i32.const 0\n    i32.eq\n    if (result i32)\n      i32.const 0\n    else\n");
+    try appendFmt(allocator, out, "      local.get ${s}\n", .{WASI_FAMILY_TMP_LOCAL});
+    try out.appendSlice(allocator, "      i32.const 1\n      i32.eq\n      if (result i32)\n        i32.const 1\n      else\n");
+    try appendFmt(allocator, out, "        local.get ${s}\n", .{WASI_FAMILY_TMP_LOCAL});
+    try out.appendSlice(allocator, "        i32.const 4\n        i32.eq\n        if (result i32)\n          i32.const 0\n        else\n");
+    try appendFmt(allocator, out, "          local.get ${s}\n", .{WASI_FAMILY_TMP_LOCAL});
+    try out.appendSlice(allocator, "          i32.const 6\n          i32.eq\n          if (result i32)\n            i32.const 1\n          else\n            unreachable\n          end\n        end\n      end\n    end\n");
+    return true;
+}
 
 const findStructDecl = gen_collect.findStructDecl;
 const findStructLayout = gen_collect.findStructLayout;
@@ -915,10 +944,13 @@ fn emitWasiPackIpSocketAddressArg(
         try out.appendSlice(allocator, "    i32.add\n");
         try appendFmt(allocator, out, "    local.get ${s}.port\n", .{struct_local.name});
         try out.appendSlice(allocator, "    i32.store16\n");
-        // a,b,c,d @ +6..+9
+        // pad u16 @ +6, then a,b,c,d @ +8..+11
+        try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
+        try appendFmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 6});
+        try out.appendSlice(allocator, "    i32.add\n    i32.const 0\n    i32.store16\n");
         inline for (.{ "a", "b", "c", "d" }, 0..) |field, fi| {
             try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
-            try appendFmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 6 + fi});
+            try appendFmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 8 + fi});
             try out.appendSlice(allocator, "    i32.add\n");
             try appendFmt(allocator, out, "    local.get ${s}.{s}\n", .{ struct_local.name, field });
             try out.appendSlice(allocator, "    i32.store8\n");
@@ -938,17 +970,9 @@ fn emitWasiPackIpSocketAddressArg(
         try out.appendSlice(allocator, "    i32.add\n");
         try out.appendSlice(allocator, "    i32.const 0\n");
         try out.appendSlice(allocator, "    i32.store\n");
-        // addr[16] from hi||lo big-endian @ +12
-        try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
-        try appendFmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 12});
-        try out.appendSlice(allocator, "    i32.add\n");
-        try appendFmt(allocator, out, "    local.get ${s}.hi\n", .{struct_local.name});
-        try out.appendSlice(allocator, "    i64.store\n"); // first 8 bytes (host endian; documented)
-        try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
-        try appendFmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 20});
-        try out.appendSlice(allocator, "    i32.add\n");
-        try appendFmt(allocator, out, "    local.get ${s}.lo\n", .{struct_local.name});
-        try out.appendSlice(allocator, "    i64.store\n");
+        // addr[16] from hi||lo in network byte order @ +12.
+        try appendStoreU64BigEndianField(allocator, out, struct_local.name, "hi", SOCKET_ADDR_PACK_OFF + 12, "    ");
+        try appendStoreU64BigEndianField(allocator, out, struct_local.name, "lo", SOCKET_ADDR_PACK_OFF + 20, "    ");
         // scope_id = 0 @ +28
         try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
         try appendFmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 28});
@@ -982,15 +1006,18 @@ fn emitWasiPackIpSocketAddressFromUnionLocal(
     try appendFmt(allocator, out, "    local.get ${s}.__union_tag\n", .{uname});
     try out.appendSlice(allocator, "    i32.eqz\n");
     try out.appendSlice(allocator, "    if\n");
-    // V4 pack
+    // V4 pack: port @+4, padding @+6, bytes @+8..+11.
     try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
     try appendFmt(allocator, out, "      i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 4});
     try out.appendSlice(allocator, "      i32.add\n");
     try appendFmt(allocator, out, "      local.get ${s}.__union_payload_4\n", .{uname});
     try out.appendSlice(allocator, "      i32.store16\n");
+    try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
+    try appendFmt(allocator, out, "      i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 6});
+    try out.appendSlice(allocator, "      i32.add\n      i32.const 0\n      i32.store16\n");
     inline for (0..4) |fi| {
         try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
-        try appendFmt(allocator, out, "      i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 6 + fi});
+        try appendFmt(allocator, out, "      i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 8 + fi});
         try out.appendSlice(allocator, "      i32.add\n");
         try appendFmt(allocator, out, "      local.get ${s}.__union_payload_{d}\n", .{ uname, fi });
         try out.appendSlice(allocator, "      i32.store8\n");
@@ -1007,16 +1034,8 @@ fn emitWasiPackIpSocketAddressFromUnionLocal(
     try out.appendSlice(allocator, "      i32.add\n");
     try out.appendSlice(allocator, "      i32.const 0\n");
     try out.appendSlice(allocator, "      i32.store\n");
-    try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
-    try appendFmt(allocator, out, "      i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 12});
-    try out.appendSlice(allocator, "      i32.add\n");
-    try appendFmt(allocator, out, "      local.get ${s}.__union_payload_0\n", .{uname});
-    try out.appendSlice(allocator, "      i64.store\n");
-    try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
-    try appendFmt(allocator, out, "      i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 20});
-    try out.appendSlice(allocator, "      i32.add\n");
-    try appendFmt(allocator, out, "      local.get ${s}.__union_payload_1\n", .{uname});
-    try out.appendSlice(allocator, "      i64.store\n");
+    try appendStoreU64BigEndianField(allocator, out, uname, "__union_payload_0", SOCKET_ADDR_PACK_OFF + 12, "      ");
+    try appendStoreU64BigEndianField(allocator, out, uname, "__union_payload_1", SOCKET_ADDR_PACK_OFF + 20, "      ");
     try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
     try appendFmt(allocator, out, "      i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 28});
     try out.appendSlice(allocator, "      i32.add\n");
@@ -1028,6 +1047,26 @@ fn emitWasiPackIpSocketAddressFromUnionLocal(
     try appendFmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF});
     try out.appendSlice(allocator, "    i32.add\n");
     return true;
+}
+
+fn appendStoreU64BigEndianField(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    local_base: []const u8,
+    field_name: []const u8,
+    offset: u32,
+    indent: []const u8,
+) !void {
+    inline for (0..8) |byte_idx| {
+        const shift: u32 = @as(u32, 56 - byte_idx * 8);
+        try appendFmt(allocator, out, "{s}global.get $__wasi_result_area_base\n", .{indent});
+        try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset + byte_idx });
+        try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
+        try appendFmt(allocator, out, "{s}local.get ${s}.{s}\n", .{ indent, local_base, field_name });
+        try appendFmt(allocator, out, "{s}i64.const {d}\n", .{ indent, shift });
+        try appendFmt(allocator, out, "{s}i64.shr_u\n", .{indent});
+        try appendFmt(allocator, out, "{s}i64.const 255\n{s}i64.and\n{s}i64.store8\n", .{ indent, indent, indent });
+    }
 }
 
 
@@ -1115,13 +1154,7 @@ pub fn emitWasiResultDescriptorCall(
     {
         const family_end = findArgEnd(tokens, args_start, args_end);
         if (family_end == args_start or family_end != args_end) return error.NoMatchingCall;
-        // family: u8/i32 literal or expr → i32 disc (4/6 map later if needed; pass as i32).
-        if (!try emit_expr(allocator, tokens, args_start, family_end, locals, ctx, "i32", out)) {
-            if (!try emit_expr(allocator, tokens, args_start, family_end, locals, ctx, "u8", out)) return error.NoMatchingCall;
-            try out.appendSlice(allocator, "    i32.extend8_s\n");
-        }
-        // Map do family 4/6 → WIT disc 0/1 when value is common constants is host responsibility;
-        // pass guest family as i32; host/shim may remap. Prefer 0=ipv4 1=ipv6 at API wrappers.
+        if (!try emitWasiFamilyArg(allocator, tokens, args_start, family_end, locals, ctx, out, emit_expr)) return error.NoMatchingCall;
         try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
         try out.appendSlice(allocator, "    call $");
         try appendWasiImportSymbol(allocator, out, import.target);
@@ -2307,4 +2340,3 @@ pub fn tupleArity(tuple_ty: []const u8) ?usize {
 pub fn tupleElementTypeAt(tuple_ty: []const u8, idx: usize) ?[]const u8 {
     return type_util.tupleElementTypeAt(tuple_ty, idx);
 }
-

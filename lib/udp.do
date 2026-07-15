@@ -34,13 +34,13 @@ ipv6_socket_address(hi u64, lo u64, port_value u16) -> Ipv6SocketAddress {
     return Ipv6SocketAddress{hi = hi, lo = lo, port = port_value}
 }
 
-// Family: guest wrappers pass WIT disc 0=ipv4, 1=ipv6.
+// Family: public wrappers use 4=ipv4 and 6=ipv6; codegen maps to WIT 0/1.
 create_udp_v4() -> UdpSocket | UdpError {
-    return host_udp_create(0)
+    return host_udp_create(4)
 }
 
 create_udp_v6() -> UdpSocket | UdpError {
-    return host_udp_create(1)
+    return host_udp_create(6)
 }
 
 // Public bind overloads: concrete address types. Intermediate total local is

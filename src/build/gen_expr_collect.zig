@@ -107,6 +107,25 @@ const appendManagedStructFieldMetaLocal = gen_storage.appendManagedStructFieldMe
 const managedPayloadBinding = gen_storage.managedPayloadBinding;
 const storageBindingElemType = gen_storage.storageBindingElemType;
 
+fn stmtContainsWasiSocketCreate(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    ctx: CodegenContext,
+) bool {
+    var i = start_idx;
+    while (i + 1 < end_idx) : (i += 1) {
+        if (tokens[i].kind != .ident or !tokEq(tokens[i + 1], "(")) continue;
+        const import = gen_import.findWasiHostImportForTokens(ctx, tokens, tokens[i].lexeme) orelse continue;
+        if (std.mem.eql(u8, import.target, "sockets/types/tcp-socket.create") or
+            std.mem.eql(u8, import.target, "sockets/types/udp-socket.create"))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 pub fn emitSelfTailLoopLocalReset(
     allocator: std.mem.Allocator,
     func: FuncDecl,
@@ -297,6 +316,9 @@ pub fn collectBodyLocalsWithMode(
         }
         if (stmtContainsNumericSelectIntrinsic(tokens, i, stmt_end)) {
             try out.ensureNumericSelectTemps(allocator);
+        }
+        if (stmtContainsWasiSocketCreate(tokens, i, stmt_end, ctx)) {
+            try out.ensureWasiFamilyTmp(allocator);
         }
         if (isDiscardAssignment(tokens, i, stmt_end)) {
             i = stmt_end;
@@ -1148,6 +1170,5 @@ pub fn typedTupleBindingType(
     if (!isTupleTypeName(ty)) return null;
     return ty;
 }
-
 
 

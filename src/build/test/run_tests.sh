@@ -1256,6 +1256,27 @@ run_compile_err_case() {
     ((fail_count += 1))
 }
 
+run_socket_abi_case() {
+    local create_wat="$TMP_DIR/compile_291_wasi_tcp_create_union.wat"
+    local ipv4_wat="$TMP_DIR/compile_292_wasi_tcp_bind_payload_addr.wat"
+    local ipv6_wat="$TMP_DIR/compile_296_wasi_tcp_bind_ipv6_payload_addr.wat"
+    local dynamic_wat="$TMP_DIR/compile_297_wasi_tcp_create_dynamic_family.wat"
+
+    if [[ -z "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
+        echo "[FAIL] socket ABI (node not found)"
+        ((fail_count += 1))
+        return
+    fi
+    if ! "$NODE_BIN" "$TEST_DIR/test_socket_abi.mjs" "$create_wat" "$ipv4_wat" "$ipv6_wat" "$dynamic_wat" >"$TMP_DIR/socket_abi.stdout" 2>"$TMP_DIR/socket_abi.stderr"; then
+        echo "[FAIL] socket ABI"
+        cat "$TMP_DIR/socket_abi.stderr"
+        ((fail_count += 1))
+        return
+    fi
+    echo "[PASS] socket ABI"
+    ((pass_count += 1))
+}
+
 run_compiled_ok_case() {
     local case_file="$1"
     local name
@@ -1471,6 +1492,7 @@ for case_file in "$COMPILE_OK_DIR"/*.do; do
     [[ "$(basename "$case_file")" == fixture.*.do ]] && continue
     run_compile_ok_case "$case_file"
 done
+run_socket_abi_case
 
 echo "[INFO] run compile err cases"
 for case_file in "$COMPILE_ERR_DIR"/*.do; do
