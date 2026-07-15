@@ -11,15 +11,14 @@ This repository contains the `do` language compiler and its regression suite.
     - Shared pure helpers: `src/build/type_name.zig` (type/layout SSOT), `src/build/sema_error.zig`, `src/build/diagnostics.zig`.
     - Sema domain (flat modules; one-way deps; leaf domains do not import each other):
         - `sema.zig` — public entry (`checkProgram` / `takeLastErrorSite` / `ErrorSite`) + orchestration
-        - `sema_util.zig` — facade re-exporting scan helpers + remaining shape helpers
-        - `sema_scan.zig` — token/name/scan predicates (`tokEq`, `findMatching`, decl-start, naming)
-        - `sema_types.zig` — shared shape types (`FuncShape` / `CallArgShape` / `StructInfo` / …)
-        - `sema_func.zig` — func facade (sig / call / lambda re-exports)
-        - `sema_func_sig.zig` / `sema_func_call.zig` / `sema_func_lambda.zig` / `sema_func_shared.zig` — signature, call/generic, lambda, shared helpers
-        - `sema_struct.zig` — struct field/ctor, path segments, Tuple ctor/get
-        - `sema_type.zig` — type decl naming/conflicts, enum/error/payload, union branches, type refs
-        - `sema_import.zig` — host/local import + known WASI signature validation
-        - `sema_ctrl.zig` — loop/label, defer, field reflection, assignment, constraint layout
+        - `sema_tokens.zig` — token/name/scan predicates and range helpers
+        - `sema_shapes.zig` — shared shape types (`FuncShape` / `CallArgShape` / `StructInfo` / …)
+        - `sema_function_signatures.zig` / `sema_function_calls.zig` / `sema_function_lambdas.zig` — function signatures, calls/generics, lambdas
+        - `sema_function_support.zig` — shared semantic support helpers used by multiple sema domains
+        - `sema_structures.zig` — struct field/ctor, path segments, Tuple ctor/get
+        - `sema_type_checks.zig` — type decl naming/conflicts, enum/error/payload, union branches, type refs
+        - `sema_imports.zig` — host/local import + known WASI signature validation
+        - `sema_control.zig` — loop/label, defer, field reflection, assignment, constraint layout
     - Gen domain (flat modules; one-way deps; leaf domains do not import `gen_lower`):
         - `gen.zig` — public entry (`emitWat` / `emitTestWat`) + unit tests
         - `gen_lower.zig` — orchestration (`emitWat*` / hooks install) + minimal re-exports for tests

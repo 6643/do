@@ -1,4 +1,4 @@
-//! Sema func shared helpers (multi-domain).
+//! Shared semantic support helpers used by multiple sema domains.
 const std = @import("std");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");

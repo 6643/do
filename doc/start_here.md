@@ -78,15 +78,14 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | | `sema_error` | ErrorSite 与 sema 错误构造 |
 | | `diagnostics` | check/LSP 共用前端诊断收集 (原 `src/lsp/diagnostics.zig` 已删除) |
 | Sema 域 | `sema.zig` | 公开入口 (`checkProgram` / `takeLastErrorSite`) + 编排 |
-| | `sema_util.zig` | facade：re-export `sema_scan` + 剩余 shape helpers |
-| | `sema_scan.zig` | token/name/scan 谓词与行扫描 |
-| | `sema_types.zig` | 共享 shape 类型 (`FuncShape` / `StructInfo` / …) |
-| | `sema_func.zig` | func facade（sig/call/lambda re-export） |
-| | `sema_func_sig` / `_call` / `_lambda` / `_shared` | 签名 / 调用·泛型 / lambda / 共享 |
-| | `sema_struct.zig` | struct 字段·ctor / path / Tuple |
-| | `sema_type.zig` | 类型声明 / enum·error·payload / union / type refs |
-| | `sema_import.zig` | host/local import + 已知 WASI 签名校验 |
-| | `sema_ctrl.zig` | loop/label / defer / field reflection / assign / constraint |
+| | `sema_tokens.zig` | token/name/scan 谓词与行扫描 |
+| | `sema_shapes.zig` | 共享 shape 类型 (`FuncShape` / `StructInfo` / …) |
+| | `sema_function_signatures` / `_calls` / `_lambdas` | 签名 / 调用·泛型 / lambda |
+| | `sema_function_support.zig` | 多个 sema 域共享的语义辅助函数 |
+| | `sema_structures.zig` | struct 字段·ctor / path / Tuple |
+| | `sema_type_checks.zig` | 类型声明 / enum·error·payload / union / type refs |
+| | `sema_imports.zig` | host/local import + 已知 WASI 签名校验 |
+| | `sema_control.zig` | loop/label / defer / field reflection / assign / constraint |
 | Gen 域 | `gen.zig` | 公开入口 + 单测 |
 | | `gen_lower.zig` | 编排核（`emitWat*` / hooks install）+ 最小 re-export |
 | | `gen_generic.zig` | 泛型实例化 / 类型绑定 / callback prebind（不 import lower） |
