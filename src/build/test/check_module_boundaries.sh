@@ -49,4 +49,16 @@ if rg -n '^pub const .* = codegen_(generics|storage_layout|emit_wasi)\.' "$BUILD
     fail=1
 fi
 
+if [[ -e "$BUILD_DIR/sema_control.zig" ]] || rg -n '@import\("sema_control\.zig"\)' "$BUILD_DIR" --glob '*.zig'; then
+    echo "legacy sema_control facade remains" >&2
+    fail=1
+fi
+
+for sema_leaf in sema_control_flow sema_field_checks sema_constraints; do
+    if rg -n '@import\("sema_(control_flow|field_checks|constraints)\.zig"\)' "$BUILD_DIR/$sema_leaf.zig"; then
+        echo "sema leaf modules must depend on token/support owners, not peer sema leaves" >&2
+        fail=1
+    fi
+done
+
 exit "$fail"

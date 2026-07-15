@@ -10,7 +10,9 @@ const sema_function_lambdas = @import("sema_function_lambdas.zig");
 const sema_structures = @import("sema_structures.zig");
 const sema_imports = @import("sema_imports.zig");
 const sema_type_checks = @import("sema_type_checks.zig");
-const sema_control = @import("sema_control.zig");
+const sema_control_flow = @import("sema_control_flow.zig");
+const sema_field_checks = @import("sema_field_checks.zig");
+const sema_constraints = @import("sema_constraints.zig");
 
 pub const ErrorSite = sema_error.ErrorSite;
 
@@ -60,7 +62,7 @@ pub fn check_program(
     try sema_structures.check_struct_ctor_fields(allocator, tokens);
     try sema_structures.check_path_index_segments(tokens);
     try sema_structures.check_direct_path_source(tokens);
-    try sema_control.check_constraint_layout(tokens);
+    try sema_constraints.check_constraint_layout(tokens);
     try sema_type_checks.check_unbound_type_param_refs(tokens);
     try sema_function_calls.check_spread_call_targets(allocator, tokens);
     try sema_function_calls.check_generic_call_inference(allocator, program, tokens);
@@ -73,9 +75,9 @@ pub fn check_program(
     try sema_function_lambdas.check_lambda_overload_calls(allocator, program, tokens);
     try sema_function_calls.check_is_type_args(tokens);
     try sema_function_calls.check_as_type_args(tokens);
-    try sema_control.check_loop_header(tokens);
-    try sema_control.check_field_reflection(allocator, tokens);
-    try sema_control.check_loop_labels(allocator, tokens);
-    try sema_control.check_defer_stmts(allocator, tokens);
-    try sema_control.check_assignment_constraints(allocator, tokens);
+    try sema_control_flow.check_loop_header(tokens);
+    try sema_field_checks.check_field_reflection(allocator, tokens);
+    try sema_control_flow.check_loop_labels(allocator, tokens);
+    try sema_control_flow.check_defer_stmts(allocator, tokens);
+    try sema_constraints.check_assignment_constraints(allocator, tokens);
 }

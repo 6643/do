@@ -83,16 +83,18 @@ Status: completed; pipeline now exposes orchestration and stable WAT entrypoints
 
 ## Task 5: Sema boundary cleanup
 
+Status: completed; control flow, field reflection, and constraints/assignment now have separate flat owners, with token mechanics shared through `sema_tokens.zig`.
+
 **Files:**
 - Create: `src/build/sema_control_flow.zig`, `src/build/sema_field_checks.zig`, `src/build/sema_constraints.zig`
 - Modify: `src/build/sema_control.zig`, `src/build/sema.zig`, `src/build/sema_tokens.zig`, `src/build/sema_function_support.zig`
 - Test: `src/build/test/err`, `src/build/test/compile_err`, full regression
 
-- [ ] Move defer/loop/label checks to `sema_control_flow.zig`.
-- [ ] Move field reflection checks to `sema_field_checks.zig`.
-- [ ] Move constraint and assignment checks to `sema_constraints.zig`.
-- [ ] Keep `sema.zig` as the orchestration entry.
-- [ ] Split token mechanics from language-name predicates only where direct ownership is proven; do not create a generic sema facade.
+- [x] Move defer/loop/label checks to `sema_control_flow.zig`.
+- [x] Move field reflection checks to `sema_field_checks.zig`.
+- [x] Move constraint and assignment checks to `sema_constraints.zig`.
+- [x] Keep `sema.zig` as the orchestration entry.
+- [x] Split token mechanics from language-name predicates only where direct ownership is proven; do not create a generic sema facade.
 
 ## Task 6: Module graph and import resolution
 

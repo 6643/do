@@ -1436,4 +1436,126 @@ pub fn mark_error_at(tokens: []const lexer.Token, idx: usize, err: anyerror) any
     return sema_error.mark_error_at(tokens, idx, err);
 }
 
+pub fn is_valid_local_binding_name(name: []const u8) bool {
+    return (is_lower_ident_name(name) or is_readonly_ident_name(name)) and !is_reserved_func_name(name);
+}
+
+
+pub fn is_valid_loop_binding_name(name: []const u8) bool {
+    return std.mem.eql(u8, name, "_") or (is_lower_ident_name(name) and !is_reserved_func_name(name));
+}
+
+
+pub fn is_base_float_type_name(name: []const u8) bool {
+    return std.mem.eql(u8, name, "f32") or std.mem.eql(u8, name, "f64");
+}
+
+
+pub fn find_loop_block_open(tokens: []const lexer.Token, loop_idx: usize) ?usize {
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_angle: usize = 0;
+    var i = loop_idx + 1;
+    while (i < tokens.len) : (i += 1) {
+        if (tok_eq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tok_eq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tok_eq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tok_eq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (tok_eq(tokens[i], "{")) {
+            if (depth_paren == 0 and depth_brace == 0 and depth_angle == 0) return i;
+            depth_brace += 1;
+            continue;
+        }
+        if (!tok_eq(tokens[i], "}")) continue;
+        if (depth_brace > 0) depth_brace -= 1;
+    }
+    return null;
+}
+
+
+pub fn find_loop_bind_assign(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_angle: usize = 0;
+    var found: ?usize = null;
+    var i = start_idx;
+    while (i + 1 < end_idx) : (i += 1) {
+        if (tok_eq(tokens[i], "(")) {
+            depth_paren += 1;
+            continue;
+        }
+        if (tok_eq(tokens[i], ")")) {
+            if (depth_paren > 0) depth_paren -= 1;
+            continue;
+        }
+        if (tok_eq(tokens[i], "<")) {
+            depth_angle += 1;
+            continue;
+        }
+        if (tok_eq(tokens[i], ">")) {
+            if (depth_angle > 0) depth_angle -= 1;
+            continue;
+        }
+        if (tok_eq(tokens[i], "{")) {
+            if (depth_paren == 0 and depth_brace == 0 and depth_angle == 0) break;
+            depth_brace += 1;
+            continue;
+        }
+        if (tok_eq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+
+        if (depth_paren != 0 or depth_brace != 0 or depth_angle != 0) continue;
+        if (tok_eq(tokens[i], ":") and tok_eq(tokens[i + 1], "=")) return null;
+        if (!tok_eq(tokens[i], "=")) continue;
+        if (found != null) return null;
+        found = i;
+    }
+    return found;
+}
+
+
+pub fn validate_loop_bind_lhs(tokens: []const lexer.Token, start_idx: usize, bind_idx: usize) !void {
+    if (start_idx >= bind_idx) return mark_error_at(tokens, bind_idx, error.InvalidLoopHeader);
+    if (tokens[start_idx].kind != .ident) return mark_error_at(tokens, start_idx, error.InvalidLoopHeader);
+    if (is_keyword(tokens[start_idx].lexeme)) return mark_error_at(tokens, start_idx, error.InvalidLoopHeader);
+    if (!is_valid_loop_binding_name(tokens[start_idx].lexeme)) return mark_error_at(tokens, start_idx, error.InvalidLoopHeader);
+
+    if (start_idx + 1 == bind_idx) return;
+    if (start_idx + 3 != bind_idx) return mark_error_at(tokens, start_idx + 1, error.InvalidLoopHeader);
+    if (!tok_eq(tokens[start_idx + 1], ",")) return mark_error_at(tokens, start_idx + 1, error.InvalidLoopHeader);
+    if (tokens[start_idx + 2].kind != .ident) return mark_error_at(tokens, start_idx + 2, error.InvalidLoopHeader);
+    if (is_keyword(tokens[start_idx + 2].lexeme)) return mark_error_at(tokens, start_idx + 2, error.InvalidLoopHeader);
+    if (!is_valid_loop_binding_name(tokens[start_idx + 2].lexeme)) return mark_error_at(tokens, start_idx + 2, error.InvalidLoopHeader);
+}
+
+pub fn is_recv_loop_source(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    if (start_idx + 3 >= end_idx) return false;
+    if (!tok_eq(tokens[start_idx], "recv")) return false;
+    if (!tok_eq(tokens[start_idx + 1], "(")) return false;
+    const close_idx = find_matching(tokens, start_idx + 1, "(", ")") catch return false;
+    return close_idx + 1 == end_idx;
+}
+
+pub fn is_fields_loop_source(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    if (start_idx + 4 != end_idx) return false;
+    if (tokens[start_idx].kind != .ident or !std.mem.eql(u8, tokens[start_idx].lexeme, "fields")) return false;
+    if (!tok_eq(tokens[start_idx + 1], "(")) return false;
+    if (tokens[start_idx + 2].kind != .ident) return false;
+    if (!is_valid_declared_type_name(tokens[start_idx + 2].lexeme)) return false;
+    return tok_eq(tokens[start_idx + 3], ")");
+}
 
