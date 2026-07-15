@@ -1,58 +1,15 @@
 const std = @import("std");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
+const model = @import("test_model.zig");
+const test_report = @import("test_report.zig");
 
-const Value = union(enum) {
-    unsupported,
-    unknown,
-    nil,
-    bool: bool,
-    int: i128,
-    text: []const u8,
-    error_branch: ErrorBranchValue,
-    object: []const FieldValue,
-};
-
-const ErrorBranchValue = struct {
-    name: []const u8,
-    type_name: []const u8,
-};
-
-const Binding = struct {
-    name: []const u8,
-    value: Value,
-};
-
-const FieldValue = struct {
-    name: []const u8,
-    value: Value,
-};
-
-const FuncDecl = struct {
-    name: []const u8,
-    params_start: usize,
-    params_end: usize,
-    param_min: usize,
-    param_max: ?usize,
-    body_start: usize,
-    body_end: usize,
-    arrow: bool,
-    tokens: []const lexer.Token,
-};
-
-const TestStatus = enum {
-    pass,
-    fail,
-    skip,
-};
-
-pub const TestDecl = struct {
-    name_lexeme: []const u8,
-    body_start: usize,
-    body_end: usize,
-    line: usize,
-    col: usize,
-};
+const Value = model.Value;
+const Binding = model.Binding;
+const FieldValue = model.FieldValue;
+const FuncDecl = model.FuncDecl;
+const TestStatus = model.TestStatus;
+pub const TestDecl = model.TestDecl;
 
 pub fn run(io: std.Io, allocator: std.mem.Allocator, tokens: []const lexer.Token) !void {
     return run_with_modules(io, allocator, null, tokens, null);
@@ -73,7 +30,7 @@ pub fn run_with_modules(
     const funcs = try collect_runnable_funcs(allocator, input_path, tokens, module_graph);
     defer allocator.free(funcs);
 
-    try run_and_print_test_report(io, allocator, tokens, funcs, test_decls);
+    try test_report.run_and_print(io, allocator, tokens, funcs, test_decls, eval_test);
 }
 
 pub fn collect_top_level_tests(allocator: std.mem.Allocator, tokens: []const lexer.Token) ![]TestDecl {
@@ -351,48 +308,6 @@ fn append_top_level_func_by_name_as(
         return true;
     }
     return false;
-}
-
-fn run_and_print_test_report(
-    io: std.Io,
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    funcs: []const FuncDecl,
-    test_decls: []const TestDecl,
-) !void {
-    var out_buffer: [4096]u8 = undefined;
-    var out = std.Io.File.stdout().writer(io, &out_buffer);
-
-    var passed: usize = 0;
-    var failed: usize = 0;
-    var skipped: usize = 0;
-    for (test_decls) |decl| {
-        const status = try eval_test(allocator, tokens, funcs, decl);
-        switch (status) {
-            .pass => {
-                passed += 1;
-                try out.interface.print("test {s} ... ok\n", .{decl.name_lexeme});
-            },
-            .fail => {
-                failed += 1;
-                try out.interface.print("test {s} ... failed\n", .{decl.name_lexeme});
-            },
-            .skip => {
-                skipped += 1;
-                try out.interface.print("test {s} ... skipped\n", .{decl.name_lexeme});
-            },
-        }
-    }
-
-    if (failed == 0) {
-        try out.interface.print("ok: {d} passed; 0 failed; {d} skipped\n", .{ passed, skipped });
-        try out.interface.flush();
-        return;
-    }
-
-    try out.interface.print("failed: {d} passed; {d} failed; {d} skipped\n", .{ passed, failed, skipped });
-    try out.interface.flush();
-    return error.TestFailed;
 }
 
 fn eval_test(
