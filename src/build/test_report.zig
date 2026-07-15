@@ -1,6 +1,6 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
-const model = @import("test_model.zig");
+const model = @import("test_values.zig");
 
 pub const EvalTestFn = *const fn (
     allocator: std.mem.Allocator,

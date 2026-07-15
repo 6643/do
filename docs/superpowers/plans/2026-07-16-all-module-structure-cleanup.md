@@ -36,10 +36,10 @@ Status: completed; current-state documentation is synchronized. The boundary gua
 - Modify: `src/build/test/check_module_boundaries.sh`
 - Test: `./src/build/test/run_tests.sh`
 
-- [ ] Refresh current module maps and test baselines to the checked-out structure.
-- [ ] Leave historical sections and historical plans unchanged.
-- [ ] Extend the boundary guard with explicit owner checks for the new codegen and sema boundaries.
-- [ ] Run the full regression and documentation residual scan.
+- [x] Refresh current module maps and test baselines to the checked-out structure.
+- [x] Leave historical sections and historical plans unchanged.
+- [x] Extend the boundary guard with explicit owner checks for the new codegen and sema boundaries.
+- [x] Run the full regression and documentation residual scan.
 
 ## Task 2: Standard-library network ownership
 
@@ -87,7 +87,7 @@ Status: completed; control flow, field reflection, and constraints/assignment no
 
 **Files:**
 - Create: `src/build/sema_control_flow.zig`, `src/build/sema_field_checks.zig`, `src/build/sema_constraints.zig`
-- Modify: `src/build/sema_control.zig`, `src/build/sema.zig`, `src/build/sema_tokens.zig`, `src/build/sema_function_support.zig`
+- Modify: `src/build/sema.zig`, `src/build/sema_tokens.zig`, `src/build/sema_function_support.zig`
 - Test: `src/build/test/err`, `src/build/test/compile_err`, full regression
 
 - [x] Move defer/loop/label checks to `sema_control_flow.zig`.
@@ -103,9 +103,9 @@ Status: completed; control flow, field reflection, and constraints/assignment no
 - Modify: `src/build/imports.zig`, `src/build/diagnostics.zig`, and direct callers
 - Test: import-cycle, visibility, alias, and missing-target fixtures
 
-- [ ] Move path resolution, loading, and graph reachability to `module_graph.zig`.
-- [ ] Move alias, visibility, and import semantic checks to `import_resolution.zig`.
-- [ ] Keep one-way sema/import ownership and avoid reintroducing a broad `imports` facade.
+- [x] Move path resolution, loading, and graph reachability to `module_graph.zig`.
+- [x] Move alias, visibility, and import semantic checks to `import_resolution.zig`.
+- [x] Keep one-way sema/import ownership; `imports.zig` is only the stable public entry wrapper.
 
 ## Task 7: Test evaluator separation
 
@@ -114,10 +114,10 @@ Status: completed; control flow, field reflection, and constraints/assignment no
 - Modify: `src/build/test_runner.zig`, `src/build/test_runner.zig` callers
 - Test: all `ok`, `err`, `compiled_ok`, `compiled_err`, `fmt`, `check`, and `lsp` cases
 
-- [ ] Keep discovery, scheduling, and reporting in `test_runner.zig`.
-- [ ] Move expression/function evaluation to `test_eval.zig`.
-- [ ] Move Value/Binding/struct-value operations to `test_values.zig`.
-- [ ] Preserve the single shell entrypoint and summary counts.
+- [x] Keep discovery and scheduling in `test_runner.zig`; report formatting is isolated behind `test_report.zig`.
+- [x] Move expression/function evaluation to `test_eval.zig`.
+- [x] Move Value/Binding/struct-value operations to `test_values.zig`.
+- [x] Preserve the single shell entrypoint and summary counts.
 
 ## Task 8: LSP helper deduplication
 
@@ -126,9 +126,9 @@ Status: completed; control flow, field reflection, and constraints/assignment no
 - Modify: `src/lsp/completion.zig`, `definition.zig`, `hover.zig`, `semantic_tokens.zig`, `workspace.zig`
 - Test: `./src/build/test/run_tests.sh` LSP cases
 
-- [ ] Move duplicated name classification, line slicing, declaration-head, and token-range helpers to `source_helpers.zig`.
-- [ ] Keep protocol serialization and server transport unchanged.
-- [ ] Do not add rename/references/incremental-index functionality in this refactor.
+- [x] Move duplicated name classification, line slicing, declaration-head, and token-range helpers to `source_helpers.zig`.
+- [x] Keep protocol serialization and server transport unchanged.
+- [x] Do not add rename/references/incremental-index functionality in this refactor.
 
 ## Task 9: Naming and final repository closeout
 
@@ -136,10 +136,10 @@ Status: completed; control flow, field reflection, and constraints/assignment no
 - Modify: project-defined aliases in `src/build/*.zig`, current docs, `docs/superpowers/plans/2026-07-15-codegen-structure-naming-implementation-plan.md`
 - Test: residual scans and full regression
 
-- [ ] Rename remaining project-defined lowerCamel aliases to snake_case.
-- [ ] Do not rename Zig standard-library methods such as `appendSlice` or `toOwnedSlice`.
-- [ ] Mark the prior implementation plan complete without rewriting its historical file names.
-- [ ] Run the final module, naming, stale-reference, and regression checks.
+- [x] Rename remaining project-defined lowerCamel aliases to snake_case.
+- [x] Do not rename Zig standard-library methods such as `appendSlice` or `toOwnedSlice`.
+- [x] Mark the prior implementation plan complete without rewriting its historical file names.
+- [x] Run the final module, naming, stale-reference, and regression checks.
 
 ## Final Verification
 

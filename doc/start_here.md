@@ -85,7 +85,9 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | | `sema_structures.zig` | struct 字段·ctor / path / Tuple |
 | | `sema_type_checks.zig` | 类型声明 / enum·error·payload / union / type refs |
 | | `sema_imports.zig` | host/local import + 已知 WASI 签名校验 |
-| | `sema_control.zig` | loop/label / defer / field reflection / assign / constraint |
+| | `sema_control_flow.zig` | loop/label / defer |
+| | `sema_field_checks.zig` | field reflection |
+| | `sema_constraints.zig` | assign / constraint |
 | Gen 域 | `codegen_api.zig` | 公开入口 + 单测 |
 | | `codegen_pipeline.zig` | 编排核（`emit_wat*` / hooks install）+ 最小 re-export |
 | | `codegen_generics.zig` | 泛型实例化 / 类型绑定 / callback prebind（不 import lower） |
