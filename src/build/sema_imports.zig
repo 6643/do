@@ -4,139 +4,140 @@ const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
 const sema_error = @import("sema_error.zig");
 const type_util = @import("type_name.zig");
-const sema_util = @import("sema_util.zig");
-const sema_types = @import("sema_types.zig");
+const sema_tokens = @import("sema_tokens.zig");
+const sema_shapes = @import("sema_shapes.zig");
+const sema_function_support = @import("sema_function_support.zig");
 
-const compactTokenRangeEquals = sema_util.compactTokenRangeEquals;
-const containsName = sema_util.containsName;
-const findLineEndIdx = sema_util.findLineEndIdx;
-const findMatching = sema_util.findMatching;
-const findStructFieldTypeEnd = sema_util.findStructFieldTypeEnd;
-const findTopLevelComma = sema_util.findTopLevelComma;
-const isErrorTypeName = sema_util.isErrorTypeName;
-const isHostImportDeclStart = sema_util.isHostImportDeclStart;
-const isHostImportLine = sema_util.isHostImportLine;
-const isLowerIdentName = sema_util.isLowerIdentName;
-const isModernImportAssign = sema_util.isModernImportAssign;
-const isReadonlyIdentName = sema_util.isReadonlyIdentName;
-const isReservedFuncName = sema_util.isReservedFuncName;
-const isStructFieldName = sema_util.isStructFieldName;
-const isTopLevelDeclHead = sema_util.isTopLevelDeclHead;
-const isValidDeclaredTypeName = sema_util.isValidDeclaredTypeName;
-const isPayloadEnumDeclStart = sema_util.isPayloadEnumDeclStart;
-const isValidPathSeg = sema_util.isValidPathSeg;
-const markErrorAt = sema_util.markErrorAt;
-const normalizeStructFieldName = sema_util.normalizeStructFieldName;
-const parseImportDeclEnd = sema_util.parseImportDeclEnd;
-const skipTopLevelImportBrace = sema_util.skipTopLevelImportBrace;
-const publicFuncName = sema_util.publicFuncName;
-const stringTokenBody = sema_util.stringTokenBody;
-const tokEq = sema_util.tokEq;
-const topLevelLineAssignIdx = sema_util.topLevelLineAssignIdx;
-const validateImportFileNameText = sema_util.validateImportFileNameText;
-const KnownWasiRecordField = sema_types.KnownWasiRecordField;
-const LocalImportPrefix = sema_types.LocalImportPrefix;
+const compact_token_range_equals = sema_tokens.compact_token_range_equals;
+const contains_name = sema_tokens.contains_name;
+const find_line_end_idx = sema_tokens.find_line_end_idx;
+const find_matching = sema_tokens.find_matching;
+const find_struct_field_type_end = sema_tokens.find_struct_field_type_end;
+const find_top_level_comma = sema_tokens.find_top_level_comma;
+const is_error_type_name = sema_tokens.is_error_type_name;
+const is_host_import_decl_start = sema_tokens.is_host_import_decl_start;
+const is_host_import_line = sema_tokens.is_host_import_line;
+const is_lower_ident_name = sema_tokens.is_lower_ident_name;
+const is_modern_import_assign = sema_tokens.is_modern_import_assign;
+const is_readonly_ident_name = sema_tokens.is_readonly_ident_name;
+const is_reserved_func_name = sema_tokens.is_reserved_func_name;
+const is_struct_field_name = sema_tokens.is_struct_field_name;
+const is_top_level_decl_head = sema_tokens.is_top_level_decl_head;
+const is_valid_declared_type_name = sema_tokens.is_valid_declared_type_name;
+const is_payload_enum_decl_start = sema_tokens.is_payload_enum_decl_start;
+const is_valid_path_seg = sema_tokens.is_valid_path_seg;
+const mark_error_at = sema_tokens.mark_error_at;
+const normalize_struct_field_name = sema_tokens.normalize_struct_field_name;
+const parse_import_decl_end = sema_function_support.parse_import_decl_end;
+const skip_top_level_import_brace = sema_function_support.skip_top_level_import_brace;
+const public_func_name = sema_tokens.public_func_name;
+const string_token_body = sema_tokens.string_token_body;
+const tok_eq = sema_tokens.tok_eq;
+const top_level_line_assign_idx = sema_tokens.top_level_line_assign_idx;
+const validate_import_file_name_text = sema_tokens.validate_import_file_name_text;
+const KnownWasiRecordField = sema_shapes.KnownWasiRecordField;
+const LocalImportPrefix = sema_shapes.LocalImportPrefix;
 
 const HostImportKind = enum {
     env,
     wasi,
 };
 
-pub fn checkHostImports(allocator: std.mem.Allocator, tokens: []const lexer.Token) !void {
+pub fn check_host_imports(allocator: std.mem.Allocator, tokens: []const lexer.Token) !void {
     var seen_aliases = std.ArrayList([]const u8).empty;
     defer seen_aliases.deinit(allocator);
 
     var depth_brace: usize = 0;
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
-        if (tokEq(tokens[i], "{")) {
+        if (tok_eq(tokens[i], "{")) {
             depth_brace += 1;
             continue;
         }
-        if (tokEq(tokens[i], "}")) {
+        if (tok_eq(tokens[i], "}")) {
             if (depth_brace > 0) depth_brace -= 1;
             continue;
         }
         if (depth_brace != 0) continue;
-        if (!isTopLevelDeclHead(tokens, i)) continue;
-        if (!isHostImportDeclStart(tokens, i)) continue;
-        try validateHostImportDecl(tokens, i);
-        const alias = publicFuncName(tokens[i].lexeme);
-        if (containsName(seen_aliases.items, alias)) return markErrorAt(tokens, i, error.DuplicateHostImportAlias);
+        if (!is_top_level_decl_head(tokens, i)) continue;
+        if (!is_host_import_decl_start(tokens, i)) continue;
+        try validate_host_import_decl(tokens, i);
+        const alias = public_func_name(tokens[i].lexeme);
+        if (contains_name(seen_aliases.items, alias)) return mark_error_at(tokens, i, error.DuplicateHostImportAlias);
         try seen_aliases.append(allocator, alias);
-        i = (parseImportDeclEnd(tokens, i) orelse i + 1) - 1;
+        i = (parse_import_decl_end(tokens, i) orelse i + 1) - 1;
     }
 }
 
 
-pub fn checkLocalImports(tokens: []const lexer.Token) !void {
+pub fn check_local_imports(tokens: []const lexer.Token) !void {
     var depth_brace: usize = 0;
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
-        if (tokEq(tokens[i], "{")) {
+        if (tok_eq(tokens[i], "{")) {
             depth_brace += 1;
             continue;
         }
-        if (tokEq(tokens[i], "}")) {
+        if (tok_eq(tokens[i], "}")) {
             if (depth_brace > 0) depth_brace -= 1;
             continue;
         }
         if (depth_brace != 0) continue;
-        if (!isTopLevelDeclHead(tokens, i)) continue;
-        if (!isModernImportAssign(tokens, i)) continue;
+        if (!is_top_level_decl_head(tokens, i)) continue;
+        if (!is_modern_import_assign(tokens, i)) continue;
 
-        const eq_idx = topLevelLineAssignIdx(tokens, i) orelse return markErrorAt(tokens, i, error.InvalidImportDecl);
+        const eq_idx = top_level_line_assign_idx(tokens, i) orelse return mark_error_at(tokens, i, error.InvalidImportDecl);
         const at_idx = eq_idx + 1;
-        if (isHostImportLine(tokens, at_idx)) {
-            i = (parseImportDeclEnd(tokens, i) orelse i + 1) - 1;
+        if (is_host_import_line(tokens, at_idx)) {
+            i = (parse_import_decl_end(tokens, i) orelse i + 1) - 1;
             continue;
         }
 
-        try validateLocalImportDecl(tokens, i, at_idx);
-        i = (parseImportDeclEnd(tokens, i) orelse i + 1) - 1;
+        try validate_local_import_decl(tokens, i, at_idx);
+        i = (parse_import_decl_end(tokens, i) orelse i + 1) - 1;
     }
 }
 
 
-fn validateHostImportDecl(tokens: []const lexer.Token, name_idx: usize) !void {
-    if (tokens[name_idx].kind != .ident) return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
-    const alias = publicFuncName(tokens[name_idx].lexeme);
-    if (!isValidImportName(alias)) return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
-    if (!isLowerIdentName(alias)) return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
+fn validate_host_import_decl(tokens: []const lexer.Token, name_idx: usize) !void {
+    if (tokens[name_idx].kind != .ident) return mark_error_at(tokens, name_idx, error.InvalidImportDecl);
+    const alias = public_func_name(tokens[name_idx].lexeme);
+    if (!is_valid_import_name(alias)) return mark_error_at(tokens, name_idx, error.InvalidImportDecl);
+    if (!is_lower_ident_name(alias)) return mark_error_at(tokens, name_idx, error.InvalidImportDecl);
 
-    const eq_idx = topLevelLineAssignIdx(tokens, name_idx) orelse return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
+    const eq_idx = top_level_line_assign_idx(tokens, name_idx) orelse return mark_error_at(tokens, name_idx, error.InvalidImportDecl);
     const at_idx = eq_idx + 1;
-    try validateHostImportLine(tokens, at_idx, parseImportDeclEnd(tokens, name_idx) orelse return markErrorAt(tokens, at_idx, error.InvalidImportDecl));
+    try validate_host_import_line(tokens, at_idx, parse_import_decl_end(tokens, name_idx) orelse return mark_error_at(tokens, at_idx, error.InvalidImportDecl));
 }
 
 
-fn isValidImportName(name: []const u8) bool {
-    return (isValidDeclaredTypeName(name) or isLowerIdentName(name) or isReadonlyIdentName(name)) and !isReservedFuncName(name);
+fn is_valid_import_name(name: []const u8) bool {
+    return (is_valid_declared_type_name(name) or is_lower_ident_name(name) or is_readonly_ident_name(name)) and !is_reserved_func_name(name);
 }
 
 
-fn importAliasMatchesTarget(alias: []const u8, target: []const u8) bool {
-    if (isValidDeclaredTypeName(target)) return isValidDeclaredTypeName(alias);
-    if (isLowerIdentName(target)) return isLowerIdentName(alias);
-    if (isReadonlyIdentName(target)) return isReadonlyIdentName(alias);
+fn import_alias_matches_target(alias: []const u8, target: []const u8) bool {
+    if (is_valid_declared_type_name(target)) return is_valid_declared_type_name(alias);
+    if (is_lower_ident_name(target)) return is_lower_ident_name(alias);
+    if (is_readonly_ident_name(target)) return is_readonly_ident_name(alias);
     return false;
 }
 
 
-fn validateLocalImportDecl(tokens: []const lexer.Token, name_idx: usize, at_idx: usize) !void {
-    if (tokens[name_idx].kind != .ident) return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
-    if (tokens[name_idx].lexeme.len != 0 and tokens[name_idx].lexeme[0] == '.') return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
-    if (!isValidImportName(tokens[name_idx].lexeme)) return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
+fn validate_local_import_decl(tokens: []const lexer.Token, name_idx: usize, at_idx: usize) !void {
+    if (tokens[name_idx].kind != .ident) return mark_error_at(tokens, name_idx, error.InvalidImportDecl);
+    if (tokens[name_idx].lexeme.len != 0 and tokens[name_idx].lexeme[0] == '.') return mark_error_at(tokens, name_idx, error.InvalidImportDecl);
+    if (!is_valid_import_name(tokens[name_idx].lexeme)) return mark_error_at(tokens, name_idx, error.InvalidImportDecl);
 
-    const close_idx = parseImportDeclEnd(tokens, name_idx) orelse return markErrorAt(tokens, at_idx, error.InvalidImportDecl);
-    if (at_idx + 7 != close_idx) return markErrorAt(tokens, at_idx, error.InvalidImportDecl);
-    if (tokens[at_idx + 1].kind != .ident or !std.mem.eql(u8, tokens[at_idx + 1].lexeme, "lib")) return markErrorAt(tokens, at_idx, error.InvalidImportDecl);
-    if (!tokEq(tokens[at_idx + 2], "(")) return markErrorAt(tokens, at_idx + 2, error.InvalidImportDecl);
-    if (tokens[at_idx + 3].kind != .string) return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
-    if (!tokEq(tokens[at_idx + 4], ",")) return markErrorAt(tokens, at_idx + 4, error.InvalidImportDecl);
-    if (tokens[at_idx + 5].kind != .ident) return markErrorAt(tokens, at_idx + 5, error.InvalidImportDecl);
+    const close_idx = parse_import_decl_end(tokens, name_idx) orelse return mark_error_at(tokens, at_idx, error.InvalidImportDecl);
+    if (at_idx + 7 != close_idx) return mark_error_at(tokens, at_idx, error.InvalidImportDecl);
+    if (tokens[at_idx + 1].kind != .ident or !std.mem.eql(u8, tokens[at_idx + 1].lexeme, "lib")) return mark_error_at(tokens, at_idx, error.InvalidImportDecl);
+    if (!tok_eq(tokens[at_idx + 2], "(")) return mark_error_at(tokens, at_idx + 2, error.InvalidImportDecl);
+    if (tokens[at_idx + 3].kind != .string) return mark_error_at(tokens, at_idx + 3, error.InvalidImportDecl);
+    if (!tok_eq(tokens[at_idx + 4], ",")) return mark_error_at(tokens, at_idx + 4, error.InvalidImportDecl);
+    if (tokens[at_idx + 5].kind != .ident) return mark_error_at(tokens, at_idx + 5, error.InvalidImportDecl);
 
-    var file_path = stringTokenBody(tokens[at_idx + 3].lexeme) orelse return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
+    var file_path = string_token_body(tokens[at_idx + 3].lexeme) orelse return mark_error_at(tokens, at_idx + 3, error.InvalidImportDecl);
     const target = tokens[at_idx + 5].lexeme;
     var prefix: LocalImportPrefix = .std;
     if (std.mem.startsWith(u8, file_path, "./")) {
@@ -146,41 +147,41 @@ fn validateLocalImportDecl(tokens: []const lexer.Token, name_idx: usize, at_idx:
         prefix = .dep;
         file_path = file_path[2..];
     } else if (std.mem.startsWith(u8, file_path, "/")) {
-        return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
+        return mark_error_at(tokens, at_idx + 3, error.InvalidImportDecl);
     }
 
-    try validateImportFileNameText(tokens, at_idx + 3, file_path, prefix);
-    if (!isValidImportName(target)) return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
-    if (!importAliasMatchesTarget(tokens[name_idx].lexeme, target)) return markErrorAt(tokens, name_idx, error.InvalidImportDecl);
+    try validate_import_file_name_text(tokens, at_idx + 3, file_path, prefix);
+    if (!is_valid_import_name(target)) return mark_error_at(tokens, at_idx + 3, error.InvalidImportDecl);
+    if (!import_alias_matches_target(tokens[name_idx].lexeme, target)) return mark_error_at(tokens, name_idx, error.InvalidImportDecl);
 }
 
 
-fn validateHostImportLine(tokens: []const lexer.Token, at_idx: usize, import_end: usize) !void {
+fn validate_host_import_line(tokens: []const lexer.Token, at_idx: usize, import_end: usize) !void {
     // @host(locator, member, sig)
-    if (at_idx + 9 > import_end) return markErrorAt(tokens, at_idx, error.InvalidImportDecl);
-    if (!tokEq(tokens[at_idx], "@")) return markErrorAt(tokens, at_idx, error.InvalidImportDecl);
-    if (tokens[at_idx + 1].kind != .ident) return markErrorAt(tokens, at_idx + 1, error.InvalidImportDecl);
-    if (!std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host")) return markErrorAt(tokens, at_idx + 1, error.InvalidImportDecl);
-    if (!tokEq(tokens[at_idx + 2], "(")) return markErrorAt(tokens, at_idx + 2, error.InvalidImportDecl);
-    if (tokens[at_idx + 3].kind != .string) return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
-    if (!tokEq(tokens[at_idx + 4], ",")) return markErrorAt(tokens, at_idx + 4, error.InvalidImportDecl);
-    if (tokens[at_idx + 5].kind != .string) return markErrorAt(tokens, at_idx + 5, error.InvalidImportDecl);
-    if (!tokEq(tokens[at_idx + 6], ",")) return markErrorAt(tokens, at_idx + 6, error.InvalidImportDecl);
+    if (at_idx + 9 > import_end) return mark_error_at(tokens, at_idx, error.InvalidImportDecl);
+    if (!tok_eq(tokens[at_idx], "@")) return mark_error_at(tokens, at_idx, error.InvalidImportDecl);
+    if (tokens[at_idx + 1].kind != .ident) return mark_error_at(tokens, at_idx + 1, error.InvalidImportDecl);
+    if (!std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host")) return mark_error_at(tokens, at_idx + 1, error.InvalidImportDecl);
+    if (!tok_eq(tokens[at_idx + 2], "(")) return mark_error_at(tokens, at_idx + 2, error.InvalidImportDecl);
+    if (tokens[at_idx + 3].kind != .string) return mark_error_at(tokens, at_idx + 3, error.InvalidImportDecl);
+    if (!tok_eq(tokens[at_idx + 4], ",")) return mark_error_at(tokens, at_idx + 4, error.InvalidImportDecl);
+    if (tokens[at_idx + 5].kind != .string) return mark_error_at(tokens, at_idx + 5, error.InvalidImportDecl);
+    if (!tok_eq(tokens[at_idx + 6], ",")) return mark_error_at(tokens, at_idx + 6, error.InvalidImportDecl);
 
-    const locator = stringTokenBody(tokens[at_idx + 3].lexeme) orelse return markErrorAt(tokens, at_idx + 3, error.InvalidImportDecl);
-    const member = stringTokenBody(tokens[at_idx + 5].lexeme) orelse return markErrorAt(tokens, at_idx + 5, error.InvalidImportDecl);
-    const kind = try validateHostImportLocatorMember(tokens, at_idx + 3, at_idx + 5, locator, member);
+    const locator = string_token_body(tokens[at_idx + 3].lexeme) orelse return mark_error_at(tokens, at_idx + 3, error.InvalidImportDecl);
+    const member = string_token_body(tokens[at_idx + 5].lexeme) orelse return mark_error_at(tokens, at_idx + 5, error.InvalidImportDecl);
+    const kind = try validate_host_import_locator_member(tokens, at_idx + 3, at_idx + 5, locator, member);
     const sig_start = at_idx + 7;
-    if (sig_start >= import_end - 1) return markErrorAt(tokens, at_idx + 6, error.InvalidImportDecl);
-    try validateHostSignature(tokens, sig_start, import_end - 1, kind);
+    if (sig_start >= import_end - 1) return mark_error_at(tokens, at_idx + 6, error.InvalidImportDecl);
+    try validate_host_signature(tokens, sig_start, import_end - 1, kind);
     if (kind == .wasi) {
-        const target = try buildWasiTargetKey(tokens, at_idx + 3, locator, member);
-        try validateKnownWasiSignature(tokens, at_idx + 3, target, sig_start, import_end - 1);
+        const target = try build_wasi_target_key(tokens, at_idx + 3, locator, member);
+        try validate_known_wasi_signature(tokens, at_idx + 3, target, sig_start, import_end - 1);
     }
 }
 
 /// Validate locator+member and return host kind. Does not allocate.
-fn validateHostImportLocatorMember(
+fn validate_host_import_locator_member(
     tokens: []const lexer.Token,
     locator_idx: usize,
     member_idx: usize,
@@ -188,18 +189,18 @@ fn validateHostImportLocatorMember(
     member: []const u8,
 ) !HostImportKind {
     if (std.mem.eql(u8, locator, "env")) {
-        if (!isValidPathSeg(member)) return markErrorAt(tokens, member_idx, error.InvalidImportDecl);
+        if (!is_valid_path_seg(member)) return mark_error_at(tokens, member_idx, error.InvalidImportDecl);
         return .env;
     }
     if (std.mem.startsWith(u8, locator, "wasi:")) {
-        if (!isValidWasiHostLocator(locator)) return markErrorAt(tokens, locator_idx, error.InvalidImportDecl);
-        if (!isValidWasiHostMember(member)) return markErrorAt(tokens, member_idx, error.InvalidImportDecl);
+        if (!is_valid_wasi_host_locator(locator)) return mark_error_at(tokens, locator_idx, error.InvalidImportDecl);
+        if (!is_valid_wasi_host_member(member)) return mark_error_at(tokens, member_idx, error.InvalidImportDecl);
         return .wasi;
     }
-    return markErrorAt(tokens, locator_idx, error.InvalidImportDecl);
+    return mark_error_at(tokens, locator_idx, error.InvalidImportDecl);
 }
 
-fn isValidWasiHostLocator(locator: []const u8) bool {
+fn is_valid_wasi_host_locator(locator: []const u8) bool {
     if (!std.mem.startsWith(u8, locator, "wasi:")) return false;
     const rest = locator["wasi:".len..];
     const at_idx = std.mem.lastIndexOfScalar(u8, rest, '@') orelse return false;
@@ -212,12 +213,12 @@ fn isValidWasiHostLocator(locator: []const u8) bool {
     }
     if (slash_count != 1) return false;
     const slash = std.mem.indexOfScalar(u8, pkg_iface, '/') orelse return false;
-    if (!isValidWitPathSeg(pkg_iface[0..slash])) return false;
-    if (!isValidWitPathSeg(pkg_iface[slash + 1 ..])) return false;
-    return isValidWasiVersion(version);
+    if (!is_valid_wit_path_seg(pkg_iface[0..slash])) return false;
+    if (!is_valid_wit_path_seg(pkg_iface[slash + 1 ..])) return false;
+    return is_valid_wasi_version(version);
 }
 
-fn isValidWasiHostMember(member: []const u8) bool {
+fn is_valid_wasi_host_member(member: []const u8) bool {
     if (member.len == 0) return false;
     // member may contain '.' (descriptor.write) and '-' (get-random-bytes, link-at)
     var i: usize = 0;
@@ -233,7 +234,7 @@ fn isValidWasiHostMember(member: []const u8) bool {
     return true;
 }
 
-fn isValidWasiVersion(version: []const u8) bool {
+fn is_valid_wasi_version(version: []const u8) bool {
     // Simple semver-ish: digits and dots, non-empty (e.g. 0.3.0)
     if (version.len == 0) return false;
     var has_digit = false;
@@ -248,7 +249,7 @@ fn isValidWasiVersion(version: []const u8) bool {
     return has_digit;
 }
 
-fn isValidWitPathSeg(seg: []const u8) bool {
+fn is_valid_wit_path_seg(seg: []const u8) bool {
     if (seg.len == 0) return false;
     // package/interface segments: lowercase, digits, '-'
     for (seg) |ch| {
@@ -260,16 +261,16 @@ fn isValidWitPathSeg(seg: []const u8) bool {
 
 /// Build package/interface/member for known-table lookup. Returns stack buffer via static... no, use threadlocal or just reconstruct inline.
 /// Caller uses the returned slice only for lookup (points into a temporary array on stack - must not escape).
-fn buildWasiTargetKey(tokens: []const lexer.Token, site_idx: usize, locator: []const u8, member: []const u8) ![]const u8 {
-    // Use a fixed buffer - targets are short. Store in threadlocal static for this call's validateKnownWasiSignature only.
+fn build_wasi_target_key(tokens: []const lexer.Token, site_idx: usize, locator: []const u8, member: []const u8) ![]const u8 {
+    // Use a fixed buffer - targets are short. Store in threadlocal static for this call's validate_known_wasi_signature only.
     // Safer: allocate is not available without allocator. Reconstruct path without alloc by checking known table with custom compare.
-    // Simpler approach: stack buffer in validateHostImportLine via array and pass slice.
-    return buildWasiTargetKeyBuf(locator, member) orelse return markErrorAt(tokens, site_idx, error.InvalidImportDecl);
+    // Simpler approach: stack buffer in validate_host_import_line via array and pass slice.
+    return build_wasi_target_key_buf(locator, member) orelse return mark_error_at(tokens, site_idx, error.InvalidImportDecl);
 }
 
 var wasi_target_key_buf: [256]u8 = undefined;
 
-fn buildWasiTargetKeyBuf(locator: []const u8, member: []const u8) ?[]const u8 {
+fn build_wasi_target_key_buf(locator: []const u8, member: []const u8) ?[]const u8 {
     if (!std.mem.startsWith(u8, locator, "wasi:")) return null;
     const rest = locator["wasi:".len..];
     const at_idx = std.mem.lastIndexOfScalar(u8, rest, '@') orelse return null;
@@ -282,13 +283,13 @@ fn buildWasiTargetKeyBuf(locator: []const u8, member: []const u8) ?[]const u8 {
 }
 
 
-fn validateHostSignature(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, kind: HostImportKind) !void {
-    if (start_idx >= end_idx) return markErrorAt(tokens, @min(start_idx, tokens.len - 1), error.InvalidImportDecl);
-    if (!tokEq(tokens[start_idx], "(")) return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
-    const close_idx = findMatching(tokens, start_idx, "(", ")") catch return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
-    if (close_idx + 3 >= end_idx or !tokEq(tokens[close_idx + 1], "-") or !tokEq(tokens[close_idx + 2], ">")) return markErrorAt(tokens, close_idx, error.InvalidImportDecl);
-    try validateHostImportParams(tokens, start_idx + 1, close_idx, kind);
-    try validateHostReturnType(tokens, close_idx + 3, end_idx, kind);
+fn validate_host_signature(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, kind: HostImportKind) !void {
+    if (start_idx >= end_idx) return mark_error_at(tokens, @min(start_idx, tokens.len - 1), error.InvalidImportDecl);
+    if (!tok_eq(tokens[start_idx], "(")) return mark_error_at(tokens, start_idx, error.InvalidImportDecl);
+    const close_idx = find_matching(tokens, start_idx, "(", ")") catch return mark_error_at(tokens, start_idx, error.InvalidImportDecl);
+    if (close_idx + 3 >= end_idx or !tok_eq(tokens[close_idx + 1], "-") or !tok_eq(tokens[close_idx + 2], ">")) return mark_error_at(tokens, close_idx, error.InvalidImportDecl);
+    try validate_host_import_params(tokens, start_idx + 1, close_idx, kind);
+    try validate_host_return_type(tokens, close_idx + 3, end_idx, kind);
 }
 
 
@@ -320,39 +321,39 @@ const WIT_DATETIME_FIELDS = [_]KnownWasiRecordField{
     .{ .name = "nanoseconds", .ty = "u32" },
 };
 
-fn validateKnownWasiSignature(
+fn validate_known_wasi_signature(
     tokens: []const lexer.Token,
     site_idx: usize,
     target: []const u8,
     sig_start: usize,
     sig_end: usize,
 ) !void {
-    const known = findKnownWasiSignature(target) orelse return;
-    const close_idx = findMatching(tokens, sig_start, "(", ")") catch
-        return markErrorAt(tokens, sig_start, error.InvalidImportDecl);
-    if (close_idx + 3 >= sig_end or !tokEq(tokens[close_idx + 1], "-") or !tokEq(tokens[close_idx + 2], ">")) {
-        return markErrorAt(tokens, sig_start, error.InvalidImportDecl);
+    const known = find_known_wasi_signature(target) orelse return;
+    const close_idx = find_matching(tokens, sig_start, "(", ")") catch
+        return mark_error_at(tokens, sig_start, error.InvalidImportDecl);
+    if (close_idx + 3 >= sig_end or !tok_eq(tokens[close_idx + 1], "-") or !tok_eq(tokens[close_idx + 2], ">")) {
+        return mark_error_at(tokens, sig_start, error.InvalidImportDecl);
     }
-    const params_ok = compactTokenRangeEquals(tokens, sig_start + 1, close_idx, known.params) or
-        (known.do_params != null and compactTokenRangeEquals(tokens, sig_start + 1, close_idx, known.do_params.?)) or
-        (known.do_params_alt != null and compactTokenRangeEquals(tokens, sig_start + 1, close_idx, known.do_params_alt.?)) or
-        (known.do_params_alt2 != null and compactTokenRangeEquals(tokens, sig_start + 1, close_idx, known.do_params_alt2.?));
-    const result_ok = compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.result) or
-        (known.do_result != null and compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.do_result.?)) or
-        (known.do_result_alt != null and compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.do_result_alt.?)) or
-        (known.do_result_alt2 != null and compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.do_result_alt2.?)) or
-        (known.do_result_alt3 != null and compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.do_result_alt3.?)) or
-        (known.do_result_alt4 != null and compactTokenRangeEquals(tokens, close_idx + 3, sig_end, known.do_result_alt4.?));
+    const params_ok = compact_token_range_equals(tokens, sig_start + 1, close_idx, known.params) or
+        (known.do_params != null and compact_token_range_equals(tokens, sig_start + 1, close_idx, known.do_params.?)) or
+        (known.do_params_alt != null and compact_token_range_equals(tokens, sig_start + 1, close_idx, known.do_params_alt.?)) or
+        (known.do_params_alt2 != null and compact_token_range_equals(tokens, sig_start + 1, close_idx, known.do_params_alt2.?));
+    const result_ok = compact_token_range_equals(tokens, close_idx + 3, sig_end, known.result) or
+        (known.do_result != null and compact_token_range_equals(tokens, close_idx + 3, sig_end, known.do_result.?)) or
+        (known.do_result_alt != null and compact_token_range_equals(tokens, close_idx + 3, sig_end, known.do_result_alt.?)) or
+        (known.do_result_alt2 != null and compact_token_range_equals(tokens, close_idx + 3, sig_end, known.do_result_alt2.?)) or
+        (known.do_result_alt3 != null and compact_token_range_equals(tokens, close_idx + 3, sig_end, known.do_result_alt3.?)) or
+        (known.do_result_alt4 != null and compact_token_range_equals(tokens, close_idx + 3, sig_end, known.do_result_alt4.?));
     if (!params_ok or !result_ok) {
-        return markErrorAt(tokens, site_idx, error.InvalidImportDecl);
+        return mark_error_at(tokens, site_idx, error.InvalidImportDecl);
     }
     if (known.result_record) |record| {
-        if (!knownWasiRecordMirrorMatches(tokens, record)) return markErrorAt(tokens, site_idx, error.InvalidImportDecl);
+        if (!known_wasi_record_mirror_matches(tokens, record)) return mark_error_at(tokens, site_idx, error.InvalidImportDecl);
     }
 }
 
 
-fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
+fn find_known_wasi_signature(target: []const u8) ?KnownWasiSignature {
     const known = [_]KnownWasiSignature{
         .{
             .target = "filesystem/types/descriptor.write",
@@ -450,7 +451,7 @@ fn findKnownWasiSignature(target: []const u8) ?KnownWasiSignature {
             .params = "",
             .result = "list<tuple<descriptor,text>>",
             // Preferred do form packs Dir shells; bracket sugar not yet valid on @host wasi result.
-            // compactTokenRangeEquals ignores whitespace, so spaces in source are fine.
+            // compact_token_range_equals ignores whitespace, so spaces in source are fine.
             .do_result = "list<tuple<Dir,text>>",
             .do_result_alt = "list<tuple<i32,text>>",
             .do_result_alt2 = "[Tuple<Dir,text>]",
@@ -578,24 +579,24 @@ const StructDeclRange = struct {
     close_idx: usize,
 };
 
-fn knownWasiRecordMirrorMatches(tokens: []const lexer.Token, record: KnownWasiRecord) bool {
-    const decl = findPublicStructDecl(tokens, record.name) orelse return false;
+fn known_wasi_record_mirror_matches(tokens: []const lexer.Token, record: KnownWasiRecord) bool {
+    const decl = find_public_struct_decl(tokens, record.name) orelse return false;
 
     var field_idx: usize = 0;
     var i = decl.open_idx + 1;
     while (i < decl.close_idx) {
-        const line_end = findLineEndIdx(tokens, i);
-        if (tokens[i].kind != .ident or !isStructFieldName(tokens[i].lexeme) or i + 1 >= line_end) {
+        const line_end = find_line_end_idx(tokens, i);
+        if (tokens[i].kind != .ident or !is_struct_field_name(tokens[i].lexeme) or i + 1 >= line_end) {
             i = line_end;
             continue;
         }
         if (field_idx >= record.fields.len) return false;
 
         const expected = record.fields[field_idx];
-        if (!std.mem.eql(u8, normalizeStructFieldName(tokens[i].lexeme), expected.name)) return false;
+        if (!std.mem.eql(u8, normalize_struct_field_name(tokens[i].lexeme), expected.name)) return false;
 
-        const type_end = findStructFieldTypeEnd(tokens, i + 1, line_end);
-        if (!compactTokenRangeEquals(tokens, i + 1, type_end, expected.ty)) return false;
+        const type_end = find_struct_field_type_end(tokens, i + 1, line_end);
+        if (!compact_token_range_equals(tokens, i + 1, type_end, expected.ty)) return false;
 
         field_idx += 1;
         i = line_end;
@@ -605,61 +606,61 @@ fn knownWasiRecordMirrorMatches(tokens: []const lexer.Token, record: KnownWasiRe
 }
 
 
-fn validateHostImportParams(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, kind: HostImportKind) !void {
+fn validate_host_import_params(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, kind: HostImportKind) !void {
     var i = start_idx;
     while (i < end_idx) {
-        if (tokEq(tokens[i], ",")) {
+        if (tok_eq(tokens[i], ",")) {
             i += 1;
             continue;
         }
 
-        const next = try validateHostParamType(tokens, i, end_idx, kind);
+        const next = try validate_host_param_type(tokens, i, end_idx, kind);
         i = next;
         if (i < end_idx) {
-            if (!tokEq(tokens[i], ",")) return markErrorAt(tokens, i, error.InvalidImportDecl);
+            if (!tok_eq(tokens[i], ",")) return mark_error_at(tokens, i, error.InvalidImportDecl);
             i += 1;
         }
     }
 }
 
 
-fn validateHostReturnType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, kind: HostImportKind) !void {
-    const next = try validateHostReturnTypeAt(tokens, start_idx, end_idx, kind);
-    if (next != end_idx) return markErrorAt(tokens, next, error.InvalidImportDecl);
+fn validate_host_return_type(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, kind: HostImportKind) !void {
+    const next = try validate_host_return_type_at(tokens, start_idx, end_idx, kind);
+    if (next != end_idx) return mark_error_at(tokens, next, error.InvalidImportDecl);
 }
 
 
-fn validateHostParamType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, kind: HostImportKind) !usize {
-    if (start_idx >= end_idx) return markErrorAt(tokens, @min(start_idx, tokens.len - 1), error.InvalidImportDecl);
+fn validate_host_param_type(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, kind: HostImportKind) !usize {
+    if (start_idx >= end_idx) return mark_error_at(tokens, @min(start_idx, tokens.len - 1), error.InvalidImportDecl);
     switch (kind) {
         .env => {
-            if (tokens[start_idx].kind == .ident and isHostParamType(tokens[start_idx].lexeme)) {
+            if (tokens[start_idx].kind == .ident and is_host_param_type(tokens[start_idx].lexeme)) {
                 return start_idx + 1;
             }
-            return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
+            return mark_error_at(tokens, start_idx, error.InvalidImportDecl);
         },
         .wasi => {
-            const next = parseWitType(tokens, start_idx, end_idx) orelse
-                return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
+            const next = parse_wit_type(tokens, start_idx, end_idx) orelse
+                return mark_error_at(tokens, start_idx, error.InvalidImportDecl);
             return next;
         },
     }
 }
 
 
-fn validateHostReturnTypeAt(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, kind: HostImportKind) !usize {
-    if (start_idx >= end_idx) return markErrorAt(tokens, @min(start_idx, tokens.len - 1), error.InvalidImportDecl);
+fn validate_host_return_type_at(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, kind: HostImportKind) !usize {
+    if (start_idx >= end_idx) return mark_error_at(tokens, @min(start_idx, tokens.len - 1), error.InvalidImportDecl);
     switch (kind) {
         .env => {
-            if (tokens[start_idx].kind == .ident and isHostReturnType(tokens[start_idx].lexeme)) {
+            if (tokens[start_idx].kind == .ident and is_host_return_type(tokens[start_idx].lexeme)) {
                 return start_idx + 1;
             }
-            return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
+            return mark_error_at(tokens, start_idx, error.InvalidImportDecl);
         },
         .wasi => {
             // Accept WIT types and do exclusive unions (`nil | i32`, `Dir | i32`, …).
-            const next = parseWitOrDoUnionType(tokens, start_idx, end_idx) orelse
-                return markErrorAt(tokens, start_idx, error.InvalidImportDecl);
+            const next = parse_wit_or_do_union_type(tokens, start_idx, end_idx) orelse
+                return mark_error_at(tokens, start_idx, error.InvalidImportDecl);
             return next;
         },
     }
@@ -668,23 +669,23 @@ fn validateHostReturnTypeAt(tokens: []const lexer.Token, start_idx: usize, end_i
 /// WIT type, or do exclusive union of WIT/do arms separated by `|` (spaces ignored by token stream).
 
 /// WIT type, or do exclusive union of WIT/do arms separated by `|` (spaces ignored by token stream).
-fn parseWitOrDoUnionType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
-    var next = parseWitType(tokens, start_idx, end_idx) orelse return null;
-    while (next < end_idx and tokEq(tokens[next], "|")) {
-        const arm_end = parseWitType(tokens, next + 1, end_idx) orelse return null;
+fn parse_wit_or_do_union_type(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    var next = parse_wit_type(tokens, start_idx, end_idx) orelse return null;
+    while (next < end_idx and tok_eq(tokens[next], "|")) {
+        const arm_end = parse_wit_type(tokens, next + 1, end_idx) orelse return null;
         next = arm_end;
     }
     return next;
 }
 
 
-fn isValidWitTargetPath(path: []const u8) bool {
+fn is_valid_wit_target_path(path: []const u8) bool {
     var count: usize = 0;
     var start: usize = 0;
     while (start <= path.len) {
         const slash_idx = std.mem.indexOfScalarPos(u8, path, start, '/') orelse path.len;
         const seg = path[start..slash_idx];
-        if (!isValidWitPathName(seg)) return false;
+        if (!is_valid_wit_path_name(seg)) return false;
         count += 1;
         if (slash_idx == path.len) break;
         start = slash_idx + 1;
@@ -693,7 +694,7 @@ fn isValidWitTargetPath(path: []const u8) bool {
 }
 
 
-fn isHostParamType(name: []const u8) bool {
+fn is_host_param_type(name: []const u8) bool {
     const allowed = [_][]const u8{
         "i32",
         "i64",
@@ -707,133 +708,133 @@ fn isHostParamType(name: []const u8) bool {
 }
 
 
-fn isHostReturnType(name: []const u8) bool {
+fn is_host_return_type(name: []const u8) bool {
     if (std.mem.eql(u8, name, "nil")) return true;
-    return isHostParamType(name);
+    return is_host_param_type(name);
 }
 
 
-fn parseWitType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+fn parse_wit_type(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
     if (start_idx >= end_idx) return null;
     // Do storage sugar: `[T]` where T is any parseable host type (u8, Tuple<…>, …).
-    if (tokEq(tokens[start_idx], "[")) {
-        const elem_end = parseWitType(tokens, start_idx + 1, end_idx) orelse return null;
-        if (elem_end >= end_idx or !tokEq(tokens[elem_end], "]")) return null;
+    if (tok_eq(tokens[start_idx], "[")) {
+        const elem_end = parse_wit_type(tokens, start_idx + 1, end_idx) orelse return null;
+        if (elem_end >= end_idx or !tok_eq(tokens[elem_end], "]")) return null;
         return elem_end + 1;
     }
     if (tokens[start_idx].kind != .ident) return null;
     const name = tokens[start_idx].lexeme;
 
     if (std.mem.eql(u8, name, "list")) {
-        if (start_idx + 2 >= end_idx or !tokEq(tokens[start_idx + 1], "<")) return null;
-        const item_end = parseWitType(tokens, start_idx + 2, end_idx) orelse return null;
-        if (item_end >= end_idx or !tokEq(tokens[item_end], ">")) return null;
+        if (start_idx + 2 >= end_idx or !tok_eq(tokens[start_idx + 1], "<")) return null;
+        const item_end = parse_wit_type(tokens, start_idx + 2, end_idx) orelse return null;
+        if (item_end >= end_idx or !tok_eq(tokens[item_end], ">")) return null;
         return item_end + 1;
     }
 
     if (std.mem.eql(u8, name, "result")) {
-        if (start_idx + 4 >= end_idx or !tokEq(tokens[start_idx + 1], "<")) return null;
-        const ok_end = parseWitType(tokens, start_idx + 2, end_idx) orelse return null;
-        if (ok_end >= end_idx or !tokEq(tokens[ok_end], ",")) return null;
-        const err_end = parseWitType(tokens, ok_end + 1, end_idx) orelse return null;
-        if (err_end >= end_idx or !tokEq(tokens[err_end], ">")) return null;
+        if (start_idx + 4 >= end_idx or !tok_eq(tokens[start_idx + 1], "<")) return null;
+        const ok_end = parse_wit_type(tokens, start_idx + 2, end_idx) orelse return null;
+        if (ok_end >= end_idx or !tok_eq(tokens[ok_end], ",")) return null;
+        const err_end = parse_wit_type(tokens, ok_end + 1, end_idx) orelse return null;
+        if (err_end >= end_idx or !tok_eq(tokens[err_end], ">")) return null;
         return err_end + 1;
     }
 
     // WIT `tuple<…>` and do `Tuple<…>` sugar (same shape; do capital-T form for host Ok|Err).
     if (std.mem.eql(u8, name, "tuple") or std.mem.eql(u8, name, "Tuple")) {
-        if (start_idx + 4 >= end_idx or !tokEq(tokens[start_idx + 1], "<")) return null;
+        if (start_idx + 4 >= end_idx or !tok_eq(tokens[start_idx + 1], "<")) return null;
         var i = start_idx + 2;
         var count: usize = 0;
         while (i < end_idx) {
-            const next = parseWitType(tokens, i, end_idx) orelse return null;
+            const next = parse_wit_type(tokens, i, end_idx) orelse return null;
             count += 1;
             i = next;
             if (i >= end_idx) return null;
-            if (tokEq(tokens[i], ">")) return if (count >= 2) i + 1 else null;
-            if (!tokEq(tokens[i], ",")) return null;
+            if (tok_eq(tokens[i], ">")) return if (count >= 2) i + 1 else null;
+            if (!tok_eq(tokens[i], ",")) return null;
             i += 1;
         }
         return null;
     }
 
     if (std.mem.eql(u8, name, "option") or std.mem.eql(u8, name, "borrow") or std.mem.eql(u8, name, "own")) {
-        if (start_idx + 2 >= end_idx or !tokEq(tokens[start_idx + 1], "<")) return null;
-        const item_end = parseWitType(tokens, start_idx + 2, end_idx) orelse return null;
-        if (item_end >= end_idx or !tokEq(tokens[item_end], ">")) return null;
+        if (start_idx + 2 >= end_idx or !tok_eq(tokens[start_idx + 1], "<")) return null;
+        const item_end = parse_wit_type(tokens, start_idx + 2, end_idx) orelse return null;
+        if (item_end >= end_idx or !tok_eq(tokens[item_end], ">")) return null;
         return item_end + 1;
     }
 
     if (std.mem.eql(u8, name, "_")) return start_idx + 1;
-    if (hasPublicStructDecl(tokens, name)) return start_idx + 1;
+    if (has_public_struct_decl(tokens, name)) return start_idx + 1;
     // G6.3: payload enum names in host params (e.g. IpSocketAddress).
-    if (hasPublicPayloadEnumDecl(tokens, name)) return start_idx + 1;
+    if (has_public_payload_enum_decl(tokens, name)) return start_idx + 1;
     // P4: coarse do error enums in host Ok|Err results (DirError / FileError).
     // Forward refs allowed: name ends with Error (same as resource names in host params).
-    if (isErrorTypeName(name)) return start_idx + 1;
+    if (is_error_type_name(name)) return start_idx + 1;
 
-    return parseWitName(tokens, start_idx, end_idx);
+    return parse_wit_name(tokens, start_idx, end_idx);
 }
 
 
-fn hasPublicStructDecl(tokens: []const lexer.Token, name: []const u8) bool {
-    return findPublicStructDecl(tokens, name) != null;
+fn has_public_struct_decl(tokens: []const lexer.Token, name: []const u8) bool {
+    return find_public_struct_decl(tokens, name) != null;
 }
 
-fn hasPublicPayloadEnumDecl(tokens: []const lexer.Token, name: []const u8) bool {
-    if (!isValidDeclaredTypeName(name)) return false;
+fn has_public_payload_enum_decl(tokens: []const lexer.Token, name: []const u8) bool {
+    if (!is_valid_declared_type_name(name)) return false;
     var depth_brace: usize = 0;
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
-        if (tokEq(tokens[i], "{")) {
-            if (skipTopLevelImportBrace(tokens, i, depth_brace)) |skip_i| {
+        if (tok_eq(tokens[i], "{")) {
+            if (skip_top_level_import_brace(tokens, i, depth_brace)) |skip_i| {
                 i = skip_i;
                 continue;
             }
             depth_brace += 1;
             continue;
         }
-        if (tokEq(tokens[i], "}")) {
+        if (tok_eq(tokens[i], "}")) {
             if (depth_brace > 0) depth_brace -= 1;
             continue;
         }
         if (depth_brace != 0) continue;
-        if (!isPayloadEnumDeclStart(tokens, i)) continue;
+        if (!is_payload_enum_decl_start(tokens, i)) continue;
         if (std.mem.eql(u8, tokens[i].lexeme, name)) return true;
     }
     return false;
 }
 
 
-fn findPublicStructDecl(tokens: []const lexer.Token, name: []const u8) ?StructDeclRange {
-    if (!isValidDeclaredTypeName(name)) return null;
+fn find_public_struct_decl(tokens: []const lexer.Token, name: []const u8) ?StructDeclRange {
+    if (!is_valid_declared_type_name(name)) return null;
 
     var depth_brace: usize = 0;
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
-        if (tokEq(tokens[i], "{")) {
-            if (skipTopLevelImportBrace(tokens, i, depth_brace)) |skip_i| {
+        if (tok_eq(tokens[i], "{")) {
+            if (skip_top_level_import_brace(tokens, i, depth_brace)) |skip_i| {
                 i = skip_i;
                 continue;
             }
             depth_brace += 1;
             continue;
         }
-        if (tokEq(tokens[i], "}")) {
+        if (tok_eq(tokens[i], "}")) {
             if (depth_brace > 0) depth_brace -= 1;
             continue;
         }
         if (depth_brace != 0) continue;
-        if (!isTopLevelDeclHead(tokens, i)) continue;
+        if (!is_top_level_decl_head(tokens, i)) continue;
         if (tokens[i].kind != .ident) continue;
         if (!std.mem.eql(u8, tokens[i].lexeme, name)) continue;
         // Classic: Name { fields }
-        if (i + 1 < tokens.len and tokEq(tokens[i + 1], "{")) {
-            const close_idx = findMatching(tokens, i + 1, "{", "}") catch return null;
+        if (i + 1 < tokens.len and tok_eq(tokens[i + 1], "{")) {
+            const close_idx = find_matching(tokens, i + 1, "{", "}") catch return null;
             return .{ .open_idx = i + 1, .close_idx = close_idx };
         }
         // Declarative: Name = @wasi_record|wasi_resource("…", { fields })
-        if (wasiStructFieldsRange(tokens, i)) |fields| {
+        if (wasi_struct_fields_range(tokens, i)) |fields| {
             return .{ .open_idx = fields.open, .close_idx = fields.close };
         }
     }
@@ -842,40 +843,40 @@ fn findPublicStructDecl(tokens: []const lexer.Token, name: []const u8) ?StructDe
 
 const BraceRange = struct { open: usize, close: usize };
 
-fn wasiStructFieldsRange(tokens: []const lexer.Token, name_idx: usize) ?BraceRange {
+fn wasi_struct_fields_range(tokens: []const lexer.Token, name_idx: usize) ?BraceRange {
     if (name_idx + 5 >= tokens.len) return null;
-    if (!tokEq(tokens[name_idx + 1], "=") or !tokEq(tokens[name_idx + 2], "@")) return null;
+    if (!tok_eq(tokens[name_idx + 1], "=") or !tok_eq(tokens[name_idx + 2], "@")) return null;
     if (tokens[name_idx + 3].kind != .ident) return null;
     const kind = tokens[name_idx + 3].lexeme;
     if (!std.mem.eql(u8, kind, "wasi_record") and !std.mem.eql(u8, kind, "wasi_resource")) return null;
-    if (!tokEq(tokens[name_idx + 4], "(")) return null;
-    const close_call = findMatching(tokens, name_idx + 4, "(", ")") catch return null;
+    if (!tok_eq(tokens[name_idx + 4], "(")) return null;
+    const close_call = find_matching(tokens, name_idx + 4, "(", ")") catch return null;
     var j = name_idx + 5;
     while (j < close_call) : (j += 1) {
-        if (!tokEq(tokens[j], "{")) continue;
-        const close_brace = findMatching(tokens, j, "{", "}") catch return null;
+        if (!tok_eq(tokens[j], "{")) continue;
+        const close_brace = find_matching(tokens, j, "{", "}") catch return null;
         return .{ .open = j, .close = close_brace };
     }
     return null;
 }
 
 
-fn parseWitName(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
-    if (tokens[start_idx].kind != .ident or !isValidWitPathName(tokens[start_idx].lexeme)) return null;
+fn parse_wit_name(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    if (tokens[start_idx].kind != .ident or !is_valid_wit_path_name(tokens[start_idx].lexeme)) return null;
     var i = start_idx + 1;
-    while (i + 1 < end_idx and tokEq(tokens[i], "-")) {
-        if (tokens[i + 1].kind != .ident or !isValidWitPathName(tokens[i + 1].lexeme)) return null;
+    while (i + 1 < end_idx and tok_eq(tokens[i], "-")) {
+        if (tokens[i + 1].kind != .ident or !is_valid_wit_path_name(tokens[i + 1].lexeme)) return null;
         i += 2;
     }
     return i;
 }
 
 
-fn isValidWitPathName(name: []const u8) bool {
+fn is_valid_wit_path_name(name: []const u8) bool {
     var start: usize = 0;
     while (start <= name.len) {
         const dot_idx = std.mem.indexOfScalarPos(u8, name, start, '.') orelse name.len;
-        if (!isValidWitNamePart(name[start..dot_idx])) return false;
+        if (!is_valid_wit_name_part(name[start..dot_idx])) return false;
         if (dot_idx == name.len) return true;
         start = dot_idx + 1;
     }
@@ -883,7 +884,7 @@ fn isValidWitPathName(name: []const u8) bool {
 }
 
 
-fn isValidWitNamePart(name: []const u8) bool {
+fn is_valid_wit_name_part(name: []const u8) bool {
     if (name.len == 0) return false;
     if (name[0] < 'a' or name[0] > 'z') return false;
     if (name[name.len - 1] == '-') return false;

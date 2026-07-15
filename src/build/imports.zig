@@ -283,7 +283,7 @@ fn loadModule(
     if (source_opt) |source| {
         var program = parser.parseProgram(ctx.allocator, tokens, source.len) catch return error.InvalidImportDecl;
         defer program.deinit(ctx.allocator);
-        sema.checkProgram(ctx.allocator, program, tokens) catch return error.InvalidImportDecl;
+        sema.check_program(ctx.allocator, program, tokens) catch return error.InvalidImportDecl;
     }
 
     var imported_func_shapes = std.ArrayList(FuncShape).empty;

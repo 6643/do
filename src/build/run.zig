@@ -134,7 +134,7 @@ pub fn loadProgram(init: std.process.Init, input_path: []const u8) !LoadedProgra
     };
     errdefer program.deinit(allocator);
 
-    sema.checkProgram(allocator, program, tokens) catch |err| {
+    sema.check_program(allocator, program, tokens) catch |err| {
         try diag.printCompileError(io, input_path, source, tokens, err, semaErrorLoc());
         std.process.exit(1);
     };
@@ -245,7 +245,7 @@ fn parserErrorLoc() ?diag.SourceLoc {
 }
 
 fn semaErrorLoc() ?diag.SourceLoc {
-    const site = sema.takeLastErrorSite() orelse return null;
+    const site = sema.take_last_error_site() orelse return null;
     return .{ .line = site.line, .col = site.col };
 }
 
@@ -268,6 +268,6 @@ test "normal program compile path still enforces start entry" {
     var program = try parser.parseProgram(allocator, tokens, source.len);
     defer program.deinit(allocator);
 
-    try sema.checkProgram(allocator, program, tokens);
+    try sema.check_program(allocator, program, tokens);
     try std.testing.expectError(error.MissingStartEntry, entry.validateStart(program));
 }

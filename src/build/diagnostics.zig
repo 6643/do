@@ -26,7 +26,7 @@ pub fn collectDiagnostics(
     };
     defer program.deinit(allocator);
 
-    sema.checkProgram(allocator, program, tokens) catch |err| {
+    sema.check_program(allocator, program, tokens) catch |err| {
         return one(allocator, build_diag.buildCompileDiagnostic(path, source, tokens, err, semaErrorLoc()));
     };
 
@@ -50,7 +50,7 @@ fn parserErrorLoc() ?build_diag.SourceLoc {
 }
 
 fn semaErrorLoc() ?build_diag.SourceLoc {
-    const site = sema.takeLastErrorSite() orelse return null;
+    const site = sema.take_last_error_site() orelse return null;
     return .{ .line = site.line, .col = site.col };
 }
 
