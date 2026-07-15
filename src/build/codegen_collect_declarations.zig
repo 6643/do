@@ -12,6 +12,7 @@ const codegen_imports = @import("codegen_imports.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
 const codegen_collect_util = @import("codegen_collect_util.zig");
 const parse_codegen_type_expr = codegen_collect_util.parse_codegen_type_expr;
+const append_union_branch_payload_types = codegen_collect_util.append_union_branch_payload_types;
 
 const find_line_end = codegen_tokens.find_line_end;
 const find_matching = codegen_tokens.find_matching;
@@ -29,8 +30,77 @@ const is_value_enum_decl_start = codegen_imports.is_value_enum_decl_start;
 const parse_codegen_import = codegen_imports.parse_codegen_import;
 const PayloadEnumCase = model.PayloadEnumCase;
 const PayloadEnumDecl = model.PayloadEnumDecl;
+const StructDecl = model.StructDecl;
+const StructLayout = model.StructLayout;
 const ValueEnumBranch = model.ValueEnumBranch;
 const ValueEnumDecl = model.ValueEnumDecl;
+const UnionBranch = codegen_union_layout.UnionBranch;
+const UnionLayout = codegen_union_layout.UnionLayout;
+
+pub fn build_payload_enum_union_layout(allocator: std.mem.Allocator, decl: PayloadEnumDecl, tokens: []const lexer.Token, structs: []const StructDecl, struct_layouts: []const StructLayout, owned_types: *std.ArrayList([]const u8)) !UnionLayout {
+    var max_slots: usize = 0;
+    var case_slot_counts = try allocator.alloc(usize, decl.cases.len);
+    defer allocator.free(case_slot_counts);
+    var case_payload_types = try allocator.alloc(?[]const u8, decl.cases.len);
+    defer allocator.free(case_payload_types);
+
+    for (decl.cases, 0..) |case, ci| {
+        case_slot_counts[ci] = 0;
+        case_payload_types[ci] = null;
+        if (case.payload_ty) |payload_ty| {
+            var tmp = std.ArrayList([]const u8).empty;
+            defer tmp.deinit(allocator);
+            try append_union_branch_payload_types(allocator, tokens, payload_ty, structs, struct_layouts, &tmp);
+            case_slot_counts[ci] = tmp.items.len;
+            case_payload_types[ci] = payload_ty;
+            if (tmp.items.len > max_slots) max_slots = tmp.items.len;
+        }
+    }
+
+    var payload_tys = std.ArrayList([]const u8).empty;
+    errdefer payload_tys.deinit(allocator);
+    if (max_slots > 0) {
+        var filled = try allocator.alloc(bool, max_slots);
+        defer allocator.free(filled);
+        @memset(filled, false);
+        try payload_tys.resize(allocator, max_slots);
+        for (decl.cases) |case| {
+            if (case.payload_ty == null) continue;
+            var tmp = std.ArrayList([]const u8).empty;
+            defer tmp.deinit(allocator);
+            try append_union_branch_payload_types(allocator, tokens, case.payload_ty.?, structs, struct_layouts, &tmp);
+            for (tmp.items, 0..) |slot_ty, si| {
+                if (filled[si]) continue;
+                payload_tys.items[si] = slot_ty;
+                filled[si] = true;
+            }
+        }
+        for (filled, 0..) |filled_slot, si| {
+            if (!filled_slot) payload_tys.items[si] = "i32";
+        }
+    }
+
+    var branches = std.ArrayList(UnionBranch).empty;
+    errdefer branches.deinit(allocator);
+    for (decl.cases, 0..) |case, ci| {
+        try branches.append(allocator, .{
+            .ty = case.name,
+            .tag = ci,
+            .payload_start = 0,
+            .payload_len = case_slot_counts[ci],
+            .payload_type = case_payload_types[ci],
+        });
+    }
+
+    const source_ty = try allocator.dupe(u8, decl.name);
+    errdefer allocator.free(source_ty);
+    try owned_types.append(allocator, source_ty);
+    return .{
+        .source_ty = source_ty,
+        .branches = try branches.toOwnedSlice(allocator),
+        .payload_tys = try payload_tys.toOwnedSlice(allocator),
+    };
+}
 
 pub fn collect_value_enum_decls(
     allocator: std.mem.Allocator,

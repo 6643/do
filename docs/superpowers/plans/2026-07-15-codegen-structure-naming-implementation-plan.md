@@ -32,7 +32,7 @@
 | `src/build/gen_collect_func.zig` | `src/build/codegen_collect_functions.zig` |
 | `src/build/gen_collect_struct.zig` | `src/build/codegen_collect_structs.zig` |
 | `src/build/gen_collect_type.zig` | `src/build/codegen_collect_declarations.zig` |
-| `src/build/gen_expr_collect.zig` | `src/build/codegen_collect_body.zig` |
+| `src/build/gen_expr_collect.zig` | `src/build/codegen_body.zig` plus `src/build/codegen_collect_reflection.zig` |
 | `src/build/gen_expr.zig` | `src/build/codegen_emit_expression.zig` and `src/build/codegen_emit_call.zig` |
 | `src/build/gen_ctrl.zig` | `src/build/codegen_emit_control.zig` |
 | `src/build/gen_storage.zig` | `src/build/codegen_emit_storage_values.zig`, `src/build/codegen_emit_storage_operations.zig`, and `src/build/codegen_storage_layout.zig` |
@@ -109,7 +109,7 @@ for facade in "$BUILD_DIR/gen_collect.zig" "$BUILD_DIR/sema_util.zig"; do
     fi
 done
 
-if rg -n '@import\("codegen_emit_[^"]+\.zig"\)' "$BUILD_DIR"/codegen_collect_*.zig "$BUILD_DIR"/codegen_collect_body.zig 2>/dev/null; then
+if rg -n '@import\("codegen_emit_[^"]+\.zig"\)' "$BUILD_DIR"/codegen_collect_*.zig 2>/dev/null; then
     echo "collect module imports an emitter" >&2
     fail=1
 fi
@@ -241,7 +241,7 @@ git commit -m "refactor: name semantic modules by domain"
 - Rename: `gen_collect_func.zig` -> `codegen_collect_functions.zig`
 - Rename: `gen_collect_struct.zig` -> `codegen_collect_structs.zig`
 - Rename: `gen_collect_type.zig` -> `codegen_collect_declarations.zig`
-- Rename: `gen_expr_collect.zig` -> `codegen_collect_body.zig`
+- Rename/split: `gen_expr_collect.zig` -> `codegen_body.zig` and `codegen_collect_reflection.zig`
 - Delete: `gen_collect.zig` after direct-import migration
 - Modify: `codegen_pipeline.zig`, `gen_expr.zig`, `codegen_generics.zig`, `gen_storage.zig`, `gen_struct.zig`, and all collection import sites
 
@@ -249,7 +249,7 @@ git commit -m "refactor: name semantic modules by domain"
 - `codegen_collect_functions.zig` owns function declarations, callback shapes, and function-level call collection.
 - `codegen_collect_structs.zig` owns struct declarations, field layouts, and struct-local collection.
 - `codegen_collect_declarations.zig` owns enum/value-enum/union declaration parsing and type binding.
-- `codegen_collect_body.zig` owns body local collection, loop locals, multi-result locals, and temporary-local requirements.
+- `codegen_body.zig` owns body-level collection/orchestration; `codegen_collect_reflection.zig` owns pure field-reflection and body-binding collection helpers.
 - Collection modules may import `codegen_model`, `codegen_context`, parser/token helpers, import resolution, and pure layout modules. They must not import `codegen_emit_*`.
 
 - [ ] **Step 1: Rename files and update imports without moving logic.**
@@ -258,7 +258,7 @@ git commit -m "refactor: name semantic modules by domain"
 - [ ] **Step 4: Delete `gen_collect.zig` and run the boundary grep.**
 
 ```bash
-if rg -n 'gen_collect\.zig|@import\("codegen_emit_[^"]+\.zig"\)' src/build/codegen_collect_*.zig src/build/codegen_collect_body.zig; then exit 1; fi
+if rg -n 'gen_collect\.zig|@import\("codegen_emit_[^"]+\.zig"\)' src/build/codegen_collect_*.zig; then exit 1; fi
 (cd src && zig test main.zig)
 ./src/build/test/run_tests.sh
 git diff --check

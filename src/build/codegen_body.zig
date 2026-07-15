@@ -10,16 +10,11 @@ const context = @import("codegen_context.zig");
 const codegen_collect_util = @import("codegen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
+const codegen_collect_declarations = @import("codegen_collect_declarations.zig");
+const codegen_collect_reflection = @import("codegen_collect_reflection.zig");
 const codegen_imports = @import("codegen_imports.zig");
-const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
 const codegen_callbacks = @import("codegen_callbacks.zig");
-const codegen_emit_storage_values = @import("codegen_emit_storage_values.zig");
-const codegen_emit_storage_operations = @import("codegen_emit_storage_operations.zig");
 const codegen_storage_layout = @import("codegen_storage_layout.zig");
-const codegen_emit_struct = @import("codegen_emit_struct.zig");
-const codegen_emit_struct_fields = @import("codegen_emit_struct_fields.zig");
-const codegen_emit_union = @import("codegen_emit_union.zig");
-const codegen_emit_control = @import("codegen_emit_control.zig");
 const codegen_ownership = @import("codegen_ownership.zig");
 const codegen_host_imports = @import("codegen_host_imports.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
@@ -55,6 +50,7 @@ const StorageLocal = model.StorageLocal;
 const FuncDecl = model.FuncDecl;
 const FuncResultItem = model.FuncResultItem;
 const StructDecl = model.StructDecl;
+const TypedStructBinding = model.TypedStructBinding;
 const FieldReflectionLoopHeader = context.FieldReflectionLoopHeader;
 const CallbackBinding = model.CallbackBinding;
 const CallbackCallArg = model.CallbackCallArg;
@@ -78,42 +74,39 @@ const substitute_generic_type_owned = codegen_collect_util.substitute_generic_ty
 const call_head_at = codegen_imports.call_head_at;
 const expr_call_head = codegen_imports.expr_call_head;
 const imported_alias_context_for_tokens = codegen_imports.imported_alias_context_for_tokens;
-const is_managed_local_type = codegen_emit_wasi.is_managed_local_type;
-const is_tuple_type_name = codegen_emit_wasi.is_tuple_type_name;
-const tuple_arity = codegen_emit_wasi.tuple_arity;
-const tuple_element_type_at = codegen_emit_wasi.tuple_element_type_at;
-const tuple_scalar_leaf_storage_byte_width_ctx = codegen_emit_wasi.tuple_scalar_leaf_storage_byte_width_ctx;
+const is_managed_local_type = codegen_storage_layout.is_managed_local_type;
+const is_tuple_type_name = codegen_storage_layout.is_tuple_type_name;
+const tuple_arity = codegen_storage_layout.tuple_arity;
+const tuple_element_type_at = codegen_storage_layout.tuple_element_type_at;
+const tuple_scalar_leaf_storage_byte_width_ctx = codegen_storage_layout.tuple_scalar_leaf_storage_byte_width_ctx;
 const ManagedPayloadBinding = codegen_storage_layout.ManagedPayloadBinding;
-const stmt_contains_storage_agg_literal = codegen_emit_storage_values.stmt_contains_storage_agg_literal;
-const find_local_name = codegen_emit_storage_values.find_local_name;
+const stmt_contains_storage_agg_literal = codegen_collect_util.stmt_contains_storage_agg_literal;
+const stmt_contains_struct_literal_expr = codegen_collect_util.stmt_contains_struct_literal_expr;
+const token_range_uses_ident = codegen_collect_util.token_range_uses_ident;
+const find_local_name = context.find_local_name;
 const infer_expr_type = codegen_storage_layout.infer_expr_type;
 const find_func_decl_for_call_head = codegen_storage_layout.find_func_decl_for_call_head;
 const substitute_struct_field_type = codegen_storage_layout.substitute_struct_field_type;
+const substitute_generic_type = codegen_storage_layout.substitute_generic_type;
 const managed_payload_elem_type_from_name = codegen_storage_layout.managed_payload_elem_type_from_name;
-const emit_zero_value_for_type = codegen_emit_struct.emit_zero_value_for_type;
-const stmt_contains_struct_literal_expr = codegen_emit_struct.stmt_contains_struct_literal_expr;
-const field_visible_from_tokens = codegen_emit_struct_fields.field_visible_from_tokens;
-const field_reflection_local_name_prefix = codegen_emit_struct_fields.field_reflection_local_name_prefix;
-const union_payload_comparison_call_branch = codegen_emit_union.union_payload_comparison_call_branch;
-const build_payload_enum_union_layout = codegen_emit_union.build_payload_enum_union_layout;
-const field_reflection_loop_header = codegen_emit_control.field_reflection_loop_header;
-const is_discard_assignment = codegen_emit_control.is_discard_assignment;
-const collection_loop_header = codegen_emit_control.collection_loop_header;
-const recv_loop_header = codegen_emit_control.recv_loop_header;
-const is_dead_managed_alias_binding = codegen_emit_control.is_dead_managed_alias_binding;
-const typed_scalar_binding_type = codegen_emit_control.typed_scalar_binding_type;
-const inferred_struct_ctor_binding = codegen_emit_control.inferred_struct_ctor_binding;
-const inferred_scalar_binding_type = codegen_emit_control.inferred_scalar_binding_type;
-const is_managed_local_assignment_stmt = codegen_emit_control.is_managed_local_assignment_stmt;
-const is_codegen_scalar_type = codegen_emit_union.is_codegen_scalar_type;
-const borrowed_field_meta_local_set = codegen_emit_struct_fields.borrowed_field_meta_local_set;
-const collect_field_reflection_body_locals = codegen_emit_struct_fields.collect_field_reflection_body_locals;
-const inferred_struct_binding = codegen_emit_struct.inferred_struct_binding;
-const typed_struct_binding = codegen_emit_struct.typed_struct_binding;
-const append_typed_local_with_decl = codegen_emit_storage_values.append_typed_local_with_decl;
-const append_managed_struct_field_meta_local = codegen_emit_storage_values.append_managed_struct_field_meta_local;
+const field_visible_from_tokens = codegen_collect_reflection.field_visible_from_tokens;
+const field_reflection_local_name_prefix = context.field_reflection_local_name_prefix;
+const union_payload_comparison_call_branch = codegen_storage_layout.union_payload_comparison_call_branch;
+const build_payload_enum_union_layout = codegen_collect_declarations.build_payload_enum_union_layout;
+const is_codegen_scalar_type = codegen_storage_layout.is_codegen_scalar_type;
+const borrowed_field_meta_local_set = context.borrowed_field_meta_local_set;
+const collect_field_reflection_body_locals = codegen_collect_reflection.collect_field_reflection_body_locals;
+const inferred_struct_binding = codegen_collect_reflection.inferred_struct_binding;
+const typed_struct_binding = codegen_collect_reflection.typed_struct_binding;
+const append_typed_local_with_decl = codegen_storage_layout.append_typed_local_with_decl;
+const append_managed_struct_field_meta_local = codegen_storage_layout.append_managed_struct_field_meta_local;
 const managed_payload_binding = codegen_storage_layout.managed_payload_binding;
 const storage_binding_elem_type = codegen_storage_layout.storage_binding_elem_type;
+const storage_elem_type_from_name = codegen_storage_layout.storage_elem_type_from_name;
+const storage_element_byte_width_for_type = codegen_storage_layout.storage_element_byte_width_for_type;
+const find_storage_primitive_local = codegen_storage_layout.find_storage_primitive_local;
+const is_direct_managed_local_expr = codegen_storage_layout.is_direct_managed_local_expr;
+const is_error_like_type = codegen_collect_util.is_error_like_type;
 
 fn stmt_contains_wasi_socket_create(
     tokens: []const lexer.Token,
@@ -132,23 +125,6 @@ fn stmt_contains_wasi_socket_create(
         }
     }
     return false;
-}
-
-pub fn emit_self_tail_loop_local_reset(allocator: std.mem.Allocator, func: FuncDecl, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
-    for (locals.locals.items) |local| {
-        if (!local.emit_decl) continue;
-        var is_param = false;
-        for (func.params) |param| {
-            if (param.callback != null) continue;
-            if (std.mem.eql(u8, local.name, param.name)) {
-                is_param = true;
-                break;
-            }
-        }
-        if (is_param) continue;
-        try emit_zero_value_for_type(allocator, ctx, out, local.ty);
-        try append_fmt(allocator, out, "    local.set ${s}\n", .{local.name});
-    }
 }
 
 pub fn collect_body_locals(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext, out: *LocalSet) !void {
@@ -524,6 +500,230 @@ pub fn collect_recv_loop_locals(
             try out.append_borrowed_local(allocator, count_name, "usize", true);
         }
     }
+}
+
+pub fn field_reflection_loop_header(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    ctx: CodegenContext,
+    locals: *const LocalSet,
+) ?FieldReflectionLoopHeader {
+    _ = locals;
+    if (start_idx + 8 > end_idx) return null;
+    if (!tok_eq(tokens[start_idx], "loop")) return null;
+    const open_brace = findTopLevelBlockOpen(tokens, start_idx + 1, end_idx) orelse return null;
+    const close_brace = find_matching_in_range(tokens, open_brace, "{", "}", end_idx) catch return null;
+    if (close_brace + 1 != end_idx) return null;
+    const eq_idx = find_top_level_token(tokens, start_idx + 1, open_brace, "=") orelse return null;
+    if (eq_idx != start_idx + 2) return null;
+    if (tokens[start_idx + 1].kind != .ident) return null;
+    if (eq_idx + 5 != open_brace) return null;
+    if (!std.mem.eql(u8, tokens[eq_idx + 1].lexeme, "fields")) return null;
+    if (!tok_eq(tokens[eq_idx + 2], "(")) return null;
+    if (tokens[eq_idx + 3].kind != .ident) return null;
+    if (!tok_eq(tokens[eq_idx + 4], ")")) return null;
+    const type_name = substitute_generic_type(tokens[eq_idx + 3].lexeme, ctx.type_bindings);
+    const decl = find_struct_decl(ctx.structs, type_name) orelse return null;
+    return .{
+        .field_name = tokens[start_idx + 1].lexeme,
+        .decl = decl,
+        .loop_idx = start_idx,
+        .open_brace = open_brace,
+        .close_brace = close_brace,
+    };
+}
+
+pub fn collection_loop_header(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    ctx: CodegenContext,
+    locals: *const LocalSet,
+) ?context.CollectionLoopHeader {
+    if (start_idx + 6 > end_idx) return null;
+    if (!tok_eq(tokens[start_idx], "loop")) return null;
+    const open_brace = findTopLevelBlockOpen(tokens, start_idx + 1, end_idx) orelse return null;
+    const close_brace = find_matching_in_range(tokens, open_brace, "{", "}", end_idx) catch return null;
+    if (close_brace + 1 != end_idx) return null;
+    const eq_idx = find_top_level_token(tokens, start_idx + 1, open_brace, "=") orelse return null;
+    const binds = parse_collection_loop_binds(tokens, start_idx + 1, eq_idx) orelse return null;
+    const source_start = eq_idx + 1;
+    const source_end = open_brace;
+    if (source_start >= source_end) return null;
+
+    if (source_end == source_start + 1 and tokens[source_start].kind == .ident) {
+        const storage = find_storage_primitive_local(locals.storage_locals.items, tokens[source_start].lexeme) orelse return null;
+        const elem_bytes = storage_element_byte_width_for_type(storage.elem_ty, ctx) orelse return null;
+        return .{
+            .value_name = binds.value_name,
+            .index_name = binds.index_name,
+            .source_name = tokens[source_start].lexeme,
+            .source_ty = storage.ty,
+            .source_start = source_start,
+            .source_end = source_end,
+            .elem_ty = storage.elem_ty,
+            .elem_bytes = elem_bytes,
+            .open_brace = open_brace,
+            .close_brace = close_brace,
+        };
+    }
+
+    const source_ty = infer_expr_type(tokens, source_start, source_end, locals, ctx) orelse return null;
+    const elem_ty = storage_elem_type_from_name(source_ty) orelse return null;
+    const elem_bytes = storage_element_byte_width_for_type(elem_ty, ctx) orelse return null;
+    return .{
+        .value_name = binds.value_name,
+        .index_name = binds.index_name,
+        .source_name = "",
+        .source_ty = source_ty,
+        .source_start = source_start,
+        .source_end = source_end,
+        .source_is_expr = true,
+        .elem_ty = elem_ty,
+        .elem_bytes = elem_bytes,
+        .open_brace = open_brace,
+        .close_brace = close_brace,
+    };
+}
+
+pub fn recv_loop_header(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    ctx: CodegenContext,
+    locals: *const LocalSet,
+) ?context.RecvLoopHeader {
+    if (start_idx + 8 > end_idx) return null;
+    if (!tok_eq(tokens[start_idx], "loop")) return null;
+    const open_brace = findTopLevelBlockOpen(tokens, start_idx + 1, end_idx) orelse return null;
+    const close_brace = find_matching_in_range(tokens, open_brace, "{", "}", end_idx) catch return null;
+    if (close_brace + 1 != end_idx) return null;
+    const eq_idx = find_top_level_token(tokens, start_idx + 1, open_brace, "=") orelse return null;
+    if (eq_idx + 5 != open_brace) return null;
+    if (!tok_eq(tokens[eq_idx + 1], "recv")) return null;
+    if (!tok_eq(tokens[eq_idx + 2], "(")) return null;
+    if (tokens[eq_idx + 3].kind != .ident) return null;
+    if (!tok_eq(tokens[eq_idx + 4], ")")) return null;
+    const storage = find_storage_primitive_local(locals.storage_locals.items, tokens[eq_idx + 3].lexeme) orelse return null;
+    const elem_bytes = storage_element_byte_width_for_type(storage.elem_ty, ctx) orelse return null;
+    const binds = parse_recv_loop_binds(tokens, start_idx + 1, eq_idx) orelse return null;
+    return .{
+        .value_name = binds.value_name,
+        .count_name = binds.count_name,
+        .source_name = tokens[eq_idx + 3].lexeme,
+        .elem_ty = storage.elem_ty,
+        .elem_bytes = elem_bytes,
+        .open_brace = open_brace,
+        .close_brace = close_brace,
+    };
+}
+
+const CollectionLoopBinds = struct {
+    value_name: ?[]const u8,
+    index_name: ?[]const u8,
+};
+
+const RecvLoopBinds = struct {
+    value_name: ?[]const u8,
+    count_name: ?[]const u8,
+};
+
+pub fn parse_collection_loop_binds(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?CollectionLoopBinds {
+    if (start_idx + 3 != end_idx) return null;
+    if (tokens[start_idx].kind != .ident) return null;
+    if (!tok_eq(tokens[start_idx + 1], ",")) return null;
+    if (tokens[start_idx + 2].kind != .ident) return null;
+    return .{
+        .value_name = loop_bind_name(tokens[start_idx].lexeme),
+        .index_name = loop_bind_name(tokens[start_idx + 2].lexeme),
+    };
+}
+
+pub fn parse_recv_loop_binds(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?RecvLoopBinds {
+    if (start_idx + 1 == end_idx) {
+        if (tokens[start_idx].kind != .ident) return null;
+        return .{
+            .value_name = loop_bind_name(tokens[start_idx].lexeme),
+            .count_name = null,
+        };
+    }
+    if (start_idx + 3 != end_idx) return null;
+    if (tokens[start_idx].kind != .ident) return null;
+    if (!tok_eq(tokens[start_idx + 1], ",")) return null;
+    if (tokens[start_idx + 2].kind != .ident) return null;
+    return .{
+        .value_name = loop_bind_name(tokens[start_idx].lexeme),
+        .count_name = loop_bind_name(tokens[start_idx + 2].lexeme),
+    };
+}
+
+pub fn loop_bind_name(name: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, name, "_")) return null;
+    return name;
+}
+
+pub fn is_discard_assignment(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    if (start_idx + 3 > end_idx) return false;
+    if (tokens[start_idx].kind != .ident) return false;
+    if (!std.mem.eql(u8, tokens[start_idx].lexeme, "_")) return false;
+    const eq_idx = find_top_level_token(tokens, start_idx + 1, end_idx, "=") orelse return false;
+    return eq_idx == start_idx + 1 and eq_idx + 1 < end_idx;
+}
+
+pub fn is_dead_managed_alias_binding(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, stmt_end: usize, body_end: usize, locals: *const LocalSet, ctx: CodegenContext) CodegenError!bool {
+    if (start_idx >= stmt_end or tokens[start_idx].kind != .ident) return false;
+    const target_name = tokens[start_idx].lexeme;
+    const eq_idx = find_top_level_token(tokens, start_idx + 1, stmt_end, "=") orelse return false;
+    if (token_range_uses_ident(tokens, stmt_end, body_end, target_name)) return false;
+    if (!is_direct_managed_local_expr(tokens, eq_idx + 1, stmt_end, locals, ctx)) return false;
+    if (storage_binding_elem_type(tokens, start_idx, stmt_end) != null) return true;
+    if (managed_payload_binding(tokens, start_idx, stmt_end) != null) return true;
+
+    var owned_types = std.ArrayList([]const u8).empty;
+    defer {
+        for (owned_types.items) |owned| allocator.free(owned);
+        owned_types.deinit(allocator);
+    }
+    const binding = (try typed_struct_binding(allocator, tokens, start_idx, stmt_end, ctx, &owned_types)) orelse return false;
+    return find_struct_layout(ctx.struct_layouts, binding.ty) != null;
+}
+
+pub fn typed_scalar_binding_type(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext) ?[]const u8 {
+    if (start_idx + 3 >= end_idx) return null;
+    if (tokens[start_idx].kind != .ident) return null;
+    const ty = substitute_generic_type(tokens[start_idx + 1].lexeme, ctx.type_bindings);
+    if (!is_codegen_scalar_type(ctx, ty) and !is_error_like_type(tokens, ty)) return null;
+    if (find_top_level_token(tokens, start_idx + 2, end_idx, "=") == null) return null;
+    return ty;
+}
+
+pub fn inferred_scalar_binding_type(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext) ?[]const u8 {
+    if (start_idx + 3 > end_idx) return null;
+    if (tokens[start_idx].kind != .ident) return null;
+    if (!tok_eq(tokens[start_idx + 1], "=")) return null;
+    const ty = infer_expr_type(tokens, start_idx + 2, end_idx, locals, ctx) orelse return null;
+    if (!is_codegen_scalar_type(ctx, ty)) return null;
+    return ty;
+}
+
+pub fn is_managed_local_assignment_stmt(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext) bool {
+    if (start_idx + 2 >= end_idx) return false;
+    if (tokens[start_idx].kind != .ident) return false;
+    if (!tok_eq(tokens[start_idx + 1], "=")) return false;
+    const target_ty = find_local_type(locals.locals.items, tokens[start_idx].lexeme) orelse return false;
+    return is_managed_local_type(target_ty, ctx);
+}
+
+pub fn inferred_struct_ctor_binding(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, structs: []const StructDecl) ?StructDecl {
+    if (start_idx + 4 > end_idx) return null;
+    if (tokens[start_idx].kind != .ident) return null;
+    if (!tok_eq(tokens[start_idx + 1], "=")) return null;
+    if (tokens[start_idx + 2].kind != .ident) return null;
+    if (!tok_eq(tokens[start_idx + 3], "{")) return null;
+    const close_brace = find_matching_in_range(tokens, start_idx + 3, "{", "}", end_idx) catch return null;
+    if (close_brace + 1 != end_idx) return null;
+    return find_struct_decl(structs, tokens[start_idx + 2].lexeme);
 }
 
 pub fn collect_loop_block_locals(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext, out: *LocalSet) CodegenError!bool {

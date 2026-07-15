@@ -123,6 +123,52 @@ const UnionLayout = codegen_union_layout.UnionLayout;
 
 const WasiHostImport = codegen_wasi_registry.WasiHostImport;
 
+pub fn stmt_contains_storage_agg_literal(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var i = start_idx;
+    while (i + 1 < end_idx) : (i += 1) {
+        if (tok_eq(tokens[i], ".") and tok_eq(tokens[i + 1], "{")) return true;
+    }
+    return false;
+}
+
+fn type_args_close_idx(tokens: []const lexer.Token, open_angle: usize, end_idx: usize) ?usize {
+    var depth: usize = 0;
+    var i = open_angle;
+    while (i < end_idx) : (i += 1) {
+        if (tok_eq(tokens[i], "<")) {
+            depth += 1;
+            continue;
+        }
+        if (!tok_eq(tokens[i], ">")) continue;
+        if (depth == 0) return null;
+        depth -= 1;
+        if (depth == 0) return i;
+    }
+    return null;
+}
+
+pub fn stmt_contains_struct_literal_expr(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var i = start_idx;
+    while (i + 1 < end_idx) : (i += 1) {
+        if (tokens[i].kind == .ident and tok_eq(tokens[i + 1], "{")) return true;
+        if (tokens[i].kind == .ident and tok_eq(tokens[i + 1], "<")) {
+            const close = type_args_close_idx(tokens, i + 1, end_idx) orelse continue;
+            if (close + 1 < end_idx and tok_eq(tokens[close + 1], "{")) return true;
+        }
+        if (tok_eq(tokens[i], ".") and tok_eq(tokens[i + 1], "{")) return true;
+    }
+    return false;
+}
+
+pub fn token_range_uses_ident(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, name: []const u8) bool {
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tokens[i].kind != .ident) continue;
+        if (std.mem.eql(u8, tokens[i].lexeme, name)) return true;
+    }
+    return false;
+}
+
 pub fn parse_codegen_type_expr(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,

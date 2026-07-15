@@ -52,6 +52,8 @@ const test_runner = @import("test_runner.zig");
 // Shared helpers remain publicly available to the neighboring emit domains;
 // their implementation ownership stays in storage/layout modules.
 pub const find_local_name = storage_operations.find_local_name;
+pub const stmt_contains_storage_agg_literal = codegen_collect_util.stmt_contains_storage_agg_literal;
+pub const token_range_uses_ident = codegen_collect_util.token_range_uses_ident;
 pub const substitute_generic_type = storage_layout.substitute_generic_type;
 pub const call_arg_matches_callback_shape = storage_layout.call_arg_matches_callback_shape;
 pub const find_callback_call_arg = storage_layout.find_callback_call_arg;
@@ -450,14 +452,6 @@ pub const StructLiteralFieldRange = struct {
     value_start: usize,
     value_end: usize,
 };
-
-pub fn stmt_contains_storage_agg_literal(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
-    var i = start_idx;
-    while (i + 1 < end_idx) : (i += 1) {
-        if (tok_eq(tokens[i], ".") and tok_eq(tokens[i + 1], "{")) return true;
-    }
-    return false;
-}
 
 pub fn emit_storage_agg_return_value(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, expected_ty: []const u8, out: *std.ArrayList(u8)) CodegenError!bool {
     const elem_ty = managed_payload_elem_type_from_name(expected_ty) orelse return false;
@@ -906,15 +900,6 @@ pub fn has_registered_defer_stmt(tokens: []const lexer.Token, defer_ctx: ?*const
             i = stmt_end;
         }
         cursor = scope.parent;
-    }
-    return false;
-}
-
-pub fn token_range_uses_ident(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, name: []const u8) bool {
-    var i = start_idx;
-    while (i < end_idx) : (i += 1) {
-        if (tokens[i].kind != .ident) continue;
-        if (std.mem.eql(u8, tokens[i].lexeme, name)) return true;
     }
     return false;
 }

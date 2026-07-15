@@ -14,6 +14,7 @@ const context = @import("codegen_context.zig");
 const codegen_collect_util = @import("codegen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
+const codegen_collect_declarations = @import("codegen_collect_declarations.zig");
 const codegen_imports = @import("codegen_imports.zig");
 const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
 const codegen_callbacks = @import("codegen_callbacks.zig");
@@ -228,6 +229,10 @@ const WasiHostImport = codegen_wasi_registry.WasiHostImport;
 const codegen_emit_storage_values = @import("codegen_emit_storage_values.zig");
 const codegen_emit_storage_operations = @import("codegen_emit_storage_operations.zig");
 const codegen_storage_layout = @import("codegen_storage_layout.zig");
+pub const build_payload_enum_union_layout = codegen_collect_declarations.build_payload_enum_union_layout;
+pub const union_payload_comparison_call_branch = codegen_storage_layout.union_payload_comparison_call_branch;
+pub const union_payload_comparison_branch_for_value = codegen_storage_layout.union_payload_comparison_branch_for_value;
+pub const is_codegen_scalar_type = codegen_storage_layout.is_codegen_scalar_type;
 const codegen_emit_struct = @import("codegen_emit_struct.zig");
 const codegen_emit_struct_fields = @import("codegen_emit_struct_fields.zig");
 const emit_storage_binding = codegen_emit_storage_values.emit_storage_binding;
@@ -856,76 +861,6 @@ pub fn clone_union_layout_substituted(allocator: std.mem.Allocator, tokens: []co
     };
 }
 
-/// Build UnionLayout for a named payload enum (tags by case order, max payload slots).
-/// Build UnionLayout for a named payload enum (tags by case order, max payload slots).
-pub fn build_payload_enum_union_layout(allocator: std.mem.Allocator, decl: PayloadEnumDecl, tokens: []const lexer.Token, structs: []const StructDecl, struct_layouts: []const StructLayout, owned_types: *std.ArrayList([]const u8)) !UnionLayout {
-    // Max payload ABI slot count across cases (overlapping slots from 0).
-    var max_slots: usize = 0;
-    var case_slot_counts = try allocator.alloc(usize, decl.cases.len);
-    defer allocator.free(case_slot_counts);
-    var case_payload_types = try allocator.alloc(?[]const u8, decl.cases.len);
-    defer allocator.free(case_payload_types);
-
-    for (decl.cases, 0..) |case, ci| {
-        case_slot_counts[ci] = 0;
-        case_payload_types[ci] = null;
-        if (case.payload_ty) |pty| {
-            var tmp = std.ArrayList([]const u8).empty;
-            defer tmp.deinit(allocator);
-            try append_union_branch_payload_types(allocator, tokens, pty, structs, struct_layouts, &tmp);
-            case_slot_counts[ci] = tmp.items.len;
-            case_payload_types[ci] = pty;
-            if (tmp.items.len > max_slots) max_slots = tmp.items.len;
-        }
-    }
-
-    // Shared payload slots: take types from the first case that fills each slot.
-    var payload_tys = std.ArrayList([]const u8).empty;
-    errdefer payload_tys.deinit(allocator);
-    if (max_slots > 0) {
-        var filled = try allocator.alloc(bool, max_slots);
-        defer allocator.free(filled);
-        @memset(filled, false);
-        try payload_tys.resize(allocator, max_slots);
-        for (decl.cases) |case| {
-            if (case.payload_ty == null) continue;
-            var tmp = std.ArrayList([]const u8).empty;
-            defer tmp.deinit(allocator);
-            try append_union_branch_payload_types(allocator, tokens, case.payload_ty.?, structs, struct_layouts, &tmp);
-            for (tmp.items, 0..) |slot_ty, si| {
-                if (filled[si]) continue;
-                payload_tys.items[si] = slot_ty;
-                filled[si] = true;
-            }
-        }
-        // Any unfilled slot defaults to i32 (should not happen if max_slots correct).
-        for (filled, 0..) |ok, si| {
-            if (!ok) payload_tys.items[si] = "i32";
-        }
-    }
-
-    var branches = std.ArrayList(UnionBranch).empty;
-    errdefer branches.deinit(allocator);
-    for (decl.cases, 0..) |case, ci| {
-        try branches.append(allocator, .{
-            .ty = case.name,
-            .tag = ci, // case-order tags (0..)
-            .payload_start = 0,
-            .payload_len = case_slot_counts[ci],
-            .payload_type = case_payload_types[ci],
-        });
-    }
-
-    const source_ty = try allocator.dupe(u8, decl.name);
-    errdefer allocator.free(source_ty);
-    try owned_types.append(allocator, source_ty);
-    return .{
-        .source_ty = source_ty,
-        .branches = try branches.toOwnedSlice(allocator),
-        .payload_tys = try payload_tys.toOwnedSlice(allocator),
-    };
-}
-
 pub fn find_union_branch_by_compatible_type(layout: UnionLayout, ty: []const u8) ?UnionBranch {
     for (layout.branches) |branch| {
         if (codegen_types_compatible(branch.ty, ty)) return branch;
@@ -1069,26 +1004,6 @@ pub fn emit_union_expr_tag_and_discard_payload(allocator: std.mem.Allocator, tok
     }
     try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
     return true;
-}
-
-pub fn union_payload_comparison_call_branch(
-    tokens: []const lexer.Token,
-    args_start: usize,
-    args_end: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-) ?UnionBranch {
-    const first_end = find_arg_end(tokens, args_start, args_end);
-    if (first_end == args_start or first_end >= args_end or !tok_eq(tokens[first_end], ",")) return null;
-    const second_start = first_end + 1;
-    const second_end = find_arg_end(tokens, second_start, args_end);
-    if (second_end != args_end) return null;
-    const range = trim_parens(tokens, args_start, first_end);
-    const call_head = expr_call_head(tokens, range) orelse return null;
-    if (call_head.is_intrinsic) return null;
-    const func = find_func_decl_for_call_head(tokens, call_head, locals, ctx) orelse return null;
-    const layout = func.result_union orelse return null;
-    return union_payload_comparison_branch_for_value(tokens, second_start, second_end, locals, ctx, layout);
 }
 
 pub fn emit_union_error_branch_comparison(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, call_name: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
@@ -1419,24 +1334,6 @@ pub fn union_layout_has_single_payload_abi_type(ctx: CodegenContext, layout: Uni
     return false;
 }
 
-pub fn union_payload_comparison_branch_for_value(
-    tokens: []const lexer.Token,
-    value_start: usize,
-    value_end: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    layout: UnionLayout,
-) ?UnionBranch {
-    if (layout.payload_tys.len != 1) return null;
-    for (layout.branches) |branch| {
-        if (branch.tag == 0 or branch.payload_len != 1 or branch.payload_start != 0) continue;
-        if (!is_codegen_scalar_type(ctx, branch.ty)) continue;
-        if (!call_arg_matches_param(tokens, value_start, value_end, locals, ctx, branch.ty)) continue;
-        return branch;
-    }
-    return null;
-}
-
 pub fn emit_union_payload_comparison_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, call_name: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     const first_end = find_arg_end(tokens, args_start, args_end);
     if (first_end == args_start or first_end >= args_end or !tok_eq(tokens[first_end], ",")) return false;
@@ -1586,10 +1483,6 @@ pub fn emit_union_storage_payload_get_call(allocator: std.mem.Allocator, tokens:
         }
     }
     return true;
-}
-
-pub fn is_codegen_scalar_type(ctx: CodegenContext, ty: []const u8) bool {
-    return is_core_wasm_scalar(ty) or value_enum_carrier(ctx, ty) != null;
 }
 
 pub fn is_unsigned_scalar(ty: []const u8) bool {

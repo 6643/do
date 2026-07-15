@@ -58,6 +58,9 @@ else
     echo "[INFO] skip build (SKIP_BUILD=1)"
 fi
 
+echo "[INFO] check compiler module boundaries"
+"$TEST_DIR/check_module_boundaries.sh"
+
 if [[ ! -x "$DO_BIN" ]]; then
     echo "[FAIL] compiler binary not found: $DO_BIN"
     exit 1

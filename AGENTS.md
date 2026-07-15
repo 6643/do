@@ -27,10 +27,10 @@ This repository contains the `do` language compiler and its regression suite.
         - `codegen_model.zig` — immutable declarations, shape records, ownership/free helpers, `ExprCallHead`
         - `codegen_context.zig` — LocalSet, mutable codegen contexts, local-name helpers
         - `codegen_constants.zig` — ABI/layout IDs and compiler temporary-local names
-        - `gen_collect.zig` — collect facade (re-exports util/struct/func/type leaves)
-        - `gen_collect_util.zig` / `gen_collect_struct.zig` / `gen_collect_func.zig` / `gen_collect_type.zig` — type parse/bind, struct/layout collect, func collect, enum/value-enum collect
+        - `codegen_collect_util.zig` / `codegen_collect_structs.zig` / `codegen_collect_functions.zig` / `codegen_collect_declarations.zig` — type parse/bind, struct/layout collect, func collect, enum/value-enum collect
         - `codegen_emit_expression.zig` / `codegen_emit_call.zig` — expression / call dispatch
-        - `codegen_collect_body.zig` — body-local / loop / multi-result local collection (no import of expression)
+        - `codegen_body.zig` — body-local / loop / multi-result collection plus body orchestration; emitter dependencies are isolated behind this boundary
+        - `codegen_collect_reflection.zig` — pure field-reflection and body-binding collection helpers
         - `codegen_emit_control.zig` — control-flow emit (`emit_body` / if / loop / defer / guard); uses hooks for expression/call
         - `codegen_emit_storage_operations.zig` / `codegen_emit_storage_values.zig` / `codegen_storage_layout.zig` — storage emit, layout, and Tuple pack API
         - `codegen_emit_tuple.zig` — Tuple / pure-scalar pack helpers (load/store/inc/dec leaves)
@@ -42,7 +42,7 @@ This repository contains the `do` language compiler and its regression suite.
         - `codegen_names.zig` — public names, core-func name tables, mangled symbols
         - `codegen_host_imports.zig` — unified `@host("env", member, sig)` host import collect/parse
         - `codegen_imports.zig` — module import resolve, reachability, string-data collect
-        - `gen_wasi.zig` / `gen_union.zig` — WASI tables/parse, union layout
+        - `codegen_wasi_registry.zig` / `codegen_union_layout.zig` — WASI tables/parse, union layout
         - `gen_payload_wat.zig` / `gen_storage_wat.zig` — pure WAT fragments
         - `runtime_arc_wat.zig` — ARC runtime WAT + layout types SSOT (`ManagedFieldOffset` / `StructLayout` / `StringData`)
         - `runtime_prelude_wat.zig` — string-data memory emit + re-exports ARC API

@@ -7,6 +7,8 @@ const storage_layout = @import("codegen_storage_layout.zig");
 const storage_element_byte_width_for_type = storage_layout.storage_element_byte_width_for_type;
 const storage_pack_layout_for_elem = storage_layout.storage_pack_layout_for_elem;
 const union_local_default_payload_type = storage_layout.union_local_default_payload_type;
+pub const direct_managed_local_expr_name = storage_layout.direct_managed_local_expr_name;
+pub const is_direct_managed_local_expr = storage_layout.is_direct_managed_local_expr;
 
 const std = @import("std");
 const lexer = @import("lexer.zig");
@@ -44,7 +46,6 @@ const TYPE_ID_STORAGE_U8 = constants.TYPE_ID_STORAGE_U8;
 const TYPE_ID_STORAGE_MANAGED = constants.TYPE_ID_STORAGE_MANAGED;
 const find_local_type = context.find_local_type;
 const find_union_local = context.find_union_local;
-const local_name_matches = context.local_name_matches;
 const expr_call_head = codegen_imports.expr_call_head;
 const is_managed_local_type = codegen_emit_wasi.is_managed_local_type;
 const storage_type_id_for_element = codegen_emit_wasi.storage_type_id_for_element;
@@ -485,10 +486,6 @@ pub fn emit_storage_alias_release(allocator: std.mem.Allocator, out: *std.ArrayL
     try storage_wat.emit_storage_alias_release(allocator, out, source_name, target_name);
 }
 
-pub fn is_direct_managed_local_expr(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext) bool {
-    return direct_managed_local_expr_name(tokens, start_idx, end_idx, locals, ctx) != null;
-}
-
 pub fn emit_replace_storage_put_source_tmp(allocator: std.mem.Allocator, target_name: []const u8, out: *std.ArrayList(u8)) !void {
     try out.appendSlice(allocator, "    ;; storage-put-source-replace\n");
     try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
@@ -507,80 +504,15 @@ pub fn emit_replace_storage_put_source_tmp(allocator: std.mem.Allocator, target_
     try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
 }
 
-pub fn direct_managed_local_expr_name(
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-) ?[]const u8 {
-    if (end_idx != start_idx + 1) return null;
-    if (tokens[start_idx].kind != .ident) return null;
-    const name = tokens[start_idx].lexeme;
-
-    if (find_union_local(locals.union_locals.items, name)) |union_local| {
-        const payload_ty = union_local_default_payload_type(tokens, union_local) orelse return null;
-        if (!is_managed_local_type(payload_ty, ctx)) return null;
-        var matched_idx: ?usize = null;
-        for (union_local.layout.payload_tys, 0..) |candidate_ty, idx| {
-            if (!std.mem.eql(u8, candidate_ty, payload_ty)) continue;
-            if (matched_idx != null) return null;
-            matched_idx = idx;
-        }
-        return union_payload_local_name_from_locals(locals.locals.items, union_local.name, matched_idx orelse return null);
-    }
-
-    const ty = find_local_type(locals.locals.items, name) orelse return null;
-    if (!is_managed_local_type(ty, ctx)) return null;
-    if (is_union_payload_local_name(locals.union_locals.items, name)) return name;
-    return find_local_name(locals.locals.items, name);
-}
-
 pub fn emit_overwrite_release_managed_local(allocator: std.mem.Allocator, name: []const u8, out: *std.ArrayList(u8)) !void {
     try append_fmt(allocator, out, "    ;; arc-overwrite-release {s}\n", .{name});
     try append_fmt(allocator, out, "    local.get ${s}\n", .{name});
     try out.appendSlice(allocator, "    call $__arc_dec\n");
 }
 
-pub fn union_payload_local_name_from_locals(
-    locals: []const Local,
-    base: []const u8,
-    idx: usize,
-) ?[]const u8 {
-    var suffix_buf: [32]u8 = undefined;
-    const suffix = std.fmt.bufPrint(&suffix_buf, ".__union_payload_{d}", .{idx}) catch return null;
-    for (locals) |local| {
-        if (local.name.len != base.len + suffix.len) continue;
-        if (!std.mem.startsWith(u8, local.name, base)) continue;
-        if (!std.mem.eql(u8, local.name[base.len..], suffix)) continue;
-        return local.name;
-    }
-    return null;
-}
-
-pub fn is_union_payload_local_name(union_locals: []const UnionLocal, name: []const u8) bool {
-    for (union_locals) |union_local| {
-        for (union_local.layout.payload_tys, 0..) |_, idx| {
-            var suffix_buf: [32]u8 = undefined;
-            const suffix = std.fmt.bufPrint(&suffix_buf, ".__union_payload_{d}", .{idx}) catch return false;
-            if (name.len != union_local.name.len + suffix.len) continue;
-            if (!std.mem.startsWith(u8, name, union_local.name)) continue;
-            if (!std.mem.eql(u8, name[union_local.name.len..], suffix)) continue;
-            return true;
-        }
-    }
-    return false;
-}
-
-pub fn find_local_name(locals: []const Local, name: []const u8) ?[]const u8 {
-    var i = locals.len;
-    while (i > 0) {
-        i -= 1;
-        const local = locals[i];
-        if (local_name_matches(local.name, local.source_name, name)) return local.name;
-    }
-    return null;
-}
+pub const union_payload_local_name_from_locals = context.union_payload_local_name_from_locals;
+pub const is_union_payload_local_name = context.is_union_payload_local_name;
+pub const find_local_name = context.find_local_name;
 
 pub fn emit_storage_set_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, target_name: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     const first_end = find_arg_end(tokens, start_idx, end_idx);

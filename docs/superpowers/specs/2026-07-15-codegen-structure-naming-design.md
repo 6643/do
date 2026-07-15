@@ -68,7 +68,7 @@ The directory remains flat. File names use lowercase snake case and describe one
 | `gen_collect_struct.zig` | `codegen_collect_structs.zig` |
 | `gen_collect_type.zig` | `codegen_collect_declarations.zig` |
 | `gen_collect.zig` | removed as a facade; call sites import the owning collect module directly |
-| `gen_expr_collect.zig` | `codegen_collect_body.zig` |
+| `gen_expr_collect.zig` | `codegen_body.zig` plus `codegen_collect_reflection.zig` |
 | `gen_expr.zig` | `codegen_emit_expression.zig` plus `codegen_emit_call.zig` |
 | `gen_ctrl.zig` | `codegen_emit_control.zig` |
 | `gen_struct.zig` | `codegen_emit_struct.zig` |

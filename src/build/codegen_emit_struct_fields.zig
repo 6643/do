@@ -15,6 +15,7 @@ const NilComparisonNarrowing = model.NilComparisonNarrowing;
 const TypedStructBinding = model.TypedStructBinding;
 const codegen_collect_util = @import("codegen_collect_util.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
+const codegen_collect_reflection = @import("codegen_collect_reflection.zig");
 const codegen_imports = @import("codegen_imports.zig");
 const codegen_storage_layout = @import("codegen_storage_layout.zig");
 const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
@@ -90,6 +91,20 @@ const find_struct_field = codegen_emit_storage_values.find_struct_field;
 const is_dot_ident = codegen_emit_storage_values.is_dot_ident;
 const clone_local_set = codegen_storage_layout.clone_local_set;
 const type_base_name = codegen_emit_storage_values.type_base_name;
+pub const field_static_values_equal = codegen_collect_reflection.field_static_values_equal;
+pub const field_reflection_local_visible = context.field_reflection_local_visible;
+pub const field_reflection_local_name_prefix = context.field_reflection_local_name_prefix;
+pub const field_reflection_if_parts = codegen_collect_reflection.field_reflection_if_parts;
+pub const field_static_bool_expr = codegen_collect_reflection.field_static_bool_expr;
+pub const field_static_value = codegen_collect_reflection.field_static_value;
+pub const field_visible_from_tokens = codegen_collect_reflection.field_visible_from_tokens;
+pub const is_private_field_name = codegen_collect_reflection.is_private_field_name;
+pub const typed_struct_binding = codegen_collect_reflection.typed_struct_binding;
+pub const inferred_struct_binding = codegen_collect_reflection.inferred_struct_binding;
+pub const borrowed_field_meta_local_set = context.borrowed_field_meta_local_set;
+pub const single_field_meta_arg = codegen_collect_reflection.single_field_meta_arg;
+pub const collect_field_reflection_static_if = codegen_collect_reflection.collect_field_reflection_static_if;
+pub const collect_field_reflection_static_branch = codegen_collect_reflection.collect_field_reflection_static_branch;
 pub fn emit_field_reflection_static_if(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -138,20 +153,6 @@ pub fn emit_field_reflection_static_if(
     return true;
 }
 
-pub fn collect_field_reflection_static_if(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    i: usize,
-    stmt_end: usize,
-    ctx: CodegenContext,
-    out: *LocalSet,
-) CodegenError!bool {
-    const parts = field_reflection_if_parts(tokens, i, stmt_end) orelse return false;
-    const condition = field_static_bool_expr(tokens, parts.cond_start, parts.cond_end, out, ctx) orelse return false;
-    try collect_field_reflection_static_branch(allocator, tokens, parts, condition, stmt_end, ctx, out);
-    return true;
-}
-
 pub fn emit_field_reflection_static_branch(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -182,28 +183,6 @@ pub fn emit_field_reflection_static_branch(
     }
     if (parts.else_start) |else_start| {
         try emit_field_reflection_body(allocator, tokens, else_start, parts.else_end, body_start, locals, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, out);
-    }
-}
-
-pub fn collect_field_reflection_static_branch(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    parts: FieldReflectionIfParts,
-    condition: bool,
-    stmt_end: usize,
-    ctx: CodegenContext,
-    out: *LocalSet,
-) CodegenError!void {
-    if (condition) {
-        try collect_field_reflection_body_locals(allocator, tokens, parts.then_start, parts.then_end, ctx, out);
-        return;
-    }
-    if (parts.else_if_start) |nested_if| {
-        try collect_field_reflection_body_locals(allocator, tokens, nested_if, stmt_end, ctx, out);
-        return;
-    }
-    if (parts.else_start) |else_start| {
-        try collect_field_reflection_body_locals(allocator, tokens, else_start, parts.else_end, ctx, out);
     }
 }
 
@@ -438,28 +417,6 @@ pub fn emit_struct_field_meta_set_assignment(allocator: std.mem.Allocator, token
     return true;
 }
 
-pub fn field_static_values_equal(left: FieldStaticValue, right: FieldStaticValue) bool {
-    return switch (left) {
-        .bool => |l| switch (right) {
-            .bool => |r| l == r,
-            else => false,
-        },
-        .int => |l| switch (right) {
-            .int => |r| l == r,
-            else => false,
-        },
-        .text => |l| switch (right) {
-            .text => |r| std.mem.eql(u8, l, r),
-            else => false,
-        },
-    };
-}
-
-pub fn field_reflection_local_visible(name: []const u8, scoped_prefix: []const u8) bool {
-    if (!std.mem.startsWith(u8, name, "__field_")) return true;
-    return std.mem.startsWith(u8, name, scoped_prefix);
-}
-
 pub fn append_union_payload_local_get(allocator: std.mem.Allocator, out: *std.ArrayList(u8), base: []const u8, idx: usize) !void {
     try append_fmt(allocator, out, "    local.get ${s}.__union_payload_{d}\n", .{ base, idx });
 }
@@ -481,10 +438,6 @@ pub fn is_managed_struct_field(layout: StructLayout, field_name: []const u8) boo
 
 pub fn struct_local_source_name(local: StructLocal) []const u8 {
     return local.source_name orelse local.name;
-}
-
-pub fn field_reflection_local_name_prefix(allocator: std.mem.Allocator, header: FieldReflectionLoopHeader, visible_index: usize) ![]u8 {
-    return std.fmt.allocPrint(allocator, "__field_{d}_{d}_", .{ header.open_brace, visible_index });
 }
 
 pub fn emit_struct_field_local_get(allocator: std.mem.Allocator, tokens: []const lexer.Token, base: []const u8, field_name: []const u8, field_ty: []const u8, locals: *const LocalSet, ctx: CodegenContext, copy_managed: bool, out: *std.ArrayList(u8)) CodegenError!void {
@@ -590,162 +543,6 @@ pub fn append_managed_struct_field_ptr(allocator: std.mem.Allocator, out: *std.A
     try out.appendSlice(allocator, "    call $__arc_payload\n");
     try append_fmt(allocator, out, "    i32.const {d}\n", .{field_offset});
     try out.appendSlice(allocator, "    i32.add\n");
-}
-
-pub fn field_reflection_if_parts(
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-) ?FieldReflectionIfParts {
-    if (start_idx + 4 > end_idx) return null;
-    if (!tok_eq(tokens[start_idx], "if")) return null;
-    const open_brace = find_top_level_block_open(tokens, start_idx + 1, end_idx) orelse return null;
-    const close_brace = find_matching_in_range(tokens, open_brace, "{", "}", end_idx) catch return null;
-    var parts = FieldReflectionIfParts{
-        .cond_start = start_idx + 1,
-        .cond_end = open_brace,
-        .then_start = open_brace + 1,
-        .then_end = close_brace,
-    };
-    if (close_brace + 1 == end_idx) return parts;
-    if (close_brace + 1 >= end_idx or !tok_eq(tokens[close_brace + 1], "else")) return null;
-    if (close_brace + 2 >= end_idx) return null;
-    if (tok_eq(tokens[close_brace + 2], "if")) {
-        parts.else_if_start = close_brace + 2;
-        return parts;
-    }
-    if (!tok_eq(tokens[close_brace + 2], "{")) return null;
-    const close_else = find_matching_in_range(tokens, close_brace + 2, "{", "}", end_idx) catch return null;
-    if (close_else + 1 != end_idx) return null;
-    parts.else_start = close_brace + 3;
-    parts.else_end = close_else;
-    return parts;
-}
-
-pub fn field_static_bool_expr(
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-) ?bool {
-    if (field_static_value(tokens, start_idx, end_idx, locals, ctx)) |value| {
-        return switch (value) {
-            .bool => |b| b,
-            else => null,
-        };
-    }
-
-    const range = trim_parens(tokens, start_idx, end_idx);
-    const call_head = expr_call_head(tokens, range) orelse return null;
-    const call_name = tokens[call_head.name_idx].lexeme;
-    if (call_head.is_intrinsic and std.mem.eql(u8, call_name, "not")) {
-        const arg_end = find_arg_end(tokens, call_head.args_start, call_head.args_end);
-        if (arg_end != call_head.args_end) return null;
-        return !(field_static_bool_expr(tokens, call_head.args_start, arg_end, locals, ctx) orelse return null);
-    }
-    if (call_head.is_intrinsic and (std.mem.eql(u8, call_name, "and") or std.mem.eql(u8, call_name, "or"))) {
-        var arg_start = call_head.args_start;
-        var saw_arg = false;
-        while (arg_start < call_head.args_end) {
-            const arg_end = find_arg_end(tokens, arg_start, call_head.args_end);
-            const value = field_static_bool_expr(tokens, arg_start, arg_end, locals, ctx) orelse return null;
-            saw_arg = true;
-            if (std.mem.eql(u8, call_name, "and") and !value) return false;
-            if (std.mem.eql(u8, call_name, "or") and value) return true;
-            arg_start = arg_end;
-            if (arg_start < call_head.args_end and tok_eq(tokens[arg_start], ",")) arg_start += 1;
-        }
-        if (!saw_arg) return null;
-        return std.mem.eql(u8, call_name, "and");
-    }
-    if (call_head.is_intrinsic and (std.mem.eql(u8, call_name, "eq") or std.mem.eql(u8, call_name, "ne"))) {
-        const first_end = find_arg_end(tokens, call_head.args_start, call_head.args_end);
-        if (first_end >= call_head.args_end or !tok_eq(tokens[first_end], ",")) return null;
-        const second_start = first_end + 1;
-        const second_end = find_arg_end(tokens, second_start, call_head.args_end);
-        if (second_end != call_head.args_end) return null;
-        const left = field_static_value(tokens, call_head.args_start, first_end, locals, ctx) orelse return null;
-        const right = field_static_value(tokens, second_start, second_end, locals, ctx) orelse return null;
-        const is_equal = field_static_values_equal(left, right);
-        return if (std.mem.eql(u8, call_name, "eq")) is_equal else !is_equal;
-    }
-    return null;
-}
-
-pub fn field_static_value(
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-) ?FieldStaticValue {
-    const range = trim_parens(tokens, start_idx, end_idx);
-    if (range.start >= range.end) return null;
-
-    if (range.end == range.start + 1) {
-        const tok = tokens[range.start];
-        if (tok.kind == .number) return .{ .int = std.fmt.parseUnsigned(usize, tok.lexeme, 10) catch return null };
-        if (tok.kind == .string) return .{ .text = string_token_body(tok.lexeme) orelse return null };
-        if (tok_eq(tok, "true")) return .{ .bool = true };
-        if (tok_eq(tok, "false")) return .{ .bool = false };
-        return null;
-    }
-
-    const call_head = expr_call_head(tokens, range) orelse return null;
-    if (!call_head.is_intrinsic) return null;
-    const call_name = tokens[call_head.name_idx].lexeme;
-    if (std.mem.eql(u8, call_name, "field_name")) {
-        const meta = single_field_meta_arg(tokens, call_head.args_start, call_head.args_end, locals) orelse return null;
-        const field = field_from_meta(ctx, meta) orelse return null;
-        return .{ .text = public_decl_name(field.name) };
-    }
-    if (std.mem.eql(u8, call_name, "field_index")) {
-        const meta = single_field_meta_arg(tokens, call_head.args_start, call_head.args_end, locals) orelse return null;
-        return .{ .int = meta.visible_index };
-    }
-    if (std.mem.eql(u8, call_name, "field_has_default")) {
-        const meta = single_field_meta_arg(tokens, call_head.args_start, call_head.args_end, locals) orelse return null;
-        const field = field_from_meta(ctx, meta) orelse return null;
-        return .{ .bool = field.default_start != null };
-    }
-    return null;
-}
-
-pub fn field_visible_from_tokens(field: StructField, decl: StructDecl, tokens: []const lexer.Token) bool {
-    if (!is_private_field_name(field.name)) return true;
-    return module_tokens_equal(decl.tokens, tokens);
-}
-
-pub fn is_private_field_name(name: []const u8) bool {
-    return name.len > 1 and name[0] == '.';
-}
-
-pub fn typed_struct_binding(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext, owned_types: *std.ArrayList([]const u8)) CodegenError!?TypedStructBinding {
-    if (start_idx + 3 >= end_idx) return null;
-    if (tokens[start_idx].kind != .ident) return null;
-    const eq_idx = find_top_level_token(tokens, start_idx + 1, end_idx, "=") orelse return null;
-    if (eq_idx <= start_idx + 1) return null;
-    const parsed_ty = (try parse_codegen_type_expr(allocator, tokens, start_idx + 1, eq_idx, owned_types)) orelse return null;
-    if (parsed_ty.next_idx != eq_idx) return null;
-    const ty = try substitute_generic_type_owned(allocator, parsed_ty.ty, ctx.type_bindings, owned_types);
-    const decl = find_struct_decl(ctx.structs, ty) orelse return null;
-    return .{ .decl = decl, .ty = ty };
-}
-
-pub fn inferred_struct_binding(
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-) ?TypedStructBinding {
-    if (start_idx + 3 > end_idx) return null;
-    if (tokens[start_idx].kind != .ident) return null;
-    if (!tok_eq(tokens[start_idx + 1], "=")) return null;
-    const ty = infer_expr_type(tokens, start_idx + 2, end_idx, locals, ctx) orelse return null;
-    const decl = find_struct_decl(ctx.structs, ty) orelse return null;
-    return .{ .decl = decl, .ty = ty };
 }
 
 pub fn emit_managed_struct_expr_field_get(allocator: std.mem.Allocator, tokens: []const lexer.Token, value_start: usize, value_end: usize, field_start: usize, field_end: usize, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
@@ -871,49 +668,6 @@ pub fn emit_unmanaged_struct_field_get(allocator: std.mem.Allocator, tokens: []c
     }
     try append_union_tag_local_get(allocator, out, union_local.name);
     return true;
-}
-
-pub fn borrowed_field_meta_local_set(allocator: std.mem.Allocator, parent: *const LocalSet, meta: FieldMetaLocal, scoped_prefix: []const u8) !LocalSet {
-    var out = LocalSet{};
-    errdefer out.deinit(allocator);
-    for (parent.locals.items) |local| {
-        if (!field_reflection_local_visible(local.name, scoped_prefix)) continue;
-        try out.locals.append(allocator, local);
-    }
-    for (parent.struct_locals.items) |local| {
-        if (!field_reflection_local_visible(local.name, scoped_prefix)) continue;
-        try out.struct_locals.append(allocator, local);
-    }
-    for (parent.storage_locals.items) |local| {
-        if (!field_reflection_local_visible(local.name, scoped_prefix)) continue;
-        try out.storage_locals.append(allocator, local);
-    }
-    for (parent.union_locals.items) |union_local| {
-        if (!field_reflection_local_visible(union_local.name, scoped_prefix)) continue;
-        try out.union_locals.append(allocator, .{
-            .name = union_local.name,
-            .source_name = union_local.source_name,
-            .layout = union_local.layout,
-            .owns_layout = false,
-        });
-    }
-    try out.field_meta_locals.appendSlice(allocator, parent.field_meta_locals.items);
-    try out.field_meta_locals.append(allocator, meta);
-    return out;
-}
-
-pub fn single_field_meta_arg(
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *const LocalSet,
-) ?FieldMetaLocal {
-    const arg_end = find_arg_end(tokens, start_idx, end_idx);
-    if (arg_end != end_idx) return null;
-    const range = trim_parens(tokens, start_idx, arg_end);
-    if (range.end != range.start + 1) return null;
-    if (tokens[range.start].kind != .ident) return null;
-    return find_field_meta_local(locals.field_meta_locals.items, tokens[range.start].lexeme);
 }
 
 pub fn field_get_last_use_move_source(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, struct_local: StructLocal, field_ty: []const u8, move_ctx: CallLastUseMoveContext, locals: *const LocalSet, ctx: CodegenContext) CodegenError!?LastUseManagedMoveSource {

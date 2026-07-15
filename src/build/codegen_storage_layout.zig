@@ -93,18 +93,21 @@ const local_scalar_const = codegen_imports.local_scalar_const;
 const imported_scalar_const = codegen_imports.imported_scalar_const;
 const find_imported_module_index_no_alloc = codegen_imports.find_imported_module_index_no_alloc;
 const find_wasi_host_import_for_tokens = codegen_imports.find_wasi_host_import_for_tokens;
-const is_managed_local_type = codegen_emit_wasi.is_managed_local_type;
-const storage_elem_type_from_name = codegen_emit_wasi.storage_elem_type_from_name;
-const storage_element_byte_width = codegen_emit_wasi.storage_element_byte_width;
-const is_tuple_type_name = codegen_emit_wasi.is_tuple_type_name;
-const tuple_arity = codegen_emit_wasi.tuple_arity;
-const tuple_element_type_at = codegen_emit_wasi.tuple_element_type_at;
+pub const is_managed_local_type = codegen_emit_wasi.is_managed_local_type;
+pub const storage_elem_type_from_name = codegen_emit_wasi.storage_elem_type_from_name;
+pub const storage_element_byte_width = codegen_emit_wasi.storage_element_byte_width;
+pub const is_tuple_type_name = codegen_emit_wasi.is_tuple_type_name;
+pub const tuple_arity = codegen_emit_wasi.tuple_arity;
+pub const tuple_element_type_at = codegen_emit_wasi.tuple_element_type_at;
 const codegen_types_compatible = codegen_emit_wasi.codegen_types_compatible;
-const find_storage_primitive_local = codegen_emit_wasi.find_storage_primitive_local;
-const error_enum_branch_value = codegen_emit_wasi.error_enum_branch_value;
-const tuple_scalar_leaf_storage_byte_width_ctx = codegen_emit_wasi.tuple_scalar_leaf_storage_byte_width_ctx;
-const tuple_has_managed_pack_leaf_ctx = codegen_emit_wasi.tuple_has_managed_pack_leaf_ctx;
+pub const find_storage_primitive_local = codegen_emit_wasi.find_storage_primitive_local;
+pub const error_enum_branch_value = codegen_emit_wasi.error_enum_branch_value;
+pub const tuple_scalar_leaf_storage_byte_width_ctx = codegen_emit_wasi.tuple_scalar_leaf_storage_byte_width_ctx;
+pub const tuple_has_managed_pack_leaf_ctx = codegen_emit_wasi.tuple_has_managed_pack_leaf_ctx;
 const find_host_import_for_tokens = codegen_host_imports.find_host_import_for_tokens;
+const find_local_name = context.find_local_name;
+const is_union_payload_local_name = context.is_union_payload_local_name;
+const union_payload_local_name_from_locals = context.union_payload_local_name_from_locals;
 
 const WasiHostImport = codegen_wasi_registry.WasiHostImport;
 
@@ -119,6 +122,93 @@ pub const ManagedPayloadBinding = struct {
     ty: []const u8,
     elem_ty: []const u8,
 };
+
+pub fn direct_managed_local_expr_name(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+) ?[]const u8 {
+    if (end_idx != start_idx + 1) return null;
+    if (tokens[start_idx].kind != .ident) return null;
+    const name = tokens[start_idx].lexeme;
+
+    if (find_union_local(locals.union_locals.items, name)) |union_local| {
+        const payload_ty = union_local_default_payload_type(tokens, union_local) orelse return null;
+        if (!is_managed_local_type(payload_ty, ctx)) return null;
+        var matched_idx: ?usize = null;
+        for (union_local.layout.payload_tys, 0..) |candidate_ty, idx| {
+            if (!std.mem.eql(u8, candidate_ty, payload_ty)) continue;
+            if (matched_idx != null) return null;
+            matched_idx = idx;
+        }
+        return union_payload_local_name_from_locals(locals.locals.items, union_local.name, matched_idx orelse return null);
+    }
+
+    const ty = find_local_type(locals.locals.items, name) orelse return null;
+    if (!is_managed_local_type(ty, ctx)) return null;
+    if (is_union_payload_local_name(locals.union_locals.items, name)) return name;
+    return find_local_name(locals.locals.items, name);
+}
+
+pub fn is_direct_managed_local_expr(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext) bool {
+    return direct_managed_local_expr_name(tokens, start_idx, end_idx, locals, ctx) != null;
+}
+
+pub fn value_enum_carrier(ctx: CodegenContext, ty: []const u8) ?[]const u8 {
+    const decl = find_value_enum_decl(ctx.value_enums, ty) orelse return null;
+    return decl.carrier;
+}
+
+pub fn is_codegen_scalar_type(ctx: CodegenContext, ty: []const u8) bool {
+    return codegen_names.is_core_wasm_scalar(ty) or value_enum_carrier(ctx, ty) != null;
+}
+
+pub fn find_union_branch_by_type(layout: codegen_union_layout.UnionLayout, ty: []const u8) ?codegen_union_layout.UnionBranch {
+    for (layout.branches) |branch| {
+        if (codegen_types_compatible(branch.ty, ty)) return branch;
+    }
+    return null;
+}
+
+pub fn union_payload_comparison_branch_for_value(
+    tokens: []const lexer.Token,
+    value_start: usize,
+    value_end: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    layout: codegen_union_layout.UnionLayout,
+) ?codegen_union_layout.UnionBranch {
+    if (layout.payload_tys.len != 1) return null;
+    for (layout.branches) |branch| {
+        if (branch.tag == 0 or branch.payload_len != 1 or branch.payload_start != 0) continue;
+        if (!is_codegen_scalar_type(ctx, branch.ty)) continue;
+        if (!call_arg_matches_param(tokens, value_start, value_end, locals, ctx, branch.ty)) continue;
+        return branch;
+    }
+    return null;
+}
+
+pub fn union_payload_comparison_call_branch(
+    tokens: []const lexer.Token,
+    args_start: usize,
+    args_end: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+) ?codegen_union_layout.UnionBranch {
+    const first_end = find_arg_end(tokens, args_start, args_end);
+    if (first_end == args_start or first_end >= args_end or !tok_eq(tokens[first_end], ",")) return null;
+    const second_start = first_end + 1;
+    const second_end = find_arg_end(tokens, second_start, args_end);
+    if (second_end != args_end) return null;
+    const range = trim_parens(tokens, args_start, first_end);
+    const call_head = expr_call_head(tokens, range) orelse return null;
+    if (call_head.is_intrinsic) return null;
+    const func = find_func_decl_for_call_head(tokens, call_head, locals, ctx) orelse return null;
+    const layout = func.result_union orelse return null;
+    return union_payload_comparison_branch_for_value(tokens, second_start, second_end, locals, ctx, layout);
+}
 
 pub fn is_storage_agg_literal_expr(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     if (start_idx + 2 > end_idx) return false;

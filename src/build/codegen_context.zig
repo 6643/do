@@ -581,6 +581,46 @@ pub fn find_local_type(locals: []const Local, name: []const u8) ?[]const u8 {
     return null;
 }
 
+pub fn union_payload_local_name_from_locals(
+    locals: []const Local,
+    base: []const u8,
+    idx: usize,
+) ?[]const u8 {
+    var suffix_buf: [32]u8 = undefined;
+    const suffix = std.fmt.bufPrint(&suffix_buf, ".__union_payload_{d}", .{idx}) catch return null;
+    for (locals) |local| {
+        if (local.name.len != base.len + suffix.len) continue;
+        if (!std.mem.startsWith(u8, local.name, base)) continue;
+        if (!std.mem.eql(u8, local.name[base.len..], suffix)) continue;
+        return local.name;
+    }
+    return null;
+}
+
+pub fn is_union_payload_local_name(union_locals: []const UnionLocal, name: []const u8) bool {
+    for (union_locals) |union_local| {
+        for (union_local.layout.payload_tys, 0..) |_, idx| {
+            var suffix_buf: [32]u8 = undefined;
+            const suffix = std.fmt.bufPrint(&suffix_buf, ".__union_payload_{d}", .{idx}) catch return false;
+            if (name.len != union_local.name.len + suffix.len) continue;
+            if (!std.mem.startsWith(u8, name, union_local.name)) continue;
+            if (!std.mem.eql(u8, name[union_local.name.len..], suffix)) continue;
+            return true;
+        }
+    }
+    return false;
+}
+
+pub fn find_local_name(locals: []const Local, name: []const u8) ?[]const u8 {
+    var i = locals.len;
+    while (i > 0) {
+        i -= 1;
+        const local = locals[i];
+        if (local_name_matches(local.name, local.source_name, name)) return local.name;
+    }
+    return null;
+}
+
 pub fn find_local_origin(locals: []const Local, name: []const u8) ?SourceOrigin {
     var i = locals.len;
     while (i > 0) {
@@ -641,6 +681,44 @@ pub fn has_local(locals: []const Local, name: []const u8) bool {
         if (std.mem.eql(u8, local.name, name)) return true;
     }
     return false;
+}
+
+pub fn field_reflection_local_visible(name: []const u8, scoped_prefix: []const u8) bool {
+    if (!std.mem.startsWith(u8, name, "__field_")) return true;
+    return std.mem.startsWith(u8, name, scoped_prefix);
+}
+
+pub fn field_reflection_local_name_prefix(allocator: std.mem.Allocator, header: FieldReflectionLoopHeader, visible_index: usize) ![]u8 {
+    return std.fmt.allocPrint(allocator, "__field_{d}_{d}_", .{ header.open_brace, visible_index });
+}
+
+pub fn borrowed_field_meta_local_set(allocator: std.mem.Allocator, parent: *const LocalSet, meta: FieldMetaLocal, scoped_prefix: []const u8) !LocalSet {
+    var out = LocalSet{};
+    errdefer out.deinit(allocator);
+    for (parent.locals.items) |local| {
+        if (!field_reflection_local_visible(local.name, scoped_prefix)) continue;
+        try out.locals.append(allocator, local);
+    }
+    for (parent.struct_locals.items) |local| {
+        if (!field_reflection_local_visible(local.name, scoped_prefix)) continue;
+        try out.struct_locals.append(allocator, local);
+    }
+    for (parent.storage_locals.items) |local| {
+        if (!field_reflection_local_visible(local.name, scoped_prefix)) continue;
+        try out.storage_locals.append(allocator, local);
+    }
+    for (parent.union_locals.items) |union_local| {
+        if (!field_reflection_local_visible(union_local.name, scoped_prefix)) continue;
+        try out.union_locals.append(allocator, .{
+            .name = union_local.name,
+            .source_name = union_local.source_name,
+            .layout = union_local.layout,
+            .owns_layout = false,
+        });
+    }
+    try out.field_meta_locals.appendSlice(allocator, parent.field_meta_locals.items);
+    try out.field_meta_locals.append(allocator, meta);
+    return out;
 }
 
 pub fn append_loop_source_storage_local(

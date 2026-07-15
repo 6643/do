@@ -15,6 +15,7 @@ const NilComparisonNarrowing = model.NilComparisonNarrowing;
 const codegen_collect_util = @import("codegen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
+const codegen_body = @import("codegen_body.zig");
 const codegen_imports = @import("codegen_imports.zig");
 const has_borrowed_name = codegen_imports.has_borrowed_name;
 const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
@@ -243,6 +244,18 @@ const codegen_emit_struct_fields = @import("codegen_emit_struct_fields.zig");
 const codegen_emit_union = @import("codegen_emit_union.zig");
 const codegen_ownership = @import("codegen_ownership.zig");
 const OwnedLoopFrames = codegen_ownership.OwnedLoopFrames;
+pub const field_reflection_loop_header = codegen_body.field_reflection_loop_header;
+pub const collection_loop_header = codegen_body.collection_loop_header;
+pub const recv_loop_header = codegen_body.recv_loop_header;
+pub const parse_collection_loop_binds = codegen_body.parse_collection_loop_binds;
+pub const parse_recv_loop_binds = codegen_body.parse_recv_loop_binds;
+pub const loop_bind_name = codegen_body.loop_bind_name;
+pub const is_discard_assignment = codegen_body.is_discard_assignment;
+pub const is_dead_managed_alias_binding = codegen_body.is_dead_managed_alias_binding;
+pub const typed_scalar_binding_type = codegen_body.typed_scalar_binding_type;
+pub const inferred_scalar_binding_type = codegen_body.inferred_scalar_binding_type;
+pub const is_managed_local_assignment_stmt = codegen_body.is_managed_local_assignment_stmt;
+pub const inferred_struct_ctor_binding = codegen_body.inferred_struct_ctor_binding;
 const emit_storage_binding = codegen_emit_storage_values.emit_storage_binding;
 const emit_storage_handle_assignment_expr = codegen_emit_storage_values.emit_storage_handle_assignment_expr;
 const emit_tuple_binding = codegen_emit_storage_values.emit_tuple_binding;
@@ -546,173 +559,21 @@ pub fn collect_direct_body_locals(allocator: std.mem.Allocator, tokens: []const 
     try codegen_callbacks.collect_body_locals_with_mode(allocator, tokens, start_idx, end_idx, ctx, out, false);
 }
 
-pub fn field_reflection_loop_header(
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    ctx: CodegenContext,
-    locals: *const LocalSet,
-) ?FieldReflectionLoopHeader {
-    _ = locals;
-    if (start_idx + 8 > end_idx) return null;
-    if (!tok_eq(tokens[start_idx], "loop")) return null;
-    const open_brace = find_top_level_block_open(tokens, start_idx + 1, end_idx) orelse return null;
-    const close_brace = find_matching_in_range(tokens, open_brace, "{", "}", end_idx) catch return null;
-    if (close_brace + 1 != end_idx) return null;
-    const eq_idx = find_top_level_token(tokens, start_idx + 1, open_brace, "=") orelse return null;
-    if (eq_idx != start_idx + 2) return null;
-    if (tokens[start_idx + 1].kind != .ident) return null;
-    if (eq_idx + 5 != open_brace) return null;
-    if (!std.mem.eql(u8, tokens[eq_idx + 1].lexeme, "fields")) return null;
-    if (!tok_eq(tokens[eq_idx + 2], "(")) return null;
-    if (tokens[eq_idx + 3].kind != .ident) return null;
-    if (!tok_eq(tokens[eq_idx + 4], ")")) return null;
-    const type_name = substitute_generic_type(tokens[eq_idx + 3].lexeme, ctx.type_bindings);
-    const decl = find_struct_decl(ctx.structs, type_name) orelse return null;
-    return .{
-        .field_name = tokens[start_idx + 1].lexeme,
-        .decl = decl,
-        .loop_idx = start_idx,
-        .open_brace = open_brace,
-        .close_brace = close_brace,
-    };
-}
-
-pub fn collection_loop_header(
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    ctx: CodegenContext,
-    locals: *const LocalSet,
-) ?CollectionLoopHeader {
-    if (start_idx + 6 > end_idx) return null;
-    if (!tok_eq(tokens[start_idx], "loop")) return null;
-    const open_brace = find_top_level_block_open(tokens, start_idx + 1, end_idx) orelse return null;
-    const close_brace = find_matching_in_range(tokens, open_brace, "{", "}", end_idx) catch return null;
-    if (close_brace + 1 != end_idx) return null;
-    const eq_idx = find_top_level_token(tokens, start_idx + 1, open_brace, "=") orelse return null;
-    const binds = parse_collection_loop_binds(tokens, start_idx + 1, eq_idx) orelse return null;
-    const source_start = eq_idx + 1;
-    const source_end = open_brace;
-    if (source_start >= source_end) return null;
-
-    if (source_end == source_start + 1 and tokens[source_start].kind == .ident) {
-        const storage = find_storage_primitive_local(locals.storage_locals.items, tokens[source_start].lexeme) orelse return null;
-        const elem_bytes = storage_element_byte_width_for_type(storage.elem_ty, ctx) orelse return null;
-        return .{
-            .value_name = binds.value_name,
-            .index_name = binds.index_name,
-            .source_name = tokens[source_start].lexeme,
-            .source_ty = storage.ty,
-            .source_start = source_start,
-            .source_end = source_end,
-            .elem_ty = storage.elem_ty,
-            .elem_bytes = elem_bytes,
-            .open_brace = open_brace,
-            .close_brace = close_brace,
-        };
+pub fn emit_self_tail_loop_local_reset(allocator: std.mem.Allocator, func: FuncDecl, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
+    for (locals.locals.items) |local| {
+        if (!local.emit_decl) continue;
+        var is_param = false;
+        for (func.params) |param| {
+            if (param.callback != null) continue;
+            if (std.mem.eql(u8, local.name, param.name)) {
+                is_param = true;
+                break;
+            }
+        }
+        if (is_param) continue;
+        try emit_zero_value_for_type(allocator, ctx, out, local.ty);
+        try append_fmt(allocator, out, "    local.set ${s}\n", .{local.name});
     }
-
-    const source_ty = infer_expr_type(tokens, source_start, source_end, locals, ctx) orelse return null;
-    const elem_ty = storage_elem_type_from_name(source_ty) orelse return null;
-    const elem_bytes = storage_element_byte_width_for_type(elem_ty, ctx) orelse return null;
-    return .{
-        .value_name = binds.value_name,
-        .index_name = binds.index_name,
-        .source_name = "",
-        .source_ty = source_ty,
-        .source_start = source_start,
-        .source_end = source_end,
-        .source_is_expr = true,
-        .elem_ty = elem_ty,
-        .elem_bytes = elem_bytes,
-        .open_brace = open_brace,
-        .close_brace = close_brace,
-    };
-}
-
-pub fn recv_loop_header(
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    ctx: CodegenContext,
-    locals: *const LocalSet,
-) ?RecvLoopHeader {
-    if (start_idx + 8 > end_idx) return null;
-    if (!tok_eq(tokens[start_idx], "loop")) return null;
-    const open_brace = find_top_level_block_open(tokens, start_idx + 1, end_idx) orelse return null;
-    const close_brace = find_matching_in_range(tokens, open_brace, "{", "}", end_idx) catch return null;
-    if (close_brace + 1 != end_idx) return null;
-    const eq_idx = find_top_level_token(tokens, start_idx + 1, open_brace, "=") orelse return null;
-    if (eq_idx + 5 != open_brace) return null;
-    if (!tok_eq(tokens[eq_idx + 1], "recv")) return null;
-    if (!tok_eq(tokens[eq_idx + 2], "(")) return null;
-    if (tokens[eq_idx + 3].kind != .ident) return null;
-    if (!tok_eq(tokens[eq_idx + 4], ")")) return null;
-    const storage = find_storage_primitive_local(locals.storage_locals.items, tokens[eq_idx + 3].lexeme) orelse return null;
-    const elem_bytes = storage_element_byte_width_for_type(storage.elem_ty, ctx) orelse return null;
-    const binds = parse_recv_loop_binds(tokens, start_idx + 1, eq_idx) orelse return null;
-    return .{
-        .value_name = binds.value_name,
-        .count_name = binds.count_name,
-        .source_name = tokens[eq_idx + 3].lexeme,
-        .elem_ty = storage.elem_ty,
-        .elem_bytes = elem_bytes,
-        .open_brace = open_brace,
-        .close_brace = close_brace,
-    };
-}
-
-const CollectionLoopBinds = struct {
-    value_name: ?[]const u8,
-    index_name: ?[]const u8,
-};
-
-const RecvLoopBinds = struct {
-    value_name: ?[]const u8,
-    count_name: ?[]const u8,
-};
-
-pub fn parse_collection_loop_binds(
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-) ?CollectionLoopBinds {
-    if (start_idx + 3 != end_idx) return null;
-    if (tokens[start_idx].kind != .ident) return null;
-    if (!tok_eq(tokens[start_idx + 1], ",")) return null;
-    if (tokens[start_idx + 2].kind != .ident) return null;
-    return .{
-        .value_name = loop_bind_name(tokens[start_idx].lexeme),
-        .index_name = loop_bind_name(tokens[start_idx + 2].lexeme),
-    };
-}
-
-pub fn parse_recv_loop_binds(
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-) ?RecvLoopBinds {
-    if (start_idx + 1 == end_idx) {
-        if (tokens[start_idx].kind != .ident) return null;
-        return .{
-            .value_name = loop_bind_name(tokens[start_idx].lexeme),
-            .count_name = null,
-        };
-    }
-    if (start_idx + 3 != end_idx) return null;
-    if (tokens[start_idx].kind != .ident) return null;
-    if (!tok_eq(tokens[start_idx + 1], ",")) return null;
-    if (tokens[start_idx + 2].kind != .ident) return null;
-    return .{
-        .value_name = loop_bind_name(tokens[start_idx].lexeme),
-        .count_name = loop_bind_name(tokens[start_idx + 2].lexeme),
-    };
-}
-
-pub fn loop_bind_name(name: []const u8) ?[]const u8 {
-    if (std.mem.eql(u8, name, "_")) return null;
-    return name;
 }
 
 pub fn emit_return_stmt(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, body_start: usize, locals: *const LocalSet, return_cleanup_locals: *const LocalSet, ctx: CodegenContext, result_tys: []const []const u8, result_items: []const FuncResultItem, result_struct: ?[]const u8, result_union: ?UnionLayout, defer_ctx: ?*const DeferContext, return_label: ?[]const u8, self_tail_tco: ?*const SelfTailTco, out: *std.ArrayList(u8)) !bool {
@@ -958,24 +819,6 @@ pub fn collect_loop_control_frames(allocator: std.mem.Allocator, start: *const L
     };
 }
 
-pub fn is_dead_managed_alias_binding(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, stmt_end: usize, body_end: usize, locals: *const LocalSet, ctx: CodegenContext) CodegenError!bool {
-    if (start_idx >= stmt_end or tokens[start_idx].kind != .ident) return false;
-    const target_name = tokens[start_idx].lexeme;
-    const eq_idx = find_top_level_token(tokens, start_idx + 1, stmt_end, "=") orelse return false;
-    if (token_range_uses_ident(tokens, stmt_end, body_end, target_name)) return false;
-    if (!is_direct_managed_local_expr(tokens, eq_idx + 1, stmt_end, locals, ctx)) return false;
-    if (storage_binding_elem_type(tokens, start_idx, stmt_end) != null) return true;
-    if (managed_payload_binding(tokens, start_idx, stmt_end) != null) return true;
-
-    var owned_types = std.ArrayList([]const u8).empty;
-    defer {
-        for (owned_types.items) |owned| allocator.free(owned);
-        owned_types.deinit(allocator);
-    }
-    const binding = (try typed_struct_binding(allocator, tokens, start_idx, stmt_end, ctx, &owned_types)) orelse return false;
-    return find_struct_layout(ctx.struct_layouts, binding.ty) != null;
-}
-
 pub fn emit_body(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, body_start: usize, locals: *const LocalSet, return_cleanup_locals: *const LocalSet, control_cleanup_locals: *const LocalSet, ctx: CodegenContext, result_tys: []const []const u8, result_items: []const FuncResultItem, result_struct: ?[]const u8, result_union: ?UnionLayout, loop_ctx: ?LoopControl, defer_ctx: ?*const DeferContext, return_label: ?[]const u8, self_tail_tco: ?*const SelfTailTco, out: *std.ArrayList(u8)) !void {
     const allow_call_arg_last_use_move = loop_ctx == null;
     var active_locals = try clone_local_set(allocator, locals);
@@ -1098,14 +941,6 @@ pub fn is_collected_typed_storage_binding(tokens: []const lexer.Token, start_idx
     if (tok_eq(tokens[start_idx + 1], "=")) return false;
     if (find_storage_local(locals.storage_locals.items, tokens[start_idx].lexeme) == null) return false;
     return find_top_level_token(tokens, start_idx + 1, end_idx, "=") != null;
-}
-
-pub fn is_discard_assignment(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
-    if (start_idx + 3 > end_idx) return false;
-    if (tokens[start_idx].kind != .ident) return false;
-    if (!std.mem.eql(u8, tokens[start_idx].lexeme, "_")) return false;
-    const eq_idx = find_top_level_token(tokens, start_idx + 1, end_idx, "=") orelse return false;
-    return eq_idx == start_idx + 1 and eq_idx + 1 < end_idx;
 }
 
 pub fn discard_expr_is_pure_noop(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
@@ -1428,44 +1263,6 @@ pub fn is_wasi_host_import_call_expr(tokens: []const lexer.Token, start_idx: usi
     return close_paren + 1 == range.end;
 }
 
-const TokenRange = struct {
-    tokens: []const lexer.Token,
-    start: usize,
-    end: usize,
-};
-
-pub fn typed_scalar_binding_type(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext) ?[]const u8 {
-    if (start_idx + 3 >= end_idx) return null;
-    if (tokens[start_idx].kind != .ident) return null;
-    const ty = substitute_generic_type(tokens[start_idx + 1].lexeme, ctx.type_bindings);
-    if (!is_codegen_scalar_or_error_type(tokens, ctx, ty)) return null;
-    if (find_top_level_token(tokens, start_idx + 2, end_idx, "=") == null) return null;
-    return ty;
-}
-
-pub fn inferred_scalar_binding_type(
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-) ?[]const u8 {
-    if (start_idx + 3 > end_idx) return null;
-    if (tokens[start_idx].kind != .ident) return null;
-    if (!tok_eq(tokens[start_idx + 1], "=")) return null;
-    const ty = infer_expr_type(tokens, start_idx + 2, end_idx, locals, ctx) orelse return null;
-    if (!is_codegen_scalar_type(ctx, ty)) return null;
-    return ty;
-}
-
-pub fn is_managed_local_assignment_stmt(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext) bool {
-    if (start_idx + 2 >= end_idx) return false;
-    if (tokens[start_idx].kind != .ident) return false;
-    if (!tok_eq(tokens[start_idx + 1], "=")) return false;
-    const target_ty = find_local_type(locals.locals.items, tokens[start_idx].lexeme) orelse return false;
-    return is_managed_local_type(target_ty, ctx);
-}
-
 pub fn typed_struct_binding_decl(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext) CodegenError!?StructDecl {
     var owned_types = std.ArrayList([]const u8).empty;
     defer {
@@ -1474,22 +1271,6 @@ pub fn typed_struct_binding_decl(allocator: std.mem.Allocator, tokens: []const l
     }
     const binding = (try typed_struct_binding(allocator, tokens, start_idx, end_idx, ctx, &owned_types)) orelse return null;
     return binding.decl;
-}
-
-pub fn inferred_struct_ctor_binding(
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    structs: []const StructDecl,
-) ?StructDecl {
-    if (start_idx + 4 > end_idx) return null;
-    if (tokens[start_idx].kind != .ident) return null;
-    if (!tok_eq(tokens[start_idx + 1], "=")) return null;
-    if (tokens[start_idx + 2].kind != .ident) return null;
-    if (!tok_eq(tokens[start_idx + 3], "{")) return null;
-    const close_brace = find_matching_in_range(tokens, start_idx + 3, "{", "}", end_idx) catch return null;
-    if (close_brace + 1 != end_idx) return null;
-    return find_struct_decl(structs, tokens[start_idx + 2].lexeme);
 }
 
 pub fn clear_narrowed_union_locals_for_assignments(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *LocalSet) void {

@@ -93,10 +93,9 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | | `codegen_model.zig` | 不可变声明、shape、ownership/free、`ExprCallHead` |
 | | `codegen_context.zig` | LocalSet、可变 codegen context、local-name helpers |
 | | `codegen_constants.zig` | ABI/layout ID 与 compiler temporary-local 名称 |
-| | `gen_collect.zig` | collect facade（re-export util/struct/func/type） |
-| | `gen_collect_util` / `_struct` / `_func` / `_type` | 类型 parse·bind / struct·layout / func / enum collect |
+| | `codegen_collect_util.zig` / `codegen_collect_structs.zig` / `codegen_collect_functions.zig` / `codegen_collect_declarations.zig` | 类型 parse·bind / struct·layout / func / enum collect |
 | | `codegen_emit_expression.zig` / `codegen_emit_call.zig` | 表达式与调用 dispatch |
-| | `codegen_collect_body.zig` | body-local / loop / multi-result local collect（不 import expression） |
+| | `codegen_body.zig` / `codegen_collect_reflection.zig` | body-local、loop、multi-result 与 field-reflection collection |
 | | `codegen_emit_control.zig` | 控制流 emit（body/if/loop/defer/guard） |
 | | `codegen_emit_storage_operations.zig` / `codegen_emit_storage_values.zig` / `codegen_storage_layout.zig` | storage emit、layout 与 Tuple pack helpers |
 | | `codegen_emit_tuple.zig` | Tuple / pure-scalar pack helpers |

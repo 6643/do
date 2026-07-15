@@ -15,7 +15,7 @@ const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
 const codegen_callbacks = @import("codegen_callbacks.zig");
 const codegen_emit_expression = @import("codegen_emit_expression.zig");
 const codegen_emit_call = @import("codegen_emit_call.zig");
-const codegen_collect_body = @import("codegen_collect_body.zig");
+const codegen_body = @import("codegen_body.zig");
 const codegen_emit_storage_values = @import("codegen_emit_storage_values.zig");
 const codegen_emit_storage_operations = @import("codegen_emit_storage_operations.zig");
 const codegen_storage_layout = @import("codegen_storage_layout.zig");
@@ -129,7 +129,7 @@ const find_struct_decl = codegen_collect_util.find_struct_decl;
 const find_struct_layout = codegen_collect_util.find_struct_layout;
 const append_tuple_leaf_types = codegen_collect_util.append_tuple_leaf_types;
 const codegen_types_compatible = codegen_emit_wasi.codegen_types_compatible;
-const collect_body_locals = codegen_collect_body.collect_body_locals;
+const collect_body_locals = codegen_body.collect_body_locals;
 
 pub fn parse_lambda_param_names(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ![]const []const u8 {
     var out = std.ArrayList([]const u8).empty;

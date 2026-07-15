@@ -175,7 +175,7 @@ const codegen_collect_util = @import("codegen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
 const codegen_collect_declarations = @import("codegen_collect_declarations.zig");
-const codegen_collect_body = @import("codegen_collect_body.zig");
+const codegen_body = @import("codegen_body.zig");
 const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
 const tuple_element_type_at = codegen_emit_wasi.tuple_element_type_at;
 const tuple_scalar_leaf_storage_byte_width_ctx = codegen_emit_wasi.tuple_scalar_leaf_storage_byte_width_ctx;
@@ -190,7 +190,7 @@ const codegen_storage_layout = @import("codegen_storage_layout.zig");
 const codegen_emit_expression = @import("codegen_emit_expression.zig");
 const codegen_emit_call = @import("codegen_emit_call.zig");
 const codegen_generics = @import("codegen_generics.zig");
-const collect_body_locals_with_mode = codegen_collect_body.collect_body_locals_with_mode;
+const collect_body_locals_with_mode = codegen_body.collect_body_locals_with_mode;
 // Re-export expression and call emit entry points.
 const emit_start_func = codegen_emit_expression.emit_start_func;
 pub const emit_scalar_numeric_start_with_backend_ir = codegen_emit_expression.emit_scalar_numeric_start_with_backend_ir;
@@ -264,7 +264,7 @@ pub fn collect_body_locals(
     out: *LocalSet,
 ) anyerror!void {
     install_gen_hooks();
-    return codegen_collect_body.collect_body_locals(allocator, tokens, start_idx, end_idx, ctx, out);
+    return codegen_body.collect_body_locals(allocator, tokens, start_idx, end_idx, ctx, out);
 }
 const direct_managed_call_last_use_move_source = codegen_emit_call.direct_managed_call_last_use_move_source;
 const direct_managed_union_binding_call_move_source = codegen_emit_call.direct_managed_union_binding_call_move_source;
@@ -512,8 +512,8 @@ fn install_gen_hooks() void {
     codegen_callbacks.install(codegen_emit_expression.emit_expr, codegen_emit_expression.emit_expr_with_move_context, codegen_emit_call.emit_user_func_call_with_move_context);
     codegen_callbacks.install_body(codegen_emit_control.emit_body);
     codegen_callbacks.install_union_value(codegen_emit_union.emit_union_value);
-    codegen_callbacks.install_collect_body_locals(codegen_collect_body.collect_body_locals);
-    codegen_callbacks.install_collect_body_locals_with_mode(codegen_collect_body.collect_body_locals_with_mode);
+    codegen_callbacks.install_collect_body_locals(codegen_body.collect_body_locals);
+    codegen_callbacks.install_collect_body_locals_with_mode(codegen_body.collect_body_locals_with_mode);
     codegen_callbacks.install_emit_multi_result_assignment(codegen_emit_call.emit_multi_result_assignment);
     codegen_callbacks.install_emit_bare_user_func_call(codegen_emit_call.emit_bare_user_func_call);
     codegen_callbacks.install_emit_bare_user_func_call_move(codegen_emit_call.emit_bare_user_func_call_with_move_context);
