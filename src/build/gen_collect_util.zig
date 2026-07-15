@@ -7,7 +7,9 @@ const test_runner = @import("test_runner.zig");
 const type_util = @import("type_name.zig");
 const codegen_tokens = @import("codegen_tokens.zig");
 const codegen_names = @import("codegen_names.zig");
-const gen_types = @import("gen_types.zig");
+const model = @import("codegen_model.zig");
+const constants = @import("codegen_constants.zig");
+const context = @import("codegen_context.zig");
 const codegen_union_layout = @import("codegen_union_layout.zig");
 const gen_import = @import("gen_import.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
@@ -35,15 +37,15 @@ const publicDeclName = codegen_names.public_decl_name;
 const stringTokenBody = codegen_tokens.string_token_body;
 const tokEq = codegen_tokens.tok_eq;
 const freeUnionLayout = codegen_union_layout.free_union_layout;
-const findLocalOrigin = gen_types.findLocalOrigin;
+const findLocalOrigin = context.findLocalOrigin;
 const findTopLevelTypeSeparator = codegen_tokens.find_top_level_type_separator;
 const findTypeArgEnd = codegen_tokens.find_type_arg_end;
 const trimParens = codegen_tokens.trim_parens;
 const findTopLevelTypeSeparatorFrom = codegen_tokens.find_top_level_type_separator_from;
 const Range = codegen_tokens.Range;
 
-const freeStructDecl = gen_types.freeStructDecl;
-const freeStructDecls = gen_types.freeStructDecls;
+const freeStructDecl = model.freeStructDecl;
+const freeStructDecls = model.freeStructDecls;
 
 const GenericTypeArgsRange = type_util.GenericTypeArgsRange;
 
@@ -81,47 +83,45 @@ const typeBaseName = type_util.typeBaseName;
 const typePayloadAlignment = type_util.typePayloadAlignment;
 const typePayloadBytes = type_util.typePayloadBytes;
 
-const CallbackBinding = gen_types.CallbackBinding;
-const CallbackBindingKind = gen_types.CallbackBindingKind;
-const CodegenContext = gen_types.CodegenContext;
-const CodegenError = gen_types.CodegenError;
-const CodegenImportPrefix = gen_types.CodegenImportPrefix;
-const CodegenImportRef = gen_types.CodegenImportRef;
-const FuncBodyShape = gen_types.FuncBodyShape;
-const FuncDecl = gen_types.FuncDecl;
-const FuncParam = gen_types.FuncParam;
-const FuncResultItem = gen_types.FuncResultItem;
-const FuncResultParse = gen_types.FuncResultParse;
-const FuncTypeShape = gen_types.FuncTypeShape;
-const GenericTypeBinding = gen_types.GenericTypeBinding;
-const HostImport = gen_types.HostImport;
-const ImportedAliasContext = gen_types.ImportedAliasContext;
-const LambdaExprShape = gen_types.LambdaExprShape;
-const LocalSet = gen_types.LocalSet;
-const ManagedFieldOffset = gen_types.ManagedFieldOffset;
-const NO_RESULT_ITEMS = gen_types.NO_RESULT_ITEMS;
-const OwnedFuncTypeShape = gen_types.OwnedFuncTypeShape;
-const ParsedCodegenType = gen_types.ParsedCodegenType;
-const PayloadEnumCase = gen_types.PayloadEnumCase;
-const PayloadEnumDecl = gen_types.PayloadEnumDecl;
-const ReachVisit = gen_types.ReachVisit;
-const StructDecl = gen_types.StructDecl;
-const StructErrorResult = gen_types.StructErrorResult;
-const StructField = gen_types.StructField;
-const StructLayout = gen_types.StructLayout;
-const TYPE_ID_FIRST_STRUCT = gen_types.TYPE_ID_FIRST_STRUCT;
-const ValueEnumBranch = gen_types.ValueEnumBranch;
-const ValueEnumDecl = gen_types.ValueEnumDecl;
-const storageTypeNameForElem = gen_types.storageTypeNameForElem;
-const TYPE_ID_STORAGE_MANAGED = gen_types.TYPE_ID_STORAGE_MANAGED;
-const TYPE_ID_STORAGE_U8 = gen_types.TYPE_ID_STORAGE_U8;
+const CallbackBinding = model.CallbackBinding;
+const CallbackBindingKind = model.CallbackBindingKind;
+const CodegenContext = context.CodegenContext;
+const CodegenError = model.CodegenError;
+const CodegenImportPrefix = model.CodegenImportPrefix;
+const CodegenImportRef = model.CodegenImportRef;
+const FuncBodyShape = model.FuncBodyShape;
+const FuncDecl = model.FuncDecl;
+const FuncParam = model.FuncParam;
+const FuncResultItem = model.FuncResultItem;
+const FuncResultParse = model.FuncResultParse;
+const FuncTypeShape = model.FuncTypeShape;
+const GenericTypeBinding = model.GenericTypeBinding;
+const HostImport = model.HostImport;
+const ImportedAliasContext = model.ImportedAliasContext;
+const LambdaExprShape = model.LambdaExprShape;
+const LocalSet = context.LocalSet;
+const ManagedFieldOffset = model.ManagedFieldOffset;
+const NO_RESULT_ITEMS = model.NO_RESULT_ITEMS;
+const OwnedFuncTypeShape = model.OwnedFuncTypeShape;
+const ParsedCodegenType = model.ParsedCodegenType;
+const PayloadEnumCase = model.PayloadEnumCase;
+const PayloadEnumDecl = model.PayloadEnumDecl;
+const ReachVisit = model.ReachVisit;
+const StructDecl = model.StructDecl;
+const StructErrorResult = model.StructErrorResult;
+const StructField = model.StructField;
+const StructLayout = model.StructLayout;
+const TYPE_ID_FIRST_STRUCT = constants.TYPE_ID_FIRST_STRUCT;
+const ValueEnumBranch = model.ValueEnumBranch;
+const ValueEnumDecl = model.ValueEnumDecl;
+const storageTypeNameForElem = context.storageTypeNameForElem;
+const TYPE_ID_STORAGE_MANAGED = constants.TYPE_ID_STORAGE_MANAGED;
+const TYPE_ID_STORAGE_U8 = constants.TYPE_ID_STORAGE_U8;
 
 const UnionBranch = codegen_union_layout.UnionBranch;
 const UnionLayout = codegen_union_layout.UnionLayout;
 
 const WasiHostImport = codegen_wasi_registry.WasiHostImport;
-
-
 
 pub fn parseCodegenTypeExpr(
     allocator: std.mem.Allocator,
@@ -158,7 +158,6 @@ pub fn parseCodegenTypeExpr(
     return .{ .ty = tokens[start_idx].lexeme, .next_idx = start_idx + 1 };
 }
 
-
 pub fn bindGenericType(
     allocator: std.mem.Allocator,
     bindings: *std.ArrayList(GenericTypeBinding),
@@ -177,14 +176,12 @@ pub fn bindGenericType(
     return true;
 }
 
-
 pub fn findGenericBinding(bindings: []const GenericTypeBinding, name: []const u8) ?GenericTypeBinding {
     for (bindings) |binding| {
         if (std.mem.eql(u8, binding.name, name)) return binding;
     }
     return null;
 }
-
 
 pub fn substituteGenericTypeOwned(
     allocator: std.mem.Allocator,
@@ -222,7 +219,6 @@ pub fn substituteGenericTypeOwned(
     return owned;
 }
 
-
 pub fn typeContainsGenericBinding(ty: []const u8, bindings: []const GenericTypeBinding) bool {
     var i: usize = 0;
     while (i < ty.len) {
@@ -238,21 +234,17 @@ pub fn typeContainsGenericBinding(ty: []const u8, bindings: []const GenericTypeB
     return false;
 }
 
-
 pub fn isTypeIdentStart(ch: u8) bool {
     return ch == '_' or (ch >= 'A' and ch <= 'Z') or (ch >= 'a' and ch <= 'z');
 }
-
 
 pub fn isTypeIdentPart(ch: u8) bool {
     return isTypeIdentStart(ch) or (ch >= '0' and ch <= '9');
 }
 
-
 pub fn genericTypeArgsRange(ty: []const u8) ?GenericTypeArgsRange {
     return type_util.genericTypeArgsRange(ty);
 }
-
 
 pub fn parseFuncBodyShape(tokens: []const lexer.Token, close_params: usize) !FuncBodyShape {
     const after_params = close_params + 1;
@@ -298,7 +290,6 @@ pub fn parseFuncBodyShape(tokens: []const lexer.Token, close_params: usize) !Fun
         .next_idx = findLineEnd(tokens, arrow_idx) - 1,
     };
 }
-
 
 pub fn parseGenericInlineUnionLayout(
     allocator: std.mem.Allocator,
@@ -371,14 +362,12 @@ pub fn parseGenericInlineUnionLayout(
     };
 }
 
-
 pub fn hasTypeParamName(type_params: []const []const u8, name: []const u8) bool {
     for (type_params) |type_param| {
         if (std.mem.eql(u8, type_param, name)) return true;
     }
     return false;
 }
-
 
 pub fn parseStructErrorResultType(
     tokens: []const lexer.Token,
@@ -403,7 +392,6 @@ pub fn parseStructErrorResultType(
     return null;
 }
 
-
 pub fn parseUnionTypeLayout(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -417,7 +405,6 @@ pub fn parseUnionTypeLayout(
     const range = unionTypeExprRange(allocator, tokens, start_idx, end_idx, imported_alias_ctx) orelse return null;
     return try parseInlineUnionLayout(allocator, range.tokens, range.start, range.end, structs, struct_layouts, owned_types);
 }
-
 
 pub fn unionTypeExprRange(
     allocator: std.mem.Allocator,
@@ -434,7 +421,6 @@ pub fn unionTypeExprRange(
     }
     return importedUnionAliasRange(allocator, imported_alias_ctx, tokens, tokens[start_idx].lexeme);
 }
-
 
 pub fn localUnionAliasRange(tokens: []const lexer.Token, name: []const u8) ?Range {
     var depth_brace: usize = 0;
@@ -460,7 +446,6 @@ pub fn localUnionAliasRange(tokens: []const lexer.Token, name: []const u8) ?Rang
     return null;
 }
 
-
 pub fn importedUnionAliasRange(
     allocator: std.mem.Allocator,
     imported_alias_ctx: ?ImportedAliasContext,
@@ -474,7 +459,6 @@ pub fn importedUnionAliasRange(
     const range = localUnionAliasRange(child_tokens, import_ref.target) orelse return null;
     return .{ .tokens = child_tokens, .start = range.start, .end = range.end };
 }
-
 
 pub fn appendUnionBranchPayloadTypes(
     allocator: std.mem.Allocator,
@@ -502,11 +486,9 @@ pub fn appendUnionBranchPayloadTypes(
     return error.NoMatchingCall;
 }
 
-
 pub fn hasTopLevelToken(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, lexeme: []const u8) bool {
     return findTopLevelToken(tokens, start_idx, end_idx, lexeme) != null;
 }
-
 
 pub fn isUnmanagedScalarStruct(
     structs: []const StructDecl,
@@ -521,11 +503,9 @@ pub fn isUnmanagedScalarStruct(
     return true;
 }
 
-
 pub fn isErrorLikeType(tokens: []const lexer.Token, name: []const u8) bool {
     return isErrorEnumType(tokens, name) or errorNilAliasTarget(tokens, name) != null or std.mem.endsWith(u8, name, "Error");
 }
-
 
 pub fn isErrorEnumType(tokens: []const lexer.Token, name: []const u8) bool {
     var depth_brace: usize = 0;
@@ -546,7 +526,6 @@ pub fn isErrorEnumType(tokens: []const lexer.Token, name: []const u8) bool {
     }
     return false;
 }
-
 
 pub fn errorNilAliasTarget(tokens: []const lexer.Token, name: []const u8) ?[]const u8 {
     var depth_brace: usize = 0;
@@ -581,18 +560,15 @@ pub fn errorNilAliasTarget(tokens: []const lexer.Token, name: []const u8) ?[]con
     return null;
 }
 
-
 pub fn isErrorEnumTypeNameForLowering(tokens: []const lexer.Token, name: []const u8) bool {
     return isErrorEnumType(tokens, name) or std.mem.endsWith(u8, name, "Error");
 }
-
 
 pub fn funcParamAbiType(param: FuncParam) []const u8 {
     if (param.abi_ty) |abi_ty| return abi_ty;
     if (!param.variadic) return param.ty;
     return storageTypeNameForElem(param.ty) orelse param.ty;
 }
-
 
 pub fn findStructDecl(structs: []const StructDecl, name: []const u8) ?StructDecl {
     const lookup_name = typeBaseName(name);
@@ -601,7 +577,6 @@ pub fn findStructDecl(structs: []const StructDecl, name: []const u8) ?StructDecl
     }
     return null;
 }
-
 
 pub fn findStructLayout(layouts: []const StructLayout, name: []const u8) ?StructLayout {
     for (layouts) |layout| {
@@ -614,7 +589,6 @@ pub fn findStructLayout(layouts: []const StructLayout, name: []const u8) ?Struct
     return null;
 }
 
-
 pub fn isTopLevelStructDeclStart(tokens: []const lexer.Token, idx: usize) bool {
     if (idx + 1 >= tokens.len) return false;
     if (!isLineStart(tokens, idx)) return false;
@@ -622,7 +596,6 @@ pub fn isTopLevelStructDeclStart(tokens: []const lexer.Token, idx: usize) bool {
     if (std.mem.eql(u8, tokens[idx].lexeme, "start")) return false;
     return tokEq(tokens[idx + 1], "{");
 }
-
 
 pub fn pureScalarStructPackWidth(decl: StructDecl, structs: []const StructDecl) ?usize {
     if (decl.fields.len == 0) return null;
@@ -654,8 +627,6 @@ pub fn pureScalarStructPackWidth(decl: StructDecl, structs: []const StructDecl) 
 
 /// True when a named struct carries managed payload (directly or nested) and lowers as ARC handle.
 /// True when a named struct carries managed payload (directly or nested) and lowers as ARC handle.
-
-
 pub fn structDeclHasManagedField(decl: StructDecl, structs: []const StructDecl) bool {
     for (decl.fields) |field| {
         if (type_util.isManagedPayloadType(field.ty)) return true;
@@ -668,8 +639,6 @@ pub fn structDeclHasManagedField(decl: StructDecl, structs: []const StructDecl) 
 
 /// Terminal pack leaf that is a managed object handle (text / [T] / managed struct).
 /// Terminal pack leaf that is a managed object handle (text / [T] / managed struct).
-
-
 pub fn packSlotWidth(ty: []const u8, structs: []const StructDecl) ?usize {
     if (isTupleTypeName(ty)) return tuplePackWidthWithStructs(ty, structs);
     if (findStructDecl(structs, ty)) |decl| {
@@ -686,8 +655,6 @@ pub fn packSlotWidth(ty: []const u8, structs: []const StructDecl) ?usize {
 /// or managed-struct handle slot (never type-flatten).
 /// Scheme A element width: scalar, managed handle, nested Tuple, pure-scalar struct sub-layout,
 /// or managed-struct handle slot (never type-flatten).
-
-
 pub fn tuplePackWidthWithStructs(tuple_ty: []const u8, structs: []const StructDecl) ?usize {
     if (!isTupleTypeName(tuple_ty)) return null;
     const arity = tupleArity(tuple_ty) orelse return null;
@@ -699,7 +666,6 @@ pub fn tuplePackWidthWithStructs(tuple_ty: []const u8, structs: []const StructDe
     }
     return total;
 }
-
 
 pub fn appendTupleLeafTypesWithStructs(
     allocator: std.mem.Allocator,
@@ -734,8 +700,6 @@ pub fn appendTupleLeafTypesWithStructs(
 
 /// Scheme A: packed Tuple storage layout (scalar + managed + struct nested slots).
 /// Scheme A: packed Tuple storage layout (scalar + managed + struct nested slots).
-
-
 pub fn appendTupleLeafTypes(
     allocator: std.mem.Allocator,
     tuple_ty: []const u8,
@@ -746,8 +710,6 @@ pub fn appendTupleLeafTypes(
 }
 
 // pack leaf helpers (shared with storage layout collect)
-
-
 
 pub fn parseInlineUnionLayout(
     allocator: std.mem.Allocator,
@@ -812,6 +774,3 @@ pub fn parseInlineUnionLayout(
         .payload_tys = try payload_tys.toOwnedSlice(allocator),
     };
 }
-
-
-

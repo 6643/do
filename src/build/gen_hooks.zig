@@ -1,18 +1,19 @@
 //! Late-bound emit callbacks to break gen domain import cycles.
 const std = @import("std");
 const lexer = @import("lexer.zig");
-const gen_types = @import("gen_types.zig");
+const model = @import("codegen_model.zig");
+const context = @import("codegen_context.zig");
 const codegen_union_layout = @import("codegen_union_layout.zig");
 
-const LocalSet = gen_types.LocalSet;
-const CodegenContext = gen_types.CodegenContext;
-const CodegenError = gen_types.CodegenError;
-const FuncDecl = gen_types.FuncDecl;
-const FuncResultItem = gen_types.FuncResultItem;
-const CallLastUseMoveContext = gen_types.CallLastUseMoveContext;
-const DeferContext = gen_types.DeferContext;
-const LoopControl = gen_types.LoopControl;
-const SelfTailTco = gen_types.SelfTailTco;
+const LocalSet = context.LocalSet;
+const CodegenContext = context.CodegenContext;
+const CodegenError = model.CodegenError;
+const FuncDecl = model.FuncDecl;
+const FuncResultItem = model.FuncResultItem;
+const CallLastUseMoveContext = context.CallLastUseMoveContext;
+const DeferContext = context.DeferContext;
+const LoopControl = context.LoopControl;
+const SelfTailTco = context.SelfTailTco;
 const UnionLayout = codegen_union_layout.UnionLayout;
 
 pub const EmitExprFn = *const fn (
@@ -181,7 +182,7 @@ pub var emit_union_struct_payload_for_type: ?EmitUnionStructPayloadForTypeFn = n
 pub const InferGenericCallUnionResultFn = *const fn (
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
-    call_head: gen_types.ExprCallHead,
+    call_head: model.ExprCallHead,
     locals: *const LocalSet,
     ctx: CodegenContext,
     result_owned_types: *std.ArrayList([]const u8),
@@ -192,7 +193,6 @@ pub var infer_generic_call_union_result: ?InferGenericCallUnionResultFn = null;
 pub fn installInferGenericCallUnionResult(f: InferGenericCallUnionResultFn) void {
     infer_generic_call_union_result = f;
 }
-
 
 pub var installed: bool = false;
 

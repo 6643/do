@@ -4,32 +4,33 @@ const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const test_runner = @import("test_runner.zig");
 const gen_lower = @import("gen_lower.zig");
-const gen_types = @import("gen_types.zig");
+const model = @import("codegen_model.zig");
+const context = @import("codegen_context.zig");
 const codegen_tokens = @import("codegen_tokens.zig");
 const codegen_names = @import("codegen_names.zig");
 
-pub const EmitOptions = gen_types.EmitOptions;
-pub const CodegenError = gen_types.CodegenError;
+pub const EmitOptions = model.EmitOptions;
+pub const CodegenError = model.CodegenError;
 
 pub const emitWat = gen_lower.emitWat;
 pub const emitWatWithOptions = gen_lower.emitWatWithOptions;
 pub const emitTestWat = gen_lower.emitTestWat;
 
 // Types for unit tests
-const LocalSet = gen_types.LocalSet;
-const SourceOrigin = gen_types.SourceOrigin;
-const GenericTypeBinding = gen_types.GenericTypeBinding;
-const FuncParam = gen_types.FuncParam;
-const StructDecl = gen_types.StructDecl;
-const StructField = gen_types.StructField;
-const StructLayout = gen_types.StructLayout;
-const FuncDecl = gen_types.FuncDecl;
-const StringDataContext = gen_types.StringDataContext;
-const CodegenContext = gen_types.CodegenContext;
-const findLocalOrigin = gen_types.findLocalOrigin;
-const findStorageLocalOrigin = gen_types.findStorageLocalOrigin;
-const appendLoopSourceStorageLocal = gen_types.appendLoopSourceStorageLocal;
-const findStructLocal = gen_types.findStructLocal;
+const LocalSet = context.LocalSet;
+const SourceOrigin = model.SourceOrigin;
+const GenericTypeBinding = model.GenericTypeBinding;
+const FuncParam = model.FuncParam;
+const StructDecl = model.StructDecl;
+const StructField = model.StructField;
+const StructLayout = model.StructLayout;
+const FuncDecl = model.FuncDecl;
+const StringDataContext = context.StringDataContext;
+const CodegenContext = context.CodegenContext;
+const findLocalOrigin = context.findLocalOrigin;
+const findStorageLocalOrigin = context.findStorageLocalOrigin;
+const appendLoopSourceStorageLocal = context.appendLoopSourceStorageLocal;
+const findStructLocal = context.findStructLocal;
 const findMatching = codegen_tokens.find_matching;
 
 // Impl helpers for unit tests
@@ -54,13 +55,12 @@ const collectGenericFuncInstanceForCall = gen_lower.collectGenericFuncInstanceFo
 const findGenericBinding = gen_lower.findGenericBinding;
 const findFuncDeclForCallHead = gen_lower.findFuncDeclForCallHead;
 const bindGenericFuncCall = gen_lower.bindGenericFuncCall;
-const findUnionLocal = gen_types.findUnionLocal;
+const findUnionLocal = context.findUnionLocal;
 const callHeadAt = gen_lower.callHeadAt;
 const collectStructLayouts = gen_lower.collectStructLayouts;
 const findToken = gen_lower.findToken;
 const freeStructLayouts = gen_lower.freeStructLayouts;
 const fieldGetLastUseMoveSource = gen_lower.fieldGetLastUseMoveSource;
-
 
 test "LocalSet records source origin metadata" {
     const allocator = std.testing.allocator;

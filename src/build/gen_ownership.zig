@@ -4,7 +4,8 @@ const lexer = @import("lexer.zig");
 const ownership = @import("ownership.zig");
 const codegen_tokens = @import("codegen_tokens.zig");
 const codegen_names = @import("codegen_names.zig");
-const gen_types = @import("gen_types.zig");
+const model = @import("codegen_model.zig");
+const context = @import("codegen_context.zig");
 const gen_wasi_emit = @import("gen_wasi_emit.zig");
 const gen_collect = @import("gen_collect.zig");
 
@@ -19,29 +20,19 @@ const findStmtEnd = codegen_tokens.find_stmt_end;
 const appendFmt = codegen_names.append_fmt;
 const Range = codegen_tokens.Range;
 
-const LocalSet = gen_types.LocalSet;
-const CodegenContext = gen_types.CodegenContext;
-const CodegenError = gen_types.CodegenError;
-const LoopControl = gen_types.LoopControl;
+const LocalSet = context.LocalSet;
+const CodegenContext = context.CodegenContext;
+const CodegenError = model.CodegenError;
+const LoopControl = context.LoopControl;
 const findStructLayout = gen_collect.findStructLayout;
 const isManagedLocalType = gen_wasi_emit.isManagedLocalType;
 const isManagedPayloadType = gen_wasi_emit.isManagedPayloadType;
 
-pub fn emitReleaseManagedLocals(
-    allocator: std.mem.Allocator,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) !void {
+pub fn emitReleaseManagedLocals(allocator: std.mem.Allocator, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
     try emitReleaseManagedLocalsExcept(allocator, locals, ctx, null, out);
 }
 
-
-pub fn emitReleaseManagedLocalsExcept(
-    allocator: std.mem.Allocator,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    skip_name: ?[]const u8,
-    out: *std.ArrayList(u8)) !void {
+pub fn emitReleaseManagedLocalsExcept(allocator: std.mem.Allocator, locals: *const LocalSet, ctx: CodegenContext, skip_name: ?[]const u8, out: *std.ArrayList(u8)) !void {
     if (skip_name) |name| {
         const skip_names = [_][]const u8{name};
         return emitReleaseManagedLocalsExceptMany(allocator, locals, ctx, &skip_names, out);
@@ -49,24 +40,13 @@ pub fn emitReleaseManagedLocalsExcept(
     return emitReleaseManagedLocalsExceptMany(allocator, locals, ctx, &.{}, out);
 }
 
-
-pub fn emitReleaseManagedLocalsExceptMany(
-    allocator: std.mem.Allocator,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    skip_names: []const []const u8,
-    out: *std.ArrayList(u8)) !void {
+pub fn emitReleaseManagedLocalsExceptMany(allocator: std.mem.Allocator, locals: *const LocalSet, ctx: CodegenContext, skip_names: []const []const u8, out: *std.ArrayList(u8)) !void {
     const release_plan = try buildReturnOwnershipPlan(allocator, locals, ctx, skip_names);
     defer release_plan.deinit(allocator);
     try emitOwnershipReleasePlan(allocator, release_plan, out);
 }
 
-
-pub fn emitFallthroughReleaseManagedLocals(
-    allocator: std.mem.Allocator,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) !void {
+pub fn emitFallthroughReleaseManagedLocals(allocator: std.mem.Allocator, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
     const release_plan = try buildFallthroughOwnershipPlan(allocator, locals, ctx);
     defer release_plan.deinit(allocator);
     if (release_plan.release_steps.len == 0) return;
@@ -74,19 +54,13 @@ pub fn emitFallthroughReleaseManagedLocals(
     try emitOwnershipReleasePlan(allocator, release_plan, out);
 }
 
-
-pub fn emitBlockReleaseManagedLocals(
-    allocator: std.mem.Allocator,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) !void {
+pub fn emitBlockReleaseManagedLocals(allocator: std.mem.Allocator, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
     const release_plan = try buildBlockOwnershipPlan(allocator, locals, ctx);
     defer release_plan.deinit(allocator);
     if (release_plan.release_steps.len == 0) return;
     try out.appendSlice(allocator, "    ;; arc-block-release\n");
     try emitOwnershipReleasePlan(allocator, release_plan, out);
 }
-
 
 pub fn hasManagedLocals(locals: *const LocalSet, ctx: CodegenContext) bool {
     for (locals.locals.items) |local| {
@@ -107,18 +81,13 @@ pub const OwnedLoopFrames = struct {
     }
 };
 
-
 pub fn managedLocalKindForType(ty: []const u8, ctx: CodegenContext) ?ownership.ManagedLocalKind {
     if (isManagedPayloadType(ty)) return .storage;
     if (findStructLayout(ctx.struct_layouts, ty) != null) return .managed_struct;
     return null;
 }
 
-
-pub fn collectManagedOwnershipLocals(
-    allocator: std.mem.Allocator,
-    locals: *const LocalSet,
-    ctx: CodegenContext) ![]const ownership.ManagedLocal {
+pub fn collectManagedOwnershipLocals(allocator: std.mem.Allocator, locals: *const LocalSet, ctx: CodegenContext) ![]const ownership.ManagedLocal {
     var managed = std.ArrayList(ownership.ManagedLocal).empty;
     errdefer managed.deinit(allocator);
 
@@ -138,12 +107,7 @@ pub fn collectManagedOwnershipLocals(
     return try managed.toOwnedSlice(allocator);
 }
 
-
-pub fn buildReturnOwnershipPlan(
-    allocator: std.mem.Allocator,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    skip_names: []const []const u8) !ownership.ExitPlan {
+pub fn buildReturnOwnershipPlan(allocator: std.mem.Allocator, locals: *const LocalSet, ctx: CodegenContext, skip_names: []const []const u8) !ownership.ExitPlan {
     const managed = try collectManagedOwnershipLocals(allocator, locals, ctx);
     defer if (managed.len != 0) allocator.free(managed);
     return ownership.buildReturnExitPlanWithFacts(allocator, managed, .{
@@ -152,12 +116,7 @@ pub fn buildReturnOwnershipPlan(
     });
 }
 
-
-pub fn buildGuardReturnOwnershipPlan(
-    allocator: std.mem.Allocator,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    skip_names: []const []const u8) !ownership.ExitPlan {
+pub fn buildGuardReturnOwnershipPlan(allocator: std.mem.Allocator, locals: *const LocalSet, ctx: CodegenContext, skip_names: []const []const u8) !ownership.ExitPlan {
     const managed = try collectManagedOwnershipLocals(allocator, locals, ctx);
     defer if (managed.len != 0) allocator.free(managed);
     return ownership.buildGuardReturnExitPlanWithFacts(allocator, managed, .{
@@ -166,31 +125,19 @@ pub fn buildGuardReturnOwnershipPlan(
     });
 }
 
-
-pub fn buildFallthroughOwnershipPlan(
-    allocator: std.mem.Allocator,
-    locals: *const LocalSet,
-    ctx: CodegenContext) !ownership.ExitPlan {
+pub fn buildFallthroughOwnershipPlan(allocator: std.mem.Allocator, locals: *const LocalSet, ctx: CodegenContext) !ownership.ExitPlan {
     const managed = try collectManagedOwnershipLocals(allocator, locals, ctx);
     defer if (managed.len != 0) allocator.free(managed);
     return ownership.buildFallthroughExitPlanWithFacts(allocator, managed, .{});
 }
 
-
-pub fn buildBlockOwnershipPlan(
-    allocator: std.mem.Allocator,
-    locals: *const LocalSet,
-    ctx: CodegenContext) !ownership.ExitPlan {
+pub fn buildBlockOwnershipPlan(allocator: std.mem.Allocator, locals: *const LocalSet, ctx: CodegenContext) !ownership.ExitPlan {
     const managed = try collectManagedOwnershipLocals(allocator, locals, ctx);
     defer if (managed.len != 0) allocator.free(managed);
     return ownership.buildBlockExitPlanWithFacts(allocator, managed, .{});
 }
 
-
-pub fn emitOwnershipReleasePlan(
-    allocator: std.mem.Allocator,
-    release_plan: ownership.ExitPlan,
-    out: *std.ArrayList(u8)) !void {
+pub fn emitOwnershipReleasePlan(allocator: std.mem.Allocator, release_plan: ownership.ExitPlan, out: *std.ArrayList(u8)) !void {
     for (release_plan.release_steps) |step| {
         try appendFmt(allocator, out, "    ;; arc-release-local {s}\n", .{step.local_name});
         try appendFmt(allocator, out, "    local.get ${s}\n", .{step.local_name});
@@ -200,7 +147,6 @@ pub fn emitOwnershipReleasePlan(
         try appendFmt(allocator, out, "    local.set ${s}\n", .{step.local_name});
     }
 }
-
 
 pub fn bodyEndsWithPlainReturn(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     var i = start_idx;
@@ -214,7 +160,6 @@ pub fn bodyEndsWithPlainReturn(tokens: []const lexer.Token, start_idx: usize, en
     return tokEq(tokens[idx], "return");
 }
 
-
 pub fn bodyCanReachEnd(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     var i = start_idx;
     while (i < end_idx) {
@@ -225,7 +170,6 @@ pub fn bodyCanReachEnd(tokens: []const lexer.Token, start_idx: usize, end_idx: u
     return true;
 }
 
-
 pub fn stmtCanReachEnd(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     if (start_idx >= end_idx) return true;
     if (tokEq(tokens[start_idx], "return")) return false;
@@ -234,7 +178,6 @@ pub fn stmtCanReachEnd(tokens: []const lexer.Token, start_idx: usize, end_idx: u
     if (tokEq(tokens[start_idx], "loop")) return loopStmtCanReachEnd(tokens, start_idx, end_idx);
     return true;
 }
-
 
 pub fn ifStmtCanReachEnd(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     const open_brace = findTopLevelBlockOpen(tokens, start_idx + 1, end_idx) orelse return true;
@@ -269,7 +212,6 @@ pub fn ifStmtCanReachEnd(tokens: []const lexer.Token, start_idx: usize, end_idx:
     return then_can_reach_end or else_can_reach_end;
 }
 
-
 pub fn loopStmtCanReachEnd(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     const open_brace = findTopLevelBlockOpen(tokens, start_idx + 1, end_idx) orelse return true;
     const close_brace = findMatchingInRange(tokens, open_brace, "{", "}", end_idx) catch return true;
@@ -277,11 +219,7 @@ pub fn loopStmtCanReachEnd(tokens: []const lexer.Token, start_idx: usize, end_id
     return loopBodyCanBreakCurrentLoop(tokens, open_brace + 1, close_brace, labelForLoopStart(tokens, start_idx));
 }
 
-pub fn loopBodyCanBreakCurrentLoop(
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    loop_label: ?[]const u8) bool {
+pub fn loopBodyCanBreakCurrentLoop(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, loop_label: ?[]const u8) bool {
     if (loop_label) |label| {
         if (tokenRangeContainsLabeledBreak(tokens, start_idx, end_idx, label)) return true;
     }
@@ -295,11 +233,7 @@ pub fn loopBodyCanBreakCurrentLoop(
     return false;
 }
 
-pub fn stmtBreaksCurrentLoop(
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    loop_label: ?[]const u8) bool {
+pub fn stmtBreaksCurrentLoop(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, loop_label: ?[]const u8) bool {
     if (start_idx >= end_idx) return false;
     if (tokEq(tokens[start_idx], "break")) return breakTargetsCurrentLoop(tokens, start_idx, end_idx, loop_label);
     if (!tokEq(tokens[start_idx], "if")) return false;
@@ -308,22 +242,14 @@ pub fn stmtBreaksCurrentLoop(
     return breakTargetsCurrentLoop(tokens, control_idx, end_idx, loop_label);
 }
 
-pub fn breakTargetsCurrentLoop(
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    loop_label: ?[]const u8) bool {
+pub fn breakTargetsCurrentLoop(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, loop_label: ?[]const u8) bool {
     if (end_idx == start_idx + 1) return true;
     if (end_idx != start_idx + 3 or !tokEq(tokens[start_idx + 1], "#")) return false;
     const label = loop_label orelse return false;
     return tokens[start_idx + 2].kind == .ident and std.mem.eql(u8, tokens[start_idx + 2].lexeme, label);
 }
 
-pub fn tokenRangeContainsLabeledBreak(
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    label: []const u8) bool {
+pub fn tokenRangeContainsLabeledBreak(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, label: []const u8) bool {
     var i = start_idx;
     while (i < end_idx) : (i += 1) {
         if (tokEq(tokens[i], "loop")) {
@@ -402,4 +328,3 @@ pub fn previousLineStart(tokens: []const lexer.Token, idx: usize) ?usize {
     }
     return start;
 }
-

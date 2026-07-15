@@ -25,7 +25,9 @@ This repository contains the `do` language compiler and its regression suite.
         - `gen_lower.zig` — orchestration (`emitWat*` / hooks install) + minimal re-exports for tests
         - `gen_generic.zig` — generic func instantiate / type bind / prebind callback (no import of gen_lower)
         - `gen_hooks.zig` — late-bound emit callbacks (break reverse peer edges: ctrl/union→expr, struct→union_emit)
-        - `gen_types.zig` — LocalSet, CodegenContext, decl types, free helpers, `ExprCallHead`
+        - `codegen_model.zig` — immutable declarations, shape records, ownership/free helpers, `ExprCallHead`
+        - `codegen_context.zig` — LocalSet, mutable codegen contexts, local-name helpers
+        - `codegen_constants.zig` — ABI/layout IDs and compiler temporary-local names
         - `gen_collect.zig` — collect facade (re-exports util/struct/func/type leaves)
         - `gen_collect_util.zig` / `gen_collect_struct.zig` / `gen_collect_func.zig` / `gen_collect_type.zig` — type parse/bind, struct/layout collect, func collect, enum/value-enum collect
         - `gen_expr.zig` — expression / call dispatch + re-exports body-local collect API

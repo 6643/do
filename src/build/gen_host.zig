@@ -4,7 +4,8 @@ const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const codegen_tokens = @import("codegen_tokens.zig");
 const codegen_names = @import("codegen_names.zig");
-const gen_types = @import("gen_types.zig");
+const model = @import("codegen_model.zig");
+const context = @import("codegen_context.zig");
 
 const tokEq = codegen_tokens.tok_eq;
 const findMatchingInRange = codegen_tokens.find_matching_in_range;
@@ -17,10 +18,10 @@ const stringTokenBody = codegen_tokens.string_token_body;
 const publicDeclName = codegen_names.public_decl_name;
 const appendFmt = codegen_names.append_fmt;
 
-const HostImport = gen_types.HostImport;
-const CodegenError = gen_types.CodegenError;
-const LocalSet = gen_types.LocalSet;
-const storageTypeNameForElem = gen_types.storageTypeNameForElem;
+const HostImport = model.HostImport;
+const CodegenError = model.CodegenError;
+const LocalSet = context.LocalSet;
+const storageTypeNameForElem = context.storageTypeNameForElem;
 const moduleTokensEqual = codegen_tokens.module_tokens_equal;
 const stringLiteralArgLexeme = codegen_tokens.string_literal_arg_lexeme;
 const appendMangledTypeName = codegen_names.append_mangled_type_name;

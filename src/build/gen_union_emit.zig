@@ -8,7 +8,9 @@ const payload_wat = @import("wat_payload.zig");
 const storage_wat = @import("wat_storage.zig");
 const codegen_tokens = @import("codegen_tokens.zig");
 const codegen_names = @import("codegen_names.zig");
-const gen_types = @import("gen_types.zig");
+const model = @import("codegen_model.zig");
+const constants = @import("codegen_constants.zig");
+const context = @import("codegen_context.zig");
 const gen_collect = @import("gen_collect.zig");
 const gen_import = @import("gen_import.zig");
 const gen_wasi_emit = @import("gen_wasi_emit.zig");
@@ -74,65 +76,65 @@ const findTopLevelTypeSeparator = codegen_tokens.find_top_level_type_separator;
 const findTopLevelTypeSeparatorFrom = codegen_tokens.find_top_level_type_separator_from;
 const hasString = codegen_names.has_string;
 
-const LocalSet = gen_types.LocalSet;
-const Local = gen_types.Local;
-const CodegenContext = gen_types.CodegenContext;
-const CodegenError = gen_types.CodegenError;
-const StructDecl = gen_types.StructDecl;
-const StructField = gen_types.StructField;
-const StructLayout = gen_types.StructLayout;
-const StructLocal = gen_types.StructLocal;
-const StorageLocal = gen_types.StorageLocal;
-const UnionLocal = gen_types.UnionLocal;
-const FuncDecl = gen_types.FuncDecl;
-const FuncParam = gen_types.FuncParam;
-const FuncResultItem = gen_types.FuncResultItem;
-const HostImport = gen_types.HostImport;
-const DeferContext = gen_types.DeferContext;
-const CallLastUseMoveContext = gen_types.CallLastUseMoveContext;
-const LastUseManagedMoveSource = gen_types.LastUseManagedMoveSource;
-const LoopControl = gen_types.LoopControl;
-const FieldMetaLocal = gen_types.FieldMetaLocal;
-const FieldReflectionLoopHeader = gen_types.FieldReflectionLoopHeader;
-const FieldStaticValue = gen_types.FieldStaticValue;
-const FieldReflectionIfParts = gen_types.FieldReflectionIfParts;
-const GenericTypeBinding = gen_types.GenericTypeBinding;
-const PayloadEnumDecl = gen_types.PayloadEnumDecl;
-const ValueEnumDecl = gen_types.ValueEnumDecl;
-const CallbackBinding = gen_types.CallbackBinding;
-const CallbackCallArg = gen_types.CallbackCallArg;
-const FuncTypeShape = gen_types.FuncTypeShape;
-const LambdaExprShape = gen_types.LambdaExprShape;
-const NarrowedUnionLocal = gen_types.NarrowedUnionLocal;
-const UnionStructPayload = gen_types.UnionStructPayload;
-const ImportedAliasContext = gen_types.ImportedAliasContext;
-const StringDataContext = gen_types.StringDataContext;
-const ExprCallHead = gen_types.ExprCallHead;
-const STORAGE_OVERWRITE_TMP_LOCAL = gen_types.STORAGE_OVERWRITE_TMP_LOCAL;
-const STORAGE_WRITE_INDEX_TMP_LOCAL = gen_types.STORAGE_WRITE_INDEX_TMP_LOCAL;
-const STORAGE_PUT_SOURCE_TMP_LOCAL = gen_types.STORAGE_PUT_SOURCE_TMP_LOCAL;
-const STORAGE_WRITE_LEN_TMP_LOCAL = gen_types.STORAGE_WRITE_LEN_TMP_LOCAL;
-const STORAGE_WRITE_SCAN_TMP_LOCAL = gen_types.STORAGE_WRITE_SCAN_TMP_LOCAL;
-const STORAGE_WRITE_TARGET_TMP_LOCAL = gen_types.STORAGE_WRITE_TARGET_TMP_LOCAL;
-const STORAGE_WRITE_NEXT_TMP_LOCAL = gen_types.STORAGE_WRITE_NEXT_TMP_LOCAL;
-const TUPLE_PACK_BASE_TMP_LOCAL = gen_types.TUPLE_PACK_BASE_TMP_LOCAL;
-const STRUCT_LITERAL_TMP_LOCAL = gen_types.STRUCT_LITERAL_TMP_LOCAL;
-const STORAGE_PAYLOAD_HEADER_BYTES = gen_types.STORAGE_PAYLOAD_HEADER_BYTES;
-const TYPE_ID_STORAGE_U8 = gen_types.TYPE_ID_STORAGE_U8;
-const TYPE_ID_STORAGE_MANAGED = gen_types.TYPE_ID_STORAGE_MANAGED;
-const TYPE_ID_FIRST_STRUCT = gen_types.TYPE_ID_FIRST_STRUCT;
-const findLocalType = gen_types.findLocalType;
-const findLocalOrigin = gen_types.findLocalOrigin;
-const findStorageLocal = gen_types.findStorageLocal;
-const findStructLocal = gen_types.findStructLocal;
-const findUnionLocal = gen_types.findUnionLocal;
-const hasLocal = gen_types.hasLocal;
-const isCompilerLocalName = gen_types.isCompilerLocalName;
-const storageTypeNameForElem = gen_types.storageTypeNameForElem;
-const storageTypeNameForElemOwned = gen_types.storageTypeNameForElemOwned;
-const localNameMatches = gen_types.localNameMatches;
-const unionPayloadLocalName = gen_types.unionPayloadLocalName;
-const unionTagLocalName = gen_types.unionTagLocalName;
+const LocalSet = context.LocalSet;
+const Local = model.Local;
+const CodegenContext = context.CodegenContext;
+const CodegenError = model.CodegenError;
+const StructDecl = model.StructDecl;
+const StructField = model.StructField;
+const StructLayout = model.StructLayout;
+const StructLocal = model.StructLocal;
+const StorageLocal = model.StorageLocal;
+const UnionLocal = model.UnionLocal;
+const FuncDecl = model.FuncDecl;
+const FuncParam = model.FuncParam;
+const FuncResultItem = model.FuncResultItem;
+const HostImport = model.HostImport;
+const DeferContext = context.DeferContext;
+const CallLastUseMoveContext = context.CallLastUseMoveContext;
+const LastUseManagedMoveSource = context.LastUseManagedMoveSource;
+const LoopControl = context.LoopControl;
+const FieldMetaLocal = model.FieldMetaLocal;
+const FieldReflectionLoopHeader = context.FieldReflectionLoopHeader;
+const FieldStaticValue = context.FieldStaticValue;
+const FieldReflectionIfParts = context.FieldReflectionIfParts;
+const GenericTypeBinding = model.GenericTypeBinding;
+const PayloadEnumDecl = model.PayloadEnumDecl;
+const ValueEnumDecl = model.ValueEnumDecl;
+const CallbackBinding = model.CallbackBinding;
+const CallbackCallArg = model.CallbackCallArg;
+const FuncTypeShape = model.FuncTypeShape;
+const LambdaExprShape = model.LambdaExprShape;
+const NarrowedUnionLocal = model.NarrowedUnionLocal;
+const UnionStructPayload = model.UnionStructPayload;
+const ImportedAliasContext = model.ImportedAliasContext;
+const StringDataContext = context.StringDataContext;
+const ExprCallHead = model.ExprCallHead;
+const STORAGE_OVERWRITE_TMP_LOCAL = constants.STORAGE_OVERWRITE_TMP_LOCAL;
+const STORAGE_WRITE_INDEX_TMP_LOCAL = constants.STORAGE_WRITE_INDEX_TMP_LOCAL;
+const STORAGE_PUT_SOURCE_TMP_LOCAL = constants.STORAGE_PUT_SOURCE_TMP_LOCAL;
+const STORAGE_WRITE_LEN_TMP_LOCAL = constants.STORAGE_WRITE_LEN_TMP_LOCAL;
+const STORAGE_WRITE_SCAN_TMP_LOCAL = constants.STORAGE_WRITE_SCAN_TMP_LOCAL;
+const STORAGE_WRITE_TARGET_TMP_LOCAL = constants.STORAGE_WRITE_TARGET_TMP_LOCAL;
+const STORAGE_WRITE_NEXT_TMP_LOCAL = constants.STORAGE_WRITE_NEXT_TMP_LOCAL;
+const TUPLE_PACK_BASE_TMP_LOCAL = constants.TUPLE_PACK_BASE_TMP_LOCAL;
+const STRUCT_LITERAL_TMP_LOCAL = constants.STRUCT_LITERAL_TMP_LOCAL;
+const STORAGE_PAYLOAD_HEADER_BYTES = constants.STORAGE_PAYLOAD_HEADER_BYTES;
+const TYPE_ID_STORAGE_U8 = constants.TYPE_ID_STORAGE_U8;
+const TYPE_ID_STORAGE_MANAGED = constants.TYPE_ID_STORAGE_MANAGED;
+const TYPE_ID_FIRST_STRUCT = constants.TYPE_ID_FIRST_STRUCT;
+const findLocalType = context.findLocalType;
+const findLocalOrigin = context.findLocalOrigin;
+const findStorageLocal = context.findStorageLocal;
+const findStructLocal = context.findStructLocal;
+const findUnionLocal = context.findUnionLocal;
+const hasLocal = context.hasLocal;
+const isCompilerLocalName = context.isCompilerLocalName;
+const storageTypeNameForElem = context.storageTypeNameForElem;
+const storageTypeNameForElemOwned = context.storageTypeNameForElemOwned;
+const localNameMatches = context.localNameMatches;
+const unionPayloadLocalName = context.unionPayloadLocalName;
+const unionTagLocalName = context.unionTagLocalName;
 
 const UnionLayout = codegen_union_layout.UnionLayout;
 const UnionBranch = codegen_union_layout.UnionBranch;
@@ -220,14 +222,6 @@ const hostArgCouldBeStoragePtrLenSyntax = gen_host.hostArgCouldBeStoragePtrLenSy
 const findHostImportForTokens = gen_host.findHostImportForTokens;
 
 const WasiHostImport = codegen_wasi_registry.WasiHostImport;
-
-
-
-
-
-
-
-
 
 const gen_storage = @import("gen_storage.zig");
 const gen_struct = @import("gen_struct.zig");
@@ -473,14 +467,6 @@ const applyCollectGuardReturnNarrowing = gen_struct.applyCollectGuardReturnNarro
 const mergeReturnCleanupLocals = gen_struct.mergeReturnCleanupLocals;
 const fieldReflectionScopedCleanupLocalSet = gen_struct.fieldReflectionScopedCleanupLocalSet;
 
-
-
-
-
-
-
-
-
 pub const emitWasiResultReadValues = gen_wasi_emit.emitWasiResultReadValues;
 pub const emitWasiResultListU8Values = gen_wasi_emit.emitWasiResultListU8Values;
 pub const emitWasiResultDescriptorValues = gen_wasi_emit.emitWasiResultDescriptorValues;
@@ -491,29 +477,7 @@ pub const valueEnumCarrier = gen_wasi_emit.valueEnumCarrier;
 pub const codegenScalarType = gen_wasi_emit.codegenScalarType;
 // re-export gen_struct
 
-
-
-
-
-
-
-
-
-
-
-
-pub fn emitUnionReturn(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    layout: UnionLayout,
-    move_names: *std.ArrayList([]const u8),
-    defer_ctx: ?*const DeferContext,
-    out: *std.ArrayList(u8)
-) CodegenError!bool {
+pub fn emitUnionReturn(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, layout: UnionLayout, move_names: *std.ArrayList([]const u8), defer_ctx: ?*const DeferContext, out: *std.ArrayList(u8)) CodegenError!bool {
     if (start_idx + 1 >= end_idx) return error.NoMatchingCall;
     const expr_start = start_idx + 1;
     const expr_end = end_idx;
@@ -526,9 +490,6 @@ pub fn emitUnionReturn(
     };
     return try emitUnionValue(allocator, tokens, expr_start, expr_end, locals, ctx, layout, false, &move_ctx, out);
 }
-
-
-
 
 fn emitUnionValueFromUserFunc(
     allocator: std.mem.Allocator,
@@ -665,19 +626,7 @@ pub fn emitUnionValue(
     return false;
 }
 
-
-
-
-pub fn emitUnionFieldGetValue(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    layout: UnionLayout,
-    copy_managed: bool,
-    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitUnionFieldGetValue(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, layout: UnionLayout, copy_managed: bool, out: *std.ArrayList(u8)) CodegenError!bool {
     const first_end = findArgEnd(tokens, start_idx, end_idx);
     if (first_end != start_idx + 1 or tokens[start_idx].kind != .ident) return false;
     if (first_end >= end_idx or !tokEq(tokens[first_end], ",")) return false;
@@ -716,21 +665,7 @@ pub fn emitUnionFieldGetValue(
     return true;
 }
 
-
-
-
-pub fn emitUnionBranchValue(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    layout: UnionLayout,
-    branch: UnionBranch,
-    copy_managed: bool,
-    out: *std.ArrayList(u8)
-) CodegenError!bool {
+pub fn emitUnionBranchValue(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, layout: UnionLayout, branch: UnionBranch, copy_managed: bool, out: *std.ArrayList(u8)) CodegenError!bool {
     const range = trimParens(tokens, start_idx, end_idx);
 
     // Payload-enum unit case: bare case name `Quit`.
@@ -827,9 +762,6 @@ fn emitPayloadEnumCtorBranch(
     return true;
 }
 
-
-
-
 /// Unmanaged pure-scalar struct local → expand field locals onto the operand stack.
 fn emitUnmanagedStructLocalAsPayload(
     allocator: std.mem.Allocator,
@@ -852,17 +784,7 @@ fn emitUnmanagedStructLocalAsPayload(
     return true;
 }
 
-pub fn emitUnionBranchPayload(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    branch: UnionBranch,
-    copy_managed: bool,
-    out: *std.ArrayList(u8)
-) CodegenError!bool {
+pub fn emitUnionBranchPayload(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, branch: UnionBranch, copy_managed: bool, out: *std.ArrayList(u8)) CodegenError!bool {
     if (branch.payload_len == 0) return false;
     const range = trimParens(tokens, start_idx, end_idx);
     // Payload-enum cases: emit against payload_type when set (case name ≠ payload type).
@@ -879,10 +801,6 @@ pub fn emitUnionBranchPayload(
     return true;
 }
 
-
-
-
-
 pub fn unionLayoutsAbiCompatible(ctx: CodegenContext, a: UnionLayout, b: UnionLayout) bool {
     if (a.branches.len != b.branches.len) return false;
     if (a.payload_tys.len != b.payload_tys.len) return false;
@@ -898,19 +816,7 @@ pub fn unionLayoutsAbiCompatible(ctx: CodegenContext, a: UnionLayout, b: UnionLa
     return true;
 }
 
-
-
-
-
-
-pub fn cloneUnionLayoutSubstituted(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    structs: []const StructDecl,
-    struct_layouts: []const StructLayout,
-    layout: UnionLayout,
-    bindings: []const GenericTypeBinding,
-    owned_types: *std.ArrayList([]const u8)) !UnionLayout {
+pub fn cloneUnionLayoutSubstituted(allocator: std.mem.Allocator, tokens: []const lexer.Token, structs: []const StructDecl, struct_layouts: []const StructLayout, layout: UnionLayout, bindings: []const GenericTypeBinding, owned_types: *std.ArrayList([]const u8)) !UnionLayout {
     var branches = std.ArrayList(UnionBranch).empty;
     errdefer branches.deinit(allocator);
     var payload_tys = std.ArrayList([]const u8).empty;
@@ -945,19 +851,9 @@ pub fn cloneUnionLayoutSubstituted(
     };
 }
 
-
 /// Build UnionLayout for a named payload enum (tags by case order, max payload slots).
 /// Build UnionLayout for a named payload enum (tags by case order, max payload slots).
-
-
-
-pub fn buildPayloadEnumUnionLayout(
-    allocator: std.mem.Allocator,
-    decl: PayloadEnumDecl,
-    tokens: []const lexer.Token,
-    structs: []const StructDecl,
-    struct_layouts: []const StructLayout,
-    owned_types: *std.ArrayList([]const u8)) !UnionLayout {
+pub fn buildPayloadEnumUnionLayout(allocator: std.mem.Allocator, decl: PayloadEnumDecl, tokens: []const lexer.Token, structs: []const StructDecl, struct_layouts: []const StructLayout, owned_types: *std.ArrayList([]const u8)) !UnionLayout {
     // Max payload ABI slot count across cases (overlapping slots from 0).
     var max_slots: usize = 0;
     var case_slot_counts = try allocator.alloc(usize, decl.cases.len);
@@ -1025,9 +921,6 @@ pub fn buildPayloadEnumUnionLayout(
     };
 }
 
-
-
-
 pub fn findUnionBranchByCompatibleType(layout: UnionLayout, ty: []const u8) ?UnionBranch {
     for (layout.branches) |branch| {
         if (codegenTypesCompatible(branch.ty, ty)) return branch;
@@ -1035,19 +928,7 @@ pub fn findUnionBranchByCompatibleType(layout: UnionLayout, ty: []const u8) ?Uni
     return null;
 }
 
-
-
-
-
-pub fn emitUnionStructPayloadForType(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    name: []const u8,
-    ty: []const u8,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    copy_managed: bool,
-    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitUnionStructPayloadForType(allocator: std.mem.Allocator, tokens: []const lexer.Token, name: []const u8, ty: []const u8, locals: *const LocalSet, ctx: CodegenContext, copy_managed: bool, out: *std.ArrayList(u8)) CodegenError!bool {
     if (findNarrowedUnionType(locals.narrowed_union_locals.items, name)) |narrowed_ty| {
         if (!std.mem.eql(u8, narrowed_ty, ty)) return false;
     } else {
@@ -1076,17 +957,7 @@ pub fn emitUnionStructPayloadForType(
     return true;
 }
 
-
-
-
-pub fn emitUnionIsCall(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    args_start: usize,
-    args_end: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitUnionIsCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     const first_end = findArgEnd(tokens, args_start, args_end);
     if (first_end != args_start + 1 or tokens[args_start].kind != .ident) return false;
     if (first_end >= args_end or !tokEq(tokens[first_end], ",")) return false;
@@ -1108,17 +979,7 @@ pub fn emitUnionIsCall(
     return true;
 }
 
-
-
-
-pub fn collectUnionIsTags(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    ctx: CodegenContext,
-    layout: UnionLayout,
-    out: *std.ArrayList(usize)) CodegenError!void {
+pub fn collectUnionIsTags(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext, layout: UnionLayout, out: *std.ArrayList(usize)) CodegenError!void {
     var owned_types = std.ArrayList([]const u8).empty;
     defer {
         for (owned_types.items) |owned| allocator.free(owned);
@@ -1146,19 +1007,7 @@ pub fn collectUnionIsTags(
     _ = ctx;
 }
 
-
-
-
-pub fn emitUnionNilComparison(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    args_start: usize,
-    args_end: usize,
-    move_ctx: ?*const CallLastUseMoveContext,
-    call_name: []const u8,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitUnionNilComparison(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, move_ctx: ?*const CallLastUseMoveContext, call_name: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     const first_end = findArgEnd(tokens, args_start, args_end);
     if (first_end == args_start or first_end >= args_end or !tokEq(tokens[first_end], ",")) return false;
     const second_start = first_end + 1;
@@ -1194,18 +1043,7 @@ pub fn emitUnionNilComparison(
     return true;
 }
 
-
-
-
-pub fn emitUnionExprTagAndDiscardPayload(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    move_ctx: ?*const CallLastUseMoveContext,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitUnionExprTagAndDiscardPayload(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, move_ctx: ?*const CallLastUseMoveContext, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     const range = trimParens(tokens, start_idx, end_idx);
     const call_head = exprCallHead(tokens, range) orelse return false;
     if (call_head.is_intrinsic) return false;
@@ -1228,9 +1066,6 @@ pub fn emitUnionExprTagAndDiscardPayload(
     return true;
 }
 
-
-
-
 pub fn unionPayloadComparisonCallBranch(
     tokens: []const lexer.Token,
     args_start: usize,
@@ -1251,18 +1086,7 @@ pub fn unionPayloadComparisonCallBranch(
     return unionPayloadComparisonBranchForValue(tokens, second_start, second_end, locals, ctx, layout);
 }
 
-
-
-
-pub fn emitUnionErrorBranchComparison(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    args_start: usize,
-    args_end: usize,
-    call_name: []const u8,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitUnionErrorBranchComparison(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, call_name: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     const first_end = findArgEnd(tokens, args_start, args_end);
     if (first_end == args_start or first_end >= args_end or !tokEq(tokens[first_end], ",")) return false;
     const second_start = first_end + 1;
@@ -1293,9 +1117,6 @@ pub fn emitUnionErrorBranchComparison(
     return false;
 }
 
-
-
-
 pub fn errorBranchValueForComparison(
     allocator: std.mem.Allocator,
     ctx: CodegenContext,
@@ -1311,16 +1132,7 @@ pub fn errorBranchValueForComparison(
     return importedErrorBranchValue(allocator, ctx.imported_alias_ctx, tokens, name, error_ty);
 }
 
-
-
-
-pub fn emitUnionLocalPayloadForType(
-    allocator: std.mem.Allocator,
-    name: []const u8,
-    ty: []const u8,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitUnionLocalPayloadForType(allocator: std.mem.Allocator, name: []const u8, ty: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     const union_local = findUnionLocal(locals.union_locals.items, name) orelse return false;
     const narrowed_ty = findNarrowedUnionType(locals.narrowed_union_locals.items, name) orelse
         return error.UnionPayloadRequiresNarrowing;
@@ -1338,7 +1150,7 @@ pub fn emitUnionLocalPayloadForType(
         if (!matches_narrow) continue;
         if (!codegenTypesCompatible(concrete_branch_ty, ty) and !codegenTypesCompatible(branch.ty, ty)) continue;
         if (matched != null) {
-            // Ambiguous (e.g. Text vs Binary both [u8]): require unique match by case... 
+            // Ambiguous (e.g. Text vs Binary both [u8]): require unique match by case...
             // but narrowing stores payload type only. For same-payload cases, any matching branch works
             // for ABI (same slot layout); use first match.
             break;
@@ -1366,10 +1178,6 @@ pub fn emitUnionLocalPayloadForType(
     try appendUnionPayloadLocalGet(allocator, out, union_local.name, branch.payload_start);
     return true;
 }
-
-
-
-
 
 /// Pop ABI union slots from the stack into `union_local` (payloads then tag).
 fn storeUnionLocalFromStack(
@@ -1525,18 +1333,7 @@ pub fn emitUnionBinding(
     return true;
 }
 
-
-
-
-pub fn emitUnionStructFieldGetCall(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    name: []const u8,
-    field_tok: lexer.Token,
-    single_field_arg: bool,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitUnionStructFieldGetCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, name: []const u8, field_tok: lexer.Token, single_field_arg: bool, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     if (!single_field_arg or !isDotIdent(field_tok.lexeme)) return false;
     const union_local = findUnionLocal(locals.union_locals.items, name) orelse return false;
     const payload = unionLocalDefaultStructPayload(tokens, ctx, union_local) orelse return false;
@@ -1572,8 +1369,6 @@ pub fn emitUnionStructFieldGetCall(
     return false;
 }
 
-
-
 pub fn importedErrorBranchValue(
     allocator: std.mem.Allocator,
     imported_alias_ctx: ?ImportedAliasContext,
@@ -1587,17 +1382,7 @@ pub fn importedErrorBranchValue(
     return errorEnumBranchValue(ctx.graph.modules[child_idx].tokens, enum_name, import_ref.target);
 }
 
-
-
-pub fn collectUnionReturnMoveNames(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    layout: UnionLayout,
-    move_names: *std.ArrayList([]const u8)) !void {
+pub fn collectUnionReturnMoveNames(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, layout: UnionLayout, move_names: *std.ArrayList([]const u8)) !void {
     const range = trimParens(tokens, start_idx, end_idx);
     if (range.end != range.start + 1 or tokens[range.start].kind != .ident) return;
     const name = tokens[range.start].lexeme;
@@ -1619,7 +1404,6 @@ pub fn collectUnionReturnMoveNames(
     try move_names.append(allocator, findLocalName(locals.locals.items, name) orelse name);
 }
 
-
 pub fn unionLayoutHasSinglePayloadAbiType(ctx: CodegenContext, layout: UnionLayout, ty: []const u8) bool {
     const target_wasm_ty = codegenWasmType(ctx, ty);
     for (layout.branches) |branch| {
@@ -1629,7 +1413,6 @@ pub fn unionLayoutHasSinglePayloadAbiType(ctx: CodegenContext, layout: UnionLayo
     }
     return false;
 }
-
 
 pub fn unionPayloadComparisonBranchForValue(
     tokens: []const lexer.Token,
@@ -1649,16 +1432,7 @@ pub fn unionPayloadComparisonBranchForValue(
     return null;
 }
 
-
-pub fn emitUnionPayloadComparisonCall(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    args_start: usize,
-    args_end: usize,
-    call_name: []const u8,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitUnionPayloadComparisonCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, call_name: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     const first_end = findArgEnd(tokens, args_start, args_end);
     if (first_end == args_start or first_end >= args_end or !tokEq(tokens[first_end], ",")) return false;
     const second_start = first_end + 1;
@@ -1691,16 +1465,7 @@ pub fn emitUnionPayloadComparisonCall(
     return true;
 }
 
-
-pub fn emitUnionPayloadComparisonLocal(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    args_start: usize,
-    args_end: usize,
-    call_name: []const u8,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitUnionPayloadComparisonLocal(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, call_name: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     const first_end = findArgEnd(tokens, args_start, args_end);
     if (first_end == args_start or first_end >= args_end or !tokEq(tokens[first_end], ",")) return false;
     const second_start = first_end + 1;
@@ -1733,7 +1498,6 @@ pub fn emitUnionPayloadComparisonLocal(
     return true;
 }
 
-
 pub fn unionPayloadComparisonBranchForLocalValue(
     tokens: []const lexer.Token,
     value_start: usize,
@@ -1751,7 +1515,6 @@ pub fn unionPayloadComparisonBranchForLocalValue(
     return null;
 }
 
-
 pub fn unionLocalSingleIdent(
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -1762,7 +1525,6 @@ pub fn unionLocalSingleIdent(
     if (range.end != range.start + 1 or tokens[range.start].kind != .ident) return null;
     return findUnionLocal(locals.union_locals.items, tokens[range.start].lexeme);
 }
-
 
 pub fn findStorageReadableLocalName(
     tokens: []const lexer.Token,
@@ -1787,16 +1549,7 @@ pub fn findStorageReadableLocalName(
     return unionPayloadLocalNameFromLocals(locals.locals.items, union_local.name, branch.payload_start);
 }
 
-
-pub fn emitUnionStoragePayloadGetCall(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    name: []const u8,
-    index_start: usize,
-    index_end: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitUnionStoragePayloadGetCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, name: []const u8, index_start: usize, index_end: usize, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     const ty = findNarrowedUnionType(locals.narrowed_union_locals.items, name) orelse return false;
     const elem_ty = storageElemTypeFromName(ty) orelse return false;
     const elem_bytes = storageElementByteWidthForType(elem_ty, ctx) orelse return false;
@@ -1830,11 +1583,9 @@ pub fn emitUnionStoragePayloadGetCall(
     return true;
 }
 
-
 pub fn isCodegenScalarType(ctx: CodegenContext, ty: []const u8) bool {
     return isCoreWasmScalar(ty) or valueEnumCarrier(ctx, ty) != null;
 }
-
 
 pub fn isUnsignedScalar(ty: []const u8) bool {
     return std.mem.eql(u8, ty, "u8") or
@@ -1843,7 +1594,6 @@ pub fn isUnsignedScalar(ty: []const u8) bool {
         std.mem.eql(u8, ty, "u64") or
         std.mem.eql(u8, ty, "usize");
 }
-
 
 pub fn comparisonWasmOp(name: []const u8, ty: []const u8) ?[]const u8 {
     const wt = wasmType(ty);
@@ -1885,5 +1635,3 @@ pub fn comparisonWasmOp(name: []const u8, ty: []const u8) ?[]const u8 {
     }
     return null;
 }
-
-

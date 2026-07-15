@@ -3,7 +3,7 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 const codegen_tokens = @import("codegen_tokens.zig");
 const codegen_names = @import("codegen_names.zig");
-const gen_types = @import("gen_types.zig");
+const model = @import("codegen_model.zig");
 const gen_collect_util = @import("gen_collect_util.zig");
 const gen_collect_struct = @import("gen_collect_struct.zig");
 const gen_collect_func = @import("gen_collect_func.zig");
@@ -98,4 +98,3 @@ pub const sameCallableSourceName = gen_collect_func.sameCallableSourceName;
 pub const simpleTypeName = gen_collect_func.simpleTypeName;
 pub const structTypeHasManagedLayout = gen_collect_struct.structTypeHasManagedLayout;
 pub const typeParamsAppearInRange = gen_collect_func.typeParamsAppearInRange;
-

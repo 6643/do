@@ -1,172 +1,57 @@
-//! Shared codegen types and LocalSet (no emit).
+//! Mutable codegen collection state and local-name helpers.
 const std = @import("std");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
-const runtime_prelude_wat = @import("runtime_prelude_wat.zig");
-const storage_wat = @import("wat_storage.zig");
 const payload_wat = @import("wat_payload.zig");
 const type_util = @import("type_name.zig");
 const codegen_tokens = @import("codegen_tokens.zig");
-const codegen_names = @import("codegen_names.zig");
 const codegen_union_layout = @import("codegen_union_layout.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
+const model = @import("codegen_model.zig");
+const constants = @import("codegen_constants.zig");
 
 const decodeQuotedStringToken = codegen_tokens.decode_quoted_string_token;
 const freeUnionLayout = codegen_union_layout.free_union_layout;
 const UnionLayout = codegen_union_layout.UnionLayout;
-const UnionBranch = codegen_union_layout.UnionBranch;
 const unionLayoutsEqual = codegen_union_layout.union_layouts_equal;
 const WasiHostImport = codegen_wasi_registry.WasiHostImport;
-
-pub const SourceOrigin = enum {
-    unknown,
-    fresh_local,
-    param_or_import,
-    helper_shared,
-    collection_value,
-    recv_value,
-    loop_source,
-    union_payload,
-    compiler_temp,
-};
-
-pub const Local = struct {
-    name: []const u8,
-    source_name: ?[]const u8 = null,
-    ty: []const u8,
-    origin: SourceOrigin = .unknown,
-    emit_decl: bool = true,
-    release_on_scope_exit: bool = true,
-};
-
-pub const StructField = struct {
-    name: []const u8,
-    ty: []const u8,
-    default_start: ?usize = null,
-    default_end: usize = 0,
-};
-
-pub const StructDecl = struct {
-    name: []const u8,
-    type_params: []const []const u8 = &.{},
-    fields: []const StructField,
-    layout_source: ?[]const u8,
-    owned_types: []const []const u8 = &.{},
-    tokens: []const lexer.Token,
-};
-
-pub const ValueEnumBranch = struct {
-    name: []const u8,
-    value: []const u8,
-};
-
-pub const ValueEnumDecl = struct {
-    name: []const u8,
-    source_name: []const u8,
-    carrier: []const u8,
-    branches: []const ValueEnumBranch,
-    owned_name: bool = false,
-};
-
-/// L1 payload enum: `Message = Quit | Text([u8]) | Binary([u8])`.
-/// Tags are by case name order (0..); payload slots use max-payload overlap.
-pub const PayloadEnumCase = struct {
-    name: []const u8,
-    /// null = unit case (no payload).
-    payload_ty: ?[]const u8,
-};
-
-pub const PayloadEnumDecl = struct {
-    name: []const u8,
-    cases: []const PayloadEnumCase,
-    /// Owned type strings for non-ident payload type exprs (none in L1 simple forms usually).
-    owned_payload_tys: []const []const u8 = &.{},
-    owned_name: bool = false,
-};
-
-pub const ManagedFieldOffset = runtime_prelude_wat.ManagedFieldOffset;
-pub const StructLayout = runtime_prelude_wat.StructLayout;
-
-pub const StructLocal = struct {
-    name: []const u8,
-    source_name: ?[]const u8 = null,
-    ty: []const u8,
-    origin: SourceOrigin = .unknown,
-};
-
-pub const TypedStructBinding = struct {
-    decl: StructDecl,
-    ty: []const u8,
-};
-
-pub const StorageLocal = struct {
-    name: []const u8,
-    source_name: ?[]const u8 = null,
-    ty: []const u8,
-    elem_ty: []const u8,
-    origin: SourceOrigin = .unknown,
-};
-
-
-
-pub const UnionLocal = struct {
-    name: []const u8,
-    source_name: ?[]const u8 = null,
-    layout: UnionLayout,
-    owns_layout: bool = false,
-    origin: SourceOrigin = .unknown,
-};
-
-pub const InferredUnionBinding = struct {
-    layout: UnionLayout,
-    owns_layout: bool,
-};
-
-pub const NarrowedUnionLocal = struct {
-    name: []const u8,
-    source_name: ?[]const u8 = null,
-    ty: []const u8,
-};
-
-pub const FieldMetaLocal = struct {
-    name: []const u8,
-    struct_name: []const u8,
-    decl_index: usize,
-    visible_index: usize,
-};
-
-pub const EmitOptions = struct {
-    component_core: bool = false,
-};
-
-pub const TYPE_ID_STORAGE_U8: usize = storage_wat.TYPE_ID_STORAGE_U8;
-pub const TYPE_ID_STORAGE_MANAGED: usize = storage_wat.TYPE_ID_STORAGE_MANAGED;
-pub const TYPE_ID_FIRST_STRUCT: usize = storage_wat.TYPE_ID_FIRST_STRUCT;
-pub const STORAGE_PAYLOAD_HEADER_BYTES: usize = storage_wat.STORAGE_PAYLOAD_HEADER_BYTES;
-pub const STORAGE_OVERWRITE_TMP_LOCAL = storage_wat.STORAGE_OVERWRITE_TMP_LOCAL;
-pub const WASI_FAMILY_TMP_LOCAL = "__wasi_family_tmp";
-pub const STORAGE_PUT_SOURCE_TMP_LOCAL = "__storage_put_source_tmp";
-pub const VARIADIC_PACK_TMP_LOCAL = "__variadic_pack_tmp";
-pub const STORAGE_WRITE_INDEX_TMP_LOCAL = "__storage_write_index_tmp";
-pub const STORAGE_WRITE_LEN_TMP_LOCAL = "__storage_write_len_tmp";
-pub const STORAGE_WRITE_NEXT_TMP_LOCAL = "__storage_write_next_tmp";
-pub const STORAGE_WRITE_SCAN_TMP_LOCAL = "__storage_write_scan_tmp";
-pub const STORAGE_WRITE_TARGET_TMP_LOCAL = "__storage_write_target_tmp";
-pub const TUPLE_PACK_BASE_TMP_LOCAL = "__tuple_pack_base_tmp";
-pub const TUPLE_PACK_SPILL_I32 = payload_wat.TUPLE_PACK_SPILL_I32;
-pub const TUPLE_PACK_SPILL_I64 = payload_wat.TUPLE_PACK_SPILL_I64;
-pub const TUPLE_PACK_SPILL_F32 = payload_wat.TUPLE_PACK_SPILL_F32;
-pub const TUPLE_PACK_SPILL_F64 = payload_wat.TUPLE_PACK_SPILL_F64;
-pub const STRUCT_LITERAL_TMP_LOCAL = "__struct_literal_tmp";
-pub const NUMERIC_SELECT_LEFT_TMP_I32 = "__numeric_select_left_i32";
-pub const NUMERIC_SELECT_RIGHT_TMP_I32 = "__numeric_select_right_i32";
-pub const NUMERIC_SELECT_LEFT_TMP_I64 = "__numeric_select_left_i64";
-pub const NUMERIC_SELECT_RIGHT_TMP_I64 = "__numeric_select_right_i64";
-
-pub const NumericSelectTemps = struct {
-    left: []const u8,
-    right: []const u8,
-};
+const Local = model.Local;
+const StructLocal = model.StructLocal;
+const StorageLocal = model.StorageLocal;
+const UnionLocal = model.UnionLocal;
+const NarrowedUnionLocal = model.NarrowedUnionLocal;
+const FieldMetaLocal = model.FieldMetaLocal;
+const SourceOrigin = model.SourceOrigin;
+const FuncDecl = model.FuncDecl;
+const StructDecl = model.StructDecl;
+const ValueEnumDecl = model.ValueEnumDecl;
+const PayloadEnumDecl = model.PayloadEnumDecl;
+const StructLayout = model.StructLayout;
+const HostImport = model.HostImport;
+const ImportedAliasContext = model.ImportedAliasContext;
+const GenericTypeBinding = model.GenericTypeBinding;
+const CallbackBinding = model.CallbackBinding;
+const CallbackCallArg = model.CallbackCallArg;
+const StringData = model.StringData;
+const STORAGE_OVERWRITE_TMP_LOCAL = constants.STORAGE_OVERWRITE_TMP_LOCAL;
+const WASI_FAMILY_TMP_LOCAL = constants.WASI_FAMILY_TMP_LOCAL;
+const STORAGE_PUT_SOURCE_TMP_LOCAL = constants.STORAGE_PUT_SOURCE_TMP_LOCAL;
+const VARIADIC_PACK_TMP_LOCAL = constants.VARIADIC_PACK_TMP_LOCAL;
+const STORAGE_WRITE_INDEX_TMP_LOCAL = constants.STORAGE_WRITE_INDEX_TMP_LOCAL;
+const STORAGE_WRITE_LEN_TMP_LOCAL = constants.STORAGE_WRITE_LEN_TMP_LOCAL;
+const STORAGE_WRITE_NEXT_TMP_LOCAL = constants.STORAGE_WRITE_NEXT_TMP_LOCAL;
+const STORAGE_WRITE_SCAN_TMP_LOCAL = constants.STORAGE_WRITE_SCAN_TMP_LOCAL;
+const STORAGE_WRITE_TARGET_TMP_LOCAL = constants.STORAGE_WRITE_TARGET_TMP_LOCAL;
+const TUPLE_PACK_BASE_TMP_LOCAL = constants.TUPLE_PACK_BASE_TMP_LOCAL;
+const TUPLE_PACK_SPILL_I32 = constants.TUPLE_PACK_SPILL_I32;
+const TUPLE_PACK_SPILL_I64 = constants.TUPLE_PACK_SPILL_I64;
+const TUPLE_PACK_SPILL_F32 = constants.TUPLE_PACK_SPILL_F32;
+const TUPLE_PACK_SPILL_F64 = constants.TUPLE_PACK_SPILL_F64;
+const STRUCT_LITERAL_TMP_LOCAL = constants.STRUCT_LITERAL_TMP_LOCAL;
+const NUMERIC_SELECT_LEFT_TMP_I32 = constants.NUMERIC_SELECT_LEFT_TMP_I32;
+const NUMERIC_SELECT_RIGHT_TMP_I32 = constants.NUMERIC_SELECT_RIGHT_TMP_I32;
+const NUMERIC_SELECT_LEFT_TMP_I64 = constants.NUMERIC_SELECT_LEFT_TMP_I64;
+const NUMERIC_SELECT_RIGHT_TMP_I64 = constants.NUMERIC_SELECT_RIGHT_TMP_I64;
 
 pub const LocalSet = struct {
     locals: std.ArrayList(Local) = .empty,
@@ -536,149 +421,6 @@ pub const LocalSet = struct {
 };
 
 pub const EMPTY_LOCAL_SET = LocalSet{};
-
-pub const FuncParam = struct {
-    name: []const u8,
-    ty: []const u8,
-    abi_ty: ?[]const u8 = null,
-    variadic: bool = false,
-    callback: ?OwnedFuncTypeShape = null,
-};
-
-pub const GenericTypeBinding = struct {
-    name: []const u8,
-    ty: []const u8,
-};
-
-pub const FuncTypeShape = struct {
-    param_types: []const ?[]const u8,
-    return_type: ?[]const u8,
-};
-
-pub const OwnedFuncTypeShape = struct {
-    shape: FuncTypeShape,
-    owned: bool,
-};
-
-pub const CallbackBindingKind = enum {
-    lambda,
-    func_ref,
-};
-
-pub const CallbackBinding = struct {
-    param_name: []const u8,
-    shape: FuncTypeShape,
-    kind: CallbackBindingKind,
-    arg_tokens: []const lexer.Token,
-    arg_start: usize,
-    arg_end: usize,
-    lambda_params: []const []const u8 = &.{},
-    body_start: usize = 0,
-    body_end: usize = 0,
-    func_name: ?[]const u8 = null,
-};
-
-pub const LambdaExprShape = struct {
-    open_params: usize,
-    close_params: usize,
-    body_start: usize,
-    body_end: usize,
-    is_block: bool,
-};
-
-pub const CallbackCallArg = struct {
-    source_name: []const u8,
-    actual_name: ?[]const u8 = null,
-    ty: []const u8,
-    expr_tokens: []const lexer.Token,
-    expr_start: usize,
-    expr_end: usize,
-};
-
-pub const FuncDecl = struct {
-    name: []const u8,
-    source_name: []const u8 = "",
-    params: []const FuncParam,
-    result: ?[]const u8,
-    results: []const []const u8,
-    result_items: []const FuncResultItem,
-    result_struct: ?[]const u8,
-    result_union: ?UnionLayout,
-    type_params: []const []const u8 = &.{},
-    type_bindings: []const GenericTypeBinding = &.{},
-    callback_bindings: []const CallbackBinding = &.{},
-    is_generic_template: bool = false,
-    owned_name: bool = false,
-    owned_types: []const []const u8 = &.{},
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    arrow: bool,
-    body_start: usize,
-    body_end: usize,
-};
-
-pub const FuncResultParse = struct {
-    types: []const []const u8,
-    items: []const FuncResultItem = &.{},
-    owns_items: bool = true,
-    result_struct: ?[]const u8 = null,
-    result_union: ?UnionLayout = null,
-};
-
-pub const FuncResultItem = struct {
-    ty: []const u8,
-    abi_start: usize,
-    abi_len: usize,
-    union_layout: ?UnionLayout = null,
-};
-
-pub const MultiResultLhsKind = enum {
-    scalar,
-    managed,
-    union_value,
-    unmanaged_struct,
-};
-
-pub const MultiResultLhs = struct {
-    name: []const u8,
-    ty: []const u8,
-    item: FuncResultItem,
-    kind: MultiResultLhsKind,
-};
-
-pub const NO_RESULT_ITEMS: []const FuncResultItem = &.{};
-
-pub const ParsedCodegenType = struct {
-    ty: []const u8,
-    next_idx: usize,
-};
-
-pub const StructFieldAbiSlot = struct {
-    name_suffix: []const u8,
-    ty: []const u8,
-    offset: usize,
-    managed: bool,
-};
-
-pub const FuncBodyShape = struct {
-    result_start: usize,
-    result_end: usize,
-    body_start: usize,
-    body_end: usize,
-    arrow: bool,
-    next_idx: usize,
-};
-
-pub const StructErrorResult = struct {
-    struct_name: []const u8,
-    error_name: []const u8,
-};
-
-pub const ImportedAliasContext = struct {
-    graph: *const imports.ModuleGraph,
-    module_idx: usize,
-};
-
 pub const CodegenContext = struct {
     functions: []const FuncDecl,
     structs: []const StructDecl,
@@ -758,22 +500,6 @@ pub const FieldReflectionIfParts = struct {
     else_end: usize = 0,
 };
 
-pub const UnionStructPayload = struct {
-    branch: UnionBranch,
-    decl: StructDecl,
-};
-
-pub const NilComparisonNarrowing = struct {
-    union_local: UnionLocal,
-    payload_ty: []const u8,
-    non_nil_when_true: bool,
-};
-
-pub const IsComparisonNarrowing = struct {
-    union_local: UnionLocal,
-    payload_ty: []const u8,
-};
-
 pub const DeferContext = struct {
     parent: ?*const DeferContext,
     start_idx: usize,
@@ -791,48 +517,6 @@ pub const DeferItem = struct {
     start_idx: usize,
     end_idx: usize,
 };
-
-pub const CodegenError = anyerror;
-
-pub const HostImport = struct {
-    alias: []const u8,
-    source_alias: []const u8,
-    field: []const u8,
-    params: []const []const u8,
-    result: ?[]const u8,
-    tokens: []const lexer.Token,
-    owned_alias: bool = false,
-};
-
-
-
-
-
-pub const CodegenImportPrefix = enum {
-    local,
-    dep,
-    std,
-};
-
-pub const CodegenImportRef = struct {
-    alias: []const u8,
-    target: []const u8,
-    file_path: []const u8,
-    prefix: CodegenImportPrefix,
-};
-
-pub const ImportedScalarConst = struct {
-    ty: []const u8,
-    value: []const u8,
-};
-
-pub const ReachVisit = struct {
-    module_idx: usize,
-    name: []const u8,
-    call_idx: ?usize = null,
-};
-
-pub const StringData = runtime_prelude_wat.StringData;
 
 pub const StringDataContext = struct {
     items: std.ArrayList(StringData) = .empty,
@@ -1018,112 +702,15 @@ pub fn findUnionLocal(locals: []const UnionLocal, name: []const u8) ?UnionLocal 
     return null;
 }
 
-
 pub fn localNameMatches(name: []const u8, source_name: ?[]const u8, needle: []const u8) bool {
     if (std.mem.eql(u8, name, needle)) return true;
     if (source_name) |source| return std.mem.eql(u8, source, needle);
     return false;
 }
 
-
 pub fn loopSourceLocalName(allocator: std.mem.Allocator, loop_id: usize) ![]u8 {
     return try std.fmt.allocPrint(allocator, "__loop_source_{d}", .{loop_id});
 }
-
-// Call-site head parsed from tokens (shared by lower/import).
-pub const ExprCallHead = struct {
-    name_idx: usize,
-    type_args_start: usize = 0,
-    type_args_end: usize = 0,
-    args_start: usize,
-    args_end: usize,
-    is_intrinsic: bool,
-};
-
-// --- free helpers for owned decl/layout slices ---
-
-pub fn freeCallbackBindings(allocator: std.mem.Allocator, bindings: []const CallbackBinding) void {
-    for (bindings) |binding| {
-        if (binding.lambda_params.len != 0) allocator.free(binding.lambda_params);
-    }
-    allocator.free(bindings);
-}
-
-pub fn freeStructDecls(allocator: std.mem.Allocator, structs: []const StructDecl) void {
-    for (structs) |decl| {
-        freeStructDecl(allocator, decl);
-    }
-}
-
-pub fn freeStructDecl(allocator: std.mem.Allocator, decl: StructDecl) void {
-    if (decl.type_params.len != 0) allocator.free(decl.type_params);
-    for (decl.owned_types) |owned| {
-        allocator.free(owned);
-    }
-    if (decl.owned_types.len != 0) allocator.free(decl.owned_types);
-    allocator.free(decl.fields);
-}
-
-pub fn freeValueEnumDecls(allocator: std.mem.Allocator, value_enums: []const ValueEnumDecl) void {
-    for (value_enums) |decl| {
-        if (decl.owned_name) allocator.free(decl.name);
-        allocator.free(decl.branches);
-    }
-}
-
-pub fn freePayloadEnumDecls(allocator: std.mem.Allocator, payload_enums: []const PayloadEnumDecl) void {
-    for (payload_enums) |decl| {
-        if (decl.owned_name) allocator.free(decl.name);
-        for (decl.owned_payload_tys) |owned| allocator.free(owned);
-        if (decl.owned_payload_tys.len != 0) allocator.free(decl.owned_payload_tys);
-        allocator.free(decl.cases);
-    }
-}
-
-pub fn freeStructLayouts(allocator: std.mem.Allocator, layouts: []const StructLayout) void {
-    for (layouts) |layout| {
-        if (layout.owned_name) allocator.free(layout.name);
-        allocator.free(layout.managed_fields);
-    }
-}
-
-pub fn freeFuncParams(allocator: std.mem.Allocator, params: []const FuncParam) void {
-    for (params) |param| {
-        if (param.callback) |callback| {
-            if (callback.owned) allocator.free(callback.shape.param_types);
-        }
-    }
-    allocator.free(params);
-}
-
-pub fn freeFuncDecls(allocator: std.mem.Allocator, funcs: []const FuncDecl) void {
-    for (funcs) |func| {
-        if (func.owned_name) allocator.free(func.name);
-        if (func.type_params.len != 0) allocator.free(func.type_params);
-        if (func.type_bindings.len != 0) allocator.free(func.type_bindings);
-        if (func.callback_bindings.len != 0) freeCallbackBindings(allocator, func.callback_bindings);
-        freeFuncResultItems(allocator, func.result_items, func.result_union);
-        for (func.owned_types) |owned| {
-            allocator.free(owned);
-        }
-        if (func.owned_types.len != 0) allocator.free(func.owned_types);
-        freeFuncParams(allocator, func.params);
-        allocator.free(func.results);
-    }
-}
-
-pub fn freeFuncResultItems(allocator: std.mem.Allocator, items: []const FuncResultItem, result_union: ?UnionLayout) void {
-    for (items) |item| {
-        const layout = item.union_layout orelse continue;
-        if (result_union) |single_layout| {
-            if (unionLayoutsEqual(layout, single_layout)) continue;
-        }
-        freeUnionLayout(allocator, layout);
-    }
-    if (result_union) |layout| freeUnionLayout(allocator, layout);
-    allocator.free(items);
-}
-
 // moved from gen_lower for domain share
 pub const CallLastUseMoveContext = struct {
     body_start: usize = 0,
@@ -1139,4 +726,3 @@ pub const LastUseManagedMoveSource = struct {
     actual_name: []const u8,
     origin: SourceOrigin,
 };
-

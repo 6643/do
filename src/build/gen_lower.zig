@@ -16,66 +16,68 @@ const codegen_tokens = @import("codegen_tokens.zig");
 const codegen_names = @import("codegen_names.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
 const codegen_union_layout = @import("codegen_union_layout.zig");
-const gen_types = @import("gen_types.zig");
+const model = @import("codegen_model.zig");
+const constants = @import("codegen_constants.zig");
+const context = @import("codegen_context.zig");
 
-const LocalSet = gen_types.LocalSet;
-const ValueEnumBranch = gen_types.ValueEnumBranch;
-const PayloadEnumCase = gen_types.PayloadEnumCase;
-const ManagedFieldOffset = gen_types.ManagedFieldOffset;
-const TypedStructBinding = gen_types.TypedStructBinding;
-const InferredUnionBinding = gen_types.InferredUnionBinding;
-const TYPE_ID_STORAGE_U8 = gen_types.TYPE_ID_STORAGE_U8;
-const TYPE_ID_STORAGE_MANAGED = gen_types.TYPE_ID_STORAGE_MANAGED;
-const TYPE_ID_FIRST_STRUCT = gen_types.TYPE_ID_FIRST_STRUCT;
-const STORAGE_PAYLOAD_HEADER_BYTES = gen_types.STORAGE_PAYLOAD_HEADER_BYTES;
-const STORAGE_PUT_SOURCE_TMP_LOCAL = gen_types.STORAGE_PUT_SOURCE_TMP_LOCAL;
-const VARIADIC_PACK_TMP_LOCAL = gen_types.VARIADIC_PACK_TMP_LOCAL;
-const STORAGE_WRITE_INDEX_TMP_LOCAL = gen_types.STORAGE_WRITE_INDEX_TMP_LOCAL;
-const STORAGE_WRITE_LEN_TMP_LOCAL = gen_types.STORAGE_WRITE_LEN_TMP_LOCAL;
-const STORAGE_WRITE_NEXT_TMP_LOCAL = gen_types.STORAGE_WRITE_NEXT_TMP_LOCAL;
-const STORAGE_WRITE_SCAN_TMP_LOCAL = gen_types.STORAGE_WRITE_SCAN_TMP_LOCAL;
-const STORAGE_WRITE_TARGET_TMP_LOCAL = gen_types.STORAGE_WRITE_TARGET_TMP_LOCAL;
-const TUPLE_PACK_BASE_TMP_LOCAL = gen_types.TUPLE_PACK_BASE_TMP_LOCAL;
-const TUPLE_PACK_SPILL_I32 = gen_types.TUPLE_PACK_SPILL_I32;
-const TUPLE_PACK_SPILL_I64 = gen_types.TUPLE_PACK_SPILL_I64;
-const TUPLE_PACK_SPILL_F32 = gen_types.TUPLE_PACK_SPILL_F32;
-const TUPLE_PACK_SPILL_F64 = gen_types.TUPLE_PACK_SPILL_F64;
-const NUMERIC_SELECT_LEFT_TMP_I32 = gen_types.NUMERIC_SELECT_LEFT_TMP_I32;
-const NUMERIC_SELECT_RIGHT_TMP_I32 = gen_types.NUMERIC_SELECT_RIGHT_TMP_I32;
-const NUMERIC_SELECT_LEFT_TMP_I64 = gen_types.NUMERIC_SELECT_LEFT_TMP_I64;
-const NUMERIC_SELECT_RIGHT_TMP_I64 = gen_types.NUMERIC_SELECT_RIGHT_TMP_I64;
-const EMPTY_LOCAL_SET = gen_types.EMPTY_LOCAL_SET;
-const OwnedFuncTypeShape = gen_types.OwnedFuncTypeShape;
-const CallbackBindingKind = gen_types.CallbackBindingKind;
-const FuncResultParse = gen_types.FuncResultParse;
-const MultiResultLhsKind = gen_types.MultiResultLhsKind;
-const NO_RESULT_ITEMS = gen_types.NO_RESULT_ITEMS;
-const ParsedCodegenType = gen_types.ParsedCodegenType;
-const StructFieldAbiSlot = gen_types.StructFieldAbiSlot;
-const FuncBodyShape = gen_types.FuncBodyShape;
-const StructErrorResult = gen_types.StructErrorResult;
-const NilComparisonNarrowing = gen_types.NilComparisonNarrowing;
-const IsComparisonNarrowing = gen_types.IsComparisonNarrowing;
-const CodegenImportPrefix = gen_types.CodegenImportPrefix;
-const CodegenImportRef = gen_types.CodegenImportRef;
-const ImportedScalarConst = gen_types.ImportedScalarConst;
-const findStorageLocalOrigin = gen_types.findStorageLocalOrigin;
-const isCompilerLocalName = gen_types.isCompilerLocalName;
-const unionPayloadLocalName = gen_types.unionPayloadLocalName;
-const unionTagLocalName = gen_types.unionTagLocalName;
-const findUnionLocalExact = gen_types.findUnionLocalExact;
-const appendLoopSourceStorageLocal = gen_types.appendLoopSourceStorageLocal;
-const localNameMatches = gen_types.localNameMatches;
-const loopSourceLocalName = gen_types.loopSourceLocalName;
-const freeCallbackBindings = gen_types.freeCallbackBindings;
-pub const freeStructDecls = gen_types.freeStructDecls;
-const freeStructDecl = gen_types.freeStructDecl;
-const freeValueEnumDecls = gen_types.freeValueEnumDecls;
-const freePayloadEnumDecls = gen_types.freePayloadEnumDecls;
-pub const freeStructLayouts = gen_types.freeStructLayouts;
-pub const freeFuncParams = gen_types.freeFuncParams;
-pub const freeFuncDecls = gen_types.freeFuncDecls;
-const freeFuncResultItems = gen_types.freeFuncResultItems;
+const LocalSet = context.LocalSet;
+const ValueEnumBranch = model.ValueEnumBranch;
+const PayloadEnumCase = model.PayloadEnumCase;
+const ManagedFieldOffset = model.ManagedFieldOffset;
+const TypedStructBinding = model.TypedStructBinding;
+const InferredUnionBinding = model.InferredUnionBinding;
+const TYPE_ID_STORAGE_U8 = constants.TYPE_ID_STORAGE_U8;
+const TYPE_ID_STORAGE_MANAGED = constants.TYPE_ID_STORAGE_MANAGED;
+const TYPE_ID_FIRST_STRUCT = constants.TYPE_ID_FIRST_STRUCT;
+const STORAGE_PAYLOAD_HEADER_BYTES = constants.STORAGE_PAYLOAD_HEADER_BYTES;
+const STORAGE_PUT_SOURCE_TMP_LOCAL = constants.STORAGE_PUT_SOURCE_TMP_LOCAL;
+const VARIADIC_PACK_TMP_LOCAL = constants.VARIADIC_PACK_TMP_LOCAL;
+const STORAGE_WRITE_INDEX_TMP_LOCAL = constants.STORAGE_WRITE_INDEX_TMP_LOCAL;
+const STORAGE_WRITE_LEN_TMP_LOCAL = constants.STORAGE_WRITE_LEN_TMP_LOCAL;
+const STORAGE_WRITE_NEXT_TMP_LOCAL = constants.STORAGE_WRITE_NEXT_TMP_LOCAL;
+const STORAGE_WRITE_SCAN_TMP_LOCAL = constants.STORAGE_WRITE_SCAN_TMP_LOCAL;
+const STORAGE_WRITE_TARGET_TMP_LOCAL = constants.STORAGE_WRITE_TARGET_TMP_LOCAL;
+const TUPLE_PACK_BASE_TMP_LOCAL = constants.TUPLE_PACK_BASE_TMP_LOCAL;
+const TUPLE_PACK_SPILL_I32 = constants.TUPLE_PACK_SPILL_I32;
+const TUPLE_PACK_SPILL_I64 = constants.TUPLE_PACK_SPILL_I64;
+const TUPLE_PACK_SPILL_F32 = constants.TUPLE_PACK_SPILL_F32;
+const TUPLE_PACK_SPILL_F64 = constants.TUPLE_PACK_SPILL_F64;
+const NUMERIC_SELECT_LEFT_TMP_I32 = constants.NUMERIC_SELECT_LEFT_TMP_I32;
+const NUMERIC_SELECT_RIGHT_TMP_I32 = constants.NUMERIC_SELECT_RIGHT_TMP_I32;
+const NUMERIC_SELECT_LEFT_TMP_I64 = constants.NUMERIC_SELECT_LEFT_TMP_I64;
+const NUMERIC_SELECT_RIGHT_TMP_I64 = constants.NUMERIC_SELECT_RIGHT_TMP_I64;
+const EMPTY_LOCAL_SET = context.EMPTY_LOCAL_SET;
+const OwnedFuncTypeShape = model.OwnedFuncTypeShape;
+const CallbackBindingKind = model.CallbackBindingKind;
+const FuncResultParse = model.FuncResultParse;
+const MultiResultLhsKind = model.MultiResultLhsKind;
+const NO_RESULT_ITEMS = model.NO_RESULT_ITEMS;
+const ParsedCodegenType = model.ParsedCodegenType;
+const StructFieldAbiSlot = model.StructFieldAbiSlot;
+const FuncBodyShape = model.FuncBodyShape;
+const StructErrorResult = model.StructErrorResult;
+const NilComparisonNarrowing = model.NilComparisonNarrowing;
+const IsComparisonNarrowing = model.IsComparisonNarrowing;
+const CodegenImportPrefix = model.CodegenImportPrefix;
+const CodegenImportRef = model.CodegenImportRef;
+const ImportedScalarConst = model.ImportedScalarConst;
+const findStorageLocalOrigin = context.findStorageLocalOrigin;
+const isCompilerLocalName = context.isCompilerLocalName;
+const unionPayloadLocalName = context.unionPayloadLocalName;
+const unionTagLocalName = context.unionTagLocalName;
+const findUnionLocalExact = context.findUnionLocalExact;
+const appendLoopSourceStorageLocal = context.appendLoopSourceStorageLocal;
+const localNameMatches = context.localNameMatches;
+const loopSourceLocalName = context.loopSourceLocalName;
+const freeCallbackBindings = model.freeCallbackBindings;
+pub const freeStructDecls = model.freeStructDecls;
+const freeStructDecl = model.freeStructDecl;
+const freeValueEnumDecls = model.freeValueEnumDecls;
+const freePayloadEnumDecls = model.freePayloadEnumDecls;
+pub const freeStructLayouts = model.freeStructLayouts;
+pub const freeFuncParams = model.freeFuncParams;
+pub const freeFuncDecls = model.freeFuncDecls;
+const freeFuncResultItems = model.freeFuncResultItems;
 const freeWasiHostImports = codegen_wasi_registry.free_wasi_host_imports;
 const collectWasiHostImports = codegen_wasi_registry.collect_wasi_host_imports;
 const collectWasiHostImportsFromModules = codegen_wasi_registry.collect_wasi_host_imports_from_modules;
@@ -83,58 +85,58 @@ const wasiLowering = codegen_wasi_registry.wasi_lowering;
 const appendWasiImportSymbol = codegen_wasi_registry.append_wasi_import_symbol;
 const ManagedPayloadBinding = gen_storage.ManagedPayloadBinding;
 const ParsedStorageType = gen_storage.ParsedStorageType;
-const Local = gen_types.Local;
-const CodegenContext = gen_types.CodegenContext;
-const CodegenError = gen_types.CodegenError;
-const EmitOptions = gen_types.EmitOptions;
-const StructDecl = gen_types.StructDecl;
-const StructField = gen_types.StructField;
-const StructLayout = gen_types.StructLayout;
-const StructLocal = gen_types.StructLocal;
-const StorageLocal = gen_types.StorageLocal;
-const UnionLocal = gen_types.UnionLocal;
-const FuncDecl = gen_types.FuncDecl;
-const FuncParam = gen_types.FuncParam;
-const FuncResultItem = gen_types.FuncResultItem;
-const HostImport = gen_types.HostImport;
-const DeferContext = gen_types.DeferContext;
-const DeferItem = gen_types.DeferItem;
-const DeferItemKind = gen_types.DeferItemKind;
-const LoopControl = gen_types.LoopControl;
-const CollectionLoopHeader = gen_types.CollectionLoopHeader;
-const RecvLoopHeader = gen_types.RecvLoopHeader;
-const FieldReflectionLoopHeader = gen_types.FieldReflectionLoopHeader;
-const FieldStaticValue = gen_types.FieldStaticValue;
-const FieldReflectionIfParts = gen_types.FieldReflectionIfParts;
-const FieldMetaLocal = gen_types.FieldMetaLocal;
-const GenericTypeBinding = gen_types.GenericTypeBinding;
-const PayloadEnumDecl = gen_types.PayloadEnumDecl;
-const ValueEnumDecl = gen_types.ValueEnumDecl;
-const CallbackBinding = gen_types.CallbackBinding;
-const CallbackCallArg = gen_types.CallbackCallArg;
-const FuncTypeShape = gen_types.FuncTypeShape;
-const LambdaExprShape = gen_types.LambdaExprShape;
-const NarrowedUnionLocal = gen_types.NarrowedUnionLocal;
-const UnionStructPayload = gen_types.UnionStructPayload;
-const ImportedAliasContext = gen_types.ImportedAliasContext;
-const StringDataContext = gen_types.StringDataContext;
-const StringData = gen_types.StringData;
-const SourceOrigin = gen_types.SourceOrigin;
-const ReachVisit = gen_types.ReachVisit;
-const MultiResultLhs = gen_types.MultiResultLhs;
-const NumericSelectTemps = gen_types.NumericSelectTemps;
-const SelfTailTco = gen_types.SelfTailTco;
-const ExprCallHead = gen_types.ExprCallHead;
-const STORAGE_OVERWRITE_TMP_LOCAL = gen_types.STORAGE_OVERWRITE_TMP_LOCAL;
-const STRUCT_LITERAL_TMP_LOCAL = gen_types.STRUCT_LITERAL_TMP_LOCAL;
-const findLocalType = gen_types.findLocalType;
-const findLocalOrigin = gen_types.findLocalOrigin;
-const findStorageLocal = gen_types.findStorageLocal;
-const findStructLocal = gen_types.findStructLocal;
-const findUnionLocal = gen_types.findUnionLocal;
-const hasLocal = gen_types.hasLocal;
-const storageTypeNameForElem = gen_types.storageTypeNameForElem;
-const storageTypeNameForElemOwned = gen_types.storageTypeNameForElemOwned;
+const Local = model.Local;
+const CodegenContext = context.CodegenContext;
+const CodegenError = model.CodegenError;
+const EmitOptions = model.EmitOptions;
+const StructDecl = model.StructDecl;
+const StructField = model.StructField;
+const StructLayout = model.StructLayout;
+const StructLocal = model.StructLocal;
+const StorageLocal = model.StorageLocal;
+const UnionLocal = model.UnionLocal;
+const FuncDecl = model.FuncDecl;
+const FuncParam = model.FuncParam;
+const FuncResultItem = model.FuncResultItem;
+const HostImport = model.HostImport;
+const DeferContext = context.DeferContext;
+const DeferItem = context.DeferItem;
+const DeferItemKind = context.DeferItemKind;
+const LoopControl = context.LoopControl;
+const CollectionLoopHeader = context.CollectionLoopHeader;
+const RecvLoopHeader = context.RecvLoopHeader;
+const FieldReflectionLoopHeader = context.FieldReflectionLoopHeader;
+const FieldStaticValue = context.FieldStaticValue;
+const FieldReflectionIfParts = context.FieldReflectionIfParts;
+const FieldMetaLocal = model.FieldMetaLocal;
+const GenericTypeBinding = model.GenericTypeBinding;
+const PayloadEnumDecl = model.PayloadEnumDecl;
+const ValueEnumDecl = model.ValueEnumDecl;
+const CallbackBinding = model.CallbackBinding;
+const CallbackCallArg = model.CallbackCallArg;
+const FuncTypeShape = model.FuncTypeShape;
+const LambdaExprShape = model.LambdaExprShape;
+const NarrowedUnionLocal = model.NarrowedUnionLocal;
+const UnionStructPayload = model.UnionStructPayload;
+const ImportedAliasContext = model.ImportedAliasContext;
+const StringDataContext = context.StringDataContext;
+const StringData = model.StringData;
+const SourceOrigin = model.SourceOrigin;
+const ReachVisit = model.ReachVisit;
+const MultiResultLhs = model.MultiResultLhs;
+const NumericSelectTemps = model.NumericSelectTemps;
+const SelfTailTco = context.SelfTailTco;
+const ExprCallHead = model.ExprCallHead;
+const STORAGE_OVERWRITE_TMP_LOCAL = constants.STORAGE_OVERWRITE_TMP_LOCAL;
+const STRUCT_LITERAL_TMP_LOCAL = constants.STRUCT_LITERAL_TMP_LOCAL;
+const findLocalType = context.findLocalType;
+const findLocalOrigin = context.findLocalOrigin;
+const findStorageLocal = context.findStorageLocal;
+const findStructLocal = context.findStructLocal;
+const findUnionLocal = context.findUnionLocal;
+const hasLocal = context.hasLocal;
+const storageTypeNameForElem = context.storageTypeNameForElem;
+const storageTypeNameForElemOwned = context.storageTypeNameForElemOwned;
 
 const UnionLayout = codegen_union_layout.UnionLayout;
 const UnionBranch = codegen_union_layout.UnionBranch;
@@ -166,7 +168,7 @@ const hasString = codegen_names.has_string;
 const findTopLevelTypeSeparator = codegen_tokens.find_top_level_type_separator;
 const findTopLevelTypeSeparatorFrom = codegen_tokens.find_top_level_type_separator_from;
 
-pub const CallLastUseMoveContext = gen_types.CallLastUseMoveContext;
+pub const CallLastUseMoveContext = context.CallLastUseMoveContext;
 const gen_host = @import("gen_host.zig");
 const gen_import = @import("gen_import.zig");
 const gen_collect = @import("gen_collect.zig");
@@ -450,54 +452,53 @@ const findStructLayout = gen_collect.findStructLayout;
 const appendTupleLeafTypes = gen_collect.appendTupleLeafTypes;
 // re-export gen_wasi_emit
 const codegenTypesCompatible = gen_wasi_emit.codegenTypesCompatible;
-pub fn emitWasiResourceDropCall(    allocator: std.mem.Allocator,    tokens: []const lexer.Token,    args_start: usize,    args_end: usize,    locals: *const LocalSet,    ctx: CodegenContext,    import: WasiHostImport,    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitWasiResourceDropCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return gen_wasi_emit.emitWasiResourceDropCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
-pub fn emitWasiListU8ResultCall(    allocator: std.mem.Allocator,    tokens: []const lexer.Token,    args_start: usize,    args_end: usize,    locals: *const LocalSet,    ctx: CodegenContext,    import: WasiHostImport,    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitWasiListU8ResultCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return gen_wasi_emit.emitWasiListU8ResultCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
-pub fn emitWasiResultUnitCall(    allocator: std.mem.Allocator,    tokens: []const lexer.Token,    args_start: usize,    args_end: usize,    locals: *const LocalSet,    ctx: CodegenContext,    import: WasiHostImport,    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitWasiResultUnitCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return gen_wasi_emit.emitWasiResultUnitCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
-pub fn emitWasiResultDescriptorPathCall(    allocator: std.mem.Allocator,    tokens: []const lexer.Token,    args_start: usize,    args_end: usize,    locals: *const LocalSet,    ctx: CodegenContext,    import: WasiHostImport,    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitWasiResultDescriptorPathCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return gen_wasi_emit.emitWasiResultDescriptorPathCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
-pub fn emitWasiResultOutputWriteCall(    allocator: std.mem.Allocator,    tokens: []const lexer.Token,    args_start: usize,    args_end: usize,    locals: *const LocalSet,    ctx: CodegenContext,    import: WasiHostImport,    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitWasiResultOutputWriteCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return gen_wasi_emit.emitWasiResultOutputWriteCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
-pub fn emitWasiResultDescriptorCall(    allocator: std.mem.Allocator,    tokens: []const lexer.Token,    args_start: usize,    args_end: usize,    locals: *const LocalSet,    ctx: CodegenContext,    import: WasiHostImport,    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitWasiResultDescriptorCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return gen_wasi_emit.emitWasiResultDescriptorCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
-pub fn emitWasiDescriptorHandleArg(    allocator: std.mem.Allocator,    tokens: []const lexer.Token,    start_idx: usize,    end_idx: usize,    locals: *const LocalSet,    ctx: CodegenContext,    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitWasiDescriptorHandleArg(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     return gen_wasi_emit.emitWasiDescriptorHandleArg(allocator, tokens, start_idx, end_idx, locals, ctx, out, emitExpr);
 }
 
-pub fn emitWasiResultLinkAtCall(    allocator: std.mem.Allocator,    tokens: []const lexer.Token,    args_start: usize,    args_end: usize,    locals: *const LocalSet,    ctx: CodegenContext,    import: WasiHostImport,    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitWasiResultLinkAtCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return gen_wasi_emit.emitWasiResultLinkAtCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
-pub fn emitWasiResultFilesizeCall(    allocator: std.mem.Allocator,    tokens: []const lexer.Token,    args_start: usize,    args_end: usize,    locals: *const LocalSet,    ctx: CodegenContext,    import: WasiHostImport,    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitWasiResultFilesizeCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return gen_wasi_emit.emitWasiResultFilesizeCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
-pub fn emitWasiResultU64StreamCall(    allocator: std.mem.Allocator,    tokens: []const lexer.Token,    args_start: usize,    args_end: usize,    locals: *const LocalSet,    ctx: CodegenContext,    import: WasiHostImport,    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitWasiResultU64StreamCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return gen_wasi_emit.emitWasiResultU64StreamCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
-pub fn emitWasiResultReadCall(    allocator: std.mem.Allocator,    tokens: []const lexer.Token,    args_start: usize,    args_end: usize,    locals: *const LocalSet,    ctx: CodegenContext,    import: WasiHostImport,    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitWasiResultReadCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return gen_wasi_emit.emitWasiResultReadCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
-pub fn emitWasiResultListU8Call(    allocator: std.mem.Allocator,    tokens: []const lexer.Token,    args_start: usize,    args_end: usize,    locals: *const LocalSet,    ctx: CodegenContext,    import: WasiHostImport,    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitWasiResultListU8Call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
     return gen_wasi_emit.emitWasiResultListU8Call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
-
 
 fn installGenHooks() void {
     gen_hooks.install(gen_expr.emitExpr, gen_expr.emitExprWithMoveContext, gen_expr.emitUserFuncCallWithMoveContext);
@@ -513,22 +514,12 @@ fn installGenHooks() void {
     gen_hooks.installInferGenericCallUnionResult(inferGenericCallUnionResultLayout);
 }
 
-pub fn emitWat(
-    allocator: std.mem.Allocator,
-    program: parser.Program,
-    tokens: []const lexer.Token,
-    module_graph: ?*const imports.ModuleGraph) ![]u8 {
+pub fn emitWat(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph) ![]u8 {
     return emitWatWithOptions(allocator, program, tokens, module_graph, .{});
 }
 
-pub fn emitWatWithOptions(
-    allocator: std.mem.Allocator,
-    program: parser.Program,
-    tokens: []const lexer.Token,
-    module_graph: ?*const imports.ModuleGraph,
-    options: EmitOptions) ![]u8 {
+pub fn emitWatWithOptions(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph, options: EmitOptions) ![]u8 {
     installGenHooks();
-
 
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
@@ -687,13 +678,8 @@ pub fn emitWatWithOptions(
     return out.toOwnedSlice(allocator);
 }
 
-pub fn emitTestWat(
-    allocator: std.mem.Allocator,
-    program: parser.Program,
-    tokens: []const lexer.Token,
-    module_graph: ?*const imports.ModuleGraph) ![]u8 {
+pub fn emitTestWat(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph) ![]u8 {
     installGenHooks();
-
 
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
@@ -858,20 +844,6 @@ pub fn emitTestWat(
     return out.toOwnedSlice(allocator);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 pub fn directManagedLastUseMoveSourceOrigin(
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -885,8 +857,6 @@ pub fn directManagedLastUseMoveSourceOrigin(
     const source = directManagedLastUseMoveSource(tokens, start_idx, end_idx, body_end, target_source_name, locals, ctx, defer_ctx) orelse return null;
     return source.origin;
 }
-
-
 
 pub fn directManagedCallLastUseMoveSourceOrigin(
     tokens: []const lexer.Token,
@@ -916,13 +886,9 @@ pub fn directManagedUnionBindingCallMoveSourceOrigin(
     return source.origin;
 }
 
-
-
 const GenericTypeArgsRange = type_util.GenericTypeArgsRange;
 
-pub fn mangleOverloadedFunctionNames(
-    allocator: std.mem.Allocator,
-    functions: *std.ArrayList(FuncDecl)) !void {
+pub fn mangleOverloadedFunctionNames(allocator: std.mem.Allocator, functions: *std.ArrayList(FuncDecl)) !void {
     for (functions.items, 0..) |func, idx| {
         if (func.is_generic_template) continue;
         if (!functionSourceNameHasMultipleConcreteDecls(functions.items, func.tokens, func.source_name)) continue;
@@ -939,10 +905,7 @@ pub fn mangleOverloadedFunctionNames(
     }
 }
 
-pub fn functionSourceNameHasMultipleConcreteDecls(
-    functions: []const FuncDecl,
-    tokens: []const lexer.Token,
-    source_name: []const u8) bool {
+pub fn functionSourceNameHasMultipleConcreteDecls(functions: []const FuncDecl, tokens: []const lexer.Token, source_name: []const u8) bool {
     var count: usize = 0;
     for (functions) |func| {
         if (func.is_generic_template) continue;
@@ -954,9 +917,7 @@ pub fn functionSourceNameHasMultipleConcreteDecls(
     return false;
 }
 
-pub fn functionSignatureSymbolName(
-    allocator: std.mem.Allocator,
-    func: FuncDecl) ![]u8 {
+pub fn functionSignatureSymbolName(allocator: std.mem.Allocator, func: FuncDecl) ![]u8 {
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
     try out.appendSlice(allocator, func.name);
@@ -972,11 +933,7 @@ pub fn functionSignatureSymbolName(
     return out.toOwnedSlice(allocator);
 }
 
-pub fn isCodegenImportAliasReachable(
-    allocator: std.mem.Allocator,
-    graph: *const imports.ModuleGraph,
-    root_idx: usize,
-    alias: []const u8) !bool {
+pub fn isCodegenImportAliasReachable(allocator: std.mem.Allocator, graph: *const imports.ModuleGraph, root_idx: usize, alias: []const u8) !bool {
     var stack = std.ArrayList(ReachVisit).empty;
     defer stack.deinit(allocator);
 
@@ -1006,58 +963,28 @@ pub fn isCodegenImportAliasReachable(
     return false;
 }
 
-
-
-
-
-
-
-
 pub fn isTypedScalarBinding(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext) bool {
     return typedScalarBindingType(tokens, start_idx, end_idx, ctx) != null;
 }
-
-
 
 pub fn isStorageU8Type(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     const parsed = parseStorageType(tokens, start_idx, end_idx) orelse return false;
     return std.mem.eql(u8, parsed.elem_ty, "u8");
 }
 
-
-
-
-
-
-
-
-
-
-
 pub fn isPackTerminalLeafType(ty: []const u8, structs: []const StructDecl) bool {
     if (type_util.isTuplePackableLeafType(ty)) return true;
     return isPackManagedHandleLeaf(ty, structs);
 }
 
-
 /// Append terminal pack leaf types in order.
 /// Pure-scalar struct fields expand nested; managed-struct slots stay one handle leaf (type name).
 /// Append terminal pack leaf types in order.
 /// Pure-scalar struct fields expand nested; managed-struct slots stay one handle leaf (type name).
-pub fn appendStorePayloadOrTupleFromStack(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    elem_ty: []const u8,
-    base_local: []const u8,
-    indent: []const u8) CodegenError!void {
+pub fn appendStorePayloadOrTupleFromStack(allocator: std.mem.Allocator, out: *std.ArrayList(u8), elem_ty: []const u8, base_local: []const u8, indent: []const u8) CodegenError!void {
     try payload_wat.append_store_payload_or_tuple_from_stack(allocator, out, elem_ty, base_local, indent);
 }
 
-pub fn appendLoadPayloadOrTupleToStack(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    elem_ty: []const u8,
-    base_local: []const u8,
-    indent: []const u8) CodegenError!void {
+pub fn appendLoadPayloadOrTupleToStack(allocator: std.mem.Allocator, out: *std.ArrayList(u8), elem_ty: []const u8, base_local: []const u8, indent: []const u8) CodegenError!void {
     try payload_wat.append_load_payload_or_tuple_to_stack(allocator, out, elem_ty, base_local, indent);
 }

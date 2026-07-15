@@ -5,7 +5,8 @@ const parser = @import("parser.zig");
 const type_util = @import("type_name.zig");
 const codegen_tokens = @import("codegen_tokens.zig");
 const codegen_names = @import("codegen_names.zig");
-const gen_types = @import("gen_types.zig");
+const model = @import("codegen_model.zig");
+const context = @import("codegen_context.zig");
 const gen_collect = @import("gen_collect.zig");
 const gen_import = @import("gen_import.zig");
 const gen_wasi_emit = @import("gen_wasi_emit.zig");
@@ -27,30 +28,30 @@ const test_runner = @import("test_runner.zig");
 const payload_wat = @import("wat_payload.zig");
 const storage_wat = @import("wat_storage.zig");
 
-const LocalSet = gen_types.LocalSet;
-const OwnedFuncTypeShape = gen_types.OwnedFuncTypeShape;
-const FuncResultParse = gen_types.FuncResultParse;
-const freeCallbackBindings = gen_types.freeCallbackBindings;
-pub const freeFuncParams = gen_types.freeFuncParams;
-const freeFuncResultItems = gen_types.freeFuncResultItems;
-const CodegenContext = gen_types.CodegenContext;
-const CodegenError = gen_types.CodegenError;
-const StructDecl = gen_types.StructDecl;
-const StructLayout = gen_types.StructLayout;
-const FuncDecl = gen_types.FuncDecl;
-const FuncParam = gen_types.FuncParam;
-const FuncResultItem = gen_types.FuncResultItem;
-const HostImport = gen_types.HostImport;
-const FieldReflectionLoopHeader = gen_types.FieldReflectionLoopHeader;
-const GenericTypeBinding = gen_types.GenericTypeBinding;
-const PayloadEnumDecl = gen_types.PayloadEnumDecl;
-const ValueEnumDecl = gen_types.ValueEnumDecl;
-const CallbackBinding = gen_types.CallbackBinding;
-const FuncTypeShape = gen_types.FuncTypeShape;
-const ImportedAliasContext = gen_types.ImportedAliasContext;
-const StringDataContext = gen_types.StringDataContext;
-const ExprCallHead = gen_types.ExprCallHead;
-const storageTypeNameForElemOwned = gen_types.storageTypeNameForElemOwned;
+const LocalSet = context.LocalSet;
+const OwnedFuncTypeShape = model.OwnedFuncTypeShape;
+const FuncResultParse = model.FuncResultParse;
+const freeCallbackBindings = model.freeCallbackBindings;
+pub const freeFuncParams = model.freeFuncParams;
+const freeFuncResultItems = model.freeFuncResultItems;
+const CodegenContext = context.CodegenContext;
+const CodegenError = model.CodegenError;
+const StructDecl = model.StructDecl;
+const StructLayout = model.StructLayout;
+const FuncDecl = model.FuncDecl;
+const FuncParam = model.FuncParam;
+const FuncResultItem = model.FuncResultItem;
+const HostImport = model.HostImport;
+const FieldReflectionLoopHeader = context.FieldReflectionLoopHeader;
+const GenericTypeBinding = model.GenericTypeBinding;
+const PayloadEnumDecl = model.PayloadEnumDecl;
+const ValueEnumDecl = model.ValueEnumDecl;
+const CallbackBinding = model.CallbackBinding;
+const FuncTypeShape = model.FuncTypeShape;
+const ImportedAliasContext = model.ImportedAliasContext;
+const StringDataContext = context.StringDataContext;
+const ExprCallHead = model.ExprCallHead;
+const storageTypeNameForElemOwned = context.storageTypeNameForElemOwned;
 const UnionLayout = codegen_union_layout.UnionLayout;
 const freeUnionLayout = codegen_union_layout.free_union_layout;
 const WasiHostImport = codegen_wasi_registry.WasiHostImport;
@@ -124,11 +125,7 @@ const appendTupleLeafTypes = gen_collect.appendTupleLeafTypes;
 const codegenTypesCompatible = gen_wasi_emit.codegenTypesCompatible;
 const collectBodyLocals = gen_expr.collectBodyLocals;
 
-pub fn parseLambdaParamNames(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize) ![]const []const u8 {
+pub fn parseLambdaParamNames(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ![]const []const u8 {
     var out = std.ArrayList([]const u8).empty;
     errdefer out.deinit(allocator);
 
@@ -145,12 +142,7 @@ pub fn parseLambdaParamNames(
     return out.toOwnedSlice(allocator);
 }
 
-
-pub fn parseLambdaParamTypes(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize) ![]?[]const u8 {
+pub fn parseLambdaParamTypes(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ![]?[]const u8 {
     var out = std.ArrayList(?[]const u8).empty;
     errdefer out.deinit(allocator);
 
@@ -166,7 +158,6 @@ pub fn parseLambdaParamTypes(
     return out.toOwnedSlice(allocator);
 }
 
-
 pub fn explicitLambdaTypesMatch(target_types: []const ?[]const u8, lambda_types: []const ?[]const u8) bool {
     if (target_types.len != lambda_types.len) return false;
     for (lambda_types, 0..) |lambda_type, idx| {
@@ -177,20 +168,7 @@ pub fn explicitLambdaTypesMatch(target_types: []const ?[]const u8, lambda_types:
     return true;
 }
 
-
-pub fn collectGenericFuncInstancesForStart(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    structs: []const StructDecl,
-    value_enums: []const ValueEnumDecl,
-    payload_enums: []const PayloadEnumDecl,
-    struct_layouts: []const StructLayout,
-    host_imports: []const HostImport,
-    wasi_imports: []const WasiHostImport,
-    string_data: *const StringDataContext,
-    modules: []const imports.ModuleRecord,
-    imported_alias_ctx: ?ImportedAliasContext,
-    functions: *std.ArrayList(FuncDecl)) !void {
+pub fn collectGenericFuncInstancesForStart(allocator: std.mem.Allocator, tokens: []const lexer.Token, structs: []const StructDecl, value_enums: []const ValueEnumDecl, payload_enums: []const PayloadEnumDecl, struct_layouts: []const StructLayout, host_imports: []const HostImport, wasi_imports: []const WasiHostImport, string_data: *const StringDataContext, modules: []const imports.ModuleRecord, imported_alias_ctx: ?ImportedAliasContext, functions: *std.ArrayList(FuncDecl)) !void {
     if (findStartFunc(tokens)) |idx| {
         try collectGenericFuncInstancesInStartBody(
             allocator,
@@ -210,7 +188,6 @@ pub fn collectGenericFuncInstancesForStart(
     }
     try collectGenericFuncInstancesForConcreteFuncs(allocator, tokens, structs, value_enums, payload_enums, struct_layouts, host_imports, wasi_imports, string_data, modules, imported_alias_ctx, functions);
 }
-
 
 pub fn collectGenericFuncInstancesInStartBody(
     allocator: std.mem.Allocator,
@@ -250,21 +227,7 @@ pub fn collectGenericFuncInstancesInStartBody(
     try collectGenericFuncInstancesInRange(allocator, tokens, open_body + 1, body_end, &locals, ctx, functions);
 }
 
-
-pub fn collectGenericFuncInstancesForTests(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    test_decls: []const test_runner.TestDecl,
-    structs: []const StructDecl,
-    value_enums: []const ValueEnumDecl,
-    payload_enums: []const PayloadEnumDecl,
-    struct_layouts: []const StructLayout,
-    host_imports: []const HostImport,
-    wasi_imports: []const WasiHostImport,
-    string_data: *const StringDataContext,
-    modules: []const imports.ModuleRecord,
-    imported_alias_ctx: ?ImportedAliasContext,
-    functions: *std.ArrayList(FuncDecl)) !void {
+pub fn collectGenericFuncInstancesForTests(allocator: std.mem.Allocator, tokens: []const lexer.Token, test_decls: []const test_runner.TestDecl, structs: []const StructDecl, value_enums: []const ValueEnumDecl, payload_enums: []const PayloadEnumDecl, struct_layouts: []const StructLayout, host_imports: []const HostImport, wasi_imports: []const WasiHostImport, string_data: *const StringDataContext, modules: []const imports.ModuleRecord, imported_alias_ctx: ?ImportedAliasContext, functions: *std.ArrayList(FuncDecl)) !void {
     for (test_decls) |decl| {
         var locals = LocalSet{};
         defer locals.deinit(allocator);
@@ -287,20 +250,7 @@ pub fn collectGenericFuncInstancesForTests(
     try collectGenericFuncInstancesForConcreteFuncs(allocator, tokens, structs, value_enums, payload_enums, struct_layouts, host_imports, wasi_imports, string_data, modules, imported_alias_ctx, functions);
 }
 
-
-pub fn collectGenericFuncInstancesForConcreteFuncs(
-    allocator: std.mem.Allocator,
-    entry_tokens: []const lexer.Token,
-    structs: []const StructDecl,
-    value_enums: []const ValueEnumDecl,
-    payload_enums: []const PayloadEnumDecl,
-    struct_layouts: []const StructLayout,
-    host_imports: []const HostImport,
-    wasi_imports: []const WasiHostImport,
-    string_data: *const StringDataContext,
-    modules: []const imports.ModuleRecord,
-    imported_alias_ctx: ?ImportedAliasContext,
-    functions: *std.ArrayList(FuncDecl)) !void {
+pub fn collectGenericFuncInstancesForConcreteFuncs(allocator: std.mem.Allocator, entry_tokens: []const lexer.Token, structs: []const StructDecl, value_enums: []const ValueEnumDecl, payload_enums: []const PayloadEnumDecl, struct_layouts: []const StructLayout, host_imports: []const HostImport, wasi_imports: []const WasiHostImport, string_data: *const StringDataContext, modules: []const imports.ModuleRecord, imported_alias_ctx: ?ImportedAliasContext, functions: *std.ArrayList(FuncDecl)) !void {
     var i: usize = 0;
     while (i < functions.items.len) : (i += 1) {
         const func = functions.items[i];
@@ -329,12 +279,7 @@ pub fn collectGenericFuncInstancesForConcreteFuncs(
     }
 }
 
-
-pub fn instantiateCallbackShape(
-    allocator: std.mem.Allocator,
-    param: FuncParam,
-    bindings: []const GenericTypeBinding,
-    owned_types: *std.ArrayList([]const u8)) !?OwnedFuncTypeShape {
+pub fn instantiateCallbackShape(allocator: std.mem.Allocator, param: FuncParam, bindings: []const GenericTypeBinding, owned_types: *std.ArrayList([]const u8)) !?OwnedFuncTypeShape {
     const callback = param.callback orelse return null;
     const param_types = try allocator.alloc(?[]const u8, callback.shape.param_types.len);
     for (callback.shape.param_types, 0..) |param_ty, idx| {
@@ -349,12 +294,7 @@ pub fn instantiateCallbackShape(
     };
 }
 
-
-pub fn instantiateFuncTypeShape(
-    allocator: std.mem.Allocator,
-    shape: FuncTypeShape,
-    bindings: []const GenericTypeBinding,
-    owned_types: *std.ArrayList([]const u8)) !FuncTypeShape {
+pub fn instantiateFuncTypeShape(allocator: std.mem.Allocator, shape: FuncTypeShape, bindings: []const GenericTypeBinding, owned_types: *std.ArrayList([]const u8)) !FuncTypeShape {
     const param_types = try allocator.alloc(?[]const u8, shape.param_types.len);
     errdefer allocator.free(param_types);
     for (shape.param_types, 0..) |param_ty, idx| {
@@ -366,13 +306,7 @@ pub fn instantiateFuncTypeShape(
     };
 }
 
-
-pub fn callbackBindingsForCall(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    call_head: ExprCallHead,
-    params: []const FuncParam,
-    ctx: ?CodegenContext) ![]const CallbackBinding {
+pub fn callbackBindingsForCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, call_head: ExprCallHead, params: []const FuncParam, ctx: ?CodegenContext) ![]const CallbackBinding {
     var out = std.ArrayList(CallbackBinding).empty;
     errdefer freeCallbackBindings(allocator, out.items);
 
@@ -395,15 +329,7 @@ pub fn callbackBindingsForCall(
     return out.toOwnedSlice(allocator);
 }
 
-
-pub fn resolveCallbackBindingArg(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    arg_start: usize,
-    arg_end: usize,
-    param_name: []const u8,
-    shape: FuncTypeShape,
-    ctx: ?CodegenContext) !?CallbackBinding {
+pub fn resolveCallbackBindingArg(allocator: std.mem.Allocator, tokens: []const lexer.Token, arg_start: usize, arg_end: usize, param_name: []const u8, shape: FuncTypeShape, ctx: ?CodegenContext) !?CallbackBinding {
     if (lambdaExprShape(tokens, arg_start, arg_end)) |lambda| {
         const lambda_params = try parseLambdaParamNames(allocator, tokens, lambda.open_params + 1, lambda.close_params);
         return .{
@@ -455,8 +381,6 @@ pub fn resolveCallbackBindingArg(
     };
 }
 
-
-
 pub fn cloneFuncParams(allocator: std.mem.Allocator, params: []const FuncParam) ![]const FuncParam {
     var out = std.ArrayList(FuncParam).empty;
     errdefer {
@@ -489,7 +413,6 @@ pub fn cloneFuncParams(allocator: std.mem.Allocator, params: []const FuncParam) 
     }
     return out.toOwnedSlice(allocator);
 }
-
 
 pub fn collectGenericFuncInstancesInRange(
     allocator: std.mem.Allocator,
@@ -548,15 +471,7 @@ pub fn collectGenericFuncInstancesInRange(
     }
 }
 
-
-pub fn collectGenericFuncInstancesInGuardReturn(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *LocalSet,
-    ctx: CodegenContext,
-    functions: *std.ArrayList(FuncDecl)) !void {
+pub fn collectGenericFuncInstancesInGuardReturn(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *LocalSet, ctx: CodegenContext, functions: *std.ArrayList(FuncDecl)) !void {
     const return_idx = findTopLevelToken(tokens, start_idx + 1, end_idx, "return") orelse return;
     try collectGenericFuncInstancesInRange(allocator, tokens, start_idx + 1, return_idx, locals, ctx, functions);
 
@@ -570,29 +485,13 @@ pub fn collectGenericFuncInstancesInGuardReturn(
     try applyCollectGuardReturnNarrowing(allocator, tokens, start_idx, end_idx, locals, ctx);
 }
 
-
-pub fn collectGenericFuncInstancesInGuardLoopControl(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *LocalSet,
-    ctx: CodegenContext,
-    functions: *std.ArrayList(FuncDecl)) !void {
+pub fn collectGenericFuncInstancesInGuardLoopControl(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *LocalSet, ctx: CodegenContext, functions: *std.ArrayList(FuncDecl)) !void {
     const control_idx = findTopLevelGuardLoopControl(tokens, start_idx + 1, end_idx) orelse return;
     try collectGenericFuncInstancesInRange(allocator, tokens, start_idx + 1, control_idx, locals, ctx, functions);
     try applyGuardLoopControlNarrowing(allocator, tokens, start_idx, end_idx, locals, ctx);
 }
 
-
-pub fn collectGenericFuncInstancesInCallArgs(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    args_start: usize,
-    args_end: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    functions: *std.ArrayList(FuncDecl)) !void {
+pub fn collectGenericFuncInstancesInCallArgs(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, functions: *std.ArrayList(FuncDecl)) !void {
     var arg_start = args_start;
     while (arg_start < args_end) {
         const arg_end = findArgEnd(tokens, arg_start, args_end);
@@ -602,7 +501,6 @@ pub fn collectGenericFuncInstancesInCallArgs(
         if (arg_start < args_end and tokEq(tokens[arg_start], ",")) arg_start += 1;
     }
 }
-
 
 pub fn collectGenericFuncInstancesInFieldReflectionLoop(
     allocator: std.mem.Allocator,
@@ -630,14 +528,7 @@ pub fn collectGenericFuncInstancesInFieldReflectionLoop(
     }
 }
 
-
-pub fn directCallExpectedResultType(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    call_start: usize,
-    stmt_end: usize,
-    ctx: CodegenContext,
-    owned_types: *std.ArrayList([]const u8)) CodegenError!?[]const u8 {
+pub fn directCallExpectedResultType(allocator: std.mem.Allocator, tokens: []const lexer.Token, call_start: usize, stmt_end: usize, ctx: CodegenContext, owned_types: *std.ArrayList([]const u8)) CodegenError!?[]const u8 {
     const stmt_start = findLineStart(tokens, call_start);
     const eq_idx = findTopLevelToken(tokens, stmt_start, stmt_end, "=") orelse return null;
     const rhs = trimParens(tokens, eq_idx + 1, stmt_end);
@@ -645,14 +536,7 @@ pub fn directCallExpectedResultType(
     return typedBindingExpectedType(allocator, tokens, stmt_start, eq_idx, ctx, owned_types);
 }
 
-
-pub fn typedBindingExpectedType(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    stmt_start: usize,
-    eq_idx: usize,
-    ctx: CodegenContext,
-    owned_types: *std.ArrayList([]const u8)) CodegenError!?[]const u8 {
+pub fn typedBindingExpectedType(allocator: std.mem.Allocator, tokens: []const lexer.Token, stmt_start: usize, eq_idx: usize, ctx: CodegenContext, owned_types: *std.ArrayList([]const u8)) CodegenError!?[]const u8 {
     if (stmt_start + 2 >= eq_idx) return null;
     if (tokens[stmt_start].kind != .ident) return null;
     const parsed = (try parseFuncParamTypeExpr(allocator, tokens, stmt_start + 1, eq_idx, owned_types)) orelse return null;
@@ -660,16 +544,7 @@ pub fn typedBindingExpectedType(
     return try substituteGenericTypeOwned(allocator, parsed.ty, ctx.type_bindings, owned_types);
 }
 
-
-pub fn collectGenericFuncInstanceForCall(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    call_head: ExprCallHead,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    template: FuncDecl,
-    expected_result_ty: ?[]const u8,
-    functions: *std.ArrayList(FuncDecl)) !void {
+pub fn collectGenericFuncInstanceForCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, call_head: ExprCallHead, locals: *const LocalSet, ctx: CodegenContext, template: FuncDecl, expected_result_ty: ?[]const u8, functions: *std.ArrayList(FuncDecl)) !void {
     var bindings = std.ArrayList(GenericTypeBinding).empty;
     defer bindings.deinit(allocator);
 
@@ -787,13 +662,7 @@ pub fn collectGenericFuncInstanceForCall(
     instance_name_owned = false;
 }
 
-
-pub fn bindGenericExpectedResult(
-    allocator: std.mem.Allocator,
-    template: FuncDecl,
-    expected_result_ty: ?[]const u8,
-    bindings: *std.ArrayList(GenericTypeBinding),
-    owned_types: *std.ArrayList([]const u8)) CodegenError!bool {
+pub fn bindGenericExpectedResult(allocator: std.mem.Allocator, template: FuncDecl, expected_result_ty: ?[]const u8, bindings: *std.ArrayList(GenericTypeBinding), owned_types: *std.ArrayList([]const u8)) CodegenError!bool {
     const expected = expected_result_ty orelse return true;
     const template_result = genericTemplateLogicalResultType(template) orelse return true;
     if (!typeContainsTypeParam(template.type_params, template_result)) {
@@ -802,7 +671,6 @@ pub fn bindGenericExpectedResult(
     return try bindGenericTypeFromConcrete(allocator, template_result, expected, template.type_params, bindings, owned_types);
 }
 
-
 pub fn genericTemplateLogicalResultType(template: FuncDecl) ?[]const u8 {
     if (template.result_union) |layout| return layout.source_ty;
     if (template.result_items.len == 1) return template.result_items[0].ty;
@@ -810,15 +678,7 @@ pub fn genericTemplateLogicalResultType(template: FuncDecl) ?[]const u8 {
     return null;
 }
 
-
-pub fn collectGenericFuncInstancesForCall(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    call_head: ExprCallHead,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    expected_result_ty: ?[]const u8,
-    functions: *std.ArrayList(FuncDecl)) !void {
+pub fn collectGenericFuncInstancesForCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, call_head: ExprCallHead, locals: *const LocalSet, ctx: CodegenContext, expected_result_ty: ?[]const u8, functions: *std.ArrayList(FuncDecl)) !void {
     const name = publicDeclName(tokens[call_head.name_idx].lexeme);
     const initial_len = functions.items.len;
     var idx: usize = 0;
@@ -828,7 +688,6 @@ pub fn collectGenericFuncInstancesForCall(
         try collectGenericFuncInstanceForCall(allocator, tokens, call_head, locals, ctx, template, expected_result_ty, functions);
     }
 }
-
 
 pub fn genericTemplateMatchesCallSite(template: FuncDecl, tokens: []const lexer.Token, ctx: CodegenContext, name: []const u8) bool {
     if (!template.is_generic_template) return false;
@@ -845,14 +704,7 @@ pub fn genericTemplateMatchesCallSite(template: FuncDecl, tokens: []const lexer.
     return sameCallableSourceName(template.source_name, publicDeclName(import_ref.target));
 }
 
-
-pub fn collectConcreteCallbackFuncInstanceForCall(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    call_head: ExprCallHead,
-    ctx: CodegenContext,
-    func: FuncDecl,
-    functions: *std.ArrayList(FuncDecl)) !void {
+pub fn collectConcreteCallbackFuncInstanceForCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, call_head: ExprCallHead, ctx: CodegenContext, func: FuncDecl, functions: *std.ArrayList(FuncDecl)) !void {
     const param_items = try cloneFuncParams(allocator, func.params);
     var param_items_owned = true;
     defer if (param_items_owned) freeFuncParams(allocator, param_items);
@@ -941,12 +793,7 @@ pub fn collectConcreteCallbackFuncInstanceForCall(
     try collectGenericFuncInstancesInRange(allocator, instance.tokens, instance.body_start, instance.body_end, &instance_locals, instance_ctx, functions);
 }
 
-
-pub fn concreteOverloadCoversGenericParams(
-    functions: []const FuncDecl,
-    template: FuncDecl,
-    params: []const FuncParam,
-    callback_bindings: []const CallbackBinding) bool {
+pub fn concreteOverloadCoversGenericParams(functions: []const FuncDecl, template: FuncDecl, params: []const FuncParam, callback_bindings: []const CallbackBinding) bool {
     for (functions) |func| {
         if (func.is_generic_template) continue;
         if (!moduleTokensEqual(func.tokens, template.tokens)) continue;
@@ -966,7 +813,6 @@ pub fn concreteOverloadCoversGenericParams(
     return false;
 }
 
-
 pub fn callbackBindingsHaveSameConcreteArgs(left: []const CallbackBinding, right: []const CallbackBinding) bool {
     if (left.len != right.len) return false;
     for (left, 0..) |left_binding, idx| {
@@ -974,8 +820,6 @@ pub fn callbackBindingsHaveSameConcreteArgs(left: []const CallbackBinding, right
     }
     return true;
 }
-
-
 
 pub fn funcParamsHaveSameConcreteCallShape(left: FuncParam, right: FuncParam) bool {
     if (left.variadic != right.variadic) return false;
@@ -987,12 +831,7 @@ pub fn funcParamsHaveSameConcreteCallShape(left: FuncParam, right: FuncParam) bo
     return std.mem.eql(u8, funcParamAbiType(left), funcParamAbiType(right));
 }
 
-
-pub fn genericOverloadCoversGenericParams(
-    allocator: std.mem.Allocator,
-    functions: []const FuncDecl,
-    template: FuncDecl,
-    param_tys: []const []const u8) !bool {
+pub fn genericOverloadCoversGenericParams(allocator: std.mem.Allocator, functions: []const FuncDecl, template: FuncDecl, param_tys: []const []const u8) !bool {
     const current_specificity = genericTemplateSpecificity(template);
     for (functions) |candidate| {
         if (!candidate.is_generic_template) continue;
@@ -1005,7 +844,6 @@ pub fn genericOverloadCoversGenericParams(
     }
     return false;
 }
-
 
 pub fn genericTemplateSpecificity(template: FuncDecl) usize {
     var score: usize = 0;
@@ -1020,11 +858,7 @@ pub fn genericTemplateSpecificity(template: FuncDecl) usize {
     return score;
 }
 
-
-pub fn genericTemplateMatchesConcreteParams(
-    allocator: std.mem.Allocator,
-    template: FuncDecl,
-    param_tys: []const []const u8) !bool {
+pub fn genericTemplateMatchesConcreteParams(allocator: std.mem.Allocator, template: FuncDecl, param_tys: []const []const u8) !bool {
     var bindings = std.ArrayList(GenericTypeBinding).empty;
     defer bindings.deinit(allocator);
     var owned_types = std.ArrayList([]const u8).empty;
@@ -1047,15 +881,7 @@ pub fn genericTemplateMatchesConcreteParams(
     return genericBindingsCoverTypeParams(template, bindings.items);
 }
 
-
-pub fn instantiateGenericFuncResultItems(
-    allocator: std.mem.Allocator,
-    template: FuncDecl,
-    result_tys: []const []const u8,
-    bindings: []const GenericTypeBinding,
-    structs: []const StructDecl,
-    struct_layouts: []const StructLayout,
-    owned_types: *std.ArrayList([]const u8)) !FuncResultParse {
+pub fn instantiateGenericFuncResultItems(allocator: std.mem.Allocator, template: FuncDecl, result_tys: []const []const u8, bindings: []const GenericTypeBinding, structs: []const StructDecl, struct_layouts: []const StructLayout, owned_types: *std.ArrayList([]const u8)) !FuncResultParse {
     if (template.result_union) |layout| {
         const next_layout = try cloneUnionLayoutSubstituted(
             allocator,
@@ -1142,7 +968,6 @@ pub fn instantiateGenericFuncResultItems(
 }
 
 /// Expand pure-scalar unmanaged struct result into ABI slots. Returns false if not applicable.
-
 /// Expand pure-scalar unmanaged struct result into ABI slots. Returns false if not applicable.
 pub fn appendUnmanagedStructResultAbi(
     allocator: std.mem.Allocator,
@@ -1173,18 +998,7 @@ pub fn appendUnmanagedStructResultAbi(
     return true;
 }
 
-
-pub fn bindGenericFuncCall(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    args_start: usize,
-    args_end: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    template: FuncDecl,
-    bindings: *std.ArrayList(GenericTypeBinding),
-    param_tys: *std.ArrayList([]const u8),
-    owned_types: *std.ArrayList([]const u8)) !bool {
+pub fn bindGenericFuncCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, template: FuncDecl, bindings: *std.ArrayList(GenericTypeBinding), param_tys: *std.ArrayList([]const u8), owned_types: *std.ArrayList([]const u8)) !bool {
     if (!try prebindGenericCallbackArgs(allocator, tokens, args_start, args_end, ctx, template, bindings, owned_types)) {
         return false;
     }
@@ -1267,16 +1081,7 @@ pub fn bindGenericFuncCall(
     return false;
 }
 
-
-pub fn prebindGenericCallbackArgs(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    args_start: usize,
-    args_end: usize,
-    ctx: CodegenContext,
-    template: FuncDecl,
-    bindings: *std.ArrayList(GenericTypeBinding),
-    owned_types: *std.ArrayList([]const u8)) !bool {
+pub fn prebindGenericCallbackArgs(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, ctx: CodegenContext, template: FuncDecl, bindings: *std.ArrayList(GenericTypeBinding), owned_types: *std.ArrayList([]const u8)) !bool {
     var arg_start = args_start;
     var param_idx: usize = 0;
     while (arg_start < args_end and param_idx < template.params.len) {
@@ -1293,7 +1098,6 @@ pub fn prebindGenericCallbackArgs(
     }
     return true;
 }
-
 
 pub fn prebindGenericCallbackArg(
     allocator: std.mem.Allocator,
@@ -1322,7 +1126,6 @@ pub fn prebindGenericCallbackArg(
     );
 }
 
-
 pub fn prebindGenericTypeIfParam(
     allocator: std.mem.Allocator,
     expected_ty: []const u8,
@@ -1334,7 +1137,6 @@ pub fn prebindGenericTypeIfParam(
     if (!typeContainsTypeParam(type_params, expected_ty)) return true;
     return bindGenericTypeFromConcrete(allocator, expected_ty, concrete_ty, type_params, bindings, owned_types);
 }
-
 
 pub fn prebindGenericCallbackLambda(
     allocator: std.mem.Allocator,
@@ -1362,7 +1164,6 @@ pub fn prebindGenericCallbackLambda(
     const lambda_ret = lambdaExplicitReturnType(tokens, lambda) orelse return true;
     return try prebindGenericTypeIfParam(allocator, ret_ty, lambda_ret, template.type_params, bindings, owned_types);
 }
-
 
 pub fn prebindGenericCallbackIdent(
     allocator: std.mem.Allocator,
@@ -1398,7 +1199,6 @@ pub fn prebindGenericCallbackIdent(
     const upstream_ret = binding.shape.return_type orelse return true;
     return try prebindGenericTypeIfParam(allocator, ret_ty, upstream_ret, template.type_params, bindings, owned_types);
 }
-
 
 pub fn prebindGenericCallbackFuncRef(
     allocator: std.mem.Allocator,
@@ -1439,18 +1239,7 @@ pub fn prebindGenericCallbackFuncRef(
     return true;
 }
 
-
-pub fn bindGenericVariadicTail(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    args_start: usize,
-    args_end: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    template: FuncDecl,
-    param_ty: []const u8,
-    bindings: *std.ArrayList(GenericTypeBinding),
-    owned_types: *std.ArrayList([]const u8)) !bool {
+pub fn bindGenericVariadicTail(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, template: FuncDecl, param_ty: []const u8, bindings: *std.ArrayList(GenericTypeBinding), owned_types: *std.ArrayList([]const u8)) !bool {
     if (args_start < args_end and tokEq(tokens[args_start], "...")) {
         const rest_start = args_start + 1;
         if (findArgEnd(tokens, rest_start, args_end) != args_end) return false;
@@ -1481,7 +1270,6 @@ pub fn bindGenericVariadicTail(
     if (typeContainsTypeParam(template.type_params, concrete_ty)) return false;
     return callArgsMatchVariadicTail(tokens, args_start, args_end, locals, ctx, concrete_ty);
 }
-
 
 pub fn bindGenericCallbackArg(
     allocator: std.mem.Allocator,
@@ -1522,7 +1310,6 @@ pub fn bindGenericCallbackArg(
     );
 }
 
-
 pub fn matchOrBindGenericType(
     allocator: std.mem.Allocator,
     shape_ty: []const u8,
@@ -1537,7 +1324,6 @@ pub fn matchOrBindGenericType(
     }
     return bindGenericTypeFromConcrete(allocator, shape_ty, concrete_ty, type_params, bindings, owned_types);
 }
-
 
 pub fn bindGenericCallbackIdentArg(
     allocator: std.mem.Allocator,
@@ -1572,7 +1358,6 @@ pub fn bindGenericCallbackIdentArg(
     const upstream_ret = binding.shape.return_type orelse return false;
     return try matchOrBindGenericType(allocator, ret_ty, upstream_ret, template.type_params, bindings, owned_types);
 }
-
 
 pub fn bindGenericCallbackLambdaArg(
     allocator: std.mem.Allocator,
@@ -1618,7 +1403,6 @@ pub fn bindGenericCallbackLambdaArg(
     return try matchOrBindGenericType(allocator, ret_ty, lambda_ret, template.type_params, bindings, owned_types);
 }
 
-
 pub fn inferUntypedGenericParamAbiType(
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -1631,14 +1415,7 @@ pub fn inferUntypedGenericParamAbiType(
     return inferExprType(tokens, start_idx, end_idx, locals, ctx);
 }
 
-
-pub fn bindExplicitGenericCallTypeArgs(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    call_head: ExprCallHead,
-    template: FuncDecl,
-    bindings: *std.ArrayList(GenericTypeBinding),
-    owned_types: *std.ArrayList([]const u8)) !bool {
+pub fn bindExplicitGenericCallTypeArgs(allocator: std.mem.Allocator, tokens: []const lexer.Token, call_head: ExprCallHead, template: FuncDecl, bindings: *std.ArrayList(GenericTypeBinding), owned_types: *std.ArrayList([]const u8)) !bool {
     if (!callHeadHasTypeArgs(call_head)) return true;
     if (template.type_params.len == 0) return false;
 
@@ -1666,11 +1443,7 @@ pub fn bindExplicitGenericCallTypeArgs(
     return type_idx == template.type_params.len;
 }
 
-
-pub fn cloneGenericTypeBindingsOwned(
-    allocator: std.mem.Allocator,
-    bindings: []const GenericTypeBinding,
-    owned_types: *std.ArrayList([]const u8)) ![]const GenericTypeBinding {
+pub fn cloneGenericTypeBindingsOwned(allocator: std.mem.Allocator, bindings: []const GenericTypeBinding, owned_types: *std.ArrayList([]const u8)) ![]const GenericTypeBinding {
     const out = try allocator.alloc(GenericTypeBinding, bindings.len);
     errdefer allocator.free(out);
     for (bindings, 0..) |binding, idx| {
@@ -1685,15 +1458,12 @@ pub fn cloneGenericTypeBindingsOwned(
     return out;
 }
 
-
 pub fn genericBindingsCoverTypeParams(template: FuncDecl, bindings: []const GenericTypeBinding) bool {
     for (template.type_params) |type_param| {
         if (findGenericBinding(bindings, type_param) == null) return false;
     }
     return true;
 }
-
-
 
 pub fn typeContainsTypeParam(type_params: []const []const u8, ty: []const u8) bool {
     var i: usize = 0;
@@ -1710,14 +1480,7 @@ pub fn typeContainsTypeParam(type_params: []const []const u8, ty: []const u8) bo
     return false;
 }
 
-
-pub fn bindGenericTypeFromConcrete(
-    allocator: std.mem.Allocator,
-    expected_ty: []const u8,
-    actual_ty: []const u8,
-    type_params: []const []const u8,
-    bindings: *std.ArrayList(GenericTypeBinding),
-    owned_types: *std.ArrayList([]const u8)) CodegenError!bool {
+pub fn bindGenericTypeFromConcrete(allocator: std.mem.Allocator, expected_ty: []const u8, actual_ty: []const u8, type_params: []const []const u8, bindings: *std.ArrayList(GenericTypeBinding), owned_types: *std.ArrayList([]const u8)) CodegenError!bool {
     if (try bindGenericTypeListFromConcrete(allocator, expected_ty, actual_ty, '|', type_params, bindings, owned_types)) return true;
 
     if (hasTypeParamName(type_params, expected_ty)) {
@@ -1762,15 +1525,7 @@ pub fn bindGenericTypeFromConcrete(
     );
 }
 
-
-pub fn bindGenericTypeListFromConcrete(
-    allocator: std.mem.Allocator,
-    expected: []const u8,
-    actual: []const u8,
-    sep: u8,
-    type_params: []const []const u8,
-    bindings: *std.ArrayList(GenericTypeBinding),
-    owned_types: *std.ArrayList([]const u8)) CodegenError!bool {
+pub fn bindGenericTypeListFromConcrete(allocator: std.mem.Allocator, expected: []const u8, actual: []const u8, sep: u8, type_params: []const []const u8, bindings: *std.ArrayList(GenericTypeBinding), owned_types: *std.ArrayList([]const u8)) CodegenError!bool {
     if (findTopLevelTypeSeparator(expected, sep) == null and findTopLevelTypeSeparator(actual, sep) == null) return false;
 
     var expected_start: usize = 0;
@@ -1795,16 +1550,7 @@ pub fn bindGenericTypeListFromConcrete(
     }
 }
 
-
-
-
-
-pub fn genericInstanceName(
-    allocator: std.mem.Allocator,
-    template: FuncDecl,
-    bindings: []const GenericTypeBinding,
-    param_tys: []const []const u8,
-    callback_bindings: []const CallbackBinding) ![]u8 {
+pub fn genericInstanceName(allocator: std.mem.Allocator, template: FuncDecl, bindings: []const GenericTypeBinding, param_tys: []const []const u8, callback_bindings: []const CallbackBinding) ![]u8 {
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
     try out.appendSlice(allocator, template.name);
@@ -1826,14 +1572,12 @@ pub fn genericInstanceName(
     return out.toOwnedSlice(allocator);
 }
 
-
 pub fn funcHasUntypedParams(func: FuncDecl) bool {
     for (func.params) |param| {
         if (param.ty.len == 0) return true;
     }
     return false;
 }
-
 
 pub fn findGenericTemplateForCall(functions: []const FuncDecl, tokens: []const lexer.Token, ctx: CodegenContext, name: []const u8) ?FuncDecl {
     for (functions) |func| {
@@ -1855,14 +1599,7 @@ pub fn findGenericTemplateForCall(functions: []const FuncDecl, tokens: []const l
     return null;
 }
 
-
-pub fn inferGenericCallUnionResultLayout(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    call_head: ExprCallHead,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    result_owned_types: *std.ArrayList([]const u8)) CodegenError!?UnionLayout {
+pub fn inferGenericCallUnionResultLayout(allocator: std.mem.Allocator, tokens: []const lexer.Token, call_head: ExprCallHead, locals: *const LocalSet, ctx: CodegenContext, result_owned_types: *std.ArrayList([]const u8)) CodegenError!?UnionLayout {
     const name = publicDeclName(tokens[call_head.name_idx].lexeme);
     for (ctx.functions) |template| {
         if (!genericTemplateMatchesCallSite(template, tokens, ctx, name)) continue;
@@ -1893,10 +1630,3 @@ pub fn inferGenericCallUnionResultLayout(
     }
     return null;
 }
-
-
-
-
-
-
-

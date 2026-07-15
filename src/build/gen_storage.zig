@@ -7,7 +7,9 @@ const payload_wat = @import("wat_payload.zig");
 const storage_wat = @import("wat_storage.zig");
 const codegen_tokens = @import("codegen_tokens.zig");
 const codegen_names = @import("codegen_names.zig");
-const gen_types = @import("gen_types.zig");
+const model = @import("codegen_model.zig");
+const constants = @import("codegen_constants.zig");
+const context = @import("codegen_context.zig");
 const gen_collect = @import("gen_collect.zig");
 const gen_import = @import("gen_import.zig");
 const gen_wasi_emit = @import("gen_wasi_emit.zig");
@@ -74,65 +76,65 @@ const findTopLevelTypeSeparator = codegen_tokens.find_top_level_type_separator;
 const findTopLevelTypeSeparatorFrom = codegen_tokens.find_top_level_type_separator_from;
 const hasString = codegen_names.has_string;
 
-const LocalSet = gen_types.LocalSet;
-const Local = gen_types.Local;
-const CodegenContext = gen_types.CodegenContext;
-const CodegenError = gen_types.CodegenError;
-const StructDecl = gen_types.StructDecl;
-const StructField = gen_types.StructField;
-const StructLayout = gen_types.StructLayout;
-const StructLocal = gen_types.StructLocal;
-const StorageLocal = gen_types.StorageLocal;
-const UnionLocal = gen_types.UnionLocal;
-const FuncDecl = gen_types.FuncDecl;
-const FuncParam = gen_types.FuncParam;
-const FuncResultItem = gen_types.FuncResultItem;
-const HostImport = gen_types.HostImport;
-const DeferContext = gen_types.DeferContext;
-const CallLastUseMoveContext = gen_types.CallLastUseMoveContext;
-const LastUseManagedMoveSource = gen_types.LastUseManagedMoveSource;
-const LoopControl = gen_types.LoopControl;
-const FieldMetaLocal = gen_types.FieldMetaLocal;
-const FieldReflectionLoopHeader = gen_types.FieldReflectionLoopHeader;
-const FieldStaticValue = gen_types.FieldStaticValue;
-const FieldReflectionIfParts = gen_types.FieldReflectionIfParts;
-const GenericTypeBinding = gen_types.GenericTypeBinding;
-const PayloadEnumDecl = gen_types.PayloadEnumDecl;
-const ValueEnumDecl = gen_types.ValueEnumDecl;
-const CallbackBinding = gen_types.CallbackBinding;
-const CallbackCallArg = gen_types.CallbackCallArg;
-const FuncTypeShape = gen_types.FuncTypeShape;
-const LambdaExprShape = gen_types.LambdaExprShape;
-const NarrowedUnionLocal = gen_types.NarrowedUnionLocal;
-const UnionStructPayload = gen_types.UnionStructPayload;
-const ImportedAliasContext = gen_types.ImportedAliasContext;
-const StringDataContext = gen_types.StringDataContext;
-const ExprCallHead = gen_types.ExprCallHead;
-const STORAGE_OVERWRITE_TMP_LOCAL = gen_types.STORAGE_OVERWRITE_TMP_LOCAL;
-const STORAGE_WRITE_INDEX_TMP_LOCAL = gen_types.STORAGE_WRITE_INDEX_TMP_LOCAL;
-const STORAGE_PUT_SOURCE_TMP_LOCAL = gen_types.STORAGE_PUT_SOURCE_TMP_LOCAL;
-const STORAGE_WRITE_LEN_TMP_LOCAL = gen_types.STORAGE_WRITE_LEN_TMP_LOCAL;
-const STORAGE_WRITE_SCAN_TMP_LOCAL = gen_types.STORAGE_WRITE_SCAN_TMP_LOCAL;
-const STORAGE_WRITE_TARGET_TMP_LOCAL = gen_types.STORAGE_WRITE_TARGET_TMP_LOCAL;
-const STORAGE_WRITE_NEXT_TMP_LOCAL = gen_types.STORAGE_WRITE_NEXT_TMP_LOCAL;
-const TUPLE_PACK_BASE_TMP_LOCAL = gen_types.TUPLE_PACK_BASE_TMP_LOCAL;
-const STRUCT_LITERAL_TMP_LOCAL = gen_types.STRUCT_LITERAL_TMP_LOCAL;
-const STORAGE_PAYLOAD_HEADER_BYTES = gen_types.STORAGE_PAYLOAD_HEADER_BYTES;
-const TYPE_ID_STORAGE_U8 = gen_types.TYPE_ID_STORAGE_U8;
-const TYPE_ID_STORAGE_MANAGED = gen_types.TYPE_ID_STORAGE_MANAGED;
-const TYPE_ID_FIRST_STRUCT = gen_types.TYPE_ID_FIRST_STRUCT;
-const findLocalType = gen_types.findLocalType;
-const findLocalOrigin = gen_types.findLocalOrigin;
-const findStorageLocal = gen_types.findStorageLocal;
-const findStructLocal = gen_types.findStructLocal;
-const findUnionLocal = gen_types.findUnionLocal;
-const hasLocal = gen_types.hasLocal;
-const isCompilerLocalName = gen_types.isCompilerLocalName;
-const storageTypeNameForElem = gen_types.storageTypeNameForElem;
-const storageTypeNameForElemOwned = gen_types.storageTypeNameForElemOwned;
-const localNameMatches = gen_types.localNameMatches;
-const unionPayloadLocalName = gen_types.unionPayloadLocalName;
-const unionTagLocalName = gen_types.unionTagLocalName;
+const LocalSet = context.LocalSet;
+const Local = model.Local;
+const CodegenContext = context.CodegenContext;
+const CodegenError = model.CodegenError;
+const StructDecl = model.StructDecl;
+const StructField = model.StructField;
+const StructLayout = model.StructLayout;
+const StructLocal = model.StructLocal;
+const StorageLocal = model.StorageLocal;
+const UnionLocal = model.UnionLocal;
+const FuncDecl = model.FuncDecl;
+const FuncParam = model.FuncParam;
+const FuncResultItem = model.FuncResultItem;
+const HostImport = model.HostImport;
+const DeferContext = context.DeferContext;
+const CallLastUseMoveContext = context.CallLastUseMoveContext;
+const LastUseManagedMoveSource = context.LastUseManagedMoveSource;
+const LoopControl = context.LoopControl;
+const FieldMetaLocal = model.FieldMetaLocal;
+const FieldReflectionLoopHeader = context.FieldReflectionLoopHeader;
+const FieldStaticValue = context.FieldStaticValue;
+const FieldReflectionIfParts = context.FieldReflectionIfParts;
+const GenericTypeBinding = model.GenericTypeBinding;
+const PayloadEnumDecl = model.PayloadEnumDecl;
+const ValueEnumDecl = model.ValueEnumDecl;
+const CallbackBinding = model.CallbackBinding;
+const CallbackCallArg = model.CallbackCallArg;
+const FuncTypeShape = model.FuncTypeShape;
+const LambdaExprShape = model.LambdaExprShape;
+const NarrowedUnionLocal = model.NarrowedUnionLocal;
+const UnionStructPayload = model.UnionStructPayload;
+const ImportedAliasContext = model.ImportedAliasContext;
+const StringDataContext = context.StringDataContext;
+const ExprCallHead = model.ExprCallHead;
+const STORAGE_OVERWRITE_TMP_LOCAL = constants.STORAGE_OVERWRITE_TMP_LOCAL;
+const STORAGE_WRITE_INDEX_TMP_LOCAL = constants.STORAGE_WRITE_INDEX_TMP_LOCAL;
+const STORAGE_PUT_SOURCE_TMP_LOCAL = constants.STORAGE_PUT_SOURCE_TMP_LOCAL;
+const STORAGE_WRITE_LEN_TMP_LOCAL = constants.STORAGE_WRITE_LEN_TMP_LOCAL;
+const STORAGE_WRITE_SCAN_TMP_LOCAL = constants.STORAGE_WRITE_SCAN_TMP_LOCAL;
+const STORAGE_WRITE_TARGET_TMP_LOCAL = constants.STORAGE_WRITE_TARGET_TMP_LOCAL;
+const STORAGE_WRITE_NEXT_TMP_LOCAL = constants.STORAGE_WRITE_NEXT_TMP_LOCAL;
+const TUPLE_PACK_BASE_TMP_LOCAL = constants.TUPLE_PACK_BASE_TMP_LOCAL;
+const STRUCT_LITERAL_TMP_LOCAL = constants.STRUCT_LITERAL_TMP_LOCAL;
+const STORAGE_PAYLOAD_HEADER_BYTES = constants.STORAGE_PAYLOAD_HEADER_BYTES;
+const TYPE_ID_STORAGE_U8 = constants.TYPE_ID_STORAGE_U8;
+const TYPE_ID_STORAGE_MANAGED = constants.TYPE_ID_STORAGE_MANAGED;
+const TYPE_ID_FIRST_STRUCT = constants.TYPE_ID_FIRST_STRUCT;
+const findLocalType = context.findLocalType;
+const findLocalOrigin = context.findLocalOrigin;
+const findStorageLocal = context.findStorageLocal;
+const findStructLocal = context.findStructLocal;
+const findUnionLocal = context.findUnionLocal;
+const hasLocal = context.hasLocal;
+const isCompilerLocalName = context.isCompilerLocalName;
+const storageTypeNameForElem = context.storageTypeNameForElem;
+const storageTypeNameForElemOwned = context.storageTypeNameForElemOwned;
+const localNameMatches = context.localNameMatches;
+const unionPayloadLocalName = context.unionPayloadLocalName;
+const unionTagLocalName = context.unionTagLocalName;
 
 const UnionLayout = codegen_union_layout.UnionLayout;
 const UnionBranch = codegen_union_layout.UnionBranch;
@@ -221,14 +223,6 @@ const findHostImportForTokens = gen_host.findHostImportForTokens;
 
 const WasiHostImport = codegen_wasi_registry.WasiHostImport;
 
-
-
-
-
-
-
-
-
 // Re-export tuple pack helpers (physical home: gen_tuple.zig).
 pub const appendIncManagedTupleLeavesOnStackCtx = gen_tuple.appendIncManagedTupleLeavesOnStackCtx;
 pub const appendLoadForPayloadTypeWithIndent = gen_tuple.appendLoadForPayloadTypeWithIndent;
@@ -259,19 +253,7 @@ pub const tupleElementPackOffsetWithStructs = gen_tuple.tupleElementPackOffsetWi
 pub const tupleGetElementInfo = gen_tuple.tupleGetElementInfo;
 pub const tuplePackSpillLocal = gen_tuple.tuplePackSpillLocal;
 
-pub fn emitStorageBinding(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    body_start: usize,
-    body_end: usize,
-    allow_last_use_move: bool,
-    locals: *const LocalSet,
-    defer_ctx: ?*const DeferContext,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)
-) !void {
+pub fn emitStorageBinding(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, body_start: usize, body_end: usize, allow_last_use_move: bool, locals: *const LocalSet, defer_ctx: ?*const DeferContext, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
     const source_name = tokens[start_idx].lexeme;
     const eq_idx = findTopLevelToken(tokens, start_idx + 1, end_idx, "=") orelse return error.NoMatchingCall;
     if (eq_idx + 1 >= end_idx) return error.NoMatchingCall;
@@ -315,20 +297,7 @@ pub fn emitStorageBinding(
     return error.NoMatchingCall;
 }
 
-
-pub fn emitStorageHandleAssignmentExpr(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    body_start: usize,
-    body_end: usize,
-    target_source_name: []const u8,
-    target_name: []const u8,
-    locals: *const LocalSet,
-    defer_ctx: ?*const DeferContext,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitStorageHandleAssignmentExpr(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, body_start: usize, body_end: usize, target_source_name: []const u8, target_name: []const u8, locals: *const LocalSet, defer_ctx: ?*const DeferContext, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     if (end_idx == start_idx + 1 and tokens[start_idx].kind == .ident) {
         if (directManagedLocalExprName(tokens, start_idx, end_idx, locals, ctx)) |actual_name| {
             if (std.mem.eql(u8, actual_name, target_name)) return true;
@@ -350,21 +319,7 @@ pub fn emitStorageHandleAssignmentExpr(
     return true;
 }
 
-
-
-
-pub fn emitTupleBinding(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    body_end: usize,
-    allow_last_use_move: bool,
-    locals: *const LocalSet,
-    defer_ctx: ?*const DeferContext,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)
-) CodegenError!bool {
+pub fn emitTupleBinding(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, body_end: usize, allow_last_use_move: bool, locals: *const LocalSet, defer_ctx: ?*const DeferContext, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     if (start_idx + 3 >= end_idx) return false;
     if (tokens[start_idx].kind != .ident) return false;
     const tuple_local = findStructLocal(locals.struct_locals.items, tokens[start_idx].lexeme) orelse return false;
@@ -385,15 +340,7 @@ pub fn emitTupleBinding(
     )) {
         return true;
     }
-    if (try emitTupleGetBinding(
-        allocator,
-        tokens,
-        start_idx,
-        end_idx,
-        locals,
-        ctx,
-        tuple_local,
-        out)) {
+    if (try emitTupleGetBinding(allocator, tokens, start_idx, end_idx, locals, ctx, tuple_local, out)) {
         return true;
     }
     const open_brace = structLiteralOpenRhs(tokens, eq_idx + 1, end_idx) orelse return false;
@@ -421,19 +368,7 @@ pub fn emitTupleBinding(
     return true;
 }
 
-
-pub fn emitStorageAssignment(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    body_start: usize,
-    body_end: usize,
-    locals: *const LocalSet,
-    defer_ctx: ?*const DeferContext,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)
-) !bool {
+pub fn emitStorageAssignment(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, body_start: usize, body_end: usize, locals: *const LocalSet, defer_ctx: ?*const DeferContext, ctx: CodegenContext, out: *std.ArrayList(u8)) !bool {
     if (start_idx + 2 >= end_idx) return false;
     if (tokens[start_idx].kind != .ident) return false;
     const source_name = tokens[start_idx].lexeme;
@@ -462,14 +397,6 @@ pub fn emitStorageAssignment(
     return true;
 }
 
-
-
-
-
-
-
-
-
 pub const ParsedStorageType = struct {
     elem_ty: []const u8,
     next_idx: usize,
@@ -487,7 +414,6 @@ pub const StructLiteralFieldRange = struct {
     value_end: usize,
 };
 
-
 pub fn stmtContainsStorageAggLiteral(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     var i = start_idx;
     while (i + 1 < end_idx) : (i += 1) {
@@ -496,19 +422,7 @@ pub fn stmtContainsStorageAggLiteral(tokens: []const lexer.Token, start_idx: usi
     return false;
 }
 
-
-
-
-pub fn emitStorageAggReturnValue(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    expected_ty: []const u8,
-    out: *std.ArrayList(u8)
-) CodegenError!bool {
+pub fn emitStorageAggReturnValue(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, expected_ty: []const u8, out: *std.ArrayList(u8)) CodegenError!bool {
     const elem_ty = managedPayloadElemTypeFromName(expected_ty) orelse return false;
     const range = trimParens(tokens, start_idx, end_idx);
     if (!isStorageAggLiteralExpr(tokens, range.start, range.end)) return false;
@@ -519,64 +433,22 @@ pub fn emitStorageAggReturnValue(
     return true;
 }
 
-
-
-
-pub fn emitTupleReturnExpr(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    result_tys: []const []const u8,
-    result_items: []const FuncResultItem,
-    out: *std.ArrayList(u8)
-) !bool {
+pub fn emitTupleReturnExpr(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, result_tys: []const []const u8, result_items: []const FuncResultItem, out: *std.ArrayList(u8)) !bool {
     const item = singleTupleResultItem(result_items) orelse return false;
     if (item.abi_len != result_tys.len) return false;
     return try emitTupleExpr(allocator, tokens, start_idx, end_idx, locals, ctx, item.ty, out);
 }
 
-
-
-
-
-
-
-
-pub fn emitStorageU8StringLiteral(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    string_idx: usize,
-    local_name: []const u8,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) !void {
+pub fn emitStorageU8StringLiteral(allocator: std.mem.Allocator, tokens: []const lexer.Token, string_idx: usize, local_name: []const u8, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
     try emitStorageU8StringLiteralIntoLocal(allocator, tokens, string_idx, local_name, ctx, out);
 }
 
-
-
-
-pub fn emitStorageU8StringLiteralValue(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    string_idx: usize,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) !void {
+pub fn emitStorageU8StringLiteralValue(allocator: std.mem.Allocator, tokens: []const lexer.Token, string_idx: usize, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
     try emitStorageU8StringLiteralIntoLocal(allocator, tokens, string_idx, STORAGE_OVERWRITE_TMP_LOCAL, ctx, out);
     try out.appendSlice(allocator, "    local.get $" ++ STORAGE_OVERWRITE_TMP_LOCAL ++ "\n");
 }
 
-
-
-
-pub fn emitStorageU8RawStringValue(
-    allocator: std.mem.Allocator,
-    key: []const u8,
-    local_name: []const u8,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) !void {
+pub fn emitStorageU8RawStringValue(allocator: std.mem.Allocator, key: []const u8, local_name: []const u8, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
     const data = ctx.string_data.find(key) orelse return error.NoMatchingCall;
     try appendFmt(allocator, out, "    i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES + data.bytes.len});
     try appendFmt(allocator, out, "    i32.const {d}\n", .{TYPE_ID_STORAGE_U8});
@@ -595,16 +467,7 @@ pub fn emitStorageU8RawStringValue(
     try appendFmt(allocator, out, "    local.get ${s}\n", .{local_name});
 }
 
-
-
-
-pub fn emitStorageU8StringLiteralIntoLocal(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    string_idx: usize,
-    local_name: []const u8,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) !void {
+pub fn emitStorageU8StringLiteralIntoLocal(allocator: std.mem.Allocator, tokens: []const lexer.Token, string_idx: usize, local_name: []const u8, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
     const data = ctx.string_data.find(tokens[string_idx].lexeme) orelse return error.NoMatchingCall;
     try appendFmt(allocator, out, "    i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES + data.bytes.len});
     try appendFmt(allocator, out, "    i32.const {d}\n", .{TYPE_ID_STORAGE_U8});
@@ -622,20 +485,7 @@ pub fn emitStorageU8StringLiteralIntoLocal(
     try out.appendSlice(allocator, "    memory.copy\n");
 }
 
-
-
-
-pub fn emitStorageAggLiteral(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    local_name: []const u8,
-    elem_ty: []const u8,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)
-) CodegenError!bool {
+pub fn emitStorageAggLiteral(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, local_name: []const u8, elem_ty: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     if (start_idx + 2 > end_idx) return false;
     if (!tokEq(tokens[start_idx], ".")) return false;
     if (!tokEq(tokens[start_idx + 1], "{")) return false;
@@ -708,9 +558,6 @@ pub fn emitStorageAggLiteral(
     return true;
 }
 
-
-
-
 pub fn isStorageAggLiteralExpr(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     if (start_idx + 2 > end_idx) return false;
     if (!tokEq(tokens[start_idx], ".")) return false;
@@ -718,9 +565,6 @@ pub fn isStorageAggLiteralExpr(tokens: []const lexer.Token, start_idx: usize, en
     const close_brace = findMatchingInRange(tokens, start_idx + 1, "{", "}", end_idx) catch return false;
     return close_brace + 1 == end_idx;
 }
-
-
-
 
 pub fn countAggLiteralItems(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) usize {
     var count: usize = 0;
@@ -739,72 +583,27 @@ pub fn countAggLiteralItems(tokens: []const lexer.Token, start_idx: usize, end_i
     return count;
 }
 
-
-
-
-pub fn emitStoragePayloadPtr(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    name: []const u8) !void {
+pub fn emitStoragePayloadPtr(allocator: std.mem.Allocator, out: *std.ArrayList(u8), name: []const u8) !void {
     try storage_wat.emit_storage_payload_ptr(allocator, out, name);
 }
 
-
-
-
-pub fn emitStorageLenPtrWithIndent(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    name: []const u8,
-    indent: []const u8) !void {
+pub fn emitStorageLenPtrWithIndent(allocator: std.mem.Allocator, out: *std.ArrayList(u8), name: []const u8, indent: []const u8) !void {
     try storage_wat.emit_storage_len_ptr_with_indent(allocator, out, name, indent);
 }
 
-
-
-
-pub fn emitStorageCapPtr(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    name: []const u8) !void {
+pub fn emitStorageCapPtr(allocator: std.mem.Allocator, out: *std.ArrayList(u8), name: []const u8) !void {
     try storage_wat.emit_storage_cap_ptr(allocator, out, name);
 }
 
-
-
-
-pub fn emitStorageCapPtrWithIndent(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    name: []const u8,
-    indent: []const u8) !void {
+pub fn emitStorageCapPtrWithIndent(allocator: std.mem.Allocator, out: *std.ArrayList(u8), name: []const u8, indent: []const u8) !void {
     try storage_wat.emit_storage_cap_ptr_with_indent(allocator, out, name, indent);
 }
 
-
-
-
-pub fn emitStoragePayloadPtrWithIndent(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    name: []const u8,
-    indent: []const u8) !void {
+pub fn emitStoragePayloadPtrWithIndent(allocator: std.mem.Allocator, out: *std.ArrayList(u8), name: []const u8, indent: []const u8) !void {
     try storage_wat.emit_storage_payload_ptr_with_indent(allocator, out, name, indent);
 }
 
-
-
-
-pub fn emitStorageContentComparisonCall(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    args_start: usize,
-    args_end: usize,
-    call_name: []const u8,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)
-) CodegenError!bool {
+pub fn emitStorageContentComparisonCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, call_name: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     if (!std.mem.eql(u8, call_name, "eq") and !std.mem.eql(u8, call_name, "ne")) return false;
     const first_end = findArgEnd(tokens, args_start, args_end);
     if (first_end >= args_end or !tokEq(tokens[first_end], ",")) return false;
@@ -829,22 +628,7 @@ pub fn emitStorageContentComparisonCall(
     return true;
 }
 
-
-
-
-pub fn emitManagedPayloadStorageContentComparisonCall(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    left_start: usize,
-    left_end: usize,
-    right_start: usize,
-    right_end: usize,
-    cmp_ty: []const u8,
-    call_name: []const u8,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)
-) CodegenError!bool {
+pub fn emitManagedPayloadStorageContentComparisonCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, left_start: usize, left_end: usize, right_start: usize, right_end: usize, cmp_ty: []const u8, call_name: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     const elem_ty = storageElemTypeFromName(cmp_ty) orelse return false;
     const nested_elem_ty = managedPayloadElemTypeFromName(elem_ty) orelse return false;
     if (!std.mem.eql(u8, nested_elem_ty, "u8")) return false;
@@ -925,9 +709,6 @@ pub fn emitManagedPayloadStorageContentComparisonCall(
     return true;
 }
 
-
-
-
 pub fn inferStorageContentComparisonType(
     tokens: []const lexer.Token,
     left_start: usize,
@@ -949,39 +730,17 @@ pub fn inferStorageContentComparisonType(
     return null;
 }
 
-
-
-
-pub fn storageContentArgCompatible(
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    inferred_ty: ?[]const u8,
-    target_ty: []const u8) bool {
+pub fn storageContentArgCompatible(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, inferred_ty: ?[]const u8, target_ty: []const u8) bool {
     if (inferred_ty) |ty| return codegenTypesCompatible(target_ty, ty);
     if (isStorageAggLiteralExpr(tokens, start_idx, end_idx)) return true;
     return isStringLiteralArg(tokens, start_idx, end_idx);
 }
 
-
-
-
 pub fn isManagedPayloadComparableType(ty: []const u8) bool {
     return managedPayloadElemTypeFromName(ty) != null;
 }
 
-
-
-
-pub fn emitStoragePtrLenHostArg(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *const LocalSet,
-    host_import: HostImport,
-    param_idx: usize,
-    out: *std.ArrayList(u8)) !bool {
+pub fn emitStoragePtrLenHostArg(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, host_import: HostImport, param_idx: usize, out: *std.ArrayList(u8)) !bool {
     if (!hostParamIsPtrLen(host_import, param_idx)) return false;
     const range = trimParens(tokens, start_idx, end_idx);
     if (range.end != range.start + 1) return false;
@@ -995,19 +754,7 @@ pub fn emitStoragePtrLenHostArg(
     return true;
 }
 
-
-
-
-pub fn emitTupleExpr(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    expected_ty: []const u8,
-    out: *std.ArrayList(u8)
-) CodegenError!bool {
+pub fn emitTupleExpr(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, expected_ty: []const u8, out: *std.ArrayList(u8)) CodegenError!bool {
     if (!isTupleTypeName(expected_ty)) return false;
     const range = trimParens(tokens, start_idx, end_idx);
     if (range.start >= range.end) return false;
@@ -1046,9 +793,6 @@ pub fn emitTupleExpr(
     return true;
 }
 
-
-
-
 pub fn storageBindingElemType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?[]const u8 {
     if (start_idx + 5 >= end_idx) return null;
     if (tokens[start_idx].kind != .ident) return null;
@@ -1056,10 +800,6 @@ pub fn storageBindingElemType(tokens: []const lexer.Token, start_idx: usize, end
     if (findTopLevelToken(tokens, parsed.next_idx, end_idx, "=") == null) return null;
     return parsed.elem_ty;
 }
-
-
-
-
 
 pub fn managedPayloadBinding(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?ManagedPayloadBinding {
     if (start_idx + 3 >= end_idx) return null;
@@ -1072,9 +812,6 @@ pub fn managedPayloadBinding(tokens: []const lexer.Token, start_idx: usize, end_
     return .{ .ty = ty, .elem_ty = elem_ty };
 }
 
-
-
-
 pub fn parseStorageType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?ParsedStorageType {
     if (start_idx + 2 >= end_idx) return null;
     if (!tokEq(tokens[start_idx], "[")) return null;
@@ -1086,39 +823,14 @@ pub fn parseStorageType(tokens: []const lexer.Token, start_idx: usize, end_idx: 
     };
 }
 
-
-
-
-pub fn emitStorageBoundsCheck(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    offset_start: usize,
-    offset_end: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    storage_name: []const u8,
-    width: usize,
-    out: *std.ArrayList(u8)
-) !void {
+pub fn emitStorageBoundsCheck(allocator: std.mem.Allocator, tokens: []const lexer.Token, offset_start: usize, offset_end: usize, locals: *const LocalSet, ctx: CodegenContext, storage_name: []const u8, width: usize, out: *std.ArrayList(u8)) !void {
     try appendFmt(allocator, out, "    local.get ${s}\n", .{storage_name});
     if (!try gen_hooks.emitExpr(allocator, tokens, offset_start, offset_end, locals, ctx, "usize", out)) return error.NoMatchingCall;
     try appendFmt(allocator, out, "    i32.const {d}\n", .{width});
     try out.appendSlice(allocator, "    call $__storage_check_range\n");
 }
 
-
-
-
-pub fn emitStorageWriteExpr(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    target_name: []const u8,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)
-) CodegenError!bool {
+pub fn emitStorageWriteExpr(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, target_name: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     const range = trimParens(tokens, start_idx, end_idx);
     const call_head = exprCallHead(tokens, range) orelse return false;
     if (!call_head.is_intrinsic) return false;
@@ -1132,38 +844,13 @@ pub fn emitStorageWriteExpr(
     return false;
 }
 
-
-
-
-
-
-pub fn emitStorageSetExpr(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)
-) CodegenError!bool {
+pub fn emitStorageSetExpr(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     if (start_idx >= end_idx or tokens[start_idx].kind != .ident) return false;
     if (findStoragePrimitiveLocal(locals.storage_locals.items, tokens[start_idx].lexeme) == null) return false;
     return try emitStorageSetCall(allocator, tokens, start_idx, end_idx, tokens[start_idx].lexeme, locals, ctx, out);
 }
 
-
-
-
-pub fn emitStoragePutCall(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    target_name: []const u8,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)
-) CodegenError!bool {
+pub fn emitStoragePutCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, target_name: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     const first_end = findArgEnd(tokens, start_idx, end_idx);
     if (first_end != start_idx + 1) return false;
     if (tokens[start_idx].kind != .ident) return false;
@@ -1203,39 +890,13 @@ pub fn emitStoragePutCall(
     return true;
 }
 
-
-
-
-pub fn emitStoragePutExpr(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)
-) CodegenError!bool {
+pub fn emitStoragePutExpr(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     if (start_idx >= end_idx or tokens[start_idx].kind != .ident) return false;
     if (findStoragePrimitiveLocal(locals.storage_locals.items, tokens[start_idx].lexeme) == null) return false;
     return try emitStoragePutCall(allocator, tokens, start_idx, end_idx, tokens[start_idx].lexeme, locals, ctx, out);
 }
 
-
-
-
-
-
-pub fn emitStoragePutSpreadCall(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    spread_start: usize,
-    spread_end: usize,
-    source_name: []const u8,
-    target_name: []const u8,
-    elem_ty: []const u8,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitStoragePutSpreadCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, spread_start: usize, spread_end: usize, source_name: []const u8, target_name: []const u8, elem_ty: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     if (spread_end != spread_start + 1 or tokens[spread_start].kind != .ident) return false;
     const rest_name = tokens[spread_start].lexeme;
     const rest = findStoragePrimitiveLocal(locals.storage_locals.items, rest_name) orelse return false;
@@ -1283,23 +944,7 @@ pub fn emitStoragePutSpreadCall(
     return true;
 }
 
-
-
-
-pub fn emitStorageSetScalarCall(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    index_start: usize,
-    index_end: usize,
-    value_start: usize,
-    value_end: usize,
-    source_name: []const u8,
-    target_name: []const u8,
-    elem_ty: []const u8,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)
-) CodegenError!bool {
+pub fn emitStorageSetScalarCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, index_start: usize, index_end: usize, value_start: usize, value_end: usize, source_name: []const u8, target_name: []const u8, elem_ty: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     const elem_bytes = storageElementByteWidthForType(elem_ty, ctx) orelse return false;
     try out.appendSlice(allocator, "    ;; storage-set-scalar\n");
     try emitStorageAliasProtect(allocator, out, source_name, target_name);
@@ -1340,16 +985,7 @@ pub fn emitStorageSetScalarCall(
     return true;
 }
 
-
-
-
-pub fn emitStoragePutSpreadScalarElement(
-    allocator: std.mem.Allocator,
-    rest_name: []const u8,
-    elem_ty: []const u8,
-    elem_bytes: usize,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) CodegenError!void {
+pub fn emitStoragePutSpreadScalarElement(allocator: std.mem.Allocator, rest_name: []const u8, elem_ty: []const u8, elem_bytes: usize, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!void {
     try out.appendSlice(allocator, "        ;; storage-put-spread-scalar\n");
     try emitStorageLenPtrWithIndent(allocator, out, STORAGE_PUT_SOURCE_TMP_LOCAL, "        ");
     try out.appendSlice(allocator, "        i32.load\n");
@@ -1400,21 +1036,7 @@ pub fn emitStoragePutSpreadScalarElement(
     try out.appendSlice(allocator, "        i32.store\n");
 }
 
-
-
-
-pub fn emitStoragePutScalarCall(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    value_start: usize,
-    value_end: usize,
-    source_name: []const u8,
-    target_name: []const u8,
-    elem_ty: []const u8,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)
-) CodegenError!bool {
+pub fn emitStoragePutScalarCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, value_start: usize, value_end: usize, source_name: []const u8, target_name: []const u8, elem_ty: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     const elem_bytes = storageElementByteWidthForType(elem_ty, ctx) orelse return false;
     try out.appendSlice(allocator, "    ;; storage-put-scalar\n");
     try emitStorageAliasProtect(allocator, out, source_name, target_name);
@@ -1460,62 +1082,28 @@ pub fn emitStoragePutScalarCall(
     return true;
 }
 
-
-
-
-
-
-
-
-pub fn emitStorageCloneCurrentLen(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    source_name: []const u8,
-    elem_bytes: usize) !void {
+pub fn emitStorageCloneCurrentLen(allocator: std.mem.Allocator, out: *std.ArrayList(u8), source_name: []const u8, elem_bytes: usize) !void {
     try emitStorageLenPtr(allocator, out, source_name);
     try out.appendSlice(allocator, "      i32.load\n");
     try appendFmt(allocator, out, "      local.set ${s}\n", .{STORAGE_WRITE_LEN_TMP_LOCAL});
     try emitStorageCloneWithLenLocal(allocator, out, source_name, elem_bytes, STORAGE_WRITE_LEN_TMP_LOCAL, STORAGE_WRITE_LEN_TMP_LOCAL);
 }
 
-
-
-
-pub fn emitStorageCloneCurrentLenForElem(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    source_name: []const u8,
-    elem_ty: []const u8,
-    elem_bytes: usize,
-    ctx: CodegenContext) !void {
+pub fn emitStorageCloneCurrentLenForElem(allocator: std.mem.Allocator, out: *std.ArrayList(u8), source_name: []const u8, elem_ty: []const u8, elem_bytes: usize, ctx: CodegenContext) !void {
     try emitStorageLenPtr(allocator, out, source_name);
     try out.appendSlice(allocator, "      i32.load\n");
     try appendFmt(allocator, out, "      local.set ${s}\n", .{STORAGE_WRITE_LEN_TMP_LOCAL});
     try emitStorageCloneWithLenLocalForElem(allocator, out, source_name, elem_ty, elem_bytes, STORAGE_WRITE_LEN_TMP_LOCAL, STORAGE_WRITE_LEN_TMP_LOCAL, ctx);
 }
 
-
-
-
-pub fn emitStorageCloneManagedCurrentLen(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    source_name: []const u8) !void {
+pub fn emitStorageCloneManagedCurrentLen(allocator: std.mem.Allocator, out: *std.ArrayList(u8), source_name: []const u8) !void {
     try emitStorageLenPtr(allocator, out, source_name);
     try out.appendSlice(allocator, "      i32.load\n");
     try appendFmt(allocator, out, "      local.set ${s}\n", .{STORAGE_WRITE_LEN_TMP_LOCAL});
     try emitStorageCloneManagedWithLenLocal(allocator, out, source_name, STORAGE_WRITE_LEN_TMP_LOCAL, STORAGE_WRITE_LEN_TMP_LOCAL);
 }
 
-
-
-
-pub fn emitStorageCloneManagedWithLenLocal(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    source_name: []const u8,
-    next_len_local: []const u8,
-    copy_len_local: []const u8) !void {
+pub fn emitStorageCloneManagedWithLenLocal(allocator: std.mem.Allocator, out: *std.ArrayList(u8), source_name: []const u8, next_len_local: []const u8, copy_len_local: []const u8) !void {
     try appendFmt(allocator, out, "      local.get ${s}\n", .{next_len_local});
     try out.appendSlice(allocator, "      i32.const 4\n");
     try out.appendSlice(allocator, "      i32.mul\n");
@@ -1550,14 +1138,7 @@ pub fn emitStorageCloneManagedWithLenLocal(
     try appendFmt(allocator, out, "      local.get ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
 }
 
-
-
-
-pub fn emitStorageIncCopiedManagedElements(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    storage_local: []const u8,
-    copy_len_local: []const u8) !void {
+pub fn emitStorageIncCopiedManagedElements(allocator: std.mem.Allocator, out: *std.ArrayList(u8), storage_local: []const u8, copy_len_local: []const u8) !void {
     try out.appendSlice(allocator, "      ;; storage-managed-clone-inc\n");
     try out.appendSlice(allocator, "      i32.const 0\n");
     try appendFmt(allocator, out, "      local.set ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
@@ -1587,48 +1168,17 @@ pub fn emitStorageIncCopiedManagedElements(
     try out.appendSlice(allocator, "      end\n");
 }
 
-
-
-
-pub fn emitStorageCloneWithLenLocal(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    source_name: []const u8,
-    elem_bytes: usize,
-    next_len_local: []const u8,
-    copy_len_local: []const u8) !void {
+pub fn emitStorageCloneWithLenLocal(allocator: std.mem.Allocator, out: *std.ArrayList(u8), source_name: []const u8, elem_bytes: usize, next_len_local: []const u8, copy_len_local: []const u8) !void {
     try emitStorageCloneWithLenLocalTyped(allocator, out, source_name, elem_bytes, next_len_local, copy_len_local, TYPE_ID_STORAGE_U8, null);
 }
 
-
-
-
-pub fn emitStorageCloneWithLenLocalForElem(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    source_name: []const u8,
-    elem_ty: []const u8,
-    elem_bytes: usize,
-    next_len_local: []const u8,
-    copy_len_local: []const u8,
-    ctx: CodegenContext) !void {
+pub fn emitStorageCloneWithLenLocalForElem(allocator: std.mem.Allocator, out: *std.ArrayList(u8), source_name: []const u8, elem_ty: []const u8, elem_bytes: usize, next_len_local: []const u8, copy_len_local: []const u8, ctx: CodegenContext) !void {
     const type_id = storageTypeIdForElement(elem_ty, ctx);
     const pack = storagePackLayoutForElem(elem_ty, ctx);
     try emitStorageCloneWithLenLocalTyped(allocator, out, source_name, elem_bytes, next_len_local, copy_len_local, type_id, pack);
 }
 
-
-
-
-pub fn emitStorageCloneWithLenLocalTyped(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    source_name: []const u8,
-    elem_bytes: usize,
-    next_len_local: []const u8,
-    copy_len_local: []const u8,
-    type_id: usize,
-    pack_layout: ?StructLayout) !void {
+pub fn emitStorageCloneWithLenLocalTyped(allocator: std.mem.Allocator, out: *std.ArrayList(u8), source_name: []const u8, elem_bytes: usize, next_len_local: []const u8, copy_len_local: []const u8, type_id: usize, pack_layout: ?StructLayout) !void {
     try appendFmt(allocator, out, "      local.get ${s}\n", .{next_len_local});
     if (elem_bytes != 1) {
         try appendFmt(allocator, out, "      i32.const {d}\n", .{elem_bytes});
@@ -1669,76 +1219,30 @@ pub fn emitStorageCloneWithLenLocalTyped(
     try appendFmt(allocator, out, "      local.get ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
 }
 
-
-
-
-pub fn emitStorageElementPtrFromLocal(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    storage_local: []const u8,
-    index_local: []const u8,
-    elem_bytes: usize) !void {
+pub fn emitStorageElementPtrFromLocal(allocator: std.mem.Allocator, out: *std.ArrayList(u8), storage_local: []const u8, index_local: []const u8, elem_bytes: usize) !void {
     try storage_wat.emit_storage_element_ptr_from_local(allocator, out, storage_local, index_local, elem_bytes);
 }
 
-
-
-
-pub fn emitStorageElementPtrFromLocalWithIndent(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    storage_local: []const u8,
-    index_local: []const u8,
-    elem_bytes: usize,
-    indent: []const u8) !void {
+pub fn emitStorageElementPtrFromLocalWithIndent(allocator: std.mem.Allocator, out: *std.ArrayList(u8), storage_local: []const u8, index_local: []const u8, elem_bytes: usize, indent: []const u8) !void {
     try storage_wat.emit_storage_element_ptr_from_local_with_indent(allocator, out, storage_local, index_local, elem_bytes, indent);
 }
 
-
-
-
-pub fn emitStorageAliasProtect(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    source_name: []const u8,
-    target_name: []const u8) !void {
+pub fn emitStorageAliasProtect(allocator: std.mem.Allocator, out: *std.ArrayList(u8), source_name: []const u8, target_name: []const u8) !void {
     try storage_wat.emit_storage_alias_protect(allocator, out, source_name, target_name);
 }
 
-
-
-
-pub fn emitStorageAliasRelease(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    source_name: []const u8,
-    target_name: []const u8) !void {
+pub fn emitStorageAliasRelease(allocator: std.mem.Allocator, out: *std.ArrayList(u8), source_name: []const u8, target_name: []const u8) !void {
     try storage_wat.emit_storage_alias_release(allocator, out, source_name, target_name);
 }
 
-
-
-
-pub fn emitEmptyStorageU8Value(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8)) !void {
+pub fn emitEmptyStorageU8Value(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
     try storage_wat.emit_empty_storage_u8_value(allocator, out);
 }
 
-
-
-
-pub fn emitEmptyStorageForElemType(
-    allocator: std.mem.Allocator,
-    elem_ty: []const u8,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) CodegenError!void {
+pub fn emitEmptyStorageForElemType(allocator: std.mem.Allocator, elem_ty: []const u8, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!void {
     const type_id = storageTypeIdForElement(elem_ty, ctx);
     try storage_wat.emit_empty_storage_with_type_id(allocator, out, type_id, "    ");
 }
-
-
-
 
 pub fn storageElementByteWidthForType(elem_ty: []const u8, ctx: CodegenContext) ?usize {
     if (storageElementByteWidth(elem_ty)) |width| return width;
@@ -1747,30 +1251,11 @@ pub fn storageElementByteWidthForType(elem_ty: []const u8, ctx: CodegenContext) 
     return null;
 }
 
-
-
-
-pub fn emitNumberConst(
-    allocator: std.mem.Allocator,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8),
-    lexeme: []const u8,
-    ty: []const u8) !void {
+pub fn emitNumberConst(allocator: std.mem.Allocator, ctx: CodegenContext, out: *std.ArrayList(u8), lexeme: []const u8, ty: []const u8) !void {
     try appendFmt(allocator, out, "    {s}.const {s}\n", .{ codegenWasmType(ctx, ty), lexeme });
 }
 
-
-
-
-pub fn emitTupleFieldPathGetCall(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    first_end: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitTupleFieldPathGetCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, first_end: usize, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     const field_ty = tupleFieldPathType(tokens, start_idx, end_idx, first_end, locals, ctx) orelse return false;
     const field_start = first_end + 1;
     const field_end = findArgEnd(tokens, field_start, end_idx);
@@ -1786,18 +1271,9 @@ pub fn emitTupleFieldPathGetCall(
     return true;
 }
 
-
-
-pub fn isDirectManagedLocalExpr(
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext) bool {
+pub fn isDirectManagedLocalExpr(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext) bool {
     return directManagedLocalExprName(tokens, start_idx, end_idx, locals, ctx) != null;
 }
-
-
 
 pub fn storagePackLayoutForElem(elem_ty: []const u8, ctx: CodegenContext) ?StructLayout {
     if (!isTupleTypeName(elem_ty) or !tupleHasManagedPackLeafCtx(elem_ty, ctx)) return null;
@@ -1805,8 +1281,6 @@ pub fn storagePackLayoutForElem(elem_ty: []const u8, ctx: CodegenContext) ?Struc
     if (!layout.is_storage_pack) return null;
     return layout;
 }
-
-
 
 pub fn tupleFieldPathType(
     tokens: []const lexer.Token,
@@ -1832,10 +1306,6 @@ pub fn tupleFieldPathType(
     return field_ty;
 }
 
-
-
-
-
 pub fn findStructLiteralField(
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -1860,14 +1330,7 @@ pub fn findStructLiteralField(
     return null;
 }
 
-
-
-pub fn substituteStructFieldType(
-    allocator: std.mem.Allocator,
-    decl: StructDecl,
-    concrete_ty: []const u8,
-    field_ty: []const u8,
-    owned_types: *std.ArrayList([]const u8)) ![]const u8 {
+pub fn substituteStructFieldType(allocator: std.mem.Allocator, decl: StructDecl, concrete_ty: []const u8, field_ty: []const u8, owned_types: *std.ArrayList([]const u8)) ![]const u8 {
     if (decl.type_params.len == 0) return field_ty;
     var bindings = std.ArrayList(GenericTypeBinding).empty;
     defer bindings.deinit(allocator);
@@ -1875,18 +1338,11 @@ pub fn substituteStructFieldType(
     return try substituteGenericTypeOwned(allocator, field_ty, bindings.items, owned_types);
 }
 
-
-
 pub fn isStructLiteralRhs(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     return structLiteralOpenRhs(tokens, start_idx, end_idx) != null;
 }
 
-
-
-pub fn emitReplaceStoragePutSourceTmp(
-    allocator: std.mem.Allocator,
-    target_name: []const u8,
-    out: *std.ArrayList(u8)) !void {
+pub fn emitReplaceStoragePutSourceTmp(allocator: std.mem.Allocator, target_name: []const u8, out: *std.ArrayList(u8)) !void {
     try out.appendSlice(allocator, "    ;; storage-put-source-replace\n");
     try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
     try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
@@ -1903,9 +1359,6 @@ pub fn emitReplaceStoragePutSourceTmp(
     try appendFmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
     try appendFmt(allocator, out, "    local.set ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
 }
-
-
-
 
 pub fn directManagedLocalExprName(
     tokens: []const lexer.Token,
@@ -1936,18 +1389,11 @@ pub fn directManagedLocalExprName(
     return findLocalName(locals.locals.items, name);
 }
 
-
-
-pub fn emitOverwriteReleaseManagedLocal(
-    allocator: std.mem.Allocator,
-    name: []const u8,
-    out: *std.ArrayList(u8)) !void {
+pub fn emitOverwriteReleaseManagedLocal(allocator: std.mem.Allocator, name: []const u8, out: *std.ArrayList(u8)) !void {
     try appendFmt(allocator, out, "    ;; arc-overwrite-release {s}\n", .{name});
     try appendFmt(allocator, out, "    local.get ${s}\n", .{name});
     try out.appendSlice(allocator, "    call $__arc_dec\n");
 }
-
-
 
 pub fn findLocalFieldType(locals: []const Local, base: []const u8, field: []const u8) ?[]const u8 {
     var i = locals.len;
@@ -1961,8 +1407,6 @@ pub fn findLocalFieldType(locals: []const Local, base: []const u8, field: []cons
     }
     return null;
 }
-
-
 
 pub fn findFuncDeclForCallHead(
     tokens: []const lexer.Token,
@@ -2024,8 +1468,6 @@ pub fn findFuncDeclForCallHead(
     }
     return fallback;
 }
-
-
 
 pub fn inferExprType(
     tokens: []const lexer.Token,
@@ -2104,8 +1546,6 @@ pub fn inferExprType(
     return null;
 }
 
-
-
 pub fn findStructLiteralFieldEnd(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) usize {
     var depth_paren: usize = 0;
     var depth_brace: usize = 0;
@@ -2141,8 +1581,6 @@ pub fn findStructLiteralFieldEnd(tokens: []const lexer.Token, start_idx: usize, 
     return end_idx;
 }
 
-
-
 pub fn findStructFieldType(decl: StructDecl, field_name: []const u8) ?[]const u8 {
     for (decl.fields) |field| {
         if (std.mem.eql(u8, publicDeclName(field.name), field_name)) return field.ty;
@@ -2150,18 +1588,12 @@ pub fn findStructFieldType(decl: StructDecl, field_name: []const u8) ?[]const u8
     return null;
 }
 
-
-
-
-
 pub fn localFieldNameMatches(name: []const u8, base: []const u8, field: []const u8) bool {
     if (name.len != base.len + 1 + field.len) return false;
     if (!std.mem.eql(u8, name[0..base.len], base)) return false;
     if (name[base.len] != '.') return false;
     return std.mem.eql(u8, name[base.len + 1 ..], field);
 }
-
-
 
 pub fn directManagedLastUseMoveSource(
     tokens: []const lexer.Token,
@@ -2187,8 +1619,6 @@ pub fn directManagedLastUseMoveSource(
     };
 }
 
-
-
 pub fn structLiteralOpenRhs(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
     if (start_idx + 1 >= end_idx) return null;
     if (tokens[start_idx].kind == .ident and tokEq(tokens[start_idx + 1], "{")) return start_idx + 1;
@@ -2199,8 +1629,6 @@ pub fn structLiteralOpenRhs(tokens: []const lexer.Token, start_idx: usize, end_i
     if (tokEq(tokens[start_idx], ".") and tokEq(tokens[start_idx + 1], "{")) return start_idx + 1;
     return null;
 }
-
-
 
 pub fn unionPayloadLocalNameFromLocals(
     locals: []const Local,
@@ -2218,18 +1646,12 @@ pub fn unionPayloadLocalNameFromLocals(
     return null;
 }
 
-
-
 pub fn substituteGenericType(ty: []const u8, bindings: []const GenericTypeBinding) []const u8 {
     if (findGenericBinding(bindings, ty)) |binding| return binding.ty;
     return ty;
 }
 
-
-
-pub fn isUnionPayloadLocalName(
-    union_locals: []const UnionLocal,
-    name: []const u8) bool {
+pub fn isUnionPayloadLocalName(union_locals: []const UnionLocal, name: []const u8) bool {
     for (union_locals) |union_local| {
         for (union_local.layout.payload_tys, 0..) |_, idx| {
             var suffix_buf: [32]u8 = undefined;
@@ -2243,8 +1665,6 @@ pub fn isUnionPayloadLocalName(
     return false;
 }
 
-
-
 pub fn findCallbackCallArg(args: []const CallbackCallArg, name: []const u8) ?CallbackCallArg {
     for (args) |arg| {
         if (std.mem.eql(u8, arg.source_name, name)) return arg;
@@ -2252,15 +1672,7 @@ pub fn findCallbackCallArg(args: []const CallbackCallArg, name: []const u8) ?Cal
     return null;
 }
 
-
-
-pub fn appendTupleLocalFieldsBorrowed(
-    allocator: std.mem.Allocator,
-    out: *LocalSet,
-    tokens: []const lexer.Token,
-    ctx: CodegenContext,
-    base: []const u8,
-    tuple_ty: []const u8) CodegenError!void {
+pub fn appendTupleLocalFieldsBorrowed(allocator: std.mem.Allocator, out: *LocalSet, tokens: []const lexer.Token, ctx: CodegenContext, base: []const u8, tuple_ty: []const u8) CodegenError!void {
     const arity = tupleArity(tuple_ty) orelse return error.UnsupportedLowering;
     var idx: usize = 0;
     while (idx < arity) : (idx += 1) {
@@ -2270,8 +1682,6 @@ pub fn appendTupleLocalFieldsBorrowed(
         try appendBorrowedLocalField(allocator, out, tokens, ctx, base, field_name, elem_ty);
     }
 }
-
-
 
 pub fn findFuncDeclForCall(
     tokens: []const lexer.Token,
@@ -2325,8 +1735,6 @@ pub fn findFuncDeclForCall(
     return fallback;
 }
 
-
-
 pub fn findLocalName(locals: []const Local, name: []const u8) ?[]const u8 {
     var i = locals.len;
     while (i > 0) {
@@ -2337,18 +1745,7 @@ pub fn findLocalName(locals: []const Local, name: []const u8) ?[]const u8 {
     return null;
 }
 
-
-
-pub fn emitStorageSetCall(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    target_name: []const u8,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)
-) CodegenError!bool {
+pub fn emitStorageSetCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, target_name: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     const first_end = findArgEnd(tokens, start_idx, end_idx);
     if (first_end != start_idx + 1) return false;
     if (tokens[start_idx].kind != .ident) return false;
@@ -2379,20 +1776,7 @@ pub fn emitStorageSetCall(
     return true;
 }
 
-
-
-pub fn emitStoragePutOneCall(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    value_start: usize,
-    value_end: usize,
-    source_name: []const u8,
-    target_name: []const u8,
-    elem_ty: []const u8,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)
-) CodegenError!bool {
+pub fn emitStoragePutOneCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, value_start: usize, value_end: usize, source_name: []const u8, target_name: []const u8, elem_ty: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     if (isManagedLocalType(elem_ty, ctx)) {
         return try emitStoragePutManagedCall(allocator, tokens, value_start, value_end, source_name, target_name, elem_ty, locals, ctx, out);
     }
@@ -2408,12 +1792,7 @@ pub fn emitStoragePutOneCall(
     return true;
 }
 
-
-
-pub fn callExplicitTypeArgsMatchBindings(
-    tokens: []const lexer.Token,
-    call_head: ExprCallHead,
-    bindings: []const GenericTypeBinding) bool {
+pub fn callExplicitTypeArgsMatchBindings(tokens: []const lexer.Token, call_head: ExprCallHead, bindings: []const GenericTypeBinding) bool {
     if (bindings.len == 0) return false;
 
     var type_start = call_head.type_args_start;
@@ -2437,15 +1816,7 @@ pub fn callExplicitTypeArgsMatchBindings(
     return binding_idx == bindings.len;
 }
 
-
-
-pub fn callArgsMatchFuncParams(
-    tokens: []const lexer.Token,
-    args_start: usize,
-    args_end: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    func: FuncDecl) bool {
+pub fn callArgsMatchFuncParams(tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, func: FuncDecl) bool {
     var arg_start = args_start;
     var param_idx: usize = 0;
     while (arg_start < args_end and (param_idx < func.params.len and !func.params[param_idx].variadic)) {
@@ -2468,11 +1839,7 @@ pub fn callArgsMatchFuncParams(
     return callArgsMatchVariadicTail(tokens, arg_start, args_end, locals, ctx, funcVariadicElemType(func.params[param_idx]));
 }
 
-
-
-pub fn hasRegisteredDeferStmt(
-    tokens: []const lexer.Token,
-    defer_ctx: ?*const DeferContext) bool {
+pub fn hasRegisteredDeferStmt(tokens: []const lexer.Token, defer_ctx: ?*const DeferContext) bool {
     var cursor = defer_ctx;
     while (cursor) |scope| {
         const scan_end = @min(scope.registered_end_idx, scope.end_idx);
@@ -2487,16 +1854,7 @@ pub fn hasRegisteredDeferStmt(
     return false;
 }
 
-
-
-pub fn appendBorrowedLocalField(
-    allocator: std.mem.Allocator,
-    out: *LocalSet,
-    tokens: []const lexer.Token,
-    ctx: CodegenContext,
-    base: []const u8,
-    field: []const u8,
-    ty: []const u8) !void {
+pub fn appendBorrowedLocalField(allocator: std.mem.Allocator, out: *LocalSet, tokens: []const lexer.Token, ctx: CodegenContext, base: []const u8, field: []const u8, ty: []const u8) !void {
     const name = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ base, publicDeclName(field) });
     if (isTupleTypeName(ty)) {
         try out.owned_names.append(allocator, name);
@@ -2523,13 +1881,7 @@ pub fn appendBorrowedLocalField(
     try out.appendBorrowedLocal(allocator, name, ty, false);
 }
 
-
-
-pub fn tokenRangeUsesIdent(
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    name: []const u8) bool {
+pub fn tokenRangeUsesIdent(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, name: []const u8) bool {
     var i = start_idx;
     while (i < end_idx) : (i += 1) {
         if (tokens[i].kind != .ident) continue;
@@ -2538,15 +1890,7 @@ pub fn tokenRangeUsesIdent(
     return false;
 }
 
-
-
-pub fn shouldInferBoolSpecialCall(
-    name: []const u8,
-    tokens: []const lexer.Token,
-    args_start: usize,
-    args_end: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext) bool {
+pub fn shouldInferBoolSpecialCall(name: []const u8, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext) bool {
     if (!isBoolSpecialFuncName(name)) return false;
     if (std.mem.eql(u8, name, "not")) return true;
     const first_end = findArgEnd(tokens, args_start, args_end);
@@ -2555,13 +1899,9 @@ pub fn shouldInferBoolSpecialCall(
     return std.mem.eql(u8, first_ty, "bool");
 }
 
-
-
 pub fn isDeferStmt(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     return start_idx + 1 < end_idx and tokEq(tokens[start_idx], "defer");
 }
-
-
 
 pub fn callArgMatchesCallbackShape(
     tokens: []const lexer.Token,
@@ -2600,22 +1940,7 @@ fn callArgMatchesCallbackLambda(
     return callbackLambdaReturnMatchesShape(tokens, lambda, shape, locals, ctx);
 }
 
-
-
-pub fn emitStorageSetManagedCall(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    index_start: usize,
-    index_end: usize,
-    value_start: usize,
-    value_end: usize,
-    source_name: []const u8,
-    target_name: []const u8,
-    elem_ty: []const u8,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)
-) CodegenError!bool {
+pub fn emitStorageSetManagedCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, index_start: usize, index_end: usize, value_start: usize, value_end: usize, source_name: []const u8, target_name: []const u8, elem_ty: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     try out.appendSlice(allocator, "    ;; storage-set-managed\n");
     try emitStorageAliasProtect(allocator, out, source_name, target_name);
     if (!try gen_hooks.emitExpr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return false;
@@ -2646,19 +1971,7 @@ pub fn emitStorageSetManagedCall(
     return true;
 }
 
-
-
-pub fn emitStoragePutManagedCall(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    value_start: usize,
-    value_end: usize,
-    source_name: []const u8,
-    target_name: []const u8,
-    elem_ty: []const u8,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitStoragePutManagedCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, value_start: usize, value_end: usize, source_name: []const u8, target_name: []const u8, elem_ty: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     try out.appendSlice(allocator, "    ;; storage-put-managed\n");
     try emitStorageAliasProtect(allocator, out, source_name, target_name);
     try emitStorageLenPtr(allocator, out, source_name);
@@ -2698,18 +2011,7 @@ pub fn emitStoragePutManagedCall(
     return true;
 }
 
-
-
-pub fn emitManagedStorageValue(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    elem_ty: []const u8,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)
-) CodegenError!bool {
+pub fn emitManagedStorageValue(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, elem_ty: []const u8, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     if (!try gen_hooks.emitExpr(allocator, tokens, start_idx, end_idx, locals, ctx, elem_ty, out)) return false;
     if (isDirectManagedLocalExpr(tokens, start_idx, end_idx, locals, ctx)) {
         try out.appendSlice(allocator, "    ;; storage-managed-write-inc\n");
@@ -2718,15 +2020,11 @@ pub fn emitManagedStorageValue(
     return true;
 }
 
-
-
 pub fn inferScalarAsCallType(tokens: []const lexer.Token, args_start: usize, args_end: usize) ?[]const u8 {
     const target_end = findArgEnd(tokens, args_start, args_end);
     if (target_end == args_start or target_end >= args_end or !tokEq(tokens[target_end], ",")) return null;
     return scalarAsTargetType(tokens, args_start, target_end);
 }
-
-
 
 pub fn findCallbackBinding(bindings: []const CallbackBinding, name: []const u8) ?CallbackBinding {
     for (bindings) |binding| {
@@ -2735,8 +2033,6 @@ pub fn findCallbackBinding(bindings: []const CallbackBinding, name: []const u8) 
     return null;
 }
 
-
-
 pub fn scalarAsTargetType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?[]const u8 {
     if (start_idx + 1 != end_idx) return null;
     if (tokens[start_idx].kind != .ident) return null;
@@ -2744,15 +2040,7 @@ pub fn scalarAsTargetType(tokens: []const lexer.Token, start_idx: usize, end_idx
     return tokens[start_idx].lexeme;
 }
 
-
-
-pub fn callArgMatchesConcreteCallbackBinding(
-    tokens: []const lexer.Token,
-    arg_start: usize,
-    arg_end: usize,
-    ctx: CodegenContext,
-    shape: FuncTypeShape,
-    binding: CallbackBinding) bool {
+pub fn callArgMatchesConcreteCallbackBinding(tokens: []const lexer.Token, arg_start: usize, arg_end: usize, ctx: CodegenContext, shape: FuncTypeShape, binding: CallbackBinding) bool {
     if (!callbackBindingsHaveSameShape(binding.shape, shape)) return false;
     if (lambdaExprShape(tokens, arg_start, arg_end) != null) {
         return binding.kind == .lambda and moduleTokensEqual(binding.arg_tokens, tokens) and binding.arg_start == arg_start and binding.arg_end == arg_end;
@@ -2768,8 +2056,6 @@ pub fn callArgMatchesConcreteCallbackBinding(
     const func_name = binding.func_name orelse return false;
     return moduleTokensEqual(binding.arg_tokens, tokens) and sameCallableSourceName(func_name, name);
 }
-
-
 
 pub fn isScalarAsTargetTypeName(name: []const u8) bool {
     const names = [_][]const u8{
@@ -2792,8 +2078,6 @@ pub fn isScalarAsTargetTypeName(name: []const u8) bool {
     return false;
 }
 
-
-
 pub fn inferSetCallType(
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -2813,8 +2097,6 @@ pub fn inferSetCallType(
     return null;
 }
 
-
-
 pub fn callbackBindingsHaveSameShape(left: FuncTypeShape, right: FuncTypeShape) bool {
     if (left.param_types.len != right.param_types.len) return false;
     for (left.param_types, 0..) |left_ty, idx| {
@@ -2827,15 +2109,7 @@ pub fn callbackBindingsHaveSameShape(left: FuncTypeShape, right: FuncTypeShape) 
     return std.mem.eql(u8, left.return_type.?, right.return_type.?);
 }
 
-
-
-pub fn callArgMatchesParam(
-    tokens: []const lexer.Token,
-    arg_start: usize,
-    arg_end: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    param_ty: []const u8) bool {
+pub fn callArgMatchesParam(tokens: []const lexer.Token, arg_start: usize, arg_end: usize, locals: *const LocalSet, ctx: CodegenContext, param_ty: []const u8) bool {
     if (findTopLevelTypeSeparator(param_ty, '|') != null) {
         return callArgMatchesUnionParam(tokens, arg_start, arg_end, locals, ctx, param_ty);
     }
@@ -2875,8 +2149,6 @@ pub fn callArgMatchesParam(
     return false;
 }
 
-
-
 pub fn inferPutCallType(
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -2890,15 +2162,7 @@ pub fn inferPutCallType(
     return null;
 }
 
-
-
-pub fn callArgsMatchVariadicTail(
-    tokens: []const lexer.Token,
-    args_start: usize,
-    args_end: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    elem_ty: []const u8) bool {
+pub fn callArgsMatchVariadicTail(tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, elem_ty: []const u8) bool {
     if (args_start >= args_end) return true;
     if (tokEq(tokens[args_start], "...")) {
         const rest_start = args_start + 1;
@@ -2919,15 +2183,7 @@ pub fn callArgsMatchVariadicTail(
     return true;
 }
 
-
-
-pub fn callArgMatchesUnionParam(
-    tokens: []const lexer.Token,
-    arg_start: usize,
-    arg_end: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    param_ty: []const u8) bool {
+pub fn callArgMatchesUnionParam(tokens: []const lexer.Token, arg_start: usize, arg_end: usize, locals: *const LocalSet, ctx: CodegenContext, param_ty: []const u8) bool {
     const range = trimParens(tokens, arg_start, arg_end);
     if (range.start >= range.end) return false;
     if (range.end == range.start + 1 and tokEq(tokens[range.start], "nil")) {
@@ -2940,8 +2196,6 @@ pub fn callArgMatchesUnionParam(
     return false;
 }
 
-
-
 pub fn unionTypeNameHasBranch(ty: []const u8, branch_ty: []const u8) bool {
     var branch_start: usize = 0;
     while (branch_start < ty.len) {
@@ -2951,8 +2205,6 @@ pub fn unionTypeNameHasBranch(ty: []const u8, branch_ty: []const u8) bool {
     }
     return false;
 }
-
-
 
 pub fn inferFieldGetCallType(
     tokens: []const lexer.Token,
@@ -2976,14 +2228,10 @@ pub fn inferFieldGetCallType(
     return field.ty;
 }
 
-
-
 pub fn funcVariadicElemType(param: FuncParam) []const u8 {
     if (!param.variadic) return param.ty;
     return param.ty;
 }
-
-
 
 pub fn inferFieldSetCallType(
     tokens: []const lexer.Token,
@@ -3002,8 +2250,6 @@ pub fn inferFieldSetCallType(
     return (findStructLocal(locals.struct_locals.items, tokens[start_idx].lexeme) orelse return null).ty;
 }
 
-
-
 pub fn findFieldMetaLocal(locals: []const FieldMetaLocal, name: []const u8) ?FieldMetaLocal {
     var i = locals.len;
     while (i > 0) {
@@ -3014,14 +2260,7 @@ pub fn findFieldMetaLocal(locals: []const FieldMetaLocal, name: []const u8) ?Fie
     return null;
 }
 
-
-
-pub fn structLiteralExprMatchesType(
-    tokens: []const lexer.Token,
-    arg_start: usize,
-    arg_end: usize,
-    param_ty: []const u8,
-    ctx: CodegenContext) bool {
+pub fn structLiteralExprMatchesType(tokens: []const lexer.Token, arg_start: usize, arg_end: usize, param_ty: []const u8, ctx: CodegenContext) bool {
     const range = trimParens(tokens, arg_start, arg_end);
     const open_brace = structLiteralOpenRhs(tokens, range.start, range.end) orelse return false;
     const close_brace = findMatchingInRange(tokens, open_brace, "{", "}", range.end) catch return false;
@@ -3031,8 +2270,6 @@ pub fn structLiteralExprMatchesType(
     if (!std.mem.eql(u8, typeBaseName(param_ty), literal_base)) return false;
     return findStructDecl(ctx.structs, param_ty) != null;
 }
-
-
 
 pub fn inferGetCallType(
     tokens: []const lexer.Token,
@@ -3088,8 +2325,6 @@ pub fn inferGetCallType(
     return null;
 }
 
-
-
 pub fn lambdaExprShape(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?LambdaExprShape {
     const range = trimParens(tokens, start_idx, end_idx);
     if (range.start >= range.end or !tokEq(tokens[range.start], "(")) return null;
@@ -3116,8 +2351,6 @@ pub fn lambdaExprShape(tokens: []const lexer.Token, start_idx: usize, end_idx: u
     };
 }
 
-
-
 pub fn lambdaParamCount(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) usize {
     if (start_idx >= end_idx) return 0;
     var count: usize = 0;
@@ -3131,8 +2364,6 @@ pub fn lambdaParamCount(tokens: []const lexer.Token, start_idx: usize, end_idx: 
     return count;
 }
 
-
-
 pub fn callbackBindingHasSameConcreteArg(left: CallbackBinding, right: CallbackBinding) bool {
     if (left.kind != right.kind) return false;
     if (!callbackBindingsHaveSameShape(left.shape, right.shape)) return false;
@@ -3145,8 +2376,6 @@ pub fn callbackBindingHasSameConcreteArg(left: CallbackBinding, right: CallbackB
         },
     };
 }
-
-
 
 pub fn valueEnumBranchValue(
     ctx: CodegenContext,
@@ -3167,8 +2396,6 @@ pub fn valueEnumBranchValue(
     return null;
 }
 
-
-
 pub fn inferTupleFieldPathGetType(
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -3186,14 +2413,7 @@ pub fn inferTupleFieldPathGetType(
     return elem_info.ty;
 }
 
-
-
-pub fn appendManagedStructFieldMetaLocal(
-    allocator: std.mem.Allocator,
-    out: *LocalSet,
-    base: []const u8,
-    field: []const u8,
-    ty: []const u8) !void {
+pub fn appendManagedStructFieldMetaLocal(allocator: std.mem.Allocator, out: *LocalSet, base: []const u8, field: []const u8, ty: []const u8) !void {
     const name = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ base, publicDeclName(field) });
     try out.owned_names.append(allocator, name);
     try out.locals.append(allocator, .{
@@ -3204,17 +2424,11 @@ pub fn appendManagedStructFieldMetaLocal(
     });
 }
 
-
-
-
 pub fn fieldFromMeta(ctx: CodegenContext, meta: FieldMetaLocal) ?StructField {
     const decl = findStructDecl(ctx.structs, meta.struct_name) orelse return null;
     if (meta.decl_index >= decl.fields.len) return null;
     return decl.fields[meta.decl_index];
 }
-
-
-
 
 pub fn findStructField(decl: StructDecl, field_name: []const u8) ?StructField {
     for (decl.fields) |field| {
@@ -3222,8 +2436,6 @@ pub fn findStructField(decl: StructDecl, field_name: []const u8) ?StructField {
     }
     return null;
 }
-
-
 
 pub fn unionLocalDefaultPayloadType(tokens: []const lexer.Token, union_local: UnionLocal) ?[]const u8 {
     var matched: ?[]const u8 = null;
@@ -3236,10 +2448,6 @@ pub fn unionLocalDefaultPayloadType(tokens: []const lexer.Token, union_local: Un
     }
     return matched;
 }
-
-
-
-
 
 pub fn unionLocalDefaultStructPayload(tokens: []const lexer.Token, ctx: CodegenContext, union_local: UnionLocal) ?UnionStructPayload {
     var matched: ?UnionStructPayload = null;
@@ -3255,9 +2463,6 @@ pub fn unionLocalDefaultStructPayload(tokens: []const lexer.Token, ctx: CodegenC
     return matched;
 }
 
-
-
-
 pub fn findNarrowedUnionType(locals: []const NarrowedUnionLocal, name: []const u8) ?[]const u8 {
     var i = locals.len;
     while (i > 0) {
@@ -3268,69 +2473,64 @@ pub fn findNarrowedUnionType(locals: []const NarrowedUnionLocal, name: []const u
     return null;
 }
 
-
-
 pub fn isDotIdent(name: []const u8) bool {
     return name.len > 1 and name[0] == '.';
 }
 
-
-// free helpers from gen_types
-pub const freeCallbackBindings = gen_types.freeCallbackBindings;
-pub const freeStructDecls = gen_types.freeStructDecls;
-pub const freeStructDecl = gen_types.freeStructDecl;
-pub const freeValueEnumDecls = gen_types.freeValueEnumDecls;
-pub const freePayloadEnumDecls = gen_types.freePayloadEnumDecls;
-pub const freeStructLayouts = gen_types.freeStructLayouts;
-pub const freeFuncParams = gen_types.freeFuncParams;
-pub const freeFuncDecls = gen_types.freeFuncDecls;
-pub const freeFuncResultItems = gen_types.freeFuncResultItems;
-const NUMERIC_SELECT_RIGHT_TMP_I64 = gen_types.NUMERIC_SELECT_RIGHT_TMP_I64;
-const NUMERIC_SELECT_LEFT_TMP_I64 = gen_types.NUMERIC_SELECT_LEFT_TMP_I64;
-const NUMERIC_SELECT_RIGHT_TMP_I32 = gen_types.NUMERIC_SELECT_RIGHT_TMP_I32;
-const NUMERIC_SELECT_LEFT_TMP_I32 = gen_types.NUMERIC_SELECT_LEFT_TMP_I32;
-const SourceOrigin = gen_types.SourceOrigin;
-const ValueEnumBranch = gen_types.ValueEnumBranch;
-const PayloadEnumCase = gen_types.PayloadEnumCase;
-const ManagedFieldOffset = gen_types.ManagedFieldOffset;
-const TypedStructBinding = gen_types.TypedStructBinding;
-const InferredUnionBinding = gen_types.InferredUnionBinding;
-const EmitOptions = gen_types.EmitOptions;
-const VARIADIC_PACK_TMP_LOCAL = gen_types.VARIADIC_PACK_TMP_LOCAL;
-const TUPLE_PACK_SPILL_I32 = gen_types.TUPLE_PACK_SPILL_I32;
-const TUPLE_PACK_SPILL_I64 = gen_types.TUPLE_PACK_SPILL_I64;
-const TUPLE_PACK_SPILL_F32 = gen_types.TUPLE_PACK_SPILL_F32;
-const TUPLE_PACK_SPILL_F64 = gen_types.TUPLE_PACK_SPILL_F64;
-const NumericSelectTemps = gen_types.NumericSelectTemps;
-const EMPTY_LOCAL_SET = gen_types.EMPTY_LOCAL_SET;
-const OwnedFuncTypeShape = gen_types.OwnedFuncTypeShape;
-const CallbackBindingKind = gen_types.CallbackBindingKind;
-const FuncResultParse = gen_types.FuncResultParse;
-const MultiResultLhsKind = gen_types.MultiResultLhsKind;
-const MultiResultLhs = gen_types.MultiResultLhs;
-const NO_RESULT_ITEMS = gen_types.NO_RESULT_ITEMS;
-const ParsedCodegenType = gen_types.ParsedCodegenType;
-const StructFieldAbiSlot = gen_types.StructFieldAbiSlot;
-const FuncBodyShape = gen_types.FuncBodyShape;
-const StructErrorResult = gen_types.StructErrorResult;
-const SelfTailTco = gen_types.SelfTailTco;
-const CollectionLoopHeader = gen_types.CollectionLoopHeader;
-const RecvLoopHeader = gen_types.RecvLoopHeader;
-const NilComparisonNarrowing = gen_types.NilComparisonNarrowing;
-const IsComparisonNarrowing = gen_types.IsComparisonNarrowing;
-const DeferItemKind = gen_types.DeferItemKind;
-const DeferItem = gen_types.DeferItem;
-const CodegenImportPrefix = gen_types.CodegenImportPrefix;
-const CodegenImportRef = gen_types.CodegenImportRef;
-const ImportedScalarConst = gen_types.ImportedScalarConst;
-const ReachVisit = gen_types.ReachVisit;
-const StringData = gen_types.StringData;
-const findStorageLocalOrigin = gen_types.findStorageLocalOrigin;
-const findUnionLocalExact = gen_types.findUnionLocalExact;
-const loopSourceLocalName = gen_types.loopSourceLocalName;
-const appendLoopSourceStorageLocal = gen_types.appendLoopSourceStorageLocal;
-
-
+// Free helpers from codegen_model.
+pub const freeCallbackBindings = model.freeCallbackBindings;
+pub const freeStructDecls = model.freeStructDecls;
+pub const freeStructDecl = model.freeStructDecl;
+pub const freeValueEnumDecls = model.freeValueEnumDecls;
+pub const freePayloadEnumDecls = model.freePayloadEnumDecls;
+pub const freeStructLayouts = model.freeStructLayouts;
+pub const freeFuncParams = model.freeFuncParams;
+pub const freeFuncDecls = model.freeFuncDecls;
+pub const freeFuncResultItems = model.freeFuncResultItems;
+const NUMERIC_SELECT_RIGHT_TMP_I64 = constants.NUMERIC_SELECT_RIGHT_TMP_I64;
+const NUMERIC_SELECT_LEFT_TMP_I64 = constants.NUMERIC_SELECT_LEFT_TMP_I64;
+const NUMERIC_SELECT_RIGHT_TMP_I32 = constants.NUMERIC_SELECT_RIGHT_TMP_I32;
+const NUMERIC_SELECT_LEFT_TMP_I32 = constants.NUMERIC_SELECT_LEFT_TMP_I32;
+const SourceOrigin = model.SourceOrigin;
+const ValueEnumBranch = model.ValueEnumBranch;
+const PayloadEnumCase = model.PayloadEnumCase;
+const ManagedFieldOffset = model.ManagedFieldOffset;
+const TypedStructBinding = model.TypedStructBinding;
+const InferredUnionBinding = model.InferredUnionBinding;
+const EmitOptions = model.EmitOptions;
+const VARIADIC_PACK_TMP_LOCAL = constants.VARIADIC_PACK_TMP_LOCAL;
+const TUPLE_PACK_SPILL_I32 = constants.TUPLE_PACK_SPILL_I32;
+const TUPLE_PACK_SPILL_I64 = constants.TUPLE_PACK_SPILL_I64;
+const TUPLE_PACK_SPILL_F32 = constants.TUPLE_PACK_SPILL_F32;
+const TUPLE_PACK_SPILL_F64 = constants.TUPLE_PACK_SPILL_F64;
+const NumericSelectTemps = model.NumericSelectTemps;
+const EMPTY_LOCAL_SET = context.EMPTY_LOCAL_SET;
+const OwnedFuncTypeShape = model.OwnedFuncTypeShape;
+const CallbackBindingKind = model.CallbackBindingKind;
+const FuncResultParse = model.FuncResultParse;
+const MultiResultLhsKind = model.MultiResultLhsKind;
+const MultiResultLhs = model.MultiResultLhs;
+const NO_RESULT_ITEMS = model.NO_RESULT_ITEMS;
+const ParsedCodegenType = model.ParsedCodegenType;
+const StructFieldAbiSlot = model.StructFieldAbiSlot;
+const FuncBodyShape = model.FuncBodyShape;
+const StructErrorResult = model.StructErrorResult;
+const SelfTailTco = context.SelfTailTco;
+const CollectionLoopHeader = context.CollectionLoopHeader;
+const RecvLoopHeader = context.RecvLoopHeader;
+const NilComparisonNarrowing = model.NilComparisonNarrowing;
+const IsComparisonNarrowing = model.IsComparisonNarrowing;
+const DeferItemKind = context.DeferItemKind;
+const DeferItem = context.DeferItem;
+const CodegenImportPrefix = model.CodegenImportPrefix;
+const CodegenImportRef = model.CodegenImportRef;
+const ImportedScalarConst = model.ImportedScalarConst;
+const ReachVisit = model.ReachVisit;
+const StringData = model.StringData;
+const findStorageLocalOrigin = context.findStorageLocalOrigin;
+const findUnionLocalExact = context.findUnionLocalExact;
+const loopSourceLocalName = context.loopSourceLocalName;
+const appendLoopSourceStorageLocal = context.appendLoopSourceStorageLocal;
 
 const WasiLinkAtArgs = codegen_wasi_registry.WasiLinkAtArgs;
 const WasiLowering = codegen_wasi_registry.WasiLowering;
@@ -3357,16 +2557,11 @@ const isWasiResultReadMultiAssignmentCall = codegen_wasi_registry.is_wasi_result
 const isWasiResultListU8StatusMultiAssignmentCall = codegen_wasi_registry.is_wasi_result_list_u8_status_multi_assignment_call;
 const wasiHostImportUseIsLowerableAtCall = codegen_wasi_registry.wasi_host_import_use_is_lowerable_at_call;
 
-
-// Types from gen_types
-
-
-
+// Shared types from codegen_model and codegen_context.
 
 pub fn isArrowAt(tokens: []const lexer.Token, idx: usize) bool {
     return idx + 1 < tokens.len and tokEq(tokens[idx], "=") and tokEq(tokens[idx + 1], ">");
 }
-
 
 pub fn lambdaBodyStart(tokens: []const lexer.Token, start_idx: usize, limit_idx: usize) ?usize {
     if (isArrowAt(tokens, start_idx)) return start_idx + 2;
@@ -3399,12 +2594,10 @@ pub fn lambdaBodyStart(tokens: []const lexer.Token, start_idx: usize, limit_idx:
     return null;
 }
 
-
 pub fn lambdaParamTypeName(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?[]const u8 {
     if (start_idx + 1 >= end_idx) return null;
     return simpleTypeName(tokens, start_idx + 1, end_idx);
 }
-
 
 pub fn lambdaExplicitReturnType(tokens: []const lexer.Token, lambda: LambdaExprShape) ?[]const u8 {
     if (!isReturnArrowAt(tokens, lambda.close_params + 1)) return null;
@@ -3414,14 +2607,7 @@ pub fn lambdaExplicitReturnType(tokens: []const lexer.Token, lambda: LambdaExprS
     return simpleTypeName(tokens, ret_start, ret_end);
 }
 
-
-pub fn appendTypedLocalWithDecl(
-    allocator: std.mem.Allocator,
-    locals: *LocalSet,
-    name: []const u8,
-    ty: []const u8,
-    ctx: CodegenContext,
-    emit_decl: bool) !void {
+pub fn appendTypedLocalWithDecl(allocator: std.mem.Allocator, locals: *LocalSet, name: []const u8, ty: []const u8, ctx: CodegenContext, emit_decl: bool) !void {
     if (managedPayloadElemTypeFromName(ty)) |elem_ty| {
         try locals.appendBorrowedLocal(allocator, name, ty, emit_decl);
         try locals.storage_locals.append(allocator, .{
@@ -3455,24 +2641,11 @@ pub fn appendTypedLocalWithDecl(
     try locals.appendBorrowedLocal(allocator, name, ty, emit_decl);
 }
 
-
-pub fn appendTypedLocal(
-    allocator: std.mem.Allocator,
-    locals: *LocalSet,
-    name: []const u8,
-    ty: []const u8,
-    ctx: CodegenContext) !void {
+pub fn appendTypedLocal(allocator: std.mem.Allocator, locals: *LocalSet, name: []const u8, ty: []const u8, ctx: CodegenContext) !void {
     return appendTypedLocalWithDecl(allocator, locals, name, ty, ctx, false);
 }
 
-
-pub fn inferLambdaExprReturnType(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    lambda: LambdaExprShape,
-    shape: FuncTypeShape,
-    locals: *const LocalSet,
-    ctx: CodegenContext) !?[]const u8 {
+pub fn inferLambdaExprReturnType(allocator: std.mem.Allocator, tokens: []const lexer.Token, lambda: LambdaExprShape, shape: FuncTypeShape, locals: *const LocalSet, ctx: CodegenContext) !?[]const u8 {
     if (lambda.close_params + 1 < tokens.len and isReturnArrowAt(tokens, lambda.close_params + 1)) {
         return lambdaExplicitReturnType(tokens, lambda);
     }
@@ -3502,7 +2675,6 @@ pub fn inferLambdaExprReturnType(
     return inferExprType(tokens, lambda.body_start, lambda.body_end, &lambda_locals, ctx);
 }
 
-
 pub fn cloneLocalSet(allocator: std.mem.Allocator, locals: *const LocalSet) !LocalSet {
     var out = LocalSet{};
     try out.locals.appendSlice(allocator, locals.locals.items);
@@ -3523,7 +2695,6 @@ pub fn cloneLocalSet(allocator: std.mem.Allocator, locals: *const LocalSet) !Loc
     return out;
 }
 
-
 pub fn callbackFunctionMatchesShape(func: FuncDecl, shape: FuncTypeShape) bool {
     if (func.params.len != shape.param_types.len) return false;
     for (shape.param_types, 0..) |target_ty, idx| {
@@ -3540,13 +2711,7 @@ pub fn callbackFunctionMatchesShape(func: FuncDecl, shape: FuncTypeShape) bool {
     return true;
 }
 
-
-pub fn callbackLambdaReturnMatchesShape(
-    tokens: []const lexer.Token,
-    lambda: LambdaExprShape,
-    shape: FuncTypeShape,
-    locals: *const LocalSet,
-    ctx: CodegenContext) bool {
+pub fn callbackLambdaReturnMatchesShape(tokens: []const lexer.Token, lambda: LambdaExprShape, shape: FuncTypeShape, locals: *const LocalSet, ctx: CodegenContext) bool {
     if (shape.return_type) |ret_ty| {
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
@@ -3567,7 +2732,6 @@ pub fn callbackLambdaReturnMatchesShape(
     return true;
 }
 
-
 pub fn findCallbackRefFunc(tokens: []const lexer.Token, ctx: CodegenContext, name: []const u8, shape: FuncTypeShape) ?FuncDecl {
     for (ctx.functions) |func| {
         if (func.is_generic_template) continue;
@@ -3577,8 +2741,6 @@ pub fn findCallbackRefFunc(tokens: []const lexer.Token, ctx: CodegenContext, nam
     }
     return null;
 }
-
-
 
 pub fn lambdaExplicitTypesMatchShape(tokens: []const lexer.Token, lambda: LambdaExprShape, shape: FuncTypeShape) bool {
     var seg_start = lambda.open_params + 1;
@@ -3599,33 +2761,16 @@ pub fn lambdaExplicitTypesMatchShape(tokens: []const lexer.Token, lambda: Lambda
     return seg_idx == shape.param_types.len;
 }
 
-
-
-
-
-
-
 pub fn typeBaseName(ty: []const u8) []const u8 {
     return type_util.typeBaseName(ty);
 }
 
-
-
-
-
-
-
-pub fn valueEnumTypeMatchesImportAlias(
-    ctx: CodegenContext,
-    tokens: []const lexer.Token,
-    enum_idx: usize,
-    expected_name: []const u8) bool {
+pub fn valueEnumTypeMatchesImportAlias(ctx: CodegenContext, tokens: []const lexer.Token, enum_idx: usize, expected_name: []const u8) bool {
     const source_name = publicDeclName(tokens[enum_idx].lexeme);
     if (std.mem.eql(u8, source_name, expected_name)) return true;
     const decl = findValueEnumDecl(ctx.value_enums, expected_name) orelse return false;
     return std.mem.eql(u8, decl.source_name, source_name);
 }
-
 
 pub fn findValueEnumBranchValue(decl: ValueEnumDecl, branch_name: []const u8) ?[]const u8 {
     for (decl.branches) |branch| {
@@ -3633,7 +2778,6 @@ pub fn findValueEnumBranchValue(decl: ValueEnumDecl, branch_name: []const u8) ?[
     }
     return null;
 }
-
 
 pub fn valueEnumBranchValueInLine(tokens: []const lexer.Token, enum_idx: usize, branch_name: []const u8) ?[]const u8 {
     const line_end = findLineEnd(tokens, enum_idx);
@@ -3649,17 +2793,14 @@ pub fn valueEnumBranchValueInLine(tokens: []const lexer.Token, enum_idx: usize, 
     return null;
 }
 
-
 pub fn valueEnumSourceMatchesImport(tokens: []const lexer.Token, import_ref: CodegenImportRef) bool {
     if (findValueEnumDeclLineByName(tokens, import_ref.target) != null) return true;
     return findValueEnumDeclLineByBranch(tokens, import_ref.target) != null;
 }
 
-
 pub fn managedPayloadElemTypeFromName(ty: []const u8) ?[]const u8 {
     return type_util.managedPayloadElemTypeFromName(ty);
 }
-
 
 pub fn absResultType(source_ty: []const u8) ?[]const u8 {
     if (std.mem.eql(u8, source_ty, "i8")) return "u8";
@@ -3672,7 +2813,6 @@ pub fn absResultType(source_ty: []const u8) ?[]const u8 {
     return null;
 }
 
-
 pub fn inferFirstArgTypeOrDefaultS32(
     tokens: []const lexer.Token,
     args_start: usize,
@@ -3684,7 +2824,6 @@ pub fn inferFirstArgTypeOrDefaultS32(
     return inferExprType(tokens, args_start, first_end, locals, ctx) orelse "i32";
 }
 
-
 pub fn wasiDoResultType(import: WasiHostImport) ?[]const u8 {
     const lowering = wasiLowering(import) orelse return null;
     if (lowering.result_storage_elem) |elem_ty| return storageTypeNameForElem(elem_ty);
@@ -3692,7 +2831,6 @@ pub fn wasiDoResultType(import: WasiHostImport) ?[]const u8 {
     if (lowering.result_record) |record| return record;
     return import.result;
 }
-
 
 pub fn memoryLoadResultType(name: []const u8) ?[]const u8 {
     if (std.mem.eql(u8, name, "load_u8")) return "u8";
@@ -3705,7 +2843,6 @@ pub fn memoryLoadResultType(name: []const u8) ?[]const u8 {
     if (std.mem.eql(u8, name, "load_i64_le")) return "i64";
     return null;
 }
-
 
 pub fn inferPathGetCallType(
     tokens: []const lexer.Token,
@@ -3740,7 +2877,6 @@ pub fn inferPathGetCallType(
     return null;
 }
 
-
 pub fn inferManagedStructExprFieldType(
     tokens: []const lexer.Token,
     value_start: usize,
@@ -3756,7 +2892,6 @@ pub fn inferManagedStructExprFieldType(
     return findConcreteStructFieldTypeNoAlloc(decl, struct_ty, publicDeclName(dot_field));
 }
 
-
 pub fn findConcreteStructFieldTypeNoAlloc(decl: StructDecl, concrete_ty: []const u8, field_name: []const u8) ?[]const u8 {
     const field = findStructField(decl, field_name) orelse return null;
     if (decl.type_params.len == 0) return field.ty;
@@ -3767,23 +2902,11 @@ pub fn findConcreteStructFieldTypeNoAlloc(decl: StructDecl, concrete_ty: []const
     return field.ty;
 }
 
-
 pub fn genericTypeArgAt(concrete_ty: []const u8, target_idx: usize) ?[]const u8 {
     return type_util.genericTypeArgAt(concrete_ty, target_idx);
 }
 
-pub fn emitManagedHandleCallExprWithMoveContext(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    body_end: usize,
-    allow_last_use_move: bool,
-    locals: *const LocalSet,
-    defer_ctx: ?*const DeferContext,
-    ctx: CodegenContext,
-    expected_ty: []const u8,
-    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitManagedHandleCallExprWithMoveContext(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, body_end: usize, allow_last_use_move: bool, locals: *const LocalSet, defer_ctx: ?*const DeferContext, ctx: CodegenContext, expected_ty: []const u8, out: *std.ArrayList(u8)) CodegenError!bool {
     const range = trimParens(tokens, start_idx, end_idx);
     const call_head = exprCallHead(tokens, range) orelse return false;
     if (call_head.is_intrinsic) return false;
@@ -3799,19 +2922,7 @@ pub fn emitManagedHandleCallExprWithMoveContext(
     return try gen_hooks.emitUserFuncCallWithMoveContext(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, &move_ctx, out);
 }
 
-pub fn emitStorageHandleBindingExpr(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    body_start: usize,
-    body_end: usize,
-    allow_last_use_move: bool,
-    expected_ty: []const u8,
-    locals: *const LocalSet,
-    defer_ctx: ?*const DeferContext,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitStorageHandleBindingExpr(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, body_start: usize, body_end: usize, allow_last_use_move: bool, expected_ty: []const u8, locals: *const LocalSet, defer_ctx: ?*const DeferContext, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
     if (!std.mem.eql(u8, inferExprType(tokens, start_idx, end_idx, locals, ctx) orelse "", expected_ty)) return false;
     const move_ctx = if (allow_last_use_move) CallLastUseMoveContext{
         .body_start = body_start,
@@ -3825,18 +2936,7 @@ pub fn emitStorageHandleBindingExpr(
     return true;
 }
 
-pub fn emitTupleCallBinding(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    body_end: usize,
-    allow_last_use_move: bool,
-    locals: *const LocalSet,
-    defer_ctx: ?*const DeferContext,
-    ctx: CodegenContext,
-    tuple_local: StructLocal,
-    out: *std.ArrayList(u8)) CodegenError!bool {
+pub fn emitTupleCallBinding(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, body_end: usize, allow_last_use_move: bool, locals: *const LocalSet, defer_ctx: ?*const DeferContext, ctx: CodegenContext, tuple_local: StructLocal, out: *std.ArrayList(u8)) CodegenError!bool {
     const eq_idx = findTopLevelToken(tokens, start_idx + 1, end_idx, "=") orelse return false;
     const rhs_range = trimParens(tokens, eq_idx + 1, end_idx);
     const call_head = exprCallHead(tokens, rhs_range) orelse return false;

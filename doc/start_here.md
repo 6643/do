@@ -91,7 +91,9 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | | `gen_lower.zig` | 编排核（`emitWat*` / hooks install）+ 最小 re-export |
 | | `gen_generic.zig` | 泛型实例化 / 类型绑定 / callback prebind（不 import lower） |
 | | `gen_hooks.zig` | 晚绑定 emit 回调（破 ctrl/union→expr、struct→union 反向边） |
-| | `gen_types.zig` | LocalSet / CodegenContext / 声明类型 / free / `ExprCallHead` |
+| | `codegen_model.zig` | 不可变声明、shape、ownership/free、`ExprCallHead` |
+| | `codegen_context.zig` | LocalSet、可变 codegen context、local-name helpers |
+| | `codegen_constants.zig` | ABI/layout ID 与 compiler temporary-local 名称 |
 | | `gen_collect.zig` | collect facade（re-export util/struct/func/type） |
 | | `gen_collect_util` / `_struct` / `_func` / `_type` | 类型 parse·bind / struct·layout / func / enum collect |
 | | `gen_expr.zig` | 表达式/调用 dispatch + re-export body-local collect |

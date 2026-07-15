@@ -6,7 +6,9 @@ const payload_wat = @import("wat_payload.zig");
 const storage_wat = @import("wat_storage.zig");
 const codegen_tokens = @import("codegen_tokens.zig");
 const codegen_names = @import("codegen_names.zig");
-const gen_types = @import("gen_types.zig");
+const model = @import("codegen_model.zig");
+const constants = @import("codegen_constants.zig");
+const context = @import("codegen_context.zig");
 const gen_collect = @import("gen_collect.zig");
 const gen_import = @import("gen_import.zig");
 const gen_wasi_emit = @import("gen_wasi_emit.zig");
@@ -22,17 +24,17 @@ const trimParens = codegen_tokens.trim_parens;
 const publicDeclName = codegen_names.public_decl_name;
 const appendFmt = codegen_names.append_fmt;
 const alignUp = codegen_tokens.align_up;
-const LocalSet = gen_types.LocalSet;
-const CodegenContext = gen_types.CodegenContext;
-const CodegenError = gen_types.CodegenError;
-const StructDecl = gen_types.StructDecl;
-const StructLayout = gen_types.StructLayout;
-const StructLocal = gen_types.StructLocal;
-const FuncResultItem = gen_types.FuncResultItem;
-const STORAGE_WRITE_SCAN_TMP_LOCAL = gen_types.STORAGE_WRITE_SCAN_TMP_LOCAL;
-const TUPLE_PACK_BASE_TMP_LOCAL = gen_types.TUPLE_PACK_BASE_TMP_LOCAL;
-const STORAGE_PAYLOAD_HEADER_BYTES = gen_types.STORAGE_PAYLOAD_HEADER_BYTES;
-const findStructLocal = gen_types.findStructLocal;
+const LocalSet = context.LocalSet;
+const CodegenContext = context.CodegenContext;
+const CodegenError = model.CodegenError;
+const StructDecl = model.StructDecl;
+const StructLayout = model.StructLayout;
+const StructLocal = model.StructLocal;
+const FuncResultItem = model.FuncResultItem;
+const STORAGE_WRITE_SCAN_TMP_LOCAL = constants.STORAGE_WRITE_SCAN_TMP_LOCAL;
+const TUPLE_PACK_BASE_TMP_LOCAL = constants.TUPLE_PACK_BASE_TMP_LOCAL;
+const STORAGE_PAYLOAD_HEADER_BYTES = constants.STORAGE_PAYLOAD_HEADER_BYTES;
+const findStructLocal = context.findStructLocal;
 const findStructDecl = gen_collect.findStructDecl;
 const findStructLayout = gen_collect.findStructLayout;
 const isPackManagedHandleLeaf = gen_collect.isPackManagedHandleLeaf;
@@ -50,16 +52,7 @@ const tupleElementTypeAt = gen_wasi_emit.tupleElementTypeAt;
 const tupleHasManagedPackLeafCtx = gen_wasi_emit.tupleHasManagedPackLeafCtx;
 const isTuplePackableLeafType = type_util.isTuplePackableLeafType;
 
-pub fn emitTupleReturnLocal(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    result_tys: []const []const u8,
-    result_items: []const FuncResultItem,
-    out: *std.ArrayList(u8)) !bool {
+pub fn emitTupleReturnLocal(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, result_tys: []const []const u8, result_items: []const FuncResultItem, out: *std.ArrayList(u8)) !bool {
     const item = singleTupleResultItem(result_items) orelse return false;
     if (item.abi_len != result_tys.len) return false;
     if (start_idx + 2 != end_idx) return false;
@@ -79,16 +72,7 @@ pub fn emitTupleReturnLocal(
     return true;
 }
 
-
-
-
-
-pub fn emitTupleLocalSet(
-    allocator: std.mem.Allocator,
-    base: []const u8,
-    tuple_ty: []const u8,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) !void {
+pub fn emitTupleLocalSet(allocator: std.mem.Allocator, base: []const u8, tuple_ty: []const u8, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
     const arity = tupleArity(tuple_ty) orelse return error.UnsupportedLowering;
     var idx = arity;
     while (idx > 0) {
@@ -112,16 +96,7 @@ pub fn emitTupleLocalSet(
     }
 }
 
-
-
-
-
-pub fn emitTupleLocalGet(
-    allocator: std.mem.Allocator,
-    base: []const u8,
-    tuple_ty: []const u8,
-    ctx: CodegenContext,
-    out: *std.ArrayList(u8)) !void {
+pub fn emitTupleLocalGet(allocator: std.mem.Allocator, base: []const u8, tuple_ty: []const u8, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
     const arity = tupleArity(tuple_ty) orelse return error.UnsupportedLowering;
     var idx: usize = 0;
     while (idx < arity) : (idx += 1) {
@@ -144,22 +119,7 @@ pub fn emitTupleLocalGet(
     }
 }
 
-
-
-
-
-
-
-pub fn emitTupleGetBinding(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    start_idx: usize,
-    end_idx: usize,
-    locals: *const LocalSet,
-    ctx: CodegenContext,
-    tuple_local: StructLocal,
-    out: *std.ArrayList(u8)
-) CodegenError!bool {
+pub fn emitTupleGetBinding(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, tuple_local: StructLocal, out: *std.ArrayList(u8)) CodegenError!bool {
     const eq_idx = findTopLevelToken(tokens, start_idx + 1, end_idx, "=") orelse return false;
     const rhs_range = trimParens(tokens, eq_idx + 1, end_idx);
     const call_head = exprCallHead(tokens, rhs_range) orelse return false;
@@ -172,24 +132,7 @@ pub fn emitTupleGetBinding(
     return true;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-pub fn emitStorageIncCopiedPackElements(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    storage_local: []const u8,
-    copy_len_local: []const u8,
-    layout: StructLayout) !void {
+pub fn emitStorageIncCopiedPackElements(allocator: std.mem.Allocator, out: *std.ArrayList(u8), storage_local: []const u8, copy_len_local: []const u8, layout: StructLayout) !void {
     try out.appendSlice(allocator, "      ;; storage-pack-clone-inc\n");
     try out.appendSlice(allocator, "      i32.const 0\n");
     try appendFmt(allocator, out, "      local.set ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
@@ -225,39 +168,16 @@ pub fn emitStorageIncCopiedPackElements(
     try out.appendSlice(allocator, "      end\n");
 }
 
-
-
-
-
 pub fn tuplePackSpillLocal(ty: []const u8) []const u8 {
     return payload_wat.tuple_pack_spill_local(ty);
 }
 
-
-
-
-
-pub fn appendStoreTupleScalarLeavesFromStack(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    tuple_ty: []const u8,
-    base_local: []const u8,
-    indent: []const u8) CodegenError!void {
+pub fn appendStoreTupleScalarLeavesFromStack(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tuple_ty: []const u8, base_local: []const u8, indent: []const u8) CodegenError!void {
     // Legacy path without struct table (scalar/managed only).
     try payload_wat.append_store_tuple_scalar_leaves_from_stack(allocator, out, tuple_ty, base_local, indent);
 }
 
-
-
-
-
-pub fn appendStoreTupleScalarLeavesFromStackCtx(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    tuple_ty: []const u8,
-    base_local: []const u8,
-    indent: []const u8,
-    ctx: CodegenContext) CodegenError!void {
+pub fn appendStoreTupleScalarLeavesFromStackCtx(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tuple_ty: []const u8, base_local: []const u8, indent: []const u8, ctx: CodegenContext) CodegenError!void {
     var leaf_types = std.ArrayList([]const u8).empty;
     defer leaf_types.deinit(allocator);
     try appendTupleLeafTypesWithStructs(allocator, tuple_ty, ctx.structs, &leaf_types);
@@ -293,45 +213,17 @@ pub fn appendStoreTupleScalarLeavesFromStackCtx(
 
 /// Store packed leaves; if any managed leaf, inc first so storage shares ownership with stack values.
 /// Store packed leaves; if any managed leaf, inc first so storage shares ownership with stack values.
-
-
-
-
-pub fn appendStoreTupleLeavesOwningFromStack(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    tuple_ty: []const u8,
-    base_local: []const u8,
-    indent: []const u8) CodegenError!void {
+pub fn appendStoreTupleLeavesOwningFromStack(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tuple_ty: []const u8, base_local: []const u8, indent: []const u8) CodegenError!void {
     try payload_wat.append_inc_managed_tuple_leaves_on_stack(allocator, out, tuple_ty, indent);
     try payload_wat.append_store_tuple_scalar_leaves_from_stack(allocator, out, tuple_ty, base_local, indent);
 }
 
-
-
-
-
-pub fn appendStoreTupleLeavesOwningFromStackCtx(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    tuple_ty: []const u8,
-    base_local: []const u8,
-    indent: []const u8,
-    ctx: CodegenContext) CodegenError!void {
+pub fn appendStoreTupleLeavesOwningFromStackCtx(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tuple_ty: []const u8, base_local: []const u8, indent: []const u8, ctx: CodegenContext) CodegenError!void {
     try appendIncManagedTupleLeavesOnStackCtx(allocator, out, tuple_ty, indent, ctx);
     try appendStoreTupleScalarLeavesFromStackCtx(allocator, out, tuple_ty, base_local, indent, ctx);
 }
 
-
-
-
-
-pub fn appendIncManagedTupleLeavesOnStackCtx(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    tuple_ty: []const u8,
-    indent: []const u8,
-    ctx: CodegenContext) CodegenError!void {
+pub fn appendIncManagedTupleLeavesOnStackCtx(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tuple_ty: []const u8, indent: []const u8, ctx: CodegenContext) CodegenError!void {
     var leaf_types = std.ArrayList([]const u8).empty;
     defer leaf_types.deinit(allocator);
     try appendTupleLeafTypesWithStructs(allocator, tuple_ty, ctx.structs, &leaf_types);
@@ -365,30 +257,11 @@ pub fn appendIncManagedTupleLeavesOnStackCtx(
     }
 }
 
-
-
-
-
-pub fn appendLoadTupleScalarLeavesToStack(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    tuple_ty: []const u8,
-    base_local: []const u8,
-    indent: []const u8) CodegenError!void {
+pub fn appendLoadTupleScalarLeavesToStack(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tuple_ty: []const u8, base_local: []const u8, indent: []const u8) CodegenError!void {
     try payload_wat.append_load_tuple_scalar_leaves_to_stack(allocator, out, tuple_ty, base_local, indent);
 }
 
-
-
-
-
-pub fn appendLoadTupleScalarLeavesToStackCtx(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    tuple_ty: []const u8,
-    base_local: []const u8,
-    indent: []const u8,
-    ctx: CodegenContext) CodegenError!void {
+pub fn appendLoadTupleScalarLeavesToStackCtx(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tuple_ty: []const u8, base_local: []const u8, indent: []const u8, ctx: CodegenContext) CodegenError!void {
     var leaf_types = std.ArrayList([]const u8).empty;
     defer leaf_types.deinit(allocator);
     try appendTupleLeafTypesWithStructs(allocator, tuple_ty, ctx.structs, &leaf_types);
@@ -410,47 +283,17 @@ pub fn appendLoadTupleScalarLeavesToStackCtx(
 
 /// Load packed leaves and inc managed ones for a consumer that will own the result.
 /// Load packed leaves and inc managed ones for a consumer that will own the result.
-
-
-
-
-pub fn appendLoadTupleLeavesOwningToStack(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    tuple_ty: []const u8,
-    base_local: []const u8,
-    indent: []const u8) CodegenError!void {
+pub fn appendLoadTupleLeavesOwningToStack(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tuple_ty: []const u8, base_local: []const u8, indent: []const u8) CodegenError!void {
     try payload_wat.append_load_tuple_scalar_leaves_to_stack(allocator, out, tuple_ty, base_local, indent);
     try payload_wat.append_inc_managed_tuple_leaves_on_stack(allocator, out, tuple_ty, indent);
 }
 
-
-
-
-
-pub fn appendLoadTupleLeavesOwningToStackCtx(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    tuple_ty: []const u8,
-    base_local: []const u8,
-    indent: []const u8,
-    ctx: CodegenContext) CodegenError!void {
+pub fn appendLoadTupleLeavesOwningToStackCtx(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tuple_ty: []const u8, base_local: []const u8, indent: []const u8, ctx: CodegenContext) CodegenError!void {
     try appendLoadTupleScalarLeavesToStackCtx(allocator, out, tuple_ty, base_local, indent, ctx);
     try appendIncManagedTupleLeavesOnStackCtx(allocator, out, tuple_ty, indent, ctx);
 }
 
-
-
-
-
-pub fn appendLoadTupleElementFromPackedBaseCtx(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    tuple_ty: []const u8,
-    elem_index: usize,
-    base_local: []const u8,
-    indent: []const u8,
-    ctx: CodegenContext) CodegenError!void {
+pub fn appendLoadTupleElementFromPackedBaseCtx(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tuple_ty: []const u8, elem_index: usize, base_local: []const u8, indent: []const u8, ctx: CodegenContext) CodegenError!void {
     const elem_ty = tupleElementTypeAt(tuple_ty, elem_index) orelse return error.UnsupportedLowering;
     const elem_offset = tupleElementPackOffsetWithStructs(tuple_ty, elem_index, ctx.structs) orelse return error.UnsupportedLowering;
     if (isTupleTypeName(elem_ty)) {
@@ -494,17 +337,7 @@ pub fn appendLoadTupleElementFromPackedBaseCtx(
     try payload_wat.append_load_for_payload_type_with_indent(allocator, out, elem_ty, indent);
 }
 
-
-
-
-
-pub fn appendLoadTupleLeafTypesOfStructToStack(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    decl: StructDecl,
-    base_local: []const u8,
-    indent: []const u8,
-    ctx: CodegenContext) CodegenError!void {
+pub fn appendLoadTupleLeafTypesOfStructToStack(allocator: std.mem.Allocator, out: *std.ArrayList(u8), decl: StructDecl, base_local: []const u8, indent: []const u8, ctx: CodegenContext) CodegenError!void {
     var offset: usize = 0;
     for (decl.fields) |field| {
         const field_ty = field.ty;
@@ -549,18 +382,7 @@ pub fn appendLoadTupleLeafTypesOfStructToStack(
     }
 }
 
-
-
-
-
-pub fn appendLoadTupleElementOwningFromPackedBase(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    tuple_ty: []const u8,
-    elem_index: usize,
-    base_local: []const u8,
-    indent: []const u8,
-    ctx: CodegenContext) CodegenError!void {
+pub fn appendLoadTupleElementOwningFromPackedBase(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tuple_ty: []const u8, elem_index: usize, base_local: []const u8, indent: []const u8, ctx: CodegenContext) CodegenError!void {
     const elem_ty = tupleElementTypeAt(tuple_ty, elem_index) orelse return error.UnsupportedLowering;
     try appendLoadTupleElementFromPackedBaseCtx(allocator, out, tuple_ty, elem_index, base_local, indent, ctx);
     if (isTupleTypeName(elem_ty)) {
@@ -574,17 +396,7 @@ pub fn appendLoadTupleElementOwningFromPackedBase(
     // pure-scalar struct slot: no managed leaves to inc
 }
 
-
-
-
-
-pub fn emitIncManagedTupleLeavesAtBase(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    tuple_ty: []const u8,
-    base_local: []const u8,
-    indent: []const u8,
-    ctx: CodegenContext) CodegenError!void {
+pub fn emitIncManagedTupleLeavesAtBase(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tuple_ty: []const u8, base_local: []const u8, indent: []const u8, ctx: CodegenContext) CodegenError!void {
     if (!tupleHasManagedPackLeafCtx(tuple_ty, ctx)) return;
     var leaf_types = std.ArrayList([]const u8).empty;
     defer leaf_types.deinit(allocator);
@@ -607,17 +419,7 @@ pub fn emitIncManagedTupleLeavesAtBase(
     }
 }
 
-
-
-
-
-pub fn emitDecManagedTupleLeavesAtBase(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    tuple_ty: []const u8,
-    base_local: []const u8,
-    indent: []const u8,
-    ctx: CodegenContext) CodegenError!void {
+pub fn emitDecManagedTupleLeavesAtBase(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tuple_ty: []const u8, base_local: []const u8, indent: []const u8, ctx: CodegenContext) CodegenError!void {
     if (!tupleHasManagedPackLeafCtx(tuple_ty, ctx)) return;
     var leaf_types = std.ArrayList([]const u8).empty;
     defer leaf_types.deinit(allocator);
@@ -639,50 +441,19 @@ pub fn emitDecManagedTupleLeavesAtBase(
     }
 }
 
-
-
-
-
-pub fn appendStoreForPayloadType(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    ty: []const u8) !void {
+pub fn appendStoreForPayloadType(allocator: std.mem.Allocator, out: *std.ArrayList(u8), ty: []const u8) !void {
     try payload_wat.append_store_for_payload_type(allocator, out, ty);
 }
 
-
-
-
-
-pub fn appendStoreForPayloadTypeWithIndent(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    ty: []const u8,
-    indent: []const u8) !void {
+pub fn appendStoreForPayloadTypeWithIndent(allocator: std.mem.Allocator, out: *std.ArrayList(u8), ty: []const u8, indent: []const u8) !void {
     try payload_wat.append_store_for_payload_type_with_indent(allocator, out, ty, indent);
 }
 
-
-
-
-
-pub fn appendLoadForPayloadTypeWithIndent(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    ty: []const u8,
-    indent: []const u8) !void {
+pub fn appendLoadForPayloadTypeWithIndent(allocator: std.mem.Allocator, out: *std.ArrayList(u8), ty: []const u8, indent: []const u8) !void {
     try payload_wat.append_load_for_payload_type_with_indent(allocator, out, ty, indent);
 }
 
-
-
-
-
-pub fn emitPureScalarStructLocalSet(
-    allocator: std.mem.Allocator,
-    base: []const u8,
-    decl: StructDecl,
-    out: *std.ArrayList(u8)) !void {
+pub fn emitPureScalarStructLocalSet(allocator: std.mem.Allocator, base: []const u8, decl: StructDecl, out: *std.ArrayList(u8)) !void {
     var field_idx = decl.fields.len;
     while (field_idx > 0) {
         field_idx -= 1;
@@ -693,14 +464,7 @@ pub fn emitPureScalarStructLocalSet(
     }
 }
 
-
-
-
-pub fn emitPureScalarStructLocalGet(
-    allocator: std.mem.Allocator,
-    base: []const u8,
-    decl: StructDecl,
-    out: *std.ArrayList(u8)) !void {
+pub fn emitPureScalarStructLocalGet(allocator: std.mem.Allocator, base: []const u8, decl: StructDecl, out: *std.ArrayList(u8)) !void {
     for (decl.fields) |field| {
         try appendFmt(allocator, out, "    local.get ${s}.{s}\n", .{
             base,
@@ -709,9 +473,6 @@ pub fn emitPureScalarStructLocalGet(
     }
 }
 
-
-
-
 pub fn singleTupleResultItem(result_items: []const FuncResultItem) ?FuncResultItem {
     if (result_items.len != 1) return null;
     const item = result_items[0];
@@ -719,9 +480,6 @@ pub fn singleTupleResultItem(result_items: []const FuncResultItem) ?FuncResultIt
     if (item.abi_len < 2) return null;
     return item;
 }
-
-
-
 
 pub fn tupleElementPackOffsetWithStructs(tuple_ty: []const u8, index: usize, structs: []const StructDecl) ?usize {
     if (!isTupleTypeName(tuple_ty)) return null;
@@ -736,9 +494,6 @@ pub fn tupleElementPackOffsetWithStructs(tuple_ty: []const u8, index: usize, str
     return offset;
 }
 
-
-
-
 pub fn tupleGetElementInfo(tokens: []const lexer.Token, second_start: usize, second_end: usize, tuple_ty: []const u8) ?TupleElementInfo {
     if (second_end != second_start + 1) return null;
     if (tokens[second_start].kind != .number) return null;
@@ -746,7 +501,3 @@ pub fn tupleGetElementInfo(tokens: []const lexer.Token, second_start: usize, sec
     const ty = tupleElementTypeAt(tuple_ty, index) orelse return null;
     return .{ .index = index, .ty = ty };
 }
-
-
-
-

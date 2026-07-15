@@ -7,7 +7,9 @@ const payload_wat = @import("wat_payload.zig");
 const storage_wat = @import("wat_storage.zig");
 const codegen_tokens = @import("codegen_tokens.zig");
 const codegen_names = @import("codegen_names.zig");
-const gen_types = @import("gen_types.zig");
+const model = @import("codegen_model.zig");
+const constants = @import("codegen_constants.zig");
+const context = @import("codegen_context.zig");
 const codegen_union_layout = @import("codegen_union_layout.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
 const gen_collect = @import("gen_collect.zig");
@@ -27,32 +29,32 @@ const appendFmt = codegen_names.append_fmt;
 const stringLiteralArgLexeme = codegen_tokens.string_literal_arg_lexeme;
 const Range = codegen_tokens.Range;
 const alignUp = codegen_tokens.align_up;
-const STORAGE_OVERWRITE_TMP_LOCAL = gen_types.STORAGE_OVERWRITE_TMP_LOCAL;
-const WASI_FAMILY_TMP_LOCAL = gen_types.WASI_FAMILY_TMP_LOCAL;
+const STORAGE_OVERWRITE_TMP_LOCAL = constants.STORAGE_OVERWRITE_TMP_LOCAL;
+const WASI_FAMILY_TMP_LOCAL = constants.WASI_FAMILY_TMP_LOCAL;
 const findValueEnumDecl = gen_import.findValueEnumDecl;
 const isErrorLikeType = gen_collect.isErrorLikeType;
 const moduleTokensEqual = codegen_tokens.module_tokens_equal;
 
-const LocalSet = gen_types.LocalSet;
-const Local = gen_types.Local;
-const CodegenContext = gen_types.CodegenContext;
-const CodegenError = gen_types.CodegenError;
-const StructDecl = gen_types.StructDecl;
-const StructField = gen_types.StructField;
-const StructLayout = gen_types.StructLayout;
-const StructLocal = gen_types.StructLocal;
-const StorageLocal = gen_types.StorageLocal;
-const UnionLocal = gen_types.UnionLocal;
-const FuncDecl = gen_types.FuncDecl;
-const HostImport = gen_types.HostImport;
-const TYPE_ID_STORAGE_U8 = gen_types.TYPE_ID_STORAGE_U8;
-const TYPE_ID_STORAGE_MANAGED = gen_types.TYPE_ID_STORAGE_MANAGED;
-const TYPE_ID_FIRST_STRUCT = gen_types.TYPE_ID_FIRST_STRUCT;
-const findLocalType = gen_types.findLocalType;
-const findStorageLocal = gen_types.findStorageLocal;
-const findStructLocal = gen_types.findStructLocal;
-const findUnionLocal = gen_types.findUnionLocal;
-const storageTypeNameForElem = gen_types.storageTypeNameForElem;
+const LocalSet = context.LocalSet;
+const Local = model.Local;
+const CodegenContext = context.CodegenContext;
+const CodegenError = model.CodegenError;
+const StructDecl = model.StructDecl;
+const StructField = model.StructField;
+const StructLayout = model.StructLayout;
+const StructLocal = model.StructLocal;
+const StorageLocal = model.StorageLocal;
+const UnionLocal = model.UnionLocal;
+const FuncDecl = model.FuncDecl;
+const HostImport = model.HostImport;
+const TYPE_ID_STORAGE_U8 = constants.TYPE_ID_STORAGE_U8;
+const TYPE_ID_STORAGE_MANAGED = constants.TYPE_ID_STORAGE_MANAGED;
+const TYPE_ID_FIRST_STRUCT = constants.TYPE_ID_FIRST_STRUCT;
+const findLocalType = context.findLocalType;
+const findStorageLocal = context.findStorageLocal;
+const findStructLocal = context.findStructLocal;
+const findUnionLocal = context.findUnionLocal;
+const storageTypeNameForElem = context.storageTypeNameForElem;
 
 const UnionLayout = codegen_union_layout.UnionLayout;
 const UnionBranch = codegen_union_layout.UnionBranch;
@@ -135,14 +137,12 @@ pub fn findUnionBranchByType(layout: UnionLayout, ty: []const u8) ?UnionBranch {
     return null;
 }
 
-
 pub fn codegenTypesCompatible(expected: []const u8, actual: []const u8) bool {
     if (std.mem.eql(u8, expected, actual)) return true;
     if (std.mem.eql(u8, expected, "text") and std.mem.eql(u8, actual, "[u8]")) return true;
     if (std.mem.eql(u8, expected, "[u8]") and std.mem.eql(u8, actual, "text")) return true;
     return false;
 }
-
 
 pub fn isManagedLocalType(ty: []const u8, ctx: CodegenContext) bool {
     if (isManagedPayloadType(ty)) return true;
@@ -153,7 +153,6 @@ pub fn isManagedLocalType(ty: []const u8, ctx: CodegenContext) bool {
     return findStructLayout(ctx.struct_layouts, ty) != null;
 }
 
-
 pub fn emitStorageLenPtr(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
@@ -162,7 +161,6 @@ pub fn emitStorageLenPtr(
     try storage_wat.emit_storage_len_ptr(allocator, out, name);
 }
 
-
 pub fn emitStorageDataPtr(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
@@ -170,7 +168,6 @@ pub fn emitStorageDataPtr(
 ) !void {
     try storage_wat.emit_storage_data_ptr(allocator, out, name);
 }
-
 
 pub fn emitWasiResultFilesizeMultiAssignment(
     allocator: std.mem.Allocator,
@@ -183,7 +180,6 @@ pub fn emitWasiResultFilesizeMultiAssignment(
     ctx: CodegenContext,
     import: WasiHostImport,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     const lowering = wasiLowering(import) orelse return false;
@@ -214,7 +210,6 @@ pub fn emitWasiResultFilesizeMultiAssignment(
     return true;
 }
 
-
 pub fn emitWasiResultU64StreamStatusMultiAssignment(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -226,7 +221,6 @@ pub fn emitWasiResultU64StreamStatusMultiAssignment(
     ctx: CodegenContext,
     import: WasiHostImport,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     const lowering = wasiLowering(import) orelse return false;
@@ -257,7 +251,6 @@ pub fn emitWasiResultU64StreamStatusMultiAssignment(
     return true;
 }
 
-
 pub fn emitWasiResultDescriptorStatusMultiAssignment(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -269,7 +262,6 @@ pub fn emitWasiResultDescriptorStatusMultiAssignment(
     ctx: CodegenContext,
     import: WasiHostImport,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     const lowering = wasiLowering(import) orelse return false;
@@ -300,7 +292,6 @@ pub fn emitWasiResultDescriptorStatusMultiAssignment(
     return true;
 }
 
-
 pub fn emitWasiResultUnitStatusMultiAssignment(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -312,7 +303,6 @@ pub fn emitWasiResultUnitStatusMultiAssignment(
     ctx: CodegenContext,
     import: WasiHostImport,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     const lowering = wasiLowering(import) orelse return false;
@@ -341,7 +331,6 @@ pub fn emitWasiResultUnitStatusMultiAssignment(
     return true;
 }
 
-
 pub fn emitWasiResultReadMultiAssignment(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -353,7 +342,6 @@ pub fn emitWasiResultReadMultiAssignment(
     ctx: CodegenContext,
     import: WasiHostImport,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     const lowering = wasiLowering(import) orelse return false;
@@ -397,7 +385,6 @@ pub fn emitWasiResultReadMultiAssignment(
     return true;
 }
 
-
 pub fn emitWasiResultListU8StatusMultiAssignment(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -409,7 +396,6 @@ pub fn emitWasiResultListU8StatusMultiAssignment(
     ctx: CodegenContext,
     import: WasiHostImport,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     const lowering = wasiLowering(import) orelse return false;
@@ -442,7 +428,6 @@ pub fn emitWasiResultListU8StatusMultiAssignment(
     return true;
 }
 
-
 pub fn emitWasiRecordStructBinding(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -473,7 +458,6 @@ pub fn emitWasiRecordStructBinding(
     return true;
 }
 
-
 pub fn emitWasiRecordReturnCall(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -497,7 +481,6 @@ pub fn emitWasiRecordReturnCall(
     }
     return try emitWasiRecordResultFields(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, import, struct_name, out);
 }
-
 
 pub fn emitWasiRecordResultFields(
     allocator: std.mem.Allocator,
@@ -537,7 +520,6 @@ pub fn emitWasiRecordResultFields(
     return true;
 }
 
-
 pub fn emitReplaceManagedLocalFromTmp(
     allocator: std.mem.Allocator,
     name: []const u8,
@@ -555,7 +537,6 @@ pub fn emitReplaceManagedLocalFromTmp(
     try appendFmt(allocator, out, "    local.set ${s}\n", .{name});
 }
 
-
 pub fn emitBareWasiHostImportCall(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -564,7 +545,6 @@ pub fn emitBareWasiHostImportCall(
     locals: *const LocalSet,
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     const range = trimParens(tokens, start_idx, end_idx);
@@ -573,19 +553,8 @@ pub fn emitBareWasiHostImportCall(
     const wasi_import = findWasiHostImportForTokens(ctx, tokens, tokens[call_head.name_idx].lexeme) orelse return false;
     const lowering = wasiLowering(wasi_import) orelse return false;
     if (!lowering.resource_drop and !lowering.result_unit_error and !lowering.result_filesize_error and !lowering.result_u64_stream_error) return false;
-    return try emitWasiHostImportExpr(
-        allocator,
-        tokens,
-        call_head.args_start,
-        call_head.args_end,
-        locals,
-        ctx,
-        wasi_import,
-        true,
-        out,
-        emit_expr);
+    return try emitWasiHostImportExpr(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, wasi_import, true, out, emit_expr);
 }
-
 
 /// Branch index inside `@wasi_enum("target", arm|arm(n)|…)` arms (1-based).
 fn branchValueInWasiEnumArms(
@@ -665,8 +634,6 @@ pub fn errorEnumBranchValue(tokens: []const lexer.Token, enum_name: []const u8, 
     return null;
 }
 
-
-
 pub fn emitWasiHostImportExpr(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -677,7 +644,6 @@ pub fn emitWasiHostImportExpr(
     import: WasiHostImport,
     allow_statement_result: bool,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     const lowering = wasiLowering(import) orelse return false;
@@ -714,7 +680,6 @@ pub fn emitWasiHostImportExpr(
     return true;
 }
 
-
 pub fn emitWasiResourceDropCall(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -724,7 +689,6 @@ pub fn emitWasiResourceDropCall(
     ctx: CodegenContext,
     import: WasiHostImport,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     const arg_end = findArgEnd(tokens, args_start, args_end);
@@ -739,7 +703,6 @@ pub fn emitWasiResourceDropCall(
     return true;
 }
 
-
 pub fn emitWasiListU8ResultCall(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -749,7 +712,6 @@ pub fn emitWasiListU8ResultCall(
     ctx: CodegenContext,
     import: WasiHostImport,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     if (!std.mem.eql(u8, import.target, "random/random/get-random-bytes")) return false;
@@ -775,7 +737,6 @@ pub fn emitWasiListU8ResultCall(
 
 /// G6.1 / P3: () -> list<tuple<descriptor,string>> as do [Tuple<Dir,text>] (Dir.id i64 + text).
 /// G6.1 / P3: () -> list<tuple<descriptor,string>> as do [Tuple<Dir,text>] (Dir.id i64 + text).
-
 pub fn emitWasiListPreopenResultCall(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -810,7 +771,6 @@ pub fn emitWasiListPreopenResultCall(
     return true;
 }
 
-
 pub fn emitWasiResultUnitCall(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -820,7 +780,6 @@ pub fn emitWasiResultUnitCall(
     ctx: CodegenContext,
     import: WasiHostImport,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     if (std.mem.eql(u8, import.target, "filesystem/types/descriptor.link-at")) {
@@ -869,7 +828,6 @@ pub fn emitWasiResultSocketBindCall(
     ctx: CodegenContext,
     import: WasiHostImport,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     if (!std.mem.eql(u8, import.target, "sockets/types/tcp-socket.bind") and
@@ -1070,7 +1028,6 @@ fn appendStoreU64BigEndianField(
     }
 }
 
-
 pub fn emitWasiResultDescriptorPathCall(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -1080,7 +1037,6 @@ pub fn emitWasiResultDescriptorPathCall(
     ctx: CodegenContext,
     import: WasiHostImport,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     if (!std.mem.eql(u8, import.target, "filesystem/types/descriptor.create-directory-at") and
@@ -1105,7 +1061,6 @@ pub fn emitWasiResultDescriptorPathCall(
     return true;
 }
 
-
 pub fn emitWasiResultOutputWriteCall(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -1115,7 +1070,6 @@ pub fn emitWasiResultOutputWriteCall(
     ctx: CodegenContext,
     import: WasiHostImport,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     if (!std.mem.eql(u8, import.target, "io/streams/output-stream.write")) return false;
@@ -1136,7 +1090,6 @@ pub fn emitWasiResultOutputWriteCall(
     return true;
 }
 
-
 pub fn emitWasiResultDescriptorCall(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -1146,7 +1099,6 @@ pub fn emitWasiResultDescriptorCall(
     ctx: CodegenContext,
     import: WasiHostImport,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     // G6.3: tcp/udp-socket.create(family) -> result<socket, error-code>
@@ -1194,7 +1146,6 @@ pub fn emitWasiResultDescriptorCall(
 
 /// Lower descriptor/resource handle arg: bare i32, or unmanaged resource struct `.id` (i64 → i32).
 /// Lower descriptor/resource handle arg: bare i32, or unmanaged resource struct `.id` (i64 → i32).
-
 pub fn emitWasiDescriptorHandleArg(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -1203,7 +1154,6 @@ pub fn emitWasiDescriptorHandleArg(
     locals: *const LocalSet,
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     if (try emit_expr(allocator, tokens, start_idx, end_idx, locals, ctx, "i32", out)) return true;
@@ -1230,7 +1180,6 @@ pub fn emitWasiDescriptorHandleArg(
     return false;
 }
 
-
 pub fn emitWasiResultLinkAtCall(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -1240,7 +1189,6 @@ pub fn emitWasiResultLinkAtCall(
     ctx: CodegenContext,
     import: WasiHostImport,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     if (!std.mem.eql(u8, import.target, "filesystem/types/descriptor.link-at")) return false;
@@ -1258,8 +1206,6 @@ pub fn emitWasiResultLinkAtCall(
     try out.appendSlice(allocator, "\n");
     return true;
 }
-
-
 
 pub fn emitWasiStringArg(
     allocator: std.mem.Allocator,
@@ -1291,7 +1237,6 @@ pub fn emitWasiStringArg(
     return true;
 }
 
-
 pub fn emitWasiResultFilesizeCall(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -1301,7 +1246,6 @@ pub fn emitWasiResultFilesizeCall(
     ctx: CodegenContext,
     import: WasiHostImport,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     if (!std.mem.eql(u8, import.target, "filesystem/types/descriptor.write")) return false;
@@ -1326,7 +1270,6 @@ pub fn emitWasiResultFilesizeCall(
     return true;
 }
 
-
 pub fn emitWasiResultU64StreamCall(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -1336,7 +1279,6 @@ pub fn emitWasiResultU64StreamCall(
     ctx: CodegenContext,
     import: WasiHostImport,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     if (!std.mem.eql(u8, import.target, "io/streams/output-stream.check-write")) return false;
@@ -1353,7 +1295,6 @@ pub fn emitWasiResultU64StreamCall(
     return true;
 }
 
-
 pub fn emitWasiResultReadCall(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -1363,7 +1304,6 @@ pub fn emitWasiResultReadCall(
     ctx: CodegenContext,
     import: WasiHostImport,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     if (!std.mem.eql(u8, import.target, "filesystem/types/descriptor.read")) return false;
@@ -1388,7 +1328,6 @@ pub fn emitWasiResultReadCall(
     return true;
 }
 
-
 pub fn emitWasiResultListU8Call(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -1398,7 +1337,6 @@ pub fn emitWasiResultListU8Call(
     ctx: CodegenContext,
     import: WasiHostImport,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     if (!std.mem.eql(u8, import.target, "io/streams/input-stream.read")) return false;
@@ -1418,7 +1356,6 @@ pub fn emitWasiResultListU8Call(
     try out.appendSlice(allocator, "\n");
     return true;
 }
-
 
 pub fn emitWasiResultUnitStatusValue(
     allocator: std.mem.Allocator,
@@ -1442,14 +1379,10 @@ pub fn emitWasiResultUnitStatusValue(
     );
 }
 
-
-
-
 /// Emit error-enum payload for WASI err arm: open → always *Failed; unit/write → status 1 (*Closed) else *Failed.
 /// Loads error-code from result-area offset `code_offset` (open-at/unit = 4; filesize write = 8).
 /// Emit error-enum payload for WASI err arm: open → always *Failed; unit/write → status 1 (*Closed) else *Failed.
 /// Loads error-code from result-area offset `code_offset` (open-at/unit = 4; filesize write = 8).
-
 pub fn emitWasiCoarseErrorEnumPayload(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -1486,8 +1419,6 @@ pub fn emitWasiCoarseErrorEnumPayload(
     return true;
 }
 
-
-
 pub fn unionBranchIsCoarseError(tokens: []const lexer.Token, layout: UnionLayout, branch: UnionBranch) bool {
     if (!isErrorLikeType(tokens, branch.ty)) return false;
     if (branch.payload_len != 1) return false;
@@ -1499,7 +1430,6 @@ pub fn unionBranchIsCoarseError(tokens: []const lexer.Token, layout: UnionLayout
 /// Shapes: `nil | i32` (status), or `nil | DirError` / `DirError | nil` / FileError variants (coarse).
 /// Lower unit fallible WASI host into exclusive union stack values: payload slots + tag.
 /// Shapes: `nil | i32` (status), or `nil | DirError` / `DirError | nil` / FileError variants (coarse).
-
 pub fn emitWasiUnitResultAsUnionValue(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -1510,7 +1440,6 @@ pub fn emitWasiUnitResultAsUnionValue(
     import: WasiHostImport,
     layout: UnionLayout,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     const lowering = wasiLowering(import) orelse return false;
@@ -1579,7 +1508,6 @@ pub fn emitWasiUnitResultAsUnionValue(
 /// Ok arm is written filesize/allowed (u64); err arm is status i32 or coarse FileError.
 /// Lower `result<filesize,error-code>` / stream check-write into exclusive union: e.g. `u64 | i32` or `u64 | FileError`.
 /// Ok arm is written filesize/allowed (u64); err arm is status i32 or coarse FileError.
-
 pub fn emitWasiFilesizeResultAsUnionValue(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -1590,7 +1518,6 @@ pub fn emitWasiFilesizeResultAsUnionValue(
     import: WasiHostImport,
     layout: UnionLayout,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     const lowering = wasiLowering(import) orelse return false;
@@ -1693,7 +1620,6 @@ pub fn emitWasiFilesizeResultAsUnionValue(
 /// Ok arm is flattened tuple leaves (storage handle + bool); err arm is status i32 (error-code+1).
 /// Lower `result<tuple<list<u8>,bool>,error-code>` into exclusive union: e.g. `Tuple<[u8], bool> | i32`.
 /// Ok arm is flattened tuple leaves (storage handle + bool); err arm is status i32 (error-code+1).
-
 pub fn emitWasiReadResultAsUnionValue(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -1704,7 +1630,6 @@ pub fn emitWasiReadResultAsUnionValue(
     import: WasiHostImport,
     layout: UnionLayout,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     const lowering = wasiLowering(import) orelse return false;
@@ -1821,7 +1746,6 @@ pub fn emitWasiReadResultAsUnionValue(
 /// Ok arm is storage handle from list{ptr,len}; err arm is status i32 or coarse StreamError.
 /// Lower `result<list<u8>,stream-error>` into exclusive union stack: e.g. `[u8] | i32` or `[u8] | StreamError`.
 /// Ok arm is storage handle from list{ptr,len}; err arm is status i32 or coarse StreamError.
-
 pub fn emitWasiListU8ResultAsUnionValue(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -1832,7 +1756,6 @@ pub fn emitWasiListU8ResultAsUnionValue(
     import: WasiHostImport,
     layout: UnionLayout,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     const lowering = wasiLowering(import) orelse return false;
@@ -1919,13 +1842,13 @@ pub fn emitWasiListU8ResultAsUnionValue(
             }
         } else if (idx == err.payload_start) {
             try out.appendSlice(allocator,
-                    \\      global.get $__wasi_result_area_base
-                    \\      i32.const 4
-                    \\      i32.add
-                    \\      i32.load
-                    \\      i32.const 1
-                    \\      i32.add
-                    \\
+                \\      global.get $__wasi_result_area_base
+                \\      i32.const 4
+                \\      i32.add
+                \\      i32.load
+                \\      i32.const 1
+                \\      i32.add
+                \\
             );
         } else {
             try appendFmt(allocator, out, "      {s}.const 0\n", .{codegenWasmType(ctx, payload_ty)});
@@ -1940,7 +1863,6 @@ pub fn emitWasiListU8ResultAsUnionValue(
 /// Ok arm carries resource payload (Dir.id as i64 from descriptor); err arm is status i32 or coarse error enum.
 /// Lower `result<descriptor,error-code>` into exclusive union stack: e.g. `Dir | i32` or `Dir | DirError`.
 /// Ok arm carries resource payload (Dir.id as i64 from descriptor); err arm is status i32 or coarse error enum.
-
 pub fn emitWasiDescriptorResultAsUnionValue(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -1951,7 +1873,6 @@ pub fn emitWasiDescriptorResultAsUnionValue(
     import: WasiHostImport,
     layout: UnionLayout,
     out: *std.ArrayList(u8),
-
     emit_expr: EmitExprFn,
 ) CodegenError!bool {
     const lowering = wasiLowering(import) orelse return false;
@@ -2028,13 +1949,13 @@ pub fn emitWasiDescriptorResultAsUnionValue(
             }
         } else if (idx == err.payload_start) {
             try out.appendSlice(allocator,
-                    \\      global.get $__wasi_result_area_base
-                    \\      i32.const 4
-                    \\      i32.add
-                    \\      i32.load
-                    \\      i32.const 1
-                    \\      i32.add
-                    \\
+                \\      global.get $__wasi_result_area_base
+                \\      i32.const 4
+                \\      i32.add
+                \\      i32.load
+                \\      i32.const 1
+                \\      i32.add
+                \\
             );
         } else {
             try appendFmt(allocator, out, "      {s}.const 0\n", .{codegenWasmType(ctx, payload_ty)});
@@ -2044,7 +1965,6 @@ pub fn emitWasiDescriptorResultAsUnionValue(
     try out.appendSlice(allocator, "    end\n");
     return true;
 }
-
 
 pub fn emitWasiResultReadValues(
     allocator: std.mem.Allocator,
@@ -2085,7 +2005,6 @@ pub fn emitWasiResultReadValues(
     );
 }
 
-
 pub fn emitWasiResultListU8Values(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
@@ -2120,7 +2039,6 @@ pub fn emitWasiResultListU8Values(
     );
 }
 
-
 pub fn emitWasiResultDescriptorValues(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
@@ -2147,7 +2065,6 @@ pub fn emitWasiResultDescriptorValues(
         \\
     );
 }
-
 
 pub fn emitWasiResultFilesizeValues(
     allocator: std.mem.Allocator,
@@ -2176,7 +2093,6 @@ pub fn emitWasiResultFilesizeValues(
     );
 }
 
-
 pub fn emitWasiListU8Arg(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -2197,7 +2113,6 @@ pub fn emitWasiListU8Arg(
     return true;
 }
 
-
 pub fn structFieldPayloadOffset(decl: StructDecl, field_name: []const u8) ?usize {
     var offset: usize = 0;
     for (decl.fields) |field| {
@@ -2208,59 +2123,48 @@ pub fn structFieldPayloadOffset(decl: StructDecl, field_name: []const u8) ?usize
     return null;
 }
 
-
 pub fn findStoragePrimitiveLocal(locals: []const StorageLocal, name: []const u8) ?StorageLocal {
     const local = findStorageLocal(locals, name) orelse return null;
     if (storageElemTypeFromName(local.ty) == null) return null;
     return local;
 }
 
-
 pub fn wasmType(ty: []const u8) []const u8 {
     return payload_wat.wasm_type(ty);
 }
-
 
 pub fn valueEnumCarrier(ctx: CodegenContext, ty: []const u8) ?[]const u8 {
     const decl = findValueEnumDecl(ctx.value_enums, ty) orelse return null;
     return decl.carrier;
 }
 
-
 pub fn codegenScalarType(ctx: CodegenContext, ty: []const u8) []const u8 {
     return valueEnumCarrier(ctx, ty) orelse ty;
 }
-
 
 pub fn codegenWasmType(ctx: CodegenContext, ty: []const u8) []const u8 {
     return wasmType(codegenScalarType(ctx, ty));
 }
 
-
 pub fn typePayloadBytes(ty: []const u8) usize {
     return type_util.typePayloadBytes(ty);
 }
-
 
 pub fn typePayloadAlignment(ty: []const u8) usize {
     return type_util.typePayloadAlignment(ty);
 }
 
-
 pub fn isManagedPayloadType(ty: []const u8) bool {
     return type_util.isManagedPayloadType(ty);
 }
-
 
 pub fn isStorageTypeName(ty: []const u8) bool {
     return type_util.isStorageTypeName(ty);
 }
 
-
 pub fn storageElemTypeFromName(ty: []const u8) ?[]const u8 {
     return type_util.storageElemTypeFromName(ty);
 }
-
 
 pub fn storageElementByteWidth(elem_ty: []const u8) ?usize {
     return type_util.storageElementByteWidth(elem_ty);
@@ -2268,22 +2172,18 @@ pub fn storageElementByteWidth(elem_ty: []const u8) ?usize {
 
 /// Pure-scalar unmanaged struct nested pack width (declaration order + alignUp, no managed fields).
 /// Pure-scalar unmanaged struct nested pack width (declaration order + alignUp, no managed fields).
-
 pub fn tupleScalarLeafStorageByteWidth(tuple_ty: []const u8) ?usize {
     return type_util.tupleScalarLeafStorageByteWidth(tuple_ty);
 }
-
 
 pub fn tupleScalarLeafStorageByteWidthCtx(tuple_ty: []const u8, ctx: CodegenContext) ?usize {
     if (tuplePackWidthWithStructs(tuple_ty, ctx.structs)) |w| return w;
     return type_util.tupleScalarLeafStorageByteWidth(tuple_ty);
 }
 
-
 pub fn tupleHasManagedPackLeaf(tuple_ty: []const u8) bool {
     return type_util.tupleHasManagedPackLeaf(tuple_ty);
 }
-
 
 pub fn tupleHasManagedPackLeafWithStructs(tuple_ty: []const u8, structs: []const StructDecl) bool {
     if (!isTupleTypeName(tuple_ty)) return false;
@@ -2300,12 +2200,10 @@ pub fn tupleHasManagedPackLeafWithStructs(tuple_ty: []const u8, structs: []const
     return false;
 }
 
-
 pub fn tupleHasManagedPackLeafCtx(tuple_ty: []const u8, ctx: CodegenContext) bool {
     if (tupleHasManagedPackLeafWithStructs(tuple_ty, ctx.structs)) return true;
     return tupleHasManagedPackLeaf(tuple_ty);
 }
-
 
 pub fn storageTypeIdForElement(elem_ty: []const u8, ctx: CodegenContext) usize {
     if (isTupleTypeName(elem_ty) and tupleHasManagedPackLeafCtx(elem_ty, ctx)) {
@@ -2318,7 +2216,6 @@ pub fn storageTypeIdForElement(elem_ty: []const u8, ctx: CodegenContext) usize {
     return TYPE_ID_STORAGE_U8;
 }
 
-
 pub fn appendLoadForPayloadType(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
@@ -2327,16 +2224,13 @@ pub fn appendLoadForPayloadType(
     try payload_wat.append_load_for_payload_type(allocator, out, ty);
 }
 
-
 pub fn isTupleTypeName(ty: []const u8) bool {
     return type_util.isTupleTypeName(ty);
 }
 
-
 pub fn tupleArity(tuple_ty: []const u8) ?usize {
     return type_util.tupleArity(tuple_ty);
 }
-
 
 pub fn tupleElementTypeAt(tuple_ty: []const u8, idx: usize) ?[]const u8 {
     return type_util.tupleElementTypeAt(tuple_ty, idx);

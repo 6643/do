@@ -4,7 +4,8 @@ const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const codegen_tokens = @import("codegen_tokens.zig");
 const codegen_names = @import("codegen_names.zig");
-const gen_types = @import("gen_types.zig");
+const model = @import("codegen_model.zig");
+const context = @import("codegen_context.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
 const gen_host = @import("gen_host.zig");
 
@@ -35,19 +36,19 @@ const isBaseIntTypeName = codegen_names.is_base_int_type_name;
 const isCoreWasmCallName = codegen_names.is_core_wasm_call_name;
 const isCoreWasmScalar = codegen_names.is_core_wasm_scalar;
 
-const HostImport = gen_types.HostImport;
-const CodegenContext = gen_types.CodegenContext;
-const CodegenImportPrefix = gen_types.CodegenImportPrefix;
-const CodegenImportRef = gen_types.CodegenImportRef;
-const ImportedScalarConst = gen_types.ImportedScalarConst;
-const ImportedAliasContext = gen_types.ImportedAliasContext;
-const ReachVisit = gen_types.ReachVisit;
-const StringData = gen_types.StringData;
-const StringDataContext = gen_types.StringDataContext;
-const ValueEnumDecl = gen_types.ValueEnumDecl;
-const PayloadEnumDecl = gen_types.PayloadEnumDecl;
-const StructDecl = gen_types.StructDecl;
-const ExprCallHead = gen_types.ExprCallHead;
+const HostImport = model.HostImport;
+const CodegenContext = context.CodegenContext;
+const CodegenImportPrefix = model.CodegenImportPrefix;
+const CodegenImportRef = model.CodegenImportRef;
+const ImportedScalarConst = model.ImportedScalarConst;
+const ImportedAliasContext = model.ImportedAliasContext;
+const ReachVisit = model.ReachVisit;
+const StringData = model.StringData;
+const StringDataContext = context.StringDataContext;
+const ValueEnumDecl = model.ValueEnumDecl;
+const PayloadEnumDecl = model.PayloadEnumDecl;
+const StructDecl = model.StructDecl;
+const ExprCallHead = model.ExprCallHead;
 
 const WASI_BINDING_ENTRY_SOURCE = codegen_wasi_registry.WASI_BINDING_ENTRY_SOURCE;
 const WasiHostImport = codegen_wasi_registry.WasiHostImport;
@@ -463,7 +464,6 @@ pub fn isValueEnumDeclStart(tokens: []const lexer.Token, idx: usize) bool {
 
 /// `Message = Quit | Text([u8])` — mirrors sema `isPayloadEnumDeclStart` (codegen copy).
 /// `Message = Quit | Text([u8])` — mirrors sema `isPayloadEnumDeclStart` (codegen copy).
-
 pub fn isPayloadEnumDeclStart(tokens: []const lexer.Token, idx: usize) bool {
     if (idx + 2 >= tokens.len) return false;
     if (!isLineStart(tokens, idx)) return false;

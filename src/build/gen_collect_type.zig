@@ -6,7 +6,7 @@ const test_runner = @import("test_runner.zig");
 const type_util = @import("type_name.zig");
 const codegen_tokens = @import("codegen_tokens.zig");
 const codegen_names = @import("codegen_names.zig");
-const gen_types = @import("gen_types.zig");
+const model = @import("codegen_model.zig");
 const codegen_union_layout = @import("codegen_union_layout.zig");
 const gen_import = @import("gen_import.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
@@ -27,10 +27,10 @@ const findValueEnumDeclLineByName = gen_import.findValueEnumDeclLineByName;
 const isPayloadEnumDeclStart = gen_import.isPayloadEnumDeclStart;
 const isValueEnumDeclStart = gen_import.isValueEnumDeclStart;
 const parseCodegenImport = gen_import.parseCodegenImport;
-const PayloadEnumCase = gen_types.PayloadEnumCase;
-const PayloadEnumDecl = gen_types.PayloadEnumDecl;
-const ValueEnumBranch = gen_types.ValueEnumBranch;
-const ValueEnumDecl = gen_types.ValueEnumDecl;
+const PayloadEnumCase = model.PayloadEnumCase;
+const PayloadEnumDecl = model.PayloadEnumDecl;
+const ValueEnumBranch = model.ValueEnumBranch;
+const ValueEnumDecl = model.ValueEnumDecl;
 
 pub fn collectValueEnumDecls(
     allocator: std.mem.Allocator,
@@ -54,7 +54,6 @@ pub fn collectValueEnumDecls(
         i = findLineEnd(tokens, i) - 1;
     }
 }
-
 
 pub fn collectImportedValueEnumDecls(
     allocator: std.mem.Allocator,
@@ -89,7 +88,6 @@ pub fn collectImportedValueEnumDecls(
         }
     }
 }
-
 
 pub fn collectValueEnumDeclByNameAs(
     allocator: std.mem.Allocator,
@@ -146,7 +144,6 @@ pub fn collectValueEnumDeclByNameAs(
     }
     return false;
 }
-
 
 pub fn collectPayloadEnumDecls(
     allocator: std.mem.Allocator,
@@ -277,7 +274,6 @@ pub fn collectPayloadEnumDeclByNameAs(
     return true;
 }
 
-
 pub fn collectPayloadEnumDeclAt(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -329,5 +325,3 @@ pub fn collectPayloadEnumDeclAt(
     });
     return true;
 }
-
-
