@@ -7,12 +7,15 @@ const codegen_tokens = @import("codegen_tokens.zig");
 const codegen_names = @import("codegen_names.zig");
 const model = @import("codegen_model.zig");
 const context = @import("codegen_context.zig");
-const gen_collect = @import("gen_collect.zig");
+const gen_collect_util = @import("gen_collect_util.zig");
+const codegen_collect_functions = @import("codegen_collect_functions.zig");
+const codegen_collect_structs = @import("codegen_collect_structs.zig");
+const codegen_collect_declarations = @import("codegen_collect_declarations.zig");
 const gen_import = @import("gen_import.zig");
 const gen_wasi_emit = @import("gen_wasi_emit.zig");
 const gen_hooks = @import("gen_hooks.zig");
 const gen_expr = @import("gen_expr.zig");
-const gen_expr_collect = @import("gen_expr_collect.zig");
+const codegen_collect_body = @import("codegen_collect_body.zig");
 const gen_storage = @import("gen_storage.zig");
 const gen_struct = @import("gen_struct.zig");
 const gen_ctrl = @import("gen_ctrl.zig");
@@ -106,24 +109,24 @@ const findImportedModuleIndexNoAlloc = gen_import.findImportedModuleIndexNoAlloc
 const importedAliasContextForTokens = gen_import.importedAliasContextForTokens;
 pub const callHeadAt = gen_import.callHeadAt;
 const callHeadHasTypeArgs = gen_import.callHeadHasTypeArgs;
-const parseCodegenTypeExpr = gen_collect.parseCodegenTypeExpr;
-const parseFuncParamTypeExpr = gen_collect.parseFuncParamTypeExpr;
-const isTopLevelCommaAny = gen_collect.isTopLevelCommaAny;
-const bindGenericType = gen_collect.bindGenericType;
-pub const findGenericBinding = gen_collect.findGenericBinding;
-const substituteGenericTypeOwned = gen_collect.substituteGenericTypeOwned;
-const isTypeIdentStart = gen_collect.isTypeIdentStart;
-const isTypeIdentPart = gen_collect.isTypeIdentPart;
-const genericTypeArgsRange = gen_collect.genericTypeArgsRange;
-const sameCallableSourceName = gen_collect.sameCallableSourceName;
-const hasTypeParamName = gen_collect.hasTypeParamName;
-const findFuncDecl = gen_collect.findFuncDecl;
-pub const funcParamAbiType = gen_collect.funcParamAbiType;
-const findStructDecl = gen_collect.findStructDecl;
-const findStructLayout = gen_collect.findStructLayout;
-const appendTupleLeafTypes = gen_collect.appendTupleLeafTypes;
+const parseCodegenTypeExpr = gen_collect_util.parseCodegenTypeExpr;
+const parse_func_param_type_expr = codegen_collect_functions.parse_func_param_type_expr;
+const is_top_level_comma_any = codegen_collect_functions.is_top_level_comma_any;
+const bindGenericType = gen_collect_util.bindGenericType;
+pub const findGenericBinding = gen_collect_util.findGenericBinding;
+const substituteGenericTypeOwned = gen_collect_util.substituteGenericTypeOwned;
+const isTypeIdentStart = gen_collect_util.isTypeIdentStart;
+const isTypeIdentPart = gen_collect_util.isTypeIdentPart;
+const genericTypeArgsRange = gen_collect_util.genericTypeArgsRange;
+const same_callable_source_name = codegen_collect_functions.same_callable_source_name;
+const hasTypeParamName = gen_collect_util.hasTypeParamName;
+const find_func_decl = codegen_collect_functions.find_func_decl;
+pub const funcParamAbiType = gen_collect_util.funcParamAbiType;
+const findStructDecl = gen_collect_util.findStructDecl;
+const findStructLayout = gen_collect_util.findStructLayout;
+const appendTupleLeafTypes = gen_collect_util.appendTupleLeafTypes;
 const codegenTypesCompatible = gen_wasi_emit.codegenTypesCompatible;
-const collectBodyLocals = gen_expr.collectBodyLocals;
+const collect_body_locals = codegen_collect_body.collect_body_locals;
 
 pub fn parseLambdaParamNames(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ![]const []const u8 {
     var out = std.ArrayList([]const u8).empty;
@@ -132,7 +135,7 @@ pub fn parseLambdaParamNames(allocator: std.mem.Allocator, tokens: []const lexer
     var seg_start = start_idx;
     var i = start_idx;
     while (i <= end_idx) : (i += 1) {
-        if (i < end_idx and !isTopLevelCommaAny(tokens, i, start_idx, end_idx)) continue;
+        if (i < end_idx and !is_top_level_comma_any(tokens, i, start_idx, end_idx)) continue;
         if (seg_start < i) {
             if (tokens[seg_start].kind != .ident) return error.InvalidLambdaExpr;
             try out.append(allocator, tokens[seg_start].lexeme);
@@ -149,7 +152,7 @@ pub fn parseLambdaParamTypes(allocator: std.mem.Allocator, tokens: []const lexer
     var seg_start = start_idx;
     var i = start_idx;
     while (i <= end_idx) : (i += 1) {
-        if (i < end_idx and !isTopLevelCommaAny(tokens, i, start_idx, end_idx)) continue;
+        if (i < end_idx and !is_top_level_comma_any(tokens, i, start_idx, end_idx)) continue;
         if (seg_start < i) {
             try out.append(allocator, lambdaParamTypeName(tokens, seg_start, i));
         }
@@ -223,7 +226,7 @@ pub fn collectGenericFuncInstancesInStartBody(
         .modules = modules,
         .imported_alias_ctx = imported_alias_ctx,
     };
-    try collectBodyLocals(allocator, tokens, open_body + 1, body_end, ctx, &locals);
+    try collect_body_locals(allocator, tokens, open_body + 1, body_end, ctx, &locals);
     try collectGenericFuncInstancesInRange(allocator, tokens, open_body + 1, body_end, &locals, ctx, functions);
 }
 
@@ -244,7 +247,7 @@ pub fn collectGenericFuncInstancesForTests(allocator: std.mem.Allocator, tokens:
             .modules = modules,
             .imported_alias_ctx = imported_alias_ctx,
         };
-        try collectBodyLocals(allocator, tokens, decl.body_start, decl.body_end, ctx, &locals);
+        try collect_body_locals(allocator, tokens, decl.body_start, decl.body_end, ctx, &locals);
         try collectGenericFuncInstancesInRange(allocator, tokens, decl.body_start, decl.body_end, &locals, ctx, functions);
     }
     try collectGenericFuncInstancesForConcreteFuncs(allocator, tokens, structs, value_enums, payload_enums, struct_layouts, host_imports, wasi_imports, string_data, modules, imported_alias_ctx, functions);
@@ -274,7 +277,7 @@ pub fn collectGenericFuncInstancesForConcreteFuncs(allocator: std.mem.Allocator,
             .callback_bindings = func.callback_bindings,
         };
         try appendFuncParamLocals(allocator, func, ctx, &locals);
-        try collectBodyLocals(allocator, func.tokens, func.body_start, func.body_end, ctx, &locals);
+        try collect_body_locals(allocator, func.tokens, func.body_start, func.body_end, ctx, &locals);
         try collectGenericFuncInstancesInRange(allocator, func.tokens, func.body_start, func.body_end, &locals, ctx, functions);
     }
 }
@@ -539,7 +542,7 @@ pub fn directCallExpectedResultType(allocator: std.mem.Allocator, tokens: []cons
 pub fn typedBindingExpectedType(allocator: std.mem.Allocator, tokens: []const lexer.Token, stmt_start: usize, eq_idx: usize, ctx: CodegenContext, owned_types: *std.ArrayList([]const u8)) CodegenError!?[]const u8 {
     if (stmt_start + 2 >= eq_idx) return null;
     if (tokens[stmt_start].kind != .ident) return null;
-    const parsed = (try parseFuncParamTypeExpr(allocator, tokens, stmt_start + 1, eq_idx, owned_types)) orelse return null;
+    const parsed = (try parse_func_param_type_expr(allocator, tokens, stmt_start + 1, eq_idx, owned_types)) orelse return null;
     if (parsed.next_idx != eq_idx) return null;
     return try substituteGenericTypeOwned(allocator, parsed.ty, ctx.type_bindings, owned_types);
 }
@@ -602,7 +605,7 @@ pub fn collectGenericFuncInstanceForCall(allocator: std.mem.Allocator, tokens: [
     const instance_name = try genericInstanceName(allocator, template, bindings.items, param_tys.items, callback_bindings);
     var instance_name_owned = true;
     defer if (instance_name_owned) allocator.free(instance_name);
-    if (findFuncDecl(functions.items, instance_name) != null) {
+    if (find_func_decl(functions.items, instance_name) != null) {
         return;
     }
     var results = std.ArrayList([]const u8).empty;
@@ -692,7 +695,7 @@ pub fn collectGenericFuncInstancesForCall(allocator: std.mem.Allocator, tokens: 
 pub fn genericTemplateMatchesCallSite(template: FuncDecl, tokens: []const lexer.Token, ctx: CodegenContext, name: []const u8) bool {
     if (!template.is_generic_template) return false;
     if (moduleTokensEqual(template.tokens, tokens)) {
-        return std.mem.eql(u8, template.name, name) or sameCallableSourceName(template.source_name, name);
+        return std.mem.eql(u8, template.name, name) or same_callable_source_name(template.source_name, name);
     }
 
     const import_ref = findCodegenImportByAlias(tokens, name) orelse return false;
@@ -701,7 +704,7 @@ pub fn genericTemplateMatchesCallSite(template: FuncDecl, tokens: []const lexer.
     const child_tokens = import_ctx.graph.modules[child_idx].tokens;
     if (!moduleTokensEqual(template.tokens, child_tokens)) return false;
     if (std.mem.eql(u8, template.name, import_ref.alias)) return true;
-    return sameCallableSourceName(template.source_name, publicDeclName(import_ref.target));
+    return same_callable_source_name(template.source_name, publicDeclName(import_ref.target));
 }
 
 pub fn collectConcreteCallbackFuncInstanceForCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, call_head: ExprCallHead, ctx: CodegenContext, func: FuncDecl, functions: *std.ArrayList(FuncDecl)) !void {
@@ -717,7 +720,7 @@ pub fn collectConcreteCallbackFuncInstanceForCall(allocator: std.mem.Allocator, 
     const instance_name = try genericInstanceName(allocator, func, &.{}, &.{}, callback_bindings);
     var instance_name_owned = true;
     defer if (instance_name_owned) allocator.free(instance_name);
-    if (findFuncDecl(functions.items, instance_name) != null) {
+    if (find_func_decl(functions.items, instance_name) != null) {
         return;
     }
 
@@ -789,7 +792,7 @@ pub fn collectConcreteCallbackFuncInstanceForCall(allocator: std.mem.Allocator, 
     instance_ctx.type_bindings = instance.type_bindings;
     instance_ctx.callback_bindings = instance.callback_bindings;
     try appendFuncParamLocals(allocator, instance, instance_ctx, &instance_locals);
-    try collectBodyLocals(allocator, instance.tokens, instance.body_start, instance.body_end, instance_ctx, &instance_locals);
+    try collect_body_locals(allocator, instance.tokens, instance.body_start, instance.body_end, instance_ctx, &instance_locals);
     try collectGenericFuncInstancesInRange(allocator, instance.tokens, instance.body_start, instance.body_end, &instance_locals, instance_ctx, functions);
 }
 
@@ -797,7 +800,7 @@ pub fn concreteOverloadCoversGenericParams(functions: []const FuncDecl, template
     for (functions) |func| {
         if (func.is_generic_template) continue;
         if (!moduleTokensEqual(func.tokens, template.tokens)) continue;
-        if (!sameCallableSourceName(func.source_name, template.source_name)) continue;
+        if (!same_callable_source_name(func.source_name, template.source_name)) continue;
         if (func.params.len != params.len) continue;
         if (!callbackBindingsHaveSameConcreteArgs(func.callback_bindings, callback_bindings)) continue;
 
@@ -837,7 +840,7 @@ pub fn genericOverloadCoversGenericParams(allocator: std.mem.Allocator, function
         if (!candidate.is_generic_template) continue;
         if (candidate.start_idx == template.start_idx and moduleTokensEqual(candidate.tokens, template.tokens)) continue;
         if (!moduleTokensEqual(candidate.tokens, template.tokens)) continue;
-        if (!sameCallableSourceName(candidate.source_name, template.source_name)) continue;
+        if (!same_callable_source_name(candidate.source_name, template.source_name)) continue;
         if (candidate.params.len != param_tys.len) continue;
         if (genericTemplateSpecificity(candidate) <= current_specificity) continue;
         if (try genericTemplateMatchesConcreteParams(allocator, candidate, param_tys)) return true;
@@ -1213,7 +1216,7 @@ pub fn prebindGenericCallbackFuncRef(
     for (ctx.functions) |func| {
         if (func.is_generic_template) continue;
         if (!moduleTokensEqual(func.tokens, tokens)) continue;
-        if (!sameCallableSourceName(func.source_name, func_name)) continue;
+        if (!same_callable_source_name(func.source_name, func_name)) continue;
         if (func.params.len != shape.param_types.len) continue;
 
         for (shape.param_types, 0..) |shape_ty, idx| {
@@ -1583,7 +1586,7 @@ pub fn findGenericTemplateForCall(functions: []const FuncDecl, tokens: []const l
     for (functions) |func| {
         if (!func.is_generic_template) continue;
         if (!moduleTokensEqual(func.tokens, tokens)) continue;
-        if (std.mem.eql(u8, func.name, name) or sameCallableSourceName(func.source_name, name)) return func;
+        if (std.mem.eql(u8, func.name, name) or same_callable_source_name(func.source_name, name)) return func;
     }
 
     const import_ref = findCodegenImportByAlias(tokens, name) orelse return null;
@@ -1594,7 +1597,7 @@ pub fn findGenericTemplateForCall(functions: []const FuncDecl, tokens: []const l
         if (!func.is_generic_template) continue;
         if (!moduleTokensEqual(func.tokens, child_tokens)) continue;
         if (std.mem.eql(u8, func.name, import_ref.alias)) return func;
-        if (sameCallableSourceName(func.source_name, publicDeclName(import_ref.target))) return func;
+        if (same_callable_source_name(func.source_name, publicDeclName(import_ref.target))) return func;
     }
     return null;
 }

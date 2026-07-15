@@ -171,7 +171,11 @@ const findTopLevelTypeSeparatorFrom = codegen_tokens.find_top_level_type_separat
 const CallLastUseMoveContext = context.CallLastUseMoveContext;
 const gen_host = @import("gen_host.zig");
 const gen_import = @import("gen_import.zig");
-const gen_collect = @import("gen_collect.zig");
+const gen_collect_util = @import("gen_collect_util.zig");
+const codegen_collect_functions = @import("codegen_collect_functions.zig");
+const codegen_collect_structs = @import("codegen_collect_structs.zig");
+const codegen_collect_declarations = @import("codegen_collect_declarations.zig");
+const codegen_collect_body = @import("codegen_collect_body.zig");
 const gen_wasi_emit = @import("gen_wasi_emit.zig");
 const tupleElementTypeAt = gen_wasi_emit.tupleElementTypeAt;
 const tupleScalarLeafStorageByteWidthCtx = gen_wasi_emit.tupleScalarLeafStorageByteWidthCtx;
@@ -183,7 +187,7 @@ const gen_hooks = @import("gen_hooks.zig");
 const gen_storage = @import("gen_storage.zig");
 const gen_expr = @import("gen_expr.zig");
 const gen_generic = @import("gen_generic.zig");
-const collectBodyLocalsWithMode = gen_expr.collectBodyLocalsWithMode;
+const collect_body_locals_with_mode = codegen_collect_body.collect_body_locals_with_mode;
 // re-export gen_expr
 const emitStartFunc = gen_expr.emitStartFunc;
 pub const emitScalarNumericStartWithBackendIr = gen_expr.emitScalarNumericStartWithBackendIr;
@@ -248,7 +252,7 @@ pub const resolveCallbackBindingArg = gen_generic.resolveCallbackBindingArg;
 pub const typeContainsTypeParam = gen_generic.typeContainsTypeParam;
 pub const typedBindingExpectedType = gen_generic.typedBindingExpectedType;
 
-pub fn collectBodyLocals(
+pub fn collect_body_locals(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -257,7 +261,7 @@ pub fn collectBodyLocals(
     out: *LocalSet,
 ) anyerror!void {
     installGenHooks();
-    return gen_expr.collectBodyLocals(allocator, tokens, start_idx, end_idx, ctx, out);
+    return codegen_collect_body.collect_body_locals(allocator, tokens, start_idx, end_idx, ctx, out);
 }
 const directManagedCallLastUseMoveSource = gen_expr.directManagedCallLastUseMoveSource;
 const directManagedUnionBindingCallMoveSource = gen_expr.directManagedUnionBindingCallMoveSource;
@@ -419,37 +423,37 @@ const importedAliasContextForTokens = gen_import.importedAliasContextForTokens;
 pub const callHeadAt = gen_import.callHeadAt;
 const exprCallHead = gen_import.exprCallHead;
 const callHeadHasTypeArgs = gen_import.callHeadHasTypeArgs;
-// re-export gen_collect
-const isPackManagedHandleLeaf = gen_collect.isPackManagedHandleLeaf;
-pub const collectStructDecls = gen_collect.collectStructDecls;
-const collectImportedStructDecls = gen_collect.collectImportedStructDecls;
-const collectValueEnumDecls = gen_collect.collectValueEnumDecls;
-const collectImportedValueEnumDecls = gen_collect.collectImportedValueEnumDecls;
-const collectPayloadEnumDecls = gen_collect.collectPayloadEnumDecls;
-const collectImportedPayloadEnumDecls = gen_collect.collectImportedPayloadEnumDecls;
-pub const collectStructLayouts = gen_collect.collectStructLayouts;
-const collectConcreteGenericStructLayouts = gen_collect.collectConcreteGenericStructLayouts;
-const collectStoragePackLayoutsFromTokens = gen_collect.collectStoragePackLayoutsFromTokens;
-const ensurePreopenDirTupleStoragePackLayout = gen_collect.ensurePreopenDirTupleStoragePackLayout;
-const parseCodegenTypeExpr = gen_collect.parseCodegenTypeExpr;
-const parseFuncParamTypeExpr = gen_collect.parseFuncParamTypeExpr;
-const isTopLevelCommaAny = gen_collect.isTopLevelCommaAny;
-pub const collectFuncDecls = gen_collect.collectFuncDecls;
-const collectDirectImportedFuncDecls = gen_collect.collectDirectImportedFuncDecls;
-const collectDirectImportedFuncDeclsFromTests = gen_collect.collectDirectImportedFuncDeclsFromTests;
-const bindGenericType = gen_collect.bindGenericType;
-pub const findGenericBinding = gen_collect.findGenericBinding;
-const substituteGenericTypeOwned = gen_collect.substituteGenericTypeOwned;
-const isTypeIdentStart = gen_collect.isTypeIdentStart;
-const isTypeIdentPart = gen_collect.isTypeIdentPart;
-const genericTypeArgsRange = gen_collect.genericTypeArgsRange;
-const sameCallableSourceName = gen_collect.sameCallableSourceName;
-const hasTypeParamName = gen_collect.hasTypeParamName;
-const findFuncDecl = gen_collect.findFuncDecl;
-pub const funcParamAbiType = gen_collect.funcParamAbiType;
-const findStructDecl = gen_collect.findStructDecl;
-const findStructLayout = gen_collect.findStructLayout;
-const appendTupleLeafTypes = gen_collect.appendTupleLeafTypes;
+// Collection owner aliases used by the pipeline.
+const is_pack_managed_handle_leaf = codegen_collect_structs.is_pack_managed_handle_leaf;
+const collect_struct_decls = codegen_collect_structs.collect_struct_decls;
+const collect_imported_struct_decls = codegen_collect_structs.collect_imported_struct_decls;
+const collect_value_enum_decls = codegen_collect_declarations.collect_value_enum_decls;
+const collect_imported_value_enum_decls = codegen_collect_declarations.collect_imported_value_enum_decls;
+const collect_payload_enum_decls = codegen_collect_declarations.collect_payload_enum_decls;
+const collect_imported_payload_enum_decls = codegen_collect_declarations.collect_imported_payload_enum_decls;
+const collect_struct_layouts = codegen_collect_structs.collect_struct_layouts;
+const collect_concrete_generic_struct_layouts = codegen_collect_structs.collect_concrete_generic_struct_layouts;
+const collect_storage_pack_layouts_from_tokens = codegen_collect_structs.collect_storage_pack_layouts_from_tokens;
+const ensure_preopen_dir_tuple_storage_pack_layout = codegen_collect_structs.ensure_preopen_dir_tuple_storage_pack_layout;
+const parseCodegenTypeExpr = gen_collect_util.parseCodegenTypeExpr;
+const parse_func_param_type_expr = codegen_collect_functions.parse_func_param_type_expr;
+const is_top_level_comma_any = codegen_collect_functions.is_top_level_comma_any;
+const collect_func_decls = codegen_collect_functions.collect_func_decls;
+const collect_direct_imported_func_decls = codegen_collect_functions.collect_direct_imported_func_decls;
+const collect_direct_imported_func_decls_from_tests = codegen_collect_functions.collect_direct_imported_func_decls_from_tests;
+const bindGenericType = gen_collect_util.bindGenericType;
+pub const findGenericBinding = gen_collect_util.findGenericBinding;
+const substituteGenericTypeOwned = gen_collect_util.substituteGenericTypeOwned;
+const isTypeIdentStart = gen_collect_util.isTypeIdentStart;
+const isTypeIdentPart = gen_collect_util.isTypeIdentPart;
+const genericTypeArgsRange = gen_collect_util.genericTypeArgsRange;
+const same_callable_source_name = codegen_collect_functions.same_callable_source_name;
+const hasTypeParamName = gen_collect_util.hasTypeParamName;
+const find_func_decl = codegen_collect_functions.find_func_decl;
+pub const funcParamAbiType = gen_collect_util.funcParamAbiType;
+const findStructDecl = gen_collect_util.findStructDecl;
+const findStructLayout = gen_collect_util.findStructLayout;
+const appendTupleLeafTypes = gen_collect_util.appendTupleLeafTypes;
 // re-export gen_wasi_emit
 const codegenTypesCompatible = gen_wasi_emit.codegenTypesCompatible;
 pub fn emitWasiResourceDropCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
@@ -504,8 +508,8 @@ fn installGenHooks() void {
     gen_hooks.install(gen_expr.emitExpr, gen_expr.emitExprWithMoveContext, gen_expr.emitUserFuncCallWithMoveContext);
     gen_hooks.installBody(gen_ctrl.emitBody);
     gen_hooks.installUnionValue(gen_union_emit.emitUnionValue);
-    gen_hooks.installCollectBodyLocals(gen_expr.collectBodyLocals);
-    gen_hooks.installCollectBodyLocalsWithMode(gen_expr.collectBodyLocalsWithMode);
+    gen_hooks.installCollectBodyLocals(codegen_collect_body.collect_body_locals);
+    gen_hooks.installCollectBodyLocalsWithMode(codegen_collect_body.collect_body_locals_with_mode);
     gen_hooks.installEmitMultiResultAssignment(gen_expr.emitMultiResultAssignment);
     gen_hooks.installEmitBareUserFuncCall(gen_expr.emitBareUserFuncCall);
     gen_hooks.installEmitBareUserFuncCallMove(gen_expr.emitBareUserFuncCallWithMoveContext);
@@ -578,9 +582,9 @@ pub fn emitWatWithOptions(allocator: std.mem.Allocator, program: parser.Program,
         freeStructDecls(allocator, structs.items);
         structs.deinit(allocator);
     }
-    try collectStructDecls(allocator, tokens, &structs);
+    try collect_struct_decls(allocator, tokens, &structs);
     if (module_graph) |graph| {
-        try collectImportedStructDecls(allocator, tokens, graph, &structs);
+        try collect_imported_struct_decls(allocator, tokens, graph, &structs);
     }
     try collectStringDataForStructFieldNames(allocator, structs.items, &string_data);
 
@@ -589,9 +593,9 @@ pub fn emitWatWithOptions(allocator: std.mem.Allocator, program: parser.Program,
         freeValueEnumDecls(allocator, value_enums.items);
         value_enums.deinit(allocator);
     }
-    try collectValueEnumDecls(allocator, tokens, &value_enums);
+    try collect_value_enum_decls(allocator, tokens, &value_enums);
     if (module_graph) |graph| {
-        try collectImportedValueEnumDecls(allocator, tokens, graph, &value_enums);
+        try collect_imported_value_enum_decls(allocator, tokens, graph, &value_enums);
     }
 
     var payload_enums = std.ArrayList(PayloadEnumDecl).empty;
@@ -599,9 +603,9 @@ pub fn emitWatWithOptions(allocator: std.mem.Allocator, program: parser.Program,
         freePayloadEnumDecls(allocator, payload_enums.items);
         payload_enums.deinit(allocator);
     }
-    try collectPayloadEnumDecls(allocator, tokens, &payload_enums);
+    try collect_payload_enum_decls(allocator, tokens, &payload_enums);
     if (module_graph) |graph| {
-        try collectImportedPayloadEnumDecls(allocator, tokens, graph, &payload_enums);
+        try collect_imported_payload_enum_decls(allocator, tokens, graph, &payload_enums);
     }
 
     var struct_layouts = std.ArrayList(StructLayout).empty;
@@ -609,7 +613,7 @@ pub fn emitWatWithOptions(allocator: std.mem.Allocator, program: parser.Program,
         freeStructLayouts(allocator, struct_layouts.items);
         struct_layouts.deinit(allocator);
     }
-    try collectStructLayouts(allocator, structs.items, &struct_layouts);
+    try collect_struct_layouts(allocator, structs.items, &struct_layouts);
 
     var functions = std.ArrayList(FuncDecl).empty;
     defer {
@@ -620,9 +624,9 @@ pub fn emitWatWithOptions(allocator: std.mem.Allocator, program: parser.Program,
         if (findRootModuleIndex(graph.modules, tokens)) |idx| ImportedAliasContext{ .graph = graph, .module_idx = idx } else null
     else
         null;
-    try collectFuncDecls(allocator, tokens, structs.items, struct_layouts.items, imported_alias_ctx, &functions);
+    try collect_func_decls(allocator, tokens, structs.items, struct_layouts.items, imported_alias_ctx, &functions);
     if (module_graph) |graph| {
-        try collectDirectImportedFuncDecls(allocator, tokens, graph, structs.items, struct_layouts.items, &functions);
+        try collect_direct_imported_func_decls(allocator, tokens, graph, structs.items, struct_layouts.items, &functions);
     }
     try collectGenericFuncInstancesForStart(
         allocator,
@@ -638,15 +642,15 @@ pub fn emitWatWithOptions(allocator: std.mem.Allocator, program: parser.Program,
         imported_alias_ctx,
         &functions,
     );
-    try collectConcreteGenericStructLayouts(allocator, structs.items, functions.items, &struct_layouts);
-    try collectStoragePackLayoutsFromTokens(allocator, tokens, structs.items, &struct_layouts);
+    try collect_concrete_generic_struct_layouts(allocator, structs.items, functions.items, &struct_layouts);
+    try collect_storage_pack_layouts_from_tokens(allocator, tokens, structs.items, &struct_layouts);
     if (module_graph) |graph| {
         for (graph.modules) |module| {
-            try collectStoragePackLayoutsFromTokens(allocator, module.tokens, structs.items, &struct_layouts);
+            try collect_storage_pack_layouts_from_tokens(allocator, module.tokens, structs.items, &struct_layouts);
         }
     }
     // Preopens always lower to [Tuple<Dir,text>] pack; ensure layout even if type text is only on host result sugar.
-    try ensurePreopenDirTupleStoragePackLayout(allocator, wasi_imports.items, structs.items, &struct_layouts);
+    try ensure_preopen_dir_tuple_storage_pack_layout(allocator, wasi_imports.items, structs.items, &struct_layouts);
     try mangleOverloadedFunctionNames(allocator, &functions);
 
     const ctx = CodegenContext{
@@ -742,9 +746,9 @@ pub fn emitTestWat(allocator: std.mem.Allocator, program: parser.Program, tokens
         freeStructDecls(allocator, structs.items);
         structs.deinit(allocator);
     }
-    try collectStructDecls(allocator, tokens, &structs);
+    try collect_struct_decls(allocator, tokens, &structs);
     if (module_graph) |graph| {
-        try collectImportedStructDecls(allocator, tokens, graph, &structs);
+        try collect_imported_struct_decls(allocator, tokens, graph, &structs);
     }
     try collectStringDataForStructFieldNames(allocator, structs.items, &string_data);
 
@@ -753,9 +757,9 @@ pub fn emitTestWat(allocator: std.mem.Allocator, program: parser.Program, tokens
         freeValueEnumDecls(allocator, value_enums.items);
         value_enums.deinit(allocator);
     }
-    try collectValueEnumDecls(allocator, tokens, &value_enums);
+    try collect_value_enum_decls(allocator, tokens, &value_enums);
     if (module_graph) |graph| {
-        try collectImportedValueEnumDecls(allocator, tokens, graph, &value_enums);
+        try collect_imported_value_enum_decls(allocator, tokens, graph, &value_enums);
     }
 
     var payload_enums = std.ArrayList(PayloadEnumDecl).empty;
@@ -763,9 +767,9 @@ pub fn emitTestWat(allocator: std.mem.Allocator, program: parser.Program, tokens
         freePayloadEnumDecls(allocator, payload_enums.items);
         payload_enums.deinit(allocator);
     }
-    try collectPayloadEnumDecls(allocator, tokens, &payload_enums);
+    try collect_payload_enum_decls(allocator, tokens, &payload_enums);
     if (module_graph) |graph| {
-        try collectImportedPayloadEnumDecls(allocator, tokens, graph, &payload_enums);
+        try collect_imported_payload_enum_decls(allocator, tokens, graph, &payload_enums);
     }
 
     var struct_layouts = std.ArrayList(StructLayout).empty;
@@ -773,7 +777,7 @@ pub fn emitTestWat(allocator: std.mem.Allocator, program: parser.Program, tokens
         freeStructLayouts(allocator, struct_layouts.items);
         struct_layouts.deinit(allocator);
     }
-    try collectStructLayouts(allocator, structs.items, &struct_layouts);
+    try collect_struct_layouts(allocator, structs.items, &struct_layouts);
 
     var functions = std.ArrayList(FuncDecl).empty;
     defer {
@@ -784,9 +788,9 @@ pub fn emitTestWat(allocator: std.mem.Allocator, program: parser.Program, tokens
         if (findRootModuleIndex(graph.modules, tokens)) |idx| ImportedAliasContext{ .graph = graph, .module_idx = idx } else null
     else
         null;
-    try collectFuncDecls(allocator, tokens, structs.items, struct_layouts.items, imported_alias_ctx, &functions);
+    try collect_func_decls(allocator, tokens, structs.items, struct_layouts.items, imported_alias_ctx, &functions);
     if (module_graph) |graph| {
-        try collectDirectImportedFuncDeclsFromTests(allocator, tokens, graph, structs.items, struct_layouts.items, &functions);
+        try collect_direct_imported_func_decls_from_tests(allocator, tokens, graph, structs.items, struct_layouts.items, &functions);
     }
     try collectGenericFuncInstancesForTests(
         allocator,
@@ -803,14 +807,14 @@ pub fn emitTestWat(allocator: std.mem.Allocator, program: parser.Program, tokens
         imported_alias_ctx,
         &functions,
     );
-    try collectConcreteGenericStructLayouts(allocator, structs.items, functions.items, &struct_layouts);
-    try collectStoragePackLayoutsFromTokens(allocator, tokens, structs.items, &struct_layouts);
+    try collect_concrete_generic_struct_layouts(allocator, structs.items, functions.items, &struct_layouts);
+    try collect_storage_pack_layouts_from_tokens(allocator, tokens, structs.items, &struct_layouts);
     if (module_graph) |graph| {
         for (graph.modules) |module| {
-            try collectStoragePackLayoutsFromTokens(allocator, module.tokens, structs.items, &struct_layouts);
+            try collect_storage_pack_layouts_from_tokens(allocator, module.tokens, structs.items, &struct_layouts);
         }
     }
-    try ensurePreopenDirTupleStoragePackLayout(allocator, wasi_imports.items, structs.items, &struct_layouts);
+    try ensure_preopen_dir_tuple_storage_pack_layout(allocator, wasi_imports.items, structs.items, &struct_layouts);
     try mangleOverloadedFunctionNames(allocator, &functions);
 
     const ctx = CodegenContext{
@@ -910,7 +914,7 @@ pub fn functionSourceNameHasMultipleConcreteDecls(functions: []const FuncDecl, t
     for (functions) |func| {
         if (func.is_generic_template) continue;
         if (!moduleTokensEqual(func.tokens, tokens)) continue;
-        if (!sameCallableSourceName(func.source_name, source_name)) continue;
+        if (!same_callable_source_name(func.source_name, source_name)) continue;
         count += 1;
         if (count > 1) return true;
     }
@@ -974,7 +978,7 @@ pub fn isStorageU8Type(tokens: []const lexer.Token, start_idx: usize, end_idx: u
 
 pub fn isPackTerminalLeafType(ty: []const u8, structs: []const StructDecl) bool {
     if (type_util.isTuplePackableLeafType(ty)) return true;
-    return isPackManagedHandleLeaf(ty, structs);
+    return is_pack_managed_handle_leaf(ty, structs);
 }
 
 /// Append terminal pack leaf types in order.

@@ -14,7 +14,10 @@ const context = @import("codegen_context.zig");
 const IsComparisonNarrowing = model.IsComparisonNarrowing;
 const NilComparisonNarrowing = model.NilComparisonNarrowing;
 const TypedStructBinding = model.TypedStructBinding;
-const gen_collect = @import("gen_collect.zig");
+const gen_collect_util = @import("gen_collect_util.zig");
+const codegen_collect_functions = @import("codegen_collect_functions.zig");
+const codegen_collect_structs = @import("codegen_collect_structs.zig");
+const codegen_collect_declarations = @import("codegen_collect_declarations.zig");
 const gen_import = @import("gen_import.zig");
 const gen_wasi_emit = @import("gen_wasi_emit.zig");
 const gen_hooks = @import("gen_hooks.zig");
@@ -23,9 +26,9 @@ const findTopLevelGuardLoopControl = gen_ownership.findTopLevelGuardLoopControl;
 const labelForLoopStart = gen_ownership.labelForLoopStart;
 const findValueEnumDeclLineByName = gen_import.findValueEnumDeclLineByName;
 const findValueEnumDeclLineByBranch = gen_import.findValueEnumDeclLineByBranch;
-const simpleTypeName = gen_collect.simpleTypeName;
-const isTopLevelCommaAny = gen_collect.isTopLevelCommaAny;
-const isReturnArrowAt = gen_collect.isReturnArrowAt;
+const simple_type_name = codegen_collect_functions.simple_type_name;
+const is_top_level_comma_any = codegen_collect_functions.is_top_level_comma_any;
+const is_return_arrow_at = codegen_collect_functions.is_return_arrow_at;
 const codegen_union_layout = @import("codegen_union_layout.zig");
 const gen_host = @import("gen_host.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
@@ -149,29 +152,29 @@ const cloneUnionLayout = codegen_union_layout.clone_union_layout;
 const unionLayoutsEqual = codegen_union_layout.union_layouts_equal;
 const unionBranchIsStatusI32 = codegen_union_layout.union_branch_is_status_i32;
 
-const findStructDecl = gen_collect.findStructDecl;
-const findStructLayout = gen_collect.findStructLayout;
-const findStructLayoutExact = gen_collect.findStructLayoutExact;
-const isPackManagedHandleLeaf = gen_collect.isPackManagedHandleLeaf;
-const leafPayloadBytesForPack = gen_collect.leafPayloadBytesForPack;
-const pureScalarStructPackWidth = gen_collect.pureScalarStructPackWidth;
-const packSlotWidth = gen_collect.packSlotWidth;
-const tuplePackWidthWithStructs = gen_collect.tuplePackWidthWithStructs;
-const appendTupleLeafTypesWithStructs = gen_collect.appendTupleLeafTypesWithStructs;
-const appendTupleLeafTypes = gen_collect.appendTupleLeafTypes;
-const structDeclHasManagedField = gen_collect.structDeclHasManagedField;
-const ensureStoragePackLayout = gen_collect.ensureStoragePackLayout;
-const managedLeafFieldName = gen_collect.managedLeafFieldName;
-const isErrorLikeType = gen_collect.isErrorLikeType;
-const parseCodegenTypeExpr = gen_collect.parseCodegenTypeExpr;
-const parseTypeUnionLayoutFromName = gen_collect.parseTypeUnionLayoutFromName;
-const bindStructTypeArgs = gen_collect.bindStructTypeArgs;
-const substituteGenericTypeOwned = gen_collect.substituteGenericTypeOwned;
-const findGenericBinding = gen_collect.findGenericBinding;
-const sameCallableSourceName = gen_collect.sameCallableSourceName;
-const funcParamAbiType = gen_collect.funcParamAbiType;
-const isUnmanagedScalarStruct = gen_collect.isUnmanagedScalarStruct;
-const appendUnionBranchPayloadTypes = gen_collect.appendUnionBranchPayloadTypes;
+const findStructDecl = gen_collect_util.findStructDecl;
+const findStructLayout = gen_collect_util.findStructLayout;
+const find_struct_layout_exact = codegen_collect_structs.find_struct_layout_exact;
+const is_pack_managed_handle_leaf = codegen_collect_structs.is_pack_managed_handle_leaf;
+const leaf_payload_bytes_for_pack = codegen_collect_structs.leaf_payload_bytes_for_pack;
+const pureScalarStructPackWidth = gen_collect_util.pureScalarStructPackWidth;
+const packSlotWidth = gen_collect_util.packSlotWidth;
+const tuplePackWidthWithStructs = gen_collect_util.tuplePackWidthWithStructs;
+const appendTupleLeafTypesWithStructs = gen_collect_util.appendTupleLeafTypesWithStructs;
+const appendTupleLeafTypes = gen_collect_util.appendTupleLeafTypes;
+const structDeclHasManagedField = gen_collect_util.structDeclHasManagedField;
+const ensure_storage_pack_layout = codegen_collect_structs.ensure_storage_pack_layout;
+const managed_leaf_field_name = codegen_collect_structs.managed_leaf_field_name;
+const isErrorLikeType = gen_collect_util.isErrorLikeType;
+const parseCodegenTypeExpr = gen_collect_util.parseCodegenTypeExpr;
+const parse_type_union_layout_from_name = codegen_collect_structs.parse_type_union_layout_from_name;
+const bind_struct_type_args = codegen_collect_structs.bind_struct_type_args;
+const substituteGenericTypeOwned = gen_collect_util.substituteGenericTypeOwned;
+const findGenericBinding = gen_collect_util.findGenericBinding;
+const same_callable_source_name = codegen_collect_functions.same_callable_source_name;
+const funcParamAbiType = gen_collect_util.funcParamAbiType;
+const isUnmanagedScalarStruct = gen_collect_util.isUnmanagedScalarStruct;
+const appendUnionBranchPayloadTypes = gen_collect_util.appendUnionBranchPayloadTypes;
 
 const callHeadAt = gen_import.callHeadAt;
 const exprCallHead = gen_import.exprCallHead;
@@ -771,7 +774,7 @@ pub fn emitStructFieldValue(allocator: std.mem.Allocator, tokens: []const lexer.
         for (owned_types.items) |owned| allocator.free(owned);
         owned_types.deinit(allocator);
     }
-    if (try parseTypeUnionLayoutFromName(allocator, tokens, field_ty, ctx.structs, ctx.struct_layouts, &owned_types)) |layout| {
+    if (try parse_type_union_layout_from_name(allocator, tokens, field_ty, ctx.structs, ctx.struct_layouts, &owned_types)) |layout| {
         defer freeUnionLayout(allocator, layout);
         if (!try gen_hooks.emitUnionValue(allocator, tokens, start_idx, end_idx, locals, ctx, layout, copy_managed, null, out)) {
             return error.NoMatchingCall;
@@ -946,7 +949,7 @@ pub fn emitUserFuncArg(allocator: std.mem.Allocator, tokens: []const lexer.Token
         for (owned_types.items) |owned| allocator.free(owned);
         owned_types.deinit(allocator);
     }
-    if (try parseTypeUnionLayoutFromName(allocator, tokens, param_ty, ctx.structs, ctx.struct_layouts, &owned_types)) |layout| {
+    if (try parse_type_union_layout_from_name(allocator, tokens, param_ty, ctx.structs, ctx.struct_layouts, &owned_types)) |layout| {
         defer freeUnionLayout(allocator, layout);
         return try gen_hooks.emitUnionValue(allocator, tokens, arg_start, arg_end, locals, ctx, layout, copy_managed, null, out);
     }
@@ -1284,7 +1287,7 @@ pub fn emitStructFieldLocalSet(allocator: std.mem.Allocator, tokens: []const lex
         for (owned_types.items) |owned| allocator.free(owned);
         owned_types.deinit(allocator);
     }
-    if (try parseTypeUnionLayoutFromName(allocator, tokens, field_ty, ctx.structs, ctx.struct_layouts, &owned_types)) |layout| {
+    if (try parse_type_union_layout_from_name(allocator, tokens, field_ty, ctx.structs, ctx.struct_layouts, &owned_types)) |layout| {
         defer freeUnionLayout(allocator, layout);
         const union_local = findUnionLocal(locals.union_locals.items, union_local_name) orelse return error.NoMatchingCall;
         if (!unionLayoutsEqual(union_local.layout, layout)) return error.NoMatchingCall;
@@ -1699,7 +1702,7 @@ pub fn emitUnmanagedStructFieldGet(allocator: std.mem.Allocator, tokens: []const
         for (owned_types.items) |owned| allocator.free(owned);
         owned_types.deinit(allocator);
     }
-    const layout = (try parseTypeUnionLayoutFromName(allocator, tokens, field_ty, ctx.structs, ctx.struct_layouts, &owned_types)) orelse return false;
+    const layout = (try parse_type_union_layout_from_name(allocator, tokens, field_ty, ctx.structs, ctx.struct_layouts, &owned_types)) orelse return false;
     defer freeUnionLayout(allocator, layout);
     const union_local_name = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ struct_local.name, field_name });
     defer allocator.free(union_local_name);

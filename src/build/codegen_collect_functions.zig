@@ -60,7 +60,7 @@ const ReachVisit = model.ReachVisit;
 const StructDecl = model.StructDecl;
 const StructLayout = model.StructLayout;
 
-fn freeFuncParamList(allocator: std.mem.Allocator, params: *std.ArrayList(FuncParam)) void {
+fn free_func_param_list(allocator: std.mem.Allocator, params: *std.ArrayList(FuncParam)) void {
     for (params.items) |param| {
         if (param.callback) |callback| {
             if (callback.owned) allocator.free(callback.shape.param_types);
@@ -69,7 +69,7 @@ fn freeFuncParamList(allocator: std.mem.Allocator, params: *std.ArrayList(FuncPa
     params.deinit(allocator);
 }
 
-pub fn parseFuncParamTypeExpr(
+pub fn parse_func_param_type_expr(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -86,11 +86,11 @@ pub fn parseFuncParamTypeExpr(
     return parseCodegenTypeExpr(allocator, tokens, start_idx, end_idx, owned_types);
 }
 
-pub fn isReturnArrowAt(tokens: []const lexer.Token, idx: usize) bool {
+pub fn is_return_arrow_at(tokens: []const lexer.Token, idx: usize) bool {
     return idx + 1 < tokens.len and tokEq(tokens[idx], "-") and tokEq(tokens[idx + 1], ">");
 }
 
-pub fn findConstraintBlockStartBefore(tokens: []const lexer.Token, decl_start_idx: usize) ?usize {
+pub fn find_constraint_block_start_before(tokens: []const lexer.Token, decl_start_idx: usize) ?usize {
     if (decl_start_idx == 0 or decl_start_idx >= tokens.len) return null;
 
     var scan_idx = decl_start_idx;
@@ -111,11 +111,11 @@ pub fn findConstraintBlockStartBefore(tokens: []const lexer.Token, decl_start_id
     return block_start;
 }
 
-pub fn findLineEndIdx(tokens: []const lexer.Token, start_idx: usize) usize {
+pub fn find_line_end_idx(tokens: []const lexer.Token, start_idx: usize) usize {
     return findLineEnd(tokens, start_idx);
 }
 
-pub fn findTopLevelAssignEqOnLine(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+pub fn find_top_level_assign_eq_on_line(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
     var depth_paren: usize = 0;
     var depth_brace: usize = 0;
     var depth_angle: usize = 0;
@@ -150,13 +150,13 @@ pub fn findTopLevelAssignEqOnLine(tokens: []const lexer.Token, start_idx: usize,
     return null;
 }
 
-pub fn simpleTypeName(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?[]const u8 {
+pub fn simple_type_name(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?[]const u8 {
     if (start_idx + 1 != end_idx) return null;
     if (tokens[start_idx].kind != .ident) return null;
     return tokens[start_idx].lexeme;
 }
 
-pub fn isTopLevelCommaAny(tokens: []const lexer.Token, idx: usize, start_idx: usize, end_idx: usize) bool {
+pub fn is_top_level_comma_any(tokens: []const lexer.Token, idx: usize, start_idx: usize, end_idx: usize) bool {
     if (!tokEq(tokens[idx], ",")) return false;
 
     var depth_paren: usize = 0;
@@ -192,7 +192,7 @@ pub fn isTopLevelCommaAny(tokens: []const lexer.Token, idx: usize, start_idx: us
     return depth_paren == 0 and depth_brace == 0 and depth_angle == 0;
 }
 
-pub fn parseTypeNameList(
+pub fn parse_type_name_list(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -204,22 +204,22 @@ pub fn parseTypeNameList(
     var seg_start = start_idx;
     var i = start_idx;
     while (i <= end_idx) : (i += 1) {
-        if (i < end_idx and !isTopLevelCommaAny(tokens, i, start_idx, end_idx)) continue;
+        if (i < end_idx and !is_top_level_comma_any(tokens, i, start_idx, end_idx)) continue;
         if (seg_start < i) {
-            try out.append(allocator, simpleTypeName(tokens, seg_start, i));
+            try out.append(allocator, simple_type_name(tokens, seg_start, i));
         }
         seg_start = i + 1;
     }
     return out.toOwnedSlice(allocator);
 }
 
-pub fn parseFuncTypeConstraintShape(
+pub fn parse_func_type_constraint_shape(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     func_start_idx: usize,
     constraint_name: []const u8,
 ) !?OwnedFuncTypeShape {
-    const block_start = findConstraintBlockStartBefore(tokens, func_start_idx) orelse return null;
+    const block_start = find_constraint_block_start_before(tokens, func_start_idx) orelse return null;
 
     var i = block_start;
     while (i < func_start_idx) {
@@ -227,21 +227,21 @@ pub fn parseFuncTypeConstraintShape(
             i += 1;
             continue;
         }
-        const line_end = findLineEndIdx(tokens, i);
+        const line_end = find_line_end_idx(tokens, i);
         const is_func_constraint = i + 2 < line_end and tokEq(tokens[i + 2], "(");
         if (is_func_constraint or i + 1 >= line_end or !std.mem.eql(u8, tokens[i + 1].lexeme, constraint_name)) {
             i = line_end;
             continue;
         }
 
-        const eq_idx = findTopLevelAssignEqOnLine(tokens, i + 2, line_end) orelse return null;
-        if (!isFuncTypeRange(tokens, eq_idx + 1, line_end)) return null;
+        const eq_idx = find_top_level_assign_eq_on_line(tokens, i + 2, line_end) orelse return null;
+        if (!is_func_type_range(tokens, eq_idx + 1, line_end)) return null;
         const close_params = findMatching(tokens, eq_idx + 1, "(", ")") catch return null;
-        const param_types = try parseTypeNameList(allocator, tokens, eq_idx + 2, close_params);
+        const param_types = try parse_type_name_list(allocator, tokens, eq_idx + 2, close_params);
         return .{
             .shape = .{
                 .param_types = param_types,
-                .return_type = simpleTypeName(tokens, close_params + 3, line_end),
+                .return_type = simple_type_name(tokens, close_params + 3, line_end),
             },
             .owned = true,
         };
@@ -249,13 +249,13 @@ pub fn parseFuncTypeConstraintShape(
     return null;
 }
 
-pub fn isFuncTypeRange(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+pub fn is_func_type_range(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     if (start_idx >= end_idx or !tokEq(tokens[start_idx], "(")) return false;
     const close_idx = findMatching(tokens, start_idx, "(", ")") catch return false;
-    return close_idx + 2 < end_idx and isReturnArrowAt(tokens, close_idx + 1);
+    return close_idx + 2 < end_idx and is_return_arrow_at(tokens, close_idx + 1);
 }
 
-fn appendOneFuncParam(
+fn append_one_func_param(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     param_idx: usize,
@@ -283,8 +283,8 @@ fn appendOneFuncParam(
         variadic = true;
         type_start += 1;
     }
-    const parsed_ty = (try parseFuncParamTypeExpr(allocator, tokens, type_start, param_end, owned_types)) orelse return error.InvalidParamName;
-    const callback = try parseFuncTypeConstraintShape(allocator, tokens, constraint_search_idx, parsed_ty.ty);
+    const parsed_ty = (try parse_func_param_type_expr(allocator, tokens, type_start, param_end, owned_types)) orelse return error.InvalidParamName;
+    const callback = try parse_func_type_constraint_shape(allocator, tokens, constraint_search_idx, parsed_ty.ty);
     try params.append(allocator, .{
         .name = tokens[param_idx].lexeme,
         .ty = parsed_ty.ty,
@@ -296,7 +296,7 @@ fn appendOneFuncParam(
     return next;
 }
 
-pub fn collectFuncDecls(
+pub fn collect_func_decls(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     structs: []const StructDecl,
@@ -347,7 +347,7 @@ pub fn collectFuncDecls(
             try allocator.dupe([]const u8, pending_type_params.items);
         var type_params_owned = pending_type_params.items.len != 0;
         errdefer if (type_params_owned) allocator.free(type_params);
-        const parsed_results = (try parseFuncDeclResultTypes(
+        const parsed_results = (try parse_func_decl_result_types(
             allocator,
             tokens,
             body.result_start,
@@ -366,14 +366,14 @@ pub fn collectFuncDecls(
         errdefer if (result_items_owned) allocator.free(result_items);
 
         var params = std.ArrayList(FuncParam).empty;
-        errdefer freeFuncParamList(allocator, &params);
+        errdefer free_func_param_list(allocator, &params);
         var param_idx = open_params + 1;
         while (param_idx < close_params) {
             if (tokEq(tokens[param_idx], ",")) {
                 param_idx += 1;
                 continue;
             }
-            param_idx = try appendOneFuncParam(
+            param_idx = try append_one_func_param(
                 allocator,
                 tokens,
                 param_idx,
@@ -411,7 +411,7 @@ pub fn collectFuncDecls(
     }
 }
 
-pub fn collectDirectImportedFuncDecls(
+pub fn collect_direct_imported_func_decls(
     allocator: std.mem.Allocator,
     entry_tokens: []const lexer.Token,
     graph: *const imports.ModuleGraph,
@@ -437,8 +437,8 @@ pub fn collectDirectImportedFuncDecls(
         const module = graph.modules[visit.module_idx];
         if (findCodegenImportByAlias(module.tokens, visit.name)) |import_ref| {
             const child_idx = findImportedModuleIndex(allocator, graph, visit.module_idx, import_ref) orelse continue;
-            if (findFuncDecl(out.items, import_ref.alias) == null) {
-                _ = try collectFuncDeclByNameAs(
+            if (find_func_decl(out.items, import_ref.alias) == null) {
+                _ = try collect_func_decl_by_name_as(
                     allocator,
                     graph.modules[child_idx].tokens,
                     structs,
@@ -454,10 +454,10 @@ pub fn collectDirectImportedFuncDecls(
             continue;
         }
 
-        if (visit.module_idx != root_idx and findFuncDeclBySourceForTokens(out.items, module.tokens, publicDeclName(visit.name)) == null) {
+        if (visit.module_idx != root_idx and find_func_decl_by_source_for_tokens(out.items, module.tokens, publicDeclName(visit.name)) == null) {
             const emit_name = try moduleScopedSymbolName(allocator, visit.module_idx, publicDeclName(visit.name));
             defer allocator.free(emit_name);
-            _ = try collectFuncDeclByNameAs(
+            _ = try collect_func_decl_by_name_as(
                 allocator,
                 module.tokens,
                 structs,
@@ -473,7 +473,7 @@ pub fn collectDirectImportedFuncDecls(
     }
 }
 
-pub fn collectDirectImportedFuncDeclsFromTests(
+pub fn collect_direct_imported_func_decls_from_tests(
     allocator: std.mem.Allocator,
     entry_tokens: []const lexer.Token,
     graph: *const imports.ModuleGraph,
@@ -499,8 +499,8 @@ pub fn collectDirectImportedFuncDeclsFromTests(
         const module = graph.modules[visit.module_idx];
         if (findCodegenImportByAlias(module.tokens, visit.name)) |import_ref| {
             const child_idx = findImportedModuleIndex(allocator, graph, visit.module_idx, import_ref) orelse continue;
-            if (findFuncDecl(out.items, import_ref.alias) == null) {
-                _ = try collectFuncDeclByNameAs(
+            if (find_func_decl(out.items, import_ref.alias) == null) {
+                _ = try collect_func_decl_by_name_as(
                     allocator,
                     graph.modules[child_idx].tokens,
                     structs,
@@ -516,10 +516,10 @@ pub fn collectDirectImportedFuncDeclsFromTests(
             continue;
         }
 
-        if (visit.module_idx != root_idx and findFuncDeclBySourceForTokens(out.items, module.tokens, publicDeclName(visit.name)) == null) {
+        if (visit.module_idx != root_idx and find_func_decl_by_source_for_tokens(out.items, module.tokens, publicDeclName(visit.name)) == null) {
             const emit_name = try moduleScopedSymbolName(allocator, visit.module_idx, publicDeclName(visit.name));
             defer allocator.free(emit_name);
-            _ = try collectFuncDeclByNameAs(
+            _ = try collect_func_decl_by_name_as(
                 allocator,
                 module.tokens,
                 structs,
@@ -535,11 +535,11 @@ pub fn collectDirectImportedFuncDeclsFromTests(
     }
 }
 
-pub fn sameCallableSourceName(left: []const u8, right: []const u8) bool {
+pub fn same_callable_source_name(left: []const u8, right: []const u8) bool {
     return std.mem.eql(u8, publicDeclName(left), publicDeclName(right));
 }
 
-pub fn collectFuncDeclByNameAs(
+pub fn collect_func_decl_by_name_as(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     structs: []const StructDecl,
@@ -604,7 +604,7 @@ pub fn collectFuncDeclByNameAs(
             try allocator.dupe([]const u8, pending_type_params.items);
         var type_params_owned = pending_type_params.items.len != 0;
         errdefer if (type_params_owned) allocator.free(type_params);
-        const parsed_results = (try parseFuncDeclResultTypes(
+        const parsed_results = (try parse_func_decl_result_types(
             allocator,
             tokens,
             body.result_start,
@@ -623,14 +623,14 @@ pub fn collectFuncDeclByNameAs(
         errdefer if (result_items_owned) allocator.free(result_items);
 
         var params = std.ArrayList(FuncParam).empty;
-        errdefer freeFuncParamList(allocator, &params);
+        errdefer free_func_param_list(allocator, &params);
         var param_idx = open_params + 1;
         while (param_idx < close_params) {
             if (tokEq(tokens[param_idx], ",")) {
                 param_idx += 1;
                 continue;
             }
-            param_idx = try appendOneFuncParam(
+            param_idx = try append_one_func_param(
                 allocator,
                 tokens,
                 param_idx,
@@ -677,7 +677,7 @@ pub fn collectFuncDeclByNameAs(
     return collected;
 }
 
-pub fn parseFuncDeclResultTypes(
+pub fn parse_func_decl_result_types(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -696,9 +696,9 @@ pub fn parseFuncDeclResultTypes(
     }
 
     if (type_params.len != 0) {
-        const uses_type_param = typeParamsAppearInRange(tokens, start_idx, end_idx, type_params);
+        const uses_type_param = type_params_appear_in_range(tokens, start_idx, end_idx, type_params);
         if (uses_type_param) {
-            return try parseGenericFuncResultTypes(
+            return try parse_generic_func_result_types(
                 allocator,
                 tokens,
                 start_idx,
@@ -711,11 +711,11 @@ pub fn parseFuncDeclResultTypes(
         }
     }
 
-    if (try parseFuncResultTypes(allocator, tokens, start_idx, end_idx, structs, struct_layouts, imported_alias_ctx, owned_types)) |parsed| {
+    if (try parse_func_result_types(allocator, tokens, start_idx, end_idx, structs, struct_layouts, imported_alias_ctx, owned_types)) |parsed| {
         return parsed;
     }
     if (type_params.len != 0) {
-        return try parseGenericFuncResultTypes(
+        return try parse_generic_func_result_types(
             allocator,
             tokens,
             start_idx,
@@ -729,7 +729,7 @@ pub fn parseFuncDeclResultTypes(
     return null;
 }
 
-fn parseSingleIdentFuncResult(
+fn parse_single_ident_func_result(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -776,7 +776,7 @@ fn parseSingleIdentFuncResult(
             .items = try items.toOwnedSlice(allocator),
         };
     }
-    if (importedErrorNilAliasTarget(allocator, imported_alias_ctx, tokens, struct_name)) |error_name| {
+    if (imported_error_nil_alias_target(allocator, imported_alias_ctx, tokens, struct_name)) |error_name| {
         const abi_start = results.items.len;
         try results.append(allocator, error_name);
         try items.append(allocator, .{ .ty = error_name, .abi_start = abi_start, .abi_len = 1 });
@@ -788,7 +788,7 @@ fn parseSingleIdentFuncResult(
     return null;
 }
 
-pub fn parseFuncResultTypes(
+pub fn parse_func_result_types(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -829,7 +829,7 @@ pub fn parseFuncResultTypes(
         };
     }
 
-    if (parseErrorNilResultType(tokens, start_idx, end_idx)) |result_ty| {
+    if (parse_error_nil_result_type(tokens, start_idx, end_idx)) |result_ty| {
         const abi_start = results.items.len;
         try results.append(allocator, result_ty);
         try items.append(allocator, .{ .ty = result_ty, .abi_start = abi_start, .abi_len = 1 });
@@ -855,7 +855,7 @@ pub fn parseFuncResultTypes(
         };
     }
 
-    if (try parseSingleIdentFuncResult(
+    if (try parse_single_ident_func_result(
         allocator,
         tokens,
         start_idx,
@@ -920,7 +920,7 @@ pub fn parseFuncResultTypes(
             managedPayloadElemTypeFromName(result_ty) != null or
             findStructLayout(struct_layouts, result_ty) != null or
             (tokens[i].kind == .ident and errorNilAliasTarget(tokens, tokens[i].lexeme) != null) or
-            (tokens[i].kind == .ident and importedErrorNilAliasTarget(allocator, imported_alias_ctx, tokens, tokens[i].lexeme) != null);
+            (tokens[i].kind == .ident and imported_error_nil_alias_target(allocator, imported_alias_ctx, tokens, tokens[i].lexeme) != null);
         if (!accepted) return null;
 
         const abi_start = results.items.len;
@@ -942,7 +942,7 @@ pub fn parseFuncResultTypes(
     };
 }
 
-pub fn parseGenericFuncResultTypes(
+pub fn parse_generic_func_result_types(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -1011,7 +1011,7 @@ pub fn parseGenericFuncResultTypes(
     };
 }
 
-pub fn typeParamsAppearInRange(
+pub fn type_params_appear_in_range(
     tokens: []const lexer.Token,
     start_idx: usize,
     end_idx: usize,
@@ -1025,7 +1025,7 @@ pub fn typeParamsAppearInRange(
     return false;
 }
 
-pub fn parseErrorNilResultType(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?[]const u8 {
+pub fn parse_error_nil_result_type(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?[]const u8 {
     if (start_idx + 3 != end_idx) return null;
     if (!tokEq(tokens[start_idx + 1], "|")) return null;
     if (tokens[start_idx].kind == .ident and tokEq(tokens[start_idx + 2], "nil") and isErrorLikeType(tokens, tokens[start_idx].lexeme)) {
@@ -1037,7 +1037,7 @@ pub fn parseErrorNilResultType(tokens: []const lexer.Token, start_idx: usize, en
     return null;
 }
 
-pub fn importedErrorNilAliasTarget(
+pub fn imported_error_nil_alias_target(
     allocator: std.mem.Allocator,
     imported_alias_ctx: ?ImportedAliasContext,
     tokens: []const lexer.Token,
@@ -1049,17 +1049,17 @@ pub fn importedErrorNilAliasTarget(
     return errorNilAliasTarget(ctx.graph.modules[child_idx].tokens, import_ref.target);
 }
 
-pub fn findFuncDecl(functions: []const FuncDecl, name: []const u8) ?FuncDecl {
+pub fn find_func_decl(functions: []const FuncDecl, name: []const u8) ?FuncDecl {
     for (functions) |func| {
         if (std.mem.eql(u8, func.name, name)) return func;
     }
     return null;
 }
 
-pub fn findFuncDeclBySourceForTokens(functions: []const FuncDecl, tokens: []const lexer.Token, source_name: []const u8) ?FuncDecl {
+pub fn find_func_decl_by_source_for_tokens(functions: []const FuncDecl, tokens: []const lexer.Token, source_name: []const u8) ?FuncDecl {
     for (functions) |func| {
         if (!moduleTokensEqual(func.tokens, tokens)) continue;
-        if (sameCallableSourceName(func.source_name, source_name)) return func;
+        if (same_callable_source_name(func.source_name, source_name)) return func;
     }
     return null;
 }

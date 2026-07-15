@@ -63,7 +63,7 @@ const UnionBranch = codegen_union_layout.UnionBranch;
 const UnionLayout = codegen_union_layout.UnionLayout;
 const WasiHostImport = codegen_wasi_registry.WasiHostImport;
 
-pub fn collectStructDecls(
+pub fn collect_struct_decls(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     out: *std.ArrayList(StructDecl),
@@ -98,7 +98,7 @@ pub fn collectStructDecls(
             continue;
         }
         // Declarative: Name = @wasi_resource|wasi_record("…", { fields })
-        if (isWasiStructBindingStructStart(tokens, i)) {
+        if (is_wasi_struct_binding_struct_start(tokens, i)) {
             const close_call = findMatching(tokens, i + 4, "(", ")") catch continue;
             const open_brace = codegen_tokens.find_token(tokens, i + 5, close_call, "{") orelse continue;
             const close_brace = findMatching(tokens, open_brace, "{", "}") catch continue;
@@ -109,7 +109,7 @@ pub fn collectStructDecls(
                 owned_types.deinit(allocator);
                 fields.deinit(allocator);
             }
-            try appendStructFieldsInBraceRange(allocator, tokens, open_brace, close_brace, &fields, &owned_types);
+            try append_struct_fields_in_brace_range(allocator, tokens, open_brace, close_brace, &fields, &owned_types);
             try out.append(allocator, .{
                 .name = tokens[i].lexeme,
                 .type_params = &[_][]const u8{},
@@ -140,7 +140,7 @@ pub fn collectStructDecls(
             fields.deinit(allocator);
         }
 
-        try appendStructFieldsInBraceRange(allocator, tokens, open_brace, close_brace, &fields, &owned_types);
+        try append_struct_fields_in_brace_range(allocator, tokens, open_brace, close_brace, &fields, &owned_types);
 
         try out.append(allocator, .{
             .name = tokens[i].lexeme,
@@ -156,7 +156,7 @@ pub fn collectStructDecls(
     }
 }
 
-pub fn isWasiStructBindingStructStart(tokens: []const lexer.Token, idx: usize) bool {
+pub fn is_wasi_struct_binding_struct_start(tokens: []const lexer.Token, idx: usize) bool {
     if (idx + 5 >= tokens.len) return false;
     if (!isLineStart(tokens, idx)) return false;
     if (tokens[idx].kind != .ident) return false;
@@ -168,7 +168,7 @@ pub fn isWasiStructBindingStructStart(tokens: []const lexer.Token, idx: usize) b
     return tokEq(tokens[idx + 4], "(");
 }
 
-pub fn collectImportedStructDecls(
+pub fn collect_imported_struct_decls(
     allocator: std.mem.Allocator,
     entry_tokens: []const lexer.Token,
     graph: *const imports.ModuleGraph,
@@ -183,7 +183,7 @@ pub fn collectImportedStructDecls(
 
         const child_idx = findImportedModuleIndex(allocator, graph, root_idx, import_ref) orelse continue;
         if (!std.mem.eql(u8, import_ref.alias, import_ref.target) and findStructDecl(out.items, import_ref.target) == null) {
-            _ = try collectStructDeclByNameAs(
+            _ = try collect_struct_decl_by_name_as(
                 allocator,
                 graph.modules[child_idx].tokens,
                 import_ref.target,
@@ -193,7 +193,7 @@ pub fn collectImportedStructDecls(
             );
         }
         if (findStructDecl(out.items, import_ref.alias) != null) continue;
-        _ = try collectStructDeclByNameAs(
+        _ = try collect_struct_decl_by_name_as(
             allocator,
             graph.modules[child_idx].tokens,
             import_ref.target,
@@ -207,7 +207,7 @@ pub fn collectImportedStructDecls(
         if (idx == root_idx) continue;
         var module_structs = std.ArrayList(StructDecl).empty;
         defer module_structs.deinit(allocator);
-        try collectStructDecls(allocator, module.tokens, &module_structs);
+        try collect_struct_decls(allocator, module.tokens, &module_structs);
         for (module_structs.items) |decl| {
             if (findStructDecl(out.items, decl.name) != null) {
                 freeStructDecl(allocator, decl);
@@ -218,7 +218,7 @@ pub fn collectImportedStructDecls(
     }
 }
 
-pub fn collectStructDeclByNameAs(
+pub fn collect_struct_decl_by_name_as(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     target_name: []const u8,
@@ -277,7 +277,7 @@ pub fn collectStructDeclByNameAs(
             fields.deinit(allocator);
         }
 
-        try appendStructFieldsInBraceRange(allocator, tokens, open_brace, close_brace, &fields, &owned_types);
+        try append_struct_fields_in_brace_range(allocator, tokens, open_brace, close_brace, &fields, &owned_types);
 
         try out.append(allocator, .{
             .name = emit_name,
@@ -297,7 +297,7 @@ pub fn collectStructDeclByNameAs(
 /// single-line bodies like `{ .id i64 }` do not include trailing `}` / `)` in the type span.
 /// Collect struct fields inside `{ … }`. Clamps each field span to `close_brace` so
 /// single-line bodies like `{ .id i64 }` do not include trailing `}` / `)` in the type span.
-pub fn appendStructFieldsInBraceRange(
+pub fn append_struct_fields_in_brace_range(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     open_brace: usize,
@@ -313,7 +313,7 @@ pub fn appendStructFieldsInBraceRange(
         const default_idx = findTopLevelToken(tokens, field_idx + 1, line_end, "=");
         const type_end = default_idx orelse line_end;
         if (tokens[field_idx].kind == .ident) {
-            if (try parseStructFieldTypeExpr(allocator, tokens, field_idx + 1, type_end, owned_types)) |parsed_ty| {
+            if (try parse_struct_field_type_expr(allocator, tokens, field_idx + 1, type_end, owned_types)) |parsed_ty| {
                 try fields.append(allocator, .{
                     .name = tokens[field_idx].lexeme,
                     .ty = parsed_ty,
@@ -326,7 +326,7 @@ pub fn appendStructFieldsInBraceRange(
     }
 }
 
-pub fn collectStructLayouts(
+pub fn collect_struct_layouts(
     allocator: std.mem.Allocator,
     structs: []const StructDecl,
     out: *std.ArrayList(StructLayout),
@@ -339,7 +339,7 @@ pub fn collectStructLayouts(
                 .name = decl.name,
                 .type_id = source_layout.type_id,
                 .payload_bytes = source_layout.payload_bytes,
-                .managed_fields = try cloneManagedFields(allocator, source_layout.managed_fields),
+                .managed_fields = try clone_managed_fields(allocator, source_layout.managed_fields),
             });
             continue;
         }
@@ -351,7 +351,7 @@ pub fn collectStructLayouts(
         for (decl.fields) |field| {
             const field_align = typePayloadAlignment(field.ty);
             offset = alignUp(offset, field_align);
-            if (try fieldTypeHasManagedLayout(allocator, structs, field.ty)) {
+            if (try field_type_has_managed_layout(allocator, structs, field.ty)) {
                 try managed_fields.append(allocator, .{
                     .name = publicDeclName(field.name),
                     .offset = offset,
@@ -375,23 +375,23 @@ pub fn collectStructLayouts(
     }
 }
 
-pub fn collectConcreteGenericStructLayouts(
+pub fn collect_concrete_generic_struct_layouts(
     allocator: std.mem.Allocator,
     structs: []const StructDecl,
     functions: []const FuncDecl,
     out: *std.ArrayList(StructLayout),
 ) !void {
-    var next_type_id = nextStructLayoutTypeId(out.items);
+    var next_type_id = next_struct_layout_type_id(out.items);
     for (functions) |func| {
         if (func.is_generic_template) continue;
         for (func.params) |param| {
-            try collectConcreteGenericStructLayoutFromType(allocator, structs, funcParamAbiType(param), out, &next_type_id);
+            try collect_concrete_generic_struct_layout_from_type(allocator, structs, funcParamAbiType(param), out, &next_type_id);
         }
         for (func.results) |result_ty| {
-            try collectConcreteGenericStructLayoutFromType(allocator, structs, result_ty, out, &next_type_id);
+            try collect_concrete_generic_struct_layout_from_type(allocator, structs, result_ty, out, &next_type_id);
         }
         for (func.result_items) |item| {
-            try collectConcreteGenericStructLayoutFromType(allocator, structs, item.ty, out, &next_type_id);
+            try collect_concrete_generic_struct_layout_from_type(allocator, structs, item.ty, out, &next_type_id);
         }
     }
 }
@@ -400,7 +400,7 @@ pub fn collectConcreteGenericStructLayouts(
 /// Layout name is the element Tuple type; payload_bytes is packed element width; managed offsets relative to element start.
 /// Register scheme-A packed `[Tuple<...>]` layouts when any leaf is managed payload.
 /// Layout name is the element Tuple type; payload_bytes is packed element width; managed offsets relative to element start.
-pub fn collectStoragePackLayoutsFromTokens(
+pub fn collect_storage_pack_layouts_from_tokens(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     structs: []const StructDecl,
@@ -418,22 +418,22 @@ pub fn collectStoragePackLayoutsFromTokens(
         if (close <= i + 1) continue;
         const parsed = (try parseCodegenTypeExpr(allocator, tokens, i + 1, close, &owned)) orelse continue;
         if (parsed.next_idx != close) continue;
-        try ensureStoragePackLayoutWithStructs(allocator, parsed.ty, structs, out);
+        try ensure_storage_pack_layout_with_structs(allocator, parsed.ty, structs, out);
     }
 }
 
-pub fn ensureStoragePackLayout(
+pub fn ensure_storage_pack_layout(
     allocator: std.mem.Allocator,
     elem_ty: []const u8,
     out: *std.ArrayList(StructLayout),
 ) !void {
     // Pure-scalar struct slots need structs table; managed-only path uses type_name flatten.
-    try ensureStoragePackLayoutWithStructs(allocator, elem_ty, &.{}, out);
+    try ensure_storage_pack_layout_with_structs(allocator, elem_ty, &.{}, out);
 }
 
 /// When any module binds preopens get-directories, register `[Tuple<Dir,text>]` pack layout.
 /// When any module binds preopens get-directories, register `[Tuple<Dir,text>]` pack layout.
-pub fn ensurePreopenDirTupleStoragePackLayout(
+pub fn ensure_preopen_dir_tuple_storage_pack_layout(
     allocator: std.mem.Allocator,
     wasi_imports: []const WasiHostImport,
     structs: []const StructDecl,
@@ -449,10 +449,10 @@ pub fn ensurePreopenDirTupleStoragePackLayout(
     if (!needs) return;
     // Dir shell must be visible so pack expands `.id i64` + text handle (12B).
     if (findStructDecl(structs, "Dir") == null) return;
-    try ensureStoragePackLayoutWithStructs(allocator, "Tuple<Dir,text>", structs, out);
+    try ensure_storage_pack_layout_with_structs(allocator, "Tuple<Dir,text>", structs, out);
 }
 
-pub fn ensureStoragePackLayoutWithStructs(
+pub fn ensure_storage_pack_layout_with_structs(
     allocator: std.mem.Allocator,
     elem_ty: []const u8,
     structs: []const StructDecl,
@@ -478,10 +478,10 @@ pub fn ensureStoragePackLayoutWithStructs(
     var offset: usize = 0;
     var managed_idx: usize = 0;
     for (leaf_types.items) |leaf_ty| {
-        const leaf_bytes = leafPayloadBytesForPack(leaf_ty, structs) orelse return;
-        if (isPackManagedHandleLeaf(leaf_ty, structs)) {
+        const leaf_bytes = leaf_payload_bytes_for_pack(leaf_ty, structs) orelse return;
+        if (is_pack_managed_handle_leaf(leaf_ty, structs)) {
             try managed_fields.append(allocator, .{
-                .name = managedLeafFieldName(managed_idx),
+                .name = managed_leaf_field_name(managed_idx),
                 .offset = offset,
             });
             managed_idx += 1;
@@ -492,7 +492,7 @@ pub fn ensureStoragePackLayoutWithStructs(
         managed_fields.deinit(allocator);
         return;
     }
-    if (findStructLayoutExact(out.items, elem_ty)) |existing| {
+    if (find_struct_layout_exact(out.items, elem_ty)) |existing| {
         if (existing.is_storage_pack) {
             managed_fields.deinit(allocator);
             return;
@@ -503,7 +503,7 @@ pub fn ensureStoragePackLayoutWithStructs(
     errdefer allocator.free(owned_name);
     try out.append(allocator, .{
         .name = owned_name,
-        .type_id = nextStructLayoutTypeId(out.items),
+        .type_id = next_struct_layout_type_id(out.items),
         .payload_bytes = w,
         .managed_fields = try managed_fields.toOwnedSlice(allocator),
         .owned_name = true,
@@ -511,7 +511,7 @@ pub fn ensureStoragePackLayoutWithStructs(
     });
 }
 
-pub fn managedLeafFieldName(idx: usize) []const u8 {
+pub fn managed_leaf_field_name(idx: usize) []const u8 {
     return switch (idx) {
         0 => "m0",
         1 => "m1",
@@ -525,7 +525,7 @@ pub fn managedLeafFieldName(idx: usize) []const u8 {
     };
 }
 
-pub fn nextStructLayoutTypeId(layouts: []const StructLayout) usize {
+pub fn next_struct_layout_type_id(layouts: []const StructLayout) usize {
     var next_type_id: usize = TYPE_ID_FIRST_STRUCT;
     for (layouts) |layout| {
         next_type_id = @max(next_type_id, layout.type_id + 1);
@@ -533,7 +533,7 @@ pub fn nextStructLayoutTypeId(layouts: []const StructLayout) usize {
     return next_type_id;
 }
 
-pub fn collectConcreteGenericStructLayoutFromType(
+pub fn collect_concrete_generic_struct_layout_from_type(
     allocator: std.mem.Allocator,
     structs: []const StructDecl,
     ty: []const u8,
@@ -541,15 +541,15 @@ pub fn collectConcreteGenericStructLayoutFromType(
     next_type_id: *usize,
 ) !void {
     if (managedPayloadElemTypeFromName(ty)) |elem_ty| {
-        try collectConcreteGenericStructLayoutFromType(allocator, structs, elem_ty, out, next_type_id);
+        try collect_concrete_generic_struct_layout_from_type(allocator, structs, elem_ty, out, next_type_id);
         return;
     }
 
     const args = genericTypeArgsRange(ty) orelse return;
     const decl = findStructDecl(structs, args.base) orelse return;
     if (decl.type_params.len == 0) return;
-    if (findStructLayoutExact(out.items, ty) != null) return;
-    if (findStructLayoutExact(out.items, args.base) != null) return;
+    if (find_struct_layout_exact(out.items, ty) != null) return;
+    if (find_struct_layout_exact(out.items, args.base) != null) return;
 
     var owned_types = std.ArrayList([]const u8).empty;
     defer {
@@ -558,18 +558,18 @@ pub fn collectConcreteGenericStructLayoutFromType(
     }
     var bindings = std.ArrayList(GenericTypeBinding).empty;
     defer bindings.deinit(allocator);
-    if (!try bindStructTypeArgs(allocator, decl, ty, &bindings, &owned_types)) return;
+    if (!try bind_struct_type_args(allocator, decl, ty, &bindings, &owned_types)) return;
 
     var managed_fields = std.ArrayList(ManagedFieldOffset).empty;
     errdefer managed_fields.deinit(allocator);
     var offset: usize = 0;
     for (decl.fields) |field| {
         const field_ty = try substituteGenericTypeOwned(allocator, field.ty, bindings.items, &owned_types);
-        try collectConcreteGenericStructLayoutFromType(allocator, structs, field_ty, out, next_type_id);
+        try collect_concrete_generic_struct_layout_from_type(allocator, structs, field_ty, out, next_type_id);
 
         const field_align = typePayloadAlignment(field_ty);
         offset = alignUp(offset, field_align);
-        if (fieldConcreteTypeHasManagedLayout(out.items, field_ty)) {
+        if (field_concrete_type_has_managed_layout(out.items, field_ty)) {
             try managed_fields.append(allocator, .{
                 .name = publicDeclName(field.name),
                 .offset = offset,
@@ -595,26 +595,26 @@ pub fn collectConcreteGenericStructLayoutFromType(
     next_type_id.* += 1;
 }
 
-pub fn fieldConcreteTypeHasManagedLayout(layouts: []const StructLayout, ty: []const u8) bool {
+pub fn field_concrete_type_has_managed_layout(layouts: []const StructLayout, ty: []const u8) bool {
     if (isManagedPayloadType(ty)) return true;
     return findStructLayout(layouts, ty) != null;
 }
 
-pub fn fieldTypeHasManagedLayout(allocator: std.mem.Allocator, structs: []const StructDecl, ty: []const u8) !bool {
+pub fn field_type_has_managed_layout(allocator: std.mem.Allocator, structs: []const StructDecl, ty: []const u8) !bool {
     if (isManagedPayloadType(ty)) return true;
     var stack = std.ArrayList([]const u8).empty;
     defer stack.deinit(allocator);
-    return try structTypeHasManagedLayout(allocator, structs, ty, &stack);
+    return try struct_type_has_managed_layout(allocator, structs, ty, &stack);
 }
 
-pub fn structTypeHasManagedLayout(
+pub fn struct_type_has_managed_layout(
     allocator: std.mem.Allocator,
     structs: []const StructDecl,
     ty: []const u8,
     stack: *std.ArrayList([]const u8),
 ) !bool {
     const name = typeBaseName(ty);
-    if (hasTypeName(stack.items, name)) return true;
+    if (has_type_name(stack.items, name)) return true;
     const decl = findStructDecl(structs, name) orelse return false;
 
     try stack.append(allocator, name);
@@ -622,19 +622,19 @@ pub fn structTypeHasManagedLayout(
 
     for (decl.fields) |field| {
         if (isManagedPayloadType(field.ty)) return true;
-        if (try structTypeHasManagedLayout(allocator, structs, field.ty, stack)) return true;
+        if (try struct_type_has_managed_layout(allocator, structs, field.ty, stack)) return true;
     }
     return false;
 }
 
-pub fn hasTypeName(names: []const []const u8, needle: []const u8) bool {
+pub fn has_type_name(names: []const []const u8, needle: []const u8) bool {
     for (names) |name| {
         if (std.mem.eql(u8, name, needle)) return true;
     }
     return false;
 }
 
-pub fn cloneManagedFields(
+pub fn clone_managed_fields(
     allocator: std.mem.Allocator,
     fields: []const ManagedFieldOffset,
 ) ![]const ManagedFieldOffset {
@@ -643,7 +643,7 @@ pub fn cloneManagedFields(
     return out;
 }
 
-pub fn parseStructFieldTypeExpr(
+pub fn parse_struct_field_type_expr(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -662,7 +662,7 @@ pub fn parseStructFieldTypeExpr(
     return parsed.ty;
 }
 
-pub fn bindStructTypeArgs(
+pub fn bind_struct_type_args(
     allocator: std.mem.Allocator,
     decl: StructDecl,
     concrete_ty: []const u8,
@@ -687,14 +687,14 @@ pub fn bindStructTypeArgs(
     return param_idx == decl.type_params.len;
 }
 
-pub fn findStructLayoutExact(layouts: []const StructLayout, name: []const u8) ?StructLayout {
+pub fn find_struct_layout_exact(layouts: []const StructLayout, name: []const u8) ?StructLayout {
     for (layouts) |layout| {
         if (std.mem.eql(u8, layout.name, name)) return layout;
     }
     return null;
 }
 
-pub fn isPackManagedHandleLeaf(ty: []const u8, structs: []const StructDecl) bool {
+pub fn is_pack_managed_handle_leaf(ty: []const u8, structs: []const StructDecl) bool {
     if (type_util.isManagedPayloadType(ty)) return true;
     const decl = findStructDecl(structs, ty) orelse return false;
     return structDeclHasManagedField(decl, structs);
@@ -702,13 +702,13 @@ pub fn isPackManagedHandleLeaf(ty: []const u8, structs: []const StructDecl) bool
 
 /// Terminal leaf storeable in scheme-A pack (scalar, managed payload, or managed-struct handle).
 /// Terminal leaf storeable in scheme-A pack (scalar, managed payload, or managed-struct handle).
-pub fn leafPayloadBytesForPack(leaf_ty: []const u8, structs: []const StructDecl) ?usize {
+pub fn leaf_payload_bytes_for_pack(leaf_ty: []const u8, structs: []const StructDecl) ?usize {
     if (type_util.isTuplePackableLeafType(leaf_ty)) return typePayloadBytes(leaf_ty);
-    if (isPackManagedHandleLeaf(leaf_ty, structs)) return 4;
+    if (is_pack_managed_handle_leaf(leaf_ty, structs)) return 4;
     return null;
 }
 
-pub fn parseTypeUnionLayoutFromName(
+pub fn parse_type_union_layout_from_name(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     ty: []const u8,

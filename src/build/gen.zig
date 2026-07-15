@@ -8,6 +8,8 @@ const model = @import("codegen_model.zig");
 const context = @import("codegen_context.zig");
 const codegen_tokens = @import("codegen_tokens.zig");
 const codegen_names = @import("codegen_names.zig");
+const codegen_collect_functions = @import("codegen_collect_functions.zig");
+const codegen_collect_structs = @import("codegen_collect_structs.zig");
 
 pub const EmitOptions = model.EmitOptions;
 pub const CodegenError = model.CodegenError;
@@ -41,14 +43,14 @@ const cloneFuncParams = gen_lower.cloneFuncParams;
 const freeStructDecls = model.freeStructDecls;
 const freeFuncDecls = model.freeFuncDecls;
 const freeFuncParams = model.freeFuncParams;
-const collectStructDecls = gen_lower.collectStructDecls;
-const collectFuncDecls = gen_lower.collectFuncDecls;
-const findStartFunc = gen_lower.findStartFunc;
+const collect_struct_decls = codegen_collect_structs.collect_struct_decls;
+const collect_func_decls = codegen_collect_functions.collect_func_decls;
+const findStartFunc = codegen_tokens.find_start_func;
 const findGenericTemplateForCall = gen_lower.findGenericTemplateForCall;
 const directManagedLastUseMoveSourceOrigin = gen_lower.directManagedLastUseMoveSourceOrigin;
 const CallLastUseMoveContext = context.CallLastUseMoveContext;
 const collectGenericFuncInstancesForTests = gen_lower.collectGenericFuncInstancesForTests;
-const collectBodyLocals = gen_lower.collectBodyLocals;
+const collect_body_locals = gen_lower.collect_body_locals;
 const emitScalarNumericStartWithBackendIr = gen_lower.emitScalarNumericStartWithBackendIr;
 const emitExpr = gen_lower.emitExpr;
 const collectGenericFuncInstanceForCall = gen_lower.collectGenericFuncInstanceForCall;
@@ -57,8 +59,8 @@ const findFuncDeclForCallHead = gen_lower.findFuncDeclForCallHead;
 const bindGenericFuncCall = gen_lower.bindGenericFuncCall;
 const findUnionLocal = context.findUnionLocal;
 const callHeadAt = gen_lower.callHeadAt;
-const collectStructLayouts = gen_lower.collectStructLayouts;
-const findToken = gen_lower.findToken;
+const collect_struct_layouts = codegen_collect_structs.collect_struct_layouts;
+const findToken = codegen_tokens.find_token;
 const freeStructLayouts = model.freeStructLayouts;
 const fieldGetLastUseMoveSource = gen_lower.fieldGetLastUseMoveSource;
 
@@ -246,21 +248,21 @@ test "inferred generic union call binding returns substituted union layout" {
         freeStructDecls(allocator, structs.items);
         structs.deinit(allocator);
     }
-    try collectStructDecls(allocator, tokens, &structs);
+    try collect_struct_decls(allocator, tokens, &structs);
 
     var layouts = std.ArrayList(StructLayout).empty;
     defer {
         freeStructLayouts(allocator, layouts.items);
         layouts.deinit(allocator);
     }
-    try collectStructLayouts(allocator, structs.items, &layouts);
+    try collect_struct_layouts(allocator, structs.items, &layouts);
 
     var functions = std.ArrayList(FuncDecl).empty;
     defer {
         freeFuncDecls(allocator, functions.items);
         functions.deinit(allocator);
     }
-    try collectFuncDecls(allocator, tokens, structs.items, layouts.items, null, &functions);
+    try collect_func_decls(allocator, tokens, structs.items, layouts.items, null, &functions);
     try std.testing.expect(functions.items.len >= 2);
     var has_nullable_template = false;
     for (functions.items) |func| {
@@ -289,7 +291,7 @@ test "inferred generic union call binding returns substituted union layout" {
     const start_idx = findStartFunc(tokens) orelse unreachable;
     const start_open = findToken(tokens, start_idx, tokens.len, "{").?;
     const start_close = try findMatching(tokens, start_open, "{", "}");
-    try collectBodyLocals(allocator, tokens, start_open + 1, start_close, ctx, &locals);
+    try collect_body_locals(allocator, tokens, start_open + 1, start_close, ctx, &locals);
 
     const encoded = findUnionLocal(locals.union_locals.items, "encoded") orelse unreachable;
     try std.testing.expectEqualStrings("[u8]|JsonError", encoded.layout.source_ty);
@@ -318,7 +320,7 @@ test "generic callback prebinds literal argument type from lambda" {
         freeFuncDecls(allocator, functions.items);
         functions.deinit(allocator);
     }
-    try collectFuncDecls(allocator, tokens, &.{}, &.{}, null, &functions);
+    try collect_func_decls(allocator, tokens, &.{}, &.{}, null, &functions);
 
     var string_data = StringDataContext{};
     defer string_data.deinit(allocator);
@@ -373,7 +375,7 @@ test "generic callback prebinds literal argument type from lambda" {
         freeFuncDecls(allocator, collected_functions.items);
         collected_functions.deinit(allocator);
     }
-    try collectFuncDecls(allocator, tokens, &.{}, &.{}, null, &collected_functions);
+    try collect_func_decls(allocator, tokens, &.{}, &.{}, null, &collected_functions);
     const tests = try test_runner.collectTopLevelTests(allocator, tokens);
     defer allocator.free(tests);
     try collectGenericFuncInstancesForTests(
@@ -393,7 +395,7 @@ test "generic callback prebinds literal argument type from lambda" {
     );
     var collected_locals = LocalSet{};
     defer collected_locals.deinit(allocator);
-    try collectBodyLocals(allocator, tokens, tests[0].body_start, tests[0].body_end, .{
+    try collect_body_locals(allocator, tokens, tests[0].body_start, tests[0].body_end, .{
         .functions = collected_functions.items,
         .structs = &.{},
         .value_enums = &.{},
@@ -459,7 +461,7 @@ test "generic callback prebinds literal argument type from function ref" {
         freeFuncDecls(allocator, functions.items);
         functions.deinit(allocator);
     }
-    try collectFuncDecls(allocator, tokens, &.{}, &.{}, null, &functions);
+    try collect_func_decls(allocator, tokens, &.{}, &.{}, null, &functions);
 
     var string_data = StringDataContext{};
     defer string_data.deinit(allocator);
@@ -493,7 +495,7 @@ test "generic callback prebinds literal argument type from function ref" {
         .entry_tokens = tokens,
         .modules = &.{},
     };
-    try collectBodyLocals(allocator, tokens, tests[0].body_start, tests[0].body_end, ctx, &locals);
+    try collect_body_locals(allocator, tokens, tests[0].body_start, tests[0].body_end, ctx, &locals);
     const first_call_idx = findToken(tokens, 0, tokens.len, "apply_value") orelse unreachable;
     const call_idx = findToken(tokens, first_call_idx + 1, tokens.len, "apply_value") orelse unreachable;
     const call_head = callHeadAt(tokens, call_idx, tokens.len) orelse unreachable;
@@ -561,7 +563,7 @@ test "generic multi callback instances collect" {
         freeFuncDecls(allocator, functions.items);
         functions.deinit(allocator);
     }
-    try collectFuncDecls(allocator, tokens, &.{}, &.{}, null, &functions);
+    try collect_func_decls(allocator, tokens, &.{}, &.{}, null, &functions);
 
     var string_data = StringDataContext{};
     defer string_data.deinit(allocator);
@@ -595,7 +597,7 @@ test "generic multi callback instances collect" {
     };
     var locals = LocalSet{};
     defer locals.deinit(allocator);
-    try collectBodyLocals(allocator, tokens, tests[0].body_start, tests[0].body_end, ctx, &locals);
+    try collect_body_locals(allocator, tokens, tests[0].body_start, tests[0].body_end, ctx, &locals);
 
     const def_idx = findToken(tokens, 0, tokens.len, "compose") orelse unreachable;
     const same_idx = findToken(tokens, def_idx + 1, tokens.len, "compose") orelse unreachable;
@@ -647,7 +649,7 @@ test "backend ir lowering emits selected scalar numeric start body" {
 
     var locals = LocalSet{};
     defer locals.deinit(allocator);
-    try collectBodyLocals(allocator, tokens, open_body + 1, close_body, ctx, &locals);
+    try collect_body_locals(allocator, tokens, open_body + 1, close_body, ctx, &locals);
 
     var out = std.ArrayList(u8).empty;
     defer out.deinit(allocator);

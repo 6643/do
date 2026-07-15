@@ -32,7 +32,7 @@ const PayloadEnumDecl = model.PayloadEnumDecl;
 const ValueEnumBranch = model.ValueEnumBranch;
 const ValueEnumDecl = model.ValueEnumDecl;
 
-pub fn collectValueEnumDecls(
+pub fn collect_value_enum_decls(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     out: *std.ArrayList(ValueEnumDecl),
@@ -50,12 +50,12 @@ pub fn collectValueEnumDecls(
         }
         if (depth_brace != 0) continue;
         if (!isValueEnumDeclStart(tokens, i)) continue;
-        _ = try collectValueEnumDeclByNameAs(allocator, tokens, publicDeclName(tokens[i].lexeme), publicDeclName(tokens[i].lexeme), false, out);
+        _ = try collect_value_enum_decl_by_name_as(allocator, tokens, publicDeclName(tokens[i].lexeme), publicDeclName(tokens[i].lexeme), false, out);
         i = findLineEnd(tokens, i) - 1;
     }
 }
 
-pub fn collectImportedValueEnumDecls(
+pub fn collect_imported_value_enum_decls(
     allocator: std.mem.Allocator,
     entry_tokens: []const lexer.Token,
     graph: *const imports.ModuleGraph,
@@ -72,10 +72,10 @@ pub fn collectImportedValueEnumDecls(
         const child_tokens = graph.modules[child_idx].tokens;
         if (findValueEnumDeclLineByName(child_tokens, import_ref.target)) |_| {
             if (findValueEnumDecl(out.items, import_ref.alias) == null) {
-                _ = try collectValueEnumDeclByNameAs(allocator, child_tokens, import_ref.target, import_ref.alias, !std.mem.eql(u8, import_ref.target, import_ref.alias), out);
+                _ = try collect_value_enum_decl_by_name_as(allocator, child_tokens, import_ref.target, import_ref.alias, !std.mem.eql(u8, import_ref.target, import_ref.alias), out);
             }
             if (!std.mem.eql(u8, import_ref.alias, import_ref.target) and findValueEnumDecl(out.items, import_ref.target) == null) {
-                _ = try collectValueEnumDeclByNameAs(allocator, child_tokens, import_ref.target, import_ref.target, false, out);
+                _ = try collect_value_enum_decl_by_name_as(allocator, child_tokens, import_ref.target, import_ref.target, false, out);
             }
             continue;
         }
@@ -83,13 +83,13 @@ pub fn collectImportedValueEnumDecls(
         if (findValueEnumDeclLineByBranch(child_tokens, import_ref.target)) |enum_idx| {
             const enum_name = publicDeclName(child_tokens[enum_idx].lexeme);
             if (findValueEnumDecl(out.items, enum_name) == null) {
-                _ = try collectValueEnumDeclByNameAs(allocator, child_tokens, enum_name, enum_name, false, out);
+                _ = try collect_value_enum_decl_by_name_as(allocator, child_tokens, enum_name, enum_name, false, out);
             }
         }
     }
 }
 
-pub fn collectValueEnumDeclByNameAs(
+pub fn collect_value_enum_decl_by_name_as(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     target_name: []const u8,
@@ -145,7 +145,7 @@ pub fn collectValueEnumDeclByNameAs(
     return false;
 }
 
-pub fn collectPayloadEnumDecls(
+pub fn collect_payload_enum_decls(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     out: *std.ArrayList(PayloadEnumDecl),
@@ -163,7 +163,7 @@ pub fn collectPayloadEnumDecls(
         }
         if (depth_brace != 0) continue;
         if (!isPayloadEnumDeclStart(tokens, i)) continue;
-        if (!try collectPayloadEnumDeclAt(allocator, tokens, i, out)) {
+        if (!try collect_payload_enum_decl_at(allocator, tokens, i, out)) {
             return error.NoMatchingCall;
         }
         i = findLineEnd(tokens, i) - 1;
@@ -172,7 +172,7 @@ pub fn collectPayloadEnumDecls(
 
 /// Collect payload enums from imported modules so module-local types
 /// (e.g. `IpSocketAddress` in lib/tcp.do) resolve when lowering imported funcs.
-pub fn collectImportedPayloadEnumDecls(
+pub fn collect_imported_payload_enum_decls(
     allocator: std.mem.Allocator,
     entry_tokens: []const lexer.Token,
     graph: *const imports.ModuleGraph,
@@ -192,7 +192,7 @@ pub fn collectImportedPayloadEnumDecls(
         // Same-name import: collect under target name if missing.
         if (std.mem.eql(u8, import_ref.alias, import_ref.target)) {
             if (findPayloadEnumDecl(out.items, import_ref.target) == null) {
-                if (!try collectPayloadEnumDeclAt(allocator, child_tokens, enum_idx, out)) {
+                if (!try collect_payload_enum_decl_at(allocator, child_tokens, enum_idx, out)) {
                     return error.NoMatchingCall;
                 }
             }
@@ -201,12 +201,12 @@ pub fn collectImportedPayloadEnumDecls(
 
         // Aliased import: ensure both target and alias entries when needed.
         if (findPayloadEnumDecl(out.items, import_ref.target) == null) {
-            if (!try collectPayloadEnumDeclAt(allocator, child_tokens, enum_idx, out)) {
+            if (!try collect_payload_enum_decl_at(allocator, child_tokens, enum_idx, out)) {
                 return error.NoMatchingCall;
             }
         }
         if (findPayloadEnumDecl(out.items, import_ref.alias) == null) {
-            if (!try collectPayloadEnumDeclByNameAs(allocator, child_tokens, import_ref.target, import_ref.alias, true, out)) {
+            if (!try collect_payload_enum_decl_by_name_as(allocator, child_tokens, import_ref.target, import_ref.alias, true, out)) {
                 return error.NoMatchingCall;
             }
         }
@@ -215,11 +215,11 @@ pub fn collectImportedPayloadEnumDecls(
     // Module-local payload enums used only inside imported function bodies.
     for (graph.modules, 0..) |module, idx| {
         if (idx == root_idx) continue;
-        try collectPayloadEnumDecls(allocator, module.tokens, out);
+        try collect_payload_enum_decls(allocator, module.tokens, out);
     }
 }
 
-pub fn collectPayloadEnumDeclByNameAs(
+pub fn collect_payload_enum_decl_by_name_as(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     target_name: []const u8,
@@ -274,7 +274,7 @@ pub fn collectPayloadEnumDeclByNameAs(
     return true;
 }
 
-pub fn collectPayloadEnumDeclAt(
+pub fn collect_payload_enum_decl_at(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     enum_idx: usize,

@@ -10,16 +10,19 @@ const codegen_names = @import("codegen_names.zig");
 const model = @import("codegen_model.zig");
 const constants = @import("codegen_constants.zig");
 const context = @import("codegen_context.zig");
-const gen_collect = @import("gen_collect.zig");
+const gen_collect_util = @import("gen_collect_util.zig");
+const codegen_collect_functions = @import("codegen_collect_functions.zig");
+const codegen_collect_structs = @import("codegen_collect_structs.zig");
+const codegen_collect_declarations = @import("codegen_collect_declarations.zig");
 const gen_import = @import("gen_import.zig");
 const gen_wasi_emit = @import("gen_wasi_emit.zig");
 const gen_hooks = @import("gen_hooks.zig");
 const gen_tuple = @import("gen_tuple.zig");
 const findValueEnumDeclLineByName = gen_import.findValueEnumDeclLineByName;
 const findValueEnumDeclLineByBranch = gen_import.findValueEnumDeclLineByBranch;
-const simpleTypeName = gen_collect.simpleTypeName;
-const isTopLevelCommaAny = gen_collect.isTopLevelCommaAny;
-const isReturnArrowAt = gen_collect.isReturnArrowAt;
+const simple_type_name = codegen_collect_functions.simple_type_name;
+const is_top_level_comma_any = codegen_collect_functions.is_top_level_comma_any;
+const is_return_arrow_at = codegen_collect_functions.is_return_arrow_at;
 const codegen_union_layout = @import("codegen_union_layout.zig");
 const gen_host = @import("gen_host.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
@@ -143,29 +146,29 @@ const cloneUnionLayout = codegen_union_layout.clone_union_layout;
 const unionLayoutsEqual = codegen_union_layout.union_layouts_equal;
 const unionBranchIsStatusI32 = codegen_union_layout.union_branch_is_status_i32;
 
-const findStructDecl = gen_collect.findStructDecl;
-const findStructLayout = gen_collect.findStructLayout;
-const findStructLayoutExact = gen_collect.findStructLayoutExact;
-const isPackManagedHandleLeaf = gen_collect.isPackManagedHandleLeaf;
-const leafPayloadBytesForPack = gen_collect.leafPayloadBytesForPack;
-const pureScalarStructPackWidth = gen_collect.pureScalarStructPackWidth;
-const packSlotWidth = gen_collect.packSlotWidth;
-const tuplePackWidthWithStructs = gen_collect.tuplePackWidthWithStructs;
-const appendTupleLeafTypesWithStructs = gen_collect.appendTupleLeafTypesWithStructs;
-const appendTupleLeafTypes = gen_collect.appendTupleLeafTypes;
-const structDeclHasManagedField = gen_collect.structDeclHasManagedField;
-const ensureStoragePackLayout = gen_collect.ensureStoragePackLayout;
-const managedLeafFieldName = gen_collect.managedLeafFieldName;
-const isErrorLikeType = gen_collect.isErrorLikeType;
-const parseCodegenTypeExpr = gen_collect.parseCodegenTypeExpr;
-const parseTypeUnionLayoutFromName = gen_collect.parseTypeUnionLayoutFromName;
-const bindStructTypeArgs = gen_collect.bindStructTypeArgs;
-const substituteGenericTypeOwned = gen_collect.substituteGenericTypeOwned;
-const findGenericBinding = gen_collect.findGenericBinding;
-const sameCallableSourceName = gen_collect.sameCallableSourceName;
-const funcParamAbiType = gen_collect.funcParamAbiType;
-const isUnmanagedScalarStruct = gen_collect.isUnmanagedScalarStruct;
-const appendUnionBranchPayloadTypes = gen_collect.appendUnionBranchPayloadTypes;
+const findStructDecl = gen_collect_util.findStructDecl;
+const findStructLayout = gen_collect_util.findStructLayout;
+const find_struct_layout_exact = codegen_collect_structs.find_struct_layout_exact;
+const is_pack_managed_handle_leaf = codegen_collect_structs.is_pack_managed_handle_leaf;
+const leaf_payload_bytes_for_pack = codegen_collect_structs.leaf_payload_bytes_for_pack;
+const pureScalarStructPackWidth = gen_collect_util.pureScalarStructPackWidth;
+const packSlotWidth = gen_collect_util.packSlotWidth;
+const tuplePackWidthWithStructs = gen_collect_util.tuplePackWidthWithStructs;
+const appendTupleLeafTypesWithStructs = gen_collect_util.appendTupleLeafTypesWithStructs;
+const appendTupleLeafTypes = gen_collect_util.appendTupleLeafTypes;
+const structDeclHasManagedField = gen_collect_util.structDeclHasManagedField;
+const ensure_storage_pack_layout = codegen_collect_structs.ensure_storage_pack_layout;
+const managed_leaf_field_name = codegen_collect_structs.managed_leaf_field_name;
+const isErrorLikeType = gen_collect_util.isErrorLikeType;
+const parseCodegenTypeExpr = gen_collect_util.parseCodegenTypeExpr;
+const parse_type_union_layout_from_name = codegen_collect_structs.parse_type_union_layout_from_name;
+const bind_struct_type_args = codegen_collect_structs.bind_struct_type_args;
+const substituteGenericTypeOwned = gen_collect_util.substituteGenericTypeOwned;
+const findGenericBinding = gen_collect_util.findGenericBinding;
+const same_callable_source_name = codegen_collect_functions.same_callable_source_name;
+const funcParamAbiType = gen_collect_util.funcParamAbiType;
+const isUnmanagedScalarStruct = gen_collect_util.isUnmanagedScalarStruct;
+const appendUnionBranchPayloadTypes = gen_collect_util.appendUnionBranchPayloadTypes;
 
 const callHeadAt = gen_import.callHeadAt;
 const exprCallHead = gen_import.exprCallHead;
@@ -1277,7 +1280,7 @@ pub fn isDirectManagedLocalExpr(tokens: []const lexer.Token, start_idx: usize, e
 
 pub fn storagePackLayoutForElem(elem_ty: []const u8, ctx: CodegenContext) ?StructLayout {
     if (!isTupleTypeName(elem_ty) or !tupleHasManagedPackLeafCtx(elem_ty, ctx)) return null;
-    const layout = findStructLayoutExact(ctx.struct_layouts, elem_ty) orelse return null;
+    const layout = find_struct_layout_exact(ctx.struct_layouts, elem_ty) orelse return null;
     if (!layout.is_storage_pack) return null;
     return layout;
 }
@@ -1334,7 +1337,7 @@ pub fn substituteStructFieldType(allocator: std.mem.Allocator, decl: StructDecl,
     if (decl.type_params.len == 0) return field_ty;
     var bindings = std.ArrayList(GenericTypeBinding).empty;
     defer bindings.deinit(allocator);
-    if (!try bindStructTypeArgs(allocator, decl, concrete_ty, &bindings, owned_types)) return field_ty;
+    if (!try bind_struct_type_args(allocator, decl, concrete_ty, &bindings, owned_types)) return field_ty;
     return try substituteGenericTypeOwned(allocator, field_ty, bindings.items, owned_types);
 }
 
@@ -1423,7 +1426,7 @@ pub fn findFuncDeclForCallHead(
     for (ctx.functions) |func| {
         if (func.is_generic_template) continue;
         if (!moduleTokensEqual(func.tokens, tokens)) continue;
-        if (!sameCallableSourceName(func.source_name, name)) continue;
+        if (!same_callable_source_name(func.source_name, name)) continue;
         if (!callExplicitTypeArgsMatchBindings(tokens, call_head, func.type_bindings)) continue;
         if (!callArgsMatchFuncParams(tokens, call_head.args_start, call_head.args_end, locals, ctx, func)) continue;
         if (func.callback_bindings.len != 0) return func;
@@ -1450,7 +1453,7 @@ pub fn findFuncDeclForCallHead(
     for (ctx.functions) |func| {
         if (func.is_generic_template) continue;
         if (!moduleTokensEqual(func.tokens, child_tokens)) continue;
-        if (!sameCallableSourceName(func.source_name, import_ref.alias)) continue;
+        if (!same_callable_source_name(func.source_name, import_ref.alias)) continue;
         if (!callExplicitTypeArgsMatchBindings(tokens, call_head, func.type_bindings)) continue;
         if (!callArgsMatchFuncParams(tokens, call_head.args_start, call_head.args_end, locals, ctx, func)) continue;
         if (func.callback_bindings.len != 0) return func;
@@ -1460,7 +1463,7 @@ pub fn findFuncDeclForCallHead(
     for (ctx.functions) |func| {
         if (func.is_generic_template) continue;
         if (!moduleTokensEqual(func.tokens, child_tokens)) continue;
-        if (!sameCallableSourceName(func.source_name, publicDeclName(import_ref.target))) continue;
+        if (!same_callable_source_name(func.source_name, publicDeclName(import_ref.target))) continue;
         if (!callExplicitTypeArgsMatchBindings(tokens, call_head, func.type_bindings)) continue;
         if (!callArgsMatchFuncParams(tokens, call_head.args_start, call_head.args_end, locals, ctx, func)) continue;
         if (func.callback_bindings.len != 0) return func;
@@ -1695,7 +1698,7 @@ pub fn findFuncDeclForCall(
     for (ctx.functions) |func| {
         if (func.is_generic_template) continue;
         if (!moduleTokensEqual(func.tokens, tokens)) continue;
-        if (!sameCallableSourceName(func.source_name, name)) continue;
+        if (!same_callable_source_name(func.source_name, name)) continue;
         if (!callArgsMatchFuncParams(tokens, args_start, args_end, locals, ctx, func)) continue;
         if (func.callback_bindings.len != 0) return func;
         if (fallback == null) fallback = func;
@@ -1718,7 +1721,7 @@ pub fn findFuncDeclForCall(
     for (ctx.functions) |func| {
         if (func.is_generic_template) continue;
         if (!moduleTokensEqual(func.tokens, child_tokens)) continue;
-        if (!sameCallableSourceName(func.source_name, import_ref.alias)) continue;
+        if (!same_callable_source_name(func.source_name, import_ref.alias)) continue;
         if (!callArgsMatchFuncParams(tokens, args_start, args_end, locals, ctx, func)) continue;
         if (func.callback_bindings.len != 0) return func;
         if (fallback == null) fallback = func;
@@ -1727,7 +1730,7 @@ pub fn findFuncDeclForCall(
     for (ctx.functions) |func| {
         if (func.is_generic_template) continue;
         if (!moduleTokensEqual(func.tokens, child_tokens)) continue;
-        if (!sameCallableSourceName(func.source_name, publicDeclName(import_ref.target))) continue;
+        if (!same_callable_source_name(func.source_name, publicDeclName(import_ref.target))) continue;
         if (!callArgsMatchFuncParams(tokens, args_start, args_end, locals, ctx, func)) continue;
         if (func.callback_bindings.len != 0) return func;
         if (fallback == null) fallback = func;
@@ -1874,7 +1877,7 @@ pub fn appendBorrowedLocalField(allocator: std.mem.Allocator, out: *LocalSet, to
         }
     }
     try out.owned_names.append(allocator, name);
-    if (try parseTypeUnionLayoutFromName(allocator, tokens, ty, ctx.structs, ctx.struct_layouts, &out.owned_names)) |layout| {
+    if (try parse_type_union_layout_from_name(allocator, tokens, ty, ctx.structs, ctx.struct_layouts, &out.owned_names)) |layout| {
         errdefer freeUnionLayout(allocator, layout);
         return out.appendUnionLocal(allocator, name, layout, false, true);
     }
@@ -1932,7 +1935,7 @@ fn callArgMatchesCallbackLambda(
 ) bool {
     if (lambdaParamCount(tokens, lambda.open_params + 1, lambda.close_params) != shape.param_types.len) return false;
     if (!lambdaExplicitTypesMatchShape(tokens, lambda, shape)) return false;
-    if (shape.return_type == null and lambda.is_block and isReturnArrowAt(tokens, lambda.close_params + 1)) {
+    if (shape.return_type == null and lambda.is_block and is_return_arrow_at(tokens, lambda.close_params + 1)) {
         if (lambdaExplicitReturnType(tokens, lambda)) |lambda_ret| {
             if (!std.mem.eql(u8, lambda_ret, "nil")) return false;
         }
@@ -2054,7 +2057,7 @@ pub fn callArgMatchesConcreteCallbackBinding(tokens: []const lexer.Token, arg_st
     }
     if (binding.kind != .func_ref) return false;
     const func_name = binding.func_name orelse return false;
-    return moduleTokensEqual(binding.arg_tokens, tokens) and sameCallableSourceName(func_name, name);
+    return moduleTokensEqual(binding.arg_tokens, tokens) and same_callable_source_name(func_name, name);
 }
 
 pub fn isScalarAsTargetTypeName(name: []const u8) bool {
@@ -2357,7 +2360,7 @@ pub fn lambdaParamCount(tokens: []const lexer.Token, start_idx: usize, end_idx: 
     var seg_start = start_idx;
     var i = start_idx;
     while (i <= end_idx) : (i += 1) {
-        if (i < end_idx and !isTopLevelCommaAny(tokens, i, start_idx, end_idx)) continue;
+        if (i < end_idx and !is_top_level_comma_any(tokens, i, start_idx, end_idx)) continue;
         if (seg_start < i) count += 1;
         seg_start = i + 1;
     }
@@ -2372,7 +2375,7 @@ pub fn callbackBindingHasSameConcreteArg(left: CallbackBinding, right: CallbackB
         .func_ref => blk: {
             const left_name = left.func_name orelse break :blk false;
             const right_name = right.func_name orelse break :blk false;
-            break :blk moduleTokensEqual(left.arg_tokens, right.arg_tokens) and sameCallableSourceName(left_name, right_name);
+            break :blk moduleTokensEqual(left.arg_tokens, right.arg_tokens) and same_callable_source_name(left_name, right_name);
         },
     };
 }
@@ -2556,7 +2559,7 @@ pub fn isArrowAt(tokens: []const lexer.Token, idx: usize) bool {
 pub fn lambdaBodyStart(tokens: []const lexer.Token, start_idx: usize, limit_idx: usize) ?usize {
     if (isArrowAt(tokens, start_idx)) return start_idx + 2;
     if (start_idx < limit_idx and tokEq(tokens[start_idx], "{")) return start_idx;
-    if (start_idx >= limit_idx or !isReturnArrowAt(tokens, start_idx)) return null;
+    if (start_idx >= limit_idx or !is_return_arrow_at(tokens, start_idx)) return null;
 
     var i = start_idx + 2;
     var depth_angle: usize = 0;
@@ -2586,15 +2589,15 @@ pub fn lambdaBodyStart(tokens: []const lexer.Token, start_idx: usize, limit_idx:
 
 pub fn lambdaParamTypeName(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?[]const u8 {
     if (start_idx + 1 >= end_idx) return null;
-    return simpleTypeName(tokens, start_idx + 1, end_idx);
+    return simple_type_name(tokens, start_idx + 1, end_idx);
 }
 
 pub fn lambdaExplicitReturnType(tokens: []const lexer.Token, lambda: LambdaExprShape) ?[]const u8 {
-    if (!isReturnArrowAt(tokens, lambda.close_params + 1)) return null;
+    if (!is_return_arrow_at(tokens, lambda.close_params + 1)) return null;
     const ret_start = lambda.close_params + 3;
     const ret_end = if (lambda.is_block) lambda.body_start - 1 else lambda.body_start - 2;
     if (ret_start >= ret_end) return null;
-    return simpleTypeName(tokens, ret_start, ret_end);
+    return simple_type_name(tokens, ret_start, ret_end);
 }
 
 pub fn appendTypedLocalWithDecl(allocator: std.mem.Allocator, locals: *LocalSet, name: []const u8, ty: []const u8, ctx: CodegenContext, emit_decl: bool) !void {
@@ -2636,7 +2639,7 @@ pub fn appendTypedLocal(allocator: std.mem.Allocator, locals: *LocalSet, name: [
 }
 
 pub fn inferLambdaExprReturnType(allocator: std.mem.Allocator, tokens: []const lexer.Token, lambda: LambdaExprShape, shape: FuncTypeShape, locals: *const LocalSet, ctx: CodegenContext) !?[]const u8 {
-    if (lambda.close_params + 1 < tokens.len and isReturnArrowAt(tokens, lambda.close_params + 1)) {
+    if (lambda.close_params + 1 < tokens.len and is_return_arrow_at(tokens, lambda.close_params + 1)) {
         return lambdaExplicitReturnType(tokens, lambda);
     }
     if (lambda.is_block) return "nil";
@@ -2651,7 +2654,7 @@ pub fn inferLambdaExprReturnType(allocator: std.mem.Allocator, tokens: []const l
     var seg_idx: usize = 0;
     var i = lambda.open_params + 1;
     while (i <= lambda.close_params) : (i += 1) {
-        if (i < lambda.close_params and !isTopLevelCommaAny(tokens, i, lambda.open_params + 1, lambda.close_params)) continue;
+        if (i < lambda.close_params and !is_top_level_comma_any(tokens, i, lambda.open_params + 1, lambda.close_params)) continue;
         if (seg_start < i) {
             if (seg_idx >= shape.param_types.len) return null;
             const param_ty = shape.param_types[seg_idx] orelse return null;
@@ -2713,7 +2716,7 @@ pub fn callbackLambdaReturnMatchesShape(tokens: []const lexer.Token, lambda: Lam
         return false;
     }
     if (!lambda.is_block) return true;
-    if (isReturnArrowAt(tokens, lambda.close_params + 1)) {
+    if (is_return_arrow_at(tokens, lambda.close_params + 1)) {
         if (lambdaExplicitReturnType(tokens, lambda)) |lambda_ret| {
             return std.mem.eql(u8, lambda_ret, "nil");
         }
@@ -2726,7 +2729,7 @@ pub fn findCallbackRefFunc(tokens: []const lexer.Token, ctx: CodegenContext, nam
     for (ctx.functions) |func| {
         if (func.is_generic_template) continue;
         if (!moduleTokensEqual(func.tokens, tokens)) continue;
-        if (!sameCallableSourceName(func.source_name, name)) continue;
+        if (!same_callable_source_name(func.source_name, name)) continue;
         if (callbackFunctionMatchesShape(func, shape)) return func;
     }
     return null;
@@ -2737,7 +2740,7 @@ pub fn lambdaExplicitTypesMatchShape(tokens: []const lexer.Token, lambda: Lambda
     var seg_idx: usize = 0;
     var i = lambda.open_params + 1;
     while (i <= lambda.close_params) : (i += 1) {
-        if (i < lambda.close_params and !isTopLevelCommaAny(tokens, i, lambda.open_params + 1, lambda.close_params)) continue;
+        if (i < lambda.close_params and !is_top_level_comma_any(tokens, i, lambda.open_params + 1, lambda.close_params)) continue;
         if (seg_start < i) {
             if (seg_idx >= shape.param_types.len) return false;
             if (lambdaParamTypeName(tokens, seg_start, i)) |ty| {

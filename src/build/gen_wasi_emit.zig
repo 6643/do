@@ -12,7 +12,10 @@ const constants = @import("codegen_constants.zig");
 const context = @import("codegen_context.zig");
 const codegen_union_layout = @import("codegen_union_layout.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
-const gen_collect = @import("gen_collect.zig");
+const gen_collect_util = @import("gen_collect_util.zig");
+const codegen_collect_functions = @import("codegen_collect_functions.zig");
+const codegen_collect_structs = @import("codegen_collect_structs.zig");
+const codegen_collect_declarations = @import("codegen_collect_declarations.zig");
 const gen_import = @import("gen_import.zig");
 
 const tokEq = codegen_tokens.tok_eq;
@@ -32,7 +35,7 @@ const alignUp = codegen_tokens.align_up;
 const STORAGE_OVERWRITE_TMP_LOCAL = constants.STORAGE_OVERWRITE_TMP_LOCAL;
 const WASI_FAMILY_TMP_LOCAL = constants.WASI_FAMILY_TMP_LOCAL;
 const findValueEnumDecl = gen_import.findValueEnumDecl;
-const isErrorLikeType = gen_collect.isErrorLikeType;
+const isErrorLikeType = gen_collect_util.isErrorLikeType;
 const moduleTokensEqual = codegen_tokens.module_tokens_equal;
 
 const LocalSet = context.LocalSet;
@@ -108,15 +111,15 @@ fn emitWasiFamilyArg(
     return true;
 }
 
-const findStructDecl = gen_collect.findStructDecl;
-const findStructLayout = gen_collect.findStructLayout;
-const findStructLayoutExact = gen_collect.findStructLayoutExact;
-const isPackManagedHandleLeaf = gen_collect.isPackManagedHandleLeaf;
-const leafPayloadBytesForPack = gen_collect.leafPayloadBytesForPack;
-const pureScalarStructPackWidth = gen_collect.pureScalarStructPackWidth;
-const packSlotWidth = gen_collect.packSlotWidth;
-const tuplePackWidthWithStructs = gen_collect.tuplePackWidthWithStructs;
-const funcParamAbiType = gen_collect.funcParamAbiType;
+const findStructDecl = gen_collect_util.findStructDecl;
+const findStructLayout = gen_collect_util.findStructLayout;
+const find_struct_layout_exact = codegen_collect_structs.find_struct_layout_exact;
+const is_pack_managed_handle_leaf = codegen_collect_structs.is_pack_managed_handle_leaf;
+const leaf_payload_bytes_for_pack = codegen_collect_structs.leaf_payload_bytes_for_pack;
+const pureScalarStructPackWidth = gen_collect_util.pureScalarStructPackWidth;
+const packSlotWidth = gen_collect_util.packSlotWidth;
+const tuplePackWidthWithStructs = gen_collect_util.tuplePackWidthWithStructs;
+const funcParamAbiType = gen_collect_util.funcParamAbiType;
 
 /// Callback into gen_lower emitExpr (breaks import cycle).
 pub const EmitExprFn = *const fn (
@@ -147,7 +150,7 @@ pub fn codegenTypesCompatible(expected: []const u8, actual: []const u8) bool {
 pub fn isManagedLocalType(ty: []const u8, ctx: CodegenContext) bool {
     if (isManagedPayloadType(ty)) return true;
     // Storage-pack layouts describe `[Tuple<...>]` element packing, not a managed object type.
-    if (findStructLayoutExact(ctx.struct_layouts, ty)) |layout| {
+    if (find_struct_layout_exact(ctx.struct_layouts, ty)) |layout| {
         if (layout.is_storage_pack) return false;
     }
     return findStructLayout(ctx.struct_layouts, ty) != null;
@@ -2195,7 +2198,7 @@ pub fn tupleHasManagedPackLeafWithStructs(tuple_ty: []const u8, structs: []const
             if (tupleHasManagedPackLeafWithStructs(elem_ty, structs)) return true;
             continue;
         }
-        if (isPackManagedHandleLeaf(elem_ty, structs)) return true;
+        if (is_pack_managed_handle_leaf(elem_ty, structs)) return true;
     }
     return false;
 }
@@ -2207,7 +2210,7 @@ pub fn tupleHasManagedPackLeafCtx(tuple_ty: []const u8, ctx: CodegenContext) boo
 
 pub fn storageTypeIdForElement(elem_ty: []const u8, ctx: CodegenContext) usize {
     if (isTupleTypeName(elem_ty) and tupleHasManagedPackLeafCtx(elem_ty, ctx)) {
-        if (findStructLayoutExact(ctx.struct_layouts, elem_ty)) |layout| {
+        if (find_struct_layout_exact(ctx.struct_layouts, elem_ty)) |layout| {
             if (layout.is_storage_pack) return layout.type_id;
         }
     }

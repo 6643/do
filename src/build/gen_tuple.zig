@@ -9,7 +9,10 @@ const codegen_names = @import("codegen_names.zig");
 const model = @import("codegen_model.zig");
 const constants = @import("codegen_constants.zig");
 const context = @import("codegen_context.zig");
-const gen_collect = @import("gen_collect.zig");
+const gen_collect_util = @import("gen_collect_util.zig");
+const codegen_collect_functions = @import("codegen_collect_functions.zig");
+const codegen_collect_structs = @import("codegen_collect_structs.zig");
+const codegen_collect_declarations = @import("codegen_collect_declarations.zig");
 const gen_import = @import("gen_import.zig");
 const gen_wasi_emit = @import("gen_wasi_emit.zig");
 const gen_hooks = @import("gen_hooks.zig");
@@ -35,14 +38,14 @@ const STORAGE_WRITE_SCAN_TMP_LOCAL = constants.STORAGE_WRITE_SCAN_TMP_LOCAL;
 const TUPLE_PACK_BASE_TMP_LOCAL = constants.TUPLE_PACK_BASE_TMP_LOCAL;
 const STORAGE_PAYLOAD_HEADER_BYTES = constants.STORAGE_PAYLOAD_HEADER_BYTES;
 const findStructLocal = context.findStructLocal;
-const findStructDecl = gen_collect.findStructDecl;
-const findStructLayout = gen_collect.findStructLayout;
-const isPackManagedHandleLeaf = gen_collect.isPackManagedHandleLeaf;
-const leafPayloadBytesForPack = gen_collect.leafPayloadBytesForPack;
-const pureScalarStructPackWidth = gen_collect.pureScalarStructPackWidth;
-const packSlotWidth = gen_collect.packSlotWidth;
-const appendTupleLeafTypesWithStructs = gen_collect.appendTupleLeafTypesWithStructs;
-const structDeclHasManagedField = gen_collect.structDeclHasManagedField;
+const findStructDecl = gen_collect_util.findStructDecl;
+const findStructLayout = gen_collect_util.findStructLayout;
+const is_pack_managed_handle_leaf = codegen_collect_structs.is_pack_managed_handle_leaf;
+const leaf_payload_bytes_for_pack = codegen_collect_structs.leaf_payload_bytes_for_pack;
+const pureScalarStructPackWidth = gen_collect_util.pureScalarStructPackWidth;
+const packSlotWidth = gen_collect_util.packSlotWidth;
+const appendTupleLeafTypesWithStructs = gen_collect_util.appendTupleLeafTypesWithStructs;
+const structDeclHasManagedField = gen_collect_util.structDeclHasManagedField;
 const exprCallHead = gen_import.exprCallHead;
 const typePayloadBytes = gen_wasi_emit.typePayloadBytes;
 const typePayloadAlignment = gen_wasi_emit.typePayloadAlignment;
@@ -187,7 +190,7 @@ pub fn appendStoreTupleScalarLeavesFromStackCtx(allocator: std.mem.Allocator, ou
     defer allocator.free(offsets);
     var offset: usize = 0;
     for (leaf_types.items, 0..) |leaf_ty, i| {
-        const leaf_bytes = leafPayloadBytesForPack(leaf_ty, ctx.structs) orelse return error.UnsupportedTupleStorageLeaf;
+        const leaf_bytes = leaf_payload_bytes_for_pack(leaf_ty, ctx.structs) orelse return error.UnsupportedTupleStorageLeaf;
         offsets[i] = offset;
         offset += leaf_bytes;
     }
@@ -197,7 +200,7 @@ pub fn appendStoreTupleScalarLeavesFromStackCtx(allocator: std.mem.Allocator, ou
         i -= 1;
         const leaf_ty = leaf_types.items[i];
         // Managed-struct handles use the i32 spill path (same as text / [T]).
-        const spill = tuplePackSpillLocal(if (isPackManagedHandleLeaf(leaf_ty, ctx.structs)) "i32" else leaf_ty);
+        const spill = tuplePackSpillLocal(if (is_pack_managed_handle_leaf(leaf_ty, ctx.structs)) "i32" else leaf_ty);
         try appendFmt(allocator, out, "{s}local.set ${s}\n", .{ indent, spill });
         try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
         if (offsets[i] != 0) {
@@ -206,7 +209,7 @@ pub fn appendStoreTupleScalarLeavesFromStackCtx(allocator: std.mem.Allocator, ou
         }
         try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, spill });
         // Handles and scalars both store as i32/i64/f* payload widths.
-        const store_ty = if (isPackManagedHandleLeaf(leaf_ty, ctx.structs)) "i32" else leaf_ty;
+        const store_ty = if (is_pack_managed_handle_leaf(leaf_ty, ctx.structs)) "i32" else leaf_ty;
         try payload_wat.append_store_for_payload_type_with_indent(allocator, out, store_ty, indent);
     }
 }
@@ -229,7 +232,7 @@ pub fn appendIncManagedTupleLeavesOnStackCtx(allocator: std.mem.Allocator, out: 
     try appendTupleLeafTypesWithStructs(allocator, tuple_ty, ctx.structs, &leaf_types);
     var has_managed = false;
     for (leaf_types.items) |leaf_ty| {
-        if (isPackManagedHandleLeaf(leaf_ty, ctx.structs)) {
+        if (is_pack_managed_handle_leaf(leaf_ty, ctx.structs)) {
             has_managed = true;
             break;
         }
@@ -242,7 +245,7 @@ pub fn appendIncManagedTupleLeavesOnStackCtx(allocator: std.mem.Allocator, out: 
     while (i > 0) {
         i -= 1;
         const leaf_ty = leaf_types.items[i];
-        const spill_ty = if (isPackManagedHandleLeaf(leaf_ty, ctx.structs)) "i32" else leaf_ty;
+        const spill_ty = if (is_pack_managed_handle_leaf(leaf_ty, ctx.structs)) "i32" else leaf_ty;
         // Per-leaf spill: same wasm type (text handle + u8) must not share one temp.
         const spill = payload_wat.tuple_pack_spill_local_at(spill_ty, i);
         spills[i] = spill;
@@ -250,7 +253,7 @@ pub fn appendIncManagedTupleLeavesOnStackCtx(allocator: std.mem.Allocator, out: 
     }
     for (leaf_types.items, 0..) |leaf_ty, idx| {
         try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, spills[idx] });
-        if (isPackManagedHandleLeaf(leaf_ty, ctx.structs)) {
+        if (is_pack_managed_handle_leaf(leaf_ty, ctx.structs)) {
             try appendFmt(allocator, out, "{s};; tuple-pack-managed-leaf-inc\n", .{indent});
             try appendFmt(allocator, out, "{s}call $__arc_inc\n", .{indent});
         }
@@ -269,13 +272,13 @@ pub fn appendLoadTupleScalarLeavesToStackCtx(allocator: std.mem.Allocator, out: 
 
     var offset: usize = 0;
     for (leaf_types.items) |leaf_ty| {
-        const leaf_bytes = leafPayloadBytesForPack(leaf_ty, ctx.structs) orelse return error.UnsupportedTupleStorageLeaf;
+        const leaf_bytes = leaf_payload_bytes_for_pack(leaf_ty, ctx.structs) orelse return error.UnsupportedTupleStorageLeaf;
         try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
         if (offset != 0) {
             try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });
             try appendFmt(allocator, out, "{s}i32.add\n", .{indent});
         }
-        const load_ty = if (isPackManagedHandleLeaf(leaf_ty, ctx.structs)) "i32" else leaf_ty;
+        const load_ty = if (is_pack_managed_handle_leaf(leaf_ty, ctx.structs)) "i32" else leaf_ty;
         try payload_wat.append_load_for_payload_type_with_indent(allocator, out, load_ty, indent);
         offset += leaf_bytes;
     }
@@ -387,7 +390,7 @@ pub fn appendLoadTupleElementOwningFromPackedBase(allocator: std.mem.Allocator, 
     try appendLoadTupleElementFromPackedBaseCtx(allocator, out, tuple_ty, elem_index, base_local, indent, ctx);
     if (isTupleTypeName(elem_ty)) {
         try appendIncManagedTupleLeavesOnStackCtx(allocator, out, elem_ty, indent, ctx);
-    } else if (isPackManagedHandleLeaf(elem_ty, ctx.structs)) {
+    } else if (is_pack_managed_handle_leaf(elem_ty, ctx.structs)) {
         try out.appendSlice(allocator, indent);
         try out.appendSlice(allocator, ";; tuple-pack-element-managed-inc\n");
         try out.appendSlice(allocator, indent);
@@ -403,8 +406,8 @@ pub fn emitIncManagedTupleLeavesAtBase(allocator: std.mem.Allocator, out: *std.A
     try appendTupleLeafTypesWithStructs(allocator, tuple_ty, ctx.structs, &leaf_types);
     var offset: usize = 0;
     for (leaf_types.items) |leaf_ty| {
-        const leaf_bytes = leafPayloadBytesForPack(leaf_ty, ctx.structs) orelse return error.UnsupportedTupleStorageLeaf;
-        if (isPackManagedHandleLeaf(leaf_ty, ctx.structs)) {
+        const leaf_bytes = leaf_payload_bytes_for_pack(leaf_ty, ctx.structs) orelse return error.UnsupportedTupleStorageLeaf;
+        if (is_pack_managed_handle_leaf(leaf_ty, ctx.structs)) {
             try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
             if (offset != 0) {
                 try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });
@@ -426,8 +429,8 @@ pub fn emitDecManagedTupleLeavesAtBase(allocator: std.mem.Allocator, out: *std.A
     try appendTupleLeafTypesWithStructs(allocator, tuple_ty, ctx.structs, &leaf_types);
     var offset: usize = 0;
     for (leaf_types.items) |leaf_ty| {
-        const leaf_bytes = leafPayloadBytesForPack(leaf_ty, ctx.structs) orelse return error.UnsupportedTupleStorageLeaf;
-        if (isPackManagedHandleLeaf(leaf_ty, ctx.structs)) {
+        const leaf_bytes = leaf_payload_bytes_for_pack(leaf_ty, ctx.structs) orelse return error.UnsupportedTupleStorageLeaf;
+        if (is_pack_managed_handle_leaf(leaf_ty, ctx.structs)) {
             try appendFmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
             if (offset != 0) {
                 try appendFmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });

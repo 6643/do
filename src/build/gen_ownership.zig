@@ -7,7 +7,10 @@ const codegen_names = @import("codegen_names.zig");
 const model = @import("codegen_model.zig");
 const context = @import("codegen_context.zig");
 const gen_wasi_emit = @import("gen_wasi_emit.zig");
-const gen_collect = @import("gen_collect.zig");
+const gen_collect_util = @import("gen_collect_util.zig");
+const codegen_collect_functions = @import("codegen_collect_functions.zig");
+const codegen_collect_structs = @import("codegen_collect_structs.zig");
+const codegen_collect_declarations = @import("codegen_collect_declarations.zig");
 
 const tokEq = codegen_tokens.tok_eq;
 const findMatching = codegen_tokens.find_matching;
@@ -24,7 +27,7 @@ const LocalSet = context.LocalSet;
 const CodegenContext = context.CodegenContext;
 const CodegenError = model.CodegenError;
 const LoopControl = context.LoopControl;
-const findStructLayout = gen_collect.findStructLayout;
+const findStructLayout = gen_collect_util.findStructLayout;
 const isManagedLocalType = gen_wasi_emit.isManagedLocalType;
 const isManagedPayloadType = gen_wasi_emit.isManagedPayloadType;
 

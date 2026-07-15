@@ -14,7 +14,10 @@ const model = @import("codegen_model.zig");
 const constants = @import("codegen_constants.zig");
 const context = @import("codegen_context.zig");
 const NilComparisonNarrowing = model.NilComparisonNarrowing;
-const gen_collect = @import("gen_collect.zig");
+const gen_collect_util = @import("gen_collect_util.zig");
+const codegen_collect_functions = @import("codegen_collect_functions.zig");
+const codegen_collect_structs = @import("codegen_collect_structs.zig");
+const codegen_collect_declarations = @import("codegen_collect_declarations.zig");
 const gen_import = @import("gen_import.zig");
 const gen_wasi_emit = @import("gen_wasi_emit.zig");
 const emitWasiResultListU8StatusMultiAssignment = gen_wasi_emit.emitWasiResultListU8StatusMultiAssignment;
@@ -24,9 +27,14 @@ const emitWasiResultDescriptorStatusMultiAssignment = gen_wasi_emit.emitWasiResu
 const emitWasiResultU64StreamStatusMultiAssignment = gen_wasi_emit.emitWasiResultU64StreamStatusMultiAssignment;
 const emitWasiResultFilesizeMultiAssignment = gen_wasi_emit.emitWasiResultFilesizeMultiAssignment;
 const gen_hooks = @import("gen_hooks.zig");
-const gen_expr_collect = @import("gen_expr_collect.zig");
+const codegen_collect_body = @import("codegen_collect_body.zig");
+const collect_body_locals = codegen_collect_body.collect_body_locals;
+const collect_callback_call_args = codegen_collect_body.collect_callback_call_args;
+const emit_self_tail_loop_local_reset = codegen_collect_body.emit_self_tail_loop_local_reset;
+const func_variadic_param_index = codegen_collect_body.func_variadic_param_index;
+const multi_result_lhs_for_item = codegen_collect_body.multi_result_lhs_for_item;
 const appendLoopSourceStorageLocal = context.appendLoopSourceStorageLocal;
-const parseUnionTypeLayout = gen_collect.parseUnionTypeLayout;
+const parseUnionTypeLayout = gen_collect_util.parseUnionTypeLayout;
 const InferredUnionBinding = model.InferredUnionBinding;
 const findUnionLocalExact = context.findUnionLocalExact;
 const NUMERIC_SELECT_RIGHT_TMP_I32 = constants.NUMERIC_SELECT_RIGHT_TMP_I32;
@@ -44,9 +52,9 @@ const findPayloadEnumDecl = gen_import.findPayloadEnumDecl;
 const findStartFunc = codegen_tokens.find_start_func;
 const findValueEnumDeclLineByName = gen_import.findValueEnumDeclLineByName;
 const findValueEnumDeclLineByBranch = gen_import.findValueEnumDeclLineByBranch;
-const simpleTypeName = gen_collect.simpleTypeName;
-const isTopLevelCommaAny = gen_collect.isTopLevelCommaAny;
-const isReturnArrowAt = gen_collect.isReturnArrowAt;
+const simple_type_name = codegen_collect_functions.simple_type_name;
+const is_top_level_comma_any = codegen_collect_functions.is_top_level_comma_any;
+const is_return_arrow_at = codegen_collect_functions.is_return_arrow_at;
 const codegen_union_layout = @import("codegen_union_layout.zig");
 const gen_host = @import("gen_host.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
@@ -173,29 +181,29 @@ const cloneUnionLayout = codegen_union_layout.clone_union_layout;
 const unionLayoutsEqual = codegen_union_layout.union_layouts_equal;
 const unionBranchIsStatusI32 = codegen_union_layout.union_branch_is_status_i32;
 
-const findStructDecl = gen_collect.findStructDecl;
-const findStructLayout = gen_collect.findStructLayout;
-const findStructLayoutExact = gen_collect.findStructLayoutExact;
-const isPackManagedHandleLeaf = gen_collect.isPackManagedHandleLeaf;
-const leafPayloadBytesForPack = gen_collect.leafPayloadBytesForPack;
-const pureScalarStructPackWidth = gen_collect.pureScalarStructPackWidth;
-const packSlotWidth = gen_collect.packSlotWidth;
-const tuplePackWidthWithStructs = gen_collect.tuplePackWidthWithStructs;
-const appendTupleLeafTypesWithStructs = gen_collect.appendTupleLeafTypesWithStructs;
-const appendTupleLeafTypes = gen_collect.appendTupleLeafTypes;
-const structDeclHasManagedField = gen_collect.structDeclHasManagedField;
-const ensureStoragePackLayout = gen_collect.ensureStoragePackLayout;
-const managedLeafFieldName = gen_collect.managedLeafFieldName;
-const isErrorLikeType = gen_collect.isErrorLikeType;
-const parseCodegenTypeExpr = gen_collect.parseCodegenTypeExpr;
-const parseTypeUnionLayoutFromName = gen_collect.parseTypeUnionLayoutFromName;
-const bindStructTypeArgs = gen_collect.bindStructTypeArgs;
-const substituteGenericTypeOwned = gen_collect.substituteGenericTypeOwned;
-const findGenericBinding = gen_collect.findGenericBinding;
-const sameCallableSourceName = gen_collect.sameCallableSourceName;
-const funcParamAbiType = gen_collect.funcParamAbiType;
-const isUnmanagedScalarStruct = gen_collect.isUnmanagedScalarStruct;
-const appendUnionBranchPayloadTypes = gen_collect.appendUnionBranchPayloadTypes;
+const findStructDecl = gen_collect_util.findStructDecl;
+const findStructLayout = gen_collect_util.findStructLayout;
+const find_struct_layout_exact = codegen_collect_structs.find_struct_layout_exact;
+const is_pack_managed_handle_leaf = codegen_collect_structs.is_pack_managed_handle_leaf;
+const leaf_payload_bytes_for_pack = codegen_collect_structs.leaf_payload_bytes_for_pack;
+const pureScalarStructPackWidth = gen_collect_util.pureScalarStructPackWidth;
+const packSlotWidth = gen_collect_util.packSlotWidth;
+const tuplePackWidthWithStructs = gen_collect_util.tuplePackWidthWithStructs;
+const appendTupleLeafTypesWithStructs = gen_collect_util.appendTupleLeafTypesWithStructs;
+const appendTupleLeafTypes = gen_collect_util.appendTupleLeafTypes;
+const structDeclHasManagedField = gen_collect_util.structDeclHasManagedField;
+const ensure_storage_pack_layout = codegen_collect_structs.ensure_storage_pack_layout;
+const managed_leaf_field_name = codegen_collect_structs.managed_leaf_field_name;
+const isErrorLikeType = gen_collect_util.isErrorLikeType;
+const parseCodegenTypeExpr = gen_collect_util.parseCodegenTypeExpr;
+const parse_type_union_layout_from_name = codegen_collect_structs.parse_type_union_layout_from_name;
+const bind_struct_type_args = codegen_collect_structs.bind_struct_type_args;
+const substituteGenericTypeOwned = gen_collect_util.substituteGenericTypeOwned;
+const findGenericBinding = gen_collect_util.findGenericBinding;
+const same_callable_source_name = codegen_collect_functions.same_callable_source_name;
+const funcParamAbiType = gen_collect_util.funcParamAbiType;
+const isUnmanagedScalarStruct = gen_collect_util.isUnmanagedScalarStruct;
+const appendUnionBranchPayloadTypes = gen_collect_util.appendUnionBranchPayloadTypes;
 
 const callHeadAt = gen_import.callHeadAt;
 const exprCallHead = gen_import.exprCallHead;
@@ -622,47 +630,9 @@ const previousLineStart = gen_ownership.previousLineStart;
 pub const emitWasiRecordReturnCall = gen_wasi_emit.emitWasiRecordReturnCall;
 pub const emitWasiRecordResultFields = gen_wasi_emit.emitWasiRecordResultFields;
 
-// Re-export body-local collection (physical home: gen_expr_collect.zig).
-pub const appendDeclOnlyLocals = gen_expr_collect.appendDeclOnlyLocals;
-pub const appendLocalField = gen_expr_collect.appendLocalField;
-pub const appendLoopCountLocal = gen_expr_collect.appendLoopCountLocal;
-pub const appendLoopIndexLocal = gen_expr_collect.appendLoopIndexLocal;
-pub const appendLoopValueLocal = gen_expr_collect.appendLoopValueLocal;
-pub const appendTupleLocalFields = gen_expr_collect.appendTupleLocalFields;
-pub const collectBodyLocals = gen_expr_collect.collectBodyLocals;
-pub const collectBodyLocalsWithMode = gen_expr_collect.collectBodyLocalsWithMode;
-pub const collectCallbackCallArgs = gen_expr_collect.collectCallbackCallArgs;
-pub const collectCollectionLoopLocals = gen_expr_collect.collectCollectionLoopLocals;
-pub const collectDeferBlockLocals = gen_expr_collect.collectDeferBlockLocals;
-pub const collectFieldReflectionLoopLocals = gen_expr_collect.collectFieldReflectionLoopLocals;
-pub const collectIfBlockLocals = gen_expr_collect.collectIfBlockLocals;
-pub const collectLoopBlockLocals = gen_expr_collect.collectLoopBlockLocals;
-pub const collectMultiResultAssignmentLocals = gen_expr_collect.collectMultiResultAssignmentLocals;
-pub const collectRecvLoopLocals = gen_expr_collect.collectRecvLoopLocals;
-pub const emitSelfTailLoopLocalReset = gen_expr_collect.emitSelfTailLoopLocalReset;
-pub const findStorageLocalExact = gen_expr_collect.findStorageLocalExact;
-pub const findStructLocalExact = gen_expr_collect.findStructLocalExact;
-pub const funcHasVariadicParam = gen_expr_collect.funcHasVariadicParam;
-pub const funcVariadicParamIndex = gen_expr_collect.funcVariadicParamIndex;
-pub const inferredManagedPayloadBinding = gen_expr_collect.inferredManagedPayloadBinding;
-pub const inferredUnionCallBinding = gen_expr_collect.inferredUnionCallBinding;
-pub const multiResultAssignmentNeedsManagedTmp = gen_expr_collect.multiResultAssignmentNeedsManagedTmp;
-pub const multiResultLhsForItem = gen_expr_collect.multiResultLhsForItem;
-pub const stmtContainsFieldNameIntrinsic = gen_expr_collect.stmtContainsFieldNameIntrinsic;
-pub const stmtContainsGetIntrinsic = gen_expr_collect.stmtContainsGetIntrinsic;
-pub const stmtContainsNilComparisonCall = gen_expr_collect.stmtContainsNilComparisonCall;
-pub const stmtContainsNumericSelectIntrinsic = gen_expr_collect.stmtContainsNumericSelectIntrinsic;
-pub const stmtContainsStorageComparisonIntrinsic = gen_expr_collect.stmtContainsStorageComparisonIntrinsic;
-pub const stmtContainsStringLiteral = gen_expr_collect.stmtContainsStringLiteral;
-pub const stmtContainsUnionPayloadComparisonCall = gen_expr_collect.stmtContainsUnionPayloadComparisonCall;
-pub const stmtContainsVariadicUserCall = gen_expr_collect.stmtContainsVariadicUserCall;
-pub const typedManagedPayloadBinding = gen_expr_collect.typedManagedPayloadBinding;
-pub const typedTupleBindingType = gen_expr_collect.typedTupleBindingType;
-pub const typedUnionBindingLayout = gen_expr_collect.typedUnionBindingLayout;
-
 pub fn appendStructFieldAbiParams(allocator: std.mem.Allocator, tokens: []const lexer.Token, out: *std.ArrayList(u8), base: []const u8, field: []const u8, field_ty: []const u8, ctx: CodegenContext, owned_types: *std.ArrayList([]const u8)) !void {
     const field_name = publicDeclName(field);
-    if (try parseTypeUnionLayoutFromName(allocator, tokens, field_ty, ctx.structs, ctx.struct_layouts, owned_types)) |layout| {
+    if (try parse_type_union_layout_from_name(allocator, tokens, field_ty, ctx.structs, ctx.struct_layouts, owned_types)) |layout| {
         defer freeUnionLayout(allocator, layout);
         for (layout.payload_tys, 0..) |payload_ty, idx| {
             try appendFmt(allocator, out, " (param ${s}.{s}.__union_payload_{d} {s})", .{
@@ -691,7 +661,7 @@ pub fn emitStartFunc(allocator: std.mem.Allocator, tokens: []const lexer.Token, 
 
     var locals = LocalSet{};
     defer locals.deinit(allocator);
-    try collectBodyLocals(allocator, tokens, open_body + 1, close_body, ctx, &locals);
+    try collect_body_locals(allocator, tokens, open_body + 1, close_body, ctx, &locals);
     var cleanup_locals = LocalSet{};
     defer cleanup_locals.deinit(allocator);
     try collectDirectBodyLocals(allocator, tokens, open_body + 1, close_body, ctx, &cleanup_locals);
@@ -838,7 +808,7 @@ pub fn emitTestFuncs(allocator: std.mem.Allocator, tokens: []const lexer.Token, 
 
         var locals = LocalSet{};
         defer locals.deinit(allocator);
-        try collectBodyLocals(allocator, tokens, decl.body_start, decl.body_end, ctx, &locals);
+        try collect_body_locals(allocator, tokens, decl.body_start, decl.body_end, ctx, &locals);
         var cleanup_locals = LocalSet{};
         defer cleanup_locals.deinit(allocator);
         try collectDirectBodyLocals(allocator, tokens, decl.body_start, decl.body_end, ctx, &cleanup_locals);
@@ -923,7 +893,7 @@ pub fn emitUserFunc(allocator: std.mem.Allocator, func: FuncDecl, ctx: CodegenCo
     var locals = LocalSet{};
     defer locals.deinit(allocator);
     try appendFuncParamLocals(allocator, func, func_ctx, &locals);
-    try collectBodyLocals(allocator, tokens, func.body_start, func.body_end, func_ctx, &locals);
+    try collect_body_locals(allocator, tokens, func.body_start, func.body_end, func_ctx, &locals);
     var cleanup_locals = LocalSet{};
     defer cleanup_locals.deinit(allocator);
     try appendFuncParamLocals(allocator, func, func_ctx, &cleanup_locals);
@@ -962,7 +932,7 @@ pub fn emitUserFunc(allocator: std.mem.Allocator, func: FuncDecl, ctx: CodegenCo
         const can_reach_end = bodyCanReachEnd(tokens, func.body_start, func.body_end);
         if (self_tail_tco) |tco| {
             try appendFmt(allocator, out, "    loop ${s}\n", .{tco.loop_label});
-            try emitSelfTailLoopLocalReset(allocator, tco.func, &locals, func_ctx, out);
+            try emit_self_tail_loop_local_reset(allocator, tco.func, &locals, func_ctx, out);
             try gen_hooks.emitBody(allocator, tokens, func.body_start, func.body_end, func.body_start, &locals, &cleanup_locals, &EMPTY_LOCAL_SET, func_ctx, func.results, func.result_items, func.result_struct, func.result_union, null, &root_defer, null, &tco, out);
             try out.appendSlice(allocator, "    end\n");
             if (func.results.len != 0 and !can_reach_end) {
@@ -1017,7 +987,7 @@ pub fn funcHasSelfTailReturn(tokens: []const lexer.Token, start_idx: usize, end_
                 i += 1;
                 continue;
             };
-            if (!call_head.is_intrinsic and sameCallableSourceName(func.source_name, publicDeclName(tokens[call_head.name_idx].lexeme))) {
+            if (!call_head.is_intrinsic and same_callable_source_name(func.source_name, publicDeclName(tokens[call_head.name_idx].lexeme))) {
                 return true;
             }
         }
@@ -1046,7 +1016,7 @@ pub fn resolveUnionLayoutForTypeName(allocator: std.mem.Allocator, tokens: []con
     if (findPayloadEnumDecl(ctx.payload_enums, ty)) |decl| {
         return try buildPayloadEnumUnionLayout(allocator, decl, tokens, ctx.structs, ctx.struct_layouts, owned_types);
     }
-    return try parseTypeUnionLayoutFromName(allocator, tokens, ty, ctx.structs, ctx.struct_layouts, owned_types);
+    return try parse_type_union_layout_from_name(allocator, tokens, ty, ctx.structs, ctx.struct_layouts, owned_types);
 }
 
 pub fn factsSourceOrigin(origin: SourceOrigin) ownership_facts.SourceOrigin {
@@ -1178,7 +1148,7 @@ pub fn emitMultiResultAssignment(allocator: std.mem.Allocator, tokens: []const l
         if (item_idx >= func.result_items.len) return error.NoMatchingCall;
         const lhs_end = findArgEnd(tokens, lhs_start, eq_idx);
         if (lhs_end != lhs_start + 1 or tokens[lhs_start].kind != .ident) return error.NoMatchingCall;
-        const lhs = multiResultLhsForItem(tokens[lhs_start].lexeme, func.result_items[item_idx], locals, ctx) orelse return error.NoMatchingCall;
+        const lhs = multi_result_lhs_for_item(tokens[lhs_start].lexeme, func.result_items[item_idx], locals, ctx) orelse return error.NoMatchingCall;
         try lhs_items.append(allocator, lhs);
 
         item_idx += 1;
@@ -1855,7 +1825,7 @@ pub fn appendFuncParamLocals(allocator: std.mem.Allocator, func: FuncDecl, ctx: 
         if (param.callback != null) continue;
         const raw_abi_ty = funcParamAbiType(param);
         const abi_ty = try substituteGenericTypeOwned(allocator, raw_abi_ty, ctx.type_bindings, &locals.owned_names);
-        if (try parseTypeUnionLayoutFromName(allocator, func.tokens, abi_ty, ctx.structs, ctx.struct_layouts, &locals.owned_names)) |layout| {
+        if (try parse_type_union_layout_from_name(allocator, func.tokens, abi_ty, ctx.structs, ctx.struct_layouts, &locals.owned_names)) |layout| {
             errdefer freeUnionLayout(allocator, layout);
             try locals.appendUnionLocalWithOrigin(allocator, param.name, layout, false, true, .param_or_import);
         } else if (findPayloadEnumDecl(ctx.payload_enums, abi_ty)) |decl| {
@@ -2383,7 +2353,7 @@ pub fn appendCallbackArgAliasLocals(allocator: std.mem.Allocator, parent: *const
 
 pub fn emitCallbackBindingLambdaCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, call_head: ExprCallHead, locals: *const LocalSet, ctx: CodegenContext, binding: CallbackBinding, out: *std.ArrayList(u8)) CodegenError!bool {
     if (binding.lambda_params.len != binding.shape.param_types.len) return false;
-    const callback_args = try collectCallbackCallArgs(allocator, tokens, call_head, locals, ctx, binding);
+    const callback_args = try collect_callback_call_args(allocator, tokens, call_head, locals, ctx, binding);
     defer allocator.free(callback_args);
 
     var lambda_locals = try cloneLocalSet(allocator, locals);
@@ -2407,7 +2377,7 @@ pub fn emitCallbackBindingLambdaCall(allocator: std.mem.Allocator, tokens: []con
         );
     }
 
-    try collectBodyLocals(allocator, binding.arg_tokens, binding.body_start, binding.body_end, lambda_ctx, &lambda_locals);
+    try collect_body_locals(allocator, binding.arg_tokens, binding.body_start, binding.body_end, lambda_ctx, &lambda_locals);
     if (binding.shape.return_type) |ret_ty| {
         try appendFmt(allocator, out, "    block $__lambda_ret (result {s})\n", .{codegenWasmType(lambda_ctx, ret_ty)});
     } else {
@@ -2469,7 +2439,7 @@ pub fn emitUserFuncCall(allocator: std.mem.Allocator, tokens: []const lexer.Toke
 }
 
 pub fn emitUserFuncCallWithMoveContext(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, func: FuncDecl, move_ctx: ?*const CallLastUseMoveContext, out: *std.ArrayList(u8)) !bool {
-    const variadic_idx = funcVariadicParamIndex(func);
+    const variadic_idx = func_variadic_param_index(func);
     var move_sources = std.ArrayList(LastUseManagedMoveSource).empty;
     defer move_sources.deinit(allocator);
     var arg_start = start_idx;
@@ -2516,7 +2486,7 @@ pub fn emitUserFuncCallWithMoveContext(allocator: std.mem.Allocator, tokens: []c
 }
 
 pub fn emitUserFuncCallWithUnionBindingMove(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, stmt_end: usize, body_end: usize, allow_last_use_move: bool, locals: *const LocalSet, defer_ctx: ?*const DeferContext, ctx: CodegenContext, func: FuncDecl, out: *std.ArrayList(u8)) !bool {
-    const variadic_idx = funcVariadicParamIndex(func);
+    const variadic_idx = func_variadic_param_index(func);
     var move_sources = std.ArrayList(LastUseManagedMoveSource).empty;
     defer move_sources.deinit(allocator);
     var arg_start = start_idx;
