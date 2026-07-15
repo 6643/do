@@ -6,10 +6,13 @@ const emit_managed_struct_field_set = struct_fields.emit_managed_struct_field_se
 const emit_struct_field_local_set = struct_fields.emit_struct_field_local_set;
 const emit_struct_field_value = struct_fields.emit_struct_field_value;
 const emit_struct_fields_from_local = struct_fields.emit_struct_fields_from_local;
-const emit_zero_value_for_type = struct_fields.emit_zero_value_for_type;
-const inferred_struct_binding = struct_fields.inferred_struct_binding;
+pub const emit_zero_value_for_type = struct_fields.emit_zero_value_for_type;
+pub const inferred_struct_binding = struct_fields.inferred_struct_binding;
 const is_managed_struct_field = struct_fields.is_managed_struct_field;
 const typed_struct_binding = struct_fields.typed_struct_binding;
+
+pub const nil_comparison_narrowing = struct_fields.nil_comparison_narrowing;
+pub const merge_return_cleanup_locals = struct_fields.merge_return_cleanup_locals;
 
 const std = @import("std");
 const lexer = @import("lexer.zig");

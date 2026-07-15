@@ -6,10 +6,10 @@ const ParsedStorageType = storage_layout.ParsedStorageType;
 const find_func_decl_for_call_head = storage_layout.find_func_decl_for_call_head;
 const infer_expr_type = storage_layout.infer_expr_type;
 const infer_storage_content_comparison_type = storage_layout.infer_storage_content_comparison_type;
-const is_storage_agg_literal_expr = storage_layout.is_storage_agg_literal_expr;
+pub const is_storage_agg_literal_expr = storage_layout.is_storage_agg_literal_expr;
 const managed_payload_elem_type_from_name = storage_layout.managed_payload_elem_type_from_name;
 const storage_element_byte_width_for_type = storage_layout.storage_element_byte_width_for_type;
-const struct_literal_open_rhs = storage_layout.struct_literal_open_rhs;
+pub const struct_literal_open_rhs = storage_layout.struct_literal_open_rhs;
 const tuple_field_path_type = storage_layout.tuple_field_path_type;
 
 const storage_operations = @import("codegen_emit_storage_operations.zig");
@@ -17,7 +17,7 @@ const direct_managed_local_expr_name = storage_operations.direct_managed_local_e
 const emit_overwrite_release_managed_local = storage_operations.emit_overwrite_release_managed_local;
 const emit_storage_cap_ptr = storage_operations.emit_storage_cap_ptr;
 const emit_storage_write_expr = storage_operations.emit_storage_write_expr;
-const is_direct_managed_local_expr = storage_operations.is_direct_managed_local_expr;
+pub const is_direct_managed_local_expr = storage_operations.is_direct_managed_local_expr;
 
 const std = @import("std");
 const lexer = @import("lexer.zig");
@@ -48,6 +48,19 @@ const ownership = @import("ownership.zig");
 const ownership_facts = @import("ownership_facts.zig");
 const imports = @import("imports.zig");
 const test_runner = @import("test_runner.zig");
+
+// Shared helpers remain publicly available to the neighboring emit domains;
+// their implementation ownership stays in storage/layout modules.
+pub const find_local_name = storage_operations.find_local_name;
+pub const substitute_generic_type = storage_layout.substitute_generic_type;
+pub const call_arg_matches_callback_shape = storage_layout.call_arg_matches_callback_shape;
+pub const value_enum_branch_value = storage_layout.value_enum_branch_value;
+pub const find_field_meta_local = storage_layout.find_field_meta_local;
+pub const field_from_meta = storage_layout.field_from_meta;
+pub const union_local_default_struct_payload = storage_layout.union_local_default_struct_payload;
+pub const append_managed_struct_field_meta_local = storage_layout.append_managed_struct_field_meta_local;
+pub const type_base_name = storage_layout.type_base_name;
+pub const generic_type_arg_at = storage_layout.generic_type_arg_at;
 
 const tok_eq = codegen_tokens.tok_eq;
 const find_matching = codegen_tokens.find_matching;

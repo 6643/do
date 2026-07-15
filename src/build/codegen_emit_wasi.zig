@@ -2157,25 +2157,25 @@ pub fn type_payload_alignment(ty: []const u8) usize {
 }
 
 pub fn is_managed_payload_type(ty: []const u8) bool {
-    return type_util.is_managed_payload_type(ty);
+    return type_util.isManagedPayloadType(ty);
 }
 
 pub fn is_storage_type_name(ty: []const u8) bool {
-    return type_util.is_storage_type_name(ty);
+    return type_util.isStorageTypeName(ty);
 }
 
 pub fn storage_elem_type_from_name(ty: []const u8) ?[]const u8 {
-    return type_util.storage_elem_type_from_name(ty);
+    return type_util.storageElemTypeFromName(ty);
 }
 
 pub fn storage_element_byte_width(elem_ty: []const u8) ?usize {
-    return type_util.storage_element_byte_width(elem_ty);
+    return type_util.storageElementByteWidth(elem_ty);
 }
 
 /// Pure-scalar unmanaged struct nested pack width (declaration order + alignUp, no managed fields).
 /// Pure-scalar unmanaged struct nested pack width (declaration order + alignUp, no managed fields).
 pub fn tuple_scalar_leaf_storage_byte_width(tuple_ty: []const u8) ?usize {
-    return type_util.tuple_scalar_leaf_storage_byte_width(tuple_ty);
+    return type_util.tupleScalarLeafStorageByteWidth(tuple_ty);
 }
 
 pub fn tuple_scalar_leaf_storage_byte_width_ctx(tuple_ty: []const u8, ctx: CodegenContext) ?usize {
@@ -2184,7 +2184,7 @@ pub fn tuple_scalar_leaf_storage_byte_width_ctx(tuple_ty: []const u8, ctx: Codeg
 }
 
 pub fn tuple_has_managed_pack_leaf(tuple_ty: []const u8) bool {
-    return type_util.tuple_has_managed_pack_leaf(tuple_ty);
+    return type_util.tupleHasManagedPackLeaf(tuple_ty);
 }
 
 pub fn tuple_has_managed_pack_leaf_with_structs(tuple_ty: []const u8, structs: []const StructDecl) bool {
@@ -2227,13 +2227,13 @@ pub fn append_load_for_payload_type(
 }
 
 pub fn is_tuple_type_name(ty: []const u8) bool {
-    return type_util.is_tuple_type_name(ty);
+    return type_util.isTupleTypeName(ty);
 }
 
 pub fn tuple_arity(tuple_ty: []const u8) ?usize {
-    return type_util.tuple_arity(tuple_ty);
+    return type_util.tupleArity(tuple_ty);
 }
 
 pub fn tuple_element_type_at(tuple_ty: []const u8, idx: usize) ?[]const u8 {
-    return type_util.tuple_element_type_at(tuple_ty, idx);
+    return type_util.tupleElementTypeAt(tuple_ty, idx);
 }
