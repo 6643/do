@@ -508,8 +508,8 @@ fn installGenHooks() void {
     gen_hooks.install(gen_expr.emitExpr, gen_expr.emitExprWithMoveContext, gen_expr.emitUserFuncCallWithMoveContext);
     gen_hooks.installBody(gen_ctrl.emitBody);
     gen_hooks.installUnionValue(gen_union_emit.emitUnionValue);
-    gen_hooks.installCollectBodyLocals(codegen_collect_body.collect_body_locals);
-    gen_hooks.installCollectBodyLocalsWithMode(codegen_collect_body.collect_body_locals_with_mode);
+    gen_hooks.install_collect_body_locals(codegen_collect_body.collect_body_locals);
+    gen_hooks.install_collect_body_locals_with_mode(codegen_collect_body.collect_body_locals_with_mode);
     gen_hooks.installEmitMultiResultAssignment(gen_expr.emitMultiResultAssignment);
     gen_hooks.installEmitBareUserFuncCall(gen_expr.emitBareUserFuncCall);
     gen_hooks.installEmitBareUserFuncCallMove(gen_expr.emitBareUserFuncCallWithMoveContext);

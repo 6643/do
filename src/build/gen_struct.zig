@@ -17,7 +17,6 @@ const TypedStructBinding = model.TypedStructBinding;
 const gen_collect_util = @import("gen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
-const codegen_collect_declarations = @import("codegen_collect_declarations.zig");
 const gen_import = @import("gen_import.zig");
 const gen_wasi_emit = @import("gen_wasi_emit.zig");
 const gen_hooks = @import("gen_hooks.zig");
@@ -1922,7 +1921,7 @@ pub fn collectFieldReflectionBodyLocals(allocator: std.mem.Allocator, tokens: []
             i = stmt_end;
             continue;
         }
-        try gen_hooks.collectBodyLocals(allocator, tokens, i, stmt_end, ctx, out);
+        try gen_hooks.collect_body_locals(allocator, tokens, i, stmt_end, ctx, out);
         try applyCollectGuardReturnNarrowing(allocator, tokens, i, stmt_end, out, ctx);
         try applyGuardLoopControlNarrowing(allocator, tokens, i, stmt_end, out, ctx);
         i = stmt_end;

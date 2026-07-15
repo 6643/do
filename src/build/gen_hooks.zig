@@ -171,8 +171,8 @@ pub var emit_expr_move: EmitExprMoveFn = undefined;
 pub var emit_user_func_call_move: EmitUserFuncCallMoveFn = undefined;
 pub var emit_body: ?EmitBodyFn = null;
 pub var emit_union_value: ?EmitUnionValueFn = null;
-pub var collect_body_locals: ?CollectBodyLocalsFn = null;
-pub var collect_body_locals_with_mode: ?CollectBodyLocalsWithModeFn = null;
+var collect_body_locals_hook: ?CollectBodyLocalsFn = null;
+var collect_body_locals_with_mode_hook: ?CollectBodyLocalsWithModeFn = null;
 pub var emit_multi_result_assignment: ?EmitMultiResultAssignmentFn = null;
 pub var emit_bare_user_func_call: ?EmitBareUserFuncCallFn = null;
 pub var emit_bare_user_func_call_move: ?EmitBareUserFuncCallMoveFn = null;
@@ -213,11 +213,11 @@ pub fn installBody(f: EmitBodyFn) void {
 pub fn installUnionValue(f: EmitUnionValueFn) void {
     emit_union_value = f;
 }
-pub fn installCollectBodyLocals(f: CollectBodyLocalsFn) void {
-    collect_body_locals = f;
+pub fn install_collect_body_locals(f: CollectBodyLocalsFn) void {
+    collect_body_locals_hook = f;
 }
-pub fn installCollectBodyLocalsWithMode(f: CollectBodyLocalsWithModeFn) void {
-    collect_body_locals_with_mode = f;
+pub fn install_collect_body_locals_with_mode(f: CollectBodyLocalsWithModeFn) void {
+    collect_body_locals_with_mode_hook = f;
 }
 pub fn installEmitMultiResultAssignment(f: EmitMultiResultAssignmentFn) void {
     emit_multi_result_assignment = f;
@@ -319,7 +319,7 @@ pub fn emitUnionValue(
     return f(allocator, tokens, start_idx, end_idx, locals, ctx, layout, copy_managed, move_ctx, out);
 }
 
-pub fn collectBodyLocals(
+pub fn collect_body_locals(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -327,11 +327,11 @@ pub fn collectBodyLocals(
     ctx: CodegenContext,
     out: *LocalSet,
 ) anyerror!void {
-    const f = collect_body_locals orelse return error.UnsupportedLowering;
+    const f = collect_body_locals_hook orelse return error.UnsupportedLowering;
     return f(allocator, tokens, start_idx, end_idx, ctx, out);
 }
 
-pub fn collectBodyLocalsWithMode(
+pub fn collect_body_locals_with_mode(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -340,7 +340,7 @@ pub fn collectBodyLocalsWithMode(
     out: *LocalSet,
     recurse_nested: bool,
 ) anyerror!void {
-    const f = collect_body_locals_with_mode orelse return error.UnsupportedLowering;
+    const f = collect_body_locals_with_mode_hook orelse return error.UnsupportedLowering;
     return f(allocator, tokens, start_idx, end_idx, ctx, out, recurse_nested);
 }
 

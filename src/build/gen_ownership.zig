@@ -10,7 +10,6 @@ const gen_wasi_emit = @import("gen_wasi_emit.zig");
 const gen_collect_util = @import("gen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
-const codegen_collect_declarations = @import("codegen_collect_declarations.zig");
 
 const tokEq = codegen_tokens.tok_eq;
 const findMatching = codegen_tokens.find_matching;

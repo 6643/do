@@ -15,7 +15,6 @@ const NilComparisonNarrowing = model.NilComparisonNarrowing;
 const gen_collect_util = @import("gen_collect_util.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
-const codegen_collect_declarations = @import("codegen_collect_declarations.zig");
 const gen_import = @import("gen_import.zig");
 const hasBorrowedName = gen_import.hasBorrowedName;
 const gen_wasi_emit = @import("gen_wasi_emit.zig");
@@ -541,7 +540,7 @@ const findTopLevelGuardLoopControl = gen_ownership.findTopLevelGuardLoopControl;
 const labelForLoopStart = gen_ownership.labelForLoopStart;
 const previousLineStart = gen_ownership.previousLineStart;
 pub fn collectDirectBodyLocals(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext, out: *LocalSet) !void {
-    try gen_hooks.collectBodyLocalsWithMode(allocator, tokens, start_idx, end_idx, ctx, out, false);
+    try gen_hooks.collect_body_locals_with_mode(allocator, tokens, start_idx, end_idx, ctx, out, false);
 }
 
 pub fn fieldReflectionLoopHeader(
