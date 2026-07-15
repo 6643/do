@@ -2477,16 +2477,6 @@ pub fn isDotIdent(name: []const u8) bool {
     return name.len > 1 and name[0] == '.';
 }
 
-// Free helpers from codegen_model.
-pub const freeCallbackBindings = model.freeCallbackBindings;
-pub const freeStructDecls = model.freeStructDecls;
-pub const freeStructDecl = model.freeStructDecl;
-pub const freeValueEnumDecls = model.freeValueEnumDecls;
-pub const freePayloadEnumDecls = model.freePayloadEnumDecls;
-pub const freeStructLayouts = model.freeStructLayouts;
-pub const freeFuncParams = model.freeFuncParams;
-pub const freeFuncDecls = model.freeFuncDecls;
-pub const freeFuncResultItems = model.freeFuncResultItems;
 const NUMERIC_SELECT_RIGHT_TMP_I64 = constants.NUMERIC_SELECT_RIGHT_TMP_I64;
 const NUMERIC_SELECT_LEFT_TMP_I64 = constants.NUMERIC_SELECT_LEFT_TMP_I64;
 const NUMERIC_SELECT_RIGHT_TMP_I32 = constants.NUMERIC_SELECT_RIGHT_TMP_I32;
