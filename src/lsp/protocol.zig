@@ -53,9 +53,9 @@ pub fn write_initialize_response(
     try body_writer.writeAll("{\"jsonrpc\":\"2.0\",\"id\":");
     try write_request_id(body_writer, id);
     try body_writer.writeAll(",\"result\":{\"capabilities\":{\"textDocumentSync\":2,\"documentFormattingProvider\":true,\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]},\"definitionProvider\":true,\"semanticTokensProvider\":{\"legend\":{\"tokenTypes\":");
-    try write_json_string_array(body_writer, &semantic_tokens.legendTokenTypes);
+    try write_json_string_array(body_writer, &semantic_tokens.legend_token_types);
     try body_writer.writeAll(",\"tokenModifiers\":");
-    try write_json_string_array(body_writer, &semantic_tokens.legendTokenModifiers);
+    try write_json_string_array(body_writer, &semantic_tokens.legend_token_modifiers);
     try body_writer.writeAll("},\"full\":true}},\"serverInfo\":{\"name\":\"do-lsp\"}}}");
 
     try write_frame(writer, body_writer.buffered());

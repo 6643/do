@@ -29,16 +29,16 @@ const substitute_generic_type_owned = codegen_collect_util.substitute_generic_ty
 const tuple_pack_width_with_structs = codegen_collect_util.tuple_pack_width_with_structs;
 
 const align_up = codegen_tokens.align_up;
-const compactTokenText = codegen_tokens.compact_token_text;
+const compact_token_text = codegen_tokens.compact_token_text;
 const find_line_end = codegen_tokens.find_line_end;
 const find_matching = codegen_tokens.find_matching;
 const find_matching_in_range = codegen_tokens.find_matching_in_range;
 const find_top_level_token = codegen_tokens.find_top_level_token;
 const is_line_start = codegen_tokens.is_line_start;
-const isUserFuncDeclStart = codegen_tokens.is_user_func_decl_start;
-const publicDeclName = codegen_names.public_decl_name;
+const is_user_func_decl_start = codegen_tokens.is_user_func_decl_start;
+const public_decl_name = codegen_names.public_decl_name;
 const tok_eq = codegen_tokens.tok_eq;
-const findTopLevelTypeSeparator = codegen_tokens.find_top_level_type_separator;
+const find_top_level_type_separator = codegen_tokens.find_top_level_type_separator;
 const find_top_level_type_separator_from = codegen_tokens.find_top_level_type_separator_from;
 const free_struct_decl = model.free_struct_decl;
 const find_imported_module_index = codegen_imports.find_imported_module_index;
@@ -90,7 +90,7 @@ pub fn collect_struct_decls(
             i = line_end - 1;
             continue;
         }
-        if (isUserFuncDeclStart(tokens, i)) {
+        if (is_user_func_decl_start(tokens, i)) {
             pending_type_params.clearRetainingCapacity();
             const close_params = find_matching(tokens, i + 1, "(", ")") catch continue;
             const body = parse_func_body_shape(tokens, close_params) catch continue;
@@ -248,7 +248,7 @@ pub fn collect_struct_decl_by_name_as(
             i = line_end - 1;
             continue;
         }
-        if (isUserFuncDeclStart(tokens, i)) {
+        if (is_user_func_decl_start(tokens, i)) {
             pending_type_params.clearRetainingCapacity();
             const close_params = find_matching(tokens, i + 1, "(", ")") catch continue;
             const body = parse_func_body_shape(tokens, close_params) catch continue;
@@ -258,7 +258,7 @@ pub fn collect_struct_decl_by_name_as(
         if (!is_top_level_struct_decl_start(tokens, i)) continue;
         const open_brace = i + 1;
         const close_brace = try find_matching(tokens, open_brace, "{", "}");
-        if (!std.mem.eql(u8, publicDeclName(tokens[i].lexeme), target_name)) {
+        if (!std.mem.eql(u8, public_decl_name(tokens[i].lexeme), target_name)) {
             pending_type_params.clearRetainingCapacity();
             i = close_brace;
             continue;
@@ -353,7 +353,7 @@ pub fn collect_struct_layouts(
             offset = align_up(offset, field_align);
             if (try field_type_has_managed_layout(allocator, structs, field.ty)) {
                 try managed_fields.append(allocator, .{
-                    .name = publicDeclName(field.name),
+                    .name = public_decl_name(field.name),
                     .offset = offset,
                 });
             }
@@ -571,7 +571,7 @@ pub fn collect_concrete_generic_struct_layout_from_type(
         offset = align_up(offset, field_align);
         if (field_concrete_type_has_managed_layout(out.items, field_ty)) {
             try managed_fields.append(allocator, .{
-                .name = publicDeclName(field.name),
+                .name = public_decl_name(field.name),
                 .offset = offset,
             });
         }
@@ -652,7 +652,7 @@ pub fn parse_struct_field_type_expr(
 ) !?[]const u8 {
     if (start_idx >= end_idx) return null;
     if (has_top_level_token(tokens, start_idx, end_idx, "|")) {
-        const ty = try compactTokenText(allocator, tokens, start_idx, end_idx);
+        const ty = try compact_token_text(allocator, tokens, start_idx, end_idx);
         errdefer allocator.free(ty);
         try owned_types.append(allocator, ty);
         return ty;
@@ -716,7 +716,7 @@ pub fn parse_type_union_layout_from_name(
     struct_layouts: []const StructLayout,
     owned_types: *std.ArrayList([]const u8),
 ) !?UnionLayout {
-    if (findTopLevelTypeSeparator(ty, '|') == null) return null;
+    if (find_top_level_type_separator(ty, '|') == null) return null;
     var branches = std.ArrayList(UnionBranch).empty;
     errdefer branches.deinit(allocator);
     var payload_tys = std.ArrayList([]const u8).empty;

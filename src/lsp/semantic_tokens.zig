@@ -5,7 +5,7 @@ const is_field_name = source_helpers.is_field_name;
 const is_keyword = source_helpers.is_keyword;
 
 
-pub const legendTokenTypes = [_][]const u8{
+pub const legend_token_types = [_][]const u8{
     "keyword",
     "type",
     "function",
@@ -20,7 +20,7 @@ pub const legendTokenTypes = [_][]const u8{
     "builtin",
 };
 
-pub const legendTokenModifiers = [_][]const u8{};
+pub const legend_token_modifiers = [_][]const u8{};
 
 pub const SemanticTokenKind = enum {
     keyword,
@@ -184,12 +184,12 @@ fn is_function_head(tokens: []const lexer.Token, idx: usize) bool {
 }
 
 test "semantic token legend order is stable" {
-    try std.testing.expectEqual(@as(usize, 12), legendTokenTypes.len);
-    try std.testing.expectEqualStrings("keyword", legendTokenTypes[0]);
-    try std.testing.expectEqualStrings("type", legendTokenTypes[1]);
-    try std.testing.expectEqualStrings("function", legendTokenTypes[2]);
-    try std.testing.expectEqualStrings("builtin", legendTokenTypes[11]);
-    try std.testing.expectEqual(@as(usize, 0), legendTokenModifiers.len);
+    try std.testing.expectEqual(@as(usize, 12), legend_token_types.len);
+    try std.testing.expectEqualStrings("keyword", legend_token_types[0]);
+    try std.testing.expectEqualStrings("type", legend_token_types[1]);
+    try std.testing.expectEqualStrings("function", legend_token_types[2]);
+    try std.testing.expectEqualStrings("builtin", legend_token_types[11]);
+    try std.testing.expectEqual(@as(usize, 0), legend_token_modifiers.len);
 }
 
 test "encode_semantic_tokens returns LSP delta encoded five-tuples" {

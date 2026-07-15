@@ -78,9 +78,9 @@ const free_struct_layouts = model.free_struct_layouts;
 const free_func_params = model.free_func_params;
 const free_func_decls = model.free_func_decls;
 const free_func_result_items = model.free_func_result_items;
-const freeWasiHostImports = codegen_wasi_registry.free_wasi_host_imports;
-const collectWasiHostImports = codegen_wasi_registry.collect_wasi_host_imports;
-const collectWasiHostImportsFromModules = codegen_wasi_registry.collect_wasi_host_imports_from_modules;
+const free_wasi_host_imports = codegen_wasi_registry.free_wasi_host_imports;
+const collect_wasi_host_imports = codegen_wasi_registry.collect_wasi_host_imports;
+const collect_wasi_host_imports_from_modules = codegen_wasi_registry.collect_wasi_host_imports_from_modules;
 const wasi_lowering = codegen_wasi_registry.wasi_lowering;
 const append_wasi_import_symbol = codegen_wasi_registry.append_wasi_import_symbol;
 const ManagedPayloadBinding = codegen_storage_layout.ManagedPayloadBinding;
@@ -140,32 +140,32 @@ const storage_type_name_for_elem_owned = context.storage_type_name_for_elem_owne
 
 const UnionLayout = codegen_union_layout.UnionLayout;
 const UnionBranch = codegen_union_layout.UnionBranch;
-const freeUnionLayout = codegen_union_layout.free_union_layout;
-const cloneUnionLayout = codegen_union_layout.clone_union_layout;
-const unionLayoutsEqual = codegen_union_layout.union_layouts_equal;
+const free_union_layout = codegen_union_layout.free_union_layout;
+const clone_union_layout = codegen_union_layout.clone_union_layout;
+const union_layouts_equal = codegen_union_layout.union_layouts_equal;
 
 const WasiHostImport = codegen_wasi_registry.WasiHostImport;
-const validateWasiHostImportBuildUses = codegen_wasi_registry.validate_wasi_host_import_build_uses;
+const validate_wasi_host_import_build_uses = codegen_wasi_registry.validate_wasi_host_import_build_uses;
 const WASI_BINDING_ENTRY_SOURCE = codegen_wasi_registry.WASI_BINDING_ENTRY_SOURCE;
 
 const tok_eq = codegen_tokens.tok_eq;
 const find_matching = codegen_tokens.find_matching;
 const find_matching_in_range = codegen_tokens.find_matching_in_range;
 const find_line_end = codegen_tokens.find_line_end;
-const findLineStart = codegen_tokens.find_line_start;
+const find_line_start = codegen_tokens.find_line_start;
 const is_line_start = codegen_tokens.is_line_start;
 const find_top_level_token = codegen_tokens.find_top_level_token;
 const find_arg_end = codegen_tokens.find_arg_end;
 const trim_parens = codegen_tokens.trim_parens;
-const publicDeclName = codegen_names.public_decl_name;
+const public_decl_name = codegen_names.public_decl_name;
 const append_fmt = codegen_names.append_fmt;
 const Range = codegen_tokens.Range;
 const align_up = codegen_tokens.align_up;
-const compactTokenText = codegen_tokens.compact_token_text;
+const compact_token_text = codegen_tokens.compact_token_text;
 const string_token_body = codegen_tokens.string_token_body;
-const decodeQuotedStringToken = codegen_tokens.decode_quoted_string_token;
+const decode_quoted_string_token = codegen_tokens.decode_quoted_string_token;
 const has_string = codegen_names.has_string;
-const findTopLevelTypeSeparator = codegen_tokens.find_top_level_type_separator;
+const find_top_level_type_separator = codegen_tokens.find_top_level_type_separator;
 const find_top_level_type_separator_from = codegen_tokens.find_top_level_type_separator_from;
 
 const CallLastUseMoveContext = context.CallLastUseMoveContext;
@@ -357,34 +357,34 @@ const host_arg_could_be_storage_ptr_len_syntax = codegen_host_imports.host_arg_c
 const module_tokens_equal = codegen_tokens.module_tokens_equal;
 const find_start_func = codegen_tokens.find_start_func;
 const find_token = codegen_tokens.find_token;
-const findTopLevelBlockOpen = codegen_tokens.find_top_level_block_open;
+const find_top_level_block_open = codegen_tokens.find_top_level_block_open;
 const find_stmt_end = codegen_tokens.find_stmt_end;
-const findTypeArgEnd = codegen_tokens.find_type_arg_end;
-const stringLiteralArgLexeme = codegen_tokens.string_literal_arg_lexeme;
-const isStringLiteralArg = codegen_tokens.is_string_literal_arg;
-const isTypedBindingRhsCall = codegen_tokens.is_typed_binding_rhs_call;
-const isBareHostCallStatement = codegen_tokens.is_bare_host_call_statement;
-const moduleScopedSymbolName = codegen_names.module_scoped_symbol_name;
-const appendMangledTypeName = codegen_names.append_mangled_type_name;
-const isPublicTypeName = codegen_names.is_public_type_name;
+const find_type_arg_end = codegen_tokens.find_type_arg_end;
+const string_literal_arg_lexeme = codegen_tokens.string_literal_arg_lexeme;
+const is_string_literal_arg = codegen_tokens.is_string_literal_arg;
+const is_typed_binding_rhs_call = codegen_tokens.is_typed_binding_rhs_call;
+const is_bare_host_call_statement = codegen_tokens.is_bare_host_call_statement;
+const module_scoped_symbol_name = codegen_names.module_scoped_symbol_name;
+const append_mangled_type_name = codegen_names.append_mangled_type_name;
+const is_public_type_name = codegen_names.is_public_type_name;
 const is_error_type_name = codegen_names.is_error_type_name;
 const is_base_int_type_name = codegen_names.is_base_int_type_name;
-const isNumericCoreFuncName = codegen_names.is_numeric_core_func_name;
-const isBitwiseCoreFuncName = codegen_names.is_bitwise_core_func_name;
-const isCountBitsCoreFuncName = codegen_names.is_count_bits_core_func_name;
-const isNumericUnarySelectCoreFuncName = codegen_names.is_numeric_unary_select_core_func_name;
-const isNumericBinarySelectCoreFuncName = codegen_names.is_numeric_binary_select_core_func_name;
-const isFloatUnaryCoreFuncName = codegen_names.is_float_unary_core_func_name;
-const isFloatBinaryCoreFuncName = codegen_names.is_float_binary_core_func_name;
-const isBoolSpecialFuncName = codegen_names.is_bool_special_func_name;
-const isComparisonCoreFuncName = codegen_names.is_comparison_core_func_name;
+const is_numeric_core_func_name = codegen_names.is_numeric_core_func_name;
+const is_bitwise_core_func_name = codegen_names.is_bitwise_core_func_name;
+const is_count_bits_core_func_name = codegen_names.is_count_bits_core_func_name;
+const is_numeric_unary_select_core_func_name = codegen_names.is_numeric_unary_select_core_func_name;
+const is_numeric_binary_select_core_func_name = codegen_names.is_numeric_binary_select_core_func_name;
+const is_float_unary_core_func_name = codegen_names.is_float_unary_core_func_name;
+const is_float_binary_core_func_name = codegen_names.is_float_binary_core_func_name;
+const is_bool_special_func_name = codegen_names.is_bool_special_func_name;
+const is_comparison_core_func_name = codegen_names.is_comparison_core_func_name;
 const is_memory_load_name = codegen_names.is_memory_load_name;
-const isCoreWasmCallName = codegen_names.is_core_wasm_call_name;
+const is_core_wasm_call_name = codegen_names.is_core_wasm_call_name;
 const is_core_wasm_scalar = codegen_names.is_core_wasm_scalar;
 const is_core_integer_scalar = codegen_names.is_core_integer_scalar;
 const is_core_float_scalar = codegen_names.is_core_float_scalar;
-const isUserFuncDeclStart = codegen_tokens.is_user_func_decl_start;
-const tokenTextEqualsCompact = codegen_tokens.token_text_equals_compact;
+const is_user_func_decl_start = codegen_tokens.is_user_func_decl_start;
+const token_text_equals_compact = codegen_tokens.token_text_equals_compact;
 // re-export codegen_imports
 const validate_host_import_build_uses = codegen_imports.validate_host_import_build_uses;
 const validate_reachable_wasi_host_import_build_uses = codegen_imports.validate_reachable_wasi_host_import_build_uses;
@@ -494,21 +494,21 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
 
     var wasi_imports = std.ArrayList(WasiHostImport).empty;
     defer {
-        freeWasiHostImports(allocator, wasi_imports.items);
+        free_wasi_host_imports(allocator, wasi_imports.items);
         wasi_imports.deinit(allocator);
     }
     if (module_graph) |graph| {
-        try collectWasiHostImportsFromModules(allocator, graph.modules, tokens, &wasi_imports);
+        try collect_wasi_host_imports_from_modules(allocator, graph.modules, tokens, &wasi_imports);
     } else {
-        try collectWasiHostImports(allocator, tokens, WASI_BINDING_ENTRY_SOURCE, &wasi_imports);
+        try collect_wasi_host_imports(allocator, tokens, WASI_BINDING_ENTRY_SOURCE, &wasi_imports);
     }
     var entry_wasi_imports = std.ArrayList(WasiHostImport).empty;
     defer {
-        freeWasiHostImports(allocator, entry_wasi_imports.items);
+        free_wasi_host_imports(allocator, entry_wasi_imports.items);
         entry_wasi_imports.deinit(allocator);
     }
-    try collectWasiHostImports(allocator, tokens, WASI_BINDING_ENTRY_SOURCE, &entry_wasi_imports);
-    try validateWasiHostImportBuildUses(tokens, entry_wasi_imports.items);
+    try collect_wasi_host_imports(allocator, tokens, WASI_BINDING_ENTRY_SOURCE, &entry_wasi_imports);
+    try validate_wasi_host_import_build_uses(tokens, entry_wasi_imports.items);
     if (module_graph) |graph| {
         try validate_reachable_wasi_host_import_build_uses(allocator, tokens, graph);
     }
@@ -658,21 +658,21 @@ pub fn emit_test_wat(allocator: std.mem.Allocator, program: parser.Program, toke
 
     var wasi_imports = std.ArrayList(WasiHostImport).empty;
     defer {
-        freeWasiHostImports(allocator, wasi_imports.items);
+        free_wasi_host_imports(allocator, wasi_imports.items);
         wasi_imports.deinit(allocator);
     }
     if (module_graph) |graph| {
-        try collectWasiHostImportsFromModules(allocator, graph.modules, tokens, &wasi_imports);
+        try collect_wasi_host_imports_from_modules(allocator, graph.modules, tokens, &wasi_imports);
     } else {
-        try collectWasiHostImports(allocator, tokens, WASI_BINDING_ENTRY_SOURCE, &wasi_imports);
+        try collect_wasi_host_imports(allocator, tokens, WASI_BINDING_ENTRY_SOURCE, &wasi_imports);
     }
     var entry_wasi_imports = std.ArrayList(WasiHostImport).empty;
     defer {
-        freeWasiHostImports(allocator, entry_wasi_imports.items);
+        free_wasi_host_imports(allocator, entry_wasi_imports.items);
         entry_wasi_imports.deinit(allocator);
     }
-    try collectWasiHostImports(allocator, tokens, WASI_BINDING_ENTRY_SOURCE, &entry_wasi_imports);
-    try validateWasiHostImportBuildUses(tokens, entry_wasi_imports.items);
+    try collect_wasi_host_imports(allocator, tokens, WASI_BINDING_ENTRY_SOURCE, &entry_wasi_imports);
+    try validate_wasi_host_import_build_uses(tokens, entry_wasi_imports.items);
     if (module_graph) |graph| {
         try validate_reachable_wasi_host_import_build_uses_from_tests(allocator, tokens, graph);
     }
@@ -885,7 +885,7 @@ pub fn function_signature_symbol_name(allocator: std.mem.Allocator, func: FuncDe
     for (func.params) |param| {
         try out.appendSlice(allocator, "__");
         if (param.variadic) try out.appendSlice(allocator, "rest_");
-        try appendMangledTypeName(allocator, &out, param.ty);
+        try append_mangled_type_name(allocator, &out, param.ty);
     }
     return out.toOwnedSlice(allocator);
 }

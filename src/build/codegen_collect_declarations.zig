@@ -16,7 +16,7 @@ const append_union_branch_payload_types = codegen_collect_util.append_union_bran
 
 const find_line_end = codegen_tokens.find_line_end;
 const find_matching = codegen_tokens.find_matching;
-const publicDeclName = codegen_names.public_decl_name;
+const public_decl_name = codegen_names.public_decl_name;
 const tok_eq = codegen_tokens.tok_eq;
 const find_imported_module_index = codegen_imports.find_imported_module_index;
 const find_payload_enum_decl = codegen_imports.find_payload_enum_decl;
@@ -120,7 +120,7 @@ pub fn collect_value_enum_decls(
         }
         if (depth_brace != 0) continue;
         if (!is_value_enum_decl_start(tokens, i)) continue;
-        _ = try collect_value_enum_decl_by_name_as(allocator, tokens, publicDeclName(tokens[i].lexeme), publicDeclName(tokens[i].lexeme), false, out);
+        _ = try collect_value_enum_decl_by_name_as(allocator, tokens, public_decl_name(tokens[i].lexeme), public_decl_name(tokens[i].lexeme), false, out);
         i = find_line_end(tokens, i) - 1;
     }
 }
@@ -151,7 +151,7 @@ pub fn collect_imported_value_enum_decls(
         }
 
         if (find_value_enum_decl_line_by_branch(child_tokens, import_ref.target)) |enum_idx| {
-            const enum_name = publicDeclName(child_tokens[enum_idx].lexeme);
+            const enum_name = public_decl_name(child_tokens[enum_idx].lexeme);
             if (find_value_enum_decl(out.items, enum_name) == null) {
                 _ = try collect_value_enum_decl_by_name_as(allocator, child_tokens, enum_name, enum_name, false, out);
             }
@@ -180,7 +180,7 @@ pub fn collect_value_enum_decl_by_name_as(
         }
         if (depth_brace != 0) continue;
         if (!is_value_enum_decl_start(tokens, i)) continue;
-        if (!std.mem.eql(u8, publicDeclName(tokens[i].lexeme), target_name)) continue;
+        if (!std.mem.eql(u8, public_decl_name(tokens[i].lexeme), target_name)) continue;
 
         const line_end = find_line_end(tokens, i);
         var branches = std.ArrayList(ValueEnumBranch).empty;
@@ -195,7 +195,7 @@ pub fn collect_value_enum_decl_by_name_as(
                 return false;
             }
             try branches.append(allocator, .{
-                .name = publicDeclName(tokens[j].lexeme),
+                .name = public_decl_name(tokens[j].lexeme),
                 .value = tokens[j + 2].lexeme,
             });
             j += 4;
@@ -317,7 +317,7 @@ pub fn collect_payload_enum_decl_by_name_as(
             continue;
         }
         if (tokens[j].kind != .ident) return false;
-        const case_name = publicDeclName(tokens[j].lexeme);
+        const case_name = public_decl_name(tokens[j].lexeme);
         j += 1;
         var payload_ty: ?[]const u8 = null;
         if (j < line_end and tok_eq(tokens[j], "(")) {
@@ -351,7 +351,7 @@ pub fn collect_payload_enum_decl_at(
     out: *std.ArrayList(PayloadEnumDecl),
 ) !bool {
     if (!is_payload_enum_decl_start(tokens, enum_idx)) return false;
-    const name = publicDeclName(tokens[enum_idx].lexeme);
+    const name = public_decl_name(tokens[enum_idx].lexeme);
     if (find_payload_enum_decl(out.items, name) != null) return true;
 
     const line_end = find_line_end(tokens, enum_idx);
@@ -370,7 +370,7 @@ pub fn collect_payload_enum_decl_at(
             continue;
         }
         if (tokens[j].kind != .ident) return false;
-        const case_name = publicDeclName(tokens[j].lexeme);
+        const case_name = public_decl_name(tokens[j].lexeme);
         j += 1;
         var payload_ty: ?[]const u8 = null;
         if (j < line_end and tok_eq(tokens[j], "(")) {

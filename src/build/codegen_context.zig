@@ -10,10 +10,10 @@ const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
 const model = @import("codegen_model.zig");
 const constants = @import("codegen_constants.zig");
 
-const decodeQuotedStringToken = codegen_tokens.decode_quoted_string_token;
-const freeUnionLayout = codegen_union_layout.free_union_layout;
+const decode_quoted_string_token = codegen_tokens.decode_quoted_string_token;
+const free_union_layout = codegen_union_layout.free_union_layout;
 const UnionLayout = codegen_union_layout.UnionLayout;
-const unionLayoutsEqual = codegen_union_layout.union_layouts_equal;
+const union_layouts_equal = codegen_union_layout.union_layouts_equal;
 const WasiHostImport = codegen_wasi_registry.WasiHostImport;
 const Local = model.Local;
 const StructLocal = model.StructLocal;
@@ -68,7 +68,7 @@ pub const LocalSet = struct {
             allocator.free(name);
         }
         for (self.union_locals.items) |union_local| {
-            if (union_local.owns_layout) freeUnionLayout(allocator, union_local.layout);
+            if (union_local.owns_layout) free_union_layout(allocator, union_local.layout);
         }
         self.owned_names.deinit(allocator);
         self.field_meta_locals.deinit(allocator);
@@ -235,8 +235,8 @@ pub const LocalSet = struct {
         release_on_scope_exit: bool,
     ) !void {
         if (find_union_local_exact(self.union_locals.items, name)) |existing| {
-            if (!unionLayoutsEqual(existing.layout, layout)) return error.NoMatchingCall;
-            if (owns_layout) freeUnionLayout(allocator, layout);
+            if (!union_layouts_equal(existing.layout, layout)) return error.NoMatchingCall;
+            if (owns_layout) free_union_layout(allocator, layout);
             return;
         }
         const resolved = try self.scoped_local_name(allocator, name, emit_decl);
@@ -534,7 +534,7 @@ pub const StringDataContext = struct {
             if (std.mem.eql(u8, item.lexeme, lexeme)) return item;
         }
 
-        const bytes = try decodeQuotedStringToken(allocator, lexeme);
+        const bytes = try decode_quoted_string_token(allocator, lexeme);
         errdefer allocator.free(bytes);
         const data = StringData{
             .lexeme = lexeme,

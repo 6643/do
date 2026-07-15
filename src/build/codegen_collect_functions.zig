@@ -26,17 +26,17 @@ const parse_generic_inline_union_layout = codegen_collect_util.parse_generic_inl
 const parse_struct_error_result_type = codegen_collect_util.parse_struct_error_result_type;
 const parse_union_type_layout = codegen_collect_util.parse_union_type_layout;
 
-const compactTokenText = codegen_tokens.compact_token_text;
+const compact_token_text = codegen_tokens.compact_token_text;
 const find_arg_end = codegen_tokens.find_arg_end;
 const find_line_end = codegen_tokens.find_line_end;
-const findLineStart = codegen_tokens.find_line_start;
+const find_line_start = codegen_tokens.find_line_start;
 const find_matching = codegen_tokens.find_matching;
 const is_core_wasm_scalar = codegen_names.is_core_wasm_scalar;
 const is_line_start = codegen_tokens.is_line_start;
-const isUserFuncDeclStart = codegen_tokens.is_user_func_decl_start;
-const moduleScopedSymbolName = codegen_names.module_scoped_symbol_name;
+const is_user_func_decl_start = codegen_tokens.is_user_func_decl_start;
+const module_scoped_symbol_name = codegen_names.module_scoped_symbol_name;
 const module_tokens_equal = codegen_tokens.module_tokens_equal;
-const publicDeclName = codegen_names.public_decl_name;
+const public_decl_name = codegen_names.public_decl_name;
 const tok_eq = codegen_tokens.tok_eq;
 const find_codegen_import_by_alias = codegen_imports.find_codegen_import_by_alias;
 const collect_start_body_calls = codegen_imports.collect_start_body_calls;
@@ -78,7 +78,7 @@ pub fn parse_func_param_type_expr(
 ) !?ParsedCodegenType {
     if (start_idx >= end_idx) return null;
     if (has_top_level_token(tokens, start_idx, end_idx, "|")) {
-        const ty = try compactTokenText(allocator, tokens, start_idx, end_idx);
+        const ty = try compact_token_text(allocator, tokens, start_idx, end_idx);
         errdefer allocator.free(ty);
         try owned_types.append(allocator, ty);
         return .{ .ty = ty, .next_idx = end_idx };
@@ -101,7 +101,7 @@ pub fn find_constraint_block_start_before(tokens: []const lexer.Token, decl_star
         const prev_line = tokens[prev_idx].line;
         if (prev_line + 1 != expected_line) break;
 
-        const line_start = findLineStart(tokens, prev_idx);
+        const line_start = find_line_start(tokens, prev_idx);
         if (!tok_eq(tokens[line_start], "#")) break;
 
         block_start = line_start;
@@ -331,7 +331,7 @@ pub fn collect_func_decls(
             i = (find_matching(tokens, i + 1, "{", "}") catch i);
             continue;
         }
-        if (!isUserFuncDeclStart(tokens, i)) continue;
+        if (!is_user_func_decl_start(tokens, i)) continue;
 
         const open_params = i + 1;
         const close_params = try find_matching(tokens, open_params, "(", ")");
@@ -386,8 +386,8 @@ pub fn collect_func_decls(
         }
 
         try out.append(allocator, .{
-            .name = publicDeclName(tokens[i].lexeme),
-            .source_name = publicDeclName(tokens[i].lexeme),
+            .name = public_decl_name(tokens[i].lexeme),
+            .source_name = public_decl_name(tokens[i].lexeme),
             .params = try params.toOwnedSlice(allocator),
             .result = if (results.len == 1) results[0] else null,
             .results = results,
@@ -454,8 +454,8 @@ pub fn collect_direct_imported_func_decls(
             continue;
         }
 
-        if (visit.module_idx != root_idx and find_func_decl_by_source_for_tokens(out.items, module.tokens, publicDeclName(visit.name)) == null) {
-            const emit_name = try moduleScopedSymbolName(allocator, visit.module_idx, publicDeclName(visit.name));
+        if (visit.module_idx != root_idx and find_func_decl_by_source_for_tokens(out.items, module.tokens, public_decl_name(visit.name)) == null) {
+            const emit_name = try module_scoped_symbol_name(allocator, visit.module_idx, public_decl_name(visit.name));
             defer allocator.free(emit_name);
             _ = try collect_func_decl_by_name_as(
                 allocator,
@@ -463,7 +463,7 @@ pub fn collect_direct_imported_func_decls(
                 structs,
                 struct_layouts,
                 .{ .graph = graph, .module_idx = visit.module_idx },
-                publicDeclName(visit.name),
+                public_decl_name(visit.name),
                 emit_name,
                 true,
                 out,
@@ -516,8 +516,8 @@ pub fn collect_direct_imported_func_decls_from_tests(
             continue;
         }
 
-        if (visit.module_idx != root_idx and find_func_decl_by_source_for_tokens(out.items, module.tokens, publicDeclName(visit.name)) == null) {
-            const emit_name = try moduleScopedSymbolName(allocator, visit.module_idx, publicDeclName(visit.name));
+        if (visit.module_idx != root_idx and find_func_decl_by_source_for_tokens(out.items, module.tokens, public_decl_name(visit.name)) == null) {
+            const emit_name = try module_scoped_symbol_name(allocator, visit.module_idx, public_decl_name(visit.name));
             defer allocator.free(emit_name);
             _ = try collect_func_decl_by_name_as(
                 allocator,
@@ -525,7 +525,7 @@ pub fn collect_direct_imported_func_decls_from_tests(
                 structs,
                 struct_layouts,
                 .{ .graph = graph, .module_idx = visit.module_idx },
-                publicDeclName(visit.name),
+                public_decl_name(visit.name),
                 emit_name,
                 true,
                 out,
@@ -536,7 +536,7 @@ pub fn collect_direct_imported_func_decls_from_tests(
 }
 
 pub fn same_callable_source_name(left: []const u8, right: []const u8) bool {
-    return std.mem.eql(u8, publicDeclName(left), publicDeclName(right));
+    return std.mem.eql(u8, public_decl_name(left), public_decl_name(right));
 }
 
 pub fn collect_func_decl_by_name_as(
@@ -578,7 +578,7 @@ pub fn collect_func_decl_by_name_as(
             i = (find_matching(tokens, i + 1, "{", "}") catch i);
             continue;
         }
-        if (!isUserFuncDeclStart(tokens, i)) continue;
+        if (!is_user_func_decl_start(tokens, i)) continue;
         const open_params = i + 1;
         const close_params = find_matching(tokens, open_params, "(", ")") catch {
             pending_type_params.clearRetainingCapacity();
@@ -588,7 +588,7 @@ pub fn collect_func_decl_by_name_as(
             pending_type_params.clearRetainingCapacity();
             continue;
         };
-        if (!std.mem.eql(u8, publicDeclName(tokens[i].lexeme), target_name)) {
+        if (!std.mem.eql(u8, public_decl_name(tokens[i].lexeme), target_name)) {
             pending_type_params.clearRetainingCapacity();
             i = body.next_idx;
             continue;

@@ -18,7 +18,7 @@ const find_matching_in_range = codegen_tokens.find_matching_in_range;
 const find_line_end = codegen_tokens.find_line_end;
 const is_line_start = codegen_tokens.is_line_start;
 const find_top_level_token = codegen_tokens.find_top_level_token;
-const findTopLevelBlockOpen = codegen_tokens.find_top_level_block_open;
+const find_top_level_block_open = codegen_tokens.find_top_level_block_open;
 const find_stmt_end = codegen_tokens.find_stmt_end;
 const append_fmt = codegen_names.append_fmt;
 const STORAGE_OVERWRITE_TMP_LOCAL = constants.STORAGE_OVERWRITE_TMP_LOCAL;
@@ -201,7 +201,7 @@ pub fn stmt_can_reach_end(tokens: []const lexer.Token, start_idx: usize, end_idx
 }
 
 pub fn if_stmt_can_reach_end(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
-    const open_brace = findTopLevelBlockOpen(tokens, start_idx + 1, end_idx) orelse return true;
+    const open_brace = find_top_level_block_open(tokens, start_idx + 1, end_idx) orelse return true;
     const close_brace = find_matching_in_range(tokens, open_brace, "{", "}", end_idx) catch return true;
 
     var else_if_start: ?usize = null;
@@ -234,7 +234,7 @@ pub fn if_stmt_can_reach_end(tokens: []const lexer.Token, start_idx: usize, end_
 }
 
 pub fn loop_stmt_can_reach_end(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
-    const open_brace = findTopLevelBlockOpen(tokens, start_idx + 1, end_idx) orelse return true;
+    const open_brace = find_top_level_block_open(tokens, start_idx + 1, end_idx) orelse return true;
     const close_brace = find_matching_in_range(tokens, open_brace, "{", "}", end_idx) catch return true;
     if (close_brace + 1 != end_idx) return true;
     return loop_body_can_break_current_loop(tokens, open_brace + 1, close_brace, label_for_loop_start(tokens, start_idx));
@@ -276,7 +276,7 @@ pub fn token_range_contains_labeled_break(tokens: []const lexer.Token, start_idx
         if (tok_eq(tokens[i], "loop")) {
             const nested_label = label_for_loop_start(tokens, i) orelse continue;
             if (!std.mem.eql(u8, nested_label, label)) continue;
-            const open_brace = findTopLevelBlockOpen(tokens, i + 1, end_idx) orelse continue;
+            const open_brace = find_top_level_block_open(tokens, i + 1, end_idx) orelse continue;
             const close_brace = find_matching_in_range(tokens, open_brace, "{", "}", end_idx) catch continue;
             i = close_brace;
             continue;

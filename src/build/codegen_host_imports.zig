@@ -15,7 +15,7 @@ const find_arg_end = codegen_tokens.find_arg_end;
 const find_top_level_token = codegen_tokens.find_top_level_token;
 const trim_parens = codegen_tokens.trim_parens;
 const string_token_body = codegen_tokens.string_token_body;
-const publicDeclName = codegen_names.public_decl_name;
+const public_decl_name = codegen_names.public_decl_name;
 const append_fmt = codegen_names.append_fmt;
 
 const HostImport = model.HostImport;
@@ -23,9 +23,9 @@ const CodegenError = model.CodegenError;
 const LocalSet = context.LocalSet;
 const storage_type_name_for_elem = context.storage_type_name_for_elem;
 const module_tokens_equal = codegen_tokens.module_tokens_equal;
-const stringLiteralArgLexeme = codegen_tokens.string_literal_arg_lexeme;
-const appendMangledTypeName = codegen_names.append_mangled_type_name;
-const moduleScopedSymbolName = codegen_names.module_scoped_symbol_name;
+const string_literal_arg_lexeme = codegen_tokens.string_literal_arg_lexeme;
+const append_mangled_type_name = codegen_names.append_mangled_type_name;
+const module_scoped_symbol_name = codegen_names.module_scoped_symbol_name;
 
 pub fn collect_env_host_imports(
     allocator: std.mem.Allocator,
@@ -71,7 +71,7 @@ pub fn collect_env_host_imports_from_modules(
         try collect_env_host_imports(allocator, module.tokens, &module_imports);
         for (module_imports.items) |*host_import| {
             if (find_host_import_for_tokens(out.items, module.tokens, host_import.source_alias) != null) continue;
-            const emit_alias = try moduleScopedSymbolName(allocator, module_idx, host_import.source_alias);
+            const emit_alias = try module_scoped_symbol_name(allocator, module_idx, host_import.source_alias);
             var emit_alias_owned = true;
             errdefer if (emit_alias_owned) allocator.free(emit_alias);
             host_import.alias = emit_alias;
@@ -91,7 +91,7 @@ pub fn parse_env_host_import(
     line_end: usize,
 ) !HostImport {
     // name = @host("env", "field", (...) -> T)
-    const alias = publicDeclName(tokens[start_idx].lexeme);
+    const alias = public_decl_name(tokens[start_idx].lexeme);
     const locator = string_token_body(tokens[start_idx + 5].lexeme) orelse return error.InvalidImportDecl;
     if (!std.mem.eql(u8, locator, "env")) return error.InvalidImportDecl;
     if (!tok_eq(tokens[start_idx + 6], ",")) return error.InvalidImportDecl;
@@ -174,7 +174,7 @@ pub fn host_call_args_match(tokens: []const lexer.Token, start_idx: usize, end_i
     var arg_start = start_idx;
     while (arg_start < end_idx) {
         const arg_end = find_arg_end(tokens, arg_start, end_idx);
-        if (stringLiteralArgLexeme(tokens, arg_start, arg_end)) |_| {
+        if (string_literal_arg_lexeme(tokens, arg_start, arg_end)) |_| {
             if (!host_param_is_ptr_len(host_import, param_idx)) return false;
             param_idx += 2;
         } else if (host_arg_could_be_storage_ptr_len_syntax(tokens, arg_start, arg_end) and host_param_is_ptr_len(host_import, param_idx)) {

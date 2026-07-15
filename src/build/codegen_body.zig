@@ -38,9 +38,9 @@ const find_matching_in_range = codegen_tokens.find_matching_in_range;
 const find_top_level_token = codegen_tokens.find_top_level_token;
 const find_arg_end = codegen_tokens.find_arg_end;
 const trim_parens = codegen_tokens.trim_parens;
-const publicDeclName = codegen_names.public_decl_name;
+const public_decl_name = codegen_names.public_decl_name;
 const append_fmt = codegen_names.append_fmt;
-const findTopLevelBlockOpen = codegen_tokens.find_top_level_block_open;
+const find_top_level_block_open = codegen_tokens.find_top_level_block_open;
 const find_stmt_end = codegen_tokens.find_stmt_end;
 const LocalSet = context.LocalSet;
 const CodegenContext = context.CodegenContext;
@@ -62,9 +62,9 @@ const find_struct_local = context.find_struct_local;
 const find_union_local = context.find_union_local;
 const has_local = context.has_local;
 const UnionLayout = codegen_union_layout.UnionLayout;
-const freeUnionLayout = codegen_union_layout.free_union_layout;
-const cloneUnionLayout = codegen_union_layout.clone_union_layout;
-const unionLayoutsEqual = codegen_union_layout.union_layouts_equal;
+const free_union_layout = codegen_union_layout.free_union_layout;
+const clone_union_layout = codegen_union_layout.clone_union_layout;
+const union_layouts_equal = codegen_union_layout.union_layouts_equal;
 const find_struct_decl = codegen_collect_util.find_struct_decl;
 const find_struct_layout = codegen_collect_util.find_struct_layout;
 const pure_scalar_struct_pack_width = codegen_collect_util.pure_scalar_struct_pack_width;
@@ -139,7 +139,7 @@ pub fn multi_result_lhs_for_item(
 ) ?MultiResultLhs {
     if (item.union_layout) |layout| {
         const union_local = find_union_local(locals.union_locals.items, name) orelse return null;
-        if (!unionLayoutsEqual(union_local.layout, layout)) return null;
+        if (!union_layouts_equal(union_local.layout, layout)) return null;
         return .{ .name = union_local.name, .ty = item.ty, .item = item, .kind = .union_value };
     }
 
@@ -282,11 +282,11 @@ pub fn collect_body_locals_with_mode(allocator: std.mem.Allocator, tokens: []con
         } else if (recurse_nested and try collect_defer_block_locals(allocator, tokens, i, stmt_end, ctx, out)) {
             // Cleanup block locals collected recursively.
         } else if (try typed_union_binding_layout(allocator, tokens, i, stmt_end, ctx, &out.owned_names)) |layout| {
-            defer freeUnionLayout(allocator, layout);
-            const local_layout = try cloneUnionLayout(allocator, layout);
+            defer free_union_layout(allocator, layout);
+            const local_layout = try clone_union_layout(allocator, layout);
             try out.append_union_local(allocator, tokens[i].lexeme, local_layout, true, true);
         } else if (try inferred_union_call_binding(allocator, tokens, i, stmt_end, out, ctx, &out.owned_names)) |binding| {
-            errdefer if (binding.owns_layout) freeUnionLayout(allocator, binding.layout);
+            errdefer if (binding.owns_layout) free_union_layout(allocator, binding.layout);
             try out.append_union_local(allocator, tokens[i].lexeme, binding.layout, true, binding.owns_layout);
         } else if (typed_scalar_binding_type(tokens, i, stmt_end, ctx)) |ty| {
             try out.append_borrowed_local(allocator, tokens[i].lexeme, ty, true);
@@ -512,7 +512,7 @@ pub fn field_reflection_loop_header(
     _ = locals;
     if (start_idx + 8 > end_idx) return null;
     if (!tok_eq(tokens[start_idx], "loop")) return null;
-    const open_brace = findTopLevelBlockOpen(tokens, start_idx + 1, end_idx) orelse return null;
+    const open_brace = find_top_level_block_open(tokens, start_idx + 1, end_idx) orelse return null;
     const close_brace = find_matching_in_range(tokens, open_brace, "{", "}", end_idx) catch return null;
     if (close_brace + 1 != end_idx) return null;
     const eq_idx = find_top_level_token(tokens, start_idx + 1, open_brace, "=") orelse return null;
@@ -543,7 +543,7 @@ pub fn collection_loop_header(
 ) ?context.CollectionLoopHeader {
     if (start_idx + 6 > end_idx) return null;
     if (!tok_eq(tokens[start_idx], "loop")) return null;
-    const open_brace = findTopLevelBlockOpen(tokens, start_idx + 1, end_idx) orelse return null;
+    const open_brace = find_top_level_block_open(tokens, start_idx + 1, end_idx) orelse return null;
     const close_brace = find_matching_in_range(tokens, open_brace, "{", "}", end_idx) catch return null;
     if (close_brace + 1 != end_idx) return null;
     const eq_idx = find_top_level_token(tokens, start_idx + 1, open_brace, "=") orelse return null;
@@ -596,7 +596,7 @@ pub fn recv_loop_header(
 ) ?context.RecvLoopHeader {
     if (start_idx + 8 > end_idx) return null;
     if (!tok_eq(tokens[start_idx], "loop")) return null;
-    const open_brace = findTopLevelBlockOpen(tokens, start_idx + 1, end_idx) orelse return null;
+    const open_brace = find_top_level_block_open(tokens, start_idx + 1, end_idx) orelse return null;
     const close_brace = find_matching_in_range(tokens, open_brace, "{", "}", end_idx) catch return null;
     if (close_brace + 1 != end_idx) return null;
     const eq_idx = find_top_level_token(tokens, start_idx + 1, open_brace, "=") orelse return null;
@@ -729,7 +729,7 @@ pub fn inferred_struct_ctor_binding(tokens: []const lexer.Token, start_idx: usiz
 pub fn collect_loop_block_locals(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext, out: *LocalSet) CodegenError!bool {
     if (start_idx + 3 > end_idx) return false;
     if (!tok_eq(tokens[start_idx], "loop")) return false;
-    const open_brace = findTopLevelBlockOpen(tokens, start_idx + 1, end_idx) orelse return false;
+    const open_brace = find_top_level_block_open(tokens, start_idx + 1, end_idx) orelse return false;
     const close_brace = find_matching_in_range(tokens, open_brace, "{", "}", end_idx) catch return false;
     if (close_brace + 1 != end_idx) return false;
 
@@ -788,7 +788,7 @@ pub fn append_loop_count_local(allocator: std.mem.Allocator, out: *LocalSet, loo
 pub fn collect_if_block_locals(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext, out: *LocalSet) CodegenError!bool {
     if (start_idx + 4 > end_idx) return false;
     if (!tok_eq(tokens[start_idx], "if")) return false;
-    const open_brace = findTopLevelBlockOpen(tokens, start_idx + 1, end_idx) orelse return false;
+    const open_brace = find_top_level_block_open(tokens, start_idx + 1, end_idx) orelse return false;
     const close_brace = find_matching_in_range(tokens, open_brace, "{", "}", end_idx) catch return false;
     try collect_body_locals(allocator, tokens, open_brace + 1, close_brace, ctx, out);
 
@@ -891,7 +891,7 @@ pub fn append_decl_only_locals(allocator: std.mem.Allocator, out: *LocalSet, sou
         errdefer allocator.free(name);
         try out.owned_names.append(allocator, name);
         errdefer _ = out.owned_names.pop();
-        const layout = try cloneUnionLayout(allocator, union_local.layout);
+        const layout = try clone_union_layout(allocator, union_local.layout);
         try out.union_locals.append(allocator, .{
             .name = name,
             .source_name = union_local.source_name,
@@ -903,7 +903,7 @@ pub fn append_decl_only_locals(allocator: std.mem.Allocator, out: *LocalSet, sou
 }
 
 pub fn append_local_field(allocator: std.mem.Allocator, out: *LocalSet, tokens: []const lexer.Token, ctx: CodegenContext, base: []const u8, field: []const u8, ty: []const u8) !void {
-    const name = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ base, publicDeclName(field) });
+    const name = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ base, public_decl_name(field) });
     if (is_tuple_type_name(ty)) {
         try out.owned_names.append(allocator, name);
         const local_name = try out.append_struct_local(allocator, name, ty, true);
@@ -923,7 +923,7 @@ pub fn append_local_field(allocator: std.mem.Allocator, out: *LocalSet, tokens: 
         }
     }
     if (try parse_type_union_layout_from_name(allocator, tokens, ty, ctx.structs, ctx.struct_layouts, &out.owned_names)) |layout| {
-        errdefer freeUnionLayout(allocator, layout);
+        errdefer free_union_layout(allocator, layout);
         const exists = find_union_local_exact(out.union_locals.items, name) != null;
         if (!exists) {
             errdefer allocator.free(name);
@@ -937,7 +937,7 @@ pub fn append_local_field(allocator: std.mem.Allocator, out: *LocalSet, tokens: 
     // Named payload enum type on field/local path
     if (find_payload_enum_decl(ctx.payload_enums, ty)) |decl| {
         const layout = try build_payload_enum_union_layout(allocator, decl, tokens, ctx.structs, ctx.struct_layouts, &out.owned_names);
-        errdefer freeUnionLayout(allocator, layout);
+        errdefer free_union_layout(allocator, layout);
         const exists = find_union_local_exact(out.union_locals.items, name) != null;
         if (!exists) {
             errdefer allocator.free(name);
@@ -1013,7 +1013,7 @@ pub fn typed_union_binding_layout(allocator: std.mem.Allocator, tokens: []const 
     if (eq_idx <= start_idx + 1) return null;
     // Named payload enum: `m Message = …`
     if (eq_idx == start_idx + 2 and tokens[start_idx + 1].kind == .ident) {
-        const ty_name = publicDeclName(tokens[start_idx + 1].lexeme);
+        const ty_name = public_decl_name(tokens[start_idx + 1].lexeme);
         if (find_payload_enum_decl(ctx.payload_enums, ty_name)) |decl| {
             return try build_payload_enum_union_layout(allocator, decl, tokens, ctx.structs, ctx.struct_layouts, owned_types);
         }
@@ -1120,7 +1120,7 @@ fn collect_one_multi_result_lhs_local(
     if (std.mem.eql(u8, name, "_")) return;
     if (item.union_layout) |layout| {
         if (find_union_local(out.union_locals.items, name) != null) return;
-        const cloned = try cloneUnionLayout(allocator, layout);
+        const cloned = try clone_union_layout(allocator, layout);
         try out.append_union_local(allocator, name, cloned, true, true);
         return;
     }

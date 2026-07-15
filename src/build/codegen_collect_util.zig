@@ -16,11 +16,11 @@ const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
 
 const align_up = codegen_tokens.align_up;
 const append_fmt = codegen_names.append_fmt;
-const appendMangledTypeName = codegen_names.append_mangled_type_name;
-const compactTokenText = codegen_tokens.compact_token_text;
+const append_mangled_type_name = codegen_names.append_mangled_type_name;
+const compact_token_text = codegen_tokens.compact_token_text;
 const find_arg_end = codegen_tokens.find_arg_end;
 const find_line_end = codegen_tokens.find_line_end;
-const findLineStart = codegen_tokens.find_line_start;
+const find_line_start = codegen_tokens.find_line_start;
 const find_matching = codegen_tokens.find_matching;
 const find_matching_in_range = codegen_tokens.find_matching_in_range;
 const find_token = codegen_tokens.find_token;
@@ -29,17 +29,17 @@ const is_base_int_type_name = codegen_names.is_base_int_type_name;
 const is_core_wasm_scalar = codegen_names.is_core_wasm_scalar;
 const is_error_type_name = codegen_names.is_error_type_name;
 const is_line_start = codegen_tokens.is_line_start;
-const isPublicTypeName = codegen_names.is_public_type_name;
-const isUserFuncDeclStart = codegen_tokens.is_user_func_decl_start;
-const moduleScopedSymbolName = codegen_names.module_scoped_symbol_name;
+const is_public_type_name = codegen_names.is_public_type_name;
+const is_user_func_decl_start = codegen_tokens.is_user_func_decl_start;
+const module_scoped_symbol_name = codegen_names.module_scoped_symbol_name;
 const module_tokens_equal = codegen_tokens.module_tokens_equal;
-const publicDeclName = codegen_names.public_decl_name;
+const public_decl_name = codegen_names.public_decl_name;
 const string_token_body = codegen_tokens.string_token_body;
 const tok_eq = codegen_tokens.tok_eq;
-const freeUnionLayout = codegen_union_layout.free_union_layout;
+const free_union_layout = codegen_union_layout.free_union_layout;
 const find_local_origin = context.find_local_origin;
-const findTopLevelTypeSeparator = codegen_tokens.find_top_level_type_separator;
-const findTypeArgEnd = codegen_tokens.find_type_arg_end;
+const find_top_level_type_separator = codegen_tokens.find_top_level_type_separator;
+const find_type_arg_end = codegen_tokens.find_type_arg_end;
 const trim_parens = codegen_tokens.trim_parens;
 const find_top_level_type_separator_from = codegen_tokens.find_top_level_type_separator_from;
 const Range = codegen_tokens.Range;
@@ -186,7 +186,7 @@ pub fn parse_codegen_type_expr(
                 return .{ .ty = storage_ty, .next_idx = close_bracket + 1 };
             }
         }
-        const ty = try compactTokenText(allocator, tokens, start_idx, close_bracket + 1);
+        const ty = try compact_token_text(allocator, tokens, start_idx, close_bracket + 1);
         errdefer allocator.free(ty);
         try owned_types.append(allocator, ty);
         return .{ .ty = ty, .next_idx = close_bracket + 1 };
@@ -195,7 +195,7 @@ pub fn parse_codegen_type_expr(
     if (tokens[start_idx].kind != .ident) return null;
     if (start_idx + 1 < end_idx and tok_eq(tokens[start_idx + 1], "<")) {
         const close_angle = find_matching_in_range(tokens, start_idx + 1, "<", ">", end_idx) catch return null;
-        const ty = try compactTokenText(allocator, tokens, start_idx, close_angle + 1);
+        const ty = try compact_token_text(allocator, tokens, start_idx, close_angle + 1);
         errdefer allocator.free(ty);
         try owned_types.append(allocator, ty);
         return .{ .ty = ty, .next_idx = close_angle + 1 };
@@ -397,7 +397,7 @@ pub fn parse_generic_inline_union_layout(
     }
 
     if (branches.items.len < 2) return null;
-    const source_ty = try compactTokenText(allocator, tokens, start_idx, end_idx);
+    const source_ty = try compact_token_text(allocator, tokens, start_idx, end_idx);
     errdefer allocator.free(source_ty);
     try owned_types.append(allocator, source_ty);
 
@@ -810,7 +810,7 @@ pub fn parse_inline_union_layout(
     }
 
     if (branches.items.len < 2) return null;
-    const source_ty = try compactTokenText(allocator, tokens, start_idx, end_idx);
+    const source_ty = try compact_token_text(allocator, tokens, start_idx, end_idx);
     errdefer allocator.free(source_ty);
     try owned_types.append(allocator, source_ty);
 

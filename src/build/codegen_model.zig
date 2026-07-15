@@ -5,10 +5,10 @@ const lexer = @import("lexer.zig");
 const runtime_prelude_wat = @import("runtime_prelude_wat.zig");
 const codegen_union_layout = @import("codegen_union_layout.zig");
 
-const freeUnionLayout = codegen_union_layout.free_union_layout;
+const free_union_layout = codegen_union_layout.free_union_layout;
 const UnionLayout = codegen_union_layout.UnionLayout;
 const UnionBranch = codegen_union_layout.UnionBranch;
-const unionLayoutsEqual = codegen_union_layout.union_layouts_equal;
+const union_layouts_equal = codegen_union_layout.union_layouts_equal;
 
 pub const SourceOrigin = enum {
     unknown,
@@ -414,10 +414,10 @@ pub fn free_func_result_items(allocator: std.mem.Allocator, items: []const FuncR
     for (items) |item| {
         const layout = item.union_layout orelse continue;
         if (result_union) |single_layout| {
-            if (unionLayoutsEqual(layout, single_layout)) continue;
+            if (union_layouts_equal(layout, single_layout)) continue;
         }
-        freeUnionLayout(allocator, layout);
+        free_union_layout(allocator, layout);
     }
-    if (result_union) |layout| freeUnionLayout(allocator, layout);
+    if (result_union) |layout| free_union_layout(allocator, layout);
     allocator.free(items);
 }

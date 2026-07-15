@@ -58,17 +58,17 @@ const StringDataContext = context.StringDataContext;
 const ExprCallHead = model.ExprCallHead;
 const storage_type_name_for_elem_owned = context.storage_type_name_for_elem_owned;
 const UnionLayout = codegen_union_layout.UnionLayout;
-const freeUnionLayout = codegen_union_layout.free_union_layout;
+const free_union_layout = codegen_union_layout.free_union_layout;
 const WasiHostImport = codegen_wasi_registry.WasiHostImport;
 const tok_eq = codegen_tokens.tok_eq;
 const find_matching = codegen_tokens.find_matching;
-const findLineStart = codegen_tokens.find_line_start;
+const find_line_start = codegen_tokens.find_line_start;
 const find_top_level_token = codegen_tokens.find_top_level_token;
 const find_arg_end = codegen_tokens.find_arg_end;
 const trim_parens = codegen_tokens.trim_parens;
-const publicDeclName = codegen_names.public_decl_name;
+const public_decl_name = codegen_names.public_decl_name;
 const append_fmt = codegen_names.append_fmt;
-const findTopLevelTypeSeparator = codegen_tokens.find_top_level_type_separator;
+const find_top_level_type_separator = codegen_tokens.find_top_level_type_separator;
 const find_top_level_type_separator_from = codegen_tokens.find_top_level_type_separator_from;
 const find_storage_primitive_local = codegen_storage_layout.find_storage_primitive_local;
 const is_storage_type_name = codegen_storage_layout.is_storage_type_name;
@@ -103,8 +103,8 @@ const module_tokens_equal = codegen_tokens.module_tokens_equal;
 pub const find_start_func = codegen_tokens.find_start_func;
 pub const find_token = codegen_tokens.find_token;
 const find_stmt_end = codegen_tokens.find_stmt_end;
-const findTypeArgEnd = codegen_tokens.find_type_arg_end;
-const appendMangledTypeName = codegen_names.append_mangled_type_name;
+const find_type_arg_end = codegen_tokens.find_type_arg_end;
+const append_mangled_type_name = codegen_names.append_mangled_type_name;
 const is_core_wasm_scalar = codegen_names.is_core_wasm_scalar;
 const find_codegen_import_by_alias = codegen_imports.find_codegen_import_by_alias;
 const find_imported_module_index_no_alloc = codegen_imports.find_imported_module_index_no_alloc;
@@ -534,7 +534,7 @@ pub fn collect_generic_func_instances_in_field_reflection_loop(
 }
 
 pub fn direct_call_expected_result_type(allocator: std.mem.Allocator, tokens: []const lexer.Token, call_start: usize, stmt_end: usize, ctx: CodegenContext, owned_types: *std.ArrayList([]const u8)) CodegenError!?[]const u8 {
-    const stmt_start = findLineStart(tokens, call_start);
+    const stmt_start = find_line_start(tokens, call_start);
     const eq_idx = find_top_level_token(tokens, stmt_start, stmt_end, "=") orelse return null;
     const rhs = trim_parens(tokens, eq_idx + 1, stmt_end);
     if (rhs.start != call_start) return null;
@@ -684,7 +684,7 @@ pub fn generic_template_logical_result_type(template: FuncDecl) ?[]const u8 {
 }
 
 pub fn collect_generic_func_instances_for_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, call_head: ExprCallHead, locals: *const LocalSet, ctx: CodegenContext, expected_result_ty: ?[]const u8, functions: *std.ArrayList(FuncDecl)) !void {
-    const name = publicDeclName(tokens[call_head.name_idx].lexeme);
+    const name = public_decl_name(tokens[call_head.name_idx].lexeme);
     const initial_len = functions.items.len;
     var idx: usize = 0;
     while (idx < initial_len) : (idx += 1) {
@@ -706,7 +706,7 @@ pub fn generic_template_matches_call_site(template: FuncDecl, tokens: []const le
     const child_tokens = import_ctx.graph.modules[child_idx].tokens;
     if (!module_tokens_equal(template.tokens, child_tokens)) return false;
     if (std.mem.eql(u8, template.name, import_ref.alias)) return true;
-    return same_callable_source_name(template.source_name, publicDeclName(import_ref.target));
+    return same_callable_source_name(template.source_name, public_decl_name(import_ref.target));
 }
 
 pub fn collect_concrete_callback_func_instance_for_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, call_head: ExprCallHead, ctx: CodegenContext, func: FuncDecl, functions: *std.ArrayList(FuncDecl)) !void {
@@ -897,7 +897,7 @@ pub fn instantiate_generic_func_result_items(allocator: std.mem.Allocator, templ
             bindings,
             owned_types,
         );
-        errdefer freeUnionLayout(allocator, next_layout);
+        errdefer free_union_layout(allocator, next_layout);
         var types = std.ArrayList([]const u8).empty;
         errdefer types.deinit(allocator);
         for (next_layout.payload_tys) |payload_ty| {
@@ -1430,7 +1430,7 @@ pub fn bind_explicit_generic_call_type_args(allocator: std.mem.Allocator, tokens
         if (type_idx >= template.type_params.len) return false;
         if (tok_eq(tokens[type_start], ",")) return false;
 
-        const type_end = findTypeArgEnd(tokens, type_start, call_head.type_args_end);
+        const type_end = find_type_arg_end(tokens, type_start, call_head.type_args_end);
         if (type_end == type_start) return false;
         const parsed_ty = (try parse_codegen_type_expr(allocator, tokens, type_start, type_end, owned_types)) orelse return false;
         if (parsed_ty.next_idx != type_end) return false;
@@ -1509,7 +1509,7 @@ pub fn bind_generic_type_from_concrete(allocator: std.mem.Allocator, expected_ty
     const expected_args = generic_type_args_range(expected_ty) orelse return false;
     const actual_args = generic_type_args_range(actual_ty) orelse return false;
     if (!std.mem.eql(u8, expected_args.base, actual_args.base)) return false;
-    if (findTopLevelTypeSeparator(expected_args.args, ',') == null and findTopLevelTypeSeparator(actual_args.args, ',') == null) {
+    if (find_top_level_type_separator(expected_args.args, ',') == null and find_top_level_type_separator(actual_args.args, ',') == null) {
         return try bind_generic_type_from_concrete(
             allocator,
             expected_args.args,
@@ -1531,7 +1531,7 @@ pub fn bind_generic_type_from_concrete(allocator: std.mem.Allocator, expected_ty
 }
 
 pub fn bind_generic_type_list_from_concrete(allocator: std.mem.Allocator, expected: []const u8, actual: []const u8, sep: u8, type_params: []const []const u8, bindings: *std.ArrayList(GenericTypeBinding), owned_types: *std.ArrayList([]const u8)) CodegenError!bool {
-    if (findTopLevelTypeSeparator(expected, sep) == null and findTopLevelTypeSeparator(actual, sep) == null) return false;
+    if (find_top_level_type_separator(expected, sep) == null and find_top_level_type_separator(actual, sep) == null) return false;
 
     var expected_start: usize = 0;
     var actual_start: usize = 0;
@@ -1562,13 +1562,13 @@ pub fn generic_instance_name(allocator: std.mem.Allocator, template: FuncDecl, b
     for (template.type_params) |type_param| {
         const binding = find_generic_binding(bindings, type_param) orelse return error.NoMatchingCall;
         try out.appendSlice(allocator, "__");
-        try appendMangledTypeName(allocator, &out, binding.ty);
+        try append_mangled_type_name(allocator, &out, binding.ty);
     }
     if (func_has_untyped_params(template)) {
         try out.appendSlice(allocator, "__abi");
         for (param_tys) |param_ty| {
             try out.appendSlice(allocator, "__");
-            try appendMangledTypeName(allocator, &out, param_ty);
+            try append_mangled_type_name(allocator, &out, param_ty);
         }
     }
     for (callback_bindings) |binding| {
@@ -1599,13 +1599,13 @@ pub fn find_generic_template_for_call(functions: []const FuncDecl, tokens: []con
         if (!func.is_generic_template) continue;
         if (!module_tokens_equal(func.tokens, child_tokens)) continue;
         if (std.mem.eql(u8, func.name, import_ref.alias)) return func;
-        if (same_callable_source_name(func.source_name, publicDeclName(import_ref.target))) return func;
+        if (same_callable_source_name(func.source_name, public_decl_name(import_ref.target))) return func;
     }
     return null;
 }
 
 pub fn infer_generic_call_union_result_layout(allocator: std.mem.Allocator, tokens: []const lexer.Token, call_head: ExprCallHead, locals: *const LocalSet, ctx: CodegenContext, result_owned_types: *std.ArrayList([]const u8)) CodegenError!?UnionLayout {
-    const name = publicDeclName(tokens[call_head.name_idx].lexeme);
+    const name = public_decl_name(tokens[call_head.name_idx].lexeme);
     for (ctx.functions) |template| {
         if (!generic_template_matches_call_site(template, tokens, ctx, name)) continue;
 
