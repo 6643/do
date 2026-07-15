@@ -177,12 +177,12 @@ const codegen_collect_structs = @import("codegen_collect_structs.zig");
 const codegen_collect_declarations = @import("codegen_collect_declarations.zig");
 const codegen_collect_body = @import("codegen_collect_body.zig");
 const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
-const tupleElementTypeAt = codegen_emit_wasi.tupleElementTypeAt;
-const tupleScalarLeafStorageByteWidthCtx = codegen_emit_wasi.tupleScalarLeafStorageByteWidthCtx;
-const findStoragePrimitiveLocal = codegen_emit_wasi.findStoragePrimitiveLocal;
-const isStorageTypeName = codegen_emit_wasi.isStorageTypeName;
-const tupleArity = codegen_emit_wasi.tupleArity;
-const isTupleTypeName = codegen_emit_wasi.isTupleTypeName;
+const tuple_element_type_at = codegen_emit_wasi.tuple_element_type_at;
+const tuple_scalar_leaf_storage_byte_width_ctx = codegen_emit_wasi.tuple_scalar_leaf_storage_byte_width_ctx;
+const find_storage_primitive_local = codegen_emit_wasi.find_storage_primitive_local;
+const is_storage_type_name = codegen_emit_wasi.is_storage_type_name;
+const tuple_arity = codegen_emit_wasi.tuple_arity;
+const is_tuple_type_name = codegen_emit_wasi.is_tuple_type_name;
 const codegen_callbacks = @import("codegen_callbacks.zig");
 const codegen_emit_storage_values = @import("codegen_emit_storage_values.zig");
 const codegen_emit_storage_operations = @import("codegen_emit_storage_operations.zig");
@@ -192,10 +192,10 @@ const codegen_emit_call = @import("codegen_emit_call.zig");
 const gen_generic = @import("gen_generic.zig");
 const collect_body_locals_with_mode = codegen_collect_body.collect_body_locals_with_mode;
 // Re-export expression and call emit entry points.
-const emitStartFunc = codegen_emit_expression.emitStartFunc;
-pub const emitScalarNumericStartWithBackendIr = codegen_emit_expression.emitScalarNumericStartWithBackendIr;
-const emitTestFuncs = codegen_emit_expression.emitTestFuncs;
-const emitUserFuncs = codegen_emit_expression.emitUserFuncs;
+const emit_start_func = codegen_emit_expression.emit_start_func;
+pub const emitScalarNumericStartWithBackendIr = codegen_emit_expression.emit_scalar_numeric_start_with_backend_ir;
+const emit_test_funcs = codegen_emit_expression.emit_test_funcs;
+const emit_user_funcs = codegen_emit_expression.emit_user_funcs;
 
 // Re-export generic instantiation (physical home: gen_generic.zig).
 pub const appendUnmanagedStructResultAbi = gen_generic.appendUnmanagedStructResultAbi;
@@ -266,9 +266,9 @@ pub fn collect_body_locals(
     installGenHooks();
     return codegen_collect_body.collect_body_locals(allocator, tokens, start_idx, end_idx, ctx, out);
 }
-const directManagedCallLastUseMoveSource = codegen_emit_call.directManagedCallLastUseMoveSource;
-const directManagedUnionBindingCallMoveSource = codegen_emit_call.directManagedUnionBindingCallMoveSource;
-const emitMultiResultAssignment = codegen_emit_call.emitMultiResultAssignment;
+const direct_managed_call_last_use_move_source = codegen_emit_call.direct_managed_call_last_use_move_source;
+const direct_managed_union_binding_call_move_source = codegen_emit_call.direct_managed_union_binding_call_move_source;
+const emit_multi_result_assignment = codegen_emit_call.emit_multi_result_assignment;
 pub fn emitExpr(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -280,7 +280,7 @@ pub fn emitExpr(
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     installGenHooks();
-    return codegen_emit_expression.emitExpr(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, out);
+    return codegen_emit_expression.emit_expr(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, out);
 }
 pub fn emitExprWithMoveContext(
     allocator: std.mem.Allocator,
@@ -294,40 +294,40 @@ pub fn emitExprWithMoveContext(
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     installGenHooks();
-    return codegen_emit_expression.emitExprWithMoveContext(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, move_ctx, out);
+    return codegen_emit_expression.emit_expr_with_move_context(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, move_ctx, out);
 }
-const emitBareUserFuncCall = codegen_emit_call.emitBareUserFuncCall;
-const emitBareUserFuncCallWithMoveContext = codegen_emit_call.emitBareUserFuncCallWithMoveContext;
-const appendFuncParamLocals = codegen_emit_call.appendFuncParamLocals;
-const funcHasCallbackParams = codegen_emit_call.funcHasCallbackParams;
-const emitUserFuncCallWithMoveContext = codegen_emit_call.emitUserFuncCallWithMoveContext;
-const emitUserFuncCallWithUnionBindingMove = codegen_emit_call.emitUserFuncCallWithUnionBindingMove;
+const emit_bare_user_func_call = codegen_emit_call.emit_bare_user_func_call;
+const emit_bare_user_func_call_with_move_context = codegen_emit_call.emit_bare_user_func_call_with_move_context;
+const append_func_param_locals = codegen_emit_call.append_func_param_locals;
+const func_has_callback_params = codegen_emit_call.func_has_callback_params;
+const emit_user_func_call_with_move_context = codegen_emit_call.emit_user_func_call_with_move_context;
+const emit_user_func_call_with_union_binding_move = codegen_emit_call.emit_user_func_call_with_union_binding_move;
 const codegen_emit_control = @import("codegen_emit_control.zig");
 // re-export codegen_emit_control
-const fieldReflectionLoopHeader = codegen_emit_control.fieldReflectionLoopHeader;
-const emitBody = codegen_emit_control.emitBody;
-const appendConditionNarrowingForBranch = codegen_emit_control.appendConditionNarrowingForBranch;
-const typedScalarBindingType = codegen_emit_control.typedScalarBindingType;
+const field_reflection_loop_header = codegen_emit_control.field_reflection_loop_header;
+const emit_body = codegen_emit_control.emit_body;
+const append_condition_narrowing_for_branch = codegen_emit_control.append_condition_narrowing_for_branch;
+const typed_scalar_binding_type = codegen_emit_control.typed_scalar_binding_type;
 const codegen_emit_union = @import("codegen_emit_union.zig");
 // re-export codegen_emit_union
-const emitUnionValue = codegen_emit_union.emitUnionValue;
-const cloneUnionLayoutSubstituted = codegen_emit_union.cloneUnionLayoutSubstituted;
-const emitUnionStructPayloadForType = codegen_emit_union.emitUnionStructPayloadForType;
+const emit_union_value = codegen_emit_union.emit_union_value;
+const clone_union_layout_substituted = codegen_emit_union.clone_union_layout_substituted;
+const emit_union_struct_payload_for_type = codegen_emit_union.emit_union_struct_payload_for_type;
 const codegen_emit_struct = @import("codegen_emit_struct.zig");
 const codegen_emit_struct_fields = @import("codegen_emit_struct_fields.zig");
 // re-export codegen_emit_struct
-const fieldReflectionLocalNamePrefix = codegen_emit_struct_fields.fieldReflectionLocalNamePrefix;
-const fieldVisibleFromTokens = codegen_emit_struct_fields.fieldVisibleFromTokens;
-const borrowedFieldMetaLocalSet = codegen_emit_struct_fields.borrowedFieldMetaLocalSet;
-pub const fieldGetLastUseMoveSource = codegen_emit_struct_fields.fieldGetLastUseMoveSource;
+const field_reflection_local_name_prefix = codegen_emit_struct_fields.field_reflection_local_name_prefix;
+const field_visible_from_tokens = codegen_emit_struct_fields.field_visible_from_tokens;
+const borrowed_field_meta_local_set = codegen_emit_struct_fields.borrowed_field_meta_local_set;
+pub const fieldGetLastUseMoveSource = codegen_emit_struct_fields.field_get_last_use_move_source;
 const applyGuardLoopControlNarrowing = codegen_emit_struct.applyGuardLoopControlNarrowing;
 const applyCollectGuardReturnNarrowing = codegen_emit_struct.applyCollectGuardReturnNarrowing;
 // re-export codegen_emit_storage_values
-const parseStorageType = codegen_storage_layout.parseStorageType;
-const substituteStructFieldType = codegen_storage_layout.substituteStructFieldType;
+const parse_storage_type = codegen_storage_layout.parse_storage_type;
+const substitute_struct_field_type = codegen_storage_layout.substitute_struct_field_type;
 pub const findFuncDeclForCallHead = codegen_emit_storage_values.findFuncDeclForCallHead;
-const inferExprType = codegen_storage_layout.inferExprType;
-const directManagedLastUseMoveSource = codegen_emit_storage_values.directManagedLastUseMoveSource;
+const infer_expr_type = codegen_storage_layout.infer_expr_type;
+const direct_managed_last_use_move_source = codegen_emit_storage_values.direct_managed_last_use_move_source;
 const findCallbackBinding = codegen_emit_storage_values.findCallbackBinding;
 const callbackBindingsHaveSameShape = codegen_emit_storage_values.callbackBindingsHaveSameShape;
 const callArgMatchesParam = codegen_emit_storage_values.callArgMatchesParam;
@@ -335,9 +335,9 @@ const callArgsMatchVariadicTail = codegen_emit_storage_values.callArgsMatchVaria
 pub const funcVariadicElemType = codegen_emit_storage_values.funcVariadicElemType;
 const lambdaExprShape = codegen_emit_storage_values.lambdaExprShape;
 const callbackBindingHasSameConcreteArg = codegen_emit_storage_values.callbackBindingHasSameConcreteArg;
-const lambdaParamTypeName = codegen_storage_layout.lambdaParamTypeName;
-const lambdaExplicitReturnType = codegen_storage_layout.lambdaExplicitReturnType;
-const inferLambdaExprReturnType = codegen_storage_layout.inferLambdaExprReturnType;
+const lambda_param_type_name = codegen_storage_layout.lambda_param_type_name;
+const lambda_explicit_return_type = codegen_storage_layout.lambda_explicit_return_type;
+const infer_lambda_expr_return_type = codegen_storage_layout.infer_lambda_expr_return_type;
 const cloneLocalSet = codegen_emit_storage_values.cloneLocalSet;
 const findCallbackRefFunc = codegen_emit_storage_values.findCallbackRefFunc;
 const gen_ownership = @import("gen_ownership.zig");
@@ -459,67 +459,67 @@ const findStructDecl = gen_collect_util.findStructDecl;
 const findStructLayout = gen_collect_util.findStructLayout;
 const appendTupleLeafTypes = gen_collect_util.appendTupleLeafTypes;
 // re-export codegen_emit_wasi
-const codegenTypesCompatible = codegen_emit_wasi.codegenTypesCompatible;
+const codegen_types_compatible = codegen_emit_wasi.codegen_types_compatible;
 pub fn emitWasiResourceDropCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emitWasiResourceDropCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
+    return codegen_emit_wasi.emit_wasi_resource_drop_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
 pub fn emitWasiListU8ResultCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emitWasiListU8ResultCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
+    return codegen_emit_wasi.emit_wasi_list_u8_result_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
 pub fn emitWasiResultUnitCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emitWasiResultUnitCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
+    return codegen_emit_wasi.emit_wasi_result_unit_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
 pub fn emitWasiResultDescriptorPathCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emitWasiResultDescriptorPathCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
+    return codegen_emit_wasi.emit_wasi_result_descriptor_path_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
 pub fn emitWasiResultOutputWriteCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emitWasiResultOutputWriteCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
+    return codegen_emit_wasi.emit_wasi_result_output_write_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
 pub fn emitWasiResultDescriptorCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emitWasiResultDescriptorCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
+    return codegen_emit_wasi.emit_wasi_result_descriptor_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
 pub fn emitWasiDescriptorHandleArg(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emitWasiDescriptorHandleArg(allocator, tokens, start_idx, end_idx, locals, ctx, out, emitExpr);
+    return codegen_emit_wasi.emit_wasi_descriptor_handle_arg(allocator, tokens, start_idx, end_idx, locals, ctx, out, emitExpr);
 }
 
 pub fn emitWasiResultLinkAtCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emitWasiResultLinkAtCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
+    return codegen_emit_wasi.emit_wasi_result_link_at_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
 pub fn emitWasiResultFilesizeCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emitWasiResultFilesizeCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
+    return codegen_emit_wasi.emit_wasi_result_filesize_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
 pub fn emitWasiResultU64StreamCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emitWasiResultU64StreamCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
+    return codegen_emit_wasi.emit_wasi_result_u64_stream_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
 pub fn emitWasiResultReadCall(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emitWasiResultReadCall(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
+    return codegen_emit_wasi.emit_wasi_result_read_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
 pub fn emitWasiResultListU8Call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emitWasiResultListU8Call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
+    return codegen_emit_wasi.emit_wasi_result_list_u8_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emitExpr);
 }
 
 fn installGenHooks() void {
-    codegen_callbacks.install(codegen_emit_expression.emitExpr, codegen_emit_expression.emitExprWithMoveContext, codegen_emit_call.emitUserFuncCallWithMoveContext);
-    codegen_callbacks.installBody(codegen_emit_control.emitBody);
-    codegen_callbacks.installUnionValue(codegen_emit_union.emitUnionValue);
+    codegen_callbacks.install(codegen_emit_expression.emit_expr, codegen_emit_expression.emit_expr_with_move_context, codegen_emit_call.emit_user_func_call_with_move_context);
+    codegen_callbacks.install_body(codegen_emit_control.emit_body);
+    codegen_callbacks.install_union_value(codegen_emit_union.emit_union_value);
     codegen_callbacks.install_collect_body_locals(codegen_collect_body.collect_body_locals);
     codegen_callbacks.install_collect_body_locals_with_mode(codegen_collect_body.collect_body_locals_with_mode);
-    codegen_callbacks.installEmitMultiResultAssignment(codegen_emit_call.emitMultiResultAssignment);
-    codegen_callbacks.installEmitBareUserFuncCall(codegen_emit_call.emitBareUserFuncCall);
-    codegen_callbacks.installEmitBareUserFuncCallMove(codegen_emit_call.emitBareUserFuncCallWithMoveContext);
-    codegen_callbacks.installEmitUserFuncCallUnionBindingMove(codegen_emit_call.emitUserFuncCallWithUnionBindingMove);
-    codegen_callbacks.installEmitUnionStructPayloadForType(codegen_emit_union.emitUnionStructPayloadForType);
-    codegen_callbacks.installInferGenericCallUnionResult(inferGenericCallUnionResultLayout);
+    codegen_callbacks.install_emit_multi_result_assignment(codegen_emit_call.emit_multi_result_assignment);
+    codegen_callbacks.install_emit_bare_user_func_call(codegen_emit_call.emit_bare_user_func_call);
+    codegen_callbacks.install_emit_bare_user_func_call_move(codegen_emit_call.emit_bare_user_func_call_with_move_context);
+    codegen_callbacks.install_emit_user_func_call_union_binding_move(codegen_emit_call.emit_user_func_call_with_union_binding_move);
+    codegen_callbacks.install_emit_union_struct_payload_for_type(codegen_emit_union.emit_union_struct_payload_for_type);
+    codegen_callbacks.install_infer_generic_call_union_result(inferGenericCallUnionResultLayout);
 }
 
 pub fn emitWat(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph) ![]u8 {
@@ -680,8 +680,8 @@ pub fn emitWatWithOptions(allocator: std.mem.Allocator, program: parser.Program,
     try component_metadata_wat.emitHostImports(allocator, &out, host_imports.items);
     try runtime_prelude_wat.emitStringDataMemory(allocator, &out, string_data.items.items, .{ .component_core = options.component_core });
     try runtime_prelude_wat.emitArcRuntimePrelude(allocator, &out, string_data.items.items, struct_layouts.items);
-    try emitUserFuncs(allocator, ctx, &out);
-    try emitStartFunc(allocator, tokens, ctx, &out);
+    try emit_user_funcs(allocator, ctx, &out);
+    try emit_start_func(allocator, tokens, ctx, &out);
     try out.appendSlice(allocator, ")\n");
     return out.toOwnedSlice(allocator);
 }
@@ -845,8 +845,8 @@ pub fn emitTestWat(allocator: std.mem.Allocator, program: parser.Program, tokens
     try component_metadata_wat.emitHostImports(allocator, &out, host_imports.items);
     try runtime_prelude_wat.emitStringDataMemory(allocator, &out, string_data.items.items, .{});
     try runtime_prelude_wat.emitArcRuntimePrelude(allocator, &out, string_data.items.items, struct_layouts.items);
-    try emitUserFuncs(allocator, ctx, &out);
-    try emitTestFuncs(allocator, tokens, test_decls, ctx, &out);
+    try emit_user_funcs(allocator, ctx, &out);
+    try emit_test_funcs(allocator, tokens, test_decls, ctx, &out);
     try function_body_wat.emitTestStartFunc(allocator, &out, test_decls.len);
     try out.appendSlice(allocator, ")\n");
     return out.toOwnedSlice(allocator);
@@ -862,7 +862,7 @@ pub fn directManagedLastUseMoveSourceOrigin(
     ctx: CodegenContext,
     defer_ctx: ?*const DeferContext,
 ) ?SourceOrigin {
-    const source = directManagedLastUseMoveSource(tokens, start_idx, end_idx, body_end, target_source_name, locals, ctx, defer_ctx) orelse return null;
+    const source = direct_managed_last_use_move_source(tokens, start_idx, end_idx, body_end, target_source_name, locals, ctx, defer_ctx) orelse return null;
     return source.origin;
 }
 
@@ -874,7 +874,7 @@ pub fn directManagedCallLastUseMoveSourceOrigin(
     locals: *const LocalSet,
     ctx: CodegenContext,
 ) ?SourceOrigin {
-    const source = directManagedCallLastUseMoveSource(tokens, start_idx, end_idx, move_ctx, locals, ctx) orelse return null;
+    const source = direct_managed_call_last_use_move_source(tokens, start_idx, end_idx, move_ctx, locals, ctx) orelse return null;
     return source.origin;
 }
 
@@ -890,7 +890,7 @@ pub fn directManagedUnionBindingCallMoveSourceOrigin(
     ctx: CodegenContext,
     defer_ctx: ?*const DeferContext,
 ) ?SourceOrigin {
-    const source = directManagedUnionBindingCallMoveSource(tokens, start_idx, end_idx, args_end, stmt_end, body_end, allow_last_use_move, locals, ctx, defer_ctx) orelse return null;
+    const source = direct_managed_union_binding_call_move_source(tokens, start_idx, end_idx, args_end, stmt_end, body_end, allow_last_use_move, locals, ctx, defer_ctx) orelse return null;
     return source.origin;
 }
 
@@ -972,11 +972,11 @@ pub fn isCodegenImportAliasReachable(allocator: std.mem.Allocator, graph: *const
 }
 
 pub fn isTypedScalarBinding(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext) bool {
-    return typedScalarBindingType(tokens, start_idx, end_idx, ctx) != null;
+    return typed_scalar_binding_type(tokens, start_idx, end_idx, ctx) != null;
 }
 
 pub fn isStorageU8Type(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
-    const parsed = parseStorageType(tokens, start_idx, end_idx) orelse return false;
+    const parsed = parse_storage_type(tokens, start_idx, end_idx) orelse return false;
     return std.mem.eql(u8, parsed.elem_ty, "u8");
 }
 

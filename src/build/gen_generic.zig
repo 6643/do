@@ -71,32 +71,32 @@ const publicDeclName = codegen_names.public_decl_name;
 const appendFmt = codegen_names.append_fmt;
 const findTopLevelTypeSeparator = codegen_tokens.find_top_level_type_separator;
 const findTopLevelTypeSeparatorFrom = codegen_tokens.find_top_level_type_separator_from;
-const findStoragePrimitiveLocal = codegen_emit_wasi.findStoragePrimitiveLocal;
-const isStorageTypeName = codegen_emit_wasi.isStorageTypeName;
-const tupleArity = codegen_emit_wasi.tupleArity;
-const isTupleTypeName = codegen_emit_wasi.isTupleTypeName;
-const appendFuncParamLocals = codegen_emit_call.appendFuncParamLocals;
-const funcHasCallbackParams = codegen_emit_call.funcHasCallbackParams;
-const fieldReflectionLoopHeader = codegen_emit_control.fieldReflectionLoopHeader;
-const appendConditionNarrowingForBranch = codegen_emit_control.appendConditionNarrowingForBranch;
-const cloneUnionLayoutSubstituted = codegen_emit_union.cloneUnionLayoutSubstituted;
-const fieldReflectionLocalNamePrefix = codegen_emit_struct_fields.fieldReflectionLocalNamePrefix;
-const fieldVisibleFromTokens = codegen_emit_struct_fields.fieldVisibleFromTokens;
-const borrowedFieldMetaLocalSet = codegen_emit_struct_fields.borrowedFieldMetaLocalSet;
+const find_storage_primitive_local = codegen_emit_wasi.find_storage_primitive_local;
+const is_storage_type_name = codegen_emit_wasi.is_storage_type_name;
+const tuple_arity = codegen_emit_wasi.tuple_arity;
+const is_tuple_type_name = codegen_emit_wasi.is_tuple_type_name;
+const append_func_param_locals = codegen_emit_call.append_func_param_locals;
+const func_has_callback_params = codegen_emit_call.func_has_callback_params;
+const field_reflection_loop_header = codegen_emit_control.field_reflection_loop_header;
+const append_condition_narrowing_for_branch = codegen_emit_control.append_condition_narrowing_for_branch;
+const clone_union_layout_substituted = codegen_emit_union.clone_union_layout_substituted;
+const field_reflection_local_name_prefix = codegen_emit_struct_fields.field_reflection_local_name_prefix;
+const field_visible_from_tokens = codegen_emit_struct_fields.field_visible_from_tokens;
+const borrowed_field_meta_local_set = codegen_emit_struct_fields.borrowed_field_meta_local_set;
 const applyGuardLoopControlNarrowing = codegen_emit_struct.applyGuardLoopControlNarrowing;
 const applyCollectGuardReturnNarrowing = codegen_emit_struct.applyCollectGuardReturnNarrowing;
-const substituteStructFieldType = codegen_storage_layout.substituteStructFieldType;
+const substitute_struct_field_type = codegen_storage_layout.substitute_struct_field_type;
 pub const findFuncDeclForCallHead = codegen_emit_storage_values.findFuncDeclForCallHead;
-const inferExprType = codegen_storage_layout.inferExprType;
+const infer_expr_type = codegen_storage_layout.infer_expr_type;
 const findCallbackBinding = codegen_emit_storage_values.findCallbackBinding;
 const callbackBindingsHaveSameShape = codegen_emit_storage_values.callbackBindingsHaveSameShape;
 const callArgMatchesParam = codegen_emit_storage_values.callArgMatchesParam;
 const callArgsMatchVariadicTail = codegen_emit_storage_values.callArgsMatchVariadicTail;
 const lambdaExprShape = codegen_emit_storage_values.lambdaExprShape;
 const callbackBindingHasSameConcreteArg = codegen_emit_storage_values.callbackBindingHasSameConcreteArg;
-const lambdaParamTypeName = codegen_storage_layout.lambdaParamTypeName;
-const lambdaExplicitReturnType = codegen_storage_layout.lambdaExplicitReturnType;
-const inferLambdaExprReturnType = codegen_storage_layout.inferLambdaExprReturnType;
+const lambda_param_type_name = codegen_storage_layout.lambda_param_type_name;
+const lambda_explicit_return_type = codegen_storage_layout.lambda_explicit_return_type;
+const infer_lambda_expr_return_type = codegen_storage_layout.infer_lambda_expr_return_type;
 const cloneLocalSet = codegen_emit_storage_values.cloneLocalSet;
 const findCallbackRefFunc = codegen_emit_storage_values.findCallbackRefFunc;
 const findTopLevelGuardLoopControl = gen_ownership.findTopLevelGuardLoopControl;
@@ -128,7 +128,7 @@ pub const funcParamAbiType = gen_collect_util.funcParamAbiType;
 const findStructDecl = gen_collect_util.findStructDecl;
 const findStructLayout = gen_collect_util.findStructLayout;
 const appendTupleLeafTypes = gen_collect_util.appendTupleLeafTypes;
-const codegenTypesCompatible = codegen_emit_wasi.codegenTypesCompatible;
+const codegen_types_compatible = codegen_emit_wasi.codegen_types_compatible;
 const collect_body_locals = codegen_collect_body.collect_body_locals;
 
 pub fn parseLambdaParamNames(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ![]const []const u8 {
@@ -157,7 +157,7 @@ pub fn parseLambdaParamTypes(allocator: std.mem.Allocator, tokens: []const lexer
     while (i <= end_idx) : (i += 1) {
         if (i < end_idx and !is_top_level_comma_any(tokens, i, start_idx, end_idx)) continue;
         if (seg_start < i) {
-            try out.append(allocator, lambdaParamTypeName(tokens, seg_start, i));
+            try out.append(allocator, lambda_param_type_name(tokens, seg_start, i));
         }
         seg_start = i + 1;
     }
@@ -279,7 +279,7 @@ pub fn collectGenericFuncInstancesForConcreteFuncs(allocator: std.mem.Allocator,
             .type_bindings = func.type_bindings,
             .callback_bindings = func.callback_bindings,
         };
-        try appendFuncParamLocals(allocator, func, ctx, &locals);
+        try append_func_param_locals(allocator, func, ctx, &locals);
         try collect_body_locals(allocator, func.tokens, func.body_start, func.body_end, ctx, &locals);
         try collectGenericFuncInstancesInRange(allocator, func.tokens, func.body_start, func.body_end, &locals, ctx, functions);
     }
@@ -447,7 +447,7 @@ pub fn collectGenericFuncInstancesInRange(
             i = stmt_end - 1;
             continue;
         }
-        if (fieldReflectionLoopHeader(tokens, i, stmt_end, current_ctx, &active_locals)) |header| {
+        if (field_reflection_loop_header(tokens, i, stmt_end, current_ctx, &active_locals)) |header| {
             try collectGenericFuncInstancesInFieldReflectionLoop(allocator, tokens, header, &active_locals, current_ctx, functions);
             i = stmt_end - 1;
             continue;
@@ -458,7 +458,7 @@ pub fn collectGenericFuncInstancesInRange(
         try collectGenericFuncInstancesInCallArgs(allocator, tokens, call_head.args_start, call_head.args_end, &active_locals, current_ctx, functions);
         current_ctx.functions = functions.items;
         if (findFuncDeclForCallHead(tokens, call_head, &active_locals, current_ctx)) |func| {
-            if (funcHasCallbackParams(func) and func.callback_bindings.len == 0) {
+            if (func_has_callback_params(func) and func.callback_bindings.len == 0) {
                 try collectConcreteCallbackFuncInstanceForCall(allocator, tokens, call_head, current_ctx, func, functions);
             }
             try applyCollectGuardReturnNarrowing(allocator, tokens, i, stmt_end, &active_locals, current_ctx);
@@ -483,7 +483,7 @@ pub fn collectGenericFuncInstancesInGuardReturn(allocator: std.mem.Allocator, to
 
     var return_locals = try cloneLocalSet(allocator, locals);
     defer return_locals.deinit(allocator);
-    try appendConditionNarrowingForBranch(allocator, tokens, start_idx + 1, return_idx, &return_locals, ctx, true);
+    try append_condition_narrowing_for_branch(allocator, tokens, start_idx + 1, return_idx, &return_locals, ctx, true);
     if (return_idx + 1 < end_idx) {
         try collectGenericFuncInstancesInRange(allocator, tokens, return_idx + 1, end_idx, &return_locals, ctx, functions);
     }
@@ -518,10 +518,10 @@ pub fn collectGenericFuncInstancesInFieldReflectionLoop(
 ) anyerror!void {
     var visible_index: usize = 0;
     for (header.decl.fields, 0..) |field, decl_index| {
-        if (!fieldVisibleFromTokens(field, header.decl, tokens)) continue;
-        const prefix = try fieldReflectionLocalNamePrefix(allocator, header, visible_index);
+        if (!field_visible_from_tokens(field, header.decl, tokens)) continue;
+        const prefix = try field_reflection_local_name_prefix(allocator, header, visible_index);
         defer allocator.free(prefix);
-        var field_locals = try borrowedFieldMetaLocalSet(allocator, locals, .{
+        var field_locals = try borrowed_field_meta_local_set(allocator, locals, .{
             .name = header.field_name,
             .struct_name = header.decl.name,
             .decl_index = decl_index,
@@ -672,7 +672,7 @@ pub fn bindGenericExpectedResult(allocator: std.mem.Allocator, template: FuncDec
     const expected = expected_result_ty orelse return true;
     const template_result = genericTemplateLogicalResultType(template) orelse return true;
     if (!typeContainsTypeParam(template.type_params, template_result)) {
-        return codegenTypesCompatible(template_result, expected);
+        return codegen_types_compatible(template_result, expected);
     }
     return try bindGenericTypeFromConcrete(allocator, template_result, expected, template.type_params, bindings, owned_types);
 }
@@ -794,7 +794,7 @@ pub fn collectConcreteCallbackFuncInstanceForCall(allocator: std.mem.Allocator, 
     instance_ctx.functions = functions.items;
     instance_ctx.type_bindings = instance.type_bindings;
     instance_ctx.callback_bindings = instance.callback_bindings;
-    try appendFuncParamLocals(allocator, instance, instance_ctx, &instance_locals);
+    try append_func_param_locals(allocator, instance, instance_ctx, &instance_locals);
     try collect_body_locals(allocator, instance.tokens, instance.body_start, instance.body_end, instance_ctx, &instance_locals);
     try collectGenericFuncInstancesInRange(allocator, instance.tokens, instance.body_start, instance.body_end, &instance_locals, instance_ctx, functions);
 }
@@ -889,7 +889,7 @@ pub fn genericTemplateMatchesConcreteParams(allocator: std.mem.Allocator, templa
 
 pub fn instantiateGenericFuncResultItems(allocator: std.mem.Allocator, template: FuncDecl, result_tys: []const []const u8, bindings: []const GenericTypeBinding, structs: []const StructDecl, struct_layouts: []const StructLayout, owned_types: *std.ArrayList([]const u8)) !FuncResultParse {
     if (template.result_union) |layout| {
-        const next_layout = try cloneUnionLayoutSubstituted(
+        const next_layout = try clone_union_layout_substituted(
             allocator,
             template.tokens,
             structs,
@@ -928,8 +928,8 @@ pub fn instantiateGenericFuncResultItems(allocator: std.mem.Allocator, template:
 
     for (result_tys) |result_ty| {
         const abi_start = types.items.len;
-        if (isTupleTypeName(result_ty)) {
-            const arity = tupleArity(result_ty) orelse return error.UnsupportedLowering;
+        if (is_tuple_type_name(result_ty)) {
+            const arity = tuple_arity(result_ty) orelse return error.UnsupportedLowering;
             if (arity < 2) return error.NoMatchingCall;
             const leaf_start = types.items.len;
             try appendTupleLeafTypes(allocator, result_ty, &types);
@@ -991,7 +991,7 @@ pub fn appendUnmanagedStructResultAbi(
     if (findStructLayout(struct_layouts, result_ty) != null) return false;
 
     for (decl.fields) |field| {
-        const field_ty = try substituteStructFieldType(allocator, decl, result_ty, field.ty, owned_types);
+        const field_ty = try substitute_struct_field_type(allocator, decl, result_ty, field.ty, owned_types);
         if (!isCoreWasmScalar(field_ty)) return error.NoMatchingCall;
         try types.append(allocator, field_ty);
     }
@@ -1043,7 +1043,7 @@ pub fn bindGenericFuncCall(allocator: std.mem.Allocator, tokens: []const lexer.T
                 if (arg_start < args_end and tokEq(tokens[arg_start], ",")) arg_start += 1;
                 continue;
             }
-            const arg_ty = inferExprType(tokens, arg_start, arg_end, locals, ctx) orelse return false;
+            const arg_ty = infer_expr_type(tokens, arg_start, arg_end, locals, ctx) orelse return false;
             if (!try bindGenericTypeFromConcrete(allocator, param_ty, arg_ty, template.type_params, bindings, owned_types)) {
                 return false;
             }
@@ -1167,7 +1167,7 @@ pub fn prebindGenericCallbackLambda(
         }
     }
     const ret_ty = shape.return_type orelse return true;
-    const lambda_ret = lambdaExplicitReturnType(tokens, lambda) orelse return true;
+    const lambda_ret = lambda_explicit_return_type(tokens, lambda) orelse return true;
     return try prebindGenericTypeIfParam(allocator, ret_ty, lambda_ret, template.type_params, bindings, owned_types);
 }
 
@@ -1250,7 +1250,7 @@ pub fn bindGenericVariadicTail(allocator: std.mem.Allocator, tokens: []const lex
         const rest_start = args_start + 1;
         if (findArgEnd(tokens, rest_start, args_end) != args_end) return false;
         if (rest_start + 1 != args_end or tokens[rest_start].kind != .ident) return false;
-        const rest = findStoragePrimitiveLocal(locals.storage_locals.items, tokens[rest_start].lexeme) orelse return false;
+        const rest = find_storage_primitive_local(locals.storage_locals.items, tokens[rest_start].lexeme) orelse return false;
         if (typeContainsTypeParam(template.type_params, param_ty)) {
             if (!try bindGenericTypeFromConcrete(allocator, param_ty, rest.elem_ty, template.type_params, bindings, owned_types)) return false;
         }
@@ -1260,7 +1260,7 @@ pub fn bindGenericVariadicTail(allocator: std.mem.Allocator, tokens: []const lex
             const tail_end = findArgEnd(tokens, tail_start, args_end);
             if (tail_end == tail_start) return false;
             if (typeContainsTypeParam(template.type_params, param_ty)) {
-                const actual_ty = inferExprType(tokens, tail_start, tail_end, locals, ctx) orelse {
+                const actual_ty = infer_expr_type(tokens, tail_start, tail_end, locals, ctx) orelse {
                     tail_start = tail_end;
                     if (tail_start < args_end and tokEq(tokens[tail_start], ",")) tail_start += 1;
                     continue;
@@ -1405,7 +1405,7 @@ pub fn bindGenericCallbackLambdaArg(
     const ret_ty = shape.return_type orelse return true;
     const concrete_shape = try instantiateFuncTypeShape(allocator, shape, bindings.items, owned_types);
     defer allocator.free(concrete_shape.param_types);
-    const lambda_ret = (try inferLambdaExprReturnType(allocator, tokens, lambda, concrete_shape, locals, ctx)) orelse return false;
+    const lambda_ret = (try infer_lambda_expr_return_type(allocator, tokens, lambda, concrete_shape, locals, ctx)) orelse return false;
     return try matchOrBindGenericType(allocator, ret_ty, lambda_ret, template.type_params, bindings, owned_types);
 }
 
@@ -1418,7 +1418,7 @@ pub fn inferUntypedGenericParamAbiType(
 ) ?[]const u8 {
     const range = trimParens(tokens, start_idx, end_idx);
     if (range.end == range.start + 1 and tokens[range.start].kind == .string) return "[u8]";
-    return inferExprType(tokens, start_idx, end_idx, locals, ctx);
+    return infer_expr_type(tokens, start_idx, end_idx, locals, ctx);
 }
 
 pub fn bindExplicitGenericCallTypeArgs(allocator: std.mem.Allocator, tokens: []const lexer.Token, call_head: ExprCallHead, template: FuncDecl, bindings: *std.ArrayList(GenericTypeBinding), owned_types: *std.ArrayList([]const u8)) !bool {
@@ -1496,7 +1496,7 @@ pub fn bindGenericTypeFromConcrete(allocator: std.mem.Allocator, expected_ty: []
         return std.mem.eql(u8, expected_ty, actual_ty);
     }
 
-    if (isStorageTypeName(expected_ty) and isStorageTypeName(actual_ty)) {
+    if (is_storage_type_name(expected_ty) and is_storage_type_name(actual_ty)) {
         return try bindGenericTypeFromConcrete(
             allocator,
             expected_ty[1 .. expected_ty.len - 1],
@@ -1624,7 +1624,7 @@ pub fn inferGenericCallUnionResultLayout(allocator: std.mem.Allocator, tokens: [
         if (!try bindGenericFuncCall(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, template, &bindings, &param_tys, &owned_types)) continue;
         if (!genericBindingsCoverTypeParams(template, bindings.items)) continue;
         const layout = template.result_union orelse continue;
-        return try cloneUnionLayoutSubstituted(
+        return try clone_union_layout_substituted(
             allocator,
             template.tokens,
             ctx.structs,

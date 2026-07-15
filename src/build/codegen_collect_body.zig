@@ -78,42 +78,42 @@ const substituteGenericTypeOwned = gen_collect_util.substituteGenericTypeOwned;
 const callHeadAt = gen_import.callHeadAt;
 const exprCallHead = gen_import.exprCallHead;
 const importedAliasContextForTokens = gen_import.importedAliasContextForTokens;
-const isManagedLocalType = codegen_emit_wasi.isManagedLocalType;
-const isTupleTypeName = codegen_emit_wasi.isTupleTypeName;
-const tupleArity = codegen_emit_wasi.tupleArity;
-const tupleElementTypeAt = codegen_emit_wasi.tupleElementTypeAt;
-const tupleScalarLeafStorageByteWidthCtx = codegen_emit_wasi.tupleScalarLeafStorageByteWidthCtx;
+const is_managed_local_type = codegen_emit_wasi.is_managed_local_type;
+const is_tuple_type_name = codegen_emit_wasi.is_tuple_type_name;
+const tuple_arity = codegen_emit_wasi.tuple_arity;
+const tuple_element_type_at = codegen_emit_wasi.tuple_element_type_at;
+const tuple_scalar_leaf_storage_byte_width_ctx = codegen_emit_wasi.tuple_scalar_leaf_storage_byte_width_ctx;
 const ManagedPayloadBinding = codegen_storage_layout.ManagedPayloadBinding;
-const stmtContainsStorageAggLiteral = codegen_emit_storage_values.stmtContainsStorageAggLiteral;
+const stmt_contains_storage_agg_literal = codegen_emit_storage_values.stmt_contains_storage_agg_literal;
 const findLocalName = codegen_emit_storage_values.findLocalName;
-const inferExprType = codegen_storage_layout.inferExprType;
+const infer_expr_type = codegen_storage_layout.infer_expr_type;
 const findFuncDeclForCallHead = codegen_emit_storage_values.findFuncDeclForCallHead;
-const substituteStructFieldType = codegen_storage_layout.substituteStructFieldType;
-const managedPayloadElemTypeFromName = codegen_storage_layout.managedPayloadElemTypeFromName;
+const substitute_struct_field_type = codegen_storage_layout.substitute_struct_field_type;
+const managed_payload_elem_type_from_name = codegen_storage_layout.managed_payload_elem_type_from_name;
 const emitZeroValueForType = codegen_emit_struct.emitZeroValueForType;
-const stmtContainsStructLiteralExpr = codegen_emit_struct.stmtContainsStructLiteralExpr;
-const fieldVisibleFromTokens = codegen_emit_struct_fields.fieldVisibleFromTokens;
-const fieldReflectionLocalNamePrefix = codegen_emit_struct_fields.fieldReflectionLocalNamePrefix;
-const unionPayloadComparisonCallBranch = codegen_emit_union.unionPayloadComparisonCallBranch;
-const buildPayloadEnumUnionLayout = codegen_emit_union.buildPayloadEnumUnionLayout;
-const fieldReflectionLoopHeader = codegen_emit_control.fieldReflectionLoopHeader;
-const isDiscardAssignment = codegen_emit_control.isDiscardAssignment;
-const collectionLoopHeader = codegen_emit_control.collectionLoopHeader;
-const recvLoopHeader = codegen_emit_control.recvLoopHeader;
-const isDeadManagedAliasBinding = codegen_emit_control.isDeadManagedAliasBinding;
-const typedScalarBindingType = codegen_emit_control.typedScalarBindingType;
-const inferredStructCtorBinding = codegen_emit_control.inferredStructCtorBinding;
-const inferredScalarBindingType = codegen_emit_control.inferredScalarBindingType;
-const isManagedLocalAssignmentStmt = codegen_emit_control.isManagedLocalAssignmentStmt;
-const isCodegenScalarType = codegen_emit_union.isCodegenScalarType;
-const borrowedFieldMetaLocalSet = codegen_emit_struct_fields.borrowedFieldMetaLocalSet;
-const collectFieldReflectionBodyLocals = codegen_emit_struct_fields.collectFieldReflectionBodyLocals;
+const stmt_contains_struct_literal_expr = codegen_emit_struct.stmt_contains_struct_literal_expr;
+const field_visible_from_tokens = codegen_emit_struct_fields.field_visible_from_tokens;
+const field_reflection_local_name_prefix = codegen_emit_struct_fields.field_reflection_local_name_prefix;
+const union_payload_comparison_call_branch = codegen_emit_union.union_payload_comparison_call_branch;
+const build_payload_enum_union_layout = codegen_emit_union.build_payload_enum_union_layout;
+const field_reflection_loop_header = codegen_emit_control.field_reflection_loop_header;
+const is_discard_assignment = codegen_emit_control.is_discard_assignment;
+const collection_loop_header = codegen_emit_control.collection_loop_header;
+const recv_loop_header = codegen_emit_control.recv_loop_header;
+const is_dead_managed_alias_binding = codegen_emit_control.is_dead_managed_alias_binding;
+const typed_scalar_binding_type = codegen_emit_control.typed_scalar_binding_type;
+const inferred_struct_ctor_binding = codegen_emit_control.inferred_struct_ctor_binding;
+const inferred_scalar_binding_type = codegen_emit_control.inferred_scalar_binding_type;
+const is_managed_local_assignment_stmt = codegen_emit_control.is_managed_local_assignment_stmt;
+const is_codegen_scalar_type = codegen_emit_union.is_codegen_scalar_type;
+const borrowed_field_meta_local_set = codegen_emit_struct_fields.borrowed_field_meta_local_set;
+const collect_field_reflection_body_locals = codegen_emit_struct_fields.collect_field_reflection_body_locals;
 const inferredStructBinding = codegen_emit_struct.inferredStructBinding;
 const typedStructBinding = codegen_emit_struct.typedStructBinding;
 const appendTypedLocalWithDecl = codegen_emit_storage_values.appendTypedLocalWithDecl;
 const appendManagedStructFieldMetaLocal = codegen_emit_storage_values.appendManagedStructFieldMetaLocal;
-const managedPayloadBinding = codegen_storage_layout.managedPayloadBinding;
-const storageBindingElemType = codegen_storage_layout.storageBindingElemType;
+const managed_payload_binding = codegen_storage_layout.managed_payload_binding;
+const storage_binding_elem_type = codegen_storage_layout.storage_binding_elem_type;
 
 fn stmt_contains_wasi_socket_create(
     tokens: []const lexer.Token,
@@ -185,10 +185,10 @@ pub fn multi_result_lhs_for_item(
     const local_ty = findLocalType(locals.locals.items, name) orelse return null;
     if (!std.mem.eql(u8, local_ty, item.ty)) return null;
     if (item.abi_len != 1) return null;
-    if (isManagedLocalType(local_ty, ctx)) {
+    if (is_managed_local_type(local_ty, ctx)) {
         return .{ .name = local_name, .ty = local_ty, .item = item, .kind = .managed };
     }
-    if (isCodegenScalarType(ctx, local_ty)) {
+    if (is_codegen_scalar_type(ctx, local_ty)) {
         return .{ .name = local_name, .ty = local_ty, .item = item, .kind = .scalar };
     }
     return null;
@@ -208,7 +208,7 @@ pub fn collect_callback_call_args(allocator: std.mem.Allocator, tokens: []const 
             tokens[range.start].lexeme
         else
             null;
-        const arg_ty = binding.shape.param_types[idx] orelse inferExprType(tokens, arg_start, arg_end, locals, ctx) orelse return error.NoMatchingCall;
+        const arg_ty = binding.shape.param_types[idx] orelse infer_expr_type(tokens, arg_start, arg_end, locals, ctx) orelse return error.NoMatchingCall;
         try out.append(allocator, .{
             .source_name = binding.lambda_params[idx],
             .actual_name = actual_name,
@@ -246,7 +246,7 @@ fn append_struct_binding_field_locals(
         try out.appendBorrowedLocal(allocator, local_name, struct_ty, true);
         for (decl.fields) |field| {
             const field_ty = if (substitute)
-                try substituteStructFieldType(allocator, decl, struct_ty, field.ty, &out.owned_names)
+                try substitute_struct_field_type(allocator, decl, struct_ty, field.ty, &out.owned_names)
             else
                 field.ty;
             try appendManagedStructFieldMetaLocal(allocator, out, local_name, field.name, field_ty);
@@ -256,7 +256,7 @@ fn append_struct_binding_field_locals(
     }
     for (decl.fields) |field| {
         const field_ty = if (substitute)
-            try substituteStructFieldType(allocator, decl, struct_ty, field.ty, &out.owned_names)
+            try substitute_struct_field_type(allocator, decl, struct_ty, field.ty, &out.owned_names)
         else
             field.ty;
         try append_local_field(allocator, out, tokens, ctx, local_name, field.name, field_ty);
@@ -269,8 +269,8 @@ pub fn collect_body_locals_with_mode(allocator: std.mem.Allocator, tokens: []con
         const stmt_end = findStmtEnd(tokens, i, end_idx);
         if (stmt_contains_string_literal(tokens, i, stmt_end) or
             stmt_contains_field_name_intrinsic(tokens, i, stmt_end) or
-            stmtContainsStorageAggLiteral(tokens, i, stmt_end) or
-            stmtContainsStructLiteralExpr(tokens, i, stmt_end) or
+            stmt_contains_storage_agg_literal(tokens, i, stmt_end) or
+            stmt_contains_struct_literal_expr(tokens, i, stmt_end) or
             stmt_contains_get_intrinsic(tokens, i, stmt_end) or
             stmt_contains_storage_comparison_intrinsic(tokens, i, stmt_end) or
             stmt_contains_nil_comparison_call(tokens, i, stmt_end) or
@@ -278,7 +278,7 @@ pub fn collect_body_locals_with_mode(allocator: std.mem.Allocator, tokens: []con
         {
             try out.ensureStorageWriteTemps(allocator);
         }
-        if (stmtContainsStructLiteralExpr(tokens, i, stmt_end)) {
+        if (stmt_contains_struct_literal_expr(tokens, i, stmt_end)) {
             try out.ensureStructLiteralTmp(allocator);
         }
         if (stmt_contains_variadic_user_call(tokens, i, stmt_end, out, ctx)) {
@@ -291,11 +291,11 @@ pub fn collect_body_locals_with_mode(allocator: std.mem.Allocator, tokens: []con
         if (stmt_contains_wasi_socket_create(tokens, i, stmt_end, ctx)) {
             try out.ensureWasiFamilyTmp(allocator);
         }
-        if (isDiscardAssignment(tokens, i, stmt_end)) {
+        if (is_discard_assignment(tokens, i, stmt_end)) {
             i = stmt_end;
             continue;
         }
-        if (try isDeadManagedAliasBinding(allocator, tokens, i, stmt_end, end_idx, out, ctx)) {
+        if (try is_dead_managed_alias_binding(allocator, tokens, i, stmt_end, end_idx, out, ctx)) {
             i = stmt_end;
             continue;
         }
@@ -312,16 +312,16 @@ pub fn collect_body_locals_with_mode(allocator: std.mem.Allocator, tokens: []con
         } else if (try inferred_union_call_binding(allocator, tokens, i, stmt_end, out, ctx, &out.owned_names)) |binding| {
             errdefer if (binding.owns_layout) freeUnionLayout(allocator, binding.layout);
             try out.appendUnionLocal(allocator, tokens[i].lexeme, binding.layout, true, binding.owns_layout);
-        } else if (typedScalarBindingType(tokens, i, stmt_end, ctx)) |ty| {
+        } else if (typed_scalar_binding_type(tokens, i, stmt_end, ctx)) |ty| {
             try out.appendBorrowedLocal(allocator, tokens[i].lexeme, ty, true);
         } else if (!hasLocal(out.locals.items, tokens[i].lexeme) and
             findStructLocal(out.struct_locals.items, tokens[i].lexeme) == null and
-            inferredStructCtorBinding(tokens, i, stmt_end, ctx.structs) != null)
+            inferred_struct_ctor_binding(tokens, i, stmt_end, ctx.structs) != null)
         {
             // Unmanaged pure-scalar structs live in struct_locals + field slots (`out.n`),
             // not as a single `out` scalar local. Reassignment (e.g. `out = @field_set(...)`)
             // must not invent a field-reflection-scoped shadow binding.
-            const decl = inferredStructCtorBinding(tokens, i, stmt_end, ctx.structs).?;
+            const decl = inferred_struct_ctor_binding(tokens, i, stmt_end, ctx.structs).?;
             const local_name = try out.appendStructLocal(allocator, tokens[i].lexeme, decl.name, true);
             try append_struct_binding_field_locals(allocator, tokens, ctx, out, local_name, decl.name, decl, false);
         } else if (!hasLocal(out.locals.items, tokens[i].lexeme) and
@@ -331,51 +331,51 @@ pub fn collect_body_locals_with_mode(allocator: std.mem.Allocator, tokens: []con
             const binding = inferredStructBinding(tokens, i, stmt_end, out, ctx).?;
             const local_name = try out.appendStructLocal(allocator, tokens[i].lexeme, binding.ty, true);
             try append_struct_binding_field_locals(allocator, tokens, ctx, out, local_name, binding.ty, binding.decl, true);
-        } else if (!hasLocal(out.locals.items, tokens[i].lexeme) and inferredScalarBindingType(tokens, i, stmt_end, out, ctx) != null) {
-            const ty = inferredScalarBindingType(tokens, i, stmt_end, out, ctx).?;
+        } else if (!hasLocal(out.locals.items, tokens[i].lexeme) and inferred_scalar_binding_type(tokens, i, stmt_end, out, ctx) != null) {
+            const ty = inferred_scalar_binding_type(tokens, i, stmt_end, out, ctx).?;
             try out.appendBorrowedLocal(allocator, tokens[i].lexeme, ty, true);
         } else if (!hasLocal(out.locals.items, tokens[i].lexeme) and inferred_managed_payload_binding(tokens, i, stmt_end, out, ctx) != null) {
             const binding = inferred_managed_payload_binding(tokens, i, stmt_end, out, ctx).?;
-            if (isTupleTypeName(binding.elem_ty) and tupleScalarLeafStorageByteWidthCtx(binding.elem_ty, ctx) == null) {
+            if (is_tuple_type_name(binding.elem_ty) and tuple_scalar_leaf_storage_byte_width_ctx(binding.elem_ty, ctx) == null) {
                 return error.UnsupportedTupleStorageLeaf;
             }
             try out.appendStorageLocalWithType(allocator, tokens[i].lexeme, binding.ty, binding.elem_ty, true);
             try out.ensureStorageWriteTemps(allocator);
-            if (tupleScalarLeafStorageByteWidthCtx(binding.elem_ty, ctx) != null) {
+            if (tuple_scalar_leaf_storage_byte_width_ctx(binding.elem_ty, ctx) != null) {
                 try out.ensureTuplePackTemps(allocator);
             }
         } else if (try typed_managed_payload_binding(allocator, tokens, i, stmt_end, ctx, &out.owned_names)) |binding| {
-            if (isTupleTypeName(binding.elem_ty) and tupleScalarLeafStorageByteWidthCtx(binding.elem_ty, ctx) == null) {
+            if (is_tuple_type_name(binding.elem_ty) and tuple_scalar_leaf_storage_byte_width_ctx(binding.elem_ty, ctx) == null) {
                 return error.UnsupportedTupleStorageLeaf;
             }
             try out.appendStorageLocalWithType(allocator, tokens[i].lexeme, binding.ty, binding.elem_ty, true);
             try out.ensureStorageWriteTemps(allocator);
-            if (tupleScalarLeafStorageByteWidthCtx(binding.elem_ty, ctx) != null) {
+            if (tuple_scalar_leaf_storage_byte_width_ctx(binding.elem_ty, ctx) != null) {
                 try out.ensureTuplePackTemps(allocator);
             }
-        } else if (managedPayloadBinding(tokens, i, stmt_end)) |binding| {
-            if (isTupleTypeName(binding.elem_ty) and tupleScalarLeafStorageByteWidthCtx(binding.elem_ty, ctx) == null) {
+        } else if (managed_payload_binding(tokens, i, stmt_end)) |binding| {
+            if (is_tuple_type_name(binding.elem_ty) and tuple_scalar_leaf_storage_byte_width_ctx(binding.elem_ty, ctx) == null) {
                 return error.UnsupportedTupleStorageLeaf;
             }
             try out.appendStorageLocalWithType(allocator, tokens[i].lexeme, binding.ty, binding.elem_ty, true);
             try out.ensureStorageWriteTemps(allocator);
-            if (tupleScalarLeafStorageByteWidthCtx(binding.elem_ty, ctx) != null) {
+            if (tuple_scalar_leaf_storage_byte_width_ctx(binding.elem_ty, ctx) != null) {
                 try out.ensureTuplePackTemps(allocator);
             }
-        } else if (storageBindingElemType(tokens, i, stmt_end)) |raw_elem_ty| {
+        } else if (storage_binding_elem_type(tokens, i, stmt_end)) |raw_elem_ty| {
             const elem_ty = try substituteGenericTypeOwned(allocator, raw_elem_ty, ctx.type_bindings, &out.owned_names);
             // Scheme A: scalar + managed handle + pure-scalar nested struct slots.
-            if (isTupleTypeName(elem_ty) and tupleScalarLeafStorageByteWidthCtx(elem_ty, ctx) == null) {
+            if (is_tuple_type_name(elem_ty) and tuple_scalar_leaf_storage_byte_width_ctx(elem_ty, ctx) == null) {
                 return error.UnsupportedTupleStorageLeaf;
             }
             try out.appendStorageLocal(allocator, tokens[i].lexeme, elem_ty, true);
             try out.ensureStorageWriteTemps(allocator);
-            if (tupleScalarLeafStorageByteWidthCtx(elem_ty, ctx) != null) {
+            if (tuple_scalar_leaf_storage_byte_width_ctx(elem_ty, ctx) != null) {
                 try out.ensureTuplePackTemps(allocator);
             }
         } else if (try collect_multi_result_assignment_locals(allocator, tokens, i, stmt_end, ctx, out)) {
             // Multi-result inferred locals collected.
-        } else if (isManagedLocalAssignmentStmt(tokens, i, stmt_end, out, ctx)) {
+        } else if (is_managed_local_assignment_stmt(tokens, i, stmt_end, out, ctx)) {
             try out.ensureStorageWriteTemps(allocator);
         } else if (multi_result_assignment_needs_managed_tmp(tokens, i, stmt_end, out, ctx)) {
             if (!hasLocal(out.locals.items, STORAGE_OVERWRITE_TMP_LOCAL)) {
@@ -454,7 +454,7 @@ pub fn stmt_contains_union_payload_comparison_call(tokens: []const lexer.Token, 
             i = call_head.args_end;
             continue;
         }
-        if (unionPayloadComparisonCallBranch(tokens, call_head.args_start, call_head.args_end, locals, ctx) != null) return true;
+        if (union_payload_comparison_call_branch(tokens, call_head.args_start, call_head.args_end, locals, ctx) != null) return true;
         i = call_head.args_end;
     }
     return false;
@@ -470,7 +470,7 @@ pub fn append_loop_value_local(
     origin: SourceOrigin,
 ) !void {
     if (hasLocal(out.locals.items, value_name)) return;
-    if (isTupleTypeName(elem_ty)) {
+    if (is_tuple_type_name(elem_ty)) {
         const local_name = try out.appendStructLocalWithOrigin(allocator, value_name, elem_ty, true, origin);
         try append_tuple_local_fields(allocator, out, tokens, ctx, local_name, elem_ty);
         try out.ensureTuplePackTemps(allocator);
@@ -491,7 +491,7 @@ pub fn collect_collection_loop_locals(
     if (header.source_is_expr) {
         try appendLoopSourceStorageLocal(allocator, out, start_idx, header.source_ty, header.elem_ty);
     }
-    if (isManagedLocalType(header.elem_ty, ctx)) {
+    if (is_managed_local_type(header.elem_ty, ctx)) {
         try out.ensureStorageWriteTemps(allocator);
     }
     if (header.value_name) |value_name| {
@@ -513,7 +513,7 @@ pub fn collect_recv_loop_locals(
     out: *LocalSet,
 ) !void {
     try append_loop_count_local(allocator, out, start_idx);
-    if (isManagedLocalType(header.elem_ty, ctx)) {
+    if (is_managed_local_type(header.elem_ty, ctx)) {
         try out.ensureStorageWriteTemps(allocator);
     }
     if (header.value_name) |value_name| {
@@ -533,13 +533,13 @@ pub fn collect_loop_block_locals(allocator: std.mem.Allocator, tokens: []const l
     const close_brace = findMatchingInRange(tokens, open_brace, "{", "}", end_idx) catch return false;
     if (close_brace + 1 != end_idx) return false;
 
-    if (fieldReflectionLoopHeader(tokens, start_idx, end_idx, ctx, out)) |header| {
+    if (field_reflection_loop_header(tokens, start_idx, end_idx, ctx, out)) |header| {
         try collect_field_reflection_loop_locals(allocator, tokens, header, ctx, out);
         return true;
     }
-    if (collectionLoopHeader(tokens, start_idx, end_idx, ctx, out)) |header| {
+    if (collection_loop_header(tokens, start_idx, end_idx, ctx, out)) |header| {
         try collect_collection_loop_locals(allocator, tokens, start_idx, header, ctx, out);
-    } else if (recvLoopHeader(tokens, start_idx, end_idx, ctx, out)) |header| {
+    } else if (recv_loop_header(tokens, start_idx, end_idx, ctx, out)) |header| {
         try collect_recv_loop_locals(allocator, tokens, start_idx, header, ctx, out);
     }
 
@@ -550,10 +550,10 @@ pub fn collect_loop_block_locals(allocator: std.mem.Allocator, tokens: []const l
 pub fn collect_field_reflection_loop_locals(allocator: std.mem.Allocator, tokens: []const lexer.Token, header: FieldReflectionLoopHeader, ctx: CodegenContext, out: *LocalSet) CodegenError!void {
     var visible_index: usize = 0;
     for (header.decl.fields, 0..) |field, decl_index| {
-        if (!fieldVisibleFromTokens(field, header.decl, tokens)) continue;
-        const prefix = try fieldReflectionLocalNamePrefix(allocator, header, visible_index);
+        if (!field_visible_from_tokens(field, header.decl, tokens)) continue;
+        const prefix = try field_reflection_local_name_prefix(allocator, header, visible_index);
         defer allocator.free(prefix);
-        var field_locals = try borrowedFieldMetaLocalSet(allocator, out, .{
+        var field_locals = try borrowed_field_meta_local_set(allocator, out, .{
             .name = header.field_name,
             .struct_name = header.decl.name,
             .decl_index = decl_index,
@@ -561,7 +561,7 @@ pub fn collect_field_reflection_loop_locals(allocator: std.mem.Allocator, tokens
         }, prefix);
         defer field_locals.deinit(allocator);
         field_locals.local_name_prefix = prefix;
-        try collectFieldReflectionBodyLocals(allocator, tokens, header.open_brace + 1, header.close_brace, ctx, &field_locals);
+        try collect_field_reflection_body_locals(allocator, tokens, header.open_brace + 1, header.close_brace, ctx, &field_locals);
         try append_decl_only_locals(allocator, out, &field_locals);
         visible_index += 1;
     }
@@ -704,7 +704,7 @@ pub fn append_decl_only_locals(allocator: std.mem.Allocator, out: *LocalSet, sou
 
 pub fn append_local_field(allocator: std.mem.Allocator, out: *LocalSet, tokens: []const lexer.Token, ctx: CodegenContext, base: []const u8, field: []const u8, ty: []const u8) !void {
     const name = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ base, publicDeclName(field) });
-    if (isTupleTypeName(ty)) {
+    if (is_tuple_type_name(ty)) {
         try out.owned_names.append(allocator, name);
         const local_name = try out.appendStructLocal(allocator, name, ty, true);
         try append_tuple_local_fields(allocator, out, tokens, ctx, local_name, ty);
@@ -716,7 +716,7 @@ pub fn append_local_field(allocator: std.mem.Allocator, out: *LocalSet, tokens: 
             try out.owned_names.append(allocator, name);
             const local_name = try out.appendStructLocal(allocator, name, ty, true);
             for (decl.fields) |sf| {
-                const field_ty = try substituteStructFieldType(allocator, decl, ty, sf.ty, &out.owned_names);
+                const field_ty = try substitute_struct_field_type(allocator, decl, ty, sf.ty, &out.owned_names);
                 try append_local_field(allocator, out, tokens, ctx, local_name, sf.name, field_ty);
             }
             return;
@@ -736,7 +736,7 @@ pub fn append_local_field(allocator: std.mem.Allocator, out: *LocalSet, tokens: 
     }
     // Named payload enum type on field/local path
     if (findPayloadEnumDecl(ctx.payload_enums, ty)) |decl| {
-        const layout = try buildPayloadEnumUnionLayout(allocator, decl, tokens, ctx.structs, ctx.struct_layouts, &out.owned_names);
+        const layout = try build_payload_enum_union_layout(allocator, decl, tokens, ctx.structs, ctx.struct_layouts, &out.owned_names);
         errdefer freeUnionLayout(allocator, layout);
         const exists = findUnionLocalExact(out.union_locals.items, name) != null;
         if (!exists) {
@@ -815,7 +815,7 @@ pub fn typed_union_binding_layout(allocator: std.mem.Allocator, tokens: []const 
     if (eq_idx == start_idx + 2 and tokens[start_idx + 1].kind == .ident) {
         const ty_name = publicDeclName(tokens[start_idx + 1].lexeme);
         if (findPayloadEnumDecl(ctx.payload_enums, ty_name)) |decl| {
-            return try buildPayloadEnumUnionLayout(allocator, decl, tokens, ctx.structs, ctx.struct_layouts, owned_types);
+            return try build_payload_enum_union_layout(allocator, decl, tokens, ctx.structs, ctx.struct_layouts, owned_types);
         }
     }
     return try parseUnionTypeLayout(
@@ -852,10 +852,10 @@ pub fn inferred_union_call_binding(allocator: std.mem.Allocator, tokens: []const
 }
 
 pub fn append_tuple_local_fields(allocator: std.mem.Allocator, out: *LocalSet, tokens: []const lexer.Token, ctx: CodegenContext, base: []const u8, tuple_ty: []const u8) CodegenError!void {
-    const arity = tupleArity(tuple_ty) orelse return error.UnsupportedLowering;
+    const arity = tuple_arity(tuple_ty) orelse return error.UnsupportedLowering;
     var idx: usize = 0;
     while (idx < arity) : (idx += 1) {
-        const elem_ty = tupleElementTypeAt(tuple_ty, idx) orelse return error.UnsupportedLowering;
+        const elem_ty = tuple_element_type_at(tuple_ty, idx) orelse return error.UnsupportedLowering;
         var field_buf: [32]u8 = undefined;
         const field_name = try std.fmt.bufPrint(&field_buf, "{d}", .{idx});
         try append_local_field(allocator, out, tokens, ctx, base, field_name, elem_ty);
@@ -892,8 +892,8 @@ pub fn inferred_managed_payload_binding(
     if (start_idx + 3 > end_idx) return null;
     if (tokens[start_idx].kind != .ident) return null;
     if (!tokEq(tokens[start_idx + 1], "=")) return null;
-    const ty = inferExprType(tokens, start_idx + 2, end_idx, locals, ctx) orelse return null;
-    const elem_ty = managedPayloadElemTypeFromName(ty) orelse return null;
+    const ty = infer_expr_type(tokens, start_idx + 2, end_idx, locals, ctx) orelse return null;
+    const elem_ty = managed_payload_elem_type_from_name(ty) orelse return null;
     return .{ .ty = ty, .elem_ty = elem_ty };
 }
 
@@ -905,7 +905,7 @@ pub fn typed_managed_payload_binding(allocator: std.mem.Allocator, tokens: []con
     const parsed = (try parseCodegenTypeExpr(allocator, tokens, start_idx + 1, eq_idx, owned_types)) orelse return null;
     if (parsed.next_idx != eq_idx) return null;
     const ty = try substituteGenericTypeOwned(allocator, parsed.ty, ctx.type_bindings, owned_types);
-    const elem_ty = managedPayloadElemTypeFromName(ty) orelse return null;
+    const elem_ty = managed_payload_elem_type_from_name(ty) orelse return null;
     return .{ .ty = ty, .elem_ty = elem_ty };
 }
 
@@ -991,6 +991,6 @@ pub fn typed_tuple_binding_type(allocator: std.mem.Allocator, tokens: []const le
     const parsed_ty = (try parseCodegenTypeExpr(allocator, tokens, start_idx + 1, eq_idx, owned_types)) orelse return null;
     if (parsed_ty.next_idx != eq_idx) return null;
     const ty = try substituteGenericTypeOwned(allocator, parsed_ty.ty, ctx.type_bindings, owned_types);
-    if (!isTupleTypeName(ty)) return null;
+    if (!is_tuple_type_name(ty)) return null;
     return ty;
 }

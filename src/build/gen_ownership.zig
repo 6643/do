@@ -27,8 +27,8 @@ const CodegenContext = context.CodegenContext;
 const CodegenError = model.CodegenError;
 const LoopControl = context.LoopControl;
 const findStructLayout = gen_collect_util.findStructLayout;
-const isManagedLocalType = codegen_emit_wasi.isManagedLocalType;
-const isManagedPayloadType = codegen_emit_wasi.isManagedPayloadType;
+const is_managed_local_type = codegen_emit_wasi.is_managed_local_type;
+const is_managed_payload_type = codegen_emit_wasi.is_managed_payload_type;
 
 pub fn emitReleaseManagedLocals(allocator: std.mem.Allocator, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
     try emitReleaseManagedLocalsExcept(allocator, locals, ctx, null, out);
@@ -67,7 +67,7 @@ pub fn emitBlockReleaseManagedLocals(allocator: std.mem.Allocator, locals: *cons
 pub fn hasManagedLocals(locals: *const LocalSet, ctx: CodegenContext) bool {
     for (locals.locals.items) |local| {
         if (!local.release_on_scope_exit) continue;
-        if (isManagedLocalType(local.ty, ctx)) return true;
+        if (is_managed_local_type(local.ty, ctx)) return true;
     }
     return false;
 }
@@ -84,7 +84,7 @@ pub const OwnedLoopFrames = struct {
 };
 
 pub fn managedLocalKindForType(ty: []const u8, ctx: CodegenContext) ?ownership.ManagedLocalKind {
-    if (isManagedPayloadType(ty)) return .storage;
+    if (is_managed_payload_type(ty)) return .storage;
     if (findStructLayout(ctx.struct_layouts, ty) != null) return .managed_struct;
     return null;
 }

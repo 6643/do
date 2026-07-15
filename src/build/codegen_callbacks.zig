@@ -166,18 +166,18 @@ pub const EmitUnionStructPayloadForTypeFn = *const fn (
     out: *std.ArrayList(u8),
 ) CodegenError!bool;
 
-pub var emit_expr: EmitExprFn = undefined;
-pub var emit_expr_move: EmitExprMoveFn = undefined;
-pub var emit_user_func_call_move: EmitUserFuncCallMoveFn = undefined;
-pub var emit_body: ?EmitBodyFn = null;
-pub var emit_union_value: ?EmitUnionValueFn = null;
+var emit_expr_hook: EmitExprFn = undefined;
+var emit_expr_move_hook: EmitExprMoveFn = undefined;
+var emit_user_func_call_move_hook: EmitUserFuncCallMoveFn = undefined;
+var emit_body_hook: ?EmitBodyFn = null;
+var emit_union_value_hook: ?EmitUnionValueFn = null;
 var collect_body_locals_hook: ?CollectBodyLocalsFn = null;
 var collect_body_locals_with_mode_hook: ?CollectBodyLocalsWithModeFn = null;
-pub var emit_multi_result_assignment: ?EmitMultiResultAssignmentFn = null;
-pub var emit_bare_user_func_call: ?EmitBareUserFuncCallFn = null;
-pub var emit_bare_user_func_call_move: ?EmitBareUserFuncCallMoveFn = null;
-pub var emit_user_func_call_union_binding_move: ?EmitUserFuncCallUnionBindingMoveFn = null;
-pub var emit_union_struct_payload_for_type: ?EmitUnionStructPayloadForTypeFn = null;
+var emit_multi_result_assignment_hook: ?EmitMultiResultAssignmentFn = null;
+var emit_bare_user_func_call_hook: ?EmitBareUserFuncCallFn = null;
+var emit_bare_user_func_call_move_hook: ?EmitBareUserFuncCallMoveFn = null;
+var emit_user_func_call_union_binding_move_hook: ?EmitUserFuncCallUnionBindingMoveFn = null;
+var emit_union_struct_payload_for_type_hook: ?EmitUnionStructPayloadForTypeFn = null;
 
 pub const InferGenericCallUnionResultFn = *const fn (
     allocator: std.mem.Allocator,
@@ -190,7 +190,7 @@ pub const InferGenericCallUnionResultFn = *const fn (
 
 pub var infer_generic_call_union_result: ?InferGenericCallUnionResultFn = null;
 
-pub fn installInferGenericCallUnionResult(f: InferGenericCallUnionResultFn) void {
+pub fn install_infer_generic_call_union_result(f: InferGenericCallUnionResultFn) void {
     infer_generic_call_union_result = f;
 }
 
@@ -201,17 +201,17 @@ pub fn install(
     expr_move: EmitExprMoveFn,
     user_call_move: EmitUserFuncCallMoveFn,
 ) void {
-    emit_expr = expr;
-    emit_expr_move = expr_move;
-    emit_user_func_call_move = user_call_move;
+    emit_expr_hook = expr;
+    emit_expr_move_hook = expr_move;
+    emit_user_func_call_move_hook = user_call_move;
     installed = true;
 }
 
-pub fn installBody(f: EmitBodyFn) void {
-    emit_body = f;
+pub fn install_body(f: EmitBodyFn) void {
+    emit_body_hook = f;
 }
-pub fn installUnionValue(f: EmitUnionValueFn) void {
-    emit_union_value = f;
+pub fn install_union_value(f: EmitUnionValueFn) void {
+    emit_union_value_hook = f;
 }
 pub fn install_collect_body_locals(f: CollectBodyLocalsFn) void {
     collect_body_locals_hook = f;
@@ -219,23 +219,23 @@ pub fn install_collect_body_locals(f: CollectBodyLocalsFn) void {
 pub fn install_collect_body_locals_with_mode(f: CollectBodyLocalsWithModeFn) void {
     collect_body_locals_with_mode_hook = f;
 }
-pub fn installEmitMultiResultAssignment(f: EmitMultiResultAssignmentFn) void {
-    emit_multi_result_assignment = f;
+pub fn install_emit_multi_result_assignment(f: EmitMultiResultAssignmentFn) void {
+    emit_multi_result_assignment_hook = f;
 }
-pub fn installEmitBareUserFuncCall(f: EmitBareUserFuncCallFn) void {
-    emit_bare_user_func_call = f;
+pub fn install_emit_bare_user_func_call(f: EmitBareUserFuncCallFn) void {
+    emit_bare_user_func_call_hook = f;
 }
-pub fn installEmitBareUserFuncCallMove(f: EmitBareUserFuncCallMoveFn) void {
-    emit_bare_user_func_call_move = f;
+pub fn install_emit_bare_user_func_call_move(f: EmitBareUserFuncCallMoveFn) void {
+    emit_bare_user_func_call_move_hook = f;
 }
-pub fn installEmitUserFuncCallUnionBindingMove(f: EmitUserFuncCallUnionBindingMoveFn) void {
-    emit_user_func_call_union_binding_move = f;
+pub fn install_emit_user_func_call_union_binding_move(f: EmitUserFuncCallUnionBindingMoveFn) void {
+    emit_user_func_call_union_binding_move_hook = f;
 }
-pub fn installEmitUnionStructPayloadForType(f: EmitUnionStructPayloadForTypeFn) void {
-    emit_union_struct_payload_for_type = f;
+pub fn install_emit_union_struct_payload_for_type(f: EmitUnionStructPayloadForTypeFn) void {
+    emit_union_struct_payload_for_type_hook = f;
 }
 
-pub fn emitExpr(
+pub fn emit_expr(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -246,10 +246,10 @@ pub fn emitExpr(
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     if (!installed) return error.UnsupportedLowering;
-    return emit_expr(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, out);
+    return emit_expr_hook(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, out);
 }
 
-pub fn emitExprWithMoveContext(
+pub fn emit_expr_with_move_context(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -261,10 +261,10 @@ pub fn emitExprWithMoveContext(
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
     if (!installed) return error.UnsupportedLowering;
-    return emit_expr_move(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, move_ctx, out);
+    return emit_expr_move_hook(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, move_ctx, out);
 }
 
-pub fn emitUserFuncCallWithMoveContext(
+pub fn emit_user_func_call_with_move_context(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -276,10 +276,10 @@ pub fn emitUserFuncCallWithMoveContext(
     out: *std.ArrayList(u8),
 ) anyerror!bool {
     if (!installed) return error.UnsupportedLowering;
-    return emit_user_func_call_move(allocator, tokens, start_idx, end_idx, locals, ctx, func, move_ctx, out);
+    return emit_user_func_call_move_hook(allocator, tokens, start_idx, end_idx, locals, ctx, func, move_ctx, out);
 }
 
-pub fn emitBody(
+pub fn emit_body(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -299,11 +299,11 @@ pub fn emitBody(
     self_tail_tco: ?*const SelfTailTco,
     out: *std.ArrayList(u8),
 ) anyerror!void {
-    const f = emit_body orelse return error.UnsupportedLowering;
+    const f = emit_body_hook orelse return error.UnsupportedLowering;
     return f(allocator, tokens, start_idx, end_idx, body_start, locals, return_cleanup_locals, control_cleanup_locals, ctx, result_tys, result_items, result_struct, result_union, loop_ctx, defer_ctx, return_label, self_tail_tco, out);
 }
 
-pub fn emitUnionValue(
+pub fn emit_union_value(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -315,7 +315,7 @@ pub fn emitUnionValue(
     move_ctx: ?*const CallLastUseMoveContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
-    const f = emit_union_value orelse return error.UnsupportedLowering;
+    const f = emit_union_value_hook orelse return error.UnsupportedLowering;
     return f(allocator, tokens, start_idx, end_idx, locals, ctx, layout, copy_managed, move_ctx, out);
 }
 
@@ -344,7 +344,7 @@ pub fn collect_body_locals_with_mode(
     return f(allocator, tokens, start_idx, end_idx, ctx, out, recurse_nested);
 }
 
-pub fn emitMultiResultAssignment(
+pub fn emit_multi_result_assignment(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -356,11 +356,11 @@ pub fn emitMultiResultAssignment(
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
-    const f = emit_multi_result_assignment orelse return error.UnsupportedLowering;
+    const f = emit_multi_result_assignment_hook orelse return error.UnsupportedLowering;
     return f(allocator, tokens, start_idx, end_idx, body_end, allow_last_use_move, locals, defer_ctx, ctx, out);
 }
 
-pub fn emitBareUserFuncCall(
+pub fn emit_bare_user_func_call(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -369,11 +369,11 @@ pub fn emitBareUserFuncCall(
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
-    const f = emit_bare_user_func_call orelse return error.UnsupportedLowering;
+    const f = emit_bare_user_func_call_hook orelse return error.UnsupportedLowering;
     return f(allocator, tokens, start_idx, end_idx, locals, ctx, out);
 }
 
-pub fn emitBareUserFuncCallWithMoveContext(
+pub fn emit_bare_user_func_call_with_move_context(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -385,11 +385,11 @@ pub fn emitBareUserFuncCallWithMoveContext(
     ctx: CodegenContext,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
-    const f = emit_bare_user_func_call_move orelse return error.UnsupportedLowering;
+    const f = emit_bare_user_func_call_move_hook orelse return error.UnsupportedLowering;
     return f(allocator, tokens, start_idx, end_idx, body_end, allow_last_use_move, locals, defer_ctx, ctx, out);
 }
 
-pub fn emitUserFuncCallWithUnionBindingMove(
+pub fn emit_user_func_call_with_union_binding_move(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     start_idx: usize,
@@ -403,11 +403,11 @@ pub fn emitUserFuncCallWithUnionBindingMove(
     func: FuncDecl,
     out: *std.ArrayList(u8),
 ) anyerror!bool {
-    const f = emit_user_func_call_union_binding_move orelse return error.UnsupportedLowering;
+    const f = emit_user_func_call_union_binding_move_hook orelse return error.UnsupportedLowering;
     return f(allocator, tokens, start_idx, end_idx, stmt_end, body_end, allow_last_use_move, locals, defer_ctx, ctx, func, out);
 }
 
-pub fn emitUnionStructPayloadForType(
+pub fn emit_union_struct_payload_for_type(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     name: []const u8,
@@ -417,6 +417,6 @@ pub fn emitUnionStructPayloadForType(
     copy_managed: bool,
     out: *std.ArrayList(u8),
 ) CodegenError!bool {
-    const f = emit_union_struct_payload_for_type orelse return error.UnsupportedLowering;
+    const f = emit_union_struct_payload_for_type_hook orelse return error.UnsupportedLowering;
     return f(allocator, tokens, name, ty, locals, ctx, copy_managed, out);
 }
