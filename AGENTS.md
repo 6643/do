@@ -10,7 +10,7 @@ This repository contains the `do` language compiler and its regression suite.
     - Core pipeline: `src/build/lexer.zig` → `src/build/parser.zig` → `src/build/sema.zig` → `src/build/gen.zig`.
     - Shared pure helpers: `src/build/type_name.zig` (type/layout SSOT), `src/build/sema_error.zig`, `src/build/diagnostics.zig`.
     - Sema domain (flat modules; one-way deps; leaf domains do not import each other):
-        - `sema.zig` — public entry (`checkProgram` / `takeLastErrorSite` / `ErrorSite`) + orchestration
+        - `sema.zig` — public entry (`check_program` / `take_last_error_site` / `ErrorSite`) + orchestration
         - `sema_tokens.zig` — token/name/scan predicates and range helpers
         - `sema_shapes.zig` — shared shape types (`FuncShape` / `CallArgShape` / `StructInfo` / …)
         - `sema_function_signatures.zig` / `sema_function_calls.zig` / `sema_function_lambdas.zig` — function signatures, calls/generics, lambdas

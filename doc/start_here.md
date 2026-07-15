@@ -77,7 +77,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | 共享纯函数 | `type_name` | 类型/布局 SSOT (scalar/storage/managed/Tuple scheme A) |
 | | `sema_error` | ErrorSite 与 sema 错误构造 |
 | | `diagnostics` | check/LSP 共用前端诊断收集 (原 `src/lsp/diagnostics.zig` 已删除) |
-| Sema 域 | `sema.zig` | 公开入口 (`checkProgram` / `takeLastErrorSite`) + 编排 |
+| Sema 域 | `sema.zig` | 公开入口 (`check_program` / `take_last_error_site`) + 编排 |
 | | `sema_tokens.zig` | token/name/scan 谓词与行扫描 |
 | | `sema_shapes.zig` | 共享 shape 类型 (`FuncShape` / `StructInfo` / …) |
 | | `sema_function_signatures` / `_calls` / `_lambdas` | 签名 / 调用·泛型 / lambda |
