@@ -69,15 +69,17 @@ Status: completed; pure storage/type/layout helpers now live in their physical o
 
 ## Task 4: Codegen pipeline facade reduction
 
+Status: completed; pipeline now exposes orchestration and stable WAT entrypoints while generic, storage/layout, token/import, and WASI helper access stays at physical owners.
+
 **Files:**
 - Modify: `src/build/codegen_pipeline.zig`
 - Modify: `src/build/codegen_generics.zig`, `codegen_emit_call.zig`, `codegen_emit_expression.zig`, `codegen_emit_control.zig`, `codegen_emit_union.zig`, and affected tests
 - Test: `src/build/test/check_module_boundaries.sh`, full regression
 
-- [ ] Keep pipeline orchestration, hook installation, and public WAT entry points.
-- [ ] Replace broad generic/storage/WASI re-exports with direct imports from physical owners.
-- [ ] Keep only re-exports required by the stable API or explicit unit-test boundary.
-- [ ] Confirm no leaf module imports `codegen_pipeline.zig`.
+- [x] Keep pipeline orchestration, hook installation, and public WAT entry points.
+- [x] Replace broad generic/storage/WASI re-exports with direct imports from physical owners.
+- [x] Keep only re-exports required by the stable API or explicit unit-test boundary.
+- [x] Confirm no leaf module imports `codegen_pipeline.zig`.
 
 ## Task 5: Sema boundary cleanup
 

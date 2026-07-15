@@ -44,4 +44,9 @@ if rg -n '@import\("codegen_emit_wasi\.zig"\)' "$BUILD_DIR/codegen_storage_layou
     fail=1
 fi
 
+if rg -n '^pub const .* = codegen_(generics|storage_layout|emit_wasi)\.' "$BUILD_DIR/codegen_pipeline.zig"; then
+    echo "codegen pipeline must not re-export leaf generic/storage/WASI helpers" >&2
+    fail=1
+fi
+
 exit "$fail"

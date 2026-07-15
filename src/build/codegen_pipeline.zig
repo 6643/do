@@ -176,7 +176,6 @@ const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
 const codegen_collect_declarations = @import("codegen_collect_declarations.zig");
 const codegen_body = @import("codegen_body.zig");
-const codegen_emit_wasi = @import("codegen_emit_wasi.zig");
 const tuple_element_type_at = codegen_storage_layout.tuple_element_type_at;
 const tuple_scalar_leaf_storage_byte_width_ctx = codegen_storage_layout.tuple_scalar_leaf_storage_byte_width_ctx;
 const find_storage_primitive_local = codegen_storage_layout.find_storage_primitive_local;
@@ -193,67 +192,67 @@ const codegen_generics = @import("codegen_generics.zig");
 const collect_body_locals_with_mode = codegen_body.collect_body_locals_with_mode;
 // Re-export expression and call emit entry points.
 const emit_start_func = codegen_emit_expression.emit_start_func;
-pub const emit_scalar_numeric_start_with_backend_ir = codegen_emit_expression.emit_scalar_numeric_start_with_backend_ir;
+const emit_scalar_numeric_start_with_backend_ir = codegen_emit_expression.emit_scalar_numeric_start_with_backend_ir;
 const emit_test_funcs = codegen_emit_expression.emit_test_funcs;
 const emit_user_funcs = codegen_emit_expression.emit_user_funcs;
 
-// Re-export generic instantiation (physical home: codegen_generics.zig).
-pub const append_unmanaged_struct_result_abi = codegen_generics.append_unmanaged_struct_result_abi;
-pub const bind_explicit_generic_call_type_args = codegen_generics.bind_explicit_generic_call_type_args;
-pub const bind_generic_callback_arg = codegen_generics.bind_generic_callback_arg;
-pub const bind_generic_callback_ident_arg = codegen_generics.bind_generic_callback_ident_arg;
-pub const bind_generic_callback_lambda_arg = codegen_generics.bind_generic_callback_lambda_arg;
-pub const bind_generic_expected_result = codegen_generics.bind_generic_expected_result;
-pub const bind_generic_func_call = codegen_generics.bind_generic_func_call;
-pub const bind_generic_type_from_concrete = codegen_generics.bind_generic_type_from_concrete;
-pub const bind_generic_type_list_from_concrete = codegen_generics.bind_generic_type_list_from_concrete;
-pub const bind_generic_variadic_tail = codegen_generics.bind_generic_variadic_tail;
-pub const callback_bindings_for_call = codegen_generics.callback_bindings_for_call;
-pub const callback_bindings_have_same_concrete_args = codegen_generics.callback_bindings_have_same_concrete_args;
-pub const clone_func_params = codegen_generics.clone_func_params;
-pub const clone_generic_type_bindings_owned = codegen_generics.clone_generic_type_bindings_owned;
-pub const collect_concrete_callback_func_instance_for_call = codegen_generics.collect_concrete_callback_func_instance_for_call;
-pub const collect_generic_func_instance_for_call = codegen_generics.collect_generic_func_instance_for_call;
-pub const collect_generic_func_instances_for_call = codegen_generics.collect_generic_func_instances_for_call;
-pub const collect_generic_func_instances_for_concrete_funcs = codegen_generics.collect_generic_func_instances_for_concrete_funcs;
-pub const collect_generic_func_instances_for_start = codegen_generics.collect_generic_func_instances_for_start;
-pub const collect_generic_func_instances_for_tests = codegen_generics.collect_generic_func_instances_for_tests;
-pub const collect_generic_func_instances_in_call_args = codegen_generics.collect_generic_func_instances_in_call_args;
-pub const collect_generic_func_instances_in_field_reflection_loop = codegen_generics.collect_generic_func_instances_in_field_reflection_loop;
-pub const collect_generic_func_instances_in_guard_loop_control = codegen_generics.collect_generic_func_instances_in_guard_loop_control;
-pub const collect_generic_func_instances_in_guard_return = codegen_generics.collect_generic_func_instances_in_guard_return;
-pub const collect_generic_func_instances_in_range = codegen_generics.collect_generic_func_instances_in_range;
-pub const collect_generic_func_instances_in_start_body = codegen_generics.collect_generic_func_instances_in_start_body;
-pub const concrete_overload_covers_generic_params = codegen_generics.concrete_overload_covers_generic_params;
-pub const direct_call_expected_result_type = codegen_generics.direct_call_expected_result_type;
-pub const explicit_lambda_types_match = codegen_generics.explicit_lambda_types_match;
-pub const find_generic_template_for_call = codegen_generics.find_generic_template_for_call;
-pub const func_has_untyped_params = codegen_generics.func_has_untyped_params;
-pub const func_params_have_same_concrete_call_shape = codegen_generics.func_params_have_same_concrete_call_shape;
-pub const generic_bindings_cover_type_params = codegen_generics.generic_bindings_cover_type_params;
-pub const generic_instance_name = codegen_generics.generic_instance_name;
-pub const generic_overload_covers_generic_params = codegen_generics.generic_overload_covers_generic_params;
-pub const generic_template_logical_result_type = codegen_generics.generic_template_logical_result_type;
-pub const generic_template_matches_call_site = codegen_generics.generic_template_matches_call_site;
-pub const generic_template_matches_concrete_params = codegen_generics.generic_template_matches_concrete_params;
-pub const generic_template_specificity = codegen_generics.generic_template_specificity;
-pub const infer_generic_call_union_result_layout = codegen_generics.infer_generic_call_union_result_layout;
-pub const infer_untyped_generic_param_abi_type = codegen_generics.infer_untyped_generic_param_abi_type;
-pub const instantiate_callback_shape = codegen_generics.instantiate_callback_shape;
-pub const instantiate_func_type_shape = codegen_generics.instantiate_func_type_shape;
-pub const instantiate_generic_func_result_items = codegen_generics.instantiate_generic_func_result_items;
-pub const match_or_bind_generic_type = codegen_generics.match_or_bind_generic_type;
-pub const parse_lambda_param_names = codegen_generics.parse_lambda_param_names;
-pub const parse_lambda_param_types = codegen_generics.parse_lambda_param_types;
-pub const prebind_generic_callback_arg = codegen_generics.prebind_generic_callback_arg;
-pub const prebind_generic_callback_args = codegen_generics.prebind_generic_callback_args;
-pub const prebind_generic_callback_func_ref = codegen_generics.prebind_generic_callback_func_ref;
-pub const prebind_generic_callback_ident = codegen_generics.prebind_generic_callback_ident;
-pub const prebind_generic_callback_lambda = codegen_generics.prebind_generic_callback_lambda;
-pub const prebind_generic_type_if_param = codegen_generics.prebind_generic_type_if_param;
-pub const resolve_callback_binding_arg = codegen_generics.resolve_callback_binding_arg;
-pub const type_contains_type_param = codegen_generics.type_contains_type_param;
-pub const typed_binding_expected_type = codegen_generics.typed_binding_expected_type;
+// Generic helpers stay private to the pipeline orchestration.
+const append_unmanaged_struct_result_abi = codegen_generics.append_unmanaged_struct_result_abi;
+const bind_explicit_generic_call_type_args = codegen_generics.bind_explicit_generic_call_type_args;
+const bind_generic_callback_arg = codegen_generics.bind_generic_callback_arg;
+const bind_generic_callback_ident_arg = codegen_generics.bind_generic_callback_ident_arg;
+const bind_generic_callback_lambda_arg = codegen_generics.bind_generic_callback_lambda_arg;
+const bind_generic_expected_result = codegen_generics.bind_generic_expected_result;
+const bind_generic_func_call = codegen_generics.bind_generic_func_call;
+const bind_generic_type_from_concrete = codegen_generics.bind_generic_type_from_concrete;
+const bind_generic_type_list_from_concrete = codegen_generics.bind_generic_type_list_from_concrete;
+const bind_generic_variadic_tail = codegen_generics.bind_generic_variadic_tail;
+const callback_bindings_for_call = codegen_generics.callback_bindings_for_call;
+const callback_bindings_have_same_concrete_args = codegen_generics.callback_bindings_have_same_concrete_args;
+const clone_func_params = codegen_generics.clone_func_params;
+const clone_generic_type_bindings_owned = codegen_generics.clone_generic_type_bindings_owned;
+const collect_concrete_callback_func_instance_for_call = codegen_generics.collect_concrete_callback_func_instance_for_call;
+const collect_generic_func_instance_for_call = codegen_generics.collect_generic_func_instance_for_call;
+const collect_generic_func_instances_for_call = codegen_generics.collect_generic_func_instances_for_call;
+const collect_generic_func_instances_for_concrete_funcs = codegen_generics.collect_generic_func_instances_for_concrete_funcs;
+const collect_generic_func_instances_for_start = codegen_generics.collect_generic_func_instances_for_start;
+const collect_generic_func_instances_for_tests = codegen_generics.collect_generic_func_instances_for_tests;
+const collect_generic_func_instances_in_call_args = codegen_generics.collect_generic_func_instances_in_call_args;
+const collect_generic_func_instances_in_field_reflection_loop = codegen_generics.collect_generic_func_instances_in_field_reflection_loop;
+const collect_generic_func_instances_in_guard_loop_control = codegen_generics.collect_generic_func_instances_in_guard_loop_control;
+const collect_generic_func_instances_in_guard_return = codegen_generics.collect_generic_func_instances_in_guard_return;
+const collect_generic_func_instances_in_range = codegen_generics.collect_generic_func_instances_in_range;
+const collect_generic_func_instances_in_start_body = codegen_generics.collect_generic_func_instances_in_start_body;
+const concrete_overload_covers_generic_params = codegen_generics.concrete_overload_covers_generic_params;
+const direct_call_expected_result_type = codegen_generics.direct_call_expected_result_type;
+const explicit_lambda_types_match = codegen_generics.explicit_lambda_types_match;
+const find_generic_template_for_call = codegen_generics.find_generic_template_for_call;
+const func_has_untyped_params = codegen_generics.func_has_untyped_params;
+const func_params_have_same_concrete_call_shape = codegen_generics.func_params_have_same_concrete_call_shape;
+const generic_bindings_cover_type_params = codegen_generics.generic_bindings_cover_type_params;
+const generic_instance_name = codegen_generics.generic_instance_name;
+const generic_overload_covers_generic_params = codegen_generics.generic_overload_covers_generic_params;
+const generic_template_logical_result_type = codegen_generics.generic_template_logical_result_type;
+const generic_template_matches_call_site = codegen_generics.generic_template_matches_call_site;
+const generic_template_matches_concrete_params = codegen_generics.generic_template_matches_concrete_params;
+const generic_template_specificity = codegen_generics.generic_template_specificity;
+const infer_generic_call_union_result_layout = codegen_generics.infer_generic_call_union_result_layout;
+const infer_untyped_generic_param_abi_type = codegen_generics.infer_untyped_generic_param_abi_type;
+const instantiate_callback_shape = codegen_generics.instantiate_callback_shape;
+const instantiate_func_type_shape = codegen_generics.instantiate_func_type_shape;
+const instantiate_generic_func_result_items = codegen_generics.instantiate_generic_func_result_items;
+const match_or_bind_generic_type = codegen_generics.match_or_bind_generic_type;
+const parse_lambda_param_names = codegen_generics.parse_lambda_param_names;
+const parse_lambda_param_types = codegen_generics.parse_lambda_param_types;
+const prebind_generic_callback_arg = codegen_generics.prebind_generic_callback_arg;
+const prebind_generic_callback_args = codegen_generics.prebind_generic_callback_args;
+const prebind_generic_callback_func_ref = codegen_generics.prebind_generic_callback_func_ref;
+const prebind_generic_callback_ident = codegen_generics.prebind_generic_callback_ident;
+const prebind_generic_callback_lambda = codegen_generics.prebind_generic_callback_lambda;
+const prebind_generic_type_if_param = codegen_generics.prebind_generic_type_if_param;
+const resolve_callback_binding_arg = codegen_generics.resolve_callback_binding_arg;
+const type_contains_type_param = codegen_generics.type_contains_type_param;
+const typed_binding_expected_type = codegen_generics.typed_binding_expected_type;
 
 pub fn collect_body_locals(
     allocator: std.mem.Allocator,
@@ -319,20 +318,20 @@ const codegen_emit_struct_fields = @import("codegen_emit_struct_fields.zig");
 const field_reflection_local_name_prefix = codegen_emit_struct_fields.field_reflection_local_name_prefix;
 const field_visible_from_tokens = codegen_emit_struct_fields.field_visible_from_tokens;
 const borrowed_field_meta_local_set = codegen_emit_struct_fields.borrowed_field_meta_local_set;
-pub const field_get_last_use_move_source = codegen_emit_struct_fields.field_get_last_use_move_source;
+const field_get_last_use_move_source = codegen_emit_struct_fields.field_get_last_use_move_source;
 const apply_guard_loop_control_narrowing = codegen_emit_struct_fields.apply_guard_loop_control_narrowing;
 const apply_collect_guard_return_narrowing = codegen_emit_struct_fields.apply_collect_guard_return_narrowing;
 // re-export codegen_emit_storage_values
 const parse_storage_type = codegen_storage_layout.parse_storage_type;
 const substitute_struct_field_type = codegen_storage_layout.substitute_struct_field_type;
-pub const find_func_decl_for_call_head = codegen_storage_layout.find_func_decl_for_call_head;
+const find_func_decl_for_call_head = codegen_storage_layout.find_func_decl_for_call_head;
 const infer_expr_type = codegen_storage_layout.infer_expr_type;
 const direct_managed_last_use_move_source = codegen_emit_storage_values.direct_managed_last_use_move_source;
 const find_callback_binding = codegen_storage_layout.find_callback_binding;
 const callback_bindings_have_same_shape = codegen_storage_layout.callback_bindings_have_same_shape;
 const call_arg_matches_param = codegen_storage_layout.call_arg_matches_param;
 const call_args_match_variadic_tail = codegen_storage_layout.call_args_match_variadic_tail;
-pub const func_variadic_elem_type = codegen_storage_layout.func_variadic_elem_type;
+const func_variadic_elem_type = codegen_storage_layout.func_variadic_elem_type;
 const lambda_expr_shape = codegen_storage_layout.lambda_expr_shape;
 const callback_binding_has_same_concrete_arg = codegen_storage_layout.callback_binding_has_same_concrete_arg;
 const lambda_param_type_name = codegen_storage_layout.lambda_param_type_name;
@@ -356,8 +355,8 @@ const host_param_is_ptr_len = codegen_host_imports.host_param_is_ptr_len;
 const host_arg_could_be_storage_ptr_len_syntax = codegen_host_imports.host_arg_could_be_storage_ptr_len_syntax;
 // Re-export token and name helpers used by lower-level tests.
 const module_tokens_equal = codegen_tokens.module_tokens_equal;
-pub const find_start_func = codegen_tokens.find_start_func;
-pub const find_token = codegen_tokens.find_token;
+const find_start_func = codegen_tokens.find_start_func;
+const find_token = codegen_tokens.find_token;
 const findTopLevelBlockOpen = codegen_tokens.find_top_level_block_open;
 const find_stmt_end = codegen_tokens.find_stmt_end;
 const findTypeArgEnd = codegen_tokens.find_type_arg_end;
@@ -424,7 +423,7 @@ const collect_string_data_for_storage_literals = codegen_imports.collect_string_
 const collect_string_data_for_struct_field_names = codegen_imports.collect_string_data_for_struct_field_names;
 const has_borrowed_name = codegen_imports.has_borrowed_name;
 const imported_alias_context_for_tokens = codegen_imports.imported_alias_context_for_tokens;
-pub const call_head_at = codegen_imports.call_head_at;
+const call_head_at = codegen_imports.call_head_at;
 const expr_call_head = codegen_imports.expr_call_head;
 const call_head_has_type_args = codegen_imports.call_head_has_type_args;
 // Collection owner aliases used by the pipeline.
@@ -446,7 +445,7 @@ const collect_func_decls = codegen_collect_functions.collect_func_decls;
 const collect_direct_imported_func_decls = codegen_collect_functions.collect_direct_imported_func_decls;
 const collect_direct_imported_func_decls_from_tests = codegen_collect_functions.collect_direct_imported_func_decls_from_tests;
 const bind_generic_type = codegen_collect_util.bind_generic_type;
-pub const find_generic_binding = codegen_collect_util.find_generic_binding;
+const find_generic_binding = codegen_collect_util.find_generic_binding;
 const substitute_generic_type_owned = codegen_collect_util.substitute_generic_type_owned;
 const is_type_ident_start = codegen_collect_util.is_type_ident_start;
 const is_type_ident_part = codegen_collect_util.is_type_ident_part;
@@ -454,60 +453,10 @@ const generic_type_args_range = codegen_collect_util.generic_type_args_range;
 const same_callable_source_name = codegen_collect_functions.same_callable_source_name;
 const has_type_param_name = codegen_collect_util.has_type_param_name;
 const find_func_decl = codegen_collect_functions.find_func_decl;
-pub const func_param_abi_type = codegen_collect_util.func_param_abi_type;
+const func_param_abi_type = codegen_collect_util.func_param_abi_type;
 const find_struct_decl = codegen_collect_util.find_struct_decl;
 const find_struct_layout = codegen_collect_util.find_struct_layout;
 const append_tuple_leaf_types = codegen_collect_util.append_tuple_leaf_types;
-// re-export codegen_emit_wasi
-const codegen_types_compatible = codegen_storage_layout.codegen_types_compatible;
-pub fn emit_wasi_resource_drop_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emit_wasi_resource_drop_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
-}
-
-pub fn emit_wasi_list_u8_result_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emit_wasi_list_u8_result_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
-}
-
-pub fn emit_wasi_result_unit_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emit_wasi_result_unit_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
-}
-
-pub fn emit_wasi_result_descriptor_path_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emit_wasi_result_descriptor_path_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
-}
-
-pub fn emit_wasi_result_output_write_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emit_wasi_result_output_write_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
-}
-
-pub fn emit_wasi_result_descriptor_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emit_wasi_result_descriptor_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
-}
-
-pub fn emit_wasi_descriptor_handle_arg(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emit_wasi_descriptor_handle_arg(allocator, tokens, start_idx, end_idx, locals, ctx, out, emit_expr);
-}
-
-pub fn emit_wasi_result_link_at_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emit_wasi_result_link_at_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
-}
-
-pub fn emit_wasi_result_filesize_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emit_wasi_result_filesize_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
-}
-
-pub fn emit_wasi_result_u64_stream_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emit_wasi_result_u64_stream_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
-}
-
-pub fn emit_wasi_result_read_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emit_wasi_result_read_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
-}
-
-pub fn emit_wasi_result_list_u8_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, args_start: usize, args_end: usize, locals: *const LocalSet, ctx: CodegenContext, import: WasiHostImport, out: *std.ArrayList(u8)) CodegenError!bool {
-    return codegen_emit_wasi.emit_wasi_result_list_u8_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr);
-}
-
 fn install_gen_hooks() void {
     codegen_callbacks.install(codegen_emit_expression.emit_expr, codegen_emit_expression.emit_expr_with_move_context, codegen_emit_call.emit_user_func_call_with_move_context);
     codegen_callbacks.install_body(codegen_emit_control.emit_body);
