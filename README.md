@@ -18,7 +18,7 @@
 - **大小数据分层策略**: 基础/小对象直接拷贝，大对象采用共享 + COW（初始阈值 64B）。
 - **运行时资源管理方向**: 对 host 资源采用显式释放和 ID 关联的设计方向，目标是不引入循环 GC。
 - **语言规范基线**: 规范入口见 `doc/spec.md`; 语法设计见 `doc/syntax/README.md`; parser PEG 见 `doc/grammar.peg`; 语义、内建判断族、核心库特型与静态约束见 `doc/spec_rules.md`。
-- **WASI / WIT lowering 入口**: `@host("wasi:package/interface@version", "member", sig)` / WIT / component lowering 的当前 compiler-facing 合同见 `doc/wit/wasi_p3_lowering.md`; 当前已登记 target / record mirror registry 见 `doc/wit/wasi_registry.json`。
+- **WASI / WIT lowering 入口**: 当前 compiler-facing 合同见 `doc/wit/wasi_p3_lowering.md`; 当前已登记 target / record mirror registry 见 `doc/wit/wasi_registry.json`。未来通用 host binding 计划见 `doc/host-binding-design.md`，异步 ABI 计划见 `doc/async-design.md`。
 - **程序入口固定**: 源码入口声明固定为 `start() { ... }`，`main` 不是入口函数；构建输出会导出 wasm `_start`。
 - **目录结构**: `src/` 工具链与编译器源码, `lib/` builtin/core 总表与标准库, `bin/do` 唯一二进制。
 
@@ -61,7 +61,7 @@ src/lsp/        do lsp diagnostics + formatting + semantic tokens + hover + comp
 
 - 不提供完整 ownership IR、跨函数唯一性证明、escape analysis、region 或激进 loop/path move; 当前继续使用已验证的 `OwnershipFacts` 子集和保守回退。
 - 不引入 direct wasm binary emitter; `do build` 和 `do test --compiled` 继续输出 WAT, 执行链路继续通过 `wasm-tools parse`。
-- 不承诺完整 WASI / Component Model 运行时; preopens (G6.1 A 已 lower: `[Tuple<Dir,text>]` 公开 API) 的真 host smoke、read-directory stream/future(当前无 async/Future runtime)、sockets resource + variant、HTTP async resource 和真实 host runtime 继续后置。
+- 不承诺完整 WASI / Component Model 运行时; preopens (G6.1 A 已 lower: `[Tuple<Dir,text>]` 公开 API) 的真 host smoke、read-directory 的 `Stream`/`Future` runtime、sockets resource + variant、HTTP async resource 和真实 host runtime 继续后置。异步语言与 ABI 设计以 `doc/async-design.md` 为准，当前仍未完成 runtime 实现。
 - 不提供完整自动序列化; JSON 当前只承诺已验证的 struct 字段 stringify/from_json 子集, error/enum/union/复杂 storage 自动支持继续后置。
 - 不重开 get / pkg / push 包管理线。
 - 不把 `do fmt` 扩展成多文件批量、stdin/stdout 自动模式、range/on-type 或完整语法感知 formatter。

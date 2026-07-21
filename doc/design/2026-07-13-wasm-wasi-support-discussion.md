@@ -110,9 +110,9 @@ L2  Codegen：handle id、ptr+len、result area、登记 lowering
 ## 9. 异步何时做
 
 - **G6.2 blocked**：`descriptor.read-directory` 等依赖 stream/future。
-- **无 async/Future/Task runtime 设计立项 ⇒ 不扩** stream codegen。
+- `async`/`Future`/`Stream` runtime 设计已统一收录于 `doc/async-design.md`；在最小 runtime 落地前仍不扩 stream codegen。
 - 开始顺序建议：规格 → 最小 runtime → 再 lower 一个 API；禁止半套。
-- 当前：异步 **搁置**，与本文议题一并先放。
+- 当前：异步规范已定，runtime 与真实 host I/O 仍后置，按 `doc/async-design.md` 的最小闭环推进。
 
 ---
 
