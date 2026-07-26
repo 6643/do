@@ -5,10 +5,20 @@
  * @property {string | null} textContent
  * @property {string} className
  * @property {Record<string, string>} style
+ * @property {UiNode[]} children
+ * @property {UiNode | null} parentNode
  * @property {(type: string, listener: (...args: any[]) => unknown, options?: unknown) => void} addEventListener
  * @property {(type: string, listener: (...args: any[]) => unknown, options?: unknown) => void} removeEventListener
+ * @property {(type: string) => void} dispatchEvent
+ * @property {(type: string) => number} listenerCount
  * @property {(...children: UiNode[]) => void} append
+ * @property {(...children: UiNode[]) => void} replaceChildren
  * @property {() => void} remove
+ * @property {() => void} focus
+ * @property {boolean} focused
+ * @property {any} _demo
+ * @property {Scope} _itemScope
+ * @property {Scope} _branchScope
  */
 
 /**
@@ -78,6 +88,8 @@
  * @property {Set<any>} resources
  * @property {Array<() => unknown>} cleanups
  * @property {Record<string, unknown>} meta
+ * @property {Map<string, UiNode>} refs
+ * @property {Map<string, () => void>} refCleanups
  * @property {UiNode | null} root
  * @property {boolean} disposed
  * @property {<T>(key: string, initial: T) => SignalHandle<T>} signal
@@ -106,6 +118,12 @@
  * @property {(componentName: string, key: string, parent?: Scope | null) => Scope} mount
  * @property {(scope: Scope, fn: () => unknown) => void} onCleanup
  * @property {(scope: Scope, node: UiNode, functionName: string) => (...args: any[]) => unknown} onClick
+ * @property {(scope: Scope, node: UiNode, key: string) => UiNode} ref
+ * @property {(scope: Scope, key: string) => UiNode | undefined} getRef
+ * @property {(scope: Scope) => unknown} getEachItem
+ * @property {(scope: Scope) => number | undefined} getEachIndex
+ * @property {(scope: Scope, container: UiNode, itemsFunction: string, keyFunction: string, renderFunction: string) => EffectHandle} each
+ * @property {(scope: Scope, container: UiNode, conditionFunction: string, thenFunction: string, elseFunction?: string | null) => EffectHandle} ifBlock
  * @property {(parent: UiNode, ...children: UiNode[]) => UiNode} append
  * @property {(scope: Scope, node: UiNode, functionName: string) => EffectHandle} bindText
  * @property {(scope: Scope, node: UiNode, name: string, functionName: string) => EffectHandle} bindAttr
@@ -126,6 +144,8 @@ export function createRuntime({ document, module = null } = {}) {
     let nextScopeId = 1;
     let nextSignalId = 1;
     let nextBindingId = 1;
+    const eachItemKey = "__ui_each_item";
+    const eachIndexKey = "__ui_each_index";
     /** @type {ReactiveNode | null} */
     let activeObserver = null;
     let batchDepth = 0;
@@ -378,6 +398,10 @@ export function createRuntime({ document, module = null } = {}) {
             this.cleanups = [];
             /** @type {Record<string, unknown>} */
             this.meta = Object.create(null);
+            /** @type {Map<string, UiNode>} */
+            this.refs = new Map();
+            /** @type {Map<string, () => void>} */
+            this.refCleanups = new Map();
             /** @type {UiNode | null} */
             this.root = null;
             this.disposed = false;
@@ -447,6 +471,8 @@ export function createRuntime({ document, module = null } = {}) {
             this.states.clear();
             this.derived.clear();
             this.effects.clear();
+            this.refs.clear();
+            this.refCleanups.clear();
             this.cleanups.length = 0;
             if (this.parent?.children.get(this.key) === this) {
                 this.parent.children.delete(this.key);
@@ -463,6 +489,195 @@ export function createRuntime({ document, module = null } = {}) {
      */
     function createScope(name, key, parent = null) {
         return new ScopeRecord(name, key, parent);
+    }
+
+    /**
+     * @param {Scope} scope
+     * @param {UiNode} node
+     * @param {string} key
+     * @returns {UiNode}
+     */
+    function ref(scope, node, key) {
+        if (!key.trim()) {
+            throw new TypeError("ref key must not be empty");
+        }
+        if (scope.disposed) return node;
+
+        scope.refCleanups.get(key)?.();
+        scope.refs.set(key, node);
+        const cleanup = () => {
+            if (scope.refs.get(key) !== node) return;
+            scope.refs.delete(key);
+            scope.refCleanups.delete(key);
+        };
+        scope.refCleanups.set(key, cleanup);
+        scope.cleanup(cleanup);
+        return node;
+    }
+
+    /**
+     * @param {Scope} scope
+     * @param {string} key
+     * @returns {UiNode | undefined}
+     */
+    function getRef(scope, key) {
+        if (scope.disposed) return undefined;
+        return scope.refs.get(key);
+    }
+
+    /**
+     * @param {Scope} scope
+     * @returns {unknown}
+     */
+    function getEachItem(scope) {
+        if (scope.disposed) return undefined;
+        return scope.signal(eachItemKey, undefined).get();
+    }
+
+    /**
+     * @param {Scope} scope
+     * @returns {number | undefined}
+     */
+    function getEachIndex(scope) {
+        if (scope.disposed) return undefined;
+        const index = scope.signal(eachIndexKey, undefined).get();
+        return typeof index === "number" ? index : undefined;
+    }
+
+    /**
+     * @param {unknown} value
+     * @returns {string}
+     */
+    function normalizeEachKey(value) {
+        const type = typeof value;
+        if (type !== "string" && type !== "number" && type !== "boolean" && type !== "bigint") {
+            throw new TypeError("each keys must be primitive values");
+        }
+        return `${type}:${String(value)}`;
+    }
+
+    /**
+     * @param {Scope} scope
+     * @param {UiNode} container
+     * @param {string} itemsFunction
+     * @param {string} keyFunction
+     * @param {string} renderFunction
+     * @returns {Effect}
+     */
+    function each(scope, container, itemsFunction, keyFunction, renderFunction) {
+        const bindingId = nextBindingId++;
+        /** @type {Map<string, {key: string, scope: Scope, root: UiNode}>} */
+        const records = new Map();
+
+        return effect(scope, `each:${bindingId}`, () => {
+            const items = callDo(itemsFunction, scope);
+            if (!Array.isArray(items)) {
+                throw new TypeError("each source must return an array");
+            }
+
+            /** @type {Array<{key: string, item: unknown, index: number}>} */
+            const descriptors = [];
+            const seen = new Set();
+            for (let index = 0; index < items.length; index += 1) {
+                const item = items[index];
+                const key = normalizeEachKey(callDo(keyFunction, scope, item, index));
+                if (seen.has(key)) {
+                    throw new Error(`duplicate each key: ${key}`);
+                }
+                seen.add(key);
+                descriptors.push({ key, item, index });
+            }
+
+            /** @type {Map<string, {key: string, scope: Scope, root: UiNode}>} */
+            const nextRecords = new Map();
+            /** @type {UiNode[]} */
+            const nextRoots = [];
+
+            for (const descriptor of descriptors) {
+                const existing = records.get(descriptor.key);
+                const itemScope = existing?.scope ?? createScope(
+                    `each:${bindingId}`,
+                    `each:${bindingId}:${descriptor.key}`,
+                    scope
+                );
+                itemScope.signal(eachItemKey, descriptor.item).set(descriptor.item);
+                itemScope.signal(eachIndexKey, descriptor.index).set(descriptor.index);
+
+                let root = existing?.root;
+                if (!root) {
+                    try {
+                        root = /** @type {UiNode} */ (callDo(renderFunction, itemScope));
+                    } catch (error) {
+                        itemScope.dispose();
+                        throw error;
+                    }
+                    const resolvedRoot = /** @type {UiNode} */ (root);
+                    itemScope.root = resolvedRoot;
+                    itemScope.cleanup(() => resolvedRoot.remove());
+                }
+
+                const resolvedRoot = /** @type {UiNode} */ (root);
+                const record = { key: descriptor.key, scope: itemScope, root: resolvedRoot };
+                nextRecords.set(descriptor.key, record);
+                nextRoots.push(resolvedRoot);
+            }
+
+            for (const [key, record] of records) {
+                if (!nextRecords.has(key)) record.scope.dispose();
+            }
+
+            records.clear();
+            for (const [key, record] of nextRecords) records.set(key, record);
+            container.append(...nextRoots);
+        });
+    }
+
+    /**
+     * @param {Scope} scope
+     * @param {UiNode} container
+     * @param {string} conditionFunction
+     * @param {string} thenFunction
+     * @param {string | null} [elseFunction]
+     * @returns {Effect}
+     */
+    function ifBlock(scope, container, conditionFunction, thenFunction, elseFunction = null) {
+        const bindingId = nextBindingId++;
+        /** @type {{name: string, scope: Scope, root: UiNode} | null} */
+        let active = null;
+
+        return effect(scope, `if:${bindingId}`, () => {
+            const condition = callDo(conditionFunction, scope);
+            if (typeof condition !== "boolean") {
+                throw new TypeError("if condition must return a boolean");
+            }
+
+            const branchName = condition ? "then" : "else";
+            if (active?.name === branchName) return;
+
+            active?.scope.dispose();
+            container.replaceChildren();
+            active = null;
+
+            const renderFunction = condition ? thenFunction : elseFunction;
+            if (!renderFunction) return;
+
+            const branchScope = createScope(
+                `if:${bindingId}`,
+                `if:${bindingId}:${branchName}`,
+                scope
+            );
+            let root;
+            try {
+                root = /** @type {UiNode} */ (callDo(renderFunction, branchScope));
+            } catch (error) {
+                branchScope.dispose();
+                throw error;
+            }
+            branchScope.root = root;
+            branchScope.cleanup(() => root.remove());
+            container.append(root);
+            active = { name: branchName, scope: branchScope, root };
+        });
     }
 
     /**
@@ -573,6 +788,12 @@ export function createRuntime({ document, module = null } = {}) {
         mount,
         onCleanup: (scope, fn) => scope.cleanup(fn),
         onClick: (scope, node, functionName) => onEvent(scope, node, "click", functionName),
+        ref,
+        getRef,
+        getEachItem,
+        getEachIndex,
+        each,
+        ifBlock,
         append: (parent, ...children) => {
             parent.append(...children);
             return parent;

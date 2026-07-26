@@ -69,12 +69,75 @@ counter_list(scope i32) -> i32 {
     return ui_append(ui_element("section"), first_node, second_node)
 }
 
+// Keyed list bindings use stable item keys. The runtime owns one child Scope
+// per key, so reorder preserves item state and removal recursively disposes
+// item effects, events, refs and DOM.
+list_items(scope i32) -> list<text> {
+    return ui_read_list_text(scope, "items")
+}
+
+list_item_key(scope i32, item text) -> text {
+    return item
+}
+
+list_item_text(scope i32) -> text {
+    item = ui_each_item(scope)
+    index = ui_each_index(scope)
+    return item + ":" + @to_text(index)
+}
+
+list_item_render(scope i32) -> i32 {
+    root = ui_element("li")
+    label = ui_element("span")
+    remove_node = ui_button("Remove")
+
+    ui_bind_text(label, scope, "list_item_text")
+    ui_on_click(remove_node, scope, "list_remove")
+    ui_ref(remove_node, scope, "remove_button")
+    return ui_append(root, label, remove_node)
+}
+
+list_remove(scope i32) -> nil {
+    item = ui_each_item(scope)
+    parent = ui_parent_scope(scope)
+    ui_remove_from_text_list(parent, "items", item)
+}
+
+// The condition and branch render functions are also ordinary exports. A
+// branch Scope owns branch-local signals, events, refs and cleanups.
+show_details(scope i32) -> bool {
+    return ui_read_bool(scope, "show_details")
+}
+
+details_on(scope i32) -> i32 {
+    node = ui_element("p")
+    ui_set_text(node, "details visible")
+    ui_ref(node, scope, "details")
+    return node
+}
+
+details_off(scope i32) -> i32 {
+    node = ui_element("p")
+    ui_set_text(node, "details hidden")
+    ui_ref(node, scope, "details")
+    return node
+}
+
+// Host binding shape (conceptual only):
+//
+//   ui_each(list_node, scope, "list_items", "list_item_key", "list_item_render")
+//   ui_if(details_node, scope, "show_details", "details_on", "details_off")
+//   ui_ref(button_node, scope, "increment_button")
+
 // JS runtime contract (conceptual):
 //
 //   mount("counter", key) -> scope_id
 //   call_do("counter_render", scope_id)
 //   signal.get() during ui_read_* records the active Effect as a subscriber
 //   signal.set() schedules only affected Effects
+//   each() reuses keyed child scopes and moves existing roots on reorder
+//   ifBlock() owns the active branch scope and disposes it on switch
+//   ref() stores a static node under the current scope and cleans it on dispose
 //   dispose(scope_id) recursively removes child scopes, event listeners,
 //       DOM bindings, Effects, Derived values and owned state
 //

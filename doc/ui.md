@@ -119,6 +119,75 @@ counter_summary(scope i32) -> text {
 
 如果 class 或 style 包含多个独立属性, 应为每个属性建立独立 binding; 如果返回一个完整 style 字符串, 则该字符串是一个整体更新单元。
 
+### `ui_each` keyed 列表
+
+`ui_each` 对齐 keyed `{#each}` 和 Solid `<For>` 的语义。它接收列表函数、key 函数和 item render 函数的静态导出名:
+
+```do
+ui_each(list_node, scope, "list_items", "list_item_key", "list_item_render")
+```
+
+JS runtime 对每个稳定 key 建立一个 child Scope。item render 函数只在 key 首次出现时调用; 插入、删除和重排由 runtime reconciliation 处理:
+
+```text
+list signal -> each Effect -> key map reconciliation
+                              ├── reuse item Scope/root
+                              ├── create item Scope/root
+                              └── dispose removed item Scope
+```
+
+key 只能是稳定的 primitive 值。重复 key、`null`、对象和函数 key 都在 host boundary 报错。index 不是 identity; item 重排时, runtime 只更新 item/index context signal, 因此读取它们的 binding 会更新, item render 不会重新执行。
+
+item 函数通过 runtime context 读取当前值, 不需要闭包或手写数字 ID:
+
+```do
+list_item_text(scope i32) -> text {
+    item = ui_each_item(scope)
+    index = ui_each_index(scope)
+    return item + ":" + @to_text(index)
+}
+```
+
+删除 item 时, item Scope 递归取消它的 Effect、Derived、事件、ref 和 DOM cleanup; sibling item 的 Scope 和 state 不受影响。
+
+### `ui_if` 条件分支
+
+`ui_if` 对齐 Svelte `{#if}`/`{:else}` 和 Solid `<Show>`:
+
+```do
+ui_if(details_node, scope, "show_details", "details_on", "details_off")
+```
+
+condition 函数必须返回 boolean。runtime 为 active branch 建立 child Scope; condition 仍在同一 branch 时复用该 Scope, branch 改变时按以下顺序处理:
+
+1. dispose 旧 branch Scope;
+2. 清空 branch container;
+3. 创建并调用新 branch render 函数一次;
+4. 将新 root 和所有 cleanup 归属到新 branch Scope。
+
+父组件 render 不会因为 branch 切换而重新执行。没有 `else` 函数时, false branch 保持为空。
+
+### `ui_ref` DOM 引用
+
+`ui_ref` 对齐 Svelte `bind:this` 和 Solid `ref`, 但为了适配当前语言只接受静态字符串 key:
+
+```do
+ui_ref(button_node, scope, "increment_button")
+```
+
+JS runtime 将 node 存入 `scope.refs`; action 可以通过 `getRef(scope, "increment_button")` 读取。ref 替换时旧 registration 会先清理; Scope 卸载时自动删除 ref。callback ref 不进入 `do`, 因为它会重新引入函数值或闭包 ABI。
+
+三种 host binding 的 JS 参考 API 是:
+
+```text
+runtime.each(scope, container, items_fn, key_fn, render_fn)
+runtime.ifBlock(scope, container, condition_fn, then_fn, else_fn)
+runtime.ref(scope, node, key)
+runtime.getRef(scope, key)
+```
+
+它们都是 Scope-owned runtime resource。scheduler 在执行排队 Effect 前再次检查 `disposed`, 因此 list 删除、branch 切换和父 Scope 卸载不会更新已经脱离 DOM 的节点。
+
 ### Scope owner tree 与卸载
 
 Scope 是所有 runtime 资源的 owner, 不只是 state table 的 key:
