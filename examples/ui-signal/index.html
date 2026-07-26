@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="data:,">
+    <title>do UI signal runtime</title>
+    <style>
+        :root {
+            color-scheme: light;
+            font-family: system-ui, sans-serif;
+            background: #f5f7fa;
+            color: #1d2939;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: start center;
+        }
+
+        main {
+            width: min(720px, calc(100% - 32px));
+            margin: 48px 0;
+        }
+
+        #mount {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+        }
+
+        article {
+            border: 1px solid #d0d5dd;
+            border-radius: 8px;
+            background: #fff;
+            padding: 20px;
+            transition: border-color 120ms ease;
+        }
+
+        article.counter.active {
+            border-color: #12b76a;
+        }
+
+        article strong {
+            display: block;
+            font-size: 40px;
+            line-height: 1;
+        }
+
+        button {
+            border: 1px solid #98a2b3;
+            border-radius: 6px;
+            background: #fff;
+            color: inherit;
+            cursor: pointer;
+            padding: 8px 14px;
+        }
+
+        button:hover {
+            background: #f2f4f7;
+        }
+
+        #remove-second {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Signal-owned counter scopes</h1>
+        <p id="status">Two child scopes are mounted.</p>
+        <div id="mount"></div>
+        <button id="remove-second" type="button">Unmount second counter</button>
+    </main>
+    <script type="module" src="./demo.mjs"></script>
+</body>
+</html>
