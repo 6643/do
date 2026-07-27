@@ -1,13 +1,12 @@
 {
     "compilerOptions": {
-        "allowJs": true,
-        "checkJs": true,
         "lib": ["ES2022", "DOM"],
         "module": "NodeNext",
         "moduleResolution": "NodeNext",
         "noEmit": true,
         "skipLibCheck": true,
+        "strict": true,
         "target": "ES2022"
     },
-    "include": ["*.mjs", "node-test-shims.d.ts"]
+    "include": ["runtime.ts", "counter-do.ts", "deep-do.ts", "demo.ts"]
 }

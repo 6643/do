@@ -1,6 +1,6 @@
 # UI 与响应式状态设计
 
-**状态:** 未来设计计划 / 未授权实现。本文定义 UI 状态、副作用监听和函数完成监视的目标语义，不表示当前 compiler、UI runtime 或渲染器已实现。可执行的 JS runtime 参考见 `examples/ui-signal/`。
+**状态:** UI host-binding 设计草案 + 可执行 TypeScript runtime 参考。当前 compiler 仍未提供 UI export/dispatcher；`examples/ui-signal/` 用普通 TypeScript 函数验证运行时语义，浏览器加载构建产物 `dist/demo.js`。
 
 ## 设计边界
 
@@ -19,28 +19,56 @@ UI 响应式层负责把状态变化转换为渲染、日志、缓存刷新等�
 
 ## 推荐的 UI 运行时模型
 
-当前方案采用 **普通函数组件 + JS reactive runtime**。`do` 只提供组件函数、事件动作和派生计算函数; JavaScript 负责 Signal、Derived、Effect、DOM binding、事件监听、scheduler 和生命周期。
+当前方案采用 **普通函数组件 + JS State runtime**。`do` 只提供组件函数、事件动作和派生计算函数; JavaScript 负责 State、Derived、Effect、DOM binding、事件监听、scheduler 和生命周期。
 
 ```text
-Signal<T>       状态单元, 保存值和 subscribers
+State<T>        状态单元, 保存值和 subscribers
 Derived<T>      派生值, 保存依赖和缓存
 Effect          副作用, 例如更新 text/class/style
-Action          事件动作, 例如 increment(scope)
+Action          事件动作, 例如 increment(ctx)
 Binding         DOM 节点与 Effect 的关联
-Scope           组件 owner 和资源清理边界
+Context         do-facing 生命周期句柄, 只包含自动分配的 id
+Scope record    JS 内部 owner, 保存资源和父子关系
 ```
 
-`do` 不创建组件结构体, 不保存捕获闭包, 也不手写 runtime 数字 ID。`scope_id`、`signal_id`、`derived_id` 和 binding id 都由 JS runtime 自动分配; 源码只需要提供组件/状态/事件的稳定 key。Wasm 边界可以把它们表示为不透明整数句柄, 但句柄不属于组件的业务数据。
+`do` 不创建组件结构体, 不保存捕获闭包, 也不手写 runtime 数字 ID。`scope_id`、`state_id`、`derived_id` 和 binding id 都由 JS runtime 自动分配; 源码只需要提供组件/状态/事件的稳定 key。Wasm 边界可以把 Context 表示为不透明整数句柄, 但它不是组件业务数据的快照。
+
+Context 与内部 Scope record 的关系是:
+
+```text
+Context { id }
+    |
+    +-- Scope record
+        +-- states / derived / effects
+        +-- resources / cleanups / refs
+        +-- parent / children
+```
+
+Context 只负责标识和生命周期查找, 不复制 State、Derived 或 Effect。JS runtime
+用普通数据记录保存这些对象, 再用 `create_state`、`state_get`、
+`create_effect`、`scope_dispose` 等自由函数操作它们; runtime 内部不依赖
+`class State`、`class Effect` 或 `class ScopeRecord`。
+
+Context 相关的 JS 参考 API 是:
+
+```text
+runtime.getContext(scope) -> Context
+runtime.getParentContext(ctx) -> Context | undefined
+runtime.getMeta(ctx, key, initial) -> value | undefined
+runtime.setMeta(ctx, key, value)
+runtime.disposeScope(ctx)
+```
 
 ### JS runtime 与 do 的边界
 
-组件首次 mount 时, JS 创建一个 Scope 并调用普通的 `do` render 函数:
+组件首次 mount 时, JS 创建内部 Scope 和对应 Context, 再调用普通的 `do` render 函数:
 
 ```text
 JS: scope = mount("counter", key)
-JS: call_do("counter_render", scope)
-do: ui_bind_text(node, scope, "counter_text")
-do: ui_on_click(button, scope, "counter_increment")
+JS: call_do("counter_render", scope)     // dispatch 传给 do 的是 scope.context
+do: counter_render(ctx Context) { ... }
+do: ui_bind_text(node, ctx, "counter_text")
+do: ui_on_click(button, ctx, "counter_increment")
 ```
 
 函数名或静态 key 只用于定位导出函数; JS runtime 可以把它们转换为内部数字 ID。当前 compiler 未实现 UI export/dispatcher, 因此这些 API 仍是设计草案; 最小桥接只需要固定的 `do_dispatch`/函数表, 不需要把 `funcref`、指针、引用或闭包暴露给 `do`。
@@ -48,30 +76,30 @@ do: ui_on_click(button, scope, "counter_increment")
 事件和响应式回调分工不同:
 
 ```text
-click event -> counter_increment(scope) -> signal.set(value)
-signal.set -> scheduler -> text/class/style Effects
+click event -> counter_increment(ctx) -> set_state(ctx, "count", value)
+set_state -> runtime.setState -> scheduler -> text/class/style Effects
 ```
 
 ### 动态依赖追踪
 
-JS runtime 的 `effect` 在执行期间设置当前 observer。`do` 函数通过 `ui_read_*` 读取 signal 时, host binding 调用 JS 的 `signal.get()` 并登记依赖:
+JS runtime 的 `effect` 在执行期间设置当前 observer。`do` 函数通过 `ui_read_*` 读取 state 时, host binding 调用 `get_state(ctx, key, initial)` 对应的 `runtime.getState(ctx, key, initial)` 并登记依赖:
 
 ```text
-effect(counter_class, scope)
+effect(counter_class, ctx)
         |
-        +-- ui_read_i32(scope, "count")
+        +-- ui_read_i32(ctx, "count")
                 |
                 +-- count.subscribers.add(class_effect)
 ```
 
-一个 signal 可以有多个订阅者, 一个 Effect 也可以读取多个 signal。Effect 每次重新执行前, runtime 先删除旧依赖; 条件分支改变后, 依赖边会按本次读取结果重新建立。
+一个 state 可以有多个订阅者, 一个 Effect 也可以读取多个 state。Effect 每次重新执行前, runtime 先删除旧依赖; 条件分支改变后, 依赖边会按本次读取结果重新建立。
 
 因此 `increment` 只修改状态, 不调用 render, 不手写 class 或 style 更新:
 
 ```do
-counter_increment(scope i32) -> nil {
-    value = ui_read_i32(scope, "count")
-    ui_write_i32(scope, "count", @add(value, 1))
+counter_increment(ctx Context) -> nil {
+    value = ui_read_i32(ctx, "count")
+    ui_write_i32(ctx, "count", @add(value, 1))
 }
 ```
 
@@ -80,19 +108,19 @@ counter_increment(scope i32) -> nil {
 每个 DOM 输出建立独立的 Effect, 以保持细粒度更新:
 
 ```do
-counter_text(scope i32) -> text {
-    value = ui_read_i32(scope, "count")
+counter_text(ctx Context) -> text {
+    value = ui_read_i32(ctx, "count")
     return @to_text(value)
 }
 
-counter_class(scope i32) -> text {
-    value = ui_read_i32(scope, "count")
+counter_class(ctx Context) -> text {
+    value = ui_read_i32(ctx, "count")
     if @eq(value, 0) return "counter empty"
     return "counter active"
 }
 
-counter_color(scope i32) -> text {
-    value = ui_read_i32(scope, "count")
+counter_color(ctx Context) -> text {
+    value = ui_read_i32(ctx, "count")
     if @eq(value, 0) return "gray"
     return "green"
 }
@@ -104,13 +132,13 @@ bind_attr(node, "class", counter_class) -> class Effect
 bind_style(node, "color", counter_color) -> style Effect
 ```
 
-多个状态的组合函数会自动依赖所有读取到的 signal:
+多个状态的组合函数会自动依赖所有读取到的 state:
 
 ```do
-counter_summary(scope i32) -> text {
-    name = ui_read_text(scope, "name")
-    count = ui_read_i32(scope, "count")
-    enabled = ui_read_bool(scope, "enabled")
+counter_summary(ctx Context) -> text {
+    name = ui_read_text(ctx, "name")
+    count = ui_read_i32(ctx, "count")
+    enabled = ui_read_bool(ctx, "enabled")
 
     if !enabled return "disabled"
     return name + ": " + @to_text(count)
@@ -124,38 +152,73 @@ counter_summary(scope i32) -> text {
 `ui_each` 对齐 keyed `{#each}` 和 Solid `<For>` 的语义。它接收列表函数、key 函数和 item render 函数的静态导出名:
 
 ```do
-ui_each(list_node, scope, "list_items", "list_item_key", "list_item_render")
+ui_each(list_node, ctx, "list_items", "list_item_key", "list_item_render")
 ```
 
 JS runtime 对每个稳定 key 建立一个 child Scope。item render 函数只在 key 首次出现时调用; 插入、删除和重排由 runtime reconciliation 处理:
 
 ```text
-list signal -> each Effect -> key map reconciliation
+list state -> each Effect -> key map reconciliation
                               ├── reuse item Scope/root
                               ├── create item Scope/root
                               └── dispose removed item Scope
 ```
 
-key 只能是稳定的 primitive 值。重复 key、`null`、对象和函数 key 都在 host boundary 报错。index 不是 identity; item 重排时, runtime 只更新 item/index context signal, 因此读取它们的 binding 会更新, item render 不会重新执行。
+key 只能是稳定的 primitive 值。重复 key、`null`、对象和函数 key 都在 host boundary 报错。index 不是 identity; item 重排时, runtime 只更新 item/index context state, 因此读取它们的 binding 会更新, item render 不会重新执行。
 
 item 函数通过 runtime context 读取当前值, 不需要闭包或手写数字 ID:
 
 ```do
-list_item_text(scope i32) -> text {
-    item = ui_each_item(scope)
-    index = ui_each_index(scope)
+list_item_text(ctx Context) -> text {
+    item = ui_each_item(ctx)
+    index = ui_each_index(ctx)
     return item + ":" + @to_text(index)
 }
 ```
 
 删除 item 时, item Scope 递归取消它的 Effect、Derived、事件、ref 和 DOM cleanup; sibling item 的 Scope 和 state 不受影响。
 
-### `ui_if` 条件分支
+JavaScript reference module 的 UI 事件动作使用普通的 `list_add` 导出名;
+它通过模拟 UI module dispatch table 解析。标准库的
+`list_add(xs, value, ...)` 仍然是返回新 `List<T>` 的纯集合函数, 两者属于
+不同命名空间, 不共用参数语义。未来的 `do` host binding 草案可以继续使用
+`ui_list_add` 这类显式名字。
 
-`ui_if` 对齐 Svelte `{#if}`/`{:else}` 和 Solid `<Show>`:
+### 嵌套 struct/list 的深层更新原型
+
+完整的 `struct/list` 不应该作为一个巨大的响应式 State 交给所有 binding。未来的 host binding 将结构状态和叶子状态拆开:
+
+```text
+orders.structure
+order:<key>.customer.name
+order:<key>.shipping.city
+order:<key>.lines.structure
+line:<key>.product.name
+line:<key>.quantity
+```
+
+订单列表和明细列表分别由 `ui_each` 的 keyed child Scope 管理。修改
+`customer.name` 只触发姓名 binding; 修改一个明细的 `quantity` 只触发该
+明细的数量 binding; 添加或删除明细只触发 `lines.structure` 的
+reconciliation。父级派生值如果读取整个列表, 才订阅列表结构或显式读取到的
+叶子值。
+
+`examples/ui-signal/deep-do.ts` 是这套规则的可运行原型。它使用 dotted
+path 作为稳定 State key, 不使用 Proxy, 不把指针、引用或 ARC handle 暴露给
+`do`。数字 state/binding ID 仍由 JS runtime 自动分配。
+
+`do` 的 struct、`[T]` 和 `List<T>` 继续保持值语义; WASI record/list 在
+canonical ABI 边界先解码为快照, 再由 host adapter 写入路径 State。WASI
+`list<u8>` 可以保持 blob 语义, 只有需要 UI 逐项观察的 record/list 才需要
+应用级稳定 key。当前 compiler 的 WASI lowering 仍只覆盖已登记的 record、
+`list<u8>` 和固定子集, 这段原型不表示任意嵌套 WIT 类型已经可调用。
+
+### `_ui_show` 条件分支
+
+`_ui_show` 对齐 Svelte `{#if}`/`{:else}` 和 Solid `<Show>`:
 
 ```do
-ui_if(details_node, scope, "show_details", "details_on", "details_off")
+_ui_show(details_node, ctx, "show_details", "details_on", "details_off")
 ```
 
 condition 函数必须返回 boolean。runtime 为 active branch 建立 child Scope; condition 仍在同一 branch 时复用该 Scope, branch 改变时按以下顺序处理:
@@ -172,30 +235,30 @@ condition 函数必须返回 boolean。runtime 为 active branch 建立 child Sc
 `ui_ref` 对齐 Svelte `bind:this` 和 Solid `ref`, 但为了适配当前语言只接受静态字符串 key:
 
 ```do
-ui_ref(button_node, scope, "increment_button")
+ui_ref(button_node, ctx, "increment_button")
 ```
 
-JS runtime 将 node 存入 `scope.refs`; action 可以通过 `getRef(scope, "increment_button")` 读取。ref 替换时旧 registration 会先清理; Scope 卸载时自动删除 ref。callback ref 不进入 `do`, 因为它会重新引入函数值或闭包 ABI。
+JS runtime 将 node 存入内部 Scope record 的 `refs`; action 可以通过 `getRef(ctx, "increment_button")` 读取。ref 替换时旧 registration 会先清理; Context 对应的 Scope 卸载时自动删除 ref。callback ref 不进入 `do`, 因为它会重新引入函数值或闭包 ABI。
 
 三种 host binding 的 JS 参考 API 是:
 
 ```text
-runtime.each(scope, container, items_fn, key_fn, render_fn)
-runtime.ifBlock(scope, container, condition_fn, then_fn, else_fn)
-runtime.ref(scope, node, key)
-runtime.getRef(scope, key)
+runtime.each(ctx, container, items_fn, key_fn, render_fn)
+runtime.show(ctx, container, condition_fn, then_fn, else_fn)
+runtime.ref(ctx, node, key)
+runtime.getRef(ctx, key)
 ```
 
-它们都是 Scope-owned runtime resource。scheduler 在执行排队 Effect 前再次检查 `disposed`, 因此 list 删除、branch 切换和父 Scope 卸载不会更新已经脱离 DOM 的节点。
+它们都是 Context 对应 Scope-owned 的 runtime resource。scheduler 在执行排队 Effect 前再次检查 `disposed`, 因此 list 删除、branch 切换和父 Scope 卸载不会更新已经脱离 DOM 的节点。
 
-### Scope owner tree 与卸载
+### Context 与 owner tree 卸载
 
-Scope 是所有 runtime 资源的 owner, 不只是 state table 的 key:
+Scope record 是所有 runtime 资源的 owner, Context 只作为 do-facing 生命周期句柄:
 
 ```text
 AppScope
 └── CounterScope
-    ├── signals
+    ├── state
     ├── derived values
     ├── effects/subscriptions
     ├── DOM bindings
@@ -203,40 +266,40 @@ AppScope
     └── child scopes
 ```
 
-子组件使用 `parent scope + stable key` 建立 child scope。卸载时按 owner tree 递归清理:
+子组件使用 `parent Context + stable key` 建立 child Scope。子组件可以读取父级 State, 但不取得父级资源的 ownership。卸载时按 owner tree 递归清理:
 
 1. 将 Scope 标记为 `disposed`, scheduler 跳过其中的待执行 Effect;
 2. 递归卸载所有 child Scope;
 3. 取消事件监听和 DOM bindings;
-4. 从 signal 的 subscribers 中删除 Effect;
-5. Derived 取消对 source signals 的订阅, 并删除缓存;
-6. 删除该 Scope 自己创建的 signals/state;
+4. 从 state 的 subscribers 中删除 Effect;
+5. Derived 取消对 source state 的订阅, 并删除缓存;
+6. 删除该 Scope 自己创建的 state;
 7. 执行用户注册的 cleanup;
 8. 从父 Scope 和 runtime registry 中移除。
 
 依赖边必须双向可移除:
 
 ```text
-signal.subscribers -> effects
-effect.dependencies -> signals
+state.subscribers -> effects
+effect.dependencies -> state
 ```
 
-子组件使用父组件共享 signal 时, 卸载子组件只删除子组件的订阅, 不销毁父组件拥有的 signal。Effect 已经排入 ready queue 但组件随后卸载时, 执行前必须再次检查 `disposed`。
+子组件使用父组件共享 state 时, 卸载子组件只删除子组件的订阅, 不销毁父组件拥有的 state。Effect 已经排入 ready queue 但组件随后卸载时, 执行前必须再次检查 `disposed`。
 
-正常状态更新不会销毁 Scope; keyed child 被替换或组件明确卸载时才销毁 Scope。`examples/ui-signal/` 提供文本、class、style、派生值和子 Scope 清理的可执行参考。
+正常状态更新不会销毁 Scope; keyed child 被替换或组件明确卸载时才销毁 Scope。Context 被销毁后从 runtime registry 移除, 通过该 Context 的 `getMeta`/`getParentContext` 返回 `undefined`; 父级 State 不会因子级卸载而销毁。`examples/ui-signal/` 提供文本、class、style、派生值和子 Scope 清理的可执行参考。
 
 ### 选择这套模型的原因
 
 1. 不需要完整闭包、捕获分析或结构式组件。
 2. JS runtime 可以使用闭包保存内部 Effect 和事件 listener, 但这些闭包不进入 `do`。
-3. Signal 读取自动建立依赖, 不要求用户手写依赖数组或数字 ID。
+3. State 读取自动建立依赖, 不要求用户手写依赖数组或数字 ID。
 4. 每个文本、属性和 style binding 都可以独立更新。
 5. Scope 统一拥有子组件、订阅、事件、Derived、DOM binding 和 cleanup。
 6. UI API 可以作为普通 host binding 扩展, 不要求每个 DOM 操作成为 compiler special form。
 
 ## `watch` 状态监听
 
-`watch` 是响应式语义的概念名称; 第一版 JS runtime 通过 signal read + Effect 自动收集依赖, 不要求引入 `watch x, y { ... }` 这种新的 `do` 语法。
+`watch` 是响应式语义的概念名称; 第一版 JS runtime 通过 state read + Effect 自动收集依赖, 不要求引入 `watch x, y { ... }` 这种新的 `do` 语法。
 
 监听一个或多个状态值的目标效果等价于:
 

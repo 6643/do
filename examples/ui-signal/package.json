@@ -1,0 +1,14 @@
+{
+    "name": "do-ui-signal-reference",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "bun build runtime.ts counter-do.ts deep-do.ts demo.ts --outdir dist --target browser --format esm",
+        "check": "tsc -p tsconfig.json",
+        "test": "bun test runtime.test.ts",
+        "verify": "bun run check && bun run test && bun run build"
+    },
+    "devDependencies": {
+        "typescript": "5.9.2"
+    }
+}

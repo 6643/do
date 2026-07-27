@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="icon" href="data:,">
-    <title>do UI signal runtime</title>
+    <title>do UI state runtime</title>
     <style>
         :root {
             color-scheme: light;
@@ -21,7 +21,7 @@
         }
 
         main {
-            width: min(720px, calc(100% - 32px));
+            width: min(980px, calc(100% - 32px));
             margin: 48px 0;
         }
 
@@ -101,11 +101,102 @@
             min-height: 24px;
             padding-top: 12px;
         }
+
+        .deep-order-list {
+            display: grid;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .deep-order {
+            background: #fff;
+            border: 1px solid #d0d5dd;
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .deep-order h3,
+        .deep-order h4 {
+            margin: 0;
+        }
+
+        .deep-order h4 {
+            color: #475467;
+            font-size: 14px;
+            font-weight: 600;
+            margin-top: 18px;
+        }
+
+        .deep-render-info {
+            color: #667085;
+            font-size: 13px;
+            margin: 6px 0 14px;
+        }
+
+        .deep-fields,
+        .deep-line-fields {
+            display: grid;
+            gap: 6px;
+        }
+
+        .deep-field {
+            align-items: baseline;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .deep-field-label {
+            color: #667085;
+            min-width: 128px;
+        }
+
+        .deep-field code {
+            color: #344054;
+            overflow-wrap: anywhere;
+        }
+
+        .deep-lines {
+            display: grid;
+            gap: 8px;
+            list-style: none;
+            margin: 8px 0 0;
+            padding: 0;
+        }
+
+        .deep-line {
+            align-items: start;
+            background: #f8fafc;
+            border: 1px solid #eaecf0;
+            border-radius: 6px;
+            display: flex;
+            gap: 16px;
+            justify-content: space-between;
+            padding: 10px;
+        }
+
+        .deep-line-fields {
+            min-width: 0;
+        }
+
+        .deep-line .toolbar {
+            flex: 0 0 auto;
+        }
+
+        @media (max-width: 640px) {
+            .deep-line {
+                flex-direction: column;
+            }
+
+            .deep-line .toolbar {
+                width: 100%;
+            }
+        }
     </style>
 </head>
 <body>
     <main>
-        <h1>Signal-owned counter scopes</h1>
+        <h1>State-owned counter scopes</h1>
         <p id="status">Two child scopes are mounted.</p>
         <div id="mount"></div>
         <button id="remove-second" type="button">Unmount second counter</button>
@@ -124,7 +215,16 @@
             <button id="toggle-details" type="button">Toggle details</button>
             <div id="details"></div>
         </section>
+
+        <section class="demo-section" aria-labelledby="deep-title">
+            <h2 id="deep-title">Nested order state</h2>
+            <div class="toolbar">
+                <button id="deep-add-order" type="button">Add order</button>
+                <button id="deep-reverse-orders" type="button">Reverse orders</button>
+            </div>
+            <div id="deep-order-list" class="deep-order-list"></div>
+        </section>
     </main>
-    <script type="module" src="./demo.mjs"></script>
+    <script type="module" src="./dist/demo.js"></script>
 </body>
 </html>
