@@ -1,0 +1,11 @@
+
+interface probe {
+  use types.{response, error-code};
+  run: async func() -> result<response, error-code>;
+}
+
+world http-payload-error-probe {
+  import types;
+  import client;
+  export probe;
+}
