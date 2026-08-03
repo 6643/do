@@ -37,7 +37,7 @@ pinned source definitions are in
    observable values, not only a generated signature.
 3. Freeze a descriptor shape that can later drive compiler lowering without
    silently discarding payloads.
-4. Preserve an explicit compiler rejection while the probe is red.
+4. Preserve an explicit unsupported-lowering boundary while the probe is red.
 5. If and only if the probe is green, admit the smallest payload shape through
    compiler, Component assembly, and Rust/Wasmtime runtime gates.
 
@@ -67,7 +67,9 @@ Use an evidence-first sequence:
    exact mapping whose Component-side lift observes the supplied payload; a
    candidate that merely avoids a trap but changes the value is rejected.
 4. Keep compiler lowering unchanged while the probe is red.  The existing
-   unsupported boundary remains the required behavior.
+   HTTP emitter's explicit `unreachable` guards for payload-bearing tags remain
+   the required behavior; a source shape that is outside the registered
+   lowering still uses the compiler's existing unsupported boundary.
 5. Once the probe is green, implement payload metadata and lowering in two
    bounded increments: optional string first, then the DNS record.  Each
    increment receives its own negative and runtime gate.
@@ -136,11 +138,13 @@ The work is split into independently verifiable gates:
 
 1. **Probe gate:** pinned WIT source, component assembly, canonical and
    host-lowered payload cases, and Rust/Wasmtime execution.
-2. **Negative compiler gate:** a payload-bearing binding remains rejected by
-   the existing explicit unsupported-lowering/async boundary while the probe
-   is red; the fixture asserts the current diagnostic text or structured error
-   category actually emitted by the compiler.  No synchronous WAT is emitted
-   as a substitute.
+2. **Negative lowering gate:** while the probe is red, generated HTTP WAT
+   retains an explicit trap for every registered payload-bearing error tag and
+   does not pass an empty payload to `task.return`.  A separate unsupported
+   source shape continues to use the compiler's existing diagnostic boundary;
+   the fixture asserts the actual diagnostic text or structured error category
+   rather than assuming a new name.  No synchronous WAT is emitted as a
+   substitute.
 3. **First lowering gate:** `internal-error(option<string>)` emits the exact
    descriptor and assembles successfully.
 4. **First runtime gate:** pending/ready, success, no-payload error, payload
