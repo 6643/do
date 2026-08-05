@@ -143,6 +143,7 @@ pub const IncludeDecl = struct {
 
 pub const InterfaceDecl = struct {
     name: []const u8,
+    package: ?PackageDecl = null,
     uses: []const UseDecl,
     includes: []const IncludeDecl,
     aliases: []const TypeAlias,
@@ -157,14 +158,23 @@ pub const InterfaceDecl = struct {
 
 pub const WorldImport = struct {
     name: []const u8,
+    target: []const u8 = "",
     span: Span,
 };
 
 pub const WorldDecl = struct {
     name: []const u8,
+    package: ?PackageDecl = null,
     imports: []const WorldImport,
     exports: []const WorldImport,
     span: Span,
+};
+
+pub const Parsed = struct {
+    source: []const u8,
+    package: PackageDecl,
+    interfaces: []const InterfaceDecl,
+    worlds: []const WorldDecl,
 };
 
 pub const Ast = struct {
@@ -183,13 +193,17 @@ pub const BindingModel = struct {
     arena: std.heap.ArenaAllocator,
     source: []const u8,
     owns_source: bool,
+    owned_sources: []const []const u8,
     package: PackageDecl,
+    packages: []const PackageDecl = &.{},
     world: WorldDecl,
     interfaces: []const InterfaceDecl,
     content_hash: [32]u8,
 
     pub fn deinit(self: *BindingModel) void {
-        if (self.owns_source) self.arena.child_allocator.free(self.source);
+        if (self.owns_source) {
+            for (self.owned_sources) |source| self.arena.child_allocator.free(source);
+        }
         self.arena.deinit();
     }
 };

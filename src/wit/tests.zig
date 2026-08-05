@@ -3,6 +3,11 @@ const lexer = @import("lexer.zig");
 const model = @import("model.zig");
 const parser = @import("parser.zig");
 const resolve = @import("resolve.zig");
+const emit_do = @import("emit_do.zig");
+const emit_lock = @import("emit_lock.zig");
+const emit_manifest = @import("emit_manifest.zig");
+const wit_cli = @import("cli.zig");
+const wit_manifest = @import("manifest.zig");
 
 const probe_source =
     \\//@ async = true
@@ -201,4 +206,249 @@ test "wit resolver selects the world file in a package directory" {
     defer binding.deinit();
     try std.testing.expectEqualStrings("demo", binding.package.namespace);
     try std.testing.expectEqualStrings("probe", binding.world.name);
+}
+
+test "wit resolver merges local package files deterministically" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "api.wit",
+        .data =
+        \\package demo:multi@1.0.0;
+        \\
+        \\interface api {}
+        ,
+    });
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "world.wit",
+        .data =
+        \\package demo:multi@1.0.0;
+        \\
+        \\world probe { import api; }
+        ,
+    });
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+    var binding = try resolve.resolve_input(std.testing.io, std.testing.allocator, path, "probe");
+    defer binding.deinit();
+    try std.testing.expectEqual(@as(usize, 1), binding.interfaces.len);
+    try std.testing.expectEqualStrings("api", binding.interfaces[0].name);
+}
+
+test "wit resolver rejects duplicate package identities" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "a.wit",
+        .data =
+        \\package demo:a@1.0.0;
+        ,
+    });
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "b.wit",
+        .data =
+        \\package demo:b@1.0.0;
+        ,
+    });
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+    try std.testing.expectError(
+        error.DuplicatePackage,
+        resolve.resolve_input(std.testing.io, std.testing.allocator, path, null),
+    );
+}
+
+test "wit resolver rejects missing local use targets" {
+    const source =
+        \\package demo:refs@1.0.0;
+        \\
+        \\interface api { use missing.{item}; }
+        \\
+        \\world probe { import api; }
+    ;
+    try std.testing.expectError(
+        error.UnresolvedUse,
+        resolve.resolve_source(std.testing.allocator, source, "probe"),
+    );
+}
+
+test "wit resolver resolves a qualified world import from a dependency package" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDir(std.testing.io, "deps", .default_dir);
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "world.wit",
+        .data =
+        \\package demo:app@1.0.0;
+        \\
+        \\world app { import dep:types/types; }
+        ,
+    });
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "deps/types.wit",
+        .data =
+        \\package dep:types@1.0.0;
+        \\
+        \\interface types { record item { value: u32, } get: func() -> item; }
+        ,
+    });
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", std.testing.allocator);
+    defer std.testing.allocator.free(path);
+    var binding = try resolve.resolve_input(std.testing.io, std.testing.allocator, path, "app");
+    defer binding.deinit();
+    try std.testing.expectEqualStrings("types", binding.interfaces[0].name);
+    try std.testing.expectEqualStrings("dep", binding.interfaces[0].package.?.namespace);
+    const generated = try emit_do.render_module(std.testing.allocator, binding, binding.interfaces[0]);
+    defer std.testing.allocator.free(generated);
+    try std.testing.expect(std.mem.indexOf(u8, generated, "dep:types/types@1.0.0") != null);
+    const manifest = try emit_manifest.render(std.testing.allocator, binding, "dep_types__types__app.do");
+    defer std.testing.allocator.free(manifest);
+    try std.testing.expect(std.mem.indexOf(u8, manifest, "\"package\":\"dep:types@1.0.0\"") != null);
+    const lock = try emit_lock.render(std.testing.allocator, binding);
+    defer std.testing.allocator.free(lock);
+    try std.testing.expect(std.mem.indexOf(u8, lock, "package=dep:types@1.0.0") != null);
+}
+
+test "wit resolver rejects include cycles" {
+    const source =
+        \\package demo:cycle@1.0.0;
+        \\
+        \\interface a { include b; }
+        \\interface b { include a; }
+        \\
+        \\world probe { import a; }
+    ;
+    try std.testing.expectError(
+        error.IncludeCycle,
+        resolve.resolve_source(std.testing.allocator, source, "probe"),
+    );
+}
+
+test "wit emitter translates the probe world into deterministic Do bindings" {
+    var binding = try resolve.resolve_source(std.testing.allocator, probe_source, "probe");
+    defer binding.deinit();
+
+    const name = try emit_do.module_name(std.testing.allocator, binding.package, binding.world, binding.interfaces[0]);
+    defer std.testing.allocator.free(name);
+    try std.testing.expectEqualStrings("do_bindgen_probe__api__probe.do", name);
+
+    const source = try emit_do.render_module(std.testing.allocator, binding, binding.interfaces[0]);
+    defer std.testing.allocator.free(source);
+    try std.testing.expect(std.mem.indexOf(u8, source, "Request = @wasi_resource") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "send = @host(\"do:bindgen-probe/api@0.1.0\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "Response | ApiError") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "-> Future<Response | ApiError>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "Future<u32>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "Stream<u8>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "async send") == null);
+}
+
+test "wit emitter renders stable manifest and lock records" {
+    var binding = try resolve.resolve_source(std.testing.allocator, probe_source, "probe");
+    defer binding.deinit();
+
+    const manifest = try emit_manifest.render(std.testing.allocator, binding, "do_bindgen_probe__api__probe.do");
+    defer std.testing.allocator.free(manifest);
+    try std.testing.expect(std.mem.indexOf(u8, manifest, "\"schema\":1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, manifest, "\"world\":\"probe\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, manifest, "\"async\":true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, manifest, "\"future\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, manifest, "\"stream\"") != null);
+    var parsed_manifest = try wit_manifest.parse(std.testing.allocator, manifest);
+    defer parsed_manifest.deinit(std.testing.allocator);
+    try wit_manifest.validate_binding(std.testing.allocator, &parsed_manifest, binding);
+
+    const lock = try emit_lock.render(std.testing.allocator, binding);
+    defer std.testing.allocator.free(lock);
+    try std.testing.expectEqualStrings(
+        "schema=1\npackage=do:bindgen-probe@0.1.0\nsha256=",
+        lock[0.."schema=1\npackage=do:bindgen-probe@0.1.0\nsha256=".len],
+    );
+    try std.testing.expectEqual(@as(usize, 64), lock["schema=1\npackage=do:bindgen-probe@0.1.0\nsha256=".len..].len);
+}
+
+test "wit emitter writes modules atomically and preserves old output on failure" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", std.testing.allocator);
+    defer std.testing.allocator.free(root);
+    const output = try std.fs.path.join(std.testing.allocator, &.{ root, "wit" });
+    defer std.testing.allocator.free(output);
+
+    var binding = try resolve.resolve_source(std.testing.allocator, probe_source, "probe");
+    defer binding.deinit();
+    try emit_do.emit_all(std.testing.io, std.testing.allocator, binding, output);
+
+    const generated_path = try std.fs.path.join(std.testing.allocator, &.{ output, "do_bindgen_probe__api__probe.do" });
+    defer std.testing.allocator.free(generated_path);
+    const generated = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, generated_path, std.testing.allocator, .limited(1024 * 1024));
+    defer std.testing.allocator.free(generated);
+    try std.testing.expect(std.mem.indexOf(u8, generated, "send = @host") != null);
+    const first_output = try std.testing.allocator.dupe(u8, generated);
+    defer std.testing.allocator.free(first_output);
+    try emit_do.emit_all(std.testing.io, std.testing.allocator, binding, output);
+    const regenerated = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, generated_path, std.testing.allocator, .limited(1024 * 1024));
+    defer std.testing.allocator.free(regenerated);
+    try std.testing.expectEqualStrings(first_output, regenerated);
+
+    const marker = try std.fs.path.join(std.testing.allocator, &.{ output, "marker.txt" });
+    defer std.testing.allocator.free(marker);
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = marker, .data = "keep" });
+
+    const unsupported_source =
+        \\package demo:unsupported@1.0.0;
+        \\
+        \\interface api { flags perms { read, } }
+        \\
+        \\world probe { import api; }
+    ;
+    var unsupported = try resolve.resolve_source(std.testing.allocator, unsupported_source, "probe");
+    defer unsupported.deinit();
+    try std.testing.expectError(
+        error.UnsupportedShape,
+        emit_do.emit_all(std.testing.io, std.testing.allocator, unsupported, output),
+    );
+    const preserved = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, marker, std.testing.allocator, .limited(1024));
+    defer std.testing.allocator.free(preserved);
+    try std.testing.expectEqualStrings("keep", preserved);
+}
+
+test "wit emitter rejects flat module name collisions" {
+    const source =
+        \\package demo:collision@1.0.0;
+        \\
+        \\interface a-b {}
+        \\interface a_b {}
+        \\
+        \\world probe { import a-b; import a_b; }
+    ;
+    var binding = try resolve.resolve_source(std.testing.allocator, source, "probe");
+    defer binding.deinit();
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", std.testing.allocator);
+    defer std.testing.allocator.free(root);
+    const output = try std.fs.path.join(std.testing.allocator, &.{ root, "wit" });
+    defer std.testing.allocator.free(output);
+    try std.testing.expectError(
+        error.OutputNameCollision,
+        emit_do.emit_all(std.testing.io, std.testing.allocator, binding, output),
+    );
+}
+
+test "wit cli parses check and bind forms without accepting extra arguments" {
+    const check = try wit_cli.parse(&.{ "check", "api.wit", "--world", "probe" });
+    try std.testing.expectEqual(wit_cli.Action.check, check.action);
+    try std.testing.expectEqualStrings("api.wit", check.input_path.?);
+    try std.testing.expectEqualStrings("probe", check.world.?);
+    try std.testing.expect(check.output_path == null);
+    const checked_manifest = try wit_cli.parse(&.{ "check", "api.wit", "--world", "probe", "--manifest", "wit/manifest.json" });
+    try std.testing.expectEqualStrings("wit/manifest.json", checked_manifest.manifest_path.?);
+
+    const bind = try wit_cli.parse(&.{ "bind", "api.wit", "--world", "probe", "--out", "wit" });
+    try std.testing.expectEqual(wit_cli.Action.bind, bind.action);
+    try std.testing.expectEqualStrings("wit", bind.output_path.?);
+    try std.testing.expectError(error.MissingWorld, wit_cli.parse(&.{ "bind", "api.wit", "--out", "wit" }));
+    try std.testing.expectError(error.MissingOutput, wit_cli.parse(&.{ "bind", "api.wit", "--world", "probe" }));
+    try std.testing.expectError(error.UnexpectedArgument, wit_cli.parse(&.{ "check", "api.wit", "extra" }));
 }
