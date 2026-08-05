@@ -1,0 +1,14 @@
+package do:resource-probe@0.1.0;
+
+interface ledger {
+  resource ticket {}
+
+  create: func(seed: u32) -> own<ticket>;
+  borrow-value: func(ticket: borrow<ticket>) -> u32;
+  consume: func(ticket: own<ticket>) -> u32;
+}
+
+world probe {
+  import ledger;
+  export run: func(seed: u32) -> u32;
+}

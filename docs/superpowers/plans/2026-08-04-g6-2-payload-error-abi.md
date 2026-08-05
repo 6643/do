@@ -4,6 +4,12 @@
 
 **Goal:** Establish a reproducible pinned Component probe for payload-bearing `wasi:http` errors, preserve the current explicit trap boundary while it is blocked, and admit only ABI shapes that pass exact payload-lift and runtime gates.
 
+**Status:** Superseded as an execution checklist by
+`2026-08-04-g6-2-payload-error-next-phase.md`. The pinned probe and bounded
+two-variant lowering results are retained here as historical design evidence;
+the current completion state and residual cancellation boundary are recorded in
+the successor plan.
+
 **Architecture:** The first phase is independent of the Do compiler: a pinned full-WIT package, hand-authored Core WAT candidates, and a Rust/Wasmtime runner characterize task-return lift. The compiler remains unchanged while the probe is blocked. If a single payload mapping passes, lowering is added descriptor-first in two bounded increments: `internal-error(option<string>)`, then `DNS-error(DNS-error-payload)`.
 
 **Tech Stack:** Zig compiler and WAT emitter, pinned `wasm-tools 1.254.0`, Wasmtime `47.0.2`, Rust `wasmtime` component bindgen, Bash regression harness, pinned WIT at `src/build/p3_wit/wasi-http-0.3.0-rc-2025-09-16`.
@@ -504,7 +510,7 @@ cargo check --locked --manifest-path examples/p3-runtime/rust-host-runner/Cargo.
 git diff --check
 ```
 
-Expected baseline remains `229/229`, default `pass=1068 fail=0 skip=3`, and
+Expected baseline is `232/232`, default `pass=1068 fail=0 skip=3`, and
 WASM `pass=1070 fail=0 skip=3` unless a newly admitted shape has intentionally
 expanded the documented count.
 

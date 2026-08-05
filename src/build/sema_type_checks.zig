@@ -542,6 +542,53 @@ pub fn check_type_refs(tokens: []const lexer.Token) !void {
     }
 }
 
+pub fn check_async_container_type_refs(tokens: []const lexer.Token) !void {
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokens[i].kind != .ident) continue;
+        if (!is_async_container_type_name(tokens[i].lexeme)) continue;
+        if (!is_source_type_name_context(tokens, i)) continue;
+        if (i + 1 >= tokens.len or !tok_eq(tokens[i + 1], "<")) {
+            return mark_error_at(tokens, i, error.InvalidTypeRef);
+        }
+
+        const close_angle = find_matching(tokens, i + 1, "<", ">") catch
+            return mark_error_at(tokens, i + 1, error.InvalidTypeRef);
+        if (count_type_args(tokens, i + 2, close_angle) != 1) {
+            return mark_error_at(tokens, i, error.InvalidTypeRef);
+        }
+        i = close_angle;
+    }
+}
+
+pub fn check_result_type_refs(tokens: []const lexer.Token) !void {
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tokens[i].kind != .ident) continue;
+        if (!std.mem.eql(u8, tokens[i].lexeme, "Result")) continue;
+        if (!is_source_type_name_context(tokens, i)) continue;
+        // `Result { ... }` remains a rejected declaration named like the synthetic Error type.
+        if (i + 1 < tokens.len and tok_eq(tokens[i + 1], "{")) continue;
+        if (i + 1 >= tokens.len or !tok_eq(tokens[i + 1], "<")) {
+            return mark_error_at(tokens, i, error.InvalidResultType);
+        }
+
+        const close_angle = find_matching(tokens, i + 1, "<", ">") catch
+            return mark_error_at(tokens, i + 1, error.InvalidResultType);
+        if (count_type_args(tokens, i + 2, close_angle) != 2) {
+            return mark_error_at(tokens, i, error.InvalidResultType);
+        }
+        i = close_angle;
+    }
+}
+
+fn is_async_container_type_name(name: []const u8) bool {
+    return std.mem.eql(u8, name, "Future") or
+        std.mem.eql(u8, name, "Stream") or
+        std.mem.eql(u8, name, "StreamReader") or
+        std.mem.eql(u8, name, "StreamWriter");
+}
+
 
 pub fn check_forbidden_source_type_names(tokens: []const lexer.Token) !void {
     var i: usize = 0;
@@ -611,6 +658,8 @@ pub fn check_bare_nil_types(tokens: []const lexer.Token) !void {
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
         if (!tok_eq(tokens[i], "nil")) continue;
+        if (is_result_unit_type_arg(tokens, i)) continue;
+        if (is_async_unit_type_arg(tokens, i)) continue;
         if (is_nil_union_branch(tokens, i)) {
             if (has_duplicate_nil_in_union_segment(tokens, i)) {
                 return mark_error_at(tokens, i, error.InvalidTypeRef);
@@ -623,6 +672,24 @@ pub fn check_bare_nil_types(tokens: []const lexer.Token) !void {
         if (!is_bare_nil_type_context(tokens, i)) continue;
         return mark_error_at(tokens, i, error.InvalidTypeRef);
     }
+}
+
+fn is_result_unit_type_arg(tokens: []const lexer.Token, idx: usize) bool {
+    if (idx < 2 or idx + 1 >= tokens.len) return false;
+    if (tok_eq(tokens[idx - 1], "<") and tok_eq(tokens[idx + 1], ",")) {
+        return tokens[idx - 2].kind == .ident and std.mem.eql(u8, tokens[idx - 2].lexeme, "Result");
+    }
+    if (!tok_eq(tokens[idx - 1], ",") or !tok_eq(tokens[idx + 1], ">")) return false;
+    var open_idx = idx - 1;
+    while (open_idx > 0 and !tok_eq(tokens[open_idx], "<")) : (open_idx -= 1) {}
+    if (!tok_eq(tokens[open_idx], "<") or open_idx == 0) return false;
+    return tokens[open_idx - 1].kind == .ident and std.mem.eql(u8, tokens[open_idx - 1].lexeme, "Result");
+}
+
+fn is_async_unit_type_arg(tokens: []const lexer.Token, idx: usize) bool {
+    if (idx < 2 or idx + 1 >= tokens.len) return false;
+    if (!tok_eq(tokens[idx - 1], "<") or !tok_eq(tokens[idx + 1], ">")) return false;
+    return tokens[idx - 2].kind == .ident and is_async_container_type_name(tokens[idx - 2].lexeme);
 }
 
 

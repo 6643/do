@@ -1,8 +1,52 @@
 # do v1 内存模型
 
-**状态**: v1 实现规格草案
+**状态**: 当前 ARC 实现规格草案; Wasm GC 迁移探针已开始, 但尚未替代活跃 backend
 **目标**: 在不向用户暴露指针/引用的前提下, 为 Wasm lowering、`[T]`、`text`、结构体、ARC、host ABI 和未来 store/atomic 设计提供统一边界。
 **关系**: `doc/spec.md` 是规范入口; `doc/spec_rules.md` 定义源码语义; 本文定义运行时表示和编译器实现边界 (v1 权威规格)。
+
+## 0.1 Selected GC Backend Semantics
+
+The planned replacement backend is Wasm GC with source-level value semantics.
+It does not add source pointers, references, general `own<T>`, or general
+`borrow<T>`.
+
+1. Scalars and small unmanaged structs pass as Core Wasm values.
+2. `text`, lists, large structs, and values containing managed fields pass as
+   runtime-internal GC references. Passing them does not copy their payload.
+3. A published source value is immutable. An update such as `@set` or `@put`
+   returns a new logical value and must not mutate an aliased older value.
+4. A backend may reuse storage only after proving the object is local, unique,
+   and unescaped. This is an optimization and never changes source semantics.
+5. WIT resources remain distinct from GC values: their `own`/`borrow` and drop
+   rules are compiler/ABI contracts, and GC never releases a host resource.
+6. GC references never cross a Component/WIT boundary. Canonical ABI values are
+   copied or marshaled at that boundary.
+
+> Wasm GC 迁移边界: `examples/gc-p3-runtime/gc-frame.wat` 在本机
+> Wasmtime 47.0.2 上只验证 Core GC 的 `struct`、`array` 与 source-value
+> rebuild/clone。它不改变本文 ARC 表示，也不证明 Component Model、WASI P3、
+> resource cleanup 或完整 WASI 支持。只有 Task 9 的全量 lowering 和回归通过后，
+> 本文的 ARC 运行时表示才可被 GC backend 替换。
+
+`do build --gc-core` 目前是独立的受限实验 target。它已执行验证 `text` identity、
+`[u8]` 的固定和参数化索引 `@set`，以及含 `[u8]` 字段的 `Box` 固定路径更新。参数化
+数组更新以运行时 `array.len` 分配新数组，再通过 `array.copy` 与 `array.set` 写入新值；
+结构体更新以新数组和未修改字段构造新 struct，并在同一 Wasmtime 执行中检查旧值保持不变。
+这不是通用 list 或 struct lowering，也不改变活跃 ARC backend。
+
+## 0. Wasm GC 迁移 gate (Task 0)
+
+**Core GC representation: GO.** `examples/gc-p3-runtime/run-wasmtime.sh`
+在本机 Wasmtime 47.0.2 上以 `-W gc=y` 编译并执行最小 `struct`/`array`/value
+rebuild probe，返回 `27815`。
+
+**Runtime/ARC switch: NO-GO.** 该 probe 不足以替换 ARC。切换仍依赖 Task 2 的
+P3 host execution、Task 5 的 scheduler/byte admission、Task 8 的 terminal
+outcome cleanup 与 Task 9 的全量 GC lowering/canonical copied ABI migration。
+
+未来 GC runtime 的所有权与表示边界由
+`examples/gc-p3-runtime/README.md` 的 ownership table 和 representation matrix
+定义；它们在 Task 9 落地前不是对现有 ARC implementation 的描述。
 
 ---
 

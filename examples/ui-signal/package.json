@@ -3,9 +3,9 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "bun build runtime.ts counter-do.ts deep-do.ts demo.ts --outdir dist --target browser --format esm",
+        "build": "bun build runtime.ts host-runtime.ts counter-do.ts deep-do.ts demo.ts --outdir dist --target browser --format esm",
         "check": "tsc -p tsconfig.json",
-        "test": "bun test runtime.test.ts",
+        "test": "bun test runtime.test.ts host-runtime.test.ts",
         "verify": "bun run check && bun run test && bun run build"
     },
     "devDependencies": {

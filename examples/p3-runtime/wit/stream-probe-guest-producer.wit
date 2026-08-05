@@ -1,0 +1,12 @@
+package do:stream-probe@0.1.0;
+
+interface sink {
+  enum error-code { io, illegal-byte-sequence, pipe }
+  write-via-stream: async func(data: stream<u8>) -> result<_, error-code>;
+}
+
+world stream-writer-probe {
+  import sink;
+  use sink.{error-code};
+  export produce: async func() -> result<_, error-code>;
+}

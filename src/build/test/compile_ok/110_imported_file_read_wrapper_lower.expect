@@ -3,4 +3,3 @@ call $read_file
 (func $read_file (param $file.id i64) (param $offset i32) (param $size i32) (result i32 i32 i32 i32)
 call $__wasi_import_filesystem_types_descriptor_read
 local.set $r.__union_tag
-call $__mod_0__file_status_to_error

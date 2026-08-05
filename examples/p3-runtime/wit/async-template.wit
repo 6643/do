@@ -1,0 +1,10 @@
+package do:async-template@0.1.0;
+
+interface clock {
+  wait-for: async func(how-long: u64);
+}
+
+world probe {
+  import clock;
+  export run: async func(how-long: u64);
+}

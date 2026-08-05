@@ -38,6 +38,12 @@ pass_count=0
 fail_count=0
 skip_count=0
 
+# Node-based component probes use TMPDIR as the parent for mkdtemp. Create an
+# explicitly configured worktree temp root before any probe starts.
+if [[ -n "${TMPDIR:-}" ]]; then
+    mkdir -p "$TMPDIR"
+fi
+
 mkdir -p "$TMP_DIR"
 rm -f "$TMP_DIR"/*.stdout "$TMP_DIR"/*.stderr "$TMP_DIR"/compile_*.wat 2>/dev/null || true
 
@@ -50,8 +56,8 @@ if [[ "$SKIP_BUILD" != "1" ]]; then
     echo "[INFO] build compiler"
     (
         cd "$ROOT_DIR/src"
-        ZIG_LOCAL_CACHE_DIR=/tmp/zig-cache \
-        ZIG_GLOBAL_CACHE_DIR=/tmp/zig-gcache \
+        ZIG_LOCAL_CACHE_DIR="${ZIG_LOCAL_CACHE_DIR:-/tmp/zig-cache}" \
+        ZIG_GLOBAL_CACHE_DIR="${ZIG_GLOBAL_CACHE_DIR:-/tmp/zig-gcache}" \
         "$ZIG_BIN" build -Doptimize=Debug >/dev/null
     )
 else
@@ -831,8 +837,25 @@ run_compile_ok_case() {
     local core_shims_expect_file="${case_file%.do}.core_shims.expect"
     local component_input_expect_file="${case_file%.do}.component_input.expect"
     local component_core_expect_file="${case_file%.do}.component_core.expect"
+    local host_export_expect_file="${case_file%.do}.host_export.expect"
+    local host_manifest_expect_file="${case_file%.do}.host_manifest.expect"
+    local host_manifest_file="$TMP_DIR/compile_${name}.host_manifest.json"
 
-    if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$case_file" -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
+    local build_status=0
+    if [[ -f "$host_export_expect_file" ]]; then
+        if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$case_file" --host-export --host-manifest "$host_manifest_file" -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
+            :
+        else
+            build_status=$?
+        fi
+    else
+        if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$case_file" -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
+            :
+        else
+            build_status=$?
+        fi
+    fi
+    if [[ "$build_status" -eq 0 ]]; then
         if grep -Fq "ok:" "$stdout_file" && [[ -s "$wat_file" ]]; then
             if [[ -f "$expect_file" ]]; then
                 local missing=0
@@ -862,6 +885,38 @@ run_compile_ok_case() {
                 if [[ "$missing" -ne 0 ]]; then
                     echo "[INFO] wat output for $name:"
                     cat "$wat_file"
+                    ((fail_count += 1))
+                    return
+                fi
+            fi
+            if [[ -f "$host_export_expect_file" ]]; then
+                local host_export_missing=0
+                while IFS= read -r line || [[ -n "$line" ]]; do
+                    [[ -z "$line" ]] && continue
+                    [[ "${line:0:1}" == "#" ]] && continue
+                    if grep -Fq "$line" "$wat_file"; then
+                        continue
+                    fi
+                    echo "[FAIL] compile ok  $name (missing expected host export text: $line)"
+                    host_export_missing=1
+                done < "$host_export_expect_file"
+                if [[ "$host_export_missing" -ne 0 ]]; then
+                    ((fail_count += 1))
+                    return
+                fi
+            fi
+            if [[ -f "$host_manifest_expect_file" ]]; then
+                local host_manifest_missing=0
+                while IFS= read -r line || [[ -n "$line" ]]; do
+                    [[ -z "$line" ]] && continue
+                    [[ "${line:0:1}" == "#" ]] && continue
+                    if grep -Fq "$line" "$host_manifest_file"; then
+                        continue
+                    fi
+                    echo "[FAIL] compile ok  $name (missing expected host manifest text: $line)"
+                    host_manifest_missing=1
+                done < "$host_manifest_expect_file"
+                if [[ "$host_manifest_missing" -ne 0 ]]; then
                     ((fail_count += 1))
                     return
                 fi
@@ -1223,6 +1278,7 @@ run_compile_err_case() {
     local stderr_file="$TMP_DIR/compile_${name}.stderr"
     local wat_file="$TMP_DIR/compile_${name}.wat"
     local expect_file="${case_file%.do}.expect"
+    local host_export_expect_file="${case_file%.do}.host_export.expect"
 
     if [[ ! -f "$expect_file" ]]; then
         echo "[FAIL] compile err $name (missing expect file: $expect_file)"
@@ -1230,7 +1286,15 @@ run_compile_err_case() {
         return
     fi
 
-    if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$case_file" -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
+    local build_succeeded=0
+    if [[ -f "$host_export_expect_file" ]]; then
+        if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$case_file" --host-export -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
+            build_succeeded=1
+        fi
+    elif DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$case_file" -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
+        build_succeeded=1
+    fi
+    if [[ "$build_succeeded" -eq 1 ]]; then
         echo "[FAIL] compile err $name (expected failure, got success)"
         cat "$stdout_file"
         ((fail_count += 1))

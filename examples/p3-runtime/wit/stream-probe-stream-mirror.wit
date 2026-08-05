@@ -1,0 +1,22 @@
+package do:stream-probe@0.1.0;
+
+interface types {
+  enum error-code { io, illegal-byte-sequence, pipe }
+}
+
+interface source {
+  use types.{error-code};
+  read-via-stream: func() -> tuple<stream<u8>, future<result<_, error-code>>>;
+}
+
+interface sink {
+  use types.{error-code};
+  write-via-stream: async func(data: stream<u8>) -> result<_, error-code>;
+}
+
+world stream-mirror-probe {
+  import source;
+  import sink;
+  use types.{error-code};
+  export produce: async func() -> result<_, error-code>;
+}

@@ -1,0 +1,15 @@
+// Generic component-async probe only. This is deliberately not a WASI P3 WIT
+// package: the pinned P3 package/interface/member revision is not yet linked
+// by the local C API and remains recorded as a separate blocker.
+package do:component-async-probe@0.1.0;
+
+interface host-events {
+  // The generic probe uses a synchronous WIT signature whose host binding is
+  // driven asynchronously through Wasmtime's C continuation API.
+  next-event: func() -> u32;
+}
+
+world probe {
+  import host-events;
+  export run: func() -> u32;
+}

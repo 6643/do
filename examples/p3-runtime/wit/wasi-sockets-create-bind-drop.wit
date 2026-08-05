@@ -1,0 +1,37 @@
+package wasi:sockets@0.3.0;
+
+interface types {
+  enum error-code { closed, unsupported-address, host-failure }
+  enum ip-address-family { ipv4, ipv6 }
+  type ipv4-address = tuple<u8, u8, u8, u8>;
+  type ipv6-address = tuple<u16, u16, u16, u16, u16, u16, u16, u16>;
+  record ipv4-socket-address {
+    port: u16,
+    address: ipv4-address,
+  }
+  record ipv6-socket-address {
+    port: u16,
+    flow-info: u32,
+    address: ipv6-address,
+    scope-id: u32,
+  }
+  variant ip-socket-address {
+    ipv4(ipv4-socket-address),
+    ipv6(ipv6-socket-address),
+  }
+
+  resource tcp-socket {
+    create: static func(address-family: ip-address-family) -> result<tcp-socket, error-code>;
+    bind: func(local-address: ip-socket-address) -> result<_, error-code>;
+  }
+
+  resource udp-socket {
+    create: static func(address-family: ip-address-family) -> result<udp-socket, error-code>;
+    bind: func(local-address: ip-socket-address) -> result<_, error-code>;
+  }
+}
+
+world socket-probe {
+  import types;
+  export run: func() -> u32;
+}

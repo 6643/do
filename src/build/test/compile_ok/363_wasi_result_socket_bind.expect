@@ -1,0 +1,7 @@
+;; wasi-bind source="entry" alias="host_tcp_bind" target="sockets/types/tcp-socket.bind" params="tcp-socket,ip-socket-address" result="result<_,error-code>"
+;; wasi-bind source="entry" alias="host_udp_bind" target="sockets/types/udp-socket.bind" params="udp-socket,ip-socket-address" result="result<_,error-code>"
+(import "cm32p2|wasi:sockets/types" "[method]tcp-socket.bind" (func $__wasi_import_sockets_types_tcp_socket_bind (param i32 i32 i32)))
+(import "cm32p2|wasi:sockets/types" "[method]udp-socket.bind" (func $__wasi_import_sockets_types_udp_socket_bind (param i32 i32 i32)))
+(local $tcp_bound.__union_tag i32)
+(local $udp_bound.__union_tag i32)
+if (result i32 i32)

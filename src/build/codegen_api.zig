@@ -17,13 +17,26 @@ const codegen_emit_expression = @import("codegen_emit_expression.zig");
 const codegen_emit_struct_fields = @import("codegen_emit_struct_fields.zig");
 const codegen_storage_layout = @import("codegen_storage_layout.zig");
 const codegen_imports = @import("codegen_imports.zig");
+const codegen_component_resource_probe = @import("codegen_component_resource_probe.zig");
+const codegen_component_wasi_filesystem_preopen = @import("codegen_component_wasi_filesystem_preopen.zig");
+const codegen_component_wasi_sockets = @import("codegen_component_wasi_sockets.zig");
+const codegen_component_resource_async = @import("codegen_component_resource_async.zig");
+const codegen_component_async = @import("codegen_component_async.zig");
 
 pub const EmitOptions = model.EmitOptions;
 pub const CodegenError = model.CodegenError;
 
 pub const emit_wat = codegen_pipeline.emit_wat;
 pub const emit_wat_with_options = codegen_pipeline.emit_wat_with_options;
+pub const program_requires_async_lowering = codegen_pipeline.program_requires_async_lowering;
 pub const emit_test_wat = codegen_pipeline.emit_test_wat;
+pub const emit_p3_wait_for_wit = codegen_pipeline.emit_p3_wait_for_wit;
+pub const emit_p3_resource_probe_wit = codegen_component_resource_probe.emit_component_wit;
+pub const emit_p3_wasi_filesystem_preopen_wit = codegen_component_wasi_filesystem_preopen.emit_component_wit;
+pub const emit_p3_wasi_sockets_create_bind_drop_wit = codegen_component_wasi_sockets.emit_component_wit;
+pub const emit_p3_resource_async_wit = codegen_component_resource_async.emit_component_wit;
+pub const emit_p3_async_component_wit = codegen_component_async.emit_component_wit;
+pub const requires_p3_http_wit_package = codegen_component_async.requires_http_wit_package;
 
 // Types for unit tests
 const LocalSet = context.LocalSet;

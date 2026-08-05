@@ -1,0 +1,6 @@
+
+world http-payload-cancel {
+  import client;
+  use types.{request};
+  export cancel: async func(request: request);
+}

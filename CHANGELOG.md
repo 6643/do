@@ -1,5 +1,272 @@
 # Changelog
 
+- 2026-08-05 D2/G6.3 socket real-host gate: the compiler-generated TCP and UDP
+  `create/bind/drop` Components now use the measured canonical argument order,
+  result tags, IPv4 flattening, and result-area pointers. The Rust/Wasmtime
+  loopback matrix passes success, forced create error, and forced bind error
+  with exact resource cleanup; listen/connect/accept and general socket I/O
+  remain out of scope.
+
+- 2026-08-05 Result source policy closure: ordinary Do and standard-library
+  host APIs use `T | E` (or `nil | E`) for distinct WIT result arms, with
+  type-based narrowing. Duplicate ordinary union branches remain rejected.
+  `Result<T, E>` and its explicit tag are retained only for registered private
+  WIT/Component compatibility probes, including same-type arms; no public
+  `own<T>`/`borrow<T>`/`ref<T>` syntax is introduced.
+
+- 2026-08-04 G6.2 HTTP payload cancellation: the registered pinned
+  `wasi:http/client.send` shape now accepts an explicit
+  `@cancel(completion)` nil-returning root. The generated and hand-written
+  service-world Components assemble and pass the Rust/Wasmtime pending and
+  admitted immediate-terminal gates with exactly-once request/future/resource
+  cleanup and an empty `ResourceTable`; sequential nonempty payload calls reuse
+  the released private slot. Cancel-after-terminal, double cancellation of one
+  Future, implicit cancellation, broader HTTP payload shapes, and public
+  ownership syntax remain blocked.
+
+- 2026-08-04 G6.2 HTTP payload-error lowering: the descriptor-registered
+  `InternalError(option<string>)` and
+  `DNS-error(option<string>, option<u16>)` branches now preserve exact canonical
+  values through pending and ready Component/Rust/Wasmtime delivery. Error paths
+  create no response resource and leave the resource table empty; `Some` to
+  `None` host-lowered substitution and every unregistered payload tag remain
+  explicitly blocked. The separate registered HTTP payload-cancellation gate is
+  documented independently; general HTTP shapes remain outside both bounded
+  gates.
+
+- 2026-08-04 test harness: `run_tests.sh` now creates an explicitly configured
+  `TMPDIR` before Node-based Component probes call `mkdtemp`. Release and full
+  regression commands can therefore use a fresh worktree-local temp root
+  without a manual directory pre-step.
+
+- 2026-08-04 HTTP Component emitter placeholder hardening: the generic service
+  and request-construction/send paths now expand the shared
+  `[body-future-event-handler]` slot to the normal no-body waitable event
+  result. The pinned HTTP service ABI probe, empty-request Rust/Wasmtime gate,
+  HTTP emitter suite (`183/183`), default/WASM regressions, and ReleaseSmall
+  smoke pass. This only closes template leakage; it does not add general HTTP
+  body, payload-bearing error, or public ownership syntax.
+
+- 2026-08-04 G6.2 private resource Result cancellation: the registered
+  `do:resource-probe/http@0.1.0` shape now accepts an explicit
+  `@cancel(completion)` nil-returning async root. The generated Component calls
+  `subtask.cancel`, checks terminal status, drops the subtask exactly once, and
+  returns through `[task-return]cancel`. Generated and hand-written
+  Component/Rust/Wasmtime gates cover pending future drop, request consumption,
+  zero response create/drop, and an empty `ResourceTable`; implicit scope-drop,
+  double cancellation, and cancellation after terminal consumption remain
+  rejected. No rollback protocol or public `own<T>`/`borrow<T>`/`ref<T>` syntax
+  was added.
+
+- 2026-08-04 G6.2 private resource Result error terminal: the registered
+  `do:resource-probe/http@0.1.0` async resource now completes a ready
+  `Err(failed)` through the same task-return, canonical-buffer, context, and
+  GC-frame cleanup path as success. The Component/Rust/Wasmtime gate proves two
+  requests are consumed, no response resource is created or dropped on error,
+  and pending/immediate success behavior remains green. Cancellation is still
+  excluded until an explicit `@cancel` source shape is designed; no public
+  `own<T>`/`borrow<T>`/`ref<T>` syntax or arbitrary resource Result payloads were
+  added.
+
+- 2026-08-04 G6.2 capability-matrix closeout: the full private positive
+  Component/Rust/Wasmtime matrix passed, including record consumers through
+  six nested owned-resource levels, producer helpers through five forwarding
+  hops, reordered/branch-terminal producers, and all six StreamMirror modes.
+  The pinned negative gates still reject arbitrary producers, sixth forwarding,
+  shared leases, borrowed stream fields, and seventh-level nesting. Fresh
+  regressions remain `pass=1068 fail=0 skip=3`, WASM `pass=1070 fail=0 skip=3`
+  with six WASM smoke cases, and `zig test main.zig` is `232/232`.
+
+- 2026-08-03 G6.2 producer lease closeout: the private `do:stream-probe`
+  producer now has verified branch-selected `close(writer)` / `abort(writer, 2)`
+  terminal lowering, while typed parameter reordering resolves the actual
+  `StreamWriter<u8>` formal slot. Component and Rust/Wasmtime gates cover
+  pending/ready/abort or error paths with one callback and one stream drop;
+  the producer-only runner has no `ResourceTable` and therefore makes no
+  `table-empty=true` claim. The capability matrix retains rejection of
+  arbitrary producer expressions, shared leases, borrowed stream fields,
+  sixth forwarding, seventh nesting, and public `own<T>`/`borrow<T>`/`ref<T>`.
+
+- 2026-08-03 G6.2 StreamMirror runtime closeout: the private
+  descriptor-bounded source-to-writer mirror now drops its completed sink
+  subtask before dropping the waitable set, preventing Wasmtime's
+  `resource has children` failure. The Core/WIT lowering gate and the Rust/
+  Wasmtime matrix pass pending, ready, source EOF, `Err(pipe)`, cancellation,
+  and early-drop modes with exactly-once source stream/future and sink cleanup
+  and an empty resource table. The change keeps ordinary async lowering
+  guarded by `AsyncLoweringUnavailable` and does not add public
+  `own<T>`/`borrow<T>`/`ref<T>` syntax.
+
+- 2026-08-03 G6.2.3 path-sensitive producer-lease semantic foundation:
+  `sema_stream_lease.zig` now checks `StreamWriter<T>` ownership across
+  if/else joins, loop exits, lexical `defer`, same-typed transfer, helper
+  transfer, writer writes, finalization, and async scope exits. Unequal join
+  states report `StreamWriterLeasePathConflict`; moving a deferred writer
+  reports `StreamWriterDeferredTransfer`. Fixtures 350, 405-407, and 409-410
+  now lock the refined diagnostics, while 351-404 and 408 remain green. The
+  change is semantic-only: no public `own<T>`/`borrow<T>`/`ref<T>` syntax,
+  general async-call lowering, or arbitrary producer runtime shape was added.
+  Focused Zig tests, ReleaseSmall, the full `SKIP_BUILD=1` regression
+  (`pass=1065 fail=0 skip=3`), `RUN_WASM=1` (`pass=1067 fail=0 skip=3`), and
+  the existing five-hop/six-level Rust/Wasmtime gates pass.
+
+- 2026-08-03 G6.2 six-level nested owned-resource and five-hop forwarding
+  checkpoints: the private `do:record-resource-stream-nested-six-level@0.1.0`
+  descriptor now admits the exact `inner -> deep -> deeper -> deepest -> ultra
+  -> hyper -> own<ticket>` path, and the private `do:stream-probe` producer
+  admits five same-typed `(writer, count, value)` forwarding helpers. Component
+  lowering plus Rust/Wasmtime pending/ready/error gates pass with two resource
+  creates/drops, one stream drop, one future drop, one host callback, and empty
+  resource tables. Sixth forwarding, seventh nested level, borrowed/list/variant
+  fields, and resource escape remain rejected. Pinned `wasm-tools 1.254.0`
+  explicitly rejects a `borrow<ticket>` stream record during Component embed.
+  See `docs/superpowers/plans/2026-08-03-g6-2-bounded-next-phase.md`.
+
+- 2026-08-03 G6.2 five-level nested owned-resource record checkpoint: the
+  private `do:record-resource-stream-nested-five-level@0.1.0` descriptor now
+  admits one `inner -> deep -> deeper -> deepest -> ultra -> own<ticket>` path.
+  Recursive manifest/WIT/Core decode-release, Component assembly, and
+  Rust/Wasmtime pending/ready/error gates pass with two resource drops, one
+  stream drop, one future drop, and an empty resource table. Sixth-level,
+  multi-child, mixed scalar/nested, borrow/list/variant, and resource-escape
+  shapes remain rejected. See
+  `docs/superpowers/specs/2026-08-03-record-stream-nested-five-level-design.md`.
+
+- 2026-08-03 G6.2 parameterized four-hop forwarding helper producer checkpoint:
+  the private `do:stream-probe` producer now admits the exact chain
+  `produce -> outer_stream -> entry_stream -> forward_stream -> middle_stream -> finish_stream`.
+  All four forwarders transfer `(writer, count, value)` unchanged and only
+  await the next same-typed helper; the final helper retains the existing
+  countdown, sink call, and `defer close(writer)` behavior. Component lowering
+  and Rust/Wasmtime pending/ready/`Err(pipe)` gates pass for `count=0/1/3`,
+  `value=90`, one host callback, and one stream drop. A fifth forwarding edge,
+  general async calls, arbitrary producer expressions, and borrowed/nested/
+  variant resource fields remain rejected. See
+  `docs/superpowers/specs/2026-08-03-stream-writer-parameterized-four-hop-design.md`.
+
+- 2026-08-03 G6.2 four-level nested owned-resource record checkpoint: the
+  private `do:record-resource-stream-nested-four-level@0.1.0` descriptor now
+  admits one `inner -> deep -> deeper -> deepest -> own<ticket>` path. The
+  recursive manifest/WIT/Core decode-release path, Component assembly, and
+  Rust/Wasmtime pending/ready/error gates pass with two resource drops, one
+  stream drop, one future drop, and an empty resource table. Fifth-level,
+  multi-child, mixed scalar/nested, borrow/list/variant, and resource-escape
+  shapes remain rejected. See
+  `docs/superpowers/specs/2026-08-03-record-stream-nested-four-level-design.md`.
+
+- 2026-08-03 G6.2 parameterized three-hop forwarding helper producer checkpoint:
+  the private `do:stream-probe` producer now admits the exact chain
+  `produce -> entry_stream -> forward_stream -> middle_stream -> finish_stream`.
+  All three forwarders transfer `(writer, count, value)` unchanged and only
+  await the next same-typed helper; the final helper retains the existing
+  countdown, sink call, and `defer close(writer)` behavior. Component lowering
+  and Rust/Wasmtime pending/ready/`Err(pipe)` gates pass for `count=0/1/3`,
+  `value=90`, one host callback, and one stream drop. A fourth forwarding edge,
+  general async calls, arbitrary producer expressions, and borrowed/nested/
+  variant resource fields remain rejected.
+
+- 2026-08-03 G6.2 three-level nested owned-resource record checkpoint: the
+  private `do:record-resource-stream-nested-three-level@0.1.0` descriptor now
+  admits one `inner -> deep -> deeper -> own<ticket>` path. Recursive WIT
+  declaration, Core decode/release, Component validation, and Rust/Wasmtime
+  pending/ready/error gates pass with two resource drops, one stream drop, one
+  future drop, and an empty resource table. Fourth-level, multi-child, mixed
+  scalar/nested, borrow/list/variant, and resource-escape shapes remain
+  rejected.
+
+- 2026-08-03 G6.2 reordered parameterized helper checkpoint: the private
+  `do:stream-probe` producer now accepts a helper declaration in any order of
+  exactly one `StreamWriter<u8>`, one `u64`, and one `u8`, with calls mapped by
+  typed formal position. Sema ownership transfer, Component lowering, and
+  Rust/Wasmtime pending/ready/`Err(pipe)` gates pass for count `0/1/3`, value
+  `90`, one host callback, and one stream drop. Literal, duplicate, missing,
+  extra, crossed, third-hop, and arbitrary producer/resource shapes remain
+  rejected.
+
+- 2026-08-03 G6.2 multiple nested owned-resource path checkpoint: the private
+  `do:record-resource-stream-multiple-nested@0.1.0` descriptor now admits two
+  top-level nested `own<ticket>` paths with Core slots at offsets 0 and 4.
+  Recursive WIT/decode/release emission deduplicates the shared resource/drop
+  declarations. Component lowering and Rust/Wasmtime pending/ready/error gates
+  pass with four resource drops, one stream drop, one future drop, and an empty
+  resource table. Third-level, multi-child, mixed scalar/nested, borrow/list/
+  variant, and resource-escape shapes remain rejected.
+
+- 2026-08-03 G6.2 two-level nested owned-resource record checkpoint: the private
+  `do:record-resource-stream-nested-two-level@0.1.0` descriptor now admits one
+  bounded `inner-entry -> deep-entry -> own<ticket>` path. Recursive WIT
+  declarations, Core decode, deduplicated drop imports, and frame-owned
+  exactly-once release are covered by Component lowering plus Rust/Wasmtime
+  pending/ready/error gates; a fourth level, multiple paths, borrowed/list/
+  variant fields, and resource escape remain rejected.
+
+- 2026-08-03 G6.2 nested-resource manifest boundary hardening: nested child
+  metadata now validates recursive shape and rejects a fourth nested level,
+  multiple children, or unsupported metadata instead of silently interpreting
+  deeper resource shapes as a shallower record. Existing one-level
+  Component/Rust/Wasmtime gates remain unchanged.
+
+- 2026-08-03 G6.2 parameterized two-hop forwarding helper producer checkpoint:
+  the private `do:stream-probe` producer now admits the exact chain
+  `produce -> forward_stream -> middle_stream -> finish_stream`. Both
+  forwarders transfer `(writer, count, value)` unchanged and only await the
+  next helper; the final helper retains the existing countdown, sink call, and
+  `defer close(writer)` behavior. Component plus Rust/Wasmtime
+  pending/ready/`Err(pipe)` gates pass for `count=0/1/3`, `value=90`, one host
+  callback, and one stream drop. A third forwarding edge, reordered/literal
+  arguments, general async calls, and arbitrary resource shapes remain
+  rejected.
+
+- 2026-08-03 G6.2 nested owned-resource record checkpoint: the private
+  `do:record-resource-stream-nested@0.1.0` descriptor admits one nested
+  `inner-entry` containing one `own<ticket>` child. Component lowering and
+  Rust/Wasmtime pending/ready/error gates observe two resource drops, one
+  stream drop, one future drop, and an empty resource table. Borrowed, list,
+  variant, deeper nested, and arbitrary producer/resource shapes remain outside
+  the gate; pinned `wasm-tools 1.254.0` rejects a stream record containing
+  `borrow<T>` during Component embed.
+
+- 2026-08-03 G6.2 parameterized forwarding helper producer checkpoint: the
+  registered `do:stream-probe` producer now admits one private forwarding
+  helper that transfers `(writer, count, value)` unchanged to the existing
+  parameterized countdown helper. Component lowering still emits one root
+  export with frame offsets 52/60. Component plus Rust/Wasmtime
+  pending/ready/`Err(pipe)` gates pass for `count=0/1/3`, `value=90`, one host
+  callback, and one stream drop; a third hop and general async/resource shapes
+  remain rejected.
+- 2026-08-03 G6.2 parameterized helper producer checkpoint: the registered
+  `do:stream-probe` guest producer may transfer its capacity-one
+  `StreamWriter<u8>` lease to one private helper with `(writer, count, value)`
+  parameters. The helper runs the existing zero-pre-guarded countdown using
+  frame offsets 52/60, closes once, and calls the registered sink. Component
+  lowering plus Rust/Wasmtime pending/ready/`Err(pipe)` gates pass for
+  `count=0/1/3`, `value=90`, one host callback, and one stream drop. General
+  async calls, extra helper hops, and arbitrary producer/resource shapes remain
+  pending.
+- 2026-08-03 G6.2 parameterized dynamic producer checkpoint: the registered
+  `do:stream-probe` sink now admits `async produce(count u64, value u8)`, with
+  a capacity-one countdown pump, `(i64, i32)` async entry, frame value slot at
+  offset 60, and per-pump byte admission. Component plus Rust/Wasmtime
+  pending/ready/`Err(pipe)` gates pass for `count=0/1/3`, `value=90`, with one
+  host callback and one stream drop; general producer expressions and async
+  calls remain outside the boundary.
+- 2026-08-03 G6.2 bounded dynamic producer checkpoint: the registered `do:stream-probe` sink now admits the explicit `(count u64)` countdown producer shape. It uses a capacity-one `StreamWriter<u8>`, writes literal `65`, stores `remaining` as `i64`, starts the sink before pumping, and supports `count=0/1/3`. Component validation plus Rust/Wasmtime pending/ready/`Err(pipe)` gates pass with one host callback and one stream drop; general loops, dynamic values, and general async calls remain outside the boundary.
+- 2026-08-03 G6.2 two-hop helper producer lease checkpoint: one private async forwarding helper may now transfer an open `StreamWriter<u8>` lease to the final same-typed helper, which performs the bounded `[65, 66]` sequence, registered sink call, and `defer close(writer)`. Component lowering and Rust/Wasmtime pending/ready/`Err(pipe)` gates pass; a third hop, general async calls, dynamic producers, and borrowed/nested/variant resource fields remain rejected.
+- 2026-08-03 G6.2 helper-owned producer lease checkpoint: the one same-typed async helper may now perform the bounded `[65, 66]` `StreamWriter<u8>` sequence after receiving the lease, then call the registered sink and `defer close(writer)`. The plan still emits only the producer root; Component lowering and Rust/Wasmtime pending/ready/`Err(pipe)` gates pass. General async calls, multi-level helpers, dynamic producers, arbitrary payloads, and borrowed/nested/variant resource fields remain outside the gate.
+- 2026-08-03 G6.2 helper-mediated producer lease checkpoint: a bounded `StreamWriter<u8>` producer may transfer its lease once to a same-typed async helper that directly calls the registered stream-writer descriptor and finalizes with `defer close(writer)`. The descriptor-specific Component emitter keeps only the producer root export; pending/ready/`Err(pipe)` Rust/Wasmtime gates observe `[65, 66]`, one host callback, and one stream drop. General async calls, dynamic producers, arbitrary payloads, and borrowed/nested/variant resource fields remain outside the gate.
+
+- 2026-08-02 G6.2 producer-lease terminal-error evidence: the registered custom stream-writer `Err(pipe)` runtime gate now requires one host callback and `stream-dropped=true`, making terminal reader cleanup observable instead of checking callback count alone.
+
+- 2026-08-02 G6.2 generic stream-writer producer checkpoint: the bounded guest `StreamWriter<u8>` pump now runs through the registered `do:stream-probe@0.1.0` sink, with descriptor-selected host instance/export wiring and pending/ready/error Rust/Wasmtime evidence. Capacity-one backpressure consumes `[65, 66]` and drops the stream exactly once; producer leases, borrowed/nested/variant resource fields, broader payload-bearing completion errors, and arbitrary filesystem async methods remain outside this slice.
+
+- 2026-08-02 G6.2 multi-owned-resource record-stream checkpoint: the private descriptor-driven consumer now accepts two `own<ticket>` fields, deduplicates the WIT resource/drop import, and releases all frame-owned handles exactly once. Component lowering plus Rust/Wasmtime pending/ready/error probes observe four resource drops and an empty `ResourceTable`; borrowed/nested resources and producer leases remain pending.
+
+- 2026-08-02 G6.2 generic record-stream consumer: descriptor-driven lowering now accepts the registered `do:record-stream-probe@0.1.0` record stream with dynamic `@next`/`await`, scalar/string record lifting, pending/ready/error completion, and exactly-once stream/future/resource cleanup. Rust/Wasmtime evidence covers two records, EOF, one pending wake, and an empty resource table. Producer leases, borrowed/nested/variant resource fields, broader payload-bearing completion errors, and arbitrary filesystem async methods remain outside this slice.
+
+- 2026-08-02 host ABI and P3 runtime closure: concrete and nested generic host-export structs now use one shared named field-ABI collector for WAT and manifests; pinned HTTP body/empty-request probes and byte-admission checks remain verified. Evidence: `zig test main.zig` 188/188 and `./src/build/test/run_tests.sh` pass=1049 fail=0 skip=3.
+
+- 2026-08-02 G6.2 bounded read-directory slice: the pinned `descriptor.read-directory` now has one-to-three-entry record-stream lowering, explicit EOF probing, pending/ready Rust/Wasmtime execution, independent completion await, exactly-once stream/future/resource cleanup, and `table-empty=true`. This fixed slice does not claim payload-bearing completion errors or arbitrary filesystem async methods.
+
 - **Host import 统一为 `@host(locator, member, sig)`**: 删除 `@env` / `@wasi_func`（零兼容）。env 写作 `@host("env", "name", sig)`；WASI 写作 `@host("wasi:package/interface@version", "member", sig)`（迁移默认 pin `0.3.0`）。内部 target 仍为 `package/interface/member`。stdlib / fixtures / `grammar.peg` / `spec_rules` §21–23 / `wasi_p3_lowering` / 诊断文案同步。
 
 - Docs: record Wasm ref / host syntax strategy (no implementation) — `externref`→future `@host_ref`; no public `anyref`; no first-class `funcref`; i32 memory pointers never do types. See `doc/design/wasm_ref_host_syntax.md`, `pending_blocked` D10, `wasi_p3_lowering` note, `spec_rules` §21.1 pointer.

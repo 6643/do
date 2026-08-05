@@ -54,7 +54,7 @@ fn print_usage(io: std.Io) !void {
     try out.interface.print(
         \\do toolchain
         \\usage:
-        \\  do build <input.do> [--component-core] [-o out.wat]
+        \\  do build <input.do> [--component-core] [--p3-async-component --p3-wit-output out.wit] [--host-export --host-manifest out.json] [-o out.wat]
         \\  do test <input.do>
         \\  do test <input.do> --compiled [-o out.wat]
         \\  do check <input.do>...
@@ -95,5 +95,6 @@ test {
     _ = @import("build/type_name.zig");
     _ = @import("build/wat_payload.zig");
     _ = @import("build/wat_storage.zig");
+    _ = @import("build/async_byte_budget_test.zig");
     _ = @import("build/sema_error.zig");
 }

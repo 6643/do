@@ -1,0 +1,16 @@
+package do:resource-probe-owned-error@0.1.0;
+
+interface http {
+  resource request {}
+  resource response {}
+  resource error-resource {}
+
+  send: async func(request: request) -> result<response, error-resource>;
+}
+
+world owned-error-resource-cancel-probe {
+  use http.{request, response, error-resource};
+
+  import http;
+  export cancel: async func(request: request);
+}

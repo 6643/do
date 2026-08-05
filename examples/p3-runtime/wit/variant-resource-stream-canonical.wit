@@ -1,0 +1,32 @@
+package do:variant-resource-stream-canonical@0.1.0;
+
+interface types {
+  enum error-code { io }
+}
+
+interface source {
+  use types.{error-code};
+  resource ticket {}
+
+  variant event {
+    ticket(own<ticket>),
+    idle,
+    failed(error-code),
+  }
+
+  read-via-stream: func() -> tuple<
+    stream<event>,
+    future<result<_, error-code>>,
+  >;
+}
+
+interface probe {
+  use types.{error-code};
+  run: async func() -> result<_, error-code>;
+}
+
+world variant-resource-stream-canonical {
+  import types;
+  import source;
+  export probe;
+}

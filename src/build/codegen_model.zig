@@ -127,7 +127,23 @@ pub const FieldMetaLocal = struct {
 
 pub const EmitOptions = struct {
     component_core: bool = false,
+    p3_wait_for_component: bool = false,
+    p3_resource_probe_component: bool = false,
+    p3_wasi_filesystem_preopen_component: bool = false,
+    p3_wasi_sockets_create_bind_drop_component: bool = false,
+    p3_resource_async_component: bool = false,
+    p3_async_component: bool = false,
+    gc_core: bool = false,
+    host_export: bool = false,
+    host_manifest_out: ?*std.ArrayList(u8) = null,
 };
+
+pub fn is_host_export_func(func: FuncDecl, entry_tokens: []const lexer.Token) bool {
+    if (func.is_generic_template) return false;
+    if (func.tokens.ptr != entry_tokens.ptr or func.tokens.len != entry_tokens.len) return false;
+    const declared_name = func.tokens[func.start_idx].lexeme;
+    return declared_name.len == 0 or declared_name[0] != '.';
+}
 
 pub const NumericSelectTemps = struct {
     left: []const u8,
@@ -204,6 +220,7 @@ pub const FuncDecl = struct {
     type_bindings: []const GenericTypeBinding = &.{},
     callback_bindings: []const CallbackBinding = &.{},
     is_generic_template: bool = false,
+    is_async: bool = false,
     owned_name: bool = false,
     owned_types: []const []const u8 = &.{},
     tokens: []const lexer.Token,

@@ -5,6 +5,17 @@ pub const Args = struct {
     output_path: []const u8,
     compiled_test: bool = false,
     component_core: bool = false,
+    p3_wait_for_component: bool = false,
+    p3_resource_probe_component: bool = false,
+    p3_wasi_filesystem_preopen_component: bool = false,
+    p3_wasi_sockets_create_bind_drop_component: bool = false,
+    p3_resource_async_component: bool = false,
+    p3_async_component: bool = false,
+    gc_core: bool = false,
+    p3_wit_output_path: ?[]const u8 = null,
+    p3_wit_package_output_path: ?[]const u8 = null,
+    host_export: bool = false,
+    host_manifest_path: ?[]const u8 = null,
 };
 
 pub const RunArgs = struct {
@@ -29,10 +40,71 @@ pub fn parse_build(args: []const []const u8) !Args {
     var input_path: ?[]const u8 = null;
     var output_path: []const u8 = "out.wat";
     var component_core = false;
+    var p3_wait_for_component = false;
+    var p3_resource_probe_component = false;
+    var p3_wasi_filesystem_preopen_component = false;
+    var p3_wasi_sockets_create_bind_drop_component = false;
+    var p3_resource_async_component = false;
+    var p3_async_component = false;
+    var gc_core = false;
+    var p3_wit_output_path: ?[]const u8 = null;
+    var p3_wit_package_output_path: ?[]const u8 = null;
+    var host_export = false;
+    var host_manifest_path: ?[]const u8 = null;
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
         if (std.mem.eql(u8, args[i], "--component-core")) {
             component_core = true;
+            continue;
+        }
+        if (std.mem.eql(u8, args[i], "--p3-wait-for-component")) {
+            p3_wait_for_component = true;
+            continue;
+        }
+        if (std.mem.eql(u8, args[i], "--p3-resource-probe-component")) {
+            p3_resource_probe_component = true;
+            continue;
+        }
+        if (std.mem.eql(u8, args[i], "--p3-wasi-filesystem-preopen-component")) {
+            p3_wasi_filesystem_preopen_component = true;
+            continue;
+        }
+        if (std.mem.eql(u8, args[i], "--p3-wasi-sockets-create-bind-drop-component")) {
+            p3_wasi_sockets_create_bind_drop_component = true;
+            continue;
+        }
+        if (std.mem.eql(u8, args[i], "--p3-resource-async-component")) {
+            p3_resource_async_component = true;
+            continue;
+        }
+        if (std.mem.eql(u8, args[i], "--p3-async-component")) {
+            p3_async_component = true;
+            continue;
+        }
+        if (std.mem.eql(u8, args[i], "--gc-core")) {
+            gc_core = true;
+            continue;
+        }
+        if (std.mem.eql(u8, args[i], "--p3-wit-output")) {
+            if (i + 1 >= args.len) return error.MissingP3WitOutputPath;
+            i += 1;
+            p3_wit_output_path = args[i];
+            continue;
+        }
+        if (std.mem.eql(u8, args[i], "--p3-wit-package-output")) {
+            if (i + 1 >= args.len) return error.MissingP3WitPackageOutputPath;
+            i += 1;
+            p3_wit_package_output_path = args[i];
+            continue;
+        }
+        if (std.mem.eql(u8, args[i], "--host-export")) {
+            host_export = true;
+            continue;
+        }
+        if (std.mem.eql(u8, args[i], "--host-manifest")) {
+            if (i + 1 >= args.len) return error.MissingHostManifestPath;
+            i += 1;
+            host_manifest_path = args[i];
             continue;
         }
         if (std.mem.eql(u8, args[i], "-o")) {
@@ -46,10 +118,32 @@ pub fn parse_build(args: []const []const u8) !Args {
         input_path = args[i];
     }
     const path = input_path orelse return error.MissingInputPath;
+    if (host_manifest_path != null and !host_export) return error.HostManifestRequiresHostExport;
+    if ((p3_wait_for_component or p3_resource_probe_component or p3_wasi_filesystem_preopen_component or p3_wasi_sockets_create_bind_drop_component or p3_resource_async_component or p3_async_component or gc_core) and (component_core or host_export)) return error.UnexpectedCliArg;
+    const special_target_count: u8 = @as(u8, @intFromBool(p3_wait_for_component)) + @as(u8, @intFromBool(p3_resource_probe_component)) + @as(u8, @intFromBool(p3_wasi_filesystem_preopen_component)) + @as(u8, @intFromBool(p3_wasi_sockets_create_bind_drop_component)) + @as(u8, @intFromBool(p3_resource_async_component)) + @as(u8, @intFromBool(p3_async_component)) + @as(u8, @intFromBool(gc_core));
+    if (special_target_count > 1) return error.UnexpectedCliArg;
+    if (p3_wit_output_path != null and !p3_wait_for_component and !p3_resource_probe_component and !p3_wasi_filesystem_preopen_component and !p3_wasi_sockets_create_bind_drop_component and !p3_resource_async_component and !p3_async_component) return error.P3WitOutputRequiresP3Target;
+    if (p3_wit_package_output_path != null and !p3_wait_for_component and !p3_resource_probe_component and !p3_wasi_filesystem_preopen_component and !p3_resource_async_component and !p3_async_component) return error.P3WitPackageOutputRequiresP3Target;
+    if (p3_wit_package_output_path != null and !p3_async_component) return error.P3WitPackageOutputRequiresUnifiedTarget;
+    if (p3_wit_output_path != null and p3_wit_package_output_path != null) return error.UnexpectedCliArg;
+    if (p3_wit_output_path) |wit_path| {
+        if (std.mem.eql(u8, wit_path, output_path)) return error.UnexpectedCliArg;
+    }
     return .{
         .input_path = path,
         .output_path = output_path,
         .component_core = component_core,
+        .p3_wait_for_component = p3_wait_for_component,
+        .p3_resource_probe_component = p3_resource_probe_component,
+        .p3_wasi_filesystem_preopen_component = p3_wasi_filesystem_preopen_component,
+        .p3_wasi_sockets_create_bind_drop_component = p3_wasi_sockets_create_bind_drop_component,
+        .p3_resource_async_component = p3_resource_async_component,
+        .p3_async_component = p3_async_component,
+        .gc_core = gc_core,
+        .p3_wit_output_path = p3_wit_output_path,
+        .p3_wit_package_output_path = p3_wit_package_output_path,
+        .host_export = host_export,
+        .host_manifest_path = host_manifest_path,
     };
 }
 
@@ -153,6 +247,107 @@ test "parse_run accepts exactly one input path" {
     const args = [_][]const u8{ "run", "app.do" };
     const parsed = try parse_run(&args);
     try std.testing.expectEqualStrings("app.do", parsed.input_path);
+}
+
+test "parse_build accepts host export and manifest" {
+    const args = [_][]const u8{ "build", "app.do", "--host-export", "--host-manifest", "app.host.json" };
+    const parsed = try parse_build(&args);
+    try std.testing.expect(parsed.host_export);
+    try std.testing.expectEqualStrings("app.host.json", parsed.host_manifest_path.?);
+}
+
+test "parse_build accepts the pinned P3 wait-for component target" {
+    const args = [_][]const u8{ "build", "app.do", "--p3-wait-for-component" };
+    const parsed = try parse_build(&args);
+    try std.testing.expect(parsed.p3_wait_for_component);
+}
+
+test "parse_build accepts the pinned resource probe component target" {
+    const args = [_][]const u8{ "build", "app.do", "--p3-resource-probe-component", "--p3-wit-output", "app.wit" };
+    const parsed = try parse_build(&args);
+    try std.testing.expect(parsed.p3_resource_probe_component);
+    try std.testing.expectEqualStrings("app.wit", parsed.p3_wit_output_path.?);
+}
+
+test "parse_build accepts the pinned filesystem preopen component target" {
+    const args = [_][]const u8{ "build", "app.do", "--p3-wasi-filesystem-preopen-component", "--p3-wit-output", "app.wit" };
+    const parsed = try parse_build(&args);
+    try std.testing.expect(parsed.p3_wasi_filesystem_preopen_component);
+    try std.testing.expectEqualStrings("app.wit", parsed.p3_wit_output_path.?);
+}
+
+test "parse_build accepts the pinned socket create bind drop component target" {
+    const args = [_][]const u8{ "build", "app.do", "--p3-wasi-sockets-create-bind-drop-component", "--p3-wit-output", "app.wit" };
+    const parsed = try parse_build(&args);
+    try std.testing.expect(parsed.p3_wasi_sockets_create_bind_drop_component);
+    try std.testing.expectEqualStrings("app.wit", parsed.p3_wit_output_path.?);
+}
+
+test "parse_build accepts the private async resource component target" {
+    const args = [_][]const u8{ "build", "app.do", "--p3-resource-async-component", "--p3-wit-output", "app.wit" };
+    const parsed = try parse_build(&args);
+    try std.testing.expect(parsed.p3_resource_async_component);
+    try std.testing.expectEqualStrings("app.wit", parsed.p3_wit_output_path.?);
+}
+
+test "parse_build accepts the unified P3 async component target" {
+    const args = [_][]const u8{ "build", "app.do", "--p3-async-component", "--p3-wit-output", "app.wit" };
+    const parsed = try parse_build(&args);
+    try std.testing.expect(parsed.p3_async_component);
+    try std.testing.expectEqualStrings("app.wit", parsed.p3_wit_output_path.?);
+}
+
+test "parse_build accepts the explicit Core Wasm GC target" {
+    const args = [_][]const u8{ "build", "app.do", "--gc-core" };
+    const parsed = try parse_build(&args);
+    try std.testing.expect(parsed.gc_core);
+}
+
+test "parse_build rejects filesystem preopen target with another P3 target" {
+    const args = [_][]const u8{ "build", "app.do", "--p3-wasi-filesystem-preopen-component", "--p3-resource-probe-component" };
+    try std.testing.expectError(error.UnexpectedCliArg, parse_build(&args));
+}
+
+test "parse_build rejects incompatible resource probe component targets" {
+    const wait_for = [_][]const u8{ "build", "app.do", "--p3-resource-probe-component", "--p3-wait-for-component" };
+    try std.testing.expectError(error.UnexpectedCliArg, parse_build(&wait_for));
+
+    const component_core = [_][]const u8{ "build", "app.do", "--p3-resource-probe-component", "--component-core" };
+    try std.testing.expectError(error.UnexpectedCliArg, parse_build(&component_core));
+
+    const host_export = [_][]const u8{ "build", "app.do", "--p3-resource-probe-component", "--host-export" };
+    try std.testing.expectError(error.UnexpectedCliArg, parse_build(&host_export));
+
+    const unified = [_][]const u8{ "build", "app.do", "--p3-resource-async-component", "--p3-async-component" };
+    try std.testing.expectError(error.UnexpectedCliArg, parse_build(&unified));
+}
+
+test "parse_build accepts a P3 WIT sidecar only for the P3 target" {
+    const args = [_][]const u8{ "build", "app.do", "--p3-wait-for-component", "--p3-wit-output", "app.wit" };
+    const parsed = try parse_build(&args);
+    try std.testing.expectEqualStrings("app.wit", parsed.p3_wit_output_path.?);
+
+    const missing_target = [_][]const u8{ "build", "app.do", "--p3-wit-output", "app.wit" };
+    try std.testing.expectError(error.P3WitOutputRequiresP3Target, parse_build(&missing_target));
+
+    const same_path = [_][]const u8{ "build", "app.do", "--p3-wait-for-component", "--p3-wit-output", "out.wat" };
+    try std.testing.expectError(error.UnexpectedCliArg, parse_build(&same_path));
+}
+
+test "parse_build accepts a P3 WIT package output directory" {
+    const args = [_][]const u8{ "build", "app.do", "--p3-async-component", "--p3-wit-package-output", "app.wit-package" };
+    const parsed = try parse_build(&args);
+    try std.testing.expectEqualStrings("app.wit-package", parsed.p3_wit_package_output_path.?);
+}
+
+test "parse_build restricts a P3 WIT package output directory to the unified target" {
+    const args = [_][]const u8{ "build", "app.do", "--p3-wait-for-component", "--p3-wit-package-output", "app.wit-package" };
+    try std.testing.expectError(error.P3WitPackageOutputRequiresUnifiedTarget, parse_build(&args));
+}
+
+test "parse_build rejects a manifest without host export" {
+    const args = [_][]const u8{ "build", "app.do", "--host-manifest", "app.host.json" };
+    try std.testing.expectError(error.HostManifestRequiresHostExport, parse_build(&args));
 }
 
 test "parse_run rejects extra args and flags" {

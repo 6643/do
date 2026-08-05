@@ -1,0 +1,138 @@
+[package]
+name = "do-p3-wait-for-host-runner"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+anyhow = "1"
+futures = "0.3"
+wasmtime = { version = "=47.0.2", default-features = false, features = ["cranelift", "runtime", "wat", "gc-drc", "component-model-async"] }
+
+[[bin]]
+name = "do-p3-resource-probe-host-runner"
+path = "src/bin/resource_probe.rs"
+
+[[bin]]
+name = "do-p3-wasi-filesystem-preopen-host-runner"
+path = "src/bin/wasi_filesystem_preopen.rs"
+
+[[bin]]
+name = "do-p3-wasi-filesystem-real"
+path = "src/bin/wasi_filesystem_real.rs"
+
+[[bin]]
+name = "do-p3-wasi-sockets-real"
+path = "src/bin/wasi_sockets_real.rs"
+
+[[bin]]
+name = "do-p3-wasi-filesystem-read-directory-host-runner"
+path = "src/bin/wasi_filesystem_read_directory.rs"
+
+[[bin]]
+name = "do-p3-cancel-wait-for-host-runner"
+path = "src/bin/cancel_wait_for.rs"
+
+[[bin]]
+name = "do-p3-two-await-host-runner"
+path = "src/bin/two_await.rs"
+
+[[bin]]
+name = "do-p3-async-resource-result-host-runner"
+path = "src/bin/async_resource_result.rs"
+
+[[bin]]
+name = "do-p3-resource-result-cancel-host-runner"
+path = "src/bin/resource_result_cancel.rs"
+
+[[bin]]
+name = "do-p3-owned-error-result-shape-host-runner"
+path = "src/bin/owned_error_result_shape.rs"
+
+[[bin]]
+name = "do-p3-owned-error-resource-cancel-host-runner"
+path = "src/bin/owned_error_resource_cancel.rs"
+
+[[bin]]
+name = "do-p3-http-service-host-runner"
+path = "src/bin/http_service.rs"
+
+[[bin]]
+name = "do-p3-http-client-send-host-runner"
+path = "src/bin/http_client_send.rs"
+
+[[bin]]
+name = "do-p3-http-response-status-host-runner"
+path = "src/bin/http_response_status.rs"
+
+[[bin]]
+name = "do-p3-http-response-consume-body-host-runner"
+path = "src/bin/http_response_consume_body.rs"
+
+[[bin]]
+name = "do-p3-http-request-new-host-runner"
+path = "src/bin/http_request_new.rs"
+
+[[bin]]
+name = "do-p3-http-service-empty-request-host-runner"
+path = "src/bin/http_service_empty_request.rs"
+
+[[bin]]
+name = "do-p3-http-request-body-host-runner"
+path = "src/bin/http_request_body.rs"
+
+[[bin]]
+name = "do-p3-http-request-body-producer-host-runner"
+path = "src/bin/http_request_body_producer.rs"
+
+[[bin]]
+name = "do-p3-cli-stream-stdin-host-runner"
+path = "src/bin/cli_stream_stdin.rs"
+
+[[bin]]
+name = "do-p3-cli-stream-stdout-host-runner"
+path = "src/bin/cli_stream_stdout.rs"
+
+[[bin]]
+name = "do-p3-cli-stream-stdout-guest-producer-host-runner"
+path = "src/bin/cli_stream_stdout_guest_producer.rs"
+
+[[bin]]
+name = "do-p3-stream-reader-host-runner"
+path = "src/bin/stream_probe.rs"
+
+[[bin]]
+name = "do-p3-stream-probe-guest-producer-dynamic-host-runner"
+path = "src/bin/stream_probe_guest_producer_dynamic.rs"
+
+[[bin]]
+name = "do-p3-stream-mirror-host-runner"
+path = "src/bin/stream_probe_stream_mirror.rs"
+
+[[bin]]
+name = "do-p3-record-stream-host-runner"
+path = "src/bin/record_stream_probe.rs"
+
+[[bin]]
+name = "do-p3-record-resource-stream-host-runner"
+path = "src/bin/record_resource_stream_probe.rs"
+
+[[bin]]
+name = "do-p3-record-resource-list-stream-abi"
+path = "src/bin/record_resource_list_stream_abi.rs"
+
+[[bin]]
+name = "do-p3-variant-resource-stream-abi"
+path = "src/bin/variant_resource_stream_abi.rs"
+
+[[bin]]
+name = "do-p3-scalar-result-host-runner"
+path = "src/bin/scalar_result.rs"
+
+[[bin]]
+name = "do-p3-http-payload-error-abi-host-runner"
+path = "src/bin/http_payload_error_abi.rs"
+
+[profile.dev]
+debug = 0
+incremental = false

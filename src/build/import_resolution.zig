@@ -2456,6 +2456,7 @@ fn is_non_assign_equal(tokens: []const lexer.Token, idx: usize) bool {
 
 fn is_top_level_decl_head(tokens: []const lexer.Token, idx: usize) bool {
     if (idx == 0) return true;
+    if (tokens[idx - 1].line == tokens[idx].line and tok_eq(tokens[idx - 1], "async")) return true;
     if (tokens[idx - 1].line == tokens[idx].line) return false;
     const prev = tokens[idx - 1];
     if (tok_eq(prev, "=")) return false;

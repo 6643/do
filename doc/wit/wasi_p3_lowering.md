@@ -5,6 +5,40 @@
 > and component/core validation coverage; this is not a claim that executable
 > WASI component lowering is implemented.
 
+## Generic component async evidence
+
+`examples/p3-runtime/test.sh` is the executable evidence for one smaller
+boundary in the local Wasmtime 47.0.2 C API. It enables component model,
+component-model async, and more async builtins; then a component function
+enters one host callback defined by
+`wasmtime_component_linker_instance_add_func_async`, yields its first
+continuation poll, and completes on the second through the same
+`wasmtime_component_func_call_async` future. The runner asserts one callback,
+two continuation polls, one incomplete call-future poll, and result `27815`.
+It runs that sequence both with ordinary core values and with a Core Wasm GC
+`struct` allocated entirely inside the embedded core module. The C API enables
+`wasm-gc`, but not `component-model-gc`; the component boundary remains a
+copied `u32`.
+
+This is **generic component async C API evidence only**. Its custom
+`do:component-async-probe@0.1.0` WIT package uses a synchronous source
+signature; the asynchrony is intentionally the C host continuation. It does
+not establish a P3 package/interface/member, the P3 `task.return` or waitable
+ABI, a `@host_func` lowering, component-model GC, or a WASI host binding.
+The adjacent `async-wait-for-component.wat` fixture now proves that the pinned
+P3 WIT import and its minimal core `task.return` wrapper parse successfully.
+It also proves the next boundary is a real C API limitation: manually defining
+its provider with `wasmtime_component_linker_instance_add_func_async` fails
+with `type mismatch with async`, because that API models an async host
+continuation but cannot declare a WIT `async func` provider. The local header
+exposes `wasmtime_component_linker_add_wasip2_async` but no
+`wasmtime_component_linker_add_wasip3*` helper or lower-level equivalent.
+This does not block Component assembly: the compiler's output path is WIT
+metadata plus pinned `wasm-tools`, not the Wasmtime C API. It only blocks an
+embedding application that wants to hand-register this async provider through
+that C API. Runtime execution support is reported separately from compiler
+artifact validity.
+
 ## References
 
 - WIT format: https://github.com/WebAssembly/component-model/blob/main/design/mvp/WIT.md
@@ -266,11 +300,18 @@ registered `descriptor.sync`, `descriptor.write`, `descriptor.read`,
 marked as lowerable. `preopens.get-directories` is lowerable to do
 `[Tuple<Dir, text>]` (resource shells in the first element).
 `descriptor.read-directory` and `http/client.send` are registered as known
-WASI 0.3 signatures but remain `unsupported` shims.
-`descriptor.read-directory` returns
-`tuple<stream<directory-entry>,future<result<_,error-code>>>`, so the current
-language/runtime has no async/Future/Task support and the shim plan marks it
-`unsupported` rather than pretending it can be called as a plain core function.
+WASI 0.3 signatures. `descriptor.read-directory` has a dedicated bounded
+lowering slice: it accepts one to three statically visible `directory-entry`
+reads, awaits the entry and completion futures, and performs exactly-once
+stream/future/resource cleanup. The ABI, lowering, and Rust/Wasmtime gates are
+`test_do_wasi_filesystem_read_directory_abi.sh`,
+`test_do_wasi_filesystem_read_directory_lowering.sh`, and
+`test_rust_wasi_filesystem_read_directory.sh`, with bounded multi-read gates
+`test_do_wasi_filesystem_read_directory_bounded_lowering.sh` and
+`test_rust_wasi_filesystem_read_directory_bounded.sh`.
+Generic record-stream lowering remains unsupported: dynamic loops,
+payload-bearing completion errors, arbitrary stream sources, and other
+filesystem async methods are still rejected.
 **G6.3 (scheme B):** `tcp-socket.create/bind/drop` and `udp-socket.create/bind/drop`
 are lowerable: create reuses open-at style `result_descriptor_error` (family disc +
 result area); bind reuses unit-error with guest-packed `ip-socket-address` pointer;
@@ -312,13 +353,13 @@ Host import signatures bind **do types**, not WIT-only wrapper types. Preferred 
 
 Rules:
 
-- **Preferred:** exclusive unions `Ok | Err` and `T | nil`. Err arm is preferably a coarse do error enum (`DirError` / `FileError` / `StreamError`); transitional status `i32` still accepted (0 never appears on the err arm).
+- **Preferred:** registered WIT `result<T, E>` uses the ordinary Do form `T | E` in source host signatures when the arms differ. The compiler preserves the WIT `Ok`/`Err` tag internally; a coarse do error enum (`DirError` / `FileError` / `StreamError`) is preferred over a raw status where the binding supports it.
 - **Forbidden as WASI result model:** multi-return source shapes such as `-> Ok, Err` or treating dual presence as the host result type (language has no zero values).
 - **No type wrappers:** do not introduce `wasi_result` / `wasi_option` / `wasi_list` / `wasi_tuple` (or `@wasi_*` synonyms of those).
 - **Keep `@wasi_*`:** only `wasi_func`, `wasi_resource`, `wasi_record`, and optional later `wasi_enum`.
-- **Transition:** source `result<…>` / WIT sugar is still accepted for known targets until migration finishes; manifest/`result=` strings remain WIT.
-- **Call sites:** whole `Ok|Err` / `nil|i32` values are statement-discardable; multi-lhs unpack may still lower for transitional call patterns, but new code should bind a single union value (or discard the whole call).
-- **Public stdlib API** stays do-facing (`Dir | DirError`, `File | FileError`, …); private host lines use unions + wrappers map status → coarse error.
+- **Compatibility boundary:** ordinary source uses `T | E` / `T | nil`. WIT `result<…>` spelling and `Result<T, E>` remain only for registered private or same-type ABI probes; manifest/`result=` strings remain WIT.
+- **Call sites:** a whole `T | E` is statement-discardable and is inspected with `@is(value, E)` or the corresponding payload type. Multi-lhs unpack may still lower for legacy call patterns, but new source host code binds one union value (or discards the whole call).
+- **Public stdlib and host APIs** use union returns (`Dir | DirError`, `File | FileError`, …). Private same-type WIT probes may retain `Result` to preserve an unambiguous internal tag.
 
 Example (stdlib-style):
 
@@ -364,14 +405,14 @@ executable today.
 | `clocks/monotonic-clock/get-resolution` | `u64` | lowerable scalar |
 | `random/random/get-random-bytes` | `list<u8>` | lowerable `list<u8>` result |
 | `random/random/get-random-u64` | `u64` | lowerable scalar |
-| `filesystem/types/descriptor.read-directory` | `tuple<stream<directory-entry>,future<result<_,error-code>>>` | known but unsupported; needs async/Future runtime plus stream/future/resource lowering |
+| `filesystem/types/descriptor.read-directory` | `tuple<stream<directory-entry>,future<result<_,error-code>>>` | bounded one-to-three-read lowering and runtime verified; dynamic record streams, loops, payload errors, and arbitrary filesystem async methods remain unsupported |
 | `sockets/types/tcp-socket.create` | `result<tcp-socket,error-code>` | lowerable (G6.3 B): family `u8` + result-area; preferred do `TcpSocket \| TcpError` |
 | `sockets/types/tcp-socket.bind` | `result<_,error-code>` | lowerable (G6.3 B): handle + packed `IpSocketAddress`; preferred do `TcpError \| nil` |
 | `sockets/types/tcp-socket.drop` | `nil` | lowerable resource-drop `[resource-drop]tcp-socket` |
 | `sockets/types/udp-socket.create` | `result<udp-socket,error-code>` | lowerable (G6.3 B): same shape as tcp create; preferred do `UdpSocket \| UdpError` |
 | `sockets/types/udp-socket.bind` | `result<_,error-code>` | lowerable (G6.3 B): same shape as tcp bind; preferred do `UdpError \| nil` |
 | `sockets/types/udp-socket.drop` | `nil` | lowerable resource-drop `[resource-drop]udp-socket` |
-| `http/client/send` | `result<response,error-code>` | known but unsupported; needs HTTP resource/async lowering |
+| `http/client/send` | `result<response,error-code>` | fixed P3 HTTP service lowering: empty request plus one finite pinned CLI `Stream<u8>` body slice, own request transfer, owned response `Ok`, no-payload `error-code` `Err`; registered `internal-error`/`DNS-error` payloads preserve exact values through pending/ready compiler-service gates; explicit `@cancel(completion)` is additionally lowerable for the registered nil-returning payload-cancellation world; dynamic bodies, trailers, unregistered payloads, implicit/terminal/double cancellation, and general source shapes remain unsupported |
 
 For lowerable scalar/record/list<u8>/filesystem-result signatures,
 `shim.lowering` records the component import identity, the concrete `cm32p2`
@@ -614,6 +655,15 @@ Direct codegen lowers it to the compiler-owned core import name
 resource-drop ABI has no ordinary error result. This direct lowering does not
 yet imply full component resource lifetime output.
 
+### Private Resource Probe
+
+`do:resource-probe@0.1.0` is a verified private Component fixture, not a
+generic WASI resource implementation. Its pinned `ledger.ticket` flow emits
+`create -> borrow-value -> consume` and a separate canonical
+`[resource-drop]ticket`; the Wasmtime runner stores tickets in `ResourceTable`.
+It does not establish HTTP, WIT future/stream, resource arrays, Component-GC,
+or general resource lowering support.
+
 ## Lowering Pipeline
 
 ```mermaid
@@ -652,7 +702,7 @@ smoke tests and complex wrapper completion are still pending.
 | `record` | field-order-checked mirror | Do `Struct` with matching public fields |
 | `tuple<A, B>` | canonical ABI tuple | prefer multi-return in wrapper |
 | `option<T>` | canonical ABI option | host/private: `T | nil` preferred; public wrappers only where language allows |
-| `result<T, E>` | canonical ABI result | host/private: exclusive `Ok | Err` (e.g. `nil | i32`, `Dir | i32`); public: `T | SpecificError` — **not** multi-return as the WASI result model |
+| `result<T, E>` | canonical ABI result | source: `T | E` when arms differ; internal tag always preserved; same-type private probes may use `Result<T, E>` — **not** multi-return as the WASI result model |
 | `variant` | canonical ABI variant | Do enum/error enum plus wrapper conversion |
 | `flags` | canonical ABI flags | Do value enum or private bitset wrapper |
 | `resource` | canonical ABI resource handle | Do struct with private handle field |
@@ -706,6 +756,21 @@ available in stdlib or tests until that doc is promoted and implemented.
 
 ## Validation Required Before Executable Lowering
 
+## Verified Filesystem Resource Slice
+
+The opt-in `--p3-wasi-filesystem-preopen-component` target verifies exactly
+one pinned real WASI 0.3 flow: `get-directories() ->
+list<tuple<own<descriptor>, string>>`, first-entry extraction, borrowed
+`descriptor.open-at() -> result<own<descriptor>, error-code>`, direct
+`@is(opened, Ok)` payload extraction to File, borrowed
+`descriptor.sync() -> result<_, error-code>`, then canonical File and Dir
+drops. Do source keeps `@wasi_resource("filesystem/types/descriptor", { .id
+i64 })` opaque; the compiler records own/borrow internally. The generated Core
+WAT and WIT sidecar assemble with `wasm-tools`, and the Rust host uses
+`ResourceTable` to prove one preopen, one open, one sync, two drops, and no
+residual resource. It does not claim generic resource-list/result lowering,
+arbitrary filesystem APIs, async, or general Component output.
+
 For every `wasi-bind` item:
 
 1. Resolve `target` against the selected WASI 0.3 WIT package set.
@@ -732,16 +797,114 @@ Current compiler increment:
 - The manifest validator reads `doc/wit/wasi_registry.json`, repeats the same
   known-target check for generated WAT, and can emit the parsed binding list as
   JSON for the next lowering step.
-- Known-but-unsupported targets such as
-  `filesystem/types/descriptor.read-directory` and `http/client/send` are
-  still useful registry entries:
-  `--json` resolves and validates their exact WIT signature, while
-  `--component-plan` rejects them until async/Future stream runtime and
-  HTTP resource/async lowering exists.
+- `filesystem/types/descriptor.read-directory` has a dedicated bounded
+  `--p3-async-component` lowering for one to three statically visible directory
+  entries and one completion await. The read-directory scripts freeze the
+  pinned Core import names, indexed stream/future operations, Component
+  assembly, EOF behavior, and Wasmtime cleanup. Dynamic record streams, source
+  loops, payload-bearing completion errors, and arbitrary filesystem async
+  methods remain rejected.
+  The pinned `http/client/send` source form is instead admitted only by
+  `--p3-async-component`, which selects its dedicated service lowering; it
+  does not make `--component-plan`, general HTTP resources, or HTTP streams
+  executable.
   (`filesystem/preopens/get-directories` and G6.3 sockets create/bind/drop are
   lowerable and not in this bucket.)
 - Unknown targets still receive syntax-level WIT type validation only; they are
   not treated as executable until the full WIT package resolver exists.
+
+### HTTP empty-request checkpoint
+
+The first executable request-construction slice is deliberately narrow. Under
+`--p3-async-component`, `http-request-empty.do` constructs a request with empty
+`fields`, `none` body, an immediately completed
+`future<result<option<trailers>, error-code>>` containing `Ok(None)`, and `none`
+request options. The request is then transferred once into the existing fixed
+`client.send` service probe and awaited as
+`HttpResponse | HttpError`; the probe retains the internal WIT result tag.
+
+The Core import and indexed future operations are pinned by
+`test_do_http_request_empty_lowering.sh`; the constructor lifecycle is exercised
+by `test_rust_http_request_empty.sh`; and the combined request-to-send success /
+no-payload-error path is exercised by
+`test_rust_http_service_empty_request.sh`. These scripts use the complete
+`--p3-wit-package-output` package for composition. A minimal standalone sidecar
+with a shortened `error-code` is not interchangeable with the pinned HTTP
+task-return ABI and is therefore not used for this combined probe.
+
+This checkpoint does not expose `own<T>`, `borrow<T>`, or `ref<T>` in Do source,
+and it does not admit request body producers, dynamic trailers, trailer payload
+lifting, unregistered/ready payload-bearing error variants, or general HTTP
+resource methods. The two registered payload variants are covered by the
+separate pending compiler-service gate.
+
+### HTTP request body stream checkpoint
+
+The admitted shape uses only the pinned CLI stdin descriptor as a finite body
+source. The compiler lowers one `Stream<u8>` acquisition, passes its reader as
+the `some` arm of `request.new`'s body option, and transfers the resulting
+request exactly once to `client.send`. The source completion future is a
+separate frame-owned handle and is dropped exactly once after send reaches its
+terminal callback. The runtime fixture supplies `[65,66]` for two calls and
+checks both success and no-payload `DnsTimeout` paths. The baseline host runner
+covers both a ready completion future and a one-poll-pending completion future;
+the source completion itself is not polled by this fixed cancellation fixture.
+
+Run `bash examples/p3-runtime/test_do_http_request_body_abi.sh` for indexed
+ABI facts, `bash examples/p3-runtime/test_do_http_request_body_lowering.sh` for
+Core/Component assembly, and `bash examples/p3-runtime/test_rust_http_request_body.sh`
+for Wasmtime ownership and cleanup. This remains a fixed descriptor slice;
+arbitrary body producers, dynamic EOF loops, dynamic trailers, unregistered/ready
+payload-bearing error variants, and public `own<T>`/`borrow<T>`/`ref<T>`
+syntax remain outside the supported language surface.
+
+The separate guest-produced request-body probe is also intentionally bounded.
+It creates one capacity-one `Stream<u8>`, passes the readable endpoint to
+`request.new`, starts `client.send` before the first write, awaits up to three
+literal writes, closes the writer, and awaits the transmission future. The
+Component stream ABI is rendezvous-based; the older write-before-request order
+is therefore rejected because it cannot make progress without an attached
+consumer. Its ABI, lowering, and runtime gates are
+`examples/p3-runtime/test_do_http_request_body_producer_abi.sh`,
+`test_do_http_request_body_producer_lowering.sh`, and
+`test_rust_http_request_body_producer.sh`. This does not imply generic producer
+loops, dynamic byte sources, arbitrary stream endpoints, payload-bearing
+errors, or public ownership syntax.
+
+The serialized completion variant
+`examples/p3-runtime/http-request-body-await-completion.do` awaits the same
+source completion before calling `request.new`. It lowers the pinned
+`[async-lower][future-read-1]read-via-stream` operation and accepts only a
+successful no-payload completion. Its lowering and execution gates are
+`test_do_http_request_body_await_completion_lowering.sh` and
+`test_rust_http_request_body_await_completion.sh`; pending-once and ready
+source futures produce four and two total polls respectively across two calls.
+This remains serialized and does not imply general Future/Stream or HTTP
+request-body lowering.
+
+### HTTP payload cancellation checkpoint
+
+The opt-in `http-payload-cancel.do` fixture accepts only the explicit
+`Future<Result<HttpResponse, HttpError>>` plus `@cancel(completion)` source
+shape. The compiler emits the pinned versioned HTTP `[async-lower]send`, request
+and response drop imports, and the private service-world export; the Core path
+uses fixed `[64,128)` result scratch even though the root returns `nil`. The generated
+Component and the Rust/Wasmtime runner observe one request consumption, one
+pending future drop, zero response create/drop, and an empty `ResourceTable`.
+The same runner also invokes the admitted nonempty DNS payload path twice on
+one component instance, proving that an exact release returns the private
+canonical string slot for a later sequential call.
+
+This is a descriptor-bounded cancellation gate, not general HTTP cancellation:
+the admitted immediate error payloads are `DNS-error` with `rcode=Some(nonempty)`
+or `None` and `InternalError` with `Some(nonempty)` or `None`; `None` validates
+the option discriminant without reading or releasing pointer/length fields.
+The fixed result scratch is exercised only by sequential calls; concurrent calls
+on one component instance are not proven by this gate and must not be treated as
+concurrency-safe.
+Cancel-after-terminal, double cancellation, implicit scope-drop, unregistered
+payload tags, dynamic body/trailer shapes, and generic resource/async cancellation
+remain rejected.
 
 ## First Executable Slice
 

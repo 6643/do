@@ -13,6 +13,7 @@ pub const FuncBodyKind = enum {
 
 pub const FuncSig = struct {
     name: []const u8,
+    is_async: bool,
     param_min: usize,
     param_max: ?usize, // null => variadic
     return_arity: usize,
@@ -345,9 +346,17 @@ fn check_import_prefix_block(tokens: []const lexer.Token) !void {
 fn is_top_level_non_import_decl_start(tokens: []const lexer.Token, idx: usize) bool {
     return is_top_level_type_decl_start(tokens, idx) or
         is_top_level_value_decl_start(tokens, idx) or
+        is_async_func_decl_start(tokens, idx) or
         is_func_decl_start(tokens, idx) or
         is_start_decl_start(tokens, idx) or
         is_test_decl_start(tokens, idx);
+}
+
+fn is_async_func_decl_start(tokens: []const lexer.Token, idx: usize) bool {
+    if (idx + 2 >= tokens.len) return false;
+    if (!is_top_level_decl_head(tokens, idx) or !tok_eq(tokens[idx], "async")) return false;
+    if (tokens[idx + 1].kind != .ident or is_keyword(tokens[idx + 1].lexeme)) return false;
+    return tok_eq(tokens[idx + 2], "(");
 }
 
 fn is_test_decl_start(tokens: []const lexer.Token, i: usize) bool {
@@ -477,6 +486,7 @@ fn top_level_line_assign_idx(tokens: []const lexer.Token, line_start: usize) ?us
 
 fn is_top_level_decl_head(tokens: []const lexer.Token, idx: usize) bool {
     if (idx == 0) return true;
+    if (tokens[idx - 1].line == tokens[idx].line and tok_eq(tokens[idx - 1], "async")) return true;
     return tokens[idx - 1].line != tokens[idx].line;
 }
 
@@ -561,6 +571,7 @@ fn parse_function_decl(tokens: []const lexer.Token, start_idx: usize) !FuncParse
         .next_idx = ret.next_idx,
         .sig = .{
             .name = name_tok.lexeme,
+            .is_async = start_idx > 0 and tokens[start_idx - 1].line == name_tok.line and tok_eq(tokens[start_idx - 1], "async"),
             .param_min = params.param_min,
             .param_max = params.param_max,
             .return_arity = ret.return_arity,
@@ -814,6 +825,9 @@ fn parse_body_stmt(
     if (find_top_level_assign_eq(tokens, stmt_idx, line_end)) |eq_idx| {
         return parse_assign_stmt(allocator, out_values, out_nodes, tokens, eq_idx, limit_idx);
     }
+    if (is_stream_writer_finalizer_name(tokens[stmt_idx].lexeme)) {
+        try validate_stream_writer_finalizer_arity(tokens, stmt_idx, line_end);
+    }
 
     const expr = parse_expr(allocator, out_nodes, tokens, stmt_idx, line_end) catch
         return mark_error_at(tokens, stmt_idx, error.InvalidExpr);
@@ -844,6 +858,9 @@ fn parse_defer_stmt(
     }
 
     const line_end = find_line_end(tokens, body_idx, limit_idx);
+    if (is_stream_writer_finalizer_name(tokens[body_idx].lexeme)) {
+        try validate_stream_writer_finalizer_arity(tokens, body_idx, line_end);
+    }
     const expr = parse_expr(allocator, out_nodes, tokens, body_idx, line_end) catch
         return mark_error_at(tokens, body_idx, error.InvalidExpr);
     if (expr.next_idx != line_end) return mark_error_at(tokens, expr.next_idx, error.InvalidExpr);
@@ -1574,10 +1591,34 @@ fn parse_expr_with_mode(
     }
 
     if (t.kind == .ident) {
+        if (std.mem.eql(u8, t.lexeme, "await") or
+            std.mem.eql(u8, t.lexeme, "await_all") or
+            std.mem.eql(u8, t.lexeme, "await_any") or
+            std.mem.eql(u8, t.lexeme, "close") or
+            std.mem.eql(u8, t.lexeme, "abort"))
+        {
+            if (call_open_paren_idx(tokens, start_idx, limit_idx) == null) {
+                return mark_error_at(tokens, start_idx, error.InvalidReservedName);
+            }
+            const call = try parse_call_expr_raw(allocator, out_nodes, tokens, start_idx, limit_idx);
+            if (std.mem.eql(u8, t.lexeme, "close") and call.arg_count != 1) {
+                return mark_error_at(tokens, start_idx, error.InvalidCallArgList);
+            }
+            if (std.mem.eql(u8, t.lexeme, "abort") and call.arg_count != 2) {
+                return mark_error_at(tokens, start_idx, error.InvalidCallArgList);
+            }
+            const idx = try append_expr_node(allocator, out_nodes, .{
+                .kind = .call,
+                .start_tok = start_idx,
+                .end_tok = call.next_idx,
+                .data = .{ .call = .{ .func_name = t.lexeme, .arg_count = call.arg_count } },
+            });
+            return .{ .next_idx = call.next_idx, .node_idx = idx };
+        }
         if (is_loop_source_special_name(t.lexeme)) {
             return mark_error_at(tokens, start_idx, error.InvalidReservedName);
         }
-        if (is_builtin_call_name(t.lexeme)) {
+        if (is_reserved_builtin_call_name(t.lexeme)) {
             return mark_error_at(tokens, start_idx, error.InvalidReservedName);
         }
         if (is_decl_only_name(t.lexeme)) {
@@ -1744,6 +1785,8 @@ fn call_open_paren_idx(tokens: []const lexer.Token, name_idx: usize, limit_idx: 
 fn validate_builtin_call_arity(tokens: []const lexer.Token, name_idx: usize, argc: usize) !void {
     const name = tokens[name_idx].lexeme;
     if (std.mem.eql(u8, name, "not") or
+        std.mem.eql(u8, name, "cancel") or
+        std.mem.eql(u8, name, "next") or
         std.mem.eql(u8, name, "len") or
         std.mem.eql(u8, name, "field_name") or
         std.mem.eql(u8, name, "field_index") or
@@ -2382,7 +2425,10 @@ fn is_keyword(name: []const u8) bool {
         "continue",
         "return",
         "defer",
-        "do",
+        "async",
+        "await",
+        "await_all",
+        "await_any",
         "test",
         "true",
         "false",
@@ -2405,6 +2451,8 @@ fn is_builtin_call_name(name: []const u8) bool {
         "and",
         "or",
         "not",
+        "cancel",
+        "next",
         "eq",
         "ne",
         "lt",
@@ -2456,6 +2504,10 @@ fn is_builtin_call_name(name: []const u8) bool {
         if (std.mem.eql(u8, it, name)) return true;
     }
     return false;
+}
+
+fn is_reserved_builtin_call_name(name: []const u8) bool {
+    return is_builtin_call_name(name) and !std.mem.eql(u8, name, "next");
 }
 
 fn is_memory_load_name(name: []const u8) bool {
@@ -2535,7 +2587,64 @@ fn is_variadic_select_core_name(name: []const u8) bool {
 }
 
 fn is_reserved_expr_name(name: []const u8) bool {
-    return is_decl_only_name(name) or is_builtin_call_name(name) or is_loop_source_special_name(name);
+    return is_decl_only_name(name) or is_reserved_builtin_call_name(name) or is_loop_source_special_name(name);
+}
+
+fn is_stream_writer_finalizer_name(name: []const u8) bool {
+    return std.mem.eql(u8, name, "close") or std.mem.eql(u8, name, "abort");
+}
+
+fn validate_stream_writer_finalizer_arity(tokens: []const lexer.Token, name_idx: usize, limit_idx: usize) !void {
+    if (name_idx + 2 >= limit_idx or !tok_eq(tokens[name_idx + 1], "(")) {
+        return mark_error_at(tokens, name_idx, error.InvalidCallArgList);
+    }
+    const close_idx = find_matching_in_range(tokens, name_idx + 1, "(", ")", limit_idx) catch
+        return mark_error_at(tokens, name_idx, error.InvalidCallArgList);
+    if (close_idx + 1 != limit_idx) return mark_error_at(tokens, close_idx + 1, error.InvalidCallArgList);
+
+    var arg_count: usize = 1;
+    var paren_depth: usize = 0;
+    var brace_depth: usize = 0;
+    var angle_depth: usize = 0;
+    var i = name_idx + 2;
+    if (i == close_idx) return mark_error_at(tokens, name_idx, error.InvalidCallArgList);
+    while (i < close_idx) : (i += 1) {
+        if (tok_eq(tokens[i], "(")) {
+            paren_depth += 1;
+            continue;
+        }
+        if (tok_eq(tokens[i], ")")) {
+            if (paren_depth == 0) return mark_error_at(tokens, i, error.InvalidCallArgList);
+            paren_depth -= 1;
+            continue;
+        }
+        if (tok_eq(tokens[i], "{")) {
+            brace_depth += 1;
+            continue;
+        }
+        if (tok_eq(tokens[i], "}")) {
+            if (brace_depth == 0) return mark_error_at(tokens, i, error.InvalidCallArgList);
+            brace_depth -= 1;
+            continue;
+        }
+        if (tok_eq(tokens[i], "<")) {
+            angle_depth += 1;
+            continue;
+        }
+        if (tok_eq(tokens[i], ">")) {
+            if (angle_depth == 0) return mark_error_at(tokens, i, error.InvalidCallArgList);
+            angle_depth -= 1;
+            continue;
+        }
+        if (tok_eq(tokens[i], ",") and paren_depth == 0 and brace_depth == 0 and angle_depth == 0) {
+            if (i + 1 == close_idx) return mark_error_at(tokens, i, error.InvalidCallArgList);
+            arg_count += 1;
+        }
+    }
+    if (paren_depth != 0 or brace_depth != 0 or angle_depth != 0) return mark_error_at(tokens, name_idx, error.InvalidCallArgList);
+
+    const expected: usize = if (std.mem.eql(u8, tokens[name_idx].lexeme, "close")) 1 else 2;
+    if (arg_count != expected) return mark_error_at(tokens, name_idx, error.InvalidCallArgList);
 }
 
 fn is_loop_source_special_name(name: []const u8) bool {
@@ -2780,6 +2889,23 @@ test "storage variadic param records open arity" {
     try std.testing.expectEqual(@as(usize, 1), program.func_sigs.len);
     try std.testing.expectEqual(@as(usize, 2), program.func_sigs[0].param_min);
     try std.testing.expectEqual(@as(?usize, null), program.func_sigs[0].param_max);
+}
+
+test "async function records modifier" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\async ready() -> i32 {
+        \\    return 1
+        \\}
+    ;
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+
+    var program = try parse_program(allocator, tokens, source.len);
+    defer program.deinit(allocator);
+
+    try std.testing.expectEqual(@as(usize, 1), program.func_sigs.len);
+    try std.testing.expect(program.func_sigs[0].is_async);
 }
 
 test "collection loop requires value and index bindings in parser" {

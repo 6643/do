@@ -4,9 +4,9 @@
 
 ## 范围
 
-本文负责通用 host binding：资源、类型、variant、常量、同步函数和模块导入。异步函数 ABI、`Future<T>`、`Stream<T>`、`await` 和取消语义见 [async-design.md](async-design.md)。
+本文负责通用 host binding：资源、类型、variant、常量、同步函数和模块导入。P3 async ABI、waitable、WIT `future<T>` / `stream<T>` 和取消协议需要同时映射到公开的 do `async`、`await`、`Future<T>` 与 `Stream<T>`，并发契约见 [async-design.md](async-design.md)。
 
-所有类型参数都必须是合法类型。`nil` 是空值/无值返回标记，不是类型；禁止任何泛型参数中的 `nil`，包括 `Future<T | nil>` 和 `Stream<T | nil>`。函数可以用 `() -> nil` 表示无返回值或返回空；host ABI 的无值结果使用对应的 unit/result 约定。
+所有类型参数都必须是合法类型。`nil` 是空值/无值返回标记；它只允许作为 `Future<nil>`、`Stream<nil>` 等异步容器的唯一类型参数，或作为 `Result<T, nil>` / `Result<nil, E>` 的 unit 分支。函数可以用 `() -> nil` 表示无返回值或返回空；其他泛型参数位置仍禁止 `nil`。
 
 ## 声明形式
 
@@ -33,13 +33,11 @@ flags                -> do flags
 list<T>              -> do [T]
 tuple<...>           -> do Tuple<...>
 result<T, E>         -> do T | E
-future<T>            -> do Future<T>       // 详见 async-design.md
-stream<T>            -> do Stream<T>       // 详见 async-design.md
+future<T>            -> opaque do Future<T>
+stream<T>            -> opaque do Stream<T>
 ```
 
-`future<T>` 和 `stream<T>` 只在 WIT/host ABI 边界出现；do 源码使用大写的 `Future<T>` 和 `Stream<T>`。`nil` 不用于表示 WIT 的空结果，WIT 无值结果映射为 `void`。
-
-异步 stream 的源码消费使用 endpoint 形式：`newStream<T>(capacity)` 返回 compiler-managed opaque `StreamReader<T>` 和 `StreamWriter<T>`，调用结果分别通过 `await(reader())` 与 `await(writer(value))` 消费。常见的顺序读取可以使用 `loop value, err = reader() { ... }` 语法糖；它由 compiler lower 为重复的 `await(reader())`，不改变 host ABI。它们不是捕获闭包；`Stream<T>` 表示底层异步序列能力，不要求用户直接调用 `recv(stream)`；EOF、错误和无值结果的具体布局见 [async-design.md](async-design.md)。
+WIT `future<T>` 和 `stream<T>` 在 host ABI 边界分别映射为不透明的 do `Future<T>` 和 `Stream<T>`；其具体 waitable、frame 与 cleanup record 仍是后端实现细节。用户异步函数的 `async name(...) -> T` 对应 WIT `async func`，不与同步返回 `future<T>` 的 ABI 混用。WIT 的无结果操作映射为 do `nil`；无值异步操作的源码形态是 `first Future<nil> = wait_for(delay)`。
 
 ## 资源和类型
 
@@ -96,31 +94,15 @@ host_read = @host_func(
 host_write = @host_func(
     "wasi:io/streams@0.3.0",
     "output-stream.write",
-    (OutputStream, [u8]) -> void | StreamError
+    (OutputStream, [u8]) -> nil | StreamError
 )
 ```
 
 当前 `wasi-io` 主线的 `input-stream.read` 是非阻塞函数，数据不可用时返回空列表，并通过 `pollable` 表示后续可读状态。不要仅凭函数名把它声明为 async host 函数；正式版本的 WIT 定义是唯一依据。
 
-## 异步函数入口
+## P3 async backend 边界
 
-异步 host 函数仍然使用 `@host_func`，异步性由签名表达：
-
-```do
-host_read_async = @host_func(
-    "package",
-    "async-member",
-    async (InputStream, u64) -> [u8] | StreamError
-)
-
-host_read_future = @host_func(
-    "package",
-    "future-member",
-    (InputStream, u64) -> Future<[u8] | StreamError>
-)
-```
-
-这两种签名对应不同的 Component Model ABI，不能直接互换。具体的 do Future wrapper、取消、等待和超时协议见 [async-design.md](async-design.md)。上例 member 名称是 ABI 形态占位符，不代表正式 WASI 接口名称。
+异步 `@host_func` descriptor 的 locator、member、WIT effect、resource ownership、直接 Component task/subtask lifecycle 与 canonical ABI 必须从 pinned WIT world/interface/member manifest 解析。do 函数签名或 member 文本不能猜测这些属性。当前 compiler 的 `do check` 已读取 `src/build/p3_async_registry.json`，登记 `wasi:clocks@0.3.0` 的 `monotonic-clock.wait-for` / `wait-until` 和 `wasi:cli@0.3.0` 的 `run.run`，并要求各自的精确签名；descriptor 保留其已验证的 Core ABI、`task-return` completion、显式 Core import module/name 与 WIT package/interface/operation/world/parameter。manifest 不含 operation token 或 per-descriptor cancellation capability；`@cancel(Future<T>)` 直接遵循 pinned Component task/subtask ABI，且不承诺外部副作用回滚。Core import 和 WIT sidecar 名称只能取 manifest 字段，不能由 locator/member 或源码局部名拼接。默认 build 只验证 descriptor identity 和 metadata，不生成 import、不会使该 binding 可调用，也不改变 async build gate。descriptor 不是函数值；后续唯一调用入口为 `@host_call<HostFunc>(...)`，它会进入内部 `may_suspend`/TaskFrame/P3 resume path，但不把 `future`、`stream`、callback 或 `task.return` 暴露给源码。
 
 ## 常量和库
 
@@ -137,7 +119,7 @@ utf8_count = @lib("utf8.do", utf8_count)
 
 ## 实现边界
 
-目标 compiler 应自动完成 resource handle、list、record、variant、tuple、result 和异步值的 ABI lift/lower，不生成一组暴露 raw pointer 的公共绑定函数。用户代码只负责声明 locator、使用高层 do 类型和编写业务包装。
+目标 compiler 应自动完成 resource handle、list、record、variant、tuple、result 和 backend async record 的 ABI lift/lower，不生成一组暴露 raw pointer 的公共绑定函数。用户代码只负责声明 locator、使用高层 do 类型和编写业务包装。
 
 当前实现仍按已登记 ABI 白名单拒绝未知复杂签名；本文和 async-design.md 都是未来设计计划，不授权直接开始 codegen 或 runtime 实现。
 

@@ -1,7 +1,7 @@
 // UDP sockets — G6.3 scheme B (create/bind/drop). Value handle + explicit close.
 
 .host_udp_create = @host("wasi:sockets/types@0.3.0", "udp-socket.create", (u8) -> UdpSocket | UdpError)
-.host_udp_bind = @host("wasi:sockets/types@0.3.0", "udp-socket.bind", (UdpSocket, IpSocketAddress) -> UdpError | nil)
+.host_udp_bind = @host("wasi:sockets/types@0.3.0", "udp-socket.bind", (UdpSocket, IpSocketAddress) -> nil | UdpError)
 .host_udp_drop = @host("wasi:sockets/types@0.3.0", "udp-socket.drop", (UdpSocket) -> nil)
 
 Ipv4SocketAddress {
@@ -36,33 +36,47 @@ ipv6_socket_address(hi u64, lo u64, port_value u16) -> Ipv6SocketAddress {
 
 // Family: public wrappers use 4=ipv4 and 6=ipv6; codegen maps to WIT 0/1.
 create_udp_v4() -> UdpSocket | UdpError {
-    return host_udp_create(4)
+    result UdpSocket | UdpError = host_udp_create(4)
+    if @is(result, UdpError) return result
+    socket UdpSocket = result
+    return socket
 }
 
 create_udp_v6() -> UdpSocket | UdpError {
-    return host_udp_create(6)
+    result UdpSocket | UdpError = host_udp_create(6)
+    if @is(result, UdpError) return result
+    socket UdpSocket = result
+    return socket
 }
 
 // Public bind overloads: concrete address types. Intermediate total local is
 // supported under @lib after imported payload-enum collect (G6.3 edge fix).
 bind_udp(sock UdpSocket, addr Ipv4SocketAddress) -> UdpError | nil {
     total IpSocketAddress = V4(addr)
-    return host_udp_bind(sock, total)
+    result nil | UdpError = host_udp_bind(sock, total)
+    if @is(result, UdpError) return result
+    return nil
 }
 
 bind_udp(sock UdpSocket, addr Ipv6SocketAddress) -> UdpError | nil {
     total IpSocketAddress = V6(addr)
-    return host_udp_bind(sock, total)
+    result nil | UdpError = host_udp_bind(sock, total)
+    if @is(result, UdpError) return result
+    return nil
 }
 
 bind_udp_v4(sock UdpSocket, addr Ipv4SocketAddress) -> UdpError | nil {
     total IpSocketAddress = V4(addr)
-    return host_udp_bind(sock, total)
+    result nil | UdpError = host_udp_bind(sock, total)
+    if @is(result, UdpError) return result
+    return nil
 }
 
 bind_udp_v6(sock UdpSocket, addr Ipv6SocketAddress) -> UdpError | nil {
     total IpSocketAddress = V6(addr)
-    return host_udp_bind(sock, total)
+    result nil | UdpError = host_udp_bind(sock, total)
+    if @is(result, UdpError) return result
+    return nil
 }
 
 close_udp(sock UdpSocket) -> nil {

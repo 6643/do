@@ -8,5 +8,5 @@
         "strict": true,
         "target": "ES2022"
     },
-    "include": ["runtime.ts", "counter-do.ts", "deep-do.ts", "demo.ts"]
+    "include": ["runtime.ts", "host-runtime.ts", "counter-do.ts", "deep-do.ts", "demo.ts"]
 }

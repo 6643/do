@@ -208,7 +208,9 @@ pub fn check_is_type_args(tokens: []const lexer.Token) !void {
         // Payload-enum case name as second arg: @is(m, Text)
         if (type_arg + 1 == close_paren and tokens[type_arg].kind == .ident and
             is_valid_declared_type_name(tokens[type_arg].lexeme) and
-            is_local_payload_enum_case(tokens, public_type_name(tokens[type_arg].lexeme)))
+            (is_local_payload_enum_case(tokens, public_type_name(tokens[type_arg].lexeme)) or
+                std.mem.eql(u8, tokens[type_arg].lexeme, "Ok") or
+                std.mem.eql(u8, tokens[type_arg].lexeme, "Err")))
         {
             continue;
         }
@@ -426,6 +428,10 @@ pub fn is_builtin_call_name(name: []const u8) bool {
         "and",
         "or",
         "not",
+        "cancel",
+        "next",
+        "close",
+        "abort",
         "eq",
         "ne",
         "lt",

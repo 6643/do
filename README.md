@@ -49,19 +49,18 @@ src/lsp/        do lsp diagnostics + formatting + semantic tokens + hover + comp
 
 ## 当前 v1 子集摘要
 
-- 语言前端: 当前 parser / sema 已覆盖结构体、错误枚举、value enum、plain union / nullable union、字段反射、lambda、泛型约束、同名重载、同类型 variadic、`loop`、`defer`、import / host import 和 `test` 声明的回归子集; 普通直接递归、互递归、参数侧已定型的泛型递归和 self-tail TCO 第一版已补回归, 仅靠左侧目标类型反推的泛型递归仍后置; 源码层 `Tuple<T0, T1, ...>` 位置构造 + `@get` 数字索引已落地 (local/struct/return/param/nested/标量与 managed/`text` 叶子 storage、pure-scalar 与含 managed 字段的 struct 直接子槽、`@get(storage, i, j)` path chaining, 以及 loop 绑定上的 `@get(v, N)`); 含 managed 字段的 struct 槽按 ARC 句柄叶子 pack, 不拍平字段 (见 `compile_ok/273`, `ok/193`)。
+- 语言前端: 当前 parser / sema 已覆盖结构体、错误枚举、value enum、plain union / nullable union、字段反射、lambda、泛型约束、同名重载、同类型 variadic、`loop`、`defer`、import / host import 和 `test` 声明的回归子集; `async name(...) -> T`、`await`、`Future<T>`、`Stream<T>` 与 endpoint 的 affine 前端检查也已覆盖，但 build-mode 的 resumable lowering 仍明确拒绝; 普通直接递归、互递归、参数侧已定型的泛型递归和 self-tail TCO 第一版已补回归, 仅靠左侧目标类型反推的泛型递归仍后置; 源码层 `Tuple<T0, T1, ...>` 位置构造 + `@get` 数字索引已落地 (local/struct/return/param/nested/标量与 managed/`text` 叶子 storage、pure-scalar 与含 managed 字段的 struct 直接子槽、`@get(storage, i, j)` path chaining, 以及 loop 绑定上的 `@get(v, N)`); 含 managed 字段的 struct 槽按 ARC 句柄叶子 pack, 不拍平字段 (见 `compile_ok/273`, `ok/193`)。
 - 内存与所有权: 已落地 managed handle、对象头、layout table、ARC `inc/dec/release`、ownership exit plan、死 alias 消除、保守 last-use move、字段/参数 ownership facts 和 managed struct 最小 clone/reuse lowering; Tuple storage pack 合成 layout 负责 managed 叶子 clone/free。
 - 标准库: 已验证 JSON struct stringify/from_json、bytes/text/utf8/utf16、hex/base64/url、math/binary/mem/atomic/range/slice/path/fp/list/set/hash_map/hash、md5/sha1/sha256 等基础库; time/random/file/dir/io.stream 只承诺已登记 WASI wrapper lowering; net/tcp/udp/http.client 只承诺当前 shape/check smoke, 真实 host I/O 后置。
-- 后端与 WASI: 公开输出仍以 WAT 为主; 当前 build/test 子集已覆盖标量、结构体 flatten、storage/text ARC handle、多返回、基础 `@get/@set/@put`、WASI result-area/resource-drop lowering、component plan/core imports/core shims/component input 和真实 component wasm validate gate。
+- 后端与 WASI: 公开输出仍以 WAT 为主; 当前 build/test 子集已覆盖标量、结构体 flatten、storage/text ARC handle、多返回、基础 `@get/@set/@put`、WASI result-area/resource-drop lowering、component plan/core imports/core shims/component input 和真实 component wasm validate gate；固定 `descriptor.read-directory` 一至三条目 slice、注册的 scalar/string generic consumer、多个直接及一层/两层/三层/四层/五层/六层及两个顶层 nested `own` resource-field consumer、bounded scalar producer、受限 helper-mediated lease、固定/参数化 `u64` countdown producer、参数化 helper（含五跳 forwarding 与三种 typed 参数受限重排）producer 及 branch-selected `close/abort` terminal 已完成 ABI、lowering 与 Rust/Wasmtime 验证，general producer/borrowed/list/variant/第六跳 forwarding/第七层 nested 或更一般 resource 扩展仍受边界约束。
 - 工具链: `do build`、`do test`、`do test --compiled`、`do check`、`do run`、`do fmt` 和 `do lsp` 第一版均已落地; LSP 当前覆盖 diagnostics、formatting、semantic tokens、hover、completion、definition 和最小 workspace index。
-- 验证入口: 默认完整回归基线为 `pass=941 fail=0 skip=3`; `RUN_WASM=1` 扩展回归基线为 `pass=833 fail=0 skip=3` (未在本轮重跑); 发布前 smoke 入口是 `./src/build/test/run_release_smoke.sh`。
-
+- 验证入口: 默认完整回归基线为 `pass=1068 fail=0 skip=3`; `RUN_WASM=1` 扩展回归基线为 `pass=1070 fail=0 skip=3` (wasm run `pass=6 fail=0`); 发布前 smoke 入口是 `./src/build/test/run_release_smoke.sh`。
 
 ## v1 非目标
 
 - 不提供完整 ownership IR、跨函数唯一性证明、escape analysis、region 或激进 loop/path move; 当前继续使用已验证的 `OwnershipFacts` 子集和保守回退。
 - 不引入 direct wasm binary emitter; `do build` 和 `do test --compiled` 继续输出 WAT, 执行链路继续通过 `wasm-tools parse`。
-- 不承诺完整 WASI / Component Model 运行时; preopens (G6.1 A 已 lower: `[Tuple<Dir,text>]` 公开 API) 的真 host smoke、read-directory 的 `Stream`/`Future` runtime、sockets resource + variant、HTTP async resource 和真实 host runtime 继续后置。异步语言与 ABI 设计以 `doc/async-design.md` 为准，当前仍未完成 runtime 实现。
+- 不承诺完整 WASI / Component Model 运行时; preopens (G6.1 A 已 lower: `[Tuple<Dir,text>]` 公开 API) 的真 host smoke、一般 producer lease、borrowed/list/variant/第六跳 forwarding/第七层或更一般 nested resource-valued record、sockets resource + variant、HTTP async resource 和真实 host runtime 继续后置。固定 read-directory 一至三条目 slice、scalar/string consumer、multi-owned-resource consumer、多个顶层 nested-owned-resource consumer、一层/两层/三层/四层/五层/六层 nested-owned-resource consumer、bounded scalar producer、受限 helper-mediated producer lease、固定/参数化 `u64` countdown producer、参数化 helper（含五跳 forwarding 与三种 typed 参数受限重排）及 branch-selected terminal 已验证，异步语言与 ABI 设计以 `doc/async-design.md` 为准。
 - 不提供完整自动序列化; JSON 当前只承诺已验证的 struct 字段 stringify/from_json 子集, error/enum/union/复杂 storage 自动支持继续后置。
 - 不重开 get / pkg / push 包管理线。
 - 不把 `do fmt` 扩展成多文件批量、stdin/stdout 自动模式、range/on-type 或完整语法感知 formatter。
@@ -73,7 +72,7 @@ src/lsp/        do lsp diagnostics + formatting + semantic tokens + hover + comp
 默认推进顺序与接手细则见 `doc/start_here.md` 与 `doc/master_plan.md` §12。摘要:
 
 1. **发布候选维护**: `./src/build/test/run_tests.sh`、`./src/build/test/run_release_smoke.sh`、必要时 `RUN_WASM=1 ./src/build/test/run_tests.sh`; 只修阻断发布的回归或文档漂移。
-2. **WASI / Component Model 决策 (G6)**: G6.1 preopens 已按方案 A 落地; 剩余 G6.2 async/Future (read-directory) 与 G6.3 sockets variant 映射后再落 codegen/wrapper。
+2. **WASI / Component Model (G6)**: G6.1 preopens、G6.3 sockets、G6.2 固定 read-directory slice、generic consumer、multi-owned-resource、多个顶层 nested-owned-resource 与一层/两层/三层/四层/五层/六层 nested-owned-resource consumer、bounded scalar producer、固定/参数化 `u64` countdown producer、参数化 helper（含五跳 forwarding 与三种 typed 参数受限重排）producer、受限 helper-mediated producer lease、branch-selected terminal、descriptor-bounded StreamMirror runtime 和私有 resource Result 显式 `@cancel(completion)` lowering 已落地; capability matrix/ownership invariant 复核也已收口，下一步为新的 producer-lease/resource shape 单独建立 design、pinned probe 和 runtime gate。
 3. **Host runtime smoke**: G6 决策后补真实 file/dir/stream/socket/http host smoke, 再逐步收回 `16/96/118` 相关后置 skip。
 4. **JSON / 序列化扩展**: 以字段反射与已验证 struct JSON 为基础, 再定 error/enum/union/storage 自动序列化边界。
 5. **Ownership 深化**: runtime 边界稳定后再重开完整 ownership IR、跨函数唯一性证明、escape analysis、region 与更激进 move/reuse。
@@ -90,6 +89,10 @@ zig build -Doptimize=ReleaseSmall
 
 # 编译
 ../bin/do build app.do -o app.wat
+
+# 通用宿主回调 ABI: 不要求 start(), 导出 root module 的公开具体函数
+# 并生成 Core Wasm ABI manifest; 不包含私有函数或泛型模板
+../bin/do build app.do --host-export --host-manifest app.host.json -o app.wat
 
 # 运行 do 文件中的 test 声明
 ../bin/do test app.do
@@ -131,11 +134,13 @@ cd ..
 # 启用 wasm 执行、compiled wasm 和 trap/smoke 增量 gate
 RUN_WASM=1 ./src/build/test/run_tests.sh
 ```
+
 ## 开发计划 (Roadmap)
 
 状态口径: `已完成` 表示当前编译器和回归测试已覆盖对应 v1 子集; `暂跳过` 表示当前缺少前置条件或现阶段不作为主目标, 原因记录在 `doc/roadmap_status.md`; `最后处理` 表示明确后置到主线稳定后再单独收口。WASI / Component Model 放到最后单独处理。
 
 ### 已完成
+
 - [x] **规范基线**: `doc/spec.md` 是规范入口；`doc/syntax/` 已按功能拆分语法设计；`doc/grammar.peg` 保留 parser PEG；`doc/spec_rules.md` 保留语义约束、示例标签和 `defer` 规则。
 - [x] **编译器前端主线**: Parser / Sema 已覆盖当前回归正在使用的 build/test 子集，包括 Struct、Lambda、guard `if`、`loop`、泛型约束、聚合字面量、import / host import 和测试声明；这表示当前回归子集可用，不表示前端语法/语义边界已经全部封顶。
 - [x] **递归与 self-tail TCO 第一版子集**: 已覆盖普通直接递归、互递归、参数侧已知 concrete type 的泛型递归，以及 self-tail scalar / `if/else` / guard / generic / imported lowering；`src/build/test/compile_ok/248_*` 到 `258_*` 继续锁住 `defer`、storage local、managed struct、多返回和 cleanup 相关的不优化边界，且“只靠左侧目标类型反推”的泛型递归仍按 `NoMatchingCall` 后置。
@@ -155,9 +160,11 @@ RUN_WASM=1 ./src/build/test/run_tests.sh
 - [x] **`do lsp` 第一版**: `do lsp [--stdio]` 已落地为 diagnostics + formatting + semantic tokens + hover + completion + definition LSP stdio server; 当前发布 lexer/parser/sema/import diagnostics, 支持 formatting、semantic tokens、当前文件函数 hover、当前文件函数/类型/字段段 completion、当前文件函数/类型 definition、initialize workspace root 记录和 workspace 顶层符号扫描; completion / definition 已复用 workspace 顶层函数/类型 index, 仍不提供 rename。
 
 ### 暂跳过
+
 - [ ] **完整 ownership IR / 跨函数唯一性证明**: 当前 v1 子集走增量 `OwnershipFacts` 和保守回退; 完整 ownership graph、跨函数 data-flow、escape analysis、region 和更激进的 loop/path move 仍后置, 原因见 `doc/roadmap_status.md`。
 - [ ] **direct wasm binary emitter**: 已评估但不作为当前主路径引入; 当前继续保留可验证 WAT 文本输出、`wasm-tools parse` 桥接和 WAT golden 回归, 原因见 `doc/roadmap_status.md`。
 - [ ] **生态工具剩余项**: get / pkg / push 等工具链能力暂跳过, 原因见 `doc/roadmap_status.md`。
 
 ### 最后处理
-- [ ] **WASI / Component Model FFI**: 当前已完成统一 `@host("wasi:package/interface@version", "member", sig)` binding 的 `source + alias` 身份规则、已登记 result-area lowering、component plan/core imports/core shims、component input dir 和真实 component wasm 生成/validate gate；G6.1 preopens 方案 A 已 lower (`preopen_directories`); G6.2 read-directory stream/future 与 G6.3 sockets resource + variant 仍因运行时/映射未定而阻断。
+
+- [ ] **WASI / Component Model FFI**: 当前已完成统一 `@host("wasi:package/interface@version", "member", sig)` binding 的 `source + alias` 身份规则、已登记 result-area lowering、component plan/core imports/core shims、component input dir 和真实 component wasm 生成/validate gate；G6.1 preopens 方案 A、G6.2 固定 read-directory slice、generic record-stream consumer、multi-owned-resource、多个顶层 nested-owned-resource 与一层/两层/三层/四层/五层/六层 nested-owned-resource consumer、bounded scalar producer、固定/参数化 `u64` countdown producer、参数化 helper（含五跳 forwarding）producer、受限 helper-mediated producer lease、私有 resource Result error/cancellation 与 pinned HTTP payload cancellation slices、G6.3 sockets resource + variant 已落地；一般 producer-lease/resource 扩展与完整 host runtime 仍受边界约束。

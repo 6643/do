@@ -26,6 +26,7 @@ const emit_wasi_result_u64_stream_status_multi_assignment = codegen_emit_wasi.em
 const emit_wasi_result_filesize_multi_assignment = codegen_emit_wasi.emit_wasi_result_filesize_multi_assignment;
 const codegen_callbacks = @import("codegen_callbacks.zig");
 const codegen_body = @import("codegen_body.zig");
+const host_abi_fields = @import("codegen_host_abi_fields.zig");
 const collect_body_locals = codegen_body.collect_body_locals;
 const collect_callback_call_args = codegen_body.collect_callback_call_args;
 const emit_self_tail_loop_local_reset = codegen_emit_control.emit_self_tail_loop_local_reset;
@@ -123,6 +124,8 @@ const StructLocal = model.StructLocal;
 const StorageLocal = model.StorageLocal;
 const UnionLocal = model.UnionLocal;
 const FuncDecl = model.FuncDecl;
+const is_host_export_func = model.is_host_export_func;
+const host_export_abi = @import("host_export_abi.zig");
 const FuncParam = model.FuncParam;
 const FuncResultItem = model.FuncResultItem;
 const HostImport = model.HostImport;
@@ -199,7 +202,6 @@ const bind_struct_type_args = codegen_collect_structs.bind_struct_type_args;
 const substitute_generic_type_owned = codegen_collect_util.substitute_generic_type_owned;
 const find_generic_binding = codegen_collect_util.find_generic_binding;
 const same_callable_source_name = codegen_collect_functions.same_callable_source_name;
-const func_param_abi_type = codegen_collect_util.func_param_abi_type;
 const is_unmanaged_scalar_struct = codegen_collect_util.is_unmanaged_scalar_struct;
 const append_union_branch_payload_types = codegen_collect_util.append_union_branch_payload_types;
 
@@ -224,7 +226,6 @@ const storage_element_byte_width = codegen_storage_layout.storage_element_byte_w
 const storage_type_id_for_element = codegen_storage_layout.storage_type_id_for_element;
 const type_payload_bytes = codegen_storage_layout.type_payload_bytes;
 const type_payload_alignment = codegen_storage_layout.type_payload_alignment;
-const is_tuple_type_name = codegen_storage_layout.is_tuple_type_name;
 const tuple_arity = codegen_storage_layout.tuple_arity;
 const tuple_element_type_at = codegen_storage_layout.tuple_element_type_at;
 const codegen_wasm_type = codegen_storage_layout.codegen_wasm_type;
@@ -354,7 +355,6 @@ const storage_pack_layout_for_elem = codegen_storage_layout.storage_pack_layout_
 const tuple_element_pack_offset_with_structs = codegen_emit_storage_values.tuple_element_pack_offset_with_structs;
 const tuple_field_path_type = codegen_storage_layout.tuple_field_path_type;
 const find_struct_literal_field = codegen_emit_storage_values.find_struct_literal_field;
-const substitute_struct_field_type = codegen_storage_layout.substitute_struct_field_type;
 const is_struct_literal_rhs = codegen_emit_storage_values.is_struct_literal_rhs;
 const emit_replace_storage_put_source_tmp = codegen_emit_storage_operations.emit_replace_storage_put_source_tmp;
 const direct_managed_local_expr_name = codegen_emit_storage_values.direct_managed_local_expr_name;
@@ -632,8 +632,6 @@ pub const emit_wasi_record_return_call = codegen_emit_wasi.emit_wasi_record_retu
 pub const emit_wasi_record_result_fields = codegen_emit_wasi.emit_wasi_record_result_fields;
 
 const codegen_emit_call = @import("codegen_emit_call.zig");
-const append_struct_field_abi_params = codegen_emit_call.append_struct_field_abi_params;
-const resolve_union_layout_for_type_name = codegen_emit_call.resolve_union_layout_for_type_name;
 const facts_source_origin = codegen_emit_call.facts_source_origin;
 const direct_managed_call_last_use_move_source = codegen_emit_call.direct_managed_call_last_use_move_source;
 const direct_managed_union_binding_call_move_source = codegen_emit_call.direct_managed_union_binding_call_move_source;
@@ -685,7 +683,6 @@ const numeric_wasm_op = codegen_emit_call.numeric_wasm_op;
 const scalar_convert_wasm_op = codegen_emit_call.scalar_convert_wasm_op;
 const memory_load_wasm_op = codegen_emit_call.memory_load_wasm_op;
 const memory_load_byte_width = codegen_emit_call.memory_load_byte_width;
-const append_tuple_param_abi = codegen_emit_call.append_tuple_param_abi;
 
 pub fn emit_start_func(allocator: std.mem.Allocator, tokens: []const lexer.Token, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
     const start_idx = find_start_func(tokens) orelse return;
@@ -877,44 +874,29 @@ pub fn emit_user_funcs(allocator: std.mem.Allocator, ctx: CodegenContext, out: *
     }
 }
 
+pub fn emit_host_exports(allocator: std.mem.Allocator, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
+    for (ctx.functions) |func| {
+        if (!is_host_export_func(func, ctx.entry_tokens)) continue;
+        try host_export_abi.validate_func(allocator, func, ctx);
+        try wat_function_body.emit_func_export(allocator, out, func.name, func.name);
+    }
+}
+
 pub fn emit_user_func(allocator: std.mem.Allocator, func: FuncDecl, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
     var func_ctx = ctx;
     func_ctx.type_bindings = func.type_bindings;
     func_ctx.callback_bindings = func.callback_bindings;
-    var signature_owned_types = std.ArrayList([]const u8).empty;
-    defer {
-        for (signature_owned_types.items) |owned| allocator.free(owned);
-        signature_owned_types.deinit(allocator);
-    }
 
     const tokens = func.tokens;
     try append_fmt(allocator, out, "  (func ${s}", .{func.name});
     for (func.params) |param| {
         if (param.callback != null) continue;
-        const abi_ty = func_param_abi_type(param);
-        if (try resolve_union_layout_for_type_name(allocator, tokens, abi_ty, func_ctx, &signature_owned_types)) |layout| {
-            defer free_union_layout(allocator, layout);
-            for (layout.payload_tys, 0..) |payload_ty, idx| {
-                try append_fmt(allocator, out, " (param ${s}.__union_payload_{d} {s})", .{
-                    param.name,
-                    idx,
-                    codegen_wasm_type(func_ctx, payload_ty),
-                });
-            }
-            try append_fmt(allocator, out, " (param ${s}.__union_tag i32)", .{param.name});
-            continue;
+        var abi_fields = host_abi_fields.AbiParamList.init(allocator);
+        defer abi_fields.deinit();
+        try abi_fields.collect_param(param, tokens, func_ctx);
+        for (abi_fields.items.items) |field| {
+            try append_fmt(allocator, out, " (param ${s} {s})", .{ field.name, field.wasm_type });
         }
-        if (find_struct_decl(func_ctx.structs, abi_ty)) |decl| {
-            if (find_struct_layout(func_ctx.struct_layouts, abi_ty) == null) {
-                try append_unmanaged_struct_param_fields(allocator, tokens, out, param.name, decl, abi_ty, func_ctx, &signature_owned_types);
-                continue;
-            }
-        }
-        if (is_tuple_type_name(abi_ty)) {
-            try append_tuple_param_abi(allocator, out, param.name, abi_ty, func_ctx);
-            continue;
-        }
-        try append_fmt(allocator, out, " (param ${s} {s})", .{ param.name, codegen_wasm_type(func_ctx, abi_ty) });
     }
     if (func.results.len != 0) {
         try out.appendSlice(allocator, " (result");
@@ -1049,22 +1031,6 @@ pub fn has_managed_cleanup_locals(locals: *const LocalSet, ctx: CodegenContext) 
 
 pub fn emit_expr(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, expected_ty: ?[]const u8, out: *std.ArrayList(u8)) CodegenError!bool {
     return emit_expr_with_move_context(allocator, tokens, start_idx, end_idx, locals, ctx, expected_ty, null, out);
-}
-
-fn append_unmanaged_struct_param_fields(
-    allocator: std.mem.Allocator,
-    tokens: []const lexer.Token,
-    out: *std.ArrayList(u8),
-    param_name: []const u8,
-    decl: StructDecl,
-    abi_ty: []const u8,
-    func_ctx: CodegenContext,
-    signature_owned_types: *std.ArrayList([]const u8),
-) !void {
-    for (decl.fields) |field| {
-        const field_ty = try substitute_struct_field_type(allocator, decl, abi_ty, field.ty, signature_owned_types);
-        try append_struct_field_abi_params(allocator, tokens, out, param_name, field.name, field_ty, func_ctx, signature_owned_types);
-    }
 }
 
 fn emit_ident_literal_or_local(

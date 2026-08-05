@@ -331,9 +331,10 @@ pub fn collect_func_decls(
             i = (find_matching(tokens, i + 1, "{", "}") catch i);
             continue;
         }
-        if (!is_user_func_decl_start(tokens, i)) continue;
+        const func_head = user_func_decl_head(tokens, i) orelse continue;
+        const func_idx = func_head.name_idx;
 
-        const open_params = i + 1;
+        const open_params = func_idx + 1;
         const close_params = try find_matching(tokens, open_params, "(", ")");
         const body = parse_func_body_shape(tokens, close_params) catch continue;
         var owned_types = std.ArrayList([]const u8).empty;
@@ -379,15 +380,15 @@ pub fn collect_func_decls(
                 param_idx,
                 close_params,
                 type_params,
-                i,
+                func_idx,
                 &owned_types,
                 &params,
             );
         }
 
         try out.append(allocator, .{
-            .name = public_decl_name(tokens[i].lexeme),
-            .source_name = public_decl_name(tokens[i].lexeme),
+            .name = public_decl_name(tokens[func_idx].lexeme),
+            .source_name = public_decl_name(tokens[func_idx].lexeme),
             .params = try params.toOwnedSlice(allocator),
             .result = if (results.len == 1) results[0] else null,
             .results = results,
@@ -396,9 +397,10 @@ pub fn collect_func_decls(
             .result_union = parsed_results.result_union,
             .type_params = type_params,
             .is_generic_template = type_params.len != 0,
+            .is_async = func_head.is_async,
             .owned_types = try owned_types.toOwnedSlice(allocator),
             .tokens = tokens,
-            .start_idx = i,
+            .start_idx = func_idx,
             .arrow = body.arrow,
             .body_start = body.body_start,
             .body_end = body.body_end,
@@ -578,8 +580,9 @@ pub fn collect_func_decl_by_name_as(
             i = (find_matching(tokens, i + 1, "{", "}") catch i);
             continue;
         }
-        if (!is_user_func_decl_start(tokens, i)) continue;
-        const open_params = i + 1;
+        const func_head = user_func_decl_head(tokens, i) orelse continue;
+        const func_idx = func_head.name_idx;
+        const open_params = func_idx + 1;
         const close_params = find_matching(tokens, open_params, "(", ")") catch {
             pending_type_params.clearRetainingCapacity();
             continue;
@@ -588,7 +591,7 @@ pub fn collect_func_decl_by_name_as(
             pending_type_params.clearRetainingCapacity();
             continue;
         };
-        if (!std.mem.eql(u8, public_decl_name(tokens[i].lexeme), target_name)) {
+        if (!std.mem.eql(u8, public_decl_name(tokens[func_idx].lexeme), target_name)) {
             pending_type_params.clearRetainingCapacity();
             i = body.next_idx;
             continue;
@@ -636,7 +639,7 @@ pub fn collect_func_decl_by_name_as(
                 param_idx,
                 close_params,
                 type_params,
-                i,
+                func_idx,
                 &owned_types,
                 &params,
             );
@@ -657,10 +660,11 @@ pub fn collect_func_decl_by_name_as(
             .result_union = parsed_results.result_union,
             .type_params = type_params,
             .is_generic_template = type_params.len != 0,
+            .is_async = func_head.is_async,
             .owned_name = owned_emit_name,
             .owned_types = try owned_types.toOwnedSlice(allocator),
             .tokens = tokens,
-            .start_idx = i,
+            .start_idx = func_idx,
             .arrow = body.arrow,
             .body_start = body.body_start,
             .body_end = body.body_end,
@@ -675,6 +679,21 @@ pub fn collect_func_decl_by_name_as(
         continue;
     }
     return collected;
+}
+
+const FuncDeclHead = struct {
+    name_idx: usize,
+    is_async: bool,
+};
+
+fn user_func_decl_head(tokens: []const lexer.Token, idx: usize) ?FuncDeclHead {
+    if (is_user_func_decl_start(tokens, idx)) {
+        return .{ .name_idx = idx, .is_async = false };
+    }
+    if (idx + 2 >= tokens.len or !is_line_start(tokens, idx)) return null;
+    if (!tok_eq(tokens[idx], "async") or tokens[idx + 1].kind != .ident) return null;
+    if (tokens[idx + 1].line != tokens[idx].line or !tok_eq(tokens[idx + 2], "(")) return null;
+    return .{ .name_idx = idx + 1, .is_async = true };
 }
 
 pub fn parse_func_decl_result_types(

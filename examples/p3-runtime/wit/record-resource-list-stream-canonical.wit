@@ -1,0 +1,30 @@
+package do:record-resource-list-stream-canonical@0.1.0;
+
+interface types {
+  enum error-code { io }
+}
+
+interface source {
+  use types.{error-code};
+  resource ticket {}
+
+  record resource-entry {
+    ticket: own<ticket>,
+  }
+
+  read-via-stream: func() -> tuple<
+    stream<list<resource-entry>>,
+    future<result<_, error-code>>,
+  >;
+}
+
+interface probe {
+  use types.{error-code};
+  run: async func() -> result<_, error-code>;
+}
+
+world record-resource-list-stream-canonical {
+  import types;
+  import source;
+  export probe;
+}

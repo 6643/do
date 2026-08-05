@@ -13,6 +13,9 @@ const sema_type_checks = @import("sema_type_checks.zig");
 const sema_control_flow = @import("sema_control_flow.zig");
 const sema_field_checks = @import("sema_field_checks.zig");
 const sema_constraints = @import("sema_constraints.zig");
+const sema_async = @import("sema_async.zig");
+const sema_result = @import("sema_result.zig");
+const sema_resource_ownership = @import("sema_resource_ownership.zig");
 
 pub const ErrorSite = sema_error.ErrorSite;
 
@@ -31,6 +34,7 @@ pub fn check_program(
     try sema_function_signatures.check_private_l_value_assign(tokens);
     try sema_function_signatures.check_func_decl_naming(tokens);
     try sema_function_signatures.check_func_return_arrow_syntax(tokens);
+    try sema_function_signatures.check_async_function_return_types(tokens);
     try sema_function_signatures.check_start_decl_syntax(tokens);
     try sema_function_signatures.check_func_param_names(allocator, tokens);
     try sema_function_signatures.check_inline_func_param_types(tokens);
@@ -40,6 +44,7 @@ pub fn check_program(
     try sema_structures.check_path_access(tokens);
     try sema_structures.check_field_segment_positions(tokens);
     try sema_imports.check_host_imports(allocator, tokens);
+    try sema_imports.check_p3_async_host_imports(allocator, tokens);
     try sema_imports.check_local_imports(tokens);
     if (program.top_level_count == 0) return sema_tokens.mark_error_at(tokens, 0, error.NoTopLevelDecl);
 
@@ -49,6 +54,9 @@ pub fn check_program(
     try sema_type_checks.check_top_value_decl_names(tokens);
     try sema_structures.check_struct_field_names(allocator, tokens);
     try sema_type_checks.check_type_refs(tokens);
+    try sema_resource_ownership.check_resource_ownership(allocator, tokens);
+    try sema_type_checks.check_async_container_type_refs(tokens);
+    try sema_type_checks.check_result_type_refs(tokens);
     try sema_type_checks.check_parenthesized_type_args(tokens);
     try sema_type_checks.check_parenthesized_types(tokens);
     try sema_type_checks.check_generic_type_arg_arity(tokens);
@@ -57,6 +65,9 @@ pub fn check_program(
     try sema_structures.check_tuple_get_index(tokens);
     try sema_type_checks.check_forbidden_source_type_names(tokens);
     try sema_type_checks.check_bare_nil_types(tokens);
+    try sema_result.check_result_constructor_context(tokens);
+    try sema_async.check_await_context(tokens);
+    try sema_async.check_async_ownership(allocator, tokens);
     try sema_type_checks.check_inline_func_type_union_branches(tokens);
     try sema_type_checks.check_duplicate_union_branches(tokens);
     try sema_structures.check_struct_ctor_fields(allocator, tokens);
@@ -80,4 +91,52 @@ pub fn check_program(
     try sema_control_flow.check_loop_labels(allocator, tokens);
     try sema_control_flow.check_defer_stmts(allocator, tokens);
     try sema_constraints.check_assignment_constraints(allocator, tokens);
+}
+
+test "program accepts a nested CLI stdin stream host declaration" {
+    const source =
+        \\stdin_read = @host("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
+        \\StdinError error = Io | IllegalByteSequence | Pipe
+        \\
+        \\async run() -> nil {
+        \\    handles Tuple<Stream<u8>, Future<Result<nil, StdinError>>> = stdin_read()
+        \\    reader Stream<u8> = @get(handles, 0)
+        \\    completion Future<Result<nil, StdinError>> = @get(handles, 1)
+        \\    pending Future<Result<u8, nil>> = @next(reader)
+        \\    item Result<u8, nil> = await(pending)
+        \\    _ = item
+        \\    @cancel(completion)
+        \\}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    try check_program(std.testing.allocator, program, tokens);
+}
+
+test "program accepts an HTTP body stream completion tuple" {
+    const source =
+        \\consume_body = @host("wasi:http/types@0.3.0-rc-2025-09-16", "response.consume-body", (HttpResponse) -> Tuple<Stream<u8>, Future<Result<option<trailers>, HttpError>>>)
+        \\HttpResponse = @wasi_resource("http/types/response", { .id i64 })
+        \\HttpError error = HttpFailure
+        \\
+        \\async run(response HttpResponse) -> nil {
+        \\    handles Tuple<Stream<u8>, Future<Result<option<trailers>, HttpError>>> = consume_body(response)
+        \\    reader Stream<u8> = @get(handles, 0)
+        \\    completion Future<Result<option<trailers>, HttpError>> = @get(handles, 1)
+        \\    pending Future<Result<u8, nil>> = @next(reader)
+        \\    item Result<u8, nil> = await(pending)
+        \\    _ = item
+        \\    @cancel(completion)
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+    try check_program(std.testing.allocator, program, tokens);
 }

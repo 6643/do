@@ -20,8 +20,6 @@ pub fn is_top_level_decl_start(tokens: []const lexer.Token, idx: usize) bool {
     return tok_eq(tokens[idx], "test");
 }
 
-
-
 pub fn find_plain_eq_on_line(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
     var i = start_idx;
     while (i < end_idx) : (i += 1) {
@@ -31,8 +29,6 @@ pub fn find_plain_eq_on_line(tokens: []const lexer.Token, start_idx: usize, end_
     }
     return null;
 }
-
-
 
 pub fn call_arg_info(tokens: []const lexer.Token, idx: usize) ?CallArgInfo {
     const open_idx = find_enclosing_call_open(tokens, idx) orelse return null;
@@ -101,16 +97,12 @@ pub fn call_arg_info(tokens: []const lexer.Token, idx: usize) ?CallArgInfo {
     };
 }
 
-
-
 pub fn call_name_idx_before_open(tokens: []const lexer.Token, open_idx: usize) ?usize {
     if (open_idx == 0) return null;
     const name_idx = open_idx - 1;
     if (tokens[name_idx].kind != .ident) return null;
     return name_idx;
 }
-
-
 
 pub fn find_enclosing_call_open(tokens: []const lexer.Token, idx: usize) ?usize {
     var depth: usize = 0;
@@ -128,8 +120,6 @@ pub fn find_enclosing_call_open(tokens: []const lexer.Token, idx: usize) ?usize 
     return null;
 }
 
-
-
 pub fn is_top_level_token(tokens: []const lexer.Token, idx: usize) bool {
     var depth: usize = 0;
     var i: usize = 0;
@@ -146,8 +136,6 @@ pub fn is_top_level_token(tokens: []const lexer.Token, idx: usize) bool {
     return depth == 0;
 }
 
-
-
 pub fn validate_is_type_expr(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
     var i = validate_is_type_atom(tokens, start_idx, end_idx) orelse return null;
     while (i < end_idx) {
@@ -156,8 +144,6 @@ pub fn validate_is_type_expr(tokens: []const lexer.Token, start_idx: usize, end_
     }
     return i;
 }
-
-
 
 pub fn validate_is_type_atom(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
     if (start_idx >= end_idx) return null;
@@ -182,8 +168,6 @@ pub fn validate_is_type_atom(tokens: []const lexer.Token, start_idx: usize, end_
     return next_idx;
 }
 
-
-
 pub fn validate_is_type_arg_list(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
     if (start_idx >= end_idx) return null;
     var i = start_idx;
@@ -197,8 +181,6 @@ pub fn validate_is_type_arg_list(tokens: []const lexer.Token, start_idx: usize, 
     return i;
 }
 
-
-
 pub fn validate_is_type_expr_until_comma(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
     var i = validate_is_type_atom(tokens, start_idx, end_idx) orelse return null;
     while (i < end_idx and !tok_eq(tokens[i], ",")) {
@@ -207,8 +189,6 @@ pub fn validate_is_type_expr_until_comma(tokens: []const lexer.Token, start_idx:
     }
     return i;
 }
-
-
 
 pub fn find_return_type_end(tokens: []const lexer.Token, start_idx: usize) usize {
     var i = start_idx;
@@ -220,16 +200,12 @@ pub fn find_return_type_end(tokens: []const lexer.Token, start_idx: usize) usize
     return i;
 }
 
-
-
 pub fn has_known_func_candidate(funcs: []const FuncShape, name: []const u8) bool {
     for (funcs) |func| {
         if (std.mem.eql(u8, func.name, name)) return true;
     }
     return false;
 }
-
-
 
 pub fn func_param_type_start(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
     if (start_idx + 1 >= end_idx) return null;
@@ -239,8 +215,6 @@ pub fn func_param_type_start(tokens: []const lexer.Token, start_idx: usize, end_
     }
     return start_idx + 1;
 }
-
-
 
 pub fn is_func_type_param(tokens: []const lexer.Token, func_start_idx: usize, name: []const u8) bool {
     const block_start = find_constraint_block_start_before(tokens, func_start_idx) orelse return false;
@@ -260,8 +234,6 @@ pub fn is_func_type_param(tokens: []const lexer.Token, func_start_idx: usize, na
     }
     return false;
 }
-
-
 
 pub fn type_constraint_is_function_type(
     tokens: []const lexer.Token,
@@ -291,8 +263,6 @@ pub fn type_constraint_is_function_type(
     return false;
 }
 
-
-
 pub fn find_constraint_block_start_before(tokens: []const lexer.Token, decl_start_idx: usize) ?usize {
     if (decl_start_idx == 0 or decl_start_idx >= tokens.len) return null;
 
@@ -316,15 +286,11 @@ pub fn find_constraint_block_start_before(tokens: []const lexer.Token, decl_star
     return block_start;
 }
 
-
-
 pub fn line_start_idx(tokens: []const lexer.Token, idx: usize) usize {
     var out = idx;
     while (out > 0 and tokens[out - 1].line == tokens[idx].line) : (out -= 1) {}
     return out;
 }
-
-
 
 pub fn compact_type_name(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !?[]const u8 {
     if (start_idx + 1 == end_idx and tokens[start_idx].kind == .ident) {
@@ -342,15 +308,11 @@ pub fn compact_type_name(allocator: std.mem.Allocator, tokens: []const lexer.Tok
     return owned;
 }
 
-
-
 pub fn simple_type_name(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?[]const u8 {
     if (start_idx + 1 != end_idx) return null;
     if (tokens[start_idx].kind != .ident) return null;
     return tokens[start_idx].lexeme;
 }
-
-
 
 pub fn is_top_level_comma_any(tokens: []const lexer.Token, idx: usize, start_idx: usize, end_idx: usize) bool {
     if (!tok_eq(tokens[idx], ",")) return false;
@@ -389,8 +351,6 @@ pub fn is_top_level_comma_any(tokens: []const lexer.Token, idx: usize, start_idx
     return depth_paren == 0 and depth_brace == 0 and depth_angle == 0;
 }
 
-
-
 pub fn is_func_decl_start(tokens: []const lexer.Token, idx: usize) bool {
     if (idx + 1 >= tokens.len) return false;
     if (tokens[idx].kind != .ident) return false;
@@ -399,22 +359,16 @@ pub fn is_func_decl_start(tokens: []const lexer.Token, idx: usize) bool {
     return tok_eq(tokens[idx + 1], "(");
 }
 
-
-
 pub fn is_start_decl_start(tokens: []const lexer.Token, idx: usize) bool {
     if (idx + 1 >= tokens.len) return false;
     if (tokens[idx].kind != .ident) return false;
     return tok_eq(tokens[idx], "start") and tok_eq(tokens[idx + 1], "(");
 }
 
-
-
 pub fn public_func_name(name: []const u8) []const u8 {
     if (name.len != 0 and name[0] == '.') return name[1..];
     return name;
 }
-
-
 
 pub fn contains_name(names: []const []const u8, needle: []const u8) bool {
     for (names) |name| {
@@ -422,8 +376,6 @@ pub fn contains_name(names: []const []const u8, needle: []const u8) bool {
     }
     return false;
 }
-
-
 
 pub fn is_top_level_value_decl_start(tokens: []const lexer.Token, idx: usize) bool {
     if (!is_top_level_decl_head(tokens, idx)) return false;
@@ -437,19 +389,13 @@ pub fn is_top_level_value_decl_start(tokens: []const lexer.Token, idx: usize) bo
     return eq_idx > idx + 1;
 }
 
-
-
 pub fn is_arrow_at(tokens: []const lexer.Token, idx: usize) bool {
     return idx + 1 < tokens.len and tok_eq(tokens[idx], "=") and tok_eq(tokens[idx + 1], ">");
 }
 
-
-
 pub fn is_return_arrow_at(tokens: []const lexer.Token, idx: usize) bool {
     return idx + 1 < tokens.len and tok_eq(tokens[idx], "-") and tok_eq(tokens[idx + 1], ">");
 }
-
-
 
 pub fn find_nearest_value_type_name(tokens: []const lexer.Token, before_idx: usize, name: []const u8) ?[]const u8 {
     var skip_depth: usize = 0;
@@ -478,34 +424,24 @@ pub fn find_nearest_value_type_name(tokens: []const lexer.Token, before_idx: usi
     return null;
 }
 
-
-
 pub fn is_generic_type_start(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     if (start_idx + 1 >= end_idx or !tok_eq(tokens[start_idx + 1], "<")) return false;
     _ = find_matching(tokens, start_idx + 1, "<", ">") catch return false;
     return true;
 }
 
-
-
 pub fn is_declared_type_name(name: []const u8) bool {
     return name.len != 0 and std.ascii.isUpper(name[0]);
 }
-
-
 
 pub fn is_value_type_name(name: []const u8) bool {
     return is_declared_type_name(name) or is_base_type_name(name);
 }
 
-
-
 pub fn public_type_name(name: []const u8) []const u8 {
     if (name.len != 0 and name[0] == '.') return name[1..];
     return name;
 }
-
-
 
 pub fn find_line_end_idx(tokens: []const lexer.Token, start_idx: usize) usize {
     if (start_idx >= tokens.len) return start_idx;
@@ -514,8 +450,6 @@ pub fn find_line_end_idx(tokens: []const lexer.Token, start_idx: usize) usize {
     while (i < tokens.len and tokens[i].line == line) : (i += 1) {}
     return i;
 }
-
-
 
 pub fn find_top_level_assign_eq_on_line(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
     var depth_paren: usize = 0;
@@ -555,8 +489,6 @@ pub fn find_top_level_assign_eq_on_line(tokens: []const lexer.Token, start_idx: 
     return null;
 }
 
-
-
 pub fn has_local_struct_decl(tokens: []const lexer.Token, name: []const u8) bool {
     var depth_brace: usize = 0;
     var i: usize = 0;
@@ -577,21 +509,15 @@ pub fn has_local_struct_decl(tokens: []const lexer.Token, name: []const u8) bool
     return false;
 }
 
-
-
 pub fn call_arity_compatible_with_func(func: FuncShape, arg_count: usize) bool {
     if (arg_count < func.param_min) return false;
     if (func.param_max) |max_count| return arg_count <= max_count;
     return true;
 }
 
-
-
 pub fn find_matching(tokens: []const lexer.Token, open_idx: usize, open: []const u8, close: []const u8) !usize {
     return find_matching_in_range(tokens, open_idx, open, close, tokens.len);
 }
-
-
 
 pub fn find_matching_in_range(tokens: []const lexer.Token, open_idx: usize, open: []const u8, close: []const u8, limit: usize) !usize {
     if (open_idx >= tokens.len or !tok_eq(tokens[open_idx], open)) return error.InvalidGroupStart;
@@ -612,13 +538,9 @@ pub fn find_matching_in_range(tokens: []const lexer.Token, open_idx: usize, open
     return error.UnterminatedGroup;
 }
 
-
-
 pub fn is_struct_decl_start(tokens: []const lexer.Token, idx: usize) bool {
     return idx + 1 < tokens.len and tok_eq(tokens[idx + 1], "{");
 }
-
-
 
 pub fn is_error_enum_decl_start(tokens: []const lexer.Token, idx: usize) bool {
     return idx + 2 < tokens.len and
@@ -626,8 +548,6 @@ pub fn is_error_enum_decl_start(tokens: []const lexer.Token, idx: usize) bool {
         tok_eq(tokens[idx + 1], "error") and
         tok_eq(tokens[idx + 2], "=");
 }
-
-
 
 pub fn is_value_enum_decl_start(tokens: []const lexer.Token, idx: usize) bool {
     return idx + 2 < tokens.len and
@@ -639,10 +559,8 @@ pub fn is_value_enum_decl_start(tokens: []const lexer.Token, idx: usize) bool {
 
 /// `Message = Quit | Text([u8]) | Binary([u8])` — tagged payload enum (L1).
 /// Disambiguated from value/error enums and from `Name = @wasi_*` bindings.
-
 /// `Message = Quit | Text([u8]) | Binary([u8])` — tagged payload enum (L1).
 /// Disambiguated from value/error enums and from `Name = @wasi_*` bindings.
-
 /// `Message = Quit | Text([u8]) | Binary([u8])` — tagged payload enum (L1).
 /// Disambiguated from value/error enums and from `Name = @wasi_*` bindings.
 pub fn is_payload_enum_decl_start(tokens: []const lexer.Token, idx: usize) bool {
@@ -688,8 +606,6 @@ pub fn is_payload_enum_decl_start(tokens: []const lexer.Token, idx: usize) bool 
     return true;
 }
 
-
-
 pub fn is_valid_enum_branch_name(tok: lexer.Token) bool {
     if (tok.kind != .ident) return false;
     const name = public_type_name(tok.lexeme);
@@ -699,16 +615,12 @@ pub fn is_valid_enum_branch_name(tok: lexer.Token) bool {
     return true;
 }
 
-
-
 pub fn is_error_type_name(name: []const u8) bool {
     if (name.len == 0 or name[0] == '.') return false;
     if (!is_valid_declared_type_name(name)) return false;
     if (std.mem.eql(u8, name, "Error")) return false;
     return std.mem.endsWith(u8, name, "Error");
 }
-
-
 
 pub fn enum_decl_has_branch(tokens: []const lexer.Token, decl_start_idx: usize, name: []const u8) bool {
     const eq_idx = enum_decl_assign_idx(tokens, decl_start_idx) orelse return false;
@@ -722,8 +634,6 @@ pub fn enum_decl_has_branch(tokens: []const lexer.Token, decl_start_idx: usize, 
     return false;
 }
 
-
-
 pub fn enum_decl_assign_idx(tokens: []const lexer.Token, decl_start_idx: usize) ?usize {
     if (is_error_enum_decl_start(tokens, decl_start_idx) or is_value_enum_decl_start(tokens, decl_start_idx)) {
         return decl_start_idx + 2;
@@ -734,8 +644,6 @@ pub fn enum_decl_assign_idx(tokens: []const lexer.Token, decl_start_idx: usize) 
     return null;
 }
 
-
-
 pub fn find_struct_info(structs: []const StructInfo, name: []const u8) ?StructInfo {
     for (structs) |info| {
         if (std.mem.eql(u8, info.name, name)) return info;
@@ -743,29 +651,22 @@ pub fn find_struct_info(structs: []const StructInfo, name: []const u8) ?StructIn
     return null;
 }
 
-
-
 pub fn normalize_struct_field_name(name: []const u8) []const u8 {
     if (name.len > 0 and name[0] == '.') return name[1..];
     return name;
 }
 
-
-
 pub fn is_reserved_field_name_body(name: []const u8) bool {
     return is_keyword(name) or is_decl_only_name(name) or is_reserved_core_access_name(name) or is_reserved_source_name(name);
 }
-
-
 
 pub fn is_reserved_core_access_name(name: []const u8) bool {
     return std.mem.eql(u8, name, "get") or std.mem.eql(u8, name, "set");
 }
 
-
-
 pub fn is_top_level_decl_head(tokens: []const lexer.Token, idx: usize) bool {
     if (idx == 0) return true;
+    if (tokens[idx - 1].line == tokens[idx].line and tok_eq(tokens[idx - 1], "async")) return true;
     if (tokens[idx - 1].line == tokens[idx].line) return false;
 
     const prev = tokens[idx - 1];
@@ -776,8 +677,6 @@ pub fn is_top_level_decl_head(tokens: []const lexer.Token, idx: usize) bool {
     return true;
 }
 
-
-
 pub fn is_host_import_decl_start(tokens: []const lexer.Token, idx: usize) bool {
     const eq_idx = top_level_line_assign_idx(tokens, idx) orelse return false;
     const at_idx = eq_idx + 1;
@@ -785,35 +684,29 @@ pub fn is_host_import_decl_start(tokens: []const lexer.Token, idx: usize) bool {
     return is_host_import_line(tokens, at_idx);
 }
 
-
-
 pub fn is_modern_import_assign(tokens: []const lexer.Token, idx: usize) bool {
     const eq_idx = top_level_line_assign_idx(tokens, idx) orelse return false;
     const at_idx = eq_idx + 1;
     if (at_idx + 1 >= tokens.len or !tok_eq(tokens[at_idx], "@")) return false;
     if (tokens[at_idx + 1].kind != .ident) return false;
     return std.mem.eql(u8, tokens[at_idx + 1].lexeme, "lib") or
-        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host");
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host") or
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host_func");
 }
-
-
 
 pub fn top_level_line_assign_idx(tokens: []const lexer.Token, line_start: usize) ?usize {
     const line_end = find_line_end_idx(tokens, line_start);
     return find_top_level_assign_eq_on_line(tokens, line_start + 1, line_end);
 }
 
-
-
 pub fn is_host_import_line(tokens: []const lexer.Token, at_idx: usize) bool {
     if (at_idx + 2 >= tokens.len) return false;
     if (!tok_eq(tokens[at_idx], "@")) return false;
     if (tokens[at_idx + 1].kind != .ident) return false;
     if (!tok_eq(tokens[at_idx + 2], "(")) return false;
-    return std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host");
+    return std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host") or
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host_func");
 }
-
-
 
 pub fn validate_import_file_name_text(tokens: []const lexer.Token, site_idx: usize, s: []const u8, prefix: LocalImportPrefix) !void {
     if (!std.mem.endsWith(u8, s, ".do")) return mark_error_at(tokens, site_idx, error.InvalidImportDecl);
@@ -825,13 +718,9 @@ pub fn validate_import_file_name_text(tokens: []const lexer.Token, site_idx: usi
     if (!ok) return mark_error_at(tokens, site_idx, error.InvalidImportDecl);
 }
 
-
-
 pub fn validate_import_file_name(tokens: []const lexer.Token, idx: usize, prefix: LocalImportPrefix) !void {
     try validate_import_file_name_text(tokens, idx, tokens[idx].lexeme, prefix);
 }
-
-
 
 pub fn is_valid_flat_file_stem(stem: []const u8) bool {
     var count: usize = 0;
@@ -845,8 +734,6 @@ pub fn is_valid_flat_file_stem(stem: []const u8) bool {
     }
     return count != 0;
 }
-
-
 
 pub fn is_valid_dep_file_stem(stem: []const u8) bool {
     var count: usize = 0;
@@ -862,8 +749,6 @@ pub fn is_valid_dep_file_stem(stem: []const u8) bool {
     return count >= 2;
 }
 
-
-
 pub fn is_all_digits(seg: []const u8) bool {
     if (seg.len == 0) return false;
     for (seg) |ch| {
@@ -871,8 +756,6 @@ pub fn is_all_digits(seg: []const u8) bool {
     }
     return true;
 }
-
-
 
 pub fn is_valid_path_seg(seg: []const u8) bool {
     if (seg.len == 0) return false;
@@ -899,8 +782,6 @@ pub fn is_valid_path_seg(seg: []const u8) bool {
     return true;
 }
 
-
-
 pub fn compact_token_range_equals(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, expected: []const u8) bool {
     var pos: usize = 0;
     var i = start_idx;
@@ -913,15 +794,11 @@ pub fn compact_token_range_equals(tokens: []const lexer.Token, start_idx: usize,
     return pos == expected.len;
 }
 
-
-
 pub fn string_token_body(s: []const u8) ?[]const u8 {
     if (s.len < 2) return null;
     if (s[0] != '"' or s[s.len - 1] != '"') return null;
     return s[1 .. s.len - 1];
 }
-
-
 
 pub fn has_top_level_comma(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     var depth_paren: usize = 0;
@@ -949,8 +826,6 @@ pub fn has_top_level_comma(tokens: []const lexer.Token, start_idx: usize, end_id
     return false;
 }
 
-
-
 pub fn find_top_level_comma(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
     var depth_paren: usize = 0;
     var depth_angle: usize = 0;
@@ -977,8 +852,6 @@ pub fn find_top_level_comma(tokens: []const lexer.Token, start_idx: usize, end_i
     return null;
 }
 
-
-
 pub fn first_non_gap(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
     var i = start_idx;
     while (i < end_idx) : (i += 1) {
@@ -988,15 +861,11 @@ pub fn first_non_gap(tokens: []const lexer.Token, start_idx: usize, end_idx: usi
     return null;
 }
 
-
-
 pub fn is_value_literal_token(t: lexer.Token) bool {
     if (t.kind == .number or t.kind == .string) return true;
     if (tok_eq(t, "true") or tok_eq(t, "false") or tok_eq(t, "nil")) return true;
     return false;
 }
-
-
 
 pub fn is_type_decl_start(tokens: []const lexer.Token, idx: usize) bool {
     if (idx + 1 >= tokens.len) return false;
@@ -1022,8 +891,6 @@ pub fn is_type_decl_start(tokens: []const lexer.Token, idx: usize) bool {
     return tok_eq(tokens[next_idx], "{");
 }
 
-
-
 pub fn is_valid_declared_type_name(name: []const u8) bool {
     if (name.len == 0) return false;
     if (name[0] == '.') return is_valid_declared_type_name(name[1..]);
@@ -1039,21 +906,15 @@ pub fn is_valid_declared_type_name(name: []const u8) bool {
     return true;
 }
 
-
-
 pub fn is_lower_ident_name(name: []const u8) bool {
     return is_snake_lower_name(name);
 }
-
-
 
 pub fn is_readonly_ident_name(name: []const u8) bool {
     if (name.len < 2) return false;
     if (name[0] != '_') return false;
     return is_snake_lower_name(name[1..]);
 }
-
-
 
 pub fn is_snake_lower_name(name: []const u8) bool {
     if (name.len == 0) return false;
@@ -1075,13 +936,9 @@ pub fn is_snake_lower_name(name: []const u8) bool {
     return !prev_underscore;
 }
 
-
-
 pub fn is_spread_token(tok: lexer.Token) bool {
     return tok.kind == .symbol and tok_eq(tok, "...");
 }
-
-
 
 pub fn has_return_arrow_before_on_line(tokens: []const lexer.Token, idx: usize) bool {
     var i = line_start_idx(tokens, idx);
@@ -1090,8 +947,6 @@ pub fn has_return_arrow_before_on_line(tokens: []const lexer.Token, idx: usize) 
     }
     return false;
 }
-
-
 
 pub fn count_type_args(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) usize {
     if (start_idx >= end_idx) return 0;
@@ -1144,15 +999,11 @@ pub fn count_type_args(tokens: []const lexer.Token, start_idx: usize, end_idx: u
     return count;
 }
 
-
-
 pub fn is_func_type_range(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     if (start_idx >= end_idx or !tok_eq(tokens[start_idx], "(")) return false;
     const close_idx = find_matching(tokens, start_idx, "(", ")") catch return false;
     return close_idx + 2 < end_idx and is_return_arrow_at(tokens, close_idx + 1);
 }
-
-
 
 pub fn is_base_type_name(name: []const u8) bool {
     const base_types = [_][]const u8{
@@ -1167,13 +1018,11 @@ pub fn is_base_type_name(name: []const u8) bool {
     return false;
 }
 
-
-
 pub fn is_wit_only_source_type_name(name: []const u8) bool {
-    return std.mem.eql(u8, name, "char") or std.mem.eql(u8, name, "tuple");
+    return std.mem.eql(u8, name, "char") or
+        std.mem.eql(u8, name, "tuple") or
+        std.mem.eql(u8, name, "void");
 }
-
-
 
 pub fn is_base_int_type_name(name: []const u8) bool {
     const base_int_types = [_][]const u8{
@@ -1186,8 +1035,6 @@ pub fn is_base_int_type_name(name: []const u8) bool {
     }
     return false;
 }
-
-
 
 pub fn has_type_constraint_name(
     tokens: []const lexer.Token,
@@ -1211,8 +1058,6 @@ pub fn has_type_constraint_name(
     return false;
 }
 
-
-
 pub fn find_inline_func_type_in_params(
     tokens: []const lexer.Token,
     param_start: usize,
@@ -1234,8 +1079,6 @@ pub fn find_inline_func_type_in_params(
     return null;
 }
 
-
-
 pub fn find_struct_field_type_end(tokens: []const lexer.Token, start_idx: usize, line_end: usize) usize {
     var i = start_idx;
     while (i < line_end) : (i += 1) {
@@ -1243,8 +1086,6 @@ pub fn find_struct_field_type_end(tokens: []const lexer.Token, start_idx: usize,
     }
     return line_end;
 }
-
-
 
 pub fn token_name_appears_in_range(
     tokens: []const lexer.Token,
@@ -1259,8 +1100,6 @@ pub fn token_name_appears_in_range(
     return false;
 }
 
-
-
 pub fn is_struct_field_decl_default(tokens: []const lexer.Token, line_start: usize, eq_idx: usize) bool {
     if (line_start >= eq_idx) return false;
     if (tokens[line_start].kind != .ident) return false;
@@ -1270,21 +1109,15 @@ pub fn is_struct_field_decl_default(tokens: []const lexer.Token, line_start: usi
     return is_inside_struct_decl(tokens, line_start);
 }
 
-
-
 pub fn is_struct_field_name(name: []const u8) bool {
     if (name.len == 0) return false;
     const body = if (name[0] == '.') name[1..] else name;
     return is_snake_lower_name(body) and !is_reserved_field_name_body(body);
 }
 
-
-
 pub fn is_dot_lower_ident(name: []const u8) bool {
     return name.len > 1 and name[0] == '.' and is_snake_lower_name(name[1..]);
 }
-
-
 
 pub fn is_inside_struct_decl(tokens: []const lexer.Token, idx: usize) bool {
     var depth: usize = 0;
@@ -1305,8 +1138,6 @@ pub fn is_inside_struct_decl(tokens: []const lexer.Token, idx: usize) bool {
     return false;
 }
 
-
-
 pub fn is_struct_decl_body_open(tokens: []const lexer.Token, open_idx: usize) bool {
     var i = open_idx;
     while (i > 0 and tokens[i - 1].line == tokens[open_idx].line) {
@@ -1321,8 +1152,6 @@ pub fn is_struct_decl_body_open(tokens: []const lexer.Token, open_idx: usize) bo
     return is_type_decl_start(tokens, i);
 }
 
-
-
 pub fn is_non_assign_equal(tokens: []const lexer.Token, idx: usize) bool {
     if (idx > 0 and tok_eq(tokens[idx - 1], "=")) return true; // ==
     if (idx + 1 < tokens.len and tok_eq(tokens[idx + 1], "=")) return true; // ==
@@ -1330,13 +1159,9 @@ pub fn is_non_assign_equal(tokens: []const lexer.Token, idx: usize) bool {
     return false;
 }
 
-
-
 pub fn tok_eq(t: lexer.Token, s: []const u8) bool {
     return std.mem.eql(u8, t.lexeme, s);
 }
-
-
 
 pub fn is_keyword(name: []const u8) bool {
     const keywords = [_][]const u8{
@@ -1347,7 +1172,10 @@ pub fn is_keyword(name: []const u8) bool {
         "continue",
         "return",
         "defer",
-        "do",
+        "async",
+        "await",
+        "await_all",
+        "await_any",
         "test",
         "true",
         "false",
@@ -1359,8 +1187,6 @@ pub fn is_keyword(name: []const u8) bool {
     return false;
 }
 
-
-
 pub fn is_reserved_func_name(name: []const u8) bool {
     const public_name = if (name.len != 0 and name[0] == '.') name[1..] else name;
     if (std.mem.eql(u8, public_name, "start")) return true;
@@ -1369,20 +1195,14 @@ pub fn is_reserved_func_name(name: []const u8) bool {
     return is_builtin_special_or_core_name(public_name);
 }
 
-
-
 pub fn is_reserved_source_name(name: []const u8) bool {
     return is_base_type_name(name) or is_wit_only_source_type_name(name);
 }
-
-
 
 pub fn is_decl_only_name(name: []const u8) bool {
     const public_name = if (name.len != 0 and name[0] == '.') name[1..] else name;
     return std.mem.eql(u8, public_name, "start") or std.mem.eql(u8, public_name, "test");
 }
-
-
 
 pub fn is_numeric_core_func_name(name: []const u8) bool {
     const names = [_][]const u8{ "add", "sub", "mul", "div", "rem" };
@@ -1392,11 +1212,9 @@ pub fn is_numeric_core_func_name(name: []const u8) bool {
     return false;
 }
 
-
-
 pub fn is_builtin_special_or_core_name(name: []const u8) bool {
     const names = [_][]const u8{
-        "is",          "as",                "and",         "or",          "not",
+        "is",          "as",                "and",         "or",          "not",         "cancel",       "close",       "abort",
         "recv",        "fields",            "get",         "set",         "field_name",
         "field_index", "field_has_default", "field_get",   "field_set",   "eq",
         "ne",          "lt",                "le",          "gt",          "ge",
@@ -1414,8 +1232,6 @@ pub fn is_builtin_special_or_core_name(name: []const u8) bool {
     return false;
 }
 
-
-
 pub fn is_valid_func_decl_name(name: []const u8) bool {
     if (name.len == 0) return false;
     if (is_snake_lower_name(name)) return true;
@@ -1423,14 +1239,10 @@ pub fn is_valid_func_decl_name(name: []const u8) bool {
     return false;
 }
 
-
-
 pub fn is_type_name(name: []const u8) bool {
     if (name.len == 0) return false;
     return std.ascii.isUpper(name[0]);
 }
-
-
 
 pub fn mark_error_at(tokens: []const lexer.Token, idx: usize, err: anyerror) anyerror {
     return sema_error.mark_error_at(tokens, idx, err);
@@ -1440,16 +1252,13 @@ pub fn is_valid_local_binding_name(name: []const u8) bool {
     return (is_lower_ident_name(name) or is_readonly_ident_name(name)) and !is_reserved_func_name(name);
 }
 
-
 pub fn is_valid_loop_binding_name(name: []const u8) bool {
     return std.mem.eql(u8, name, "_") or (is_lower_ident_name(name) and !is_reserved_func_name(name));
 }
 
-
 pub fn is_base_float_type_name(name: []const u8) bool {
     return std.mem.eql(u8, name, "f32") or std.mem.eql(u8, name, "f64");
 }
-
 
 pub fn find_loop_block_open(tokens: []const lexer.Token, loop_idx: usize) ?usize {
     var depth_paren: usize = 0;
@@ -1483,7 +1292,6 @@ pub fn find_loop_block_open(tokens: []const lexer.Token, loop_idx: usize) ?usize
     }
     return null;
 }
-
 
 pub fn find_loop_bind_assign(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
     var depth_paren: usize = 0;
@@ -1527,7 +1335,6 @@ pub fn find_loop_bind_assign(tokens: []const lexer.Token, start_idx: usize, end_
     return found;
 }
 
-
 pub fn validate_loop_bind_lhs(tokens: []const lexer.Token, start_idx: usize, bind_idx: usize) !void {
     if (start_idx >= bind_idx) return mark_error_at(tokens, bind_idx, error.InvalidLoopHeader);
     if (tokens[start_idx].kind != .ident) return mark_error_at(tokens, start_idx, error.InvalidLoopHeader);
@@ -1558,4 +1365,3 @@ pub fn is_fields_loop_source(tokens: []const lexer.Token, start_idx: usize, end_
     if (!is_valid_declared_type_name(tokens[start_idx + 2].lexeme)) return false;
     return tok_eq(tokens[start_idx + 3], ")");
 }
-

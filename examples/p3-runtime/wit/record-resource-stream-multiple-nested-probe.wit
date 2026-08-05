@@ -1,0 +1,33 @@
+package do:record-resource-stream-multiple-nested@0.1.0;
+
+interface types {
+  enum error-code { io, no-entry }
+}
+
+interface source {
+  use types.{error-code};
+  resource ticket {}
+
+  record left-entry {
+    ticket: own<ticket>,
+  }
+  record right-entry {
+    ticket: own<ticket>,
+  }
+  record resource-entry {
+    left: left-entry,
+    right: right-entry,
+  }
+  read-via-stream: func() -> tuple<stream<resource-entry>, future<result<_, error-code>>>;
+}
+
+interface probe {
+  use types.{error-code};
+  run: async func() -> result<_, error-code>;
+}
+
+world record-resource-stream-multiple-nested {
+  import types;
+  import source;
+  export probe;
+}

@@ -1,0 +1,6 @@
+;; wasi-bind source="entry" alias="host_tcp_create" target="sockets/types/tcp-socket.create" params="ip-address-family" result="result<tcp-socket,error-code>"
+(import "cm32p2|wasi:sockets/types" "[static]tcp-socket.create" (func $__wasi_import_sockets_types_tcp_socket_create (param i32 i32)))
+(local $created.__union_payload_0 i64)
+(local $created.__union_tag i32)
+if (result i64 i32 i32)
+local.get $created.__union_tag

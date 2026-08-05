@@ -1,0 +1,1534 @@
+{
+    "schema": 1,
+    "source": "https://github.com/bytecodealliance/wasmtime",
+    "wasmtime_commit": "90fed3c6adf53f112c4dea56851728557bb73799",
+    "wit_sha256": "5b59398732d19f6e327b1693c851a690bdf30e86cbf755d5a53b2fe7d6f2775e",
+    "descriptors": [
+        {
+            "locator": "wasi:clocks@0.3.0",
+            "member": "monotonic-clock.wait-for",
+            "effect": "async",
+            "params": ["u64"],
+            "result": "nil",
+            "resource": null,
+            "canonical": {
+                "core_params": ["i64"],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "task-return",
+
+                "async_import_module": "wasi:clocks/monotonic-clock@0.3.0",
+                "async_import_name": "[async-lower]wait-for"
+            },
+            "wit": {
+                "package": "wasi:clocks@0.3.0",
+                "interface": "monotonic-clock",
+                "operation": "wait-for",
+                "world": "probe",
+                "parameter": "how-long"
+            }
+        },
+        {
+            "locator": "wasi:clocks@0.3.0",
+            "member": "monotonic-clock.wait-until",
+            "effect": "async",
+            "params": ["u64"],
+            "result": "nil",
+            "resource": null,
+            "canonical": {
+                "core_params": ["i64"],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "task-return",
+
+                "async_import_module": "wasi:clocks/monotonic-clock@0.3.0",
+                "async_import_name": "[async-lower]wait-until"
+            },
+            "wit": {
+                "package": "wasi:clocks@0.3.0",
+                "interface": "monotonic-clock",
+                "operation": "wait-until",
+                "world": "probe",
+                "parameter": "when"
+            }
+        },
+        {
+            "locator": "wasi:cli@0.3.0",
+            "member": "run.run",
+            "effect": "async",
+            "params": [],
+            "result": "Result<nil,nil>",
+            "resource": null,
+            "wit_sha256": "04b2de3bf344052c78080f3c5320442132b4e7c20b42633a92b8400b6d29ab0d",
+            "canonical": {
+                "core_params": ["i32"],
+                "core_results": ["i32"],
+                "completion_params": ["i32"],
+                "completion": "task-return",
+
+                "async_import_module": "wasi:cli/run@0.3.0",
+                "async_import_name": "[async-lower]run"
+            },
+            "wit": {
+                "package": "wasi:cli@0.3.0",
+                "interface": "run",
+                "operation": "run",
+                "world": "probe",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "do:result-probe@0.1.0",
+            "member": "run",
+            "effect": "async",
+            "params": ["i32"],
+            "result": "Result<i32,i32>",
+            "resource": null,
+            "canonical": {
+                "core_params": ["i32", "i32"],
+                "core_results": ["i32"],
+                "completion_params": ["i32", "i32"],
+                "completion": "task-return",
+                "result_payload": {
+                    "tag": "i32",
+                    "ok": ["i32"],
+                    "err": ["i32"]
+                },
+                "async_import_module": "do:result-probe/run@0.1.0",
+                "async_import_name": "[async-lower]run"
+            },
+            "wit": {
+                "package": "do:result-probe@0.1.0",
+                "interface": "run",
+                "operation": "run",
+                "world": "probe",
+                "parameter": "value"
+            }
+        },
+        {
+            "locator": "wasi:http/client@0.3.0-rc-2025-09-16",
+            "member": "send",
+            "effect": "async",
+            "params": ["HttpRequest"],
+            "result": "Result<HttpResponse,HttpError>",
+            "resource": "request",
+            "canonical": {
+                "core_params": ["i32", "i32"],
+                "core_results": ["i32"],
+                "completion_params": ["i32", "i32", "i32", "i64", "i32", "i32", "i32", "i32"],
+                "completion": "task-return",
+                "error_variants": [
+                    {
+                        "variant": "internal-error",
+                        "discriminant": 38,
+                        "byte_size": 32,
+                        "fields": [
+                            {
+                                "name": "payload",
+                                "kind": "optional_string",
+                                "core_words": ["i32", "i64", "i32"],
+                                "offset": 16
+                            }
+                        ]
+                    },
+                    {
+                        "variant": "DNS-error",
+                        "discriminant": 1,
+                        "byte_size": 32,
+                        "fields": [
+                            {
+                                "name": "rcode",
+                                "kind": "optional_string",
+                                "core_words": ["i32", "i64", "i32"],
+                                "offset": 16
+                            },
+                            {
+                                "name": "info-code",
+                                "kind": "optional_u16",
+                                "core_words": ["i32", "i32"],
+                                "offset": 28
+                            }
+                        ]
+                    }
+                ],
+                "async_import_module": "wasi:http/client@0.3.0-rc-2025-09-16",
+                "async_import_name": "[async-lower]send"
+            },
+            "wit": {
+                "package": "wasi:http@0.3.0-rc-2025-09-16",
+                "interface": "client",
+                "operation": "send",
+                "world": "service",
+                "parameter": "request"
+            }
+        },
+        {
+            "locator": "do:resource-probe/http@0.1.0",
+            "member": "send",
+            "effect": "async",
+            "params": ["HttpRequest"],
+            "result": "Result<HttpResponse,HttpError>",
+            "resource": "request",
+            "wit_sha256": "fc6d27c62bc9d92a305c8f917c5a0f458c487721007d51c4a574347f85e9fa2f",
+            "canonical": {
+                "core_params": ["i32", "i32"],
+                "core_results": ["i32", "i32"],
+                "completion_params": ["i32", "i32"],
+                "completion": "task-return",
+                "async_import_module": "do:resource-probe/http@0.1.0",
+                "async_import_name": "[async-lower]send"
+            },
+            "wit": {
+                "package": "do:resource-probe@0.1.0",
+                "interface": "http",
+                "operation": "send",
+                "world": "async-resource-probe",
+                "parameter": "request"
+            }
+        },
+        {
+            "locator": "do:resource-probe-owned-error/http@0.1.0",
+            "member": "send",
+            "effect": "async",
+            "params": ["HttpRequest"],
+            "result": "Result<HttpResponse,HttpErrorResource>",
+            "resource": "request",
+            "canonical": {
+                "core_params": ["i32", "i32"],
+                "core_results": ["i32", "i32"],
+                "completion_params": ["i32", "i32"],
+                "completion": "task-return",
+                "async_import_module": "do:resource-probe-owned-error/http@0.1.0",
+                "async_import_name": "[async-lower]send"
+            },
+            "wit": {
+                "package": "do:resource-probe-owned-error@0.1.0",
+                "interface": "http",
+                "operation": "send",
+                "world": "owned-error-result-probe",
+                "parameter": "request"
+            }
+        },
+        {
+            "locator": "wasi:http/types@0.3.0-rc-2025-09-16",
+            "member": "request.new",
+            "effect": "http-request-constructor",
+            "params": [],
+            "result": "tuple<request,future<result<_,error-code>>>",
+            "resource": null,
+            "canonical": {
+                "core_params": ["i32", "i32", "i32", "i32", "i32", "i32", "i32"],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "none",
+                "async_import_module": "wasi:http/types@0.3.0-rc-2025-09-16",
+                "async_import_name": "[static]request.new",
+                "future_input": {
+                    "new": {"import_name": "[future-new-1]request-new-payload", "core_params": [], "core_results": ["i64"]},
+                    "write": {"import_name": "[future-write-1]request-new-payload", "core_params": ["i32", "i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[future-drop-readable-1]request-new-payload", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[future-drop-writable-1]request-new-payload", "core_params": ["i32"], "core_results": []}
+                },
+                "future": {
+                    "drop_readable": {"import_name": "[future-drop-readable-2]request-new-payload", "core_params": ["i32"], "core_results": []}
+                }
+            },
+            "wit": {
+                "package": "wasi:http@0.3.0-rc-2025-09-16",
+                "interface": "types",
+                "operation": "request-new-payload",
+                "world": "service",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "wasi:http/types@0.3.0-rc-2025-09-16",
+            "member": "response.consume-body",
+            "effect": "http-stream-reader",
+            "params": ["HttpResponse"],
+            "result": "tuple<stream<u8>,future<result<option<trailers>,error-code>>>",
+            "resource": "response",
+            "canonical": {
+                "core_params": ["i32", "i32", "i32"],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "result-area",
+                "async_import_module": "wasi:http/types@0.3.0-rc-2025-09-16",
+                "async_import_name": "[static]response.consume-body",
+                "stream": {
+                    "element": "u8",
+                    "new": {"import_name": "[stream-new-1]response.consume-body", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[stream-cancel-read-1]response.consume-body", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[stream-cancel-write-1]response.consume-body", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[stream-drop-readable-1]response.consume-body", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[stream-drop-writable-1]response.consume-body", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][stream-read-1]response.consume-body", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][stream-write-1]response.consume-body", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]}
+                },
+                "future_input": {
+                    "new": {"import_name": "[future-new-0]response.consume-body", "core_params": [], "core_results": ["i64"]},
+                    "write": {"import_name": "[future-write-0]response.consume-body", "core_params": ["i32", "i32"], "core_results": ["i32"]},
+                    "cancel_read": {"import_name": "[future-cancel-read-0]response.consume-body", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[future-cancel-write-0]response.consume-body", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[future-drop-readable-0]response.consume-body", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[future-drop-writable-0]response.consume-body", "core_params": ["i32"], "core_results": []}
+                },
+                "future": {
+                    "read": {"import_name": "[async-lower][future-read-2]response.consume-body", "core_params": ["i32", "i32"], "core_results": ["i32"]},
+                    "cancel_read": {"import_name": "[future-cancel-read-2]response.consume-body", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[future-cancel-write-2]response.consume-body", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[future-drop-readable-2]response.consume-body", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[future-drop-writable-2]response.consume-body", "core_params": ["i32"], "core_results": []}
+                }
+            },
+            "wit": {
+                "package": "wasi:http@0.3.0-rc-2025-09-16",
+                "interface": "types",
+                "operation": "consume-body",
+                "world": "service",
+                "parameter": "this"
+            }
+        },
+        {
+            "locator": "wasi:filesystem/types@0.3.0-rc-2025-09-16",
+            "member": "descriptor.read-directory",
+            "effect": "record-stream-reader",
+            "params": ["descriptor"],
+            "result": "tuple<stream<directory-entry>,future<result<_,error-code>>>",
+            "resource": null,
+            "wit_sha256": "8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f",
+            "canonical": {
+                "core_params": ["i32", "i32"],
+                "core_results": ["i32"],
+                "completion_params": [],
+                "completion": "result-area",
+                "async_import_module": "wasi:filesystem/types@0.3.0-rc-2025-09-16",
+                "async_import_name": "[async-lower][method]descriptor.read-directory",
+                "record_layout": {
+                    "name": "directory-entry",
+                    "byte_size": 12,
+                    "fields": [
+                        {"name": "type", "core_type": "i32", "offset": 0},
+                        {"name": "name-ptr", "core_type": "i32", "offset": 4},
+                        {"name": "name-len", "core_type": "i32", "offset": 8}
+                    ],
+                    "source_fields": [
+                        {"name": "type", "source_type": "descriptor-type", "storage": ["type"]},
+                        {"name": "name", "source_type": "string", "storage": ["name-ptr", "name-len"]}
+                    ]
+                },
+                "stream": {
+                    "element": "directory-entry",
+                    "new": {
+                        "import_name": "[stream-new-0][method]descriptor.read-directory",
+                        "core_params": [],
+                        "core_results": ["i64"]
+                    },
+                    "cancel_read": {
+                        "import_name": "[stream-cancel-read-0][method]descriptor.read-directory",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "cancel_write": {
+                        "import_name": "[stream-cancel-write-0][method]descriptor.read-directory",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "drop_readable": {
+                        "import_name": "[stream-drop-readable-0][method]descriptor.read-directory",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "drop_writable": {
+                        "import_name": "[stream-drop-writable-0][method]descriptor.read-directory",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "read": {
+                        "import_name": "[async-lower][stream-read-0][method]descriptor.read-directory",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    },
+                    "write": {
+                        "import_name": "[async-lower][stream-write-0][method]descriptor.read-directory",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    }
+                },
+                "future": {
+                    "new": {
+                        "import_name": "[future-new-1][method]descriptor.read-directory",
+                        "core_params": [],
+                        "core_results": ["i64"]
+                    },
+                    "cancel_read": {
+                        "import_name": "[future-cancel-read-1][method]descriptor.read-directory",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "cancel_write": {
+                        "import_name": "[future-cancel-write-1][method]descriptor.read-directory",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "drop_readable": {
+                        "import_name": "[future-drop-readable-1][method]descriptor.read-directory",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "drop_writable": {
+                        "import_name": "[future-drop-writable-1][method]descriptor.read-directory",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "read": {
+                        "import_name": "[async-lower][future-read-1][method]descriptor.read-directory",
+                        "core_params": ["i32", "i32"],
+                        "core_results": ["i32"]
+                    },
+                    "write": {
+                        "import_name": "[async-lower][future-write-1][method]descriptor.read-directory",
+                        "core_params": ["i32", "i32"],
+                        "core_results": ["i32"]
+                    }
+                }
+            },
+            "wit": {
+                "package": "wasi:filesystem@0.3.0-rc-2025-09-16",
+                "interface": "types",
+                "operation": "descriptor.read-directory",
+                "world": "imports",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "wasi:cli/stdout@0.3.0-rc-2025-09-16",
+            "member": "write-via-stream",
+            "effect": "stream-writer",
+            "params": ["stream<u8>"],
+            "result": "Result<nil,error-code>",
+            "resource": null,
+            "wit_sha256": "03ff93468efa2d4d3e58e441b924e3ee984d4d8b8080ca45646c92a14609acc4",
+            "canonical": {
+                "core_params": ["i32", "i32"],
+                "core_results": ["i32"],
+                "completion_params": ["i32", "i32"],
+                "completion": "task-return",
+                "async_import_module": "wasi:cli/stdout@0.3.0-rc-2025-09-16",
+                "async_import_name": "[async-lower]write-via-stream",
+                "stream": {
+                    "element": "u8",
+                    "new": {
+                        "import_name": "[stream-new-0]write-via-stream",
+                        "core_params": [],
+                        "core_results": ["i64"]
+                    },
+                    "cancel_read": {
+                        "import_name": "[stream-cancel-read-0]write-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "cancel_write": {
+                        "import_name": "[stream-cancel-write-0]write-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "drop_readable": {
+                        "import_name": "[stream-drop-readable-0]write-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "drop_writable": {
+                        "import_name": "[stream-drop-writable-0]write-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "read": {
+                        "import_name": "[async-lower][stream-read-0]write-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    },
+                    "write": {
+                        "import_name": "[async-lower][stream-write-0]write-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    }
+                }
+            },
+            "wit": {
+                "package": "wasi:cli@0.3.0-rc-2025-09-16",
+                "interface": "stdout",
+                "operation": "write-via-stream",
+                "world": "stream-stdout-probe",
+                "parameter": "data"
+            }
+        },
+        {
+            "locator": "do:stream-probe@0.1.0",
+            "member": "write-via-stream",
+            "effect": "stream-writer",
+            "params": ["stream<u8>"],
+            "result": "Result<nil,error-code>",
+            "resource": null,
+            "canonical": {
+                "core_params": ["i32", "i32"],
+                "core_results": ["i32"],
+                "completion_params": ["i32", "i32"],
+                "completion": "task-return",
+                "async_import_module": "do:stream-probe/sink@0.1.0",
+                "async_import_name": "[async-lower]write-via-stream",
+                "stream": {
+                    "element": "u8",
+                    "new": {
+                        "import_name": "[stream-new-0]write-via-stream",
+                        "core_params": [],
+                        "core_results": ["i64"]
+                    },
+                    "cancel_read": {
+                        "import_name": "[stream-cancel-read-0]write-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "cancel_write": {
+                        "import_name": "[stream-cancel-write-0]write-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "drop_readable": {
+                        "import_name": "[stream-drop-readable-0]write-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "drop_writable": {
+                        "import_name": "[stream-drop-writable-0]write-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "read": {
+                        "import_name": "[async-lower][stream-read-0]write-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    },
+                    "write": {
+                        "import_name": "[async-lower][stream-write-0]write-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    }
+                }
+            },
+            "wit": {
+                "package": "do:stream-probe@0.1.0",
+                "interface": "sink",
+                "operation": "write-via-stream",
+                "world": "stream-writer-probe",
+                "parameter": "data"
+            }
+        },
+        {
+            "locator": "do:stream-probe@0.1.0",
+            "member": "read-via-stream",
+            "effect": "stream-reader",
+            "params": [],
+            "result": "tuple<stream<u8>,future<result<_,error-code>>>",
+            "resource": null,
+            "canonical": {
+                "core_params": ["i32"],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "result-area",
+                "async_import_module": "do:stream-probe/source@0.1.0",
+                "async_import_name": "read-via-stream",
+                "stream": {
+                    "element": "u8",
+                    "new": {
+                        "import_name": "[stream-new-0]read-via-stream",
+                        "core_params": [],
+                        "core_results": ["i64"]
+                    },
+                    "cancel_read": {
+                        "import_name": "[stream-cancel-read-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "cancel_write": {
+                        "import_name": "[stream-cancel-write-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "drop_readable": {
+                        "import_name": "[stream-drop-readable-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "drop_writable": {
+                        "import_name": "[stream-drop-writable-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "read": {
+                        "import_name": "[async-lower][stream-read-0]read-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    },
+                    "write": {
+                        "import_name": "[async-lower][stream-write-0]read-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    }
+                },
+                "future": {
+                    "drop_readable": {
+                        "import_name": "[future-drop-readable-1]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    }
+                }
+            },
+            "wit": {
+                "package": "do:stream-probe@0.1.0",
+                "interface": "source",
+                "operation": "read-via-stream",
+                "world": "stream-probe",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "do:record-stream-probe@0.1.0",
+            "member": "read-via-stream",
+            "effect": "record-stream-reader",
+            "params": [],
+            "result": "tuple<stream<probe-entry>,future<result<_,error-code>>>",
+            "resource": null,
+            "canonical": {
+                "core_params": ["i32"],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "result-area",
+                "async_import_module": "do:record-stream-probe/source@0.1.0",
+                "async_import_name": "read-via-stream",
+                "record_layout": {
+                    "name": "probe-entry",
+                    "byte_size": 12,
+                    "fields": [
+                        {"name": "id", "core_type": "i32", "offset": 0},
+                        {"name": "label-ptr", "core_type": "i32", "offset": 4},
+                        {"name": "label-len", "core_type": "i32", "offset": 8}
+                    ],
+                    "source_fields": [
+                        {"name": "id", "source_type": "u32", "storage": ["id"]},
+                        {"name": "label", "source_type": "string", "storage": ["label-ptr", "label-len"]}
+                    ]
+                },
+                "stream": {
+                    "element": "probe-entry",
+                    "new": {
+                        "import_name": "[stream-new-0]read-via-stream",
+                        "core_params": [],
+                        "core_results": ["i64"]
+                    },
+                    "cancel_read": {
+                        "import_name": "[stream-cancel-read-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "cancel_write": {
+                        "import_name": "[stream-cancel-write-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "drop_readable": {
+                        "import_name": "[stream-drop-readable-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "drop_writable": {
+                        "import_name": "[stream-drop-writable-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "read": {
+                        "import_name": "[async-lower][stream-read-0]read-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    },
+                    "write": {
+                        "import_name": "[async-lower][stream-write-0]read-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    }
+                },
+                "future": {
+                    "new": {
+                        "import_name": "[future-new-1]read-via-stream",
+                        "core_params": [],
+                        "core_results": ["i64"]
+                    },
+                    "cancel_read": {
+                        "import_name": "[future-cancel-read-1]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "cancel_write": {
+                        "import_name": "[future-cancel-write-1]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "drop_readable": {
+                        "import_name": "[future-drop-readable-1]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "drop_writable": {
+                        "import_name": "[future-drop-writable-1]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "read": {
+                        "import_name": "[async-lower][future-read-1]read-via-stream",
+                        "core_params": ["i32", "i32"],
+                        "core_results": ["i32"]
+                    },
+                    "write": {
+                        "import_name": "[async-lower][future-write-1]read-via-stream",
+                        "core_params": ["i32", "i32"],
+                        "core_results": ["i32"]
+                    }
+                }
+            },
+            "wit": {
+                "package": "do:record-stream-probe@0.1.0",
+                "interface": "source",
+                "operation": "read-via-stream",
+                "world": "record-stream-probe",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "do:record-resource-list-stream-probe@0.1.0",
+            "member": "read-via-stream",
+            "effect": "record-resource-list-stream-reader",
+            "params": [],
+            "result": "tuple<stream<list<resource-entry>>,future<result<_,error-code>>>",
+            "resource": null,
+            "canonical": {
+                "core_params": ["i32"],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "result-area",
+                "async_import_module": "do:record-resource-list-stream-probe/source@0.1.0",
+                "async_import_name": "read-via-stream",
+                "record_layout": {
+                    "name": "resource-entry",
+                    "byte_size": 4,
+                    "fields": [
+                        {"name": "ticket", "core_type": "i32", "offset": 0}
+                    ],
+                    "source_fields": [
+                        {"name": "ticket", "source_type": "ticket", "storage": ["ticket"], "ownership": "own", "resource": "ticket", "drop_import": "[resource-drop]ticket"}
+                    ]
+                },
+                "list_resource_layout": {
+                    "result_pointer_offset": 64,
+                    "result_length_offset": 68,
+                    "element_stride": 4,
+                    "ticket_offset": 0,
+                    "max_items": 3
+                },
+                "stream": {
+                    "element": "list<resource-entry>",
+                    "new": {
+                        "import_name": "[stream-new-0]read-via-stream",
+                        "core_params": [],
+                        "core_results": ["i64"]
+                    },
+                    "cancel_read": {
+                        "import_name": "[stream-cancel-read-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "cancel_write": {
+                        "import_name": "[stream-cancel-write-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "drop_readable": {
+                        "import_name": "[stream-drop-readable-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "drop_writable": {
+                        "import_name": "[stream-drop-writable-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "read": {
+                        "import_name": "[async-lower][stream-read-0]read-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    },
+                    "write": {
+                        "import_name": "[async-lower][stream-write-0]read-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    }
+                },
+                "future": {
+                    "new": {
+                        "import_name": "[future-new-1]read-via-stream",
+                        "core_params": [],
+                        "core_results": ["i64"]
+                    },
+                    "cancel_read": {
+                        "import_name": "[future-cancel-read-1]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "cancel_write": {
+                        "import_name": "[future-cancel-write-1]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "drop_readable": {
+                        "import_name": "[future-drop-readable-1]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "drop_writable": {
+                        "import_name": "[future-drop-writable-1]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "read": {
+                        "import_name": "[async-lower][future-read-1]read-via-stream",
+                        "core_params": ["i32", "i32"],
+                        "core_results": ["i32"]
+                    },
+                    "write": {
+                        "import_name": "[async-lower][future-write-1]read-via-stream",
+                        "core_params": ["i32", "i32"],
+                        "core_results": ["i32"]
+                    }
+                }
+            },
+            "wit": {
+                "package": "do:record-resource-list-stream-probe@0.1.0",
+                "interface": "source",
+                "operation": "read-via-stream",
+                "world": "record-resource-list-stream-probe",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "do:variant-resource-stream-canonical@0.1.0",
+            "member": "read-via-stream",
+            "effect": "variant-resource-stream-reader",
+            "params": [],
+            "result": "tuple<stream<event>,future<result<_,error-code>>>",
+            "resource": null,
+            "canonical": {
+                "core_params": ["i32"],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "result-area",
+                "async_import_module": "do:variant-resource-stream-canonical/source@0.1.0",
+                "async_import_name": "read-via-stream",
+                "ticket_drop_import": "[resource-drop]ticket",
+                "stream": {
+                    "element": "event",
+                    "read": {
+                        "import_name": "[async-lower][stream-read-0]read-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    },
+                    "drop_readable": {
+                        "import_name": "[stream-drop-readable-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    }
+                },
+                "future": {
+                    "read": {
+                        "import_name": "[async-lower][future-read-1]read-via-stream",
+                        "core_params": ["i32", "i32"],
+                        "core_results": ["i32"]
+                    },
+                    "drop_readable": {
+                        "import_name": "[future-drop-readable-1]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    }
+                },
+                "event_layout": {
+                    "tag_offset": 0,
+                    "payload_offset": 4,
+                    "byte_size": 8,
+                    "alignment": 4,
+                    "variants": [
+                        {"name": "ticket", "tag": 0, "payload": "own<ticket>"},
+                        {"name": "idle", "tag": 1, "payload": null},
+                        {"name": "failed", "tag": 2, "payload": "error-code"}
+                    ]
+                }
+            },
+            "wit": {
+                "package": "do:variant-resource-stream-canonical@0.1.0",
+                "interface": "source",
+                "operation": "read-via-stream",
+                "world": "variant-resource-stream-canonical",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "do:record-resource-stream-probe@0.1.0",
+            "member": "read-via-stream",
+            "effect": "record-stream-reader",
+            "params": [],
+            "result": "tuple<stream<resource-entry>,future<result<_,error-code>>>",
+            "resource": null,
+            "canonical": {
+                "core_params": ["i32"],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "result-area",
+                "async_import_module": "do:record-resource-stream-probe/source@0.1.0",
+                "async_import_name": "read-via-stream",
+                "record_layout": {
+                    "name": "resource-entry",
+                    "byte_size": 8,
+                    "fields": [
+                        {"name": "id", "core_type": "i32", "offset": 0},
+                        {"name": "ticket", "core_type": "i32", "offset": 4}
+                    ],
+                    "source_fields": [
+                        {"name": "id", "source_type": "u32", "storage": ["id"]},
+                        {"name": "ticket", "source_type": "ticket", "storage": ["ticket"], "ownership": "own", "resource": "ticket", "drop_import": "[resource-drop]ticket"}
+                    ]
+                },
+                "stream": {
+                    "element": "resource-entry",
+                    "new": {
+                        "import_name": "[stream-new-0]read-via-stream",
+                        "core_params": [],
+                        "core_results": ["i64"]
+                    },
+                    "cancel_read": {
+                        "import_name": "[stream-cancel-read-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "cancel_write": {
+                        "import_name": "[stream-cancel-write-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "drop_readable": {
+                        "import_name": "[stream-drop-readable-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "drop_writable": {
+                        "import_name": "[stream-drop-writable-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "read": {
+                        "import_name": "[async-lower][stream-read-0]read-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    },
+                    "write": {
+                        "import_name": "[async-lower][stream-write-0]read-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    }
+                },
+                "future": {
+                    "new": {
+                        "import_name": "[future-new-1]read-via-stream",
+                        "core_params": [],
+                        "core_results": ["i64"]
+                    },
+                    "cancel_read": {
+                        "import_name": "[future-cancel-read-1]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "cancel_write": {
+                        "import_name": "[future-cancel-write-1]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "drop_readable": {
+                        "import_name": "[future-drop-readable-1]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "drop_writable": {
+                        "import_name": "[future-drop-writable-1]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "read": {
+                        "import_name": "[async-lower][future-read-1]read-via-stream",
+                        "core_params": ["i32", "i32"],
+                        "core_results": ["i32"]
+                    },
+                    "write": {
+                        "import_name": "[async-lower][future-write-1]read-via-stream",
+                        "core_params": ["i32", "i32"],
+                        "core_results": ["i32"]
+                    }
+                }
+            },
+            "wit": {
+                "package": "do:record-resource-stream-probe@0.1.0",
+                "interface": "source",
+                "operation": "read-via-stream",
+                "world": "record-resource-stream-probe",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "do:record-resource-stream-multi@0.1.0",
+            "member": "read-via-stream",
+            "effect": "record-stream-reader",
+            "params": [],
+            "result": "tuple<stream<resource-entry>,future<result<_,error-code>>>",
+            "resource": null,
+            "canonical": {
+                "core_params": ["i32"],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "result-area",
+                "async_import_module": "do:record-resource-stream-multi/source@0.1.0",
+                "async_import_name": "read-via-stream",
+                "record_layout": {
+                    "name": "resource-entry",
+                    "byte_size": 12,
+                    "fields": [
+                        {"name": "id", "core_type": "i32", "offset": 0},
+                        {"name": "left", "core_type": "i32", "offset": 4},
+                        {"name": "right", "core_type": "i32", "offset": 8}
+                    ],
+                    "source_fields": [
+                        {"name": "id", "source_type": "u32", "storage": ["id"]},
+                        {"name": "left", "source_type": "ticket", "storage": ["left"], "ownership": "own", "resource": "ticket", "drop_import": "[resource-drop]ticket"},
+                        {"name": "right", "source_type": "ticket", "storage": ["right"], "ownership": "own", "resource": "ticket", "drop_import": "[resource-drop]ticket"}
+                    ]
+                },
+                "stream": {
+                    "element": "resource-entry",
+                    "new": {"import_name": "[stream-new-0]read-via-stream", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[stream-cancel-read-0]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[stream-cancel-write-0]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[stream-drop-readable-0]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[stream-drop-writable-0]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][stream-read-0]read-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][stream-write-0]read-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]}
+                },
+                "future": {
+                    "new": {"import_name": "[future-new-1]read-via-stream", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[future-cancel-read-1]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[future-cancel-write-1]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[future-drop-readable-1]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[future-drop-writable-1]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][future-read-1]read-via-stream", "core_params": ["i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][future-write-1]read-via-stream", "core_params": ["i32", "i32"], "core_results": ["i32"]}
+                }
+            },
+            "wit": {
+                "package": "do:record-resource-stream-multi@0.1.0",
+                "interface": "source",
+                "operation": "read-via-stream",
+                "world": "record-resource-stream-multi",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "do:record-resource-stream-nested@0.1.0",
+            "member": "read-via-stream",
+            "effect": "record-stream-reader",
+            "params": [],
+            "result": "tuple<stream<resource-entry>,future<result<_,error-code>>>",
+            "resource": null,
+            "canonical": {
+                "core_params": ["i32"],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "result-area",
+                "async_import_module": "do:record-resource-stream-nested/source@0.1.0",
+                "async_import_name": "read-via-stream",
+                "record_layout": {
+                    "name": "resource-entry",
+                    "byte_size": 4,
+                    "fields": [
+                        {"name": "ticket", "core_type": "i32", "offset": 0}
+                    ],
+                    "source_fields": [
+                        {"name": "inner", "source_type": "inner-entry", "storage": [], "nested_fields": [
+                            {"name": "ticket", "source_type": "ticket", "storage": ["ticket"], "ownership": "own", "resource": "ticket", "drop_import": "[resource-drop]ticket"}
+                        ]}
+                    ]
+                },
+                "stream": {
+                    "element": "resource-entry",
+                    "new": {"import_name": "[stream-new-0]read-via-stream", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[stream-cancel-read-0]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[stream-cancel-write-0]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[stream-drop-readable-0]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[stream-drop-writable-0]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][stream-read-0]read-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][stream-write-0]read-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]}
+                },
+                "future": {
+                    "new": {"import_name": "[future-new-1]read-via-stream", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[future-cancel-read-1]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[future-cancel-write-1]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[future-drop-readable-1]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[future-drop-writable-1]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][future-read-1]read-via-stream", "core_params": ["i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][future-write-1]read-via-stream", "core_params": ["i32", "i32"], "core_results": ["i32"]}
+                }
+            },
+            "wit": {
+                "package": "do:record-resource-stream-nested@0.1.0",
+                "interface": "source",
+                "operation": "read-via-stream",
+                "world": "record-resource-stream-nested",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "do:record-resource-stream-nested-two-level@0.1.0",
+            "member": "read-via-stream",
+            "effect": "record-stream-reader",
+            "params": [],
+            "result": "tuple<stream<resource-entry>,future<result<_,error-code>>>",
+            "resource": null,
+            "canonical": {
+                "core_params": ["i32"],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "result-area",
+                "async_import_module": "do:record-resource-stream-nested-two-level/source@0.1.0",
+                "async_import_name": "read-via-stream",
+                "record_layout": {
+                    "name": "resource-entry",
+                    "byte_size": 4,
+                    "fields": [
+                        {"name": "ticket", "core_type": "i32", "offset": 0}
+                    ],
+                    "source_fields": [
+                        {"name": "inner", "source_type": "inner-entry", "storage": [], "nested_fields": [
+                            {"name": "deep", "source_type": "deep-entry", "storage": [], "nested_fields": [
+                                {"name": "ticket", "source_type": "ticket", "storage": ["ticket"], "ownership": "own", "resource": "ticket", "drop_import": "[resource-drop]ticket"}
+                            ]}
+                        ]}
+                    ]
+                },
+                "stream": {
+                    "element": "resource-entry",
+                    "new": {"import_name": "[stream-new-0]read-via-stream", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[stream-cancel-read-0]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[stream-cancel-write-0]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[stream-drop-readable-0]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[stream-drop-writable-0]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][stream-read-0]read-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][stream-write-0]read-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]}
+                },
+                "future": {
+                    "new": {"import_name": "[future-new-1]read-via-stream", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[future-cancel-read-1]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[future-cancel-write-1]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[future-drop-readable-1]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[future-drop-writable-1]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][future-read-1]read-via-stream", "core_params": ["i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][future-write-1]read-via-stream", "core_params": ["i32", "i32"], "core_results": ["i32"]}
+                }
+            },
+            "wit": {
+                "package": "do:record-resource-stream-nested-two-level@0.1.0",
+                "interface": "source",
+                "operation": "read-via-stream",
+                "world": "record-resource-stream-nested-two-level",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "do:record-resource-stream-nested-three-level@0.1.0",
+            "member": "read-via-stream",
+            "effect": "record-stream-reader",
+            "params": [],
+            "result": "tuple<stream<resource-entry>,future<result<_,error-code>>>",
+            "resource": null,
+            "canonical": {
+                "core_params": ["i32"],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "result-area",
+                "async_import_module": "do:record-resource-stream-nested-three-level/source@0.1.0",
+                "async_import_name": "read-via-stream",
+                "record_layout": {
+                    "name": "resource-entry",
+                    "byte_size": 4,
+                    "fields": [
+                        {"name": "ticket", "core_type": "i32", "offset": 0}
+                    ],
+                    "source_fields": [
+                        {"name": "inner", "source_type": "inner-entry", "storage": [], "nested_fields": [
+                            {"name": "deep", "source_type": "deep-entry", "storage": [], "nested_fields": [
+                                {"name": "deeper", "source_type": "deeper-entry", "storage": [], "nested_fields": [
+                                    {"name": "ticket", "source_type": "ticket", "storage": ["ticket"], "ownership": "own", "resource": "ticket", "drop_import": "[resource-drop]ticket"}
+                                ]}
+                            ]}
+                        ]}
+                    ]
+                },
+                "stream": {
+                    "element": "resource-entry",
+                    "new": {"import_name": "[stream-new-0]read-via-stream", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[stream-cancel-read-0]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[stream-cancel-write-0]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[stream-drop-readable-0]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[stream-drop-writable-0]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][stream-read-0]read-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][stream-write-0]read-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]}
+                },
+                "future": {
+                    "new": {"import_name": "[future-new-1]read-via-stream", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[future-cancel-read-1]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[future-cancel-write-1]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[future-drop-readable-1]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[future-drop-writable-1]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][future-read-1]read-via-stream", "core_params": ["i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][future-write-1]read-via-stream", "core_params": ["i32", "i32"], "core_results": ["i32"]}
+                }
+            },
+            "wit": {
+                "package": "do:record-resource-stream-nested-three-level@0.1.0",
+                "interface": "source",
+                "operation": "read-via-stream",
+                "world": "record-resource-stream-nested-three-level",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "do:record-resource-stream-nested-four-level@0.1.0",
+            "member": "read-via-stream",
+            "effect": "record-stream-reader",
+            "params": [],
+            "result": "tuple<stream<resource-entry>,future<result<_,error-code>>>",
+            "resource": null,
+            "canonical": {
+                "core_params": ["i32"],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "result-area",
+                "async_import_module": "do:record-resource-stream-nested-four-level/source@0.1.0",
+                "async_import_name": "read-via-stream",
+                "record_layout": {
+                    "name": "resource-entry",
+                    "byte_size": 4,
+                    "fields": [
+                        {"name": "ticket", "core_type": "i32", "offset": 0}
+                    ],
+                    "source_fields": [
+                        {"name": "inner", "source_type": "inner-entry", "storage": [], "nested_fields": [
+                            {"name": "deep", "source_type": "deep-entry", "storage": [], "nested_fields": [
+                                {"name": "deeper", "source_type": "deeper-entry", "storage": [], "nested_fields": [
+                                    {"name": "deepest", "source_type": "deepest-entry", "storage": [], "nested_fields": [
+                                        {"name": "ticket", "source_type": "ticket", "storage": ["ticket"], "ownership": "own", "resource": "ticket", "drop_import": "[resource-drop]ticket"}
+                                    ]}
+                                ]}
+                            ]}
+                        ]}
+                    ]
+                },
+                "stream": {
+                    "element": "resource-entry",
+                    "new": {"import_name": "[stream-new-0]read-via-stream", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[stream-cancel-read-0]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[stream-cancel-write-0]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[stream-drop-readable-0]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[stream-drop-writable-0]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][stream-read-0]read-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][stream-write-0]read-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]}
+                },
+                "future": {
+                    "new": {"import_name": "[future-new-1]read-via-stream", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[future-cancel-read-1]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[future-cancel-write-1]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[future-drop-readable-1]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[future-drop-writable-1]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][future-read-1]read-via-stream", "core_params": ["i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][future-write-1]read-via-stream", "core_params": ["i32", "i32"], "core_results": ["i32"]}
+                }
+            },
+            "wit": {
+                "package": "do:record-resource-stream-nested-four-level@0.1.0",
+                "interface": "source",
+                "operation": "read-via-stream",
+                "world": "record-resource-stream-nested-four-level",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "do:record-resource-stream-nested-five-level@0.1.0",
+            "member": "read-via-stream",
+            "effect": "record-stream-reader",
+            "params": [],
+            "result": "tuple<stream<resource-entry>,future<result<_,error-code>>>",
+            "resource": null,
+            "canonical": {
+                "core_params": ["i32"],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "result-area",
+                "async_import_module": "do:record-resource-stream-nested-five-level/source@0.1.0",
+                "async_import_name": "read-via-stream",
+                "record_layout": {
+                    "name": "resource-entry",
+                    "byte_size": 4,
+                    "fields": [
+                        {"name": "ticket", "core_type": "i32", "offset": 0}
+                    ],
+                    "source_fields": [
+                        {"name": "inner", "source_type": "inner-entry", "storage": [], "nested_fields": [
+                            {"name": "deep", "source_type": "deep-entry", "storage": [], "nested_fields": [
+                                {"name": "deeper", "source_type": "deeper-entry", "storage": [], "nested_fields": [
+                                    {"name": "deepest", "source_type": "deepest-entry", "storage": [], "nested_fields": [
+                                        {"name": "ultra", "source_type": "ultra-entry", "storage": [], "nested_fields": [
+                                            {"name": "ticket", "source_type": "ticket", "storage": ["ticket"], "ownership": "own", "resource": "ticket", "drop_import": "[resource-drop]ticket"}
+                                        ]}
+                                    ]}
+                                ]}
+                            ]}
+                        ]}
+                    ]
+                },
+                "stream": {
+                    "element": "resource-entry",
+                    "new": {"import_name": "[stream-new-0]read-via-stream", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[stream-cancel-read-0]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[stream-cancel-write-0]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[stream-drop-readable-0]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[stream-drop-writable-0]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][stream-read-0]read-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][stream-write-0]read-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]}
+                },
+                "future": {
+                    "new": {"import_name": "[future-new-1]read-via-stream", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[future-cancel-read-1]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[future-cancel-write-1]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[future-drop-readable-1]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[future-drop-writable-1]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][future-read-1]read-via-stream", "core_params": ["i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][future-write-1]read-via-stream", "core_params": ["i32", "i32"], "core_results": ["i32"]}
+                }
+            },
+            "wit": {
+                "package": "do:record-resource-stream-nested-five-level@0.1.0",
+                "interface": "source",
+                "operation": "read-via-stream",
+                "world": "record-resource-stream-nested-five-level",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "do:record-resource-stream-nested-six-level@0.1.0",
+            "member": "read-via-stream",
+            "effect": "record-stream-reader",
+            "params": [],
+            "result": "tuple<stream<resource-entry>,future<result<_,error-code>>>",
+            "resource": null,
+            "canonical": {
+                "core_params": ["i32"],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "result-area",
+                "async_import_module": "do:record-resource-stream-nested-six-level/source@0.1.0",
+                "async_import_name": "read-via-stream",
+                "record_layout": {
+                    "name": "resource-entry",
+                    "byte_size": 4,
+                    "fields": [
+                        {"name": "ticket", "core_type": "i32", "offset": 0}
+                    ],
+                    "source_fields": [
+                        {"name": "inner", "source_type": "inner-entry", "storage": [], "nested_fields": [
+                            {"name": "deep", "source_type": "deep-entry", "storage": [], "nested_fields": [
+                                {"name": "deeper", "source_type": "deeper-entry", "storage": [], "nested_fields": [
+                                    {"name": "deepest", "source_type": "deepest-entry", "storage": [], "nested_fields": [
+                                        {"name": "ultra", "source_type": "ultra-entry", "storage": [], "nested_fields": [
+                                            {"name": "hyper", "source_type": "hyper-entry", "storage": [], "nested_fields": [
+                                                {"name": "ticket", "source_type": "ticket", "storage": ["ticket"], "ownership": "own", "resource": "ticket", "drop_import": "[resource-drop]ticket"}
+                                            ]}
+                                        ]}
+                                    ]}
+                                ]}
+                            ]}
+                        ]}
+                    ]
+                },
+                "stream": {
+                    "element": "resource-entry",
+                    "new": {"import_name": "[stream-new-0]read-via-stream", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[stream-cancel-read-0]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[stream-cancel-write-0]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[stream-drop-readable-0]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[stream-drop-writable-0]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][stream-read-0]read-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][stream-write-0]read-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]}
+                },
+                "future": {
+                    "new": {"import_name": "[future-new-1]read-via-stream", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[future-cancel-read-1]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[future-cancel-write-1]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[future-drop-readable-1]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[future-drop-writable-1]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][future-read-1]read-via-stream", "core_params": ["i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][future-write-1]read-via-stream", "core_params": ["i32", "i32"], "core_results": ["i32"]}
+                }
+            },
+            "wit": {
+                "package": "do:record-resource-stream-nested-six-level@0.1.0",
+                "interface": "source",
+                "operation": "read-via-stream",
+                "world": "record-resource-stream-nested-six-level",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "do:record-resource-stream-multiple-nested@0.1.0",
+            "member": "read-via-stream",
+            "effect": "record-stream-reader",
+            "params": [],
+            "result": "tuple<stream<resource-entry>,future<result<_,error-code>>>",
+            "resource": null,
+            "canonical": {
+                "core_params": ["i32"],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "result-area",
+                "async_import_module": "do:record-resource-stream-multiple-nested/source@0.1.0",
+                "async_import_name": "read-via-stream",
+                "record_layout": {
+                    "name": "resource-entry",
+                    "byte_size": 8,
+                    "fields": [
+                        {"name": "left-ticket", "core_type": "i32", "offset": 0},
+                        {"name": "right-ticket", "core_type": "i32", "offset": 4}
+                    ],
+                    "source_fields": [
+                        {"name": "left", "source_type": "left-entry", "storage": [], "nested_fields": [
+                            {"name": "ticket", "source_type": "ticket", "storage": ["left-ticket"], "ownership": "own", "resource": "ticket", "drop_import": "[resource-drop]ticket"}
+                        ]},
+                        {"name": "right", "source_type": "right-entry", "storage": [], "nested_fields": [
+                            {"name": "ticket", "source_type": "ticket", "storage": ["right-ticket"], "ownership": "own", "resource": "ticket", "drop_import": "[resource-drop]ticket"}
+                        ]}
+                    ]
+                },
+                "stream": {
+                    "element": "resource-entry",
+                    "new": {"import_name": "[stream-new-0]read-via-stream", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[stream-cancel-read-0]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[stream-cancel-write-0]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[stream-drop-readable-0]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[stream-drop-writable-0]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][stream-read-0]read-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][stream-write-0]read-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]}
+                },
+                "future": {
+                    "new": {"import_name": "[future-new-1]read-via-stream", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[future-cancel-read-1]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[future-cancel-write-1]read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[future-drop-readable-1]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[future-drop-writable-1]read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][future-read-1]read-via-stream", "core_params": ["i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][future-write-1]read-via-stream", "core_params": ["i32", "i32"], "core_results": ["i32"]}
+                }
+            },
+            "wit": {
+                "package": "do:record-resource-stream-multiple-nested@0.1.0",
+                "interface": "source",
+                "operation": "read-via-stream",
+                "world": "record-resource-stream-multiple-nested",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "wasi:cli/stdin@0.3.0-rc-2025-09-16",
+            "member": "read-via-stream",
+            "effect": "stream-reader",
+            "params": [],
+            "result": "tuple<stream<u8>,future<result<_,error-code>>>",
+            "resource": null,
+            "wit_sha256": "c12c40df23a0ad562e743487b907113dbc9daadafa347d65d151d210d1292fc7",
+            "canonical": {
+                "core_params": ["i32"],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "result-area",
+                "async_import_module": "wasi:cli/stdin@0.3.0-rc-2025-09-16",
+                "async_import_name": "read-via-stream",
+                "stream": {
+                    "element": "u8",
+                    "new": {
+                        "import_name": "[stream-new-0]read-via-stream",
+                        "core_params": [],
+                        "core_results": ["i64"]
+                    },
+                    "cancel_read": {
+                        "import_name": "[stream-cancel-read-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "cancel_write": {
+                        "import_name": "[stream-cancel-write-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "drop_readable": {
+                        "import_name": "[stream-drop-readable-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "drop_writable": {
+                        "import_name": "[stream-drop-writable-0]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "read": {
+                        "import_name": "[async-lower][stream-read-0]read-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    },
+                    "write": {
+                        "import_name": "[async-lower][stream-write-0]read-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    }
+                },
+                "future": {
+                    "read": {
+                        "import_name": "[async-lower][future-read-1]read-via-stream",
+                        "core_params": ["i32", "i32"],
+                        "core_results": ["i32"]
+                    },
+                    "drop_readable": {
+                        "import_name": "[future-drop-readable-1]read-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    }
+                }
+            },
+            "wit": {
+                "package": "wasi:cli@0.3.0-rc-2025-09-16",
+                "interface": "stdin",
+                "operation": "read-via-stream",
+                "world": "stream-stdin-probe",
+                "parameter": ""
+            }
+        }
+    ]
+}

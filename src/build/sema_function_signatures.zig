@@ -110,7 +110,37 @@ pub fn check_func_decl_naming(tokens: []const lexer.Token) !void {
     }
 }
 
+pub fn check_async_function_return_types(tokens: []const lexer.Token) !void {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tok_eq(tokens[i], "{")) {
+            if (skip_top_level_import_brace(tokens, i, depth_brace)) |skip_i| {
+                i = skip_i;
+                continue;
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tok_eq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0 or !is_top_level_decl_head(tokens, i) or !is_func_decl_start(tokens, i)) continue;
 
+        const close_paren = find_matching(tokens, i + 1, "(", ")") catch continue;
+        if (!is_return_arrow_at(tokens, close_paren + 1)) {
+            i = close_paren;
+            continue;
+        }
+        const result_idx = close_paren + 3;
+        if (result_idx >= tokens.len or !tok_eq(tokens[result_idx], "Future")) {
+            i = close_paren;
+            continue;
+        }
+        return mark_error_at(tokens, result_idx, error.InvalidAsyncReturn);
+    }
+}
 
 pub fn check_func_param_names(allocator: std.mem.Allocator, tokens: []const lexer.Token) !void {
     var depth_brace: usize = 0;
@@ -142,8 +172,6 @@ pub fn check_func_param_names(allocator: std.mem.Allocator, tokens: []const lexe
         i = close_paren;
     }
 }
-
-
 
 pub fn validate_func_param_names(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !void {
     var expect_name = true;
@@ -205,8 +233,6 @@ pub fn validate_func_param_names(allocator: std.mem.Allocator, tokens: []const l
     }
 }
 
-
-
 pub fn check_inline_func_param_types(tokens: []const lexer.Token) !void {
     var depth_brace: usize = 0;
     var i: usize = 0;
@@ -236,8 +262,6 @@ pub fn check_inline_func_param_types(tokens: []const lexer.Token) !void {
     }
 }
 
-
-
 pub fn check_func_param_type_restrictions(tokens: []const lexer.Token) !void {
     var depth_brace: usize = 0;
     var i: usize = 0;
@@ -264,8 +288,6 @@ pub fn check_func_param_type_restrictions(tokens: []const lexer.Token) !void {
         i = close_paren;
     }
 }
-
-
 
 pub fn check_synth_error_func_param_types(tokens: []const lexer.Token) !void {
     var depth_brace: usize = 0;
@@ -296,8 +318,6 @@ pub fn check_synth_error_func_param_types(tokens: []const lexer.Token) !void {
     }
 }
 
-
-
 pub fn find_synth_error_param_type(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
     var seg_start = start_idx;
     var i = start_idx;
@@ -311,8 +331,6 @@ pub fn find_synth_error_param_type(tokens: []const lexer.Token, start_idx: usize
     }
     return null;
 }
-
-
 
 pub fn find_top_level_type_name(
     tokens: []const lexer.Token,
@@ -355,8 +373,6 @@ pub fn find_top_level_type_name(
     return null;
 }
 
-
-
 pub fn check_param_type_range(tokens: []const lexer.Token, func_start_idx: usize, start_idx: usize, end_idx: usize) !void {
     var seg_start = start_idx;
     var i = start_idx;
@@ -366,8 +382,6 @@ pub fn check_param_type_range(tokens: []const lexer.Token, func_start_idx: usize
         seg_start = i + 1;
     }
 }
-
-
 
 pub fn check_one_param_type(tokens: []const lexer.Token, func_start_idx: usize, start_idx: usize, end_idx: usize) !void {
     if (start_idx + 1 >= end_idx) return mark_error_at(tokens, start_idx, error.InvalidParamName);
@@ -404,16 +418,12 @@ pub fn check_one_param_type(tokens: []const lexer.Token, func_start_idx: usize, 
     }
 }
 
-
-
 pub fn direct_param_type_name(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?[]const u8 {
     if (start_idx + 1 != end_idx) return null;
     if (tokens[start_idx].kind != .ident) return null;
     if (!is_valid_declared_type_name(tokens[start_idx].lexeme)) return null;
     return public_type_name(tokens[start_idx].lexeme);
 }
-
-
 
 pub fn find_top_level_pipe(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
     var depth_paren: usize = 0;
@@ -450,8 +460,6 @@ pub fn find_top_level_pipe(tokens: []const lexer.Token, start_idx: usize, end_id
     return null;
 }
 
-
-
 pub fn find_func_type_constraint_branch_in_param(
     tokens: []const lexer.Token,
     func_start_idx: usize,
@@ -470,8 +478,6 @@ pub fn find_func_type_constraint_branch_in_param(
     }
     return null;
 }
-
-
 
 pub fn is_top_level_type_pipe(tokens: []const lexer.Token, idx: usize, start_idx: usize, end_idx: usize) bool {
     if (!tok_eq(tokens[idx], "|")) return false;
@@ -509,8 +515,6 @@ pub fn is_top_level_type_pipe(tokens: []const lexer.Token, idx: usize, start_idx
     return depth_paren == 0 and depth_bracket == 0 and depth_angle == 0;
 }
 
-
-
 pub fn type_constraint_is_function_type_in_block(
     tokens: []const lexer.Token,
     block_start: usize,
@@ -535,8 +539,6 @@ pub fn type_constraint_is_function_type_in_block(
     }
     return false;
 }
-
-
 
 pub fn check_func_return_arrow_syntax(tokens: []const lexer.Token) !void {
     var depth_brace: usize = 0;
@@ -566,8 +568,6 @@ pub fn check_func_return_arrow_syntax(tokens: []const lexer.Token) !void {
     }
 }
 
-
-
 pub fn check_start_decl_syntax(tokens: []const lexer.Token) !void {
     var depth_brace: usize = 0;
     var i: usize = 0;
@@ -592,8 +592,6 @@ pub fn check_start_decl_syntax(tokens: []const lexer.Token) !void {
         }
     }
 }
-
-
 
 pub fn check_func_signature_conflicts(allocator: std.mem.Allocator, tokens: []const lexer.Token) !void {
     const funcs = try collect_func_shapes(allocator, tokens);
@@ -620,8 +618,6 @@ pub fn check_func_signature_conflicts(allocator: std.mem.Allocator, tokens: []co
     }
 }
 
-
-
 pub fn func_param_shapes_equal(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -637,8 +633,6 @@ pub fn func_param_shapes_equal(
     }
     return true;
 }
-
-
 
 pub fn func_param_shape_equal(
     allocator: std.mem.Allocator,
@@ -662,8 +656,6 @@ pub fn func_param_shape_equal(
 
     return try func_param_shape_equal_lexical(allocator, tokens, a_func, a, b_func, b, type_param_pairs);
 }
-
-
 
 pub fn func_param_shape_equal_lexical(
     allocator: std.mem.Allocator,
@@ -694,8 +686,6 @@ pub fn func_param_shape_equal_lexical(
     };
 }
 
-
-
 pub fn func_param_value_types_equal(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -721,8 +711,6 @@ pub fn func_param_value_types_equal(
     return true;
 }
 
-
-
 pub fn func_type_shape_equal(a: FuncTypeShape, b: FuncTypeShape) bool {
     if (a.param_count != b.param_count) return false;
     if (a.param_types.len != b.param_types.len) return false;
@@ -732,8 +720,6 @@ pub fn func_type_shape_equal(a: FuncTypeShape, b: FuncTypeShape) bool {
     return optional_type_name_equal(a.return_type, b.return_type);
 }
 
-
-
 pub fn optional_type_name_equal(a: ?[]const u8, b: ?[]const u8) bool {
     if (a) |a_name| {
         const b_name = b orelse return false;
@@ -741,8 +727,6 @@ pub fn optional_type_name_equal(a: ?[]const u8, b: ?[]const u8) bool {
     }
     return b == null;
 }
-
-
 
 pub fn func_has_generic_signature_param(tokens: []const lexer.Token, func: FuncShape) bool {
     for (func.param_shapes) |param| {
@@ -757,8 +741,6 @@ pub fn func_has_generic_signature_param(tokens: []const lexer.Token, func: FuncS
     }
     return false;
 }
-
-
 
 pub fn is_local_union_alias(tokens: []const lexer.Token, name: []const u8) bool {
     var depth_brace: usize = 0;
@@ -789,8 +771,6 @@ pub fn is_local_union_alias(tokens: []const lexer.Token, name: []const u8) bool 
     return false;
 }
 
-
-
 pub fn find_token_on_line(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, s: []const u8) ?usize {
     var i = start_idx;
     while (i < end_idx) : (i += 1) {
@@ -799,13 +779,9 @@ pub fn find_token_on_line(tokens: []const lexer.Token, start_idx: usize, end_idx
     return null;
 }
 
-
-
 pub fn is_valid_func_param_name(name: []const u8) bool {
     return is_lower_ident_name(name) and !is_reserved_func_name(name);
 }
-
-
 
 pub fn is_valid_func_param_type_name(name: []const u8) bool {
     return name.len != 0 and (std.ascii.isUpper(name[0]) or name[0] == '[' or name[0] == '(' or name[0] == '.');

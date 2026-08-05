@@ -1,0 +1,145 @@
+{
+  "schema": 1,
+  "descriptors": [
+    {
+      "locator": "do:resource-probe/ledger@0.1.0",
+      "member": "create",
+      "resource": "ticket",
+      "resource_path": "do:resource-probe/ledger/ticket",
+      "params": [{ "type": "u32", "ownership": "none" }],
+      "result": { "type": "ticket", "ownership": "own" },
+      "resource_drop": false
+    },
+    {
+      "locator": "do:resource-probe/ledger@0.1.0",
+      "member": "borrow-value",
+      "resource": "ticket",
+      "resource_path": "do:resource-probe/ledger/ticket",
+      "params": [{ "type": "ticket", "ownership": "borrow" }],
+      "result": { "type": "u32", "ownership": "none" },
+      "resource_drop": false
+    },
+    {
+      "locator": "do:resource-probe/ledger@0.1.0",
+      "member": "consume",
+      "resource": "ticket",
+      "resource_path": "do:resource-probe/ledger/ticket",
+      "params": [{ "type": "ticket", "ownership": "own" }],
+      "result": { "type": "u32", "ownership": "none" },
+      "resource_drop": false
+    },
+    {
+      "locator": "do:resource-probe/ledger@0.1.0",
+      "member": "drop",
+      "resource": "ticket",
+      "resource_path": "do:resource-probe/ledger/ticket",
+      "params": [{ "type": "ticket", "ownership": "own" }],
+      "result": { "type": "nil", "ownership": "none" },
+      "resource_drop": true
+    },
+    {
+      "locator": "do:resource-probe/http@0.1.0",
+      "member": "create-request",
+      "resource": "request",
+      "resource_path": "do:resource-probe/http/request",
+      "params": [],
+      "result": { "type": "request", "ownership": "own" },
+      "resource_drop": false
+    },
+    {
+      "locator": "do:resource-probe/http@0.1.0",
+      "member": "send",
+      "resource": "request",
+      "resource_path": "do:resource-probe/http/request",
+      "result_resource": "response",
+      "result_resource_path": "do:resource-probe/http/response",
+      "params": [{ "type": "request", "ownership": "own" }],
+      "result": { "type": "result<response,error-code>", "ownership": "own" },
+      "resource_drop": false
+    },
+    {
+      "locator": "do:resource-probe-owned-error/http@0.1.0",
+      "member": "send",
+      "resource": "request",
+      "resource_path": "do:resource-probe-owned-error/http/request",
+      "result_resource": "response",
+      "result_resource_path": "do:resource-probe-owned-error/http/response",
+      "result_error_resource": "error-resource",
+      "result_error_resource_path": "do:resource-probe-owned-error/http/error-resource",
+      "params": [{ "type": "request", "ownership": "own" }],
+      "result": { "type": "result<response,error-resource>", "ownership": "own" },
+      "resource_drop": false
+    },
+    {
+      "locator": "wasi:http/client@0.3.0-rc-2025-09-16",
+      "member": "send",
+      "resource": "request",
+      "resource_path": "http/types/request",
+      "result_resource": "response",
+      "result_resource_path": "http/types/response",
+      "params": [{ "type": "request", "ownership": "own" }],
+      "result": { "type": "result<response,error-code>", "ownership": "own" },
+      "resource_drop": false
+    },
+    {
+      "locator": "wasi:http/types@0.3.0-rc-2025-09-16",
+      "member": "response.get-status-code",
+      "resource": "response",
+      "resource_path": "http/types/response",
+      "params": [{ "type": "response", "ownership": "borrow" }],
+      "result": { "type": "u16", "ownership": "none" },
+      "resource_drop": false
+    },
+    {
+      "locator": "wasi:http/types@0.3.0-rc-2025-09-16",
+      "member": "response.drop",
+      "resource": "response",
+      "resource_path": "http/types/response",
+      "params": [{ "type": "response", "ownership": "own" }],
+      "result": { "type": "nil", "ownership": "none" },
+      "resource_drop": true
+    },
+    {
+      "locator": "wasi:filesystem/preopens@0.3.0",
+      "member": "get-directories",
+      "resource": "descriptor",
+      "resource_path": "filesystem/types/descriptor",
+      "params": [],
+      "result": { "type": "list<tuple<descriptor,string>>", "ownership": "own" },
+      "resource_drop": false
+    },
+    {
+      "locator": "wasi:filesystem/types@0.3.0",
+      "member": "descriptor.open-at",
+      "resource": "descriptor",
+      "resource_path": "filesystem/types/descriptor",
+      "params": [
+        { "type": "descriptor", "ownership": "borrow" },
+        { "type": "path-flags", "ownership": "none" },
+        { "type": "string", "ownership": "none" },
+        { "type": "open-flags", "ownership": "none" },
+        { "type": "descriptor-flags", "ownership": "none" }
+      ],
+      "result": { "type": "result<descriptor,error-code>", "ownership": "own" },
+      "resource_drop": false
+    },
+    {
+      "locator": "wasi:filesystem/types@0.3.0",
+      "member": "descriptor.sync",
+      "resource": "descriptor",
+      "resource_path": "filesystem/types/descriptor",
+      "params": [{ "type": "descriptor", "ownership": "borrow" }],
+      "result": { "type": "result<_,error-code>", "ownership": "none" },
+      "resource_drop": false
+    },
+    {
+      "locator": "wasi:filesystem/types@0.3.0",
+      "member": "descriptor.drop",
+      "resource": "descriptor",
+      "resource_path": "filesystem/types/descriptor",
+      "params": [{ "type": "descriptor", "ownership": "own" }],
+      "result": { "type": "nil", "ownership": "none" },
+      "resource_drop": true
+    }
+  ]
+}

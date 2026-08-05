@@ -14,7 +14,7 @@ counter_increment(ctx Context) -> nil {
 
 counter_text(ctx Context) -> text {
     value = ui_read_i32(ctx, "count")
-    return @to_text(value)
+    return to_text(value)
 }
 
 counter_class(ctx Context) -> text {
@@ -35,7 +35,8 @@ counter_summary(ctx Context) -> text {
     enabled = ui_read_bool(ctx, "enabled")
 
     if !enabled return "disabled"
-    return name + ": " + @to_text(count)
+    // text_concat is a planned standard-library API, not current syntax.
+    return text_concat(name, ": ", to_text(count))
 }
 
 counter_render(ctx Context) -> i32 {
@@ -73,7 +74,7 @@ list_item_key(ctx Context, item text) -> text {
 list_item_text(ctx Context) -> text {
     item = ui_each_item(ctx)
     index = ui_each_index(ctx)
-    return item + ":" + @to_text(index)
+    return text_concat(item, ":", to_text(index))
 }
 
 list_item_render(ctx Context) -> i32 {
@@ -126,9 +127,10 @@ details_off(ctx Context) -> i32 {
 //
 // JS runtime contract (conceptual):
 //
-//   mount("counter", key) -> internal Scope record
-//   get_context(scope) -> Context
-//   call_do("counter_render", scope) -> do receives Context
+//   instantiate(wasm, do_ui_host_imports) -> instance + export manifest
+//   attach(instance.exports, manifest)
+//   mount("counter_render", key) -> internal Scope record
+//   wasm.exports.counter_render(scope.context) -> do receives Context
 //   get_state(ctx, key, initial) -> runtime.getState(ctx, key, initial)
 //       records the active Effect as a subscriber during ui_read_*
 //   set_state(ctx, key, next) -> runtime.setState(ctx, key, next)
@@ -144,5 +146,25 @@ details_off(ctx Context) -> i32 {
 // scope_dispose. It does not require class-based State, Effect or Scope types.
 // An event binding is a static function name plus Context, not a captured do
 // closure. JavaScript may use private host closures for DOM listeners.
-// The JavaScript demo action is the plain export name list_add; the standard
-// library list_add remains a separate pure collection function.
+// A binding/action name is resolved by JS against the generic host-export
+// manifest and its expected ABI. The compiler does not recognize ui_bind_*
+// and does not emit ui_dispatch. Private do functions are absent from this
+// manifest and cannot be JS callback targets.
+//
+// Full implementation plan:
+//   1. add a generic host-export build target for public entry functions and
+//      emit a name/signature/export-name manifest with stable overload names.
+//   2. implement generic JS/Wasm wrappers for Context/Node handles, text,
+//      lists and structs, including allocation and ownership rules.
+//   3. add lib/ui.do as the do-facing host import library; keep graph records
+//      and lifecycle implementation inside JS.
+//   4. define instantiate -> attach exports -> mount -> initial binding flush.
+//   5. make State/Computed dynamic, lazy, Object.is-gated and error-stable.
+//   6. add internal dirty-only Watcher, then split every binding into:
+//        compute: do derived export runs with dependency tracking;
+//        apply: JS consumes its returned value without State access.
+//      User ui_watch apply/cleanup have the same no-State-access rule;
+//      event actions may read/write State. Microtask flush remains internal.
+//   7. add Scope cleanup revision/abort handling and fine-grained keyed
+//      struct/list path State, then text_concat, devtools and full ABI tests.
+// js_eval is an experiment only, not a UI or host ABI API.

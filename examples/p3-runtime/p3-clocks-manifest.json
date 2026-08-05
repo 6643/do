@@ -1,0 +1,16 @@
+{
+    "schema": 1,
+    "source": "https://github.com/bytecodealliance/wasmtime",
+    "wasmtime_tag": "v47.0.2",
+    "wasmtime_commit": "90fed3c6adf53f112c4dea56851728557bb73799",
+    "source_path": "crates/wasi/src/p3/wit/deps/clocks.wit",
+    "wit_sha256": "5b59398732d19f6e327b1693c851a690bdf30e86cbf755d5a53b2fe7d6f2775e",
+    "package": "wasi:clocks@0.3.0",
+    "interface": "monotonic-clock",
+    "member": "wait-for",
+    "effect": "async",
+    "params": ["u64"],
+    "results": [],
+    "resource": null,
+    "cancel": "not-exercised"
+}

@@ -4,11 +4,19 @@ zig-cache/
 **/zig-cache/
 **/.zig-cache/
 
+# Frontend generated output
+examples/ui-signal/dist/
+
 # Compiler binary (built by `zig build` into bin/)
 bin/do
 bin/*
 
-# Local commit helper / scratch (not part of the product)
+# Local scratch and diagnostic outputs
+.tmp/
+**/.tmp/
+.quota-probe.*/
+
+# Local commit helper and worktrees
 .commit-git/
 .worktrees/
 commit-*.bundle

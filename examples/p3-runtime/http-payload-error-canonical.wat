@@ -35,10 +35,23 @@
   (import "[export]wasi:http/probe@0.3.0-rc-2025-09-16" "[task-return]run"
     (func $task-return (type $task-return)))
 
-  (memory (export "memory") 0)
+  (memory (export "memory") 1)
+  (data (i32.const 512) "x")
   (func (export "[async-lift]wasi:http/probe@0.3.0-rc-2025-09-16#run")
     (type $async-probe)
-    unreachable)
+    ;; Candidate canonical flat representation for InternalError(Some("x")):
+    ;; result = Err, error tag 38, option discriminant 1, string pointer 512,
+    ;; string length 1, remaining joined payload words 0.
+    i32.const 1
+    i32.const 38
+    i32.const 1
+    i64.const 512
+    i32.const 1
+    i32.const 0
+    i32.const 0
+    i32.const 0
+    call $task-return
+    i32.const 0)
   (func (export "[callback][async-lift]wasi:http/probe@0.3.0-rc-2025-09-16#run")
     (type $async-probe-callback)
     unreachable)

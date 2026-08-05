@@ -689,6 +689,15 @@ pub fn emit_union_branch_value(allocator: std.mem.Allocator, tokens: []const lex
             try append_fmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
             return true;
         }
+        if (expr_call_head(tokens, range)) |call_head| {
+            if (!call_head.is_intrinsic and std.mem.eql(u8, public_decl_name(tokens[call_head.name_idx].lexeme), branch.ty) and call_head.args_start == call_head.args_end) {
+                for (layout.payload_tys) |payload_ty| {
+                    try emit_zero_value_for_type(allocator, ctx, out, payload_ty);
+                }
+                try append_fmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
+                return true;
+            }
+        }
         return false;
     }
 
@@ -1097,6 +1106,10 @@ pub fn emit_union_local_payload_for_type(allocator: std.mem.Allocator, name: []c
         return false;
 
     try append_union_payload_local_get(allocator, out, union_local.name, branch.payload_start);
+    if (is_managed_local_type(union_local.layout.payload_tys[branch.payload_start], ctx)) {
+        try append_fmt(allocator, out, "    ;; arc-union-payload-copy-inc {s}.__union_payload_{d}\n", .{ union_local.name, branch.payload_start });
+        try out.appendSlice(allocator, "    call $__arc_inc\n");
+    }
     return true;
 }
 

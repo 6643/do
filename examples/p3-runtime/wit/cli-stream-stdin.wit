@@ -1,0 +1,19 @@
+package wasi:cli@0.3.0-rc-2025-09-16;
+
+interface types {
+  enum error-code {
+    io,
+    illegal-byte-sequence,
+    pipe,
+  }
+}
+
+interface stdin {
+  use types.{error-code};
+  read-via-stream: func() -> tuple<stream<u8>, future<result<_, error-code>>>;
+}
+
+world stream-stdin-probe {
+  import stdin;
+  export run: async func();
+}

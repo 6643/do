@@ -1,7 +1,7 @@
 // TCP sockets — G6.3 scheme B (create/bind/drop). Value handle + explicit close.
 
 .host_tcp_create = @host("wasi:sockets/types@0.3.0", "tcp-socket.create", (u8) -> TcpSocket | TcpError)
-.host_tcp_bind = @host("wasi:sockets/types@0.3.0", "tcp-socket.bind", (TcpSocket, IpSocketAddress) -> TcpError | nil)
+.host_tcp_bind = @host("wasi:sockets/types@0.3.0", "tcp-socket.bind", (TcpSocket, IpSocketAddress) -> nil | TcpError)
 .host_tcp_drop = @host("wasi:sockets/types@0.3.0", "tcp-socket.drop", (TcpSocket) -> nil)
 
 Ipv4SocketAddress {
@@ -36,34 +36,48 @@ ipv6_socket_address(hi u64, lo u64, port_value u16) -> Ipv6SocketAddress {
 
 // Family: public wrappers use 4=ipv4 and 6=ipv6; codegen maps to WIT 0/1.
 create_tcp_v4() -> TcpSocket | TcpError {
-    return host_tcp_create(4)
+    result TcpSocket | TcpError = host_tcp_create(4)
+    if @is(result, TcpError) return result
+    socket TcpSocket = result
+    return socket
 }
 
 create_tcp_v6() -> TcpSocket | TcpError {
-    return host_tcp_create(6)
+    result TcpSocket | TcpError = host_tcp_create(6)
+    if @is(result, TcpError) return result
+    socket TcpSocket = result
+    return socket
 }
 
 // Public bind overloads: concrete address types. Intermediate total local is
 // supported under @lib after imported payload-enum collect (G6.3 edge fix).
 bind_tcp(sock TcpSocket, addr Ipv4SocketAddress) -> TcpError | nil {
     total IpSocketAddress = V4(addr)
-    return host_tcp_bind(sock, total)
+    result nil | TcpError = host_tcp_bind(sock, total)
+    if @is(result, TcpError) return result
+    return nil
 }
 
 bind_tcp(sock TcpSocket, addr Ipv6SocketAddress) -> TcpError | nil {
     total IpSocketAddress = V6(addr)
-    return host_tcp_bind(sock, total)
+    result nil | TcpError = host_tcp_bind(sock, total)
+    if @is(result, TcpError) return result
+    return nil
 }
 
 // Explicit names for callers that prefer non-overload aliases.
 bind_tcp_v4(sock TcpSocket, addr Ipv4SocketAddress) -> TcpError | nil {
     total IpSocketAddress = V4(addr)
-    return host_tcp_bind(sock, total)
+    result nil | TcpError = host_tcp_bind(sock, total)
+    if @is(result, TcpError) return result
+    return nil
 }
 
 bind_tcp_v6(sock TcpSocket, addr Ipv6SocketAddress) -> TcpError | nil {
     total IpSocketAddress = V6(addr)
-    return host_tcp_bind(sock, total)
+    result nil | TcpError = host_tcp_bind(sock, total)
+    if @is(result, TcpError) return result
+    return nil
 }
 
 close_tcp(sock TcpSocket) -> nil {

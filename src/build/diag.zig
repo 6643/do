@@ -424,10 +424,30 @@ pub fn error_summary(err: anyerror) []const u8 {
         error.InvalidErrorBranchName => "错误枚举不支持私有声明；错误枚举写作 `XxxError error = Branch | OtherBranch`；value enum 承载值必须在范围内且唯一",
         error.InvalidSynthErrorType => "源码类型位不能使用合成 `Error`",
         error.InvalidTypeRef => "类型引用写作 `Type`；普通固定数据参数可写平铺 union/nullable；变参元素、函数类型和接口约束参数不接收 union/nullable；私有类型声明写作 `.Type`；裸 `nil` 类型非法；重复 union 分支非法；`nil` 分支最多一次；匿名函数类型不能直接作为 union 分支；TypeArgs 不接受 `(T)` 或匿名函数类型；`Tuple` 至少两个类型参数",
+        error.InvalidResultType => "`Result` 是内建类型，必须写作 `Result<T, E>`",
+        error.InvalidResultConstructor => "`Ok`/`Err` 只能在已知 `Result<T, E>` 目标类型中构造",
         error.InvalidPathIndex => "路径参数写作 `@get(value, index, .field)`；字段段写作 `.field`；`Tuple` 数字索引必须是编译期整数字面量且落在 `0..arity-1`",
         error.InvalidPathAccess => "字段读取语法: `@get(value, .field)`; 字段写入语法: `@set(value, .field, new_value)`；字段段只用于 @get/@set 路径参数",
         error.InvalidFieldReflection => "字段反射语法: `loop field = fields(StructOrTypeParam) { ... }`; `@field_*` 的 field 参数必须来自当前字段反射循环",
         error.InvalidNarrowing => "收窄语法: `@is(value, Type)` 只能直接作为条件头使用; Type 必须是单个可达非 nil 类型",
+        error.InvalidAsyncReturn => "异步函数写作 `async name(...) -> T`; 用户函数不能直接返回 `Future<T>`",
+        error.InvalidAwaitContext => "`await` 和 `@cancel` 只能在 async 函数中消费 `Future<T>` 局部绑定",
+        error.FutureAlreadyConsumed => "每个 `Future<T>` 只能被 await、取消或聚合等待消费一次",
+        error.FutureDropped => "`Future<T>` 不能在 async 函数作用域结束时未消费",
+        error.StreamReaderAlreadyConsumed => "每个 `StreamReader<T>` 只能转移给一个消费者",
+        error.StreamReaderTypeMismatch => "`StreamReader<T>` 只能转移给相同元素类型的 consumer",
+        error.InvalidStreamReaderRead => "`@next(reader)` 只能在 async 函数中读取当前 `Stream<T>` 或 `StreamReader<T>` owner，并绑定为 `Future<Result<T, nil>>`",
+        error.StreamWriterLeaseDropped => "`StreamWriter<T>` lease 不能在 async 作用域结束时未收尾",
+        error.StreamWriterLeasePathConflict => "`StreamWriter<T>` lease 在控制流合流后没有一致的收尾状态",
+        error.StreamWriterDeferredTransfer => "`StreamWriter<T>` lease 不能带着当前作用域的 defer cleanup 转移",
+        error.StreamWriterAlreadyFinalized => "每个 `StreamWriter<T>` lease 只能转移、关闭或中止一次",
+        error.StreamWriterTypeMismatch => "`StreamWriter<T>` lease 只能转移给相同元素类型的 owner",
+        error.InvalidStreamWriterFinalization => "`close`/`abort` 只能终结当前 async `StreamWriter<T>` owner",
+        error.InvalidStreamWriterWrite => "`writer(value)` 必须返回 `Future<Result<nil, E>>`，且 value 类型必须与 `StreamWriter<T>` 的 T 相同",
+        error.UnknownP3AsyncHostDescriptor => "P3 async host descriptor 未在 pinned registry 中登记",
+        error.P3AsyncHostSignatureMismatch => "P3 async host 声明签名与 pinned descriptor 不一致",
+        error.ResourceAlreadyConsumed => "资源 owner 已通过 own 调用、drop 或同类型赋值转移，不能再次使用",
+        error.ResourceDropped => "资源 owner 不能在作用域结束时仍处于活动状态；必须显式 transfer 或 drop",
         error.UnionPayloadRequiresNarrowing => "union payload 使用前必须先通过直接 `@is(value, Type)` 或直接 `@eq/@ne(value, nil)` 收窄",
         error.InvalidFuncDeclName => "函数声明名语法: `lower_name(...) -> Type { ... }` 或 `.lower_name(...) -> Type { ... }`",
         error.InvalidTypedLiteral => "聚合构造语法: `Type{field = value}`、`Type<...>{field = value}` 或 `Tuple<T0, T1, ...>{v0, v1, ...}` 位置构造；实参数量/明显字面量类型必须与类型参数一致",
@@ -462,9 +482,20 @@ pub fn error_summary(err: anyerror) []const u8 {
         error.InvalidStartEntrySig => "入口签名写作 `start() { ... }` (无参、无返回)",
         error.DuplicateStartEntry => "顶层 `start` 写作 1 次",
         error.UnsupportedWasiHostImport => "这个 WIT host import 签名尚未支持 lowering",
+        error.AsyncLoweringUnavailable => "async 声明已通过前端检查，但 resumable lowering 尚未实现",
+        error.UnsupportedP3WaitForComponent => "此 P3 Component 目标只支持 pinned wait-for probe 源码形态",
+        error.UnsupportedP3AsyncResourceComponent => "此 P3 Component 目标只支持 private async resource Result probe 源码形态",
+        error.UnsupportedP3AsyncComponent => "此统一 P3 async Component 目标不支持该 descriptor 或源码形态",
+        error.UnsupportedGcCoreLowering => "此 Core Wasm GC target 只支持已实现的受限源码形态",
         error.UnsupportedLowering => "当前编译路径尚未支持该 lowering",
         error.UnsupportedTupleStorageLeaf => "非 packable 叶子的 `[Tuple]` storage 尚未支持 scheme-A pack",
         error.MissingOutputPath => "示例: `do build input.do -o out.wat` 或 `do test sample.do --compiled -o sample.wat`",
+        error.MissingP3WitOutputPath => "`--p3-wit-output` 后需要一个 WIT 输出路径",
+        error.P3WitOutputRequiresP3Target => "`--p3-wit-output` 只能与 P3 Component target 一起使用",
+        error.MissingP3WitPackageOutputPath => "`--p3-wit-package-output` 后需要一个目录输出路径",
+        error.P3WitPackageOutputRequiresP3Target => "`--p3-wit-package-output` 只能与 P3 Component target 一起使用",
+        error.P3WitPackageOutputRequiresUnifiedTarget => "`--p3-wit-package-output` 只能与 `--p3-async-component` 一起使用",
+        error.P3WitPackageOutputRequiresHttpService => "`--p3-wit-package-output` 只用于 pinned `wasi:http/client.send` service package",
         error.MissingTestInputPath => "示例: `do test sample.do` 或 `do test sample.do --compiled -o sample.wat`",
         error.UnexpectedCliArg => "命令只接受一个输入文件和已声明的选项",
         error.OutputRequiresCompiledTest => "`do test -o out.wat` 需要同时写 `--compiled`",
@@ -487,10 +518,30 @@ pub fn error_hint(err: anyerror) []const u8 {
         error.InvalidErrorBranchName => "错误枚举写作 public `XxxError error = NotFound | PermissionDenied`；value enum 写作 `Status i8 = Ready(1) | Done(2)`，承载值按基础整数类型检查范围且不能重复",
         error.InvalidSynthErrorType => "返回、字段、局部绑定和 alias 使用具体错误枚举类型；源码类型位不能直接写合成 `Error`",
         error.InvalidTypeRef => "类型引用写作 `Type`；普通固定数据参数可写 `T | nil`；变参元素、函数类型和接口约束参数不接收 union/nullable；私有类型声明写作 `.Type`；同一 union 内分支唯一，`nil` 分支最多一次；函数类型不能写入 union；TypeArgs 写 `List<T>`；`Tuple` 至少两个类型参数",
+        error.InvalidResultType => "`Result` 是内建类型，必须写作 `Result<T, E>`",
+        error.InvalidResultConstructor => "`Ok`/`Err` 只能在已知 `Result<T, E>` 目标类型中构造",
         error.InvalidPathIndex => "路径参数写作 `@get(value, index, .field)`；字段段写作 `.field`；`Tuple` 数字索引必须是编译期整数字面量且落在 `0..arity-1`",
         error.InvalidPathAccess => "字段段只用于 @get/@set 路径参数；普通函数参数使用有类型表达式",
         error.InvalidFieldReflection => "`fields(...)` 只接收可见结构体或当前泛型类型参数；`@field_set` 写作 `target = @field_set(target, field, value)`",
         error.InvalidNarrowing => "`@is` 不进入普通值表达式或 `@and/@or/@not` 子条件; v1 不支持 `@is(value, A | B)` 或 `@is(value, nil)`",
+        error.InvalidAsyncReturn => "使用 `async name(...) -> T`；`name(...) -> Future<T>` 与 `async name(...) -> Future<T>` 都非法",
+        error.InvalidAwaitContext => "`await(future)`、聚合等待或 `@cancel(future)` 只能写在 async 函数中，参数必须是可见的 `Future<T>` 局部绑定",
+        error.FutureAlreadyConsumed => "Future 已被消费；await、取消和聚合等待都会转移其所有权",
+        error.FutureDropped => "在返回、失败或取消清理前消费 Future；不能让 Future 静默离开作用域",
+        error.StreamReaderAlreadyConsumed => "reader 已转移给另一消费者；保留唯一 owner 并从该绑定继续读取",
+        error.StreamReaderTypeMismatch => "目标绑定的 `T` 必须与当前 `StreamReader<T>` owner 相同",
+        error.InvalidStreamReaderRead => "在 async 函数中写 `pending Future<Result<T, nil>> = @next(reader)`；reader 与 Result 的 T 必须相同",
+        error.StreamWriterLeaseDropped => "在作用域结束前调用 `close(writer)`、`abort(writer, err)`，或使用 `defer close(writer)`",
+        error.StreamWriterLeasePathConflict => "让每条可达路径都执行相同的 `close`/`abort`/`defer close`，再使用或离开作用域",
+        error.StreamWriterDeferredTransfer => "在当前 defer 作用域内调用 `close`/`abort`，或移除 defer 后再转移唯一 owner",
+        error.StreamWriterAlreadyFinalized => "writer 已转移或完成收尾；从当前唯一 owner 继续使用",
+        error.StreamWriterTypeMismatch => "目标绑定的 `T` 必须与当前 `StreamWriter<T>` owner 相同",
+        error.InvalidStreamWriterFinalization => "在 async 函数中对当前 writer 调用 `close(writer)` 或 `abort(writer, err)`",
+        error.InvalidStreamWriterWrite => "在 async 函数中写 `pending Future<Result<nil, E>> = writer(value)`；value 与 writer 的 T 必须相同",
+        error.UnknownP3AsyncHostDescriptor => "使用已登记的 locator/member；不要由名称推断 WIT async ABI",
+        error.P3AsyncHostSignatureMismatch => "当前 pinned wait-for 声明写作 `(u64) -> nil`",
+        error.ResourceAlreadyConsumed => "从当前唯一 owner 继续使用；own 调用、drop 和同类型赋值都会转移它",
+        error.ResourceDropped => "在离开作用域前 transfer 给新绑定，或调用已登记的 drop host import",
         error.UnionPayloadRequiresNarrowing => "先写 `if @is(value, Type) { ... }` 或 `if @eq(value, nil) return` 后, 再把 union 值当作 payload 使用",
         error.InvalidFuncDeclName => "函数声明名语法: `lower_name(...) -> Type { ... }` 或 `.lower_name(...) -> Type { ... }`",
         error.InvalidTypedLiteral => "Tuple 位置构造写作 `Tuple<T0, T1, ...>{v0, v1, ...}`；实参数量与类型参数一致，字面量类型须匹配，不支持命名字段；尾逗号忽略不计入 arity",
@@ -525,9 +576,20 @@ pub fn error_hint(err: anyerror) []const u8 {
         error.InvalidStartEntrySig => "入口签名写作 `start() { ... }` (无参、无返回)",
         error.DuplicateStartEntry => "顶层 `start` 写作 1 次",
         error.UnsupportedWasiHostImport => "已登记的 scalar/record/list<u8>、descriptor.sync 语句调用和 descriptor.write 多左值调用可 lower；复杂 result/resource/variant/flags 需要后续 component lowering",
+        error.AsyncLoweringUnavailable => "先使用 `do check` 验证前端；`do build` 需要 await frame、调度和清理 lowering",
+        error.UnsupportedP3WaitForComponent => "使用已登记的 `wasi:clocks@0.3.0/monotonic-clock.wait-for`、`async run(u64) -> nil`、将该调用结果绑定为 `Future<nil>` 后单次 await 和空 start；局部名称可自定，其他 async 形式仍由 AsyncLoweringUnavailable 拒绝",
+        error.UnsupportedP3AsyncResourceComponent => "private probe 使用 `do:resource-probe/http@0.1.0/send`、`async run(HttpRequest) -> Result<HttpResponse, HttpError>`，函数体只可绑定并 await 该 Future 后直接 return；真实 HTTP 仅支持固定 `wasi:http/client.send` service 源码形态",
+        error.UnsupportedP3AsyncComponent => "使用 `--p3-async-component` 时，支持已登记的 scalar/unit clocks、`wasi:cli/run.run` 的 `Result<nil,nil>`、private `do:resource-probe/http/send` 两字 Result，以及固定 `wasi:http/client.send` service；list、Stream、payload error-code 与其他 descriptor 仍需完整 canonical layout lowering",
+        error.UnsupportedGcCoreLowering => "使用 `identity(value text) -> text { return value }`，或 `update(input [u8]) -> [u8] { return @set(input, 0, 65) }`，并使用空 `start()`；其他 text/list/managed struct GC lowering 尚未接入该 target",
         error.UnsupportedLowering => "常见后置边界: 非 packable 的 `[Tuple]` storage 直接元素；该错误不是重载匹配失败",
         error.UnsupportedTupleStorageLeaf => "直接元素须为标量、managed handle (`text` / `[T]`)、嵌套 Tuple、pure-scalar 具名 struct 子布局、或含 managed 字段的具名 struct 句柄槽；禁止拍平为扁平 Tuple；该错误不是重载匹配失败",
         error.MissingOutputPath => "示例: `do build input.do -o out.wat` 或 `do test sample.do --compiled -o sample.wat`",
+        error.MissingP3WitOutputPath => "写作 `--p3-wit-output out.wit`；它与 `--p3-async-component` 配对输出 assembly sidecar",
+        error.P3WitOutputRequiresP3Target => "写作 `do build input.do --p3-async-component --p3-wit-output out.wit -o out.wat`",
+        error.MissingP3WitPackageOutputPath => "写作 `--p3-wit-package-output out.wit-package`；该目录保留完整 WIT dependencies",
+        error.P3WitPackageOutputRequiresP3Target => "写作 `do build input.do --p3-async-component --p3-wit-package-output out.wit-package -o out.wat`",
+        error.P3WitPackageOutputRequiresUnifiedTarget => "使用统一 `--p3-async-component`，不与单独 probe target 混用",
+        error.P3WitPackageOutputRequiresHttpService => "源码必须声明 pinned `wasi:http/client@0.3.0-rc-2025-09-16` 的固定 async `send` service 形态；该 package 不启用通用 HTTP/resource/Stream lowering",
         error.MissingTestInputPath => "示例: `do test sample.do` 或 `do test sample.do --compiled -o sample.wat`",
         error.UnexpectedCliArg => "build 写作 `do build input.do [-o out.wat]`; test 写作 `do test input.do` 或 `do test input.do --compiled [-o out.wat]`",
         error.OutputRequiresCompiledTest => "生成 WAT 的测试入口写作 `do test input.do --compiled -o out.wat`",
@@ -585,6 +647,32 @@ test "tuple non-packable storage leaf has dedicated diagnostic" {
     try std.testing.expectEqualStrings("UnsupportedTupleStorageLeaf", diagnostic.code);
     try std.testing.expectEqualStrings(error_summary(error.UnsupportedTupleStorageLeaf), diagnostic.message);
     try std.testing.expectEqualStrings(error_hint(error.UnsupportedTupleStorageLeaf), diagnostic.hint);
+}
+
+test "P3 async component diagnostic includes the admitted HTTP service" {
+    try std.testing.expectEqualStrings(
+        "使用 `--p3-async-component` 时，支持已登记的 scalar/unit clocks、`wasi:cli/run.run` 的 `Result<nil,nil>`、private `do:resource-probe/http/send` 两字 Result，以及固定 `wasi:http/client.send` service；list、Stream、payload error-code 与其他 descriptor 仍需完整 canonical layout lowering",
+        error_hint(error.UnsupportedP3AsyncComponent),
+    );
+}
+
+test "path-sensitive writer diagnostics have dedicated summary and hint" {
+    try std.testing.expectEqualStrings(
+        "`StreamWriter<T>` lease 在控制流合流后没有一致的收尾状态",
+        error_summary(error.StreamWriterLeasePathConflict),
+    );
+    try std.testing.expectEqualStrings(
+        "让每条可达路径都执行相同的 `close`/`abort`/`defer close`，再使用或离开作用域",
+        error_hint(error.StreamWriterLeasePathConflict),
+    );
+    try std.testing.expectEqualStrings(
+        "`StreamWriter<T>` lease 不能带着当前作用域的 defer cleanup 转移",
+        error_summary(error.StreamWriterDeferredTransfer),
+    );
+    try std.testing.expectEqualStrings(
+        "在当前 defer 作用域内调用 `close`/`abort`，或移除 defer 后再转移唯一 owner",
+        error_hint(error.StreamWriterDeferredTransfer),
+    );
 }
 
 test "build_compile_diagnostic falls back to source lexer location" {

@@ -1,0 +1,3 @@
+(param $box.value.left i32)
+(param $box.value.right i32)
+(export "accept" (func $accept))

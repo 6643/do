@@ -1,0 +1,46 @@
+package wasi:http@0.3.0-rc-2025-09-16;
+
+interface types {
+  variant error-code { dns-timeout }
+
+  resource fields {
+    constructor();
+  }
+
+  resource request {
+    new: static func(
+      headers: fields,
+      contents: option<stream<u8>>,
+      trailers: future<result<option<fields>, error-code>>,
+      options: option<request-options>
+    ) -> tuple<request, future<result<_, error-code>>>;
+  }
+
+  // Exposes the constructor payload operation so the pinned async callback
+  // helper names can be resolved while this ABI probe is assembled.
+  request-new-payload: func(
+    headers: fields,
+    contents: option<stream<u8>>,
+    trailers: future<result<option<fields>, error-code>>,
+    options: option<request-options>
+  ) -> tuple<request, future<result<_, error-code>>>;
+
+  resource request-options {}
+  resource response {}
+}
+
+interface client {
+  use types.{request, response, error-code};
+  send: async func(request: request) -> result<response, error-code>;
+}
+
+interface probe {
+  use types.{response, error-code};
+  run: async func() -> result<response, error-code>;
+}
+
+world http-request-body-producer-probe {
+  import types;
+  import client;
+  export probe;
+}

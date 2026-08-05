@@ -1288,7 +1288,8 @@ pub fn emit_wasi_coarse_error_enum_payload(
 }
 
 pub fn union_branch_is_coarse_error(tokens: []const lexer.Token, layout: UnionLayout, branch: UnionBranch) bool {
-    if (!is_error_like_type(tokens, branch.ty)) return false;
+    const payload_ty = branch.payload_type orelse branch.ty;
+    if (!is_error_like_type(tokens, payload_ty)) return false;
     if (branch.payload_len != 1) return false;
     if (branch.payload_start >= layout.payload_tys.len) return false;
     return is_error_like_type(tokens, layout.payload_tys[branch.payload_start]);
@@ -1313,13 +1314,16 @@ pub fn emit_wasi_unit_result_as_union_value(
     const lowering = wasi_lowering(import) orelse return false;
     if (!lowering.result_unit_error) return false;
 
-    const nil_branch = find_union_branch_by_type(layout, "nil") orelse return false;
-    if (nil_branch.tag != 0) return false;
-
+    var has_unit_ok = false;
     var err_branch: ?UnionBranch = null;
     var err_is_coarse = false;
     for (layout.branches) |branch| {
-        if (std.mem.eql(u8, branch.ty, "nil")) continue;
+        const payload_ty = branch.payload_type orelse branch.ty;
+        if (std.mem.eql(u8, payload_ty, "nil") and branch.payload_len == 0) {
+            if (branch.tag != 0) return false;
+            has_unit_ok = true;
+            continue;
+        }
         if (err_branch != null) return false;
         if (union_branch_is_status_i32(layout, branch)) {
             err_branch = branch;
@@ -1333,6 +1337,7 @@ pub fn emit_wasi_unit_result_as_union_value(
         }
         return false;
     }
+    if (!has_unit_ok) return false;
     const err = err_branch orelse return false;
     // Single i32/error payload slot only for this phase.
     if (layout.payload_tys.len != 1) return false;
@@ -1353,7 +1358,7 @@ pub fn emit_wasi_unit_result_as_union_value(
         \\
     );
     if (err_is_coarse) {
-        if (!try emit_wasi_coarse_error_enum_payload(allocator, tokens, import, err.ty, 4, out)) {
+        if (!try emit_wasi_coarse_error_enum_payload(allocator, tokens, import, err.payload_type orelse err.ty, 4, out)) {
             return error.NoMatchingCall;
         }
     } else {
@@ -1409,8 +1414,9 @@ pub fn emit_wasi_filesize_result_as_union_value(
             err_is_coarse = true;
             continue;
         }
-        // Ok arm: scalar filesize (u64).
-        if (std.mem.eql(u8, branch.ty, "u64") and branch.payload_len == 1 and
+        // Ok arm: scalar filesize (u64). Result names this branch `Ok`.
+        const payload_ty = branch.payload_type orelse branch.ty;
+        if (std.mem.eql(u8, payload_ty, "u64") and branch.payload_len == 1 and
             branch.payload_start < layout.payload_tys.len and
             std.mem.eql(u8, layout.payload_tys[branch.payload_start], "u64"))
         {
@@ -1462,7 +1468,7 @@ pub fn emit_wasi_filesize_result_as_union_value(
     // err: zero ok slot; status or coarse FileError at +8; err tag
     for (layout.payload_tys, 0..) |payload_ty, idx| {
         if (idx == err.payload_start and err_is_coarse) {
-            if (!try emit_wasi_coarse_error_enum_payload(allocator, tokens, import, err.ty, 8, out)) {
+            if (!try emit_wasi_coarse_error_enum_payload(allocator, tokens, import, err.payload_type orelse err.ty, 8, out)) {
                 return error.NoMatchingCall;
             }
         } else if (idx == err.payload_start) {
@@ -1506,17 +1512,23 @@ pub fn emit_wasi_read_result_as_union_value(
 
     var ok_branch: ?UnionBranch = null;
     var err_branch: ?UnionBranch = null;
+    var err_is_coarse = false;
     for (layout.branches) |branch| {
-        if (std.mem.eql(u8, branch.ty, "i32") and branch.payload_len == 1 and
-            branch.payload_start < layout.payload_tys.len and
-            std.mem.eql(u8, layout.payload_tys[branch.payload_start], "i32"))
-        {
+        if (union_branch_is_status_i32(layout, branch)) {
             if (err_branch != null) return false;
             err_branch = branch;
+            err_is_coarse = false;
             continue;
         }
-        // Ok arm: Tuple<[u8], bool> → two leaf slots.
-        if (is_tuple_type_name(branch.ty) and branch.payload_len == 2 and
+        if (union_branch_is_coarse_error(tokens, layout, branch)) {
+            if (err_branch != null) return false;
+            err_branch = branch;
+            err_is_coarse = true;
+            continue;
+        }
+        // Ok arm: Tuple<[u8], bool> → two leaf slots. Result calls this branch Ok.
+        const payload_ty = branch.payload_type orelse branch.ty;
+        if (is_tuple_type_name(payload_ty) and branch.payload_len == 2 and
             branch.payload_start + 1 < layout.payload_tys.len and
             std.mem.eql(u8, layout.payload_tys[branch.payload_start], "[u8]") and
             std.mem.eql(u8, layout.payload_tys[branch.payload_start + 1], "bool"))
@@ -1530,10 +1542,11 @@ pub fn emit_wasi_read_result_as_union_value(
     const ok = ok_branch orelse return false;
     const err = err_branch orelse return false;
     if (layout.payload_tys.len != 3) return false;
-    if (!std.mem.eql(u8, ok.ty, "Tuple<[u8],bool>") and !std.mem.eql(u8, ok.ty, "Tuple<[u8], bool>")) {
-        // Compact source_ty from tokens drops spaces; branch.ty is compact.
+    const ok_payload_ty = ok.payload_type orelse ok.ty;
+    if (!std.mem.eql(u8, ok_payload_ty, "Tuple<[u8],bool>") and !std.mem.eql(u8, ok_payload_ty, "Tuple<[u8], bool>")) {
+        // Compact source_ty from tokens drops spaces; payload type is compact.
         // Accept only the two-leaf shape already checked above.
-        if (!(is_tuple_type_name(ok.ty) and
+        if (!(is_tuple_type_name(ok_payload_ty) and
             std.mem.eql(u8, layout.payload_tys[ok.payload_start], "[u8]") and
             std.mem.eql(u8, layout.payload_tys[ok.payload_start + 1], "bool")))
         {
@@ -1591,6 +1604,10 @@ pub fn emit_wasi_read_result_as_union_value(
             try storage_wat.emit_empty_storage_u8_value(allocator, out);
         } else if (idx == ok.payload_start + 1) {
             try out.appendSlice(allocator, "      i32.const 0\n");
+        } else if (idx == err.payload_start and err_is_coarse) {
+            if (!try emit_wasi_coarse_error_enum_payload(allocator, tokens, import, err.payload_type orelse err.ty, 4, out)) {
+                return error.NoMatchingCall;
+            }
         } else if (idx == err.payload_start) {
             try out.appendSlice(allocator,
                 \\      global.get $__wasi_result_area_base
@@ -1647,7 +1664,7 @@ pub fn emit_wasi_list_u8_result_as_union_value(
             continue;
         }
         // Ok arm: managed list storage ([u8] handle as i32).
-        if (is_storage_type_name(branch.ty) and branch.payload_len == 1 and
+        if (is_storage_type_name(branch.payload_type orelse branch.ty) and branch.payload_len == 1 and
             branch.payload_start < layout.payload_tys.len and
             is_storage_type_name(layout.payload_tys[branch.payload_start]))
         {
@@ -1661,7 +1678,7 @@ pub fn emit_wasi_list_u8_result_as_union_value(
     const err = err_branch orelse return false;
     if (layout.payload_tys.len != 2) return false;
     // Stream-read list is u8-only for this phase.
-    if (!std.mem.eql(u8, ok.ty, "[u8]")) return false;
+    if (!std.mem.eql(u8, ok.payload_type orelse ok.ty, "[u8]")) return false;
     if (!std.mem.eql(u8, layout.payload_tys[ok.payload_start], "[u8]")) return false;
 
     if (!try emit_wasi_result_list_u8_call(allocator, tokens, args_start, args_end, locals, ctx, import, out, emit_expr)) {
@@ -1705,7 +1722,7 @@ pub fn emit_wasi_list_u8_result_as_union_value(
         if (idx == ok.payload_start) {
             try storage_wat.emit_empty_storage_u8_value(allocator, out);
         } else if (idx == err.payload_start and err_is_coarse) {
-            if (!try emit_wasi_coarse_error_enum_payload(allocator, tokens, import, err.ty, 4, out)) {
+            if (!try emit_wasi_coarse_error_enum_payload(allocator, tokens, import, err.payload_type orelse err.ty, 4, out)) {
                 return false;
             }
         } else if (idx == err.payload_start) {
@@ -1812,7 +1829,7 @@ pub fn emit_wasi_descriptor_result_as_union_value(
     // err: zero ok slots; status or coarse *OpenFailed; err tag
     for (layout.payload_tys, 0..) |payload_ty, idx| {
         if (idx == err.payload_start and err_is_coarse) {
-            if (!try emit_wasi_coarse_error_enum_payload(allocator, tokens, import, err.ty, 4, out)) {
+            if (!try emit_wasi_coarse_error_enum_payload(allocator, tokens, import, err.payload_type orelse err.ty, 4, out)) {
                 return error.NoMatchingCall;
             }
         } else if (idx == err.payload_start) {

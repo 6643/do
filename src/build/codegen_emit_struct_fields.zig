@@ -902,9 +902,10 @@ pub fn union_local_single_remaining_payload_type(union_local: UnionLocal, exclud
     var matched: ?[]const u8 = null;
     for (union_local.layout.branches) |branch| {
         if (std.mem.eql(u8, branch.ty, "nil")) continue;
-        if (std.mem.eql(u8, branch.ty, excluded_ty)) continue;
+        const payload_ty = branch.payload_type orelse branch.ty;
+        if (std.mem.eql(u8, branch.ty, excluded_ty) or std.mem.eql(u8, payload_ty, excluded_ty)) continue;
         if (matched != null) return null;
-        matched = branch.ty;
+        matched = payload_ty;
     }
     return matched;
 }

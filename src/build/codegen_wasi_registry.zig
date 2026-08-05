@@ -383,14 +383,19 @@ fn expr_call_head(tokens: []const lexer.Token, range: codegen_tokens.Range) ?Exp
     };
 }
 
-/// Typed exclusive-union binding of a host call: `r T | U = host(...)`.
+/// Typed exclusive-union or Result binding of a host call.
 pub fn is_wasi_union_result_binding_call(tokens: []const lexer.Token, call_idx: usize) bool {
     const line_start = find_line_start(tokens, call_idx);
     const line_end = find_line_end(tokens, call_idx);
     const eq_idx = find_top_level_token(tokens, line_start, call_idx, "=") orelse return false;
-    // Must look like a typed binding (ident + type with `|`), not multi-lhs.
+    // Must look like a typed binding, not multi-lhs.
     if (find_top_level_token(tokens, line_start, eq_idx, ",") != null) return false;
-    if (find_top_level_token(tokens, line_start, eq_idx, "|") == null) return false;
+    const has_union_type = find_top_level_token(tokens, line_start, eq_idx, "|") != null;
+    const has_result_type = line_start + 2 < eq_idx and
+        tokens[line_start + 1].kind == .ident and
+        std.mem.eql(u8, tokens[line_start + 1].lexeme, "Result") and
+        tok_eq(tokens[line_start + 2], "<");
+    if (!has_union_type and !has_result_type) return false;
     const rhs_range = trim_parens(tokens, eq_idx + 1, line_end);
     const call_head = expr_call_head(tokens, rhs_range) orelse return false;
     return !call_head.is_intrinsic and call_head.name_idx == call_idx;

@@ -1,0 +1,25 @@
+package do:record-stream-probe@0.1.0;
+
+interface types {
+  record probe-entry {
+    id: u32,
+    label: string,
+  }
+  enum error-code { io, no-entry }
+}
+
+interface source {
+  use types.{error-code, probe-entry};
+  read-via-stream: func() -> tuple<stream<probe-entry>, future<result<_, error-code>>>;
+}
+
+interface probe {
+  use types.{error-code};
+  run: async func() -> result<_, error-code>;
+}
+
+world record-stream-probe {
+  import types;
+  import source;
+  export probe;
+}

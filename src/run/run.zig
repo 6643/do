@@ -27,7 +27,7 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
     var loaded = try build_run.load_program(init, parsed_cli.input_path);
     defer loaded.deinit(allocator);
 
-    const wat = try build_run.compile_program_wat(io, allocator, parsed_cli.input_path, false, &loaded);
+    const wat = try build_run.compile_program_wat(io, allocator, parsed_cli.input_path, false, false, false, false, false, false, false, false, false, null, &loaded);
     defer allocator.free(wat);
 
     const tmp_root = init.environ_map.get("TMPDIR") orelse "/tmp";

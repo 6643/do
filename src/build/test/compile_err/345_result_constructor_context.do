@@ -1,0 +1,3 @@
+start() {
+    value = Ok(false)
+}

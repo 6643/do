@@ -1,0 +1,17 @@
+package wasi:cli@0.3.0-rc-2025-09-16;
+
+interface stdout {
+  enum error-code {
+    io,
+    illegal-byte-sequence,
+    pipe,
+  }
+
+  write-via-stream: async func(data: stream<u8>) -> result<_, error-code>;
+}
+
+world stream-stdout-probe {
+  import stdout;
+  use stdout.{error-code};
+  export write-via-stream: async func(data: stream<u8>) -> result<_, error-code>;
+}

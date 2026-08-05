@@ -1,0 +1,3 @@
+start() {
+    close(1)
+}

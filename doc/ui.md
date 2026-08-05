@@ -1,6 +1,6 @@
 # UI 与响应式状态设计
 
-**状态:** UI host-binding 设计草案 + 可执行 TypeScript runtime 参考。当前 compiler 仍未提供 UI export/dispatcher；`examples/ui-signal/` 用普通 TypeScript 函数验证运行时语义，浏览器加载构建产物 `dist/demo.js`。
+**状态:** UI host-binding 设计草案 + 可执行 TypeScript runtime 参考。compiler 已提供通用 `--host-export --host-manifest` Core Wasm 函数导出清单，但尚未提供 UI host imports 或 JS 值 ABI；`examples/ui-signal/` 仍用普通 TypeScript 函数验证运行时语义，浏览器加载构建产物 `dist/demo.js`。
 
 ## 设计边界
 
@@ -61,17 +61,36 @@ runtime.disposeScope(ctx)
 
 ### JS runtime 与 do 的边界
 
-组件首次 mount 时, JS 创建内部 Scope 和对应 Context, 再调用普通的 `do` render 函数:
+目标方案中, JS 先 instantiate Wasm, 注入 `do:ui` host imports, 读取 compiler
+生成的通用 host-export manifest。组件首次 mount 时, JS 创建内部 Scope 和对应
+Context, 再调用 entry module 的公开 render export:
 
 ```text
-JS: scope = mount("counter", key)
-JS: call_do("counter_render", scope)     // dispatch 传给 do 的是 scope.context
+JS: scope = mount("counter_render", key)
+JS: wasm.exports.counter_render(scope.context)
 do: counter_render(ctx Context) { ... }
 do: ui_bind_text(node, ctx, "counter_text")
 do: ui_on_click(button, ctx, "counter_increment")
 ```
 
-函数名或静态 key 只用于定位导出函数; JS runtime 可以把它们转换为内部数字 ID。当前 compiler 未实现 UI export/dispatcher, 因此这些 API 仍是设计草案; 最小桥接只需要固定的 `do_dispatch`/函数表, 不需要把 `funcref`、指针、引用或闭包暴露给 `do`。
+`ui_bind_*` 中的函数名由 JS runtime 通过通用 manifest 查找公开 Wasm export,
+并按 binding 需要的 ABI 校验签名。例如 text binding 要求 `(Context) -> text`。
+compiler 不认识 UI 库函数, 不 lower UI 字符串, 也不生成 `ui_dispatch`。私有
+`.function` 不出现在 host-export manifest, 因而不能成为 JS callback 目标。
+
+当前可执行的通用构建命令是:
+
+```text
+do build app.do --host-export --host-manifest app.host.json -o app.wat
+```
+
+它导出 entry module 的公开、非泛型函数，并记录 source name、稳定的 WAT export
+name，以及分开的 `source_params`/`source_results` 和
+`wasm_params`/`wasm_results`。此版本的 `core-wasm-v1` manifest 只描述已有
+Core Wasm ABI; `text` 当前作为 `i32` managed handle 出现。tuple、unmanaged
+struct、union 与 callback 参数的完整展开仍须与 WAT emitter 共享一套 ABI 规则;
+list/struct 的 JS 值表示和 ARC 所有权协议也尚未定义，因此 runtime 不能据此宣称
+完整的 JS/Wasm UI bridge。
 
 事件和响应式回调分工不同:
 
@@ -94,6 +113,38 @@ effect(counter_class, ctx)
 
 一个 state 可以有多个订阅者, 一个 Effect 也可以读取多个 state。Effect 每次重新执行前, runtime 先删除旧依赖; 条件分支改变后, 依赖边会按本次读取结果重新建立。
 
+### compute 与 apply 分相
+
+借鉴 Solid 2 的 compute/apply 分相, 但不照搬 `createEffect` 的源码 API。
+JS runtime 内部为每个 binding 建立两个阶段:
+
+```text
+compute:
+    activeObserver = binding
+    value = wasm export / do derived function(Context)
+    activeObserver = null
+
+apply:
+    若 value 与上次结果相等则跳过
+    否则只写 DOM 或执行用户副作用
+```
+
+compute 是唯一允许自动追踪 `ui_read_*` 的阶段。它在开始前删除 binding 的旧
+依赖, 本轮读取重新建立依赖边; 因此条件分支可以自然切换订阅。apply 不进入
+observer, 不读取或写入 State, 只消费 compute 已经返回的普通值。事件 action
+可以读写 State, 但不建立 effect 依赖。开发模式必须在 compute 写 State 或
+apply 读写 State 时报告错误。
+
+例如 `ui_bind_text(node, ctx, "counter_text")` 的内部模型是:
+
+```text
+compute -> wasm.exports.counter_text(ctx) -> text
+apply(text) -> node.textContent = text
+```
+
+它仍是细粒度更新: 只有读取到同一 State 的 binding 会 compute; compute 输出
+未变化时, 对应 DOM apply 也不会执行。
+
 因此 `increment` 只修改状态, 不调用 render, 不手写 class 或 style 更新:
 
 ```do
@@ -110,7 +161,7 @@ counter_increment(ctx Context) -> nil {
 ```do
 counter_text(ctx Context) -> text {
     value = ui_read_i32(ctx, "count")
-    return @to_text(value)
+    return to_text(value)
 }
 
 counter_class(ctx Context) -> text {
@@ -132,7 +183,9 @@ bind_attr(node, "class", counter_class) -> class Effect
 bind_style(node, "color", counter_color) -> style Effect
 ```
 
-多个状态的组合函数会自动依赖所有读取到的 state:
+多个状态的组合函数会自动依赖所有读取到的 state。文本拼接不是数值
+`@add` 的职责; `+` 也不是当前语言语法。下面是规划中的
+`text_concat` 库 API 具备后应有的写法, 不是当前 compiler 已支持的调用:
 
 ```do
 counter_summary(ctx Context) -> text {
@@ -141,7 +194,7 @@ counter_summary(ctx Context) -> text {
     enabled = ui_read_bool(ctx, "enabled")
 
     if !enabled return "disabled"
-    return name + ": " + @to_text(count)
+    return text_concat(name, ": ", to_text(count))
 }
 ```
 
@@ -172,7 +225,7 @@ item 函数通过 runtime context 读取当前值, 不需要闭包或手写数�
 list_item_text(ctx Context) -> text {
     item = ui_each_item(ctx)
     index = ui_each_index(ctx)
-    return item + ":" + @to_text(index)
+    return text_concat(item, ":", to_text(index))
 }
 ```
 
@@ -299,51 +352,47 @@ effect.dependencies -> state
 
 ## `watch` 状态监听
 
-`watch` 是响应式语义的概念名称; 第一版 JS runtime 通过 state read + Effect 自动收集依赖, 不要求引入 `watch x, y { ... }` 这种新的 `do` 语法。
-
-监听一个或多个状态值的目标效果等价于:
-
-```do
-x i32 = 0
-y i32 = 0
-
-watch x, y {
-    render_counter(x, y)
-}
-```
-
-`watch x, y` 表示对列表中的每个依赖建立监听; 任意一个依赖发生有效变化时, handler 被调度一次。JS runtime 的动态依赖版本不需要预先列出 `x, y`, handler 执行期间的 `ui_read_*` 就是依赖来源。
-
-字段路径也可以作为依赖：
+`watch` 是响应式语义的概念名称, 不是已采纳的 `do` 块语法。当前方案不引入
+`watch x, y { ... }`, 也不要求 `do` 传递函数值。`ui_bind_*` 已经是 DOM
+渲染 effect; 后续的用户副作用使用三组静态函数名:
 
 ```do
-watch user.name, user.avatar {
-    render_profile(user.name, user.avatar)
-}
+ui_watch(ctx, "profile_compute", "profile_apply", "profile_cleanup")
 ```
 
-### 触发规则
+`profile_compute(ctx)` 通过 `ui_read_*` 动态建立依赖并返回普通值;
+`profile_apply(ctx, value)` 只消费该值并执行用户副作用, 不能调用 `ui_read_*`
+或 `ui_write_*`; `profile_cleanup(ctx, value)` 在下一次 apply 前和 Scope 销毁时
+执行, 同样不读写 State。函数名由 JS runtime 在 host-export manifest 中按 ABI
+解析; JS runtime 创建真正的 observer、订阅和 closure, 它们不进入 `do` 的 ABI。
 
-1. watcher 默认在注册后执行一次，用于建立初始 UI；
-2. 后续只在依赖的新旧值不相等时触发；
-3. 同一 scheduler 批次内多个依赖连续变化时只调度一次，handler 读取最终值；
-4. `watch` 监听赋值提交或明确的状态更新，不监听普通读取；
-5. 字段路径只监听该字段，不隐式执行深度遍历；需要监听多个字段时显式列出；
-6. handler 默认只读依赖，不允许直接替换被监听值；状态更新应通过普通赋值或专门的状态 API 完成。
+组件 Scope 卸载时, watcher/effect、Derived、事件和 child Scope 一起取消。
+watcher 不创建脱离 Scope 的后台任务; 如果副作用需要继续运行, 必须显式转移到
+更长生命周期的 owner。当前语言没有捕获闭包, JS runtime 的 Effect closure
+只存在于 host owner 内部。
 
-### 生命周期
+## 下一阶段改进列表
 
-UI watcher/effect 的订阅属于 runtime `Scope`, 而不是 `do` 函数返回后仍然存在的词法闭包:
+以下按依赖顺序排列。第 6 至第 8 项借鉴 TC39 Signals Stage 1: 它只定义
+反应图和低层 watcher, 不标准化 effect、scheduler、owner、渲染或销毁。这些
+框架责任归 JS runtime 和 Scope 所有。清单不引入 UI compiler special case、
+`ui_dispatch` 或正式 `js_eval` API。
 
-```do
-render_panel(state PanelState) {
-    watch state.title, state.items {
-        render_panel_body(state.title, state.items)
-    }
-}
-```
+1. **通用 host-export 构建目标。** 普通 CLI/WASI 构建保持现有入口; host-export 构建把 entry module 直接声明的非私有函数变成可调用的 Wasm export。`.private` 函数不导出。这个规则服务所有 host, 不属于 UI 语法。
+2. **通用 export manifest。** 与 Wasm 一同输出公开函数的 source name、实际 Wasm export name、参数 ABI 和返回 ABI。重载使用稳定 ABI mangling; host 按名字和期待签名解析, 不猜内部符号或内存布局。
+3. **通用 JS/Wasm ABI wrapper。** 实现标量、`Context`、`Node` handle、`text`、`[T]` 和 struct 的参数/返回值 wrapper, 明确分配、读取、释放和所有权。该层也为后续 Component/WIT export 服务。
+4. **`lib/ui.do`。** 建立 do-facing UI host import 库, 只声明 Context/Node handle、State、DOM、binding、event、each/show/ref API。`State`、`Computed`、`Watcher`、Scope 留在 JS runtime。`examples/` 中的文件不作为标准库权威接口。
+5. **初始化和挂载协议。** JS 创建 runtime imports 后 instantiate Wasm, 读取 manifest 并 attach exports; mount 创建 Scope/Context, 调用公开 render export, render 返回后统一执行首轮 binding。JS runtime 通过 manifest 解析 binding/action 的函数名和 ABI, compiler 不认识 `ui_bind_*`。
+6. **`State` 与 `Computed` 图。** `State.get/set` 保存源值; `Computed.get` 动态追踪同步读取的 source, 保持惰性重算和缓存。Computed 在通知下游前以 `Object.is` 门控; compute 异常缓存并重抛, 或交给明确的 UI error boundary 策略。compute/derived 上下文禁止写 State。
+7. **低层 `Watcher` 通知。** Watcher 只订阅 graph dirty 通知; `notify` 同步且不允许读写 State 或 Computed。它不等于 user effect, 只把后续工作交给框架 scheduler; do 不暴露 `Watcher`、`untrack` 或 root effect API。
+8. **执行模式、effect 与调度。** 借鉴 Solid compute/apply 分相, 但不复制其 API。区分 structural render、compute、render apply、event action 与 user-effect apply。`ui_bind_*` 的 compute 调用 do 派生 export 并动态收集依赖, apply 只更新 DOM; `ui_watch` 使用 compute/apply/cleanup 函数, apply/cleanup 不追踪或读写 State。graph dirty 同步传播, JS scheduler 默认 microtask 批处理, 先完成 compute 和 DOM apply, 再执行 user-effect apply。flush 仅为 JS runtime 内部测试和命令式边界, 不提供 do API。
+9. **所有权和异步清理。** Scope 统一拥有 binding、watcher 订阅、user-effect cleanup、事件、ref 和 child Scope。cleanup 在 rerun 前和 dispose 时执行; 异步任务带 Scope revision 或 abort token, 防止卸载后写入 DOM。
+10. **struct/list 细粒度状态。** 使用结构 State 与叶子路径 State: `orders.structure`、`order:<id>.customer.name`、`line:<id>.quantity`。keyed child Scope 使用实体稳定 key, 不以 index 为 identity。先由 runtime 生成和校验路径, 后续才考虑通用 compiler 辅助。
+11. **文本源能力。** 标准库增加 `text_concat(a text, b text, rest ...text) -> text`。禁止把 `@add` 用作字符串拼接; `to_text` 继续是普通函数名, 不使用 `@to_text`。
+12. **错误、开发工具、测试和文档。** JS devtools 显示 graph、pending queue 与 Scope owner tree; 覆盖 host export、ABI wrapper、动态依赖、相等跳过、销毁、列表重排和跨 Wasm/JS mount。同步删除过时的 dispatcher/UI compiler special-case 文档。
 
-组件 Scope 卸载时, watcher/effect、Derived、事件和 child Scope 一起取消。watcher 不创建脱离 Scope 的后台任务; 如果副作用需要继续运行, 必须显式转移到更长生命周期的 owner。当前语言没有捕获闭包, JS runtime 的 Effect closure 只存在于 host owner 内部。
+当前 `examples/ui-signal/runtime.ts` 仍是第一版参考实现: 调度立即 flush、effect
+单阶段执行, 没有 Wasm host ABI。上述清单是后续实现计划, 不应误读为已经具备的行为。
 
 ## `monitor` 函数完成监视
 

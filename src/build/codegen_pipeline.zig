@@ -189,12 +189,24 @@ const codegen_storage_layout = @import("codegen_storage_layout.zig");
 const codegen_emit_expression = @import("codegen_emit_expression.zig");
 const codegen_emit_call = @import("codegen_emit_call.zig");
 const codegen_generics = @import("codegen_generics.zig");
+const host_export_manifest = @import("host_export_manifest.zig");
+const codegen_p3_wait_for = @import("codegen_p3_wait_for.zig");
+const codegen_component_cabi_realloc = @import("codegen_component_cabi_realloc.zig");
+const codegen_async_model = @import("codegen_async_model.zig");
+const codegen_component_resource_probe = @import("codegen_component_resource_probe.zig");
+const codegen_component_wasi_filesystem_preopen = @import("codegen_component_wasi_filesystem_preopen.zig");
+const codegen_component_wasi_sockets = @import("codegen_component_wasi_sockets.zig");
+const codegen_component_resource_async = @import("codegen_component_resource_async.zig");
+const codegen_component_async = @import("codegen_component_async.zig");
+const codegen_gc_core = @import("codegen_gc_core.zig");
+pub const emit_p3_wait_for_wit = codegen_p3_wait_for.emit_component_wit_for_tokens;
 const collect_body_locals_with_mode = codegen_body.collect_body_locals_with_mode;
 // Re-export expression and call emit entry points.
 const emit_start_func = codegen_emit_expression.emit_start_func;
 const emit_scalar_numeric_start_with_backend_ir = codegen_emit_expression.emit_scalar_numeric_start_with_backend_ir;
 const emit_test_funcs = codegen_emit_expression.emit_test_funcs;
 const emit_user_funcs = codegen_emit_expression.emit_user_funcs;
+const emit_host_exports = codegen_emit_expression.emit_host_exports;
 
 // Generic helpers stay private to the pipeline orchestration.
 const append_unmanaged_struct_result_abi = codegen_generics.append_unmanaged_struct_result_abi;
@@ -471,11 +483,56 @@ fn install_gen_hooks() void {
     codegen_callbacks.install_infer_generic_call_union_result(infer_generic_call_union_result_layout);
 }
 
+fn program_has_async_func(program: parser.Program) bool {
+    for (program.func_sigs) |sig| {
+        if (sig.is_async) return true;
+    }
+    return false;
+}
+
+pub fn program_requires_async_lowering(program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph) bool {
+    if (program_has_async_func(program)) return true;
+    if (tokens_require_async_lowering(tokens)) return true;
+    if (module_graph) |graph| {
+        for (graph.modules) |module| {
+            if (tokens_require_async_lowering(module.tokens)) return true;
+        }
+    }
+    return false;
+}
+
+fn tokens_require_async_lowering(tokens: []const lexer.Token) bool {
+    for (tokens, 0..) |token, idx| {
+        if (tok_eq(token, "async")) return true;
+        if (tok_eq(token, "await_all") or tok_eq(token, "await_any")) return true;
+        if (!tok_eq(token, "@") or idx + 1 >= tokens.len) continue;
+        if (tok_eq(tokens[idx + 1], "cancel")) return true;
+    }
+    return false;
+}
+
 pub fn emit_wat(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph) ![]u8 {
     return emit_wat_with_options(allocator, program, tokens, module_graph, .{});
 }
 
+test "aggregate await tokens require async lowering" {
+    const tokens = try lexer.tokenize(std.testing.allocator, "start() { await_all(left, right) }");
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expect(tokens_require_async_lowering(tokens));
+}
+
 pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph, options: EmitOptions) ![]u8 {
+    if (options.p3_resource_probe_component) return finalize_component_wat(allocator, codegen_component_resource_probe.emit_component_wat(allocator, program, tokens, module_graph));
+    if (options.p3_wasi_filesystem_preopen_component) return finalize_component_wat(allocator, codegen_component_wasi_filesystem_preopen.emit_component_wat(allocator, program, tokens, module_graph));
+    if (options.p3_wasi_sockets_create_bind_drop_component) return finalize_component_wat(allocator, codegen_component_wasi_sockets.emit_component_wat(allocator, program, tokens, module_graph));
+    if (options.p3_resource_async_component) return finalize_component_wat(allocator, codegen_component_resource_async.emit_component_wat(allocator, program, tokens, module_graph));
+    if (options.p3_async_component) return codegen_component_async.emit_component_wat(allocator, program, tokens, module_graph);
+    if (options.gc_core) return codegen_gc_core.emit_gc_core_wat(allocator, program, tokens);
+    if (options.p3_wait_for_component) return finalize_component_wat(allocator, codegen_p3_wait_for.emit_component_wat(allocator, program, tokens, module_graph));
+    // Generic Core-Wasm emission has no resumable async lowering. Guard before
+    // any body-dependent collection can misclassify an async intrinsic call.
+    if (program_requires_async_lowering(program, tokens, module_graph)) return error.AsyncLoweringUnavailable;
     install_gen_hooks();
 
     var out = std.ArrayList(u8).empty;
@@ -605,9 +662,11 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
     // Preopens always lower to [Tuple<Dir,text>] pack; ensure layout even if type text is only on host result sugar.
     try ensure_preopen_dir_tuple_storage_pack_layout(allocator, wasi_imports.items, structs.items, &struct_layouts);
     try mangle_overloaded_function_names(allocator, &functions);
-
+    const async_functions = try codegen_async_model.collect_async_functions(allocator, functions.items);
+    defer codegen_async_model.free_async_function_plans(allocator, async_functions);
     const ctx = CodegenContext{
         .functions = functions.items,
+        .async_functions = async_functions,
         .structs = structs.items,
         .value_enums = value_enums.items,
         .payload_enums = payload_enums.items,
@@ -619,6 +678,11 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
         .modules = if (module_graph) |graph| graph.modules else &.{},
         .imported_alias_ctx = imported_alias_ctx,
     };
+    if (options.host_manifest_out) |manifest_out| {
+        const manifest = try host_export_manifest.emit(allocator, functions.items, tokens, ctx);
+        defer allocator.free(manifest);
+        try manifest_out.appendSlice(allocator, manifest);
+    }
 
     try out.appendSlice(allocator, "(module\n");
     try append_fmt(allocator, &out, "  ;; source_len={d}\n", .{program.source_len});
@@ -630,9 +694,23 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
     try runtime_prelude_wat.emit_string_data_memory(allocator, &out, string_data.items.items, .{ .component_core = options.component_core });
     try runtime_prelude_wat.emit_arc_runtime_prelude(allocator, &out, string_data.items.items, struct_layouts.items);
     try emit_user_funcs(allocator, ctx, &out);
-    try emit_start_func(allocator, tokens, ctx, &out);
+    if (options.host_export) {
+        try emit_host_exports(allocator, ctx, &out);
+    } else {
+        try emit_start_func(allocator, tokens, ctx, &out);
+    }
     try out.appendSlice(allocator, ")\n");
     return out.toOwnedSlice(allocator);
+}
+
+fn finalize_component_wat(allocator: std.mem.Allocator, result: anyerror![]u8) ![]u8 {
+    const wat = result catch |err| return err;
+    const rewritten = codegen_component_cabi_realloc.rewrite(allocator, wat) catch |err| {
+        allocator.free(wat);
+        return err;
+    };
+    allocator.free(wat);
+    return rewritten;
 }
 
 pub fn emit_test_wat(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph) ![]u8 {
@@ -769,9 +847,12 @@ pub fn emit_test_wat(allocator: std.mem.Allocator, program: parser.Program, toke
     }
     try ensure_preopen_dir_tuple_storage_pack_layout(allocator, wasi_imports.items, structs.items, &struct_layouts);
     try mangle_overloaded_function_names(allocator, &functions);
+    const async_functions = try codegen_async_model.collect_async_functions(allocator, functions.items);
+    defer codegen_async_model.free_async_function_plans(allocator, async_functions);
 
     const ctx = CodegenContext{
         .functions = functions.items,
+        .async_functions = async_functions,
         .structs = structs.items,
         .value_enums = value_enums.items,
         .payload_enums = payload_enums.items,

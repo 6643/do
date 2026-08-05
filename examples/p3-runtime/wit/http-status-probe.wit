@@ -1,0 +1,17 @@
+package wasi:http@0.3.0-rc-2025-09-16;
+
+interface types {
+  resource response {
+    get-status-code: func() -> u16;
+  }
+}
+
+interface probe {
+  use types.{response};
+  run: func(response: own<response>) -> u16;
+}
+
+world http-status-probe {
+  import types;
+  export probe;
+}

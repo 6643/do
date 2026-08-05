@@ -1,0 +1,7 @@
+(export "sum" (func $sum))
+(export "pick__i32" (func $pick__i32))
+(export "pick__i64" (func $pick__i64))
+(export "echo" (func $echo))
+(export "pair" (func $pair))
+(export "optional" (func $optional))
+(export "point_x" (func $point_x))

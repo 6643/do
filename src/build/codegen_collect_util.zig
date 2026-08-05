@@ -448,8 +448,83 @@ pub fn parse_union_type_layout(
     imported_alias_ctx: ?ImportedAliasContext,
     owned_types: *std.ArrayList([]const u8),
 ) !?UnionLayout {
+    if (try parse_result_type_layout(allocator, tokens, start_idx, end_idx, structs, struct_layouts, owned_types)) |layout| {
+        return layout;
+    }
     const range = union_type_expr_range(allocator, tokens, start_idx, end_idx, imported_alias_ctx) orelse return null;
     return try parse_inline_union_layout(allocator, range.tokens, range.start, range.end, structs, struct_layouts, owned_types);
+}
+
+pub fn parse_result_type_layout(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    structs: []const StructDecl,
+    struct_layouts: []const StructLayout,
+    owned_types: *std.ArrayList([]const u8),
+) !?UnionLayout {
+    if (start_idx + 3 >= end_idx or !std.mem.eql(u8, tokens[start_idx].lexeme, "Result") or !tok_eq(tokens[start_idx + 1], "<")) return null;
+    const close_angle = find_matching_in_range(tokens, start_idx + 1, "<", ">", end_idx) catch return null;
+    if (close_angle + 1 != end_idx) return null;
+    const comma = find_top_level_token(tokens, start_idx + 2, close_angle, ",") orelse return null;
+    const ok = (try parse_codegen_type_expr(allocator, tokens, start_idx + 2, comma, owned_types)) orelse return null;
+    const err = (try parse_codegen_type_expr(allocator, tokens, comma + 1, close_angle, owned_types)) orelse return null;
+    if (ok.next_idx != comma or err.next_idx != close_angle) return null;
+    return try build_result_union_layout(allocator, tokens, ok.ty, err.ty, structs, struct_layouts, owned_types);
+}
+
+pub fn build_result_union_layout(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    ok_ty: []const u8,
+    err_ty: []const u8,
+    structs: []const StructDecl,
+    struct_layouts: []const StructLayout,
+    owned_types: *std.ArrayList([]const u8),
+) !UnionLayout {
+    var payload_tys = std.ArrayList([]const u8).empty;
+    errdefer payload_tys.deinit(allocator);
+    const ok_start = payload_tys.items.len;
+    if (!std.mem.eql(u8, ok_ty, "nil")) {
+        try append_union_branch_payload_types(allocator, tokens, ok_ty, structs, struct_layouts, &payload_tys);
+    }
+    const ok_len = payload_tys.items.len - ok_start;
+    const err_start = payload_tys.items.len;
+    try append_union_branch_payload_types(allocator, tokens, err_ty, structs, struct_layouts, &payload_tys);
+    const err_len = payload_tys.items.len - err_start;
+
+    const source_ty = try std.fmt.allocPrint(allocator, "Result<{s},{s}>", .{ ok_ty, err_ty });
+    errdefer allocator.free(source_ty);
+    try owned_types.append(allocator, source_ty);
+    const branches = try allocator.dupe(UnionBranch, &.{
+        .{ .ty = "Ok", .tag = 0, .payload_start = ok_start, .payload_len = ok_len, .payload_type = ok_ty },
+        .{ .ty = "Err", .tag = 1, .payload_start = err_start, .payload_len = err_len, .payload_type = err_ty },
+    });
+    errdefer allocator.free(branches);
+    return .{
+        .source_ty = source_ty,
+        .branches = branches,
+        .payload_tys = try payload_tys.toOwnedSlice(allocator),
+    };
+}
+
+pub fn parse_result_type_layout_from_name(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    ty: []const u8,
+    structs: []const StructDecl,
+    struct_layouts: []const StructLayout,
+    owned_types: *std.ArrayList([]const u8),
+) !?UnionLayout {
+    if (!std.mem.startsWith(u8, ty, "Result<") or ty.len < "Result<a,b>".len or ty[ty.len - 1] != '>') return null;
+    const args = ty["Result<".len .. ty.len - 1];
+    const comma = find_top_level_type_separator(args, ',') orelse return null;
+    if (find_top_level_type_separator_from(args, comma + 1, ',') != null) return null;
+    const ok_ty = args[0..comma];
+    const err_ty = args[comma + 1 ..];
+    if (ok_ty.len == 0 or err_ty.len == 0) return null;
+    return try build_result_union_layout(allocator, tokens, ok_ty, err_ty, structs, struct_layouts, owned_types);
 }
 
 pub fn union_type_expr_range(

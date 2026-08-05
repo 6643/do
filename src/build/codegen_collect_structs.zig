@@ -716,6 +716,9 @@ pub fn parse_type_union_layout_from_name(
     struct_layouts: []const StructLayout,
     owned_types: *std.ArrayList([]const u8),
 ) !?UnionLayout {
+    if (try codegen_collect_util.parse_result_type_layout_from_name(allocator, tokens, ty, structs, struct_layouts, owned_types)) |layout| {
+        return layout;
+    }
     if (find_top_level_type_separator(ty, '|') == null) return null;
     var branches = std.ArrayList(UnionBranch).empty;
     errdefer branches.deinit(allocator);

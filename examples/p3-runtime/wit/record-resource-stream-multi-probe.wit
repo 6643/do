@@ -1,0 +1,28 @@
+package do:record-resource-stream-multi@0.1.0;
+
+interface types {
+  enum error-code { io, no-entry }
+}
+
+interface source {
+  use types.{error-code};
+  resource ticket {}
+
+  record resource-entry {
+    id: u32,
+    left: own<ticket>,
+    right: own<ticket>,
+  }
+  read-via-stream: func() -> tuple<stream<resource-entry>, future<result<_, error-code>>>;
+}
+
+interface probe {
+  use types.{error-code};
+  run: async func() -> result<_, error-code>;
+}
+
+world record-resource-stream-multi {
+  import types;
+  import source;
+  export probe;
+}

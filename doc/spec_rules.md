@@ -38,7 +38,7 @@
 25. `nil/bool/number` 输出使用源码 token 风格，例如 `nil`、`true`、`false`、`123`、`3.14`；不做本地化、人类化或分组格式。浮点数使用最短 round-trip 十进制表示，不保留源码原始写法；非有限浮点值固定展示为 `nan`、`inf`、`-inf`，它们只属于 `to_text` 文本输出。
 26. 第一版不承诺 `std` 通用 `Struct/Union` 展示；若诊断、文档工具或某个显式具体重载需要展示结构体，可采用字段构造风格并只按结构体声明顺序展示 public 字段。枚举分支值的诊断展示直接使用源码里的分支原名，例如 `NotFound`、`FileClosed`；不额外拼接所属枚举类型名，也不引入 `Type:Branch` 这类额外展示格式。合成 `Error` 只用于诊断/工具视图。该格式只是文本输出，不是源码构造语法。
 27. 函数名和签名可用于编译器诊断、文档或调试工具输出；普通源码里的函数值文本化只通过用户显式定义的具体函数签名 `to_text(f F) -> text` 重载获得，不由语言或 `std` 默认提供。
-28. `do` 目前只作为未来扩展保留关键字，已经进入 `ReservedWord`，不能作为普通名字；v1 没有可用 `do` 语法产生式。`defer` 是已落地 statement 关键字，不能作为普通名字；语义是离开当前词法区域时执行 cleanup。
+28. `async`、`await`、`await_all`、`await_any` 是公开并发关键字；`Future<T>`、`Stream<T>` 是公开的内建泛型类型。用户异步函数只写 `async name(...) -> T`，调用会 eagerly 产生 `Future<T>`；禁止写 `name(...) -> Future<T>` 或 `async name(...) -> Future<T>`。`await(future)` 或 `await(future, timeout_ms)` 消费一个 Future；timeout 参数是一个由 runtime 解释为毫秒的表达式。`await_all` 和 `await_any` 至少消费两个 Future；`@cancel(future)` 也消费一个 Future，且这四种操作都只能写在 async 函数体中。已 pinned 的 Component async lowering 将它直接映射为 `subtask.cancel`，在 ABI 终态后 drop subtask；它没有 operation ID、`CancelledAck` 或源码可见 `Cancelled` 结果，且不承诺回滚外部副作用。取消、超时和资源收尾由 async runtime 处理。`do` 不再是任务创建关键字，可以作为普通名字。`defer` 是已落地 statement 关键字，不能作为普通名字；语义是离开当前词法区域时执行 cleanup。
 29. 网络库属于 `std`；本版只定义地址、TCP listener/stream、UDP socket 等值形态。真实 `listen/connect/accept/read/write/send/receive/close` 等 host ABI 能承载 buffer 和资源句柄后再由标准库封装；源码层的 `recv` 已保留给消费循环 special form，不作为普通库函数名。
 30. `lib/_.do` 是 builtin/core 声明总表，编译器隐式加载，不作为 local import 目标，也不需要在普通源码中引用；它记录默认可见的 builtin special form、core primitive 声明和 core 普通函数签名，不承载 `std` 实现。
 
@@ -130,10 +130,17 @@ bool
 text
 char
 Error
+Future Stream StreamReader StreamWriter
 ```
 
-其中 `Error` 继续列在这个展示块里，只表示该名字被语言/编译器占用；它进入 `ReservedTypeName` / `ReservedName`，但不是 `BaseTypeName`，不能作为源码类型位直接使用。`text` 是普通源码基础类型。`char` 当前只作为 WIT ABI 签名里的类型 token 使用，不是 Do 普通源码类型名，并按 WIT-only 保留名处理，不能作为普通 lower 名、字段名、普通 lower 导入别名或函数名。
+其中 `Error` 继续列在这个展示块里，只表示该名字被语言/编译器占用；它进入 `ReservedTypeName` / `ReservedName`，但不是 `BaseTypeName`，不能作为源码类型位直接使用。`Future`、`Stream`、`StreamReader` 和 `StreamWriter` 是公开的保留内建泛型类型，只能以单参数形式写作 `Name<T>`，不能被用户声明为类型或作为普通名字使用。当前前端把 async 函数参数中的 `Stream<T>` / `StreamReader<T>` 作为仿射 reader：以同类型局部绑定接收时转移所有权，不能再次从原绑定转移。`@next(reader)` 只能位于 async body，唯一形态是 `pending Future<Result<T, nil>> = @next(reader)`；reader 保持当前 owner，Result 的 `T` 必须与 reader 的 `T` 一致，`Ok` 是 item，`Err(nil)` 是 EOF。只有 `@next` 是 intrinsic，裸 `next` 不保留，仍可作为普通用户名称。`new_stream<T>(capacity)` 的双绑定 `reader StreamReader<T>, writer StreamWriter<T> = new_stream<T>(capacity)` 会登记一个 reader 和一个 affine writer lease；`writer(value)` 只能绑定为 `Future<Result<nil, E>>`，且 value 的类型必须与 writer 的 `T` 一致。`StreamWriter<T>` 是 producer lease；同类型绑定会转移 lease，最终 owner 必须调用保留终结原语 `close(writer)`、`abort(writer, err)` 或写 `defer close(writer)`；这些调用只能出现在 async body，且第一个参数必须是当前被跟踪的 writer owner。受限的 descriptor-specific producer gate 还允许根级 `Future<Result<nil, E>> = async_helper(writer)` 转移 lease；最多允许一个只有同类型 `StreamWriter<T>` 参数的私有 forwarding helper，再由最终 helper 在自身 async body 中用 `defer close(writer)`（或其它保留终结原语）收尾。对于已登记的参数化 `do:stream-probe` 形状，还允许根级把 `(writer, count u64, value u8)` 原样传给一个三参数私有 helper；该 helper 只复用有界 countdown pump，仍不等于一般 async 函数 lowering。该 helper 形态只用于已登记的 `StreamWriter<u8>` descriptor，不等于一般 async 函数 lowering。`close` 恰好接受 1 个参数，`abort` 恰好接受 2 个参数，不接受尾逗号。路径敏感的 producer-lease 检查覆盖 if/else 合流、loop `break`/`continue`、词法 `defer`、同类型 transfer、helper transfer、writer write、终结和 async exit；每条可达路径必须给出一致状态。状态不一致产生 `maybe` 并报 `StreamWriterLeasePathConflict`，带着当前 defer cleanup 转移 writer 报 `StreamWriterDeferredTransfer`。`@next` 和 `new_stream` 的 source validation 已实现；已登记的 `Stream<u8>` descriptor-specific Component lowering 和 Rust/Wasmtime 探针也已实现，包括 pinned CLI forwarding/guest-producer、私有 `do:stream-probe` producer、helper-mediated producer lease 和 HTTP body producer slices。通用元素布局、任意 WIT stream、动态 producer endpoint、任意 payload、abort 到外部 WIT 错误值的映射及一般 resumable lowering 仍未开放，因此含 `async` 声明的普通程序仍不能通过 `do build`。`text` 是普通源码基础类型。`char` 当前只作为 WIT ABI 签名里的类型 token 使用，不是 Do 普通源码类型名，并按 WIT-only 保留名处理，不能作为普通 lower 名、字段名、普通 lower 导入别名或函数名。
 
+
+已登记的参数化 `do:stream-probe` producer 允许一个私有、最多五跳的 forwarding helper 链：根
+`produce` 必须按 `(writer, count, value)` 原样调用 forwarding helper，每个 forwarder 再按同名同序
+参数调用下一个 helper，最终 helper 才执行 countdown；forwarder 不得写入、终结 writer、创建
+stream 或进行第二个调用。该 descriptor-specific 形状仍不是一般 async call lowering；第六个
+forwarding edge、参数错位、任意 producer expression、借用/嵌套/variant resource 字段仍被拒绝。
 
 ### 2.3 Token 契约
 
@@ -247,19 +254,20 @@ Error
 21.1 声明式 WASI 类型绑定（stdlib 推荐）
 
 - `@wasi_resource("package/interface/resource", { .id i64 })`：do 侧 resource 句柄壳（非 WIT record 字段对齐）；壳内通常只有 handle 字段。
+- 私有 `do:resource-probe@0.1.0` 额外验证了 descriptor-bound 的 affine 规则：已登记的 `own` 参数消耗局部 owner，`borrow` 只在调用期间读取且保留 owner，同类型局部初始化转移 owner；活动 owner 离开作用域必须显式转移或 drop。`own<T>` / `borrow<T>` 不是 Do 源码语法，`.id` 也不是可读写的源码字段。`--p3-wasi-filesystem-preopen-component` 仅验证固定 `wasi:filesystem` 链路：preopen `own<Dir>` 经 `borrow descriptor.open-at` 得到 `Result<File, FileError>` 的 `Ok` owner，借用 sync 后先 drop File 再 drop Dir；它不开放通用资源列表、Result 解包或任意 filesystem lowering。
 - **Wasm `externref` / `anyref` / `funcref` / 线性内存 i32 指针:** 源码不暴露这些关键字为类型。策略已记录且 **未实现**: 将来可选 `@host_ref("…")` 对齐 resource 壳表达宿主对象; `anyref` 不做公开语法; `funcref` 不做一等类型 (export / 回调 id); i32 内存指针永不成为 do 类型, 只存在于 `@host` lowering。权威: `doc/design/wasm_ref_host_syntax.md` (pending **D10**)。**禁止** 为迁就 host 引入 `*T` / `&T`。
 - `@wasi_record("…", { field ty … })`：WIT record 的 do 镜像；字段名/顺序/类型须可校验。
 - `@wasi_enum("…/error-code", A | B | …)`（可选）：细粒度 error-code；粗 `DirError`/`FileError` 可继续手写 `error =` + wrapper 映射。
-- `@host(locator, member, (DoOrWitTypes…) -> DoOrWitRet)`：函数绑定。**推荐**在签名里写 do 类型：resource/record 名（`Dir`/`File`/`Datetime`）、`[u8]`/`text`/标量糖，以及排他联合 `Ok | Err` / `T | nil`（err 臂优先粗错误枚举，见 §23）。已知 target 的 do 侧糖由 codegen 规范为 WIT 写入 manifest。
+- `@host(locator, member, (DoOrWitTypes…) -> DoOrWitRet)`：函数绑定。**推荐**在签名里写 do 类型：resource/record 名（`Dir`/`File`/`Datetime`）、`[u8]`/`text`/标量糖，以及已登记 WIT `result` 的 `T | E` 或 `nil | E`（err 臂优先粗错误枚举，见 §23）。`Result<T, E>` 只保留给已登记的 private 或同型 WIT/ABI compatibility probe。已知 target 的 do 侧糖由 codegen 规范为 WIT 写入 manifest。
 - **禁止**把 WASI `result` 建模成 host 多返回（`-> Ok, Err` / 多左值作为源码结果模型）。结构体参数/结果用 do `Tuple<…>`、`@wasi_record` 或已登记 multi-arg flatten；**不**引入 `@wasi_tuple` / `wasi_result` / `wasi_option` 类型包装。
-- **过渡**：已知 target 仍接受源码 `result<…>` / WIT 字面糖，直到 stdlib 与 fixtures 迁完；新代码与 stdlib 私有 host 行优先 do 联合。
+- **过渡**：已知 target 仍接受源码 `result<…>` / WIT 字面糖，直到 stdlib 与 fixtures 迁完；新代码与 stdlib 的公开 host 行对已支持的 WIT result 优先 `T | E` 或 `nil | E`。`Result<T, E>` 继续只用于已登记 private 或同型 ABI compatibility probe。目前已验证 `filesystem/types.descriptor.open-at`、`read`、`write`、`sync`、`link-at`、`create-directory-at`、`remove-directory-at`，以及 `io/streams.input-stream.read`、`output-stream.check-write`、`output-stream.write`、`output-stream.flush` 和 `sockets/types.{tcp,udp}-socket.{create,bind}`；其它 WIT result 形态仍按各自已登记的 lowering 能力决定，不能据此推定全部已迁移。
 - host import 仍须位于模块 **import 前缀**（在类型声明/函数声明之前）；`@wasi_resource` / `@wasi_record` 写在 host 行之后。
 - 过程式「函数体内 `@host` + 手拆 result 槽」不是默认 stdlib 风格。
 
 ```do
-// 合法：host 全部在 import 前缀，类型绑定在其后；result 用 do 联合
+// 合法：host 全部在 import 前缀，类型绑定在其后；普通 WIT result 用 do union
 .host_now = @host("wasi:clocks/system-clock@0.3.0", "now", () -> Datetime)
-.host_dir_open_at = @host("wasi:filesystem/types@0.3.0", "descriptor.open-at", (Dir, i32, text, i32, i32) -> Dir | i32)
+.host_dir_open_at = @host("wasi:filesystem/types@0.3.0", "descriptor.open-at", (Dir, i32, text, i32, i32) -> Dir | DirError)
 .host_dir_create_at = @host("wasi:filesystem/types@0.3.0", "descriptor.create-directory-at", (Dir, text) -> nil | i32)
 .host_dir_drop = @host("wasi:filesystem/types@0.3.0", "descriptor.drop", (Dir) -> nil)
 
@@ -344,7 +352,7 @@ Datetime = @wasi_record("…", { seconds i64, nanoseconds u32 })
 本章定义类型位可出现的形态、类型声明、结构体、enum/error enum、union/nil、函数类型边界和类型大小约束。
 
 1. `List/HashMap` 等库类型由 `std` 或用户库定义，并按普通 `StructRefType` 解析；`[u8]` 是 core storage 类型表达式 `[T]` 的具体实例，不是可声明或可导入的命名类型。
-2. 只有 `StructDecl` 支持前置 `#T` 声明泛型类型参数；`StructDecl` 的类型参数只表达数据类型，不接受函数类型约束；`EnumDecl` 不支持泛型声明；源码没有顶层类型别名声明。`TypeArgs` 按声明顺序绑定类型参数，数量必须与声明的类型参数数量完全一致；没有前置类型参数的本地 `StructDecl` 不接受 `TypeArgs`。
+2. 只有 `StructDecl` 支持前置 `#T` 声明泛型类型参数；`StructDecl` 的类型参数只表达数据类型，不接受函数类型约束；`EnumDecl` 不支持泛型声明；源码没有顶层类型别名声明。`TypeArgs` 按声明顺序绑定类型参数，数量必须与声明的类型参数数量完全一致；没有前置类型参数的本地 `StructDecl` 不接受 `TypeArgs`。`Result<T, E>` 是编译器提供的私有 WIT/ABI 兼容例外，不是可声明的 generic struct 或 payload enum，也不是普通 Do API；它总是有两个参数，内部模型为 `Ok(T)` 或 `Err(E)`。
     ```do program ok
     #T
     #U
@@ -437,17 +445,18 @@ Datetime = @wasi_record("…", { seconds i64, nanoseconds u32 })
 5. `nil` 同时承担值位与签名位语义，但在语法上仍是同一个 token：
    - 值位 `nil`：空值分支，可作为表达式值参与赋值、返回和传给已知 nullable 形参；无目标类型的裸 `nil` 不能作为用户函数实参。
    - `nil` 没有默认类型；`x = nil` 这类无目标类型绑定非法，需写 `x T | nil = nil`，或放在字段、返回、聚合初始化等已知目标类型位置。
-   - 联合类型位 `T | nil`：声明可空值分支，`nil` 固定写在 union 末位。它仍是类型表达式，不是 `-> nil` 的缩写。
+   - 联合类型位 `T | nil`：声明可空值分支。`nil` 在同一 union 中的位置不改变分支身份；普通 nullable 值通常写作 `T | nil`，unit-success result 也可写作 `nil | E`。它仍是类型表达式，不是 `-> nil` 的缩写。
    - 返回签名位 `-> nil`：声明无返回值上下文。
    - 裸类型位 `nil` 非法；`(nil)` 这种只包一层括号的写法也非法；参数、字段、局部绑定和类型约束不能只写 `nil`。
-   - 同一个 union 内 `nil` 分支最多出现一次，必须写在末位，且 union 至少还有一个非 `nil` 分支；`(nil)` 不能当作合法替身。
+   - 同一个 union 内 `nil` 分支最多出现一次，且 union 至少还有一个非 `nil` 分支；`(nil)` 不能当作合法替身。分支顺序不改变 union 的类型身份。
    - 同一个 union 内所有分支按类型身份唯一；`i32 | i32`、`User | User` 这类重复分支非法；普通类型位不支持外层无意义括号，`(i32) | i32` 直接非法。
    - union 是类似 enum 的平铺类型集合，不做嵌套和展开归一化。已知 nullable/union 类型或绑定为 union 的类型参数，不能再作为另一个 union 的分支写入 `A | B`。需要组合时在目标类型位直接写一个新的平铺 union，例如 `User | FileError | nil`。
    - 普通固定数据参数可写 union/nullable，例如 `emit(value text | nil)`；变参元素、lambda 参数、匿名函数类型参数和接口函数约束参数仍不接收 union/nullable。
    - `()-> T | nil` 返回空分支时必须写 `return nil`；`()-> nil` 可写 `return` 或 `return nil`。
    - 泛型字段需要空分支时，在字段声明位写 `value T | nil`，实例化仍写 `Box<i32>`；构造值可写 `Box<i32>{value = nil}`。
 6. 联合返回位要求右侧表达式自身先定型到唯一分支。
-7. 结构体值必须有有限静态大小；非空值字段不能形成结构体布局闭环。`T | nil`、`[T]` 和普通索引/id 字段会打断结构体大小依赖；直接字段 `next Node` 或互相嵌套字段 `A.b B` / `B.a A` 不会打断。源码没有顶层类型别名声明，不能通过别名间接打断或隐藏布局闭环。
+7. 普通 distinct result 使用 `T | E`，由 `@is(value, T)` / `@is(value, E)` 做 payload 类型收窄；unit-success 使用 `nil | E` 并通过 `@eq(value, nil)` 判断。`Ok`/`Err` 和 `Result<T, E>` 只保留给已登记的私有或同型 WIT/ABI 兼容形态，不是普通 Do API。
+8. 结构体值必须有有限静态大小；非空值字段不能形成结构体布局闭环。`T | nil`、`[T]` 和普通索引/id 字段会打断结构体大小依赖；直接字段 `next Node` 或互相嵌套字段 `A.b B` / `B.a A` 不会打断。源码没有顶层类型别名声明，不能通过别名间接打断或隐藏布局闭环。
     ```do decl ok
     Node {
         next Node | nil
@@ -1159,13 +1168,13 @@ item = @get(user, .abc, @add(i, 1), .name)
 4. `loop` 支持三种形态：
    - 无限循环：`loop { ... }`。
    - 集合循环：`loop value, index = source { ... }`；第一绑定位是值，第二绑定位是 `usize` 位置，二者都可写 `_` 丢弃，也可同时写 `loop _, _ = source` 表示只按元素数量执行循环体。
-   - 消费循环：`loop value = recv(ch) { ... }` 或 `loop value, count = recv(ch) { ... }`；右侧使用专用 `recv(...)` 形态，`recv` 不是普通函数名。当前 build lowering 只覆盖 `[T]` source 的 storage-backed receive 形态，按 `0..@len(ch)` 顺序消费已有元素；真实 channel/stream receive ABI 后续单独扩展。第二绑定位是 `usize` 接收计数，只对进入循环体的 receive 结果计数，从 0 开始；正常结束不进入循环体，也不绑定计数。
+   - 消费循环：`loop value = recv(source) { ... }` 或 `loop value, count = recv(source) { ... }`；右侧使用专用 `recv(...)` 形态，`recv` 不是普通函数名。当前 build lowering 只覆盖 `[T]` source 的 storage-backed receive 形态，按 `0..@len(source)` 顺序消费已有元素；`Stream<T>` 不使用 `recv`，需等待独立的 async endpoint lowering。第二绑定位是 `usize` 接收计数，只对进入循环体的 receive 结果计数，从 0 开始；正常结束不进入循环体，也不绑定计数。
    - 字段反射循环：`loop field = fields(User) { ... }` 或泛型函数实例内的 `loop field = fields(T) { ... }`；右侧使用专用 `fields(TypeOrTypeParam)` 形态，`fields` 不是普通函数名。循环体按可见字段做编译期展开，不是运行时 iterator。
    v1 不提供单独的条件循环关键字、`for-in` 语法或通用 iterator 协议；条件循环用 `loop { if @not(cond) break ... }` 表达，库集合通过返回 `[T]` 的显式视图参与集合循环。集合循环使用 `=` 连接绑定与源。
 5. 集合循环源类型第一版只接受 `[T]`；循环按 `0..@len(source)` 的索引顺序读取值，并在该范围内用 core 路径 primitive `@get([T], usize) -> T` 取得元素。该范围由语言生成，不越界，因此循环体内的元素绑定类型是 `T`。`List<T>`、`HashMap<K, V>` 等标准库结构体不直接作为集合循环源，需要通过 `items(list)`、`keys(m)`、`values(m)` 或 `entries(m)` 这类返回 `[T]` 的视图函数。这个限制按 canonical type identity 判断，不按当前文件的 import alias 文本判断；`MyList = @lib("list.do", List)` 后，`MyList<T>` 仍不能直接循环。`range(...)` 这类标准库函数若返回 `[T]`，即可直接用于集合循环。
 6. 集合循环的右侧表达式在进入循环前求值一次，后续循环使用该源值。
 7. 集合循环中的 `v` 是 `[T]` 的元素类型 `T`；若 `T` 本身包含 `nil`，循环中的 `nil` 是业务值。
-8. 消费循环预留给流、通道等无长度来源；真实 channel/stream receive 中，`nil` 表示正常结束，不进入循环体，`T` 和具体错误枚举分支值都进入循环体。若 `recv(ch)` 的结果类型是 `T | RecvError | nil`，非 `_` 的第一绑定位在循环体内的类型是 `T | RecvError`，用户必须显式判断错误枚举分支值；当 `recv` 可能返回错误枚举分支值时，`loop _ = recv(ch)` 与 `loop _, count = recv(ch)` 非法，避免静默丢弃错误。若 `recv(ch)` 只可能返回 `T | nil`，则 `_` 可以用于丢弃接收到的普通值。`T` 排除 `nil` 类型。消费循环若写第二绑定位，其类型固定为 `usize`，表示本次进入循环体的 receive 计数；错误枚举分支值也算一次进入循环体并递增计数，正常结束的 `nil` 不计数。当前 build lowering 阶段的 storage-backed receive 不实现阻塞、挂起或外部消息拉取；它只把 `[T]` source 当作有限输入序列消费。
+8. 消费循环当前只定义有限 `[T]` source 的静态消费：源耗尽时结束且不进入循环体；第一绑定位的类型是 `T`，可写 `_` 丢弃，第二绑定位固定为 `usize`，表示本次进入循环体的接收计数。它不实现阻塞、挂起或外部消息拉取。`Stream<T>` 的读取使用 `@next(stream) -> Future<T | nil>` 源码端点，不会把 stream 伪装为 `recv` source；只有已登记 descriptor-specific 的 `Stream<u8>` slices 有 Component runtime lowering，通用 Stream、动态 producer 和任意 payload 仍未实现。
 9. `len` 是 core 固定调用名，`get` 是 core 路径 primitive 保留调用名；标准库或用户库若要支持集合循环，提供返回 `[T]` 的视图函数。
 10. 普通结构体不直接满足集合循环源条件。
 11. `[u8]` 是连续字节 storage，可以直接作为集合循环源；映射遍历由库提供可迭代 `[T]` 视图。
@@ -1189,7 +1198,15 @@ item = @get(user, .abc, @add(i, 1), .name)
 6. 编译入口只写作 `start() { ... }`，无参数且无返回，且顶层只允许 1 个；wasm 导出名 `_start` 是编译器生成细节。`start` 是声明专用入口，不接受普通函数的显式 `-> nil` 或表达式体写法。
 7. 字段默认值按构造上下文求值；顶层常量构造要求字段默认值可 CTFE，运行时构造允许运行时默认值。字段默认值处于 CTFE 上下文时，同样禁止通过调用链写模块级可变变量及其 import alias。
 
+8. P3 Component 的 bounded dynamic `StreamWriter<u8>` producer 不是一般源码循环语义；当前仅在 descriptor-specific lowering 中接受固定 countdown 形状：`produce(count u64) -> nil | E` 每轮写 literal `65`，或 `produce(count u64, value u8) -> nil | E` 每轮写同一个 `value`；两者都要求容量为 1、zero-pre-guard、await/discard 后减一、单次 sink await 与 `defer close(writer)`。两种形状的 `count=0` 表示空 stream；其他动态元素、任意循环控制流、一般 async call 和 `own<T>`/`borrow<T>`/`ref<T>` 均不因该 gate 开放。
+
 ## 14. 标准库草案边界
+
+**Result source policy:** public and standard-library fallible APIs use `T | E`
+or `nil | E`, with `@is(value, E)` or `@eq(value, nil)` for narrowing. Ordinary
+unions reject duplicate branches. `Result<T, E>` is reserved for registered
+private WIT/ABI compatibility, including same-type arms; it is not a public API
+or a replacement for the union source form.
 
 
 1. `std` 只通过显式 local import 使用，例如 `path_join = @lib("path.do", join)`；标准库函数仍是普通函数，不进入 `core` 固定调用名集合，也不能补充或遮蔽 `get/set/eq/ne/lt/le/gt/ge/add/sub/mul/div/rem/and/or/xor/shl/shr/rotl/rotr/clz/ctz/popcnt/abs/neg/sqrt/ceil/floor/trunc/nearest/min/max/copysign/len/put/load_*` 这些 core 名。集合或领域能力必须使用非 core 名，例如 `list_add`、`hash_put`、`url_encode`。
@@ -1258,7 +1275,7 @@ item = @get(user, .abc, @add(i, 1), .name)
 
 parser 可执行 PEG 单独维护在 `doc/grammar.peg`。该文件按 token 流定义主文法; lexer 层剔除空格、制表符和换行; `DeclSep` / `LineGap` / `StmtGap` / `SoftGap` 都是相邻 token line metadata 的关系谓词或空隙谓词, 不是实体 token, 也不能写成可重复消费项。
 
-`@host` host 签名由 `WasiHostSig` / `WasiHostResult` 描述：返回位优先 do 排他联合（`WasiHostUnion`，如 `nil | i32`、`Dir | i32`），也接受单一 `WitType`（含过渡 `result<…>`）。`WitType` 仅用于 host import 签名；`char` 等尚未进入 Do 源码类型系统的 WIT 标量名只是 ABI 边界 token。WIT `string` 映射到 Do 源码 `text`，标准库在和原始字节交互时必须显式使用 `[u8]` 转换边界。host 返回禁止多返回列表；结构用 `Tuple`/`@wasi_record`/多参数，不用 `@wasi_tuple`。
+`@host` host 签名由 `WasiHostSig` / `WasiHostResult` 描述：返回位优先 do 排他联合（`WasiHostUnion`，如 `nil | i32`、`Dir | i32`），也接受单一 `WitType`（含过渡 `result<…>`）。distinct WIT result 的 Do 源码写 `T | E`；同型或私有 probe 才保留 `Result<T, E>` 兼容形态。WASI locator 的版本位使用严格 SemVer，并允许已 pin 的 prerelease，例如 `wasi:http/client@0.3.0-rc-2025-09-16`；它不接受缺失 patch、前导零或空 prerelease 标识符。`WitType` 仅用于 host import 签名；`char` 等尚未进入 Do 源码类型系统的 WIT 标量名只是 ABI 边界 token。WIT `string` 映射到 Do 源码 `text`，标准库在和原始字节交互时必须显式使用 `[u8]` 转换边界。host 返回禁止多返回列表；结构用 `Tuple`/`@wasi_record`/多参数，不用 `@wasi_tuple`。distinct HTTP source shape 使用 `HttpResponse | HttpError`；私有同型/legacy probe 可继续使用 `Result`。
 
 `ReservedWord` 是语言控制流与字面量保留词，不能作为普通 `LowerIdent` 名字使用。`BuiltinSpecialName` 是编译器 special form 名，只能按对应 `@name(...)` 内建形态、`RecvExpr` 形态或 `fields(TypeOrTypeParam)` 循环源形态调用，不能作为裸函数值，不能进入普通 `CallExpr` 候选集，也不能参与普通函数重载；它也不能用于普通函数声明名、普通 lower 导入别名、普通参数名或普通 lower 局部绑定名。`ReservedCoreAccessName` 当前只包含 `get/set`，它们只在 `@get/@set` 路径 primitive 调用形态中使用，不是普通函数族。`FieldReflectFuncName` 是字段反射内建调用名，只能通过 `@field_name/@field_index/@field_has_default/@field_get/@field_set` 固定形态使用，字段元数据来源必须是 `fields(TypeOrTypeParam)` 循环绑定。`CoreFixedFuncName` 是 core 固定函数调用名，只能在 `CoreFixedCallExpr` 中通过 `@name(...)` 调用，不能作为普通函数声明名、普通 lower 导入别名、普通参数名、普通 lower 局部绑定名或接口函数约束名，也不能参与普通函数重载；但它不进入字段保留集合，字段可使用 `len/add/popcnt` 这类实际 name。`update/del/to_text` 不属于 `CoreFixedFuncName`，仍是普通库函数名。`FieldReservedName` 是字段名、字段初始化名和字段路径段的保留集合，只排除关键字、`get/set`、声明专用名和保留类型名。`recv` 只在消费循环的 `RecvExpr` 中使用，不是普通函数名；`fields` 只在字段反射循环源中使用，不是普通函数名。`DeclOnlyName` 属于声明专用名，只能分别作为顶层入口声明 `start() { ... }` 与顶层测试声明 `test "name" { ... }`，不能出现在普通值位或调用位。`ReservedTypeName` 属于保留类型名，不能作为普通 lower 名、字段名、普通 lower 导入别名或函数名；其中 `text` 是源码基础类型，`Error` 是编译器内部合成视图名，不进入 `BaseTypeName`，也不能作为源码类型位；`char` 当前只在 WIT ABI 签名里可用，不进入普通源码类型系统，但作为 WIT-only 名字仍在普通源码名字空间保留。循环标签名按独立命名空间处理。以上这些保留规则都不追溯到 `ReadonlyIdent` 主体，因此 `_if`、`_add`、`_bool` 仍可作为只读名字；`_Error` 不是 `_` + `LowerIdent`，非法。
 

@@ -100,12 +100,12 @@ AbiParamList     <- AbiType (InlineCommaSep AbiType)* InlineCommaSep?
 AbiReturn        <- 'nil' / AbiType
 AbiType          <- 'i32' / 'i64' / 'f32' / 'f64'
 // Host signature: do-side types preferred (resource/record names, [u8]/text sugar,
-// exclusive unions Ok|Err / T|nil). Transitional WIT result<> / list<> / tuple<> still
+// intrinsic Result<T,E>). Legacy exclusive unions T|E / T|nil and transitional WIT result<> / list<> / tuple<> still
 // accepted for known targets; codegen normalizes params/result to WIT in the manifest.
 // No multi-return host result (`-> A, B`); no @wasi_result / @wasi_option / @wasi_tuple wrappers.
 WasiHostSig      <- '(' WitParamList? ')' '->' WasiHostResult
 WitParamList     <- WitType (InlineCommaSep WitType)* InlineCommaSep?
-// Return: exclusive do union of WitType arms, or a single WitType (incl. transitional result<>).
+// Return: intrinsic Result<T,E>, a legacy exclusive do union of WitType arms, or a single WitType (incl. transitional result<>).
 WasiHostResult   <- WasiHostUnion / WitType
 WasiHostUnion    <- WitType (SoftGap '|' SoftGap WitType)+
 WitType          <- 'list' '<' WitType '>'
@@ -125,6 +125,8 @@ WitPathName      <- PathSeg ('.' PathSeg)*
 
 
 TypeDecl         <- GenericStructDecl / StructDecl / EnumDecl / WasiResourceDecl / WasiRecordDecl / WasiEnumDecl
+// Compiler-provided type, not a TypeDecl or generic payload enum declaration.
+CoreResultType   <- 'Result' '<' ValueTypeExpr ',' ValueTypeExpr '>'
 GenericStructDecl <- StructTypeConstraintList StructDecl
 StructDecl       <- DeclTypeName '{' StmtGap? FieldDeclList? StmtGap? '}'
 EnumDecl         <- ErrorEnumDecl / ValueEnumDecl / PayloadEnumDecl
@@ -155,7 +157,9 @@ FieldName        <- PublicFieldName / PrivateFieldName
 PublicFieldName  <- !FieldReservedName LowerIdent
 PrivateFieldName <- !DotFieldReservedName DotLowerIdent
 
-StructRefType    <- PublicTypeName TypeArgs?
+StructRefType    <- AsyncContainerType / PublicTypeName TypeArgs?
+AsyncContainerType <- AsyncContainerName TypeArgs
+AsyncContainerName <- 'Future' / 'Stream' / 'StreamReader' / 'StreamWriter'
 
 ValueTypeExpr    <- NullableTypeExpr / NonNilUnionExpr
 NullableTypeExpr <- NonNilUnionExpr SoftGap '|' SoftGap NilType
@@ -210,7 +214,8 @@ NilType          <- 'nil'
 String           <- NormalString
 LineStringBlock  <- LineStringToken
 
-FuncDecl         <- FuncConstraintList? FuncName '(' SoftGap ParamList? SoftGap ')' FuncResult FuncBody
+FuncDecl         <- FuncConstraintList? AsyncModifier? FuncName '(' SoftGap ParamList? SoftGap ')' FuncResult FuncBody
+AsyncModifier    <- 'async' SoftGap
 FuncName         <- PublicFuncName / PrivateFuncName
 PublicFuncName   <- !ReservedName LowerIdent
 PrivateFuncName  <- !DotReservedName DotLowerIdent
@@ -306,7 +311,9 @@ LogicCondExpr    <- CondPredExpr / ExprNoParen
 
 Expr             <- ExprNoParen
                   / ParenExpr
-ExprNoParen      <- BuiltinCallExpr
+ExprNoParen      <- AsyncAwaitExpr
+                  / StreamWriterFinalizerExpr
+                  / BuiltinCallExpr
                   / CallExpr
                   / InferredAggLit
                   / TypedAggLit
@@ -319,6 +326,10 @@ ExprIdent        <- !ReservedName LowerIdent / ReadonlyIdent
 ParenExpr        <- '(' SoftGap Expr SoftGap ')'
 
 BuiltinCallExpr  <- AsExpr / ValueLogicExpr / FieldReflectExpr / CoreAccessExpr / CoreFixedCallExpr
+AsyncAwaitExpr   <- 'await' '(' SoftGap Expr (CommaSep Expr)? SoftGap ')'
+                  / ('await_all' / 'await_any') '(' SoftGap Expr CommaSep Expr (CommaSep Expr)* TrailComma? SoftGap ')'
+StreamWriterFinalizerExpr <- 'close' '(' SoftGap Expr SoftGap ')'
+                           / 'abort' '(' SoftGap Expr CommaSep Expr SoftGap ')'
 
 ValueLogicExpr   <- ValueAndExpr
                   / ValueOrExpr
@@ -404,9 +415,9 @@ AggExprList      <- Expr (CommaSep Expr)* TrailComma?
 
 Literal          <- IntLit / FloatLit / String / 'true' / 'false' / 'nil'
 
-ReservedWord     <- 'if' / 'else' / 'loop' / 'break' / 'continue' / 'return' / 'defer' / 'do'
+ReservedWord     <- 'if' / 'else' / 'loop' / 'break' / 'continue' / 'return' / 'defer' / 'async' / 'await' / 'await_all' / 'await_any'
                   / 'true' / 'false' / 'nil'
-BuiltinSpecialName <- 'is' / 'and' / 'or' / 'not' / 'recv' / 'fields'
+BuiltinSpecialName <- 'is' / 'and' / 'or' / 'not' / 'recv' / 'fields' / 'close' / 'abort'
 ReservedCoreAccessName <- 'get' / 'set'
 FieldReflectFuncName <- FieldReflectMetaName / 'field_get' / 'field_set'
 CoreFixedFuncName <- CorePredicateName / CoreNumericName / CoreBitwiseName / CoreFloatName / CoreStorageFuncName / CoreMemoryLoadName
@@ -425,7 +436,7 @@ CoreMemoryLoadName <- 'load_u8' / 'load_i8'
                   / 'load_u64_le' / 'load_i64_le'
 DeclOnlyName     <- 'start' / 'test'
 ReservedDeclName <- BuiltinSpecialName / ReservedCoreAccessName / FieldReflectFuncName / CoreFixedFuncName / DeclOnlyName
-ReservedTypeName <- BaseTypeName / 'Error' / 'char'
+ReservedTypeName <- BaseTypeName / 'Error' / 'char' / 'Future' / 'Stream'
 ReservedName     <- ReservedWord / ReservedDeclName / ReservedTypeName
 DotReservedName  <- ? DotLowerIdent or DotUpperIdent whose lexeme without leading "." matches ReservedName ?
 FieldReservedName <- ReservedWord / ReservedCoreAccessName / DeclOnlyName / ReservedTypeName

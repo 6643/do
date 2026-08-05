@@ -35,10 +35,22 @@
   (import "[export]wasi:http/probe@0.3.0-rc-2025-09-16" "[task-return]run"
     (func $task-return (type $task-return)))
 
-  (memory (export "memory") 0)
+  (memory (export "memory") 1)
   (func (export "[async-lift]wasi:http/probe@0.3.0-rc-2025-09-16#run")
     (type $async-probe)
-    unreachable)
+    ;; Candidate host-lowered representation: Err, error tag 38, but the
+    ;; optional string remains None. This is intentionally the rejected
+    ;; mismatch candidate until host lowering preserves the payload.
+    i32.const 1
+    i32.const 38
+    i32.const 0
+    i64.const 0
+    i32.const 0
+    i32.const 0
+    i32.const 0
+    i32.const 0
+    call $task-return
+    i32.const 0)
   (func (export "[callback][async-lift]wasi:http/probe@0.3.0-rc-2025-09-16#run")
     (type $async-probe-callback)
     unreachable)

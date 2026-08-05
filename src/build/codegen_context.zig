@@ -7,6 +7,7 @@ const type_util = @import("type_name.zig");
 const codegen_tokens = @import("codegen_tokens.zig");
 const codegen_union_layout = @import("codegen_union_layout.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
+const async_model = @import("codegen_async_model.zig");
 const model = @import("codegen_model.zig");
 const constants = @import("codegen_constants.zig");
 
@@ -423,6 +424,7 @@ pub const LocalSet = struct {
 pub const EMPTY_LOCAL_SET = LocalSet{};
 pub const CodegenContext = struct {
     functions: []const FuncDecl,
+    async_functions: []const async_model.AsyncFunctionPlan = &.{},
     structs: []const StructDecl,
     value_enums: []const ValueEnumDecl,
     payload_enums: []const PayloadEnumDecl = &.{},

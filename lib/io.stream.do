@@ -1,9 +1,9 @@
 // Declarative stream hosts first (import prefix), then resource shells.
-// Fallible hosts use exclusive Ok|Err with coarse StreamError (aligned with dir/file P4).
+// Fallible hosts use ordinary Do unions with coarse StreamError.
 .host_input_read = @host("wasi:io/streams@0.3.0", "input-stream.read", (InputStream, u64) -> [u8] | StreamError)
 .host_output_check_write = @host("wasi:io/streams@0.3.0", "output-stream.check-write", (OutputStream) -> u64 | StreamError)
-.host_output_write = @host("wasi:io/streams@0.3.0", "output-stream.write", (OutputStream, [u8]) -> StreamError | nil)
-.host_output_flush = @host("wasi:io/streams@0.3.0", "output-stream.flush", (OutputStream) -> StreamError | nil)
+.host_output_write = @host("wasi:io/streams@0.3.0", "output-stream.write", (OutputStream, [u8]) -> nil | StreamError)
+.host_output_flush = @host("wasi:io/streams@0.3.0", "output-stream.flush", (OutputStream) -> nil | StreamError)
 
 InputStream = @wasi_resource("io/streams/input-stream", {
     .id i64
@@ -24,7 +24,7 @@ StreamError error = StreamClosed | StreamReadFailed | StreamCheckWriteFailed | S
     return @get(stream, .id)
 }
 
-// Host is [u8]|StreamError; public multi-return keeps [u8], StreamError|nil.
+// Host is [u8] | StreamError; public multi-return keeps [u8], StreamError|nil.
 read_stream(stream InputStream, size usize) -> [u8], StreamError | nil {
     r [u8] | StreamError = host_input_read(stream, @as(u64, size))
     if @is(r, StreamError) {
@@ -41,11 +41,15 @@ check_write_stream(stream OutputStream) -> u64, StreamError | nil {
 }
 
 write_stream(stream OutputStream, data [u8]) -> StreamError | nil {
-    return host_output_write(stream, data)
+    result nil | StreamError = host_output_write(stream, data)
+    if @is(result, StreamError) return result
+    return nil
 }
 
 flush_stream(stream OutputStream) -> StreamError | nil {
-    return host_output_flush(stream)
+    result nil | StreamError = host_output_flush(stream)
+    if @is(result, StreamError) return result
+    return nil
 }
 
 is_stream_closed(err StreamError) -> bool {

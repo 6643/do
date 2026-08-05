@@ -50,8 +50,8 @@ pub fn clone_union_layout(allocator: std.mem.Allocator, layout: UnionLayout) !Un
 }
 
 pub fn union_branch_is_status_i32(layout: UnionLayout, branch: UnionBranch) bool {
-    return std.mem.eql(u8, branch.ty, "i32") and branch.payload_len == 1 and
+    const payload_ty = branch.payload_type orelse branch.ty;
+    return std.mem.eql(u8, payload_ty, "i32") and branch.payload_len == 1 and
         branch.payload_start < layout.payload_tys.len and
         std.mem.eql(u8, layout.payload_tys[branch.payload_start], "i32");
 }
-

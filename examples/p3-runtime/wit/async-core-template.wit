@@ -1,0 +1,10 @@
+package wasi:clocks@0.3.0;
+
+interface monotonic-clock {
+  wait-for: async func(how-long: u64);
+}
+
+world probe {
+  import monotonic-clock;
+  export run: async func(how-long: u64);
+}
