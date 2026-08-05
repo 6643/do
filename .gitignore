@@ -16,6 +16,9 @@ bin/*
 **/.tmp/
 .quota-probe.*/
 
+# Local upstream reference checkouts
+.deps/
+
 # Local commit helper and worktrees
 .commit-git/
 .worktrees/

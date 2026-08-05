@@ -3,7 +3,8 @@
 **Status:** approved for implementation planning.
 
 **Goal:** provide a reproducible WIT-to-Do binding workflow without changing
-the WIT language or putting WIT parsing inside the Zig compiler.
+the WIT language, while keeping the production implementation in the Zig
+toolchain.
 
 ## Naming and Scope
 
@@ -22,6 +23,14 @@ replace `do wit`.
 
 This design does not add syntax or commands to the WIT specification itself.
 It adds a Do toolchain command and a Do-specific binding generator.
+
+## Upstream Reference Checkout
+
+The official `wit-bindgen` repository is kept as a local, ignored reference
+checkout at `.deps/wit-bindgen`. The pinned reference is tag `v0.60.0` at
+commit `1ae00530221542369d0e47ee4a1f4232f09d978d`. Its Rust and Go generators
+are used for differential probes and ABI research; they are not runtime or
+build dependencies of `bin/do`.
 
 ## Project Layout
 
@@ -91,19 +100,19 @@ The implementation is split into two layers:
 do wit check/bind
         |
         v
-wit-bindgen-do (Rust sidecar)
+src/wit (Zig generator)
         |
-        +-- wit-parser / wit-bindgen-core
+        +-- WIT lexer/parser/resolver
         +-- Do source emitter
         +-- manifest and lock emitter
 ```
 
-The Rust sidecar owns WIT resolution and canonical type information by
-reusing the official parser/core crates. The Zig `do` executable owns command
-argument validation, project-relative paths, diagnostics forwarding, and the
-stable user-facing command. The sidecar is not a second Do compiler.
+The Zig implementation owns WIT resolution, canonical type facts, Do source
+emission, diagnostics, and atomic output. It is a Do-specific generator rather
+than a claim to replace every upstream language generator.
 
-Go and Rust generators are differential oracles, not copied runtimes:
+The checked-in reference generators are differential oracles, not copied
+runtimes:
 
 - Go is the surface oracle for ordinary generated APIs and hidden async wait
   plumbing.
@@ -111,6 +120,11 @@ Go and Rust generators are differential oracles, not copied runtimes:
   shapes, resource ownership, borrow/drop, and terminal cleanup.
 - Do owns the public syntax, affine Future rules, ARC integration, scheduler,
   and cancellation semantics.
+
+The first implementation supports only the WIT shapes covered by pinned
+fixtures. Unsupported shapes produce named capability errors. A new WIT
+feature is admitted only after the Zig model, Go/Rust differential output, and
+Do/Component gate agree.
 
 ## Acceptance Gates
 
@@ -133,5 +147,6 @@ The design is complete only when all of the following are verified:
 - no automatic WIT network fetching in the first command version;
 - no generic WIT lowering claim beyond the individually pinned and tested
   shapes;
+- no production Rust sidecar or second compiler command;
 - no replacement of `do build --p3-wit-output` for Do-to-WIT/component output;
 - no WASI-only command surface for generic WIT packages.

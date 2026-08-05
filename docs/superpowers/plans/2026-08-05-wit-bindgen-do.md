@@ -2,25 +2,30 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** add a reproducible `do wit check/bind` workflow that resolves WIT,
-generates flat project-root `wit/*.do` bindings, and emits the metadata consumed
-by the colorless async and Component lowering paths.
+**Goal:** add a reproducible `do wit check/bind` workflow implemented in Zig,
+using the pinned upstream `wit-bindgen` Rust and Go generators as differential
+oracles, and generate flat project-root `wit/*.do` bindings plus metadata.
 
-**Architecture:** `do wit` is a thin Zig CLI facade. A separate Rust
-`wit-bindgen-do` sidecar reuses the official `wit-parser` and
-`wit-bindgen-core` crates for resolution and canonical WIT facts, then emits Do
-source, `manifest.json`, and `wit.lock` atomically. The Do compiler continues
-to own source semantics, ARC, task scheduling, and `@async/@await/@cancel`
-lowering.
+**Architecture:** `src/wit/` contains the Zig WIT model, resolver, emitter, and
+CLI adapter. `src/main.zig` dispatches `do wit` through the same `bin/do`
+executable, so the existing `cd src && zig build` remains the only production
+compiler build. `.deps/wit-bindgen` is an ignored checkout of upstream
+`v0.60.0` used only by probes and research; no Rust sidecar is required to run
+or build Do.
 
-**Tech Stack:** Zig `0.16.0`, Rust `1.97.1`, pinned `wit-bindgen` release
-`0.60.0`, `wit-parser 0.254.0`, `wit-bindgen-core 0.60.0`, WAT/WIT validation
-with `wasm-tools 1.254.0`, and the existing Do regression harness.
+**Tech Stack:** Zig `0.16.0`, pinned upstream `wit-bindgen v0.60.0` at commit
+`1ae00530221542369d0e47ee4a1f4232f09d978d` for Go/Rust differential probes,
+WAT/WIT validation with `wasm-tools 1.254.0`, and the existing Do regression
+harness.
 
 ## Global Constraints
 
 - The generic command is `do wit`; `wasi` is reserved for package and
   registry-specific names.
+- Production WIT parsing, resolution, and emission are implemented in Zig
+  under `src/wit/`.
+- `.deps/wit-bindgen` is a local ignored reference checkout, not a build or
+  runtime dependency of `bin/do`.
 - Generated Do files are flat under the project-root `wit/` directory.
 - Generated output includes `manifest.json` and `wit.lock` beside the `*.do`
   files.
@@ -39,7 +44,7 @@ with `wasm-tools 1.254.0`, and the existing Do regression harness.
 
 ---
 
-### Task 1: Pin Go/Rust differential probe
+### Task 1: Pin upstream Go/Rust differential probe
 
 **Files:**
 - Create: `examples/wit-bindgen-do/async-world.wit`
@@ -48,133 +53,131 @@ with `wasm-tools 1.254.0`, and the existing Do regression harness.
 - Create: `examples/wit-bindgen-do/expected/go_api.txt`
 - Create: `examples/wit-bindgen-do/expected/rust_api.txt`
 - Create: `examples/wit-bindgen-do/expected/abi_matrix.txt`
+- Modify: `.gitignore`
 
 **Interfaces:**
-- Consumes: one pinned WIT world containing an `async func`, `future<T>`,
-  `stream<T>`, resource parameters, a result payload, and a cancellation path.
-- Produces: a checked-in comparison of Go and Rust generated APIs, async ABI
+- Consumes: `.deps/wit-bindgen` at the pinned commit and one WIT world
+  containing async, future, stream, resource, result, and cancellation facts.
+- Produces: a checked-in comparison of Go/Rust generated APIs, async ABI
   markers, reader/writer types, resource drop behavior, and terminal cleanup.
 
-- [ ] **Step 1: Write the fixed WIT world.**
+- [ ] **Step 1: Ignore and verify the reference checkout.**
+
+  Add `.deps/` to `.gitignore` and make the probe fail unless this exact
+  checkout is present:
+
+  ```bash
+  test "$(git -C .deps/wit-bindgen rev-parse HEAD)" = \
+    1ae00530221542369d0e47ee4a1f4232f09d978d
+  ```
+
+- [ ] **Step 2: Write the fixed WIT world.**
 
   Use package `do:bindgen-probe@0.1.0` and world `probe`. The interface must
-  contain `resource request`, `resource response`, `result<response, error>`,
-  `async func send(request: request)`, `func completion() -> future<u32>`, and
-  `func events() -> stream<u8>`. Keep this world independent of the pinned
-  WASI registry so the comparison measures generator behavior rather than a
-  descriptor-specific compiler shortcut.
+  contain `resource request`, `resource response`,
+  `async func send(request: request) -> result<response, error>`,
+  `func completion() -> future<u32>`, and `func events() -> stream<u8>`.
 
-- [ ] **Step 2: Run the pinned Go and Rust generators.**
+- [ ] **Step 3: Run the upstream generators.**
 
-  Run the `wit-bindgen 0.60.0` CLI from a locked checkout with the `go` and
-  `rust` generators, using `async-world.wit` and world `probe`. Save only the
-  stable API fragments needed by the report; do not check in generated Go or
-  Rust build trees.
+  Invoke the checked-out `wit-bindgen` CLI with its `go` and `rust` generators,
+  using the fixed world. Save only stable API fragments and ABI markers; do
+  not check in generated Go/Rust build trees.
 
-- [ ] **Step 3: Record the differential matrix.**
+- [ ] **Step 4: Record the differential matrix.**
 
-  Record the generated Future/Stream type names, `[async-lower]` and
-  `[async-lift]` markers, callback/task-return operations, resource move/drop
-  rules, and cancellation terminal behavior. Mark each fact as surface API,
-  canonical ABI, or runtime behavior.
+  Record Future/Stream types, `[async-lower]`/`[async-lift]` markers,
+  callback/task-return operations, resource move/drop rules, and cancellation
+  terminal handling. Mark every row as surface API, canonical ABI, or runtime
+  behavior.
 
-- [ ] **Step 4: Verify the probe is reproducible.**
+- [ ] **Step 5: Verify reproducibility.**
 
   ```bash
   bash examples/wit-bindgen-do/run_differential.sh
   git diff --check
   ```
 
-  The script must fail when either generator is missing or the pinned WIT world
-  changes; it must not substitute a synchronous output.
+  The script must fail when the reference checkout or WIT world changes; it
+  must not substitute a synchronous output.
 
-### Task 2: Create the Rust resolver sidecar
+### Task 2: Implement the Zig WIT lexer, parser, and resolver
 
 **Files:**
-- Create: `tools/wit-bindgen-do/Cargo.toml`
-- Create: `tools/wit-bindgen-do/Cargo.lock`
-- Create: `tools/wit-bindgen-do/src/main.rs`
-- Create: `tools/wit-bindgen-do/src/cli.rs`
-- Create: `tools/wit-bindgen-do/src/resolve.rs`
-- Create: `tools/wit-bindgen-do/src/model.rs`
-- Create: `tools/wit-bindgen-do/tests/resolve.rs`
+- Create: `src/wit/lexer.zig`
+- Create: `src/wit/parser.zig`
+- Create: `src/wit/resolve.zig`
+- Create: `src/wit/model.zig`
+- Create: `src/wit/tests.zig`
+- Modify: `src/main.zig`
 
 **Interfaces:**
 - Consumes: a WIT file or package directory and an optional world name.
-- Produces: a resolved `BindingModel` containing package identity, world,
-  interfaces, functions, type definitions, async/future/stream effects,
-  resource ownership, and content hashes.
+- Produces: an immutable `BindingModel` containing package identity, world,
+  interfaces, functions, types, async/future/stream effects, resources,
+  ownership facts, and content hashes.
 
-- [ ] **Step 1: Define the sidecar CLI.**
+- [ ] **Step 1: Add lexer tests for the supported WIT grammar.**
 
-  Implement exactly these forms:
+  Cover identifiers, package versions, `use`, `include`, interface/world
+  declarations, type aliases, `resource`, `record`, `variant`, `enum`,
+  `flags`, `result`, `option`, `future`, `stream`, `own`, `borrow`, and
+  `async func`. Reject unterminated strings, invalid version components, and
+  unknown punctuation with source locations.
 
-  ```text
-  wit-bindgen-do check <input> [--world <world>]
-  wit-bindgen-do bind <input> --world <world> --out <directory>
-  ```
+- [ ] **Step 2: Add parser tests for one complete world.**
 
-  Reject missing input, missing world, extra positional arguments, and output
-  paths that are files. Diagnostics must identify the input path and WIT world.
+  Parse the Task 1 world into typed AST nodes. Assert that async effect is a
+  member fact, not a Do source modifier, and that `future<T>` and `stream<T>`
+  retain their payload type.
 
-- [ ] **Step 2: Resolve with the official parser.**
+- [ ] **Step 3: Implement package and world resolution.**
 
-  Use `wit_parser::Resolve` with `wit-parser 0.254.0` and
-  `wit-bindgen-core 0.60.0`, both recorded in `Cargo.lock`. Resolve package dependencies, select the requested world, and
-  calculate a stable content hash over the resolved package files. Do not infer
-  async or ownership from function names or generated source text.
+  Resolve local package files and dependency directories, select the requested
+  world, canonicalize package/interface/member locators, and calculate stable
+  content hashes. Reject duplicate package identities, missing `use` targets,
+  unresolved world names, and cycles with named errors.
 
-- [ ] **Step 3: Build the immutable binding model.**
+- [ ] **Step 4: Implement the immutable binding model.**
 
-  `BindingModel` must preserve the WIT package/interface/member locator,
-  source type, result arms, future/stream payload, resource ownership mode,
-  drop operation, and unsupported-shape reason. The emitter consumes this
-  model and never re-parses WIT strings.
+  Preserve WIT type identity rather than flattening by spelling. Store result
+  arms, resource ownership mode, drop operation, future/stream operation facts,
+  and an explicit unsupported-shape reason. The emitter must consume this model
+  and never re-parse WIT strings.
 
-- [ ] **Step 4: Add resolver tests.**
-
-  Cover successful world selection, missing world, dependency hash changes,
-  async member recognition, future/stream payload recognition, own resource
-  parameters, and a nested borrowed shape rejected with the named capability
-  error.
-
-- [ ] **Step 5: Run sidecar tests.**
+- [ ] **Step 5: Run Zig unit tests.**
 
   ```bash
-  cd tools/wit-bindgen-do
-  cargo test --locked
+  cd src
+  zig test wit/tests.zig
   ```
 
-### Task 3: Emit Do modules and binding metadata
+### Task 3: Emit Do modules, manifest, and lock data in Zig
 
 **Files:**
-- Create: `tools/wit-bindgen-do/src/emit_do.rs`
-- Create: `tools/wit-bindgen-do/src/emit_manifest.rs`
-- Create: `tools/wit-bindgen-do/src/emit_lock.rs`
-- Modify: `tools/wit-bindgen-do/src/main.rs`
-- Modify: `tools/wit-bindgen-do/src/model.rs`
-- Create: `tools/wit-bindgen-do/tests/emit.rs`
+- Create: `src/wit/emit_do.zig`
+- Create: `src/wit/emit_manifest.zig`
+- Create: `src/wit/emit_lock.zig`
+- Modify: `src/wit/model.zig`
+- Modify: `src/wit/tests.zig`
 
 **Interfaces:**
 - Consumes: `BindingModel` from Task 2.
 - Produces: deterministic `*.do`, `manifest.json`, and `wit.lock` files under
   one output directory, with no partial output on failure.
 
-- [ ] **Step 1: Define deterministic file names.**
+- [ ] **Step 1: Define deterministic flat names.**
 
-  Flatten each generated module to
+  Emit each module as
   `<package>__<interface>__<world>.do`, replacing `/`, `:`, `@`, and `-` with
-  `_`. Reject two WIT modules that map to the same output name instead of
-  overwriting one.
+  `_`. Reject output-name collisions instead of overwriting a module.
 
 - [ ] **Step 2: Emit ordinary Do declarations.**
 
-  Emit Do type declarations and `@host` binding declarations for the supported
-  model. Map WIT `string` to `text`, `list<u8>` to `[u8]`, WIT futures to
-  `Future<T>`, and WIT streams to `Stream<T>`. Resource values remain opaque Do
-  handles with metadata-driven drop facts. WIT `async func` produces an
-  ordinary binding whose manifest records async lowering; it never produces an
-  `async` Do declaration.
+  Map WIT `string` to `text`, `list<u8>` to `[u8]`, futures to `Future<T>`, and
+  streams to `Stream<T>`. Represent resources with Do wrapper structs and
+  private handle fields. Emit `@host` binding declarations with WIT metadata;
+  an `async func` must never become an `async` Do declaration.
 
 - [ ] **Step 3: Emit manifest and lock data.**
 
@@ -186,73 +189,66 @@ with `wasm-tools 1.254.0`, and the existing Do regression harness.
 
 - [ ] **Step 4: Make bind atomic.**
 
-  Emit into a sibling temporary directory, fsync files, then replace the output
-  directory only after all modules, manifest, and lock data validate. A WIT
-  resolution or emission error must leave the previous `wit/` directory
-  unchanged.
+  Emit into a sibling temporary directory, validate all modules and metadata,
+  then replace the output directory. A resolution or emission error must leave
+  the previous `wit/` directory unchanged.
 
-- [ ] **Step 5: Test stable output.**
+- [ ] **Step 5: Test stable output and negative shapes.**
 
-  Generate the fixed probe twice and assert byte-identical `*.do`, manifest,
-  and lock files. Add a collision fixture, unsupported borrowed-shape fixture,
-  and failed-bind atomicity fixture.
+  Generate the Task 1 world twice and assert byte-identical output. Add tests
+  for name collision, unsupported nested borrowed shape, duplicate resource
+  drop, malformed manifest, and failed-bind atomicity.
 
-### Task 4: Add the `do wit` Zig facade
+### Task 4: Add `do wit` to the existing Zig executable
 
 **Files:**
-- Create: `src/wit/run.zig`
 - Create: `src/wit/cli.zig`
+- Create: `src/wit/run.zig`
 - Modify: `src/main.zig`
-- Create: `src/build/test/cli_wit.zig`
-- Create: `src/build/test/cli_wit_bind.sh`
+- Modify: `src/wit/tests.zig`
 
 **Interfaces:**
-- Consumes: `wit-bindgen-do check/bind` sidecar commands.
-- Produces: stable `do wit check` and `do wit bind` user commands with Do
-  diagnostics and project-relative output behavior.
+- Consumes: the Zig resolver/emitter from Tasks 2-3.
+- Produces: stable `do wit check` and `do wit bind` commands in the existing
+  `bin/do` executable.
 
 - [ ] **Step 1: Add command dispatch.**
 
   Add `.wit` to `Command`, dispatch `args[1..]` to `wit.run`, and update usage
-  and unknown-command diagnostics in `src/main.zig`. Existing command parsing
-  and exit codes must remain unchanged.
+  and unknown-command diagnostics. Existing command parsing and exit codes
+  must remain unchanged.
 
-- [ ] **Step 2: Resolve the sidecar executable.**
+- [ ] **Step 2: Define the command forms.**
 
-  Check `DO_WIT_BINDGEN_DO` first, then a `wit-bindgen-do` sibling next to the
-  running `do` executable, then `PATH`. Report one deterministic missing-tool
-  error with the selected path and required command. Never download a tool at
-  runtime.
-
-- [ ] **Step 3: Forward validated arguments.**
-
-  Support only:
+  Support exactly:
 
   ```text
   do wit check <input> [--world <world>]
   do wit bind <input> --world <world> --out <directory>
   ```
 
-  Resolve a relative output path from the current working directory, reject
-  paths outside the project only when the user explicitly requests a policy
-  mode, and pass the canonical absolute path to the sidecar.
+  `check` is read-only. `bind` validates before replacing output. Reject
+  missing input/world/output, extra positional arguments, and output paths that
+  are files.
 
-- [ ] **Step 4: Add CLI tests.**
+- [ ] **Step 3: Add CLI unit tests.**
 
-  Test help, missing sidecar, check argument validation, bind argument
-  validation, sidecar exit-code propagation, and successful generation into a
-  temporary root `wit/` directory.
+  Cover help, unknown subcommand, missing input, missing world, check read-only
+  behavior, bind output replacement, side-effect-free failed bind, and exit
+  codes. The tests must invoke Zig functions directly and must not spawn Rust.
 
-- [ ] **Step 5: Run the focused Zig tests.**
+- [ ] **Step 4: Build through the existing command.**
 
   ```bash
   cd src
-  zig test main.zig
+  zig build -Doptimize=ReleaseSmall
   cd ..
-  bash src/build/test/cli_wit_bind.sh
+  ./bin/do wit check examples/wit-bindgen-do/async-world.wit --world probe
   ```
 
-### Task 5: Integrate the root `wit/` layout and imports
+  No second production compiler or sidecar build command is allowed.
+
+### Task 5: Integrate the root `wit/` project layout
 
 **Files:**
 - Modify: `README.md`
@@ -264,24 +260,21 @@ with `wasm-tools 1.254.0`, and the existing Do regression harness.
 - Create: `examples/wit-bindgen-do/project/expected-imports.txt`
 
 **Interfaces:**
-- Consumes: generated modules and manifest from Task 3 plus `do wit` from
-  Task 4.
+- Consumes: generated modules and metadata from Tasks 3-4.
 - Produces: documented project layout and an import fixture proving generated
   modules are normal local Do modules.
 
-- [ ] **Step 1: Document the directory contract.**
+- [ ] **Step 1: Document the three directory roles.**
 
-  Document `wit/*.do`, `wit/manifest.json`, `wit/wit.lock`, optional `wit/src/`,
-  and the distinction between generic `wit` and WASI-specific `wasi` names.
-  State that compiler-pinned `src/build/p3_wit` is an internal registry and is
-  not the project output directory.
+  Document `src/wit/` as compiler implementation, `.deps/wit-bindgen/` as
+  ignored upstream reference, and project-root `wit/` as generated output.
+  State that `wasi` is a package namespace, not the generic command name.
 
 - [ ] **Step 2: Add the project import fixture.**
 
   Generate a probe module into `examples/wit-bindgen-do/project/wit/` and
-  import it from `project/main.do` with the existing relative `@lib` form.
-  Assert that the generated module is resolved without modifying `lib/` or
-  `DO_LIB_ROOT`.
+  import it from `project/main.do` using the existing relative `@lib` form.
+  Assert that `lib/` and `DO_LIB_ROOT` remain unchanged.
 
 - [ ] **Step 3: Verify source/build separation.**
 
@@ -301,20 +294,20 @@ with `wasm-tools 1.254.0`, and the existing Do regression harness.
 **Interfaces:**
 - Consumes: `manifest.json` async metadata and generated ordinary Do
   declarations from Tasks 3-5.
-- Produces: a colorless async fixture that uses `@async/@await/@cancel`
-  without an `async` source declaration, plus an explicit mismatch diagnostic.
+- Produces: a colorless async fixture using `@async/@await/@cancel` without
+  an `async` source declaration, plus an explicit mismatch diagnostic.
 
-- [ ] **Step 1: Add the binding dependency to the async design.**
+- [ ] **Step 1: Make the binding dependency explicit.**
 
-  State that `do wit bind` is the only supported WIT-to-Do generation path and
-  that Task 5 of the colorless async plan consumes its manifest rather than
-  inferring async behavior from a Do function name.
+  State that `do wit bind` is the only WIT-to-Do generation path and that the
+  colorless async compiler consumes its manifest rather than inferring async
+  effects from a Do function name.
 
 - [ ] **Step 2: Write the generated-binding fixture.**
 
-  Import a generated async binding, create an eager `Future<T>` with
-  `@async`, consume it with `@await` on the ready path, and use `@cancel` on
-  the early-cancel path. Do not write `async foo(...) -> T` in the fixture.
+  Import a generated async binding, create an eager `Future<T>` with `@async`,
+  consume it with `@await` on the ready path, and use `@cancel` on early
+  cancellation. Do not write `async foo(...) -> T` in the fixture.
 
 - [ ] **Step 3: Reject metadata/signature mismatch.**
 
@@ -322,42 +315,34 @@ with `wasm-tools 1.254.0`, and the existing Do regression harness.
   says `async func`; assert the named mismatch diagnostic and ensure no WAT is
   emitted.
 
-- [ ] **Step 4: Run the focused async and binding gates.**
-
-  ```bash
-  ./bin/do check src/build/test/compile_ok/421_wit_generated_colorless_async.do
-  ./bin/do check src/build/test/compile_err/421_wit_generated_async_shape.do
-  bash examples/p3-runtime/test_do_async_resource_result.sh
-  bash examples/p3-runtime/test_rust_async_resource_result.sh
-  ```
-
 ### Task 7: Full verification and delivery
 
 **Files:**
 - Modify only with observed evidence: `doc/pending_blocked.md`,
   `doc/roadmap_status.md`, `doc/master_plan.md`, `CHANGELOG.md`
-- Test: sidecar, CLI, compiler, Component, Rust/Wasmtime, and ReleaseSmall
-  matrices
+- Test: Zig unit, differential, compiler, Component, Rust/Wasmtime, and
+  ReleaseSmall matrices
 
 **Interfaces:**
 - Consumes: all prior WIT bindgen and colorless async gates.
-- Produces: a reproducible toolchain checkpoint with explicit remaining WIT
+- Produces: one Zig-built toolchain checkpoint with explicit remaining WIT
   capability boundaries.
 
-- [ ] **Step 1: Run sidecar and focused command gates.**
+- [ ] **Step 1: Verify the pinned reference and Zig implementation.**
 
   ```bash
-  cd tools/wit-bindgen-do && cargo test --locked
-  cd ../..
+  test "$(git -C .deps/wit-bindgen rev-parse HEAD)" = \
+    1ae00530221542369d0e47ee4a1f4232f09d978d
   bash examples/wit-bindgen-do/run_differential.sh
-  bash src/build/test/cli_wit_bind.sh
+  cd src && zig test wit/tests.zig && zig test main.zig
+  cd ..
   git diff --check
   ```
 
-- [ ] **Step 2: Run the compiler matrix.**
+- [ ] **Step 2: Run the full compiler matrix.**
 
   ```bash
-  cd src && zig test main.zig
+  cd src && zig build -Doptimize=ReleaseSmall
   cd ..
   ./src/build/test/run_tests.sh
   RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
@@ -371,18 +356,9 @@ with `wasm-tools 1.254.0`, and the existing Do regression harness.
   binding failure must not be recorded as a regression in an unrelated bounded
   descriptor.
 
-- [ ] **Step 4: Update the roadmap with residual limits.**
+- [ ] **Step 4: Record residual limits.**
 
   Record that arbitrary WIT shapes, public `own<T>`/`borrow<T>`/`ref<T>`,
   network fetching, and generic producer lowering remain outside this plan.
-  Record exact commands and pinned versions before claiming completion.
-
-- [ ] **Step 5: Commit the bounded change.**
-
-  ```bash
-  git add docs/superpowers/specs/2026-08-05-wit-bindgen-do-design.md \
-    docs/superpowers/plans/2026-08-05-wit-bindgen-do.md \
-    tools/wit-bindgen-do src/wit src/main.zig \
-    examples/wit-bindgen-do README.md doc
-  git commit -m "Add WIT to Do binding generation plan"
-  ```
+  Record exact commands, pinned reference commit, and observed results before
+  claiming completion.
