@@ -115,6 +115,7 @@ pub fn analyze(
     }
     if (module_graph) |graph| {
         for (graph.modules) |module| {
+            if (module.tokens.len == tokens.len and module.tokens.ptr == tokens.ptr) continue;
             if (contains_async_operation(module.tokens)) return error.UnsupportedGenericAsyncShape;
         }
     }

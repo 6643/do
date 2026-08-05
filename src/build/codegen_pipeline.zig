@@ -199,6 +199,7 @@ const codegen_component_wasi_sockets = @import("codegen_component_wasi_sockets.z
 const codegen_component_resource_async = @import("codegen_component_resource_async.zig");
 const codegen_component_async = @import("codegen_component_async.zig");
 const codegen_gc_core = @import("codegen_gc_core.zig");
+const codegen_emit_generic_async = @import("codegen_emit_generic_async.zig");
 pub const emit_p3_wait_for_wit = codegen_p3_wait_for.emit_component_wit_for_tokens;
 const collect_body_locals_with_mode = codegen_body.collect_body_locals_with_mode;
 // Re-export expression and call emit entry points.
@@ -530,6 +531,7 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
     if (options.p3_async_component) return codegen_component_async.emit_component_wat(allocator, program, tokens, module_graph);
     if (options.gc_core) return codegen_gc_core.emit_gc_core_wat(allocator, program, tokens);
     if (options.p3_wait_for_component) return finalize_component_wat(allocator, codegen_p3_wait_for.emit_component_wat(allocator, program, tokens, module_graph));
+    if (try codegen_emit_generic_async.emit_if_supported(allocator, program, tokens, module_graph)) |wat| return wat;
     // Generic Core-Wasm emission has no resumable async lowering. Guard before
     // any body-dependent collection can misclassify an async intrinsic call.
     if (program_requires_async_lowering(program, tokens, module_graph)) return error.AsyncLoweringUnavailable;
