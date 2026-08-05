@@ -432,6 +432,19 @@ fn align_frame_offset(offset: u64, alignment: u64) !u64 {
     return std.math.add(u64, offset, alignment - remainder) catch error.AsyncFrameTooLarge;
 }
 
+pub fn align_frame_size(size: u32, alignment: u32) !u32 {
+    if (alignment == 0) return error.InvalidAsyncFrameAlignment;
+    const aligned = try align_frame_offset(size, alignment);
+    if (aligned > std.math.maxInt(u32)) return error.AsyncFrameTooLarge;
+    return @intCast(aligned);
+}
+
+test "generic frame size helper aligns to the requested boundary" {
+    try std.testing.expectEqual(@as(u32, 16), try align_frame_size(12, 8));
+    try std.testing.expectEqual(@as(u32, 24), try align_frame_size(17, 8));
+    try std.testing.expectError(error.InvalidAsyncFrameAlignment, align_frame_size(12, 0));
+}
+
 pub const AsyncFunctionPlan = struct {
     name: []const u8,
     source_name: []const u8,

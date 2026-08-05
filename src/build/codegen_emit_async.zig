@@ -2,6 +2,22 @@ const std = @import("std");
 const async_model = @import("codegen_async_model.zig");
 const gc_async_frame = @import("codegen_gc_async_frame.zig");
 
+pub fn emit_generic_async_frame_metadata(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    state_offset: u32,
+    future_offset: u32,
+    terminal_offset: u32,
+    size: u32,
+) !void {
+    try append_fmt(allocator, out, "  ;; [generic-async-frame-layout] state={d} future={d} terminal={d} size={d}\n", .{
+        state_offset,
+        future_offset,
+        terminal_offset,
+        size,
+    });
+}
+
 pub fn emit_frame_metadata(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
@@ -116,6 +132,14 @@ test "async terminal cleanup releases defers in reverse order before the frame" 
     const earlier = std.mem.indexOf(u8, wat.items, "defer 11").?;
     const release = std.mem.indexOf(u8, wat.items, "call $frame-free").?;
     try std.testing.expect(later < earlier and earlier < release);
+}
+
+test "generic async frame metadata records the aligned ownership slots" {
+    var wat = std.ArrayList(u8).empty;
+    defer wat.deinit(std.testing.allocator);
+
+    try emit_generic_async_frame_metadata(std.testing.allocator, &wat, 0, 4, 8, 16);
+    try std.testing.expect(std.mem.indexOf(u8, wat.items, "state=0 future=4 terminal=8 size=16") != null);
 }
 
 test "stream writer frame metadata records bounded queue state" {
