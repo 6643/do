@@ -2,7 +2,9 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
 const sema = @import("sema.zig");
+const sema_tokens = @import("sema_tokens.zig");
 const module_graph = @import("module_graph.zig");
+const generated_wit_manifest = @import("generated_wit_manifest.zig");
 
 const ModuleGraph = module_graph.ModuleGraph;
 const ImportRef = module_graph.ImportRef;
@@ -76,6 +78,11 @@ const ReturnArityResolve = union(enum) {
     ambiguous,
 };
 
+const HostImportSignatureRange = struct {
+    open: usize,
+    close: usize,
+};
+
 pub const ErrorSite = struct {
     line: usize,
     col: usize,
@@ -121,7 +128,7 @@ pub fn check_and_load(
         mark_error_at,
     );
     errdefer graph.deinit();
-    try resolve_imports(allocator, &graph);
+    try resolve_imports(io, allocator, &graph);
     return graph;
 }
 
@@ -187,10 +194,77 @@ fn validate_loaded_source(
     sema.check_program(allocator, program, tokens) catch return error.InvalidImportDecl;
 }
 
-fn resolve_imports(allocator: std.mem.Allocator, graph: *const ModuleGraph) !void {
+fn resolve_imports(io: std.Io, allocator: std.mem.Allocator, graph: *ModuleGraph) !void {
+    var generated_async_lowerings = std.ArrayList(module_graph.GeneratedAsyncLowering).empty;
+    errdefer {
+        for (generated_async_lowerings.items) |lowering| free_generated_async_lowering(allocator, lowering);
+        generated_async_lowerings.deinit(allocator);
+    }
     for (graph.modules) |module| {
+        if (is_generated_wit_module_path(module.path)) {
+            var validated = try generated_wit_manifest.load_and_validate(io, allocator, module.path, module.tokens);
+            defer validated.deinit(allocator);
+            for (validated.lowerings) |lowering| {
+                const owned = try clone_generated_async_lowering(allocator, lowering);
+                generated_async_lowerings.append(allocator, owned) catch |err| {
+                    free_generated_async_lowering(allocator, owned);
+                    return err;
+                };
+            }
+        }
         try resolve_module_imports(allocator, graph, module.path, module.tokens);
     }
+    graph.generated_async_lowerings = try generated_async_lowerings.toOwnedSlice(allocator);
+}
+
+fn clone_generated_async_lowering(
+    allocator: std.mem.Allocator,
+    lowering: generated_wit_manifest.GeneratedAsyncLowering,
+) !module_graph.GeneratedAsyncLowering {
+    var owned = module_graph.GeneratedAsyncLowering{
+        .locator = "",
+        .member = "",
+        .source_signature = "",
+        .wit_package = "",
+        .wit_world = "",
+        .wit_interface = "",
+        .wit_member = "",
+        .async_import_module = "",
+        .async_import_name = "",
+        .completion = "",
+        .wit_sha256 = lowering.wit_sha256,
+    };
+    errdefer free_generated_async_lowering(allocator, owned);
+    owned.locator = try allocator.dupe(u8, lowering.locator);
+    owned.member = try allocator.dupe(u8, lowering.member);
+    owned.source_signature = try allocator.dupe(u8, lowering.source_signature);
+    owned.wit_package = try allocator.dupe(u8, lowering.wit_package);
+    owned.wit_world = try allocator.dupe(u8, lowering.wit_world);
+    owned.wit_interface = try allocator.dupe(u8, lowering.wit_interface);
+    owned.wit_member = try allocator.dupe(u8, lowering.wit_member);
+    owned.async_import_module = try allocator.dupe(u8, lowering.async_import_module);
+    owned.async_import_name = try allocator.dupe(u8, lowering.async_import_name);
+    owned.completion = try allocator.dupe(u8, lowering.completion);
+    return owned;
+}
+
+fn free_generated_async_lowering(allocator: std.mem.Allocator, lowering: module_graph.GeneratedAsyncLowering) void {
+    if (lowering.locator.len != 0) allocator.free(lowering.locator);
+    if (lowering.member.len != 0) allocator.free(lowering.member);
+    if (lowering.source_signature.len != 0) allocator.free(lowering.source_signature);
+    if (lowering.wit_package.len != 0) allocator.free(lowering.wit_package);
+    if (lowering.wit_world.len != 0) allocator.free(lowering.wit_world);
+    if (lowering.wit_interface.len != 0) allocator.free(lowering.wit_interface);
+    if (lowering.wit_member.len != 0) allocator.free(lowering.wit_member);
+    if (lowering.async_import_module.len != 0) allocator.free(lowering.async_import_module);
+    if (lowering.async_import_name.len != 0) allocator.free(lowering.async_import_name);
+    if (lowering.completion.len != 0) allocator.free(lowering.completion);
+}
+
+fn is_generated_wit_module_path(path: []const u8) bool {
+    if (!std.mem.endsWith(u8, path, ".do")) return false;
+    const dir = std.fs.path.dirname(path) orelse return false;
+    return std.mem.eql(u8, std.fs.path.basename(dir), "wit");
 }
 
 fn resolve_module_imports(
@@ -781,7 +855,14 @@ fn find_public_decl_kind(tokens: []const lexer.Token, target: []const u8) ?DeclK
         if (depth_brace != 0) continue;
         if (!is_top_level_decl_head(tokens, i)) continue;
         if (tokens[i].kind != .ident) continue;
-        if (is_modern_import_assign(tokens, i)) continue;
+        if (is_modern_import_assign(tokens, i)) {
+            // Generated WIT modules expose validated @host declarations as
+            // ordinary function imports. Keep @lib and other host forms out
+            // of the declaration scan, but do not hide a generated host
+            // function from a caller's @lib("./wit/...do", member) binding.
+            if (std.mem.eql(u8, tokens[i].lexeme, target) and is_generated_wit_host_import_decl_start(tokens, i)) return .func;
+            continue;
+        }
         if (find_public_enum_member_kind(tokens, i, target)) |kind| return kind;
         if (!std.mem.eql(u8, tokens[i].lexeme, target)) continue;
         if (is_private_decl_name(tokens[i].lexeme)) continue;
@@ -803,6 +884,23 @@ fn check_imported_func_calls(
     import_ref: ImportRef,
     child_tokens: []const lexer.Token,
 ) !void {
+    if (host_import_signature_range(child_tokens, import_ref.target)) |host_sig| {
+        const expected_arity = try count_call_args(child_tokens, host_sig.open + 1, host_sig.close);
+        const alias = tokens[import_ref.alias_idx].lexeme;
+        var i: usize = 0;
+        while (i + 1 < tokens.len) : (i += 1) {
+            if (tokens[i].kind != .ident or !std.mem.eql(u8, tokens[i].lexeme, alias)) continue;
+            if (!tok_eq(tokens[i + 1], "(")) continue;
+            const close_paren = find_matching(tokens, i + 1, "(", ")") catch
+                return mark_error_at(tokens, i, error.InvalidCallArgList);
+            const call_args = try parse_import_call_args(allocator, tokens, i + 2, close_paren);
+            defer allocator.free(call_args.shapes);
+            if (call_args.shapes.len != expected_arity) return mark_error_at(tokens, i, error.NoMatchingCall);
+            i = close_paren;
+        }
+        return;
+    }
+
     var program = parser.parse_program(allocator, child_tokens, child_tokens.len) catch
         return mark_error_at(tokens, import_ref.alias_idx, error.InvalidImportDecl);
     defer program.deinit(allocator);
@@ -839,6 +937,30 @@ fn check_imported_func_calls(
         }
         i = close_paren;
     }
+}
+
+fn host_import_signature_range(tokens: []const lexer.Token, target: []const u8) ?HostImportSignatureRange {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tok_eq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tok_eq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0 or tokens[i].kind != .ident or !std.mem.eql(u8, tokens[i].lexeme, target)) continue;
+        if (!is_host_import_decl_start(tokens, i)) continue;
+        const eq_idx = top_level_line_assign_idx(tokens, i) orelse continue;
+        const at_idx = eq_idx + 1;
+        const signature_open = at_idx + 7;
+        if (signature_open >= tokens.len or !tok_eq(tokens[signature_open], "(")) continue;
+        const signature_close = find_matching(tokens, signature_open, "(", ")") catch continue;
+        return .{ .open = signature_open, .close = signature_close };
+    }
+    return null;
 }
 
 fn has_compatible_func_sig(func_sigs: []const parser.FuncSig, target: []const u8, arg_count: usize) bool {
@@ -1194,6 +1316,24 @@ fn append_imported_alias_func_shapes(
         }
         if (depth_brace != 0) continue;
         if (!is_top_level_decl_head(child_tokens, i)) continue;
+        if (is_host_import_decl_start(child_tokens, i)) {
+            if (!std.mem.eql(u8, child_tokens[i].lexeme, target)) continue;
+            const host_sig = host_import_signature_range(child_tokens, target) orelse continue;
+            const arity = try count_call_args(child_tokens, host_sig.open + 1, host_sig.close);
+            const params = try allocator.alloc(FuncParamShape, arity);
+            for (params) |*param| param.* = .other;
+            try out.append(allocator, .{
+                .name = alias,
+                .start_idx = alias_idx,
+                .param_shapes = params,
+                .param_min = arity,
+                .param_max = arity,
+                .return_type = null,
+                .return_arity = 1,
+                .is_generic = false,
+            });
+            return;
+        }
         if (!is_func_decl_start(child_tokens, i)) continue;
 
         const decl_name = child_tokens[i].lexeme;
@@ -2284,12 +2424,110 @@ fn is_host_import_decl_start(tokens: []const lexer.Token, idx: usize) bool {
     return is_host_import_line(tokens, at_idx, line_end);
 }
 
+fn is_generated_wit_host_import_decl_start(tokens: []const lexer.Token, idx: usize) bool {
+    if (!is_host_import_decl_start(tokens, idx)) return false;
+    const eq_idx = top_level_line_assign_idx(tokens, idx) orelse return false;
+    const at_idx = eq_idx + 1;
+    const line_end = find_line_end_idx(tokens, idx);
+    if (at_idx + 3 >= line_end) return false;
+    const locator = string_token_body(tokens[at_idx + 3].lexeme) orelse return false;
+    const namespace_end = std.mem.indexOfScalar(u8, locator, ':') orelse return false;
+    if (namespace_end == 0 or namespace_end + 1 >= locator.len) return false;
+    const rest = locator[namespace_end + 1 ..];
+    const slash = std.mem.indexOfScalar(u8, rest, '/') orelse return false;
+    const version_at = std.mem.lastIndexOfScalar(u8, rest, '@') orelse return false;
+    return slash > 0 and version_at > slash + 1 and version_at + 1 < rest.len;
+}
+
+test "only WIT-locator host declarations are importable" {
+    const wit_source =
+        \\send = @host("do:bindgen-probe/api@0.1.0", "send", (u32) -> u32)
+    ;
+    const env_source =
+        \\send = @host("env", "send", (u32) -> u32)
+    ;
+    const wit_tokens = try lexer.tokenize(std.testing.allocator, wit_source);
+    defer std.testing.allocator.free(wit_tokens);
+    const env_tokens = try lexer.tokenize(std.testing.allocator, env_source);
+    defer std.testing.allocator.free(env_tokens);
+
+    try std.testing.expectEqual(DeclKind.func, find_public_decl_kind(wit_tokens, "send"));
+    try std.testing.expectEqual(@as(?DeclKind, null), find_public_decl_kind(env_tokens, "send"));
+}
+
+test "generated WIT schema 2 lowering enters the module graph" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDir(std.testing.io, "wit", .default_dir);
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "wit/do_generic_async_runtime_probe__host__probe.do",
+        .data = generated_async_module_source,
+    });
+    const manifest = try generated_async_manifest(std.testing.allocator, generated_async_module_hash);
+    defer std.testing.allocator.free(manifest);
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "wit/manifest.json", .data = manifest });
+
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", std.testing.allocator);
+    defer std.testing.allocator.free(root);
+    const input_path = try std.fs.path.join(std.testing.allocator, &.{ root, "main.do" });
+    defer std.testing.allocator.free(input_path);
+    const source = "work = @lib(\"./wit/do_generic_async_runtime_probe__host__probe.do\", work)";
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    var graph = try check_and_load(std.testing.io, std.testing.allocator, input_path, tokens, "lib");
+    defer graph.deinit();
+    try std.testing.expectEqual(@as(usize, 1), graph.generated_async_lowerings.len);
+    const lowering = graph.generated_async_lowerings[0];
+    try std.testing.expectEqualStrings("do:generic-async-runtime-probe/host@0.1.0", lowering.locator);
+    try std.testing.expectEqualStrings("work", lowering.member);
+    try std.testing.expectEqualStrings("[async-lower]work", lowering.async_import_name);
+    try std.testing.expectEqualStrings("task-return", lowering.completion);
+}
+
+test "generated WIT module hash drift rejects before lowering admission" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDir(std.testing.io, "wit", .default_dir);
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "wit/do_generic_async_runtime_probe__host__probe.do",
+        .data = generated_async_module_source ++ " ",
+    });
+    const manifest = try generated_async_manifest(std.testing.allocator, generated_async_module_hash);
+    defer std.testing.allocator.free(manifest);
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "wit/manifest.json", .data = manifest });
+
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", std.testing.allocator);
+    defer std.testing.allocator.free(root);
+    const input_path = try std.fs.path.join(std.testing.allocator, &.{ root, "main.do" });
+    defer std.testing.allocator.free(input_path);
+    const source = "work = @lib(\"./wit/do_generic_async_runtime_probe__host__probe.do\", work)";
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectError(
+        error.GeneratedWitManifestMismatch,
+        check_and_load(std.testing.io, std.testing.allocator, input_path, tokens, "lib"),
+    );
+}
+
+const generated_async_module_source =
+    "work = @host(\"do:generic-async-runtime-probe/host@0.1.0\", \"work\", () -> Future<nil>)";
+const generated_async_module_hash = "77f8e5774f46663b912de1742cf6fa21093b10094edb627729e33560e917d531";
+
+fn generated_async_manifest(allocator: std.mem.Allocator, module_hash: []const u8) ![]u8 {
+    return std.fmt.allocPrint(
+        allocator,
+        "{{\"schema\":2,\"package\":\"do:generic-async-runtime-probe@0.1.0\",\"world\":\"probe\",\"modules\":[\"do_generic_async_runtime_probe__host__probe.do\"],\"module_hashes\":[{{\"path\":\"do_generic_async_runtime_probe__host__probe.do\",\"sha256\":\"{s}\"}}],\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"members\":[{{\"package\":\"do:generic-async-runtime-probe@0.1.0\",\"member\":\"host.work\",\"effect\":\"async\",\"async\":true,\"future\":false,\"stream\":false,\"resource\":false,\"signature\":\"() -> Future<nil>\"}}],\"async_lowerings\":[{{\"capability\":\"component-async-unit-v1\",\"member\":\"host.work\",\"source_signature\":\"() -> Future<nil>\",\"wit_package\":\"do:generic-async-runtime-probe@0.1.0\",\"wit_world\":\"probe\",\"wit_interface\":\"host\",\"wit_member\":\"work\",\"async_import_module\":\"do:generic-async-runtime-probe/host@0.1.0\",\"async_import_name\":\"[async-lower]work\",\"completion\":\"task-return\",\"wit_sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"}}]}}",
+        .{module_hash},
+    );
+}
+
 fn is_host_import_line(tokens: []const lexer.Token, at_idx: usize, line_end: usize) bool {
     if (at_idx + 3 >= line_end) return false;
     if (!tok_eq(tokens[at_idx], "@")) return false;
     if (tokens[at_idx + 1].kind != .ident) return false;
-    if (std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host"))
-    {
+    if (std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host")) {
         return tok_eq(tokens[at_idx + 2], "(");
     }
     return false;
@@ -2312,7 +2550,8 @@ fn is_valid_import_file_name(name: []const u8, prefix: ImportPrefix) bool {
     if (stem.len == 0) return false;
     return switch (prefix) {
         .dep => is_valid_dep_file_stem(stem),
-        .local, .std => is_valid_flat_file_stem(stem),
+        .local => sema_tokens.is_valid_local_file_path(stem),
+        .std => is_valid_flat_file_stem(stem),
     };
 }
 

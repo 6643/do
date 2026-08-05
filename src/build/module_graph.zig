@@ -1,5 +1,8 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
+const generated_wit_manifest = @import("generated_wit_manifest.zig");
+
+pub const GeneratedAsyncLowering = generated_wit_manifest.GeneratedAsyncLowering;
 
 pub const ImportPrefix = enum {
     local,
@@ -26,6 +29,7 @@ pub const ModuleGraph = struct {
     allocator: std.mem.Allocator,
     dep_root: []const u8,
     modules: []ModuleRecord,
+    generated_async_lowerings: []const GeneratedAsyncLowering = &.{},
 
     pub fn deinit(self: *ModuleGraph) void {
         for (self.modules) |module| {
@@ -34,6 +38,8 @@ pub const ModuleGraph = struct {
             self.allocator.free(module.path);
         }
         self.allocator.free(self.modules);
+        for (self.generated_async_lowerings) |lowering| free_generated_async_lowering(self.allocator, lowering);
+        self.allocator.free(self.generated_async_lowerings);
     }
 
     pub fn find_module(self: *const ModuleGraph, path: []const u8) ?usize {
@@ -43,6 +49,19 @@ pub const ModuleGraph = struct {
         return null;
     }
 };
+
+fn free_generated_async_lowering(allocator: std.mem.Allocator, lowering: GeneratedAsyncLowering) void {
+    if (lowering.locator.len != 0) allocator.free(lowering.locator);
+    if (lowering.member.len != 0) allocator.free(lowering.member);
+    if (lowering.source_signature.len != 0) allocator.free(lowering.source_signature);
+    if (lowering.wit_package.len != 0) allocator.free(lowering.wit_package);
+    if (lowering.wit_world.len != 0) allocator.free(lowering.wit_world);
+    if (lowering.wit_interface.len != 0) allocator.free(lowering.wit_interface);
+    if (lowering.wit_member.len != 0) allocator.free(lowering.wit_member);
+    if (lowering.async_import_module.len != 0) allocator.free(lowering.async_import_module);
+    if (lowering.async_import_name.len != 0) allocator.free(lowering.async_import_name);
+    if (lowering.completion.len != 0) allocator.free(lowering.completion);
+}
 
 pub const ParseImportFn = *const fn (tokens: []const lexer.Token, idx: usize) ?ImportRef;
 pub const ResolvePathFn = *const fn (
@@ -127,6 +146,7 @@ const Context = struct {
             .allocator = self.allocator,
             .dep_root = self.dep_root,
             .modules = modules,
+            .generated_async_lowerings = &.{},
         };
     }
 };
