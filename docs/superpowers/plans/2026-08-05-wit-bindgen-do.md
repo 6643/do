@@ -3,15 +3,18 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** add a reproducible `do wit check/bind` workflow implemented in Zig,
-using the pinned upstream `wit-bindgen` Rust and Go generators as differential
-oracles, and generate flat project-root `wit/*.do` bindings plus metadata.
+translating a canonical WIT model into flat project-root `wit/*.do` bindings
+and metadata, with pinned upstream Rust and Go generators as differential
+oracles.
 
-**Architecture:** `src/wit/` contains the Zig WIT model, resolver, emitter, and
-CLI adapter. `src/main.zig` dispatches `do wit` through the same `bin/do`
-executable, so the existing `cd src && zig build` remains the only production
-compiler build. `.deps/wit-bindgen` is an ignored checkout of upstream
-`v0.60.0` used only by probes and research; no Rust sidecar is required to run
-or build Do.
+**Architecture:** `src/wit/` contains the Zig WIT lexer, parser, immutable
+canonical model, resolver, emitter, and CLI adapter. `src/main.zig` dispatches
+`do wit` through the same `bin/do` executable, so the existing
+`cd src && zig build` remains the only production compiler build. The canonical
+model is the translation boundary: every emitted Do declaration and manifest
+fact comes from it. `.deps/wit-bindgen` is an ignored, detached checkout of
+upstream `v0.60.0` used only by opt-in probes and research; no Rust sidecar is
+required to run or build Do.
 
 **Tech Stack:** Zig `0.16.0`, pinned upstream `wit-bindgen v0.60.0` at commit
 `1ae00530221542369d0e47ee4a1f4232f09d978d` for Go/Rust differential probes,
@@ -26,6 +29,11 @@ harness.
   under `src/wit/`.
 - `.deps/wit-bindgen` is a local ignored reference checkout, not a build or
   runtime dependency of `bin/do`.
+- Bootstrap the reference with the pinned tag and detached commit; refresh it
+  only explicitly with `git fetch --tags` and never from `do wit` itself.
+- WIT is the source of truth. Go/Rust generated source is differential evidence
+  for the `WIT construct -> Do spelling -> manifest/ABI fact` translation and
+  is never production input or copied runtime code.
 - Generated Do files are flat under the project-root `wit/` directory.
 - Generated output includes `manifest.json` and `wit.lock` beside the `*.do`
   files.
@@ -61,37 +69,48 @@ harness.
 - Produces: a checked-in comparison of Go/Rust generated APIs, async ABI
   markers, reader/writer types, resource drop behavior, and terminal cleanup.
 
-- [ ] **Step 1: Ignore and verify the reference checkout.**
+- [x] **Step 1: Bootstrap, pin, and verify the reference checkout.**
 
-  Add `.deps/` to `.gitignore` and make the probe fail unless this exact
-  checkout is present:
+  Add `.deps/` to `.gitignore`. When the checkout is absent, bootstrap it with
+  the pinned tag; when it exists, refresh tags explicitly and detach at the
+  pinned commit. The probe must fail closed unless both tag and commit resolve
+  to the expected object:
 
   ```bash
+  mkdir -p .deps
+  git clone --branch v0.60.0 --depth 1 \
+    git@github.com:bytecodealliance/wit-bindgen.git .deps/wit-bindgen
+  git -C .deps/wit-bindgen fetch --tags origin
+  git -C .deps/wit-bindgen checkout --detach \
+    1ae00530221542369d0e47ee4a1f4232f09d978d
   test "$(git -C .deps/wit-bindgen rev-parse HEAD)" = \
+    1ae00530221542369d0e47ee4a1f4232f09d978d
+  test "$(git -C .deps/wit-bindgen rev-parse v0.60.0^{commit})" = \
     1ae00530221542369d0e47ee4a1f4232f09d978d
   ```
 
-- [ ] **Step 2: Write the fixed WIT world.**
+- [x] **Step 2: Write the fixed WIT world.**
 
   Use package `do:bindgen-probe@0.1.0` and world `probe`. The interface must
   contain `resource request`, `resource response`,
   `async func send(request: request) -> result<response, error>`,
   `func completion() -> future<u32>`, and `func events() -> stream<u8>`.
 
-- [ ] **Step 3: Run the upstream generators.**
+- [x] **Step 3: Run the upstream generators.**
 
   Invoke the checked-out `wit-bindgen` CLI with its `go` and `rust` generators,
   using the fixed world. Save only stable API fragments and ABI markers; do
   not check in generated Go/Rust build trees.
 
-- [ ] **Step 4: Record the differential matrix.**
+- [x] **Step 4: Record the differential and translation matrix.**
 
   Record Future/Stream types, `[async-lower]`/`[async-lift]` markers,
   callback/task-return operations, resource move/drop rules, and cancellation
-  terminal handling. Mark every row as surface API, canonical ABI, or runtime
-  behavior.
+  terminal handling. For each supported shape also record the explicit
+  `WIT construct -> Do spelling -> manifest/ABI fact` mapping. Mark every row as
+  surface API, canonical ABI, or runtime behavior.
 
-- [ ] **Step 5: Verify reproducibility.**
+- [x] **Step 5: Verify reproducibility.**
 
   ```bash
   bash examples/wit-bindgen-do/run_differential.sh
@@ -142,8 +161,9 @@ harness.
 
   Preserve WIT type identity rather than flattening by spelling. Store result
   arms, resource ownership mode, drop operation, future/stream operation facts,
-  and an explicit unsupported-shape reason. The emitter must consume this model
-  and never re-parse WIT strings.
+  and an explicit unsupported-shape reason. Include the translation facts needed
+  for each emitted Do type and manifest entry. The emitter must consume this
+  model and never re-parse WIT strings or upstream generated source.
 
 - [ ] **Step 5: Run Zig unit tests.**
 

@@ -1,0 +1,8 @@
+witTypes.FutureReader
+witTypes.FutureWriter
+witTypes.StreamReader
+witTypes.StreamWriter
+witAsync.SubtaskWait
+[async-lower]send
+resourceDropRequest
+resourceDropResponse

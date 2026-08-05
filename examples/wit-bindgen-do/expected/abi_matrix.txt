@@ -1,0 +1,6 @@
+go: future readable/writable/drop operations are generated for completion
+go: stream readable/writable/drop operations are generated for events
+go: async import send uses [async-lower] and SubtaskWait
+rust: async import send uses an async fn and [async-lower]
+rust: resources expose [resource-drop] operations for request and response
+cancellation: runtime terminal protocol, not a WIT member

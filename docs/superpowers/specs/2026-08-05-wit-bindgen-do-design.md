@@ -1,6 +1,7 @@
 # WIT Bindgen Do Design
 
-**Status:** approved for implementation planning.
+**Status:** approved for implementation planning; revised to pin and use the
+upstream checkout as a translation oracle.
 
 **Goal:** provide a reproducible WIT-to-Do binding workflow without changing
 the WIT language, while keeping the production implementation in the Zig
@@ -31,6 +32,24 @@ checkout at `.deps/wit-bindgen`. The pinned reference is tag `v0.60.0` at
 commit `1ae00530221542369d0e47ee4a1f4232f09d978d`. Its Rust and Go generators
 are used for differential probes and ABI research; they are not runtime or
 build dependencies of `bin/do`.
+
+The checkout is bootstrapped explicitly and then detached at the pinned
+commit:
+
+```bash
+mkdir -p .deps
+git clone --branch v0.60.0 --depth 1 \
+  git@github.com:bytecodealliance/wit-bindgen.git .deps/wit-bindgen
+git -C .deps/wit-bindgen checkout --detach \
+  1ae00530221542369d0e47ee4a1f4232f09d978d
+```
+
+For an existing checkout, refresh tags and re-pin it with
+`git -C .deps/wit-bindgen fetch --tags origin` followed by the same detached
+checkout. The production `do wit` command never fetches or executes this
+checkout; only the opt-in differential probe may build its CLI. A missing or
+mismatched checkout is a closed failure, never a request to silently use a
+different version.
 
 ## Project Layout
 
@@ -110,6 +129,12 @@ src/wit (Zig generator)
 The Zig implementation owns WIT resolution, canonical type facts, Do source
 emission, diagnostics, and atomic output. It is a Do-specific generator rather
 than a claim to replace every upstream language generator.
+
+WIT remains the source of truth. The resolver first constructs an immutable
+canonical model, then translates each supported WIT shape through an explicit
+`WIT construct -> Do spelling -> manifest/ABI fact` mapping. Generated Go or
+Rust source is not parsed as production input and is never copied into the Do
+toolchain; it is evidence used to validate that mapping.
 
 The checked-in reference generators are differential oracles, not copied
 runtimes:

@@ -1,0 +1,20 @@
+//@ async = true
+
+package do:bindgen-probe@0.1.0;
+
+interface api {
+  resource request {}
+  resource response {}
+
+  enum error {
+    failed,
+  }
+
+  send: async func(request: request) -> result<response, error>;
+  completion: func() -> future<u32>;
+  events: func() -> stream<u8>;
+}
+
+world probe {
+  import api;
+}
