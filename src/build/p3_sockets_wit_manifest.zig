@@ -2,7 +2,7 @@ const std = @import("std");
 
 pub const package_revision = "wasi:sockets@0.3.0-rc-2025-09-16";
 pub const source_path = "src/build/p3_wit/wasi-http-0.3.0-rc-2025-09-16/deps/sockets";
-pub const types_sha256 = "05c39ed24afdf1d4b1693851d462d958bfd8c542c573b65350b9ceb2e27f8d65";
+pub const types_sha256 = "02be1588291bbd1044eb472208c34010f7c42c6232af721020ec0c62f37b1d88";
 pub const world_sha256 = "4da84a1f4efd9c9f45bdeb93b8d6310e5bdb053f0dc6ec5f2d48868102de1c4e";
 
 const types_path = "p3_wit/wasi-http-0.3.0-rc-2025-09-16/deps/sockets/types.wit";

@@ -30,6 +30,14 @@ only. Public `own<T>`/`borrow<T>`/`ref<T>` syntax remains outside this phase.
 
 **G6.2 next-shape stop (2026-08-05, `can_skip=true`):** 当前计划要求的两个候选都没有形成新的独立 shape：payload-bearing completion error 的 pinned 证据属于现有 HTTP 专用 descriptor，record/list resource shape 已有独立 registry 与 runtime gate。没有新的 pinned WIT/WAT、canonical layout 和 ownership matrix 时不新增 descriptor、不泛化现有 lowering。恢复条件是先提交新的 bounded design、pinned probe、正负 fixture、Component/Rust/Wasmtime cleanup gate，再重新进入 G6.2。
 
+**Task 8 Step 3 runtime baseline (2026-08-05, green):**
+`examples/p3-runtime/test_task8_step3_baseline.sh` 已通过当前七个已登记
+descriptor gate（cancel-wait-for、scalar/resource Result、stream reader/writer、
+filesystem preopen、TCP/UDP sockets）。这只关闭运行时基线核验，不关闭
+`AsyncLoweringUnavailable`；generic `Future`/`Stream` lowering 仍须按独立计划
+建立 admitted shape、resumable frame、Component metadata 与 Rust/Wasmtime
+pending/ready/cancel gate。
+
 本轮执行复核（2026-08-05）重新运行了六跳 forwarding/任意 producer 边界、borrowed stream rejection 与 `p3_async_manifest`（74/74）；三项均保持预期拒绝/通过，因此 no-go 继续有效，未新增 descriptor 或 lowering。
 
 **规则**: 固定一至三条目 read-directory slice、generic consumer slice、multi-owned、多个顶层 nested-owned resource path 以及一层/两层/三层/四层/五层/六层 nested-owned resource consumer slice、注册的单读 `stream<list<resource-entry>>` private slice、bounded scalar producer slice、受限（最多五跳 forwarding）helper-mediated producer-lease slice、固定/参数化 `u64` countdown producer slice、参数化 helper producer slice及其五跳 forwarding、三种 typed 参数受限重排形状与 branch-selected terminal slice 均已可用；无对应 producer-lease/resource gate 时，不绕过上述边界扩 WASI async/stream codegen。
@@ -79,7 +87,7 @@ borrowed/list/variant resource field 或更宽 runtime 形状。
 
 **G6.1 已关闭 (方案 A)**: `preopens.get-directories` → do `[Tuple<i32,text>]` host / 公开 `preopen_directories() -> [Tuple<Dir, text>]`; list-of-tuple resource lowering + `lib/dir.do`; 见 `compile_ok/274`–`275`。
 
-**G6.3 已关闭 (方案 B)**: sockets `tcp/udp-socket.create|bind|drop` 可 lower; 地址为 dual concrete + `IpSocketAddress = V4|V6` payload enum; resource shell + 粗粒度 `TcpError`/`UdpError`; stdlib `lib/tcp.do` / `lib/udp.do` / `lib/net.do`; 见 `compile_ok/291`–`294` 与 `docs/superpowers/specs/2026-07-13-g6-3-sockets-scheme-b-design.md`。真 host smoke 仍属 **D2**。
+**G6.3 已关闭 (方案 B)**: sockets `tcp/udp-socket.create|bind|drop` 可 lower; 地址为 dual concrete + `IpSocketAddress = V4|V6` payload enum; resource shell + 粗粒度 `TcpError`/`UdpError`; stdlib `lib/tcp.do` / `lib/udp.do` / `lib/net.do`; compiler-generated Component 与 Rust/Wasmtime TCP/UDP loopback smoke 已通过（含 create/bind failure cleanup）；见 `compile_ok/291`–`294` 与 `docs/superpowers/specs/2026-07-13-g6-3-sockets-scheme-b-design.md`。D2 总项仍保持 in progress。
 
 ---
 

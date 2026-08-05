@@ -1067,6 +1067,29 @@ lifecycle. It does not prove an already-issued SQL update, HTTP request, or
 other external side effect was rolled back, compensated, or made idempotent.
 Those guarantees belong to the selected host API and business protocol.
 
+## Task 8 Step 3 Runtime Baseline (2026-08-05)
+
+**Status:** all currently admitted descriptor-specific runtime gates are
+green; generic async lowering remains blocked by `AsyncLoweringUnavailable`.
+
+**Evidence:** `examples/p3-runtime/test_task8_step3_baseline.sh` passed the
+cancel-wait-for, scalar Result, resource Result, stream reader, stream writer,
+filesystem preopen, and real TCP/UDP socket gates with Zig 0.16.0,
+`wasm-tools 1.254.0`, Wasmtime 47.0.2, and Rust 1.97.1. The socket gate also
+covers create and bind failures and verifies an empty resource table.
+
+The first baseline run rejected the socket fixture with
+`InvalidPinnedSocketsWit` because the manifest's embedded `types.wit` hash was
+stale after whitespace normalization. The manifest now records the checked-in
+source hash and the socket unit suite passes `36/36`; no runtime implementation
+was added to bypass the validation.
+
+**Boundary:** this closes the Task 8 Step 3 baseline only. It does not prove
+generic `Future<T>`/`Stream<T>` lowering, arbitrary async function lowering,
+public ownership syntax, or a scheduler. Those shapes must continue to fail
+with `AsyncLoweringUnavailable` until the generic resumable slice is admitted
+and independently gated.
+
 ## Wasmtime Store Async Serialization
 
 **Status:** this is a constraint of the current Wasmtime C embedder experiment,
