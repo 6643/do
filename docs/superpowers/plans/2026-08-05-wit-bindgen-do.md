@@ -136,7 +136,7 @@ harness.
   interfaces, functions, types, async/future/stream effects, resources,
   ownership facts, and content hashes.
 
-- [ ] **Step 1: Add lexer tests for the supported WIT grammar.**
+- [x] **Step 1: Add lexer tests for the supported WIT grammar.**
 
   Cover identifiers, package versions, `use`, `include`, interface/world
   declarations, type aliases, `resource`, `record`, `variant`, `enum`,
@@ -144,7 +144,7 @@ harness.
   `async func`. Reject unterminated strings, invalid version components, and
   unknown punctuation with source locations.
 
-- [ ] **Step 2: Add parser tests for one complete world.**
+- [x] **Step 2: Add parser tests for one complete world.**
 
   Parse the Task 1 world into typed AST nodes. Assert that async effect is a
   member fact, not a Do source modifier, and that `future<T>` and `stream<T>`
@@ -152,12 +152,14 @@ harness.
 
 - [ ] **Step 3: Implement package and world resolution.**
 
-  Resolve local package files and dependency directories, select the requested
-  world, canonicalize package/interface/member locators, and calculate stable
-  content hashes. Reject duplicate package identities, missing `use` targets,
-  unresolved world names, and cycles with named errors.
+  The current checkpoint resolves a WIT file and a directory containing one
+  `world.wit`/`worlds.wit` source, selects the requested world, and calculates
+  a stable content hash. Extend it to merge local package files and dependency
+  directories, canonicalize package/interface/member locators, and reject
+  duplicate package identities, missing `use` targets, and include cycles with
+  named errors before marking this step complete.
 
-- [ ] **Step 4: Implement the immutable binding model.**
+- [x] **Step 4: Implement the immutable binding model.**
 
   Preserve WIT type identity rather than flattening by spelling. Store result
   arms, resource ownership mode, drop operation, future/stream operation facts,
@@ -165,7 +167,7 @@ harness.
   for each emitted Do type and manifest entry. The emitter must consume this
   model and never re-parse WIT strings or upstream generated source.
 
-- [ ] **Step 5: Run Zig unit tests.**
+- [x] **Step 5: Run Zig unit tests.**
 
   ```bash
   cd src
