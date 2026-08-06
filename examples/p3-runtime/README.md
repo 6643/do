@@ -323,3 +323,11 @@ To terminate zero safely, the loop may instead start with the exact guard
 inputs `0` and `2`: the first completes without a host call, while the second
 observes only `wait-for(2)` and `wait-for(1)`. Run
 `bash test_do_loop_countdown_pre_guard_lowering.sh`.
+
+`examples/wit-bindgen-do/test_generated_async_lowering.sh` is the generated
+binding counterpart to the hand-written generic async probes. It generates the
+private `do:generic-async-runtime-probe@0.1.0` WIT binding, validates the schema
+2 `component-async-unit-v1` manifest, assembles a Component, and runs the
+pending/ready/cancel Rust host modes. It admits only the zero-parameter unit
+`work` member; payloads, streams, resources, and unrestricted WIT async
+lowering remain unsupported.
