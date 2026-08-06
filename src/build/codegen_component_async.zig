@@ -1,5 +1,6 @@
 const std = @import("std");
 const imports = @import("imports.zig");
+const module_graph_types = @import("module_graph.zig");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
 const codegen_component_resource_async = @import("codegen_component_resource_async.zig");
@@ -18,6 +19,7 @@ const wat_component_metadata = @import("wat_component_metadata.zig");
 
 pub const Target = enum {
     generic_async,
+    generated_async_scalar,
     scalar_unit,
     scalar_result,
     unit_result_tag,
@@ -89,6 +91,7 @@ pub fn emit_component_wat(
     }
     return switch (try target_for_tokens_with_graph(allocator, tokens, module_graph)) {
         .generic_async => finalize_component_wat(allocator, emit_generic_async_component_wat(allocator, tokens, module_graph)),
+        .generated_async_scalar => error.UnsupportedP3AsyncComponent,
         .scalar_unit, .unit_result_tag => finalize_component_wat(allocator, codegen_p3_wait_for.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
             error.UnsupportedP3WaitForComponent => error.UnsupportedP3AsyncComponent,
             else => err,
@@ -738,6 +741,7 @@ pub fn emit_component_wit_with_graph(
     }
     return switch (try target_for_tokens_with_graph(allocator, tokens, module_graph)) {
         .generic_async => emit_generic_async_component_wit(allocator, tokens, module_graph),
+        .generated_async_scalar => error.UnsupportedP3AsyncComponent,
         .scalar_unit, .unit_result_tag => codegen_p3_wait_for.emit_component_wit_for_tokens(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3WaitForComponent => error.UnsupportedP3AsyncComponent,
             else => err,
@@ -817,6 +821,17 @@ pub fn target_for_tokens_with_graph(
     }
     var registry = try p3_async_manifest.Registry.load(allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(allocator);
+
+    if (module_graph) |graph| {
+        if (component_async_plan.analyze_generated_async_scalar(allocator, tokens, graph)) |plan| {
+            var admitted = plan;
+            admitted.deinit(allocator);
+            return .generated_async_scalar;
+        } else |err| switch (err) {
+            error.UnsupportedGeneratedAsyncScalarShape => {},
+            else => return err,
+        }
+    }
 
     if (component_async_plan.analyze_generic_async_component(allocator, tokens, module_graph)) |plan| {
         var admitted = plan;
@@ -1326,6 +1341,65 @@ test "generic Component async target admits the exact host-driven Future slice" 
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     try std.testing.expectEqual(Target.generic_async, try target_for_tokens(std.testing.allocator, tokens));
+}
+
+test "generated scalar async target is distinct from unit generic lowering" {
+    const source = @embedFile("test/check/430_generated_async_scalar.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var graph = try generated_scalar_test_graph(std.testing.allocator);
+    defer graph.deinit();
+
+    try std.testing.expectEqual(
+        Target.generated_async_scalar,
+        try target_for_tokens_with_graph(std.testing.allocator, tokens, &graph),
+    );
+}
+
+test "generated scalar async target stays gated until its emitter exists" {
+    const source = @embedFile("test/check/430_generated_async_scalar.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+    var graph = try generated_scalar_test_graph(std.testing.allocator);
+    defer graph.deinit();
+
+    try std.testing.expectError(
+        error.UnsupportedP3AsyncComponent,
+        emit_component_wat(std.testing.allocator, program, tokens, &graph),
+    );
+}
+
+fn generated_scalar_test_graph(allocator: std.mem.Allocator) !module_graph_types.ModuleGraph {
+    const lowerings = try allocator.alloc(module_graph_types.GeneratedAsyncLowering, 1);
+    errdefer allocator.free(lowerings);
+    lowerings[0] = .{
+        .locator = try allocator.dupe(u8, "do:generic-async-scalar-probe/host@0.1.0"),
+        .member = try allocator.dupe(u8, "completion"),
+        .source_signature = try allocator.dupe(u8, "() -> Future<u32>"),
+        .wit_package = try allocator.dupe(u8, "do:generic-async-scalar-probe@0.1.0"),
+        .wit_world = try allocator.dupe(u8, "probe"),
+        .wit_interface = try allocator.dupe(u8, "host"),
+        .wit_member = try allocator.dupe(u8, "completion"),
+        .async_import_module = try allocator.dupe(u8, "do:generic-async-scalar-probe/host@0.1.0"),
+        .async_import_name = try allocator.dupe(u8, "[async-lower][future-read-0]completion"),
+        .completion = try allocator.dupe(u8, "completion"),
+        .wit_sha256 = [_]u8{0} ** 32,
+        .payload = .{
+            .core_type = try allocator.dupe(u8, "i32"),
+            .offset = 12,
+            .byte_size = 4,
+            .alignment = 4,
+            .encoding = try allocator.dupe(u8, "core-u32"),
+        },
+    };
+    return .{
+        .allocator = allocator,
+        .dep_root = "",
+        .modules = &.{},
+        .generated_async_lowerings = lowerings,
+    };
 }
 
 test "generic Component async target rejects an async root declaration" {

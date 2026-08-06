@@ -6,6 +6,17 @@ const codegen_model = @import("codegen_model.zig");
 const imports = @import("imports.zig");
 const module_graph = @import("module_graph.zig");
 const p3_async_manifest = @import("p3_async_manifest.zig");
+const generated_async_scalar_plan = @import("codegen_generated_async_scalar_plan.zig");
+
+pub const GeneratedAsyncScalarPlan = generated_async_scalar_plan.GeneratedAsyncScalarPlan;
+
+pub fn analyze_generated_async_scalar(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    graph_opt: ?*const imports.ModuleGraph,
+) !GeneratedAsyncScalarPlan {
+    return generated_async_scalar_plan.analyze_tokens(allocator, tokens, graph_opt);
+}
 
 pub const TerminalAction = enum {
     await,
