@@ -712,7 +712,8 @@ pub fn validate_import_file_name_text(tokens: []const lexer.Token, site_idx: usi
     if (!std.mem.endsWith(u8, s, ".do")) return mark_error_at(tokens, site_idx, error.InvalidImportDecl);
     const stem = s[0 .. s.len - 3];
     const ok = switch (prefix) {
-        .local, .std => is_valid_flat_file_stem(stem),
+        .local => is_valid_local_file_path(stem),
+        .std => is_valid_flat_file_stem(stem),
         .dep => is_valid_dep_file_stem(stem),
     };
     if (!ok) return mark_error_at(tokens, site_idx, error.InvalidImportDecl);
@@ -733,6 +734,64 @@ pub fn is_valid_flat_file_stem(stem: []const u8) bool {
         start = dot_idx + 1;
     }
     return count != 0;
+}
+
+/// Local imports may address a project subdirectory, but every segment must
+/// remain a plain relative name and the final file must keep a `.do`-safe stem.
+pub fn is_valid_local_file_path(path: []const u8) bool {
+    if (path.len == 0) return false;
+    const last_slash = std.mem.lastIndexOfScalar(u8, path, '/') orelse {
+        return is_valid_local_file_stem(path);
+    };
+    if (last_slash == 0 or last_slash + 1 >= path.len) return false;
+
+    var directories = std.mem.splitScalar(u8, path[0..last_slash], '/');
+    while (directories.next()) |directory| {
+        if (!is_valid_path_seg(directory)) return false;
+    }
+    return is_valid_local_file_stem(path[last_slash + 1 ..]);
+}
+
+fn is_valid_local_file_stem(stem: []const u8) bool {
+    var count: usize = 0;
+    var start: usize = 0;
+    while (start <= stem.len) {
+        const dot_idx = std.mem.indexOfScalarPos(u8, stem, start, '.') orelse stem.len;
+        if (!is_valid_local_file_seg(stem[start..dot_idx])) return false;
+        count += 1;
+        if (dot_idx == stem.len) break;
+        start = dot_idx + 1;
+    }
+    return count != 0;
+}
+
+fn is_valid_local_file_seg(seg: []const u8) bool {
+    if (seg.len == 0 or seg[0] < 'a' or seg[0] > 'z') return false;
+    if (seg[seg.len - 1] == '_') return false;
+    for (seg[1..]) |ch| {
+        const ok = (ch >= 'a' and ch <= 'z') or
+            (ch >= '0' and ch <= '9') or ch == '_';
+        if (!ok) return false;
+    }
+    return true;
+}
+
+test "local import paths allow nested generated modules" {
+    try std.testing.expect(is_valid_local_file_path("wit/do_bindgen_probe__api__probe"));
+    try std.testing.expect(is_valid_local_file_path("nested/vendor.module"));
+}
+
+test "local import paths reject traversal and malformed segments" {
+    const invalid = [_][]const u8{
+        "../outside.do",
+        "wit/../outside.do",
+        "wit//generated.do",
+        "wit/",
+        "wit/.",
+        "/absolute.do",
+        "wit/_generated.do",
+    };
+    for (invalid) |path| try std.testing.expect(!is_valid_local_file_path(path));
 }
 
 pub fn is_valid_dep_file_stem(stem: []const u8) bool {
