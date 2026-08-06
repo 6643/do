@@ -34,6 +34,10 @@ name = "do-p3-cancel-wait-for-host-runner"
 path = "src/bin/cancel_wait_for.rs"
 
 [[bin]]
+name = "do-p3-generic-async-scalar-probe-host-runner"
+path = "src/bin/generic_async_scalar_probe.rs"
+
+[[bin]]
 name = "do-p3-two-await-host-runner"
 path = "src/bin/two_await.rs"
 
