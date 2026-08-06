@@ -35,7 +35,7 @@ pub const emit_p3_resource_probe_wit = codegen_component_resource_probe.emit_com
 pub const emit_p3_wasi_filesystem_preopen_wit = codegen_component_wasi_filesystem_preopen.emit_component_wit;
 pub const emit_p3_wasi_sockets_create_bind_drop_wit = codegen_component_wasi_sockets.emit_component_wit;
 pub const emit_p3_resource_async_wit = codegen_component_resource_async.emit_component_wit;
-pub const emit_p3_async_component_wit = codegen_component_async.emit_component_wit;
+pub const emit_p3_async_component_wit = codegen_component_async.emit_component_wit_with_graph;
 pub const requires_p3_http_wit_package = codegen_component_async.requires_http_wit_package;
 
 // Types for unit tests

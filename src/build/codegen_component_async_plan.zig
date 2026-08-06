@@ -3,6 +3,8 @@ const lexer = @import("lexer.zig");
 const async_model = @import("codegen_async_model.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_model = @import("codegen_model.zig");
+const imports = @import("imports.zig");
+const module_graph = @import("module_graph.zig");
 const p3_async_manifest = @import("p3_async_manifest.zig");
 
 pub const TerminalAction = enum {
@@ -16,6 +18,429 @@ pub const PayloadShape = enum {
     scalar_result,
     resource_result_2word,
 };
+
+pub const GenericAsyncComponentPlan = struct {
+    root_name: []const u8,
+    work_name: []const u8,
+    host_locator: []const u8,
+    host_member: []const u8,
+    source_mode: GenericAsyncSourceMode,
+    async_import_module: []const u8,
+    async_import_name: []const u8,
+
+    pub fn deinit(self: *GenericAsyncComponentPlan, allocator: std.mem.Allocator) void {
+        allocator.free(self.root_name);
+        allocator.free(self.work_name);
+        allocator.free(self.host_locator);
+        allocator.free(self.host_member);
+        allocator.free(self.async_import_module);
+        allocator.free(self.async_import_name);
+        self.* = undefined;
+    }
+};
+
+pub const GenericAsyncSourceMode = enum {
+    eager_synchronous,
+    descriptor_async,
+};
+
+/// Admit only the test-world shape used by the generic async Component gate.
+/// This is intentionally separate from descriptor-specific WIT lowering.
+pub fn analyze_generic_async_component(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    module_graph_opt: ?*const imports.ModuleGraph,
+) !GenericAsyncComponentPlan {
+    const root = find_generic_async_root(tokens) orelse return error.UnsupportedGenericAsyncComponent;
+    if (root.is_async) return error.UnsupportedGenericAsyncComponent;
+
+    if (module_graph_opt) |graph| {
+        if (find_generated_async_host_binding(tokens, graph)) |host| {
+            return analyze_async_host(allocator, tokens, root, .{
+                .name = host.name,
+                .locator = host.lowering.locator,
+                .member = host.lowering.member,
+                .async_import_module = host.lowering.async_import_module,
+                .async_import_name = host.lowering.async_import_name,
+            });
+        }
+    }
+
+    if (find_generic_async_host_binding(tokens)) |host| {
+        return analyze_eager_generic_async(allocator, tokens, root, host);
+    }
+
+    var registry = try p3_async_manifest.Registry.load(allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(allocator);
+    const host = find_generic_async_descriptor_host_binding(tokens, registry) orelse return error.UnsupportedGenericAsyncComponent;
+    const descriptor = host.descriptor;
+    return analyze_async_host(allocator, tokens, root, .{
+        .name = host.name,
+        .locator = host.locator,
+        .member = host.member,
+        .async_import_module = descriptor.canonical.async_import_module,
+        .async_import_name = descriptor.canonical.async_import_name,
+    });
+}
+
+fn analyze_async_host(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    root: GenericAsyncRoot,
+    host: AsyncHostMetadata,
+) !GenericAsyncComponentPlan {
+    const body = tokens[root.body_start..root.body_end];
+    var cursor: usize = 0;
+    const first = parse_generic_async_descriptor_future_binding(body, cursor) orelse return error.UnsupportedGenericAsyncComponent;
+    if (!std.mem.eql(u8, first.host_name, host.name)) return error.UnsupportedGenericAsyncComponent;
+    cursor = first.next_idx;
+    const await_end = parse_generic_async_intrinsic(body, cursor, "await", first.future_name) orelse return error.UnsupportedGenericAsyncComponent;
+    cursor = await_end;
+    const second = parse_generic_async_descriptor_future_binding(body, cursor) orelse return error.UnsupportedGenericAsyncComponent;
+    if (!std.mem.eql(u8, second.host_name, host.name) or std.mem.eql(u8, first.future_name, second.future_name)) {
+        return error.UnsupportedGenericAsyncComponent;
+    }
+    cursor = second.next_idx;
+    const second_await_end = parse_generic_async_intrinsic(body, cursor, "await", second.future_name) orelse return error.UnsupportedGenericAsyncComponent;
+    cursor = second_await_end;
+    const third = parse_generic_async_descriptor_future_binding(body, cursor) orelse return error.UnsupportedGenericAsyncComponent;
+    if (!std.mem.eql(u8, third.host_name, host.name) or
+        std.mem.eql(u8, third.future_name, first.future_name) or
+        std.mem.eql(u8, third.future_name, second.future_name))
+    {
+        return error.UnsupportedGenericAsyncComponent;
+    }
+    cursor = third.next_idx;
+    const cancel_end = parse_generic_async_intrinsic(body, cursor, "cancel", third.future_name) orelse return error.UnsupportedGenericAsyncComponent;
+    if (cancel_end != body.len) return error.UnsupportedGenericAsyncComponent;
+    if (count_token_pair(tokens, "@", "async") != 0 or
+        count_token_pair(tokens, "@", "await") != 2 or
+        count_token_pair(tokens, "@", "cancel") != 1)
+    {
+        return error.UnsupportedGenericAsyncComponent;
+    }
+
+    return make_async_host_plan(allocator, root, host.name, host.locator, host.member, host.async_import_module, host.async_import_name);
+}
+
+fn analyze_eager_generic_async(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    root: GenericAsyncRoot,
+    host: GenericAsyncHostBinding,
+) !GenericAsyncComponentPlan {
+    const body = tokens[root.body_start..root.body_end];
+    var cursor: usize = 0;
+    const first = parse_generic_async_future_binding(body, cursor) orelse return error.UnsupportedGenericAsyncComponent;
+    if (!std.mem.eql(u8, first.host_name, host.name)) return error.UnsupportedGenericAsyncComponent;
+    cursor = first.next_idx;
+    const await_end = parse_generic_async_intrinsic(body, cursor, "await", first.future_name) orelse return error.UnsupportedGenericAsyncComponent;
+    cursor = await_end;
+    const second = parse_generic_async_future_binding(body, cursor) orelse return error.UnsupportedGenericAsyncComponent;
+    if (!std.mem.eql(u8, second.host_name, host.name) or std.mem.eql(u8, first.future_name, second.future_name)) {
+        return error.UnsupportedGenericAsyncComponent;
+    }
+    cursor = second.next_idx;
+    const second_await_end = parse_generic_async_intrinsic(body, cursor, "await", second.future_name) orelse return error.UnsupportedGenericAsyncComponent;
+    cursor = second_await_end;
+    const third = parse_generic_async_future_binding(body, cursor) orelse return error.UnsupportedGenericAsyncComponent;
+    if (!std.mem.eql(u8, third.host_name, host.name) or
+        std.mem.eql(u8, third.future_name, first.future_name) or
+        std.mem.eql(u8, third.future_name, second.future_name))
+    {
+        return error.UnsupportedGenericAsyncComponent;
+    }
+    cursor = third.next_idx;
+    const cancel_end = parse_generic_async_intrinsic(body, cursor, "cancel", third.future_name) orelse return error.UnsupportedGenericAsyncComponent;
+    if (cancel_end != body.len) return error.UnsupportedGenericAsyncComponent;
+    if (count_token_pair(tokens, "@", "async") != 3 or
+        count_token_pair(tokens, "@", "await") != 2 or
+        count_token_pair(tokens, "@", "cancel") != 1)
+    {
+        return error.UnsupportedGenericAsyncComponent;
+    }
+
+    const root_name = try allocator.dupe(u8, root.name);
+    errdefer allocator.free(root_name);
+    const work_name = try allocator.dupe(u8, host.name);
+    errdefer allocator.free(work_name);
+    const host_locator = try allocator.dupe(u8, host.locator);
+    errdefer allocator.free(host_locator);
+    const host_member = try allocator.dupe(u8, host.member);
+    errdefer allocator.free(host_member);
+    const async_import_module = try allocator.dupe(u8, "");
+    errdefer allocator.free(async_import_module);
+    const async_import_name = try allocator.dupe(u8, "");
+    errdefer allocator.free(async_import_name);
+    return .{
+        .root_name = root_name,
+        .work_name = work_name,
+        .host_locator = host_locator,
+        .host_member = host_member,
+        .source_mode = .eager_synchronous,
+        .async_import_module = async_import_module,
+        .async_import_name = async_import_name,
+    };
+}
+
+fn make_async_host_plan(
+    allocator: std.mem.Allocator,
+    root: GenericAsyncRoot,
+    work_name: []const u8,
+    host_locator: []const u8,
+    host_member: []const u8,
+    async_import_module: []const u8,
+    async_import_name: []const u8,
+) !GenericAsyncComponentPlan {
+    const root_name = try allocator.dupe(u8, root.name);
+    errdefer allocator.free(root_name);
+    const owned_work_name = try allocator.dupe(u8, work_name);
+    errdefer allocator.free(owned_work_name);
+    const owned_host_locator = try allocator.dupe(u8, host_locator);
+    errdefer allocator.free(owned_host_locator);
+    const owned_host_member = try allocator.dupe(u8, host_member);
+    errdefer allocator.free(owned_host_member);
+    const owned_async_import_module = try allocator.dupe(u8, async_import_module);
+    errdefer allocator.free(owned_async_import_module);
+    const owned_async_import_name = try allocator.dupe(u8, async_import_name);
+    errdefer allocator.free(owned_async_import_name);
+    return .{
+        .root_name = root_name,
+        .work_name = owned_work_name,
+        .host_locator = owned_host_locator,
+        .host_member = owned_host_member,
+        .source_mode = .descriptor_async,
+        .async_import_module = owned_async_import_module,
+        .async_import_name = owned_async_import_name,
+    };
+}
+
+const GenericAsyncHostBinding = struct {
+    name: []const u8,
+    locator: []const u8,
+    member: []const u8,
+};
+
+const AsyncHostMetadata = struct {
+    name: []const u8,
+    locator: []const u8,
+    member: []const u8,
+    async_import_module: []const u8,
+    async_import_name: []const u8,
+};
+
+const GeneratedAsyncHostBinding = struct {
+    name: []const u8,
+    lowering: module_graph.GeneratedAsyncLowering,
+};
+
+const GenericAsyncDescriptorHostBinding = struct {
+    name: []const u8,
+    locator: []const u8,
+    member: []const u8,
+    descriptor: p3_async_manifest.Descriptor,
+};
+
+const GenericAsyncRoot = struct {
+    name: []const u8,
+    body_start: usize,
+    body_end: usize,
+    is_async: bool,
+};
+
+const GenericAsyncFuture = struct {
+    future_name: []const u8,
+    host_name: []const u8,
+    next_idx: usize,
+};
+
+fn find_generic_async_host_binding(tokens: []const lexer.Token) ?GenericAsyncHostBinding {
+    const expected_locator = "do:generic-async-probe/host@0.1.0";
+    const expected_member = "work";
+    var idx: usize = 0;
+    while (idx + 14 < tokens.len) : (idx += 1) {
+        if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or
+            !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host") or
+            !tok_eq(tokens[idx + 4], "(") or !tok_eq(tokens[idx + 6], ",") or
+            !tok_eq(tokens[idx + 8], ",") or !tok_eq(tokens[idx + 9], "(") or
+            !tok_eq(tokens[idx + 10], ")") or !tok_eq(tokens[idx + 11], "-") or
+            !tok_eq(tokens[idx + 12], ">") or !tok_eq(tokens[idx + 13], "nil") or
+            !tok_eq(tokens[idx + 14], ")")) continue;
+        const locator = string_token_body(tokens[idx + 5]) orelse continue;
+        const member = string_token_body(tokens[idx + 7]) orelse continue;
+        if (!std.mem.eql(u8, locator, expected_locator) or !std.mem.eql(u8, member, expected_member)) continue;
+        return .{ .name = tokens[idx].lexeme, .locator = locator, .member = member };
+    }
+    return null;
+}
+
+fn find_generic_async_descriptor_host_binding(
+    tokens: []const lexer.Token,
+    registry: p3_async_manifest.Registry,
+) ?GenericAsyncDescriptorHostBinding {
+    var found: ?GenericAsyncDescriptorHostBinding = null;
+    var idx: usize = 0;
+    while (idx + 14 < tokens.len) : (idx += 1) {
+        const binding = parse_generic_async_host_binding_at(tokens, idx) orelse continue;
+        const descriptor = registry.find(binding.locator, binding.member) orelse continue;
+        if (!valid_generic_async_descriptor(descriptor)) continue;
+        if (found != null) return null;
+        found = .{
+            .name = binding.name,
+            .locator = binding.locator,
+            .member = binding.member,
+            .descriptor = descriptor,
+        };
+    }
+    return found;
+}
+
+fn find_generated_async_host_binding(
+    tokens: []const lexer.Token,
+    graph: *const imports.ModuleGraph,
+) ?GeneratedAsyncHostBinding {
+    var found: ?GeneratedAsyncHostBinding = null;
+    for (graph.generated_async_lowerings) |lowering| {
+        var match: ?[]const u8 = null;
+        var idx: usize = 0;
+        while (idx < tokens.len) : (idx += 1) {
+            if (parse_generated_host_binding_at(tokens, idx)) |binding| {
+                if (!std.mem.eql(u8, binding.locator, lowering.locator) or
+                    !std.mem.eql(u8, binding.member, lowering.member)) continue;
+                if (match != null) return null;
+                match = binding.name;
+                continue;
+            }
+            if (parse_generated_lib_binding_at(tokens, idx)) |binding| {
+                if (!std.mem.startsWith(u8, binding.path, "./wit/") or
+                    !std.mem.endsWith(u8, binding.path, ".do") or
+                    !std.mem.eql(u8, binding.target, lowering.member)) continue;
+                if (match != null) return null;
+                match = binding.alias;
+            }
+        }
+        if (match) |name| {
+            if (found != null) return null;
+            found = .{ .name = name, .lowering = lowering };
+        }
+    }
+    return found;
+}
+
+const GeneratedHostBinding = struct {
+    name: []const u8,
+    locator: []const u8,
+    member: []const u8,
+};
+
+fn parse_generated_host_binding_at(tokens: []const lexer.Token, idx: usize) ?GeneratedHostBinding {
+    if (idx + 17 >= tokens.len or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or
+        !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host") or
+        !tok_eq(tokens[idx + 4], "(") or tokens[idx + 5].kind != .string or
+        !tok_eq(tokens[idx + 6], ",") or tokens[idx + 7].kind != .string or
+        !tok_eq(tokens[idx + 8], ",") or !tok_eq(tokens[idx + 9], "(") or
+        !tok_eq(tokens[idx + 10], ")") or !tok_eq(tokens[idx + 11], "-") or
+        !tok_eq(tokens[idx + 12], ">") or !tok_eq(tokens[idx + 13], "Future") or
+        !tok_eq(tokens[idx + 14], "<") or !tok_eq(tokens[idx + 15], "nil") or
+        !tok_eq(tokens[idx + 16], ">") or !tok_eq(tokens[idx + 17], ")")) return null;
+    const locator = string_token_body(tokens[idx + 5]) orelse return null;
+    const member = string_token_body(tokens[idx + 7]) orelse return null;
+    return .{ .name = tokens[idx].lexeme, .locator = locator, .member = member };
+}
+
+const GeneratedLibBinding = struct {
+    alias: []const u8,
+    path: []const u8,
+    target: []const u8,
+};
+
+fn parse_generated_lib_binding_at(tokens: []const lexer.Token, idx: usize) ?GeneratedLibBinding {
+    if (idx + 8 >= tokens.len or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or
+        !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "lib") or
+        !tok_eq(tokens[idx + 4], "(") or tokens[idx + 5].kind != .string or
+        !tok_eq(tokens[idx + 6], ",") or tokens[idx + 7].kind != .ident or
+        !tok_eq(tokens[idx + 8], ")")) return null;
+    const path = string_token_body(tokens[idx + 5]) orelse return null;
+    return .{ .alias = tokens[idx].lexeme, .path = path, .target = tokens[idx + 7].lexeme };
+}
+
+fn parse_generic_async_host_binding_at(tokens: []const lexer.Token, idx: usize) ?GenericAsyncHostBinding {
+    if (idx + 14 >= tokens.len or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or
+        !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host") or
+        !tok_eq(tokens[idx + 4], "(") or !tok_eq(tokens[idx + 6], ",") or
+        !tok_eq(tokens[idx + 8], ",") or !tok_eq(tokens[idx + 9], "(") or
+        !tok_eq(tokens[idx + 10], ")") or !tok_eq(tokens[idx + 11], "-") or
+        !tok_eq(tokens[idx + 12], ">") or !tok_eq(tokens[idx + 13], "nil") or
+        !tok_eq(tokens[idx + 14], ")")) return null;
+    const locator = string_token_body(tokens[idx + 5]) orelse return null;
+    const member = string_token_body(tokens[idx + 7]) orelse return null;
+    return .{ .name = tokens[idx].lexeme, .locator = locator, .member = member };
+}
+
+fn valid_generic_async_descriptor(descriptor: p3_async_manifest.Descriptor) bool {
+    return std.mem.eql(u8, descriptor.locator, "do:generic-async-runtime-probe/host@0.1.0") and
+        std.mem.eql(u8, descriptor.member, "work") and
+        std.mem.eql(u8, descriptor.effect, "async") and
+        descriptor.params.len == 0 and
+        std.mem.eql(u8, descriptor.result, "nil") and
+        descriptor.resource == null and
+        descriptor.canonical.core_params.len == 0 and
+        descriptor.canonical.core_results.len == 0 and
+        descriptor.canonical.completion_params.len == 0 and
+        std.mem.eql(u8, descriptor.canonical.completion, "task-return") and
+        std.mem.eql(u8, descriptor.canonical.async_import_module, descriptor.locator) and
+        std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower]work");
+}
+
+fn find_generic_async_root(tokens: []const lexer.Token) ?GenericAsyncRoot {
+    var idx: usize = 0;
+    while (idx + 6 < tokens.len) : (idx += 1) {
+        if (tokens[idx].kind != .ident or !std.mem.eql(u8, tokens[idx].lexeme, "run") or
+            !tok_eq(tokens[idx + 1], "(") or !tok_eq(tokens[idx + 2], ")") or
+            !tok_eq(tokens[idx + 3], "-") or !tok_eq(tokens[idx + 4], ">") or
+            !tok_eq(tokens[idx + 5], "nil") or !tok_eq(tokens[idx + 6], "{")) continue;
+        const body_end = find_matching(tokens, idx + 6, "{", "}") orelse return null;
+        return .{
+            .name = tokens[idx].lexeme,
+            .body_start = idx + 7,
+            .body_end = body_end,
+            .is_async = idx > 0 and tok_eq(tokens[idx - 1], "async"),
+        };
+    }
+    return null;
+}
+
+fn parse_generic_async_future_binding(tokens: []const lexer.Token, idx: usize) ?GenericAsyncFuture {
+    if (idx + 12 >= tokens.len or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "Future") or
+        !tok_eq(tokens[idx + 2], "<") or !tok_eq(tokens[idx + 3], "nil") or !tok_eq(tokens[idx + 4], ">") or
+        !tok_eq(tokens[idx + 5], "=") or !tok_eq(tokens[idx + 6], "@") or !tok_eq(tokens[idx + 7], "async") or
+        !tok_eq(tokens[idx + 8], "(") or tokens[idx + 9].kind != .ident or !tok_eq(tokens[idx + 10], "(") or
+        !tok_eq(tokens[idx + 11], ")") or !tok_eq(tokens[idx + 12], ")")) return null;
+    return .{ .future_name = tokens[idx].lexeme, .host_name = tokens[idx + 9].lexeme, .next_idx = idx + 13 };
+}
+
+fn parse_generic_async_descriptor_future_binding(tokens: []const lexer.Token, idx: usize) ?GenericAsyncFuture {
+    if (idx + 8 >= tokens.len or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "Future") or
+        !tok_eq(tokens[idx + 2], "<") or !tok_eq(tokens[idx + 3], "nil") or !tok_eq(tokens[idx + 4], ">") or
+        !tok_eq(tokens[idx + 5], "=") or tokens[idx + 6].kind != .ident or !tok_eq(tokens[idx + 7], "(") or
+        !tok_eq(tokens[idx + 8], ")")) return null;
+    return .{ .future_name = tokens[idx].lexeme, .host_name = tokens[idx + 6].lexeme, .next_idx = idx + 9 };
+}
+
+fn parse_generic_async_intrinsic(tokens: []const lexer.Token, idx: usize, name: []const u8, operand: []const u8) ?usize {
+    if (idx + 4 >= tokens.len or !tok_eq(tokens[idx], "@") or !std.mem.eql(u8, tokens[idx + 1].lexeme, name) or
+        !tok_eq(tokens[idx + 2], "(") or tokens[idx + 3].kind != .ident or
+        !std.mem.eql(u8, tokens[idx + 3].lexeme, operand) or !tok_eq(tokens[idx + 4], ")")) return null;
+    return idx + 5;
+}
+
+fn count_token_pair(tokens: []const lexer.Token, first: []const u8, second: []const u8) usize {
+    var count: usize = 0;
+    for (tokens, 0..) |token, idx| {
+        if (tok_eq(token, first) and idx + 1 < tokens.len and tok_eq(tokens[idx + 1], second)) count += 1;
+    }
+    return count;
+}
 
 pub const Parameter = struct {
     name: []const u8,
@@ -1016,10 +1441,9 @@ fn parse_guest_discard(tokens: []const lexer.Token, idx: usize, end_idx: usize, 
 fn parse_guest_await_binding(tokens: []const lexer.Token, idx: usize, end_idx: usize, future_name: []const u8) ?GuestAwaitBinding {
     if (idx + 5 >= end_idx or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "Result") or !tok_eq(tokens[idx + 2], "<")) return null;
     const result_close = find_matching(tokens, idx + 2, "<", ">") orelse return null;
-    if (result_close + 5 >= end_idx or !tok_eq(tokens[result_close + 1], "=") or !tok_eq(tokens[result_close + 2], "await") or
-        !tok_eq(tokens[result_close + 3], "(") or tokens[result_close + 4].kind != .ident or
-        !std.mem.eql(u8, tokens[result_close + 4].lexeme, future_name) or !tok_eq(tokens[result_close + 5], ")")) return null;
-    return .{ .result_name = tokens[idx].lexeme, .next_idx = result_close + 6 };
+    if (result_close + 1 >= end_idx or !tok_eq(tokens[result_close + 1], "=")) return null;
+    const await_end = parse_await(tokens, result_close + 2, end_idx, future_name) orelse return null;
+    return .{ .result_name = tokens[idx].lexeme, .next_idx = await_end };
 }
 
 const StreamWriterHostBinding = struct {
@@ -1083,24 +1507,24 @@ fn find_stream_writer_function(tokens: []const lexer.Token) ?StreamWriterFunctio
 
 fn find_stream_writer_function_named(tokens: []const lexer.Token, expected_name: ?[]const u8) ?StreamWriterFunction {
     var idx: usize = 0;
-    while (idx + 18 < tokens.len) : (idx += 1) {
-        if (!tok_eq(tokens[idx], "async") or tokens[idx + 1].kind != .ident or !tok_eq(tokens[idx + 2], "(") or
-            tokens[idx + 3].kind != .ident or !tok_eq(tokens[idx + 4], "StreamWriter") or !tok_eq(tokens[idx + 5], "<") or
-            !tok_eq(tokens[idx + 6], "u8") or !tok_eq(tokens[idx + 7], ">") or !tok_eq(tokens[idx + 8], ")") or
-            !tok_eq(tokens[idx + 9], "-") or !tok_eq(tokens[idx + 10], ">") or !tok_eq(tokens[idx + 11], "Result") or
-            !tok_eq(tokens[idx + 12], "<") or !tok_eq(tokens[idx + 13], "nil") or !tok_eq(tokens[idx + 14], ",")) continue;
+    while (idx + 17 < tokens.len) : (idx += 1) {
+        if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "(") or
+            tokens[idx + 2].kind != .ident or !tok_eq(tokens[idx + 3], "StreamWriter") or !tok_eq(tokens[idx + 4], "<") or
+            !tok_eq(tokens[idx + 5], "u8") or !tok_eq(tokens[idx + 6], ">") or !tok_eq(tokens[idx + 7], ")") or
+            !tok_eq(tokens[idx + 8], "-") or !tok_eq(tokens[idx + 9], ">") or !tok_eq(tokens[idx + 10], "Result") or
+            !tok_eq(tokens[idx + 11], "<") or !tok_eq(tokens[idx + 12], "nil") or !tok_eq(tokens[idx + 13], ",")) continue;
         if (expected_name) |name| {
-            if (!std.mem.eql(u8, tokens[idx + 1].lexeme, name)) continue;
+            if (!std.mem.eql(u8, tokens[idx].lexeme, name)) continue;
         }
-        const result_end = find_matching(tokens, idx + 12, "<", ">") orelse continue;
+        const result_end = find_matching(tokens, idx + 11, "<", ">") orelse continue;
         if (result_end + 1 >= tokens.len or !tok_eq(tokens[result_end + 1], "{")) continue;
         const body_end = find_matching(tokens, result_end + 1, "{", "}") orelse continue;
         return .{
-            .name = tokens[idx + 1].lexeme,
-            .parameter_name = tokens[idx + 3].lexeme,
+            .name = tokens[idx].lexeme,
+            .parameter_name = tokens[idx + 2].lexeme,
             .body_start = result_end + 2,
             .body_end = body_end,
-            .result_start = idx + 11,
+            .result_start = idx + 10,
             .result_end = result_end + 1,
         };
     }
@@ -1378,15 +1802,15 @@ const StreamMirrorBranch = struct {
 fn parse_stream_mirror_function(tokens: []const lexer.Token) ?StreamMirrorFunction {
     var idx: usize = 0;
     while (idx + 7 < tokens.len) : (idx += 1) {
-        if (!tok_eq(tokens[idx], "async") or tokens[idx + 1].kind != .ident or !tok_eq(tokens[idx + 2], "(") or
-            !tok_eq(tokens[idx + 3], ")") or !tok_eq(tokens[idx + 4], "-") or !tok_eq(tokens[idx + 5], ">")) continue;
-        const result_start = idx + 6;
+        if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "(") or
+            !tok_eq(tokens[idx + 2], ")") or !tok_eq(tokens[idx + 3], "-") or !tok_eq(tokens[idx + 4], ">")) continue;
+        const result_start = idx + 5;
         var body_open = result_start;
         while (body_open < tokens.len and !tok_eq(tokens[body_open], "{")) : (body_open += 1) {}
         if (body_open == result_start or body_open == tokens.len) continue;
         const body_end = find_matching(tokens, body_open, "{", "}") orelse continue;
         return .{
-            .name = tokens[idx + 1].lexeme,
+            .name = tokens[idx].lexeme,
             .result_start = result_start,
             .result_end = body_open,
             .body_start = body_open + 1,
@@ -1458,21 +1882,20 @@ fn parse_stream_mirror_write_await(
     end_idx: usize,
     future_name: []const u8,
 ) ?StreamU8NamedBinding {
-    if (idx + 11 >= end_idx or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "Result") or
+    if (idx + 7 >= end_idx or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "Result") or
         !tok_eq(tokens[idx + 2], "<") or !tok_eq(tokens[idx + 3], "nil") or !tok_eq(tokens[idx + 4], ",") or
         tokens[idx + 5].kind != .ident or !tok_eq(tokens[idx + 6], ">") or !tok_eq(tokens[idx + 7], "=") or
-        !tok_eq(tokens[idx + 8], "await") or !tok_eq(tokens[idx + 9], "(") or tokens[idx + 10].kind != .ident or
-        !std.mem.eql(u8, tokens[idx + 10].lexeme, future_name) or !tok_eq(tokens[idx + 11], ")") or
         !std.mem.eql(u8, tokens[idx + 5].lexeme, "StreamError")) return null;
-    return .{ .name = tokens[idx].lexeme, .next_idx = idx + 12 };
+    const await_end = parse_await(tokens, idx + 8, end_idx, future_name) orelse return null;
+    return .{ .name = tokens[idx].lexeme, .next_idx = await_end };
 }
 
 fn parse_stream_u8_function(tokens: []const lexer.Token) ?StreamU8Function {
     var idx: usize = 0;
     while (idx + 7 < tokens.len) : (idx += 1) {
-        if (!tok_eq(tokens[idx], "async") or tokens[idx + 1].kind != .ident or !tok_eq(tokens[idx + 2], "(") or !tok_eq(tokens[idx + 3], ")") or !tok_eq(tokens[idx + 4], "-") or !tok_eq(tokens[idx + 5], ">") or !tok_eq(tokens[idx + 6], "nil") or !tok_eq(tokens[idx + 7], "{")) continue;
-        const body_end = find_matching(tokens, idx + 7, "{", "}") orelse continue;
-        return .{ .name = tokens[idx + 1].lexeme, .body_start = idx + 8, .body_end = body_end };
+        if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "(") or !tok_eq(tokens[idx + 2], ")") or !tok_eq(tokens[idx + 3], "-") or !tok_eq(tokens[idx + 4], ">") or !tok_eq(tokens[idx + 5], "nil") or !tok_eq(tokens[idx + 6], "{")) continue;
+        const body_end = find_matching(tokens, idx + 6, "{", "}") orelse continue;
+        return .{ .name = tokens[idx].lexeme, .body_start = idx + 7, .body_end = body_end };
     }
     return null;
 }
@@ -1562,8 +1985,9 @@ fn parse_stream_u8_next(tokens: []const lexer.Token, idx: usize, end_idx: usize,
 }
 
 fn parse_stream_u8_await(tokens: []const lexer.Token, idx: usize, end_idx: usize, pending_name: []const u8) ?StreamU8NamedBinding {
-    if (idx + 11 >= end_idx or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "Result") or !tok_eq(tokens[idx + 2], "<") or !tok_eq(tokens[idx + 3], "u8") or !tok_eq(tokens[idx + 4], ",") or !tok_eq(tokens[idx + 5], "nil") or !tok_eq(tokens[idx + 6], ">") or !tok_eq(tokens[idx + 7], "=") or !tok_eq(tokens[idx + 8], "await") or !tok_eq(tokens[idx + 9], "(") or tokens[idx + 10].kind != .ident or !std.mem.eql(u8, tokens[idx + 10].lexeme, pending_name) or !tok_eq(tokens[idx + 11], ")")) return null;
-    return .{ .name = tokens[idx].lexeme, .next_idx = idx + 12 };
+    if (idx + 7 >= end_idx or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "Result") or !tok_eq(tokens[idx + 2], "<") or !tok_eq(tokens[idx + 3], "u8") or !tok_eq(tokens[idx + 4], ",") or !tok_eq(tokens[idx + 5], "nil") or !tok_eq(tokens[idx + 6], ">") or !tok_eq(tokens[idx + 7], "=")) return null;
+    const await_end = parse_await(tokens, idx + 8, end_idx, pending_name) orelse return null;
+    return .{ .name = tokens[idx].lexeme, .next_idx = await_end };
 }
 
 fn parse_stream_u8_item_discard(tokens: []const lexer.Token, idx: usize, end_idx: usize, item_name: []const u8) ?usize {
@@ -1863,18 +2287,24 @@ const ValidatedPayload = struct {
 
 fn parse_async_function(tokens: []const lexer.Token) ?Function {
     var idx: usize = 0;
-    while (idx + 9 < tokens.len) : (idx += 1) {
-        if (!tok_eq(tokens[idx], "async") or tokens[idx + 1].kind != .ident or !tok_eq(tokens[idx + 2], "(") or tokens[idx + 3].kind != .ident or tokens[idx + 4].kind != .ident or !tok_eq(tokens[idx + 5], ")")) continue;
-        if (!tok_eq(tokens[idx + 6], "-") or !tok_eq(tokens[idx + 7], ">")) continue;
-        const result_start = idx + 8;
+    while (idx + 8 < tokens.len) : (idx += 1) {
+        const name_idx: usize = if (tok_eq(tokens[idx], "async")) idx + 1 else idx;
+        const open_params: usize = if (tok_eq(tokens[idx], "async")) idx + 2 else idx + 1;
+        if (name_idx >= tokens.len or open_params + 2 >= tokens.len or
+            tokens[name_idx].kind != .ident or !tok_eq(tokens[open_params], "(")) continue;
+        const close_params = find_matching(tokens, open_params, "(", ")") orelse continue;
+        if (close_params != open_params + 3 or tokens[open_params + 1].kind != .ident or
+            tokens[open_params + 2].kind != .ident) continue;
+        if (!tok_eq(tokens[close_params + 1], "-") or !tok_eq(tokens[close_params + 2], ">")) continue;
+        const result_start = close_params + 3;
         var body_open = result_start;
         while (body_open < tokens.len and !tok_eq(tokens[body_open], "{")) : (body_open += 1) {}
         if (body_open == result_start or body_open == tokens.len) continue;
         const body_end = find_matching(tokens, body_open, "{", "}") orelse continue;
         return .{
-            .name = tokens[idx + 1].lexeme,
-            .parameter_name = tokens[idx + 3].lexeme,
-            .parameter_type = tokens[idx + 4].lexeme,
+            .name = tokens[name_idx].lexeme,
+            .parameter_name = tokens[open_params + 1].lexeme,
+            .parameter_type = tokens[open_params + 2].lexeme,
             .result_start = result_start,
             .result_end = body_open,
             .body_start = body_open + 1,
@@ -2007,13 +2437,16 @@ fn parse_future_binding_any(tokens: []const lexer.Token, idx: usize, end_idx: us
 }
 
 fn parse_await(tokens: []const lexer.Token, idx: usize, end_idx: usize, future_name: []const u8) ?usize {
-    if (idx + 3 >= end_idx or !tok_eq(tokens[idx], "await") or !tok_eq(tokens[idx + 1], "(") or tokens[idx + 2].kind != .ident or !std.mem.eql(u8, tokens[idx + 2].lexeme, future_name) or !tok_eq(tokens[idx + 3], ")")) return null;
-    return idx + 4;
+    const op_idx = if (tok_eq(tokens[idx], "@") and idx + 1 < end_idx and tok_eq(tokens[idx + 1], "await")) idx + 1 else idx;
+    if (op_idx + 3 >= end_idx or !tok_eq(tokens[op_idx], "await") or !tok_eq(tokens[op_idx + 1], "(") or tokens[op_idx + 2].kind != .ident or !std.mem.eql(u8, tokens[op_idx + 2].lexeme, future_name) or !tok_eq(tokens[op_idx + 3], ")")) return null;
+    return op_idx + 4;
 }
 
 fn parse_return_await(tokens: []const lexer.Token, idx: usize, end_idx: usize, future_name: []const u8) ?usize {
-    if (idx + 4 >= end_idx or !tok_eq(tokens[idx], "return") or !tok_eq(tokens[idx + 1], "await") or !tok_eq(tokens[idx + 2], "(") or tokens[idx + 3].kind != .ident or !std.mem.eql(u8, tokens[idx + 3].lexeme, future_name) or !tok_eq(tokens[idx + 4], ")")) return null;
-    return idx + 5;
+    if (idx >= end_idx or !tok_eq(tokens[idx], "return")) return null;
+    const op_idx = if (idx + 2 < end_idx and tok_eq(tokens[idx + 1], "@") and tok_eq(tokens[idx + 2], "await")) idx + 2 else idx + 1;
+    if (op_idx + 3 >= end_idx or !tok_eq(tokens[op_idx], "await") or !tok_eq(tokens[op_idx + 1], "(") or tokens[op_idx + 2].kind != .ident or !std.mem.eql(u8, tokens[op_idx + 2].lexeme, future_name) or !tok_eq(tokens[op_idx + 3], ")")) return null;
+    return op_idx + 4;
 }
 
 fn parse_void_return(tokens: []const lexer.Token, idx: usize, end_idx: usize) ?usize {
@@ -2099,6 +2532,50 @@ test "ComponentAsyncFunctionPlan collects sequential registered scalar awaits" {
     try std.testing.expectEqualStrings("monotonic-clock.wait-until", plan.operations[1].descriptor.member);
     try std.testing.expectEqualStrings("how_long", plan.operations[0].argument_name);
     try std.testing.expectEqualStrings("how_long", plan.operations[1].argument_name);
+}
+
+test "ComponentAsyncFunctionPlan accepts ordinary declarations with canonical await" {
+    const source =
+        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\run(how_long u64) -> nil {
+        \\    pending Future<nil> = wait_for(how_long)
+        \\    @await(pending)
+        \\    return
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+
+    var plan = try ComponentAsyncFunctionPlan.analyze(std.testing.allocator, tokens, registry);
+    defer plan.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(@as(usize, 1), plan.operations.len);
+    try std.testing.expectEqual(TerminalAction.await, plan.terminal);
+    try std.testing.expectEqualStrings("run", plan.export_name);
+}
+
+test "ComponentAsyncFunctionPlan accepts ordinary declarations with canonical cancel" {
+    const source =
+        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\run(how_long u64) -> nil {
+        \\    pending Future<nil> = wait_for(how_long)
+        \\    @cancel(pending)
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+
+    var plan = try ComponentAsyncFunctionPlan.analyze(std.testing.allocator, tokens, registry);
+    defer plan.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(@as(usize, 1), plan.operations.len);
+    try std.testing.expectEqual(TerminalAction.cancel, plan.terminal);
 }
 
 test "ComponentAsyncFunctionPlan collects a private resource Result await" {
@@ -2237,18 +2714,18 @@ test "StreamU8AcquirePlan records the pinned CLI stdin acquisition sequence" {
     const source =
         \\stdin_read = @host("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
         \\StdinError error = Io | IllegalByteSequence | Pipe
-        \\async run() -> nil {
+        \\run() -> nil {
         \\    handles Tuple<Stream<u8>, Future<Result<nil, StdinError>>> = stdin_read()
         \\    reader Stream<u8> = @get(handles, 0)
         \\    completion Future<Result<nil, StdinError>> = @get(handles, 1)
         \\    pending Future<Result<u8, nil>> = @next(reader)
-        \\    item Result<u8, nil> = await(pending)
+        \\    item Result<u8, nil> = @await(pending)
         \\    _ = item
         \\    second_pending Future<Result<u8, nil>> = @next(reader)
-        \\    second_item Result<u8, nil> = await(second_pending)
+        \\    second_item Result<u8, nil> = @await(second_pending)
         \\    _ = second_item
         \\    eof_pending Future<Result<u8, nil>> = @next(reader)
-        \\    eof Result<u8, nil> = await(eof_pending)
+        \\    eof Result<u8, nil> = @await(eof_pending)
         \\    _ = eof
         \\    @cancel(completion)
         \\}
@@ -3336,7 +3813,7 @@ test "StreamMirrorPlan accepts the bounded source to writer loop" {
         \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
-        \\async produce() -> Result<nil, ProbeError> {
+        \\produce() -> Result<nil, ProbeError> {
         \\    source Tuple<Stream<u8>, Future<Result<nil, ProbeError>>> = probe_read()
         \\    input Stream<u8> = @get(source, 0)
         \\    source_done Future<Result<nil, ProbeError>> = @get(source, 1)
@@ -3348,11 +3825,11 @@ test "StreamMirrorPlan accepts the bounded source to writer loop" {
         \\            break
         \\        }
         \\        read_pending Future<Result<u8, nil>> = @next(input)
-        \\        item Result<u8, nil> = await(read_pending)
+        \\        item Result<u8, nil> = @await(read_pending)
         \\        if @is(item, Ok) {
         \\            value u8 = item
         \\            write_pending Future<Result<nil, StreamError>> = writer(value)
-        \\            write_result Result<nil, StreamError> = await(write_pending)
+        \\            write_result Result<nil, StreamError> = @await(write_pending)
         \\            _ = write_result
         \\            remaining = @sub(remaining, 1)
         \\        } else {
@@ -3361,7 +3838,7 @@ test "StreamMirrorPlan accepts the bounded source to writer loop" {
         \\    }
         \\    @cancel(source_done)
         \\    pending Future<Result<nil, ProbeError>> = sink_write(writer)
-        \\    return await(pending)
+        \\    return @await(pending)
         \\}
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);

@@ -14,8 +14,10 @@ const codegen_component_cabi_realloc = @import("codegen_component_cabi_realloc.z
 const component_async_plan = @import("codegen_component_async_plan.zig");
 const codegen_p3_wait_for = @import("codegen_p3_wait_for.zig");
 const p3_async_manifest = @import("p3_async_manifest.zig");
+const wat_component_metadata = @import("wat_component_metadata.zig");
 
 pub const Target = enum {
+    generic_async,
     scalar_unit,
     scalar_result,
     unit_result_tag,
@@ -85,7 +87,8 @@ pub fn emit_component_wat(
             else => err,
         });
     }
-    return switch (try target_for_tokens(allocator, tokens)) {
+    return switch (try target_for_tokens_with_graph(allocator, tokens, module_graph)) {
+        .generic_async => finalize_component_wat(allocator, emit_generic_async_component_wat(allocator, tokens, module_graph)),
         .scalar_unit, .unit_result_tag => finalize_component_wat(allocator, codegen_p3_wait_for.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
             error.UnsupportedP3WaitForComponent => error.UnsupportedP3AsyncComponent,
             else => err,
@@ -154,7 +157,544 @@ fn finalize_component_wat(allocator: std.mem.Allocator, result: anyerror![]u8) !
     return rewritten;
 }
 
+fn replace_all(
+    allocator: std.mem.Allocator,
+    input: []u8,
+    needle: []const u8,
+    replacement: []const u8,
+) ![]u8 {
+    if (needle.len == 0) return error.UnsupportedP3AsyncComponent;
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+    var remainder = input;
+    while (std.mem.indexOf(u8, remainder, needle)) |idx| {
+        try out.appendSlice(allocator, remainder[0..idx]);
+        try out.appendSlice(allocator, replacement);
+        remainder = remainder[idx + needle.len ..];
+    }
+    try out.appendSlice(allocator, remainder);
+    allocator.free(input);
+    return try out.toOwnedSlice(allocator);
+}
+
+fn emit_generic_async_component_wat(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    module_graph: ?*const imports.ModuleGraph,
+) ![]u8 {
+    var plan = try component_async_plan.analyze_generic_async_component(allocator, tokens, module_graph);
+    defer plan.deinit(allocator);
+
+    if (plan.source_mode == .descriptor_async) {
+        const runtime_wat = try emit_generic_async_runtime_component_wat(allocator, plan);
+        defer allocator.free(runtime_wat);
+        var out = std.ArrayList(u8).empty;
+        errdefer out.deinit(allocator);
+        try out.appendSlice(allocator, runtime_wat);
+        try wat_component_metadata.emit_async_component_contract(allocator, &out, .{
+            .export_name = plan.root_name,
+            .host_locator = plan.host_locator,
+            .host_member = plan.host_member,
+        });
+        return try out.toOwnedSlice(allocator);
+    }
+
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+    try out.appendSlice(allocator, generic_async_component_wat);
+    try wat_component_metadata.emit_async_component_contract(allocator, &out, .{
+        .export_name = plan.root_name,
+        .host_locator = plan.host_locator,
+        .host_member = plan.host_member,
+    });
+    return try out.toOwnedSlice(allocator);
+}
+
+fn emit_generic_async_runtime_component_wat(
+    allocator: std.mem.Allocator,
+    plan: component_async_plan.GenericAsyncComponentPlan,
+) ![]u8 {
+    var wat = try allocator.dupe(u8, generic_async_runtime_component_wat);
+    errdefer allocator.free(wat);
+    wat = try replace_all(allocator, wat, "__ASYNC_IMPORT_MODULE__", plan.async_import_module);
+    wat = try replace_all(allocator, wat, "__ASYNC_IMPORT_NAME__", plan.async_import_name);
+    return wat;
+}
+
+fn emit_generic_async_component_wit(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    module_graph: ?*const imports.ModuleGraph,
+) ![]u8 {
+    var plan = try component_async_plan.analyze_generic_async_component(allocator, tokens, module_graph);
+    defer plan.deinit(allocator);
+    if (plan.source_mode == .descriptor_async) {
+        return allocator.dupe(u8,
+            \\package do:generic-async-runtime-probe@0.1.0;
+            \\
+            \\interface host {
+            \\  work: async func();
+            \\}
+            \\
+            \\world probe {
+            \\  import host;
+            \\  export run: async func();
+            \\}
+            \\
+        );
+    }
+    return allocator.dupe(u8,
+        \\package do:generic-async-probe@0.1.0;
+        \\
+        \\interface host {
+        \\  work: func();
+        \\}
+        \\
+        \\world probe {
+        \\  import host;
+        \\  export run: async func();
+        \\}
+        \\
+    );
+}
+
+const generic_async_runtime_component_wat =
+    \\(module
+    \\  ;; Generic descriptor-backed async runtime slice. The first host call
+    \\  ;; is awaited through the callback; the second is cancelled through the
+    \\  ;; callback-safe blocked continuation.
+    \\  (type $async-lower (func (result i32)))
+    \\  (type $task-cancel (func))
+    \\  (type $backpressure (func))
+    \\  (type $waitable-set-new (func (result i32)))
+    \\  (type $waitable-poll (func (param i32 i32) (result i32)))
+    \\  (type $waitable (func (param i32 i32)))
+    \\  (type $waitable-drop (func (param i32)))
+    \\  (type $subtask-cancel (func (param i32) (result i32)))
+    \\  (type $context-get (func (result i32)))
+    \\  (type $context-set (func (param i32)))
+    \\  (type $async-run (func (result i32)))
+    \\  (type $async-run-callback (func (param i32 i32 i32) (result i32)))
+    \\  (type $task-return (func))
+    \\  (type $cabi-realloc (func (param i32 i32 i32 i32) (result i32)))
+    \\
+    \\  (import "__ASYNC_IMPORT_MODULE__" "__ASYNC_IMPORT_NAME__"
+    \\    (func $host-work (type $async-lower)))
+    \\  (import "[export]$root" "[task-cancel]" (func $task-cancel (type $task-cancel)))
+    \\  (import "$root" "[backpressure-inc]" (func $backpressure-inc (type $backpressure)))
+    \\  (import "$root" "[backpressure-dec]" (func $backpressure-dec (type $backpressure)))
+    \\  (import "$root" "[waitable-set-new]" (func $waitable-set-new (type $waitable-set-new)))
+    \\  (import "$root" "[waitable-set-wait]" (func $waitable-set-wait (type $waitable-poll)))
+    \\  (import "$root" "[waitable-set-poll]" (func $waitable-set-poll (type $waitable-poll)))
+    \\  (import "$root" "[waitable-set-drop]" (func $waitable-set-drop (type $waitable-drop)))
+    \\  (import "$root" "[waitable-join]" (func $waitable-join (type $waitable)))
+    \\  (import "$root" "[thread-yield]" (func $thread-yield (type $waitable-set-new)))
+    \\  (import "$root" "[subtask-drop]" (func $subtask-drop (type $waitable-drop)))
+    \\  (import "$root" "[subtask-cancel]" (func $subtask-cancel (type $subtask-cancel)))
+    \\  (import "$root" "[context-get-0]" (func $context-get-0 (type $context-get)))
+    \\  (import "$root" "[context-set-0]" (func $context-set-0 (type $context-set)))
+    \\  (import "[export]$root" "[task-return]run" (func $task-return (type $task-return)))
+    \\
+    \\  (type $async-frame (struct
+    \\    (field $state (mut i32))
+    \\    (field $waitable-set (mut i32))
+    \\    (field $subtask (mut i32))
+    \\    (field $terminal (mut i32))
+    \\  ))
+    \\  (type $async-free-slot (struct
+    \\    (field $handle i32)
+    \\    (field $next (ref null $async-free-slot))
+    \\  ))
+    \\  (table $async-frames 0 (ref null $async-frame))
+    \\  (global $async-frame-free-head (mut (ref null $async-free-slot)) (ref.null $async-free-slot))
+    \\
+    \\  (func $frame-alloc (param $frame (ref $async-frame)) (result i32)
+    \\    local.get $frame
+    \\    i32.const 1
+    \\    table.grow $async-frames)
+    \\  (func $frame-free (param $handle i32)
+    \\    local.get $handle
+    \\    ref.null $async-frame
+    \\    table.set $async-frames)
+    \\
+    \\  (func $terminal-cleanup (param $frame i32)
+    \\    local.get $frame
+    \\    table.get $async-frames
+    \\    ref.as_non_null
+    \\    i32.const 1
+    \\    struct.set $async-frame $terminal
+    \\    local.get $frame
+    \\    table.get $async-frames
+    \\    ref.as_non_null
+    \\    struct.get $async-frame $waitable-set
+    \\    call $waitable-set-drop
+    \\    i32.const 0
+    \\    call $context-set-0
+    \\    local.get $frame
+    \\    call $frame-free
+    \\    call $task-return)
+    \\
+    \\  (func $start-second (param $frame i32) (result i32)
+    \\    (local $subtask i32)
+    \\    ;; [generic-async-runtime] await-second
+    \\    call $host-work
+    \\    local.set $subtask
+    \\    local.get $frame
+    \\    table.get $async-frames
+    \\    ref.as_non_null
+    \\    local.get $subtask
+    \\    struct.set $async-frame $subtask
+    \\    local.get $subtask
+    \\    i32.const 2
+    \\    i32.eq
+    \\    if (result i32)
+    \\      local.get $frame
+    \\      table.get $async-frames
+    \\      ref.as_non_null
+    \\      i32.const 2
+    \\      struct.set $async-frame $state
+    \\      local.get $frame
+    \\      call $cancel-second
+    \\    else
+    \\      local.get $frame
+    \\      table.get $async-frames
+    \\      ref.as_non_null
+    \\      i32.const 3
+    \\      struct.set $async-frame $state
+    \\      local.get $subtask
+    \\      i32.const 4
+    \\      i32.shr_u
+    \\      local.get $frame
+    \\      table.get $async-frames
+    \\      ref.as_non_null
+    \\      struct.get $async-frame $waitable-set
+    \\      call $waitable-join
+    \\      local.get $frame
+    \\      table.get $async-frames
+    \\      ref.as_non_null
+    \\      struct.get $async-frame $waitable-set
+    \\      i32.const 4
+    \\      i32.shl
+    \\      i32.const 2
+    \\      i32.or
+    \\    end)
+    \\
+    \\  (func $cancel-second (param $frame i32) (result i32)
+    \\    (local $subtask i32) (local $cancel-result i32)
+    \\    local.get $frame
+    \\    table.get $async-frames
+    \\    ref.as_non_null
+    \\    struct.get $async-frame $subtask
+    \\    i32.const 2
+    \\    i32.eq
+    \\    if
+    \\      ;; A ready first Future has no live subtask handle.
+    \\    else
+    \\      local.get $frame
+    \\      table.get $async-frames
+    \\      ref.as_non_null
+    \\      struct.get $async-frame $subtask
+    \\      i32.const 4
+    \\      i32.shr_u
+    \\      call $subtask-drop
+    \\    end
+    \\    call $host-work
+    \\    local.set $subtask
+    \\    local.get $frame
+    \\    table.get $async-frames
+    \\    ref.as_non_null
+    \\    local.get $subtask
+    \\    struct.set $async-frame $subtask
+    \\    local.get $subtask
+    \\    i32.const 2
+    \\    i32.eq
+    \\    if
+    \\      ;; A ready Future is terminal without a cancellation handshake.
+    \\    else
+    \\      local.get $subtask
+    \\      i32.const 4
+    \\      i32.shr_u
+    \\      call $subtask-cancel
+    \\      local.tee $cancel-result
+    \\      i32.const -1
+    \\      i32.eq
+    \\      if
+    \\        ;; [generic-async-runtime] cancel-blocked
+    \\        local.get $frame
+    \\        table.get $async-frames
+    \\        ref.as_non_null
+    \\        struct.get $async-frame $waitable-set
+    \\        local.get $subtask
+    \\        i32.const 4
+    \\        i32.shr_u
+    \\        call $waitable-join
+    \\        local.get $frame
+    \\        table.get $async-frames
+    \\        ref.as_non_null
+    \\        struct.get $async-frame $waitable-set
+    \\        i32.const 4
+    \\        i32.shl
+    \\        i32.const 2
+    \\        i32.or
+    \\        return
+    \\      end
+    \\      local.get $cancel-result
+    \\      i32.const 3
+    \\      i32.eq
+    \\      local.get $cancel-result
+    \\      i32.const 4
+    \\      i32.eq
+    \\      i32.or
+    \\      i32.eqz
+    \\      if unreachable end
+    \\      local.get $subtask
+    \\      i32.const 4
+    \\      i32.shr_u
+    \\      call $subtask-drop
+    \\    end
+    \\    local.get $frame
+    \\    call $terminal-cleanup
+    \\    i32.const 0)
+    \\
+    \\  (memory (export "memory") 0)
+    \\  (func (export "[async-lift]run") (type $async-run)
+    \\    (local $frame i32) (local $waitable-set i32) (local $subtask i32)
+    \\    call $waitable-set-new
+    \\    local.set $waitable-set
+    \\    i32.const 1
+    \\    local.get $waitable-set
+    \\    i32.const 0
+    \\    i32.const 0
+    \\    struct.new $async-frame
+    \\    call $frame-alloc
+    \\    local.set $frame
+    \\    local.get $frame
+    \\    call $context-set-0
+    \\    call $host-work
+    \\    local.set $subtask
+    \\    local.get $frame
+    \\    table.get $async-frames
+    \\    ref.as_non_null
+    \\    local.get $subtask
+    \\    struct.set $async-frame $subtask
+    \\    local.get $subtask
+    \\    i32.const 2
+    \\    i32.eq
+    \\    if (result i32)
+    \\      local.get $frame
+    \\      table.get $async-frames
+    \\      ref.as_non_null
+    \\      i32.const 2
+    \\      struct.set $async-frame $state
+    \\      local.get $frame
+    \\      call $start-second
+    \\    else
+    \\      ;; [generic-async-runtime] pending
+    \\      local.get $subtask
+    \\      i32.const 4
+    \\      i32.shr_u
+    \\      local.get $waitable-set
+    \\      call $waitable-join
+    \\      local.get $waitable-set
+    \\      i32.const 4
+    \\      i32.shl
+    \\      i32.const 2
+    \\      i32.or
+    \\    end)
+    \\
+    \\  (func (export "[callback][async-lift]run") (type $async-run-callback)
+    \\    (local $frame i32)
+    \\    call $context-get-0
+    \\    local.set $frame
+    \\    local.get 0
+    \\    i32.const 1
+    \\    i32.eq
+    \\    if (result i32)
+    \\      local.get $frame
+    \\      table.get $async-frames
+    \\      ref.as_non_null
+    \\      struct.get $async-frame $state
+    \\      i32.const 1
+    \\      i32.eq
+    \\      if (result i32)
+    \\        local.get 2
+    \\        i32.const 2
+    \\        i32.eq
+    \\        if (result i32)
+    \\          local.get $frame
+    \\          table.get $async-frames
+    \\          ref.as_non_null
+    \\          struct.get $async-frame $subtask
+    \\          i32.const 4
+    \\          i32.shr_u
+    \\          call $subtask-drop
+    \\          local.get $frame
+    \\          table.get $async-frames
+    \\          ref.as_non_null
+    \\          i32.const 2
+    \\          struct.set $async-frame $subtask
+    \\          local.get $frame
+    \\          table.get $async-frames
+    \\          ref.as_non_null
+    \\          i32.const 2
+    \\          struct.set $async-frame $state
+    \\          local.get $frame
+    \\          call $start-second
+    \\        else
+    \\          unreachable
+    \\        end
+    \\      else
+    \\        local.get $frame
+    \\        table.get $async-frames
+    \\        ref.as_non_null
+    \\        struct.get $async-frame $state
+    \\        i32.const 3
+    \\        i32.eq
+    \\        if (result i32)
+    \\          local.get 2
+    \\          i32.const 2
+    \\          i32.eq
+    \\          if (result i32)
+    \\            local.get $frame
+    \\            table.get $async-frames
+    \\            ref.as_non_null
+    \\            struct.get $async-frame $subtask
+    \\            i32.const 4
+    \\            i32.shr_u
+    \\            call $subtask-drop
+    \\            local.get $frame
+    \\            table.get $async-frames
+    \\            ref.as_non_null
+    \\            i32.const 2
+    \\            struct.set $async-frame $subtask
+    \\            local.get $frame
+    \\            table.get $async-frames
+    \\            ref.as_non_null
+    \\            i32.const 2
+    \\            struct.set $async-frame $state
+    \\            local.get $frame
+    \\            call $cancel-second
+    \\          else
+    \\            unreachable
+    \\          end
+    \\        else
+    \\          local.get $frame
+    \\          table.get $async-frames
+    \\          ref.as_non_null
+    \\          struct.get $async-frame $state
+    \\          i32.const 2
+    \\          i32.eq
+    \\          if (result i32)
+    \\          local.get 2
+    \\          i32.const 3
+    \\          i32.eq
+    \\          local.get 2
+    \\          i32.const 4
+    \\          i32.eq
+    \\          i32.or
+    \\          if (result i32)
+    \\            local.get $frame
+    \\            table.get $async-frames
+    \\            ref.as_non_null
+    \\            struct.get $async-frame $subtask
+    \\            i32.const 4
+    \\            i32.shr_u
+    \\            call $subtask-drop
+    \\            local.get $frame
+    \\            call $terminal-cleanup
+    \\            i32.const 0
+    \\          else
+    \\            unreachable
+    \\          end
+    \\          else
+    \\            unreachable
+    \\          end
+    \\        end
+    \\      end
+    \\    else
+    \\      local.get $frame
+    \\      table.get $async-frames
+    \\      ref.as_non_null
+    \\      struct.get $async-frame $waitable-set
+    \\      i32.const 4
+    \\      i32.shl
+    \\      i32.const 2
+    \\      i32.or
+    \\    end)
+    \\  (func (export "cabi_realloc") (type $cabi-realloc) i32.const 0)
+    \\  (func (export "_initialize"))
+    \\)
+;
+
+const generic_async_component_wat =
+    \\(module
+    \\  (type $host-work (func))
+    \\  (type $task-return (func))
+    \\  (type $async-run (func (result i32)))
+    \\  (type $async-run-callback (func (param i32 i32 i32) (result i32)))
+    \\  (type $cabi-realloc (func (param i32 i32 i32 i32) (result i32)))
+    \\  (type $waitable-set-new (func (result i32)))
+    \\  (type $waitable-set-wait (func (param i32 i32) (result i32)))
+    \\  (type $waitable-set-drop (func (param i32)))
+    \\  (type $waitable-join (func (param i32 i32)))
+    \\  (type $subtask-cancel (func (param i32) (result i32)))
+    \\
+    \\  (import "do:generic-async-probe/host@0.1.0" "work"
+    \\    (func $work (type $host-work)))
+    \\  (import "[export]$root" "[task-cancel]" (func $task-cancel (type $task-return)))
+    \\  (import "$root" "[backpressure-inc]" (func $backpressure-inc (type $task-return)))
+    \\  (import "$root" "[backpressure-dec]" (func $backpressure-dec (type $task-return)))
+    \\  (import "$root" "[waitable-set-new]" (func $waitable-set-new (type $waitable-set-new)))
+    \\  (import "$root" "[waitable-set-wait]" (func $waitable-set-wait (type $waitable-set-wait)))
+    \\  (import "$root" "[waitable-set-poll]" (func $waitable-set-poll (type $waitable-set-wait)))
+    \\  (import "$root" "[waitable-set-drop]" (func $waitable-set-drop (type $waitable-set-drop)))
+    \\  (import "$root" "[waitable-join]" (func $waitable-join (type $waitable-join)))
+    \\  (import "$root" "[thread-yield]" (func $thread-yield (type $waitable-set-new)))
+    \\  (import "$root" "[subtask-drop]" (func $subtask-drop (type $waitable-set-drop)))
+    \\  (import "$root" "[subtask-cancel]" (func $subtask-cancel (type $subtask-cancel)))
+    \\  (import "$root" "[context-get-0]" (func $context-get-0 (type $waitable-set-new)))
+    \\  (import "$root" "[context-set-0]" (func $context-set-0 (type $waitable-set-drop)))
+    \\  (import "[export]$root" "[task-return]run" (func $task-return (type $task-return)))
+    \\
+    \\  (memory (export "memory") 0)
+    \\  (func (export "[async-lift]run") (type $async-run)
+    \\    ;; The first admitted slice has unit work and a terminal cancel path.
+    \\    ;; The host call is synchronous; task-return is exactly once.
+    \\    call $work
+    \\    call $work
+    \\    call $work
+    \\    ;; [generic-async-cancel] is retained as an unreachable ABI probe
+    \\    ;; until a Future can carry a runtime subtask handle.
+    \\    i32.const 0
+    \\    if
+    \\      i32.const 0
+    \\      call $subtask-cancel
+    \\      drop
+    \\      i32.const 0
+    \\      call $subtask-drop
+    \\    end
+    \\    call $task-return
+    \\    i32.const 0
+    \\  )
+    \\  (func (export "[callback][async-lift]run") (type $async-run-callback)
+    \\    unreachable
+    \\  )
+    \\  (func (export "cabi_realloc") (type $cabi-realloc)
+    \\    unreachable
+    \\  )
+    \\  (func (export "_initialize"))
+    \\)
+;
+
 pub fn emit_component_wit(allocator: std.mem.Allocator, tokens: []const lexer.Token) ![]u8 {
+    return emit_component_wit_with_graph(allocator, tokens, null);
+}
+
+pub fn emit_component_wit_with_graph(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    module_graph: ?*const imports.ModuleGraph,
+) ![]u8 {
     if (try codegen_component_wasi_http.has_http_response_status_plan(tokens)) {
         return codegen_component_wasi_http.emit_response_status_component_wit(allocator);
     }
@@ -196,7 +736,8 @@ pub fn emit_component_wit(allocator: std.mem.Allocator, tokens: []const lexer.To
             else => err,
         };
     }
-    return switch (try target_for_tokens(allocator, tokens)) {
+    return switch (try target_for_tokens_with_graph(allocator, tokens, module_graph)) {
+        .generic_async => emit_generic_async_component_wit(allocator, tokens, module_graph),
         .scalar_unit, .unit_result_tag => codegen_p3_wait_for.emit_component_wit_for_tokens(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3WaitForComponent => error.UnsupportedP3AsyncComponent,
             else => err,
@@ -254,6 +795,14 @@ pub fn emit_component_wit(allocator: std.mem.Allocator, tokens: []const lexer.To
 }
 
 pub fn target_for_tokens(allocator: std.mem.Allocator, tokens: []const lexer.Token) !Target {
+    return target_for_tokens_with_graph(allocator, tokens, null);
+}
+
+pub fn target_for_tokens_with_graph(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    module_graph: ?*const imports.ModuleGraph,
+) !Target {
     if (try codegen_component_wasi_http.has_http_request_body_producer_plan(allocator, tokens)) {
         return .http_request_body_producer;
     }
@@ -268,6 +817,15 @@ pub fn target_for_tokens(allocator: std.mem.Allocator, tokens: []const lexer.Tok
     }
     var registry = try p3_async_manifest.Registry.load(allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(allocator);
+
+    if (component_async_plan.analyze_generic_async_component(allocator, tokens, module_graph)) |plan| {
+        var admitted = plan;
+        admitted.deinit(allocator);
+        return .generic_async;
+    } else |err| switch (err) {
+        error.UnsupportedGenericAsyncComponent => {},
+        else => return err,
+    }
 
     if (component_async_plan.StreamMirrorPlan.analyze(tokens, registry)) |_| {
         return .stream_mirror;
@@ -750,6 +1308,124 @@ test "generic Component async target rejects scalar control flow without a lower
         error.UnsupportedP3AsyncComponent,
         emit_component_wat(std.testing.allocator, program, tokens, null),
     );
+}
+
+test "generic Component async target admits the exact host-driven Future slice" {
+    const source =
+        \\work = @host("do:generic-async-probe/host@0.1.0", "work", () -> nil)
+        \\run() -> nil {
+        \\    ready Future<nil> = @async(work())
+        \\    @await(ready)
+        \\    middle Future<nil> = @async(work())
+        \\    @await(middle)
+        \\    pending Future<nil> = @async(work())
+        \\    @cancel(pending)
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try std.testing.expectEqual(Target.generic_async, try target_for_tokens(std.testing.allocator, tokens));
+}
+
+test "generic Component async target rejects an async root declaration" {
+    const source =
+        \\work = @host("do:generic-async-probe/host@0.1.0", "work", () -> nil)
+        \\async run() -> nil {
+        \\    ready Future<nil> = @async(work())
+        \\    @await(ready)
+        \\    middle Future<nil> = @async(work())
+        \\    @await(middle)
+        \\    pending Future<nil> = @async(work())
+        \\    @cancel(pending)
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectError(
+        error.UnsupportedP3AsyncComponent,
+        target_for_tokens(std.testing.allocator, tokens),
+    );
+}
+
+test "generic Component async target emits stable host and async metadata" {
+    const source =
+        \\work = @host("do:generic-async-probe/host@0.1.0", "work", () -> nil)
+        \\
+        \\run() -> nil {
+        \\    ready Future<nil> = @async(work())
+        \\    @await(ready)
+        \\    middle Future<nil> = @async(work())
+        \\    @await(middle)
+        \\    pending Future<nil> = @async(work())
+        \\    @cancel(pending)
+        \\}
+        \\
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    const wat = try emit_component_wat(std.testing.allocator, program, tokens, null);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "do:generic-async-probe/host@0.1.0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[async-lift]run") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[callback][async-lift]run") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[task-return]run") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[subtask-cancel]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[subtask-drop]") != null);
+    try std.testing.expectEqual(@as(usize, 3), std.mem.count(u8, wat, "call $work"));
+
+    const wit = try emit_component_wit(std.testing.allocator, tokens);
+    defer std.testing.allocator.free(wit);
+    try std.testing.expectEqualStrings(
+        \\package do:generic-async-probe@0.1.0;
+        \\
+        \\interface host {
+        \\  work: func();
+        \\}
+        \\
+        \\world probe {
+        \\  import host;
+        \\  export run: async func();
+        \\}
+        \\
+    , wit);
+}
+
+test "generic runtime async target emits reachable pending and cancel paths" {
+    const source = @embedFile("test/check/427_generic_async_runtime_contract.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(Target.generic_async, try target_for_tokens(std.testing.allocator, tokens));
+    const wat = try emit_component_wat(std.testing.allocator, program, tokens, null);
+    defer std.testing.allocator.free(wat);
+
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[async-lower]work") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $subtask-cancel") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $subtask-drop") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $waitable-set-drop") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $context-get-0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $task-return") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[generic-async-runtime] cancel-blocked") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const -1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[generic-async-runtime] pending") != null);
+    try std.testing.expectEqual(@as(usize, 3), std.mem.count(u8, wat, "call $host-work"));
+    try std.testing.expect(std.mem.indexOf(u8, wat, "]run") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func (export \"[callback][async-lift]run\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func (export \"[callback][async-lift]run\") (type $async-run-callback)\n    unreachable") == null);
+
+    const wit = try emit_component_wit(std.testing.allocator, tokens);
+    defer std.testing.allocator.free(wit);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "package do:generic-async-runtime-probe@0.1.0;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "work: async func();") != null);
 }
 
 test "generic Component async target accepts the registered scalar if probe" {

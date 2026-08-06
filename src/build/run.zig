@@ -72,7 +72,7 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
         else if (parsed_cli.p3_resource_async_component)
             codegen.emit_p3_resource_async_wit(allocator, loaded.tokens)
         else if (parsed_cli.p3_async_component)
-            codegen.emit_p3_async_component_wit(allocator, loaded.tokens)
+            codegen.emit_p3_async_component_wit(allocator, loaded.tokens, &loaded.module_graph)
         else
             codegen.emit_p3_wait_for_wit(allocator, loaded.tokens)) catch |err| {
             try diag.print_compile_error(io, parsed_cli.input_path, loaded.source, loaded.tokens, err, null);
