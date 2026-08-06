@@ -12,6 +12,7 @@ const codegen_component_record_resource_list_stream = @import("codegen_component
 const codegen_component_variant_resource_stream = @import("codegen_component_variant_resource_stream.zig");
 const codegen_component_wasi_http = @import("codegen_component_wasi_http.zig");
 const codegen_component_cabi_realloc = @import("codegen_component_cabi_realloc.zig");
+const codegen_component_generated_async_scalar = @import("codegen_component_generated_async_scalar.zig");
 const component_async_plan = @import("codegen_component_async_plan.zig");
 const codegen_p3_wait_for = @import("codegen_p3_wait_for.zig");
 const p3_async_manifest = @import("p3_async_manifest.zig");
@@ -91,7 +92,10 @@ pub fn emit_component_wat(
     }
     return switch (try target_for_tokens_with_graph(allocator, tokens, module_graph)) {
         .generic_async => finalize_component_wat(allocator, emit_generic_async_component_wat(allocator, tokens, module_graph)),
-        .generated_async_scalar => error.UnsupportedP3AsyncComponent,
+        .generated_async_scalar => finalize_component_wat(allocator, codegen_component_generated_async_scalar.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
+            error.InvalidGeneratedAsyncScalarTemplate => error.UnsupportedP3AsyncComponent,
+            else => err,
+        }),
         .scalar_unit, .unit_result_tag => finalize_component_wat(allocator, codegen_p3_wait_for.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
             error.UnsupportedP3WaitForComponent => error.UnsupportedP3AsyncComponent,
             else => err,
@@ -741,7 +745,7 @@ pub fn emit_component_wit_with_graph(
     }
     return switch (try target_for_tokens_with_graph(allocator, tokens, module_graph)) {
         .generic_async => emit_generic_async_component_wit(allocator, tokens, module_graph),
-        .generated_async_scalar => error.UnsupportedP3AsyncComponent,
+        .generated_async_scalar => codegen_component_generated_async_scalar.emit_component_wit(allocator, tokens),
         .scalar_unit, .unit_result_tag => codegen_p3_wait_for.emit_component_wit_for_tokens(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3WaitForComponent => error.UnsupportedP3AsyncComponent,
             else => err,
@@ -1356,7 +1360,7 @@ test "generated scalar async target is distinct from unit generic lowering" {
     );
 }
 
-test "generated scalar async target stays gated until its emitter exists" {
+test "generated scalar async target emits its WAT and WIT contracts" {
     const source = @embedFile("test/check/430_generated_async_scalar.do");
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
@@ -1365,10 +1369,14 @@ test "generated scalar async target stays gated until its emitter exists" {
     var graph = try generated_scalar_test_graph(std.testing.allocator);
     defer graph.deinit();
 
-    try std.testing.expectError(
-        error.UnsupportedP3AsyncComponent,
-        emit_component_wat(std.testing.allocator, program, tokens, &graph),
-    );
+    const wat = try emit_component_wat(std.testing.allocator, program, tokens, &graph);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[async-lower][future-read-0]completion") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[scalar-payload] offset=12 byte-size=4 alignment=4 encoding=core-u32") != null);
+
+    const wit = try emit_component_wit_with_graph(std.testing.allocator, tokens, &graph);
+    defer std.testing.allocator.free(wit);
+    try std.testing.expectEqualStrings(@embedFile("generated_async_scalar_component.wit"), wit);
 }
 
 fn generated_scalar_test_graph(allocator: std.mem.Allocator) !module_graph_types.ModuleGraph {

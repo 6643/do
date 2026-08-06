@@ -295,8 +295,13 @@ fn free_generated_scalar_payload(
 
 fn is_generated_wit_module_path(path: []const u8) bool {
     if (!std.mem.endsWith(u8, path, ".do")) return false;
-    const dir = std.fs.path.dirname(path) orelse return false;
-    return std.mem.eql(u8, std.fs.path.basename(dir), "wit");
+    var dir = std.fs.path.dirname(path) orelse return false;
+    while (true) {
+        if (std.mem.eql(u8, std.fs.path.basename(dir), "wit")) return true;
+        const parent = std.fs.path.dirname(dir) orelse return false;
+        if (std.mem.eql(u8, parent, dir)) return false;
+        dir = parent;
+    }
 }
 
 fn resolve_module_imports(
@@ -2521,19 +2526,20 @@ test "generated WIT scalar schema 2 lowering carries payload metadata" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     try tmp.dir.createDir(std.testing.io, "wit", .default_dir);
+    try tmp.dir.createDir(std.testing.io, "wit/scalar", .default_dir);
     try tmp.dir.writeFile(std.testing.io, .{
-        .sub_path = "wit/do_generic_async_scalar_probe__host__probe.do",
+        .sub_path = "wit/scalar/do_generic_async_scalar_probe__host__probe.do",
         .data = generated_scalar_async_module_source,
     });
     const manifest = try generated_scalar_async_manifest(std.testing.allocator, generated_scalar_async_module_hash);
     defer std.testing.allocator.free(manifest);
-    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "wit/manifest.json", .data = manifest });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "wit/scalar/manifest.json", .data = manifest });
 
     const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", std.testing.allocator);
     defer std.testing.allocator.free(root);
     const input_path = try std.fs.path.join(std.testing.allocator, &.{ root, "main.do" });
     defer std.testing.allocator.free(input_path);
-    const source = "completion = @lib(\"./wit/do_generic_async_scalar_probe__host__probe.do\", completion)";
+    const source = "completion = @lib(\"./wit/scalar/do_generic_async_scalar_probe__host__probe.do\", completion)";
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
 
