@@ -66,10 +66,23 @@ const Parser = struct {
 pub fn parse(allocator: std.mem.Allocator, source: []const u8) (ParseError || lexer.LexerError || std.mem.Allocator.Error)!model.Ast {
     var arena = std.heap.ArenaAllocator.init(allocator);
     errdefer arena.deinit();
-    const arena_allocator = arena.allocator();
-    const tokens = try lexer.tokenize(arena_allocator, source);
+    const parsed = try parse_in_arena(arena.allocator(), source);
+    return .{
+        .arena = arena,
+        .source = parsed.source,
+        .package = parsed.package,
+        .interfaces = parsed.interfaces,
+        .worlds = parsed.worlds,
+    };
+}
+
+pub fn parse_in_arena(
+    allocator: std.mem.Allocator,
+    source: []const u8,
+) (ParseError || lexer.LexerError || std.mem.Allocator.Error)!model.Parsed {
+    const tokens = try lexer.tokenize(allocator, source);
     var parser = Parser{
-        .allocator = arena_allocator,
+        .allocator = allocator,
         .source = source,
         .tokens = tokens,
         .index = 0,
@@ -90,13 +103,13 @@ pub fn parse(allocator: std.mem.Allocator, source: []const u8) (ParseError || le
             for (interfaces.items) |existing| {
                 if (std.mem.eql(u8, existing.name, interface.name)) return error.DuplicateInterface;
             }
-            try interfaces.append(arena_allocator, interface);
+            try interfaces.append(allocator, interface);
         } else if (parser.at("world")) {
             const world = try parse_world(&parser);
             for (worlds.items) |existing| {
                 if (std.mem.eql(u8, existing.name, world.name)) return error.DuplicateWorld;
             }
-            try worlds.append(arena_allocator, world);
+            try worlds.append(allocator, world);
         } else if (parser.at("use") or parser.at("include")) {
             _ = try parse_raw_decl(&parser);
         } else {
@@ -105,11 +118,10 @@ pub fn parse(allocator: std.mem.Allocator, source: []const u8) (ParseError || le
     }
 
     return .{
-        .arena = arena,
         .source = source,
         .package = package orelse return error.MissingPackage,
-        .interfaces = try interfaces.toOwnedSlice(arena_allocator),
-        .worlds = try worlds.toOwnedSlice(arena_allocator),
+        .interfaces = try interfaces.toOwnedSlice(allocator),
+        .worlds = try worlds.toOwnedSlice(allocator),
     };
 }
 
@@ -221,9 +233,11 @@ fn parse_world(parser: *Parser) (ParseError || std.mem.Allocator.Error)!model.Wo
         if (!std.mem.eql(u8, kind.lexeme, "import") and !std.mem.eql(u8, kind.lexeme, "export")) {
             return error.UnexpectedToken;
         }
-        const target = try parser.expect_ident();
-        const end = try parser.expect(";");
-        const item = model.WorldImport{ .name = target.lexeme, .span = parser.span(kind, end) };
+        const target_start = parser.peek() orelse return error.UnexpectedToken;
+        const end = try consume_raw_until_semicolon(parser);
+        const target = parser.source[target_start.span_start..end.span_start];
+        const import_name = world_import_name(target) orelse return error.UnexpectedToken;
+        const item = model.WorldImport{ .name = import_name, .target = target, .span = parser.span(kind, end) };
         if (std.mem.eql(u8, kind.lexeme, "import")) {
             try imports.append(parser.allocator, item);
         } else {
@@ -237,6 +251,15 @@ fn parse_world(parser: *Parser) (ParseError || std.mem.Allocator.Error)!model.Wo
         .exports = try exports.toOwnedSlice(parser.allocator),
         .span = parser.span(start, end),
     };
+}
+
+fn world_import_name(raw: []const u8) ?[]const u8 {
+    var target = std.mem.trim(u8, raw, " \t\r\n");
+    if (target.len == 0) return null;
+    if (std.mem.indexOfScalar(u8, target, '{')) |index| target = target[0..index];
+    if (std.mem.lastIndexOfScalar(u8, target, '/')) |index| target = target[index + 1 ..];
+    if (std.mem.indexOfScalar(u8, target, '@')) |index| target = target[0..index];
+    return if (target.len == 0) null else std.mem.trim(u8, target, " \t\r\n");
 }
 
 fn parse_use(parser: *Parser) (ParseError || std.mem.Allocator.Error)!model.UseDecl {

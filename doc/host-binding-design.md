@@ -1,10 +1,32 @@
 # Host Binding 设计
 
-**状态:** 未来设计计划 / 未授权实现。本文定义通用 host 声明和 WIT 类型映射，不表示当前 compiler、codegen 或 runtime 已实现。
+**状态:** 部分实现。`do wit check/bind`、WIT 到 Do 声明的翻译、manifest/lock 输出和普通 custom locator checker 已落地；本文仍不表示通用 custom host 的 codegen/runtime 已实现。
+
+## 已落地的 WIT 翻译入口
+
+生产实现位于 `src/wit/`，固定上游 `wit-bindgen v0.60.0` checkout 位于
+`.deps/wit-bindgen/`，只用于 Go/Rust 差分 probe。项目级生成输出放在根目录
+`wit/`，源文件可以放在 `wit/src/`；生成器会保留该源树和项目 README。
+
+```bash
+do wit check <wit-input> [--world <world>] [--manifest <manifest.json>]
+do wit bind <wit-input> --world <world> --out <project>/wit
+```
+
+生成的 `*.do` 使用普通 `@host` 声明。locator 语法接受任意合法 WIT
+`<namespace>:<package>/<interface>@<semver>`；只有已登记的 WASI/P3 locator
+才进入现有 lowering。Go/Rust 生成代码不是生产输入，custom host 的 WAT/
+Component lowering、runtime 调度和可执行异步 binding 仍需独立 gate。
+
+生成输出的 `manifest.json` 可通过显式的 `--manifest` 参数校验 package/world、
+WIT 内容哈希、生成模块路径、规范化 member 签名和每个 member 的
+async/future/stream/resource effect。manifest 同时保存每个生成 `.do` 模块的
+内容哈希；模块签名被手工改动或缺失时，校验失败并返回
+`ManifestGeneratedModuleMismatch`，不能降级为同步 host import。
 
 ## 范围
 
-本文负责通用 host binding：资源、类型、variant、常量、同步函数和模块导入。P3 async ABI、waitable、WIT `future<T>` / `stream<T>` 和取消协议需要同时映射到公开的 do `async`、`await`、`Future<T>` 与 `Stream<T>`，并发契约见 [async-design.md](async-design.md)。
+本文负责通用 host binding：资源、类型、variant、常量、同步函数和模块导入。P3 async ABI、waitable、WIT `future<T>` / `stream<T>` 和取消协议映射到公开的 do `Future<T>`、`Stream<T>` 以及 `@async`、`@await`、`@cancel` intrinsic，并发契约见 [async-design.md](async-design.md)。源码不再使用 `async` 函数声明；旧声明仅在迁移窗口兼容。
 
 所有类型参数都必须是合法类型。`nil` 是空值/无值返回标记；它只允许作为 `Future<nil>`、`Stream<nil>` 等异步容器的唯一类型参数，或作为 `Result<T, nil>` / `Result<nil, E>` 的 unit 分支。函数可以用 `() -> nil` 表示无返回值或返回空；其他泛型参数位置仍禁止 `nil`。
 
@@ -37,7 +59,7 @@ future<T>            -> opaque do Future<T>
 stream<T>            -> opaque do Stream<T>
 ```
 
-WIT `future<T>` 和 `stream<T>` 在 host ABI 边界分别映射为不透明的 do `Future<T>` 和 `Stream<T>`；其具体 waitable、frame 与 cleanup record 仍是后端实现细节。用户异步函数的 `async name(...) -> T` 对应 WIT `async func`，不与同步返回 `future<T>` 的 ABI 混用。WIT 的无结果操作映射为 do `nil`；无值异步操作的源码形态是 `first Future<nil> = wait_for(delay)`。
+WIT `future<T>` 和 `stream<T>` 在 host ABI 边界分别映射为不透明的 do `Future<T>` 和 `Stream<T>`；其具体 waitable、frame 与 cleanup record 仍是后端实现细节。WIT `async func` 由 binding manifest 描述，生成的 do 源码不再声明 `async name(...) -> T`；普通 Do 函数调用必须用 `Future<T> = @async(call(...))` 显式创建任务，异步 host binding 已直接产生 `Future<T>`，不能再次包 `@async`。WIT 的无结果操作映射为 do `nil`；无值异步操作的源码形态是 `first Future<nil> = wait_for(delay)`，其中 `wait_for` 必须是已登记的 WIT async host binding。
 
 ## 资源和类型
 

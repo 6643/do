@@ -1,0 +1,45 @@
+{
+    "schema": 1,
+    "package": "do:bindgen-probe@0.1.0",
+    "world": "probe",
+    "modules": ["do_bindgen_probe__api__probe.do"],
+    "module_hashes": [
+        {
+            "path": "do_bindgen_probe__api__probe.do",
+            "sha256": "6e36bd76d44e9e84b734acf11daebd69d8b73fd24e6ee2b6bcfb842231fb50b1"
+        }
+    ],
+    "sha256": "0b101ce883b21c242ce8f24ee6b4dd28d86995c291b21d744316c8231d895d86",
+    "members": [
+        {
+            "package": "do:bindgen-probe@0.1.0",
+            "member": "api.send",
+            "effect": "async",
+            "async": true,
+            "future": false,
+            "stream": false,
+            "resource": true,
+            "signature": "(Request) -> Future<Response | ApiError>"
+        },
+        {
+            "package": "do:bindgen-probe@0.1.0",
+            "member": "api.completion",
+            "effect": "sync",
+            "async": false,
+            "future": true,
+            "stream": false,
+            "resource": false,
+            "signature": "() -> Future<u32>"
+        },
+        {
+            "package": "do:bindgen-probe@0.1.0",
+            "member": "api.events",
+            "effect": "sync",
+            "async": false,
+            "future": false,
+            "stream": true,
+            "resource": false,
+            "signature": "() -> Stream<u8>"
+        }
+    ]
+}

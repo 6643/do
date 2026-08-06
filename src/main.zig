@@ -4,6 +4,7 @@ const check_cmd = @import("check/run.zig");
 const fmt_cmd = @import("fmt/run.zig");
 const lsp_cmd = @import("lsp/run.zig");
 const run_cmd = @import("run/run.zig");
+const wit_cmd = @import("wit/run.zig");
 
 const Command = enum {
     build,
@@ -12,6 +13,7 @@ const Command = enum {
     run,
     fmt,
     lsp,
+    wit,
 };
 
 pub fn main(init: std.process.Init) !void {
@@ -35,6 +37,7 @@ pub fn main(init: std.process.Init) !void {
         .run => try run_cmd.run(init, args[1..]),
         .fmt => try fmt_cmd.run(init, args[1..]),
         .lsp => try lsp_cmd.run(init, args[1..]),
+        .wit => try wit_cmd.run(init, args[1..]),
     }
 }
 
@@ -45,6 +48,7 @@ fn parse_command(name: []const u8) !Command {
     if (std.mem.eql(u8, name, "run")) return .run;
     if (std.mem.eql(u8, name, "fmt")) return .fmt;
     if (std.mem.eql(u8, name, "lsp")) return .lsp;
+    if (std.mem.eql(u8, name, "wit")) return .wit;
     return error.UnknownCommand;
 }
 
@@ -63,6 +67,8 @@ fn print_usage(io: std.Io) !void {
         \\  do fmt --check <input.do>
         \\  do fmt --write <input.do>
         \\  do lsp [--stdio]
+        \\  do wit check <wit-input> [--world <world>] [--manifest <manifest.json>]
+        \\  do wit bind <wit-input> --world <world> --out <directory>
         \\
     , .{});
     try out.interface.flush();
@@ -71,7 +77,7 @@ fn print_usage(io: std.Io) !void {
 fn print_command_error(io: std.Io, err: anyerror) !void {
     var err_buffer: [512]u8 = undefined;
     var out = std.Io.File.stderr().writer(io, &err_buffer);
-    try out.interface.print("error[{s}]: 命令语法: `do build ...`、`do test ...`、`do check ...`、`do run ...`、`do fmt ...` 或 `do lsp ...`\n", .{@errorName(err)});
+    try out.interface.print("error[{s}]: 命令语法: `do build ...`、`do test ...`、`do check ...`、`do run ...`、`do fmt ...`、`do lsp ...` 或 `do wit ...`\n", .{@errorName(err)});
     try out.interface.flush();
 }
 
@@ -87,6 +93,16 @@ test {
     _ = @import("lsp/protocol.zig");
     _ = @import("lsp/semantic_tokens.zig");
     _ = @import("lsp/workspace.zig");
+    _ = @import("wit/cli.zig");
+    _ = @import("wit/emit_do.zig");
+    _ = @import("wit/emit_lock.zig");
+    _ = @import("wit/emit_manifest.zig");
+    _ = @import("wit/lexer.zig");
+    _ = @import("wit/model.zig");
+    _ = @import("wit/parser.zig");
+    _ = @import("wit/resolve.zig");
+    _ = @import("wit/run.zig");
+    _ = @import("wit/signature.zig");
     _ = @import("build/codegen_ir.zig");
     _ = @import("build/wat_component_metadata.zig");
     _ = @import("build/wat_function_body.zig");
@@ -97,4 +113,6 @@ test {
     _ = @import("build/wat_storage.zig");
     _ = @import("build/async_byte_budget_test.zig");
     _ = @import("build/sema_error.zig");
+    _ = @import("wit/manifest.zig");
+    _ = @import("wit/manifest_test.zig");
 }

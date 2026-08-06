@@ -19,8 +19,11 @@
 | --- | --- |
 | `lib/` | 标准库与 builtin/core 总表 (`lib/_.do`); `@lib("file.do")` 解析根 |
 | `src/` | 工具链与编译器 (原 `tool/`); `cd src && zig build` |
+| `src/wit/` | 生产 WIT lexer/parser/resolver/emitter；`do wit check/bind` 实现 |
 | `src/build/test/` | 回归 harness 与 fixture |
 | `src/build/test/lib/` | fixture 专用 `~/` 依赖根 (`DO_LIB_ROOT`), 不是公开标准库 |
+| `wit/` | 当前项目生成的 `*.do` binding、`manifest.json`、`wit.lock`；源文件可放 `wit/src/` |
+| `.deps/wit-bindgen/` | 忽略的 `wit-bindgen v0.60.0` 固定 checkout，只用于 Go/Rust 差分 |
 
 ## 2. 当前停点
 
@@ -65,7 +68,7 @@ cd src && zig test build/codegen_api.zig
 
 ```bash
 RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
-# 最近扩展基线: pass=1072 fail=0 skip=3; wasm run summary: pass=6 fail=0
+# 最近扩展基线: pass=1100 fail=0 skip=3; wasm run summary: pass=6 fail=0
 ```
 
 | 基线项 | 最近值 |

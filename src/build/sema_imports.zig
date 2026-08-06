@@ -43,6 +43,7 @@ const LocalImportPrefix = sema_shapes.LocalImportPrefix;
 
 const HostImportKind = enum {
     env,
+    generic,
     wasi,
     resource_probe,
 };
@@ -734,12 +735,20 @@ fn validate_host_import_locator_member(
         return .wasi;
     }
     if (resource_registry.find(locator, member) != null) return .resource_probe;
-    return mark_error_at(tokens, locator_idx, error.InvalidImportDecl);
+    if (!is_valid_wit_host_locator(locator)) return mark_error_at(tokens, locator_idx, error.InvalidImportDecl);
+    if (!is_valid_wasi_host_member(member)) return mark_error_at(tokens, member_idx, error.InvalidImportDecl);
+    return .generic;
 }
 
 fn is_valid_wasi_host_locator(locator: []const u8) bool {
-    if (!std.mem.startsWith(u8, locator, "wasi:")) return false;
-    const rest = locator["wasi:".len..];
+    return std.mem.startsWith(u8, locator, "wasi:") and is_valid_wit_host_locator(locator);
+}
+
+fn is_valid_wit_host_locator(locator: []const u8) bool {
+    const namespace_end = std.mem.indexOfScalar(u8, locator, ':') orelse return false;
+    if (namespace_end == 0 or namespace_end + 1 >= locator.len) return false;
+    if (!is_valid_wit_path_seg(locator[0..namespace_end])) return false;
+    const rest = locator[namespace_end + 1 ..];
     const at_idx = std.mem.lastIndexOfScalar(u8, rest, '@') orelse return false;
     if (at_idx == 0 or at_idx + 1 >= rest.len) return false;
     const pkg_iface = rest[0..at_idx];
@@ -1261,7 +1270,7 @@ fn validate_host_param_type(tokens: []const lexer.Token, start_idx: usize, end_i
             }
             return mark_error_at(tokens, start_idx, error.InvalidImportDecl);
         },
-        .wasi, .resource_probe => {
+        .generic, .wasi, .resource_probe => {
             const next = parse_wit_type(tokens, start_idx, end_idx) orelse
                 return mark_error_at(tokens, start_idx, error.InvalidImportDecl);
             return next;
@@ -1278,7 +1287,7 @@ fn validate_host_return_type_at(tokens: []const lexer.Token, start_idx: usize, e
             }
             return mark_error_at(tokens, start_idx, error.InvalidImportDecl);
         },
-        .wasi, .resource_probe => {
+        .generic, .wasi, .resource_probe => {
             // Accept WIT types and do exclusive unions (`nil | i32`, `Dir | i32`, …).
             const next = parse_wit_or_do_union_type(tokens, start_idx, end_idx) orelse
                 return mark_error_at(tokens, start_idx, error.InvalidImportDecl);
@@ -1383,7 +1392,14 @@ fn parse_wit_type(tokens: []const lexer.Token, start_idx: usize, end_idx: usize)
         std.mem.eql(u8, name, "Stream"))
     {
         if (start_idx + 2 >= end_idx or !tok_eq(tokens[start_idx + 1], "<")) return null;
-        const item_end = parse_wit_type(tokens, start_idx + 2, end_idx) orelse return null;
+        const is_async_container = std.mem.eql(u8, name, "future") or
+            std.mem.eql(u8, name, "Future") or
+            std.mem.eql(u8, name, "stream") or
+            std.mem.eql(u8, name, "Stream");
+        const item_end = if (is_async_container)
+            parse_wit_or_do_union_type(tokens, start_idx + 2, end_idx) orelse return null
+        else
+            parse_wit_type(tokens, start_idx + 2, end_idx) orelse return null;
         if (item_end >= end_idx or !tok_eq(tokens[item_end], ">")) return null;
         return item_end + 1;
     }
@@ -1554,6 +1570,59 @@ test "registered resource probe host declarations match their descriptor" {
     defer std.testing.allocator.free(tokens);
 
     try check_host_imports(std.testing.allocator, tokens);
+}
+
+test "ordinary host imports accept custom WIT package locators" {
+    const source =
+        \\send = @host("do:bindgen-probe/api@0.1.0", "send", (u32) -> u32)
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try check_host_imports(std.testing.allocator, tokens);
+}
+
+test "generated WIT host bindings accept custom resource signatures" {
+    const source =
+        \\send = @host("do:bindgen-probe/api@0.1.0", "send", (Request) -> Response | ApiError)
+        \\completion = @host("do:bindgen-probe/api@0.1.0", "completion", () -> Future<u32>)
+        \\events = @host("do:bindgen-probe/api@0.1.0", "events", () -> Stream<u8>)
+        \\Request = @wasi_resource("do:bindgen-probe/api/request", { .id i64 })
+        \\Response = @wasi_resource("do:bindgen-probe/api/response", { .id i64 })
+        \\ApiError error = Failed
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try check_host_imports(std.testing.allocator, tokens);
+}
+
+test "generic host imports accept a Future whose payload is an exclusive union" {
+    const source =
+        \\send = @host("do:bindgen-probe/api@0.1.0", "send", (Request) -> Future<Response | ApiError>)
+        \\Request = @wasi_resource("do:bindgen-probe/api/request", { .id i64 })
+        \\Response = @wasi_resource("do:bindgen-probe/api/response", { .id i64 })
+        \\ApiError error = Failed
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try check_host_imports(std.testing.allocator, tokens);
+}
+
+test "custom WIT host locators reject malformed package identities" {
+    const sources = [_][]const u8{
+        \\call = @host("do:bindgen-probe/api", "call", (u32) -> u32)
+        \\call = @host("do:bindgen-probe/api@0.1.0/extra", "call", (u32) -> u32)
+        \\call = @host("do:bindgen-probe/api@0.1", "call", (u32) -> u32)
+        \\call = @host("do:bindgen-probe//api@0.1.0", "call", (u32) -> u32)
+        \\call = @host("do:bindgen-probe/api@0.1.0", "call/extra", (u32) -> u32)
+    };
+    for (sources) |source| {
+        const tokens = try lexer.tokenize(std.testing.allocator, source);
+        defer std.testing.allocator.free(tokens);
+        try std.testing.expectError(error.InvalidImportDecl, check_host_imports(std.testing.allocator, tokens));
+    }
 }
 
 test "WASI host locators require SemVer and accept pinned prereleases" {
