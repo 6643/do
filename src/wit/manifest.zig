@@ -151,7 +151,8 @@ pub fn parse(allocator: std.mem.Allocator, source: []const u8) (ManifestError ||
             if (find_manifest_member(members.items, lowering.wit_package, lowering.member)) |member| {
                 if (std.mem.eql(u8, lowering.capability, "component-async-unit-v1")) {
                     if (!member.is_async or !std.mem.eql(u8, member.effect, "async")) return error.ManifestEffectMismatch;
-                } else if (std.mem.eql(u8, lowering.capability, "component-async-scalar-u32-v1")) {
+                } else if (std.mem.eql(u8, lowering.capability, "component-async-scalar-u32-v1") or
+                    std.mem.eql(u8, lowering.capability, "component-async-scalar-i64-v1")) {
                     if (member.is_async or !member.has_future or member.has_stream or member.has_resource) return error.ManifestEffectMismatch;
                 } else return error.ManifestLoweringMismatch;
                 if (!std.mem.eql(u8, member.signature, lowering.source_signature)) return error.ManifestSignatureMismatch;
@@ -256,10 +257,12 @@ pub fn validate_binding(
         if (std.mem.eql(u8, lowering.capability, "component-async-unit-v1")) {
             if (!function.is_async or function.params.len != 0 or function.result != null or
                 function.effects.has_future or function.effects.has_stream or function.effects.has_resource) return error.ManifestEffectMismatch;
-        } else if (std.mem.eql(u8, lowering.capability, "component-async-scalar-u32-v1")) {
+        } else if (std.mem.eql(u8, lowering.capability, "component-async-scalar-u32-v1") or
+            std.mem.eql(u8, lowering.capability, "component-async-scalar-i64-v1")) {
             if (function.is_async or function.params.len != 0 or function.result == null or
                 function.result.?.kind != .future or function.result.?.args.len != 1 or
-                function.result.?.args[0].kind != .u32 or !function.effects.has_future or
+                (function.result.?.args[0].kind != .u32 and function.result.?.args[0].kind != .s64) or
+                !function.effects.has_future or
                 function.effects.has_stream or function.effects.has_resource) return error.ManifestEffectMismatch;
         } else return error.ManifestLoweringMismatch;
         const expected_signature = signature.render(allocator, interface.name, function) catch
@@ -464,6 +467,20 @@ fn parse_async_lowering(value: std.json.Value) ManifestError!AsyncLowering {
             !std.mem.eql(u8, scalar.core_type, "i32") or scalar.offset != 12 or
             scalar.byte_size != 4 or scalar.alignment != 4 or
             !std.mem.eql(u8, scalar.encoding, "core-u32") or !valid_hash(wit_sha256)) return error.ManifestLoweringMismatch;
+    } else if (std.mem.eql(u8, capability, "component-async-scalar-i64-v1")) {
+        const scalar = payload orelse return error.ManifestLoweringMismatch;
+        if (!std.mem.eql(u8, member, "host.completion") or
+            !std.mem.eql(u8, source_signature, "() -> Future<i64>") or
+            !std.mem.eql(u8, wit_package, "do:generic-async-scalar-i64-probe@0.1.0") or
+            !std.mem.eql(u8, wit_world, "probe") or
+            !std.mem.eql(u8, wit_interface, "host") or
+            !std.mem.eql(u8, wit_member, "completion") or
+            !std.mem.eql(u8, async_import_module, "do:generic-async-scalar-i64-probe/host@0.1.0") or
+            !std.mem.eql(u8, async_import_name, "[async-lower][future-read-0]completion") or
+            !std.mem.eql(u8, completion, "completion") or
+            !std.mem.eql(u8, scalar.core_type, "i64") or scalar.offset != 16 or
+            scalar.byte_size != 8 or scalar.alignment != 8 or
+            !std.mem.eql(u8, scalar.encoding, "core-s64") or !valid_hash(wit_sha256)) return error.ManifestLoweringMismatch;
     } else return error.ManifestLoweringMismatch;
     return .{
         .capability = capability,

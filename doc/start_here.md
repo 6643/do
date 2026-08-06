@@ -111,6 +111,17 @@ pending/immediate/cancel 运行时矩阵。payload、Stream、resource、参数�
 `@cancel`；generic Future payload、Stream、resource、分支/循环、timeout 和
 unrestricted generated WIT lowering 仍拒绝。
 
+同一阶段另有独立的 i64 scalar capability：
+`do:generic-async-scalar-i64-probe@0.1.0` 的
+`host.completion: func() -> future<s64>` 使用
+`component-async-scalar-i64-v1`，package hash 为
+`861990fea33b55fecd08573ef94f4088296b2cb2bca3356813a2d2157251f3ba`，payload
+为 `offset=16`、`byte-size=8`、`alignment=8`、`encoding=core-s64`。运行
+`bash examples/wit-bindgen-do/test_generated_async_scalar_i64_lowering.sh`
+可复现同样的 manifest drift、Component 与 ready/pending/cancel
+Rust/Wasmtime 矩阵。当前只开放这两个明确 pinned 的 scalar descriptor，
+不代表 generic `Future<T>` 已完成。
+
 当前工作区的 `/tmp` 配额会让 Zig Debug cache 返回 `DiskQuota`；`run_tests.sh` 现在
 尊重 `TMPDIR`、`ZIG_LOCAL_CACHE_DIR` / `ZIG_GLOBAL_CACHE_DIR` 覆盖，并在回归开始时
 创建显式的 `TMPDIR` 根目录。配额受限环境使用项目专用目录运行标准回归，例如：

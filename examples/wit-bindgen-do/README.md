@@ -70,7 +70,18 @@ mode=cancel value=42 polls=3 wakes=0 completions=1 future-drops=2 pending-future
 
 Module/WIT hashes, scalar payload offset/width/alignment/encoding, source
 signature, canonical async imports, completion name, and capability drift are
-rejected before WAT emission. This remains a bounded `Future<u32>` shape:
-generic `Future<T>`, text/list/record/resource payloads, Stream, aggregate
-await, timeout, branching/loops, and unrestricted generated WIT lowering remain
+rejected before WAT emission. This remains a bounded scalar shape
+(`Future<u32>` and the separately pinned `Future<i64>` companion): generic
+`Future<T>`, text/list/record/resource payloads, Stream, aggregate await,
+timeout, branching/loops, and unrestricted generated WIT lowering remain
 unsupported.
+
+The i64 companion is `do:generic-async-scalar-i64-probe@0.1.0`
+`host.completion: func() -> future<s64>`. Its capability is
+`component-async-scalar-i64-v1` with package hash
+`861990fea33b55fecd08573ef94f4088296b2cb2bca3356813a2d2157251f3ba` and
+payload descriptor `offset=16`, `byte-size=8`, `alignment=8`,
+`encoding=core-s64`. Run
+`bash examples/wit-bindgen-do/test_generated_async_scalar_i64_lowering.sh` to
+reproduce generated binding validation, Component assembly, and the same
+ready/pending/cancel cleanup matrix.

@@ -61,6 +61,15 @@ Generated async scalar Component/Rust/Wasmtime gate (2026-08-06)
     module/WIT/payload/signature/import/completion/capability drift rejected
     before WAT emission
 
+Generated async scalar i64 Component/Rust/Wasmtime gate (2026-08-06)
+  → `component-async-scalar-i64-v1`, package hash
+    `861990fea33b55fecd08573ef94f4088296b2cb2bca3356813a2d2157251f3ba`,
+    payload `offset=16 byte-size=8 alignment=8 encoding=core-s64`; generated
+    project-root module passed ready/pending/cancel with `value=42`, exact
+    future cleanup, and an empty resource table. Payload/signature/import
+    drift was rejected before WAT emission. This remains a bounded scalar
+    companion, not generic generated WIT async lowering.
+
 bash examples/p3-runtime/test_task8_step3_baseline.sh
   → all seven registered Component/Rust/Wasmtime runtime gates passed
 

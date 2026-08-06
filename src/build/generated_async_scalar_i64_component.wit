@@ -1,0 +1,10 @@
+package do:generic-async-scalar-i64-probe@0.1.0;
+
+interface host {
+  completion: func() -> future<s64>;
+}
+
+world probe {
+  import host;
+  export run: async func();
+}

@@ -779,6 +779,7 @@ fn is_valid_local_file_seg(seg: []const u8) bool {
 test "local import paths allow nested generated modules" {
     try std.testing.expect(is_valid_local_file_path("wit/do_bindgen_probe__api__probe"));
     try std.testing.expect(is_valid_local_file_path("nested/vendor.module"));
+    try std.testing.expect(is_valid_local_file_path("wit/do_generic_async_scalar_i64_probe__host__probe"));
 }
 
 test "local import paths reject traversal and malformed segments" {

@@ -45,6 +45,20 @@ const scalar_source =
     \\}
 ;
 
+const scalar_i64_source =
+    \\package do:generic-async-scalar-i64-probe@0.1.0;
+    \\
+    \\interface host {
+    \\  completion: func() -> future<s64>;
+    \\
+    \\}
+    \\
+    \\world probe {
+    \\  import host;
+    \\  export run: async func();
+    \\}
+;
+
 const scalar_manifest_prefix =
     "{\"schema\":2,\"package\":\"do:generic-async-scalar-probe@0.1.0\",\"world\":\"probe\",\"modules\":[\"host.do\"]," ++
     "\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"members\":[" ++
@@ -158,6 +172,23 @@ test "wit emitter emits schema 2 for the pinned scalar async binding" {
     try std.testing.expect(std.mem.indexOf(u8, source, "\"payload\":{\"core_type\":\"i32\"") != null);
 }
 
+test "wit emitter emits schema 2 for the pinned i64 scalar async binding" {
+    var binding = try resolve.resolve_source(std.testing.allocator, scalar_i64_source, "probe");
+    defer binding.deinit();
+    const source = try emit_manifest.render(
+        std.testing.allocator,
+        binding,
+        "do_generic_async_scalar_i64_probe__host__probe.do",
+    );
+    defer std.testing.allocator.free(source);
+    try std.testing.expect(std.mem.startsWith(u8, source, "{\"schema\":2,"));
+    try std.testing.expect(std.mem.indexOf(u8, source, "\"capability\":\"component-async-scalar-i64-v1\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "\"payload\":{\"core_type\":\"i64\"") != null);
+    var parsed = try manifest.parse(std.testing.allocator, source);
+    defer parsed.deinit(std.testing.allocator);
+    try manifest.validate_binding(std.testing.allocator, &parsed, binding);
+}
+
 test "scalar capability detection accepts only the pinned Future<u32> member" {
     var binding = try resolve.resolve_source(std.testing.allocator, scalar_source, "probe");
     defer binding.deinit();
@@ -178,6 +209,21 @@ test "scalar capability detection accepts only the pinned Future<u32> member" {
     const renamed_capabilities = try async_lowering.detect(std.testing.allocator, renamed);
     defer async_lowering.deinit(std.testing.allocator, renamed_capabilities);
     try std.testing.expectEqual(@as(usize, 0), renamed_capabilities.len);
+}
+
+test "scalar capability detection admits the pinned Future<i64> member" {
+    var binding = try resolve.resolve_source(std.testing.allocator, scalar_i64_source, "probe");
+    defer binding.deinit();
+    const capabilities = try async_lowering.detect(std.testing.allocator, binding);
+    defer async_lowering.deinit(std.testing.allocator, capabilities);
+    try std.testing.expectEqual(@as(usize, 1), capabilities.len);
+    try std.testing.expectEqualStrings("component-async-scalar-i64-v1", capabilities[0].capability);
+    try std.testing.expectEqualStrings("() -> Future<i64>", capabilities[0].source_signature);
+    try std.testing.expectEqualStrings("i64", capabilities[0].payload.?.core_type);
+    try std.testing.expectEqual(@as(u32, 16), capabilities[0].payload.?.offset);
+    try std.testing.expectEqual(@as(u32, 8), capabilities[0].payload.?.byte_size);
+    try std.testing.expectEqual(@as(u32, 8), capabilities[0].payload.?.alignment);
+    try std.testing.expectEqualStrings("core-s64", capabilities[0].payload.?.encoding);
 }
 
 test "wit bindgen manifest accepts a valid async member" {

@@ -203,6 +203,16 @@ empty resource table. The cancel path observes three polls because the
 Wasmtime cancellation protocol performs the initial readable check and a
 second cancellation check; this is the measured protocol, not a rollback.
 
+The scalar companion now also has a separate pinned i64 capability:
+`do:generic-async-scalar-i64-probe@0.1.0` `host.completion: func() -> future<s64>`
+uses `component-async-scalar-i64-v1` and the measured payload layout
+`offset=16`, `byte-size=8`, `alignment=8`, `encoding=core-s64`. Its generated
+caller and Component/Rust/Wasmtime gate are reproducible with
+`examples/wit-bindgen-do/test_generated_async_scalar_i64_lowering.sh`; the
+same ready/pending/cancel cleanup markers pass, while generic `Future<T>`,
+text/list/resource payloads, and unrestricted generated WIT lowering remain
+rejected.
+
 `async name(...) -> T` is deprecated and rejected by normal semantic analysis
 with `DeprecatedAsyncFunctionDecl`; the parser no longer registers it as a
 function. It is not a public function model, and new examples and APIs must use

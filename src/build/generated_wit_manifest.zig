@@ -312,8 +312,9 @@ fn validate_lowerings(
     const interface = interface_name(module_name) orelse return error.GeneratedWitManifestMismatch;
     for (parsed.lowerings) |lowering| {
         const is_unit = std.mem.eql(u8, lowering.capability, "component-async-unit-v1");
-        const is_scalar = std.mem.eql(u8, lowering.capability, "component-async-scalar-u32-v1");
-        if (!is_unit and !is_scalar) return error.GeneratedWitManifestMismatch;
+        const is_scalar_u32 = std.mem.eql(u8, lowering.capability, "component-async-scalar-u32-v1");
+        const is_scalar_i64 = std.mem.eql(u8, lowering.capability, "component-async-scalar-i64-v1");
+        if (!is_unit and !is_scalar_u32 and !is_scalar_i64) return error.GeneratedWitManifestMismatch;
         if (is_unit) {
             if (!std.mem.eql(u8, lowering.member, "host.work") or
                 !std.mem.eql(u8, lowering.source_signature, "() -> Future<nil>") or
@@ -325,7 +326,7 @@ fn validate_lowerings(
                 !std.mem.eql(u8, lowering.async_import_name, "[async-lower]work") or
                 !std.mem.eql(u8, lowering.completion, "task-return") or
                 lowering.payload != null) return error.GeneratedWitManifestMismatch;
-        } else {
+        } else if (is_scalar_u32) {
             const payload = lowering.payload orelse return error.GeneratedWitManifestMismatch;
             if (!std.mem.eql(u8, lowering.member, "host.completion") or
                 !std.mem.eql(u8, lowering.source_signature, "() -> Future<u32>") or
@@ -339,6 +340,20 @@ fn validate_lowerings(
                 !std.mem.eql(u8, payload.core_type, "i32") or payload.offset != 12 or
                 payload.byte_size != 4 or payload.alignment != 4 or
                 !std.mem.eql(u8, payload.encoding, "core-u32")) return error.GeneratedWitManifestMismatch;
+        } else {
+            const payload = lowering.payload orelse return error.GeneratedWitManifestMismatch;
+            if (!std.mem.eql(u8, lowering.member, "host.completion") or
+                !std.mem.eql(u8, lowering.source_signature, "() -> Future<i64>") or
+                !std.mem.eql(u8, lowering.wit_package, "do:generic-async-scalar-i64-probe@0.1.0") or
+                !std.mem.eql(u8, lowering.wit_world, "probe") or
+                !std.mem.eql(u8, lowering.wit_interface, "host") or
+                !std.mem.eql(u8, lowering.wit_member, "completion") or
+                !std.mem.eql(u8, lowering.async_import_module, "do:generic-async-scalar-i64-probe/host@0.1.0") or
+                !std.mem.eql(u8, lowering.async_import_name, "[async-lower][future-read-0]completion") or
+                !std.mem.eql(u8, lowering.completion, "completion") or
+                !std.mem.eql(u8, payload.core_type, "i64") or payload.offset != 16 or
+                payload.byte_size != 8 or payload.alignment != 8 or
+                !std.mem.eql(u8, payload.encoding, "core-s64")) return error.GeneratedWitManifestMismatch;
         }
         if (!std.mem.eql(u8, lowering.wit_package, parsed.package) or
             !std.mem.eql(u8, lowering.wit_world, parsed.world) or
@@ -352,7 +367,8 @@ fn validate_lowerings(
             if (!member.is_async or member.has_future or member.has_stream or member.has_resource) {
                 return error.GeneratedWitManifestMismatch;
             }
-        } else if (member.is_async or !member.has_future or member.has_stream or member.has_resource) {
+        } else if ((is_scalar_u32 or is_scalar_i64) and
+            (member.is_async or !member.has_future or member.has_stream or member.has_resource)) {
             return error.GeneratedWitManifestMismatch;
         }
         const expected_signature = normalized_text(allocator, member.signature) catch

@@ -745,7 +745,7 @@ pub fn emit_component_wit_with_graph(
     }
     return switch (try target_for_tokens_with_graph(allocator, tokens, module_graph)) {
         .generic_async => emit_generic_async_component_wit(allocator, tokens, module_graph),
-        .generated_async_scalar => codegen_component_generated_async_scalar.emit_component_wit(allocator, tokens),
+        .generated_async_scalar => codegen_component_generated_async_scalar.emit_component_wit_with_graph(allocator, tokens, module_graph),
         .scalar_unit, .unit_result_tag => codegen_p3_wait_for.emit_component_wit_for_tokens(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3WaitForComponent => error.UnsupportedP3AsyncComponent,
             else => err,

@@ -12,6 +12,7 @@ const string_token_body = sema_tokens.string_token_body;
 const tok_eq = sema_tokens.tok_eq;
 
 const pinned_module_name = "do_generic_async_scalar_probe__host__probe.do";
+const pinned_i64_module_name = "do_generic_async_scalar_i64_probe__host__probe.do";
 
 test "generated scalar async admission accepts the pinned await/cancel slice" {
     const source = @embedFile("test/check/430_generated_async_scalar.do");
@@ -52,6 +53,23 @@ test "generated scalar async admission accepts the project-root generated module
     var plan = try analyze(std.testing.allocator, program, tokens, &graph);
     defer plan.deinit(std.testing.allocator);
     try std.testing.expectEqualStrings("completion", plan.host_member);
+}
+
+test "generated scalar async admission accepts the pinned Future<i64> slice" {
+    const source = @embedFile("test/check/431_generated_async_scalar_i64.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    var graph = try test_i64_graph(std.testing.allocator);
+    defer graph.deinit();
+    var plan = try analyze(std.testing.allocator, program, tokens, &graph);
+    defer plan.deinit(std.testing.allocator);
+    try std.testing.expectEqualStrings("completion", plan.host_member);
+    try std.testing.expectEqualStrings("[async-lower][future-read-0]completion", plan.async_import_name);
+    try std.testing.expectEqual(@as(u32, 16), plan.payload.offset);
+    try std.testing.expectEqual(@as(u32, 8), plan.payload.byte_size);
 }
 
 test "generated scalar async admission rejects a hand-written host copy" {
@@ -228,6 +246,37 @@ fn test_graph(allocator: std.mem.Allocator) !imports.ModuleGraph {
     };
 }
 
+fn test_i64_graph(allocator: std.mem.Allocator) !imports.ModuleGraph {
+    const lowerings = try allocator.alloc(module_graph.GeneratedAsyncLowering, 1);
+    errdefer allocator.free(lowerings);
+    lowerings[0] = .{
+        .locator = try allocator.dupe(u8, "do:generic-async-scalar-i64-probe/host@0.1.0"),
+        .member = try allocator.dupe(u8, "completion"),
+        .source_signature = try allocator.dupe(u8, "() -> Future<i64>"),
+        .wit_package = try allocator.dupe(u8, "do:generic-async-scalar-i64-probe@0.1.0"),
+        .wit_world = try allocator.dupe(u8, "probe"),
+        .wit_interface = try allocator.dupe(u8, "host"),
+        .wit_member = try allocator.dupe(u8, "completion"),
+        .async_import_module = try allocator.dupe(u8, "do:generic-async-scalar-i64-probe/host@0.1.0"),
+        .async_import_name = try allocator.dupe(u8, "[async-lower][future-read-0]completion"),
+        .completion = try allocator.dupe(u8, "completion"),
+        .wit_sha256 = [_]u8{0} ** 32,
+        .payload = .{
+            .core_type = try allocator.dupe(u8, "i64"),
+            .offset = 16,
+            .byte_size = 8,
+            .alignment = 8,
+            .encoding = try allocator.dupe(u8, "core-s64"),
+        },
+    };
+    return .{
+        .allocator = allocator,
+        .dep_root = "",
+        .modules = &.{},
+        .generated_async_lowerings = lowerings,
+    };
+}
+
 pub const GeneratedAsyncScalarPlan = struct {
     root_name: []const u8,
     host_locator: []const u8,
@@ -271,15 +320,19 @@ pub fn analyze(
     var cursor: usize = 0;
     const first = parse_future_binding(body, cursor) orelse return error.UnsupportedGeneratedAsyncScalarShape;
     if (!std.mem.eql(u8, first.host_name, host.name)) return error.UnsupportedGeneratedAsyncScalarShape;
+    const first_value_type = scalar_source_type(host.lowering) orelse
+        return error.UnsupportedGeneratedAsyncScalarShape;
+    if (!std.mem.eql(u8, first.value_type, first_value_type)) return error.UnsupportedGeneratedAsyncScalarShape;
     cursor = first.next_idx;
 
-    const await_call = parse_value_await(body, cursor, first.future_name) orelse
+    const await_call = parse_value_await(body, cursor, first.future_name, first_value_type) orelse
         return error.UnsupportedGeneratedAsyncScalarShape;
     cursor = await_call.next_idx;
 
     const second = parse_future_binding(body, cursor) orelse return error.UnsupportedGeneratedAsyncScalarShape;
     if (!std.mem.eql(u8, second.host_name, host.name) or
         std.mem.eql(u8, second.future_name, first.future_name)) return error.UnsupportedGeneratedAsyncScalarShape;
+    if (!std.mem.eql(u8, second.value_type, first_value_type)) return error.UnsupportedGeneratedAsyncScalarShape;
     cursor = second.next_idx;
 
     const cancel_call = parse_cancel(body, cursor, second.future_name) orelse
@@ -322,6 +375,7 @@ const HostBinding = struct {
 const FutureBinding = struct {
     future_name: []const u8,
     host_name: []const u8,
+    value_type: []const u8,
     next_idx: usize,
 };
 
@@ -415,24 +469,47 @@ fn find_generated_scalar_host_binding(tokens: []const lexer.Token, graph: *const
 
 fn is_pinned_scalar_module_path(path: []const u8) bool {
     return std.mem.startsWith(u8, path, "./wit/") and
-        std.mem.eql(u8, std.fs.path.basename(path), pinned_module_name);
+        (std.mem.eql(u8, std.fs.path.basename(path), pinned_module_name) or
+            std.mem.eql(u8, std.fs.path.basename(path), pinned_i64_module_name));
 }
 
 fn is_pinned_scalar_lowering(lowering: module_graph.GeneratedAsyncLowering) bool {
     const payload = lowering.payload orelse return false;
-    return std.mem.eql(u8, lowering.locator, "do:generic-async-scalar-probe/host@0.1.0") and
-        std.mem.eql(u8, lowering.member, "completion") and
-        std.mem.eql(u8, lowering.source_signature, "() -> Future<u32>") and
-        std.mem.eql(u8, lowering.wit_package, "do:generic-async-scalar-probe@0.1.0") and
+    const common = std.mem.eql(u8, lowering.member, "completion") and
         std.mem.eql(u8, lowering.wit_world, "probe") and
         std.mem.eql(u8, lowering.wit_interface, "host") and
         std.mem.eql(u8, lowering.wit_member, "completion") and
-        std.mem.eql(u8, lowering.async_import_module, "do:generic-async-scalar-probe/host@0.1.0") and
         std.mem.eql(u8, lowering.async_import_name, "[async-lower][future-read-0]completion") and
-        std.mem.eql(u8, lowering.completion, "completion") and
-        std.mem.eql(u8, payload.core_type, "i32") and payload.offset == 12 and
-        payload.byte_size == 4 and payload.alignment == 4 and
-        std.mem.eql(u8, payload.encoding, "core-u32");
+        std.mem.eql(u8, lowering.completion, "completion");
+    if (!common) return false;
+    if (std.mem.eql(u8, lowering.locator, "do:generic-async-scalar-probe/host@0.1.0") and
+        std.mem.eql(u8, lowering.source_signature, "() -> Future<u32>") and
+        std.mem.eql(u8, lowering.wit_package, "do:generic-async-scalar-probe@0.1.0") and
+        std.mem.eql(u8, lowering.async_import_module, "do:generic-async-scalar-probe/host@0.1.0"))
+    {
+        return std.mem.eql(u8, payload.core_type, "i32") and payload.offset == 12 and
+            payload.byte_size == 4 and payload.alignment == 4 and
+            std.mem.eql(u8, payload.encoding, "core-u32");
+    }
+    if (std.mem.eql(u8, lowering.locator, "do:generic-async-scalar-i64-probe/host@0.1.0") and
+        std.mem.eql(u8, lowering.source_signature, "() -> Future<i64>") and
+        std.mem.eql(u8, lowering.wit_package, "do:generic-async-scalar-i64-probe@0.1.0") and
+        std.mem.eql(u8, lowering.async_import_module, "do:generic-async-scalar-i64-probe/host@0.1.0"))
+    {
+        return std.mem.eql(u8, payload.core_type, "i64") and payload.offset == 16 and
+            payload.byte_size == 8 and payload.alignment == 8 and
+            std.mem.eql(u8, payload.encoding, "core-s64");
+    }
+    return false;
+}
+
+fn scalar_source_type(lowering: module_graph.GeneratedAsyncLowering) ?[]const u8 {
+    const payload = lowering.payload orelse return null;
+    if (std.mem.eql(u8, payload.encoding, "core-u32") and std.mem.eql(u8, payload.core_type, "i32") and
+        payload.byte_size == 4 and payload.alignment == 4) return "u32";
+    if (std.mem.eql(u8, payload.encoding, "core-s64") and std.mem.eql(u8, payload.core_type, "i64") and
+        payload.byte_size == 8 and payload.alignment == 8) return "i64";
+    return null;
 }
 
 const LibBinding = struct {
@@ -458,20 +535,26 @@ fn parse_future_binding(tokens: []const lexer.Token, start: usize) ?FutureBindin
     const line_end = find_line_end_idx(tokens, start);
     if (start + 8 >= line_end or tokens[start].kind != .ident or
         !tok_eq(tokens[start + 1], "Future") or !tok_eq(tokens[start + 2], "<") or
-        !tok_eq(tokens[start + 3], "u32") or !tok_eq(tokens[start + 4], ">") or
+        tokens[start + 3].kind != .ident or !tok_eq(tokens[start + 4], ">") or
         !tok_eq(tokens[start + 5], "=") or tokens[start + 6].kind != .ident or
         !tok_eq(tokens[start + 7], "(") or !tok_eq(tokens[start + 8], ")")) return null;
     return .{
         .future_name = tokens[start].lexeme,
         .host_name = tokens[start + 6].lexeme,
+        .value_type = tokens[start + 3].lexeme,
         .next_idx = line_end,
     };
 }
 
-fn parse_value_await(tokens: []const lexer.Token, start: usize, future_name: []const u8) ?ValueAwait {
+fn parse_value_await(
+    tokens: []const lexer.Token,
+    start: usize,
+    future_name: []const u8,
+    value_type: []const u8,
+) ?ValueAwait {
     const line_end = find_line_end_idx(tokens, start);
     if (start + 7 >= line_end or tokens[start].kind != .ident or
-        !tok_eq(tokens[start + 1], "u32") or !tok_eq(tokens[start + 2], "=") or
+        !std.mem.eql(u8, tokens[start + 1].lexeme, value_type) or !tok_eq(tokens[start + 2], "=") or
         !tok_eq(tokens[start + 3], "@") or !tok_eq(tokens[start + 4], "await") or
         !tok_eq(tokens[start + 5], "(") or tokens[start + 6].kind != .ident or
         !std.mem.eql(u8, tokens[start + 6].lexeme, future_name) or

@@ -52,37 +52,55 @@ pub const scalar_pinned_payload = ScalarPayload{
     .encoding = "core-u32",
 };
 
+pub const scalar_i64_capability_name = "component-async-scalar-i64-v1";
+pub const scalar_i64_pinned_package = "do:generic-async-scalar-i64-probe@0.1.0";
+pub const scalar_i64_pinned_world = "probe";
+pub const scalar_i64_pinned_interface = "host";
+pub const scalar_i64_pinned_member = "completion";
+pub const scalar_i64_pinned_source_signature = "() -> Future<i64>";
+pub const scalar_i64_pinned_async_import_module = "do:generic-async-scalar-i64-probe/host@0.1.0";
+pub const scalar_i64_pinned_async_import_name = "[async-lower][future-read-0]completion";
+pub const scalar_i64_pinned_completion = "completion";
+pub const scalar_i64_pinned_payload = ScalarPayload{
+    .core_type = "i64",
+    .offset = 16,
+    .byte_size = 8,
+    .alignment = 8,
+    .encoding = "core-s64",
+};
+
 pub fn detect(allocator: std.mem.Allocator, binding: model.BindingModel) ![]Capability {
     if (is_scalar_binding(binding)) {
-        var capability = Capability{
-            .capability = "",
-            .member = "",
-            .source_signature = "",
-            .wit_package = "",
-            .wit_world = "",
-            .wit_interface = "",
-            .wit_member = "",
-            .async_import_module = "",
-            .async_import_name = "",
-            .completion = "",
-            .wit_sha256 = binding.content_hash,
-            .payload = null,
-        };
-        errdefer free_capability(allocator, &capability);
-        capability.capability = try allocator.dupe(u8, scalar_capability_name);
-        capability.member = try allocator.dupe(u8, "host.completion");
-        capability.source_signature = try allocator.dupe(u8, scalar_pinned_source_signature);
-        capability.wit_package = try allocator.dupe(u8, scalar_pinned_package);
-        capability.wit_world = try allocator.dupe(u8, scalar_pinned_world);
-        capability.wit_interface = try allocator.dupe(u8, scalar_pinned_interface);
-        capability.wit_member = try allocator.dupe(u8, scalar_pinned_member);
-        capability.async_import_module = try allocator.dupe(u8, scalar_pinned_async_import_module);
-        capability.async_import_name = try allocator.dupe(u8, scalar_pinned_async_import_name);
-        capability.completion = try allocator.dupe(u8, scalar_pinned_completion);
-        capability.payload = try clone_payload(allocator, scalar_pinned_payload);
-        var capabilities = try allocator.alloc(Capability, 1);
-        capabilities[0] = capability;
-        return capabilities;
+        return make_scalar_capability(
+            allocator,
+            binding,
+            scalar_capability_name,
+            scalar_pinned_package,
+            scalar_pinned_world,
+            scalar_pinned_interface,
+            scalar_pinned_member,
+            scalar_pinned_source_signature,
+            scalar_pinned_async_import_module,
+            scalar_pinned_async_import_name,
+            scalar_pinned_completion,
+            scalar_pinned_payload,
+        );
+    }
+    if (is_scalar_i64_binding(binding)) {
+        return make_scalar_capability(
+            allocator,
+            binding,
+            scalar_i64_capability_name,
+            scalar_i64_pinned_package,
+            scalar_i64_pinned_world,
+            scalar_i64_pinned_interface,
+            scalar_i64_pinned_member,
+            scalar_i64_pinned_source_signature,
+            scalar_i64_pinned_async_import_module,
+            scalar_i64_pinned_async_import_name,
+            scalar_i64_pinned_completion,
+            scalar_i64_pinned_payload,
+        );
     }
     if (!same_package(binding.package, .{ .namespace = "do", .name = "generic-async-runtime-probe", .version = .{ .major = 0, .minor = 1, .patch = 0 }, .span = undefined })) return &.{};
     if (!std.mem.eql(u8, binding.world.name, pinned_world)) return &.{};
@@ -125,6 +143,51 @@ pub fn detect(allocator: std.mem.Allocator, binding: model.BindingModel) ![]Capa
     capability.completion = try allocator.dupe(u8, pinned_completion);
     capability.wit_sha256 = binding.content_hash;
 
+    var capabilities = try allocator.alloc(Capability, 1);
+    capabilities[0] = capability;
+    return capabilities;
+}
+
+fn make_scalar_capability(
+    allocator: std.mem.Allocator,
+    binding: model.BindingModel,
+    capability_name_value: []const u8,
+    package: []const u8,
+    world: []const u8,
+    interface_name: []const u8,
+    member_name: []const u8,
+    source_signature: []const u8,
+    async_import_module: []const u8,
+    async_import_name: []const u8,
+    completion: []const u8,
+    payload: ScalarPayload,
+) ![]Capability {
+    var capability = Capability{
+        .capability = "",
+        .member = "",
+        .source_signature = "",
+        .wit_package = "",
+        .wit_world = "",
+        .wit_interface = "",
+        .wit_member = "",
+        .async_import_module = "",
+        .async_import_name = "",
+        .completion = "",
+        .wit_sha256 = binding.content_hash,
+        .payload = null,
+    };
+    errdefer free_capability(allocator, &capability);
+    capability.capability = try allocator.dupe(u8, capability_name_value);
+    capability.member = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ interface_name, member_name });
+    capability.source_signature = try allocator.dupe(u8, source_signature);
+    capability.wit_package = try allocator.dupe(u8, package);
+    capability.wit_world = try allocator.dupe(u8, world);
+    capability.wit_interface = try allocator.dupe(u8, interface_name);
+    capability.wit_member = try allocator.dupe(u8, member_name);
+    capability.async_import_module = try allocator.dupe(u8, async_import_module);
+    capability.async_import_name = try allocator.dupe(u8, async_import_name);
+    capability.completion = try allocator.dupe(u8, completion);
+    capability.payload = try clone_payload(allocator, payload);
     var capabilities = try allocator.alloc(Capability, 1);
     capabilities[0] = capability;
     return capabilities;
@@ -183,6 +246,22 @@ fn is_scalar_binding(binding: model.BindingModel) bool {
     return std.mem.eql(u8, function.name, scalar_pinned_member) and
         !function.is_async and function.params.len == 0 and
         result.kind == .future and result.args.len == 1 and result.args[0].kind == .u32 and
+        function.effects.has_future and !function.effects.has_stream and !function.effects.has_resource;
+}
+
+fn is_scalar_i64_binding(binding: model.BindingModel) bool {
+    if (!same_package(binding.package, .{ .namespace = "do", .name = "generic-async-scalar-i64-probe", .version = .{ .major = 0, .minor = 1, .patch = 0 }, .span = undefined })) return false;
+    if (!std.mem.eql(u8, binding.world.name, scalar_i64_pinned_world) or binding.interfaces.len != 1) return false;
+    const interface = binding.interfaces[0];
+    if (!std.mem.eql(u8, interface.name, scalar_i64_pinned_interface) or interface.functions.len != 1) return false;
+    if (interface.package) |package| {
+        if (!same_package(package, binding.package)) return false;
+    }
+    const function = interface.functions[0];
+    const result = function.result orelse return false;
+    return std.mem.eql(u8, function.name, scalar_i64_pinned_member) and
+        !function.is_async and function.params.len == 0 and
+        result.kind == .future and result.args.len == 1 and result.args[0].kind == .s64 and
         function.effects.has_future and !function.effects.has_stream and !function.effects.has_resource;
 }
 

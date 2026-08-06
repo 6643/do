@@ -1,5 +1,13 @@
 # Changelog
 
+- 2026-08-06 Generated async scalar i64 lowering: the separate private
+  `component-async-scalar-i64-v1` capability now accepts the generated
+  `Future<i64>` caller with the measured `offset=16`, `byte-size=8`,
+  `alignment=8`, `encoding=core-s64` payload descriptor. The generated
+  Component and Rust/Wasmtime ready/pending/cancel gate passes with exact
+  cleanup; generic Future payloads, text/list/resource shapes, and unrestricted
+  generated WIT async lowering remain pending.
+
 - 2026-08-06 Generated async scalar lowering: the private
   `component-async-scalar-u32-v1` capability now accepts the generated
   `Future<u32>` caller through manifest validation, a measured Component

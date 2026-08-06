@@ -163,14 +163,14 @@
     i32.eqz
     if
     else
-      ;; [scalar-payload-load] one ready u32 payload read
+      ;; [scalar-payload-load] one ready scalar payload read
       ;; [scalar-payload-store] one frame payload store
       local.get $frame
       i32.const __PAYLOAD_OFFSET__
       i32.add
       local.get $payload
-      i32.load
-      i32.store
+      __PAYLOAD_LOAD__
+      __PAYLOAD_STORE__
     end
     local.get $frame
     call $drop-readable
@@ -228,8 +228,8 @@
     local.get $frame
     i32.const __PAYLOAD_OFFSET__
     i32.add
-    i32.const 0
-    i32.store
+    __PAYLOAD_ZERO__
+    __PAYLOAD_STORE__
     local.get $frame
     call $start-first
   )

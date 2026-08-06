@@ -50,6 +50,10 @@ name = "do-p3-generated-async-scalar-host-runner"
 path = "src/bin/generated_async_scalar.rs"
 
 [[bin]]
+name = "do-p3-generated-async-scalar-i64-host-runner"
+path = "src/bin/generated_async_scalar_i64.rs"
+
+[[bin]]
 name = "do-p3-two-await-host-runner"
 path = "src/bin/two_await.rs"
 
