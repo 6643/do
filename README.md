@@ -18,7 +18,8 @@
 - **大小数据分层策略**: 基础/小对象直接拷贝，大对象采用共享 + COW（初始阈值 64B）。
 - **运行时资源管理方向**: 对 host 资源采用显式释放和 ID 关联的设计方向，目标是不引入循环 GC。
 - **语言规范基线**: 规范入口见 `doc/spec.md`; 语法设计见 `doc/syntax/README.md`; parser PEG 见 `doc/grammar.peg`; 语义、内建判断族、核心库特型与静态约束见 `doc/spec_rules.md`。
-- **WASI / WIT lowering 入口**: 当前 compiler-facing 合同见 `doc/wit/wasi_p3_lowering.md`; 当前已登记 target / record mirror registry 见 `doc/wit/wasi_registry.json`。未来通用 host binding 计划见 `doc/host-binding-design.md`，异步 ABI 计划见 `doc/async-design.md`。
+- **WASI / WIT lowering 入口**: 当前 compiler-facing 合同见 `doc/wit/wasi_p3_lowering.md`; 当前已登记 target / record mirror registry 见 `doc/wit/wasi_registry.json`。通用 WIT 翻译命令是 `do wit check/bind`，实现位于 `src/wit/`，上游 Rust/Go 只作为固定版本差分 oracle。
+- **Generated WIT async gate**: 私有 `do:generic-async-runtime-probe@0.1.0` 的 `host.work: async func()` 已通过 schema 2 `component-async-unit-v1` manifest 自动发现、Component 组装和 Rust/Wasmtime pending/immediate/cancel gate；入口为 `bash examples/wit-bindgen-do/test_generated_async_lowering.sh`。这不是通用 WIT async lowering，payload/Stream/resource/参数化 shape 仍保持拒绝。
 - **程序入口固定**: 源码入口声明固定为 `start() { ... }`，`main` 不是入口函数；构建输出会导出 wasm `_start`。
 - **目录结构**: `src/` 工具链与编译器源码, `lib/` builtin/core 总表与标准库, `bin/do` 唯一二进制。
 
@@ -29,12 +30,15 @@ doc/            语法, 语义和运行时设计文档
 bin/            zig 编译出的 do 编译器二进制
 lib/            do builtin/core 总表与标准库
 src/            工具链与编译器源码 (原 tool/)
+src/wit/        Zig WIT lexer/parser/resolver/emitter 与 `do wit` 实现
 src/main.zig    唯一二进制 CLI 分派入口
 src/build.zig   Zig 构建入口
 src/build/      do build 逻辑实现和编译器源码
 src/check/      do check 前端诊断命令实现
 src/run/        do run 命令实现和 wasm 执行桥接
 src/build/test/ 当前编译器/构建产物回归测试
+wit/            项目级生成 WIT binding、`manifest.json` 与 `wit.lock`
+.deps/wit-bindgen/ 忽略的固定上游 Rust/Go 差分 checkout，不是生产依赖
 src/fmt/        do fmt 命令实现和格式化核心
 src/lsp/        do lsp diagnostics + formatting + semantic tokens + hover + completion + definition server 实现
 ```

@@ -165,6 +165,43 @@ borrowed/list/variant resource field 或更宽 runtime 形状。
 1. 发布候选维护 (回归红灯 / 文档漂移)  
 2. G6.2 capability matrix、ownership invariants、正向 Rust/Wasmtime gates 与 pinned negative gates 已收口；下一步只能为新的 producer/resource shape 建立独立 design、pinned probe、负向 fixture 与 runtime gate。
 3. D2 当前只推进已授权的本地 file/dir/CLI smoke；socket/general filesystem async/external HTTP 的扩展须另立 target/design，其他 deferred 项仍需单独授权
-4. **P2** 默认不改; 除非产品明确要左侧反推  
+4. **P2** 默认不改; 除非产品明确要左侧反推
+
+## 7. Generic async Component runtime slices (2026-08-06)
+
+The admitted source model is now colorless: user functions use ordinary
+declarations, synchronous calls become `Future<T>` only through `@async(call)`,
+and `@await`/`@cancel` are explicit intrinsics. A registered WIT `async func`
+already returns `Future<T>` and must not be wrapped in `@async`.
+
+The exact descriptor-backed runtime shape in
+`examples/p3-runtime/generic-async-runtime.do` has a separate Component target.
+Its WIT sidecar, real pending/ready/cancel state machine, wasm-tools
+componentization, and Wasmtime host-drive smoke are reproducible with
+`examples/p3-runtime/test_do_generic_async_runtime.sh`. The Rust host observes
+one external wake and one completion for pending, immediate completion without
+an external wake, and cancellation before completion with one drop.
+
+Generated WIT bindings now have one additional bounded admission path. The
+private `do:generic-async-runtime-probe@0.1.0` world is emitted as manifest
+schema 2 with the exact `component-async-unit-v1` capability; import resolution
+discovers and validates that metadata before Component codegen. The generated
+caller and its full Component/Rust/Wasmtime gate are reproducible with
+`examples/wit-bindgen-do/test_generated_async_lowering.sh`. The gate observes
+`pending external-wakes=2 completions=2 drops=1`,
+`immediate external-wakes=0 completions=3 drops=0`, and
+`cancel cancel-before-completion=1 completions=2`.
+
+`async name(...) -> T` is deprecated and rejected by normal semantic analysis
+with `DeprecatedAsyncFunctionDecl`; the parser no longer registers it as a
+function. It is not a public function model, and new examples and APIs must use
+ordinary function declarations. The generic target still keeps a negative
+`427_generic_async_runtime_async_root` fixture for its lowering boundary.
+
+These bounded slices do not make arbitrary generated WIT async lowering,
+`Future<T>`/`Stream<T>` payloads, resources,
+aggregate await, timeout, multi-root scheduling, public ownership syntax, or
+ordinary `do build` async programs complete. Unsupported shapes continue to
+return `AsyncLoweringUnavailable`.
 
 用户说 `go` / `next` 时以 `doc/start_here.md` §6 为准, 细节以本文件为准。

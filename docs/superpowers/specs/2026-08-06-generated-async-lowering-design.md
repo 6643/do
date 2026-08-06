@@ -183,3 +183,21 @@ state without rolling back external side effects.
   remain green.
 - Documentation states that this is a bounded capability and retains all
   current generic async and G6.2 residual boundaries.
+
+## Verified implementation status (2026-08-06)
+
+The bounded capability is implemented and verified by
+`examples/wit-bindgen-do/test_generated_async_lowering.sh`. The gate generates
+the schema 2 manifest, discovers its lowering through the import graph, emits
+the Core module, embeds the generated WIT, creates and validates the Component,
+and runs the pinned Rust/Wasmtime host in pending, immediate, and cancel modes.
+It observes `pending external-wakes=2 completions=2 drops=1`,
+`immediate external-wakes=0 completions=3 drops=0`, and
+`cancel cancel-before-completion=1 completions=2`; six manifest drift mutations
+are rejected before WAT emission.
+
+The evidence was collected with Zig 0.16.0, wasm-tools 1.254.0, Wasmtime
+47.0.2, and Rust/Cargo 1.97.1. This closes only the private
+`component-async-unit-v1` unit shape. Generic payload, parameterized,
+Stream/resource, aggregate/branch/loop await, public ownership, and arbitrary
+generated WIT async lowering remain non-goals and must continue to fail closed.
