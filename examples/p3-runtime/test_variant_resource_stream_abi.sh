@@ -134,8 +134,8 @@ expect_mode "$early_drop_component" early-drop \
 
 malformed_tag_component=$(build_variant malformed-tag)
 expect_mode "$malformed_tag_component" malformed-tag \
-  'event=ticket resource-created=1 resource-drops=0 table-empty=false result=none trap=true'
+  'event=ticket resource-created=1 resource-drops=0 stream-drops=0 future-drops=0 completion-polls=0 table-empty=false result=none trap=true'
 
 duplicate_release_component=$(build_variant duplicate-release)
 expect_mode "$duplicate_release_component" duplicate-release \
-  'event=ticket resource-created=1 resource-drops=1 table-empty=true result=none trap=true'
+  'event=ticket resource-created=1 resource-drops=1 stream-drops=0 future-drops=0 completion-polls=0 table-empty=true result=none trap=true'

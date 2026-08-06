@@ -1,6 +1,6 @@
 # Roadmap 执行状态
 
-更新时间: 2026-08-05
+更新时间: 2026-08-06
 
 **本文只保留当前状态与阻断。** 历史小任务勾选与逐条 gate 证据已从仓库移除; 追溯用 git 历史与 `CHANGELOG.md`。  
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
@@ -37,13 +37,10 @@ bash examples/p3-runtime/test_rust_cli_stream_stdin_real.sh
 
 ```text
 cd src && zig test main.zig
-  → All 271 tests passed.
+  → All 277 tests passed.
 
-TMPDIR=.tmp/do-tmp/next-default \
-ZIG_LOCAL_CACHE_DIR=.tmp/do-tmp/next-zig-cache \
-ZIG_GLOBAL_CACHE_DIR=.tmp/do-tmp/next-zig-gcache \
 ./src/build/test/run_tests.sh
-  → pass=1098 fail=0 skip=3
+  → pass=1108 fail=0 skip=3
 
 Generated async manifest Component/Rust/Wasmtime gate (2026-08-06)
   → Zig 0.16.0, wasm-tools 1.254.0, Wasmtime 47.0.2, Rust/Cargo 1.97.1;
@@ -53,7 +50,16 @@ Generated async manifest Component/Rust/Wasmtime gate (2026-08-06)
     WAT emission
 
 RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
-  → pass=1072 fail=0 skip=3; wasm run summary: pass=6 fail=0
+  → last recorded run: pass=1100 fail=0 skip=3; wasm run summary: pass=6 fail=0
+
+bash examples/p3-runtime/test_task8_step3_baseline.sh
+  → all seven registered Component/Rust/Wasmtime runtime gates passed
+
+zig test src/build/codegen_component_record_stream.zig
+zig test src/build/codegen_component_record_resource_list_stream.zig
+zig test src/build/codegen_component_wasi_filesystem_read_directory.zig
+  → scanner suites passed; canonical ordinary-function + `@await` syntax is
+    accepted while legacy scanner fixtures remain covered
 
 cd src && zig build -Doptimize=ReleaseSmall
   → passed; run_tests.sh accepts explicit Zig cache directories when `/tmp` quota

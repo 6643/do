@@ -1,6 +1,6 @@
 # 待处理与阻断清单
 
-更新时间: 2026-08-05
+更新时间: 2026-08-06
 基线: 默认回归以 `./src/build/test/run_tests.sh` 最新结果为准  
 关系: 总规划 `doc/master_plan.md`; 接手 `doc/start_here.md`; 执行状态 `doc/roadmap_status.md`  
 约定: **只记未关闭项**; 完成后从本文件删除或移入「已关闭摘要」, 并同步入口文档与 `CHANGELOG.md`。
@@ -30,7 +30,7 @@ only. Public `own<T>`/`borrow<T>`/`ref<T>` syntax remains outside this phase.
 
 **G6.2 next-shape stop (2026-08-05, `can_skip=true`):** 当前计划要求的两个候选都没有形成新的独立 shape：payload-bearing completion error 的 pinned 证据属于现有 HTTP 专用 descriptor，record/list resource shape 已有独立 registry 与 runtime gate。没有新的 pinned WIT/WAT、canonical layout 和 ownership matrix 时不新增 descriptor、不泛化现有 lowering。恢复条件是先提交新的 bounded design、pinned probe、正负 fixture、Component/Rust/Wasmtime cleanup gate，再重新进入 G6.2。
 
-**Task 8 Step 3 runtime baseline (2026-08-05, green):**
+**Task 8 Step 3 runtime baseline (2026-08-06, green):**
 `examples/p3-runtime/test_task8_step3_baseline.sh` 已通过当前七个已登记
 descriptor gate（cancel-wait-for、scalar/resource Result、stream reader/writer、
 filesystem preopen、TCP/UDP sockets）。这只关闭运行时基线核验，不关闭
@@ -38,7 +38,7 @@ filesystem preopen、TCP/UDP sockets）。这只关闭运行时基线核验，�
 建立 admitted shape、resumable frame、Component metadata 与 Rust/Wasmtime
 pending/ready/cancel gate。
 
-本轮执行复核（2026-08-05）重新运行了六跳 forwarding/任意 producer 边界、borrowed stream rejection 与 `p3_async_manifest`（74/74）；三项均保持预期拒绝/通过，因此 no-go 继续有效，未新增 descriptor 或 lowering。
+本轮执行复核（2026-08-06）重新运行了六跳 forwarding/任意 producer 边界、borrowed stream rejection 与 `p3_async_manifest`（74/74）；三个 gate 均保持预期拒绝/通过。同步修复了 record-stream、read-directory、list-resource-stream emitter 对 canonical 普通函数与 `@await` token 的识别；nested lowering、borrowed rejection、G6.2 boundary 与完整 compiler/Wasm 矩阵均保持绿色，未新增 descriptor 或 lowering。
 
 **规则**: 固定一至三条目 read-directory slice、generic consumer slice、multi-owned、多个顶层 nested-owned resource path 以及一层/两层/三层/四层/五层/六层 nested-owned resource consumer slice、注册的单读 `stream<list<resource-entry>>` private slice、bounded scalar producer slice、受限（最多五跳 forwarding）helper-mediated producer-lease slice、固定/参数化 `u64` countdown producer slice、参数化 helper producer slice及其五跳 forwarding、三种 typed 参数受限重排形状与 branch-selected terminal slice 均已可用；无对应 producer-lease/resource gate 时，不绕过上述边界扩 WASI async/stream codegen。
 
