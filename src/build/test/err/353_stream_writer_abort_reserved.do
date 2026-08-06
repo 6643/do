@@ -2,7 +2,7 @@ abort(writer StreamWriter<i32>, reason i32) -> nil {
     return
 }
 
-async produce(writer StreamWriter<i32>) -> nil {
+produce(writer StreamWriter<i32>) -> nil {
     abort(writer, 1)
 }
 

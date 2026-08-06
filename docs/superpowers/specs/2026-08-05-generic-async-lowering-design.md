@@ -6,10 +6,11 @@ checkpoint.
 ## Goal
 
 Replace the generic `AsyncLoweringUnavailable` guard with one verified,
-colorless async vertical slice. The first admitted program must create one
-`Future<nil>` with `@async`, suspend once at `@await`, and support a separate
-pending Future cancellation through `@cancel`. All other async shapes remain
-explicitly rejected until they have their own lowering and runtime gate.
+colorless async vertical slice. The first admitted program creates three
+`Future<nil>` values with `@async`, suspends at two ordered `@await` sites, and
+supports a separate pending Future cancellation through `@cancel`. All other
+async shapes remain explicitly rejected until they have their own lowering and
+runtime gate.
 
 ## Context and Boundary
 
@@ -34,11 +35,14 @@ existing colorless intrinsics:
 
 ```do
 run() -> nil {
-    pending Future<nil> = @async(work())
-    @await(pending)
+    first Future<nil> = @async(work())
+    @await(first)
 
-    cancelled Future<nil> = @async(work())
-    @cancel(cancelled)
+    second Future<nil> = @async(work())
+    @await(second)
+
+    third Future<nil> = @async(work())
+    @cancel(third)
 }
 ```
 
@@ -68,9 +72,10 @@ source as synchronous code.
 
 ### Frame and state machine
 
-The minimal frame contains a state id, one Future ownership slot, a terminal
-state flag, and the locals required by the synchronous `work()` call. The
-state machine has these transitions:
+The minimal frame contains a state id, Future ownership slots for the ordered
+operations, a terminal state flag, and the locals required by the synchronous
+`work()` call. The state machine has ordered suspend/resume transitions for
+both awaits followed by cancellation:
 
 ```text
 created -> running -> suspended -> ready -> terminal

@@ -430,19 +430,21 @@ pub fn error_summary(err: anyerror) []const u8 {
         error.InvalidPathAccess => "字段读取语法: `@get(value, .field)`; 字段写入语法: `@set(value, .field, new_value)`；字段段只用于 @get/@set 路径参数",
         error.InvalidFieldReflection => "字段反射语法: `loop field = fields(StructOrTypeParam) { ... }`; `@field_*` 的 field 参数必须来自当前字段反射循环",
         error.InvalidNarrowing => "收窄语法: `@is(value, Type)` 只能直接作为条件头使用; Type 必须是单个可达非 nil 类型",
-        error.InvalidAsyncReturn => "异步函数写作 `async name(...) -> T`; 用户函数不能直接返回 `Future<T>`",
-        error.InvalidAwaitContext => "`await` 和 `@cancel` 只能在 async 函数中消费 `Future<T>` 局部绑定",
+        error.DeprecatedAsyncFunctionDecl => "`async name(...) -> T` 已弃用；改写为普通 `name(...) -> T`，用 `Future<T> = @async(name(...))` 创建任务",
+        error.InvalidAsyncReturn => "`async name(...) -> T` 仅是迁移期兼容；普通函数不能直接返回 `Future<T>`",
+        error.ImplicitFutureCreation => "普通函数调用不会隐式创建 Future；改写为 `Future<T> = @async(call(...))`；仅登记的 WIT async host binding 可直接返回 Future",
+        error.InvalidAwaitContext => "`@await` 和 `@cancel` 只能在包含异步操作的普通函数中消费 `Future<T>` 局部绑定",
         error.FutureAlreadyConsumed => "每个 `Future<T>` 只能被 await、取消或聚合等待消费一次",
-        error.FutureDropped => "`Future<T>` 不能在 async 函数作用域结束时未消费",
+        error.FutureDropped => "`Future<T>` 不能在函数作用域结束时未消费",
         error.StreamReaderAlreadyConsumed => "每个 `StreamReader<T>` 只能转移给一个消费者",
         error.StreamReaderTypeMismatch => "`StreamReader<T>` 只能转移给相同元素类型的 consumer",
-        error.InvalidStreamReaderRead => "`@next(reader)` 只能在 async 函数中读取当前 `Stream<T>` 或 `StreamReader<T>` owner，并绑定为 `Future<Result<T, nil>>`",
+        error.InvalidStreamReaderRead => "`@next(reader)` 只能在包含异步操作的普通函数中读取当前 `Stream<T>` 或 `StreamReader<T>` owner，并绑定为 `Future<Result<T, nil>>`",
         error.StreamWriterLeaseDropped => "`StreamWriter<T>` lease 不能在 async 作用域结束时未收尾",
         error.StreamWriterLeasePathConflict => "`StreamWriter<T>` lease 在控制流合流后没有一致的收尾状态",
         error.StreamWriterDeferredTransfer => "`StreamWriter<T>` lease 不能带着当前作用域的 defer cleanup 转移",
         error.StreamWriterAlreadyFinalized => "每个 `StreamWriter<T>` lease 只能转移、关闭或中止一次",
         error.StreamWriterTypeMismatch => "`StreamWriter<T>` lease 只能转移给相同元素类型的 owner",
-        error.InvalidStreamWriterFinalization => "`close`/`abort` 只能终结当前 async `StreamWriter<T>` owner",
+        error.InvalidStreamWriterFinalization => "`close`/`abort` 只能终结当前包含异步操作的普通函数中的 `StreamWriter<T>` owner",
         error.InvalidStreamWriterWrite => "`writer(value)` 必须返回 `Future<Result<nil, E>>`，且 value 类型必须与 `StreamWriter<T>` 的 T 相同",
         error.UnknownP3AsyncHostDescriptor => "P3 async host descriptor 未在 pinned registry 中登记",
         error.P3AsyncHostSignatureMismatch => "P3 async host 声明签名与 pinned descriptor 不一致",
@@ -473,6 +475,9 @@ pub fn error_summary(err: anyerror) []const u8 {
         error.MultiReturnInSingleValuePosition => "多返回调用只能用于多左值赋值右侧或完整 return 位",
         error.AmbiguousConditionCallReturnArity => "调用返回位数不唯一, 需要先显式接收或选择具体重载",
         error.InvalidImportDecl => "导入使用 `name = @lib(\"file.do\", symbol)`, `name = @lib(\"./file.do\", symbol)`, `name = @lib(\"~/vendor.name.do\", symbol)`；host import 左侧使用 `LowerIdent` 或 `.LowerIdent`，右侧使用 `@host(\"env\", \"name\", (...) -> Type)` 或 `@host(\"wasi:pkg/iface@0.3.0\", \"member\", (...) -> Type)`",
+        error.GeneratedWitManifestMissing => "生成的 `wit/*.do` 模块必须和同目录 `manifest.json` 一起使用",
+        error.GeneratedWitManifestInvalid => "生成的 WIT manifest 结构无效；重新运行 `do wit bind`",
+        error.GeneratedWitManifestMismatch => "生成的 WIT 模块、manifest 哈希或 async/future 元数据不一致；重新运行 `do wit bind`",
         error.NoTopLevelDecl => "top-level 项写作 import/type/value/start/func/test",
         error.NoTestDecl => "在文件顶层添加 `test \"name\" { ... }`",
         error.InvalidTestDecl => "使用 `test \"name\" { ... }` 顶层声明",
@@ -524,20 +529,22 @@ pub fn error_hint(err: anyerror) []const u8 {
         error.InvalidPathAccess => "字段段只用于 @get/@set 路径参数；普通函数参数使用有类型表达式",
         error.InvalidFieldReflection => "`fields(...)` 只接收可见结构体或当前泛型类型参数；`@field_set` 写作 `target = @field_set(target, field, value)`",
         error.InvalidNarrowing => "`@is` 不进入普通值表达式或 `@and/@or/@not` 子条件; v1 不支持 `@is(value, A | B)` 或 `@is(value, nil)`",
-        error.InvalidAsyncReturn => "使用 `async name(...) -> T`；`name(...) -> Future<T>` 与 `async name(...) -> Future<T>` 都非法",
-        error.InvalidAwaitContext => "`await(future)`、聚合等待或 `@cancel(future)` 只能写在 async 函数中，参数必须是可见的 `Future<T>` 局部绑定",
+        error.DeprecatedAsyncFunctionDecl => "删除声明前的 `async`；普通函数通过 `@async(call)` 显式创建 Future，再用 `@await` 或 `@cancel` 消费",
+        error.InvalidAsyncReturn => "`async name(...) -> T` 仅是迁移期兼容；普通函数不能直接返回 `Future<T>`，也不能声明 `Future<T>` 返回形态",
+        error.ImplicitFutureCreation => "把 `Future<T> = call(...)` 改成 `Future<T> = @async(call(...))`；WIT `async func` 生成 binding 是唯一直接调用例外",
+        error.InvalidAwaitContext => "`@await(future)`、聚合等待或 `@cancel(future)` 只能写在包含异步操作的普通函数中，参数必须是可见的 `Future<T>` 局部绑定",
         error.FutureAlreadyConsumed => "Future 已被消费；await、取消和聚合等待都会转移其所有权",
-        error.FutureDropped => "在返回、失败或取消清理前消费 Future；不能让 Future 静默离开作用域",
+        error.FutureDropped => "在返回、失败或取消清理前消费 Future；不能让 Future 静默离开函数作用域",
         error.StreamReaderAlreadyConsumed => "reader 已转移给另一消费者；保留唯一 owner 并从该绑定继续读取",
         error.StreamReaderTypeMismatch => "目标绑定的 `T` 必须与当前 `StreamReader<T>` owner 相同",
-        error.InvalidStreamReaderRead => "在 async 函数中写 `pending Future<Result<T, nil>> = @next(reader)`；reader 与 Result 的 T 必须相同",
+        error.InvalidStreamReaderRead => "在包含异步操作的普通函数中写 `pending Future<Result<T, nil>> = @next(reader)`；reader 与 Result 的 T 必须相同",
         error.StreamWriterLeaseDropped => "在作用域结束前调用 `close(writer)`、`abort(writer, err)`，或使用 `defer close(writer)`",
         error.StreamWriterLeasePathConflict => "让每条可达路径都执行相同的 `close`/`abort`/`defer close`，再使用或离开作用域",
         error.StreamWriterDeferredTransfer => "在当前 defer 作用域内调用 `close`/`abort`，或移除 defer 后再转移唯一 owner",
         error.StreamWriterAlreadyFinalized => "writer 已转移或完成收尾；从当前唯一 owner 继续使用",
         error.StreamWriterTypeMismatch => "目标绑定的 `T` 必须与当前 `StreamWriter<T>` owner 相同",
-        error.InvalidStreamWriterFinalization => "在 async 函数中对当前 writer 调用 `close(writer)` 或 `abort(writer, err)`",
-        error.InvalidStreamWriterWrite => "在 async 函数中写 `pending Future<Result<nil, E>> = writer(value)`；value 与 writer 的 T 必须相同",
+        error.InvalidStreamWriterFinalization => "在包含异步操作的普通函数中对当前 writer 调用 `close(writer)` 或 `abort(writer, err)`",
+        error.InvalidStreamWriterWrite => "在包含异步操作的普通函数中写 `pending Future<Result<nil, E>> = writer(value)`；value 与 writer 的 T 必须相同",
         error.UnknownP3AsyncHostDescriptor => "使用已登记的 locator/member；不要由名称推断 WIT async ABI",
         error.P3AsyncHostSignatureMismatch => "当前 pinned wait-for 声明写作 `(u64) -> nil`",
         error.ResourceAlreadyConsumed => "从当前唯一 owner 继续使用；own 调用、drop 和同类型赋值都会转移它",
@@ -567,6 +574,9 @@ pub fn error_hint(err: anyerror) []const u8 {
         error.MultiReturnInSingleValuePosition => "写作 `a, b = f()` 或 `return f()`; 单变量、实参和聚合元素位不能隐式承载多返回",
         error.AmbiguousConditionCallReturnArity => "给实参加类型或先绑定到具体签名, 让调用返回位数唯一",
         error.InvalidImportDecl => "导入语法: `name = @lib(\"file.do\", symbol)`, `name = @lib(\"./file.do\", symbol)`, `name = @lib(\"~/vendor.name.do\", symbol)`; host import 左侧使用 `LowerIdent` 或 `.LowerIdent`，右侧使用 `@host(\"env\", \"name\", (...) -> Type)` 或 `@host(\"wasi:pkg/iface@0.3.0\", \"member\", (...) -> Type)`",
+        error.GeneratedWitManifestMissing => "恢复同目录 `manifest.json`，或从 WIT 源重新运行 `do wit bind`",
+        error.GeneratedWitManifestInvalid => "不要手工编辑 generated manifest；重新运行 `do wit bind`",
+        error.GeneratedWitManifestMismatch => "同步生成的 `.do` 文件和 `manifest.json`；普通 host 调用不会绕过这个校验",
         error.NoTopLevelDecl => "至少声明 1 个 top-level 项: import/type/value/start/func/test",
         error.NoTestDecl => "在文件顶层添加 `test \"name\" { ... }`",
         error.InvalidTestDecl => "使用 `test \"name\" { ... }` 顶层声明",
@@ -577,8 +587,8 @@ pub fn error_hint(err: anyerror) []const u8 {
         error.DuplicateStartEntry => "顶层 `start` 写作 1 次",
         error.UnsupportedWasiHostImport => "已登记的 scalar/record/list<u8>、descriptor.sync 语句调用和 descriptor.write 多左值调用可 lower；复杂 result/resource/variant/flags 需要后续 component lowering",
         error.AsyncLoweringUnavailable => "先使用 `do check` 验证前端；`do build` 需要 await frame、调度和清理 lowering",
-        error.UnsupportedP3WaitForComponent => "使用已登记的 `wasi:clocks@0.3.0/monotonic-clock.wait-for`、`async run(u64) -> nil`、将该调用结果绑定为 `Future<nil>` 后单次 await 和空 start；局部名称可自定，其他 async 形式仍由 AsyncLoweringUnavailable 拒绝",
-        error.UnsupportedP3AsyncResourceComponent => "private probe 使用 `do:resource-probe/http@0.1.0/send`、`async run(HttpRequest) -> Result<HttpResponse, HttpError>`，函数体只可绑定并 await 该 Future 后直接 return；真实 HTTP 仅支持固定 `wasi:http/client.send` service 源码形态",
+        error.UnsupportedP3WaitForComponent => "旧版 pinned P3 compatibility probe 仍使用迁移期 `async run(u64) -> nil`；新源码使用普通 `run(u64) -> nil` 与 `@await/@cancel`，其他 async 形式仍由 AsyncLoweringUnavailable 拒绝",
+        error.UnsupportedP3AsyncResourceComponent => "旧版 private probe 仍使用迁移期 `async run(HttpRequest) -> Result<HttpResponse, HttpError>`；新源码使用普通函数声明与显式 `@await/@cancel`，真实 HTTP 仅支持固定 `wasi:http/client.send` service 源码形态",
         error.UnsupportedP3AsyncComponent => "使用 `--p3-async-component` 时，支持已登记的 scalar/unit clocks、`wasi:cli/run.run` 的 `Result<nil,nil>`、private `do:resource-probe/http/send` 两字 Result，以及固定 `wasi:http/client.send` service；list、Stream、payload error-code 与其他 descriptor 仍需完整 canonical layout lowering",
         error.UnsupportedGcCoreLowering => "使用 `identity(value text) -> text { return value }`，或 `update(input [u8]) -> [u8] { return @set(input, 0, 65) }`，并使用空 `start()`；其他 text/list/managed struct GC lowering 尚未接入该 target",
         error.UnsupportedLowering => "常见后置边界: 非 packable 的 `[Tuple]` storage 直接元素；该错误不是重载匹配失败",
@@ -672,6 +682,29 @@ test "path-sensitive writer diagnostics have dedicated summary and hint" {
     try std.testing.expectEqualStrings(
         "在当前 defer 作用域内调用 `close`/`abort`，或移除 defer 后再转移唯一 owner",
         error_hint(error.StreamWriterDeferredTransfer),
+    );
+}
+
+test "colorless async diagnostics do not advertise legacy async declarations" {
+    try std.testing.expectEqualStrings(
+        "`@next(reader)` 只能在包含异步操作的普通函数中读取当前 `Stream<T>` 或 `StreamReader<T>` owner，并绑定为 `Future<Result<T, nil>>`",
+        error_summary(error.InvalidStreamReaderRead),
+    );
+    try std.testing.expectEqualStrings(
+        "在包含异步操作的普通函数中写 `pending Future<Result<T, nil>> = @next(reader)`；reader 与 Result 的 T 必须相同",
+        error_hint(error.InvalidStreamReaderRead),
+    );
+    try std.testing.expectEqualStrings(
+        "`close`/`abort` 只能终结当前包含异步操作的普通函数中的 `StreamWriter<T>` owner",
+        error_summary(error.InvalidStreamWriterFinalization),
+    );
+    try std.testing.expectEqualStrings(
+        "在包含异步操作的普通函数中对当前 writer 调用 `close(writer)` 或 `abort(writer, err)`",
+        error_hint(error.InvalidStreamWriterFinalization),
+    );
+    try std.testing.expectEqualStrings(
+        "在包含异步操作的普通函数中写 `pending Future<Result<nil, E>> = writer(value)`；value 与 writer 的 T 必须相同",
+        error_hint(error.InvalidStreamWriterWrite),
     );
 }
 

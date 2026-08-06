@@ -19,6 +19,34 @@ pub const WasiLowering = struct {
     resource_drop: bool = false,
 };
 
+pub const AsyncComponentContract = struct {
+    export_name: []const u8,
+    host_locator: []const u8,
+    host_member: []const u8,
+};
+
+pub fn emit_async_component_contract(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    contract: AsyncComponentContract,
+) !void {
+    try append_fmt(allocator, out,
+        \\;; generic-async contract export="{s}" host="{s}" member="{s}"
+        \\;; generic-async async-lift="[async-lift]{s}"
+        \\;; generic-async callback="[callback][async-lift]{s}"
+        \\;; generic-async task-return="[task-return]{s}"
+        \\;; generic-async cancellation="[subtask-cancel]" drop="[subtask-drop]"
+        \\
+    , .{
+        contract.export_name,
+        contract.host_locator,
+        contract.host_member,
+        contract.export_name,
+        contract.export_name,
+        contract.export_name,
+    });
+}
+
 pub fn emit_wasi_bindings(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
@@ -484,4 +512,24 @@ test "component metadata writer exposes wasi import symbol escaping" {
     try append_wasi_import_symbol(allocator, &out, "filesystem/types/descriptor.link-at");
 
     try std.testing.expectEqualStrings("__wasi_import_filesystem_types_descriptor_link_at", out.items);
+}
+
+test "component metadata writer emits stable generic async contract markers" {
+    var out = std.ArrayList(u8).empty;
+    defer out.deinit(std.testing.allocator);
+
+    try emit_async_component_contract(std.testing.allocator, &out, .{
+        .export_name = "run",
+        .host_locator = "do:generic-async-probe/host@0.1.0",
+        .host_member = "work",
+    });
+
+    try std.testing.expectEqualStrings(
+        \\;; generic-async contract export="run" host="do:generic-async-probe/host@0.1.0" member="work"
+        \\;; generic-async async-lift="[async-lift]run"
+        \\;; generic-async callback="[callback][async-lift]run"
+        \\;; generic-async task-return="[task-return]run"
+        \\;; generic-async cancellation="[subtask-cancel]" drop="[subtask-drop]"
+        \\
+    , out.items);
 }

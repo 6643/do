@@ -4,7 +4,7 @@ HttpRequest = @wasi_resource("do:resource-probe-owned-error/http/request", { .id
 HttpResponse = @wasi_resource("do:resource-probe-owned-error/http/response", { .id i64 })
 HttpErrorResource = @wasi_resource("do:resource-probe-owned-error/http/error-resource", { .id i64 })
 
-async cancel_request(request HttpRequest) -> nil {
+cancel_request(request HttpRequest) -> nil {
     completion Future<Result<HttpResponse, HttpErrorResource>> = send(request)
     @cancel(completion)
 }

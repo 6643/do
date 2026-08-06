@@ -1,10 +1,10 @@
-async ready() -> i32 {
+ready() -> i32 {
     return 1
 }
 
-async consume() -> nil {
-    pending Future<i32> = ready()
-    value i32 = await(pending)
+consume() -> nil {
+    pending Future<i32> = @async(ready())
+    value i32 = @await(pending)
     @cancel(pending)
 }
 

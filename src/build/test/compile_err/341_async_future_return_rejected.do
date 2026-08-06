@@ -1,4 +1,4 @@
-async nested() -> Future<i32> {
+nested() -> Future<i32> {
     return 1
 }
 

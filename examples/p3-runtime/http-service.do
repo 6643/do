@@ -6,9 +6,9 @@ HttpRequest = @wasi_resource("http/types/request", { .id i64 })
 HttpResponse = @wasi_resource("http/types/response", { .id i64 })
 HttpError error = HttpFailure
 
-async handle(request HttpRequest) -> Result<HttpResponse, HttpError> {
+handle(request HttpRequest) -> Result<HttpResponse, HttpError> {
     pending Future<Result<HttpResponse, HttpError>> = send(request)
-    return await(pending)
+    return @await(pending)
 }
 
 start() {}

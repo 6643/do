@@ -398,6 +398,9 @@ pub fn collect_func_decls(
             .type_params = type_params,
             .is_generic_template = type_params.len != 0,
             .is_async = func_head.is_async,
+            .contains_await = body_contains_await(tokens, body.body_start, body.body_end),
+            .resumable = body_contains_await(tokens, body.body_start, body.body_end),
+            .direct_call = !func_head.is_async,
             .owned_types = try owned_types.toOwnedSlice(allocator),
             .tokens = tokens,
             .start_idx = func_idx,
@@ -661,6 +664,9 @@ pub fn collect_func_decl_by_name_as(
             .type_params = type_params,
             .is_generic_template = type_params.len != 0,
             .is_async = func_head.is_async,
+            .contains_await = body_contains_await(tokens, body.body_start, body.body_end),
+            .resumable = body_contains_await(tokens, body.body_start, body.body_end),
+            .direct_call = !func_head.is_async,
             .owned_name = owned_emit_name,
             .owned_types = try owned_types.toOwnedSlice(allocator),
             .tokens = tokens,
@@ -685,6 +691,15 @@ const FuncDeclHead = struct {
     name_idx: usize,
     is_async: bool,
 };
+
+fn body_contains_await(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tok_eq(tokens[i], "await")) return true;
+        if (i + 1 < end_idx and tok_eq(tokens[i], "@") and tok_eq(tokens[i + 1], "await")) return true;
+    }
+    return false;
+}
 
 fn user_func_decl_head(tokens: []const lexer.Token, idx: usize) ?FuncDeclHead {
     if (is_user_func_decl_start(tokens, idx)) {

@@ -140,9 +140,10 @@ result slot in the checked byte counter. Its result-buffer helper reserves befor
 is accounting evidence only, not a configurable quota or general resource ABI.
 
 `http-service.do` is the admitted real HTTP slice. It accepts only the pinned
-`async handle(request HttpRequest) -> Result<HttpResponse, HttpError>` service
-whose body transfers the request to `send`, binds the returned Future, and
-either directly returns `await(pending)` or directly returns an identically
+`handle(request HttpRequest) -> Result<HttpResponse, HttpError>` service
+whose body transfers the request to the async host binding `send`, binds the
+returned Future, and
+either directly returns `@await(pending)` or directly returns an identically
 typed binding of that await. The emitter performs the request drop,
 returns either an owned response or a no-payload `error-code`, and emits the
 `wasi:http/handler.handle` task-return ABI. Run

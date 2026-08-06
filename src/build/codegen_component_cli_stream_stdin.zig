@@ -529,12 +529,12 @@ test "stream reader lowering derives the bounded read count and export name" {
     const source =
         \\stdin_read = @host("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
         \\StdinError error = Io | IllegalByteSequence | Pipe
-        \\async read_once() -> nil {
+        \\read_once() -> nil {
         \\    handles Tuple<Stream<u8>, Future<Result<nil, StdinError>>> = stdin_read()
         \\    reader Stream<u8> = @get(handles, 0)
         \\    completion Future<Result<nil, StdinError>> = @get(handles, 1)
         \\    pending Future<Result<u8, nil>> = @next(reader)
-        \\    item Result<u8, nil> = await(pending)
+        \\    item Result<u8, nil> = @await(pending)
         \\    _ = item
         \\    @cancel(completion)
         \\}
@@ -565,12 +565,12 @@ test "stream reader realloc accounts byte budget transactionally" {
     const source =
         \\stdin_read = @host("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
         \\StdinError error = Io | IllegalByteSequence | Pipe
-        \\async read_once() -> nil {
+        \\read_once() -> nil {
         \\    handles Tuple<Stream<u8>, Future<Result<nil, StdinError>>> = stdin_read()
         \\    reader Stream<u8> = @get(handles, 0)
         \\    completion Future<Result<nil, StdinError>> = @get(handles, 1)
         \\    pending Future<Result<u8, nil>> = @next(reader)
-        \\    item Result<u8, nil> = await(pending)
+        \\    item Result<u8, nil> = @await(pending)
         \\    _ = item
         \\    @cancel(completion)
         \\}

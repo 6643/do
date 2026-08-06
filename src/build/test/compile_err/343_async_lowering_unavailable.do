@@ -1,7 +1,13 @@
 wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
 
-async ready() -> i32 {
+ready() -> i32 {
     return 1
+}
+
+run() -> nil {
+    pending Future<i32> = @async(ready())
+    value i32 = @await(pending)
+    _ = value
 }
 
 start() {}

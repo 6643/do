@@ -1,10 +1,10 @@
-async ready() -> i32 {
+ready() -> i32 {
     return 1
 }
 
-async race() -> nil {
-    left Future<i32> = ready()
-    right Future<i32> = ready()
+race() -> nil {
+    left Future<i32> = @async(ready())
+    right Future<i32> = @async(ready())
     await_any(left, right)
 }
 

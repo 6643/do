@@ -1,4 +1,4 @@
-async produce(writer StreamWriter<i32>) -> nil {
+produce(writer StreamWriter<i32>) -> nil {
     defer close(writer)
 }
 

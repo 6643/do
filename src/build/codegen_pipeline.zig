@@ -200,6 +200,7 @@ const codegen_component_resource_async = @import("codegen_component_resource_asy
 const codegen_component_async = @import("codegen_component_async.zig");
 const codegen_gc_core = @import("codegen_gc_core.zig");
 const codegen_emit_generic_async = @import("codegen_emit_generic_async.zig");
+const codegen_task_bridge = @import("codegen_task_bridge.zig");
 pub const emit_p3_wait_for_wit = codegen_p3_wait_for.emit_component_wit_for_tokens;
 const collect_body_locals_with_mode = codegen_body.collect_body_locals_with_mode;
 // Re-export expression and call emit entry points.
@@ -486,7 +487,7 @@ fn install_gen_hooks() void {
 
 fn program_has_async_func(program: parser.Program) bool {
     for (program.func_sigs) |sig| {
-        if (sig.is_async) return true;
+        if (sig.is_async or sig.contains_await or sig.resumable) return true;
     }
     return false;
 }
@@ -507,7 +508,8 @@ fn tokens_require_async_lowering(tokens: []const lexer.Token) bool {
         if (tok_eq(token, "async")) return true;
         if (tok_eq(token, "await_all") or tok_eq(token, "await_any")) return true;
         if (!tok_eq(token, "@") or idx + 1 >= tokens.len) continue;
-        if (tok_eq(tokens[idx + 1], "cancel")) return true;
+        if (tok_eq(tokens[idx + 1], "async") or tok_eq(tokens[idx + 1], "await") or
+            tok_eq(tokens[idx + 1], "cancel")) return true;
     }
     return false;
 }
@@ -531,6 +533,7 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
     if (options.p3_async_component) return codegen_component_async.emit_component_wat(allocator, program, tokens, module_graph);
     if (options.gc_core) return codegen_gc_core.emit_gc_core_wat(allocator, program, tokens);
     if (options.p3_wait_for_component) return finalize_component_wat(allocator, codegen_p3_wait_for.emit_component_wat(allocator, program, tokens, module_graph));
+    if (try codegen_task_bridge.emit_if_supported(allocator, program, tokens)) |wat| return wat;
     if (try codegen_emit_generic_async.emit_if_supported(allocator, program, tokens, module_graph)) |wat| return wat;
     // Generic Core-Wasm emission has no resumable async lowering. Guard before
     // any body-dependent collection can misclassify an async intrinsic call.

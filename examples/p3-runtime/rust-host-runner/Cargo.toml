@@ -34,6 +34,14 @@ name = "do-p3-cancel-wait-for-host-runner"
 path = "src/bin/cancel_wait_for.rs"
 
 [[bin]]
+name = "do-p3-generic-async-single-future-host-runner"
+path = "src/bin/generic_async_single_future.rs"
+
+[[bin]]
+name = "do-p3-generic-async-runtime-host-runner"
+path = "src/bin/generic_async_runtime.rs"
+
+[[bin]]
 name = "do-p3-generic-async-scalar-probe-host-runner"
 path = "src/bin/generic_async_scalar_probe.rs"
 

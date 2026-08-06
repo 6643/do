@@ -29,6 +29,30 @@
             }
         },
         {
+            "locator": "do:generic-async-runtime-probe/host@0.1.0",
+            "member": "work",
+            "effect": "async",
+            "params": [],
+            "result": "nil",
+            "resource": null,
+            "wit_sha256": "32d239e3d6e9323577422ee1e54287a27cb7607dd8843537af7d69975b1e9803",
+            "canonical": {
+                "core_params": [],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "task-return",
+                "async_import_module": "do:generic-async-runtime-probe/host@0.1.0",
+                "async_import_name": "[async-lower]work"
+            },
+            "wit": {
+                "package": "do:generic-async-runtime-probe@0.1.0",
+                "interface": "host",
+                "operation": "work",
+                "world": "probe",
+                "parameter": ""
+            }
+        },
+        {
             "locator": "wasi:clocks@0.3.0",
             "member": "monotonic-clock.wait-until",
             "effect": "async",

@@ -1,4 +1,4 @@
-async produce() -> nil {
+produce() -> nil {
     close(1)
 }
 

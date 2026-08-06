@@ -4,11 +4,11 @@ HttpRequest = @wasi_resource("do:resource-probe-owned-error/http/request", { .id
 HttpResponse = @wasi_resource("do:resource-probe-owned-error/http/response", { .id i64 })
 HttpErrorResource = @wasi_resource("do:resource-probe-owned-error/http/error-resource", { .id i64 })
 
-async run(request HttpRequest) -> nil {
+run(request HttpRequest) -> nil {
     first Future<Result<HttpResponse, HttpErrorResource>> = send(request)
-    await(first)
+    @await(first)
     second Future<Result<HttpResponse, HttpErrorResource>> = send(request)
-    await(second)
+    @await(second)
 }
 
 start() {}

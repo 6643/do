@@ -422,13 +422,13 @@ monitor result = save(path text, data [u8]) -> nil | IOError {
 }
 ```
 
-### 异步函数
+### 含异步操作的函数
 
-对 async 函数，monitor 观察的是最终完成结果，而不是 Future 创建：
+对包含异步操作的函数，monitor 观察的是最终完成结果，而不是 Future 创建：
 
 ```do
-async fetch(url text) -> [u8] | IOError {
-    data [u8] | IOError = await(host_http_get(url))
+fetch(url text) -> [u8] | IOError {
+    data [u8] | IOError = @await(host_http_get(url))
     return data
 }
 
@@ -437,7 +437,7 @@ monitor result = fetch(url text) -> [u8] | IOError {
 }
 ```
 
-async monitor 的结果上下文还包括 runtime 控制错误：`FutureError` 按异步设计中的隐式传播规则加入完成结果。Wasm trap、panic 和不可捕获的安全终止不进入 monitor。
+异步 monitor 的结果上下文还包括 runtime 控制错误：`FutureError` 按异步设计中的隐式传播规则加入完成结果。Wasm trap、panic 和不可捕获的安全终止不进入 monitor。
 
 `monitor result = f(...)` 的默认语义是函数完成监视；它不表示函数刚被调用，也不表示 Future 已经创建。Future 创建和最终完成是两个不同事件，不能混用。
 

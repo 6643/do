@@ -1,0 +1,10 @@
+package do:generic-async-probe@0.1.0;
+
+interface host {
+  work: func();
+}
+
+world probe {
+  import host;
+  export run: async func();
+}

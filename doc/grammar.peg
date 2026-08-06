@@ -214,8 +214,7 @@ NilType          <- 'nil'
 String           <- NormalString
 LineStringBlock  <- LineStringToken
 
-FuncDecl         <- FuncConstraintList? AsyncModifier? FuncName '(' SoftGap ParamList? SoftGap ')' FuncResult FuncBody
-AsyncModifier    <- 'async' SoftGap
+FuncDecl         <- FuncConstraintList? FuncName '(' SoftGap ParamList? SoftGap ')' FuncResult FuncBody
 FuncName         <- PublicFuncName / PrivateFuncName
 PublicFuncName   <- !ReservedName LowerIdent
 PrivateFuncName  <- !DotReservedName DotLowerIdent

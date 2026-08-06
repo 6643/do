@@ -566,11 +566,18 @@ fn is_future_binding(
 ) ?WriterCall {
     if (idx + 3 >= end_idx or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "Future") or !tok_eq(tokens[idx + 2], "<")) return null;
     const future_close = find_matching(tokens, idx + 2, "<", ">") catch return null;
-    if (future_close + 4 >= end_idx or !tok_eq(tokens[future_close + 1], "=") or tokens[future_close + 2].kind != .ident or !tok_eq(tokens[future_close + 3], "(")) return null;
-    const call_close = find_matching(tokens, future_close + 3, "(", ")") catch return null;
+    if (future_close + 4 >= end_idx or !tok_eq(tokens[future_close + 1], "=")) return null;
+    var callee_idx = future_close + 2;
+    var open_idx = future_close + 3;
+    if (tok_eq(tokens[callee_idx], "@") and tok_eq(tokens[callee_idx + 1], "async") and tok_eq(tokens[callee_idx + 2], "(")) {
+        callee_idx += 3;
+        open_idx += 3;
+    }
+    if (tokens[callee_idx].kind != .ident or !tok_eq(tokens[open_idx], "(")) return null;
+    const call_close = find_matching(tokens, open_idx, "(", ")") catch return null;
     if (call_close >= end_idx) return null;
     var writer_arg_idx: ?usize = null;
-    var arg_idx = future_close + 4;
+    var arg_idx = callee_idx + 2;
     while (arg_idx < call_close) : (arg_idx += 1) {
         if (tokens[arg_idx].kind == .ident and writer_arg_idx == null and
             find_binding(bindings, tokens[arg_idx].lexeme, arg_idx) != null)
@@ -578,7 +585,7 @@ fn is_future_binding(
             writer_arg_idx = arg_idx;
         }
     }
-    return .{ .callee_idx = future_close + 2, .writer_arg_idx = writer_arg_idx, .call_close = call_close };
+    return .{ .callee_idx = callee_idx, .writer_arg_idx = writer_arg_idx, .call_close = call_close };
 }
 
 test "future binding resolves a reordered helper writer argument" {

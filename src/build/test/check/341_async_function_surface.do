@@ -1,7 +1,13 @@
-async ready() -> i32 {
+ready() -> i32 {
     return 1
 }
 
+run() -> nil {
+    pending Future<i32> = @async(ready())
+    value i32 = @await(pending)
+    _ = value
+}
+
 start() {
-    pending Future<i32> = ready()
+    run()
 }

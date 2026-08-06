@@ -33,6 +33,7 @@ pub fn check_program(
     if (program.token_count == 0) return error.EmptyTokenStream;
     try sema_function_signatures.check_private_l_value_assign(tokens);
     try sema_function_signatures.check_func_decl_naming(tokens);
+    try sema_function_signatures.check_legacy_async_declarations(tokens);
     try sema_function_signatures.check_func_return_arrow_syntax(tokens);
     try sema_function_signatures.check_async_function_return_types(tokens);
     try sema_function_signatures.check_start_decl_syntax(tokens);
@@ -68,6 +69,7 @@ pub fn check_program(
     try sema_result.check_result_constructor_context(tokens);
     try sema_async.check_await_context(tokens);
     try sema_async.check_async_ownership(allocator, tokens);
+    try sema_async.check_implicit_future_creation(tokens);
     try sema_type_checks.check_inline_func_type_union_branches(tokens);
     try sema_type_checks.check_duplicate_union_branches(tokens);
     try sema_structures.check_struct_ctor_fields(allocator, tokens);
@@ -98,12 +100,12 @@ test "program accepts a nested CLI stdin stream host declaration" {
         \\stdin_read = @host("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
         \\StdinError error = Io | IllegalByteSequence | Pipe
         \\
-        \\async run() -> nil {
+        \\run() -> nil {
         \\    handles Tuple<Stream<u8>, Future<Result<nil, StdinError>>> = stdin_read()
         \\    reader Stream<u8> = @get(handles, 0)
         \\    completion Future<Result<nil, StdinError>> = @get(handles, 1)
         \\    pending Future<Result<u8, nil>> = @next(reader)
-        \\    item Result<u8, nil> = await(pending)
+        \\    item Result<u8, nil> = @await(pending)
         \\    _ = item
         \\    @cancel(completion)
         \\}
@@ -123,12 +125,12 @@ test "program accepts an HTTP body stream completion tuple" {
         \\HttpResponse = @wasi_resource("http/types/response", { .id i64 })
         \\HttpError error = HttpFailure
         \\
-        \\async run(response HttpResponse) -> nil {
+        \\run(response HttpResponse) -> nil {
         \\    handles Tuple<Stream<u8>, Future<Result<option<trailers>, HttpError>>> = consume_body(response)
         \\    reader Stream<u8> = @get(handles, 0)
         \\    completion Future<Result<option<trailers>, HttpError>> = @get(handles, 1)
         \\    pending Future<Result<u8, nil>> = @next(reader)
-        \\    item Result<u8, nil> = await(pending)
+        \\    item Result<u8, nil> = @await(pending)
         \\    _ = item
         \\    @cancel(completion)
         \\}

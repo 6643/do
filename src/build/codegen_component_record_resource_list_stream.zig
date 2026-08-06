@@ -34,6 +34,25 @@ const exact_source_tokens = [_][]const u8{
     ">",          "=",       "await", "(",             "completion", ")",                                                      "if",   "@",                   "is",     "(",   "completed", ",",      "Err",           ")",      "return",        "completed", "return", "Ok",         "(",             ")",   "}",     "start",   "(",          ")", "{",      "}",
 };
 
+const canonical_source =
+    \\probe_read = @host_func("do:record-resource-list-stream-probe@0.1.0", "read-via-stream", () -> Tuple<Stream<[ResourceEntry]>, Future<Result<nil, ProbeError>>>)
+    \\Ticket = @wasi_resource("do:record-resource-list-stream-probe/source/ticket", { .id i64 })
+    \\ResourceEntry { .ticket Ticket }
+    \\ProbeError error = Io
+    \\run() -> Result<nil, ProbeError> {
+    \\    handles Tuple<Stream<[ResourceEntry]>, Future<Result<nil, ProbeError>>> = probe_read()
+    \\    reader Stream<[ResourceEntry]> = @get(handles, 0)
+    \\    completion Future<Result<nil, ProbeError>> = @get(handles, 1)
+    \\    pending Future<Result<[ResourceEntry], nil>> = @next(reader)
+    \\    item Result<[ResourceEntry], nil> = @await(pending)
+    \\    _ = item
+    \\    completed Result<nil, ProbeError> = @await(completion)
+    \\    if @is(completed, Err) return completed
+    \\    return Ok()
+    \\}
+    \\start() {}
+;
+
 pub const ListResourceStreamPlan = struct {
     descriptor: p3_async_manifest.Descriptor,
 
@@ -133,9 +152,16 @@ const source_local_names = [_][]const u8{
 };
 
 fn matches_source_plan(tokens: []const lexer.Token) bool {
-    if (tokens.len != exact_source_tokens.len) return false;
+    var token_index: usize = 0;
     var bindings: [source_local_names.len]?[]const u8 = [_]?[]const u8{null} ** source_local_names.len;
-    for (tokens, exact_source_tokens) |token, expected| {
+    for (exact_source_tokens, 0..) |expected, expected_index| {
+        if (expected_index + 1 < exact_source_tokens.len and std.mem.eql(u8, expected, "async") and
+            token_index < tokens.len and std.mem.eql(u8, tokens[token_index].lexeme, exact_source_tokens[expected_index + 1])) continue;
+        if (token_index >= tokens.len) return false;
+        if (std.mem.eql(u8, expected, "await") and token_index + 1 < tokens.len and
+            std.mem.eql(u8, tokens[token_index].lexeme, "@") and std.mem.eql(u8, tokens[token_index + 1].lexeme, "await")) token_index += 1;
+        const token = tokens[token_index];
+        token_index += 1;
         if (source_local_name_index(expected)) |index| {
             if (token.kind != .ident) return false;
             if (bindings[index]) |name| {
@@ -152,7 +178,7 @@ fn matches_source_plan(tokens: []const lexer.Token) bool {
         }
         if (!std.mem.eql(u8, token.lexeme, expected)) return false;
     }
-    return true;
+    return token_index == tokens.len;
 }
 
 fn source_local_name_index(expected: []const u8) ?usize {
@@ -220,14 +246,14 @@ test "bounded list-owned resource stream permits renamed local bindings" {
         \\Ticket = @wasi_resource("do:record-resource-list-stream-probe/source/ticket", { .id i64 })
         \\ResourceEntry { .ticket Ticket }
         \\ProbeError error = Io
-        \\async run() -> Result<nil, ProbeError> {
+        \\run() -> Result<nil, ProbeError> {
         \\    pair Tuple<Stream<[ResourceEntry]>, Future<Result<nil, ProbeError>>> = acquire()
         \\    source Stream<[ResourceEntry]> = @get(pair, 0)
         \\    done Future<Result<nil, ProbeError>> = @get(pair, 1)
         \\    read_pending Future<Result<[ResourceEntry], nil>> = @next(source)
-        \\    read_result Result<[ResourceEntry], nil> = await(read_pending)
+        \\    read_result Result<[ResourceEntry], nil> = @await(read_pending)
         \\    _ = read_result
-        \\    completion_result Result<nil, ProbeError> = await(done)
+        \\    completion_result Result<nil, ProbeError> = @await(done)
         \\    if @is(completion_result, Err) return completion_result
         \\    return Ok()
         \\}
@@ -236,6 +262,14 @@ test "bounded list-owned resource stream permits renamed local bindings" {
     var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(std.testing.allocator);
     const tokens = try lexer.tokenize(std.testing.allocator, renamed_source);
+    defer std.testing.allocator.free(tokens);
+    _ = try ListResourceStreamPlan.analyze(tokens, registry);
+}
+
+test "bounded list-owned resource stream accepts canonical colorless async syntax" {
+    var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const tokens = try lexer.tokenize(std.testing.allocator, canonical_source);
     defer std.testing.allocator.free(tokens);
     _ = try ListResourceStreamPlan.analyze(tokens, registry);
 }

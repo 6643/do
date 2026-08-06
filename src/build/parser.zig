@@ -14,6 +14,9 @@ pub const FuncBodyKind = enum {
 pub const FuncSig = struct {
     name: []const u8,
     is_async: bool,
+    contains_await: bool = false,
+    resumable: bool = false,
+    direct_call: bool = true,
     param_min: usize,
     param_max: ?usize, // null => variadic
     return_arity: usize,
@@ -24,6 +27,13 @@ pub const FuncSig = struct {
 pub const FuncCallRef = struct {
     func_name: []const u8,
     arg_count: usize,
+    kind: CallKind = .function,
+};
+
+pub const CallKind = enum {
+    function,
+    builtin,
+    intrinsic,
 };
 
 pub const ExprKind = enum {
@@ -346,17 +356,9 @@ fn check_import_prefix_block(tokens: []const lexer.Token) !void {
 fn is_top_level_non_import_decl_start(tokens: []const lexer.Token, idx: usize) bool {
     return is_top_level_type_decl_start(tokens, idx) or
         is_top_level_value_decl_start(tokens, idx) or
-        is_async_func_decl_start(tokens, idx) or
         is_func_decl_start(tokens, idx) or
         is_start_decl_start(tokens, idx) or
         is_test_decl_start(tokens, idx);
-}
-
-fn is_async_func_decl_start(tokens: []const lexer.Token, idx: usize) bool {
-    if (idx + 2 >= tokens.len) return false;
-    if (!is_top_level_decl_head(tokens, idx) or !tok_eq(tokens[idx], "async")) return false;
-    if (tokens[idx + 1].kind != .ident or is_keyword(tokens[idx + 1].lexeme)) return false;
-    return tok_eq(tokens[idx + 2], "(");
 }
 
 fn is_test_decl_start(tokens: []const lexer.Token, i: usize) bool {
@@ -486,7 +488,6 @@ fn top_level_line_assign_idx(tokens: []const lexer.Token, line_start: usize) ?us
 
 fn is_top_level_decl_head(tokens: []const lexer.Token, idx: usize) bool {
     if (idx == 0) return true;
-    if (tokens[idx - 1].line == tokens[idx].line and tok_eq(tokens[idx - 1], "async")) return true;
     return tokens[idx - 1].line != tokens[idx].line;
 }
 
@@ -500,11 +501,15 @@ fn parse_top_level_func_decl(
     start_idx: usize,
 ) !usize {
     const parsed = try parse_function_decl(tokens, start_idx);
-    try out_func_sigs.append(allocator, parsed.sig);
+    var sig = parsed.sig;
+    sig.contains_await = body_contains_await(tokens, parsed.body_start_idx, parsed.body_end_idx);
+    sig.resumable = sig.contains_await;
+    sig.direct_call = !sig.is_async;
+    try out_func_sigs.append(allocator, sig);
 
     const return_ctx: ReturnContext = .{
-        .expected_arity = parsed.sig.return_arity,
-        .allow_empty_nil = parsed.sig.return_arity == 0,
+        .expected_arity = sig.return_arity,
+        .allow_empty_nil = sig.return_arity == 0,
     };
     if (parsed.body_kind == .block) {
         try collect_condition_exprs(
@@ -529,6 +534,15 @@ fn parse_top_level_func_decl(
         );
     }
     return parsed.next_idx;
+}
+
+fn body_contains_await(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tok_eq(tokens[i], "await")) return true;
+        if (i + 1 < end_idx and tok_eq(tokens[i], "@") and tok_eq(tokens[i + 1], "await")) return true;
+    }
+    return false;
 }
 
 fn parse_top_level_test_decl(
@@ -571,7 +585,7 @@ fn parse_function_decl(tokens: []const lexer.Token, start_idx: usize) !FuncParse
         .next_idx = ret.next_idx,
         .sig = .{
             .name = name_tok.lexeme,
-            .is_async = start_idx > 0 and tokens[start_idx - 1].line == name_tok.line and tok_eq(tokens[start_idx - 1], "async"),
+            .is_async = false,
             .param_min = params.param_min,
             .param_max = params.param_max,
             .return_arity = ret.return_arity,
@@ -1571,6 +1585,7 @@ fn parse_expr_with_mode(
                 .call = .{
                     .func_name = tokens[name_idx].lexeme,
                     .arg_count = call.arg_count,
+                    .kind = if (is_colorless_async_intrinsic(tokens[name_idx].lexeme)) .intrinsic else .builtin,
                 },
             },
         });
@@ -1705,6 +1720,12 @@ fn is_condition_logic_builtin_name(name: []const u8) bool {
         std.mem.eql(u8, name, "not");
 }
 
+fn is_colorless_async_intrinsic(name: []const u8) bool {
+    return std.mem.eql(u8, name, "async") or
+        std.mem.eql(u8, name, "await") or
+        std.mem.eql(u8, name, "cancel");
+}
+
 fn parse_condition_logic_builtin_call_expr(
     allocator: std.mem.Allocator,
     out_nodes: *std.ArrayList(ExprNode),
@@ -1784,7 +1805,9 @@ fn call_open_paren_idx(tokens: []const lexer.Token, name_idx: usize, limit_idx: 
 
 fn validate_builtin_call_arity(tokens: []const lexer.Token, name_idx: usize, argc: usize) !void {
     const name = tokens[name_idx].lexeme;
-    if (std.mem.eql(u8, name, "not") or
+    if (std.mem.eql(u8, name, "async") or
+        std.mem.eql(u8, name, "await") or
+        std.mem.eql(u8, name, "not") or
         std.mem.eql(u8, name, "cancel") or
         std.mem.eql(u8, name, "next") or
         std.mem.eql(u8, name, "len") or
@@ -2447,6 +2470,8 @@ fn is_decl_only_name(name: []const u8) bool {
 fn is_builtin_call_name(name: []const u8) bool {
     const builtin_names = [_][]const u8{
         "is",
+        "async",
+        "await",
         "as",
         "and",
         "or",
@@ -2722,6 +2747,20 @@ test "lambda is accepted as call argument" {
     try std.testing.expectEqual(ExprKind.call, nodes.items[parsed.node_idx].kind);
 }
 
+test "colorless async operations retain intrinsic call identity" {
+    const allocator = std.testing.allocator;
+    const tokens = try lexer.tokenize(allocator, "@async(make())");
+    defer allocator.free(tokens);
+
+    var nodes = try std.ArrayList(ExprNode).initCapacity(allocator, 0);
+    defer nodes.deinit(allocator);
+
+    const parsed = try parse_expr(allocator, &nodes, tokens, 0, tokens.len);
+    try std.testing.expectEqual(tokens.len, parsed.next_idx);
+    try std.testing.expectEqual(ExprKind.call, nodes.items[parsed.node_idx].kind);
+    try std.testing.expectEqual(CallKind.intrinsic, nodes.items[parsed.node_idx].data.call.kind);
+}
+
 test "lambda parameter type can be omitted syntactically" {
     const allocator = std.testing.allocator;
     const tokens = try lexer.tokenize(allocator, "map(xs, (x) => @add(x, 1))");
@@ -2891,7 +2930,7 @@ test "storage variadic param records open arity" {
     try std.testing.expectEqual(@as(?usize, null), program.func_sigs[0].param_max);
 }
 
-test "async function records modifier" {
+test "legacy async declaration is not admitted as a function" {
     const allocator = std.testing.allocator;
     const source =
         \\async ready() -> i32 {
@@ -2904,8 +2943,31 @@ test "async function records modifier" {
     var program = try parse_program(allocator, tokens, source.len);
     defer program.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 1), program.func_sigs.len);
-    try std.testing.expect(program.func_sigs[0].is_async);
+    try std.testing.expectEqual(@as(usize, 0), program.func_sigs.len);
+}
+
+test "colorless async function records resumable metadata" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\work() -> nil {
+        \\    return
+        \\}
+        \\run() -> nil {
+        \\    pending Future<nil> = @async(work())
+        \\    @await(pending)
+        \\}
+    ;
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+
+    var program = try parse_program(allocator, tokens, source.len);
+    defer program.deinit(allocator);
+
+    try std.testing.expectEqual(@as(usize, 2), program.func_sigs.len);
+    try std.testing.expect(!program.func_sigs[0].resumable);
+    try std.testing.expect(program.func_sigs[1].contains_await);
+    try std.testing.expect(program.func_sigs[1].resumable);
+    try std.testing.expect(program.func_sigs[1].direct_call);
 }
 
 test "collection loop requires value and index bindings in parser" {

@@ -6,6 +6,9 @@ const sema_stream_lease = @import("sema_stream_lease.zig");
 const tok_eq = sema_tokens.tok_eq;
 const find_matching = sema_tokens.find_matching;
 const mark_error_at = sema_tokens.mark_error_at;
+const is_func_decl_start = sema_tokens.is_func_decl_start;
+const is_top_level_decl_head = sema_tokens.is_top_level_decl_head;
+const string_token_body = sema_tokens.string_token_body;
 
 const FutureBinding = struct {
     name: []const u8,
@@ -31,29 +34,39 @@ const StreamWriterBinding = struct {
 pub fn check_await_context(tokens: []const lexer.Token) !void {
     for (tokens, 0..) |token, idx| {
         if (is_stream_next_call_head(tokens, idx)) {
-            if (stream_next_operand_idx(tokens, idx, tokens.len) == null or !is_inside_async_body(tokens, idx)) {
+            if (stream_next_operand_idx(tokens, idx, tokens.len) == null or
+                (!is_inside_async_body(tokens, idx) and !is_inside_colorless_body(tokens, idx)))
+            {
                 return mark_error_at(tokens, idx, error.InvalidStreamReaderRead);
             }
             continue;
         }
         if (is_cancel_call_head(tokens, idx)) {
-            if (!is_inside_async_body(tokens, idx)) return mark_error_at(tokens, idx, error.InvalidAwaitContext);
+            if (!is_inside_async_body(tokens, idx) and !is_inside_colorless_body(tokens, idx)) {
+                return mark_error_at(tokens, idx, error.InvalidAwaitContext);
+            }
             continue;
         }
         if (tok_eq(token, "await")) {
-            if (await_operand_idx(tokens, idx, tokens.len) == null or !is_inside_async_body(tokens, idx)) {
+            if (await_operand_idx(tokens, idx, tokens.len) == null or
+                (!is_inside_async_body(tokens, idx) and !is_inside_colorless_body(tokens, idx)))
+            {
                 return mark_error_at(tokens, idx, error.InvalidAwaitContext);
             }
             continue;
         }
         if (!is_aggregate_await_name(token)) continue;
-        if (aggregate_await_operands(tokens, idx, tokens.len) == null or !is_inside_async_body(tokens, idx)) {
+        if (aggregate_await_operands(tokens, idx, tokens.len) == null or
+            (!is_inside_async_body(tokens, idx) and !is_inside_colorless_body(tokens, idx)))
+        {
             return mark_error_at(tokens, idx, error.InvalidAwaitContext);
         }
     }
     for (tokens, 0..) |token, idx| {
         if (!is_stream_writer_finalizer_name(token)) continue;
-        if (!is_inside_async_body(tokens, idx)) return mark_error_at(tokens, idx, error.InvalidStreamWriterFinalization);
+        if (!is_inside_async_body(tokens, idx) and !is_inside_colorless_body(tokens, idx)) {
+            return mark_error_at(tokens, idx, error.InvalidStreamWriterFinalization);
+        }
     }
 }
 
@@ -73,14 +86,120 @@ fn is_stream_next_call_head(tokens: []const lexer.Token, idx: usize) bool {
 
 pub fn check_async_ownership(allocator: std.mem.Allocator, tokens: []const lexer.Token) !void {
     var i: usize = 0;
-    while (i + 3 < tokens.len) : (i += 1) {
-        if (!tok_eq(tokens[i], "async") or !tok_eq(tokens[i + 2], "(")) continue;
-        const close_params = find_matching(tokens, i + 2, "(", ")") catch continue;
-        const body_open = find_body_open(tokens, close_params + 1) orelse continue;
+    while (i + 1 < tokens.len) : (i += 1) {
+        const head = function_head_at(tokens, i) orelse continue;
+        const close_params = head.close_params;
+        const body_open = head.body_open;
         const body_close = find_matching(tokens, body_open, "{", "}") catch continue;
-        try check_async_body(allocator, tokens, i + 3, close_params, body_open + 1, body_close);
+        if (head.is_async or function_signature_contains_stream(tokens, head.open_params + 1, close_params) or
+            body_contains_async_operation(tokens, body_open + 1, body_close))
+        {
+            try check_async_body(allocator, tokens, head.open_params + 1, close_params, body_open + 1, body_close);
+        }
         i = body_close;
     }
+}
+
+fn function_signature_contains_stream(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var i = start_idx;
+    while (i + 1 < end_idx) : (i += 1) {
+        if (tok_eq(tokens[i], "StreamReader") or tok_eq(tokens[i], "StreamWriter") or tok_eq(tokens[i], "Stream")) return true;
+    }
+    return false;
+}
+
+/// A Future is a task handle, not an alternate return type. Ordinary calls
+/// therefore need the explicit `@async(call)` boundary. Registered host/WIT
+/// bindings and the built-in stream operations are already Future-producing
+/// boundaries and remain direct calls.
+pub fn check_implicit_future_creation(tokens: []const lexer.Token) !void {
+    var i: usize = 0;
+    while (i + 1 < tokens.len) : (i += 1) {
+        const head = function_head_at(tokens, i) orelse continue;
+        const body_close = find_matching(tokens, head.body_open, "{", "}") catch continue;
+        if (head.is_async) {
+            i = body_close;
+            continue;
+        }
+
+        var cursor = head.body_open + 1;
+        while (cursor < body_close) : (cursor += 1) {
+            if (!is_future_binding(tokens, cursor, body_close)) continue;
+            const future_close = find_matching(tokens, cursor + 2, "<", ">") catch continue;
+            if (future_close + 2 >= body_close or !tok_eq(tokens[future_close + 1], "=")) continue;
+            const rhs_idx = future_close + 2;
+            if (is_explicit_future_expr(tokens, rhs_idx, body_close)) continue;
+            if (tokens[rhs_idx].kind != .ident or !tok_eq(tokens[rhs_idx + 1], "(")) continue;
+            const name = tokens[rhs_idx].lexeme;
+            if (is_host_binding_name(tokens, name) or is_generated_wit_binding_name(tokens, name) or
+                is_stream_writer_name(tokens, head.open_params + 1, head.close_params, name) or
+                is_stream_writer_name(tokens, head.body_open + 1, cursor, name)) continue;
+            return mark_error_at(tokens, rhs_idx, error.ImplicitFutureCreation);
+        }
+        i = body_close;
+    }
+}
+
+fn is_explicit_future_expr(tokens: []const lexer.Token, idx: usize, end_idx: usize) bool {
+    if (idx + 3 >= end_idx or !tok_eq(tokens[idx], "@") or tokens[idx + 1].kind != .ident) return false;
+    const name = tokens[idx + 1].lexeme;
+    return (std.mem.eql(u8, name, "async") or std.mem.eql(u8, name, "next")) and tok_eq(tokens[idx + 2], "(");
+}
+
+fn is_stream_writer_name(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, name: []const u8) bool {
+    var i = start_idx;
+    while (i + 2 < end_idx) : (i += 1) {
+        if (tokens[i].kind != .ident or !std.mem.eql(u8, tokens[i].lexeme, name) or
+            !tok_eq(tokens[i + 1], "StreamWriter") or !tok_eq(tokens[i + 2], "<")) continue;
+        return true;
+    }
+    return false;
+}
+
+const FunctionHead = struct {
+    open_params: usize,
+    close_params: usize,
+    body_open: usize,
+    is_async: bool,
+};
+
+fn function_head_at(tokens: []const lexer.Token, idx: usize) ?FunctionHead {
+    var open_params: usize = undefined;
+    var is_async = false;
+    if (idx + 2 < tokens.len and tok_eq(tokens[idx], "async") and
+        tokens[idx + 1].kind == .ident and tok_eq(tokens[idx + 2], "(") and
+        is_top_level_decl_head(tokens, idx))
+    {
+        open_params = idx + 2;
+        is_async = true;
+    } else if (is_func_decl_start(tokens, idx) and is_top_level_decl_head(tokens, idx)) {
+        open_params = idx + 1;
+    } else {
+        return null;
+    }
+
+    const close_params = find_matching(tokens, open_params, "(", ")") catch return null;
+    const body_open = find_body_open(tokens, close_params + 1) orelse return null;
+    return .{
+        .open_params = open_params,
+        .close_params = close_params,
+        .body_open = body_open,
+        .is_async = is_async,
+    };
+}
+
+fn body_contains_async_operation(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tok_eq(tokens[i], "Future") or tok_eq(tokens[i], "StreamReader") or
+            tok_eq(tokens[i], "StreamWriter") or tok_eq(tokens[i], "await") or
+            tok_eq(tokens[i], "await_all") or tok_eq(tokens[i], "await_any") or
+            tok_eq(tokens[i], "close") or tok_eq(tokens[i], "abort")) return true;
+        if (i + 1 < end_idx and tok_eq(tokens[i], "@") and
+            (tok_eq(tokens[i + 1], "async") or tok_eq(tokens[i + 1], "await") or
+                tok_eq(tokens[i + 1], "cancel") or tok_eq(tokens[i + 1], "next"))) return true;
+    }
+    return false;
 }
 
 fn is_inside_async_body(tokens: []const lexer.Token, idx: usize) bool {
@@ -94,6 +213,63 @@ fn is_inside_async_body(tokens: []const lexer.Token, idx: usize) bool {
         if (body_open < idx and idx < body_close) candidate = body_open;
     }
     return candidate != null;
+}
+
+fn is_inside_colorless_body(tokens: []const lexer.Token, idx: usize) bool {
+    var i: usize = 0;
+    while (i + 2 < idx and i + 2 < tokens.len) : (i += 1) {
+        if (!is_func_decl_start(tokens, i)) continue;
+        const close_params = find_matching(tokens, i + 1, "(", ")") catch continue;
+        if (close_params >= tokens.len or close_params + 1 >= tokens.len) continue;
+        const body_open = find_body_open(tokens, close_params + 1) orelse continue;
+        const body_close = find_matching(tokens, body_open, "{", "}") catch continue;
+        if (!(body_open < idx and idx < body_close)) continue;
+        // A colorless function is resumable when its body contains any
+        // explicit Future/async operation. This includes argument-bearing WIT
+        // host calls and the canonical @await/@cancel forms.
+        if (body_contains_async_operation(tokens, body_open + 1, body_close)) return true;
+    }
+    return false;
+}
+
+fn has_direct_host_future_binding(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var idx = start_idx;
+    while (idx + 5 < end_idx) : (idx += 1) {
+        if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "Future") or !tok_eq(tokens[idx + 2], "<")) continue;
+        const type_close = find_matching(tokens, idx + 2, "<", ">") catch continue;
+        if (type_close + 4 >= end_idx or !tok_eq(tokens[type_close + 1], "=") or
+            tokens[type_close + 2].kind != .ident or !tok_eq(tokens[type_close + 3], "(") or
+            !tok_eq(tokens[type_close + 4], ")")) continue;
+        if (is_host_binding_name(tokens, tokens[type_close + 2].lexeme) or
+            is_generated_wit_binding_name(tokens, tokens[type_close + 2].lexeme)) return true;
+    }
+    return false;
+}
+
+fn is_host_binding_name(tokens: []const lexer.Token, name: []const u8) bool {
+    var idx: usize = 0;
+    while (idx + 4 < tokens.len) : (idx += 1) {
+        if (tokens[idx].kind != .ident or !std.mem.eql(u8, tokens[idx].lexeme, name) or
+            !tok_eq(tokens[idx + 1], "=") or !tok_eq(tokens[idx + 2], "@") or
+            (!tok_eq(tokens[idx + 3], "host") and !tok_eq(tokens[idx + 3], "host_func"))) continue;
+        return true;
+    }
+    return false;
+}
+
+fn is_generated_wit_binding_name(tokens: []const lexer.Token, name: []const u8) bool {
+    // Generated bindings live under the project-root `wit/` directory. Their
+    // manifest is validated by `do wit check`; the frontend only needs the
+    // locator shape here to recognize a direct Future-producing import.
+    var idx: usize = 0;
+    while (idx + 8 < tokens.len) : (idx += 1) {
+        if (tokens[idx].kind != .ident or !std.mem.eql(u8, tokens[idx].lexeme, name) or
+            !tok_eq(tokens[idx + 1], "=") or !tok_eq(tokens[idx + 2], "@") or
+            !tok_eq(tokens[idx + 3], "lib") or !tok_eq(tokens[idx + 4], "(")) continue;
+        const path = string_token_body(tokens[idx + 5].lexeme) orelse continue;
+        if (std.mem.startsWith(u8, path, "./wit/") or std.mem.startsWith(u8, path, "wit/")) return true;
+    }
+    return false;
 }
 
 fn check_async_body(
@@ -216,18 +392,24 @@ fn check_async_body(
             }
         }
         if (cancel_operand_idx(tokens, i, end_idx)) |operand_idx| {
+            if (find_future_binding(future_bindings.items, tokens[operand_idx].lexeme) == null and
+                has_typed_local_binding(tokens, tokens[operand_idx].lexeme, start_idx, end_idx)) continue;
             try consume_future(&future_bindings, tokens, operand_idx);
             continue;
         }
         if (aggregate_await_operands(tokens, i, end_idx)) |operands| {
             var operand_idx = operands.first_idx;
             while (operand_idx < operands.close_idx) : (operand_idx += 2) {
+                if (find_future_binding(future_bindings.items, tokens[operand_idx].lexeme) == null and
+                    has_typed_local_binding(tokens, tokens[operand_idx].lexeme, start_idx, end_idx)) continue;
                 try consume_future(&future_bindings, tokens, operand_idx);
             }
             continue;
         }
         if (!tok_eq(tokens[i], "await")) continue;
         const operand_idx = await_operand_idx(tokens, i, end_idx) orelse return mark_error_at(tokens, i, error.InvalidAwaitContext);
+        if (find_future_binding(future_bindings.items, tokens[operand_idx].lexeme) == null and
+            has_typed_local_binding(tokens, tokens[operand_idx].lexeme, start_idx, end_idx)) continue;
         try consume_future(&future_bindings, tokens, operand_idx);
     }
 
@@ -476,21 +658,28 @@ fn stream_writer_helper_call(
 ) ?StreamWriterHelperCall {
     if (!is_future_binding(tokens, idx, end_idx)) return null;
     const future_close = find_matching(tokens, idx + 2, "<", ">") catch return null;
-    if (future_close + 5 >= end_idx or !tok_eq(tokens[future_close + 1], "=") or
-        tokens[future_close + 2].kind != .ident or !tok_eq(tokens[future_close + 3], "(") or
-        tokens[future_close + 4].kind != .ident) return null;
-    const call_close = find_matching(tokens, future_close + 3, "(", ")") catch return null;
-    const helper_name = tokens[future_close + 2].lexeme;
+    if (future_close + 5 >= end_idx or !tok_eq(tokens[future_close + 1], "=")) return null;
+    var name_idx = future_close + 2;
+    var open_idx = future_close + 3;
+    if (tok_eq(tokens[name_idx], "@") and tok_eq(tokens[name_idx + 1], "async") and tok_eq(tokens[name_idx + 2], "(")) {
+        name_idx += 3;
+        open_idx += 3;
+    }
+    if (tokens[name_idx].kind != .ident or !tok_eq(tokens[open_idx], "(") or name_idx + 1 >= end_idx or
+        tokens[name_idx + 1].kind != .ident) return null;
+    const call_close = find_matching(tokens, open_idx, "(", ")") catch return null;
+    const helper_name = tokens[name_idx].lexeme;
     var writer_arg_idx: usize = undefined;
-    if (call_close == future_close + 5) {
-        const source_idx = find_stream_writer_binding(bindings.items, tokens[future_close + 4].lexeme) orelse return null;
+    const first_arg_idx = name_idx + 2;
+    if (call_close == first_arg_idx + 1) {
+        const source_idx = find_stream_writer_binding(bindings.items, tokens[first_arg_idx].lexeme) orelse return null;
         const element_type_start = bindings.items[source_idx].element_type_start;
         const element_type_end = bindings.items[source_idx].element_type_end;
         if (!async_stream_writer_helper_accepts(tokens, helper_name, element_type_start, element_type_end)) return null;
-        writer_arg_idx = future_close + 4;
+        writer_arg_idx = first_arg_idx;
     } else {
         var source_idx: ?usize = null;
-        var argument_idx = future_close + 4;
+        var argument_idx = first_arg_idx;
         while (argument_idx < call_close) : (argument_idx += 1) {
             if (tokens[argument_idx].kind != .ident) continue;
             if (find_stream_writer_binding(bindings.items, tokens[argument_idx].lexeme)) |candidate| {
@@ -504,7 +693,7 @@ fn stream_writer_helper_call(
         writer_arg_idx = async_parameterized_stream_writer_helper_accepts(
             tokens,
             helper_name,
-            future_close + 4,
+            first_arg_idx,
             call_close,
             element_type_start,
             element_type_end,
@@ -525,18 +714,25 @@ fn stream_writer_helper_transfer_for_lease(
 ) bool {
     if (!is_future_binding(tokens, future_idx, end_idx)) return false;
     const future_close = find_matching(tokens, future_idx + 2, "<", ">") catch return false;
-    if (future_close + 5 >= end_idx or !tok_eq(tokens[future_close + 1], "=") or
-        tokens[future_close + 2].kind != .ident or !tok_eq(tokens[future_close + 3], "(")) return false;
-    const call_close = find_matching(tokens, future_close + 3, "(", ")") catch return false;
-    const helper_name = tokens[future_close + 2].lexeme;
-    if (call_close == future_close + 5) {
-        if (future_close + 4 != writer_idx) return false;
+    if (future_close + 5 >= end_idx or !tok_eq(tokens[future_close + 1], "=")) return false;
+    var name_idx = future_close + 2;
+    var open_idx = future_close + 3;
+    if (tok_eq(tokens[name_idx], "@") and tok_eq(tokens[name_idx + 1], "async") and tok_eq(tokens[name_idx + 2], "(")) {
+        name_idx += 3;
+        open_idx += 3;
+    }
+    if (tokens[name_idx].kind != .ident or !tok_eq(tokens[open_idx], "(")) return false;
+    const call_close = find_matching(tokens, open_idx, "(", ")") catch return false;
+    const helper_name = tokens[name_idx].lexeme;
+    const first_arg_idx = name_idx + 2;
+    if (call_close == first_arg_idx + 1) {
+        if (first_arg_idx != writer_idx) return false;
         return async_stream_writer_helper_accepts(tokens, helper_name, element_type_start, element_type_end);
     }
     const accepted_writer_idx = async_parameterized_stream_writer_helper_accepts(
         tokens,
         helper_name,
-        future_close + 4,
+        first_arg_idx,
         call_close,
         element_type_start,
         element_type_end,
@@ -552,14 +748,20 @@ fn async_stream_writer_helper_accepts(
 ) bool {
     var i: usize = 0;
     while (i + 7 < tokens.len) : (i += 1) {
-        if (!tok_eq(tokens[i], "async") or tokens[i + 1].kind != .ident or
-            !std.mem.eql(u8, tokens[i + 1].lexeme, helper_name) or !tok_eq(tokens[i + 2], "(")) continue;
-        const close_params = find_matching(tokens, i + 2, "(", ")") catch continue;
-        if (i + 5 >= close_params or tokens[i + 3].kind != .ident or
-            !tok_eq(tokens[i + 4], "StreamWriter") or !tok_eq(tokens[i + 5], "<")) continue;
-        const helper_type_close = find_matching(tokens, i + 5, "<", ">") catch continue;
+        const open_params = if (tok_eq(tokens[i], "async") and tokens[i + 1].kind == .ident and
+            std.mem.eql(u8, tokens[i + 1].lexeme, helper_name) and tok_eq(tokens[i + 2], "("))
+            i + 2
+        else if (is_func_decl_start(tokens, i) and std.mem.eql(u8, tokens[i].lexeme, helper_name))
+            i + 1
+        else
+            continue;
+        const close_params = find_matching(tokens, open_params, "(", ")") catch continue;
+        const first_param = if (tok_eq(tokens[i], "async")) i + 3 else i + 2;
+        if (first_param + 2 >= close_params or tokens[first_param].kind != .ident or
+            !tok_eq(tokens[first_param + 1], "StreamWriter") or !tok_eq(tokens[first_param + 2], "<")) continue;
+        const helper_type_close = find_matching(tokens, first_param + 2, "<", ">") catch continue;
         if (helper_type_close + 1 != close_params or
-            !token_ranges_equal(tokens, i + 6, helper_type_close, element_type_start, element_type_end)) continue;
+            !token_ranges_equal(tokens, first_param + 3, helper_type_close, element_type_start, element_type_end)) continue;
         return true;
     }
     return false;
@@ -603,12 +805,17 @@ fn async_parameterized_stream_writer_helper_accepts(
 ) ?usize {
     var i: usize = 0;
     while (i + 3 < tokens.len) : (i += 1) {
-        if (!tok_eq(tokens[i], "async") or tokens[i + 1].kind != .ident or
-            !std.mem.eql(u8, tokens[i + 1].lexeme, helper_name) or !tok_eq(tokens[i + 2], "(")) continue;
-        const close_params = find_matching(tokens, i + 2, "(", ")") catch continue;
+        const open_params = if (tok_eq(tokens[i], "async") and tokens[i + 1].kind == .ident and
+            std.mem.eql(u8, tokens[i + 1].lexeme, helper_name) and tok_eq(tokens[i + 2], "("))
+            i + 2
+        else if (is_func_decl_start(tokens, i) and std.mem.eql(u8, tokens[i].lexeme, helper_name))
+            i + 1
+        else
+            continue;
+        const close_params = find_matching(tokens, open_params, "(", ")") catch continue;
         var parameters: [3]AsyncParameterizedParameter = undefined;
         var seen = [_]bool{false} ** 3;
-        var cursor = i + 3;
+        var cursor = open_params + 1;
         var parameter_index: usize = 0;
         var valid = true;
         while (parameter_index < parameters.len) : (parameter_index += 1) {
@@ -992,6 +1199,16 @@ fn find_future_binding(bindings: []const FutureBinding, name: []const u8) ?usize
         if (std.mem.eql(u8, binding.name, name)) return idx;
     }
     return null;
+}
+
+fn has_typed_local_binding(tokens: []const lexer.Token, name: []const u8, start_idx: usize, end_idx: usize) bool {
+    var i = start_idx;
+    while (i + 2 < end_idx) : (i += 1) {
+        if (tokens[i].kind != .ident or !std.mem.eql(u8, tokens[i].lexeme, name)) continue;
+        if (tokens[i + 1].kind != .ident) continue;
+        if (tok_eq(tokens[i + 2], "=") or tok_eq(tokens[i + 2], "<")) return true;
+    }
+    return false;
 }
 
 fn find_stream_reader_binding(bindings: []const StreamReaderBinding, name: []const u8) ?usize {

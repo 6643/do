@@ -6,7 +6,7 @@ HttpRequest = @wasi_resource("http/types/request", { .id i64 })
 HttpResponse = @wasi_resource("http/types/response", { .id i64 })
 HttpError error = HttpFailure
 
-async cancel_request(request HttpRequest) -> nil {
+cancel_request(request HttpRequest) -> nil {
     completion Future<Result<HttpResponse, HttpError>> = send(request)
     @cancel(completion)
 }

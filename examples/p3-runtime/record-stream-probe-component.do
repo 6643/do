@@ -7,13 +7,13 @@ ProbeEntry {
 
 ProbeError error = Io | NoEntry
 
-async run() -> Result<nil, ProbeError> {
+run() -> Result<nil, ProbeError> {
     handles Tuple<Stream<ProbeEntry>, Future<Result<nil, ProbeError>>> = probe_read()
     reader Stream<ProbeEntry> = @get(handles, 0)
     completion Future<Result<nil, ProbeError>> = @get(handles, 1)
     loop {
         pending Future<Result<ProbeEntry, nil>> = @next(reader)
-        item Result<ProbeEntry, nil> = await(pending)
+        item Result<ProbeEntry, nil> = @await(pending)
         if @is(item, Ok) {
             entry ProbeEntry = item
             _ = entry
@@ -21,7 +21,7 @@ async run() -> Result<nil, ProbeError> {
             break
         }
     }
-    completed Result<nil, ProbeError> = await(completion)
+    completed Result<nil, ProbeError> = @await(completion)
     if @is(completed, Err) return completed
     return Ok()
 }

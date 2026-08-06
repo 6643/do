@@ -1,7 +1,7 @@
-async consume(reader Stream<u8>) -> nil {
+consume(reader Stream<u8>) -> nil {
     moved Stream<u8> = reader
     pending Future<Result<u8, nil>> = @next(reader)
-    await(pending)
+    @await(pending)
     _ = moved
 }
 

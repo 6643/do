@@ -1,28 +1,61 @@
 # do 并发设计
 
-**状态:** 公开契约已冻结。编译器正在恢复前端语法和语义；本文不宣称当前
-`bin/do` 已完成 Future/Stream runtime、WIT async lowering 或 WASI P3 host execution。
+**状态:** 公开契约已冻结。编译器已落地一个受限的 colorless async vertical
+slice；本文不宣称当前 `bin/do` 已完成任意 Future/Stream runtime、通用 WIT
+async lowering 或完整 WASI P3 host execution。
 
 ## 公开源码模型
 
-do 的并发源码表面是 `async`、`await`、`Future<T>` 和 `Stream<T>`。它不公开
-task spawn keyword、`Channel<T>`、fiber、指针、引用、闭包或 `funcref`。
+do 的并发源码是无色的：所有用户函数都使用普通声明，任务创建、等待和取消
+都显式使用带 `@` 前缀的 compiler intrinsic。语言不公开 `async` 函数颜色，
+也不公开 task spawn keyword、`Channel<T>`、fiber、指针、引用、闭包或
+`funcref`。
 
 ```do
-async fetch(url text) -> text {
-    return await(host_get(url))
-}
+work() -> nil { return }
 
-start() {
-    pending Future<text> = fetch("https://example.test")
-    body text = await(pending)
+run() -> nil {
+    ready Future<nil> = @async(work())
+    @await(ready)
+    middle Future<nil> = @async(work())
+    @await(middle)
+    pending Future<nil> = @async(work())
+    @cancel(pending)
 }
 ```
 
-`async name(...) -> T` 是唯一用户异步声明形式。调用立即创建 `Future<T>`；
-`await(f)` 消费该 Future 并仅挂起当前 async frame。`name(...) -> Future<T>` 和
-`async name(...) -> Future<T>` 都非法，避免把 WIT `async func` 与同步返回
-`future<T>` 的 ABI 混成两种用户函数模型。
+当前普通 Core lowering 只接受上述固定的三个 `Future<nil>` 顺序：前两个必须
+`@await`，第三个必须终态 `@cancel`。对应的 Component probe 还验证了
+pending、immediate-ready 和取消路径的 exactly-once cleanup；payload Future、
+Stream、resource、分支、循环、回调和任意 async 函数仍返回
+`AsyncLoweringUnavailable`。
+
+已登记的 WIT `async func` host binding 本身就产生 `Future<T>`，因此直接调用：
+
+```do
+work = @host("do:generic-async-runtime-probe/host@0.1.0", "work", () -> nil)
+
+run() -> nil {
+    ready Future<nil> = work()
+    @await(ready)
+}
+```
+
+不要把这种调用再包成 `@async(work())`，否则会形成未定义的
+`Future<Future<T>>` 语义。`async name(...) -> T` 已弃用，不是公共函数模型；
+parser 不再把它登记为函数，正常编译会报告 `DeprecatedAsyncFunctionDecl`。
+本文后续若出现 `async ...` 片段，仅属于旧的 descriptor-specific 负例或历史记录，
+不应作为新源码模板。
+
+因此，以下边界是固定的：
+
+- 普通 Do 函数调用必须显式写成 `Future<T> = @async(work())`；裸的
+  `Future<T> = work()` 不再隐式创建任务。
+- 已登记的 WIT `async func` 是唯一例外。它的生成 host binding 已经返回
+  `Future<T>`，调用时保持 `Future<T> = work()`，不能再包 `@async`。
+- `async run(...) -> T` 与普通函数对 `Future<T> = work()` 的组合属于同一套旧
+  隐式语义。前者在正常编译中发出弃用诊断，后者在普通 Do 函数中拒绝；两者都
+  不是公共源码形式。
 
 ## Future 与 Stream
 
@@ -34,7 +67,7 @@ G6.2 现已增加一个仅限登记 descriptor 的 resource Result 取消切片�
 保存并消费 `Future<Result<HttpResponse, HttpError>>`：
 
 ```do
-async cancel_request(request HttpRequest) -> nil {
+cancel_request(request HttpRequest) -> nil {
     completion Future<Result<HttpResponse, HttpError>> = send(request)
     @cancel(completion)
 }
@@ -99,7 +132,7 @@ Component/Rust gate 的 `stream<u8>` descriptor（包括 pinned stdout、私有
 任意 payload、外部 writable endpoint、abort 错误映射留到后续阶段。
 
 G6.2 另有一个更窄的 helper-mediated lease gate：根级 producer 可以把
-`StreamWriter<u8>` 一次性传给一个只有同类型 writer 参数的 `async` helper。基础 helper
+`StreamWriter<u8>` 一次性传给一个只有同类型 writer 参数的迁移期 `async` helper。基础 helper
 形状最多允许一个私有 forwarding helper 把仍未关闭的 lease 转给最终 helper；最终 helper 可以直接
 调用已登记的 stream-writer host descriptor，或先执行有界的线性 `u8` 写序列再调用
 descriptor，并负责 `defer close(writer)`。Component emitter 将这个固定 helper body
@@ -256,7 +289,7 @@ completion；证据是 `test_do_http_request_body_await_completion_lowering.sh`
 
 ## Scope 与取消
 
-每个 async root 创建一个 Scope；async frame、Future、Stream endpoint、defer payload 和
+每个包含异步操作的 root 创建一个 Scope；async frame、Future、Stream endpoint、defer payload 和
 host resource 都由它统一拥有。对已 pinned 的 Component async lowering，`@cancel(future)`
 直接调用该 Future 的 `subtask.cancel`，等待 ABI 终态后执行 `subtask.drop`。它不创建 Do
 operation ID、取消确认事件或 host broker。
@@ -270,10 +303,11 @@ operation ID、取消确认事件或 host broker。
 resource drop、取消、`defer` 和 host buffer 清理由 Scope 显式执行。新功能不得增加 ARC
 lowering，也不得让 `__arc_inc`/`__arc_dec` 出现在 GC target 的 async path。
 
-do `async` 对应 WIT `async func`，而 host 的 WIT `future<T>`/`stream<T>` 分别映射为
-不透明的 do `Future<T>`/`Stream<T>`。编译器经 WIT metadata 和 `wasm-tools` 产出
-Component，不链接或依赖 Wasmtime。Wasmtime 或其他 runtime 的实际执行能力另列为运行时
-兼容矩阵，且不等于完整 WASI 或浏览器支持。
+WIT `async func` 由 binding metadata 和 Component target 描述，不对应源码中的
+`async` 函数声明；host 的 WIT `future<T>`/`stream<T>` 分别映射为不透明的 do
+`Future<T>`/`Stream<T>`。编译器经 WIT metadata 和 `wasm-tools` 产出 Component，
+不链接或依赖 Wasmtime。Wasmtime 或其他 runtime 的实际执行能力另列为运行时兼容矩阵，
+且不等于完整 WASI 或浏览器支持。
 
 ## 非目标
 

@@ -171,17 +171,24 @@ fn find_read_directory_function(tokens: []const lexer.Token) ?ReadDirectoryFunct
     var found: ?ReadDirectoryFunction = null;
     var idx: usize = 0;
     while (idx + 8 < tokens.len) : (idx += 1) {
-        if (!tok_eq(tokens[idx], "async") or tokens[idx + 1].kind != .ident or !tok_eq(tokens[idx + 2], "(") or
-            tokens[idx + 3].kind != .ident or !tok_eq(tokens[idx + 4], "Dir") or !tok_eq(tokens[idx + 5], ")") or
-            !tok_eq(tokens[idx + 6], "-") or !tok_eq(tokens[idx + 7], ">") or !tok_eq(tokens[idx + 8], "nil")) continue;
-        var body_open = idx + 9;
+        const name_idx: usize = if (tok_eq(tokens[idx], "async")) blk: {
+            if (tokens[idx + 1].kind != .ident or !tok_eq(tokens[idx + 2], "(")) continue;
+            break :blk idx + 1;
+        } else blk: {
+            if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "(")) continue;
+            break :blk idx;
+        };
+        if (tokens[name_idx + 2].kind != .ident or !tok_eq(tokens[name_idx + 3], "Dir") or
+            !tok_eq(tokens[name_idx + 4], ")") or !tok_eq(tokens[name_idx + 5], "-") or
+            !tok_eq(tokens[name_idx + 6], ">") or !tok_eq(tokens[name_idx + 7], "nil")) continue;
+        var body_open = name_idx + 8;
         while (body_open < tokens.len and !tok_eq(tokens[body_open], "{")) : (body_open += 1) {}
         if (body_open >= tokens.len) return null;
         const body_end = find_matching(tokens, body_open, "{", "}") catch return null;
         if (found != null) return null;
         found = .{
-            .name = tokens[idx + 1].lexeme,
-            .directory_name = tokens[idx + 3].lexeme,
+            .name = tokens[name_idx].lexeme,
+            .directory_name = tokens[name_idx + 2].lexeme,
             .body_start = body_open + 1,
             .body_end = body_end,
         };
@@ -234,19 +241,25 @@ fn parse_next_binding(tokens: []const lexer.Token, idx: usize, end_idx: usize, r
 fn parse_item_await(tokens: []const lexer.Token, idx: usize, end_idx: usize, pending_name: []const u8) ?EntryBinding {
     if (idx + 5 >= end_idx or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "Result") or !tok_eq(tokens[idx + 2], "<")) return null;
     const type_close = find_matching(tokens, idx + 2, "<", ">") catch return null;
-    if (!compact_token_range_equals(tokens, idx + 1, type_close + 1, item_result_type) or
-        !tok_eq(tokens[type_close + 1], "=") or !tok_eq(tokens[type_close + 2], "await") or !tok_eq(tokens[type_close + 3], "(") or
-        tokens[type_close + 4].kind != .ident or !std.mem.eql(u8, tokens[type_close + 4].lexeme, pending_name) or !tok_eq(tokens[type_close + 5], ")")) return null;
-    return .{ .entry_name = tokens[idx].lexeme, .next_idx = type_close + 6 };
+    if (type_close + 2 >= end_idx) return null;
+    if (!compact_token_range_equals(tokens, idx + 1, type_close + 1, item_result_type) or !tok_eq(tokens[type_close + 1], "=")) return null;
+    const await_idx = if (tok_eq(tokens[type_close + 2], "@")) type_close + 3 else type_close + 2;
+    if (await_idx + 3 >= end_idx) return null;
+    if (!tok_eq(tokens[await_idx], "await") or !tok_eq(tokens[await_idx + 1], "(") or
+        tokens[await_idx + 2].kind != .ident or !std.mem.eql(u8, tokens[await_idx + 2].lexeme, pending_name) or !tok_eq(tokens[await_idx + 3], ")")) return null;
+    return .{ .entry_name = tokens[idx].lexeme, .next_idx = await_idx + 4 };
 }
 
 fn parse_completion_await(tokens: []const lexer.Token, idx: usize, end_idx: usize, completion_name: []const u8) ?CompletionResultBinding {
     if (idx + 5 >= end_idx or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "Result") or !tok_eq(tokens[idx + 2], "<")) return null;
     const type_close = find_matching(tokens, idx + 2, "<", ">") catch return null;
-    if (!compact_token_range_equals(tokens, idx + 1, type_close + 1, "Result<nil,DirectoryError>") or
-        !tok_eq(tokens[type_close + 1], "=") or !tok_eq(tokens[type_close + 2], "await") or !tok_eq(tokens[type_close + 3], "(") or
-        tokens[type_close + 4].kind != .ident or !std.mem.eql(u8, tokens[type_close + 4].lexeme, completion_name) or !tok_eq(tokens[type_close + 5], ")")) return null;
-    return .{ .result_name = tokens[idx].lexeme, .next_idx = type_close + 6 };
+    if (type_close + 2 >= end_idx) return null;
+    if (!compact_token_range_equals(tokens, idx + 1, type_close + 1, "Result<nil,DirectoryError>") or !tok_eq(tokens[type_close + 1], "=")) return null;
+    const await_idx = if (tok_eq(tokens[type_close + 2], "@")) type_close + 3 else type_close + 2;
+    if (await_idx + 3 >= end_idx) return null;
+    if (!tok_eq(tokens[await_idx], "await") or !tok_eq(tokens[await_idx + 1], "(") or
+        tokens[await_idx + 2].kind != .ident or !std.mem.eql(u8, tokens[await_idx + 2].lexeme, completion_name) or !tok_eq(tokens[await_idx + 3], ")")) return null;
+    return .{ .result_name = tokens[idx].lexeme, .next_idx = await_idx + 4 };
 }
 
 fn parse_discard(tokens: []const lexer.Token, idx: usize, end_idx: usize, name: []const u8) ?usize {

@@ -529,11 +529,22 @@ fn is_await_name(token: lexer.Token) bool {
 }
 
 fn is_async_function(function: codegen_model.FuncDecl) bool {
-    if (function.is_async) return true;
+    if (function.is_async or function.resumable or body_contains_async_operation(function.tokens, function.body_start, function.body_end)) return true;
     if (function.start_idx == 0 or function.start_idx >= function.tokens.len) return false;
     const modifier = function.tokens[function.start_idx - 1];
     const name = function.tokens[function.start_idx];
     return modifier.line == name.line and tok_eq(modifier, "async");
+}
+
+fn body_contains_async_operation(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var idx = start_idx;
+    while (idx < end_idx) : (idx += 1) {
+        if (tok_eq(tokens[idx], "Future") or tok_eq(tokens[idx], "await") or
+            (idx + 1 < end_idx and tok_eq(tokens[idx], "@") and
+                (tok_eq(tokens[idx + 1], "async") or tok_eq(tokens[idx + 1], "await") or
+                    tok_eq(tokens[idx + 1], "cancel")))) return true;
+    }
+    return false;
 }
 
 fn is_line_start(tokens: []const lexer.Token, body_start: usize, idx: usize) bool {

@@ -1,4 +1,4 @@
-async consume(reader StreamReader<i32>) -> nil {
+consume(reader StreamReader<i32>) -> nil {
     next StreamReader<u8> = reader
 }
 

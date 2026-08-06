@@ -1217,14 +1217,22 @@ fn find_record_stream_host(tokens: []const lexer.Token, registry: p3_async_manif
 fn find_async_function(tokens: []const lexer.Token) ?AsyncFunction {
     var idx: usize = 0;
     while (idx + 3 < tokens.len) : (idx += 1) {
-        if (!sema_tokens.tok_eq(tokens[idx], "async") or tokens[idx + 1].kind != .ident or
-            !sema_tokens.tok_eq(tokens[idx + 2], "(")) continue;
-        const params_end = sema_tokens.find_matching(tokens, idx + 2, "(", ")") catch return null;
+        const name_idx: usize = if (sema_tokens.tok_eq(tokens[idx], "async")) blk: {
+            if (tokens[idx + 1].kind != .ident or !sema_tokens.tok_eq(tokens[idx + 2], "(")) continue;
+            break :blk idx + 1;
+        } else blk: {
+            if (tokens[idx].kind != .ident or !sema_tokens.tok_eq(tokens[idx + 1], "(")) continue;
+            break :blk idx;
+        };
+        const params_idx = name_idx + 1;
+        const params_end = sema_tokens.find_matching(tokens, params_idx, "(", ")") catch return null;
+        if (params_end + 2 >= tokens.len or !sema_tokens.tok_eq(tokens[params_end + 1], "-") or
+            !sema_tokens.tok_eq(tokens[params_end + 2], ">")) continue;
         var body_open = params_end + 1;
         while (body_open < tokens.len and !sema_tokens.tok_eq(tokens[body_open], "{")) : (body_open += 1) {}
         if (body_open >= tokens.len) return null;
         const body_end = sema_tokens.find_matching(tokens, body_open, "{", "}") catch return null;
-        return .{ .name = tokens[idx + 1].lexeme, .body_start = body_open + 1, .body_end = body_end };
+        return .{ .name = tokens[name_idx].lexeme, .body_start = body_open + 1, .body_end = body_end };
     }
     return null;
 }
@@ -1296,8 +1304,10 @@ fn has_next_binding(tokens: []const lexer.Token, start: usize, end: usize, reade
 
 fn has_await_call(tokens: []const lexer.Token, start: usize, end: usize) bool {
     var idx = start;
-    while (idx + 2 < end) : (idx += 1) {
+    while (idx + 1 < end) : (idx += 1) {
         if (sema_tokens.tok_eq(tokens[idx], "await") and sema_tokens.tok_eq(tokens[idx + 1], "(")) return true;
+        if (idx + 2 < end and sema_tokens.tok_eq(tokens[idx], "@") and
+            sema_tokens.tok_eq(tokens[idx + 1], "await") and sema_tokens.tok_eq(tokens[idx + 2], "(")) return true;
     }
     return false;
 }
@@ -1332,6 +1342,9 @@ fn has_await_call_for(tokens: []const lexer.Token, start: usize, end: usize, nam
         if (sema_tokens.tok_eq(tokens[idx], "await") and sema_tokens.tok_eq(tokens[idx + 1], "(") and
             tokens[idx + 2].kind == .ident and std.mem.eql(u8, tokens[idx + 2].lexeme, name) and
             sema_tokens.tok_eq(tokens[idx + 3], ")")) return true;
+        if (idx + 4 < end and sema_tokens.tok_eq(tokens[idx], "@") and sema_tokens.tok_eq(tokens[idx + 1], "await") and
+            sema_tokens.tok_eq(tokens[idx + 2], "(") and tokens[idx + 3].kind == .ident and
+            std.mem.eql(u8, tokens[idx + 3].lexeme, name) and sema_tokens.tok_eq(tokens[idx + 4], ")")) return true;
     }
     return false;
 }

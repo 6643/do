@@ -110,6 +110,32 @@ pub fn check_func_decl_naming(tokens: []const lexer.Token) !void {
     }
 }
 
+/// `async name(...)` is retained by the parser only while descriptor fixtures
+/// migrate. It is not a second function model: ordinary declarations plus
+/// `@async/@await/@cancel` are the source contract.
+pub fn check_legacy_async_declarations(tokens: []const lexer.Token) !void {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tok_eq(tokens[i], "{")) {
+            if (skip_top_level_import_brace(tokens, i, depth_brace)) |skip_i| {
+                i = skip_i;
+                continue;
+            }
+            depth_brace += 1;
+            continue;
+        }
+        if (tok_eq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0 or !is_top_level_decl_head(tokens, i)) continue;
+        if (i + 2 >= tokens.len or !tok_eq(tokens[i], "async") or
+            tokens[i + 1].kind != .ident or !tok_eq(tokens[i + 2], "(")) continue;
+        return mark_error_at(tokens, i, error.DeprecatedAsyncFunctionDecl);
+    }
+}
+
 pub fn check_async_function_return_types(tokens: []const lexer.Token) !void {
     var depth_brace: usize = 0;
     var i: usize = 0;

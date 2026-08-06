@@ -1,10 +1,10 @@
-async ready() -> i32 {
+ready() -> i32 {
     return 1
 }
 
-async wait_once() -> i32 {
+wait_once() -> i32 {
     timeout i32 = 10
-    pending Future<i32> = ready()
+    pending Future<i32> = @async(ready())
     return await(pending, timeout)
 }
 

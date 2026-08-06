@@ -1,9 +1,9 @@
-async ready() -> i32 {
+ready() -> i32 {
     return 1
 }
 
-async wait_once() -> i32 {
-    pending Future<i32> = ready()
+wait_once() -> i32 {
+    pending Future<i32> = @async(ready())
     return await(pending, 10)
 }
 

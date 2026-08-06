@@ -225,9 +225,10 @@ moves the response and returns a `stream<u8>` plus a trailers `future`.
 `[async-lower]send` import name and records the canonical completion words as
 `i32 i32 i32 i64 i32 i32 i32 i32`, including the `i64` payload word emitted by
 the pinned toolchain. The `--p3-async-component` target accepts the
-exact `async handle(request HttpRequest) -> Result<HttpResponse, HttpError>`
-shape where `send(request)` is bound to a Future and immediately returned from
-`await`, either directly or through an identically typed Result binding. It
+exact `handle(request HttpRequest) -> Result<HttpResponse, HttpError>`
+shape where the async host binding `send(request)` returns a Future and is
+immediately returned from `@await`, either directly or through an identically
+typed Result binding. It
 emits the service export, consumes and drops the request, and
 returns either an owned response or a no-payload `error-code`. The regression
 at `examples/p3-runtime/test_http_service_abi_surface.sh` compiles, assembles,
@@ -1719,3 +1720,33 @@ malformed-tag, and duplicate-release probes remain negative gates.
 
 This does not admit generic variants, borrowed fields, arbitrary producer
 expressions, or public `own<T>`/`borrow<T>`/`ref<T>` syntax.
+
+## Generic Async Runtime Slice (2026-08-05)
+
+**Status:** the registered unit-payload runtime slice is verified; generic
+async lowering remains guarded outside this exact Component target.
+
+**Evidence:** `examples/p3-runtime/test_do_generic_async_runtime.sh` builds
+`examples/p3-runtime/generic-async-runtime.do`, embeds its WIT world, validates
+the Component with `wasm-tools 1.254.0`, and runs the Rust/Wasmtime `47.0.2`
+host in pending, immediate-ready, and cancel modes. The observations are two
+external wakes/two completions/one drop for pending, three completions and no
+external wake for immediate-ready, and cancel-before-completion with two
+completed host calls for cancellation. The component async unit suite and the
+latest full compiler matrix are green (`pass=1108 fail=0 skip=3`).
+
+**Source boundary:** the public model is colorless: ordinary function
+declarations plus `@async`, `@await`, and `@cancel`. A WIT `async func` binding
+already yields `Future<T>` and is not wrapped in `@async`; `async name(...) -> T`
+is deprecated and normal semantic analysis reports `DeprecatedAsyncFunctionDecl`
+before lowering. The generic target retains a dedicated negative async-root
+fixture and rejects it with
+`AsyncLoweringUnavailable`/`UnsupportedGenericAsyncShape` rather than adding
+new capability to the legacy spelling.
+
+**Remaining blocker:** arbitrary Future/Stream payloads, resources, aggregate
+await, timeout, multi-root scheduling, public `own<T>`/`borrow<T>`/`ref<T>`, and
+ordinary `do build` async programs still require independent admission plans
+and runtime gates. The remaining negative legacy-declaration fixtures are
+intentional regression coverage, not an additional migration blocker for this
+bounded runtime slice.

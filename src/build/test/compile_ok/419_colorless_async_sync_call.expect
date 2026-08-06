@@ -1,0 +1,9 @@
+[task-bridge]
+[task-bridge-mode] direct-root
+[task-bridge-frame]
+[task-bridge-root]
+[task-bridge-child]
+[task-bridge-child-await]
+[task-bridge-resume]
+[task-bridge-terminal]
+[task-bridge-cleanup]

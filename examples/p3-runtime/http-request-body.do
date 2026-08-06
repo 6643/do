@@ -9,14 +9,14 @@ HttpResponse = @wasi_resource("http/types/response", { .id i64 })
 StdinError error = Io | IllegalByteSequence | Pipe
 HttpError error = HttpFailure
 
-async run() -> Result<HttpResponse, HttpError> {
+run() -> Result<HttpResponse, HttpError> {
     source Tuple<Stream<u8>, Future<Result<nil, StdinError>>> = stdin_read()
     reader Stream<u8> = @get(source, 0)
     source_done Future<Result<nil, StdinError>> = @get(source, 1)
     handles Tuple<HttpRequest, Future<Result<nil, HttpError>>> = request_new(reader)
     request HttpRequest = @get(handles, 0)
     pending Future<Result<HttpResponse, HttpError>> = send(request)
-    result Result<HttpResponse, HttpError> = await(pending)
+    result Result<HttpResponse, HttpError> = @await(pending)
     @cancel(source_done)
     return result
 }

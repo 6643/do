@@ -2504,6 +2504,30 @@ test "checked-in registry pins private async resource Result ABI" {
     try std.testing.expectEqualStrings("async-resource-probe", descriptor.wit.world);
 }
 
+test "checked-in registry pins the generic async runtime host descriptor" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+
+    const descriptor = registry.find("do:generic-async-runtime-probe/host@0.1.0", "work") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("async", descriptor.effect);
+    try std.testing.expectEqual(@as(usize, 0), descriptor.params.len);
+    try std.testing.expectEqualStrings("nil", descriptor.result);
+    try std.testing.expect(descriptor.resource == null);
+    try std.testing.expectEqualStrings("32d239e3d6e9323577422ee1e54287a27cb7607dd8843537af7d69975b1e9803", descriptor.wit_sha256.?);
+    try std.testing.expectEqual(@as(usize, 0), descriptor.canonical.core_params.len);
+    try std.testing.expectEqual(@as(usize, 0), descriptor.canonical.core_results.len);
+    try std.testing.expectEqual(@as(usize, 0), descriptor.canonical.completion_params.len);
+    try std.testing.expectEqualStrings("task-return", descriptor.canonical.completion);
+    try std.testing.expectEqualStrings("do:generic-async-runtime-probe/host@0.1.0", descriptor.canonical.async_import_module);
+    try std.testing.expectEqualStrings("[async-lower]work", descriptor.canonical.async_import_name);
+    try std.testing.expectEqualStrings("do:generic-async-runtime-probe@0.1.0", descriptor.wit.package);
+    try std.testing.expectEqualStrings("host", descriptor.wit.interface);
+    try std.testing.expectEqualStrings("work", descriptor.wit.operation);
+    try std.testing.expectEqualStrings("probe", descriptor.wit.world);
+    try std.testing.expectEqualStrings("", descriptor.wit.parameter);
+    try std.testing.expect(lowering_shape(descriptor) == null);
+}
+
 test "descriptor lowering shapes separate scalar unit, private Result, and HTTP" {
     var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(std.testing.allocator);

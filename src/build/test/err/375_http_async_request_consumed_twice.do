@@ -4,11 +4,11 @@ HttpRequest = @wasi_resource("http/types/request", { .id i64 })
 HttpResponse = @wasi_resource("http/types/response", { .id i64 })
 HttpError error = HttpFailure
 
-async run(request HttpRequest) -> nil {
+run(request HttpRequest) -> nil {
     first Future<Result<HttpResponse, HttpError>> = send(request)
-    await(first)
+    @await(first)
     second Future<Result<HttpResponse, HttpError>> = send(request)
-    await(second)
+    @await(second)
 }
 
 start() {}

@@ -6,7 +6,7 @@ HttpRequest = @wasi_resource("http/types/request", { .id i64 })
 HttpResponse = @wasi_resource("http/types/response", { .id i64 })
 HttpError error = HttpFailure
 
-async run() -> nil {
+run() -> nil {
     handles Tuple<HttpRequest, Future<Result<nil, HttpError>>> = request_new()
     _ = handles
 }

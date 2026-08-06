@@ -31,6 +31,10 @@ contain `@await` and is marked internally as resumable by semantic analysis.
   error; the task handle is compiler-owned and cannot leak into source.
 - `@async(call)` always creates an independent eager task and returns an affine
   `Future<T>` handle.
+- A normal Do call never produces a `Future<T>` by assignment alone. The source
+  form is `Future<T> = @async(call)`. The only direct `Future<T> = call` form is
+  a generated binding for a WIT `async func` whose validated manifest declares
+  the future effect; wrapping that call would create `Future<Future<T>>`.
 - `@await(future)` consumes the handle and returns its result.
 - `@cancel(future)` consumes the handle, requests cancellation, waits for the
   task to reach an ABI terminal state, and performs exactly-once cleanup.
@@ -62,6 +66,21 @@ modules and their `manifest.json`/`wit.lock` are placed under the project-root
 `wit/` directory. The colorless async compiler consumes the generated metadata;
 it does not infer WIT async behavior from a source function name or from a
 generated `async` declaration.
+
+The explicit validation boundary is:
+
+```text
+do wit check <wit-input> --world <world> --manifest <wit/manifest.json>
+```
+
+This validates the schema, package/world identity, WIT content hash, and every
+generated member's async/future/stream/resource effect before a caller relies
+on the binding. It also verifies the content hash of every generated `.do`
+module, so a changed Future/result signature is rejected before source
+checking can rely on it. A mismatch is an error; it is never downgraded to a
+synchronous host import. `do wit bind` remains the only producer of this
+manifest, and the manifest does not by itself claim generic Component or
+Wasmtime lowering.
 
 ## Compatibility and Removal
 

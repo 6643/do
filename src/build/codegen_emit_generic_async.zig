@@ -16,6 +16,7 @@ pub fn emit_if_supported(
         else => return err,
     };
     defer plan.deinit(allocator);
+    if (plan.source_mode != .eager_synchronous) return null;
 
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
@@ -47,12 +48,15 @@ fn emit_wat(allocator: std.mem.Allocator, out: *std.ArrayList(u8), plan: generic
         \\    drop
         \\    ;; [generic-async-suspend]
         \\    call ${s}
+        \\    ;; [generic-async-suspend]
+        \\    call ${s}
         \\    ;; [generic-async-cancel]
+        \\    call ${s}
         \\    local.get $frame
         \\    call $generic-frame-free
         \\    ;; [generic-async-terminal]
         \\  )
-    , .{ plan.root_name, plan.work_name });
+    , .{ plan.root_name, plan.work_name, plan.work_name, plan.work_name });
     try append_fmt(allocator, out,
         \\  (func $start
         \\    call ${s})
@@ -93,7 +97,7 @@ fn count_marker(wat: []const u8, marker: []const u8) usize {
     return count;
 }
 
-test "generic async emitter produces one resumable state machine" {
+test "generic async emitter produces two sequential awaits and one cancel" {
     const source = @embedFile("test/check/417_generic_async_single_future.do");
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
@@ -103,9 +107,10 @@ test "generic async emitter produces one resumable state machine" {
     const wat = (try emit_if_supported(std.testing.allocator, program, tokens, null)).?;
     defer std.testing.allocator.free(wat);
     try std.testing.expectEqual(@as(usize, 1), count_marker(wat, "[generic-async-frame]"));
-    try std.testing.expectEqual(@as(usize, 1), count_marker(wat, "[generic-async-suspend]"));
+    try std.testing.expectEqual(@as(usize, 2), count_marker(wat, "[generic-async-suspend]"));
     try std.testing.expectEqual(@as(usize, 1), count_marker(wat, "[generic-async-cancel]"));
     try std.testing.expectEqual(@as(usize, 1), count_marker(wat, "[generic-async-terminal]"));
+    try std.testing.expectEqual(@as(usize, 3), count_marker(wat, "call $work"));
 }
 
 test "generic async emitter leaves unsupported shapes to the guard" {
@@ -123,5 +128,15 @@ test "generic async emitter leaves unsupported shapes to the guard" {
     defer std.testing.allocator.free(tokens);
     var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
     defer program.deinit(std.testing.allocator);
+    try std.testing.expect((try emit_if_supported(std.testing.allocator, program, tokens, null)) == null);
+}
+
+test "generic async emitter defers descriptor-backed async lowering" {
+    const source = @embedFile("test/check/427_generic_async_runtime_contract.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
     try std.testing.expect((try emit_if_supported(std.testing.allocator, program, tokens, null)) == null);
 }

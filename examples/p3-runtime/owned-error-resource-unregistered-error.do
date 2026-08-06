@@ -4,9 +4,9 @@ HttpRequest = @wasi_resource("do:resource-probe-owned-error/http/request", { .id
 HttpResponse = @wasi_resource("do:resource-probe-owned-error/http/response", { .id i64 })
 OtherErrorResource = @wasi_resource("do:resource-probe-owned-error/http/other-error", { .id i64 })
 
-async run(request HttpRequest) -> Result<HttpResponse, OtherErrorResource> {
+run(request HttpRequest) -> Result<HttpResponse, OtherErrorResource> {
     pending Future<Result<HttpResponse, OtherErrorResource>> = send(request)
-    return await(pending)
+    return @await(pending)
 }
 
 start() {}

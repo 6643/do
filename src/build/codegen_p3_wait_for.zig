@@ -132,11 +132,18 @@ const CliResultAsyncFunction = struct {
 
 fn parse_cli_result_async_function(tokens: []const lexer.Token, start_idx: usize) ?CliResultAsyncFunction {
     var idx = start_idx;
-    while (idx + 12 < tokens.len) : (idx += 1) {
-        if (!tok_eq(tokens[idx], "async") or tokens[idx + 1].kind != .ident or !tok_eq(tokens[idx + 2], "(") or !tok_eq(tokens[idx + 3], ")") or !tok_eq(tokens[idx + 4], "-") or !tok_eq(tokens[idx + 5], ">")) continue;
-        if (!result_unit_tokens(tokens, idx + 6) or !tok_eq(tokens[idx + 12], "{")) continue;
-        const body_end = find_matching(tokens, idx + 12, "{", "}") orelse continue;
-        return .{ .name = tokens[idx + 1].lexeme, .body_start = idx + 13, .body_end = body_end };
+    while (idx + 8 < tokens.len) : (idx += 1) {
+        const name_idx = if (tok_eq(tokens[idx], "async")) idx + 1 else idx;
+        const open_params = if (tok_eq(tokens[idx], "async")) idx + 2 else idx + 1;
+        if (name_idx >= tokens.len or open_params >= tokens.len or tokens[name_idx].kind != .ident or
+            !tok_eq(tokens[open_params], "(")) continue;
+        const close_params = find_matching(tokens, open_params, "(", ")") orelse continue;
+        if (close_params != open_params + 1 or !tok_eq(tokens[close_params + 1], "-") or
+            !tok_eq(tokens[close_params + 2], ">")) continue;
+        if (close_params + 9 >= tokens.len or !result_unit_tokens(tokens, close_params + 3) or
+            !tok_eq(tokens[close_params + 9], "{")) continue;
+        const body_end = find_matching(tokens, close_params + 9, "{", "}") orelse continue;
+        return .{ .name = tokens[name_idx].lexeme, .body_start = close_params + 10, .body_end = body_end };
     }
     return null;
 }
@@ -147,11 +154,21 @@ fn parse_cli_result_body(tokens: []const lexer.Token, function: CliResultAsyncFu
     if (!std.mem.eql(u8, tokens[idx + 11].lexeme, host_name) or !tok_eq(tokens[idx + 12], "(") or !tok_eq(tokens[idx + 13], ")")) return null;
 
     const await_start = idx + 14;
-    if (await_start + 4 < function.body_end and tok_eq(tokens[await_start], "return") and tok_eq(tokens[await_start + 1], "await") and tok_eq(tokens[await_start + 2], "(") and tokens[await_start + 3].kind == .ident and std.mem.eql(u8, tokens[await_start + 3].lexeme, tokens[idx].lexeme) and tok_eq(tokens[await_start + 4], ")") and await_start + 5 == function.body_end) return .passthrough;
+    if (await_start + 4 < function.body_end and tok_eq(tokens[await_start], "return")) {
+        const op_idx = if (tok_eq(tokens[await_start + 1], "@") and tok_eq(tokens[await_start + 2], "await")) await_start + 2 else await_start + 1;
+        const operand_idx = op_idx + 2;
+        if (op_idx + 3 < function.body_end and tok_eq(tokens[op_idx], "await") and tok_eq(tokens[op_idx + 1], "(") and
+            tokens[operand_idx].kind == .ident and std.mem.eql(u8, tokens[operand_idx].lexeme, tokens[idx].lexeme) and
+            tok_eq(tokens[op_idx + 3], ")") and op_idx + 4 == function.body_end) return .passthrough;
+    }
 
-    if (await_start + 11 >= function.body_end or tokens[await_start].kind != .ident or !result_unit_tokens(tokens, await_start + 1) or !tok_eq(tokens[await_start + 7], "=") or !tok_eq(tokens[await_start + 8], "await") or !tok_eq(tokens[await_start + 9], "(") or tokens[await_start + 10].kind != .ident or !std.mem.eql(u8, tokens[await_start + 10].lexeme, tokens[idx].lexeme) or !tok_eq(tokens[await_start + 11], ")")) return null;
+    if (await_start + 11 >= function.body_end or tokens[await_start].kind != .ident or !result_unit_tokens(tokens, await_start + 1) or !tok_eq(tokens[await_start + 7], "=")) return null;
+    const op_idx = if (tok_eq(tokens[await_start + 8], "@") and tok_eq(tokens[await_start + 9], "await")) await_start + 9 else await_start + 8;
+    if (op_idx + 3 >= function.body_end or !tok_eq(tokens[op_idx], "await") or !tok_eq(tokens[op_idx + 1], "(") or
+        tokens[op_idx + 2].kind != .ident or !std.mem.eql(u8, tokens[op_idx + 2].lexeme, tokens[idx].lexeme) or
+        !tok_eq(tokens[op_idx + 3], ")")) return null;
     const result_name = tokens[await_start].lexeme;
-    const if_start = await_start + 12;
+    const if_start = op_idx + 4;
     if (if_start + 8 >= function.body_end or !tok_eq(tokens[if_start], "if") or !tok_eq(tokens[if_start + 1], "@") or !tok_eq(tokens[if_start + 2], "is") or !tok_eq(tokens[if_start + 3], "(") or tokens[if_start + 4].kind != .ident or !std.mem.eql(u8, tokens[if_start + 4].lexeme, result_name) or !tok_eq(tokens[if_start + 5], ",") or !tok_eq(tokens[if_start + 6], "Ok") or !tok_eq(tokens[if_start + 7], ")") or !tok_eq(tokens[if_start + 8], "{")) return null;
     const branch_end = find_matching(tokens, if_start + 8, "{", "}") orelse return null;
     if (branch_end != if_start + 13 or !tok_eq(tokens[if_start + 9], "return") or !unit_result_constructor(tokens, if_start + 10, "Err")) return null;

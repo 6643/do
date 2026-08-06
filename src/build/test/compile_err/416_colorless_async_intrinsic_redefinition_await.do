@@ -1,0 +1,5 @@
+await() -> nil {
+    return
+}
+
+start() {}

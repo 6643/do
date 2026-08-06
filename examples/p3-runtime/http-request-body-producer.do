@@ -10,21 +10,21 @@ StdoutError error = Io | IllegalByteSequence | Pipe
 StreamError error = StreamClosed | StreamWriteFailed
 HttpError error = HttpFailure
 
-async run() -> Result<HttpResponse, HttpError> {
+run() -> Result<HttpResponse, HttpError> {
     reader StreamReader<u8>, writer StreamWriter<u8> = new_stream<u8>(1)
     first u8 = 65
     write_pending Future<Result<nil, StreamError>> = writer(first)
-    write_result Result<nil, StreamError> = await(write_pending)
+    write_result Result<nil, StreamError> = @await(write_pending)
     _ = write_result
     second u8 = 66
     write_pending_2 Future<Result<nil, StreamError>> = writer(second)
-    write_result_2 Result<nil, StreamError> = await(write_pending_2)
+    write_result_2 Result<nil, StreamError> = @await(write_pending_2)
     _ = write_result_2
     close(writer)
     handles Tuple<HttpRequest, Future<Result<nil, HttpError>>> = request_new(reader)
     request HttpRequest = @get(handles, 0)
     pending Future<Result<HttpResponse, HttpError>> = send(request)
-    result Result<HttpResponse, HttpError> = await(pending)
+    result Result<HttpResponse, HttpError> = @await(pending)
     return result
 }
 

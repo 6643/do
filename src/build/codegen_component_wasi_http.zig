@@ -2,6 +2,7 @@ const std = @import("std");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
+const sema_tokens = @import("sema_tokens.zig");
 const async_model = @import("codegen_async_model.zig");
 const async_byte_budget = @import("async_byte_budget.zig");
 const component_async_plan = @import("codegen_component_async_plan.zig");
@@ -544,6 +545,46 @@ const Future = struct {
     name: []const u8,
 };
 
+const FunctionHeader = struct {
+    name_idx: usize,
+    open_params: usize,
+    close_params: usize,
+    return_start: usize,
+    body_open: usize,
+};
+
+/// Descriptor scanners consume already-validated source. Keep the legacy
+/// prefix only for direct unit fixtures; normal source admission rejects it
+/// before code generation. New source is always the ordinary declaration.
+fn find_function_header(tokens: []const lexer.Token, idx: usize, expected_name: []const u8) ?FunctionHeader {
+    if (idx >= tokens.len) return null;
+    const legacy = tok_eq(tokens[idx], "async");
+    const name_idx = if (legacy) idx + 1 else idx;
+    if (name_idx + 1 >= tokens.len or tokens[name_idx].kind != .ident or
+        !std.mem.eql(u8, tokens[name_idx].lexeme, expected_name) or
+        !tok_eq(tokens[name_idx + 1], "(")) return null;
+    if (legacy) {
+        if (idx > 0 and tokens[idx - 1].line == tokens[idx].line) return null;
+    } else if (!sema_tokens.is_top_level_decl_head(tokens, name_idx)) {
+        return null;
+    } else if (name_idx > 0 and tokens[name_idx - 1].line == tokens[name_idx].line and
+        tok_eq(tokens[name_idx - 1], "async")) {
+        return null;
+    }
+    const open_params = name_idx + 1;
+    const close_params = find_matching(tokens, open_params, "(", ")") orelse return null;
+    if (close_params + 2 >= tokens.len or !tok_eq(tokens[close_params + 1], "-") or
+        !tok_eq(tokens[close_params + 2], ">")) return null;
+    const body_open = find_next(tokens, close_params + 3, "{") orelse return null;
+    return .{
+        .name_idx = name_idx,
+        .open_params = open_params,
+        .close_params = close_params,
+        .return_start = close_params + 3,
+        .body_open = body_open,
+    };
+}
+
 fn is_http_send_descriptor(descriptor: p3_async_manifest.Descriptor) bool {
     const shape = p3_async_manifest.lowering_shape(descriptor) orelse return false;
     const http_shape = switch (shape) {
@@ -673,15 +714,13 @@ const HttpRequestBodySend = struct {
 fn find_http_request_body_function(tokens: []const lexer.Token) ?HttpRequestBodyFunction {
     var found: ?HttpRequestBodyFunction = null;
     var idx: usize = 0;
-    while (idx + 8 < tokens.len) : (idx += 1) {
-        if (!tok_eq(tokens[idx], "async") or !tok_eq(tokens[idx + 1], "run") or
-            !tok_eq(tokens[idx + 2], "(") or !tok_eq(tokens[idx + 3], ")") or
-            !tok_eq(tokens[idx + 4], "-") or !tok_eq(tokens[idx + 5], ">")) continue;
-        const body_open = find_next(tokens, idx + 6, "{") orelse continue;
-        if (!type_tokens_equal(tokens, idx + 6, body_open, "Result<HttpResponse,HttpError>")) continue;
-        const body_end = find_matching(tokens, body_open, "{", "}") orelse continue;
+    while (idx < tokens.len) : (idx += 1) {
+        const header = find_function_header(tokens, idx, "run") orelse continue;
+        if (header.close_params != header.open_params + 1) continue;
+        if (!type_tokens_equal(tokens, header.return_start, header.body_open, "Result<HttpResponse,HttpError>")) continue;
+        const body_end = find_matching(tokens, header.body_open, "{", "}") orelse continue;
         if (found != null) return null;
-        found = .{ .body_start = body_open + 1, .body_end = body_end };
+        found = .{ .body_start = header.body_open + 1, .body_end = body_end };
     }
     return found;
 }
@@ -729,11 +768,10 @@ fn parse_http_request_body_send(
     if (pos + 5 >= end_idx or tokens[pos].kind != .ident or !tok_eq(tokens[pos + 1], "Result") or !tok_eq(tokens[pos + 2], "<")) return null;
     const result_close = find_matching(tokens, pos + 2, "<", ">") orelse return null;
     if (!type_tokens_equal(tokens, pos + 1, result_close + 1, "Result<HttpResponse,HttpError>") or
-        !tok_eq(tokens[result_close + 1], "=") or !tok_eq(tokens[result_close + 2], "await") or
-        !tok_eq(tokens[result_close + 3], "(") or !std.mem.eql(u8, tokens[result_close + 4].lexeme, future_name) or
-        !tok_eq(tokens[result_close + 5], ")")) return null;
+        !tok_eq(tokens[result_close + 1], "=")) return null;
+    const await_end = parse_await_call(tokens, result_close + 2, end_idx, future_name) orelse return null;
     const result_name = tokens[pos].lexeme;
-    pos = result_close + 6;
+    pos = await_end;
     if (pos + 2 == end_idx and tok_eq(tokens[pos], "return") and std.mem.eql(u8, tokens[pos + 1].lexeme, result_name)) {
         return .{ .future_name = future_name, .next_idx = pos + 2 };
     }
@@ -770,12 +808,11 @@ fn parse_http_request_body_terminal_await(
     if (idx + 8 >= end_idx or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "Result") or !tok_eq(tokens[idx + 2], "<")) return false;
     const result_close = find_matching(tokens, idx + 2, "<", ">") orelse return false;
     if (!type_tokens_equal(tokens, idx + 1, result_close + 1, "Result<HttpResponse,HttpError>") or
-        !tok_eq(tokens[result_close + 1], "=") or !tok_eq(tokens[result_close + 2], "await") or
-        !tok_eq(tokens[result_close + 3], "(") or !std.mem.eql(u8, tokens[result_close + 4].lexeme, future_name) or
-        !tok_eq(tokens[result_close + 5], ")")) return false;
+        !tok_eq(tokens[result_close + 1], "=")) return false;
+    const await_end = parse_await_call(tokens, result_close + 2, end_idx, future_name) orelse return false;
     const result_name = tokens[idx].lexeme;
-    return result_close + 6 + 2 == end_idx and tok_eq(tokens[result_close + 6], "return") and
-        std.mem.eql(u8, tokens[result_close + 7].lexeme, result_name);
+    return await_end + 2 == end_idx and tok_eq(tokens[await_end], "return") and
+        std.mem.eql(u8, tokens[await_end + 1].lexeme, result_name);
 }
 
 fn parse_http_request_body_completion_await(
@@ -788,22 +825,18 @@ fn parse_http_request_body_completion_await(
         !tok_eq(tokens[idx + 2], "<") or !tok_eq(tokens[idx + 3], "nil") or !tok_eq(tokens[idx + 4], ",") or
         tokens[idx + 5].kind != .ident or !std.mem.endsWith(u8, tokens[idx + 5].lexeme, "Error")) return null;
     const result_close = find_matching(tokens, idx + 2, "<", ">") orelse return null;
-    if (result_close != idx + 6 or !tok_eq(tokens[result_close + 1], "=") or
-        !tok_eq(tokens[result_close + 2], "await") or !tok_eq(tokens[result_close + 3], "(") or
-        !std.mem.eql(u8, tokens[result_close + 4].lexeme, completion_name) or !tok_eq(tokens[result_close + 5], ")")) return null;
-    return result_close + 6;
+    if (result_close != idx + 6 or !tok_eq(tokens[result_close + 1], "=")) return null;
+    return parse_await_call(tokens, result_close + 2, end_idx, completion_name);
 }
 
 fn has_http_request_new_handler(tokens: []const lexer.Token, host_name: []const u8) bool {
     var idx: usize = 0;
-    while (idx + 8 < tokens.len) : (idx += 1) {
-        if (!tok_eq(tokens[idx], "async") or !tok_eq(tokens[idx + 1], "run") or
-            !tok_eq(tokens[idx + 2], "(") or !tok_eq(tokens[idx + 3], ")") or
-            !tok_eq(tokens[idx + 4], "-") or !tok_eq(tokens[idx + 5], ">") or
-            !tok_eq(tokens[idx + 6], "nil")) continue;
-        const body_open = find_next(tokens, idx + 7, "{") orelse continue;
-        const body_end = find_matching(tokens, body_open, "{", "}") orelse continue;
-        var pos = body_open + 1;
+    while (idx < tokens.len) : (idx += 1) {
+        const header = find_function_header(tokens, idx, "run") orelse continue;
+        if (header.close_params != header.open_params + 1 or
+            !type_tokens_equal(tokens, header.return_start, header.body_open, "nil")) continue;
+        const body_end = find_matching(tokens, header.body_open, "{", "}") orelse continue;
+        var pos = header.body_open + 1;
         if (pos + 4 >= body_end or tokens[pos].kind != .ident) continue;
         const tuple_start = pos + 1;
         const tuple_close = find_matching(tokens, tuple_start + 1, "<", ">") orelse continue;
@@ -812,7 +845,7 @@ fn has_http_request_new_handler(tokens: []const lexer.Token, host_name: []const 
             !tok_eq(tokens[tuple_close + 3], "(") or !tok_eq(tokens[tuple_close + 4], ")")) continue;
         pos = tuple_close + 5;
         if (pos + 3 != body_end or !tok_eq(tokens[pos], "_") or !tok_eq(tokens[pos + 1], "=") or
-            !std.mem.eql(u8, tokens[pos + 2].lexeme, tokens[body_open + 1].lexeme)) continue;
+            !std.mem.eql(u8, tokens[pos + 2].lexeme, tokens[header.body_open + 1].lexeme)) continue;
         return true;
     }
     return false;
@@ -820,14 +853,12 @@ fn has_http_request_new_handler(tokens: []const lexer.Token, host_name: []const 
 
 fn has_http_request_send_handler(tokens: []const lexer.Token, request_host_name: []const u8, send_host_name: []const u8) bool {
     var idx: usize = 0;
-    while (idx + 8 < tokens.len) : (idx += 1) {
-        if (!tok_eq(tokens[idx], "async") or !tok_eq(tokens[idx + 1], "run") or
-            !tok_eq(tokens[idx + 2], "(") or !tok_eq(tokens[idx + 3], ")") or
-            !tok_eq(tokens[idx + 4], "-") or !tok_eq(tokens[idx + 5], ">")) continue;
-        const body_open = find_next(tokens, idx + 6, "{") orelse continue;
-        if (!type_tokens_equal(tokens, idx + 6, body_open, "Result<HttpResponse,HttpError>")) continue;
-        const body_end = find_matching(tokens, body_open, "{", "}") orelse continue;
-        var pos = body_open + 1;
+    while (idx < tokens.len) : (idx += 1) {
+        const header = find_function_header(tokens, idx, "run") orelse continue;
+        if (header.close_params != header.open_params + 1 or
+            !type_tokens_equal(tokens, header.return_start, header.body_open, "Result<HttpResponse,HttpError>")) continue;
+        const body_end = find_matching(tokens, header.body_open, "{", "}") orelse continue;
+        var pos = header.body_open + 1;
         if (pos + 5 >= body_end or tokens[pos].kind != .ident or !tok_eq(tokens[pos + 1], "Tuple") or
             !tok_eq(tokens[pos + 2], "<")) continue;
         const handles_name = tokens[pos].lexeme;
@@ -853,9 +884,9 @@ fn has_http_request_send_handler(tokens: []const lexer.Token, request_host_name:
             !tok_eq(tokens[future_close + 5], ")")) continue;
         const future_name = tokens[pos].lexeme;
         pos = future_close + 6;
-        if (pos + 5 != body_end or !tok_eq(tokens[pos], "return") or !tok_eq(tokens[pos + 1], "await") or
-            !tok_eq(tokens[pos + 2], "(") or !std.mem.eql(u8, tokens[pos + 3].lexeme, future_name) or
-            !tok_eq(tokens[pos + 4], ")")) continue;
+        if (!tok_eq(tokens[pos], "return")) continue;
+        const await_end = parse_await_call(tokens, pos + 1, body_end, future_name) orelse continue;
+        if (await_end != body_end) continue;
         return true;
     }
     return false;
@@ -905,70 +936,68 @@ fn find_handler_named(tokens: []const lexer.Token, function_name: []const u8) ?H
     var handler: ?Handler = null;
     var idx: usize = 0;
     while (idx < tokens.len) : (idx += 1) {
-        if (!tok_eq(tokens[idx], "async")) continue;
-        if (handler != null or idx + 8 >= tokens.len or !tok_eq(tokens[idx + 1], function_name) or !tok_eq(tokens[idx + 2], "(") or tokens[idx + 3].kind != .ident or !tok_eq(tokens[idx + 4], "HttpRequest") or !tok_eq(tokens[idx + 5], ")") or !tok_eq(tokens[idx + 6], "-") or !tok_eq(tokens[idx + 7], ">")) return null;
-        const body_start = find_next(tokens, idx + 8, "{") orelse return null;
-        if (!type_tokens_equal(tokens, idx + 8, body_start, "Result<HttpResponse,HttpError>")) return null;
-        const body_end = find_matching(tokens, body_start, "{", "}") orelse return null;
-        handler = .{ .parameter_name = tokens[idx + 3].lexeme, .body_start = body_start + 1, .body_end = body_end };
+        const header = find_function_header(tokens, idx, function_name) orelse continue;
+        if (handler != null or header.close_params != header.open_params + 3 or
+            tokens[header.open_params + 1].kind != .ident or
+            !tok_eq(tokens[header.open_params + 2], "HttpRequest") or
+            !type_tokens_equal(tokens, header.return_start, header.body_open, "Result<HttpResponse,HttpError>")) return null;
+        const body_end = find_matching(tokens, header.body_open, "{", "}") orelse return null;
+        handler = .{ .parameter_name = tokens[header.open_params + 1].lexeme, .body_start = header.body_open + 1, .body_end = body_end };
     }
     return handler;
 }
 
 fn find_cancellation_handler(tokens: []const lexer.Token) ?Handler {
     var idx: usize = 0;
-    while (idx + 8 < tokens.len) : (idx += 1) {
-        if (!tok_eq(tokens[idx], "async") or !tok_eq(tokens[idx + 1], "cancel_request") or
-            !tok_eq(tokens[idx + 2], "(") or tokens[idx + 3].kind != .ident or
-            !tok_eq(tokens[idx + 4], "HttpRequest") or !tok_eq(tokens[idx + 5], ")") or
-            !tok_eq(tokens[idx + 6], "-") or !tok_eq(tokens[idx + 7], ">") or
-            !tok_eq(tokens[idx + 8], "nil")) continue;
-        const body_start = find_next(tokens, idx + 9, "{") orelse return null;
-        const body_end = find_matching(tokens, body_start, "{", "}") orelse return null;
-        return .{ .parameter_name = tokens[idx + 3].lexeme, .body_start = body_start + 1, .body_end = body_end };
+    while (idx < tokens.len) : (idx += 1) {
+        const header = find_function_header(tokens, idx, "cancel_request") orelse continue;
+        if (header.close_params != header.open_params + 3 or
+            tokens[header.open_params + 1].kind != .ident or
+            !tok_eq(tokens[header.open_params + 2], "HttpRequest") or
+            !type_tokens_equal(tokens, header.return_start, header.body_open, "nil")) continue;
+        const body_end = find_matching(tokens, header.body_open, "{", "}") orelse return null;
+        return .{ .parameter_name = tokens[header.open_params + 1].lexeme, .body_start = header.body_open + 1, .body_end = body_end };
     }
     return null;
 }
 
 fn find_response_body_handler(tokens: []const lexer.Token, host_name: []const u8) ?ResponseBodyHandler {
     var idx: usize = 0;
-    while (idx + 8 < tokens.len) : (idx += 1) {
-        if (!tok_eq(tokens[idx], "async") or !tok_eq(tokens[idx + 1], "run") or
-            !tok_eq(tokens[idx + 2], "(") or tokens[idx + 3].kind != .ident or
-            !tok_eq(tokens[idx + 4], "HttpResponse") or !tok_eq(tokens[idx + 5], ")") or
-            !tok_eq(tokens[idx + 6], "-") or !tok_eq(tokens[idx + 7], ">") or
-            !tok_eq(tokens[idx + 8], "nil")) continue;
-        const body_open = find_next(tokens, idx + 9, "{") orelse return null;
-        const body_end = find_matching(tokens, body_open, "{", "}") orelse return null;
-        const body_start = body_open + 1;
+    while (idx < tokens.len) : (idx += 1) {
+        const header = find_function_header(tokens, idx, "run") orelse continue;
+        if (header.close_params != header.open_params + 3 or
+            tokens[header.open_params + 1].kind != .ident or
+            !tok_eq(tokens[header.open_params + 2], "HttpResponse") or
+            !type_tokens_equal(tokens, header.return_start, header.body_open, "nil")) continue;
+        const body_end = find_matching(tokens, header.body_open, "{", "}") orelse return null;
+        const body_start = header.body_open + 1;
         if (body_start + 6 != body_end or !tok_eq(tokens[body_start], "_") or
             !tok_eq(tokens[body_start + 1], "=") or
             !std.mem.eql(u8, tokens[body_start + 2].lexeme, host_name) or
             !tok_eq(tokens[body_start + 3], "(") or
-            !std.mem.eql(u8, tokens[body_start + 4].lexeme, tokens[idx + 3].lexeme) or
+            !std.mem.eql(u8, tokens[body_start + 4].lexeme, tokens[header.open_params + 1].lexeme) or
             !tok_eq(tokens[body_start + 5], ")")) return null;
-        return .{ .response_param = tokens[idx + 3].lexeme };
+        return .{ .response_param = tokens[header.open_params + 1].lexeme };
     }
     return null;
 }
 
 fn find_response_body_read_handler(tokens: []const lexer.Token, host_name: []const u8) ?ResponseBodyReadHandler {
     var idx: usize = 0;
-    while (idx + 8 < tokens.len) : (idx += 1) {
-        if (!tok_eq(tokens[idx], "async") or !tok_eq(tokens[idx + 1], "run") or
-            !tok_eq(tokens[idx + 2], "(") or tokens[idx + 3].kind != .ident or
-            !tok_eq(tokens[idx + 4], "HttpResponse") or !tok_eq(tokens[idx + 5], ")") or
-            !tok_eq(tokens[idx + 6], "-") or !tok_eq(tokens[idx + 7], ">") or
-            !tok_eq(tokens[idx + 8], "nil")) continue;
-        const body_open = find_next(tokens, idx + 9, "{") orelse return null;
-        const body_end = find_matching(tokens, body_open, "{", "}") orelse return null;
-        var pos = body_open + 1;
+    while (idx < tokens.len) : (idx += 1) {
+        const header = find_function_header(tokens, idx, "run") orelse continue;
+        if (header.close_params != header.open_params + 3 or
+            tokens[header.open_params + 1].kind != .ident or
+            !tok_eq(tokens[header.open_params + 2], "HttpResponse") or
+            !type_tokens_equal(tokens, header.return_start, header.body_open, "nil")) continue;
+        const body_end = find_matching(tokens, header.body_open, "{", "}") orelse return null;
+        var pos = header.body_open + 1;
         if (pos + 5 >= body_end or tokens[pos].kind != .ident or !tok_eq(tokens[pos + 1], "Tuple") or !tok_eq(tokens[pos + 2], "<")) continue;
         const handles_name = tokens[pos].lexeme;
         const tuple_close = find_matching(tokens, pos + 2, "<", ">") orelse continue;
         if (!type_tokens_equal(tokens, pos + 1, tuple_close + 1, "Tuple<Stream<u8>,Future<Result<option<trailers>,HttpError>>>") or
             !tok_eq(tokens[tuple_close + 1], "=") or !std.mem.eql(u8, tokens[tuple_close + 2].lexeme, host_name) or
-            !tok_eq(tokens[tuple_close + 3], "(") or !std.mem.eql(u8, tokens[tuple_close + 4].lexeme, tokens[idx + 3].lexeme) or
+            !tok_eq(tokens[tuple_close + 3], "(") or !std.mem.eql(u8, tokens[tuple_close + 4].lexeme, tokens[header.open_params + 1].lexeme) or
             !tok_eq(tokens[tuple_close + 5], ")")) continue;
         pos = tuple_close + 6;
 
@@ -1010,11 +1039,10 @@ fn find_response_body_read_handler(tokens: []const lexer.Token, host_name: []con
             if (pos + 8 >= body_end or tokens[pos].kind != .ident or !tok_eq(tokens[pos + 1], "Result") or !tok_eq(tokens[pos + 2], "<")) break;
             const item_close = find_matching(tokens, pos + 2, "<", ">") orelse break;
             if (!type_tokens_equal(tokens, pos + 1, item_close + 1, "Result<u8,nil>") or
-                !tok_eq(tokens[item_close + 1], "=") or !tok_eq(tokens[item_close + 2], "await") or
-                !tok_eq(tokens[item_close + 3], "(") or !std.mem.eql(u8, tokens[item_close + 4].lexeme, pending_name) or
-                !tok_eq(tokens[item_close + 5], ")")) break;
+                !tok_eq(tokens[item_close + 1], "=")) break;
+            const item_end = parse_await_call(tokens, item_close + 2, body_end, pending_name) orelse break;
             const item_name = tokens[pos].lexeme;
-            pos = item_close + 6;
+            pos = item_end;
 
             if (pos + 2 >= body_end or !tok_eq(tokens[pos], "_") or !tok_eq(tokens[pos + 1], "=") or
                 !std.mem.eql(u8, tokens[pos + 2].lexeme, item_name)) break;
@@ -1027,12 +1055,11 @@ fn find_response_body_read_handler(tokens: []const lexer.Token, host_name: []con
         if (pos + 2 < body_end and tokens[pos].kind == .ident and tok_eq(tokens[pos + 1], "Result") and tok_eq(tokens[pos + 2], "<")) {
             const trailer_result_close = find_matching(tokens, pos + 2, "<", ">") orelse continue;
             const await_ok = type_tokens_equal(tokens, pos + 1, trailer_result_close + 1, "Result<option<trailers>,HttpError>") and
-                tok_eq(tokens[trailer_result_close + 1], "=") and tok_eq(tokens[trailer_result_close + 2], "await") and
-                tok_eq(tokens[trailer_result_close + 3], "(") and std.mem.eql(u8, tokens[trailer_result_close + 4].lexeme, completion_name) and
-                tok_eq(tokens[trailer_result_close + 5], ")");
+                tok_eq(tokens[trailer_result_close + 1], "=");
             if (await_ok) {
+                const await_end = parse_await_call(tokens, trailer_result_close + 2, body_end, completion_name) orelse continue;
                 const result_name = tokens[pos].lexeme;
-                const discard_pos = trailer_result_close + 6;
+                const discard_pos = await_end;
                 if (discard_pos + 3 == body_end and tok_eq(tokens[discard_pos], "_") and tok_eq(tokens[discard_pos + 1], "=") and
                     std.mem.eql(u8, tokens[discard_pos + 2].lexeme, result_name))
                 {
@@ -1045,7 +1072,7 @@ fn find_response_body_read_handler(tokens: []const lexer.Token, host_name: []con
         if (!await_completion and (pos + 5 != body_end or !tok_eq(tokens[pos], "@") or !tok_eq(tokens[pos + 1], "cancel") or
             !tok_eq(tokens[pos + 2], "(") or !std.mem.eql(u8, tokens[pos + 3].lexeme, completion_name) or
             !tok_eq(tokens[pos + 4], ")"))) continue;
-        return .{ .response_param = tokens[idx + 3].lexeme, .read_count = read_count, .await_completion = await_completion };
+        return .{ .response_param = tokens[header.open_params + 1].lexeme, .read_count = read_count, .await_completion = await_completion };
     }
     return null;
 }
@@ -1077,23 +1104,45 @@ fn parse_cancellation_body(tokens: []const lexer.Token, handler: Handler, host_n
     return .{ .name = tokens[start].lexeme };
 }
 
+/// Parse the canonical `@await(future)` operation while accepting the old
+/// bare `await(future)` spelling in descriptor unit fixtures during migration.
+/// The returned index is the first token after the closing parenthesis.
+fn parse_await_call(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    future_name: []const u8,
+) ?usize {
+    if (start_idx >= end_idx) return null;
+    var await_idx = start_idx;
+    if (tok_eq(tokens[await_idx], "@")) {
+        if (await_idx + 1 >= end_idx or !tok_eq(tokens[await_idx + 1], "await")) return null;
+        await_idx += 2;
+    } else {
+        if (!tok_eq(tokens[await_idx], "await")) return null;
+        await_idx += 1;
+    }
+    if (await_idx >= end_idx or !tok_eq(tokens[await_idx], "(")) return null;
+    const close_idx = find_matching(tokens, await_idx, "(", ")") orelse return null;
+    if (close_idx >= end_idx or close_idx != await_idx + 2 or
+        !std.mem.eql(u8, tokens[await_idx + 1].lexeme, future_name)) return null;
+    return close_idx + 1;
+}
+
 fn is_direct_await_return(tokens: []const lexer.Token, start: usize, body_end: usize, future_name: []const u8) bool {
-    return start + 5 == body_end and
-        tok_eq(tokens[start], "return") and
-        tok_eq(tokens[start + 1], "await") and
-        tok_eq(tokens[start + 2], "(") and
-        std.mem.eql(u8, tokens[start + 3].lexeme, future_name) and
-        tok_eq(tokens[start + 4], ")");
+    if (start >= body_end or !tok_eq(tokens[start], "return")) return false;
+    const await_end = parse_await_call(tokens, start + 1, body_end, future_name) orelse return false;
+    return await_end == body_end;
 }
 
 fn is_bound_await_return(tokens: []const lexer.Token, start: usize, body_end: usize, future_name: []const u8) bool {
     if (start + 2 >= body_end or tokens[start].kind != .ident or !tok_eq(tokens[start + 1], "Result") or !tok_eq(tokens[start + 2], "<")) return false;
     const result_end = find_matching(tokens, start + 2, "<", ">") orelse return false;
     if (!type_tokens_equal(tokens, start + 1, result_end + 1, "Result<HttpResponse,HttpError>")) return false;
-    if (result_end + 8 > body_end or !tok_eq(tokens[result_end + 1], "=") or !tok_eq(tokens[result_end + 2], "await") or !tok_eq(tokens[result_end + 3], "(") or !std.mem.eql(u8, tokens[result_end + 4].lexeme, future_name) or !tok_eq(tokens[result_end + 5], ")")) return false;
-    return tok_eq(tokens[result_end + 6], "return") and
-        std.mem.eql(u8, tokens[result_end + 7].lexeme, tokens[start].lexeme) and
-        result_end + 8 == body_end;
+    if (result_end + 1 >= body_end or !tok_eq(tokens[result_end + 1], "=")) return false;
+    const await_end = parse_await_call(tokens, result_end + 2, body_end, future_name) orelse return false;
+    return await_end + 2 == body_end and tok_eq(tokens[await_end], "return") and
+        std.mem.eql(u8, tokens[await_end + 1].lexeme, tokens[start].lexeme);
 }
 
 fn find_next(tokens: []const lexer.Token, start: usize, text: []const u8) ?usize {
@@ -3700,7 +3749,7 @@ test "HTTP service plan accepts an exact cancellation handler for a payload Resu
         \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
         \\HttpResponse = @wasi_resource("http/types/response", { .id i64 })
         \\HttpError error = HttpFailure
-        \\async cancel_request(request HttpRequest) -> nil {
+        \\cancel_request(request HttpRequest) -> nil {
         \\    completion Future<Result<HttpResponse, HttpError>> = send(request)
         \\    @cancel(completion)
         \\}

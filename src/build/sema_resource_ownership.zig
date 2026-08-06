@@ -117,10 +117,22 @@ fn check_function_bodies(
         const close_params = find_matching(tokens, i + 1, "(", ")") catch continue;
         const body_open = find_function_body_open(tokens, close_params + 1) orelse continue;
         const body_close = find_matching(tokens, body_open, "{", "}") catch continue;
-        const is_async = i > 0 and tok_eq(tokens[i - 1], "async");
+        const is_async = (i > 0 and tok_eq(tokens[i - 1], "async")) or
+            body_contains_async_operation(tokens, body_open + 1, body_close);
         try check_function_body(allocator, tokens, i + 2, close_params, is_async, body_open + 1, body_close, resource_types, host_imports);
         i = body_close;
     }
+}
+
+fn body_contains_async_operation(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var idx = start_idx;
+    while (idx < end_idx) : (idx += 1) {
+        if (tok_eq(tokens[idx], "Future") or tok_eq(tokens[idx], "await") or
+            (idx + 1 < end_idx and tok_eq(tokens[idx], "@") and
+                (tok_eq(tokens[idx + 1], "async") or tok_eq(tokens[idx + 1], "await") or
+                    tok_eq(tokens[idx + 1], "cancel") or tok_eq(tokens[idx + 1], "next")))) return true;
+    }
+    return false;
 }
 
 fn find_function_body_open(tokens: []const lexer.Token, start_idx: usize) ?usize {

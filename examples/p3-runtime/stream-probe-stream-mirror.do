@@ -3,7 +3,7 @@ sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWrit
 ProbeError error = Io | IllegalByteSequence | Pipe
 StreamError error = StreamClosed | StreamWriteFailed
 
-async produce() -> Result<nil, ProbeError> {
+produce() -> Result<nil, ProbeError> {
     source Tuple<Stream<u8>, Future<Result<nil, ProbeError>>> = probe_read()
     input Stream<u8> = @get(source, 0)
     source_done Future<Result<nil, ProbeError>> = @get(source, 1)
@@ -15,11 +15,11 @@ async produce() -> Result<nil, ProbeError> {
             break
         }
         read_pending Future<Result<u8, nil>> = @next(input)
-        item Result<u8, nil> = await(read_pending)
+        item Result<u8, nil> = @await(read_pending)
         if @is(item, Ok) {
             value u8 = item
             write_pending Future<Result<nil, StreamError>> = writer(value)
-            write_result Result<nil, StreamError> = await(write_pending)
+            write_result Result<nil, StreamError> = @await(write_pending)
             _ = write_result
             remaining = @sub(remaining, 1)
         } else {
@@ -28,5 +28,5 @@ async produce() -> Result<nil, ProbeError> {
     }
     @cancel(source_done)
     pending Future<Result<nil, ProbeError>> = sink_write(writer)
-    return await(pending)
+    return @await(pending)
 }
