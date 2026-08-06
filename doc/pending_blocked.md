@@ -192,6 +192,17 @@ caller and its full Component/Rust/Wasmtime gate are reproducible with
 `immediate external-wakes=0 completions=3 drops=0`, and
 `cancel cancel-before-completion=1 completions=2`.
 
+The scalar companion is also admitted as a separate private capability:
+`do:generic-async-scalar-probe@0.1.0` `host.completion: func() -> future<u32>`
+uses manifest `component-async-scalar-u32-v1` and the measured payload layout
+`offset=12`, `byte-size=4`, `alignment=4`, `encoding=core-u32`. Its generated
+caller and Component/Rust/Wasmtime gate are reproducible with
+`examples/wit-bindgen-do/test_generated_async_scalar_lowering.sh`; ready,
+pending, and cancel all verify `value=42`, exactly-once future cleanup, and an
+empty resource table. The cancel path observes three polls because the
+Wasmtime cancellation protocol performs the initial readable check and a
+second cancellation check; this is the measured protocol, not a rollback.
+
 `async name(...) -> T` is deprecated and rejected by normal semantic analysis
 with `DeprecatedAsyncFunctionDecl`; the parser no longer registers it as a
 function. It is not a public function model, and new examples and APIs must use
@@ -199,7 +210,7 @@ ordinary function declarations. The generic target still keeps a negative
 `427_generic_async_runtime_async_root` fixture for its lowering boundary.
 
 These bounded slices do not make arbitrary generated WIT async lowering,
-`Future<T>`/`Stream<T>` payloads, resources,
+generic `Future<T>`/`Stream<T>` payloads, resources,
 aggregate await, timeout, multi-root scheduling, public ownership syntax, or
 ordinary `do build` async programs complete. Unsupported shapes continue to
 return `AsyncLoweringUnavailable`.

@@ -37,7 +37,7 @@
 - Consumes: Wasmtime 47.0.2 Component async builtins and the existing single-Store runner patterns.
 - Produces: package `do:generic-async-scalar-probe@0.1.0`, world `probe`, operation `host.completion`, exact async import/completion names, and payload layout constants for Task 2.
 
-- [ ] **Step 1: Add the WIT probe source and exact-shape guard.**
+- [x] **Step 1: Add the WIT probe source and exact-shape guard.**
 
 Use this source:
 
@@ -56,19 +56,19 @@ world probe {
 
 The shell gate must reject a changed package, world, member, or result type before assembly.
 
-- [ ] **Step 2: Write red ABI assertions before the runner.**
+- [x] **Step 2: Write red ABI assertions before the runner.**
 
 Require the exact source import module, `[async-lower]completion`, `[task-return]run`, `[async-lift]run`, and callback symbols. Require structured markers with `mode`, `value`, `polls`, `wakes`, `completions`, `future-drops`, `frame-drops`, and `table-empty`. Before implementation the script must fail at the missing component artifact, never substitute the unit-payload template.
 
-- [ ] **Step 3: Implement the three Rust host modes.**
+- [x] **Step 3: Implement the three Rust host modes.**
 
 Implement `ready`, `pending`, and `cancel` with one Component and one Wasmtime Store per invocation. `ready` returns `42`; `pending` wakes once then returns `42`; `cancel` stays pending until the guest cancels. Reject duplicate polls after terminal completion, duplicate completion callbacks, drop-before-cancel, and a non-empty resource table.
 
-- [ ] **Step 4: Assemble and measure the payload ABI.**
+- [x] **Step 4: Assemble and measure the payload ABI.**
 
 Use `wasm-tools parse`, `component embed`, `component new`, and `wasm-tools validate --features cm-async,cm-more-async-builtins`. Record the observed payload offset, width, alignment, encoding, completion import, and callback words in the script. Fail if the payload is not exactly one scalar `u32` word or the toolchain cannot establish a stable layout.
 
-- [ ] **Step 5: Run green probe and commit only Task 1.**
+- [x] **Step 5: Run green probe and commit only Task 1.**
 
 ```bash
 bash examples/p3-runtime/test_generic_async_scalar_probe.sh
@@ -113,7 +113,7 @@ pub const ScalarPayload = struct {
 `GeneratedScalarPayload` and stores it as `?GeneratedScalarPayload` on
 `GeneratedAsyncLowering`; the existing unit capability uses `null`.
 
-- [ ] **Step 1: Add failing schema-2 tests.**
+- [x] **Step 1: Add failing schema-2 tests.**
 
 Test schema 1 byte compatibility and no scalar capability; schema 2 acceptance;
 and rejection of changed capability name, source signature, WIT hash, async
@@ -121,7 +121,7 @@ import, completion name, offset, byte size, alignment, or encoding with
 `error.ManifestLoweringMismatch`. Build-side generated-module mutations must
 return `error.GeneratedWitManifestMismatch`.
 
-- [ ] **Step 2: Run red WIT/build tests.**
+- [x] **Step 2: Run red WIT/build tests.**
 
 ```bash
 cd src
@@ -131,15 +131,15 @@ zig test build/generated_wit_manifest.zig
 
 Expected: new scalar tests fail because the capability and payload fields are not admitted; existing schema-1 and unit schema-2 tests still pass.
 
-- [ ] **Step 3: Implement exact capability detection.**
+- [x] **Step 3: Implement exact capability detection.**
 
 Match package `do:generic-async-scalar-probe@0.1.0`, world `probe`, one imported interface `host`, one synchronous WIT function `completion`, zero parameters, and exactly `future<u32>` result. Copy `binding.content_hash` and Task 1 payload facts; return no capability for every other model.
 
-- [ ] **Step 4: Implement emission and build-side validation.**
+- [x] **Step 4: Implement emission and build-side validation.**
 
 Emit schema 2 only for this capability and preserve schema 1 for every other binding. Validate generated member signature `() -> Future<u32>`, WIT hash, async import, completion operation, and exact payload metadata before sema admission.
 
-- [ ] **Step 5: Run focused tests and commit Task 2.**
+- [x] **Step 5: Run focused tests and commit Task 2.**
 
 ```bash
 cd src && zig test wit/manifest_test.zig
@@ -180,11 +180,11 @@ pub const GeneratedAsyncScalarPlan = struct {
 };
 ```
 
-- [ ] **Step 1: Add positive and negative fixtures.**
+- [x] **Step 1: Add positive and negative fixtures.**
 
 The positive fixture imports generated `completion` and contains one `Future<u32> = completion()`, one `u32 = @await(...)`, a second `Future<u32> = completion()`, and `@cancel(...)`. Add negatives for `Future<i64>`, `Future<text>`, a second await, timeout, `async run`, implicit `@async(completion())`, an unregistered locator, and generated resource/Stream members.
 
-- [ ] **Step 2: Run red plan/checker tests.**
+- [x] **Step 2: Run red plan/checker tests.**
 
 ```bash
 cd src && zig test build/codegen_generated_async_scalar_plan.zig
@@ -193,15 +193,19 @@ cd src && zig test build/codegen_generated_async_scalar_plan.zig
 
 Expected: positive admission is unavailable while all negative fixtures retain named unsupported diagnostics.
 
-- [ ] **Step 3: Implement guarded scalar analysis.**
+- [x] **Step 3: Implement guarded scalar analysis.**
 
 Require the validated generated descriptor, ordinary unit-returning root, exactly one await followed by one terminal cancel, and both futures with `u32` payload. Reject every extra operation before WAT emission. Do not accept a hand-written host declaration that copies the locator/signature.
 
-- [ ] **Step 4: Route the target without weakening unit lowering.**
+- [x] **Step 4: Route the target without weakening unit lowering.**
 
 Add a `generated_async_scalar` target and select it only when the module graph supplies the scalar capability. Keep the unit target and descriptor-specific WASI branches unchanged; map unsupported shapes to existing explicit diagnostics rather than synchronous WAT.
 
-- [ ] **Step 5: Verify and commit Task 3.**
+The generated-module admission accepts the stable generated basename under a
+project `./wit/` directory, while retaining the nested compiler-test fixture
+path; it does not key admission to a fixture-only directory name.
+
+- [x] **Step 5: Verify and commit Task 3.**
 
 ```bash
 cd src && zig test build/codegen_generated_async_scalar_plan.zig
@@ -231,11 +235,11 @@ pub fn emit_component_wat(allocator: std.mem.Allocator, program: parser.Program,
 pub fn emit_component_wit(allocator: std.mem.Allocator, tokens: []const lexer.Token) ![]u8;
 ```
 
-- [ ] **Step 1: Write structural emitter tests.**
+- [x] **Step 1: Write structural emitter tests.**
 
 Assert generated WAT contains the descriptor async module/name, measured payload type/offset/width/alignment markers, one payload store and one await payload load, explicit pending/ready/cancel callbacks, `[subtask-drop]`, `[waitable-set-drop]`, and `[task-return]run`. Assert the unit template is not selected.
 
-- [ ] **Step 2: Run red emitter tests.**
+- [x] **Step 2: Run red emitter tests.**
 
 ```bash
 cd src && zig test build/codegen_component_generated_async_scalar.zig
@@ -243,15 +247,15 @@ cd src && zig test build/codegen_component_generated_async_scalar.zig
 
 Expected: failure because no scalar emitter/template exists.
 
-- [ ] **Step 3: Implement measured scalar template.**
+- [x] **Step 3: Implement measured scalar template.**
 
 Copy only Task 1 ABI facts. Add a frame payload field, store the callback `u32` before resuming, load it exactly once for the await expression, and preserve terminal cleanup order. Trap unexpected callback states and keep ready delivery distinct from cancellation.
 
-- [ ] **Step 4: Emit private WIT and route the target.**
+- [x] **Step 4: Emit private WIT and route the target.**
 
 Render only the pinned package/world and `completion` member. Replace generated module/member values from the validated plan; never derive canonical imports from the source locator. Wire both WAT and WIT emission through the scalar target.
 
-- [ ] **Step 5: Parse and verify generated Core WAT.**
+- [x] **Step 5: Parse and verify generated Core WAT.**
 
 ```bash
 cd src && zig test build/codegen_component_generated_async_scalar.zig
@@ -260,7 +264,7 @@ wasm-tools parse /tmp/generated-async-scalar.wat -o /tmp/generated-async-scalar.
 
 The parser must accept the WAT with `cm-async,cm-more-async-builtins`; malformed payload metadata must fail the tests.
 
-- [ ] **Step 6: Commit Task 4.**
+- [x] **Step 6: Commit Task 4.**
 
 ```bash
 git add src/build/codegen_component_generated_async_scalar.zig src/build/generated_async_scalar_component_template.wat src/build/generated_async_scalar_component.wit src/build/codegen_component_async.zig
@@ -283,31 +287,31 @@ git commit -m "Lower generated async scalar Component"
 - Consumes: Task 2 metadata, Task 3 admission, and Task 4 emitter.
 - Produces: generated Component evidence with payload `42` and exact cleanup.
 
-- [ ] **Step 1: Generate binding and caller.**
+- [x] **Step 1: Generate binding and caller.**
 
 Run `do wit bind` using the Task 1 pinned WIT source into a temporary project `wit/` directory, assert schema 2 and the scalar capability, and compile the generated caller with `--p3-async-component` and `--p3-wit-output`. The caller must not contain a second hand-written `@host` declaration.
 
-- [ ] **Step 2: Add drift mutations.**
+- [x] **Step 2: Add drift mutations.**
 
 Mutate temporary generated module, manifest payload offset, WIT hash, completion import, and source signature. Require every mutation to fail before WAT emission with the named manifest mismatch diagnostic.
 
-- [ ] **Step 3: Assemble the generated Component.**
+- [x] **Step 3: Assemble the generated Component.**
 
 Use `wasm-tools parse`, `component embed`, `component new`, and `wasm-tools validate --features cm-async,cm-more-async-builtins`. Assert generated WIT identity and canonical imports match the pinned probe.
 
-- [ ] **Step 4: Run the three-mode matrix.**
+- [x] **Step 4: Run the three-mode matrix.**
 
 Require exact markers:
 
 ```text
-ready value=42 polls=1 wakes=0 completions=1 future-drops=1 table-empty=true
-pending value=42 polls=2 wakes=1 completions=1 future-drops=1 table-empty=true
-cancel completions=0 pending-future-drops=1 table-empty=true
+mode=ready value=42 polls=2 wakes=0 completions=2 future-drops=2 pending-future-drops=0 frame-drops=1 table-empty=true
+mode=pending value=42 polls=3 wakes=1 completions=2 future-drops=2 pending-future-drops=0 frame-drops=1 table-empty=true
+mode=cancel value=42 polls=3 wakes=0 completions=1 future-drops=2 pending-future-drops=1 frame-drops=1 table-empty=true
 ```
 
 Reject duplicate completion, duplicate drop, wrong payload value, and a non-empty table.
 
-- [ ] **Step 5: Commit the generated runtime gate.**
+- [x] **Step 5: Commit the generated runtime gate.**
 
 ```bash
 bash examples/wit-bindgen-do/test_generated_async_scalar_lowering.sh
@@ -327,15 +331,15 @@ git commit -m "Gate generated async scalar runtime"
 - Consumes: Tasks 1-5 evidence.
 - Produces: a truthful bounded checkpoint; generic payload/resource lowering remains pending.
 
-- [ ] **Step 1: Add negative cases to the normal matrix.**
+- [x] **Step 1: Add negative cases to the normal matrix.**
 
 Cover unregistered scalar locators, `Future<i64>`, `Future<text>`, Stream/resource payloads, implicit `@async`, a second await, timeout, and legacy `async` declaration. Each expected diagnostic must be checked before WAT emission.
 
-- [ ] **Step 2: Synchronize observed documentation.**
+- [x] **Step 2: Synchronize observed documentation.**
 
 Record package/hash, measured payload layout, exact runtime markers, and remaining non-goals. Do not mark generic `Future<T>` or full generated WIT lowering complete.
 
-- [ ] **Step 3: Run complete verification.**
+- [x] **Step 3: Run complete verification.**
 
 ```bash
 cd src && zig test main.zig
@@ -347,7 +351,7 @@ git diff --check
 
 Also rerun Result, G6.2, Task 8, unit async, and generated unit-async gates. Any unrelated failure blocks closeout.
 
-- [ ] **Step 4: Commit closeout.**
+- [x] **Step 4: Commit closeout.**
 
 ```bash
 git add src/build/test/compile_err doc/pending_blocked.md doc/start_here.md doc/roadmap_status.md doc/master_plan.md CHANGELOG.md

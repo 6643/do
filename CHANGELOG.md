@@ -1,5 +1,12 @@
 # Changelog
 
+- 2026-08-06 Generated async scalar lowering: the private
+  `component-async-scalar-u32-v1` capability now accepts the generated
+  `Future<u32>` caller through manifest validation, a measured Component
+  payload state machine, and a project-root `wit/` Rust/Wasmtime gate. Ready,
+  pending, and cancel cleanup are verified; generic Future payloads, streams,
+  resources, and unrestricted generated WIT async lowering remain pending.
+
 - 2026-08-05 D2/G6.3 socket real-host gate: the compiler-generated TCP and UDP
   `create/bind/drop` Components now use the measured canonical argument order,
   result tags, IPv4 flattening, and result-area pointers. The Rust/Wasmtime

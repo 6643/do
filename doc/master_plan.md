@@ -17,8 +17,8 @@
 - `do check`: lexer/parser/sema/import diagnostics only; 诊断收集在 `src/build/diagnostics.zig`。
 - 阶段 A–F、H 已完成; D 可推进项与 D2.1 已收口; D2 真实本地 file/dir/CLI stream 与 compiler-generated TCP/UDP socket create/bind/drop loopback smoke 已收口，但总项仍受通用 filesystem async/external HTTP 阻断; G1–G5、G6.4 已完成; **阶段 I (I1+I2) 已关闭**。
 - 架构扁平拆分已落地: `type_name` / `sema_error` / `diagnostics` / `gen_*` 域竖切 / `sema_*` 域竖切 (见 `AGENTS.md`)。
-- 最近回归: `./src/build/test/run_tests.sh` → `pass=1108 fail=0 skip=3`; `RUN_WASM=1` 最近记录为 `pass=1100 fail=0 skip=3` (wasm smoke `6/6`); `cd src && zig test main.zig` → `277/277`。
-- Colorless async / WIT bindgen 已形成有界可验证切片：`do wit check/bind`、生成 manifest 漂移校验、`@async/@await/@cancel` 前端契约、固定 descriptor-backed generic Component runtime 的 pending/ready/cancel gate 均通过；自动 manifest-to-lowering 与任意 payload/Stream/resource lowering 仍是 pending。
+- 最近回归: Bun Node-compatible runner 下 `./src/build/test/run_tests.sh` → `pass=1108 fail=0 skip=3`; `RUN_WASM=1 SKIP_BUILD=1` → `pass=1110 fail=0 skip=3` (wasm smoke `6/6`); `cd src && zig test main.zig` → `277/277`。
+- Colorless async / WIT bindgen 已形成有界可验证切片：`do wit check/bind`、生成 manifest 漂移校验、`@async/@await/@cancel` 前端契约、descriptor-backed generic 与私有 scalar-`u32` Component runtime 的 pending/ready/cancel gates 均通过；自动 manifest-to-lowering 的通用化与任意 payload/Stream/resource lowering 仍是 pending。
 
 当前禁止默认推进:
 
@@ -50,7 +50,7 @@
 | G WASI / Component | G1–G5、G6.1、G6.2 bounded read-directory slice + generic record-stream consumer + multi-owned/multiple-path/one-/two-/three-/four-/five-/six-level nested-owned resource consumer + bounded scalar producer + helper-mediated lease（含五跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized forwarding-helper（含 typed-parameter reorder）+ branch-selected terminal checkpoints + private resource Result error/cancellation + pinned HTTP payload cancellation + private variant-resource-stream checkpoint + record-layout/source-mirror checkpoints、G6.3、G6.4 done; G6.2 general producer/resource extensions pending |
 | H 发布前治理 | done |
 | I 语言扩展 | **closed** (I1 递归/TCO + I2 Tuple 第一版) |
-| Colorless async / WIT bindgen | bounded runtime and manifest contract verified; automatic manifest-to-lowering and unrestricted generic async lowering pending |
+| Colorless async / WIT bindgen | bounded unit and scalar-`u32` runtime/manifest contracts verified; automatic manifest-to-lowering generalization and unrestricted generic async lowering pending |
 
 ## 3. 当前阻断与待处理
 

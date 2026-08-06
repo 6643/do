@@ -21,7 +21,7 @@
 | 阶段 D | 可推进项 done; D2.1 按 B 方案绿色 regression 收口 |
 | D2 真实 host smoke | in progress; real local filesystem preopen/read-directory, CLI pipe, and compiler-generated TCP/UDP socket create/bind/drop loopback gates are green; general filesystem async and external HTTP remain blocked |
 | 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + helper-mediated lease（含五跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints、G6.3、G6.4 done; G6.2 general producer-lease/borrowed-resource/list extensions pending |
-| Colorless async / WIT bindgen | canonical `@async/@await/@cancel` surface, legacy `async` deprecation, schema 1/2 generated manifest checks, automatic discovery for the admitted schema 2 unit capability, and bounded generic runtime slices verified; unrestricted generated WIT lowering remains pending |
+| Colorless async / WIT bindgen | canonical `@async/@await/@cancel` surface, legacy `async` deprecation, schema 1/2 generated manifest checks, automatic discovery for the admitted schema 2 unit and scalar-`u32` capabilities, and bounded Component/Rust/Wasmtime slices verified; unrestricted generated WIT lowering remains pending |
 | 阶段 I | **closed** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构扁平拆分 | 已落地: `diagnostics` / `type_name` / `sema_error` / codegen 域竖切 / **`sema_*` 域竖切** (`sema_tokens`/`sema_shapes`/`sema_function_*`/`sema_structures`/`sema_type_checks`/`sema_imports`/`sema_control`) |
 | 目录 | 标准库 `lib/`; 工具链 `src/` (原 `tool/`) |
@@ -40,7 +40,10 @@ cd src && zig test main.zig
   → All 277 tests passed.
 
 ./src/build/test/run_tests.sh
-  → pass=1108 fail=0 skip=3
+  → pass=1108 fail=0 skip=3 (Bun Node-compatible runner)
+
+RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
+  → pass=1110 fail=0 skip=3; wasm run summary: pass=6 fail=0 (Bun Node-compatible runner)
 
 Generated async manifest Component/Rust/Wasmtime gate (2026-08-06)
   → Zig 0.16.0, wasm-tools 1.254.0, Wasmtime 47.0.2, Rust/Cargo 1.97.1;
@@ -49,8 +52,14 @@ Generated async manifest Component/Rust/Wasmtime gate (2026-08-06)
     signature, async import, completion, and capability drift rejected before
     WAT emission
 
-RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
-  → last recorded run: pass=1100 fail=0 skip=3; wasm run summary: pass=6 fail=0
+Generated async scalar Component/Rust/Wasmtime gate (2026-08-06)
+  → `component-async-scalar-u32-v1`, package hash
+    `30f2b42501e9047f441628d21b4db1916b572ab830ef02763f86e7ac2c7f9945`,
+    payload `offset=12 byte-size=4 alignment=4 encoding=core-u32`; generated
+    project-root module passed ready/pending/cancel with exact markers
+    (`polls=2/3/3`, `completions=2/2/1`, `future-drops=2`, empty table), and
+    module/WIT/payload/signature/import/completion/capability drift rejected
+    before WAT emission
 
 bash examples/p3-runtime/test_task8_step3_baseline.sh
   → all seven registered Component/Rust/Wasmtime runtime gates passed

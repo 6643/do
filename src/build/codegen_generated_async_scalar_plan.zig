@@ -11,7 +11,7 @@ const find_matching = sema_tokens.find_matching;
 const string_token_body = sema_tokens.string_token_body;
 const tok_eq = sema_tokens.tok_eq;
 
-const pinned_module_path = "./wit/scalar/do_generic_async_scalar_probe__host__probe.do";
+const pinned_module_name = "do_generic_async_scalar_probe__host__probe.do";
 
 test "generated scalar async admission accepts the pinned await/cancel slice" {
     const source = @embedFile("test/check/430_generated_async_scalar.do");
@@ -31,6 +31,27 @@ test "generated scalar async admission accepts the pinned await/cancel slice" {
     try std.testing.expectEqual(@as(u32, 4), plan.payload.byte_size);
     try std.testing.expect(plan.await_token_index > 0);
     try std.testing.expect(plan.await_token_index < plan.cancel_token_index);
+}
+
+test "generated scalar async admission accepts the project-root generated module path" {
+    const source =
+        "completion = @lib(\"./wit/do_generic_async_scalar_probe__host__probe.do\", completion)\n" ++
+        "run() -> nil {\n" ++
+        "    ready Future<u32> = completion()\n" ++
+        "    value u32 = @await(ready)\n" ++
+        "    pending Future<u32> = completion()\n" ++
+        "    @cancel(pending)\n" ++
+        "}\n" ++
+        "start() {}\n";
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+    var graph = try test_graph(std.testing.allocator);
+    defer graph.deinit();
+    var plan = try analyze(std.testing.allocator, program, tokens, &graph);
+    defer plan.deinit(std.testing.allocator);
+    try std.testing.expectEqualStrings("completion", plan.host_member);
 }
 
 test "generated scalar async admission rejects a hand-written host copy" {
@@ -379,7 +400,7 @@ fn find_generated_scalar_host_binding(tokens: []const lexer.Token, graph: *const
         var idx: usize = 0;
         while (idx < tokens.len) : (idx += 1) {
             const binding = parse_lib_binding_at(tokens, idx) orelse continue;
-            if (!std.mem.eql(u8, binding.path, pinned_module_path) or
+            if (!is_pinned_scalar_module_path(binding.path) or
                 !std.mem.eql(u8, binding.target, lowering.member)) continue;
             if (match != null) return null;
             match = binding.alias;
@@ -390,6 +411,11 @@ fn find_generated_scalar_host_binding(tokens: []const lexer.Token, graph: *const
         }
     }
     return found;
+}
+
+fn is_pinned_scalar_module_path(path: []const u8) bool {
+    return std.mem.startsWith(u8, path, "./wit/") and
+        std.mem.eql(u8, std.fs.path.basename(path), pinned_module_name);
 }
 
 fn is_pinned_scalar_lowering(lowering: module_graph.GeneratedAsyncLowering) bool {

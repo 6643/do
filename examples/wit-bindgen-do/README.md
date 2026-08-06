@@ -49,3 +49,28 @@ completion, and capability drift are rejected before WAT emission.
 This is a bounded runtime proof for one zero-parameter `async func()` member.
 Payloads, streams, resources, aggregate await, and general generated WIT
 async lowering remain outside the admitted surface.
+
+## Generated async scalar binding gate
+
+`test_generated_async_scalar_lowering.sh` exercises the second private,
+descriptor-backed generated capability: `do:generic-async-scalar-probe@0.1.0`
+`host.completion: func() -> future<u32>`. The script runs `do wit bind` into a
+temporary project-root `wit/`, imports the generated
+`./wit/do_generic_async_scalar_probe__host__probe.do` module, validates the
+schema 2 scalar payload metadata, assembles a Component, and runs the shared
+Rust/Wasmtime host in ready, pending, and cancel modes.
+
+The observed markers are:
+
+```text
+mode=ready value=42 polls=2 wakes=0 completions=2 future-drops=2 pending-future-drops=0 frame-drops=1 table-empty=true
+mode=pending value=42 polls=3 wakes=1 completions=2 future-drops=2 pending-future-drops=0 frame-drops=1 table-empty=true
+mode=cancel value=42 polls=3 wakes=0 completions=1 future-drops=2 pending-future-drops=1 frame-drops=1 table-empty=true
+```
+
+Module/WIT hashes, scalar payload offset/width/alignment/encoding, source
+signature, canonical async imports, completion name, and capability drift are
+rejected before WAT emission. This remains a bounded `Future<u32>` shape:
+generic `Future<T>`, text/list/record/resource payloads, Stream, aggregate
+await, timeout, branching/loops, and unrestricted generated WIT lowering remain
+unsupported.

@@ -33,7 +33,7 @@
 | 阶段 A–F、H | 已完成 |
 | 阶段 D | 可推进项已完成; D2.1 已按 B 方案绿色 regression 收口; D2 真实本地 file/dir/CLI/socket create-bind-drop smoke in progress |
 | 阶段 G | G1–G5、G6.1、G6.2 有界 read-directory slice + generic consumer + multi-owned-resource + 一层/两层/三层/四层/五层/六层 nested-owned-resource + multiple nested-owned-resource paths + bounded scalar producer + bounded/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding 与 typed 参数重排）producer + helper-mediated lease + branch-selected terminal + private resource Result error/cancellation checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + record-layout/source-mirror lowering/runtime checkpoints、G6.3、G6.4 完成; G6.2 general producer-lease/borrowed-resource extensions pending |
-| Colorless async / WIT bindgen | canonical `@async/@await/@cancel`、legacy `async` 弃用、schema 1/2 生成 manifest 校验、已准入 schema 2 unit capability 的 manifest 自动发现与有界 generic runtime gate 已验证；unrestricted generated WIT lowering 仍 pending |
+| Colorless async / WIT bindgen | canonical `@async/@await/@cancel`、legacy `async` 弃用、schema 1/2 生成 manifest 校验、已准入 schema 2 unit 与 scalar-`u32` capabilities 的 manifest 自动发现和有界 Component/Rust/Wasmtime gates 已验证；unrestricted generated WIT lowering 仍 pending |
 | 阶段 I | **已关闭** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构审查/重构 | 五轮已落地 (见 §4); 默认不继续拆 god module |
 
@@ -54,7 +54,7 @@ bash examples/wit-bindgen-do/test_generated_async_lowering.sh
 
 # 默认完整回归 (当前基线)
 ./src/build/test/run_tests.sh
-# 期望: pass=1098 fail=0 skip=3
+# 期望: pass=1108 fail=0 skip=3
 
 # codegen 单元测试
 cd src && zig test build/codegen_api.zig
@@ -68,13 +68,13 @@ cd src && zig test build/codegen_api.zig
 
 ```bash
 RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
-# 最近扩展基线: pass=1100 fail=0 skip=3; wasm run summary: pass=6 fail=0
+# 最近扩展基线: pass=1110 fail=0 skip=3; wasm run summary: pass=6 fail=0
 ```
 
 | 基线项 | 最近值 |
 | --- | --- |
-| 默认回归 (`SKIP_BUILD=1`) | `pass=1098 fail=0 skip=3` |
-| `zig test main.zig` | `271/271` |
+| 默认回归 (`SKIP_BUILD=1`) | `pass=1108 fail=0 skip=3` |
+| `zig test main.zig` | `277/277` |
 | Task 8 Step 3 runtime baseline | 七个已登记 Component/Rust/Wasmtime gate 通过 |
 | HTTP service ABI / empty-request gate | pinned Component + Rust/Wasmtime pass; `codegen_component_wasi_http` `189/189`; registered payload pending/ready gate green, unregistered/general ready delivery remains blocked |
 | pinned filesystem record source mirror | `p3_filesystem_wit_manifest` + read-directory sema tests pass |
@@ -91,13 +91,25 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 已可通过 checker；WASI/P3 lowering 仍只接受现有 pinned registry，通用 custom
 host 的 WAT/Component lowering 尚未开放。
 
-唯一已开放的 generated WIT async Component capability 是私有
+当前已开放的 generated WIT async Component capability 仍是严格私有且有界的：
+其中一个是
 `do:generic-async-runtime-probe@0.1.0` 的 `host.work: async func()`：它使用
 manifest schema 2 的 `component-async-unit-v1`，由 import graph 自动发现并
 复用有界 generic runtime template。`examples/wit-bindgen-do/test_generated_async_lowering.sh`
 同时验证 `wasm-tools 1.254.0`、Wasmtime 47.0.2 和 Rust 1.97.1 的
 pending/immediate/cancel 运行时矩阵。payload、Stream、resource、参数化或
 任意其他 generated WIT async shape 仍拒绝并保持 `AsyncLoweringUnavailable`。
+
+另一个已开放但同样严格私有的 capability 是
+`do:generic-async-scalar-probe@0.1.0` 的
+`host.completion: func() -> future<u32>`，使用
+`component-async-scalar-u32-v1` 和经 probe 测量的 `offset=12`、`byte-size=4`、
+`alignment=4`、`encoding=core-u32`。运行
+`bash examples/wit-bindgen-do/test_generated_async_scalar_lowering.sh` 可复现
+生成模块、manifest drift、Component 以及 ready/pending/cancel Rust/Wasmtime
+矩阵。它只接受普通 `run() -> nil` 中一次 `Future<u32>` `@await` 和一次终止
+`@cancel`；generic Future payload、Stream、resource、分支/循环、timeout 和
+unrestricted generated WIT lowering 仍拒绝。
 
 当前工作区的 `/tmp` 配额会让 Zig Debug cache 返回 `DiskQuota`；`run_tests.sh` 现在
 尊重 `TMPDIR`、`ZIG_LOCAL_CACHE_DIR` / `ZIG_GLOBAL_CACHE_DIR` 覆盖，并在回归开始时
