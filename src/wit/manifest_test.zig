@@ -31,6 +31,28 @@ const pinned_async_manifest_prefix =
     "\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"members\":[" ++
     "{\"package\":\"do:generic-async-runtime-probe@0.1.0\",\"member\":\"host.work\",\"effect\":\"async\",\"async\":true,\"future\":false,\"stream\":false,\"resource\":false,\"signature\":\"() -> Future<nil>\"}],\"async_lowerings\":[";
 
+const scalar_source =
+    \\package do:generic-async-scalar-probe@0.1.0;
+    \\
+    \\interface host {
+    \\  completion: func() -> future<u32>;
+    \\
+    \\}
+    \\
+    \\world probe {
+    \\  import host;
+    \\  export run: async func();
+    \\}
+;
+
+const scalar_manifest_prefix =
+    "{\"schema\":2,\"package\":\"do:generic-async-scalar-probe@0.1.0\",\"world\":\"probe\",\"modules\":[\"host.do\"]," ++
+    "\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"members\":[" ++
+    "{\"package\":\"do:generic-async-scalar-probe@0.1.0\",\"member\":\"host.completion\",\"effect\":\"sync\",\"async\":false,\"future\":true,\"stream\":false,\"resource\":false,\"signature\":\"() -> Future<u32>\"}],\"async_lowerings\":[";
+
+const scalar_lowering =
+    "{\"capability\":\"component-async-scalar-u32-v1\",\"member\":\"host.completion\",\"source_signature\":\"() -> Future<u32>\",\"wit_package\":\"do:generic-async-scalar-probe@0.1.0\",\"wit_world\":\"probe\",\"wit_interface\":\"host\",\"wit_member\":\"completion\",\"async_import_module\":\"do:generic-async-scalar-probe/host@0.1.0\",\"async_import_name\":\"[async-lower][future-read-0]completion\",\"completion\":\"completion\",\"payload\":{\"core_type\":\"i32\",\"offset\":12,\"byte_size\":4,\"alignment\":4,\"encoding\":\"core-u32\"},\"wit_sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"}";
+
 test "schema 2 accepts the pinned unit async capability" {
     const source = pinned_async_manifest_prefix ++
         "{\"capability\":\"component-async-unit-v1\",\"member\":\"host.work\",\"source_signature\":\"() -> Future<nil>\",\"wit_package\":\"do:generic-async-runtime-probe@0.1.0\",\"wit_world\":\"probe\",\"wit_interface\":\"host\",\"wit_member\":\"work\",\"async_import_module\":\"do:generic-async-runtime-probe/host@0.1.0\",\"async_import_name\":\"[async-lower]work\",\"completion\":\"task-return\",\"wit_sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"}]}";
@@ -66,6 +88,32 @@ test "schema 2 rejects a changed completion import" {
     try std.testing.expectError(error.ManifestLoweringMismatch, manifest.parse(std.testing.allocator, source));
 }
 
+test "schema 2 accepts the pinned scalar async capability and payload" {
+    const source = scalar_manifest_prefix ++ scalar_lowering ++ "]}";
+    var parsed = try manifest.parse(std.testing.allocator, source);
+    defer parsed.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 1), parsed.document.async_lowerings.len);
+    const lowering = parsed.document.async_lowerings[0];
+    try std.testing.expectEqualStrings("component-async-scalar-u32-v1", lowering.capability);
+    try std.testing.expectEqualStrings("completion", lowering.completion);
+    try std.testing.expect(lowering.payload != null);
+    try std.testing.expectEqualStrings("i32", lowering.payload.?.core_type);
+    try std.testing.expectEqual(@as(u32, 12), lowering.payload.?.offset);
+    try std.testing.expectEqual(@as(u32, 4), lowering.payload.?.byte_size);
+    try std.testing.expectEqual(@as(u32, 4), lowering.payload.?.alignment);
+    try std.testing.expectEqualStrings("core-u32", lowering.payload.?.encoding);
+}
+
+test "schema 2 rejects scalar payload layout drift" {
+    const source = scalar_manifest_prefix ++ scalar_lowering ++ "]}";
+    const marker = "\"offset\":12";
+    const offset = std.mem.indexOf(u8, source, marker) orelse return error.TestExpectedEqual;
+    var drifted = try std.testing.allocator.dupe(u8, source);
+    defer std.testing.allocator.free(drifted);
+    drifted[offset + marker.len - 1] = '8';
+    try std.testing.expectError(error.ManifestLoweringMismatch, manifest.parse(std.testing.allocator, drifted));
+}
+
 test "capability detection rejects payload and non-pinned async models" {
     var payload = try resolve.resolve_source(std.testing.allocator, "package do:generic-async-runtime-probe@0.1.0; interface host { work: async func() -> u32; } world probe { import host; }", "probe");
     defer payload.deinit();
@@ -94,6 +142,42 @@ test "wit emitter emits schema 2 for the pinned unit async binding" {
     var parsed = try manifest.parse(std.testing.allocator, source);
     defer parsed.deinit(std.testing.allocator);
     try manifest.validate_binding(std.testing.allocator, &parsed, binding);
+}
+
+test "wit emitter emits schema 2 for the pinned scalar async binding" {
+    var binding = try resolve.resolve_source(std.testing.allocator, scalar_source, "probe");
+    defer binding.deinit();
+    const source = try emit_manifest.render(
+        std.testing.allocator,
+        binding,
+        "do_generic_async_scalar_probe__host__probe.do",
+    );
+    defer std.testing.allocator.free(source);
+    try std.testing.expect(std.mem.startsWith(u8, source, "{\"schema\":2,"));
+    try std.testing.expect(std.mem.indexOf(u8, source, "\"capability\":\"component-async-scalar-u32-v1\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "\"payload\":{\"core_type\":\"i32\"") != null);
+}
+
+test "scalar capability detection accepts only the pinned Future<u32> member" {
+    var binding = try resolve.resolve_source(std.testing.allocator, scalar_source, "probe");
+    defer binding.deinit();
+    const capabilities = try async_lowering.detect(std.testing.allocator, binding);
+    defer async_lowering.deinit(std.testing.allocator, capabilities);
+    try std.testing.expectEqual(@as(usize, 1), capabilities.len);
+    try std.testing.expectEqualStrings("component-async-scalar-u32-v1", capabilities[0].capability);
+    try std.testing.expectEqualStrings("completion", capabilities[0].completion);
+    try std.testing.expectEqualStrings("[async-lower][future-read-0]completion", capabilities[0].async_import_name);
+    try std.testing.expectEqualStrings("i32", capabilities[0].payload.?.core_type);
+
+    var renamed = try resolve.resolve_source(
+        std.testing.allocator,
+        "package do:generic-async-scalar-probe@0.1.0; interface host { other: func() -> future<u32>; } world probe { import host; }",
+        "probe",
+    );
+    defer renamed.deinit();
+    const renamed_capabilities = try async_lowering.detect(std.testing.allocator, renamed);
+    defer async_lowering.deinit(std.testing.allocator, renamed_capabilities);
+    try std.testing.expectEqual(@as(usize, 0), renamed_capabilities.len);
 }
 
 test "wit bindgen manifest accepts a valid async member" {

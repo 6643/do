@@ -48,6 +48,15 @@ pub const AsyncLowering = struct {
     async_import_name: []const u8,
     completion: []const u8,
     wit_sha256: []const u8,
+    payload: ?ScalarPayload,
+};
+
+pub const ScalarPayload = struct {
+    core_type: []const u8,
+    offset: u32,
+    byte_size: u32,
+    alignment: u32,
+    encoding: []const u8,
 };
 
 pub const Document = struct {
@@ -140,7 +149,11 @@ pub fn parse(allocator: std.mem.Allocator, source: []const u8) (ManifestError ||
                 !std.mem.eql(u8, lowering.wit_world, world) or
                 !std.mem.eql(u8, lowering.wit_sha256, sha256)) return error.ManifestLoweringMismatch;
             if (find_manifest_member(members.items, lowering.wit_package, lowering.member)) |member| {
-                if (!member.is_async or !std.mem.eql(u8, member.effect, "async")) return error.ManifestEffectMismatch;
+                if (std.mem.eql(u8, lowering.capability, "component-async-unit-v1")) {
+                    if (!member.is_async or !std.mem.eql(u8, member.effect, "async")) return error.ManifestEffectMismatch;
+                } else if (std.mem.eql(u8, lowering.capability, "component-async-scalar-u32-v1")) {
+                    if (member.is_async or !member.has_future or member.has_stream or member.has_resource) return error.ManifestEffectMismatch;
+                } else return error.ManifestLoweringMismatch;
                 if (!std.mem.eql(u8, member.signature, lowering.source_signature)) return error.ManifestSignatureMismatch;
             } else return error.ManifestLoweringMismatch;
             for (async_lowerings.items) |existing| {
@@ -240,8 +253,15 @@ pub fn validate_binding(
             return error.ManifestLoweringMismatch;
         const function = find_function(interface, lowering.wit_member) orelse
             return error.ManifestLoweringMismatch;
-        if (!function.is_async or function.params.len != 0 or function.result != null or
-            function.effects.has_future or function.effects.has_stream or function.effects.has_resource) return error.ManifestEffectMismatch;
+        if (std.mem.eql(u8, lowering.capability, "component-async-unit-v1")) {
+            if (!function.is_async or function.params.len != 0 or function.result != null or
+                function.effects.has_future or function.effects.has_stream or function.effects.has_resource) return error.ManifestEffectMismatch;
+        } else if (std.mem.eql(u8, lowering.capability, "component-async-scalar-u32-v1")) {
+            if (function.is_async or function.params.len != 0 or function.result == null or
+                function.result.?.kind != .future or function.result.?.args.len != 1 or
+                function.result.?.args[0].kind != .u32 or !function.effects.has_future or
+                function.effects.has_stream or function.effects.has_resource) return error.ManifestEffectMismatch;
+        } else return error.ManifestLoweringMismatch;
         const expected_signature = signature.render(allocator, interface.name, function) catch
             return error.ManifestSignatureMismatch;
         defer allocator.free(expected_signature);
@@ -417,9 +437,10 @@ fn parse_async_lowering(value: std.json.Value) ManifestError!AsyncLowering {
     const async_import_name = string_value(object.get("async_import_name")) orelse return error.ManifestLoweringMismatch;
     const completion = string_value(object.get("completion")) orelse return error.ManifestLoweringMismatch;
     const wit_sha256 = string_value(object.get("wit_sha256")) orelse return error.ManifestLoweringMismatch;
+    const payload = try parse_payload(object.get("payload"));
 
-    if (!std.mem.eql(u8, capability, "component-async-unit-v1") or
-        !std.mem.eql(u8, member, "host.work") or
+    if (std.mem.eql(u8, capability, "component-async-unit-v1")) {
+        if (!std.mem.eql(u8, member, "host.work") or
         !std.mem.eql(u8, source_signature, "() -> Future<nil>") or
         !std.mem.eql(u8, wit_package, "do:generic-async-runtime-probe@0.1.0") or
         !std.mem.eql(u8, wit_world, "probe") or
@@ -428,7 +449,22 @@ fn parse_async_lowering(value: std.json.Value) ManifestError!AsyncLowering {
         !std.mem.eql(u8, async_import_module, "do:generic-async-runtime-probe/host@0.1.0") or
         !std.mem.eql(u8, async_import_name, "[async-lower]work") or
         !std.mem.eql(u8, completion, "task-return") or
-        !valid_hash(wit_sha256)) return error.ManifestLoweringMismatch;
+        !valid_hash(wit_sha256) or payload != null) return error.ManifestLoweringMismatch;
+    } else if (std.mem.eql(u8, capability, "component-async-scalar-u32-v1")) {
+        const scalar = payload orelse return error.ManifestLoweringMismatch;
+        if (!std.mem.eql(u8, member, "host.completion") or
+            !std.mem.eql(u8, source_signature, "() -> Future<u32>") or
+            !std.mem.eql(u8, wit_package, "do:generic-async-scalar-probe@0.1.0") or
+            !std.mem.eql(u8, wit_world, "probe") or
+            !std.mem.eql(u8, wit_interface, "host") or
+            !std.mem.eql(u8, wit_member, "completion") or
+            !std.mem.eql(u8, async_import_module, "do:generic-async-scalar-probe/host@0.1.0") or
+            !std.mem.eql(u8, async_import_name, "[async-lower][future-read-0]completion") or
+            !std.mem.eql(u8, completion, "completion") or
+            !std.mem.eql(u8, scalar.core_type, "i32") or scalar.offset != 12 or
+            scalar.byte_size != 4 or scalar.alignment != 4 or
+            !std.mem.eql(u8, scalar.encoding, "core-u32") or !valid_hash(wit_sha256)) return error.ManifestLoweringMismatch;
+    } else return error.ManifestLoweringMismatch;
     return .{
         .capability = capability,
         .member = member,
@@ -441,6 +477,22 @@ fn parse_async_lowering(value: std.json.Value) ManifestError!AsyncLowering {
         .async_import_name = async_import_name,
         .completion = completion,
         .wit_sha256 = wit_sha256,
+        .payload = payload,
+    };
+}
+
+fn parse_payload(value: ?std.json.Value) ManifestError!?ScalarPayload {
+    const actual = value orelse return null;
+    return switch (actual) {
+        .null => null,
+        .object => |object| .{
+            .core_type = string_value(object.get("core_type")) orelse return error.ManifestLoweringMismatch,
+            .offset = bounded_u32(object.get("offset")) orelse return error.ManifestLoweringMismatch,
+            .byte_size = bounded_u32(object.get("byte_size")) orelse return error.ManifestLoweringMismatch,
+            .alignment = bounded_u32(object.get("alignment")) orelse return error.ManifestLoweringMismatch,
+            .encoding = string_value(object.get("encoding")) orelse return error.ManifestLoweringMismatch,
+        },
+        else => return error.ManifestLoweringMismatch,
     };
 }
 
@@ -564,4 +616,10 @@ fn unsigned_value(value: ?std.json.Value) ?u64 {
         .integer => |number| if (number >= 0) @intCast(number) else null,
         else => null,
     };
+}
+
+fn bounded_u32(value: ?std.json.Value) ?u32 {
+    const number = unsigned_value(value) orelse return null;
+    if (number > std.math.maxInt(u32)) return null;
+    return @intCast(number);
 }

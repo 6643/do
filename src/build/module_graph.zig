@@ -61,6 +61,10 @@ fn free_generated_async_lowering(allocator: std.mem.Allocator, lowering: Generat
     if (lowering.async_import_module.len != 0) allocator.free(lowering.async_import_module);
     if (lowering.async_import_name.len != 0) allocator.free(lowering.async_import_name);
     if (lowering.completion.len != 0) allocator.free(lowering.completion);
+    if (lowering.payload) |payload| {
+        if (payload.core_type.len != 0) allocator.free(payload.core_type);
+        if (payload.encoding.len != 0) allocator.free(payload.encoding);
+    }
 }
 
 pub const ParseImportFn = *const fn (tokens: []const lexer.Token, idx: usize) ?ImportRef;

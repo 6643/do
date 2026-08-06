@@ -135,7 +135,19 @@ fn append_lowering(
     try append_json_text(out, allocator, lowering.async_import_name);
     try out.appendSlice(allocator, "\",\"completion\":\"");
     try append_json_text(out, allocator, lowering.completion);
-    try out.appendSlice(allocator, "\",\"wit_sha256\":\"");
+    try out.append(allocator, '"');
+    if (lowering.payload) |payload| {
+        try out.appendSlice(allocator, ",\"payload\":{\"core_type\":\"");
+        try append_json_text(out, allocator, payload.core_type);
+        try append_fmt(out, allocator, "\",\"offset\":{d},\"byte_size\":{d},\"alignment\":{d},\"encoding\":\"", .{
+            payload.offset,
+            payload.byte_size,
+            payload.alignment,
+        });
+        try append_json_text(out, allocator, payload.encoding);
+        try out.appendSlice(allocator, "\"}");
+    }
+    try out.appendSlice(allocator, ",\"wit_sha256\":\"");
     try append_hash(out, allocator, lowering.wit_sha256);
     try out.appendSlice(allocator, "\"}");
 }

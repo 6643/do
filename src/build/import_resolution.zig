@@ -233,6 +233,7 @@ fn clone_generated_async_lowering(
         .async_import_name = "",
         .completion = "",
         .wit_sha256 = lowering.wit_sha256,
+        .payload = null,
     };
     errdefer free_generated_async_lowering(allocator, owned);
     owned.locator = try allocator.dupe(u8, lowering.locator);
@@ -245,6 +246,9 @@ fn clone_generated_async_lowering(
     owned.async_import_module = try allocator.dupe(u8, lowering.async_import_module);
     owned.async_import_name = try allocator.dupe(u8, lowering.async_import_name);
     owned.completion = try allocator.dupe(u8, lowering.completion);
+    if (lowering.payload) |payload| {
+        owned.payload = try clone_generated_scalar_payload(allocator, payload);
+    }
     return owned;
 }
 
@@ -259,6 +263,34 @@ fn free_generated_async_lowering(allocator: std.mem.Allocator, lowering: module_
     if (lowering.async_import_module.len != 0) allocator.free(lowering.async_import_module);
     if (lowering.async_import_name.len != 0) allocator.free(lowering.async_import_name);
     if (lowering.completion.len != 0) allocator.free(lowering.completion);
+    if (lowering.payload) |payload| {
+        free_generated_scalar_payload(allocator, payload);
+    }
+}
+
+fn clone_generated_scalar_payload(
+    allocator: std.mem.Allocator,
+    payload: generated_wit_manifest.GeneratedScalarPayload,
+) !generated_wit_manifest.GeneratedScalarPayload {
+    var owned = generated_wit_manifest.GeneratedScalarPayload{
+        .core_type = "",
+        .offset = payload.offset,
+        .byte_size = payload.byte_size,
+        .alignment = payload.alignment,
+        .encoding = "",
+    };
+    errdefer free_generated_scalar_payload(allocator, owned);
+    owned.core_type = try allocator.dupe(u8, payload.core_type);
+    owned.encoding = try allocator.dupe(u8, payload.encoding);
+    return owned;
+}
+
+fn free_generated_scalar_payload(
+    allocator: std.mem.Allocator,
+    payload: generated_wit_manifest.GeneratedScalarPayload,
+) void {
+    if (payload.core_type.len != 0) allocator.free(payload.core_type);
+    if (payload.encoding.len != 0) allocator.free(payload.encoding);
 }
 
 fn is_generated_wit_module_path(path: []const u8) bool {
@@ -2485,6 +2517,70 @@ test "generated WIT schema 2 lowering enters the module graph" {
     try std.testing.expectEqualStrings("task-return", lowering.completion);
 }
 
+test "generated WIT scalar schema 2 lowering carries payload metadata" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDir(std.testing.io, "wit", .default_dir);
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "wit/do_generic_async_scalar_probe__host__probe.do",
+        .data = generated_scalar_async_module_source,
+    });
+    const manifest = try generated_scalar_async_manifest(std.testing.allocator, generated_scalar_async_module_hash);
+    defer std.testing.allocator.free(manifest);
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "wit/manifest.json", .data = manifest });
+
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", std.testing.allocator);
+    defer std.testing.allocator.free(root);
+    const input_path = try std.fs.path.join(std.testing.allocator, &.{ root, "main.do" });
+    defer std.testing.allocator.free(input_path);
+    const source = "completion = @lib(\"./wit/do_generic_async_scalar_probe__host__probe.do\", completion)";
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    var graph = try check_and_load(std.testing.io, std.testing.allocator, input_path, tokens, "lib");
+    defer graph.deinit();
+    try std.testing.expectEqual(@as(usize, 1), graph.generated_async_lowerings.len);
+    const lowering = graph.generated_async_lowerings[0];
+    try std.testing.expectEqualStrings("do:generic-async-scalar-probe/host@0.1.0", lowering.locator);
+    try std.testing.expectEqualStrings("completion", lowering.member);
+    try std.testing.expectEqualStrings("[async-lower][future-read-0]completion", lowering.async_import_name);
+    try std.testing.expectEqualStrings("completion", lowering.completion);
+    try std.testing.expect(lowering.payload != null);
+    try std.testing.expectEqualStrings("i32", lowering.payload.?.core_type);
+    try std.testing.expectEqual(@as(u32, 12), lowering.payload.?.offset);
+}
+
+test "generated WIT scalar payload layout drift is rejected" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDir(std.testing.io, "wit", .default_dir);
+    try tmp.dir.writeFile(std.testing.io, .{
+        .sub_path = "wit/do_generic_async_scalar_probe__host__probe.do",
+        .data = generated_scalar_async_module_source,
+    });
+    const manifest = try generated_scalar_async_manifest(std.testing.allocator, generated_scalar_async_module_hash);
+    defer std.testing.allocator.free(manifest);
+    const marker = "\"offset\":12";
+    const marker_offset = std.mem.indexOf(u8, manifest, marker) orelse return error.TestExpectedEqual;
+    var drifted = try std.testing.allocator.dupe(u8, manifest);
+    defer std.testing.allocator.free(drifted);
+    drifted[marker_offset + marker.len - 1] = '6';
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "wit/manifest.json", .data = drifted });
+
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", std.testing.allocator);
+    defer std.testing.allocator.free(root);
+    const input_path = try std.fs.path.join(std.testing.allocator, &.{ root, "main.do" });
+    defer std.testing.allocator.free(input_path);
+    const source = "completion = @lib(\"./wit/do_generic_async_scalar_probe__host__probe.do\", completion)";
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectError(
+        error.GeneratedWitManifestMismatch,
+        check_and_load(std.testing.io, std.testing.allocator, input_path, tokens, "lib"),
+    );
+}
+
 test "generated WIT module hash drift rejects before lowering admission" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -2515,10 +2611,22 @@ const generated_async_module_source =
     "work = @host(\"do:generic-async-runtime-probe/host@0.1.0\", \"work\", () -> Future<nil>)";
 const generated_async_module_hash = "77f8e5774f46663b912de1742cf6fa21093b10094edb627729e33560e917d531";
 
+const generated_scalar_async_module_source =
+    "completion = @host(\"do:generic-async-scalar-probe/host@0.1.0\", \"completion\", () -> Future<u32>)";
+const generated_scalar_async_module_hash = "5694fd59462d887760c1c94136406b5f8308a2a148a215b0e6c4028896825151";
+
 fn generated_async_manifest(allocator: std.mem.Allocator, module_hash: []const u8) ![]u8 {
     return std.fmt.allocPrint(
         allocator,
         "{{\"schema\":2,\"package\":\"do:generic-async-runtime-probe@0.1.0\",\"world\":\"probe\",\"modules\":[\"do_generic_async_runtime_probe__host__probe.do\"],\"module_hashes\":[{{\"path\":\"do_generic_async_runtime_probe__host__probe.do\",\"sha256\":\"{s}\"}}],\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"members\":[{{\"package\":\"do:generic-async-runtime-probe@0.1.0\",\"member\":\"host.work\",\"effect\":\"async\",\"async\":true,\"future\":false,\"stream\":false,\"resource\":false,\"signature\":\"() -> Future<nil>\"}}],\"async_lowerings\":[{{\"capability\":\"component-async-unit-v1\",\"member\":\"host.work\",\"source_signature\":\"() -> Future<nil>\",\"wit_package\":\"do:generic-async-runtime-probe@0.1.0\",\"wit_world\":\"probe\",\"wit_interface\":\"host\",\"wit_member\":\"work\",\"async_import_module\":\"do:generic-async-runtime-probe/host@0.1.0\",\"async_import_name\":\"[async-lower]work\",\"completion\":\"task-return\",\"wit_sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"}}]}}",
+        .{module_hash},
+    );
+}
+
+fn generated_scalar_async_manifest(allocator: std.mem.Allocator, module_hash: []const u8) ![]u8 {
+    return std.fmt.allocPrint(
+        allocator,
+        "{{\"schema\":2,\"package\":\"do:generic-async-scalar-probe@0.1.0\",\"world\":\"probe\",\"modules\":[\"do_generic_async_scalar_probe__host__probe.do\"],\"module_hashes\":[{{\"path\":\"do_generic_async_scalar_probe__host__probe.do\",\"sha256\":\"{s}\"}}],\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"members\":[{{\"package\":\"do:generic-async-scalar-probe@0.1.0\",\"member\":\"host.completion\",\"effect\":\"sync\",\"async\":false,\"future\":true,\"stream\":false,\"resource\":false,\"signature\":\"() -> Future<u32>\"}}],\"async_lowerings\":[{{\"capability\":\"component-async-scalar-u32-v1\",\"member\":\"host.completion\",\"source_signature\":\"() -> Future<u32>\",\"wit_package\":\"do:generic-async-scalar-probe@0.1.0\",\"wit_world\":\"probe\",\"wit_interface\":\"host\",\"wit_member\":\"completion\",\"async_import_module\":\"do:generic-async-scalar-probe/host@0.1.0\",\"async_import_name\":\"[async-lower][future-read-0]completion\",\"completion\":\"completion\",\"payload\":{{\"core_type\":\"i32\",\"offset\":12,\"byte_size\":4,\"alignment\":4,\"encoding\":\"core-u32\"}},\"wit_sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"}}]}}",
         .{module_hash},
     );
 }

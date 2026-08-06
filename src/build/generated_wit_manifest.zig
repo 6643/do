@@ -13,6 +13,14 @@ pub const Error = error{
     GeneratedWitManifestMismatch,
 };
 
+pub const GeneratedScalarPayload = struct {
+    core_type: []const u8,
+    offset: u32,
+    byte_size: u32,
+    alignment: u32,
+    encoding: []const u8,
+};
+
 pub const GeneratedAsyncLowering = struct {
     locator: []const u8,
     member: []const u8,
@@ -25,6 +33,7 @@ pub const GeneratedAsyncLowering = struct {
     async_import_name: []const u8,
     completion: []const u8,
     wit_sha256: [32]u8,
+    payload: ?GeneratedScalarPayload,
 };
 
 pub const ValidatedManifest = struct {
@@ -65,6 +74,7 @@ const RawLowering = struct {
     async_import_name: []const u8,
     completion: []const u8,
     wit_sha256: [32]u8,
+    payload: ?GeneratedScalarPayload,
 };
 
 const Parsed = struct {
@@ -236,6 +246,7 @@ fn parse(allocator: std.mem.Allocator, source: []const u8) !Parsed {
             const completion = string_value(object.get("completion")) orelse return error.InvalidManifest;
             const wit_sha256 = string_value(object.get("wit_sha256")) orelse return error.InvalidManifest;
             const hash = parse_hash(wit_sha256) orelse return error.InvalidManifest;
+            const payload = try parse_payload(object.get("payload"));
             for (lowerings.items) |existing| {
                 if (std.mem.eql(u8, existing.member, member) or
                     std.mem.eql(u8, existing.wit_member, wit_member)) return error.GeneratedWitManifestMismatch;
@@ -252,6 +263,7 @@ fn parse(allocator: std.mem.Allocator, source: []const u8) !Parsed {
                 .async_import_name = async_import_name,
                 .completion = completion,
                 .wit_sha256 = hash,
+                .payload = payload,
             });
         }
     } else if (root.get("async_lowerings") != null) {
@@ -299,16 +311,35 @@ fn validate_lowerings(
     if (parsed.lowerings.len == 0) return;
     const interface = interface_name(module_name) orelse return error.GeneratedWitManifestMismatch;
     for (parsed.lowerings) |lowering| {
-        if (!std.mem.eql(u8, lowering.capability, "component-async-unit-v1") or
-            !std.mem.eql(u8, lowering.member, "host.work") or
-            !std.mem.eql(u8, lowering.source_signature, "() -> Future<nil>") or
-            !std.mem.eql(u8, lowering.wit_package, "do:generic-async-runtime-probe@0.1.0") or
-            !std.mem.eql(u8, lowering.wit_world, "probe") or
-            !std.mem.eql(u8, lowering.wit_interface, "host") or
-            !std.mem.eql(u8, lowering.wit_member, "work") or
-            !std.mem.eql(u8, lowering.async_import_module, "do:generic-async-runtime-probe/host@0.1.0") or
-            !std.mem.eql(u8, lowering.async_import_name, "[async-lower]work") or
-            !std.mem.eql(u8, lowering.completion, "task-return")) return error.GeneratedWitManifestMismatch;
+        const is_unit = std.mem.eql(u8, lowering.capability, "component-async-unit-v1");
+        const is_scalar = std.mem.eql(u8, lowering.capability, "component-async-scalar-u32-v1");
+        if (!is_unit and !is_scalar) return error.GeneratedWitManifestMismatch;
+        if (is_unit) {
+            if (!std.mem.eql(u8, lowering.member, "host.work") or
+                !std.mem.eql(u8, lowering.source_signature, "() -> Future<nil>") or
+                !std.mem.eql(u8, lowering.wit_package, "do:generic-async-runtime-probe@0.1.0") or
+                !std.mem.eql(u8, lowering.wit_world, "probe") or
+                !std.mem.eql(u8, lowering.wit_interface, "host") or
+                !std.mem.eql(u8, lowering.wit_member, "work") or
+                !std.mem.eql(u8, lowering.async_import_module, "do:generic-async-runtime-probe/host@0.1.0") or
+                !std.mem.eql(u8, lowering.async_import_name, "[async-lower]work") or
+                !std.mem.eql(u8, lowering.completion, "task-return") or
+                lowering.payload != null) return error.GeneratedWitManifestMismatch;
+        } else {
+            const payload = lowering.payload orelse return error.GeneratedWitManifestMismatch;
+            if (!std.mem.eql(u8, lowering.member, "host.completion") or
+                !std.mem.eql(u8, lowering.source_signature, "() -> Future<u32>") or
+                !std.mem.eql(u8, lowering.wit_package, "do:generic-async-scalar-probe@0.1.0") or
+                !std.mem.eql(u8, lowering.wit_world, "probe") or
+                !std.mem.eql(u8, lowering.wit_interface, "host") or
+                !std.mem.eql(u8, lowering.wit_member, "completion") or
+                !std.mem.eql(u8, lowering.async_import_module, "do:generic-async-scalar-probe/host@0.1.0") or
+                !std.mem.eql(u8, lowering.async_import_name, "[async-lower][future-read-0]completion") or
+                !std.mem.eql(u8, lowering.completion, "completion") or
+                !std.mem.eql(u8, payload.core_type, "i32") or payload.offset != 12 or
+                payload.byte_size != 4 or payload.alignment != 4 or
+                !std.mem.eql(u8, payload.encoding, "core-u32")) return error.GeneratedWitManifestMismatch;
+        }
         if (!std.mem.eql(u8, lowering.wit_package, parsed.package) or
             !std.mem.eql(u8, lowering.wit_world, parsed.world) or
             !std.mem.eql(u8, lowering.wit_interface, interface) or
@@ -317,7 +348,11 @@ fn validate_lowerings(
 
         const member = find_manifest_member(parsed.members, lowering.wit_package, interface, lowering.wit_member) orelse
             return error.GeneratedWitManifestMismatch;
-        if (!member.is_async or member.has_future or member.has_stream or member.has_resource) {
+        if (is_unit) {
+            if (!member.is_async or member.has_future or member.has_stream or member.has_resource) {
+                return error.GeneratedWitManifestMismatch;
+            }
+        } else if (member.is_async or !member.has_future or member.has_stream or member.has_resource) {
             return error.GeneratedWitManifestMismatch;
         }
         const expected_signature = normalized_text(allocator, member.signature) catch
@@ -362,6 +397,7 @@ fn clone_lowerings_for_module(
             .async_import_name = "",
             .completion = "",
             .wit_sha256 = lowering.wit_sha256,
+            .payload = null,
         };
         errdefer free_lowering(allocator, owned);
         owned.locator = try allocator.dupe(u8, lowering.async_import_module);
@@ -374,6 +410,9 @@ fn clone_lowerings_for_module(
         owned.async_import_module = try allocator.dupe(u8, lowering.async_import_module);
         owned.async_import_name = try allocator.dupe(u8, lowering.async_import_name);
         owned.completion = try allocator.dupe(u8, lowering.completion);
+        if (lowering.payload) |payload| {
+            owned.payload = try clone_payload(allocator, payload);
+        }
         try out.append(allocator, owned);
         owned = .{
             .locator = "",
@@ -387,6 +426,7 @@ fn clone_lowerings_for_module(
             .async_import_name = "",
             .completion = "",
             .wit_sha256 = lowering.wit_sha256,
+            .payload = null,
         };
     }
     return .{ .lowerings = try out.toOwnedSlice(allocator) };
@@ -403,6 +443,28 @@ fn free_lowering(allocator: std.mem.Allocator, lowering: GeneratedAsyncLowering)
     if (lowering.async_import_module.len != 0) allocator.free(lowering.async_import_module);
     if (lowering.async_import_name.len != 0) allocator.free(lowering.async_import_name);
     if (lowering.completion.len != 0) allocator.free(lowering.completion);
+    if (lowering.payload) |payload| {
+        free_payload(allocator, payload);
+    }
+}
+
+fn clone_payload(allocator: std.mem.Allocator, payload: GeneratedScalarPayload) !GeneratedScalarPayload {
+    var owned = GeneratedScalarPayload{
+        .core_type = "",
+        .offset = payload.offset,
+        .byte_size = payload.byte_size,
+        .alignment = payload.alignment,
+        .encoding = "",
+    };
+    errdefer free_payload(allocator, owned);
+    owned.core_type = try allocator.dupe(u8, payload.core_type);
+    owned.encoding = try allocator.dupe(u8, payload.encoding);
+    return owned;
+}
+
+fn free_payload(allocator: std.mem.Allocator, payload: GeneratedScalarPayload) void {
+    if (payload.core_type.len != 0) allocator.free(payload.core_type);
+    if (payload.encoding.len != 0) allocator.free(payload.encoding);
 }
 
 fn find_manifest_member(
@@ -637,6 +699,27 @@ fn unsigned_value(value: ?std.json.Value) ?u64 {
     return switch (actual) {
         .integer => |number| if (number >= 0) @intCast(number) else null,
         else => null,
+    };
+}
+
+fn bounded_u32(value: ?std.json.Value) ?u32 {
+    const number = unsigned_value(value) orelse return null;
+    if (number > std.math.maxInt(u32)) return null;
+    return @intCast(number);
+}
+
+fn parse_payload(value: ?std.json.Value) !?GeneratedScalarPayload {
+    const actual = value orelse return null;
+    return switch (actual) {
+        .null => null,
+        .object => |object| .{
+            .core_type = string_value(object.get("core_type")) orelse return error.InvalidManifest,
+            .offset = bounded_u32(object.get("offset")) orelse return error.InvalidManifest,
+            .byte_size = bounded_u32(object.get("byte_size")) orelse return error.InvalidManifest,
+            .alignment = bounded_u32(object.get("alignment")) orelse return error.InvalidManifest,
+            .encoding = string_value(object.get("encoding")) orelse return error.InvalidManifest,
+        },
+        else => return error.InvalidManifest,
     };
 }
 
