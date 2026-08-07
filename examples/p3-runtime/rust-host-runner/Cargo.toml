@@ -169,6 +169,10 @@ path = "src/bin/future_owned_canonical_abi.rs"
 name = "do-p3-g6-2-c-min-list-resource-producer-abi"
 path = "src/bin/g6_2_c_min_list_resource_producer_abi.rs"
 
+[[bin]]
+name = "do-p3-g6-2-c-min-dynamic-list-producer-abi"
+path = "src/bin/g6_2_c_min_dynamic_list_producer_abi.rs"
+
 [profile.dev]
 debug = 0
 incremental = false
