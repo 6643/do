@@ -385,7 +385,7 @@ Run `git commit -m "Lower bounded dynamic list producer"`.
 - Runner output: `count`, entries, host-calls, pending-polls, stream-drops,
   resource-created, resource-drops, cancel-calls, and `table-empty`.
 
-- [ ] **Step 1: Add shell assertions before the compiler-generated component exists.**
+- [x] **Step 1: Add shell assertions before the compiler-generated component exists.**
 
 The gate must assert:
 
@@ -400,21 +400,21 @@ The gate must assert:
 | cancel before transfer | empty or partial prefix | guest-owned tickets released once |
 | cancel after transfer | exact entries | transferred tickets not guest-dropped |
 
-- [ ] **Step 2: Run the runtime gate red.**
+- [x] **Step 2: Run the runtime gate red.**
 
 Run `bash examples/p3-runtime/test_rust_g6_2_c_min_dynamic_list_producer.sh`.
 
 Expected: it stops because the compiler-generated Component or runner binary
 does not yet exist, not because the test silently skips.
 
-- [ ] **Step 3: Implement the runner using the existing `ResourceTable` conventions.**
+- [x] **Step 3: Implement the runner using the existing `ResourceTable` conventions.**
 
 The host must count every create/drop, preserve the source/stream ownership
 boundary, and treat a non-empty table or duplicate drop as failure. It must not
 claim that dropping the root `call_concurrent` future hard-cancels the guest
 task; only measured guest/child cancellation paths are admitted.
 
-- [ ] **Step 4: Run the complete dynamic runtime matrix.**
+- [x] **Step 4: Run the complete dynamic runtime matrix.**
 
 Run `bash examples/p3-runtime/test_do_g6_2_c_min_dynamic_list_resource_producer.sh`.
 Run `bash examples/p3-runtime/test_rust_g6_2_c_min_dynamic_list_producer.sh`.
