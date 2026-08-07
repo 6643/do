@@ -493,7 +493,7 @@ Run `git commit -m "Document bounded dynamic list producer gate"`.
 - Read: all plan/spec files above
 - Verify: compiler, runtime, and documentation gates
 
-- [ ] **Step 1: Run focused Zig tests.**
+- [x] **Step 1: Run focused Zig tests.**
 
 Run `cd src && zig test build/wit_abi_layout.zig`.
 Run `cd src && zig test build/wit_abi_ownership.zig`.
@@ -503,14 +503,14 @@ Run `cd src && zig test build/sema_imports.zig`.
 Run `cd src && zig test build/codegen_component_async.zig`.
 Run `cd src && zig test build/codegen_component_dynamic_list_resource_producer.zig`.
 
-- [ ] **Step 2: Run canonical, Do, and Rust/Wasmtime gates.**
+- [x] **Step 2: Run canonical, Do, and Rust/Wasmtime gates.**
 
 Run `bash examples/p3-runtime/test_g6_2_c_min_dynamic_list_producer_abi.sh`.
 Run `bash examples/p3-runtime/test_do_g6_2_c_min_dynamic_list_resource_producer.sh`.
 Run `bash examples/p3-runtime/test_rust_g6_2_c_min_dynamic_list_producer.sh`.
 Run `bash examples/p3-runtime/test_rust_g6_2_c_min_list_resource_producer.sh`.
 
-- [ ] **Step 3: Run the repository regression and build checks.**
+- [x] **Step 3: Run the repository regression and build checks.**
 
 Run `./src/build/test/run_tests.sh`.
 Run `cd src && zig test main.zig`.
@@ -520,7 +520,7 @@ Run `git diff --check`.
 
 Expected: no regression from the C-min baseline; `skip=3` remains intentional.
 
-- [ ] **Step 4: Review the scope checklist before declaring closure.**
+- [x] **Step 4: Review the scope checklist before declaring closure.**
 
 The phase is complete only if all of these are evidenced:
 
@@ -534,6 +534,10 @@ The phase is complete only if all of these are evidenced:
 - borrowed stream/future and root hard-cancel remain explicitly blocked.
 
 - [ ] **Step 5: Commit only after fresh verification and open/update the PR.**
+
+Local commits are complete and the fresh verification above is green. `git push`
+and PR creation remain intentionally unexecuted because the current request did
+not authorize external repository writes.
 
 Run `git status --short --branch`.
 Run `git diff --check`.
