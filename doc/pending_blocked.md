@@ -25,10 +25,16 @@ only. Public `own<T>`/`borrow<T>`/`ref<T>` syntax remains outside this phase.
 
 | ID | 问题 | 证据 / 停止点 | 恢复条件 |
 | --- | --- | --- | --- |
-| **G6.2** | `descriptor.read-directory` 及 record-stream 通用能力 | generic consumer 已覆盖注册的非 filesystem record streams；bounded producer、StreamMirror、private Result cancellation、HTTP payload cancellation、resource-list stream 以及私有 `do:variant-resource-stream-canonical@0.1.0` 的 compiler-generated Component/Rust/Wasmtime gate 均已通过。variant slice 固定为 `ticket(own<ticket>)`、`idle`、`failed(io)`、单次 read、pending/completion error，frame `+64` 的 `tag@0,payload@4,size=8,align=4`，并保留 early-drop、malformed-tag 与 duplicate-release 负例；仍缺一般 async helper/producer lease、任意 producer 表达式、通用 list、通用 borrowed/variant lowering、第六跳 forwarding、第七层或更一般 nested resource 字段、payload-bearing completion error 的更广形状、任意 filesystem async method与通用 resource cancellation。Pinned `wasm-tools 1.255.0` 对含 `borrow<T>` 的 stream record 在 Component embed 阶段明确拒绝（1.254.0 同样拒绝） | 保持 private cancellation slice 的 descriptor/负边界；扩展其他 producer/resource shape 前必须另立 design 与 gate |
+| **G6.2** | `descriptor.read-directory` 及 record-stream 通用能力 | generic consumer 已覆盖注册的非 filesystem record streams；bounded producer、StreamMirror、private Result cancellation、HTTP payload cancellation、resource-list stream、私有 `do:variant-resource-stream-canonical@0.1.0` 以及动态 count `0..3` 的私有 `do:g6-2-c-min-dynamic-producer@0.1.0` compiler-generated Component/Rust/Wasmtime gate 均已通过。动态 producer 固定 `ptr=64/len=68/stride=4/ticket=0`、stream capacity `1`、count `4` 早拒绝且零创建，并保留 pending、sink error、early drop、partial source failure、转移前/后 cancellation 与四个 fail-closed 负例；仍缺一般 async helper/producer lease、任意 producer 表达式、通用 list、通用 borrowed/variant lowering、第六跳 forwarding、第七层或更一般 nested resource 字段、payload-bearing completion error 的更广形状、任意 filesystem async method与通用 resource cancellation。Pinned `wasm-tools 1.255.0` 对含 `borrow<T>` 的 stream record 在 Component embed 阶段明确拒绝（1.254.0 同样拒绝） | 保持所有 private bounded descriptor 的精确边界；扩展其他 producer/resource shape 前必须另立 design、probe 与 gate |
 | **06.2** | 历史总项 | 已拆到 G2–G6；通用 consumer slice 已关闭，剩余边界由 **G6.2** 的后续 gates 承接 | 同上 |
 
-**G6.2 next-shape stop (2026-08-05, `can_skip=true`):** 当前计划要求的两个候选都没有形成新的独立 shape：payload-bearing completion error 的 pinned 证据属于现有 HTTP 专用 descriptor，record/list resource shape 已有独立 registry 与 runtime gate。没有新的 pinned WIT/WAT、canonical layout 和 ownership matrix 时不新增 descriptor、不泛化现有 lowering。恢复条件是先提交新的 bounded design、pinned probe、正负 fixture、Component/Rust/Wasmtime cleanup gate，再重新进入 G6.2。
+**G6.2 next-shape stop (2026-08-08, `can_skip=true`):** 动态 count `0..3`
+private producer 已形成独立 design、pinned WIT/WAT、registry/sema admission、
+compiler adapter、正负 fixture和 Component/Rust/Wasmtime cleanup gate；该
+bounded shape 已关闭。下一 shape 仍不得从它泛化：没有新的 pinned WIT/WAT、
+canonical layout 和 ownership matrix 时不新增 descriptor、不泛化现有 lowering。
+恢复条件是先提交新的 bounded design、pinned probe、正负 fixture、
+Component/Rust/Wasmtime cleanup gate，再重新进入 G6.2。
 
 **Generic ABI v2 borrow capability matrix (2026-08-06):** pinned
 `wasm-tools 1.254.0 (bb58fdf91 2026-07-20)` accepted `component embed` plus
@@ -294,9 +300,10 @@ borrowed/list/variant resource field 或更宽 runtime 形状。
 - 阶段 A–F、H、I (I1+I2) 主线; G1–G5、G6.1、G6.4
 - **G6.1** preopens 方案 A: host `[Tuple<i32,text>]` + `preopen_directories() -> [Tuple<Dir, text>]` (`compile_ok/274`–`275`)
 - **G6.3** sockets 方案 B: create/bind/drop + dual address + payload enum + stdlib wrappers (`compile_ok/291`–`294`)
-- **G6.2 C-min producer**: private `stream<list<resource-entry>>` producer with
-  measured `ptr=64/len=68/stride=4/ticket=0`, exact Do admission, compiler
-  Component/Rust/Wasmtime ready/pending/error/cancel gate, and fail-closed
+- **G6.2 C-min producers**: private closed `0/1/3` and dynamic-count `0..3`
+  `stream<list<resource-entry>>` producers with measured
+  `ptr=64/len=68/stride=4/ticket=0`, exact Do admission, compiler
+  Component/Rust/Wasmtime ready/pending/error/cancel gates, and fail-closed
   negative fixtures; generic list/producer and public ownership remain pending
 
 ---

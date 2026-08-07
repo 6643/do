@@ -449,13 +449,13 @@ Run `git commit -m "Test dynamic list producer runtime cleanup"`.
 - Negative fixtures must report the established unsupported descriptor diagnostic
   before WAT emission; they must not degrade into generic parser errors.
 
-- [ ] **Step 1: Add positive and negative fixtures before final promotion.**
+- [x] **Step 1: Add positive and negative fixtures before final promotion.**
 
 The positive fixture checks the new descriptor under `--p3-async-component`.
 Negative fixtures cover unregistered package version, non-`u32` count, a second
 stream item, and a borrowed stream entry.
 
-- [ ] **Step 2: Run each negative fixture directly.**
+- [x] **Step 2: Run each negative fixture directly.**
 
 Run `./bin/do build src/build/test/compile_err/450_g6_2_c_min_dynamic_list_producer_unregistered.do --p3-async-component -o /tmp/450.wat`.
 Run `./bin/do build src/build/test/compile_err/451_g6_2_c_min_dynamic_list_producer_count_type.do --p3-async-component -o /tmp/451.wat`.
@@ -464,7 +464,7 @@ Run `./bin/do build src/build/test/compile_err/453_g6_2_c_min_dynamic_list_produ
 
 Expected: all four fail with their `.expect` substrings and produce no WAT.
 
-- [ ] **Step 3: Run the positive Do/component boundary gate.**
+- [x] **Step 3: Run the positive Do/component boundary gate.**
 
 Run `bash examples/p3-runtime/test_do_g6_2_c_min_dynamic_list_resource_producer.sh`.
 Run `bash examples/p3-runtime/test_do_g6_2_c_min_list_resource_producer.sh`.
@@ -473,7 +473,7 @@ Run `bash examples/p3-runtime/test_do_record_resource_list_stream_boundary.sh`.
 Expected: the new dynamic descriptor passes and old consumer/C-min boundaries
 remain unchanged.
 
-- [ ] **Step 4: Update status only from fresh output.**
+- [x] **Step 4: Update status only from fresh output.**
 
 Record the new package hash, measured layout, accepted count range, runtime
 matrix, and exact negative diagnostics. Keep generic producer expressions,

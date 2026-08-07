@@ -32,7 +32,7 @@
 | v1 子集 | 发布候选已收口 |
 | 阶段 A–F、H | 已完成 |
 | 阶段 D | 可推进项已完成; D2.1 已按 B 方案绿色 regression 收口; D2 真实本地 file/dir/CLI/socket create-bind-drop smoke in progress |
-| 阶段 G | G1–G5、G6.1、G6.2 有界 read-directory slice + generic consumer + multi-owned-resource + 一层/两层/三层/四层/五层/六层 nested-owned-resource + multiple nested-owned-resource paths + bounded scalar producer + bounded/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding 与 typed 参数重排）producer + helper-mediated lease + branch-selected terminal + private resource Result error/cancellation checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private C-min list/resource producer slice、G6.3、G6.4 完成; generic list/producer、borrowed payload 与 root hard-cancel pending |
+| 阶段 G | G1–G5、G6.1、G6.2 有界 read-directory slice + generic consumer + multi-owned-resource + 一层/两层/三层/四层/五层/六层 nested-owned-resource + multiple nested-owned-resource paths + bounded scalar producer + bounded/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding 与 typed 参数重排）producer + helper-mediated lease + branch-selected terminal + private resource Result error/cancellation checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count C-min list/resource producer slices、G6.3、G6.4 完成; generic list/producer、borrowed payload 与 root hard-cancel pending |
 | Colorless async / WIT bindgen | canonical `@async/@await/@cancel`、legacy `async` 弃用、schema 1/2 生成 manifest 校验、已准入 schema 2 unit 与 scalar capabilities 的 manifest 自动发现，以及 opt-in v2 variant/scalar-i64 gates、统一 promotion profile、`--p3-async-call-component` root-owned local-frame gate 和 `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` gate 已验证；unrestricted generated WIT lowering 仍 pending |
 | 阶段 I | **已关闭** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构审查/重构 | 五轮已落地 (见 §4); 默认不继续拆 god module |
@@ -69,9 +69,12 @@ bash examples/p3-runtime/test_do_future_owned_component.sh
 # private C-min stream<list<resource-entry>> producer compiler/runtime gate
 bash examples/p3-runtime/test_rust_g6_2_c_min_list_resource_producer.sh
 
+# private bounded dynamic-count producer compiler/runtime gate
+bash examples/p3-runtime/test_rust_g6_2_c_min_dynamic_list_producer.sh
+
 # 默认完整回归 (当前基线; 本机使用 Bun 作为 Node-compatible runner)
 NODE_BIN="$(command -v bun)" WASM_TOOLS="$(command -v wasm-tools)" ./src/build/test/run_tests.sh
-# 期望: pass=1120 fail=0 skip=3
+# 期望: pass=1126 fail=0 skip=3
 
 # codegen 单元测试
 cd src && zig test build/codegen_api.zig
@@ -90,7 +93,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 
 | 基线项 | 最近值 |
 | --- | --- |
-| 默认回归 (`SKIP_BUILD=1`) | `pass=1120 fail=0 skip=3` |
+| 默认回归 (`SKIP_BUILD=1`) | `pass=1126 fail=0 skip=3` |
 | WASM 扩展回归 (`RUN_WASM=1 SKIP_BUILD=1`) | `pass=1118 fail=0 skip=3`; smoke `6/6` |
 | `zig test main.zig` | `285/285` |
 | Task 8 Step 3 runtime baseline | 七个已登记 Component/Rust/Wasmtime gate 通过 |

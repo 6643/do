@@ -1,5 +1,18 @@
 # Changelog
 
+# 2026-08-08 G6.2 private bounded dynamic list producer promotion: added the
+  exact `do:g6-2-c-min-dynamic-producer@0.1.0` descriptor with WIT hash
+  `95f6d2d616e80248a8710e10199fa3674aa80b76247f25c2e71d3d87ea4afe76` and
+  world `dynamic-list-producer`. The compiler-generated Component and
+  Rust/Wasmtime gate pass runtime counts `0/1/2/3` with ordered tickets,
+  reject count `4` before allocation, and pass pending, sink-error, early-drop,
+  partial source failure, and pre-/post-transfer cancellation with an empty
+  `ResourceTable`. The measured list facts remain `ptr=64`, `len=68`,
+  `stride=4`, ticket offset `0`, and stream capacity `1`; four negative
+  fixtures remain fail-closed. This extends only the private bounded slice;
+  generic producer expressions/lists, borrowed async payloads, public
+  `own<T>`/`borrow<T>`/`ref<T>`, and root hard-cancel remain outside scope.
+
 # 2026-08-08 G6.2 private C-min list/resource producer promotion: registered
   `do:g6-2-c-min-producer@0.1.0 / consume-via-stream` and promoted the exact
   `StreamWriter<[ResourceEntry]> -> Result<nil, ProducerError>` Do shape through

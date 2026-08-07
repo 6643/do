@@ -1,8 +1,8 @@
 # G6.2 Bounded Dynamic List Producer
 
-Status: probe in progress. This document records the private ABI evidence for
-`do:g6-2-c-min-dynamic-producer@0.1.0`; it does not add public ownership syntax
-to Do.
+Status: compiler/runtime promotion green (2026-08-08). This document records
+the private ABI evidence for `do:g6-2-c-min-dynamic-producer@0.1.0`; it does
+not add public ownership syntax to Do.
 
 ## Probe evidence
 
@@ -68,6 +68,14 @@ The runner also exercises a pending sink, sink error, early drop, partial
 source creation failure, cancellation before transfer, and cancellation after
 transfer. Every terminal row must report whether resources were received,
 dropped, or transferred and must end with an empty `ResourceTable`.
+
+The isolated compiler adapter and generated runtime gate consume the same
+measured facts. Adapter tests pass `147/147`, the generic async dispatcher
+passes `453/453`, and the compiler-generated Component/Rust/Wasmtime matrix
+passes all rows above plus the pending, sink-error, early-drop, source-failure,
+and both transfer-boundary cancellation variants. Four compile-error fixtures
+preserve fail-closed version, count-type, second-binding, and borrowed-entry
+boundaries.
 
 ## Exclusions and stop conditions
 
