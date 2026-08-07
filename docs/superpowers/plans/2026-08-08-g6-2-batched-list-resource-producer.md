@@ -151,7 +151,7 @@
   `resource-drops`, `list-allocations`, `list-releases`, `stream-drops`,
   `future-drops`, and `table-empty`.
 
-- [ ] **Step 1: Write red shell assertions for the new probe.**
+- [x] **Step 1: Write red shell assertions for the new probe.**
 
   Require the script to fail when the Core/WIT/Rust files are absent, and then
   assert all of the following once they exist:
@@ -165,7 +165,7 @@
   every accepted terminal leaves table-empty=true
   ```
 
-- [ ] **Step 2: Implement the hand-authored Core state machine.**
+- [x] **Step 2: Implement the hand-authored Core state machine.**
 
   Prepare both list pointer/length pairs before the first transfer decision and
   use separate frame slots for each pair and transfer state. Emit stable
@@ -177,7 +177,7 @@
   path; cancellation before the first transfer therefore drops all three
   guest-owned tickets and releases both already-prepared lists.
 
-- [ ] **Step 3: Implement the Rust/Wasmtime ABI oracle.**
+- [x] **Step 3: Implement the Rust/Wasmtime ABI oracle.**
 
   The host sink reads at most two list values. It records each handle as it is
   transferred and drops transferred handles exactly once. For `cancel-before-first`
@@ -186,7 +186,7 @@
   duplicate drop, a missing list release, or a third list item must fail the
   runner.
 
-- [ ] **Step 4: Run the pinned probe and stop on a toolchain no-go.**
+- [x] **Step 4: Run the pinned probe and stop on a toolchain no-go.**
 
   Run:
 
@@ -200,7 +200,7 @@
   If `wasm-tools` rejects the repeated list transfer, record the exact stderr
   and stop this plan before registry or compiler changes.
 
-- [ ] **Step 5: Commit only the green probe evidence.**
+- [x] **Step 5: Commit only the green probe evidence.**
 
   Run `git diff --check`, `rustfmt --edition 2024 --check` on the new Rust bin,
   then commit the probe files:

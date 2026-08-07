@@ -1,7 +1,7 @@
 # G6.2 Batched List-Resource Producer Design
 
-**Status:** Task 1 design and pre-admission boundary; canonical ABI and compiler
-promotion are not admitted yet.
+**Status:** Tasks 1-2 design, canonical ABI, and ownership probe are green;
+compiler manifest/sema admission and generated lowering are not admitted yet.
 
 **Date:** 2026-08-08
 
@@ -128,6 +128,24 @@ malformed list length.
   canonical layout, and green ownership matrix.
 - A Component embed/validation rejection is recorded verbatim and stops the
   promotion; no compatibility workaround or public syntax is added.
+
+## Canonical Probe Evidence
+
+The pinned probe passed parse, Core validation, WIT embed, Component validation,
+and all six Rust/Wasmtime modes with `wasm-tools 1.255.0`, `rustc 1.97.1`, and
+`cargo 1.97.1`:
+
+```text
+WIT SHA-256:  a0717b2ac8525c4b1f684a4222f66939312a19c959c66b0ace5ebca16f45299f
+WAT SHA-256:  1114696249c4fd9142005ed3b7703c2642741e22e4832494df05bfc635cbd71c
+```
+
+The runtime matrix observed ordered batches `[111,222]` and `[333]` for
+`ready`/`pending`, only `[111,222]` for `sink-error-first` and
+`cancel-after-first`, no batch for `cancel-before-first`, and an empty resource
+table with exactly three resource drops in every mode. The probe reports two
+list allocations/releases, one stream drop, and one future drop per terminal.
+No registry or compiler admission is implied by this evidence.
 
 ## Execution Order
 
