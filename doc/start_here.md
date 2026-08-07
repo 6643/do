@@ -32,8 +32,8 @@
 | v1 子集 | 发布候选已收口 |
 | 阶段 A–F、H | 已完成 |
 | 阶段 D | 可推进项已完成; D2.1 已按 B 方案绿色 regression 收口; D2 真实本地 file/dir/CLI/socket create-bind-drop smoke in progress |
-| 阶段 G | G1–G5、G6.1、G6.2 有界 read-directory slice + generic consumer + multi-owned-resource + 一层/两层/三层/四层/五层/六层 nested-owned-resource + multiple nested-owned-resource paths + bounded scalar producer + bounded/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding 与 typed 参数重排）producer + helper-mediated lease + branch-selected terminal + private resource Result error/cancellation checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + record-layout/source-mirror lowering/runtime checkpoints、G6.3、G6.4 完成; G6.2 general producer-lease/borrowed-resource extensions pending |
-| Colorless async / WIT bindgen | canonical `@async/@await/@cancel`、legacy `async` 弃用、schema 1/2 生成 manifest 校验、已准入 schema 2 unit 与 scalar-`u32` capabilities 的 manifest 自动发现和有界 Component/Rust/Wasmtime gates 已验证；unrestricted generated WIT lowering 仍 pending |
+| 阶段 G | G1–G5、G6.1、G6.2 有界 read-directory slice + generic consumer + multi-owned-resource + 一层/两层/三层/四层/五层/六层 nested-owned-resource + multiple nested-owned-resource paths + bounded scalar producer + bounded/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding 与 typed 参数重排）producer + helper-mediated lease + branch-selected terminal + private resource Result error/cancellation checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private C-min list/resource producer slice、G6.3、G6.4 完成; generic list/producer、borrowed payload 与 root hard-cancel pending |
+| Colorless async / WIT bindgen | canonical `@async/@await/@cancel`、legacy `async` 弃用、schema 1/2 生成 manifest 校验、已准入 schema 2 unit 与 scalar capabilities 的 manifest 自动发现，以及 opt-in v2 variant/scalar-i64 gates、统一 promotion profile、`--p3-async-call-component` root-owned local-frame gate 和 `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` gate 已验证；unrestricted generated WIT lowering 仍 pending |
 | 阶段 I | **已关闭** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构审查/重构 | 五轮已落地 (见 §4); 默认不继续拆 god module |
 
@@ -52,13 +52,30 @@
 # generated schema 2 unit-async Component/Rust/Wasmtime gate
 bash examples/wit-bindgen-do/test_generated_async_lowering.sh
 
-# 默认完整回归 (当前基线)
-./src/build/test/run_tests.sh
-# 期望: pass=1108 fail=0 skip=3
+# generic ABI v2 independent scalar-i64 gate (opt-in; default remains v1)
+bash examples/wit-bindgen-do/test_generic_abi_v2_scalar_i64.sh
+
+# generic ABI v2 promotion profile (two verified private shapes; v1 remains default)
+bash examples/p3-runtime/test_generic_abi_v2_promotion.sh
+
+# bounded user-function async-call Component gate
+bash examples/p3-runtime/test_do_async_call_component.sh
+# Rust/Wasmtime matrix: pass the component produced by the Do gate
+bash examples/p3-runtime/test_rust_async_call_component.sh <component.wasm>
+
+# private Future<Ticket> -> future<own<ticket>> compiler Component gate
+bash examples/p3-runtime/test_do_future_owned_component.sh
+
+# private C-min stream<list<resource-entry>> producer compiler/runtime gate
+bash examples/p3-runtime/test_rust_g6_2_c_min_list_resource_producer.sh
+
+# 默认完整回归 (当前基线; 本机使用 Bun 作为 Node-compatible runner)
+NODE_BIN="$(command -v bun)" WASM_TOOLS="$(command -v wasm-tools)" ./src/build/test/run_tests.sh
+# 期望: pass=1120 fail=0 skip=3
 
 # codegen 单元测试
 cd src && zig test build/codegen_api.zig
-# 期望: All 92 tests passed.
+# 期望: All 95 tests passed.
 
 # 发布前 smoke
 ./src/build/test/run_release_smoke.sh
@@ -68,17 +85,18 @@ cd src && zig test build/codegen_api.zig
 
 ```bash
 RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
-# 最近扩展基线: pass=1110 fail=0 skip=3; wasm run summary: pass=6 fail=0
+# 最近扩展基线: pass=1118 fail=0 skip=3; wasm run summary: pass=6 fail=0
 ```
 
 | 基线项 | 最近值 |
 | --- | --- |
-| 默认回归 (`SKIP_BUILD=1`) | `pass=1108 fail=0 skip=3` |
-| `zig test main.zig` | `277/277` |
+| 默认回归 (`SKIP_BUILD=1`) | `pass=1120 fail=0 skip=3` |
+| WASM 扩展回归 (`RUN_WASM=1 SKIP_BUILD=1`) | `pass=1118 fail=0 skip=3`; smoke `6/6` |
+| `zig test main.zig` | `285/285` |
 | Task 8 Step 3 runtime baseline | 七个已登记 Component/Rust/Wasmtime gate 通过 |
 | HTTP service ABI / empty-request gate | pinned Component + Rust/Wasmtime pass; `codegen_component_wasi_http` `189/189`; registered payload pending/ready gate green, unregistered/general ready delivery remains blocked |
 | pinned filesystem record source mirror | `p3_filesystem_wit_manifest` + read-directory sema tests pass |
-| `compile_ok` / `compiled_ok` / `compile_err` | do≈`272` / `77` / `39` |
+| `compile_ok` / `compiled_ok` / `compile_err` | do≈`272` / `77` / `45` |
 | 剩余 skip | `16_loop_recv_value`、`96_file_lib_resource_shape`、`118_wasi_p3_std_wrappers` (recv/WASI 后置) |
 | 诊断 code | `errorSummary` / `errorHint` 各 59 条 (含 `StreamWriterLeasePathConflict` / `StreamWriterDeferredTransfer`) |
 
@@ -121,6 +139,26 @@ unrestricted generated WIT lowering 仍拒绝。
 可复现同样的 manifest drift、Component 与 ready/pending/cancel
 Rust/Wasmtime 矩阵。当前只开放这两个明确 pinned 的 scalar descriptor，
 不代表 generic `Future<T>` 已完成。
+
+generic ABI v2 的第二个独立 shape 是同一 i64 scalar descriptor 的 v2
+adapter。使用 `bash examples/wit-bindgen-do/test_generic_abi_v2_scalar_i64.sh`
+可复现独立模板、测量 layout、Component assembly 和 Rust/Wasmtime
+ready/pending/cancel 矩阵；它仍支持旧的单 shape `--p3-async-v2-scalar-i64`
+入口。统一 promotion profile 使用 `--p3-async-component-v2`（完整 gate：
+`bash examples/p3-runtime/test_generic_abi_v2_promotion.sh`），只接受
+variant-resource-stream 与 generated `Future<i64>` 两个已验证 shape，默认
+`--p3-async-component` registry/v1 dispatch 不变。
+
+用户函数 async-call 另有一个独立 opt-in bounded slice：
+`--p3-async-call-component` 只接受无参数、`nil` 返回的 `helper`，由根函数
+通过一次 `@async(helper())` 创建并 `@await`；helper 内只允许一次已登记的
+`do:generic-async-call-probe/host@0.1.0` `work: async func()`。其实现使用
+root-owned local frame/state，并通过根 `[task-return]run` 完成，不暴露 helper
+Component export，也不伪造独立 child task。使用
+`examples/p3-runtime/test_do_async_call_component.sh` 和 Rust/Wasmtime gate
+可复现 pinned `wasm-tools 1.254.0` / Wasmtime `47.0.2` 的 ready/pending/cancel
+矩阵。参数、payload、多个 child、嵌套 helper、resource、Stream、list、任意
+producer expression、filesystem async 和 D2 I/O 仍保持拒绝或 pending。
 
 当前工作区的 `/tmp` 配额会让 Zig Debug cache 返回 `DiskQuota`；`run_tests.sh` 现在
 尊重 `TMPDIR`、`ZIG_LOCAL_CACHE_DIR` / `ZIG_GLOBAL_CACHE_DIR` 覆盖，并在回归开始时
@@ -196,7 +234,7 @@ ZIG_GLOBAL_CACHE_DIR="$PWD/.tmp/do-tmp/debug-zig-gcache" \
 
 | ID | 说明 | 恢复条件 |
 | --- | --- | --- |
-| G6.2 | `descriptor.read-directory`、注册 record-stream consumer 与 bounded scalar/dynamic producer | scalar/string、多-owned-resource、多个顶层 nested paths 与一层/两层/三层/四层/五层/六层 nested-owned-resource consumer、注册 `do:stream-probe` 的 capacity-one `StreamWriter<u8>` producer、固定/参数化 `u64` countdown producer、参数化 helper 的五跳 forwarding、typed 参数受限重排、其它同类型 async helper、bounded StreamMirror，以及私有 `variant-resource-stream` 的 `ticket/idle/failed` event lowering/runtime slices 已验证；一般 producer lease、borrowed/list/通用 variant、第六跳 forwarding、第七层或更一般 nested resource gates 与任意 filesystem async method 仍待单独推进 |
+| G6.2 | `descriptor.read-directory`、注册 record-stream consumer 与 bounded scalar/dynamic producer | scalar/string、多-owned-resource、多个顶层 nested paths 与一层/两层/三层/四层/五层/六层 nested-owned-resource consumer、注册 `do:stream-probe` 的 capacity-one `StreamWriter<u8>` producer、固定/参数化 `u64` countdown producer、参数化 helper 的五跳 forwarding、typed 参数受限重排、其它同类型 async helper、bounded StreamMirror、私有 `variant-resource-stream` 与 private C-min list/resource producer 已验证；一般 producer lease、borrowed/list/通用 variant、第六跳 forwarding、第七层或更一般 nested resource gates 与任意 filesystem async method 仍待单独推进 |
 | G6.2-cancel | 私有 resource Result cancellation | 显式 `@cancel(completion)` 的 Do lowering、负边界、Component assembly 与 Rust/Wasmtime pending/drop/empty-table gate 已通过；pinned `wasi:http` service-world gate 另验证 pending、immediate `Ok(response)` 的 exactly-once drop、`DnsTimeout`、bounded `DNS-error.rcode` 的 `Some(nonempty)` 与 `None`（两种长度和 `info-code` optional 状态）以及同一布局的 `InternalError(Some(nonempty string))` / `InternalError(None)` canonical discard。同一组件实例连续两次 nonempty DNS error 会在每次精确释放后复用该私有槽位。`None` 不读取或释放 pointer/length；空字符串和其他 payload error 仍 trap；不扩展到通用 resource cancellation 或公开 ownership syntax |
 | G6.3 | **已关闭 (方案 B)** create/bind/drop + dual address | 见 `compile_ok/291`–`294`; TCP/UDP loopback real-host gate 已通过，listen/connect/accept 与真实 socket I/O 仍后置 |
 | D2 | 真实 host runtime smoke | local filesystem preopen/open-at/sync、read-directory stream、CLI stdin pipe、TCP/UDP socket create/bind/drop 已有 gates；通用 filesystem async 与 external HTTP 仍阻断 |

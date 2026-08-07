@@ -724,6 +724,13 @@ Wasm linear memory 是 runtime 实现细节。源码不暴露地址。
 3. host resource 用不透明标量句柄封装在 private 字段中, 不暴露 pointer。
 4. WASI component/P3 的 `list/string/record/resource/result/variant` lowering 属于后续阶段; 公开标准库 API 不泄漏 raw WIT resource/result/variant。
 
+WIT ownership 与 Do 源码值语义的边界固定如下:
+
+1. `own<T>` 是 host resource table 中的拥有句柄, 由 compiler/runtime 负责唯一 drop；`borrow<T>` 是同一资源句柄的非拥有 ABI 视图, 只允许在已登记调用区域内临时使用。
+2. Do 源码不引入 `*T`、`&T`、`ref<T>` 或可保存的 `borrow<T>` 值。资源 wrapper 仍是 public struct + private handle field；传参时复制的是句柄值，不是宿主对象内容。
+3. `list<borrow<T>>`、`stream<record { ... borrow<T> ... }>` 和 `future<borrow<T>>` 不是同一能力等级：列表形状即使被某个工具链接受，也必须单独测量列表布局和同步生命周期；当前 stream/future 嵌套 borrow 形状没有可用的 pinned Component lowering，不能进入 v1 或 v2 通用路径。
+4. GC/ARC 只管理 Do managed values，不负责 host resource drop；资源必须在 Component/host 边界按 ownership plan 显式完成 drop。这样可以保持无引用的源码模型，同时在 ABI 层承载 WIT 的 own/borrow 合同。
+
 ---
 
 ## 10. v1 不做的事

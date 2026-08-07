@@ -20,6 +20,7 @@ pub const LoweringShape = union(enum) {
     scalar_unit: ScalarUnitShape,
     unit_result_tag: void,
     scalar_result: ScalarResultShape,
+    future_owned_resource: FutureOwnedCanonical,
     resource_result_2word: ResourceResult2WordShape,
     http_resource_result: HttpResourceResultShape,
     http_request_constructor: HttpRequestConstructorShape,
@@ -27,6 +28,7 @@ pub const LoweringShape = union(enum) {
     stream_reader_acquire: StreamReaderShape,
     record_stream_reader: RecordStreamReaderShape,
     record_resource_list_stream_reader: RecordResourceListStreamShape,
+    record_resource_list_stream_producer: RecordResourceListStreamProducerShape,
     variant_resource_stream_reader: VariantResourceStreamShape,
     stream_writer: StreamWriterShape,
 };
@@ -60,6 +62,16 @@ pub const RecordResourceListStreamShape = struct {
     future: FutureCanonical,
     record_layout: RecordLayout,
     list_layout: ListResourceLayout,
+};
+
+pub const RecordResourceListStreamProducerShape = struct {
+    element: []const u8,
+    stream_index: usize,
+    method: StreamOperation,
+    stream: StreamCanonical,
+    record_layout: RecordLayout,
+    list_layout: ListResourceLayout,
+    producer: ProducerCanonical,
 };
 
 /// ABI facts for the private `stream<event>` probe. Unlike the general stream
@@ -108,6 +120,16 @@ pub const ListResourceLayout = struct {
     element_stride: u32,
     ticket_offset: u32,
     max_items: u32,
+};
+
+pub const ProducerCanonical = struct {
+    source_module: []const u8,
+    source_import_name: []const u8,
+    source_core_params: []const []const u8,
+    source_core_results: []const []const u8,
+    resource_drop_import: []const u8,
+    stream_capacity: u32,
+    terminal: []const u8,
 };
 
 pub const RecordField = struct {
@@ -171,6 +193,14 @@ pub const ScalarResultShape = struct {
 pub const ScalarResultSource = struct {
     ok: []const u8,
     err: []const u8,
+};
+
+pub const FutureOwnedCanonical = struct {
+    resource: []const u8,
+    payload_offset: u32,
+    resource_offset: u32,
+    presence_offset: u32,
+    drop_import: []const u8,
 };
 
 pub const ResourceResult2WordShape = struct {
@@ -251,6 +281,11 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
         return null;
     }
 
+    if (std.mem.eql(u8, descriptor.effect, "record-resource-list-stream-producer")) {
+        if (valid_record_resource_list_stream_producer_descriptor(descriptor)) |shape| return .{ .record_resource_list_stream_producer = shape };
+        return null;
+    }
+
     if (std.mem.eql(u8, descriptor.effect, "variant-resource-stream-reader")) {
         if (valid_variant_resource_stream_reader_descriptor(descriptor)) |shape| return .{ .variant_resource_stream_reader = shape };
         return null;
@@ -276,6 +311,32 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
             .trailers_future = descriptor.canonical.future_input.?,
             .transmission_future = descriptor.canonical.future.?,
         } };
+    }
+
+    if (std.mem.eql(u8, descriptor.effect, "future-owned-resource")) {
+        const owned = descriptor.canonical.future_owned orelse return null;
+        if (!std.mem.eql(u8, descriptor.locator, "do:future-owned-canonical/source@0.1.0") or
+            !std.mem.eql(u8, descriptor.member, "read") or
+            descriptor.params.len != 0 or
+            !std.mem.eql(u8, descriptor.result, "Ticket") or
+            descriptor.resource != null or
+            !std.mem.eql(u8, descriptor.wit.package, "do:future-owned-canonical@0.1.0") or
+            !std.mem.eql(u8, descriptor.wit.interface, "source") or
+            !std.mem.eql(u8, descriptor.wit.operation, "read") or
+            !std.mem.eql(u8, descriptor.wit.world, "future-owned-canonical") or
+            descriptor.wit.parameter.len != 0 or
+            descriptor.canonical.core_params.len != 0 or
+            descriptor.canonical.core_results.len != 0 or
+            descriptor.canonical.completion_params.len != 0 or
+            !std.mem.eql(u8, descriptor.canonical.completion, "task-return") or
+            !std.mem.eql(u8, descriptor.canonical.async_import_module, "do:future-owned-canonical/source@0.1.0") or
+            !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower]read") or
+            !std.mem.eql(u8, owned.resource, "ticket") or
+            owned.payload_offset != 12 or
+            owned.resource_offset != 16 or
+            owned.presence_offset != 20 or
+            !std.mem.eql(u8, owned.drop_import, "[resource-drop]ticket")) return null;
+        return .{ .future_owned_resource = owned };
     }
 
     if (!std.mem.eql(u8, descriptor.effect, "async") or !std.mem.eql(u8, descriptor.canonical.completion, "task-return")) return null;
@@ -404,9 +465,11 @@ pub const Canonical = struct {
     completion_params: []const []const u8,
     completion: []const u8,
     result_payload: ?ResultPayload,
+    future_owned: ?FutureOwnedCanonical = null,
     error_variants: []const ErrorVariantPayload = &.{},
     record_layout: ?RecordLayout = null,
     list_resource_layout: ?ListResourceLayout = null,
+    producer: ?ProducerCanonical = null,
     async_import_module: []const u8,
     async_import_name: []const u8,
     stream: ?StreamCanonical = null,
@@ -522,11 +585,13 @@ fn parse_descriptor(allocator: std.mem.Allocator, value: std.json.Value) !Descri
     errdefer free_wit(allocator, wit);
     const effect = string_value(object.get("effect")) orelse return error.InvalidP3AsyncManifest;
     if (!std.mem.eql(u8, effect, "async") and
+        !std.mem.eql(u8, effect, "future-owned-resource") and
         !std.mem.eql(u8, effect, "http-request-constructor") and
         !std.mem.eql(u8, effect, "http-stream-reader") and
         !std.mem.eql(u8, effect, "stream-reader") and
         !std.mem.eql(u8, effect, "record-stream-reader") and
         !std.mem.eql(u8, effect, "record-resource-list-stream-reader") and
+        !std.mem.eql(u8, effect, "record-resource-list-stream-producer") and
         !std.mem.eql(u8, effect, "variant-resource-stream-reader") and
         !std.mem.eql(u8, effect, "stream-writer")) return error.InvalidP3AsyncManifest;
     const owned_params = try duplicate_params(allocator, array_value(object.get("params")) orelse return error.InvalidP3AsyncManifest);
@@ -577,6 +642,11 @@ fn parse_canonical(allocator: std.mem.Allocator, value: ?std.json.Value) !Canoni
     else
         null;
     errdefer if (result_payload) |payload| free_result_payload(allocator, payload);
+    const future_owned = if (canonical.get("future_owned")) |owned_value|
+        try parse_future_owned_canonical(allocator, owned_value)
+    else
+        null;
+    errdefer if (future_owned) |owned| free_future_owned_canonical(allocator, owned);
     const record_layout = if (canonical.get("record_layout")) |layout_value|
         try parse_record_layout(allocator, layout_value)
     else
@@ -586,6 +656,11 @@ fn parse_canonical(allocator: std.mem.Allocator, value: ?std.json.Value) !Canoni
         try parse_list_resource_layout(layout_value)
     else
         null;
+    const producer = if (canonical.get("producer")) |producer_value|
+        try parse_producer_canonical(allocator, producer_value)
+    else
+        null;
+    errdefer if (producer) |value_to_free| free_producer_canonical(allocator, value_to_free);
     const completion = string_value(canonical.get("completion")) orelse return error.InvalidP3AsyncManifest;
     if (!std.mem.eql(u8, completion, "task-return") and
         !std.mem.eql(u8, completion, "result-area") and
@@ -650,9 +725,11 @@ fn parse_canonical(allocator: std.mem.Allocator, value: ?std.json.Value) !Canoni
         .completion_params = completion_params,
         .completion = owned_completion,
         .result_payload = result_payload,
+        .future_owned = future_owned,
         .error_variants = error_variants,
         .record_layout = record_layout,
         .list_resource_layout = list_resource_layout,
+        .producer = producer,
         .async_import_module = async_import_module,
         .async_import_name = async_import_name,
         .stream = stream,
@@ -683,6 +760,60 @@ fn parse_list_resource_layout(value: std.json.Value) !ListResourceLayout {
         .element_stride = @intCast(element_stride),
         .ticket_offset = @intCast(ticket_offset),
         .max_items = @intCast(max_items),
+    };
+}
+
+fn parse_producer_canonical(allocator: std.mem.Allocator, value: std.json.Value) !ProducerCanonical {
+    const object = object_value(value) orelse return error.InvalidP3AsyncManifest;
+    const source_module = try duplicate_required(allocator, object.get("source_module"));
+    errdefer allocator.free(source_module);
+    const source_import_name = try duplicate_required(allocator, object.get("source_import_name"));
+    errdefer allocator.free(source_import_name);
+    const source_core_params = try duplicate_params(allocator, array_value(object.get("source_core_params")) orelse return error.InvalidP3AsyncManifest);
+    errdefer free_string_list(allocator, source_core_params);
+    const source_core_results = try duplicate_params(allocator, array_value(object.get("source_core_results")) orelse return error.InvalidP3AsyncManifest);
+    errdefer free_string_list(allocator, source_core_results);
+    const resource_drop_import = try duplicate_required(allocator, object.get("resource_drop_import"));
+    errdefer allocator.free(resource_drop_import);
+    const stream_capacity = unsigned_value(object.get("stream_capacity")) orelse return error.InvalidP3AsyncManifest;
+    if (stream_capacity > std.math.maxInt(u32)) return error.InvalidP3AsyncManifest;
+    const terminal = try duplicate_required(allocator, object.get("terminal"));
+    errdefer allocator.free(terminal);
+    if (source_module.len == 0 or source_import_name.len == 0 or resource_drop_import.len == 0 or terminal.len == 0) {
+        return error.InvalidP3AsyncManifest;
+    }
+    for (source_core_params) |param| if (!is_core_scalar(param)) return error.InvalidP3AsyncManifest;
+    for (source_core_results) |result| if (!is_core_scalar(result)) return error.InvalidP3AsyncManifest;
+    return .{
+        .source_module = source_module,
+        .source_import_name = source_import_name,
+        .source_core_params = source_core_params,
+        .source_core_results = source_core_results,
+        .resource_drop_import = resource_drop_import,
+        .stream_capacity = @intCast(stream_capacity),
+        .terminal = terminal,
+    };
+}
+
+fn parse_future_owned_canonical(allocator: std.mem.Allocator, value: std.json.Value) !FutureOwnedCanonical {
+    const object = object_value(value) orelse return error.InvalidP3AsyncManifest;
+    const resource = try duplicate_required(allocator, object.get("resource"));
+    errdefer allocator.free(resource);
+    const payload_offset = unsigned_value(object.get("payload_offset")) orelse return error.InvalidP3AsyncManifest;
+    const resource_offset = unsigned_value(object.get("resource_offset")) orelse return error.InvalidP3AsyncManifest;
+    const presence_offset = unsigned_value(object.get("presence_offset")) orelse return error.InvalidP3AsyncManifest;
+    if (payload_offset > std.math.maxInt(u32) or
+        resource_offset > std.math.maxInt(u32) or
+        presence_offset > std.math.maxInt(u32)) return error.InvalidP3AsyncManifest;
+    const drop_import = try duplicate_required(allocator, object.get("drop_import"));
+    errdefer allocator.free(drop_import);
+    if (resource.len == 0 or drop_import.len == 0) return error.InvalidP3AsyncManifest;
+    return .{
+        .resource = resource,
+        .payload_offset = @intCast(payload_offset),
+        .resource_offset = @intCast(resource_offset),
+        .presence_offset = @intCast(presence_offset),
+        .drop_import = drop_import,
     };
 }
 
@@ -1059,6 +1190,76 @@ fn valid_record_resource_list_stream_reader_descriptor(descriptor: Descriptor) ?
         .record_layout = record_layout,
         .list_layout = list_layout,
     };
+}
+
+fn valid_record_resource_list_stream_producer_descriptor(descriptor: Descriptor) ?RecordResourceListStreamProducerShape {
+    const stream = descriptor.canonical.stream orelse return null;
+    const record_layout = descriptor.canonical.record_layout orelse return null;
+    const list_layout = descriptor.canonical.list_resource_layout orelse return null;
+    const producer = descriptor.canonical.producer orelse return null;
+
+    if (!std.mem.eql(u8, descriptor.effect, "record-resource-list-stream-producer") or
+        !std.mem.eql(u8, descriptor.locator, "do:g6-2-c-min-producer@0.1.0") or
+        !std.mem.eql(u8, descriptor.member, "consume-via-stream") or
+        descriptor.params.len != 1 or
+        !std.mem.eql(u8, descriptor.params[0], "stream<list<resource-entry>>") or
+        descriptor.resource != null or
+        !std.mem.eql(u8, descriptor.result, "Result<nil,error-code>") or
+        descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, descriptor.wit_sha256.?, "8decd27aeca4a1f1863544860caec230a1fc50259336a893de79413c6f9ec3f7") or
+        !std.mem.eql(u8, descriptor.wit.package, "do:g6-2-c-min-producer@0.1.0") or
+        !std.mem.eql(u8, descriptor.wit.interface, "sink") or
+        !std.mem.eql(u8, descriptor.wit.operation, "consume-via-stream") or
+        !std.mem.eql(u8, descriptor.wit.world, "c-min-producer") or
+        !std.mem.eql(u8, descriptor.wit.parameter, "data") or
+        !equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i32" }) or
+        !equal_core_types(descriptor.canonical.core_results, &.{"i32"}) or
+        !equal_core_types(descriptor.canonical.completion_params, &.{ "i32", "i32" }) or
+        !std.mem.eql(u8, descriptor.canonical.completion, "task-return") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "do:g6-2-c-min-producer/sink@0.1.0") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower]consume-via-stream") or
+        descriptor.canonical.future != null or
+        descriptor.canonical.future_input != null or
+        descriptor.canonical.result_payload != null or
+        descriptor.canonical.future_owned != null or
+        descriptor.canonical.error_variants.len != 0 or
+        !valid_list_resource_layout(list_layout) or
+        !valid_single_ticket_record_layout(record_layout) or
+        !std.mem.eql(u8, stream.element, "list<resource-entry>") or
+        !valid_producer_canonical(producer) or
+        !std.mem.eql(u8, producer.resource_drop_import, "[resource-drop]ticket")) return null;
+
+    if (!valid_named_stream_operation(stream.new, "[stream-new-0]consume-via-stream", &.{}, &.{"i64"}) or
+        !valid_named_stream_operation(stream.cancel_read, "[stream-cancel-read-0]consume-via-stream", &.{"i32"}, &.{"i32"}) or
+        !valid_named_stream_operation(stream.cancel_write, "[stream-cancel-write-0]consume-via-stream", &.{"i32"}, &.{"i32"}) or
+        !valid_named_stream_operation(stream.drop_readable, "[stream-drop-readable-0]consume-via-stream", &.{"i32"}, &.{}) or
+        !valid_named_stream_operation(stream.drop_writable, "[stream-drop-writable-0]consume-via-stream", &.{"i32"}, &.{}) or
+        !valid_named_stream_operation(stream.read, "[async-lower][stream-read-0]consume-via-stream", &.{ "i32", "i32", "i32" }, &.{"i32"}) or
+        !valid_named_stream_operation(stream.write, "[async-lower][stream-write-0]consume-via-stream", &.{ "i32", "i32", "i32" }, &.{"i32"})) return null;
+
+    return .{
+        .element = record_layout.name,
+        .stream_index = 0,
+        .method = .{
+            .import_name = descriptor.canonical.async_import_name,
+            .core_params = descriptor.canonical.core_params,
+            .core_results = descriptor.canonical.core_results,
+        },
+        .stream = stream,
+        .record_layout = record_layout,
+        .list_layout = list_layout,
+        .producer = producer,
+    };
+}
+
+fn valid_producer_canonical(producer: ProducerCanonical) bool {
+    return std.mem.eql(u8, producer.source_module, "do:g6-2-c-min-producer/source@0.1.0") and
+        std.mem.eql(u8, producer.source_import_name, "make-ticket") and
+        equal_core_types(producer.source_core_params, &.{"i32"}) and
+        equal_core_types(producer.source_core_results, &.{"i32"}) and
+        std.mem.eql(u8, producer.resource_drop_import, "[resource-drop]ticket") and
+        producer.stream_capacity == 1 and
+        std.mem.eql(u8, producer.terminal, "result-area");
 }
 
 fn valid_variant_resource_stream_reader_descriptor(descriptor: Descriptor) ?VariantResourceStreamShape {
@@ -1638,8 +1839,10 @@ fn free_canonical(allocator: std.mem.Allocator, canonical: Canonical) void {
     free_string_list(allocator, canonical.completion_params);
     allocator.free(canonical.completion);
     if (canonical.result_payload) |payload| free_result_payload(allocator, payload);
+    if (canonical.future_owned) |owned| free_future_owned_canonical(allocator, owned);
     free_error_variants(allocator, canonical.error_variants);
     if (canonical.record_layout) |layout| free_record_layout(allocator, layout);
+    if (canonical.producer) |producer| free_producer_canonical(allocator, producer);
     allocator.free(canonical.async_import_module);
     allocator.free(canonical.async_import_name);
     if (canonical.stream) |stream| free_stream_canonical(allocator, stream);
@@ -1649,6 +1852,20 @@ fn free_canonical(allocator: std.mem.Allocator, canonical: Canonical) void {
     if (canonical.variant_future) |future| free_variant_future_canonical(allocator, future);
     if (canonical.event_layout) |layout| free_variant_event_layout(allocator, layout);
     if (canonical.ticket_drop_import) |import_name| allocator.free(import_name);
+}
+
+fn free_future_owned_canonical(allocator: std.mem.Allocator, owned: FutureOwnedCanonical) void {
+    allocator.free(owned.resource);
+    allocator.free(owned.drop_import);
+}
+
+fn free_producer_canonical(allocator: std.mem.Allocator, producer: ProducerCanonical) void {
+    allocator.free(producer.source_module);
+    allocator.free(producer.source_import_name);
+    free_string_list(allocator, producer.source_core_params);
+    free_string_list(allocator, producer.source_core_results);
+    allocator.free(producer.resource_drop_import);
+    allocator.free(producer.terminal);
 }
 
 fn free_future_canonical(allocator: std.mem.Allocator, future: FutureCanonical) void {
@@ -2091,6 +2308,53 @@ test "checked-in registry resolves wait-until with its explicit ABI names" {
     try std.testing.expectEqualStrings("when", descriptor.wit.parameter);
 }
 
+test "registry resolves the private future-owned resource shape" {
+    const json =
+        \\{"schema":1,"wit_sha256":"abc","descriptors":[
+        \\  {"locator":"do:future-owned-canonical/source@0.1.0","member":"read","effect":"future-owned-resource","params":[],"result":"Ticket","resource":null,"canonical":{"core_params":[],"core_results":[],"completion_params":[],"completion":"task-return","async_import_module":"do:future-owned-canonical/source@0.1.0","async_import_name":"[async-lower]read","future_owned":{"resource":"ticket","payload_offset":12,"resource_offset":16,"presence_offset":20,"drop_import":"[resource-drop]ticket"}},"wit":{"package":"do:future-owned-canonical@0.1.0","interface":"source","operation":"read","world":"future-owned-canonical","parameter":""}}
+        \\]}
+    ;
+
+    var registry = try Registry.load(std.testing.allocator, json);
+    defer registry.deinit(std.testing.allocator);
+
+    const descriptor = registry.find("do:future-owned-canonical/source@0.1.0", "read") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("future-owned-resource", descriptor.effect);
+    try std.testing.expectEqualStrings("Ticket", descriptor.result);
+    const shape = switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .future_owned_resource => |value| value,
+        else => return error.TestUnexpectedResult,
+    };
+    try std.testing.expectEqualStrings("ticket", shape.resource);
+    try std.testing.expectEqual(@as(u32, 12), shape.payload_offset);
+    try std.testing.expectEqual(@as(u32, 16), shape.resource_offset);
+    try std.testing.expectEqual(@as(u32, 20), shape.presence_offset);
+    try std.testing.expectEqualStrings("[resource-drop]ticket", shape.drop_import);
+
+    var drifted = descriptor;
+    var drifted_owned = descriptor.canonical.future_owned.?;
+    drifted_owned.payload_offset = 16;
+    var drifted_canonical = descriptor.canonical;
+    drifted_canonical.future_owned = drifted_owned;
+    drifted.canonical = drifted_canonical;
+    try std.testing.expect(lowering_shape(drifted) == null);
+}
+
+test "checked-in registry admits the private future-owned resource shape" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+
+    const descriptor = registry.find("do:future-owned-canonical/source@0.1.0", "read") orelse return error.TestUnexpectedResult;
+    const shape = switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .future_owned_resource => |value| value,
+        else => return error.TestUnexpectedResult,
+    };
+    try std.testing.expectEqualStrings("ticket", shape.resource);
+    try std.testing.expectEqual(@as(u32, 12), shape.payload_offset);
+    try std.testing.expectEqual(@as(u32, 16), shape.resource_offset);
+    try std.testing.expectEqual(@as(u32, 20), shape.presence_offset);
+}
+
 test "registry rejects an invalid task-return core parameter" {
     const json =
         \\{"schema":1,"wit_sha256":"abc","descriptors":[
@@ -2438,6 +2702,71 @@ test "checked-in registry admits the bounded list-owned resource stream" {
     ) orelse return error.TestUnexpectedResult;
     try std.testing.expectEqualStrings("record-resource-list-stream-reader", descriptor.effect);
     try std.testing.expect(lowering_shape(descriptor) != null);
+}
+
+test "C-min producer descriptor exposes the measured source and sink contract" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+
+    const descriptor = registry.find("do:g6-2-c-min-producer@0.1.0", "consume-via-stream") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("record-resource-list-stream-producer", descriptor.effect);
+    try std.testing.expectEqualStrings("stream<list<resource-entry>>", descriptor.params[0]);
+    try std.testing.expectEqualStrings("Result<nil,error-code>", descriptor.result);
+    const producer = descriptor.canonical.producer orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("do:g6-2-c-min-producer/source@0.1.0", producer.source_module);
+    try std.testing.expectEqualStrings("make-ticket", producer.source_import_name);
+    try std.testing.expectEqualStrings("[resource-drop]ticket", producer.resource_drop_import);
+    try std.testing.expectEqual(@as(u32, 1), producer.stream_capacity);
+    try std.testing.expectEqualStrings("result-area", producer.terminal);
+    try std.testing.expectEqualStrings(
+        "8decd27aeca4a1f1863544860caec230a1fc50259336a893de79413c6f9ec3f7",
+        descriptor.wit_sha256.?,
+    );
+    switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .record_resource_list_stream_producer => |shape| {
+            try std.testing.expectEqual(@as(usize, 0), shape.stream_index);
+            try std.testing.expectEqual(@as(u32, 64), shape.list_layout.result_pointer_offset);
+            try std.testing.expectEqual(@as(u32, 68), shape.list_layout.result_length_offset);
+            try std.testing.expectEqual(@as(u32, 4), shape.list_layout.element_stride);
+            try std.testing.expectEqual(@as(u32, 0), shape.list_layout.ticket_offset);
+            try std.testing.expectEqual(@as(u32, 3), shape.list_layout.max_items);
+        },
+        else => return error.TestUnexpectedResult,
+    }
+}
+
+test "C-min producer descriptor rejects hash, element, layout, ownership, locator, and queue drift" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const original = registry.find("do:g6-2-c-min-producer@0.1.0", "consume-via-stream") orelse return error.TestUnexpectedResult;
+
+    var wrong_hash = original;
+    wrong_hash.wit_sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    try std.testing.expect(lowering_shape(wrong_hash) == null);
+
+    var wrong_element = original;
+    wrong_element.canonical.stream.?.element = "stream<resource-entry>";
+    try std.testing.expect(lowering_shape(wrong_element) == null);
+
+    var wrong_layout = original;
+    wrong_layout.canonical.list_resource_layout.?.result_pointer_offset = 60;
+    try std.testing.expect(lowering_shape(wrong_layout) == null);
+
+    var borrowed_field = original.canonical.record_layout.?.source_fields[0];
+    borrowed_field.ownership = .borrow;
+    var borrowed_layout = original.canonical.record_layout.?;
+    borrowed_layout.source_fields = &.{borrowed_field};
+    var borrowed = original;
+    borrowed.canonical.record_layout = borrowed_layout;
+    try std.testing.expect(lowering_shape(borrowed) == null);
+
+    var unknown_locator = original;
+    unknown_locator.locator = "do:unknown-producer@0.1.0";
+    try std.testing.expect(lowering_shape(unknown_locator) == null);
+
+    var extra_queue = original;
+    extra_queue.canonical.producer.?.stream_capacity = 2;
+    try std.testing.expect(lowering_shape(extra_queue) == null);
 }
 
 test "record layout metadata exposes pinned directory-entry offsets" {

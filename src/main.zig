@@ -58,7 +58,7 @@ fn print_usage(io: std.Io) !void {
     try out.interface.print(
         \\do toolchain
         \\usage:
-        \\  do build <input.do> [--component-core] [--p3-async-component --p3-wit-output out.wit] [--host-export --host-manifest out.json] [-o out.wat]
+        \\  do build <input.do> [--component-core] [--p3-async-component --p3-wit-output out.wit] [--p3-async-call-component --p3-wit-output out.wit] [--p3-owned-future-component --p3-wit-output out.wit] [--p3-async-component-v2 --p3-wit-output out.wit] [--p3-async-v2-scalar-i64 --p3-wit-output out.wit] [--host-export --host-manifest out.json] [-o out.wat]
         \\  do test <input.do>
         \\  do test <input.do> --compiled [-o out.wat]
         \\  do check <input.do>...

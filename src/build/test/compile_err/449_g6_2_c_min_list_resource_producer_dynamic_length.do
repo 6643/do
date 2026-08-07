@@ -1,0 +1,15 @@
+make_ticket = @host("do:g6-2-c-min-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+consume = @host_func("do:g6-2-c-min-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
+Ticket = @wasi_resource("do:g6-2-c-min-producer/source/ticket", { .id i64 })
+ResourceEntry {
+    .ticket Ticket
+}
+ProducerError error = Io | Pipe | InvalidMode
+
+produce(mode u32) -> Result<nil, ProducerError> {
+    selected u32 = mode
+    _ = selected
+    return Ok()
+}
+
+start() {}

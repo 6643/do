@@ -198,10 +198,15 @@ const codegen_component_wasi_filesystem_preopen = @import("codegen_component_was
 const codegen_component_wasi_sockets = @import("codegen_component_wasi_sockets.zig");
 const codegen_component_resource_async = @import("codegen_component_resource_async.zig");
 const codegen_component_async = @import("codegen_component_async.zig");
+const codegen_component_async_call = @import("codegen_component_async_call.zig");
+const codegen_component_future_owned = @import("codegen_component_future_owned.zig");
+const codegen_component_future_owned_plan = @import("codegen_component_future_owned_plan.zig");
 const codegen_gc_core = @import("codegen_gc_core.zig");
 const codegen_emit_generic_async = @import("codegen_emit_generic_async.zig");
 const codegen_task_bridge = @import("codegen_task_bridge.zig");
 pub const emit_p3_wait_for_wit = codegen_p3_wait_for.emit_component_wit_for_tokens;
+pub const emit_p3_async_call_component_wit = codegen_component_async_call.emit_component_wit;
+pub const emit_p3_owned_future_component_wit = codegen_component_future_owned.emit_component_wit;
 const collect_body_locals_with_mode = codegen_body.collect_body_locals_with_mode;
 // Re-export expression and call emit entry points.
 const emit_start_func = codegen_emit_expression.emit_start_func;
@@ -530,6 +535,24 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
     if (options.p3_wasi_filesystem_preopen_component) return finalize_component_wat(allocator, codegen_component_wasi_filesystem_preopen.emit_component_wat(allocator, program, tokens, module_graph));
     if (options.p3_wasi_sockets_create_bind_drop_component) return finalize_component_wat(allocator, codegen_component_wasi_sockets.emit_component_wat(allocator, program, tokens, module_graph));
     if (options.p3_resource_async_component) return finalize_component_wat(allocator, codegen_component_resource_async.emit_component_wat(allocator, program, tokens, module_graph));
+    if (options.p3_async_call_component) {
+        var plan = codegen_component_async.analyze_async_call_component(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3AsyncCallComponent => return error.UnsupportedP3AsyncCallComponent,
+            else => return err,
+        };
+        defer plan.deinit(allocator);
+        return codegen_component_async_call.emit_component_wat(allocator, plan);
+    }
+    if (options.p3_owned_future_component) {
+        var plan = codegen_component_future_owned_plan.analyze(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3OwnedFutureComponent => return error.UnsupportedP3OwnedFutureComponent,
+            else => return err,
+        };
+        defer plan.deinit(allocator);
+        return codegen_component_future_owned.emit_component_wat(allocator, plan);
+    }
+    if (options.p3_async_component_v2) return codegen_component_async.emit_component_wat_v2(allocator, program, tokens, module_graph);
+    if (options.p3_async_v2_scalar_i64_component) return finalize_component_wat(allocator, codegen_component_async.emit_component_wat_v2_scalar_i64(allocator, program, tokens, module_graph orelse return error.UnsupportedP3AsyncComponent));
     if (options.p3_async_component) return codegen_component_async.emit_component_wat(allocator, program, tokens, module_graph);
     if (options.gc_core) return codegen_gc_core.emit_gc_core_wat(allocator, program, tokens);
     if (options.p3_wait_for_component) return finalize_component_wat(allocator, codegen_p3_wait_for.emit_component_wat(allocator, program, tokens, module_graph));

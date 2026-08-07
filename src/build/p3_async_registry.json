@@ -53,6 +53,59 @@
             }
         },
         {
+            "locator": "do:generic-async-call-probe/host@0.1.0",
+            "member": "work",
+            "effect": "async",
+            "params": [],
+            "result": "nil",
+            "resource": null,
+            "canonical": {
+                "core_params": [],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "task-return",
+                "async_import_module": "do:generic-async-call-probe/host@0.1.0",
+                "async_import_name": "[async-lower]work"
+            },
+            "wit": {
+                "package": "do:generic-async-call-probe@0.1.0",
+                "interface": "host",
+                "operation": "work",
+                "world": "probe",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "do:future-owned-canonical/source@0.1.0",
+            "member": "read",
+            "effect": "future-owned-resource",
+            "params": [],
+            "result": "Ticket",
+            "resource": null,
+            "canonical": {
+                "core_params": [],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "task-return",
+                "async_import_module": "do:future-owned-canonical/source@0.1.0",
+                "async_import_name": "[async-lower]read",
+                "future_owned": {
+                    "resource": "ticket",
+                    "payload_offset": 12,
+                    "resource_offset": 16,
+                    "presence_offset": 20,
+                    "drop_import": "[resource-drop]ticket"
+                }
+            },
+            "wit": {
+                "package": "do:future-owned-canonical@0.1.0",
+                "interface": "source",
+                "operation": "read",
+                "world": "future-owned-canonical",
+                "parameter": ""
+            }
+        },
+        {
             "locator": "wasi:clocks@0.3.0",
             "member": "monotonic-clock.wait-until",
             "effect": "async",
@@ -840,6 +893,94 @@
                 "operation": "read-via-stream",
                 "world": "record-resource-list-stream-probe",
                 "parameter": ""
+            }
+        },
+        {
+            "locator": "do:g6-2-c-min-producer@0.1.0",
+            "member": "consume-via-stream",
+            "effect": "record-resource-list-stream-producer",
+            "params": ["stream<list<resource-entry>>"],
+            "result": "Result<nil,error-code>",
+            "resource": null,
+            "wit_sha256": "8decd27aeca4a1f1863544860caec230a1fc50259336a893de79413c6f9ec3f7",
+            "canonical": {
+                "core_params": ["i32", "i32"],
+                "core_results": ["i32"],
+                "completion_params": ["i32", "i32"],
+                "completion": "task-return",
+                "async_import_module": "do:g6-2-c-min-producer/sink@0.1.0",
+                "async_import_name": "[async-lower]consume-via-stream",
+                "record_layout": {
+                    "name": "resource-entry",
+                    "byte_size": 4,
+                    "fields": [
+                        {"name": "ticket", "core_type": "i32", "offset": 0}
+                    ],
+                    "source_fields": [
+                        {"name": "ticket", "source_type": "ticket", "storage": ["ticket"], "ownership": "own", "resource": "ticket", "drop_import": "[resource-drop]ticket"}
+                    ]
+                },
+                "list_resource_layout": {
+                    "result_pointer_offset": 64,
+                    "result_length_offset": 68,
+                    "element_stride": 4,
+                    "ticket_offset": 0,
+                    "max_items": 3
+                },
+                "producer": {
+                    "source_module": "do:g6-2-c-min-producer/source@0.1.0",
+                    "source_import_name": "make-ticket",
+                    "source_core_params": ["i32"],
+                    "source_core_results": ["i32"],
+                    "resource_drop_import": "[resource-drop]ticket",
+                    "stream_capacity": 1,
+                    "terminal": "result-area"
+                },
+                "stream": {
+                    "element": "list<resource-entry>",
+                    "new": {
+                        "import_name": "[stream-new-0]consume-via-stream",
+                        "core_params": [],
+                        "core_results": ["i64"]
+                    },
+                    "cancel_read": {
+                        "import_name": "[stream-cancel-read-0]consume-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "cancel_write": {
+                        "import_name": "[stream-cancel-write-0]consume-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "drop_readable": {
+                        "import_name": "[stream-drop-readable-0]consume-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "drop_writable": {
+                        "import_name": "[stream-drop-writable-0]consume-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "read": {
+                        "import_name": "[async-lower][stream-read-0]consume-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    },
+                    "write": {
+                        "import_name": "[async-lower][stream-write-0]consume-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    }
+                }
+            },
+            "wit": {
+                "package": "do:g6-2-c-min-producer@0.1.0",
+                "interface": "sink",
+                "operation": "consume-via-stream",
+                "world": "c-min-producer",
+                "parameter": "data"
             }
         },
         {

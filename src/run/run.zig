@@ -18,7 +18,7 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
     };
     defer allocator.free(wasm_tools);
 
-    const node = find_executable(allocator, io, init.environ_map, "node") catch |err| {
+    const node = find_node_runtime(allocator, io, init.environ_map) catch |err| {
         try print_tool_lookup_error(io, "node", err);
         std.process.exit(1);
     };
@@ -27,7 +27,7 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
     var loaded = try build_run.load_program(init, parsed_cli.input_path);
     defer loaded.deinit(allocator);
 
-    const wat = try build_run.compile_program_wat(io, allocator, parsed_cli.input_path, false, false, false, false, false, false, false, false, false, null, &loaded);
+    const wat = try build_run.compile_program_wat(io, allocator, parsed_cli.input_path, false, false, false, false, false, false, false, false, false, false, false, false, false, null, &loaded);
     defer allocator.free(wat);
 
     const tmp_root = init.environ_map.get("TMPDIR") orelse "/tmp";
@@ -109,6 +109,12 @@ fn find_executable(
     name: []const u8,
 ) ![]u8 {
     if (std.fs.path.isAbsolute(name)) {
+        std.Io.Dir.cwd().access(io, name, .{ .execute = true }) catch |err| switch (err) {
+            error.FileNotFound,
+            error.AccessDenied,
+            => return error.FileNotFound,
+            else => return err,
+        };
         return allocator.dupe(u8, name);
     }
 
@@ -129,6 +135,21 @@ fn find_executable(
     }
 
     return error.FileNotFound;
+}
+
+fn find_node_runtime(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    environ_map: *std.process.Environ.Map,
+) ![]u8 {
+    if (environ_map.get("NODE_BIN")) |configured| {
+        if (configured.len != 0) return find_executable(allocator, io, environ_map, configured);
+    }
+
+    return find_executable(allocator, io, environ_map, "node") catch |err| switch (err) {
+        error.FileNotFound => find_executable(allocator, io, environ_map, "bun"),
+        else => err,
+    };
 }
 
 test "find_executable preserves PATH launcher path instead of resolving symlink target" {
@@ -167,4 +188,69 @@ test "format_missing_tool_diagnostic prints explicit missing tool error" {
     const msg = try format_missing_tool_diagnostic(&buffer, "wasm-tools");
 
     try std.testing.expectEqualStrings("error[MissingExternalTool]: wasm-tools not found\n", msg);
+}
+
+test "find_node_runtime prefers NODE_BIN" {
+    if (@import("builtin").os.tag == .windows) return error.SkipZigTest;
+
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const bin_dir = try tmp.dir.createDirPathOpen(io, "bin", .{});
+    defer bin_dir.close(io);
+    try bin_dir.symLink(io, "/bin/sh", "node", .{});
+    try bin_dir.symLink(io, "/bin/sh", "bun", .{});
+
+    var env = std.process.Environ.Map.init(allocator);
+    defer env.deinit();
+    const bin_path = try tmp.dir.realPathFileAlloc(io, "bin", allocator);
+    defer allocator.free(bin_path);
+    try env.put("PATH", bin_path);
+    const explicit = try std.fs.path.join(allocator, &.{ bin_path, "bun" });
+    defer allocator.free(explicit);
+    try env.put("NODE_BIN", explicit);
+
+    const resolved = try find_node_runtime(allocator, io, &env);
+    defer allocator.free(resolved);
+    try std.testing.expectEqualStrings(explicit, resolved);
+}
+
+test "find_node_runtime falls back to bun when node is unavailable" {
+    if (@import("builtin").os.tag == .windows) return error.SkipZigTest;
+
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const bin_dir = try tmp.dir.createDirPathOpen(io, "bin", .{});
+    defer bin_dir.close(io);
+    try bin_dir.symLink(io, "/bin/sh", "bun", .{});
+
+    var env = std.process.Environ.Map.init(allocator);
+    defer env.deinit();
+    const bin_path = try tmp.dir.realPathFileAlloc(io, "bin", allocator);
+    defer allocator.free(bin_path);
+    try env.put("PATH", bin_path);
+
+    const resolved = try find_node_runtime(allocator, io, &env);
+    defer allocator.free(resolved);
+    const expected = try std.fs.path.join(allocator, &.{ bin_path, "bun" });
+    defer allocator.free(expected);
+    try std.testing.expectEqualStrings(expected, resolved);
+}
+
+test "find_node_runtime rejects a missing explicit NODE_BIN" {
+    if (@import("builtin").os.tag == .windows) return error.SkipZigTest;
+
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+    var env = std.process.Environ.Map.init(allocator);
+    defer env.deinit();
+    try env.put("PATH", "/bin");
+    try env.put("NODE_BIN", "/path/that/does/not/exist/do-node");
+
+    try std.testing.expectError(error.FileNotFound, find_node_runtime(allocator, io, &env));
 }

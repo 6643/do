@@ -49,7 +49,7 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
 
     var host_manifest = std.ArrayList(u8).empty;
     defer host_manifest.deinit(allocator);
-    const wat = try compile_program_wat(io, allocator, parsed_cli.input_path, parsed_cli.component_core, parsed_cli.p3_wait_for_component, parsed_cli.p3_resource_probe_component, parsed_cli.p3_wasi_filesystem_preopen_component, parsed_cli.p3_wasi_sockets_create_bind_drop_component, parsed_cli.p3_resource_async_component, parsed_cli.p3_async_component, parsed_cli.gc_core, parsed_cli.host_export, if (parsed_cli.host_manifest_path != null) &host_manifest else null, &loaded);
+    const wat = try compile_program_wat(io, allocator, parsed_cli.input_path, parsed_cli.component_core, parsed_cli.p3_wait_for_component, parsed_cli.p3_resource_probe_component, parsed_cli.p3_wasi_filesystem_preopen_component, parsed_cli.p3_wasi_sockets_create_bind_drop_component, parsed_cli.p3_resource_async_component, parsed_cli.p3_async_component, parsed_cli.p3_async_call_component, parsed_cli.p3_owned_future_component, parsed_cli.p3_async_component_v2, parsed_cli.p3_async_v2_scalar_i64_component, parsed_cli.gc_core, parsed_cli.host_export, if (parsed_cli.host_manifest_path != null) &host_manifest else null, &loaded);
     defer allocator.free(wat);
 
     std.Io.Dir.cwd().writeFile(io, .{ .sub_path = parsed_cli.output_path, .data = wat }) catch |err| {
@@ -71,7 +71,15 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
             codegen.emit_p3_wasi_sockets_create_bind_drop_wit(allocator, loaded.tokens)
         else if (parsed_cli.p3_resource_async_component)
             codegen.emit_p3_resource_async_wit(allocator, loaded.tokens)
+        else if (parsed_cli.p3_async_call_component)
+            codegen.emit_p3_async_call_component_wit(allocator)
+        else if (parsed_cli.p3_owned_future_component)
+            codegen.emit_p3_owned_future_component_wit(allocator)
         else if (parsed_cli.p3_async_component)
+            codegen.emit_p3_async_component_wit(allocator, loaded.tokens, &loaded.module_graph)
+        else if (parsed_cli.p3_async_component_v2)
+            codegen.emit_p3_async_component_wit(allocator, loaded.tokens, &loaded.module_graph)
+        else if (parsed_cli.p3_async_v2_scalar_i64_component)
             codegen.emit_p3_async_component_wit(allocator, loaded.tokens, &loaded.module_graph)
         else
             codegen.emit_p3_wait_for_wit(allocator, loaded.tokens)) catch |err| {
@@ -219,6 +227,10 @@ pub fn compile_program_wat(
     p3_wasi_sockets_create_bind_drop_component: bool,
     p3_resource_async_component: bool,
     p3_async_component: bool,
+    p3_async_call_component: bool,
+    p3_owned_future_component: bool,
+    p3_async_component_v2: bool,
+    p3_async_v2_scalar_i64_component: bool,
     gc_core: bool,
     host_export: bool,
     host_manifest_out: ?*std.ArrayList(u8),
@@ -235,6 +247,10 @@ pub fn compile_program_wat(
         p3_wasi_sockets_create_bind_drop_component,
         p3_resource_async_component,
         p3_async_component,
+        p3_async_call_component,
+        p3_owned_future_component,
+        p3_async_component_v2,
+        p3_async_v2_scalar_i64_component,
         gc_core,
         host_export,
         host_manifest_out,
@@ -256,6 +272,10 @@ fn compile_program_wat_parts(
     p3_wasi_sockets_create_bind_drop_component: bool,
     p3_resource_async_component: bool,
     p3_async_component: bool,
+    p3_async_call_component: bool,
+    p3_owned_future_component: bool,
+    p3_async_component_v2: bool,
+    p3_async_v2_scalar_i64_component: bool,
     gc_core: bool,
     host_export: bool,
     host_manifest_out: ?*std.ArrayList(u8),
@@ -264,7 +284,7 @@ fn compile_program_wat_parts(
     program: parser.Program,
     module_graph: *const imports.ModuleGraph,
 ) ![]u8 {
-    if (requires_start_entry(host_export, p3_async_component, p3_wasi_sockets_create_bind_drop_component) and
+    if (requires_start_entry(host_export, p3_async_component or p3_async_call_component or p3_owned_future_component or p3_async_component_v2 or p3_async_v2_scalar_i64_component, p3_wasi_sockets_create_bind_drop_component) and
         !codegen.program_requires_async_lowering(program, tokens, module_graph))
     {
         entry.validate_start(program) catch |err| {
@@ -281,6 +301,10 @@ fn compile_program_wat_parts(
         .p3_wasi_sockets_create_bind_drop_component = p3_wasi_sockets_create_bind_drop_component,
         .p3_resource_async_component = p3_resource_async_component,
         .p3_async_component = p3_async_component,
+        .p3_async_call_component = p3_async_call_component,
+        .p3_owned_future_component = p3_owned_future_component,
+        .p3_async_component_v2 = p3_async_component_v2,
+        .p3_async_v2_scalar_i64_component = p3_async_v2_scalar_i64_component,
         .gc_core = gc_core,
         .host_export = host_export,
         .host_manifest_out = host_manifest_out,
@@ -369,7 +393,7 @@ test "normal program compile path still enforces start entry" {
 }
 
 test "p3 async component owns the WIT root instead of requiring start" {
-    try std.testing.expect(!requires_start_entry(false, true));
-    try std.testing.expect(requires_start_entry(false, false));
-    try std.testing.expect(!requires_start_entry(true, false));
+    try std.testing.expect(!requires_start_entry(false, true, false));
+    try std.testing.expect(requires_start_entry(false, false, false));
+    try std.testing.expect(!requires_start_entry(true, false, false));
 }

@@ -490,7 +490,12 @@ pub fn error_summary(err: anyerror) []const u8 {
         error.AsyncLoweringUnavailable => "async 声明已通过前端检查，但 resumable lowering 尚未实现",
         error.UnsupportedP3WaitForComponent => "此 P3 Component 目标只支持 pinned wait-for probe 源码形态",
         error.UnsupportedP3AsyncResourceComponent => "此 P3 Component 目标只支持 private async resource Result probe 源码形态",
+        error.UnsupportedP3OwnedFutureComponent => "此 P3 Component 目标只支持 private Future<Ticket> -> future<own<ticket>> 源码形态",
         error.UnsupportedP3AsyncComponent => "此统一 P3 async Component 目标不支持该 descriptor 或源码形态",
+        error.UnsupportedGenericAbiV2Promotion => "Generic ABI v2 promotion profile rejected this target",
+        error.UnsupportedGenericAbiV2Scalar => "opt-in Generic ABI v2 只接受 pinned generated Future<i64> scalar shape",
+        error.InvalidGenericAbiV2ScalarLayout => "Generic ABI v2 scalar-i64 的 measured layout 无效",
+        error.InvalidGenericAbiV2ScalarTemplate => "Generic ABI v2 scalar-i64 模板不完整",
         error.UnsupportedGcCoreLowering => "此 Core Wasm GC target 只支持已实现的受限源码形态",
         error.UnsupportedLowering => "当前编译路径尚未支持该 lowering",
         error.UnsupportedTupleStorageLeaf => "非 packable 叶子的 `[Tuple]` storage 尚未支持 scheme-A pack",
@@ -589,7 +594,12 @@ pub fn error_hint(err: anyerror) []const u8 {
         error.AsyncLoweringUnavailable => "先使用 `do check` 验证前端；`do build` 需要 await frame、调度和清理 lowering",
         error.UnsupportedP3WaitForComponent => "旧版 pinned P3 compatibility probe 仍使用迁移期 `async run(u64) -> nil`；新源码使用普通 `run(u64) -> nil` 与 `@await/@cancel`，其他 async 形式仍由 AsyncLoweringUnavailable 拒绝",
         error.UnsupportedP3AsyncResourceComponent => "旧版 private probe 仍使用迁移期 `async run(HttpRequest) -> Result<HttpResponse, HttpError>`；新源码使用普通函数声明与显式 `@await/@cancel`，真实 HTTP 仅支持固定 `wasi:http/client.send` service 源码形态",
+        error.UnsupportedP3OwnedFutureComponent => "仅使用已注册的 `Future<Ticket>`、单次 `@await` 与 `--p3-owned-future-component`；own/borrow/ref 不是 Do 源码语法",
         error.UnsupportedP3AsyncComponent => "使用 `--p3-async-component` 时，支持已登记的 scalar/unit clocks、`wasi:cli/run.run` 的 `Result<nil,nil>`、private `do:resource-probe/http/send` 两字 Result，以及固定 `wasi:http/client.send` service；list、Stream、payload error-code 与其他 descriptor 仍需完整 canonical layout lowering",
+        error.UnsupportedGenericAbiV2Promotion => "`--p3-async-component-v2` 只接受已测量的 private variant-resource-stream 与 generated `Future<i64>` shape；其他 target 在 WAT 生成前保持拒绝",
+        error.UnsupportedGenericAbiV2Scalar => "使用 `--p3-async-v2-scalar-i64` 时必须加载 pinned generated `Future<i64>` manifest；其他 payload、签名或模块路径保持拒绝",
+        error.InvalidGenericAbiV2ScalarLayout => "generated scalar-i64 manifest 的 core width、offset、byte-size 或 alignment 与已测量 ABI 不一致",
+        error.InvalidGenericAbiV2ScalarTemplate => "Generic ABI v2 scalar-i64 emitter template 缺少必需的 ABI placeholder",
         error.UnsupportedGcCoreLowering => "使用 `identity(value text) -> text { return value }`，或 `update(input [u8]) -> [u8] { return @set(input, 0, 65) }`，并使用空 `start()`；其他 text/list/managed struct GC lowering 尚未接入该 target",
         error.UnsupportedLowering => "常见后置边界: 非 packable 的 `[Tuple]` storage 直接元素；该错误不是重载匹配失败",
         error.UnsupportedTupleStorageLeaf => "直接元素须为标量、managed handle (`text` / `[T]`)、嵌套 Tuple、pure-scalar 具名 struct 子布局、或含 managed 字段的具名 struct 句柄槽；禁止拍平为扁平 Tuple；该错误不是重载匹配失败",
@@ -663,6 +673,17 @@ test "P3 async component diagnostic includes the admitted HTTP service" {
     try std.testing.expectEqualStrings(
         "使用 `--p3-async-component` 时，支持已登记的 scalar/unit clocks、`wasi:cli/run.run` 的 `Result<nil,nil>`、private `do:resource-probe/http/send` 两字 Result，以及固定 `wasi:http/client.send` service；list、Stream、payload error-code 与其他 descriptor 仍需完整 canonical layout lowering",
         error_hint(error.UnsupportedP3AsyncComponent),
+    );
+}
+
+test "Generic ABI v2 promotion diagnostic names the two admitted shapes" {
+    try std.testing.expectEqualStrings(
+        "Generic ABI v2 promotion profile rejected this target",
+        error_summary(error.UnsupportedGenericAbiV2Promotion),
+    );
+    try std.testing.expectEqualStrings(
+        "`--p3-async-component-v2` 只接受已测量的 private variant-resource-stream 与 generated `Future<i64>` shape；其他 target 在 WAT 生成前保持拒绝",
+        error_hint(error.UnsupportedGenericAbiV2Promotion),
     );
 }
 

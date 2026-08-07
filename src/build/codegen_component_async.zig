@@ -9,11 +9,15 @@ const codegen_component_stream_writer = @import("codegen_component_stream_writer
 const codegen_component_wasi_filesystem_read_directory = @import("codegen_component_wasi_filesystem_read_directory.zig");
 const codegen_component_record_stream = @import("codegen_component_record_stream.zig");
 const codegen_component_record_resource_list_stream = @import("codegen_component_record_resource_list_stream.zig");
+const codegen_component_list_resource_producer = @import("codegen_component_list_resource_producer.zig");
 const codegen_component_variant_resource_stream = @import("codegen_component_variant_resource_stream.zig");
 const codegen_component_wasi_http = @import("codegen_component_wasi_http.zig");
 const codegen_component_cabi_realloc = @import("codegen_component_cabi_realloc.zig");
 const codegen_component_generated_async_scalar = @import("codegen_component_generated_async_scalar.zig");
+const codegen_component_async_v2_adapter = @import("codegen_component_async_v2_adapter.zig");
+const codegen_component_async_v2_scalar_adapter = @import("codegen_component_async_v2_scalar_adapter.zig");
 const component_async_plan = @import("codegen_component_async_plan.zig");
+const component_async_call_plan = @import("codegen_component_async_call_plan.zig");
 const codegen_p3_wait_for = @import("codegen_p3_wait_for.zig");
 const p3_async_manifest = @import("p3_async_manifest.zig");
 const wat_component_metadata = @import("wat_component_metadata.zig");
@@ -32,6 +36,7 @@ pub const Target = enum {
     stream_reader,
     record_stream,
     record_resource_list_stream,
+    record_resource_list_stream_producer,
     variant_resource_stream,
     stream_writer,
     stream_mirror,
@@ -42,6 +47,14 @@ pub const StreamWriterQueue = codegen_component_stream_writer.StreamWriterQueue;
 pub const StreamWriterLease = codegen_component_stream_writer.WriterLease;
 pub const StreamWriterPushOutcome = codegen_component_stream_writer.PushOutcome;
 pub const StreamWriterPopOutcome = codegen_component_stream_writer.PopOutcome;
+pub const GuestAsyncCallPlan = component_async_call_plan.GuestAsyncCallPlan;
+
+pub fn analyze_async_call_component(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+) !GuestAsyncCallPlan {
+    return component_async_call_plan.analyze(allocator, tokens);
+}
 
 pub fn emit_component_wat(
     allocator: std.mem.Allocator,
@@ -135,6 +148,10 @@ pub fn emit_component_wat(
             error.UnsupportedP3RecordResourceListStreamComponent => error.UnsupportedP3AsyncComponent,
             else => err,
         },
+        .record_resource_list_stream_producer => codegen_component_list_resource_producer.emit_component_wat_for_tokens(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3ListResourceProducer => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
         .variant_resource_stream => finalize_component_wat(allocator, codegen_component_variant_resource_stream.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
             error.UnsupportedP3VariantResourceStream => error.UnsupportedP3AsyncComponent,
             else => err,
@@ -151,6 +168,69 @@ pub fn emit_component_wat(
             error.UnsupportedP3WasiReadDirectoryComponent => error.UnsupportedP3AsyncComponent,
             else => err,
         },
+    };
+}
+
+/// Test-only opt-in entrypoint for the generic ABI v2 descriptor adapter.
+/// The default component dispatch above intentionally remains on the v1
+/// emitter until the full differential/runtime review promotes it.
+pub fn emit_component_wat_v2_for_test(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+) ![]u8 {
+    var registry = try p3_async_manifest.Registry.load(allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(allocator);
+    var plan = try codegen_component_async_v2_adapter.analyze(allocator, tokens, registry);
+    defer plan.deinit(allocator);
+    return try plan.emit_component_wat(allocator);
+}
+
+/// Opt-in entrypoint for the second independent generic ABI v2 shape. The
+/// caller supplies the validated import graph so generated-manifest facts stay
+/// the admission boundary.
+pub fn emit_component_wat_v2_scalar_i64(
+    allocator: std.mem.Allocator,
+    program: parser.Program,
+    tokens: []const lexer.Token,
+    module_graph: *const imports.ModuleGraph,
+) ![]u8 {
+    var plan = try codegen_component_async_v2_scalar_adapter.analyze(allocator, program, tokens, module_graph);
+    defer plan.deinit(allocator);
+    return try plan.emit_component_wat(allocator);
+}
+
+/// Explicit Generic ABI v2 promotion profile. This is deliberately separate
+/// from the v1 registry dispatcher: only independently verified adapters are
+/// admitted, and every other registry target remains rejected before WAT.
+pub fn emit_component_wat_v2(
+    allocator: std.mem.Allocator,
+    program: parser.Program,
+    tokens: []const lexer.Token,
+    module_graph: ?*const imports.ModuleGraph,
+) ![]u8 {
+    const target = target_for_tokens_with_graph(allocator, tokens, module_graph) catch
+        return error.UnsupportedGenericAbiV2Promotion;
+
+    return switch (target) {
+        .variant_resource_stream => blk: {
+            var registry = p3_async_manifest.Registry.load(allocator, @embedFile("p3_async_registry.json")) catch
+                return error.UnsupportedGenericAbiV2Promotion;
+            defer registry.deinit(allocator);
+            var plan = codegen_component_async_v2_adapter.analyze(allocator, tokens, registry) catch
+                return error.UnsupportedGenericAbiV2Promotion;
+            defer plan.deinit(allocator);
+            break :blk finalize_component_wat(allocator, plan.emit_component_wat(allocator)) catch
+                return error.UnsupportedGenericAbiV2Promotion;
+        },
+        .generated_async_scalar => blk: {
+            const graph = module_graph orelse return error.UnsupportedGenericAbiV2Promotion;
+            var plan = codegen_component_async_v2_scalar_adapter.analyze(allocator, program, tokens, graph) catch
+                return error.UnsupportedGenericAbiV2Promotion;
+            defer plan.deinit(allocator);
+            break :blk finalize_component_wat(allocator, plan.emit_component_wat(allocator)) catch
+                return error.UnsupportedGenericAbiV2Promotion;
+        },
+        else => error.UnsupportedGenericAbiV2Promotion,
     };
 }
 
@@ -783,6 +863,10 @@ pub fn emit_component_wit_with_graph(
             error.UnsupportedP3RecordResourceListStreamComponent => error.UnsupportedP3AsyncComponent,
             else => err,
         },
+        .record_resource_list_stream_producer => codegen_component_list_resource_producer.emit_component_wit_for_tokens(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3ListResourceProducer => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
         .variant_resource_stream => codegen_component_variant_resource_stream.emit_component_wit(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3VariantResourceStream => error.UnsupportedP3AsyncComponent,
             else => err,
@@ -850,6 +934,10 @@ pub fn target_for_tokens_with_graph(
         return .stream_mirror;
     } else |_| {}
 
+    if (codegen_component_list_resource_producer.ListResourceProducerPlan.analyze(tokens, registry)) |_| {
+        return .record_resource_list_stream_producer;
+    } else |_| {}
+
     var target: ?Target = null;
     var idx: usize = 0;
     while (idx + 8 < tokens.len) : (idx += 1) {
@@ -868,6 +956,11 @@ pub fn target_for_tokens_with_graph(
                 try list_resource_stream_target_for_tokens(tokens, registry)
             else
                 return error.UnsupportedP3AsyncComponent,
+            .record_resource_list_stream_producer => if (binding.kind == .host_func) blk: {
+                _ = codegen_component_list_resource_producer.ListResourceProducerPlan.analyze(tokens, registry) catch
+                    return error.UnsupportedP3AsyncComponent;
+                break :blk .record_resource_list_stream_producer;
+            } else return error.UnsupportedP3AsyncComponent,
             .variant_resource_stream_reader => if ((binding.kind == .host or binding.kind == .host_func) and variant_resource_stream_signature_at(tokens, idx))
                 .variant_resource_stream
             else
@@ -914,9 +1007,11 @@ fn target_for_descriptor(descriptor: p3_async_manifest.Descriptor) !Target {
         .scalar_unit => .scalar_unit,
         .scalar_result => .scalar_result,
         .unit_result_tag => .unit_result_tag,
+        .future_owned_resource => error.UnsupportedP3AsyncComponent,
         .stream_reader_acquire => .stream_reader,
         .record_stream_reader => .wasi_read_directory,
         .record_resource_list_stream_reader => error.UnsupportedP3AsyncComponent,
+        .record_resource_list_stream_producer => .record_resource_list_stream_producer,
         .variant_resource_stream_reader => .variant_resource_stream,
         .stream_writer => .stream_writer,
         .http_resource_result => error.UnsupportedP3AsyncComponent,
@@ -1271,6 +1366,16 @@ test "generic Component async target requires the bounded list-owned resource so
     try std.testing.expectError(error.UnsupportedP3AsyncComponent, target_for_tokens(std.testing.allocator, repeated_tokens));
 }
 
+test "generic Component async target classifies the C-min list resource producer" {
+    const source = @embedFile("test/check/447_g6_2_c_min_list_resource_producer.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try std.testing.expectEqual(
+        Target.record_resource_list_stream_producer,
+        try target_for_tokens(std.testing.allocator, tokens),
+    );
+}
+
 test "generic Component async target classifies the variant resource stream" {
     const source =
         \\probe_read = @host_func("do:variant-resource-stream-canonical@0.1.0", "read-via-stream", () -> Tuple<Stream<Ticket | nil | EventError>, Future<Result<nil, EventError>>>)
@@ -1281,6 +1386,82 @@ test "generic Component async target classifies the variant resource stream" {
     defer std.testing.allocator.free(tokens);
 
     try std.testing.expectEqual(Target.variant_resource_stream, try target_for_tokens(std.testing.allocator, tokens));
+}
+
+test "v2 variant adapter is opt-in and emits an independent artifact" {
+    const source =
+        \\probe_read = @host_func("do:variant-resource-stream-canonical@0.1.0", "read-via-stream", () -> Tuple<Stream<Ticket | nil | EventError>, Future<Result<nil, EventError>>>)
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    const wat = try emit_component_wat_v2_for_test(std.testing.allocator, tokens);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[event-tag-offset]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[resource-drop]ticket") != null);
+}
+
+test "v2 scalar-i64 adapter is opt-in and emits an independent artifact" {
+    const source = @embedFile("test/check/431_generated_async_scalar_i64.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+    var graph = try codegen_component_async_v2_scalar_adapter.test_i64_graph(std.testing.allocator);
+    defer graph.deinit();
+    const wat = try emit_component_wat_v2_scalar_i64(std.testing.allocator, program, tokens, &graph);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "generic ABI v2 independent scalar-i64 emitter template") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[scalar-payload] offset=16 byte-size=8 alignment=8 encoding=core-s64") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i64.load") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i64.store") != null);
+}
+
+test "v2 promotion dispatches only the independent private shapes" {
+    const variant_source =
+        \\probe_read = @host_func("do:variant-resource-stream-canonical@0.1.0", "read-via-stream", () -> Tuple<Stream<Ticket | nil | EventError>, Future<Result<nil, EventError>>>)
+    ;
+    const variant_tokens = try lexer.tokenize(std.testing.allocator, variant_source);
+    defer std.testing.allocator.free(variant_tokens);
+    const variant_wat = try emit_component_wat_v2(std.testing.allocator, undefined, variant_tokens, null);
+    defer std.testing.allocator.free(variant_wat);
+    try std.testing.expect(std.mem.indexOf(u8, variant_wat, "generic ABI v2 independent descriptor emitter template") != null);
+
+    const scalar_source = @embedFile("test/check/431_generated_async_scalar_i64.do");
+    const scalar_tokens = try lexer.tokenize(std.testing.allocator, scalar_source);
+    defer std.testing.allocator.free(scalar_tokens);
+    var scalar_program = try parser.parse_program(std.testing.allocator, scalar_tokens, scalar_source.len);
+    defer scalar_program.deinit(std.testing.allocator);
+    var scalar_graph = try codegen_component_async_v2_scalar_adapter.test_i64_graph(std.testing.allocator);
+    defer scalar_graph.deinit();
+    const scalar_wat = try emit_component_wat_v2(std.testing.allocator, scalar_program, scalar_tokens, &scalar_graph);
+    defer std.testing.allocator.free(scalar_wat);
+    try std.testing.expect(std.mem.indexOf(u8, scalar_wat, "generic ABI v2 independent scalar-i64 emitter template") != null);
+}
+
+test "v2 promotion rejects v1 generated scalar before WAT emission" {
+    const source = @embedFile("test/check/430_generated_async_scalar.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+    var graph = try generated_scalar_test_graph(std.testing.allocator);
+    defer graph.deinit();
+
+    try std.testing.expectError(
+        error.UnsupportedGenericAbiV2Promotion,
+        emit_component_wat_v2(std.testing.allocator, program, tokens, &graph),
+    );
+}
+
+test "v2 promotion leaves default variant dispatch on v1" {
+    const source =
+        \\probe_read = @host_func("do:variant-resource-stream-canonical@0.1.0", "read-via-stream", () -> Tuple<Stream<Ticket | nil | EventError>, Future<Result<nil, EventError>>>)
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    const wat = try emit_component_wat(std.testing.allocator, undefined, tokens, null);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "generic ABI v2 independent descriptor emitter template") == null);
 }
 
 test "HTTP WIT package selection requires the exact service plan" {

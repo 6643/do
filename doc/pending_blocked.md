@@ -1,6 +1,6 @@
 # 待处理与阻断清单
 
-更新时间: 2026-08-06
+更新时间: 2026-08-08
 基线: 默认回归以 `./src/build/test/run_tests.sh` 最新结果为准  
 关系: 总规划 `doc/master_plan.md`; 接手 `doc/start_here.md`; 执行状态 `doc/roadmap_status.md`  
 约定: **只记未关闭项**; 完成后从本文件删除或移入「已关闭摘要」, 并同步入口文档与 `CHANGELOG.md`。
@@ -25,10 +25,106 @@ only. Public `own<T>`/`borrow<T>`/`ref<T>` syntax remains outside this phase.
 
 | ID | 问题 | 证据 / 停止点 | 恢复条件 |
 | --- | --- | --- | --- |
-| **G6.2** | `descriptor.read-directory` 及 record-stream 通用能力 | generic consumer 已覆盖注册的非 filesystem record streams；bounded producer、StreamMirror、private Result cancellation、HTTP payload cancellation、resource-list stream 以及私有 `do:variant-resource-stream-canonical@0.1.0` 的 compiler-generated Component/Rust/Wasmtime gate 均已通过。variant slice 固定为 `ticket(own<ticket>)`、`idle`、`failed(io)`、单次 read、pending/completion error，frame `+64` 的 `tag@0,payload@4,size=8,align=4`，并保留 early-drop、malformed-tag 与 duplicate-release 负例；仍缺一般 async helper/producer lease、任意 producer 表达式、通用 list、通用 borrowed/variant lowering、第六跳 forwarding、第七层或更一般 nested resource 字段、payload-bearing completion error 的更广形状、任意 filesystem async method与通用 resource cancellation。Pinned `wasm-tools 1.254.0` 对含 `borrow<T>` 的 stream record 在 Component embed 阶段明确拒绝 | 保持 private cancellation slice 的 descriptor/负边界；扩展其他 producer/resource shape 前必须另立 design 与 gate |
+| **G6.2** | `descriptor.read-directory` 及 record-stream 通用能力 | generic consumer 已覆盖注册的非 filesystem record streams；bounded producer、StreamMirror、private Result cancellation、HTTP payload cancellation、resource-list stream 以及私有 `do:variant-resource-stream-canonical@0.1.0` 的 compiler-generated Component/Rust/Wasmtime gate 均已通过。variant slice 固定为 `ticket(own<ticket>)`、`idle`、`failed(io)`、单次 read、pending/completion error，frame `+64` 的 `tag@0,payload@4,size=8,align=4`，并保留 early-drop、malformed-tag 与 duplicate-release 负例；仍缺一般 async helper/producer lease、任意 producer 表达式、通用 list、通用 borrowed/variant lowering、第六跳 forwarding、第七层或更一般 nested resource 字段、payload-bearing completion error 的更广形状、任意 filesystem async method与通用 resource cancellation。Pinned `wasm-tools 1.255.0` 对含 `borrow<T>` 的 stream record 在 Component embed 阶段明确拒绝（1.254.0 同样拒绝） | 保持 private cancellation slice 的 descriptor/负边界；扩展其他 producer/resource shape 前必须另立 design 与 gate |
 | **06.2** | 历史总项 | 已拆到 G2–G6；通用 consumer slice 已关闭，剩余边界由 **G6.2** 的后续 gates 承接 | 同上 |
 
 **G6.2 next-shape stop (2026-08-05, `can_skip=true`):** 当前计划要求的两个候选都没有形成新的独立 shape：payload-bearing completion error 的 pinned 证据属于现有 HTTP 专用 descriptor，record/list resource shape 已有独立 registry 与 runtime gate。没有新的 pinned WIT/WAT、canonical layout 和 ownership matrix 时不新增 descriptor、不泛化现有 lowering。恢复条件是先提交新的 bounded design、pinned probe、正负 fixture、Component/Rust/Wasmtime cleanup gate，再重新进入 G6.2。
+
+**Generic ABI v2 borrow capability matrix (2026-08-06):** pinned
+`wasm-tools 1.254.0 (bb58fdf91 2026-07-20)` accepted `component embed` plus
+`component new` for direct `borrow<ticket>`, a borrowed record, a borrowed
+variant, and `list<borrow<ticket>>`. A `stream<record { ticket: borrow<ticket> }>`
+and `future<borrow<ticket>>` were both rejected during `component embed` with
+the exact diagnostic `contains a \`borrow<T>\` which is not supported`.
+This proves only toolchain shape capability; no Do compiler registry entry was
+added. Before either rejected shape can be reconsidered, rerun the matrix with
+a pinned toolchain upgrade or a newly measured canonical WIT shape.
+
+**Generic ABI v2 borrow capability matrix refresh (2026-08-06):** the same
+matrix was rerun against `wasm-tools 1.255.0 (76e20611d 2026-07-30)` via
+`WASM_TOOLS_EXPECT_VERSION=1.255.0`. Direct `borrow<ticket>`, borrowed record,
+borrowed variant, and `list<borrow<ticket>>` still accepted;
+`stream<record { ticket: borrow<ticket> }>` and `future<borrow<ticket>>` still
+rejected during `component embed` with the same
+`contains a \`borrow<T>\` which is not supported` diagnostic. The boundary
+is therefore not an artifact of 1.254.0 alone.
+
+**Owned async capability matrix (2026-08-07):** the same pinned
+`wasm-tools 1.255.0` probe also accepts `future<own<ticket>>` and
+`stream<record { ticket: own<ticket> }>` during `component embed` and
+`component new`. These are toolchain-only positive rows: no canonical async
+frame layout, transfer/drop behavior, Rust/Wasmtime runtime gate, Do source
+admission rule, or compiler registry descriptor exists for either shape. The
+borrowed stream/future rejection and the no-public-ownership-syntax boundary
+remain unchanged.
+
+**Owned future canonical runtime checkpoint (2026-08-07):**
+`examples/p3-runtime/test_future_owned_canonical_abi.sh` now proves one private
+`future<own<ticket>>` shape through `wasm-tools 1.255.0`, Component assembly,
+and Wasmtime `47.0.2`. The Core frame uses payload `+12`, ticket `+16`, and an
+independent presence bit at `+20`; this is required because Wasmtime's first
+`ResourceTable` representation is the valid handle `0`. Ready, pending-once,
+and pending-then-cancel modes all pass with one future drop, exactly-once
+resource drop only when a ticket is created, and `table-empty=true`. The
+callback path also follows Wasmtime's contract that the third callback value is
+encoded `ReturnCode`, while the result payload is already in the `future.read`
+destination. This closes only the measured private runtime slice; it does not
+admit generic owned futures/streams, borrowed async values, Do ownership syntax,
+or a compiler registry descriptor.
+
+**Private owned-future compiler promotion (2026-08-07, green):**
+`--p3-owned-future-component` now admits exactly the registered
+`Future<Ticket>` source shape and emits the private `future<own<ticket>>` WIT
+sidecar. `examples/p3-runtime/test_do_future_owned_component.sh` passes
+sidecar identity, compiler WAT markers, `wasm-tools 1.255.0` parsing, pinned
+`wasm-tools 1.254.0` legacy async assembly/validation, target isolation, and
+the Rust/Wasmtime ready/pending/cancel matrix. The three opt-in negative
+fixtures reject before WAT as `UnsupportedP3OwnedFutureComponent`. This
+closes only one private compiler promotion; generic owned futures/streams,
+borrowed async values, public ownership syntax, arbitrary producer
+expressions, filesystem async, and D2 host I/O remain pending.
+
+**Synchronous `list<borrow<T>>` canonical ABI probe (2026-08-06):**
+`examples/p3-runtime/test_list_borrow_canonical_abi.sh` independently assembles
+`do:list-borrow-canonical@0.1.0` with `wasm-tools 1.255.0`, validates the
+Component, and executes the Core import through Wasmtime `47.0.2`. The probe
+covers `len=0/1/3`, observes a canonical `ptr=64` list base with 4-byte handle
+elements, and passes the same owner handle as each borrowed element. The host
+callback sees the owner live and records one borrow call; the owner is dropped
+exactly once after the exported call and the `ResourceTable` is empty. This is
+evidence for one synchronous private ABI shape only; it does not admit the
+shape to the Do compiler registry, and does not relax the rejected nested
+`stream`/`future` borrow rows or add public ownership syntax.
+
+**Generic ABI v2 internal plan checkpoint (2026-08-06):** pure `AbiType`,
+measured `LayoutPlan`, explicit own/direct-borrow `OwnershipPlan`, and terminal
+`AsyncPlan` modules are green. The private variant-resource-stream adapter is
+still opt-in only, but now renders an independent v2 template from the pinned
+descriptor and measured layout; it no longer returns the v1 canonical WAT. The
+independent artifact passed `wasm-tools` parse/embed/new/validate and the
+ticket/idle/error/pending/completion-error Rust/Wasmtime cleanup matrix. The
+private scalar-i64 adapter is also opt-in through
+`--p3-async-v2-scalar-i64`; its measured 8-byte layout and
+ready/pending/cancel Rust/Wasmtime matrix are green, and payload manifest drift
+is rejected before emission. The new unified `--p3-async-component-v2` profile
+routes the same scalar-i64 adapter plus the variant-resource-stream adapter, but
+the default emitter and registry dispatch remain v1. Public
+`own<T>`/`borrow<T>`/`ref<T>` syntax, generic WAT emission beyond this admitted
+pair of private shapes, unmeasured layouts, and the toolchain-rejected borrowed
+stream/future shapes remain pending. Promotion now has two independent private
+shape gates and a deliberate registry/runtime switch, but default v1 dispatch
+still stays unchanged.
+
+**Generic ABI v2 promotion profile (2026-08-07):** the explicit
+`--p3-async-component-v2` profile is now wired through CLI, pipeline, and a
+fail-closed dispatcher. `bash examples/p3-runtime/test_generic_abi_v2_promotion.sh`
+passes the independent variant-resource-stream and generated `Future<i64>`
+Component/Rust/Wasmtime matrices; a generated scalar-u32 input is rejected as
+`UnsupportedGenericAbiV2Promotion` before a WAT file is created. The default
+`--p3-async-component` path and the legacy scalar-i64 compatibility flag remain
+unchanged. This closes only registry/runtime promotion for the two private
+shapes; generic payload/list/resource lowering, public ownership syntax, and
+borrowed stream/future shapes remain pending.
 
 **Task 8 Step 3 runtime baseline (2026-08-06, green):**
 `examples/p3-runtime/test_task8_step3_baseline.sh` 已通过当前七个已登记
@@ -38,7 +134,48 @@ filesystem preopen、TCP/UDP sockets）。这只关闭运行时基线核验，�
 建立 admitted shape、resumable frame、Component metadata 与 Rust/Wasmtime
 pending/ready/cancel gate。
 
-本轮执行复核（2026-08-06）重新运行了六跳 forwarding/任意 producer 边界、borrowed stream rejection 与 `p3_async_manifest`（74/74）；三个 gate 均保持预期拒绝/通过。同步修复了 record-stream、read-directory、list-resource-stream emitter 对 canonical 普通函数与 `@await` token 的识别；nested lowering、borrowed rejection、G6.2 boundary 与完整 compiler/Wasm 矩阵均保持绿色，未新增 descriptor 或 lowering。
+**General async-call lowering ABI boundary (2026-08-07):** the independent
+probe `examples/p3-runtime/test_async_call_component_probe.sh` was run with
+pinned `wasm-tools 1.254.0 (bb58fdf91 2026-07-20)` (SHA-256
+`cc1f862d69363aac2d4a88f01c414a2dcf10858632d0c0a45e93ff60503979d6`). Core
+parsing and legacy async metadata attachment succeeded, but Component
+assembly rejected a synthetic internal helper endpoint:
+`failed to resolve import [export]$root::[task-return]helper` / `no export
+helper found`. The current async Component ABI exposes `task.return` only for
+WIT async exports; an ordinary guest helper has no independent child-task
+endpoint. `wit-bindgen` `spawn_local` is an executor-local queue, not a
+Component task primitive. The same gate accepts and validates the selected
+root-owned local-frame probe, which stores the host subtask in the root frame
+and resumes through `[task-return]run`. The compiler plan therefore continues
+with local frame/state lowering; independent guest child-task creation remains
+deferred. Do not add a helper WIT export or route this shape through v1.
+Recovery for the deferred capability requires a pinned ABI/toolchain design
+that specifies guest child-task creation, continuation delivery, cancellation,
+and child-before-parent cleanup.
+
+**Bounded general async-call slice (2026-08-07, green):** the first admitted
+root-owned local-frame shape is now implemented behind
+`--p3-async-call-component`. It uses the separate private
+`do:generic-async-call-probe@0.1.0` `host.work: async func()` descriptor; the
+existing `do:generic-async-runtime-probe` descriptor and v1/v2 targets remain
+unchanged. `examples/p3-runtime/test_do_async_call_component.sh` passes pinned
+`wasm-tools 1.254.0` assembly/validation, verifies the four guest state
+markers, and confirms v1 rejects the same source before WAT. The Rust/Wasmtime
+gate `test_rust_async_call_component.sh` passes `ready`, `pending`, and
+`cancel`: ready/pending each observe one completion and one drop; cancel
+observes one pending-future drop, zero completion, no duplicate drop, and an
+empty `ResourceTable`.
+
+The opt-in analyzer rejects helper parameters/payloads, multiple live
+children, and nested helper calls as `UnsupportedP3AsyncCallComponent`; the
+normal default build still reports `AsyncLoweringUnavailable` for those
+fixtures because it does not select the opt-in target. Generic async-call
+composition, arbitrary producer expressions, payload/Stream/resource/list
+futures, public ownership syntax, filesystem async, and D2 host I/O remain
+pending. Independent guest child-task creation remains blocked by the pinned
+Component ABI described above.
+
+本轮执行复核（2026-08-07）重新运行了六跳 forwarding/任意 producer 边界、borrowed stream rejection 与 `p3_async_manifest`（74/74）；三个 gate 均保持预期拒绝/通过。同步确认了 descriptor-bounded StreamMirror 六模式、默认 Bun 回归 `pass=1116 fail=0 skip=3`、WASM 回归 `pass=1118 fail=0 skip=3`（WASM smoke `6/6`）和 ReleaseSmall smoke 通过；nested lowering、borrowed rejection、G6.2 boundary 与完整 compiler/Wasm 矩阵均保持绿色，未新增 descriptor 或 lowering。
 
 **规则**: 固定一至三条目 read-directory slice、generic consumer slice、multi-owned、多个顶层 nested-owned resource path 以及一层/两层/三层/四层/五层/六层 nested-owned resource consumer slice、注册的单读 `stream<list<resource-entry>>` private slice、bounded scalar producer slice、受限（最多五跳 forwarding）helper-mediated producer-lease slice、固定/参数化 `u64` countdown producer slice、参数化 helper producer slice及其五跳 forwarding、三种 typed 参数受限重排形状与 branch-selected terminal slice 均已可用；无对应 producer-lease/resource gate 时，不绕过上述边界扩 WASI async/stream codegen。
 
@@ -157,6 +294,10 @@ borrowed/list/variant resource field 或更宽 runtime 形状。
 - 阶段 A–F、H、I (I1+I2) 主线; G1–G5、G6.1、G6.4
 - **G6.1** preopens 方案 A: host `[Tuple<i32,text>]` + `preopen_directories() -> [Tuple<Dir, text>]` (`compile_ok/274`–`275`)
 - **G6.3** sockets 方案 B: create/bind/drop + dual address + payload enum + stdlib wrappers (`compile_ok/291`–`294`)
+- **G6.2 C-min producer**: private `stream<list<resource-entry>>` producer with
+  measured `ptr=64/len=68/stride=4/ticket=0`, exact Do admission, compiler
+  Component/Rust/Wasmtime ready/pending/error/cancel gate, and fail-closed
+  negative fixtures; generic list/producer and public ownership remain pending
 
 ---
 

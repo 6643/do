@@ -22,6 +22,8 @@ const codegen_component_wasi_filesystem_preopen = @import("codegen_component_was
 const codegen_component_wasi_sockets = @import("codegen_component_wasi_sockets.zig");
 const codegen_component_resource_async = @import("codegen_component_resource_async.zig");
 const codegen_component_async = @import("codegen_component_async.zig");
+const codegen_component_async_call = @import("codegen_component_async_call.zig");
+const codegen_component_future_owned = @import("codegen_component_future_owned.zig");
 
 pub const EmitOptions = model.EmitOptions;
 pub const CodegenError = model.CodegenError;
@@ -36,6 +38,8 @@ pub const emit_p3_wasi_filesystem_preopen_wit = codegen_component_wasi_filesyste
 pub const emit_p3_wasi_sockets_create_bind_drop_wit = codegen_component_wasi_sockets.emit_component_wit;
 pub const emit_p3_resource_async_wit = codegen_component_resource_async.emit_component_wit;
 pub const emit_p3_async_component_wit = codegen_component_async.emit_component_wit_with_graph;
+pub const emit_p3_async_call_component_wit = codegen_component_async_call.emit_component_wit;
+pub const emit_p3_owned_future_component_wit = codegen_component_future_owned.emit_component_wit;
 pub const requires_p3_http_wit_package = codegen_component_async.requires_http_wit_package;
 
 // Types for unit tests

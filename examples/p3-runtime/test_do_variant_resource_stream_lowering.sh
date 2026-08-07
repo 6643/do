@@ -15,8 +15,9 @@ wat_file="$tmp_dir/variant-resource-stream.wat"
 core_wasm="$tmp_dir/variant-resource-stream.core.wasm"
 embedded="$tmp_dir/variant-resource-stream.embedded.wasm"
 component="$tmp_dir/variant-resource-stream.component.wasm"
+component_target=${DO_P3_ASYNC_COMPONENT_TARGET:---p3-async-component}
 
-DO_LIB_ROOT="$repo_root/lib" "$do_bin" build --p3-async-component "$fixture" \
+DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$component_target" "$fixture" \
   --p3-wit-output "$wit_file" -o "$wat_file"
 grep -Fq '[event-tag-offset]' "$wat_file"
 grep -Fq '[event-payload-offset]' "$wat_file"

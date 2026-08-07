@@ -138,6 +138,16 @@ Wasm export, and `nextEvent()` does not yet use the canonical copied value ABI.
 It does not implement WIT `stream<T>`, `future<T>`, `pollable`, cancellation,
 or TCP/UDP stream lowering.
 
+## G6.2 General Resource Ownership
+
+**Status:** bounded private general-resource design is pending; public `own<T>`/`borrow<T>`/`ref<T>` syntax remains out of scope.
+
+**Evidence:** the current plan records a green StreamMirror closeout, `pass=1116 fail=0 skip=3` default Bun regression, `pass=1118 fail=0 skip=3` WASM regression with `pass=6 fail=0`, ReleaseSmall smoke, and the pinned negative gates for sixth forwarding, arbitrary producer expressions, and borrowed stream rejection. The capability matrix still treats general producer lease, borrowed/list/variant fields, and the wider async/resource gates as blocked until a separate positive plan is authorized.
+
+**Boundary:** cancellation releases live Component resources and does not compensate external effects. The current plan does not add an operation-id or rollback protocol.
+
+**Unblock condition:** finish the matrix/design/fixture gate in `docs/superpowers/plans/2026-08-03-g6-2-general-resource-ownership.md` and keep the later general async/D2 host I/O tracks on their own design gates.
+
 ## Generic Host Resources
 
 **Status:** blocked by missing executable generic host resource declaration.
@@ -675,6 +685,43 @@ The pinned validator also supplies a hard boundary for borrowed fields:
 `function read-via-stream returns a type which contains a borrow<T> which is
 not supported`. This is a Component/WIT toolchain limitation, not a reason to
 add public `borrow<T>` syntax to Do.
+
+The accepted synchronous list shape has a separate oracle:
+`examples/p3-runtime/test_list_borrow_canonical_abi.sh` uses
+`wasm-tools 1.255.0 (76e20611d 2026-07-30)` and Wasmtime `47.0.2` to call
+`read(values: list<borrow<ticket>>)` with lengths `0`, `1`, and `3`. The Core
+fixture records `ptr=64` and a four-byte handle stride; the Rust host confirms
+that the borrow callback can read the still-live owner and that exactly one
+`[resource-drop]ticket` occurs after the call. This proves only the measured
+synchronous private shape. It is not a generic borrowed-list lowering and does
+not change the public no-reference Do model or the fail-closed stream/future
+boundary.
+
+**2026-08-07 owned-future canonical checkpoint:**
+`examples/p3-runtime/test_future_owned_canonical_abi.sh` independently assembles
+and executes the private WIT shape `read: func() -> future<own<ticket>>` with
+`wasm-tools 1.255.0` and Wasmtime `47.0.2`. The Core probe stores the canonical
+future payload at frame `+12`, transfers the ticket representation to `+16`,
+and tracks ownership at `+20` because representation `0` is valid in an empty
+Wasmtime `ResourceTable`. Ready, pending-once, and pending-then-cancel modes
+observe one host call, one future drop, and an empty table; resource creation
+and `[resource-drop]ticket` occur exactly once only for the two successful
+modes. The callback consumes the frame payload and treats callback value `2` as
+the cancellation `ReturnCode`, rather than treating that code as a pointer.
+This is one private canonical/runtime slice only: generic owned async lowering,
+borrowed async values, producer leases, and public ownership syntax remain
+blocked; compiler registry admission is bounded to the isolated target below.
+
+The measured slice is now promoted behind the isolated compiler target
+`--p3-owned-future-component`. The compiler analyzer requires the exact
+registered descriptor, one `Future<Ticket>` local, one `@await`, and the
+declared `Ticket` resource; its emitter keeps the `+12/+16/+20` frame protocol
+and the generated WIT `future<own<ticket>>` spelling private. The combined
+gate `examples/p3-runtime/test_do_future_owned_component.sh` passes current
+`wasm-tools 1.255.0` parsing, the pinned legacy async assembler, and the
+Wasmtime ready/pending/cancel cleanup matrix. This does not generalize
+`Future<T>`, add owned streams or borrowed async values, or add public
+`own<T>`/`borrow<T>`/`ref<T>` syntax.
 
 The manifest parser recursively validates the admitted paths and rejects a
 seventh nested level, multiple children, mixed scalar/nested top-level fields,
@@ -1708,6 +1755,44 @@ ownership/Option syntax, and every unregistered descriptor remain blocked.
 Pinned Wasmtime `47.0.2` `bindgen!` cannot generate this `do:...` package because
 it emits the Rust keyword `do`; the runner therefore uses the established low-
 level Linker API rather than renaming the private WIT package.
+
+## G6.2 C-min List/Resource Producer Canonical ABI Probe (2026-08-07)
+
+The independent private producer probe
+`do:g6-2-c-min-producer@0.1.0` now passes
+`bash examples/p3-runtime/test_g6_2_c_min_list_resource_producer_abi.sh` with
+`wasm-tools 1.255.0 (76e20611d 2026-07-30)`, Wasmtime `47.0.2`, and Rust
+`1.97.1`. The WIT package also parses through
+`wasm-tools component wit`; its source hash is
+`8decd27aeca4a1f1863544860caec230a1fc50259336a893de79413c6f9ec3f7`.
+
+The hand-authored Core WAT establishes producer-side list facts independently
+of the consumer probe: pointer `64`, length `68`, element stride `4`, ticket
+offset `0`, and stream capacity `1`. The runtime matrix covers empty/one/three
+entries, pending, sink error, early drop, invalid mode, cancellation before and
+after transfer, malformed length, and duplicate release. Valid modes produce
+`[]`, `[1]`, and `[1,2,3]`; invalid mode allocates no ticket; every admitted
+terminal path leaves an empty `ResourceTable`; malformed length and duplicate
+release trap with the expected unknown-handle diagnostics.
+
+The cancellation rows are deliberately ownership-boundary probes: pre-transfer
+cleanup is guest-side subtask cancellation and post-transfer cleanup is host
+child-drop. Wasmtime dropping a `call_concurrent` future is not claimed to
+cancel an in-store guest task. The pure `ListLayoutPlan` slice is green (`6/6`
+focused, `19/19` full layout, `5/5` ABI types), its `ListProducerOwnershipPlan`
+is green (`6/6` focused, `17/17` full ownership), and the
+`ListProducerFramePlan` is green (`4/4` focused, `13/13` full async). The
+descriptor/manifest/sema admission is green (`79/79` and `122/122`) and only
+`StreamWriter<[ResourceEntry]> -> Result<nil, ErrorCode>` is accepted. The
+compiler promotion is now also closed for this exact private shape:
+`codegen_component_list_resource_producer.zig` passes `139/139`, unified
+`codegen_component_async.zig` passes `438/438`,
+`test_do_g6_2_c_min_list_resource_producer.sh` passes Do WAT/WIT assembly, and
+`test_rust_g6_2_c_min_list_resource_producer.sh` passes the generated
+Component/Rust/Wasmtime ready/pending/error/early-drop/invalid-mode and
+transfer-boundary cancellation matrix with an empty `ResourceTable`.
+Generic producer/list lowering, arbitrary producer expressions, borrowed
+payloads, public ownership syntax, and root hard-cancel remain blocked.
 ## G6.2 Variant Resource Stream Closeout (2026-08-05)
 
 The private `do:variant-resource-stream-canonical@0.1.0` descriptor is now

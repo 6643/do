@@ -1,5 +1,51 @@
 # Changelog
 
+# 2026-08-08 G6.2 private C-min list/resource producer promotion: registered
+  `do:g6-2-c-min-producer@0.1.0 / consume-via-stream` and promoted the exact
+  `StreamWriter<[ResourceEntry]> -> Result<nil, ProducerError>` Do shape through
+  the measured list layout (`ptr=64`, `len=68`, `stride=4`, ticket offset `0`,
+  capacity `1`, cardinalities `0/1/3`). The generated Component/WIT and
+  Rust/Wasmtime matrix passes ready, pending, sink error, early drop, invalid
+  mode, and transfer-boundary cancellation with an empty `ResourceTable`; three
+  negative fixtures remain fail-closed. This is a private bounded slice only:
+  generic list/producer lowering, borrowed payloads, public `own<T>`/
+  `borrow<T>`/`ref<T>` syntax, and root hard-cancel remain outside scope.
+
+# 2026-08-07 private owned-future Component promotion: added the isolated
+  `--p3-owned-future-component` target for the exact registered
+  `Future<Ticket>` source shape. It emits a private `future<own<ticket>>` WIT
+  sidecar and uses the measured `+12/+16/+20` frame protocol with a separate
+  resource-presence bit. The compiler-generated Component passes pinned
+  `wasm-tools 1.255.0` parsing, legacy `1.254.0` async assembly, and the
+  Wasmtime ready/pending/cancel matrix with exactly-once cleanup and an empty
+  `ResourceTable`. Unknown descriptors, scalar payloads, and second awaits
+  reject as `UnsupportedP3OwnedFutureComponent`; public `own<T>`/`borrow<T>`/
+  `ref<T>` syntax and generic owned/borrowed async lowering remain outside
+  this promotion.
+
+# 2026-08-07 bounded general async-call lowering: added the opt-in
+  `--p3-async-call-component` target for one no-parameter, `nil` helper called
+  through `@async(helper())` from a root function. The emitter uses a root-owned
+  local helper frame/state and the root `[task-return]run` path; it does not
+  export or synthesize an independent helper task. Pinned
+  `wasm-tools 1.254.0 (bb58fdf91 2026-07-20)`, Wasmtime `47.0.2`, and Rust
+  `1.97.1` Component gates pass `ready`, `pending`, and `cancel` with exactly
+  once child/future cleanup and an empty `ResourceTable`. Payload, multiple
+  child, and nested-helper forms reject as `UnsupportedP3AsyncCallComponent`
+  before WAT; parameter/resource/Stream/list/legacy forms remain outside this
+  bounded slice, as do arbitrary producer expressions, filesystem async, and
+  D2 host I/O.
+
+# 2026-08-07 G6.2 StreamMirror handoff refresh: the current plan baseline is
+  green with Bun-backed `./src/build/test/run_tests.sh` at `pass=1113 fail=0
+  skip=3`, `RUN_WASM=1 SKIP_BUILD=1` at `pass=1115 fail=0 skip=3` with
+  `pass=6 fail=0`, and ReleaseSmall smoke passed. The focused StreamMirror and
+  artifact checks remain pinned to the legacy `wasm-tools 1.254.0` binary
+  while capability probes use `wasm-tools 1.255.0`. This refresh keeps
+  general producer lease, borrowed/list/variant fields, general async-call
+  composition beyond the new bounded slice, and public
+  `own<T>`/`borrow<T>`/`ref<T>` syntax outside the plan.
+
 - 2026-08-06 Generated async scalar i64 lowering: the separate private
   `component-async-scalar-i64-v1` capability now accepts the generated
   `Future<i64>` caller with the measured `offset=16`, `byte-size=8`,

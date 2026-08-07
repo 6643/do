@@ -1116,22 +1116,24 @@ const GuestAwaitBinding = struct {
 fn find_guest_producer_function(tokens: []const lexer.Token, host_name: []const u8) ?GuestProducerFunction {
     var idx: usize = 0;
     while (idx + 8 < tokens.len) : (idx += 1) {
-        if (!tok_eq(tokens[idx], "async") or tokens[idx + 1].kind != .ident or !tok_eq(tokens[idx + 2], "(")) continue;
+        const declaration = function_declaration_at(tokens, idx, null) orelse continue;
+        var declaration_cursor = declaration.open_idx + 1;
         var return_start: usize = undefined;
         var count_name: ?[]const u8 = null;
         var value_name: ?[]const u8 = null;
-        if (tok_eq(tokens[idx + 3], ")")) {
-            return_start = idx + 4;
+        if (declaration_cursor < tokens.len and tok_eq(tokens[declaration_cursor], ")")) {
+            return_start = declaration_cursor + 1;
         } else {
-            if (idx + 5 >= tokens.len or tokens[idx + 3].kind != .ident or !tok_eq(tokens[idx + 4], "u64")) continue;
-            count_name = tokens[idx + 3].lexeme;
-            if (tok_eq(tokens[idx + 5], ")")) {
-                return_start = idx + 6;
+            if (declaration_cursor + 1 >= tokens.len or tokens[declaration_cursor].kind != .ident or !tok_eq(tokens[declaration_cursor + 1], "u64")) continue;
+            count_name = tokens[declaration_cursor].lexeme;
+            declaration_cursor += 2;
+            if (declaration_cursor < tokens.len and tok_eq(tokens[declaration_cursor], ")")) {
+                return_start = declaration_cursor + 1;
             } else {
-                if (idx + 9 >= tokens.len or !tok_eq(tokens[idx + 5], ",") or tokens[idx + 6].kind != .ident or
-                    !tok_eq(tokens[idx + 7], "u8") or !tok_eq(tokens[idx + 8], ")")) continue;
-                value_name = tokens[idx + 6].lexeme;
-                return_start = idx + 9;
+                if (declaration_cursor + 3 >= tokens.len or !tok_eq(tokens[declaration_cursor], ",") or tokens[declaration_cursor + 1].kind != .ident or
+                    !tok_eq(tokens[declaration_cursor + 2], "u8") or !tok_eq(tokens[declaration_cursor + 3], ")")) continue;
+                value_name = tokens[declaration_cursor + 1].lexeme;
+                return_start = declaration_cursor + 4;
             }
         }
         if (return_start + 7 >= tokens.len or !tok_eq(tokens[return_start], "-") or !tok_eq(tokens[return_start + 1], ">") or
@@ -1147,7 +1149,7 @@ fn find_guest_producer_function(tokens: []const lexer.Token, host_name: []const 
             if (parse_dynamic_guest_producer_body(tokens, stream.next_idx, body_end, name, value_name, stream.writer_name, host_name)) |dynamic| {
                 if (value_name != null and dynamic.value_name == null) continue;
                 return .{
-                    .name = tokens[idx + 1].lexeme,
+                    .name = tokens[declaration.name_idx].lexeme,
                     .reader_name = stream.reader_name,
                     .writer_name = stream.writer_name,
                     .write_future_name = dynamic.write_future_name,
@@ -1196,7 +1198,7 @@ fn find_guest_producer_function(tokens: []const lexer.Token, host_name: []const 
             const after_root = parse_return_await(tokens, helper_binding.next_idx, body_end, helper_binding.name) orelse continue;
             if (after_root != body_end) continue;
             return .{
-                .name = tokens[idx + 1].lexeme,
+                .name = tokens[declaration.name_idx].lexeme,
                 .reader_name = stream.reader_name,
                 .writer_name = stream.writer_name,
                 .write_future_name = selected_dynamic.write_future_name,
@@ -1240,7 +1242,7 @@ fn find_guest_producer_function(tokens: []const lexer.Token, host_name: []const 
         if (after_host != body_end) continue;
         const writes = selected_writes orelse continue;
         return .{
-            .name = tokens[idx + 1].lexeme,
+            .name = tokens[declaration.name_idx].lexeme,
             .reader_name = stream.reader_name,
             .writer_name = stream.writer_name,
             .write_future_name = writes.write_future_name,
@@ -1569,6 +1571,22 @@ const ParameterizedParameter = struct {
     next_idx: usize,
 };
 
+const FunctionDeclaration = struct {
+    name_idx: usize,
+    open_idx: usize,
+};
+
+fn function_declaration_at(tokens: []const lexer.Token, idx: usize, expected_name: ?[]const u8) ?FunctionDeclaration {
+    if (idx >= tokens.len or tokens[idx].kind != .ident) return null;
+    const name_idx: usize = if (tok_eq(tokens[idx], "async")) idx + 1 else idx;
+    const open_idx: usize = if (tok_eq(tokens[idx], "async")) idx + 2 else idx + 1;
+    if (name_idx >= tokens.len or open_idx >= tokens.len or tokens[name_idx].kind != .ident or !tok_eq(tokens[open_idx], "(")) return null;
+    if (expected_name) |name| {
+        if (!std.mem.eql(u8, tokens[name_idx].lexeme, name)) return null;
+    }
+    return .{ .name_idx = name_idx, .open_idx = open_idx };
+}
+
 fn parse_parameterized_parameter(tokens: []const lexer.Token, idx: usize, end_idx: usize) ?ParameterizedParameter {
     if (idx >= end_idx or tokens[idx].kind != .ident or idx + 1 >= end_idx) return null;
     if (tok_eq(tokens[idx + 1], "u64")) {
@@ -1588,8 +1606,7 @@ fn find_parameterized_stream_writer_function_named(
 ) ?ParameterizedStreamWriterFunction {
     var idx: usize = 0;
     while (idx + 3 < tokens.len) : (idx += 1) {
-        if (!tok_eq(tokens[idx], "async") or tokens[idx + 1].kind != .ident or
-            !std.mem.eql(u8, tokens[idx + 1].lexeme, expected_name) or !tok_eq(tokens[idx + 2], "(")) continue;
+        const declaration = function_declaration_at(tokens, idx, expected_name) orelse continue;
 
         var parameters: [3]ParameterizedParameter = undefined;
         var parameter_order: [3]ParameterizedParameterKind = undefined;
@@ -1597,7 +1614,7 @@ fn find_parameterized_stream_writer_function_named(
         var writer_name: []const u8 = undefined;
         var count_name: []const u8 = undefined;
         var value_name: []const u8 = undefined;
-        var cursor = idx + 3;
+        var cursor = declaration.open_idx + 1;
         var parameter_index: usize = 0;
         var valid = true;
         while (parameter_index < parameters.len) : (parameter_index += 1) {
@@ -1636,7 +1653,7 @@ fn find_parameterized_stream_writer_function_named(
         if (result_close + 1 >= tokens.len or !tok_eq(tokens[result_close + 1], "{")) continue;
         const body_end = find_matching(tokens, result_close + 1, "{", "}") orelse continue;
         return .{
-            .name = tokens[idx + 1].lexeme,
+            .name = tokens[declaration.name_idx].lexeme,
             .writer_name = writer_name,
             .count_name = count_name,
             .value_name = value_name,
@@ -1660,10 +1677,31 @@ fn parse_parameterized_helper_binding(
 ) ?ParameterizedHelperBinding {
     if (idx + 5 >= end_idx or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "Future") or !tok_eq(tokens[idx + 2], "<")) return null;
     const result_end = find_matching(tokens, idx + 2, "<", ">") orelse return null;
-    if (result_end + 4 >= end_idx or !tok_eq(tokens[result_end + 1], "=") or tokens[result_end + 2].kind != .ident or
-        !tok_eq(tokens[result_end + 3], "(")) return null;
-    const helper = find_parameterized_stream_writer_function_named(tokens, tokens[result_end + 2].lexeme) orelse return null;
-    var cursor = result_end + 4;
+    if (result_end + 3 >= end_idx or !tok_eq(tokens[result_end + 1], "=")) return null;
+
+    var helper_name_idx: usize = undefined;
+    var helper_open_idx: usize = undefined;
+    var wrapper_close_idx: ?usize = null;
+    if (result_end + 4 < end_idx and tok_eq(tokens[result_end + 2], "@") and
+        result_end + 6 < end_idx and tok_eq(tokens[result_end + 3], "async") and
+        tok_eq(tokens[result_end + 4], "(")) {
+        helper_name_idx = result_end + 5;
+        helper_open_idx = result_end + 6;
+        if (tokens[helper_name_idx].kind != .ident or !tok_eq(tokens[helper_open_idx], "(")) return null;
+        wrapper_close_idx = find_matching(tokens, result_end + 4, "(", ")") orelse return null;
+    } else {
+        helper_name_idx = result_end + 2;
+        helper_open_idx = result_end + 3;
+        if (helper_name_idx >= end_idx or helper_open_idx >= end_idx or tokens[helper_name_idx].kind != .ident or
+            !tok_eq(tokens[helper_open_idx], "(")) return null;
+    }
+
+    const helper_call_close = find_matching(tokens, helper_open_idx, "(", ")") orelse return null;
+    if (wrapper_close_idx) |wrapper_close| {
+        if (helper_call_close + 1 != wrapper_close) return null;
+    }
+    const helper = find_parameterized_stream_writer_function_named(tokens, tokens[helper_name_idx].lexeme) orelse return null;
+    var cursor = helper_open_idx + 1;
     for (helper.parameter_order, 0..) |kind, parameter_index| {
         if (cursor >= end_idx or tokens[cursor].kind != .ident) return null;
         const expected_name = switch (kind) {
@@ -1678,16 +1716,17 @@ fn parse_parameterized_helper_binding(
             cursor += 1;
         }
     }
-    if (cursor >= end_idx or !tok_eq(tokens[cursor], ")")) return null;
+    if (cursor != helper_call_close) return null;
+    const next_idx = if (wrapper_close_idx) |wrapper_close| wrapper_close + 1 else helper_call_close + 1;
     return .{
         .name = tokens[idx].lexeme,
-        .host_name = tokens[result_end + 2].lexeme,
+        .host_name = tokens[helper_name_idx].lexeme,
         .writer_name = writer_name,
         .count_name = count_name,
         .value_name = value_name,
         .result_start = idx + 3,
         .result_end = result_end,
-        .next_idx = cursor + 1,
+        .next_idx = next_idx,
     };
 }
 
@@ -3625,6 +3664,48 @@ test "StreamWriterPlan accepts one helper transfer with branch terminal" {
         \\    reader StreamReader<u8>, writer StreamWriter<u8> = new_stream<u8>(1)
         \\    pending Future<Result<nil, ProbeError>> = finish_stream(writer, count, value)
         \\    return await(pending)
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+
+    const plan = try StreamWriterPlan.analyze(tokens, registry);
+    try std.testing.expectEqual(EndpointMode.guest_producer, plan.endpoint_mode);
+    try std.testing.expectEqual(ProducerMode.countdown, plan.producer_mode);
+    try std.testing.expectEqualStrings("finish_stream", plan.producer_helper_name.?);
+}
+
+test "StreamWriterPlan accepts branch terminal with canonical ordinary declarations" {
+    const source =
+        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\ProbeError error = Io | IllegalByteSequence | Pipe
+        \\StreamError error = StreamClosed | StreamWriteFailed
+        \\finish_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
+        \\    remaining u64 = count
+        \\    loop {
+        \\        if @eq(remaining, 0) {
+        \\            break
+        \\        }
+        \\        write_pending Future<Result<nil, StreamError>> = writer(value)
+        \\        write_result Result<nil, StreamError> = @await(write_pending)
+        \\        _ = write_result
+        \\        remaining = @sub(remaining, 1)
+        \\    }
+        \\    if @eq(value, 90) {
+        \\        close(writer)
+        \\    } else {
+        \\        abort(writer, 2)
+        \\    }
+        \\    sink_pending Future<Result<nil, ProbeError>> = sink_write(writer)
+        \\    return @await(sink_pending)
+        \\}
+        \\produce(count u64, value u8) -> Result<nil, ProbeError> {
+        \\    reader StreamReader<u8>, writer StreamWriter<u8> = new_stream<u8>(1)
+        \\    pending Future<Result<nil, ProbeError>> = @async(finish_stream(writer, count, value))
+        \\    return @await(pending)
         \\}
         \\start() {}
     ;

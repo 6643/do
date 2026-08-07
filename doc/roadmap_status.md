@@ -1,6 +1,6 @@
 # Roadmap 执行状态
 
-更新时间: 2026-08-06
+更新时间: 2026-08-08
 
 **本文只保留当前状态与阻断。** 历史小任务勾选与逐条 gate 证据已从仓库移除; 追溯用 git 历史与 `CHANGELOG.md`。  
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
@@ -20,8 +20,8 @@
 | 阶段 A–F、H | done |
 | 阶段 D | 可推进项 done; D2.1 按 B 方案绿色 regression 收口 |
 | D2 真实 host smoke | in progress; real local filesystem preopen/read-directory, CLI pipe, and compiler-generated TCP/UDP socket create/bind/drop loopback gates are green; general filesystem async and external HTTP remain blocked |
-| 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + helper-mediated lease（含五跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints、G6.3、G6.4 done; G6.2 general producer-lease/borrowed-resource/list extensions pending |
-| Colorless async / WIT bindgen | canonical `@async/@await/@cancel` surface, legacy `async` deprecation, schema 1/2 generated manifest checks, automatic discovery for the admitted schema 2 unit and scalar-`u32` capabilities, and bounded Component/Rust/Wasmtime slices verified; unrestricted generated WIT lowering remains pending |
+| 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + helper-mediated lease（含五跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private C-min list/resource producer slice、G6.3、G6.4 done; generic list/producer、borrowed payload 与 root hard-cancel 仍 pending |
+| Colorless async / WIT bindgen | canonical `@async/@await/@cancel` surface, legacy `async` deprecation, schema 1/2 generated manifest checks, automatic discovery for the admitted schema 2 unit and scalar capabilities, plus opt-in v2 variant/scalar-i64 slices, the `--p3-async-call-component` root-owned local-frame slice, and the private `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` slice verified; unrestricted generated WIT lowering remains pending |
 | 阶段 I | **closed** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构扁平拆分 | 已落地: `diagnostics` / `type_name` / `sema_error` / codegen 域竖切 / **`sema_*` 域竖切** (`sema_tokens`/`sema_shapes`/`sema_function_*`/`sema_structures`/`sema_type_checks`/`sema_imports`/`sema_control`) |
 | 目录 | 标准库 `lib/`; 工具链 `src/` (原 `tool/`) |
@@ -37,13 +37,13 @@ bash examples/p3-runtime/test_rust_cli_stream_stdin_real.sh
 
 ```text
 cd src && zig test main.zig
-  → All 277 tests passed.
+  → All 285 tests passed.
 
 ./src/build/test/run_tests.sh
-  → pass=1108 fail=0 skip=3 (Bun Node-compatible runner)
+  → pass=1120 fail=0 skip=3 (Bun Node-compatible runner)
 
 RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
-  → pass=1110 fail=0 skip=3; wasm run summary: pass=6 fail=0 (Bun Node-compatible runner)
+  → pass=1118 fail=0 skip=3; wasm run summary: pass=6 fail=0 (Bun Node-compatible runner)
 
 Generated async manifest Component/Rust/Wasmtime gate (2026-08-06)
   → Zig 0.16.0, wasm-tools 1.254.0, Wasmtime 47.0.2, Rust/Cargo 1.97.1;
@@ -69,6 +69,95 @@ Generated async scalar i64 Component/Rust/Wasmtime gate (2026-08-06)
     future cleanup, and an empty resource table. Payload/signature/import
     drift was rejected before WAT emission. This remains a bounded scalar
     companion, not generic generated WIT async lowering.
+
+Bounded general async-call Component/Rust/Wasmtime gate (2026-08-07)
+  → `--p3-async-call-component` admits only a no-parameter, `nil` helper
+    called by one root `@async(helper())` and containing one registered
+    `host.work: async func()` call. The compiler emits a root-owned local
+    helper frame with `[guest-async-child]`, `[guest-async-parent-resume]`,
+    `[guest-async-child-drop]`, and `[guest-async-root-terminal]`; it never
+    exports or synthesizes an independent helper task. Pinned
+    `wasm-tools 1.254.0 (bb58fdf91 2026-07-20)`, Wasmtime `47.0.2`, and Rust
+    `1.97.1` gates pass `ready`, `pending`, and `cancel` with exactly-once
+    child/future cleanup and an empty `ResourceTable`; payload, multiple-child,
+    and nested-helper forms reject as `UnsupportedP3AsyncCallComponent` before
+    WAT, while the normal target remains `AsyncLoweringUnavailable`.
+
+Private owned-future Component/Rust/Wasmtime gate (2026-08-07)
+  → `--p3-owned-future-component` admits only the registered ordinary Do
+    source shape `Future<Ticket>` plus one `@await`, and emits the private
+    `future<own<ticket>>` WIT sidecar. The compiler-generated Component passes
+    current `wasm-tools 1.255.0` parsing, pinned legacy `1.254.0` async
+    assembly/validation, and Wasmtime `47.0.2` ready/pending/cancel with
+    representation `0`, exactly-once future/resource cleanup, and an empty
+    `ResourceTable`. Unknown descriptor, scalar payload, and second-await
+    fixtures reject before WAT as `UnsupportedP3OwnedFutureComponent`; public
+    `own<T>`/`borrow<T>`/`ref<T>` syntax and generic owned/borrowed async
+    lowering remain pending.
+
+G6.2 C-min producer canonical ABI probe (2026-08-07)
+  → `bash examples/p3-runtime/test_g6_2_c_min_list_resource_producer_abi.sh`
+    passed the hand-authored producer WIT/Core-WAT/Rust/Wasmtime gate. The
+    pinned WIT parses with `wasm-tools component wit`; source hash
+    `8decd27aeca4a1f1863544860caec230a1fc50259336a893de79413c6f9ec3f7`.
+    Producer layout is `ptr=64`, `len=68`, element stride `4`, ticket offset
+    `0`, stream capacity `1`, with only `0/1/3` admitted. Ready/pending/error/
+    early-drop/invalid-mode and pre-/post-transfer cancellation pass with
+    exactly-once cleanup and `table-empty=true`; malformed length and duplicate
+    release variants trap with the expected unknown-handle diagnostics. This
+    closes only Gate 1 evidence; no registry entry or compiler lowering is
+    enabled, and generic list/producer, borrowed payload, public ownership
+    syntax, and root hard-cancel remain pending.
+
+G6.2 C-min producer registry/sema admission (2026-08-08)
+  → `cd src && zig test build/p3_async_manifest.zig && zig test build/sema_imports.zig`
+    passed `79/79` and `122/122`. The private descriptor is now validated against
+    the producer WIT hash, source/sink canonical imports, list/resource layout,
+    capacity and terminal metadata. Sema admits only
+    `StreamWriter<[ResourceEntry]> -> Result<nil, ErrorCode>` and rejects drifted
+    elements/error types and unregistered locators. This closes Gate 3 admission;
+    the exact Do emitter and compiler runtime gate are recorded below. Generic
+    list/producer, borrowed payload, public ownership syntax, and root hard-cancel
+    remain pending.
+
+G6.2 C-min pure list layout slice (2026-08-08)
+  → `cd src && zig test build/wit_abi_layout.zig --test-filter 'list resource producer'`
+    passed `6/6`; the full layout suite passed `19/19`, and
+    `zig test build/wit_abi_types.zig` passed `5/5`. The plan validates the
+    measured pointer/length words, stride/alignment, ticket slot, capacity `3`,
+    and closed lengths `0/1/3`; nested/borrowed/missing-owned-slot and invalid
+    layout cases remain fail-closed. This internal plan is consumed by the
+    private producer adapter and does not add public ownership syntax.
+
+G6.2 C-min pure list ownership slice (2026-08-08)
+  → `cd src && zig test build/wit_abi_ownership.zig --test-filter 'list producer'`
+    passed `6/6`; the full ownership suite passed `17/17`. The plan enforces
+    single-slot queueing, closed cardinality `0/1/3`, child-before-parent
+    cleanup, pre-transfer guest releases, post-transfer source-slot clearing,
+    duplicate-release rejection, and `maybe` branch-join rejection. It remains
+    an internal plan and does not add public ownership syntax.
+
+G6.2 C-min bounded async frame slice (2026-08-08)
+  → `cd src && zig test build/wit_abi_async.zig --test-filter 'list producer frame'`
+    passed `4/4`; full `wit_abi_async` passed `13/13`, and
+    `codegen_component_async_plan` passed `156/156`. The plan enforces one
+    queue slot, transfer-aware source-slot cleanup, waitable/future lifecycle,
+    cancellation before/after transfer, early drop, and child-before-parent
+    terminal ordering. It is consumed by the private producer adapter.
+
+G6.2 C-min producer compiler/runtime promotion (2026-08-08)
+  → `zig test build/codegen_component_list_resource_producer.zig` passed `139/139`,
+    `zig test build/codegen_component_async.zig` passed `438/438`, and the
+    dispatcher routes only the registered descriptor. The Do positive gate,
+    three negative compile fixtures, and the existing consumer boundary gate all
+    pass. `bash examples/p3-runtime/test_rust_g6_2_c_min_list_resource_producer.sh`
+    passes compiler-generated Component/Rust/Wasmtime ready `0/1/3`, pending,
+    sink error, early drop, invalid mode, and transfer-before/after cancellation;
+    admitted terminal paths end with `table-empty=true`. `run_tests.sh` reports
+    `pass=1120 fail=0 skip=3`, ReleaseSmall and `git diff --check` pass. C-min is
+    closed as a private bounded slice; generic producer/list, arbitrary producer
+    expressions, nested/borrowed payloads, public ownership syntax, and root
+    hard-cancel remain pending.
 
 bash examples/p3-runtime/test_task8_step3_baseline.sh
   → all seven registered Component/Rust/Wasmtime runtime gates passed
@@ -102,6 +191,37 @@ bash examples/p3-runtime/test_do_record_resource_list_stream_boundary.sh
 
 bash examples/p3-runtime/test_do_variant_resource_stream_lowering.sh
   → private `variant-resource-stream` registry/sema/emitter and generated Component/Rust/Wasmtime matrix passed for `ticket`, `idle`, `failed(io)`, pending, and completion-error; generic variant/borrowed shapes remain blocked
+
+Independent Generic ABI v2 variant emitter (2026-08-06)
+  → opt-in adapter rendered a separate v2 WAT template from the pinned
+    descriptor/measurement plan; `wasm-tools` parse/embed/new/validate passed,
+    followed by the Rust/Wasmtime ticket/idle/failed/pending/completion-error
+    cleanup matrix. The unified `--p3-async-component-v2` profile now routes
+    this exact shape; default component dispatch remains v1.
+
+Independent Generic ABI v2 scalar-i64 emitter (2026-08-06)
+  → `--p3-async-v2-scalar-i64` rendered a separate scalar-i64 WAT template from
+    the generated-manifest payload and measured `offset=16`, `byte-size=8`,
+    `alignment=8`, `core-s64` layout. `wasm-tools` parse/embed/new/validate and
+    the Rust/Wasmtime ready/pending/cancel matrix passed with exact `value=42`
+    and empty resource table; a manifest payload mutation was rejected before
+    WAT emission. The unified `--p3-async-component-v2` profile also routes
+    this exact shape; the legacy single-shape flag remains compatible and
+    default dispatch remains v1.
+
+Borrow capability matrix refresh (2026-08-06)
+  → the capability matrix was rerun against `wasm-tools 1.255.0` using
+    `WASM_TOOLS_EXPECT_VERSION=1.255.0`. Direct `borrow<ticket>`, borrowed
+    record, borrowed variant, and `list<borrow<ticket>>` still embed/new
+    successfully; `stream<record { ticket: borrow<ticket> }>` and
+    `future<borrow<ticket>>` still reject at `component embed` with
+    `contains a \`borrow<T>\` which is not supported`.
+
+Generic ABI v2 registry/runtime promotion profile (2026-08-06)
+  → `bash examples/p3-runtime/test_generic_abi_v2_promotion.sh` passed both
+    independent Component/Rust/Wasmtime matrices and the generated scalar-u32
+    fail-closed negative. `--p3-async-component-v2` admits only these two
+    measured private shapes; all other targets reject before WAT emission.
 
 bash examples/p3-runtime/test_do_g6_general_boundary_rejection.sh
 bash examples/p3-runtime/test_do_borrowed_resource_rejection.sh
@@ -262,6 +382,21 @@ bash src/build/test/run_release_smoke.sh
   pure-scalar struct 与含 managed 字段的 struct 直接子槽 storage 已支持 (永不拍平; managed struct 为句柄叶子)。
 
 ## 当前阻断与待处理
+
+**回归 harness 环境注记 (2026-08-06):** 当前 `/snap/bin/node` 为
+`v24.19.0`；在本机执行 `node -e 'console.log("x")' > file` 会产生空文件，
+`process.stdout.write` 在重定向路径还会报告 `EBADF`。因此
+`run_tests.sh` 中依赖 stdout 重定向的 `compiled_must_pass`、WIT manifest tool
+和 `do run` marker 会批量失败。设置 `NODE_BIN=/home/_/.local/bin/bun`
+后，当前完整回归已恢复为 `pass=1109 fail=0 skip=3`；`do run` 现在也会优先
+使用这个显式 runtime。该项是测试环境/Node launcher 注意事项，不是 compiler
+或 borrow capability 阻断。
+
+Bun regression refresh (2026-08-06)
+  → `NODE_BIN=/home/_/.local/bin/bun WASM_TOOLS=/home/_/.local/bin/wasm-tools
+     SKIP_BUILD=1 ./src/build/test/run_tests.sh`
+    passed with `pass=1109 fail=0 skip=3`; `zig test main.zig --test-filter
+    find_node_runtime` passed all 4 runtime-selection tests.
 
 权威清单 (blocked / pending / deferred / skip): **`doc/pending_blocked.md`**。
 

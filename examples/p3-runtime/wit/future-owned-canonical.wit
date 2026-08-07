@@ -1,0 +1,15 @@
+package do:future-owned-canonical@0.1.0;
+
+interface source {
+  resource ticket {}
+  read: func() -> future<own<ticket>>;
+}
+
+interface probe {
+  run: async func(mode: u32);
+}
+
+world future-owned-canonical {
+  import source;
+  export probe;
+}

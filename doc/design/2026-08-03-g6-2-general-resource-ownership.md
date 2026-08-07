@@ -1,10 +1,12 @@
 # G6.2 一般资源所有权与 Host ABI 可行性矩阵
 
-更新时间: 2026-08-04
+更新时间: 2026-08-07
 
 本文是 G6.2 下一阶段的证据与契约文档。它只记录 pinned toolchain 能力、当前私有
 registry/lowering 边界和后续实现必须遵守的所有权状态机；不引入公开
-`own<T>`、`borrow<T>`、`ref<T>`、指针或引用语法。
+`own<T>`、`borrow<T>`、`ref<T>`、指针或引用语法。当前矩阵同时保留
+legacy `wasm-tools 1.254.0` 与 capability `wasm-tools 1.255.0` 的分层边界，
+前者服务旧的私有 assembly gate，后者用于本轮 capability refresh。
 
 ## 1. 固定环境
 
@@ -12,13 +14,14 @@ registry/lowering 边界和后续实现必须遵守的所有权状态机；不�
 | --- | --- |
 | Zig | `0.16.0` |
 | Rust / Cargo | `rustc 1.97.1` / `cargo 1.97.1` |
-| wasm-tools | `1.254.0` (`bb58fdf91`, 2026-07-20) |
+| wasm-tools | `1.254.0` (`bb58fdf91`, 2026-07-20) legacy assembler; `1.255.0` (`76e20611d`, 2026-07-30) capability refresh |
 | Wasmtime | `47.0.2` (`90fed3c6a`, 2026-07-21) |
 | async registry | `src/build/p3_async_registry.json`, schema 1, 23 descriptors |
 | resource registry | `src/build/resource_abi_registry.json`, schema 1, 13 descriptors |
 
 结论只能针对上述版本成立。升级 `wasm-tools` 或 Wasmtime 时必须重新跑本矩阵，不能
-把新工具的行为隐式当作兼容。
+把新工具的行为隐式当作兼容。1.254.0 继续作为 legacy assembly pin，1.255.0 只用于
+当前 capability probes。
 
 ## 2. 能力矩阵
 
@@ -35,7 +38,11 @@ registry/lowering 边界和后续实现必须遵守的所有权状态机；不�
 | reordered parameterized helper arguments | verified | `test_do_stream_writer_guest_producer_parameterized_reordered_helper.sh` + `test_rust_stream_writer_guest_producer_parameterized_reordered_helper.sh` | 仅按三个已知 typed 参数重排；不接受 literal/extra/missing 参数 |
 | one helper-mediated lease with branch-selected `close`/`abort` terminal | verified | `test_do_stream_writer_guest_producer_branch_terminal.sh` + `test_rust_stream_writer_guest_producer_branch_terminal.sh` | `abort` 只接受注册的 `pipe` discriminant `2`; producer-only runner 不提供 `ResourceTable` 证据 |
 | descriptor-bounded `StreamMirror` | verified | `test_rust_stream_mirror.sh` | `pending/ready/source-eof/error/cancel/early-drop` 六模式均 exactly-once cleanup |
-| `borrow<ticket>` inside a stream record | rejected by `wasm-tools` | `wasm-tools component embed` exits 1: `function read-via-stream returns a type which contains a borrow<T> which is not supported` | pinned Component tool链硬边界；不添加公开 `borrow<T>` |
+| direct `borrow<ticket>` resource field | verified | `test_borrow_capability_matrix.sh` | 直接借用字段仍属于私有 WIT capability matrix；不等于公开 Do 语法 |
+| borrowed record / variant / `list<borrow<ticket>>` | verified | `test_borrow_capability_matrix.sh` | borrowed record、borrowed variant 与 list of borrow 均可作为私有 capability probe |
+| `stream<record { ticket: borrow<ticket> }>` / `future<borrow<ticket>>` | rejected by `wasm-tools` | `test_borrow_capability_matrix.sh` with `WASM_TOOLS_EXPECT_VERSION=1.255.0`; 1.254.0 reproduces the same rejection | pinned Component tool链硬边界；不添加公开 `borrow<T>` |
+| `future<own<ticket>>` canonical payload | verified, private probe | `test_future_owned_canonical_abi.sh` with `WASM_TOOLS_EXPECT_VERSION=1.255.0`; ready/pending/cancel all pass with payload offset `12`, ticket-present offset `20`, exactly-once future/resource cleanup | canonical ABI evidence only; no generic Do Future lowering |
+| `list<borrow<ticket>>` canonical payload | verified, private probe | `test_list_borrow_canonical_abi.sh` with `WASM_TOOLS_EXPECT_VERSION=1.255.0`; `0/1/3` values pass with list pointer `64`, stride `4`, one borrow call and one owner drop | canonical ABI evidence only; no generic Do list/borrow lowering |
 | private `stream<list<resource-entry>>` ABI probe and registered lowering | verified, descriptor-bounded | `test_record_resource_list_stream_abi.sh` plus `test_do_record_resource_list_stream_lowering.sh` cover `0/1/3`, pending, terminal error, early cleanup, malformed length, duplicate release, and 6000 sequential same-instance calls | only `do:record-resource-list-stream-probe@0.1.0/read-via-stream` with one fixed source plan lowers |
 | generic or unregistered `list<resource-entry>` Do source | rejected | `test_do_record_resource_list_stream_boundary.sh` observes `UnknownP3AsyncHostDescriptor` for the unregistered locator | 不能因为一个已登记 private slice 可运行就宣称通用 Do list/resource 支持 |
 | private `stream<event>` variant payload containing `own<ticket>` | verified, Do lowering unavailable | `test_variant_resource_stream_abi.sh` covers `ticket` / `idle` / `failed(io)`, pending, completion error, early cleanup, malformed tag, and duplicate release; `tag@0,payload@4,size=8,align=4` in a frame `+64` result buffer | 仅 hand-written private ABI 证据；registry/manifest 无 variant resource stream shape，通用 Do lowering 仍未授权 |
@@ -64,8 +71,12 @@ wasm-tools component embed \
 error: function `read-via-stream` returns a type which contains a `borrow<T>` which is not supported
 ```
 
-2026-08-04 在同一 pinned `wasm-tools 1.254.0` / Component embed 命令上复核，仍以
-exit `1` 返回相同诊断；因此该边界不是旧日志残留，也不能通过增加 Do 侧包装类型绕过。
+2026-08-06 在 `wasm-tools 1.255.0` 上重跑 `test_borrow_capability_matrix.sh` 时，
+direct `borrow<ticket>`、borrowed record、borrowed variant、`list<borrow<ticket>>`
+仍可 embed/new；`stream<record { ticket: borrow<ticket> }>` 与
+`future<borrow<ticket>>` 仍在 component embed 阶段拒绝，且同样能在 pinned
+`wasm-tools 1.254.0` 上复现。该边界不是旧日志残留，也不能通过增加 Do 侧包装
+类型绕过。
 
 五跳 positive probe：
 
@@ -202,6 +213,20 @@ once drop。
 4. 对外部数据库、网络或文件系统已经提交的副作用不做回滚，也不生成 operation id 或
    补偿回调。
 
+### 3.6 后续实现的 proof obligations
+
+任何扩大 private descriptor 或 lowering 形状的实现，都必须同时证明：
+
+- transfer 之后没有 use-after-transfer；
+- 每个 owner、future、stream、subtask 和 frame 至多 finalization 一次；
+- 每个正常返回、错误、`break`、`continue`、fallthrough 和 cancellation 路径都没有 owner 泄漏；
+- child endpoint 永远先于 parent waitable-set 和 frame 清理；
+- branch/loop join 的状态稳定，不能把 `maybe` 当作可用 owner；
+- 每个支持的 Component/Rust/Wasmtime terminal path 都观察到 `ResourceTable::is_empty()`。
+
+这些是实现 gate，不是公开类型或源代码语法；当前已验证的 producer-only runner 没有
+`ResourceTable`，因此只检查 exactly-once endpoint/frame cleanup，不伪造空表证据。
+
 ## 4. 下一步授权边界
 
 矩阵支持的首个正向切片已经完成：保留 private descriptor，增加一个能真正表达新
@@ -212,7 +237,7 @@ forwarding 或 nested 深度常量。
 
 ### 4.1 当前授权结论
 
-截至 2026-08-03，能力矩阵、负向 fixtures、ownership 状态机和完整回归均已通过。
+截至 2026-08-07，能力矩阵、负向 fixtures、ownership 状态机和完整回归均已通过。
 本阶段不再授权第二个 positive codegen expansion：borrowed/list/variant payload、
 任意 producer expression、六跳 forwarding、七层 nested resource、payload-bearing
 completion error 和通用 async-call composition 都需要独立的设计、pinned-tool

@@ -696,7 +696,7 @@ run_do_run_missing_node_case() {
     mkdir -p "$tool_path"
     ln -s "$WASM_TOOLS" "$tool_path/wasm-tools"
 
-    if PATH="$tool_path" DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" run "$case_file" >"$stdout_file" 2>"$stderr_file"; then
+    if PATH="$tool_path" NODE_BIN="$tool_path/missing-node" DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" run "$case_file" >"$stdout_file" 2>"$stderr_file"; then
         echo "[FAIL] do run missing node (expected failure)"
         ((fail_count += 1))
         return
@@ -1279,6 +1279,7 @@ run_compile_err_case() {
     local wat_file="$TMP_DIR/compile_${name}.wat"
     local expect_file="${case_file%.do}.expect"
     local host_export_expect_file="${case_file%.do}.host_export.expect"
+    local -a build_args=()
 
     if [[ ! -f "$expect_file" ]]; then
         echo "[FAIL] compile err $name (missing expect file: $expect_file)"
@@ -1286,12 +1287,18 @@ run_compile_err_case() {
         return
     fi
 
+    while IFS= read -r expect_line || [[ -n "$expect_line" ]]; do
+        case "$expect_line" in
+            '# build-arg: '*) build_args+=("${expect_line#\# build-arg: }");;
+        esac
+    done < "$expect_file"
+
     local build_succeeded=0
     if [[ -f "$host_export_expect_file" ]]; then
-        if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$case_file" --host-export -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
+        if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$case_file" "${build_args[@]}" --host-export -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
             build_succeeded=1
         fi
-    elif DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$case_file" -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
+    elif DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$case_file" "${build_args[@]}" -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
         build_succeeded=1
     fi
     if [[ "$build_succeeded" -eq 1 ]]; then

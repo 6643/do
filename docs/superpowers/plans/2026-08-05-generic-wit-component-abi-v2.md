@@ -33,14 +33,14 @@
 - Produces: a machine-checked matrix separating direct borrow, borrowed record,
   borrowed variant, borrowed list, borrowed stream, and borrowed future shapes.
 
-- [ ] **Step 1: Add the matrix probe definitions.**
+- [x] **Step 1: Add the matrix probe definitions.**
 
   Define one minimal WIT world per shape. The direct case must contain
   `borrow-value: func(ticket: borrow<ticket>) -> u32`; the stream case must
   contain `stream<record { ticket: borrow<ticket> }>` and preserve the current
   expected rejection string. Do not add compiler registry entries.
 
-- [ ] **Step 2: Write the failing/negative assertions first.**
+- [x] **Step 2: Write the failing/negative assertions first.**
 
   The script must assert that the direct function case assembles and that the
   nested stream-record case fails with:
@@ -52,7 +52,7 @@
   It must print the installed `wasm-tools --version` and fail if it is not
   `1.254.0`.
 
-- [ ] **Step 3: Run the probe and record the result.**
+- [x] **Step 3: Run the probe and record the result.**
 
   ```bash
   bash examples/p3-runtime/test_borrow_capability_matrix.sh
@@ -63,13 +63,18 @@
   Expected: direct borrow is green, nested borrowed stream is explicitly
   rejected, and no existing descriptor changes.
 
-- [ ] **Step 4: Record the stop condition.**
+- [x] **Step 4: Record the stop condition.**
 
   Update `doc/pending_blocked.md` only with observed tool output and the exact
   recovery condition: a toolchain upgrade or a new canonical WIT shape must be
   probed before nested borrowed values can enter the registry.
 
-- [ ] **Step 5: Verify the unchanged baseline.**
+- [x] **Step 5: Verify the unchanged baseline.**
+
+  The shape matrix and the existing direct/rejection gates are green. The
+  current repository verification is `cd src && zig test main.zig` = `279/279`,
+  the Bun-shimmed compiler matrix = `pass=1109 fail=0 skip=3`, and the reused
+  WASM matrix = `pass=1111 fail=0 skip=3` (`wasm run pass=6 fail=0`).
 
   ```bash
   cd src && zig test main.zig
@@ -92,25 +97,26 @@
 - Produces: immutable `AbiType`, `AbiTypeKind`, `ResourceMode`, and validated
   recursive shape equality used by later layout and ownership plans.
 
-- [ ] **Step 1: Write unit tests for each logical kind.**
+- [x] **Step 1: Write unit tests for each logical kind.**
 
   Cover scalar, tuple, record, option, result, variant, list, text, and
   resource values. Include recursive equality, duplicate variant tag rejection,
   and invalid empty result/variant cases.
 
-- [ ] **Step 2: Implement the smallest pure data model.**
+- [x] **Step 2: Implement the smallest pure data model.**
 
   Keep the module independent of `codegen_pipeline`, WAT emitters, sema state,
   and registry descriptors. Use explicit tagged unions and owned slices with
   validation at construction boundaries.
 
-- [ ] **Step 3: Run the focused test.**
+- [x] **Step 3: Run the focused test.**
 
   ```bash
   cd src && zig test build/wit_abi_types.zig
   ```
 
-  Expected: all new tests pass; no existing compiler test is changed.
+  Result: `5/5` tests pass; the module remains independent of codegen and no
+  existing compiler test or lowering path was changed.
 
 ### Task 3: Add measured canonical layout plans
 
@@ -124,23 +130,27 @@
 - Produces: immutable `LayoutPlan` with tag/payload offsets, size,
   alignment, indirect allocation/free actions, and validation errors.
 
-- [ ] **Step 1: Write tests from existing measured fixtures.**
+- [x] **Step 1: Write tests from existing measured fixtures.**
 
   Reproduce the current `variant-resource-stream` facts (`tag=0`, payload `4`,
   size `8`, alignment `4`) and the registered HTTP payload string facts.
   Add negative tests for duplicate tags, misalignment, offset overflow, and
   missing payload metadata.
 
-- [ ] **Step 2: Implement layout validation without emitting WAT.**
+- [x] **Step 2: Implement layout validation without emitting WAT.**
 
   The plan must reject unmeasured layouts instead of deriving a layout from
   coincidental field sizes. It must preserve nested type boundaries.
 
-- [ ] **Step 3: Run focused and existing layout tests.**
+- [x] **Step 3: Run focused and existing layout tests.**
 
   ```bash
   cd src && zig test build/wit_abi_layout.zig
   cd src && zig test build/p3_async_manifest.zig
+
+  Result: the measured layout module passes `10/10`, and the existing
+  descriptor manifest suite passes `75/75`; no emitter or registry dispatch was
+  changed.
   ```
 
 ### Task 4: Add ownership plans for own/direct borrow
@@ -155,25 +165,28 @@
 - Produces: `OwnershipPlan` actions for move, direct-call borrow, clear,
   release, and early-drop; rejects duplicate release and resource escape.
 
-- [ ] **Step 1: Write move/borrow/drop tests.**
+- [x] **Step 1: Write move/borrow/drop tests.**
 
   Cover own transfer, direct borrow retaining the owner, branch join agreement,
   early cleanup, duplicate release, and a borrowed value escaping the call.
 
-- [ ] **Step 2: Implement explicit ownership actions.**
+- [x] **Step 2: Implement explicit ownership actions.**
 
   Each owned resource must have exactly one release authority. A borrow action
   may read an owner only during the call region and must not create a second
   drop. Nested borrowed record/stream shapes remain rejected by capability,
   not silently rewritten.
 
-- [ ] **Step 3: Run focused ownership tests and v1 resource gates.**
+- [x] **Step 3: Run focused ownership tests and v1 resource gates.**
 
   ```bash
   cd src && zig test build/wit_abi_ownership.zig
   bash examples/p3-runtime/test_do_resource_probe_lowering.sh
   bash examples/p3-runtime/test_rust_resource_probe.sh
   ```
+
+  Result: `wit_abi_ownership.zig` passes `11/11`; both existing resource
+  lowering gates pass. The module is pure and does not change default codegen.
 
 ### Task 5: Add async endpoint plans
 
@@ -187,17 +200,17 @@
 - Produces: `AsyncPlan` for poll, pending, ready, error, cancellation,
   endpoint drop, and terminal cleanup transitions.
 
-- [ ] **Step 1: Write the existing terminal matrix as plan tests.**
+- [x] **Step 1: Write the existing terminal matrix as plan tests.**
 
   Cover pending-to-ready, immediate ready, completion error, explicit cancel,
   early drop, and exactly-once stream/future/resource cleanup.
 
-- [ ] **Step 2: Implement transition validation.**
+- [x] **Step 2: Implement transition validation.**
 
   Reject polling after terminal consumption, double cancellation, dropping a
   child before its parent dependency, and an async path with an unclosed owner.
 
-- [ ] **Step 3: Run focused tests and current async gates.**
+- [x] **Step 3: Run focused tests and current async gates.**
 
   ```bash
   cd src && zig test build/wit_abi_async.zig
@@ -205,11 +218,16 @@
   bash examples/p3-runtime/test_do_variant_resource_stream_lowering.sh
   ```
 
+  Result: `wit_abi_async.zig` passes `9/9`; the existing async plan suite
+  passes `153/153`, and the variant resource stream lowering gate passes.
+
 ### Task 6: Migrate one private descriptor behind a differential gate
 
 **Files:**
 - Modify: `src/build/codegen_component_async.zig`
 - Create: `src/build/codegen_component_async_v2_adapter.zig`
+- Create: `src/build/codegen_component_async_v2_emitter.zig`
+- Create: `src/build/variant_resource_stream_v2_template.wat`
 - Modify: `examples/p3-runtime/test_do_variant_resource_stream_lowering.sh`
 - Test: existing variant Component/Rust/Wasmtime matrix
 
@@ -218,18 +236,18 @@
 - Produces: the same private `variant-resource-stream` Component imports,
   layout markers, result tags, and cleanup counts as the v1 emitter.
 
-- [ ] **Step 1: Add a differential test before dispatching v2.**
+- [x] **Step 1: Add a differential test before dispatching v2.**
 
   Emit both paths for the private descriptor and compare the required import
   names, frame offsets, tag mapping, and cleanup markers. Do not compare
   incidental WAT formatting.
 
-- [ ] **Step 2: Add opt-in v2 dispatch.**
+- [x] **Step 2: Add opt-in v2 dispatch.**
 
   Add an internal test-only switch or direct unit entrypoint; keep default
   `do build` on the existing emitter until the differential gate is green.
 
-- [ ] **Step 3: Run the complete migrated gate.**
+- [x] **Step 3: Run the complete migrated gate.**
 
   ```bash
   bash examples/p3-runtime/test_do_variant_resource_stream_lowering.sh
@@ -238,6 +256,11 @@
 
   Expected: ticket, idle, failed, pending, completion-error, malformed-tag,
   duplicate-release, and early-drop behavior remains unchanged.
+
+  Result: the adapter suite passes (`134/134` standalone; `401/401` through
+  `codegen_component_async.zig`). The opt-in entrypoint validates v2 plans and
+  emits an independent descriptor-driven artifact; default dispatch remains
+  v1.
 
 ### Task 7: Phase review and default-path decision
 
@@ -250,7 +273,7 @@
 - Produces: a documented decision to keep v2 opt-in, promote the migrated
   descriptor, or stop with an explicit residual boundary.
 
-- [ ] **Step 1: Run the full verification set.**
+- [x] **Step 1: Run the full verification set.**
 
   ```bash
   cd src && zig test main.zig
@@ -261,13 +284,53 @@
   git diff --check
   ```
 
-- [ ] **Step 2: Update status only from observed results.**
+  Result: `zig test main.zig` = `279/279`; Bun PATH-shimmed default matrix =
+  `pass=1109 fail=0 skip=3`; WASM matrix = `pass=1111 fail=0 skip=3` with
+  `wasm run pass=6 fail=0`; ReleaseSmall smoke passed.
+
+- [x] **Step 2: Update status only from observed results.**
 
   Record whether the generic plan reproduces the migrated descriptor. Keep
   unsupported borrowed stream fields, arbitrary producer expressions, and
   unmeasured layouts in the pending list.
 
-- [ ] **Step 3: Stop before public syntax or broad WASI expansion.**
+- [x] **Step 3: Stop before public syntax or broad WASI expansion.**
 
   A green migrated descriptor is not permission to add public ownership syntax
   or claim complete WASI support. Those require separate designs and gates.
+
+### Post-review residual work (not closed by Tasks 1-7)
+
+Tasks 1-7 close the planning and opt-in adapter checkpoint only. They do not
+close the generic runtime line. The following items remain explicitly open:
+
+- [x] **Independent private-shape emitter.** The opt-in
+  `variant-resource-stream` adapter now renders its own descriptor-driven WAT
+  template and no longer returns `variant_resource_stream_canonical.wat`.
+  The artifact was validated through Component assembly and the existing
+  Rust/Wasmtime ticket/idle/error/pending/completion-error matrix.
+- [x] **Second independent private shape.** The opt-in generated
+  `Future<i64>` scalar adapter uses its own WAT template, measured
+  `offset=16`, `byte-size=8`, `alignment=8`, `core-s64` layout, and explicit
+  scalar/async plan validation. Its Component/Rust/Wasmtime ready/pending/cancel
+  matrix and manifest-drift rejection are green; it is exposed only through
+  `--p3-async-v2-scalar-i64`.
+- [x] **Registry/runtime promotion.** Add a deliberate switch only after a
+  the two private shapes pass a differential review and the registry/runtime
+  switch is intentionally selected. Default v1 dispatch remains unchanged.
+  The switch is `--p3-async-component-v2`; its combined Component/Rust/Wasmtime
+  gate is `examples/p3-runtime/test_generic_abi_v2_promotion.sh`, and it fails
+  closed before WAT for the generated scalar-u32 shape.
+- [x] **Borrowed stream/future re-evaluation.** Re-run the capability matrix
+  against a pinned toolchain upgrade or a newly measured canonical WIT shape;
+  do not infer support from direct `borrow<T>` acceptance. The matrix was
+  rerun against the recorded pinned `wasm-tools 1.255.0` refresh and retained
+  the same boundary: direct/record/variant/list borrow shapes were accepted,
+  while `stream<record { ticket: borrow<ticket> }>` and
+  `future<borrow<ticket>>` were rejected during `component embed`; the current
+  local binary reports `wasm-tools 1.255.0 (76e20611d 2026-07-30)` and the
+  same matrix passes again. No new admission is inferred from direct borrow
+  acceptance.
+- [ ] **Generic producer and payload expansion.** Keep arbitrary producer
+  expressions, generic `Future<T>`/`Stream<T>` payloads, public ownership syntax,
+  and unmeasured layouts rejected until separate designs and runtime gates exist.

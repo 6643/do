@@ -1,0 +1,13 @@
+package do:list-borrow-canonical@0.1.0;
+
+interface api {
+  resource ticket {}
+
+  read: func(values: list<borrow<ticket>>) -> u32;
+}
+
+world list-borrow-canonical {
+  import api;
+  use api.{ticket};
+  export run: func(ticket: own<ticket>, mode: u32) -> u32;
+}
