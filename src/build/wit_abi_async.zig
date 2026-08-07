@@ -644,6 +644,23 @@ test "list producer frame cancellation after transfer clears list before droppin
     try std.testing.expectEqual(ListProducerFrameActionKind.drop_sink_future, plan.actions.items[8].kind);
 }
 
+test "dynamic list producer frame keeps one queue item for every bounded length" {
+    for (0..4) |_| {
+        var plan = ListProducerFramePlan.init(std.testing.allocator);
+        defer plan.deinit(std.testing.allocator);
+        try plan.apply(.{ .allocate = {} }, std.testing.allocator);
+        try plan.apply(.{ .queue = {} }, std.testing.allocator);
+        try std.testing.expectError(error.SecondQueueItem, plan.apply(.{ .queue = {} }, std.testing.allocator));
+        try plan.apply(.{ .transfer = {} }, std.testing.allocator);
+        try plan.apply(.{ .await_sink = {} }, std.testing.allocator);
+        try plan.apply(.{ .complete = .ready }, std.testing.allocator);
+        try plan.apply(.{ .finalize = {} }, std.testing.allocator);
+        try std.testing.expectEqual(ListProducerFramePhase.finalized, plan.phase);
+        try std.testing.expect(!plan.queue_occupied);
+        try std.testing.expect(!plan.source_slots_live);
+    }
+}
+
 test "list producer frame early drop and invalid terminal transitions are guarded" {
     var plan = ListProducerFramePlan.init(std.testing.allocator);
     defer plan.deinit(std.testing.allocator);

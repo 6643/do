@@ -171,8 +171,12 @@ pub const ListLayoutPlan = struct {
         return error.InvalidListLength;
     }
 
+    pub fn validate_runtime_length(self: *const ListLayoutPlan, length: u32) LayoutError!void {
+        if (length > self.capacity) return error.InvalidListLength;
+    }
+
     pub fn owned_slot_iterator(self: *const ListLayoutPlan, length: u32) LayoutError!OwnedSlotIterator {
-        try self.validate_length(length);
+        try self.validate_runtime_length(length);
         return .{
             .index = 0,
             .length = length,
@@ -496,6 +500,55 @@ test "list resource producer layout rejects lengths outside the closed descripto
     try std.testing.expectError(error.InvalidListLength, plan.validate_length(2));
     try std.testing.expectError(error.InvalidListLength, plan.validate_length(4));
     try std.testing.expectError(error.InvalidListLength, plan.validate_length(std.math.maxInt(u32)));
+}
+
+test "dynamic list producer layout accepts every runtime length within capacity" {
+    var ticket = try abi_types.AbiType.resource(std.testing.allocator, "ticket", .own);
+    defer ticket.deinit();
+    var entry = try abi_types.AbiType.record(std.testing.allocator, &.{.{ .name = "ticket", .value = &ticket }});
+    defer entry.deinit();
+    var list = try abi_types.AbiType.list(std.testing.allocator, &entry);
+    defer list.deinit();
+
+    var plan = try ListLayoutPlan.init(std.testing.allocator, &list, c_min_list_measurement);
+    defer plan.deinit();
+    for (0..4) |length| {
+        try plan.validate_runtime_length(@intCast(length));
+        var slots = try plan.owned_slot_iterator(@intCast(length));
+        var index: u32 = 0;
+        while (slots.next()) |slot| : (index += 1) {
+            try std.testing.expectEqual(index * 4, slot.offset);
+        }
+        try std.testing.expectEqual(@as(u32, @intCast(length)), index);
+    }
+    try std.testing.expectError(error.InvalidListLength, plan.validate_runtime_length(4));
+    try std.testing.expectError(error.InvalidListLength, plan.validate_runtime_length(std.math.maxInt(u32)));
+    try std.testing.expectError(error.InvalidListLength, plan.validate_length(2));
+}
+
+test "dynamic list producer layout keeps storage and element guards" {
+    var ticket = try abi_types.AbiType.resource(std.testing.allocator, "ticket", .own);
+    defer ticket.deinit();
+    var entry = try abi_types.AbiType.record(std.testing.allocator, &.{.{ .name = "ticket", .value = &ticket }});
+    defer entry.deinit();
+    var list = try abi_types.AbiType.list(std.testing.allocator, &entry);
+    defer list.deinit();
+
+    var zero_stride = c_min_list_measurement;
+    zero_stride.element_stride = 0;
+    try std.testing.expectError(error.InvalidStride, ListLayoutPlan.init(std.testing.allocator, &list, zero_stride));
+
+    var misaligned = c_min_list_measurement;
+    misaligned.pointer_offset = 66;
+    try std.testing.expectError(error.MisalignedOffset, ListLayoutPlan.init(std.testing.allocator, &list, misaligned));
+
+    var borrowed_ticket = try abi_types.AbiType.resource(std.testing.allocator, "ticket", .borrow);
+    defer borrowed_ticket.deinit();
+    var borrowed_entry = try abi_types.AbiType.record(std.testing.allocator, &.{.{ .name = "ticket", .value = &borrowed_ticket }});
+    defer borrowed_entry.deinit();
+    var borrowed_list = try abi_types.AbiType.list(std.testing.allocator, &borrowed_entry);
+    defer borrowed_list.deinit();
+    try std.testing.expectError(error.BorrowedResource, ListLayoutPlan.init(std.testing.allocator, &borrowed_list, c_min_list_measurement));
 }
 
 test "list resource producer layout rejects nested and borrowed elements" {

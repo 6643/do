@@ -196,7 +196,7 @@ Run `git commit -m "Probe bounded dynamic list producer ABI"`.
 - Preserve `ListProducerFramePlan` one-item queue transitions; add no second
   queue slot and no scheduler state.
 
-- [ ] **Step 1: Add failing layout tests for runtime lengths.**
+- [x] **Step 1: Add failing layout tests for runtime lengths.**
 
 Cover `0/1/2/3` as valid for capacity `3`, `4` as invalid, zero stride,
 misaligned offsets, nested/borrowed elements, and the unchanged C-min closed
@@ -205,7 +205,7 @@ set `0/1/3`.
 Run `cd src && zig test build/wit_abi_layout.zig --test-filter 'dynamic list producer'`.
 Expected: only the new dynamic-length tests fail.
 
-- [ ] **Step 2: Add failing ownership and frame tests.**
+- [x] **Step 2: Add failing ownership and frame tests.**
 
 Cover four live ticket states for lengths `0/1/2/3`, partial creation failure,
 pre-transfer cancellation releasing exactly the created tickets, post-transfer
@@ -216,13 +216,13 @@ Run `cd src && zig test build/wit_abi_ownership.zig --test-filter 'dynamic list 
 Run `cd src && zig test build/wit_abi_async.zig --test-filter 'dynamic list producer frame'`.
 Expected: the new tests fail while all existing C-min tests remain green.
 
-- [ ] **Step 3: Implement only the bounded pure-plan changes.**
+- [x] **Step 3: Implement only the bounded pure-plan changes.**
 
 Use early guards for `length > capacity`, invalid storage actions, missing owned
 slots, duplicate release, and `maybe` joins. Do not import codegen modules or
 add public ownership syntax to these leaves.
 
-- [ ] **Step 4: Run focused and complete pure-plan suites.**
+- [x] **Step 4: Run focused and complete pure-plan suites.**
 
 Run `cd src && zig test build/wit_abi_layout.zig`.
 Run `cd src && zig test build/wit_abi_ownership.zig`.

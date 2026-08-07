@@ -703,6 +703,46 @@ test "list producer ownership rejects invalid mode and partial creation cleans o
     try std.testing.expectEqual(@as(u32, 1), plan.actions.items[4].index.?);
 }
 
+test "dynamic list producer ownership transfers every admitted runtime length" {
+    for (0..4) |raw_length| {
+        const length: u32 = @intCast(raw_length);
+        var plan = try ListProducerOwnershipPlan.init(std.testing.allocator, length, 3, &.{ 0, 1, 2, 3 });
+        defer plan.deinit();
+        try plan.apply(.{ .allocate = {} });
+        for (0..raw_length) |raw_index| try plan.apply(.{ .create_ticket = @intCast(raw_index) });
+        try plan.apply(.{ .enqueue = {} });
+        try plan.apply(.{ .transfer = {} });
+        for (0..raw_length) |raw_index| try plan.apply(.{ .clear_source_slot = @intCast(raw_index) });
+        try plan.apply(.{ .release_list = {} });
+        try plan.apply(.{ .terminal_finalize = {} });
+        try std.testing.expectEqual(ListProducerState.finalized, plan.list_state);
+        for (plan.ticket_states) |state| try std.testing.expectEqual(ListProducerState.transferred, state);
+        for (plan.actions.items) |action| try std.testing.expect(action.kind != .release_ticket);
+    }
+}
+
+test "dynamic list producer ownership cancels partial creation without guest leaks" {
+    for (0..4) |raw_length| {
+        const length: u32 = @intCast(raw_length);
+        var plan = try ListProducerOwnershipPlan.init(std.testing.allocator, length, 3, &.{ 0, 1, 2, 3 });
+        defer plan.deinit();
+        try plan.apply(.{ .allocate = {} });
+        const created = raw_length / 2;
+        for (0..created) |raw_index| try plan.apply(.{ .create_ticket = @intCast(raw_index) });
+        try plan.apply(.{ .cancel = {} });
+        try std.testing.expectEqual(ListProducerState.finalized, plan.list_state);
+        for (plan.ticket_states, 0..) |state, raw_index| {
+            const expected = if (raw_index < created) ListProducerState.finalized else ListProducerState.unallocated;
+            try std.testing.expectEqual(expected, state);
+        }
+        var releases: usize = 0;
+        for (plan.actions.items) |action| {
+            if (action.kind == .release_ticket) releases += 1;
+        }
+        try std.testing.expectEqual(created, releases);
+    }
+}
+
 test "list producer ownership rejects duplicate release and source clear" {
     var plan = try ListProducerOwnershipPlan.init(std.testing.allocator, 1, 3, &.{ 0, 1, 3 });
     defer plan.deinit();
