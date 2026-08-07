@@ -10,6 +10,7 @@ const codegen_component_wasi_filesystem_read_directory = @import("codegen_compon
 const codegen_component_record_stream = @import("codegen_component_record_stream.zig");
 const codegen_component_record_resource_list_stream = @import("codegen_component_record_resource_list_stream.zig");
 const codegen_component_list_resource_producer = @import("codegen_component_list_resource_producer.zig");
+const codegen_component_dynamic_list_resource_producer = @import("codegen_component_dynamic_list_resource_producer.zig");
 const codegen_component_variant_resource_stream = @import("codegen_component_variant_resource_stream.zig");
 const codegen_component_wasi_http = @import("codegen_component_wasi_http.zig");
 const codegen_component_cabi_realloc = @import("codegen_component_cabi_realloc.zig");
@@ -37,6 +38,7 @@ pub const Target = enum {
     record_stream,
     record_resource_list_stream,
     record_resource_list_stream_producer,
+    record_resource_list_stream_dynamic_producer,
     variant_resource_stream,
     stream_writer,
     stream_mirror,
@@ -150,6 +152,10 @@ pub fn emit_component_wat(
         },
         .record_resource_list_stream_producer => codegen_component_list_resource_producer.emit_component_wat_for_tokens(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3ListResourceProducer => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
+        .record_resource_list_stream_dynamic_producer => codegen_component_dynamic_list_resource_producer.emit_component_wat_for_tokens(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3DynamicListResourceProducer => error.UnsupportedP3AsyncComponent,
             else => err,
         },
         .variant_resource_stream => finalize_component_wat(allocator, codegen_component_variant_resource_stream.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
@@ -867,6 +873,10 @@ pub fn emit_component_wit_with_graph(
             error.UnsupportedP3ListResourceProducer => error.UnsupportedP3AsyncComponent,
             else => err,
         },
+        .record_resource_list_stream_dynamic_producer => codegen_component_dynamic_list_resource_producer.emit_component_wit_for_tokens(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3DynamicListResourceProducer => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
         .variant_resource_stream => codegen_component_variant_resource_stream.emit_component_wit(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3VariantResourceStream => error.UnsupportedP3AsyncComponent,
             else => err,
@@ -938,6 +948,10 @@ pub fn target_for_tokens_with_graph(
         return .record_resource_list_stream_producer;
     } else |_| {}
 
+    if (codegen_component_dynamic_list_resource_producer.DynamicListResourceProducerPlan.analyze(tokens, registry)) |_| {
+        return .record_resource_list_stream_dynamic_producer;
+    } else |_| {}
+
     var target: ?Target = null;
     var idx: usize = 0;
     while (idx + 8 < tokens.len) : (idx += 1) {
@@ -960,6 +974,11 @@ pub fn target_for_tokens_with_graph(
                 _ = codegen_component_list_resource_producer.ListResourceProducerPlan.analyze(tokens, registry) catch
                     return error.UnsupportedP3AsyncComponent;
                 break :blk .record_resource_list_stream_producer;
+            } else return error.UnsupportedP3AsyncComponent,
+            .record_resource_list_stream_dynamic_producer => if (binding.kind == .host_func) blk: {
+                _ = codegen_component_dynamic_list_resource_producer.DynamicListResourceProducerPlan.analyze(tokens, registry) catch
+                    return error.UnsupportedP3AsyncComponent;
+                break :blk .record_resource_list_stream_dynamic_producer;
             } else return error.UnsupportedP3AsyncComponent,
             .variant_resource_stream_reader => if ((binding.kind == .host or binding.kind == .host_func) and variant_resource_stream_signature_at(tokens, idx))
                 .variant_resource_stream
@@ -1012,7 +1031,7 @@ fn target_for_descriptor(descriptor: p3_async_manifest.Descriptor) !Target {
         .record_stream_reader => .wasi_read_directory,
         .record_resource_list_stream_reader => error.UnsupportedP3AsyncComponent,
         .record_resource_list_stream_producer => .record_resource_list_stream_producer,
-        .record_resource_list_stream_dynamic_producer => error.UnsupportedP3AsyncComponent,
+        .record_resource_list_stream_dynamic_producer => .record_resource_list_stream_dynamic_producer,
         .variant_resource_stream_reader => .variant_resource_stream,
         .stream_writer => .stream_writer,
         .http_resource_result => error.UnsupportedP3AsyncComponent,
@@ -1373,6 +1392,16 @@ test "generic Component async target classifies the C-min list resource producer
     defer std.testing.allocator.free(tokens);
     try std.testing.expectEqual(
         Target.record_resource_list_stream_producer,
+        try target_for_tokens(std.testing.allocator, tokens),
+    );
+}
+
+test "generic Component async target classifies the bounded dynamic list producer" {
+    const source = @embedFile("test/check/448_g6_2_dynamic_list_resource_producer.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try std.testing.expectEqual(
+        Target.record_resource_list_stream_dynamic_producer,
         try target_for_tokens(std.testing.allocator, tokens),
     );
 }

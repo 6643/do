@@ -167,7 +167,7 @@ facts, validates the Component, and passes all dynamic count and cleanup rows.
 If the producer layout differs from the old `64/68/4/0` facts, record the new
 values and use them in every later task; never infer them from C-min 0.1.0.
 
-- [ ] **Step 5: Commit the independent evidence.**
+- [x] **Step 5: Commit the independent evidence.**
 
 Run `git add docs/superpowers/specs/2026-08-08-g6-2-c-min-dynamic-list-producer-design.md examples/p3-runtime/wit/g6-2-c-min-dynamic-list-producer.wit examples/p3-runtime/g6-2-c-min-dynamic-list-producer-canonical.wat examples/p3-runtime/rust-host-runner/src/bin/g6_2_c_min_dynamic_list_producer_abi.rs examples/p3-runtime/test_g6_2_c_min_dynamic_list_producer_abi.sh`.
 Run `git commit -m "Probe bounded dynamic list producer ABI"`.
@@ -231,7 +231,7 @@ Run `cd src && zig test build/codegen_component_async_plan.zig`.
 
 Expected: old C-min suites and new dynamic suites pass together.
 
-- [ ] **Step 5: Commit the pure-plan generalization.**
+- [x] **Step 5: Commit the pure-plan generalization.**
 
 Run `git add src/build/wit_abi_layout.zig src/build/wit_abi_ownership.zig src/build/wit_abi_async.zig`.
 Run `git commit -m "Generalize bounded list producer plans"`.
@@ -287,7 +287,7 @@ Run `cd src && zig test build/sema_imports.zig`.
 Expected: existing manifest/sema counts do not regress; the new valid row is
 admitted and all drift rows fail closed.
 
-- [ ] **Step 5: Commit registry/sema admission.**
+- [x] **Step 5: Commit registry/sema admission.**
 
 Run `git add src/build/p3_async_registry.json src/build/p3_async_manifest.zig src/build/sema_imports.zig`.
 Run `git commit -m "Admit bounded dynamic list producer descriptor"`.
@@ -312,7 +312,7 @@ Run `git commit -m "Admit bounded dynamic list producer descriptor"`.
 - CLI target: reuse opt-in `--p3-async-component`; default ordinary `do build`
   continues to reject unsupported async lowering.
 
-- [ ] **Step 1: Add positive and negative adapter tests before wiring emission.**
+- [x] **Step 1: Add positive and negative adapter tests before wiring emission.**
 
 Positive source must be exactly:
 
@@ -338,12 +338,17 @@ source `async`/`@await` token.
 
 - [ ] **Step 2: Run the adapter tests red.**
 
+Sequencing note: the adapter tests and implementation were recovered together
+from the interrupted Inline Execution work. A separate pre-implementation red
+run was not recorded, so this checkbox remains open rather than claiming a
+red-green cycle that cannot be evidenced.
+
 Run `cd src && zig test build/codegen_component_dynamic_list_resource_producer.zig`.
 
 Expected: exact-shape positive tests fail before the adapter is implemented;
 existing `codegen_component_async.zig` tests remain green.
 
-- [ ] **Step 3: Implement the adapter with early guards.**
+- [x] **Step 3: Implement the adapter with early guards.**
 
 The adapter must load only the new descriptor, construct the bounded layout,
 ownership, and frame plans, and substitute the runtime `count` into the
@@ -351,7 +356,7 @@ hand-authored template. It must reject `count > 3` through the private
 `invalid-mode` terminal before calling `make-ticket`; it must not generate a
 general loop over an unbounded list.
 
-- [ ] **Step 4: Wire one dispatcher branch and inspect generated markers.**
+- [x] **Step 4: Wire one dispatcher branch and inspect generated markers.**
 
 Run `bash examples/p3-runtime/test_do_g6_2_c_min_dynamic_list_resource_producer.sh`.
 
