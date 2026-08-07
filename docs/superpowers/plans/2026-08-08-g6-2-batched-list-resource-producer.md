@@ -23,7 +23,7 @@
 ## File Map
 
 - Create `docs/superpowers/specs/2026-08-08-g6-2-batched-list-resource-producer-design.md` for the approved ABI, ownership state machine, and stop conditions.
-- Create `examples/p3-runtime/g6-2-batched-list-resource-producer.wit`, `examples/p3-runtime/g6-2-batched-list-resource-producer.do`, and `examples/p3-runtime/g6-2-batched-list-resource-producer-canonical.wat` for the pinned probe and compiler gate.
+- Create `examples/p3-runtime/wit/g6-2-batched-list-resource-producer.wit`, `examples/p3-runtime/g6-2-batched-list-resource-producer.do`, and `examples/p3-runtime/g6-2-batched-list-resource-producer-canonical.wat` for the pinned probe and compiler gate.
 - Create `examples/p3-runtime/test_g6_2_batched_list_resource_producer_abi.sh` and `examples/p3-runtime/rust-host-runner/src/bin/g6_2_batched_list_resource_producer_abi.rs` for the hand-authored ABI/runtime probe.
 - Modify `src/build/p3_async_manifest.zig`, `src/build/p3_async_registry.json`, and `src/build/sema_imports.zig` only after the probe is green, adding `BatchedListResourceProducerShape` and its fail-closed descriptor validation.
 - Create `src/build/cmin_batched_list_resource_producer_template.wat` and `src/build/codegen_component_batched_list_resource_producer.zig`; modify `src/build/codegen_component_async.zig` only to add the isolated target branch and WIT emitter dispatch.
@@ -37,10 +37,10 @@
 
 **Files:**
 - Create: `docs/superpowers/specs/2026-08-08-g6-2-batched-list-resource-producer-design.md`
-- Create: `examples/p3-runtime/g6-2-batched-list-resource-producer.wit`
+- Create: `examples/p3-runtime/wit/g6-2-batched-list-resource-producer.wit`
 - Create: `examples/p3-runtime/g6-2-batched-list-resource-producer.do`
 - Create: `examples/p3-runtime/test_g6_2_batched_list_resource_producer_abi.sh`
-- Verify: `examples/p3-runtime/g6-2-c-min-dynamic-list-producer.wit`
+- Verify: `examples/p3-runtime/wit/g6-2-c-min-dynamic-list-producer.wit`
 - Verify: `doc/pending_blocked.md`
 
 **Interfaces:**
@@ -50,7 +50,7 @@
 - Sink import: `consume-via-stream: async func(data: stream<list<resource-entry>>) -> result<_, error-code>`.
 - Export: `produce: async func(mode: u32) -> result<_, error-code>`.
 
-- [ ] **Step 1: Record the exact ownership state machine in the design spec.**
+- [x] **Step 1: Record the exact ownership state machine in the design spec.**
 
   The spec must define these states and transitions:
 
@@ -68,9 +68,9 @@
   transfers every resource in that list; the guest must never call the ticket
   drop import for a transferred handle.
 
-- [ ] **Step 2: Add the exact WIT source.**
+- [x] **Step 2: Add the exact WIT source.**
 
-  `examples/p3-runtime/g6-2-batched-list-resource-producer.wit` must contain:
+  `examples/p3-runtime/wit/g6-2-batched-list-resource-producer.wit` must contain:
 
   ```wit
   package do:g6-2-batched-list-producer@0.1.0;
@@ -101,7 +101,7 @@
   }
   ```
 
-- [ ] **Step 3: Run the pre-admission boundary check.**
+- [x] **Step 3: Run the pre-admission boundary check.**
 
   Run:
 
@@ -112,17 +112,19 @@
     -o /tmp/g6-2-batched-before-admission.wat
   ```
 
-  Expected: fail with `UnsupportedP3AsyncComponent` because the package is not
-  registered. Do not add a registry row to make this baseline pass.
+  Expected: fail with `UnknownP3AsyncHostDescriptor` because the package/member
+  is not registered. This is the current fail-closed pre-admission diagnostic;
+  it proves the input does not reach WAT emission. Do not add a registry row to
+  make this baseline pass.
 
-- [ ] **Step 4: Commit the design/probe input only after reviewing the boundary.**
+- [x] **Step 4: Commit the design/probe input only after reviewing the boundary.**
 
   Run `git diff --check` and inspect that no compiler registry, public syntax,
   or existing C-min fixture changed. Commit locally with:
 
   ```bash
   git add docs/superpowers/specs/2026-08-08-g6-2-batched-list-resource-producer-design.md \
-    examples/p3-runtime/g6-2-batched-list-resource-producer.wit \
+    examples/p3-runtime/wit/g6-2-batched-list-resource-producer.wit \
     examples/p3-runtime/g6-2-batched-list-resource-producer.do \
     examples/p3-runtime/test_g6_2_batched_list_resource_producer_abi.sh
   git commit -m "Define batched list resource producer probe"
