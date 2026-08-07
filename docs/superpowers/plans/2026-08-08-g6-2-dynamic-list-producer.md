@@ -255,7 +255,7 @@ Run `git commit -m "Generalize bounded list producer plans"`.
   `source.make-ticket`, sink canonical imports, resource drop path, list layout,
   capacity `3`, runtime count parameter `u32`, and invalid-count terminal.
 
-- [ ] **Step 1: Add failing manifest tests.**
+- [x] **Step 1: Add failing manifest tests.**
 
 Test valid metadata plus wrong WIT hash, wrong world, wrong list offsets,
 wrong capacity, borrowed element, missing resource drop, unknown locator, and
@@ -265,13 +265,13 @@ Run `cd src && zig test build/p3_async_manifest.zig --test-filter 'dynamic list 
 Expected: the valid descriptor is not admitted yet; tampered cases remain
 rejected.
 
-- [ ] **Step 2: Add the descriptor using only the fresh probe facts.**
+- [x] **Step 2: Add the descriptor using only the fresh probe facts.**
 
 Keep `do:g6-2-c-min-producer@0.1.0` unchanged. The new descriptor must be a
 separate JSON entry with a separate package hash and exact world/signature
 identity.
 
-- [ ] **Step 3: Add exact sema shape matching.**
+- [x] **Step 3: Add exact sema shape matching.**
 
 Admit only two host bindings, one `Ticket` resource path, one `ResourceEntry`
 record, one `ProducerError` union, and `produce(count u32)` with no `async`,
@@ -279,7 +279,7 @@ record, one `ProducerError` union, and `produce(count u32)` with no `async`,
 different count types, arbitrary list expressions, and all unregistered
 locators with the established unsupported descriptor diagnostics.
 
-- [ ] **Step 4: Run manifest and sema suites.**
+- [x] **Step 4: Run manifest and sema suites.**
 
 Run `cd src && zig test build/p3_async_manifest.zig`.
 Run `cd src && zig test build/sema_imports.zig`.

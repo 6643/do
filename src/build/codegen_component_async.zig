@@ -1012,6 +1012,7 @@ fn target_for_descriptor(descriptor: p3_async_manifest.Descriptor) !Target {
         .record_stream_reader => .wasi_read_directory,
         .record_resource_list_stream_reader => error.UnsupportedP3AsyncComponent,
         .record_resource_list_stream_producer => .record_resource_list_stream_producer,
+        .record_resource_list_stream_dynamic_producer => error.UnsupportedP3AsyncComponent,
         .variant_resource_stream_reader => .variant_resource_stream,
         .stream_writer => .stream_writer,
         .http_resource_result => error.UnsupportedP3AsyncComponent,

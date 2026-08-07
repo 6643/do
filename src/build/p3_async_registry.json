@@ -984,6 +984,96 @@
             }
         },
         {
+            "locator": "do:g6-2-c-min-dynamic-producer@0.1.0",
+            "member": "consume-via-stream",
+            "effect": "record-resource-list-stream-dynamic-producer",
+            "params": ["stream<list<resource-entry>>"],
+            "result": "Result<nil,error-code>",
+            "resource": null,
+            "wit_sha256": "95f6d2d616e80248a8710e10199fa3674aa80b76247f25c2e71d3d87ea4afe76",
+            "canonical": {
+                "core_params": ["i32", "i32"],
+                "core_results": ["i32"],
+                "completion_params": ["i32", "i32"],
+                "completion": "task-return",
+                "async_import_module": "do:g6-2-c-min-dynamic-producer/sink@0.1.0",
+                "async_import_name": "[async-lower]consume-via-stream",
+                "record_layout": {
+                    "name": "resource-entry",
+                    "byte_size": 4,
+                    "fields": [
+                        {"name": "ticket", "core_type": "i32", "offset": 0}
+                    ],
+                    "source_fields": [
+                        {"name": "ticket", "source_type": "ticket", "storage": ["ticket"], "ownership": "own", "resource": "ticket", "drop_import": "[resource-drop]ticket"}
+                    ]
+                },
+                "list_resource_layout": {
+                    "result_pointer_offset": 64,
+                    "result_length_offset": 68,
+                    "element_stride": 4,
+                    "ticket_offset": 0,
+                    "max_items": 3
+                },
+                "producer": {
+                    "source_module": "do:g6-2-c-min-dynamic-producer/source@0.1.0",
+                    "source_import_name": "make-ticket",
+                    "source_core_params": ["i32"],
+                    "source_core_results": ["i32"],
+                    "resource_drop_import": "[resource-drop]ticket",
+                    "stream_capacity": 1,
+                    "terminal": "result-area",
+                    "runtime_count_param": "u32",
+                    "runtime_max": 3
+                },
+                "stream": {
+                    "element": "list<resource-entry>",
+                    "new": {
+                        "import_name": "[stream-new-0]consume-via-stream",
+                        "core_params": [],
+                        "core_results": ["i64"]
+                    },
+                    "cancel_read": {
+                        "import_name": "[stream-cancel-read-0]consume-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "cancel_write": {
+                        "import_name": "[stream-cancel-write-0]consume-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "drop_readable": {
+                        "import_name": "[stream-drop-readable-0]consume-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "drop_writable": {
+                        "import_name": "[stream-drop-writable-0]consume-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "read": {
+                        "import_name": "[async-lower][stream-read-0]consume-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    },
+                    "write": {
+                        "import_name": "[async-lower][stream-write-0]consume-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    }
+                }
+            },
+            "wit": {
+                "package": "do:g6-2-c-min-dynamic-producer@0.1.0",
+                "interface": "sink",
+                "operation": "consume-via-stream",
+                "world": "dynamic-list-producer",
+                "parameter": "data"
+            }
+        },
+        {
             "locator": "do:variant-resource-stream-canonical@0.1.0",
             "member": "read-via-stream",
             "effect": "variant-resource-stream-reader",
