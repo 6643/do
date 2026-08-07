@@ -364,7 +364,7 @@ Expected: WAT and WIT markers show the measured dynamic layout, one queue item,
 runtime maximum `3`, and child-before-parent cleanup. The old C-min fixture and
 consumer boundary fixture must remain unchanged.
 
-- [ ] **Step 5: Commit the isolated compiler adapter.**
+- [x] **Step 5: Commit the isolated compiler adapter.**
 
 Run `git add src/build/cmin_dynamic_list_resource_producer_template.wat src/build/codegen_component_dynamic_list_resource_producer.zig src/build/codegen_component_async.zig examples/p3-runtime/g6-2-c-min-dynamic-list-resource-producer.do examples/p3-runtime/test_do_g6_2_c_min_dynamic_list_resource_producer.sh`.
 Run `git commit -m "Lower bounded dynamic list producer"`.
@@ -423,7 +423,7 @@ Run `rustfmt --edition 2021 --check examples/p3-runtime/rust-host-runner/src/bin
 Expected: every admitted terminal path reports `table-empty=true`, counts
 `0/1/2/3` preserve order, and count `4` creates no ticket.
 
-- [ ] **Step 5: Commit the runtime gate.**
+- [x] **Step 5: Commit the runtime gate.**
 
 Run `git add examples/p3-runtime/rust-host-runner/src/bin/g6_2_c_min_dynamic_list_producer.rs examples/p3-runtime/test_rust_g6_2_c_min_dynamic_list_producer.sh examples/p3-runtime/rust-host-runner/Cargo.toml`.
 Run `git commit -m "Test dynamic list producer runtime cleanup"`.
@@ -480,7 +480,7 @@ matrix, and exact negative diagnostics. Keep generic producer expressions,
 borrowed async payloads, public ownership syntax, and root hard-cancel in the
 pending table.
 
-- [ ] **Step 5: Commit fixtures and status documentation.**
+- [x] **Step 5: Commit fixtures and status documentation.**
 
 Run `git add src/build/test/check/450_g6_2_c_min_dynamic_list_resource_producer.do src/build/test/compile_err/45*_g6_2_c_min_dynamic_list_producer* doc/roadmap_status.md doc/pending_blocked.md doc/start_here.md CHANGELOG.md`.
 Run `git commit -m "Document bounded dynamic list producer gate"`.
