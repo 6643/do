@@ -147,7 +147,7 @@ G6.2 C-min bounded async frame slice (2026-08-08)
 
 G6.2 C-min producer compiler/runtime promotion (2026-08-08)
   → `zig test build/codegen_component_list_resource_producer.zig` passed `139/139`,
-    `zig test build/codegen_component_async.zig` passed `438/438`, and the
+    `zig test build/codegen_component_async.zig` passed `453/453`, and the
     dispatcher routes only the registered descriptor. The Do positive gate,
     three negative compile fixtures, and the existing consumer boundary gate all
     pass. `bash examples/p3-runtime/test_rust_g6_2_c_min_list_resource_producer.sh`
