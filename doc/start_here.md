@@ -32,7 +32,7 @@
 | v1 子集 | 发布候选已收口 |
 | 阶段 A–F、H | 已完成 |
 | 阶段 D | 可推进项已完成; D2.1 已按 B 方案绿色 regression 收口; D2 真实本地 file/dir/CLI/socket create-bind-drop smoke in progress |
-| 阶段 G | G1–G5、G6.1、G6.2 有界 read-directory slice + generic consumer + multi-owned-resource + 一层/两层/三层/四层/五层/六层 nested-owned-resource + multiple nested-owned-resource paths + bounded scalar producer + bounded/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding 与 typed 参数重排）producer + helper-mediated lease + branch-selected terminal + private resource Result error/cancellation checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count C-min list/resource producer slices、G6.3、G6.4 完成; generic list/producer、borrowed payload 与 root hard-cancel pending |
+| 阶段 G | G1–G5、G6.1、G6.2 有界 read-directory slice + generic consumer + multi-owned-resource + 一层/两层/三层/四层/五层/六层 nested-owned-resource + multiple nested-owned-resource paths + bounded scalar producer + bounded/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding 与 typed 参数重排）producer + helper-mediated lease + branch-selected terminal + private resource Result error/cancellation checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices、G6.3、G6.4 完成; generic list/producer、borrowed payload 与 root hard-cancel pending |
 | Colorless async / WIT bindgen | canonical `@async/@await/@cancel`、legacy `async` 弃用、schema 1/2 生成 manifest 校验、已准入 schema 2 unit 与 scalar capabilities 的 manifest 自动发现，以及 opt-in v2 variant/scalar-i64 gates、统一 promotion profile、`--p3-async-call-component` root-owned local-frame gate 和 `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` gate 已验证；unrestricted generated WIT lowering 仍 pending |
 | 阶段 I | **已关闭** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构审查/重构 | 五轮已落地 (见 §4); 默认不继续拆 god module |
@@ -72,9 +72,15 @@ bash examples/p3-runtime/test_rust_g6_2_c_min_list_resource_producer.sh
 # private bounded dynamic-count producer compiler/runtime gate
 bash examples/p3-runtime/test_rust_g6_2_c_min_dynamic_list_producer.sh
 
+# private fixed two-batch list-resource producer compiler Component gate
+bash examples/p3-runtime/test_do_g6_2_batched_list_resource_producer.sh
+
+# private fixed two-batch list-resource producer Rust/Wasmtime gate
+bash examples/p3-runtime/test_rust_g6_2_batched_list_resource_producer.sh
+
 # 默认完整回归 (当前基线; 本机使用 Bun 作为 Node-compatible runner)
 NODE_BIN="$(command -v bun)" WASM_TOOLS="$(command -v wasm-tools)" ./src/build/test/run_tests.sh
-# 期望: pass=1126 fail=0 skip=3
+# 期望: pass=1132 fail=0 skip=3
 
 # codegen 单元测试
 cd src && zig test build/codegen_api.zig
@@ -88,13 +94,13 @@ cd src && zig test build/codegen_api.zig
 
 ```bash
 RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
-# 最近扩展基线: pass=1118 fail=0 skip=3; wasm run summary: pass=6 fail=0
+# 最近扩展基线: pass=1134 fail=0 skip=3; wasm run summary: pass=6 fail=0
 ```
 
 | 基线项 | 最近值 |
 | --- | --- |
-| 默认回归 (`SKIP_BUILD=1`) | `pass=1126 fail=0 skip=3` |
-| WASM 扩展回归 (`RUN_WASM=1 SKIP_BUILD=1`) | `pass=1118 fail=0 skip=3`; smoke `6/6` |
+| 默认回归 (`SKIP_BUILD=1`) | `pass=1132 fail=0 skip=3` |
+| WASM 扩展回归 (`RUN_WASM=1 SKIP_BUILD=1`) | `pass=1134 fail=0 skip=3`; smoke `6/6` |
 | `zig test main.zig` | `285/285` |
 | Task 8 Step 3 runtime baseline | 七个已登记 Component/Rust/Wasmtime gate 通过 |
 | HTTP service ABI / empty-request gate | pinned Component + Rust/Wasmtime pass; `codegen_component_wasi_http` `189/189`; registered payload pending/ready gate green, unregistered/general ready delivery remains blocked |
@@ -237,7 +243,7 @@ ZIG_GLOBAL_CACHE_DIR="$PWD/.tmp/do-tmp/debug-zig-gcache" \
 
 | ID | 说明 | 恢复条件 |
 | --- | --- | --- |
-| G6.2 | `descriptor.read-directory`、注册 record-stream consumer 与 bounded scalar/dynamic producer | scalar/string、多-owned-resource、多个顶层 nested paths 与一层/两层/三层/四层/五层/六层 nested-owned-resource consumer、注册 `do:stream-probe` 的 capacity-one `StreamWriter<u8>` producer、固定/参数化 `u64` countdown producer、参数化 helper 的五跳 forwarding、typed 参数受限重排、其它同类型 async helper、bounded StreamMirror、私有 `variant-resource-stream` 与 private C-min list/resource producer 已验证；一般 producer lease、borrowed/list/通用 variant、第六跳 forwarding、第七层或更一般 nested resource gates 与任意 filesystem async method 仍待单独推进 |
+| G6.2 | `descriptor.read-directory`、注册 record-stream consumer 与 bounded scalar/dynamic/batched producer | scalar/string、多-owned-resource、多个顶层 nested paths 与一层/两层/三层/四层/五层/六层 nested-owned-resource consumer、注册 `do:stream-probe` 的 capacity-one `StreamWriter<u8>` producer、固定/参数化 `u64` countdown producer、参数化 helper 的五跳 forwarding、typed 参数受限重排、其它同类型 async helper、bounded StreamMirror、私有 `variant-resource-stream`、private C-min list/resource producer、动态 count `0..3` producer 与固定两批 list-resource producer 已验证；一般 producer lease、borrowed/list/通用 variant、第六跳 forwarding、第七层或更一般 nested resource gates 与任意 filesystem async method 仍待单独推进 |
 | G6.2-cancel | 私有 resource Result cancellation | 显式 `@cancel(completion)` 的 Do lowering、负边界、Component assembly 与 Rust/Wasmtime pending/drop/empty-table gate 已通过；pinned `wasi:http` service-world gate 另验证 pending、immediate `Ok(response)` 的 exactly-once drop、`DnsTimeout`、bounded `DNS-error.rcode` 的 `Some(nonempty)` 与 `None`（两种长度和 `info-code` optional 状态）以及同一布局的 `InternalError(Some(nonempty string))` / `InternalError(None)` canonical discard。同一组件实例连续两次 nonempty DNS error 会在每次精确释放后复用该私有槽位。`None` 不读取或释放 pointer/length；空字符串和其他 payload error 仍 trap；不扩展到通用 resource cancellation 或公开 ownership syntax |
 | G6.3 | **已关闭 (方案 B)** create/bind/drop + dual address | 见 `compile_ok/291`–`294`; TCP/UDP loopback real-host gate 已通过，listen/connect/accept 与真实 socket I/O 仍后置 |
 | D2 | 真实 host runtime smoke | local filesystem preopen/open-at/sync、read-directory stream、CLI stdin pipe、TCP/UDP socket create/bind/drop 已有 gates；通用 filesystem async 与 external HTTP 仍阻断 |

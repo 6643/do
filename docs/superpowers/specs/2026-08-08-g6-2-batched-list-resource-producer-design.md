@@ -1,7 +1,8 @@
 # G6.2 Batched List-Resource Producer Design
 
-**Status:** Tasks 1-2 design, canonical ABI, and ownership probe are green;
-compiler manifest/sema admission and generated lowering are not admitted yet.
+**Status:** Tasks 1-6 design, canonical ABI, manifest/sema admission, isolated
+adapter, generated Component/Rust/Wasmtime gates, and rejection fixtures are
+green; generic producer/list lowering remains outside the admission boundary.
 
 **Date:** 2026-08-08
 

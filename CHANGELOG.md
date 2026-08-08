@@ -1,5 +1,18 @@
 # Changelog
 
+# 2026-08-08 G6.2 private batched list-resource producer promotion: added the
+  exact `do:g6-2-batched-list-producer@0.1.0 / consume-via-stream` descriptor
+  with WIT hash `a0717b2ac8525c4b1f684a4222f66939312a19c959c66b0ace5ebca16f45299f`
+  and the measured two-batch layout (`[111,222]`, `[333]`, pointer/length
+  `64/68` and `72/76`, stride `4`, ticket offset `0`, stream capacity `1`).
+  The isolated Do adapter, generated Component gate, and Rust/Wasmtime matrix
+  pass ready, pending, both sink-error, and both transfer-boundary cancellation
+  modes with exactly-once resource/list cleanup and an empty `ResourceTable`.
+  Fixtures `454`–`458` reject descriptor/topology/body drift before WAT. This
+  remains a private fixed bounded slice; generic producer expressions/lists,
+  borrowed async payloads, public `own<T>`/`borrow<T>`/`ref<T>`, root hard-cancel,
+  and general filesystem/HTTP async remain outside scope.
+
 # 2026-08-08 G6.2 private bounded dynamic list producer promotion: added the
   exact `do:g6-2-c-min-dynamic-producer@0.1.0` descriptor with WIT hash
   `95f6d2d616e80248a8710e10199fa3674aa80b76247f25c2e71d3d87ea4afe76` and

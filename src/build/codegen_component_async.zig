@@ -11,6 +11,7 @@ const codegen_component_record_stream = @import("codegen_component_record_stream
 const codegen_component_record_resource_list_stream = @import("codegen_component_record_resource_list_stream.zig");
 const codegen_component_list_resource_producer = @import("codegen_component_list_resource_producer.zig");
 const codegen_component_dynamic_list_resource_producer = @import("codegen_component_dynamic_list_resource_producer.zig");
+const codegen_component_batched_list_resource_producer = @import("codegen_component_batched_list_resource_producer.zig");
 const codegen_component_variant_resource_stream = @import("codegen_component_variant_resource_stream.zig");
 const codegen_component_wasi_http = @import("codegen_component_wasi_http.zig");
 const codegen_component_cabi_realloc = @import("codegen_component_cabi_realloc.zig");
@@ -39,6 +40,7 @@ pub const Target = enum {
     record_resource_list_stream,
     record_resource_list_stream_producer,
     record_resource_list_stream_dynamic_producer,
+    record_resource_list_stream_batched_producer,
     variant_resource_stream,
     stream_writer,
     stream_mirror,
@@ -156,6 +158,10 @@ pub fn emit_component_wat(
         },
         .record_resource_list_stream_dynamic_producer => codegen_component_dynamic_list_resource_producer.emit_component_wat_for_tokens(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3DynamicListResourceProducer => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
+        .record_resource_list_stream_batched_producer => codegen_component_batched_list_resource_producer.emit_component_wat_for_tokens(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3BatchedListResourceProducer => error.UnsupportedP3AsyncComponent,
             else => err,
         },
         .variant_resource_stream => finalize_component_wat(allocator, codegen_component_variant_resource_stream.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
@@ -877,6 +883,10 @@ pub fn emit_component_wit_with_graph(
             error.UnsupportedP3DynamicListResourceProducer => error.UnsupportedP3AsyncComponent,
             else => err,
         },
+        .record_resource_list_stream_batched_producer => codegen_component_batched_list_resource_producer.emit_component_wit_for_tokens(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3BatchedListResourceProducer => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
         .variant_resource_stream => codegen_component_variant_resource_stream.emit_component_wit(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3VariantResourceStream => error.UnsupportedP3AsyncComponent,
             else => err,
@@ -980,6 +990,11 @@ pub fn target_for_tokens_with_graph(
                     return error.UnsupportedP3AsyncComponent;
                 break :blk .record_resource_list_stream_dynamic_producer;
             } else return error.UnsupportedP3AsyncComponent,
+            .record_resource_list_stream_batched_producer => if (binding.kind == .host_func) blk: {
+                _ = codegen_component_batched_list_resource_producer.BatchedListResourceProducerPlan.analyze(tokens, registry) catch
+                    return error.UnsupportedP3BatchedListResourceProducer;
+                break :blk .record_resource_list_stream_batched_producer;
+            } else return error.UnsupportedP3BatchedListResourceProducer,
             .variant_resource_stream_reader => if ((binding.kind == .host or binding.kind == .host_func) and variant_resource_stream_signature_at(tokens, idx))
                 .variant_resource_stream
             else
@@ -1032,6 +1047,7 @@ fn target_for_descriptor(descriptor: p3_async_manifest.Descriptor) !Target {
         .record_resource_list_stream_reader => error.UnsupportedP3AsyncComponent,
         .record_resource_list_stream_producer => .record_resource_list_stream_producer,
         .record_resource_list_stream_dynamic_producer => .record_resource_list_stream_dynamic_producer,
+        .record_resource_list_stream_batched_producer => .record_resource_list_stream_batched_producer,
         .variant_resource_stream_reader => .variant_resource_stream,
         .stream_writer => .stream_writer,
         .http_resource_result => error.UnsupportedP3AsyncComponent,
@@ -1220,6 +1236,48 @@ test "generic Component async target classifies registered descriptor shapes" {
     const writer_tokens = try lexer.tokenize(std.testing.allocator, writer_source);
     defer std.testing.allocator.free(writer_tokens);
     try std.testing.expectEqual(Target.stream_writer, try target_for_tokens(std.testing.allocator, writer_tokens));
+}
+
+test "generic Component async target classifies the pinned batched list resource producer" {
+    const source =
+        \\make_ticket = @host("do:g6-2-batched-list-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_func("do:g6-2-batched-list-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
+        \\Ticket = @wasi_resource("do:g6-2-batched-list-producer/source/ticket", { .id i64 })
+        \\ResourceEntry { .ticket Ticket }
+        \\ProducerError error = Io | Pipe | InvalidMode
+        \\produce(mode u32) -> Result<nil, ProducerError> { return Ok() }
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectEqual(
+        Target.record_resource_list_stream_batched_producer,
+        try target_for_tokens(std.testing.allocator, tokens),
+    );
+}
+
+test "generic Component async target rejects a non-fixed batched producer before emission" {
+    const source =
+        \\make_ticket = @host("do:g6-2-batched-list-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_func("do:g6-2-batched-list-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
+        \\Ticket = @wasi_resource("do:g6-2-batched-list-producer/source/ticket", { .id i64 })
+        \\ResourceEntry { .ticket Ticket }
+        \\ProducerError error = Io | Pipe | InvalidMode
+        \\produce(mode u32) -> Result<nil, ProducerError> {
+        \\    selected u32 = mode
+        \\    _ = selected
+        \\    return Ok()
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectError(
+        error.UnsupportedP3BatchedListResourceProducer,
+        target_for_tokens(std.testing.allocator, tokens),
+    );
 }
 
 test "generic Component async target classifies the bounded stream mirror" {

@@ -20,7 +20,7 @@
 | 阶段 A–F、H | done |
 | 阶段 D | 可推进项 done; D2.1 按 B 方案绿色 regression 收口 |
 | D2 真实 host smoke | in progress; real local filesystem preopen/read-directory, CLI pipe, and compiler-generated TCP/UDP socket create/bind/drop loopback gates are green; general filesystem async and external HTTP remain blocked |
-| 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + helper-mediated lease（含五跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count C-min list/resource producer slices、G6.3、G6.4 done; generic list/producer、borrowed payload 与 root hard-cancel 仍 pending |
+| 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + helper-mediated lease（含五跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices、G6.3、G6.4 done; generic list/producer、borrowed payload 与 root hard-cancel 仍 pending |
 | Colorless async / WIT bindgen | canonical `@async/@await/@cancel` surface, legacy `async` deprecation, schema 1/2 generated manifest checks, automatic discovery for the admitted schema 2 unit and scalar capabilities, plus opt-in v2 variant/scalar-i64 slices, the `--p3-async-call-component` root-owned local-frame slice, and the private `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` slice verified; unrestricted generated WIT lowering remains pending |
 | 阶段 I | **closed** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构扁平拆分 | 已落地: `diagnostics` / `type_name` / `sema_error` / codegen 域竖切 / **`sema_*` 域竖切** (`sema_tokens`/`sema_shapes`/`sema_function_*`/`sema_structures`/`sema_type_checks`/`sema_imports`/`sema_control`) |
@@ -40,10 +40,10 @@ cd src && zig test main.zig
   → All 285 tests passed.
 
 ./src/build/test/run_tests.sh
-  → pass=1126 fail=0 skip=3 (Bun Node-compatible runner)
+  → pass=1132 fail=0 skip=3 (Bun Node-compatible runner)
 
 RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
-  → pass=1118 fail=0 skip=3; wasm run summary: pass=6 fail=0 (Bun Node-compatible runner)
+  → pass=1134 fail=0 skip=3; wasm run summary: pass=6 fail=0 (Bun Node-compatible runner)
 
 Generated async manifest Component/Rust/Wasmtime gate (2026-08-06)
   → Zig 0.16.0, wasm-tools 1.254.0, Wasmtime 47.0.2, Rust/Cargo 1.97.1;
@@ -172,6 +172,26 @@ G6.2 bounded dynamic list producer compiler/runtime promotion (2026-08-08)
     count type, second stream binding, and borrowed entry before WAT.
     Generic/unbounded producer expressions, borrowed async payloads, public
     ownership syntax, and root hard-cancel remain pending.
+
+G6.2 batched list resource producer compiler/runtime promotion (2026-08-08)
+  → the private descriptor `do:g6-2-batched-list-producer@0.1.0 /
+    consume-via-stream` is pinned to WIT hash
+    `a0717b2ac8525c4b1f684a4222f66939312a19c959c66b0ace5ebca16f45299f` and
+    canonical Core WAT hash
+    `1114696249c4fd9142005ed3b7703c2642741e22e4832494df05bfc635cbd71c`.
+    Manifest/sema admission is fail-closed; the isolated adapter passes
+    `146/146` and the async dispatcher passes `462/462`. The generated Do
+    Component gate and Rust/Wasmtime gate pass `ready`, `pending`,
+    `sink-error-first`, `sink-error-second`, `cancel-before-first`, and
+    `cancel-after-first`: batches are `[111,222]` then `[333]` where admitted,
+    layout is `ptr=64/72`, `len=68/76`, `stride=4`, ticket offset `0`, stream
+    capacity `1`, with three resources created/dropped, two list allocations/
+    releases, one stream drop, one future drop, and `table-empty=true` on every
+    row. Fixtures `454`–`458` reject unregistered version, wrong mode type,
+    second sink, borrowed entry, and non-empty producer body before WAT.
+    `run_tests.sh` is `pass=1132 fail=0 skip=3`; generic producer expressions,
+    generic/unbounded lists, borrowed async payloads, public ownership syntax,
+    root hard-cancel, and general filesystem/HTTP async remain pending.
 
 bash examples/p3-runtime/test_task8_step3_baseline.sh
   → all seven registered Component/Rust/Wasmtime runtime gates passed
