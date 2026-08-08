@@ -1,6 +1,6 @@
 # 待处理与阻断清单
 
-更新时间: 2026-08-08
+更新时间: 2026-08-09
 基线: 默认回归以 `./src/build/test/run_tests.sh` 最新结果为准  
 关系: 总规划 `doc/master_plan.md`; 接手 `doc/start_here.md`; 执行状态 `doc/roadmap_status.md`  
 约定: **只记未关闭项**; 完成后从本文件删除或移入「已关闭摘要」, 并同步入口文档与 `CHANGELOG.md`。
@@ -175,14 +175,29 @@ and `cancel-child`: ready/pending each observe two completions and two drops;
 completed and one pending drop. Both cancellation modes have no duplicate drop
 and an empty `ResourceTable`.
 
-The opt-in analyzer rejects helper parameters/payloads, multiple live
-children, a second inline call, and nested helper calls as
+The opt-in analyzer rejects helper parameters other than the exact single
+`u32` scalar shape, payloads, multiple live children, a second inline call, and
+nested helper calls as
 `UnsupportedP3AsyncCallComponent`; the normal default build still reports
 `AsyncLoweringUnavailable` for those fixtures because it does not select the
 opt-in target. Generic async-call composition, arbitrary producer expressions,
 payload/Stream/resource/list futures, public ownership syntax, general
 filesystem async, and D2 host I/O remain pending. Independent guest child-task
 creation remains blocked by the pinned Component ABI described above.
+
+**Bounded inline scalar-argument checkpoint (2026-08-09, green):** the same
+root-owned local-frame target now admits exactly one leading
+`helper(7)` followed by `child Future<nil> = @async(helper(7))` when
+`helper(value u32) -> nil`. The scalar slot is frame offset `12` in a 20-byte
+frame and is reused sequentially by the inline and child phases; no helper WIT
+export or new host descriptor is emitted. The dedicated
+`test_do_async_call_inline_scalar_argument.sh` gate passes pinned
+`wasm-tools 1.254.0` assembly, and `test_rust_async_call_component.sh` passes
+ready/pending/cancel-inline/cancel-child with exactly-once cleanup and an empty
+`ResourceTable`. `u32` is a probe boundary, not the final scalar type set.
+Additional parameters, non-literal expressions, payload/resource/stream/list
+values, general async-call composition, ownership syntax, and independent guest
+child tasks remain pending.
 
 本轮执行复核（2026-08-07）重新运行了六跳 forwarding/任意 producer 边界、borrowed stream rejection 与 `p3_async_manifest`（74/74）；三个 gate 均保持预期拒绝/通过。同步确认了 descriptor-bounded StreamMirror 六模式、默认 Bun 回归 `pass=1116 fail=0 skip=3`、WASM 回归 `pass=1118 fail=0 skip=3`（WASM smoke `6/6`）和 ReleaseSmall smoke 通过；nested lowering、borrowed rejection、G6.2 boundary 与完整 compiler/Wasm 矩阵均保持绿色，未新增 descriptor 或 lowering。
 

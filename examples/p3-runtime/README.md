@@ -24,9 +24,12 @@ The colorless async-call probe is a separate opt-in target:
 and `run()` as ordinary functions. The target accepts the existing child-only
 root and one exact leading inline `helper()` followed by
 `child Future<nil> = @async(helper())`; only the explicit `@async` creates a
-user-function Future. The compiler owns both host phases in the root frame and
-does not export `helper`. Run `test_do_async_call_component.sh` for the pinned
-Core/WIT/Component gate and `test_rust_async_call_component.sh` for ready,
+user-function Future. The bounded scalar companion accepts exactly one `u32`
+literal in both calls and reuses frame slot `12`; it does not add a WIT
+argument. The compiler owns both host phases in the root frame and does not
+export `helper`. Run `test_do_async_call_component.sh` for the unit gate,
+`test_do_async_call_inline_scalar_argument.sh` for the scalar-inline pinned
+Core/WIT/Component gate, and `test_rust_async_call_component.sh` for ready,
 pending, `cancel-inline`, and `cancel-child` cleanup observations. Payloads,
 resources, streams/lists, arbitrary producer expressions, and general
 async-call composition remain rejected.

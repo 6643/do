@@ -96,9 +96,15 @@ bash examples/p3-runtime/test_do_async_call_scalar_argument.sh
 bash examples/p3-runtime/test_rust_async_call_scalar_argument.sh \
   /tmp/async-call-scalar-argument.component.wasm
 
+# bounded inline scalar-argument async-call Component/Rust/Wasmtime gate
+bash examples/p3-runtime/test_do_async_call_inline_scalar_argument.sh \
+  /tmp/async-call-inline-scalar-argument.component.wasm
+bash examples/p3-runtime/test_rust_async_call_component.sh \
+  /tmp/async-call-inline-scalar-argument.component.wasm
+
 # 默认完整回归 (当前基线; 本机使用 Bun 作为 Node-compatible runner)
 NODE_BIN="$(command -v bun)" WASM_TOOLS="$(command -v wasm-tools)" ./src/build/test/run_tests.sh
-# 期望: pass=1149 fail=0 skip=3
+# 期望: pass=1158 fail=0 skip=3
 
 # codegen 单元测试
 cd src && zig test build/codegen_api.zig
@@ -117,7 +123,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 
 | 基线项 | 最近值 |
 | --- | --- |
-| 默认回归 (`SKIP_BUILD=1`) | `pass=1149 fail=0 skip=3` |
+| 默认回归 (`SKIP_BUILD=1`) | `pass=1158 fail=0 skip=3` |
 | WASM 扩展回归 (`RUN_WASM=1 SKIP_BUILD=1`) | `pass=1151 fail=0 skip=3`; smoke `6/6` |
 | `zig test main.zig` | `308/308` |
 | Task 8 Step 3 runtime baseline | 七个已登记 Component/Rust/Wasmtime gate 通过 |
@@ -204,14 +210,16 @@ variant-resource-stream 与 generated `Future<i64>` 两个已验证 shape，默�
 `--p3-async-component` registry/v1 dispatch 不变。
 
 用户函数 async-call 另有一个独立 opt-in bounded slice：
-`--p3-async-call-component` 只接受无参数、`nil` 返回的 `helper`，由根函数
-通过一次 `@async(helper())` 创建并 `@await`；helper 内只允许一次已登记的
+`--p3-async-call-component` 接受无参数、`nil` 返回的 `helper`，以及一个
+单 `u32` literal 参数的 inline scalar companion；根函数通过一次
+`@async(helper(...))` 创建并 `@await`，helper 内只允许一次已登记的
 `do:generic-async-call-probe/host@0.1.0` `work: async func()`。其实现使用
 root-owned local frame/state，并通过根 `[task-return]run` 完成，不暴露 helper
 Component export，也不伪造独立 child task。使用
-`examples/p3-runtime/test_do_async_call_component.sh` 和 Rust/Wasmtime gate
-可复现 pinned `wasm-tools 1.254.0` / Wasmtime `47.0.2` 的 ready/pending/cancel
-矩阵。参数、payload、多个 child、嵌套 helper、resource、Stream、list、任意
+`examples/p3-runtime/test_do_async_call_component.sh`、
+`test_do_async_call_inline_scalar_argument.sh` 和 Rust/Wasmtime gate 可复现
+pinned `wasm-tools 1.254.0` / Wasmtime `47.0.2` 的 ready/pending/cancel 矩阵。
+额外参数、payload、多个 child、嵌套 helper、resource、Stream、list、任意
 producer expression、filesystem async 和 D2 I/O 仍保持拒绝或 pending。
 
 当前工作区的 `/tmp` 配额会让 Zig Debug cache 返回 `DiskQuota`；`run_tests.sh` 现在
