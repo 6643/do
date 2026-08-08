@@ -21,6 +21,7 @@ pub const GuestAsyncCallPlan = struct {
     async_import_name: []const u8,
     argument_name: []const u8,
     argument_value: ?u32,
+    inline_helper_call: bool,
     child_state: ChildState,
     parent_resume_state: ParentResumeState,
 
@@ -70,10 +71,11 @@ pub fn analyze(allocator: std.mem.Allocator, tokens: []const lexer.Token) !Guest
     const helper_is_unit = signature_is_unit(helper);
     const helper_is_scalar = scalar_argument != null;
     const scalar_value = if (helper_is_scalar) scalar_root_value(tokens, root) else null;
+    const inline_helper_call = !helper_is_scalar and root_body_with_inline(tokens, root);
     const root_body_valid = if (helper_is_scalar)
         scalar_value != null
     else
-        root_body_is_exact(tokens, root);
+        root_body_is_exact(tokens, root) or inline_helper_call;
 
     if (helper.is_async or root.is_async or
         (!helper_is_unit and !helper_is_scalar) or !signature_is_unit(root) or
@@ -116,6 +118,7 @@ pub fn analyze(allocator: std.mem.Allocator, tokens: []const lexer.Token) !Guest
         .async_import_name = async_import_name,
         .argument_name = argument_name,
         .argument_value = scalar_value,
+        .inline_helper_call = inline_helper_call,
         .child_state = .host_pending,
         .parent_resume_state = .child_complete,
     };
@@ -264,6 +267,23 @@ fn root_body_is_exact(tokens: []const lexer.Token, function: FunctionDecl) bool 
         sema_tokens.tok_eq(body[12], ")") and sema_tokens.tok_eq(body[13], "@") and
         ident_eq(body[14], "await") and sema_tokens.tok_eq(body[15], "(") and
         ident_eq(body[16], "child") and sema_tokens.tok_eq(body[17], ")");
+}
+
+fn root_body_with_inline(tokens: []const lexer.Token, function: FunctionDecl) bool {
+    const body = tokens[function.body_open + 1 .. function.body_close];
+    if (body.len != 21 or
+        !ident_eq(body[0], "helper") or !sema_tokens.tok_eq(body[1], "(") or
+        !sema_tokens.tok_eq(body[2], ")") or
+        !ident_eq(body[3], "child") or !ident_eq(body[4], "Future") or
+        !sema_tokens.tok_eq(body[5], "<") or !ident_eq(body[6], "nil") or
+        !sema_tokens.tok_eq(body[7], ">") or !sema_tokens.tok_eq(body[8], "=") or
+        !sema_tokens.tok_eq(body[9], "@") or !ident_eq(body[10], "async") or
+        !sema_tokens.tok_eq(body[11], "(") or !ident_eq(body[12], "helper") or
+        !sema_tokens.tok_eq(body[13], "(") or !sema_tokens.tok_eq(body[14], ")") or
+        !sema_tokens.tok_eq(body[15], ")") or !sema_tokens.tok_eq(body[16], "@") or
+        !ident_eq(body[17], "await") or !sema_tokens.tok_eq(body[18], "(") or
+        !ident_eq(body[19], "child") or !sema_tokens.tok_eq(body[20], ")")) return false;
+    return true;
 }
 
 fn ident_eq(token: lexer.Token, expected: []const u8) bool {
