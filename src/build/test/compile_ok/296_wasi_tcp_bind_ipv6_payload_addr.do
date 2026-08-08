@@ -1,6 +1,6 @@
 // G6.3 regression: IPv6 payload address uses explicit big-endian byte stores.
-.host_tcp_bind = @host("wasi:sockets/types@0.3.0", "tcp-socket.bind", (TcpSocket, IpSocketAddress) -> TcpError | nil)
-.host_tcp_drop = @host("wasi:sockets/types@0.3.0", "tcp-socket.drop", (TcpSocket) -> nil)
+.host_tcp_bind = @host_func("wasi:sockets/types@0.3.0", "tcp-socket.bind", (TcpSocket, IpSocketAddress) -> TcpError | nil)
+.host_tcp_drop = @host_func("wasi:sockets/types@0.3.0", "tcp-socket.drop", (TcpSocket) -> nil)
 TcpSocket = @wasi_resource("sockets/types/tcp-socket", {
     .id i64
 })

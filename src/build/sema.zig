@@ -97,7 +97,7 @@ pub fn check_program(
 
 test "program accepts a nested CLI stdin stream host declaration" {
     const source =
-        \\stdin_read = @host("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
+        \\stdin_read = @host_func("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
         \\StdinError error = Io | IllegalByteSequence | Pipe
         \\
         \\run() -> nil {
@@ -121,7 +121,7 @@ test "program accepts a nested CLI stdin stream host declaration" {
 
 test "program accepts an HTTP body stream completion tuple" {
     const source =
-        \\consume_body = @host("wasi:http/types@0.3.0-rc-2025-09-16", "response.consume-body", (HttpResponse) -> Tuple<Stream<u8>, Future<Result<option<trailers>, HttpError>>>)
+        \\consume_body = @host_func("wasi:http/types@0.3.0-rc-2025-09-16", "response.consume-body", (HttpResponse) -> Tuple<Stream<u8>, Future<Result<option<trailers>, HttpError>>>)
         \\HttpResponse = @wasi_resource("http/types/response", { .id i64 })
         \\HttpError error = HttpFailure
         \\

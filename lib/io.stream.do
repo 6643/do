@@ -1,9 +1,9 @@
 // Declarative stream hosts first (import prefix), then resource shells.
 // Fallible hosts use ordinary Do unions with coarse StreamError.
-.host_input_read = @host("wasi:io/streams@0.3.0", "input-stream.read", (InputStream, u64) -> [u8] | StreamError)
-.host_output_check_write = @host("wasi:io/streams@0.3.0", "output-stream.check-write", (OutputStream) -> u64 | StreamError)
-.host_output_write = @host("wasi:io/streams@0.3.0", "output-stream.write", (OutputStream, [u8]) -> nil | StreamError)
-.host_output_flush = @host("wasi:io/streams@0.3.0", "output-stream.flush", (OutputStream) -> nil | StreamError)
+.host_input_read = @host_func("wasi:io/streams@0.3.0", "input-stream.read", (InputStream, u64) -> [u8] | StreamError)
+.host_output_check_write = @host_func("wasi:io/streams@0.3.0", "output-stream.check-write", (OutputStream) -> u64 | StreamError)
+.host_output_write = @host_func("wasi:io/streams@0.3.0", "output-stream.write", (OutputStream, [u8]) -> nil | StreamError)
+.host_output_flush = @host_func("wasi:io/streams@0.3.0", "output-stream.flush", (OutputStream) -> nil | StreamError)
 
 InputStream = @wasi_resource("io/streams/input-stream", {
     .id i64

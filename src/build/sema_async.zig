@@ -251,7 +251,7 @@ fn is_host_binding_name(tokens: []const lexer.Token, name: []const u8) bool {
     while (idx + 4 < tokens.len) : (idx += 1) {
         if (tokens[idx].kind != .ident or !std.mem.eql(u8, tokens[idx].lexeme, name) or
             !tok_eq(tokens[idx + 1], "=") or !tok_eq(tokens[idx + 2], "@") or
-            (!tok_eq(tokens[idx + 3], "host") and !tok_eq(tokens[idx + 3], "host_func"))) continue;
+            (!tok_eq(tokens[idx + 3], "host_func") and !tok_eq(tokens[idx + 3], "host_async_func"))) continue;
         return true;
     }
     return false;

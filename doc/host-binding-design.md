@@ -13,7 +13,8 @@ do wit check <wit-input> [--world <world>] [--manifest <manifest.json>]
 do wit bind <wit-input> --world <world> --out <project>/wit
 ```
 
-生成的 `*.do` 使用普通 `@host` 声明。locator 语法接受任意合法 WIT
+生成的 `*.do` 对普通 WIT `func` 使用 `@host_func`，对 WIT `async func` 使用
+`@host_async_func`；两个 marker 不互换。locator 语法接受任意合法 WIT
 `<namespace>:<package>/<interface>@<semver>`；只有已登记的 WASI/P3 locator
 才进入现有 lowering。Go/Rust 生成代码不是生产输入，custom host 的 WAT/
 Component lowering、runtime 调度和可执行异步 binding 仍需独立 gate。
@@ -26,7 +27,7 @@ async/future/stream/resource effect。manifest 同时保存每个生成 `.do` �
 
 ## 范围
 
-本文负责通用 host binding：资源、类型、variant、常量、同步函数和模块导入。P3 async ABI、waitable、WIT `future<T>` / `stream<T>` 和取消协议映射到公开的 do `Future<T>`、`Stream<T>` 以及 `@async`、`@await`、`@cancel` intrinsic，并发契约见 [async-design.md](async-design.md)。源码不再使用 `async` 函数声明；旧声明仅在迁移窗口兼容。
+本文负责通用 host binding：资源、类型、variant、常量、同步函数和模块导入。P3 async ABI、waitable、WIT `future<T>` / `stream<T>` 和取消协议映射到公开的 do `Future<T>`、`Stream<T>` 以及 `@async`、`@await`、`@cancel` intrinsic，并发契约见 [async-design.md](async-design.md)。源码不再使用 `async` 函数声明；旧声明和旧 host marker 均不兼容。
 
 所有类型参数都必须是合法类型。`nil` 是空值/无值返回标记；它只允许作为 `Future<nil>`、`Stream<nil>` 等异步容器的唯一类型参数，或作为 `Result<T, nil>` / `Result<nil, E>` 的 unit 分支。函数可以用 `() -> nil` 表示无返回值或返回空；其他泛型参数位置仍禁止 `nil`。
 

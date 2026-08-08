@@ -1,6 +1,6 @@
 // Declarative @host + @wasi_resource / @wasi_record (do-side host surface).
-.host_now = @host("wasi:clocks/system-clock@0.3.0", "now", () -> Datetime)
-.host_drop = @host("wasi:filesystem/types@0.3.0", "descriptor.drop", (i32) -> nil)
+.host_now = @host_func("wasi:clocks/system-clock@0.3.0", "now", () -> Datetime)
+.host_drop = @host_func("wasi:filesystem/types@0.3.0", "descriptor.drop", (i32) -> nil)
 
 Datetime = @wasi_record("clocks/wall-clock/datetime", {
     seconds i64

@@ -525,7 +525,9 @@ fn collect_host_decls(
         }
         if (depth != 0 or !line_start(tokens, i)) continue;
         if (i + 9 >= tokens.len or tokens[i].kind != .ident or !eq(tokens[i + 1], "=") or
-            !eq(tokens[i + 2], "@") or !eq(tokens[i + 3], "host") or !eq(tokens[i + 4], "(") or
+            !eq(tokens[i + 2], "@") or
+            (!eq(tokens[i + 3], "host_func") and !eq(tokens[i + 3], "host_async_func")) or
+            !eq(tokens[i + 4], "(") or
             tokens[i + 5].kind != .string or !eq(tokens[i + 6], ",") or tokens[i + 7].kind != .string or
             !eq(tokens[i + 8], ",") or !eq(tokens[i + 9], "(")) continue;
 
@@ -594,7 +596,16 @@ fn validate_host_members(
         const expected = normalized_text(allocator, member.signature) catch
             return error.GeneratedWitManifestMismatch;
         defer allocator.free(expected);
-        if (!std.mem.eql(u8, host.signature, expected)) return error.GeneratedWitManifestMismatch;
+        var expected_host_signature = expected;
+        var owned_expected_host_signature: ?[]u8 = null;
+        if (member.is_async) {
+            const stripped = strip_async_future_signature(allocator, expected) catch
+                return error.GeneratedWitManifestMismatch;
+            owned_expected_host_signature = stripped;
+            expected_host_signature = stripped;
+        }
+        defer if (owned_expected_host_signature) |stripped| allocator.free(stripped);
+        if (!std.mem.eql(u8, host.signature, expected_host_signature)) return error.GeneratedWitManifestMismatch;
         // An async WIT function is emitted as Future<T>, but its `future` flag
         // is false; a normal WIT future has the same source shape with `async`
         // false and `future` true. This preserves both distinctions.
@@ -602,6 +613,18 @@ fn validate_host_members(
         if (member.has_future != expected_future or member.has_stream != host.has_stream or
             member.has_resource != host.has_resource) return error.GeneratedWitManifestMismatch;
     }
+}
+
+fn strip_async_future_signature(allocator: std.mem.Allocator, signature: []const u8) ![]u8 {
+    const marker = "->Future<";
+    const marker_start = std.mem.lastIndexOf(u8, signature, marker) orelse return error.GeneratedWitManifestMismatch;
+    const payload_start = marker_start + marker.len;
+    if (payload_start >= signature.len or signature[signature.len - 1] != '>') {
+        return error.GeneratedWitManifestMismatch;
+    }
+    const payload_end = signature.len - 1;
+    if (payload_start >= payload_end) return error.GeneratedWitManifestMismatch;
+    return std.fmt.allocPrint(allocator, "{s}->{s}", .{ signature[0..marker_start], signature[payload_start..payload_end] });
 }
 
 fn find_member(members: []const Member, locator: []const u8, interface: []const u8, name: []const u8) ?Member {

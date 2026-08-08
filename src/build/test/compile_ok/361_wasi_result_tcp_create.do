@@ -1,4 +1,4 @@
-.host_tcp_create = @host("wasi:sockets/types@0.3.0", "tcp-socket.create", (u8) -> Result<TcpSocket, TcpError>)
+.host_tcp_create = @host_func("wasi:sockets/types@0.3.0", "tcp-socket.create", (u8) -> Result<TcpSocket, TcpError>)
 TcpSocket = @wasi_resource("sockets/types/tcp-socket", {
     .id i64
 })

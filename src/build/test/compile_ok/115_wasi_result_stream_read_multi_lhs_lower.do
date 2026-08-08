@@ -1,4 +1,4 @@
-host_input_read = @host("wasi:io/streams@0.3.0", "input-stream.read", (input-stream, u64) -> Result<[u8], StreamError>)
+host_input_read = @host_func("wasi:io/streams@0.3.0", "input-stream.read", (input-stream, u64) -> Result<[u8], StreamError>)
 
 StreamError error = StreamClosed
 

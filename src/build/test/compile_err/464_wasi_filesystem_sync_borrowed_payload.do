@@ -1,4 +1,4 @@
-sync_descriptor = @host_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.sync", (Dir) -> borrow<Dir> | SyncError)
+sync_descriptor = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.sync", (Dir) -> borrow<Dir> | SyncError)
 Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
 SyncError error = Io | NoEntry
 

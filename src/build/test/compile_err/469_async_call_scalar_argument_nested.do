@@ -1,4 +1,4 @@
-work = @host("do:generic-async-call-probe/host@0.1.0", "work", () -> nil)
+work = @host_async_func("do:generic-async-call-probe/host@0.1.0", "work", () -> nil)
 inner() -> nil {}
 helper(value u32) -> nil {
     inner()

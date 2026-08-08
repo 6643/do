@@ -1,4 +1,4 @@
-.host_output_check_write = @host("wasi:io/streams@0.3.0", "output-stream.check-write", (OutputStream) -> Result<u64, StreamError>)
+.host_output_check_write = @host_func("wasi:io/streams@0.3.0", "output-stream.check-write", (OutputStream) -> Result<u64, StreamError>)
 OutputStream = @wasi_resource("io/streams/output-stream", {
     .id i64
 })

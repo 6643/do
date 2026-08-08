@@ -525,7 +525,7 @@ const GeneratedHostBinding = struct {
 
 fn parse_generated_host_binding_at(tokens: []const lexer.Token, idx: usize) ?GeneratedHostBinding {
     if (idx + 17 >= tokens.len or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or
-        !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host") or
+        !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host_func") or
         !tok_eq(tokens[idx + 4], "(") or tokens[idx + 5].kind != .string or
         !tok_eq(tokens[idx + 6], ",") or tokens[idx + 7].kind != .string or
         !tok_eq(tokens[idx + 8], ",") or !tok_eq(tokens[idx + 9], "(") or
@@ -562,7 +562,7 @@ const DescriptorHostBinding = struct {
 
 fn parse_descriptor_host_binding_at(tokens: []const lexer.Token, idx: usize) ?DescriptorHostBinding {
     if (idx + 14 >= tokens.len or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or
-        !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host") or
+        !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host_async_func") or
         !tok_eq(tokens[idx + 4], "(") or !tok_eq(tokens[idx + 6], ",") or
         !tok_eq(tokens[idx + 8], ",") or !tok_eq(tokens[idx + 9], "(") or
         !tok_eq(tokens[idx + 10], ")") or !tok_eq(tokens[idx + 11], "-") or

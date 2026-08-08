@@ -472,7 +472,12 @@ fn is_import_call_head(tokens: []const lexer.Token, at_idx: usize, line_end: usi
     if (!tok_eq(tokens[at_idx + 2], "(")) return false;
     const name = tokens[at_idx + 1].lexeme;
     return std.mem.eql(u8, name, "lib") or
-        std.mem.eql(u8, name, "host");
+        std.mem.eql(u8, name, "host_func") or
+        std.mem.eql(u8, name, "host_async_func") or
+        // Removed spellings remain parseable as import-shaped declarations so
+        // sema can issue the canonical invalid-import diagnostic.
+        std.mem.eql(u8, name, "host") or
+        std.mem.eql(u8, name, "host_sync_func");
 }
 
 fn is_wasi_type_binding_name(name: []const u8) bool {

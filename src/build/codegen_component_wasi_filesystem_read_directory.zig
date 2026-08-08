@@ -145,7 +145,7 @@ fn find_read_directory_host(tokens: []const lexer.Token, registry: p3_async_mani
     var idx: usize = 0;
     while (idx + 31 < tokens.len) : (idx += 1) {
         if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or !tok_eq(tokens[idx + 2], "@") or
-            (!tok_eq(tokens[idx + 3], "host") and !tok_eq(tokens[idx + 3], "host_func")) or !tok_eq(tokens[idx + 4], "(") or
+            !tok_eq(tokens[idx + 3], "host_async_func") or !tok_eq(tokens[idx + 4], "(") or
             tokens[idx + 5].kind != .string or !tok_eq(tokens[idx + 6], ",") or tokens[idx + 7].kind != .string or
             !tok_eq(tokens[idx + 8], ",") or !tok_eq(tokens[idx + 9], "(") or !tok_eq(tokens[idx + 10], "Dir") or
             !tok_eq(tokens[idx + 11], ")") or !tok_eq(tokens[idx + 12], "-") or !tok_eq(tokens[idx + 13], ">") or
@@ -821,7 +821,7 @@ fn replace_all(allocator: std.mem.Allocator, input: []const u8, needle: []const 
 
 test "read-directory plan accepts one entry read and independent completion await" {
     const source =
-        \\read_directory = @host("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
+        \\read_directory = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
         \\async run(dir Dir) -> nil {
         \\    handles Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>> = read_directory(dir)
         \\    reader Stream<DirectoryEntry> = @get(handles, 0)
@@ -851,7 +851,7 @@ test "read-directory plan accepts one entry read and independent completion awai
 
 test "bounded read-directory plan records two statically visible reads" {
     const source =
-        \\read_directory = @host("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
+        \\read_directory = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
         \\async run(dir Dir) -> nil {
         \\    handles Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>> = read_directory(dir)
         \\    reader Stream<DirectoryEntry> = @get(handles, 0)
@@ -878,7 +878,7 @@ test "bounded read-directory plan records two statically visible reads" {
 
 test "bounded read-directory plan records three reads including EOF probe" {
     const source =
-        \\read_directory = @host("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
+        \\read_directory = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
         \\async run(dir Dir) -> nil {
         \\    handles Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>> = read_directory(dir)
         \\    reader Stream<DirectoryEntry> = @get(handles, 0)
@@ -908,7 +908,7 @@ test "bounded read-directory plan records three reads including EOF probe" {
 
 test "bounded read-directory plan rejects a fourth statically visible read" {
     const source =
-        \\read_directory = @host("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
+        \\read_directory = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
         \\async run(dir Dir) -> nil {
         \\    handles Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>> = read_directory(dir)
         \\    reader Stream<DirectoryEntry> = @get(handles, 0)
@@ -940,7 +940,7 @@ test "bounded read-directory plan rejects a fourth statically visible read" {
 
 test "read-directory plan accepts a second entry read" {
     const source =
-        \\read_directory = @host("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
+        \\read_directory = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
         \\async run(dir Dir) -> nil {
         \\    handles Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>> = read_directory(dir)
         \\    reader Stream<DirectoryEntry> = @get(handles, 0)
@@ -967,7 +967,7 @@ test "read-directory plan accepts a second entry read" {
 
 test "read-directory plan rejects a loop around the fixed read" {
     const source =
-        \\read_directory = @host("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
+        \\read_directory = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
         \\async run(dir Dir) -> nil {
         \\    loop {
         \\        handles Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>> = read_directory(dir)
@@ -984,7 +984,7 @@ test "read-directory plan rejects a loop around the fixed read" {
 
 test "read-directory plan rejects an unregistered descriptor" {
     const source =
-        \\read_directory = @host("do:filesystem/types@0.3.0", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
+        \\read_directory = @host_func("do:filesystem/types@0.3.0", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
         \\async run(dir Dir) -> nil {
         \\    return
         \\}
@@ -999,7 +999,7 @@ test "read-directory plan rejects an unregistered descriptor" {
 
 test "read-directory plan rejects a payload-bearing completion" {
     const source =
-        \\read_directory = @host("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<DirectoryEntry, DirectoryError>>>)
+        \\read_directory = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<DirectoryEntry, DirectoryError>>>)
         \\async run(dir Dir) -> nil {
         \\    return
         \\}
@@ -1014,7 +1014,7 @@ test "read-directory plan rejects a payload-bearing completion" {
 
 test "read-directory emitter preserves the pinned record ABI and one read" {
     const source =
-        \\read_directory = @host("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
+        \\read_directory = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
         \\async run(dir Dir) -> nil {
         \\    handles Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>> = read_directory(dir)
         \\    reader Stream<DirectoryEntry> = @get(handles, 0)
@@ -1051,7 +1051,7 @@ test "read-directory emitter preserves the pinned record ABI and one read" {
 
 test "bounded read-directory emitter reuses one stream read site with a counter" {
     const source =
-        \\read_directory = @host("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
+        \\read_directory = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
         \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
         \\DirectoryEntry = @wasi_record("filesystem/types/directory-entry", { .type i32, .name text })
         \\DirectoryError error = Io | NoEntry | NotDirectory

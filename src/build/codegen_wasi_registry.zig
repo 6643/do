@@ -116,13 +116,15 @@ pub fn find_wasi_host_import_by_source(wasi_imports: []const WasiHostImport, sou
 }
 
 pub fn is_wasi_host_import_start(tokens: []const lexer.Token, idx: usize) bool {
-    // name = @host("wasi:pkg/iface@ver", "member", ...)
+    // name = @host_func/@host_async_func("wasi:pkg/iface@ver", "member", ...)
     const line_end = find_line_end(tokens, idx);
     if (idx + 9 >= line_end) return false;
     if (tokens[idx].kind != .ident) return false;
     if (!tok_eq(tokens[idx + 1], "=")) return false;
     if (!tok_eq(tokens[idx + 2], "@")) return false;
-    if (tokens[idx + 3].kind != .ident or !std.mem.eql(u8, tokens[idx + 3].lexeme, "host")) return false;
+    if (tokens[idx + 3].kind != .ident or
+        (!std.mem.eql(u8, tokens[idx + 3].lexeme, "host_func") and
+            !std.mem.eql(u8, tokens[idx + 3].lexeme, "host_async_func"))) return false;
     if (!tok_eq(tokens[idx + 4], "(")) return false;
     if (tokens[idx + 5].kind != .string) return false;
     const locator = string_token_body(tokens[idx + 5].lexeme) orelse return false;
@@ -203,7 +205,7 @@ pub fn parse_wasi_host_import(
     line_end: usize,
     source: []const u8,
 ) !WasiHostImport {
-    // name = @host("wasi:pkg/iface@ver", "member", (...) -> T)
+    // name = @host_func/@host_async_func("wasi:pkg/iface@ver", "member", (...) -> T)
     const alias = public_decl_name(tokens[start_idx].lexeme);
     const locator = string_token_body(tokens[start_idx + 5].lexeme) orelse return error.InvalidImportDecl;
     if (!tok_eq(tokens[start_idx + 6], ",")) return error.InvalidImportDecl;

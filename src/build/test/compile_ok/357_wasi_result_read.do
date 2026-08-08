@@ -1,4 +1,4 @@
-.host_read = @host("wasi:filesystem/types@0.3.0", "descriptor.read", (File, u64, u64) -> Result<Tuple<[u8], bool>, FileError>)
+.host_read = @host_func("wasi:filesystem/types@0.3.0", "descriptor.read", (File, u64, u64) -> Result<Tuple<[u8], bool>, FileError>)
 File = @wasi_resource("filesystem/types/descriptor", {
     .id i64
 })

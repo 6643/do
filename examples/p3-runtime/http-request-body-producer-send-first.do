@@ -1,6 +1,6 @@
-request_new = @host("wasi:http/types@0.3.0-rc-2025-09-16", "request.new", (Stream<u8>) -> Tuple<HttpRequest, Future<Result<nil, HttpError>>>)
-stdout_write = @host_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
-send = @host_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+request_new = @host_func("wasi:http/types@0.3.0-rc-2025-09-16", "request.new", (Stream<u8>) -> Tuple<HttpRequest, Future<Result<nil, HttpError>>>)
+stdout_write = @host_async_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
+send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
 
 HttpHeaders = @wasi_resource("http/types/fields", { .id i64 })
 HttpRequestOptions = @wasi_resource("http/types/request-options", { .id i64 })

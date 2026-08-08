@@ -1,4 +1,4 @@
-host_log = @host("env", "log", (i32) -> nil)
+host_log = @host_func("env", "log", (i32) -> nil)
 
 start() {
     if @eq(1, 1) return

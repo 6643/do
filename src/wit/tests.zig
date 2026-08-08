@@ -335,9 +335,11 @@ test "wit emitter translates the probe world into deterministic Do bindings" {
     const source = try emit_do.render_module(std.testing.allocator, binding, binding.interfaces[0]);
     defer std.testing.allocator.free(source);
     try std.testing.expect(std.mem.indexOf(u8, source, "Request = @wasi_resource") != null);
-    try std.testing.expect(std.mem.indexOf(u8, source, "send = @host(\"do:bindgen-probe/api@0.1.0\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "send = @host_async_func(\"do:bindgen-probe/api@0.1.0\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "completion = @host_func(\"do:bindgen-probe/api@0.1.0\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, source, "Response | ApiError") != null);
-    try std.testing.expect(std.mem.indexOf(u8, source, "-> Future<Response | ApiError>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "send = @host_async_func(\"do:bindgen-probe/api@0.1.0\", \"send\", (Request) -> Response | ApiError)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "send = @host_async_func(\"do:bindgen-probe/api@0.1.0\", \"send\", (Request) -> Future<Response | ApiError>)") == null);
     try std.testing.expect(std.mem.indexOf(u8, source, "Future<u32>") != null);
     try std.testing.expect(std.mem.indexOf(u8, source, "Stream<u8>") != null);
     try std.testing.expect(std.mem.indexOf(u8, source, "async send") == null);
@@ -383,7 +385,7 @@ test "wit emitter writes modules atomically and preserves old output on failure"
     defer std.testing.allocator.free(generated_path);
     const generated = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, generated_path, std.testing.allocator, .limited(1024 * 1024));
     defer std.testing.allocator.free(generated);
-    try std.testing.expect(std.mem.indexOf(u8, generated, "send = @host") != null);
+    try std.testing.expect(std.mem.indexOf(u8, generated, "send = @host_async_func") != null);
     const first_output = try std.testing.allocator.dupe(u8, generated);
     defer std.testing.allocator.free(first_output);
     try emit_do.emit_all(std.testing.io, std.testing.allocator, binding, output);

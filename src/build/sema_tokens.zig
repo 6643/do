@@ -681,7 +681,10 @@ pub fn is_host_import_decl_start(tokens: []const lexer.Token, idx: usize) bool {
     const eq_idx = top_level_line_assign_idx(tokens, idx) orelse return false;
     const at_idx = eq_idx + 1;
     if (at_idx >= tokens.len or !tok_eq(tokens[at_idx], "@")) return false;
-    return is_host_import_line(tokens, at_idx);
+    if (is_host_import_line(tokens, at_idx)) return true;
+    if (at_idx + 1 >= tokens.len or tokens[at_idx + 1].kind != .ident) return false;
+    return std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host") or
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host_sync_func");
 }
 
 pub fn is_modern_import_assign(tokens: []const lexer.Token, idx: usize) bool {
@@ -690,8 +693,12 @@ pub fn is_modern_import_assign(tokens: []const lexer.Token, idx: usize) bool {
     if (at_idx + 1 >= tokens.len or !tok_eq(tokens[at_idx], "@")) return false;
     if (tokens[at_idx + 1].kind != .ident) return false;
     return std.mem.eql(u8, tokens[at_idx + 1].lexeme, "lib") or
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host_func") or
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host_async_func") or
+        // Keep removed spellings visible to semantic validation so they fail
+        // as import declarations instead of being reinterpreted as values.
         std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host") or
-        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host_func");
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host_sync_func");
 }
 
 pub fn top_level_line_assign_idx(tokens: []const lexer.Token, line_start: usize) ?usize {
@@ -704,8 +711,8 @@ pub fn is_host_import_line(tokens: []const lexer.Token, at_idx: usize) bool {
     if (!tok_eq(tokens[at_idx], "@")) return false;
     if (tokens[at_idx + 1].kind != .ident) return false;
     if (!tok_eq(tokens[at_idx + 2], "(")) return false;
-    return std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host") or
-        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host_func");
+    return std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host_func") or
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host_async_func");
 }
 
 pub fn validate_import_file_name_text(tokens: []const lexer.Token, site_idx: usize, s: []const u8, prefix: LocalImportPrefix) !void {

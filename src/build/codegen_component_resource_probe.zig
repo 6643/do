@@ -46,7 +46,7 @@ fn matches_probe_program(tokens: []const lexer.Token, registry: resource_abi_reg
 fn find_host_alias(tokens: []const lexer.Token, registry: resource_abi_registry.Registry, member: []const u8) ?[]const u8 {
     var i: usize = 0;
     while (i + 8 < tokens.len) : (i += 1) {
-        if (tokens[i].kind != .ident or !tok_eq(tokens[i + 1], "=") or !tok_eq(tokens[i + 2], "@") or !tok_eq(tokens[i + 3], "host") or !tok_eq(tokens[i + 4], "(") or tokens[i + 5].kind != .string or !tok_eq(tokens[i + 6], ",") or tokens[i + 7].kind != .string or !tok_eq(tokens[i + 8], ",")) continue;
+        if (tokens[i].kind != .ident or !tok_eq(tokens[i + 1], "=") or !tok_eq(tokens[i + 2], "@") or !tok_eq(tokens[i + 3], "host_func") or !tok_eq(tokens[i + 4], "(") or tokens[i + 5].kind != .string or !tok_eq(tokens[i + 6], ",") or tokens[i + 7].kind != .string or !tok_eq(tokens[i + 8], ",")) continue;
         const locator = string_token_body(tokens[i + 5].lexeme) orelse continue;
         const found_member = string_token_body(tokens[i + 7].lexeme) orelse continue;
         const descriptor = registry.find(locator, found_member) orelse continue;
@@ -171,10 +171,10 @@ const resource_probe_component_wit =
 
 test "resource probe emits canonical own borrow and drop imports" {
     const source =
-        \\create = @host("do:resource-probe/ledger@0.1.0", "create", (u32) -> Ticket)
-        \\borrow_value = @host("do:resource-probe/ledger@0.1.0", "borrow-value", (Ticket) -> u32)
-        \\consume = @host("do:resource-probe/ledger@0.1.0", "consume", (Ticket) -> u32)
-        \\drop_ticket = @host("do:resource-probe/ledger@0.1.0", "drop", (Ticket) -> nil)
+        \\create = @host_func("do:resource-probe/ledger@0.1.0", "create", (u32) -> Ticket)
+        \\borrow_value = @host_func("do:resource-probe/ledger@0.1.0", "borrow-value", (Ticket) -> u32)
+        \\consume = @host_func("do:resource-probe/ledger@0.1.0", "consume", (Ticket) -> u32)
+        \\drop_ticket = @host_func("do:resource-probe/ledger@0.1.0", "drop", (Ticket) -> nil)
         \\Ticket = @wasi_resource("do:resource-probe/ledger/ticket", { .id i64 })
         \\run(seed u32) -> u32 {
         \\    first Ticket = create(seed)

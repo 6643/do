@@ -81,7 +81,7 @@ pub fn analyze(allocator: std.mem.Allocator, tokens: []const lexer.Token) !Guest
         !root_body_valid or
         count_top_level_functions(tokens, "helper") != 1 or
         count_top_level_functions(tokens, "run") != 1 or
-        count_token_pair(tokens, "@", "host") != 1 or
+        count_token_pair(tokens, "@", "host_async_func") != 1 or
         count_token_pair(tokens, "@", "async") != 1 or
         count_token_pair(tokens, "@", "await") != 2 or
         count_token_pair(tokens, "@", "cancel") != 0)
@@ -129,7 +129,7 @@ fn find_host_binding(
     var idx: usize = 0;
     while (idx + 14 < tokens.len) : (idx += 1) {
         if (tokens[idx].kind != .ident or !sema_tokens.tok_eq(tokens[idx + 1], "=") or
-            !sema_tokens.tok_eq(tokens[idx + 2], "@") or !sema_tokens.tok_eq(tokens[idx + 3], "host") or
+            !sema_tokens.tok_eq(tokens[idx + 2], "@") or !sema_tokens.tok_eq(tokens[idx + 3], "host_async_func") or
             !sema_tokens.tok_eq(tokens[idx + 4], "(") or tokens[idx + 5].kind != .string or
             !sema_tokens.tok_eq(tokens[idx + 6], ",") or tokens[idx + 7].kind != .string or
             !sema_tokens.tok_eq(tokens[idx + 8], ",") or !sema_tokens.tok_eq(tokens[idx + 9], "(") or

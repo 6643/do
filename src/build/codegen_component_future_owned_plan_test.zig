@@ -3,7 +3,7 @@ const lexer = @import("lexer.zig");
 const plan = @import("codegen_component_future_owned_plan.zig");
 
 const positive_source =
-    \\read = @host("do:future-owned-canonical/source@0.1.0", "read", () -> Future<Ticket>)
+    \\read = @host_func("do:future-owned-canonical/source@0.1.0", "read", () -> Future<Ticket>)
     \\Ticket = @wasi_resource("do:future-owned-canonical/source/ticket", { .id i64 })
     \\run(mode u32) -> nil {
     \\    pending Future<Ticket> = read()
@@ -30,7 +30,7 @@ test "future-owned plan admits the exact private source shape" {
 
 test "future-owned plan rejects an unknown host descriptor" {
     const source =
-        \\read = @host("do:future-owned-canonical/source@0.1.0", "missing", () -> Future<Ticket>)
+        \\read = @host_func("do:future-owned-canonical/source@0.1.0", "missing", () -> Future<Ticket>)
         \\Ticket = @wasi_resource("do:future-owned-canonical/source/ticket", { .id i64 })
         \\run(mode u32) -> nil {
         \\    pending Future<Ticket> = read()
@@ -45,7 +45,7 @@ test "future-owned plan rejects an unknown host descriptor" {
 
 test "future-owned plan rejects a copied payload" {
     const source =
-        \\read = @host("do:future-owned-canonical/source@0.1.0", "read", () -> Future<i32>)
+        \\read = @host_func("do:future-owned-canonical/source@0.1.0", "read", () -> Future<i32>)
         \\Ticket = @wasi_resource("do:future-owned-canonical/source/ticket", { .id i64 })
         \\run(mode u32) -> nil {
         \\    pending Future<i32> = read()
@@ -60,7 +60,7 @@ test "future-owned plan rejects a copied payload" {
 
 test "future-owned plan rejects a second await" {
     const source =
-        \\read = @host("do:future-owned-canonical/source@0.1.0", "read", () -> Future<Ticket>)
+        \\read = @host_func("do:future-owned-canonical/source@0.1.0", "read", () -> Future<Ticket>)
         \\Ticket = @wasi_resource("do:future-owned-canonical/source/ticket", { .id i64 })
         \\run(mode u32) -> nil {
         \\    pending Future<Ticket> = read()
@@ -77,7 +77,7 @@ test "future-owned plan rejects a second await" {
 
 test "future-owned plan rejects an async declaration" {
     const source =
-        \\read = @host("do:future-owned-canonical/source@0.1.0", "read", () -> Future<Ticket>)
+        \\read = @host_func("do:future-owned-canonical/source@0.1.0", "read", () -> Future<Ticket>)
         \\Ticket = @wasi_resource("do:future-owned-canonical/source/ticket", { .id i64 })
         \\async run(mode u32) -> nil {
         \\    pending Future<Ticket> = read()

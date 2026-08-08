@@ -113,7 +113,7 @@ const CliResultHostBinding = struct {
 fn parse_cli_result_host_binding(tokens: []const lexer.Token) ?CliResultHostBinding {
     var idx: usize = 0;
     while (idx + 19 < tokens.len) : (idx += 1) {
-        if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host_func") or !tok_eq(tokens[idx + 4], "(")) continue;
+        if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host_async_func") or !tok_eq(tokens[idx + 4], "(")) continue;
         const locator = string_token_body(tokens[idx + 5]) orelse continue;
         if (!tok_eq(tokens[idx + 6], ",")) continue;
         const member = string_token_body(tokens[idx + 7]) orelse continue;
@@ -187,8 +187,8 @@ fn result_unit_tokens(tokens: []const lexer.Token, idx: usize) bool {
 
 test "component lowering uses the shared Component async plan" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
-        \\wait_until = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_until = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
         \\async run(how_long u64) -> nil {
         \\    first Future<nil> = wait_for(how_long)
         \\    await(first)
@@ -213,7 +213,7 @@ test "component lowering uses the shared Component async plan" {
 
 test "single async wait checks for immediate host completion before joining" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
         \\async run(how_long u64) -> nil {
         \\    pending Future<nil> = wait_for(how_long)
         \\    await(pending)
@@ -232,7 +232,7 @@ test "single async wait checks for immediate host completion before joining" {
 
 test "single async wait lowers a post-await scalar computation" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
         \\async run(input u64) -> nil {
         \\    deadline u64 = @add(input, 1)
         \\    pending Future<nil> = wait_for(deadline)
@@ -1897,7 +1897,7 @@ const cli_result_core_wat = @embedFile("p3_cli_result_probe.wat");
 
 test "component planning accepts one registered scalar unit await" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
         \\async run(how_long u64) -> nil {
         \\    pending Future<nil> = wait_for(how_long)
         \\    await(pending)
@@ -1917,7 +1917,7 @@ test "component planning accepts one registered scalar unit await" {
 
 test "component planning rejects an await with unsupported arguments" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
         \\async run(how_long u64) -> nil {
         \\    pending Future<nil> = wait_for(how_long)
         \\    await(pending, 1)
@@ -1934,7 +1934,7 @@ test "component planning rejects an await with unsupported arguments" {
 
 test "component planning accepts source aliases while preserving data flow" {
     const source =
-        \\clock_wait = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\clock_wait = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
         \\async run(duration u64) -> nil {
         \\    waiting Future<nil> = clock_wait(duration)
         \\    await(waiting)
@@ -1953,7 +1953,7 @@ test "component planning accepts source aliases while preserving data flow" {
 
 test "component lowering accepts a scalar parameter alias before a single await" {
     const source =
-        \\clock_wait = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
+        \\clock_wait = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
         \\async tick(deadline u64) -> nil {
         \\    forwarded u64 = deadline
         \\    pending Future<nil> = clock_wait(forwarded)
@@ -1984,7 +1984,7 @@ test "component lowering accepts a scalar parameter alias before a single await"
 
 test "component lowering accepts an explicit return after a scalar await" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
         \\async run(how_long u64) -> nil {
         \\    pending Future<nil> = wait_for(how_long)
         \\    await(pending)
@@ -2005,8 +2005,8 @@ test "component lowering accepts an explicit return after a scalar await" {
 
 test "component lowering resumes a second clocks await from a per-call frame" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
-        \\wait_until = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_until = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
         \\async run(deadline u64) -> nil {
         \\    first Future<nil> = wait_for(deadline)
         \\    await(first)
@@ -2035,8 +2035,8 @@ test "component lowering resumes a second clocks await from a per-call frame" {
 
 test "component lowering binds async frame metadata to the emitted body" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
-        \\wait_until = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_until = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
         \\async run(deadline u64) -> nil {
         \\    first Future<nil> = wait_for(deadline)
         \\    await(first)
@@ -2060,8 +2060,8 @@ test "component lowering binds async frame metadata to the emitted body" {
 
 test "component lowering resumes three sequential clocks awaits from one frame" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
-        \\wait_until = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_until = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
         \\async run(deadline u64) -> nil {
         \\    first Future<nil> = wait_for(deadline)
         \\    await(first)
@@ -2086,8 +2086,8 @@ test "component lowering resumes three sequential clocks awaits from one frame" 
 
 test "component lowering roots two-await frames in a GC table" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
-        \\wait_until = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_until = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
         \\async run(deadline u64) -> nil {
         \\    first Future<nil> = wait_for(deadline)
         \\    await(first)
@@ -2116,8 +2116,8 @@ test "component lowering roots two-await frames in a GC table" {
 
 test "component lowering preserves scalar aliases across two clocks awaits" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
-        \\wait_until = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_until = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
         \\async run(deadline u64) -> nil {
         \\    first_deadline u64 = deadline
         \\    first Future<nil> = wait_for(first_deadline)
@@ -2140,8 +2140,8 @@ test "component lowering preserves scalar aliases across two clocks awaits" {
 
 test "component lowering replays a u64 literal local for sequential awaits" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
-        \\wait_until = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_until = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
         \\async run(input u64) -> nil {
         \\    delay u64 = 41
         \\    first Future<nil> = wait_for(delay)
@@ -2164,8 +2164,8 @@ test "component lowering replays a u64 literal local for sequential awaits" {
 
 test "component lowering carries scalar locals into the async frame layout" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
-        \\wait_until = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_until = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
         \\async run(input u64) -> nil {
         \\    delay u64 = 41
         \\    first Future<nil> = wait_for(delay)
@@ -2189,8 +2189,8 @@ test "component lowering carries scalar locals into the async frame layout" {
 
 test "component lowering replays a u64 parameter addition for sequential awaits" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
-        \\wait_until = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_until = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
         \\async run(input u64) -> nil {
         \\    delay u64 = @add(input, 41)
         \\    first Future<nil> = wait_for(delay)
@@ -2213,8 +2213,8 @@ test "component lowering replays a u64 parameter addition for sequential awaits"
 
 test "component lowering dispatches a scalar if branch to its selected await" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
-        \\wait_until = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_until = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
         \\async run(input u64) -> nil {
         \\    if @eq(input, 41) {
         \\        first Future<nil> = wait_for(input)
@@ -2244,8 +2244,8 @@ test "component lowering dispatches a scalar if branch to its selected await" {
 
 test "component lowering joins scalar if branches at a shared await" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
-        \\wait_until = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_until = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
         \\async run(input u64) -> nil {
         \\    if @eq(input, 27815) {
         \\        first Future<nil> = wait_for(input)
@@ -2274,7 +2274,7 @@ test "component lowering joins scalar if branches at a shared await" {
 
 test "component lowering repeats a scalar await from an updating loop frame slot" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
         \\async run(input u64) -> nil {
         \\    remaining u64 = 2
         \\    loop {
@@ -2304,7 +2304,7 @@ test "component lowering repeats a scalar await from an updating loop frame slot
 
 test "component lowering initializes a countdown loop frame slot from its parameter" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
         \\async run(input u64) -> nil {
         \\    remaining u64 = input
         \\    loop {
@@ -2332,7 +2332,7 @@ test "component lowering initializes a countdown loop frame slot from its parame
 
 test "component lowering initializes a countdown loop frame slot from a parameter addition" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
         \\async run(input u64) -> nil {
         \\    remaining u64 = @add(input, 1)
         \\    loop {
@@ -2360,7 +2360,7 @@ test "component lowering initializes a countdown loop frame slot from a paramete
 
 test "component lowering feeds a countdown loop's updated frame slot to the next host await" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
         \\async run(input u64) -> nil {
         \\    remaining u64 = input
         \\    loop {
@@ -2388,7 +2388,7 @@ test "component lowering feeds a countdown loop's updated frame slot to the next
 
 test "component lowering terminates a guarded zero countdown before its first host await" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
         \\async run(input u64) -> nil {
         \\    remaining u64 = 0
         \\    loop {
@@ -2416,7 +2416,7 @@ test "component lowering terminates a guarded zero countdown before its first ho
 
 test "pinned cancellation lowering emits a terminal subtask cancellation state machine" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
         \\async run(how_long u64) -> nil {
         \\    pending Future<nil> = wait_for(how_long)
         \\    @cancel(pending)
@@ -2448,7 +2448,7 @@ test "component planning resolves a registered scalar unit descriptor" {
     var registry = try p3_async_manifest.Registry.load(std.testing.allocator, json);
     defer registry.deinit(std.testing.allocator);
     const source =
-        \\sleep = @host_func("example:timers@0.1.0", "delay.sleep", (u32) -> nil)
+        \\sleep = @host_async_func("example:timers@0.1.0", "delay.sleep", (u32) -> nil)
         \\async run(delay u32) -> nil {
         \\    pending Future<nil> = sleep(delay)
         \\    await(pending)
@@ -2497,7 +2497,7 @@ test "pinned wait-for lowering exposes its assembly WIT" {
 
 test "pinned cli run result lowering exposes its assembly WIT" {
     const source =
-        \\cli_run = @host_func("wasi:cli@0.3.0", "run.run", () -> Result<nil, nil>)
+        \\cli_run = @host_async_func("wasi:cli@0.3.0", "run.run", () -> Result<nil, nil>)
         \\async run() -> Result<nil, nil> {
         \\    pending Future<Result<nil, nil>> = cli_run()
         \\    return await(pending)
@@ -2515,7 +2515,7 @@ test "pinned cli run result lowering exposes its assembly WIT" {
 
 test "cli result lowering derives exports from a structured source program" {
     const source =
-        \\command = @host_func("wasi:cli@0.3.0", "run.run", () -> Result<nil, nil>)
+        \\command = @host_async_func("wasi:cli@0.3.0", "run.run", () -> Result<nil, nil>)
         \\async launch() -> Result<nil, nil> {
         \\    outcome Future<Result<nil, nil>> = command()
         \\    return await(outcome)
@@ -2542,7 +2542,7 @@ test "cli result lowering derives exports from a structured source program" {
 
 test "cli result lowering permits an awaited unit Result Ok branch" {
     const source =
-        \\cli_run = @host_func("wasi:cli@0.3.0", "run.run", () -> Result<nil, nil>)
+        \\cli_run = @host_async_func("wasi:cli@0.3.0", "run.run", () -> Result<nil, nil>)
         \\async run() -> Result<nil, nil> {
         \\    pending Future<Result<nil, nil>> = cli_run()
         \\    replied Result<nil, nil> = await(pending)
@@ -2566,7 +2566,7 @@ test "cli result lowering permits an awaited unit Result Ok branch" {
 
 test "cli result lowering rejects a direct future return" {
     const source =
-        \\cli_run = @host_func("wasi:cli@0.3.0", "run.run", () -> Result<nil, nil>)
+        \\cli_run = @host_async_func("wasi:cli@0.3.0", "run.run", () -> Result<nil, nil>)
         \\async other() -> Result<nil, nil> {
         \\    pending Future<Result<nil, nil>> = cli_run()
         \\    return pending
@@ -2584,7 +2584,7 @@ test "scalar Result lowering emits canonical payload words" {
     try std.testing.expect(std.mem.indexOf(u8, scalar_result_budget_runtime, "(func (export \"byte-budget-limit\")") != null);
 
     const source =
-        \\result_run = @host_func("do:result-probe@0.1.0", "run", (i32) -> Result<i32, i32>)
+        \\result_run = @host_async_func("do:result-probe@0.1.0", "run", (i32) -> Result<i32, i32>)
         \\async run(value i32) -> Result<i32, i32> {
         \\    pending Future<Result<i32, i32>> = result_run(value)
         \\    return await(pending)
@@ -2622,7 +2622,7 @@ test "scalar Result WIT type follows source Result arms" {
 
 test "scalar Result lowering checks immediate host completion before joining" {
     const source =
-        \\result_run = @host_func("do:result-probe@0.1.0", "run", (i32) -> Result<i32, i32>)
+        \\result_run = @host_async_func("do:result-probe@0.1.0", "run", (i32) -> Result<i32, i32>)
         \\async run(value i32) -> Result<i32, i32> {
         \\    pending Future<Result<i32, i32>> = result_run(value)
         \\    return await(pending)
@@ -2641,7 +2641,7 @@ test "scalar Result lowering checks immediate host completion before joining" {
 
 test "scalar Result cancellation emits terminal ack cleanup" {
     const source =
-        \\result_run = @host_func("do:result-probe@0.1.0", "run", (i32) -> Result<i32, i32>)
+        \\result_run = @host_async_func("do:result-probe@0.1.0", "run", (i32) -> Result<i32, i32>)
         \\async run(value i32) -> nil {
         \\    pending Future<Result<i32, i32>> = result_run(value)
         \\    @cancel(pending)
@@ -2670,7 +2670,7 @@ test "scalar Result cancellation emits terminal ack cleanup" {
 
 test "scalar Result cancellation rejects a non-nil root result" {
     const source =
-        \\result_run = @host_func("do:result-probe@0.1.0", "run", (i32) -> Result<i32, i32>)
+        \\result_run = @host_async_func("do:result-probe@0.1.0", "run", (i32) -> Result<i32, i32>)
         \\async run(value i32) -> Result<i32, i32> {
         \\    pending Future<Result<i32, i32>> = result_run(value)
         \\    @cancel(pending)

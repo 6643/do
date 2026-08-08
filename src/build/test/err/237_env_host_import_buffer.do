@@ -1,3 +1,3 @@
-host_log = @host("env", "log", ([u8]) -> nil)
+host_log = @host_func("env", "log", ([u8]) -> nil)
 
 test "env host import buffer" {}

@@ -1,2 +1,2 @@
 # build-arg: --p3-async-component
-UnsupportedP3AsyncComponent
+P3AsyncHostSignatureMismatch

@@ -1,5 +1,5 @@
-.host_create = @host("wasi:filesystem/types@0.3.0", "descriptor.create-directory-at", (Dir, text) -> Result<nil, DirError>)
-.host_remove = @host("wasi:filesystem/types@0.3.0", "descriptor.remove-directory-at", (Dir, text) -> Result<nil, DirError>)
+.host_create = @host_func("wasi:filesystem/types@0.3.0", "descriptor.create-directory-at", (Dir, text) -> Result<nil, DirError>)
+.host_remove = @host_func("wasi:filesystem/types@0.3.0", "descriptor.remove-directory-at", (Dir, text) -> Result<nil, DirError>)
 Dir = @wasi_resource("filesystem/types/descriptor", {
     .id i64
 })

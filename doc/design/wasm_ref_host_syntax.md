@@ -32,7 +32,7 @@ do 源码 **无指针、无引用语法**；WASI resource 已用 **`@wasi_resour
 | **externref** | 做 **`@host_ref("…")` 值壳**，形态对齐 `@wasi_resource`（不透明值，可传参；不可算术、不可解引用、不可与 i32 互转伪造） | **未实现**；有 JS/host 对象需求时再立项 |
 | **anyref** | **不做** 公开语法；不出现 `AnyRef` / `@any_ref` | 永久（公开层）；若 ABI 需要仅限编译器内部 IR |
 | **funcref** | **不做** 一等源码类型；优先 **export 具名函数** / **回调 id 表**；仍不够时再考虑 `@host_func("…")` 壳 | 默认不做值类型 |
-| **i32 指针** | **永远不是** do 类型；只活在 `@host` 的 **私有签名与 codegen lowering**（如 `text`/`[u8]` → ptr,len；result area 偏移） | 已是现行方向，保持 |
+| **i32 指针** | **永远不是** do 类型；只活在 host marker 的 **私有签名与 codegen lowering**（如 `text`/`[u8]` → ptr,len；result area 偏移） | 已是现行方向，保持 |
 
 **源码禁止泄漏 Wasm 关键字：** 用户不写 `externref` / `anyref` / `funcref` / 内存指针类型。
 
@@ -59,7 +59,7 @@ do 源码 **无指针、无引用语法**；WASI resource 已用 **`@wasi_resour
 
 JsObject = @host_ref("js/object")
 
-.host_id = @host("env", "js_identity", (JsObject) -> JsObject)
+.host_id = @host_func("env", "js_identity", (JsObject) -> JsObject)
 
 // 公开仍是值传递；无 * / & 
 identity(o JsObject) -> JsObject {
@@ -67,7 +67,7 @@ identity(o JsObject) -> JsObject {
 }
 ```
 
-`@host` 签名 **推荐写 do 类型名**（`JsObject`、`text`），**不** 写 `externref` 或裸 memory 指针类型。
+host marker 签名 **推荐写 do 类型名**（`JsObject`、`text`），**不** 写 `externref` 或裸 memory 指针类型。
 
 ---
 
@@ -76,7 +76,7 @@ identity(o JsObject) -> JsObject {
 1. **值语义:** 壳是值；拷贝语义须在实现规格中写死（复制凭证 ≠ 深拷贝对象）。  
 2. **无伪造:** 禁止 `@bitcast` / 与 i32 互转构造 host_ref 或指针。  
 3. **无解引用:** 不能对壳做字段访问（除非将来显式 host API）；真逻辑在 host 侧。  
-4. **登记式边界:** 仅登记过的 `@host` 可接受该壳；禁止「任意 externref 自动互通」。
+4. **登记式边界:** 仅登记过的 host marker 可接受该壳；禁止「任意 externref 自动互通」。
 5. **生命周期:** drop 壳值 **不** 隐式 dispose 宿主对象（与 resource「drop 值 ≠ close」一致）；若需要释放，走显式 API。  
 6. **async/stream/future** 与本文无关；仍受 G6.2 等阻断，不靠 `@host_ref` 解决。
 
@@ -95,7 +95,7 @@ identity(o JsObject) -> JsObject {
 ## 7. 建议落地顺序（将来，非现在）
 
 1. 有明确 JS/浏览器（或其它 externref host）产品需求。  
-2. 实现前补一页可测试规格：构造/拷贝/存储/与 `@host` 表。
+2. 实现前补一页可测试规格：构造/拷贝/存储/与 host marker 表。
 3. 实现 `@host_ref` + 少量 fixture；stdlib 按需薄包装。  
 4. 回调优先 export / id 表；最后才考虑 `@host_func`。  
 

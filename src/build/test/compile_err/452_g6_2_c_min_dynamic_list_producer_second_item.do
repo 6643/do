@@ -1,6 +1,6 @@
-make_ticket = @host("do:g6-2-c-min-dynamic-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
-consume = @host_func("do:g6-2-c-min-dynamic-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
-consume_again = @host_func("do:g6-2-c-min-dynamic-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
+make_ticket = @host_func("do:g6-2-c-min-dynamic-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+consume = @host_async_func("do:g6-2-c-min-dynamic-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
+consume_again = @host_async_func("do:g6-2-c-min-dynamic-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
 Ticket = @wasi_resource("do:g6-2-c-min-dynamic-producer/source/ticket", { .id i64 })
 ResourceEntry {
     .ticket Ticket

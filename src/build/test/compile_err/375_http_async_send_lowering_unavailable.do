@@ -1,4 +1,4 @@
-send = @host_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
 
 HttpHeaders = @wasi_resource("http/types/fields", { .id i64 })
 HttpRequestOptions = @wasi_resource("http/types/request-options", { .id i64 })

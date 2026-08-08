@@ -610,7 +610,7 @@ fn find_http_send_host(tokens: []const lexer.Token) ?[]const u8 {
     var found: ?[]const u8 = null;
     var idx: usize = 0;
     while (idx + 8 < tokens.len) : (idx += 1) {
-        if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host_func") or !tok_eq(tokens[idx + 4], "(")) continue;
+        if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host_async_func") or !tok_eq(tokens[idx + 4], "(")) continue;
         const locator = string_token_body(tokens[idx + 5]) orelse continue;
         const member = string_token_body(tokens[idx + 7]) orelse continue;
         if (!tok_eq(tokens[idx + 6], ",") or !tok_eq(tokens[idx + 8], ",") or !std.mem.eql(u8, locator, http_locator) or !std.mem.eql(u8, member, "send")) continue;
@@ -629,7 +629,7 @@ fn find_http_resource_host(
     var idx: usize = 0;
     while (idx + 9 < tokens.len) : (idx += 1) {
         if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or
-            !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host") or
+            !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host_func") or
             !tok_eq(tokens[idx + 4], "(") or tokens[idx + 5].kind != .string or
             !tok_eq(tokens[idx + 6], ",") or tokens[idx + 7].kind != .string or
             !tok_eq(tokens[idx + 8], ",")) continue;
@@ -652,7 +652,7 @@ fn find_http_request_new_host(tokens: []const lexer.Token) ?[]const u8 {
     var idx: usize = 0;
     while (idx + 9 < tokens.len) : (idx += 1) {
         if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or
-            !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host") or
+            !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host_func") or
             !tok_eq(tokens[idx + 4], "(") or tokens[idx + 5].kind != .string or
             !tok_eq(tokens[idx + 6], ",") or tokens[idx + 7].kind != .string or
             !tok_eq(tokens[idx + 8], ",")) continue;
@@ -675,7 +675,7 @@ fn find_http_request_new_body_host(tokens: []const lexer.Token) ?[]const u8 {
     var idx: usize = 0;
     while (idx + 9 < tokens.len) : (idx += 1) {
         if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or
-            !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host") or
+            !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host_func") or
             !tok_eq(tokens[idx + 4], "(") or tokens[idx + 5].kind != .string or
             !tok_eq(tokens[idx + 6], ",") or tokens[idx + 7].kind != .string or
             !tok_eq(tokens[idx + 8], ",")) continue;
@@ -3719,7 +3719,7 @@ const http_response_status_component_wit =
 
 test "HTTP service plan accepts an exact handler forwarding client send" {
     const source =
-        \\send = @host_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpHeaders = @wasi_resource("http/types/fields", { .id i64 })
         \\HttpRequestOptions = @wasi_resource("http/types/request-options", { .id i64 })
         \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
@@ -3743,7 +3743,7 @@ test "HTTP service plan accepts an exact handler forwarding client send" {
 
 test "HTTP service plan accepts an exact cancellation handler for a payload Result" {
     const source =
-        \\send = @host_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpHeaders = @wasi_resource("http/types/fields", { .id i64 })
         \\HttpRequestOptions = @wasi_resource("http/types/request-options", { .id i64 })
         \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
@@ -3778,7 +3778,7 @@ test "HTTP service plan accepts the checked-in service fixture" {
 
 test "HTTP client send plan lowers a direct async run" {
     const source =
-        \\send = @host_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpHeaders = @wasi_resource("http/types/fields", { .id i64 })
         \\HttpRequestOptions = @wasi_resource("http/types/request-options", { .id i64 })
         \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
@@ -3812,8 +3812,8 @@ test "HTTP client send plan lowers a direct async run" {
 
 test "HTTP request constructor plan feeds the constructed request to client send" {
     const source =
-        \\request_new = @host("wasi:http/types@0.3.0-rc-2025-09-16", "request.new", () -> Tuple<HttpRequest, Future<Result<nil, HttpError>>>)
-        \\send = @host_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\request_new = @host_func("wasi:http/types@0.3.0-rc-2025-09-16", "request.new", () -> Tuple<HttpRequest, Future<Result<nil, HttpError>>>)
+        \\send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpHeaders = @wasi_resource("http/types/fields", { .id i64 })
         \\HttpRequestOptions = @wasi_resource("http/types/request-options", { .id i64 })
         \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
@@ -3847,7 +3847,7 @@ test "HTTP request constructor plan feeds the constructed request to client send
 
 test "HTTP response body plan accepts the pinned consume-body acquisition" {
     const source =
-        \\consume_body = @host("wasi:http/types@0.3.0-rc-2025-09-16", "response.consume-body", (HttpResponse) -> Tuple<Stream<u8>, Future<Result<option<trailers>, HttpError>>>)
+        \\consume_body = @host_func("wasi:http/types@0.3.0-rc-2025-09-16", "response.consume-body", (HttpResponse) -> Tuple<Stream<u8>, Future<Result<option<trailers>, HttpError>>>)
         \\HttpResponse = @wasi_resource("http/types/response", { .id i64 })
         \\HttpError error = HttpFailure
         \\
@@ -3866,7 +3866,7 @@ test "HTTP response body plan accepts the pinned consume-body acquisition" {
 
 test "HTTP response body plan accepts one stream read" {
     const source =
-        \\consume_body = @host("wasi:http/types@0.3.0-rc-2025-09-16", "response.consume-body", (HttpResponse) -> Tuple<Stream<u8>, Future<Result<option<trailers>, HttpError>>>)
+        \\consume_body = @host_func("wasi:http/types@0.3.0-rc-2025-09-16", "response.consume-body", (HttpResponse) -> Tuple<Stream<u8>, Future<Result<option<trailers>, HttpError>>>)
         \\HttpResponse = @wasi_resource("http/types/response", { .id i64 })
         \\HttpError error = HttpFailure
         \\
@@ -3966,7 +3966,7 @@ test "HTTP response body plan accepts awaiting the trailers future" {
 
 test "HTTP request constructor plan emits the empty request lifecycle" {
     const source =
-        \\request_new = @host("wasi:http/types@0.3.0-rc-2025-09-16", "request.new", () -> Tuple<HttpRequest, Future<Result<nil, HttpError>>>)
+        \\request_new = @host_func("wasi:http/types@0.3.0-rc-2025-09-16", "request.new", () -> Tuple<HttpRequest, Future<Result<nil, HttpError>>>)
         \\HttpHeaders = @wasi_resource("http/types/fields", { .id i64 })
         \\HttpRequestOptions = @wasi_resource("http/types/request-options", { .id i64 })
         \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
@@ -4095,8 +4095,8 @@ test "HTTP request body producer plan rejects a spoofed CLI stdout stream descri
 test "HTTP request body plan rejects a non-pinned stream source" {
     const source =
         \\probe_read = @host_func("do:stream-probe@0.1.0", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, ProbeError>>>)
-        \\request_new = @host("wasi:http/types@0.3.0-rc-2025-09-16", "request.new", (Stream<u8>) -> Tuple<HttpRequest, Future<Result<nil, HttpError>>>)
-        \\send = @host_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\request_new = @host_func("wasi:http/types@0.3.0-rc-2025-09-16", "request.new", (Stream<u8>) -> Tuple<HttpRequest, Future<Result<nil, HttpError>>>)
+        \\send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpHeaders = @wasi_resource("http/types/fields", { .id i64 })
         \\HttpRequestOptions = @wasi_resource("http/types/request-options", { .id i64 })
         \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
@@ -4166,7 +4166,7 @@ test "HTTP request body plan accepts serialized source completion await" {
 
 test "HTTP response body emitter creates the input future with the pinned type indexes" {
     const source =
-        \\consume_body = @host("wasi:http/types@0.3.0-rc-2025-09-16", "response.consume-body", (HttpResponse) -> Tuple<Stream<u8>, Future<Result<option<trailers>, HttpError>>>)
+        \\consume_body = @host_func("wasi:http/types@0.3.0-rc-2025-09-16", "response.consume-body", (HttpResponse) -> Tuple<Stream<u8>, Future<Result<option<trailers>, HttpError>>>)
         \\HttpResponse = @wasi_resource("http/types/response", { .id i64 })
         \\HttpError error = HttpFailure
         \\async run(response HttpResponse) -> nil {
@@ -4196,8 +4196,8 @@ test "HTTP response body emitter creates the input future with the pinned type i
 
 test "HTTP response status plan preserves a borrowed response and explicit drop" {
     const source =
-        \\get_status = @host("wasi:http/types@0.3.0-rc-2025-09-16", "response.get-status-code", (HttpResponse) -> u16)
-        \\drop_response = @host("wasi:http/types@0.3.0-rc-2025-09-16", "response.drop", (HttpResponse) -> nil)
+        \\get_status = @host_func("wasi:http/types@0.3.0-rc-2025-09-16", "response.get-status-code", (HttpResponse) -> u16)
+        \\drop_response = @host_func("wasi:http/types@0.3.0-rc-2025-09-16", "response.drop", (HttpResponse) -> nil)
         \\HttpResponse = @wasi_resource("http/types/response", { .id i64 })
         \\run(response HttpResponse) -> u16 {
         \\    status u16 = get_status(response)
@@ -4223,7 +4223,7 @@ test "HTTP response status plan preserves a borrowed response and explicit drop"
 
 test "HTTP service emitter forwards the resource Result through the handler completion ABI" {
     const source =
-        \\send = @host_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpHeaders = @wasi_resource("http/types/fields", { .id i64 })
         \\HttpRequestOptions = @wasi_resource("http/types/request-options", { .id i64 })
         \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
@@ -4277,7 +4277,7 @@ test "HTTP service emitter completes an immediately returned send without joinin
 
 test "HTTP payload cancellation emitter uses the private nil terminal path" {
     const source =
-        \\send = @host_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpHeaders = @wasi_resource("http/types/fields", { .id i64 })
         \\HttpRequestOptions = @wasi_resource("http/types/request-options", { .id i64 })
         \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
@@ -4371,7 +4371,7 @@ test "HTTP service emitter lowers the proven DNS error payload" {
 
 test "HTTP service WIT sidecar preserves nominal resource identities" {
     const source =
-        \\send = @host_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpHeaders = @wasi_resource("http/types/fields", { .id i64 })
         \\HttpRequestOptions = @wasi_resource("http/types/request-options", { .id i64 })
         \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
@@ -4393,7 +4393,7 @@ test "HTTP service WIT sidecar preserves nominal resource identities" {
 
 test "HTTP service plan rejects a non-handler async export" {
     const source =
-        \\send = @host_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpHeaders = @wasi_resource("http/types/fields", { .id i64 })
         \\HttpRequestOptions = @wasi_resource("http/types/request-options", { .id i64 })
         \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
@@ -4408,7 +4408,7 @@ test "HTTP service plan rejects a non-handler async export" {
 
 test "HTTP service plan rejects a wrong response resource shell" {
     const source =
-        \\send = @host_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpHeaders = @wasi_resource("http/types/fields", { .id i64 })
         \\HttpRequestOptions = @wasi_resource("http/types/request-options", { .id i64 })
         \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
@@ -4423,7 +4423,7 @@ test "HTTP service plan rejects a wrong response resource shell" {
 
 test "HTTP service plan rejects an incomplete request resource graph" {
     const source =
-        \\send = @host_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
         \\HttpResponse = @wasi_resource("http/types/response", { .id i64 })
         \\async handle(request HttpRequest) -> Result<HttpResponse, HttpError> {
@@ -4436,7 +4436,7 @@ test "HTTP service plan rejects an incomplete request resource graph" {
 
 test "HTTP service plan accepts an awaited Result binding that is directly returned" {
     const source =
-        \\send = @host_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpHeaders = @wasi_resource("http/types/fields", { .id i64 })
         \\HttpRequestOptions = @wasi_resource("http/types/request-options", { .id i64 })
         \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })

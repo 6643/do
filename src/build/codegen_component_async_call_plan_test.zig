@@ -3,7 +3,7 @@ const lexer = @import("lexer.zig");
 const plan = @import("codegen_component_async_call_plan.zig");
 
 const positive_source =
-    \\work = @host("do:generic-async-call-probe/host@0.1.0", "work", () -> nil)
+    \\work = @host_async_func("do:generic-async-call-probe/host@0.1.0", "work", () -> nil)
     \\helper() -> nil {
     \\    pending Future<nil> = work()
     \\    @await(pending)
@@ -31,7 +31,7 @@ test "async call component admits the exact local-frame shape" {
 
 test "async call component rejects helper payload" {
     const source =
-        \\work = @host("do:generic-async-call-probe/host@0.1.0", "work", () -> nil)
+        \\work = @host_async_func("do:generic-async-call-probe/host@0.1.0", "work", () -> nil)
         \\helper() -> i32 {
         \\    pending Future<nil> = work()
         \\    @await(pending)
@@ -49,7 +49,7 @@ test "async call component rejects helper payload" {
 
 test "async call component rejects two live children" {
     const source =
-        \\work = @host("do:generic-async-call-probe/host@0.1.0", "work", () -> nil)
+        \\work = @host_async_func("do:generic-async-call-probe/host@0.1.0", "work", () -> nil)
         \\helper() -> nil {
         \\    pending Future<nil> = work()
         \\    @await(pending)
@@ -69,7 +69,7 @@ test "async call component rejects two live children" {
 
 test "async call component rejects nested helper calls" {
     const source =
-        \\work = @host("do:generic-async-call-probe/host@0.1.0", "work", () -> nil)
+        \\work = @host_async_func("do:generic-async-call-probe/host@0.1.0", "work", () -> nil)
         \\inner() -> nil {}
         \\helper() -> nil {
         \\    inner()

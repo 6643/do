@@ -2393,7 +2393,12 @@ fn is_modern_import_assign(tokens: []const lexer.Token, idx: usize) bool {
     if (at_idx + 1 >= line_end or !tok_eq(tokens[at_idx], "@")) return false;
     if (tokens[at_idx + 1].kind != .ident) return false;
     return std.mem.eql(u8, tokens[at_idx + 1].lexeme, "lib") or
-        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host");
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host_func") or
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host_async_func") or
+        // Removed spellings remain import-shaped so sema can reject them
+        // deterministically instead of treating them as ordinary values.
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host") or
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host_sync_func");
 }
 
 fn is_non_host_import_assign(tokens: []const lexer.Token, idx: usize) bool {
@@ -2478,10 +2483,10 @@ fn is_generated_wit_host_import_decl_start(tokens: []const lexer.Token, idx: usi
 
 test "only WIT-locator host declarations are importable" {
     const wit_source =
-        \\send = @host("do:bindgen-probe/api@0.1.0", "send", (u32) -> u32)
+        \\send = @host_func("do:bindgen-probe/api@0.1.0", "send", (u32) -> u32)
     ;
     const env_source =
-        \\send = @host("env", "send", (u32) -> u32)
+        \\send = @host_func("env", "send", (u32) -> u32)
     ;
     const wit_tokens = try lexer.tokenize(std.testing.allocator, wit_source);
     defer std.testing.allocator.free(wit_tokens);
@@ -2614,11 +2619,11 @@ test "generated WIT module hash drift rejects before lowering admission" {
 }
 
 const generated_async_module_source =
-    "work = @host(\"do:generic-async-runtime-probe/host@0.1.0\", \"work\", () -> Future<nil>)";
+    "work = @host_func(\"do:generic-async-runtime-probe/host@0.1.0\", \"work\", () -> Future<nil>)";
 const generated_async_module_hash = "77f8e5774f46663b912de1742cf6fa21093b10094edb627729e33560e917d531";
 
 const generated_scalar_async_module_source =
-    "completion = @host(\"do:generic-async-scalar-probe/host@0.1.0\", \"completion\", () -> Future<u32>)";
+    "completion = @host_func(\"do:generic-async-scalar-probe/host@0.1.0\", \"completion\", () -> Future<u32>)";
 const generated_scalar_async_module_hash = "5694fd59462d887760c1c94136406b5f8308a2a148a215b0e6c4028896825151";
 
 fn generated_async_manifest(allocator: std.mem.Allocator, module_hash: []const u8) ![]u8 {
@@ -2641,7 +2646,8 @@ fn is_host_import_line(tokens: []const lexer.Token, at_idx: usize, line_end: usi
     if (at_idx + 3 >= line_end) return false;
     if (!tok_eq(tokens[at_idx], "@")) return false;
     if (tokens[at_idx + 1].kind != .ident) return false;
-    if (std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host")) {
+    if (std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host_func") or
+        std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host_async_func")) {
         return tok_eq(tokens[at_idx + 2], "(");
     }
     return false;

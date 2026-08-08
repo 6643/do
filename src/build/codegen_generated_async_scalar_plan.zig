@@ -74,7 +74,7 @@ test "generated scalar async admission accepts the pinned Future<i64> slice" {
 
 test "generated scalar async admission rejects a hand-written host copy" {
     const source =
-        "completion = @host(\"do:generic-async-scalar-probe/host@0.1.0\", \"completion\", () -> Future<u32>)\n" ++
+        "completion = @host_func(\"do:generic-async-scalar-probe/host@0.1.0\", \"completion\", () -> Future<u32>)\n" ++
         "run() -> nil {\n" ++
         "    ready Future<u32> = completion()\n" ++
         "    value u32 = @await(ready)\n" ++

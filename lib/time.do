@@ -1,9 +1,9 @@
 // Declarative WASI host bindings (record + funcs). Public API unchanged.
 // Host imports must stay in the import prefix (before other decls).
-.host_now = @host("wasi:clocks/system-clock@0.3.0", "now", () -> Datetime)
-.host_resolution = @host("wasi:clocks/system-clock@0.3.0", "get-resolution", () -> u64)
-.host_monotonic_now = @host("wasi:clocks/monotonic-clock@0.3.0", "now", () -> u64)
-.host_monotonic_resolution = @host("wasi:clocks/monotonic-clock@0.3.0", "get-resolution", () -> u64)
+.host_now = @host_func("wasi:clocks/system-clock@0.3.0", "now", () -> Datetime)
+.host_resolution = @host_func("wasi:clocks/system-clock@0.3.0", "get-resolution", () -> u64)
+.host_monotonic_now = @host_func("wasi:clocks/monotonic-clock@0.3.0", "now", () -> u64)
+.host_monotonic_resolution = @host_func("wasi:clocks/monotonic-clock@0.3.0", "get-resolution", () -> u64)
 
 Datetime = @wasi_record("clocks/wall-clock/datetime", {
     seconds i64

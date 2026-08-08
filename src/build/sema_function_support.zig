@@ -790,7 +790,7 @@ pub fn is_visible_binding_or_callable_name(tokens: []const lexer.Token, name: []
             if (!tok_eq(tokens[eq_idx + 1], "@")) continue;
             if (tokens[eq_idx + 2].kind != .ident) continue;
             const import_kind = tokens[eq_idx + 2].lexeme;
-            if (std.mem.eql(u8, import_kind, "host")) return true;
+            if (std.mem.eql(u8, import_kind, "host_func") or std.mem.eql(u8, import_kind, "host_async_func")) return true;
             if (std.mem.eql(u8, import_kind, "lib") and (is_lower_ident_name(public_name) or is_readonly_ident_name(tokens[i].lexeme))) return true;
             continue;
         }

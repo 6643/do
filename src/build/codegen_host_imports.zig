@@ -1,4 +1,4 @@
-//! Env host import collect/parse (@host("env", member, sig)).
+//! Env host import collect/parse (@host_func("env", member, sig)).
 const std = @import("std");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
@@ -90,7 +90,7 @@ pub fn parse_env_host_import(
     start_idx: usize,
     line_end: usize,
 ) !HostImport {
-    // name = @host("env", "field", (...) -> T)
+    // name = @host_func("env", "field", (...) -> T)
     const alias = public_decl_name(tokens[start_idx].lexeme);
     const locator = string_token_body(tokens[start_idx + 5].lexeme) orelse return error.InvalidImportDecl;
     if (!std.mem.eql(u8, locator, "env")) return error.InvalidImportDecl;
@@ -153,13 +153,13 @@ pub fn find_host_import_for_tokens(host_imports: []const HostImport, tokens: []c
     return null;
 }
 pub fn is_env_host_import_start(tokens: []const lexer.Token, idx: usize) bool {
-    // name = @host("env", "field", ...)
+    // name = @host_func("env", "field", ...)
     const line_end = find_line_end(tokens, idx);
     if (idx + 9 >= line_end) return false;
     if (tokens[idx].kind != .ident) return false;
     if (!tok_eq(tokens[idx + 1], "=")) return false;
     if (!tok_eq(tokens[idx + 2], "@")) return false;
-    if (tokens[idx + 3].kind != .ident or !std.mem.eql(u8, tokens[idx + 3].lexeme, "host")) return false;
+    if (tokens[idx + 3].kind != .ident or !std.mem.eql(u8, tokens[idx + 3].lexeme, "host_func")) return false;
     if (!tok_eq(tokens[idx + 4], "(")) return false;
     if (tokens[idx + 5].kind != .string) return false;
     const locator = string_token_body(tokens[idx + 5].lexeme) orelse return false;

@@ -35,7 +35,7 @@ fn matches_probe(tokens: []const lexer.Token) bool {
 fn has_host(tokens: []const lexer.Token, locator: []const u8, member: []const u8) bool {
     var i: usize = 0;
     while (i + 7 < tokens.len) : (i += 1) {
-        if (!tok_eq(tokens[i + 1], "=") or !tok_eq(tokens[i + 2], "@") or !tok_eq(tokens[i + 3], "host") or !tok_eq(tokens[i + 4], "(") or tokens[i + 5].kind != .string or tokens[i + 7].kind != .string) continue;
+        if (!tok_eq(tokens[i + 1], "=") or !tok_eq(tokens[i + 2], "@") or !tok_eq(tokens[i + 3], "host_func") or !tok_eq(tokens[i + 4], "(") or tokens[i + 5].kind != .string or tokens[i + 7].kind != .string) continue;
         const found_locator = string_token_body(tokens[i + 5].lexeme) orelse continue;
         const found_member = string_token_body(tokens[i + 7].lexeme) orelse continue;
         if (std.mem.eql(u8, found_locator, locator) and std.mem.eql(u8, found_member, member)) return true;
@@ -182,10 +182,10 @@ const preopen_component_wit =
 
 test "filesystem preopen component emits canonical descriptor operations" {
     const source =
-        \\.host_preopens = @host("wasi:filesystem/preopens@0.3.0", "get-directories", () -> [Tuple<Dir, text>])
-        \\.host_open = @host("wasi:filesystem/types@0.3.0", "descriptor.open-at", (Dir, i32, text, i32, i32) -> Result<File, FileError>)
-        \\.host_sync = @host("wasi:filesystem/types@0.3.0", "descriptor.sync", (File) -> Result<nil, FileError>)
-        \\.host_drop = @host("wasi:filesystem/types@0.3.0", "descriptor.drop", (File) -> nil)
+        \\.host_preopens = @host_func("wasi:filesystem/preopens@0.3.0", "get-directories", () -> [Tuple<Dir, text>])
+        \\.host_open = @host_func("wasi:filesystem/types@0.3.0", "descriptor.open-at", (Dir, i32, text, i32, i32) -> Result<File, FileError>)
+        \\.host_sync = @host_func("wasi:filesystem/types@0.3.0", "descriptor.sync", (File) -> Result<nil, FileError>)
+        \\.host_drop = @host_func("wasi:filesystem/types@0.3.0", "descriptor.drop", (File) -> nil)
         \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
         \\File = @wasi_resource("filesystem/types/descriptor", { .id i64 })
         \\FileError error = FileOpenFailed | FileFlushFailed

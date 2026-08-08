@@ -81,7 +81,7 @@ fn has_unadmitted_socket_host(tokens: []const lexer.Token) bool {
     var i: usize = 0;
     while (i + 7 < tokens.len) : (i += 1) {
         if (!tok_eq(tokens[i + 1], "=") or !tok_eq(tokens[i + 2], "@") or
-            !tok_eq(tokens[i + 3], "host") or !tok_eq(tokens[i + 4], "(") or
+            !tok_eq(tokens[i + 3], "host_func") or !tok_eq(tokens[i + 4], "(") or
             tokens[i + 5].kind != .string or tokens[i + 7].kind != .string) continue;
         const locator = string_token_body(tokens[i + 5].lexeme) orelse continue;
         if (!std.mem.eql(u8, locator, "wasi:sockets/types@0.3.0")) continue;
@@ -104,7 +104,7 @@ fn has_host(tokens: []const lexer.Token, locator: []const u8, member: []const u8
     var i: usize = 0;
     while (i + 7 < tokens.len) : (i += 1) {
         if (!tok_eq(tokens[i + 1], "=") or !tok_eq(tokens[i + 2], "@") or
-            !tok_eq(tokens[i + 3], "host") or !tok_eq(tokens[i + 4], "(") or
+            !tok_eq(tokens[i + 3], "host_func") or !tok_eq(tokens[i + 4], "(") or
             tokens[i + 5].kind != .string or tokens[i + 7].kind != .string) continue;
         const found_locator = string_token_body(tokens[i + 5].lexeme) orelse continue;
         const found_member = string_token_body(tokens[i + 7].lexeme) orelse continue;

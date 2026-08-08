@@ -1195,7 +1195,7 @@ fn find_record_stream_host(tokens: []const lexer.Token, registry: p3_async_manif
     while (idx + 12 < tokens.len) : (idx += 1) {
         if (tokens[idx].kind != .ident or !sema_tokens.tok_eq(tokens[idx + 1], "=") or
             !sema_tokens.tok_eq(tokens[idx + 2], "@") or
-            (!sema_tokens.tok_eq(tokens[idx + 3], "host") and !sema_tokens.tok_eq(tokens[idx + 3], "host_func")) or
+            !sema_tokens.tok_eq(tokens[idx + 3], "host_func") or
             !sema_tokens.tok_eq(tokens[idx + 4], "(") or tokens[idx + 5].kind != .string or
             !sema_tokens.tok_eq(tokens[idx + 6], ",") or tokens[idx + 7].kind != .string) continue;
         const locator = sema_tokens.string_token_body(tokens[idx + 5].lexeme) orelse continue;

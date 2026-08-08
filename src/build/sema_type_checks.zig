@@ -634,7 +634,7 @@ fn is_inside_host_import_call(tokens: []const lexer.Token, idx: usize) bool {
     if (!tok_eq(tokens[open_idx - 2], "@")) return false;
     if (tokens[open_idx - 1].kind != .ident) return false;
     const name = tokens[open_idx - 1].lexeme;
-    return std.mem.eql(u8, name, "host");
+    return std.mem.eql(u8, name, "host_func") or std.mem.eql(u8, name, "host_async_func");
 }
 
 

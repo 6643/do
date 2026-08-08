@@ -1,6 +1,6 @@
 // G6.3 regression: dynamic u8 family values are normalized before the WIT call.
-.host_tcp_create = @host("wasi:sockets/types@0.3.0", "tcp-socket.create", (u8) -> TcpSocket | TcpError)
-.host_tcp_drop = @host("wasi:sockets/types@0.3.0", "tcp-socket.drop", (TcpSocket) -> nil)
+.host_tcp_create = @host_func("wasi:sockets/types@0.3.0", "tcp-socket.create", (u8) -> TcpSocket | TcpError)
+.host_tcp_drop = @host_func("wasi:sockets/types@0.3.0", "tcp-socket.drop", (TcpSocket) -> nil)
 TcpSocket = @wasi_resource("sockets/types/tcp-socket", {
     .id i64
 })

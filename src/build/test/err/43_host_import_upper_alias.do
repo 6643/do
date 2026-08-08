@@ -1,3 +1,3 @@
-Log = @host("env", "log", (i32) -> nil)
+Log = @host_func("env", "log", (i32) -> nil)
 
 test "host import upper alias" {}

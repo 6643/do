@@ -549,7 +549,7 @@ const resource_async_core_wat =
 
 test "private async resource probe emits a two-word Result completion frame" {
     const source =
-        \\send = @host_func("do:resource-probe/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("do:resource-probe/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpRequest = @wasi_resource("do:resource-probe/http/request", { .id i64 })
         \\HttpResponse = @wasi_resource("do:resource-probe/http/response", { .id i64 })
         \\HttpError error = HttpFailure
@@ -591,7 +591,7 @@ test "private async resource probe emits a two-word Result completion frame" {
 
 test "private async resource cancellation emits direct subtask cancellation" {
     const source =
-        \\send = @host_func("do:resource-probe/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("do:resource-probe/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpRequest = @wasi_resource("do:resource-probe/http/request", { .id i64 })
         \\HttpResponse = @wasi_resource("do:resource-probe/http/response", { .id i64 })
         \\HttpError error = HttpFailure
@@ -623,7 +623,7 @@ test "private async resource cancellation emits direct subtask cancellation" {
 
 test "private async resource probe checks immediate host completion before joining" {
     const source =
-        \\send = @host_func("do:resource-probe/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("do:resource-probe/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpRequest = @wasi_resource("do:resource-probe/http/request", { .id i64 })
         \\HttpResponse = @wasi_resource("do:resource-probe/http/response", { .id i64 })
         \\HttpError error = HttpFailure
@@ -645,7 +645,7 @@ test "private async resource probe checks immediate host completion before joini
 
 test "private async resource probe resolves a renamed descriptor binding" {
     const source =
-        \\dispatch = @host_func("do:resource-probe/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\dispatch = @host_async_func("do:resource-probe/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpRequest = @wasi_resource("do:resource-probe/http/request", { .id i64 })
         \\HttpResponse = @wasi_resource("do:resource-probe/http/response", { .id i64 })
         \\HttpError error = HttpFailure
@@ -672,7 +672,7 @@ test "private async resource probe resolves a renamed descriptor binding" {
 
 test "private owned-error resource probe emits its private WIT and drop import" {
     const source =
-        \\send = @host_func("do:resource-probe-owned-error/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpErrorResource>)
+        \\send = @host_async_func("do:resource-probe-owned-error/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpErrorResource>)
         \\HttpRequest = @wasi_resource("do:resource-probe-owned-error/http/request", { .id i64 })
         \\HttpResponse = @wasi_resource("do:resource-probe-owned-error/http/response", { .id i64 })
         \\HttpErrorResource = @wasi_resource("do:resource-probe-owned-error/http/error-resource", { .id i64 })
@@ -705,7 +705,7 @@ test "private owned-error resource probe emits its private WIT and drop import" 
 
 test "private owned-error resource cancellation preserves its package and resource graph" {
     const source =
-        \\send = @host_func("do:resource-probe-owned-error/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpErrorResource>)
+        \\send = @host_async_func("do:resource-probe-owned-error/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpErrorResource>)
         \\HttpRequest = @wasi_resource("do:resource-probe-owned-error/http/request", { .id i64 })
         \\HttpResponse = @wasi_resource("do:resource-probe-owned-error/http/response", { .id i64 })
         \\HttpErrorResource = @wasi_resource("do:resource-probe-owned-error/http/error-resource", { .id i64 })

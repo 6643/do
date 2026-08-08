@@ -1,4 +1,4 @@
-.host_link = @host("wasi:filesystem/types@0.3.0", "descriptor.link-at", (File, i32, text, File, text) -> Result<nil, FileError>)
+.host_link = @host_func("wasi:filesystem/types@0.3.0", "descriptor.link-at", (File, i32, text, File, text) -> Result<nil, FileError>)
 File = @wasi_resource("filesystem/types/descriptor", {
     .id i64
 })

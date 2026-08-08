@@ -552,8 +552,8 @@ Profile = @lib("./profile.user.do", User)
 MongoClient = @lib("~/tom.mongo.do", Client)
 Client2 = @lib("~/tom.2024.db.do", Client)
 abs_i32 = @lib("math.do", abs_i32)
-console_log = @host("env", "console_log", (i32, i32) -> nil)
-host_now = @host("wasi:clocks/system-clock@0.3.0", "now", () -> Datetime)
+console_log = @host_func("env", "console_log", (i32, i32) -> nil)
+host_now = @host_func("wasi:clocks/system-clock@0.3.0", "now", () -> Datetime)
 
 Datetime {
     seconds i64
@@ -567,10 +567,10 @@ User = @lib("./user", User)
 MongoClient = @lib("~/mongo/client.do", Client)
 tool = @lib("2024.tool.do", run)
 now = @lib("/time.do", now)
-console_log = @host("env", "console/log", (i32, i32) -> nil)
+console_log = @host_func("env", "console/log", (i32, i32) -> nil)
 ```
 
-local import 只支持 `@lib("file.do", symbol)` 双参数形态里的当前目录单文件、外部依赖根单文件和标准库单文件三类入口。host import 统一使用 `@host(locator, member, (...) -> ...)`；host import alias 只在当前模块内使用，不是 local import target。
+local import 只支持 `@lib("file.do", symbol)` 双参数形态里的当前目录单文件、外部依赖根单文件和标准库单文件三类入口。普通 WIT host import 使用 `@host_func(locator, member, (...) -> ...)`，WIT `async func` 使用 `@host_async_func(locator, member, (...) -> ...)`；两个 marker 不互换，旧 `@host` 与 `@host_sync_func` 不接受。host import alias 只在当前模块内使用，不是 local import target。
 
 ## get / set
 

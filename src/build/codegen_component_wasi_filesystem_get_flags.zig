@@ -61,7 +61,7 @@ pub const GetFlagsPlan = struct {
         var idx: usize = 0;
         while (idx + 9 < tokens.len) : (idx += 1) {
             if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or !tok_eq(tokens[idx + 2], "@") or
-                (!tok_eq(tokens[idx + 3], "host") and !tok_eq(tokens[idx + 3], "host_func")) or
+                !tok_eq(tokens[idx + 3], "host_async_func") or
                 !tok_eq(tokens[idx + 4], "(") or tokens[idx + 5].kind != .string or !tok_eq(tokens[idx + 6], ",") or
                 tokens[idx + 7].kind != .string or !tok_eq(tokens[idx + 8], ",") or !tok_eq(tokens[idx + 9], "(")) continue;
             host_count += 1;

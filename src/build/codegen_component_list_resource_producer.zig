@@ -210,7 +210,7 @@ fn find_host_binding(tokens: []const lexer.Token, wanted: BindingKind) ?HostBind
         if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or !tok_eq(tokens[idx + 2], "@") or
             !tok_eq(tokens[idx + 4], "(") or tokens[idx + 5].kind != .string or !tok_eq(tokens[idx + 6], ",") or
             tokens[idx + 7].kind != .string or !tok_eq(tokens[idx + 8], ",") or !tok_eq(tokens[idx + 9], "(")) continue;
-        const kind: BindingKind = if (tok_eq(tokens[idx + 3], "host")) .source else if (tok_eq(tokens[idx + 3], "host_func")) .sink else continue;
+        const kind: BindingKind = if (tok_eq(tokens[idx + 3], "host_func")) .source else if (tok_eq(tokens[idx + 3], "host_async_func")) .sink else continue;
         if (kind != wanted) continue;
         const close = find_matching(tokens, idx + 9, "(", ")") orelse continue;
         if (close + 3 >= tokens.len or !tok_eq(tokens[close + 1], "-") or !tok_eq(tokens[close + 2], ">")) continue;
@@ -231,7 +231,7 @@ fn count_host_bindings(tokens: []const lexer.Token) usize {
     var idx: usize = 0;
     while (idx + 9 < tokens.len) : (idx += 1) {
         if (tokens[idx].kind == .ident and tok_eq(tokens[idx + 1], "=") and tok_eq(tokens[idx + 2], "@") and
-            (tok_eq(tokens[idx + 3], "host") or tok_eq(tokens[idx + 3], "host_func"))) count += 1;
+            (tok_eq(tokens[idx + 3], "host_func") or tok_eq(tokens[idx + 3], "host_async_func"))) count += 1;
     }
     return count;
 }
@@ -377,8 +377,8 @@ fn tok_eq(token: lexer.Token, expected: []const u8) bool {
 
 test "C-min producer plan rejects a missing fixed source body" {
     const source =
-        \\make_ticket = @host("do:g6-2-c-min-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
-        \\consume = @host_func("do:g6-2-c-min-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
+        \\make_ticket = @host_func("do:g6-2-c-min-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-c-min-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
         \\Ticket = @wasi_resource("do:g6-2-c-min-producer/source/ticket", { .id i64 })
         \\ResourceEntry {
         \\    .ticket Ticket
@@ -396,8 +396,8 @@ test "C-min producer plan rejects a missing fixed source body" {
 
 test "C-min producer plan accepts the exact fixed Do source" {
     const source =
-        \\make_ticket = @host("do:g6-2-c-min-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
-        \\consume = @host_func("do:g6-2-c-min-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
+        \\make_ticket = @host_func("do:g6-2-c-min-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-c-min-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
         \\Ticket = @wasi_resource("do:g6-2-c-min-producer/source/ticket", { .id i64 })
         \\ResourceEntry {
         \\    .ticket Ticket
@@ -440,8 +440,8 @@ fn expect_c_min_plan_error(source: []const u8) !void {
 
 test "C-min producer plan rejects an unregistered sink locator" {
     try expect_c_min_plan_error(
-        \\make_ticket = @host("do:g6-2-c-min-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
-        \\consume = @host_func("do:g6-2-c-min-producer@0.1.1", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
+        \\make_ticket = @host_func("do:g6-2-c-min-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-c-min-producer@0.1.1", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
         \\Ticket = @wasi_resource("do:g6-2-c-min-producer/source/ticket", { .id i64 })
         \\ResourceEntry { .ticket Ticket }
         \\ProducerError error = Io | Pipe | InvalidMode
@@ -452,8 +452,8 @@ test "C-min producer plan rejects an unregistered sink locator" {
 
 test "C-min producer plan rejects a drifted resource element" {
     try expect_c_min_plan_error(
-        \\make_ticket = @host("do:g6-2-c-min-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
-        \\consume = @host_func("do:g6-2-c-min-producer@0.1.0", "consume-via-stream", (StreamWriter<[BorrowedEntry]>) -> Result<nil, ProducerError>)
+        \\make_ticket = @host_func("do:g6-2-c-min-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-c-min-producer@0.1.0", "consume-via-stream", (StreamWriter<[BorrowedEntry]>) -> Result<nil, ProducerError>)
         \\Ticket = @wasi_resource("do:g6-2-c-min-producer/source/ticket", { .id i64 })
         \\BorrowedEntry { .ticket Ticket }
         \\ResourceEntry { .ticket Ticket }
@@ -465,9 +465,9 @@ test "C-min producer plan rejects a drifted resource element" {
 
 test "C-min producer plan rejects extra producer bindings" {
     try expect_c_min_plan_error(
-        \\make_ticket = @host("do:g6-2-c-min-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
-        \\consume = @host_func("do:g6-2-c-min-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
-        \\other = @host_func("do:g6-2-c-min-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
+        \\make_ticket = @host_func("do:g6-2-c-min-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-c-min-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
+        \\other = @host_async_func("do:g6-2-c-min-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
         \\Ticket = @wasi_resource("do:g6-2-c-min-producer/source/ticket", { .id i64 })
         \\ResourceEntry { .ticket Ticket }
         \\ProducerError error = Io | Pipe | InvalidMode
@@ -478,8 +478,8 @@ test "C-min producer plan rejects extra producer bindings" {
 
 test "C-min producer plan rejects a non-fixed producer body" {
     try expect_c_min_plan_error(
-        \\make_ticket = @host("do:g6-2-c-min-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
-        \\consume = @host_func("do:g6-2-c-min-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
+        \\make_ticket = @host_func("do:g6-2-c-min-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-c-min-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
         \\Ticket = @wasi_resource("do:g6-2-c-min-producer/source/ticket", { .id i64 })
         \\ResourceEntry { .ticket Ticket }
         \\ProducerError error = Io | Pipe | InvalidMode

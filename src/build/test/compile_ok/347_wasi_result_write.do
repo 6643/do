@@ -1,4 +1,4 @@
-.host_write = @host("wasi:filesystem/types@0.3.0", "descriptor.write", (File, [u8], u64) -> Result<u64, FileError>)
+.host_write = @host_func("wasi:filesystem/types@0.3.0", "descriptor.write", (File, [u8], u64) -> Result<u64, FileError>)
 File = @wasi_resource("filesystem/types/descriptor", {
     .id i64
 })

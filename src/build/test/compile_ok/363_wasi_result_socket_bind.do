@@ -1,5 +1,5 @@
-.host_tcp_bind = @host("wasi:sockets/types@0.3.0", "tcp-socket.bind", (TcpSocket, IpSocketAddress) -> Result<nil, TcpError>)
-.host_udp_bind = @host("wasi:sockets/types@0.3.0", "udp-socket.bind", (UdpSocket, IpSocketAddress) -> Result<nil, UdpError>)
+.host_tcp_bind = @host_func("wasi:sockets/types@0.3.0", "tcp-socket.bind", (TcpSocket, IpSocketAddress) -> Result<nil, TcpError>)
+.host_udp_bind = @host_func("wasi:sockets/types@0.3.0", "udp-socket.bind", (UdpSocket, IpSocketAddress) -> Result<nil, UdpError>)
 TcpSocket = @wasi_resource("sockets/types/tcp-socket", {
     .id i64
 })

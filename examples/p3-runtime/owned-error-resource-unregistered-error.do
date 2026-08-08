@@ -1,4 +1,4 @@
-send = @host_func("do:resource-probe-owned-error/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, OtherErrorResource>)
+send = @host_async_func("do:resource-probe-owned-error/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, OtherErrorResource>)
 
 HttpRequest = @wasi_resource("do:resource-probe-owned-error/http/request", { .id i64 })
 HttpResponse = @wasi_resource("do:resource-probe-owned-error/http/response", { .id i64 })

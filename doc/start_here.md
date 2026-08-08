@@ -159,7 +159,7 @@ current/legacy wasm-tools hashes and runtime counters are recorded in
 `do wit check` 解析并校验 WIT；`do wit bind` 在项目根 `wit/` 生成扁平
 `*.do`、`manifest.json` 和 `wit.lock`。可用 `do wit check --manifest` 校验
 生成 metadata 与 WIT 的 package/world/hash/effect 一致性。项目源文件若放在 `wit/src/`，生成时
-不会被当作生成输入删除。生成的普通 `@host` locator（包括自定义 namespace）
+不会被当作生成输入删除。生成的普通 `@host_func` locator（包括自定义 namespace）
 已可通过 checker；WASI/P3 lowering 仍只接受现有 pinned registry，通用 custom
 host 的 WAT/Component lowering 尚未开放。
 
@@ -269,7 +269,7 @@ ZIG_GLOBAL_CACHE_DIR="$PWD/.tmp/do-tmp/debug-zig-gcache" \
 | | `codegen_ownership.zig` | ARC release plan emit / 作用域可达性辅助 |
 | | `codegen_tokens.zig` | token/range/scan/decode 工具 |
 | | `codegen_names.zig` | public name、core-func 名表、mangled 符号 |
-| | `codegen_host_imports.zig` | unified `@host("env", member, sig)` host import collect/parse |
+| | `codegen_host_imports.zig` | unified `@host_func("env", member, sig)` host import collect/parse |
 | | `codegen_imports.zig` | 模块 import 解析、reach、string-data |
 | | `codegen_wasi_registry.zig` / `codegen_union_layout.zig` | WASI 表/parse; union layout |
 | | `wat_payload` | 标量 payload load/store、Tuple 叶子 pack/unpack |

@@ -1,5 +1,5 @@
-create = @host("do:resource-probe/ledger@0.1.0", "create", (u32) -> Ticket)
-consume = @host("do:resource-probe/ledger@0.1.0", "consume", (Ticket) -> u32)
+create = @host_func("do:resource-probe/ledger@0.1.0", "create", (u32) -> Ticket)
+consume = @host_func("do:resource-probe/ledger@0.1.0", "consume", (Ticket) -> u32)
 
 Ticket = @wasi_resource("do:resource-probe/ledger/ticket", {
     .id i64

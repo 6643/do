@@ -999,48 +999,55 @@ pub fn target_for_tokens_with_graph(
         const descriptor = registry.find(binding.locator, binding.member) orelse continue;
         const shape = p3_async_manifest.lowering_shape(descriptor) orelse return error.UnsupportedP3AsyncComponent;
         const next: Target = switch (shape) {
-            .stream_reader_acquire => if ((binding.kind == .host or binding.kind == .host_func) and stream_reader_signature_at(tokens, idx)) .stream_reader else return error.UnsupportedP3AsyncComponent,
-            .record_stream_reader => if ((binding.kind == .host or binding.kind == .host_func) and record_stream_reader_signature_at(tokens, idx))
-                .wasi_read_directory
-            else if (binding.kind == .host or binding.kind == .host_func)
-                try record_stream_target_for_tokens(tokens, registry)
-            else
-                return error.UnsupportedP3AsyncComponent,
-            .record_resource_list_stream_reader => if ((binding.kind == .host or binding.kind == .host_func) and list_resource_stream_signature_at(tokens, idx))
+            .stream_reader_acquire => if (binding.kind == .host_func and stream_reader_signature_at(tokens, idx)) .stream_reader else return error.UnsupportedP3AsyncComponent,
+            .record_stream_reader => blk: {
+                const is_read_directory =
+                    std.mem.eql(u8, descriptor.locator, "wasi:filesystem/types@0.3.0-rc-2025-09-16") and
+                        std.mem.eql(u8, descriptor.member, "descriptor.read-directory");
+                if (is_read_directory) {
+                    if (binding.kind != .host_async_func or !record_stream_reader_signature_at(tokens, idx)) {
+                        return error.UnsupportedP3AsyncComponent;
+                    }
+                    break :blk .wasi_read_directory;
+                }
+                if (binding.kind != .host_func) return error.UnsupportedP3AsyncComponent;
+                break :blk try record_stream_target_for_tokens(tokens, registry);
+            },
+            .record_resource_list_stream_reader => if (binding.kind == .host_func and list_resource_stream_signature_at(tokens, idx))
                 try list_resource_stream_target_for_tokens(tokens, registry)
             else
                 return error.UnsupportedP3AsyncComponent,
-            .record_resource_list_stream_producer => if (binding.kind == .host_func) blk: {
+            .record_resource_list_stream_producer => if (binding.kind == .host_async_func) blk: {
                 _ = codegen_component_list_resource_producer.ListResourceProducerPlan.analyze(tokens, registry) catch
                     return error.UnsupportedP3AsyncComponent;
                 break :blk .record_resource_list_stream_producer;
             } else return error.UnsupportedP3AsyncComponent,
-            .record_resource_list_stream_dynamic_producer => if (binding.kind == .host_func) blk: {
+            .record_resource_list_stream_dynamic_producer => if (binding.kind == .host_async_func) blk: {
                 _ = codegen_component_dynamic_list_resource_producer.DynamicListResourceProducerPlan.analyze(tokens, registry) catch
                     return error.UnsupportedP3AsyncComponent;
                 break :blk .record_resource_list_stream_dynamic_producer;
             } else return error.UnsupportedP3AsyncComponent,
-            .record_resource_list_stream_batched_producer => if (binding.kind == .host_func) blk: {
+            .record_resource_list_stream_batched_producer => if (binding.kind == .host_async_func) blk: {
                 _ = codegen_component_batched_list_resource_producer.BatchedListResourceProducerPlan.analyze(tokens, registry) catch
                     return error.UnsupportedP3BatchedListResourceProducer;
                 break :blk .record_resource_list_stream_batched_producer;
             } else return error.UnsupportedP3BatchedListResourceProducer,
-            .variant_resource_stream_reader => if ((binding.kind == .host or binding.kind == .host_func) and variant_resource_stream_signature_at(tokens, idx))
+            .variant_resource_stream_reader => if (binding.kind == .host_func and variant_resource_stream_signature_at(tokens, idx))
                 .variant_resource_stream
             else
                 return error.UnsupportedP3AsyncComponent,
-            .stream_writer => if (stream_writer_signature_at(tokens, idx)) .stream_writer else return error.UnsupportedP3AsyncComponent,
-            .filesystem_get_type => if (binding.kind == .host or binding.kind == .host_func) blk: {
+            .stream_writer => if (binding.kind == .host_async_func and stream_writer_signature_at(tokens, idx)) .stream_writer else return error.UnsupportedP3AsyncComponent,
+            .filesystem_get_type => if (binding.kind == .host_async_func) blk: {
                 _ = codegen_component_wasi_filesystem_get_type.GetTypePlan.analyze(tokens, registry) catch
                     return error.UnsupportedP3AsyncComponent;
                 break :blk .wasi_filesystem_get_type;
             } else return error.UnsupportedP3AsyncComponent,
-            .filesystem_get_flags => if (binding.kind == .host or binding.kind == .host_func) blk: {
+            .filesystem_get_flags => if (binding.kind == .host_async_func) blk: {
                 _ = codegen_component_wasi_filesystem_get_flags.GetFlagsPlan.analyze(tokens, registry) catch
                     return error.UnsupportedP3AsyncComponent;
                 break :blk .wasi_filesystem_get_flags;
             } else return error.UnsupportedP3AsyncComponent,
-            .filesystem_sync => if (binding.kind == .host or binding.kind == .host_func) blk: {
+            .filesystem_sync => if (binding.kind == .host_async_func) blk: {
                 _ = codegen_component_wasi_filesystem_sync.SyncPlan.analyze(tokens, registry) catch
                     return error.UnsupportedP3AsyncComponent;
                 break :blk .wasi_filesystem_sync;
@@ -1114,8 +1121,8 @@ fn target_for_descriptor(descriptor: p3_async_manifest.Descriptor) !Target {
 }
 
 const HostBindingKind = enum {
-    host,
     host_func,
+    host_async_func,
 };
 
 const HostFuncBinding = struct {
@@ -1126,7 +1133,7 @@ const HostFuncBinding = struct {
 
 fn host_binding_at(tokens: []const lexer.Token, idx: usize) ?HostFuncBinding {
     if (idx + 8 >= tokens.len or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 4], "(")) return null;
-    const kind: HostBindingKind = if (tok_eq(tokens[idx + 3], "host")) .host else if (tok_eq(tokens[idx + 3], "host_func")) .host_func else return null;
+    const kind: HostBindingKind = if (tok_eq(tokens[idx + 3], "host_func")) .host_func else if (tok_eq(tokens[idx + 3], "host_async_func")) .host_async_func else return null;
     if (!tok_eq(tokens[idx + 6], ",") or !tok_eq(tokens[idx + 8], ",")) return null;
     const locator = string_token_body(tokens[idx + 5]) orelse return null;
     const member = string_token_body(tokens[idx + 7]) orelse return null;
@@ -1251,35 +1258,35 @@ fn tok_eq(token: lexer.Token, text: []const u8) bool {
 
 test "generic Component async target classifies registered descriptor shapes" {
     const scalar_source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
     ;
     const scalar_tokens = try lexer.tokenize(std.testing.allocator, scalar_source);
     defer std.testing.allocator.free(scalar_tokens);
     try std.testing.expectEqual(Target.scalar_unit, try target_for_tokens(std.testing.allocator, scalar_tokens));
 
     const resource_source =
-        \\send = @host_func("do:resource-probe/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("do:resource-probe/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
     ;
     const resource_tokens = try lexer.tokenize(std.testing.allocator, resource_source);
     defer std.testing.allocator.free(resource_tokens);
     try std.testing.expectEqual(Target.resource_result_2word, try target_for_tokens(std.testing.allocator, resource_tokens));
 
     const cli_result_source =
-        \\run = @host_func("wasi:cli@0.3.0", "run.run", () -> Result<nil, nil>)
+        \\run = @host_async_func("wasi:cli@0.3.0", "run.run", () -> Result<nil, nil>)
     ;
     const cli_result_tokens = try lexer.tokenize(std.testing.allocator, cli_result_source);
     defer std.testing.allocator.free(cli_result_tokens);
     try std.testing.expectEqual(Target.unit_result_tag, try target_for_tokens(std.testing.allocator, cli_result_tokens));
 
     const scalar_result_source =
-        \\result_run = @host_func("do:result-probe@0.1.0", "run", (i32) -> Result<i32, i32>)
+        \\result_run = @host_async_func("do:result-probe@0.1.0", "run", (i32) -> Result<i32, i32>)
     ;
     const scalar_result_tokens = try lexer.tokenize(std.testing.allocator, scalar_result_source);
     defer std.testing.allocator.free(scalar_result_tokens);
     try std.testing.expectEqual(Target.scalar_result, try target_for_tokens(std.testing.allocator, scalar_result_tokens));
 
     const writer_source =
-        \\stdout_write = @host_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
+        \\stdout_write = @host_async_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
     ;
     const writer_tokens = try lexer.tokenize(std.testing.allocator, writer_source);
     defer std.testing.allocator.free(writer_tokens);
@@ -1288,8 +1295,8 @@ test "generic Component async target classifies registered descriptor shapes" {
 
 test "generic Component async target classifies the pinned batched list resource producer" {
     const source =
-        \\make_ticket = @host("do:g6-2-batched-list-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
-        \\consume = @host_func("do:g6-2-batched-list-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
+        \\make_ticket = @host_func("do:g6-2-batched-list-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-batched-list-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
         \\Ticket = @wasi_resource("do:g6-2-batched-list-producer/source/ticket", { .id i64 })
         \\ResourceEntry { .ticket Ticket }
         \\ProducerError error = Io | Pipe | InvalidMode
@@ -1307,8 +1314,8 @@ test "generic Component async target classifies the pinned batched list resource
 
 test "generic Component async target rejects a non-fixed batched producer before emission" {
     const source =
-        \\make_ticket = @host("do:g6-2-batched-list-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
-        \\consume = @host_func("do:g6-2-batched-list-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
+        \\make_ticket = @host_func("do:g6-2-batched-list-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-batched-list-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
         \\Ticket = @wasi_resource("do:g6-2-batched-list-producer/source/ticket", { .id i64 })
         \\ResourceEntry { .ticket Ticket }
         \\ProducerError error = Io | Pipe | InvalidMode
@@ -1330,8 +1337,8 @@ test "generic Component async target rejects a non-fixed batched producer before
 
 test "generic Component async target classifies the bounded stream mirror" {
     const source =
-        \\probe_read = @host("do:stream-probe@0.1.0", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, ProbeError>>>)
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\probe_read = @host_func("do:stream-probe@0.1.0", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, ProbeError>>>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async produce() -> Result<nil, ProbeError> {
@@ -1366,7 +1373,7 @@ test "generic Component async target classifies the bounded stream mirror" {
 
 test "generic Component async target rejects unlowered HTTP descriptor" {
     const source =
-        \\send = @host_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
@@ -1375,7 +1382,7 @@ test "generic Component async target rejects unlowered HTTP descriptor" {
 
 test "generic Component async target classifies the pinned CLI stdin stream acquisition" {
     const source =
-        \\stdin_read = @host("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
+        \\stdin_read = @host_func("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
@@ -1386,7 +1393,7 @@ test "generic Component async target classifies the pinned CLI stdin stream acqu
 
 test "generic Component async target classifies the pinned read-directory record stream" {
     const source =
-        \\.host_read_directory = @host("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
+        \\.host_read_directory = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
@@ -1432,7 +1439,7 @@ test "generic Component async target classifies pinned filesystem descriptor get
 
 test "filesystem descriptor get-flags target rejects a second await" {
     const source =
-        \\get_flags = @host("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-flags", (Dir) -> u8 | FlagsError)
+        \\get_flags = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-flags", (Dir) -> u8 | FlagsError)
         \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
         \\FlagsError error = Io | NoEntry
         \\run(directory Dir) -> u8 | FlagsError {
@@ -1457,7 +1464,7 @@ test "filesystem descriptor sync target rejects a second await" {
 
 test "filesystem descriptor get-type target rejects a second await" {
     const source =
-        \\get_type = @host("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-type", (Dir) -> DescriptorType | FileError)
+        \\get_type = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-type", (Dir) -> DescriptorType | FileError)
         \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
         \\DescriptorType = Unknown | Directory | RegularFile
         \\FileError error = Io | NoEntry
@@ -1476,7 +1483,7 @@ test "filesystem descriptor get-type target rejects a second await" {
 
 test "generic Component async target rejects a non-pinned read-directory descriptor" {
     const source =
-        \\.host_read_directory = @host("do:filesystem/types@0.3.0", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
+        \\.host_read_directory = @host_func("do:filesystem/types@0.3.0", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
@@ -1486,7 +1493,7 @@ test "generic Component async target rejects a non-pinned read-directory descrip
 
 test "generic Component async target classifies a descriptor-owned stream reader" {
     const source =
-        \\probe_read = @host("do:stream-probe@0.1.0", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, ProbeError>>>)
+        \\probe_read = @host_func("do:stream-probe@0.1.0", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, ProbeError>>>)
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
@@ -1682,7 +1689,7 @@ test "v2 promotion leaves default variant dispatch on v1" {
 
 test "HTTP WIT package selection requires the exact service plan" {
     const http_source =
-        \\send = @host_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpHeaders = @wasi_resource("http/types/fields", { .id i64 })
         \\HttpRequestOptions = @wasi_resource("http/types/request-options", { .id i64 })
         \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
@@ -1697,7 +1704,7 @@ test "HTTP WIT package selection requires the exact service plan" {
     try std.testing.expect(try requires_http_wit_package(std.testing.allocator, http_tokens));
 
     const clocks_source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
     ;
     const clocks_tokens = try lexer.tokenize(std.testing.allocator, clocks_source);
     defer std.testing.allocator.free(clocks_tokens);
@@ -1706,7 +1713,7 @@ test "HTTP WIT package selection requires the exact service plan" {
 
 test "generic Component async target rejects scalar control flow without a lowering" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
         \\async run(how_long u64) -> nil {
         \\    pending Future<nil> = wait_for(how_long)
         \\    if true {
@@ -1728,7 +1735,7 @@ test "generic Component async target rejects scalar control flow without a lower
 
 test "generic Component async target admits the exact host-driven Future slice" {
     const source =
-        \\work = @host("do:generic-async-probe/host@0.1.0", "work", () -> nil)
+        \\work = @host_async_func("do:generic-async-probe/host@0.1.0", "work", () -> nil)
         \\run() -> nil {
         \\    ready Future<nil> = @async(work())
         \\    @await(ready)
@@ -1809,7 +1816,7 @@ fn generated_scalar_test_graph(allocator: std.mem.Allocator) !module_graph_types
 
 test "generic Component async target rejects an async root declaration" {
     const source =
-        \\work = @host("do:generic-async-probe/host@0.1.0", "work", () -> nil)
+        \\work = @host_async_func("do:generic-async-probe/host@0.1.0", "work", () -> nil)
         \\async run() -> nil {
         \\    ready Future<nil> = @async(work())
         \\    @await(ready)
@@ -1831,7 +1838,7 @@ test "generic Component async target rejects an async root declaration" {
 
 test "generic Component async target emits stable host and async metadata" {
     const source =
-        \\work = @host("do:generic-async-probe/host@0.1.0", "work", () -> nil)
+        \\work = @host_async_func("do:generic-async-probe/host@0.1.0", "work", () -> nil)
         \\
         \\run() -> nil {
         \\    ready Future<nil> = @async(work())
@@ -1909,8 +1916,8 @@ test "generic runtime async target emits reachable pending and cancel paths" {
 
 test "generic Component async target accepts the registered scalar if probe" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
-        \\wait_until = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_until = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
         \\async run(input u64) -> nil {
         \\    if @eq(input, 27815) {
         \\        first Future<nil> = wait_for(input)
@@ -1936,7 +1943,7 @@ test "generic Component async target accepts the registered scalar if probe" {
 
 test "generic Component async target emits the pinned CLI stdin stream operations" {
     const source =
-        \\stdin_read = @host("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
+        \\stdin_read = @host_func("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
         \\StdinError error = Io | IllegalByteSequence | Pipe
         \\async run() -> nil {
         \\    handles Tuple<Stream<u8>, Future<Result<nil, StdinError>>> = stdin_read()
@@ -1978,7 +1985,7 @@ test "generic Component async target emits the pinned CLI stdin stream operation
 
 test "generic Component async target emits a descriptor-owned stream reader" {
     const source =
-        \\probe_read = @host("do:stream-probe@0.1.0", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, ProbeError>>>)
+        \\probe_read = @host_func("do:stream-probe@0.1.0", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, ProbeError>>>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\async run() -> nil {
         \\    handles Tuple<Stream<u8>, Future<Result<nil, ProbeError>>> = probe_read()
@@ -2009,7 +2016,7 @@ test "generic Component async target emits a descriptor-owned stream reader" {
 
 test "generic Component async writer exposes WIT and emits WAT lowering" {
     const source =
-        \\stdout_write = @host_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
+        \\stdout_write = @host_async_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
         \\async write(writer StreamWriter<u8>) -> Result<nil, StdoutError> {
         \\    defer close(writer)
         \\    pending Future<Result<nil, StdoutError>> = stdout_write(writer)
@@ -2038,7 +2045,7 @@ test "generic Component async writer exposes WIT and emits WAT lowering" {
 
 test "generic Component async target routes clocks, HTTP service, and private resource Result emitters" {
     const scalar_source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
         \\async run(how_long u64) -> nil {
         \\    pending Future<nil> = wait_for(how_long)
         \\    await(pending)
@@ -2054,7 +2061,7 @@ test "generic Component async target routes clocks, HTTP service, and private re
     try std.testing.expect(std.mem.indexOf(u8, scalar_wat, "[async-lower]wait-for") != null);
 
     const http_source =
-        \\send = @host_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpHeaders = @wasi_resource("http/types/fields", { .id i64 })
         \\HttpRequestOptions = @wasi_resource("http/types/request-options", { .id i64 })
         \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
@@ -2079,7 +2086,7 @@ test "generic Component async target routes clocks, HTTP service, and private re
     try std.testing.expect(std.mem.indexOf(u8, http_wit, "interface client") != null);
 
     const resource_source =
-        \\dispatch = @host_func("do:resource-probe/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\dispatch = @host_async_func("do:resource-probe/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpRequest = @wasi_resource("do:resource-probe/http/request", { .id i64 })
         \\HttpResponse = @wasi_resource("do:resource-probe/http/response", { .id i64 })
         \\HttpError error = HttpFailure
@@ -2101,7 +2108,7 @@ test "generic Component async target routes clocks, HTTP service, and private re
     try std.testing.expect(std.mem.indexOf(u8, resource_wit, "world async-resource-probe") != null);
 
     const owned_error_source =
-        \\send = @host_func("do:resource-probe-owned-error/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpErrorResource>)
+        \\send = @host_async_func("do:resource-probe-owned-error/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpErrorResource>)
         \\HttpRequest = @wasi_resource("do:resource-probe-owned-error/http/request", { .id i64 })
         \\HttpResponse = @wasi_resource("do:resource-probe-owned-error/http/response", { .id i64 })
         \\HttpErrorResource = @wasi_resource("do:resource-probe-owned-error/http/error-resource", { .id i64 })
@@ -2126,8 +2133,8 @@ test "generic Component async target routes clocks, HTTP service, and private re
 
 test "generic Component async target routes the HTTP response status probe" {
     const source =
-        \\get_status = @host("wasi:http/types@0.3.0-rc-2025-09-16", "response.get-status-code", (HttpResponse) -> u16)
-        \\drop_response = @host("wasi:http/types@0.3.0-rc-2025-09-16", "response.drop", (HttpResponse) -> nil)
+        \\get_status = @host_func("wasi:http/types@0.3.0-rc-2025-09-16", "response.get-status-code", (HttpResponse) -> u16)
+        \\drop_response = @host_func("wasi:http/types@0.3.0-rc-2025-09-16", "response.drop", (HttpResponse) -> nil)
         \\HttpResponse = @wasi_resource("http/types/response", { .id i64 })
         \\run(response HttpResponse) -> u16 {
         \\    status u16 = get_status(response)
@@ -2154,7 +2161,7 @@ test "generic Component async target routes the HTTP response status probe" {
 
 test "generic Component async target routes direct HTTP client send" {
     const source =
-        \\send = @host_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpHeaders = @wasi_resource("http/types/fields", { .id i64 })
         \\HttpRequestOptions = @wasi_resource("http/types/request-options", { .id i64 })
         \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })

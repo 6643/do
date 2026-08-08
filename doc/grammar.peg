@@ -73,9 +73,12 @@ ReadonlyImport   <- '@lib' '(' StringModuleFile InlineCommaSep ReadonlyIdent ')'
 ValueImport      <- '@lib' '(' StringModuleFile InlineCommaSep ValueImportTarget ')'
 ValueImportTarget <- !ReservedName LowerIdent
 HostImport       <- EnvHostImport / WasiHostImport
-// Unified host import: @host(locator, member, sig). No legacy @env / @wasi_func.
-EnvHostImport    <- '@host' '(' '"env"' InlineCommaSep StringHostName InlineCommaSep EnvHostSig ')'
-WasiHostImport   <- '@host' '(' StringWasiLocator InlineCommaSep StringWasiMember InlineCommaSep WasiHostSig ')'
+// Effect-specific host markers. The semantic registry must still agree with
+// the marker: @host_func is ordinary WIT func, @host_async_func is WIT async func.
+// Legacy @host and @host_sync_func are intentionally not grammar productions.
+HostMarker       <- '@host_func' / '@host_async_func'
+EnvHostImport    <- HostMarker '(' '"env"' InlineCommaSep StringHostName InlineCommaSep EnvHostSig ')'
+WasiHostImport   <- HostMarker '(' StringWasiLocator InlineCommaSep StringWasiMember InlineCommaSep WasiHostSig ')'
 // Declarative type bindings (resource shell / record mirror). Host imports stay in import prefix.
 WasiResourceDecl <- TypeName '=' '@wasi_resource' '(' StringWitTarget InlineCommaSep '{' StructField* '}' ')'
 WasiRecordDecl   <- TypeName '=' '@wasi_record' '(' StringWitTarget InlineCommaSep '{' StructField* '}' ')'

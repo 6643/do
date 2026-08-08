@@ -527,7 +527,7 @@ const cli_stream_stdin_core_wat =
 
 test "stream reader lowering derives the bounded read count and export name" {
     const source =
-        \\stdin_read = @host("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
+        \\stdin_read = @host_func("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
         \\StdinError error = Io | IllegalByteSequence | Pipe
         \\read_once() -> nil {
         \\    handles Tuple<Stream<u8>, Future<Result<nil, StdinError>>> = stdin_read()
@@ -563,7 +563,7 @@ test "stream reader lowering derives the bounded read count and export name" {
 
 test "stream reader realloc accounts byte budget transactionally" {
     const source =
-        \\stdin_read = @host("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
+        \\stdin_read = @host_func("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
         \\StdinError error = Io | IllegalByteSequence | Pipe
         \\read_once() -> nil {
         \\    handles Tuple<Stream<u8>, Future<Result<nil, StdinError>>> = stdin_read()

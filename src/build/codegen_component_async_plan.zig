@@ -271,7 +271,7 @@ fn find_generic_async_host_binding(tokens: []const lexer.Token) ?GenericAsyncHos
     var idx: usize = 0;
     while (idx + 14 < tokens.len) : (idx += 1) {
         if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or
-            !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host") or
+            !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host_async_func") or
             !tok_eq(tokens[idx + 4], "(") or !tok_eq(tokens[idx + 6], ",") or
             !tok_eq(tokens[idx + 8], ",") or !tok_eq(tokens[idx + 9], "(") or
             !tok_eq(tokens[idx + 10], ")") or !tok_eq(tokens[idx + 11], "-") or
@@ -346,7 +346,7 @@ const GeneratedHostBinding = struct {
 
 fn parse_generated_host_binding_at(tokens: []const lexer.Token, idx: usize) ?GeneratedHostBinding {
     if (idx + 17 >= tokens.len or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or
-        !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host") or
+        !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host_func") or
         !tok_eq(tokens[idx + 4], "(") or tokens[idx + 5].kind != .string or
         !tok_eq(tokens[idx + 6], ",") or tokens[idx + 7].kind != .string or
         !tok_eq(tokens[idx + 8], ",") or !tok_eq(tokens[idx + 9], "(") or
@@ -377,7 +377,7 @@ fn parse_generated_lib_binding_at(tokens: []const lexer.Token, idx: usize) ?Gene
 
 fn parse_generic_async_host_binding_at(tokens: []const lexer.Token, idx: usize) ?GenericAsyncHostBinding {
     if (idx + 14 >= tokens.len or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or
-        !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host") or
+        !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host_async_func") or
         !tok_eq(tokens[idx + 4], "(") or !tok_eq(tokens[idx + 6], ",") or
         !tok_eq(tokens[idx + 8], ",") or !tok_eq(tokens[idx + 9], "(") or
         !tok_eq(tokens[idx + 10], ")") or !tok_eq(tokens[idx + 11], "-") or
@@ -1468,7 +1468,7 @@ fn find_stream_writer_host_binding(tokens: []const lexer.Token, registry: p3_asy
     var idx: usize = 0;
     while (idx + 23 < tokens.len) : (idx += 1) {
         if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or !tok_eq(tokens[idx + 2], "@") or
-            (!tok_eq(tokens[idx + 3], "host") and !tok_eq(tokens[idx + 3], "host_func")) or !tok_eq(tokens[idx + 4], "(") or
+            !tok_eq(tokens[idx + 3], "host_async_func") or !tok_eq(tokens[idx + 4], "(") or
             !tok_eq(tokens[idx + 6], ",") or !tok_eq(tokens[idx + 8], ",") or !tok_eq(tokens[idx + 9], "(") or
             !tok_eq(tokens[idx + 10], "StreamWriter") or !tok_eq(tokens[idx + 11], "<") or !tok_eq(tokens[idx + 12], "u8") or
             !tok_eq(tokens[idx + 13], ">") or !tok_eq(tokens[idx + 14], ")") or !tok_eq(tokens[idx + 15], "-") or
@@ -1493,7 +1493,7 @@ fn find_stream_mirror_sink_host_binding(tokens: []const lexer.Token, registry: p
     var idx: usize = 0;
     while (idx + 23 < tokens.len) : (idx += 1) {
         if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or !tok_eq(tokens[idx + 2], "@") or
-            (!tok_eq(tokens[idx + 3], "host") and !tok_eq(tokens[idx + 3], "host_func")) or !tok_eq(tokens[idx + 4], "(") or
+            !tok_eq(tokens[idx + 3], "host_async_func") or !tok_eq(tokens[idx + 4], "(") or
             !tok_eq(tokens[idx + 6], ",") or !tok_eq(tokens[idx + 8], ",") or !tok_eq(tokens[idx + 9], "(") or
             !tok_eq(tokens[idx + 10], "StreamWriter") or !tok_eq(tokens[idx + 11], "<") or !tok_eq(tokens[idx + 12], "u8") or
             !tok_eq(tokens[idx + 13], ">") or !tok_eq(tokens[idx + 14], ")") or !tok_eq(tokens[idx + 15], "-") or
@@ -1955,7 +1955,7 @@ fn find_stream_u8_host_binding(tokens: []const lexer.Token, registry: p3_async_m
     var idx: usize = 0;
     while (idx + 30 < tokens.len) : (idx += 1) {
         if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or !tok_eq(tokens[idx + 2], "@") or
-            (!tok_eq(tokens[idx + 3], "host") and !tok_eq(tokens[idx + 3], "host_func")) or !tok_eq(tokens[idx + 4], "(")) continue;
+            !tok_eq(tokens[idx + 3], "host_func") or !tok_eq(tokens[idx + 4], "(")) continue;
         const locator = string_token_body(tokens[idx + 5]) orelse continue;
         const member = string_token_body(tokens[idx + 7]) orelse continue;
         if (!tok_eq(tokens[idx + 6], ",") or !tok_eq(tokens[idx + 8], ",") or !stream_u8_host_signature_at(tokens, idx)) continue;
@@ -1978,7 +1978,7 @@ fn find_stream_mirror_source_host_binding(tokens: []const lexer.Token, registry:
     var idx: usize = 0;
     while (idx + 30 < tokens.len) : (idx += 1) {
         if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or !tok_eq(tokens[idx + 2], "@") or
-            (!tok_eq(tokens[idx + 3], "host") and !tok_eq(tokens[idx + 3], "host_func")) or !tok_eq(tokens[idx + 4], "(")) continue;
+            !tok_eq(tokens[idx + 3], "host_func") or !tok_eq(tokens[idx + 4], "(")) continue;
         const locator = string_token_body(tokens[idx + 5]) orelse continue;
         const member = string_token_body(tokens[idx + 7]) orelse continue;
         if (!tok_eq(tokens[idx + 6], ",") or !tok_eq(tokens[idx + 8], ",") or
@@ -2375,7 +2375,7 @@ fn find_host_binding(tokens: []const lexer.Token, name: []const u8) ?HostBinding
 }
 
 fn parse_host_binding_at(tokens: []const lexer.Token, idx: usize) ?HostBinding {
-    if (idx + 13 >= tokens.len or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host_func") or !tok_eq(tokens[idx + 4], "(")) return null;
+    if (idx + 13 >= tokens.len or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or !tok_eq(tokens[idx + 2], "@") or !tok_eq(tokens[idx + 3], "host_async_func") or !tok_eq(tokens[idx + 4], "(")) return null;
     const locator = string_token_body(tokens[idx + 5]) orelse return null;
     if (!tok_eq(tokens[idx + 6], ",")) return null;
     const member = string_token_body(tokens[idx + 7]) orelse return null;
@@ -2555,8 +2555,8 @@ fn token_ranges_equal(tokens: []const lexer.Token, left_start: usize, left_end: 
 
 test "ComponentAsyncFunctionPlan collects sequential registered scalar awaits" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
-        \\wait_until = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_until = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-until", (u64) -> nil)
         \\async run(how_long u64) -> nil {
         \\    first Future<nil> = wait_for(how_long)
         \\    await(first)
@@ -2586,7 +2586,7 @@ test "ComponentAsyncFunctionPlan collects sequential registered scalar awaits" {
 
 test "ComponentAsyncFunctionPlan accepts ordinary declarations with canonical await" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
         \\run(how_long u64) -> nil {
         \\    pending Future<nil> = wait_for(how_long)
         \\    @await(pending)
@@ -2609,7 +2609,7 @@ test "ComponentAsyncFunctionPlan accepts ordinary declarations with canonical aw
 
 test "ComponentAsyncFunctionPlan accepts ordinary declarations with canonical cancel" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
         \\run(how_long u64) -> nil {
         \\    pending Future<nil> = wait_for(how_long)
         \\    @cancel(pending)
@@ -2630,7 +2630,7 @@ test "ComponentAsyncFunctionPlan accepts ordinary declarations with canonical ca
 
 test "ComponentAsyncFunctionPlan collects a private resource Result await" {
     const source =
-        \\send = @host_func("do:resource-probe/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("do:resource-probe/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpRequest = @wasi_resource("do:resource-probe/http/request", { .id i64 })
         \\HttpResponse = @wasi_resource("do:resource-probe/http/response", { .id i64 })
         \\HttpError error = HttpFailure
@@ -2656,7 +2656,7 @@ test "ComponentAsyncFunctionPlan collects a private resource Result await" {
 
 test "ComponentAsyncFunctionPlan collects the private owned-error resource Result await" {
     const source =
-        \\send = @host_func("do:resource-probe-owned-error/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpErrorResource>)
+        \\send = @host_async_func("do:resource-probe-owned-error/http@0.1.0", "send", (HttpRequest) -> Result<HttpResponse, HttpErrorResource>)
         \\HttpRequest = @wasi_resource("do:resource-probe-owned-error/http/request", { .id i64 })
         \\HttpResponse = @wasi_resource("do:resource-probe-owned-error/http/response", { .id i64 })
         \\HttpErrorResource = @wasi_resource("do:resource-probe-owned-error/http/error-resource", { .id i64 })
@@ -2682,7 +2682,7 @@ test "ComponentAsyncFunctionPlan collects the private owned-error resource Resul
 
 test "ComponentAsyncFunctionPlan carries canonical scalar Result payload metadata" {
     const source =
-        \\result_run = @host_func("do:result-probe@0.1.0", "run", (i32) -> Result<i32,i32>)
+        \\result_run = @host_async_func("do:result-probe@0.1.0", "run", (i32) -> Result<i32,i32>)
         \\async run(value i32) -> Result<i32,i32> {
         \\    pending Future<Result<i32,i32>> = result_run(value)
         \\    return await(pending)
@@ -2711,7 +2711,7 @@ test "ComponentAsyncFunctionPlan carries canonical scalar Result payload metadat
 
 test "ComponentAsyncFunctionPlan rejects a scalar return with trailing source" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
         \\async run(how_long u64) -> nil {
         \\    pending Future<nil> = wait_for(how_long)
         \\    await(pending)
@@ -2734,7 +2734,7 @@ test "ComponentAsyncFunctionPlan rejects a scalar return with trailing source" {
 
 test "ComponentAsyncFunctionPlan captures a post-await scalar computation" {
     const source =
-        \\wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+        \\wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
         \\async run(input u64) -> nil {
         \\    deadline u64 = @add(input, 1)
         \\    pending Future<nil> = wait_for(deadline)
@@ -2762,7 +2762,7 @@ test "ComponentAsyncFunctionPlan captures a post-await scalar computation" {
 
 test "StreamU8AcquirePlan records the pinned CLI stdin acquisition sequence" {
     const source =
-        \\stdin_read = @host("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
+        \\stdin_read = @host_func("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
         \\StdinError error = Io | IllegalByteSequence | Pipe
         \\run() -> nil {
         \\    handles Tuple<Stream<u8>, Future<Result<nil, StdinError>>> = stdin_read()
@@ -2798,7 +2798,7 @@ test "StreamU8AcquirePlan records the pinned CLI stdin acquisition sequence" {
 
 test "stream reader acquisition prefix stops before consumer-owned terminal work" {
     const source =
-        \\stdin_read = @host("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
+        \\stdin_read = @host_func("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
         \\StdinError error = Io | IllegalByteSequence | Pipe
         \\async run() -> Result<HttpResponse, HttpError> {
         \\    source Tuple<Stream<u8>, Future<Result<nil, StdinError>>> = stdin_read()
@@ -2823,7 +2823,7 @@ test "stream reader acquisition prefix stops before consumer-owned terminal work
 
 test "stream reader acquisition prefix respects its end boundary" {
     const source =
-        \\stdin_read = @host("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
+        \\stdin_read = @host_func("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
         \\StdinError error = Io | IllegalByteSequence | Pipe
         \\async run() -> Result<HttpResponse, HttpError> {
         \\    source Tuple<Stream<u8>, Future<Result<nil, StdinError>>> = stdin_read()
@@ -2855,7 +2855,7 @@ test "stream reader acquisition prefix respects its end boundary" {
 
 test "StreamWriterPlan carries descriptor operations and the A forwarding boundary" {
     const source =
-        \\stdout_write = @host_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
+        \\stdout_write = @host_async_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
         \\StdoutError error = Io | IllegalByteSequence | Pipe
         \\async write(writer StreamWriter<u8>) -> Result<nil, StdoutError> {
         \\    defer close(writer)
@@ -2906,7 +2906,7 @@ test "guest producer shape stops after an explicit writer close" {
 
 test "StreamWriterPlan identifies a guest producer endpoint" {
     const source =
-        \\stdout_write = @host_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
+        \\stdout_write = @host_async_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
         \\StdoutError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async produce() -> Result<nil, StdoutError> {
@@ -2943,7 +2943,7 @@ test "StreamWriterPlan identifies a guest producer endpoint" {
 
 test "StreamWriterPlan accepts a producer lease transferred through an async helper" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async write_stream(writer StreamWriter<u8>) -> Result<nil, ProbeError> {
@@ -2977,7 +2977,7 @@ test "StreamWriterPlan accepts a producer lease transferred through an async hel
 
 test "StreamWriterPlan accepts writes performed by the lease helper" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async write_stream(writer StreamWriter<u8>) -> Result<nil, ProbeError> {
@@ -3014,7 +3014,7 @@ test "StreamWriterPlan accepts writes performed by the lease helper" {
 
 test "StreamWriterPlan accepts a two-hop producer lease transfer" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(writer StreamWriter<u8>) -> Result<nil, ProbeError> {
@@ -3055,7 +3055,7 @@ test "StreamWriterPlan accepts a two-hop producer lease transfer" {
 
 test "StreamWriterPlan rejects a third producer lease forwarding hop" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(writer StreamWriter<u8>) -> Result<nil, ProbeError> {
@@ -3092,7 +3092,7 @@ test "StreamWriterPlan rejects a third producer lease forwarding hop" {
 
 test "StreamWriterPlan accepts a parameterized producer lease helper" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
@@ -3131,7 +3131,7 @@ test "StreamWriterPlan accepts a parameterized producer lease helper" {
 
 test "StreamWriterPlan accepts reordered parameterized producer helper" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(count u64, writer StreamWriter<u8>, value u8) -> Result<nil, ProbeError> {
@@ -3170,7 +3170,7 @@ test "StreamWriterPlan accepts reordered parameterized producer helper" {
 
 test "StreamWriterPlan rejects literal parameterized producer helper arguments" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
@@ -3195,7 +3195,7 @@ test "StreamWriterPlan rejects literal parameterized producer helper arguments" 
 
 test "StreamWriterPlan accepts a parameterized producer forwarding helper" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
@@ -3238,7 +3238,7 @@ test "StreamWriterPlan accepts a parameterized producer forwarding helper" {
 
 test "StreamWriterPlan accepts reordered parameterized forwarding helper arguments" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(value u8, writer StreamWriter<u8>, count u64) -> Result<nil, ProbeError> {
@@ -3281,7 +3281,7 @@ test "StreamWriterPlan accepts reordered parameterized forwarding helper argumen
 
 test "StreamWriterPlan accepts a parameterized producer with two forwarding hops" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
@@ -3326,7 +3326,7 @@ test "StreamWriterPlan accepts a parameterized producer with two forwarding hops
 
 test "StreamWriterPlan accepts a third parameterized producer forwarding hop" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
@@ -3375,7 +3375,7 @@ test "StreamWriterPlan accepts a third parameterized producer forwarding hop" {
 
 test "StreamWriterPlan accepts a fourth parameterized producer forwarding hop" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
@@ -3428,7 +3428,7 @@ test "StreamWriterPlan accepts a fourth parameterized producer forwarding hop" {
 
 test "StreamWriterPlan accepts a fifth parameterized producer forwarding hop" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
@@ -3485,7 +3485,7 @@ test "StreamWriterPlan accepts a fifth parameterized producer forwarding hop" {
 
 test "StreamWriterPlan rejects a sixth parameterized producer forwarding hop" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
@@ -3542,7 +3542,7 @@ test "StreamWriterPlan rejects a sixth parameterized producer forwarding hop" {
 
 test "StreamWriterPlan rejects reordered parameterized producer forwarding arguments" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\async finish_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {}
         \\async forward_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
@@ -3566,7 +3566,7 @@ test "StreamWriterPlan rejects reordered parameterized producer forwarding argum
 
 test "StreamWriterPlan accepts a dynamic countdown producer" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async produce(count u64) -> Result<nil, ProbeError> {
@@ -3603,7 +3603,7 @@ test "StreamWriterPlan accepts a dynamic countdown producer" {
 
 test "StreamWriterPlan accepts a parameterized dynamic countdown producer" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async produce(count u64, value u8) -> Result<nil, ProbeError> {
@@ -3638,7 +3638,7 @@ test "StreamWriterPlan accepts a parameterized dynamic countdown producer" {
 
 test "StreamWriterPlan accepts one helper transfer with branch terminal" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
@@ -3680,7 +3680,7 @@ test "StreamWriterPlan accepts one helper transfer with branch terminal" {
 
 test "StreamWriterPlan accepts branch terminal with canonical ordinary declarations" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\finish_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
@@ -3722,7 +3722,7 @@ test "StreamWriterPlan accepts branch terminal with canonical ordinary declarati
 
 test "StreamWriterPlan rejects a parameterized producer that ignores its value parameter" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async produce(count u64, value u8) -> Result<nil, ProbeError> {
@@ -3753,7 +3753,7 @@ test "StreamWriterPlan rejects a parameterized producer that ignores its value p
 
 test "StreamWriterPlan rejects a dynamic producer without a zero pre-guard" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async produce(count u64) -> Result<nil, ProbeError> {
@@ -3781,7 +3781,7 @@ test "StreamWriterPlan rejects a dynamic producer without a zero pre-guard" {
 
 test "StreamWriterPlan accepts a bound u8 value in a guest producer write" {
     const source =
-        \\stdout_write = @host_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
+        \\stdout_write = @host_async_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
         \\StdoutError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async produce() -> Result<nil, StdoutError> {
@@ -3809,7 +3809,7 @@ test "StreamWriterPlan accepts a bound u8 value in a guest producer write" {
 
 test "StreamWriterPlan preserves a three-value source sequence" {
     const source =
-        \\stdout_write = @host_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
+        \\stdout_write = @host_async_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
         \\StdoutError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async produce() -> Result<nil, StdoutError> {
@@ -3844,7 +3844,7 @@ test "StreamWriterPlan preserves a three-value source sequence" {
 
 test "StreamWriterPlan rejects a source sequence beyond the bounded limit" {
     const source =
-        \\stdout_write = @host_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
+        \\stdout_write = @host_async_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
         \\StdoutError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async produce() -> Result<nil, StdoutError> {
@@ -3901,8 +3901,8 @@ test "StreamWriterPlan rejects a source sequence beyond the bounded limit" {
 
 test "StreamMirrorPlan accepts the bounded source to writer loop" {
     const source =
-        \\probe_read = @host("do:stream-probe@0.1.0", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, ProbeError>>>)
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\probe_read = @host_func("do:stream-probe@0.1.0", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, ProbeError>>>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\produce() -> Result<nil, ProbeError> {
@@ -3948,8 +3948,8 @@ test "StreamMirrorPlan accepts the bounded source to writer loop" {
 
 test "StreamMirrorPlan rejects a dynamic mirror bound" {
     const source =
-        \\probe_read = @host("do:stream-probe@0.1.0", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, ProbeError>>>)
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\probe_read = @host_func("do:stream-probe@0.1.0", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, ProbeError>>>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async produce(limit u64) -> Result<nil, ProbeError> {

@@ -2621,7 +2621,7 @@ test "stream writer queue pump waits for each capacity zero rendezvous" {
 
 test "component writer lowering emits the registered stream ABI" {
     const source =
-        \\stdout_write = @host_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
+        \\stdout_write = @host_async_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
         \\async write(writer StreamWriter<u8>) -> Result<nil, StdoutError> {
         \\    defer close(writer)
         \\    pending Future<Result<nil, StdoutError>> = stdout_write(writer)
@@ -2657,7 +2657,7 @@ test "component writer lowering emits the registered stream ABI" {
 
 test "component writer WIT follows the registered descriptor package" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\async write(writer StreamWriter<u8>) -> Result<nil, ProbeError> {
         \\    defer close(writer)
         \\    pending Future<Result<nil, ProbeError>> = sink_write(writer)
@@ -2678,7 +2678,7 @@ test "component writer WIT follows the registered descriptor package" {
 
 test "component writer lowering emits a bounded FIFO frame and stream write path" {
     const source =
-        \\stdout_write = @host_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
+        \\stdout_write = @host_async_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
         \\async write(writer StreamWriter<u8>) -> Result<nil, StdoutError> {
         \\    defer close(writer)
         \\    pending Future<Result<nil, StdoutError>> = stdout_write(writer)
@@ -2715,7 +2715,7 @@ test "component writer lowering emits a bounded FIFO frame and stream write path
 
 test "component writer WIT gives guest producers a parameterless export" {
     const source =
-        \\stdout_write = @host_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
+        \\stdout_write = @host_async_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
         \\StdoutError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async produce() -> Result<nil, StdoutError> {
@@ -2743,7 +2743,7 @@ test "component writer WIT gives guest producers a parameterless export" {
 
 test "component writer WIT gives dynamic producers a u64 count export" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async produce(count u64) -> Result<nil, ProbeError> {
@@ -2775,7 +2775,7 @@ test "component writer WIT gives dynamic producers a u64 count export" {
 
 test "component writer WIT gives parameterized dynamic producers a u64 and u8 export" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async produce(count u64, value u8) -> Result<nil, ProbeError> {
@@ -2806,7 +2806,7 @@ test "component writer WIT gives parameterized dynamic producers a u64 and u8 ex
 
 test "component writer WIT names the producer root after an async helper transfer" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async write_stream(writer StreamWriter<u8>) -> Result<nil, ProbeError> {
@@ -2838,7 +2838,7 @@ test "component writer WIT names the producer root after an async helper transfe
 
 test "component writer lowering records async helper lease transfer" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async write_stream(writer StreamWriter<u8>) -> Result<nil, ProbeError> {
@@ -2873,7 +2873,7 @@ test "component writer lowering records async helper lease transfer" {
 
 test "component writer lowering pumps values owned by the async helper" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async write_stream(writer StreamWriter<u8>) -> Result<nil, ProbeError> {
@@ -2909,7 +2909,7 @@ test "component writer lowering pumps values owned by the async helper" {
 
 test "component writer lowering preserves a two-hop async helper lease" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(writer StreamWriter<u8>) -> Result<nil, ProbeError> {
@@ -2950,7 +2950,7 @@ test "component writer lowering preserves a two-hop async helper lease" {
 
 test "guest producer lowering waits on the writable stream event" {
     const source =
-        \\stdout_write = @host_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
+        \\stdout_write = @host_async_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
         \\StdoutError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async produce() -> Result<nil, StdoutError> {
@@ -3010,7 +3010,7 @@ test "guest producer lowering waits on the writable stream event" {
 
 test "dynamic guest producer lowering emits an i64 countdown pump" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async produce(count u64) -> Result<nil, ProbeError> {
@@ -3054,7 +3054,7 @@ test "dynamic guest producer lowering emits an i64 countdown pump" {
 
 test "parameterized dynamic producer lowering forwards the u8 value" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async produce(count u64, value u8) -> Result<nil, ProbeError> {
@@ -3091,7 +3091,7 @@ test "parameterized dynamic producer lowering forwards the u8 value" {
 
 test "parameterized producer lowering emits a branch terminal abort" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
@@ -3143,7 +3143,7 @@ test "parameterized producer lowering emits a branch terminal abort" {
 
 test "parameterized helper producer lowering reuses the root countdown export" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
@@ -3187,7 +3187,7 @@ test "parameterized helper producer lowering reuses the root countdown export" {
 
 test "reordered parameterized helper producer lowering keeps semantic frame mapping" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(value u8, writer StreamWriter<u8>, count u64) -> Result<nil, ProbeError> {
@@ -3236,7 +3236,7 @@ test "reordered parameterized helper producer lowering keeps semantic frame mapp
 
 test "parameterized forwarding helper producer keeps one root countdown export" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
@@ -3284,7 +3284,7 @@ test "parameterized forwarding helper producer keeps one root countdown export" 
 
 test "parameterized two-hop forwarding helper producer keeps one root countdown export" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
@@ -3334,7 +3334,7 @@ test "parameterized two-hop forwarding helper producer keeps one root countdown 
 
 test "parameterized three-hop forwarding helper producer keeps one root countdown export" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
@@ -3389,7 +3389,7 @@ test "parameterized three-hop forwarding helper producer keeps one root countdow
 
 test "parameterized four-hop forwarding helper producer keeps one root countdown export" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
@@ -3450,7 +3450,7 @@ test "parameterized four-hop forwarding helper producer keeps one root countdown
 
 test "parameterized five-hop forwarding helper producer keeps one root countdown export" {
     const source =
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async finish_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
@@ -3515,7 +3515,7 @@ test "parameterized five-hop forwarding helper producer keeps one root countdown
 
 test "guest producer lowering emits a bound u8 write value" {
     const source =
-        \\stdout_write = @host_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
+        \\stdout_write = @host_async_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
         \\StdoutError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async produce() -> Result<nil, StdoutError> {
@@ -3550,7 +3550,7 @@ test "guest producer lowering emits a bound u8 write value" {
 
 test "guest producer realloc accounts byte budget transactionally" {
     const source =
-        \\stdout_write = @host_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
+        \\stdout_write = @host_async_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
         \\StdoutError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async produce() -> Result<nil, StdoutError> {
@@ -3582,8 +3582,8 @@ test "guest producer realloc accounts byte budget transactionally" {
 
 test "stream mirror lowering emits source and writer callback states" {
     const source =
-        \\probe_read = @host("do:stream-probe@0.1.0", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, ProbeError>>>)
-        \\sink_write = @host_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\probe_read = @host_func("do:stream-probe@0.1.0", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, ProbeError>>>)
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
         \\StreamError error = StreamClosed | StreamWriteFailed
         \\async produce() -> Result<nil, ProbeError> {

@@ -84,7 +84,7 @@ pub fn analyze(allocator: std.mem.Allocator, tokens: []const lexer.Token) !Futur
         count_top_level_functions(tokens) != 2 or
         count_named_top_level_functions(tokens, "run") != 1 or
         count_named_top_level_functions(tokens, "start") != 1 or
-        count_token_pair(tokens, "@", "host") != 1 or
+        count_token_pair(tokens, "@", "host_func") != 1 or
         count_token_pair(tokens, "@", "wasi_resource") != 1 or
         count_token_pair(tokens, "@", "await") != 1 or
         count_token_pair(tokens, "@", "cancel") != 0 or
@@ -145,7 +145,7 @@ fn find_host_binding(tokens: []const lexer.Token, registry: p3_async_manifest.Re
     var idx: usize = 0;
     while (idx + 17 < tokens.len) : (idx += 1) {
         if (tokens[idx].kind != .ident or !sema_tokens.tok_eq(tokens[idx + 1], "=") or
-            !sema_tokens.tok_eq(tokens[idx + 2], "@") or !sema_tokens.tok_eq(tokens[idx + 3], "host") or
+            !sema_tokens.tok_eq(tokens[idx + 2], "@") or !sema_tokens.tok_eq(tokens[idx + 3], "host_func") or
             !sema_tokens.tok_eq(tokens[idx + 4], "(") or tokens[idx + 5].kind != .string or
             !sema_tokens.tok_eq(tokens[idx + 6], ",") or tokens[idx + 7].kind != .string or
             !sema_tokens.tok_eq(tokens[idx + 8], ",") or !sema_tokens.tok_eq(tokens[idx + 9], "(") or

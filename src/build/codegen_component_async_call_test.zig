@@ -4,7 +4,7 @@ const call_plan = @import("codegen_component_async_call_plan.zig");
 const emitter = @import("codegen_component_async_call.zig");
 
 const source =
-    \\work = @host("do:generic-async-call-probe/host@0.1.0", "work", () -> nil)
+    \\work = @host_async_func("do:generic-async-call-probe/host@0.1.0", "work", () -> nil)
     \\helper() -> nil {
     \\    pending Future<nil> = work()
     \\    @await(pending)

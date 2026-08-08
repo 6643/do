@@ -1,6 +1,6 @@
-.host_udp_create = @host("wasi:sockets/types@0.3.0", "udp-socket.create", (u8) -> UdpSocket | UdpError)
-.host_udp_bind = @host("wasi:sockets/types@0.3.0", "udp-socket.bind", (UdpSocket, IpSocketAddress) -> UdpError | nil)
-.host_udp_drop = @host("wasi:sockets/types@0.3.0", "udp-socket.drop", (UdpSocket) -> nil)
+.host_udp_create = @host_func("wasi:sockets/types@0.3.0", "udp-socket.create", (u8) -> UdpSocket | UdpError)
+.host_udp_bind = @host_func("wasi:sockets/types@0.3.0", "udp-socket.bind", (UdpSocket, IpSocketAddress) -> UdpError | nil)
+.host_udp_drop = @host_func("wasi:sockets/types@0.3.0", "udp-socket.drop", (UdpSocket) -> nil)
 UdpSocket = @wasi_resource("sockets/types/udp-socket", { .id i64 })
 UdpError error = UdpClosed | UdpUnsupportedAddress | UdpHostFailure
 Ipv4SocketAddress { .a u8 .b u8 .c u8 .d u8 .port u16 }

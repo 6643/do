@@ -1,4 +1,4 @@
-host_log = @host("env", "log", (i32, i32) -> nil)
+host_log = @host_func("env", "log", (i32, i32) -> nil)
 
 log_bytes(data [u8]) {
     host_log(data)

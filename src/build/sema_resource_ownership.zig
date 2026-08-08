@@ -84,7 +84,10 @@ fn collect_resource_host_imports(
 ) !void {
     var i: usize = 0;
     while (i + 8 < tokens.len) : (i += 1) {
-        if (tokens[i].kind != .ident or !tok_eq(tokens[i + 1], "=") or !tok_eq(tokens[i + 2], "@") or (!tok_eq(tokens[i + 3], "host") and !tok_eq(tokens[i + 3], "host_func")) or !tok_eq(tokens[i + 4], "(") or tokens[i + 5].kind != .string or !tok_eq(tokens[i + 6], ",") or tokens[i + 7].kind != .string or !tok_eq(tokens[i + 8], ",")) continue;
+        if (tokens[i].kind != .ident or !tok_eq(tokens[i + 1], "=") or !tok_eq(tokens[i + 2], "@") or
+            (!tok_eq(tokens[i + 3], "host_func") and !tok_eq(tokens[i + 3], "host_async_func")) or
+            !tok_eq(tokens[i + 4], "(") or tokens[i + 5].kind != .string or !tok_eq(tokens[i + 6], ",") or
+            tokens[i + 7].kind != .string or !tok_eq(tokens[i + 8], ",")) continue;
         const locator = string_token_body(tokens[i + 5].lexeme) orelse continue;
         const member = string_token_body(tokens[i + 7].lexeme) orelse continue;
         const descriptor = registry.find(locator, member) orelse continue;
@@ -445,9 +448,9 @@ fn find_resource_binding(bindings: []const ResourceBinding, name: []const u8) ?u
 
 test "resource own call consumes its local binding" {
     const source =
-        \\create = @host("do:resource-probe/ledger@0.1.0", "create", (u32) -> Ticket)
-        \\consume = @host("do:resource-probe/ledger@0.1.0", "consume", (Ticket) -> u32)
-        \\borrow_value = @host("do:resource-probe/ledger@0.1.0", "borrow-value", (Ticket) -> u32)
+        \\create = @host_func("do:resource-probe/ledger@0.1.0", "create", (u32) -> Ticket)
+        \\consume = @host_func("do:resource-probe/ledger@0.1.0", "consume", (Ticket) -> u32)
+        \\borrow_value = @host_func("do:resource-probe/ledger@0.1.0", "borrow-value", (Ticket) -> u32)
         \\Ticket = @wasi_resource("do:resource-probe/ledger/ticket", { .id i64 })
         \\start() {
         \\    ticket Ticket = create(7)
@@ -463,9 +466,9 @@ test "resource own call consumes its local binding" {
 
 test "resource borrow preserves the owner for a later own call" {
     const source =
-        \\create = @host("do:resource-probe/ledger@0.1.0", "create", (u32) -> Ticket)
-        \\borrow_value = @host("do:resource-probe/ledger@0.1.0", "borrow-value", (Ticket) -> u32)
-        \\consume = @host("do:resource-probe/ledger@0.1.0", "consume", (Ticket) -> u32)
+        \\create = @host_func("do:resource-probe/ledger@0.1.0", "create", (u32) -> Ticket)
+        \\borrow_value = @host_func("do:resource-probe/ledger@0.1.0", "borrow-value", (Ticket) -> u32)
+        \\consume = @host_func("do:resource-probe/ledger@0.1.0", "consume", (Ticket) -> u32)
         \\Ticket = @wasi_resource("do:resource-probe/ledger/ticket", { .id i64 })
         \\start() {
         \\    ticket Ticket = create(7)
@@ -481,8 +484,8 @@ test "resource borrow preserves the owner for a later own call" {
 
 test "HTTP response status borrow preserves the owner for canonical drop" {
     const source =
-        \\get_status = @host("wasi:http/types@0.3.0-rc-2025-09-16", "response.get-status-code", (HttpResponse) -> u16)
-        \\drop_response = @host("wasi:http/types@0.3.0-rc-2025-09-16", "response.drop", (HttpResponse) -> nil)
+        \\get_status = @host_func("wasi:http/types@0.3.0-rc-2025-09-16", "response.get-status-code", (HttpResponse) -> u16)
+        \\drop_response = @host_func("wasi:http/types@0.3.0-rc-2025-09-16", "response.drop", (HttpResponse) -> nil)
         \\HttpResponse = @wasi_resource("http/types/response", { .id i64 })
         \\async handle(response HttpResponse) -> nil {
         \\    status u16 = get_status(response)
@@ -498,7 +501,7 @@ test "HTTP response status borrow preserves the owner for canonical drop" {
 
 test "preopen descriptor extraction must be dropped" {
     const source =
-        \\.host_preopens = @host("wasi:filesystem/preopens@0.3.0", "get-directories", () -> [Tuple<Dir, text>])
+        \\.host_preopens = @host_func("wasi:filesystem/preopens@0.3.0", "get-directories", () -> [Tuple<Dir, text>])
         \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
         \\start() {
         \\    roots [Tuple<Dir, text>] = host_preopens()
@@ -513,9 +516,9 @@ test "preopen descriptor extraction must be dropped" {
 
 test "preopen descriptor use after canonical drop is rejected" {
     const source =
-        \\.host_preopens = @host("wasi:filesystem/preopens@0.3.0", "get-directories", () -> [Tuple<Dir, text>])
-        \\.host_sync = @host("wasi:filesystem/types@0.3.0", "descriptor.sync", (Dir) -> Result<nil, FileError>)
-        \\.host_drop = @host("wasi:filesystem/types@0.3.0", "descriptor.drop", (Dir) -> nil)
+        \\.host_preopens = @host_func("wasi:filesystem/preopens@0.3.0", "get-directories", () -> [Tuple<Dir, text>])
+        \\.host_sync = @host_func("wasi:filesystem/types@0.3.0", "descriptor.sync", (Dir) -> Result<nil, FileError>)
+        \\.host_drop = @host_func("wasi:filesystem/types@0.3.0", "descriptor.drop", (Dir) -> nil)
         \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
         \\FileError error = FileFlushFailed
         \\start() {
@@ -542,8 +545,8 @@ test "an owned Result can transfer a resource distinct from the consumed input" 
     defer registry.deinit(std.testing.allocator);
 
     const source =
-        \\create_request = @host("do:resource-probe/http@0.1.0", "create-request", () -> HttpRequest)
-        \\send = @host("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\create_request = @host_func("do:resource-probe/http@0.1.0", "create-request", () -> HttpRequest)
+        \\send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
         \\HttpResponse = @wasi_resource("http/types/response", { .id i64 })
         \\HttpError error = HttpFailure
@@ -563,7 +566,7 @@ test "an owned Result can transfer a resource distinct from the consumed input" 
 
 test "async host function consumes a resource parameter once" {
     const source =
-        \\send = @host_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
         \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
         \\HttpResponse = @wasi_resource("http/types/response", { .id i64 })
         \\HttpError error = HttpFailure

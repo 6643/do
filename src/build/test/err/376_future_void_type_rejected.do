@@ -1,4 +1,4 @@
-wait_for = @host_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
+wait_for = @host_async_func("wasi:clocks@0.3.0", "monotonic-clock.wait-for", (u64) -> nil)
 
 run(delay u64) -> nil {
     pending Future<void> = wait_for(delay)

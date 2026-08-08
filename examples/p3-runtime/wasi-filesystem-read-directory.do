@@ -1,4 +1,4 @@
-read_directory = @host("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
+read_directory = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
 Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
 DirectoryEntry = @wasi_record("filesystem/types/directory-entry", { .type i32, .name text })
 DirectoryError error = Io | NoEntry | NotDirectory

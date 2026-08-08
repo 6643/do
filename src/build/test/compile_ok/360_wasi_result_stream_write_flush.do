@@ -1,5 +1,5 @@
-.host_output_write = @host("wasi:io/streams@0.3.0", "output-stream.write", (OutputStream, [u8]) -> Result<nil, StreamError>)
-.host_output_flush = @host("wasi:io/streams@0.3.0", "output-stream.flush", (OutputStream) -> Result<nil, StreamError>)
+.host_output_write = @host_func("wasi:io/streams@0.3.0", "output-stream.write", (OutputStream, [u8]) -> Result<nil, StreamError>)
+.host_output_flush = @host_func("wasi:io/streams@0.3.0", "output-stream.flush", (OutputStream) -> Result<nil, StreamError>)
 OutputStream = @wasi_resource("io/streams/output-stream", {
     .id i64
 })

@@ -44,7 +44,8 @@ pub fn render_module(
     // Do requires host imports to form the module prefix before declarations.
     for (interface.functions) |function| {
         try append_lower(&out, allocator, function.name);
-        try out.appendSlice(allocator, " = @host(\"");
+        try out.appendSlice(allocator, " = @");
+        try out.appendSlice(allocator, if (function.is_async) "host_async_func(\"" else "host_func(\"");
         try append_interface_locator(&out, allocator, interface_package, interface.name);
         try out.appendSlice(allocator, "\", \"");
         try append_raw_name(&out, allocator, function.name);
@@ -55,15 +56,9 @@ pub fn render_module(
         }
         try out.appendSlice(allocator, ") -> ");
         if (function.result) |result| {
-            if (function.is_async) try out.appendSlice(allocator, "Future<");
             try append_type(&out, allocator, result, interface.name);
-            if (function.is_async) try out.append(allocator, '>');
         } else {
-            if (function.is_async) {
-                try out.appendSlice(allocator, "Future<nil>");
-            } else {
-                try out.appendSlice(allocator, "nil");
-            }
+            try out.appendSlice(allocator, "nil");
         }
         try out.appendSlice(allocator, ")\n");
     }

@@ -98,8 +98,8 @@ pub fn check_p3_async_host_imports(allocator: std.mem.Allocator, tokens: []const
         }
         if (depth_brace != 0) continue;
         const is_host_func = tok_eq(token, "host_func");
-        const is_host = tok_eq(token, "host");
-        if ((!is_host_func and !is_host) or idx == 0 or !tok_eq(tokens[idx - 1], "@")) continue;
+        const is_host_async_func = tok_eq(token, "host_async_func");
+        if ((!is_host_func and !is_host_async_func) or idx == 0 or !tok_eq(tokens[idx - 1], "@")) continue;
         const open_idx = idx + 1;
         if (open_idx >= tokens.len or !tok_eq(tokens[open_idx], "(")) return mark_error_at(tokens, idx, error.InvalidImportDecl);
         const close_idx = find_matching(tokens, open_idx, "(", ")") catch return mark_error_at(tokens, open_idx, error.InvalidImportDecl);
@@ -109,20 +109,25 @@ pub fn check_p3_async_host_imports(allocator: std.mem.Allocator, tokens: []const
         const locator = string_token_body(tokens[open_idx + 1].lexeme) orelse return mark_error_at(tokens, open_idx + 1, error.InvalidImportDecl);
         const member = string_token_body(tokens[open_idx + 3].lexeme) orelse return mark_error_at(tokens, open_idx + 3, error.InvalidImportDecl);
         const descriptor = registry.find(locator, member) orelse {
-            // Ordinary @host declarations retain the synchronous/WASI
-            // validator when no pinned async descriptor exists. @host_func is
-            // the explicit P3-only form and remains strict.
-            if (is_host) continue;
+            // Ordinary @host_func declarations retain the synchronous/WASI
+            // validator when no pinned async descriptor exists. The async
+            // marker is strict and must resolve to the pinned registry.
+            if (is_host_func) continue;
+            // The bounded generic Component gate predates the registry entry
+            // and has its own exact source-shape admission in the component
+            // planner. Keep that one explicit probe available without
+            // turning arbitrary unknown async locators into valid bindings.
+            if (is_admitted_generic_async_probe(tokens, open_idx + 5, close_idx, locator, member)) continue;
             return mark_error_at(tokens, open_idx + 3, error.UnknownP3AsyncHostDescriptor);
         };
-        // Keep the historical @host path for scalar, HTTP, and byte-stream
-        // declarations. The source-mirror check is only needed for the
-        // admitted record-stream descriptor; @host_func remains fully strict.
-        if (is_host and !std.mem.eql(u8, descriptor.effect, "record-stream-reader")) continue;
+        const shape = p3_async_manifest.lowering_shape(descriptor);
+        const async_invocation = descriptor_is_async_invocation(descriptor);
+        if (is_host_func and async_invocation) return mark_error_at(tokens, idx, error.UnknownP3AsyncHostDescriptor);
+        if (is_host_async_func and !async_invocation) return mark_error_at(tokens, idx, error.UnknownP3AsyncHostDescriptor);
         const sig_start = open_idx + 5;
         if (!p3_async_signature_matches(tokens, sig_start, close_idx, descriptor)) return mark_error_at(tokens, sig_start, error.P3AsyncHostSignatureMismatch);
-        const shape = p3_async_manifest.lowering_shape(descriptor);
-        if (shape == null and !is_pinned_http_client_send_descriptor(descriptor)) return mark_error_at(tokens, idx, error.UnknownP3AsyncHostDescriptor);
+        if (shape == null and !is_pinned_http_client_send_descriptor(descriptor) and
+            !std.mem.eql(u8, descriptor.effect, "async")) return mark_error_at(tokens, idx, error.UnknownP3AsyncHostDescriptor);
         const is_stream_effect = if (shape) |resolved_shape| switch (resolved_shape) {
             .http_stream_reader, .stream_reader_acquire, .stream_writer, .record_stream_reader, .record_resource_list_stream_reader, .record_resource_list_stream_producer, .record_resource_list_stream_dynamic_producer, .record_resource_list_stream_batched_producer, .variant_resource_stream_reader => true,
             else => false,
@@ -131,13 +136,45 @@ pub fn check_p3_async_host_imports(allocator: std.mem.Allocator, tokens: []const
     }
 }
 
+fn is_admitted_generic_async_probe(
+    tokens: []const lexer.Token,
+    signature_start: usize,
+    import_close: usize,
+    locator: []const u8,
+    member: []const u8,
+) bool {
+    if (!std.mem.eql(u8, locator, "do:generic-async-probe/host@0.1.0") or
+        !std.mem.eql(u8, member, "work")) return false;
+    const params_close = find_matching(tokens, signature_start, "(", ")") catch return false;
+    return params_close == signature_start + 1 and
+        params_close + 4 == import_close and
+        tok_eq(tokens[params_close + 1], "-") and
+        tok_eq(tokens[params_close + 2], ">") and
+        tok_eq(tokens[params_close + 3], "nil");
+}
+
+fn descriptor_is_async_invocation(descriptor: p3_async_manifest.Descriptor) bool {
+    if (std.mem.eql(u8, descriptor.effect, "async")) return true;
+    // The filesystem read-directory descriptor has a record-stream lowering
+    // shape but its pinned WIT declaration is `async func`; the other current
+    // record-stream reader probes are ordinary `func` declarations.
+    if (std.mem.eql(u8, descriptor.effect, "record-stream-reader") and
+        std.mem.eql(u8, descriptor.locator, "wasi:filesystem/types@0.3.0-rc-2025-09-16") and
+        std.mem.eql(u8, descriptor.member, "descriptor.read-directory")) return true;
+    return std.mem.eql(u8, descriptor.effect, "record-resource-list-stream-producer") or
+        std.mem.eql(u8, descriptor.effect, "record-resource-list-stream-dynamic-producer") or
+        std.mem.eql(u8, descriptor.effect, "record-resource-list-stream-batched-producer") or
+        std.mem.eql(u8, descriptor.effect, "stream-writer");
+}
+
 fn p3_async_signature_matches(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, descriptor: p3_async_manifest.Descriptor) bool {
     if (start_idx >= end_idx or !tok_eq(tokens[start_idx], "(")) return false;
     const close_idx = find_matching(tokens, start_idx, "(", ")") catch return false;
     if (close_idx + 3 >= end_idx or !tok_eq(tokens[close_idx + 1], "-") or !tok_eq(tokens[close_idx + 2], ">")) return false;
 
     const shape = p3_async_manifest.lowering_shape(descriptor);
-    if (shape == null and !is_pinned_http_client_send_descriptor(descriptor)) return false;
+    if (shape == null and !is_pinned_http_client_send_descriptor(descriptor) and
+        !std.mem.eql(u8, descriptor.effect, "async")) return false;
     if (shape) |resolved_shape| {
         switch (resolved_shape) {
             .http_stream_reader => return http_stream_reader_signature_matches(tokens, start_idx, close_idx, end_idx),
@@ -712,7 +749,7 @@ fn validate_host_import_decl(tokens: []const lexer.Token, name_idx: usize, resou
 
     const eq_idx = top_level_line_assign_idx(tokens, name_idx) orelse return mark_error_at(tokens, name_idx, error.InvalidImportDecl);
     const at_idx = eq_idx + 1;
-    if (at_idx + 1 < tokens.len and tok_eq(tokens[at_idx], "@") and tok_eq(tokens[at_idx + 1], "host_func")) return;
+    if (at_idx + 1 < tokens.len and tok_eq(tokens[at_idx], "@") and tok_eq(tokens[at_idx + 1], "host_async_func")) return;
     try validate_host_import_line(tokens, at_idx, parse_import_decl_end(tokens, name_idx) orelse return mark_error_at(tokens, at_idx, error.InvalidImportDecl), resource_registry);
 }
 
@@ -764,11 +801,11 @@ fn validate_host_import_line(
     import_end: usize,
     resource_registry: *const resource_abi_registry.Registry,
 ) !void {
-    // @host(locator, member, sig)
+    // @host_func(locator, member, sig)
     if (at_idx + 9 > import_end) return mark_error_at(tokens, at_idx, error.InvalidImportDecl);
     if (!tok_eq(tokens[at_idx], "@")) return mark_error_at(tokens, at_idx, error.InvalidImportDecl);
     if (tokens[at_idx + 1].kind != .ident) return mark_error_at(tokens, at_idx + 1, error.InvalidImportDecl);
-    if (!std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host")) return mark_error_at(tokens, at_idx + 1, error.InvalidImportDecl);
+    if (!std.mem.eql(u8, tokens[at_idx + 1].lexeme, "host_func")) return mark_error_at(tokens, at_idx + 1, error.InvalidImportDecl);
     if (!tok_eq(tokens[at_idx + 2], "(")) return mark_error_at(tokens, at_idx + 2, error.InvalidImportDecl);
     if (tokens[at_idx + 3].kind != .string) return mark_error_at(tokens, at_idx + 3, error.InvalidImportDecl);
     if (!tok_eq(tokens[at_idx + 4], ",")) return mark_error_at(tokens, at_idx + 4, error.InvalidImportDecl);
@@ -818,7 +855,11 @@ fn validate_host_import_locator_member(
 }
 
 fn is_valid_wasi_host_locator(locator: []const u8) bool {
-    return std.mem.startsWith(u8, locator, "wasi:") and is_valid_wit_host_locator(locator);
+    if (!std.mem.startsWith(u8, locator, "wasi:")) return false;
+    if (!is_valid_wit_host_locator(locator)) return false;
+    const rest = locator[5..];
+    const at_idx = std.mem.lastIndexOfScalar(u8, rest, '@') orelse return false;
+    return std.mem.indexOfScalar(u8, rest[0..at_idx], '/') != null;
 }
 
 fn is_valid_wit_host_locator(locator: []const u8) bool {
@@ -834,10 +875,14 @@ fn is_valid_wit_host_locator(locator: []const u8) bool {
     for (pkg_iface) |ch| {
         if (ch == '/') slash_count += 1;
     }
-    if (slash_count != 1) return false;
-    const slash = std.mem.indexOfScalar(u8, pkg_iface, '/') orelse return false;
-    if (!is_valid_wit_path_seg(pkg_iface[0..slash])) return false;
-    if (!is_valid_wit_path_seg(pkg_iface[slash + 1 ..])) return false;
+    if (slash_count > 1) return false;
+    if (slash_count == 0) {
+        if (!is_valid_wit_path_seg(pkg_iface)) return false;
+    } else {
+        const slash = std.mem.indexOfScalar(u8, pkg_iface, '/') orelse return false;
+        if (!is_valid_wit_path_seg(pkg_iface[0..slash])) return false;
+        if (!is_valid_wit_path_seg(pkg_iface[slash + 1 ..])) return false;
+    }
     return is_valid_wasi_version(version);
 }
 
@@ -1641,9 +1686,9 @@ fn is_valid_wit_name_part(name: []const u8) bool {
 
 test "registered resource probe host declarations match their descriptor" {
     const source =
-        \\create = @host("do:resource-probe/ledger@0.1.0", "create", (u32) -> Ticket)
-        \\borrow_value = @host("do:resource-probe/ledger@0.1.0", "borrow-value", (Ticket) -> u32)
-        \\consume = @host("do:resource-probe/ledger@0.1.0", "consume", (Ticket) -> u32)
+        \\create = @host_func("do:resource-probe/ledger@0.1.0", "create", (u32) -> Ticket)
+        \\borrow_value = @host_func("do:resource-probe/ledger@0.1.0", "borrow-value", (Ticket) -> u32)
+        \\consume = @host_func("do:resource-probe/ledger@0.1.0", "consume", (Ticket) -> u32)
         \\Ticket = @wasi_resource("do:resource-probe/ledger/ticket", { .id i64 })
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
@@ -1654,7 +1699,7 @@ test "registered resource probe host declarations match their descriptor" {
 
 test "ordinary host imports accept custom WIT package locators" {
     const source =
-        \\send = @host("do:bindgen-probe/api@0.1.0", "send", (u32) -> u32)
+        \\send = @host_func("do:bindgen-probe/api@0.1.0", "send", (u32) -> u32)
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
@@ -1662,11 +1707,52 @@ test "ordinary host imports accept custom WIT package locators" {
     try check_host_imports(std.testing.allocator, tokens);
 }
 
+test "host_func is the strict synchronous host marker" {
+    const source =
+        \\host_add = @host_func("env", "add", (i32) -> i32)
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try check_host_imports(std.testing.allocator, tokens);
+}
+
+test "host_async_func is the strict WIT async marker" {
+    const source =
+        \\work = @host_async_func("do:generic-async-runtime-probe/host@0.1.0", "work", () -> nil)
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expect(sema_tokens.is_modern_import_assign(tokens, 0));
+    try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "legacy host marker is not accepted" {
+    const source =
+        \\add = @host("env", "add", (i32) -> i32)
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectError(error.InvalidImportDecl, check_host_imports(std.testing.allocator, tokens));
+}
+
+test "synchronous marker cannot bind a registered async member" {
+    const source =
+        \\work = @host_func("do:generic-async-runtime-probe/host@0.1.0", "work", () -> nil)
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectError(error.UnknownP3AsyncHostDescriptor, check_p3_async_host_imports(std.testing.allocator, tokens));
+}
+
 test "generated WIT host bindings accept custom resource signatures" {
     const source =
-        \\send = @host("do:bindgen-probe/api@0.1.0", "send", (Request) -> Response | ApiError)
-        \\completion = @host("do:bindgen-probe/api@0.1.0", "completion", () -> Future<u32>)
-        \\events = @host("do:bindgen-probe/api@0.1.0", "events", () -> Stream<u8>)
+        \\send = @host_func("do:bindgen-probe/api@0.1.0", "send", (Request) -> Response | ApiError)
+        \\completion = @host_func("do:bindgen-probe/api@0.1.0", "completion", () -> Future<u32>)
+        \\events = @host_func("do:bindgen-probe/api@0.1.0", "events", () -> Stream<u8>)
         \\Request = @wasi_resource("do:bindgen-probe/api/request", { .id i64 })
         \\Response = @wasi_resource("do:bindgen-probe/api/response", { .id i64 })
         \\ApiError error = Failed
@@ -1679,7 +1765,7 @@ test "generated WIT host bindings accept custom resource signatures" {
 
 test "generic host imports accept a Future whose payload is an exclusive union" {
     const source =
-        \\send = @host("do:bindgen-probe/api@0.1.0", "send", (Request) -> Future<Response | ApiError>)
+        \\send = @host_func("do:bindgen-probe/api@0.1.0", "send", (Request) -> Future<Response | ApiError>)
         \\Request = @wasi_resource("do:bindgen-probe/api/request", { .id i64 })
         \\Response = @wasi_resource("do:bindgen-probe/api/response", { .id i64 })
         \\ApiError error = Failed
@@ -1692,11 +1778,11 @@ test "generic host imports accept a Future whose payload is an exclusive union" 
 
 test "custom WIT host locators reject malformed package identities" {
     const sources = [_][]const u8{
-        \\call = @host("do:bindgen-probe/api", "call", (u32) -> u32)
-        \\call = @host("do:bindgen-probe/api@0.1.0/extra", "call", (u32) -> u32)
-        \\call = @host("do:bindgen-probe/api@0.1", "call", (u32) -> u32)
-        \\call = @host("do:bindgen-probe//api@0.1.0", "call", (u32) -> u32)
-        \\call = @host("do:bindgen-probe/api@0.1.0", "call/extra", (u32) -> u32)
+        \\call = @host_func("do:bindgen-probe/api", "call", (u32) -> u32)
+        \\call = @host_func("do:bindgen-probe/api@0.1.0/extra", "call", (u32) -> u32)
+        \\call = @host_func("do:bindgen-probe/api@0.1", "call", (u32) -> u32)
+        \\call = @host_func("do:bindgen-probe//api@0.1.0", "call", (u32) -> u32)
+        \\call = @host_func("do:bindgen-probe/api@0.1.0", "call/extra", (u32) -> u32)
     };
     for (sources) |source| {
         const tokens = try lexer.tokenize(std.testing.allocator, source);
@@ -1716,7 +1802,7 @@ test "WASI host locators require SemVer and accept pinned prereleases" {
 
 test "WASI host imports accept nested Stream and Future return types" {
     const source =
-        \\stdin_read = @host("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
+        \\stdin_read = @host_func("wasi:cli/stdin@0.3.0-rc-2025-09-16", "read-via-stream", () -> Tuple<Stream<u8>, Future<Result<nil, StdinError>>>)
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
@@ -1724,22 +1810,9 @@ test "WASI host imports accept nested Stream and Future return types" {
     try check_host_imports(std.testing.allocator, tokens);
 }
 
-test "pinned read-directory host imports accept the fixed record stream signature" {
+test "pinned read-directory host_async_func imports accept the fixed record stream signature" {
     const source =
-        \\.host_read_directory = @host("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
-        \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
-        \\DirectoryEntry = @wasi_record("filesystem/types/directory-entry", { .type i32, .name text })
-        \\DirectoryError error = Io
-    ;
-    const tokens = try lexer.tokenize(std.testing.allocator, source);
-    defer std.testing.allocator.free(tokens);
-
-    try check_host_imports(std.testing.allocator, tokens);
-}
-
-test "pinned read-directory host_func imports use the same fixed signature" {
-    const source =
-        \\.host_read_directory = @host_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
+        \\.host_read_directory = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
         \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
         \\DirectoryEntry = @wasi_record("filesystem/types/directory-entry", { .type i32, .name text })
         \\DirectoryError error = Io
@@ -1750,9 +1823,22 @@ test "pinned read-directory host_func imports use the same fixed signature" {
     try check_p3_async_host_imports(std.testing.allocator, tokens);
 }
 
-test "pinned filesystem get-type host imports accept the descriptor result union" {
+test "pinned read-directory host_async_func imports use the same fixed signature" {
     const source =
-        \\get_type = @host_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-type", (Dir) -> DescriptorType | FileError)
+        \\.host_read_directory = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
+        \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+        \\DirectoryEntry = @wasi_record("filesystem/types/directory-entry", { .type i32, .name text })
+        \\DirectoryError error = Io
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "pinned filesystem get-type host_async_func imports accept the descriptor result union" {
+    const source =
+        \\get_type = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-type", (Dir) -> DescriptorType | FileError)
         \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
         \\DescriptorType = Unknown | Directory | RegularFile
         \\FileError error = Io | NoEntry
@@ -1763,9 +1849,9 @@ test "pinned filesystem get-type host imports accept the descriptor result union
     try check_p3_async_host_imports(std.testing.allocator, tokens);
 }
 
-test "pinned filesystem get-flags host imports accept the byte flags union" {
+test "pinned filesystem get-flags host_async_func imports accept the byte flags union" {
     const source =
-        \\get_flags = @host_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-flags", (Dir) -> u8 | FlagsError)
+        \\get_flags = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-flags", (Dir) -> u8 | FlagsError)
         \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
         \\FlagsError error = Io | NoEntry
     ;
@@ -1775,9 +1861,9 @@ test "pinned filesystem get-flags host imports accept the byte flags union" {
     try check_p3_async_host_imports(std.testing.allocator, tokens);
 }
 
-test "pinned filesystem get-flags host imports reject a non-byte source result" {
+test "pinned filesystem get-flags host_async_func imports reject a non-byte source result" {
     const source =
-        \\get_flags = @host_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-flags", (Dir) -> WrongFlags | FlagsError)
+        \\get_flags = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-flags", (Dir) -> WrongFlags | FlagsError)
         \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
         \\WrongFlags = Read | Write
         \\FlagsError error = Io | NoEntry
@@ -1788,9 +1874,9 @@ test "pinned filesystem get-flags host imports reject a non-byte source result" 
     try std.testing.expectError(error.P3AsyncHostSignatureMismatch, check_p3_async_host_imports(std.testing.allocator, tokens));
 }
 
-test "pinned filesystem get-type host imports reject a drifted source result" {
+test "pinned filesystem get-type host_async_func imports reject a drifted source result" {
     const source =
-        \\get_type = @host_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-type", (Dir) -> WrongType | FileError)
+        \\get_type = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-type", (Dir) -> WrongType | FileError)
         \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
         \\WrongType = Unknown | Directory | RegularFile | Socket
         \\FileError error = Io | NoEntry
@@ -1801,9 +1887,9 @@ test "pinned filesystem get-type host imports reject a drifted source result" {
     try std.testing.expectError(error.P3AsyncHostSignatureMismatch, check_p3_async_host_imports(std.testing.allocator, tokens));
 }
 
-test "pinned filesystem sync host imports accept the unit error union" {
+test "pinned filesystem sync host_async_func imports accept the unit error union" {
     const source =
-        \\sync_descriptor = @host_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.sync", (Dir) -> nil | SyncError)
+        \\sync_descriptor = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.sync", (Dir) -> nil | SyncError)
         \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
         \\SyncError error = Io | NoEntry
     ;
@@ -1813,9 +1899,9 @@ test "pinned filesystem sync host imports accept the unit error union" {
     try check_p3_async_host_imports(std.testing.allocator, tokens);
 }
 
-test "pinned filesystem sync host imports reject a borrowed payload" {
+test "pinned filesystem sync host_async_func imports reject a borrowed payload" {
     const source =
-        \\sync_descriptor = @host_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.sync", (Dir) -> borrow<Dir> | SyncError)
+        \\sync_descriptor = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.sync", (Dir) -> borrow<Dir> | SyncError)
         \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
         \\SyncError error = Io | NoEntry
     ;
@@ -1875,17 +1961,17 @@ test "variant resource stream host_func imports reject a drifted element" {
 
 test "pinned read-directory rejects a drifted record mirror" {
     const sources = [_][]const u8{
-        \\.host_read_directory = @host("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
+        \\.host_read_directory = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
         \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
         \\DirectoryEntry = @wasi_record("filesystem/types/other-entry", { .type i32, .name text })
         \\DirectoryError error = Io
         ,
-        \\.host_read_directory = @host_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
+        \\.host_read_directory = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
         \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
         \\DirectoryEntry = @wasi_record("filesystem/types/directory-entry", { .type u32, .name text })
         \\DirectoryError error = Io
         ,
-        \\.host_read_directory = @host_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
+        \\.host_read_directory = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<DirectoryEntry>, Future<Result<nil, DirectoryError>>>)
         \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
         \\DirectoryEntry = @wasi_record("filesystem/types/directory-entry", { .type i32 })
         \\DirectoryError error = Io
@@ -1900,19 +1986,19 @@ test "pinned read-directory rejects a drifted record mirror" {
 
 test "pinned read-directory host imports reject a non-record stream element" {
     const source =
-        \\.host_read_directory = @host("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<u8>, Future<Result<nil, DirectoryError>>>)
+        \\.host_read_directory = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-directory", (Dir) -> Tuple<Stream<u8>, Future<Result<nil, DirectoryError>>>)
         \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
         \\DirectoryError error = Io
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
 
-    try std.testing.expectError(error.InvalidImportDecl, check_host_imports(std.testing.allocator, tokens));
+    try std.testing.expectError(error.P3AsyncHostSignatureMismatch, check_p3_async_host_imports(std.testing.allocator, tokens));
 }
 
-test "pinned stream writer host imports accept the affine writer signature" {
+test "pinned stream writer host_async_func imports accept the affine writer signature" {
     const source =
-        \\stdout_write = @host_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
+        \\stdout_write = @host_async_func("wasi:cli/stdout@0.3.0-rc-2025-09-16", "write-via-stream", (StreamWriter<u8>) -> Result<nil, StdoutError>)
         \\StdoutError error = Io
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
@@ -1921,9 +2007,9 @@ test "pinned stream writer host imports accept the affine writer signature" {
     try check_p3_async_host_imports(std.testing.allocator, tokens);
 }
 
-test "pinned HTTP client send host imports defer shape validation to the service plan" {
+test "pinned HTTP client send host_async_func imports defer shape validation to the service plan" {
     const source =
-        \\send = @host_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
+        \\send = @host_async_func("wasi:http/client@0.3.0-rc-2025-09-16", "send", (HttpRequest) -> Result<HttpResponse, HttpError>)
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
@@ -1931,9 +2017,9 @@ test "pinned HTTP client send host imports defer shape validation to the service
     try check_p3_async_host_imports(std.testing.allocator, tokens);
 }
 
-test "C-min producer host_func imports accept the exact list writer signature" {
+test "C-min producer host_async_func imports accept the exact list writer signature" {
     const source =
-        \\consume = @host_func("do:g6-2-c-min-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
+        \\consume = @host_async_func("do:g6-2-c-min-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
         \\Ticket = @wasi_resource("do:g6-2-c-min-producer/source/ticket", { .id i64 })
         \\ResourceEntry { .ticket Ticket }
         \\ProducerError error = Io
@@ -1944,9 +2030,9 @@ test "C-min producer host_func imports accept the exact list writer signature" {
     try check_p3_async_host_imports(std.testing.allocator, tokens);
 }
 
-test "dynamic C-min producer host_func imports accept the exact list writer signature" {
+test "dynamic C-min producer host_async_func imports accept the exact list writer signature" {
     const source =
-        \\consume = @host_func("do:g6-2-c-min-dynamic-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
+        \\consume = @host_async_func("do:g6-2-c-min-dynamic-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
         \\Ticket = @wasi_resource("do:g6-2-c-min-dynamic-producer/source/ticket", { .id i64 })
         \\ResourceEntry { .ticket Ticket }
         \\ProducerError error = Io | Pipe | InvalidMode
@@ -1957,9 +2043,9 @@ test "dynamic C-min producer host_func imports accept the exact list writer sign
     try check_p3_async_host_imports(std.testing.allocator, tokens);
 }
 
-test "dynamic C-min producer host_func imports reject an unbounded writer result" {
+test "dynamic C-min producer host_async_func imports reject an unbounded writer result" {
     const source =
-        \\consume = @host_func("do:g6-2-c-min-dynamic-producer@0.1.0", "consume-via-stream", (StreamWriter<u8>) -> Result<nil, ProducerError>)
+        \\consume = @host_async_func("do:g6-2-c-min-dynamic-producer@0.1.0", "consume-via-stream", (StreamWriter<u8>) -> Result<nil, ProducerError>)
         \\ProducerError error = Io | Pipe | InvalidMode
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
@@ -1968,9 +2054,9 @@ test "dynamic C-min producer host_func imports reject an unbounded writer result
     try std.testing.expectError(error.P3AsyncHostSignatureMismatch, check_p3_async_host_imports(std.testing.allocator, tokens));
 }
 
-test "C-min producer host_func imports reject a drifted list element" {
+test "C-min producer host_async_func imports reject a drifted list element" {
     const source =
-        \\consume = @host_func("do:g6-2-c-min-producer@0.1.0", "consume-via-stream", (StreamWriter<u8>) -> Result<nil, ProducerError>)
+        \\consume = @host_async_func("do:g6-2-c-min-producer@0.1.0", "consume-via-stream", (StreamWriter<u8>) -> Result<nil, ProducerError>)
         \\ProducerError error = Io
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
@@ -1979,9 +2065,9 @@ test "C-min producer host_func imports reject a drifted list element" {
     try std.testing.expectError(error.P3AsyncHostSignatureMismatch, check_p3_async_host_imports(std.testing.allocator, tokens));
 }
 
-test "C-min producer host_func imports reject a drifted error type" {
+test "C-min producer host_async_func imports reject a drifted error type" {
     const source =
-        \\consume = @host_func("do:g6-2-c-min-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, OtherError>)
+        \\consume = @host_async_func("do:g6-2-c-min-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, OtherError>)
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
@@ -1989,9 +2075,9 @@ test "C-min producer host_func imports reject a drifted error type" {
     try std.testing.expectError(error.P3AsyncHostSignatureMismatch, check_p3_async_host_imports(std.testing.allocator, tokens));
 }
 
-test "C-min producer host_func imports reject an unregistered locator" {
+test "C-min producer host_async_func imports reject an unregistered locator" {
     const source =
-        \\consume = @host_func("do:g6-2-c-min-producer-unknown@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
+        \\consume = @host_async_func("do:g6-2-c-min-producer-unknown@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
@@ -1999,9 +2085,9 @@ test "C-min producer host_func imports reject an unregistered locator" {
     try std.testing.expectError(error.UnknownP3AsyncHostDescriptor, check_p3_async_host_imports(std.testing.allocator, tokens));
 }
 
-test "batched list resource producer host_func imports accept the exact list writer signature" {
+test "batched list resource producer host_async_func imports accept the exact list writer signature" {
     const source =
-        \\consume = @host_func("do:g6-2-batched-list-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
+        \\consume = @host_async_func("do:g6-2-batched-list-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
         \\ProducerError error = Io | Pipe | InvalidMode
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);

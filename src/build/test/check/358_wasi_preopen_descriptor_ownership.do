@@ -1,6 +1,6 @@
-.host_preopens = @host("wasi:filesystem/preopens@0.3.0", "get-directories", () -> [Tuple<Dir, text>])
-.host_sync = @host("wasi:filesystem/types@0.3.0", "descriptor.sync", (Dir) -> Result<nil, FileError>)
-.host_drop = @host("wasi:filesystem/types@0.3.0", "descriptor.drop", (Dir) -> nil)
+.host_preopens = @host_func("wasi:filesystem/preopens@0.3.0", "get-directories", () -> [Tuple<Dir, text>])
+.host_sync = @host_func("wasi:filesystem/types@0.3.0", "descriptor.sync", (Dir) -> Result<nil, FileError>)
+.host_drop = @host_func("wasi:filesystem/types@0.3.0", "descriptor.drop", (Dir) -> nil)
 
 Dir = @wasi_resource("filesystem/types/descriptor", {
     .id i64

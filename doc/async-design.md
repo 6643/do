@@ -33,13 +33,18 @@ Stream、resource、分支、循环、回调和任意 async 函数仍返回
 已登记的 WIT `async func` host binding 本身就产生 `Future<T>`，因此直接调用：
 
 ```do
-work = @host("do:generic-async-runtime-probe/host@0.1.0", "work", () -> nil)
+work = @host_async_func("do:generic-async-runtime-probe/host@0.1.0", "work", () -> nil)
 
 run() -> nil {
     ready Future<nil> = work()
     @await(ready)
 }
 ```
+
+`@host_async_func` 只允许登记为 WIT `async func` 的目标；它的源签名写异步
+payload 类型，不额外包一层 `Future<...>`。相反，`@host_func` 只允许普通
+WIT `func`，包括返回 `future<T>` 的普通函数；这类普通 WIT future 仍在源签名
+中明确写成 `Future<T>`。
 
 不要把这种调用再包成 `@async(work())`，否则会形成未定义的
 `Future<Future<T>>` 语义。`async name(...) -> T` 已弃用，不是公共函数模型；
