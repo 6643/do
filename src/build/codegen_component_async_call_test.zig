@@ -83,3 +83,18 @@ test "async call emitter carries the scalar argument in the root frame" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-async-arg-load]") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 7") != null);
 }
+
+test "async call emitter carries the inline scalar argument" {
+    const scalar_source = @embedFile("test/compile_ok/477_async_call_inline_scalar_argument_component.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, scalar_source);
+    defer std.testing.allocator.free(tokens);
+    var plan = try call_plan.analyze(std.testing.allocator, tokens);
+    defer plan.deinit(std.testing.allocator);
+    const wat = try emitter.emit_component_wat(std.testing.allocator, plan);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-inline-helper]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-inline-arg-store]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-inline-arg-load]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-inline-resume]") != null);
+    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "call $host-work"));
+}

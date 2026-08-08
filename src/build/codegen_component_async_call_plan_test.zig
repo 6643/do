@@ -110,6 +110,24 @@ test "async call component admits one scalar helper argument" {
     try std.testing.expect(!result.inline_helper_call);
 }
 
+test "async call component admits an inline scalar helper argument" {
+    const source = @embedFile("test/compile_ok/477_async_call_inline_scalar_argument_component.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    var result = try plan.analyze(std.testing.allocator, tokens);
+    defer result.deinit(std.testing.allocator);
+    try std.testing.expect(result.inline_helper_call);
+    try std.testing.expect(@hasField(@TypeOf(result), "inline_argument_value"));
+    if (@hasField(@TypeOf(result), "inline_argument_value")) {
+        try std.testing.expectEqual(@as(u32, 7), @field(result, "inline_argument_value"));
+    }
+    try std.testing.expect(@hasField(@TypeOf(result), "argument_value"));
+    if (@hasField(@TypeOf(result), "argument_value")) {
+        try std.testing.expectEqual(@as(u32, 7), @field(result, "argument_value"));
+    }
+}
+
 test "async call component keeps the no-inline unit shape distinct" {
     const source =
         \\work = @host_async_func("do:generic-async-call-probe/host@0.1.0", "work", () -> nil)
