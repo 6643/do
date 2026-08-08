@@ -31,6 +31,8 @@ test "async call emitter produces an isolated root-owned frame" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "[task-return]run") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "[task-return]helper") == null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "[async-lift]helper") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-inline-helper]") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-inline-resume]") == null);
 }
 
 test "async call emitter writes the private probe WIT" {
@@ -40,6 +42,30 @@ test "async call emitter writes the private probe WIT" {
         "package do:generic-async-call-probe@0.1.0;\n\ninterface host {\n  work: async func();\n}\n\nworld probe {\n  import host;\n  export run: async func();\n}\n",
         wit,
     );
+}
+
+test "async call emitter reserves the inline helper phase" {
+    const inline_source =
+        \\work = @host_async_func("do:generic-async-call-probe/host@0.1.0", "work", () -> nil)
+        \\helper() -> nil {
+        \\    pending Future<nil> = work()
+        \\    @await(pending)
+        \\}
+        \\run() -> nil {
+        \\    helper()
+        \\    child Future<nil> = @async(helper())
+        \\    @await(child)
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, inline_source);
+    defer std.testing.allocator.free(tokens);
+    var inline_plan = try call_plan.analyze(std.testing.allocator, tokens);
+    defer inline_plan.deinit(std.testing.allocator);
+    const wat = try emitter.emit_component_wat(std.testing.allocator, inline_plan);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-inline-helper]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-inline-resume]") != null);
 }
 
 test "async call emitter carries the scalar argument in the root frame" {

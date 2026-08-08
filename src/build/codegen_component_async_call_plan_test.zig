@@ -9,6 +9,7 @@ const positive_source =
     \\    @await(pending)
     \\}
     \\run() -> nil {
+    \\    helper()
     \\    child Future<nil> = @async(helper())
     \\    @await(child)
     \\}
@@ -27,6 +28,10 @@ test "async call component admits the exact local-frame shape" {
     try std.testing.expectEqualStrings("work", result.host_member);
     try std.testing.expectEqual(plan.ChildState.host_pending, result.child_state);
     try std.testing.expectEqual(plan.ParentResumeState.child_complete, result.parent_resume_state);
+    try std.testing.expect(@hasField(@TypeOf(result), "inline_helper_call"));
+    if (@hasField(@TypeOf(result), "inline_helper_call")) {
+        try std.testing.expect(@field(result, "inline_helper_call"));
+    }
 }
 
 test "async call component rejects helper payload" {

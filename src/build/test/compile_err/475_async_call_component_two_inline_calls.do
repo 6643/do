@@ -5,6 +5,7 @@ helper() -> nil {
 }
 run() -> nil {
     helper()
+    helper()
     child Future<nil> = @async(helper())
     @await(child)
 }
