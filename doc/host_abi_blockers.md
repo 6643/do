@@ -92,8 +92,8 @@ hand-authored Component passes `ready`, `pending`, `error`, and test-only
 Every admitted row has `host-calls=1`, one descriptor drop, and
 `table-empty=true`. Ready/error use one completion poll; pending uses two polls
 and one external wake; cancel drops one pending future with zero completion.
-Fresh repository gates are `zig test main.zig` `304/304`, default regression
-`pass=1141 fail=0 skip=3`, WASM regression `pass=1143 fail=0 skip=3` with smoke
+Fresh repository gates are `zig test main.zig` `308/308`, default regression
+`pass=1149 fail=0 skip=3`, WASM regression `pass=1151 fail=0 skip=3` with smoke
 `6/6`, ReleaseSmall smoke passed, and `git diff --check` passed.
 
 **Boundary:** this does not admit other filesystem methods, stream/list/record/
@@ -101,6 +101,48 @@ borrowed/variant payloads, arbitrary producer expressions, independent guest
 tasks, external HTTP, rollback of host side effects, or public
 `own<T>`/`borrow<T>`/`ref<T>` syntax. Each additional method needs its own pinned
 WIT/Core probe and Component/Rust/Wasmtime gate.
+
+## D2 Bounded Filesystem Async `descriptor.get-flags` (2026-08-08)
+
+**Status:** one additional private filesystem async method is verified; general
+filesystem async remains blocked and is not inferred from this bounded slice.
+
+**Evidence:** `bash examples/p3-runtime/test_d2_wasi_filesystem_get_flags_abi.sh`
+passes current `wasm-tools 1.255.0 (76e20611d 2026-07-30)` (SHA-256
+`6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`) and
+legacy `1.254.0 (bb58fdf91 2026-07-20)` (SHA-256
+`cc1f862d69363aac2d4a88f01c414a2dcf10858632d0c0a45e93ff60503979d6`). The
+upstream WIT hash is
+`8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`; the
+WIT mirror hash is
+`12afdb48b07d7160c76f04231fb8da4862350d42f6170174e6e27264b7307be9`. The
+measured method import is
+`[async-lower][method]descriptor.get-flags: (i32,i32) -> i32`. Its canonical
+result-area payload is one `u8` byte, while the flat `task.return` payload is
+one promoted `i32` word; the Component Result is
+`descriptor-flags | error-code`, and descriptor drop is
+`[resource-drop]descriptor (i32) -> nil`.
+
+The private `--p3-async-component` adapter admits only
+`Dir -> u8 | FlagsError` in fixture `471`. Fixtures `472`-`474` reject an
+unregistered locator, wrong result shape, and borrowed payload before WAT.
+`bash examples/p3-runtime/test_rust_wasi_filesystem_get_flags.sh` assembles
+both hand-authored and compiler-generated Components. Hand-authored ready,
+pending, error, and test-only cancel rows, plus generated ready/pending/error
+rows, pass with `host-calls=1`, one descriptor drop, an empty `ResourceTable`,
+and exactly-once future cleanup. Pending uses two completion polls and one
+external wake; cancel drops one pending future and performs zero completion.
+
+Fresh repository gates are `zig test main.zig` `308/308`, default regression
+`pass=1149 fail=0 skip=3`, WASM regression `pass=1151 fail=0 skip=3` with smoke
+`6/6`, and ReleaseSmall smoke passed.
+
+**Boundary:** this does not admit `read`, `write`, `stat`, `open-at`, directory
+mutation, other filesystem methods, stream/list/record/borrowed/variant
+payloads, arbitrary producer expressions, generic async calls, external HTTP,
+rollback of host side effects, or public `own<T>`/`borrow<T>`/`ref<T>` syntax.
+Each additional method needs its own pinned WIT/Core probe and
+Component/Rust/Wasmtime gate.
 
 ## P3 Task-Return Scalar Type Identity
 
@@ -214,7 +256,13 @@ or TCP/UDP stream lowering.
 
 **Status:** bounded private general-resource design is pending; public `own<T>`/`borrow<T>`/`ref<T>` syntax remains out of scope.
 
-**Evidence:** the current plan records a green StreamMirror closeout, `pass=1116 fail=0 skip=3` default Bun regression, `pass=1118 fail=0 skip=3` WASM regression with `pass=6 fail=0`, ReleaseSmall smoke, and the pinned negative gates for sixth forwarding, arbitrary producer expressions, and borrowed stream rejection. The capability matrix still treats general producer lease, borrowed/list/variant fields, and the wider async/resource gates as blocked until a separate positive plan is authorized.
+**Evidence:** the current plan records a green StreamMirror closeout, the latest
+`pass=1149 fail=0 skip=3` default and `pass=1151 fail=0 skip=3` WASM regressions
+with `pass=6 fail=0` smoke, ReleaseSmall smoke, and the pinned negative gates
+for sixth forwarding, arbitrary producer expressions, and borrowed stream
+rejection. The capability matrix still treats general producer lease,
+borrowed/list/variant fields, and the wider async/resource gates as blocked
+until a separate positive plan is authorized.
 
 **Boundary:** cancellation releases live Component resources and does not compensate external effects. The current plan does not add an operation-id or rollback protocol.
 

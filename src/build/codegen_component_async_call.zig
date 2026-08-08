@@ -10,11 +10,33 @@ pub fn emit_component_wat(
     wat = try replace_all(allocator, wat, "__ASYNC_IMPORT_MODULE__", plan.async_import_module);
     wat = try replace_all(allocator, wat, "__ASYNC_IMPORT_NAME__", plan.async_import_name);
     wat = try replace_all(allocator, wat, "__ROOT__", plan.root_name);
+    wat = try replace_all(allocator, wat, "__FRAME_SIZE__", if (plan.argument_value != null) "20" else "16");
+    wat = try replace_all(allocator, wat, "__HELPER_ARGUMENT_PARAM__", if (plan.argument_value != null) " (param $value i32)" else "");
+
+    const argument_store = if (plan.argument_value != null)
+        "    ;; [guest-async-arg-store]\n    local.get $frame\n    i32.const 12\n    i32.add\n    local.get $value\n    i32.store\n"
+    else
+        "";
+    wat = try replace_all(allocator, wat, "__ARGUMENT_STORE__", argument_store);
+
+    const argument_load = if (plan.argument_value != null)
+        "    ;; [guest-async-arg-load]\n    local.get $frame\n    i32.const 12\n    i32.add\n    i32.load\n    drop\n"
+    else
+        "";
+    wat = try replace_all(allocator, wat, "__ARGUMENT_LOAD__", argument_load);
+
+    const argument_value = if (plan.argument_value) |value|
+        try std.fmt.allocPrint(allocator, "    i32.const {d}\n", .{value})
+    else
+        try allocator.dupe(u8, "");
+    defer allocator.free(argument_value);
+    wat = try replace_all(allocator, wat, "__ROOT_ARGUMENT__", argument_value);
     return wat;
 }
 
 pub fn emit_component_wit(allocator: std.mem.Allocator) ![]u8 {
-    return allocator.dupe(u8,
+    return allocator.dupe(
+        u8,
         "package do:generic-async-call-probe@0.1.0;\n\n" ++
             "interface host {\n  work: async func();\n}\n\n" ++
             "world probe {\n  import host;\n  export run: async func();\n}\n",
@@ -78,13 +100,13 @@ const async_call_component_wat =
     \\  (import "[export]$root" "[task-return]__ROOT__" (func $task-return-root (type $task-return)))
     \\
     \\  (memory (export "memory") 1)
-    \\  ;; root frame: waitable set @0, host subtask @4, helper state @8.
+    \\  ;; root frame: waitable set @0, host subtask @4, helper state @8, optional scalar @12.
     \\  (global $frame-next (mut i32) (i32.const 1024))
     \\
     \\  (func $frame-alloc (result i32) (local $frame i32)
     \\    global.get $frame-next
     \\    local.tee $frame
-    \\    i32.const 16
+    \\    i32.const __FRAME_SIZE__
     \\    i32.add
     \\    global.set $frame-next
     \\    local.get $frame
@@ -97,6 +119,7 @@ const async_call_component_wat =
     \\
     \\  (func $helper-resume (param $frame i32)
     \\    ;; [guest-async-parent-resume]
+    \\__ARGUMENT_LOAD__
     \\    local.get $frame
     \\    i32.const 4
     \\    i32.add
@@ -124,8 +147,9 @@ const async_call_component_wat =
     \\    call $task-return-root
     \\  )
     \\
-    \\  (func $helper (param $frame i32) (result i32) (local $subtask i32)
+    \\  (func $helper (param $frame i32)__HELPER_ARGUMENT_PARAM__ (result i32) (local $subtask i32)
     \\    ;; [guest-async-child]
+    \\__ARGUMENT_STORE__
     \\    call $host-work
     \\    local.set $subtask
     \\    local.get $frame
@@ -175,6 +199,7 @@ const async_call_component_wat =
     \\    i32.const 1
     \\    i32.store
     \\    local.get $frame
+    \\__ROOT_ARGUMENT__
     \\    call $helper
     \\  )
     \\

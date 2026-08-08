@@ -31,8 +31,8 @@
 | --- | --- |
 | v1 子集 | 发布候选已收口 |
 | 阶段 A–F、H | 已完成 |
-| 阶段 D | 可推进项已完成; D2.1 已按 B 方案绿色 regression 收口; D2 本地 file/dir/CLI/socket smoke 与私有 `descriptor.get-type`/`descriptor.sync` async slices 已验证，通用 filesystem async 仍阻断 |
-| 阶段 G | G1–G5、G6.1、G6.2 有界 read-directory slice + generic consumer + multi-owned-resource + 一层/两层/三层/四层/五层/六层 nested-owned-resource + multiple nested-owned-resource paths + bounded scalar producer + bounded/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding 与 typed 参数重排）producer + helper-mediated lease + branch-selected terminal + private resource Result error/cancellation checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + D2 私有 filesystem `descriptor.get-type`/`descriptor.sync` slices、G6.3、G6.4 完成; generic list/producer、borrowed payload 与 root hard-cancel pending |
+| 阶段 D | 可推进项已完成; D2.1 已按 B 方案绿色 regression 收口; D2 本地 file/dir/CLI/socket smoke 与私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` async slices 已验证，通用 filesystem async 仍阻断 |
+| 阶段 G | G1–G5、G6.1、G6.2 有界 read-directory slice + generic consumer + multi-owned-resource + 一层/两层/三层/四层/五层/六层 nested-owned-resource + multiple nested-owned-resource paths + bounded scalar producer + bounded/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding 与 typed 参数重排）producer + helper-mediated lease + branch-selected terminal + private resource Result error/cancellation checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + scalar-argument async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + D2 私有 filesystem `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` slices、G6.3、G6.4 完成; generic list/producer、borrowed payload 与 root hard-cancel pending |
 | Colorless async / WIT bindgen | canonical `@async/@await/@cancel`、legacy `async` 弃用、schema 1/2 生成 manifest 校验、已准入 schema 2 unit 与 scalar capabilities 的 manifest 自动发现，以及 opt-in v2 variant/scalar-i64 gates、统一 promotion profile、`--p3-async-call-component` root-owned local-frame gate 和 `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` gate 已验证；unrestricted generated WIT lowering 仍 pending |
 | 阶段 I | **已关闭** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构审查/重构 | 五轮已落地 (见 §4); 默认不继续拆 god module |
@@ -86,9 +86,19 @@ bash examples/p3-runtime/test_rust_wasi_filesystem_get_type.sh
 bash examples/p3-runtime/test_d2_wasi_filesystem_sync_abi.sh
 bash examples/p3-runtime/test_rust_wasi_filesystem_sync.sh
 
+# private D2 filesystem descriptor.get-flags ABI and compiler/runtime gate
+bash examples/p3-runtime/test_d2_wasi_filesystem_get_flags_abi.sh
+bash examples/p3-runtime/test_do_wasi_filesystem_get_flags.sh
+bash examples/p3-runtime/test_rust_wasi_filesystem_get_flags.sh
+
+# bounded async-call scalar-argument Component/Rust/Wasmtime gate
+bash examples/p3-runtime/test_do_async_call_scalar_argument.sh
+bash examples/p3-runtime/test_rust_async_call_scalar_argument.sh \
+  /tmp/async-call-scalar-argument.component.wasm
+
 # 默认完整回归 (当前基线; 本机使用 Bun 作为 Node-compatible runner)
 NODE_BIN="$(command -v bun)" WASM_TOOLS="$(command -v wasm-tools)" ./src/build/test/run_tests.sh
-# 期望: pass=1141 fail=0 skip=3
+# 期望: pass=1149 fail=0 skip=3
 
 # codegen 单元测试
 cd src && zig test build/codegen_api.zig
@@ -102,14 +112,14 @@ cd src && zig test build/codegen_api.zig
 
 ```bash
 RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
-# 最近扩展基线: pass=1143 fail=0 skip=3; wasm run summary: pass=6 fail=0
+# 最近扩展基线: pass=1151 fail=0 skip=3; wasm run summary: pass=6 fail=0
 ```
 
 | 基线项 | 最近值 |
 | --- | --- |
-| 默认回归 (`SKIP_BUILD=1`) | `pass=1141 fail=0 skip=3` |
-| WASM 扩展回归 (`RUN_WASM=1 SKIP_BUILD=1`) | `pass=1143 fail=0 skip=3`; smoke `6/6` |
-| `zig test main.zig` | `304/304` |
+| 默认回归 (`SKIP_BUILD=1`) | `pass=1149 fail=0 skip=3` |
+| WASM 扩展回归 (`RUN_WASM=1 SKIP_BUILD=1`) | `pass=1151 fail=0 skip=3`; smoke `6/6` |
+| `zig test main.zig` | `308/308` |
 | Task 8 Step 3 runtime baseline | 七个已登记 Component/Rust/Wasmtime gate 通过 |
 | HTTP service ABI / empty-request gate | pinned Component + Rust/Wasmtime pass; `codegen_component_wasi_http` `189/189`; registered payload pending/ready gate green, unregistered/general ready delivery remains blocked |
 | pinned filesystem record source mirror | `p3_filesystem_wit_manifest` + read-directory sema tests pass |
@@ -117,9 +127,9 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | 剩余 skip | `16_loop_recv_value`、`96_file_lib_resource_shape`、`118_wasi_p3_std_wrappers` (recv/WASI 后置) |
 | 诊断 code | `errorSummary` / `errorHint` 各 59 条 (含 `StreamWriterLeasePathConflict` / `StreamWriterDeferredTransfer`) |
 
-私有 D2 filesystem async 当前只开放两个独立的有界方法：
-`wasi:filesystem/types@0.3.0-rc-2025-09-16 / descriptor.get-type` 与
-`descriptor.sync`。`get-type` 的
+私有 D2 filesystem async 当前只开放三个独立的有界方法：
+`wasi:filesystem/types@0.3.0-rc-2025-09-16 / descriptor.get-type`、
+`descriptor.sync` 与 `descriptor.get-flags`。`get-type` 的
 `[async-lower][method]descriptor.get-type` 使用 `(i32,i32)->i32`，task-return
 完成参数为两个 `i32`，Result 是 `descriptor-type | error-code` component
 variant，资源 drop 为 `[resource-drop]descriptor`。ABI、手写/生成 Component、
@@ -132,6 +142,11 @@ ready/pending/error/cancel 与生成 Component 的 ready/pending/error 均通过
 exactly-once cleanup 和 `table-empty=true`。两者都不意味着通用
 `read`/`write`/`stat`/`open-at`、通用 producer、borrowed payload 与公开
 `own<T>`/`borrow<T>`/`ref<T>` 仍需独立 design/probe/gate。
+`get-flags` 的 `[async-lower][method]descriptor.get-flags` 也使用
+`(i32,i32)->i32`，canonical result-area 是 `u8`、flat task-return 是 `i32`，
+Result 为 `descriptor-flags | error-code`；fixtures `471`-`474` 与
+ready/pending/error/cancel cleanup gate 已通过。三者都不意味着通用
+filesystem async 或公开 ownership 支持，扩展仍需独立 design/probe/gate。
 `sync` ABI gate 固定 upstream hash
 `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`、regular
 mirror `18ce7dc9efb991cd8e5f945797aea73edeed79f0cfc51ea664cb81537e54e719`、
@@ -276,7 +291,7 @@ ZIG_GLOBAL_CACHE_DIR="$PWD/.tmp/do-tmp/debug-zig-gcache" \
 | G6.2 | `descriptor.read-directory`、注册 record-stream consumer 与 bounded scalar/dynamic/batched producer | scalar/string、多-owned-resource、多个顶层 nested paths 与一层/两层/三层/四层/五层/六层 nested-owned-resource consumer、注册 `do:stream-probe` 的 capacity-one `StreamWriter<u8>` producer、固定/参数化 `u64` countdown producer、参数化 helper 的五跳 forwarding、typed 参数受限重排、其它同类型 async helper、bounded StreamMirror、私有 `variant-resource-stream`、private C-min list/resource producer、动态 count `0..3` producer 与固定两批 list-resource producer 已验证；一般 producer lease、borrowed/list/通用 variant、第六跳 forwarding、第七层或更一般 nested resource gates 与任意 filesystem async method 仍待单独推进 |
 | G6.2-cancel | 私有 resource Result cancellation | 显式 `@cancel(completion)` 的 Do lowering、负边界、Component assembly 与 Rust/Wasmtime pending/drop/empty-table gate 已通过；pinned `wasi:http` service-world gate 另验证 pending、immediate `Ok(response)` 的 exactly-once drop、`DnsTimeout`、bounded `DNS-error.rcode` 的 `Some(nonempty)` 与 `None`（两种长度和 `info-code` optional 状态）以及同一布局的 `InternalError(Some(nonempty string))` / `InternalError(None)` canonical discard。同一组件实例连续两次 nonempty DNS error 会在每次精确释放后复用该私有槽位。`None` 不读取或释放 pointer/length；空字符串和其他 payload error 仍 trap；不扩展到通用 resource cancellation 或公开 ownership syntax |
 | G6.3 | **已关闭 (方案 B)** create/bind/drop + dual address | 见 `compile_ok/291`–`294`; TCP/UDP loopback real-host gate 已通过，listen/connect/accept 与真实 socket I/O 仍后置 |
-| D2 | 真实 host runtime smoke | local filesystem preopen/open-at/sync、read-directory stream、CLI stdin pipe、TCP/UDP socket create/bind/drop，以及私有 `descriptor.get-type`/`descriptor.sync` async slices 已有 gates；通用 filesystem async 与 external HTTP 仍阻断 |
+| D2 | 真实 host runtime smoke | local filesystem preopen/open-at/sync、read-directory stream、CLI stdin pipe、TCP/UDP socket create/bind/drop，以及私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` async slices 已有 gates；通用 filesystem async 与 external HTTP 仍阻断 |
 | 06.2 | 已拆到 G2–G6; 剩余由 G6.2 承接 | 同上 |
 
 **Result source policy (closed):** ordinary public and standard-library APIs use
@@ -298,7 +313,7 @@ public `own<T>`, `borrow<T>`, or `ref<T>` syntax.
 1. **发布候选维护**: 回归红灯、文档漂移、可独立验证的小修
 2. **推进 G6.2 后续 gates**: generic consumer、multi-owned-resource、多个顶层 nested-owned-resource paths、一层/两层/三层/四层/五层/六层 nested-owned-resource、bounded scalar/parameterized dynamic producer、参数化 helper（含五跳 forwarding 与 typed 参数受限重排）与受限 helper-mediated lease slices 已闭环；继续一般 producer lease、borrowed/list/variant/第六跳 forwarding、第七层或更一般 nested resource fields 与更广泛 async method 的独立验证
 2a. **当前 gate 状态**: branch-selected terminal、reordered helper、StreamMirror、pinned negative probes 与 ownership invariant 复核已通过；下一步只能在独立 positive plan 授权后扩大 producer/resource 形状
-3. **推进 D2 已授权的本地 smoke**: 维护 file/dir/CLI/socket create-bind-drop 与私有 `descriptor.get-type`/`descriptor.sync` gates；通用 filesystem async/external HTTP 另立 target/design 后再推进
+3. **推进 D2 已授权的本地 smoke**: 维护 file/dir/CLI/socket create-bind-drop 与私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` gates；通用 filesystem async/external HTTP 另立 target/design 后再推进
 4. **可选授权**: 其他 deferred 项 (ownership / JSON / LSP / codegen 再拆)
 
 **已关闭边界速查**:

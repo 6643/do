@@ -41,3 +41,16 @@ test "async call emitter writes the private probe WIT" {
         wit,
     );
 }
+
+test "async call emitter carries the scalar argument in the root frame" {
+    const scalar_source = @embedFile("test/compile_ok/466_async_call_scalar_argument_component.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, scalar_source);
+    defer std.testing.allocator.free(tokens);
+    var plan = try call_plan.analyze(std.testing.allocator, tokens);
+    defer plan.deinit(std.testing.allocator);
+    const wat = try emitter.emit_component_wat(std.testing.allocator, plan);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-async-arg-store]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-async-arg-load]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 7") != null);
+}

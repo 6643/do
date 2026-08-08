@@ -21,6 +21,7 @@ pub const LoweringShape = union(enum) {
     unit_result_tag: void,
     scalar_result: ScalarResultShape,
     filesystem_get_type: FilesystemGetTypeShape,
+    filesystem_get_flags: FilesystemGetFlagsShape,
     filesystem_sync: FilesystemSyncShape,
     future_owned_resource: FutureOwnedCanonical,
     resource_result_2word: ResourceResult2WordShape,
@@ -203,6 +204,19 @@ pub const ScalarResultShape = struct {
 /// two-word async-lower call (handle plus completion context), so it cannot be
 /// represented by the ordinary numeric scalar-result shape above.
 pub const FilesystemGetTypeShape = struct {
+    receiver: []const u8,
+    source_result: []const u8,
+    tag: []const u8,
+    ok: []const []const u8,
+    err: []const []const u8,
+    resource_drop_import: []const u8,
+};
+
+/// The pinned `descriptor.get-flags` method has a byte-sized canonical
+/// result-area payload while its flat task-return payload is promoted to i32.
+/// Keep this shape separate from get-type so the emitter cannot reuse the
+/// wrong result width or variant encoding.
+pub const FilesystemGetFlagsShape = struct {
     receiver: []const u8,
     source_result: []const u8,
     tag: []const u8,
@@ -426,6 +440,10 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
         return .{ .filesystem_sync = shape };
     }
 
+    if (valid_filesystem_get_flags_descriptor(descriptor)) |shape| {
+        return .{ .filesystem_get_flags = shape };
+    }
+
     if (valid_filesystem_get_type_descriptor(descriptor)) |shape| {
         return .{ .filesystem_get_type = shape };
     }
@@ -479,8 +497,8 @@ fn valid_filesystem_get_type_descriptor(descriptor: Descriptor) ?FilesystemGetTy
 
     const payload = descriptor.canonical.result_payload orelse return null;
     if (!std.mem.eql(u8, payload.tag, "i32") or
-        !equal_core_types(payload.ok, &.{ "i32" }) or
-        !equal_core_types(payload.err, &.{ "i32" })) return null;
+        !equal_core_types(payload.ok, &.{"i32"}) or
+        !equal_core_types(payload.err, &.{"i32"})) return null;
 
     return .{
         .receiver = descriptor.params[0],
@@ -488,6 +506,47 @@ fn valid_filesystem_get_type_descriptor(descriptor: Descriptor) ?FilesystemGetTy
         .tag = payload.tag,
         .ok = payload.ok,
         .err = payload.err,
+        .resource_drop_import = "[resource-drop]descriptor",
+    };
+}
+
+fn valid_filesystem_get_flags_descriptor(descriptor: Descriptor) ?FilesystemGetFlagsShape {
+    if (!std.mem.eql(u8, descriptor.locator, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.member, "descriptor.get-flags") or
+        !std.mem.eql(u8, descriptor.effect, "async") or
+        descriptor.params.len != 1 or
+        !std.mem.eql(u8, descriptor.params[0], "descriptor") or
+        descriptor.resource != null or
+        !std.mem.eql(u8, descriptor.result, "Result<descriptor-flags,error-code>") or
+        descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, descriptor.wit_sha256.?, "8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f") or
+        !std.mem.eql(u8, descriptor.canonical.completion, "task-return") or
+        !equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i32" }) or
+        !equal_core_types(descriptor.canonical.core_results, &.{"i32"}) or
+        !equal_core_types(descriptor.canonical.completion_params, &.{ "i32", "i32" }) or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower][method]descriptor.get-flags") or
+        !std.mem.eql(u8, descriptor.wit.package, "wasi:filesystem@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.wit.interface, "types") or
+        !std.mem.eql(u8, descriptor.wit.operation, "descriptor.get-flags") or
+        !std.mem.eql(u8, descriptor.wit.world, "imports") or
+        descriptor.wit.parameter.len != 0) return null;
+
+    const payload = descriptor.canonical.result_payload orelse return null;
+    const result_area = descriptor.canonical.result_area_payload orelse return null;
+    if (!std.mem.eql(u8, payload.tag, "i32") or
+        !equal_core_types(payload.ok, &.{"i32"}) or
+        !equal_core_types(payload.err, &.{"i32"}) or
+        !std.mem.eql(u8, result_area.tag, "u8") or
+        !equal_core_types(result_area.ok, &.{"u8"}) or
+        !equal_core_types(result_area.err, &.{"u8"})) return null;
+
+    return .{
+        .receiver = descriptor.params[0],
+        .source_result = descriptor.result,
+        .tag = result_area.tag,
+        .ok = result_area.ok,
+        .err = result_area.err,
         .resource_drop_import = "[resource-drop]descriptor",
     };
 }
@@ -517,7 +576,7 @@ fn valid_filesystem_sync_descriptor(descriptor: Descriptor) ?FilesystemSyncShape
     const payload = descriptor.canonical.result_payload orelse return null;
     if (!std.mem.eql(u8, payload.tag, "i32") or
         payload.ok.len != 0 or
-        !equal_core_types(payload.err, &.{ "i32" })) return null;
+        !equal_core_types(payload.err, &.{"i32"})) return null;
 
     return .{
         .receiver = descriptor.params[0],
@@ -590,6 +649,7 @@ pub const Canonical = struct {
     completion_params: []const []const u8,
     completion: []const u8,
     result_payload: ?ResultPayload,
+    result_area_payload: ?ResultAreaPayload = null,
     future_owned: ?FutureOwnedCanonical = null,
     error_variants: []const ErrorVariantPayload = &.{},
     record_layout: ?RecordLayout = null,
@@ -628,6 +688,15 @@ pub const StreamCanonical = struct {
 };
 
 pub const ResultPayload = struct {
+    tag: []const u8,
+    ok: []const []const u8,
+    err: []const []const u8,
+};
+
+/// Result-area storage facts are distinct from flat task-return words. The
+/// Component ABI may promote a narrow canonical payload (for example flags
+/// `u8`) when it invokes the task-return callback.
+pub const ResultAreaPayload = struct {
     tag: []const u8,
     ok: []const []const u8,
     err: []const []const u8,
@@ -769,6 +838,11 @@ fn parse_canonical(allocator: std.mem.Allocator, value: ?std.json.Value) !Canoni
     else
         null;
     errdefer if (result_payload) |payload| free_result_payload(allocator, payload);
+    const result_area_payload = if (canonical.get("result_area_payload") != null)
+        try parse_result_area_payload(allocator, canonical.get("result_area_payload"))
+    else
+        null;
+    errdefer if (result_area_payload) |payload| free_result_area_payload(allocator, payload);
     const future_owned = if (canonical.get("future_owned")) |owned_value|
         try parse_future_owned_canonical(allocator, owned_value)
     else
@@ -852,6 +926,7 @@ fn parse_canonical(allocator: std.mem.Allocator, value: ?std.json.Value) !Canoni
         .completion_params = completion_params,
         .completion = owned_completion,
         .result_payload = result_payload,
+        .result_area_payload = result_area_payload,
         .future_owned = future_owned,
         .error_variants = error_variants,
         .record_layout = record_layout,
@@ -1431,7 +1506,7 @@ fn valid_record_resource_list_stream_dynamic_producer_descriptor(descriptor: Des
         !std.mem.eql(u8, descriptor.wit.world, "dynamic-list-producer") or
         !std.mem.eql(u8, descriptor.wit.parameter, "data") or
         !equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i32" }) or
-        !equal_core_types(descriptor.canonical.core_results, &.{ "i32" }) or
+        !equal_core_types(descriptor.canonical.core_results, &.{"i32"}) or
         !equal_core_types(descriptor.canonical.completion_params, &.{ "i32", "i32" }) or
         !std.mem.eql(u8, descriptor.canonical.completion, "task-return") or
         !std.mem.eql(u8, descriptor.canonical.async_import_module, "do:g6-2-c-min-dynamic-producer/sink@0.1.0") or
@@ -1446,8 +1521,8 @@ fn valid_record_resource_list_stream_dynamic_producer_descriptor(descriptor: Des
         !std.mem.eql(u8, stream.element, "list<resource-entry>") or
         !std.mem.eql(u8, producer.source_module, "do:g6-2-c-min-dynamic-producer/source@0.1.0") or
         !std.mem.eql(u8, producer.source_import_name, "make-ticket") or
-        !equal_core_types(producer.source_core_params, &.{ "i32" }) or
-        !equal_core_types(producer.source_core_results, &.{ "i32" }) or
+        !equal_core_types(producer.source_core_params, &.{"i32"}) or
+        !equal_core_types(producer.source_core_results, &.{"i32"}) or
         !std.mem.eql(u8, producer.resource_drop_import, "[resource-drop]ticket") or
         producer.stream_capacity != 1 or
         !std.mem.eql(u8, producer.terminal, "result-area") or
@@ -1456,13 +1531,13 @@ fn valid_record_resource_list_stream_dynamic_producer_descriptor(descriptor: Des
         producer.runtime_max == null or
         producer.runtime_max.? != 3) return null;
 
-    if (!valid_named_stream_operation(stream.new, "[stream-new-0]consume-via-stream", &.{}, &.{ "i64" }) or
-        !valid_named_stream_operation(stream.cancel_read, "[stream-cancel-read-0]consume-via-stream", &.{ "i32" }, &.{ "i32" }) or
-        !valid_named_stream_operation(stream.cancel_write, "[stream-cancel-write-0]consume-via-stream", &.{ "i32" }, &.{ "i32" }) or
-        !valid_named_stream_operation(stream.drop_readable, "[stream-drop-readable-0]consume-via-stream", &.{ "i32" }, &.{}) or
-        !valid_named_stream_operation(stream.drop_writable, "[stream-drop-writable-0]consume-via-stream", &.{ "i32" }, &.{}) or
-        !valid_named_stream_operation(stream.read, "[async-lower][stream-read-0]consume-via-stream", &.{ "i32", "i32", "i32" }, &.{ "i32" }) or
-        !valid_named_stream_operation(stream.write, "[async-lower][stream-write-0]consume-via-stream", &.{ "i32", "i32", "i32" }, &.{ "i32" })) return null;
+    if (!valid_named_stream_operation(stream.new, "[stream-new-0]consume-via-stream", &.{}, &.{"i64"}) or
+        !valid_named_stream_operation(stream.cancel_read, "[stream-cancel-read-0]consume-via-stream", &.{"i32"}, &.{"i32"}) or
+        !valid_named_stream_operation(stream.cancel_write, "[stream-cancel-write-0]consume-via-stream", &.{"i32"}, &.{"i32"}) or
+        !valid_named_stream_operation(stream.drop_readable, "[stream-drop-readable-0]consume-via-stream", &.{"i32"}, &.{}) or
+        !valid_named_stream_operation(stream.drop_writable, "[stream-drop-writable-0]consume-via-stream", &.{"i32"}, &.{}) or
+        !valid_named_stream_operation(stream.read, "[async-lower][stream-read-0]consume-via-stream", &.{ "i32", "i32", "i32" }, &.{"i32"}) or
+        !valid_named_stream_operation(stream.write, "[async-lower][stream-write-0]consume-via-stream", &.{ "i32", "i32", "i32" }, &.{"i32"})) return null;
 
     return .{
         .element = record_layout.name,
@@ -1591,7 +1666,7 @@ fn valid_variant_resource_stream_reader_descriptor(descriptor: Descriptor) ?Vari
         !std.mem.eql(u8, stream.element, "event") or
         !valid_named_stream_operation(stream.read, "[async-lower][stream-read-0]read-via-stream", &.{ "i32", "i32", "i32" }, &.{"i32"}) or
         !valid_named_stream_operation(stream.drop_readable, "[stream-drop-readable-0]read-via-stream", &.{"i32"}, &.{}) or
-        !valid_named_stream_operation(future.read, "[async-lower][future-read-1]read-via-stream", &.{"i32", "i32"}, &.{"i32"}) or
+        !valid_named_stream_operation(future.read, "[async-lower][future-read-1]read-via-stream", &.{ "i32", "i32" }, &.{"i32"}) or
         !valid_named_stream_operation(future.drop_readable, "[future-drop-readable-1]read-via-stream", &.{"i32"}, &.{}) or
         !std.mem.eql(u8, ticket_drop_import, "[resource-drop]ticket") or
         !valid_variant_event_layout(event)) return null;
@@ -1833,7 +1908,20 @@ fn parse_result_payload(allocator: std.mem.Allocator, value: ?std.json.Value) !R
     errdefer free_string_list(allocator, ok);
     const err = try duplicate_params(allocator, array_value(object.get("err")) orelse return error.InvalidP3AsyncManifest);
     errdefer free_string_list(allocator, err);
-    if (!std.mem.eql(u8, tag, "i32") or !valid_scalar_arm(ok) or !valid_scalar_arm(err)) return error.InvalidP3AsyncManifest;
+    if ((!std.mem.eql(u8, tag, "i32") and !std.mem.eql(u8, tag, "u8")) or
+        !valid_scalar_arm(ok) or !valid_scalar_arm(err)) return error.InvalidP3AsyncManifest;
+    return .{ .tag = tag, .ok = ok, .err = err };
+}
+
+fn parse_result_area_payload(allocator: std.mem.Allocator, value: ?std.json.Value) !ResultAreaPayload {
+    const object = object_value(value orelse return error.InvalidP3AsyncManifest) orelse return error.InvalidP3AsyncManifest;
+    const tag = try duplicate_required(allocator, object.get("tag"));
+    errdefer allocator.free(tag);
+    const ok = try duplicate_params(allocator, array_value(object.get("ok")) orelse return error.InvalidP3AsyncManifest);
+    errdefer free_string_list(allocator, ok);
+    const err = try duplicate_params(allocator, array_value(object.get("err")) orelse return error.InvalidP3AsyncManifest);
+    errdefer free_string_list(allocator, err);
+    if (!is_result_area_scalar(tag) or !valid_result_area_arm(ok) or !valid_result_area_arm(err)) return error.InvalidP3AsyncManifest;
     return .{ .tag = tag, .ok = ok, .err = err };
 }
 
@@ -2157,6 +2245,7 @@ fn free_canonical(allocator: std.mem.Allocator, canonical: Canonical) void {
     free_string_list(allocator, canonical.completion_params);
     allocator.free(canonical.completion);
     if (canonical.result_payload) |payload| free_result_payload(allocator, payload);
+    if (canonical.result_area_payload) |payload| free_result_area_payload(allocator, payload);
     if (canonical.future_owned) |owned| free_future_owned_canonical(allocator, owned);
     free_error_variants(allocator, canonical.error_variants);
     if (canonical.record_layout) |layout| free_record_layout(allocator, layout);
@@ -2238,6 +2327,12 @@ fn free_variant_event_branch(allocator: std.mem.Allocator, branch: VariantEventB
 }
 
 fn free_result_payload(allocator: std.mem.Allocator, payload: ResultPayload) void {
+    allocator.free(payload.tag);
+    free_string_list(allocator, payload.ok);
+    free_string_list(allocator, payload.err);
+}
+
+fn free_result_area_payload(allocator: std.mem.Allocator, payload: ResultAreaPayload) void {
     allocator.free(payload.tag);
     free_string_list(allocator, payload.ok);
     free_string_list(allocator, payload.err);
@@ -2485,6 +2580,28 @@ fn valid_scalar_arm(values: []const []const u8) bool {
         if (!is_core_scalar(value)) return false;
     }
     return true;
+}
+
+fn valid_result_area_arm(values: []const []const u8) bool {
+    if (values.len > 1) return false;
+    for (values) |value| {
+        if (!is_result_area_scalar(value)) return false;
+    }
+    return true;
+}
+
+fn is_result_area_scalar(value: []const u8) bool {
+    return is_core_scalar(value) or
+        std.mem.eql(u8, value, "u8") or
+        std.mem.eql(u8, value, "u16") or
+        std.mem.eql(u8, value, "u32") or
+        std.mem.eql(u8, value, "u64") or
+        std.mem.eql(u8, value, "i8") or
+        std.mem.eql(u8, value, "i16") or
+        std.mem.eql(u8, value, "i32") or
+        std.mem.eql(u8, value, "i64") or
+        std.mem.eql(u8, value, "f32") or
+        std.mem.eql(u8, value, "f64");
 }
 
 fn scalar_result_layout_matches(descriptor: Descriptor) bool {
@@ -3909,6 +4026,46 @@ test "checked-in registry admits the pinned filesystem descriptor get-type ABI" 
     try std.testing.expectEqualStrings("[resource-drop]descriptor", shape.resource_drop_import);
 }
 
+test "checked-in registry admits the pinned filesystem descriptor get-flags ABI" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-flags") orelse return error.TestUnexpectedResult;
+    const shape = switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .filesystem_get_flags => |value| value,
+        else => return error.TestUnexpectedResult,
+    };
+    try std.testing.expectEqualStrings("descriptor", shape.receiver);
+    try std.testing.expectEqualStrings("Result<descriptor-flags,error-code>", shape.source_result);
+    try std.testing.expectEqualStrings("u8", shape.tag);
+    try std.testing.expectEqualStrings("u8", shape.ok[0]);
+    try std.testing.expectEqualStrings("u8", shape.err[0]);
+    try std.testing.expectEqualStrings("i32", descriptor.canonical.result_payload.?.tag);
+    try std.testing.expectEqualStrings("u8", descriptor.canonical.result_area_payload.?.tag);
+    try std.testing.expectEqualStrings("[resource-drop]descriptor", shape.resource_drop_import);
+}
+
+test "filesystem descriptor get-flags lowering rejects ABI drift" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-flags") orelse return error.TestUnexpectedResult;
+
+    var drifted = descriptor;
+    drifted.canonical.core_params = &.{"i32"};
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.wit_sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    var area = descriptor.canonical.result_area_payload.?;
+    area.ok = &.{"i32"};
+    var canonical = descriptor.canonical;
+    canonical.result_area_payload = area;
+    drifted = descriptor;
+    drifted.canonical = canonical;
+    try std.testing.expect(lowering_shape(drifted) == null);
+}
+
 test "checked-in registry admits the pinned filesystem descriptor sync ABI" {
     var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(std.testing.allocator);
@@ -3931,7 +4088,7 @@ test "filesystem descriptor sync lowering rejects ABI drift" {
     const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.sync") orelse return error.TestUnexpectedResult;
 
     var drifted = descriptor;
-    drifted.canonical.core_params = &.{ "i32" };
+    drifted.canonical.core_params = &.{"i32"};
     try std.testing.expect(lowering_shape(drifted) == null);
 
     drifted = descriptor;
@@ -3957,7 +4114,7 @@ test "filesystem descriptor get-type lowering rejects ABI drift" {
     const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-type") orelse return error.TestUnexpectedResult;
 
     var drifted = descriptor;
-    drifted.canonical.core_params = &.{ "i32" };
+    drifted.canonical.core_params = &.{"i32"};
     try std.testing.expect(lowering_shape(drifted) == null);
 
     drifted = descriptor;

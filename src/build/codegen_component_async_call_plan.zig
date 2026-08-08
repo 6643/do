@@ -19,6 +19,8 @@ pub const GuestAsyncCallPlan = struct {
     host_member: []const u8,
     async_import_module: []const u8,
     async_import_name: []const u8,
+    argument_name: []const u8,
+    argument_value: ?u32,
     child_state: ChildState,
     parent_resume_state: ParentResumeState,
 
@@ -30,6 +32,7 @@ pub const GuestAsyncCallPlan = struct {
         allocator.free(self.host_member);
         allocator.free(self.async_import_module);
         allocator.free(self.async_import_name);
+        allocator.free(self.argument_name);
         self.* = undefined;
     }
 };
@@ -63,11 +66,19 @@ pub fn analyze(allocator: std.mem.Allocator, tokens: []const lexer.Token) !Guest
     const host = find_host_binding(tokens, registry) orelse return error.UnsupportedP3AsyncCallComponent;
     const helper = find_function(tokens, "helper") orelse return error.UnsupportedP3AsyncCallComponent;
     const root = find_function(tokens, "run") orelse return error.UnsupportedP3AsyncCallComponent;
+    const scalar_argument = find_scalar_argument(tokens, helper);
+    const helper_is_unit = signature_is_unit(helper);
+    const helper_is_scalar = scalar_argument != null;
+    const scalar_value = if (helper_is_scalar) scalar_root_value(tokens, root) else null;
+    const root_body_valid = if (helper_is_scalar)
+        scalar_value != null
+    else
+        root_body_is_exact(tokens, root);
 
     if (helper.is_async or root.is_async or
-        !signature_is_unit(helper) or !signature_is_unit(root) or
+        (!helper_is_unit and !helper_is_scalar) or !signature_is_unit(root) or
         !helper_body_is_exact(tokens, helper, host.name) or
-        !root_body_is_exact(tokens, root) or
+        !root_body_valid or
         count_top_level_functions(tokens, "helper") != 1 or
         count_top_level_functions(tokens, "run") != 1 or
         count_token_pair(tokens, "@", "host") != 1 or
@@ -92,6 +103,8 @@ pub fn analyze(allocator: std.mem.Allocator, tokens: []const lexer.Token) !Guest
     errdefer allocator.free(async_import_module);
     const async_import_name = try allocator.dupe(u8, host.descriptor.canonical.async_import_name);
     errdefer allocator.free(async_import_name);
+    const argument_name = try allocator.dupe(u8, if (scalar_argument) |argument| argument.name else "");
+    errdefer allocator.free(argument_name);
 
     return .{
         .root_name = root_name,
@@ -101,6 +114,8 @@ pub fn analyze(allocator: std.mem.Allocator, tokens: []const lexer.Token) !Guest
         .host_member = host_member,
         .async_import_module = async_import_module,
         .async_import_name = async_import_name,
+        .argument_name = argument_name,
+        .argument_value = scalar_value,
         .child_state = .host_pending,
         .parent_resume_state = .child_complete,
     };
@@ -190,6 +205,39 @@ fn find_function(tokens: []const lexer.Token, name: []const u8) ?FunctionDecl {
 fn signature_is_unit(function: FunctionDecl) bool {
     return function.params_close == function.params_open + 1 and
         std.mem.eql(u8, function.result_type, "nil");
+}
+
+const ScalarArgument = struct {
+    name: []const u8,
+};
+
+fn find_scalar_argument(tokens: []const lexer.Token, function: FunctionDecl) ?ScalarArgument {
+    if (function.params_close != function.params_open + 3 or
+        tokens[function.params_open + 1].kind != .ident or
+        tokens[function.params_open + 2].kind != .ident or
+        !std.mem.eql(u8, tokens[function.params_open + 2].lexeme, "u32") or
+        !std.mem.eql(u8, function.result_type, "nil")) return null;
+
+    return .{
+        .name = tokens[function.params_open + 1].lexeme,
+    };
+}
+
+fn scalar_root_value(tokens: []const lexer.Token, function: FunctionDecl) ?u32 {
+    const body = tokens[function.body_open + 1 .. function.body_close];
+    if (body.len != 19 or
+        !ident_eq(body[0], "child") or !ident_eq(body[1], "Future") or
+        !sema_tokens.tok_eq(body[2], "<") or !ident_eq(body[3], "nil") or
+        !sema_tokens.tok_eq(body[4], ">") or !sema_tokens.tok_eq(body[5], "=") or
+        !sema_tokens.tok_eq(body[6], "@") or !ident_eq(body[7], "async") or
+        !sema_tokens.tok_eq(body[8], "(") or !ident_eq(body[9], "helper") or
+        !sema_tokens.tok_eq(body[10], "(") or body[11].kind != .number or
+        !sema_tokens.tok_eq(body[12], ")") or !sema_tokens.tok_eq(body[13], ")") or
+        !sema_tokens.tok_eq(body[14], "@") or !ident_eq(body[15], "await") or
+        !sema_tokens.tok_eq(body[16], "(") or !ident_eq(body[17], "child") or
+        !sema_tokens.tok_eq(body[18], ")")) return null;
+
+    return std.fmt.parseInt(u32, body[11].lexeme, 10) catch null;
 }
 
 fn helper_body_is_exact(tokens: []const lexer.Token, function: FunctionDecl, host_name: []const u8) bool {

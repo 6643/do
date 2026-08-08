@@ -86,3 +86,20 @@ test "async call component rejects nested helper calls" {
     defer std.testing.allocator.free(tokens);
     try std.testing.expectError(error.UnsupportedP3AsyncCallComponent, plan.analyze(std.testing.allocator, tokens));
 }
+
+test "async call component admits one scalar helper argument" {
+    const source = @embedFile("test/compile_ok/466_async_call_scalar_argument_component.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    var result = try plan.analyze(std.testing.allocator, tokens);
+    defer result.deinit(std.testing.allocator);
+    try std.testing.expect(@hasField(@TypeOf(result), "argument_name"));
+    try std.testing.expect(@hasField(@TypeOf(result), "argument_value"));
+    if (@hasField(@TypeOf(result), "argument_name")) {
+        try std.testing.expectEqualStrings("value", @field(result, "argument_name"));
+    }
+    if (@hasField(@TypeOf(result), "argument_value")) {
+        try std.testing.expectEqual(@as(u32, 7), @field(result, "argument_value"));
+    }
+}

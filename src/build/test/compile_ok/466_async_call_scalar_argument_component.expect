@@ -1,0 +1,5 @@
+# build-arg: --p3-async-call-component
+[guest-async-arg-store]
+[guest-async-arg-load]
+[guest-async-child-drop]
+[guest-async-root-terminal]

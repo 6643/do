@@ -1,5 +1,33 @@
 # Changelog
 
+# 2026-08-08 bounded scalar-argument async-call promotion: extended the
+  private `--p3-async-call-component` root-owned local-frame adapter to exactly
+  one `u32` helper argument. The admitted source is `@async(helper(7))`; the
+  value is carried in frame slot `u32@12`, with no independent helper task
+  return endpoint. The Do compiler gate and Rust/Wasmtime ready/pending/cancel
+  matrix pass with child-before-parent cleanup and an empty `ResourceTable`;
+  fixtures `467`-`469` reject helper payload, two live children, and nested
+  helper drift. This remains a private bounded shape: arbitrary producer
+  expressions, generic payloads, and public `own<T>`/`borrow<T>`/`ref<T>` stay
+  outside scope.
+
+# 2026-08-08 D2 private filesystem `descriptor.get-flags` promotion: admitted
+  only `wasi:filesystem/types@0.3.0-rc-2025-09-16 / descriptor.get-flags` with
+  upstream WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`
+  and WIT mirror hash
+  `12afdb48b07d7160c76f04231fb8da4862350d42f6170174e6e27264b7307be9`. The
+  measured async import is `[async-lower][method]descriptor.get-flags`
+  `(i32,i32)->i32`; canonical result storage is `u8`, flat task-return is a
+  promoted `i32`, completion is `descriptor-flags | error-code`, and the
+  receiver uses `[resource-drop]descriptor (i32)->nil`. Current and legacy
+  `wasm-tools` ABI gates, compiler fixtures `471`-`474`, and Rust/Wasmtime
+  ready/pending/error/cancel cleanup rows pass with exactly-once drops and an
+  empty `ResourceTable`. This closes one bounded method only; general
+  filesystem async, arbitrary producers, borrowed payloads, and public
+  ownership syntax remain outside scope. Fresh gates: `zig=308/308`, default
+  regression `pass=1149 fail=0 skip=3`, WASM regression `pass=1151 fail=0 skip=3`
+  with smoke `6/6`, and ReleaseSmall smoke passed.
+
 # 2026-08-08 D2 private filesystem `descriptor.sync` promotion: admitted only
   `wasi:filesystem/types@0.3.0-rc-2025-09-16 / descriptor.sync` with upstream
   WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`.

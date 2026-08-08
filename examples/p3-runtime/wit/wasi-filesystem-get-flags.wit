@@ -1,0 +1,63 @@
+package wasi:filesystem@0.3.0-rc-2025-09-16;
+
+interface types {
+  flags descriptor-flags {
+    read,
+    write,
+    file-integrity-sync,
+    data-integrity-sync,
+    requested-write-sync,
+    mutate-directory,
+  }
+  enum error-code {
+    access,
+    already,
+    bad-descriptor,
+    busy,
+    deadlock,
+    quota,
+    exist,
+    file-too-large,
+    illegal-byte-sequence,
+    in-progress,
+    interrupted,
+    invalid,
+    io,
+    is-directory,
+    loop,
+    too-many-links,
+    message-size,
+    name-too-long,
+    no-device,
+    no-entry,
+    no-lock,
+    insufficient-memory,
+    insufficient-space,
+    not-directory,
+    not-empty,
+    not-recoverable,
+    unsupported,
+    no-tty,
+    no-such-device,
+    overflow,
+    not-permitted,
+    pipe,
+    read-only,
+    invalid-seek,
+    text-file-busy,
+    cross-device,
+  }
+  resource descriptor {
+    get-flags: async func() -> result<descriptor-flags, error-code>;
+  }
+}
+
+interface probe {
+  use types.{descriptor, descriptor-flags, error-code};
+  run: async func(directory: own<descriptor>) -> result<descriptor-flags, error-code>;
+}
+
+world get-flags-probe {
+  import types;
+  export probe;
+}

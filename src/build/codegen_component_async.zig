@@ -8,6 +8,7 @@ const codegen_component_cli_stream_stdin = @import("codegen_component_cli_stream
 const codegen_component_stream_writer = @import("codegen_component_stream_writer.zig");
 const codegen_component_wasi_filesystem_read_directory = @import("codegen_component_wasi_filesystem_read_directory.zig");
 const codegen_component_wasi_filesystem_get_type = @import("codegen_component_wasi_filesystem_get_type.zig");
+const codegen_component_wasi_filesystem_get_flags = @import("codegen_component_wasi_filesystem_get_flags.zig");
 const codegen_component_wasi_filesystem_sync = @import("codegen_component_wasi_filesystem_sync.zig");
 const codegen_component_record_stream = @import("codegen_component_record_stream.zig");
 const codegen_component_record_resource_list_stream = @import("codegen_component_record_resource_list_stream.zig");
@@ -48,6 +49,7 @@ pub const Target = enum {
     stream_mirror,
     wasi_read_directory,
     wasi_filesystem_get_type,
+    wasi_filesystem_get_flags,
     wasi_filesystem_sync,
 };
 
@@ -186,6 +188,10 @@ pub fn emit_component_wat(
         },
         .wasi_filesystem_get_type => codegen_component_wasi_filesystem_get_type.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
             error.UnsupportedP3WasiFilesystemGetTypeComponent => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
+        .wasi_filesystem_get_flags => codegen_component_wasi_filesystem_get_flags.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
+            error.UnsupportedP3WasiFilesystemGetFlagsComponent => error.UnsupportedP3AsyncComponent,
             else => err,
         },
         .wasi_filesystem_sync => codegen_component_wasi_filesystem_sync.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
@@ -919,6 +925,10 @@ pub fn emit_component_wit_with_graph(
             error.UnsupportedP3WasiFilesystemGetTypeComponent => error.UnsupportedP3AsyncComponent,
             else => err,
         },
+        .wasi_filesystem_get_flags => codegen_component_wasi_filesystem_get_flags.emit_component_wit(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3WasiFilesystemGetFlagsComponent => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
         .wasi_filesystem_sync => codegen_component_wasi_filesystem_sync.emit_component_wit(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3WasiFilesystemSyncComponent => error.UnsupportedP3AsyncComponent,
             else => err,
@@ -1025,6 +1035,11 @@ pub fn target_for_tokens_with_graph(
                     return error.UnsupportedP3AsyncComponent;
                 break :blk .wasi_filesystem_get_type;
             } else return error.UnsupportedP3AsyncComponent,
+            .filesystem_get_flags => if (binding.kind == .host or binding.kind == .host_func) blk: {
+                _ = codegen_component_wasi_filesystem_get_flags.GetFlagsPlan.analyze(tokens, registry) catch
+                    return error.UnsupportedP3AsyncComponent;
+                break :blk .wasi_filesystem_get_flags;
+            } else return error.UnsupportedP3AsyncComponent,
             .filesystem_sync => if (binding.kind == .host or binding.kind == .host_func) blk: {
                 _ = codegen_component_wasi_filesystem_sync.SyncPlan.analyze(tokens, registry) catch
                     return error.UnsupportedP3AsyncComponent;
@@ -1075,6 +1090,7 @@ fn target_for_descriptor(descriptor: p3_async_manifest.Descriptor) !Target {
         .stream_reader_acquire => .stream_reader,
         .record_stream_reader => .wasi_read_directory,
         .filesystem_get_type => .wasi_filesystem_get_type,
+        .filesystem_get_flags => .wasi_filesystem_get_flags,
         .filesystem_sync => .wasi_filesystem_sync,
         .record_resource_list_stream_reader => error.UnsupportedP3AsyncComponent,
         .record_resource_list_stream_producer => .record_resource_list_stream_producer,
@@ -1400,6 +1416,36 @@ test "generic Component async target classifies pinned filesystem descriptor syn
     defer std.testing.allocator.free(wit);
     try std.testing.expect(std.mem.indexOf(u8, wit, "sync: async func() -> result<_, error-code>") != null);
     try std.testing.expect(std.mem.indexOf(u8, wit, "run: async func(file: own<descriptor>)") != null);
+}
+
+test "generic Component async target classifies pinned filesystem descriptor get-flags" {
+    const source = @embedFile("test/compile_ok/471_wasi_filesystem_get_flags_component.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectEqual(Target.wasi_filesystem_get_flags, try target_for_tokens(std.testing.allocator, tokens));
+    const wit = try emit_component_wit(std.testing.allocator, tokens);
+    defer std.testing.allocator.free(wit);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "get-flags: async func()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "flags descriptor-flags") != null);
+}
+
+test "filesystem descriptor get-flags target rejects a second await" {
+    const source =
+        \\get_flags = @host("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-flags", (Dir) -> u8 | FlagsError)
+        \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+        \\FlagsError error = Io | NoEntry
+        \\run(directory Dir) -> u8 | FlagsError {
+        \\    pending Future<u8 | FlagsError> = get_flags(directory)
+        \\    first u8 | FlagsError = @await(pending)
+        \\    second u8 | FlagsError = @await(pending)
+        \\    return second
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try std.testing.expectError(error.UnsupportedP3AsyncComponent, target_for_tokens(std.testing.allocator, tokens));
 }
 
 test "filesystem descriptor sync target rejects a second await" {

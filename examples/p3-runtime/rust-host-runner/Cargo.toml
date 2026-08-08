@@ -46,6 +46,10 @@ name = "do-p3-async-call-component-host-runner"
 path = "src/bin/async_call_component.rs"
 
 [[bin]]
+name = "do-p3-async-call-scalar-argument-host-runner"
+path = "src/bin/async_call_scalar_argument.rs"
+
+[[bin]]
 name = "do-p3-generic-async-scalar-probe-host-runner"
 path = "src/bin/generic_async_scalar_probe.rs"
 
@@ -192,6 +196,10 @@ path = "src/bin/wasi_filesystem_get_type.rs"
 [[bin]]
 name = "do-p3-wasi-filesystem-sync-host-runner"
 path = "src/bin/wasi_filesystem_sync.rs"
+
+[[bin]]
+name = "do-p3-wasi-filesystem-get-flags-host-runner"
+path = "src/bin/wasi_filesystem_get_flags.rs"
 
 [profile.dev]
 debug = 0

@@ -149,6 +149,7 @@ fn p3_async_signature_matches(tokens: []const lexer.Token, start_idx: usize, end
             .record_resource_list_stream_batched_producer => return record_resource_list_stream_producer_signature_matches(tokens, close_idx, end_idx, descriptor),
             .variant_resource_stream_reader => return variant_resource_stream_signature_matches(tokens, start_idx, close_idx, end_idx),
             .stream_writer => return stream_writer_signature_matches(tokens, close_idx, end_idx),
+            .filesystem_get_flags => return filesystem_get_flags_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_get_type => return filesystem_get_type_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_sync => return filesystem_sync_signature_matches(tokens, start_idx, close_idx, end_idx),
             else => {},
@@ -179,6 +180,18 @@ fn filesystem_get_type_signature_matches(
         tokens[params_start_idx + 1].kind != .ident or
         !std.mem.eql(u8, tokens[params_start_idx + 1].lexeme, "Dir")) return false;
     return compact_token_range_equals(tokens, params_close_idx + 3, end_idx, "DescriptorType|FileError");
+}
+
+fn filesystem_get_flags_signature_matches(
+    tokens: []const lexer.Token,
+    params_start_idx: usize,
+    params_close_idx: usize,
+    end_idx: usize,
+) bool {
+    if (params_close_idx != params_start_idx + 2 or
+        tokens[params_start_idx + 1].kind != .ident or
+        !std.mem.eql(u8, tokens[params_start_idx + 1].lexeme, "Dir")) return false;
+    return compact_token_range_equals(tokens, params_close_idx + 3, end_idx, "u8|FlagsError");
 }
 
 fn filesystem_sync_signature_matches(
@@ -1748,6 +1761,31 @@ test "pinned filesystem get-type host imports accept the descriptor result union
     defer std.testing.allocator.free(tokens);
 
     try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "pinned filesystem get-flags host imports accept the byte flags union" {
+    const source =
+        \\get_flags = @host_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-flags", (Dir) -> u8 | FlagsError)
+        \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+        \\FlagsError error = Io | NoEntry
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "pinned filesystem get-flags host imports reject a non-byte source result" {
+    const source =
+        \\get_flags = @host_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-flags", (Dir) -> WrongFlags | FlagsError)
+        \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+        \\WrongFlags = Read | Write
+        \\FlagsError error = Io | NoEntry
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectError(error.P3AsyncHostSignatureMismatch, check_p3_async_host_imports(std.testing.allocator, tokens));
 }
 
 test "pinned filesystem get-type host imports reject a drifted source result" {

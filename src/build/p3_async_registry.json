@@ -480,6 +480,40 @@
         },
         {
             "locator": "wasi:filesystem/types@0.3.0-rc-2025-09-16",
+            "member": "descriptor.get-flags",
+            "effect": "async",
+            "params": ["descriptor"],
+            "result": "Result<descriptor-flags,error-code>",
+            "resource": null,
+            "wit_sha256": "8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f",
+            "canonical": {
+                "core_params": ["i32", "i32"],
+                "core_results": ["i32"],
+                "completion_params": ["i32", "i32"],
+                "completion": "task-return",
+                "result_payload": {
+                    "tag": "i32",
+                    "ok": ["i32"],
+                    "err": ["i32"]
+                },
+                "result_area_payload": {
+                    "tag": "u8",
+                    "ok": ["u8"],
+                    "err": ["u8"]
+                },
+                "async_import_module": "wasi:filesystem/types@0.3.0-rc-2025-09-16",
+                "async_import_name": "[async-lower][method]descriptor.get-flags"
+            },
+            "wit": {
+                "package": "wasi:filesystem@0.3.0-rc-2025-09-16",
+                "interface": "types",
+                "operation": "descriptor.get-flags",
+                "world": "imports",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "wasi:filesystem/types@0.3.0-rc-2025-09-16",
             "member": "descriptor.get-type",
             "effect": "async",
             "params": ["descriptor"],

@@ -27,7 +27,6 @@ impl Mode {
             other => bail!("mode must be ready, pending, or cancel, got {other}"),
         }
     }
-
 }
 
 #[derive(Default)]
@@ -166,7 +165,9 @@ impl Drop for ControlledWork {
     fn drop(&mut self) {
         self.stats.future_drops.fetch_add(1, Ordering::SeqCst);
         if !self.completed {
-            self.stats.pending_future_drops.fetch_add(1, Ordering::SeqCst);
+            self.stats
+                .pending_future_drops
+                .fetch_add(1, Ordering::SeqCst);
         }
         if let Some(signal) = &self.signal {
             signal.cancel();
@@ -280,44 +281,80 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
     let guest_completed = stats.guest_completed.load(Ordering::SeqCst);
     match mode {
         Mode::Ready => {
-            if calls != 1 || polls != 1 || wakes != 0 || completions != 1 || drops != 1 ||
-                pending_drops != 0 || !guest_completed || !table_empty
+            if calls != 1
+                || polls != 1
+                || wakes != 0
+                || completions != 1
+                || drops != 1
+                || pending_drops != 0
+                || !guest_completed
+                || !table_empty
             {
-                bail!("ready observations invalid: calls={calls} polls={polls} wakes={wakes} completions={completions} drops={drops} pending-drops={pending_drops} guest-completed={guest_completed} table-empty={table_empty}");
+                bail!(
+                    "ready observations invalid: calls={calls} polls={polls} wakes={wakes} completions={completions} drops={drops} pending-drops={pending_drops} guest-completed={guest_completed} table-empty={table_empty}"
+                );
             }
-            println!("mode=ready child-completions=1 child-drops=1 host-future-drops=1 table-empty=true");
+            println!(
+                "mode=ready child-completions=1 child-drops=1 host-future-drops=1 table-empty=true"
+            );
         }
         Mode::Pending => {
-            if calls != 1 || polls < 2 || wakes != 1 || completions != 1 || drops != 1 ||
-                pending_drops != 0 || !guest_completed || !table_empty
+            if calls != 1
+                || polls < 2
+                || wakes != 1
+                || completions != 1
+                || drops != 1
+                || pending_drops != 0
+                || !guest_completed
+                || !table_empty
             {
-                bail!("pending observations invalid: calls={calls} polls={polls} wakes={wakes} completions={completions} drops={drops} pending-drops={pending_drops} guest-completed={guest_completed} table-empty={table_empty}");
+                bail!(
+                    "pending observations invalid: calls={calls} polls={polls} wakes={wakes} completions={completions} drops={drops} pending-drops={pending_drops} guest-completed={guest_completed} table-empty={table_empty}"
+                );
             }
-            println!("mode=pending child-completions=1 child-drops=1 host-future-drops=1 table-empty=true");
+            println!(
+                "mode=pending child-completions=1 child-drops=1 host-future-drops=1 table-empty=true"
+            );
         }
         Mode::Cancel => {
-            if calls != 1 || polls < 1 || wakes != 0 || completions != 0 || drops != 1 ||
-                pending_drops != 1 || guest_completed || !table_empty
+            if calls != 1
+                || polls < 1
+                || wakes != 0
+                || completions != 0
+                || drops != 1
+                || pending_drops != 1
+                || guest_completed
+                || !table_empty
             {
-                bail!("cancel observations invalid: calls={calls} polls={polls} wakes={wakes} completions={completions} drops={drops} pending-drops={pending_drops} guest-completed={guest_completed} table-empty={table_empty}");
+                bail!(
+                    "cancel observations invalid: calls={calls} polls={polls} wakes={wakes} completions={completions} drops={drops} pending-drops={pending_drops} guest-completed={guest_completed} table-empty={table_empty}"
+                );
             }
-            println!("mode=cancel child-cancellations=1 child-drops=1 host-future-drops=1 table-empty=true");
+            println!(
+                "mode=cancel child-cancellations=1 child-drops=1 host-future-drops=1 table-empty=true"
+            );
         }
     }
     println!("async-call root-terminal=1 duplicate-drop=0");
     Ok(())
 }
 
-fn main() -> Result<()> {
+pub fn run_cli() -> Result<()> {
     let mut args = std::env::args().skip(1);
-    let component_path = args
-        .next()
-        .context("usage: do-p3-async-call-component-host-runner <component.wasm> <ready|pending|cancel>")?;
-    let mode = args
-        .next()
-        .context("usage: do-p3-async-call-component-host-runner <component.wasm> <ready|pending|cancel>")?;
+    let component_path = args.next().context(
+        "usage: do-p3-async-call-component-host-runner <component.wasm> <ready|pending|cancel>",
+    )?;
+    let mode = args.next().context(
+        "usage: do-p3-async-call-component-host-runner <component.wasm> <ready|pending|cancel>",
+    )?;
     if args.next().is_some() {
-        bail!("usage: do-p3-async-call-component-host-runner <component.wasm> <ready|pending|cancel>");
+        bail!(
+            "usage: do-p3-async-call-component-host-runner <component.wasm> <ready|pending|cancel>"
+        );
     }
     futures::executor::block_on(run(Path::new(&component_path), Mode::parse(&mode)?))
+}
+
+fn main() -> Result<()> {
+    run_cli()
 }
