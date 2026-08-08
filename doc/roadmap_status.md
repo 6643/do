@@ -26,6 +26,18 @@
 | 架构扁平拆分 | 已落地: `diagnostics` / `type_name` / `sema_error` / codegen 域竖切 / **`sema_*` 域竖切** (`sema_tokens`/`sema_shapes`/`sema_function_*`/`sema_structures`/`sema_type_checks`/`sema_imports`/`sema_control`) |
 | 目录 | 标准库 `lib/`; 工具链 `src/` (原 `tool/`) |
 
+### 2026-08-08 colorless inline async-call gate
+
+`--p3-async-call-component` now accepts two exact root-owned unit forms:
+child-only `@async(helper())`, and one leading inline `helper()` followed by
+that explicit child. Ordinary functions remain colorless; a normal call is
+inline and only `@async(call)` creates a user-function Future. The Component
+and Rust/Wasmtime gates pass ready, pending, `cancel-inline`, and
+`cancel-child`, with exactly-once host-Future cleanup and an empty
+`ResourceTable`. The default/v1 and v2 dispatch paths are unchanged. Any
+broader payload, resource, Stream/list, branch, loop, recursion, multiple-child
+or arbitrary producer shape remains pending and must fail closed before WAT.
+
 ### 最近验证
 
 ```text

@@ -159,27 +159,30 @@ Recovery for the deferred capability requires a pinned ABI/toolchain design
 that specifies guest child-task creation, continuation delivery, cancellation,
 and child-before-parent cleanup.
 
-**Bounded general async-call slice (2026-08-07, green):** the first admitted
-root-owned local-frame shape is now implemented behind
-`--p3-async-call-component`. It uses the separate private
-`do:generic-async-call-probe@0.1.0` `host.work: async func()` descriptor; the
-existing `do:generic-async-runtime-probe` descriptor and v1/v2 targets remain
-unchanged. `examples/p3-runtime/test_do_async_call_component.sh` passes pinned
-`wasm-tools 1.254.0` assembly/validation, verifies the four guest state
-markers, and confirms v1 rejects the same source before WAT. The Rust/Wasmtime
-gate `test_rust_async_call_component.sh` passes `ready`, `pending`, and
-`cancel`: ready/pending each observe one completion and one drop; cancel
-observes one pending-future drop, zero completion, no duplicate drop, and an
-empty `ResourceTable`.
+**Bounded general async-call slice (2026-08-08, green):** the root-owned
+local-frame target is implemented behind `--p3-async-call-component`. It uses
+the separate private `do:generic-async-call-probe@0.1.0` `host.work: async
+func()` descriptor; the existing `do:generic-async-runtime-probe` descriptor
+and v1/v2 targets remain unchanged. The analyzer accepts both the child-only
+unit root and exactly one leading inline `helper()` followed by the explicit
+`@async(helper())` child. `examples/p3-runtime/test_do_async_call_component.sh`
+passes pinned `wasm-tools 1.254.0` assembly/validation, verifies inline and
+child state markers, two host call sites, no helper export, and v1 rejection
+before WAT. The Rust/Wasmtime gate
+`test_rust_async_call_component.sh` passes `ready`, `pending`, `cancel-inline`,
+and `cancel-child`: ready/pending each observe two completions and two drops;
+`cancel-inline` observes one pending drop; `cancel-child` observes one
+completed and one pending drop. Both cancellation modes have no duplicate drop
+and an empty `ResourceTable`.
 
 The opt-in analyzer rejects helper parameters/payloads, multiple live
-children, and nested helper calls as `UnsupportedP3AsyncCallComponent`; the
-normal default build still reports `AsyncLoweringUnavailable` for those
-fixtures because it does not select the opt-in target. Generic async-call
-composition, arbitrary producer expressions, payload/Stream/resource/list
-futures, public ownership syntax, general filesystem async, and D2 host I/O remain
-pending. Independent guest child-task creation remains blocked by the pinned
-Component ABI described above.
+children, a second inline call, and nested helper calls as
+`UnsupportedP3AsyncCallComponent`; the normal default build still reports
+`AsyncLoweringUnavailable` for those fixtures because it does not select the
+opt-in target. Generic async-call composition, arbitrary producer expressions,
+payload/Stream/resource/list futures, public ownership syntax, general
+filesystem async, and D2 host I/O remain pending. Independent guest child-task
+creation remains blocked by the pinned Component ABI described above.
 
 本轮执行复核（2026-08-07）重新运行了六跳 forwarding/任意 producer 边界、borrowed stream rejection 与 `p3_async_manifest`（74/74）；三个 gate 均保持预期拒绝/通过。同步确认了 descriptor-bounded StreamMirror 六模式、默认 Bun 回归 `pass=1116 fail=0 skip=3`、WASM 回归 `pass=1118 fail=0 skip=3`（WASM smoke `6/6`）和 ReleaseSmall smoke 通过；nested lowering、borrowed rejection、G6.2 boundary 与完整 compiler/Wasm 矩阵均保持绿色，未新增 descriptor 或 lowering。
 

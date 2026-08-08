@@ -19,6 +19,18 @@ compatibility wrapper. Run `bash test_wasmtime_p3_legacy_assembly.sh` for the
 Core-WAT -> Component -> Rust/Wasmtime golden gate. This target is deliberately
 not named `wasmtime-p3` and does not claim standard32 or complete WASI support.
 
+The colorless async-call probe is a separate opt-in target:
+`async-call-component.do` with `--p3-async-call-component`. It keeps `helper()`
+and `run()` as ordinary functions. The target accepts the existing child-only
+root and one exact leading inline `helper()` followed by
+`child Future<nil> = @async(helper())`; only the explicit `@async` creates a
+user-function Future. The compiler owns both host phases in the root frame and
+does not export `helper`. Run `test_do_async_call_component.sh` for the pinned
+Core/WIT/Component gate and `test_rust_async_call_component.sh` for ready,
+pending, `cancel-inline`, and `cancel-child` cleanup observations. Payloads,
+resources, streams/lists, arbitrary producer expressions, and general
+async-call composition remain rejected.
+
 The C embedder uses one active `wasmtime_call_future_t` per Store. The
 `test_c_api_host_drive_queue.sh` probe queues two logical calls, polls and drops
 the first before starting the second, and asserts `active-futures-max=1` with

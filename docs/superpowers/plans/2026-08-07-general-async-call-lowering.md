@@ -6,11 +6,18 @@
 
 **Architecture:** Build an internal call graph and frame plan for an ordinary helper invoked from a root function. The first admitted shape has no parameters, a `nil` result, one registered async host call inside the helper, and one parent await. A separate `--p3-async-call-component` dispatcher emits only this shape and fails closed for every broader form. The pinned ABI rejects an independent helper `task.return`, so the implementation uses a root-owned local helper frame/state and the root callback/task.return path.
 
-**Current execution status:** Tasks 1-4 are implemented and their focused
-Component/Rust/Wasmtime gates are green. Task 5 is complete for the bounded
-slice: the three analyzer negative fixtures reject before WAT under the opt-in
-target, while the broader parameter/resource/Stream/list/legacy forms remain
-explicit residual boundaries rather than admitted shapes.
+**Current execution status:** The original Tasks 1-5 and the 2026-08-08
+colorless-inline follow-up are implemented. The opt-in target accepts both the
+existing child-only unit root and exactly one leading inline `helper()` before
+the explicit `@async(helper())` child. Component/Rust/Wasmtime gates cover
+ready, pending, `cancel-inline`, and `cancel-child`; broader
+parameter/resource/Stream/list/legacy forms remain explicit residual
+boundaries rather than admitted shapes.
+
+The source remains non-contagious: `helper()` and `run()` are ordinary
+functions, a normal call is inline, and only `@async(call)` creates a
+user-function Future. The inline phase is root-owned and does not synthesize a
+helper export or a second `task.return` endpoint.
 
 **Tech Stack:** Zig `0.16.0`, Do compiler, WIT/Core WAT, legacy `wasm-tools 1.254.0`, Rust `1.97.1`, Wasmtime `47.0.2`, existing Cargo/Rust host runner.
 

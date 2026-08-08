@@ -1,7 +1,7 @@
 # General Async-Call Lowering Design
 
-Status: bounded root-owned local-frame slice implemented and verified; general
-async-call composition remains pending.
+Status: bounded root-owned local-frame slice implemented and verified on
+2026-08-08; general async-call composition remains pending.
 
 Date: 2026-08-07
 
@@ -25,6 +25,12 @@ The source contract is colorless:
 - a registered WIT async host binding already returns `Future<T>` and must not
   be wrapped in `@async`;
 - `@await` and `@cancel` consume futures.
+
+An ordinary function may contain an admitted `@await` or `@cancel` without
+changing its declaration or the type of a normal call. A normal `helper()`
+call executes inline in the caller; only explicit `@async(helper())` creates a
+user-function `Future<T>`. This phase does not introduce `own<T>`,
+`borrow<T>`, `ref<T>`, pointers, references, or lifetimes.
 
 The Core generic async emitter already has a bounded synchronous-call shape,
 but the Component analyzer currently admits only direct registered host
@@ -116,20 +122,48 @@ Admission is deliberately exact for this first slice:
 - no payload, `Stream`, resource, list, borrowed value, or external producer;
 - no `async` function declaration.
 
+The opt-in Component target admits two unit root shapes. The existing shape is
+the child-only sequence:
+
+```do
+run() -> nil {
+    child Future<nil> = @async(helper())
+    @await(child)
+}
+```
+
+The new colorless-inline sequence has exactly one leading synchronous call,
+then the same explicit child:
+
+```do
+run() -> nil {
+    helper()
+    child Future<nil> = @async(helper())
+    @await(child)
+}
+```
+
+Both forms keep `helper` internal and use the root-owned frame. A second
+inline call, helper payload, argument, branch, loop, nested helper, recursion,
+multiple child, or arbitrary producer expression is rejected before WAT with
+`UnsupportedP3AsyncCallComponent`.
+
 The WIT sidecar is the private `do:generic-async-call-probe@0.1.0` `probe`
 world with `host.work: async func` and `export run: async func()`. The helper
 is an internal guest function and must not add a WIT import or export.
 
 ## Cancellation Contract
 
-The positive runtime gate drives three host modes:
+The positive runtime gate drives four host modes:
 
 1. `ready`: the host work completes immediately and the helper returns once;
 2. `pending`: the helper remains in-flight until the host wakes it, then the
    parent continuation completes;
-3. `cancel`: the host cancels the root while the helper host operation is
-   pending; the helper subtask, helper future, and root frame are released
-   exactly once.
+3. `cancel-inline`: the host cancels the root while the leading inline host
+   operation is pending; its one pending future is released exactly once.
+4. `cancel-child`: the inline operation completes, the explicit child host
+   operation is pending, and cancellation releases one completed and one
+   pending future exactly once.
 
 Cancellation is a guest/Component lifecycle transition. It does not undo a
 host effect that was already issued and does not add an operation id,
@@ -137,12 +171,11 @@ compensation callback, or rollback protocol.
 
 Required runtime observations are:
 
-- pending: one helper subtask, one host wake, one helper completion, one helper
-  drop, one root completion;
-- ready: zero external wakes, one helper completion, one helper drop, one root
-  completion;
-- cancel: one root cancellation, one helper cancellation/drop, no duplicate
-  frame or subtask release, and an empty Component resource table.
+- pending: two host calls, two host wakes, two completions, two drops, and one
+  root completion;
+- ready: two immediate completions, two drops, and one root completion;
+- either cancellation mode: one root cancellation, no root completion, no
+  duplicate frame or subtask release, and an empty Component resource table.
 
 ## Negative Boundary
 
@@ -236,15 +269,18 @@ question for the selected root-owned local-frame route. Independent guest
 child-task creation remains a deferred ABI capability and is not part of the
 compiler target.
 
-## Implementation Result (2026-08-07)
+## Implementation Result (2026-08-08)
 
 The bounded slice is implemented by `codegen_component_async_call_plan.zig` and
 `codegen_component_async_call.zig`, exposed only through
-`--p3-async-call-component`. The registry contains a separate private
-`do:generic-async-call-probe/host@0.1.0` descriptor; the existing generic
-runtime descriptor and v1/v2 dispatch paths are unchanged. The generated WIT
-snapshot is `examples/p3-runtime/async-call-component.wit` and contains no
-helper export or public ownership syntax.
+`--p3-async-call-component`. The plan carries `inline_helper_call`; the old
+child-only path remains unchanged, while the new path emits a root-owned phase
+1 (inline host), phase 2 (explicit child), and phase 3 (terminal). The registry
+contains a separate private `do:generic-async-call-probe/host@0.1.0`
+descriptor; the existing generic runtime descriptor and v1/v2 dispatch paths
+are unchanged. The generated WIT snapshot is
+`examples/p3-runtime/async-call-component.wit` and contains no helper export or
+public ownership syntax.
 
 The Do/Component gate is reproducible with:
 
@@ -253,9 +289,9 @@ WASM_TOOLS=/home/_/.local/share/Trash/files/wasm-tools-1.254.0-x86_64-linux/wasm
   bash examples/p3-runtime/test_do_async_call_component.sh
 ```
 
-It verifies the four guest-frame markers, rejects helper `task.return` and
-`async-lift` endpoints, attaches the pinned legacy metadata, and validates the
-Component. The same source under v1 is rejected before WAT with
+It verifies the inline and child guest-frame markers, two host call sites,
+rejects helper `task.return` and `async-lift` endpoints, attaches the pinned
+legacy metadata, and validates the Component. The same source under v1 is rejected before WAT with
 `UnsupportedP3AsyncComponent`, so it cannot silently route to this target.
 
 The Wasmtime 47.0.2 / Rust 1.97.1 matrix is reproducible with:
@@ -265,9 +301,11 @@ WASM_TOOLS=/home/_/.local/share/Trash/files/wasm-tools-1.254.0-x86_64-linux/wasm
   bash examples/p3-runtime/test_rust_async_call_component.sh <component.wasm>
 ```
 
-The measured modes are `ready` and `pending`: one host future completion and
-one drop; `cancel`: one pending future drop, zero completion, no duplicate
-drop, and an empty `ResourceTable`. Scheduler polling is intentionally not
+The measured modes are `ready`, `pending`, `cancel-inline`, and
+`cancel-child`. Ready/pending each produce two host completions and two future
+drops. `cancel-inline` produces one pending drop; `cancel-child` produces one
+completed and one pending drop. Both cancellation modes leave no duplicate
+drop and an empty `ResourceTable`; scheduler polling is intentionally not
 asserted as an exact count.
 
 Future widening may add the following internal modules:
@@ -310,5 +348,6 @@ This bounded design phase is complete for the admitted shape when:
 5. v1, v2, public ownership syntax, arbitrary producer expressions, generic
    payloads, filesystem async, and D2 host I/O remain explicitly unchanged.
 
-These criteria are met for the one no-parameter/nil helper shape. The broader
-items remain explicit follow-up boundaries rather than implicit admissions.
+These criteria are met for the two unit root shapes (child-only and one leading
+inline helper call). The broader items remain explicit follow-up boundaries
+rather than implicit admissions.
