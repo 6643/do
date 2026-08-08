@@ -107,6 +107,7 @@ test "async call component admits one scalar helper argument" {
     if (@hasField(@TypeOf(result), "argument_value")) {
         try std.testing.expectEqual(@as(u32, 7), @field(result, "argument_value"));
     }
+    try std.testing.expectEqual(@as(?u32, null), result.inline_argument_value);
     try std.testing.expect(!result.inline_helper_call);
 }
 

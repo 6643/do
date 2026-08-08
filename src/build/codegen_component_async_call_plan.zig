@@ -21,6 +21,7 @@ pub const GuestAsyncCallPlan = struct {
     async_import_name: []const u8,
     argument_name: []const u8,
     argument_value: ?u32,
+    inline_argument_value: ?u32,
     inline_helper_call: bool,
     child_state: ChildState,
     parent_resume_state: ParentResumeState,
@@ -71,9 +72,13 @@ pub fn analyze(allocator: std.mem.Allocator, tokens: []const lexer.Token) !Guest
     const helper_is_unit = signature_is_unit(helper);
     const helper_is_scalar = scalar_argument != null;
     const scalar_value = if (helper_is_scalar) scalar_root_value(tokens, root) else null;
-    const inline_helper_call = !helper_is_scalar and root_body_with_inline(tokens, root);
+    const inline_scalar_values = if (helper_is_scalar) root_body_with_inline_scalar(tokens, root) else null;
+    const inline_helper_call = if (helper_is_scalar)
+        inline_scalar_values != null
+    else
+        root_body_with_inline(tokens, root);
     const root_body_valid = if (helper_is_scalar)
-        scalar_value != null
+        scalar_value != null or inline_scalar_values != null
     else
         root_body_is_exact(tokens, root) or inline_helper_call;
 
@@ -117,7 +122,8 @@ pub fn analyze(allocator: std.mem.Allocator, tokens: []const lexer.Token) !Guest
         .async_import_module = async_import_module,
         .async_import_name = async_import_name,
         .argument_name = argument_name,
-        .argument_value = scalar_value,
+        .argument_value = scalar_value orelse if (inline_scalar_values) |values| values.child else null,
+        .inline_argument_value = if (inline_scalar_values) |values| values.inline_value else null,
         .inline_helper_call = inline_helper_call,
         .child_state = .host_pending,
         .parent_resume_state = .child_complete,
@@ -240,7 +246,38 @@ fn scalar_root_value(tokens: []const lexer.Token, function: FunctionDecl) ?u32 {
         !sema_tokens.tok_eq(body[16], "(") or !ident_eq(body[17], "child") or
         !sema_tokens.tok_eq(body[18], ")")) return null;
 
-    return std.fmt.parseInt(u32, body[11].lexeme, 10) catch null;
+    return parse_u32_literal(body[11]);
+}
+
+const InlineScalarValues = struct {
+    inline_value: u32,
+    child: u32,
+};
+
+fn root_body_with_inline_scalar(tokens: []const lexer.Token, function: FunctionDecl) ?InlineScalarValues {
+    const body = tokens[function.body_open + 1 .. function.body_close];
+    if (body.len != 23 or
+        !ident_eq(body[0], "helper") or !sema_tokens.tok_eq(body[1], "(") or body[2].kind != .number or
+        !sema_tokens.tok_eq(body[3], ")") or
+        !ident_eq(body[4], "child") or !ident_eq(body[5], "Future") or
+        !sema_tokens.tok_eq(body[6], "<") or !ident_eq(body[7], "nil") or
+        !sema_tokens.tok_eq(body[8], ">") or !sema_tokens.tok_eq(body[9], "=") or
+        !sema_tokens.tok_eq(body[10], "@") or !ident_eq(body[11], "async") or
+        !sema_tokens.tok_eq(body[12], "(") or !ident_eq(body[13], "helper") or
+        !sema_tokens.tok_eq(body[14], "(") or body[15].kind != .number or
+        !sema_tokens.tok_eq(body[16], ")") or !sema_tokens.tok_eq(body[17], ")") or
+        !sema_tokens.tok_eq(body[18], "@") or !ident_eq(body[19], "await") or
+        !sema_tokens.tok_eq(body[20], "(") or !ident_eq(body[21], "child") or
+        !sema_tokens.tok_eq(body[22], ")")) return null;
+
+    const inline_value = parse_u32_literal(body[2]) orelse return null;
+    const child = parse_u32_literal(body[15]) orelse return null;
+    return .{ .inline_value = inline_value, .child = child };
+}
+
+fn parse_u32_literal(token: lexer.Token) ?u32 {
+    if (token.kind != .number) return null;
+    return std.fmt.parseInt(u32, token.lexeme, 10) catch null;
 }
 
 fn helper_body_is_exact(tokens: []const lexer.Token, function: FunctionDecl, host_name: []const u8) bool {
