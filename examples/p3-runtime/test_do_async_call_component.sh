@@ -22,12 +22,15 @@ component="$tmp_dir/async-call.component.wasm"
 "$do_bin" build "$source" --p3-async-call-component --p3-wit-output "$wit" -o "$core_wat"
 cmp "$wit_snapshot" "$wit"
 for marker in \
+    '[guest-inline-helper]' \
+    '[guest-inline-resume]' \
     '[guest-async-child]' \
     '[guest-async-parent-resume]' \
     '[guest-async-child-drop]' \
     '[guest-async-root-terminal]'; do
     grep -Fq "$marker" "$core_wat"
 done
+test "$(grep -o 'call \$host-work' "$core_wat" | wc -l)" -eq 2
 if grep -Fq '[task-return]helper' "$core_wat" || grep -Fq '[async-lift]helper' "$core_wat"; then
     printf 'async-call emitted an independent helper endpoint\n' >&2
     exit 1

@@ -15,7 +15,8 @@ const HOST_INSTANCE: &str = "do:generic-async-call-probe/host@0.1.0";
 enum Mode {
     Ready,
     Pending,
-    Cancel,
+    CancelInline,
+    CancelChild,
 }
 
 impl Mode {
@@ -23,8 +24,11 @@ impl Mode {
         match value {
             "ready" => Ok(Self::Ready),
             "pending" => Ok(Self::Pending),
-            "cancel" => Ok(Self::Cancel),
-            other => bail!("mode must be ready, pending, or cancel, got {other}"),
+            "cancel-inline" => Ok(Self::CancelInline),
+            "cancel-child" => Ok(Self::CancelChild),
+            other => {
+                bail!("mode must be ready, pending, cancel-inline, or cancel-child, got {other}")
+            }
         }
     }
 }
@@ -180,15 +184,16 @@ impl Drop for ControlledWork {
     }
 }
 
-struct CancelAfterHostCall {
+struct CancelAfterHostCalls {
     stats: Arc<Stats>,
+    required_calls: u32,
 }
 
-impl Future for CancelAfterHostCall {
+impl Future for CancelAfterHostCalls {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Self::Output> {
-        if self.stats.host_calls.load(Ordering::SeqCst) != 0 {
+        if self.stats.host_calls.load(Ordering::SeqCst) >= self.required_calls {
             Poll::Ready(())
         } else {
             cx.waker().wake_by_ref();
@@ -213,13 +218,17 @@ async fn invoke(
 ) -> Result<()> {
     let call = store.run_concurrent(async |accessor| run.call_concurrent(accessor, ()).await);
     match mode {
-        Mode::Cancel => {
-            let cancel = CancelAfterHostCall { stats };
+        Mode::CancelInline | Mode::CancelChild => {
+            let required_calls = if mode == Mode::CancelInline { 1 } else { 2 };
+            let cancel = CancelAfterHostCalls {
+                stats,
+                required_calls,
+            };
             match select(Box::pin(call), Box::pin(cancel)).await {
                 Either::Left((result, _cancel)) => {
                     let result = map_wasmtime(result)?;
                     map_wasmtime(result)?;
-                    bail!("cancel mode completed the root task before cancellation");
+                    bail!("cancellation mode completed the root task before cancellation");
                 }
                 Either::Right((_cancel, pending_call)) => drop(pending_call),
             }
@@ -248,11 +257,18 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
     let mut host = map_wasmtime(linker.instance(HOST_INSTANCE))?;
     let host_stats = Arc::clone(&stats);
     map_wasmtime(host.func_wrap_concurrent("work", move |_accessor, ()| {
-        host_stats.host_calls.fetch_add(1, Ordering::SeqCst);
+        let call_index = host_stats.host_calls.fetch_add(1, Ordering::SeqCst);
         let work = match mode {
             Mode::Ready => ControlledWork::ready(Arc::clone(&host_stats)),
             Mode::Pending => ControlledWork::pending(Arc::clone(&host_stats), true),
-            Mode::Cancel => ControlledWork::pending(Arc::clone(&host_stats), false),
+            Mode::CancelInline => ControlledWork::pending(Arc::clone(&host_stats), false),
+            Mode::CancelChild => {
+                if call_index == 0 {
+                    ControlledWork::ready(Arc::clone(&host_stats))
+                } else {
+                    ControlledWork::pending(Arc::clone(&host_stats), false)
+                }
+            }
         };
         Box::pin(async move { work.await })
     }))?;
@@ -266,7 +282,7 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
     let instance = map_wasmtime(linker.instantiate_async(&mut store, &component).await)?;
     let run = map_wasmtime(instance.get_typed_func::<(), ()>(&mut store, "run"))?;
     invoke(&mut store, &run, Arc::clone(&stats), mode).await?;
-    if mode != Mode::Cancel {
+    if mode == Mode::Ready || mode == Mode::Pending {
         stats.guest_completed.store(true, Ordering::SeqCst);
     }
     let table_empty = store.data().table.is_empty();
@@ -281,11 +297,11 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
     let guest_completed = stats.guest_completed.load(Ordering::SeqCst);
     match mode {
         Mode::Ready => {
-            if calls != 1
-                || polls != 1
+            if calls != 2
+                || polls != 2
                 || wakes != 0
-                || completions != 1
-                || drops != 1
+                || completions != 2
+                || drops != 2
                 || pending_drops != 0
                 || !guest_completed
                 || !table_empty
@@ -295,15 +311,15 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
                 );
             }
             println!(
-                "mode=ready child-completions=1 child-drops=1 host-future-drops=1 table-empty=true"
+                "mode=ready child-completions=2 child-drops=2 host-future-drops=2 table-empty=true"
             );
         }
         Mode::Pending => {
-            if calls != 1
-                || polls < 2
-                || wakes != 1
-                || completions != 1
-                || drops != 1
+            if calls != 2
+                || polls < 4
+                || wakes != 2
+                || completions != 2
+                || drops != 2
                 || pending_drops != 0
                 || !guest_completed
                 || !table_empty
@@ -313,10 +329,10 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
                 );
             }
             println!(
-                "mode=pending child-completions=1 child-drops=1 host-future-drops=1 table-empty=true"
+                "mode=pending child-completions=2 child-drops=2 host-future-drops=2 table-empty=true"
             );
         }
-        Mode::Cancel => {
+        Mode::CancelInline => {
             if calls != 1
                 || polls < 1
                 || wakes != 0
@@ -331,25 +347,45 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
                 );
             }
             println!(
-                "mode=cancel child-cancellations=1 child-drops=1 host-future-drops=1 table-empty=true"
+                "mode=cancel-inline child-cancellations=1 child-drops=1 host-future-drops=1 table-empty=true"
+            );
+        }
+        Mode::CancelChild => {
+            if calls != 2
+                || polls < 2
+                || wakes != 0
+                || completions != 1
+                || drops != 2
+                || pending_drops != 1
+                || guest_completed
+                || !table_empty
+            {
+                bail!(
+                    "cancel-child observations invalid: calls={calls} polls={polls} wakes={wakes} completions={completions} drops={drops} pending-drops={pending_drops} guest-completed={guest_completed} table-empty={table_empty}"
+                );
+            }
+            println!(
+                "mode=cancel-child child-cancellations=1 child-drops=2 host-future-drops=2 table-empty=true"
             );
         }
     }
-    println!("async-call root-terminal=1 duplicate-drop=0");
+    if mode == Mode::Ready || mode == Mode::Pending {
+        println!("async-call root-terminal=1 duplicate-drop=0");
+    }
     Ok(())
 }
 
 pub fn run_cli() -> Result<()> {
     let mut args = std::env::args().skip(1);
     let component_path = args.next().context(
-        "usage: do-p3-async-call-component-host-runner <component.wasm> <ready|pending|cancel>",
+        "usage: do-p3-async-call-component-host-runner <component.wasm> <ready|pending|cancel-inline|cancel-child>",
     )?;
     let mode = args.next().context(
-        "usage: do-p3-async-call-component-host-runner <component.wasm> <ready|pending|cancel>",
+        "usage: do-p3-async-call-component-host-runner <component.wasm> <ready|pending|cancel-inline|cancel-child>",
     )?;
     if args.next().is_some() {
         bail!(
-            "usage: do-p3-async-call-component-host-runner <component.wasm> <ready|pending|cancel>"
+            "usage: do-p3-async-call-component-host-runner <component.wasm> <ready|pending|cancel-inline|cancel-child>"
         );
     }
     futures::executor::block_on(run(Path::new(&component_path), Mode::parse(&mode)?))

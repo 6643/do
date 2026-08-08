@@ -12,21 +12,26 @@ if ! command -v cc >/dev/null; then
     export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$runner_dir/zig-cc.sh"
 fi
 
-for mode in ready pending cancel; do
+for mode in ready pending cancel-inline cancel-child; do
     output=$(cargo run --quiet --manifest-path "$runner_dir/Cargo.toml" \
         --bin do-p3-async-call-component-host-runner -- "$component" "$mode")
     case "$mode" in
         ready)
-            grep -Fq 'mode=ready child-completions=1 child-drops=1 host-future-drops=1 table-empty=true' <<<"$output"
+            grep -Fq 'mode=ready child-completions=2 child-drops=2 host-future-drops=2 table-empty=true' <<<"$output"
             ;;
         pending)
-            grep -Fq 'mode=pending child-completions=1 child-drops=1 host-future-drops=1 table-empty=true' <<<"$output"
+            grep -Fq 'mode=pending child-completions=2 child-drops=2 host-future-drops=2 table-empty=true' <<<"$output"
             ;;
-        cancel)
-            grep -Fq 'mode=cancel child-cancellations=1 child-drops=1 host-future-drops=1 table-empty=true' <<<"$output"
+        cancel-inline)
+            grep -Fq 'mode=cancel-inline child-cancellations=1 child-drops=1 host-future-drops=1 table-empty=true' <<<"$output"
+            ;;
+        cancel-child)
+            grep -Fq 'mode=cancel-child child-cancellations=1 child-drops=2 host-future-drops=2 table-empty=true' <<<"$output"
             ;;
     esac
-    grep -Fq 'async-call root-terminal=1 duplicate-drop=0' <<<"$output"
+    if [[ "$mode" == ready || "$mode" == pending ]]; then
+        grep -Fq 'async-call root-terminal=1 duplicate-drop=0' <<<"$output"
+    fi
     printf '%s\n' "$output"
 done
 printf 'rust-async-call-component gate passed\n'
