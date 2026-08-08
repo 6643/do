@@ -97,4 +97,6 @@ test "async call emitter carries the inline scalar argument" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-inline-arg-load]") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-inline-resume]") != null);
     try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "call $host-work"));
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[task-return]helper") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[async-lift]helper") == null);
 }
