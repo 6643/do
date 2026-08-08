@@ -14,7 +14,7 @@ pub fn emit_component_wat(
     wat = try replace_all(allocator, wat, "__ASYNC_IMPORT_MODULE__", plan.async_import_module);
     wat = try replace_all(allocator, wat, "__ASYNC_IMPORT_NAME__", plan.async_import_name);
     wat = try replace_all(allocator, wat, "__ROOT__", plan.root_name);
-    wat = try replace_all(allocator, wat, "__FRAME_SIZE__", if (plan.argument_value != null) "20" else "16");
+    wat = try replace_all(allocator, wat, "__FRAME_SIZE__", if (plan.argument_value != null or plan.inline_argument_value != null) "20" else "16");
     wat = try replace_all(allocator, wat, "__HELPER_ARGUMENT_PARAM__", if (plan.argument_value != null) " (param $value i32)" else "");
 
     const argument_store = if (plan.argument_value != null)
@@ -35,6 +35,44 @@ pub fn emit_component_wat(
         try allocator.dupe(u8, "");
     defer allocator.free(argument_value);
     wat = try replace_all(allocator, wat, "__ROOT_ARGUMENT__", argument_value);
+
+    const inline_argument_value = if (plan.inline_argument_value) |value|
+        try std.fmt.allocPrint(allocator, "    i32.const {d}\n", .{value})
+    else
+        try allocator.dupe(u8, "");
+    defer allocator.free(inline_argument_value);
+
+    const child_argument_value = if (plan.argument_value) |value|
+        try std.fmt.allocPrint(allocator, "    i32.const {d}\n", .{value})
+    else
+        try allocator.dupe(u8, "");
+    defer allocator.free(child_argument_value);
+
+    const inline_argument_store = if (plan.inline_argument_value != null)
+        "    ;; [guest-inline-arg-store]\n    local.get $frame\n    i32.const 12\n    i32.add\n__INLINE_ARGUMENT__    i32.store\n"
+    else
+        "";
+    wat = try replace_all(allocator, wat, "__INLINE_ARGUMENT_STORE__", inline_argument_store);
+
+    const inline_argument_load = if (plan.inline_argument_value != null)
+        "    ;; [guest-inline-arg-load]\n    local.get $frame\n    i32.const 12\n    i32.add\n    i32.load\n    drop\n"
+    else
+        "";
+    wat = try replace_all(allocator, wat, "__INLINE_ARGUMENT_LOAD__", inline_argument_load);
+
+    const child_argument_store = if (plan.argument_value != null and plan.inline_helper_call)
+        "    ;; [guest-async-arg-store]\n    local.get $frame\n    i32.const 12\n    i32.add\n__CHILD_ARGUMENT__    i32.store\n"
+    else
+        "";
+    wat = try replace_all(allocator, wat, "__CHILD_ARGUMENT_STORE__", child_argument_store);
+
+    const child_argument_load = if (plan.argument_value != null and plan.inline_helper_call)
+        "    ;; [guest-async-arg-load]\n    local.get $frame\n    i32.const 12\n    i32.add\n    i32.load\n    drop\n"
+    else
+        "";
+    wat = try replace_all(allocator, wat, "__CHILD_ARGUMENT_LOAD__", child_argument_load);
+    wat = try replace_all(allocator, wat, "__INLINE_ARGUMENT__", inline_argument_value);
+    wat = try replace_all(allocator, wat, "__CHILD_ARGUMENT__", child_argument_value);
     return wat;
 }
 
@@ -321,6 +359,8 @@ const inline_async_call_component_wat =
     \\
     \\  (func $start-child (param $frame i32) (result i32) (local $subtask i32)
     \\    ;; [guest-async-child]
+    \\__CHILD_ARGUMENT_STORE__
+    \\__CHILD_ARGUMENT_LOAD__
     \\    call $host-work
     \\    local.set $subtask
     \\    local.get $frame
@@ -358,6 +398,7 @@ const inline_async_call_component_wat =
     \\
     \\  (func $inline-resume (param $frame i32) (result i32)
     \\    ;; [guest-inline-resume]
+    \\__INLINE_ARGUMENT_LOAD__
     \\    local.get $frame
     \\    i32.const 4
     \\    i32.add
@@ -407,6 +448,7 @@ const inline_async_call_component_wat =
     \\    i32.const 1
     \\    i32.store
     \\    ;; [guest-inline-helper]
+    \\__INLINE_ARGUMENT_STORE__
     \\    call $host-work
     \\    local.set $subtask
     \\    local.get $frame
