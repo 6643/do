@@ -66,6 +66,9 @@ test "async call emitter reserves the inline helper phase" {
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-inline-helper]") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-inline-resume]") != null);
+    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "call $host-work"));
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[task-return]helper") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[async-lift]helper") == null);
 }
 
 test "async call emitter carries the scalar argument in the root frame" {

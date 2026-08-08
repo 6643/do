@@ -5,7 +5,11 @@ pub fn emit_component_wat(
     allocator: std.mem.Allocator,
     plan: call_plan.GuestAsyncCallPlan,
 ) ![]u8 {
-    var wat = try allocator.dupe(u8, async_call_component_wat);
+    const template = if (plan.inline_helper_call)
+        inline_async_call_component_wat
+    else
+        async_call_component_wat;
+    var wat = try allocator.dupe(u8, template);
     errdefer allocator.free(wat);
     wat = try replace_all(allocator, wat, "__ASYNC_IMPORT_MODULE__", plan.async_import_module);
     wat = try replace_all(allocator, wat, "__ASYNC_IMPORT_NAME__", plan.async_import_name);
@@ -221,6 +225,249 @@ const async_call_component_wat =
     \\      else
     \\        unreachable
     \\        i32.const 0
+    \\      end
+    \\    else
+    \\      unreachable
+    \\      i32.const 0
+    \\    end
+    \\  )
+    \\
+    \\  (func (export "cabi_realloc") (type $cabi-realloc)
+    \\    unreachable
+    \\  )
+    \\  (func (export "_initialize"))
+    \\)
+;
+
+const inline_async_call_component_wat =
+    \\(module
+    \\  ;; Root-owned continuation for one bounded inline helper followed by one child.
+    \\  (type $async-lower-work (func (result i32)))
+    \\  (type $task-return (func))
+    \\  (type $waitable-set-new (func (result i32)))
+    \\  (type $waitable-join (func (param i32 i32)))
+    \\  (type $waitable-set-drop (func (param i32)))
+    \\  (type $subtask-drop (func (param i32)))
+    \\  (type $context-get (func (result i32)))
+    \\  (type $context-set (func (param i32)))
+    \\  (type $async-run (func (result i32)))
+    \\  (type $async-callback (func (param i32 i32 i32) (result i32)))
+    \\  (type $cabi-realloc (func (param i32 i32 i32 i32) (result i32)))
+    \\
+    \\  (import "__ASYNC_IMPORT_MODULE__" "__ASYNC_IMPORT_NAME__"
+    \\    (func $host-work (type $async-lower-work)))
+    \\  (import "[export]$root" "[task-cancel]" (func $task-cancel (type $task-return)))
+    \\  (import "$root" "[backpressure-inc]" (func $backpressure-inc (type $task-return)))
+    \\  (import "$root" "[backpressure-dec]" (func $backpressure-dec (type $task-return)))
+    \\  (import "$root" "[waitable-set-new]" (func $waitable-set-new (type $waitable-set-new)))
+    \\  (import "$root" "[waitable-set-drop]" (func $waitable-set-drop (type $waitable-set-drop)))
+    \\  (import "$root" "[waitable-join]" (func $waitable-join (type $waitable-join)))
+    \\  (import "$root" "[subtask-drop]" (func $subtask-drop (type $subtask-drop)))
+    \\  (import "$root" "[context-get-0]" (func $context-get-0 (type $context-get)))
+    \\  (import "$root" "[context-set-0]" (func $context-set-0 (type $context-set)))
+    \\  (import "[export]$root" "[task-return]__ROOT__" (func $task-return-root (type $task-return)))
+    \\
+    \\  (memory (export "memory") 1)
+    \\  ;; frame: waitable set @0, current host future @4, phase @8, optional scalar @12.
+    \\  (global $frame-next (mut i32) (i32.const 1024))
+    \\
+    \\  (func $frame-alloc (result i32) (local $frame i32)
+    \\    global.get $frame-next
+    \\    local.tee $frame
+    \\    i32.const __FRAME_SIZE__
+    \\    i32.add
+    \\    global.set $frame-next
+    \\    local.get $frame
+    \\  )
+    \\
+    \\  (func $frame-free (param $frame i32)
+    \\    local.get $frame
+    \\    global.set $frame-next
+    \\  )
+    \\
+    \\  (func $root-resume (param $frame i32)
+    \\    ;; [guest-async-parent-resume]
+    \\    local.get $frame
+    \\    i32.const 8
+    \\    i32.add
+    \\    i32.const 3
+    \\    i32.store
+    \\    local.get $frame
+    \\    i32.const 4
+    \\    i32.add
+    \\    i32.load
+    \\    i32.const 2
+    \\    i32.ne
+    \\    if
+    \\      ;; [guest-async-child-drop]
+    \\      local.get $frame
+    \\      i32.const 4
+    \\      i32.add
+    \\      i32.load
+    \\      i32.const 4
+    \\      i32.shr_u
+    \\      call $subtask-drop
+    \\    end
+    \\    local.get $frame
+    \\    i32.load
+    \\    call $waitable-set-drop
+    \\    i32.const 0
+    \\    call $context-set-0
+    \\    local.get $frame
+    \\    call $frame-free
+    \\    ;; [guest-async-root-terminal]
+    \\    call $task-return-root
+    \\  )
+    \\
+    \\  (func $start-child (param $frame i32) (result i32) (local $subtask i32)
+    \\    ;; [guest-async-child]
+    \\    call $host-work
+    \\    local.set $subtask
+    \\    local.get $frame
+    \\    i32.const 4
+    \\    i32.add
+    \\    local.get $subtask
+    \\    i32.store
+    \\    local.get $frame
+    \\    i32.const 8
+    \\    i32.add
+    \\    i32.const 2
+    \\    i32.store
+    \\    local.get $subtask
+    \\    i32.const 2
+    \\    i32.eq
+    \\    if (result i32)
+    \\      local.get $frame
+    \\      call $root-resume
+    \\      i32.const 0
+    \\    else
+    \\      local.get $subtask
+    \\      i32.const 4
+    \\      i32.shr_u
+    \\      local.get $frame
+    \\      i32.load
+    \\      call $waitable-join
+    \\      local.get $frame
+    \\      i32.load
+    \\      i32.const 4
+    \\      i32.shl
+    \\      i32.const 2
+    \\      i32.or
+    \\    end
+    \\  )
+    \\
+    \\  (func $inline-resume (param $frame i32) (result i32)
+    \\    ;; [guest-inline-resume]
+    \\    local.get $frame
+    \\    i32.const 4
+    \\    i32.add
+    \\    i32.load
+    \\    i32.const 2
+    \\    i32.ne
+    \\    if
+    \\      local.get $frame
+    \\      i32.const 4
+    \\      i32.add
+    \\      i32.load
+    \\      i32.const 4
+    \\      i32.shr_u
+    \\      call $subtask-drop
+    \\    end
+    \\    local.get $frame
+    \\    i32.const 4
+    \\    i32.add
+    \\    i32.const 2
+    \\    i32.store
+    \\    local.get $frame
+    \\    i32.load
+    \\    call $waitable-set-drop
+    \\    local.get $frame
+    \\    call $waitable-set-new
+    \\    i32.store
+    \\    local.get $frame
+    \\    call $start-child
+    \\  )
+    \\
+    \\  (func (export "[async-lift]__ROOT__") (type $async-run) (local $frame i32) (local $subtask i32)
+    \\    call $frame-alloc
+    \\    local.set $frame
+    \\    local.get $frame
+    \\    call $context-set-0
+    \\    local.get $frame
+    \\    call $waitable-set-new
+    \\    i32.store
+    \\    local.get $frame
+    \\    i32.const 4
+    \\    i32.add
+    \\    i32.const 2
+    \\    i32.store
+    \\    local.get $frame
+    \\    i32.const 8
+    \\    i32.add
+    \\    i32.const 1
+    \\    i32.store
+    \\    ;; [guest-inline-helper]
+    \\    call $host-work
+    \\    local.set $subtask
+    \\    local.get $frame
+    \\    i32.const 4
+    \\    i32.add
+    \\    local.get $subtask
+    \\    i32.store
+    \\    local.get $subtask
+    \\    i32.const 2
+    \\    i32.eq
+    \\    if (result i32)
+    \\      local.get $frame
+    \\      call $inline-resume
+    \\    else
+    \\      local.get $subtask
+    \\      i32.const 4
+    \\      i32.shr_u
+    \\      local.get $frame
+    \\      i32.load
+    \\      call $waitable-join
+    \\      local.get $frame
+    \\      i32.load
+    \\      i32.const 4
+    \\      i32.shl
+    \\      i32.const 2
+    \\      i32.or
+    \\    end
+    \\  )
+    \\
+    \\  (func (export "[callback][async-lift]__ROOT__") (type $async-callback)
+    \\    (local $frame i32)
+    \\    call $context-get-0
+    \\    local.set $frame
+    \\    local.get 0
+    \\    i32.const 1
+    \\    i32.eq
+    \\    if (result i32)
+    \\      local.get $frame
+    \\      i32.const 8
+    \\      i32.add
+    \\      i32.load
+    \\      i32.const 1
+    \\      i32.eq
+    \\      if (result i32)
+    \\        local.get $frame
+    \\        call $inline-resume
+    \\      else
+    \\        local.get $frame
+    \\        i32.const 8
+    \\        i32.add
+    \\        i32.load
+    \\        i32.const 2
+    \\        i32.eq
+    \\        if (result i32)
+    \\          local.get $frame
+    \\          call $root-resume
+    \\          i32.const 0
+    \\        else
+    \\          unreachable
+    \\          i32.const 0
+    \\        end
     \\      end
     \\    else
     \\      unreachable
