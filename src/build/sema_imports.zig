@@ -149,6 +149,8 @@ fn p3_async_signature_matches(tokens: []const lexer.Token, start_idx: usize, end
             .record_resource_list_stream_batched_producer => return record_resource_list_stream_producer_signature_matches(tokens, close_idx, end_idx, descriptor),
             .variant_resource_stream_reader => return variant_resource_stream_signature_matches(tokens, start_idx, close_idx, end_idx),
             .stream_writer => return stream_writer_signature_matches(tokens, close_idx, end_idx),
+            .filesystem_get_type => return filesystem_get_type_signature_matches(tokens, start_idx, close_idx, end_idx),
+            .filesystem_sync => return filesystem_sync_signature_matches(tokens, start_idx, close_idx, end_idx),
             else => {},
         }
     }
@@ -165,6 +167,30 @@ fn p3_async_signature_matches(tokens: []const lexer.Token, start_idx: usize, end
     }
     if (param_idx != descriptor.params.len) return false;
     return token_range_matches_type_name(tokens, close_idx + 3, end_idx, descriptor.result);
+}
+
+fn filesystem_get_type_signature_matches(
+    tokens: []const lexer.Token,
+    params_start_idx: usize,
+    params_close_idx: usize,
+    end_idx: usize,
+) bool {
+    if (params_close_idx != params_start_idx + 2 or
+        tokens[params_start_idx + 1].kind != .ident or
+        !std.mem.eql(u8, tokens[params_start_idx + 1].lexeme, "Dir")) return false;
+    return compact_token_range_equals(tokens, params_close_idx + 3, end_idx, "DescriptorType|FileError");
+}
+
+fn filesystem_sync_signature_matches(
+    tokens: []const lexer.Token,
+    params_start_idx: usize,
+    params_close_idx: usize,
+    end_idx: usize,
+) bool {
+    if (params_close_idx != params_start_idx + 2 or
+        tokens[params_start_idx + 1].kind != .ident or
+        !std.mem.eql(u8, tokens[params_start_idx + 1].lexeme, "Dir")) return false;
+    return compact_token_range_equals(tokens, params_close_idx + 3, end_idx, "nil|SyncError");
 }
 
 fn http_stream_reader_signature_matches(
@@ -1014,6 +1040,9 @@ fn find_known_wasi_signature(target: []const u8) ?KnownWasiSignature {
             .do_result_alt = "FileError|nil",
             .do_result_alt2 = "nil|FileError",
             .do_result_alt3 = "Result<nil,FileError>",
+            .do_result_alt4 = "SyncError|nil",
+            .do_result_alt5 = "nil|SyncError",
+            .do_result_alt6 = "Result<nil,SyncError>",
         },
         .{
             .target = "filesystem/types/descriptor.link-at",
@@ -1706,6 +1735,56 @@ test "pinned read-directory host_func imports use the same fixed signature" {
     defer std.testing.allocator.free(tokens);
 
     try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "pinned filesystem get-type host imports accept the descriptor result union" {
+    const source =
+        \\get_type = @host_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-type", (Dir) -> DescriptorType | FileError)
+        \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+        \\DescriptorType = Unknown | Directory | RegularFile
+        \\FileError error = Io | NoEntry
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "pinned filesystem get-type host imports reject a drifted source result" {
+    const source =
+        \\get_type = @host_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-type", (Dir) -> WrongType | FileError)
+        \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+        \\WrongType = Unknown | Directory | RegularFile | Socket
+        \\FileError error = Io | NoEntry
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectError(error.P3AsyncHostSignatureMismatch, check_p3_async_host_imports(std.testing.allocator, tokens));
+}
+
+test "pinned filesystem sync host imports accept the unit error union" {
+    const source =
+        \\sync_descriptor = @host_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.sync", (Dir) -> nil | SyncError)
+        \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+        \\SyncError error = Io | NoEntry
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "pinned filesystem sync host imports reject a borrowed payload" {
+    const source =
+        \\sync_descriptor = @host_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.sync", (Dir) -> borrow<Dir> | SyncError)
+        \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+        \\SyncError error = Io | NoEntry
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectError(error.P3AsyncHostSignatureMismatch, check_p3_async_host_imports(std.testing.allocator, tokens));
 }
 
 test "generic record stream host_func imports accept descriptor-shaped source types" {

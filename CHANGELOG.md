@@ -1,5 +1,42 @@
 # Changelog
 
+# 2026-08-08 D2 private filesystem `descriptor.sync` promotion: admitted only
+  `wasi:filesystem/types@0.3.0-rc-2025-09-16 / descriptor.sync` with upstream
+  WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`.
+  The independently measured import is `[async-lower][method]descriptor.sync`
+  `(i32,i32)->i32`, with unit/error-code component-variant completion and
+  `[resource-drop]descriptor (i32)->nil`; current `wasm-tools 1.255.0` and
+  legacy `1.254.0` ABI paths both pass. Mirror hashes are
+  `18ce7dc9efb991cd8e5f945797aea73edeed79f0cfc51ea664cb81537e54e719` and
+  `9898cd734708a2ab14760da706d69063e5cd6262a5e03d07d8eedd8074745f36` for the
+  regular and test-only cancel probes. The private `--p3-async-component`
+  adapter and fixtures `462`-`465` pass positive and fail-closed negative
+  compiler gates. Hand-authored ready/pending/error/cancel and generated
+  ready/pending/error Components pass the Rust/Wasmtime matrix with one host
+  call, exactly-once future/descriptor cleanup, and `table-empty=true`.
+  Cancellation does not roll back an already-issued host sync. This closes one
+  additional bounded method only; other filesystem async methods, arbitrary
+  producers, borrowed payloads, and public `own<T>`/`borrow<T>`/`ref<T>` remain
+  outside scope. Fresh gates: `zig=304/304`, default regression
+  `pass=1141 fail=0 skip=3`, WASM regression `pass=1143 fail=0 skip=3` with
+  smoke `6/6`, and ReleaseSmall smoke passed.
+
+# 2026-08-08 D2 private filesystem `descriptor.get-type` promotion: admitted
+  only `wasi:filesystem/types@0.3.0-rc-2025-09-16 / descriptor.get-type` with
+  WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`.
+  The measured async import is `[async-lower][method]descriptor.get-type`
+  `(i32,i32)->i32`, completion is two `i32` task-return words, the Result
+  payload is a component variant (`descriptor-type | error-code`), and the
+  receiver uses `[resource-drop]descriptor`. The private
+  `--p3-async-component` adapter and fixtures `459`-`461` pass positive and
+  fail-closed negative compiler gates. Hand-authored and generated Components
+  pass pinned `wasm-tools 1.255.0`/legacy `1.254.0` validation. The hand-authored
+  Component covers ready-directory, ready-regular, pending, error, and cancel;
+  the generated Component covers ready-directory, ready-regular, pending, and
+  error with matching cleanup and an empty `ResourceTable`. This closes one bounded D2
+  method only; general filesystem async, arbitrary async producers, borrowed
+  payloads, and public `own<T>`/`borrow<T>`/`ref<T>` remain outside scope.
+
 # 2026-08-08 G6.2 private batched list-resource producer promotion: added the
   exact `do:g6-2-batched-list-producer@0.1.0 / consume-via-stream` descriptor
   with WIT hash `a0717b2ac8525c4b1f684a4222f66939312a19c959c66b0ace5ebca16f45299f`

@@ -840,16 +840,25 @@ run_compile_ok_case() {
     local host_export_expect_file="${case_file%.do}.host_export.expect"
     local host_manifest_expect_file="${case_file%.do}.host_manifest.expect"
     local host_manifest_file="$TMP_DIR/compile_${name}.host_manifest.json"
+    local -a build_args=()
+
+    if [[ -f "$expect_file" ]]; then
+        while IFS= read -r expect_line || [[ -n "$expect_line" ]]; do
+            case "$expect_line" in
+                '# build-arg: '*) build_args+=("${expect_line#\# build-arg: }");;
+            esac
+        done < "$expect_file"
+    fi
 
     local build_status=0
     if [[ -f "$host_export_expect_file" ]]; then
-        if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$case_file" --host-export --host-manifest "$host_manifest_file" -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
+        if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$case_file" "${build_args[@]}" --host-export --host-manifest "$host_manifest_file" -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
             :
         else
             build_status=$?
         fi
     else
-        if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$case_file" -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
+        if DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$case_file" "${build_args[@]}" -o "$wat_file" >"$stdout_file" 2>"$stderr_file"; then
             :
         else
             build_status=$?

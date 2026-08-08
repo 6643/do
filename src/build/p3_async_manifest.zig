@@ -20,6 +20,8 @@ pub const LoweringShape = union(enum) {
     scalar_unit: ScalarUnitShape,
     unit_result_tag: void,
     scalar_result: ScalarResultShape,
+    filesystem_get_type: FilesystemGetTypeShape,
+    filesystem_sync: FilesystemSyncShape,
     future_owned_resource: FutureOwnedCanonical,
     resource_result_2word: ResourceResult2WordShape,
     http_resource_result: HttpResourceResultShape,
@@ -195,6 +197,30 @@ pub const ScalarResultShape = struct {
     tag: []const u8,
     ok: []const []const u8,
     err: []const []const u8,
+};
+
+/// The one admitted filesystem descriptor method. Its resource receiver has a
+/// two-word async-lower call (handle plus completion context), so it cannot be
+/// represented by the ordinary numeric scalar-result shape above.
+pub const FilesystemGetTypeShape = struct {
+    receiver: []const u8,
+    source_result: []const u8,
+    tag: []const u8,
+    ok: []const []const u8,
+    err: []const []const u8,
+    resource_drop_import: []const u8,
+};
+
+/// The pinned `descriptor.sync` slice has a unit Ok arm and an error-code Err
+/// arm. Keep its facts separate from get-type so neither emitter can inherit
+/// the other's payload layout accidentally.
+pub const FilesystemSyncShape = struct {
+    receiver: []const u8,
+    source_result: []const u8,
+    tag: []const u8,
+    ok: []const []const u8,
+    err: []const []const u8,
+    resource_drop_import: []const u8,
 };
 
 pub const ScalarResultSource = struct {
@@ -396,6 +422,14 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
         } };
     }
 
+    if (valid_filesystem_sync_descriptor(descriptor)) |shape| {
+        return .{ .filesystem_sync = shape };
+    }
+
+    if (valid_filesystem_get_type_descriptor(descriptor)) |shape| {
+        return .{ .filesystem_get_type = shape };
+    }
+
     if (descriptor.params.len == 1 and
         descriptor.resource != null and
         is_result_type(descriptor.result) and
@@ -419,6 +453,80 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
     }
 
     return null;
+}
+
+fn valid_filesystem_get_type_descriptor(descriptor: Descriptor) ?FilesystemGetTypeShape {
+    if (!std.mem.eql(u8, descriptor.locator, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.member, "descriptor.get-type") or
+        !std.mem.eql(u8, descriptor.effect, "async") or
+        descriptor.params.len != 1 or
+        !std.mem.eql(u8, descriptor.params[0], "descriptor") or
+        descriptor.resource != null or
+        !std.mem.eql(u8, descriptor.result, "Result<descriptor-type,error-code>") or
+        descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, descriptor.wit_sha256.?, "8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f") or
+        !std.mem.eql(u8, descriptor.canonical.completion, "task-return") or
+        !equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i32" }) or
+        !equal_core_types(descriptor.canonical.core_results, &.{"i32"}) or
+        !equal_core_types(descriptor.canonical.completion_params, &.{ "i32", "i32" }) or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower][method]descriptor.get-type") or
+        !std.mem.eql(u8, descriptor.wit.package, "wasi:filesystem@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.wit.interface, "types") or
+        !std.mem.eql(u8, descriptor.wit.operation, "descriptor.get-type") or
+        !std.mem.eql(u8, descriptor.wit.world, "imports") or
+        descriptor.wit.parameter.len != 0) return null;
+
+    const payload = descriptor.canonical.result_payload orelse return null;
+    if (!std.mem.eql(u8, payload.tag, "i32") or
+        !equal_core_types(payload.ok, &.{ "i32" }) or
+        !equal_core_types(payload.err, &.{ "i32" })) return null;
+
+    return .{
+        .receiver = descriptor.params[0],
+        .source_result = descriptor.result,
+        .tag = payload.tag,
+        .ok = payload.ok,
+        .err = payload.err,
+        .resource_drop_import = "[resource-drop]descriptor",
+    };
+}
+
+fn valid_filesystem_sync_descriptor(descriptor: Descriptor) ?FilesystemSyncShape {
+    if (!std.mem.eql(u8, descriptor.locator, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.member, "descriptor.sync") or
+        !std.mem.eql(u8, descriptor.effect, "async") or
+        descriptor.params.len != 1 or
+        !std.mem.eql(u8, descriptor.params[0], "descriptor") or
+        descriptor.resource != null or
+        !std.mem.eql(u8, descriptor.result, "Result<nil,error-code>") or
+        descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, descriptor.wit_sha256.?, "8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f") or
+        !std.mem.eql(u8, descriptor.canonical.completion, "task-return") or
+        !equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i32" }) or
+        !equal_core_types(descriptor.canonical.core_results, &.{"i32"}) or
+        !equal_core_types(descriptor.canonical.completion_params, &.{ "i32", "i32" }) or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower][method]descriptor.sync") or
+        !std.mem.eql(u8, descriptor.wit.package, "wasi:filesystem@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.wit.interface, "types") or
+        !std.mem.eql(u8, descriptor.wit.operation, "descriptor.sync") or
+        !std.mem.eql(u8, descriptor.wit.world, "imports") or
+        descriptor.wit.parameter.len != 0) return null;
+
+    const payload = descriptor.canonical.result_payload orelse return null;
+    if (!std.mem.eql(u8, payload.tag, "i32") or
+        payload.ok.len != 0 or
+        !equal_core_types(payload.err, &.{ "i32" })) return null;
+
+    return .{
+        .receiver = descriptor.params[0],
+        .source_result = descriptor.result,
+        .tag = payload.tag,
+        .ok = payload.ok,
+        .err = payload.err,
+        .resource_drop_import = "[resource-drop]descriptor",
+    };
 }
 
 pub fn unsupported_shape(descriptor: Descriptor) ?UnsupportedShape {
@@ -3783,6 +3891,82 @@ test "checked-in registry admits the measured variant resource stream descriptor
     try std.testing.expectEqualStrings("[async-lower][future-read-1]read-via-stream", shape.future_read.import_name);
     try std.testing.expectEqualStrings("[future-drop-readable-1]read-via-stream", shape.future_drop_readable.import_name);
     try std.testing.expectEqualStrings("[resource-drop]ticket", shape.ticket_drop_import);
+}
+
+test "checked-in registry admits the pinned filesystem descriptor get-type ABI" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-type") orelse return error.TestUnexpectedResult;
+    const shape = switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .filesystem_get_type => |value| value,
+        else => return error.TestUnexpectedResult,
+    };
+    try std.testing.expectEqualStrings("descriptor", shape.receiver);
+    try std.testing.expectEqualStrings("Result<descriptor-type,error-code>", shape.source_result);
+    try std.testing.expectEqualStrings("i32", shape.tag);
+    try std.testing.expectEqualStrings("i32", shape.ok[0]);
+    try std.testing.expectEqualStrings("i32", shape.err[0]);
+    try std.testing.expectEqualStrings("[resource-drop]descriptor", shape.resource_drop_import);
+}
+
+test "checked-in registry admits the pinned filesystem descriptor sync ABI" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.sync") orelse return error.TestUnexpectedResult;
+    const shape = switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .filesystem_sync => |value| value,
+        else => return error.TestUnexpectedResult,
+    };
+    try std.testing.expectEqualStrings("descriptor", shape.receiver);
+    try std.testing.expectEqualStrings("Result<nil,error-code>", shape.source_result);
+    try std.testing.expectEqualStrings("i32", shape.tag);
+    try std.testing.expectEqual(@as(usize, 0), shape.ok.len);
+    try std.testing.expectEqualStrings("i32", shape.err[0]);
+    try std.testing.expectEqualStrings("[resource-drop]descriptor", shape.resource_drop_import);
+}
+
+test "filesystem descriptor sync lowering rejects ABI drift" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.sync") orelse return error.TestUnexpectedResult;
+
+    var drifted = descriptor;
+    drifted.canonical.core_params = &.{ "i32" };
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.canonical.async_import_name = "[async-lower][method]descriptor.sync-drift";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.wit_sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    var payload = descriptor.canonical.result_payload.?;
+    payload.ok = &.{"i32"};
+    var canonical = descriptor.canonical;
+    canonical.result_payload = payload;
+    drifted = descriptor;
+    drifted.canonical = canonical;
+    try std.testing.expect(lowering_shape(drifted) == null);
+}
+
+test "filesystem descriptor get-type lowering rejects ABI drift" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.get-type") orelse return error.TestUnexpectedResult;
+
+    var drifted = descriptor;
+    drifted.canonical.core_params = &.{ "i32" };
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.canonical.async_import_name = "[async-lower]descriptor.get-type-drift";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.wit_sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    try std.testing.expect(lowering_shape(drifted) == null);
 }
 
 test "variant resource stream lowering rejects a drifted event tag" {

@@ -30,6 +30,78 @@ This file records blockers discovered while implementing the generic
 does not become a supported fallback merely because the compiler can emit a
 partial signature.
 
+## D2 Bounded Filesystem Async `descriptor.get-type` (2026-08-08)
+
+**Status:** one private filesystem async method is verified; general filesystem
+async remains blocked and is not inferred from this result.
+
+**Evidence:** `bash examples/p3-runtime/test_d2_wasi_filesystem_get_type_abi.sh`
+passes the pinned current `wasm-tools 1.255.0 (76e20611d 2026-07-30)` binary
+(SHA-256 `6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`)
+and legacy `1.254.0` binary. The upstream WIT hash is
+`8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`.
+The measured method import is
+`[async-lower][method]descriptor.get-type: (i32,i32) -> i32`, completion uses
+two `i32` task-return values, the result is the
+`descriptor-type | error-code` component variant, and the descriptor resource
+drop is `(i32) -> nil`.
+
+The private `--p3-async-component` adapter admits only the exact
+`Dir -> DescriptorType | FileError` source shape in fixture `459`. Fixtures
+`459`-`461` cover unregistered, wrong-result, and borrowed-payload rejection
+before WAT. `bash examples/p3-runtime/test_rust_wasi_filesystem_get_type.sh`
+assembles both hand-authored and compiler-generated Components. The hand-authored
+Component passes ready-directory, ready-regular, pending, error, and
+cancellation; the generated Component passes ready-directory, ready-regular,
+pending, and error with matching exactly-once future/descriptor cleanup and
+`table-empty=true`.
+
+**Boundary:** this does not admit `read`, `write`, `stat`, `open-at`, directory
+mutation, stream/list/borrowed payloads, arbitrary producer expressions,
+generic async calls, external HTTP, rollback of host side effects, or public
+`own<T>`/`borrow<T>`/`ref<T>` syntax. Each additional method needs its own pinned
+WIT/Core probe and Component/Rust/Wasmtime gate.
+
+## D2 Bounded Filesystem Async `descriptor.sync` (2026-08-08)
+
+**Status:** one additional private filesystem async method is verified; general
+filesystem async remains blocked and is not inferred from either bounded method.
+
+**Evidence:** `bash examples/p3-runtime/test_d2_wasi_filesystem_sync_abi.sh`
+passes current `wasm-tools 1.255.0 (76e20611d 2026-07-30)` (SHA-256
+`6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`) and
+legacy `1.254.0 (bb58fdf91 2026-07-20)` (SHA-256
+`cc1f862d69363aac2d4a88f01c414a2dcf10858632d0c0a45e93ff60503979d6`). The
+upstream WIT hash is
+`8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`; the
+regular/cancel mirror hashes are
+`18ce7dc9efb991cd8e5f945797aea73edeed79f0cfc51ea664cb81537e54e719` and
+`9898cd734708a2ab14760da706d69063e5cd6262a5e03d07d8eedd8074745f36`.
+The measured method import is
+`[async-lower][method]descriptor.sync: (i32,i32) -> i32`, task-return uses
+the measured two-word component Result completion, the Result is
+`unit | error-code`, and descriptor drop is `(i32) -> nil`.
+
+The private `--p3-async-component` adapter admits only
+`Dir -> nil | SyncError` in fixture `462`. Fixtures `462`-`465` reject an
+unregistered locator, wrong Result shape, borrowed payload, and a second await
+before WAT. `bash examples/p3-runtime/test_rust_wasi_filesystem_sync.sh`
+assembles and validates both hand-authored and generated Components. The
+hand-authored Component passes `ready`, `pending`, `error`, and test-only
+`cancel`; the generated Component passes `ready`, `pending`, and `error`.
+Every admitted row has `host-calls=1`, one descriptor drop, and
+`table-empty=true`. Ready/error use one completion poll; pending uses two polls
+and one external wake; cancel drops one pending future with zero completion.
+Fresh repository gates are `zig test main.zig` `304/304`, default regression
+`pass=1141 fail=0 skip=3`, WASM regression `pass=1143 fail=0 skip=3` with smoke
+`6/6`, ReleaseSmall smoke passed, and `git diff --check` passed.
+
+**Boundary:** this does not admit other filesystem methods, stream/list/record/
+borrowed/variant payloads, arbitrary producer expressions, independent guest
+tasks, external HTTP, rollback of host side effects, or public
+`own<T>`/`borrow<T>`/`ref<T>` syntax. Each additional method needs its own pinned
+WIT/Core probe and Component/Rust/Wasmtime gate.
+
 ## P3 Task-Return Scalar Type Identity
 
 **Status:** unsigned/narrow scalar `Future<Result<T, E>>` payloads remain

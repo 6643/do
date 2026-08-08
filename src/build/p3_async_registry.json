@@ -479,6 +479,64 @@
             }
         },
         {
+            "locator": "wasi:filesystem/types@0.3.0-rc-2025-09-16",
+            "member": "descriptor.get-type",
+            "effect": "async",
+            "params": ["descriptor"],
+            "result": "Result<descriptor-type,error-code>",
+            "resource": null,
+            "wit_sha256": "8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f",
+            "canonical": {
+                "core_params": ["i32", "i32"],
+                "core_results": ["i32"],
+                "completion_params": ["i32", "i32"],
+                "completion": "task-return",
+                "result_payload": {
+                    "tag": "i32",
+                    "ok": ["i32"],
+                    "err": ["i32"]
+                },
+                "async_import_module": "wasi:filesystem/types@0.3.0-rc-2025-09-16",
+                "async_import_name": "[async-lower][method]descriptor.get-type"
+            },
+            "wit": {
+                "package": "wasi:filesystem@0.3.0-rc-2025-09-16",
+                "interface": "types",
+                "operation": "descriptor.get-type",
+                "world": "imports",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "wasi:filesystem/types@0.3.0-rc-2025-09-16",
+            "member": "descriptor.sync",
+            "effect": "async",
+            "params": ["descriptor"],
+            "result": "Result<nil,error-code>",
+            "resource": null,
+            "wit_sha256": "8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f",
+            "canonical": {
+                "core_params": ["i32", "i32"],
+                "core_results": ["i32"],
+                "completion_params": ["i32", "i32"],
+                "completion": "task-return",
+                "result_payload": {
+                    "tag": "i32",
+                    "ok": [],
+                    "err": ["i32"]
+                },
+                "async_import_module": "wasi:filesystem/types@0.3.0-rc-2025-09-16",
+                "async_import_name": "[async-lower][method]descriptor.sync"
+            },
+            "wit": {
+                "package": "wasi:filesystem@0.3.0-rc-2025-09-16",
+                "interface": "types",
+                "operation": "descriptor.sync",
+                "world": "imports",
+                "parameter": ""
+            }
+        },
+        {
             "locator": "wasi:cli/stdout@0.3.0-rc-2025-09-16",
             "member": "write-via-stream",
             "effect": "stream-writer",

@@ -25,7 +25,7 @@ only. Public `own<T>`/`borrow<T>`/`ref<T>` syntax remains outside this phase.
 
 | ID | 问题 | 证据 / 停止点 | 恢复条件 |
 | --- | --- | --- | --- |
-| **G6.2** | `descriptor.read-directory` 及 record-stream 通用能力 | generic consumer 已覆盖注册的非 filesystem record streams；bounded producer、StreamMirror、private Result cancellation、HTTP payload cancellation、resource-list stream、私有 `do:variant-resource-stream-canonical@0.1.0`、动态 count `0..3` 的私有 `do:g6-2-c-min-dynamic-producer@0.1.0`，以及固定两批 `[111,222]`/`[333]` 的私有 `do:g6-2-batched-list-producer@0.1.0` compiler-generated Component/Rust/Wasmtime gate 均已通过。两类 producer 均固定 `ptr=64/len=68/stride=4/ticket=0`、stream capacity `1`，并保留 pending、sink error、early drop、转移前/后 cancellation、exactly-once resource/list cleanup 与 fail-closed 负例；仍缺一般 async helper/producer lease、任意 producer 表达式、通用 list、通用 borrowed/variant lowering、第六跳 forwarding、第七层或更一般 nested resource 字段、payload-bearing completion error 的更广形状、任意 filesystem async method与通用 resource cancellation。Pinned `wasm-tools 1.255.0` 对含 `borrow<T>` 的 stream record 在 Component embed 阶段明确拒绝（1.254.0 同样拒绝） | 保持所有 private bounded descriptor 的精确边界；扩展其他 producer/resource shape 前必须另立 design、probe 与 gate |
+| **G6.2** | `descriptor.read-directory` 及 record-stream 通用能力 | generic consumer 已覆盖注册的非 filesystem record streams；bounded producer、StreamMirror、private Result cancellation、HTTP payload cancellation、resource-list stream、私有 `do:variant-resource-stream-canonical@0.1.0`、动态 count `0..3` 的私有 `do:g6-2-c-min-dynamic-producer@0.1.0`，以及固定两批 `[111,222]`/`[333]` 的私有 `do:g6-2-batched-list-producer@0.1.0` compiler-generated Component/Rust/Wasmtime gate 均已通过。D2 另关闭了私有 `descriptor.get-type` 与 `descriptor.sync` 两个有界方法；二者均固定 upstream WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`，并分别通过独立 ABI、compiler admission 和 ready/pending/error/cancel cleanup gate。两类 producer 均固定 `ptr=64/len=68/stride=4/ticket=0`、stream capacity `1`，并保留 pending、sink error、early drop、转移前/后 cancellation、exactly-once resource/list cleanup 与 fail-closed 负例；仍缺一般 async helper/producer lease、任意 producer 表达式、通用 list、通用 borrowed/variant lowering、第六跳 forwarding、第七层或更一般 nested resource 字段、payload-bearing completion error 的更广形状、任意其它 filesystem async method与通用 resource cancellation。Pinned `wasm-tools 1.255.0` 对含 `borrow<T>` 的 stream record 在 Component embed 阶段明确拒绝（1.254.0 同样拒绝） | 保持所有 private bounded descriptor 的精确边界；扩展其他 producer/resource shape 前必须另立 design、probe 与 gate |
 | **06.2** | 历史总项 | 已拆到 G2–G6；通用 consumer slice 已关闭，剩余边界由 **G6.2** 的后续 gates 承接 | 同上 |
 
 **G6.2 next-shape stop (2026-08-08, `can_skip=true`):** 动态 count `0..3`
@@ -88,7 +88,7 @@ the Rust/Wasmtime ready/pending/cancel matrix. The three opt-in negative
 fixtures reject before WAT as `UnsupportedP3OwnedFutureComponent`. This
 closes only one private compiler promotion; generic owned futures/streams,
 borrowed async values, public ownership syntax, arbitrary producer
-expressions, filesystem async, and D2 host I/O remain pending.
+expressions, general filesystem async, and D2 host I/O remain pending.
 
 **Synchronous `list<borrow<T>>` canonical ABI probe (2026-08-06):**
 `examples/p3-runtime/test_list_borrow_canonical_abi.sh` independently assembles
@@ -177,7 +177,7 @@ children, and nested helper calls as `UnsupportedP3AsyncCallComponent`; the
 normal default build still reports `AsyncLoweringUnavailable` for those
 fixtures because it does not select the opt-in target. Generic async-call
 composition, arbitrary producer expressions, payload/Stream/resource/list
-futures, public ownership syntax, filesystem async, and D2 host I/O remain
+futures, public ownership syntax, general filesystem async, and D2 host I/O remain
 pending. Independent guest child-task creation remains blocked by the pinned
 Component ABI described above.
 
@@ -264,7 +264,7 @@ borrowed/list/variant resource field 或更宽 runtime 形状。
 | ID | 项 | 说明 |
 | --- | --- | --- |
 | D1 | 完整 ownership IR | 跨函数唯一性 / escape / region / 激进 loop move; 门槛见 `doc/memory.md` |
-| D2 | 完整 WASI/Component 运行时 | 已增加真实本地 filesystem preopen/open-at/sync、read-directory stream、CLI stdin pipe，以及 socket create/bind/drop 的 compiler-generated Component/Rust/Wasmtime smoke；仍缺通用 filesystem async lowering 与 external-network HTTP，故 D2 总项保持 in progress |
+| D2 | 完整 WASI/Component 运行时 | 已增加真实本地 filesystem preopen/open-at/sync、read-directory stream、CLI stdin pipe，以及 socket create/bind/drop 的 compiler-generated Component/Rust/Wasmtime smoke；私有 `descriptor.get-type` 与 `descriptor.sync` 各自通过 pinned ABI、compiler/runtime gates；仍缺通用 filesystem async lowering 与 external-network HTTP，故 D2 总项保持 in progress |
 | D3 | JSON 自动序列化扩展 | error/enum/union/复杂 storage; 当前仅已验证 struct 字段子集 |
 | D4 | LSP 增强 | rename / references / import-aware 跨模块 / 增量 index |
 | D5 | fmt 增强 | 多文件批量、range/on-type、完整语法感知 |
@@ -306,6 +306,29 @@ borrowed/list/variant resource field 或更宽 runtime 形状。
   `ptr=64/len=68/stride=4/ticket=0`, exact Do admission, compiler
   Component/Rust/Wasmtime ready/pending/error/cancel gates, and fail-closed
   negative fixtures; generic list/producer and public ownership remain pending
+- **D2 filesystem `descriptor.get-type`**: the private pinned method passed
+  hand-authored/generated Component assembly and Rust/Wasmtime
+  ready-directory/regular, pending, error, and cancel cleanup gates; fixtures
+  `459`-`461` reject descriptor/result/borrowed-payload drift. General
+  filesystem async methods and public ownership remain pending.
+- **D2 filesystem `descriptor.sync`**: the private pinned method passed both
+  current `wasm-tools 1.255.0` and legacy `1.254.0` ABI assembly/validation with
+  upstream WIT hash
+  `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f` and
+  regular/cancel mirror hashes
+  `18ce7dc9efb991cd8e5f945797aea73edeed79f0cfc51ea664cb81537e54e719` /
+  `9898cd734708a2ab14760da706d69063e5cd6262a5e03d07d8eedd8074745f36`,
+  `[async-lower][method]descriptor.sync (i32,i32)->i32`, unit/error-code
+  component-variant completion, and `[resource-drop]descriptor`. The private
+  compiler fixtures `462`-`465` reject locator/result/borrowed-payload/second-
+  await drift. Hand-authored ready/pending/error/cancel and generated
+  ready/pending/error Rust/Wasmtime rows pass with exactly-once cleanup and
+  `table-empty=true` (ready/error one poll, pending two polls plus one wake,
+  cancel zero completion with one pending-future drop). Fresh gates are
+  `zig=304/304`, default `pass=1141 fail=0 skip=3`, WASM
+  `pass=1143 fail=0 skip=3` (`6/6`), and ReleaseSmall smoke; other filesystem
+  methods, general async producers, borrowed payloads, and public ownership
+  remain pending.
 
 ---
 
@@ -313,7 +336,7 @@ borrowed/list/variant resource field 或更宽 runtime 形状。
 
 1. 发布候选维护 (回归红灯 / 文档漂移)  
 2. G6.2 capability matrix、ownership invariants、正向 Rust/Wasmtime gates 与 pinned negative gates 已收口；下一步只能为新的 producer/resource shape 建立独立 design、pinned probe、负向 fixture 与 runtime gate。
-3. D2 当前只推进已授权的本地 file/dir/CLI smoke；socket/general filesystem async/external HTTP 的扩展须另立 target/design，其他 deferred 项仍需单独授权
+3. D2 当前只推进已授权的本地 file/dir/CLI smoke 与已关闭的私有 `descriptor.get-type`/`descriptor.sync` slices；socket/general filesystem async/external HTTP 的扩展须另立 target/design，其他 deferred 项仍需单独授权
 4. **P2** 默认不改; 除非产品明确要左侧反推
 
 ## 7. Generic async Component runtime slices (2026-08-06)

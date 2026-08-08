@@ -185,6 +185,14 @@ path = "src/bin/g6_2_batched_list_resource_producer_abi.rs"
 name = "do-p3-g6-2-batched-list-resource-producer"
 path = "src/bin/g6_2_batched_list_resource_producer.rs"
 
+[[bin]]
+name = "do-p3-wasi-filesystem-get-type-host-runner"
+path = "src/bin/wasi_filesystem_get_type.rs"
+
+[[bin]]
+name = "do-p3-wasi-filesystem-sync-host-runner"
+path = "src/bin/wasi_filesystem_sync.rs"
+
 [profile.dev]
 debug = 0
 incremental = false
