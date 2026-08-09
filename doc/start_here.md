@@ -118,14 +118,14 @@ cd src && zig test build/codegen_api.zig
 
 ```bash
 RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
-# 最近扩展基线: pass=1151 fail=0 skip=3; wasm run summary: pass=6 fail=0
+# 最近扩展基线: pass=1160 fail=0 skip=3; wasm run summary: pass=6 fail=0
 ```
 
 | 基线项 | 最近值 |
 | --- | --- |
 | 默认回归 (`SKIP_BUILD=1`) | `pass=1158 fail=0 skip=3` |
-| WASM 扩展回归 (`RUN_WASM=1 SKIP_BUILD=1`) | `pass=1151 fail=0 skip=3`; smoke `6/6` |
-| `zig test main.zig` | `308/308` |
+| WASM 扩展回归 (`RUN_WASM=1 SKIP_BUILD=1`) | `pass=1160 fail=0 skip=3`; smoke `6/6` |
+| `zig test main.zig` | `309 passed; 0 skipped; 3 failed` (tests 301, 302, 304: generated WIT module-graph/manifest validation) |
 | Task 8 Step 3 runtime baseline | 七个已登记 Component/Rust/Wasmtime gate 通过 |
 | HTTP service ABI / empty-request gate | pinned Component + Rust/Wasmtime pass; `codegen_component_wasi_http` `189/189`; registered payload pending/ready gate green, unregistered/general ready delivery remains blocked |
 | pinned filesystem record source mirror | `p3_filesystem_wit_manifest` + read-directory sema tests pass |
