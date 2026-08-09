@@ -2619,12 +2619,12 @@ test "generated WIT module hash drift rejects before lowering admission" {
 }
 
 const generated_async_module_source =
-    "work = @host_func(\"do:generic-async-runtime-probe/host@0.1.0\", \"work\", () -> Future<nil>)";
-const generated_async_module_hash = "77f8e5774f46663b912de1742cf6fa21093b10094edb627729e33560e917d531";
+    "work = @host_async_func(\"do:generic-async-runtime-probe/host@0.1.0\", \"work\", () -> nil)";
+const generated_async_module_hash = "163843e8c86c8fd5e9ea2cc5efe9bf9492cea2aa92beec2125f0a251346d7c7e";
 
 const generated_scalar_async_module_source =
     "completion = @host_func(\"do:generic-async-scalar-probe/host@0.1.0\", \"completion\", () -> Future<u32>)";
-const generated_scalar_async_module_hash = "5694fd59462d887760c1c94136406b5f8308a2a148a215b0e6c4028896825151";
+const generated_scalar_async_module_hash = "4f29bbf43165c0a1ef65b305802f8d878edb348e435e168e50c224985c7ba551";
 
 fn generated_async_manifest(allocator: std.mem.Allocator, module_hash: []const u8) ![]u8 {
     return std.fmt.allocPrint(
