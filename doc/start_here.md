@@ -32,8 +32,8 @@
 | v1 子集 | 发布候选已收口 |
 | 阶段 A–F、H | 已完成 |
 | 阶段 D | 可推进项已完成; D2.1 已按 B 方案绿色 regression 收口; D2 本地 file/dir/CLI/socket smoke 与私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` async slices 已验证；通用 filesystem async、external HTTP 的 method-specific recovery 仍阻断 |
-| 阶段 G | G1–G5、G6.1、G6.2 有界 read-directory slice + generic consumer + multi-owned-resource + 一层/两层/三层/四层/五层/六层 nested-owned-resource + multiple nested-owned-resource paths + bounded scalar producer + bounded/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding 与 typed 参数重排）producer + helper-mediated lease + branch-selected terminal + private resource Result error/cancellation checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + scalar-argument async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + **private bounded scalar `stream<list<u32>>` producer promotion** + D2 私有 filesystem `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` slices、G6.3、G6.4 完成；generic list/producer、borrowed payload、general async-call、D2 general methods 与 root hard-cancel pending |
-| Colorless async / WIT bindgen | canonical `@async/@await/@cancel`、legacy `async` 弃用、schema 1/2 生成 manifest 校验、已准入 schema 2 unit 与 scalar capabilities 的 manifest 自动发现，以及 opt-in v2 variant/scalar-i64 gates、统一 promotion profile、`--p3-async-call-component` root-owned local-frame gate 和 `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` gate 已验证；general async-call promotion contract 与 D2 recovery design 已冻结，unrestricted generated WIT lowering 仍 pending |
+| 阶段 G | G1–G5、G6.1、G6.2 有界 read-directory slice + generic consumer + multi-owned-resource + 一层/两层/三层/四层/五层/六层 nested-owned-resource + multiple nested-owned-resource paths + bounded scalar producer + bounded/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding 与 typed 参数重排）producer + helper-mediated lease + branch-selected terminal + private resource Result error/cancellation checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + scalar-argument async-call slice + probe-only private async host scalar-argument ABI + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + **private bounded scalar `stream<list<u32>>` producer promotion** + D2 私有 filesystem `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` slices、G6.3、G6.4 完成；generic list/producer、borrowed payload、general async-call、D2 general methods 与 root hard-cancel pending |
+| Colorless async / WIT bindgen | canonical `@async/@await/@cancel`、legacy `async` 弃用、schema 1/2 生成 manifest 校验、已准入 schema 2 unit 与 scalar capabilities 的 manifest 自动发现，以及 opt-in v2 variant/scalar-i64 gates、统一 promotion profile、`--p3-async-call-component` root-owned local-frame gate、probe-only private async host scalar-argument ABI 和 `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` gate 已验证；general async-call promotion contract 与 D2 recovery design 已冻结，unrestricted generated WIT lowering 仍 pending |
 | 阶段 I | **已关闭** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构审查/重构 | 五轮已落地 (见 §4); 默认不继续拆 god module |
 
@@ -106,6 +106,23 @@ bash examples/p3-runtime/test_do_async_call_inline_scalar_argument.sh \
 bash examples/p3-runtime/test_rust_async_call_component.sh \
   /tmp/async-call-inline-scalar-argument.component.wasm
 
+# probe-only async host scalar-argument ABI (both pinned assembly routes)
+PROBE_COMPONENT_OUT=/tmp/async-call-arg-probe.component.wasm \
+  WASM_TOOLS_EXPECT_VERSION=1.255.0 \
+  bash examples/p3-runtime/test_async_call_arg_probe.sh
+runner_cc=examples/p3-runtime/rust-host-runner/zig-cc.sh
+for mode in ready pending cancel; do
+  CC="$runner_cc" CXX="$runner_cc" \
+    CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$runner_cc" \
+    cargo run --quiet --locked \
+    --manifest-path examples/p3-runtime/rust-host-runner/Cargo.toml \
+    --bin do-p3-async-call-arg-probe-host-runner -- \
+    /tmp/async-call-arg-probe.component.wasm "$mode"
+done
+WASM_TOOLS_EXPECT_VERSION=1.254.0 \
+  WASM_TOOLS=/home/_/.local/share/Trash/files/wasm-tools-1.254.0-x86_64-linux/wasm-tools \
+  bash examples/p3-runtime/test_async_call_arg_probe.sh
+
 # borrow capability refresh and scalar-list producer ABI probe
 WASM_TOOLS_EXPECT_VERSION=1.255.0 \
   bash examples/p3-runtime/test_borrow_capability_matrix.sh
@@ -137,6 +154,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | 默认回归 (`SKIP_BUILD=1`) | `pass=1167 fail=0 skip=3` |
 | WASM 扩展回归 (`RUN_WASM=1 SKIP_BUILD=1`) | `pass=1169 fail=0 skip=3`; smoke `6/6` |
 | `zig test main.zig` | `319/319` |
+| async host scalar-argument ABI probe | current/legacy Component assembly green; frame `20` bytes, argument `u32@12`; ready/pending/cancel oracle green with `argument=7`, exactly-once Future drop, empty `ResourceTable`; probe-only, general lowering pending |
 | G6.2 scalar-list producer | private `stream<list<u32>>` promotion green; `ptr=64`, `len=68`, `stride=4`, max `3`, stream capacity `1`; count `0..3`, invalid `4`, pending/error/drop/cancel, exactly-once list release, empty `ResourceTable`; generic list/producer remains pending |
 | async/D2 recovery designs | general async-call promotion and D2 filesystem/HTTP method matrix recorded; no generic lowering |
 | Task 8 Step 3 runtime baseline | 七个已登记 Component/Rust/Wasmtime gate 通过 |
@@ -190,6 +208,18 @@ and
 Arbitrary producers, multiple unmeasured awaits, payload/resource/list/stream
 futures, general filesystem methods, external HTTP service worlds, and public
 `own<T>`/`borrow<T>`/`ref<T>` remain pending and require their own gates.
+
+The probe-only async host scalar-argument ABI is also green. Its private WIT
+package is `do:async-call-arg-probe@0.1.0` (hash
+`b9f5f8355e87231317ec05cccf692ee465c6f339bd509640aedc196e58f81e61`) with
+`host.work: async func(value: u32)` and `probe.run: async func()`. Both pinned
+`wasm-tools` routes assemble and validate the hand-authored Component. The
+root-owned frame is `20` bytes with the `u32` slot at offset `12`; the
+Rust/Wasmtime oracle receives `7` in ready/pending/cancel, releases one host
+Future exactly once, and leaves `ResourceTable` empty. This evidence does not
+authorize registry/sema/codegen promotion, arbitrary producer expressions,
+payload-bearing or resource/list/stream futures, borrowed values, or public
+ownership syntax; general async-call lowering remains pending.
 
 ### WIT bindgen 当前边界
 

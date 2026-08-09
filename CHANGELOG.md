@@ -1,5 +1,14 @@
 # Changelog
 
+# 2026-08-09 probe-only async host scalar-argument ABI: added the private
+  `do:async-call-arg-probe@0.1.0` WIT/Core-WAT Component gate and a dedicated
+  Rust/Wasmtime oracle. Both pinned `wasm-tools` 1.255.0 and legacy 1.254.0
+  routes assemble and validate the measured 20-byte root frame with `u32@12`;
+  ready/pending/cancel receive argument `7`, preserve exactly-once host-Future
+  cleanup, and leave `ResourceTable` empty. This is ABI evidence only: no Do
+  registry/sema/codegen admission, public ownership syntax, or general
+  async-call lowering was added.
+
 # 2026-08-09 G6.2 scalar-list producer promotion and async boundary closeout:
   refreshed the pinned borrow capability matrix against `wasm-tools 1.255.0`;
   synchronous `list<borrow<T>>` remains the only nested-list row with canonical
