@@ -2,6 +2,7 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 const call_plan = @import("codegen_component_async_call_plan.zig");
 const emitter = @import("codegen_component_async_call.zig");
+const bounded_shape = @import("codegen_component_async_shape.zig");
 
 const source =
     \\work = @host_async_func("do:generic-async-call-probe/host@0.1.0", "work", () -> nil)
@@ -21,6 +22,9 @@ test "async call emitter produces an isolated root-owned frame" {
     defer std.testing.allocator.free(tokens);
     var plan = try call_plan.analyze(std.testing.allocator, tokens);
     defer plan.deinit(std.testing.allocator);
+    try std.testing.expectEqual(bounded_shape.BoundedAsyncMode.child, plan.shape.mode);
+    try std.testing.expectEqual(@as(u32, 16), plan.shape.frame.size);
+    try std.testing.expectEqual(@as(?u32, null), plan.shape.frame.u32_argument_offset);
     const wat = try emitter.emit_component_wat(std.testing.allocator, plan);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-async-child]") != null);
@@ -62,6 +66,9 @@ test "async call emitter reserves the inline helper phase" {
     defer std.testing.allocator.free(tokens);
     var inline_plan = try call_plan.analyze(std.testing.allocator, tokens);
     defer inline_plan.deinit(std.testing.allocator);
+    try std.testing.expectEqual(bounded_shape.BoundedAsyncMode.inline_call, inline_plan.shape.mode);
+    try std.testing.expectEqual(@as(u32, 16), inline_plan.shape.frame.size);
+    try std.testing.expectEqual(@as(?u32, null), inline_plan.shape.frame.u32_argument_offset);
     const wat = try emitter.emit_component_wat(std.testing.allocator, inline_plan);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-inline-helper]") != null);
@@ -77,6 +84,9 @@ test "async call emitter carries the scalar argument in the root frame" {
     defer std.testing.allocator.free(tokens);
     var plan = try call_plan.analyze(std.testing.allocator, tokens);
     defer plan.deinit(std.testing.allocator);
+    try std.testing.expectEqual(bounded_shape.BoundedAsyncMode.child, plan.shape.mode);
+    try std.testing.expectEqual(@as(u32, 20), plan.shape.frame.size);
+    try std.testing.expectEqual(@as(?u32, 12), plan.shape.frame.u32_argument_offset);
     const wat = try emitter.emit_component_wat(std.testing.allocator, plan);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-async-arg-store]") != null);
@@ -90,6 +100,9 @@ test "async call emitter carries the inline scalar argument" {
     defer std.testing.allocator.free(tokens);
     var plan = try call_plan.analyze(std.testing.allocator, tokens);
     defer plan.deinit(std.testing.allocator);
+    try std.testing.expectEqual(bounded_shape.BoundedAsyncMode.inline_call, plan.shape.mode);
+    try std.testing.expectEqual(@as(u32, 20), plan.shape.frame.size);
+    try std.testing.expectEqual(@as(?u32, 12), plan.shape.frame.u32_argument_offset);
     const wat = try emitter.emit_component_wat(std.testing.allocator, plan);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-inline-helper]") != null);
@@ -123,4 +136,14 @@ test "async call emitter includes inline cancellation cleanup" {
     try std.testing.expect(std.mem.indexOf(u8, cancel, "call $subtask-cancel") != null);
     try std.testing.expect(std.mem.indexOf(u8, cancel, "call $frame-free") != null);
     try std.testing.expect(std.mem.indexOf(u8, cancel, "call $task-cancel") != null);
+}
+
+test "async call emitter rejects an invalid bounded frame before template emission" {
+    const scalar_source = @embedFile("test/compile_ok/466_async_call_scalar_argument_component.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, scalar_source);
+    defer std.testing.allocator.free(tokens);
+    var plan = try call_plan.analyze(std.testing.allocator, tokens);
+    defer plan.deinit(std.testing.allocator);
+    plan.shape.frame.size = 16;
+    try std.testing.expectError(error.InvalidFrameSize, emitter.emit_component_wat(std.testing.allocator, plan));
 }

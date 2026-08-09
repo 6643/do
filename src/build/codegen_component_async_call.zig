@@ -5,6 +5,7 @@ pub fn emit_component_wat(
     allocator: std.mem.Allocator,
     plan: call_plan.GuestAsyncCallPlan,
 ) ![]u8 {
+    try plan.shape.validate();
     const template = if (plan.inline_helper_call)
         inline_async_call_component_wat
     else

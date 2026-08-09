@@ -2,6 +2,7 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 const plan = @import("codegen_component_async_host_arg_plan.zig");
 const emitter = @import("codegen_component_async_host_arg.zig");
+const bounded_shape = @import("codegen_component_async_shape.zig");
 
 const positive_source =
     \\work = @host_async_func("do:async-call-arg-probe/host@0.1.0", "work", (u32) -> nil)
@@ -20,6 +21,9 @@ test "async host scalar argument emitter preserves the measured frame ABI" {
     defer std.testing.allocator.free(tokens);
     var lowering = try plan.analyze(std.testing.allocator, tokens);
     defer lowering.deinit(std.testing.allocator);
+    try std.testing.expectEqual(bounded_shape.BoundedAsyncMode.host_scalar, lowering.shape.mode);
+    try std.testing.expectEqual(@as(u32, 20), lowering.shape.frame.size);
+    try std.testing.expectEqual(@as(?u32, 12), lowering.shape.frame.u32_argument_offset);
     const wat = try emitter.emit_component_wat(std.testing.allocator, lowering);
     defer std.testing.allocator.free(wat);
     for ([_][]const u8{
@@ -59,4 +63,13 @@ test "async host scalar argument emitter emits the pinned WIT world" {
             "world probe {\n  import host;\n  export run: async func();\n}\n",
         wit,
     );
+}
+
+test "async host scalar argument emitter rejects an invalid bounded frame before template emission" {
+    const tokens = try lexer.tokenize(std.testing.allocator, positive_source);
+    defer std.testing.allocator.free(tokens);
+    var lowering = try plan.analyze(std.testing.allocator, tokens);
+    defer lowering.deinit(std.testing.allocator);
+    lowering.shape.frame.size = 16;
+    try std.testing.expectError(error.InvalidFrameSize, emitter.emit_component_wat(std.testing.allocator, lowering));
 }

@@ -118,6 +118,7 @@ test {
     _ = @import("build/wat_storage.zig");
     _ = @import("build/async_byte_budget_test.zig");
     _ = @import("build/codegen_component_async_shape_test.zig");
+    _ = @import("build/codegen_component_async_differential_test.zig");
     _ = @import("build/sema_error.zig");
     _ = @import("wit/manifest.zig");
     _ = @import("wit/manifest_test.zig");
