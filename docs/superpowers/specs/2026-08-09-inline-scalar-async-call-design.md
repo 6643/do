@@ -1,6 +1,6 @@
 # Inline Scalar Async-Call Design
 
-Status: approved design; implementation pending.
+Status: implemented and verified.
 
 Date: 2026-08-09
 
@@ -17,12 +17,14 @@ call composition.
 
 ## Baseline
 
-The current bounded target has three relevant shapes:
+The current bounded target has four relevant shapes:
 
 - a unit helper used by one explicit `@async(helper())` child;
 - a unit helper called once inline and once through `@async(helper())`;
 - a helper with one `u32` parameter used by one explicit
   `@async(helper(7))` child.
+- a helper with one `u32` parameter called once inline and once through
+  `@async(helper(7))`.
 
 The inline template already uses a root-owned frame with a waitable set,
 current host future, and phase. The scalar child template already reserves a
@@ -147,14 +149,19 @@ The implementation is complete only when all gates pass:
 1. Plan unit tests prove the exact positive shape, independent inline/child
    literals, preservation of the old scalar plan, and all rejected shapes.
 2. Emitter tests prove the 20-byte frame, argument stores/loads in both
-   phases, two host call sites, no helper export, and terminal cleanup markers.
+   phases, two host call sites, no helper export, terminal cleanup markers,
+   and the event-6 cancellation cleanup path (`subtask-cancel`,
+   `subtask-drop`, waitable-set drop, context clear, frame free, and
+   `[task-cancel]`).
 3. Compile fixtures include the positive inline scalar source and negative
    payload, dynamic-argument, multiple-inline, and multiple-child sources.
 4. The pinned legacy `wasm-tools` assembly and validation gate succeeds, with
    the generated WIT sidecar unchanged.
-5. Rust/Wasmtime runs `ready`, `pending`, `cancel-inline`, and `cancel-child`.
-   Every mode must report the expected host future drops, no duplicate drop,
-   and an empty resource table.
+5. Rust/Wasmtime runs `ready`, `pending`, `cancel-inline`, and `cancel-child`
+   for the inline scalar component, while the legacy child-only scalar runner
+   continues to run `ready`, `pending`, and `cancel`. Every mode must report
+   the expected host future drops, no duplicate drop, and an empty resource
+   table.
 6. `./src/build/test/run_tests.sh` remains green, and the existing v1/v2
    component gates remain green.
 7. `doc/master_plan.md` and `doc/pending_blocked.md` record this as a bounded

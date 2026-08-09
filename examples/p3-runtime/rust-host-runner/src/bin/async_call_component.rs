@@ -19,6 +19,24 @@ enum Mode {
     CancelChild,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ScalarMode {
+    Ready,
+    Pending,
+    Cancel,
+}
+
+impl ScalarMode {
+    fn parse(value: &str) -> Result<Self> {
+        match value {
+            "ready" => Ok(Self::Ready),
+            "pending" => Ok(Self::Pending),
+            "cancel" => Ok(Self::Cancel),
+            other => bail!("mode must be ready, pending, or cancel, got {other}"),
+        }
+    }
+}
+
 impl Mode {
     fn parse(value: &str) -> Result<Self> {
         match value {
@@ -375,6 +393,133 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
     Ok(())
 }
 
+async fn run_scalar(component_path: &Path, mode: ScalarMode) -> Result<()> {
+    let mut config = Config::new();
+    config.wasm_component_model(true);
+    config.wasm_component_model_async(true);
+    config.wasm_component_model_more_async_builtins(true);
+    config.wasm_gc(true);
+    config.concurrency_support(true);
+
+    let engine = map_wasmtime(Engine::new(&config))?;
+    let component = map_wasmtime(Component::from_file(&engine, component_path))
+        .with_context(|| format!("load component {}", component_path.display()))?;
+    let stats = Arc::new(Stats::default());
+    let mut linker = Linker::new(&engine);
+    let mut host = map_wasmtime(linker.instance(HOST_INSTANCE))?;
+    let host_stats = Arc::clone(&stats);
+    map_wasmtime(host.func_wrap_concurrent("work", move |_accessor, ()| {
+        host_stats.host_calls.fetch_add(1, Ordering::SeqCst);
+        let work = match mode {
+            ScalarMode::Ready => ControlledWork::ready(Arc::clone(&host_stats)),
+            ScalarMode::Pending => ControlledWork::pending(Arc::clone(&host_stats), true),
+            ScalarMode::Cancel => ControlledWork::pending(Arc::clone(&host_stats), false),
+        };
+        Box::pin(async move { work.await })
+    }))?;
+
+    let mut store = Store::new(
+        &engine,
+        State {
+            table: ResourceTable::new(),
+        },
+    );
+    let instance = map_wasmtime(linker.instantiate_async(&mut store, &component).await)?;
+    let run = map_wasmtime(instance.get_typed_func::<(), ()>(&mut store, "run"))?;
+    let call = store.run_concurrent(async |accessor| run.call_concurrent(accessor, ()).await);
+    match mode {
+        ScalarMode::Cancel => {
+            let cancel = CancelAfterHostCalls {
+                stats: Arc::clone(&stats),
+                required_calls: 1,
+            };
+            match select(Box::pin(call), Box::pin(cancel)).await {
+                Either::Left((result, _cancel)) => {
+                    let result = map_wasmtime(result)?;
+                    map_wasmtime(result)?;
+                    bail!("cancel mode completed the root task before cancellation");
+                }
+                Either::Right((_cancel, pending_call)) => drop(pending_call),
+            }
+        }
+        ScalarMode::Ready | ScalarMode::Pending => {
+            let result = map_wasmtime(call.await)?;
+            map_wasmtime(result)?;
+        }
+    }
+    if mode != ScalarMode::Cancel {
+        stats.guest_completed.store(true, Ordering::SeqCst);
+    }
+    let table_empty = store.data().table.is_empty();
+    drop(store);
+
+    let calls = stats.host_calls.load(Ordering::SeqCst);
+    let polls = stats.polls.load(Ordering::SeqCst);
+    let wakes = stats.wakes.load(Ordering::SeqCst);
+    let completions = stats.completions.load(Ordering::SeqCst);
+    let drops = stats.future_drops.load(Ordering::SeqCst);
+    let pending_drops = stats.pending_future_drops.load(Ordering::SeqCst);
+    let guest_completed = stats.guest_completed.load(Ordering::SeqCst);
+    match mode {
+        ScalarMode::Ready => {
+            if calls != 1
+                || polls != 1
+                || wakes != 0
+                || completions != 1
+                || drops != 1
+                || pending_drops != 0
+                || !guest_completed
+                || !table_empty
+            {
+                bail!(
+                    "ready observations invalid: calls={calls} polls={polls} wakes={wakes} completions={completions} drops={drops} pending-drops={pending_drops} guest-completed={guest_completed} table-empty={table_empty}"
+                );
+            }
+            println!(
+                "mode=ready child-completions=1 child-drops=1 host-future-drops=1 table-empty=true"
+            );
+        }
+        ScalarMode::Pending => {
+            if calls != 1
+                || polls < 2
+                || wakes != 1
+                || completions != 1
+                || drops != 1
+                || pending_drops != 0
+                || !guest_completed
+                || !table_empty
+            {
+                bail!(
+                    "pending observations invalid: calls={calls} polls={polls} wakes={wakes} completions={completions} drops={drops} pending-drops={pending_drops} guest-completed={guest_completed} table-empty={table_empty}"
+                );
+            }
+            println!(
+                "mode=pending child-completions=1 child-drops=1 host-future-drops=1 table-empty=true"
+            );
+        }
+        ScalarMode::Cancel => {
+            if calls != 1
+                || polls < 1
+                || wakes != 0
+                || completions != 0
+                || drops != 1
+                || pending_drops != 1
+                || guest_completed
+                || !table_empty
+            {
+                bail!(
+                    "cancel observations invalid: calls={calls} polls={polls} wakes={wakes} completions={completions} drops={drops} pending-drops={pending_drops} guest-completed={guest_completed} table-empty={table_empty}"
+                );
+            }
+            println!(
+                "mode=cancel child-cancellations=1 child-drops=1 host-future-drops=1 table-empty=true"
+            );
+        }
+    }
+    println!("async-call root-terminal=1 duplicate-drop=0");
+    Ok(())
+}
+
 pub fn run_cli() -> Result<()> {
     let mut args = std::env::args().skip(1);
     let component_path = args.next().context(
@@ -389,6 +534,25 @@ pub fn run_cli() -> Result<()> {
         );
     }
     futures::executor::block_on(run(Path::new(&component_path), Mode::parse(&mode)?))
+}
+
+pub fn run_scalar_cli() -> Result<()> {
+    let mut args = std::env::args().skip(1);
+    let component_path = args.next().context(
+        "usage: do-p3-async-call-scalar-argument-host-runner <component.wasm> <ready|pending|cancel>",
+    )?;
+    let mode = args.next().context(
+        "usage: do-p3-async-call-scalar-argument-host-runner <component.wasm> <ready|pending|cancel>",
+    )?;
+    if args.next().is_some() {
+        bail!(
+            "usage: do-p3-async-call-scalar-argument-host-runner <component.wasm> <ready|pending|cancel>"
+        );
+    }
+    futures::executor::block_on(run_scalar(
+        Path::new(&component_path),
+        ScalarMode::parse(&mode)?,
+    ))
 }
 
 fn main() -> Result<()> {

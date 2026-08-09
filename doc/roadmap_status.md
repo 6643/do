@@ -1,6 +1,6 @@
 # Roadmap 执行状态
 
-更新时间: 2026-08-08
+更新时间: 2026-08-09
 
 **本文只保留当前状态与阻断。** 历史小任务勾选与逐条 gate 证据已从仓库移除; 追溯用 git 历史与 `CHANGELOG.md`。  
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
@@ -20,23 +20,28 @@
 | 阶段 A–F、H | done |
 | 阶段 D | 可推进项 done; D2.1 按 B 方案绿色 regression 收口 |
 | D2 真实 host smoke | in progress; real local filesystem preopen/read-directory, CLI pipe, compiler-generated TCP/UDP socket create/bind/drop loopback, and the private pinned `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` async method gates are green; general filesystem async and external HTTP remain blocked |
-| 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + scalar-argument async-call + helper-mediated lease（含五跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` slices、G6.3、G6.4 done; generic list/producer、borrowed payload 与 root hard-cancel 仍 pending |
-| Colorless async / WIT bindgen | canonical `@async/@await/@cancel` surface, legacy `async` deprecation, schema 1/2 generated manifest checks, automatic discovery for the admitted schema 2 unit and scalar capabilities, plus opt-in v2 variant/scalar-i64 slices, the `--p3-async-call-component` root-owned local-frame slice, and the private `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` slice verified; unrestricted generated WIT lowering remains pending |
+| 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + helper-mediated lease（含五跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` slices、G6.3、G6.4 done; generic list/producer、borrowed payload 与 root hard-cancel 仍 pending |
+| Colorless async / WIT bindgen | canonical `@async/@await/@cancel` surface, legacy `async` deprecation, schema 1/2 generated manifest checks, automatic discovery for the admitted schema 2 unit and scalar capabilities, plus opt-in v2 variant/scalar-i64 slices, the `--p3-async-call-component` root-owned local-frame slice including one inline `u32` scalar argument, and the private `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` slice verified; unrestricted generated WIT lowering remains pending |
 | 阶段 I | **closed** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构扁平拆分 | 已落地: `diagnostics` / `type_name` / `sema_error` / codegen 域竖切 / **`sema_*` 域竖切** (`sema_tokens`/`sema_shapes`/`sema_function_*`/`sema_structures`/`sema_type_checks`/`sema_imports`/`sema_control`) |
 | 目录 | 标准库 `lib/`; 工具链 `src/` (原 `tool/`) |
 
-### 2026-08-08 colorless inline async-call gate
+### 2026-08-09 colorless inline scalar async-call gate
 
-`--p3-async-call-component` now accepts two exact root-owned unit forms:
-child-only `@async(helper())`, and one leading inline `helper()` followed by
-that explicit child. Ordinary functions remain colorless; a normal call is
-inline and only `@async(call)` creates a user-function Future. The Component
-and Rust/Wasmtime gates pass ready, pending, `cancel-inline`, and
-`cancel-child`, with exactly-once host-Future cleanup and an empty
-`ResourceTable`. The default/v1 and v2 dispatch paths are unchanged. Any
-broader payload, resource, Stream/list, branch, loop, recursion, multiple-child
-or arbitrary producer shape remains pending and must fail closed before WAT.
+`--p3-async-call-component` now accepts four exact root-owned forms:
+child-only and one-leading-inline unit calls, plus child-only and
+one-leading-inline calls whose helper has one `u32` parameter and a literal at
+each call site. The inline and child phases execute sequentially through one
+20-byte root frame; external cancellation handles event `6` by cancelling and
+dropping the active subtask, dropping the waitable set, clearing context, and
+freeing the frame before `[task-cancel]`. Ordinary functions remain colorless;
+a normal call is inline and only `@async(call)` creates a user-function Future.
+The Component and Rust/Wasmtime gates pass ready, pending, `cancel-inline`,
+and `cancel-child`, with exactly-once host-Future cleanup and an empty
+`ResourceTable`; the legacy child-only scalar runner also remains green. The
+default/v1 and v2 dispatch paths are unchanged. Any broader payload, resource,
+Stream/list, branch, loop, recursion, multiple-child or arbitrary producer
+shape remains pending and must fail closed before WAT.
 
 ### 最近验证
 
@@ -52,10 +57,16 @@ cd src && zig test main.zig
   → All 308 tests passed.
 
 ./src/build/test/run_tests.sh
-  → pass=1149 fail=0 skip=3 (Bun Node-compatible runner)
+  → pass=1158 fail=0 skip=3 (Bun Node-compatible runner)
+
+Inline scalar async-call focused gates (2026-08-09)
+  → plan 107/107 and emitter 105/105 Zig tests; pinned `wasm-tools` 1.254.0
+    Component assembly passed for both inline and child-only scalar fixtures;
+    Rust/Wasmtime passed inline `ready`/`pending`/`cancel-inline`/`cancel-child`
+    and legacy scalar `ready`/`pending`/`cancel`, with empty `ResourceTable`.
 
 RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
-  → pass=1151 fail=0 skip=3; wasm run summary: pass=6 fail=0 (Bun Node-compatible runner)
+  → pass=1160 fail=0 skip=3; wasm run summary: pass=6 fail=0 (Bun Node-compatible runner)
 
 Generated async manifest Component/Rust/Wasmtime gate (2026-08-06)
   → Zig 0.16.0, wasm-tools 1.254.0, Wasmtime 47.0.2, Rust/Cargo 1.97.1;

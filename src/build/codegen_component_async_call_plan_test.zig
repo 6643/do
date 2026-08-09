@@ -129,6 +129,28 @@ test "async call component admits an inline scalar helper argument" {
     }
 }
 
+test "async call component records independent inline and child scalar literals" {
+    const source =
+        \\work = @host_async_func("do:generic-async-call-probe/host@0.1.0", "work", () -> nil)
+        \\helper(value u32) -> nil {
+        \\    pending Future<nil> = work()
+        \\    @await(pending)
+        \\}
+        \\run() -> nil {
+        \\    helper(5)
+        \\    child Future<nil> = @async(helper(9))
+        \\    @await(child)
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var result = try plan.analyze(std.testing.allocator, tokens);
+    defer result.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(?u32, 5), result.inline_argument_value);
+    try std.testing.expectEqual(@as(?u32, 9), result.argument_value);
+}
+
 test "async call component keeps the no-inline unit shape distinct" {
     const source =
         \\work = @host_async_func("do:generic-async-call-probe/host@0.1.0", "work", () -> nil)

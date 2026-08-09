@@ -104,3 +104,23 @@ test "async call emitter carries the inline scalar argument" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "[task-return]helper") == null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "[async-lift]helper") == null);
 }
+
+test "async call emitter includes inline cancellation cleanup" {
+    const scalar_source = @embedFile("test/compile_ok/477_async_call_inline_scalar_argument_component.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, scalar_source);
+    defer std.testing.allocator.free(tokens);
+    var plan = try call_plan.analyze(std.testing.allocator, tokens);
+    defer plan.deinit(std.testing.allocator);
+    const wat = try emitter.emit_component_wat(std.testing.allocator, plan);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-async-root-cancel]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 6") != null);
+    const cancel_start = std.mem.indexOf(u8, wat, "(func $root-cancel") orelse return error.TestUnexpectedResult;
+    const cancel_tail = wat[cancel_start..];
+    const cancel_end = std.mem.indexOf(u8, cancel_tail, "  (func (export \"[callback]") orelse return error.TestUnexpectedResult;
+    const cancel = cancel_tail[0..cancel_end];
+    try std.testing.expect(std.mem.indexOf(u8, cancel, "[guest-async-cancel-child]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, cancel, "call $subtask-cancel") != null);
+    try std.testing.expect(std.mem.indexOf(u8, cancel, "call $frame-free") != null);
+    try std.testing.expect(std.mem.indexOf(u8, cancel, "call $task-cancel") != null);
+}

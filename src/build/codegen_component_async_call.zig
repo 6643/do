@@ -285,6 +285,7 @@ const inline_async_call_component_wat =
     \\  (type $waitable-set-new (func (result i32)))
     \\  (type $waitable-join (func (param i32 i32)))
     \\  (type $waitable-set-drop (func (param i32)))
+    \\  (type $subtask-cancel (func (param i32) (result i32)))
     \\  (type $subtask-drop (func (param i32)))
     \\  (type $context-get (func (result i32)))
     \\  (type $context-set (func (param i32)))
@@ -299,6 +300,7 @@ const inline_async_call_component_wat =
     \\  (import "$root" "[backpressure-dec]" (func $backpressure-dec (type $task-return)))
     \\  (import "$root" "[waitable-set-new]" (func $waitable-set-new (type $waitable-set-new)))
     \\  (import "$root" "[waitable-set-drop]" (func $waitable-set-drop (type $waitable-set-drop)))
+    \\  (import "$root" "[subtask-cancel]" (func $subtask-cancel (type $subtask-cancel)))
     \\  (import "$root" "[waitable-join]" (func $waitable-join (type $waitable-join)))
     \\  (import "$root" "[subtask-drop]" (func $subtask-drop (type $subtask-drop)))
     \\  (import "$root" "[context-get-0]" (func $context-get-0 (type $context-get)))
@@ -355,6 +357,47 @@ const inline_async_call_component_wat =
     \\    call $frame-free
     \\    ;; [guest-async-root-terminal]
     \\    call $task-return-root
+    \\  )
+    \\
+    \\  (func $root-cancel (param $frame i32) (local $status i32)
+    \\    ;; [guest-async-root-cancel]
+    \\    local.get $frame
+    \\    i32.const 4
+    \\    i32.add
+    \\    i32.load
+    \\    i32.const 2
+    \\    i32.ne
+    \\    if
+    \\      ;; [guest-async-cancel-child]
+    \\      local.get $frame
+    \\      i32.const 4
+    \\      i32.add
+    \\      i32.load
+    \\      i32.const 4
+    \\      i32.shr_u
+    \\      call $subtask-cancel
+    \\      local.set $status
+    \\      local.get $status
+    \\      i32.const 4
+    \\      i32.eq
+    \\      if
+    \\        local.get $frame
+    \\        i32.const 4
+    \\        i32.add
+    \\        i32.load
+    \\        i32.const 4
+    \\        i32.shr_u
+    \\        call $subtask-drop
+    \\      end
+    \\    end
+    \\    local.get $frame
+    \\    i32.load
+    \\    call $waitable-set-drop
+    \\    i32.const 0
+    \\    call $context-set-0
+    \\    local.get $frame
+    \\    call $frame-free
+    \\    call $task-cancel
     \\  )
     \\
     \\  (func $start-child (param $frame i32) (result i32) (local $subtask i32)
@@ -482,10 +525,24 @@ const inline_async_call_component_wat =
     \\    (local $frame i32)
     \\    call $context-get-0
     \\    local.set $frame
+    \\    local.get $frame
+    \\    i32.eqz
+    \\    if
+    \\      i32.const 0
+    \\      return
+    \\    end
     \\    local.get 0
-    \\    i32.const 1
+    \\    i32.const 6
     \\    i32.eq
     \\    if (result i32)
+    \\      local.get $frame
+    \\      call $root-cancel
+    \\      i32.const 0
+    \\    else
+    \\      local.get 0
+    \\      i32.const 1
+    \\      i32.eq
+    \\      if (result i32)
     \\      local.get $frame
     \\      i32.const 8
     \\      i32.add
@@ -514,6 +571,7 @@ const inline_async_call_component_wat =
     \\    else
     \\      unreachable
     \\      i32.const 0
+    \\    end
     \\    end
     \\  )
     \\

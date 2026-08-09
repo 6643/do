@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- The accepted source shape is `helper(value u32) -> nil`, a leading `helper(7)`, one `child Future<nil> = @async(helper(7))`, and one `@await(child)` in a colorless `run() -> nil`.
+- The accepted source shape is `helper(value u32) -> nil`, one leading `helper(<u32 literal>)`, one `child Future<nil> = @async(helper(<u32 literal>))`, and one `@await(child)` in a colorless `run() -> nil`; the two literals are recorded independently and the positive fixture uses `7` for both.
 - `GuestAsyncCallPlan.argument_value` remains the child literal; add `inline_argument_value: ?u32` for the leading inline literal.
 - The root-owned frame is 20 bytes: waitable set at `0`, current host future at `4`, phase at `8`, current `u32` argument at `12`.
 - The inline and child calls execute sequentially and reuse the one argument slot; no two helper calls are live simultaneously.
@@ -19,7 +19,7 @@
 - Preserve `--p3-async-component`, `--p3-async-component-v2`, the unit inline slice, and the child-only scalar slice.
 - Rejected forms fail before WAT emission with `UnsupportedP3AsyncCallComponent` and do not leave a partial output file.
 - Do not add `own<T>`, `borrow<T>`, `ref<T>`, pointers, references, or lifetime syntax.
-- Cancellation drops the active future/subtask, waitable set, and frame exactly once; it never rolls back an already-issued host effect.
+- Cancellation event `6` drops the active future/subtask, waitable set, and frame exactly once, clears context, and calls `[task-cancel]`; it never rolls back an already-issued host effect.
 - Every task ends with focused verification and its own concise commit.
 
 ---
@@ -46,7 +46,7 @@
 - Consumes: the existing `466_async_call_scalar_argument_component.do` child-only fixture and the accepted unit inline fixture.
 - Produces: a positive inline-scalar source contract and compile/check fixtures that fail closed for dynamic arguments, multiple parameters, duplicate inline calls, and payload returns.
 
-- [ ] **Step 1: Create the positive source and check fixture.**
+- [x] **Step 1: Create the positive source and check fixture.**
 
 Use this exact source in both the example and positive compile fixture:
 
@@ -66,7 +66,7 @@ start() {}
 
 The check fixture must pass `./bin/do check` without an `async` modifier on `helper` or `run`.
 
-- [ ] **Step 2: Add the positive compile expectation.**
+- [x] **Step 2: Add the positive compile expectation.**
 
 `477_async_call_inline_scalar_argument_component.expect` must require:
 
@@ -83,7 +83,7 @@ The check fixture must pass `./bin/do check` without an `async` modifier on `hel
 [guest-async-root-terminal]
 ```
 
-- [ ] **Step 3: Add the dynamic-argument rejection fixture.**
+- [x] **Step 3: Add the dynamic-argument rejection fixture.**
 
 Use a valid local value so semantic analysis reaches the component-plan guard:
 
@@ -104,15 +104,15 @@ start() {}
 
 Its `.expect` file must contain `# build-arg: --p3-async-call-component` and `UnsupportedP3AsyncCallComponent`.
 
-- [ ] **Step 4: Add the remaining negative fixtures.**
+- [x] **Step 4: Add the remaining negative fixtures.**
 
 `479` changes the helper signature to `helper(first u32, second u32) -> nil` and both calls to `helper(7, 8)`. `480` inserts a second leading `helper(7)` statement before the child declaration. `481` changes the helper result to `i32`, keeps the inline and child calls, and returns `1` after the await. Each expectation contains the opt-in build argument and `UnsupportedP3AsyncCallComponent`.
 
-- [ ] **Step 5: Add red unit assertions.**
+- [x] **Step 5: Add red unit assertions.**
 
 Add a plan test that tokenizes the new positive fixture, expects `inline_helper_call == true`, `inline_argument_value == 7`, and `argument_value == 7`. Add emitter assertions for the four new inline markers and two `call $host-work` sites. Before implementation, the new plan test must fail with `UnsupportedP3AsyncCallComponent` while the existing child-only scalar test remains accepted.
 
-- [ ] **Step 6: Run the red checkpoint.**
+- [x] **Step 6: Run the red checkpoint.**
 
 Run:
 
@@ -127,7 +127,7 @@ cd ..
 
 Expected: the check fixture passes, the new positive component build fails before WAT with `UnsupportedP3AsyncCallComponent`, and the focused unit tests expose the missing inline-scalar implementation.
 
-- [ ] **Step 7: Commit the red tests.**
+- [x] **Step 7: Commit the red tests.**
 
 ```bash
 git add examples/p3-runtime/async-call-inline-scalar-argument.do \
@@ -157,11 +157,11 @@ git commit -m "test: define inline scalar async-call shape"
 - Consumes: lexer tokens and the registered `do:generic-async-call-probe/host@0.1.0` descriptor.
 - Produces: `GuestAsyncCallPlan.inline_argument_value: ?u32`, with `null` for existing unit and child-only scalar shapes and `7` for the new inline-scalar fixture.
 
-- [ ] **Step 1: Add the independent inline value field.**
+- [x] **Step 1: Add the independent inline value field.**
 
 Add `inline_argument_value: ?u32` beside `argument_value`, free no additional memory in `deinit`, and initialize it on every successful return. Existing unit and child-only scalar fixtures must continue to set it to `null`.
 
-- [ ] **Step 2: Add an exact scalar-inline root matcher.**
+- [x] **Step 2: Add an exact scalar-inline root matcher.**
 
 Keep `root_body_is_exact` for the unit child-only shape and `root_body_with_inline` for the unit inline shape. Add a separate matcher whose token sequence is:
 
@@ -173,15 +173,15 @@ child Future < nil > = @ async ( helper ( NUMBER ) )
 
 Require both `NUMBER` tokens to parse as `u32`, allow the two literals to be recorded independently, and reject any extra statement or call in `run`.
 
-- [ ] **Step 3: Select the correct root shape without contagion.**
+- [x] **Step 3: Select the correct root shape without contagion.**
 
 When `helper` has one `u32` parameter, accept only the existing child-only scalar matcher or the new scalar-inline matcher. When `helper` is unit, retain the existing unit matchers. Keep the existing checks for one host binding, one `@async`, two `@await`, no `@cancel`, one helper declaration, one root declaration, exact helper body, and unit root result.
 
-- [ ] **Step 4: Preserve the old scalar plan.**
+- [x] **Step 4: Preserve the old scalar plan.**
 
 Continue parsing `466_async_call_scalar_argument_component.do` as `argument_name = "value"`, `argument_value = 7`, `inline_helper_call = false`, and `inline_argument_value = null`. Do not broaden `find_scalar_argument` beyond exactly one `u32` parameter.
 
-- [ ] **Step 5: Run the green analyzer tests.**
+- [x] **Step 5: Run the green analyzer tests.**
 
 ```bash
 cd src && zig test build/codegen_component_async_call_plan_test.zig
@@ -189,7 +189,7 @@ cd src && zig test build/codegen_component_async_call_plan_test.zig
 
 Expected: the new positive plan exposes both values as `7`, the old scalar plan remains unchanged, and fixtures `478` through `481` fail with `UnsupportedP3AsyncCallComponent`.
 
-- [ ] **Step 6: Commit the plan checkpoint.**
+- [x] **Step 6: Commit the plan checkpoint.**
 
 ```bash
 git add src/build/codegen_component_async_call_plan.zig \
@@ -207,11 +207,11 @@ git commit -m "feat: admit bounded inline scalar async calls"
 - Consumes: `GuestAsyncCallPlan.argument_value`, `inline_argument_value`, and `inline_helper_call`.
 - Produces: 20-byte root-owned WAT with inline argument store/load, child argument store/load, two host call sites, and exactly-once cleanup.
 
-- [ ] **Step 1: Keep the existing templates unchanged for old plans.**
+- [x] **Step 1: Keep the existing templates unchanged for old plans.**
 
 The child-only unit and scalar paths must continue selecting `async_call_component_wat`. Keep their existing argument markers and frame-size behavior. Select the inline template only when `inline_helper_call` is true.
 
-- [ ] **Step 2: Parameterize the inline template for the scalar slot.**
+- [x] **Step 2: Parameterize the inline template for the scalar slot.**
 
 Add these replacements to `emit_component_wat`:
 
@@ -226,7 +226,7 @@ __CHILD_ARGUMENT__
 
 For the inline-scalar plan, set frame size to `20`, emit `i32.const 7` into the inline store and child store, and emit a load/drop at each helper phase. For the existing unit inline plan, replace all six tokens with empty text and retain the current 16-byte frame.
 
-- [ ] **Step 3: Add phase-specific markers and transitions.**
+- [x] **Step 3: Add phase-specific markers and transitions.**
 
 In the inline template:
 
@@ -238,9 +238,9 @@ In the inline template:
 - retain `[guest-inline-helper]`, `[guest-async-child]`,
   `[guest-async-child-drop]`, and `[guest-async-root-terminal]`.
 
-The callback must distinguish phase `1` from phase `2`, drop only the active handle, write the child argument before starting the child phase, and invoke `[task-return]run` only from terminal cleanup.
+The callback must distinguish cancellation event `6` from completion event `1`, distinguish phase `1` from phase `2`, drop only the active handle, write the child argument before starting the child phase, and invoke `[task-return]run` only from terminal cleanup.
 
-- [ ] **Step 4: Add emitter assertions.**
+- [x] **Step 4: Add emitter assertions.**
 
 Extend `codegen_component_async_call_test.zig` with a scalar-inline source and assert:
 
@@ -251,11 +251,15 @@ try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-inline-arg-load]") != nu
 try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 7") != null);
 try std.testing.expect(std.mem.indexOf(u8, wat, "[task-return]helper") == null);
 try std.testing.expect(std.mem.indexOf(u8, wat, "[async-lift]helper") == null);
+try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-async-root-cancel]") != null);
+try std.testing.expect(std.mem.indexOf(u8, wat, "call $subtask-cancel") != null);
+try std.testing.expect(std.mem.indexOf(u8, wat, "call $frame-free") != null);
+try std.testing.expect(std.mem.indexOf(u8, wat, "call $task-cancel") != null);
 ```
 
 Retain the existing unit-inline assertions and verify the old child-only scalar emitter still has no inline markers.
 
-- [ ] **Step 5: Run focused emitter tests.**
+- [x] **Step 5: Run focused emitter tests.**
 
 ```bash
 cd src && zig test build/codegen_component_async_call_test.zig
@@ -263,7 +267,7 @@ cd src && zig test build/codegen_component_async_call_test.zig
 
 Expected: old unit/scalar tests remain green; the scalar-inline WAT contains the 20-byte frame and all phase markers; no helper endpoint appears.
 
-- [ ] **Step 6: Commit the lowering checkpoint.**
+- [x] **Step 6: Commit the lowering checkpoint.**
 
 ```bash
 git add src/build/codegen_component_async_call.zig \
@@ -277,17 +281,17 @@ git commit -m "feat: lower inline scalar async-call phases"
 - Create: `examples/p3-runtime/test_do_async_call_inline_scalar_argument.sh`
 - Keep unchanged: `examples/p3-runtime/async-call-component.wit`
 - Reuse: `examples/p3-runtime/test_rust_async_call_component.sh`
-- Reuse: `examples/p3-runtime/rust-host-runner/src/bin/async_call_component.rs`
+- Modify: `examples/p3-runtime/rust-host-runner/src/bin/async_call_component.rs` (inline and legacy scalar profiles)
 
 **Interfaces:**
 - Consumes: `examples/p3-runtime/async-call-inline-scalar-argument.do` and the existing host runner.
 - Produces: pinned Component assembly plus ready/pending/cancel-inline/cancel-child evidence for the scalar-inline shape.
 
-- [ ] **Step 1: Create the Do/WAT gate.**
+- [x] **Step 1: Create the Do/WAT gate.**
 
 The new script must follow `test_do_async_call_scalar_argument.sh`: build the new source with `--p3-async-call-component`, compare the generated WIT with `async-call-component.wit`, assert all inline/child markers and `i32.const 7`, reject `[task-return]helper` and `[async-lift]helper`, parse with pinned `wasm-tools-1.254.0`, and call `assemble_wasmtime_p3_legacy.sh`.
 
-- [ ] **Step 2: Run the Component gate.**
+- [x] **Step 2: Run the Component gate.**
 
 ```bash
 bash examples/p3-runtime/test_do_async_call_inline_scalar_argument.sh \
@@ -296,7 +300,7 @@ bash examples/p3-runtime/test_do_async_call_inline_scalar_argument.sh \
 
 Expected: WIT comparison, Core WAT parsing, Component assembly, and validation all pass; the generated sidecar is byte-identical to the existing WIT snapshot.
 
-- [ ] **Step 3: Run the existing four runtime modes.**
+- [x] **Step 3: Run the existing four runtime modes.**
 
 ```bash
 bash examples/p3-runtime/test_rust_async_call_component.sh \
@@ -305,7 +309,7 @@ bash examples/p3-runtime/test_rust_async_call_component.sh \
 
 Expected output remains the existing generic runner contract: `ready` and `pending` observe two host completions and two drops; `cancel-inline` observes one pending drop; `cancel-child` observes one completed and one pending drop; completed modes report `root-terminal=1 duplicate-drop=0`; every mode reports `table-empty=true`.
 
-- [ ] **Step 4: Keep the old scalar gate green.**
+- [x] **Step 4: Keep the old scalar gate green.**
 
 ```bash
 bash examples/p3-runtime/test_do_async_call_scalar_argument.sh \
@@ -314,9 +318,9 @@ bash examples/p3-runtime/test_rust_async_call_scalar_argument.sh \
   /tmp/async-call-scalar.component.wasm
 ```
 
-Expected: the child-only scalar fixture still emits its existing markers and frame slot without inline markers.
+Expected: the child-only scalar fixture still emits its existing markers and frame slot without inline markers, and the dedicated scalar Rust profile observes exactly one host call in each mode.
 
-- [ ] **Step 5: Commit the runtime gate.**
+- [x] **Step 5: Commit the runtime gate.**
 
 ```bash
 git add examples/p3-runtime/test_do_async_call_inline_scalar_argument.sh
@@ -330,20 +334,22 @@ git commit -m "test: gate inline scalar async-call component"
 - Modify: `doc/pending_blocked.md`
 - Modify: `doc/start_here.md`
 - Modify: `examples/p3-runtime/README.md`
+- Modify: `doc/spec_rules.md`
+- Modify: `doc/roadmap_status.md`
 
 **Interfaces:**
 - Consumes: the analyzer, WAT, Component, and Rust/Wasmtime evidence from Tasks 2-4.
 - Produces: truthful project status that records only the bounded inline scalar checkpoint as complete and leaves broader async/resource work pending.
 
-- [ ] **Step 1: Record the bounded checkpoint.**
+- [x] **Step 1: Record the bounded checkpoint.**
 
 Document the exact source shape, 20-byte frame, pinned assembly/runtime gates, and no-helper-export result. State that `u32` is a probe type rather than a final scalar limitation.
 
-- [ ] **Step 2: Preserve pending boundaries.**
+- [x] **Step 2: Preserve pending boundaries.**
 
 Keep general async-call composition, arbitrary producer expressions, multiple parameters, non-`u32` scalars, payload/list/record/resource/stream futures, public ownership syntax, general filesystem async, external HTTP, and independent guest child tasks listed as pending.
 
-- [ ] **Step 3: Run the full verification matrix.**
+- [x] **Step 3: Run the full verification matrix.**
 
 ```bash
 ./src/build/test/run_tests.sh
@@ -359,16 +365,16 @@ git diff --check
 git status --short
 ```
 
-Expected: the repository harness reports `fail=0`, all focused tests and all three async-call Component gates pass, and `git status --short` shows only intentional documentation changes before the final commit.
+Expected: the repository harness reports `fail=0`, focused tests, the inline Component/Rust gate, and the legacy scalar Component/Rust gate pass, and `git status --short` shows only intentional changes before the final commit.
 
-- [ ] **Step 4: Commit the documentation checkpoint.**
+- [x] **Step 4: Commit the documentation checkpoint.**
 
 ```bash
 git add doc/master_plan.md doc/pending_blocked.md doc/start_here.md \
-  examples/p3-runtime/README.md
+  doc/spec_rules.md doc/roadmap_status.md examples/p3-runtime/README.md
 git commit -m "docs: record inline scalar async-call checkpoint"
 ```
 
-- [ ] **Step 5: Handoff for integration.**
+- [x] **Step 5: Handoff for integration.**
 
-Report the five implementation commits, the exact verification commands and results, the remaining pending boundaries, and the fact that the current `main` branch may still need an explicit `git push origin main` integration step.
+Report the implementation checkpoints, the exact verification commands and results, the remaining pending boundaries, and the final `git push origin main` integration step.
