@@ -2,6 +2,7 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 const sema_tokens = @import("sema_tokens.zig");
 const p3_async_manifest = @import("p3_async_manifest.zig");
+const bounded_shape = @import("codegen_component_async_shape.zig");
 
 pub const ChildState = enum {
     host_pending,
@@ -25,6 +26,7 @@ pub const GuestAsyncCallPlan = struct {
     inline_helper_call: bool,
     child_state: ChildState,
     parent_resume_state: ParentResumeState,
+    shape: bounded_shape.BoundedAsyncShape,
 
     pub fn deinit(self: *GuestAsyncCallPlan, allocator: std.mem.Allocator) void {
         allocator.free(self.root_name);
@@ -96,6 +98,11 @@ pub fn analyze(allocator: std.mem.Allocator, tokens: []const lexer.Token) !Guest
         return error.UnsupportedP3AsyncCallComponent;
     }
 
+    const frame_shape = (if (inline_helper_call)
+        bounded_shape.inline_shape(inline_scalar_values != null)
+    else
+        bounded_shape.child_shape(scalar_value != null)) catch return error.UnsupportedP3AsyncCallComponent;
+
     const root_name = try allocator.dupe(u8, root.name);
     errdefer allocator.free(root_name);
     const helper_name = try allocator.dupe(u8, helper.name);
@@ -127,6 +134,7 @@ pub fn analyze(allocator: std.mem.Allocator, tokens: []const lexer.Token) !Guest
         .inline_helper_call = inline_helper_call,
         .child_state = .host_pending,
         .parent_resume_state = .child_complete,
+        .shape = frame_shape,
     };
 }
 

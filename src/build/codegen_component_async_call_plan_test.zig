@@ -1,6 +1,7 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
 const plan = @import("codegen_component_async_call_plan.zig");
+const shape = @import("codegen_component_async_shape.zig");
 
 const positive_source =
     \\work = @host_async_func("do:generic-async-call-probe/host@0.1.0", "work", () -> nil)
@@ -32,6 +33,20 @@ test "async call component admits the exact local-frame shape" {
     if (@hasField(@TypeOf(result), "inline_helper_call")) {
         try std.testing.expect(@field(result, "inline_helper_call"));
     }
+    try std.testing.expectEqual(shape.BoundedAsyncMode.inline_call, result.shape.mode);
+    try std.testing.expectEqual(@as(u32, 16), result.shape.frame.size);
+    try std.testing.expectEqual(@as(?u32, null), result.shape.frame.u32_argument_offset);
+}
+
+test "async call component attaches the child unit shape" {
+    const source = @embedFile("test/check/441_async_call_component.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var result = try plan.analyze(std.testing.allocator, tokens);
+    defer result.deinit(std.testing.allocator);
+    try std.testing.expectEqual(shape.BoundedAsyncMode.child, result.shape.mode);
+    try std.testing.expectEqual(@as(u32, 16), result.shape.frame.size);
+    try std.testing.expectEqual(@as(?u32, null), result.shape.frame.u32_argument_offset);
 }
 
 test "async call component rejects helper payload" {
@@ -107,6 +122,9 @@ test "async call component admits one scalar helper argument" {
     if (@hasField(@TypeOf(result), "argument_value")) {
         try std.testing.expectEqual(@as(u32, 7), @field(result, "argument_value"));
     }
+    try std.testing.expectEqual(shape.BoundedAsyncMode.child, result.shape.mode);
+    try std.testing.expectEqual(@as(u32, 20), result.shape.frame.size);
+    try std.testing.expectEqual(@as(?u32, 12), result.shape.frame.u32_argument_offset);
     try std.testing.expectEqual(@as(?u32, null), result.inline_argument_value);
     try std.testing.expect(!result.inline_helper_call);
 }
@@ -123,6 +141,9 @@ test "async call component admits an inline scalar helper argument" {
     if (@hasField(@TypeOf(result), "inline_argument_value")) {
         try std.testing.expectEqual(@as(u32, 7), @field(result, "inline_argument_value"));
     }
+    try std.testing.expectEqual(shape.BoundedAsyncMode.inline_call, result.shape.mode);
+    try std.testing.expectEqual(@as(u32, 20), result.shape.frame.size);
+    try std.testing.expectEqual(@as(?u32, 12), result.shape.frame.u32_argument_offset);
     try std.testing.expect(@hasField(@TypeOf(result), "argument_value"));
     if (@hasField(@TypeOf(result), "argument_value")) {
         try std.testing.expectEqual(@as(u32, 7), @field(result, "argument_value"));

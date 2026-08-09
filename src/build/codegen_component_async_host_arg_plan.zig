@@ -2,6 +2,7 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 const sema_tokens = @import("sema_tokens.zig");
 const p3_async_manifest = @import("p3_async_manifest.zig");
+const bounded_shape = @import("codegen_component_async_shape.zig");
 
 pub const AsyncHostScalarArgPlan = struct {
     root_name: []const u8,
@@ -13,6 +14,7 @@ pub const AsyncHostScalarArgPlan = struct {
     async_import_name: []const u8,
     argument_name: []const u8,
     argument_value: u32,
+    shape: bounded_shape.BoundedAsyncShape,
 
     pub fn deinit(self: *AsyncHostScalarArgPlan, allocator: std.mem.Allocator) void {
         allocator.free(self.root_name);
@@ -95,6 +97,7 @@ pub fn analyze(allocator: std.mem.Allocator, tokens: []const lexer.Token) !Async
         .accepted => |value| value,
         .rejected => return error.UnsupportedP3AsyncHostArgComponent,
     };
+    const frame_shape = bounded_shape.host_scalar_shape() catch return error.UnsupportedP3AsyncHostArgComponent;
 
     const root_name = try allocator.dupe(u8, facts.root.name);
     errdefer allocator.free(root_name);
@@ -123,6 +126,7 @@ pub fn analyze(allocator: std.mem.Allocator, tokens: []const lexer.Token) !Async
         .async_import_name = async_import_name,
         .argument_name = owned_argument_name,
         .argument_value = facts.argument_value,
+        .shape = frame_shape,
     };
 }
 

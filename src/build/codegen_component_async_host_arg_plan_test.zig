@@ -1,6 +1,7 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
 const plan = @import("codegen_component_async_host_arg_plan.zig");
+const shape = @import("codegen_component_async_shape.zig");
 
 const positive_source =
     \\work = @host_async_func("do:async-call-arg-probe/host@0.1.0", "work", (u32) -> nil)
@@ -24,6 +25,9 @@ test "async host scalar argument planner accepts the exact M1 shape" {
     try std.testing.expectEqualStrings("run", result.root_name);
     try std.testing.expectEqualStrings("helper", result.helper_name);
     try std.testing.expectEqualStrings("work", result.host_name);
+    try std.testing.expectEqual(shape.BoundedAsyncMode.host_scalar, result.shape.mode);
+    try std.testing.expectEqual(@as(u32, 20), result.shape.frame.size);
+    try std.testing.expectEqual(@as(?u32, 12), result.shape.frame.u32_argument_offset);
 }
 
 test "async host scalar argument planner rejects every M1 red boundary" {

@@ -147,13 +147,13 @@
   `GuestAsyncCallPlan` and `AsyncHostScalarArgPlan`; all existing source facts
   and rejection errors remain unchanged.
 
-- [ ] **Step 1: Add immutable shape fields without changing admission.**
+- [x] **Step 1: Add immutable shape fields without changing admission.**
 
   Import the shape module in both planners and add the value field. Do not move
   or merge `find_host_binding`, `helper_body_is_exact`, `root_body_is_exact`,
   token counting, registry checks, or rejection classification.
 
-- [ ] **Step 2: Select the exact shape after existing predicates pass.**
+- [x] **Step 2: Select the exact shape after existing predicates pass.**
 
   In `codegen_component_async_call_plan.zig`, construct the shape only after
   the current `if (...) return error.UnsupportedP3AsyncCallComponent` guard:
@@ -171,7 +171,7 @@
   `UnsupportedP3Async...` error at the planner boundary; it must not widen
   admission or leak a new public diagnostic.
 
-- [ ] **Step 3: Extend planner tests with layout assertions.**
+- [x] **Step 3: Extend planner tests with layout assertions.**
 
   Keep all current positives and negatives. Add assertions for:
 
@@ -188,7 +188,7 @@
   Assert that every accepted plan's `shape.validate()` succeeds and every
   existing negative still returns its original error/rejection reason.
 
-- [ ] **Step 4: Run focused planner tests and commit.**
+- [x] **Step 4: Run focused planner tests and commit.**
 
   ```bash
   cd src
