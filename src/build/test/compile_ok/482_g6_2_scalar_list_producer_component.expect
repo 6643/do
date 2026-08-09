@@ -1,0 +1,6 @@
+# build-arg: --p3-async-component
+do:g6-2-scalar-list-producer/sink@0.1.0
+(func (export "[async-lift]produce")
+[producer-list-pointer]
+[producer-list-transfer]
+[producer-list-release-exactly-once]
