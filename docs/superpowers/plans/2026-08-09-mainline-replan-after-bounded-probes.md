@@ -396,6 +396,12 @@ The report is `GO-limited`: proceed to a design-only Step 2, with a valid
 `NO-GO` outcome if the shared layer obscures the existing mode-specific
 cleanup and admission contracts.
 
+The Step 2 contract is recorded in
+[`2026-08-09-async-call-internal-consolidation-design.md`](../specs/2026-08-09-async-call-internal-consolidation-design.md).
+It selects descriptor-only structural reuse, keeps the three admission and
+cleanup paths explicit, and requires output/rejection differential gates before
+any emitter implementation.
+
 ### M3: One D2 method-specific promotion
 
 Choose exactly one row from the D2 matrix and create a separate dated design,
