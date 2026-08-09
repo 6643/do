@@ -31,11 +31,23 @@ test "async host scalar argument emitter preserves the measured frame ABI" {
         "[guest-async-child-drop]",
         "[guest-async-waitable-drop]",
         "[guest-async-context-clear]",
+        "[guest-async-frame-free]",
     }) |marker| {
         try std.testing.expect(std.mem.indexOf(u8, wat, marker) != null);
     }
     try std.testing.expect(std.mem.indexOf(u8, wat, "[task-return]helper") == null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "[async-lift]helper") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[task-cancel]") != null);
+
+    const child_drop = std.mem.lastIndexOf(u8, wat, "[guest-async-child-drop]") orelse return error.TestUnexpectedResult;
+    const waitable_drop = std.mem.indexOf(u8, wat, "[guest-async-waitable-drop]") orelse return error.TestUnexpectedResult;
+    const context_clear = std.mem.indexOf(u8, wat, "[guest-async-context-clear]") orelse return error.TestUnexpectedResult;
+    const frame_free = std.mem.indexOf(u8, wat, "[guest-async-frame-free]") orelse return error.TestUnexpectedResult;
+    const root_terminal = std.mem.indexOf(u8, wat, "call $task-return-run") orelse return error.TestUnexpectedResult;
+    try std.testing.expect(child_drop < waitable_drop);
+    try std.testing.expect(waitable_drop < context_clear);
+    try std.testing.expect(context_clear < frame_free);
+    try std.testing.expect(frame_free < root_terminal);
 }
 
 test "async host scalar argument emitter emits the pinned WIT world" {

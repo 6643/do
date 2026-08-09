@@ -48,7 +48,6 @@
   )
 
   (func $frame-free (param $frame i32)
-    ;; [guest-async-frame-free]
     local.get $frame
     global.set $frame-next
   )
@@ -124,6 +123,7 @@
     call $context-set-0
     local.get $frame
     call $frame-free
+    ;; [guest-async-frame-free]
     local.get $cancelled
     if
       call $task-cancel
