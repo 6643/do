@@ -15,6 +15,7 @@ const codegen_component_record_resource_list_stream = @import("codegen_component
 const codegen_component_list_resource_producer = @import("codegen_component_list_resource_producer.zig");
 const codegen_component_dynamic_list_resource_producer = @import("codegen_component_dynamic_list_resource_producer.zig");
 const codegen_component_batched_list_resource_producer = @import("codegen_component_batched_list_resource_producer.zig");
+const codegen_component_scalar_list_stream_producer = @import("codegen_component_scalar_list_stream_producer.zig");
 const codegen_component_variant_resource_stream = @import("codegen_component_variant_resource_stream.zig");
 const codegen_component_wasi_http = @import("codegen_component_wasi_http.zig");
 const codegen_component_cabi_realloc = @import("codegen_component_cabi_realloc.zig");
@@ -44,6 +45,7 @@ pub const Target = enum {
     record_resource_list_stream_producer,
     record_resource_list_stream_dynamic_producer,
     record_resource_list_stream_batched_producer,
+    scalar_list_stream_producer,
     variant_resource_stream,
     stream_writer,
     stream_mirror,
@@ -168,6 +170,10 @@ pub fn emit_component_wat(
         },
         .record_resource_list_stream_batched_producer => codegen_component_batched_list_resource_producer.emit_component_wat_for_tokens(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3BatchedListResourceProducer => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
+        .scalar_list_stream_producer => codegen_component_scalar_list_stream_producer.emit_component_wat_for_tokens(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3ScalarListProducer => error.UnsupportedP3AsyncComponent,
             else => err,
         },
         .variant_resource_stream => finalize_component_wat(allocator, codegen_component_variant_resource_stream.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
@@ -905,6 +911,10 @@ pub fn emit_component_wit_with_graph(
             error.UnsupportedP3BatchedListResourceProducer => error.UnsupportedP3AsyncComponent,
             else => err,
         },
+        .scalar_list_stream_producer => codegen_component_scalar_list_stream_producer.emit_component_wit_for_tokens(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3ScalarListProducer => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
         .variant_resource_stream => codegen_component_variant_resource_stream.emit_component_wit(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3VariantResourceStream => error.UnsupportedP3AsyncComponent,
             else => err,
@@ -992,6 +1002,10 @@ pub fn target_for_tokens_with_graph(
         return .record_resource_list_stream_dynamic_producer;
     } else |_| {}
 
+    if (codegen_component_scalar_list_stream_producer.ScalarListStreamProducerPlan.analyze(tokens, registry)) |_| {
+        return .scalar_list_stream_producer;
+    } else |_| {}
+
     var target: ?Target = null;
     var idx: usize = 0;
     while (idx + 8 < tokens.len) : (idx += 1) {
@@ -1032,6 +1046,11 @@ pub fn target_for_tokens_with_graph(
                     return error.UnsupportedP3BatchedListResourceProducer;
                 break :blk .record_resource_list_stream_batched_producer;
             } else return error.UnsupportedP3BatchedListResourceProducer,
+            .scalar_list_stream_producer => if (binding.kind == .host_async_func) blk: {
+                _ = codegen_component_scalar_list_stream_producer.ScalarListStreamProducerPlan.analyze(tokens, registry) catch
+                    return error.UnsupportedP3AsyncComponent;
+                break :blk .scalar_list_stream_producer;
+            } else return error.UnsupportedP3AsyncComponent,
             .variant_resource_stream_reader => if (binding.kind == .host_func and variant_resource_stream_signature_at(tokens, idx))
                 .variant_resource_stream
             else
@@ -1103,6 +1122,7 @@ fn target_for_descriptor(descriptor: p3_async_manifest.Descriptor) !Target {
         .record_resource_list_stream_producer => .record_resource_list_stream_producer,
         .record_resource_list_stream_dynamic_producer => .record_resource_list_stream_dynamic_producer,
         .record_resource_list_stream_batched_producer => .record_resource_list_stream_batched_producer,
+        .scalar_list_stream_producer => .scalar_list_stream_producer,
         .variant_resource_stream_reader => .variant_resource_stream,
         .stream_writer => .stream_writer,
         .http_resource_result => error.UnsupportedP3AsyncComponent,
@@ -2184,4 +2204,36 @@ test "generic Component async target routes direct HTTP client send" {
     const wit = try emit_component_wit(std.testing.allocator, tokens);
     defer std.testing.allocator.free(wit);
     try std.testing.expect(std.mem.indexOf(u8, wit, "world http-client-probe") != null);
+}
+
+test "scalar list producer dispatch emits the independent WAT and WIT" {
+    const source =
+        \\consume = @host_async_func("do:g6-2-scalar-list-producer@0.1.0", "consume-via-stream", (StreamWriter<[u32]>) -> Result<nil, ProducerError>)
+        \\ProducerError error = Io | Pipe | InvalidMode
+        \\produce(count u32) -> Result<nil, ProducerError> { return Ok() }
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    const wat = try emit_component_wat(std.testing.allocator, program, tokens, null);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[producer-list-transfer]") != null);
+    const wit = try emit_component_wit(std.testing.allocator, tokens);
+    defer std.testing.allocator.free(wit);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "world scalar-list-producer") != null);
+}
+
+test "scalar list producer dispatch rejects a malformed pinned topology before emission" {
+    const source =
+        \\consume = @host_async_func("do:g6-2-scalar-list-producer@0.1.0", "consume-via-stream", (StreamWriter<[u32]>) -> Result<nil, ProducerError>)
+        \\ProducerError error = Io | Pipe | InvalidMode
+        \\produce(count u32) -> Result<nil, ProducerError> { selected u32 = count return Ok() }
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try std.testing.expectError(error.UnsupportedP3AsyncComponent, target_for_tokens(std.testing.allocator, tokens));
 }
