@@ -1,5 +1,19 @@
 # Changelog
 
+# 2026-08-09 G6.2 and async boundary closeout: refreshed the pinned borrow
+  capability matrix against `wasm-tools 1.255.0`; synchronous
+  `list<borrow<T>>` remains the only nested-list row with canonical evidence,
+  while `future<borrow<T>>` and borrowed stream records remain rejected at
+  `component embed`. Added the evidence-only pure-scalar
+  `stream<list<u32>>` probe (`ptr=64`, `len=68`, stride `4`, capacity `3`) with
+  count `0..3`, invalid count `4`, pending/error/drop/cancel, exactly-once list
+  release, and an empty `ResourceTable`; no compiler registry entry was added.
+  The general async-call promotion contract and D2 filesystem/HTTP
+  method-recovery matrix are documented separately. Arbitrary producers,
+  unmeasured payload/resource/stream futures, general filesystem methods,
+  external HTTP service worlds, and public `own<T>`/`borrow<T>`/`ref<T>` remain
+  pending.
+
 # 2026-08-08 bounded scalar-argument async-call promotion: extended the
   private `--p3-async-call-component` root-owned local-frame adapter to exactly
   one `u32` helper argument. The admitted source is `@async(helper(7))`; the

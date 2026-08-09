@@ -1,6 +1,6 @@
 # do 编译器主计划
 
-状态: v1 子集发布候选已收口; G6 generic consumer 与 bounded nested resource paths 已闭环, D2 私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` 已闭环, 剩余 producer/resource residual
+状态: v1 子集发布候选已收口; G6 generic consumer 与 bounded nested resource paths 已闭环, D2 私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` 已闭环, `stream<list<u32>>` 仅完成 evidence-only probe, 剩余 producer/resource residual
 更新时间: 2026-08-09
 
 实时接手入口: `doc/start_here.md`。  
@@ -24,7 +24,7 @@
   `9898cd734708a2ab14760da706d69063e5cd6262a5e03d07d8eedd8074745f36`，ABI
   `(i32,i32)->i32`、fixtures `462`–`465` 与 ready/pending/error/cancel cleanup
   矩阵；完整证据见 `doc/host_abi_blockers.md`。
-- Colorless async / WIT bindgen 已形成有界可验证切片：`do wit check/bind`、生成 manifest 漂移校验、`@async/@await/@cancel` 前端契约、descriptor-backed generic/scalar、私有 root-owned local-frame async-call Component（unit inline 与单 `u32` inline scalar）、以及私有 `Future<Ticket>` -> `future<own<ticket>>` Component runtime 的 pending/ready/cancel gates 均通过；自动 manifest-to-lowering 的通用化与任意 payload/Stream/resource lowering 仍是 pending。
+- Colorless async / WIT bindgen 已形成有界可验证切片：`do wit check/bind`、生成 manifest 漂移校验、`@async/@await/@cancel` 前端契约、descriptor-backed generic/scalar、私有 root-owned local-frame async-call Component（unit inline 与单 `u32` inline scalar）、以及私有 `Future<Ticket>` -> `future<own<ticket>>` Component runtime 的 pending/ready/cancel gates 均通过；general async-call promotion contract 与 D2 filesystem/HTTP method recovery design 已冻结，但没有 compiler widening；自动 manifest-to-lowering 的通用化与任意 payload/Stream/resource lowering 仍是 pending。
 
 当前禁止默认推进:
 
@@ -53,7 +53,7 @@
 | D ARC / ownership | done (可推进项) |
 | E 后端 IR / codegen | done |
 | F LSP | done (v1 无 rename) |
-| G WASI / Component | G1–G5、G6.1、G6.2 bounded read-directory slice + generic record-stream consumer + multi-owned/multiple-path/one-/two-/three-/four-/five-/six-level nested-owned resource consumer + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + helper-mediated lease（含五跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized forwarding-helper（含 typed-parameter reorder）+ branch-selected terminal checkpoints + private resource Result error/cancellation + pinned HTTP payload cancellation + private variant-resource-stream checkpoint + record-layout/source-mirror checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` slices、G6.3、G6.4 done; G6.2 general producer/resource extensions pending |
+| G WASI / Component | G1–G5、G6.1、G6.2 bounded read-directory slice + generic record-stream consumer + multi-owned/multiple-path/one-/two-/three-/four-/five-/six-level nested-owned resource consumer + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + helper-mediated lease（含五跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized forwarding-helper（含 typed-parameter reorder）+ branch-selected terminal checkpoints + private resource Result error/cancellation + pinned HTTP payload cancellation + private variant-resource-stream checkpoint + record-layout/source-mirror checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` slices、G6.3、G6.4 done; `stream<list<u32>>` remains evidence-only; G6.2 general producer/resource extensions and general async/D2 methods pending |
 | H 发布前治理 | done |
 | I 语言扩展 | **closed** (I1 递归/TCO + I2 Tuple 第一版) |
 | Colorless async / WIT bindgen | bounded unit/scalar runtime-manifest contracts, opt-in root-owned local-frame async-call contract including one inline `u32` scalar argument, and private `Future<Ticket>` -> `future<own<ticket>>` compiler contract verified; automatic manifest-to-lowering generalization and unrestricted generic async lowering pending |

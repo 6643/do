@@ -31,9 +31,9 @@
 | --- | --- |
 | v1 子集 | 发布候选已收口 |
 | 阶段 A–F、H | 已完成 |
-| 阶段 D | 可推进项已完成; D2.1 已按 B 方案绿色 regression 收口; D2 本地 file/dir/CLI/socket smoke 与私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` async slices 已验证，通用 filesystem async 仍阻断 |
-| 阶段 G | G1–G5、G6.1、G6.2 有界 read-directory slice + generic consumer + multi-owned-resource + 一层/两层/三层/四层/五层/六层 nested-owned-resource + multiple nested-owned-resource paths + bounded scalar producer + bounded/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding 与 typed 参数重排）producer + helper-mediated lease + branch-selected terminal + private resource Result error/cancellation checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + scalar-argument async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + D2 私有 filesystem `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` slices、G6.3、G6.4 完成; generic list/producer、borrowed payload 与 root hard-cancel pending |
-| Colorless async / WIT bindgen | canonical `@async/@await/@cancel`、legacy `async` 弃用、schema 1/2 生成 manifest 校验、已准入 schema 2 unit 与 scalar capabilities 的 manifest 自动发现，以及 opt-in v2 variant/scalar-i64 gates、统一 promotion profile、`--p3-async-call-component` root-owned local-frame gate 和 `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` gate 已验证；unrestricted generated WIT lowering 仍 pending |
+| 阶段 D | 可推进项已完成; D2.1 已按 B 方案绿色 regression 收口; D2 本地 file/dir/CLI/socket smoke 与私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` async slices 已验证；通用 filesystem async、external HTTP 的 method-specific recovery 仍阻断 |
+| 阶段 G | G1–G5、G6.1、G6.2 有界 read-directory slice + generic consumer + multi-owned-resource + 一层/两层/三层/四层/五层/六层 nested-owned-resource + multiple nested-owned-resource paths + bounded scalar producer + bounded/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding 与 typed 参数重排）producer + helper-mediated lease + branch-selected terminal + private resource Result error/cancellation checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + scalar-argument async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + D2 私有 filesystem `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` slices、G6.3、G6.4 完成；`stream<list<u32>>` 仅有 evidence-only ABI/runtime probe；generic list/producer、borrowed payload、general async-call、D2 general methods 与 root hard-cancel pending |
+| Colorless async / WIT bindgen | canonical `@async/@await/@cancel`、legacy `async` 弃用、schema 1/2 生成 manifest 校验、已准入 schema 2 unit 与 scalar capabilities 的 manifest 自动发现，以及 opt-in v2 variant/scalar-i64 gates、统一 promotion profile、`--p3-async-call-component` root-owned local-frame gate 和 `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` gate 已验证；general async-call promotion contract 与 D2 recovery design 已冻结，unrestricted generated WIT lowering 仍 pending |
 | 阶段 I | **已关闭** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构审查/重构 | 五轮已落地 (见 §4); 默认不继续拆 god module |
 
@@ -102,6 +102,13 @@ bash examples/p3-runtime/test_do_async_call_inline_scalar_argument.sh \
 bash examples/p3-runtime/test_rust_async_call_component.sh \
   /tmp/async-call-inline-scalar-argument.component.wasm
 
+# borrow capability refresh and evidence-only scalar-list producer probe
+WASM_TOOLS_EXPECT_VERSION=1.255.0 \
+  bash examples/p3-runtime/test_borrow_capability_matrix.sh
+bash examples/p3-runtime/test_list_borrow_canonical_abi.sh
+bash examples/p3-runtime/test_future_owned_canonical_abi.sh
+bash examples/p3-runtime/test_g6_2_scalar_list_producer_abi.sh
+
 # 默认完整回归 (当前基线; 本机使用 Bun 作为 Node-compatible runner)
 NODE_BIN="$(command -v bun)" WASM_TOOLS="$(command -v wasm-tools)" ./src/build/test/run_tests.sh
 # 期望: pass=1158 fail=0 skip=3
@@ -126,6 +133,8 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | 默认回归 (`SKIP_BUILD=1`) | `pass=1158 fail=0 skip=3` |
 | WASM 扩展回归 (`RUN_WASM=1 SKIP_BUILD=1`) | `pass=1160 fail=0 skip=3`; smoke `6/6` |
 | `zig test main.zig` | `312/312` |
+| G6.2 scalar-list producer | evidence-only `stream<list<u32>>`; `ptr=64`, `len=68`, `stride=4`, capacity `3`; compiler registry unchanged |
+| async/D2 recovery designs | general async-call promotion and D2 filesystem/HTTP method matrix recorded; no generic lowering |
 | Task 8 Step 3 runtime baseline | 七个已登记 Component/Rust/Wasmtime gate 通过 |
 | HTTP service ABI / empty-request gate | pinned Component + Rust/Wasmtime pass; `codegen_component_wasi_http` `189/189`; registered payload pending/ready gate green, unregistered/general ready delivery remains blocked |
 | pinned filesystem record source mirror | `p3_filesystem_wit_manifest` + read-directory sema tests pass |
@@ -159,6 +168,24 @@ mirror `18ce7dc9efb991cd8e5f945797aea73edeed79f0cfc51ea664cb81537e54e719`、
 cancel mirror `9898cd734708a2ab14760da706d69063e5cd6262a5e03d07d8eedd8074745f36`；
 current/legacy wasm-tools hashes and runtime counters are recorded in
 `doc/host_abi_blockers.md`。
+
+### 2026-08-09 next-phase boundary handoff
+
+The borrow capability refresh against `wasm-tools 1.255.0` still accepts only
+the checked synchronous `list<borrow<T>>` row; `future<borrow<T>>` and borrowed
+stream records remain rejected during `component embed`. The bounded pure
+scalar `stream<list<u32>>` probe is green as an independent WIT/Core/Rust/
+Wasmtime artifact, with list words `64/68`, stride `4`, maximum length `3`,
+exactly-once list release, and an empty `ResourceTable`. It is not a Do type or
+registry capability.
+
+The promotion contract and D2 recovery matrix are documented in
+[`general-async-call-promotion-design.md`](../docs/superpowers/specs/2026-08-09-general-async-call-promotion-design.md)
+and
+[`d2-general-filesystem-async-boundary-design.md`](../docs/superpowers/specs/2026-08-09-d2-general-filesystem-async-boundary-design.md).
+Arbitrary producers, multiple unmeasured awaits, payload/resource/list/stream
+futures, general filesystem methods, external HTTP service worlds, and public
+`own<T>`/`borrow<T>`/`ref<T>` remain pending and require their own gates.
 
 ### WIT bindgen 当前边界
 
