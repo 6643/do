@@ -30,6 +30,44 @@ This file records blockers discovered while implementing the generic
 does not become a supported fallback merely because the compiler can emit a
 partial signature.
 
+## D2 General Filesystem/HTTP Recovery Boundary (2026-08-09)
+
+**Status:** the private `descriptor.get-type`, `descriptor.sync`, and
+`descriptor.get-flags` methods remain green as separate bounded descriptors.
+General filesystem async and arbitrary HTTP remain blocked; this checkpoint
+does not add a registry entry or widen code generation.
+
+**Evidence:** the three ABI scripts and their Rust/Wasmtime runtime gates pass
+with the pinned filesystem WIT (`types.wit` SHA-256
+`8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`) and the
+current/legacy `wasm-tools` binaries. Each closed row has its own measured
+`(i32,i32) -> i32` method import, Component Result/payload layout, descriptor
+drop, ready/pending/error/cancel observations, and empty `ResourceTable`.
+The exact signatures and method-by-method recovery requirements are recorded
+in [`docs/superpowers/specs/2026-08-09-d2-general-filesystem-async-boundary-design.md`](../docs/superpowers/specs/2026-08-09-d2-general-filesystem-async-boundary-design.md).
+
+**Unadmitted filesystem rows:** `read-via-stream` carries both
+`stream<u8>` and `future<result<_, error-code>>`; `write-via-stream` and
+`append-via-stream` consume producer streams; `read-directory` carries a
+`stream<directory-entry>` plus a completion future; `stat`/`stat-at` and
+`metadata-hash`/`metadata-hash-at` return records; `open-at` returns an owned
+`descriptor`; path mutation methods issue external effects; and
+`link-at`/`rename-at`/`is-same-object` carry `borrow<descriptor>`. None of
+these shapes may be inferred from the three scalar/unit Result rows.
+
+**Unadmitted HTTP rows:** the pinned service world imports `client.send:
+async func(request) -> result<response, error-code>` and exports
+`handler.handle` with the same signature. A service-world gate must cover
+request transfer, response/resource drops, body streams, optional payload
+errors, repeated calls, and cancellation. Existing fixed `client.send` slices
+are not generic HTTP support.
+
+**Recovery condition:** create a new exact-method design, canonical WIT/Core
+probe, positive/negative fixtures, Component validation, and Rust/Wasmtime
+ready/pending/error/cancel cleanup matrix before changing `p3_async_registry`
+or filesystem/HTTP lowering. Cancellation releases live guest/Component state
+and never rolls back an effect already issued to the host.
+
 ## D2 Bounded Filesystem Async `descriptor.get-type` (2026-08-08)
 
 **Status:** one private filesystem async method is verified; general filesystem
