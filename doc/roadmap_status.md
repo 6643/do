@@ -43,6 +43,42 @@ default/v1 and v2 dispatch paths are unchanged. Any broader payload, resource,
 Stream/list, branch, loop, recursion, multiple-child or arbitrary producer
 shape remains pending and must fail closed before WAT.
 
+### 2026-08-09 bounded async-call descriptor-only consolidation gate
+
+The five already-admitted bounded async-call forms now carry a private,
+allocator-free `BoundedAsyncShape` fact set. Child, inline, and host admission
+remain independent; emitters validate the supplied frame and cleanup contract
+before selecting the unchanged WAT templates. No generic `Future<T>` lowering,
+arbitrary producer expression, payload/resource/list/stream shape, public
+`own<T>`/`borrow<T>`/`ref<T>` syntax, or default dispatch path was added.
+
+The differential test pins the current WAT and WIT bytes and the source-order
+`guest-*` marker sequences. The five WAT hashes and the two WIT hashes are:
+
+| shape | WAT SHA-256 | WIT SHA-256 |
+| --- | --- | --- |
+| child unit (`check/441`) | `bec944caece221821f43a79041e2989281f9f9b90d59547f9348ef641e1b2e03` | `ecf47e1e33b3a0d14761a1341f3b749f4ba072051c018083db2d5cda356c101f` |
+| child scalar (`compile_ok/466`) | `7402916ce09060ca63e792498dc1523923b6a1545004d91c61f1a037496f2fc1` | `ecf47e1e33b3a0d14761a1341f3b749f4ba072051c018083db2d5cda356c101f` |
+| inline unit (`async-call-component.do`) | `0e362d90a30c38de5e5900783b7474ddac05292f50c402a20786c0a940598dcc` | `ecf47e1e33b3a0d14761a1341f3b749f4ba072051c018083db2d5cda356c101f` |
+| inline scalar (`compile_ok/477`) | `7edf6a66095c3c24b8c5440ebcad5a7f5dfcc5fea3c943a8e4d28453bb96fe83` | `ecf47e1e33b3a0d14761a1341f3b749f4ba072051c018083db2d5cda356c101f` |
+| host scalar (`compile_ok/490`) | `e9e2330a75430b569b538d15d676d92492c952f89c5cc135a38343670da01553` | `b9f5f8355e87231317ec05cccf692ee465c6f339bd509640aedc196e58f81e61` |
+
+Focused Zig output is green: differential `105/105`, call emitter `111/111`,
+and host emitter `107/107`. Component gates pass both pinned wasm-tools
+routes; the child-only v1 isolation probe is rejected before WAT. The
+Rust/Wasmtime matrices observe exactly-once child/future cleanup and
+`table-empty=true` for unit/inline and scalar ready/pending/cancel rows. The
+host scalar rows observe `argument=7`, one Future drop in every mode, a
+cancellation-only pending drop, and `table-empty=true`.
+
+Final gates: `zig test main.zig` reports `All 334 tests passed`,
+`./src/build/test/run_tests.sh` reports `pass=1177 fail=0 skip=3`, and
+`./src/build/test/run_release_smoke.sh` passes ReleaseSmall build, build,
+test, compiled-test, check, fmt, run, and LSP smoke. This closes only the
+private bounded internal reuse layer; generic async-call lowering, arbitrary
+producer expressions, payload/resource/list/stream futures, borrowed values,
+root hard-cancel, and public ownership syntax remain pending.
+
 ### 最近验证
 
 ```text
@@ -109,10 +145,13 @@ bash examples/p3-runtime/test_rust_cli_stream_stdin_real.sh
 
 ```text
 cd src && zig test main.zig
-  → All 319 tests passed.
+  → All 334 tests passed.
 
 ./src/build/test/run_tests.sh
-  → pass=1167 fail=0 skip=3 (Bun Node-compatible runner)
+  → pass=1177 fail=0 skip=3 (Bun Node-compatible runner)
+
+./src/build/test/run_release_smoke.sh
+  → ReleaseSmall build, build/test/compiled-test/check/fmt/run/LSP smoke passed
 
 G6.2 scalar-list producer promotion (2026-08-09)
   → `test_do_g6_2_scalar_list_producer.sh` and
@@ -122,10 +161,12 @@ G6.2 scalar-list producer promotion (2026-08-09)
     ResourceTable entry is created.
 
 Inline scalar async-call focused gates (2026-08-09)
-  → plan 107/107 and emitter 105/105 Zig tests; pinned `wasm-tools` 1.254.0
-    Component assembly passed for both inline and child-only scalar fixtures;
-    Rust/Wasmtime passed inline `ready`/`pending`/`cancel-inline`/`cancel-child`
-    and legacy scalar `ready`/`pending`/`cancel`, with empty `ResourceTable`.
+  → call planner 113/113, host planner 107/107, call emitter 111/111,
+    host emitter 107/107, and differential 105/105 Zig tests; pinned
+    `wasm-tools` 1.255.0 and legacy 1.254.0 Component assembly passed for
+    child-only, inline, and host scalar fixtures; Rust/Wasmtime passed inline
+    `ready`/`pending`/`cancel-inline`/`cancel-child` and legacy scalar
+    `ready`/`pending`/`cancel`, with empty `ResourceTable`.
 
 RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
   → pass=1169 fail=0 skip=3; wasm run summary: pass=6 fail=0 (Bun Node-compatible runner)

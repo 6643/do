@@ -370,6 +370,24 @@ borrowed/list/variant resource field 或更宽 runtime 形状。
   `ResourceTable`; fixtures `483`-`489` reject descriptor/element/count/sink/body/
   payload/result drift before WAT. Generic `list<T>`, arbitrary producer
   expressions, borrowed async payloads, and public ownership remain pending.
+- **Bounded async-call internal consolidation (2026-08-09)**: the five
+  admitted child/inline/host-scalar forms now share private validated frame and
+  cleanup facts only. Planner admission remains separate and emitter templates
+  remain byte-identical. Differential pins are WAT
+  `bec944caece221821f43a79041e2989281f9f9b90d59547f9348ef641e1b2e03`,
+  `7402916ce09060ca63e792498dc1523923b6a1545004d91c61f1a037496f2fc1`,
+  `0e362d90a30c38de5e5900783b7474ddac05292f50c402a20786c0a940598dcc`,
+  `7edf6a66095c3c24b8c5440ebcad5a7f5dfcc5fea3c943a8e4d28453bb96fe83`,
+  `e9e2330a75430b569b538d15d676d92492c952f89c5cc135a38343670da01553`,
+  with generic WIT `ecf47e1e33b3a0d14761a1341f3b749f4ba072051c018083db2d5cda356c101f`
+  and host-scalar WIT
+  `b9f5f8355e87231317ec05cccf692ee465c6f339bd509640aedc196e58f81e61`.
+  Component current/legacy assembly, Rust/Wasmtime ready/pending/cancel
+  cleanup, `zig test main.zig` `334/334`, default regression
+  `pass=1177 fail=0 skip=3`, and ReleaseSmall smoke are green. This closes
+  only private internal reuse; generic async-call lowering, arbitrary producer
+  expressions, payload/resource/list/stream futures, borrowed values, root
+  hard-cancel, and public `own<T>`/`borrow<T>`/`ref<T>` remain pending.
 - **D2 filesystem `descriptor.get-type`**: the private pinned method passed
   hand-authored/generated Component assembly and Rust/Wasmtime
   ready-directory/regular, pending, error, and cancel cleanup gates; fixtures

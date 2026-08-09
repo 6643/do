@@ -221,20 +221,20 @@
 - Produces: emitter-side `shape.validate()` guards and byte/marker/hash
   differential tests without new WAT fragments or output markers.
 
-- [ ] **Step 1: Add emitter-side fail-closed validation.**
+- [x] **Step 1: Add emitter-side fail-closed validation.**
 
   At the first line of each `emit_component_wat`, call
   `try plan.shape.validate();` before template selection or allocation. Keep
   all existing substitutions and template constants byte-identical. Do not add
   shape metadata comments to generated WAT in this task.
 
-- [ ] **Step 2: Add direct emitter assertions.**
+- [x] **Step 2: Add direct emitter assertions.**
 
   Extend the existing emitter tests to assert the plan shape mode and frame
   facts before checking current markers. Preserve the existing checks for no
   helper `task-return`/`async-lift` endpoint and inline event-6 cancellation.
 
-- [ ] **Step 3: Add hash and marker-order differential tests.**
+- [x] **Step 3: Add hash and marker-order differential tests.**
 
   Create a test module that tokenizes the five positive sources, emits WAT/WIT,
   computes SHA-256 with `std.crypto.hash.sha2.Sha256`, and compares these pinned
@@ -277,7 +277,7 @@
   The helper must also assert no `[task-return]helper` or
   `[async-lift]helper` occurs in any generated WAT.
 
-- [ ] **Step 4: Run focused differential tests and commit.**
+- [x] **Step 4: Run focused differential tests and commit.**
 
   ```bash
   cd src
@@ -311,7 +311,7 @@
 - Produces: runtime evidence for ready, pending, cancel-inline, cancel-child,
   and host scalar cleanup; no new target or public language behavior.
 
-- [ ] **Step 1: Run current and legacy Component gates.**
+- [x] **Step 1: Run current and legacy Component gates.**
 
   ```bash
   bash examples/p3-runtime/test_do_async_call_component.sh
@@ -325,7 +325,7 @@
   WIT snapshot remains byte-identical, frame slots remain `+0/+4/+8/+12`, and
   no helper endpoint is emitted.
 
-- [ ] **Step 2: Run Rust/Wasmtime runtime matrices.**
+- [x] **Step 2: Run Rust/Wasmtime runtime matrices.**
 
   ```bash
   bash examples/p3-runtime/test_rust_async_call_component.sh \
@@ -339,14 +339,14 @@
   dropped exactly once, no helper terminal endpoint is observed, and every
   terminal row leaves an empty `ResourceTable`.
 
-- [ ] **Step 3: Keep the rejection matrix closed.**
+- [x] **Step 3: Keep the rejection matrix closed.**
 
   Run the focused compile-error rows `467-469`, `475-481`, and `490-497` plus
   the existing `check/441`, `check/477`, and `check/490` entries through the
   standard harness. Expected: all existing errors and skips remain unchanged;
   no generic payload/resource/list/stream or ownership shape becomes accepted.
 
-- [ ] **Step 4: Run the full regression and release smoke.**
+- [x] **Step 4: Run the full regression and release smoke.**
 
   ```bash
   cd src && zig test main.zig
@@ -359,7 +359,7 @@
   Expected summary: `fail=0`, the existing skip count is unchanged, and release
   smoke passes without a new default-target artifact.
 
-- [ ] **Step 5: Update status and commit only after green gates.**
+- [x] **Step 5: Update status and commit only after green gates.**
 
   Record the exact command output, five WAT hashes, two WIT hashes, and runtime
   cleanup observations in the current roadmap/pending-blocked documents. State
