@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Begin from a clean `main`/`origin/main` at `a98b4be`; preserve unrelated worktree changes if another actor creates them.
+- Begin from a clean promotion branch at `e106e0f`; its parent is the verified `a98b4be` `main`/`origin/main` baseline plus this plan document. Preserve unrelated worktree changes if another actor creates them.
 - The admitted descriptor is exactly `do:g6-2-scalar-list-producer@0.1.0`, member `consume-via-stream`, WIT hash `a24e467b1746f94432bb495c13fc0ce718a3833dc0ce7659228cfb6eaf69ff9f`.
 - Admit only `stream<list<u32>>`, one `count: u32` parameter, maximum list length `3`, list pointer offset `64`, length offset `68`, element stride `4`, and stream capacity `1`.
 - The Do surface is `(StreamWriter<[u32]>) -> Result<nil, ProducerError>` for the single `@host_async_func` sink and `produce(count u32) -> Result<nil, ProducerError>` for the exported producer.
@@ -89,7 +89,7 @@ rustc --version
 wasmtime --version
 ```
 
-Expected: clean `main` equal to `origin/main`, Zig `0.16.0`, wasm-tools `1.255.0`, Rust `1.97.1`, and Wasmtime `47.0.2`.
+Expected: clean promotion branch at `e106e0f`, `git merge-base main origin/main` equal to `a98b4be`, Zig `0.16.0`, wasm-tools `1.255.0`, Rust `1.97.1`, and Wasmtime `47.0.2`.
 
 - [ ] **Step 2: Re-run the evidence-only gate.**
 
