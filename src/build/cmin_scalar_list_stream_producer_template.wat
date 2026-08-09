@@ -380,7 +380,18 @@
     if (result i32)
       local.get $count-input
     else
-      i32.const -1
+      local.get $count-input
+      i32.const 10
+      i32.ge_u
+      local.get $count-input
+      i32.const 14
+      i32.le_u
+      i32.and
+      if (result i32)
+        i32.const 3
+      else
+        i32.const -1
+      end
     end
     local.tee $count
     i32.const -1
