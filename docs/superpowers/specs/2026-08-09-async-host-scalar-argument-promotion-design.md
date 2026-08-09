@@ -1,6 +1,6 @@
 # Private Async Host Scalar-Argument Promotion
 
-Date: 2026-08-09  
+Date: 2026-08-09
 Status: design frozen for M1; compiler promotion is not implemented
 
 ## Decision
@@ -185,4 +185,3 @@ generated WIT/Core WAT, negative fixtures for every red boundary, and the
 Rust/Wasmtime ready/pending/cancel gate all pass, followed by the full
 regression suite. A failed gate leaves this design and all existing probes
 unchanged and records the exact failure.
-
