@@ -390,6 +390,12 @@ but it must preserve separate capability predicates and fail-closed negative
 fixtures. It must not infer generic `Future<T>` lowering from one descriptor,
 change `@async/@await/@cancel`, or widen default dispatch.
 
+M2 Step 1 is complete in
+[`2026-08-09-async-call-internal-consolidation-assessment.md`](../specs/2026-08-09-async-call-internal-consolidation-assessment.md).
+The report is `GO-limited`: proceed to a design-only Step 2, with a valid
+`NO-GO` outcome if the shared layer obscures the existing mode-specific
+cleanup and admission contracts.
+
 ### M3: One D2 method-specific promotion
 
 Choose exactly one row from the D2 matrix and create a separate dated design,
