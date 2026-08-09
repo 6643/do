@@ -50,6 +50,10 @@ name = "do-p3-async-call-scalar-argument-host-runner"
 path = "src/bin/async_call_scalar_argument.rs"
 
 [[bin]]
+name = "do-p3-async-call-arg-probe-host-runner"
+path = "src/bin/async_call_arg_probe.rs"
+
+[[bin]]
 name = "do-p3-generic-async-scalar-probe-host-runner"
 path = "src/bin/generic_async_scalar_probe.rs"
 
