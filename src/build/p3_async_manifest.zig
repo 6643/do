@@ -18,6 +18,7 @@ pub const Descriptor = struct {
 
 pub const LoweringShape = union(enum) {
     scalar_unit: ScalarUnitShape,
+    async_host_scalar_argument: ScalarUnitShape,
     unit_result_tag: void,
     scalar_result: ScalarResultShape,
     filesystem_get_type: FilesystemGetTypeShape,
@@ -427,6 +428,14 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
         return .{ .future_owned_resource = owned };
     }
 
+    if (std.mem.eql(u8, descriptor.effect, "async-host-scalar-argument")) {
+        if (!valid_async_host_scalar_argument_descriptor(descriptor)) return null;
+        return .{ .async_host_scalar_argument = .{
+            .source_param = descriptor.params[0],
+            .core_param = descriptor.canonical.core_params[0],
+        } };
+    }
+
     if (!std.mem.eql(u8, descriptor.effect, "async") or !std.mem.eql(u8, descriptor.canonical.completion, "task-return")) return null;
 
     if (descriptor.params.len == 1 and
@@ -502,6 +511,29 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
     }
 
     return null;
+}
+
+fn valid_async_host_scalar_argument_descriptor(descriptor: Descriptor) bool {
+    return std.mem.eql(u8, descriptor.locator, "do:async-call-arg-probe/host@0.1.0") and
+        std.mem.eql(u8, descriptor.member, "work") and
+        std.mem.eql(u8, descriptor.effect, "async-host-scalar-argument") and
+        descriptor.params.len == 1 and
+        std.mem.eql(u8, descriptor.params[0], "u32") and
+        std.mem.eql(u8, descriptor.result, "nil") and
+        descriptor.resource == null and
+        descriptor.wit_sha256 != null and
+        std.mem.eql(u8, descriptor.wit_sha256.?, "b9f5f8355e87231317ec05cccf692ee465c6f339bd509640aedc196e58f81e61") and
+        equal_core_types(descriptor.canonical.core_params, &.{ "i32" }) and
+        descriptor.canonical.core_results.len == 0 and
+        descriptor.canonical.completion_params.len == 0 and
+        std.mem.eql(u8, descriptor.canonical.completion, "task-return") and
+        std.mem.eql(u8, descriptor.canonical.async_import_module, "do:async-call-arg-probe/host@0.1.0") and
+        std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower]work") and
+        std.mem.eql(u8, descriptor.wit.package, "do:async-call-arg-probe@0.1.0") and
+        std.mem.eql(u8, descriptor.wit.interface, "host") and
+        std.mem.eql(u8, descriptor.wit.operation, "work") and
+        std.mem.eql(u8, descriptor.wit.world, "probe") and
+        std.mem.eql(u8, descriptor.wit.parameter, "value");
 }
 
 fn valid_filesystem_get_type_descriptor(descriptor: Descriptor) ?FilesystemGetTypeShape {
@@ -812,6 +844,7 @@ fn parse_descriptor(allocator: std.mem.Allocator, value: std.json.Value) !Descri
     errdefer free_wit(allocator, wit);
     const effect = string_value(object.get("effect")) orelse return error.InvalidP3AsyncManifest;
     if (!std.mem.eql(u8, effect, "async") and
+        !std.mem.eql(u8, effect, "async-host-scalar-argument") and
         !std.mem.eql(u8, effect, "future-owned-resource") and
         !std.mem.eql(u8, effect, "http-request-constructor") and
         !std.mem.eql(u8, effect, "http-stream-reader") and
@@ -2911,6 +2944,54 @@ test "registry resolves a pinned async descriptor" {
     try std.testing.expectEqualStrings("i64", descriptor.canonical.core_params[0]);
     try std.testing.expectEqual(@as(usize, 0), descriptor.canonical.core_results.len);
     try std.testing.expectEqualStrings("task-return", descriptor.canonical.completion);
+}
+
+test "checked-in registry admits the private async host scalar argument descriptor" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("do:async-call-arg-probe/host@0.1.0", "work") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("async-host-scalar-argument", descriptor.effect);
+    try std.testing.expectEqualStrings("u32", descriptor.params[0]);
+    try std.testing.expectEqualStrings("nil", descriptor.result);
+    try std.testing.expectEqualStrings("do:async-call-arg-probe@0.1.0", descriptor.wit.package);
+    try std.testing.expectEqualStrings("probe", descriptor.wit.world);
+    try std.testing.expectEqualStrings("host", descriptor.wit.interface);
+    try std.testing.expectEqualStrings("work", descriptor.wit.operation);
+    try std.testing.expectEqualStrings("value", descriptor.wit.parameter);
+    try std.testing.expectEqualStrings("b9f5f8355e87231317ec05cccf692ee465c6f339bd509640aedc196e58f81e61", descriptor.wit_sha256.?);
+    try std.testing.expectEqualStrings("i32", descriptor.canonical.core_params[0]);
+    try std.testing.expectEqualStrings("[async-lower]work", descriptor.canonical.async_import_name);
+    switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .async_host_scalar_argument => |shape| {
+            try std.testing.expectEqualStrings("u32", shape.source_param);
+            try std.testing.expectEqualStrings("i32", shape.core_param);
+        },
+        else => return error.TestUnexpectedResult,
+    }
+}
+
+test "private async host scalar argument descriptor rejects signature and hash drift" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("do:async-call-arg-probe/host@0.1.0", "work") orelse return error.TestUnexpectedResult;
+
+    var drifted = descriptor;
+    drifted.params = &.{ "i32" };
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.result = "u32";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.wit_sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    var canonical = descriptor.canonical;
+    canonical.completion = "task-cancel";
+    drifted = descriptor;
+    drifted.canonical = canonical;
+    try std.testing.expect(lowering_shape(drifted) == null);
 }
 
 test "checked-in registry resolves wait-until with its explicit ABI names" {

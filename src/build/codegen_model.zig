@@ -134,6 +134,7 @@ pub const EmitOptions = struct {
     p3_resource_async_component: bool = false,
     p3_async_component: bool = false,
     p3_async_call_component: bool = false,
+    p3_async_host_arg_component: bool = false,
     p3_owned_future_component: bool = false,
     p3_async_component_v2: bool = false,
     p3_async_v2_scalar_i64_component: bool = false,

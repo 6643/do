@@ -543,6 +543,7 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
         defer plan.deinit(allocator);
         return codegen_component_async_call.emit_component_wat(allocator, plan);
     }
+    if (options.p3_async_host_arg_component) return error.UnsupportedP3AsyncHostArgComponent;
     if (options.p3_owned_future_component) {
         var plan = codegen_component_future_owned_plan.analyze(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3OwnedFutureComponent => return error.UnsupportedP3OwnedFutureComponent,

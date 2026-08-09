@@ -12,6 +12,7 @@ pub const Args = struct {
     p3_resource_async_component: bool = false,
     p3_async_component: bool = false,
     p3_async_call_component: bool = false,
+    p3_async_host_arg_component: bool = false,
     p3_owned_future_component: bool = false,
     p3_async_component_v2: bool = false,
     p3_async_v2_scalar_i64_component: bool = false,
@@ -51,6 +52,7 @@ pub fn parse_build(args: []const []const u8) !Args {
     var p3_resource_async_component = false;
     var p3_async_component = false;
     var p3_async_call_component = false;
+    var p3_async_host_arg_component = false;
     var p3_owned_future_component = false;
     var p3_async_component_v2 = false;
     var p3_async_v2_scalar_i64_component = false;
@@ -91,6 +93,10 @@ pub fn parse_build(args: []const []const u8) !Args {
         }
         if (std.mem.eql(u8, args[i], "--p3-async-call-component")) {
             p3_async_call_component = true;
+            continue;
+        }
+        if (std.mem.eql(u8, args[i], "--p3-async-host-arg-component")) {
+            p3_async_host_arg_component = true;
             continue;
         }
         if (std.mem.eql(u8, args[i], "--p3-owned-future-component")) {
@@ -143,10 +149,10 @@ pub fn parse_build(args: []const []const u8) !Args {
     }
     const path = input_path orelse return error.MissingInputPath;
     if (host_manifest_path != null and !host_export) return error.HostManifestRequiresHostExport;
-    if ((p3_wait_for_component or p3_resource_probe_component or p3_wasi_filesystem_preopen_component or p3_wasi_sockets_create_bind_drop_component or p3_resource_async_component or p3_async_component or p3_async_call_component or p3_owned_future_component or p3_async_component_v2 or p3_async_v2_scalar_i64_component or gc_core) and (component_core or host_export)) return error.UnexpectedCliArg;
-    const special_target_count: u8 = @as(u8, @intFromBool(p3_wait_for_component)) + @as(u8, @intFromBool(p3_resource_probe_component)) + @as(u8, @intFromBool(p3_wasi_filesystem_preopen_component)) + @as(u8, @intFromBool(p3_wasi_sockets_create_bind_drop_component)) + @as(u8, @intFromBool(p3_resource_async_component)) + @as(u8, @intFromBool(p3_async_component)) + @as(u8, @intFromBool(p3_async_call_component)) + @as(u8, @intFromBool(p3_owned_future_component)) + @as(u8, @intFromBool(p3_async_component_v2)) + @as(u8, @intFromBool(p3_async_v2_scalar_i64_component)) + @as(u8, @intFromBool(gc_core));
+    if ((p3_wait_for_component or p3_resource_probe_component or p3_wasi_filesystem_preopen_component or p3_wasi_sockets_create_bind_drop_component or p3_resource_async_component or p3_async_component or p3_async_call_component or p3_async_host_arg_component or p3_owned_future_component or p3_async_component_v2 or p3_async_v2_scalar_i64_component or gc_core) and (component_core or host_export)) return error.UnexpectedCliArg;
+    const special_target_count: u8 = @as(u8, @intFromBool(p3_wait_for_component)) + @as(u8, @intFromBool(p3_resource_probe_component)) + @as(u8, @intFromBool(p3_wasi_filesystem_preopen_component)) + @as(u8, @intFromBool(p3_wasi_sockets_create_bind_drop_component)) + @as(u8, @intFromBool(p3_resource_async_component)) + @as(u8, @intFromBool(p3_async_component)) + @as(u8, @intFromBool(p3_async_call_component)) + @as(u8, @intFromBool(p3_async_host_arg_component)) + @as(u8, @intFromBool(p3_owned_future_component)) + @as(u8, @intFromBool(p3_async_component_v2)) + @as(u8, @intFromBool(p3_async_v2_scalar_i64_component)) + @as(u8, @intFromBool(gc_core));
     if (special_target_count > 1) return error.UnexpectedCliArg;
-    if (p3_wit_output_path != null and !p3_wait_for_component and !p3_resource_probe_component and !p3_wasi_filesystem_preopen_component and !p3_wasi_sockets_create_bind_drop_component and !p3_resource_async_component and !p3_async_component and !p3_async_call_component and !p3_owned_future_component and !p3_async_component_v2 and !p3_async_v2_scalar_i64_component) return error.P3WitOutputRequiresP3Target;
+    if (p3_wit_output_path != null and !p3_wait_for_component and !p3_resource_probe_component and !p3_wasi_filesystem_preopen_component and !p3_wasi_sockets_create_bind_drop_component and !p3_resource_async_component and !p3_async_component and !p3_async_call_component and !p3_async_host_arg_component and !p3_owned_future_component and !p3_async_component_v2 and !p3_async_v2_scalar_i64_component) return error.P3WitOutputRequiresP3Target;
     if (p3_wit_package_output_path != null and !p3_wait_for_component and !p3_resource_probe_component and !p3_wasi_filesystem_preopen_component and !p3_resource_async_component and !p3_async_component) return error.P3WitPackageOutputRequiresP3Target;
     if (p3_wit_package_output_path != null and !p3_async_component) return error.P3WitPackageOutputRequiresUnifiedTarget;
     if (p3_wit_output_path != null and p3_wit_package_output_path != null) return error.UnexpectedCliArg;
@@ -164,6 +170,7 @@ pub fn parse_build(args: []const []const u8) !Args {
         .p3_resource_async_component = p3_resource_async_component,
         .p3_async_component = p3_async_component,
         .p3_async_call_component = p3_async_call_component,
+        .p3_async_host_arg_component = p3_async_host_arg_component,
         .p3_owned_future_component = p3_owned_future_component,
         .p3_async_component_v2 = p3_async_component_v2,
         .p3_async_v2_scalar_i64_component = p3_async_v2_scalar_i64_component,
@@ -330,6 +337,24 @@ test "parse_build accepts the opt-in async call component target" {
     const parsed = try parse_build(&args);
     try std.testing.expect(parsed.p3_async_call_component);
     try std.testing.expectEqualStrings("app.wit", parsed.p3_wit_output_path.?);
+}
+
+test "parse_build accepts the private async host scalar argument target" {
+    const args = [_][]const u8{ "build", "app.do", "--p3-async-host-arg-component", "--p3-wit-output", "app.wit" };
+    const parsed = try parse_build(&args);
+    try std.testing.expect(parsed.p3_async_host_arg_component);
+    try std.testing.expectEqualStrings("app.wit", parsed.p3_wit_output_path.?);
+}
+
+test "parse_build rejects private async host scalar argument target combinations" {
+    const async_call = [_][]const u8{ "build", "app.do", "--p3-async-host-arg-component", "--p3-async-call-component" };
+    try std.testing.expectError(error.UnexpectedCliArg, parse_build(&async_call));
+
+    const component_core = [_][]const u8{ "build", "app.do", "--p3-async-host-arg-component", "--component-core" };
+    try std.testing.expectError(error.UnexpectedCliArg, parse_build(&component_core));
+
+    const host_export = [_][]const u8{ "build", "app.do", "--p3-async-host-arg-component", "--host-export" };
+    try std.testing.expectError(error.UnexpectedCliArg, parse_build(&host_export));
 }
 
 test "parse_build accepts the private owned future component target" {

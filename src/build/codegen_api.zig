@@ -42,6 +42,14 @@ pub const emit_p3_async_call_component_wit = codegen_component_async_call.emit_c
 pub const emit_p3_owned_future_component_wit = codegen_component_future_owned.emit_component_wit;
 pub const requires_p3_http_wit_package = codegen_component_async.requires_http_wit_package;
 
+pub fn emit_p3_async_host_arg_component_wit(allocator: std.mem.Allocator) ![]u8 {
+    return allocator.dupe(u8,
+        "package do:async-call-arg-probe@0.1.0;\n\n" ++
+            "interface host {\n  work: async func(value: u32);\n}\n\n" ++
+            "world probe {\n  import host;\n  export run: async func();\n}\n",
+    );
+}
+
 // Types for unit tests
 const LocalSet = context.LocalSet;
 const SourceOrigin = model.SourceOrigin;

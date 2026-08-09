@@ -76,6 +76,30 @@
             }
         },
         {
+            "locator": "do:async-call-arg-probe/host@0.1.0",
+            "member": "work",
+            "effect": "async-host-scalar-argument",
+            "params": ["u32"],
+            "result": "nil",
+            "resource": null,
+            "wit_sha256": "b9f5f8355e87231317ec05cccf692ee465c6f339bd509640aedc196e58f81e61",
+            "canonical": {
+                "core_params": ["i32"],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "task-return",
+                "async_import_module": "do:async-call-arg-probe/host@0.1.0",
+                "async_import_name": "[async-lower]work"
+            },
+            "wit": {
+                "package": "do:async-call-arg-probe@0.1.0",
+                "interface": "host",
+                "operation": "work",
+                "world": "probe",
+                "parameter": "value"
+            }
+        },
+        {
             "locator": "do:future-owned-canonical/source@0.1.0",
             "member": "read",
             "effect": "future-owned-resource",
