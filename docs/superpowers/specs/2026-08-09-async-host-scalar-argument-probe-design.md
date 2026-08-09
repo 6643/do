@@ -130,6 +130,7 @@ Create only these artifacts in this phase:
 - `examples/p3-runtime/async-call-arg-probe-canonical.wat`
 - `examples/p3-runtime/test_async_call_arg_probe.sh`
 - `examples/p3-runtime/rust-host-runner/src/bin/async_call_arg_probe.rs`
+- `examples/p3-runtime/rust-host-runner/Cargo.toml` (register the runner bin)
 
 The existing compiler-generated scalar argument fixtures remain unchanged.
 The probe script must pin and print the exact versions and SHA-256 values for
