@@ -34,6 +34,7 @@ pub const LoweringShape = union(enum) {
     record_resource_list_stream_producer: RecordResourceListStreamProducerShape,
     record_resource_list_stream_dynamic_producer: RecordResourceListStreamProducerShape,
     record_resource_list_stream_batched_producer: RecordResourceListStreamProducerShape,
+    scalar_list_stream_producer: ScalarListStreamProducerShape,
     variant_resource_stream_reader: VariantResourceStreamShape,
     stream_writer: StreamWriterShape,
 };
@@ -77,6 +78,17 @@ pub const RecordResourceListStreamProducerShape = struct {
     record_layout: RecordLayout,
     list_layout: ListResourceLayout,
     producer: ProducerCanonical,
+};
+
+/// ABI facts for the private `stream<list<u32>>` probe. This is intentionally
+/// scalar-only: it has neither resource ownership nor record layout metadata.
+pub const ScalarListStreamProducerShape = struct {
+    element: []const u8,
+    stream_index: usize,
+    method: StreamOperation,
+    stream: StreamCanonical,
+    list_layout: ScalarListLayout,
+    producer: ScalarListProducerCanonical,
 };
 
 /// ABI facts for the private `stream<event>` probe. Unlike the general stream
@@ -127,6 +139,13 @@ pub const ListResourceLayout = struct {
     max_items: u32,
 };
 
+pub const ScalarListLayout = struct {
+    result_pointer_offset: u32,
+    result_length_offset: u32,
+    element_stride: u32,
+    max_items: u32,
+};
+
 pub const ProducerCanonical = struct {
     source_module: []const u8,
     source_import_name: []const u8,
@@ -140,6 +159,13 @@ pub const ProducerCanonical = struct {
     runtime_mode_param: ?[]const u8 = null,
     batch_count: ?u32 = null,
     batch_lengths: ?[]const u32 = null,
+};
+
+pub const ScalarListProducerCanonical = struct {
+    stream_capacity: u32,
+    runtime_count_param: []const u8,
+    runtime_max: u32,
+    terminal: []const u8,
 };
 
 pub const RecordField = struct {
@@ -340,6 +366,11 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
 
     if (std.mem.eql(u8, descriptor.effect, "record-resource-list-stream-batched-producer")) {
         if (valid_record_resource_list_stream_batched_producer_descriptor(descriptor)) |shape| return .{ .record_resource_list_stream_batched_producer = shape };
+        return null;
+    }
+
+    if (std.mem.eql(u8, descriptor.effect, "scalar-list-stream-producer")) {
+        if (valid_scalar_list_stream_producer_descriptor(descriptor)) |shape| return .{ .scalar_list_stream_producer = shape };
         return null;
     }
 
@@ -655,6 +686,8 @@ pub const Canonical = struct {
     record_layout: ?RecordLayout = null,
     list_resource_layout: ?ListResourceLayout = null,
     producer: ?ProducerCanonical = null,
+    scalar_list_layout: ?ScalarListLayout = null,
+    scalar_list_producer: ?ScalarListProducerCanonical = null,
     async_import_module: []const u8,
     async_import_name: []const u8,
     stream: ?StreamCanonical = null,
@@ -788,6 +821,7 @@ fn parse_descriptor(allocator: std.mem.Allocator, value: std.json.Value) !Descri
         !std.mem.eql(u8, effect, "record-resource-list-stream-producer") and
         !std.mem.eql(u8, effect, "record-resource-list-stream-dynamic-producer") and
         !std.mem.eql(u8, effect, "record-resource-list-stream-batched-producer") and
+        !std.mem.eql(u8, effect, "scalar-list-stream-producer") and
         !std.mem.eql(u8, effect, "variant-resource-stream-reader") and
         !std.mem.eql(u8, effect, "stream-writer")) return error.InvalidP3AsyncManifest;
     const owned_params = try duplicate_params(allocator, array_value(object.get("params")) orelse return error.InvalidP3AsyncManifest);
@@ -862,6 +896,15 @@ fn parse_canonical(allocator: std.mem.Allocator, value: ?std.json.Value) !Canoni
     else
         null;
     errdefer if (producer) |value_to_free| free_producer_canonical(allocator, value_to_free);
+    const scalar_list_layout = if (canonical.get("scalar_list_layout")) |layout_value|
+        try parse_scalar_list_layout(layout_value)
+    else
+        null;
+    const scalar_list_producer = if (canonical.get("scalar_list_producer")) |producer_value|
+        try parse_scalar_list_producer_canonical(allocator, producer_value)
+    else
+        null;
+    errdefer if (scalar_list_producer) |value_to_free| free_scalar_list_producer_canonical(allocator, value_to_free);
     const completion = string_value(canonical.get("completion")) orelse return error.InvalidP3AsyncManifest;
     if (!std.mem.eql(u8, completion, "task-return") and
         !std.mem.eql(u8, completion, "result-area") and
@@ -932,6 +975,8 @@ fn parse_canonical(allocator: std.mem.Allocator, value: ?std.json.Value) !Canoni
         .record_layout = record_layout,
         .list_resource_layout = list_resource_layout,
         .producer = producer,
+        .scalar_list_layout = scalar_list_layout,
+        .scalar_list_producer = scalar_list_producer,
         .async_import_module = async_import_module,
         .async_import_name = async_import_name,
         .stream = stream,
@@ -962,6 +1007,48 @@ fn parse_list_resource_layout(value: std.json.Value) !ListResourceLayout {
         .element_stride = @intCast(element_stride),
         .ticket_offset = @intCast(ticket_offset),
         .max_items = @intCast(max_items),
+    };
+}
+
+fn parse_scalar_list_layout(value: std.json.Value) !ScalarListLayout {
+    const object = object_value(value) orelse return error.InvalidP3AsyncManifest;
+    if (!object_has_only_fields(object, &.{ "result_pointer_offset", "result_length_offset", "element_stride", "max_items" })) {
+        return error.InvalidP3AsyncManifest;
+    }
+    const pointer_offset = unsigned_value(object.get("result_pointer_offset")) orelse return error.InvalidP3AsyncManifest;
+    const length_offset = unsigned_value(object.get("result_length_offset")) orelse return error.InvalidP3AsyncManifest;
+    const element_stride = unsigned_value(object.get("element_stride")) orelse return error.InvalidP3AsyncManifest;
+    const max_items = unsigned_value(object.get("max_items")) orelse return error.InvalidP3AsyncManifest;
+    if (pointer_offset > std.math.maxInt(u32) or
+        length_offset > std.math.maxInt(u32) or
+        element_stride > std.math.maxInt(u32) or
+        max_items > std.math.maxInt(u32)) return error.InvalidP3AsyncManifest;
+    return .{
+        .result_pointer_offset = @intCast(pointer_offset),
+        .result_length_offset = @intCast(length_offset),
+        .element_stride = @intCast(element_stride),
+        .max_items = @intCast(max_items),
+    };
+}
+
+fn parse_scalar_list_producer_canonical(allocator: std.mem.Allocator, value: std.json.Value) !ScalarListProducerCanonical {
+    const object = object_value(value) orelse return error.InvalidP3AsyncManifest;
+    if (!object_has_only_fields(object, &.{ "stream_capacity", "runtime_count_param", "runtime_max", "terminal" })) {
+        return error.InvalidP3AsyncManifest;
+    }
+    const stream_capacity = unsigned_value(object.get("stream_capacity")) orelse return error.InvalidP3AsyncManifest;
+    const runtime_max = unsigned_value(object.get("runtime_max")) orelse return error.InvalidP3AsyncManifest;
+    if (stream_capacity > std.math.maxInt(u32) or runtime_max > std.math.maxInt(u32)) return error.InvalidP3AsyncManifest;
+    const runtime_count_param = try duplicate_required(allocator, object.get("runtime_count_param"));
+    errdefer allocator.free(runtime_count_param);
+    const terminal = try duplicate_required(allocator, object.get("terminal"));
+    errdefer allocator.free(terminal);
+    if (runtime_count_param.len == 0 or terminal.len == 0) return error.InvalidP3AsyncManifest;
+    return .{
+        .stream_capacity = @intCast(stream_capacity),
+        .runtime_count_param = runtime_count_param,
+        .runtime_max = @intCast(runtime_max),
+        .terminal = terminal,
     };
 }
 
@@ -1485,6 +1572,68 @@ fn valid_record_resource_list_stream_producer_descriptor(descriptor: Descriptor)
     };
 }
 
+fn valid_scalar_list_stream_producer_descriptor(descriptor: Descriptor) ?ScalarListStreamProducerShape {
+    const stream = descriptor.canonical.stream orelse return null;
+    const list_layout = descriptor.canonical.scalar_list_layout orelse return null;
+    const producer = descriptor.canonical.scalar_list_producer orelse return null;
+
+    if (!std.mem.eql(u8, descriptor.effect, "scalar-list-stream-producer") or
+        !std.mem.eql(u8, descriptor.locator, "do:g6-2-scalar-list-producer@0.1.0") or
+        !std.mem.eql(u8, descriptor.member, "consume-via-stream") or
+        descriptor.params.len != 1 or
+        !std.mem.eql(u8, descriptor.params[0], "stream<list<u32>>") or
+        descriptor.resource != null or
+        !std.mem.eql(u8, descriptor.result, "Result<nil,error-code>") or
+        descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, descriptor.wit_sha256.?, "a24e467b1746f94432bb495c13fc0ce718a3833dc0ce7659228cfb6eaf69ff9f") or
+        !std.mem.eql(u8, descriptor.wit.package, "do:g6-2-scalar-list-producer@0.1.0") or
+        !std.mem.eql(u8, descriptor.wit.interface, "sink") or
+        !std.mem.eql(u8, descriptor.wit.operation, "consume-via-stream") or
+        !std.mem.eql(u8, descriptor.wit.world, "scalar-list-producer") or
+        !std.mem.eql(u8, descriptor.wit.parameter, "data") or
+        !equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i32" }) or
+        !equal_core_types(descriptor.canonical.core_results, &.{"i32"}) or
+        !equal_core_types(descriptor.canonical.completion_params, &.{ "i32", "i32" }) or
+        !std.mem.eql(u8, descriptor.canonical.completion, "task-return") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "do:g6-2-scalar-list-producer/sink@0.1.0") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower]consume-via-stream") or
+        descriptor.canonical.record_layout != null or
+        descriptor.canonical.list_resource_layout != null or
+        descriptor.canonical.producer != null or
+        descriptor.canonical.future != null or
+        descriptor.canonical.future_input != null or
+        descriptor.canonical.future_owned != null or
+        descriptor.canonical.result_payload != null or
+        descriptor.canonical.error_variants.len != 0 or
+        !valid_scalar_list_layout(list_layout) or
+        !std.mem.eql(u8, stream.element, "list<u32>") or
+        producer.stream_capacity != 1 or
+        !std.mem.eql(u8, producer.runtime_count_param, "u32") or
+        producer.runtime_max != 3 or
+        !std.mem.eql(u8, producer.terminal, "task-return")) return null;
+
+    if (!valid_named_stream_operation(stream.new, "[stream-new-0]consume-via-stream", &.{}, &.{"i64"}) or
+        !valid_named_stream_operation(stream.cancel_read, "[stream-cancel-read-0]consume-via-stream", &.{"i32"}, &.{"i32"}) or
+        !valid_named_stream_operation(stream.cancel_write, "[stream-cancel-write-0]consume-via-stream", &.{"i32"}, &.{"i32"}) or
+        !valid_named_stream_operation(stream.drop_readable, "[stream-drop-readable-0]consume-via-stream", &.{"i32"}, &.{}) or
+        !valid_named_stream_operation(stream.drop_writable, "[stream-drop-writable-0]consume-via-stream", &.{"i32"}, &.{}) or
+        !valid_named_stream_operation(stream.read, "[async-lower][stream-read-0]consume-via-stream", &.{ "i32", "i32", "i32" }, &.{"i32"}) or
+        !valid_named_stream_operation(stream.write, "[async-lower][stream-write-0]consume-via-stream", &.{ "i32", "i32", "i32" }, &.{"i32"})) return null;
+
+    return .{
+        .element = stream.element,
+        .stream_index = 0,
+        .method = .{
+            .import_name = descriptor.canonical.async_import_name,
+            .core_params = descriptor.canonical.core_params,
+            .core_results = descriptor.canonical.core_results,
+        },
+        .stream = stream,
+        .list_layout = list_layout,
+        .producer = producer,
+    };
+}
+
 fn valid_record_resource_list_stream_dynamic_producer_descriptor(descriptor: Descriptor) ?RecordResourceListStreamProducerShape {
     const stream = descriptor.canonical.stream orelse return null;
     const record_layout = descriptor.canonical.record_layout orelse return null;
@@ -1710,6 +1859,13 @@ fn valid_variant_event_layout(layout: VariantEventLayout) bool {
 
 fn valid_list_resource_layout(layout: ListResourceLayout) bool {
     return valid_list_resource_layout_with_max(layout, 3);
+}
+
+fn valid_scalar_list_layout(layout: ScalarListLayout) bool {
+    return layout.result_pointer_offset == 64 and
+        layout.result_length_offset == 68 and
+        layout.element_stride == 4 and
+        layout.max_items == 3;
 }
 
 fn valid_list_resource_layout_with_max(layout: ListResourceLayout, max_items: u32) bool {
@@ -2250,6 +2406,7 @@ fn free_canonical(allocator: std.mem.Allocator, canonical: Canonical) void {
     free_error_variants(allocator, canonical.error_variants);
     if (canonical.record_layout) |layout| free_record_layout(allocator, layout);
     if (canonical.producer) |producer| free_producer_canonical(allocator, producer);
+    if (canonical.scalar_list_producer) |producer| free_scalar_list_producer_canonical(allocator, producer);
     allocator.free(canonical.async_import_module);
     allocator.free(canonical.async_import_name);
     if (canonical.stream) |stream| free_stream_canonical(allocator, stream);
@@ -2276,6 +2433,11 @@ fn free_producer_canonical(allocator: std.mem.Allocator, producer: ProducerCanon
     if (producer.runtime_count_param) |value| allocator.free(value);
     if (producer.runtime_mode_param) |value| allocator.free(value);
     if (producer.batch_lengths) |values| allocator.free(values);
+}
+
+fn free_scalar_list_producer_canonical(allocator: std.mem.Allocator, producer: ScalarListProducerCanonical) void {
+    allocator.free(producer.runtime_count_param);
+    allocator.free(producer.terminal);
 }
 
 fn free_future_canonical(allocator: std.mem.Allocator, future: FutureCanonical) void {
@@ -2685,6 +2847,21 @@ fn object_value(value: std.json.Value) ?std.json.ObjectMap {
         .object => |object| object,
         else => null,
     };
+}
+
+fn object_has_only_fields(object: std.json.ObjectMap, allowed: []const []const u8) bool {
+    var iterator = object.iterator();
+    while (iterator.next()) |entry| {
+        var known = false;
+        for (allowed) |name| {
+            if (std.mem.eql(u8, entry.key_ptr.*, name)) {
+                known = true;
+                break;
+            }
+        }
+        if (!known) return false;
+    }
+    return true;
 }
 
 fn array_value(value: ?std.json.Value) ?std.json.Array {
@@ -3251,6 +3428,102 @@ test "dynamic C-min producer descriptor admits only its bounded runtime shape" {
     var unbounded = original;
     unbounded.canonical.producer.?.runtime_max = null;
     try std.testing.expect(lowering_shape(unbounded) == null);
+}
+
+const scalar_list_producer_descriptor_json =
+    \\{"schema":1,"wit_sha256":"abc","descriptors":[
+    \\  {"locator":"do:g6-2-scalar-list-producer@0.1.0","member":"consume-via-stream","effect":"scalar-list-stream-producer","params":["stream<list<u32>>"],"result":"Result<nil,error-code>","resource":null,"wit_sha256":"a24e467b1746f94432bb495c13fc0ce718a3833dc0ce7659228cfb6eaf69ff9f","canonical":{"core_params":["i32","i32"],"core_results":["i32"],"completion_params":["i32","i32"],"completion":"task-return","async_import_module":"do:g6-2-scalar-list-producer/sink@0.1.0","async_import_name":"[async-lower]consume-via-stream","scalar_list_layout":{"result_pointer_offset":64,"result_length_offset":68,"element_stride":4,"max_items":3},"scalar_list_producer":{"stream_capacity":1,"runtime_count_param":"u32","runtime_max":3,"terminal":"task-return"},"stream":{"element":"list<u32>","new":{"import_name":"[stream-new-0]consume-via-stream","core_params":[],"core_results":["i64"]},"cancel_read":{"import_name":"[stream-cancel-read-0]consume-via-stream","core_params":["i32"],"core_results":["i32"]},"cancel_write":{"import_name":"[stream-cancel-write-0]consume-via-stream","core_params":["i32"],"core_results":["i32"]},"drop_readable":{"import_name":"[stream-drop-readable-0]consume-via-stream","core_params":["i32"],"core_results":[]},"drop_writable":{"import_name":"[stream-drop-writable-0]consume-via-stream","core_params":["i32"],"core_results":[]},"read":{"import_name":"[async-lower][stream-read-0]consume-via-stream","core_params":["i32","i32","i32"],"core_results":["i32"]},"write":{"import_name":"[async-lower][stream-write-0]consume-via-stream","core_params":["i32","i32","i32"],"core_results":["i32"]}}},"wit":{"package":"do:g6-2-scalar-list-producer@0.1.0","interface":"sink","operation":"consume-via-stream","world":"scalar-list-producer","parameter":"data"}}
+    \\]}
+;
+
+fn scalar_list_producer_registry() !Registry {
+    return Registry.load(std.testing.allocator, scalar_list_producer_descriptor_json);
+}
+
+fn scalar_list_producer_drift_registry(needle: []const u8, replacement: []const u8) !Registry {
+    const json = try std.mem.replaceOwned(u8, std.testing.allocator, scalar_list_producer_descriptor_json, needle, replacement);
+    defer std.testing.allocator.free(json);
+    return Registry.load(std.testing.allocator, json);
+}
+
+fn expect_scalar_list_producer_drift(needle: []const u8, replacement: []const u8) !void {
+    var registry = try scalar_list_producer_drift_registry(needle, replacement);
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.descriptors[0];
+    try std.testing.expect(lowering_shape(descriptor) == null);
+}
+
+test "scalar list producer descriptor is admitted only with measured layout" {
+    var registry = try scalar_list_producer_registry();
+    defer registry.deinit(std.testing.allocator);
+
+    const descriptor = registry.find("do:g6-2-scalar-list-producer@0.1.0", "consume-via-stream") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("scalar-list-stream-producer", descriptor.effect);
+    switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .scalar_list_stream_producer => |shape| {
+            try std.testing.expectEqualStrings("list<u32>", shape.element);
+            try std.testing.expectEqual(@as(usize, 0), shape.stream_index);
+            try std.testing.expectEqual(@as(u32, 64), shape.list_layout.result_pointer_offset);
+            try std.testing.expectEqual(@as(u32, 68), shape.list_layout.result_length_offset);
+            try std.testing.expectEqual(@as(u32, 4), shape.list_layout.element_stride);
+            try std.testing.expectEqual(@as(u32, 3), shape.list_layout.max_items);
+            try std.testing.expectEqual(@as(u32, 1), shape.producer.stream_capacity);
+            try std.testing.expectEqualStrings("u32", shape.producer.runtime_count_param);
+            try std.testing.expectEqual(@as(u32, 3), shape.producer.runtime_max);
+            try std.testing.expectEqualStrings("task-return", shape.producer.terminal);
+        },
+        else => return error.TestUnexpectedResult,
+    }
+}
+
+test "checked-in registry admits the scalar list producer shape" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("do:g6-2-scalar-list-producer@0.1.0", "consume-via-stream") orelse return error.TestUnexpectedResult;
+    switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .scalar_list_stream_producer => |shape| {
+            try std.testing.expectEqual(@as(u32, 3), shape.list_layout.max_items);
+            try std.testing.expectEqualStrings("list<u32>", shape.element);
+        },
+        else => return error.TestUnexpectedResult,
+    }
+}
+
+test "scalar list producer descriptor rejects drift" {
+    try expect_scalar_list_producer_drift(
+        "\"wit_sha256\":\"a24e467b1746f94432bb495c13fc0ce718a3833dc0ce7659228cfb6eaf69ff9f\"",
+        "\"wit_sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"",
+    );
+    try expect_scalar_list_producer_drift("\"package\":\"do:g6-2-scalar-list-producer@0.1.0\"", "\"package\":\"do:other@0.1.0\"");
+    try expect_scalar_list_producer_drift("\"world\":\"scalar-list-producer\"", "\"world\":\"other\"");
+    try expect_scalar_list_producer_drift("\"member\":\"consume-via-stream\"", "\"member\":\"other\"");
+    try expect_scalar_list_producer_drift("\"element\":\"list<u32>\"", "\"element\":\"list<u64>\"");
+    try expect_scalar_list_producer_drift("\"result_pointer_offset\":64", "\"result_pointer_offset\":60");
+    try expect_scalar_list_producer_drift("\"result_length_offset\":68", "\"result_length_offset\":64");
+    try expect_scalar_list_producer_drift("\"element_stride\":4", "\"element_stride\":8");
+    try expect_scalar_list_producer_drift("\"max_items\":3", "\"max_items\":4");
+    try expect_scalar_list_producer_drift("\"stream_capacity\":1", "\"stream_capacity\":2");
+    try expect_scalar_list_producer_drift("\"scalar_list_producer\":{\"stream_capacity\":1,\"runtime_count_param\":\"u32\",\"runtime_max\":3,\"terminal\":\"task-return\"}", "\"scalar_list_producer\":{\"stream_capacity\":1,\"runtime_count_param\":\"u32\",\"runtime_max\":3,\"terminal\":\"result-area\"}");
+    try expect_scalar_list_producer_drift("\"runtime_count_param\":\"u32\"", "\"runtime_count_param\":\"u64\"");
+    try expect_scalar_list_producer_drift("\"resource\":null", "\"resource\":\"ticket\"");
+    try expect_scalar_list_producer_drift("\"scalar_list_layout\":{", "\"record_layout\":{\"name\":\"extra\",\"byte_size\":4,\"fields\":[{\"name\":\"x\",\"core_type\":\"i32\",\"offset\":0}],\"source_fields\":[{\"name\":\"x\",\"source_type\":\"u32\",\"storage\":[\"x\"],\"ownership\":\"none\"}]},\"scalar_list_layout\":{");
+    try expect_scalar_list_producer_drift("\"scalar_list_layout\":{", "\"list_resource_layout\":{\"result_pointer_offset\":64,\"result_length_offset\":68,\"element_stride\":4,\"ticket_offset\":0,\"max_items\":3},\"scalar_list_layout\":{");
+    try expect_scalar_list_producer_drift("\"stream\":{", "\"future\":{\"drop_readable\":{\"import_name\":\"extra\",\"core_params\":[],\"core_results\":[]}},\"stream\":{");
+    try expect_scalar_list_producer_drift("\"stream\":{", "\"future_input\":{\"drop_readable\":{\"import_name\":\"extra\",\"core_params\":[],\"core_results\":[]}},\"stream\":{");
+    try expect_scalar_list_producer_drift("\"stream\":{", "\"future_owned\":{\"resource\":\"ticket\",\"payload_offset\":0,\"resource_offset\":4,\"presence_offset\":8,\"drop_import\":\"[resource-drop]ticket\"},\"stream\":{");
+    try expect_scalar_list_producer_drift("\"stream\":{", "\"result_payload\":{\"tag\":\"i32\",\"ok\":[],\"err\":[]},\"stream\":{");
+    try std.testing.expectError(
+        error.InvalidP3AsyncManifest,
+        scalar_list_producer_drift_registry("\"stream\":{", "\"error_variants\":[{}],\"stream\":{"),
+    );
+    try std.testing.expectError(
+        error.InvalidP3AsyncManifest,
+        scalar_list_producer_drift_registry("\"max_items\":3}", "\"max_items\":3,\"ticket_offset\":0}"),
+    );
+    try std.testing.expectError(
+        error.InvalidP3AsyncManifest,
+        scalar_list_producer_drift_registry("\"terminal\":\"task-return\"}", "\"terminal\":\"task-return\",\"source\":\"unexpected\"}"),
+    );
 }
 
 test "record layout metadata exposes pinned directory-entry offsets" {

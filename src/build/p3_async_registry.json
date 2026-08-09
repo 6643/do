@@ -1967,6 +1967,80 @@
                 "world": "stream-stdin-probe",
                 "parameter": ""
             }
+        },
+        {
+            "locator": "do:g6-2-scalar-list-producer@0.1.0",
+            "member": "consume-via-stream",
+            "effect": "scalar-list-stream-producer",
+            "params": ["stream<list<u32>>"],
+            "result": "Result<nil,error-code>",
+            "resource": null,
+            "wit_sha256": "a24e467b1746f94432bb495c13fc0ce718a3833dc0ce7659228cfb6eaf69ff9f",
+            "canonical": {
+                "core_params": ["i32", "i32"],
+                "core_results": ["i32"],
+                "completion_params": ["i32", "i32"],
+                "completion": "task-return",
+                "async_import_module": "do:g6-2-scalar-list-producer/sink@0.1.0",
+                "async_import_name": "[async-lower]consume-via-stream",
+                "scalar_list_layout": {
+                    "result_pointer_offset": 64,
+                    "result_length_offset": 68,
+                    "element_stride": 4,
+                    "max_items": 3
+                },
+                "scalar_list_producer": {
+                    "stream_capacity": 1,
+                    "runtime_count_param": "u32",
+                    "runtime_max": 3,
+                    "terminal": "task-return"
+                },
+                "stream": {
+                    "element": "list<u32>",
+                    "new": {
+                        "import_name": "[stream-new-0]consume-via-stream",
+                        "core_params": [],
+                        "core_results": ["i64"]
+                    },
+                    "cancel_read": {
+                        "import_name": "[stream-cancel-read-0]consume-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "cancel_write": {
+                        "import_name": "[stream-cancel-write-0]consume-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "drop_readable": {
+                        "import_name": "[stream-drop-readable-0]consume-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "drop_writable": {
+                        "import_name": "[stream-drop-writable-0]consume-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "read": {
+                        "import_name": "[async-lower][stream-read-0]consume-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    },
+                    "write": {
+                        "import_name": "[async-lower][stream-write-0]consume-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    }
+                }
+            },
+            "wit": {
+                "package": "do:g6-2-scalar-list-producer@0.1.0",
+                "interface": "sink",
+                "operation": "consume-via-stream",
+                "world": "scalar-list-producer",
+                "parameter": "data"
+            }
         }
     ]
 }
