@@ -1,0 +1,16 @@
+package do:g6-2-scalar-list-producer@0.1.0;
+
+interface types {
+  enum error-code { io, pipe, invalid-mode }
+}
+
+interface sink {
+  use types.{error-code};
+  consume-via-stream: async func(data: stream<list<u32>>) -> result<_, error-code>;
+}
+
+world scalar-list-producer {
+  use types.{error-code};
+  import sink;
+  export produce: async func(count: u32) -> result<_, error-code>;
+}
