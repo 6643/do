@@ -58,6 +58,9 @@ pub const BoundedAsyncShape = struct {
         {
             return error.InvalidFrameSize;
         }
+        if (self.mode == .host_scalar and (!has_argument or self.frame.size != 20)) {
+            return error.InvalidFrameSize;
+        }
 
         if (!slot_is_valid(self.frame.waitable_set_offset, self.frame.size) or
             !slot_is_valid(self.frame.active_subtask_offset, self.frame.size) or
@@ -73,7 +76,11 @@ pub const BoundedAsyncShape = struct {
 
         try validate_terminal_sequence(self.cleanup.normal, false, false);
         try validate_phase_transition(self.mode, self.cleanup.phase_transition);
-        try validate_terminal_sequence(self.cleanup.cancelled, true, self.mode == .child);
+        if (self.mode == .child) {
+            if (self.cleanup.cancelled.len != 0) return error.InvalidCleanupOrder;
+        } else {
+            try validate_terminal_sequence(self.cleanup.cancelled, true, false);
+        }
     }
 };
 

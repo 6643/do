@@ -63,15 +63,15 @@ The differential test pins the current WAT and WIT bytes and the source-order
 | inline scalar (`compile_ok/477`) | `7edf6a66095c3c24b8c5440ebcad5a7f5dfcc5fea3c943a8e4d28453bb96fe83` | `ecf47e1e33b3a0d14761a1341f3b749f4ba072051c018083db2d5cda356c101f` |
 | host scalar (`compile_ok/490`) | `e9e2330a75430b569b538d15d676d92492c952f89c5cc135a38343670da01553` | `b9f5f8355e87231317ec05cccf692ee465c6f339bd509640aedc196e58f81e61` |
 
-Focused Zig output is green: differential `105/105`, call emitter `111/111`,
-and host emitter `107/107`. Component gates pass both pinned wasm-tools
+Focused Zig output is green: shape `14/14`, differential `105/105`, call
+emitter `111/111`, and host emitter `107/107`. Component gates pass both pinned wasm-tools
 routes; the child-only v1 isolation probe is rejected before WAT. The
 Rust/Wasmtime matrices observe exactly-once child/future cleanup and
 `table-empty=true` for unit/inline and scalar ready/pending/cancel rows. The
 host scalar rows observe `argument=7`, one Future drop in every mode, a
 cancellation-only pending drop, and `table-empty=true`.
 
-Final gates: `zig test main.zig` reports `All 334 tests passed`,
+Final gates: `zig test main.zig` reports `All 336 tests passed`,
 `./src/build/test/run_tests.sh` reports `pass=1177 fail=0 skip=3`, and
 `./src/build/test/run_release_smoke.sh` passes ReleaseSmall build, build,
 test, compiled-test, check, fmt, run, and LSP smoke. This closes only the
@@ -145,7 +145,7 @@ bash examples/p3-runtime/test_rust_cli_stream_stdin_real.sh
 
 ```text
 cd src && zig test main.zig
-  → All 334 tests passed.
+  → All 336 tests passed.
 
 ./src/build/test/run_tests.sh
   → pass=1177 fail=0 skip=3 (Bun Node-compatible runner)
@@ -161,7 +161,7 @@ G6.2 scalar-list producer promotion (2026-08-09)
     ResourceTable entry is created.
 
 Inline scalar async-call focused gates (2026-08-09)
-  → call planner 113/113, host planner 107/107, call emitter 111/111,
+  → shape 14/14, call planner 113/113, host planner 107/107, call emitter 111/111,
     host emitter 107/107, and differential 105/105 Zig tests; pinned
     `wasm-tools` 1.255.0 and legacy 1.254.0 Component assembly passed for
     child-only, inline, and host scalar fixtures; Rust/Wasmtime passed inline

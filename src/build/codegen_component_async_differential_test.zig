@@ -10,6 +10,7 @@ const Kind = enum { call, host };
 
 const Case = struct {
     source: []const u8,
+    source_path: ?[]const u8,
     kind: Kind,
     mode: bounded_shape.BoundedAsyncMode,
     frame_size: u32,
@@ -74,22 +75,9 @@ const host_scalar_markers = [_][]const u8{
     "[guest-async-parent-resume]",
 };
 
-const inline_unit_source =
-    \\work = @host_async_func("do:generic-async-call-probe/host@0.1.0", "work", () -> nil)
-    \\helper() -> nil {
-    \\    pending Future<nil> = work()
-    \\    @await(pending)
-    \\}
-    \\run() -> nil {
-    \\    helper()
-    \\    child Future<nil> = @async(helper())
-    \\    @await(child)
-    \\}
-    \\start() {}
-;
-
 const child_unit_case = Case{
     .source = @embedFile("test/check/441_async_call_component.do"),
+    .source_path = null,
     .kind = .call,
     .mode = .child,
     .frame_size = 16,
@@ -101,6 +89,7 @@ const child_unit_case = Case{
 
 const child_scalar_case = Case{
     .source = @embedFile("test/compile_ok/466_async_call_scalar_argument_component.do"),
+    .source_path = null,
     .kind = .call,
     .mode = .child,
     .frame_size = 20,
@@ -111,7 +100,8 @@ const child_scalar_case = Case{
 };
 
 const inline_unit_case = Case{
-    .source = inline_unit_source,
+    .source = "",
+    .source_path = "../examples/p3-runtime/async-call-component.do",
     .kind = .call,
     .mode = .inline_call,
     .frame_size = 16,
@@ -123,6 +113,7 @@ const inline_unit_case = Case{
 
 const inline_scalar_case = Case{
     .source = @embedFile("test/compile_ok/477_async_call_inline_scalar_argument_component.do"),
+    .source_path = null,
     .kind = .call,
     .mode = .inline_call,
     .frame_size = 20,
@@ -134,6 +125,7 @@ const inline_scalar_case = Case{
 
 const host_scalar_case = Case{
     .source = @embedFile("test/compile_ok/490_async_host_scalar_argument_component.do"),
+    .source_path = null,
     .kind = .host,
     .mode = .host_scalar,
     .frame_size = 20,
@@ -152,7 +144,21 @@ test "bounded async differential output remains pinned" {
 }
 
 fn verify_case(case: Case) !void {
-    const tokens = try lexer.tokenize(std.testing.allocator, case.source);
+    if (case.source_path) |path| {
+        const source = try std.Io.Dir.cwd().readFileAlloc(
+            std.testing.io,
+            path,
+            std.testing.allocator,
+            .limited(1024 * 1024),
+        );
+        defer std.testing.allocator.free(source);
+        return verify_case_source(case, source);
+    }
+    return verify_case_source(case, case.source);
+}
+
+fn verify_case_source(case: Case, source: []const u8) !void {
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
 
     switch (case.kind) {

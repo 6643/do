@@ -139,3 +139,24 @@ test "bounded shape rejects a non-inline resume sequence" {
     actual.cleanup.phase_transition = &phase_transition;
     try std.testing.expectError(error.InvalidCleanupOrder, actual.validate());
 }
+
+test "bounded host scalar shape rejects a unit frame" {
+    var actual = try shape.host_scalar_shape();
+    actual.frame.size = 16;
+    actual.frame.u32_argument_offset = null;
+    try std.testing.expectError(error.InvalidFrameSize, actual.validate());
+}
+
+test "bounded child shape rejects a non-empty cancellation sequence" {
+    var actual = try shape.child_shape(false);
+    const cancelled = [_]shape.BoundedCleanupAction{
+        .cancel_active_subtask,
+        .drop_active_subtask_if_owned,
+        .drop_waitable_set,
+        .clear_root_context,
+        .free_root_frame,
+        .root_task_cancel,
+    };
+    actual.cleanup.cancelled = &cancelled;
+    try std.testing.expectError(error.InvalidCleanupOrder, actual.validate());
+}

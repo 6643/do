@@ -383,7 +383,7 @@ borrowed/list/variant resource field 或更宽 runtime 形状。
   and host-scalar WIT
   `b9f5f8355e87231317ec05cccf692ee465c6f339bd509640aedc196e58f81e61`.
   Component current/legacy assembly, Rust/Wasmtime ready/pending/cancel
-  cleanup, `zig test main.zig` `334/334`, default regression
+  cleanup, `zig test main.zig` `336/336`, default regression
   `pass=1177 fail=0 skip=3`, and ReleaseSmall smoke are green. This closes
   only private internal reuse; generic async-call lowering, arbitrary producer
   expressions, payload/resource/list/stream futures, borrowed values, root
