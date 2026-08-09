@@ -1,18 +1,23 @@
 # Changelog
 
-# 2026-08-09 G6.2 and async boundary closeout: refreshed the pinned borrow
-  capability matrix against `wasm-tools 1.255.0`; synchronous
-  `list<borrow<T>>` remains the only nested-list row with canonical evidence,
-  while `future<borrow<T>>` and borrowed stream records remain rejected at
-  `component embed`. Added the evidence-only pure-scalar
-  `stream<list<u32>>` probe (`ptr=64`, `len=68`, stride `4`, capacity `3`) with
-  count `0..3`, invalid count `4`, pending/error/drop/cancel, exactly-once list
-  release, and an empty `ResourceTable`; no compiler registry entry was added.
-  The general async-call promotion contract and D2 filesystem/HTTP
-  method-recovery matrix are documented separately. Arbitrary producers,
-  unmeasured payload/resource/stream futures, general filesystem methods,
+# 2026-08-09 G6.2 scalar-list producer promotion and async boundary closeout:
+  refreshed the pinned borrow capability matrix against `wasm-tools 1.255.0`;
+  synchronous `list<borrow<T>>` remains the only nested-list row with canonical
+  evidence, while `future<borrow<T>>` and borrowed stream records remain
+  rejected at `component embed`. Promoted the exact private
+  `do:g6-2-scalar-list-producer@0.1.0 / consume-via-stream` shape for
+  `stream<list<u32>>` through an isolated manifest/sema/codegen adapter and
+  independent WAT/WIT template (`ptr=64`, `len=68`, stride `4`, max `3`, stream
+  capacity `1`). The Do fixtures and generated Component/Rust/Wasmtime gates
+  pass count `0..3`, invalid count `4`, pending/error/drop, cancellation before
+  and after transfer, exactly-once list release, and an empty `ResourceTable`;
+  fixtures `483`-`489` reject descriptor/topology drift before WAT. This is a
+  private bounded capability only: generic list/producer lowering, arbitrary
+  producer expressions, borrowed async payloads, general filesystem methods,
   external HTTP service worlds, and public `own<T>`/`borrow<T>`/`ref<T>` remain
-  pending.
+  pending. Fresh closeout gates: Zig `319/319`, default regression
+  `pass=1167 fail=0 skip=3`, WASM regression `pass=1169 fail=0 skip=3` with
+  smoke `6/6`, and ReleaseSmall smoke passed.
 
 # 2026-08-08 bounded scalar-argument async-call promotion: extended the
   private `--p3-async-call-component` root-owned local-frame adapter to exactly

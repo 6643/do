@@ -25,7 +25,7 @@ only. Public `own<T>`/`borrow<T>`/`ref<T>` syntax remains outside this phase.
 
 | ID | 问题 | 证据 / 停止点 | 恢复条件 |
 | --- | --- | --- | --- |
-| **G6.2** | `descriptor.read-directory` 及 record-stream 通用能力 | generic consumer 已覆盖注册的非 filesystem record streams；bounded producer、StreamMirror、private Result cancellation、HTTP payload cancellation、resource-list stream、私有 `do:variant-resource-stream-canonical@0.1.0`、动态 count `0..3` 的私有 `do:g6-2-c-min-dynamic-producer@0.1.0`，以及固定两批 `[111,222]`/`[333]` 的私有 `do:g6-2-batched-list-producer@0.1.0` compiler-generated Component/Rust/Wasmtime gate 均已通过。D2 另关闭了私有 `descriptor.get-type`、`descriptor.sync` 与 `descriptor.get-flags` 三个有界方法；三者均固定 upstream WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`，并分别通过独立 ABI、compiler admission 和 ready/pending/error/cancel cleanup gate。两类 producer 均固定 `ptr=64/len=68/stride=4/ticket=0`、stream capacity `1`，并保留 pending、sink error、early drop、转移前/后 cancellation、exactly-once resource/list cleanup 与 fail-closed 负例；仍缺一般 async helper/producer lease、任意 producer 表达式、通用 list、通用 borrowed/variant lowering、第六跳 forwarding、第七层或更一般 nested resource 字段、payload-bearing completion error 的更广形状、任意其它 filesystem async method与通用 resource cancellation。Pinned `wasm-tools 1.255.0` 对含 `borrow<T>` 的 stream record 在 Component embed 阶段明确拒绝（1.254.0 同样拒绝） | 保持所有 private bounded descriptor 的精确边界；扩展其他 producer/resource shape 前必须另立 design、probe 与 gate |
+| **G6.2** | `descriptor.read-directory` 及 record-stream 通用能力 | generic consumer 已覆盖注册的非 filesystem record streams；bounded producer、StreamMirror、private Result cancellation、HTTP payload cancellation、resource-list stream、私有 `do:variant-resource-stream-canonical@0.1.0`、动态 count `0..3` 的私有 `do:g6-2-c-min-dynamic-producer@0.1.0`、固定两批 `[111,222]`/`[333]` 的私有 `do:g6-2-batched-list-producer@0.1.0`，以及私有 `do:g6-2-scalar-list-producer@0.1.0` `stream<list<u32>>` producer 的 compiler-generated Component/Rust/Wasmtime gate 均已通过。scalar producer 固定 `ptr=64/len=68/stride=4/max=3`、stream capacity `1`、count `0..3`/invalid `4`，并保留 pending、sink error、early drop、转移前/后 cancellation、exactly-once list cleanup、empty `ResourceTable` 与 fail-closed 负例。D2 另关闭了私有 `descriptor.get-type`、`descriptor.sync` 与 `descriptor.get-flags` 三个有界方法；三者均固定 upstream WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`，并分别通过独立 ABI、compiler admission 和 ready/pending/error/cancel cleanup gate。仍缺一般 async helper/producer lease、任意 producer 表达式、通用 list、通用 borrowed/variant lowering、第六跳 forwarding、第七层或更一般 nested resource 字段、payload-bearing completion error 的更广形状、任意其它 filesystem async method与通用 resource cancellation。Pinned `wasm-tools 1.255.0` 对含 `borrow<T>` 的 stream record 在 Component embed 阶段明确拒绝（1.254.0 同样拒绝） | 保持所有 private bounded descriptor 的精确边界；扩展其他 producer/resource shape 前必须另立 design、probe 与 gate |
 | **06.2** | 历史总项 | 已拆到 G2–G6；通用 consumer slice 已关闭，剩余边界由 **G6.2** 的后续 gates 承接 | 同上 |
 
 **D2 general filesystem/HTTP recovery boundary (2026-08-09):**
@@ -48,11 +48,12 @@ Recovery requires a new method-specific design, WIT hash, canonical WAT,
 positive/negative fixtures, Component validation, and Rust/Wasmtime cleanup
 matrix; do not infer a generic lowering from a neighboring bounded method.
 
-**G6.2 next-shape stop (2026-08-08, `can_skip=true`):** 动态 count `0..3`
-与固定两批次 private producer 均已形成独立 design、pinned WIT/WAT、registry/sema admission、
-compiler adapter、正负 fixture和 Component/Rust/Wasmtime cleanup gate；这两个
-bounded shape 已关闭。下一 shape 仍不得从它泛化：没有新的 pinned WIT/WAT、
-canonical layout 和 ownership matrix 时不新增 descriptor、不泛化现有 lowering。
+**G6.2 next-shape stop (2026-08-09, `can_skip=true`):** 动态 count `0..3`、
+固定两批次 private producer 与 pure-scalar `stream<list<u32>>` producer 均已形成独立
+design、pinned WIT/WAT、registry/sema admission、compiler adapter、正负 fixture 和
+Component/Rust/Wasmtime cleanup gate；这些 bounded shape 已关闭。下一 shape 仍不得从它
+泛化：没有新的 pinned WIT/WAT、canonical layout 和 ownership matrix 时不新增 descriptor、
+不泛化现有 lowering。
 恢复条件是先提交新的 bounded design、pinned probe、正负 fixture、
 Component/Rust/Wasmtime cleanup gate，再重新进入 G6.2。
 
@@ -344,6 +345,15 @@ borrowed/list/variant resource field 或更宽 runtime 形状。
   `ptr=64/len=68/stride=4/ticket=0`, exact Do admission, compiler
   Component/Rust/Wasmtime ready/pending/error/cancel gates, and fail-closed
   negative fixtures; generic list/producer and public ownership remain pending
+- **G6.2 scalar-list producer**: private `do:g6-2-scalar-list-producer@0.1.0`
+  admits only `StreamWriter<[u32]> -> Result<nil, ProducerError>` plus the fixed
+  `produce(count u32)` topology. Its independent scalar adapter uses
+  `ptr=64/len=68/stride=4/max=3`, stream capacity `1`, runner-only controls
+  `10..14`, and passes count `0..3`, invalid `4`, pending/error/drop and both
+  cancellation positions with exactly-once list release and an empty
+  `ResourceTable`; fixtures `483`-`489` reject descriptor/element/count/sink/body/
+  payload/result drift before WAT. Generic `list<T>`, arbitrary producer
+  expressions, borrowed async payloads, and public ownership remain pending.
 - **D2 filesystem `descriptor.get-type`**: the private pinned method passed
   hand-authored/generated Component assembly and Rust/Wasmtime
   ready-directory/regular, pending, error, and cancel cleanup gates; fixtures
