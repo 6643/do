@@ -402,6 +402,9 @@ It selects descriptor-only structural reuse, keeps the three admission and
 cleanup paths explicit, and requires output/rejection differential gates before
 any emitter implementation.
 
+The executable implementation sequence is recorded in
+[`2026-08-09-async-call-internal-consolidation.md`](2026-08-09-async-call-internal-consolidation.md).
+
 ### M3: One D2 method-specific promotion
 
 Choose exactly one row from the D2 matrix and create a separate dated design,

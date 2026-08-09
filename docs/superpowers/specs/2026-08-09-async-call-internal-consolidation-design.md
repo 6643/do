@@ -103,6 +103,7 @@ pub const BoundedCleanupAction = enum {
 
 pub const BoundedCleanupContract = struct {
     normal: []const BoundedCleanupAction,
+    resume: []const BoundedCleanupAction,
     cancelled: []const BoundedCleanupAction,
 };
 
@@ -123,7 +124,8 @@ Shared invariants validated by the module:
 - the active encoded subtask is released before its waitable set;
 - context is cleared before the frame is freed;
 - a terminal action occurs after resource cleanup and exactly once in each
-  sequence;
+  terminal sequence;
+- `resume` contains only phase-transition actions and no terminal action;
 - `create_next_waitable_set` and `start_next_child` are legal only in the
   inline normal-resume sequence, never in a cancellation sequence.
 
@@ -169,13 +171,13 @@ terminal slot. The terminal condition is represented by the callback/endpoint
 protocol and cleanup order. In particular, `+12` cannot be borrowed from the
 existing `GenericAsyncFrame`, whose `terminal_offset` occupies that slot.
 
-Normal and cancellation sequences are deliberately explicit:
+Normal, phase-transition, and cancellation sequences are deliberately explicit:
 
-| Shape | Normal completion | Cancellation |
-| --- | --- | --- |
-| child | drop owned subtask; drop waitable set; clear context; free frame; root return | not admitted by this template; keep its existing rejection boundary |
-| inline | drop current subtask; drop waitable set; create next waitable set; start child; final child completion then drop waitable/context/frame; root return | cancel active subtask; drop it on pinned terminal status; drop waitable set; clear context; free frame; root cancel |
-| host scalar | `cleanup(0)`: drop subtask if owned; drop waitable set; clear context; free frame; root return | `cleanup(1)`: cancel subtask first; drop it; then waitable/context/frame; root cancel |
+| Shape | Normal terminal cleanup | Inline phase transition | Cancellation |
+| --- | --- | --- | --- |
+| child | drop owned subtask; drop waitable set; clear context; free frame; root return | empty | not admitted by this template; keep its existing rejection boundary |
+| inline | final child completion: drop current subtask; drop waitable set; clear context; free frame; root return | drop current subtask; drop waitable set; create next waitable set; start child | cancel active subtask; drop it on pinned terminal status; drop waitable set; clear context; free frame; root cancel |
+| host scalar | `cleanup(0)`: drop subtask if owned; drop waitable set; clear context; free frame; root return | empty | `cleanup(1)`: cancel subtask first; drop it; then waitable/context/frame; root cancel |
 
 The shared validator checks ordering only. It does not emit any of these
 actions, because inline phase transitions and host cancellation status are not
