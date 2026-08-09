@@ -54,8 +54,7 @@ bash examples/p3-runtime/test_rust_cli_stream_stdin_real.sh
 
 ```text
 cd src && zig test main.zig
-  → 309 passed; 0 skipped; 3 failed (tests 301, 302, and 304: generated WIT
-    module-graph/manifest validation).
+  → All 312 tests passed.
 
 ./src/build/test/run_tests.sh
   → pass=1158 fail=0 skip=3 (Bun Node-compatible runner)
