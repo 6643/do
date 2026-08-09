@@ -220,6 +220,22 @@ Additional parameters, non-literal expressions, payload/resource/stream/list
 values, general async-call composition, ownership syntax, and independent guest
 child tasks remain pending.
 
+**Private async host scalar-argument compiler promotion (2026-08-09, green):**
+the opt-in `--p3-async-host-arg-component` target now admits exactly one
+registered `@host_async_func` binding for
+`do:async-call-arg-probe/host@0.1.0 / work`, one `u32` helper parameter, and the
+root literal `@async(helper(7))`. The generated WIT hash remains
+`b9f5f8355e87231317ec05cccf692ee465c6f339bd509640aedc196e58f81e61`; the
+compiler emits the measured 20-byte root frame with argument slot `+12`.
+Negative `compile_err/490`–`497` fixtures reject descriptor, marker, type,
+arity, topology, dynamic-root, and payload drift before WAT. Current and legacy Component
+assembly/validation pass, and the generated Rust/Wasmtime gate passes ready,
+pending, and cancel with argument `7`, exactly-once Future cleanup, and an
+empty `ResourceTable`. This closes only the private bounded compiler shape;
+arbitrary producer expressions, payload/resource/list/stream futures, borrowed
+values, root hard-cancel, general filesystem/HTTP async, and public
+`own<T>`/`borrow<T>`/`ref<T>` remain pending.
+
 本轮执行复核（2026-08-07）重新运行了六跳 forwarding/任意 producer 边界、borrowed stream rejection 与 `p3_async_manifest`（74/74）；三个 gate 均保持预期拒绝/通过。同步确认了 descriptor-bounded StreamMirror 六模式、默认 Bun 回归 `pass=1116 fail=0 skip=3`、WASM 回归 `pass=1118 fail=0 skip=3`（WASM smoke `6/6`）和 ReleaseSmall smoke 通过；nested lowering、borrowed rejection、G6.2 boundary 与完整 compiler/Wasm 矩阵均保持绿色，未新增 descriptor 或 lowering。
 
 **规则**: 固定一至三条目 read-directory slice、generic consumer slice、multi-owned、多个顶层 nested-owned resource path 以及一层/两层/三层/四层/五层/六层 nested-owned resource consumer slice、注册的单读 `stream<list<resource-entry>>` private slice、bounded scalar producer slice、受限（最多五跳 forwarding）helper-mediated producer-lease slice、固定/参数化 `u64` countdown producer slice、参数化 helper producer slice及其五跳 forwarding、三种 typed 参数受限重排形状与 branch-selected terminal slice 均已可用；无对应 producer-lease/resource gate 时，不绕过上述边界扩 WASI async/stream codegen。

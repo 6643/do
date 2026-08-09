@@ -20,8 +20,8 @@
 | 阶段 A–F、H | done |
 | 阶段 D | 可推进项 done; D2.1 按 B 方案绿色 regression 收口 |
 | D2 真实 host smoke | in progress; real local filesystem preopen/read-directory, CLI pipe, compiler-generated TCP/UDP socket create/bind/drop loopback, and the private pinned `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` async method gates are green; the method-level recovery matrix is documented, while general filesystem async and external HTTP remain blocked |
-| 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + probe-only private async host scalar-argument ABI + helper-mediated lease（含五跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + **private bounded scalar `stream<list<u32>>` producer promotion** + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` slices、G6.3、G6.4 done; generic list/producer、borrowed payload、general async-call、D2 general methods 与 root hard-cancel 仍 pending |
-| Colorless async / WIT bindgen | canonical `@async/@await/@cancel` surface, legacy `async` deprecation, schema 1/2 generated manifest checks, automatic discovery for the admitted schema 2 unit and scalar capabilities, plus opt-in v2 variant/scalar-i64 slices, the `--p3-async-call-component` root-owned local-frame slice including one inline `u32` scalar argument, the private probe-only async host scalar-argument ABI, and the private `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` slice verified; general async-call promotion and D2 recovery designs are frozen without compiler widening; unrestricted generated WIT lowering remains pending |
+| 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + **private bounded async host scalar-argument compiler promotion** + helper-mediated lease（含五跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + **private bounded scalar `stream<list<u32>>` producer promotion** + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags` slices、G6.3、G6.4 done; generic list/producer、borrowed payload、general async-call、D2 general methods 与 root hard-cancel 仍 pending |
+| Colorless async / WIT bindgen | canonical `@async/@await/@cancel` surface, legacy `async` deprecation, schema 1/2 generated manifest checks, automatic discovery for the admitted schema 2 unit and scalar capabilities, plus opt-in v2 variant/scalar-i64 slices, the `--p3-async-call-component` root-owned local-frame slice including one inline `u32` scalar argument, the private `--p3-async-host-arg-component` scalar-argument compiler slice, and the private `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` slice verified; general async-call promotion and D2 recovery designs are frozen without compiler widening; unrestricted generated WIT lowering remains pending |
 | 阶段 I | **closed** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构扁平拆分 | 已落地: `diagnostics` / `type_name` / `sema_error` / codegen 域竖切 / **`sema_*` 域竖切** (`sema_tokens`/`sema_shapes`/`sema_function_*`/`sema_structures`/`sema_type_checks`/`sema_imports`/`sema_control`) |
 | 目录 | 标准库 `lib/`; 工具链 `src/` (原 `tool/`) |
@@ -46,7 +46,7 @@ shape remains pending and must fail closed before WAT.
 ### 最近验证
 
 ```text
-2026-08-09 async host scalar-argument ABI probe (probe-only)
+2026-08-09 async host scalar-argument ABI probe (ABI baseline)
   → private `do:async-call-arg-probe@0.1.0` WIT hash
     `b9f5f8355e87231317ec05cccf692ee465c6f339bd509640aedc196e58f81e61`;
     current `wasm-tools 1.255.0` (`6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`)
@@ -62,9 +62,29 @@ shape remains pending and must fail closed before WAT.
     This is ABI evidence only; no registry, sema, codegen, public ownership
     syntax, arbitrary producer expression, payload/resource/list/stream
     future, general async-call lowering, or root hard-cancel promotion was
-    added. The new Rust bin was formatted independently; the workspace-wide
-    `cargo fmt --check` still reports pre-existing drift in unrelated runner
-    bins and was not broadened in this probe.
+    added. The ABI probe is retained as the canonical baseline for the
+    compiler promotion recorded below.
+
+```
+
+```text
+2026-08-09 private async host scalar-argument compiler promotion (green)
+  → `--p3-async-host-arg-component` admits only the pinned
+    `do:async-call-arg-probe/host@0.1.0 / work` shape with one `u32` helper
+    argument and the root literal `@async(helper(7))`; negative
+    `compile_err/490`–`497` fixtures reject descriptor, marker, type, arity,
+    topology, dynamic-root, and payload drift before WAT. The generated WIT hash remains
+    `b9f5f8355e87231317ec05cccf692ee465c6f339bd509640aedc196e58f81e61` and
+    the measured root frame remains `20` bytes with argument slot `+12`.
+  → `test_do_async_host_scalar_argument.sh` passes current `1.255.0` and
+    legacy `1.254.0` Component assembly/validation; the generated Component
+    Rust/Wasmtime gate passes ready, pending, and cancel with `calls=1`,
+    `argument=7`, exactly one Future drop, cancellation-only pending drop,
+    and `table-empty=true`.
+  → This closes one private bounded compiler capability only. General
+    async-call lowering, arbitrary producers, payload/resource/list/stream
+    futures, borrowed values, root hard-cancel, D2 general methods, and public
+    `own<T>`/`borrow<T>`/`ref<T>` remain pending.
 
 ```
 

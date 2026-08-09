@@ -1,5 +1,20 @@
 # Changelog
 
+# 2026-08-09 private async host scalar-argument compiler promotion: added the
+  opt-in `--p3-async-host-arg-component` target for the exact registered
+  `do:async-call-arg-probe/host@0.1.0 / work` shape. The source contract has one
+  `u32` helper argument, root literal `@async(helper(7))`, and a 20-byte frame
+  with argument slot `+12`; the generated WIT remains pinned to hash
+  `b9f5f8355e87231317ec05cccf692ee465c6f339bd509640aedc196e58f81e61`.
+  Compiler fixtures `490`–`497` reject descriptor, marker, type, arity,
+  topology, dynamic-root, and payload drift before WAT. Current and legacy
+  Component assembly/validation pass, and the generated Rust/Wasmtime gate
+  passes ready/pending/cancel with argument `7`, exactly-once Future cleanup,
+  and an empty `ResourceTable`. General async-call lowering, arbitrary
+  producers, payload/resource/list/stream futures, borrowed values, root
+  hard-cancel, general filesystem/HTTP async, and public
+  `own<T>`/`borrow<T>`/`ref<T>` remain pending.
+
 # 2026-08-09 probe-only async host scalar-argument ABI: added the private
   `do:async-call-arg-probe@0.1.0` WIT/Core-WAT Component gate and a dedicated
   Rust/Wasmtime oracle. Both pinned `wasm-tools` 1.255.0 and legacy 1.254.0
