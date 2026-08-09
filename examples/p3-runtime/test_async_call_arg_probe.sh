@@ -107,6 +107,23 @@ for shape in u64 two-params; do
   fi
 done
 
+for boundary in \
+  non-literal-root-argument \
+  missing-call-argument \
+  extra-call-argument \
+  helper-payload-return \
+  second-await \
+  multiple-live-children \
+  resource-payload \
+  list-payload \
+  stream-payload \
+  borrowed-payload \
+  future-payload \
+  independent-helper-task \
+  legacy-async-declaration; do
+  printf 'boundary=%s status=reserved\n' "$boundary"
+done
+
 component_path="$component"
 if [[ -n "${PROBE_COMPONENT_OUT:-}" ]]; then
   cp "$component" "$PROBE_COMPONENT_OUT"
