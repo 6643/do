@@ -76,7 +76,7 @@ the implementation plan:
 ```zig
 pub const BoundedAsyncMode = enum {
     child,
-    inline,
+    inline_call,
     host_scalar,
 };
 
@@ -103,7 +103,7 @@ pub const BoundedCleanupAction = enum {
 
 pub const BoundedCleanupContract = struct {
     normal: []const BoundedCleanupAction,
-    resume: []const BoundedCleanupAction,
+    phase_transition: []const BoundedCleanupAction,
     cancelled: []const BoundedCleanupAction,
 };
 
@@ -125,7 +125,7 @@ Shared invariants validated by the module:
 - context is cleared before the frame is freed;
 - a terminal action occurs after resource cleanup and exactly once in each
   terminal sequence;
-- `resume` contains only phase-transition actions and no terminal action;
+- `phase_transition` contains only phase-transition actions and no terminal action;
 - `create_next_waitable_set` and `start_next_child` are legal only in the
   inline normal-resume sequence, never in a cancellation sequence.
 

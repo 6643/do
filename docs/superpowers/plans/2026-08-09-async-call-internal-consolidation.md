@@ -23,18 +23,19 @@
 
 **Files:**
 - Create: `src/build/codegen_component_async_shape.zig`
+- Create: `src/build/codegen_component_async_shape_test.zig`
 - Modify: `src/main.zig:80-106` test import list
 
 **Interfaces:**
 - Consumes: no parser, registry, or emitter state.
 - Produces: `BoundedAsyncMode`, `BoundedFrameLayout`, `BoundedCleanupAction`, `BoundedCleanupContract`, `BoundedAsyncShape`, `validate`, `child_shape`, `inline_shape`, and `host_scalar_shape` for planner adapters.
 
-- [ ] **Step 1: Define the immutable shape contract.**
+- [x] **Step 1: Define the immutable shape contract.**
 
   Add these public types and function signatures:
 
   ```zig
-  pub const BoundedAsyncMode = enum { child, inline, host_scalar };
+  pub const BoundedAsyncMode = enum { child, inline_call, host_scalar };
 
   pub const BoundedFrameLayout = struct {
       size: u32,
@@ -59,7 +60,7 @@
 
   pub const BoundedCleanupContract = struct {
       normal: []const BoundedCleanupAction,
-      resume: []const BoundedCleanupAction,
+      phase_transition: []const BoundedCleanupAction,
       cancelled: []const BoundedCleanupAction,
   };
 
@@ -79,7 +80,7 @@
   Keep all action arrays in module-owned immutable constants. The constructor
   functions return a validated value and never allocate.
 
-- [ ] **Step 2: Implement layout validation.**
+- [x] **Step 2: Implement layout validation.**
 
   `validate` must reject with stable errors `InvalidFrameAlignment`,
   `InvalidFrameSlot`, `InvalidFrameSize`, and `InvalidCleanupOrder` when:
@@ -93,7 +94,7 @@
     before frame cleanup;
   - `cancel_active_subtask` is not immediately before the permitted drop path
     in cancellation cleanup;
-  - `resume` contains a terminal action, a cancellation action, or a phase
+  - `phase_transition` contains a terminal action, a cancellation action, or a phase
     transition for a non-inline mode.
 
   Permit the child shape's empty `cancelled` sequence because its current
@@ -102,28 +103,30 @@
   sequence and exactly one `root_task_cancel` in inline/host cancellation
   sequences.
 
-- [ ] **Step 3: Add five positive and boundary unit tests.**
+- [x] **Step 3: Add five positive and boundary unit tests.**
 
-  Add tests in the same module for child unit, child scalar, inline unit, inline
-  scalar, and host scalar. Assert every offset, size, alignment, mode, and
-  action sequence. Add negative tests for an argument at `+12` in a 16-byte
-  frame, 8-byte alignment, a non-common offset, duplicate terminal action,
-  terminal action in `resume`, `start_next_child` in cancellation, and a
-  non-inline resume sequence.
+  Add tests in `codegen_component_async_shape_test.zig` for child unit, child
+  scalar, inline unit, inline scalar, and host scalar. Assert every offset,
+  size, alignment, mode, and action sequence. Add negative tests for an
+  argument at `+12` in a 16-byte frame, 8-byte alignment, a non-common offset,
+    duplicate terminal action, terminal action in `phase_transition`, `start_next_child` in
+  cancellation, and a non-inline resume sequence.
 
-- [ ] **Step 4: Make the module part of the standard Zig test graph.**
+- [x] **Step 4: Make the module part of the standard Zig test graph.**
 
-  Add `_ = @import("build/codegen_component_async_shape.zig");` to the existing
-  `test {}` block in `src/main.zig`. Do not import it into production dispatch
-  yet; Task 2 performs the first plan-only integration.
+  Add `_ = @import("build/codegen_component_async_shape_test.zig");` to the
+  existing `test {}` block in `src/main.zig`. The test module imports the
+  production shape module. Do not import the shape module into production
+  dispatch yet; Task 2 performs the first plan-only integration.
 
-- [ ] **Step 5: Run focused verification and commit.**
+- [x] **Step 5: Run focused verification and commit.**
 
   ```bash
   cd src && zig test main.zig
   cd ..
   git diff --check
-  git add src/build/codegen_component_async_shape.zig src/main.zig
+  git add src/build/codegen_component_async_shape.zig \
+    src/build/codegen_component_async_shape_test.zig src/main.zig
   git commit -m "Add bounded async-call shape facts"
   ```
 
