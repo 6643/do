@@ -132,7 +132,8 @@ pub fn check_p3_async_host_imports(allocator: std.mem.Allocator, tokens: []const
             .http_stream_reader, .stream_reader_acquire, .stream_writer, .record_stream_reader, .record_resource_list_stream_reader, .record_resource_list_stream_producer, .record_resource_list_stream_dynamic_producer, .record_resource_list_stream_batched_producer, .scalar_list_stream_producer, .variant_resource_stream_reader => true,
             else => false,
         } else false;
-        if (!is_stream_effect and !std.mem.eql(u8, descriptor.effect, "async")) return mark_error_at(tokens, idx, error.UnknownP3AsyncHostDescriptor);
+        if (!is_stream_effect and !std.mem.eql(u8, descriptor.effect, "async") and
+            !std.mem.eql(u8, descriptor.effect, "async-host-scalar-argument")) return mark_error_at(tokens, idx, error.UnknownP3AsyncHostDescriptor);
     }
 }
 
@@ -154,7 +155,8 @@ fn is_admitted_generic_async_probe(
 }
 
 fn descriptor_is_async_invocation(descriptor: p3_async_manifest.Descriptor) bool {
-    if (std.mem.eql(u8, descriptor.effect, "async")) return true;
+    if (std.mem.eql(u8, descriptor.effect, "async") or
+        std.mem.eql(u8, descriptor.effect, "async-host-scalar-argument")) return true;
     // The filesystem read-directory descriptor has a record-stream lowering
     // shape but its pinned WIT declaration is `async func`; the other current
     // record-stream reader probes are ordinary `func` declarations.

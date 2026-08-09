@@ -199,6 +199,8 @@ const codegen_component_wasi_sockets = @import("codegen_component_wasi_sockets.z
 const codegen_component_resource_async = @import("codegen_component_resource_async.zig");
 const codegen_component_async = @import("codegen_component_async.zig");
 const codegen_component_async_call = @import("codegen_component_async_call.zig");
+const codegen_component_async_host_arg_plan = @import("codegen_component_async_host_arg_plan.zig");
+const codegen_component_async_host_arg = @import("codegen_component_async_host_arg.zig");
 const codegen_component_future_owned = @import("codegen_component_future_owned.zig");
 const codegen_component_future_owned_plan = @import("codegen_component_future_owned_plan.zig");
 const codegen_gc_core = @import("codegen_gc_core.zig");
@@ -543,7 +545,14 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
         defer plan.deinit(allocator);
         return codegen_component_async_call.emit_component_wat(allocator, plan);
     }
-    if (options.p3_async_host_arg_component) return error.UnsupportedP3AsyncHostArgComponent;
+    if (options.p3_async_host_arg_component) {
+        var plan = codegen_component_async_host_arg_plan.analyze(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3AsyncHostArgComponent => return error.UnsupportedP3AsyncHostArgComponent,
+            else => return err,
+        };
+        defer plan.deinit(allocator);
+        return codegen_component_async_host_arg.emit_component_wat(allocator, plan);
+    }
     if (options.p3_owned_future_component) {
         var plan = codegen_component_future_owned_plan.analyze(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3OwnedFutureComponent => return error.UnsupportedP3OwnedFutureComponent,
