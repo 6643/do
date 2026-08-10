@@ -74,6 +74,53 @@ ready/pending/error/cancel cleanup matrix before changing `p3_async_registry`
 or filesystem/HTTP lowering. Cancellation releases live guest/Component state
 and never rolls back an effect already issued to the host.
 
+## D2 Bounded Filesystem Async `descriptor.stat` Early-Drop Boundary (2026-08-10)
+
+**Status:** the private `descriptor.stat` WIT/ABI probe, the exact opt-in Do
+compiler slice, and the terminal, explicit-cancel, and repeat Rust/Wasmtime
+rows are green with only `wasm-tools 1.255.0`. Generic filesystem async and
+generic host-future-drop cancellation remain closed; this probe scopes
+early-drop to whole-Store disposal only.
+
+**Evidence:**
+`bash examples/p3-runtime/test_d2_wasi_filesystem_stat_abi.sh`,
+`bash examples/p3-runtime/test_do_wasi_filesystem_stat.sh`, and
+`bash examples/p3-runtime/test_rust_wasi_filesystem_stat.sh` pass with
+`wasm-tools 1.255.0 (76e20611d 2026-07-30)` and SHA-256
+`6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`.
+The canonical result area is `frame+8` with tag `+8`, aligned payload `+16`,
+option presence/payload offsets through `+104`, status `+112`, and callback
+subtask handle `+116`; the allocated frame is 128 bytes. The runtime output
+includes ready, pending, error, explicit `[async-lower][subtask-cancel]`,
+early-drop(Store disposal), and repeat rows.
+
+The compiler target is `--p3-wasi-filesystem-stat-component`. Fixture `498`
+passes `do check`, the default `do build` fails closed with
+`AsyncLoweringUnavailable`, and the opt-in Core WAT is byte-identical to the
+canonical template (SHA-256
+`b7aee0221318c857817859c5e849fa98da9909c2151b09c6dea9b964c986a69a`). The
+generated WIT hash is
+`4a2e5055c2ec06c772660b211c3e3ab3e3e15d8b5931c8e7def804e56d5175da`.
+Fixtures `499`-`510` reject before WAT. Generated regular Component rows
+`ready`, `pending`, `error`, and `repeat` match the hand-authored record and
+exactly-once cleanup matrix; cancel and Store-disposal early-drop stay on the
+hand-authored cancel-world oracle because the Do source has no cancel export.
+
+Wasmtime 47 documents that dropping a `TypedFunc::call_concurrent` future does
+not cancel an already-started guest task. The early-drop row therefore drops
+the call future and then the whole Store, reporting one pending host-future
+drop, `descriptor-drops=0`, and `table-empty=not-applicable`. The explicit
+cancel row remains the only Component-level proof for subtask cancellation,
+descriptor drop, and an empty `ResourceTable`. Do not infer generic host-future
+drop cancellation or add a compiler lowering for it.
+
+**Recovery condition:** if Wasmtime exposes per-task cancellation for
+`call_concurrent`, add a new pinned probe and runtime matrix before changing
+the generic cancellation boundary. Until then, keep generic host-future-drop
+cancellation and general filesystem async unadmitted; the exact private stat
+target remains limited to its pinned source shape and generated regular
+Component path.
+
 ## D2 Bounded Filesystem Async `descriptor.get-type` (2026-08-08)
 
 **Status:** one private filesystem async method is verified; general filesystem
