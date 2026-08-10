@@ -1,5 +1,23 @@
 # Changelog
 
+# 2026-08-10 D2 private filesystem `descriptor.metadata-hash` promotion:
+  admitted only `wasi:filesystem/types@0.3.0-rc-2025-09-16 /
+  descriptor.metadata-hash` with upstream WIT hash
+  `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f` and
+  measured import `[async-lower][method]descriptor.metadata-hash`
+  `(i32,i32)->i32`; task-return is `(i32,i64,i64)` and the private Result
+  payload is `metadata-hash-value { lower:u64, upper:u64 } | error-code`.
+  The opt-in `--p3-async-component` compiler gate admits fixture `516`,
+  rejects `517`-`519` before WAT, and matches Core template hash
+  `f51c82887174a7ed1adf95a1cbe0e333f80a487962a2a8478334ca9750933b6b`.
+  WIT mirror hashes are
+  `6976359b3a4813d6771b3ef9a7fdcfb2ee9323e70c33b9ac7d6b628519fecfed` /
+  `b6e98cf2ae6f76e105f53c7ea09666b1c5684d33edb9838d034862a27b09f5c3`.
+  Generated ready/pending/error/repeat and hand-authored cancel/Store-disposal
+  early-drop Rust/Wasmtime oracle rows pass. General filesystem async,
+  `metadata-hash-at`, and public `own<T>`/`borrow<T>`/`ref<T>` remain outside
+  this private method slice.
+
 # 2026-08-10 D2 private filesystem `descriptor.sync-data` promotion: admitted
   only `wasi:filesystem/types@0.3.0-rc-2025-09-16 / descriptor.sync-data`
   with upstream WIT hash

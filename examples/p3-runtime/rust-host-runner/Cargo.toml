@@ -213,6 +213,10 @@ path = "src/bin/wasi_filesystem_get_flags.rs"
 name = "do-p3-wasi-filesystem-stat-host-runner"
 path = "src/bin/do-p3-wasi-filesystem-stat-host-runner.rs"
 
+[[bin]]
+name = "wasi-filesystem-metadata-hash"
+path = "src/bin/wasi_filesystem_metadata_hash.rs"
+
 [profile.dev]
 debug = 0
 incremental = false

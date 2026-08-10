@@ -25,6 +25,7 @@ pub const LoweringShape = union(enum) {
     filesystem_get_flags: FilesystemGetFlagsShape,
     filesystem_sync: FilesystemSyncShape,
     filesystem_sync_data: FilesystemSyncDataShape,
+    filesystem_metadata_hash: FilesystemMetadataHashShape,
     filesystem_stat: FilesystemStatShape,
     future_owned_resource: FutureOwnedCanonical,
     resource_result_2word: ResourceResult2WordShape,
@@ -278,6 +279,16 @@ pub const FilesystemSyncDataShape = struct {
     resource_drop_import: []const u8,
 };
 
+/// The private `descriptor.metadata-hash` slice returns a two-word record.
+/// Keep its exact record and task-return layout separate from `stat` because
+/// the result-area tag and payload offsets are method-specific.
+pub const FilesystemMetadataHashShape = struct {
+    receiver: []const u8,
+    source_result: []const u8,
+    record_layout: RecordLayout,
+    resource_drop_import: []const u8,
+};
+
 /// The private descriptor.stat slice has a record result with three optional
 /// datetime payloads. Keep its measured record layout separate from the
 /// scalar filesystem Result shapes so a scalar emitter cannot consume it.
@@ -508,6 +519,10 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
         return .{ .filesystem_sync_data = shape };
     }
 
+    if (valid_filesystem_metadata_hash_descriptor(descriptor)) |shape| {
+        return .{ .filesystem_metadata_hash = shape };
+    }
+
     if (valid_filesystem_stat_descriptor(descriptor)) |shape| {
         return .{ .filesystem_stat = shape };
     }
@@ -718,6 +733,69 @@ fn valid_filesystem_sync_data_descriptor(descriptor: Descriptor) ?FilesystemSync
         .err = payload.err,
         .resource_drop_import = "[resource-drop]descriptor",
     };
+}
+
+fn valid_filesystem_metadata_hash_descriptor(descriptor: Descriptor) ?FilesystemMetadataHashShape {
+    const record_layout = descriptor.canonical.record_layout orelse return null;
+    if (!std.mem.eql(u8, descriptor.locator, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.member, "descriptor.metadata-hash") or
+        !std.mem.eql(u8, descriptor.effect, "async") or
+        descriptor.params.len != 1 or
+        !std.mem.eql(u8, descriptor.params[0], "descriptor") or
+        descriptor.resource != null or
+        !std.mem.eql(u8, descriptor.result, "Result<metadata-hash-value,error-code>") or
+        descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, descriptor.wit_sha256.?, "8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f") or
+        !std.mem.eql(u8, descriptor.canonical.completion, "task-return") or
+        !equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i32" }) or
+        !equal_core_types(descriptor.canonical.core_results, &.{ "i32" }) or
+        !equal_core_types(descriptor.canonical.completion_params, &.{ "i32", "i64", "i64" }) or
+        descriptor.canonical.result_payload != null or
+        descriptor.canonical.result_area_payload != null or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower][method]descriptor.metadata-hash") or
+        !std.mem.eql(u8, descriptor.wit.package, "wasi:filesystem@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.wit.interface, "types") or
+        !std.mem.eql(u8, descriptor.wit.operation, "descriptor.metadata-hash") or
+        !std.mem.eql(u8, descriptor.wit.world, "imports") or
+        descriptor.wit.parameter.len != 0 or
+        !valid_filesystem_metadata_hash_record_layout(record_layout)) return null;
+
+    return .{
+        .receiver = descriptor.params[0],
+        .source_result = descriptor.result,
+        .record_layout = record_layout,
+        .resource_drop_import = "[resource-drop]descriptor",
+    };
+}
+
+fn valid_filesystem_metadata_hash_record_layout(layout: RecordLayout) bool {
+    if (!std.mem.eql(u8, layout.name, "metadata-hash-value") or
+        layout.byte_size != 16 or layout.fields.len != 2 or layout.source_fields.len != 2) return false;
+    const expected_fields = [_]RecordField{
+        .{ .name = "lower", .core_type = "i64", .offset = 0 },
+        .{ .name = "upper", .core_type = "i64", .offset = 8 },
+    };
+    for (expected_fields, 0..) |expected, index| {
+        const actual = layout.fields[index];
+        if (!std.mem.eql(u8, actual.name, expected.name) or
+            !std.mem.eql(u8, actual.core_type, expected.core_type) or
+            actual.offset != expected.offset) return false;
+    }
+    const expected_source = [_]RecordSourceField{
+        .{ .name = "lower", .source_type = "u64", .storage = &.{ "lower" } },
+        .{ .name = "upper", .source_type = "u64", .storage = &.{ "upper" } },
+    };
+    for (expected_source, 0..) |expected, index| {
+        const actual = layout.source_fields[index];
+        if (!std.mem.eql(u8, actual.name, expected.name) or
+            !std.mem.eql(u8, actual.source_type, expected.source_type) or
+            actual.storage.len != expected.storage.len or
+            !std.mem.eql(u8, actual.storage[0], expected.storage[0]) or
+            actual.ownership != .none or actual.resource != null or
+            actual.drop_import != null or actual.nested_fields.len != 0) return false;
+    }
+    return true;
 }
 
 fn valid_filesystem_stat_descriptor(descriptor: Descriptor) ?FilesystemStatShape {
@@ -4667,6 +4745,56 @@ test "filesystem descriptor sync-data lowering rejects ABI drift" {
     var canonical = descriptor.canonical;
     canonical.result_payload = payload;
     drifted = descriptor;
+    drifted.canonical = canonical;
+    try std.testing.expect(lowering_shape(drifted) == null);
+}
+
+test "checked-in registry admits the pinned filesystem descriptor metadata-hash ABI" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.metadata-hash") orelse return error.TestUnexpectedResult;
+    const shape = switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .filesystem_metadata_hash => |value| value,
+        else => return error.TestUnexpectedResult,
+    };
+    try std.testing.expectEqualStrings("descriptor", shape.receiver);
+    try std.testing.expectEqualStrings("Result<metadata-hash-value,error-code>", shape.source_result);
+    try std.testing.expectEqualStrings("metadata-hash-value", shape.record_layout.name);
+    try std.testing.expectEqual(@as(u32, 16), shape.record_layout.byte_size);
+    try std.testing.expectEqualStrings("lower", shape.record_layout.fields[0].name);
+    try std.testing.expectEqualStrings("i64", shape.record_layout.fields[0].core_type);
+    try std.testing.expectEqual(@as(u32, 0), shape.record_layout.fields[0].offset);
+    try std.testing.expectEqualStrings("upper", shape.record_layout.fields[1].name);
+    try std.testing.expectEqualStrings("i64", shape.record_layout.fields[1].core_type);
+    try std.testing.expectEqual(@as(u32, 8), shape.record_layout.fields[1].offset);
+    try std.testing.expectEqualStrings("i32", descriptor.canonical.completion_params[0]);
+    try std.testing.expectEqualStrings("i64", descriptor.canonical.completion_params[1]);
+    try std.testing.expectEqualStrings("i64", descriptor.canonical.completion_params[2]);
+    try std.testing.expectEqualStrings("[resource-drop]descriptor", shape.resource_drop_import);
+}
+
+test "filesystem descriptor metadata-hash lowering rejects ABI drift" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.metadata-hash") orelse return error.TestUnexpectedResult;
+
+    var drifted = descriptor;
+    drifted.canonical.core_params = &.{ "i32" };
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.wit_sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    var canonical = descriptor.canonical;
+    canonical.completion_params = &.{ "i32", "i32", "i64" };
+    drifted.canonical = canonical;
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    canonical = descriptor.canonical;
+    canonical.record_layout = null;
     drifted.canonical = canonical;
     try std.testing.expect(lowering_shape(drifted) == null);
 }

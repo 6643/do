@@ -195,6 +195,7 @@ fn p3_async_signature_matches(tokens: []const lexer.Token, start_idx: usize, end
             .filesystem_get_type => return filesystem_get_type_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_sync => return filesystem_sync_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_sync_data => return filesystem_sync_data_signature_matches(tokens, start_idx, close_idx, end_idx),
+            .filesystem_metadata_hash => return filesystem_metadata_hash_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_stat => return filesystem_stat_signature_matches(tokens, start_idx, close_idx, end_idx),
             .future_owned_resource => return future_owned_signature_matches(tokens, start_idx, close_idx, end_idx),
             else => {},
@@ -261,6 +262,18 @@ fn filesystem_sync_data_signature_matches(
         tokens[params_start_idx + 1].kind != .ident or
         !std.mem.eql(u8, tokens[params_start_idx + 1].lexeme, "Dir")) return false;
     return compact_token_range_equals(tokens, params_close_idx + 3, end_idx, "nil|SyncDataError");
+}
+
+fn filesystem_metadata_hash_signature_matches(
+    tokens: []const lexer.Token,
+    params_start_idx: usize,
+    params_close_idx: usize,
+    end_idx: usize,
+) bool {
+    if (params_close_idx != params_start_idx + 2 or
+        tokens[params_start_idx + 1].kind != .ident or
+        !std.mem.eql(u8, tokens[params_start_idx + 1].lexeme, "Dir")) return false;
+    return compact_token_range_equals(tokens, params_close_idx + 3, end_idx, "MetadataHash|HashError");
 }
 
 fn filesystem_stat_signature_matches(
@@ -2009,6 +2022,32 @@ test "pinned filesystem sync-data host_async_func imports accept the unit error 
     defer std.testing.allocator.free(tokens);
 
     try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "pinned filesystem metadata-hash host_async_func imports accept the two-word record union" {
+    const source =
+        \\metadata_hash = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.metadata-hash", (Dir) -> MetadataHash | HashError)
+        \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+        \\MetadataHash = @wasi_record("filesystem/types/metadata-hash-value", { lower u64, upper u64 })
+        \\HashError error = Io | NoEntry
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "pinned filesystem metadata-hash host_async_func imports reject a borrowed result" {
+    const source =
+        \\metadata_hash = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.metadata-hash", (Dir) -> borrow<MetadataHash> | HashError)
+        \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+        \\MetadataHash = @wasi_record("filesystem/types/metadata-hash-value", { lower u64, upper u64 })
+        \\HashError error = Io | NoEntry
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectError(error.P3AsyncHostSignatureMismatch, check_p3_async_host_imports(std.testing.allocator, tokens));
 }
 
 test "pinned filesystem sync-data host_async_func imports reject a borrowed payload" {

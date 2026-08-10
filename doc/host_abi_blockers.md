@@ -39,12 +39,13 @@ callback mangling mode; it does not select a legacy toolchain.
 ## D2 General Filesystem/HTTP Recovery Boundary (2026-08-09)
 
 **Status:** the private `descriptor.get-type`, `descriptor.sync`,
-`descriptor.get-flags`, and `descriptor.sync-data` methods remain green as
-separate bounded descriptors.
+`descriptor.get-flags`, `descriptor.stat`, `descriptor.sync-data`, and
+`descriptor.metadata-hash` methods remain green as separate bounded
+descriptors.
 General filesystem async and arbitrary HTTP remain blocked; this checkpoint
 does not add a registry entry or widen code generation.
 
-**Evidence:** the four ABI scripts and their Rust/Wasmtime runtime gates pass
+**Evidence:** the method-specific ABI scripts and their Rust/Wasmtime runtime gates pass
 with the pinned filesystem WIT (`types.wit` SHA-256
 `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`) and the
 current `wasm-tools 1.255.0` binary. Each closed row has its own measured
@@ -166,6 +167,43 @@ producer expressions, stream/list/borrowed/record payloads, `stat-at`,
 `own<T>`/`borrow<T>`/`ref<T>` syntax. Each additional method needs its own
 pinned WIT/Core probe, positive/negative fixtures, Component validation, and
 Rust/Wasmtime cleanup matrix.
+
+## D2 Bounded Filesystem Async `descriptor.metadata-hash` (2026-08-10)
+
+**Status:** the private metadata-hash method is verified; generic filesystem
+async, `metadata-hash-at`, and generic host-future-drop cancellation remain
+blocked.
+
+**Evidence:**
+`bash examples/p3-runtime/test_d2_wasi_filesystem_metadata_hash_abi.sh` and
+`bash examples/p3-runtime/test_rust_wasi_filesystem_metadata_hash.sh` pass with
+`wasm-tools 1.255.0 (76e20611d 2026-07-30)` and SHA-256
+`6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`.
+The upstream filesystem WIT hash is
+`8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`;
+regular and cancel probe WIT mirror hashes are
+`6976359b3a4813d6771b3ef9a7fdcfb2ee9323e70c33b9ac7d6b628519fecfed` and
+`b6e98cf2ae6f76e105f53c7ea09666b1c5684d33edb9838d034862a27b09f5c3`.
+The measured import is
+`[async-lower][method]descriptor.metadata-hash: (i32,i32) -> i32`, task-return
+is `(i32,i64,i64)`, the Result payload is
+`metadata-hash-value { lower: u64, upper: u64 } | error-code`, and descriptor
+drop is `[resource-drop]descriptor (i32) -> nil`.
+
+The private `--p3-async-component` adapter admits only fixture `516` with one
+`Dir` receiver, one `Future<MetadataHash | HashError>`, and one direct await.
+The opt-in Core template hash is
+`f51c82887174a7ed1adf95a1cbe0e333f80a487962a2a8478334ca9750933b6b`;
+fixtures `517`-`519` reject before WAT. Generated ready/pending/error/repeat
+and hand-authored cancel/Store-disposal early-drop Rust/Wasmtime rows pass.
+Cancellation only releases live Component state and never claims rollback of
+host work already issued.
+
+**Boundary:** this does not admit `metadata-hash-at`, generic filesystem async,
+arbitrary producer expressions, stream/list/borrowed/record payloads, external
+HTTP, or public `own<T>`/`borrow<T>`/`ref<T>` syntax. Each additional method
+needs its own pinned WIT/Core probe, positive/negative fixtures, Component
+validation, and Rust/Wasmtime cleanup matrix.
 
 ## D2 Bounded Filesystem Async `descriptor.get-type` (2026-08-08)
 

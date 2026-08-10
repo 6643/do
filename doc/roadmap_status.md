@@ -19,8 +19,8 @@
 | v1 子集 | 发布候选已收口 |
 | 阶段 A–F、H | done |
 | 阶段 D | 可推进项 done; D2.1 按 B 方案绿色 regression 收口 |
-| D2 真实 host smoke | in progress; real local filesystem preopen/read-directory, CLI pipe, compiler-generated TCP/UDP socket create/bind/drop loopback, and the private pinned `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data` async method gates are green; the method-level recovery matrix is documented, while general filesystem async and external HTTP remain blocked |
-| 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + **private bounded async host scalar-argument compiler promotion** + helper-mediated lease（含五跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + **private bounded scalar `stream<list<u32>>` producer promotion** + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data` slices、G6.3、G6.4 done; generic list/producer、borrowed payload、general async-call、D2 general methods 与 root hard-cancel 仍 pending |
+| D2 真实 host smoke | in progress; real local filesystem preopen/read-directory, CLI pipe, compiler-generated TCP/UDP socket create/bind/drop loopback, and the private pinned `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash` async method gates are green; the method-level recovery matrix is documented, while general filesystem async and external HTTP remain blocked |
+| 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + **private bounded async host scalar-argument compiler promotion** + helper-mediated lease（含五跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + **private bounded scalar `stream<list<u32>>` producer promotion** + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash` slices、G6.3、G6.4 done; generic list/producer、borrowed payload、general async-call、D2 general methods 与 root hard-cancel 仍 pending |
 | Colorless async / WIT bindgen | canonical `@async/@await/@cancel` surface, legacy `async` deprecation, schema 1/2 generated manifest checks, automatic discovery for the admitted schema 2 unit and scalar capabilities, plus opt-in v2 variant/scalar-i64 slices, the `--p3-async-call-component` root-owned local-frame slice including one inline `u32` scalar argument, the private `--p3-async-host-arg-component` scalar-argument compiler slice, and the private `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` slice verified; general async-call promotion and D2 recovery designs are frozen without compiler widening; unrestricted generated WIT lowering remains pending |
 | 阶段 I | **closed** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构扁平拆分 | 已落地: `diagnostics` / `type_name` / `sema_error` / codegen 域竖切 / **`sema_*` 域竖切** (`sema_tokens`/`sema_shapes`/`sema_function_*`/`sema_structures`/`sema_type_checks`/`sema_imports`/`sema_control`) |
@@ -124,6 +124,29 @@ root hard-cancel, and public ownership syntax remain pending.
   → This closes only the private method-specific target. Generic filesystem
     async, host-future-drop cancellation, external HTTP, and public ownership
     syntax remain pending.
+```
+
+```text
+2026-08-10 private filesystem descriptor.metadata-hash promotion
+  → `test_d2_wasi_filesystem_metadata_hash_abi.sh` passes the pinned
+    `wasm-tools 1.255.0` binary (SHA-256
+    `6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`),
+    upstream WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`,
+    regular/cancel mirror hashes
+    `6976359b3a4813d6771b3ef9a7fdcfb2ee9323e70c33b9ac7d6b628519fecfed` /
+    `b6e98cf2ae6f76e105f53c7ea09666b1c5684d33edb9838d034862a27b09f5c3`,
+    and the measured `(i32,i32) -> i32` import with `(i32,i64,i64)` task-return
+    and `metadata-hash-value { lower:u64, upper:u64 } | error-code` result.
+  → The opt-in `--p3-async-component` compiler gate admits fixture `516`,
+    rejects fixtures `517`-`519` before WAT, and uses Core template SHA-256
+    `f51c82887174a7ed1adf95a1cbe0e333f80a487962a2a8478334ca9750933b6b`.
+  → `test_rust_wasi_filesystem_metadata_hash.sh` passes generated
+    ready/pending/error/repeat and the hand-authored cancel/Store-disposal
+    early-drop oracle rows. Cancellation remains cleanup-only; no host rollback
+    is claimed. `metadata-hash-at` and general filesystem async remain pending.
+  → `./src/build/test/run_tests.sh` passes `pass=1199 fail=0 skip=3`; the
+    `RUN_WASM=1 SKIP_BUILD=1` rerun passes `pass=1201 fail=0 skip=3` with WASM
+    smoke `6/6`; `cd src && zig test main.zig` passes `347/347`.
 ```
 
 ```text
@@ -669,7 +692,7 @@ Bun regression refresh (2026-08-06)
 
 | 类 | 项 |
 | --- | --- |
-| blocked | G6.2 general producer-lease/borrowed-resource/list extensions; path-sensitive `StreamWriter<T>` lease semantic foundation is done (branch/loop joins, defer, transfer, write, finalization, exit diagnostics 405-410); 06.2→G6.2 (multi-owned consumer, multiple nested paths, one-/two-/three-/four-/five-/six-level nested resource consumer, descriptor-bounded single-read list-owned resource stream, bounded scalar producer, fixed/parameterized `u64` countdown producer, parameterized helper including five forwarding hops and typed-parameter reorder, helper-mediated lease, branch-selected close/abort terminal, descriptor-bounded StreamMirror, private resource Result cancellation, and pinned HTTP payload cancellation pending/immediate-`Ok`/immediate-`DnsTimeout` plus bounded immediate `DNS-error` optional-string (`Some`/`None`) lowering/runtime cleanup done; private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat` slices are closed; empty payload strings, other payload-bearing immediate errors, sixth forwarding hop, seventh nested level, and general resource/list/filesystem shapes remain pending) |
+| blocked | G6.2 general producer-lease/borrowed-resource/list extensions; path-sensitive `StreamWriter<T>` lease semantic foundation is done (branch/loop joins, defer, transfer, write, finalization, exit diagnostics 405-410); 06.2→G6.2 (multi-owned consumer, multiple nested paths, one-/two-/three-/four-/five-/six-level nested resource consumer, descriptor-bounded single-read list-owned resource stream, bounded scalar producer, fixed/parameterized `u64` countdown producer, parameterized helper including five forwarding hops and typed-parameter reorder, helper-mediated lease, branch-selected close/abort terminal, descriptor-bounded StreamMirror, private resource Result cancellation, and pinned HTTP payload cancellation pending/immediate-`Ok`/immediate-`DnsTimeout` plus bounded immediate `DNS-error` optional-string (`Some`/`None`) lowering/runtime cleanup done; private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash` slices are closed; empty payload strings, other payload-bearing immediate errors, sixth forwarding hop, seventh nested level, and general resource/list/filesystem shapes remain pending) |
 | pending | P2 左侧反推泛型 (默认不放开); skip 16/96/118 |
 | deferred | ownership IR、真 host I/O、JSON 扩展、LSP/fmt、wasm emitter 等 (见该文件 §3) |
 
