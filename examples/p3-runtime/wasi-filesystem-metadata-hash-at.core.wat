@@ -40,7 +40,9 @@
   (import "[export]wasi:filesystem/probe@0.3.0-rc-2025-09-16"
     "[task-return]run" (func $task-return-run (type $task-return-metadata-hash-at)))
 
-  (memory $memory 1)
+  ;; One extra page keeps the canonical UTF-8 path allocation below the
+  ;; linear-memory limit while preserving the measured frame layout.
+  (memory $memory 2)
   (global $frame-next (mut i32) (i32.const 1024))
   (global $heap-next (mut i32) (i32.const 65536))
 
