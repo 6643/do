@@ -49,7 +49,7 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
 
     var host_manifest = std.ArrayList(u8).empty;
     defer host_manifest.deinit(allocator);
-    const wat = try compile_program_wat(io, allocator, parsed_cli.input_path, parsed_cli.component_core, parsed_cli.p3_wait_for_component, parsed_cli.p3_resource_probe_component, parsed_cli.p3_wasi_filesystem_preopen_component, parsed_cli.p3_wasi_sockets_create_bind_drop_component, parsed_cli.p3_resource_async_component, parsed_cli.p3_async_component, parsed_cli.p3_async_call_component, parsed_cli.p3_async_host_arg_component, parsed_cli.p3_owned_future_component, parsed_cli.p3_async_component_v2, parsed_cli.p3_async_v2_scalar_i64_component, parsed_cli.gc_core, parsed_cli.host_export, if (parsed_cli.host_manifest_path != null) &host_manifest else null, &loaded);
+    const wat = try compile_program_wat(io, allocator, parsed_cli.input_path, parsed_cli.component_core, parsed_cli.p3_wait_for_component, parsed_cli.p3_resource_probe_component, parsed_cli.p3_wasi_filesystem_preopen_component, parsed_cli.p3_wasi_filesystem_stat_component, parsed_cli.p3_wasi_sockets_create_bind_drop_component, parsed_cli.p3_resource_async_component, parsed_cli.p3_async_component, parsed_cli.p3_async_call_component, parsed_cli.p3_async_host_arg_component, parsed_cli.p3_owned_future_component, parsed_cli.p3_async_component_v2, parsed_cli.p3_async_v2_scalar_i64_component, parsed_cli.gc_core, parsed_cli.host_export, if (parsed_cli.host_manifest_path != null) &host_manifest else null, &loaded);
     defer allocator.free(wat);
 
     std.Io.Dir.cwd().writeFile(io, .{ .sub_path = parsed_cli.output_path, .data = wat }) catch |err| {
@@ -67,6 +67,8 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
             codegen.emit_p3_resource_probe_wit(allocator, loaded.tokens)
         else if (parsed_cli.p3_wasi_filesystem_preopen_component)
             codegen.emit_p3_wasi_filesystem_preopen_wit(allocator, loaded.tokens)
+        else if (parsed_cli.p3_wasi_filesystem_stat_component)
+            codegen.emit_p3_async_component_wit(allocator, loaded.tokens, &loaded.module_graph)
         else if (parsed_cli.p3_wasi_sockets_create_bind_drop_component)
             codegen.emit_p3_wasi_sockets_create_bind_drop_wit(allocator, loaded.tokens)
         else if (parsed_cli.p3_resource_async_component)
@@ -226,6 +228,7 @@ pub fn compile_program_wat(
     p3_wait_for_component: bool,
     p3_resource_probe_component: bool,
     p3_wasi_filesystem_preopen_component: bool,
+    p3_wasi_filesystem_stat_component: bool,
     p3_wasi_sockets_create_bind_drop_component: bool,
     p3_resource_async_component: bool,
     p3_async_component: bool,
@@ -247,6 +250,7 @@ pub fn compile_program_wat(
         p3_wait_for_component,
         p3_resource_probe_component,
         p3_wasi_filesystem_preopen_component,
+        p3_wasi_filesystem_stat_component,
         p3_wasi_sockets_create_bind_drop_component,
         p3_resource_async_component,
         p3_async_component,
@@ -273,6 +277,7 @@ fn compile_program_wat_parts(
     p3_wait_for_component: bool,
     p3_resource_probe_component: bool,
     p3_wasi_filesystem_preopen_component: bool,
+    p3_wasi_filesystem_stat_component: bool,
     p3_wasi_sockets_create_bind_drop_component: bool,
     p3_resource_async_component: bool,
     p3_async_component: bool,
@@ -289,7 +294,7 @@ fn compile_program_wat_parts(
     program: parser.Program,
     module_graph: *const imports.ModuleGraph,
 ) ![]u8 {
-    if (requires_start_entry(host_export, p3_async_component or p3_async_call_component or p3_async_host_arg_component or p3_owned_future_component or p3_async_component_v2 or p3_async_v2_scalar_i64_component, p3_wasi_sockets_create_bind_drop_component) and
+    if (requires_start_entry(host_export, p3_async_component or p3_wasi_filesystem_stat_component or p3_async_call_component or p3_async_host_arg_component or p3_owned_future_component or p3_async_component_v2 or p3_async_v2_scalar_i64_component, p3_wasi_sockets_create_bind_drop_component) and
         !codegen.program_requires_async_lowering(program, tokens, module_graph))
     {
         entry.validate_start(program) catch |err| {
@@ -303,6 +308,7 @@ fn compile_program_wat_parts(
         .p3_wait_for_component = p3_wait_for_component,
         .p3_resource_probe_component = p3_resource_probe_component,
         .p3_wasi_filesystem_preopen_component = p3_wasi_filesystem_preopen_component,
+        .p3_wasi_filesystem_stat_component = p3_wasi_filesystem_stat_component,
         .p3_wasi_sockets_create_bind_drop_component = p3_wasi_sockets_create_bind_drop_component,
         .p3_resource_async_component = p3_resource_async_component,
         .p3_async_component = p3_async_component,

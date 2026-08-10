@@ -194,6 +194,7 @@ fn p3_async_signature_matches(tokens: []const lexer.Token, start_idx: usize, end
             .filesystem_get_flags => return filesystem_get_flags_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_get_type => return filesystem_get_type_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_sync => return filesystem_sync_signature_matches(tokens, start_idx, close_idx, end_idx),
+            .filesystem_stat => return filesystem_stat_signature_matches(tokens, start_idx, close_idx, end_idx),
             .future_owned_resource => return future_owned_signature_matches(tokens, start_idx, close_idx, end_idx),
             else => {},
         }
@@ -247,6 +248,18 @@ fn filesystem_sync_signature_matches(
         tokens[params_start_idx + 1].kind != .ident or
         !std.mem.eql(u8, tokens[params_start_idx + 1].lexeme, "Dir")) return false;
     return compact_token_range_equals(tokens, params_close_idx + 3, end_idx, "nil|SyncError");
+}
+
+fn filesystem_stat_signature_matches(
+    tokens: []const lexer.Token,
+    params_start_idx: usize,
+    params_close_idx: usize,
+    end_idx: usize,
+) bool {
+    if (params_close_idx != params_start_idx + 2 or
+        tokens[params_start_idx + 1].kind != .ident or
+        !std.mem.eql(u8, tokens[params_start_idx + 1].lexeme, "Dir")) return false;
+    return compact_token_range_equals(tokens, params_close_idx + 3, end_idx, "DescriptorStat|StatError");
 }
 
 fn future_owned_signature_matches(
@@ -1951,6 +1964,20 @@ test "pinned filesystem sync host_async_func imports accept the unit error union
         \\sync_descriptor = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.sync", (Dir) -> nil | SyncError)
         \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
         \\SyncError error = Io | NoEntry
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "pinned filesystem stat host_async_func imports accept the record result union" {
+    const source =
+        \\stat_descriptor = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.stat", (Dir) -> DescriptorStat | StatError)
+        \\Datetime = @wasi_record("clocks/wall-clock/datetime", { seconds i64, nanoseconds u32 })
+        \\DescriptorStat = @wasi_record("filesystem/types/descriptor-stat", { .type i32, link_count u64, size u64, data_access_timestamp option<Datetime>, data_modification_timestamp option<Datetime>, status_change_timestamp option<Datetime> })
+        \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+        \\StatError error = Io | NoEntry
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);

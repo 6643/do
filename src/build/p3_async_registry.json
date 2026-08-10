@@ -595,6 +595,62 @@
             }
         },
         {
+            "locator": "wasi:filesystem/types@0.3.0-rc-2025-09-16",
+            "member": "descriptor.stat",
+            "effect": "async",
+            "params": ["descriptor"],
+            "result": "Result<descriptor-stat,error-code>",
+            "resource": null,
+            "wit_sha256": "8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f",
+            "canonical": {
+                "core_params": ["i32", "i32"],
+                "core_results": ["i32"],
+                "completion_params": ["i32", "i32", "i64", "i64", "i32", "i64", "i32", "i32", "i64", "i32", "i32", "i64", "i32"],
+                "completion": "task-return",
+                "async_import_module": "wasi:filesystem/types@0.3.0-rc-2025-09-16",
+                "async_import_name": "[async-lower][method]descriptor.stat",
+                "record_layout": {
+                    "name": "descriptor-stat",
+                    "byte_size": 96,
+                    "fields": [
+                        {"name": "type", "core_type": "i32", "offset": 0},
+                        {"name": "link_count", "core_type": "i64", "offset": 8},
+                        {"name": "size", "core_type": "i64", "offset": 16},
+                        {"name": "access_presence", "core_type": "i32", "offset": 24},
+                        {"name": "access_seconds", "core_type": "i64", "offset": 32},
+                        {"name": "access_nanoseconds", "core_type": "i32", "offset": 40},
+                        {"name": "modification_presence", "core_type": "i32", "offset": 48},
+                        {"name": "modification_seconds", "core_type": "i64", "offset": 56},
+                        {"name": "modification_nanoseconds", "core_type": "i32", "offset": 64},
+                        {"name": "change_presence", "core_type": "i32", "offset": 72},
+                        {"name": "change_seconds", "core_type": "i64", "offset": 80},
+                        {"name": "change_nanoseconds", "core_type": "i32", "offset": 88}
+                    ],
+                    "source_fields": [
+                        {"name": "type", "source_type": "descriptor-type", "storage": ["type"]},
+                        {"name": "link_count", "source_type": "u64", "storage": ["link_count"]},
+                        {"name": "size", "source_type": "u64", "storage": ["size"]},
+                        {"name": "access_presence", "source_type": "u8", "storage": ["access_presence"]},
+                        {"name": "access_seconds", "source_type": "i64", "storage": ["access_seconds"]},
+                        {"name": "access_nanoseconds", "source_type": "u32", "storage": ["access_nanoseconds"]},
+                        {"name": "modification_presence", "source_type": "u8", "storage": ["modification_presence"]},
+                        {"name": "modification_seconds", "source_type": "i64", "storage": ["modification_seconds"]},
+                        {"name": "modification_nanoseconds", "source_type": "u32", "storage": ["modification_nanoseconds"]},
+                        {"name": "change_presence", "source_type": "u8", "storage": ["change_presence"]},
+                        {"name": "change_seconds", "source_type": "i64", "storage": ["change_seconds"]},
+                        {"name": "change_nanoseconds", "source_type": "u32", "storage": ["change_nanoseconds"]}
+                    ]
+                }
+            },
+            "wit": {
+                "package": "wasi:filesystem@0.3.0-rc-2025-09-16",
+                "interface": "types",
+                "operation": "descriptor.stat",
+                "world": "imports",
+                "parameter": ""
+            }
+        },
+        {
             "locator": "wasi:cli/stdout@0.3.0-rc-2025-09-16",
             "member": "write-via-stream",
             "effect": "stream-writer",

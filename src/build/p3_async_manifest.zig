@@ -24,6 +24,7 @@ pub const LoweringShape = union(enum) {
     filesystem_get_type: FilesystemGetTypeShape,
     filesystem_get_flags: FilesystemGetFlagsShape,
     filesystem_sync: FilesystemSyncShape,
+    filesystem_stat: FilesystemStatShape,
     future_owned_resource: FutureOwnedCanonical,
     resource_result_2word: ResourceResult2WordShape,
     http_resource_result: HttpResourceResultShape,
@@ -264,6 +265,16 @@ pub const FilesystemSyncShape = struct {
     resource_drop_import: []const u8,
 };
 
+/// The private descriptor.stat slice has a record result with three optional
+/// datetime payloads. Keep its measured record layout separate from the
+/// scalar filesystem Result shapes so a scalar emitter cannot consume it.
+pub const FilesystemStatShape = struct {
+    receiver: []const u8,
+    source_result: []const u8,
+    record_layout: RecordLayout,
+    resource_drop_import: []const u8,
+};
+
 pub const ScalarResultSource = struct {
     ok: []const u8,
     err: []const u8,
@@ -480,6 +491,10 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
         return .{ .filesystem_sync = shape };
     }
 
+    if (valid_filesystem_stat_descriptor(descriptor)) |shape| {
+        return .{ .filesystem_stat = shape };
+    }
+
     if (valid_filesystem_get_flags_descriptor(descriptor)) |shape| {
         return .{ .filesystem_get_flags = shape };
     }
@@ -649,6 +664,85 @@ fn valid_filesystem_sync_descriptor(descriptor: Descriptor) ?FilesystemSyncShape
         .err = payload.err,
         .resource_drop_import = "[resource-drop]descriptor",
     };
+}
+
+fn valid_filesystem_stat_descriptor(descriptor: Descriptor) ?FilesystemStatShape {
+    const record_layout = descriptor.canonical.record_layout orelse return null;
+    if (!std.mem.eql(u8, descriptor.locator, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.member, "descriptor.stat") or
+        !std.mem.eql(u8, descriptor.effect, "async") or
+        descriptor.params.len != 1 or
+        !std.mem.eql(u8, descriptor.params[0], "descriptor") or
+        descriptor.resource != null or
+        !std.mem.eql(u8, descriptor.result, "Result<descriptor-stat,error-code>") or
+        descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, descriptor.wit_sha256.?, "8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f") or
+        !std.mem.eql(u8, descriptor.canonical.completion, "task-return") or
+        !equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i32" }) or
+        !equal_core_types(descriptor.canonical.core_results, &.{ "i32" }) or
+        !equal_core_types(descriptor.canonical.completion_params, &.{ "i32", "i32", "i64", "i64", "i32", "i64", "i32", "i32", "i64", "i32", "i32", "i64", "i32" }) or
+        descriptor.canonical.result_payload != null or
+        descriptor.canonical.result_area_payload != null or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower][method]descriptor.stat") or
+        !std.mem.eql(u8, descriptor.wit.package, "wasi:filesystem@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.wit.interface, "types") or
+        !std.mem.eql(u8, descriptor.wit.operation, "descriptor.stat") or
+        !std.mem.eql(u8, descriptor.wit.world, "imports") or
+        descriptor.wit.parameter.len != 0 or
+        !valid_filesystem_stat_record_layout(record_layout)) return null;
+
+    return .{
+        .receiver = descriptor.params[0],
+        .source_result = descriptor.result,
+        .record_layout = record_layout,
+        .resource_drop_import = "[resource-drop]descriptor",
+    };
+}
+
+fn valid_filesystem_stat_record_layout(layout: RecordLayout) bool {
+    if (!std.mem.eql(u8, layout.name, "descriptor-stat") or layout.byte_size != 96 or layout.fields.len != 12 or layout.source_fields.len != 12) return false;
+    const expected_fields = [_]RecordField{
+        .{ .name = "type", .core_type = "i32", .offset = 0 },
+        .{ .name = "link_count", .core_type = "i64", .offset = 8 },
+        .{ .name = "size", .core_type = "i64", .offset = 16 },
+        .{ .name = "access_presence", .core_type = "i32", .offset = 24 },
+        .{ .name = "access_seconds", .core_type = "i64", .offset = 32 },
+        .{ .name = "access_nanoseconds", .core_type = "i32", .offset = 40 },
+        .{ .name = "modification_presence", .core_type = "i32", .offset = 48 },
+        .{ .name = "modification_seconds", .core_type = "i64", .offset = 56 },
+        .{ .name = "modification_nanoseconds", .core_type = "i32", .offset = 64 },
+        .{ .name = "change_presence", .core_type = "i32", .offset = 72 },
+        .{ .name = "change_seconds", .core_type = "i64", .offset = 80 },
+        .{ .name = "change_nanoseconds", .core_type = "i32", .offset = 88 },
+    };
+    const expected_sources = [_]struct { name: []const u8, source_type: []const u8, storage: []const []const u8 }{
+        .{ .name = "type", .source_type = "descriptor-type", .storage = &.{ "type" } },
+        .{ .name = "link_count", .source_type = "u64", .storage = &.{ "link_count" } },
+        .{ .name = "size", .source_type = "u64", .storage = &.{ "size" } },
+        .{ .name = "access_presence", .source_type = "u8", .storage = &.{ "access_presence" } },
+        .{ .name = "access_seconds", .source_type = "i64", .storage = &.{ "access_seconds" } },
+        .{ .name = "access_nanoseconds", .source_type = "u32", .storage = &.{ "access_nanoseconds" } },
+        .{ .name = "modification_presence", .source_type = "u8", .storage = &.{ "modification_presence" } },
+        .{ .name = "modification_seconds", .source_type = "i64", .storage = &.{ "modification_seconds" } },
+        .{ .name = "modification_nanoseconds", .source_type = "u32", .storage = &.{ "modification_nanoseconds" } },
+        .{ .name = "change_presence", .source_type = "u8", .storage = &.{ "change_presence" } },
+        .{ .name = "change_seconds", .source_type = "i64", .storage = &.{ "change_seconds" } },
+        .{ .name = "change_nanoseconds", .source_type = "u32", .storage = &.{ "change_nanoseconds" } },
+    };
+    for (expected_fields, 0..) |expected, index| {
+        const actual = layout.fields[index];
+        if (!std.mem.eql(u8, actual.name, expected.name) or
+            !std.mem.eql(u8, actual.core_type, expected.core_type) or
+            actual.offset != expected.offset) return false;
+        const source = layout.source_fields[index];
+        if (!std.mem.eql(u8, source.name, expected_sources[index].name) or
+            !std.mem.eql(u8, source.source_type, expected_sources[index].source_type) or
+            source.storage.len != 1 or
+            !std.mem.eql(u8, source.storage[0], expected_sources[index].storage[0]) or
+            source.ownership != .none or source.resource != null or source.drop_import != null or source.nested_fields.len != 0) return false;
+    }
+    return true;
 }
 
 pub fn unsupported_shape(descriptor: Descriptor) ?UnsupportedShape {
@@ -3733,6 +3827,25 @@ test "descriptor lowering shapes separate scalar unit, private Result, and HTTP"
         },
         else => return error.TestUnexpectedResult,
     }
+}
+
+test "checked-in registry pins the private descriptor.stat ABI row" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+
+    const descriptor = registry.find(
+        "wasi:filesystem/types@0.3.0-rc-2025-09-16",
+        "descriptor.stat",
+    ) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("async", descriptor.effect);
+    try std.testing.expectEqualStrings("descriptor", descriptor.params[0]);
+    try std.testing.expectEqualStrings("Result<descriptor-stat,error-code>", descriptor.result);
+    try std.testing.expectEqualStrings("8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f", descriptor.wit_sha256.?);
+    try std.testing.expectEqualStrings("[async-lower][method]descriptor.stat", descriptor.canonical.async_import_name);
+    try std.testing.expectEqualStrings("wasi:filesystem@0.3.0-rc-2025-09-16", descriptor.wit.package);
+    try std.testing.expectEqualStrings("descriptor.stat", descriptor.wit.operation);
+    try std.testing.expectEqual(@as(usize, 13), descriptor.canonical.completion_params.len);
+    try std.testing.expect(lowering_shape(descriptor) != null);
 }
 
 test "HTTP descriptor exposes its canonical resource Result completion shape" {

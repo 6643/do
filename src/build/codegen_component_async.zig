@@ -10,6 +10,7 @@ const codegen_component_wasi_filesystem_read_directory = @import("codegen_compon
 const codegen_component_wasi_filesystem_get_type = @import("codegen_component_wasi_filesystem_get_type.zig");
 const codegen_component_wasi_filesystem_get_flags = @import("codegen_component_wasi_filesystem_get_flags.zig");
 const codegen_component_wasi_filesystem_sync = @import("codegen_component_wasi_filesystem_sync.zig");
+const codegen_component_wasi_filesystem_stat = @import("codegen_component_wasi_filesystem_stat.zig");
 const codegen_component_record_stream = @import("codegen_component_record_stream.zig");
 const codegen_component_record_resource_list_stream = @import("codegen_component_record_resource_list_stream.zig");
 const codegen_component_list_resource_producer = @import("codegen_component_list_resource_producer.zig");
@@ -53,6 +54,7 @@ pub const Target = enum {
     wasi_filesystem_get_type,
     wasi_filesystem_get_flags,
     wasi_filesystem_sync,
+    wasi_filesystem_stat,
 };
 
 pub const StreamWriterQueue = codegen_component_stream_writer.StreamWriterQueue;
@@ -202,6 +204,10 @@ pub fn emit_component_wat(
         },
         .wasi_filesystem_sync => codegen_component_wasi_filesystem_sync.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
             error.UnsupportedP3WasiFilesystemSyncComponent => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
+        .wasi_filesystem_stat => codegen_component_wasi_filesystem_stat.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
+            error.UnsupportedP3WasiFilesystemStatComponent => error.UnsupportedP3AsyncComponent,
             else => err,
         },
     };
@@ -943,6 +949,10 @@ pub fn emit_component_wit_with_graph(
             error.UnsupportedP3WasiFilesystemSyncComponent => error.UnsupportedP3AsyncComponent,
             else => err,
         },
+        .wasi_filesystem_stat => codegen_component_wasi_filesystem_stat.emit_component_wit(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3WasiFilesystemStatComponent => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
     };
 }
 
@@ -1071,6 +1081,11 @@ pub fn target_for_tokens_with_graph(
                     return error.UnsupportedP3AsyncComponent;
                 break :blk .wasi_filesystem_sync;
             } else return error.UnsupportedP3AsyncComponent,
+            .filesystem_stat => if (binding.kind == .host_async_func) blk: {
+                _ = codegen_component_wasi_filesystem_stat.StatPlan.analyze(tokens, registry) catch
+                    return error.UnsupportedP3AsyncComponent;
+                break :blk .wasi_filesystem_stat;
+            } else return error.UnsupportedP3AsyncComponent,
             else => try target_for_descriptor(descriptor),
         };
         if (target) |existing| {
@@ -1119,6 +1134,7 @@ fn target_for_descriptor(descriptor: p3_async_manifest.Descriptor) !Target {
         .filesystem_get_type => .wasi_filesystem_get_type,
         .filesystem_get_flags => .wasi_filesystem_get_flags,
         .filesystem_sync => .wasi_filesystem_sync,
+        .filesystem_stat => .wasi_filesystem_stat,
         .record_resource_list_stream_reader => error.UnsupportedP3AsyncComponent,
         .record_resource_list_stream_producer => .record_resource_list_stream_producer,
         .record_resource_list_stream_dynamic_producer => .record_resource_list_stream_dynamic_producer,
@@ -1481,6 +1497,16 @@ test "filesystem descriptor sync target rejects a second await" {
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     try std.testing.expectError(error.UnsupportedP3AsyncComponent, target_for_tokens(std.testing.allocator, tokens));
+}
+
+test "filesystem descriptor stat target admits only the private source contract" {
+    const source = @embedFile("test/compile_ok/498_wasi_filesystem_stat_component.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try std.testing.expectEqual(
+        Target.wasi_filesystem_stat,
+        try target_for_tokens(std.testing.allocator, tokens),
+    );
 }
 
 test "filesystem descriptor get-type target rejects a second await" {

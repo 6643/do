@@ -1,0 +1,4 @@
+# build-arg: --p3-wasi-filesystem-stat-component
+[stat-result-area]
+[async-lower][method]descriptor.stat
+[descriptor-drop]

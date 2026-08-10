@@ -563,6 +563,12 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
     }
     if (options.p3_async_component_v2) return codegen_component_async.emit_component_wat_v2(allocator, program, tokens, module_graph);
     if (options.p3_async_v2_scalar_i64_component) return finalize_component_wat(allocator, codegen_component_async.emit_component_wat_v2_scalar_i64(allocator, program, tokens, module_graph orelse return error.UnsupportedP3AsyncComponent));
+    if (options.p3_wasi_filesystem_stat_component) {
+        const target = codegen_component_async.target_for_tokens_with_graph(allocator, tokens, module_graph) catch
+            return error.UnsupportedP3AsyncComponent;
+        if (target != .wasi_filesystem_stat) return error.UnsupportedP3AsyncComponent;
+        return codegen_component_async.emit_component_wat(allocator, program, tokens, module_graph);
+    }
     if (options.p3_async_component) return codegen_component_async.emit_component_wat(allocator, program, tokens, module_graph);
     if (options.gc_core) return codegen_gc_core.emit_gc_core_wat(allocator, program, tokens);
     if (options.p3_wait_for_component) return finalize_component_wat(allocator, codegen_p3_wait_for.emit_component_wat(allocator, program, tokens, module_graph));
