@@ -12,12 +12,12 @@ unclassified descriptor are rejected rather than falling into a probe
 template. Ordinary `do build` keeps its async-lowering guard.
 
 Component assembly for the verified v1 path is centralized in
-`assemble_wasmtime_p3_legacy.sh`. It pins `wasm-tools 1.254.0` by version and
-SHA-256, forces the legacy async callback names, and labels the output target
-`wasmtime-p3-legacy`; `assemble_async_component.sh` is retained as a
-compatibility wrapper. Run `bash test_wasmtime_p3_legacy_assembly.sh` for the
-Core-WAT -> Component -> Rust/Wasmtime golden gate. This target is deliberately
-not named `wasmtime-p3` and does not claim standard32 or complete WASI support.
+`assemble_async_component.sh`. It accepts only `wasm-tools 1.255.0` with the
+pinned SHA-256 and uses the current tool's `--dummy-names legacy` async naming
+mode. The output target is `wasmtime-p3`; there is no 1.254.0 compatibility
+assembler or legacy binary path. Run `bash test_wasmtime_p3_assembly.sh` for the
+Core-WAT -> Component -> Rust/Wasmtime golden gate. This target does not claim
+standard32 or complete WASI support.
 
 The colorless async-call probe is a separate opt-in target:
 `async-call-component.do` with `--p3-async-call-component`. It keeps `helper()`
@@ -73,7 +73,7 @@ rejected because cancellation has no source-level result branch. The writer
 work currently has an internal bounded FIFO/lease model with Zig coverage for
 backpressure, FIFO order, transfer, close, abort, and wake state. Pinned
 `wasi:cli/stdout.write-via-stream` WIT produces a complete async canonical ABI
-with `wasm-tools 1.254.0`; the descriptor and A-route forwarding wrapper are
+with `wasm-tools 1.255.0`; the descriptor and A-route forwarding wrapper are
 now registered. The wrapper now emits a fixed-capacity writer frame and
 explicit `writer-enqueue`/`writer-promote` backpressure helpers, while
 preserving the existing reader forwarding path. `test_rust_stream_writer.sh`

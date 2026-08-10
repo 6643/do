@@ -25,6 +25,7 @@
 | 阶段 I | **closed** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构扁平拆分 | 已落地: `diagnostics` / `type_name` / `sema_error` / codegen 域竖切 / **`sema_*` 域竖切** (`sema_tokens`/`sema_shapes`/`sema_function_*`/`sema_structures`/`sema_type_checks`/`sema_imports`/`sema_control`) |
 | 目录 | 标准库 `lib/`; 工具链 `src/` (原 `tool/`) |
+| active Component tooling | `wasm-tools 1.255.0 (76e20611d 2026-07-30)` only; SHA-256 `6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`; `--dummy-names legacy` is the current async naming mode |
 
 ### 2026-08-09 colorless inline scalar async-call gate
 
@@ -64,8 +65,8 @@ The differential test pins the current WAT and WIT bytes and the source-order
 | host scalar (`compile_ok/490`) | `e9e2330a75430b569b538d15d676d92492c952f89c5cc135a38343670da01553` | `b9f5f8355e87231317ec05cccf692ee465c6f339bd509640aedc196e58f81e61` |
 
 Focused Zig output is green: shape `14/14`, differential `105/105`, call
-emitter `111/111`, and host emitter `107/107`. Component gates pass both pinned wasm-tools
-routes; the child-only v1 isolation probe is rejected before WAT. The
+emitter `111/111`, and host emitter `107/107`. Component gates pass the pinned
+current wasm-tools route; the child-only v1 isolation probe is rejected before WAT. The
 Rust/Wasmtime matrices observe exactly-once child/future cleanup and
 `table-empty=true` for unit/inline and scalar ready/pending/cancel rows. The
 host scalar rows observe `argument=7`, one Future drop in every mode, a
@@ -86,8 +87,7 @@ root hard-cancel, and public ownership syntax remain pending.
   → private `do:async-call-arg-probe@0.1.0` WIT hash
     `b9f5f8355e87231317ec05cccf692ee465c6f339bd509640aedc196e58f81e61`;
     current `wasm-tools 1.255.0` (`6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`)
-    and legacy `1.254.0` (`cc1f862d69363aac2d4a88f01c414a2dcf10858632d0c0a45e93ff60503979d6`)
-    both assemble and validate the hand-authored Component. The measured
+    assembles and validates the hand-authored Component. The measured
     root frame is 20 bytes with one `u32` argument at offset `12`; the
     Rust/Wasmtime oracle observes `7` and an empty `ResourceTable` in every
     mode: ready `calls=1 polls=1 external-wakes=0 completions=1 future-drops=1
@@ -112,8 +112,8 @@ root hard-cancel, and public ownership syntax remain pending.
     topology, dynamic-root, and payload drift before WAT. The generated WIT hash remains
     `b9f5f8355e87231317ec05cccf692ee465c6f339bd509640aedc196e58f81e61` and
     the measured root frame remains `20` bytes with argument slot `+12`.
-  → `test_do_async_host_scalar_argument.sh` passes current `1.255.0` and
-    legacy `1.254.0` Component assembly/validation; the generated Component
+  → `test_do_async_host_scalar_argument.sh` passes current `1.255.0`
+    Component assembly/validation; the generated Component
     Rust/Wasmtime gate passes ready, pending, and cancel with `calls=1`,
     `argument=7`, exactly one Future drop, cancellation-only pending drop,
     and `table-empty=true`.
@@ -163,16 +163,16 @@ G6.2 scalar-list producer promotion (2026-08-09)
 Inline scalar async-call focused gates (2026-08-09)
   → shape 14/14, call planner 113/113, host planner 107/107, call emitter 111/111,
     host emitter 107/107, and differential 105/105 Zig tests; pinned
-    `wasm-tools` 1.255.0 and legacy 1.254.0 Component assembly passed for
+    `wasm-tools` 1.255.0 Component assembly passed for
     child-only, inline, and host scalar fixtures; Rust/Wasmtime passed inline
-    `ready`/`pending`/`cancel-inline`/`cancel-child` and legacy scalar
+    `ready`/`pending`/`cancel-inline`/`cancel-child` and scalar
     `ready`/`pending`/`cancel`, with empty `ResourceTable`.
 
 RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
   → pass=1169 fail=0 skip=3; wasm run summary: pass=6 fail=0 (Bun Node-compatible runner)
 
 Generated async manifest Component/Rust/Wasmtime gate (2026-08-06)
-  → Zig 0.16.0, wasm-tools 1.254.0, Wasmtime 47.0.2, Rust/Cargo 1.97.1;
+  → Zig 0.16.0, wasm-tools 1.255.0, Wasmtime 47.0.2, Rust/Cargo 1.97.1;
     schema 2 `component-async-unit-v1` generated binding passed pending,
     immediate, and cancel modes with exact cleanup markers; module/WIT hash,
     signature, async import, completion, and capability drift rejected before
@@ -203,7 +203,7 @@ Bounded general async-call Component/Rust/Wasmtime gate (2026-08-07)
     helper frame with `[guest-async-child]`, `[guest-async-parent-resume]`,
     `[guest-async-child-drop]`, and `[guest-async-root-terminal]`; it never
     exports or synthesizes an independent helper task. Pinned
-    `wasm-tools 1.254.0 (bb58fdf91 2026-07-20)`, Wasmtime `47.0.2`, and Rust
+    `wasm-tools 1.255.0 (76e20611d 2026-07-30)`, Wasmtime `47.0.2`, and Rust
     `1.97.1` gates pass `ready`, `pending`, and `cancel` with exactly-once
     child/future cleanup and an empty `ResourceTable`; payload, multiple-child,
     and nested-helper forms reject as `UnsupportedP3AsyncCallComponent` before
@@ -213,8 +213,8 @@ Private owned-future Component/Rust/Wasmtime gate (2026-08-07)
   → `--p3-owned-future-component` admits only the registered ordinary Do
     source shape `Future<Ticket>` plus one `@await`, and emits the private
     `future<own<ticket>>` WIT sidecar. The compiler-generated Component passes
-    current `wasm-tools 1.255.0` parsing, pinned legacy `1.254.0` async
-    assembly/validation, and Wasmtime `47.0.2` ready/pending/cancel with
+    current `wasm-tools 1.255.0` parsing and async assembly/validation, and
+    Wasmtime `47.0.2` ready/pending/cancel with
     representation `0`, exactly-once future/resource cleanup, and an empty
     `ResourceTable`. Unknown descriptor, scalar payload, and second-await
     fixtures reject before WAT as `UnsupportedP3OwnedFutureComponent`; public
@@ -322,7 +322,7 @@ G6.2 batched list resource producer compiler/runtime promotion (2026-08-08)
 D2 private filesystem `descriptor.get-type` compiler/runtime promotion
 (2026-08-08)
   → `bash examples/p3-runtime/test_d2_wasi_filesystem_get_type_abi.sh` passed
-    current `wasm-tools 1.255.0` and legacy `1.254.0` gates. The pinned WIT
+    current `wasm-tools 1.255.0` gate. The pinned WIT
     hash is `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`;
     the method import is `[async-lower][method]descriptor.get-type` with
     `(i32,i32)->i32`, two `i32` task-return completion words, a component
@@ -339,7 +339,7 @@ D2 private filesystem `descriptor.get-type` compiler/runtime promotion
 
 D2 private filesystem `descriptor.sync` compiler/runtime promotion (2026-08-08)
   → `bash examples/p3-runtime/test_d2_wasi_filesystem_sync_abi.sh` passed
-    current `wasm-tools 1.255.0` and legacy `1.254.0`; upstream WIT hash
+    current `wasm-tools 1.255.0`; upstream WIT hash
     `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`, regular
     mirror hash `18ce7dc9efb991cd8e5f945797aea73edeed79f0cfc51ea664cb81537e54e719`,
     cancel mirror hash `9898cd734708a2ab14760da706d69063e5cd6262a5e03d07d8eedd8074745f36`.
@@ -354,7 +354,7 @@ D2 private filesystem `descriptor.sync` compiler/runtime promotion (2026-08-08)
 
 D2 private filesystem `descriptor.get-flags` compiler/runtime promotion (2026-08-08)
   → `bash examples/p3-runtime/test_d2_wasi_filesystem_get_flags_abi.sh` passed
-    current `wasm-tools 1.255.0` and legacy `1.254.0`; upstream WIT hash
+    current `wasm-tools 1.255.0`; upstream WIT hash
     `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`, WIT
     mirror hash `12afdb48b07d7160c76f04231fb8da4862350d42f6170174e6e27264b7307be9`.
     The method import is `[async-lower][method]descriptor.get-flags` with

@@ -12,6 +12,7 @@
 
 - 规范: `doc/spec.md`、`doc/spec_rules.md`、`doc/grammar.peg`、`doc/syntax/*`、`doc/memory.md`、`doc/wit/*`。
 - 工具链: `do build` / `do test` / `do test --compiled` / `do check` / `do run` / `do fmt` / `do lsp`。
+- Component assembly tooling is current-only: `wasm-tools 1.255.0 (76e20611d 2026-07-30)`, SHA-256 `6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`; `--dummy-names legacy` is a current async naming mode, not a legacy binary route.
 - `do lsp`: diagnostics + formatting + semantic tokens + hover + completion + definition (无 rename)。
 - `do fmt`: stdout / check-only / write 单文件。
 - `do check`: lexer/parser/sema/import diagnostics only; 诊断收集在 `src/build/diagnostics.zig`。

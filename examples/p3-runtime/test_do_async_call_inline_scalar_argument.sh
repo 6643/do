@@ -5,11 +5,10 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 do_bin=${DO_BIN:-"$repo_root/bin/do"}
 source="$repo_root/examples/p3-runtime/async-call-inline-scalar-argument.do"
 wit_snapshot="$repo_root/examples/p3-runtime/async-call-component.wit"
-legacy_wasm_tools=${WASM_TOOLS:-/home/_/.local/share/Trash/files/wasm-tools-1.254.0-x86_64-linux/wasm-tools}
+wasm_tools=${WASM_TOOLS:-wasm-tools}
 component_output=${1:-/tmp/async-call-inline-scalar-argument.component.wasm}
 
 test -x "$do_bin"
-test -x "$legacy_wasm_tools"
 test -f "$source"
 test -f "$wit_snapshot"
 
@@ -47,8 +46,8 @@ if grep -Fq '[task-return]helper' "$core_wat" || grep -Fq '[async-lift]helper' "
     exit 1
 fi
 
-"$legacy_wasm_tools" parse "$core_wat" -o "$core_wasm"
-WASM_TOOLS="$legacy_wasm_tools" bash "$repo_root/examples/p3-runtime/assemble_wasmtime_p3_legacy.sh" \
+"$wasm_tools" parse "$core_wat" -o "$core_wasm"
+WASM_TOOLS="$wasm_tools" bash "$repo_root/examples/p3-runtime/assemble_async_component.sh" \
     "$wit" "$core_wasm" probe "$component"
 cp "$component" "$component_output"
 test -s "$component_output"

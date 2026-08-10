@@ -8,13 +8,10 @@ upstream_wit="$repo_root/src/build/p3_wit/wasi-http-0.3.0-rc-2025-09-16/deps/fil
 
 expected_current_version=${WASM_TOOLS_EXPECT_VERSION:-'wasm-tools 1.255.0 (76e20611d 2026-07-30)'}
 expected_current_sha256=${WASM_TOOLS_EXPECT_SHA256:-6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013}
-expected_legacy_version=${WASM_TOOLS_LEGACY_EXPECT_VERSION:-'wasm-tools 1.254.0 (bb58fdf91 2026-07-20)'}
-expected_legacy_sha256=${WASM_TOOLS_LEGACY_EXPECT_SHA256:-cc1f862d69363aac2d4a88f01c414a2dcf10858632d0c0a45e93ff60503979d6}
 expected_mirror_sha256=31d0f12de7bb2c3caf63d618c55d030499460da4aa250d50cf9f2ff68e1bcb14
 expected_upstream_sha256=8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f
 
 current_wasm_tools=${WASM_TOOLS:-wasm-tools}
-legacy_wasm_tools=${LEGACY_WASM_TOOLS:-/home/_/.local/share/Trash/files/wasm-tools-1.254.0-x86_64-linux/wasm-tools}
 
 resolve_tool() {
   local requested="$1"
@@ -30,7 +27,6 @@ resolve_tool() {
 }
 
 current_wasm_tools=$(resolve_tool "$current_wasm_tools")
-legacy_wasm_tools=$(resolve_tool "$legacy_wasm_tools")
 
 for path in "$wit" "$core_wat" "$upstream_wit"; do
   [[ -f "$path" ]] || {
@@ -52,18 +48,6 @@ actual_current_sha256=$(sha256sum "$current_wasm_tools" | awk '{print $1}')
   exit 1
 }
 
-actual_legacy_version=$("$legacy_wasm_tools" --version)
-actual_legacy_sha256=$(sha256sum "$legacy_wasm_tools" | awk '{print $1}')
-[[ "$actual_legacy_version" == "$expected_legacy_version" ]] || {
-  printf 'legacy wasm-tools version mismatch: expected %s, got %s\n' \
-    "$expected_legacy_version" "$actual_legacy_version" >&2
-  exit 1
-}
-[[ "$actual_legacy_sha256" == "$expected_legacy_sha256" ]] || {
-  printf 'legacy wasm-tools hash mismatch: expected %s, got %s\n' \
-    "$expected_legacy_sha256" "$actual_legacy_sha256" >&2
-  exit 1
-}
 
 [[ "$(sha256sum "$wit" | awk '{print $1}')" == "$expected_mirror_sha256" ]] || {
   printf 'filesystem get-type WIT mirror hash changed\n' >&2
@@ -83,7 +67,6 @@ tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-d2-filesystem-get-type-abi.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 
 current_dummy="$tmp_dir/current-dummy.wat"
-legacy_dummy="$tmp_dir/legacy-dummy.wat"
 core_wasm="$tmp_dir/get-type.core.wasm"
 embedded="$tmp_dir/get-type.embedded.wasm"
 component="$tmp_dir/get-type.component.wasm"
@@ -93,9 +76,6 @@ component_wit="$tmp_dir/get-type.component.wit"
 "$current_wasm_tools" component embed "$wit" --world get-type-probe \
   --dummy-names legacy --async-callback \
   --features cm-async,cm-more-async-builtins -t >"$current_dummy"
-"$legacy_wasm_tools" component embed "$wit" --world get-type-probe \
-  --dummy-names legacy --async-callback \
-  --features cm-async,cm-more-async-builtins -t >"$legacy_dummy"
 
 require_text() {
   local file="$1"
@@ -140,7 +120,6 @@ require_canonical_dummy() {
 }
 
 require_canonical_dummy "$current_dummy"
-require_canonical_dummy "$legacy_dummy"
 
 "$current_wasm_tools" parse "$core_wat" -o "$core_wasm"
 "$current_wasm_tools" component embed "$wit" "$core_wasm" \
@@ -172,7 +151,6 @@ require_text "$component_wit" 'run: async func(directory: descriptor) -> result<
 
 printf 'D2 filesystem descriptor.get-type ABI passed\n'
 printf 'current=%s sha256=%s\n' "$actual_current_version" "$actual_current_sha256"
-printf 'legacy=%s sha256=%s\n' "$actual_legacy_version" "$actual_legacy_sha256"
 printf 'mirror-sha256=%s upstream-sha256=%s\n' "$expected_mirror_sha256" "$expected_upstream_sha256"
 printf 'async-import=[async-lower][method]descriptor.get-type core=(i32,i32)->i32\n'
 printf 'result=descriptor-type|error-code tag/layout=component-variant\n'

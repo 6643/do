@@ -7,7 +7,7 @@ trap 'rm -rf -- "$tmp_dir"' EXIT
 
 version=$(wasm-tools --version)
 case "$version" in
-  "wasm-tools 1.254.0"*) ;;
+  "wasm-tools 1.255.0 (76e20611d"*) ;;
   *) printf 'unexpected wasm-tools version: %s\n' "$version" >&2; exit 1 ;;
 esac
 

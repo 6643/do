@@ -7,7 +7,7 @@ tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-g6-2-read-directory-abi.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 
 case "$(wasm-tools --version)" in
-  "wasm-tools 1.254.0 (bb58fdf91 "*) ;;
+  "wasm-tools 1.255.0 (76e20611d "*) ;;
   *)
     printf 'unexpected wasm-tools version: %s\n' "$(wasm-tools --version)" >&2
     exit 1

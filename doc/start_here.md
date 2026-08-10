@@ -36,6 +36,7 @@
 | Colorless async / WIT bindgen | canonical `@async/@await/@cancel`、legacy `async` 弃用、schema 1/2 生成 manifest 校验、已准入 schema 2 unit 与 scalar capabilities 的 manifest 自动发现，以及 opt-in v2 variant/scalar-i64 gates、统一 promotion profile、`--p3-async-call-component` root-owned local-frame gate、private `--p3-async-host-arg-component` scalar-argument compiler gate 和 `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` gate 已验证；general async-call promotion contract 与 D2 recovery design 已冻结，unrestricted generated WIT lowering 仍 pending |
 | 阶段 I | **已关闭** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构审查/重构 | 五轮已落地 (见 §4); 默认不继续拆 god module |
+| active Component tooling | `wasm-tools 1.255.0 (76e20611d 2026-07-30)`; SHA-256 `6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`; no 1.254.0 executable path |
 
 ## 3. 验证入口
 
@@ -110,7 +111,7 @@ bash examples/p3-runtime/test_rust_async_call_component.sh \
 bash examples/p3-runtime/test_do_async_host_scalar_argument.sh
 bash examples/p3-runtime/test_rust_async_host_scalar_argument.sh
 
-# canonical async host scalar-argument ABI baseline (both pinned assembly routes)
+# canonical async host scalar-argument ABI baseline (current assembly route)
 PROBE_COMPONENT_OUT=/tmp/async-call-arg-probe.component.wasm \
   WASM_TOOLS_EXPECT_VERSION=1.255.0 \
   bash examples/p3-runtime/test_async_call_arg_probe.sh
@@ -123,9 +124,6 @@ for mode in ready pending cancel; do
     --bin do-p3-async-call-arg-probe-host-runner -- \
     /tmp/async-call-arg-probe.component.wasm "$mode"
 done
-WASM_TOOLS_EXPECT_VERSION=1.254.0 \
-  WASM_TOOLS=/home/_/.local/share/Trash/files/wasm-tools-1.254.0-x86_64-linux/wasm-tools \
-  bash examples/p3-runtime/test_async_call_arg_probe.sh
 
 # borrow capability refresh and scalar-list producer ABI probe
 WASM_TOOLS_EXPECT_VERSION=1.255.0 \
@@ -158,7 +156,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | 默认回归 (`SKIP_BUILD=1`) | `pass=1167 fail=0 skip=3` |
 | WASM 扩展回归 (`RUN_WASM=1 SKIP_BUILD=1`) | `pass=1169 fail=0 skip=3`; smoke `6/6` |
 | `zig test main.zig` | `319/319` |
-| async host scalar-argument ABI probe | current/legacy Component assembly green; frame `20` bytes, argument `u32@12`; ready/pending/cancel oracle green with `argument=7`, exactly-once Future drop, empty `ResourceTable`; probe-only, general lowering pending |
+| async host scalar-argument ABI probe | current `wasm-tools 1.255.0` Component assembly green; frame `20` bytes, argument `u32@12`; ready/pending/cancel oracle green with `argument=7`, exactly-once Future drop, empty `ResourceTable`; probe-only, general lowering pending |
 | G6.2 scalar-list producer | private `stream<list<u32>>` promotion green; `ptr=64`, `len=68`, `stride=4`, max `3`, stream capacity `1`; count `0..3`, invalid `4`, pending/error/drop/cancel, exactly-once list release, empty `ResourceTable`; generic list/producer remains pending |
 | async/D2 recovery designs | general async-call promotion and D2 filesystem/HTTP method matrix recorded; no generic lowering |
 | Task 8 Step 3 runtime baseline | 七个已登记 Component/Rust/Wasmtime gate 通过 |
@@ -192,8 +190,8 @@ filesystem async 或公开 ownership 支持，扩展仍需独立 design/probe/ga
 `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`、regular
 mirror `18ce7dc9efb991cd8e5f945797aea73edeed79f0cfc51ea664cb81537e54e719`、
 cancel mirror `9898cd734708a2ab14760da706d69063e5cd6262a5e03d07d8eedd8074745f36`；
-current/legacy wasm-tools hashes and runtime counters are recorded in
-`doc/host_abi_blockers.md`。
+The active wasm-tools hash and runtime counters are recorded in
+`doc/host_abi_blockers.md`; historical 1.254.0 measurements are evidence only。
 
 ### 2026-08-09 next-phase boundary handoff
 
@@ -219,8 +217,8 @@ opt-in target is `--p3-async-host-arg-component` and it admits only the pinned
 argument and root literal `@async(helper(7))`. The generated WIT package hash
 is `b9f5f8355e87231317ec05cccf692ee465c6f339bd509640aedc196e58f81e61`; the
 root-owned frame remains `20` bytes with the argument at offset `12`.
-`test_do_async_host_scalar_argument.sh` passes current and legacy Component
-assembly/validation, and `test_rust_async_host_scalar_argument.sh` passes
+`test_do_async_host_scalar_argument.sh` passes current `wasm-tools 1.255.0`
+Component assembly/validation, and `test_rust_async_host_scalar_argument.sh` passes
 generated ready/pending/cancel with argument `7`, exactly-once Future cleanup,
 and an empty `ResourceTable`. General async-call lowering, arbitrary producer
 expressions, payload/resource/list/stream futures, borrowed values, root
@@ -241,7 +239,7 @@ host 的 WAT/Component lowering 尚未开放。
 `do:generic-async-runtime-probe@0.1.0` 的 `host.work: async func()`：它使用
 manifest schema 2 的 `component-async-unit-v1`，由 import graph 自动发现并
 复用有界 generic runtime template。`examples/wit-bindgen-do/test_generated_async_lowering.sh`
-同时验证 `wasm-tools 1.254.0`、Wasmtime 47.0.2 和 Rust 1.97.1 的
+同时验证 `wasm-tools 1.255.0`、Wasmtime 47.0.2 和 Rust 1.97.1 的
 pending/immediate/cancel 运行时矩阵。payload、Stream、resource、参数化或
 任意其他 generated WIT async shape 仍拒绝并保持 `AsyncLoweringUnavailable`。
 
@@ -285,7 +283,7 @@ root-owned local frame/state，并通过根 `[task-return]run` 完成，不暴�
 Component export，也不伪造独立 child task。使用
 `examples/p3-runtime/test_do_async_call_component.sh`、
 `test_do_async_call_inline_scalar_argument.sh` 和 Rust/Wasmtime gate 可复现
-pinned `wasm-tools 1.254.0` / Wasmtime `47.0.2` 的 ready/pending/cancel 矩阵。
+pinned `wasm-tools 1.255.0` / Wasmtime `47.0.2` 的 ready/pending/cancel 矩阵。
 额外参数、payload、多个 child、嵌套 helper、resource、Stream、list、任意
 producer expression、filesystem async 和 D2 I/O 仍保持拒绝或 pending。
 

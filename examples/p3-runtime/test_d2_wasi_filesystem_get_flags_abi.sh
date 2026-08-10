@@ -10,13 +10,10 @@ upstream_wit="$repo_root/src/build/p3_wit/wasi-http-0.3.0-rc-2025-09-16/deps/fil
 
 expected_current_version=${WASM_TOOLS_EXPECT_VERSION:-'wasm-tools 1.255.0 (76e20611d 2026-07-30)'}
 expected_current_sha256=${WASM_TOOLS_EXPECT_SHA256:-6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013}
-expected_legacy_version=${WASM_TOOLS_LEGACY_EXPECT_VERSION:-'wasm-tools 1.254.0 (bb58fdf91 2026-07-20)'}
-expected_legacy_sha256=${WASM_TOOLS_LEGACY_EXPECT_SHA256:-cc1f862d69363aac2d4a88f01c414a2dcf10858632d0c0a45e93ff60503979d6}
 expected_mirror_sha256=12afdb48b07d7160c76f04231fb8da4862350d42f6170174e6e27264b7307be9
 expected_upstream_sha256=8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f
 
 current_wasm_tools=${WASM_TOOLS:-wasm-tools}
-legacy_wasm_tools=${LEGACY_WASM_TOOLS:-/home/_/.local/share/Trash/files/wasm-tools-1.254.0-x86_64-linux/wasm-tools}
 
 resolve_tool() {
   local requested=$1
@@ -29,7 +26,6 @@ resolve_tool() {
 }
 
 current_wasm_tools=$(resolve_tool "$current_wasm_tools")
-legacy_wasm_tools=$(resolve_tool "$legacy_wasm_tools")
 for path in "$wit" "$cancel_wit" "$core_wat" "$cancel_core_wat" "$upstream_wit"; do
   test -f "$path"
 done
@@ -38,10 +34,6 @@ actual_current_version=$($current_wasm_tools --version)
 actual_current_sha256=$(sha256sum "$current_wasm_tools" | awk '{print $1}')
 test "$actual_current_version" = "$expected_current_version"
 test "$actual_current_sha256" = "$expected_current_sha256"
-actual_legacy_version=$($legacy_wasm_tools --version)
-actual_legacy_sha256=$(sha256sum "$legacy_wasm_tools" | awk '{print $1}')
-test "$actual_legacy_version" = "$expected_legacy_version"
-test "$actual_legacy_sha256" = "$expected_legacy_sha256"
 test "$(sha256sum "$wit" | awk '{print $1}')" = "$expected_mirror_sha256"
 test "$(sha256sum "$upstream_wit" | awk '{print $1}')" = "$expected_upstream_sha256"
 
@@ -65,12 +57,8 @@ require_text() {
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-d2-filesystem-get-flags-abi.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 
-for tool_name in current legacy; do
-  if [[ "$tool_name" == current ]]; then
-    tool=$current_wasm_tools
-  else
-    tool=$legacy_wasm_tools
-  fi
+for tool_name in current; do
+  tool=$current_wasm_tools
 
   dummy="$tmp_dir/$tool_name-dummy.wat"
   cancel_dummy="$tmp_dir/$tool_name-cancel-dummy.wat"
@@ -128,7 +116,6 @@ done
 
 printf 'D2 filesystem descriptor.get-flags ABI passed\n'
 printf 'current=%s sha256=%s\n' "$actual_current_version" "$actual_current_sha256"
-printf 'legacy=%s sha256=%s\n' "$actual_legacy_version" "$actual_legacy_sha256"
 printf 'mirror-sha256=%s upstream-sha256=%s\n' "$expected_mirror_sha256" "$expected_upstream_sha256"
 printf 'async-import=[async-lower][method]descriptor.get-flags core=(i32,i32)->i32\n'
 printf 'result=descriptor-flags|error-code tag/payload=component-variant flags=canonical-u8/flat-i32\n'

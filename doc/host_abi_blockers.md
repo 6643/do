@@ -30,6 +30,12 @@ This file records blockers discovered while implementing the generic
 does not become a supported fallback merely because the compiler can emit a
 partial signature.
 
+**Active Component toolchain:** `wasm-tools 1.255.0 (76e20611d 2026-07-30)`
+with SHA-256 `6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`.
+The 1.254.0 binary is historical evidence only and is not an executable
+dependency. The current tool's `--dummy-names legacy` value names its async
+callback mangling mode; it does not select a legacy toolchain.
+
 ## D2 General Filesystem/HTTP Recovery Boundary (2026-08-09)
 
 **Status:** the private `descriptor.get-type`, `descriptor.sync`, and
@@ -40,7 +46,7 @@ does not add a registry entry or widen code generation.
 **Evidence:** the three ABI scripts and their Rust/Wasmtime runtime gates pass
 with the pinned filesystem WIT (`types.wit` SHA-256
 `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`) and the
-current/legacy `wasm-tools` binaries. Each closed row has its own measured
+current `wasm-tools 1.255.0` binary. Each closed row has its own measured
 `(i32,i32) -> i32` method import, Component Result/payload layout, descriptor
 drop, ready/pending/error/cancel observations, and empty `ResourceTable`.
 The exact signatures and method-by-method recovery requirements are recorded
@@ -75,8 +81,8 @@ async remains blocked and is not inferred from this result.
 
 **Evidence:** `bash examples/p3-runtime/test_d2_wasi_filesystem_get_type_abi.sh`
 passes the pinned current `wasm-tools 1.255.0 (76e20611d 2026-07-30)` binary
-(SHA-256 `6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`)
-and legacy `1.254.0` binary. The upstream WIT hash is
+(SHA-256 `6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`).
+The upstream WIT hash is
 `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`.
 The measured method import is
 `[async-lower][method]descriptor.get-type: (i32,i32) -> i32`, completion uses
@@ -107,9 +113,7 @@ filesystem async remains blocked and is not inferred from either bounded method.
 
 **Evidence:** `bash examples/p3-runtime/test_d2_wasi_filesystem_sync_abi.sh`
 passes current `wasm-tools 1.255.0 (76e20611d 2026-07-30)` (SHA-256
-`6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`) and
-legacy `1.254.0 (bb58fdf91 2026-07-20)` (SHA-256
-`cc1f862d69363aac2d4a88f01c414a2dcf10858632d0c0a45e93ff60503979d6`). The
+`6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`). The
 upstream WIT hash is
 `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`; the
 regular/cancel mirror hashes are
@@ -147,9 +151,7 @@ filesystem async remains blocked and is not inferred from this bounded slice.
 
 **Evidence:** `bash examples/p3-runtime/test_d2_wasi_filesystem_get_flags_abi.sh`
 passes current `wasm-tools 1.255.0 (76e20611d 2026-07-30)` (SHA-256
-`6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`) and
-legacy `1.254.0 (bb58fdf91 2026-07-20)` (SHA-256
-`cc1f862d69363aac2d4a88f01c414a2dcf10858632d0c0a45e93ff60503979d6`). The
+`6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`). The
 upstream WIT hash is
 `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`; the
 WIT mirror hash is
@@ -185,7 +187,7 @@ Component/Rust/Wasmtime gate.
 ## P3 Task-Return Scalar Type Identity
 
 **Status:** unsigned/narrow scalar `Future<Result<T, E>>` payloads remain
-blocked in the pinned legacy async runtime; signed `s32` payloads are verified.
+blocked in the pinned async runtime; signed `s32` payloads are verified.
 
 **Evidence:** a descriptor-driven `Result<u8,u8>` probe with the same flat core
 signature as the verified `Result<i32,i32>` probe compiles, assembles, and
@@ -576,7 +578,7 @@ backpressure, and arbitrary stream-producing interfaces remain blocked.
 **Evidence:** the vendored pinned WIT tree already supplies a real small
 WASI stream boundary: `wasi:cli/stdin.read-via-stream` returns
 `tuple<stream<u8>, future<result<_, error-code>>>`. The installed
-`wasm-tools 1.254.0` also recognizes legacy `stream.*` and `future.*` Core
+`wasm-tools 1.255.0` also recognizes the current `stream.*` and `future.*` Core
 operations. The admitted source form is `pending Future<Result<T, nil>> =
 @next(reader)`: it retains the caller-owned `Stream<T>`/`StreamReader<T>`,
 uses `Ok` for an item and `Err(nil)` for EOF, and leaves an imported completion
@@ -624,7 +626,7 @@ outside this runtime path.
 
 **2026-08-02 read-directory ABI checkpoint:**
 `examples/p3-runtime/test_do_wasi_filesystem_read_directory_abi.sh` generates
-the pinned `wasi:filesystem/imports` world with `wasm-tools 1.254.0` and checks
+the pinned `wasi:filesystem/imports` world with current `wasm-tools 1.255.0` and checks
 the exact `[async-lower][method]descriptor.read-directory` import, stream index
 `0`, future index `1`, indexed stream/future drops, and the `(i32, i32) -> i32`
 method/future-read callback shape. The embedded component type confirms
@@ -876,7 +878,7 @@ registered descriptor, one `Future<Ticket>` local, one `@await`, and the
 declared `Ticket` resource; its emitter keeps the `+12/+16/+20` frame protocol
 and the generated WIT `future<own<ticket>>` spelling private. The combined
 gate `examples/p3-runtime/test_do_future_owned_component.sh` passes current
-`wasm-tools 1.255.0` parsing, the pinned legacy async assembler, and the
+`wasm-tools 1.255.0` parsing and current async assembler, and the
 Wasmtime ready/pending/cancel cleanup matrix. This does not generalize
 `Future<T>`, add owned streams or borrowed async values, or add public
 `own<T>`/`borrow<T>`/`ref<T>` syntax.
@@ -1281,7 +1283,7 @@ green; generic async lowering remains blocked by `AsyncLoweringUnavailable`.
 **Evidence:** `examples/p3-runtime/test_task8_step3_baseline.sh` passed the
 cancel-wait-for, scalar Result, resource Result, stream reader, stream writer,
 filesystem preopen, and real TCP/UDP socket gates with Zig 0.16.0,
-`wasm-tools 1.254.0`, Wasmtime 47.0.2, and Rust 1.97.1. The socket gate also
+`wasm-tools 1.255.0`, Wasmtime 47.0.2, and Rust 1.97.1. The socket gate also
 covers create and bind failures and verifies an empty resource table.
 
 The first baseline run rejected the socket fixture with
@@ -1328,37 +1330,33 @@ execution.
 
 ## Component Assembly Tooling
 
-**Status:** v1 path verified. The repository's standard external tooling path
-produces the explicitly named `wasmtime-p3-legacy` compatibility target; it is
-not a standard-naming P3 or complete-WASI claim.
+**Status:** v1 path verified with one active toolchain. The repository's
+standard external tooling path produces the `wasmtime-p3` target; it is not a
+complete-WASI claim.
 
 **Evidence:** `src/run/run.zig` already resolves `wasm-tools` and reports a
 missing-tool diagnostic. The regression runner validates generated WAT and
-Component WIT using that tool. The local binary is `wasm-tools 1.254.0
-(bb58fdf91, 2026-07-20)`, SHA-256
-`cc1f862d69363aac2d4a88f01c414a2dcf10858632d0c0a45e93ff60503979d6`.
-It provides `component embed` and `component new`, but its async callback
-metadata currently requires legacy naming; standard32 naming is not supported
-for async-related features.
+Component WIT using that tool. The active local binary is
+`wasm-tools 1.255.0 (76e20611d, 2026-07-30)`, SHA-256
+`6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`.
+It provides `component embed` and `component new`; its current async callback
+metadata uses the `--dummy-names legacy` naming mode.
 
-**Decision:** pin this binary as the v1 component assembly tool and make
-compiler codegen emit its legacy async ABI names. No Rust toolchain is required
-at build time. A future standard-naming `wasmtime-p3` target must use a tooling
-path proven against the same component assembly and execution matrix; it cannot
-silently reuse a legacy artifact under the standard target name.
+**Decision:** pin this binary as the only v1 Component assembly tool. No Rust
+toolchain is required at build time, and no 1.254.0 compatibility path is
+supported. The `legacy` value below is only the async callback naming mode
+provided by the current binary.
 
 **Verified path:**
-`examples/p3-runtime/assemble_wasmtime_p3_legacy.sh` is the canonical assembly
+`examples/p3-runtime/assemble_async_component.sh` is the canonical assembly
 entrypoint. It rejects a missing, version-mismatched, or hash-mismatched
-`wasm-tools`, then runs `component embed --dummy-names legacy --async-callback`,
-attaches the generated component-type custom section to the real Core module,
-runs `component new`, and validates with `cm-async,cm-more-async-builtins`.
-`assemble_async_component.sh` remains a compatibility wrapper to this pinned
-path. `examples/p3-runtime/test_wasmtime_p3_legacy_assembly.sh` builds the real
-`wait-for-component.do` Core WAT, asserts the legacy async import/export names,
-assembles and validates the Component, and executes it twice through the Rust/
-Wasmtime clock host. It also asserts the target name, exact tool version/hash,
-and rejection of an unpinned executable.
+`wasm-tools`, runs current `component embed`/`component new`, and validates with
+`cm-async,cm-more-async-builtins`. `examples/p3-runtime/test_wasmtime_p3_assembly.sh`
+builds the real `wait-for-component.do` Core WAT, asserts the current tool
+version/hash and current async naming mode, assembles and validates the
+Component, and executes it twice through the Rust/Wasmtime clock host. The
+current-only guard rejects any active 1.254.0 selector, legacy binary variable,
+or removed assembler path.
 
 ## Runtime Drive Boundary
 
@@ -1971,7 +1969,7 @@ async lowering remains guarded outside this exact Component target.
 
 **Evidence:** `examples/p3-runtime/test_do_generic_async_runtime.sh` builds
 `examples/p3-runtime/generic-async-runtime.do`, embeds its WIT world, validates
-the Component with `wasm-tools 1.254.0`, and runs the Rust/Wasmtime `47.0.2`
+the Component with current `wasm-tools 1.255.0`, and runs the Rust/Wasmtime `47.0.2`
 host in pending, immediate-ready, and cancel modes. The observations are two
 external wakes/two completions/one drop for pending, three completions and no
 external wake for immediate-ready, and cancel-before-completion with two

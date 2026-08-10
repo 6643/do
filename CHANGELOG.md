@@ -1,5 +1,16 @@
 # Changelog
 
+# 2026-08-10 wasm-tools current-only migration: made
+`wasm-tools 1.255.0 (76e20611d 2026-07-30)` with SHA-256
+`6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013` the only
+active Component/async toolchain. Active gates now use
+`assemble_async_component.sh` and direct `component embed/new/validate`; the
+removed 1.254.0 assembler and version selectors are no longer executable
+paths. `--dummy-names legacy` remains only as the current async callback naming
+mode. Historical 1.254.0 measurements remain dated evidence and are not
+compatibility support. The current-only guard and the full gate matrix cover
+the migration.
+
 # 2026-08-09 private async host scalar-argument compiler promotion: added the
   opt-in `--p3-async-host-arg-component` target for the exact registered
   `do:async-call-arg-probe/host@0.1.0 / work` shape. The source contract has one

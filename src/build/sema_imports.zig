@@ -133,7 +133,8 @@ pub fn check_p3_async_host_imports(allocator: std.mem.Allocator, tokens: []const
             else => false,
         } else false;
         if (!is_stream_effect and !std.mem.eql(u8, descriptor.effect, "async") and
-            !std.mem.eql(u8, descriptor.effect, "async-host-scalar-argument")) return mark_error_at(tokens, idx, error.UnknownP3AsyncHostDescriptor);
+            !std.mem.eql(u8, descriptor.effect, "async-host-scalar-argument") and
+            !std.mem.eql(u8, descriptor.effect, "future-owned-resource")) return mark_error_at(tokens, idx, error.UnknownP3AsyncHostDescriptor);
     }
 }
 
@@ -193,6 +194,7 @@ fn p3_async_signature_matches(tokens: []const lexer.Token, start_idx: usize, end
             .filesystem_get_flags => return filesystem_get_flags_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_get_type => return filesystem_get_type_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_sync => return filesystem_sync_signature_matches(tokens, start_idx, close_idx, end_idx),
+            .future_owned_resource => return future_owned_signature_matches(tokens, start_idx, close_idx, end_idx),
             else => {},
         }
     }
@@ -245,6 +247,16 @@ fn filesystem_sync_signature_matches(
         tokens[params_start_idx + 1].kind != .ident or
         !std.mem.eql(u8, tokens[params_start_idx + 1].lexeme, "Dir")) return false;
     return compact_token_range_equals(tokens, params_close_idx + 3, end_idx, "nil|SyncError");
+}
+
+fn future_owned_signature_matches(
+    tokens: []const lexer.Token,
+    params_start_idx: usize,
+    params_close_idx: usize,
+    end_idx: usize,
+) bool {
+    if (params_close_idx != params_start_idx + 1) return false;
+    return compact_token_range_equals(tokens, params_close_idx + 3, end_idx, "Future<Ticket>");
 }
 
 fn http_stream_reader_signature_matches(
@@ -1782,6 +1794,17 @@ test "synchronous marker cannot bind a registered async member" {
     defer std.testing.allocator.free(tokens);
 
     try std.testing.expectError(error.UnknownP3AsyncHostDescriptor, check_p3_async_host_imports(std.testing.allocator, tokens));
+}
+
+test "private future-owned host_func accepts the Future resource signature" {
+    const source =
+        \\read = @host_func("do:future-owned-canonical/source@0.1.0", "read", () -> Future<Ticket>)
+        \\Ticket = @wasi_resource("do:future-owned-canonical/source/ticket", { .id i64 })
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try check_p3_async_host_imports(std.testing.allocator, tokens);
 }
 
 test "generated WIT host bindings accept custom resource signatures" {

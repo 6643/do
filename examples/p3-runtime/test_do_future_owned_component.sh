@@ -5,23 +5,11 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 do_bin=${DO_BIN:-"$repo_root/bin/do"}
 source="$repo_root/examples/p3-runtime/future-owned-component.do"
 wit_snapshot="$repo_root/examples/p3-runtime/future-owned-component.wit"
-current_wasm_tools=${WASM_TOOLS:-wasm-tools}
-legacy_wasm_tools=${LEGACY_WASM_TOOLS:-/home/_/.local/share/Trash/files/wasm-tools-1.254.0-x86_64-linux/wasm-tools}
-expected_version=${WASM_TOOLS_EXPECT_VERSION:-1.255.0}
+wasm_tools=${WASM_TOOLS:-wasm-tools}
 
 test -x "$do_bin"
 test -f "$source"
 test -f "$wit_snapshot"
-test -x "$legacy_wasm_tools"
-
-actual_version=$($current_wasm_tools --version)
-case "$actual_version" in
-  "wasm-tools $expected_version"*) ;;
-  *)
-    printf 'expected wasm-tools %s, got: %s\n' "$expected_version" "$actual_version" >&2
-    exit 1
-    ;;
-esac
 
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-future-owned-component.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
@@ -29,7 +17,6 @@ trap 'rm -rf -- "$tmp_dir"' EXIT
 core_wat="$tmp_dir/future-owned.wat"
 wit="$tmp_dir/future-owned.wit"
 core_wasm="$tmp_dir/future-owned.core.wasm"
-legacy_core_wasm="$tmp_dir/future-owned.legacy.core.wasm"
 component="$tmp_dir/future-owned.component.wasm"
 
 DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$source" \
@@ -53,13 +40,12 @@ if grep -Fq '[task-return]helper' "$core_wat" ||
   exit 1
 fi
 
-"$current_wasm_tools" parse "$core_wat" -o "$core_wasm"
-"$legacy_wasm_tools" parse "$core_wat" -o "$legacy_core_wasm"
-WASM_TOOLS="$legacy_wasm_tools" bash "$repo_root/examples/p3-runtime/assemble_wasmtime_p3_legacy.sh" \
-  "$wit" "$legacy_core_wasm" future-owned-canonical "$component"
-"$current_wasm_tools" validate --features cm-async,cm-more-async-builtins "$component"
+"$wasm_tools" parse "$core_wat" -o "$core_wasm"
+WASM_TOOLS="$wasm_tools" bash "$repo_root/examples/p3-runtime/assemble_async_component.sh" \
+  "$wit" "$core_wasm" future-owned-canonical "$component"
+"$wasm_tools" validate --features cm-async,cm-more-async-builtins "$component"
 component_wit=$tmp_dir/component.wit
-"$current_wasm_tools" component wit "$component" >"$component_wit"
+"$wasm_tools" component wit "$component" >"$component_wit"
 grep -Fq 'read: func() -> future<ticket>' "$component_wit"
 grep -Fq 'run: async func(mode: u32)' "$component_wit"
 

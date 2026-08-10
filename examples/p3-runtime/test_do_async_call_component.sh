@@ -5,9 +5,8 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 do_bin=${DO_BIN:-"$repo_root/bin/do"}
 wit_snapshot="$repo_root/examples/p3-runtime/async-call-component.wit"
 source="$repo_root/examples/p3-runtime/async-call-component.do"
-legacy_wasm_tools=${WASM_TOOLS:-/home/_/.local/share/Trash/files/wasm-tools-1.254.0-x86_64-linux/wasm-tools}
+wasm_tools=${WASM_TOOLS:-wasm-tools}
 test -x "$do_bin"
-test -x "$legacy_wasm_tools"
 test -f "$wit_snapshot"
 test -f "$source"
 
@@ -36,8 +35,8 @@ if grep -Fq '[task-return]helper' "$core_wat" || grep -Fq '[async-lift]helper' "
     exit 1
 fi
 
-"$legacy_wasm_tools" parse "$core_wat" -o "$core_wasm"
-WASM_TOOLS="$legacy_wasm_tools" bash "$repo_root/examples/p3-runtime/assemble_wasmtime_p3_legacy.sh" \
+"$wasm_tools" parse "$core_wat" -o "$core_wasm"
+WASM_TOOLS="$wasm_tools" bash "$repo_root/examples/p3-runtime/assemble_async_component.sh" \
     "$wit" "$core_wasm" probe "$component"
 
 v1_wat="$tmp_dir/v1.wat"

@@ -57,8 +57,8 @@ Component/Rust/Wasmtime cleanup gate；这些 bounded shape 已关闭。下一 s
 恢复条件是先提交新的 bounded design、pinned probe、正负 fixture、
 Component/Rust/Wasmtime cleanup gate，再重新进入 G6.2。
 
-**Generic ABI v2 borrow capability matrix (2026-08-06):** pinned
-`wasm-tools 1.254.0 (bb58fdf91 2026-07-20)` accepted `component embed` plus
+**Generic ABI v2 borrow capability matrix (historical baseline, 2026-08-06):**
+the then-pinned `wasm-tools 1.254.0 (bb58fdf91 2026-07-20)` accepted `component embed` plus
 `component new` for direct `borrow<ticket>`, a borrowed record, a borrowed
 variant, and `list<borrow<ticket>>`. A `stream<record { ticket: borrow<ticket> }>`
 and `future<borrow<ticket>>` were both rejected during `component embed` with
@@ -74,7 +74,8 @@ borrowed variant, and `list<borrow<ticket>>` still accepted;
 `stream<record { ticket: borrow<ticket> }>` and `future<borrow<ticket>>` still
 rejected during `component embed` with the same
 `contains a \`borrow<T>\` which is not supported` diagnostic. The boundary
-is therefore not an artifact of 1.254.0 alone.
+is therefore confirmed by the current-only 1.255.0 matrix, not an active
+dependency on the historical binary.
 
 **Owned async capability matrix (2026-08-07):** the same pinned
 `wasm-tools 1.255.0` probe also accepts `future<own<ticket>>` and
@@ -103,8 +104,8 @@ or a compiler registry descriptor.
 `--p3-owned-future-component` now admits exactly the registered
 `Future<Ticket>` source shape and emits the private `future<own<ticket>>` WIT
 sidecar. `examples/p3-runtime/test_do_future_owned_component.sh` passes
-sidecar identity, compiler WAT markers, `wasm-tools 1.255.0` parsing, pinned
-`wasm-tools 1.254.0` legacy async assembly/validation, target isolation, and
+sidecar identity, compiler WAT markers, current `wasm-tools 1.255.0` parsing
+and async assembly/validation, target isolation, and
 the Rust/Wasmtime ready/pending/cancel matrix. The three opt-in negative
 fixtures reject before WAT as `UnsupportedP3OwnedFutureComponent`. This
 closes only one private compiler promotion; generic owned futures/streams,
@@ -161,10 +162,10 @@ filesystem preopen、TCP/UDP sockets）。这只关闭运行时基线核验，�
 建立 admitted shape、resumable frame、Component metadata 与 Rust/Wasmtime
 pending/ready/cancel gate。
 
-**General async-call lowering ABI boundary (2026-08-07):** the independent
-probe `examples/p3-runtime/test_async_call_component_probe.sh` was run with
-pinned `wasm-tools 1.254.0 (bb58fdf91 2026-07-20)` (SHA-256
-`cc1f862d69363aac2d4a88f01c414a2dcf10858632d0c0a45e93ff60503979d6`). Core
+**General async-call lowering ABI boundary (2026-08-07, current-only refresh):**
+the independent probe `examples/p3-runtime/test_async_call_component_probe.sh`
+was rerun with current `wasm-tools 1.255.0 (76e20611d 2026-07-30)` (SHA-256
+`6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`). Core
 parsing and legacy async metadata attachment succeeded, but Component
 assembly rejected a synthetic internal helper endpoint:
 `failed to resolve import [export]$root::[task-return]helper` / `no export
@@ -187,7 +188,7 @@ func()` descriptor; the existing `do:generic-async-runtime-probe` descriptor
 and v1/v2 targets remain unchanged. The analyzer accepts both the child-only
 unit root and exactly one leading inline `helper()` followed by the explicit
 `@async(helper())` child. `examples/p3-runtime/test_do_async_call_component.sh`
-passes pinned `wasm-tools 1.254.0` assembly/validation, verifies inline and
+passes current `wasm-tools 1.255.0` assembly/validation, verifies inline and
 child state markers, two host call sites, no helper export, and v1 rejection
 before WAT. The Rust/Wasmtime gate
 `test_rust_async_call_component.sh` passes `ready`, `pending`, `cancel-inline`,
@@ -213,7 +214,7 @@ root-owned local-frame target now admits exactly one leading
 frame and is reused sequentially by the inline and child phases; no helper WIT
 export or new host descriptor is emitted. The dedicated
 `test_do_async_call_inline_scalar_argument.sh` gate passes pinned
-`wasm-tools 1.254.0` assembly, and `test_rust_async_call_component.sh` passes
+`wasm-tools 1.255.0` assembly, and `test_rust_async_call_component.sh` passes
 ready/pending/cancel-inline/cancel-child with exactly-once cleanup and an empty
 `ResourceTable`. `u32` is a probe boundary, not the final scalar type set.
 Additional parameters, non-literal expressions, payload/resource/stream/list
@@ -228,7 +229,7 @@ root literal `@async(helper(7))`. The generated WIT hash remains
 `b9f5f8355e87231317ec05cccf692ee465c6f339bd509640aedc196e58f81e61`; the
 compiler emits the measured 20-byte root frame with argument slot `+12`.
 Negative `compile_err/490`–`497` fixtures reject descriptor, marker, type,
-arity, topology, dynamic-root, and payload drift before WAT. Current and legacy Component
+arity, topology, dynamic-root, and payload drift before WAT. The current Component
 assembly/validation pass, and the generated Rust/Wasmtime gate passes ready,
 pending, and cancel with argument `7`, exactly-once Future cleanup, and an
 empty `ResourceTable`. This closes only the private bounded compiler shape;
@@ -382,7 +383,7 @@ borrowed/list/variant resource field 或更宽 runtime 形状。
   with generic WIT `ecf47e1e33b3a0d14761a1341f3b749f4ba072051c018083db2d5cda356c101f`
   and host-scalar WIT
   `b9f5f8355e87231317ec05cccf692ee465c6f339bd509640aedc196e58f81e61`.
-  Component current/legacy assembly, Rust/Wasmtime ready/pending/cancel
+  Component current-only assembly, Rust/Wasmtime ready/pending/cancel
   cleanup, `zig test main.zig` `336/336`, default regression
   `pass=1177 fail=0 skip=3`, and ReleaseSmall smoke are green. This closes
   only private internal reuse; generic async-call lowering, arbitrary producer
@@ -393,8 +394,8 @@ borrowed/list/variant resource field 或更宽 runtime 形状。
   ready-directory/regular, pending, error, and cancel cleanup gates; fixtures
   `459`-`461` reject descriptor/result/borrowed-payload drift. General
   filesystem async methods and public ownership remain pending.
-- **D2 filesystem `descriptor.sync`**: the private pinned method passed both
-  current `wasm-tools 1.255.0` and legacy `1.254.0` ABI assembly/validation with
+- **D2 filesystem `descriptor.sync`**: the private pinned method passed
+  current `wasm-tools 1.255.0` ABI assembly/validation with
   upstream WIT hash
   `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f` and
   regular/cancel mirror hashes
@@ -412,7 +413,7 @@ borrowed/list/variant resource field 或更宽 runtime 形状。
   methods, general async producers, borrowed payloads, and public ownership
   remain pending.
 - **D2 filesystem `descriptor.get-flags`**: the private pinned method passed
-  current and legacy `wasm-tools` ABI assembly/validation with upstream WIT
+  current `wasm-tools 1.255.0` ABI assembly/validation with upstream WIT
   hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`, WIT
   mirror hash `12afdb48b07d7160c76f04231fb8da4862350d42f6170174e6e27264b7307be9`,
   `[async-lower][method]descriptor.get-flags (i32,i32)->i32`, canonical `u8`

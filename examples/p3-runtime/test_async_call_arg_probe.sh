@@ -15,21 +15,8 @@ else
   wasm_tools=$(command -v "$wasm_tools")
 fi
 
-expected_selector=${WASM_TOOLS_EXPECT_VERSION:-1.255.0}
-case "$expected_selector" in
-  1.255.0)
-    expected_version='wasm-tools 1.255.0 (76e20611d 2026-07-30)'
-    expected_sha256='6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013'
-    ;;
-  1.254.0)
-    expected_version='wasm-tools 1.254.0 (bb58fdf91 2026-07-20)'
-    expected_sha256='cc1f862d69363aac2d4a88f01c414a2dcf10858632d0c0a45e93ff60503979d6'
-    ;;
-  *)
-    printf 'unsupported probe version selector: %s\n' "$expected_selector" >&2
-    exit 2
-    ;;
-esac
+expected_version='wasm-tools 1.255.0 (76e20611d 2026-07-30)'
+expected_sha256='6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013'
 
 actual_version=$($wasm_tools --version)
 test "$actual_version" = "$expected_version"

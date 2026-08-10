@@ -1,2 +1,2 @@
 # build-arg: --p3-owned-future-component
-P3AsyncHostSignatureMismatch
+UnsupportedP3OwnedFutureComponent
