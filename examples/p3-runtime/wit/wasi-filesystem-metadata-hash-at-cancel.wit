@@ -1,0 +1,73 @@
+package wasi:filesystem@0.3.0-rc-2025-09-16;
+
+interface types {
+  flags path-flags {
+    symlink-follow,
+  }
+
+  record metadata-hash-value {
+    lower: u64,
+    upper: u64,
+  }
+
+  enum error-code {
+    access,
+    already,
+    bad-descriptor,
+    busy,
+    deadlock,
+    quota,
+    exist,
+    file-too-large,
+    illegal-byte-sequence,
+    in-progress,
+    interrupted,
+    invalid,
+    io,
+    is-directory,
+    loop,
+    too-many-links,
+    message-size,
+    name-too-long,
+    no-device,
+    no-entry,
+    no-lock,
+    insufficient-memory,
+    insufficient-space,
+    not-directory,
+    not-empty,
+    not-recoverable,
+    unsupported,
+    no-tty,
+    no-such-device,
+    overflow,
+    not-permitted,
+    pipe,
+    read-only,
+    invalid-seek,
+    text-file-busy,
+    cross-device,
+  }
+
+  resource descriptor {
+    metadata-hash-at: async func(
+      path-flags: path-flags,
+      path: string,
+    ) -> result<metadata-hash-value, error-code>;
+  }
+}
+
+interface probe {
+  use types.{descriptor, path-flags, metadata-hash-value, error-code};
+  run: async func(
+    file: own<descriptor>,
+    path-flags: path-flags,
+    path: string,
+  ) -> result<metadata-hash-value, error-code>;
+  cancel: async func();
+}
+
+world metadata-hash-at-cancel-probe {
+  import types;
+  export probe;
+}

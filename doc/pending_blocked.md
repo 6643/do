@@ -92,6 +92,22 @@ rows. This closes only the private method-specific target. `metadata-hash-at`,
 generic filesystem async, external HTTP, and public ownership syntax remain
 blocked.
 
+**D2 `descriptor.metadata-hash-at` ABI-only probe (2026-08-10):** the current
+`wasm-tools 1.255.0` WIT/Core probe passes for the exact mixed
+`path-flags + string` method. The measured import is
+`(i32,i32,i32,i32,i32) -> i32` in the order
+`descriptor, path-flags, path-ptr, path-len, result-area`; task-return remains
+`(i32,i64,i64)`, result payload is
+`metadata-hash-value { lower: u64, upper: u64 } | error-code`, and descriptor
+drop is `[resource-drop]descriptor (i32) -> nil`. Regular/cancel mirror hashes
+are `95e24b70eeed89407706c18a6e4cd13a8bc4dce72d1e56638436b03287d23412` /
+`aca9c5933786a00a2dd20b1ad1ddbb6d0a79ab5b3bdbd5bd61e14b100a3b6e0a`.
+Both Core templates and Component assembly validate, including the generated
+`string-encoding=utf8 async` lowering and test-only cancellation markers. This
+is ABI evidence only: compiler admission, real host I/O, path ownership,
+positive/negative Do fixtures, and the Rust/Wasmtime cleanup matrix remain
+blocked and require a separate design and gate.
+
 **G6.2 next-shape stop (2026-08-09, `can_skip=true`):** 动态 count `0..3`、
 固定两批次 private producer 与 pure-scalar `stream<list<u32>>` producer 均已形成独立
 design、pinned WIT/WAT、registry/sema admission、compiler adapter、正负 fixture 和

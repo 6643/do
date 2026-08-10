@@ -170,9 +170,9 @@ Rust/Wasmtime cleanup matrix.
 
 ## D2 Bounded Filesystem Async `descriptor.metadata-hash` (2026-08-10)
 
-**Status:** the private metadata-hash method is verified; generic filesystem
-async, `metadata-hash-at`, and generic host-future-drop cancellation remain
-blocked.
+**Status:** the private metadata-hash method is verified. The independent
+`metadata-hash-at` ABI probe is now verified, but compiler admission, real host
+I/O, and generic host-future-drop cancellation remain blocked.
 
 **Evidence:**
 `bash examples/p3-runtime/test_d2_wasi_filesystem_metadata_hash_abi.sh` and
@@ -204,6 +204,41 @@ arbitrary producer expressions, stream/list/borrowed/record payloads, external
 HTTP, or public `own<T>`/`borrow<T>`/`ref<T>` syntax. Each additional method
 needs its own pinned WIT/Core probe, positive/negative fixtures, Component
 validation, and Rust/Wasmtime cleanup matrix.
+
+## D2 ABI-only Probe `descriptor.metadata-hash-at` (2026-08-10)
+
+**Status:** the pinned Component/Core ABI capability is verified; no Do
+compiler admission or real filesystem runtime promotion is claimed.
+
+**Evidence:**
+`bash examples/p3-runtime/test_d2_wasi_filesystem_metadata_hash_at_abi.sh`
+passes with `wasm-tools 1.255.0 (76e20611d 2026-07-30)` and SHA-256
+`6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`.
+The upstream filesystem WIT hash is
+`8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`;
+regular and cancellation mirrors are
+`95e24b70eeed89407706c18a6e4cd13a8bc4dce72d1e56638436b03287d23412` /
+`aca9c5933786a00a2dd20b1ad1ddbb6d0a79ab5b3bdbd5bd61e14b100a3b6e0a`.
+
+The measured method import is
+`[async-lower][method]descriptor.metadata-hash-at:
+(i32,i32,i32,i32,i32) -> i32`, with arguments ordered as descriptor handle,
+`path-flags` bits, UTF-8 path pointer, UTF-8 path length, and result-area
+pointer. The generated Component contains `string-encoding=utf8 async`.
+The task-return remains `(i32,i64,i64)` for the two-word
+`metadata-hash-value { lower: u64, upper: u64 } | error-code` result, and
+descriptor drop remains `[resource-drop]descriptor (i32) -> nil`.
+Both hand-authored Core modules parse/validate, and regular/cancel Component
+assembly plus generated WIT validation pass. The frame records the path
+pointer/length until completion and the aligned result area at tag `+24`,
+`lower +32`, `upper +40`; this is an ABI observation, not a Do ownership
+guarantee.
+
+**Boundary:** this probe does not prove compiler source admission, path storage
+ownership across an async call, host error behavior, real pending/wake rows,
+or cancellation cleanup in Wasmtime. It does not change the generic filesystem
+async stop. A promotion task must add exact positive/negative compiler
+fixtures and a Rust/Wasmtime cleanup matrix before any compiler code is added.
 
 ## D2 Bounded Filesystem Async `descriptor.get-type` (2026-08-08)
 
