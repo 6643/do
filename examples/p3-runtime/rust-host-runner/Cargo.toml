@@ -205,6 +205,10 @@ path = "src/bin/wasi_filesystem_sync.rs"
 name = "do-p3-wasi-filesystem-get-flags-host-runner"
 path = "src/bin/wasi_filesystem_get_flags.rs"
 
+[[bin]]
+name = "do-p3-wasi-filesystem-stat-host-runner"
+path = "src/bin/do-p3-wasi-filesystem-stat-host-runner.rs"
+
 [profile.dev]
 debug = 0
 incremental = false
