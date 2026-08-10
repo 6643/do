@@ -1,6 +1,6 @@
 # Roadmap 执行状态
 
-更新时间: 2026-08-10
+更新时间: 2026-08-11
 
 **本文只保留当前状态与阻断。** 历史小任务勾选与逐条 gate 证据已从仓库移除; 追溯用 git 历史与 `CHANGELOG.md`。  
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
@@ -19,8 +19,8 @@
 | v1 子集 | 发布候选已收口 |
 | 阶段 A–F、H | done |
 | 阶段 D | 可推进项 done; D2.1 按 B 方案绿色 regression 收口 |
-| D2 真实 host smoke | in progress; real local filesystem preopen/read-directory, CLI pipe, compiler-generated TCP/UDP socket create/bind/drop loopback, and the private pinned `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash` async method gates are green; the method-level recovery matrix is documented, while general filesystem async and external HTTP remain blocked |
-| 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + **private bounded async host scalar-argument compiler promotion** + helper-mediated lease（含五跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + **private bounded scalar `stream<list<u32>>` producer promotion** + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash` slices、G6.3、G6.4 done; generic list/producer、borrowed payload、general async-call、D2 general methods 与 root hard-cancel 仍 pending |
+| D2 真实 host smoke | in progress; real local filesystem preopen/read-directory, CLI pipe, compiler-generated TCP/UDP socket create/bind/drop loopback, and the private pinned `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at` async method gates are green; the method-level recovery matrix is documented, while general filesystem async and external HTTP remain blocked |
+| 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + **private bounded async host scalar-argument compiler promotion** + helper-mediated lease（含五跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + **private bounded scalar `stream<list<u32>>` producer promotion** + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at` slices、G6.3、G6.4 done; generic list/producer、borrowed payload、general async-call、D2 general methods 与 root hard-cancel 仍 pending |
 | Colorless async / WIT bindgen | canonical `@async/@await/@cancel` surface, legacy `async` deprecation, schema 1/2 generated manifest checks, automatic discovery for the admitted schema 2 unit and scalar capabilities, plus opt-in v2 variant/scalar-i64 slices, the `--p3-async-call-component` root-owned local-frame slice including one inline `u32` scalar argument, the private `--p3-async-host-arg-component` scalar-argument compiler slice, and the private `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` slice verified; general async-call promotion and D2 recovery designs are frozen without compiler widening; unrestricted generated WIT lowering remains pending |
 | 阶段 I | **closed** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构扁平拆分 | 已落地: `diagnostics` / `type_name` / `sema_error` / codegen 域竖切 / **`sema_*` 域竖切** (`sema_tokens`/`sema_shapes`/`sema_function_*`/`sema_structures`/`sema_type_checks`/`sema_imports`/`sema_control`) |
@@ -147,6 +147,33 @@ root hard-cancel, and public ownership syntax remain pending.
   → `./src/build/test/run_tests.sh` passes `pass=1199 fail=0 skip=3`; the
     `RUN_WASM=1 SKIP_BUILD=1` rerun passes `pass=1201 fail=0 skip=3` with WASM
     smoke `6/6`; `cd src && zig test main.zig` passes `347/347`.
+```
+
+```text
+2026-08-11 private filesystem descriptor.metadata-hash-at promotion
+  → `test_d2_wasi_filesystem_metadata_hash_at_abi.sh` and
+    `test_rust_wasi_filesystem_metadata_hash_at.sh` pass with the pinned
+    `wasm-tools 1.255.0` binary (SHA-256
+    `6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`),
+    upstream WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`,
+    and regular/cancel mirror hashes
+    `95e24b70eeed89407706c18a6e4cd13a8bc4dce72d1e56638436b03287d23412` /
+    `aca9c5933786a00a2dd20b1ad1ddbb6d0a79ab5b3bdbd5bd61e14b100a3b6e0a`.
+  → The opt-in `--p3-async-component` compiler gate admits fixture `520`,
+    rejects `521`-`529` before WAT, and uses the five-i32 method import
+    `(i32,i32,i32,i32,i32) -> i32`, task-return `(i32,i64,i64)`, and Core
+    template SHA-256
+    `6056d1e6f42d6ab4edce60e2bb1ef61f358bfd6d03e6aa1e3c35daf08672713f`.
+  → Generated WIT/Core embeds and validates; the Rust host-owned UTF-8 path
+    copy survives a delayed pending poll. Ready/pending/error/cancel,
+    Store-disposal early-drop, and repeat cleanup rows pass; cancellation is
+    cleanup-only and does not claim host rollback.
+  → `./src/build/test/run_tests.sh` passes `pass=1209 fail=0 skip=3`,
+    `RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh` passes
+    `pass=1211 fail=0 skip=3` with WASM smoke `6/6`,
+    `cd src && zig test main.zig` passes `351/351`, and ReleaseSmall build
+    succeeds. Generic filesystem async, host-future-drop cancellation,
+    external HTTP, and public ownership syntax remain pending.
 ```
 
 ```text

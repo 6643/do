@@ -39,8 +39,9 @@ callback mangling mode; it does not select a legacy toolchain.
 ## D2 General Filesystem/HTTP Recovery Boundary (2026-08-09)
 
 **Status:** the private `descriptor.get-type`, `descriptor.sync`,
-`descriptor.get-flags`, `descriptor.stat`, `descriptor.sync-data`, and
-`descriptor.metadata-hash` methods remain green as separate bounded
+`descriptor.get-flags`, `descriptor.stat`, `descriptor.sync-data`,
+`descriptor.metadata-hash`, and `descriptor.metadata-hash-at` methods remain
+green as separate bounded
 descriptors.
 General filesystem async and arbitrary HTTP remain blocked; this checkpoint
 does not add a registry entry or widen code generation.
@@ -171,8 +172,9 @@ Rust/Wasmtime cleanup matrix.
 ## D2 Bounded Filesystem Async `descriptor.metadata-hash` (2026-08-10)
 
 **Status:** the private metadata-hash method is verified. The independent
-`metadata-hash-at` ABI probe is now verified, but compiler admission, real host
-I/O, and generic host-future-drop cancellation remain blocked.
+`metadata-hash-at` compiler and local-host runtime slice is also verified;
+generic filesystem async and generic host-future-drop cancellation remain
+blocked.
 
 **Evidence:**
 `bash examples/p3-runtime/test_d2_wasi_filesystem_metadata_hash_abi.sh` and
@@ -199,46 +201,62 @@ and hand-authored cancel/Store-disposal early-drop Rust/Wasmtime rows pass.
 Cancellation only releases live Component state and never claims rollback of
 host work already issued.
 
-**Boundary:** this does not admit `metadata-hash-at`, generic filesystem async,
-arbitrary producer expressions, stream/list/borrowed/record payloads, external
+**Boundary:** this does not admit generic filesystem async, arbitrary producer
+expressions, stream/list/borrowed/record payloads, external
 HTTP, or public `own<T>`/`borrow<T>`/`ref<T>` syntax. Each additional method
 needs its own pinned WIT/Core probe, positive/negative fixtures, Component
 validation, and Rust/Wasmtime cleanup matrix.
 
-## D2 ABI-only Probe `descriptor.metadata-hash-at` (2026-08-10)
+## D2 Bounded Filesystem Async `descriptor.metadata-hash-at` (2026-08-11)
 
-**Status:** the pinned Component/Core ABI capability is verified; no Do
-compiler admission or real filesystem runtime promotion is claimed.
+**Status:** the pinned ABI, exact opt-in Do compiler slice, generated regular
+Component, and Rust/Wasmtime path-copy and cleanup matrix are green. Generic
+filesystem async, generic host-future-drop cancellation, and public ownership
+syntax remain blocked.
 
 **Evidence:**
-`bash examples/p3-runtime/test_d2_wasi_filesystem_metadata_hash_at_abi.sh`
-passes with `wasm-tools 1.255.0 (76e20611d 2026-07-30)` and SHA-256
+`bash examples/p3-runtime/test_d2_wasi_filesystem_metadata_hash_at_abi.sh` and
+`bash examples/p3-runtime/test_rust_wasi_filesystem_metadata_hash_at.sh` pass
+with `wasm-tools 1.255.0 (76e20611d 2026-07-30)` and SHA-256
 `6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`.
 The upstream filesystem WIT hash is
 `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`;
-regular and cancellation mirrors are
+regular/cancel oracle mirrors are
 `95e24b70eeed89407706c18a6e4cd13a8bc4dce72d1e56638436b03287d23412` /
 `aca9c5933786a00a2dd20b1ad1ddbb6d0a79ab5b3bdbd5bd61e14b100a3b6e0a`.
 
-The measured method import is
+The admitted source is exactly one `@host_async_func`
+`(Dir, u32, text) -> MetadataHash | HashError`, one direct await, one exact
+descriptor/resource shell, and a synchronous root with an empty `start`.
+Fixture `520` is admitted; `521`-`529` reject before WAT for unregistered,
+signature, second-await, branch, loop, extra-host, record, and async-root drift.
+The measured import is
 `[async-lower][method]descriptor.metadata-hash-at:
-(i32,i32,i32,i32,i32) -> i32`, with arguments ordered as descriptor handle,
-`path-flags` bits, UTF-8 path pointer, UTF-8 path length, and result-area
-pointer. The generated Component contains `string-encoding=utf8 async`.
-The task-return remains `(i32,i64,i64)` for the two-word
-`metadata-hash-value { lower: u64, upper: u64 } | error-code` result, and
-descriptor drop remains `[resource-drop]descriptor (i32) -> nil`.
-Both hand-authored Core modules parse/validate, and regular/cancel Component
-assembly plus generated WIT validation pass. The frame records the path
-pointer/length until completion and the aligned result area at tag `+24`,
-`lower +32`, `upper +40`; this is an ABI observation, not a Do ownership
-guarantee.
+(i32,i32,i32,i32,i32) -> i32`, ordered as descriptor, path-flags, UTF-8 path
+pointer, UTF-8 path length, and result-area pointer. Task-return is
+`(i32,i64,i64)` and descriptor drop is `[resource-drop]descriptor (i32) -> nil`.
+The compiler template hash is
+`6056d1e6f42d6ab4edce60e2bb1ef61f358bfd6d03e6aa1e3c35daf08672713f`.
 
-**Boundary:** this probe does not prove compiler source admission, path storage
-ownership across an async call, host error behavior, real pending/wake rows,
-or cancellation cleanup in Wasmtime. It does not change the generic filesystem
-async stop. A promotion task must add exact positive/negative compiler
-fixtures and a Rust/Wasmtime cleanup matrix before any compiler code is added.
+The generated WIT/Core Component embeds and validates. The Rust host copies
+the UTF-8 path into an owned `String` before returning its future; the pending
+row observes the exact non-ASCII path after a delayed wake. Ready, pending,
+error, cancel, whole-Store early-drop, and repeat rows pass with exactly-once
+future/descriptor cleanup. Early-drop reports
+`pending-future-drops=1 descriptor-drops=0 table-empty=not-applicable`, matching
+the Wasmtime 47 Store-disposal boundary. Cancellation is cleanup-only and never
+rolls back a filesystem effect already issued to the host.
+
+Full gates also pass: `./src/build/test/run_tests.sh` reports
+`pass=1209 fail=0 skip=3`, `cd src && zig test main.zig` reports `351/351`, and
+`cd src && zig build -Doptimize=ReleaseSmall` succeeds.
+
+**Boundary:** this remains a private method-specific target. It does not admit
+generic filesystem or HTTP async, arbitrary producer expressions,
+stream/list/borrowed/record payloads, `stat-at`, `open-at`, path mutation, or
+public `own<T>`/`borrow<T>`/`ref<T>` syntax. Each additional method needs its
+own pinned WIT/Core probe, positive/negative fixtures, Component validation,
+and Rust/Wasmtime cleanup matrix.
 
 ## D2 Bounded Filesystem Async `descriptor.get-type` (2026-08-08)
 
