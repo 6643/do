@@ -19,8 +19,8 @@
 | v1 子集 | 发布候选已收口 |
 | 阶段 A–F、H | done |
 | 阶段 D | 可推进项 done; D2.1 按 B 方案绿色 regression 收口 |
-| D2 真实 host smoke | in progress; real local filesystem preopen/read-directory, CLI pipe, compiler-generated TCP/UDP socket create/bind/drop loopback, and the private pinned `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat` async method gates are green; the method-level recovery matrix is documented, while general filesystem async and external HTTP remain blocked |
-| 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + **private bounded async host scalar-argument compiler promotion** + helper-mediated lease（含五跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + **private bounded scalar `stream<list<u32>>` producer promotion** + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat` slices、G6.3、G6.4 done; generic list/producer、borrowed payload、general async-call、D2 general methods 与 root hard-cancel 仍 pending |
+| D2 真实 host smoke | in progress; real local filesystem preopen/read-directory, CLI pipe, compiler-generated TCP/UDP socket create/bind/drop loopback, and the private pinned `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data` async method gates are green; the method-level recovery matrix is documented, while general filesystem async and external HTTP remain blocked |
+| 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + **private bounded async host scalar-argument compiler promotion** + helper-mediated lease（含五跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + **private bounded scalar `stream<list<u32>>` producer promotion** + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data` slices、G6.3、G6.4 done; generic list/producer、borrowed payload、general async-call、D2 general methods 与 root hard-cancel 仍 pending |
 | Colorless async / WIT bindgen | canonical `@async/@await/@cancel` surface, legacy `async` deprecation, schema 1/2 generated manifest checks, automatic discovery for the admitted schema 2 unit and scalar capabilities, plus opt-in v2 variant/scalar-i64 slices, the `--p3-async-call-component` root-owned local-frame slice including one inline `u32` scalar argument, the private `--p3-async-host-arg-component` scalar-argument compiler slice, and the private `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` slice verified; general async-call promotion and D2 recovery designs are frozen without compiler widening; unrestricted generated WIT lowering remains pending |
 | 阶段 I | **closed** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构扁平拆分 | 已落地: `diagnostics` / `type_name` / `sema_error` / codegen 域竖切 / **`sema_*` 域竖切** (`sema_tokens`/`sema_shapes`/`sema_function_*`/`sema_structures`/`sema_type_checks`/`sema_imports`/`sema_control`) |
@@ -101,6 +101,39 @@ root hard-cancel, and public ownership syntax remain pending.
     added. The ABI probe is retained as the canonical baseline for the
     compiler promotion recorded below.
 
+```
+
+```text
+2026-08-10 private filesystem descriptor.sync-data promotion
+  → `test_d2_wasi_filesystem_sync_data_abi.sh` passes the pinned
+    `wasm-tools 1.255.0` binary (SHA-256
+    `6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`),
+    upstream WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`,
+    regular/cancel mirror hashes
+    `ffc10164efb9a457637d56df111bb92844eef7b3258fec5dfb075b8e68dff8bb` /
+    `2107a6283e8ae2b6f2cea296d91269c65d543456e39376ef4e70b0b69fd974e3`,
+    and the measured `(i32,i32) -> i32` method import with unit/error-code Result.
+  → The opt-in `--p3-async-component` compiler gate admits fixture `511`,
+    emits the canonical template (`3269e6f8c61a34dbea99f2637a257d582d79ab860f812d6ddfc46392e4fc3e7b`),
+    emits WIT hash `df3c055bab6ecff3d3b77435ba67df6c4d207eb786e243d41f1301873fabfed9`,
+    and rejects fixtures `512`-`515` before WAT.
+  → `test_rust_wasi_filesystem_sync_data.sh` passes hand-authored and generated
+    ready/pending/error/repeat rows plus hand-authored explicit cancel and
+    Store-disposal early-drop; cleanup is exactly once, with the early-drop
+    boundary explicitly `descriptor-drops=0` and `table-empty=not-applicable`.
+  → This closes only the private method-specific target. Generic filesystem
+    async, host-future-drop cancellation, external HTTP, and public ownership
+    syntax remain pending.
+```
+
+```text
+2026-08-10 D2 sync-data full regression closeout
+  → `cd src && zig test main.zig` passes `343/343`; the corrected default
+    `./src/build/test/run_tests.sh` passes `pass=1195 fail=0 skip=3`.
+  → `RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh` passes
+    `pass=1197 fail=0 skip=3` with WASM smoke `6/6`.
+  → `./src/build/test/run_release_smoke.sh` passes ReleaseSmall build,
+    build, test, compiled-test, check, fmt, run, and LSP smoke.
 ```
 
 ```text

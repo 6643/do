@@ -1,6 +1,6 @@
 # do 编译器主计划
 
-状态: v1 子集发布候选已收口; G6 generic consumer 与 bounded nested resource paths 已闭环, D2 私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat` 已闭环, 私有有界 `stream<list<u32>>` producer promotion 已闭环, 剩余 producer/resource residual
+状态: v1 子集发布候选已收口; G6 generic consumer 与 bounded nested resource paths 已闭环, D2 私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data` 已闭环, 私有有界 `stream<list<u32>>` producer promotion 已闭环, 剩余 producer/resource residual
 更新时间: 2026-08-10
 
 实时接手入口: `doc/start_here.md`。  
@@ -16,9 +16,9 @@
 - `do lsp`: diagnostics + formatting + semantic tokens + hover + completion + definition (无 rename)。
 - `do fmt`: stdout / check-only / write 单文件。
 - `do check`: lexer/parser/sema/import diagnostics only; 诊断收集在 `src/build/diagnostics.zig`。
-- 阶段 A–F、H 已完成; D 可推进项与 D2.1 已收口; D2 真实本地 file/dir/CLI stream、compiler-generated TCP/UDP socket create/bind/drop loopback smoke 与私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat` async slices 已收口，但总项仍受通用 filesystem async/external HTTP 阻断; G1–G5、G6.4 已完成; **阶段 I (I1+I2) 已关闭**。
+- 阶段 A–F、H 已完成; D 可推进项与 D2.1 已收口; D2 真实本地 file/dir/CLI stream、compiler-generated TCP/UDP socket create/bind/drop loopback smoke 与私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data` async slices 已收口，但总项仍受通用 filesystem async/external HTTP 阻断; G1–G5、G6.4 已完成; **阶段 I (I1+I2) 已关闭**。
 - 架构扁平拆分已落地: `type_name` / `sema_error` / `diagnostics` / `gen_*` 域竖切 / `sema_*` 域竖切 (见 `AGENTS.md`)。
-- 最近回归: Bun Node-compatible runner 下 `./src/build/test/run_tests.sh` → `pass=1190 fail=0 skip=3`; `RUN_WASM=1 SKIP_BUILD=1` → `pass=1192 fail=0 skip=3` (WASM smoke `6/6`); ReleaseSmall smoke 与 `cd src && zig test main.zig` (`339/339`) 均通过。
+- 最近回归: Bun Node-compatible runner 下 `./src/build/test/run_tests.sh` → `pass=1195 fail=0 skip=3`; `RUN_WASM=1 SKIP_BUILD=1` → `pass=1197 fail=0 skip=3` (WASM smoke `6/6`); ReleaseSmall smoke 与 `cd src && zig test main.zig` (`343/343`) 均通过。
 - D2 `descriptor.sync` 的私有记录固定 upstream WIT hash
   `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`、regular/
   cancel mirror hashes `18ce7dc9efb991cd8e5f945797aea73edeed79f0cfc51ea664cb81537e54e719` /
@@ -34,6 +34,13 @@
   are green. Cancel and Store-disposal early-drop remain hand-authored oracle
   rows because the admitted Do source has no cancel export; generic filesystem
   async and host-future-drop cancellation remain pending.
+- D2 `descriptor.sync-data` 的私有记录固定 upstream WIT hash
+  `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`、regular/
+  cancel probe WIT mirror hashes `ffc10164efb9a457637d56df111bb92844eef7b3258fec5dfb075b8e68dff8bb` /
+  `2107a6283e8ae2b6f2cea296d91269c65d543456e39376ef4e70b0b69fd974e3`，ABI
+  `(i32,i32)->i32`、unit/error-code Result、fixtures `511`–`515` 与
+  ready/pending/error/cancel/repeat/Store-disposal early-drop cleanup matrix
+  均通过；generic filesystem async and host-future-drop cancellation remain pending.
 - Colorless async / WIT bindgen 已形成有界可验证切片：`do wit check/bind`、生成 manifest 漂移校验、`@async/@await/@cancel` 前端契约、descriptor-backed generic/scalar、私有 root-owned local-frame async-call Component（unit inline 与单 `u32` inline scalar）、私有 `--p3-async-host-arg-component` scalar-argument compiler promotion、以及私有 `Future<Ticket>` -> `future<own<ticket>>` Component runtime 的 pending/ready/cancel gates 均通过；general async-call promotion contract 与 D2 filesystem/HTTP method recovery design 已冻结，但没有 compiler widening；自动 manifest-to-lowering 的通用化与任意 payload/Stream/resource lowering 仍是 pending。
 
 当前禁止默认推进:

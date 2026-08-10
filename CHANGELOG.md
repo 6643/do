@@ -1,5 +1,24 @@
 # Changelog
 
+# 2026-08-10 D2 private filesystem `descriptor.sync-data` promotion: admitted
+  only `wasi:filesystem/types@0.3.0-rc-2025-09-16 / descriptor.sync-data`
+  with upstream WIT hash
+  `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f` and
+  measured async import `[async-lower][method]descriptor.sync-data`
+  `(i32,i32)->i32`; task-return is two `i32` words and the private Result is
+  `unit | error-code`. The opt-in `--p3-async-component` compiler gate admits
+  fixture `511`, rejects `512`-`515` before WAT, and matches the canonical Core
+  template hash `3269e6f8c61a34dbea99f2637a257d582d79ab860f812d6ddfc46392e4fc3e7b`.
+  Hand-authored and generated Components pass ready/pending/error/repeat; the
+  hand-authored cancel Component passes explicit cancellation with exactly-once
+  Future/descriptor cleanup and an empty `ResourceTable`. Store-disposal
+  early-drop is recorded as `descriptor-drops=0` and
+  `table-empty=not-applicable`, not generic host-future cancellation. General
+  filesystem async, external HTTP, and public `own<T>`/`borrow<T>`/`ref<T>`
+  remain outside this private method slice. Closeout gates: `zig test main.zig`
+  `343/343`, default regression `pass=1195 fail=0 skip=3`, WASM regression
+  `pass=1197 fail=0 skip=3` with smoke `6/6`, and ReleaseSmall smoke passed.
+
 # 2026-08-10 wasm-tools current-only migration: made
 `wasm-tools 1.255.0 (76e20611d 2026-07-30)` with SHA-256
 `6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013` the only

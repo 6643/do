@@ -53,10 +53,10 @@ Status after all gates:
 
 ### Task 1: Freeze source identity and baseline
 
-- [ ] Verify the `sync-data` source declaration and current tool/hash.
-- [ ] Run the existing sync/stat ABI, Rust, Zig, compiler, WASM, ReleaseSmall,
+- [x] Verify the `sync-data` source declaration and current tool/hash.
+- [x] Run the existing sync/stat ABI, Rust, Zig, compiler, WASM, ReleaseSmall,
   and documentation baselines. Preserve any failure as a blocker.
-- [ ] Commit the spec and this plan after a consistency/scope review.
+- [x] Commit the spec and this plan after a consistency/scope review.
 
 Commands:
 
@@ -68,14 +68,15 @@ sha256sum src/build/p3_wit/wasi-http-0.3.0-rc-2025-09-16/deps/filesystem/types.w
 
 ### Task 2: Measure the independent WIT/Core ABI
 
-- [ ] Author the smallest complete regular and cancel WIT worlds with the
+- [x] Author the smallest complete regular and cancel WIT worlds with the
   pinned error-code order and only `descriptor.sync-data`.
-- [ ] Assemble/embed/validate with current `wasm-tools`; record the exact
+- [x] Assemble/embed/validate with current `wasm-tools`; record the exact
   import, completion words, Result tag/payload, and drop names.
-- [ ] Write regular/cancel Core WAT templates from measured names and assert
+- [x] Write regular/cancel Core WAT templates from measured names and assert
   marker order and hashes in `test_d2_wasi_filesystem_sync_data_abi.sh`.
-- [ ] Stop with a recorded no-go if the measured flat shape differs from
-  `(i32,i32)->i32`, `(i32,i32)` task return, tag `i32`, Ok `[]`, Err `[i32]`.
+- [x] Confirm the measured flat shape matches the promotion contract; the
+  no-go condition was not triggered: `(i32,i32)->i32`, `(i32,i32)` task return,
+  tag `i32`, Ok `[]`, Err `[i32]`.
 
 Gate:
 
@@ -85,12 +86,12 @@ bash examples/p3-runtime/test_d2_wasi_filesystem_sync_data_abi.sh
 
 ### Task 3: Build the hand-authored Rust/Wasmtime oracle
 
-- [ ] Add ready, pending, error, explicit cancel, Store-disposal early-drop,
+- [x] Add ready, pending, error, explicit cancel, Store-disposal early-drop,
   and repeat modes; count calls, polls, wakes, completions, Future drops,
   descriptor drops, and `ResourceTable` state.
-- [ ] Assert exactly-once cleanup for live-Store rows and explicitly label
+- [x] Assert exactly-once cleanup for live-Store rows and explicitly label
   Store disposal as `table-empty=not-applicable`.
-- [ ] Run rustfmt and the runtime gate before compiler changes.
+- [x] Run rustfmt and the runtime gate before compiler changes.
 
 Gate:
 
@@ -100,50 +101,50 @@ bash examples/p3-runtime/test_rust_wasi_filesystem_sync_data.sh
 
 ### Task 4: Write compiler fixtures and failing planner tests first
 
-- [ ] Add the exact positive source fixture `511`.
-- [ ] Add negative fixtures `512`-`515` for unregistered/wrong-result,
+- [x] Add the exact positive source fixture `511`.
+- [x] Add negative fixtures `512`-`515` for unregistered/wrong-result,
   second-await, and async-root drift with exact expected diagnostics.
-- [ ] Add manifest and target-classification tests that fail because the new
+- [x] Add manifest and target-classification tests that fail because the new
   shape and emitter do not yet exist.
-- [ ] Run focused tests and confirm the failure is the missing capability, not
+- [x] Run focused tests and confirm the failure is the missing capability, not
   a fixture typo.
 
 ### Task 5: Add descriptor-backed registry and planner/emitter
 
-- [ ] Add a separate `filesystem-sync-data` shape with the measured canonical
+- [x] Add a separate `filesystem-sync-data` shape with the measured canonical
   facts and strict WIT locator/member/hash checks.
-- [ ] Implement a source planner matching exactly one `@host_async_func`, one
+- [x] Implement a source planner matching exactly one `@host_async_func`, one
   `Dir` receiver, one `Future<nil | SyncDataError>`, one await, and ordinary
   root/start functions.
-- [ ] Add a private emitter and WAT template with the fixed frame and cleanup
+- [x] Add a private emitter and WAT template with the fixed frame and cleanup
   order; reject every negative fixture before WAT.
-- [ ] Add the new target to `codegen_component_async.zig` without changing
+- [x] Add the new target to `codegen_component_async.zig` without changing
   existing target behavior.
-- [ ] Run manifest, planner, codegen, and fixture tests until green.
+- [x] Run manifest, planner, codegen, and fixture tests until green.
 
 ### Task 6: Assemble generated Component and compare runtime behavior
 
-- [ ] Compile fixture `511` through `--p3-async-component` and emit WIT/WAT.
-- [ ] Assert generated WIT identity, Core markers, and pinned hashes.
-- [ ] Embed/new/validate with current `wasm-tools` and run generated ready,
+- [x] Compile fixture `511` through `--p3-async-component` and emit WIT/WAT.
+- [x] Assert generated WIT identity, Core markers, and pinned hashes.
+- [x] Embed/new/validate with current `wasm-tools` and run generated ready,
   pending, error, and repeat rows plus the hand-authored cancel rows.
-- [ ] Compare generated cleanup counters with the Rust oracle.
+- [x] Compare generated cleanup counters with the Rust oracle.
 
 ### Task 7: Full regression, documentation, delivery
 
-- [ ] Run focused scripts, `cd src && zig test main.zig`, normal and WASM
+- [x] Run focused scripts, `cd src && zig test main.zig`, normal and WASM
   regression, ReleaseSmall smoke, `git diff --check`, and documentation
   consistency checks.
-- [ ] Update status docs to list only private `descriptor.sync-data` as newly
+- [x] Update status docs to list only private `descriptor.sync-data` as newly
   closed; retain generic filesystem async and public ownership as pending.
-- [ ] Commit in bounded units, verify `git status`, fetch/rebase if needed,
+- [x] Commit in bounded units, verify `git status`, fetch/rebase if needed,
   and push `main`.
 
 ## Acceptance Checklist
 
-- [ ] Pinned source/tool hashes and independent WIT/Core ABI are recorded.
-- [ ] Rust/Wasmtime ready/pending/error/cancel/early-drop/repeat matrix is green.
-- [ ] Registry, planner, emitter, positive fixture `511`, and negative fixtures
+- [x] Pinned source/tool hashes and independent WIT/Core ABI are recorded.
+- [x] Rust/Wasmtime ready/pending/error/cancel/early-drop/repeat matrix is green.
+- [x] Registry, planner, emitter, positive fixture `511`, and negative fixtures
   `512`-`515` are fail-closed and green.
-- [ ] Generated Component matches the canonical ABI and runtime cleanup.
-- [ ] Existing regression and delivery gates remain green.
+- [x] Generated Component matches the canonical ABI and runtime cleanup.
+- [x] Existing regression and delivery gates remain green.

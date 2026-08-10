@@ -38,12 +38,13 @@ callback mangling mode; it does not select a legacy toolchain.
 
 ## D2 General Filesystem/HTTP Recovery Boundary (2026-08-09)
 
-**Status:** the private `descriptor.get-type`, `descriptor.sync`, and
-`descriptor.get-flags` methods remain green as separate bounded descriptors.
+**Status:** the private `descriptor.get-type`, `descriptor.sync`,
+`descriptor.get-flags`, and `descriptor.sync-data` methods remain green as
+separate bounded descriptors.
 General filesystem async and arbitrary HTTP remain blocked; this checkpoint
 does not add a registry entry or widen code generation.
 
-**Evidence:** the three ABI scripts and their Rust/Wasmtime runtime gates pass
+**Evidence:** the four ABI scripts and their Rust/Wasmtime runtime gates pass
 with the pinned filesystem WIT (`types.wit` SHA-256
 `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`) and the
 current `wasm-tools 1.255.0` binary. Each closed row has its own measured
@@ -59,7 +60,7 @@ in [`docs/superpowers/specs/2026-08-09-d2-general-filesystem-async-boundary-desi
 `metadata-hash`/`metadata-hash-at` return records; `open-at` returns an owned
 `descriptor`; path mutation methods issue external effects; and
 `link-at`/`rename-at`/`is-same-object` carry `borrow<descriptor>`. None of
-these shapes may be inferred from the three scalar/unit Result rows.
+these shapes may be inferred from the four scalar/unit Result rows.
 
 **Unadmitted HTTP rows:** the pinned service world imports `client.send:
 async func(request) -> result<response, error-code>` and exports
@@ -120,6 +121,51 @@ the generic cancellation boundary. Until then, keep generic host-future-drop
 cancellation and general filesystem async unadmitted; the exact private stat
 target remains limited to its pinned source shape and generated regular
 Component path.
+
+## D2 Bounded Filesystem Async `descriptor.sync-data` (2026-08-10)
+
+**Status:** one additional private filesystem async method is verified; the
+method-specific early-drop and repeat rows are green, while generic
+filesystem async and generic host-future-drop cancellation remain blocked.
+
+**Evidence:**
+`bash examples/p3-runtime/test_d2_wasi_filesystem_sync_data_abi.sh` and
+`bash examples/p3-runtime/test_rust_wasi_filesystem_sync_data.sh` pass with
+`wasm-tools 1.255.0 (76e20611d 2026-07-30)` and SHA-256
+`6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`.
+The upstream filesystem WIT hash is
+`8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`;
+the regular and cancel probe WIT mirror hashes are
+`ffc10164efb9a457637d56df111bb92844eef7b3258fec5dfb075b8e68dff8bb` and
+`2107a6283e8ae2b6f2cea296d91269c65d543456e39376ef4e70b0b69fd974e3`.
+The measured import is
+`[async-lower][method]descriptor.sync-data: (i32,i32) -> i32`, task-return
+uses two `i32` words, the Result is `unit | error-code`, and the descriptor
+drop is `[resource-drop]descriptor (i32) -> nil`.
+
+The private `--p3-async-component` adapter admits only fixture `511` with
+one `Dir` receiver, one `Future<nil | SyncDataError>`, and one await. The
+opt-in Core WAT equals the canonical template (SHA-256
+`3269e6f8c61a34dbea99f2637a257d582d79ab860f812d6ddfc46392e4fc3e7b`), and
+the generated WIT hash is
+`df3c055bab6ecff3d3b77435ba67df6c4d207eb786e243d41f1301873fabfed9`.
+Fixtures `512`-`515` reject before WAT. Hand-authored and generated Components
+pass ready, pending, error, and repeat; the hand-authored cancel Component
+passes explicit cancellation with exactly-once Future/descriptor cleanup and
+`table-empty=true`.
+
+The early-drop row drops the started call future and then the whole Store,
+reporting one pending host-future drop, `descriptor-drops=0`, and
+`table-empty=not-applicable`, matching the Wasmtime 47 task-drop boundary.
+Cancellation only releases live Component state and never rolls back a
+filesystem effect already issued to the host.
+
+**Boundary:** this does not admit generic filesystem async, arbitrary
+producer expressions, stream/list/borrowed/record payloads, `stat-at`,
+`open-at`, path mutation, external HTTP, or public
+`own<T>`/`borrow<T>`/`ref<T>` syntax. Each additional method needs its own
+pinned WIT/Core probe, positive/negative fixtures, Component validation, and
+Rust/Wasmtime cleanup matrix.
 
 ## D2 Bounded Filesystem Async `descriptor.get-type` (2026-08-08)
 
