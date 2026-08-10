@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
+fixture="$repo_root/src/build/test/compile_ok/520_wasi_filesystem_metadata_hash_at_component.do"
 wit="$repo_root/examples/p3-runtime/wit/wasi-filesystem-metadata-hash-at.wit"
 cancel_wit="$repo_root/examples/p3-runtime/wit/wasi-filesystem-metadata-hash-at-cancel.wit"
 core_wat="$repo_root/examples/p3-runtime/wasi-filesystem-metadata-hash-at.core.wat"
@@ -40,7 +41,7 @@ check_sha() {
     }
 }
 
-for path in "$wit" "$cancel_wit" "$core_wat" "$cancel_core_wat" "$runner_source"; do
+for path in "$fixture" "$repo_root/bin/do" "$wit" "$cancel_wit" "$core_wat" "$cancel_core_wat" "$runner_source"; do
     [[ -f "$path" ]] || {
         printf 'missing metadata-hash-at runtime input: %s\n' "$path" >&2
         exit 1
@@ -56,6 +57,17 @@ trap 'rm -rf -- "$tmp_dir"' EXIT
 mkdir -p "$tmp_dir/regular" "$tmp_dir/cancel" "$tmp_dir/root"
 cp "$wit" "$tmp_dir/regular/wasi-filesystem-metadata-hash-at.wit"
 cp "$cancel_wit" "$tmp_dir/cancel/wasi-filesystem-metadata-hash-at-cancel.wit"
+generated_wit="$tmp_dir/generated.wit"
+generated_core_wat="$tmp_dir/generated.core.wat"
+DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build "$fixture" \
+    --p3-async-component --p3-wit-output "$generated_wit" -o "$generated_core_wat" >/dev/null
+grep -Fq 'metadata-hash-at: async func(path-flags: path-flags, path: string)' "$generated_wit"
+grep -Fq 'run: async func(file: own<descriptor>, path-flags: path-flags, path: string)' "$generated_wit"
+grep -Fq '(type $method (func (param i32 i32 i32 i32 i32) (result i32)))' "$generated_core_wat"
+grep -Fq '(type $task-return-metadata-hash-at (func (param i32 i64 i64)))' "$generated_core_wat"
+grep -Fq '[metadata-hash-at-result-area]' "$generated_core_wat"
+grep -Fq '[descriptor-drop]' "$generated_core_wat"
+test "$(grep -Fc 'call $metadata-hash-at' "$generated_core_wat")" -eq 1
 probe_path=$'probe-utf8-\u6587\u4ef6'
 printf 'd2-metadata-hash-at\n' >"$tmp_dir/root/$probe_path"
 
@@ -75,7 +87,7 @@ build_component() {
     printf '%s\n' "$component"
 }
 
-component=$(build_component "$tmp_dir/regular" metadata-hash-at-probe "$core_wat" regular)
+component=$(build_component "$generated_wit" metadata-hash-at-probe "$generated_core_wat" generated)
 cancel_component=$(build_component "$tmp_dir/cancel" metadata-hash-at-cancel-probe "$cancel_core_wat" cancel)
 
 rustfmt --edition 2024 --check "$runner_source"
