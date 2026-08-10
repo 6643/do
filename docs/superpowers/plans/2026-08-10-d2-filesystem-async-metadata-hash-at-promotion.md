@@ -266,12 +266,13 @@ Base each case on the positive fixture and make only the named drift:
 526: add a branch before the await
 527: add a loop before the await
 528: add an unrelated host binding
-529: mark run as async
+529: mark run as async (the existing parser emits DeprecatedAsyncFunctionDecl)
 ~~~
 
 Use these expected diagnostics, matching existing fixture conventions:
 UnknownP3AsyncHostDescriptor for 521, P3AsyncHostSignatureMismatch for 522-524,
-FutureAlreadyConsumed for 525, and UnsupportedP3AsyncComponent for 526-529.
+FutureAlreadyConsumed for 525, UnsupportedP3AsyncComponent for 526-528, and
+the existing DeprecatedAsyncFunctionDecl diagnostic for 529.
 Every expectation file must contain # build-arg: --p3-async-component.
 
 - [ ] Step 3: Run the red fixture gate.
