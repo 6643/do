@@ -12,6 +12,7 @@ const codegen_component_wasi_filesystem_get_flags = @import("codegen_component_w
 const codegen_component_wasi_filesystem_sync = @import("codegen_component_wasi_filesystem_sync.zig");
 const codegen_component_wasi_filesystem_sync_data = @import("codegen_component_wasi_filesystem_sync_data.zig");
 const codegen_component_wasi_filesystem_metadata_hash = @import("codegen_component_wasi_filesystem_metadata_hash.zig");
+const codegen_component_wasi_filesystem_metadata_hash_at = @import("codegen_component_wasi_filesystem_metadata_hash_at.zig");
 const codegen_component_wasi_filesystem_stat = @import("codegen_component_wasi_filesystem_stat.zig");
 const codegen_component_record_stream = @import("codegen_component_record_stream.zig");
 const codegen_component_record_resource_list_stream = @import("codegen_component_record_resource_list_stream.zig");
@@ -58,6 +59,7 @@ pub const Target = enum {
     wasi_filesystem_sync,
     wasi_filesystem_sync_data,
     wasi_filesystem_metadata_hash,
+    wasi_filesystem_metadata_hash_at,
     wasi_filesystem_stat,
 };
 
@@ -216,6 +218,10 @@ pub fn emit_component_wat(
         },
         .wasi_filesystem_metadata_hash => codegen_component_wasi_filesystem_metadata_hash.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
             error.UnsupportedP3WasiFilesystemMetadataHashComponent => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
+        .wasi_filesystem_metadata_hash_at => codegen_component_wasi_filesystem_metadata_hash_at.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
+            error.UnsupportedP3WasiFilesystemMetadataHashAtComponent => error.UnsupportedP3AsyncComponent,
             else => err,
         },
         .wasi_filesystem_stat => codegen_component_wasi_filesystem_stat.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
@@ -969,6 +975,10 @@ pub fn emit_component_wit_with_graph(
             error.UnsupportedP3WasiFilesystemMetadataHashComponent => error.UnsupportedP3AsyncComponent,
             else => err,
         },
+        .wasi_filesystem_metadata_hash_at => codegen_component_wasi_filesystem_metadata_hash_at.emit_component_wit(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3WasiFilesystemMetadataHashAtComponent => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
         .wasi_filesystem_stat => codegen_component_wasi_filesystem_stat.emit_component_wit(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3WasiFilesystemStatComponent => error.UnsupportedP3AsyncComponent,
             else => err,
@@ -1111,6 +1121,11 @@ pub fn target_for_tokens_with_graph(
                     return error.UnsupportedP3AsyncComponent;
                 break :blk .wasi_filesystem_metadata_hash;
             } else return error.UnsupportedP3AsyncComponent,
+            .filesystem_metadata_hash_at => if (binding.kind == .host_async_func) blk: {
+                _ = codegen_component_wasi_filesystem_metadata_hash_at.MetadataHashAtPlan.analyze(tokens, registry) catch
+                    return error.UnsupportedP3AsyncComponent;
+                break :blk .wasi_filesystem_metadata_hash_at;
+            } else return error.UnsupportedP3AsyncComponent,
             .filesystem_stat => if (binding.kind == .host_async_func) blk: {
                 _ = codegen_component_wasi_filesystem_stat.StatPlan.analyze(tokens, registry) catch
                     return error.UnsupportedP3AsyncComponent;
@@ -1166,6 +1181,7 @@ fn target_for_descriptor(descriptor: p3_async_manifest.Descriptor) !Target {
         .filesystem_sync => .wasi_filesystem_sync,
         .filesystem_sync_data => .wasi_filesystem_sync_data,
         .filesystem_metadata_hash => .wasi_filesystem_metadata_hash,
+        .filesystem_metadata_hash_at => .wasi_filesystem_metadata_hash_at,
         .filesystem_stat => .wasi_filesystem_stat,
         .record_resource_list_stream_reader => error.UnsupportedP3AsyncComponent,
         .record_resource_list_stream_producer => .record_resource_list_stream_producer,
@@ -1524,6 +1540,34 @@ test "filesystem descriptor metadata-hash target rejects a second await" {
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     try std.testing.expectError(error.UnsupportedP3AsyncComponent, target_for_tokens(std.testing.allocator, tokens));
+}
+
+test "generic Component async target classifies pinned filesystem descriptor metadata-hash-at" {
+    const source = @embedFile("test/compile_ok/520_wasi_filesystem_metadata_hash_at_component.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectEqual(Target.wasi_filesystem_metadata_hash_at, try target_for_tokens(std.testing.allocator, tokens));
+    const wit = try emit_component_wit(std.testing.allocator, tokens);
+    defer std.testing.allocator.free(wit);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "metadata-hash-at: async func(path-flags: path-flags, path: string)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "run: async func(file: own<descriptor>, path-flags: path-flags, path: string)") != null);
+}
+
+test "filesystem descriptor metadata-hash-at target rejects non-linear and async-root sources" {
+    const cases = [_][]const u8{
+        @embedFile("test/compile_err/524_wasi_filesystem_metadata_hash_at_wrong_result.do"),
+        @embedFile("test/compile_err/525_wasi_filesystem_metadata_hash_at_second_await.do"),
+        @embedFile("test/compile_err/526_wasi_filesystem_metadata_hash_at_branch.do"),
+        @embedFile("test/compile_err/527_wasi_filesystem_metadata_hash_at_loop.do"),
+        @embedFile("test/compile_err/528_wasi_filesystem_metadata_hash_at_extra_host.do"),
+        @embedFile("test/compile_err/529_wasi_filesystem_metadata_hash_at_async_root.do"),
+    };
+    for (cases) |source| {
+        const tokens = try lexer.tokenize(std.testing.allocator, source);
+        defer std.testing.allocator.free(tokens);
+        try std.testing.expectError(error.UnsupportedP3AsyncComponent, target_for_tokens(std.testing.allocator, tokens));
+    }
 }
 
 test "generic Component async target classifies pinned filesystem descriptor get-flags" {
