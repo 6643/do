@@ -24,6 +24,7 @@ pub const LoweringShape = union(enum) {
     filesystem_get_type: FilesystemGetTypeShape,
     filesystem_get_flags: FilesystemGetFlagsShape,
     filesystem_sync: FilesystemSyncShape,
+    filesystem_sync_data: FilesystemSyncDataShape,
     filesystem_stat: FilesystemStatShape,
     future_owned_resource: FutureOwnedCanonical,
     resource_result_2word: ResourceResult2WordShape,
@@ -265,6 +266,18 @@ pub const FilesystemSyncShape = struct {
     resource_drop_import: []const u8,
 };
 
+/// The pinned `descriptor.sync-data` slice has the same measured flat Result
+/// width as `descriptor.sync`, but remains a separate capability so method
+/// identity and future ABI drift cannot cross-contaminate emitters.
+pub const FilesystemSyncDataShape = struct {
+    receiver: []const u8,
+    source_result: []const u8,
+    tag: []const u8,
+    ok: []const []const u8,
+    err: []const []const u8,
+    resource_drop_import: []const u8,
+};
+
 /// The private descriptor.stat slice has a record result with three optional
 /// datetime payloads. Keep its measured record layout separate from the
 /// scalar filesystem Result shapes so a scalar emitter cannot consume it.
@@ -491,6 +504,10 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
         return .{ .filesystem_sync = shape };
     }
 
+    if (valid_filesystem_sync_data_descriptor(descriptor)) |shape| {
+        return .{ .filesystem_sync_data = shape };
+    }
+
     if (valid_filesystem_stat_descriptor(descriptor)) |shape| {
         return .{ .filesystem_stat = shape };
     }
@@ -655,6 +672,43 @@ fn valid_filesystem_sync_descriptor(descriptor: Descriptor) ?FilesystemSyncShape
     if (!std.mem.eql(u8, payload.tag, "i32") or
         payload.ok.len != 0 or
         !equal_core_types(payload.err, &.{"i32"})) return null;
+
+    return .{
+        .receiver = descriptor.params[0],
+        .source_result = descriptor.result,
+        .tag = payload.tag,
+        .ok = payload.ok,
+        .err = payload.err,
+        .resource_drop_import = "[resource-drop]descriptor",
+    };
+}
+
+fn valid_filesystem_sync_data_descriptor(descriptor: Descriptor) ?FilesystemSyncDataShape {
+    if (!std.mem.eql(u8, descriptor.locator, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.member, "descriptor.sync-data") or
+        !std.mem.eql(u8, descriptor.effect, "async") or
+        descriptor.params.len != 1 or
+        !std.mem.eql(u8, descriptor.params[0], "descriptor") or
+        descriptor.resource != null or
+        !std.mem.eql(u8, descriptor.result, "Result<nil,error-code>") or
+        descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, descriptor.wit_sha256.?, "8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f") or
+        !std.mem.eql(u8, descriptor.canonical.completion, "task-return") or
+        !equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i32" }) or
+        !equal_core_types(descriptor.canonical.core_results, &.{ "i32" }) or
+        !equal_core_types(descriptor.canonical.completion_params, &.{ "i32", "i32" }) or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower][method]descriptor.sync-data") or
+        !std.mem.eql(u8, descriptor.wit.package, "wasi:filesystem@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.wit.interface, "types") or
+        !std.mem.eql(u8, descriptor.wit.operation, "descriptor.sync-data") or
+        !std.mem.eql(u8, descriptor.wit.world, "imports") or
+        descriptor.wit.parameter.len != 0) return null;
+
+    const payload = descriptor.canonical.result_payload orelse return null;
+    if (!std.mem.eql(u8, payload.tag, "i32") or
+        payload.ok.len != 0 or
+        !equal_core_types(payload.err, &.{ "i32" })) return null;
 
     return .{
         .receiver = descriptor.params[0],
@@ -4568,6 +4622,48 @@ test "filesystem descriptor sync lowering rejects ABI drift" {
 
     var payload = descriptor.canonical.result_payload.?;
     payload.ok = &.{"i32"};
+    var canonical = descriptor.canonical;
+    canonical.result_payload = payload;
+    drifted = descriptor;
+    drifted.canonical = canonical;
+    try std.testing.expect(lowering_shape(drifted) == null);
+}
+
+test "checked-in registry admits the pinned filesystem descriptor sync-data ABI" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.sync-data") orelse return error.TestUnexpectedResult;
+    const shape = switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .filesystem_sync_data => |value| value,
+        else => return error.TestUnexpectedResult,
+    };
+    try std.testing.expectEqualStrings("descriptor", shape.receiver);
+    try std.testing.expectEqualStrings("Result<nil,error-code>", shape.source_result);
+    try std.testing.expectEqualStrings("i32", shape.tag);
+    try std.testing.expectEqual(@as(usize, 0), shape.ok.len);
+    try std.testing.expectEqualStrings("i32", shape.err[0]);
+    try std.testing.expectEqualStrings("[resource-drop]descriptor", shape.resource_drop_import);
+}
+
+test "filesystem descriptor sync-data lowering rejects ABI drift" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.sync-data") orelse return error.TestUnexpectedResult;
+
+    var drifted = descriptor;
+    drifted.canonical.core_params = &.{ "i32" };
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.canonical.async_import_name = "[async-lower][method]descriptor.sync-data-drift";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.wit_sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    var payload = descriptor.canonical.result_payload.?;
+    payload.ok = &.{ "i32" };
     var canonical = descriptor.canonical;
     canonical.result_payload = payload;
     drifted = descriptor;

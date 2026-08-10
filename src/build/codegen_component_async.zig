@@ -10,6 +10,7 @@ const codegen_component_wasi_filesystem_read_directory = @import("codegen_compon
 const codegen_component_wasi_filesystem_get_type = @import("codegen_component_wasi_filesystem_get_type.zig");
 const codegen_component_wasi_filesystem_get_flags = @import("codegen_component_wasi_filesystem_get_flags.zig");
 const codegen_component_wasi_filesystem_sync = @import("codegen_component_wasi_filesystem_sync.zig");
+const codegen_component_wasi_filesystem_sync_data = @import("codegen_component_wasi_filesystem_sync_data.zig");
 const codegen_component_wasi_filesystem_stat = @import("codegen_component_wasi_filesystem_stat.zig");
 const codegen_component_record_stream = @import("codegen_component_record_stream.zig");
 const codegen_component_record_resource_list_stream = @import("codegen_component_record_resource_list_stream.zig");
@@ -54,6 +55,7 @@ pub const Target = enum {
     wasi_filesystem_get_type,
     wasi_filesystem_get_flags,
     wasi_filesystem_sync,
+    wasi_filesystem_sync_data,
     wasi_filesystem_stat,
 };
 
@@ -204,6 +206,10 @@ pub fn emit_component_wat(
         },
         .wasi_filesystem_sync => codegen_component_wasi_filesystem_sync.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
             error.UnsupportedP3WasiFilesystemSyncComponent => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
+        .wasi_filesystem_sync_data => codegen_component_wasi_filesystem_sync_data.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
+            error.UnsupportedP3WasiFilesystemSyncDataComponent => error.UnsupportedP3AsyncComponent,
             else => err,
         },
         .wasi_filesystem_stat => codegen_component_wasi_filesystem_stat.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
@@ -949,6 +955,10 @@ pub fn emit_component_wit_with_graph(
             error.UnsupportedP3WasiFilesystemSyncComponent => error.UnsupportedP3AsyncComponent,
             else => err,
         },
+        .wasi_filesystem_sync_data => codegen_component_wasi_filesystem_sync_data.emit_component_wit(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3WasiFilesystemSyncDataComponent => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
         .wasi_filesystem_stat => codegen_component_wasi_filesystem_stat.emit_component_wit(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3WasiFilesystemStatComponent => error.UnsupportedP3AsyncComponent,
             else => err,
@@ -1081,6 +1091,11 @@ pub fn target_for_tokens_with_graph(
                     return error.UnsupportedP3AsyncComponent;
                 break :blk .wasi_filesystem_sync;
             } else return error.UnsupportedP3AsyncComponent,
+            .filesystem_sync_data => if (binding.kind == .host_async_func) blk: {
+                _ = codegen_component_wasi_filesystem_sync_data.SyncDataPlan.analyze(tokens, registry) catch
+                    return error.UnsupportedP3AsyncComponent;
+                break :blk .wasi_filesystem_sync_data;
+            } else return error.UnsupportedP3AsyncComponent,
             .filesystem_stat => if (binding.kind == .host_async_func) blk: {
                 _ = codegen_component_wasi_filesystem_stat.StatPlan.analyze(tokens, registry) catch
                     return error.UnsupportedP3AsyncComponent;
@@ -1134,6 +1149,7 @@ fn target_for_descriptor(descriptor: p3_async_manifest.Descriptor) !Target {
         .filesystem_get_type => .wasi_filesystem_get_type,
         .filesystem_get_flags => .wasi_filesystem_get_flags,
         .filesystem_sync => .wasi_filesystem_sync,
+        .filesystem_sync_data => .wasi_filesystem_sync_data,
         .filesystem_stat => .wasi_filesystem_stat,
         .record_resource_list_stream_reader => error.UnsupportedP3AsyncComponent,
         .record_resource_list_stream_producer => .record_resource_list_stream_producer,
@@ -1462,6 +1478,18 @@ test "generic Component async target classifies pinned filesystem descriptor syn
     try std.testing.expect(std.mem.indexOf(u8, wit, "run: async func(file: own<descriptor>)") != null);
 }
 
+test "generic Component async target classifies pinned filesystem descriptor sync-data" {
+    const source = @embedFile("test/compile_ok/511_wasi_filesystem_sync_data_component.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectEqual(Target.wasi_filesystem_sync_data, try target_for_tokens(std.testing.allocator, tokens));
+    const wit = try emit_component_wit(std.testing.allocator, tokens);
+    defer std.testing.allocator.free(wit);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "sync-data: async func() -> result<_, error-code>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "run: async func(file: own<descriptor>)") != null);
+}
+
 test "generic Component async target classifies pinned filesystem descriptor get-flags" {
     const source = @embedFile("test/compile_ok/471_wasi_filesystem_get_flags_component.do");
     const tokens = try lexer.tokenize(std.testing.allocator, source);
@@ -1494,6 +1522,13 @@ test "filesystem descriptor get-flags target rejects a second await" {
 
 test "filesystem descriptor sync target rejects a second await" {
     const source = @embedFile("test/compile_err/465_wasi_filesystem_sync_second_await.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try std.testing.expectError(error.UnsupportedP3AsyncComponent, target_for_tokens(std.testing.allocator, tokens));
+}
+
+test "filesystem descriptor sync-data target rejects a second await" {
+    const source = @embedFile("test/compile_err/514_wasi_filesystem_sync_data_second_await.do");
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     try std.testing.expectError(error.UnsupportedP3AsyncComponent, target_for_tokens(std.testing.allocator, tokens));

@@ -194,6 +194,7 @@ fn p3_async_signature_matches(tokens: []const lexer.Token, start_idx: usize, end
             .filesystem_get_flags => return filesystem_get_flags_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_get_type => return filesystem_get_type_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_sync => return filesystem_sync_signature_matches(tokens, start_idx, close_idx, end_idx),
+            .filesystem_sync_data => return filesystem_sync_data_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_stat => return filesystem_stat_signature_matches(tokens, start_idx, close_idx, end_idx),
             .future_owned_resource => return future_owned_signature_matches(tokens, start_idx, close_idx, end_idx),
             else => {},
@@ -248,6 +249,18 @@ fn filesystem_sync_signature_matches(
         tokens[params_start_idx + 1].kind != .ident or
         !std.mem.eql(u8, tokens[params_start_idx + 1].lexeme, "Dir")) return false;
     return compact_token_range_equals(tokens, params_close_idx + 3, end_idx, "nil|SyncError");
+}
+
+fn filesystem_sync_data_signature_matches(
+    tokens: []const lexer.Token,
+    params_start_idx: usize,
+    params_close_idx: usize,
+    end_idx: usize,
+) bool {
+    if (params_close_idx != params_start_idx + 2 or
+        tokens[params_start_idx + 1].kind != .ident or
+        !std.mem.eql(u8, tokens[params_start_idx + 1].lexeme, "Dir")) return false;
+    return compact_token_range_equals(tokens, params_close_idx + 3, end_idx, "nil|SyncDataError");
 }
 
 fn filesystem_stat_signature_matches(
@@ -1164,6 +1177,21 @@ fn find_known_wasi_signature(target: []const u8) ?KnownWasiSignature {
             .do_result_alt6 = "Result<nil,SyncError>",
         },
         .{
+            .target = "filesystem/types/descriptor.sync-data",
+            .params = "descriptor",
+            .result = "result<_,error-code>",
+            .do_params = "i32",
+            .do_params_alt = "File",
+            .do_params_alt2 = "Dir",
+            .do_result = "nil|i32",
+            .do_result_alt = "FileError|nil",
+            .do_result_alt2 = "nil|FileError",
+            .do_result_alt3 = "Result<nil,FileError>",
+            .do_result_alt4 = "SyncDataError|nil",
+            .do_result_alt5 = "nil|SyncDataError",
+            .do_result_alt6 = "Result<nil,SyncDataError>",
+        },
+        .{
             .target = "filesystem/types/descriptor.link-at",
             .params = "descriptor,path-flags,text,borrow<descriptor>,text",
             .result = "result<_,error-code>",
@@ -1969,6 +1997,30 @@ test "pinned filesystem sync host_async_func imports accept the unit error union
     defer std.testing.allocator.free(tokens);
 
     try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "pinned filesystem sync-data host_async_func imports accept the unit error union" {
+    const source =
+        \\sync_data_descriptor = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.sync-data", (Dir) -> nil | SyncDataError)
+        \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+        \\SyncDataError error = Io | NoEntry
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "pinned filesystem sync-data host_async_func imports reject a borrowed payload" {
+    const source =
+        \\sync_data_descriptor = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.sync-data", (Dir) -> borrow<Dir> | SyncDataError)
+        \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+        \\SyncDataError error = Io | NoEntry
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectError(error.P3AsyncHostSignatureMismatch, check_p3_async_host_imports(std.testing.allocator, tokens));
 }
 
 test "pinned filesystem stat host_async_func imports accept the record result union" {

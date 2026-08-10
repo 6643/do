@@ -596,6 +596,35 @@
         },
         {
             "locator": "wasi:filesystem/types@0.3.0-rc-2025-09-16",
+            "member": "descriptor.sync-data",
+            "effect": "async",
+            "params": ["descriptor"],
+            "result": "Result<nil,error-code>",
+            "resource": null,
+            "wit_sha256": "8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f",
+            "canonical": {
+                "core_params": ["i32", "i32"],
+                "core_results": ["i32"],
+                "completion_params": ["i32", "i32"],
+                "completion": "task-return",
+                "result_payload": {
+                    "tag": "i32",
+                    "ok": [],
+                    "err": ["i32"]
+                },
+                "async_import_module": "wasi:filesystem/types@0.3.0-rc-2025-09-16",
+                "async_import_name": "[async-lower][method]descriptor.sync-data"
+            },
+            "wit": {
+                "package": "wasi:filesystem@0.3.0-rc-2025-09-16",
+                "interface": "types",
+                "operation": "descriptor.sync-data",
+                "world": "imports",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "wasi:filesystem/types@0.3.0-rc-2025-09-16",
             "member": "descriptor.stat",
             "effect": "async",
             "params": ["descriptor"],

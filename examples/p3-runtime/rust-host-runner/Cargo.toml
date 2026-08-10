@@ -202,6 +202,10 @@ name = "do-p3-wasi-filesystem-sync-host-runner"
 path = "src/bin/wasi_filesystem_sync.rs"
 
 [[bin]]
+name = "do-p3-wasi-filesystem-sync-data-host-runner"
+path = "src/bin/wasi_filesystem_sync_data.rs"
+
+[[bin]]
 name = "do-p3-wasi-filesystem-get-flags-host-runner"
 path = "src/bin/wasi_filesystem_get_flags.rs"
 
