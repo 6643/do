@@ -26,6 +26,7 @@ pub const LoweringShape = union(enum) {
     filesystem_sync: FilesystemSyncShape,
     filesystem_sync_data: FilesystemSyncDataShape,
     filesystem_metadata_hash: FilesystemMetadataHashShape,
+    filesystem_metadata_hash_at: FilesystemMetadataHashAtShape,
     filesystem_stat: FilesystemStatShape,
     future_owned_resource: FutureOwnedCanonical,
     resource_result_2word: ResourceResult2WordShape,
@@ -289,6 +290,19 @@ pub const FilesystemMetadataHashShape = struct {
     resource_drop_import: []const u8,
 };
 
+/// The private `descriptor.metadata-hash-at` slice adds the measured
+/// path-flags and UTF-8 string inputs to the two-word metadata-hash result.
+/// Keep the source parameter identities here so its emitter cannot consume
+/// the descriptor-only metadata-hash ABI by accident.
+pub const FilesystemMetadataHashAtShape = struct {
+    receiver: []const u8,
+    path_flags: []const u8,
+    path: []const u8,
+    source_result: []const u8,
+    record_layout: RecordLayout,
+    resource_drop_import: []const u8,
+};
+
 /// The private descriptor.stat slice has a record result with three optional
 /// datetime payloads. Keep its measured record layout separate from the
 /// scalar filesystem Result shapes so a scalar emitter cannot consume it.
@@ -521,6 +535,10 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
 
     if (valid_filesystem_metadata_hash_descriptor(descriptor)) |shape| {
         return .{ .filesystem_metadata_hash = shape };
+    }
+
+    if (valid_filesystem_metadata_hash_at_descriptor(descriptor)) |shape| {
+        return .{ .filesystem_metadata_hash_at = shape };
     }
 
     if (valid_filesystem_stat_descriptor(descriptor)) |shape| {
@@ -763,6 +781,44 @@ fn valid_filesystem_metadata_hash_descriptor(descriptor: Descriptor) ?Filesystem
 
     return .{
         .receiver = descriptor.params[0],
+        .source_result = descriptor.result,
+        .record_layout = record_layout,
+        .resource_drop_import = "[resource-drop]descriptor",
+    };
+}
+
+fn valid_filesystem_metadata_hash_at_descriptor(descriptor: Descriptor) ?FilesystemMetadataHashAtShape {
+    const record_layout = descriptor.canonical.record_layout orelse return null;
+    if (!std.mem.eql(u8, descriptor.locator, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.member, "descriptor.metadata-hash-at") or
+        !std.mem.eql(u8, descriptor.effect, "async") or
+        descriptor.params.len != 3 or
+        !std.mem.eql(u8, descriptor.params[0], "descriptor") or
+        !std.mem.eql(u8, descriptor.params[1], "path-flags") or
+        !std.mem.eql(u8, descriptor.params[2], "string") or
+        descriptor.resource != null or
+        !std.mem.eql(u8, descriptor.result, "Result<metadata-hash-value,error-code>") or
+        descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, descriptor.wit_sha256.?, "8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f") or
+        !std.mem.eql(u8, descriptor.canonical.completion, "task-return") or
+        !equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i32", "i32", "i32", "i32" }) or
+        !equal_core_types(descriptor.canonical.core_results, &.{ "i32" }) or
+        !equal_core_types(descriptor.canonical.completion_params, &.{ "i32", "i64", "i64" }) or
+        descriptor.canonical.result_payload != null or
+        descriptor.canonical.result_area_payload != null or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower][method]descriptor.metadata-hash-at") or
+        !std.mem.eql(u8, descriptor.wit.package, "wasi:filesystem@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.wit.interface, "types") or
+        !std.mem.eql(u8, descriptor.wit.operation, "descriptor.metadata-hash-at") or
+        !std.mem.eql(u8, descriptor.wit.world, "imports") or
+        descriptor.wit.parameter.len != 0 or
+        !valid_filesystem_metadata_hash_record_layout(record_layout)) return null;
+
+    return .{
+        .receiver = descriptor.params[0],
+        .path_flags = descriptor.params[1],
+        .path = descriptor.params[2],
         .source_result = descriptor.result,
         .record_layout = record_layout,
         .resource_drop_import = "[resource-drop]descriptor",
@@ -4796,6 +4852,53 @@ test "filesystem descriptor metadata-hash lowering rejects ABI drift" {
     canonical = descriptor.canonical;
     canonical.record_layout = null;
     drifted.canonical = canonical;
+    try std.testing.expect(lowering_shape(drifted) == null);
+}
+
+test "checked-in registry admits the pinned filesystem descriptor metadata-hash-at ABI" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.metadata-hash-at") orelse return error.TestUnexpectedResult;
+    const shape = switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .filesystem_metadata_hash_at => |value| value,
+        else => return error.TestUnexpectedResult,
+    };
+    try std.testing.expectEqualStrings("descriptor", shape.receiver);
+    try std.testing.expectEqualStrings("path-flags", shape.path_flags);
+    try std.testing.expectEqualStrings("string", shape.path);
+    try std.testing.expectEqualStrings("Result<metadata-hash-value,error-code>", shape.source_result);
+    try std.testing.expectEqualStrings("metadata-hash-value", shape.record_layout.name);
+    try std.testing.expectEqual(@as(u32, 16), shape.record_layout.byte_size);
+    try std.testing.expectEqualStrings("[async-lower][method]descriptor.metadata-hash-at", descriptor.canonical.async_import_name);
+    try std.testing.expectEqualStrings("[resource-drop]descriptor", shape.resource_drop_import);
+    try std.testing.expectEqual(@as(usize, 5), descriptor.canonical.core_params.len);
+    try std.testing.expectEqual(@as(usize, 3), descriptor.canonical.completion_params.len);
+}
+
+test "filesystem descriptor metadata-hash-at lowering rejects ABI drift" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.metadata-hash-at") orelse return error.TestUnexpectedResult;
+
+    var drifted = descriptor;
+    drifted.canonical.core_params = &.{ "i32", "i32", "i32", "i32" };
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.wit_sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    var layout = descriptor.canonical.record_layout.?;
+    var fields = [_]RecordField{ layout.fields[1], layout.fields[0] };
+    layout.fields = &fields;
+    var canonical = descriptor.canonical;
+    canonical.record_layout = layout;
+    drifted.canonical = canonical;
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.canonical.async_import_name = "[async-lower][method]descriptor.metadata-hash-at-drift";
     try std.testing.expect(lowering_shape(drifted) == null);
 }
 

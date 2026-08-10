@@ -625,6 +625,42 @@
         },
         {
             "locator": "wasi:filesystem/types@0.3.0-rc-2025-09-16",
+            "member": "descriptor.metadata-hash-at",
+            "effect": "async",
+            "params": ["descriptor", "path-flags", "string"],
+            "result": "Result<metadata-hash-value,error-code>",
+            "resource": null,
+            "wit_sha256": "8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f",
+            "canonical": {
+                "core_params": ["i32", "i32", "i32", "i32", "i32"],
+                "core_results": ["i32"],
+                "completion_params": ["i32", "i64", "i64"],
+                "completion": "task-return",
+                "record_layout": {
+                    "name": "metadata-hash-value",
+                    "byte_size": 16,
+                    "fields": [
+                        {"name": "lower", "core_type": "i64", "offset": 0},
+                        {"name": "upper", "core_type": "i64", "offset": 8}
+                    ],
+                    "source_fields": [
+                        {"name": "lower", "source_type": "u64", "storage": ["lower"]},
+                        {"name": "upper", "source_type": "u64", "storage": ["upper"]}
+                    ]
+                },
+                "async_import_module": "wasi:filesystem/types@0.3.0-rc-2025-09-16",
+                "async_import_name": "[async-lower][method]descriptor.metadata-hash-at"
+            },
+            "wit": {
+                "package": "wasi:filesystem@0.3.0-rc-2025-09-16",
+                "interface": "types",
+                "operation": "descriptor.metadata-hash-at",
+                "world": "imports",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "wasi:filesystem/types@0.3.0-rc-2025-09-16",
             "member": "descriptor.metadata-hash",
             "effect": "async",
             "params": ["descriptor"],
