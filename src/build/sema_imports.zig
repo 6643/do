@@ -197,6 +197,7 @@ fn p3_async_signature_matches(tokens: []const lexer.Token, start_idx: usize, end
             .filesystem_sync_data => return filesystem_sync_data_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_metadata_hash => return filesystem_metadata_hash_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_metadata_hash_at => return filesystem_metadata_hash_at_signature_matches(tokens, start_idx, close_idx, end_idx),
+            .filesystem_stat_at => return filesystem_stat_at_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_stat => return filesystem_stat_signature_matches(tokens, start_idx, close_idx, end_idx),
             .future_owned_resource => return future_owned_signature_matches(tokens, start_idx, close_idx, end_idx),
             else => {},
@@ -293,6 +294,24 @@ fn filesystem_metadata_hash_at_signature_matches(
         tokens[params_start_idx + 5].kind != .ident or
         !std.mem.eql(u8, tokens[params_start_idx + 5].lexeme, "text")) return false;
     return compact_token_range_equals(tokens, params_close_idx + 3, end_idx, "MetadataHash|HashError");
+}
+
+fn filesystem_stat_at_signature_matches(
+    tokens: []const lexer.Token,
+    params_start_idx: usize,
+    params_close_idx: usize,
+    end_idx: usize,
+) bool {
+    if (params_close_idx != params_start_idx + 6 or
+        tokens[params_start_idx + 1].kind != .ident or
+        !std.mem.eql(u8, tokens[params_start_idx + 1].lexeme, "Dir") or
+        !tok_eq(tokens[params_start_idx + 2], ",") or
+        tokens[params_start_idx + 3].kind != .ident or
+        !std.mem.eql(u8, tokens[params_start_idx + 3].lexeme, "u32") or
+        !tok_eq(tokens[params_start_idx + 4], ",") or
+        tokens[params_start_idx + 5].kind != .ident or
+        !std.mem.eql(u8, tokens[params_start_idx + 5].lexeme, "text")) return false;
+    return compact_token_range_equals(tokens, params_close_idx + 3, end_idx, "DescriptorStat|StatError");
 }
 
 fn filesystem_stat_signature_matches(
@@ -2088,6 +2107,34 @@ test "pinned filesystem metadata-hash-at host_async_func imports reject a drifte
         \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
         \\MetadataHash = @wasi_record("filesystem/types/metadata-hash-value", { lower u64, upper u64 })
         \\HashError error = Io | NoEntry
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectError(error.P3AsyncHostSignatureMismatch, check_p3_async_host_imports(std.testing.allocator, tokens));
+}
+
+test "pinned filesystem stat-at host_async_func imports accept the mixed source signature" {
+    const source =
+        \\stat_at_descriptor = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.stat-at", (Dir, u32, text) -> DescriptorStat | StatError)
+        \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+        \\Datetime = @wasi_record("clocks/wall-clock/datetime", { seconds i64, nanoseconds u32 })
+        \\DescriptorStat = @wasi_record("filesystem/types/descriptor-stat", { .type i32, link_count u64, size u64, data_access_timestamp option<Datetime>, data_modification_timestamp option<Datetime>, status_change_timestamp option<Datetime> })
+        \\StatError error = Io | NoEntry
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "pinned filesystem stat-at host_async_func imports reject a drifted path input" {
+    const source =
+        \\stat_at_descriptor = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.stat-at", (Dir, u32, u32) -> DescriptorStat | StatError)
+        \\Dir = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+        \\Datetime = @wasi_record("clocks/wall-clock/datetime", { seconds i64, nanoseconds u32 })
+        \\DescriptorStat = @wasi_record("filesystem/types/descriptor-stat", { .type i32, link_count u64, size u64, data_access_timestamp option<Datetime>, data_modification_timestamp option<Datetime>, status_change_timestamp option<Datetime> })
+        \\StatError error = Io | NoEntry
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);

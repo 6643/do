@@ -1,5 +1,23 @@
 # Changelog
 
+# 2026-08-11 D2 private filesystem `descriptor.stat-at` promotion: admitted
+  only `wasi:filesystem/types@0.3.0-rc-2025-09-16 / descriptor.stat-at` with
+  the pinned upstream WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`
+  and measured five-argument async import
+  `(descriptor, path-flags, path-ptr, path-len, result-area) -> i32`;
+  task-return is `(i32,i32,i64,i64,i32,i64,i32,i32,i64,i32,i32,i64,i32)` for
+  `descriptor-stat | error-code`. The opt-in `--p3-async-component` compiler
+  gate admits fixture `530`, rejects `531`-`539` before WAT, and matches Core
+  template hash `4503fa7634560c66463f96ac142bcc7cfb7b90cca93a8b705c1d1eb05040ddef`.
+  Regular/cancel WIT mirror hashes are
+  `92afa427efedc960fd60ce2edbd3ced26521225ae8857377554956646a1059bd` /
+  `420fb95fae7505e568414e55f19dc2f89f5b32e015e8d999166e38b48e4a4a49`.
+  The generated Component and Rust/Wasmtime ready/pending/error/repeat plus
+  hand-authored cancel/Store-disposal early-drop rows pass; the host verifies
+  relative UTF-8 path copying and `symlink-follow` propagation. Generic
+  filesystem async, external HTTP, and public `own<T>`/`borrow<T>`/`ref<T>`
+  remain outside this private method slice.
+
 # 2026-08-10 D2 private filesystem `descriptor.metadata-hash` promotion:
   admitted only `wasi:filesystem/types@0.3.0-rc-2025-09-16 /
   descriptor.metadata-hash` with upstream WIT hash

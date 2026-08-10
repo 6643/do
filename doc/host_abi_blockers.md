@@ -253,10 +253,58 @@ Full gates also pass: `./src/build/test/run_tests.sh` reports
 
 **Boundary:** this remains a private method-specific target. It does not admit
 generic filesystem or HTTP async, arbitrary producer expressions,
-stream/list/borrowed/record payloads, `stat-at`, `open-at`, path mutation, or
+stream/list/borrowed/record payloads, `open-at`, path mutation, or
 public `own<T>`/`borrow<T>`/`ref<T>` syntax. Each additional method needs its
 own pinned WIT/Core probe, positive/negative fixtures, Component validation,
 and Rust/Wasmtime cleanup matrix.
+
+## D2 Bounded Filesystem Async `descriptor.stat-at` (2026-08-11)
+
+**Status:** the pinned ABI, exact opt-in Do compiler slice, generated regular
+Component, and Rust/Wasmtime path-copy and cleanup matrix are green. Generic
+filesystem async, generic host-future-drop cancellation, and public ownership
+syntax remain blocked.
+
+**Evidence:**
+`bash examples/p3-runtime/test_d2_wasi_filesystem_stat_at_abi.sh` and
+`bash examples/p3-runtime/test_rust_wasi_filesystem_stat_at.sh` pass with
+`wasm-tools 1.255.0 (76e20611d 2026-07-30)` and SHA-256
+`6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`.
+The upstream filesystem WIT hash is
+`8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`;
+regular/cancel oracle mirrors are
+`92afa427efedc960fd60ce2edbd3ced26521225ae8857377554956646a1059bd` /
+`420fb95fae7505e568414e55f19dc2f89f5b32e015e8d999166e38b48e4a4a49`.
+
+The admitted source is exactly one `@host_async_func`
+`(Dir, u32, text) -> DescriptorStat | StatError`, one direct await, one exact
+descriptor/resource shell, and a synchronous root with an empty `start`.
+Fixture `530` is admitted; `531`-`539` reject before WAT for unregistered,
+signature, second-await, branch, loop, extra-host, and async-root drift. The
+measured method import is
+`[async-lower][method]descriptor.stat-at:
+(i32,i32,i32,i32,i32) -> i32`, ordered as descriptor, path-flags, UTF-8 path
+pointer, UTF-8 path length, and result-area pointer. Task-return is
+`(i32,i32,i64,i64,i32,i64,i32,i32,i64,i32,i32,i64,i32)` and descriptor drop is
+`[resource-drop]descriptor (i32) -> nil`. The compiler template hash is
+`4503fa7634560c66463f96ac142bcc7cfb7b90cca93a8b705c1d1eb05040ddef`.
+
+The two-page Core memory is required for the canonical UTF-8 path allocation
+at the heap boundary; the frame and result-area offsets remain the measured
+ABI. Generated WIT/Core embeds and validates. The Rust host observes an owned
+path copy and `symlink-follow` flag after a delayed pending poll. Ready,
+pending, error, cancel, whole-Store early-drop, and repeat rows pass with
+exactly-once future/descriptor cleanup. Early-drop reports
+`pending-future-drops=1 descriptor-drops=0 table-empty=not-applicable`, matching
+the Wasmtime 47 Store-disposal boundary. Cancellation is cleanup-only and
+never rolls back a filesystem effect already issued to the host.
+
+**Boundary:** this remains a private method-specific target. It does not admit
+generic filesystem or HTTP async, arbitrary producer expressions,
+stream/list/borrowed/record payloads, `open-at`, path mutation, or public
+`own<T>`/`borrow<T>`/`ref<T>` syntax. Each additional method needs its own
+pinned WIT/Core probe, positive/negative fixtures, Component validation, and
+Rust/Wasmtime cleanup matrix.
 
 ## D2 Bounded Filesystem Async `descriptor.get-type` (2026-08-08)
 

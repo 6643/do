@@ -25,21 +25,21 @@ only. Public `own<T>`/`borrow<T>`/`ref<T>` syntax remains outside this phase.
 
 | ID | 问题 | 证据 / 停止点 | 恢复条件 |
 | --- | --- | --- | --- |
-| **G6.2** | `descriptor.read-directory` 及 record-stream 通用能力 | generic consumer 已覆盖注册的非 filesystem record streams；bounded producer、StreamMirror、private Result cancellation、HTTP payload cancellation、resource-list stream、私有 `do:variant-resource-stream-canonical@0.1.0`、动态 count `0..3` 的私有 `do:g6-2-c-min-dynamic-producer@0.1.0`、固定两批 `[111,222]`/`[333]` 的私有 `do:g6-2-batched-list-producer@0.1.0`，以及私有 `do:g6-2-scalar-list-producer@0.1.0` `stream<list<u32>>` producer 的 compiler-generated Component/Rust/Wasmtime gate 均已通过。scalar producer 固定 `ptr=64/len=68/stride=4/max=3`、stream capacity `1`、count `0..3`/invalid `4`，并保留 pending、sink error、early drop、转移前/后 cancellation、exactly-once list cleanup、empty `ResourceTable` 与 fail-closed 负例。D2 另关闭了私有 `descriptor.get-type`、`descriptor.sync`、`descriptor.get-flags`、`descriptor.stat`、`descriptor.sync-data`、`descriptor.metadata-hash` 与 `descriptor.metadata-hash-at` 七个有界方法；七者均固定 upstream WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`，并分别通过独立 ABI、compiler admission 和 ready/pending/error/cancel cleanup gate；`sync-data`、`metadata-hash` 与 `metadata-hash-at` 另通过 repeat 与 Store-disposal early-drop 边界。仍缺一般 async helper/producer lease、任意 producer 表达式、通用 list、通用 borrowed/variant lowering、第六跳 forwarding、第七层或更一般 nested resource 字段、payload-bearing completion error 的更广形状、任意其它 filesystem async method 与通用 resource cancellation。Pinned `wasm-tools 1.255.0` 对含 `borrow<T>` 的 stream record 在 Component embed 阶段明确拒绝 | 保持所有 private bounded descriptor 的精确边界；扩展其他 producer/resource shape 前必须另立 design、probe 与 gate |
+| **G6.2** | `descriptor.read-directory` 及 record-stream 通用能力 | generic consumer 已覆盖注册的非 filesystem record streams；bounded producer、StreamMirror、private Result cancellation、HTTP payload cancellation、resource-list stream、私有 `do:variant-resource-stream-canonical@0.1.0`、动态 count `0..3` 的私有 `do:g6-2-c-min-dynamic-producer@0.1.0`、固定两批 `[111,222]`/`[333]` 的私有 `do:g6-2-batched-list-producer@0.1.0`，以及私有 `do:g6-2-scalar-list-producer@0.1.0` `stream<list<u32>>` producer 的 compiler-generated Component/Rust/Wasmtime gate 均已通过。scalar producer 固定 `ptr=64/len=68/stride=4/max=3`、stream capacity `1`、count `0..3`/invalid `4`，并保留 pending、sink error、early drop、转移前/后 cancellation、exactly-once list cleanup、empty `ResourceTable` 与 fail-closed 负例。D2 另关闭了私有 `descriptor.get-type`、`descriptor.sync`、`descriptor.get-flags`、`descriptor.stat`、`descriptor.sync-data`、`descriptor.metadata-hash`、`descriptor.metadata-hash-at` 与 `descriptor.stat-at` 八个有界方法；八者均固定 upstream WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`，并分别通过独立 ABI、compiler admission 和 ready/pending/error/cancel cleanup gate；`sync-data`、`metadata-hash`、`metadata-hash-at` 与 `stat-at` 另通过 repeat 与 Store-disposal early-drop 边界。仍缺一般 async helper/producer lease、任意 producer 表达式、通用 list、通用 borrowed/variant lowering、第六跳 forwarding、第七层或更一般 nested resource 字段、payload-bearing completion error 的更广形状、任意其它 filesystem async method 与通用 resource cancellation。Pinned `wasm-tools 1.255.0` 对含 `borrow<T>` 的 stream record 在 Component embed 阶段明确拒绝 | 保持所有 private bounded descriptor 的精确边界；扩展其他 producer/resource shape 前必须另立 design、probe 与 gate |
 | **06.2** | 历史总项 | 已拆到 G2–G6；通用 consumer slice 已关闭，剩余边界由 **G6.2** 的后续 gates 承接 | 同上 |
 
-**D2 general filesystem/HTTP recovery boundary (2026-08-09):**
+**D2 general filesystem/HTTP recovery boundary (2026-08-11):**
 `descriptor.get-type`, `descriptor.sync`, `descriptor.get-flags`,
-`descriptor.sync-data`, `descriptor.metadata-hash`, and
-`descriptor.metadata-hash-at` remain seven independently verified private
-descriptors.
-Fresh ABI and
-Rust/Wasmtime gates passed with the pinned filesystem WIT hash
+`descriptor.sync-data`, `descriptor.metadata-hash`,
+`descriptor.metadata-hash-at`, and `descriptor.stat-at` remain eight
+independently verified private
+descriptors. Fresh ABI and Rust/Wasmtime gates passed with the pinned
+filesystem WIT hash
 `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`; each
-records its own `(i32,i32) -> i32` import, Result/payload layout, descriptor
-drop, ready/pending/error/cancel cleanup, and empty `ResourceTable`.
+records its own measured import, Result/payload layout, descriptor drop,
+ready/pending/error/cancel cleanup, and empty `ResourceTable`.
 `read-via-stream`, `write-via-stream`, `append-via-stream`,
-`read-directory`, `stat-at`, `open-at`, path mutation, borrowed
+`read-directory`, `open-at`, path mutation, borrowed
 descriptor methods, and metadata records other than `metadata-hash` and
 `metadata-hash-at` remain
 unadmitted because their
@@ -111,6 +111,25 @@ The Rust host copies the UTF-8 path into an owned String before returning its
 future; ready/pending/error/cancel/early-drop/repeat rows pass with exactly-once
 live-Store cleanup and the documented Store-disposal boundary.
 Generic filesystem async, external HTTP, and public ownership syntax remain
+blocked.
+
+**D2 `descriptor.stat-at` bounded promotion (2026-08-11):** the current
+`wasm-tools 1.255.0` ABI, exact `--p3-async-component` compiler admission,
+generated Component, and Rust/Wasmtime matrix pass for the measured
+`path-flags + string` method. The import is
+`(i32,i32,i32,i32,i32) -> i32` in the order
+`descriptor, path-flags, path-ptr, path-len, result-area`; task-return is
+`(i32,i32,i64,i64,i32,i64,i32,i32,i64,i32,i32,i64,i32)` and the Result payload
+is `descriptor-stat | error-code`. Fixture `530` passes; `531`-`539` reject
+before WAT. Regular/cancel WIT mirror hashes are
+`92afa427efedc960fd60ce2edbd3ced26521225ae8857377554956646a1059bd` /
+`420fb95fae7505e568414e55f19dc2f89f5b32e015e8d999166e38b48e4a4a49`; the
+compiler template hash is
+`4503fa7634560c66463f96ac142bcc7cfb7b90cca93a8b705c1d1eb05040ddef`.
+The Rust host observes the copied relative path and `symlink-follow` flag;
+ready/pending/error/cancel/Store-disposal early-drop/repeat rows pass with
+exactly-once cleanup. This closes only the private method-specific target;
+generic filesystem async, external HTTP, and public ownership syntax remain
 blocked.
 
 **G6.2 next-shape stop (2026-08-09, `can_skip=true`):** 动态 count `0..3`、
