@@ -1640,6 +1640,13 @@ if [[ "${RUN_WASM:-0}" == "1" ]]; then
     fi
 fi
 
+if [[ "${RUN_GC_CORE:-0}" == "1" ]]; then
+    echo "[INFO] run restricted Core GC oracle cases"
+    if ! WASMTIME_BIN="${WASMTIME_BIN:-$(command -v wasmtime || true)}" "$TEST_DIR/check_gc_core_oracles.sh"; then
+        ((fail_count += 1))
+    fi
+fi
+
 echo "[INFO] summary: pass=$pass_count fail=$fail_count skip=$skip_count"
 if [[ "$fail_count" -ne 0 ]]; then
     exit 1

@@ -41,8 +41,9 @@ so the script can assert the in-guest result without a host import.
 ## Restricted compiler lowering
 
 `do build --gc-core` is an experimental, deliberately restricted target. It
-does not select the active ARC backend and it does not accept arbitrary Do
-programs. The currently executable source forms are independent fixtures:
+is a migration oracle only: it does not select the normal compiler backend and
+it does not accept arbitrary Do programs. The currently executable source forms
+are independent fixtures:
 
 ```do
 identity(value text) -> text {
@@ -94,6 +95,18 @@ start() {}
 ```
 
 Run the source-to-engine checks from the repository root:
+
+```bash
+RUN_GC_CORE=1 WASMTIME_BIN="$(command -v wasmtime)" bash src/build/test/check_gc_core_oracles.sh
+```
+
+The same oracle suite can be included after the standard compiler regression:
+
+```bash
+RUN_GC_CORE=1 WASMTIME_BIN="$(command -v wasmtime)" ./src/build/test/run_tests.sh
+```
+
+The individual probes remain available for focused diagnosis:
 
 ```bash
 WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_text_identity.sh
