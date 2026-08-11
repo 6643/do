@@ -31,8 +31,8 @@
 | --- | --- |
 | v1 子集 | 发布候选已收口 |
 | 阶段 A–F、H | 已完成 |
-| 阶段 D | 可推进项已完成; D2.1 已按 B 方案绿色 regression 收口; D2 本地 file/dir/CLI/socket smoke 与私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at` async slices 已验证；通用 filesystem async、external HTTP 的 method-specific recovery 仍阻断 |
-| 阶段 G | G1–G5、G6.1、G6.2 有界 read-directory slice + generic consumer + multi-owned-resource + 一层/两层/三层/四层/五层/六层 nested-owned-resource + multiple nested-owned-resource paths + bounded scalar producer + bounded/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding 与 typed 参数重排）producer + helper-mediated lease + branch-selected terminal + private resource Result error/cancellation checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + scalar-argument async-call slice + **private bounded async host scalar-argument compiler promotion** + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + **private bounded scalar `stream<list<u32>>` producer promotion** + D2 私有 filesystem `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at` slices、G6.3、G6.4 完成；generic list/producer、borrowed payload、general async-call、D2 general methods 与 root hard-cancel pending |
+| 阶段 D | 可推进项已完成; D2.1 已按 B 方案绿色 regression 收口; D2 本地 file/dir/CLI/socket smoke 与私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at` async slices 已验证；通用 filesystem async、external HTTP 的 method-specific recovery 仍阻断 |
+| 阶段 G | G1–G5、G6.1、G6.2 有界 read-directory slice + generic consumer + multi-owned-resource + 一层/两层/三层/四层/五层/六层 nested-owned-resource + multiple nested-owned-resource paths + bounded scalar producer + bounded/parameterized `u64` countdown producer + parameterized helper（含五跳 forwarding 与 typed 参数重排）producer + helper-mediated lease + branch-selected terminal + private resource Result error/cancellation checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + scalar-argument async-call slice + **private bounded async host scalar-argument compiler promotion** + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + **private bounded scalar `stream<list<u32>>` producer promotion** + D2 私有 filesystem `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at` slices、G6.3、G6.4 完成；generic list/producer、borrowed payload、general async-call、D2 general methods 与 root hard-cancel pending |
 | Colorless async / WIT bindgen | canonical `@async/@await/@cancel`、legacy `async` 弃用、schema 1/2 生成 manifest 校验、已准入 schema 2 unit 与 scalar capabilities 的 manifest 自动发现，以及 opt-in v2 variant/scalar-i64 gates、统一 promotion profile、`--p3-async-call-component` root-owned local-frame gate、private `--p3-async-host-arg-component` scalar-argument compiler gate 和 `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` gate 已验证；general async-call promotion contract 与 D2 recovery design 已冻结，unrestricted generated WIT lowering 仍 pending |
 | 阶段 I | **已关闭** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构审查/重构 | 五轮已落地 (见 §4); 默认不继续拆 god module |
@@ -117,6 +117,11 @@ bash examples/p3-runtime/test_rust_wasi_filesystem_metadata_hash_at.sh
 bash examples/p3-runtime/test_d2_wasi_filesystem_stat_at_abi.sh
 bash examples/p3-runtime/test_rust_wasi_filesystem_stat_at.sh
 
+# private D2 filesystem descriptor.open-at ABI, compiler, and runtime gate
+bash examples/p3-runtime/test_d2_wasi_filesystem_open_at_abi.sh
+bash examples/p3-runtime/test_d2_wasi_filesystem_open_at_compiler.sh
+bash examples/p3-runtime/test_rust_wasi_filesystem_open_at.sh
+
 # bounded async-call scalar-argument Component/Rust/Wasmtime gate
 bash examples/p3-runtime/test_do_async_call_scalar_argument.sh
 bash examples/p3-runtime/test_rust_async_call_scalar_argument.sh \
@@ -155,7 +160,7 @@ bash examples/p3-runtime/test_g6_2_scalar_list_producer_abi.sh
 
 # 默认完整回归 (当前基线; 本机使用 Bun 作为 Node-compatible runner)
 NODE_BIN="$(command -v bun)" WASM_TOOLS="$(command -v wasm-tools)" ./src/build/test/run_tests.sh
-# 最近验证: pass=1219 fail=0 skip=3
+# 最近验证: pass=1231 fail=0 skip=3
 
 # codegen 单元测试
 cd src && zig test build/codegen_api.zig
@@ -169,13 +174,13 @@ cd src && zig test build/codegen_api.zig
 
 ```bash
 RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
-# 最近扩展基线: pass=1221 fail=0 skip=3; wasm run summary: pass=6 fail=0
+# 最近扩展基线: pass=1233 fail=0 skip=3; wasm run summary: pass=6 fail=0
 ```
 
 | 基线项 | 最近值 |
 | --- | --- |
-| 默认回归 (`SKIP_BUILD=1`) | `pass=1219 fail=0 skip=3` |
-| WASM 扩展回归 (`RUN_WASM=1 SKIP_BUILD=1`) | `pass=1221 fail=0 skip=3`; smoke `6/6` |
+| 默认回归 (`SKIP_BUILD=1`) | `pass=1231 fail=0 skip=3` |
+| WASM 扩展回归 (`RUN_WASM=1 SKIP_BUILD=1`) | `pass=1233 fail=0 skip=3`; smoke `6/6` |
 | `zig test main.zig` | `355/355` |
 | async host scalar-argument ABI probe | current `wasm-tools 1.255.0` Component assembly green; frame `20` bytes, argument `u32@12`; ready/pending/cancel oracle green with `argument=7`, exactly-once Future drop, empty `ResourceTable`; probe-only, general lowering pending |
 | G6.2 scalar-list producer | private `stream<list<u32>>` promotion green; `ptr=64`, `len=68`, `stride=4`, max `3`, stream capacity `1`; count `0..3`, invalid `4`, pending/error/drop/cancel, exactly-once list release, empty `ResourceTable`; generic list/producer remains pending |
@@ -186,17 +191,18 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | D2 descriptor.metadata-hash private promotion | ABI/Do/generated Component/Rust gate green; Core template SHA-256 `f51c82887174a7ed1adf95a1cbe0e333f80a487962a2a8478334ca9750933b6b`; regular/cancel WIT mirror SHA-256 `6976359b3a4813d6771b3ef9a7fdcfb2ee9323e70c33b9ac7d6b628519fecfed` / `b6e98cf2ae6f76e105f53c7ea09666b1c5684d33edb9838d034862a27b09f5c3`; fixture `516` passes and `517`-`519` reject; generated ready/pending/error/repeat plus hand-authored cancel/Store-disposal early-drop oracle verified; generic filesystem async remains pending |
 | D2 descriptor.metadata-hash-at private promotion | ABI/Do/generated Component/Rust gate green; method `(i32,i32,i32,i32,i32)->i32`, task-return `(i32,i64,i64)`, Core template SHA-256 `6056d1e6f42d6ab4edce60e2bb1ef61f358bfd6d03e6aa1e3c35daf08672713f`; regular/cancel WIT mirror SHA-256 `95e24b70eeed89407706c18a6e4cd13a8bc4dce72d1e56638436b03287d23412` / `aca9c5933786a00a2dd20b1ad1ddbb6d0a79ab5b3bdbd5bd61e14b100a3b6e0a`; fixture `520` passes and `521`-`529` reject; UTF-8 path-copy pending/wake and exactly-once cleanup verified; generic filesystem async remains pending |
 | D2 descriptor.stat-at private promotion | ABI/Do/generated Component/Rust gate green; method `(i32,i32,i32,i32,i32)->i32`, task-return `(i32,i32,i64,i64,i32,i64,i32,i32,i64,i32,i32,i64,i32)`, Core template SHA-256 `4503fa7634560c66463f96ac142bcc7cfb7b90cca93a8b705c1d1eb05040ddef`; regular/cancel WIT mirror SHA-256 `92afa427efedc960fd60ce2edbd3ced26521225ae8857377554956646a1059bd` / `420fb95fae7505e568414e55f19dc2f89f5b32e015e8d999166e38b48e4a4a49`; fixture `530` passes and `531`-`539` reject; path-copy/flag propagation and exactly-once cleanup verified; generic filesystem async remains pending |
+| D2 descriptor.open-at private promotion | ABI/Do/generated Component/Rust/Wasmtime gate green; method `(i32,i32)->i32`, six-word indirect parameter block, task-return `(i32,i32)`, Core template SHA-256 `a05a8e90cfb553658a8a5337e026a0fa1304aa42f0b33558a3d6ecfc17623201`; regular/cancel WIT mirror SHA-256 `1e5f9131387015c4e650a64e02bb9f112d8266f4755aa6b605af038407ef807a` / `1c48fba03b569d91617efd834232fcccc553ca3001ffb0e0834b4134f93e4f52`; fixture `540` passes and `541`-`551` reject; copied path and exactly-once parent/child cleanup verified; cancel defers parent drop to unified termination; generic filesystem async remains pending |
 | HTTP service ABI / empty-request gate | pinned Component + Rust/Wasmtime pass; `codegen_component_wasi_http` `189/189`; registered payload pending/ready gate green, unregistered/general ready delivery remains blocked |
 | pinned filesystem record source mirror | `p3_filesystem_wit_manifest` + read-directory sema tests pass |
-| `compile_ok` / `compiled_ok` / `compile_err` | `331` / `77` / `161` fixtures |
+| `compile_ok` / `compiled_ok` / `compile_err` | `333` / `77` / `181` fixtures |
 | 剩余 skip | `16_loop_recv_value`、`96_file_lib_resource_shape`、`118_wasi_p3_std_wrappers` (recv/WASI 后置) |
 | 诊断 code | `errorSummary` / `errorHint` 各 59 条 (含 `StreamWriterLeasePathConflict` / `StreamWriterDeferredTransfer`) |
 
-私有 D2 filesystem async 当前只开放八个独立的有界方法：
+私有 D2 filesystem async 当前只开放九个独立的有界方法：
 `wasi:filesystem/types@0.3.0-rc-2025-09-16 / descriptor.get-type`、
 `descriptor.sync`、`descriptor.get-flags`、`descriptor.stat`、`descriptor.sync-data`
-、`descriptor.metadata-hash`、`descriptor.metadata-hash-at` 与
-`descriptor.stat-at`。`get-type` 的
+、`descriptor.metadata-hash`、`descriptor.metadata-hash-at`、
+`descriptor.stat-at` 与 `descriptor.open-at`。`get-type` 的
 `[async-lower][method]descriptor.get-type` 使用 `(i32,i32)->i32`，task-return
 完成参数为两个 `i32`，Result 是 `descriptor-type | error-code` component
 variant，资源 drop 为 `[resource-drop]descriptor`。ABI、手写/生成 Component、
@@ -207,7 +213,7 @@ Result 为 unit/error-code component variant，fixtures `462`-`465` 覆盖
 unregistered/result/borrowed-payload/second-await 负边界；手写 Component 的
 ready/pending/error/cancel 与生成 Component 的 ready/pending/error 均通过
 exactly-once cleanup 和 `table-empty=true`。两者都不意味着通用
-`read`/`write`/`stat`/`open-at`、通用 producer、borrowed payload 与公开
+`read`/`write`/其它通用 filesystem methods、通用 producer、borrowed payload 与公开
 `own<T>`/`borrow<T>`/`ref<T>` 仍需独立 design/probe/gate。
 `get-flags` 的 `[async-lower][method]descriptor.get-flags` 也使用
 `(i32,i32)->i32`，canonical result-area 是 `u8`、flat task-return 是 `i32`，
