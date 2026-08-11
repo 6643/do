@@ -27,6 +27,7 @@ pub const LoweringShape = union(enum) {
     filesystem_sync_data: FilesystemSyncDataShape,
     filesystem_metadata_hash: FilesystemMetadataHashShape,
     filesystem_metadata_hash_at: FilesystemMetadataHashAtShape,
+    filesystem_open_at: FilesystemOpenAtShape,
     filesystem_stat: FilesystemStatShape,
     filesystem_stat_at: FilesystemStatAtShape,
     future_owned_resource: FutureOwnedCanonical,
@@ -317,6 +318,19 @@ pub const FilesystemStatAtShape = struct {
     resource_drop_import: []const u8,
 };
 
+/// The private `descriptor.open-at` slice uses the indirect async method ABI
+/// because its receiver plus four logical arguments exceed the four-flat
+/// parameter limit. The result is a two-word resource/error completion.
+pub const FilesystemOpenAtShape = struct {
+    receiver: []const u8,
+    path_flags: []const u8,
+    path: []const u8,
+    open_flags: []const u8,
+    descriptor_flags: []const u8,
+    source_result: []const u8,
+    resource_drop_import: []const u8,
+};
+
 /// The private descriptor.stat slice has a record result with three optional
 /// datetime payloads. Keep its measured record layout separate from the
 /// scalar filesystem Result shapes so a scalar emitter cannot consume it.
@@ -553,6 +567,10 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
 
     if (valid_filesystem_metadata_hash_at_descriptor(descriptor)) |shape| {
         return .{ .filesystem_metadata_hash_at = shape };
+    }
+
+    if (valid_filesystem_open_at_descriptor(descriptor)) |shape| {
+        return .{ .filesystem_open_at = shape };
     }
 
     if (valid_filesystem_stat_at_descriptor(descriptor)) |shape| {
@@ -839,6 +857,45 @@ fn valid_filesystem_metadata_hash_at_descriptor(descriptor: Descriptor) ?Filesys
         .path = descriptor.params[2],
         .source_result = descriptor.result,
         .record_layout = record_layout,
+        .resource_drop_import = "[resource-drop]descriptor",
+    };
+}
+
+fn valid_filesystem_open_at_descriptor(descriptor: Descriptor) ?FilesystemOpenAtShape {
+    if (!std.mem.eql(u8, descriptor.locator, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.member, "descriptor.open-at") or
+        !std.mem.eql(u8, descriptor.effect, "async") or
+        descriptor.params.len != 5 or
+        !std.mem.eql(u8, descriptor.params[0], "descriptor") or
+        !std.mem.eql(u8, descriptor.params[1], "path-flags") or
+        !std.mem.eql(u8, descriptor.params[2], "string") or
+        !std.mem.eql(u8, descriptor.params[3], "open-flags") or
+        !std.mem.eql(u8, descriptor.params[4], "descriptor-flags") or
+        descriptor.resource != null or
+        !std.mem.eql(u8, descriptor.result, "Result<descriptor,error-code>") or
+        descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, descriptor.wit_sha256.?, "8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f") or
+        !std.mem.eql(u8, descriptor.canonical.completion, "task-return") or
+        !equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i32" }) or
+        !equal_core_types(descriptor.canonical.core_results, &.{ "i32" }) or
+        !equal_core_types(descriptor.canonical.completion_params, &.{ "i32", "i32" }) or
+        descriptor.canonical.result_payload != null or
+        descriptor.canonical.result_area_payload != null or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower][method]descriptor.open-at") or
+        !std.mem.eql(u8, descriptor.wit.package, "wasi:filesystem@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.wit.interface, "types") or
+        !std.mem.eql(u8, descriptor.wit.operation, "descriptor.open-at") or
+        !std.mem.eql(u8, descriptor.wit.world, "imports") or
+        descriptor.wit.parameter.len != 0) return null;
+
+    return .{
+        .receiver = descriptor.params[0],
+        .path_flags = descriptor.params[1],
+        .path = descriptor.params[2],
+        .open_flags = descriptor.params[3],
+        .descriptor_flags = descriptor.params[4],
+        .source_result = descriptor.result,
         .resource_drop_import = "[resource-drop]descriptor",
     };
 }

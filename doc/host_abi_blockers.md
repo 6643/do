@@ -40,9 +40,8 @@ callback mangling mode; it does not select a legacy toolchain.
 
 **Status:** the private `descriptor.get-type`, `descriptor.sync`,
 `descriptor.get-flags`, `descriptor.stat`, `descriptor.sync-data`,
-`descriptor.metadata-hash`, and `descriptor.metadata-hash-at` methods remain
-green as separate bounded
-descriptors.
+`descriptor.metadata-hash`, `descriptor.metadata-hash-at`, `descriptor.stat-at`,
+and `descriptor.open-at` methods remain green as separate bounded descriptors.
 General filesystem async and arbitrary HTTP remain blocked; this checkpoint
 does not add a registry entry or widen code generation.
 
@@ -59,10 +58,12 @@ in [`docs/superpowers/specs/2026-08-09-d2-general-filesystem-async-boundary-desi
 `stream<u8>` and `future<result<_, error-code>>`; `write-via-stream` and
 `append-via-stream` consume producer streams; `read-directory` carries a
 `stream<directory-entry>` plus a completion future; `stat`/`stat-at` and
-`metadata-hash`/`metadata-hash-at` return records; `open-at` returns an owned
-`descriptor`; path mutation methods issue external effects; and
+`metadata-hash`/`metadata-hash-at` return records; path mutation methods issue
+external effects; and
 `link-at`/`rename-at`/`is-same-object` carry `borrow<descriptor>`. None of
 these shapes may be inferred from the four scalar/unit Result rows.
+The private `descriptor.open-at` shape is recorded as a separate bounded row
+below and does not widen this general boundary.
 
 **Unadmitted HTTP rows:** the pinned service world imports `client.send:
 async func(request) -> result<response, error-code>` and exports
@@ -163,8 +164,8 @@ Cancellation only releases live Component state and never rolls back a
 filesystem effect already issued to the host.
 
 **Boundary:** this does not admit generic filesystem async, arbitrary
-producer expressions, stream/list/borrowed/record payloads, `stat-at`,
-`open-at`, path mutation, external HTTP, or public
+producer expressions, stream/list/borrowed/record payloads, `stat-at`, path
+mutation, external HTTP, or public
 `own<T>`/`borrow<T>`/`ref<T>` syntax. Each additional method needs its own
 pinned WIT/Core probe, positive/negative fixtures, Component validation, and
 Rust/Wasmtime cleanup matrix.
@@ -253,7 +254,7 @@ Full gates also pass: `./src/build/test/run_tests.sh` reports
 
 **Boundary:** this remains a private method-specific target. It does not admit
 generic filesystem or HTTP async, arbitrary producer expressions,
-stream/list/borrowed/record payloads, `open-at`, path mutation, or
+stream/list/borrowed/record payloads, path mutation, or
 public `own<T>`/`borrow<T>`/`ref<T>` syntax. Each additional method needs its
 own pinned WIT/Core probe, positive/negative fixtures, Component validation,
 and Rust/Wasmtime cleanup matrix.
@@ -301,7 +302,61 @@ never rolls back a filesystem effect already issued to the host.
 
 **Boundary:** this remains a private method-specific target. It does not admit
 generic filesystem or HTTP async, arbitrary producer expressions,
-stream/list/borrowed/record payloads, `open-at`, path mutation, or public
+stream/list/borrowed/record payloads, path mutation, or public
+`own<T>`/`borrow<T>`/`ref<T>` syntax. Each additional method needs its own
+pinned WIT/Core probe, positive/negative fixtures, Component validation, and
+Rust/Wasmtime cleanup matrix.
+
+## D2 Bounded Filesystem Async `descriptor.open-at` (2026-08-11)
+
+**Status:** the pinned ABI, exact opt-in Do compiler slice, generated regular
+Component, and Rust/Wasmtime ownership and cancellation matrix are green.
+Generic filesystem async, generic host-future-drop cancellation, and public
+ownership syntax remain blocked.
+
+**Evidence:**
+`bash examples/p3-runtime/test_d2_wasi_filesystem_open_at_abi.sh`,
+`bash examples/p3-runtime/test_d2_wasi_filesystem_open_at_compiler.sh`, and
+`bash examples/p3-runtime/test_rust_wasi_filesystem_open_at.sh` pass with
+`wasm-tools 1.255.0 (76e20611d 2026-07-30)` and SHA-256
+`6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`.
+The upstream filesystem WIT hash is
+`8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`;
+regular/cancel probe WIT mirror hashes are
+`1e5f9131387015c4e650a64e02bb9f112d8266f4755aa6b605af038407ef807a` /
+`1c48fba03b569d91617efd834232fcccc553ca3001ffb0e0834b4134f93e4f52`.
+
+The admitted source is exactly one `@host_async_func`
+`(Dir, u32, text, u32, u32) -> File | OpenError`, one direct await, two exact
+descriptor resource shells, and a synchronous root with an empty `start`.
+Fixture `540` is admitted; `541`-`551` reject before WAT for unregistered,
+flag/signature, ownership, await/topology, extra-host, and async-root drift.
+The measured method import is
+`[async-lower][method]descriptor.open-at: (i32,i32) -> i32` with an indirect
+six-word parameter block (`descriptor`, `path-flags`, `path-ptr`, `path-len`,
+`open-flags`, `descriptor-flags`); task-return is `(i32,i32)` and the Result is
+`descriptor | error-code`. Descriptor drop is
+`[resource-drop]descriptor (i32) -> nil`. The compiler template hash is
+`a05a8e90cfb553658a8a5337e026a0fa1304aa42f0b33558a3d6ecfc17623201`.
+
+The generated WIT/Core Components embed and validate. The Rust host copies the
+UTF-8 path before returning its future, creates and drops a child descriptor
+only on `Ok`, and observes ready, pending, error, cancel, Store-disposal
+early-drop, and repeat rows with exactly-once live-Store cleanup. The cancel
+probe leaves the borrowed parent descriptor for the unified termination path;
+dropping it immediately after `[async-lower][subtask-cancel]` fails with
+Wasmtime's `cannot remove owned resource while borrowed` check. Cancellation is
+cleanup-only and never rolls back an `open-at` effect already issued to the
+host.
+
+The full repository gates after rebuilding `bin/do` also pass:
+`NODE_BIN=/home/_/.local/bin/bun ./src/build/test/run_tests.sh` reports
+`pass=1231 fail=0 skip=3`, `cd src && zig test main.zig` reports `355/355`,
+and `cd src && zig build -Doptimize=ReleaseSmall` succeeds.
+
+**Boundary:** this remains a private method-specific target. It does not admit
+generic filesystem or HTTP async, arbitrary producer expressions,
+stream/list/borrowed/record payloads, path mutation, or public
 `own<T>`/`borrow<T>`/`ref<T>` syntax. Each additional method needs its own
 pinned WIT/Core probe, positive/negative fixtures, Component validation, and
 Rust/Wasmtime cleanup matrix.
@@ -332,7 +387,7 @@ cancellation; the generated Component passes ready-directory, ready-regular,
 pending, and error with matching exactly-once future/descriptor cleanup and
 `table-empty=true`.
 
-**Boundary:** this does not admit `read`, `write`, `stat`, `open-at`, directory
+**Boundary:** this does not admit `read`, `write`, `stat`, directory
 mutation, stream/list/borrowed payloads, arbitrary producer expressions,
 generic async calls, external HTTP, rollback of host side effects, or public
 `own<T>`/`borrow<T>`/`ref<T>` syntax. Each additional method needs its own pinned
@@ -409,7 +464,7 @@ Fresh repository gates are `zig test main.zig` `308/308`, default regression
 `pass=1149 fail=0 skip=3`, WASM regression `pass=1151 fail=0 skip=3` with smoke
 `6/6`, and ReleaseSmall smoke passed.
 
-**Boundary:** this does not admit `read`, `write`, `stat`, `open-at`, directory
+**Boundary:** this does not admit `read`, `write`, `stat`, directory
 mutation, other filesystem methods, stream/list/record/borrowed/variant
 payloads, arbitrary producer expressions, generic async calls, external HTTP,
 rollback of host side effects, or public `own<T>`/`borrow<T>`/`ref<T>` syntax.

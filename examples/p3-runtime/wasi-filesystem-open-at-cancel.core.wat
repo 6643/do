@@ -38,7 +38,7 @@
   (import "[export]wasi:filesystem/probe@0.3.0-rc-2025-09-16"
     "[task-return]cancel" (func $task-return-cancel (type $noargs)))
 
-  (memory $memory 1)
+  (memory $memory 2)
   (global $run-frame (mut i32) (i32.const 0))
   (global $heap-next (mut i32) (i32.const 65536))
 
@@ -73,6 +73,7 @@
     local.get $frame i32.const 36 i32.add i32.load local.set $payload
     local.get $frame i32.const 20 i32.add i32.load local.set $subtask
     local.get $subtask i32.eqz
+    local.get $subtask i32.const 2 i32.eq i32.or
     if else local.get $subtask call $subtask-drop end
     local.get $frame i32.const 4 i32.add i32.load call $descriptor-drop
     local.get $frame i32.load call $waitable-set-drop
@@ -96,7 +97,7 @@
     local.get $frame i32.const 80 i32.add i32.load i32.store
     local.get $frame i32.const 48 i32.add local.get $frame i32.const 32 i32.add
     call $open-at local.set $status
-    local.get $frame i32.const 16 i32.add local.get $status i32.store
+    local.get $frame i32.const 20 i32.add local.get $status i32.store
     local.get $status i32.const 2 i32.eq
     if (result i32) local.get $frame call $finish
     else local.get $frame call $wait-on-open-at end)
@@ -125,9 +126,6 @@
     local.tee $handle call $subtask-cancel local.set $status
     local.get $status i32.const 4 i32.eq
     if local.get $handle call $subtask-drop end
-    local.get $frame i32.const 4 i32.add i32.load call $descriptor-drop
-    local.get $frame i32.load call $waitable-set-drop
-    i32.const 0 call $context-set-0
     call $task-return-cancel
     i32.const 0)
 

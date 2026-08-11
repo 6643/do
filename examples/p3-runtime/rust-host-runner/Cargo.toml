@@ -22,6 +22,10 @@ name = "do-p3-wasi-filesystem-real"
 path = "src/bin/wasi_filesystem_real.rs"
 
 [[bin]]
+name = "wasi-filesystem-open-at"
+path = "src/bin/wasi_filesystem_open_at.rs"
+
+[[bin]]
 name = "do-p3-wasi-sockets-real"
 path = "src/bin/wasi_sockets_real.rs"
 
