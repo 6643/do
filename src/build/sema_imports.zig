@@ -194,6 +194,7 @@ fn p3_async_signature_matches(tokens: []const lexer.Token, start_idx: usize, end
             .filesystem_get_flags => return filesystem_get_flags_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_get_type => return filesystem_get_type_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_sync => return filesystem_sync_signature_matches(tokens, start_idx, close_idx, end_idx),
+            .filesystem_set_size => return filesystem_set_size_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_sync_data => return filesystem_sync_data_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_metadata_hash => return filesystem_metadata_hash_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_metadata_hash_at => return filesystem_metadata_hash_at_signature_matches(tokens, start_idx, close_idx, end_idx),
@@ -253,6 +254,21 @@ fn filesystem_sync_signature_matches(
         tokens[params_start_idx + 1].kind != .ident or
         !std.mem.eql(u8, tokens[params_start_idx + 1].lexeme, "Dir")) return false;
     return compact_token_range_equals(tokens, params_close_idx + 3, end_idx, "nil|SyncError");
+}
+
+fn filesystem_set_size_signature_matches(
+    tokens: []const lexer.Token,
+    params_start_idx: usize,
+    params_close_idx: usize,
+    end_idx: usize,
+) bool {
+    if (params_close_idx != params_start_idx + 4 or
+        tokens[params_start_idx + 1].kind != .ident or
+        !std.mem.eql(u8, tokens[params_start_idx + 1].lexeme, "File") or
+        !tok_eq(tokens[params_start_idx + 2], ",") or
+        tokens[params_start_idx + 3].kind != .ident or
+        !std.mem.eql(u8, tokens[params_start_idx + 3].lexeme, "u64")) return false;
+    return compact_token_range_equals(tokens, params_close_idx + 3, end_idx, "nil|SetSizeError");
 }
 
 fn filesystem_sync_data_signature_matches(
@@ -1268,6 +1284,15 @@ fn find_known_wasi_signature(target: []const u8) ?KnownWasiSignature {
             .do_result_alt6 = "Result<nil,SyncDataError>",
         },
         .{
+            .target = "filesystem/types/descriptor.set-size",
+            .params = "descriptor,filesize",
+            .result = "result<_,error-code>",
+            .do_params = "i32,u64",
+            .do_params_alt = "File,u64",
+            .do_result = "nil|i32",
+            .do_result_alt = "nil|SetSizeError",
+        },
+        .{
             .target = "filesystem/types/descriptor.link-at",
             .params = "descriptor,path-flags,text,borrow<descriptor>,text",
             .result = "result<_,error-code>",
@@ -2085,6 +2110,26 @@ test "pinned filesystem sync-data host_async_func imports accept the unit error 
     defer std.testing.allocator.free(tokens);
 
     try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "pinned filesystem set-size host_async_func imports accept the File and u64 union" {
+    const source = @embedFile("test/compile_ok/552_wasi_filesystem_set_size_component.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "pinned filesystem set-size host_async_func imports reject Result source spelling" {
+    const source =
+        \\set_size_descriptor = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.set-size", (File, u64) -> Result<nil, SetSizeError>)
+        \\File = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+        \\SetSizeError error = Io | NoEntry
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectError(error.P3AsyncHostSignatureMismatch, check_p3_async_host_imports(std.testing.allocator, tokens));
 }
 
 test "pinned filesystem metadata-hash host_async_func imports accept the two-word record union" {

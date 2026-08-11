@@ -24,6 +24,7 @@ pub const LoweringShape = union(enum) {
     filesystem_get_type: FilesystemGetTypeShape,
     filesystem_get_flags: FilesystemGetFlagsShape,
     filesystem_sync: FilesystemSyncShape,
+    filesystem_set_size: FilesystemSetSizeShape,
     filesystem_sync_data: FilesystemSyncDataShape,
     filesystem_metadata_hash: FilesystemMetadataHashShape,
     filesystem_metadata_hash_at: FilesystemMetadataHashAtShape,
@@ -263,6 +264,20 @@ pub const FilesystemGetFlagsShape = struct {
 /// the other's payload layout accidentally.
 pub const FilesystemSyncShape = struct {
     receiver: []const u8,
+    source_result: []const u8,
+    tag: []const u8,
+    ok: []const []const u8,
+    err: []const []const u8,
+    resource_drop_import: []const u8,
+};
+
+/// The pinned `descriptor.set-size` slice carries one `u64` argument in
+/// addition to the resource receiver. Keep it separate from `descriptor.sync`
+/// even though both return unit/error-code, because their method ABI and frame
+/// ownership differ.
+pub const FilesystemSetSizeShape = struct {
+    receiver: []const u8,
+    size: []const u8,
     source_result: []const u8,
     tag: []const u8,
     ok: []const []const u8,
@@ -557,6 +572,10 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
         return .{ .filesystem_sync = shape };
     }
 
+    if (valid_filesystem_set_size_descriptor(descriptor)) |shape| {
+        return .{ .filesystem_set_size = shape };
+    }
+
     if (valid_filesystem_sync_data_descriptor(descriptor)) |shape| {
         return .{ .filesystem_sync_data = shape };
     }
@@ -744,6 +763,45 @@ fn valid_filesystem_sync_descriptor(descriptor: Descriptor) ?FilesystemSyncShape
 
     return .{
         .receiver = descriptor.params[0],
+        .source_result = descriptor.result,
+        .tag = payload.tag,
+        .ok = payload.ok,
+        .err = payload.err,
+        .resource_drop_import = "[resource-drop]descriptor",
+    };
+}
+
+fn valid_filesystem_set_size_descriptor(descriptor: Descriptor) ?FilesystemSetSizeShape {
+    if (!std.mem.eql(u8, descriptor.locator, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.member, "descriptor.set-size") or
+        !std.mem.eql(u8, descriptor.effect, "async") or
+        descriptor.params.len != 2 or
+        !std.mem.eql(u8, descriptor.params[0], "descriptor") or
+        !std.mem.eql(u8, descriptor.params[1], "filesize") or
+        descriptor.resource != null or
+        !std.mem.eql(u8, descriptor.result, "Result<nil,error-code>") or
+        descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, descriptor.wit_sha256.?, "8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f") or
+        !std.mem.eql(u8, descriptor.canonical.completion, "task-return") or
+        !equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i64", "i32" }) or
+        !equal_core_types(descriptor.canonical.core_results, &.{ "i32" }) or
+        !equal_core_types(descriptor.canonical.completion_params, &.{ "i32", "i32" }) or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower][method]descriptor.set-size") or
+        !std.mem.eql(u8, descriptor.wit.package, "wasi:filesystem@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.wit.interface, "types") or
+        !std.mem.eql(u8, descriptor.wit.operation, "descriptor.set-size") or
+        !std.mem.eql(u8, descriptor.wit.world, "imports") or
+        descriptor.wit.parameter.len != 0) return null;
+
+    const payload = descriptor.canonical.result_payload orelse return null;
+    if (!std.mem.eql(u8, payload.tag, "i32") or
+        payload.ok.len != 0 or
+        !equal_core_types(payload.err, &.{ "i32" })) return null;
+
+    return .{
+        .receiver = descriptor.params[0],
+        .size = descriptor.params[1],
         .source_result = descriptor.result,
         .tag = payload.tag,
         .ok = payload.ok,
@@ -4869,6 +4927,49 @@ test "filesystem descriptor sync lowering rejects ABI drift" {
 
     var payload = descriptor.canonical.result_payload.?;
     payload.ok = &.{"i32"};
+    var canonical = descriptor.canonical;
+    canonical.result_payload = payload;
+    drifted = descriptor;
+    drifted.canonical = canonical;
+    try std.testing.expect(lowering_shape(drifted) == null);
+}
+
+test "checked-in registry admits the pinned filesystem descriptor set-size ABI" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.set-size") orelse return error.TestUnexpectedResult;
+    const shape = switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .filesystem_set_size => |value| value,
+        else => return error.TestUnexpectedResult,
+    };
+    try std.testing.expectEqualStrings("descriptor", shape.receiver);
+    try std.testing.expectEqualStrings("filesize", shape.size);
+    try std.testing.expectEqualStrings("Result<nil,error-code>", shape.source_result);
+    try std.testing.expectEqualStrings("i32", shape.tag);
+    try std.testing.expectEqual(@as(usize, 0), shape.ok.len);
+    try std.testing.expectEqualStrings("i32", shape.err[0]);
+    try std.testing.expectEqualStrings("[resource-drop]descriptor", shape.resource_drop_import);
+}
+
+test "filesystem descriptor set-size lowering rejects ABI drift" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.set-size") orelse return error.TestUnexpectedResult;
+
+    var drifted = descriptor;
+    drifted.canonical.core_params = &.{ "i32", "i32", "i32" };
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.canonical.async_import_name = "[async-lower][method]descriptor.set-size-drift";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.wit_sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    var payload = descriptor.canonical.result_payload.?;
+    payload.ok = &.{ "i32" };
     var canonical = descriptor.canonical;
     canonical.result_payload = payload;
     drifted = descriptor;

@@ -81,21 +81,21 @@ files are now an independent green boundary; commit them before Task 2.
 - Modify: `src/build/codegen_component_async.zig`
 - Create: `src/build/test/compile_ok/552_wasi_filesystem_set_size_component.do`
 - Create: `src/build/test/compile_ok/552_wasi_filesystem_set_size_component.expect`
-- Create: `src/build/test/compile_err/553` through `561` set-size fixtures and
+- Create: `src/build/test/compile_err/553` through `563` set-size fixtures and
   matching `.expect` files
 
-- [ ] Add the positive fixture first and run the focused test before the
+- [x] Add the positive fixture first and run the focused test before the
   registry row. It must be rejected as unsupported by the opt-in planner.
-- [ ] Add negative fixtures for unregistered/wrong-version member, wrong
+- [x] Add negative fixtures for unregistered/wrong-version member, wrong
   receiver, wrong size type, `Result<T,E>` source spelling, borrowed result,
   second await, branch/loop, extra host binding, and async root. Verify each
   fails for its intended reason before implementation.
-- [ ] Add a distinct `filesystem-set-size` manifest row with the pinned source
+- [x] Add a distinct `filesystem-set-size` manifest row with the pinned source
   hash and measured method/task-return fields. Add manifest tests for exact
   row equality and ABI drift.
-- [ ] Add a pure shape validator for locator/member/version, `File` resource,
+- [x] Add a pure shape validator for locator/member/version, `File` resource,
   `u64` size, `nil | SetSizeError` result, and fixed control-flow topology.
-- [ ] Route only `@host_async_func` through `FilesystemSetSizePlan.analyze`;
+- [x] Route only `@host_async_func` through `FilesystemSetSizePlan.analyze`;
   keep `@host_func`, wrong markers, unknown members, and wrong versions on the
   existing fail-closed diagnostic path.
 
@@ -119,23 +119,32 @@ unsupported until Task 3.
 - Modify: `src/build/sema_imports.zig` only for shared exact diagnostics
 - Modify: positive/negative set-size expectations as diagnostics stabilize
 
-- [ ] Add planner unit tests for one host binding, one direct await,
+- [x] Add planner unit tests for one host binding, one direct await,
   synchronous root, exact resource shell, and all negative topology cases.
-- [ ] Mirror the existing bounded descriptor planners and return only names
+- [x] Mirror the existing bounded descriptor planners and return only names
   required by the fixed set-size template; do not add generic fallback logic.
-- [ ] Emit the measured indirect/direct host import, copy the `u64` size into
+- [x] Emit the measured indirect/direct host import, copy the `u64` size into
   the frame, preserve the descriptor until unified termination, join one
   subtask, decode unit/error result, and clean up exactly once on ready,
   error, pending, cancel, and Store-disposal paths.
-- [ ] Emit generated WIT with
+- [x] Emit generated WIT with
   `set-size: async func(size: filesize) -> result<_, error-code>` and an
   owned-descriptor `run` export. Keep cancel-only WIT test code separate.
-- [ ] Keep default emission rejected and require the opt-in flag for the
+- [x] Keep default emission rejected and require the opt-in flag for the
   positive fixture.
 
 **Verification:** Run the ABI gate, focused Zig tests, and the positive/negative
 compile fixture harness. The positive WAT must contain exactly one set-size
 method import and no neighboring filesystem method.
+
+Closeout evidence: `zig test main.zig` passed `359/359`; the default full
+harness passed `pass=1243 fail=0 skip=3`; `RUN_WASM=1` passed
+`pass=1245 fail=0 skip=3` with WASM smoke `6/6`; the ABI gate and the
+Rust/Wasmtime set-size gate passed; and `run_release_smoke.sh` passed all
+ReleaseSmall build/test/check/fmt/run/LSP smoke rows. The compiler template
+hash is `db09b4c2fe6f1f0a8c26f582759e9937249e352b6c852c40dc88ff753ce29385`;
+the generated WIT hash is
+`201038081bc51c5aeae77eca36fc4f873522e2357c2ec25c222e3ce31f486bef`.
 
 ### Task 4: Add the Rust/Wasmtime mutation and cancellation oracle
 
@@ -145,15 +154,15 @@ method import and no neighboring filesystem method.
 - Create: `examples/p3-runtime/test_rust_wasi_filesystem_set_size.sh`
 - Modify: `examples/p3-runtime/rust-host-runner/Cargo.toml`
 
-- [ ] Register the measured set-size method with `func_wrap_concurrent`.
+- [x] Register the measured set-size method with `func_wrap_concurrent`.
   Copy the `u64` size before returning the future and accept only the
   configured descriptor handle.
-- [ ] Use a temporary file and assert ready, pending, error, repeat, cancel,
+- [x] Use a temporary file and assert ready, pending, error, repeat, cancel,
   and Store-disposal rows. Count host calls, observed sizes, polls, wakes,
   completions, future drops, pending future drops, and descriptor drops.
-- [ ] Assert exactly-once cleanup and explicit mutation semantics. A cancel
+- [x] Assert exactly-once cleanup and explicit mutation semantics. A cancel
   row must never claim rollback of a host call already issued.
-- [ ] Compile the generated positive Do Component, parse/embed/validate it
+- [x] Compile the generated positive Do Component, parse/embed/validate it
   with the pinned tool, run all generated modes, and keep hand-authored cancel
   coverage separate unless its ABI is independently measured.
 
@@ -174,12 +183,12 @@ bash examples/p3-runtime/test_rust_wasi_filesystem_set_size.sh
 - Modify: `doc/start_here.md`
 - Modify: `CHANGELOG.md` if the project convention requires a release entry
 
-- [ ] Record the upstream/tool/mirror hashes, measured ABI, compiler target,
+- [x] Record the upstream/tool/mirror hashes, measured ABI, compiler target,
   runtime counters, and cancellation mutation boundary.
-- [ ] Keep general filesystem async, arbitrary producer expressions, borrowed
+- [x] Keep general filesystem async, arbitrary producer expressions, borrowed
   payload/resource lowering, external HTTP, and public ownership syntax
   explicitly pending.
-- [ ] Run focused ABI/compiler/runtime gates, `cd src && zig test main.zig`,
+- [x] Run focused ABI/compiler/runtime gates, `cd src && zig test main.zig`,
   the default full harness, the WASM full harness, and ReleaseSmall smoke.
-- [ ] Review `git diff --check`, inspect all changed files, commit the complete
+- [x] Review `git diff --check`, inspect all changed files, commit the complete
   slice, and push only after the verification outputs are recorded.

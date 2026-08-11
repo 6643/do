@@ -1,0 +1,10 @@
+# build-arg: --p3-async-component
+wasi:filesystem/types@0.3.0-rc-2025-09-16
+[async-lower][method]descriptor.set-size
+[resource-drop]descriptor
+[async-lift]wasi:filesystem/probe@0.3.0-rc-2025-09-16#run
+[set-size-call]
+[set-size-result-area]
+[set-size-ready]
+[set-size-error]
+[set-size-pending]

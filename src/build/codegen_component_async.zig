@@ -10,6 +10,7 @@ const codegen_component_wasi_filesystem_read_directory = @import("codegen_compon
 const codegen_component_wasi_filesystem_get_type = @import("codegen_component_wasi_filesystem_get_type.zig");
 const codegen_component_wasi_filesystem_get_flags = @import("codegen_component_wasi_filesystem_get_flags.zig");
 const codegen_component_wasi_filesystem_sync = @import("codegen_component_wasi_filesystem_sync.zig");
+const codegen_component_wasi_filesystem_set_size = @import("codegen_component_wasi_filesystem_set_size.zig");
 const codegen_component_wasi_filesystem_sync_data = @import("codegen_component_wasi_filesystem_sync_data.zig");
 const codegen_component_wasi_filesystem_metadata_hash = @import("codegen_component_wasi_filesystem_metadata_hash.zig");
 const codegen_component_wasi_filesystem_metadata_hash_at = @import("codegen_component_wasi_filesystem_metadata_hash_at.zig");
@@ -59,6 +60,7 @@ pub const Target = enum {
     wasi_filesystem_get_type,
     wasi_filesystem_get_flags,
     wasi_filesystem_sync,
+    wasi_filesystem_set_size,
     wasi_filesystem_sync_data,
     wasi_filesystem_metadata_hash,
     wasi_filesystem_metadata_hash_at,
@@ -214,6 +216,10 @@ pub fn emit_component_wat(
         },
         .wasi_filesystem_sync => codegen_component_wasi_filesystem_sync.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
             error.UnsupportedP3WasiFilesystemSyncComponent => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
+        .wasi_filesystem_set_size => codegen_component_wasi_filesystem_set_size.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
+            error.UnsupportedP3WasiFilesystemSetSizeComponent => error.UnsupportedP3AsyncComponent,
             else => err,
         },
         .wasi_filesystem_sync_data => codegen_component_wasi_filesystem_sync_data.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
@@ -979,6 +985,10 @@ pub fn emit_component_wit_with_graph(
             error.UnsupportedP3WasiFilesystemSyncComponent => error.UnsupportedP3AsyncComponent,
             else => err,
         },
+        .wasi_filesystem_set_size => codegen_component_wasi_filesystem_set_size.emit_component_wit(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3WasiFilesystemSetSizeComponent => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
         .wasi_filesystem_sync_data => codegen_component_wasi_filesystem_sync_data.emit_component_wit(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3WasiFilesystemSyncDataComponent => error.UnsupportedP3AsyncComponent,
             else => err,
@@ -1131,6 +1141,11 @@ pub fn target_for_tokens_with_graph(
                     return error.UnsupportedP3AsyncComponent;
                 break :blk .wasi_filesystem_sync;
             } else return error.UnsupportedP3AsyncComponent,
+            .filesystem_set_size => if (binding.kind == .host_async_func) blk: {
+                _ = codegen_component_wasi_filesystem_set_size.FilesystemSetSizePlan.analyze(tokens, registry) catch
+                    return error.UnsupportedP3AsyncComponent;
+                break :blk .wasi_filesystem_set_size;
+            } else return error.UnsupportedP3AsyncComponent,
             .filesystem_sync_data => if (binding.kind == .host_async_func) blk: {
                 _ = codegen_component_wasi_filesystem_sync_data.SyncDataPlan.analyze(tokens, registry) catch
                     return error.UnsupportedP3AsyncComponent;
@@ -1209,6 +1224,7 @@ fn target_for_descriptor(descriptor: p3_async_manifest.Descriptor) !Target {
         .filesystem_get_type => .wasi_filesystem_get_type,
         .filesystem_get_flags => .wasi_filesystem_get_flags,
         .filesystem_sync => .wasi_filesystem_sync,
+        .filesystem_set_size => .wasi_filesystem_set_size,
         .filesystem_sync_data => .wasi_filesystem_sync_data,
         .filesystem_metadata_hash => .wasi_filesystem_metadata_hash,
         .filesystem_metadata_hash_at => .wasi_filesystem_metadata_hash_at,
@@ -1540,6 +1556,18 @@ test "generic Component async target classifies pinned filesystem descriptor syn
     defer std.testing.allocator.free(wit);
     try std.testing.expect(std.mem.indexOf(u8, wit, "sync: async func() -> result<_, error-code>") != null);
     try std.testing.expect(std.mem.indexOf(u8, wit, "run: async func(file: own<descriptor>)") != null);
+}
+
+test "generic Component async target classifies pinned filesystem descriptor set-size" {
+    const source = @embedFile("test/compile_ok/552_wasi_filesystem_set_size_component.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectEqual(Target.wasi_filesystem_set_size, try target_for_tokens(std.testing.allocator, tokens));
+    const wit = try emit_component_wit(std.testing.allocator, tokens);
+    defer std.testing.allocator.free(wit);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "set-size: async func(size: filesize) -> result<_, error-code>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "run: async func(file: own<descriptor>, size: filesize)") != null);
 }
 
 test "generic Component async target classifies pinned filesystem descriptor sync-data" {

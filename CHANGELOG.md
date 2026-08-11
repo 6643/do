@@ -1,5 +1,24 @@
 # Changelog
 
+# 2026-08-11 D2 private filesystem `descriptor.set-size` promotion: admitted
+  only `wasi:filesystem/types@0.3.0-rc-2025-09-16 / descriptor.set-size` with
+  the pinned upstream WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`
+  and measured async import `(descriptor, size, result-area) -> i32` with
+  `(i32,i64,i32)` Core parameters, `(i32,i32)` task-return, and
+  `unit | error-code` completion. The opt-in `--p3-async-component` compiler
+  gate admits fixture `552`, rejects `553`-`563` before WAT, and enforces the
+  declared host binding name. The Core template hash is
+  `db09b4c2fe6f1f0a8c26f582759e9937249e352b6c852c40dc88ff753ce29385`; regular/
+  cancel WIT mirror hashes are
+  `f09241f8fcf4b94e1a684553b439b592f254c83c7d23a3708930040a2324c3f4` /
+  `7030161e35a18fe40220cb2701864141a00a6c8d897cdfc8291839f2b742cc67`.
+  Generated Component assembly/validation and the Rust/Wasmtime ready,
+  pending, error, cancel, Store-disposal early-drop, repeat, and generated
+  ready/pending/error/repeat rows pass with exactly-once live-Store cleanup.
+  Cancellation preserves a file-size mutation already issued to the host and
+  does not claim rollback. Generic filesystem async, external HTTP, and public
+  `own<T>`/`borrow<T>`/`ref<T>` remain outside this private method slice.
+
 # 2026-08-11 D2 private filesystem `descriptor.stat-at` promotion: admitted
   only `wasi:filesystem/types@0.3.0-rc-2025-09-16 / descriptor.stat-at` with
   the pinned upstream WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`

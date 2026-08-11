@@ -2278,3 +2278,49 @@ ordinary `do build` async programs still require independent admission plans
 and runtime gates. The remaining negative legacy-declaration fixtures are
 intentional regression coverage, not an additional migration blocker for this
 bounded runtime slice.
+
+## D2 Bounded Filesystem Async `descriptor.set-size` (2026-08-11)
+
+**Status:** the private `descriptor.set-size` WIT/ABI probe, exact opt-in Do
+compiler slice, generated Component validation, and Rust/Wasmtime mutation and
+cancellation matrix are green. General filesystem async, arbitrary producer
+expressions, borrowed payload/resource lowering, external HTTP, and public
+ownership syntax remain blocked.
+
+**Evidence:**
+`bash examples/p3-runtime/test_d2_wasi_filesystem_set_size_abi.sh` passes with
+`wasm-tools 1.255.0 (76e20611d 2026-07-30)` and SHA-256
+`6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`. The
+upstream filesystem WIT hash is
+`8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`; regular
+and cancel mirror hashes are
+`f09241f8fcf4b94e1a684553b439b592f254c83c7d23a3708930040a2324c3f4` /
+`7030161e35a18fe40220cb2701864141a00a6c8d897cdfc8291839f2b742cc67`.
+
+The measured method import is
+`[async-lower][method]descriptor.set-size: (i32,i64,i32) -> i32` in the order
+`descriptor, size, result-area`; the task-return is `(i32,i32)`, the result is
+`unit | error-code`, and descriptor cleanup is
+`[resource-drop]descriptor (i32) -> nil`. The compiler template hash is
+`db09b4c2fe6f1f0a8c26f582759e9937249e352b6c852c40dc88ff753ce29385`; the
+generated WIT hash is
+`201038081bc51c5aeae77eca36fc4f873522e2357c2ec25c222e3ce31f486bef`.
+
+The opt-in `--p3-async-component` compiler admits only fixture `552`, rejects
+fixtures `553`-`563` before WAT, and the planner requires the declared host
+binding name to be the call target even when another name has the same
+signature. The default build remains fail-closed with
+`AsyncLoweringUnavailable`. `bash examples/p3-runtime/test_rust_wasi_filesystem_set_size.sh`
+passes hand-authored ready/pending/error/cancel/early-drop/repeat and generated
+ready/pending/error/repeat rows. The ready row records one host call, one
+mutation, one poll, one completion, one Future drop, and one descriptor drop;
+pending records one wake and two polls; error records zero mutation; cancel
+records one issued mutation, zero completion, one pending-future drop, and the
+mutated size preserved; early-drop records Store disposal with descriptor drop
+`0` and `table-empty=not-applicable`; repeat records two calls and sizes
+`4096,4097` with exactly-once cleanup per invocation.
+
+Cancellation is cleanup-only: it releases guest/Component state and never
+rolls back a file-size mutation already issued to the host. This is a private
+method-specific recovery row, not generic filesystem async or generic
+host-future-drop cancellation.

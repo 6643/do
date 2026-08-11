@@ -210,6 +210,10 @@ name = "do-p3-wasi-filesystem-sync-data-host-runner"
 path = "src/bin/wasi_filesystem_sync_data.rs"
 
 [[bin]]
+name = "wasi-filesystem-set-size"
+path = "src/bin/wasi_filesystem_set_size.rs"
+
+[[bin]]
 name = "do-p3-wasi-filesystem-get-flags-host-runner"
 path = "src/bin/wasi_filesystem_get_flags.rs"
 
