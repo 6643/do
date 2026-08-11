@@ -1,6 +1,7 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
+const gc_emit = @import("codegen_gc_emit.zig");
 
 pub const GcCoreLowering = enum {
     text_identity,
@@ -58,15 +59,30 @@ pub fn emit_gc_core_wat(
 ) ![]u8 {
     _ = program;
     const profile = parse_gc_core_profile(tokens) orelse return error.UnsupportedGcCoreLowering;
-    const lowering = lowering_for_gc_core_profile(profile);
-    const wat = switch (lowering) {
-        .text_identity => text_identity_wat,
-        .fixed_list_set => list_set_wat,
-        .parameterized_list_set => parameterized_list_set_wat,
-        .managed_struct_set => managed_struct_set_wat,
-        .managed_struct_scalar_field_set => managed_struct_scalar_field_set_wat,
-    };
-    return allocator.dupe(u8, wat);
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+    switch (profile) {
+        .text_identity => |text| try gc_emit.emit_text_identity(allocator, &out, .{
+            .function_name = text.function_name,
+            .value_name = text.value_name,
+        }),
+        .fixed_list_set => try gc_emit.emit_byte_list_set(allocator, &out, .{
+            .function_name = "update",
+            .input_name = "input",
+            .index_expr = "0",
+            .value_expr = "65",
+        }),
+        .parameterized_list_set => |list| try gc_emit.emit_parameterized_byte_list_set(allocator, &out, .{
+            .function_name = list.function_name,
+            .input_name = list.input_name,
+            .index_name = list.index_name,
+            .value_name = list.value_name,
+        }),
+        .managed_struct_set => |managed| try gc_emit.emit_managed_struct_set(allocator, &out, .{
+            .has_scalar_field = managed.scalar_field_name != null,
+        }),
+    }
+    return out.toOwnedSlice(allocator);
 }
 
 pub fn classify_gc_core_lowering(tokens: []const lexer.Token) ?GcCoreLowering {
@@ -203,262 +219,6 @@ fn matches_at(tokens: []const lexer.Token, start: usize, words: []const []const 
     }
     return true;
 }
-
-const text_identity_wat =
-    \\(module
-    \\  (type $do_bytes (array (mut i8)))
-    \\  (type $do_text (struct (field $length i32) (field $bytes (ref null $do_bytes))))
-    \\  (func $identity (param $value (ref null $do_text)) (result (ref null $do_text))
-    \\    local.get $value)
-    \\  (func (export "probe") (result i32)
-    \\    (local $value (ref null $do_text))
-    \\    i32.const 27815
-    \\    ref.null $do_bytes
-    \\    struct.new $do_text
-    \\    call $identity
-    \\    local.set $value
-    \\    local.get $value
-    \\    ref.as_non_null
-    \\    struct.get $do_text $length)
-    \\)
-;
-
-const list_set_wat =
-    \\(module
-    \\  (type $do_bytes (array (mut i8)))
-    \\  (func $update (param $input (ref null $do_bytes)) (result (ref null $do_bytes))
-    \\    (local $next (ref $do_bytes))
-    \\    i32.const 3
-    \\    array.new_default $do_bytes
-    \\    local.set $next
-    \\    local.get $next
-    \\    i32.const 0
-    \\    local.get $input
-    \\    ref.as_non_null
-    \\    i32.const 0
-    \\    i32.const 3
-    \\    array.copy $do_bytes $do_bytes
-    \\    local.get $next
-    \\    i32.const 0
-    \\    i32.const 65
-    \\    array.set $do_bytes
-    \\    local.get $next)
-    \\  (func (export "probe") (result i32)
-    \\    (local $input (ref $do_bytes))
-    \\    (local $updated (ref null $do_bytes))
-    \\    i32.const 1
-    \\    i32.const 2
-    \\    i32.const 3
-    \\    array.new_fixed $do_bytes 3
-    \\    local.tee $input
-    \\    call $update
-    \\    local.set $updated
-    \\    local.get $input
-    \\    i32.const 0
-    \\    array.get_s $do_bytes
-    \\    i32.const 1
-    \\    i32.ne
-    \\    if unreachable end
-    \\    local.get $updated
-    \\    ref.as_non_null
-    \\    i32.const 0
-    \\    array.get_s $do_bytes
-    \\    i32.const 65
-    \\    i32.ne
-    \\    if unreachable end
-    \\    i32.const 27815)
-    \\)
-;
-
-const parameterized_list_set_wat =
-    \\(module
-    \\  (type $do_bytes (array (mut i8)))
-    \\  (func $set_at (param $input (ref null $do_bytes)) (param $index i32) (param $value i32) (result (ref null $do_bytes))
-    \\    (local $next (ref $do_bytes))
-    \\    (local $length i32)
-    \\    local.get $input
-    \\    ref.as_non_null
-    \\    array.len
-    \\    local.set $length
-    \\    local.get $length
-    \\    array.new_default $do_bytes
-    \\    local.set $next
-    \\    local.get $next
-    \\    i32.const 0
-    \\    local.get $input
-    \\    ref.as_non_null
-    \\    i32.const 0
-    \\    local.get $length
-    \\    array.copy $do_bytes $do_bytes
-    \\    local.get $next
-    \\    local.get $index
-    \\    local.get $value
-    \\    array.set $do_bytes
-    \\    local.get $next)
-    \\  (func (export "probe") (result i32)
-    \\    (local $input (ref $do_bytes))
-    \\    (local $updated (ref null $do_bytes))
-    \\    i32.const 1
-    \\    i32.const 2
-    \\    i32.const 3
-    \\    array.new_fixed $do_bytes 3
-    \\    local.tee $input
-    \\    i32.const 0
-    \\    i32.const 65
-    \\    call $set_at
-    \\    local.set $updated
-    \\    local.get $input
-    \\    i32.const 0
-    \\    array.get_s $do_bytes
-    \\    i32.const 1
-    \\    i32.ne
-    \\    if unreachable end
-    \\    local.get $updated
-    \\    ref.as_non_null
-    \\    i32.const 0
-    \\    array.get_s $do_bytes
-    \\    i32.const 65
-    \\    i32.ne
-    \\    if unreachable end
-    \\    i32.const 27815)
-    \\)
-;
-
-const managed_struct_set_wat =
-    \\(module
-    \\  (type $do_bytes (array (mut i8)))
-    \\  (type $box (struct (field $value (ref null $do_bytes))))
-    \\  (func $copy_set (param $input (ref null $do_bytes)) (result (ref $do_bytes))
-    \\    (local $next (ref $do_bytes))
-    \\    i32.const 3
-    \\    array.new_default $do_bytes
-    \\    local.set $next
-    \\    local.get $next
-    \\    i32.const 0
-    \\    local.get $input
-    \\    ref.as_non_null
-    \\    i32.const 0
-    \\    i32.const 3
-    \\    array.copy $do_bytes $do_bytes
-    \\    local.get $next
-    \\    i32.const 0
-    \\    i32.const 65
-    \\    array.set $do_bytes
-    \\    local.get $next)
-    \\  (func $update (param $input (ref null $box)) (result (ref null $box))
-    \\    local.get $input
-    \\    ref.as_non_null
-    \\    struct.get $box $value
-    \\    call $copy_set
-    \\    struct.new $box)
-    \\  (func (export "probe") (result i32)
-    \\    (local $original (ref $box))
-    \\    (local $updated (ref null $box))
-    \\    i32.const 1
-    \\    i32.const 2
-    \\    i32.const 3
-    \\    array.new_fixed $do_bytes 3
-    \\    struct.new $box
-    \\    local.tee $original
-    \\    call $update
-    \\    local.set $updated
-    \\    local.get $original
-    \\    struct.get $box $value
-    \\    ref.as_non_null
-    \\    i32.const 0
-    \\    array.get_s $do_bytes
-    \\    i32.const 1
-    \\    i32.ne
-    \\    if unreachable end
-    \\    local.get $updated
-    \\    ref.as_non_null
-    \\    struct.get $box $value
-    \\    ref.as_non_null
-    \\    i32.const 0
-    \\    array.get_s $do_bytes
-    \\    i32.const 65
-    \\    i32.ne
-    \\    if unreachable end
-    \\    i32.const 27815)
-    \\)
-;
-
-const managed_struct_scalar_field_set_wat =
-    \\(module
-    \\  (type $do_bytes (array (mut i8)))
-    \\  (type $box (struct (field $value (ref null $do_bytes)) (field $tag i32)))
-    \\  (func $copy_set (param $input (ref null $do_bytes)) (result (ref $do_bytes))
-    \\    (local $next (ref $do_bytes))
-    \\    i32.const 3
-    \\    array.new_default $do_bytes
-    \\    local.set $next
-    \\    local.get $next
-    \\    i32.const 0
-    \\    local.get $input
-    \\    ref.as_non_null
-    \\    i32.const 0
-    \\    i32.const 3
-    \\    array.copy $do_bytes $do_bytes
-    \\    local.get $next
-    \\    i32.const 0
-    \\    i32.const 65
-    \\    array.set $do_bytes
-    \\    local.get $next)
-    \\  (func $update (param $input (ref null $box)) (result (ref null $box))
-    \\    (local $tag i32)
-    \\    local.get $input
-    \\    ref.as_non_null
-    \\    struct.get $box $tag
-    \\    local.set $tag
-    \\    local.get $input
-    \\    ref.as_non_null
-    \\    struct.get $box $value
-    \\    call $copy_set
-    \\    local.get $tag
-    \\    struct.new $box)
-    \\  (func (export "probe") (result i32)
-    \\    (local $original (ref $box))
-    \\    (local $updated (ref null $box))
-    \\    i32.const 1
-    \\    i32.const 2
-    \\    i32.const 3
-    \\    array.new_fixed $do_bytes 3
-    \\    i32.const 9
-    \\    struct.new $box
-    \\    local.tee $original
-    \\    call $update
-    \\    local.set $updated
-    \\    local.get $original
-    \\    struct.get $box $value
-    \\    ref.as_non_null
-    \\    i32.const 0
-    \\    array.get_s $do_bytes
-    \\    i32.const 1
-    \\    i32.ne
-    \\    if unreachable end
-    \\    local.get $original
-    \\    struct.get $box $tag
-    \\    i32.const 9
-    \\    i32.ne
-    \\    if unreachable end
-    \\    local.get $updated
-    \\    ref.as_non_null
-    \\    struct.get $box $value
-    \\    ref.as_non_null
-    \\    i32.const 0
-    \\    array.get_s $do_bytes
-    \\    i32.const 65
-    \\    i32.ne
-    \\    if unreachable end
-    \\    local.get $updated
-    \\    ref.as_non_null
-    \\    struct.get $box $tag
-    \\    i32.const 9
-    \\    i32.ne
-    \\    if unreachable end
-    \\    i32.const 27815)
-    \\)
-;
 
 test "GC text identity lowers source parameters and results as GC references" {
     const source =

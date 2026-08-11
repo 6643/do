@@ -111,6 +111,7 @@ test {
     _ = @import("build/codegen_ir.zig");
     _ = @import("build/codegen_gc_facts_test.zig");
     _ = @import("build/codegen_gc_plans_test.zig");
+    _ = @import("build/codegen_gc_emit_test.zig");
     _ = @import("build/wat_component_metadata.zig");
     _ = @import("build/wat_function_body.zig");
     _ = @import("build/ownership_facts.zig");
