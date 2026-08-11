@@ -360,6 +360,7 @@ composition API remains a follow-up before the normal GC backend absorbs them.
 ### Task 6: G3 Synchronous Root Conversion
 
 **Files:**
+- Create: `src/build/codegen_gc_sync.zig`
 - Create: `src/build/codegen_control_flow.zig`
 - Modify: `src/build/codegen_context.zig`
 - Modify: `src/build/codegen_body.zig`
@@ -372,15 +373,16 @@ composition API remains a follow-up before the normal GC backend absorbs them.
 - Modify: `src/build/codegen_emit_storage_operations.zig`
 - Modify: `src/build/codegen_emit_tuple.zig`
 - Modify: `src/build/codegen_pipeline.zig`
+- Modify: `src/build/codegen_api.zig`
 - Test: new focused `compile_ok` fixtures for overwrite, branch, loop, defer, return, and call
 
 **Consumes:** Tasks 2-5 and the existing reachability functions in `codegen_ownership.zig`.
 
 **Produces:** A non-CLI `emit_gc_wat_for_supported_program` test entry that drives normal collection and body lowering with typed GC locals. It is not a public backend selector. Pure control-flow helpers move out of ARC ownership code before release emission is removed.
 
-- [ ] **Step 1: Add normal-pipeline GC fixtures and output assertions.**
+- [x] **Step 1: Add normal-pipeline GC fixtures and output assertions.**
 
-Create fixtures covering a text/list local overwrite, branch join, loop-carried managed value, defer plus return, and a managed function call. Their `.expect` files must require typed GC local declarations and forbid `__arc_inc`, `__arc_dec`, and `__arc_payload`.
+Add focused pipeline tests covering a text local overwrite, branch join, loop-carried managed value, defer plus return, and a managed function call. The assertions require typed GC local declarations, root-point markers, and forbid `__arc_inc`, `__arc_dec`, and `__arc_payload`. Add a fail-closed unsupported-list test.
 
 ```text
 (local $value (ref null $do_text))
@@ -388,24 +390,23 @@ Create fixtures covering a text/list local overwrite, branch join, loop-carried 
 !__arc_dec
 ```
 
-- [ ] **Step 2: Run the fixture target before the GC normal pipeline exists.**
+- [x] **Step 2: Run the fixture target before the GC normal pipeline exists.**
 
 Run: `cd src && zig test build/codegen_pipeline.zig --test-filter "synchronous GC"`
 
 Expected: Fail because normal collection has no GC backend test entry.
 
-- [ ] **Step 3: Introduce the internal backend entry and root-plan use.**
+- [x] **Step 3: Introduce the internal backend entry and root-plan use.**
 
-Define an internal-only option and entry point:
+Define the non-CLI entry point:
 
 ```zig
-const RuntimeBackend = enum { arc_transition, gc_test };
 pub fn emit_gc_wat_for_supported_program(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, graph: ?*const imports.ModuleGraph) ![]u8;
 ```
 
-Use `RootPlan` to keep managed values in typed locals at every listed root point. Replace ARC overwrite release with direct typed-local replacement. Move only pure reachability/loop-label functions to `codegen_control_flow.zig`; preserve their behavior and tests.
+Use `RootPlan` to keep admitted managed values in typed locals and emit explicit overwrite, branch-join, loop-join, and return-root markers. The restricted backend lowers only scalar, `text`, and `[u8]` values; aggregates, resources, async syntax, host calls, and module graphs fail closed. The default ARC pipeline is unchanged. Pure control-flow extraction to `codegen_control_flow.zig` remains a follow-up before the default backend switch.
 
-- [ ] **Step 4: Run synchronous conversion gates.**
+- [x] **Step 4: Run synchronous conversion gates.**
 
 Run: `cd src && zig test build/codegen_pipeline.zig`
 
@@ -413,7 +414,9 @@ Run: `./src/build/test/run_tests.sh`
 
 Expected: New GC-only tests pass while default output still uses the current transition backend; full standard regression remains green.
 
-- [ ] **Step 5: Commit the synchronous conversion.**
+**G3 restricted checkpoint (2026-08-12):** The internal entry now emits valid typed-GC WAT for the five synchronous shapes. All six focused tests pass; each generated module passes `wasm-tools parse`, `wasm-tools validate`, and `wasmtime run`. `zig build -Doptimize=ReleaseSmall`, the full pipeline unit suite (`81/81`), and the standard harness (`pass=1243 fail=0 skip=3`) are green. This does not admit aggregates, imported modules, host/WASI calls, or async lowering, and does not change the default ARC route.
+
+- [x] **Step 5: Commit the synchronous conversion.**
 
 ```bash
 git add src/build/codegen_control_flow.zig src/build/codegen_context.zig src/build/codegen_body.zig src/build/codegen_emit_expression.zig src/build/codegen_emit_call.zig src/build/codegen_emit_control.zig src/build/codegen_emit_struct.zig src/build/codegen_emit_struct_fields.zig src/build/codegen_emit_storage_values.zig src/build/codegen_emit_storage_operations.zig src/build/codegen_emit_tuple.zig src/build/codegen_pipeline.zig src/build/test/compile_ok

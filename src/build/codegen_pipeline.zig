@@ -204,6 +204,8 @@ const codegen_component_async_host_arg = @import("codegen_component_async_host_a
 const codegen_component_future_owned = @import("codegen_component_future_owned.zig");
 const codegen_component_future_owned_plan = @import("codegen_component_future_owned_plan.zig");
 const codegen_gc_core = @import("codegen_gc_core.zig");
+const codegen_gc_sync = @import("codegen_gc_sync.zig");
+pub const emit_gc_wat_for_supported_program = codegen_gc_sync.emit_gc_wat_for_supported_program;
 const codegen_emit_generic_async = @import("codegen_emit_generic_async.zig");
 const codegen_task_bridge = @import("codegen_task_bridge.zig");
 pub const emit_p3_wait_for_wit = codegen_p3_wait_for.emit_component_wit_for_tokens;
@@ -530,6 +532,117 @@ test "aggregate await tokens require async lowering" {
     defer std.testing.allocator.free(tokens);
 
     try std.testing.expect(tokens_require_async_lowering(tokens));
+}
+
+test "synchronous GC overwrite lowers managed locals without ARC release" {
+    const source =
+        \\rewrite(value text) -> text {
+        \\    next text = value
+        \\    next = "changed"
+        \\    return next
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try expect_synchronous_gc_locals(wat, "rewrite");
+    try std.testing.expect(std.mem.indexOf(u8, wat, "gc-root overwrite $next") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "gc-root return_value") != null);
+}
+
+test "synchronous GC branch join preserves a managed local" {
+    const source =
+        \\choose(flag bool, value text) -> text {
+        \\    result text = value
+        \\    if flag {
+        \\        result = "yes"
+        \\    } else {
+        \\        result = "no"
+        \\    }
+        \\    return result
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try expect_synchronous_gc_locals(wat, "choose");
+    try std.testing.expect(std.mem.indexOf(u8, wat, "gc-root branch_join") != null);
+}
+
+test "synchronous GC loop carries a managed local" {
+    const source =
+        \\repeat(value text) -> text {
+        \\    current text = value
+        \\    loop {
+        \\        current = value
+        \\        break
+        \\    }
+        \\    return current
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try expect_synchronous_gc_locals(wat, "repeat");
+    try std.testing.expect(std.mem.indexOf(u8, wat, "gc-root loop_join") != null);
+}
+
+test "synchronous GC defer return keeps managed locals typed" {
+    const source =
+        \\finish(value text) -> text {
+        \\    defer cleanup()
+        \\    return value
+        \\}
+        \\cleanup() -> nil {}
+        \\start() {}
+    ;
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try expect_synchronous_gc_locals(wat, "finish");
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $cleanup") != null);
+}
+
+test "synchronous GC managed call transfers typed values" {
+    const source =
+        \\identity(value text) -> text {
+        \\    return value
+        \\}
+        \\forward(value text) -> text {
+        \\    return identity(value)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try expect_synchronous_gc_locals(wat, "forward");
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $identity") != null);
+}
+
+test "synchronous GC backend rejects unsupported managed list element types" {
+    const source =
+        \\unsupported(value [u32]) -> [u32] {
+        \\    return value
+        \\}
+        \\start() {}
+    ;
+    try std.testing.expectError(error.UnsupportedGcSyncType, emit_gc_wat_for_source(std.testing.allocator, source));
+}
+
+fn emit_gc_wat_for_source(allocator: std.mem.Allocator, source: []const u8) ![]u8 {
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+    var program = try parser.parse_program(allocator, tokens, source.len);
+    defer program.deinit(allocator);
+    return codegen_gc_sync.emit_gc_wat_for_supported_program(allocator, program, tokens, null);
+}
+
+fn expect_synchronous_gc_locals(wat: []const u8, function_name: []const u8) !void {
+    try std.testing.expect(std.mem.indexOf(u8, wat, function_name) != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_text") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(ref null $do_text)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_inc") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_dec") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_payload") == null);
 }
 
 pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph, options: EmitOptions) ![]u8 {

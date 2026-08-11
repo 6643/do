@@ -31,6 +31,7 @@ pub const CodegenError = model.CodegenError;
 
 pub const emit_wat = codegen_pipeline.emit_wat;
 pub const emit_wat_with_options = codegen_pipeline.emit_wat_with_options;
+pub const emit_gc_wat_for_supported_program = codegen_pipeline.emit_gc_wat_for_supported_program;
 pub const program_requires_async_lowering = codegen_pipeline.program_requires_async_lowering;
 pub const emit_test_wat = codegen_pipeline.emit_test_wat;
 pub const emit_p3_wait_for_wit = codegen_pipeline.emit_p3_wait_for_wit;
