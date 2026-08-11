@@ -52,3 +52,24 @@ test "GC layout records managed field indices" {
     try std.testing.expectEqual(representation.ValueRep.inline_value, result.fields[1].rep);
     try std.testing.expectEqual(@as(u32, 1), result.fields[1].field_index);
 }
+
+test "GC tuple layout records managed leaf fields" {
+    const elements = [_][]const u8{ "text", "[u8]" };
+    const result = try layout.collect_tuple_layout(std.testing.allocator, "Tuple_text_bytes", elements[0..], &.{}, &.{});
+    defer layout.deinit_tuple_layout(std.testing.allocator, result);
+
+    try std.testing.expectEqualStrings("Tuple_text_bytes", result.name);
+    try std.testing.expectEqual(@as(usize, 2), result.fields.len);
+    try std.testing.expectEqual(representation.ValueRep.gc_managed, result.fields[0].rep);
+    try std.testing.expectEqual(representation.ValueRep.gc_managed, result.fields[1].rep);
+    try std.testing.expectEqual(@as(u32, 0), result.fields[0].field_index);
+    try std.testing.expectEqual(@as(u32, 1), result.fields[1].field_index);
+}
+
+test "GC tuple layout rejects nested tuple leaves" {
+    const elements = [_][]const u8{ "Tuple<text, [u8]>", "u8" };
+    try std.testing.expectError(
+        error.UnsupportedGcAggregate,
+        layout.collect_tuple_layout(std.testing.allocator, "Nested", elements[0..], &.{}, &.{}),
+    );
+}

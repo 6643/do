@@ -12,7 +12,8 @@ for probe in \
     parameterized_list_set_renamed \
     managed_struct_set \
     managed_struct_renamed \
-    managed_struct_preserve_field
+    managed_struct_preserve_field \
+    managed_tuple_text_bytes
 do
     WASMTIME_BIN="$WASMTIME_BIN" bash "$ROOT/examples/gc-p3-runtime/test_do_gc_${probe}.sh"
 done

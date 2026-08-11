@@ -82,6 +82,14 @@ start() {}
 ```
 
 ```do
+rewrite(pair Tuple<text, [u8]>) -> Tuple<text, [u8]> {
+    return Tuple<text, [u8]>{@get(pair, 0), @set(@get(pair, 1), 0, 65)}
+}
+
+start() {}
+```
+
+```do
 Box {
     value [u8]
     tag i32
@@ -117,6 +125,7 @@ WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_par
 WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_managed_struct_set.sh
 WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_managed_struct_renamed.sh
 WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_managed_struct_preserve_field.sh
+WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_managed_tuple_text_bytes.sh
 ```
 
 The list fixture uses a GC array reference for function transfer, allocates a
@@ -145,6 +154,11 @@ struct. It copies and updates the nested array, then constructs a distinct
 The field-preserving fixture additionally records a `tag i32`. Updating
 `value` retains `tag` in both the old and the new `Box`, proving that an outer
 rebuild does not discard unrelated fields.
+
+The managed-tuple fixture admits only `Tuple<text, [u8]>`. The tuple stores the
+text as a typed GC reference, copies and updates the byte array, then rebuilds
+the tuple once. The probe reads both the original tuple and the returned tuple,
+so the unchanged text reference and original bytes are checked separately.
 
 The managed-struct shape also accepts renamed struct, function, receiver, and
 `[u8]` field bindings. `Packet/bytes/rewrite` uses the same immutable path-copy

@@ -19,3 +19,19 @@ pub fn emit_managed_struct_prelude(
     try runtime_gc_wat.emit_bytes_type(allocator, out);
     try runtime_gc_wat.emit_box_type(allocator, out, has_scalar_field);
 }
+
+pub fn emit_named_managed_struct_prelude(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    struct_name: []const u8,
+    value_field_name: []const u8,
+    scalar_field_name: ?[]const u8,
+) !void {
+    try emit_bytes_prelude(allocator, out);
+    try runtime_gc_wat.emit_managed_struct_type(allocator, out, struct_name, value_field_name, scalar_field_name);
+}
+
+pub fn emit_managed_tuple_prelude(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
+    try emit_text_prelude(allocator, out);
+    try runtime_gc_wat.emit_tuple_text_bytes_type(allocator, out);
+}

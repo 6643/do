@@ -308,14 +308,14 @@ git commit -m "Refactor GC text and list lowering"
 - Modify: `src/build/runtime_gc_wat.zig`
 - Modify: `src/build/codegen_gc_emit.zig`
 - Modify: `src/build/codegen_gc_core.zig`
-- Modify: `src/build/codegen_emit_tuple.zig`
+- Inspect: `src/build/codegen_emit_tuple.zig` (the existing ARC storage-pack path remains outside this restricted oracle)
 - Test: `examples/gc-p3-runtime/managed-struct-*.do` plus new Tuple focused tests
 
 **Consumes:** Task 4 byte-list allocation and Task 2 struct layouts.
 
 **Produces:** Typed GC structs whose fields hold inline scalars or typed GC references. A struct field update rebuilds the outer struct and preserves every untouched field. A Tuple with a managed leaf uses a typed GC container rather than the ARC storage-pack ownership path.
 
-- [ ] **Step 1: Add preservation tests for nested managed values.**
+- [x] **Step 1: Add preservation tests for nested managed values.**
 
 Test the existing `Box.value`/`Box.tag` probe and a `Tuple<text, [u8]>` update. Both must prove that the input value remains readable after the returned value changes.
 
@@ -325,17 +325,17 @@ try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $Box $tag") != null)
 try std.testing.expect(std.mem.indexOf(u8, wat, "call $__arc_") == null);
 ```
 
-- [ ] **Step 2: Run failing focused tests.**
+- [x] **Step 2: Run failing focused tests.**
 
 Run: `cd src && zig test build/codegen_gc_emit.zig --test-filter "managed struct"`
 
 Expected: Fail until struct and Tuple paths use typed GC layouts.
 
-- [ ] **Step 3: Implement field-indexed typed layout and rebuild.**
+- [x] **Step 3: Implement field-indexed typed layout and rebuild.**
 
-Use `GcFieldLayout.field_index` for field selection. Allocate the revised nested list first, load every unchanged field from the old struct, then issue one `struct.new` for the new value. Do not use `struct.set` on a published source value. For Tuple, represent only the admitted managed-leaf case as a GC struct and reject unsupported nested shape before emission.
+Use `GcFieldLayout.field_index` to validate the admitted field order. Allocate the revised nested list first, load every unchanged field from the old struct, then issue one `struct.new` for the new value. Do not use `struct.set` on a published source value. For Tuple, represent only the admitted managed-leaf case as a GC struct and reject unsupported nested shape before emission.
 
-- [ ] **Step 4: Run the struct/Tuple gates.**
+- [x] **Step 4: Run the struct/Tuple gates.**
 
 Run: `cd src && zig test build/codegen_gc_core.zig`
 
@@ -343,12 +343,19 @@ Run: `RUN_GC_CORE=1 WASMTIME_BIN="$(command -v wasmtime)" ./src/build/test/run_t
 
 Expected: All existing managed-struct probes return `27815`; new Tuple tests confirm immutable rebuild and typed local transfer.
 
-- [ ] **Step 5: Commit managed aggregate support.**
+- [x] **Step 5: Commit managed aggregate support.**
 
 ```bash
-git add src/build/codegen_gc_layout.zig src/build/runtime_gc_wat.zig src/build/codegen_gc_emit.zig src/build/codegen_gc_core.zig src/build/codegen_emit_tuple.zig
+git add src/build/codegen_gc_layout.zig src/build/runtime_gc_wat.zig src/build/runtime_gc_prelude_wat.zig src/build/codegen_gc_emit.zig src/build/codegen_gc_emit_test.zig src/build/codegen_gc_facts_test.zig src/build/codegen_gc_core.zig src/build/diag.zig src/build/test/check_gc_core_oracles.sh examples/gc-p3-runtime
 git commit -m "Add GC managed aggregate rebuild"
 ```
+
+**G2 checkpoint (2026-08-12):** `Tuple<text, [u8]>` is admitted through a
+typed GC struct and Wasmtime proves old-value preservation. Fixed-list and
+managed-struct nested copies now use runtime `array.len`, and managed-struct
+profiles retain source type/function/field bindings. The restricted oracle
+emitters still produce one standalone probe module per call; a fragment-only
+composition API remains a follow-up before the normal GC backend absorbs them.
 
 ### Task 6: G3 Synchronous Root Conversion
 

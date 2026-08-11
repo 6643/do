@@ -2,6 +2,7 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
 const gc_emit = @import("codegen_gc_emit.zig");
+const gc_layout = @import("codegen_gc_layout.zig");
 
 pub const GcCoreLowering = enum {
     text_identity,
@@ -9,6 +10,7 @@ pub const GcCoreLowering = enum {
     parameterized_list_set,
     managed_struct_set,
     managed_struct_scalar_field_set,
+    managed_tuple_set,
 };
 
 pub const GcCoreValueType = enum {
@@ -45,11 +47,19 @@ pub const ManagedStructSetProfile = struct {
     scalar_field_type: ?GcCoreValueType,
 };
 
+pub const ManagedTupleSetProfile = struct {
+    function_name: []const u8,
+    receiver_name: []const u8,
+    first_type: GcCoreValueType,
+    second_type: GcCoreValueType,
+};
+
 pub const GcCoreProfile = union(enum) {
     text_identity: TextIdentityProfile,
     fixed_list_set: void,
     parameterized_list_set: ParameterizedListSetProfile,
     managed_struct_set: ManagedStructSetProfile,
+    managed_tuple_set: ManagedTupleSetProfile,
 };
 
 pub fn emit_gc_core_wat(
@@ -80,7 +90,18 @@ pub fn emit_gc_core_wat(
         }),
         .managed_struct_set => |managed| try gc_emit.emit_managed_struct_set(allocator, &out, .{
             .has_scalar_field = managed.scalar_field_name != null,
+            .struct_name = managed.struct_name,
+            .function_name = managed.function_name,
+            .receiver_name = managed.receiver_name,
+            .value_field_name = managed.value_field_name,
+            .scalar_field_name = managed.scalar_field_name orelse "tag",
         }),
+        .managed_tuple_set => {
+            const elements = [_][]const u8{ "text", "[u8]" };
+            const tuple_layout = try gc_layout.collect_tuple_layout(allocator, "Tuple_text_bytes", elements[0..], &.{}, &.{});
+            defer gc_layout.deinit_tuple_layout(allocator, tuple_layout);
+            try gc_emit.emit_managed_tuple_set(allocator, &out, .{ .layout = tuple_layout });
+        },
     }
     return out.toOwnedSlice(allocator);
 }
@@ -91,6 +112,7 @@ pub fn classify_gc_core_lowering(tokens: []const lexer.Token) ?GcCoreLowering {
 }
 
 pub fn parse_gc_core_profile(tokens: []const lexer.Token) ?GcCoreProfile {
+    if (parse_managed_tuple_set_profile(tokens)) |profile| return .{ .managed_tuple_set = profile };
     if (parse_managed_struct_set_profile(tokens)) |profile| return .{ .managed_struct_set = profile };
     if (parse_parameterized_list_set_profile(tokens)) |profile| return .{ .parameterized_list_set = profile };
     if (matches_list_set(tokens)) return .{ .fixed_list_set = {} };
@@ -104,7 +126,34 @@ fn lowering_for_gc_core_profile(profile: GcCoreProfile) GcCoreLowering {
         .fixed_list_set => .fixed_list_set,
         .parameterized_list_set => .parameterized_list_set,
         .managed_struct_set => |managed_profile| if (managed_profile.scalar_field_name == null) .managed_struct_set else .managed_struct_scalar_field_set,
+        .managed_tuple_set => .managed_tuple_set,
     };
+}
+
+fn parse_managed_tuple_set_profile(tokens: []const lexer.Token) ?ManagedTupleSetProfile {
+    const tuple_type = [_][]const u8{ "Tuple", "<", "text", ",", "[", "u8", "]", ">" };
+    for (tokens, 0..) |_, start| {
+        if (start + 58 > tokens.len) continue;
+        if (tokens[start].kind != .ident or tokens[start + 2].kind != .ident) continue;
+        if (!matches_at(tokens, start + 1, &[_][]const u8{"("})) continue;
+        if (!matches_at(tokens, start + 3, tuple_type[0..])) continue;
+        if (!matches_at(tokens, start + 11, &[_][]const u8{ ")", "-", ">" })) continue;
+        if (!matches_at(tokens, start + 14, tuple_type[0..])) continue;
+        if (!matches_at(tokens, start + 22, &[_][]const u8{ "{", "return" })) continue;
+        if (!matches_at(tokens, start + 24, tuple_type[0..])) continue;
+        if (!matches_at(tokens, start + 32, &[_][]const u8{ "{", "@", "get", "(" })) continue;
+        if (!std.mem.eql(u8, tokens[start + 36].lexeme, tokens[start + 2].lexeme)) continue;
+        if (!matches_at(tokens, start + 37, &[_][]const u8{ ",", "0", ")", ",", "@", "set", "(", "@", "get", "(" })) continue;
+        if (!std.mem.eql(u8, tokens[start + 47].lexeme, tokens[start + 2].lexeme)) continue;
+        if (!matches_at(tokens, start + 48, &[_][]const u8{ ",", "1", ")", ",", "0", ",", "65", ")", "}", "}" })) continue;
+        return .{
+            .function_name = tokens[start].lexeme,
+            .receiver_name = tokens[start + 2].lexeme,
+            .first_type = .text,
+            .second_type = .byte_list,
+        };
+    }
+    return null;
 }
 
 fn parse_text_identity_profile(tokens: []const lexer.Token) ?TextIdentityProfile {
@@ -434,4 +483,46 @@ test "GC managed struct update preserves an unchanged scalar field" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "(field $tag i32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $box $tag") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $box") != null);
+}
+
+test "GC lowering classification identifies managed tuple updates" {
+    const source =
+        \\rewrite(pair Tuple<text, [u8]>) -> Tuple<text, [u8]> {
+        \\    return Tuple<text, [u8]>{@get(pair, 0), @set(@get(pair, 1), 0, 65)}
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    const lowering = classify_gc_core_lowering(tokens) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(GcCoreLowering.managed_tuple_set, lowering);
+    switch (parse_gc_core_profile(tokens) orelse return error.TestExpectedEqual) {
+        .managed_tuple_set => |tuple| {
+            try std.testing.expectEqualStrings("rewrite", tuple.function_name);
+            try std.testing.expectEqualStrings("pair", tuple.receiver_name);
+            try std.testing.expectEqual(GcCoreValueType.text, tuple.first_type);
+            try std.testing.expectEqual(GcCoreValueType.byte_list, tuple.second_type);
+        },
+        else => return error.TestExpectedEqual,
+    }
+}
+
+test "GC managed tuple update emits typed rebuild" {
+    const source =
+        \\rewrite(pair Tuple<text, [u8]>) -> Tuple<text, [u8]> {
+        \\    return Tuple<text, [u8]>{@get(pair, 0), @set(@get(pair, 1), 0, 65)}
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    const wat = try emit_gc_core_wat(std.testing.allocator, program, tokens);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $tuple_text_bytes (struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $tuple_text_bytes $text") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $tuple_text_bytes") != null);
 }

@@ -48,5 +48,38 @@ test "shared GC emitter rebuilds managed struct and preserves scalar field" {
     try std.testing.expect(std.mem.indexOf(u8, out.items, "(field $tag i32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.items, "struct.get $box $tag") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.items, "struct.new $box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "array.len") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "i32.const 3\n    array.copy") == null);
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "__arc_") == null);
+}
+
+test "shared GC emitter retains managed struct source bindings" {
+    var out = std.ArrayList(u8).empty;
+    defer out.deinit(std.testing.allocator);
+    try emit.emit_managed_struct_set(std.testing.allocator, &out, .{
+        .has_scalar_field = true,
+        .struct_name = "Packet",
+        .function_name = "rewrite",
+        .receiver_name = "packet",
+        .value_field_name = "bytes",
+        .scalar_field_name = "version",
+    });
+
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "(type $packet (struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "(func $rewrite (param $packet") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "struct.get $packet $bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "struct.get $packet $version") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "$box") == null);
+}
+
+test "shared GC emitter rebuilds managed tuple and preserves text field" {
+    var out = std.ArrayList(u8).empty;
+    defer out.deinit(std.testing.allocator);
+    try emit.emit_managed_tuple_set(std.testing.allocator, &out, .{});
+
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "(type $tuple_text_bytes (struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "struct.get $tuple_text_bytes $text") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "struct.new $tuple_text_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "array.copy $do_bytes $do_bytes") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.items, "__arc_") == null);
 }
