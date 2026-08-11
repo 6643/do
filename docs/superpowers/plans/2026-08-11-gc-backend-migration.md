@@ -503,6 +503,8 @@ git commit -m "Use GC roots for bounded component async"
 
 **Produces:** `do build` and `do test --compiled` use the GC backend for every admitted managed path. There is no `--gc-core` CLI flag, no ARC prelude, no ARC retain/release lowering, and no ARC output assertion.
 
+**G5 pre-switch checkpoint (2026-08-12):** Pure reachability and loop-control helpers now live in `src/build/codegen_control_flow.zig`; all existing callers use that module while ARC release plans remain isolated in `codegen_ownership.zig`. ReleaseSmall build, `zig test main.zig` (`385/385`), and the standard harness (`pass=1243 fail=0 skip=3`) remain green. The default backend is intentionally still ARC: the restricted GC entry only admits scalar, `text`, and `[u8]` synchronous shapes, so routing existing struct/tuple/storage/host paths through it would be an unsafe capability expansion. The remaining G5 blocker is the full managed-value lowering and residual-test conversion required before removing ARC.
+
 - [ ] **Step 1: Add final fail-closed CLI and residual tests.**
 
 Add a CLI test that `do build file.do --gc-core` reports `error[UnexpectedCliArg]`. Add compiled output tests requiring GC type declarations for managed values and forbidding every ARC symbol family.

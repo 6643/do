@@ -15,7 +15,6 @@ const codegen_collect_reflection = @import("codegen_collect_reflection.zig");
 const codegen_imports = @import("codegen_imports.zig");
 const codegen_callbacks = @import("codegen_callbacks.zig");
 const codegen_storage_layout = @import("codegen_storage_layout.zig");
-const codegen_ownership = @import("codegen_ownership.zig");
 const codegen_host_imports = @import("codegen_host_imports.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
 const codegen_union_layout = @import("codegen_union_layout.zig");

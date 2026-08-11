@@ -362,8 +362,8 @@ const lambda_explicit_return_type = codegen_storage_layout.lambda_explicit_retur
 const infer_lambda_expr_return_type = codegen_storage_layout.infer_lambda_expr_return_type;
 const clone_local_set = codegen_storage_layout.clone_local_set;
 const find_callback_ref_func = codegen_storage_layout.find_callback_ref_func;
-const codegen_ownership = @import("codegen_ownership.zig");
-const find_top_level_guard_loop_control = codegen_ownership.find_top_level_guard_loop_control;
+const codegen_control_flow = @import("codegen_control_flow.zig");
+const find_top_level_guard_loop_control = codegen_control_flow.find_top_level_guard_loop_control;
 
 // re-export codegen_host_imports
 const collect_env_host_imports = codegen_host_imports.collect_env_host_imports;

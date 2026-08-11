@@ -21,8 +21,9 @@ const payload_wat = @import("wat_payload.zig");
 const codegen_storage_layout = @import("codegen_storage_layout.zig");
 const codegen_callbacks = @import("codegen_callbacks.zig");
 const codegen_ownership = @import("codegen_ownership.zig");
-const find_top_level_guard_loop_control = codegen_ownership.find_top_level_guard_loop_control;
-const label_for_loop_start = codegen_ownership.label_for_loop_start;
+const codegen_control_flow = @import("codegen_control_flow.zig");
+const find_top_level_guard_loop_control = codegen_control_flow.find_top_level_guard_loop_control;
+const label_for_loop_start = codegen_control_flow.label_for_loop_start;
 const codegen_union_layout = @import("codegen_union_layout.zig");
 const ownership_facts = @import("ownership_facts.zig");
 const tok_eq = codegen_tokens.tok_eq;
@@ -748,7 +749,7 @@ pub fn fresh_struct_literal_binding_stmt_end(allocator: std.mem.Allocator, token
 
 // re-export codegen_ownership
 pub const emit_block_release_managed_locals = codegen_ownership.emit_block_release_managed_locals;
-pub const body_can_reach_end = codegen_ownership.body_can_reach_end;
+pub const body_can_reach_end = codegen_control_flow.body_can_reach_end;
 pub fn emit_zero_value_for_type(allocator: std.mem.Allocator, ctx: CodegenContext, out: *std.ArrayList(u8), ty: []const u8) !void {
     try append_fmt(allocator, out, "    {s}.const 0\n", .{codegen_wasm_type(ctx, ty)});
 }

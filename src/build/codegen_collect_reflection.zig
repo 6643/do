@@ -10,7 +10,7 @@ const codegen_collect_util = @import("codegen_collect_util.zig");
 const codegen_imports = @import("codegen_imports.zig");
 const codegen_storage_layout = @import("codegen_storage_layout.zig");
 const codegen_callbacks = @import("codegen_callbacks.zig");
-const codegen_ownership = @import("codegen_ownership.zig");
+const codegen_control_flow = @import("codegen_control_flow.zig");
 
 const tok_eq = codegen_tokens.tok_eq;
 const find_matching_in_range = codegen_tokens.find_matching_in_range;
@@ -23,7 +23,7 @@ const module_tokens_equal = codegen_tokens.module_tokens_equal;
 const public_decl_name = codegen_names.public_decl_name;
 const string_token_body = codegen_tokens.string_token_body;
 const expr_call_head = codegen_imports.expr_call_head;
-const find_top_level_guard_loop_control = codegen_ownership.find_top_level_guard_loop_control;
+const find_top_level_guard_loop_control = codegen_control_flow.find_top_level_guard_loop_control;
 
 const LocalSet = context.LocalSet;
 const CodegenContext = context.CodegenContext;
