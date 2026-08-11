@@ -3,6 +3,9 @@ const lexer = @import("lexer.zig");
 const sema_tokens = @import("sema_tokens.zig");
 const p3_async_manifest = @import("p3_async_manifest.zig");
 const bounded_shape = @import("codegen_component_async_shape.zig");
+const gc_roots = @import("codegen_gc_roots.zig");
+const component_abi = @import("codegen_component_abi_plan.zig");
+const component_resources = @import("codegen_component_resource_plan.zig");
 
 pub const ChildState = enum {
     host_pending,
@@ -27,8 +30,14 @@ pub const GuestAsyncCallPlan = struct {
     child_state: ChildState,
     parent_resume_state: ParentResumeState,
     shape: bounded_shape.BoundedAsyncShape,
+    root_plan: gc_roots.SuspendableRootPlan,
+    abi_plan: component_abi.AbiPlan,
+    resource_plan: component_resources.ResourcePlan,
 
     pub fn deinit(self: *GuestAsyncCallPlan, allocator: std.mem.Allocator) void {
+        gc_roots.deinit_suspendable_root_plan(allocator, self.root_plan);
+        component_abi.deinit_abi_plan(allocator, self.abi_plan);
+        component_resources.deinit_resource_plan(allocator, self.resource_plan);
         allocator.free(self.root_name);
         allocator.free(self.helper_name);
         allocator.free(self.host_name);
@@ -103,6 +112,23 @@ pub fn analyze(allocator: std.mem.Allocator, tokens: []const lexer.Token) !Guest
     else
         bounded_shape.child_shape(scalar_value != null)) catch return error.UnsupportedP3AsyncCallComponent;
 
+    const root_plan = gc_roots.build_suspendable_root_plan(allocator, &.{}) catch
+        return error.UnsupportedP3AsyncCallComponent;
+    errdefer gc_roots.deinit_suspendable_root_plan(allocator, root_plan);
+    const abi_plan = component_abi.build_abi_plan(allocator, .{
+        .package = host.descriptor.wit.package,
+        .world = host.descriptor.wit.world,
+        .member = host.descriptor.wit.operation,
+        .arguments = &.{},
+        .results = &.{},
+    }) catch return error.UnsupportedP3AsyncCallComponent;
+    errdefer component_abi.deinit_abi_plan(allocator, abi_plan);
+    const resource_plan = component_resources.build_resource_plan(allocator, .{
+        .transfers = &.{},
+        .terminal_actions = &.{.no_resource},
+    }) catch return error.UnsupportedP3AsyncCallComponent;
+    errdefer component_resources.deinit_resource_plan(allocator, resource_plan);
+
     const root_name = try allocator.dupe(u8, root.name);
     errdefer allocator.free(root_name);
     const helper_name = try allocator.dupe(u8, helper.name);
@@ -135,6 +161,9 @@ pub fn analyze(allocator: std.mem.Allocator, tokens: []const lexer.Token) !Guest
         .child_state = .host_pending,
         .parent_resume_state = .child_complete,
         .shape = frame_shape,
+        .root_plan = root_plan,
+        .abi_plan = abi_plan,
+        .resource_plan = resource_plan,
     };
 }
 

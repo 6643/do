@@ -2,6 +2,7 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 const plan = @import("codegen_component_async_call_plan.zig");
 const shape = @import("codegen_component_async_shape.zig");
+const resources = @import("codegen_component_resource_plan.zig");
 
 const positive_source =
     \\work = @host_async_func("do:generic-async-call-probe/host@0.1.0", "work", () -> nil)
@@ -36,6 +37,9 @@ test "async call component admits the exact local-frame shape" {
     try std.testing.expectEqual(shape.BoundedAsyncMode.inline_call, result.shape.mode);
     try std.testing.expectEqual(@as(u32, 16), result.shape.frame.size);
     try std.testing.expectEqual(@as(?u32, null), result.shape.frame.u32_argument_offset);
+    try std.testing.expectEqual(@as(usize, 0), result.root_plan.fields.len);
+    try std.testing.expectEqualStrings("work", result.abi_plan.member);
+    try std.testing.expectEqual(resources.TerminalAction.no_resource, result.resource_plan.terminal_action);
 }
 
 test "async call component attaches the child unit shape" {

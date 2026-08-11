@@ -18,6 +18,9 @@ pub const ManifestError = error{
     ManifestLoweringMismatch,
     ManifestBindingMismatch,
     ManifestGeneratedModuleMismatch,
+    ManifestResourceInvalid,
+    ManifestDuplicateResource,
+    ManifestResourceMismatch,
 };
 
 pub const Member = struct {
@@ -59,6 +62,14 @@ pub const ScalarPayload = struct {
     encoding: []const u8,
 };
 
+pub const ResourceFact = struct {
+    member: []const u8,
+    kind: []const u8,
+    direction: []const u8,
+    drop_authority: bool,
+    terminal_action: []const u8,
+};
+
 pub const Document = struct {
     schema: u32,
     package: []const u8,
@@ -67,6 +78,7 @@ pub const Document = struct {
     module_hashes: []const ModuleHash,
     sha256: []const u8,
     members: []const Member,
+    resources: []const ResourceFact,
     async_lowerings: []const AsyncLowering,
 };
 
@@ -78,6 +90,7 @@ pub const Parsed = struct {
         allocator.free(self.document.modules);
         allocator.free(self.document.module_hashes);
         allocator.free(self.document.members);
+        allocator.free(self.document.resources);
         allocator.free(self.document.async_lowerings);
         self.tree.deinit();
         self.* = undefined;
@@ -139,6 +152,24 @@ pub fn parse(allocator: std.mem.Allocator, source: []const u8) (ManifestError ||
         try members.append(allocator, member);
     }
 
+    var resources = std.ArrayList(ResourceFact).empty;
+    errdefer resources.deinit(allocator);
+    if (root.get("resources")) |resource_value| {
+        const resource_values = array_value(resource_value) orelse return error.ManifestResourceInvalid;
+        for (resource_values.items) |value| {
+            const resource = try parse_resource_fact(value);
+            for (resources.items) |existing| {
+                if (std.mem.eql(u8, existing.member, resource.member) and
+                    std.mem.eql(u8, existing.kind, resource.kind) and
+                    std.mem.eql(u8, existing.direction, resource.direction))
+                {
+                    return error.ManifestDuplicateResource;
+                }
+            }
+            try resources.append(allocator, resource);
+        }
+    }
+
     var async_lowerings = std.ArrayList(AsyncLowering).empty;
     errdefer async_lowerings.deinit(allocator);
     if (schema == 2) {
@@ -152,7 +183,8 @@ pub fn parse(allocator: std.mem.Allocator, source: []const u8) (ManifestError ||
                 if (std.mem.eql(u8, lowering.capability, "component-async-unit-v1")) {
                     if (!member.is_async or !std.mem.eql(u8, member.effect, "async")) return error.ManifestEffectMismatch;
                 } else if (std.mem.eql(u8, lowering.capability, "component-async-scalar-u32-v1") or
-                    std.mem.eql(u8, lowering.capability, "component-async-scalar-i64-v1")) {
+                    std.mem.eql(u8, lowering.capability, "component-async-scalar-i64-v1"))
+                {
                     if (member.is_async or !member.has_future or member.has_stream or member.has_resource) return error.ManifestEffectMismatch;
                 } else return error.ManifestLoweringMismatch;
                 if (!std.mem.eql(u8, member.signature, lowering.source_signature)) return error.ManifestSignatureMismatch;
@@ -177,6 +209,7 @@ pub fn parse(allocator: std.mem.Allocator, source: []const u8) (ManifestError ||
             .module_hashes = try module_hashes.toOwnedSlice(allocator),
             .sha256 = sha256,
             .members = try members.toOwnedSlice(allocator),
+            .resources = try resources.toOwnedSlice(allocator),
             .async_lowerings = try async_lowerings.toOwnedSlice(allocator),
         },
     };
@@ -246,6 +279,13 @@ pub fn validate_binding(
         }
     }
 
+    const expected_resources = try collect_resource_facts(allocator, binding);
+    defer deinit_resource_facts(allocator, expected_resources);
+    if (document.resources.len != expected_resources.len) return error.ManifestResourceMismatch;
+    for (expected_resources, document.resources) |expected, actual| {
+        if (!resource_fact_equal(expected, actual)) return error.ManifestResourceMismatch;
+    }
+
     for (document.async_lowerings) |lowering| {
         if (!hash_matches(lowering.wit_sha256, binding.content_hash)) return error.ManifestLoweringMismatch;
         if (!std.mem.eql(u8, lowering.wit_package, document.package) or
@@ -258,7 +298,8 @@ pub fn validate_binding(
             if (!function.is_async or function.params.len != 0 or function.result != null or
                 function.effects.has_future or function.effects.has_stream or function.effects.has_resource) return error.ManifestEffectMismatch;
         } else if (std.mem.eql(u8, lowering.capability, "component-async-scalar-u32-v1") or
-            std.mem.eql(u8, lowering.capability, "component-async-scalar-i64-v1")) {
+            std.mem.eql(u8, lowering.capability, "component-async-scalar-i64-v1"))
+        {
             if (function.is_async or function.params.len != 0 or function.result == null or
                 function.result.?.kind != .future or function.result.?.args.len != 1 or
                 (function.result.?.args[0].kind != .u32 and function.result.?.args[0].kind != .s64) or
@@ -270,6 +311,80 @@ pub fn validate_binding(
         defer allocator.free(expected_signature);
         if (!std.mem.eql(u8, lowering.source_signature, expected_signature)) return error.ManifestSignatureMismatch;
     }
+}
+
+pub fn collect_resource_facts(
+    allocator: std.mem.Allocator,
+    binding: model.BindingModel,
+) ![]ResourceFact {
+    var facts = std.ArrayList(ResourceFact).empty;
+    errdefer deinit_resource_facts(allocator, facts.items);
+
+    for (binding.interfaces) |interface| {
+        for (interface.functions) |function| {
+            const member = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ interface.name, function.name });
+            defer allocator.free(member);
+            for (function.params) |param| {
+                try collect_resource_type(
+                    allocator,
+                    &facts,
+                    member,
+                    param.type_ref,
+                    interface.resources,
+                    "own_in",
+                );
+            }
+            if (function.result) |result| {
+                try collect_resource_type(
+                    allocator,
+                    &facts,
+                    member,
+                    result,
+                    interface.resources,
+                    "own_out",
+                );
+            }
+        }
+    }
+    return facts.toOwnedSlice(allocator);
+}
+
+pub fn deinit_resource_facts(allocator: std.mem.Allocator, facts: []const ResourceFact) void {
+    for (facts) |fact| allocator.free(fact.member);
+    allocator.free(facts);
+}
+
+fn collect_resource_type(
+    allocator: std.mem.Allocator,
+    facts: *std.ArrayList(ResourceFact),
+    member: []const u8,
+    type_ref: *const model.TypeRef,
+    resources: []const model.ResourceDecl,
+    direction: []const u8,
+) !void {
+    switch (type_ref.kind) {
+        .own => for (type_ref.args) |arg| try collect_resource_type(allocator, facts, member, arg, resources, if (std.mem.eql(u8, direction, "own_out")) "own_out" else "own_in"),
+        .borrow => for (type_ref.args) |arg| try collect_resource_type(allocator, facts, member, arg, resources, "borrow_in"),
+        .named => if (model.type_is_resource(type_ref, resources)) {
+            const drop_authority = std.mem.eql(u8, direction, "own_out");
+            try facts.append(allocator, .{
+                .member = try allocator.dupe(u8, member),
+                .kind = type_ref.name,
+                .direction = direction,
+                .drop_authority = drop_authority,
+                .terminal_action = if (drop_authority) "drop_owned" else "no_resource",
+            });
+        } else for (type_ref.args) |arg| try collect_resource_type(allocator, facts, member, arg, resources, direction),
+        else => for (type_ref.args) |arg| try collect_resource_type(allocator, facts, member, arg, resources, direction),
+    }
+}
+
+fn resource_fact_equal(lhs: ResourceFact, rhs: ResourceFact) bool {
+    return std.mem.eql(u8, lhs.member, rhs.member) and
+        std.mem.eql(u8, lhs.kind, rhs.kind) and
+        std.mem.eql(u8, lhs.direction, rhs.direction) and
+        lhs.drop_authority == rhs.drop_authority and
+        std.mem.eql(u8, lhs.terminal_action, rhs.terminal_action);
 }
 
 fn find_interface(interfaces: []const model.InterfaceDecl, name: []const u8) ?model.InterfaceDecl {
@@ -427,6 +542,31 @@ fn parse_member(value: std.json.Value) ManifestError!Member {
     };
 }
 
+fn parse_resource_fact(value: std.json.Value) ManifestError!ResourceFact {
+    const object = object_value(value) orelse return error.ManifestResourceInvalid;
+    const member = string_value(object.get("member")) orelse return error.ManifestResourceInvalid;
+    const kind = string_value(object.get("kind")) orelse return error.ManifestResourceInvalid;
+    const direction = string_value(object.get("direction")) orelse return error.ManifestResourceInvalid;
+    const drop_authority = bool_value(object.get("drop_authority")) orelse return error.ManifestResourceInvalid;
+    const terminal_action = string_value(object.get("terminal_action")) orelse return error.ManifestResourceInvalid;
+    if (!valid_member_name(member) or !valid_identifier(kind)) return error.ManifestResourceInvalid;
+    if (!std.mem.eql(u8, direction, "own_in") and
+        !std.mem.eql(u8, direction, "own_out") and
+        !std.mem.eql(u8, direction, "borrow_in")) return error.ManifestResourceInvalid;
+    if (!std.mem.eql(u8, terminal_action, "no_resource") and
+        !std.mem.eql(u8, terminal_action, "drop_owned") and
+        !std.mem.eql(u8, terminal_action, "retain_for_host")) return error.ManifestResourceInvalid;
+    if (drop_authority != std.mem.eql(u8, terminal_action, "drop_owned")) return error.ManifestResourceInvalid;
+    if (std.mem.eql(u8, direction, "borrow_in") and drop_authority) return error.ManifestResourceInvalid;
+    return .{
+        .member = member,
+        .kind = kind,
+        .direction = direction,
+        .drop_authority = drop_authority,
+        .terminal_action = terminal_action,
+    };
+}
+
 fn parse_async_lowering(value: std.json.Value) ManifestError!AsyncLowering {
     const object = object_value(value) orelse return error.ManifestLoweringMismatch;
     const capability = string_value(object.get("capability")) orelse return error.ManifestLoweringMismatch;
@@ -444,15 +584,15 @@ fn parse_async_lowering(value: std.json.Value) ManifestError!AsyncLowering {
 
     if (std.mem.eql(u8, capability, "component-async-unit-v1")) {
         if (!std.mem.eql(u8, member, "host.work") or
-        !std.mem.eql(u8, source_signature, "() -> Future<nil>") or
-        !std.mem.eql(u8, wit_package, "do:generic-async-runtime-probe@0.1.0") or
-        !std.mem.eql(u8, wit_world, "probe") or
-        !std.mem.eql(u8, wit_interface, "host") or
-        !std.mem.eql(u8, wit_member, "work") or
-        !std.mem.eql(u8, async_import_module, "do:generic-async-runtime-probe/host@0.1.0") or
-        !std.mem.eql(u8, async_import_name, "[async-lower]work") or
-        !std.mem.eql(u8, completion, "task-return") or
-        !valid_hash(wit_sha256) or payload != null) return error.ManifestLoweringMismatch;
+            !std.mem.eql(u8, source_signature, "() -> Future<nil>") or
+            !std.mem.eql(u8, wit_package, "do:generic-async-runtime-probe@0.1.0") or
+            !std.mem.eql(u8, wit_world, "probe") or
+            !std.mem.eql(u8, wit_interface, "host") or
+            !std.mem.eql(u8, wit_member, "work") or
+            !std.mem.eql(u8, async_import_module, "do:generic-async-runtime-probe/host@0.1.0") or
+            !std.mem.eql(u8, async_import_name, "[async-lower]work") or
+            !std.mem.eql(u8, completion, "task-return") or
+            !valid_hash(wit_sha256) or payload != null) return error.ManifestLoweringMismatch;
     } else if (std.mem.eql(u8, capability, "component-async-scalar-u32-v1")) {
         const scalar = payload orelse return error.ManifestLoweringMismatch;
         if (!std.mem.eql(u8, member, "host.completion") or

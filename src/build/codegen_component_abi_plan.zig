@@ -58,6 +58,14 @@ pub fn deinit_abi_plan(allocator: std.mem.Allocator, plan: AbiPlan) void {
 
 fn validate_slots(slots: []const CanonicalSlot) !void {
     for (slots) |slot| {
-        if (slot.contains_gc_reference) return error.GcReferenceCannotCrossCanonicalAbi;
+        if (slot.contains_gc_reference or canonical_type_contains_gc_reference(slot.canonical_type)) {
+            return error.GcReferenceCannotCrossCanonicalAbi;
+        }
     }
+}
+
+fn canonical_type_contains_gc_reference(canonical_type: []const u8) bool {
+    const trimmed = std.mem.trim(u8, canonical_type, " \t\r\n");
+    return std.mem.indexOf(u8, trimmed, "(ref") != null or
+        std.mem.startsWith(u8, trimmed, "ref ");
 }

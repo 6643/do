@@ -1,6 +1,7 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
 const plan = @import("codegen_component_future_owned_plan.zig");
+const resources = @import("codegen_component_resource_plan.zig");
 
 const positive_source =
     \\read = @host_func("do:future-owned-canonical/source@0.1.0", "read", () -> Future<Ticket>)
@@ -26,6 +27,10 @@ test "future-owned plan admits the exact private source shape" {
     try std.testing.expectEqual(@as(u32, 12), result.payload_offset);
     try std.testing.expectEqual(@as(u32, 16), result.resource_offset);
     try std.testing.expectEqual(@as(u32, 20), result.presence_offset);
+    try std.testing.expectEqual(@as(usize, 0), result.root_plan.fields.len);
+    try std.testing.expectEqual(@as(usize, 1), result.resource_plan.transfers.len);
+    try std.testing.expectEqual(resources.TransferDirection.own_out, result.resource_plan.transfers[0].direction);
+    try std.testing.expectEqual(resources.TerminalAction.drop_owned, result.resource_plan.terminal_action);
 }
 
 test "future-owned plan rejects an unknown host descriptor" {

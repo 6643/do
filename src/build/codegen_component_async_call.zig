@@ -1,11 +1,15 @@
 const std = @import("std");
 const call_plan = @import("codegen_component_async_call_plan.zig");
+const component_abi = @import("codegen_component_abi_plan.zig");
+const component_resources = @import("codegen_component_resource_plan.zig");
 
 pub fn emit_component_wat(
     allocator: std.mem.Allocator,
     plan: call_plan.GuestAsyncCallPlan,
 ) ![]u8 {
     try plan.shape.validate();
+    try component_abi.validate_abi_plan(plan.abi_plan);
+    if (plan.resource_plan.terminal_state != .pending) return error.TerminalAlreadyDecided;
     const template = if (plan.inline_helper_call)
         inline_async_call_component_wat
     else
@@ -74,7 +78,22 @@ pub fn emit_component_wat(
     wat = try replace_all(allocator, wat, "__CHILD_ARGUMENT_LOAD__", child_argument_load);
     wat = try replace_all(allocator, wat, "__INLINE_ARGUMENT__", inline_argument_value);
     wat = try replace_all(allocator, wat, "__CHILD_ARGUMENT__", child_argument_value);
+    const markers = try std.fmt.allocPrint(
+        allocator,
+        "(module\n  ;; [gc-root-plan] suspendable-fields={d}\n  ;; [abi-plan] arguments={d} results={d}\n  ;; [resource-terminal] {s}\n",
+        .{ plan.root_plan.fields.len, plan.abi_plan.arguments.len, plan.abi_plan.results.len, terminal_action_name(plan.resource_plan.terminal_action) },
+    );
+    defer allocator.free(markers);
+    wat = try replace_all(allocator, wat, "(module\n", markers);
     return wat;
+}
+
+fn terminal_action_name(action: component_resources.TerminalAction) []const u8 {
+    return switch (action) {
+        .no_resource => "no_resource",
+        .drop_owned => "drop_owned",
+        .retain_for_host => "retain_for_host",
+    };
 }
 
 pub fn emit_component_wit(allocator: std.mem.Allocator) ![]u8 {
@@ -250,6 +269,12 @@ const async_call_component_wat =
     \\    (local $frame i32)
     \\    call $context-get-0
     \\    local.set $frame
+    \\    local.get $frame
+    \\    i32.eqz
+    \\    if
+    \\      i32.const 0
+    \\      return
+    \\    end
     \\    local.get 0
     \\    i32.const 1
     \\    i32.eq

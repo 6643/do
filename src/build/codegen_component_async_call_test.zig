@@ -37,6 +37,10 @@ test "async call emitter produces an isolated root-owned frame" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "[async-lift]helper") == null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-inline-helper]") == null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "[guest-inline-resume]") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[gc-root-plan] suspendable-fields=0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[abi-plan] arguments=0 results=0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[resource-terminal] no_resource") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "local.get $frame\n    i32.eqz\n    if\n      i32.const 0\n      return") != null);
 }
 
 test "async call emitter writes the private probe WIT" {

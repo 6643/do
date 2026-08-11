@@ -440,7 +440,7 @@ git commit -m "Add synchronous GC root lowering"
 
 **Produces:** GC-managed Future/Stream frame fields for admitted bounded shapes, plus manifest resource facts sufficient to build a separate `ResourcePlan`. `AbiPlan` continues to lower to canonical buffers; no GC reference crosses the Component boundary.
 
-- [ ] **Step 1: Add negative terminal-state and boundary tests.**
+- [x] **Step 1: Add negative terminal-state and boundary tests.**
 
 Test that a suspended frame root survives until the terminal event, cancel and completion race through a single terminal decision, an owned resource has exactly one drop action, and ABI validation rejects a GC reference in a canonical argument/result slot.
 
@@ -449,7 +449,7 @@ try std.testing.expectError(error.DuplicateTerminalCleanup, build_resource_plan(
 try std.testing.expectError(error.GcReferenceCannotCrossCanonicalAbi, validate_abi_plan(illegal_ref_plan));
 ```
 
-- [ ] **Step 2: Run the current bounded Component test modules before conversion.**
+- [x] **Step 2: Run the current bounded Component test modules before conversion.**
 
 Run: `cd src && zig test build/codegen_component_async_call_plan_test.zig`
 
@@ -457,15 +457,15 @@ Run: `cd src && zig test build/codegen_component_future_owned_plan_test.zig`
 
 Expected: Existing behavior passes; the new root/resource assertions fail until plans are consumed by the emitters.
 
-- [ ] **Step 3: Extend only the manifest facts needed by admitted resources.**
+- [x] **Step 3: Extend only the manifest facts needed by admitted resources.**
 
 Add deterministic resource transfer entries with `kind`, `direction`, `drop_authority`, and `terminal_action`. Validate them on parse and emission. Use the new facts to build a `ResourcePlan`; reject a generated binding that lacks these facts rather than guessing ownership.
 
-- [ ] **Step 4: Convert bounded frames and preserve terminal cleanup order.**
+- [x] **Step 4: Convert bounded frames and preserve terminal cleanup order.**
 
 At await/next/cancel boundaries, store only `GcManaged` values in GC frame fields. Marshal each canonical argument/result through `AbiPlan`. Apply `ResourcePlan` after the host terminal outcome, preserving the existing LIFO defer then resource-drop then frame-invalidation order. Do not admit a new producer expression or host operation shape in this task.
 
-- [ ] **Step 5: Run Component gates.**
+- [x] **Step 5: Run Component gates.**
 
 Run: `cd src && zig test main.zig`
 
@@ -475,7 +475,9 @@ Run the current Rust/Wasmtime ready, pending, error, cancel, and early-drop runn
 
 Expected: All bounded shapes preserve their canonical WIT and terminal cleanup contracts; failures remain explicit capability errors.
 
-- [ ] **Step 6: Commit the suspension and ABI boundary conversion.**
+**G4 suspended-root and Component-boundary checkpoint (2026-08-12):** Negative root, terminal-race, duplicate-drop, and canonical-ABI reference tests pass. Bounded async-call and future-owned plans/emitter suites pass (`124/124`, `120/120`, `122/122`, `117/117`); GC/resource plan tests pass (`12/12`), and WIT manifest tests pass (`23/23`). `zig test main.zig`, the standard harness, and the `RUN_GC_CORE=1` oracle gate are green (`383/383`; `pass=1243 fail=0 skip=3`; eight Core-GC probes each returned `27815`). The do and Rust resource-cancellation probes, async-call component probe, and future-owned ready/pending/cancel modes all pass. The bounded emitters carry explicit root, ABI, and resource-terminal markers; canonical Component slots reject GC references, and terminal cleanup is single-shot. G5 still retains the default ARC route and is intentionally out of scope.
+
+- [x] **Step 6: Commit the suspension and ABI boundary conversion.**
 
 ```bash
 git add src/build/codegen_gc_roots.zig src/build/codegen_component_abi_plan.zig src/build/codegen_component_resource_plan.zig src/build/codegen_component_async*.zig src/build/codegen_component_future_owned*.zig src/wit/manifest.zig src/wit/emit_manifest.zig src/wit/manifest_test.zig

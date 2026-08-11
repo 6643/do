@@ -290,6 +290,12 @@
   (func (export "[callback][async-lift]do:future-owned-canonical/probe@0.1.0#run") (type $async-callback) (param $event i32) (param $index i32) (param $payload i32) (result i32) (local $frame i32)
     call $context-get
     local.set $frame
+    local.get $frame
+    i32.eqz
+    if
+      i32.const 0
+      return
+    end
     local.get $event
     i32.const 4
     i32.eq

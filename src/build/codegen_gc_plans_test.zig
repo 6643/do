@@ -57,3 +57,54 @@ test "resource plan preserves a single terminal action" {
 test "representation type remains shared by the three plans" {
     try std.testing.expectEqual(representation.ValueRep.gc_managed, try representation.classify_type("text", &.{}, &.{}));
 }
+
+test "suspendable root plan keeps managed frame fields live through terminal" {
+    const locals = [_]roots.RootLocal{
+        .{ .name = "message", .rep = .gc_managed },
+        .{ .name = "count", .rep = .inline_value },
+    };
+    const plan = try roots.build_suspendable_root_plan(std.testing.allocator, locals[0..]);
+    defer roots.deinit_suspendable_root_plan(std.testing.allocator, plan);
+
+    try std.testing.expectEqual(@as(usize, 1), plan.fields.len);
+    try std.testing.expectEqualStrings("message", plan.fields[0].name);
+    try std.testing.expectEqual(@as(u32, 0), plan.fields[0].field_index);
+    try std.testing.expectEqual(roots.RootPoint.terminal, plan.fields[0].live_until);
+}
+
+test "resource terminal completion and cancellation race is single shot" {
+    const plan_facts = resources.ResourceFacts{
+        .transfers = &.{.{ .type_name = "File", .direction = .own_in, .drop_authority = true }},
+        .terminal_actions = &.{.drop_owned},
+    };
+    var plan = try resources.build_resource_plan(std.testing.allocator, plan_facts);
+    defer resources.deinit_resource_plan(std.testing.allocator, plan);
+
+    try resources.claim_terminal(&plan, .completed);
+    try std.testing.expectError(error.TerminalAlreadyDecided, resources.claim_terminal(&plan, .cancelled));
+}
+
+test "resource plan rejects duplicate drop authority for one resource" {
+    const transfers = [_]resources.ResourceTransfer{
+        .{ .type_name = "File", .direction = .own_in, .drop_authority = true },
+        .{ .type_name = "File", .direction = .own_out, .drop_authority = true },
+    };
+    try std.testing.expectError(
+        error.DuplicateResourceDropAuthority,
+        resources.build_resource_plan(std.testing.allocator, .{
+            .transfers = transfers[0..],
+            .terminal_actions = &.{.drop_owned},
+        }),
+    );
+}
+
+test "ABI plan rejects an unmarked GC reference spelling" {
+    const illegal = abi.AbiPlan{
+        .package = "pkg",
+        .world = "world",
+        .member = "call",
+        .arguments = &.{.{ .source_type = "text", .canonical_type = "(ref null $do_text)", .direction = .lower }},
+        .results = &.{},
+    };
+    try std.testing.expectError(error.GcReferenceCannotCrossCanonicalAbi, abi.validate_abi_plan(illegal));
+}

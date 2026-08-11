@@ -16,6 +16,18 @@ const probe_source =
     \\world probe { import api; }
 ;
 
+const resource_source =
+    \\package do:resource-manifest@0.1.0;
+    \\
+    \\interface api {
+    \\  resource request {}
+    \\  resource response {}
+    \\  send: async func(request: request) -> response;
+    \\}
+    \\
+    \\world probe { import api; }
+;
+
 const pinned_async_source =
     \\package do:generic-async-runtime-probe@0.1.0;
     \\
@@ -90,6 +102,30 @@ test "schema 1 remains metadata-only" {
     try std.testing.expectEqual(@as(usize, 0), parsed.document.async_lowerings.len);
 }
 
+test "manifest parser accepts deterministic resource transfer facts" {
+    const source =
+        "{\"schema\":1,\"package\":\"do:bindgen-probe@0.1.0\",\"world\":\"probe\",\"modules\":[\"api.do\"]," ++
+        "\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"members\":[]," ++
+        "\"resources\":[{" ++
+        "\"member\":\"api.send\",\"kind\":\"request\",\"direction\":\"own_in\",\"drop_authority\":false,\"terminal_action\":\"no_resource\"" ++
+        "},{\"member\":\"api.send\",\"kind\":\"response\",\"direction\":\"own_out\",\"drop_authority\":true,\"terminal_action\":\"drop_owned\"}]}";
+    var parsed = try manifest.parse(std.testing.allocator, source);
+    defer parsed.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 2), parsed.document.resources.len);
+    try std.testing.expectEqualStrings("own_out", parsed.document.resources[1].direction);
+    try std.testing.expect(parsed.document.resources[1].drop_authority);
+}
+
+test "manifest parser rejects duplicate resource transfer facts" {
+    const source =
+        "{\"schema\":1,\"package\":\"do:bindgen-probe@0.1.0\",\"world\":\"probe\",\"modules\":[\"api.do\"]," ++
+        "\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"members\":[]," ++
+        "\"resources\":[{" ++
+        "\"member\":\"api.send\",\"kind\":\"response\",\"direction\":\"own_out\",\"drop_authority\":true,\"terminal_action\":\"drop_owned\"" ++
+        "},{\"member\":\"api.send\",\"kind\":\"response\",\"direction\":\"own_out\",\"drop_authority\":true,\"terminal_action\":\"drop_owned\"}]}";
+    try std.testing.expectError(error.ManifestDuplicateResource, manifest.parse(std.testing.allocator, source));
+}
+
 test "schema 2 rejects an unknown capability" {
     const source = pinned_async_manifest_prefix ++
         "{\"capability\":\"unknown-v1\",\"member\":\"host.work\",\"source_signature\":\"() -> Future<nil>\",\"wit_package\":\"do:generic-async-runtime-probe@0.1.0\",\"wit_world\":\"probe\",\"wit_interface\":\"host\",\"wit_member\":\"work\",\"async_import_module\":\"do:generic-async-runtime-probe/host@0.1.0\",\"async_import_name\":\"[async-lower]work\",\"completion\":\"task-return\",\"wit_sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"}]}";
@@ -153,6 +189,20 @@ test "wit emitter emits schema 2 for the pinned unit async binding" {
     defer std.testing.allocator.free(source);
     try std.testing.expect(std.mem.startsWith(u8, source, "{\"schema\":2,"));
     try std.testing.expect(std.mem.indexOf(u8, source, "\"async_lowerings\":[{\"capability\":\"component-async-unit-v1\"") != null);
+    var parsed = try manifest.parse(std.testing.allocator, source);
+    defer parsed.deinit(std.testing.allocator);
+    try manifest.validate_binding(std.testing.allocator, &parsed, binding);
+}
+
+test "wit emitter records resource transfer and terminal facts" {
+    var binding = try resolve.resolve_source(std.testing.allocator, resource_source, "probe");
+    defer binding.deinit();
+    const source = try emit_manifest.render(std.testing.allocator, binding, "do_resource_manifest__api__probe.do");
+    defer std.testing.allocator.free(source);
+
+    try std.testing.expect(std.mem.indexOf(u8, source, "\"resources\":[") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "\"kind\":\"request\",\"direction\":\"own_in\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "\"kind\":\"response\",\"direction\":\"own_out\"") != null);
     var parsed = try manifest.parse(std.testing.allocator, source);
     defer parsed.deinit(std.testing.allocator);
     try manifest.validate_binding(std.testing.allocator, &parsed, binding);

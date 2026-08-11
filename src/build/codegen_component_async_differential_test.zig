@@ -82,7 +82,7 @@ const child_unit_case = Case{
     .mode = .child,
     .frame_size = 16,
     .argument_offset = null,
-    .wat_sha256 = "bec944caece221821f43a79041e2989281f9f9b90d59547f9348ef641e1b2e03",
+    .wat_sha256 = "3aebd187bc5e0af4b66d365d2584211c76e968297d7a4aa6963a90a60fb45f43",
     .wit_sha256 = "ecf47e1e33b3a0d14761a1341f3b749f4ba072051c018083db2d5cda356c101f",
     .markers = child_unit_markers[0..],
 };
@@ -94,7 +94,7 @@ const child_scalar_case = Case{
     .mode = .child,
     .frame_size = 20,
     .argument_offset = 12,
-    .wat_sha256 = "7402916ce09060ca63e792498dc1523923b6a1545004d91c61f1a037496f2fc1",
+    .wat_sha256 = "900162d6bc655c415e62f82d849f95003e4369d9a6d878342a21d8bf27bdb663",
     .wit_sha256 = "ecf47e1e33b3a0d14761a1341f3b749f4ba072051c018083db2d5cda356c101f",
     .markers = child_scalar_markers[0..],
 };
@@ -106,7 +106,7 @@ const inline_unit_case = Case{
     .mode = .inline_call,
     .frame_size = 16,
     .argument_offset = null,
-    .wat_sha256 = "0e362d90a30c38de5e5900783b7474ddac05292f50c402a20786c0a940598dcc",
+    .wat_sha256 = "7ca615b840cfb756c4a60c2677b1d5f43a609da1c83256551cd810a0084978ca",
     .wit_sha256 = "ecf47e1e33b3a0d14761a1341f3b749f4ba072051c018083db2d5cda356c101f",
     .markers = inline_unit_markers[0..],
 };
@@ -118,7 +118,7 @@ const inline_scalar_case = Case{
     .mode = .inline_call,
     .frame_size = 20,
     .argument_offset = 12,
-    .wat_sha256 = "7edf6a66095c3c24b8c5440ebcad5a7f5dfcc5fea3c943a8e4d28453bb96fe83",
+    .wat_sha256 = "5e9cf2c71c3c47586ad1fa7501927bff50aab6e752a7263e1bef43ef44480697",
     .wit_sha256 = "ecf47e1e33b3a0d14761a1341f3b749f4ba072051c018083db2d5cda356c101f",
     .markers = inline_scalar_markers[0..],
 };

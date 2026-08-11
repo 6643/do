@@ -2,6 +2,7 @@ const std = @import("std");
 const async_lowering = @import("async_lowering.zig");
 const model = @import("model.zig");
 const signature = @import("signature.zig");
+const manifest = @import("manifest.zig");
 
 pub const ModuleArtifact = struct {
     path: []const u8,
@@ -33,6 +34,8 @@ pub fn render_modules_with_hashes(
 ) ![]u8 {
     const lowerings = try async_lowering.detect(allocator, binding);
     defer async_lowering.deinit(allocator, lowerings);
+    const resources = try manifest.collect_resource_facts(allocator, binding);
+    defer manifest.deinit_resource_facts(allocator, resources);
 
     var out = std.ArrayList(u8).empty;
     if (lowerings.len == 0) {
@@ -96,6 +99,11 @@ pub fn render_modules_with_hashes(
             try out.append(allocator, '}');
         }
     }
+    try out.appendSlice(allocator, "],\"resources\":[");
+    for (resources, 0..) |resource, index| {
+        if (index != 0) try out.append(allocator, ',');
+        try append_resource(&out, allocator, resource);
+    }
     if (lowerings.len != 0) {
         try out.appendSlice(allocator, "],\"async_lowerings\":[");
         for (lowerings, 0..) |lowering, index| {
@@ -108,6 +116,24 @@ pub fn render_modules_with_hashes(
     }
     try out.append(allocator, '}');
     return out.toOwnedSlice(allocator);
+}
+
+fn append_resource(
+    out: *std.ArrayList(u8),
+    allocator: std.mem.Allocator,
+    resource: manifest.ResourceFact,
+) !void {
+    try out.appendSlice(allocator, "{\"member\":\"");
+    try append_json_text(out, allocator, resource.member);
+    try out.appendSlice(allocator, "\",\"kind\":\"");
+    try append_json_text(out, allocator, resource.kind);
+    try out.appendSlice(allocator, "\",\"direction\":\"");
+    try append_json_text(out, allocator, resource.direction);
+    try out.appendSlice(allocator, "\",\"drop_authority\":");
+    try out.appendSlice(allocator, if (resource.drop_authority) "true" else "false");
+    try out.appendSlice(allocator, ",\"terminal_action\":\"");
+    try append_json_text(out, allocator, resource.terminal_action);
+    try out.appendSlice(allocator, "\"}");
 }
 
 fn append_lowering(
