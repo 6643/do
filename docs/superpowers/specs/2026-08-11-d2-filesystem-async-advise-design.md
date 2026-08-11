@@ -22,18 +22,26 @@ a resource, transfer a stream, or carry a string or record payload.
 
 ## Decision
 
-Use the existing Do scalar surface for the private source shape:
+Use the unified external-WIT host binding surface for the private source shape:
 
 ```do
 advise_descriptor = @host_async_func(
     "wasi:filesystem/types@0.3.0-rc-2025-09-16",
     "descriptor.advise",
-    (File, u64, u64, u32) -> nil | AdviseError
+    (File, u64, u64, Advice) -> nil | AdviseError
 )
-File = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+File = @host_resource("filesystem/types/descriptor", { .id i64 })
+Advice = @host_enum("filesystem/types/advice", {
+    Normal = "normal",
+    Sequential = "sequential",
+    Random = "random",
+    WillNeed = "will-need",
+    DontNeed = "dont-need",
+    NoReuse = "no-reuse",
+})
 AdviseError error = Io | Invalid | BadDescriptor
 
-run(file File, offset u64, length u64, advice u32) -> nil | AdviseError {
+run(file File, offset u64, length u64, advice Advice) -> nil | AdviseError {
     pending Future<nil | AdviseError> = advise_descriptor(file, offset, length, advice)
     return @await(pending)
 }
@@ -41,10 +49,12 @@ run(file File, offset u64, length u64, advice u32) -> nil | AdviseError {
 start() {}
 ```
 
-The `u32` advice value is a deliberate private compatibility mapping, not a
-new public enum type. The pinned WIT enum order is fixed as follows:
+`Advice` is a closed, unit-only WIT enum mirror. The left side of each mapping is
+the local Do branch name and the quoted right side is the exact WIT arm name.
+The declaration order is the WIT discriminant order. The compiler must not
+infer kebab-case names or accept hand-written numeric discriminants.
 
-| Value | WIT arm |
+| Observed discriminant | WIT arm |
 | ---: | --- |
 | `0` | `normal` |
 | `1` | `sequential` |
@@ -53,14 +63,24 @@ new public enum type. The pinned WIT enum order is fixed as follows:
 | `4` | `dont-need` |
 | `5` | `no-reuse` |
 
+The numeric column records the pinned ABI observation only; source code uses
+the named `Advice` branches rather than numeric literals.
+
 The compiler shape accepts only the exact method declaration, one direct
 `@await`, a synchronous empty `start`, and linear control flow. The runtime
-probe must exercise valid values from the complete `0..5` range. Values outside
-that range are not a successful WIT enum value; the Component boundary or host
-adapter must reject them explicitly rather than silently remapping them.
+probe must exercise all six named branches. A raw discriminant outside the
+complete `0..5` range is not a successful WIT enum value; the Component
+boundary or host adapter must reject it explicitly rather than silently
+remapping it.
 
-No public `own<T>`, `borrow<T>`, `ref<T>`, pointer, reference, lifetime,
-`@wasi_enum`, or generic filesystem syntax is added. The default emitter keeps
+No public `own<T>`, `borrow<T>`, `ref<T>`, pointer, reference, lifetime, or
+generic filesystem syntax is added. All external WIT declarations generated for
+the host-facing import surface use the `@host_*` family: `@host_func`,
+`@host_async_func`, `@host_resource`, `@host_record`, and `@host_enum`.
+`@host_variant` remains reserved for a separately designed WIT `variant`
+mapping. The locator, rather than the marker prefix, identifies `wasi:`,
+custom, and private WIT packages. WIT exports and direct component-to-component
+links are outside this design. The default emitter keeps
 returning `AsyncLoweringUnavailable`; only `--p3-async-component` may select
 this future compiler slice.
 
@@ -112,7 +132,9 @@ and Core template. The analyzer must reject:
 - an unregistered or wrong-version locator/member;
 - a receiver other than the exact descriptor resource shell;
 - offset or length types other than `u64`;
-- an advice source type other than `u32`;
+- an advice source type other than the exact `Advice` `@host_enum` mirror;
+- an incomplete, reordered, duplicate, or mismatched WIT arm mapping;
+- `@host_variant` used for the WIT `enum` `advice` type;
 - `Result<T, E>` source spelling instead of the ordinary Do union;
 - borrowed or resource result payloads;
 - a second await, branch, loop, defer, extra host binding, or async root.
@@ -138,8 +160,8 @@ arm.
 
 | Row | Required observation |
 | --- | --- |
-| `ready-normal` | advice `0`, exact offset/length, one host call, unit completion, exactly-once cleanup |
-| `ready-all-advice` | values `0..5` reach the matching WIT arms without remapping |
+| `ready-normal` | `Advice.Normal`, exact offset/length, one host call, unit completion, exactly-once cleanup |
+| `ready-all-advice` | all six named `Advice` branches reach the matching WIT arms without remapping |
 | `pending` | both `u64` values and the enum survive one delayed wake; one completion |
 | `error` | explicit `Err(io)` or `Err(invalid)` with no fabricated success |
 | `invalid-advice` | value `6` is rejected at the Component/host boundary and never treated as a valid arm |
@@ -177,12 +199,19 @@ would reduce enum validation risk, but it would not prove the WIT enum mapping
 or exercise the method's actual third argument. It is a fallback probe, not the
 recommended compiler shape.
 
-### Public `@wasi_enum` advice type
+### Private `u32` advice value
 
-Add a first-class Do enum mirror before this method. That would improve static
-range checking, but it expands syntax and semantic surface for one private
-method and is outside the current no-new-syntax boundary. It is rejected for
-this slice.
+Keep the advice argument as `u32` and validate its range only at the host
+adapter. This would reduce the compiler type-binding work, but it would hide
+the WIT enum contract from source and permit an untyped value to reach the
+boundary. It is rejected in favor of the explicit `@host_enum` mirror.
+
+### Convention-derived enum names
+
+Use `Normal | Sequential | Random | WillNeed | DontNeed | NoReuse` and infer
+the WIT names by converting PascalCase to kebab-case. This is shorter, but it
+silently guesses an external ABI spelling and cannot represent exceptions or
+legacy names. It is rejected in favor of explicit mappings.
 
 ### `descriptor.read-via-stream`
 
@@ -193,8 +222,8 @@ high-risk design and remains pending after this scalar/enum slice.
 ## Acceptance And Handoff
 
 The design is accepted only when the ABI probe records the current tool hash,
-upstream WIT hash, mirror hashes, exact Core signature/layout, and full enum
-mapping. After user review of this file, the implementation plan may define
-the probe, compiler, fixture, Rust/Wasmtime, and documentation tasks. Until
-then, the existing `descriptor.set-size` slice and the uncommitted release
-candidate documentation change remain unchanged.
+upstream WIT hash, mirror hashes, exact Core signature/layout, and the full
+`@host_enum` mapping. After user review of this file, the implementation plan
+may define the probe, compiler, fixture, Rust/Wasmtime, and documentation
+tasks. Until then, the existing `descriptor.set-size` slice and unrelated
+uncommitted worktree changes remain unchanged.
