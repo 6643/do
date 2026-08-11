@@ -30,7 +30,7 @@
 
 **Interfaces:**
 - Consumes the pinned filesystem WIT and current `wasm-tools`.
-- Produces the measured seven-argument method, two-word task-return, result-area layout, and validated regular/cancel Core templates.
+- Produces the measured indirect two-argument method, two-word task-return, result-area layout, and validated regular/cancel Core templates.
 
 - [ ] **Step 1: Write the WIT mirrors and failing ABI assertions.**
 
@@ -55,7 +55,7 @@
 - [ ] **Step 3: Record the current tool's dummy ABI.**
 
   Use `component embed --dummy-names legacy --async-callback -t` and require the
-  seven-`i32` `[async-lower][method]descriptor.open-at` import, the two-word
+  two-`i32` indirect `[async-lower][method]descriptor.open-at` import, the two-word
   `[task-return]run` callback, `[resource-drop]descriptor`, and the cancel-only
   `[subtask-cancel]` import. Write the measured result-area tag, owned handle,
   error discriminant, and frame offsets into both Core templates and the ABI
@@ -117,9 +117,10 @@
 - [ ] **Step 3: Add the manifest row and pure shape validation.**
 
   Add a `filesystem-open-at` row whose canonical method import is
-  `[async-lower][method]descriptor.open-at`, whose method has seven `i32`
-  parameters plus an `i32` readiness result, and whose completion is the
-  measured two-word `task-return`. Add `FilesystemOpenAtShape`, a validator
+  `[async-lower][method]descriptor.open-at`, whose method has two indirect
+  `i32` parameters (`params_ptr` and `result_ptr`) plus an `i32` readiness
+  result, and whose completion is the measured two-word `task-return`. Add
+  `FilesystemOpenAtShape`, a validator
   for locator/member/version, `(Dir,u32,text,u32,u32)` source types, resource
   result ownership, and the measured canonical fields. Add manifest tests for
   the exact row and ABI drift.
@@ -175,7 +176,8 @@
 - [ ] **Step 3: Implement result-area and cleanup lowering.**
 
   In the fixed WAT, retain the copied path pointer/length and four flag words
-  in the frame, call the seven-argument method import, join the one subtask,
+  in the frame, populate the canonical indirect parameter block, call the
+  two-argument method import, join the one subtask,
   read the canonical result tag before cleanup, forward either the child
   descriptor or error code through the two-word task-return, drop the parent
   exactly once, and release waitable/subtask/frame storage on ready, error,

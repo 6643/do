@@ -61,6 +61,8 @@ The source of truth is:
 - SHA-256 `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`
 - `wasm-tools 1.255.0 (76e20611d 2026-07-30)`
 - Tool SHA-256 `6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`
+- Regular WIT mirror SHA-256 `1e5f9131387015c4e650a64e02bb9f112d8266f4755aa6b605af038407ef807a`
+- Cancel WIT mirror SHA-256 `1c48fba03b569d91617efd834232fcccc553ca3001ffb0e0834b4134f93e4f52`
 
 The hand-authored WIT mirrors are checked by hash and must contain only the
 flags, error-code, descriptor resource, and probe world needed by this slice.
@@ -68,20 +70,22 @@ The ABI script runs `component embed --dummy-names legacy --async-callback -t`
 with `cm-async,cm-more-async-builtins`, parses and validates both regular and
 cancel Core probes, and assembles Components before compiler admission.
 
-The current tool is expected to lower the method to:
+The current tool lowers the method to an indirect async ABI because the
+receiver plus four logical parameters exceed the pinned four-flat-parameter
+limit:
 
 ```text
 [async-lower][method]descriptor.open-at:
-  (descriptor, path-flags, path-ptr, path-len, open-flags,
-   descriptor-flags, result-area) -> i32
+  (params-ptr, result-area) -> i32
 ```
 
-That is seven `i32` parameters and one readiness result. The expected flattened
-task-return is two `i32` values for the `result<own<descriptor>, error-code>`
-return. The probe, rather than an assumed compatibility rule, records the
-result-area tag/payload offsets and identifies which task-return word is the
-owned descriptor handle versus the error discriminant. Any mismatch is a
-stop condition.
+The indirect parameter block contains the receiver, the two flags records, and
+the UTF-8 path pointer/length using the canonical memory layout. The result
+area contains the `result<descriptor,error-code>` tag and payload. The task
+return is two `i32` values: the result tag and the owned descriptor handle or
+error discriminant. The probe, rather than an assumed compatibility rule,
+records all offsets and discriminant meanings. Any mismatch is a stop
+condition.
 
 ## Ownership and Cancellation
 
