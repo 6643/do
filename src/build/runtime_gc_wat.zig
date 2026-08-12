@@ -1,5 +1,7 @@
 //! Shared Core Wasm GC type fragments.
 const std = @import("std");
+const gc_layout = @import("codegen_gc_layout.zig");
+const payload_wat = @import("wat_payload.zig");
 
 pub fn emit_bytes_type(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
     try out.appendSlice(allocator, "  (type $do_bytes (array (mut i8)))\n");
@@ -29,6 +31,54 @@ pub fn emit_managed_struct_type(
         return;
     }
     try append_fmt(allocator, out, "  (type ${s} (struct (field ${s} (ref null $do_bytes))))\n", .{ struct_name, value_field_name });
+}
+
+pub fn emit_gc_struct_type(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    layout: gc_layout.GcStructLayout,
+) !void {
+    try out.appendSlice(allocator, "  (type $");
+    try append_lowered_name(allocator, out, layout.name);
+    try out.appendSlice(allocator, " (struct");
+    var field_index: u32 = 0;
+    while (field_index < layout.fields.len) : (field_index += 1) {
+        const field = find_field_by_index(layout.fields, field_index) orelse return error.UnsupportedGcSyncType;
+        try append_fmt(allocator, out, " (field ${s} ", .{field.name});
+        try append_gc_field_wasm_type(allocator, out, field);
+        try out.append(allocator, ')');
+    }
+    try out.appendSlice(allocator, "))\n");
+}
+
+fn find_field_by_index(fields: []const gc_layout.GcFieldLayout, field_index: u32) ?gc_layout.GcFieldLayout {
+    for (fields) |field| {
+        if (field.field_index == field_index) return field;
+    }
+    return null;
+}
+
+fn append_gc_field_wasm_type(allocator: std.mem.Allocator, out: *std.ArrayList(u8), field: gc_layout.GcFieldLayout) !void {
+    if (field.rep == .inline_value) {
+        try out.appendSlice(allocator, payload_wat.wasm_type(field.ty));
+        return;
+    }
+    if (std.mem.eql(u8, field.ty, "text")) {
+        try out.appendSlice(allocator, "(ref null $do_text)");
+        return;
+    }
+    if (std.mem.eql(u8, field.ty, "[u8]")) {
+        try out.appendSlice(allocator, "(ref null $do_bytes)");
+        return;
+    }
+    if (field.rep != .gc_managed) return error.UnsupportedGcSyncType;
+    try out.appendSlice(allocator, "(ref null $");
+    try append_lowered_name(allocator, out, field.ty);
+    try out.append(allocator, ')');
+}
+
+fn append_lowered_name(allocator: std.mem.Allocator, out: *std.ArrayList(u8), name: []const u8) !void {
+    for (name) |ch| try out.append(allocator, std.ascii.toLower(ch));
 }
 
 pub fn emit_tuple_text_bytes_type(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {

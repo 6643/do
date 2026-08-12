@@ -5,6 +5,7 @@ const type_name = @import("type_name.zig");
 
 pub const GcFieldLayout = struct {
     name: []const u8,
+    ty: []const u8,
     rep: representation.ValueRep,
     field_index: u32,
 };
@@ -47,6 +48,7 @@ pub fn collect_struct_layout(
         if (rep == .resource_handle) return error.ResourceInManagedAggregate;
         fields[index] = .{
             .name = field.name,
+            .ty = field.ty,
             .rep = rep,
             .field_index = @intCast(index),
         };
@@ -76,6 +78,7 @@ pub fn collect_tuple_layout(
         if (rep == .resource_handle) return error.ResourceInManagedAggregate;
         fields[index] = .{
             .name = element_ty,
+            .ty = element_ty,
             .rep = rep,
             .field_index = @intCast(index),
         };

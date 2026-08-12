@@ -628,6 +628,42 @@ test "synchronous GC backend rejects unsupported managed list element types" {
     try std.testing.expectError(error.UnsupportedGcSyncType, emit_gc_wat_for_source(std.testing.allocator, source));
 }
 
+test "synchronous GC lowers a managed struct identity" {
+    const source =
+        \\Box {
+        \\    value [u8]
+        \\}
+        \\identity(box Box) -> Box {
+        \\    return box
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $box (struct (field $value (ref null $do_bytes))))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(param $box (ref null $box))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(result (ref null $box))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "synchronous GC preserves scalar fields in a managed struct identity" {
+    const source =
+        \\Box {
+        \\    value [u8]
+        \\    tag i32
+        \\}
+        \\identity(box Box) -> Box {
+        \\    return box
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $box (struct (field $value (ref null $do_bytes)) (field $tag i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(param $box (ref null $box))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(result (ref null $box))") != null);
+}
+
 fn emit_gc_wat_for_source(allocator: std.mem.Allocator, source: []const u8) ![]u8 {
     const tokens = try lexer.tokenize(allocator, source);
     defer allocator.free(tokens);

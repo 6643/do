@@ -18,8 +18,11 @@ const codegen_collect_structs = @import("codegen_collect_structs.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_body = @import("codegen_body.zig");
 const gc_adapter = @import("codegen_gc_sync_adapter.zig");
+const gc_model_adapter = @import("codegen_gc_model_adapter.zig");
 const gc_roots = @import("codegen_gc_roots.zig");
 const runtime_gc_prelude = @import("runtime_gc_prelude_wat.zig");
+const gc_layout = @import("codegen_gc_layout.zig");
+const gc_representation = @import("codegen_gc_representation.zig");
 
 const FuncDecl = codegen_model.FuncDecl;
 const StructDecl = codegen_model.StructDecl;
@@ -58,6 +61,8 @@ const BodyEmitter = struct {
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
     functions: []const FuncDecl,
+    gc_structs: []const gc_representation.StructShape,
+    gc_layouts: []const gc_layout.GcStructLayout,
     locals: *const LocalSet,
     out: *std.ArrayList(u8),
     label_id: usize = 0,
@@ -156,8 +161,9 @@ const BodyEmitter = struct {
             if (token.kind == .number) {
                 const ty = expected orelse "i32";
                 if (!type_name.is_core_wasm_scalar(ty)) return error.GcSyncTypeMismatch;
-                const wasm_ty = try wasm_type_for(ty);
-                try self.append(INDENT ++ "{s}.const {s}\n", .{ wasm_ty, token.lexeme });
+                const wasm_ty = try gc_adapter.classify_admitted_type_with_layouts(ty, self.gc_structs, self.gc_layouts);
+                if (wasm_ty.rep != .inline_value) return error.GcSyncTypeMismatch;
+                try self.append(INDENT ++ "{s}.const {s}\n", .{ wasm_ty.wasm_type, token.lexeme });
                 return ty;
             }
             if (token.kind == .ident) {
@@ -198,7 +204,7 @@ const BodyEmitter = struct {
             try self.append(INDENT ++ "return\n", .{});
             return;
         }
-        if (result_ty) |ty| if (gc_adapter.is_admitted_managed_type(ty)) try self.append(INDENT ++ ";; gc-root return_value\n", .{});
+        if (result_ty) |ty| if (gc_adapter.is_admitted_managed_type_with_layouts(ty, self.gc_structs, self.gc_layouts)) try self.append(INDENT ++ ";; gc-root return_value\n", .{});
         const actual = try self.emit_expr(start_idx + 1, end_idx, result_ty);
         if (result_ty == null or std.mem.eql(u8, actual, "nil")) return error.UnexpectedGcSyncReturn;
         try self.append(INDENT ++ "return\n", .{});
@@ -255,7 +261,7 @@ const BodyEmitter = struct {
         _ = eq_idx orelse return error.UnsupportedGcSyncStatement;
         const target_name = find_local_name(self.locals.locals.items, self.tokens[start_idx].lexeme) orelse return error.UnknownGcSyncLocal;
         const target_ty = find_local_type(self.locals.locals.items, self.tokens[start_idx].lexeme) orelse return error.UnknownGcSyncLocal;
-        if (gc_adapter.is_admitted_managed_type(target_ty)) try self.append(INDENT ++ ";; gc-root overwrite ${s}\n", .{target_name});
+        if (gc_adapter.is_admitted_managed_type_with_layouts(target_ty, self.gc_structs, self.gc_layouts)) try self.append(INDENT ++ ";; gc-root overwrite ${s}\n", .{target_name});
         _ = try self.emit_expr(expr_start, end_idx, target_ty);
         try self.append(INDENT ++ "local.set ${s}\n", .{target_name});
     }
@@ -304,8 +310,19 @@ fn is_supported_type(ty: []const u8) bool {
     return gc_adapter.is_supported_type(ty);
 }
 
-fn wasm_type_for(ty: []const u8) ![]const u8 {
-    return gc_adapter.wasm_type_for(ty);
+fn is_supported_type_with_layouts(ty: []const u8, structs: []const gc_representation.StructShape, layouts: []const gc_layout.GcStructLayout) bool {
+    _ = gc_adapter.classify_admitted_type_with_layouts(ty, structs, layouts) catch return false;
+    return true;
+}
+
+fn append_wasm_type(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    ty: []const u8,
+    structs: []const gc_representation.StructShape,
+    layouts: []const gc_layout.GcStructLayout,
+) !void {
+    try gc_adapter.append_wasm_type_for(allocator, out, ty, structs, layouts);
 }
 
 fn append_fmt(allocator: std.mem.Allocator, out: *std.ArrayList(u8), comptime fmt: []const u8, args: anytype) !void {
@@ -328,17 +345,21 @@ fn append_root_point_name(point: gc_roots.RootPoint) []const u8 {
     };
 }
 
-fn append_function_signature(allocator: std.mem.Allocator, out: *std.ArrayList(u8), func: FuncDecl) !void {
+fn append_function_signature(allocator: std.mem.Allocator, out: *std.ArrayList(u8), func: FuncDecl, structs: []const gc_representation.StructShape, layouts: []const gc_layout.GcStructLayout) !void {
     try append_fmt(allocator, out, "  (func ${s}", .{func.name});
     for (func.params) |param| {
         if (param.callback != null) return error.UnsupportedGcSyncCallback;
-        if (!is_supported_type(param.ty) or std.mem.eql(u8, param.ty, "nil")) return error.UnsupportedGcSyncType;
-        try append_fmt(allocator, out, " (param ${s} {s})", .{ param.name, try wasm_type_for(param.ty) });
+        if (!is_supported_type_with_layouts(param.ty, structs, layouts) or std.mem.eql(u8, param.ty, "nil")) return error.UnsupportedGcSyncType;
+        try append_fmt(allocator, out, " (param ${s} ", .{param.name});
+        try append_wasm_type(allocator, out, param.ty, structs, layouts);
+        try out.append(allocator, ')');
     }
     if (func.results.len > 1) return error.UnsupportedGcSyncResult;
     if (func.results.len == 1) {
-        if (!is_supported_type(func.results[0]) or std.mem.eql(u8, func.results[0], "nil")) return error.UnsupportedGcSyncType;
-        try append_fmt(allocator, out, " (result {s})", .{try wasm_type_for(func.results[0])});
+        if (!is_supported_type_with_layouts(func.results[0], structs, layouts) or std.mem.eql(u8, func.results[0], "nil")) return error.UnsupportedGcSyncType;
+        try out.appendSlice(allocator, " (result ");
+        try append_wasm_type(allocator, out, func.results[0], structs, layouts);
+        try out.append(allocator, ')');
     }
     try out.appendSlice(allocator, "\n");
 }
@@ -350,16 +371,18 @@ fn append_func_params(allocator: std.mem.Allocator, func: FuncDecl, locals: *Loc
     }
 }
 
-fn append_gc_locals(allocator: std.mem.Allocator, out: *std.ArrayList(u8), locals: *const LocalSet) !void {
+fn append_gc_locals(allocator: std.mem.Allocator, out: *std.ArrayList(u8), locals: *const LocalSet, structs: []const gc_representation.StructShape, layouts: []const gc_layout.GcStructLayout) !void {
     for (locals.locals.items) |local| {
         if (!local.emit_decl) continue;
-        if (!is_supported_type(local.ty) or std.mem.eql(u8, local.ty, "nil")) return error.UnsupportedGcSyncType;
-        try append_fmt(allocator, out, INDENT ++ "(local ${s} {s})\n", .{ local.name, try wasm_type_for(local.ty) });
+        if (!is_supported_type_with_layouts(local.ty, structs, layouts) or std.mem.eql(u8, local.ty, "nil")) return error.UnsupportedGcSyncType;
+        try append_fmt(allocator, out, INDENT ++ "(local ${s} ", .{local.name});
+        try append_wasm_type(allocator, out, local.ty, structs, layouts);
+        try out.appendSlice(allocator, ")\n");
     }
 }
 
-fn emit_func(allocator: std.mem.Allocator, out: *std.ArrayList(u8), func: FuncDecl, functions: []const FuncDecl, base_ctx: CodegenContext) !void {
-    try append_function_signature(allocator, out, func);
+fn emit_func(allocator: std.mem.Allocator, out: *std.ArrayList(u8), func: FuncDecl, functions: []const FuncDecl, base_ctx: CodegenContext, gc_structs: []const gc_representation.StructShape, gc_layouts: []const gc_layout.GcStructLayout) !void {
+    try append_function_signature(allocator, out, func, gc_structs, gc_layouts);
     var locals = LocalSet{};
     defer locals.deinit(allocator);
     try append_func_params(allocator, func, &locals);
@@ -368,19 +391,19 @@ fn emit_func(allocator: std.mem.Allocator, out: *std.ArrayList(u8), func: FuncDe
     var root_locals = std.ArrayList(gc_roots.RootLocal).empty;
     defer root_locals.deinit(allocator);
     for (locals.locals.items) |local| {
-        if (!is_supported_type(local.ty) or std.mem.eql(u8, local.ty, "nil")) return error.UnsupportedGcSyncType;
-        const rep = (try gc_adapter.classify_admitted_type(local.ty, &.{})).rep;
+        if (!is_supported_type_with_layouts(local.ty, gc_structs, gc_layouts) or std.mem.eql(u8, local.ty, "nil")) return error.UnsupportedGcSyncType;
+        const rep = (try gc_adapter.classify_admitted_type_with_layouts(local.ty, gc_structs, gc_layouts)).rep;
         try root_locals.append(allocator, .{ .name = local.name, .rep = rep });
     }
     const root_plan = try gc_roots.build_root_plan(allocator, root_locals.items, .synchronous);
     defer gc_roots.deinit_root_plan(allocator, root_plan);
 
-    try append_gc_locals(allocator, out, &locals);
+    try append_gc_locals(allocator, out, &locals, gc_structs, gc_layouts);
     for (root_plan.slots) |slot| {
         try append_fmt(allocator, out, INDENT ++ ";; gc-root {s} ${s}\n", .{ append_root_point_name(slot.point), slot.name });
     }
 
-    var emitter = BodyEmitter{ .allocator = allocator, .tokens = func.tokens, .functions = functions, .locals = &locals, .out = out };
+    var emitter = BodyEmitter{ .allocator = allocator, .tokens = func.tokens, .functions = functions, .gc_structs = gc_structs, .gc_layouts = gc_layouts, .locals = &locals, .out = out };
     var deferred = std.ArrayList(DeferredCall).empty;
     defer deferred.deinit(allocator);
     if (func.arrow) {
@@ -395,7 +418,7 @@ fn emit_func(allocator: std.mem.Allocator, out: *std.ArrayList(u8), func: FuncDe
     try out.appendSlice(allocator, "  )\n");
 }
 
-fn emit_start(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tokens: []const lexer.Token, functions: []const FuncDecl, base_ctx: CodegenContext) !void {
+fn emit_start(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tokens: []const lexer.Token, functions: []const FuncDecl, base_ctx: CodegenContext, gc_structs: []const gc_representation.StructShape, gc_layouts: []const gc_layout.GcStructLayout) !void {
     const start_idx = find_start_func(tokens) orelse return;
     const close_params = try find_matching(tokens, start_idx + 1, "(", ")");
     const open_body = find_top_level_block_open(tokens, close_params + 1, tokens.len) orelse return error.UnsupportedGcSyncControl;
@@ -407,17 +430,17 @@ fn emit_start(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tokens: []c
     var root_locals = std.ArrayList(gc_roots.RootLocal).empty;
     defer root_locals.deinit(allocator);
     for (locals.locals.items) |local| {
-        if (!is_supported_type(local.ty) or std.mem.eql(u8, local.ty, "nil")) return error.UnsupportedGcSyncType;
-        const rep = (try gc_adapter.classify_admitted_type(local.ty, &.{})).rep;
+        if (!is_supported_type_with_layouts(local.ty, gc_structs, gc_layouts) or std.mem.eql(u8, local.ty, "nil")) return error.UnsupportedGcSyncType;
+        const rep = (try gc_adapter.classify_admitted_type_with_layouts(local.ty, gc_structs, gc_layouts)).rep;
         try root_locals.append(allocator, .{ .name = local.name, .rep = rep });
     }
     const root_plan = try gc_roots.build_root_plan(allocator, root_locals.items, .synchronous);
     defer gc_roots.deinit_root_plan(allocator, root_plan);
 
     try out.appendSlice(allocator, "  (func $_start\n");
-    try append_gc_locals(allocator, out, &locals);
+    try append_gc_locals(allocator, out, &locals, gc_structs, gc_layouts);
     for (root_plan.slots) |slot| try append_fmt(allocator, out, INDENT ++ ";; gc-root {s} ${s}\n", .{ append_root_point_name(slot.point), slot.name });
-    var emitter = BodyEmitter{ .allocator = allocator, .tokens = tokens, .functions = functions, .locals = &locals, .out = out };
+    var emitter = BodyEmitter{ .allocator = allocator, .tokens = tokens, .functions = functions, .gc_structs = gc_structs, .gc_layouts = gc_layouts, .locals = &locals, .out = out };
     var deferred = std.ArrayList(DeferredCall).empty;
     defer deferred.deinit(allocator);
     _ = try emitter.emit_body(open_body + 1, close_body, null, &deferred);
@@ -439,9 +462,29 @@ pub fn emit_gc_wat_for_supported_program(
         structs.deinit(allocator);
     }
     try codegen_collect_structs.collect_struct_decls(allocator, tokens, &structs);
-    if (structs.items.len != 0) return error.UnsupportedGcSyncAggregate;
+    const gc_structs = try gc_model_adapter.collect_struct_shapes(allocator, structs.items);
+    defer gc_model_adapter.deinit_struct_shapes(allocator, gc_structs);
+    var gc_layouts = std.ArrayList(gc_layout.GcStructLayout).empty;
+    defer {
+        for (gc_layouts.items) |layout| gc_model_adapter.deinit_struct_layout(allocator, layout);
+        gc_layouts.deinit(allocator);
+    }
+    for (structs.items) |decl| {
+        const layout = gc_model_adapter.collect_struct_layout(allocator, decl, structs.items, &.{}) catch |err| switch (err) {
+            error.ResourceInManagedAggregate, error.UnsupportedGcAggregate, error.UnknownType => return error.UnsupportedGcSyncAggregate,
+            else => return err,
+        };
+        if (layout.fields.len == 0) return error.UnsupportedGcSyncAggregate;
+        try gc_layouts.append(allocator, layout);
+    }
 
-    const struct_layouts: []const StructLayout = &.{};
+    var source_struct_layouts = std.ArrayList(StructLayout).empty;
+    defer {
+        codegen_model.free_struct_layouts(allocator, source_struct_layouts.items);
+        source_struct_layouts.deinit(allocator);
+    }
+    try codegen_collect_structs.collect_struct_layouts(allocator, structs.items, &source_struct_layouts);
+    const struct_layouts = source_struct_layouts.items;
     var functions = std.ArrayList(FuncDecl).empty;
     defer {
         codegen_model.free_func_decls(allocator, functions.items);
@@ -455,8 +498,8 @@ pub fn emit_gc_wat_for_supported_program(
             if (std.mem.eql(u8, previous.name, func.name)) return error.UnsupportedGcSyncOverload;
         }
         if (func.is_async or func.contains_await) return error.UnsupportedGcSyncAsync;
-        for (func.params) |param| if (!is_supported_type(param.ty) or std.mem.eql(u8, param.ty, "nil")) return error.UnsupportedGcSyncType;
-        for (func.results) |result| if (!is_supported_type(result) or std.mem.eql(u8, result, "nil")) return error.UnsupportedGcSyncType;
+        for (func.params) |param| if (std.mem.eql(u8, param.ty, "nil") or !is_supported_type_with_layouts(param.ty, gc_structs, gc_layouts.items)) return error.UnsupportedGcSyncType;
+        for (func.results) |result| if (std.mem.eql(u8, result, "nil") or !is_supported_type_with_layouts(result, gc_structs, gc_layouts.items)) return error.UnsupportedGcSyncType;
     }
 
     var string_data = StringDataContext{};
@@ -478,9 +521,9 @@ pub fn emit_gc_wat_for_supported_program(
     errdefer out.deinit(allocator);
     try out.appendSlice(allocator, "(module\n");
     try append_fmt(allocator, &out, "  ;; gc-sync source_len={d} token_count={d}\n", .{ program.source_len, program.token_count });
-    try runtime_gc_prelude.emit_text_prelude(allocator, &out);
-    for (functions.items) |func| try emit_func(allocator, &out, func, functions.items, base_ctx);
-    try emit_start(allocator, &out, tokens, functions.items, base_ctx);
+    try runtime_gc_prelude.emit_gc_struct_prelude(allocator, &out, gc_layouts.items);
+    for (functions.items) |func| try emit_func(allocator, &out, func, functions.items, base_ctx, gc_structs, gc_layouts.items);
+    try emit_start(allocator, &out, tokens, functions.items, base_ctx, gc_structs, gc_layouts.items);
     try out.appendSlice(allocator, ")\n");
     return out.toOwnedSlice(allocator);
 }
