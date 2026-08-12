@@ -17,7 +17,7 @@ const codegen_context = @import("codegen_context.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_body = @import("codegen_body.zig");
-const gc_representation = @import("codegen_gc_representation.zig");
+const gc_adapter = @import("codegen_gc_sync_adapter.zig");
 const gc_roots = @import("codegen_gc_roots.zig");
 const runtime_gc_prelude = @import("runtime_gc_prelude_wat.zig");
 
@@ -198,7 +198,7 @@ const BodyEmitter = struct {
             try self.append(INDENT ++ "return\n", .{});
             return;
         }
-        if (result_ty) |ty| if (is_managed_type(ty)) try self.append(INDENT ++ ";; gc-root return_value\n", .{});
+        if (result_ty) |ty| if (gc_adapter.is_admitted_managed_type(ty)) try self.append(INDENT ++ ";; gc-root return_value\n", .{});
         const actual = try self.emit_expr(start_idx + 1, end_idx, result_ty);
         if (result_ty == null or std.mem.eql(u8, actual, "nil")) return error.UnexpectedGcSyncReturn;
         try self.append(INDENT ++ "return\n", .{});
@@ -255,7 +255,7 @@ const BodyEmitter = struct {
         _ = eq_idx orelse return error.UnsupportedGcSyncStatement;
         const target_name = find_local_name(self.locals.locals.items, self.tokens[start_idx].lexeme) orelse return error.UnknownGcSyncLocal;
         const target_ty = find_local_type(self.locals.locals.items, self.tokens[start_idx].lexeme) orelse return error.UnknownGcSyncLocal;
-        if (is_managed_type(target_ty)) try self.append(INDENT ++ ";; gc-root overwrite ${s}\n", .{target_name});
+        if (gc_adapter.is_admitted_managed_type(target_ty)) try self.append(INDENT ++ ";; gc-root overwrite ${s}\n", .{target_name});
         _ = try self.emit_expr(expr_start, end_idx, target_ty);
         try self.append(INDENT ++ "local.set ${s}\n", .{target_name});
     }
@@ -300,20 +300,12 @@ const BodyEmitter = struct {
     }
 };
 
-fn is_managed_type(ty: []const u8) bool {
-    return std.mem.eql(u8, ty, "text") or std.mem.eql(u8, ty, "[u8]");
-}
-
 fn is_supported_type(ty: []const u8) bool {
-    return std.mem.eql(u8, ty, "nil") or type_name.is_core_wasm_scalar(ty) or is_managed_type(ty);
+    return gc_adapter.is_supported_type(ty);
 }
 
 fn wasm_type_for(ty: []const u8) ![]const u8 {
-    if (std.mem.eql(u8, ty, "text")) return "(ref null $do_text)";
-    if (std.mem.eql(u8, ty, "[u8]")) return "(ref null $do_bytes)";
-    if (type_name.is_core_wasm_scalar(ty)) return payload_wat.wasm_type(ty);
-    if (std.mem.eql(u8, ty, "nil")) return "";
-    return error.UnsupportedGcSyncType;
+    return gc_adapter.wasm_type_for(ty);
 }
 
 fn append_fmt(allocator: std.mem.Allocator, out: *std.ArrayList(u8), comptime fmt: []const u8, args: anytype) !void {
@@ -377,7 +369,7 @@ fn emit_func(allocator: std.mem.Allocator, out: *std.ArrayList(u8), func: FuncDe
     defer root_locals.deinit(allocator);
     for (locals.locals.items) |local| {
         if (!is_supported_type(local.ty) or std.mem.eql(u8, local.ty, "nil")) return error.UnsupportedGcSyncType;
-        const rep: gc_representation.ValueRep = if (is_managed_type(local.ty)) .gc_managed else .inline_value;
+        const rep = (try gc_adapter.classify_admitted_type(local.ty, &.{})).rep;
         try root_locals.append(allocator, .{ .name = local.name, .rep = rep });
     }
     const root_plan = try gc_roots.build_root_plan(allocator, root_locals.items, .synchronous);
@@ -416,7 +408,8 @@ fn emit_start(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tokens: []c
     defer root_locals.deinit(allocator);
     for (locals.locals.items) |local| {
         if (!is_supported_type(local.ty) or std.mem.eql(u8, local.ty, "nil")) return error.UnsupportedGcSyncType;
-        try root_locals.append(allocator, .{ .name = local.name, .rep = if (is_managed_type(local.ty)) .gc_managed else .inline_value });
+        const rep = (try gc_adapter.classify_admitted_type(local.ty, &.{})).rep;
+        try root_locals.append(allocator, .{ .name = local.name, .rep = rep });
     }
     const root_plan = try gc_roots.build_root_plan(allocator, root_locals.items, .synchronous);
     defer gc_roots.deinit_root_plan(allocator, root_plan);

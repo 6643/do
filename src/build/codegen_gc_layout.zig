@@ -19,6 +19,20 @@ pub const GcTupleLayout = struct {
     fields: []const GcFieldLayout,
 };
 
+/// Runtime layouts currently emitted by the restricted synchronous GC backend.
+/// Aggregate layouts are intentionally separate and are not admitted by this
+/// adapter until their lowering is wired through this same fact layer.
+pub const GcLeafLayout = enum {
+    text,
+    byte_array,
+};
+
+pub fn leaf_layout_for_type(ty: []const u8) ?GcLeafLayout {
+    if (std.mem.eql(u8, ty, "text")) return .text;
+    if (std.mem.eql(u8, ty, "[u8]")) return .byte_array;
+    return null;
+}
+
 pub fn collect_struct_layout(
     allocator: std.mem.Allocator,
     shape: representation.StructShape,
