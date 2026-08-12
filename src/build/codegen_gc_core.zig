@@ -89,12 +89,9 @@ pub fn emit_gc_core_wat(
             .value_name = list.value_name,
         }),
         .managed_struct_set => |managed| try gc_emit.emit_managed_struct_set(allocator, &out, .{
-            .has_scalar_field = managed.scalar_field_name != null,
-            .struct_name = managed.struct_name,
-            .function_name = managed.function_name,
-            .receiver_name = managed.receiver_name,
-            .value_field_name = managed.value_field_name,
-            .scalar_field_name = managed.scalar_field_name orelse "tag",
+            .managed_field = .{ .source_type_name = managed.struct_name, .source_field_name = managed.value_field_name },
+            .scalar_field = if (managed.scalar_field_name) |name| .{ .source_type_name = managed.struct_name, .source_field_name = name } else null,
+            .function_binding = .{ .source_name = managed.function_name, .receiver_name = managed.receiver_name },
         }),
         .managed_tuple_set => {
             const elements = [_][]const u8{ "text", "[u8]" };
