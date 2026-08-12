@@ -353,9 +353,12 @@ git commit -m "Add GC managed aggregate rebuild"
 **G2 checkpoint (2026-08-12):** `Tuple<text, [u8]>` is admitted through a
 typed GC struct and Wasmtime proves old-value preservation. Fixed-list and
 managed-struct nested copies now use runtime `array.len`, and managed-struct
-profiles retain source type/function/field bindings. The restricted oracle
-emitters still produce one standalone probe module per call; a fragment-only
-composition API remains a follow-up before the normal GC backend absorbs them.
+profiles retain source type/function/field bindings. The synchronous GC
+prelude emits nested managed struct declarations in dependency order and
+rejects invalid forward/cyclic/missing layouts before WAT emission. The
+restricted oracle emitters still produce one standalone probe module per
+call; a fragment-only composition API remains a follow-up before the normal
+GC backend absorbs them.
 
 ### Task 6: G3 Synchronous Root Conversion
 

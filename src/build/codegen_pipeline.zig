@@ -664,6 +664,27 @@ test "synchronous GC preserves scalar fields in a managed struct identity" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "(result (ref null $box))") != null);
 }
 
+test "synchronous GC declares nested managed structs before their users" {
+    const source =
+        \\Outer {
+        \\    inner Inner
+        \\    tag i32
+        \\}
+        \\Inner {
+        \\    value [u8]
+        \\}
+        \\identity(box Outer) -> Outer {
+        \\    return box
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    const inner = std.mem.indexOf(u8, wat, "(type $inner ") orelse return error.TestExpectedEqual;
+    const outer = std.mem.indexOf(u8, wat, "(type $outer ") orelse return error.TestExpectedEqual;
+    try std.testing.expect(inner < outer);
+}
+
 fn emit_gc_wat_for_source(allocator: std.mem.Allocator, source: []const u8) ![]u8 {
     const tokens = try lexer.tokenize(allocator, source);
     defer allocator.free(tokens);
