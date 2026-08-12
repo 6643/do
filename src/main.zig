@@ -110,6 +110,7 @@ test {
     _ = @import("wit/signature.zig");
     _ = @import("build/codegen_ir.zig");
     _ = @import("build/codegen_gc_facts_test.zig");
+    _ = @import("build/codegen_gc_model_adapter_test.zig");
     _ = @import("build/codegen_gc_sync_adapter_test.zig");
     _ = @import("build/codegen_control_flow_test.zig");
     _ = @import("build/codegen_gc_plans_test.zig");

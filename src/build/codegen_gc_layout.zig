@@ -43,9 +43,11 @@ pub fn collect_struct_layout(
     errdefer allocator.free(fields);
 
     for (shape.fields, 0..) |field, index| {
+        const rep = try representation.classify_type(field.ty, structs, resources);
+        if (rep == .resource_handle) return error.ResourceInManagedAggregate;
         fields[index] = .{
             .name = field.name,
-            .rep = try representation.classify_type(field.ty, structs, resources),
+            .rep = rep,
             .field_index = @intCast(index),
         };
     }
@@ -70,9 +72,11 @@ pub fn collect_tuple_layout(
 
     for (elements, 0..) |element_ty, index| {
         if (type_name.is_tuple_type_name(element_ty)) return error.UnsupportedGcAggregate;
+        const rep = try representation.classify_type(element_ty, structs, resources);
+        if (rep == .resource_handle) return error.ResourceInManagedAggregate;
         fields[index] = .{
             .name = element_ty,
-            .rep = try representation.classify_type(element_ty, structs, resources),
+            .rep = rep,
             .field_index = @intCast(index),
         };
     }
