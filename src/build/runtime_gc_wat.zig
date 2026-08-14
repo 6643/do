@@ -7,6 +7,19 @@ pub fn emit_bytes_type(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !v
     try out.appendSlice(allocator, "  (type $do_bytes (array (mut i8)))\n");
 }
 
+pub fn emit_scalar_array_type(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    array_name: []const u8,
+    elem_ty: []const u8,
+) !void {
+    try append_fmt(allocator, out, "  (type {s} (array (mut {s})))\n", .{ array_name, payload_wat.wasm_type(elem_ty) });
+}
+
+pub fn emit_u32_type(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
+    try emit_scalar_array_type(allocator, out, "$do_u32", "u32");
+}
+
 pub fn emit_text_type(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
     try out.appendSlice(allocator, "  (type $do_text (struct (field $length i32) (field $bytes (ref null $do_bytes))))\n");
 }
@@ -71,6 +84,12 @@ fn append_gc_field_wasm_type(allocator: std.mem.Allocator, out: *std.ArrayList(u
         try out.appendSlice(allocator, "(ref null $do_bytes)");
         return;
     }
+    if (gc_layout.scalar_array_spec_for_type(field.ty)) |spec| {
+        try out.appendSlice(allocator, "(ref null ");
+        try out.appendSlice(allocator, spec.array_name);
+        try out.append(allocator, ')');
+        return;
+    }
     if (field.rep != .gc_managed) return error.UnsupportedGcSyncType;
     try out.appendSlice(allocator, "(ref null $");
     try append_lowered_name(allocator, out, field.ty);
@@ -83,6 +102,16 @@ fn append_lowered_name(allocator: std.mem.Allocator, out: *std.ArrayList(u8), na
 
 pub fn emit_tuple_text_bytes_type(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
     try out.appendSlice(allocator, "  (type $tuple_text_bytes (struct (field $text (ref null $do_text)) (field $bytes (ref null $do_bytes))))\n");
+}
+
+pub fn emit_gc_payload_union_type(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    name: []const u8,
+) !void {
+    try out.appendSlice(allocator, "  (type $");
+    try append_lowered_name(allocator, out, name);
+    try out.appendSlice(allocator, " (struct (field $tag i32) (field $bytes (ref null $do_bytes))))\n");
 }
 
 fn append_fmt(

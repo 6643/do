@@ -12,9 +12,14 @@ test "synchronous GC adapter admits only emitted managed leaf layouts" {
     try std.testing.expectEqualStrings("(ref null $do_bytes)", bytes.wasm_type);
 }
 
-test "synchronous GC adapter fails closed for managed values without an emitted layout" {
-    try std.testing.expectError(error.UnsupportedGcSyncType, adapter.classify_admitted_type("[u32]", &.{}));
-    try std.testing.expectError(error.UnsupportedGcSyncType, adapter.classify_admitted_type("Tuple<text,[u8]>", &.{}));
+test "synchronous GC adapter admits the registered tuple carrier and rejects other unregistered aggregates" {
+    const words = try adapter.classify_admitted_type("[u32]", &.{});
+    try std.testing.expectEqual(representation.ValueRep.gc_managed, words.rep);
+    try std.testing.expectEqualStrings("(ref null $do_u32)", words.wasm_type);
+
+    const tuple = try adapter.classify_admitted_type("Tuple<text,[u8]>", &.{});
+    try std.testing.expectEqual(representation.ValueRep.gc_managed, tuple.rep);
+    try std.testing.expectEqualStrings("(ref null $tuple_text_bytes)", tuple.wasm_type);
 
     const fields = [_]representation.StructFieldShape{
         .{ .name = "value", .ty = "[u8]" },

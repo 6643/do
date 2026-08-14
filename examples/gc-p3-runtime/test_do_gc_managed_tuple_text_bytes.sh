@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
+# Verification Status: verified
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 wasmtime_bin=${WASMTIME_BIN:-/home/_/Public/wasmtime/bin/wasmtime}
+zig_bin=${ZIG_BIN:-zig}
+wasm_tools_bin=${WASM_TOOLS_BIN:-wasm-tools}
 fixture="$repo_root/examples/gc-p3-runtime/managed-tuple-text-bytes.do"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-gc-managed-tuple.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
@@ -13,8 +16,8 @@ if [ ! -x "$wasmtime_bin" ]; then
 fi
 
 wat_path="$tmp_dir/managed-tuple-text-bytes.wat"
-DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build "$fixture" --gc-core -o "$wat_path"
-wasm-tools parse "$wat_path" -o "$tmp_dir/managed-tuple-text-bytes.wasm"
+"$zig_bin" run "$repo_root/src/build/gc_sync_probe.zig" -- "$fixture" "$wat_path" rewrite
+"$wasm_tools_bin" parse "$wat_path" -o "$tmp_dir/managed-tuple-text-bytes.wasm"
 "$wasmtime_bin" compile -W gc=y -o "$tmp_dir/managed-tuple-text-bytes.compiled" "$wat_path"
 
 result=$("$wasmtime_bin" -W gc=y --invoke probe "$wat_path")

@@ -24,6 +24,14 @@ pub const ClassifyError = error{
     UnsupportedGcAggregate,
 };
 
+pub const GcPayloadUnionFacts = struct {
+    name: []const u8,
+    unit_case: []const u8,
+    managed_case: []const u8,
+    unit_tag: u32,
+    managed_tag: u32,
+};
+
 pub fn classify_type(
     ty: []const u8,
     structs: []const StructShape,

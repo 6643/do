@@ -6,8 +6,6 @@ const gc_layout = @import("codegen_gc_layout.zig");
 
 pub const GcCoreLowering = enum {
     text_identity,
-    fixed_list_set,
-    parameterized_list_set,
     managed_struct_set,
     managed_struct_scalar_field_set,
     managed_tuple_set,
@@ -15,8 +13,6 @@ pub const GcCoreLowering = enum {
 
 pub const GcCoreValueType = enum {
     byte_list,
-    usize,
-    u8,
     text,
     i32,
 };
@@ -24,16 +20,6 @@ pub const GcCoreValueType = enum {
 pub const TextIdentityProfile = struct {
     function_name: []const u8,
     value_name: []const u8,
-    value_type: GcCoreValueType,
-};
-
-pub const ParameterizedListSetProfile = struct {
-    function_name: []const u8,
-    input_name: []const u8,
-    index_name: []const u8,
-    value_name: []const u8,
-    input_type: GcCoreValueType,
-    index_type: GcCoreValueType,
     value_type: GcCoreValueType,
 };
 
@@ -56,8 +42,6 @@ pub const ManagedTupleSetProfile = struct {
 
 pub const GcCoreProfile = union(enum) {
     text_identity: TextIdentityProfile,
-    fixed_list_set: void,
-    parameterized_list_set: ParameterizedListSetProfile,
     managed_struct_set: ManagedStructSetProfile,
     managed_tuple_set: ManagedTupleSetProfile,
 };
@@ -75,18 +59,6 @@ pub fn emit_gc_core_wat(
         .text_identity => |text| try gc_emit.emit_text_identity(allocator, &out, .{
             .function_name = text.function_name,
             .value_name = text.value_name,
-        }),
-        .fixed_list_set => try gc_emit.emit_byte_list_set(allocator, &out, .{
-            .function_name = "update",
-            .input_name = "input",
-            .index_expr = "0",
-            .value_expr = "65",
-        }),
-        .parameterized_list_set => |list| try gc_emit.emit_parameterized_byte_list_set(allocator, &out, .{
-            .function_name = list.function_name,
-            .input_name = list.input_name,
-            .index_name = list.index_name,
-            .value_name = list.value_name,
         }),
         .managed_struct_set => |managed| try gc_emit.emit_managed_struct_set(allocator, &out, .{
             .managed_field = .{ .source_type_name = managed.struct_name, .source_field_name = managed.value_field_name },
@@ -111,8 +83,6 @@ pub fn classify_gc_core_lowering(tokens: []const lexer.Token) ?GcCoreLowering {
 pub fn parse_gc_core_profile(tokens: []const lexer.Token) ?GcCoreProfile {
     if (parse_managed_tuple_set_profile(tokens)) |profile| return .{ .managed_tuple_set = profile };
     if (parse_managed_struct_set_profile(tokens)) |profile| return .{ .managed_struct_set = profile };
-    if (parse_parameterized_list_set_profile(tokens)) |profile| return .{ .parameterized_list_set = profile };
-    if (matches_list_set(tokens)) return .{ .fixed_list_set = {} };
     if (parse_text_identity_profile(tokens)) |profile| return .{ .text_identity = profile };
     return null;
 }
@@ -120,8 +90,6 @@ pub fn parse_gc_core_profile(tokens: []const lexer.Token) ?GcCoreProfile {
 fn lowering_for_gc_core_profile(profile: GcCoreProfile) GcCoreLowering {
     return switch (profile) {
         .text_identity => .text_identity,
-        .fixed_list_set => .fixed_list_set,
-        .parameterized_list_set => .parameterized_list_set,
         .managed_struct_set => |managed_profile| if (managed_profile.scalar_field_name == null) .managed_struct_set else .managed_struct_scalar_field_set,
         .managed_tuple_set => .managed_tuple_set,
     };
@@ -166,49 +134,6 @@ fn parse_text_identity_profile(tokens: []const lexer.Token) ?TextIdentityProfile
             .function_name = tokens[start].lexeme,
             .value_name = tokens[start + 2].lexeme,
             .value_type = .text,
-        };
-    }
-    return null;
-}
-
-fn matches_list_set(tokens: []const lexer.Token) bool {
-    const signature = [_][]const u8{ "update", "(", "input", "[", "u8", "]", ")", "-", ">", "[", "u8", "]", "{" };
-    const body = [_][]const u8{ "return", "@", "set", "(", "input", ",", "0", ",", "65", ")", "}" };
-    for (tokens, 0..) |_, start| {
-        if (!matches_at(tokens, start, &signature)) continue;
-        if (!matches_at(tokens, start + signature.len, &body)) continue;
-        return true;
-    }
-    return false;
-}
-
-fn parse_parameterized_list_set_profile(tokens: []const lexer.Token) ?ParameterizedListSetProfile {
-    for (tokens, 0..) |_, start| {
-        const shape = [_][]const u8{ "(", "[", "u8", "]", ",", "usize", ",", "u8", ")", "-", ">", "[", "u8", "]", "{", "return", "@", "set", "(" };
-        if (start + 30 > tokens.len) continue;
-        if (tokens[start].kind != .ident or tokens[start + 2].kind != .ident or tokens[start + 7].kind != .ident or tokens[start + 10].kind != .ident) continue;
-        if (!matches_at(tokens, start + 1, shape[0..1])) continue;
-        if (!matches_at(tokens, start + 3, shape[1..5])) continue;
-        if (!matches_at(tokens, start + 8, shape[5..7])) continue;
-        if (!matches_at(tokens, start + 11, shape[7..19])) continue;
-        if (!std.mem.eql(u8, tokens[start + 2].lexeme, tokens[start + 23].lexeme)) continue;
-        if (!std.mem.eql(u8, tokens[start + 7].lexeme, tokens[start + 25].lexeme)) continue;
-        if (!std.mem.eql(u8, tokens[start + 10].lexeme, tokens[start + 27].lexeme)) continue;
-        if (!matches_at(tokens, start + 24, &[_][]const u8{
-            ",",
-        })) continue;
-        if (!matches_at(tokens, start + 26, &[_][]const u8{
-            ",",
-        })) continue;
-        if (!matches_at(tokens, start + 28, &[_][]const u8{ ")", "}" })) continue;
-        return .{
-            .function_name = tokens[start].lexeme,
-            .input_name = tokens[start + 2].lexeme,
-            .index_name = tokens[start + 7].lexeme,
-            .value_name = tokens[start + 10].lexeme,
-            .input_type = .byte_list,
-            .index_type = .usize,
-            .value_type = .u8,
         };
     }
     return null;
@@ -321,7 +246,7 @@ test "GC lowering rejects a source body outside the lowered subset" {
     try std.testing.expectError(error.UnsupportedGcCoreLowering, emit_gc_core_wat(std.testing.allocator, program, tokens));
 }
 
-test "GC list set lowers a new array while preserving the input array" {
+test "GC core profile rejects fixed list update owned by parsed lowering" {
     const source =
         \\update(input [u8]) -> [u8] {
         \\    return @set(input, 0, 65)
@@ -330,35 +255,11 @@ test "GC list set lowers a new array while preserving the input array" {
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
-    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
-    defer program.deinit(std.testing.allocator);
 
-    const wat = try emit_gc_core_wat(std.testing.allocator, program, tokens);
-    defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_bytes $do_bytes") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_bytes") != null);
+    try std.testing.expect(parse_gc_core_profile(tokens) == null);
 }
 
-test "GC parameterized list set copies its runtime array length" {
-    const source =
-        \\set_at(input [u8], index usize, value u8) -> [u8] {
-        \\    return @set(input, index, value)
-        \\}
-        \\start() {}
-    ;
-    const tokens = try lexer.tokenize(std.testing.allocator, source);
-    defer std.testing.allocator.free(tokens);
-    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
-    defer program.deinit(std.testing.allocator);
-
-    const wat = try emit_gc_core_wat(std.testing.allocator, program, tokens);
-    defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.len\n") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "local.get $index") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "local.get $value") != null);
-}
-
-test "GC lowering classification identifies parameterized list updates" {
+test "GC core profile rejects parameterized list update owned by parsed lowering" {
     const source =
         \\set_at(input [u8], index usize, value u8) -> [u8] {
         \\    return @set(input, index, value)
@@ -368,47 +269,7 @@ test "GC lowering classification identifies parameterized list updates" {
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
 
-    const lowering = classify_gc_core_lowering(tokens) orelse return error.TestExpectedEqual;
-    try std.testing.expectEqual(GcCoreLowering.parameterized_list_set, lowering);
-}
-
-test "GC lowering classification accepts renamed parameterized list bindings" {
-    const source =
-        \\replace(bytes [u8], offset usize, next u8) -> [u8] {
-        \\    return @set(bytes, offset, next)
-        \\}
-        \\start() {}
-    ;
-    const tokens = try lexer.tokenize(std.testing.allocator, source);
-    defer std.testing.allocator.free(tokens);
-
-    const lowering = classify_gc_core_lowering(tokens) orelse return error.TestExpectedEqual;
-    try std.testing.expectEqual(GcCoreLowering.parameterized_list_set, lowering);
-}
-
-test "GC parameterized list profile retains its source data flow" {
-    const source =
-        \\replace(bytes [u8], offset usize, next u8) -> [u8] {
-        \\    return @set(bytes, offset, next)
-        \\}
-        \\start() {}
-    ;
-    const tokens = try lexer.tokenize(std.testing.allocator, source);
-    defer std.testing.allocator.free(tokens);
-
-    const profile = parse_gc_core_profile(tokens) orelse return error.TestExpectedEqual;
-    switch (profile) {
-        .parameterized_list_set => |list_set| {
-            try std.testing.expectEqualStrings("replace", list_set.function_name);
-            try std.testing.expectEqualStrings("bytes", list_set.input_name);
-            try std.testing.expectEqualStrings("offset", list_set.index_name);
-            try std.testing.expectEqualStrings("next", list_set.value_name);
-            try std.testing.expectEqual(GcCoreValueType.byte_list, list_set.input_type);
-            try std.testing.expectEqual(GcCoreValueType.usize, list_set.index_type);
-            try std.testing.expectEqual(GcCoreValueType.u8, list_set.value_type);
-        },
-        else => return error.TestExpectedEqual,
-    }
+    try std.testing.expect(parse_gc_core_profile(tokens) == null);
 }
 
 test "GC managed struct update rebuilds its outer value and changed list field" {

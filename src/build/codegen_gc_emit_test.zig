@@ -8,18 +8,13 @@ test "GC fragments compose in one module with one shared prelude" {
     var module = emit.GcModuleEmitter.init(std.testing.allocator, &out);
     try module.begin();
     try module.emit_text_identity(.{ .function_name = "identity", .value_name = "value" });
-    try module.emit_byte_list_set(.{
-        .function_name = "update",
-        .input_name = "input",
-        .index_expr = "0",
-        .value_expr = "65",
-    });
+    try module.emit_text_identity(.{ .function_name = "relay", .value_name = "message" });
     try module.end();
 
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, out.items, "(module\n"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, out.items, "(type $do_bytes"));
     try std.testing.expect(std.mem.indexOf(u8, out.items, "(func $identity") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out.items, "(func $update") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "(func $relay") != null);
 }
 
 test "shared GC emitter writes text identity with typed references" {
@@ -32,32 +27,12 @@ test "shared GC emitter writes text identity with typed references" {
     try std.testing.expect(std.mem.indexOf(u8, out.items, "__arc_") == null);
 }
 
-test "shared GC emitter writes immutable byte-list update" {
-    var out = std.ArrayList(u8).empty;
-    defer out.deinit(std.testing.allocator);
-    try emit.emit_byte_list_set(std.testing.allocator, &out, .{ .function_name = "update", .input_name = "input", .index_expr = "0", .value_expr = "65" });
-
-    try std.testing.expect(std.mem.indexOf(u8, out.items, "(type $do_bytes (array (mut i8)))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out.items, "array.copy $do_bytes $do_bytes") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out.items, "array.set $do_bytes") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out.items, "__arc_") == null);
+test "shared GC emitter does not expose parameterized list template" {
+    try std.testing.expect(!@hasDecl(emit, "emit_parameterized_byte_list_set"));
 }
 
-test "shared GC emitter preserves parameterized list bindings" {
-    var out = std.ArrayList(u8).empty;
-    defer out.deinit(std.testing.allocator);
-    try emit.emit_parameterized_byte_list_set(std.testing.allocator, &out, .{
-        .function_name = "set_at",
-        .input_name = "bytes",
-        .index_name = "offset",
-        .value_name = "next",
-    });
-
-    try std.testing.expect(std.mem.indexOf(u8, out.items, "local.get $offset") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out.items, "local.get $next") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out.items, "array.len") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out.items, "(local $__gc_next (ref $do_bytes))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out.items, "(local $__gc_length i32)") != null);
+test "shared GC emitter does not expose fixed list template" {
+    try std.testing.expect(!@hasDecl(emit, "emit_byte_list_set"));
 }
 
 test "shared GC emitter rebuilds managed struct and preserves scalar field" {

@@ -44,6 +44,14 @@ pub fn emit_gc_struct_prelude(
     layouts: []const gc_layout.GcStructLayout,
 ) !void {
     try emit_text_prelude(allocator, out);
+    try emit_gc_struct_types(allocator, out, layouts);
+}
+
+fn emit_gc_struct_types(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    layouts: []const gc_layout.GcStructLayout,
+) !void {
     try validate_layout_names(layouts);
 
     const emitted = try allocator.alloc(bool, layouts.len);
@@ -57,6 +65,25 @@ pub fn emit_gc_struct_prelude(
     for (layouts, 0..) |_, index| {
         try emit_layout_depth_first(allocator, out, layouts, emitted, visiting, index);
     }
+}
+
+pub fn emit_gc_sync_prelude(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    layouts: []const gc_layout.GcStructLayout,
+    payload_unions: []const gc_layout.GcPayloadUnionLayout,
+    has_tuple_text_bytes: bool,
+    scalar_arrays: [gc_layout.scalar_array_specs.len]bool,
+) !void {
+    try emit_text_prelude(allocator, out);
+    for (gc_layout.scalar_array_specs, 0..) |spec, index| {
+        if (scalar_arrays[index]) try runtime_gc_wat.emit_scalar_array_type(allocator, out, spec.array_name, spec.elem_ty);
+    }
+    try emit_gc_struct_types(allocator, out, layouts);
+    for (payload_unions) |payload_union| {
+        try runtime_gc_wat.emit_gc_payload_union_type(allocator, out, payload_union.name);
+    }
+    if (has_tuple_text_bytes) try runtime_gc_wat.emit_tuple_text_bytes_type(allocator, out);
 }
 
 fn emit_layout_depth_first(
@@ -133,4 +160,76 @@ test "GC struct prelude orders nested managed dependencies" {
     const inner = std.mem.indexOf(u8, out.items, "(type $inner ") orelse return error.TestExpectedEqual;
     const outer = std.mem.indexOf(u8, out.items, "(type $outer ") orelse return error.TestExpectedEqual;
     try std.testing.expect(inner < outer);
+}
+
+test "GC struct prelude rejects a missing managed dependency" {
+    const fields = [_]gc_layout.GcFieldLayout{
+        .{ .name = "child", .ty = "Missing", .rep = .gc_managed, .field_index = 0 },
+    };
+    const layouts = [_]gc_layout.GcStructLayout{
+        .{ .name = "Outer", .fields = fields[0..] },
+    };
+    var out = std.ArrayList(u8).empty;
+    defer out.deinit(std.testing.allocator);
+    try std.testing.expectError(
+        error.UnsupportedGcSyncType,
+        emit_gc_struct_prelude(std.testing.allocator, &out, layouts[0..]),
+    );
+}
+
+test "GC struct prelude rejects a managed dependency cycle" {
+    const fields_a = [_]gc_layout.GcFieldLayout{
+        .{ .name = "next", .ty = "B", .rep = .gc_managed, .field_index = 0 },
+    };
+    const fields_b = [_]gc_layout.GcFieldLayout{
+        .{ .name = "next", .ty = "A", .rep = .gc_managed, .field_index = 0 },
+    };
+    const layouts = [_]gc_layout.GcStructLayout{
+        .{ .name = "A", .fields = fields_a[0..] },
+        .{ .name = "B", .fields = fields_b[0..] },
+    };
+    var out = std.ArrayList(u8).empty;
+    defer out.deinit(std.testing.allocator);
+    try std.testing.expectError(
+        error.UnsupportedGcSyncType,
+        emit_gc_struct_prelude(std.testing.allocator, &out, layouts[0..]),
+    );
+}
+
+test "GC struct prelude rejects resource fields" {
+    const fields = [_]gc_layout.GcFieldLayout{
+        .{ .name = "ticket", .ty = "Ticket", .rep = .resource_handle, .field_index = 0 },
+    };
+    const layouts = [_]gc_layout.GcStructLayout{
+        .{ .name = "Envelope", .fields = fields[0..] },
+    };
+    var out = std.ArrayList(u8).empty;
+    defer out.deinit(std.testing.allocator);
+    try std.testing.expectError(
+        error.UnsupportedGcSyncType,
+        emit_gc_struct_prelude(std.testing.allocator, &out, layouts[0..]),
+    );
+}
+
+test "GC struct prelude rejects names colliding after lowering" {
+    const fields = [_]gc_layout.GcFieldLayout{
+        .{ .name = "value", .ty = "[u8]", .rep = .gc_managed, .field_index = 0 },
+    };
+    const layouts = [_]gc_layout.GcStructLayout{
+        .{ .name = "Box", .fields = fields[0..] },
+        .{ .name = "box", .fields = fields[0..] },
+    };
+    var out = std.ArrayList(u8).empty;
+    defer out.deinit(std.testing.allocator);
+    try std.testing.expectError(
+        error.UnsupportedGcSyncType,
+        emit_gc_struct_prelude(std.testing.allocator, &out, layouts[0..]),
+    );
+}
+
+test "GC sync prelude omits unused u32 array type" {
+    var out = std.ArrayList(u8).empty;
+    defer out.deinit(std.testing.allocator);
+    try emit_gc_sync_prelude(std.testing.allocator, &out, &.{}, &.{}, false, [_]bool{false} ** gc_layout.scalar_array_specs.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "$do_u32") == null);
 }

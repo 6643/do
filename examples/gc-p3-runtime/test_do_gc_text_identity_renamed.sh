@@ -13,7 +13,7 @@ if [ ! -x "$wasmtime_bin" ]; then
 fi
 
 wat_path="$tmp_dir/text-identity-renamed.wat"
-DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build "$fixture" --gc-core -o "$wat_path"
+zig run "$repo_root/src/build/gc_sync_probe.zig" -- "$fixture" "$wat_path" relay
 wasm-tools parse "$wat_path" -o "$tmp_dir/text-identity-renamed.wasm"
 "$wasmtime_bin" compile -W gc=y -o "$tmp_dir/text-identity-renamed.compiled" "$wat_path"
 

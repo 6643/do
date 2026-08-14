@@ -16,9 +16,15 @@ pub const SuspendableRootPlan = struct { fields: []const SuspendableRootField };
 
 pub fn build_root_plan(allocator: std.mem.Allocator, locals: []const RootLocal, mode: RootMode) !RootPlan {
     var slot_count: usize = 0;
-    for (locals) |local| {
+    for (locals, 0..) |local, index| {
         if (local.rep == .resource_handle) return error.ResourceCannotBeGcRoot;
-        if (local.rep == .gc_managed) slot_count += if (mode == .synchronous) 1 else 5;
+        if (local.rep != .gc_managed) continue;
+        for (locals[0..index]) |previous| {
+            if (previous.rep == .gc_managed and std.mem.eql(u8, previous.name, local.name)) {
+                return error.DuplicateRootLocal;
+            }
+        }
+        slot_count += if (mode == .synchronous) 1 else 5;
     }
 
     var slots = try allocator.alloc(RootSlot, slot_count);

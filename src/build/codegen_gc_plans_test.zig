@@ -22,6 +22,17 @@ test "GC root plan excludes inline values and rejects resources" {
     try std.testing.expectError(error.ResourceCannotBeGcRoot, roots.build_root_plan(std.testing.allocator, resource_locals[0..], .synchronous));
 }
 
+test "synchronous GC root plan rejects duplicate managed locals" {
+    const locals = [_]roots.RootLocal{
+        .{ .name = "message", .rep = .gc_managed },
+        .{ .name = "message", .rep = .gc_managed },
+    };
+    try std.testing.expectError(
+        error.DuplicateRootLocal,
+        roots.build_root_plan(std.testing.allocator, locals[0..], .synchronous),
+    );
+}
+
 test "ABI plan rejects GC references at canonical boundary" {
     const illegal = abi.AbiPlan{
         .package = "pkg",

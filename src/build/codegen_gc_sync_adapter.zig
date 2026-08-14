@@ -11,6 +11,7 @@ pub const TypeFacts = struct {
     rep: ValueRep,
     layout: ?layout.GcLeafLayout,
     aggregate_layout: ?*const layout.GcStructLayout = null,
+    payload_union_layout: ?*const layout.GcPayloadUnionLayout = null,
     wasm_type: []const u8,
 };
 
@@ -30,10 +31,28 @@ pub fn classify_admitted_type_with_layouts(
     structs: []const representation.StructShape,
     layouts: []const layout.GcStructLayout,
 ) Error!TypeFacts {
+    return classify_admitted_type_with_layouts_and_unions(ty, structs, layouts, &.{});
+}
+
+pub fn classify_admitted_type_with_layouts_and_unions(
+    ty: []const u8,
+    structs: []const representation.StructShape,
+    layouts: []const layout.GcStructLayout,
+    payload_unions: []const layout.GcPayloadUnionLayout,
+) Error!TypeFacts {
+    if (find_payload_union_layout(payload_unions, ty)) |payload_union| {
+        return .{
+            .rep = .gc_managed,
+            .layout = null,
+            .aggregate_layout = null,
+            .payload_union_layout = payload_union,
+            .wasm_type = "",
+        };
+    }
     const rep = representation.classify_type(ty, structs, &.{}) catch return error.UnsupportedGcSyncType;
     const leaf_layout = layout.leaf_layout_for_type(ty);
     if (rep == .resource_handle) return error.UnsupportedGcSyncType;
-    const aggregate_layout = if (rep == .gc_managed and leaf_layout == null)
+    const aggregate_layout = if (rep == .gc_managed and leaf_layout == null and !is_gc_sync_tuple_text_bytes(ty))
         find_struct_layout(layouts, ty) orelse return error.UnsupportedGcSyncType
     else
         null;
@@ -41,8 +60,30 @@ pub fn classify_admitted_type_with_layouts(
     const wasm_type = if (leaf_layout) |leaf| switch (leaf) {
         .text => "(ref null $do_text)",
         .byte_array => "(ref null $do_bytes)",
-    } else if (aggregate_layout != null) "(ref null $gc_struct)" else try scalar_wasm_type(ty);
+        .scalar_array => try scalar_array_wasm_type(ty),
+    } else if (is_gc_sync_tuple_text_bytes(ty)) "(ref null $tuple_text_bytes)" else if (aggregate_layout != null) "(ref null $gc_struct)" else try scalar_wasm_type(ty);
     return .{ .rep = rep, .layout = leaf_layout, .aggregate_layout = aggregate_layout, .wasm_type = wasm_type };
+}
+
+fn scalar_array_wasm_type(ty: []const u8) Error![]const u8 {
+    const spec = layout.scalar_array_spec_for_type(ty) orelse return error.UnsupportedGcSyncType;
+    if (std.mem.eql(u8, spec.list_ty, "[bool]")) return "(ref null $do_bool)";
+    if (std.mem.eql(u8, spec.list_ty, "[i8]")) return "(ref null $do_i8)";
+    if (std.mem.eql(u8, spec.list_ty, "[i16]")) return "(ref null $do_i16)";
+    if (std.mem.eql(u8, spec.list_ty, "[i32]")) return "(ref null $do_i32)";
+    if (std.mem.eql(u8, spec.list_ty, "[i64]")) return "(ref null $do_i64)";
+    if (std.mem.eql(u8, spec.list_ty, "[u16]")) return "(ref null $do_u16)";
+    if (std.mem.eql(u8, spec.list_ty, "[u32]")) return "(ref null $do_u32)";
+    if (std.mem.eql(u8, spec.list_ty, "[u64]")) return "(ref null $do_u64)";
+    if (std.mem.eql(u8, spec.list_ty, "[isize]")) return "(ref null $do_isize)";
+    if (std.mem.eql(u8, spec.list_ty, "[usize]")) return "(ref null $do_usize)";
+    if (std.mem.eql(u8, spec.list_ty, "[f32]")) return "(ref null $do_f32)";
+    if (std.mem.eql(u8, spec.list_ty, "[f64]")) return "(ref null $do_f64)";
+    return error.UnsupportedGcSyncType;
+}
+
+pub fn is_gc_sync_tuple_text_bytes(ty: []const u8) bool {
+    return std.mem.eql(u8, ty, "Tuple<text,[u8]>");
 }
 
 pub fn is_admitted_managed_type(ty: []const u8) bool {
@@ -56,6 +97,16 @@ pub fn is_admitted_managed_type_with_layouts(
     layouts: []const layout.GcStructLayout,
 ) bool {
     const facts = classify_admitted_type_with_layouts(ty, structs, layouts) catch return false;
+    return facts.rep == .gc_managed;
+}
+
+pub fn is_admitted_managed_type_with_layouts_and_unions(
+    ty: []const u8,
+    structs: []const representation.StructShape,
+    layouts: []const layout.GcStructLayout,
+    payload_unions: []const layout.GcPayloadUnionLayout,
+) bool {
+    const facts = classify_admitted_type_with_layouts_and_unions(ty, structs, layouts, payload_unions) catch return false;
     return facts.rep == .gc_managed;
 }
 
@@ -75,7 +126,24 @@ pub fn append_wasm_type_for(
     structs: []const representation.StructShape,
     layouts: []const layout.GcStructLayout,
 ) anyerror!void {
-    const facts = try classify_admitted_type_with_layouts(ty, structs, layouts);
+    return append_wasm_type_for_with_unions(allocator, out, ty, structs, layouts, &.{});
+}
+
+pub fn append_wasm_type_for_with_unions(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    ty: []const u8,
+    structs: []const representation.StructShape,
+    layouts: []const layout.GcStructLayout,
+    payload_unions: []const layout.GcPayloadUnionLayout,
+) anyerror!void {
+    const facts = try classify_admitted_type_with_layouts_and_unions(ty, structs, layouts, payload_unions);
+    if (facts.payload_union_layout) |payload_union| {
+        try out.appendSlice(allocator, "(ref null $");
+        for (payload_union.name) |ch| try out.append(allocator, std.ascii.toLower(ch));
+        try out.append(allocator, ')');
+        return;
+    }
     if (facts.aggregate_layout) |aggregate| {
         try out.appendSlice(allocator, "(ref null $");
         for (aggregate.name) |ch| try out.append(allocator, std.ascii.toLower(ch));
@@ -83,6 +151,13 @@ pub fn append_wasm_type_for(
         return;
     }
     try out.appendSlice(allocator, facts.wasm_type);
+}
+
+fn find_payload_union_layout(layouts: []const layout.GcPayloadUnionLayout, name: []const u8) ?*const layout.GcPayloadUnionLayout {
+    for (layouts) |*item| {
+        if (std.mem.eql(u8, item.name, name)) return item;
+    }
+    return null;
 }
 
 fn scalar_wasm_type(ty: []const u8) Error![]const u8 {
