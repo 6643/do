@@ -67,6 +67,11 @@ const CallShape = struct {
     close_idx: usize,
 };
 
+const StructCtorValue = struct {
+    start_idx: usize,
+    end_idx: usize,
+};
+
 const GcListTemps = struct {
     bytes_next_name: []u8,
     scalar_next_names: [gc_layout.scalar_array_specs.len][]u8,
@@ -183,10 +188,21 @@ const BodyEmitter = struct {
         }
     }
 
-    fn emit_literal(self: *BodyEmitter, token: lexer.Token) ![]const u8 {
+    fn emit_literal(self: *BodyEmitter, token: lexer.Token, expected: ?[]const u8) ![]const u8 {
         if (token.kind == .string) {
             const bytes = try codegen_tokens.decode_quoted_string_token(self.allocator, token.lexeme);
             defer self.allocator.free(bytes);
+            if (expected) |wanted| {
+                if (std.mem.eql(u8, wanted, "[u8]")) {
+                    if (bytes.len == 0) {
+                        try self.append(INDENT ++ "i32.const 0\n    array.new_default $do_bytes\n", .{});
+                    } else {
+                        for (bytes) |byte| try self.append(INDENT ++ "i32.const {d}\n", .{byte});
+                        try self.append(INDENT ++ "array.new_fixed $do_bytes {d}\n", .{bytes.len});
+                    }
+                    return "[u8]";
+                }
+            }
             try self.append(INDENT ++ "i32.const {d}\n", .{bytes.len});
             if (bytes.len == 0) {
                 try self.append(INDENT ++ "i32.const 0\n", .{});
@@ -347,6 +363,28 @@ const BodyEmitter = struct {
         return field.ty;
     }
 
+    fn emit_get_scalar_list_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
+        if (start_idx + 1 >= end_idx or !tok_eq(self.tokens[start_idx], "@") or !tok_eq(self.tokens[start_idx + 1], "get")) return null;
+        if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx + 2], "(")) return error.UnsupportedGcSyncExpression;
+        const close_idx = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return error.UnsupportedGcSyncExpression;
+        if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
+        const receiver_end = find_arg_end(self.tokens, start_idx + 3, close_idx);
+        if (receiver_end != start_idx + 4 or receiver_end >= close_idx or !tok_eq(self.tokens[receiver_end], ",") or self.tokens[start_idx + 3].kind != .ident) return null;
+        const receiver_name = find_local_name(self.locals.locals.items, self.tokens[start_idx + 3].lexeme) orelse return error.UnknownGcSyncLocal;
+        const list_ty = find_local_type(self.locals.locals.items, self.tokens[start_idx + 3].lexeme) orelse return error.UnknownGcSyncLocal;
+        if (!std.mem.eql(u8, list_ty, "[u8]") and gc_layout.scalar_array_spec_for_type(list_ty) == null) return null;
+        const index_start = receiver_end + 1;
+        const index_end = find_arg_end(self.tokens, index_start, close_idx);
+        if (index_end != close_idx) return error.UnsupportedGcSyncExpression;
+        const elem_ty = type_name.storage_elem_type_from_name(list_ty) orelse return error.UnsupportedGcSyncType;
+        try ensure_compatible(expected, elem_ty);
+        const array_name = try self.list_array_name(list_ty);
+        try self.append(INDENT ++ "local.get ${s}\n    ref.as_non_null\n", .{receiver_name});
+        _ = try self.emit_expr(index_start, index_end, "usize");
+        try self.append(INDENT ++ "array.get {s}\n", .{array_name});
+        return elem_ty;
+    }
+
     fn emit_get_tuple_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
         if (start_idx + 1 >= end_idx or !tok_eq(self.tokens[start_idx], "@") or !tok_eq(self.tokens[start_idx + 1], "get")) return null;
         if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx + 2], "(")) return null;
@@ -406,6 +444,46 @@ const BodyEmitter = struct {
         _ = try self.emit_expr(element_start, second_end, "[u8]");
         try self.append(INDENT ++ "struct.new $tuple_text_bytes\n", .{});
         return expected.?;
+    }
+
+    fn emit_struct_ctor_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
+        if (start_idx + 1 >= end_idx or self.tokens[start_idx].kind != .ident or !tok_eq(self.tokens[start_idx + 1], "{")) return null;
+        const expected_ty = expected orelse return null;
+        if (!std.mem.eql(u8, self.tokens[start_idx].lexeme, expected_ty)) return null;
+        const layout = find_gc_layout(self.gc_layouts, expected_ty) orelse return null;
+        const close_idx = find_matching_in_range(self.tokens, start_idx + 1, "{", "}", end_idx) catch return error.UnsupportedGcSyncExpression;
+        if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
+
+        var values = try self.allocator.alloc(?StructCtorValue, layout.fields.len);
+        defer self.allocator.free(values);
+        for (values) |*value| value.* = null;
+
+        var field_start = start_idx + 2;
+        while (field_start < close_idx) {
+            if (tok_eq(self.tokens[field_start], ",")) {
+                field_start += 1;
+                continue;
+            }
+            if (self.tokens[field_start].kind != .ident or field_start + 1 >= close_idx or !tok_eq(self.tokens[field_start + 1], "=")) return error.UnsupportedGcSyncExpression;
+            const value_start = field_start + 2;
+            const value_end = find_arg_end(self.tokens, value_start, close_idx);
+            if (value_end <= value_start) return error.UnsupportedGcSyncExpression;
+            const field = find_gc_field(layout, self.tokens[field_start].lexeme) orelse return error.UnsupportedGcSyncExpression;
+            const field_index: usize = @intCast(field.field_index);
+            if (values[field_index] != null) return error.UnsupportedGcSyncExpression;
+            values[field_index] = .{ .start_idx = value_start, .end_idx = value_end };
+            field_start = value_end;
+            if (field_start < close_idx and !tok_eq(self.tokens[field_start], ",")) return error.UnsupportedGcSyncExpression;
+        }
+
+        for (layout.fields, 0..) |field, index| {
+            const value = values[index] orelse return error.UnsupportedGcSyncExpression;
+            _ = try self.emit_expr(value.start_idx, value.end_idx, field.ty);
+        }
+        try self.append(INDENT ++ "struct.new $", .{});
+        for (layout.name) |ch| try self.out.append(self.allocator, std.ascii.toLower(ch));
+        try self.out.appendSlice(self.allocator, "\n");
+        return expected_ty;
     }
 
     fn emit_set_field_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
@@ -671,15 +749,17 @@ const BodyEmitter = struct {
         if (try self.emit_len_expr(range.start, range.end, expected)) |length_ty| return length_ty;
         if (try self.emit_eq_expr(range.start, range.end, expected)) |comparison_ty| return comparison_ty;
         if (try self.emit_put_byte_list_expr(range.start, range.end, expected)) |list_ty| return list_ty;
+        if (try self.emit_get_scalar_list_expr(range.start, range.end, expected)) |element_ty| return element_ty;
         if (try self.emit_get_tuple_expr(range.start, range.end, expected)) |field_ty| return field_ty;
         if (try self.emit_get_field_expr(range.start, range.end, expected)) |field_ty| return field_ty;
         if (try self.emit_set_field_expr(range.start, range.end, expected)) |struct_ty| return struct_ty;
         if (try self.emit_tuple_text_bytes_constructor(range.start, range.end, expected)) |tuple_ty| return tuple_ty;
+        if (try self.emit_struct_ctor_expr(range.start, range.end, expected)) |struct_ty| return struct_ty;
         if (try self.emit_payload_union_ctor(range.start, range.end, expected)) |union_ty| return union_ty;
         if (range.start + 1 == range.end) {
             const token = self.tokens[range.start];
             if (token.kind == .string) {
-                const actual = try self.emit_literal(token);
+                const actual = try self.emit_literal(token, expected);
                 try ensure_compatible(expected, actual);
                 return actual;
             }
@@ -1933,6 +2013,23 @@ test "GC sync rebuilds a struct for direct text field replacement" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
+test "GC sync lowers a managed struct constructor with a byte-list field" {
+    const source =
+        \\Box {
+        \\    value [u8]
+        \\}
+        \\make(bytes [u8]) -> Box {
+        \\    return Box{value = bytes}
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
 test "GC sync rebuilds a struct for a scalar-list managed field replacement" {
     const source =
         \\Box {
@@ -2053,6 +2150,33 @@ test "GC sync lowers a byte-list literal through a typed local" {
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(local $value (ref null $do_bytes))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_bytes 3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers a string literal in a byte-list result context" {
+    const source =
+        \\make() -> [u8] {
+        \\    return "abc"
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(result (ref null $do_bytes))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_bytes 3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $do_text") == null);
+}
+
+test "GC sync lowers scalar-list get through a typed GC array" {
+    const source =
+        \\first(xs [i32]) -> i32 {
+        \\    return @get(xs, 0)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get $do_i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
