@@ -587,12 +587,66 @@ const BodyEmitter = struct {
         if (func.results.len != 1 or !std.mem.eql(u8, func.results[0], "u8")) return error.UnsupportedGcSyncType;
     }
 
+    fn emit_len_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
+        if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx], "@") or !tok_eq(self.tokens[start_idx + 1], "len")) return null;
+        if (!tok_eq(self.tokens[start_idx + 2], "(")) return error.UnsupportedGcSyncExpression;
+        const close_idx = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return error.UnsupportedGcSyncExpression;
+        if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
+
+        const arg_start = start_idx + 3;
+        const arg_end = find_arg_end(self.tokens, arg_start, close_idx);
+        if (arg_end != close_idx) return error.UnsupportedGcSyncExpression;
+        const operand_ty = try self.emit_expr(arg_start, arg_end, null);
+        const is_text = std.mem.eql(u8, operand_ty, "text");
+        const is_list = std.mem.eql(u8, operand_ty, "[u8]") or gc_layout.scalar_array_spec_for_type(operand_ty) != null;
+        if (!is_text and !is_list) return error.UnsupportedGcSyncType;
+        try ensure_compatible(expected, "usize");
+        if (is_text) {
+            try self.append(INDENT ++ "ref.as_non_null\n    struct.get $do_text $length\n", .{});
+        } else {
+            try self.append(INDENT ++ "ref.as_non_null\n    array.len\n", .{});
+        }
+        return "usize";
+    }
+
+    fn emit_eq_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
+        if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx], "@") or !tok_eq(self.tokens[start_idx + 1], "eq")) return null;
+        if (!tok_eq(self.tokens[start_idx + 2], "(")) return error.UnsupportedGcSyncExpression;
+        const close_idx = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return error.UnsupportedGcSyncExpression;
+        if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
+
+        const first_end = find_arg_end(self.tokens, start_idx + 3, close_idx);
+        if (first_end >= close_idx or !tok_eq(self.tokens[first_end], ",")) return error.UnsupportedGcSyncExpression;
+        const second_start = first_end + 1;
+        const second_end = find_arg_end(self.tokens, second_start, close_idx);
+        if (second_end != close_idx) return error.UnsupportedGcSyncExpression;
+
+        try ensure_compatible(expected, "bool");
+        const left_ty = try self.emit_expr(start_idx + 3, first_end, null);
+        if (!type_name.is_core_wasm_scalar(left_ty)) return error.UnsupportedGcSyncType;
+        const right_ty = try self.emit_expr(second_start, second_end, left_ty);
+        if (!std.mem.eql(u8, left_ty, right_ty)) return error.GcSyncTypeMismatch;
+
+        const op = if (std.mem.eql(u8, payload_wat.wasm_type(left_ty), "i64"))
+            "i64.eq"
+        else if (std.mem.eql(u8, payload_wat.wasm_type(left_ty), "f32"))
+            "f32.eq"
+        else if (std.mem.eql(u8, payload_wat.wasm_type(left_ty), "f64"))
+            "f64.eq"
+        else
+            "i32.eq";
+        try self.append(INDENT ++ "{s}\n", .{op});
+        return "bool";
+    }
+
     fn emit_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror![]const u8 {
         const range = trim_parens(self.tokens, start_idx, end_idx);
         if (range.start >= range.end) return error.UnsupportedGcSyncExpression;
         if (range.start + 1 < range.end and tok_eq(self.tokens[range.start], ".") and tok_eq(self.tokens[range.start + 1], "{")) {
             return self.emit_byte_list_literal(range.start, range.end, expected);
         }
+        if (try self.emit_len_expr(range.start, range.end, expected)) |length_ty| return length_ty;
+        if (try self.emit_eq_expr(range.start, range.end, expected)) |comparison_ty| return comparison_ty;
         if (try self.emit_put_byte_list_expr(range.start, range.end, expected)) |list_ty| return list_ty;
         if (try self.emit_get_tuple_expr(range.start, range.end, expected)) |field_ty| return field_ty;
         if (try self.emit_get_field_expr(range.start, range.end, expected)) |field_ty| return field_ty;
@@ -2192,4 +2246,64 @@ test "GC sync rejects a generic union binding before WAT" {
         \\start() {}
     ;
     try std.testing.expectError(error.UnsupportedGcSyncGenericUnion, emit_test_source(std.testing.allocator, source));
+}
+
+test "GC sync lowers len for admitted managed values" {
+    const source =
+        \\text_len(value text) -> usize {
+        \\    return @len(value)
+        \\}
+        \\bytes_len(value [u8]) -> usize {
+        \\    return @len(value)
+        \\}
+        \\scalar_len(value [i16]) -> usize {
+        \\    return @len(value)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $do_text $length") != null);
+    try std.testing.expect(std.mem.count(u8, wat, "array.len") >= 2);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers eq for admitted scalar values" {
+    const source =
+        \\eq_i64(value i64) -> bool {
+        \\    return @eq(value, 7)
+        \\}
+        \\eq_f32(value f32) -> bool {
+        \\    return @eq(value, 1.5)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i64.eq") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "f32.eq") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync rejects len for an unadmitted managed aggregate" {
+    const source =
+        \\Box {
+        \\    value [u8]
+        \\}
+        \\length(value Box) -> usize {
+        \\    return @len(value)
+        \\}
+        \\start() {}
+    ;
+    try std.testing.expectError(error.UnsupportedGcSyncType, emit_test_source(std.testing.allocator, source));
+}
+
+test "GC sync rejects eq for managed references" {
+    const source =
+        \\same(left text, right text) -> bool {
+        \\    return @eq(left, right)
+        \\}
+        \\start() {}
+    ;
+    try std.testing.expectError(error.UnsupportedGcSyncType, emit_test_source(std.testing.allocator, source));
 }
