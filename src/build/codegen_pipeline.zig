@@ -7,6 +7,7 @@ const lexer = @import("lexer.zig");
 const ownership = @import("ownership.zig");
 const ownership_facts = @import("ownership_facts.zig");
 const parser = @import("parser.zig");
+const sema_tokens = @import("sema_tokens.zig");
 const payload_wat = @import("wat_payload.zig");
 const runtime_prelude_wat = @import("runtime_prelude_wat.zig");
 const storage_wat = @import("wat_storage.zig");
@@ -167,6 +168,8 @@ const decode_quoted_string_token = codegen_tokens.decode_quoted_string_token;
 const has_string = codegen_names.has_string;
 const find_top_level_type_separator = codegen_tokens.find_top_level_type_separator;
 const find_top_level_type_separator_from = codegen_tokens.find_top_level_type_separator_from;
+const is_declared_type_name = sema_tokens.is_declared_type_name;
+const is_top_level_decl_head = sema_tokens.is_top_level_decl_head;
 
 const CallLastUseMoveContext = context.CallLastUseMoveContext;
 const codegen_host_imports = @import("codegen_host_imports.zig");
@@ -523,6 +526,213 @@ fn tokens_require_async_lowering(tokens: []const lexer.Token) bool {
     return false;
 }
 
+fn tokens_have_gc_sync_candidate(tokens: []const lexer.Token) bool {
+    const has_managed_struct_decl = tokens_have_managed_struct_declaration(tokens);
+    var i: usize = 0;
+    while (i + 1 < tokens.len) : (i += 1) {
+        if (tokens[i].kind != .ident or !tok_eq(tokens[i + 1], "(") or
+            !is_top_level_decl_head(tokens, i)) continue;
+        const close_params = find_matching(tokens, i + 1, "(", ")") catch continue;
+        const body_open = find_top_level_block_open(tokens, close_params + 1, tokens.len) orelse {
+            i = close_params;
+            continue;
+        };
+        const body_close = find_matching(tokens, body_open, "{", "}") catch {
+            i = body_open;
+            continue;
+        };
+        for (tokens[i..body_open]) |token| {
+            if (token.kind == .ident and std.mem.eql(u8, token.lexeme, "text")) return true;
+            if (token.kind == .symbol and std.mem.eql(u8, token.lexeme, "[")) return true;
+            if (has_managed_struct_decl and token.kind == .ident and
+                is_declared_type_name(token.lexeme) and struct_name_is_managed(tokens, token.lexeme, 0)) return true;
+        }
+        // Body-only managed locals are intentionally left on the legacy route
+        // until their complete storage/control-flow shape is admitted.  The
+        // GC candidate contract is driven by declared parameter/result types,
+        // which prevents a local storage helper from being misrouted merely
+        // because its body mentions `text` or a list token.
+        i = body_close;
+    }
+    return false;
+}
+
+const StructTokenRange = struct {
+    open_idx: usize,
+    close_idx: usize,
+};
+
+fn is_top_level_struct_decl_start(tokens: []const lexer.Token, idx: usize) bool {
+    if (idx + 1 >= tokens.len or tokens[idx].kind != .ident) return false;
+    if (!is_declared_type_name(tokens[idx].lexeme) or !is_top_level_decl_head(tokens, idx)) return false;
+    if (idx > 0 and tok_eq(tokens[idx - 1], "->")) return false;
+    return tok_eq(tokens[idx + 1], "{");
+}
+
+fn tokens_have_managed_struct_declaration(tokens: []const lexer.Token) bool {
+    var depth: usize = 0;
+    var i: usize = 0;
+    while (i + 1 < tokens.len) : (i += 1) {
+        if (depth == 0 and is_top_level_struct_decl_start(tokens, i)) {
+            const close_idx = find_matching(tokens, i + 1, "{", "}") catch {
+                i += 1;
+                continue;
+            };
+            for (tokens[i + 2 .. close_idx]) |token| {
+                if (token.kind == .ident and std.mem.eql(u8, token.lexeme, "text")) return true;
+                if (token.kind == .symbol and std.mem.eql(u8, token.lexeme, "[")) return true;
+            }
+            i = close_idx;
+            continue;
+        }
+        if (tok_eq(tokens[i], "{")) {
+            depth += 1;
+        } else if (tok_eq(tokens[i], "}") and depth != 0) {
+            depth -= 1;
+        }
+    }
+    return false;
+}
+
+fn find_top_level_struct_range(tokens: []const lexer.Token, name: []const u8) ?StructTokenRange {
+    var depth: usize = 0;
+    var i: usize = 0;
+    while (i + 1 < tokens.len) : (i += 1) {
+        if (depth == 0 and is_top_level_struct_decl_start(tokens, i) and
+            std.mem.eql(u8, tokens[i].lexeme, name))
+        {
+            const close_idx = find_matching(tokens, i + 1, "{", "}") catch return null;
+            return .{ .open_idx = i + 1, .close_idx = close_idx };
+        }
+        if (tok_eq(tokens[i], "{")) {
+            depth += 1;
+        } else if (tok_eq(tokens[i], "}") and depth != 0) {
+            depth -= 1;
+        }
+    }
+    return null;
+}
+
+fn struct_name_is_managed(tokens: []const lexer.Token, name: []const u8, depth: usize) bool {
+    if (depth > tokens.len or !is_declared_type_name(name)) return false;
+    const range = find_top_level_struct_range(tokens, name) orelse return false;
+    for (tokens[range.open_idx + 1 .. range.close_idx]) |token| {
+        if (token.kind == .ident and std.mem.eql(u8, token.lexeme, "text")) return true;
+        if (token.kind == .symbol and std.mem.eql(u8, token.lexeme, "[")) return true;
+    }
+    var i = range.open_idx + 1;
+    while (i + 1 < range.close_idx) : (i += 1) {
+        if (tokens[i].kind != .ident or tokens[i + 1].kind != .ident or
+            !is_declared_type_name(tokens[i + 1].lexeme)) continue;
+        if (struct_name_is_managed(tokens, tokens[i + 1].lexeme, depth + 1)) return true;
+    }
+    return false;
+}
+
+fn tokens_have_host_or_wit_binding(tokens: []const lexer.Token) bool {
+    for (tokens, 0..) |token, index| {
+        if (!tok_eq(token, "@") or index + 1 >= tokens.len or tokens[index + 1].kind != .ident) continue;
+        const intrinsic = tokens[index + 1].lexeme;
+        if (std.mem.eql(u8, intrinsic, "host") or
+            std.mem.startsWith(u8, intrinsic, "host_") or
+            std.mem.startsWith(u8, intrinsic, "wasi_")) return true;
+    }
+    return false;
+}
+
+fn graph_has_gc_sync_candidate(graph: *const imports.ModuleGraph) bool {
+    for (graph.modules) |module| {
+        if (tokens_have_gc_sync_candidate(module.tokens)) return true;
+    }
+    return false;
+}
+
+fn graph_has_host_or_wit_binding(graph: *const imports.ModuleGraph) bool {
+    for (graph.modules) |module| {
+        if (tokens_have_host_or_wit_binding(module.tokens)) return true;
+    }
+    return false;
+}
+
+fn is_gc_sync_capability_error(err: anyerror) bool {
+    return switch (err) {
+        error.GcSyncArityMismatch,
+        error.GcSyncTypeMismatch,
+        error.MissingGcSyncReturn,
+        error.NoMatchingCall,
+        error.ResourceInManagedAggregate,
+        error.UnsupportedLowering,
+        error.UnexpectedGcSyncReturn,
+        error.UnknownGcSyncLocal,
+        error.UnknownType,
+        error.UnsupportedGcAggregate,
+        error.UnsupportedGcSyncAggregate,
+        error.UnsupportedGcSyncAsync,
+        error.UnsupportedGcSyncCall,
+        error.UnsupportedGcSyncCallback,
+        error.UnsupportedGcSyncControl,
+        error.UnsupportedGcSyncExpression,
+        error.UnsupportedGcSyncGenericResource,
+        error.UnsupportedGcSyncGenericUnion,
+        error.UnsupportedGcSyncGenericUnresolved,
+        error.UnsupportedGcSyncModuleGraph,
+        error.UnsupportedGcSyncOverload,
+        error.UnsupportedGcSyncProducer,
+        error.UnsupportedGcSyncProgram,
+        error.UnsupportedGcSyncResult,
+        error.UnsupportedGcSyncStatement,
+        error.UnsupportedGcSyncTupleStorage,
+        error.UnsupportedGcSyncType,
+        error.UnsupportedGcSyncUnionArms,
+        error.UnsupportedGcSyncUnionConstructor,
+        error.UnsupportedGcSyncUnionPayload,
+        => true,
+        else => false,
+    };
+}
+
+fn validate_gc_sync_output(wat: []const u8) !void {
+    if (std.mem.indexOf(u8, wat, "__arc_") != null) {
+        return error.GcSyncOutputContainsArc;
+    }
+}
+
+fn emit_checked_gc_sync(
+    allocator: std.mem.Allocator,
+    program: parser.Program,
+    tokens: []const lexer.Token,
+    module_graph: ?*const imports.ModuleGraph,
+) ![]u8 {
+    const wat = try codegen_gc_sync.emit_gc_wat_for_supported_program(allocator, program, tokens, module_graph);
+    validate_gc_sync_output(wat) catch |err| {
+        allocator.free(wat);
+        return err;
+    };
+    return wat;
+}
+
+fn try_emit_default_gc_sync(
+    allocator: std.mem.Allocator,
+    program: parser.Program,
+    tokens: []const lexer.Token,
+    module_graph: ?*const imports.ModuleGraph,
+) !?[]u8 {
+    const candidate = tokens_have_gc_sync_candidate(tokens) or
+        if (module_graph) |graph| graph_has_gc_sync_candidate(graph) else false;
+    if (!candidate) return null;
+    if (tokens_have_host_or_wit_binding(tokens)) return null;
+    if (module_graph) |graph| if (graph_has_host_or_wit_binding(graph)) return null;
+
+    const wat = emit_checked_gc_sync(allocator, program, tokens, module_graph) catch |err| {
+        // A managed candidate must never silently re-enter the ARC emitter.
+        // Unsupported shapes remain explicit capability errors until their GC
+        // lowering is admitted by the migration ledger.
+        if (is_gc_sync_capability_error(err)) return err;
+        return err;
+    };
+    return wat;
+}
+
 pub fn emit_wat(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph) ![]u8 {
     return emit_wat_with_options(allocator, program, tokens, module_graph, .{});
 }
@@ -532,6 +742,351 @@ test "aggregate await tokens require async lowering" {
     defer std.testing.allocator.free(tokens);
 
     try std.testing.expect(tokens_require_async_lowering(tokens));
+}
+
+test "GC candidate scan skips scalar-only control flow" {
+    const source =
+        \\sum_tail(n i32, acc i32) -> i32 {
+        \\    if @eq(n, 0) return acc
+        \\    next_n i32 = @sub(n, 1)
+        \\    next_acc i32 = @add(acc, n)
+        \\    return sum_tail(next_n, next_acc)
+        \\}
+        \\start() {
+        \\    out i32 = sum_tail(5, 0)
+        \\    return
+        \\}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try std.testing.expect(!tokens_have_gc_sync_candidate(tokens));
+}
+
+test "GC struct scan ignores function return braces" {
+    const source =
+        \\sum_tail(n i32, acc i32) -> i32 {
+        \\    return acc
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try std.testing.expect(find_top_level_struct_range(tokens, "i32") == null);
+}
+
+test "GC candidate scan admits nested managed structs" {
+    const source =
+        \\Outer {
+        \\    inner Inner
+        \\    tag i32
+        \\}
+        \\Inner {
+        \\    value [u8]
+        \\}
+        \\identity(box Outer) -> Outer {
+        \\    return box
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try std.testing.expect(tokens_have_gc_sync_candidate(tokens));
+}
+
+test "normal pipeline exposes a private synchronous GC route" {
+    try std.testing.expect(@hasField(EmitOptions, "gc_sync"));
+}
+
+test "private synchronous GC route emits typed GC for a parsed managed update" {
+    const source =
+        \\Box {
+        \\    value [u8]
+        \\    tag i32
+        \\}
+        \\update(box Box, value [u8]) -> Box {
+        \\    return @set(box, .value, value)
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+    const wat = try emit_wat_with_options(std.testing.allocator, program, tokens, null, .{ .gc_sync = true });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "default pipeline retains ARC for an unconverted scalar path before the G5c cutover" {
+    const source =
+        \\identity(value u32) -> u32 {
+        \\    return value
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+    const wat = try emit_wat_with_options(std.testing.allocator, program, tokens, null, .{});
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_text") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") != null);
+}
+
+test "default pipeline lowers an admitted synchronous managed identity through GC" {
+    const source =
+        \\identity(value text) -> text {
+        \\    return value
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+    const wat = try emit_wat_with_options(std.testing.allocator, program, tokens, null, .{});
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_text") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "gc-root local_bind") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "default pipeline lowers a direct managed struct identity through GC" {
+    const source =
+        \\Box {
+        \\    value [u8]
+        \\}
+        \\identity(box Box) -> Box {
+        \\    return box
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_default_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(param $box (ref null $box))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "default pipeline fails closed for an unsupported managed candidate" {
+    const source =
+        \\Box {
+        \\    value text
+        \\}
+        \\replace(values [Box], value Box) -> [Box] {
+        \\    return @set(values, 0, value)
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+    try std.testing.expectError(
+        error.UnsupportedGcSyncType,
+        emit_wat_with_options(std.testing.allocator, program, tokens, null, .{}),
+    );
+}
+
+test "GC route lowers a reachable imported managed identity" {
+    const source =
+        \\helper = @lib("./helper.do", helper)
+        \\relay(value text) -> text {
+        \\    return helper(value)
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    const imported_tokens = try lexer.tokenize(
+        std.testing.allocator,
+        "helper(value text) -> text { return value }",
+    );
+    defer std.testing.allocator.free(imported_tokens);
+    var modules = [_]imports.ModuleRecord{
+        .{ .path = "./entry.do", .source = null, .owns_source = false, .tokens = tokens, .owns_tokens = false },
+        .{ .path = "./helper.do", .source = null, .owns_source = false, .tokens = imported_tokens, .owns_tokens = false },
+    };
+    var graph = imports.ModuleGraph{ .allocator = std.testing.allocator, .dep_root = "", .modules = modules[0..] };
+    const wat = try emit_wat_with_options(std.testing.allocator, program, tokens, &graph, .{ .gc_sync = true });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $helper") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $helper") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC route lowers a reachable imported managed struct identity" {
+    const source =
+        \\Box = @lib("./helper.do", Box)
+        \\identity = @lib("./helper.do", identity)
+        \\relay(value Box) -> Box {
+        \\    return identity(value)
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    const imported_source =
+        \\Box {
+        \\    value text
+        \\}
+        \\identity(value Box) -> Box {
+        \\    return value
+        \\}
+    ;
+    const imported_tokens = try lexer.tokenize(std.testing.allocator, imported_source);
+    defer std.testing.allocator.free(imported_tokens);
+    var modules = [_]imports.ModuleRecord{
+        .{ .path = "./entry.do", .source = null, .owns_source = false, .tokens = tokens, .owns_tokens = false },
+        .{ .path = "./helper.do", .source = null, .owns_source = false, .tokens = imported_tokens, .owns_tokens = false },
+    };
+    var graph = imports.ModuleGraph{ .allocator = std.testing.allocator, .dep_root = "", .modules = modules[0..] };
+    const wat = try emit_wat_with_options(std.testing.allocator, program, tokens, &graph, .{ .gc_sync = true });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $identity") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $identity") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC route rejects a graph containing an imported host binding" {
+    const source =
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    const imported_source =
+        \\now = @host_func("env", "now", () -> u64)
+    ;
+    const imported_tokens = try lexer.tokenize(std.testing.allocator, imported_source);
+    defer std.testing.allocator.free(imported_tokens);
+    var modules = [_]imports.ModuleRecord{
+        .{ .path = "./entry.do", .source = null, .owns_source = false, .tokens = tokens, .owns_tokens = false },
+        .{ .path = "./clock.do", .source = null, .owns_source = false, .tokens = imported_tokens, .owns_tokens = false },
+    };
+    var graph = imports.ModuleGraph{ .allocator = std.testing.allocator, .dep_root = "", .modules = modules[0..] };
+    try std.testing.expectError(
+        error.UnsupportedGcSyncModuleGraph,
+        emit_wat_with_options(std.testing.allocator, program, tokens, &graph, .{ .gc_sync = true }),
+    );
+}
+
+test "GC route rejects a graph containing an imported WIT declaration" {
+    const source =
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    const imported_source =
+        \\Ticket = @wasi_resource("do:gc/ticket", { .id i64 })
+    ;
+    const imported_tokens = try lexer.tokenize(std.testing.allocator, imported_source);
+    defer std.testing.allocator.free(imported_tokens);
+    var modules = [_]imports.ModuleRecord{
+        .{ .path = "./entry.do", .source = null, .owns_source = false, .tokens = tokens, .owns_tokens = false },
+        .{ .path = "./resource.do", .source = null, .owns_source = false, .tokens = imported_tokens, .owns_tokens = false },
+    };
+    var graph = imports.ModuleGraph{ .allocator = std.testing.allocator, .dep_root = "", .modules = modules[0..] };
+    try std.testing.expectError(
+        error.UnsupportedGcSyncModuleGraph,
+        emit_wat_with_options(std.testing.allocator, program, tokens, &graph, .{ .gc_sync = true }),
+    );
+}
+
+test "private synchronous GC route emits a bounded payload union" {
+    const source =
+        \\Message = Empty | Bytes([u8])
+        \\rewrite(value Message, bytes [u8]) -> Message {
+        \\    return Bytes(bytes)
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+    const wat = try emit_wat_with_options(std.testing.allocator, program, tokens, null, .{ .gc_sync = true });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $message") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $message") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "private synchronous GC route emits a resolved generic managed call" {
+    const source =
+        \\Box {
+        \\    value [u8]
+        \\    tag i32
+        \\}
+        \\#T
+        \\identity(value T) -> T {
+        \\    return value
+        \\}
+        \\relay(input Box) -> Box {
+        \\    return identity(input)
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+    const wat = try emit_wat_with_options(std.testing.allocator, program, tokens, null, .{ .gc_sync = true });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $identity__Box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $identity__Box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "compiled test route emits admitted managed test bodies with GC" {
+    const source =
+        \\test "compiled text identity preserves value" {
+        \\    value text = "hello"
+        \\    return
+        \\}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+    const wat = try emit_test_wat(std.testing.allocator, program, tokens, null);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $__test_0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"__test_0\" (func $__test_0))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"_start\" (func $_start))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $value (ref null $do_text))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-root local_bind $value") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "compiled test GC fallback accepts only explicit admission rejections" {
+    try std.testing.expect(codegen_gc_sync.is_gc_sync_admission_rejection(error.UnsupportedGcSyncType));
+    try std.testing.expect(codegen_gc_sync.is_gc_sync_admission_rejection(error.UnsupportedGcSyncExpression));
+    try std.testing.expect(codegen_gc_sync.is_gc_sync_admission_rejection(error.NoMatchingCall));
+    try std.testing.expect(!codegen_gc_sync.is_gc_sync_admission_rejection(error.OutOfMemory));
+    try std.testing.expect(!codegen_gc_sync.is_gc_sync_admission_rejection(error.UnexpectedResult));
+}
+
+test "GC output guard rejects ARC runtime markers" {
+    try std.testing.expectError(
+        error.GcSyncOutputContainsArc,
+        validate_gc_sync_output("(module\\n  call $__arc_dec\\n)"),
+    );
 }
 
 test "synchronous GC overwrite lowers managed locals without ARC release" {
@@ -618,9 +1173,319 @@ test "synchronous GC managed call transfers typed values" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "call $identity") != null);
 }
 
+test "synchronous GC marks managed call results as roots" {
+    const source =
+        \\make() -> text {
+        \\    return "created"
+        \\}
+        \\forward() -> text {
+        \\    result text = make()
+        \\    return result
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $make") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-root call_result") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "synchronous GC marks payload-union call results as roots" {
+    const source =
+        \\Message = Empty | Bytes([u8])
+        \\make(value [u8]) -> Message {
+        \\    return Bytes(value)
+        \\}
+        \\forward(value [u8]) -> Message {
+        \\    return make(value)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $make") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-root call_result") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "default synchronous pipeline guards converted control and call paths" {
+    const cases = [_]struct {
+        source: []const u8,
+        function_name: []const u8,
+    }{
+        .{
+            .source =
+            \\rewrite(value text) -> text {
+            \\    next text = value
+            \\    next = "changed"
+            \\    return next
+            \\}
+            \\start() {}
+            ,
+            .function_name = "rewrite",
+        },
+        .{
+            .source =
+            \\choose(flag bool, value text) -> text {
+            \\    result text = value
+            \\    if flag {
+            \\        result = "yes"
+            \\    } else {
+            \\        result = "no"
+            \\    }
+            \\    return result
+            \\}
+            \\start() {}
+            ,
+            .function_name = "choose",
+        },
+        .{
+            .source =
+            \\repeat(value text) -> text {
+            \\    current text = value
+            \\    loop {
+            \\        current = value
+            \\        break
+            \\    }
+            \\    return current
+            \\}
+            \\start() {}
+            ,
+            .function_name = "repeat",
+        },
+        .{
+            .source =
+            \\finish(value text) -> text {
+            \\    defer cleanup()
+            \\    return value
+            \\}
+            \\cleanup() -> nil {}
+            \\start() {}
+            ,
+            .function_name = "finish",
+        },
+        .{
+            .source =
+            \\identity(value text) -> text {
+            \\    return value
+            \\}
+            \\forward(value text) -> text {
+            \\    return identity(value)
+            \\}
+            \\start() {}
+            ,
+            .function_name = "forward",
+        },
+    };
+
+    for (cases) |case| {
+        const wat = try emit_default_wat_for_source(std.testing.allocator, case.source);
+        defer std.testing.allocator.free(wat);
+        try expect_synchronous_gc_locals(wat, case.function_name);
+        try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_alloc") == null);
+    }
+}
+
+test "default synchronous pipeline guards converted managed aggregates" {
+    const cases = [_][]const u8{
+        \\Box {
+        \\    value text
+        \\    tag i32
+        \\}
+        \\update(box Box, value text) -> Box {
+        \\    return @set(box, .value, value)
+        \\}
+        \\start() {}
+        ,
+        \\Message = Empty | Bytes([u8])
+        \\rewrite(value Message, bytes [u8]) -> Message {
+        \\    return Bytes(bytes)
+        \\}
+        \\start() {}
+        ,
+        \\rewrite(pair Tuple<text, [u8]>) -> Tuple<text, [u8]> {
+        \\    return Tuple<text, [u8]>{@get(pair, 0), @set(@get(pair, 1), 0, 65)}
+        \\}
+        \\start() {}
+        ,
+    };
+
+    for (cases) |source| {
+        const wat = try emit_default_wat_for_source(std.testing.allocator, source);
+        defer std.testing.allocator.free(wat);
+        try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new") != null);
+        try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_inc") == null);
+        try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_dec") == null);
+        try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_payload") == null);
+        try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_alloc") == null);
+    }
+}
+
+test "synchronous GC parses renamed parameterized byte-list persistent update" {
+    const source =
+        \\replace(bytes [u8], offset usize, next u8) -> [u8] {
+        \\    return @set(bytes, offset, next)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $replace") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.len\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_bytes $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "local.get $offset") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "local.get $next") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_bytes") != null);
+}
+
+test "synchronous GC reserves byte-list update temporaries away from source bindings" {
+    const source =
+        \\replace(__gc_list_next [u8], __gc_list_length usize, next u8) -> [u8] {
+        \\    return @set(__gc_list_next, __gc_list_length, next)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(param $__gc_list_next (ref null $do_bytes))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $__gc_list_next_1 (ref null $do_bytes))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $__gc_list_length_1 i32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_bytes") != null);
+}
+
+test "synchronous GC lowers parsed byte-list literal" {
+    const source =
+        \\make() -> [u8] {
+        \\    return .{7, 12, 17}
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_bytes 3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 7\n    i32.const 12\n    i32.const 17") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "synchronous GC lowers empty parsed byte-list literal" {
+    const source =
+        \\make() -> [u8] {
+        \\    return .{}
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 0\n    array.new_default $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "synchronous GC rejects byte-list literal values outside u8" {
+    const high_source =
+        \\make() -> [u8] {
+        \\    return .{256}
+        \\}
+        \\start() {}
+    ;
+    try std.testing.expectError(error.GcSyncTypeMismatch, emit_gc_wat_for_source(std.testing.allocator, high_source));
+
+    const negative_source =
+        \\make() -> [u8] {
+        \\    return .{-1}
+        \\}
+        \\start() {}
+    ;
+    try std.testing.expectError(error.GcSyncTypeMismatch, emit_gc_wat_for_source(std.testing.allocator, negative_source));
+}
+
+test "synchronous GC keeps byte-list put outside the literal slice" {
+    const source =
+        \\replace(input [u8], index usize, value u8) -> [u8] {
+        \\    return @put(input, index, value)
+        \\}
+        \\start() {}
+    ;
+    try std.testing.expectError(error.UnsupportedGcSyncExpression, emit_gc_wat_for_source(std.testing.allocator, source));
+}
+
+test "synchronous GC lowers one-value byte-list put" {
+    const source =
+        \\append_byte(input [u8], value u8) -> [u8] {
+        \\    return @put(input, value)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_default $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_bytes $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "local.get $value") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "synchronous GC rejects byte-list put spread and multiple values" {
+    const multiple_source =
+        \\append_byte(input [u8]) -> [u8] {
+        \\    return @put(input, 1, 2)
+        \\}
+        \\start() {}
+    ;
+    try std.testing.expectError(error.UnsupportedGcSyncExpression, emit_gc_wat_for_source(std.testing.allocator, multiple_source));
+
+    const spread_source =
+        \\append_byte(input [u8], values [u8]) -> [u8] {
+        \\    return @put(input, ...values)
+        \\}
+        \\start() {}
+    ;
+    try std.testing.expectError(error.UnsupportedGcSyncExpression, emit_gc_wat_for_source(std.testing.allocator, spread_source));
+}
+
+test "synchronous GC rejects byte-list put values outside u8" {
+    const high_source =
+        \\append_byte(input [u8]) -> [u8] {
+        \\    return @put(input, 256)
+        \\}
+        \\start() {}
+    ;
+    try std.testing.expectError(error.GcSyncTypeMismatch, emit_gc_wat_for_source(std.testing.allocator, high_source));
+
+    const negative_source =
+        \\append_byte(input [u8]) -> [u8] {
+        \\    return @put(input, -1)
+        \\}
+        \\start() {}
+    ;
+    try std.testing.expectError(error.GcSyncTypeMismatch, emit_gc_wat_for_source(std.testing.allocator, negative_source));
+}
+
+test "synchronous GC rejects non-u8 byte-list put values" {
+    const source =
+        \\append_value(input [u8], value i32) -> [u8] {
+        \\    return @put(input, value)
+        \\}
+        \\start() {}
+    ;
+    try std.testing.expectError(error.UnsupportedGcSyncType, emit_gc_wat_for_source(std.testing.allocator, source));
+}
+
+test "synchronous GC rejects non-byte-list put" {
+    const source =
+        \\append_value(input [u32], value u32) -> [u32] {
+        \\    return @put(input, value)
+        \\}
+        \\start() {}
+    ;
+    try std.testing.expectError(error.UnsupportedGcSyncType, emit_gc_wat_for_source(std.testing.allocator, source));
+}
+
 test "synchronous GC backend rejects unsupported managed list element types" {
     const source =
-        \\unsupported(value [u32]) -> [u32] {
+        \\unsupported(value [text]) -> [text] {
         \\    return value
         \\}
         \\start() {}
@@ -685,12 +1550,103 @@ test "synchronous GC declares nested managed structs before their users" {
     try std.testing.expect(inner < outer);
 }
 
+test "synchronous GC reads a scalar field from a managed struct" {
+    const source =
+        \\Box {
+        \\    value [u8]
+        \\    tag i32
+        \\}
+        \\read(box Box) -> i32 {
+        \\    return @get(box, .tag)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "ref.as_non_null\n    struct.get $box $tag") != null);
+}
+
+test "synchronous GC rebuilds a managed struct for scalar field update" {
+    const source =
+        \\Box {
+        \\    value [u8]
+        \\    tag i32
+        \\}
+        \\update(box Box) -> Box {
+        \\    return @set(box, .tag, 7)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $box $value") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 7\n    struct.new $box") != null);
+}
+
+test "synchronous GC rebuilds a managed field with a new payload" {
+    const source =
+        \\Box {
+        \\    value [u8]
+        \\    tag i32
+        \\}
+        \\update(box Box, value [u8]) -> Box {
+        \\    return @set(box, .value, value)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "local.get $value") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $box $tag") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "synchronous GC rebuilds a text managed field payload" {
+    const source =
+        \\Box {
+        \\    value text
+        \\}
+        \\update(box Box, value text) -> Box {
+        \\    return @set(box, .value, value)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(field $value (ref null $do_text))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "local.get $value") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "synchronous GC rejects nested managed field payload producer" {
+    const source =
+        \\Box {
+        \\    value [u8]
+        \\}
+        \\update(box Box) -> Box {
+        \\    return @set(box, .value, .{1, 2})
+        \\}
+        \\start() {}
+    ;
+    try std.testing.expectError(error.UnsupportedGcSyncProducer, emit_gc_wat_for_source(std.testing.allocator, source));
+}
+
 fn emit_gc_wat_for_source(allocator: std.mem.Allocator, source: []const u8) ![]u8 {
     const tokens = try lexer.tokenize(allocator, source);
     defer allocator.free(tokens);
     var program = try parser.parse_program(allocator, tokens, source.len);
     defer program.deinit(allocator);
     return codegen_gc_sync.emit_gc_wat_for_supported_program(allocator, program, tokens, null);
+}
+
+fn emit_default_wat_for_source(allocator: std.mem.Allocator, source: []const u8) ![]u8 {
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+    var program = try parser.parse_program(allocator, tokens, source.len);
+    defer program.deinit(allocator);
+    return emit_wat_with_options(allocator, program, tokens, null, .{});
 }
 
 fn expect_synchronous_gc_locals(wat: []const u8, function_name: []const u8) !void {
@@ -700,6 +1656,7 @@ fn expect_synchronous_gc_locals(wat: []const u8, function_name: []const u8) !voi
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_inc") == null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_dec") == null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_payload") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_alloc") == null);
 }
 
 pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph, options: EmitOptions) ![]u8 {
@@ -740,13 +1697,16 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
         return codegen_component_async.emit_component_wat(allocator, program, tokens, module_graph);
     }
     if (options.p3_async_component) return codegen_component_async.emit_component_wat(allocator, program, tokens, module_graph);
+    if (options.gc_sync) return emit_checked_gc_sync(allocator, program, tokens, module_graph);
     if (options.gc_core) return codegen_gc_core.emit_gc_core_wat(allocator, program, tokens);
+
     if (options.p3_wait_for_component) return finalize_component_wat(allocator, codegen_p3_wait_for.emit_component_wat(allocator, program, tokens, module_graph));
     if (try codegen_task_bridge.emit_if_supported(allocator, program, tokens)) |wat| return wat;
     if (try codegen_emit_generic_async.emit_if_supported(allocator, program, tokens, module_graph)) |wat| return wat;
     // Generic Core-Wasm emission has no resumable async lowering. Guard before
     // any body-dependent collection can misclassify an async intrinsic call.
     if (program_requires_async_lowering(program, tokens, module_graph)) return error.AsyncLoweringUnavailable;
+    if (try try_emit_default_gc_sync(allocator, program, tokens, module_graph)) |wat| return wat;
     install_gen_hooks();
 
     var out = std.ArrayList(u8).empty;
@@ -936,6 +1896,20 @@ pub fn emit_test_wat(allocator: std.mem.Allocator, program: parser.Program, toke
     const test_decls = try test_runner.collect_top_level_tests(allocator, tokens);
     defer allocator.free(test_decls);
     if (test_decls.len == 0) return error.NoTestDecl;
+
+    // GC-first migration bridge: admitted synchronous compiled tests use the
+    // typed GC emitter. Unsupported test shapes continue through the existing
+    // ARC path until the later default cutover gate closes.
+    if (codegen_gc_sync.emit_gc_wat_for_supported_tests(allocator, program, tokens, module_graph) catch |err| blk: {
+        if (!codegen_gc_sync.is_gc_sync_admission_rejection(err)) return err;
+        break :blk null;
+    }) |gc_wat| {
+        validate_gc_sync_output(gc_wat) catch |err| {
+            allocator.free(gc_wat);
+            return err;
+        };
+        return gc_wat;
+    }
 
     var host_imports = std.ArrayList(HostImport).empty;
     defer {
