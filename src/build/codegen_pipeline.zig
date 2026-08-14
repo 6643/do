@@ -541,18 +541,53 @@ fn tokens_have_gc_sync_candidate(tokens: []const lexer.Token) bool {
             i = body_open;
             continue;
         };
+        var header_candidate = false;
         for (tokens[i..body_open]) |token| {
-            if (token.kind == .ident and std.mem.eql(u8, token.lexeme, "text")) return true;
-            if (token.kind == .symbol and std.mem.eql(u8, token.lexeme, "[")) return true;
+            if (token.kind == .ident and std.mem.eql(u8, token.lexeme, "text")) header_candidate = true;
+            if (token.kind == .symbol and std.mem.eql(u8, token.lexeme, "[")) header_candidate = true;
             if (has_managed_struct_decl and token.kind == .ident and
-                is_declared_type_name(token.lexeme) and struct_name_is_managed(tokens, token.lexeme, 0)) return true;
+                is_declared_type_name(token.lexeme) and struct_name_is_managed(tokens, token.lexeme, 0)) header_candidate = true;
         }
+        if (header_candidate and !gc_sync_header_has_unsupported_shape(tokens, close_params + 1, body_open)) return true;
         // Body-only managed locals are intentionally left on the legacy route
         // until their complete storage/control-flow shape is admitted.  The
         // GC candidate contract is driven by declared parameter/result types,
         // which prevents a local storage helper from being misrouted merely
         // because its body mentions `text` or a list token.
         i = body_close;
+    }
+    return false;
+}
+
+fn gc_sync_header_has_unsupported_shape(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var after_arrow = false;
+    var angle_depth: usize = 0;
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        const token = tokens[i];
+        if (tok_eq(token, "->") or (tok_eq(token, "-") and i + 1 < end_idx and tok_eq(tokens[i + 1], ">"))) {
+            after_arrow = true;
+            if (tok_eq(token, "-")) i += 1;
+            continue;
+        }
+        if (after_arrow and tok_eq(token, "<")) {
+            angle_depth += 1;
+            continue;
+        }
+        if (after_arrow and tok_eq(token, ">")) {
+            if (angle_depth != 0) angle_depth -= 1;
+            continue;
+        }
+        // Union parameters are also outside the current parsed GC contract.
+        if (tok_eq(token, "|") or tok_eq(token, "Result") or
+            tok_eq(token, "Future") or tok_eq(token, "Stream")) return true;
+        if (!after_arrow) continue;
+        // A comma at the top level means multiple results. Commas nested in a
+        // generic Tuple type are part of one managed result and are admitted
+        // when the parsed GC emitter has an exact lowering for that shape.
+        if ((tok_eq(token, ",") and angle_depth == 0) or tok_eq(token, "|") or
+            tok_eq(token, "Result") or tok_eq(token, "Future") or
+            tok_eq(token, "Stream")) return true;
     }
     return false;
 }
@@ -717,8 +752,10 @@ fn try_emit_default_gc_sync(
     tokens: []const lexer.Token,
     module_graph: ?*const imports.ModuleGraph,
 ) !?[]u8 {
-    const candidate = tokens_have_gc_sync_candidate(tokens) or
-        if (module_graph) |graph| graph_has_gc_sync_candidate(graph) else false;
+    // Imported modules and host/WIT declarations remain outside the parsed
+    // GC admission boundary until their ABI/resource rows close. Only the
+    // entry module can select this synchronous route for now.
+    const candidate = tokens_have_gc_sync_candidate(tokens);
     if (!candidate) return null;
     if (tokens_have_host_or_wit_binding(tokens)) return null;
     if (module_graph) |graph| if (graph_has_host_or_wit_binding(graph)) return null;
@@ -889,6 +926,19 @@ test "default pipeline fails closed for an unsupported managed candidate" {
         error.UnsupportedGcSyncType,
         emit_wat_with_options(std.testing.allocator, program, tokens, null, .{}),
     );
+}
+
+test "default pipeline lowers a managed parameter with a nil result through GC" {
+        const source =
+        \\consume(bytes [u8]) -> nil {
+        \\    return
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_default_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $consume (param $bytes (ref null $do_bytes))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $__arc_") == null);
 }
 
 test "GC route lowers a reachable imported managed identity" {
@@ -1706,7 +1756,9 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
     // Generic Core-Wasm emission has no resumable async lowering. Guard before
     // any body-dependent collection can misclassify an async intrinsic call.
     if (program_requires_async_lowering(program, tokens, module_graph)) return error.AsyncLoweringUnavailable;
-    if (try try_emit_default_gc_sync(allocator, program, tokens, module_graph)) |wat| return wat;
+    if (!options.host_export) {
+        if (try try_emit_default_gc_sync(allocator, program, tokens, module_graph)) |wat| return wat;
+    }
     install_gen_hooks();
 
     var out = std.ArrayList(u8).empty;
