@@ -152,6 +152,37 @@ const BodyEmitter = struct {
         return error.GcSyncTypeMismatch;
     }
 
+    fn validate_numeric_literal(ty: []const u8, raw: []const u8) !void {
+        if (std.mem.eql(u8, ty, "bool")) return error.GcSyncTypeMismatch;
+        if (type_name.is_float_type_name(ty)) {
+            _ = std.fmt.parseFloat(f64, raw) catch return error.GcSyncTypeMismatch;
+            return;
+        }
+        if (!type_name.is_integer_type_name(ty)) return error.GcSyncTypeMismatch;
+        const value = std.fmt.parseInt(i128, raw, 10) catch return error.GcSyncTypeMismatch;
+        if (std.mem.eql(u8, ty, "i8")) {
+            if (value < std.math.minInt(i8) or value > std.math.maxInt(i8)) return error.GcSyncTypeMismatch;
+        } else if (std.mem.eql(u8, ty, "i16")) {
+            if (value < std.math.minInt(i16) or value > std.math.maxInt(i16)) return error.GcSyncTypeMismatch;
+        } else if (std.mem.eql(u8, ty, "i32")) {
+            if (value < std.math.minInt(i32) or value > std.math.maxInt(i32)) return error.GcSyncTypeMismatch;
+        } else if (std.mem.eql(u8, ty, "i64")) {
+            if (value < std.math.minInt(i64) or value > std.math.maxInt(i64)) return error.GcSyncTypeMismatch;
+        } else if (std.mem.eql(u8, ty, "u8")) {
+            if (value < 0 or value > std.math.maxInt(u8)) return error.GcSyncTypeMismatch;
+        } else if (std.mem.eql(u8, ty, "u16")) {
+            if (value < 0 or value > std.math.maxInt(u16)) return error.GcSyncTypeMismatch;
+        } else if (std.mem.eql(u8, ty, "u32")) {
+            if (value < 0 or value > std.math.maxInt(u32)) return error.GcSyncTypeMismatch;
+        } else if (std.mem.eql(u8, ty, "u64")) {
+            if (value < 0 or value > std.math.maxInt(u64)) return error.GcSyncTypeMismatch;
+        } else if (std.mem.eql(u8, ty, "isize")) {
+            if (value < std.math.minInt(i32) or value > std.math.maxInt(i32)) return error.GcSyncTypeMismatch;
+        } else if (std.mem.eql(u8, ty, "usize")) {
+            if (value < 0 or value > std.math.maxInt(u32)) return error.GcSyncTypeMismatch;
+        }
+    }
+
     fn emit_literal(self: *BodyEmitter, token: lexer.Token) ![]const u8 {
         if (token.kind == .string) {
             const bytes = try codegen_tokens.decode_quoted_string_token(self.allocator, token.lexeme);
@@ -206,15 +237,7 @@ const BodyEmitter = struct {
             } else {
                 if (token.kind != .number) return error.UnsupportedGcSyncExpression;
                 const value = token.lexeme;
-                if (type_name.is_float_type_name(elem_ty)) {
-                    _ = std.fmt.parseFloat(f64, value) catch return error.GcSyncTypeMismatch;
-                } else {
-                    const parsed = std.fmt.parseInt(i64, value, 10) catch return error.GcSyncTypeMismatch;
-                    if ((std.mem.eql(u8, elem_ty, "u8") or std.mem.eql(u8, elem_ty, "u16") or
-                        std.mem.eql(u8, elem_ty, "u32") or std.mem.eql(u8, elem_ty, "u64") or
-                        std.mem.eql(u8, elem_ty, "usize")) and parsed < 0) return error.GcSyncTypeMismatch;
-                    if (std.mem.eql(u8, elem_ty, "u8") and parsed > std.math.maxInt(u8)) return error.GcSyncTypeMismatch;
-                }
+                try validate_numeric_literal(elem_ty, value);
                 try self.append(INDENT ++ "{s}.const {s}\n", .{ payload_wat.wasm_type(elem_ty), value });
             }
             count += 1;
@@ -662,11 +685,7 @@ const BodyEmitter = struct {
             }
             if (token.kind == .number) {
                 const ty = expected orelse "i32";
-                if (!type_name.is_core_wasm_scalar(ty)) return error.GcSyncTypeMismatch;
-                if (std.mem.eql(u8, ty, "u8")) {
-                    const value = std.fmt.parseInt(i64, token.lexeme, 10) catch return error.GcSyncTypeMismatch;
-                    if (value < 0 or value > std.math.maxInt(u8)) return error.GcSyncTypeMismatch;
-                }
+                try validate_numeric_literal(ty, token.lexeme);
                 const wasm_ty = try gc_adapter.classify_admitted_type_with_layouts(ty, self.gc_structs, self.gc_layouts);
                 if (wasm_ty.rep != .inline_value) return error.GcSyncTypeMismatch;
                 try self.append(INDENT ++ "{s}.const {s}\n", .{ wasm_ty.wasm_type, token.lexeme });
@@ -2283,6 +2302,36 @@ test "GC sync lowers eq for admitted scalar values" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "i64.eq") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "f32.eq") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync rejects a floating literal when eq expects bool" {
+    const source =
+        \\same(flag bool) -> bool {
+        \\    return @eq(flag, 1.5)
+        \\}
+        \\start() {}
+    ;
+    try std.testing.expectError(error.GcSyncTypeMismatch, emit_test_source(std.testing.allocator, source));
+}
+
+test "GC sync rejects a floating literal when eq expects an integer" {
+    const source =
+        \\same(value i32) -> bool {
+        \\    return @eq(value, 1.5)
+        \\}
+        \\start() {}
+    ;
+    try std.testing.expectError(error.GcSyncTypeMismatch, emit_test_source(std.testing.allocator, source));
+}
+
+test "GC sync rejects an integer literal outside its scalar range" {
+    const source =
+        \\same(value i8) -> bool {
+        \\    return @eq(value, 128)
+        \\}
+        \\start() {}
+    ;
+    try std.testing.expectError(error.GcSyncTypeMismatch, emit_test_source(std.testing.allocator, source));
 }
 
 test "GC sync rejects len for an unadmitted managed aggregate" {
