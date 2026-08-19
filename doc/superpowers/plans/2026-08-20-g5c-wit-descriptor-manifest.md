@@ -59,10 +59,10 @@
 - Modify: `examples/gc-p3-runtime/test_gc_wasi_random_list_lift.sh`
 - Test: `examples/gc-p3-runtime/test_gc_wasi_random_list_lift.sh`
 
-- [ ] **Step 1: Add a RED assertion** that the A probe loads by descriptor id and rejects a mutated source file.
-- [ ] **Step 2: Run the A gate and observe the missing manifest route.**
-- [ ] **Step 3: Switch the probe to the manifest loader and add the checked-in random descriptor with its computed source hash.**
-- [ ] **Step 4: Run the A gate end-to-end:** parser, manifest hash, `wasm-tools parse/embed/new/validate`, and Rust/Wasmtime host execution.
+- [x] **Step 1: Add a RED assertion** that the A probe loads by descriptor id and rejects a mutated source file.
+- [x] **Step 2: Run the A gate and observe the missing manifest route.**
+- [x] **Step 3: Switch the probe to the manifest loader and add the checked-in random descriptor with its computed source hash.**
+- [x] **Step 4: Run the A gate end-to-end:** parser, manifest hash, `wasm-tools parse/embed/new/validate`, and Rust/Wasmtime host execution.
 
 ### Task 4: Add drift and residual documentation gates
 
@@ -72,9 +72,9 @@
 - Modify: `doc/host_abi_blockers.md`
 - Modify: `doc/pending_blocked.md`
 
-- [ ] **Step 1: Add a negative manifest drift check** that exits non-zero without changing the default ARC residual assertions.
-- [ ] **Step 2: Run the residual baseline gate, inventory gate, full Zig test root, and A shell gate.**
-- [ ] **Step 3: Record exact outputs, keep `host_wit_marshalling` G5c pending, and document B completion criteria.**
+- [x] **Step 1: Add a negative manifest drift check** that exits non-zero without changing the default ARC residual assertions.
+- [x] **Step 2: Run the residual baseline gate, inventory gate, full Zig test root, and A shell gate.**
+- [x] **Step 3: Record exact outputs, keep `host_wit_marshalling` G5c pending, and document B completion criteria.**
 
 ## Completion Criteria
 
