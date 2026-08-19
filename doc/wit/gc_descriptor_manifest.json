@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "toolchain": "wasm-tools 1.255.0",
+  "descriptors": [
+    {
+      "id": "wasi:random/random.get-random-bytes@0.3.0-rc-2025-09-16/lift",
+      "source": "src/build/p3_wit/wasi-http-0.3.0-rc-2025-09-16/deps/random/random.wit",
+      "world_source": "doc/wit/gc_random_imports.wit",
+      "package": "wasi:random@0.3.0-rc-2025-09-16",
+      "world": "imports",
+      "interface": "random",
+      "member": "get-random-bytes",
+      "direction": "lift",
+      "params": ["u64"],
+      "result": "list<u8>",
+      "source_sha256": "sha256:64bd5668d584dd9ec9e008477798d2987e6b55251a95af2dbd12b4b03fe8bc63",
+      "canonical_import": {
+        "module": "wasi:random/random@0.3.0-rc-2025-09-16",
+        "name": "get-random-bytes"
+      }
+    }
+  ]
+}

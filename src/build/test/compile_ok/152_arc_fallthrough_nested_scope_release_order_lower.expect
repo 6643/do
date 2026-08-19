@@ -1,6 +1,12 @@
-;; arc-block-release
-;; arc-release-local inner
-call $__arc_dec
-;; arc-block-release
-;; arc-release-local outer
-call $__arc_dec
+;; gc-sync source_len=143 token_count=38
+(local $outer (ref null $do_bytes))
+(local $inner (ref null $do_bytes))
+array.new_fixed $do_bytes 5
+local.set $outer
+;; gc-root local_bind $outer
+array.new_fixed $do_bytes 5
+local.set $inner
+;; gc-root local_bind $inner
+;; gc-root branch_join
+;; gc-root branch_join
+return

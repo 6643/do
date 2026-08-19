@@ -1,3 +1,4 @@
+;; gc-sync source_len=163 token_count=49
 (func $wrap (result i32 i32)
 call $pair
 return

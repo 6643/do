@@ -1,13 +1,10 @@
-(data (i32.const 1024) "abc")
-(data (i32.const 1027) "xy")
-(func $echo (param $value i32) (result i32)
-;; arc-return-move value
-local.get $value
-(func $make_text (result i32)
-call $__arc_alloc
-local.set $__storage_overwrite_tmp
-local.get $__storage_overwrite_tmp
+(type $do_bytes (array (mut i8)))
+(type $do_text (struct (field $length i32) (field $bytes (ref null $do_bytes))))
+(func $echo (param $value (ref null $do_text)) (result (ref null $do_text))
+;; gc-root return_value
+(func $make_text (result (ref null $do_text))
+struct.new $do_text
 call $make_text
-local.set $made
+;; gc-root call_result
 call $echo
-local.set $echoed
+;; gc-root call_result

@@ -1,8 +1,14 @@
-(func $make_partial (result i32 i32)
-;; arc-return-move keep
+;; gc-sync source_len=195 token_count=51
+(func $make_partial (result (ref null $do_bytes) i32)
+array.new_fixed $do_bytes 4
+local.set $keep
+;; gc-root local_bind $keep
+array.new_fixed $do_bytes 4
+local.set $drop
+;; gc-root local_bind $drop
 local.get $keep
 i32.const 7
-;; arc-release-local drop
-local.get $drop
-call $__arc_dec
 return
+call $make_partial
+local.set $count
+local.set $data

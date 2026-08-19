@@ -1,7 +1,9 @@
-;; loop-block
-loop $__loop_body_
-;; arc-release-local data
-local.get $data
-call $__arc_dec
+;; gc-sync
+array.new_fixed $do_bytes 3
+;; gc-root local_bind $data
+block $__gc_break_0
+loop $__gc_loop_1
 return
 end
+end
+;; gc-root loop_join

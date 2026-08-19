@@ -1,2 +1,4 @@
-;; compiled-test 0 "compiled storage loop call keeps source live"
-call $__arc_inc
+;; gc-sync
+;; gc-root
+;; compiled-test 0
+(func $__test_0

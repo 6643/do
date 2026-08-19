@@ -1,0 +1,5 @@
+;; gc-sync
+struct.get $outer $inner
+struct.get $inner $tag
+struct.new $inner
+struct.new $outer

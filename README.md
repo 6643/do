@@ -6,17 +6,17 @@
 
 ## 核心理念
 
-- **纯值语义**: 变量传递即拷贝，消除指针复杂度。
-- **Perceus / FBIP 方向**: 目标是在唯一引用 (`rc == 1`) 时优先复用对象并做原地修改；当前已覆盖 ownership exit plan、死 alias 消除、保守 last-use move 子集、参数/字段 ownership facts 和 D5 最小 `rc == 1` reuse / `rc > 1` COW 回退。完整 ownership IR、跨函数唯一性证明、escape analysis 和 region 仍按 `doc/roadmap_status.md` 后置。
-- **隐式 ARC 生命周期管理**: 编译器当前已覆盖 managed storage / struct 的基础 `inc/dec`、局部释放、return ownership、部分 COW 写路径、死 alias `inc/dec` 相消、direct managed last-use move 子集和 managed struct 最小 clone/reuse lowering；跨函数唯一性证明和借用/共享来源字段读取 move 仍未完成。
+- **纯值语义**: 源码不暴露 pointer/reference。只读传递共享内部 payload, 不复制 payload; 更新通过 COW 或 rebuild 保持旧逻辑值可观察。
+- **GC-first 运行时契约**: v1 managed-memory target 是 Wasm GC, 以 `doc/memory.md` 和 `doc/design/2026-08-11-gc-first-memory-decision.md` 为准。GC 不关闭 Component/WIT host resource, 其 ownership/drop 继续显式处理。
+- **当前 ARC transition 实现**: 编译器尚未完成 GC migration。以下 ARC `inc/dec`、object layout、ownership exit plan、last-use move 和 `rc == 1` reuse 内容只记录当前 implementation debt, 不构成 selected v1 runtime contract。
 - **静态泛型特化**: 类型采用 `Name<T>`，函数采用 `#` 约束前置行，并支持受约束泛型接口。结构体泛型的无约束类型参数直接写 `#T` 紧贴结构声明。编译时通过 Monomorphization 生成具体代码与唯一 `type_id`。
 - **函数值与重载**: 普通函数名可在有目标 `FuncType` 的上下文中解析为函数值；lambda 只出现在回调槽位。支持约束泛型函数与同名重载；重载只按参数签名决议。
 - **同类型不定参数**: 支持 `rest ...T` 形态的同类型可变参数调用，core 聚合函数可写成 `@add(a, b, c)`，是否可扁平化完全由函数签名决定。
-- **显式数据流**: 成员访问统一使用 `@get/@set(...)` 路径 primitive 和显式路径，控制流保持显式。这确保了编译器能确定地分析 ARC 生命周期和原地修改机会。
+- **显式数据流**: 成员访问统一使用 `@get/@set(...)` 路径 primitive 和显式路径，控制流保持显式。这确保 compiler 能确定地分析当前 transition cleanup 和 COW/reuse opportunity。
 - **大小写语义**: 基础类型小写，类型名与绑定名遵循 `doc/spec_rules.md` 的命名规则。
-- **WASM 原生**: Wasm memory grow 以 64KB page 为粒度，v1 allocator 在 page 内切成 64 个 1KB block；小对象使用 bitmap small block，大对象使用连续 block span。
+- **WASM 原生**: 当前 ARC transition allocator 的 linear memory 实现以 64KB page 为粒度，并在 page 内切成 64 个 1KB block；小对象使用 bitmap small block，大对象使用连续 block span。它不是 GC-first v1 runtime contract。
 - **大小数据分层策略**: 基础/小对象直接拷贝，大对象采用共享 + COW（初始阈值 64B）。
-- **运行时资源管理方向**: 对 host 资源采用显式释放和 ID 关联的设计方向，目标是不引入循环 GC。
+- **运行时资源管理**: host resource 使用显式 release/drop 和 ID 关联；不使用 GC finalizer 替代 resource cleanup。
 - **语言规范基线**: 规范入口见 `doc/spec.md`; 语法设计见 `doc/syntax/README.md`; parser PEG 见 `doc/grammar.peg`; 语义、内建判断族、核心库特型与静态约束见 `doc/spec_rules.md`。
 - **WASI / WIT lowering 入口**: 当前 compiler-facing 合同见 `doc/wit/wasi_p3_lowering.md`; 当前已登记 target / record mirror registry 见 `doc/wit/wasi_registry.json`。通用 WIT 翻译命令是 `do wit check/bind`，实现位于 `src/wit/`，上游 Rust/Go 只作为固定版本差分 oracle。
 - **Generated WIT async gate**: 私有 `do:generic-async-runtime-probe@0.1.0` 的 `host.work: async func()` 与 `do:generic-async-scalar-probe@0.1.0` 的 `host.completion: func() -> future<u32>` 已通过 schema 2 manifest 自动发现、Component 组装和 Rust/Wasmtime pending/ready/cancel gate；入口分别为 `bash examples/wit-bindgen-do/test_generated_async_lowering.sh` 与 `bash examples/wit-bindgen-do/test_generated_async_scalar_lowering.sh`。这仍不是通用 WIT async lowering，其他 payload/Stream/resource/参数化 shape 保持拒绝。
@@ -54,9 +54,9 @@ src/lsp/        do lsp diagnostics + formatting + semantic tokens + hover + comp
 ## 当前 v1 子集摘要
 
 - 语言前端: 当前 parser / sema 已覆盖结构体、错误枚举、value enum、plain union / nullable union、字段反射、lambda、泛型约束、同名重载、同类型 variadic、`loop`、`defer`、import / host import 和 `test` 声明的回归子集; colorless async 的 `@async`、`@await`、`@cancel`、`Future<T>`、`Stream<T>` 与 endpoint 的 affine 前端检查也已覆盖，旧 `async name(...) -> T` 已弃用并在正常编译中拒绝，build-mode 的其他 resumable lowering 仍明确拒绝; 普通直接递归、互递归、参数侧已定型的泛型递归和 self-tail TCO 第一版已补回归, 仅靠左侧目标类型反推的泛型递归仍后置; 源码层 `Tuple<T0, T1, ...>` 位置构造 + `@get` 数字索引已落地 (local/struct/return/param/nested/标量与 managed/`text` 叶子 storage、pure-scalar 与含 managed 字段的 struct 直接子槽、`@get(storage, i, j)` path chaining, 以及 loop 绑定上的 `@get(v, N)`); 含 managed 字段的 struct 槽按 ARC 句柄叶子 pack, 不拍平字段 (见 `compile_ok/273`, `ok/193`)。
-- 内存与所有权: 已落地 managed handle、对象头、layout table、ARC `inc/dec/release`、ownership exit plan、死 alias 消除、保守 last-use move、字段/参数 ownership facts 和 managed struct 最小 clone/reuse lowering; Tuple storage pack 合成 layout 负责 managed 叶子 clone/free。
+- 内存与所有权: 当前 compiler transition 已落地 managed handle、对象头、layout table、ARC `inc/dec/release`、ownership exit plan、死 alias 消除、保守 last-use move、字段/参数 ownership facts 和 managed struct 最小 clone/reuse lowering; Tuple storage pack 合成 layout 负责 managed 叶子 clone/free。它们是 GC migration debt, 不是 GC-first v1 runtime completion。
 - 标准库: 已验证 JSON struct stringify/from_json、bytes/text/utf8/utf16、hex/base64/url、math/binary/mem/atomic/range/slice/path/fp/list/set/hash_map/hash、md5/sha1/sha256 等基础库; time/random/file/dir/io.stream 只承诺已登记 WASI wrapper lowering; net/tcp/udp/http.client 只承诺当前 shape/check smoke, 真实 host I/O 后置。
-- 后端与 WASI: 公开输出仍以 WAT 为主; 当前 build/test 子集已覆盖标量、结构体 flatten、storage/text ARC handle、多返回、基础 `@get/@set/@put`、WASI result-area/resource-drop lowering、component plan/core imports/core shims/component input 和真实 component wasm validate gate；固定 `descriptor.read-directory` 一至三条目 slice、注册的 scalar/string generic consumer、多个直接及一层/两层/三层/四层/五层/六层及两个顶层 nested `own` resource-field consumer、bounded scalar producer、受限 helper-mediated lease、固定/参数化 `u64` countdown producer、参数化 helper（含五跳 forwarding 与三种 typed 参数受限重排）producer、branch-selected `close/abort` terminal、private C-min/dynamic/batched list-resource producer 已完成 ABI、lowering 与 Rust/Wasmtime 验证，general producer/borrowed/list/variant/第六跳 forwarding/第七层 nested 或更一般 resource 扩展仍受边界约束。
+- 后端与 WASI: 公开输出仍以 WAT 为主; 当前 build/test 子集已覆盖标量、结构体 flatten、storage/text ARC transition handle、多返回、基础 `@get/@set/@put`、WASI result-area/resource-drop lowering、component plan/core imports/core shims/component input 和真实 component wasm validate gate；固定 `descriptor.read-directory` 一至三条目 slice、注册的 scalar/string generic consumer、多个直接及一层/两层/三层/四层/五层/六层及两个顶层 nested `own` resource-field consumer、bounded scalar producer、受限 helper-mediated lease、固定/参数化 `u64` countdown producer、参数化 helper（含五跳 forwarding 与三种 typed 参数受限重排）producer、branch-selected `close/abort` terminal、private C-min/dynamic/batched list-resource producer 已完成 ABI、lowering 与 Rust/Wasmtime 验证，general producer/borrowed/list/variant/第六跳 forwarding/第七层 nested 或更一般 resource 扩展仍受边界约束。
 - 工具链: `do build`、`do test`、`do test --compiled`、`do check`、`do run`、`do fmt` 和 `do lsp` 第一版均已落地; LSP 当前覆盖 diagnostics、formatting、semantic tokens、hover、completion、definition 和最小 workspace index。
 - 验证入口: 默认完整回归基线为 `pass=1132 fail=0 skip=3`; `RUN_WASM=1` 扩展回归基线为 `pass=1134 fail=0 skip=3`，wasm run `pass=6 fail=0`; 发布前 smoke 入口是 `./src/build/test/run_release_smoke.sh`。
 
@@ -150,12 +150,12 @@ RUN_WASM=1 ./src/build/test/run_tests.sh
 - [x] **递归与 self-tail TCO 第一版子集**: 已覆盖普通直接递归、互递归、参数侧已知 concrete type 的泛型递归，以及 self-tail scalar / `if/else` / guard / generic / imported lowering；`src/build/test/compile_ok/248_*` 到 `258_*` 继续锁住 `defer`、storage local、managed struct、多返回和 cleanup 相关的不优化边界，且“只靠左侧目标类型反推”的泛型递归仍按 `NoMatchingCall` 后置。
 - [x] **源码层 `Tuple<...>` 第一版子集**: 已覆盖位置构造 `Tuple<T0, T1, ...>{...}`、编译期数字索引 `@get` (含 loop 绑定与 `@get(storage, i, j)` path chaining)、struct field、return/param multi-value ABI、嵌套叶子 ABI、标量与 managed/`text` 叶子及 pure-scalar / managed-struct 直接子槽的 `[Tuple<...>]` storage pack；sema 诊断覆盖 arity / 越界 / 非字面量索引 / 小写 `tuple` 误用；真正非 packable 叶子仍报 `UnsupportedTupleStorageLeaf`。
 - [x] **`defer` 基础语法和前端校验**: 支持 `defer abc()` 和 `defer { ... }`；本地和导入函数调用都会校验 cleanup 调用返回 `nil`。
-- [x] **`defer` 完整控制流与 ARC**: `defer` 的 LIFO cleanup、跨 `return/break/continue` lowering、cleanup 块内控制流限制和 ARC release 顺序已由 `src/build/test/compile_ok/142_*` 到 `150_*` 及 `src/build/test/err/267_*`、`274_*`、`288_*` 到 `305_*` 覆盖，状态见 `doc/roadmap_status.md`。
-- [x] **运行时内存模型**: 已按 `doc/memory.md` 收敛 v1 managed handle、对象头、`type_id`、layout table 和 ARC `inc/dec/release` 管理。
-- [x] **内存分配器**: 已按 `doc/memory_layout_structs.md` 收敛 1KB block、bitmap small block、large span、free span split / merge 和空 small block 回收。
-- [x] **ARC / Ownership / FBIP 当前子集**: 已落地 `src/build/ownership.zig`、`src/build/ownership_facts.zig`、死 alias 消除、保守 last-use move、参数 ownership contract、字段读取 move facts 接入和 managed struct 最小 clone/reuse lowering；完整 ownership IR / 跨函数唯一性证明仍不是当前 v1 子集。
+- [x] **`defer` 完整控制流与 ARC transition**: `defer` 的 LIFO cleanup、跨 `return/break/continue` lowering、cleanup 块内控制流限制和 ARC transition release 顺序已由 `src/build/test/compile_ok/142_*` 到 `150_*` 及 `src/build/test/err/267_*`、`274_*`、`288_*` 到 `305_*` 覆盖，状态见 `doc/roadmap_status.md`。
+- [x] **运行时内存目标**: `doc/memory.md` 已收敛为 GC-first v1 contract。当前 managed handle、对象头、`type_id`、layout table 和 ARC `inc/dec/release` 是待替换 implementation debt, 不表示 `do build` 已完成 GC migration。
+- [x] **内存分配器 transition 实现**: `doc/memory_layout_structs.md` 记录当前 ARC transition 的 1KB block、bitmap small block、large span、free span split / merge 和空 small block 回收, 不是 v1 runtime specification。
+- [x] **ARC / Ownership / FBIP transition 子集**: 当前实现已落地 `src/build/ownership.zig`、`src/build/ownership_facts.zig`、死 alias 消除、保守 last-use move、参数 ownership contract、字段读取 move facts 接入和 managed struct 最小 clone/reuse lowering；这些是 GC migration debt, 完整 ownership IR / 跨函数唯一性证明也仍未完成。
 - [x] **标准库边界**: 当前稳定公开子集聚焦已验证的纯 do 库与少量已登记 wrapper，包括 JSON 的结构体字段 stringify/from_json、bytes/text/utf8/utf16、hex/base64/url、math/binary/mem/atomic/range/slice/path/fp/list/set/hash_map/hash、md5/sha1/sha256 等基础库；`time.do`、`random.do`、`file.do`、`dir.do`、`io.stream.do` 只承诺已登记 WASI wrapper lowering；`net.do`、`tcp.do`、`udp.do`、`http.client.do` 当前只承诺 shape/check smoke, 真实 host I/O 继续后置；`simd.do` 当前只纳入 std source metadata/check 边界；完整 I/O 执行能力、真实网络 host ABI、通用自动序列化和复杂 resource/variant/future/component 输出继续归入后续阶段。
-- [x] **WAT 代码生成子集**: `do build` / `do test --compiled` 当前可验证的 WAT 输出已覆盖标量、value enum carrier、结构体 flatten、storage / text ARC handle、多返回和基础 `@get/@set/@put`；这不表示完整后端优化或直接 wasm 二进制输出已经完成。
+- [x] **WAT 代码生成子集**: `do build` / `do test --compiled` 当前可验证的 WAT 输出已覆盖标量、value enum carrier、结构体 flatten、storage / text ARC transition handle、多返回和基础 `@get/@set/@put`；这不表示 full GC backend、完整后端优化或直接 wasm 二进制输出已经完成。
 - [x] **后端 IR 和 codegen 稳定化**: 已完成 backend instruction model、基础控制流优化、copy fold、trivial inline、runtime prelude / function body / component metadata writer 拆分和 direct wasm binary emitter 重新评估；当前继续保留 WAT 文本作为主输出和 golden 基线。
 - [x] **测试入口**: `do build`、`do test` 和 `do test --compiled` 作为用户侧黑盒入口已落地；仓库级完整回归入口是 `./src/build/test/run_tests.sh`。默认入口已覆盖 `compile_ok` 中的 WIT / component plan、component input、component core 和可用时的 embed/validate gate；`RUN_WASM=1` 在此基础上额外执行 wasm run、compiled wasm 执行、compiled trap 和 wasm smoke。
 - [x] **`do check` 第一版**: `do check <input.do>...` 已落地为前端诊断命令; 当前复用 LSP diagnostics collector, 覆盖 lexer/parser/sema/import diagnostics, 支持按命令行顺序检查多个文件, 不编译、不运行、不要求 `start()` 或 `test` 声明。

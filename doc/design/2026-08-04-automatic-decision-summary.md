@@ -61,12 +61,12 @@
 | 项目 | 自动采用的方案 | 其他方案弃权理由 | 当前证据 |
 | --- | --- | --- | --- |
 | P3/WASI 证据分层 | Core GC、generic Component async、P3 host binding、完整 WASI 分开验收；探针不能越级宣称完整支持 | 用 feature flag、CLI smoke 或手写常用接口白名单宣称完成，缺少 pinned WIT、canonical ABI、host-driven runner 和逐接口矩阵 | `doc/host_abi_blockers.md:3-31` |
-| Async 前端守卫 | 保留 `FuncSig.is_async`；resumable lowering 未完成时 `do build` 明确报 `AsyncLoweringUnavailable`；非法嵌套 Future 报 `InvalidAsyncReturn` | 静默把 async 当同步 WAT，或并行保留两套 Future ABI，会生成错误 artifact 或产生嵌套 ownership 歧义 | `/home/_/.codex/memories/MEMORY.md:89,101-102`；`docs/superpowers/plans/2026-07-31-component-async-function-plan.md` |
+| Async 前端守卫 | 保留 `FuncSig.is_async`；resumable lowering 未完成时 `do build` 明确报 `AsyncLoweringUnavailable`；非法嵌套 Future 报 `InvalidAsyncReturn` | 静默把 async 当同步 WAT，或并行保留两套 Future ABI，会生成错误 artifact 或产生嵌套 ownership 歧义 | `/home/_/.codex/memories/MEMORY.md:89,101-102`；`doc/superpowers/plans/2026-07-31-component-async-function-plan.md` |
 | Custom host import 验证 | CLI 无法注入 custom host import 时，使用 C embed runner 作为 authoritative runtime gate | 把 unresolved import 的 CLI 失败当作运行时语义失败，或只做静态 WAT 验证，无法证明 host-driven execution | `/home/_/.codex/memories/MEMORY.md:91`；`doc/host_abi_blockers.md:817-839` |
 | Generic host-export 细节 | manifest 保存 source/export 名、参数/返回 ABI 和稳定 mangling；公开 callback 参数及字段未绑定的 unmanaged struct 早拒绝 | 公开函数值/closure、raw ABI，或静默接受不完整 struct，会把生命周期和字段替换风险推到 ABI 边界 | `/home/_/.codex/memories/MEMORY.md:92-93`；`doc/host_abi_blockers.md:59-106` |
 | G6.2 扩展方式 | 只扩展 registry/descriptor 明确登记、且能由 pinned WIT + Core WAT + Component + runtime 证明的 bounded slice | 因工具能解析某个形状就泛化任意 async、producer、borrow/list/variant payload，缺少 layout、cleanup 和 runtime 证据 | `doc/design/2026-08-03-g6-2-general-resource-ownership.md:163-188` |
-| Payload error ABI 验证顺序 | 先跑 hand-authored service-world probe，再对比编译器生成 WAT；未知 payload tag 显式 trap；禁止 `Some` 静默变 `None` | 仅凭八 word 签名直接改 emitter，或把 payload 丢失当兼容 fallback，会隐藏业务错误数据 | `docs/superpowers/specs/2026-08-04-g6-2-payload-error-abi-design.md:32-81,107-130` |
-| G6.2 service-world payload gate | 先跑 hand-authored service-world ABI probe；`InternalError(Some("x"))` 绿后才进入 DNS/emitter；pending/ready 分开验证，ready 的 `Status::Returned` 不当作 handle，未知 payload tag 显式 trap，禁止 `Some` 静默变 `None` | 仅凭八 word 签名直接改 emitter，或把 payload 丢失当兼容 fallback，会隐藏业务错误数据；未先完成最小 payload gate 就扩展 DNS 会把 ABI 假设传入编译器 | `docs/superpowers/plans/2026-08-04-g6-2-payload-error-service-world.md:5-20,28-34,117-140`；`docs/superpowers/specs/2026-08-04-g6-2-payload-error-abi-design.md:32-81`；`/home/_/.codex/sessions/2026/08/04/rollout-2026-08-04T10-16-00-019fca8e-7263-7322-b900-178ec0a66e4d.jsonl:57730` |
+| Payload error ABI 验证顺序 | 先跑 hand-authored service-world probe，再对比编译器生成 WAT；未知 payload tag 显式 trap；禁止 `Some` 静默变 `None` | 仅凭八 word 签名直接改 emitter，或把 payload 丢失当兼容 fallback，会隐藏业务错误数据 | `doc/superpowers/specs/2026-08-04-g6-2-payload-error-abi-design.md:32-81,107-130` |
+| G6.2 service-world payload gate | 先跑 hand-authored service-world ABI probe；`InternalError(Some("x"))` 绿后才进入 DNS/emitter；pending/ready 分开验证，ready 的 `Status::Returned` 不当作 handle，未知 payload tag 显式 trap，禁止 `Some` 静默变 `None` | 仅凭八 word 签名直接改 emitter，或把 payload 丢失当兼容 fallback，会隐藏业务错误数据；未先完成最小 payload gate 就扩展 DNS 会把 ABI 假设传入编译器 | `doc/superpowers/plans/2026-08-04-g6-2-payload-error-service-world.md:5-20,28-34,117-140`；`doc/superpowers/specs/2026-08-04-g6-2-payload-error-abi-design.md:32-81`；`/home/_/.codex/sessions/2026/08/04/rollout-2026-08-04T10-16-00-019fca8e-7263-7322-b900-178ec0a66e4d.jsonl:57730` |
 
 严格自动统计的共同特点是：它们收敛的是证据门、边界和失败行为，而不是替用户新增
 公开语言特性。
@@ -80,12 +80,12 @@
 | --- | --- | --- | --- |
 | WasmGC/ARC | 当前目标后端转向 WasmGC；ARC 保留为未来备选 | 用户明确裁定当前全量对接 GC、ARC 后置 | `/home/_/.codex/sessions/2026/07/27/rollout-2026-07-27T23-46-53-019fa441-f2e4-7d21-b589-dbee17658511.jsonl:5863-5864`；`doc/memory.md:7-29` |
 | async 公共方向 | 采用 `async/await/Future/Stream`，清理旧 `do/channel/worker` 公共模型 | 用户明确要求恢复 async 方向并继续清理旧契约 | `/home/_/.codex/sessions/2026/07/28/rollout-2026-07-28T18-58-42-019fa860-778e-71f0-a042-d774e9917e01.jsonl:1251-1252,1553-1554` |
-| `own<T>` / `borrow<T>` | 只保留内部 WIT/manifest/ABI 语义，不公开为普通 Do 类型 | 用户在评估后明确同意继续推进这一边界 | `docs/superpowers/specs/2026-07-30-wit-resource-ownership-design.md:31-65,96-101` |
-| `Result<T,E>` | distinct arm 的普通 Do/API 使用 `T \| E`；`Result` 只保留给同型或私有 WIT/ABI 兼容 probe | 用户确认回到 Do union 用法；同型 result 仍需内部 tag | `docs/superpowers/specs/2026-07-29-result-core-design.md:3-8,45-80` |
-| 取消语义 | 对齐 pinned Component/WASI 取消语义；已发出的 SQL、网络或文件副作用不回滚 | 用户明确裁定与 WASI 对齐 | `docs/superpowers/specs/2026-07-30-component-cancellation-lowering-design.md:19-46` |
-| Do/WIT 大小写 | Do 核心保留 `Future/Stream/Tuple` 等拼写；WIT 保留规范小写 token；`Result` 不是 distinct arm 的默认源级写法 | 用户明确参与大小写取舍并随后裁定 distinct result 回到 Do union | `docs/superpowers/specs/2026-07-29-result-core-design.md:3-8,45-80` |
-| UI host 边界 | UI 使用 generic host-export/manifest/ABI，不增加 `ui_bind_*` 等 compiler 特例 | 用户明确反对 UI 专用 compiler 识别 | `/home/_/.codex/memories/MEMORY.md:78-82`；`docs/superpowers/plans/2026-07-27-host-export-manifest.md:5-17` |
-| Rust/Zig 分工 | Zig 维护 Do 编译器和构建入口；Rust 只用于 Wasmtime/Component host runner 验证 | 用户明确确认已有 Rust 环境并继续推进 adapter | `docs/superpowers/plans/2026-07-30-wit-resource-ownership.md:5-18` |
+| `own<T>` / `borrow<T>` | 只保留内部 WIT/manifest/ABI 语义，不公开为普通 Do 类型 | 用户在评估后明确同意继续推进这一边界 | `doc/superpowers/specs/2026-07-30-wit-resource-ownership-design.md:31-65,96-101` |
+| `Result<T,E>` | distinct arm 的普通 Do/API 使用 `T \| E`；`Result` 只保留给同型或私有 WIT/ABI 兼容 probe | 用户确认回到 Do union 用法；同型 result 仍需内部 tag | `doc/superpowers/specs/2026-07-29-result-core-design.md:3-8,45-80` |
+| 取消语义 | 对齐 pinned Component/WASI 取消语义；已发出的 SQL、网络或文件副作用不回滚 | 用户明确裁定与 WASI 对齐 | `doc/superpowers/specs/2026-07-30-component-cancellation-lowering-design.md:19-46` |
+| Do/WIT 大小写 | Do 核心保留 `Future/Stream/Tuple` 等拼写；WIT 保留规范小写 token；`Result` 不是 distinct arm 的默认源级写法 | 用户明确参与大小写取舍并随后裁定 distinct result 回到 Do union | `doc/superpowers/specs/2026-07-29-result-core-design.md:3-8,45-80` |
+| UI host 边界 | UI 使用 generic host-export/manifest/ABI，不增加 `ui_bind_*` 等 compiler 特例 | 用户明确反对 UI 专用 compiler 识别 | `/home/_/.codex/memories/MEMORY.md:78-82`；`doc/superpowers/plans/2026-07-27-host-export-manifest.md:5-17` |
+| Rust/Zig 分工 | Zig 维护 Do 编译器和构建入口；Rust 只用于 Wasmtime/Component host runner 验证 | 用户明确确认已有 Rust 环境并继续推进 adapter | `doc/superpowers/plans/2026-07-30-wit-resource-ownership.md:5-18` |
 | pinned 工具链命名 | 暂用 `wasm-tools 1.254.0` 的 legacy async target `wasmtime-p3-legacy`，标准 `wasmtime-p3` 暂不启用 | 用户接受 pinned 路径；标准命名和完整成员证据尚未齐 | `/home/_/.codex/memories/MEMORY.md:86-87` |
 | Wasmtime 驱动边界 | guest scheduler 管理逻辑任务；host 只驱动单个 Store/component future；取消后等唯一终态再 cleanup | 用户用 `ok` 确认了该整体修复方向，因此不计入严格自动；每个 do task 建一个 Wasmtime future 会触碰 single-Store/reentrancy，取消即释放 host frame/resource 可能造成悬空状态 | `/home/_/.codex/memories/MEMORY.md:88-99`；`doc/design/2026-08-03-g6-2-general-resource-ownership.md:148-161`；`/home/_/.codex/sessions/2026/07/27/rollout-2026-07-27T23-46-53-019fa441-f2e4-7d21-b589-dbee17658511.jsonl:5960,5966` |
 
@@ -105,8 +105,8 @@
 | 项目 | 用户选择/改向 | 统计处理 | 结果证据 |
 | --- | --- | --- | --- |
 | G6.1 preopens | 选择方案 A | 排除 | `doc/pending_blocked.md:35` |
-| G6.3 sockets | 选择方案 B | 排除 | `docs/superpowers/specs/2026-07-13-g6-3-sockets-scheme-b-design.md:7-27` |
-| WasmGC/i31 候选路线 | 对话中有明确候选方向，但没有独立的仓库决策/实现证据 | 排除；`i31` 仍无源语义落地证据，不能反推为自动选择或已完成方案 | `docs/superpowers/plans/2026-07-30-wit-resource-ownership.md:13`；`docs/superpowers/specs/2026-07-30-wit-resource-ownership-design.md:96-101` |
+| G6.3 sockets | 选择方案 B | 排除 | `doc/superpowers/specs/2026-07-13-g6-3-sockets-scheme-b-design.md:7-27` |
+| WasmGC/i31 候选路线 | 对话中有明确候选方向，但没有独立的仓库决策/实现证据 | 排除；`i31` 仍无源语义落地证据，不能反推为自动选择或已完成方案 | `doc/superpowers/plans/2026-07-30-wit-resource-ownership.md:13`；`doc/superpowers/specs/2026-07-30-wit-resource-ownership-design.md:96-101` |
 
 ## 严格自动方案的替代路线与弃权理由
 

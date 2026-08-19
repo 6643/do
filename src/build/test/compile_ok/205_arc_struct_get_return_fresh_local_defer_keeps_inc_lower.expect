@@ -1,2 +1,6 @@
-count=0 ;; field-get-move user.name
-count=1 call $__arc_inc
+(type $user
+count=1 call $nop
+count=1 struct.get $user $name
+count=1 ;; gc-root return_value
+count=1 ;; gc-root call_result
+count=0 __arc_

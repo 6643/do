@@ -1,0 +1,615 @@
+//! Bounded core-module assembly for measured synchronous marshal plans.
+//!
+//! This module owns only the core wrapper needed to validate a small
+//! canonical-memory probe. It deliberately does not assemble a host runtime,
+//! infer arbitrary WIT names, or expose GC references at the component ABI.
+const std = @import("std");
+const marshal = @import("codegen_component_marshal_plan.zig");
+const marshal_wat = @import("codegen_component_marshal_wat.zig");
+const marshal_ops = @import("codegen_component_marshal_ops.zig");
+const runtime_gc_wat = @import("runtime_gc_wat.zig");
+
+pub const EmitConfig = struct {
+    direction: marshal.Direction,
+    function_name: []const u8 = "marshal",
+    export_name: []const u8 = "marshal",
+    input_local: []const u8 = "input",
+    realloc_name: []const u8 = "cabi_realloc",
+    canonical_call_name: []const u8 = "canonical_call",
+    canonical_import_module: []const u8,
+    canonical_import_name: []const u8,
+    /// Fixed scalar argument used by the bounded WASI random-bytes lift.
+    canonical_u64_arg: ?u64 = null,
+    memory_min_pages: u32 = 1,
+};
+
+pub fn emit_sync_marshal_module(
+    allocator: std.mem.Allocator,
+    plan: *const marshal.SyncValuePlan,
+    config: EmitConfig,
+) ![]u8 {
+    const memory_plan = try marshal_ops.build_sync_memory_plan(plan);
+    try validate_config(allocator, plan, config, &memory_plan);
+    const uses_linear_memory = switch (memory_plan.copy_shape) {
+        .scalar => false,
+        .text_bytes, .list_elements => true,
+        .record_fields => memory_plan.direction == .lift or memory_plan.record_indirect != null,
+    };
+    const uses_realloc = switch (memory_plan.copy_shape) {
+        .text_bytes, .list_elements => true,
+        .record_fields => memory_plan.record_indirect != null,
+        .scalar => false,
+    };
+
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+    try out.appendSlice(allocator, "(module\n");
+    if (uses_linear_memory) {
+        try runtime_gc_wat.emit_bytes_type(allocator, &out);
+        try runtime_gc_wat.emit_text_type(allocator, &out);
+        if (memory_plan.element_core_type != null) {
+            try runtime_gc_wat.emit_u32_type(allocator, &out);
+        }
+    }
+    if (memory_plan.copy_shape == .record_fields) {
+        try emit_record_type(allocator, &out, plan);
+    }
+    try emit_canonical_import_type(allocator, &out, config.direction, &memory_plan, plan, config);
+    if (uses_realloc) {
+        try out.appendSlice(allocator, "  (type $cabi_realloc_type (func (param i32 i32 i32 i32) (result i32)))\n");
+    }
+    try append_fmt(allocator, &out, "  (import \"{s}\" \"{s}\" (func ${s} (type $canonical_{s})))\n", .{
+        config.canonical_import_module,
+        config.canonical_import_name,
+        config.canonical_call_name,
+        direction_name(config.direction),
+    });
+    if (uses_linear_memory) {
+        try append_fmt(allocator, &out, "  (memory (export \"memory\") {d})\n", .{config.memory_min_pages});
+        if (uses_realloc) {
+            try out.appendSlice(allocator, "  (global $__marshal_heap (mut i32) (i32.const 16))\n");
+            try emit_realloc(allocator, &out, config.realloc_name);
+        }
+    }
+
+    const function_wat = try marshal_wat.emit_sync_marshal_function(allocator, plan, .{
+        .function_name = config.function_name,
+        .input_local = config.input_local,
+        .realloc_name = config.realloc_name,
+        .canonical_call_name = config.canonical_call_name,
+        .canonical_u64_arg = config.canonical_u64_arg,
+    });
+    defer allocator.free(function_wat);
+    try out.appendSlice(allocator, function_wat);
+    try append_fmt(allocator, &out, "  (export \"{s}\" (func ${s}))\n", .{ config.export_name, config.function_name });
+    try out.appendSlice(allocator, ")\n");
+    return out.toOwnedSlice(allocator);
+}
+
+fn validate_config(
+    allocator: std.mem.Allocator,
+    plan: *const marshal.SyncValuePlan,
+    config: EmitConfig,
+    memory_plan: *const marshal_ops.MemoryPlan,
+) !void {
+    if (config.memory_min_pages == 0) return error.InvalidMemorySize;
+    if (plan.direction != config.direction) return error.DirectionMismatch;
+    if (config.canonical_u64_arg != null and
+        (config.direction != .lift or memory_plan.copy_shape != .list_elements or
+            memory_plan.element_core_type != null))
+    {
+        return error.UnsupportedCanonicalExtraArgument;
+    }
+    for ([_][]const u8{
+        config.function_name,
+        config.export_name,
+        config.input_local,
+        config.realloc_name,
+        config.canonical_call_name,
+    }) |name| {
+        if (!valid_wat_name(name)) return error.InvalidWatName;
+    }
+    if (!valid_import_text(config.canonical_import_module) or
+        !valid_import_text(config.canonical_import_name))
+    {
+        return error.InvalidCanonicalImport;
+    }
+
+    const expected = try expected_canonical_import(allocator, plan.descriptor);
+    defer allocator.free(expected.module);
+    if (!std.mem.eql(u8, expected.module, config.canonical_import_module) or
+        !std.mem.eql(u8, expected.name, config.canonical_import_name))
+    {
+        return error.CanonicalImportMismatch;
+    }
+
+    switch (config.direction) {
+        .lower => {
+            if (plan.abi.arguments.len != 1 or plan.abi.results.len != 0) return error.InvalidCanonicalArity;
+        },
+        .lift => {
+            if (plan.abi.arguments.len != 0 or plan.abi.results.len != 1) return error.InvalidCanonicalArity;
+        },
+    }
+}
+
+pub const CanonicalImport = struct {
+    module: []const u8,
+    name: []const u8,
+};
+
+pub fn canonical_import_for_plan(
+    allocator: std.mem.Allocator,
+    descriptor: marshal.DescriptorIdentity,
+) !CanonicalImport {
+    return expected_canonical_import(allocator, descriptor);
+}
+
+fn expected_canonical_import(allocator: std.mem.Allocator, descriptor: marshal.DescriptorIdentity) !CanonicalImport {
+    const package_at = std.mem.lastIndexOfScalar(u8, descriptor.package, '@') orelse return error.InvalidCanonicalImport;
+    const member_dot = std.mem.indexOfScalar(u8, descriptor.member, '.') orelse return error.InvalidCanonicalImport;
+    if (package_at == 0 or member_dot == 0 or member_dot + 1 >= descriptor.member.len) {
+        return error.InvalidCanonicalImport;
+    }
+    if (std.mem.indexOfScalarPos(u8, descriptor.member, member_dot + 1, '.') != null) {
+        return error.InvalidCanonicalImport;
+    }
+
+    return .{
+        .module = try std.fmt.allocPrint(allocator, "{s}/{s}{s}", .{
+            descriptor.package[0..package_at],
+            descriptor.member[0..member_dot],
+            descriptor.package[package_at..],
+        }),
+        .name = descriptor.member[member_dot + 1 ..],
+    };
+}
+
+fn emit_canonical_import_type(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    direction: marshal.Direction,
+    memory_plan: *const marshal_ops.MemoryPlan,
+    plan: *const marshal.SyncValuePlan,
+    config: EmitConfig,
+) !void {
+    if (memory_plan.copy_shape == .scalar) {
+        const core_type = memory_plan.scalar_core_type orelse return error.MeasuredScalarCoreTypeMissing;
+        const core_name = switch (core_type) {
+            .i32 => "i32",
+            .i64 => "i64",
+            .f32 => "f32",
+            .f64 => "f64",
+        };
+        switch (direction) {
+            .lower => try append_fmt(allocator, out, "  (type $canonical_lower (func (param {s})))\n", .{core_name}),
+            .lift => try append_fmt(allocator, out, "  (type $canonical_lift (func (result {s})))\n", .{core_name}),
+        }
+        return;
+    }
+    switch (memory_plan.copy_shape) {
+        .record_fields => switch (direction) {
+            .lower => try emit_record_lower_import_type(allocator, out, plan),
+            .lift => try out.appendSlice(allocator, "  (type $canonical_lift (func (param i32)))\n"),
+        },
+        else => switch (direction) {
+            .lower => try out.appendSlice(allocator, "  (type $canonical_lower (func (param i32 i32)))\n"),
+            .lift => if (config.canonical_u64_arg != null)
+                try out.appendSlice(allocator, "  (type $canonical_lift (func (param i64 i32)))\n")
+            else
+                try out.appendSlice(allocator, "  (type $canonical_lift (func (param i32)))\n"),
+        },
+    }
+}
+
+fn emit_record_lower_import_type(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    plan: *const marshal.SyncValuePlan,
+) !void {
+    if (plan.root.measured.?.indirect != null) {
+        try out.appendSlice(allocator, "  (type $canonical_lower (func (param i32)))\n");
+        return;
+    }
+    try out.appendSlice(allocator, "  (type $canonical_lower (func (param");
+    for (plan.root.children) |*child| {
+        const facts = child.measured orelse return error.MeasuredChildMissing;
+        const core_type = facts.core_type orelse return error.MeasuredScalarCoreTypeMissing;
+        const core_name = switch (core_type) {
+            .i32 => " i32",
+            .i64 => " i64",
+            .f32 => " f32",
+            .f64 => " f64",
+        };
+        try out.appendSlice(allocator, core_name);
+    }
+    try out.appendSlice(allocator, ")))\n");
+}
+
+fn emit_record_type(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    plan: *const marshal.SyncValuePlan,
+) !void {
+    if (plan.root.kind != .record or plan.root.children.len == 0) return error.UnsupportedMarshalShape;
+    try out.appendSlice(allocator, "  (type $do_record (struct");
+    for (plan.root.children, 0..) |*child, index| {
+        const facts = child.measured orelse return error.MeasuredChildMissing;
+        const core_type = facts.core_type orelse return error.MeasuredScalarCoreTypeMissing;
+        const core_name = switch (core_type) {
+            .i32 => "i32",
+            .i64 => "i64",
+            .f32 => "f32",
+            .f64 => "f64",
+        };
+        try append_fmt(allocator, out, " (field $field{d} {s})", .{ index, core_name });
+    }
+    try out.appendSlice(allocator, "))\n");
+}
+
+fn emit_realloc(allocator: std.mem.Allocator, out: *std.ArrayList(u8), name: []const u8) !void {
+    try append_fmt(allocator, out, "  (func ${s} (type $cabi_realloc_type)\n" ++
+        "    (param $old i32)\n" ++
+        "    (param $old_size i32)\n" ++
+        "    (param $align i32)\n" ++
+        "    (param $size i32)\n" ++
+        "    (result i32)\n" ++
+        "    (local $ptr i32)\n" ++
+        "    local.get $old\n" ++
+        "    i32.eqz\n" ++
+        "    if (result i32)\n" ++
+        "      global.get $__marshal_heap\n" ++
+        "      local.tee $ptr\n" ++
+        "      global.get $__marshal_heap\n" ++
+        "      local.get $size\n" ++
+        "      i32.add\n" ++
+        "      global.set $__marshal_heap\n" ++
+        "    else\n" ++
+        "      i32.const 0\n" ++
+        "    end)\n" ++
+        "  (export \"cabi_realloc\" (func ${s}))\n", .{ name, name });
+}
+
+fn direction_name(direction: marshal.Direction) []const u8 {
+    return switch (direction) {
+        .lower => "lower",
+        .lift => "lift",
+    };
+}
+
+fn valid_wat_name(name: []const u8) bool {
+    if (name.len == 0) return false;
+    for (name) |ch| {
+        if (!(std.ascii.isAlphanumeric(ch) or ch == '_' or ch == '-' or ch == '.')) return false;
+    }
+    return true;
+}
+
+fn valid_import_text(value: []const u8) bool {
+    if (value.len == 0) return false;
+    for (value) |ch| {
+        if (std.ascii.isControl(ch) or ch == '"' or ch == '\\') return false;
+    }
+    return true;
+}
+
+fn append_fmt(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    comptime format: []const u8,
+    args: anytype,
+) !void {
+    const text = try std.fmt.allocPrint(allocator, format, args);
+    defer allocator.free(text);
+    try out.appendSlice(allocator, text);
+}
+
+test "marshal module wrapper rejects descriptor import drift" {
+    var value = @import("wit_abi_types.zig").AbiType.text(std.testing.allocator);
+    defer value.deinit();
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal@1.0.0",
+        .world = "probe",
+        .member = "api.send",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    }, &value, .lower, .{ .layout = .{ .text = .{
+        .pointer_offset = 0,
+        .length_offset = 4,
+        .byte_size = 8,
+        .alignment = 4,
+        .allocation = .cabi_realloc,
+        .free = .cabi_realloc,
+    } } });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    try std.testing.expectError(error.CanonicalImportMismatch, emit_sync_marshal_module(std.testing.allocator, &plan, .{
+        .direction = .lower,
+        .canonical_import_module = "demo:marshal/wrong@1.0.0",
+        .canonical_import_name = "send",
+    }));
+}
+
+test "marshal module wrapper accepts a measured u32 list shape" {
+    var element = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer element.deinit();
+    var value = try @import("wit_abi_types.zig").AbiType.list(std.testing.allocator, &element);
+    defer value.deinit();
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal@1.0.0",
+        .world = "probe",
+        .member = "api.send",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    }, &value, .lower, .{ .layout = .{ .list = .{
+        .pointer_offset = 0,
+        .length_offset = 4,
+        .element_byte_size = 4,
+        .element_stride = 4,
+        .element_alignment = 4,
+        .ticket_offset = 0,
+        .capacity = 4,
+        .accepted_lengths = &.{ 0, 1, 2, 3, 4 },
+        .allocation = .cabi_realloc,
+        .free = .cabi_realloc,
+    } }, .children = &.{.{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } }} });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const wat = try emit_sync_marshal_module(std.testing.allocator, &plan, .{
+        .direction = .lower,
+        .canonical_import_module = "demo:marshal/api@1.0.0",
+        .canonical_import_name = "send",
+    });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_u32") != null);
+}
+
+test "marshal module wrapper declares typed u32 list GC array" {
+    var element = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer element.deinit();
+    var value = try @import("wit_abi_types.zig").AbiType.list(std.testing.allocator, &element);
+    defer value.deinit();
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal@1.0.0",
+        .world = "probe",
+        .member = "api.send",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+    }, &value, .lower, .{ .layout = .{ .list = .{
+        .pointer_offset = 0,
+        .length_offset = 4,
+        .element_byte_size = 4,
+        .element_stride = 4,
+        .element_alignment = 4,
+        .ticket_offset = 0,
+        .capacity = 4,
+        .accepted_lengths = &.{ 0, 1, 2, 3, 4 },
+        .allocation = .cabi_realloc,
+        .free = .cabi_realloc,
+    } }, .children = &.{.{ .layout = .{ .scalar = .{
+        .offset = 0,
+        .byte_size = 4,
+        .alignment = 4,
+        .core_type = .i32,
+    } } }} });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const wat = try emit_sync_marshal_module(std.testing.allocator, &plan, .{
+        .direction = .lower,
+        .canonical_import_module = "demo:marshal/api@1.0.0",
+        .canonical_import_name = "send",
+    });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_u32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get $do_u32") != null);
+}
+
+test "marshal module wrapper uses an indirect result area for u32 list lift" {
+    var element = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer element.deinit();
+    var value = try @import("wit_abi_types.zig").AbiType.list(std.testing.allocator, &element);
+    defer value.deinit();
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal@1.0.0",
+        .world = "probe",
+        .member = "api.receive",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+    }, &value, .lift, .{ .layout = .{ .list = .{
+        .pointer_offset = 0,
+        .length_offset = 4,
+        .element_byte_size = 4,
+        .element_stride = 4,
+        .element_alignment = 4,
+        .ticket_offset = 0,
+        .capacity = 4,
+        .accepted_lengths = &.{ 0, 1, 2, 3, 4 },
+        .allocation = .cabi_realloc,
+        .free = .cabi_realloc,
+    } }, .children = &.{.{ .layout = .{ .scalar = .{
+        .offset = 0,
+        .byte_size = 4,
+        .alignment = 4,
+        .core_type = .i32,
+    } } }} });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const wat = try emit_sync_marshal_module(std.testing.allocator, &plan, .{
+        .direction = .lift,
+        .canonical_import_module = "demo:marshal/api@1.0.0",
+        .canonical_import_name = "receive",
+    });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lift (func (param i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "local.get $__result_area") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 4") != null);
+}
+
+test "marshal module wrapper declares scalar record lift type" {
+    var code = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer code.deinit();
+    var count = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer count.deinit();
+    var value = try @import("wit_abi_types.zig").AbiType.record(std.testing.allocator, &.{
+        .{ .name = "code", .value = &code },
+        .{ .name = "count", .value = &count },
+    });
+    defer value.deinit();
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-record@1.0.0",
+        .world = "probe",
+        .member = "api.read",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    }, &value, .lift, .{
+        .layout = .{ .record = .{
+            .byte_size = 8,
+            .alignment = 4,
+            .fields = &.{
+                .{ .name = "code", .offset = 0, .byte_size = 4, .alignment = 4, .indirect = null },
+                .{ .name = "count", .offset = 4, .byte_size = 4, .alignment = 4, .indirect = null },
+            },
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .scalar = .{ .offset = 4, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+        },
+    });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const wat = try emit_sync_marshal_module(std.testing.allocator, &plan, .{
+        .direction = .lift,
+        .canonical_import_module = "demo:marshal-record/api@1.0.0",
+        .canonical_import_name = "read",
+    });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_record (struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lift (func (param i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $do_record") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $cabi_realloc") == null);
+}
+
+test "marshal module wrapper declares scalar record lower flat type" {
+    var code = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer code.deinit();
+    var count = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer count.deinit();
+    var value = try @import("wit_abi_types.zig").AbiType.record(std.testing.allocator, &.{
+        .{ .name = "code", .value = &code },
+        .{ .name = "count", .value = &count },
+    });
+    defer value.deinit();
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-record@1.0.0",
+        .world = "probe",
+        .member = "api.write",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    }, &value, .lower, .{
+        .layout = .{ .record = .{
+            .byte_size = 8,
+            .alignment = 4,
+            .fields = &.{
+                .{ .name = "code", .offset = 0, .byte_size = 4, .alignment = 4, .indirect = null },
+                .{ .name = "count", .offset = 4, .byte_size = 4, .alignment = 4, .indirect = null },
+            },
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .scalar = .{ .offset = 4, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+        },
+    });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const wat = try emit_sync_marshal_module(std.testing.allocator, &plan, .{
+        .direction = .lower,
+        .canonical_import_module = "demo:marshal-record/api@1.0.0",
+        .canonical_import_name = "write",
+    });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lower (func (param i32 i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(import \"demo:marshal-record/api@1.0.0\" \"write\" (func $canonical_call (type $canonical_lower)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $marshal (param $input (ref null $do_record))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"marshal\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(memory ") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "cabi_realloc") == null);
+}
+
+test "marshal module wrapper rejects GC references at the canonical boundary" {
+    var value = @import("wit_abi_types.zig").AbiType.text(std.testing.allocator);
+    defer value.deinit();
+    var plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal@1.0.0",
+        .world = "probe",
+        .member = "api.send",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    }, &value, .lower, .{ .layout = .{ .text = .{
+        .pointer_offset = 0,
+        .length_offset = 4,
+        .byte_size = 8,
+        .alignment = 4,
+        .allocation = .cabi_realloc,
+        .free = .cabi_realloc,
+    } } });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+    plan.root.contains_gc_reference = true;
+
+    try std.testing.expectError(error.GcReferenceCannotCrossCanonicalAbi, emit_sync_marshal_module(std.testing.allocator, &plan, .{
+        .direction = .lower,
+        .canonical_import_module = "demo:marshal/api@1.0.0",
+        .canonical_import_name = "send",
+    }));
+}
+
+test "WASI random list<u8> canonical import keeps the versioned WIT identity" {
+    const canonical = try canonical_import_for_plan(std.testing.allocator, .{
+        .package = "wasi:random@0.3.0-rc-2025-09-16",
+        .world = "imports",
+        .member = "random.get-random-bytes",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    });
+    defer std.testing.allocator.free(canonical.module);
+
+    try std.testing.expectEqualStrings("wasi:random/random@0.3.0-rc-2025-09-16", canonical.module);
+    try std.testing.expectEqualStrings("get-random-bytes", canonical.name);
+}
+
+test "WASI random list<u8> lift passes a bounded u64 length to the canonical import" {
+    var byte = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u8);
+    defer byte.deinit();
+    var value = try @import("wit_abi_types.zig").AbiType.list(std.testing.allocator, &byte);
+    defer value.deinit();
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "wasi:random@0.3.0-rc-2025-09-16",
+        .world = "imports",
+        .member = "random.get-random-bytes",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    }, &value, .lift, .{ .layout = .{ .byte_list = .{
+        .pointer_offset = 0,
+        .length_offset = 4,
+        .element_byte_size = 1,
+        .element_stride = 1,
+        .element_alignment = 1,
+        .capacity = 16,
+        .accepted_lengths = &.{ 0, 1, 16 },
+        .allocation = .cabi_realloc,
+        .free = .cabi_realloc,
+    } } });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const wat = try emit_sync_marshal_module(std.testing.allocator, &plan, .{
+        .direction = .lift,
+        .canonical_import_module = "wasi:random/random@0.3.0-rc-2025-09-16",
+        .canonical_import_name = "get-random-bytes",
+        .canonical_u64_arg = 16,
+    });
+    defer std.testing.allocator.free(wat);
+
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lift (func (param i64 i32)))") != null);
+    const arg = std.mem.indexOf(u8, wat, "i64.const 16") orelse return error.TestExpectedEqual;
+    const result_area = std.mem.indexOf(u8, wat, "local.get $__result_area") orelse return error.TestExpectedEqual;
+    try std.testing.expect(arg < result_area);
+}

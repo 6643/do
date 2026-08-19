@@ -1,9 +1,21 @@
 # Roadmap 执行状态
 
-更新时间: 2026-08-11
+更新时间: 2026-08-20
 
-**本文只保留当前状态与阻断。** 历史小任务勾选与逐条 gate 证据已从仓库移除; 追溯用 git 历史与 `CHANGELOG.md`。  
+**本文只保留当前状态与阻断。** 历史小任务勾选与逐条 gate 证据已从仓库移除; 追溯用 git 历史与 `CHANGELOG.md`。
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
+
+2026-08-18 增量: 新增私有 parser-backed Component marshal route；同时闭合
+bounded managed-struct list append 的 compiled-test/G5b 等价行
+(`src/build/codegen_component_marshal_route.zig`)。它从 WIT source 解析并绑定
+measured layout，派生 canonical import，再生成 bounded scalar-record `lift`
+Core WAT；不接受调用方伪造的 import identity。record assembly、真实 host
+execution 和 ARC/GC equivalence gates 现在都消费该生成路径，分别观察
+`sum=42` 与 `42/42`。默认 host/WIT route 仍保持 ARC；bounded flat scalar-record
+lower（含 `u32/u32` 与 `u32/u64/s64` measured shapes）以及 pinned 17-field `u64`
+indirect lower（136 bytes, alignment 8, canonical `(i32)` pointer）已闭合，
+indirect layouts beyond this shape、nested/general aggregate lower、
+Option/Result/Variant、async/resource 和 G5c cutover 仍 pending。
 
 ## 推进协议
 
@@ -17,6 +29,7 @@
 | 项 | 状态 |
 | --- | --- |
 | v1 子集 | 发布候选已收口 |
+| GC-first memory migration | `doc/memory.md` 和 `doc/design/2026-08-11-gc-first-memory-decision.md` 是 v1 source/runtime target. G5a 当前已闭合 parsed fixed-index、参数化 `[u8] @set`、全部当前 scalar-list literal/update slices、registered scalar-list one-value `@put`、bounded `[text]` managed-element one-value `@put`、全部当前 scalar-array managed-field payload rebuild、direct-local nested struct、一层、两层与三层直接 nested managed-struct `@get/@set`、单一直接同步单返回 `[u8]`/`text` managed-field call producer、bounded `Tuple<text,[u8]>` rewrite、bounded imported managed identity、payload-union、resolved generic、bounded managed-struct-list append，以及 `--p3-wait-for-component` 的 bounded `Future<nil>` GC frame/table slice; G5b 已关闭全部 22 个当前 admitted synchronous executable rows（含 payload-union、resolved generic、`[Box]` one-value `@put`、nested field paths 与 direct call producer）；Task 3 已把默认同步 pipeline 的已准入 managed candidates（含 bounded synchronous `defer`、`return nil` no-result cleanup、推断出的 `text` body binding、推断出的 `[u8]` body storage `@put`，以及 body-only managed-struct storage ctor/field update）接到 typed GC/root 输出，GC path 不再声明旧 storage compiler locals，未准入 shape、普通 GC sync async 和 host/WIT 仍保持 ARC fallback; `runtime_arc_wat.zig`, `runtime_prelude_wat.zig` 和 `codegen_ownership.zig` 仍是待替换的 implementation debt; async G5b/G5c 与 full GC migration 尚未完成. |
 | 阶段 A–F、H | done |
 | 阶段 D | 可推进项 done; D2.1 按 B 方案绿色 regression 收口 |
 | D2 真实 host smoke | in progress; real local filesystem preopen/read-directory, CLI pipe, compiler-generated TCP/UDP socket create/bind/drop loopback, and the private pinned `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size` async method gates are green; the method-level recovery matrix is documented, while general filesystem async and external HTTP remain blocked |
@@ -26,6 +39,863 @@
 | 架构扁平拆分 | 已落地: `diagnostics` / `type_name` / `sema_error` / codegen 域竖切 / **`sema_*` 域竖切** (`sema_tokens`/`sema_shapes`/`sema_function_*`/`sema_structures`/`sema_type_checks`/`sema_imports`/`sema_control`) |
 | 目录 | 标准库 `lib/`; 工具链 `src/` (原 `tool/`) |
 | active Component tooling | `wasm-tools 1.255.0 (76e20611d 2026-07-30)` only; SHA-256 `6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`; `--dummy-names legacy` is the current async naming mode |
+
+当前增量: G5a 默认同步候选新增推断 `[u8]/[u32]` 列表存储形状 (`seed [u8]/[u32]` + 单值 `@put`) 与一层、两层、三层直接 nested managed-struct field path; 默认 build/parse manifest 为 63 fixtures, 这些形状仍为 G5a-only. G5c residual baseline gate 已建立; bounded parser-backed text marshal 已通过 Core/WIT assembly、单一 host-driven lower gate 和固定 text ARC/GC equivalence gate（两条路径均为一次 allocation/free）, 固定 `list<u32>` 也已通过 lower/lift host gates 与独立 ARC/GC equivalence gate; flat/mixed scalar-record 和 pinned 17-field indirect record lower 也已有 host/equivalence evidence; 但 host/WIT inventory 的通用 lift、一般 aggregate、compiler wiring 与 full GC cutover 仍被 pending rows 阻断.
+
+2026-08-20 增量: 第三个 managed segment 的直接同步 nested field path (`@get/@set(outer, .inner, .middle, .leaf, ...)`) 已接入 typed GC lowering；第四层、更深 producer expression、async/resource 与 host/WIT 仍 fail-closed。新增 compiled fixture、独立 Wasmtime GC probe 与 ARC/GC semantic equivalence 行均通过 `wasm-tools 1.255.0`、Wasmtime GC 和 `27815` oracle；默认 GC build/parse gate 现为 63 fixtures，等价矩阵现为 24 行。G5c full cutover 仍 pending.
+
+2026-08-16 增量: `nested-byte-list-put.do` 的精确 `[[u8]]` 单值 `@put` producer 已加入默认 58-fixture manifest 和 G5b 等价矩阵。
+2026-08-18 增量: `compiled_ok/100_compiled_test_managed_struct_list_append_gc_migration.do` 通过真实
+`ModuleGraph` compiled-test 路由进入 typed GC；`check_gc_semantic_equivalence.sh`
+现报告 21 行、0 pending。仅闭合 `[Box]` 单值 `@put` 和 bounded 两层 nested
+field path，通用 managed/nested producer、host/WIT compiler wiring 与 G5c 仍保持
+pending。
+
+2026-08-19 增量: `@get(outer, .inner, .leaf)` 与
+`@set(outer, .inner, .leaf, value)` 的一层直接 nested managed-struct 路径已接入
+typed GC lowering。随后 `@get(outer, .inner, .leaf, .value)` 与
+`@set(outer, .inner, .leaf, .value, value)` 的两层路径也已接入，按最内层向外
+重建并保持旧 middle/leaf 可观察。新增 compiled fixture、独立 Wasmtime probe 和
+等价矩阵行均通过 `wasm-tools 1.255.0`、Wasmtime GC 与 `27815` oracle；默认
+GC build/parse gate 现为 60 fixtures，ARC/GC semantic equivalence matrix 现为
+21 行。第三个 managed segment、更深 producer expression、async/resource、
+host/WIT 和 G5c full cutover 仍 pending。
+
+同日继续推进: `managed-field-call-producer.do` 与
+`managed-text-field-call-producer.do` 现在共同覆盖 managed `[u8]`/`text`
+字段的直接同步单返回调用 producer；调用结果必须精确匹配字段类型，嵌套、多返回、异步、host/WIT 与任意表达式仍在 WAT 前拒绝。新增 compiled fixture、Wasmtime GC probe 与 ARC/GC 等价行均通过 `wasm-tools 1.255.0` 和 `27815` oracle；当前默认 GC build/parse gate 为 62 fixtures，等价矩阵为 23 行、0 pending，G5c full cutover 仍 pending。
+
+同日继续推进: `202_arc_field_reflection_get_return_fresh_local_move_lower.do` 的
+静态 field-reflection getter 现在也准入 typed GC。根必须是反射循环之前直接构造的同类型
+managed struct 局部；任意 producer 仍保持 ARC fallback。随后，`197` 的同步 `defer`
+也复用同一 typed GC reflection route；`198_arc_field_reflection_get_return_live_source_inc_lower.do`
+已补齐 inferred managed local、参数根和有界标量 guard 的 typed GC lowering；`203` 的
+fresh local with one zero-argument synchronous `defer` 也已接入同一路由，带 managed
+参数的 `defer`、任意 producer 和更一般 field reflection 仍保持 ARC，G5c full cutover
+仍 pending。
+
+2026-08-18 增量: `test_gc_async_frame_component.sh` 锁定
+`two-await-component.do` 的 bounded `Future<nil>` `--p3-wait-for-component`
+路径。生成物使用 GC-traced `$async-frame` table、无 `__arc_` 或线性 frame
+allocator，并通过 `wasm-tools 1.255.0` parse、Wasmtime `-W gc=y` compile 和
+Component validate。这是 `future_stream_frames` 的 G5a Future-only 证据；普通
+GC sync async 入口仍为 `UnsupportedGcSyncAsync`，Stream/general async、G5b
+等价和 G5c 仍 pending。
+
+2026-08-17 增量: measured canonical marshal boundary now admits direct
+`i32`/`i64`/`f32`/`f64` scalar lower/lift plans. The operation plan contains
+only the canonical call; the core WAT/module path emits a one-word ABI
+signature and does not allocate linear memory or expose GC references.
+Aggregate,
+option/result/variant, resource, async, Component host execution, default-route
+wiring, and G5c remain pending.
+
+2026-08-17 增量: the measured synchronous `list<u32>` marshal slice now has
+independent lower and result-area lift host gates plus an ARC/GC equivalence
+runner. Both backends observe `[10, 20, 30]`, with one allocation and one free
+per path. This is bounded Core/WIT evidence only; parser-backed compiler
+wiring, arbitrary records/lists, and the `host_wit_marshalling`/G5c inventory
+rows remain pending. A bounded scalar-record result-lift slice is now also
+validated independently: one result-area pointer, measured `u32` field loads,
+GC `struct.new`, a pinned host runner observing `sum=42`, and a paired
+linear-memory semantic-equivalence runner observing the same `sum=42`; flat
+scalar-record lower now has a separate checkpoint below, while indirect record
+lower outside the pinned 17-field slice and general aggregate/default-route
+support remain pending. The
+parser-backed registry-to-module test now covers that same scalar-record lift
+shape through `emit_sync_marshal_module`, while it remains a plan/emitter
+contract test rather than compiler default-route wiring.
+The new `test_gc_marshal_record_component.sh` gate now generates the record
+Core module from that parser-backed path and passes pinned
+`wasm-tools 1.255.0` parse/embed/new/validate/component-wit checks, including
+member drift and canonical GC-reference negative probes. This is assembly
+evidence only; the existing host runner remains a separate hand-authored
+execution fixture and the default host/WIT route stays ARC-backed.
+
+2026-08-16 增量: 默认 candidate scan 现在也准入 body-only managed struct 的直接字段替换（构造 `Box` 后以已绑定局部值执行 `box = @set(box, .value, next)`）。`50_arc_managed_struct_set_lower.do` 已从 ARC residual 推进为 typed GC WAT；动态 producer 仍 fail-closed，pre-cutover residual gate 已移到 `53_arc_managed_struct_overwrite_release_lower.do`。这只是已准入同步切片，不改变 G5c/full GC pending 状态。
+
+同日继续推进: body-only managed struct 的直接别名赋值（`box = next_box`）也已接入 typed GC route；`53_arc_managed_struct_overwrite_release_lower.do` 现已无 ARC marker。需要 producer call 的 RHS 仍不准入，residual gate 已前移到 `58_arc_managed_struct_set_rhs_tmp_lower.do`。
+
+随后，精确的同字段 `@get` RHS producer、body-only managed struct 的直接字段读取、bounded `[u8]` literal overwrite、bounded guard-return cleanup、bounded `[u8]` block-return cleanup，以及 no-result fallthrough binding 也已接入 typed GC route；`58_arc_managed_struct_set_rhs_tmp_lower.do`、`49_arc_managed_struct_get_lower.do`、`52_arc_storage_overwrite_release_lower.do`、`54_arc_guard_return_releases_managed_locals.do`、`55_arc_fallthrough_releases_managed_locals.do` 和 `62_arc_if_block_return_releases_managed_locals.do` 的回归契约现在要求 typed GC operations。
+2026-08-18 继续增量：`63_arc_if_else_return_releases_managed_locals.do` 的精确两分支
+return 形状已接入默认 typed GC route；随后，精确三分支 `else-if` 形状的
+`64_arc_else_if_return_releases_managed_locals.do` 也已接入递归 typed GC lowering，
+并由 G5c residual gate 做 GC-only + parse 断言。本轮已将跨作用域
+`break #outer` 的 `153_arc_break_cross_scope_release_chain_lower.do` 接入默认
+typed GC route，保留外层 block 目标并通过 `wasm-tools 1.255.0` parse；其相同
+源码的 release-dedup 回归 `156_arc_loop_control_release_dedup_lower.do` 同步
+改为 GC 契约；随后，跨作用域 `continue #outer` 的
+`154_arc_continue_cross_scope_release_chain_lower.do` 也接入默认 typed GC，保留
+外层 loop 目标并通过 `wasm-tools 1.255.0` parse；因此
+residual baseline 前移到仍实际输出
+ARC 的 `186_arc_unmanaged_struct_error_return_call_last_use_move_lower.do`；此外，
+`176_arc_storage_multi_result_assignment_call_last_use_move_lower.do` 与其 live-source
+变体 `177_arc_storage_multi_result_assignment_call_live_source_inc_lower.do` 已接入 bounded
+managed `[u8], i32` 多结果调用赋值的 typed GC route；显式
+managed `[u8]` alias `157_arc_storage_dead_alias_binding_elided_lower.do` 也已
+接入 GC route，保留同一 typed array reference 并移除 storage/ARC 期望；其后，
+`178_arc_managed_arg_unmanaged_struct_binding_call_last_use_move_lower.do` 与 live-source
+变体 `179_arc_managed_arg_unmanaged_struct_binding_call_live_source_inc_lower.do` 也已接入
+纯标量 unmanaged struct ABI 的 typed GC route；同步 `defer` 的 bounded multi-result
+返回 `185_arc_storage_multi_result_return_call_defer_keeps_inc_lower.do` 也已接入 GC，
+因此 residual baseline 继续前移到 186；
+本轮随后将纯标量 `Point | LoadError` union 的返回、guard-return、defer 和绑定形状
+`186`-`192` 接入扁平 typed GC ABI（payload slots + tag），并以 `@is` tag narrowing
+和 `wasm-tools 1.255.0` parse 回归覆盖；随后，精确的 managed union `[u8] | Error | nil`
+直接调用与 `nil` tag 比较形状 `193_arc_union_nil_expr_call_last_use_move_lower.do`
+已接入 typed GC carrier（`$do_union`）并移除 ARC 期望；随后，同一 carrier 的同步
+`defer` 与后续 `@len` 形状 `194`/`195` 也已接入 GC；`203` 的
+`fresh_local_defer` 形状也已接入 typed GC；`196` 的具体
+struct、静态 `field_name` 条件和 `field_get` 返回形状已通过编译期展开接入 typed GC，
+输出包含 `field-reflect-gc` 与 typed `struct.get`，`197` 的 bounded `defer`、`198` 的
+inferred live-source binding 与 `202` 的直接构造局部根也已接入同一路由；动态/generic
+field reflection、带 managed 参数的 `defer` 和任意 producer 形状仍保持 ARC。
+managed-struct alias `158_arc_managed_struct_dead_alias_binding_elided_lower.do`
+也以同一 typed reference 规则接入 GC；managed `[u8]` local overwrite
+`159_arc_storage_overwrite_last_use_move_lower.do` 随后接入 GC，并以
+`gc-root overwrite` 保持目标 local 的 typed reference 更新。此前，嵌套同步
+`if` fallthrough 的 `152_arc_fallthrough_nested_scope_release_order_lower.do` 及其
+相同源码的 release-dedup 回归 `155_arc_fallthrough_release_dedup_lower.do` 已接入
+typed GC；此前，混合
+`[u8], i32` 多结果中含未返回 managed local 的
+`151_arc_return_partial_multi_move_lower.do` 已接入 typed GC；随后，`70_multi_return_scalar_lower.do`
+的 bounded scalar-only multi-result 形状已接入 typed GC lowering：签名发射多个 Core
+结果，直接多值 `return` 按声明顺序压栈，多结果调用赋值按逆序写入 scalar locals。
+多结果 passthrough、bounded `[u8], [u8]` storage carrier、无参数直接构造并返回两个
+managed struct 的 multi-result carrier，以及重复同一 managed local 的 multi-result carrier
+已补入同一 GC slice；
+managed union/aggregate
+multi-result、动态 producer 和未覆盖形状仍保持 ARC fallback；G5c/full GC 仍 pending。
+
+### 2026-08-18 bounded indirect scalar-record lower
+
+私有 parser-backed route 现在额外闭合一个 measured indirect record lower
+形状：WIT `writing` record 含 17 个 `u64` 字段，`wit_abi_layout` 测得
+136 bytes、alignment 8，pinned `wasm-tools 1.255.0` 的 canonical Core import
+为单个 `(i32)` pointer。GC emitter 通过 `cabi_realloc` 分配临时 buffer，按
+measured offsets 写入字段，调用 host，再释放 buffer；canonical import 不暴露
+GC reference。
+
+`test_gc_marshal_record_indirect_lower_host.sh` 的 Component/Rust/Wasmtime
+gate 观察 `result=42 write-calls=1`；配对的
+`test_gc_marshal_record_indirect_lower_equivalence.sh` 观察
+`results=42/42 write-calls=1/1`。这只是 pinned 17-field indirect lower 与
+GC/flat equivalence 证据；更一般的 indirect layout、nested/text/list aggregate、
+默认 host/WIT compiler wiring、async/resource 与 G5c cutover 仍 pending。
+
+### 2026-08-16 bounded synchronous Component marshal assembly
+
+`src/build/codegen_component_marshal_module.zig` now wraps the existing
+measured synchronous marshal fragment in a valid Core Wasm module for the
+single `string` lower shape. The wrapper emits only the GC declarations it
+needs, a linear memory, a typed `cabi_realloc`, and the canonical import
+derived from the parser-backed descriptor (`demo:marshal/api@1.0.0::send`);
+canonical parameters/results remain scalar pointer/length words, never GC
+references. The structural unit is part of `codegen_gc_plans_test.zig` and
+rejects descriptor import drift.
+
+`examples/gc-p3-runtime/test_gc_marshal_text_component.sh` is the pinned
+assembly gate. It parses `marshal-text-core.wat`, embeds
+`marshal-text-assembly.wit`, creates and validates a Component, checks the
+declared `send: func(value: string)` world surface, and proves negative
+member-identity and GC-reference-import checks. This is a Core/WIT assembly
+checkpoint only: no host execution, ARC/GC equivalence, general record/list
+marshalling, or default-route change is claimed. `host_wit_marshalling` and
+G5c remain pending.
+
+### 2026-08-16 bounded synchronous text host execution
+
+`examples/gc-p3-runtime/test_gc_marshal_text_host.sh` now assembles a separate
+probe world with an explicit `run` export and executes it through the pinned
+Rust/Wasmtime host runner
+`examples/p3-runtime/rust-host-runner/src/bin/gc_marshal_text.rs`. The guest
+constructs one fixed GC `text` value (`hello`), copies it through the bounded
+linear-memory marshal path, and the host observes the canonical `string`
+argument. The gate therefore proves one host-driven lower/copy/call path in a
+valid Component; it does not claim compiler default routing, arbitrary source
+values, lift, records/lists, or ARC/GC semantic equivalence. The
+`host_wit_marshalling` row and G5c remain pending.
+
+### 2026-08-16 bounded text ARC/GC equivalence
+
+`examples/gc-p3-runtime/test_gc_marshal_text_equivalence.sh` assembles the
+same `demo:marshal-equivalence/api@1.0.0` WIT world twice: once with the GC
+text lower/copy path and once with a linear-memory ARC-style path. The shared
+Rust/Wasmtime runner observes `hello` from both host calls and checks the
+reported cleanup counters are `allocations=1/1` and `frees=1/1`. This closes
+the equivalence evidence for this fixed synchronous text probe only; it does
+not wire the plan into `do build`, prove lift or aggregate shapes, or close
+the `host_wit_marshalling`/G5c inventory rows.
+
+### 2026-08-17 bounded synchronous `list<u32>` host execution
+
+The measured marshal operation plan now admits the bounded scalar-list shape
+`list<u32>` in addition to the existing byte-list path. The plan preserves a
+four-byte element stride, computes the copied byte count with checked 64-bit
+arithmetic, and keeps the canonical ABI as `(ptr, len)` where `len` counts
+elements. The WAT emitter selects `$do_u32`, `array.get/set $do_u32`, aligned
+`i32.load/store`, and frees the temporary linear span with the measured byte
+size and alignment.
+
+`examples/gc-p3-runtime/test_gc_marshal_u32_host.sh` and
+`test_gc_marshal_u32_lift_host.sh` are the independent gates. They parse and
+embed pinned Core/WIT pairs, create and validate Components, and run the
+Rust/Wasmtime adapters. The lower host observes `[10, 20, 30]`; the lift host
+returns the same list through a measured result area and the guest observes
+checksum `60`. This proves one concrete lower/copy/call path and one concrete
+lift/result-area/copy path. It does not claim records, arbitrary lists,
+compiler wiring, ARC/GC equivalence, or G5c closure; those remain pending.
+
+### GC migration admission ledger (2026-08-13)
+
+`src/build/test/check_gc_migration_inventory.sh` is the machine-readable
+admission ledger for every default managed path. It accepts only evidence-backed
+`complete` G5a rows: the four parsed `[u8]` slices (fixed/parameterized `@set`,
+numeric literal, and one-value `@put`), direct `[u8]` managed-field payload
+rebuild, one bounded pure payload-union carrier, and resolved generic managed
+identity/field update. The checker verifies linked source fixtures and
+bash-invokable probe scripts exist, then deliberately exits non-zero while any
+G5a, G5b ARC/GC equivalence, or G5c default-routing row is `pending`.
+
+`text` now admits direct identity/literal construction and exact text-field
+rebuild in the parsed synchronous entry. `[text]`, declared managed-struct
+element lists, and the bounded nested `[[u8]]` list shape admit bounded
+literal/`@len`/`@get`/collection-loop slices.
+Nested structs admit only direct-local
+child replacement and direct child `@get`; `Tuple<text, [u8]>` admits one
+direct immutable rewrite shape; other nested aggregate shapes, unsupported
+other list shapes,
+Tuple/storage shapes, general unions, generic layout instantiation, unsupported
+import graphs, host/WIT marshalling, unproven synchronous control flow, and Future/Stream
+frames remain pending. Resource terminal cleanup now has a bounded G5a Component
+gate, while its G5b/G5c cells remain pending. Their current parsed-entry
+failure boundaries are recorded in the ledger from `codegen_gc_sync.zig`; this
+is a current implementation record, not a claim that the checker verified
+negative error boundaries or that a token-profile `--gc-core` probe widens the
+parsed G5a entry. The normal `do build` route now dispatches only
+evidence-backed synchronous managed candidates through the GC entry;
+unsupported shapes and host/WIT boundaries keep the existing ARC fallback.
+The ledger still has pending G5a/G5b/G5c cells, so this is not the default
+full-GC cutover.
+
+### 2026-08-18 bounded GC resource terminal cleanup
+
+`resource_terminal_cleanup` is now a bounded G5a row in
+`src/build/test/check_gc_migration_inventory.sh`. The gate
+`examples/gc-p3-runtime/test_gc_resource_terminal_cleanup.sh` builds
+`async-resource-result-component.do` with the pinned `wasm-tools 1.255.0`,
+compares the generated WIT sidecar with the registered probe, rejects ARC
+markers and the linear-memory `$frame-next` allocator, and requires the
+GC-traced `$async-frame`/`$async-frames` root, canonical Result buffer, error
+terminal marker, frame release, and Component-boundary resource-drop imports.
+The guest Core output must not call the resource-drop imports directly.
+
+The same gate parses, compiles with Wasmtime `-W gc=y`, embeds/creates/validates
+the Component, then runs the existing Rust/Wasmtime pending, immediate, error,
+cancel, and invalid-terminal-shape probes. These probes observe exactly-once
+request/response ownership cleanup and an empty resource table on the valid
+terminal paths.
+
+```mermaid
+flowchart LR
+  frame["GC frame/table root"] --> result["canonical Result buffer"]
+  result --> terminal{"ready / error / cancel"}
+  terminal --> release["buffer + frame release"]
+  terminal -.-> boundary["Component resource-drop boundary"]
+```
+
+This is bounded Component/WIT evidence only. Ordinary GC synchronous async
+admission, general resource shapes, and G5c default one-backend cutover remain
+pending. The cancellation gate now also runs the same Rust/Wasmtime host
+against the generated GC Component and the hand-authored linear Component, then
+compares request consumption, pending polls, future drops, response creation/
+drop, and final table state. The two observations are equal, closing the
+backend-neutral G5b cancellation equivalence for this bounded resource shape.
+
+The G5b boundary remains explicit: the normal `do build` path for this async
+fixture still returns `error[AsyncLoweringUnavailable]`. The closed G5b cell is
+therefore a backend-neutral cancellation oracle, not ordinary ARC lowering; it
+does not admit general async lowering or change the default backend.
+
+### 2026-08-15 synchronous GC body-local routing
+
+The normal candidate scan now includes explicit body-only `text` bindings whose
+initializer is a direct string literal, which already has typed GC lowering.
+It also admits a standalone body-only scalar-list literal and a following
+single-value `@put` or a single-index `@set` when the function ends with
+`return`; the typed GC emitter already has the required array
+literal/copy/set paths. Multi-value or spread `@put`, dynamic/non-literal
+`@set`, producer expressions, and list/managed-struct storage with other
+control flow remain outside this admission. Focused fixtures verify typed GC
+locals, typed array copy/set and the absence of `__arc_` markers for these
+bounded forms. This closes routing gaps only; full normal-pipeline root
+transitions, calls/storage conversion, G5b equivalence, and G5c cutover remain
+pending.
+
+### 2026-08-15 GC admission fail-closed gate
+
+The default candidate scan now validates the complete source header set before
+selecting the synchronous GC route. Parameter/result unions, unsupported
+overloads, unmanaged struct results, field reflection, and calls containing
+multiple managed field reads remain on the ARC path until their GC lowering is
+closed. Bounded synchronous `defer` bodies are admitted with LIFO cleanup and
+`return nil` no-result handling. Scalar-only compiled tests likewise retain
+the ARC/TCO backend; managed test-local shapes use the GC bridge only when the
+whole test source is admitted.
+
+Focused pipeline coverage passes `763/763`. After migrating the affected
+implementation-specific expectations to typed GC/root assertions, the
+standard harness with repository-local `TMPDIR` reports `pass=1259 fail=0
+skip=3`; `RUN_WASM=1` reports `pass=1261 fail=0 skip=3`. The remaining G5c
+work is residual ARC removal and coverage of paths that are not yet admitted,
+not an unresolved regression in the current harness.
+
+### 2026-08-15 payload-union typed locals and resolved generic substitution
+
+The synchronous GC emitter now lowers a bounded `Unit | Bytes([u8])` carrier
+through a real typed local, including assignment, return, and one managed GC
+root. The old decomposed payload/tag locals are not emitted on this GC path.
+Resolved generic instances that bind `T` to the same payload union are admitted
+after the binding is validated against the bounded carrier layout; `T`-typed
+locals are substituted before body-local collection. Mixed, resource, unresolved,
+or multi-managed-arm unions remain fail-closed.
+
+Focused GC module/pipeline tests pass `164/164` and `761/761`. This expands the
+positive G5a lowering evidence only; G5b equivalence and G5c default cutover
+remain pending.
+
+### 2026-08-15 G5a nested managed-list evidence
+
+The parsed synchronous GC entry now admits one nested `[[u8]]` shape. The
+`nested-byte-list.do` fixture constructs an outer typed GC array containing the
+inner `$do_bytes` array, reads both levels, and iterates the outer collection.
+Its Wasmtime/`wasm-tools 1.255.0` probe returns the `27815` oracle and checks
+the three inner bytes. The type-name encoder uses `$do_list_list_u8`, and the
+prelude emits the inner array before the outer array.
+
+This closes only the bounded nested byte-list evidence. A companion
+`nested-byte-list-put.do` probe now also admits one direct `@put(rows, row)`
+producer for `[[u8]]`; it checks source preservation and the appended inner
+row under the same `27815` Wasmtime oracle. General producer expressions,
+arbitrary nested aggregate combinations, spread/multi-value `@put`, host/WIT
+marshalling, async frames, resource cleanup, G5b pending rows, and G5c remain
+pending.
+
+### 2026-08-14 G5a scalar-list float evidence
+
+The parsed synchronous GC entry now has executable evidence for `[f32]` and
+`[f64]` list literals and fixed-index `@set` updates. Their typed GC arrays are
+parsed by `wasm-tools 1.255.0` and compiled/executed by Wasmtime with the
+`27815` value oracle. This closes only the float literal/update evidence
+boundary; float `@put`, other scalar updates, nested lists, and producer-shaped
+lists remain outside admission. Declared managed-struct element and `[text]`
+list literal/`@len`/`@get`/collection-loop lowering are tracked separately
+below.
+
+### 2026-08-14 G5a scalar-list bool update evidence
+
+The parsed synchronous GC entry now has executable evidence for a fixed-index
+`[bool]` update. `bool-list-set.do` copies the source typed GC array before
+`array.set`; its probe verifies that the original `false` element is preserved
+and the returned element is `true`. `wasm-tools 1.255.0` parsing and Wasmtime
+`-W gc=y` compilation/execution both pass with the `27815` value oracle.
+The default `do build` route for this admitted shape also emits the typed
+`$do_bool` GC array with `array.copy`/`array.set` and no `__arc_` symbol.
+
+This extends the scalar-list evidence boundary only to the recorded boolean
+literal/update shape. Boolean `@put`, parameterized or producer updates, and
+general nested lists remain outside admission; the bounded `[[u8]]` shape is
+tracked separately. Declared managed-struct element and
+`[text]` list literal/`@len`/`@get`/collection-loop lowering are tracked
+separately below.
+
+### 2026-08-15 G5a remaining scalar-list evidence
+
+The parsed synchronous GC entry now admits literal and fixed-index immutable
+update slices for `[i8]`, `[u16]`, `[u64]`, `[isize]`, and `[usize]`.
+`codegen_gc_layout` registers their typed GC array layouts, and the shared
+`test_do_gc_remaining_scalar_lists.sh` wrapper emits one probe for each
+literal and update function. `wasm-tools 1.255.0` parsing and Wasmtime
+`-W gc=y` execution pass all ten new probes with the `27815` oracle. The
+focused suites are now `codegen_gc_sync.zig 142/142` and
+`gc_sync_probe.zig 52/52`.
+
+This closes only the scalar literal/fixed-index update boundary. Registered
+scalar-list `@put` is covered by the later checkpoint; producer expressions
+and general nested lists remain outside admission; the
+bounded `[[u8]]` shape is tracked separately; declared
+managed-struct element and `[text]` list literal/`@len`/`@get`/collection-loop
+lowering are admitted by the current GC candidate path. G5b/G5c and the
+default GC cutover remain pending.
+
+### 2026-08-15 G5a managed-struct element list evidence
+
+`managed-struct-list.do` now exercises one declared managed-struct element list
+through literal construction, `@len`, indexed `@get`, and a collection loop.
+`test_do_gc_managed_struct_list.sh` generates the typed `$do_list_box` module,
+parses it with `wasm-tools 1.255.0`, compiles and executes it with Wasmtime
+`-W gc=y`, and verifies the `27815` oracle. The original element's `[u8]`
+payload and scalar tag are checked after the list is returned.
+
+This evidence is limited to declared managed-struct elements. Nested managed
+arrays, producer expressions, and managed-element `@put` remain rejected; `[text]` list
+coverage is recorded separately below. G5b/G5c and the default GC cutover
+remain pending.
+
+### 2026-08-15 G5a managed-element list append evidence
+
+The parsed synchronous GC entry now admits the bounded `[text]` one-value
+`@put` shape. `text-list-put.do` copies the published typed array into a new
+`$do_list_text` array, appends one managed text reference, and leaves the source
+array unchanged. Its probe parses with `wasm-tools 1.255.0`, compiles with
+Wasmtime GC, and verifies the `27815` oracle plus old-element reference reuse.
+
+This closes only the `[text]` managed-element append slice. Managed-struct and
+nested-list `@put`, spread/multi-value `@put`, producer expressions, host/WIT
+marshalling, async frames, resource cleanup, G5b pending rows, and G5c remain
+pending.
+
+### 2026-08-15 G5a text-element list evidence
+
+The parsed synchronous GC entry now admits one `[text]` list shape through
+literal construction, `@len`, indexed `@get`, and collection-loop lowering.
+`text-list.do` returns two GC-managed text values from `$do_list_text`; its
+probe checks both text lengths and first bytes after `wasm-tools 1.255.0`
+parsing and Wasmtime `-W gc=y` execution, with the `27815` oracle.
+
+General nested managed arrays, producer expressions, managed-struct list `@put`, and
+Component/WIT boundaries remain outside this slice. G5b/G5c and the default GC cutover
+remain pending.
+
+### 2026-08-16 G5b equivalence closure and GC admission guards
+
+The ARC/GC semantic-equivalence checker now executes 17 backend-neutral rows,
+including the bounded payload-union construction and resolved generic managed
+identity rows. Normal compiled tests and independent Wasmtime GC probes all
+pass with zero pending admitted rows. The migration inventory marks G5b
+complete for every currently admitted synchronous path, while G5c remains
+pending.
+
+The same pass found two routing hazards. Scalar-list types used only by a
+`start`-local binding were emitted without their typed prelude declaration;
+token-wide scalar-array discovery now emits the required `$do_i32` (and other
+registered scalar) type. `recv(...)` loops are not yet lowered by the GC body
+emitter, so candidate selection now keeps them on the ARC route instead of
+emitting an uninitialized loop value. Focused pipeline tests cover both guards.
+
+The parsed GC emitter also admits one exact nested producer: a managed struct
+`[u8]` field may be rebuilt from a same-field direct `@get` followed by one
+fixed-index `@set`. The old array and outer struct remain unchanged; arbitrary
+managed producers, nested paths, calls, resources, and async shapes still fail
+closed.
+
+### 2026-08-16 default GC build/parse gate
+
+`src/build/test/check_gc_default_build_gate.sh` now freezes the current
+admitted synchronous GC fixture set as an exact 58-file manifest. For every
+fixture it runs the ordinary `do build` route, requires the `;; gc-sync` and
+`$do_` GC markers, rejects `__arc_`, and parses the result with the pinned
+`wasm-tools 1.255.0`. The gate also has negative self-checks for ARC and
+missing-GC markers. It does not execute Wasm and does not close G5c: host/WIT,
+async-frame, resource cleanup, and other unadmitted paths remain pending.
+
+### 2026-08-16 inferred managed list storage
+
+The normal synchronous candidate path now admits bounded inferred scalar-list
+storage shapes: an explicit `[u8]` or `[u32]` seed followed by
+`values = @put(seed, 2)` and a no-result return. The collector records `values`
+as a fresh managed root, so the typed GC emitter copies the published typed
+array before the append and emits `gc-root local_bind` after the result binding.
+The `inferred-list-storage.do` and `inferred-u32-list-storage.do` fixtures and
+dedicated gates pass `wasm-tools 1.255.0` parsing and Wasmtime GC execution; the
+default build gate now covers 58 fixtures. Dynamic producers, inferred
+non-scalar lists, multi-value/spread `@put`, additional storage control flow,
+host/WIT marshalling, async frames, resource cleanup, and G5c remain outside
+this admission.
+
+### 2026-08-16 G5a managed-struct list append
+
+The existing typed managed-array lowering is now covered by a second operation
+on `managed-struct-list.do`: `append(boxes [Box], value Box) -> [Box]` performs
+one-value `@put`. The probe verifies the original one-element list and its
+payload remain unchanged while the result contains the appended `Box`; both
+typed `array.copy $do_list_box $do_list_box` and `array.set $do_list_box` are
+present, and `wasm-tools 1.255.0` plus Wasmtime GC execution return `27815`.
+
+This is G5a-only evidence. The normal compiled/ARC entry currently rejects the
+same `[Box]` list shape with `NoMatchingCall`, so no G5b equivalence row is
+claimed. The bounded `[[u8]]` nested-list `@put` is tracked separately above;
+other nested-list forms, spread/multi-value `@put`, dynamic producers, host/WIT
+marshalling, async frames, resource cleanup, and G5c remain pending.
+
+### 2026-08-16 synchronous root transition marker placement
+
+Task 3 now distinguishes GC locals bound at function entry from explicit body
+bindings. Parameter/import roots keep their `gc-root local_bind` marker in the
+function prologue; a managed body binding emits the marker immediately after
+its `local.set`, while later assignments retain the separate `gc-root overwrite`
+marker. This makes the root evidence follow the source-value transition without
+adding ARC retain/release operations. The focused pipeline and GC-sync suites
+pass; general inferred bindings, storage conversion, host/WIT marshalling,
+async frames, resource cleanup, and G5c one-backend cutover remain pending.
+
+### 2026-08-16 G5c host/WIT residual boundary
+
+The G5c residual gate now includes the managed
+`wasi:filesystem/preopens/get-directories` fixture. The ordinary route keeps
+the `wasi-bind` manifest record and canonical `cm32p2` import, parses with
+`wasm-tools 1.255.0`, and remains ARC-backed without a `gc-sync` marker. This
+is a fail-closed boundary and generated-output regression guard, not GC
+host/WIT marshalling evidence. The `host_wit_marshalling` inventory row stays
+pending until the design gate
+`doc/superpowers/specs/2026-08-16-gc-canonical-marshal-plan-design.md` is
+implemented, boundary-negative tests exist, and an independent GC/ARC
+equivalence runner exists.
+
+### 2026-08-16 host/WIT typed pre-admission plan
+
+`src/build/codegen_component_marshal_plan.zig` now provides a bounded,
+pre-admission type tree for scalar, `text`, `list<T>`, and record shapes. It
+carries a descriptor schema hash and an `AbiPlan` validated by
+the shared no-GC-reference canonical-slot checker. The unit suite covers
+descriptor rejection, resource rejection, nested children, and wide-scalar
+alignment. `build_sync_value_plan_with_layout` now consumes measured
+`wit_abi_layout` facts for scalar and record nodes, text ptr/len containers, and
+the bounded `list<u32>`/`list<u8>` layouts, including field offsets, sizes,
+alignment, and element stride. The new
+`src/wit/marshal_registry.zig` plus
+`src/build/codegen_component_marshal_registry.zig` path resolves one bounded
+value-only member from parser-backed WIT source, derives its package/world/
+member/hash identity, and binds the converted ABI type to this measured plan.
+For a one-value plan, `lower` uses the member's single parameter and a
+canonical argument slot; `lift` uses the member result and a canonical result
+slot.
+This does not emit linear-memory lift/lower, validate runtime pointer/length
+ranges, assemble a Component, execute a host, or change the ARC-backed
+`274_wasi_preopens` route; the `host_wit_marshalling` inventory row remains
+pending.
+Fresh verification after the parser-backed `lift` result and ABI-result-slot
+fix: `cd src && zig test main.zig` passed `466/466`; the repository harness
+passed `1260/1260` with `3` skips; and
+`check_gc_g5c_residual_gate.sh baseline` passed with the pinned
+`wasm-tools 1.255.0`. The gate still records `host_wit_marshalling` and the
+remaining G5c rows as pending.
+
+### 2026-08-18 parser-backed scalar-record lower checkpoint
+
+The private measured scalar-record lower route now resolves `write(value:
+writing)` from WIT, binds the two measured `u32` fields, and emits a Core import
+with the pinned canonical ABI shape `(i32, i32)`. The Component adapter still
+delivers one `writing` record to the host. Core/WIT assembly, Rust/Wasmtime host
+execution, and GC/flat equivalence all pass with `{code: 7, count: 35}`, result
+`42`, and exactly one callback per path. The route emits no GC reference at the
+boundary and no temporary linear allocation for this flat shape.
+
+Indirect records beyond the pinned 17-field shape, nested/text/list aggregates,
+default host/WIT compiler routing, async/resource shapes, and the G5c cutover
+remain pending.
+
+The pure `src/build/codegen_component_marshal_ops.zig` boundary now records the
+fixed synchronous operation order for measured `text` and `list<u8>` lower/lift
+plans and validates pointer/length and copy-size arithmetic.
+`src/build/codegen_component_marshal_wat.zig` now emits the bounded core-WAT
+lower/lift fragment: GC byte extraction/construction, 64-bit linear span
+guards, `cabi_realloc`, byte copy, canonical call, and temporary-buffer
+cleanup. The fragment parses with the pinned `wasm-tools 1.255.0`, but is not
+wired into Component assembly or a host runner; ARC/GC equivalence and the G5c
+cutover remain pending.
+The pre-admission layer now rejects malformed `sha256:` identities and exact
+descriptor drift through `build_sync_value_plan_with_registry`; the operation
+plan recursively rechecks hidden GC-reference markers before emitting any
+fragment. The parser-backed source adapter now supplies the bounded identity
+and type facts without exposing a public fabricated registry entry. Component
+assembly, host execution, and ARC/GC equivalence are still required before
+host/WIT admission.
+
+### 2026-08-16 inferred synchronous text root transition
+
+The normal synchronous GC candidate path now admits a bounded inferred body
+binding whose initializer is a direct `text` literal or an already typed
+`text` expression. The shared body-local collector records the inferred local
+as a fresh managed root; the first `local.set` emits `gc-root local_bind`, and
+later assignments emit `gc-root overwrite`. Focused pipeline coverage is
+`769/769`, and the GC-sync module remains green at `166/166`.
+
+This closes only the inferred `text` binding transition. General inferred lists,
+general inferred bindings, nested storage conversion, host/WIT marshalling, async frames, resource
+cleanup, and G5c one-backend cutover remain pending.
+
+The compiled-test candidate scan now recognizes the same bounded inferred
+`text` binding when it appears directly in a `test` body. Fixture
+`compiled_ok/99_compiled_test_inferred_text_gc_migration.do` verifies that the
+compiled artifact uses the typed GC local/root route and contains no ARC
+marker; unsupported expressions still fall back through the existing
+admission boundary.
+
+### 2026-08-16 body-only managed-struct storage routing
+
+The ordinary synchronous pipeline now admits a body-only managed-struct storage
+slice when a local is initialized by a direct struct constructor. Field
+`@set` rebuilds the typed GC struct, and field `@get` reads the typed child
+reference while preserving the old object. The GC locals boundary filters
+compiler-generated ARC/linear-storage temporaries, so this slice emits no
+`__storage_*`, `__struct_literal_tmp`, or `__arc_` markers. The compiled
+fixture and default build/parse/Wasmtime gate cover the source-preserving
+update. Inferred lists, nested/general storage producers, host/WIT marshalling,
+async frames, resource cleanup, G5b expansion, and G5c one-backend cutover
+remain pending.
+
+### 2026-08-15 G5b remaining scalar-list equivalence evidence
+
+The semantic-equivalence checker now includes one backend-neutral compiled
+fixture covering `[i8]`, `[u16]`, `[u64]`, `[isize]`, and `[usize]` immutable
+fixed-index updates, paired with the ten-probe
+`test_do_gc_remaining_scalar_lists.sh` GC oracle. The normal compiled test and
+all ten GC probes pass independently; the checker result is `13` green rows
+with the bounded payload-union and resolved generic rows still explicitly
+pending. This adds evidence for the remaining scalar-list group only; it does
+not change G5c routing or admit producer, host/WIT, async, or resource paths.
+
+The same matrix now includes a backend-neutral `[u32]`/`[f64]` append fixture
+paired with `test_do_gc_scalar_list_put.sh`. Both normal and GC artifacts
+preserve the source list and observe the appended value; this is bounded
+scalar-list `@put` evidence, not general producer or managed-element `@put`
+admission. A second row covers the bounded `[text]` managed-element one-value
+append with `test_do_gc_text_list_put.sh`; both artifacts preserve the source
+list and observe the appended text, bringing the matrix to 14 green rows while
+the payload-union and resolved generic rows remain pending.
+
+The same checkpoint now covers direct managed-struct replacement for every
+registered scalar-array field type. The shared remaining-field probe validates
+`[i8]`, `[u16]`, `[u64]`, `[isize]`, and `[usize]` in addition to the existing
+seven field fixtures, preserving the old array and the unchanged `tag` field.
+All five new Wasm probes pass `wasm-tools 1.255.0` and Wasmtime GC execution;
+the `gc_sync_probe.zig` focused suite is now `52/52`.
+
+### 2026-08-14 G5a managed struct scalar-array field evidence
+
+The parsed synchronous GC entry now has executable evidence for direct
+managed-struct field replacement where the field types are `[bool]`, `[u32]`,
+and `[i16]`. The probes construct distinct original and replacement `Box`
+objects, verify the old arrays remain unchanged, and store replacement arrays,
+and preserve `tag == 7`. `wasm-tools 1.255.0` parsing and Wasmtime `-W gc=y`
+compilation/execution pass with the `27815` oracle. This is a G5a admission
+only; it does not add an ARC/GC equivalence row or change the default ARC
+fallback for unsupported struct shapes. Focused unit totals at this checkpoint
+are `codegen_gc_sync.zig` `140/140` and `gc_sync_probe.zig` `50/50`.
+
+The bounded union carrier and resolved generic managed-call slices are now
+linked as executable G5a rows. They cover only `Unit | Bytes([u8])` and
+concrete substitutions such as `T = Box`; generic struct layout instantiation,
+general variants, arbitrary union payloads, and unsupported generic bindings
+remain outside the admission.
+
+The normal pipeline retains the private migration-only `EmitOptions.gc_sync`
+route for direct tests, and its default `.{} ` route now dispatches
+evidence-backed synchronous managed candidates to the same typed GC entry.
+The bridge is covered for managed-field rebuild, bounded payload-union
+construction, resolved generic managed identity, control-flow roots, and
+direct managed-struct identity. Unsupported candidates fall back to ARC until
+the remaining root/storage conversion and G5c residual gate are complete.
+
+### 2026-08-14 G5b ARC/GC semantic equivalence checkpoint
+
+The executable checker `src/build/test/check_gc_semantic_equivalence.sh` runs
+the normal compiled-test path and the independent parsed GC probe path in
+separate artifacts. It compares only Do-level observable outcomes: the normal
+test runner must report `... ok`, and each GC probe must pass its `27815`
+old/new-value oracle. It does not compare WAT text, backend symbol names, or
+allocation identity.
+
+At this checkpoint the matrix was green for eleven rows with both backend
+paths admitted, including nested managed-struct old/new-value preservation and
+a file-backed imported text identity plus `[f32]`/`[f64]` list updates.
+The later remaining-scalar-list checkpoint below extends that matrix.
+
+The bounded `Unit | Bytes([u8])` carrier and resolved concrete generic managed
+call remain G5a-only. The normal ARC test entry currently rejects the managed
+payload union at `NoMatchingCall`, and rejects the unconstrained generic
+managed field update at `InvalidTypeRef`; those exact failures are recorded in
+the blocker ledger instead of being treated as equivalence evidence.
+
+The two pending G5b cells remain the bounded payload union and resolved generic
+managed call; text beyond the admitted list/struct slices, general
+tuple/storage, host/WIT marshalling, async frames, and resource cleanup remain
+pending. The default route uses this bounded GC entry for admitted synchronous
+managed candidates and keeps ARC for unconverted paths; G5c is not started.
+
+### 2026-08-14 Task 3 synchronous root guard checkpoint
+
+The first synchronous-root guard unit now marks managed and bounded payload-union
+call results with `gc-root call_result`, rejects `[u8]` literals above `u8`
+range before WAT, and keeps scalar-list admission limited to the recorded
+ literal/fixed-index slices plus the existing bool literal/update slice.
+Focused pipeline tests (`31/31`), synchronous GC tests (`126/126`), and the full regression
+(`pass=1252 fail=0 skip=3`) are green. This is a guard checkpoint only; the
+ordinary pipeline emits GC for these admitted synchronous candidates and
+retains ARC for unconverted paths. The GC migration inventory remains
+incomplete.
+
+### 2026-08-14 G5a/G5b bounded aggregate and import evidence
+
+The admission ledger now links executable evidence for the direct-local nested
+managed-struct replacement, the single `Tuple<text, [u8]>` rewrite, and a
+reachable imported managed identity. The imported route collects managed
+declarations with typed GC result ABI facts and keeps host/WIT imports outside
+this admission. The nested and tuple probes pass `wasm-tools 1.255.0` parsing
+and Wasmtime GC execution with the `27815` old/new-value oracle.
+
+At this checkpoint the ARC/GC matrix reported eleven green rows with two
+intentionally pending ARC-admission rows (`payload-union` and
+`generic-managed-identity`). The remaining-scalar-list checkpoint below adds
+the fifth scalar-list group without changing those pending rows. This is still
+bounded equivalence evidence; imported managed text identity is covered by a
+file-backed module graph, while host/WIT imports remain outside admission.
+The default route uses the same bounded GC entry for admitted synchronous
+managed candidates and keeps ARC for unconverted paths; G5c is not started.
+
+### 2026-08-14 GC compiled-test bridge checkpoint
+
+`emit_test_wat` now attempts the same typed GC entry for compiled tests whose
+body is within the admitted synchronous surface. The emitted artifact contains
+typed GC locals, `gc-root` markers, compiled-test exports and the test `_start`
+dispatcher without `__arc_` symbols. Unsupported test expressions continue to
+use the existing ARC transition path until the G5c residual gate closes; this
+is an explicit migration bridge, not a default-backend cutover.
+
+Evidence: the pipeline unit `compiled test route emits admitted managed test
+bodies with GC` passes, fixture `compiled_ok/91_compiled_test_gc_sync_bridge`
+passes through the CLI/harness, `zig test main.zig` passes `405/405`, the full
+harness passes `1253` with `0` failures and `3` skips, and `RUN_WASM=1` passes
+`1255` with `0` failures and `3` skips. The GC semantic matrix remains `11` green
+rows with `2` explicitly pending ARC-admission rows.
+
+### 2026-08-13 G5a parsed text/list/producer boundaries
+
+The parsed synchronous GC entry now admits direct `text` identity, string
+literal rebuild, direct `text` field replacement, list literals through typed
+locals, and one direct call whose result is already classified `gc_managed`.
+Managed-field producers are explicit: nested calls, non-direct nested managed
+struct producers, non-`u8` lists, multi-value `@put`, and call-produced managed
+replacements outside the admitted direct `[u8]`/`text` single-result shape fail
+closed before WAT as `UnsupportedGcSync*` errors. No ARC symbols are emitted.
+
+`gc_sync_probe.zig` validates the selected function body and derives managed
+struct type/field order and field types from parsed declarations; an inexact
+probe shape is rejected instead of constructing a hard-coded wrapper.
+
+Evidence: `zig test build/codegen_gc_sync.zig` passed `90/90`,
+`zig test build/gc_sync_probe.zig` passed `30/30`, the focused GC emitter and
+root suites passed, and all eight current parsed GC probes passed with result
+`27815`. `check_gc_migration_evidence_test.sh` also verifies that future G5b/G5c
+evidence links carry an explicit verification marker.
+
+The normal `do build` route remains ARC. The bounded pure payload-union slice
+also only proves `Unit | Bytes([u8])` carrier construction and immutable
+replacement; additional/mixed/resource/nested-union/Tuple/storage payloads,
+generic/imported/async values, Component/WIT lowering, and `Result`/`Option`
+remain pending. The nested-struct slice only proves
+`@set(outer, .child, child_local) -> Outer` and `@get(outer, .child)` for a
+declared GC-managed child; it rebuilds the outer value, preserves the old outer
+and child, and reuses the direct child reference in the new outer. Nested paths,
+list elements, resource-containing aggregates, general producers, generic
+producers, imports, async, G5b equivalence, and G5c cutover remain pending.
+
+### 2026-08-13 G5a typed aggregate layout checkpoint
+
+The GC prelude now emits nested managed struct layouts in dependency order and
+rejects missing child layouts, direct dependency cycles, resource fields, and
+names that collide after lowering. The pure parsed GC entry rejects any
+standalone `@wasi_resource` declaration before WAT emission, so WIT resources
+remain outside the Core-GC child graph. The bounded direct-local nested-child
+and `Tuple<text, [u8]>`, pure payload-union, and resolved concrete generic-call
+carriers remain admitted; general tuple/storage, nested paths,
+list-of-managed-struct values, generic layout instantiation, imports,
+Component/WIT marshalling, async frames, and arbitrary producers remain
+pending.
+
+Fresh evidence: `codegen_gc_layout.zig` `8/8`,
+`runtime_gc_prelude_wat.zig` `18/18`, `codegen_gc_sync.zig` `114/114`,
+`gc_sync_probe.zig` `36/36`, `zig test main.zig` `404/404`, and the full
+harness `pass=1243 fail=0 skip=3`. These are bounded Core-GC evidence only;
+the migration inventory remains red and default routing remains ARC.
+
+The Tuple slice only proves
+`Tuple<text, [u8]>{@get(pair, 0), @set(@get(pair, 1), 0, 65)}` for one
+`Tuple<text, [u8]>` parameter/result. It preserves the text reference, creates
+a new tuple and a fresh byte-array backing, and leaves the original tuple and
+byte array observable. General tuple construction/indexing, nested tuples,
+tuple storage, resource-containing tuples, arbitrary indices/values, and calls
+remain pending.
+
+### 2026-08-13 G5a parsed `[u8]` slices
+
+`codegen_gc_sync.zig` now lowers both the fixed
+`update(input [u8]) -> [u8] { return @set(input, 0, 65) }` and parameterized
+`replace(bytes [u8], offset usize, next u8) -> [u8] { return @set(bytes,
+offset, next) }` complete synchronous source shapes from parsed function and
+expression facts. `codegen_gc_core.zig` no longer has either `[u8] @set` token
+profile. Lowering allocates a private GC array with the runtime source length,
+copies the source payload, and applies the sole `array.set` to that new backing.
+The old source array therefore remains observable and unchanged. Compiler
+temporary local names are chosen away from source bindings.
+
+The fixed and two parameterized Core-GC probes now call the non-CLI test helper
+`src/build/gc_sync_probe.zig`, which invokes
+`emit_gc_wat_for_supported_program` and appends a WAT-only old/new value probe.
+They do not add a public CLI backend selector. On 2026-08-13,
+  `zig test build/codegen_pipeline.zig` passed `102/102`,
+`zig test build/codegen_gc_core.zig` passed `48/48`,
+`zig test build/gc_sync_probe.zig` passed `26/26`, and
+`WASMTIME_BIN="$(command -v wasmtime)" WASM_TOOLS_BIN="$(command -v wasm-tools)" bash src/build/test/check_gc_core_oracles.sh`
+passed all twelve probes with result `27815`.
+
+The next parsed slice is managed-struct field payload rebuild: update one
+managed `[u8]` field by rebuilding the outer GC struct while directly reusing
+the new field reference and preserving every unchanged field. It must retain
+the same immutable source-value boundary as the existing scalar-field update;
+the default `do build` path remains ARC until G5b/G5c.
+
+Boundary: the parsed literal slice admits only numeric inferred aggregate
+literal expressions whose expected type is `[u8]` inside an otherwise admitted
+synchronous GC program. The separate `@put` and direct managed-field payload
+slices are recorded below; other list element types, nested or non-literal
+elements, new call/producer admission, nested managed-field producers,
+Tuple/storage, general unions, generic layout instantiation, module imports, host/Component
+marshalling, async, G5b ARC/GC equivalence, and G5c default cutover remain
+separate work. Default `do build` still emits ARC.
+
+### 2026-08-13 G5a parsed `[u8]` `@put` slice
+
+The parsed synchronous GC entry now admits exactly one append form:
+`append_byte(input [u8], value u8) -> [u8] { return @put(input, value) }`.
+It reads the source runtime length, allocates a private array of `length + 1`,
+copies the old payload, and writes one checked `u8` at the old length. Empty and
+non-empty source lists are covered; the old source remains unchanged and two
+results are distinct GC references. Values `256` and `-1` fail before WAT as
+`GcSyncTypeMismatch`; multi-value, spread, non-`u8`, and general producer forms
+remain rejected.
+
+Focused evidence on 2026-08-13:
+`zig test build/codegen_pipeline.zig` passed `102/102`,
+`zig test build/codegen_gc_sync.zig` passed `0/0`,
+`zig test build/gc_sync_probe.zig` passed `26/26`, and
+`examples/gc-p3-runtime/test_do_gc_list_put.sh` passed after
+`wasm-tools parse` and Wasmtime GC compilation/execution with result `27815`.
+The normal `do build` path still emits ARC; G5b equivalence and G5c default
+cutover remain pending.
+
+### 2026-08-13 G5a parsed managed-field payload slice
+
+The parsed synchronous GC entry admits exactly
+`@set(box, .value, value)` when `box` is a managed struct, `.value` is `[u8]`,
+and `value` is a direct `[u8]` local. It rebuilds the outer struct, reuses the
+replacement GC reference, preserves unchanged fields, and leaves the old
+object and payload unchanged. The focused unit suite passed `102/102`; the
+managed-struct payload probes passed `wasm-tools parse`, Wasmtime GC
+compilation, and execution with result `27815`, including renamed type/field/
+function bindings and reversed field order. Text payloads, nested producers,
+resources, and default GC routing remain rejected.
 
 ### 2026-08-09 colorless inline scalar async-call gate
 
@@ -772,9 +1642,9 @@ bash src/build/test/run_release_smoke.sh
 
 ### 阶段 I 边界 (已关闭)
 
-- I1: 直接/互递归; 参数侧已定型泛型递归; self-tail scalar / `if-else` / guard / generic / imported TCO。  
+- I1: 直接/互递归; 参数侧已定型泛型递归; self-tail scalar / `if-else` / guard / generic / imported TCO。
   仅靠左侧目标类型反推的泛型递归仍 `NoMatchingCall`; `defer` / storage / managed / 多返回 / cleanup 不 TCO。
-- I2: `Tuple<T0,T1,...>` 位置构造 + `@get` 数字索引; local/struct/return/param/nested/标量与 managed 叶子 storage + path chain + loop get。  
+- I2: `Tuple<T0,T1,...>` 位置构造 + `@get` 数字索引; local/struct/return/param/nested/标量与 managed 叶子 storage + path chain + loop get。
   pure-scalar struct 与含 managed 字段的 struct 直接子槽 storage 已支持 (永不拍平; managed struct 为句柄叶子)。
 
 ## 当前阻断与待处理
@@ -802,10 +1672,54 @@ Bun regression refresh (2026-08-06)
 | --- | --- |
 | blocked | G6.2 general producer-lease/borrowed-resource/list extensions; path-sensitive `StreamWriter<T>` lease semantic foundation is done (branch/loop joins, defer, transfer, write, finalization, exit diagnostics 405-410); 06.2→G6.2 (multi-owned consumer, multiple nested paths, one-/two-/three-/four-/five-/six-level nested resource consumer, descriptor-bounded single-read list-owned resource stream, bounded scalar producer, fixed/parameterized `u64` countdown producer, parameterized helper including five forwarding hops and typed-parameter reorder, helper-mediated lease, branch-selected close/abort terminal, descriptor-bounded StreamMirror, private resource Result cancellation, and pinned HTTP payload cancellation pending/immediate-`Ok`/immediate-`DnsTimeout` plus bounded immediate `DNS-error` optional-string (`Some`/`None`) lowering/runtime cleanup done; private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size` slices are closed; empty payload strings, other payload-bearing immediate errors, sixth forwarding hop, seventh nested level, and general resource/list/filesystem shapes remain pending) |
 | pending | P2 左侧反推泛型 (默认不放开); skip 16/96/118 |
-| deferred | ownership IR、真 host I/O、JSON 扩展、LSP/fmt、wasm emitter 等 (见该文件 §3) |
+| deferred | GC runtime migration (replace the current ARC transition implementation), ownership IR、真 host I/O、JSON 扩展、LSP/fmt、wasm emitter 等 (见该文件 §3) |
 
 ## 下一步
 
 1. 发布候选维护 (回归 / 文档漂移 / 独立小修)。
 2. 推进 G6.2 后续 gates；generic consumer、多个顶层 nested paths、一-/两层/三层/四层/五层/六层 nested resource、descriptor-bounded single-read list-owned resource stream、bounded scalar producer、固定/参数化 `u64` countdown producer、参数化 helper（含五跳 forwarding 与 typed-parameter reorder）、受限 helper-mediated lease、branch-selected terminal、固定 read-directory、StreamMirror、private resource Result cancellation、HTTP payload cancellation、pinned negative gates 与 ownership invariant 复核均已闭环；一般 producer lease、通用 list、borrowed/variant、第六跳 forwarding、第七层或更一般 nested resource fields 与更广泛 async method 仍需独立设计与验证，不绕过剩余边界扩 codegen。
 3. 可选授权项见 `doc/pending_blocked.md` 与 README「下一阶段计划」。
+
+### 2026-08-20 G5c A gate: fixed WASI random `list<u8>` GC lift
+
+The first bounded G5c host/WIT gate is executable through
+`src/build/gc_wasi_random_probe.zig` and
+`examples/gc-p3-runtime/test_gc_wasi_random_list_lift.sh`. It resolves the
+checked-in `wasi:random` source with the WIT parser, verifies the existing
+`codegen_wasi_registry` signature for
+`random/random/get-random-bytes` (`u64 -> list<u8>`), emits a GC byte-array lift
+with a fixed probe length of 16, and assembles it with the versioned WIT import
+using pinned `wasm-tools 1.255.0`. The Rust/Wasmtime runner invokes the host
+callback and observes one 16-byte result and a 16-byte guest length.
+
+The gate deliberately separates two names: the existing `cm32p2|wasi:*`
+strings remain the legacy host-core lowering route, while Component assembly
+uses the versioned WIT identity (`wasi:random/random@0.3.0-rc-2025-09-16`).
+No GC reference crosses the canonical import, and the normal `do build`
+host/WIT route remains ARC-backed. This is one fixed synchronous admission
+slice, not general host/WIT, async/resource, or G5c default cutover evidence.
+
+With A closed, the next step is B: add a descriptor manifest carrying the
+WIT source/package/world/member/version and content hash, then make future
+host/WIT GC admissions consume that manifest and fail closed on drift. B starts
+immediately after this A gate; G5c cutover remains deferred until B, the
+host/WIT inventory, and same-fixture ARC/GC equivalence are green.
+
+### 2026-08-20 G5c B gate: descriptor manifest provenance
+
+The bounded A slice now consumes `doc/wit/gc_descriptor_manifest.json` through
+`codegen_component_descriptor_manifest.zig`. Exact source provenance is pinned
+by SHA-256 over the two source fragments with newline separators; parser-backed
+package/version, world/member, WIT signature, direction, and versioned
+canonical import claims are compared before marshal planning. Hash, member,
+package, signature, canonical-import, path, and unsupported-shape drift are
+negative-tested. The A shell gate also mutates a temporary source copy and
+requires `SourceHashMismatch` before Component assembly.
+
+Evidence: `cd src && zig test main.zig` (`519/519`),
+`./src/build/test/run_tests.sh`,
+`bash examples/gc-p3-runtime/test_gc_wasi_random_list_lift.sh`, and
+`bash src/build/test/check_gc_g5c_residual_gate.sh baseline` pass. This is a
+descriptor/provenance gate, not a default GC cutover: the host/WIT inventory,
+same-fixture ARC/GC equivalence, general aggregate shapes, async/resource
+paths, and the normal ARC-backed route remain pending.

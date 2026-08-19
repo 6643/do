@@ -1,4 +1,6 @@
-count=0 call $__arc_inc
+;; gc-sync
+count=0 __arc_
 call $make
-;; arc-call-move data
-local.set $data
+local.set $result.__union_tag
+i32.const 2
+i32.eq

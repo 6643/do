@@ -1,8 +1,13 @@
 # Core Wasm GC probe
 
-This directory is a standalone capability probe for the Core Wasm GC
-instructions intended for the future do runtime. It has no Component Model,
-WIT, WASI, P3, host import, resource, or cancellation behavior.
+This directory contains standalone Core Wasm GC probes and a small bounded
+Component/WIT marshal probes for the future do runtime. The probes cover one
+fixed synchronous `text` lower/copy/call path, a scalar-record result lift, and fixed synchronous
+`list<u32>` lower/copy/call plus lift/result-area/copy paths with
+Rust/Wasmtime hosts, plus a matching
+fixed text and `list<u32>` ARC/GC observations. They do not imply general Component Model,
+WIT, WASI, P3, resource, cancellation, general lift, or default compiler-route
+support.
 
 `gc-frame.wat` verifies three representation rules:
 
@@ -113,7 +118,10 @@ WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_man
 WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_managed_struct_preserve_field.sh
 WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_managed_struct_payload.sh
 WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_managed_struct_payload_renamed.sh
+WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_managed_text_field_call_producer.sh
 WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_nested_managed_struct.sh
+WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_managed_struct_list.sh
+WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_text_list.sh
 WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_managed_tuple_text_bytes.sh
 WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_managed_struct_f32_field.sh
 WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_managed_struct_f64_field.sh
@@ -128,6 +136,15 @@ WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_i64
 WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_i64_list_set.sh
 WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_f32_list_literal.sh
 WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_f32_list_set.sh
+WASM_TOOLS_BIN="$(command -v wasm-tools)" bash examples/gc-p3-runtime/test_gc_marshal_u32_host.sh
+WASM_TOOLS_BIN="$(command -v wasm-tools)" bash examples/gc-p3-runtime/test_gc_marshal_u32_lift_host.sh
+WASM_TOOLS_BIN="$(command -v wasm-tools)" bash examples/gc-p3-runtime/test_gc_marshal_u32_equivalence.sh
+WASM_TOOLS_BIN="$(command -v wasm-tools)" bash examples/gc-p3-runtime/test_gc_marshal_record_host.sh
+WASM_TOOLS_BIN="$(command -v wasm-tools)" bash examples/gc-p3-runtime/test_gc_marshal_record_equivalence.sh
+WASM_TOOLS_BIN="$(command -v wasm-tools)" bash examples/gc-p3-runtime/test_gc_marshal_record_component.sh
+WASM_TOOLS_BIN="$(command -v wasm-tools)" bash examples/gc-p3-runtime/test_gc_marshal_record_lower_component.sh
+WASM_TOOLS_BIN="$(command -v wasm-tools)" bash examples/gc-p3-runtime/test_gc_marshal_record_lower_host.sh
+WASM_TOOLS_BIN="$(command -v wasm-tools)" bash examples/gc-p3-runtime/test_gc_marshal_record_lower_equivalence.sh
 WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_f64_list_literal.sh
 WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_f64_list_set.sh
 WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_bool_list_set.sh
@@ -143,9 +160,13 @@ and a direct call returning an already-classified managed value. The probe
 wrapper validates exact function bodies and derives struct/field facts from the
 parsed source. It also covers direct-local replacement of a declared nested
 managed child and direct child `@get`, plus the selected managed-tuple rewrite.
-Nested child producers, nested paths, general Tuple/storage forms, non-`u8`
-updates, multi-value put, and call-produced managed replacements fail closed
-before WAT.
+One exact nested producer is admitted for a managed struct `[u8]` field:
+`@set(box, .value, @set(@get(box, .value), index, scalar))`. Nested paths,
+arbitrary calls, other element types, general Tuple/storage forms, non-`u8`
+updates, multi-value put, and other call-produced managed replacements fail
+closed before WAT. The separate direct managed-field call producer slice below
+admits only a `[u8]` or `text` field with exactly one synchronous single-result
+call and an exact field-type match.
 
 ### Typed aggregate layout checkpoint
 
@@ -156,10 +177,15 @@ lowered-name collisions. A pure GC source containing a standalone
 the Core-GC child graph. The admitted aggregate surface remains the direct-local
 nested-child replacement, the single `Tuple<text, [u8]>` rewrite, one pure
 `Unit | Bytes([u8])` carrier, and resolved generic calls bound to existing
-concrete GC layouts described below. General tuples/storage, nested paths,
-list-of-managed-struct values, generic layout instantiation, imports,
-Component/WIT marshalling, async frames, and arbitrary producers remain
-outside this probe directory's admission boundary.
+concrete GC layouts described below. Declared managed-struct and `[text]`
+element list literal/`@len`/`@get`/collection-loop plus bounded one-value
+`@put` slices, including managed-struct `[Box]` append, are also admitted.
+General tuples/storage, nested paths deeper than the admitted one-/two-/three-level
+managed-struct field paths,
+generic layout instantiation, imports,
+General Component/WIT marshalling, async frames, and arbitrary producers
+remain outside this probe directory's admission boundary. The fixed
+`list<u32>` lower/lift probes below are explicit bounded exceptions.
 
 The focused checkpoint report is
 `.superpowers/sdd/2026-08-13-gc-g5a-aggregate-closure/task-3-report.md`.
@@ -172,15 +198,16 @@ cd src && zig test build/gc_sync_probe.zig
 WASMTIME_BIN="$(command -v wasmtime)" WASM_TOOLS_BIN="$(command -v wasm-tools)" bash src/build/test/check_gc_core_oracles.sh
 ```
 
-The current focused counts are `142/142` for `codegen_gc_sync.zig` and `52/52`
+The current focused counts are `158/158` for `codegen_gc_sync.zig` and `52/52`
 for `gc_sync_probe.zig`. The managed scalar-array field probes pass for
 `[bool]`, `[i8]`, `[i16]`, `[i32]`, `[i64]`, `[u16]`, `[u32]`, `[u64]`,
 `[isize]`, `[usize]`, `[f32]`, and `[f64]` with `wasm-tools 1.255.0`
 parsing and Wasmtime GC execution. `bash src/build/test/check_gc_migration_evidence_test.sh`
 verifies the explicit marker required by future G5b/G5c evidence files.
 
-The normal compiler path remains ARC until the later G5b equivalence and G5c
-default-routing gates are closed.
+The normal compiler path uses typed GC for the admitted synchronous shapes;
+unconverted shapes remain on the ARC transition path until the later G5c
+one-backend gate is closed.
 
 ### Parsed scalar-list slices
 
@@ -193,8 +220,95 @@ semantics. The shared `test_do_gc_remaining_scalar_lists.sh` probe adds
 `[i8]`, `[u16]`, `[u64]`, `[isize]`, and `[usize]` literal/update coverage;
 all twenty-three scalar-list probes validate old/new values after
 `wasm-tools 1.255.0` parsing and Wasmtime GC execution, returning `27815`.
-Float `@put`, producer expressions, nested lists, and managed-element lists
-remain outside this slice.
+Float `@put` and producer expressions remain outside this slice. The bounded
+nested `[[u8]]` list shape is covered separately below. Declared managed-struct
+and `[text]` element list coverage is recorded below.
+
+### Parsed managed-struct element list slice
+
+`managed-struct-list.do` exercises a declared `[Box]` through list literal
+construction, `@len`, indexed `@get`, collection-loop lowering, and one-value
+`@put(boxes, value)`. Its probe checks the original one-element list, the
+appended element's `tag`, and the `[u8]` payload bytes. The typed
+`$do_list_box` module is parsed with `wasm-tools 1.255.0` and executed with
+Wasmtime `-W gc=y`, and both probe paths require the `27815` oracle.
+
+This is limited to declared managed-struct element lists and one direct local
+value for `@put`. General producer expressions, nested-list forms other than
+the separately admitted `[[u8]]` case below, and multi-value/spread forms remain
+outside admission.
+
+### Default body-only managed-struct storage slice
+
+`managed-struct-storage.do` exercises the ordinary `do build` route when a
+managed struct is created and updated entirely inside `start()`. The typed GC
+path rebuilds the struct for `@set(box, .tag, 7)`, reads the child `[u8]` field
+through `@get`, and keeps the original value observable. The dedicated gate
+also rejects legacy `__storage_*`, `__struct_literal_tmp`, and `__arc_`
+markers, parses with `wasm-tools 1.255.0`, and executes the Wasm with Wasmtime
+GC enabled. This is one bounded storage shape; inferred lists, nested/general
+storage producers, and boundary/async/resource storage remain pending.
+
+### Inferred managed list storage slice
+
+`inferred-list-storage.do` and `inferred-u32-list-storage.do` cover bounded
+body-only inferred storage bindings: an explicit `[u8]` or `[u32]` seed is
+passed to `@put`, and the result is bound without a type annotation. The
+default route records the inferred local as a fresh GC root, copies the
+published typed array before `array.set`, and does not emit ARC or legacy
+storage compiler locals. The dedicated gates build each fixture, parse it with
+`wasm-tools 1.255.0`, and run it with Wasmtime GC enabled.
+
+Dynamic producers, inferred non-scalar lists, multi-value/spread `@put`, and
+additional storage control flow remain outside this admission.
+
+### Parsed text-element list slice
+
+`text-list.do` exercises a `[text]` list through literal construction, `@len`,
+indexed `@get`, and collection-loop lowering. Its probe checks both returned
+text values, including their lengths and first bytes. `test_do_gc_text_list.sh`
+validates the typed `$do_list_text` module with `wasm-tools 1.255.0` and
+Wasmtime `-W gc=y`, requiring the `27815` oracle.
+
+`text-list-put.do` covers one-value managed-element append for `[text]`.
+`test_do_gc_text_list_put.sh` verifies the source list remains length one, the
+result is length two, the old element reference is reused, and the new text
+payload is present.
+
+Producer expressions and managed-struct/nested-list `@put` remain outside
+admission.
+
+### Parsed nested byte-list slice
+
+`nested-byte-list.do` exercises one `[[u8]]` value through nested literal
+construction, outer `@len`, indexed `@get`, inner `@len`, and a collection loop.
+The `test_do_gc_nested_byte_list.sh` probe validates the outer
+`$do_list_list_u8` and inner `$do_bytes` GC arrays with `wasm-tools 1.255.0`
+and Wasmtime `-W gc=y`, returning the `27815` oracle after checking all inner
+bytes.
+
+This evidence covers the bounded nested byte-list shape. The companion
+`nested-byte-list-put.do` fixture admits one direct `@put(rows, row)` producer
+for `[[u8]]`; its probe checks that the source outer array and inner row remain
+unchanged, the result has one appended row, and the appended bytes are `4, 5`.
+Both paths are parsed with `wasm-tools 1.255.0` and executed by Wasmtime with
+GC enabled. General producers, arbitrary nested aggregate combinations, and
+multi-value/spread `@put` remain outside admission.
+
+### Parsed direct managed-field call producer slice
+
+`managed-field-call-producer.do` and `managed-text-field-call-producer.do` admit
+one additional producer shape for a `[u8]` or `text` managed struct field: the
+replacement is a direct synchronous function call with exactly one result whose
+declared type exactly matches the field. The existing typed GC call-result root
+marker is reused before the outer struct is rebuilt. Nested calls, multi-result
+calls, mismatched results, async/host calls, and arbitrary expressions remain
+rejected before WAT.
+
+Its probe verifies that the original object and payload remain unchanged, the
+replacement payload is selected, and the scalar field survives. The
+`wasm-tools 1.255.0` and Wasmtime GC gate returns `27815`; the compiled-test
+equivalence row also passes.
 
 ### Parsed managed struct scalar-array field slice
 
@@ -208,22 +322,35 @@ admit direct immutable replacement of all registered scalar-array field types
 independent probes construct distinct original and replacement objects, verify
 the old arrays remain unchanged, verify the new replacement arrays, and check
 `tag == 7`. Each returns `27815` after `wasm-tools 1.255.0` parsing and
-Wasmtime GC execution. Managed-field producers, nested paths, and
+Wasmtime GC execution. Managed-field producers other than the separately
+admitted direct `[u8]`/`text` single-result call, nested paths outside the admitted
+one-/two-/three-level managed-struct field paths, and
 resource-containing structs remain outside this slice.
+
+`three-level-nested-field-path.do` extends the same immutable rebuild shape to
+three direct managed struct segments. Its probe checks the leaf scalar update,
+the unchanged leaf byte payload, all intermediate scalar fields, and the outer
+scalar field. The `wasm-tools 1.255.0`/Wasmtime GC probe and compiled-test
+ARC/GC equivalence row both require the `27815` oracle. A fourth managed
+segment, arbitrary producers, async/resource paths, and host/WIT remain
+fail-closed.
 
 ### Parsed pure payload-union slice
 
 `gc-payload-union.do` is the bounded G5a union carrier probe. It admits only
 `Unit | Bytes([u8])` payload-enum declarations, lowers the carrier to a typed
 GC struct `(tag i32, bytes (ref null $do_bytes))`, and preserves source-value
-immutability by allocating a new union for `Bytes(bytes)`. Its probe checks
+immutability by allocating a new union for `Bytes(bytes)`. The parsed GC route
+also supports a typed carrier local and return, while resolved generic `T`
+instances use the same carrier after substitution. Its probe checks
 old/new identity, tag and null-payload preservation, direct payload identity,
 and replacement bytes. `test_do_gc_payload_union.sh` validates the emitted WAT
 with `wasm-tools 1.255.0`, compiles/runs it with Wasmtime `47.0.2 -W gc=y`,
 and requires `27815`.
 
 This slice rejects additional or mixed payload slots, resource/nested-union/
-Tuple/storage payloads, generic/imported/async values, Component/WIT lowering,
+Tuple/storage payloads, unresolved or mixed generic bindings, imported/async
+values, Component/WIT lowering,
 and does not change the default ARC route. It is not evidence for general
 WIT variants, `Result`, `Option`, or resource ownership.
 
@@ -333,6 +460,59 @@ rebuild. `managed-struct-payload-renamed.do` repeats the same check with
 not depend on source names or declaration order. Nested producers, text
 payload replacement, and resource fields remain outside this slice.
 
+### Bounded synchronous `list<u32>` ARC/GC equivalence
+
+`test_gc_marshal_u32_equivalence.sh` assembles the fixed `list<u32>` lower
+probe twice: once with the GC array path and once with the linear-memory
+ARC-style path. The shared Rust/Wasmtime runner observes `[10, 20, 30]` from
+both Components and checks exactly one allocation and one free on each path.
+This closes equivalence for this one measured synchronous list shape only; it
+does not wire the plan into `do build`, prove arbitrary records or lists, or
+close the `host_wit_marshalling`/G5c inventory rows.
+
+### Bounded scalar-record result lift
+
+`test_gc_marshal_record_host.sh` assembles `marshal-record-host.wit` with the
+hand-authored core module, whose canonical `read` import receives one
+result-area pointer. The host writes `{code: 20, count: 22}`; the guest checks
+the measured eight-byte span, loads both scalar fields into a GC record, and
+returns their sum (`42`). The paired `test_gc_marshal_record_equivalence.sh`
+compares this GC path with a linear-memory result-area path and requires both
+to return `42`. This is a bounded `lift` proof only: flat scalar-record
+`lower` is covered by the separate checkpoint below; indirect/nested or managed
+fields, arbitrary aggregates, and compiler default-route wiring remain outside
+the gate.
+
+`test_gc_marshal_record_component.sh` separately generates the Core module
+from the parser-backed WIT registry adapter and measured record plan, then
+runs the pinned Core/WIT Component assembly and validation sequence. It also
+checks member-identity drift and rejects a synthetic canonical import carrying
+a GC reference. This is assembly evidence only; the host runner above remains
+the execution evidence and the default host/WIT route remains ARC-backed.
+
+### Bounded scalar-record flat lower
+
+The parser-backed lower probe resolves `write(value: writing)` and emits the
+measured flat canonical Core import `(i32, i32)`. The Component-level host
+callback still receives one record and verifies `{code: 7, count: 35}` with one
+call and guest result `42`. The paired lower equivalence gate compares the GC
+record path with a flat Core reference path and observes `42/42`. This slice
+does not admit indirect layouts beyond the pinned 17-field shape, nested/text/list
+fields, or default compiler routing.
+
+### Bounded indirect scalar-record lower
+
+`test_gc_marshal_record_indirect_lower_host.sh` covers a parser-backed WIT
+record with 17 `u64` fields. The pinned `wasm-tools 1.255.0` canonical import
+uses one `(i32)` pointer; the measured record span is 136 bytes with 8-byte
+alignment. The GC module allocates the span with `cabi_realloc`, stores fields
+at measured offsets, calls the host, and frees the span. The Component/Rust/
+Wasmtime gate observes `result=42` and one write callback. The paired
+`test_gc_marshal_record_indirect_lower_equivalence.sh` observes `42/42` and one
+callback per GC/flat path. This is a bounded lower/equivalence proof only;
+arbitrary indirect layouts, nested aggregates, and default compiler routing
+remain outside the gate.
+
 ## GC migration admission ledger
 
 `src/build/test/check_gc_migration_inventory.sh` is the authoritative
@@ -345,11 +525,24 @@ cutover cell is pending. Passing one `--gc-core` token-profile probe does not
 complete or widen this ledger. Pending boundaries are current implementation
 records, not negative-probe claims.
 
-The 2026-08-14 focused gates pass the imported-managed pipeline tests, the
-nested-struct and Tuple Wasmtime probes, and the ARC/GC matrix with eleven green
-rows. The imported text identity row now uses a file-backed module graph in
-both the normal ARC fixture and the GC probe; host/WIT imports remain outside
-this equivalence slice and the normal build remains ARC.
+The focused gates pass the imported-managed pipeline tests, the nested-struct
+and Tuple Wasmtime probes, and the ARC/GC matrix with 23 green rows and zero
+pending admitted rows. The matrix includes backend-neutral compiled fixtures
+for the bounded payload-union construction, resolved generic managed identity,
+and the direct `[u8]`/`text` call producers. The imported text identity row uses
+a file-backed module graph in both the normal fixture and the GC probe; host/WIT
+imports remain outside this equivalence slice, while admitted synchronous
+normal builds use typed GC and unconverted paths retain the ARC transition
+fallback. The bounded resource Result cancellation gate separately compares
+the generated GC Component with a hand-authored linear Component and requires
+identical terminal observations.
+
+The default-route build/parse gate is
+`src/build/test/check_gc_default_build_gate.sh`. It checks the exact 62-file
+admitted manifest, builds each fixture through ordinary `do build`, requires
+the GC lowering markers, rejects `__arc_`, and parses each WAT with
+`wasm-tools 1.255.0`. The gate is a syntax and routing check; it does not
+replace the Wasmtime execution probes or close G5c.
 
 `async-frame-table.wat` validates the internal async-frame bridge used by the
 selected P3 clocks/cancellation lowering. A Core table roots each GC frame

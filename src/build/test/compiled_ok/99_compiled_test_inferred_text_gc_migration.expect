@@ -1,0 +1,4 @@
+;; gc-sync
+(local $value (ref null $do_text))
+gc-root local_bind $value
+(export "__test_0" (func $__test_0))

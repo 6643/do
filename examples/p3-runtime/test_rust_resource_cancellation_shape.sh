@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Verification Status: verified
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -73,6 +74,11 @@ check_output() {
   done
 }
 
+extract_observation() {
+  local output=$1
+  printf '%s\n' "$output" | grep -E '^(request consumed|pending polls|pending future drops|response create|response drop|table-empty)='
+}
+
 output=$("$cargo_bin" run --quiet --manifest-path "$runner_dir/Cargo.toml" \
   --bin do-p3-resource-result-cancel-host-runner -- "$component_path")
 check_output "$output"
@@ -90,5 +96,14 @@ probe_output=$("$cargo_bin" run --quiet --manifest-path "$runner_dir/Cargo.toml"
   --bin do-p3-resource-result-cancel-host-runner -- "$tmp_dir/probe.component.wasm")
 check_output "$probe_output"
 
+generated_observation=$(extract_observation "$output")
+probe_observation=$(extract_observation "$probe_output")
+if [ "$generated_observation" != "$probe_observation" ]; then
+  printf 'resource cancellation GC/linear observations diverged\n' >&2
+  diff -u <(printf '%s\n' "$generated_observation") <(printf '%s\n' "$probe_observation") >&2 || true
+  exit 1
+fi
+
 printf '%s\n' "$output"
+printf 'resource Result cancellation GC/linear equivalence passed\n'
 printf 'pinned resource Result cancellation runtime probe passed\n'

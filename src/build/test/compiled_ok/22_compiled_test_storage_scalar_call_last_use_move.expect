@@ -1,2 +1,4 @@
-;; compiled-test 0 "compiled storage scalar call last use move"
-;; arc-call-move data
+;; gc-sync
+;; gc-root
+;; compiled-test 0
+(func $__test_0

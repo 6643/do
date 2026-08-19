@@ -1,7 +1,7 @@
+;; gc-sync
+(local $data (ref null $do_bytes))
+local.get $ok
 if
-;; arc-guard-return-release
-;; arc-release-local data
-local.get $data
-call $__arc_dec
 return
 end
+;; gc-root guard_join

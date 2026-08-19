@@ -1,4 +1,4 @@
-count=1 call $__arc_inc
-count=0 ;; arc-call-move data
+;; gc-sync
+count=0 __arc_
+count=1 call $nop
 call $make
-;; defer-cleanup-call nop

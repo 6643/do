@@ -322,5 +322,5 @@ WIT `async func` 由 binding metadata 和 Component target 描述，不对应源
 - 浏览器 event pump、DOM/UI 组件和 retained JS callback 另行设计；它们只能消费
   通用 Scope/Future/Stream 能力，不能反向加入 UI compiler special case。
 
-实施顺序见 [async-future-stream.md](../docs/superpowers/plans/2026-07-29-async-future-stream.md)，
+实施顺序见 [async-future-stream.md](../doc/superpowers/plans/2026-07-29-async-future-stream.md)，
 阻断证据见 [host_abi_blockers.md](host_abi_blockers.md)。

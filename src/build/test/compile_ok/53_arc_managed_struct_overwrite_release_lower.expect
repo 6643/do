@@ -1,14 +1,6 @@
-(local $__storage_overwrite_tmp i32)
+;; gc-sync
+(local $box (ref null $box))
+(local $next_box (ref null $box))
+;; gc-root overwrite $box
 local.get $next_box
-call $__arc_inc
-local.set $__storage_overwrite_tmp
-;; arc-overwrite-release box
-local.get $__storage_overwrite_tmp
-local.get $box
-i32.ne
-if
-local.get $box
-call $__arc_dec
-end
-local.get $__storage_overwrite_tmp
 local.set $box

@@ -114,6 +114,11 @@ test {
     _ = @import("build/codegen_gc_sync_adapter_test.zig");
     _ = @import("build/codegen_control_flow_test.zig");
     _ = @import("build/codegen_gc_plans_test.zig");
+    _ = @import("build/gc_marshal_record_probe.zig");
+    _ = @import("build/codegen_component_marshal_route.zig");
+    _ = @import("build/codegen_component_descriptor_manifest.zig");
+    _ = @import("build/codegen_component_marshal_wat.zig");
+    _ = @import("build/gc_wasi_random_probe.zig");
     _ = @import("build/codegen_gc_emit_test.zig");
     _ = @import("build/wat_component_metadata.zig");
     _ = @import("build/wat_function_body.zig");
@@ -128,4 +133,6 @@ test {
     _ = @import("build/sema_error.zig");
     _ = @import("wit/manifest.zig");
     _ = @import("wit/manifest_test.zig");
+    _ = @import("wit/descriptor_manifest.zig");
+    _ = @import("wit/descriptor_manifest_test.zig");
 }

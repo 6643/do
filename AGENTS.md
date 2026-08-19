@@ -37,22 +37,22 @@ This repository contains the `do` language compiler and its regression suite.
         - `codegen_emit_struct.zig` / `codegen_emit_struct_fields.zig` — struct binding / field / literal emit; uses hooks for union payload
         - `codegen_emit_union.zig` — union value / binding emit; uses hooks for user-func call
         - `codegen_emit_wasi.zig` — WASI host call/result emit (uses `EmitExprFn` / hooks; no import of `codegen_pipeline`)
-        - `codegen_ownership.zig` — ARC release-plan emit and related scope helpers
+        - `codegen_ownership.zig` — current ARC transition release-plan emit and related scope helpers; GC-first implementation debt, not the selected v1 runtime contract
         - `codegen_tokens.zig` — token/range/scan/decode helpers
         - `codegen_names.zig` — public names, core-func name tables, mangled symbols
         - `codegen_host_imports.zig` — unified `@host("env", member, sig)` host import collect/parse
         - `codegen_imports.zig` — module import resolve, reachability, string-data collect
         - `codegen_wasi_registry.zig` / `codegen_union_layout.zig` — WASI tables/parse, union layout
         - `wat_payload.zig` / `wat_storage.zig` — pure WAT fragments
-        - `runtime_arc_wat.zig` — ARC runtime WAT + layout types SSOT (`ManagedFieldOffset` / `StructLayout` / `StringData`)
-        - `runtime_prelude_wat.zig` — string-data memory emit + re-exports ARC API
+        - `runtime_arc_wat.zig` — current ARC transition runtime WAT + layout types SSOT (`ManagedFieldOffset` / `StructLayout` / `StringData`); retained as GC-first migration debt
+        - `runtime_prelude_wat.zig` — string-data memory emit + re-exports the current ARC transition API; retained as GC-first migration debt
         - plus `wat_function_body.zig` / `wat_component_metadata.zig` / `codegen_ir.zig`
 - `src/main.zig`: Single CLI dispatch entrypoint for the `bin/do` tool.
 - `src/build.zig`: Zig build entrypoint. It installs the compiler binary to the repository `bin/` directory.
 - `bin/do`: Built compiler executable.
 - `doc/`: Language syntax, parser grammar, runtime, and memory design references, centered on `doc/spec.md` and `doc/grammar.peg`.
 - `src/build/test/`: Current compiler and build-output regression tests and expected diagnostics.
-- `doc/memory.md`: v1 runtime / ARC memory model (authoritative).
+- `doc/memory.md`: authoritative GC-first v1 memory contract. `doc/design/2026-08-11-gc-first-memory-decision.md` records the selected target and the still-unfinished implementation migration.
 
 ## Build, Test, and Development Commands
 

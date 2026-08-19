@@ -1,4 +1,6 @@
-count=2 call $__arc_inc
-count=1 ;; arc-call-move box
-call $move_box
-;; defer-cleanup-call nop
+(type $box
+count=1 call $nop
+count=1 call $move_box
+count=2 ;; gc-root return_value
+count=2 ;; gc-root call_result
+count=0 __arc_

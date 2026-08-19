@@ -438,6 +438,7 @@ pub const CodegenContext = struct {
     type_bindings: []const GenericTypeBinding = &.{},
     callback_bindings: []const CallbackBinding = &.{},
     callback_call_args: []const CallbackCallArg = &.{},
+    gc_sync: bool = false,
 };
 
 pub const LoopControl = struct {

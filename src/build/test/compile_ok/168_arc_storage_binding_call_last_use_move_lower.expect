@@ -1,3 +1,4 @@
-count=0 call $__arc_inc
-;; arc-call-move data
-local.set $out
+;; gc-sync
+;; gc-root
+(type $do_bytes
+array.new_fixed $do_bytes

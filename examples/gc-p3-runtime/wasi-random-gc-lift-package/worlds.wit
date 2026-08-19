@@ -1,0 +1,6 @@
+package do:gc-random@0.1.0;
+
+world probe {
+  include wasi:random/imports@0.3.0-rc-2025-09-16;
+  export run: func() -> u32;
+}

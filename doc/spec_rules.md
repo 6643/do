@@ -7,7 +7,7 @@
 3. parser 可执行文法单独维护在 `doc/grammar.peg`。
 4. 本文保留语义规则、静态约束和测试约定。
 5. 语义规则章节供 sema/test 执行。
-6. v1 运行时内存模型以 `doc/memory.md` 为准。
+6. v1 运行时内存契约以 `doc/memory.md` 为准, 其 GC-first 选型和未完成的实现迁移以 `doc/design/2026-08-11-gc-first-memory-decision.md` 为准. 当前 ARC codegen 仅是 implementation migration debt, 不表示 default `do build` 已用 full GC.
 
 ## 1. 分层模型
 
@@ -156,6 +156,8 @@ forwarding edge、参数错位、任意 producer expression、借用/嵌套/vari
 ## 3. 模块、导入与可见性
 
 本章只处理模块边界、导入形态、可见性和顶层名字空间。函数重载规则见函数章节，类型 alias 与 union 规则见类型章节。
+
+本章中的 core WAT, linear memory 和 storage lowering 描述的是 current implementation fact. 它们不改变 GC-first v1 source contract, 也不把 ARC transition 视为 active runtime target.
 
 1. 类型声明名使用 `UpperIdent`，风格为 UpperCamel；普通函数名使用非保留 `LowerIdent`；私有普通函数声明名使用 `.lower_name`；字段名使用 `LowerIdent`，私有字段声明名使用 `.lower_ident`，同一结构体内字段按去点后的实际 name 唯一。字段实际 name 不能是关键字、core 路径 primitive 名、声明专用名或保留类型名；例如 `get`、`set`、`test`、`i32`、`bool` 都不能作为字段名。`len/add/popcnt` 这类只能通过 `@name(...)` 调用的 core 固定函数名可以作为字段实际 name。
 2. 私有类型名出现在类型声明左侧（`DeclTypeName`）；类型引用位统一去点。
@@ -517,6 +519,8 @@ Datetime = @wasi_record("…", { seconds i64, nanoseconds u32 })
 ## 5. 表达式、字面量与定型
 
 本章定义值表达式、字面量、聚合构造、字段默认值和定型来源。调用定型和 lambda 目标匹配见函数章节。
+
+当前 build lowering 仍会为已覆盖的 `text` 字面量生成 ARC transition storage handle. 这是实现迁移债务, 不改变 `text` 和 `[T]` 的值语义, COW 更新语义或 GC-first target.
 
 1. 算术、比较和逻辑组合使用函数或 `builtin` 判断族表达。
 2. 字面量无默认类型，由上下文唯一定型或显式类型标注。
@@ -1082,6 +1086,8 @@ item = @get(user, .abc, @add(i, 1), .name)
 
 本章定义 `if`、guard、`loop`、`break/continue`、循环标签、消费循环和未来保留的控制流关键字。
 
+控制流的源码 cleanup contract 独立于当前 ARC transition release plan. 该 release plan 是现有 implementation fact, 不是 v1 managed-memory contract.
+
 1. `if` 的条件位是单值 `bool`，且条件头最外层不接受无意义括号。任何已经定型为单值 `bool` 的表达式都可以直接作为条件，例如局部 `bool` 绑定、返回单值 `bool` 的函数调用、条件位 builtin `and/or/not/is` 的结果，以及 core 普通函数 `eq/ne` 的结果；返回非 `bool` 的函数调用不能直接作为条件，需要先用 `eq/ne/is` 等谓词表达成 `bool`。
    ```do program ok
    ok bool = true
@@ -1194,6 +1200,8 @@ item = @get(user, .abc, @add(i, 1), .name)
 
 本章定义顶层值 CTFE、模块级可变变量初始化、`start` 入口和 host/build 运行时边界。
 
+运行时内存边界以 GC-first contract 为准: managed source values 保持值语义, 只读传递不复制 payload, COW 更新保留旧逻辑值。当前 ARC codegen 仍在迁移中, `do build` 尚未完成 full GC implementation.
+
 详细正例、反例与回归提取素材见 `./spec_examples.md` 的对应章节。本节只保留主规范规则。
 
 1. 顶层常量初始化在编译期求值出结果；模块级可变变量的初始值也必须在编译期求值出结果，并作为该模块静态存储的初始状态。顶层值名先整体收集，因此初始化表达式可引用同一模块里源码顺序更靠后的顶层常量或模块级可变变量初始值；求值按依赖图执行，依赖图必须无环。
@@ -1213,6 +1221,8 @@ or `nil | E`, with `@is(value, E)` or `@eq(value, nil)` for narrowing. Ordinary
 unions reject duplicate branches. `Result<T, E>` is reserved for registered
 private WIT/ABI compatibility, including same-type arms; it is not a public API
 or a replacement for the union source form.
+
+WIT resource 不是 GC value. `own`, `borrow`, drop 和 async terminal cleanup 是显式 Component ABI ownership contract; GC 不能关闭或 drop host resource, 当前 ARC transition 也不改变该规则.
 
 
 1. `std` 只通过显式 local import 使用，例如 `path_join = @lib("path.do", join)`；标准库函数仍是普通函数，不进入 `core` 固定调用名集合，也不能补充或遮蔽 `get/set/eq/ne/lt/le/gt/ge/add/sub/mul/div/rem/and/or/xor/shl/shr/rotl/rotr/clz/ctz/popcnt/abs/neg/sqrt/ceil/floor/trunc/nearest/min/max/copysign/len/put/load_*` 这些 core 名。集合或领域能力必须使用非 core 名，例如 `list_add`、`hash_put`、`url_encode`。

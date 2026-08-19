@@ -1,8 +1,7 @@
-(local $out i32)
+;; gc-sync
+(type $box (struct (field $value (ref null $do_bytes))))
+(local $out (ref null $do_bytes))
 local.get $box
-call $__arc_payload
-i32.const 0
-i32.add
-i32.load
-call $__arc_inc
+ref.as_non_null
+struct.get $box $value
 local.set $out

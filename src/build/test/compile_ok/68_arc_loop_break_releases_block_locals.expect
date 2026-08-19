@@ -1,13 +1,11 @@
-block $__loop_break_
-loop $__loop_body_
+;; gc-sync
+block $__gc_break_0
+loop $__gc_loop_1
+array.new_fixed $do_bytes 3
 local.set $data
-;; loop-break-release
-;; arc-release-local data
-local.get $data
-call $__arc_dec
-i32.const 0
-local.set $data
-br $__loop_break_
+;; gc-root local_bind $data
+br $__gc_break_0
 end
 end
+;; gc-root loop_join
 return

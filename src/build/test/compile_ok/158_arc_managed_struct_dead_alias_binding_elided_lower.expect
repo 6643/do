@@ -1,4 +1,7 @@
-count=0 ;; arc-release-local alias
-count=0 local.set $alias
-count=1 ;; arc-release-local box
-count=1 ;; arc-release-local bytes
+;; gc-sync source_len=123 token_count=32
+array.new_fixed $do_bytes 3
+local.set $bytes
+struct.new $box
+local.set $box
+local.get $box
+local.set $alias

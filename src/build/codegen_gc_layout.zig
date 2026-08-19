@@ -15,6 +15,40 @@ pub const GcStructLayout = struct {
     fields: []const GcFieldLayout,
 };
 
+pub const GcManagedArrayLayout = struct {
+    list_ty: []u8,
+    elem_ty: []u8,
+    array_name: []u8,
+};
+
+/// Return the runtime type name for a GC-managed list whose element is itself
+/// a managed value. Bracketed storage names are encoded as `list_` segments so
+/// the result remains a valid WAT identifier and remains stable across phases.
+pub fn alloc_managed_array_type_name(allocator: std.mem.Allocator, elem_ty: []const u8) ![]u8 {
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+    try out.appendSlice(allocator, "$do_list_");
+    try append_managed_array_elem_name(allocator, &out, elem_ty);
+    return out.toOwnedSlice(allocator);
+}
+
+fn append_managed_array_elem_name(allocator: std.mem.Allocator, out: *std.ArrayList(u8), elem_ty: []const u8) !void {
+    if (type_name.storage_elem_type_from_name(elem_ty)) |nested_elem| {
+        try out.appendSlice(allocator, "list_");
+        try append_managed_array_elem_name(allocator, out, nested_elem);
+        return;
+    }
+    for (elem_ty) |ch| try out.append(allocator, std.ascii.toLower(ch));
+}
+
+pub fn deinit_managed_array_layouts(allocator: std.mem.Allocator, layouts: []const GcManagedArrayLayout) void {
+    for (layouts) |layout| {
+        allocator.free(layout.list_ty);
+        allocator.free(layout.elem_ty);
+        allocator.free(layout.array_name);
+    }
+}
+
 pub const GcTupleLayout = struct {
     name: []const u8,
     fields: []const GcFieldLayout,
@@ -25,10 +59,14 @@ pub const GcTupleLayout = struct {
 /// keeps the tag and nullable byte payload in one typed GC object.
 pub const GcPayloadUnionLayout = struct {
     name: []const u8,
+    source_ty: []const u8,
     unit_case: []const u8,
     managed_case: []const u8,
     unit_tag: u32,
     managed_tag: u32,
+    payload_tys: []const []const u8,
+    managed_payload_index: u32,
+    owned_name: ?[]u8 = null,
 };
 
 pub const GcPayloadUnionError = error{
@@ -59,10 +97,13 @@ pub fn collect_payload_union_layout(name: []const u8, cases: anytype) GcPayloadU
 
     return .{
         .name = name,
+        .source_ty = name,
         .unit_case = unit_case orelse return error.UnsupportedGcSyncUnionPayload,
         .managed_case = managed_case orelse return error.UnsupportedGcSyncUnionPayload,
         .unit_tag = unit_tag,
         .managed_tag = managed_tag,
+        .payload_tys = &.{"[u8]"},
+        .managed_payload_index = 0,
     };
 }
 
@@ -245,4 +286,10 @@ test "scalar GC array packed elements use their wasm stack type" {
     try std.testing.expectEqualStrings("i32", scalar_array_wasm_elem_type("u16"));
     try std.testing.expectEqualStrings("i64", scalar_array_wasm_elem_type("u64"));
     try std.testing.expectEqualStrings("i32", scalar_array_wasm_elem_type("usize"));
+}
+
+test "nested managed array names use stable WAT identifiers" {
+    const name = try alloc_managed_array_type_name(std.testing.allocator, "[u8]");
+    defer std.testing.allocator.free(name);
+    try std.testing.expectEqualStrings("$do_list_list_u8", name);
 }

@@ -139,6 +139,8 @@ pub const EmitOptions = struct {
     p3_owned_future_component: bool = false,
     p3_async_component_v2: bool = false,
     p3_async_v2_scalar_i64_component: bool = false,
+    // Migration-only parsed GC route; intentionally not exposed by the CLI.
+    gc_sync: bool = false,
     gc_core: bool = false,
     host_export: bool = false,
     host_manifest_out: ?*std.ArrayList(u8) = null,

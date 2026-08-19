@@ -11,14 +11,20 @@ const parser = @import("parser.zig");
 const payload_wat = @import("wat_payload.zig");
 const type_name = @import("type_name.zig");
 const codegen_tokens = @import("codegen_tokens.zig");
+const codegen_control_flow = @import("codegen_control_flow.zig");
 const codegen_names = @import("codegen_names.zig");
 const codegen_model = @import("codegen_model.zig");
 const codegen_context = @import("codegen_context.zig");
 const codegen_collect_structs = @import("codegen_collect_structs.zig");
 const codegen_collect_declarations = @import("codegen_collect_declarations.zig");
+const codegen_collect_util = @import("codegen_collect_util.zig");
+const codegen_collect_reflection = @import("codegen_collect_reflection.zig");
+const codegen_storage_layout = @import("codegen_storage_layout.zig");
+const codegen_union_layout = @import("codegen_union_layout.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_generics = @import("codegen_generics.zig");
 const codegen_body = @import("codegen_body.zig");
+const codegen_callbacks = @import("codegen_callbacks.zig");
 const gc_adapter = @import("codegen_gc_sync_adapter.zig");
 const gc_model_adapter = @import("codegen_gc_model_adapter.zig");
 const gc_roots = @import("codegen_gc_roots.zig");
@@ -30,11 +36,13 @@ const test_runner = @import("test_runner.zig");
 const wat_function_body = @import("wat_function_body.zig");
 
 const FuncDecl = codegen_model.FuncDecl;
+const FuncResultItem = codegen_model.FuncResultItem;
 const StructDecl = codegen_model.StructDecl;
 const StructLayout = codegen_model.StructLayout;
 const PayloadEnumDecl = codegen_model.PayloadEnumDecl;
 const LocalSet = codegen_context.LocalSet;
 const CodegenContext = codegen_context.CodegenContext;
+const CollectionLoopHeader = codegen_context.CollectionLoopHeader;
 const StringDataContext = codegen_context.StringDataContext;
 const ImportedAliasContext = codegen_model.ImportedAliasContext;
 const TestDecl = test_runner.TestDecl;
@@ -51,14 +59,27 @@ const trim_parens = codegen_tokens.trim_parens;
 const find_start_func = codegen_tokens.find_start_func;
 const find_local_name = codegen_context.find_local_name;
 const find_local_type = codegen_context.find_local_type;
+const find_struct_local = codegen_context.find_struct_local;
+const find_union_local = codegen_context.find_union_local;
+const union_payload_local_name_from_locals = codegen_context.union_payload_local_name_from_locals;
 const public_decl_name = codegen_names.public_decl_name;
 const find_root_module_index = codegen_imports.find_root_module_index;
+const is_error_like_type = codegen_collect_util.is_error_like_type;
+const union_layouts_equal = codegen_union_layout.union_layouts_equal;
+const find_field_meta_local = codegen_storage_layout.find_field_meta_local;
+const field_from_meta = codegen_storage_layout.field_from_meta;
 
 const INDENT = "    ";
 
 const DeferredCall = struct {
     start_idx: usize,
     end_idx: usize,
+};
+
+const GcLoopFrame = struct {
+    source_label: ?[]const u8,
+    break_label: []const u8,
+    continue_label: []const u8,
 };
 
 const CallShape = struct {
@@ -72,15 +93,57 @@ const StructCtorValue = struct {
     end_idx: usize,
 };
 
+const NestedFieldPath = struct {
+    root_local: []const u8,
+    root_ty: []const u8,
+    outer_layout: gc_layout.GcStructLayout,
+    parent_field: gc_layout.GcFieldLayout,
+    inner_layout: gc_layout.GcStructLayout,
+    leaf_field: gc_layout.GcFieldLayout,
+    value_start: ?usize = null,
+    value_end: ?usize = null,
+};
+
+const DeepNestedFieldPath = struct {
+    root_local: []const u8,
+    root_ty: []const u8,
+    outer_layout: gc_layout.GcStructLayout,
+    first_field: gc_layout.GcFieldLayout,
+    middle_layout: gc_layout.GcStructLayout,
+    second_field: gc_layout.GcFieldLayout,
+    inner_layout: gc_layout.GcStructLayout,
+    leaf_field: gc_layout.GcFieldLayout,
+    value_start: ?usize = null,
+    value_end: ?usize = null,
+};
+
+const TripleNestedFieldPath = struct {
+    root_local: []const u8,
+    root_ty: []const u8,
+    outer_layout: gc_layout.GcStructLayout,
+    first_field: gc_layout.GcFieldLayout,
+    middle_layout: gc_layout.GcStructLayout,
+    second_field: gc_layout.GcFieldLayout,
+    inner_layout: gc_layout.GcStructLayout,
+    third_field: gc_layout.GcFieldLayout,
+    leaf_layout: gc_layout.GcStructLayout,
+    leaf_field: gc_layout.GcFieldLayout,
+    value_start: ?usize = null,
+    value_end: ?usize = null,
+};
+
 const GcListTemps = struct {
     bytes_next_name: []u8,
     scalar_next_names: [gc_layout.scalar_array_specs.len][]u8,
     has_scalar_arrays: [gc_layout.scalar_array_specs.len]bool,
+    managed_next_names: [][]u8,
     length_name: []u8,
 
     fn deinit(self: GcListTemps, allocator: std.mem.Allocator) void {
         allocator.free(self.bytes_next_name);
         for (self.scalar_next_names) |name| allocator.free(name);
+        for (self.managed_next_names) |name| allocator.free(name);
+        allocator.free(self.managed_next_names);
         allocator.free(self.length_name);
     }
 };
@@ -92,9 +155,15 @@ const BodyEmitter = struct {
     gc_structs: []const gc_representation.StructShape,
     gc_layouts: []const gc_layout.GcStructLayout,
     gc_payload_unions: []const gc_layout.GcPayloadUnionLayout,
-    locals: *const LocalSet,
+    gc_managed_arrays: []const gc_layout.GcManagedArrayLayout,
+    locals: *LocalSet,
+    result_tys: []const []const u8,
+    result_items: []const FuncResultItem,
+    result_struct: ?[]const u8,
+    ctx: CodegenContext,
     out: *std.ArrayList(u8),
     gc_list_temps: GcListTemps,
+    loop_stack: *std.ArrayList(GcLoopFrame),
     label_id: usize = 0,
     active_break_label: ?[]const u8 = null,
     active_loop_label: ?[]const u8 = null,
@@ -110,20 +179,53 @@ const BodyEmitter = struct {
         for (gc_layout.scalar_array_specs, 0..) |spec, index| {
             if (std.mem.eql(u8, list_ty, spec.list_ty)) return self.gc_list_temps.scalar_next_names[index];
         }
+        for (self.gc_managed_arrays, 0..) |managed_array, index| {
+            if (std.mem.eql(u8, managed_array.list_ty, list_ty)) return self.gc_list_temps.managed_next_names[index];
+        }
         return error.UnsupportedGcSyncType;
     }
 
     fn list_array_name(self: *const BodyEmitter, list_ty: []const u8) ![]const u8 {
-        _ = self;
         if (std.mem.eql(u8, list_ty, "[u8]")) return "$do_bytes";
-        const spec = gc_layout.scalar_array_spec_for_type(list_ty) orelse return error.UnsupportedGcSyncType;
-        return spec.array_name;
+        if (gc_layout.scalar_array_spec_for_type(list_ty)) |spec| return spec.array_name;
+        for (self.gc_managed_arrays) |managed_array| {
+            if (std.mem.eql(u8, managed_array.list_ty, list_ty)) return managed_array.array_name;
+        }
+        return error.UnsupportedGcSyncType;
     }
 
     fn next_label(self: *BodyEmitter, prefix: []const u8) ![]u8 {
         const id = self.label_id;
         self.label_id += 1;
         return try std.fmt.allocPrint(self.allocator, "__gc_{s}_{d}", .{ prefix, id });
+    }
+
+    fn loop_control_target(self: *BodyEmitter, start_idx: usize, end_idx: usize, is_break: bool) ![]const u8 {
+        var requested_label: ?[]const u8 = null;
+        if (end_idx == start_idx + 1) {
+            requested_label = null;
+        } else if (end_idx == start_idx + 3 and tok_eq(self.tokens[start_idx + 1], "#") and
+            self.tokens[start_idx + 2].kind == .ident)
+        {
+            requested_label = self.tokens[start_idx + 2].lexeme;
+        } else {
+            return error.UnsupportedGcSyncControl;
+        }
+
+        var index = self.loop_stack.items.len;
+        while (index > 0) {
+            index -= 1;
+            const frame = self.loop_stack.items[index];
+            if (requested_label) |label| {
+                if (frame.source_label) |source_label| {
+                    if (!std.mem.eql(u8, source_label, label)) continue;
+                    return if (is_break) frame.break_label else frame.continue_label;
+                }
+                continue;
+            }
+            return if (is_break) frame.break_label else frame.continue_label;
+        }
+        return error.UnsupportedGcSyncControl;
     }
 
     fn find_func(self: *BodyEmitter, name: []const u8, expected: ?[]const u8) ?FuncDecl {
@@ -139,6 +241,374 @@ const BodyEmitter = struct {
 
     fn find_payload_union(self: *BodyEmitter, name: []const u8) ?gc_layout.GcPayloadUnionLayout {
         return find_gc_payload_union(self.gc_payload_unions, name);
+    }
+
+    fn find_scalar_union(self: *BodyEmitter, name: []const u8) ?codegen_union_layout.UnionLayout {
+        for (self.locals.union_locals.items) |union_local| {
+            if (std.mem.eql(u8, union_local.layout.source_ty, name) and
+                is_gc_scalar_union_layout(self.tokens, union_local.layout)) return union_local.layout;
+        }
+        for (self.functions) |func| {
+            if (func.result_union) |layout| {
+                if (std.mem.eql(u8, layout.source_ty, name) and is_gc_scalar_union_layout(self.tokens, layout)) return layout;
+            }
+        }
+        return null;
+    }
+
+    fn scalar_union_result_layout(self: *const BodyEmitter) ?codegen_union_layout.UnionLayout {
+        if (self.result_items.len != 1) return null;
+        const layout = self.result_items[0].union_layout orelse return null;
+        if (!is_gc_scalar_union_layout(self.tokens, layout)) return null;
+        return layout;
+    }
+
+    fn emit_scalar_zero(self: *BodyEmitter, ty: []const u8) !void {
+        const wasm_ty = gc_scalar_slot_wasm_type(self.tokens, ty) orelse return error.UnsupportedGcSyncType;
+        try self.append(INDENT ++ "{s}.const 0\n", .{wasm_ty});
+    }
+
+    fn union_payload_local(self: *const BodyEmitter, base: []const u8, index: usize) ![]const u8 {
+        return union_payload_local_name_from_locals(self.locals.locals.items, base, index) orelse error.UnknownGcSyncLocal;
+    }
+
+    fn union_tag_local(self: *const BodyEmitter, base: []const u8) ![]const u8 {
+        return union_tag_local_name_from_locals(self.locals.locals.items, base) orelse error.UnknownGcSyncLocal;
+    }
+
+    fn append_struct_symbol(self: *BodyEmitter, name: []const u8) !void {
+        try self.out.appendSlice(self.allocator, "$");
+        for (name) |ch| try self.out.append(self.allocator, std.ascii.toLower(ch));
+    }
+
+    fn append_nested_temp_symbol(self: *BodyEmitter, name: []const u8) !void {
+        try self.out.appendSlice(self.allocator, "$__gc_nested_");
+        for (name) |ch| try self.out.append(self.allocator, std.ascii.toLower(ch));
+    }
+
+    fn emit_struct_field_from_local(
+        self: *BodyEmitter,
+        local_name: []const u8,
+        layout: gc_layout.GcStructLayout,
+        field: gc_layout.GcFieldLayout,
+    ) !void {
+        try self.append(INDENT ++ "local.get ${s}\n    ref.as_non_null\n    struct.get ", .{local_name});
+        try self.append_struct_symbol(layout.name);
+        try self.append(" ${s}\n", .{public_decl_name(field.name)});
+    }
+
+    fn emit_reflection_text_value(self: *BodyEmitter, value: []const u8) !void {
+        try self.append(INDENT ++ "i32.const {d}\n", .{value.len});
+        if (value.len == 0) {
+            try self.append(INDENT ++ "i32.const 0\n    array.new_default $do_bytes\n", .{});
+        } else {
+            for (value) |byte| try self.append(INDENT ++ "i32.const {d}\n", .{byte});
+            try self.append(INDENT ++ "array.new_fixed $do_bytes {d}\n", .{value.len});
+        }
+        try self.append(INDENT ++ "struct.new $do_text\n", .{});
+    }
+
+    fn emit_field_reflection_intrinsic(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
+        if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx], "@") or
+            (!tok_eq(self.tokens[start_idx + 1], "field_name") and
+                !tok_eq(self.tokens[start_idx + 1], "field_index") and
+                !tok_eq(self.tokens[start_idx + 1], "field_has_default"))) return null;
+        if (!tok_eq(self.tokens[start_idx + 2], "(")) return error.UnsupportedGcSyncExpression;
+        const close_idx = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return error.UnsupportedGcSyncExpression;
+        if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
+        const arg_end = find_arg_end(self.tokens, start_idx + 3, close_idx);
+        if (arg_end != close_idx or arg_end != start_idx + 4 or self.tokens[start_idx + 3].kind != .ident) return error.UnsupportedGcSyncExpression;
+        const meta = find_field_meta_local(self.locals.field_meta_locals.items, self.tokens[start_idx + 3].lexeme) orelse return error.UnsupportedGcSyncExpression;
+        const field = field_from_meta(self.ctx, meta) orelse return error.UnsupportedGcSyncExpression;
+        if (tok_eq(self.tokens[start_idx + 1], "field_name")) {
+            try ensure_compatible(expected, "text");
+            try self.emit_reflection_text_value(public_decl_name(field.name));
+            return "text";
+        }
+        if (tok_eq(self.tokens[start_idx + 1], "field_index")) {
+            try ensure_compatible(expected, "usize");
+            try self.append(INDENT ++ "i32.const {d}\n", .{meta.visible_index});
+            return "usize";
+        }
+        try ensure_compatible(expected, "bool");
+        try self.append(INDENT ++ "i32.const {d}\n", .{@intFromBool(field.default_start != null)});
+        return "bool";
+    }
+
+    fn emit_field_get_reflection_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
+        if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx], "@") or !tok_eq(self.tokens[start_idx + 1], "field_get")) return null;
+        if (!tok_eq(self.tokens[start_idx + 2], "(")) return error.UnsupportedGcSyncExpression;
+        const close_idx = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return error.UnsupportedGcSyncExpression;
+        if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
+        const root_end = find_arg_end(self.tokens, start_idx + 3, close_idx);
+        if (root_end >= close_idx or !tok_eq(self.tokens[root_end], ",") or root_end != start_idx + 4 or self.tokens[start_idx + 3].kind != .ident) return error.UnsupportedGcSyncExpression;
+        const field_start = root_end + 1;
+        const field_end = find_arg_end(self.tokens, field_start, close_idx);
+        if (field_end != close_idx or field_end != field_start + 1 or self.tokens[field_start].kind != .ident) return error.UnsupportedGcSyncExpression;
+        const root_name = self.tokens[start_idx + 3].lexeme;
+        const root_local = find_local_name(self.locals.locals.items, root_name) orelse return error.UnknownGcSyncLocal;
+        const root_ty = find_local_type(self.locals.locals.items, root_name) orelse return error.UnknownGcSyncLocal;
+        const meta = find_field_meta_local(self.locals.field_meta_locals.items, self.tokens[field_start].lexeme) orelse return error.UnsupportedGcSyncExpression;
+        if (!std.mem.eql(u8, root_ty, meta.struct_name)) return error.GcSyncTypeMismatch;
+        const layout = find_gc_layout(self.gc_layouts, root_ty) orelse return error.UnsupportedGcSyncType;
+        const field = field_from_meta(self.ctx, meta) orelse return error.UnsupportedGcSyncExpression;
+        const gc_field = find_gc_field(layout, public_decl_name(field.name)) orelse return error.UnsupportedGcSyncExpression;
+        try ensure_compatible(expected, field.ty);
+        try self.emit_struct_field_from_local(root_local, layout, gc_field);
+        return field.ty;
+    }
+
+    fn emit_struct_new(self: *BodyEmitter, layout: gc_layout.GcStructLayout) !void {
+        try self.append(INDENT ++ "struct.new ", .{});
+        try self.append_struct_symbol(layout.name);
+        try self.append("\n", .{});
+    }
+
+    fn field_segment_name(self: *const BodyEmitter, start_idx: usize, end_idx: usize) ?[]const u8 {
+        if (start_idx + 1 != end_idx or self.tokens[start_idx].kind != .ident) return null;
+        const lexeme = self.tokens[start_idx].lexeme;
+        if (lexeme.len < 2 or lexeme[0] != '.') return null;
+        return lexeme[1..];
+    }
+
+    fn parse_nested_field_path(
+        self: *BodyEmitter,
+        args_start: usize,
+        args_end: usize,
+        with_value: bool,
+    ) anyerror!?NestedFieldPath {
+        const root_end = find_arg_end(self.tokens, args_start, args_end);
+        if (root_end >= args_end or !tok_eq(self.tokens[root_end], ",") or
+            root_end != args_start + 1 or self.tokens[args_start].kind != .ident)
+        {
+            return null;
+        }
+        const root_local = find_local_name(self.locals.locals.items, self.tokens[args_start].lexeme) orelse return error.UnknownGcSyncLocal;
+        const root_ty = find_local_type(self.locals.locals.items, self.tokens[args_start].lexeme) orelse return error.UnknownGcSyncLocal;
+        const outer_layout = find_gc_layout(self.gc_layouts, root_ty) orelse return null;
+
+        const parent_start = root_end + 1;
+        const parent_end = find_arg_end(self.tokens, parent_start, args_end);
+        if (parent_end >= args_end or !tok_eq(self.tokens[parent_end], ",")) return null;
+        const parent_name = self.field_segment_name(parent_start, parent_end) orelse return error.UnsupportedGcSyncExpression;
+        const parent_field = find_gc_field(outer_layout, parent_name) orelse return error.UnsupportedGcSyncExpression;
+        if (parent_field.rep != .gc_managed) return null;
+        const inner_layout = find_gc_layout(self.gc_layouts, parent_field.ty) orelse return null;
+
+        const leaf_start = parent_end + 1;
+        const leaf_end = find_arg_end(self.tokens, leaf_start, args_end);
+        if (with_value) {
+            if (leaf_end >= args_end or !tok_eq(self.tokens[leaf_end], ",")) return null;
+            const value_start = leaf_end + 1;
+            const value_end = find_arg_end(self.tokens, value_start, args_end);
+            if (value_end != args_end) return error.UnsupportedGcSyncExpression;
+            const leaf_name = self.field_segment_name(leaf_start, leaf_end) orelse return error.UnsupportedGcSyncExpression;
+            return .{
+                .root_local = root_local,
+                .root_ty = root_ty,
+                .outer_layout = outer_layout,
+                .parent_field = parent_field,
+                .inner_layout = inner_layout,
+                .leaf_field = find_gc_field(inner_layout, leaf_name) orelse return error.UnsupportedGcSyncExpression,
+                .value_start = value_start,
+                .value_end = value_end,
+            };
+        }
+        if (leaf_end != args_end) return error.UnsupportedGcSyncExpression;
+        const leaf_name = self.field_segment_name(leaf_start, leaf_end) orelse return error.UnsupportedGcSyncExpression;
+        return .{
+            .root_local = root_local,
+            .root_ty = root_ty,
+            .outer_layout = outer_layout,
+            .parent_field = parent_field,
+            .inner_layout = inner_layout,
+            .leaf_field = find_gc_field(inner_layout, leaf_name) orelse return error.UnsupportedGcSyncExpression,
+        };
+    }
+
+    fn emit_struct_field_chain_from_local(
+        self: *BodyEmitter,
+        local_name: []const u8,
+        layouts: []const gc_layout.GcStructLayout,
+        fields: []const gc_layout.GcFieldLayout,
+    ) !void {
+        if (layouts.len != fields.len or layouts.len == 0) return error.UnsupportedGcSyncExpression;
+        try self.append(INDENT ++ "local.get ${s}\n", .{local_name});
+        for (layouts, fields) |layout, field| {
+            try self.append(INDENT ++ "ref.as_non_null\n    struct.get ", .{});
+            try self.append_struct_symbol(layout.name);
+            try self.append(" ${s}\n", .{public_decl_name(field.name)});
+        }
+    }
+
+    fn parse_deep_nested_field_path(
+        self: *BodyEmitter,
+        args_start: usize,
+        args_end: usize,
+        with_value: bool,
+    ) anyerror!?DeepNestedFieldPath {
+        const root_end = find_arg_end(self.tokens, args_start, args_end);
+        if (root_end >= args_end or !tok_eq(self.tokens[root_end], ",") or
+            root_end != args_start + 1 or self.tokens[args_start].kind != .ident)
+        {
+            return null;
+        }
+        const root_local = find_local_name(self.locals.locals.items, self.tokens[args_start].lexeme) orelse return error.UnknownGcSyncLocal;
+        const root_ty = find_local_type(self.locals.locals.items, self.tokens[args_start].lexeme) orelse return error.UnknownGcSyncLocal;
+        const outer_layout = find_gc_layout(self.gc_layouts, root_ty) orelse return null;
+
+        const first_start = root_end + 1;
+        const first_end = find_arg_end(self.tokens, first_start, args_end);
+        if (first_end >= args_end or !tok_eq(self.tokens[first_end], ",")) return null;
+        const first_name = self.field_segment_name(first_start, first_end) orelse return error.UnsupportedGcSyncExpression;
+        const first_field = find_gc_field(outer_layout, first_name) orelse return error.UnsupportedGcSyncExpression;
+        if (first_field.rep != .gc_managed) return null;
+        const middle_layout = find_gc_layout(self.gc_layouts, first_field.ty) orelse return null;
+
+        const second_start = first_end + 1;
+        const second_end = find_arg_end(self.tokens, second_start, args_end);
+        if (second_end >= args_end or !tok_eq(self.tokens[second_end], ",")) return null;
+        const second_name = self.field_segment_name(second_start, second_end) orelse return error.UnsupportedGcSyncExpression;
+        const second_field = find_gc_field(middle_layout, second_name) orelse return error.UnsupportedGcSyncExpression;
+        if (second_field.rep != .gc_managed) return null;
+        const inner_layout = find_gc_layout(self.gc_layouts, second_field.ty) orelse return null;
+
+        const leaf_start = second_end + 1;
+        const leaf_end = find_arg_end(self.tokens, leaf_start, args_end);
+        if (with_value) {
+            if (leaf_end >= args_end or !tok_eq(self.tokens[leaf_end], ",")) return null;
+            const value_start = leaf_end + 1;
+            const value_end = find_arg_end(self.tokens, value_start, args_end);
+            if (value_end != args_end) return error.UnsupportedGcSyncExpression;
+            const leaf_name = self.field_segment_name(leaf_start, leaf_end) orelse return error.UnsupportedGcSyncExpression;
+            return .{
+                .root_local = root_local,
+                .root_ty = root_ty,
+                .outer_layout = outer_layout,
+                .first_field = first_field,
+                .middle_layout = middle_layout,
+                .second_field = second_field,
+                .inner_layout = inner_layout,
+                .leaf_field = find_gc_field(inner_layout, leaf_name) orelse return error.UnsupportedGcSyncExpression,
+                .value_start = value_start,
+                .value_end = value_end,
+            };
+        }
+        if (leaf_end != args_end) return error.UnsupportedGcSyncExpression;
+        const leaf_name = self.field_segment_name(leaf_start, leaf_end) orelse return error.UnsupportedGcSyncExpression;
+        return .{
+            .root_local = root_local,
+            .root_ty = root_ty,
+            .outer_layout = outer_layout,
+            .first_field = first_field,
+            .middle_layout = middle_layout,
+            .second_field = second_field,
+            .inner_layout = inner_layout,
+            .leaf_field = find_gc_field(inner_layout, leaf_name) orelse return error.UnsupportedGcSyncExpression,
+        };
+    }
+
+    fn parse_triple_nested_field_path(
+        self: *BodyEmitter,
+        args_start: usize,
+        args_end: usize,
+        with_value: bool,
+    ) anyerror!?TripleNestedFieldPath {
+        const root_end = find_arg_end(self.tokens, args_start, args_end);
+        if (root_end >= args_end or !tok_eq(self.tokens[root_end], ",") or
+            root_end != args_start + 1 or self.tokens[args_start].kind != .ident)
+        {
+            return null;
+        }
+        const root_local = find_local_name(self.locals.locals.items, self.tokens[args_start].lexeme) orelse return error.UnknownGcSyncLocal;
+        const root_ty = find_local_type(self.locals.locals.items, self.tokens[args_start].lexeme) orelse return error.UnknownGcSyncLocal;
+        const outer_layout = find_gc_layout(self.gc_layouts, root_ty) orelse return null;
+
+        const first_start = root_end + 1;
+        const first_end = find_arg_end(self.tokens, first_start, args_end);
+        if (first_end >= args_end or !tok_eq(self.tokens[first_end], ",")) return null;
+        const first_name = self.field_segment_name(first_start, first_end) orelse return error.UnsupportedGcSyncExpression;
+        const first_field = find_gc_field(outer_layout, first_name) orelse return error.UnsupportedGcSyncExpression;
+        if (first_field.rep != .gc_managed) return null;
+        const middle_layout = find_gc_layout(self.gc_layouts, first_field.ty) orelse return null;
+
+        const second_start = first_end + 1;
+        const second_end = find_arg_end(self.tokens, second_start, args_end);
+        if (second_end >= args_end or !tok_eq(self.tokens[second_end], ",")) return null;
+        const second_name = self.field_segment_name(second_start, second_end) orelse return error.UnsupportedGcSyncExpression;
+        const second_field = find_gc_field(middle_layout, second_name) orelse return error.UnsupportedGcSyncExpression;
+        if (second_field.rep != .gc_managed) return null;
+        const inner_layout = find_gc_layout(self.gc_layouts, second_field.ty) orelse return null;
+
+        const third_start = second_end + 1;
+        const third_end = find_arg_end(self.tokens, third_start, args_end);
+        if (third_end >= args_end or !tok_eq(self.tokens[third_end], ",")) return null;
+        const third_name = self.field_segment_name(third_start, third_end) orelse return error.UnsupportedGcSyncExpression;
+        const third_field = find_gc_field(inner_layout, third_name) orelse return error.UnsupportedGcSyncExpression;
+        if (third_field.rep != .gc_managed) return null;
+        const leaf_layout = find_gc_layout(self.gc_layouts, third_field.ty) orelse return null;
+
+        const leaf_start = third_end + 1;
+        const leaf_end = find_arg_end(self.tokens, leaf_start, args_end);
+        if (with_value) {
+            if (leaf_end >= args_end or !tok_eq(self.tokens[leaf_end], ",")) return null;
+            const value_start = leaf_end + 1;
+            const value_end = find_arg_end(self.tokens, value_start, args_end);
+            if (value_end != args_end) return error.UnsupportedGcSyncExpression;
+            const leaf_name = self.field_segment_name(leaf_start, leaf_end) orelse return error.UnsupportedGcSyncExpression;
+            return .{
+                .root_local = root_local,
+                .root_ty = root_ty,
+                .outer_layout = outer_layout,
+                .first_field = first_field,
+                .middle_layout = middle_layout,
+                .second_field = second_field,
+                .inner_layout = inner_layout,
+                .third_field = third_field,
+                .leaf_layout = leaf_layout,
+                .leaf_field = find_gc_field(leaf_layout, leaf_name) orelse return error.UnsupportedGcSyncExpression,
+                .value_start = value_start,
+                .value_end = value_end,
+            };
+        }
+        if (leaf_end != args_end) return error.UnsupportedGcSyncExpression;
+        const leaf_name = self.field_segment_name(leaf_start, leaf_end) orelse return error.UnsupportedGcSyncExpression;
+        return .{
+            .root_local = root_local,
+            .root_ty = root_ty,
+            .outer_layout = outer_layout,
+            .first_field = first_field,
+            .middle_layout = middle_layout,
+            .second_field = second_field,
+            .inner_layout = inner_layout,
+            .third_field = third_field,
+            .leaf_layout = leaf_layout,
+            .leaf_field = find_gc_field(leaf_layout, leaf_name) orelse return error.UnsupportedGcSyncExpression,
+        };
+    }
+
+    fn emit_scalar_union_local(self: *BodyEmitter, union_local: codegen_model.UnionLocal, layout: codegen_union_layout.UnionLayout) !void {
+        if (!is_gc_scalar_union_layout(self.tokens, layout)) return error.UnsupportedGcSyncType;
+        for (layout.payload_tys, 0..) |_, index| {
+            const name = try self.union_payload_local(union_local.name, index);
+            try self.append(INDENT ++ "local.get ${s}\n", .{name});
+        }
+        const tag = try self.union_tag_local(union_local.name);
+        try self.append(INDENT ++ "local.get ${s}\n", .{tag});
+    }
+
+    fn store_scalar_union_local(self: *BodyEmitter, union_local: codegen_model.UnionLocal, layout: codegen_union_layout.UnionLayout) !void {
+        var index = layout.payload_tys.len + 1;
+        while (index > 0) {
+            index -= 1;
+            if (index == layout.payload_tys.len) {
+                const tag = try self.union_tag_local(union_local.name);
+                try self.append(INDENT ++ "local.set ${s}\n", .{tag});
+            } else {
+                const payload = try self.union_payload_local(union_local.name, index);
+                try self.append(INDENT ++ "local.set ${s}\n", .{payload});
+            }
+        }
     }
 
     fn parse_call(self: *BodyEmitter, start_idx: usize, end_idx: usize) ?CallShape {
@@ -221,7 +691,9 @@ const BodyEmitter = struct {
         const list_ty = expected orelse return error.UnsupportedGcSyncType;
         const array_name = try self.list_array_name(list_ty);
         const elem_ty = type_name.storage_elem_type_from_name(list_ty) orelse return error.UnsupportedGcSyncType;
-        if (!type_name.is_core_wasm_scalar(elem_ty)) return error.UnsupportedGcSyncType;
+        const scalar_elem = type_name.is_core_wasm_scalar(elem_ty);
+        const managed_elem = gc_adapter.is_admitted_managed_type_with_layouts(elem_ty, self.gc_structs, self.gc_layouts);
+        if (!scalar_elem and !managed_elem) return error.UnsupportedGcSyncType;
         if (start_idx + 2 > end_idx or !tok_eq(self.tokens[start_idx], ".") or !tok_eq(self.tokens[start_idx + 1], "{")) {
             return error.UnsupportedGcSyncExpression;
         }
@@ -243,7 +715,10 @@ const BodyEmitter = struct {
                 return error.UnsupportedGcSyncExpression;
             }
             const token = self.tokens[item_start];
-            if (std.mem.eql(u8, elem_ty, "bool")) {
+            if (!scalar_elem) {
+                const actual_ty = try self.emit_expr(item_start, item_end, elem_ty);
+                try ensure_compatible(elem_ty, actual_ty);
+            } else if (std.mem.eql(u8, elem_ty, "bool")) {
                 if (token.kind != .ident or
                     (!std.mem.eql(u8, token.lexeme, "true") and !std.mem.eql(u8, token.lexeme, "false")))
                 {
@@ -293,6 +768,18 @@ const BodyEmitter = struct {
             if (expected != null) return error.GcSyncTypeMismatch;
             return "nil";
         }
+        if (func.result_union) |layout| {
+            if (is_gc_scalar_union_layout(self.tokens, layout)) {
+                if (expected == null or !std.mem.eql(u8, expected.?, layout.source_ty)) return error.UnsupportedGcSyncResult;
+                return layout.source_ty;
+            }
+            if (find_gc_payload_union(self.gc_payload_unions, layout.source_ty) != null) {
+                if (expected) |wanted| try ensure_compatible(wanted, layout.source_ty);
+                try self.append(INDENT ++ ";; gc-root call_result\n", .{});
+                return layout.source_ty;
+            }
+            return error.UnsupportedGcSyncResult;
+        }
         if (func.results.len != 1) return error.UnsupportedGcSyncResult;
         if (gc_adapter.is_admitted_managed_type_with_layouts_and_unions(
             func.results[0],
@@ -306,15 +793,108 @@ const BodyEmitter = struct {
         return func.results[0];
     }
 
+    fn emit_multi_result_return(self: *BodyEmitter, start_idx: usize, end_idx: usize) anyerror!void {
+        if (self.result_tys.len <= 1) return error.UnsupportedGcSyncResult;
+        const range = trim_parens(self.tokens, start_idx, end_idx);
+        if (self.parse_call(range.start, range.end)) |shape| {
+            const func = self.find_func(self.tokens[shape.name_idx].lexeme, null) orelse return error.UnsupportedGcSyncCall;
+            if (func.is_async or func.contains_await or func.results.len != self.result_tys.len or func.result_items.len != func.results.len) return error.UnsupportedGcSyncResult;
+            for (func.results, self.result_tys, func.result_items) |actual_ty, expected_ty, item| {
+                if (item.abi_len != 1 or item.union_layout != null or !self.is_supported_multi_result_type(actual_ty)) return error.UnsupportedGcSyncResult;
+                try ensure_compatible(expected_ty, actual_ty);
+            }
+
+            var arg_idx = shape.open_idx + 1;
+            var param_idx: usize = 0;
+            while (arg_idx < shape.close_idx) {
+                if (param_idx >= func.params.len) return error.GcSyncArityMismatch;
+                const arg_end = find_arg_end(self.tokens, arg_idx, shape.close_idx);
+                if (arg_end <= arg_idx) return error.GcSyncArityMismatch;
+                const actual_ty = try self.emit_expr(arg_idx, arg_end, func.params[param_idx].ty);
+                if (!std.mem.eql(u8, actual_ty, func.params[param_idx].ty)) return error.GcSyncTypeMismatch;
+                param_idx += 1;
+                arg_idx = arg_end;
+                if (arg_idx < shape.close_idx and tok_eq(self.tokens[arg_idx], ",")) arg_idx += 1;
+            }
+            if (param_idx != func.params.len) return error.GcSyncArityMismatch;
+            try self.append(INDENT ++ "call ${s}\n    return\n", .{func.name});
+            return;
+        }
+        var expr_start = start_idx;
+        var result_idx: usize = 0;
+        while (expr_start < end_idx) {
+            if (result_idx >= self.result_tys.len) return error.GcSyncArityMismatch;
+            const expr_end = find_arg_end(self.tokens, expr_start, end_idx);
+            if (expr_end <= expr_start) return error.GcSyncArityMismatch;
+            const result_ty = self.result_tys[result_idx];
+            if (!self.is_supported_multi_result_type(result_ty)) return error.UnsupportedGcSyncResult;
+            _ = try self.emit_expr(expr_start, expr_end, result_ty);
+            result_idx += 1;
+            expr_start = expr_end;
+            if (expr_start < end_idx and tok_eq(self.tokens[expr_start], ",")) expr_start += 1;
+        }
+        if (result_idx != self.result_tys.len) return error.GcSyncArityMismatch;
+        try self.append(INDENT ++ "return\n", .{});
+    }
+
+    fn emit_multi_result_assignment(self: *BodyEmitter, start_idx: usize, end_idx: usize) anyerror!void {
+        const eq_idx = find_top_level_token(self.tokens, start_idx, end_idx, "=") orelse return error.UnsupportedGcSyncStatement;
+        if (find_top_level_token(self.tokens, start_idx, eq_idx, ",") == null) return error.UnsupportedGcSyncStatement;
+        const range = trim_parens(self.tokens, eq_idx + 1, end_idx);
+        const shape = self.parse_call(range.start, range.end) orelse return error.UnsupportedGcSyncStatement;
+        const func = self.find_func(self.tokens[shape.name_idx].lexeme, null) orelse return error.UnsupportedGcSyncCall;
+        if (func.is_async or func.contains_await or func.results.len <= 1 or func.result_items.len != func.results.len) return error.UnsupportedGcSyncResult;
+
+        var lhs_names = std.ArrayList([]const u8).empty;
+        defer lhs_names.deinit(self.allocator);
+        var lhs_start = start_idx;
+        var result_idx: usize = 0;
+        while (lhs_start < eq_idx) {
+            if (result_idx >= func.results.len) return error.GcSyncArityMismatch;
+            const lhs_end = find_arg_end(self.tokens, lhs_start, eq_idx);
+            if (lhs_end != lhs_start + 1 or self.tokens[lhs_start].kind != .ident) return error.UnsupportedGcSyncStatement;
+            const local_name = find_local_name(self.locals.locals.items, self.tokens[lhs_start].lexeme) orelse return error.UnknownGcSyncLocal;
+            const local_ty = find_local_type(self.locals.locals.items, self.tokens[lhs_start].lexeme) orelse return error.UnknownGcSyncLocal;
+            const result_ty = func.results[result_idx];
+            const item = func.result_items[result_idx];
+            if (item.abi_len != 1 or item.union_layout != null or !self.is_supported_multi_result_type(result_ty)) return error.UnsupportedGcSyncResult;
+            try BodyEmitter.ensure_compatible(local_ty, result_ty);
+            try lhs_names.append(self.allocator, local_name);
+            result_idx += 1;
+            lhs_start = lhs_end;
+            if (lhs_start < eq_idx and tok_eq(self.tokens[lhs_start], ",")) lhs_start += 1;
+        }
+        if (result_idx != func.results.len) return error.GcSyncArityMismatch;
+
+        var arg_idx = shape.open_idx + 1;
+        var param_idx: usize = 0;
+        while (arg_idx < shape.close_idx) {
+            if (param_idx >= func.params.len) return error.GcSyncArityMismatch;
+            const arg_end = find_arg_end(self.tokens, arg_idx, shape.close_idx);
+            if (arg_end <= arg_idx) return error.GcSyncArityMismatch;
+            const actual_ty = try self.emit_expr(arg_idx, arg_end, func.params[param_idx].ty);
+            try BodyEmitter.ensure_compatible(func.params[param_idx].ty, actual_ty);
+            param_idx += 1;
+            arg_idx = arg_end;
+            if (arg_idx < shape.close_idx and tok_eq(self.tokens[arg_idx], ",")) arg_idx += 1;
+        }
+        if (param_idx != func.params.len) return error.GcSyncArityMismatch;
+        try self.append(INDENT ++ "call ${s}\n", .{func.name});
+
+        var set_idx = lhs_names.items.len;
+        while (set_idx > 0) {
+            set_idx -= 1;
+            try self.append(INDENT ++ "local.set ${s}\n", .{lhs_names.items[set_idx]});
+        }
+    }
+
     fn emit_payload_union_ctor(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
         const expected_ty = expected orelse return null;
         const layout = self.find_payload_union(expected_ty) orelse return null;
         if (start_idx + 1 == end_idx and self.tokens[start_idx].kind == .ident and
             std.mem.eql(u8, self.tokens[start_idx].lexeme, layout.unit_case))
         {
-            try self.append(INDENT ++ "i32.const {d}\n    ref.null $do_bytes\n    struct.new $", .{layout.unit_tag});
-            for (layout.name) |ch| try self.out.append(self.allocator, std.ascii.toLower(ch));
-            try self.out.appendSlice(self.allocator, "\n");
+            try self.emit_payload_union_fields(layout, layout.unit_tag, null);
             return expected_ty;
         }
         const shape = self.parse_call(start_idx, end_idx) orelse return null;
@@ -325,12 +905,153 @@ const BodyEmitter = struct {
         if (arg_start >= shape.close_idx) return error.UnsupportedGcSyncUnionConstructor;
         const arg_end = find_arg_end(self.tokens, arg_start, shape.close_idx);
         if (arg_end != shape.close_idx) return error.UnsupportedGcSyncUnionConstructor;
-        try self.append(INDENT ++ "i32.const {d}\n", .{layout.managed_tag});
-        _ = try self.emit_expr(arg_start, arg_end, "[u8]");
+        try self.emit_payload_union_fields(layout, layout.managed_tag, .{ .start = arg_start, .end = arg_end });
+        return expected_ty;
+    }
+
+    const ExprRange = struct { start: usize, end: usize };
+
+    fn emit_payload_union_fields(
+        self: *BodyEmitter,
+        layout: gc_layout.GcPayloadUnionLayout,
+        tag: u32,
+        managed_expr: ?ExprRange,
+    ) !void {
+        try self.append(INDENT ++ "i32.const {d}\n", .{tag});
+        for (layout.payload_tys, 0..) |payload_ty, index| {
+            if (index == layout.managed_payload_index) {
+                if (managed_expr) |expr| {
+                    _ = try self.emit_expr(expr.start, expr.end, "[u8]");
+                } else {
+                    try self.append(INDENT ++ "ref.null $do_bytes\n", .{});
+                }
+            } else {
+                try self.emit_scalar_zero(payload_ty);
+            }
+        }
         try self.append(INDENT ++ "struct.new $", .{});
         for (layout.name) |ch| try self.out.append(self.allocator, std.ascii.toLower(ch));
         try self.out.appendSlice(self.allocator, "\n");
-        return expected_ty;
+    }
+
+    fn emit_managed_union_value(
+        self: *BodyEmitter,
+        start_idx: usize,
+        end_idx: usize,
+        layout: gc_layout.GcPayloadUnionLayout,
+    ) anyerror!bool {
+        if (end_idx == start_idx + 1 and tok_eq(self.tokens[start_idx], layout.unit_case)) {
+            try self.emit_payload_union_fields(layout, layout.unit_tag, null);
+            return true;
+        }
+        if (end_idx == start_idx + 1 and self.tokens[start_idx].kind == .ident) {
+            const local_ty = find_local_type(self.locals.locals.items, self.tokens[start_idx].lexeme) orelse return false;
+            if (std.mem.eql(u8, local_ty, "[u8]")) {
+                try self.emit_payload_union_fields(layout, layout.managed_tag, .{ .start = start_idx, .end = end_idx });
+                return true;
+            }
+        }
+        return false;
+    }
+
+    fn emit_scalar_union_branch(
+        self: *BodyEmitter,
+        start_idx: usize,
+        end_idx: usize,
+        layout: codegen_union_layout.UnionLayout,
+        branch: codegen_union_layout.UnionBranch,
+    ) anyerror!bool {
+        const range = trim_parens(self.tokens, start_idx, end_idx);
+        var payload_start = branch.payload_start;
+        var payload_end = branch.payload_start + branch.payload_len;
+        if (payload_end > layout.payload_tys.len) return error.UnsupportedGcSyncUnionConstructor;
+
+        for (layout.payload_tys[0..payload_start]) |payload_ty| try self.emit_scalar_zero(payload_ty);
+
+        var emitted_payload = false;
+        if (branch.payload_len == 0) {
+            emitted_payload = range.end == range.start + 1 and
+                self.tokens[range.start].kind == .ident and
+                std.mem.eql(u8, public_decl_name(self.tokens[range.start].lexeme), public_decl_name(branch.ty));
+            if (!emitted_payload) {
+                if (self.parse_call(range.start, range.end)) |shape| {
+                    emitted_payload = self.tokens[shape.name_idx].kind == .ident and
+                        shape.open_idx + 1 == shape.close_idx and
+                        std.mem.eql(u8, public_decl_name(self.tokens[shape.name_idx].lexeme), public_decl_name(branch.ty));
+                }
+            }
+        } else if (self.inline_scalar_struct_shape(branch.ty)) |shape| {
+            if (range.end == range.start + 1 and self.tokens[range.start].kind == .ident) {
+                const local = find_struct_local(self.locals.struct_locals.items, self.tokens[range.start].lexeme) orelse return false;
+                if (std.mem.eql(u8, local.ty, branch.ty)) {
+                    for (shape.fields) |field| {
+                        const field_name = try std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ local.name, public_decl_name(field.name) });
+                        defer self.allocator.free(field_name);
+                        const field_local = find_local_name(self.locals.locals.items, field_name) orelse return error.UnknownGcSyncLocal;
+                        try self.append(INDENT ++ "local.get ${s}\n", .{field_local});
+                    }
+                    emitted_payload = true;
+                }
+            } else if (range.start + 1 < range.end and self.tokens[range.start].kind == .ident and
+                std.mem.eql(u8, self.tokens[range.start].lexeme, branch.ty))
+            {
+                try self.emit_inline_struct_values(range.start, range.end, branch.ty);
+                emitted_payload = true;
+            }
+        } else if (branch.payload_len == 1 and is_error_like_type(self.tokens, branch.ty) and
+            range.end == range.start + 1 and self.tokens[range.start].kind == .ident and
+            !std.mem.eql(u8, self.tokens[range.start].lexeme, branch.ty))
+        {
+            try self.append(INDENT ++ "i32.const 1\n", .{});
+            emitted_payload = true;
+        } else if (branch.payload_len == 1) {
+            const payload_ty = layout.payload_tys[branch.payload_start];
+            _ = try self.emit_expr(range.start, range.end, payload_ty);
+            emitted_payload = true;
+        }
+        if (!emitted_payload) return false;
+        payload_start = branch.payload_start;
+        payload_end = branch.payload_start + branch.payload_len;
+        for (layout.payload_tys[payload_end..]) |payload_ty| try self.emit_scalar_zero(payload_ty);
+        try self.append(INDENT ++ "i32.const {d}\n", .{branch.tag});
+        return true;
+    }
+
+    fn emit_scalar_union_value(
+        self: *BodyEmitter,
+        start_idx: usize,
+        end_idx: usize,
+        layout: codegen_union_layout.UnionLayout,
+    ) anyerror!void {
+        if (!is_gc_scalar_union_layout(self.tokens, layout)) return error.UnsupportedGcSyncType;
+        const range = trim_parens(self.tokens, start_idx, end_idx);
+        if (range.start >= range.end) return error.UnsupportedGcSyncExpression;
+        if (self.parse_call(range.start, range.end)) |shape| {
+            const actual = try self.emit_call_expr(shape, layout.source_ty);
+            if (!std.mem.eql(u8, actual, layout.source_ty)) return error.GcSyncTypeMismatch;
+            return;
+        }
+        if (range.end == range.start + 1 and tok_eq(self.tokens[range.start], "nil")) {
+            for (layout.payload_tys) |payload_ty| try self.emit_scalar_zero(payload_ty);
+            try self.append(INDENT ++ "i32.const 0\n", .{});
+            return;
+        }
+        if (range.end == range.start + 1 and self.tokens[range.start].kind == .ident) {
+            if (find_union_local(self.locals.union_locals.items, self.tokens[range.start].lexeme)) |union_local| {
+                if (union_layouts_equal(union_local.layout, layout)) {
+                    try self.emit_scalar_union_local(union_local, layout);
+                    return;
+                }
+            }
+        }
+        for (layout.branches) |branch| {
+            if (try self.emit_scalar_union_branch(range.start, range.end, layout, branch)) return;
+        }
+        return error.UnsupportedGcSyncUnionConstructor;
+    }
+
+    fn emit_scalar_union_result_values(self: *BodyEmitter, start_idx: usize, end_idx: usize, layout: codegen_union_layout.UnionLayout) !void {
+        try self.emit_scalar_union_value(start_idx, end_idx, layout);
     }
 
     fn emit_get_field_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
@@ -338,6 +1059,28 @@ const BodyEmitter = struct {
         if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx + 2], "(")) return null;
         const close_idx = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return error.UnsupportedGcSyncExpression;
         if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
+        if (try self.parse_triple_nested_field_path(start_idx + 3, close_idx, false)) |path| {
+            try ensure_compatible(expected, path.leaf_field.ty);
+            const layouts = [_]gc_layout.GcStructLayout{ path.outer_layout, path.middle_layout, path.inner_layout, path.leaf_layout };
+            const fields = [_]gc_layout.GcFieldLayout{ path.first_field, path.second_field, path.third_field, path.leaf_field };
+            try self.emit_struct_field_chain_from_local(path.root_local, &layouts, &fields);
+            return path.leaf_field.ty;
+        }
+        if (try self.parse_deep_nested_field_path(start_idx + 3, close_idx, false)) |path| {
+            try ensure_compatible(expected, path.leaf_field.ty);
+            const layouts = [_]gc_layout.GcStructLayout{ path.outer_layout, path.middle_layout, path.inner_layout };
+            const fields = [_]gc_layout.GcFieldLayout{ path.first_field, path.second_field, path.leaf_field };
+            try self.emit_struct_field_chain_from_local(path.root_local, &layouts, &fields);
+            return path.leaf_field.ty;
+        }
+        if (try self.parse_nested_field_path(start_idx + 3, close_idx, false)) |path| {
+            try ensure_compatible(expected, path.leaf_field.ty);
+            try self.emit_struct_field_from_local(path.root_local, path.outer_layout, path.parent_field);
+            try self.append(INDENT ++ "ref.as_non_null\n    struct.get ", .{});
+            try self.append_struct_symbol(path.inner_layout.name);
+            try self.append(" ${s}\n", .{public_decl_name(path.leaf_field.name)});
+            return path.leaf_field.ty;
+        }
         const first_end = find_arg_end(self.tokens, start_idx + 3, close_idx);
         if (first_end >= close_idx or !tok_eq(self.tokens[first_end], ",")) return error.UnsupportedGcSyncExpression;
         const second_start = first_end + 1;
@@ -354,7 +1097,8 @@ const BodyEmitter = struct {
         const admitted_managed = field.rep == .gc_managed and
             (std.mem.eql(u8, field.ty, "[u8]") or
                 std.mem.eql(u8, field.ty, "text") or
-                find_gc_layout(self.gc_layouts, field.ty) != null);
+                find_gc_layout(self.gc_layouts, field.ty) != null or
+                gc_adapter.is_managed_list_type(field.ty, self.gc_structs));
         if (!inline_scalar and !admitted_managed) return error.UnsupportedGcSyncType;
         try ensure_compatible(expected, field.ty);
         try self.append(INDENT ++ "local.get ${s}\n    ref.as_non_null\n    struct.get $", .{local_name});
@@ -372,7 +1116,9 @@ const BodyEmitter = struct {
         if (receiver_end != start_idx + 4 or receiver_end >= close_idx or !tok_eq(self.tokens[receiver_end], ",") or self.tokens[start_idx + 3].kind != .ident) return null;
         const receiver_name = find_local_name(self.locals.locals.items, self.tokens[start_idx + 3].lexeme) orelse return error.UnknownGcSyncLocal;
         const list_ty = find_local_type(self.locals.locals.items, self.tokens[start_idx + 3].lexeme) orelse return error.UnknownGcSyncLocal;
-        if (!std.mem.eql(u8, list_ty, "[u8]") and gc_layout.scalar_array_spec_for_type(list_ty) == null) return null;
+        if (!std.mem.eql(u8, list_ty, "[u8]") and
+            gc_layout.scalar_array_spec_for_type(list_ty) == null and
+            !gc_adapter.is_managed_list_type(list_ty, self.gc_structs)) return null;
         const index_start = receiver_end + 1;
         const index_end = find_arg_end(self.tokens, index_start, close_idx);
         if (index_end != close_idx) return error.UnsupportedGcSyncExpression;
@@ -446,19 +1192,136 @@ const BodyEmitter = struct {
         return expected.?;
     }
 
-    fn emit_struct_ctor_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
-        if (start_idx + 1 >= end_idx or self.tokens[start_idx].kind != .ident or !tok_eq(self.tokens[start_idx + 1], "{")) return null;
-        const expected_ty = expected orelse return null;
-        if (!std.mem.eql(u8, self.tokens[start_idx].lexeme, expected_ty)) return null;
-        const layout = find_gc_layout(self.gc_layouts, expected_ty) orelse return null;
+    fn inline_scalar_struct_shape(self: *const BodyEmitter, ty: []const u8) ?gc_representation.StructShape {
+        for (self.gc_structs) |shape| {
+            if (!std.mem.eql(u8, shape.name, ty)) continue;
+            const rep = gc_representation.classify_type(ty, self.gc_structs, &.{}) catch return null;
+            if (rep != .inline_value) return null;
+            return shape;
+        }
+        return null;
+    }
+
+    fn struct_field_local(self: *const BodyEmitter, struct_name: []const u8, field_name: []const u8) ![]const u8 {
+        const candidate = try std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ struct_name, field_name });
+        defer self.allocator.free(candidate);
+        return find_local_name(self.locals.locals.items, candidate) orelse error.UnknownGcSyncLocal;
+    }
+
+    fn emit_inline_struct_field_get(self: *BodyEmitter, struct_name: []const u8, field_name: []const u8) !void {
+        const local_name = try self.struct_field_local(struct_name, field_name);
+        try self.append(INDENT ++ "local.get ${s}\n", .{local_name});
+    }
+
+    fn emit_inline_struct_field_set(self: *BodyEmitter, struct_name: []const u8, field_name: []const u8) !void {
+        const local_name = try self.struct_field_local(struct_name, field_name);
+        try self.append(INDENT ++ "local.set ${s}\n", .{local_name});
+    }
+
+    fn emit_inline_struct_values(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: []const u8) anyerror!void {
+        const shape = self.inline_scalar_struct_shape(expected) orelse return error.UnsupportedGcSyncType;
+        if (start_idx + 2 >= end_idx or self.tokens[start_idx].kind != .ident or
+            !std.mem.eql(u8, self.tokens[start_idx].lexeme, expected) or !tok_eq(self.tokens[start_idx + 1], "{")) return error.UnsupportedGcSyncExpression;
         const close_idx = find_matching_in_range(self.tokens, start_idx + 1, "{", "}", end_idx) catch return error.UnsupportedGcSyncExpression;
+        if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
+
+        for (shape.fields) |field| {
+            var field_start: ?usize = null;
+            var i = start_idx + 2;
+            while (i + 1 < close_idx) : (i += 1) {
+                if (self.tokens[i].kind != .ident or
+                    (!std.mem.eql(u8, self.tokens[i].lexeme, field.name) and
+                        !std.mem.eql(u8, self.tokens[i].lexeme, public_decl_name(field.name))) or
+                    !tok_eq(self.tokens[i + 1], "=") or field_start != null) continue;
+                field_start = i;
+                break;
+            }
+            const field_idx = field_start orelse return error.UnsupportedGcSyncExpression;
+            const value_start = field_idx + 2;
+            const value_end = find_arg_end(self.tokens, value_start, close_idx);
+            if (value_end <= value_start) return error.UnsupportedGcSyncExpression;
+            const actual = try self.emit_expr(value_start, value_end, field.ty);
+            try BodyEmitter.ensure_compatible(field.ty, actual);
+        }
+    }
+
+    fn emit_inline_struct_call_values(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: []const u8) anyerror!void {
+        const shape = self.inline_scalar_struct_shape(expected) orelse return error.UnsupportedGcSyncType;
+        const call = self.parse_call(start_idx, end_idx) orelse return error.UnsupportedGcSyncExpression;
+        const func = self.find_func(self.tokens[call.name_idx].lexeme, null) orelse return error.UnsupportedGcSyncCall;
+        if (func.is_async or func.contains_await or func.result_struct == null or
+            !std.mem.eql(u8, func.result_struct.?, expected) or func.result_items.len != 1 or
+            func.result_items[0].abi_len != shape.fields.len or func.results.len != shape.fields.len) return error.UnsupportedGcSyncResult;
+        for (shape.fields, 0..) |field, index| {
+            try BodyEmitter.ensure_compatible(field.ty, func.results[index]);
+        }
+
+        var arg_idx = call.open_idx + 1;
+        var param_idx: usize = 0;
+        while (arg_idx < call.close_idx) {
+            if (param_idx >= func.params.len) return error.GcSyncArityMismatch;
+            const arg_end = find_arg_end(self.tokens, arg_idx, call.close_idx);
+            if (arg_end <= arg_idx) return error.GcSyncArityMismatch;
+            const actual = try self.emit_expr(arg_idx, arg_end, func.params[param_idx].ty);
+            try BodyEmitter.ensure_compatible(func.params[param_idx].ty, actual);
+            param_idx += 1;
+            arg_idx = arg_end;
+            if (arg_idx < call.close_idx and tok_eq(self.tokens[arg_idx], ",")) arg_idx += 1;
+        }
+        if (param_idx != func.params.len) return error.GcSyncArityMismatch;
+        try self.append(INDENT ++ "call ${s}\n", .{func.name});
+    }
+
+    fn emit_inline_struct_result_values(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: []const u8) anyerror!void {
+        const range = trim_parens(self.tokens, start_idx, end_idx);
+        if (self.parse_call(range.start, range.end) != null) {
+            try self.emit_inline_struct_call_values(range.start, range.end, expected);
+            return;
+        }
+        if (range.end == range.start + 1 and self.tokens[range.start].kind == .ident) {
+            const struct_local = find_struct_local(self.locals.struct_locals.items, self.tokens[range.start].lexeme) orelse return error.UnknownGcSyncLocal;
+            if (!std.mem.eql(u8, struct_local.ty, expected)) return error.GcSyncTypeMismatch;
+            const shape = self.inline_scalar_struct_shape(expected) orelse return error.UnsupportedGcSyncType;
+            for (shape.fields) |field| try self.emit_inline_struct_field_get(struct_local.name, public_decl_name(field.name));
+            return;
+        }
+        try self.emit_inline_struct_values(range.start, range.end, expected);
+    }
+
+    fn emit_inline_struct_assignment(self: *BodyEmitter, target_name: []const u8, target_ty: []const u8, expr_start: usize, expr_end: usize) anyerror!void {
+        const shape = self.inline_scalar_struct_shape(target_ty) orelse return error.UnsupportedGcSyncType;
+        try self.emit_inline_struct_result_values(expr_start, expr_end, target_ty);
+        var index = shape.fields.len;
+        while (index > 0) {
+            index -= 1;
+            try self.emit_inline_struct_field_set(target_name, public_decl_name(shape.fields[index].name));
+        }
+    }
+
+    fn has_inline_scalar_struct_result(self: *const BodyEmitter) bool {
+        return self.result_struct != null and self.result_items.len == 1 and self.result_items[0].abi_len == self.result_tys.len and self.inline_scalar_struct_shape(self.result_struct.?) != null;
+    }
+
+    fn emit_struct_ctor_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
+        const expected_ty = expected orelse return null;
+        const open_idx = if (start_idx + 1 < end_idx and self.tokens[start_idx].kind == .ident and
+            !tok_eq(self.tokens[start_idx], ".") and tok_eq(self.tokens[start_idx + 1], "{"))
+        blk: {
+            if (!std.mem.eql(u8, self.tokens[start_idx].lexeme, expected_ty)) return null;
+            break :blk start_idx + 1;
+        } else if (start_idx + 1 < end_idx and tok_eq(self.tokens[start_idx], ".") and tok_eq(self.tokens[start_idx + 1], "{"))
+            start_idx + 1
+        else
+            return null;
+        const layout = find_gc_layout(self.gc_layouts, expected_ty) orelse return null;
+        const close_idx = find_matching_in_range(self.tokens, open_idx, "{", "}", end_idx) catch return error.UnsupportedGcSyncExpression;
         if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
 
         var values = try self.allocator.alloc(?StructCtorValue, layout.fields.len);
         defer self.allocator.free(values);
         for (values) |*value| value.* = null;
 
-        var field_start = start_idx + 2;
+        var field_start = open_idx + 1;
         while (field_start < close_idx) {
             if (tok_eq(self.tokens[field_start], ",")) {
                 field_start += 1;
@@ -492,6 +1355,163 @@ const BodyEmitter = struct {
         const close_idx = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return error.UnsupportedGcSyncExpression;
         if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
 
+        if (try self.parse_triple_nested_field_path(start_idx + 3, close_idx, true)) |path| {
+            if (path.leaf_field.rep != .inline_value or !type_name.is_core_wasm_scalar(path.leaf_field.ty)) {
+                return error.UnsupportedGcSyncType;
+            }
+            try ensure_compatible(expected, path.root_ty);
+            const value_start = path.value_start orelse return error.UnsupportedGcSyncExpression;
+            const value_end = path.value_end orelse return error.UnsupportedGcSyncExpression;
+
+            for (path.leaf_layout.fields) |field| {
+                if (field.field_index == path.leaf_field.field_index) {
+                    _ = try self.emit_expr(value_start, value_end, field.ty);
+                    continue;
+                }
+                const layouts = [_]gc_layout.GcStructLayout{ path.outer_layout, path.middle_layout, path.inner_layout, path.leaf_layout };
+                const fields = [_]gc_layout.GcFieldLayout{ path.first_field, path.second_field, path.third_field, field };
+                try self.emit_struct_field_chain_from_local(path.root_local, &layouts, &fields);
+            }
+            try self.emit_struct_new(path.leaf_layout);
+            try self.append(INDENT ++ "local.set ", .{});
+            try self.append_nested_temp_symbol(path.leaf_layout.name);
+            try self.append("\n", .{});
+
+            for (path.inner_layout.fields) |field| {
+                if (field.field_index == path.third_field.field_index) {
+                    try self.append(INDENT ++ "local.get ", .{});
+                    try self.append_nested_temp_symbol(path.leaf_layout.name);
+                    try self.append("\n", .{});
+                    continue;
+                }
+                const layouts = [_]gc_layout.GcStructLayout{ path.outer_layout, path.middle_layout, path.inner_layout };
+                const fields = [_]gc_layout.GcFieldLayout{ path.first_field, path.second_field, field };
+                try self.emit_struct_field_chain_from_local(path.root_local, &layouts, &fields);
+            }
+            try self.emit_struct_new(path.inner_layout);
+            try self.append(INDENT ++ "local.set ", .{});
+            try self.append_nested_temp_symbol(path.inner_layout.name);
+            try self.append("\n", .{});
+
+            for (path.middle_layout.fields) |field| {
+                if (field.field_index == path.second_field.field_index) {
+                    try self.append(INDENT ++ "local.get ", .{});
+                    try self.append_nested_temp_symbol(path.inner_layout.name);
+                    try self.append("\n", .{});
+                    continue;
+                }
+                const layouts = [_]gc_layout.GcStructLayout{ path.outer_layout, path.middle_layout };
+                const fields = [_]gc_layout.GcFieldLayout{ path.first_field, field };
+                try self.emit_struct_field_chain_from_local(path.root_local, &layouts, &fields);
+            }
+            try self.emit_struct_new(path.middle_layout);
+            try self.append(INDENT ++ "local.set ", .{});
+            try self.append_nested_temp_symbol(path.middle_layout.name);
+            try self.append("\n", .{});
+
+            for (path.outer_layout.fields) |field| {
+                if (field.field_index == path.first_field.field_index) {
+                    try self.append(INDENT ++ "local.get ", .{});
+                    try self.append_nested_temp_symbol(path.middle_layout.name);
+                    try self.append("\n", .{});
+                    continue;
+                }
+                const layouts = [_]gc_layout.GcStructLayout{path.outer_layout};
+                const fields = [_]gc_layout.GcFieldLayout{field};
+                try self.emit_struct_field_chain_from_local(path.root_local, &layouts, &fields);
+            }
+            try self.emit_struct_new(path.outer_layout);
+            return path.root_ty;
+        }
+
+        if (try self.parse_deep_nested_field_path(start_idx + 3, close_idx, true)) |path| {
+            if (path.leaf_field.rep != .inline_value or !type_name.is_core_wasm_scalar(path.leaf_field.ty)) {
+                return error.UnsupportedGcSyncType;
+            }
+            try ensure_compatible(expected, path.root_ty);
+            const value_start = path.value_start orelse return error.UnsupportedGcSyncExpression;
+            const value_end = path.value_end orelse return error.UnsupportedGcSyncExpression;
+
+            for (path.inner_layout.fields) |field| {
+                if (field.field_index == path.leaf_field.field_index) {
+                    _ = try self.emit_expr(value_start, value_end, field.ty);
+                    continue;
+                }
+                const layouts = [_]gc_layout.GcStructLayout{ path.outer_layout, path.middle_layout, path.inner_layout };
+                const fields = [_]gc_layout.GcFieldLayout{ path.first_field, path.second_field, field };
+                try self.emit_struct_field_chain_from_local(path.root_local, &layouts, &fields);
+            }
+            try self.emit_struct_new(path.inner_layout);
+            try self.append(INDENT ++ "local.set ", .{});
+            try self.append_nested_temp_symbol(path.inner_layout.name);
+            try self.append("\n", .{});
+
+            for (path.middle_layout.fields) |field| {
+                if (field.field_index == path.second_field.field_index) {
+                    try self.append(INDENT ++ "local.get ", .{});
+                    try self.append_nested_temp_symbol(path.inner_layout.name);
+                    try self.append("\n", .{});
+                    continue;
+                }
+                const layouts = [_]gc_layout.GcStructLayout{ path.outer_layout, path.middle_layout };
+                const fields = [_]gc_layout.GcFieldLayout{ path.first_field, field };
+                try self.emit_struct_field_chain_from_local(path.root_local, &layouts, &fields);
+            }
+            try self.emit_struct_new(path.middle_layout);
+            try self.append(INDENT ++ "local.set ", .{});
+            try self.append_nested_temp_symbol(path.middle_layout.name);
+            try self.append("\n", .{});
+
+            for (path.outer_layout.fields) |field| {
+                if (field.field_index == path.first_field.field_index) {
+                    try self.append(INDENT ++ "local.get ", .{});
+                    try self.append_nested_temp_symbol(path.middle_layout.name);
+                    try self.append("\n", .{});
+                    continue;
+                }
+                const layouts = [_]gc_layout.GcStructLayout{path.outer_layout};
+                const fields = [_]gc_layout.GcFieldLayout{field};
+                try self.emit_struct_field_chain_from_local(path.root_local, &layouts, &fields);
+            }
+            try self.emit_struct_new(path.outer_layout);
+            return path.root_ty;
+        }
+
+        if (try self.parse_nested_field_path(start_idx + 3, close_idx, true)) |path| {
+            if (path.leaf_field.rep != .inline_value or !type_name.is_core_wasm_scalar(path.leaf_field.ty)) {
+                return error.UnsupportedGcSyncType;
+            }
+            try ensure_compatible(expected, path.root_ty);
+            const value_start = path.value_start orelse return error.UnsupportedGcSyncExpression;
+            const value_end = path.value_end orelse return error.UnsupportedGcSyncExpression;
+            for (path.inner_layout.fields) |field| {
+                if (field.field_index == path.leaf_field.field_index) {
+                    _ = try self.emit_expr(value_start, value_end, field.ty);
+                    continue;
+                }
+                try self.emit_struct_field_from_local(path.root_local, path.outer_layout, path.parent_field);
+                try self.append(INDENT ++ "ref.as_non_null\n    struct.get ", .{});
+                try self.append_struct_symbol(path.inner_layout.name);
+                try self.append(" ${s}\n", .{public_decl_name(field.name)});
+            }
+            try self.emit_struct_new(path.inner_layout);
+            try self.append(INDENT ++ "local.set ", .{});
+            try self.append_nested_temp_symbol(path.inner_layout.name);
+            try self.append("\n", .{});
+
+            for (path.outer_layout.fields) |field| {
+                if (field.field_index == path.parent_field.field_index) {
+                    try self.append(INDENT ++ "local.get ", .{});
+                    try self.append_nested_temp_symbol(path.inner_layout.name);
+                    try self.append("\n", .{});
+                    continue;
+                }
+                try self.emit_struct_field_from_local(path.root_local, path.outer_layout, field);
+            }
+            try self.emit_struct_new(path.outer_layout);
+            return path.root_ty;
+        }
+
         const target_end = find_arg_end(self.tokens, start_idx + 3, close_idx);
         if (target_end >= close_idx or !tok_eq(self.tokens[target_end], ",")) return error.UnsupportedGcSyncExpression;
         if (try self.emit_set_tuple_bytes_expr(start_idx + 3, target_end, close_idx, expected)) |tuple_ty| return tuple_ty;
@@ -517,25 +1537,54 @@ const BodyEmitter = struct {
         const managed_scalar_array_field = target_field.rep == .gc_managed and gc_layout.scalar_array_spec_for_type(target_field.ty) != null;
         const managed_text_field = target_field.rep == .gc_managed and std.mem.eql(u8, target_field.ty, "text");
         const managed_struct_field = target_field.rep == .gc_managed and find_gc_layout(self.gc_layouts, target_field.ty) != null;
-        if (!scalar_field and !managed_byte_field and !managed_scalar_array_field and !managed_text_field and !managed_struct_field) return error.UnsupportedGcSyncType;
+        const managed_struct_list_field = target_field.rep == .gc_managed and gc_adapter.is_managed_list_type(target_field.ty, self.gc_structs);
+        if (!scalar_field and !managed_byte_field and !managed_scalar_array_field and !managed_text_field and !managed_struct_field and !managed_struct_list_field) return error.UnsupportedGcSyncType;
 
         const value_start = field_end + 1;
         if (value_start >= close_idx) return error.UnsupportedGcSyncExpression;
         const value_end = find_arg_end(self.tokens, value_start, close_idx);
         if (value_end != close_idx) return error.UnsupportedGcSyncExpression;
         try ensure_compatible(expected, struct_ty);
-        if (managed_byte_field and !self.is_direct_local_of_type(value_start, value_end, "[u8]")) {
-            return error.UnsupportedGcSyncProducer;
+        const direct_managed_call = if (target_field.rep == .gc_managed)
+            self.is_direct_managed_call_producer(value_start, value_end, target_field.ty)
+        else
+            false;
+        if (managed_byte_field) {
+            if (try self.emit_nested_byte_field_expr(
+                value_start,
+                value_end,
+                expected,
+                source_token.lexeme,
+                local_name,
+                struct_ty,
+                layout,
+                target_field_name,
+            )) |nested_ty| return nested_ty;
         }
-        if (managed_scalar_array_field and !self.is_direct_local_of_type(value_start, value_end, target_field.ty)) {
-            return error.UnsupportedGcSyncProducer;
-        }
-        if (managed_text_field and !self.is_direct_local_of_type(value_start, value_end, "text") and
-            !(value_start + 1 == value_end and self.tokens[value_start].kind == .string))
+        if (managed_byte_field and !self.is_direct_local_of_type(value_start, value_end, "[u8]") and
+            !self.is_direct_field_get_of_type(value_start, value_end, "[u8]") and !direct_managed_call)
         {
             return error.UnsupportedGcSyncProducer;
         }
-        if (managed_struct_field and !self.is_direct_local_of_type(value_start, value_end, target_field.ty)) {
+        if (managed_scalar_array_field and !self.is_direct_local_of_type(value_start, value_end, target_field.ty) and
+            !self.is_direct_field_get_of_type(value_start, value_end, target_field.ty) and !direct_managed_call)
+        {
+            return error.UnsupportedGcSyncProducer;
+        }
+        if (managed_text_field and !self.is_direct_local_of_type(value_start, value_end, "text") and
+            !(value_start + 1 == value_end and self.tokens[value_start].kind == .string) and
+            !self.is_direct_field_get_of_type(value_start, value_end, "text") and !direct_managed_call)
+        {
+            return error.UnsupportedGcSyncProducer;
+        }
+        if (managed_struct_field and !self.is_direct_local_of_type(value_start, value_end, target_field.ty) and
+            !self.is_direct_field_get_of_type(value_start, value_end, target_field.ty) and !direct_managed_call)
+        {
+            return error.UnsupportedGcSyncProducer;
+        }
+        if (managed_struct_list_field and !self.is_direct_local_of_type(value_start, value_end, target_field.ty) and
+            !self.is_direct_field_get_of_type(value_start, value_end, target_field.ty) and !direct_managed_call)
+        {
             return error.UnsupportedGcSyncProducer;
         }
 
@@ -554,6 +1603,87 @@ const BodyEmitter = struct {
         for (layout.name) |ch| try self.out.append(self.allocator, std.ascii.toLower(ch));
         try self.out.appendSlice(self.allocator, "\n");
         return struct_ty;
+    }
+
+    fn emit_nested_byte_field_expr(
+        self: *BodyEmitter,
+        start_idx: usize,
+        end_idx: usize,
+        expected: ?[]const u8,
+        source_name: []const u8,
+        local_name: []const u8,
+        struct_ty: []const u8,
+        layout: gc_layout.GcStructLayout,
+        field_name: []const u8,
+    ) anyerror!?[]const u8 {
+        if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx], "@") or
+            !tok_eq(self.tokens[start_idx + 1], "set") or !tok_eq(self.tokens[start_idx + 2], "(")) return null;
+        const inner_close = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return error.UnsupportedGcSyncExpression;
+        if (inner_close + 1 != end_idx) return error.UnsupportedGcSyncExpression;
+
+        const inner_target_end = find_arg_end(self.tokens, start_idx + 3, inner_close);
+        if (inner_target_end >= inner_close or !tok_eq(self.tokens[inner_target_end], ",")) return error.UnsupportedGcSyncProducer;
+        if (!self.is_exact_get_field_local(start_idx + 3, inner_target_end, source_name, field_name)) return error.UnsupportedGcSyncProducer;
+
+        const index_start = inner_target_end + 1;
+        if (index_start >= inner_close) return error.UnsupportedGcSyncExpression;
+        const index_end = find_arg_end(self.tokens, index_start, inner_close);
+        if (index_end >= inner_close or !tok_eq(self.tokens[index_end], ",")) return error.UnsupportedGcSyncExpression;
+        const value_start = index_end + 1;
+        if (value_start >= inner_close) return error.UnsupportedGcSyncExpression;
+        const value_end = find_arg_end(self.tokens, value_start, inner_close);
+        if (value_end != inner_close) return error.UnsupportedGcSyncExpression;
+        try ensure_compatible(expected, struct_ty);
+
+        const next_name = try self.list_next_name("[u8]");
+        try self.append(INDENT ++ "local.get ${s}\n    ref.as_non_null\n    struct.get $", .{local_name});
+        for (layout.name) |ch| try self.out.append(self.allocator, std.ascii.toLower(ch));
+        try self.append(" ${s}\n    ref.as_non_null\n    array.len\n    local.set ${s}\n", .{ field_name, self.gc_list_temps.length_name });
+        try self.append(INDENT ++ "local.get ${s}\n    i32.eqz\n    if unreachable end\n", .{self.gc_list_temps.length_name});
+        try self.append(INDENT ++ "local.get ${s}\n    array.new_default $do_bytes\n    local.set ${s}\n", .{ self.gc_list_temps.length_name, next_name });
+        try self.append(INDENT ++ "local.get ${s}\n    i32.const 0\n    local.get ${s}\n    ref.as_non_null\n    struct.get $", .{ next_name, local_name });
+        for (layout.name) |ch| try self.out.append(self.allocator, std.ascii.toLower(ch));
+        try self.append(" ${s}\n    ref.as_non_null\n    i32.const 0\n    local.get ${s}\n    array.copy $do_bytes $do_bytes\n", .{ field_name, self.gc_list_temps.length_name });
+        try self.append(INDENT ++ "local.get ${s}\n", .{next_name});
+        _ = try self.emit_expr(index_start, index_end, "usize");
+        _ = try self.emit_expr(value_start, value_end, "u8");
+        try self.append(INDENT ++ "array.set $do_bytes\n", .{});
+
+        // Keep the old outer object and its other fields untouched.
+        for (layout.fields) |field| {
+            if (std.mem.eql(u8, public_decl_name(field.name), field_name)) {
+                try self.append(INDENT ++ "local.get ${s}\n", .{next_name});
+                continue;
+            }
+            try self.append(INDENT ++ "local.get ${s}\n    ref.as_non_null\n    struct.get $", .{local_name});
+            for (layout.name) |ch| try self.out.append(self.allocator, std.ascii.toLower(ch));
+            try self.append(" ${s}\n", .{public_decl_name(field.name)});
+        }
+        try self.append(INDENT ++ "struct.new $", .{});
+        for (layout.name) |ch| try self.out.append(self.allocator, std.ascii.toLower(ch));
+        try self.out.appendSlice(self.allocator, "\n");
+        return struct_ty;
+    }
+
+    fn is_exact_get_field_local(
+        self: *const BodyEmitter,
+        start_idx: usize,
+        end_idx: usize,
+        local_name: []const u8,
+        field_name: []const u8,
+    ) bool {
+        if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx], "@") or
+            !tok_eq(self.tokens[start_idx + 1], "get") or !tok_eq(self.tokens[start_idx + 2], "(")) return false;
+        const close_idx = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return false;
+        if (close_idx + 1 != end_idx) return false;
+        const receiver_end = find_arg_end(self.tokens, start_idx + 3, close_idx);
+        if (receiver_end >= close_idx or !tok_eq(self.tokens[receiver_end], ",") or receiver_end != start_idx + 4) return false;
+        if (self.tokens[start_idx + 3].kind != .ident or !std.mem.eql(u8, self.tokens[start_idx + 3].lexeme, local_name)) return false;
+        const field_idx = receiver_end + 1;
+        if (field_idx + 1 != close_idx or self.tokens[field_idx].kind != .ident) return false;
+        const field_token = self.tokens[field_idx];
+        return field_token.lexeme.len == field_name.len + 1 and field_token.lexeme[0] == '.' and
+            std.mem.eql(u8, field_token.lexeme[1..], field_name);
     }
 
     fn emit_set_tuple_bytes_expr(self: *BodyEmitter, receiver_start: usize, receiver_end: usize, close_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
@@ -587,6 +1717,50 @@ const BodyEmitter = struct {
         if (start_idx + 1 != end_idx or self.tokens[start_idx].kind != .ident) return false;
         const local_ty = find_local_type(self.locals.locals.items, self.tokens[start_idx].lexeme) orelse return false;
         return std.mem.eql(u8, local_ty, expected);
+    }
+
+    fn is_supported_multi_result_type(self: *const BodyEmitter, ty: []const u8) bool {
+        return is_bounded_multi_result_type(ty) or find_gc_layout(self.gc_layouts, ty) != null;
+    }
+
+    fn is_direct_field_get_of_type(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: []const u8) bool {
+        if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx], "@") or
+            !tok_eq(self.tokens[start_idx + 1], "get") or !tok_eq(self.tokens[start_idx + 2], "(")) return false;
+        const close_idx = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return false;
+        if (close_idx + 1 != end_idx) return false;
+        const receiver_end = find_arg_end(self.tokens, start_idx + 3, close_idx);
+        if (receiver_end != start_idx + 4 or receiver_end >= close_idx or !tok_eq(self.tokens[receiver_end], ",") or
+            self.tokens[start_idx + 3].kind != .ident) return false;
+        const receiver_ty = find_local_type(self.locals.locals.items, self.tokens[start_idx + 3].lexeme) orelse return false;
+        const layout = find_gc_layout(self.gc_layouts, receiver_ty) orelse return false;
+        const field_idx = receiver_end + 1;
+        if (field_idx + 1 != close_idx or self.tokens[field_idx].kind != .ident) return false;
+        const field_token = self.tokens[field_idx];
+        if (field_token.lexeme.len < 2 or field_token.lexeme[0] != '.') return false;
+        const field = find_gc_field(layout, field_token.lexeme[1..]) orelse return false;
+        return std.mem.eql(u8, field.ty, expected);
+    }
+
+    fn is_direct_managed_call_producer(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: []const u8) bool {
+        if (!std.mem.eql(u8, expected, "[u8]") and !std.mem.eql(u8, expected, "text")) return false;
+        const range = trim_parens(self.tokens, start_idx, end_idx);
+        const shape = self.parse_call(range.start, range.end) orelse return false;
+        const func = self.find_func(self.tokens[shape.name_idx].lexeme, expected) orelse return false;
+        if (func.is_async or func.contains_await or func.results.len != 1 or
+            !std.mem.eql(u8, func.results[0], expected)) return false;
+
+        // Keep this admission to one direct call. Its arguments may be
+        // literals, locals, or field reads, but not another call chain.
+        var arg_idx = shape.open_idx + 1;
+        while (arg_idx < shape.close_idx) {
+            const arg_end = find_arg_end(self.tokens, arg_idx, shape.close_idx);
+            if (arg_end <= arg_idx) return false;
+            const arg_range = trim_parens(self.tokens, arg_idx, arg_end);
+            if (self.parse_call(arg_range.start, arg_range.end) != null) return false;
+            arg_idx = arg_end;
+            if (arg_idx < shape.close_idx and tok_eq(self.tokens[arg_idx], ",")) arg_idx += 1;
+        }
+        return true;
     }
 
     fn emit_set_byte_list_expr(
@@ -634,7 +1808,7 @@ const BodyEmitter = struct {
         return list_ty;
     }
 
-    fn emit_put_byte_list_expr(
+    fn emit_put_scalar_list_expr(
         self: *BodyEmitter,
         start_idx: usize,
         end_idx: usize,
@@ -649,43 +1823,122 @@ const BodyEmitter = struct {
         if (receiver_end != start_idx + 4 or receiver_end >= close_idx or !tok_eq(self.tokens[receiver_end], ",") or self.tokens[start_idx + 3].kind != .ident) return error.UnsupportedGcSyncExpression;
         const receiver_name = find_local_name(self.locals.locals.items, self.tokens[start_idx + 3].lexeme) orelse return error.UnknownGcSyncLocal;
         const receiver_ty = find_local_type(self.locals.locals.items, self.tokens[start_idx + 3].lexeme) orelse return error.UnknownGcSyncLocal;
-        if (!std.mem.eql(u8, receiver_ty, "[u8]")) return error.UnsupportedGcSyncType;
+        const elem_ty = type_name.storage_elem_type_from_name(receiver_ty) orelse return error.UnsupportedGcSyncType;
+        const is_scalar_list = std.mem.eql(u8, receiver_ty, "[u8]") or gc_layout.scalar_array_spec_for_type(receiver_ty) != null;
+        const is_managed_list = gc_adapter.is_managed_list_type(receiver_ty, self.gc_structs);
+        if (!is_scalar_list and !is_managed_list) return error.UnsupportedGcSyncType;
 
         const value_start = receiver_end + 1;
         if (value_start >= close_idx or tok_eq(self.tokens[value_start], "...")) return error.UnsupportedGcSyncExpression;
         const value_end = find_arg_end(self.tokens, value_start, close_idx);
         if (value_end != close_idx) return error.UnsupportedGcSyncExpression;
         if (value_end == value_start + 2 and tok_eq(self.tokens[value_start], "-") and self.tokens[value_start + 1].kind == .number) return error.GcSyncTypeMismatch;
-        try ensure_compatible(expected, "[u8]");
-        try self.ensure_exact_u8_put_value(value_start, value_end);
-        const next_name = try self.list_next_name("[u8]");
+        try ensure_compatible(expected, receiver_ty);
+        try self.ensure_exact_put_value(value_start, value_end, elem_ty);
+        const array_name = try self.list_array_name(receiver_ty);
+        const next_name = try self.list_next_name(receiver_ty);
 
         // Published lists remain immutable. Copy the source into a private
         // result backing, then append exactly one checked u8 element.
         try self.append(INDENT ++ "local.get ${s}\n    ref.as_non_null\n    array.len\n    local.set ${s}\n", .{ receiver_name, self.gc_list_temps.length_name });
-        try self.append(INDENT ++ "local.get ${s}\n    i32.const 1\n    i32.add\n    array.new_default $do_bytes\n    local.set ${s}\n", .{ self.gc_list_temps.length_name, next_name });
-        try self.append(INDENT ++ "local.get ${s}\n    i32.const 0\n    local.get ${s}\n    ref.as_non_null\n    i32.const 0\n    local.get ${s}\n    array.copy $do_bytes $do_bytes\n", .{ next_name, receiver_name, self.gc_list_temps.length_name });
+        try self.append(INDENT ++ "local.get ${s}\n    i32.const 1\n    i32.add\n    array.new_default {s}\n    local.set ${s}\n", .{ self.gc_list_temps.length_name, array_name, next_name });
+        try self.append(INDENT ++ "local.get ${s}\n    i32.const 0\n    local.get ${s}\n    ref.as_non_null\n    i32.const 0\n    local.get ${s}\n    array.copy {s} {s}\n", .{ next_name, receiver_name, self.gc_list_temps.length_name, array_name, array_name });
         try self.append(INDENT ++ "local.get ${s}\n    local.get ${s}\n", .{ next_name, self.gc_list_temps.length_name });
-        _ = try self.emit_expr(value_start, value_end, "u8");
-        try self.append(INDENT ++ "array.set $do_bytes\n    local.get ${s}\n", .{next_name});
-        return "[u8]";
+        _ = try self.emit_expr(value_start, value_end, elem_ty);
+        try self.append(INDENT ++ "array.set {s}\n    local.get ${s}\n", .{ array_name, next_name });
+        return receiver_ty;
     }
 
-    fn ensure_exact_u8_put_value(self: *BodyEmitter, start_idx: usize, end_idx: usize) !void {
+    fn emit_field_reflection_body(self: *BodyEmitter, start_idx: usize, end_idx: usize, result_ty: ?[]const u8, deferred: *std.ArrayList(DeferredCall)) anyerror!bool {
+        var i = start_idx;
+        while (i < end_idx) {
+            const stmt_end = find_stmt_end(self.tokens, i, end_idx);
+            if (stmt_end <= i) return error.UnsupportedGcSyncStatement;
+            if (tok_eq(self.tokens[i], "if")) {
+                const parts = codegen_collect_reflection.field_reflection_if_parts(self.tokens, i, stmt_end) orelse return error.UnsupportedGcSyncExpression;
+                const condition = codegen_collect_reflection.field_static_bool_expr(self.tokens, parts.cond_start, parts.cond_end, self.locals, self.ctx) orelse return error.UnsupportedGcSyncExpression;
+                if (condition) {
+                    if (try self.emit_body(parts.then_start, parts.then_end, result_ty, deferred)) return true;
+                } else if (parts.else_if_start) |nested_if| {
+                    if (try self.emit_field_reflection_body(nested_if, stmt_end, result_ty, deferred)) return true;
+                } else if (parts.else_start) |else_start| {
+                    if (try self.emit_field_reflection_body(else_start, parts.else_end, result_ty, deferred)) return true;
+                }
+            } else if (try self.emit_body(i, stmt_end, result_ty, deferred)) {
+                return true;
+            }
+            i = stmt_end;
+        }
+        return false;
+    }
+
+    fn emit_field_reflection_loop(self: *BodyEmitter, start_idx: usize, end_idx: usize, result_ty: ?[]const u8, deferred: *std.ArrayList(DeferredCall)) anyerror!void {
+        const header = codegen_body.field_reflection_loop_header(self.tokens, start_idx, end_idx, self.ctx, self.locals) orelse return error.UnsupportedGcSyncExpression;
+        try self.append(INDENT ++ ";; field-reflect-gc type={s}\n", .{header.decl.name});
+        var visible_index: usize = 0;
+        for (header.decl.fields, 0..) |field, decl_index| {
+            if (!codegen_collect_reflection.field_visible_from_tokens(field, header.decl, self.tokens)) continue;
+            const prefix = try codegen_context.field_reflection_local_name_prefix(self.allocator, header, visible_index);
+            defer self.allocator.free(prefix);
+            var field_locals = try codegen_context.borrowed_field_meta_local_set(self.allocator, self.locals, .{
+                .name = header.field_name,
+                .struct_name = header.decl.name,
+                .decl_index = decl_index,
+                .visible_index = visible_index,
+            }, prefix);
+            defer field_locals.deinit(self.allocator);
+            field_locals.local_name_prefix = prefix;
+            const saw_return = blk: {
+                const saved_locals = self.locals;
+                defer self.locals = saved_locals;
+                self.locals = &field_locals;
+                break :blk try self.emit_field_reflection_body(header.open_brace + 1, header.close_brace, result_ty, deferred);
+            };
+            if (saw_return) break;
+            visible_index += 1;
+        }
+    }
+
+    fn emit_scalar_arithmetic_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
+        if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx], "@") or
+            (!tok_eq(self.tokens[start_idx + 1], "add") and !tok_eq(self.tokens[start_idx + 1], "sub"))) return null;
+        if (!tok_eq(self.tokens[start_idx + 2], "(")) return error.UnsupportedGcSyncExpression;
+        const close_idx = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return error.UnsupportedGcSyncExpression;
+        if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
+        const first_end = find_arg_end(self.tokens, start_idx + 3, close_idx);
+        if (first_end >= close_idx or !tok_eq(self.tokens[first_end], ",")) return error.UnsupportedGcSyncExpression;
+        const second_start = first_end + 1;
+        const second_end = find_arg_end(self.tokens, second_start, close_idx);
+        if (second_end != close_idx) return error.UnsupportedGcSyncExpression;
+
+        const left_ty = try self.emit_expr(start_idx + 3, first_end, expected);
+        if (!type_name.is_core_wasm_scalar(left_ty) or std.mem.eql(u8, left_ty, "bool")) return error.UnsupportedGcSyncType;
+        try ensure_compatible(expected, left_ty);
+        const right_ty = try self.emit_expr(second_start, second_end, left_ty);
+        try ensure_compatible(left_ty, right_ty);
+        const wasm_ty = payload_wat.wasm_type(left_ty);
+        const op = if (tok_eq(self.tokens[start_idx + 1], "add"))
+            if (std.mem.eql(u8, wasm_ty, "i64")) "i64.add" else if (std.mem.eql(u8, wasm_ty, "f32")) "f32.add" else if (std.mem.eql(u8, wasm_ty, "f64")) "f64.add" else "i32.add"
+        else if (std.mem.eql(u8, wasm_ty, "i64")) "i64.sub" else if (std.mem.eql(u8, wasm_ty, "f32")) "f32.sub" else if (std.mem.eql(u8, wasm_ty, "f64")) "f64.sub" else "i32.sub";
+        try self.append(INDENT ++ "{s}\n", .{op});
+        return left_ty;
+    }
+
+    fn ensure_exact_put_value(self: *BodyEmitter, start_idx: usize, end_idx: usize, elem_ty: []const u8) !void {
         if (start_idx + 1 == end_idx) {
             const token = self.tokens[start_idx];
-            if (token.kind == .number) return;
+            if (token.kind == .number) return validate_numeric_literal(elem_ty, token.lexeme);
             if (token.kind == .ident) {
                 if (std.mem.eql(u8, token.lexeme, "true") or std.mem.eql(u8, token.lexeme, "false") or std.mem.eql(u8, token.lexeme, "nil")) return error.UnsupportedGcSyncType;
                 const local_ty = find_local_type(self.locals.locals.items, token.lexeme) orelse return error.UnknownGcSyncLocal;
-                if (!std.mem.eql(u8, local_ty, "u8")) return error.UnsupportedGcSyncType;
+                if (!std.mem.eql(u8, local_ty, elem_ty)) return error.UnsupportedGcSyncType;
                 return;
             }
             return error.UnsupportedGcSyncType;
         }
         const shape = self.parse_call(start_idx, end_idx) orelse return error.UnsupportedGcSyncExpression;
-        const func = self.find_func(self.tokens[shape.name_idx].lexeme, "u8") orelse return error.UnsupportedGcSyncCall;
-        if (func.results.len != 1 or !std.mem.eql(u8, func.results[0], "u8")) return error.UnsupportedGcSyncType;
+        const func = self.find_func(self.tokens[shape.name_idx].lexeme, elem_ty) orelse return error.UnsupportedGcSyncCall;
+        if (func.results.len != 1 or !std.mem.eql(u8, func.results[0], elem_ty)) return error.UnsupportedGcSyncType;
     }
 
     fn emit_len_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
@@ -699,7 +1952,9 @@ const BodyEmitter = struct {
         if (arg_end != close_idx) return error.UnsupportedGcSyncExpression;
         const operand_ty = try self.emit_expr(arg_start, arg_end, null);
         const is_text = std.mem.eql(u8, operand_ty, "text");
-        const is_list = std.mem.eql(u8, operand_ty, "[u8]") or gc_layout.scalar_array_spec_for_type(operand_ty) != null;
+        const is_list = std.mem.eql(u8, operand_ty, "[u8]") or
+            gc_layout.scalar_array_spec_for_type(operand_ty) != null or
+            gc_adapter.is_managed_list_type(operand_ty, self.gc_structs);
         if (!is_text and !is_list) return error.UnsupportedGcSyncType;
         try ensure_compatible(expected, "usize");
         if (is_text) {
@@ -708,6 +1963,31 @@ const BodyEmitter = struct {
             try self.append(INDENT ++ "ref.as_non_null\n    array.len\n", .{});
         }
         return "usize";
+    }
+
+    fn emit_is_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
+        if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx], "@") or !tok_eq(self.tokens[start_idx + 1], "is") or
+            !tok_eq(self.tokens[start_idx + 2], "(")) return null;
+        const close_idx = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return error.UnsupportedGcSyncExpression;
+        if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
+        const value_end = find_arg_end(self.tokens, start_idx + 3, close_idx);
+        if (value_end >= close_idx or !tok_eq(self.tokens[value_end], ",") or value_end != start_idx + 4 or
+            self.tokens[start_idx + 3].kind != .ident) return error.UnsupportedGcSyncExpression;
+        const union_local = find_union_local(self.locals.union_locals.items, self.tokens[start_idx + 3].lexeme) orelse return error.UnsupportedGcSyncType;
+        if (!is_gc_scalar_union_layout(self.tokens, union_local.layout)) return error.UnsupportedGcSyncType;
+        const type_start = value_end + 1;
+        if (type_start + 1 != close_idx or self.tokens[type_start].kind != .ident) return error.UnsupportedGcSyncExpression;
+        const wanted = self.tokens[type_start].lexeme;
+        try ensure_compatible(expected, "bool");
+        var matched = false;
+        for (union_local.layout.branches) |branch| {
+            if (!std.mem.eql(u8, public_decl_name(branch.ty), public_decl_name(wanted))) continue;
+            try self.append(INDENT ++ "local.get ${s}\n    i32.const {d}\n    i32.eq\n", .{ try self.union_tag_local(union_local.name), branch.tag });
+            matched = true;
+            break;
+        }
+        if (!matched) return error.UnsupportedGcSyncType;
+        return "bool";
     }
 
     fn emit_eq_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
@@ -723,6 +2003,21 @@ const BodyEmitter = struct {
         if (second_end != close_idx) return error.UnsupportedGcSyncExpression;
 
         try ensure_compatible(expected, "bool");
+        if (second_end == second_start + 1 and tok_eq(self.tokens[second_start], "nil")) {
+            const left_range = trim_parens(self.tokens, start_idx + 3, first_end);
+            if (self.parse_call(left_range.start, left_range.end)) |shape| {
+                const func = self.find_func(self.tokens[shape.name_idx].lexeme, null) orelse return error.UnsupportedGcSyncCall;
+                if (func.result_union) |union_layout| {
+                    if (find_gc_payload_union(self.gc_payload_unions, union_layout.source_ty)) |payload_union| {
+                        _ = try self.emit_expr(left_range.start, left_range.end, union_layout.source_ty);
+                        try self.append(INDENT ++ "ref.as_non_null\n    struct.get $", .{});
+                        for (payload_union.name) |ch| try self.out.append(self.allocator, std.ascii.toLower(ch));
+                        try self.append(" $tag\n    i32.const {d}\n    i32.eq\n", .{payload_union.unit_tag});
+                        return "bool";
+                    }
+                }
+            }
+        }
         const left_ty = try self.emit_expr(start_idx + 3, first_end, null);
         if (!type_name.is_core_wasm_scalar(left_ty)) return error.UnsupportedGcSyncType;
         const right_ty = try self.emit_expr(second_start, second_end, left_ty);
@@ -743,12 +2038,26 @@ const BodyEmitter = struct {
     fn emit_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror![]const u8 {
         const range = trim_parens(self.tokens, start_idx, end_idx);
         if (range.start >= range.end) return error.UnsupportedGcSyncExpression;
+        if (expected) |expected_ty| {
+            if (self.find_scalar_union(expected_ty)) |union_layout| {
+                try self.emit_scalar_union_value(range.start, range.end, union_layout);
+                return expected_ty;
+            }
+            if (self.find_payload_union(expected_ty)) |payload_union| {
+                if (try self.emit_managed_union_value(range.start, range.end, payload_union)) return expected_ty;
+            }
+        }
         if (range.start + 1 < range.end and tok_eq(self.tokens[range.start], ".") and tok_eq(self.tokens[range.start + 1], "{")) {
+            if (try self.emit_struct_ctor_expr(range.start, range.end, expected)) |struct_ty| return struct_ty;
             return self.emit_byte_list_literal(range.start, range.end, expected);
         }
+        if (try self.emit_scalar_arithmetic_expr(range.start, range.end, expected)) |arithmetic_ty| return arithmetic_ty;
+        if (try self.emit_field_reflection_intrinsic(range.start, range.end, expected)) |reflection_ty| return reflection_ty;
+        if (try self.emit_field_get_reflection_expr(range.start, range.end, expected)) |field_ty| return field_ty;
         if (try self.emit_len_expr(range.start, range.end, expected)) |length_ty| return length_ty;
+        if (try self.emit_is_expr(range.start, range.end, expected)) |is_ty| return is_ty;
         if (try self.emit_eq_expr(range.start, range.end, expected)) |comparison_ty| return comparison_ty;
-        if (try self.emit_put_byte_list_expr(range.start, range.end, expected)) |list_ty| return list_ty;
+        if (try self.emit_put_scalar_list_expr(range.start, range.end, expected)) |list_ty| return list_ty;
         if (try self.emit_get_scalar_list_expr(range.start, range.end, expected)) |element_ty| return element_ty;
         if (try self.emit_get_tuple_expr(range.start, range.end, expected)) |field_ty| return field_ty;
         if (try self.emit_get_field_expr(range.start, range.end, expected)) |field_ty| return field_ty;
@@ -778,6 +2087,15 @@ const BodyEmitter = struct {
                     return "bool";
                 }
                 if (std.mem.eql(u8, token.lexeme, "nil")) return "nil";
+                if (find_union_local(self.locals.union_locals.items, token.lexeme)) |union_local| {
+                    try ensure_compatible(expected, union_local.layout.source_ty);
+                    if (is_gc_scalar_union_layout(self.tokens, union_local.layout)) {
+                        try self.emit_scalar_union_local(union_local, union_local.layout);
+                    } else {
+                        try self.append(INDENT ++ "local.get ${s}\n", .{union_local.name});
+                    }
+                    return union_local.layout.source_ty;
+                }
                 const local_name = find_local_name(self.locals.locals.items, token.lexeme) orelse return error.UnknownGcSyncLocal;
                 const local_ty = find_local_type(self.locals.locals.items, token.lexeme) orelse return error.UnknownGcSyncLocal;
                 try ensure_compatible(expected, local_ty);
@@ -808,9 +2126,34 @@ const BodyEmitter = struct {
             try self.append(INDENT ++ "return\n", .{});
             return;
         }
+        if (self.scalar_union_result_layout()) |union_layout| {
+            try self.emit_scalar_union_result_values(start_idx + 1, end_idx, union_layout);
+            try self.append(INDENT ++ "return\n", .{});
+            return;
+        }
+        if (self.has_inline_scalar_struct_result()) {
+            try self.emit_inline_struct_result_values(start_idx + 1, end_idx, self.result_struct.?);
+            try self.append(INDENT ++ "return\n", .{});
+            return;
+        }
+        if (self.result_items.len == 1 and self.result_items[0].union_layout != null) {
+            if (find_gc_payload_union(self.gc_payload_unions, self.result_items[0].ty)) |payload_union| {
+                if (!try self.emit_managed_union_value(start_idx + 1, end_idx, payload_union)) return error.UnsupportedGcSyncExpression;
+                try self.append(INDENT ++ "return\n", .{});
+                return;
+            }
+        }
+        if (self.result_tys.len > 1) {
+            try self.emit_multi_result_return(start_idx + 1, end_idx);
+            return;
+        }
         if (result_ty) |ty| if (gc_adapter.is_admitted_managed_type_with_layouts(ty, self.gc_structs, self.gc_layouts)) try self.append(INDENT ++ ";; gc-root return_value\n", .{});
         const actual = try self.emit_expr(start_idx + 1, end_idx, result_ty);
-        if (result_ty == null or std.mem.eql(u8, actual, "nil")) return error.UnexpectedGcSyncReturn;
+        if (result_ty == null) {
+            if (!std.mem.eql(u8, actual, "nil")) return error.UnexpectedGcSyncReturn;
+            return;
+        }
+        if (std.mem.eql(u8, actual, "nil")) return error.UnexpectedGcSyncReturn;
         try self.append(INDENT ++ "return\n", .{});
     }
 
@@ -822,12 +2165,87 @@ const BodyEmitter = struct {
         try self.append(INDENT ++ "if\n", .{});
         _ = try self.emit_body(open_idx + 1, close_idx, result_ty, deferred);
         if (close_idx + 1 < end_idx and tok_eq(self.tokens[close_idx + 1], "else")) {
-            const else_open = find_top_level_block_open(self.tokens, close_idx + 2, end_idx) orelse return error.UnsupportedGcSyncControl;
-            const else_close = find_matching_in_range(self.tokens, else_open, "{", "}", end_idx) catch return error.UnsupportedGcSyncControl;
             try self.append(INDENT ++ "else\n", .{});
-            _ = try self.emit_body(else_open + 1, else_close, result_ty, deferred);
+            if (close_idx + 2 < end_idx and tok_eq(self.tokens[close_idx + 2], "if")) {
+                // Keep nested else-if lowering on the same typed GC path.
+                // The recursive emitter remains bounded by the enclosing
+                // statement range and preserves one branch-join marker per
+                // nested decision.
+                try self.emit_if(close_idx + 2, end_idx, result_ty, deferred);
+            } else {
+                const else_open = find_top_level_block_open(self.tokens, close_idx + 2, end_idx) orelse return error.UnsupportedGcSyncControl;
+                const else_close = find_matching_in_range(self.tokens, else_open, "{", "}", end_idx) catch return error.UnsupportedGcSyncControl;
+                if (else_close + 1 != end_idx) return error.UnsupportedGcSyncControl;
+                _ = try self.emit_body(else_open + 1, else_close, result_ty, deferred);
+            }
         }
         try self.append(INDENT ++ "end\n" ++ INDENT ++ ";; gc-root branch_join\n", .{});
+    }
+
+    fn emit_guard_return(self: *BodyEmitter, start_idx: usize, end_idx: usize, result_ty: ?[]const u8, deferred: *std.ArrayList(DeferredCall)) anyerror!bool {
+        const return_idx = find_top_level_token(self.tokens, start_idx + 1, end_idx, "return") orelse return false;
+        if (return_idx == start_idx + 1) return error.UnsupportedGcSyncControl;
+        _ = try self.emit_expr(start_idx + 1, return_idx, "bool");
+        try self.append(INDENT ++ "if\n", .{});
+        try self.emit_return(return_idx, end_idx, result_ty, deferred);
+        try self.append(INDENT ++ "end\n" ++ INDENT ++ ";; gc-root guard_join\n", .{});
+        return true;
+    }
+
+    fn emit_guard_loop_control(self: *BodyEmitter, start_idx: usize, end_idx: usize) anyerror!bool {
+        const break_idx = find_top_level_token(self.tokens, start_idx + 1, end_idx, "break");
+        const continue_idx = find_top_level_token(self.tokens, start_idx + 1, end_idx, "continue");
+        const control_idx = break_idx orelse continue_idx orelse return false;
+        _ = try self.emit_expr(start_idx + 1, control_idx, "bool");
+        try self.append(INDENT ++ "if\n", .{});
+        if (break_idx != null) {
+            try self.append(INDENT ++ "br ${s}\n", .{try self.loop_control_target(control_idx, end_idx, true)});
+        } else {
+            try self.append(INDENT ++ "br ${s}\n", .{try self.loop_control_target(control_idx, end_idx, false)});
+        }
+        try self.append(INDENT ++ "end\n", .{});
+        return true;
+    }
+
+    fn emit_collection_loop(self: *BodyEmitter, start_idx: usize, header: CollectionLoopHeader, result_ty: ?[]const u8, deferred: *std.ArrayList(DeferredCall)) !void {
+        if (header.source_is_expr) return error.UnsupportedGcSyncProducer;
+        const array_name = try self.list_array_name(header.source_ty);
+        const index_local = try std.fmt.allocPrint(self.allocator, "__loop_index_{d}", .{start_idx});
+        defer self.allocator.free(index_local);
+        const break_label = try self.next_label("collection_break");
+        defer self.allocator.free(break_label);
+        const body_label = try self.next_label("collection_body");
+        defer self.allocator.free(body_label);
+        const continue_label = try self.next_label("collection_continue");
+        defer self.allocator.free(continue_label);
+
+        const previous_break = self.active_break_label;
+        const previous_loop = self.active_loop_label;
+        self.active_break_label = break_label;
+        self.active_loop_label = continue_label;
+        defer {
+            self.active_break_label = previous_break;
+            self.active_loop_label = previous_loop;
+        }
+        try self.loop_stack.append(self.allocator, .{
+            .source_label = codegen_control_flow.label_for_loop_start(self.tokens, start_idx),
+            .break_label = break_label,
+            .continue_label = continue_label,
+        });
+        defer _ = self.loop_stack.pop();
+
+        try self.append(INDENT ++ ";; gc-loop-collection\n    i32.const 0\n    local.set ${s}\n    block ${s}\n    loop ${s}\n", .{ index_local, break_label, body_label });
+        try self.append(INDENT ++ "local.get ${s}\n    local.get ${s}\n    ref.as_non_null\n    array.len\n    i32.ge_u\n    br_if ${s}\n", .{ index_local, header.source_name, break_label });
+
+        if (header.index_name) |index_name| {
+            try self.append(INDENT ++ "local.get ${s}\n    local.set ${s}\n", .{ index_local, index_name });
+        }
+        if (header.value_name) |value_name| {
+            try self.append(INDENT ++ "local.get ${s}\n    ref.as_non_null\n    local.get ${s}\n    array.get {s}\n    local.set ${s}\n", .{ header.source_name, index_local, array_name, value_name });
+        }
+        try self.append(INDENT ++ "block ${s}\n", .{continue_label});
+        _ = try self.emit_body(header.open_brace + 1, header.close_brace, result_ty, deferred);
+        try self.append(INDENT ++ "end\n    local.get ${s}\n    i32.const 1\n    i32.add\n    local.set ${s}\n    br ${s}\n    end\n    end\n", .{ index_local, index_local, body_label });
     }
 
     fn emit_loop(self: *BodyEmitter, start_idx: usize, end_idx: usize, result_ty: ?[]const u8, deferred: *std.ArrayList(DeferredCall)) anyerror!void {
@@ -846,6 +2264,12 @@ const BodyEmitter = struct {
             self.active_break_label = previous_break;
             self.active_loop_label = previous_loop;
         }
+        try self.loop_stack.append(self.allocator, .{
+            .source_label = codegen_control_flow.label_for_loop_start(self.tokens, start_idx),
+            .break_label = break_label,
+            .continue_label = loop_label,
+        });
+        defer _ = self.loop_stack.pop();
         try self.append(INDENT ++ "block ${s}\n" ++ INDENT ++ "loop ${s}\n", .{ break_label, loop_label });
         _ = try self.emit_body(open_idx + 1, close_idx, result_ty, deferred);
         try self.append(INDENT ++ "end\n" ++ INDENT ++ "end\n" ++ INDENT ++ ";; gc-root loop_join\n", .{});
@@ -856,11 +2280,49 @@ const BodyEmitter = struct {
         const eq_idx = find_top_level_token(self.tokens, start_idx + 1, end_idx, "=") orelse return error.UnsupportedGcSyncStatement;
         const expr_start = eq_idx + 1;
         if (expr_start >= end_idx) return error.UnsupportedGcSyncStatement;
-        const target_name = find_local_name(self.locals.locals.items, self.tokens[start_idx].lexeme) orelse return error.UnknownGcSyncLocal;
-        const target_ty = find_local_type(self.locals.locals.items, self.tokens[start_idx].lexeme) orelse return error.UnknownGcSyncLocal;
-        if (gc_adapter.is_admitted_managed_type_with_layouts(target_ty, self.gc_structs, self.gc_layouts)) try self.append(INDENT ++ ";; gc-root overwrite ${s}\n", .{target_name});
+        if (find_struct_local(self.locals.struct_locals.items, self.tokens[start_idx].lexeme)) |struct_local| {
+            if (self.inline_scalar_struct_shape(struct_local.ty) != null) {
+                try self.emit_inline_struct_assignment(struct_local.name, struct_local.ty, expr_start, end_idx);
+                return;
+            }
+        }
+        var inferred_binding = false;
+        for (self.locals.locals.items) |local| {
+            if (std.mem.eql(u8, local.name, self.tokens[start_idx].lexeme)) {
+                inferred_binding = local.origin == .fresh_local;
+                break;
+            }
+        }
+        const is_binding = eq_idx > start_idx + 1 or inferred_binding;
+        var target_name: []const u8 = undefined;
+        var target_ty: []const u8 = undefined;
+        var managed_target = false;
+        if (find_union_local(self.locals.union_locals.items, self.tokens[start_idx].lexeme)) |union_local| {
+            target_name = union_local.name;
+            target_ty = union_local.layout.source_ty;
+            if (is_gc_scalar_union_layout(self.tokens, union_local.layout)) {
+                try self.emit_scalar_union_value(expr_start, end_idx, union_local.layout);
+                try self.store_scalar_union_local(union_local, union_local.layout);
+                return;
+            }
+            managed_target = find_gc_payload_union(self.gc_payload_unions, target_ty) != null;
+        } else {
+            target_name = find_local_name(self.locals.locals.items, self.tokens[start_idx].lexeme) orelse return error.UnknownGcSyncLocal;
+            target_ty = find_local_type(self.locals.locals.items, self.tokens[start_idx].lexeme) orelse return error.UnknownGcSyncLocal;
+            managed_target = gc_adapter.is_admitted_managed_type_with_layouts(target_ty, self.gc_structs, self.gc_layouts);
+        }
+        if (managed_target and !is_binding) try self.append(INDENT ++ ";; gc-root overwrite ${s}\n", .{target_name});
         _ = try self.emit_expr(expr_start, end_idx, target_ty);
         try self.append(INDENT ++ "local.set ${s}\n", .{target_name});
+        if (managed_target and is_binding) try self.append(INDENT ++ ";; gc-root local_bind ${s}\n", .{target_name});
+        if (inferred_binding) {
+            for (self.locals.locals.items) |*local| {
+                if (std.mem.eql(u8, local.name, target_name)) {
+                    local.origin = .unknown;
+                    break;
+                }
+            }
+        }
     }
 
     fn emit_body(self: *BodyEmitter, start_idx: usize, end_idx: usize, result_ty: ?[]const u8, deferred: *std.ArrayList(DeferredCall)) anyerror!bool {
@@ -871,9 +2333,19 @@ const BodyEmitter = struct {
             const stmt_end = find_stmt_end(self.tokens, i, end_idx);
             if (stmt_end <= i) return error.UnsupportedGcSyncStatement;
             if (tok_eq(self.tokens[i], "if")) {
-                try self.emit_if(i, stmt_end, result_ty, deferred);
+                if (!try self.emit_guard_loop_control(i, stmt_end) and
+                    !try self.emit_guard_return(i, stmt_end, result_ty, deferred))
+                {
+                    try self.emit_if(i, stmt_end, result_ty, deferred);
+                }
             } else if (tok_eq(self.tokens[i], "loop")) {
-                try self.emit_loop(i, stmt_end, result_ty, deferred);
+                if (codegen_body.field_reflection_loop_header(self.tokens, i, stmt_end, self.ctx, self.locals) != null) {
+                    try self.emit_field_reflection_loop(i, stmt_end, result_ty, deferred);
+                } else if (codegen_body.collection_loop_header(self.tokens, i, stmt_end, self.ctx, self.locals)) |header| {
+                    try self.emit_collection_loop(i, header, result_ty, deferred);
+                } else {
+                    try self.emit_loop(i, stmt_end, result_ty, deferred);
+                }
             } else if (tok_eq(self.tokens[i], "defer")) {
                 if (i + 1 >= stmt_end) return error.UnsupportedGcSyncStatement;
                 try deferred.append(self.allocator, .{ .start_idx = i + 1, .end_idx = stmt_end });
@@ -884,13 +2356,21 @@ const BodyEmitter = struct {
             } else if (tok_eq(self.tokens[i], "break")) {
                 try self.emit_deferred(deferred.items[inherited_defer_count..]);
                 deferred.shrinkRetainingCapacity(inherited_defer_count);
-                try self.append(INDENT ++ "br ${s}\n", .{self.active_break_label orelse return error.UnsupportedGcSyncControl});
+                try self.append(INDENT ++ "br ${s}\n", .{try self.loop_control_target(i, stmt_end, true)});
             } else if (tok_eq(self.tokens[i], "continue")) {
                 try self.emit_deferred(deferred.items[inherited_defer_count..]);
                 deferred.shrinkRetainingCapacity(inherited_defer_count);
-                try self.append(INDENT ++ "br ${s}\n", .{self.active_loop_label orelse return error.UnsupportedGcSyncControl});
+                try self.append(INDENT ++ "br ${s}\n", .{try self.loop_control_target(i, stmt_end, false)});
+            } else if (tok_eq(self.tokens[i], "#") and i + 1 < stmt_end and self.tokens[i + 1].kind == .ident) {
+                // A label declaration belongs to the following loop and has
+                // no direct WAT instruction of its own.
             } else if (self.tokens[i].kind == .ident and find_top_level_token(self.tokens, i + 1, stmt_end, "=") != null) {
-                try self.emit_assignment(i, stmt_end);
+                const eq_idx = find_top_level_token(self.tokens, i + 1, stmt_end, "=") orelse return error.UnsupportedGcSyncStatement;
+                if (find_top_level_token(self.tokens, i, eq_idx, ",") != null) {
+                    try self.emit_multi_result_assignment(i, stmt_end);
+                } else {
+                    try self.emit_assignment(i, stmt_end);
+                }
             } else {
                 const result = try self.emit_expr(i, stmt_end, null);
                 if (!std.mem.eql(u8, result, "nil")) try self.append(INDENT ++ "drop\n", .{});
@@ -907,13 +2387,22 @@ fn is_supported_type(ty: []const u8) bool {
     return gc_adapter.is_supported_type(ty);
 }
 
+fn is_bounded_multi_result_type(ty: []const u8) bool {
+    return type_name.is_core_wasm_scalar(ty) or std.mem.eql(u8, ty, "[u8]");
+}
+
+fn is_bounded_multi_result_type_with_layouts(tokens: []const lexer.Token, ty: []const u8, layouts: []const gc_layout.GcStructLayout) bool {
+    return is_bounded_multi_result_type(ty) or is_gc_scalar_slot_type(tokens, ty) or find_gc_layout(layouts, ty) != null;
+}
+
 fn is_supported_type_with_layouts(
     ty: []const u8,
     structs: []const gc_representation.StructShape,
     layouts: []const gc_layout.GcStructLayout,
     payload_unions: []const gc_layout.GcPayloadUnionLayout,
+    managed_arrays: []const gc_layout.GcManagedArrayLayout,
 ) bool {
-    _ = gc_adapter.classify_admitted_type_with_layouts_and_unions(ty, structs, layouts, payload_unions) catch return false;
+    _ = gc_adapter.classify_admitted_type_with_layouts_and_unions_and_arrays(ty, structs, layouts, payload_unions, managed_arrays) catch return false;
     return true;
 }
 
@@ -964,8 +2453,9 @@ fn append_wasm_type(
     structs: []const gc_representation.StructShape,
     layouts: []const gc_layout.GcStructLayout,
     payload_unions: []const gc_layout.GcPayloadUnionLayout,
+    managed_arrays: []const gc_layout.GcManagedArrayLayout,
 ) !void {
-    try gc_adapter.append_wasm_type_for_with_unions(allocator, out, ty, structs, layouts, payload_unions);
+    try gc_adapter.append_wasm_type_for_with_unions_and_arrays(allocator, out, ty, structs, layouts, payload_unions, managed_arrays);
 }
 
 fn append_fmt(allocator: std.mem.Allocator, out: *std.ArrayList(u8), comptime fmt: []const u8, args: anytype) !void {
@@ -980,7 +2470,70 @@ fn find_gc_layout(layouts: []const gc_layout.GcStructLayout, name: []const u8) ?
 }
 
 fn find_gc_payload_union(layouts: []const gc_layout.GcPayloadUnionLayout, name: []const u8) ?gc_layout.GcPayloadUnionLayout {
-    for (layouts) |layout| if (std.mem.eql(u8, layout.name, name)) return layout;
+    for (layouts) |layout| if (std.mem.eql(u8, layout.source_ty, name)) return layout;
+    return null;
+}
+
+fn collect_inline_payload_union_layout(layout: codegen_union_layout.UnionLayout) ?gc_layout.GcPayloadUnionLayout {
+    var unit_case: ?[]const u8 = null;
+    var unit_tag: u32 = 0;
+    var managed_case: ?[]const u8 = null;
+    var managed_tag: u32 = 0;
+    var managed_payload_index: u32 = 0;
+    for (layout.branches) |branch| {
+        if (branch.payload_len == 0) {
+            if (unit_case != null) return null;
+            unit_case = branch.ty;
+            unit_tag = @intCast(branch.tag);
+            continue;
+        }
+        if (branch.payload_len != 1 or branch.payload_start >= layout.payload_tys.len or
+            !std.mem.eql(u8, layout.payload_tys[branch.payload_start], "[u8]")) continue;
+        if (managed_case != null) return null;
+        managed_case = branch.ty;
+        managed_tag = @intCast(branch.tag);
+        managed_payload_index = @intCast(branch.payload_start);
+    }
+    if (unit_case == null or managed_case == null) return null;
+    return .{
+        .name = "do_union",
+        .source_ty = layout.source_ty,
+        .unit_case = unit_case.?,
+        .managed_case = managed_case.?,
+        .unit_tag = unit_tag,
+        .managed_tag = managed_tag,
+        .payload_tys = layout.payload_tys,
+        .managed_payload_index = managed_payload_index,
+    };
+}
+
+fn is_gc_scalar_slot_type(tokens: []const lexer.Token, ty: []const u8) bool {
+    return type_name.is_core_wasm_scalar(ty) or is_error_like_type(tokens, ty);
+}
+
+fn gc_scalar_slot_wasm_type(tokens: []const lexer.Token, ty: []const u8) ?[]const u8 {
+    if (type_name.is_core_wasm_scalar(ty)) return payload_wat.wasm_type(ty);
+    if (is_error_like_type(tokens, ty)) return "i32";
+    return null;
+}
+
+fn is_gc_scalar_union_layout(tokens: []const lexer.Token, layout: codegen_union_layout.UnionLayout) bool {
+    if (layout.branches.len < 2) return false;
+    for (layout.payload_tys) |payload_ty| {
+        if (!is_gc_scalar_slot_type(tokens, payload_ty)) return false;
+    }
+    return true;
+}
+
+fn union_tag_local_name_from_locals(locals: []const codegen_model.Local, base: []const u8) ?[]const u8 {
+    var suffix_buf: [32]u8 = undefined;
+    const suffix = std.fmt.bufPrint(&suffix_buf, ".__union_tag", .{}) catch return null;
+    for (locals) |local| {
+        if (local.name.len != base.len + suffix.len) continue;
+        if (!std.mem.startsWith(u8, local.name, base)) continue;
+        if (!std.mem.eql(u8, local.name[base.len..], suffix)) continue;
+        return local.name;
+    }
     return null;
 }
 
@@ -1010,20 +2563,52 @@ fn append_function_signature(
     structs: []const gc_representation.StructShape,
     layouts: []const gc_layout.GcStructLayout,
     payload_unions: []const gc_layout.GcPayloadUnionLayout,
+    managed_arrays: []const gc_layout.GcManagedArrayLayout,
 ) !void {
     try append_fmt(allocator, out, "  (func ${s}", .{func.name});
     for (func.params) |param| {
         if (param.callback != null) return error.UnsupportedGcSyncCallback;
-        if (!is_supported_type_with_layouts(param.ty, structs, layouts, payload_unions) or std.mem.eql(u8, param.ty, "nil")) return error.UnsupportedGcSyncType;
+        if ((!is_supported_type_with_layouts(param.ty, structs, layouts, payload_unions, managed_arrays) and
+            !is_gc_scalar_slot_type(func.tokens, param.ty)) or std.mem.eql(u8, param.ty, "nil")) return error.UnsupportedGcSyncType;
         try append_fmt(allocator, out, " (param ${s} ", .{param.name});
-        try append_wasm_type(allocator, out, param.ty, structs, layouts, payload_unions);
+        if (gc_scalar_slot_wasm_type(func.tokens, param.ty)) |wasm_ty| {
+            try out.appendSlice(allocator, wasm_ty);
+        } else {
+            try append_wasm_type(allocator, out, param.ty, structs, layouts, payload_unions, managed_arrays);
+        }
         try out.append(allocator, ')');
     }
-    if (func.results.len > 1) return error.UnsupportedGcSyncResult;
-    if (func.results.len == 1) {
-        if (!is_supported_type_with_layouts(func.results[0], structs, layouts, payload_unions) or std.mem.eql(u8, func.results[0], "nil")) return error.UnsupportedGcSyncType;
+    const result_payload_union = if (func.result_union) |union_layout|
+        find_gc_payload_union(payload_unions, union_layout.source_ty)
+    else
+        null;
+    if (result_payload_union) |payload_union| {
         try out.appendSlice(allocator, " (result ");
-        try append_wasm_type(allocator, out, func.results[0], structs, layouts, payload_unions);
+        try append_wasm_type(allocator, out, payload_union.source_ty, structs, layouts, payload_unions, managed_arrays);
+        try out.append(allocator, ')');
+    } else if (func.results.len > 1) {
+        for (func.results) |result| {
+            if (!is_bounded_multi_result_type_with_layouts(func.tokens, result, layouts)) return error.UnsupportedGcSyncResult;
+        }
+        try out.appendSlice(allocator, " (result");
+        for (func.results) |result| {
+            try out.appendSlice(allocator, " ");
+            if (gc_scalar_slot_wasm_type(func.tokens, result)) |wasm_ty| {
+                try out.appendSlice(allocator, wasm_ty);
+            } else {
+                try append_wasm_type(allocator, out, result, structs, layouts, payload_unions, managed_arrays);
+            }
+        }
+        try out.append(allocator, ')');
+    } else if (func.results.len == 1) {
+        if ((!is_supported_type_with_layouts(func.results[0], structs, layouts, payload_unions, managed_arrays) and
+            !is_gc_scalar_slot_type(func.tokens, func.results[0])) or std.mem.eql(u8, func.results[0], "nil")) return error.UnsupportedGcSyncType;
+        try out.appendSlice(allocator, " (result ");
+        if (gc_scalar_slot_wasm_type(func.tokens, func.results[0])) |wasm_ty| {
+            try out.appendSlice(allocator, wasm_ty);
+        } else {
+            try append_wasm_type(allocator, out, func.results[0], structs, layouts, payload_unions, managed_arrays);
+        }
         try out.append(allocator, ')');
     }
     try out.appendSlice(allocator, "\n");
@@ -1036,21 +2621,99 @@ fn append_func_params(allocator: std.mem.Allocator, func: FuncDecl, locals: *Loc
     }
 }
 
-fn append_gc_locals(
+fn is_gc_union_component_local(locals: *const LocalSet, name: []const u8) bool {
+    for (locals.union_locals.items) |union_local| {
+        if (!std.mem.startsWith(u8, name, union_local.name)) continue;
+        const suffix = name[union_local.name.len..];
+        if (std.mem.startsWith(u8, suffix, ".__union_payload_") or std.mem.eql(u8, suffix, ".__union_tag")) return true;
+    }
+    return false;
+}
+
+fn is_gc_scalar_union_component_local(tokens: []const lexer.Token, locals: *const LocalSet, name: []const u8) bool {
+    for (locals.union_locals.items) |union_local| {
+        if (!is_gc_scalar_union_layout(tokens, union_local.layout)) continue;
+        if (!std.mem.startsWith(u8, name, union_local.name)) continue;
+        const suffix = name[union_local.name.len..];
+        if (std.mem.startsWith(u8, suffix, ".__union_payload_") or std.mem.eql(u8, suffix, ".__union_tag")) return true;
+    }
+    return false;
+}
+
+fn append_gc_root_locals(
     allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
+    tokens: []const lexer.Token,
     locals: *const LocalSet,
     structs: []const gc_representation.StructShape,
     layouts: []const gc_layout.GcStructLayout,
     payload_unions: []const gc_layout.GcPayloadUnionLayout,
+    managed_arrays: []const gc_layout.GcManagedArrayLayout,
+    out: *std.ArrayList(gc_roots.RootLocal),
+) !void {
+    for (locals.locals.items) |local| {
+        if (is_unneeded_compiler_local(local.name)) continue;
+        if (is_gc_union_component_local(locals, local.name)) continue;
+        if ((!is_supported_type_with_layouts(local.ty, structs, layouts, payload_unions, managed_arrays) and
+            !is_gc_scalar_slot_type(tokens, local.ty)) or std.mem.eql(u8, local.ty, "nil")) return error.UnsupportedGcSyncType;
+        const rep = (try gc_adapter.classify_admitted_type_with_layouts_and_unions_and_arrays(local.ty, structs, layouts, payload_unions, managed_arrays)).rep;
+        try out.append(allocator, .{ .name = local.name, .rep = rep, .bind_at_entry = local.origin == .param_or_import });
+    }
+    for (locals.union_locals.items) |union_local| {
+        if (is_gc_scalar_union_layout(tokens, union_local.layout)) continue;
+        const rep = (try gc_adapter.classify_admitted_type_with_layouts_and_unions_and_arrays(union_local.layout.source_ty, structs, layouts, payload_unions, managed_arrays)).rep;
+        try out.append(allocator, .{ .name = union_local.name, .rep = rep, .bind_at_entry = union_local.origin == .param_or_import });
+    }
+}
+
+fn append_gc_locals(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    tokens: []const lexer.Token,
+    locals: *const LocalSet,
+    structs: []const gc_representation.StructShape,
+    layouts: []const gc_layout.GcStructLayout,
+    payload_unions: []const gc_layout.GcPayloadUnionLayout,
+    managed_arrays: []const gc_layout.GcManagedArrayLayout,
     gc_list_temps: GcListTemps,
 ) !void {
     for (locals.locals.items) |local| {
+        const scalar_union_component = is_gc_scalar_union_component_local(tokens, locals, local.name);
+        if (is_unneeded_compiler_local(local.name) and !scalar_union_component) continue;
         if (!local.emit_decl) continue;
-        if (!is_supported_type_with_layouts(local.ty, structs, layouts, payload_unions) or std.mem.eql(u8, local.ty, "nil")) return error.UnsupportedGcSyncType;
+        if (is_gc_union_component_local(locals, local.name)) {
+            var keep_scalar_component = false;
+            for (locals.union_locals.items) |union_local| {
+                if (!is_gc_scalar_union_layout(tokens, union_local.layout)) continue;
+                if (std.mem.startsWith(u8, local.name, union_local.name)) {
+                    keep_scalar_component = true;
+                    break;
+                }
+            }
+            if (!keep_scalar_component) continue;
+        }
+        if ((!is_supported_type_with_layouts(local.ty, structs, layouts, payload_unions, managed_arrays) and
+            !is_gc_scalar_slot_type(tokens, local.ty)) or std.mem.eql(u8, local.ty, "nil")) return error.UnsupportedGcSyncType;
         try append_fmt(allocator, out, INDENT ++ "(local ${s} ", .{local.name});
-        try append_wasm_type(allocator, out, local.ty, structs, layouts, payload_unions);
+        if (gc_scalar_slot_wasm_type(tokens, local.ty)) |wasm_ty| {
+            try out.appendSlice(allocator, wasm_ty);
+        } else {
+            try append_wasm_type(allocator, out, local.ty, structs, layouts, payload_unions, managed_arrays);
+        }
         try out.appendSlice(allocator, ")\n");
+    }
+    for (locals.union_locals.items) |union_local| {
+        if (is_gc_scalar_union_layout(tokens, union_local.layout)) continue;
+        if (!is_supported_type_with_layouts(union_local.layout.source_ty, structs, layouts, payload_unions, managed_arrays)) return error.UnsupportedGcSyncType;
+        try append_fmt(allocator, out, INDENT ++ "(local ${s} ", .{union_local.name});
+        try append_wasm_type(allocator, out, union_local.layout.source_ty, structs, layouts, payload_unions, managed_arrays);
+        try out.appendSlice(allocator, ")\n");
+    }
+    for (layouts) |layout| {
+        try out.appendSlice(allocator, INDENT ++ "(local $__gc_nested_");
+        for (layout.name) |ch| try out.append(allocator, std.ascii.toLower(ch));
+        try out.appendSlice(allocator, " (ref null $");
+        for (layout.name) |ch| try out.append(allocator, std.ascii.toLower(ch));
+        try out.appendSlice(allocator, "))\n");
     }
     try append_fmt(allocator, out, INDENT ++ "(local ${s} (ref null $do_bytes))\n", .{gc_list_temps.bytes_next_name});
     for (gc_layout.scalar_array_specs, 0..) |spec, index| {
@@ -1058,10 +2721,27 @@ fn append_gc_locals(
             try append_fmt(allocator, out, INDENT ++ "(local ${s} (ref null {s}))\n", .{ gc_list_temps.scalar_next_names[index], spec.array_name });
         }
     }
+    for (managed_arrays, 0..) |managed_array, index| {
+        try append_fmt(allocator, out, INDENT ++ "(local ${s} (ref null {s}))\n", .{ gc_list_temps.managed_next_names[index], managed_array.array_name });
+    }
     try append_fmt(allocator, out, INDENT ++ "(local ${s} i32)\n", .{gc_list_temps.length_name});
 }
 
-fn choose_gc_list_temps(allocator: std.mem.Allocator, locals: []const codegen_model.Local, scalar_arrays: [gc_layout.scalar_array_specs.len]bool) !GcListTemps {
+fn is_unneeded_compiler_local(name: []const u8) bool {
+    // The shared body collector still reserves legacy storage/packing temps.
+    // GC emission does not use them, but collection-loop locals are emitted by
+    // the GC body emitter and must remain declared here.
+    return codegen_context.is_compiler_local_name(name) and
+        !std.mem.startsWith(u8, name, "__loop_") and
+        !std.mem.startsWith(u8, name, "__field_");
+}
+
+fn choose_gc_list_temps(
+    allocator: std.mem.Allocator,
+    locals: []const codegen_model.Local,
+    scalar_arrays: [gc_layout.scalar_array_specs.len]bool,
+    managed_arrays: []const gc_layout.GcManagedArrayLayout,
+) !GcListTemps {
     var suffix: usize = 0;
     while (true) : (suffix += 1) {
         const bytes_next_name = if (suffix == 0)
@@ -1079,6 +2759,19 @@ fn choose_gc_list_temps(allocator: std.mem.Allocator, locals: []const codegen_mo
                 try std.fmt.allocPrint(allocator, "__gc_{s}_list_next_{d}", .{ spec.elem_ty, suffix });
             allocated += 1;
         }
+        const managed_next_names = try allocator.alloc([]u8, managed_arrays.len);
+        var managed_allocated: usize = 0;
+        errdefer {
+            for (managed_next_names[0..managed_allocated]) |name| allocator.free(name);
+            allocator.free(managed_next_names);
+        }
+        for (managed_arrays, 0..) |_, index| {
+            managed_next_names[index] = if (suffix == 0)
+                try std.fmt.allocPrint(allocator, "__gc_managed_list_next_{d}", .{index})
+            else
+                try std.fmt.allocPrint(allocator, "__gc_managed_list_next_{d}_{d}", .{ index, suffix });
+            managed_allocated += 1;
+        }
         const length_name = if (suffix == 0)
             try allocator.dupe(u8, "__gc_list_length")
         else
@@ -1086,11 +2779,14 @@ fn choose_gc_list_temps(allocator: std.mem.Allocator, locals: []const codegen_mo
         errdefer allocator.free(length_name);
         var collision = has_wat_local_name(locals, bytes_next_name) or has_wat_local_name(locals, length_name);
         for (scalar_next_names) |name| collision = collision or has_wat_local_name(locals, name);
+        for (managed_next_names) |name| collision = collision or has_wat_local_name(locals, name);
         if (!collision) {
-            return .{ .bytes_next_name = bytes_next_name, .scalar_next_names = scalar_next_names, .has_scalar_arrays = scalar_arrays, .length_name = length_name };
+            return .{ .bytes_next_name = bytes_next_name, .scalar_next_names = scalar_next_names, .has_scalar_arrays = scalar_arrays, .managed_next_names = managed_next_names, .length_name = length_name };
         }
         allocator.free(bytes_next_name);
         for (scalar_next_names) |name| allocator.free(name);
+        for (managed_next_names) |name| allocator.free(name);
+        allocator.free(managed_next_names);
         allocator.free(length_name);
     }
 }
@@ -1109,40 +2805,52 @@ fn emit_func(
     gc_structs: []const gc_representation.StructShape,
     gc_layouts: []const gc_layout.GcStructLayout,
     payload_unions: []const gc_layout.GcPayloadUnionLayout,
+    managed_arrays: []const gc_layout.GcManagedArrayLayout,
     scalar_arrays: [gc_layout.scalar_array_specs.len]bool,
 ) !void {
-    try append_function_signature(allocator, out, func, gc_structs, gc_layouts, payload_unions);
+    try append_function_signature(allocator, out, func, gc_structs, gc_layouts, payload_unions, managed_arrays);
+    var func_ctx = base_ctx;
+    func_ctx.type_bindings = func.type_bindings;
+    func_ctx.callback_bindings = func.callback_bindings;
     var locals = LocalSet{};
     defer locals.deinit(allocator);
     try append_func_params(allocator, func, &locals);
-    try codegen_body.collect_body_locals(allocator, func.tokens, func.body_start, func.body_end, base_ctx, &locals);
-    const gc_list_temps = try choose_gc_list_temps(allocator, locals.locals.items, scalar_arrays);
+    try codegen_body.collect_body_locals(allocator, func.tokens, func.body_start, func.body_end, func_ctx, &locals);
+    const gc_list_temps = try choose_gc_list_temps(allocator, locals.locals.items, scalar_arrays, managed_arrays);
     defer gc_list_temps.deinit(allocator);
 
     var root_locals = std.ArrayList(gc_roots.RootLocal).empty;
     defer root_locals.deinit(allocator);
-    for (locals.locals.items) |local| {
-        if (!is_supported_type_with_layouts(local.ty, gc_structs, gc_layouts, payload_unions) or std.mem.eql(u8, local.ty, "nil")) return error.UnsupportedGcSyncType;
-        const rep = (try gc_adapter.classify_admitted_type_with_layouts_and_unions(local.ty, gc_structs, gc_layouts, payload_unions)).rep;
-        try root_locals.append(allocator, .{ .name = local.name, .rep = rep });
-    }
+    try append_gc_root_locals(allocator, func.tokens, &locals, gc_structs, gc_layouts, payload_unions, managed_arrays, &root_locals);
     const root_plan = try gc_roots.build_root_plan(allocator, root_locals.items, .synchronous);
     defer gc_roots.deinit_root_plan(allocator, root_plan);
 
-    try append_gc_locals(allocator, out, &locals, gc_structs, gc_layouts, payload_unions, gc_list_temps);
+    try append_gc_locals(allocator, out, func.tokens, &locals, gc_structs, gc_layouts, payload_unions, managed_arrays, gc_list_temps);
     for (root_plan.slots) |slot| {
-        try append_fmt(allocator, out, INDENT ++ ";; gc-root {s} ${s}\n", .{ append_root_point_name(slot.point), slot.name });
+        if (slot.bind_at_entry) try append_fmt(allocator, out, INDENT ++ ";; gc-root {s} ${s}\n", .{ append_root_point_name(slot.point), slot.name });
     }
 
-    var emitter = BodyEmitter{ .allocator = allocator, .tokens = func.tokens, .functions = functions, .gc_structs = gc_structs, .gc_layouts = gc_layouts, .gc_payload_unions = payload_unions, .locals = &locals, .out = out, .gc_list_temps = gc_list_temps };
+    var loop_stack = std.ArrayList(GcLoopFrame).empty;
+    defer loop_stack.deinit(allocator);
+    var emitter = BodyEmitter{ .allocator = allocator, .tokens = func.tokens, .functions = functions, .gc_structs = gc_structs, .gc_layouts = gc_layouts, .gc_payload_unions = payload_unions, .gc_managed_arrays = managed_arrays, .locals = &locals, .result_tys = func.results, .result_items = func.result_items, .result_struct = func.result_struct, .ctx = func_ctx, .out = out, .gc_list_temps = gc_list_temps, .loop_stack = &loop_stack };
     var deferred = std.ArrayList(DeferredCall).empty;
     defer deferred.deinit(allocator);
     if (func.arrow) {
-        if (func.results.len != 1) return error.UnsupportedGcSyncResult;
-        _ = try emitter.emit_expr(func.body_start, func.body_end, func.results[0]);
-        try out.appendSlice(allocator, INDENT ++ "return\n");
+        if (emitter.scalar_union_result_layout()) |union_layout| {
+            try emitter.emit_scalar_union_result_values(func.body_start, func.body_end, union_layout);
+            try out.appendSlice(allocator, INDENT ++ "return\n");
+        } else if (emitter.has_inline_scalar_struct_result()) {
+            try emitter.emit_inline_struct_result_values(func.body_start, func.body_end, func.result_struct.?);
+            try out.appendSlice(allocator, INDENT ++ "return\n");
+        } else if (func.results.len > 1) {
+            try emitter.emit_multi_result_return(func.body_start, func.body_end);
+        } else {
+            if (func.results.len != 1) return error.UnsupportedGcSyncResult;
+            _ = try emitter.emit_expr(func.body_start, func.body_end, func.results[0]);
+            try out.appendSlice(allocator, INDENT ++ "return\n");
+        }
     } else {
-        const result_ty = if (func.results.len == 1) func.results[0] else null;
+        const result_ty = if (func.result_union) |union_layout| union_layout.source_ty else if (func.results.len == 1) func.results[0] else null;
         const saw_return = try emitter.emit_body(func.body_start, func.body_end, result_ty, &deferred);
         if (result_ty != null and !saw_return) try out.appendSlice(allocator, INDENT ++ "unreachable\n");
     }
@@ -1160,6 +2868,7 @@ fn emit_test_func(
     gc_structs: []const gc_representation.StructShape,
     gc_layouts: []const gc_layout.GcStructLayout,
     payload_unions: []const gc_layout.GcPayloadUnionLayout,
+    managed_arrays: []const gc_layout.GcManagedArrayLayout,
     scalar_arrays: [gc_layout.scalar_array_specs.len]bool,
 ) !void {
     try wat_function_body.emit_compiled_test_open(allocator, out, index, test_decl.name_lexeme);
@@ -1167,24 +2876,22 @@ fn emit_test_func(
     var locals = LocalSet{};
     defer locals.deinit(allocator);
     try codegen_body.collect_body_locals(allocator, tokens, test_decl.body_start, test_decl.body_end, base_ctx, &locals);
-    const gc_list_temps = try choose_gc_list_temps(allocator, locals.locals.items, scalar_arrays);
+    const gc_list_temps = try choose_gc_list_temps(allocator, locals.locals.items, scalar_arrays, managed_arrays);
     defer gc_list_temps.deinit(allocator);
 
     var root_locals = std.ArrayList(gc_roots.RootLocal).empty;
     defer root_locals.deinit(allocator);
-    for (locals.locals.items) |local| {
-        if (!is_supported_type_with_layouts(local.ty, gc_structs, gc_layouts, payload_unions) or std.mem.eql(u8, local.ty, "nil")) return error.UnsupportedGcSyncType;
-        const rep = (try gc_adapter.classify_admitted_type_with_layouts_and_unions(local.ty, gc_structs, gc_layouts, payload_unions)).rep;
-        try root_locals.append(allocator, .{ .name = local.name, .rep = rep });
-    }
+    try append_gc_root_locals(allocator, tokens, &locals, gc_structs, gc_layouts, payload_unions, managed_arrays, &root_locals);
     const root_plan = try gc_roots.build_root_plan(allocator, root_locals.items, .synchronous);
     defer gc_roots.deinit_root_plan(allocator, root_plan);
 
-    try append_gc_locals(allocator, out, &locals, gc_structs, gc_layouts, payload_unions, gc_list_temps);
+    try append_gc_locals(allocator, out, tokens, &locals, gc_structs, gc_layouts, payload_unions, managed_arrays, gc_list_temps);
     for (root_plan.slots) |slot| {
-        try append_fmt(allocator, out, INDENT ++ ";; gc-root {s} ${s}\n", .{ append_root_point_name(slot.point), slot.name });
+        if (slot.bind_at_entry) try append_fmt(allocator, out, INDENT ++ ";; gc-root {s} ${s}\n", .{ append_root_point_name(slot.point), slot.name });
     }
 
+    var loop_stack = std.ArrayList(GcLoopFrame).empty;
+    defer loop_stack.deinit(allocator);
     var emitter = BodyEmitter{
         .allocator = allocator,
         .tokens = tokens,
@@ -1192,9 +2899,15 @@ fn emit_test_func(
         .gc_structs = gc_structs,
         .gc_layouts = gc_layouts,
         .gc_payload_unions = payload_unions,
+        .gc_managed_arrays = managed_arrays,
         .locals = &locals,
+        .result_tys = &.{},
+        .result_items = &.{},
+        .result_struct = null,
+        .ctx = base_ctx,
         .out = out,
         .gc_list_temps = gc_list_temps,
+        .loop_stack = &loop_stack,
     };
     var deferred = std.ArrayList(DeferredCall).empty;
     defer deferred.deinit(allocator);
@@ -1204,7 +2917,7 @@ fn emit_test_func(
     try wat_function_body.emit_compiled_test_export(allocator, out, index);
 }
 
-fn emit_start(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tokens: []const lexer.Token, functions: []const FuncDecl, base_ctx: CodegenContext, gc_structs: []const gc_representation.StructShape, gc_layouts: []const gc_layout.GcStructLayout, payload_unions: []const gc_layout.GcPayloadUnionLayout, scalar_arrays: [gc_layout.scalar_array_specs.len]bool) !void {
+fn emit_start(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tokens: []const lexer.Token, functions: []const FuncDecl, base_ctx: CodegenContext, gc_structs: []const gc_representation.StructShape, gc_layouts: []const gc_layout.GcStructLayout, payload_unions: []const gc_layout.GcPayloadUnionLayout, managed_arrays: []const gc_layout.GcManagedArrayLayout, scalar_arrays: [gc_layout.scalar_array_specs.len]bool) !void {
     const start_idx = find_start_func(tokens) orelse return;
     const close_params = try find_matching(tokens, start_idx + 1, "(", ")");
     const open_body = find_top_level_block_open(tokens, close_params + 1, tokens.len) orelse return error.UnsupportedGcSyncControl;
@@ -1213,22 +2926,20 @@ fn emit_start(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tokens: []c
     var locals = LocalSet{};
     defer locals.deinit(allocator);
     try codegen_body.collect_body_locals(allocator, tokens, open_body + 1, close_body, base_ctx, &locals);
-    const gc_list_temps = try choose_gc_list_temps(allocator, locals.locals.items, scalar_arrays);
+    const gc_list_temps = try choose_gc_list_temps(allocator, locals.locals.items, scalar_arrays, managed_arrays);
     defer gc_list_temps.deinit(allocator);
     var root_locals = std.ArrayList(gc_roots.RootLocal).empty;
     defer root_locals.deinit(allocator);
-    for (locals.locals.items) |local| {
-        if (!is_supported_type_with_layouts(local.ty, gc_structs, gc_layouts, payload_unions) or std.mem.eql(u8, local.ty, "nil")) return error.UnsupportedGcSyncType;
-        const rep = (try gc_adapter.classify_admitted_type_with_layouts_and_unions(local.ty, gc_structs, gc_layouts, payload_unions)).rep;
-        try root_locals.append(allocator, .{ .name = local.name, .rep = rep });
-    }
+    try append_gc_root_locals(allocator, tokens, &locals, gc_structs, gc_layouts, payload_unions, managed_arrays, &root_locals);
     const root_plan = try gc_roots.build_root_plan(allocator, root_locals.items, .synchronous);
     defer gc_roots.deinit_root_plan(allocator, root_plan);
 
     try out.appendSlice(allocator, "  (func $_start\n");
-    try append_gc_locals(allocator, out, &locals, gc_structs, gc_layouts, payload_unions, gc_list_temps);
-    for (root_plan.slots) |slot| try append_fmt(allocator, out, INDENT ++ ";; gc-root {s} ${s}\n", .{ append_root_point_name(slot.point), slot.name });
-    var emitter = BodyEmitter{ .allocator = allocator, .tokens = tokens, .functions = functions, .gc_structs = gc_structs, .gc_layouts = gc_layouts, .gc_payload_unions = payload_unions, .locals = &locals, .out = out, .gc_list_temps = gc_list_temps };
+    try append_gc_locals(allocator, out, tokens, &locals, gc_structs, gc_layouts, payload_unions, managed_arrays, gc_list_temps);
+    for (root_plan.slots) |slot| if (slot.bind_at_entry) try append_fmt(allocator, out, INDENT ++ ";; gc-root {s} ${s}\n", .{ append_root_point_name(slot.point), slot.name });
+    var loop_stack = std.ArrayList(GcLoopFrame).empty;
+    defer loop_stack.deinit(allocator);
+    var emitter = BodyEmitter{ .allocator = allocator, .tokens = tokens, .functions = functions, .gc_structs = gc_structs, .gc_layouts = gc_layouts, .gc_payload_unions = payload_unions, .gc_managed_arrays = managed_arrays, .locals = &locals, .result_tys = &.{}, .result_items = &.{}, .result_struct = null, .ctx = base_ctx, .out = out, .gc_list_temps = gc_list_temps, .loop_stack = &loop_stack };
     var deferred = std.ArrayList(DeferredCall).empty;
     defer deferred.deinit(allocator);
     _ = try emitter.emit_body(open_body + 1, close_body, null, &deferred);
@@ -1361,9 +3072,13 @@ fn emit_gc_wat_for_supported_program_with_tests(
         },
         else => return err,
     };
+    var managed_arrays = std.ArrayList(gc_layout.GcManagedArrayLayout).empty;
+    defer managed_arrays.deinit(allocator);
+    defer gc_layout.deinit_managed_array_layouts(allocator, managed_arrays.items);
+    try collect_gc_managed_array_layouts(allocator, tokens, functions.items, gc_structs, gc_layouts.items, &managed_arrays);
     for (functions.items) |func| {
         if (!func.is_generic_template and func.type_bindings.len != 0) {
-            try validate_gc_sync_generic_bindings(func, gc_structs, gc_layouts.items, resource_names.items, payload_enums.items);
+            try validate_gc_sync_generic_bindings(func, gc_structs, gc_layouts.items, resource_names.items, payload_enums.items, managed_arrays.items);
         }
     }
     var payload_unions = std.ArrayList(gc_layout.GcPayloadUnionLayout).empty;
@@ -1375,6 +3090,21 @@ fn emit_gc_wat_for_supported_program_with_tests(
         };
         try payload_unions.append(allocator, payload_union);
     }
+    for (functions.items) |func| {
+        if (func.result_union) |union_layout| {
+            if (collect_inline_payload_union_layout(union_layout)) |payload_union| {
+                var already_present = false;
+                for (payload_unions.items) |existing| {
+                    if (std.mem.eql(u8, existing.source_ty, payload_union.source_ty)) {
+                        already_present = true;
+                        break;
+                    }
+                    if (std.mem.eql(u8, existing.name, payload_union.name)) return error.UnsupportedGcSyncUnionArms;
+                }
+                if (!already_present) try payload_unions.append(allocator, payload_union);
+            }
+        }
+    }
     for (functions.items, 0..) |func, idx| {
         if (func.is_generic_template) continue;
         for (functions.items[0..idx]) |previous| {
@@ -1383,11 +3113,15 @@ fn emit_gc_wat_for_supported_program_with_tests(
         if (func.is_async or func.contains_await) return error.UnsupportedGcSyncAsync;
         for (func.params) |param| {
             if (is_tuple_storage_type(param.ty)) return error.UnsupportedGcSyncTupleStorage;
-            if (std.mem.eql(u8, param.ty, "nil") or !is_supported_type_with_layouts(param.ty, gc_structs, gc_layouts.items, payload_unions.items)) return error.UnsupportedGcSyncType;
+            if (std.mem.eql(u8, param.ty, "nil") or
+                (!is_supported_type_with_layouts(param.ty, gc_structs, gc_layouts.items, payload_unions.items, managed_arrays.items) and
+                    !is_gc_scalar_slot_type(func.tokens, param.ty))) return error.UnsupportedGcSyncType;
         }
         for (func.results) |result| {
             if (is_tuple_storage_type(result)) return error.UnsupportedGcSyncTupleStorage;
-            if (std.mem.eql(u8, result, "nil") or !is_supported_type_with_layouts(result, gc_structs, gc_layouts.items, payload_unions.items)) return error.UnsupportedGcSyncType;
+            if (std.mem.eql(u8, result, "nil") or
+                (!is_supported_type_with_layouts(result, gc_structs, gc_layouts.items, payload_unions.items, managed_arrays.items) and
+                    !is_gc_scalar_slot_type(func.tokens, result))) return error.UnsupportedGcSyncType;
         }
         try validate_gc_sync_tuple_admission(func);
     }
@@ -1420,6 +3154,7 @@ fn emit_gc_wat_for_supported_program_with_tests(
         .entry_tokens = tokens,
         .modules = if (module_graph) |graph| @as([]const imports.ModuleRecord, graph.modules) else &.{},
         .imported_alias_ctx = imported_alias_ctx,
+        .gc_sync = true,
     };
 
     var out = std.ArrayList(u8).empty;
@@ -1427,17 +3162,17 @@ fn emit_gc_wat_for_supported_program_with_tests(
     try out.appendSlice(allocator, "(module\n");
     try append_fmt(allocator, &out, "  ;; gc-sync source_len={d} token_count={d}\n", .{ program.source_len, program.token_count });
     const has_tuple_text_bytes = has_gc_sync_tuple_text_bytes(functions.items) or test_decls.len != 0;
-    var scalar_arrays = has_gc_sync_scalar_arrays(functions.items, gc_layouts.items);
+    var scalar_arrays = has_gc_sync_scalar_arrays(tokens, functions.items, gc_layouts.items);
     if (test_decls.len != 0) scalar_arrays = [_]bool{true} ** gc_layout.scalar_array_specs.len;
-    try runtime_gc_prelude.emit_gc_sync_prelude(allocator, &out, gc_layouts.items, payload_unions.items, has_tuple_text_bytes, scalar_arrays);
-    for (functions.items) |func| if (!func.is_generic_template) try emit_func(allocator, &out, func, functions.items, base_ctx, gc_structs, gc_layouts.items, payload_unions.items, scalar_arrays);
+    try runtime_gc_prelude.emit_gc_sync_prelude(allocator, &out, gc_layouts.items, payload_unions.items, has_tuple_text_bytes, scalar_arrays, managed_arrays.items);
+    for (functions.items) |func| if (!func.is_generic_template) try emit_func(allocator, &out, func, functions.items, base_ctx, gc_structs, gc_layouts.items, payload_unions.items, managed_arrays.items, scalar_arrays);
     if (test_decls.len != 0) {
         for (test_decls, 0..) |test_decl, index| {
-            try emit_test_func(allocator, &out, test_decl, index, tokens, functions.items, base_ctx, gc_structs, gc_layouts.items, payload_unions.items, scalar_arrays);
+            try emit_test_func(allocator, &out, test_decl, index, tokens, functions.items, base_ctx, gc_structs, gc_layouts.items, payload_unions.items, managed_arrays.items, scalar_arrays);
         }
         try wat_function_body.emit_test_start_func(allocator, &out, test_decls.len);
     } else {
-        try emit_start(allocator, &out, tokens, functions.items, base_ctx, gc_structs, gc_layouts.items, payload_unions.items, scalar_arrays);
+        try emit_start(allocator, &out, tokens, functions.items, base_ctx, gc_structs, gc_layouts.items, payload_unions.items, managed_arrays.items, scalar_arrays);
     }
     try out.appendSlice(allocator, ")\n");
     return out.toOwnedSlice(allocator);
@@ -1509,15 +3244,21 @@ fn validate_gc_sync_generic_bindings(
     gc_layouts: []const gc_layout.GcStructLayout,
     resource_names: []const []const u8,
     payload_enums: []const PayloadEnumDecl,
+    managed_arrays: []const gc_layout.GcManagedArrayLayout,
 ) !void {
     for (func.type_bindings) |binding| {
         for (resource_names) |resource_name| {
             if (std.mem.eql(u8, resource_name, binding.ty)) return error.UnsupportedGcSyncGenericResource;
         }
+        var is_payload_union = false;
         for (payload_enums) |payload_enum| {
-            if (std.mem.eql(u8, payload_enum.name, binding.ty)) return error.UnsupportedGcSyncGenericUnion;
+            if (!std.mem.eql(u8, payload_enum.name, binding.ty)) continue;
+            _ = gc_layout.collect_payload_union_layout(payload_enum.name, payload_enum.cases) catch return error.UnsupportedGcSyncGenericUnion;
+            is_payload_union = true;
+            break;
         }
-        if (!is_supported_type_with_layouts(binding.ty, gc_structs, gc_layouts, &.{})) return error.UnsupportedGcSyncGenericUnresolved;
+        if (is_payload_union) continue;
+        if (!is_supported_type_with_layouts(binding.ty, gc_structs, gc_layouts, &.{}, managed_arrays)) return error.UnsupportedGcSyncGenericUnresolved;
     }
 }
 
@@ -1529,7 +3270,11 @@ fn has_gc_sync_tuple_text_bytes(functions: []const FuncDecl) bool {
     return false;
 }
 
-fn has_gc_sync_scalar_arrays(functions: []const FuncDecl, layouts: []const gc_layout.GcStructLayout) [gc_layout.scalar_array_specs.len]bool {
+fn has_gc_sync_scalar_arrays(
+    tokens: []const lexer.Token,
+    functions: []const FuncDecl,
+    layouts: []const gc_layout.GcStructLayout,
+) [gc_layout.scalar_array_specs.len]bool {
     var result = [_]bool{false} ** gc_layout.scalar_array_specs.len;
     for (gc_layout.scalar_array_specs, 0..) |spec, index| {
         for (functions) |func| {
@@ -1549,8 +3294,78 @@ fn has_gc_sync_scalar_arrays(functions: []const FuncDecl, layouts: []const gc_la
                 if (std.mem.eql(u8, field.ty, spec.list_ty)) result[index] = true;
             }
         }
+        var token_index: usize = 0;
+        while (token_index + 2 < tokens.len) : (token_index += 1) {
+            if (tok_eq(tokens[token_index], "[") and
+                tokens[token_index + 1].kind == .ident and
+                std.mem.eql(u8, tokens[token_index + 1].lexeme, spec.elem_ty) and
+                tok_eq(tokens[token_index + 2], "]"))
+            {
+                result[index] = true;
+                break;
+            }
+        }
     }
     return result;
+}
+
+fn collect_gc_managed_array_layouts(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    functions: []const FuncDecl,
+    structs: []const gc_representation.StructShape,
+    layouts: []const gc_layout.GcStructLayout,
+    out: *std.ArrayList(gc_layout.GcManagedArrayLayout),
+) !void {
+    for (layouts) |struct_layout| {
+        for (struct_layout.fields) |field| {
+            try collect_gc_managed_array_layout(allocator, field.ty, structs, out);
+        }
+    }
+    for (functions) |func| {
+        for (func.params) |param| try collect_gc_managed_array_layout(allocator, param.ty, structs, out);
+        for (func.results) |result| try collect_gc_managed_array_layout(allocator, result, structs, out);
+    }
+
+    // Local declarations are collected from the token stream because they are
+    // not part of FuncDecl signatures. Reconstruct complete bracketed type
+    // ranges so nested managed lists receive both outer and inner layouts.
+    var index: usize = 0;
+    while (index + 2 < tokens.len) : (index += 1) {
+        if (!tok_eq(tokens[index], "[")) continue;
+        const close_idx = codegen_tokens.find_matching_in_range(tokens, index, "[", "]", tokens.len) catch continue;
+        if (close_idx <= index + 1) continue;
+        var list_ty = std.ArrayList(u8).empty;
+        defer list_ty.deinit(allocator);
+        for (tokens[index .. close_idx + 1]) |token| try list_ty.appendSlice(allocator, token.lexeme);
+        try collect_gc_managed_array_layout(allocator, list_ty.items, structs, out);
+        index = close_idx;
+    }
+}
+
+fn collect_gc_managed_array_layout(
+    allocator: std.mem.Allocator,
+    list_ty: []const u8,
+    structs: []const gc_representation.StructShape,
+    out: *std.ArrayList(gc_layout.GcManagedArrayLayout),
+) !void {
+    if (!gc_adapter.is_managed_list_type(list_ty, structs)) return;
+    const elem_ty = type_name.storage_elem_type_from_name(list_ty) orelse return error.UnsupportedGcSyncType;
+    if (type_name.is_storage_type_name(elem_ty)) try collect_gc_managed_array_layout(allocator, elem_ty, structs, out);
+    for (out.items) |existing| {
+        if (std.mem.eql(u8, existing.list_ty, list_ty)) return;
+    }
+
+    const owned_list_ty = try allocator.dupe(u8, list_ty);
+    errdefer allocator.free(owned_list_ty);
+    const owned_elem_ty = try allocator.dupe(u8, elem_ty);
+    errdefer allocator.free(owned_elem_ty);
+    const array_name = try gc_layout.alloc_managed_array_type_name(allocator, elem_ty);
+    errdefer allocator.free(array_name);
+    for (out.items) |existing| {
+        if (std.mem.eql(u8, existing.array_name, array_name)) return error.UnsupportedGcSyncType;
+    }
+    try out.append(allocator, .{ .list_ty = owned_list_ty, .elem_ty = owned_elem_ty, .array_name = array_name });
 }
 
 fn has_gc_sync_u32_array(functions: []const FuncDecl, layouts: []const gc_layout.GcStructLayout) bool {
@@ -1633,6 +3448,14 @@ fn emit_test_source(allocator: std.mem.Allocator, source: []const u8) ![]u8 {
     return emit_gc_wat_for_supported_program(allocator, program, tokens, null);
 }
 
+fn emit_compiled_test_source(allocator: std.mem.Allocator, source: []const u8) ![]u8 {
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+    var program = try parser.parse_program(allocator, tokens, source.len);
+    defer program.deinit(allocator);
+    return emit_gc_wat_for_supported_tests(allocator, program, tokens, null);
+}
+
 test "GC sync rejects managed-element list updates before WAT emission" {
     const source =
         \\Box {
@@ -1653,6 +3476,8 @@ test "GC sync lowers an i16 list literal through a typed GC array" {
         \\}
         \\start() {}
     ;
+    codegen_callbacks.install_collect_body_locals(codegen_body.collect_body_locals);
+    codegen_callbacks.install_collect_body_locals_with_mode(codegen_body.collect_body_locals_with_mode);
     const wat = try emit_test_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_i16 (array (mut i32)))") != null);
@@ -1667,6 +3492,8 @@ test "GC sync lowers a u32 list literal through a typed GC array" {
         \\}
         \\start() {}
     ;
+    codegen_callbacks.install_collect_body_locals(codegen_body.collect_body_locals);
+    codegen_callbacks.install_collect_body_locals_with_mode(codegen_body.collect_body_locals_with_mode);
     const wat = try emit_test_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_u32 (array (mut i32)))") != null);
@@ -1832,10 +3659,126 @@ test "GC sync rejects multi-value put before WAT emission" {
     try std.testing.expectError(error.UnsupportedGcSyncExpression, emit_test_source(std.testing.allocator, source));
 }
 
-test "GC sync rejects call-produced managed field replacement" {
+test "GC sync lowers a managed struct multi-result carrier" {
     const source =
         \\Box {
         \\    value [u8]
+        \\}
+        \\make_boxes() -> Box, Box {
+        \\    left_text [u8] = "left"
+        \\    right_text [u8] = "right"
+        \\    left Box = Box{value = left_text}
+        \\    right Box = Box{value = right_text}
+        \\    return left, right
+        \\}
+        \\start() {
+        \\    first_text [u8] = "first"
+        \\    second_text [u8] = "second"
+        \\    first Box = Box{value = first_text}
+        \\    second Box = Box{value = second_text}
+        \\    first, second = make_boxes()
+        \\    return
+        \\}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $make_boxes (result (ref null $box) (ref null $box))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $make_boxes\n    local.set $second\n    local.set $first") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers a managed list put through a typed GC array" {
+    const source =
+        \\Box {
+        \\    value [u8]
+        \\    tag i32
+        \\}
+        \\append(boxes [Box], next Box) -> [Box] {
+        \\    return @put(boxes, next)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_default $do_list_box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_list_box $do_list_box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_list_box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers a nested byte-list put through typed GC arrays" {
+    const source =
+        \\append(rows [[u8]], row [u8]) -> [[u8]] {
+        \\    return @put(rows, row)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_list_list_u8 (array (mut (ref null $do_bytes)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_default $do_list_list_u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_list_list_u8 $do_list_list_u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_list_list_u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync rejects nested call-produced managed field replacement" {
+    const source =
+        \\Box {
+        \\    value [u8]
+        \\}
+        \\seed() -> [u8] {
+        \\    return .{1, 2}
+        \\}
+        \\make(value [u8]) -> [u8] {
+        \\    return value
+        \\}
+        \\replace(box Box) -> Box {
+        \\    return @set(box, .value, make(seed()))
+        \\}
+        \\start() {}
+    ;
+    try std.testing.expectError(error.UnsupportedGcSyncProducer, emit_test_source(std.testing.allocator, source));
+}
+
+test "GC sync rejects a multi-result managed field producer" {
+    const source =
+        \\Box {
+        \\    value [u8]
+        \\}
+        \\make() -> [u8], i32 {
+        \\    return .{1, 2}, 7
+        \\}
+        \\replace(box Box) -> Box {
+        \\    return @set(box, .value, make())
+        \\}
+        \\start() {}
+    ;
+    try std.testing.expectError(error.UnsupportedGcSyncProducer, emit_test_source(std.testing.allocator, source));
+}
+
+test "GC sync rejects a mismatched managed field producer" {
+    const source =
+        \\Box {
+        \\    value [u8]
+        \\}
+        \\make() -> text {
+        \\    return "value"
+        \\}
+        \\replace(box Box) -> Box {
+        \\    return @set(box, .value, make())
+        \\}
+        \\start() {}
+    ;
+    try std.testing.expectError(error.UnsupportedGcSyncProducer, emit_test_source(std.testing.allocator, source));
+}
+
+test "GC sync lowers a direct call-produced managed field replacement" {
+    const source =
+        \\Box {
+        \\    value [u8]
+        \\    tag i32
         \\}
         \\make() -> [u8] {
         \\    return .{1, 2}
@@ -1845,7 +3788,51 @@ test "GC sync rejects call-produced managed field replacement" {
         \\}
         \\start() {}
     ;
-    try std.testing.expectError(error.UnsupportedGcSyncProducer, emit_test_source(std.testing.allocator, source));
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $make") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-root call_result") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers a direct call-produced managed text field replacement" {
+    const source =
+        \\Box {
+        \\    value text
+        \\    tag i32
+        \\}
+        \\make_text() -> text {
+        \\    return "fresh"
+        \\}
+        \\replace(box Box) -> Box {
+        \\    return @set(box, .value, make_text())
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $make_text") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-root call_result") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers a direct managed field getter producer" {
+    const source =
+        \\Box {
+        \\    value [u8]
+        \\}
+        \\replace(box Box, other Box) -> Box {
+        \\    return @set(box, .value, @get(other, .value))
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $box $value") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
 test "GC sync lowers a pure payload union through a typed GC carrier" {
@@ -1865,6 +3852,47 @@ test "GC sync lowers a pure payload union through a typed GC carrier" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "(result (ref null $message))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $message") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $message\n    return") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers an anonymous managed union call compared with nil" {
+    const source =
+        \\LoadError error = Bad
+        \\maybe(data [u8], ok bool) -> [u8] | LoadError | nil {
+        \\    if ok return data
+        \\    return nil
+        \\}
+        \\start() {
+        \\    data [u8] = "abc"
+        \\    if @eq(maybe(data, false), nil) return
+        \\    return
+        \\}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_union") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(field $bytes (ref null $do_bytes))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "ref.is_null") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers a payload-union result through a typed local" {
+    const source =
+        \\Message = Empty | Bytes([u8])
+        \\make(value [u8]) -> Message {
+        \\    return Bytes(value)
+        \\}
+        \\forward(value [u8]) -> Message {
+        \\    out Message = make(value)
+        \\    return out
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $out (ref null $message))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $make\n    ;; gc-root call_result\n    local.set $out") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "local.get $out\n    return") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
@@ -1931,6 +3959,36 @@ test "GC sync lowers direct text identity and literal rebuild with typed referen
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
+test "GC sync lowers an inferred text body binding with a local root" {
+    const source =
+        \\make() -> text {
+        \\    value = "hello"
+        \\    return value
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $value (ref null $do_text))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "local.set $value\n    ;; gc-root local_bind $value") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "local.get $value\n    return") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers an inferred text compiled-test binding" {
+    const source =
+        \\test "inferred text" {
+        \\    value = "hello"
+        \\    return
+        \\}
+    ;
+    const wat = try emit_compiled_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $value (ref null $do_text))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "gc-root local_bind $value") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
 test "GC sync omits an unused u32 array type from text-only programs" {
     const source =
         \\identity(value text) -> text {
@@ -1959,6 +4017,40 @@ test "GC sync lowers managed text through a parsed branch join" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "(ref null $do_text)") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-root branch_join") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "if\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers a guard return with an expression" {
+    const source =
+        \\identity(value [u8]) -> [u8] {
+        \\    return value
+        \\}
+        \\choose(value [u8], ok bool) -> [u8] {
+        \\    if ok return identity(value)
+        \\    return value
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $choose") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "    if\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $identity") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers scalar add and sub intrinsics" {
+    const source =
+        \\adjust(value i32) -> i32 {
+        \\    next i32 = @add(value, 1)
+        \\    return @sub(next, 1)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.add") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.sub") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
@@ -2030,6 +4122,156 @@ test "GC sync lowers a managed struct constructor with a byte-list field" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
+test "GC sync lowers recursive managed struct calls with inferred construction" {
+    const source =
+        \\Box {
+        \\    data [u8]
+        \\}
+        \\step_box(n i32, box Box) -> Box {
+        \\    if @eq(n, 0) return box
+        \\    next i32 = @sub(n, 1)
+        \\    return step_box(next, box)
+        \\}
+        \\start() {
+        \\    box Box = .{data = "a"}
+        \\    out Box = step_box(2, box)
+        \\    return
+        \\}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $step_box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers scalar collection loops through typed GC arrays" {
+    const source =
+        \\take(xs [i32]) -> i32 {
+        \\    return @len(xs)
+        \\}
+        \\start() {
+        \\    xs [i32] = .{1, 2}
+        \\    loop value, index = xs {
+        \\        n i32 = take(xs)
+        \\        if @eq(index, 0) break
+        \\    }
+        \\    return
+        \\}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-loop-collection") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.len") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get $do_i32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers managed-element collection loops through typed GC arrays" {
+    const source =
+        \\Box {
+        \\    value [u8]
+        \\}
+        \\take(box Box) -> i32 {
+        \\    value [u8] = @get(box, .value)
+        \\    return @len(value)
+        \\}
+        \\start() {
+        \\    bytes [u8] = "abc"
+        \\    one Box = Box{value = bytes}
+        \\    boxes [Box] = .{one}
+        \\    count i32 = @len(boxes)
+        \\    first Box = @get(boxes, 0)
+        \\    loop item, index = boxes {
+        \\        n i32 = take(item)
+        \\        if @eq(index, 0) break
+        \\    }
+        \\    return
+        \\}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_list_box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_list_box 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get $do_list_box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers a text-element list through a typed GC array" {
+    const source =
+        \\make_texts() -> [text] {
+        \\    first text = "a"
+        \\    texts [text] = .{first, "bc"}
+        \\    count usize = @len(texts)
+        \\    selected text = @get(texts, 0)
+        \\    loop item, index = texts {
+        \\        if @eq(index, 0) break
+        \\    }
+        \\    return texts
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_list_text") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_list_text 2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get $do_list_text") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers a nested byte-list through typed GC arrays" {
+    const source =
+        \\make_nested() -> [[u8]] {
+        \\    first [u8] = .{1, 2, 3}
+        \\    nested [[u8]] = .{first}
+        \\    count i32 = @len(nested)
+        \\    row [u8] = @get(nested, 0)
+        \\    loop item, index = nested {
+        \\        size i32 = @len(item)
+        \\        if @eq(index, 0) break
+        \\    }
+        \\    return nested
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_list_list_u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get $do_list_list_u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers a pure scalar struct error union" {
+    const source =
+        \\LoadError error = Bad
+        \\Point {
+        \\    x usize
+        \\    y usize
+        \\}
+        \\make(data [u8]) -> Point | LoadError {
+        \\    n usize = @len(data)
+        \\    point Point = Point{x = n, y = n}
+        \\    return point
+        \\}
+        \\pass(data [u8]) -> Point | LoadError {
+        \\    return make(data)
+        \\}
+        \\start() {
+        \\    result = pass("abc")
+        \\    if @is(result, LoadError) return
+        \\    if @is(result, Point) return
+        \\    return
+        \\}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $make (param $data (ref null $do_bytes)) (result i32 i32 i32 i32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $make") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 2\n    i32.eq") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
 test "GC sync rebuilds a struct for a scalar-list managed field replacement" {
     const source =
         \\Box {
@@ -2044,6 +4286,27 @@ test "GC sync rebuilds a struct for a scalar-list managed field replacement" {
     const wat = try emit_test_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(field $flags (ref null $do_bool))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $box $tag") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers an exact nested byte-list update inside a struct field" {
+    const source =
+        \\Box {
+        \\    value [u8]
+        \\    tag i32
+        \\}
+        \\rewrite(box Box, index usize, scalar u8) -> Box {
+        \\    return @set(box, .value, @set(@get(box, .value), index, scalar))
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $box $value") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_bytes $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_bytes") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $box $tag") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $box") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
@@ -2136,6 +4399,267 @@ test "GC sync rejects a nested managed struct producer before WAT emission" {
         \\start() {}
     ;
     try std.testing.expectError(error.UnsupportedGcSyncProducer, emit_test_source(std.testing.allocator, source));
+}
+
+test "GC sync lowers a one-level nested managed field getter" {
+    const source =
+        \\Inner {
+        \\    value [u8]
+        \\    tag i32
+        \\}
+        \\Outer {
+        \\    inner Inner
+        \\    id i32
+        \\}
+        \\read_tag(outer Outer) -> i32 {
+        \\    return @get(outer, .inner, .tag)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $outer $inner") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $inner $tag") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers static field reflection getter through typed struct access" {
+    const source =
+        \\User {
+        \\    name text
+        \\}
+        \\take_name(user User) -> text {
+        \\    loop field = fields(User) {
+        \\        if @eq(@field_name(field), "name") {
+        \\            return @field_get(user, field)
+        \\        }
+        \\    }
+        \\    return ""
+        \\}
+        \\start() {
+        \\    user User = User{name = "amy"}
+        \\    name text = take_name(user)
+        \\    return
+        \\}
+    ;
+    codegen_callbacks.install_collect_body_locals(codegen_body.collect_body_locals);
+    codegen_callbacks.install_collect_body_locals_with_mode(codegen_body.collect_body_locals_with_mode);
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(param $user (ref null $user))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $user $name") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "field-reflect-gc type=User") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers an inferred live-source field reflection getter" {
+    const source =
+        \\User {
+        \\    name text
+        \\    id i32
+        \\}
+        \\take_name(user User) -> text {
+        \\    loop field = fields(User) {
+        \\        if @eq(@field_name(field), "name") {
+        \\            got = @field_get(user, field)
+        \\            id i32 = @get(user, .id)
+        \\            if @eq(id, 0) return ""
+        \\            return got
+        \\        }
+        \\    }
+        \\    return ""
+        \\}
+        \\start() {}
+    ;
+    codegen_callbacks.install_collect_body_locals(codegen_body.collect_body_locals);
+    codegen_callbacks.install_collect_body_locals_with_mode(codegen_body.collect_body_locals_with_mode);
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $__field_23_0_got (ref null $do_text))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "gc-root overwrite $__field_23_0_got") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $user $name") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "field-reflect-gc type=User") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync rebuilds a one-level nested managed scalar field" {
+    const source =
+        \\Inner {
+        \\    value [u8]
+        \\    tag i32
+        \\}
+        \\Outer {
+        \\    inner Inner
+        \\    id i32
+        \\}
+        \\update(outer Outer) -> Outer {
+        \\    return @set(outer, .inner, .tag, 9)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $inner") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $outer") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync keeps direct scalar field setters on the single-level path" {
+    const source =
+        \\Box {
+        \\    tag i32
+        \\    value [u8]
+        \\}
+        \\update(box Box) -> Box {
+        \\    return @set(box, .tag, 9)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $box $value") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync rejects paths deeper than three nested managed fields" {
+    const source =
+        \\Bud {
+        \\    value [u8]
+        \\}
+        \\Twig {
+        \\    bud Bud
+        \\}
+        \\Leaf {
+        \\    twig Twig
+        \\}
+        \\Inner {
+        \\    leaf Leaf
+        \\}
+        \\Outer {
+        \\    inner Inner
+        \\}
+        \\read_value(outer Outer) -> [u8] {
+        \\    return @get(outer, .inner, .leaf, .twig, .bud, .value)
+        \\}
+        \\start() {}
+    ;
+    try std.testing.expectError(error.UnsupportedGcSyncExpression, emit_test_source(std.testing.allocator, source));
+}
+
+test "GC sync lowers a two-level nested managed scalar field" {
+    const source =
+        \\Leaf {
+        \\    value [u8]
+        \\    tag i32
+        \\}
+        \\Inner {
+        \\    leaf Leaf
+        \\    tag i32
+        \\}
+        \\Outer {
+        \\    inner Inner
+        \\    tag i32
+        \\}
+        \\update(outer Outer) -> Outer {
+        \\    return @set(outer, .inner, .leaf, .tag, 9)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $outer $inner") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $inner $leaf") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $leaf $value") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $leaf") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $inner") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $outer") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync gets a two-level nested managed field" {
+    const source =
+        \\Leaf {
+        \\    value [u8]
+        \\}
+        \\Inner {
+        \\    leaf Leaf
+        \\}
+        \\Outer {
+        \\    inner Inner
+        \\}
+        \\read_value(outer Outer) -> [u8] {
+        \\    return @get(outer, .inner, .leaf, .value)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $outer $inner") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $inner $leaf") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $leaf $value") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers a three-level nested managed field" {
+    const source =
+        \\Leaf {
+        \\    value [u8]
+        \\    tag i32
+        \\}
+        \\Middle {
+        \\    leaf Leaf
+        \\}
+        \\Inner {
+        \\    middle Middle
+        \\}
+        \\Outer {
+        \\    inner Inner
+        \\}
+        \\update(outer Outer) -> Outer {
+        \\    return @set(outer, .inner, .middle, .leaf, .tag, 9)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $outer $inner") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $inner $middle") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $middle $leaf") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $leaf $value") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $leaf") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $middle") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $inner") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $outer") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync gets a three-level nested managed field" {
+    const source =
+        \\Leaf {
+        \\    value [u8]
+        \\}
+        \\Middle {
+        \\    leaf Leaf
+        \\}
+        \\Inner {
+        \\    middle Middle
+        \\}
+        \\Outer {
+        \\    inner Inner
+        \\}
+        \\read_value(outer Outer) -> [u8] {
+        \\    return @get(outer, .inner, .middle, .leaf, .value)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $outer $inner") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $inner $middle") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $middle $leaf") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $leaf $value") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
 test "GC sync lowers a byte-list literal through a typed local" {
@@ -2347,6 +4871,45 @@ test "GC sync lowers a resolved generic managed field update" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "(param $box (ref null $box))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $box") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "call $update__Box") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers a resolved generic payload-union identity" {
+    const source =
+        \\Choice = Empty | Bytes([u8])
+        \\#T
+        \\identity(value T) -> T {
+        \\    return value
+        \\}
+        \\relay(value Choice) -> Choice {
+        \\    return identity(value)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $identity__Choice (param $value (ref null $choice)) (result (ref null $choice))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $identity__Choice") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC sync lowers a resolved generic payload-union typed local" {
+    const source =
+        \\Choice = Empty | Bytes([u8])
+        \\#T
+        \\identity(value T) -> T {
+        \\    out T = value
+        \\    return out
+        \\}
+        \\relay(value Choice) -> Choice {
+        \\    return identity(value)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $out (ref null $choice))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $identity__Choice") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 

@@ -1,7 +1,6 @@
-(local $data i32)
-;; if-block
-local.set $data
-;; arc-release-local data
-local.get $data
-call $__arc_dec
+;; gc-sync
+array.new_fixed $do_bytes 3
+;; gc-root local_bind $data
+if
 return
+;; gc-root branch_join

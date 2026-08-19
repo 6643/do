@@ -1,4 +1,9 @@
-;; arc-managed-struct-set name=box field=value offset=0
-local.set $__storage_overwrite_tmp
-local.get $__storage_overwrite_tmp
-i32.store
+;; gc-sync
+(type $box (struct (field $value (ref null $do_bytes))))
+(local $box (ref null $box))
+;; gc-root overwrite $box
+local.get $other
+ref.as_non_null
+struct.get $box $value
+struct.new $box
+local.set $box

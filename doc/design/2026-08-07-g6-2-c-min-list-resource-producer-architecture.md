@@ -2,7 +2,7 @@
 
 **状态:** Gate 1 canonical probe、Gate 2 layout/ownership/frame plan、Gate 3 registry/manifest/sema admission 与 Gate 4 compiler/runtime promotion 已完成；generic producer 能力仍保持关闭
 
-**规范:** [`docs/superpowers/specs/2026-08-07-g6-2-c-min-list-resource-producer-design.md`](../../docs/superpowers/specs/2026-08-07-g6-2-c-min-list-resource-producer-design.md)
+**规范:** [`doc/superpowers/specs/2026-08-07-g6-2-c-min-list-resource-producer-design.md`](../../doc/superpowers/specs/2026-08-07-g6-2-c-min-list-resource-producer-design.md)
 
 ## 决策
 

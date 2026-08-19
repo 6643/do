@@ -1099,9 +1099,12 @@ pub fn infer_field_get_call_type(
     if (field_end != end_idx) return null;
     if (field_end != field_start + 1 or tokens[field_start].kind != .ident) return null;
 
-    const struct_local = find_struct_local(locals.struct_locals.items, tokens[start_idx].lexeme) orelse return null;
+    const root_ty = if (find_struct_local(locals.struct_locals.items, tokens[start_idx].lexeme)) |struct_local|
+        struct_local.ty
+    else
+        (find_local_type(locals.locals.items, tokens[start_idx].lexeme) orelse return null);
     const meta = find_field_meta_local(locals.field_meta_locals.items, tokens[field_start].lexeme) orelse return null;
-    if (!std.mem.eql(u8, type_base_name(struct_local.ty), meta.struct_name)) return null;
+    if (!std.mem.eql(u8, type_base_name(root_ty), meta.struct_name)) return null;
     const field = field_from_meta(ctx, meta) orelse return null;
     return field.ty;
 }

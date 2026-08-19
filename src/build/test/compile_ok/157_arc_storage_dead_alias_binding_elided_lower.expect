@@ -1,3 +1,5 @@
-count=0 ;; arc-release-local alias
-count=0 local.set $alias
-count=1 ;; arc-release-local data
+;; gc-sync source_len=67 token_count=18
+array.new_fixed $do_bytes 3
+local.set $data
+local.get $data
+local.set $alias

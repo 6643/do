@@ -4,6 +4,14 @@ zig-cache/
 **/zig-cache/
 **/.zig-cache/
 
+# GC build caches and test scratch outputs
+.gc-tmp/
+**/.gc-tmp/
+.zig-cache-*/
+**/.zig-cache-*/
+.zig-global-cache*/
+**/.zig-global-cache*/
+
 # Frontend generated output
 examples/ui-signal/dist/
 

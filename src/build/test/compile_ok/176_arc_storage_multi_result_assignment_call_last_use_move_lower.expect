@@ -1,4 +1,5 @@
-count=0 call $__arc_inc
-;; arc-call-move data
+;; gc-sync
+count=0 __arc_
+call $pair_take
 local.set $out
 local.set $n

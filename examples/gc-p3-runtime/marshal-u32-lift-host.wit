@@ -1,0 +1,10 @@
+package demo:marshal-u32-lift-host@1.0.0;
+
+interface api {
+  receive: func() -> list<u32>;
+}
+
+world probe {
+  import api;
+  export run: func() -> u32;
+}

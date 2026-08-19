@@ -1,9 +1,15 @@
 # 待处理与阻断清单
 
-更新时间: 2026-08-11
-基线: 默认回归以 `./src/build/test/run_tests.sh` 最新结果为准  
-关系: 总规划 `doc/master_plan.md`; 接手 `doc/start_here.md`; 执行状态 `doc/roadmap_status.md`  
+更新时间: 2026-08-19
+基线: 默认回归以 `./src/build/test/run_tests.sh` 最新结果为准
+关系: 总规划 `doc/master_plan.md`; 接手 `doc/start_here.md`; 执行状态 `doc/roadmap_status.md`
 约定: **只记未关闭项**; 完成后从本文件删除或移入「已关闭摘要」, 并同步入口文档与 `CHANGELOG.md`。
+
+> **Superseded by GC-first (2026-08-11):** `doc/memory.md` 与
+> `doc/design/2026-08-11-gc-first-memory-decision.md` 已选定 Wasm GC 为 v1
+> managed-memory target。下文 ARC 只保留为当前 transition implementation 的历史
+> 证据, 不改变源码值语义; 后续 runtime work 目标为 GC。Component/WIT resource 的
+> ownership 与 drop 继续是显式 ABI contract, 不由 GC 接管。
 
 ## 图例
 
@@ -49,7 +55,7 @@ probed. The pinned HTTP service world's `client.send` and `handler.handle`
 also remain separate service-world work; request/response resources, body
 streams, payload errors, repeated calls, and cancellation require an exact
 HTTP gate. See
-`docs/superpowers/specs/2026-08-09-d2-general-filesystem-async-boundary-design.md`.
+`doc/superpowers/specs/2026-08-09-d2-general-filesystem-async-boundary-design.md`.
 Recovery requires a new method-specific design, WIT hash, canonical WAT,
 positive/negative fixtures, Component validation, and Rust/Wasmtime cleanup
 matrix; do not infer a generic lowering from a neighboring bounded method.
@@ -414,11 +420,19 @@ borrowed/list/variant resource field 或更宽 runtime 形状。
 
 **G6.1 已关闭 (方案 A)**: `preopens.get-directories` → do `[Tuple<i32,text>]` host / 公开 `preopen_directories() -> [Tuple<Dir, text>]`; list-of-tuple resource lowering + `lib/dir.do`; 见 `compile_ok/274`–`275`。
 
-**G6.3 已关闭 (方案 B)**: sockets `tcp/udp-socket.create|bind|drop` 可 lower; 地址为 dual concrete + `IpSocketAddress = V4|V6` payload enum; resource shell + 粗粒度 `TcpError`/`UdpError`; stdlib `lib/tcp.do` / `lib/udp.do` / `lib/net.do`; compiler-generated Component 与 Rust/Wasmtime TCP/UDP loopback smoke 已通过（含 create/bind failure cleanup）；见 `compile_ok/291`–`294` 与 `docs/superpowers/specs/2026-07-13-g6-3-sockets-scheme-b-design.md`。D2 总项仍保持 in progress。
+**G6.3 已关闭 (方案 B)**: sockets `tcp/udp-socket.create|bind|drop` 可 lower; 地址为 dual concrete + `IpSocketAddress = V4|V6` payload enum; resource shell + 粗粒度 `TcpError`/`UdpError`; stdlib `lib/tcp.do` / `lib/udp.do` / `lib/net.do`; compiler-generated Component 与 Rust/Wasmtime TCP/UDP loopback smoke 已通过（含 create/bind failure cleanup）；见 `compile_ok/291`–`294` 与 `doc/superpowers/specs/2026-07-13-g6-3-sockets-scheme-b-design.md`。D2 总项仍保持 in progress。
 
 ---
 
 ## 2. 待处理 (pending) — 语言 / codegen 已知缺口
+
+### P2. GC nested aggregate depth and producer boundary
+
+当前 typed-GC synchronous admission 已覆盖 direct-local 的一层、两层和三层
+managed-struct field path，并有 compiled/Wasmtime/ARC-GC equivalence evidence。
+第四个 managed segment、更深路径、任意 producer expression、async/resource 和
+host/WIT 仍保持 fail-closed；不得把这条 bounded slice 解释为 G5c 或 full GC
+cutover。
 
 ### P2. 泛型递归: 仅靠左侧目标类型反推
 
@@ -479,7 +493,7 @@ borrowed/list/variant resource field 或更宽 runtime 形状。
 
 - pure-scalar struct 作为 Tuple storage 嵌套子槽 (`compile_ok/272`, `ok/192`; 局部名 `$pair.0.x`)
 - managed/`text` 作为 Tuple **直接叶子** storage + path chain (`compile_ok/270`–`271`)
-- **P1** 含 managed 字段的 struct 作 Tuple 直接子槽: 句柄叶子 + storage pack ARC (`compile_ok/273`, `ok/193`; 不拍平 `Cell` 字段)
+- **P1** 含 managed 字段的 struct 作 Tuple 直接子槽: 句柄叶子 + storage pack ARC (`compile_ok/273`, `ok/193`; 不拍平 `Cell` 字段). 这是 ARC transition implementation evidence; 后续 GC migration 必须保持同一源码值语义与 `Cell` 不拍平边界。
 - pure-scalar field-reflect `field_set` 误 shadow (`ok/191`)
 - 阶段 A–F、H、I (I1+I2) 主线; G1–G5、G6.1、G6.4
 - **G6.1** preopens 方案 A: host `[Tuple<i32,text>]` + `preopen_directories() -> [Tuple<Dir, text>]` (`compile_ok/274`–`275`)
@@ -557,7 +571,7 @@ borrowed/list/variant resource field 或更宽 runtime 形状。
 
 ## 6. 推进顺序建议
 
-1. 发布候选维护 (回归红灯 / 文档漂移)  
+1. 发布候选维护 (回归红灯 / 文档漂移)
 2. G6.2 capability matrix、ownership invariants、正向 Rust/Wasmtime gates 与 pinned negative gates 已收口；下一步只能为新的 producer/resource shape 建立独立 design、pinned probe、负向 fixture 与 runtime gate。
 3. D2 当前只推进已授权的本地 file/dir/CLI smoke 与已关闭的私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash` slices；socket/general filesystem async/external HTTP 的扩展须另立 target/design，其他 deferred 项仍需单独授权
 4. **P2** 默认不改; 除非产品明确要左侧反推
@@ -614,6 +628,12 @@ function. It is not a public function model, and new examples and APIs must use
 ordinary function declarations. The generic target still keeps a negative
 `427_generic_async_runtime_async_root` fixture for its lowering boundary.
 
+The bounded resource Result cancellation slice now compares the compiler-
+generated GC Component with a hand-authored linear Component through the same
+Rust/Wasmtime host and requires identical terminal observations. This closes
+the backend-neutral G5b cancellation oracle for that one resource shape; it
+does not close ordinary async lowering or G5c default routing.
+
 These bounded slices do not make arbitrary generated WIT async lowering,
 generic `Future<T>`/`Stream<T>` payloads, resources,
 aggregate await, timeout, multi-root scheduling, public ownership syntax, or
@@ -621,3 +641,14 @@ ordinary `do build` async programs complete. Unsupported shapes continue to
 return `AsyncLoweringUnavailable`.
 
 用户说 `go` / `next` 时以 `doc/start_here.md` §6 为准, 细节以本文件为准。
+
+### G5c B descriptor-manifest status (2026-08-20)
+
+Closed for the bounded random `u64 -> list<u8>` lift: checked-in source and
+world-fragment provenance, exact hash validation, parser/member/signature and
+versioned Component-import comparison, unsupported-shape rejection, and the
+mutated-source negative gate are green. The default host/WIT path is unchanged
+and remains ARC-backed. `host_wit_marshalling`, general WIT aggregates,
+async/resource descriptors, ARC/GC equivalence inventory, and G5c cutover are
+still pending; no public ownership or new async syntax is admitted by this
+gate.

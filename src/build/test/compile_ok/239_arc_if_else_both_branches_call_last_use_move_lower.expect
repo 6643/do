@@ -1,2 +1,4 @@
-count=2 ;; arc-call-move data
-count=0 call $__arc_inc
+;; gc-sync
+;; gc-root
+(type $do_bytes
+array.new_fixed $do_bytes

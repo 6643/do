@@ -1,6 +1,4 @@
-;; loop-break-release
-;; arc-release-local inner
-call $__arc_dec
-;; arc-release-local outer
-call $__arc_dec
-br $__loop_break_
+;; gc-sync source_len=159 token_count=29
+;; gc-root local_bind $outer
+;; gc-root local_bind $inner
+br $__gc_break_0

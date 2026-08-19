@@ -1,4 +1,5 @@
-;; loop-collection
-count=0 ;; arc-call-move xs
-count=1 call $__arc_inc
-call $take
+;; gc-sync
+;; gc-root
+;; gc-loop-collection
+(type $do_i32
+array.get $do_i32

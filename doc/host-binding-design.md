@@ -76,6 +76,8 @@ OutputStream = @host_resource("wasi:io/streams@0.3.0", "output-stream", { id i64
 
 资源值是 opaque handle。源码不能算术运算、伪造或读取内部句柄；生命周期由 host binding 和 resource ownership 规则管理。
 
+运行时边界采用 [GC-first memory contract](memory.md) 和 [dated decision](design/2026-08-11-gc-first-memory-decision.md): GC 只管理 Do allocation, 不关闭或 drop WIT resource. Wasm GC reference 不跨 Component/WIT boundary; `own`, `borrow`, drop 和 async terminal cleanup 继续由显式 Component ABI ownership contract 管理. 当前 ARC codegen 是实现迁移债务, 不改变这些 host ownership 规则, 也不表示 compiler migration 已完成.
+
 WIT variant 示例：
 
 ```wit

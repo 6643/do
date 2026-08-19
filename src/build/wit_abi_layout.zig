@@ -23,9 +23,11 @@ pub const LayoutError = error{
     NestedListElement,
     UnsupportedListElement,
     MissingListStorageActions,
+    TextTypeMismatch,
+    MissingTextStorageActions,
 };
 
-pub const CoreWord = enum { i32, i64 };
+pub const CoreWord = enum { i32, i64, f32, f64 };
 pub const AllocationAction = enum { none, cabi_realloc };
 pub const FreeAction = enum { none, cabi_realloc };
 
@@ -69,6 +71,7 @@ pub const RecordMeasurement = struct {
     byte_size: u32,
     alignment: u32,
     fields: []const FieldMeasurement,
+    indirect: ?IndirectMeasurement = null,
 };
 
 pub const ListLayoutMeasurement = struct {
@@ -205,6 +208,109 @@ pub const ListLayoutPlan = struct {
     }
 };
 
+pub const TextLayoutMeasurement = struct {
+    pointer_offset: u32,
+    length_offset: u32,
+    byte_size: u32,
+    alignment: u32,
+    allocation: AllocationAction,
+    free: FreeAction,
+};
+
+pub const TextLayoutPlan = struct {
+    pointer_offset: u32,
+    length_offset: u32,
+    byte_size: u32,
+    alignment: u32,
+    allocation: AllocationAction,
+    free: FreeAction,
+
+    pub fn init(
+        allocator: Allocator,
+        value: *const abi_types.AbiType,
+        measured: TextLayoutMeasurement,
+    ) (LayoutError || abi_types.AbiTypeError)!TextLayoutPlan {
+        _ = allocator;
+        if (value.kind() != .text) return error.WrongRootKind;
+        try value.validate();
+        if (measured.byte_size != 8 or measured.alignment != 4) return error.TextTypeMismatch;
+        if (!is_aligned(measured.pointer_offset, 4) or !is_aligned(measured.length_offset, 4)) {
+            return error.MisalignedOffset;
+        }
+        if (measured.pointer_offset == measured.length_offset) return error.LayoutOutOfBounds;
+        try check_region(measured.pointer_offset, 4, measured.byte_size);
+        try check_region(measured.length_offset, 4, measured.byte_size);
+        if (measured.allocation == .none or measured.free == .none) return error.MissingTextStorageActions;
+        return .{
+            .pointer_offset = measured.pointer_offset,
+            .length_offset = measured.length_offset,
+            .byte_size = measured.byte_size,
+            .alignment = measured.alignment,
+            .allocation = measured.allocation,
+            .free = measured.free,
+        };
+    }
+
+    pub fn deinit(_: *TextLayoutPlan) void {}
+};
+
+pub const ByteListLayoutMeasurement = struct {
+    pointer_offset: u32,
+    length_offset: u32,
+    element_byte_size: u32,
+    element_stride: u32,
+    element_alignment: u32,
+    capacity: u32,
+    accepted_lengths: []const u32,
+    allocation: AllocationAction,
+    free: FreeAction,
+};
+
+pub const ByteListLayoutPlan = struct {
+    allocator: Allocator,
+    pointer_offset: u32,
+    length_offset: u32,
+    element_byte_size: u32,
+    element_stride: u32,
+    element_alignment: u32,
+    capacity: u32,
+    accepted_lengths: []u32,
+    allocation: AllocationAction,
+    free: FreeAction,
+
+    pub fn init(
+        allocator: Allocator,
+        value: *const abi_types.AbiType,
+        measured: ByteListLayoutMeasurement,
+    ) (LayoutError || abi_types.AbiTypeError || Allocator.Error)!ByteListLayoutPlan {
+        if (value.kind() != .list) return error.WrongRootKind;
+        try value.validate();
+        const element = value.list_element() orelse return error.UnsupportedListElement;
+        if (element.kind() != .scalar or element.scalar_kind() != .u8) return error.UnsupportedListElement;
+        try validate_byte_list_measurement(measured);
+
+        const accepted_lengths = try allocator.dupe(u32, measured.accepted_lengths);
+        errdefer allocator.free(accepted_lengths);
+        return .{
+            .allocator = allocator,
+            .pointer_offset = measured.pointer_offset,
+            .length_offset = measured.length_offset,
+            .element_byte_size = measured.element_byte_size,
+            .element_stride = measured.element_stride,
+            .element_alignment = measured.element_alignment,
+            .capacity = measured.capacity,
+            .accepted_lengths = accepted_lengths,
+            .allocation = measured.allocation,
+            .free = measured.free,
+        };
+    }
+
+    pub fn deinit(self: *ByteListLayoutPlan) void {
+        if (self.accepted_lengths.len != 0) self.allocator.free(self.accepted_lengths);
+        self.accepted_lengths = &.{};
+    }
+};
+
 pub const ScalarMeasurement = struct {
     offset: u32,
     byte_size: u32,
@@ -231,6 +337,7 @@ pub const LayoutPlan = struct {
     byte_size: u32,
     alignment: u32,
     scalar_measurement: ?ScalarMeasurement,
+    indirect: ?IndirectMeasurement,
     variant_cases: []VariantCasePlan,
     record_fields: []RecordFieldPlan,
 
@@ -256,6 +363,7 @@ pub const LayoutPlan = struct {
             .byte_size = measured.byte_size,
             .alignment = measured.alignment,
             .scalar_measurement = measured,
+            .indirect = null,
             .variant_cases = &.{},
             .record_fields = &.{},
         };
@@ -293,6 +401,7 @@ pub const LayoutPlan = struct {
             .byte_size = measured.byte_size,
             .alignment = measured.alignment,
             .scalar_measurement = null,
+            .indirect = null,
             .variant_cases = cases,
             .record_fields = &.{},
         };
@@ -307,6 +416,11 @@ pub const LayoutPlan = struct {
         try value.validate();
         try validate_container(measured.byte_size, measured.alignment);
         if (measured.fields.len == 0) return error.MissingPayloadMetadata;
+        if (measured.indirect) |indirect| {
+            if (indirect.core_words.len == 0 or indirect.allocation == .none or indirect.free == .none) {
+                return error.MissingIndirectMetadata;
+            }
+        }
 
         var fields = try allocator.alloc(RecordFieldPlan, measured.fields.len);
         var initialized: usize = 0;
@@ -330,6 +444,7 @@ pub const LayoutPlan = struct {
             .byte_size = measured.byte_size,
             .alignment = measured.alignment,
             .scalar_measurement = null,
+            .indirect = measured.indirect,
             .variant_cases = &.{},
             .record_fields = fields,
         };
@@ -387,9 +502,35 @@ fn validate_list_measurement(measured: ListLayoutMeasurement) LayoutError!void {
     if (last_slot_end > std.math.maxInt(u32)) return error.OffsetOverflow;
 }
 
+fn validate_byte_list_measurement(measured: ByteListLayoutMeasurement) LayoutError!void {
+    if (measured.capacity == 0) return error.InvalidCapacity;
+    if (measured.element_byte_size != 1 or measured.element_alignment != 1) return error.InvalidAlignment;
+    if (measured.element_stride != 1) return error.InvalidStride;
+    if (!is_aligned(measured.pointer_offset, 4) or !is_aligned(measured.length_offset, 4)) {
+        return error.MisalignedOffset;
+    }
+    if (measured.pointer_offset > std.math.maxInt(u32) - 4 or
+        measured.length_offset > std.math.maxInt(u32) - 4)
+    {
+        return error.OffsetOverflow;
+    }
+    if (measured.pointer_offset == measured.length_offset) return error.LayoutOutOfBounds;
+    if (measured.allocation == .none or measured.free == .none) return error.MissingListStorageActions;
+    if (measured.accepted_lengths.len == 0 or measured.accepted_lengths[0] != 0) return error.InvalidListLength;
+    var previous: u32 = 0;
+    for (measured.accepted_lengths, 0..) |length, index| {
+        if (length > measured.capacity or (index != 0 and length <= previous)) return error.InvalidListLength;
+        previous = length;
+    }
+    const last_slot_end = @as(u64, measured.capacity) * measured.element_stride;
+    if (last_slot_end > std.math.maxInt(u32)) return error.OffsetOverflow;
+}
+
 fn scalar_measurement(kind: abi_types.ScalarKind) PayloadMeasurement {
     return switch (kind) {
-        .u64, .i64, .f64 => .{ .offset = 0, .byte_size = 8, .alignment = 8, .core_type = .i64 },
+        .u64, .i64 => .{ .offset = 0, .byte_size = 8, .alignment = 8, .core_type = .i64 },
+        .f64 => .{ .offset = 0, .byte_size = 8, .alignment = 8, .core_type = .f64 },
+        .f32 => .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .f32 },
         else => .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 },
     };
 }
@@ -664,6 +805,43 @@ test "measured record layout accepts the pinned optional string facts" {
     try std.testing.expectEqual(@as(u32, 16), plan.record_fields[0].offset);
 }
 
+test "measured record layout preserves a valid root indirect pointer" {
+    var value = abi_types.AbiType.scalar(std.testing.allocator, .u64);
+    defer value.deinit();
+    var record = try abi_types.AbiType.record(std.testing.allocator, &.{
+        .{ .name = "value", .value = &value },
+    });
+    defer record.deinit();
+
+    var plan = try LayoutPlan.record(std.testing.allocator, &record, .{
+        .byte_size = 8,
+        .alignment = 8,
+        .fields = &.{.{ .name = "value", .offset = 0, .byte_size = 8, .alignment = 8, .indirect = null }},
+        .indirect = .{ .core_words = &.{.i32}, .allocation = .cabi_realloc, .free = .cabi_realloc },
+    });
+    defer plan.deinit();
+    try std.testing.expectEqual(CoreWord.i32, plan.indirect.?.core_words[0]);
+}
+
+test "measured record layout rejects incomplete root indirect metadata" {
+    var value = abi_types.AbiType.scalar(std.testing.allocator, .u64);
+    defer value.deinit();
+    var record = try abi_types.AbiType.record(std.testing.allocator, &.{
+        .{ .name = "value", .value = &value },
+    });
+    defer record.deinit();
+
+    try std.testing.expectError(
+        error.MissingIndirectMetadata,
+        LayoutPlan.record(std.testing.allocator, &record, .{
+            .byte_size = 8,
+            .alignment = 8,
+            .fields = &.{.{ .name = "value", .offset = 0, .byte_size = 8, .alignment = 8, .indirect = null }},
+            .indirect = .{ .core_words = &.{.i32}, .allocation = .none, .free = .cabi_realloc },
+        }),
+    );
+}
+
 test "measured scalar layout accepts the pinned Future<i64> payload facts" {
     var value = abi_types.AbiType.scalar(std.testing.allocator, .i64);
     defer value.deinit();
@@ -760,6 +938,87 @@ test "measured variant layout rejects missing payload metadata" {
             .byte_size = 8,
             .alignment = 4,
             .cases = &.{.{ .name = "value", .tag = 0, .payload_required = true, .payload = null }},
+        }),
+    );
+}
+
+test "measured text layout accepts explicit pointer length facts" {
+    var value = abi_types.AbiType.text(std.testing.allocator);
+    defer value.deinit();
+
+    var plan = try TextLayoutPlan.init(std.testing.allocator, &value, .{
+        .pointer_offset = 0,
+        .length_offset = 4,
+        .byte_size = 8,
+        .alignment = 4,
+        .allocation = .cabi_realloc,
+        .free = .cabi_realloc,
+    });
+    defer plan.deinit();
+
+    try std.testing.expectEqual(@as(u32, 0), plan.pointer_offset);
+    try std.testing.expectEqual(@as(u32, 4), plan.length_offset);
+    try std.testing.expectEqual(@as(u32, 8), plan.byte_size);
+}
+
+test "measured text layout rejects overlapping pointer length facts" {
+    var value = abi_types.AbiType.text(std.testing.allocator);
+    defer value.deinit();
+
+    try std.testing.expectError(
+        error.LayoutOutOfBounds,
+        TextLayoutPlan.init(std.testing.allocator, &value, .{
+            .pointer_offset = 0,
+            .length_offset = 0,
+            .byte_size = 8,
+            .alignment = 4,
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        }),
+    );
+}
+
+test "measured byte list layout accepts byte stride facts" {
+    var byte = abi_types.AbiType.scalar(std.testing.allocator, .u8);
+    defer byte.deinit();
+    var value = try abi_types.AbiType.list(std.testing.allocator, &byte);
+    defer value.deinit();
+
+    var plan = try ByteListLayoutPlan.init(std.testing.allocator, &value, .{
+        .pointer_offset = 64,
+        .length_offset = 68,
+        .element_byte_size = 1,
+        .element_stride = 1,
+        .element_alignment = 1,
+        .capacity = 4,
+        .accepted_lengths = &.{ 0, 1, 2, 3, 4 },
+        .allocation = .cabi_realloc,
+        .free = .cabi_realloc,
+    });
+    defer plan.deinit();
+
+    try std.testing.expectEqual(@as(u32, 1), plan.element_stride);
+    try std.testing.expectEqual(@as(u32, 4), plan.capacity);
+}
+
+test "measured byte list layout rejects a non-byte element" {
+    var value_type = abi_types.AbiType.scalar(std.testing.allocator, .u16);
+    defer value_type.deinit();
+    var value = try abi_types.AbiType.list(std.testing.allocator, &value_type);
+    defer value.deinit();
+
+    try std.testing.expectError(
+        error.UnsupportedListElement,
+        ByteListLayoutPlan.init(std.testing.allocator, &value, .{
+            .pointer_offset = 64,
+            .length_offset = 68,
+            .element_byte_size = 1,
+            .element_stride = 1,
+            .element_alignment = 1,
+            .capacity = 4,
+            .accepted_lengths = &.{0},
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
         }),
     );
 }

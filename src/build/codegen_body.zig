@@ -270,7 +270,7 @@ pub fn collect_body_locals_with_mode(allocator: std.mem.Allocator, tokens: []con
             i = stmt_end;
             continue;
         }
-        if (try is_dead_managed_alias_binding(allocator, tokens, i, stmt_end, end_idx, out, ctx)) {
+        if (!ctx.gc_sync and try is_dead_managed_alias_binding(allocator, tokens, i, stmt_end, end_idx, out, ctx)) {
             i = stmt_end;
             continue;
         }
@@ -309,12 +309,14 @@ pub fn collect_body_locals_with_mode(allocator: std.mem.Allocator, tokens: []con
         } else if (!has_local(out.locals.items, tokens[i].lexeme) and inferred_scalar_binding_type(tokens, i, stmt_end, out, ctx) != null) {
             const ty = inferred_scalar_binding_type(tokens, i, stmt_end, out, ctx).?;
             try out.append_borrowed_local(allocator, tokens[i].lexeme, ty, true);
+        } else if (!has_local(out.locals.items, tokens[i].lexeme) and inferred_text_binding_type(tokens, i, stmt_end, out, ctx)) {
+            try out.append_borrowed_local_with_origin(allocator, tokens[i].lexeme, "text", true, .fresh_local);
         } else if (!has_local(out.locals.items, tokens[i].lexeme) and inferred_managed_payload_binding(tokens, i, stmt_end, out, ctx) != null) {
             const binding = inferred_managed_payload_binding(tokens, i, stmt_end, out, ctx).?;
             if (is_tuple_type_name(binding.elem_ty) and tuple_scalar_leaf_storage_byte_width_ctx(binding.elem_ty, ctx) == null) {
                 return error.UnsupportedTupleStorageLeaf;
             }
-            try out.append_storage_local_with_type(allocator, tokens[i].lexeme, binding.ty, binding.elem_ty, true);
+            try out.append_storage_local_with_type_and_origin(allocator, tokens[i].lexeme, binding.ty, binding.elem_ty, true, .fresh_local);
             try out.ensure_storage_write_temps(allocator);
             if (tuple_scalar_leaf_storage_byte_width_ctx(binding.elem_ty, ctx) != null) {
                 try out.ensure_tuple_pack_temps(allocator);
@@ -552,16 +554,36 @@ pub fn collection_loop_header(
     if (source_start >= source_end) return null;
 
     if (source_end == source_start + 1 and tokens[source_start].kind == .ident) {
-        const storage = find_storage_primitive_local(locals.storage_locals.items, tokens[source_start].lexeme) orelse return null;
-        const elem_bytes = storage_element_byte_width_for_type(storage.elem_ty, ctx) orelse return null;
+        if (find_storage_primitive_local(locals.storage_locals.items, tokens[source_start].lexeme)) |storage| {
+            const elem_bytes = storage_element_byte_width_for_type(storage.elem_ty, ctx) orelse return null;
+            return .{
+                .value_name = binds.value_name,
+                .index_name = binds.index_name,
+                .source_name = tokens[source_start].lexeme,
+                .source_ty = storage.ty,
+                .source_start = source_start,
+                .source_end = source_end,
+                .elem_ty = storage.elem_ty,
+                .elem_bytes = elem_bytes,
+                .open_brace = open_brace,
+                .close_brace = close_brace,
+            };
+        }
+
+        // GC-backed lists are ordinary typed locals rather than storage-table
+        // entries. Keep the same source-level loop header facts so the backend
+        // can choose typed `array.get` lowering at the emission boundary.
+        const source_ty = find_local_type(locals.locals.items, tokens[source_start].lexeme) orelse return null;
+        const elem_ty = storage_elem_type_from_name(source_ty) orelse return null;
+        const elem_bytes = storage_element_byte_width_for_type(elem_ty, ctx) orelse return null;
         return .{
             .value_name = binds.value_name,
             .index_name = binds.index_name,
             .source_name = tokens[source_start].lexeme,
-            .source_ty = storage.ty,
+            .source_ty = source_ty,
             .source_start = source_start,
             .source_end = source_end,
-            .elem_ty = storage.elem_ty,
+            .elem_ty = elem_ty,
             .elem_bytes = elem_bytes,
             .open_brace = open_brace,
             .close_brace = close_brace,
@@ -704,6 +726,15 @@ pub fn inferred_scalar_binding_type(tokens: []const lexer.Token, start_idx: usiz
     const ty = infer_expr_type(tokens, start_idx + 2, end_idx, locals, ctx) orelse return null;
     if (!is_codegen_scalar_type(ctx, ty)) return null;
     return ty;
+}
+
+pub fn inferred_text_binding_type(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext) bool {
+    if (start_idx + 3 > end_idx) return false;
+    if (tokens[start_idx].kind != .ident or !tok_eq(tokens[start_idx + 1], "=")) return false;
+    const value_range = trim_parens(tokens, start_idx + 2, end_idx);
+    if (value_range.end == value_range.start + 1 and tokens[value_range.start].kind == .string) return true;
+    const ty = infer_expr_type(tokens, start_idx + 2, end_idx, locals, ctx) orelse return false;
+    return std.mem.eql(u8, ty, "text");
 }
 
 pub fn is_managed_local_assignment_stmt(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext) bool {
@@ -1012,7 +1043,7 @@ pub fn typed_union_binding_layout(allocator: std.mem.Allocator, tokens: []const 
     if (eq_idx <= start_idx + 1) return null;
     // Named payload enum: `m Message = …`
     if (eq_idx == start_idx + 2 and tokens[start_idx + 1].kind == .ident) {
-        const ty_name = public_decl_name(tokens[start_idx + 1].lexeme);
+        const ty_name = public_decl_name(substitute_generic_type(tokens[start_idx + 1].lexeme, ctx.type_bindings));
         if (find_payload_enum_decl(ctx.payload_enums, ty_name)) |decl| {
             return try build_payload_enum_union_layout(allocator, decl, tokens, ctx.structs, ctx.struct_layouts, owned_types);
         }

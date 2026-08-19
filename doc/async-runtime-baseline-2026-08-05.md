@@ -46,4 +46,4 @@ baseline passed all seven gates.
 `AsyncLoweringUnavailable` remains the ordinary `do build` guard for generic
 async source shapes. This report proves the existing descriptor-specific
 runtime slices only; it is not evidence for the generic resumable lowering
-planned in `docs/superpowers/plans/2026-08-05-generic-async-lowering.md`.
+planned in `doc/superpowers/plans/2026-08-05-generic-async-lowering.md`.

@@ -1,2 +1,4 @@
-count=0 ;; field-get-move box.value
-count=2 call $__arc_inc
+;; gc-sync
+;; gc-root
+(type $box
+(type $do_bytes

@@ -1,0 +1,15 @@
+package demo:marshal-record-equivalence@1.0.0;
+
+interface api {
+  record reading {
+    code: u32,
+    count: u32,
+  }
+
+  read: func() -> reading;
+}
+
+world probe {
+  import api;
+  export run: func() -> u32;
+}

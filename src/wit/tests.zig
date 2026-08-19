@@ -8,6 +8,7 @@ const emit_lock = @import("emit_lock.zig");
 const emit_manifest = @import("emit_manifest.zig");
 const wit_cli = @import("cli.zig");
 const wit_manifest = @import("manifest.zig");
+const marshal_registry = @import("marshal_registry.zig");
 
 const probe_source =
     \\//@ async = true
@@ -171,6 +172,73 @@ test "wit resolver rejects an unknown world" {
     try std.testing.expectError(
         error.WorldNotFound,
         resolve.resolve_source(std.testing.allocator, probe_source, "missing"),
+    );
+}
+
+const marshal_registry_source =
+    \\package demo:marshal@1.0.0;
+    \\
+    \\interface api {
+    \\  echo: func(value: u32) -> string;
+    \\  wait: func() -> future<u32>;
+    \\  open: func() -> ticket;
+    \\  choose: func() -> option<u32>;
+    \\  resource ticket {}
+    \\}
+    \\
+    \\world probe { import api; }
+;
+
+test "wit marshal registry resolves one bounded value member" {
+    var binding = try resolve.resolve_source(std.testing.allocator, marshal_registry_source, "probe");
+    defer binding.deinit();
+
+    const member = try marshal_registry.find_value_member(&binding, "api", "echo");
+    try std.testing.expectEqualStrings("demo", member.package_namespace);
+    try std.testing.expectEqualStrings("marshal", member.package_name);
+    try std.testing.expectEqualStrings("probe", member.world_name);
+    try std.testing.expectEqualStrings("api", member.interface_name);
+    try std.testing.expectEqualStrings("echo", member.member_name);
+    try std.testing.expectEqual(model.TypeKind.u32, member.function.params[0].type_ref.kind);
+    try std.testing.expectEqual(model.TypeKind.string, member.function.result.?.kind);
+    try std.testing.expect(!std.mem.eql(u8, &member.content_hash, &([_]u8{0} ** 32)));
+}
+
+test "wit marshal registry rejects an unknown interface" {
+    var binding = try resolve.resolve_source(std.testing.allocator, marshal_registry_source, "probe");
+    defer binding.deinit();
+
+    try std.testing.expectError(
+        error.InterfaceNotFound,
+        marshal_registry.find_value_member(&binding, "missing", "echo"),
+    );
+}
+
+test "wit marshal registry rejects an unknown member" {
+    var binding = try resolve.resolve_source(std.testing.allocator, marshal_registry_source, "probe");
+    defer binding.deinit();
+
+    try std.testing.expectError(
+        error.MemberNotFound,
+        marshal_registry.find_value_member(&binding, "api", "missing"),
+    );
+}
+
+test "wit marshal registry rejects async resource and unsupported value members" {
+    var binding = try resolve.resolve_source(std.testing.allocator, marshal_registry_source, "probe");
+    defer binding.deinit();
+
+    try std.testing.expectError(
+        error.UnsupportedMarshalMember,
+        marshal_registry.find_value_member(&binding, "api", "wait"),
+    );
+    try std.testing.expectError(
+        error.UnsupportedMarshalMember,
+        marshal_registry.find_value_member(&binding, "api", "open"),
+    );
+    try std.testing.expectError(
+        error.UnsupportedMarshalMember,
+        marshal_registry.find_value_member(&binding, "api", "choose"),
     );
 }
 

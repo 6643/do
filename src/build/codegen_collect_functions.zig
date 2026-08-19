@@ -46,6 +46,7 @@ const collect_function_body_calls = codegen_imports.collect_function_body_calls;
 const find_imported_module_index = codegen_imports.find_imported_module_index;
 const find_root_module_index = codegen_imports.find_root_module_index;
 const has_reach_visit = codegen_imports.has_reach_visit;
+const find_payload_enum_decl = codegen_imports.find_payload_enum_decl;
 const is_tuple_type_name = type_util.is_tuple_type_name;
 const managed_payload_elem_type_from_name = type_util.managed_payload_elem_type_from_name;
 const tuple_arity = type_util.tuple_arity;
@@ -59,6 +60,7 @@ const ParsedCodegenType = model.ParsedCodegenType;
 const ReachVisit = model.ReachVisit;
 const StructDecl = model.StructDecl;
 const StructLayout = model.StructLayout;
+const PayloadEnumDecl = model.PayloadEnumDecl;
 
 fn free_func_param_list(allocator: std.mem.Allocator, params: *std.ArrayList(FuncParam)) void {
     for (params.items) |param| {
@@ -296,6 +298,11 @@ fn append_one_func_param(
     return next;
 }
 
+const ResultAbi = enum {
+    normal,
+    gc_sync,
+};
+
 pub fn collect_func_decls(
     allocator: std.mem.Allocator,
     tokens: []const lexer.Token,
@@ -303,6 +310,34 @@ pub fn collect_func_decls(
     struct_layouts: []const StructLayout,
     imported_alias_ctx: ?ImportedAliasContext,
     out: *std.ArrayList(FuncDecl),
+) !void {
+    return collect_func_decls_with_result_abi(allocator, tokens, structs, struct_layouts, &.{}, imported_alias_ctx, out, .normal);
+}
+
+/// Restricted collector for the synchronous GC migration gate. It preserves a
+/// selected source Tuple as one GC reference without changing the normal Core
+/// ABI collector, which intentionally expands Tuple results into scalar leaves.
+pub fn collect_gc_sync_func_decls(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    structs: []const StructDecl,
+    struct_layouts: []const StructLayout,
+    payload_enums: []const PayloadEnumDecl,
+    imported_alias_ctx: ?ImportedAliasContext,
+    out: *std.ArrayList(FuncDecl),
+) !void {
+    return collect_func_decls_with_result_abi(allocator, tokens, structs, struct_layouts, payload_enums, imported_alias_ctx, out, .gc_sync);
+}
+
+fn collect_func_decls_with_result_abi(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    structs: []const StructDecl,
+    struct_layouts: []const StructLayout,
+    payload_enums: []const PayloadEnumDecl,
+    imported_alias_ctx: ?ImportedAliasContext,
+    out: *std.ArrayList(FuncDecl),
+    result_abi: ResultAbi,
 ) !void {
     var depth_brace: usize = 0;
     var pending_type_params = std.ArrayList([]const u8).empty;
@@ -348,17 +383,31 @@ pub fn collect_func_decls(
             try allocator.dupe([]const u8, pending_type_params.items);
         var type_params_owned = pending_type_params.items.len != 0;
         errdefer if (type_params_owned) allocator.free(type_params);
-        const parsed_results = (try parse_func_decl_result_types(
-            allocator,
-            tokens,
-            body.result_start,
-            body.result_end,
-            type_params,
-            structs,
-            struct_layouts,
-            imported_alias_ctx,
-            &owned_types,
-        )) orelse continue;
+        const parsed_results = (try switch (result_abi) {
+            .normal => parse_func_decl_result_types(
+                allocator,
+                tokens,
+                body.result_start,
+                body.result_end,
+                type_params,
+                structs,
+                struct_layouts,
+                imported_alias_ctx,
+                &owned_types,
+            ),
+            .gc_sync => parse_gc_sync_func_decl_result_types(
+                allocator,
+                tokens,
+                body.result_start,
+                body.result_end,
+                type_params,
+                structs,
+                struct_layouts,
+                payload_enums,
+                imported_alias_ctx,
+                &owned_types,
+            ),
+        }) orelse continue;
         const results = parsed_results.types;
         var results_owned = true;
         errdefer if (results_owned) allocator.free(results);
@@ -540,6 +589,73 @@ pub fn collect_direct_imported_func_decls_from_tests(
     }
 }
 
+/// GC-sync variant of imported-function collection. The ordinary collector
+/// expands source aggregates for the Core ABI; the GC route must preserve
+/// managed results as typed GC references instead.
+pub fn collect_direct_gc_sync_imported_func_decls(
+    allocator: std.mem.Allocator,
+    entry_tokens: []const lexer.Token,
+    graph: *const imports.ModuleGraph,
+    structs: []const StructDecl,
+    struct_layouts: []const StructLayout,
+    payload_enums: []const PayloadEnumDecl,
+    out: *std.ArrayList(FuncDecl),
+) !void {
+    const root_idx = find_root_module_index(graph.modules, entry_tokens) orelse return;
+
+    var stack = std.ArrayList(ReachVisit).empty;
+    defer stack.deinit(allocator);
+    var visited = std.ArrayList(ReachVisit).empty;
+    defer visited.deinit(allocator);
+
+    try collect_start_body_calls(allocator, graph.modules[root_idx].tokens, root_idx, &stack);
+    try collect_all_function_body_calls(allocator, graph.modules[root_idx].tokens, root_idx, &stack);
+    while (stack.items.len != 0) {
+        const visit = stack.pop().?;
+        if (has_reach_visit(visited.items, visit)) continue;
+        try visited.append(allocator, visit);
+
+        const module = graph.modules[visit.module_idx];
+        if (find_codegen_import_by_alias(module.tokens, visit.name)) |import_ref| {
+            const child_idx = find_imported_module_index(allocator, graph, visit.module_idx, import_ref) orelse return error.UnsupportedGcSyncModuleGraph;
+            if (find_func_decl(out.items, import_ref.alias) == null) {
+                _ = try collect_gc_sync_func_decl_by_name_as(
+                    allocator,
+                    graph.modules[child_idx].tokens,
+                    structs,
+                    struct_layouts,
+                    payload_enums,
+                    .{ .graph = graph, .module_idx = child_idx },
+                    import_ref.target,
+                    import_ref.alias,
+                    false,
+                    out,
+                );
+            }
+            try collect_function_body_calls(allocator, graph.modules[child_idx].tokens, child_idx, import_ref.target, &stack);
+            continue;
+        }
+
+        if (visit.module_idx != root_idx and find_func_decl_by_source_for_tokens(out.items, module.tokens, public_decl_name(visit.name)) == null) {
+            const emit_name = try module_scoped_symbol_name(allocator, visit.module_idx, public_decl_name(visit.name));
+            defer allocator.free(emit_name);
+            _ = try collect_gc_sync_func_decl_by_name_as(
+                allocator,
+                module.tokens,
+                structs,
+                struct_layouts,
+                payload_enums,
+                .{ .graph = graph, .module_idx = visit.module_idx },
+                public_decl_name(visit.name),
+                emit_name,
+                true,
+                out,
+            );
+        }
+        try collect_function_body_calls(allocator, module.tokens, visit.module_idx, visit.name, &stack);
+    }
+}
+
 pub fn same_callable_source_name(left: []const u8, right: []const u8) bool {
     return std.mem.eql(u8, public_decl_name(left), public_decl_name(right));
 }
@@ -554,6 +670,61 @@ pub fn collect_func_decl_by_name_as(
     emit_name: []const u8,
     owned_emit_name: bool,
     out: *std.ArrayList(FuncDecl),
+) !bool {
+    return collect_func_decl_by_name_as_with_result_abi(
+        allocator,
+        tokens,
+        structs,
+        struct_layouts,
+        &.{},
+        imported_alias_ctx,
+        target_name,
+        emit_name,
+        owned_emit_name,
+        out,
+        .normal,
+    );
+}
+
+pub fn collect_gc_sync_func_decl_by_name_as(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    structs: []const StructDecl,
+    struct_layouts: []const StructLayout,
+    payload_enums: []const PayloadEnumDecl,
+    imported_alias_ctx: ?ImportedAliasContext,
+    target_name: []const u8,
+    emit_name: []const u8,
+    owned_emit_name: bool,
+    out: *std.ArrayList(FuncDecl),
+) !bool {
+    return collect_func_decl_by_name_as_with_result_abi(
+        allocator,
+        tokens,
+        structs,
+        struct_layouts,
+        payload_enums,
+        imported_alias_ctx,
+        target_name,
+        emit_name,
+        owned_emit_name,
+        out,
+        .gc_sync,
+    );
+}
+
+fn collect_func_decl_by_name_as_with_result_abi(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    structs: []const StructDecl,
+    struct_layouts: []const StructLayout,
+    payload_enums: []const PayloadEnumDecl,
+    imported_alias_ctx: ?ImportedAliasContext,
+    target_name: []const u8,
+    emit_name: []const u8,
+    owned_emit_name: bool,
+    out: *std.ArrayList(FuncDecl),
+    result_abi: ResultAbi,
 ) !bool {
     var depth_brace: usize = 0;
     var pending_type_params = std.ArrayList([]const u8).empty;
@@ -610,17 +781,31 @@ pub fn collect_func_decl_by_name_as(
             try allocator.dupe([]const u8, pending_type_params.items);
         var type_params_owned = pending_type_params.items.len != 0;
         errdefer if (type_params_owned) allocator.free(type_params);
-        const parsed_results = (try parse_func_decl_result_types(
-            allocator,
-            tokens,
-            body.result_start,
-            body.result_end,
-            type_params,
-            structs,
-            struct_layouts,
-            imported_alias_ctx,
-            &owned_types,
-        )) orelse return false;
+        const parsed_results = (try switch (result_abi) {
+            .normal => parse_func_decl_result_types(
+                allocator,
+                tokens,
+                body.result_start,
+                body.result_end,
+                type_params,
+                structs,
+                struct_layouts,
+                imported_alias_ctx,
+                &owned_types,
+            ),
+            .gc_sync => parse_gc_sync_func_decl_result_types(
+                allocator,
+                tokens,
+                body.result_start,
+                body.result_end,
+                type_params,
+                structs,
+                struct_layouts,
+                payload_enums,
+                imported_alias_ctx,
+                &owned_types,
+            ),
+        }) orelse return false;
         const results = parsed_results.types;
         var results_owned = true;
         errdefer if (results_owned) allocator.free(results);
@@ -761,6 +946,75 @@ pub fn parse_func_decl_result_types(
         );
     }
     return null;
+}
+
+fn parse_gc_sync_func_decl_result_types(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    type_params: []const []const u8,
+    structs: []const StructDecl,
+    struct_layouts: []const StructLayout,
+    payload_enums: []const PayloadEnumDecl,
+    imported_alias_ctx: ?ImportedAliasContext,
+    owned_types: *std.ArrayList([]const u8),
+) !?FuncResultParse {
+    if (type_params.len != 0) return parse_func_decl_result_types(
+        allocator,
+        tokens,
+        start_idx,
+        end_idx,
+        type_params,
+        structs,
+        struct_layouts,
+        imported_alias_ctx,
+        owned_types,
+    );
+
+    if (start_idx + 1 == end_idx and tokens[start_idx].kind == .ident and find_payload_enum_decl(payload_enums, tokens[start_idx].lexeme) != null) {
+        const results = try allocator.alloc([]const u8, 1);
+        errdefer allocator.free(results);
+        results[0] = tokens[start_idx].lexeme;
+        const items = try allocator.alloc(FuncResultItem, 1);
+        errdefer allocator.free(items);
+        items[0] = .{ .ty = results[0], .abi_start = 0, .abi_len = 1 };
+        return .{ .types = results, .items = items };
+    }
+
+    const parsed_ty = (try parse_codegen_type_expr(allocator, tokens, start_idx, end_idx, owned_types)) orelse return parse_func_decl_result_types(
+        allocator,
+        tokens,
+        start_idx,
+        end_idx,
+        type_params,
+        structs,
+        struct_layouts,
+        imported_alias_ctx,
+        owned_types,
+    );
+    if (parsed_ty.next_idx != end_idx or !is_gc_sync_tuple_text_bytes(parsed_ty.ty)) return parse_func_decl_result_types(
+        allocator,
+        tokens,
+        start_idx,
+        end_idx,
+        type_params,
+        structs,
+        struct_layouts,
+        imported_alias_ctx,
+        owned_types,
+    );
+
+    const results = try allocator.alloc([]const u8, 1);
+    errdefer allocator.free(results);
+    results[0] = parsed_ty.ty;
+    const items = try allocator.alloc(FuncResultItem, 1);
+    items[0] = .{ .ty = parsed_ty.ty, .abi_start = 0, .abi_len = 1 };
+    return .{ .types = results, .items = items };
+}
+
+fn is_gc_sync_tuple_text_bytes(ty: []const u8) bool {
+    return std.mem.eql(u8, ty, "Tuple<text,[u8]>");
 }
 
 fn parse_single_ident_func_result(

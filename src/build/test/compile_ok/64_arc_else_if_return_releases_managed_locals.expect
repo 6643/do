@@ -1,8 +1,9 @@
-;; if-else-if-block
-;; if-else-block
+;; gc-sync
+array.new_fixed $do_bytes 3
+;; gc-root local_bind $data
+if
 else
-;; arc-release-local data
-local.get $data
-call $__arc_dec
-return
-end
+if
+else
+;; gc-root branch_join
+;; gc-root branch_join

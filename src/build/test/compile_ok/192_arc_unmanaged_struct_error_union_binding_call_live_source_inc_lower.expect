@@ -1,3 +1,4 @@
-count=1 call $__arc_inc
-count=0 ;; arc-call-move data
+;; gc-sync
+count=0 __arc_
 call $make
+local.set $result.__union_tag

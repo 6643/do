@@ -1,0 +1,30 @@
+package demo:marshal-record-indirect-lower@1.0.0;
+
+interface api {
+  record writing {
+    f0: u64,
+    f1: u64,
+    f2: u64,
+    f3: u64,
+    f4: u64,
+    f5: u64,
+    f6: u64,
+    f7: u64,
+    f8: u64,
+    f9: u64,
+    f10: u64,
+    f11: u64,
+    f12: u64,
+    f13: u64,
+    f14: u64,
+    f15: u64,
+    f16: u64,
+  }
+
+  write: func(value: writing);
+}
+
+world probe {
+  import api;
+  export run: func() -> u32;
+}

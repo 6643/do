@@ -178,6 +178,50 @@ name = "do-p3-future-owned-canonical-abi"
 path = "src/bin/future_owned_canonical_abi.rs"
 
 [[bin]]
+name = "do-p3-gc-marshal-text-host-runner"
+path = "src/bin/gc_marshal_text.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-u32-host-runner"
+path = "src/bin/gc_marshal_u32.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-u32-lift-host-runner"
+path = "src/bin/gc_marshal_u32_lift.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-host-runner"
+path = "src/bin/gc_marshal_record.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-lower-host-runner"
+path = "src/bin/gc_marshal_record_lower.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-lower-equivalence-runner"
+path = "src/bin/gc_marshal_record_lower_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-equivalence-runner"
+path = "src/bin/gc_marshal_record_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-indirect-lower-host-runner"
+path = "src/bin/gc_marshal_record_indirect_lower.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-indirect-lower-equivalence-runner"
+path = "src/bin/gc_marshal_record_indirect_lower_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-u32-equivalence-runner"
+path = "src/bin/gc_marshal_u32_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-wasi-random-host-runner"
+path = "src/bin/gc_wasi_random.rs"
+
+[[bin]]
 name = "do-p3-g6-2-c-min-list-resource-producer-abi"
 path = "src/bin/g6_2_c_min_list_resource_producer_abi.rs"
 

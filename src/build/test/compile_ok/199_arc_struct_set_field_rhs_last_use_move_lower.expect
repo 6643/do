@@ -1,4 +1,5 @@
-count=1 call $__arc_inc
-;; field-set-move next
-count=1 ;; arc-overwrite-release box.value
-count=1 ;; arc-release-local next
+;; gc-sync
+count=2 struct.new $box
+;; gc-root overwrite $box
+local.get $next
+local.set $box

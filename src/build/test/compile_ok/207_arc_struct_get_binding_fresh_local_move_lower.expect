@@ -1,2 +1,5 @@
-count=1 ;; field-get-move box.value
-count=1 call $__arc_inc
+;; gc-sync
+(type $box (struct (field $value (ref null $do_bytes))))
+(local $value (ref null $do_bytes))
+struct.get $box $value
+local.set $value

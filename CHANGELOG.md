@@ -1,5 +1,13 @@
 # Changelog
 
+# 2026-08-20 GC third-level nested managed field path: admitted the bounded
+  direct-local `@get/@set(outer, .inner, .middle, .leaf, ...)` synchronous shape.
+  The compiler rebuilds the leaf and each parent in typed GC order while
+  preserving unchanged managed payloads and scalar fields. A compiled fixture,
+  pinned `wasm-tools 1.255.0`/Wasmtime GC probe, and ARC/GC equivalence row pass
+  with the `27815` oracle. A fourth managed segment, arbitrary producers,
+  async/resource, and host/WIT remain fail-closed; G5c full cutover is pending.
+
 # 2026-08-11 D2 private filesystem `descriptor.set-size` promotion: admitted
   only `wasi:filesystem/types@0.3.0-rc-2025-09-16 / descriptor.set-size` with
   the pinned upstream WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`
@@ -400,7 +408,7 @@ the migration.
   resource tables. Sixth forwarding, seventh nested level, borrowed/list/variant
   fields, and resource escape remain rejected. Pinned `wasm-tools 1.254.0`
   explicitly rejects a `borrow<ticket>` stream record during Component embed.
-  See `docs/superpowers/plans/2026-08-03-g6-2-bounded-next-phase.md`.
+  See `doc/superpowers/plans/2026-08-03-g6-2-bounded-next-phase.md`.
 
 - 2026-08-03 G6.2 five-level nested owned-resource record checkpoint: the
   private `do:record-resource-stream-nested-five-level@0.1.0` descriptor now
@@ -410,7 +418,7 @@ the migration.
   stream drop, one future drop, and an empty resource table. Sixth-level,
   multi-child, mixed scalar/nested, borrow/list/variant, and resource-escape
   shapes remain rejected. See
-  `docs/superpowers/specs/2026-08-03-record-stream-nested-five-level-design.md`.
+  `doc/superpowers/specs/2026-08-03-record-stream-nested-five-level-design.md`.
 
 - 2026-08-03 G6.2 parameterized four-hop forwarding helper producer checkpoint:
   the private `do:stream-probe` producer now admits the exact chain
@@ -422,7 +430,7 @@ the migration.
   `value=90`, one host callback, and one stream drop. A fifth forwarding edge,
   general async calls, arbitrary producer expressions, and borrowed/nested/
   variant resource fields remain rejected. See
-  `docs/superpowers/specs/2026-08-03-stream-writer-parameterized-four-hop-design.md`.
+  `doc/superpowers/specs/2026-08-03-stream-writer-parameterized-four-hop-design.md`.
 
 - 2026-08-03 G6.2 four-level nested owned-resource record checkpoint: the
   private `do:record-resource-stream-nested-four-level@0.1.0` descriptor now
@@ -432,7 +440,7 @@ the migration.
   stream drop, one future drop, and an empty resource table. Fifth-level,
   multi-child, mixed scalar/nested, borrow/list/variant, and resource-escape
   shapes remain rejected. See
-  `docs/superpowers/specs/2026-08-03-record-stream-nested-four-level-design.md`.
+  `doc/superpowers/specs/2026-08-03-record-stream-nested-four-level-design.md`.
 
 - 2026-08-03 G6.2 parameterized three-hop forwarding helper producer checkpoint:
   the private `do:stream-probe` producer now admits the exact chain
@@ -553,7 +561,7 @@ the migration.
 
 - G6.3 edge + regression hygiene: collect imported/module-local **payload enums** in codegen (`collectImportedPayloadEnumDecls`) so `@lib` wrappers may use intermediate `total IpSocketAddress = V4(addr)` before host bind; fixture `compile_ok/295`; stdlib tcp/udp bind helpers use intermediate total. `run_tests.sh` falls back to **bun** when `node` is missing; docs: `start_here` plan no longer waits on G6.3.
 
-- **G6.3 sockets scheme B** (create/bind/drop): dual `Ipv4`/`Ipv6` address + payload enum `IpSocketAddress`; resource shells `TcpSocket`/`UdpSocket`; coarse `TcpError`/`UdpError`; stdlib `lib/tcp.do`/`lib/udp.do`/`lib/net.do`; known-table + `wasiLowering` + guest address pack; fixtures `compile_ok/291`–`294`; manifest tool marks sockets create/bind lowerable. Design: `docs/superpowers/specs/2026-07-13-g6-3-sockets-scheme-b-design.md`. Docs: G6.3 closed in `pending_blocked` / start_here / roadmap / wasi_p3_lowering / spec_rules. Non-goals remain: listen/connect, true host smoke (D2), G6.2 async.
+- **G6.3 sockets scheme B** (create/bind/drop): dual `Ipv4`/`Ipv6` address + payload enum `IpSocketAddress`; resource shells `TcpSocket`/`UdpSocket`; coarse `TcpError`/`UdpError`; stdlib `lib/tcp.do`/`lib/udp.do`/`lib/net.do`; known-table + `wasiLowering` + guest address pack; fixtures `compile_ok/291`–`294`; manifest tool marks sockets create/bind lowerable. Design: `doc/superpowers/specs/2026-07-13-g6-3-sockets-scheme-b-design.md`. Docs: G6.3 closed in `pending_blocked` / start_here / roadmap / wasi_p3_lowering / spec_rules. Non-goals remain: listen/connect, true host smoke (D2), G6.2 async.
 
 - Branch-completeness audit (full `src/**/*.zig`, 2199 fns): check depth-split extracts keep full decision matrices (null/false/true fallthrough, error arms, multi-result LHS). Campaign extracts path-equivalent; tri-state `!?bool` call sites use `|handled| return handled`. No incomplete-branch fix required. Empirical: `zig test codegen_api.zig` 69; suite `pass=933 fail=0 skip=3`.
 

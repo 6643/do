@@ -1,3 +1,6 @@
-count=1 call $__arc_inc
-count=0 ;; arc-call-move data
-call $make
+(type $do_bytes
+count=1 call $nop
+count=1 call $make
+count=2 ;; gc-root return_value
+count=2 ;; gc-root call_result
+count=0 __arc_

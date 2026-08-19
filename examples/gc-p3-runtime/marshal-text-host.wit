@@ -1,0 +1,10 @@
+package demo:marshal-host@1.0.0;
+
+interface api {
+  send: func(value: string);
+}
+
+world probe {
+  import api;
+  export run: func();
+}

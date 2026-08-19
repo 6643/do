@@ -5,6 +5,13 @@
 > and component/core validation coverage; this is not a claim that executable
 > WASI component lowering is implemented.
 
+> **GC-first execution note (2026-08-11):** `doc/memory.md` and
+> `doc/design/2026-08-11-gc-first-memory-decision.md` select Wasm GC for v1.
+> References below to ARC storage/handles describe the current Core WAT
+> transition implementation only, not the selected runtime contract. Values
+> crossing Component/WIT boundaries remain copied or marshaled, and resource
+> ownership/drop remains explicit ABI behavior rather than GC finalization.
+
 ## Generic component async evidence
 
 `examples/p3-runtime/test.sh` is the executable evidence for one smaller
@@ -322,7 +329,7 @@ result area); bind reuses unit-error with guest-packed `ip-socket-address` point
 drop is resource-drop. Public do types use dual `Ipv4SocketAddress` /
 `Ipv6SocketAddress`, payload enum `IpSocketAddress = V4|V6`, and resource shells
 `TcpSocket` / `UdpSocket` (see `lib/tcp.do`, `lib/udp.do`,
-`docs/superpowers/specs/2026-07-13-g6-3-sockets-scheme-b-design.md`).
+`doc/superpowers/specs/2026-07-13-g6-3-sockets-scheme-b-design.md`).
 `http/client.send` uses HTTP request/response resources
 and is async in the WIT world, so it is likewise known but unsupported until HTTP
 resource/result/async lowering exists. Other complex unregistered

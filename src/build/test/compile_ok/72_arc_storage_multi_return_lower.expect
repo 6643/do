@@ -1,13 +1,10 @@
-(func $make_pair (result i32 i32)
-;; arc-return-move left
-;; arc-return-move right
+;; gc-sync source_len=209 token_count=55
+(func $make_pair (result (ref null $do_bytes) (ref null $do_bytes))
+array.new_fixed $do_bytes 4
+array.new_fixed $do_bytes 5
 local.get $left
 local.get $right
 return
 call $make_pair
-local.set $__storage_overwrite_tmp
-;; arc-overwrite-release second
 local.set $second
-local.set $__storage_overwrite_tmp
-;; arc-overwrite-release first
 local.set $first

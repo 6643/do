@@ -1,4 +1,6 @@
-count=2 call $__arc_inc
-;; arc-overwrite-move next_box
-count=1 ;; arc-overwrite-release box
-count=1 ;; arc-release-local next_box
+;; gc-sync
+(local $box (ref null $box))
+(local $next_box (ref null $box))
+;; gc-root overwrite $box
+local.get $next_box
+local.set $box

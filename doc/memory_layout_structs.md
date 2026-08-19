@@ -1,7 +1,10 @@
-# do v1 内存布局 Zig 结构伪代码
+# do ARC Transition 内存布局 Zig 结构伪代码
 
-**状态**: v1 当前草案, 已与 `doc/memory.md` 对齐。
-**目标**: 只描述 allocator block、managed object、layout table 和 ARC release/COW 的字段与作用。
+**状态**: 当前 ARC transition implementation draft. `doc/memory.md` 与
+`doc/design/2026-08-11-gc-first-memory-decision.md` 定义 GC-first v1
+contract; 本文不是 v1 runtime specification。
+**目标**: 只描述当前 allocator block、managed object、layout table 和 ARC
+release/COW 的字段与作用, 作为 GC migration debt 的实现对照。
 
 ---
 

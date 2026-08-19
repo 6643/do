@@ -4,8 +4,16 @@ const representation = @import("codegen_gc_representation.zig");
 
 pub const RootMode = enum { synchronous, suspendable };
 pub const RootPoint = enum { local_bind, overwrite, branch_join, loop_join, return_value, suspend_frame, resume_frame, cancel_frame, terminal };
-pub const RootLocal = struct { name: []const u8, rep: representation.ValueRep };
-pub const RootSlot = struct { name: []const u8, point: RootPoint };
+pub const RootLocal = struct {
+    name: []const u8,
+    rep: representation.ValueRep,
+    bind_at_entry: bool = true,
+};
+pub const RootSlot = struct {
+    name: []const u8,
+    point: RootPoint,
+    bind_at_entry: bool = true,
+};
 pub const RootPlan = struct { slots: []const RootSlot };
 pub const SuspendableRootField = struct {
     name: []const u8,
@@ -32,7 +40,7 @@ pub fn build_root_plan(allocator: std.mem.Allocator, locals: []const RootLocal, 
     var cursor: usize = 0;
     for (locals) |local| {
         if (local.rep != .gc_managed) continue;
-        slots[cursor] = .{ .name = local.name, .point = .local_bind };
+        slots[cursor] = .{ .name = local.name, .point = .local_bind, .bind_at_entry = local.bind_at_entry };
         cursor += 1;
         if (mode != .suspendable) continue;
         slots[cursor] = .{ .name = local.name, .point = .suspend_frame };
