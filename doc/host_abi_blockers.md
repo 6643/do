@@ -3057,3 +3057,17 @@ This is one canonical-boundary equivalence row and is recorded in
 same-Do-source default-route equivalence, does not change the `cm32p2|wasi:*`
 legacy route, and does not close the broader `host_wit_marshalling` or G5c
 cutover rows.
+
+### G5c C2 gate: private manifest-backed compiler route (2026-08-20)
+
+`src/build/codegen_component_manifest_route.zig` now provides the private
+compiler-side entry point for the bounded manifest slice. The caller supplies
+only the descriptor id; `codegen_component_descriptor_manifest.zig` remains the
+single authority for source/world loading, SHA-256 provenance, WIT signature,
+canonical import, and measured-plan validation before the existing emitter is
+called. The focused tests prove the pinned random lift is emitted and an
+unknown descriptor returns `DescriptorNotFound` before WAT generation.
+
+This closes only the private parser-backed route wiring for one measured
+`wasi:random` lift. It does not wire ordinary `do build` host/WIT lowering to
+GC, broaden the host/WIT shape inventory, or close G5c default cutover.

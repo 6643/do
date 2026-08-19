@@ -472,6 +472,15 @@ is one canonical-boundary equivalence row; it does not route the ordinary
 `do build` host/WIT path through GC and does not close the broader
 `host_wit_marshalling`/G5c inventory row.
 
+### G5c C2 private manifest-backed route
+
+`src/build/codegen_component_manifest_route.zig` is the private compiler-side
+entry point for the bounded manifest slice. It accepts only the descriptor id,
+loads the hash-pinned source and world through the provenance loader, and then
+hands the measured request to the parser-backed marshal route. Unknown
+descriptors fail before WAT emission; the ordinary `do build` host/WIT route
+remains ARC-backed.
+
 ### Bounded synchronous `list<u32>` ARC/GC equivalence
 
 `test_gc_marshal_u32_equivalence.sh` assembles the fixed `list<u32>` lower

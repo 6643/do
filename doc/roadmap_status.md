@@ -1738,3 +1738,16 @@ This closes one canonical-boundary equivalence row and adds it to the machine-
 readable `host_wit_marshalling` inventory. It does not claim same-Do-source
 default-route equivalence: ordinary `do build` host/WIT lowering remains
 ARC-backed, and general host/WIT shapes plus G5c cutover remain pending.
+
+### 2026-08-20 G5c C2 gate: private manifest-backed compiler route
+
+`src/build/codegen_component_manifest_route.zig` now connects the checked-in
+descriptor manifest to the parser-backed measured marshal emitter. The private
+entry point accepts only a descriptor id, so source paths, WIT identity,
+signature, canonical import, and hash remain owned by the provenance loader.
+The focused route tests pass for the pinned random `list<u8>` lift and reject
+an unknown descriptor before WAT emission.
+
+This closes one compiler-side private route slice only. The normal `do build`
+host/WIT route remains ARC-backed; general aggregates, default route wiring,
+and G5c cutover remain pending.

@@ -5,8 +5,7 @@
 //! GC-to-linear-memory lift agree for one synchronous operation.
 const std = @import("std");
 const marshal = @import("codegen_component_marshal_plan.zig");
-const descriptor_loader = @import("codegen_component_descriptor_manifest.zig");
-const marshal_route = @import("codegen_component_marshal_route.zig");
+const manifest_route = @import("codegen_component_manifest_route.zig");
 const wasi_registry = @import("codegen_wasi_registry.zig");
 
 const descriptor_manifest_path = "doc/wit/gc_descriptor_manifest.json";
@@ -31,7 +30,7 @@ pub fn emit_random_bytes_lift_module(
     allocator: std.mem.Allocator,
     repository_root: []const u8,
 ) ![]u8 {
-    var loaded = try descriptor_loader.load_request(
+    const base = try manifest_route.emit_sync_marshal_module_from_manifest(
         io,
         allocator,
         repository_root,
@@ -40,10 +39,9 @@ pub fn emit_random_bytes_lift_module(
         random_bytes_measurement(),
         16,
     );
-    defer loaded.deinit();
-    const base = try marshal_route.emit_sync_marshal_module_from_wit_source(allocator, loaded.request);
     defer allocator.free(base);
 
+    // The manifest-backed module is extended below with a probe export.
     if (!std.mem.endsWith(u8, base, ")\n")) return error.InvalidGeneratedModule;
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
