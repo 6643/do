@@ -145,6 +145,7 @@ WASM_TOOLS_BIN="$(command -v wasm-tools)" bash examples/gc-p3-runtime/test_gc_ma
 WASM_TOOLS_BIN="$(command -v wasm-tools)" bash examples/gc-p3-runtime/test_gc_marshal_record_lower_component.sh
 WASM_TOOLS_BIN="$(command -v wasm-tools)" bash examples/gc-p3-runtime/test_gc_marshal_record_lower_host.sh
 WASM_TOOLS_BIN="$(command -v wasm-tools)" bash examples/gc-p3-runtime/test_gc_marshal_record_lower_equivalence.sh
+WASM_TOOLS_BIN="$(command -v wasm-tools)" bash examples/gc-p3-runtime/test_gc_wasi_random_list_lift_equivalence.sh
 WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_f64_list_literal.sh
 WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_f64_list_set.sh
 WASMTIME_BIN="$(command -v wasmtime)" bash examples/gc-p3-runtime/test_do_gc_bool_list_set.sh
@@ -459,6 +460,17 @@ rebuild. `managed-struct-payload-renamed.do` repeats the same check with
 `Packet/version/bytes/rewrite` and reversed field order, so the wrapper does
 not depend on source names or declaration order. Nested producers, text
 payload replacement, and resource fields remain outside this slice.
+
+### Manifest-backed WASI random `list<u8>` ARC/GC equivalence
+
+`test_gc_wasi_random_list_lift_equivalence.sh` generates the GC lift from the
+hash-pinned descriptor manifest, assembles it beside a hand-authored linear
+memory ARC reference module under the same versioned `wasi:random` WIT package,
+and runs both Components through the same Rust/Wasmtime host callback. Both
+routes must observe one 16-byte result, one callback, and identical bytes. This
+is one canonical-boundary equivalence row; it does not route the ordinary
+`do build` host/WIT path through GC and does not close the broader
+`host_wit_marshalling`/G5c inventory row.
 
 ### Bounded synchronous `list<u32>` ARC/GC equivalence
 

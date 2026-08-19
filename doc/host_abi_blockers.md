@@ -3042,3 +3042,18 @@ mutated-source check that fails with `SourceHashMismatch` before assembly.
 This closes descriptor provenance for the bounded A slice only; the default
 host/WIT route remains ARC-backed and `host_wit_marshalling`/G5c cutover stay
 pending until broader inventory and ARC/GC equivalence are complete.
+
+### G5c C1 gate: manifest-backed WASI random ARC/GC equivalence (2026-08-20)
+
+`examples/gc-p3-runtime/test_gc_wasi_random_list_lift_equivalence.sh` now
+assembles the manifest-generated GC lift together with a hand-authored
+linear-memory ARC reference under the same versioned
+`wasi:random/random@0.3.0-rc-2025-09-16` WIT package. The shared
+Rust/Wasmtime runner observes one callback and the same 16-byte value from both
+Components: `lengths=16/16`, `bytes=16/16`, `calls=1/1`.
+
+This is one canonical-boundary equivalence row and is recorded in
+`src/build/test/check_gc_migration_inventory.sh`. It does not prove
+same-Do-source default-route equivalence, does not change the `cm32p2|wasi:*`
+legacy route, and does not close the broader `host_wit_marshalling` or G5c
+cutover rows.

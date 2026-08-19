@@ -54,7 +54,22 @@ run_descriptor_manifest_gate() {
     printf '[PASS] descriptor manifest random Component gate includes negative hash drift\n'
 }
 
+run_random_equivalence_gate() {
+    local gate_output="$TMP_DIR/gc-wasi-random-equivalence.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_wasi_random_list_lift_equivalence.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed WASI random ARC/GC equivalence gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed WASI random ARC/GC equivalence gate included\n'
+}
+
 run_descriptor_manifest_gate
+run_random_equivalence_gate
 
 build_fixture() {
     local fixture="$1" output="$2"
@@ -299,7 +314,7 @@ else
 fi
 
 if [[ "$MODE" == baseline ]]; then
-    printf 'G5c residual baseline gate passed: admitted GC, residual ARC, gc-core oracle, inventory pending\n'
+    printf 'G5c residual baseline gate passed: admitted GC, residual ARC, gc-core oracle, manifest random equivalence, inventory pending\n'
 else
     printf 'G5c cutover residual gate passed: admitted GC, no ARC residual, no gc-core selector, inventory complete\n'
 fi

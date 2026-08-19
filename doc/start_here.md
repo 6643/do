@@ -194,6 +194,7 @@ bash examples/gc-p3-runtime/test_gc_marshal_record_mixed_lower_host.sh
 bash examples/gc-p3-runtime/test_gc_marshal_record_mixed_lower_equivalence.sh
 bash examples/gc-p3-runtime/test_gc_marshal_record_indirect_lower_host.sh
 bash examples/gc-p3-runtime/test_gc_marshal_record_indirect_lower_equivalence.sh
+bash examples/gc-p3-runtime/test_gc_wasi_random_list_lift_equivalence.sh
 
 # codegen 单元测试
 cd src && zig test build/codegen_api.zig
@@ -218,6 +219,7 @@ RUN_WASM=1 SKIP_BUILD=1 ./src/build/test/run_tests.sh
 | async host scalar-argument ABI probe | current `wasm-tools 1.255.0` Component assembly green; frame `20` bytes, argument `u32@12`; ready/pending/cancel oracle green with `argument=7`, exactly-once Future drop, empty `ResourceTable`; probe-only, general lowering pending |
 | G6.2 scalar-list producer | private `stream<list<u32>>` promotion green; `ptr=64`, `len=68`, `stride=4`, max `3`, stream capacity `1`; count `0..3`, invalid `4`, pending/error/drop/cancel, exactly-once list release, empty `ResourceTable`; generic list/producer remains pending |
 | G5c bounded text host marshal | pinned Core/WIT assembly plus Rust/Wasmtime host execution observes one canonical `hello` string from a fixed GC text lower/copy/call probe; the paired ARC/GC equivalence probe reports one allocation/free on each route; lift, general shapes, compiler wiring, and default-route cutover remain pending |
+| G5c manifest-backed WASI random lift | GC lift and hand-authored linear-memory ARC reference use the same versioned WIT package; Rust/Wasmtime observes `lengths=16/16`, `bytes=16/16`, `calls=1/1`; one canonical-boundary equivalence row is closed, while default host/WIT routing and broader G5c cutover remain pending |
 | G5c bounded scalar-record lift/lower | `lift` observes `{code: 20, count: 22}` through one result-area pointer; parser-backed flat scalar `lower` observes `{code: 7, count: 35}` through canonical `(i32,i32)` and returns `42`; host and GC/flat equivalence gates pass; indirect beyond the pinned 17-field shape, nested/general aggregates, compiler wiring, and default-route cutover remain pending |
 | G5c bounded mixed scalar-record lower | parser-backed `u32/u64/s64` record observes `{code: 7, count: 35, status: -5}` through canonical `(i32,i64,i64)` with a 24-byte measured layout; host and GC/flat equivalence gates pass with result `42` and one callback per path; indirect beyond the pinned 17-field shape, nested/general aggregates, compiler wiring, and default-route cutover remain pending |
 | G5c bounded indirect scalar-record lower | parser-backed 17-field `u64` record measures 136 bytes/alignment 8 and lowers to canonical `(i32)`; host gate passes `result=42 write-calls=1`, GC/flat equivalence passes `42/42` and `1/1`; arbitrary indirect layouts, nested/general aggregates, compiler wiring, and default-route cutover remain pending |

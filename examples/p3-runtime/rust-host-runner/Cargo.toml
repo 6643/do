@@ -222,6 +222,10 @@ name = "do-p3-gc-wasi-random-host-runner"
 path = "src/bin/gc_wasi_random.rs"
 
 [[bin]]
+name = "do-p3-gc-wasi-random-equivalence-runner"
+path = "src/bin/gc_wasi_random_equivalence.rs"
+
+[[bin]]
 name = "do-p3-g6-2-c-min-list-resource-producer-abi"
 path = "src/bin/g6_2_c_min_list_resource_producer_abi.rs"
 

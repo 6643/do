@@ -1723,3 +1723,18 @@ Evidence: `cd src && zig test main.zig` (`519/519`),
 descriptor/provenance gate, not a default GC cutover: the host/WIT inventory,
 same-fixture ARC/GC equivalence, general aggregate shapes, async/resource
 paths, and the normal ARC-backed route remain pending.
+
+### 2026-08-20 G5c C1 gate: manifest-backed WASI random ARC/GC equivalence
+
+`examples/gc-p3-runtime/test_gc_wasi_random_list_lift_equivalence.sh` now
+assembles the manifest-generated GC lift and a hand-authored linear-memory ARC
+reference under the same versioned `wasi:random` WIT package. The shared
+Rust/Wasmtime runner invokes both Components with the same callback and
+requires `lengths=16/16`, `bytes=16/16`, and `calls=1/1`. Core parsing,
+Component assembly, validation, and host execution pass with
+`wasm-tools 1.255.0`.
+
+This closes one canonical-boundary equivalence row and adds it to the machine-
+readable `host_wit_marshalling` inventory. It does not claim same-Do-source
+default-route equivalence: ordinary `do build` host/WIT lowering remains
+ARC-backed, and general host/WIT shapes plus G5c cutover remain pending.
