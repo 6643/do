@@ -1,0 +1,3 @@
+world probe {
+  import api;
+}

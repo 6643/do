@@ -40,7 +40,7 @@ Option/Result/Variant、async/resource 和 G5c cutover 仍 pending。
 | 目录 | 标准库 `lib/`; 工具链 `src/` (原 `tool/`) |
 | active Component tooling | `wasm-tools 1.255.0 (76e20611d 2026-07-30)` only; SHA-256 `6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`; `--dummy-names legacy` is the current async naming mode |
 
-当前增量: G5a 默认同步候选新增推断 `[u8]/[u32]` 列表存储形状 (`seed [u8]/[u32]` + 单值 `@put`) 与一层、两层、三层直接 nested managed-struct field path; 默认 build/parse manifest 为 63 fixtures, 这些形状仍为 G5a-only. G5c residual baseline gate 已建立; bounded parser-backed text marshal 已通过 Core/WIT assembly、单一 host-driven lower gate 和固定 text ARC/GC equivalence gate（两条路径均为一次 allocation/free）, 固定 `list<u32>` 也已通过 lower/lift host gates 与独立 ARC/GC equivalence gate; flat/mixed scalar-record 和 pinned 17-field indirect record lower 也已有 host/equivalence evidence; 但 host/WIT inventory 的通用 lift、一般 aggregate、compiler wiring 与 full GC cutover 仍被 pending rows 阻断.
+当前增量: G5a 默认同步候选新增推断 `[u8]/[u32]` 列表存储形状 (`seed [u8]/[u32]` + 单值 `@put`) 与一层、两层、三层直接 nested managed-struct field path; 默认 build/parse manifest 为 63 fixtures, 这些形状仍为 G5a-only. G5c residual baseline gate 已建立; bounded parser-backed text marshal 已通过 Core/WIT assembly、单一 host-driven lower gate 和固定 text ARC/GC equivalence gate（两条路径均为一次 allocation/free），C3 manifest-backed text lower 现在由哈希固定 descriptor 生成并纳入同一等价门禁；固定 `list<u32>` 也已通过 lower/lift host gates 与独立 ARC/GC equivalence gate; flat/mixed scalar-record 和 pinned 17-field indirect record lower 也已有 host/equivalence evidence; 但 host/WIT inventory 的通用 lift、一般 aggregate、compiler wiring 与 full GC cutover 仍被 pending rows 阻断.
 
 2026-08-20 增量: 第三个 managed segment 的直接同步 nested field path (`@get/@set(outer, .inner, .middle, .leaf, ...)`) 已接入 typed GC lowering；第四层、更深 producer expression、async/resource 与 host/WIT 仍 fail-closed。新增 compiled fixture、独立 Wasmtime GC probe 与 ARC/GC semantic equivalence 行均通过 `wasm-tools 1.255.0`、Wasmtime GC 和 `27815` oracle；默认 GC build/parse gate 现为 63 fixtures，等价矩阵现为 24 行。G5c full cutover 仍 pending.
 
@@ -1751,3 +1751,20 @@ an unknown descriptor before WAT emission.
 This closes one compiler-side private route slice only. The normal `do build`
 host/WIT route remains ARC-backed; general aggregates, default route wiring,
 and G5c cutover remain pending.
+
+### 2026-08-20 G5c C3 gate: private manifest-backed text lower
+
+The second measured manifest shape is now a `string` lower. The descriptor
+manifest pins `demo:marshal-equivalence/api.send@1.0.0/lower` to a package and
+world fragment whose exact concatenated source hash is checked before planning.
+`src/build/gc_marshal_text_probe.zig` emits the parser-backed GC text
+lower/copy/call module, with optional probe-only allocation/free counters; its
+canonical import is `(i32, i32)` and no GC reference crosses the boundary.
+
+`examples/gc-p3-runtime/test_gc_marshal_text_equivalence.sh` now generates the
+GC module from that manifest route, assembles it beside the existing linear
+memory ARC reference under the same WIT world, and runs both through the pinned
+Rust/Wasmtime host. The gate observes `hello` and exactly one allocation/free
+on each route. This is still a private measured text slice: ordinary
+`do build` host/WIT routing remains ARC-backed, broader aggregate/lift shapes
+and G5c default cutover remain pending.

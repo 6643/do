@@ -11,6 +11,7 @@ pub const Request = struct {
     direction: marshal.Direction,
     measured: marshal.MeasuredNode,
     canonical_u64_arg: ?u64 = null,
+    emit_realloc_counters: bool = false,
 };
 
 pub fn emit_sync_marshal_module_from_wit_source(
@@ -28,7 +29,12 @@ pub fn emit_sync_marshal_module_from_wit_source(
     );
     defer marshal.deinit_sync_value_plan(allocator, plan);
 
-    return emit_sync_marshal_module_from_plan(allocator, &plan, request.canonical_u64_arg);
+    return emit_sync_marshal_module_from_plan(
+        allocator,
+        &plan,
+        request.canonical_u64_arg,
+        request.emit_realloc_counters,
+    );
 }
 
 /// Emit a module from a parser-backed, measured plan. The plan owns the
@@ -38,6 +44,7 @@ pub fn emit_sync_marshal_module_from_plan(
     allocator: std.mem.Allocator,
     plan: *const marshal.SyncValuePlan,
     canonical_u64_arg: ?u64,
+    emit_realloc_counters: bool,
 ) ![]u8 {
     const canonical_import = try marshal_module.canonical_import_for_plan(allocator, plan.descriptor);
     defer allocator.free(canonical_import.module);
@@ -47,6 +54,7 @@ pub fn emit_sync_marshal_module_from_plan(
         .canonical_import_module = canonical_import.module,
         .canonical_import_name = canonical_import.name,
         .canonical_u64_arg = canonical_u64_arg,
+        .emit_realloc_counters = emit_realloc_counters,
     });
 }
 

@@ -17,6 +17,28 @@ pub fn emit_sync_marshal_module_from_manifest(
     measured: marshal.MeasuredNode,
     canonical_u64_arg: ?u64,
 ) ![]u8 {
+    return emit_sync_marshal_module_from_manifest_with_options(
+        io,
+        allocator,
+        repository_root,
+        manifest_path,
+        descriptor_id,
+        measured,
+        canonical_u64_arg,
+        false,
+    );
+}
+
+pub fn emit_sync_marshal_module_from_manifest_with_options(
+    io: std.Io,
+    allocator: std.mem.Allocator,
+    repository_root: []const u8,
+    manifest_path: []const u8,
+    descriptor_id: []const u8,
+    measured: marshal.MeasuredNode,
+    canonical_u64_arg: ?u64,
+    emit_realloc_counters: bool,
+) ![]u8 {
     var loaded = try descriptor_loader.load_request(
         io,
         allocator,
@@ -27,5 +49,6 @@ pub fn emit_sync_marshal_module_from_manifest(
         canonical_u64_arg,
     );
     defer loaded.deinit();
+    loaded.request.emit_realloc_counters = emit_realloc_counters;
     return marshal_route.emit_sync_marshal_module_from_wit_source(allocator, loaded.request);
 }

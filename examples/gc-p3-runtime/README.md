@@ -481,6 +481,19 @@ hands the measured request to the parser-backed marshal route. Unknown
 descriptors fail before WAT emission; the ordinary `do build` host/WIT route
 remains ARC-backed.
 
+### G5c C3 private manifest-backed text lower
+
+`src/build/gc_marshal_text_probe.zig` selects the second measured descriptor,
+`demo:marshal-equivalence/api.send@1.0.0/lower`, and generates the GC
+`text` lower/copy/call module through the same provenance-checked route. The
+probe-only counter instrumentation reports temporary linear allocation/free
+events without changing the canonical `(i32, i32)` Component import.
+
+`test_gc_marshal_text_equivalence.sh` generates that module, assembles it beside
+the hand-authored ARC reference, and runs both with the pinned Rust/Wasmtime
+runner. Both paths must deliver `hello` and report one allocation/free. This
+does not alter ordinary `do build` host/WIT routing or close broader G5c rows.
+
 ### Bounded synchronous `list<u32>` ARC/GC equivalence
 
 `test_gc_marshal_u32_equivalence.sh` assembles the fixed `list<u32>` lower

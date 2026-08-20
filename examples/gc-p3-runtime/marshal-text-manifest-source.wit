@@ -1,0 +1,5 @@
+package demo:marshal-equivalence@1.0.0;
+
+interface api {
+  send: func(value: string);
+}

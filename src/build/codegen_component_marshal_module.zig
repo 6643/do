@@ -20,6 +20,8 @@ pub const EmitConfig = struct {
     canonical_import_name: []const u8,
     /// Fixed scalar argument used by the bounded WASI random-bytes lift.
     canonical_u64_arg: ?u64 = null,
+    /// Optional probe instrumentation for counting temporary linear spans.
+    emit_realloc_counters: bool = false,
     memory_min_pages: u32 = 1,
 };
 
@@ -68,7 +70,12 @@ pub fn emit_sync_marshal_module(
         try append_fmt(allocator, &out, "  (memory (export \"memory\") {d})\n", .{config.memory_min_pages});
         if (uses_realloc) {
             try out.appendSlice(allocator, "  (global $__marshal_heap (mut i32) (i32.const 16))\n");
-            try emit_realloc(allocator, &out, config.realloc_name);
+            if (config.emit_realloc_counters) {
+                try out.appendSlice(allocator,
+                    "  (global $__alloc_count (mut i32) (i32.const 0))\n" ++
+                        "  (global $__free_count (mut i32) (i32.const 0))\n");
+            }
+            try emit_realloc(allocator, &out, config.realloc_name, config.emit_realloc_counters);
         }
     }
 
@@ -247,7 +254,26 @@ fn emit_record_type(
     try out.appendSlice(allocator, "))\n");
 }
 
-fn emit_realloc(allocator: std.mem.Allocator, out: *std.ArrayList(u8), name: []const u8) !void {
+fn emit_realloc(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    name: []const u8,
+    emit_counters: bool,
+) !void {
+    const allocation_counter = if (emit_counters)
+        "      global.get $__alloc_count\n" ++
+            "      i32.const 1\n" ++
+            "      i32.add\n" ++
+            "      global.set $__alloc_count\n"
+    else
+        "";
+    const free_counter = if (emit_counters)
+        "      global.get $__free_count\n" ++
+            "      i32.const 1\n" ++
+            "      i32.add\n" ++
+            "      global.set $__free_count\n"
+    else
+        "";
     try append_fmt(allocator, out, "  (func ${s} (type $cabi_realloc_type)\n" ++
         "    (param $old i32)\n" ++
         "    (param $old_size i32)\n" ++
@@ -258,6 +284,7 @@ fn emit_realloc(allocator: std.mem.Allocator, out: *std.ArrayList(u8), name: []c
         "    local.get $old\n" ++
         "    i32.eqz\n" ++
         "    if (result i32)\n" ++
+        "{s}" ++
         "      global.get $__marshal_heap\n" ++
         "      local.tee $ptr\n" ++
         "      global.get $__marshal_heap\n" ++
@@ -265,9 +292,10 @@ fn emit_realloc(allocator: std.mem.Allocator, out: *std.ArrayList(u8), name: []c
         "      i32.add\n" ++
         "      global.set $__marshal_heap\n" ++
         "    else\n" ++
+        "{s}" ++
         "      i32.const 0\n" ++
         "    end)\n" ++
-        "  (export \"cabi_realloc\" (func ${s}))\n", .{ name, name });
+        "  (export \"cabi_realloc\" (func ${s}))\n", .{ name, allocation_counter, free_counter, name });
 }
 
 fn direction_name(direction: marshal.Direction) []const u8 {
@@ -328,6 +356,36 @@ test "marshal module wrapper rejects descriptor import drift" {
         .canonical_import_module = "demo:marshal/wrong@1.0.0",
         .canonical_import_name = "send",
     }));
+}
+
+test "marshal module wrapper can instrument realloc counters" {
+    var value = @import("wit_abi_types.zig").AbiType.text(std.testing.allocator);
+    defer value.deinit();
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal@1.0.0",
+        .world = "probe",
+        .member = "api.send",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    }, &value, .lower, .{ .layout = .{ .text = .{
+        .pointer_offset = 0,
+        .length_offset = 4,
+        .byte_size = 8,
+        .alignment = 4,
+        .allocation = .cabi_realloc,
+        .free = .cabi_realloc,
+    } } });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const wat = try emit_sync_marshal_module(std.testing.allocator, &plan, .{
+        .direction = .lower,
+        .canonical_import_module = "demo:marshal/api@1.0.0",
+        .canonical_import_name = "send",
+        .emit_realloc_counters = true,
+    });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(global $__alloc_count (mut i32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(global $__free_count (mut i32)") != null);
 }
 
 test "marshal module wrapper accepts a measured u32 list shape" {

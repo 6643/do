@@ -120,6 +120,7 @@ test {
     _ = @import("build/codegen_component_descriptor_manifest.zig");
     _ = @import("build/codegen_component_marshal_wat.zig");
     _ = @import("build/gc_wasi_random_probe.zig");
+    _ = @import("build/gc_marshal_text_probe.zig");
     _ = @import("build/codegen_gc_emit_test.zig");
     _ = @import("build/wat_component_metadata.zig");
     _ = @import("build/wat_function_body.zig");

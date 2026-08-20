@@ -3071,3 +3071,20 @@ unknown descriptor returns `DescriptorNotFound` before WAT generation.
 This closes only the private parser-backed route wiring for one measured
 `wasi:random` lift. It does not wire ordinary `do build` host/WIT lowering to
 GC, broaden the host/WIT shape inventory, or close G5c default cutover.
+
+### G5c C3 gate: private manifest-backed text lower (2026-08-20)
+
+The descriptor manifest now includes a second measured shape,
+`demo:marshal-equivalence/api.send@1.0.0/lower`, backed by a package/interface
+source fragment plus a package-less `probe` world fragment. The loader checks
+the exact concatenated source hash and WIT signature before the private route
+emits a GC `text` lower module with canonical `(i32, i32)` parameters.
+`gc_marshal_text_probe.zig` adds only probe-local `cabi_realloc` counters; the
+canonical import remains linear-memory words and never accepts a GC reference.
+
+`test_gc_marshal_text_equivalence.sh` generates that module from the manifest,
+assembles it beside the ARC reference under the same Component WIT world, and
+the Rust/Wasmtime runner observes `hello` plus one allocation/free per path.
+This closes the measured text-lower equivalence row only. The ordinary
+`do build` host/WIT route remains ARC-backed; broader WIT shapes, default GC
+routing, async/resource paths, and G5c cutover remain pending.
