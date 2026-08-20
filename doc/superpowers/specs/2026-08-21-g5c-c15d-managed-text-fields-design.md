@@ -41,6 +41,11 @@ The package-less world fragment imports `api` and exports
 `run: func() -> u32`. The probe constructs `{ code: 7, label: "hello", note:
 "world" }`. The host must observe those values and exactly one `write` call.
 
+The probe's `run` export returns the existing cleanup counter convention
+`allocation_count * 16 + free_count`; two allocations and two frees therefore
+return `34`. Host runners must also report the decoded allocation and free
+counters explicitly.
+
 ## ABI and measured layout
 
 The pinned toolchain is `wasm-tools 1.255.0 (76e20611d 2026-07-30)`. A fresh
