@@ -28,6 +28,28 @@ pub const CopyShape = enum {
     record_fields,
 };
 
+pub const ManagedTextField = struct {
+    field_index: u32,
+    pointer_offset: u32,
+    length_offset: u32,
+};
+
+pub const ScalarListElementKind = enum {
+    byte,
+    u32,
+};
+
+pub const ManagedScalarListField = struct {
+    field_index: u32,
+    pointer_offset: u32,
+    length_offset: u32,
+    element_kind: ScalarListElementKind,
+    element_byte_size: u32,
+    element_alignment: u32,
+    element_stride: u32,
+    capacity: u32,
+};
+
 pub const MemoryPlan = struct {
     direction: marshal.Direction,
     copy_shape: CopyShape,
@@ -38,7 +60,17 @@ pub const MemoryPlan = struct {
     result_area_length_offset: ?u32 = null,
     record_field_count: u32 = 0,
     record_indirect: ?wit_layout.IndirectMeasurement = null,
+    record_managed_text_lower: bool = false,
+    managed_text_fields: [2]ManagedTextField = undefined,
+    managed_text_field_count: u8 = 0,
+    record_managed_scalar_list_lower: bool = false,
+    managed_scalar_list_field: ?ManagedScalarListField = null,
     operations: []const MemoryOperation,
+};
+
+const ManagedTextFields = struct {
+    fields: [2]ManagedTextField,
+    count: u8,
 };
 
 pub fn build_sync_memory_plan(plan: *const marshal.SyncValuePlan) !MemoryPlan {
@@ -88,14 +120,19 @@ pub fn build_sync_memory_plan(plan: *const marshal.SyncValuePlan) !MemoryPlan {
             if (plan.root.children.len == 0 or plan.root.children.len > std.math.maxInt(u32)) {
                 return error.UnsupportedMarshalShape;
             }
-            for (plan.root.children) |*child| {
-                if (child.kind != .scalar) return error.UnsupportedMarshalShape;
-                switch (child.scalar_kind orelse return error.UnsupportedMarshalShape) {
-                    .u32, .u64, .i64 => {},
-                    else => return error.UnsupportedMarshalShape,
-                }
-                const facts = child.measured orelse return error.MeasuredChildMissing;
-                if (facts.core_type == null) return error.MeasuredScalarCoreTypeMissing;
+            const managed_text = if (plan.direction == .lower)
+                managed_text_fields_for_root(&plan.root)
+            else
+                null;
+            const managed_text_lower = managed_text != null;
+            const managed_scalar_list = if (plan.direction == .lower and !managed_text_lower)
+                managed_scalar_list_field_for_root(&plan.root)
+            else
+                null;
+            if (plan.direction == .lift) {
+                try validate_record_lift_node(&plan.root, true);
+            } else if (!managed_text_lower and managed_scalar_list == null) {
+                try validate_record_lower_node(&plan.root, managed_text_lower);
             }
             const record_indirect = plan.root.measured.?.indirect;
             if (record_indirect) |indirect| {
@@ -106,14 +143,31 @@ pub fn build_sync_memory_plan(plan: *const marshal.SyncValuePlan) !MemoryPlan {
                     return error.UnsupportedMarshalShape;
                 }
             }
+            var managed_text_fields: [2]ManagedTextField = undefined;
+            var managed_text_field_count: u8 = 0;
+            if (managed_text) |fields| {
+                managed_text_fields = fields.fields;
+                managed_text_field_count = fields.count;
+            }
             return .{
                 .direction = plan.direction,
                 .copy_shape = .record_fields,
                 .element_stride = 0,
                 .record_field_count = @intCast(plan.root.children.len),
                 .record_indirect = record_indirect,
+                .record_managed_text_lower = managed_text_lower,
+                .managed_text_fields = managed_text_fields,
+                .managed_text_field_count = managed_text_field_count,
+                .record_managed_scalar_list_lower = managed_scalar_list != null,
+                .managed_scalar_list_field = managed_scalar_list,
                 .operations = if (record_indirect != null)
                     &record_indirect_lower_operations
+                else if (managed_text_field_count == 2)
+                    &record_managed_text_lower_multi_operations
+                else if (managed_text_lower)
+                    &record_managed_text_lower_operations
+                else if (managed_scalar_list != null)
+                    &record_managed_scalar_list_lower_operations
                 else if (plan.direction == .lower)
                     &record_lower_operations
                 else
@@ -121,6 +175,211 @@ pub fn build_sync_memory_plan(plan: *const marshal.SyncValuePlan) !MemoryPlan {
             };
         },
     }
+}
+
+pub fn record_contains_text(node: *const marshal.MarshalNode) bool {
+    if (node.kind == .text) return true;
+    for (node.children) |*child| {
+        if (record_contains_text(child)) return true;
+    }
+    return false;
+}
+
+pub fn record_contains_list(node: *const marshal.MarshalNode) bool {
+    if (node.kind == .list) return true;
+    for (node.children) |*child| {
+        if (record_contains_list(child)) return true;
+    }
+    return false;
+}
+
+pub fn record_contains_u32_list(node: *const marshal.MarshalNode) bool {
+    if (node.kind == .list and node.children.len == 1 and node.children[0].scalar_kind == .u32) return true;
+    for (node.children) |*child| {
+        if (record_contains_u32_list(child)) return true;
+    }
+    return false;
+}
+
+pub fn record_contains_byte_list(node: *const marshal.MarshalNode) bool {
+    if (node.kind == .list and node.children.len == 1 and node.children[0].scalar_kind == .u8) return true;
+    for (node.children) |*child| {
+        if (record_contains_byte_list(child)) return true;
+    }
+    return false;
+}
+
+fn validate_record_lift_node(node: *const marshal.MarshalNode, is_root: bool) !void {
+    if (node.kind != .record or node.children.len == 0) return error.UnsupportedMarshalShape;
+    const measured = node.measured orelse return error.MeasuredChildMissing;
+    if (measured.indirect != null) return error.UnsupportedMarshalShape;
+    for (node.children) |*child| {
+        switch (child.kind) {
+            .scalar => try validate_flat_record_scalar(child),
+            .record => try validate_record_lift_node(child, false),
+            .text => {
+                const facts = child.measured orelse return error.MeasuredChildMissing;
+                if (facts.pointer_offset == null or facts.length_offset == null) {
+                    return error.MeasuredResultAreaPointerMissing;
+                }
+            },
+            .list => {
+                if (!is_root) return error.UnsupportedMarshalShape;
+                if (child.children.len == 1 and child.children[0].scalar_kind == .u8) {
+                    try validate_byte_list_lift_node(child);
+                } else {
+                    try validate_u32_list_lift_node(child);
+                }
+            },
+        }
+    }
+}
+
+fn validate_byte_list_lift_node(node: *const marshal.MarshalNode) !void {
+    if (node.kind != .list or node.children.len != 1) return error.UnsupportedMarshalShape;
+    const facts = node.measured orelse return error.MeasuredChildMissing;
+    if (facts.byte_size != 8 or facts.alignment != 4 or
+        facts.pointer_offset != 0 or facts.length_offset != 4 or facts.element_stride != 1)
+    {
+        return error.UnsupportedMarshalShape;
+    }
+    const element = &node.children[0];
+    if (element.kind != .scalar or element.scalar_kind != .u8) return error.UnsupportedMarshalShape;
+    const element_facts = element.measured orelse return error.MeasuredChildMissing;
+    if (element_facts.byte_size != 1 or element_facts.alignment != 1) {
+        return error.UnsupportedMarshalShape;
+    }
+}
+
+fn validate_u32_list_lift_node(node: *const marshal.MarshalNode) !void {
+    if (node.kind != .list or node.children.len != 1) return error.UnsupportedMarshalShape;
+    const facts = node.measured orelse return error.MeasuredChildMissing;
+    if (facts.byte_size != 8 or facts.alignment != 4 or
+        facts.pointer_offset != 0 or facts.length_offset != 4 or facts.element_stride != 4)
+    {
+        return error.UnsupportedMarshalShape;
+    }
+    const element = &node.children[0];
+    if (element.kind != .scalar or element.scalar_kind != .u32) return error.UnsupportedMarshalShape;
+    const element_facts = element.measured orelse return error.MeasuredChildMissing;
+    if (element_facts.byte_size != 4 or element_facts.alignment != 4 or element_facts.core_type != .i32) {
+        return error.UnsupportedMarshalShape;
+    }
+}
+
+fn validate_record_lower_node(node: *const marshal.MarshalNode, allow_managed_text: bool) !void {
+    if (node.kind != .record or node.children.len == 0) return error.UnsupportedMarshalShape;
+    _ = node.measured orelse return error.MeasuredChildMissing;
+    for (node.children, 0..) |*child, index| {
+        switch (child.kind) {
+            .scalar => try validate_flat_record_scalar(child),
+            .record => {
+                if ((child.measured orelse return error.MeasuredChildMissing).indirect != null) {
+                    return error.UnsupportedMarshalShape;
+                }
+                try validate_record_lower_node(child, false);
+            },
+            .text => {
+                if (!allow_managed_text or (index != 1 and index != 2)) return error.UnsupportedMarshalShape;
+                try validate_managed_text_child(child);
+            },
+            else => return error.UnsupportedMarshalShape,
+        }
+    }
+}
+
+fn managed_text_fields_for_root(node: *const marshal.MarshalNode) ?ManagedTextFields {
+    if (node.kind != .record or (node.children.len != 2 and node.children.len != 3)) return null;
+    if ((node.measured orelse return null).indirect != null) return null;
+    const scalar = &node.children[0];
+    if (scalar.kind != .scalar or scalar.scalar_kind != .u32) return null;
+    const scalar_facts = scalar.measured orelse return null;
+    if (scalar_facts.core_type != .i32) return null;
+
+    var fields: [2]ManagedTextField = undefined;
+    for (node.children[1..], 0..) |*text, field_slot| {
+        if (text.kind != .text) return null;
+        const facts = text.measured orelse return null;
+        if (!has_managed_text_layout(text)) return null;
+        fields[field_slot] = .{
+            .field_index = @intCast(field_slot + 1),
+            .pointer_offset = facts.pointer_offset orelse return null,
+            .length_offset = facts.length_offset orelse return null,
+        };
+    }
+    return .{ .fields = fields, .count = @intCast(node.children.len - 1) };
+}
+
+fn managed_scalar_list_field_for_root(node: *const marshal.MarshalNode) ?ManagedScalarListField {
+    if (node.kind != .record or node.children.len != 2) return null;
+    if ((node.measured orelse return null).indirect != null) return null;
+
+    const code = &node.children[0];
+    if (code.kind != .scalar or code.scalar_kind != .u32) return null;
+    const code_facts = code.measured orelse return null;
+    if (code_facts.core_type != .i32 or code_facts.byte_size != 4 or code_facts.alignment != 4) return null;
+
+    const payload = &node.children[1];
+    if (payload.kind != .list or payload.children.len != 1) return null;
+    const payload_facts = payload.measured orelse return null;
+    if (payload_facts.byte_size != 8 or payload_facts.alignment != 4 or
+        payload_facts.pointer_offset != 0 or payload_facts.length_offset != 4)
+    {
+        return null;
+    }
+    const element = &payload.children[0];
+    if (element.kind != .scalar) return null;
+    const element_facts = element.measured orelse return null;
+    const kind = switch (element.scalar_kind orelse return null) {
+        .u8 => ScalarListElementKind.byte,
+        .u32 => ScalarListElementKind.u32,
+        else => return null,
+    };
+    const expected_size: u32 = switch (kind) {
+        .byte => 1,
+        .u32 => 4,
+    };
+    const expected_alignment: u32 = expected_size;
+    if (element_facts.byte_size != expected_size or element_facts.alignment != expected_alignment or
+        (kind == .u32 and element_facts.core_type != .i32) or
+        (kind == .byte and element_facts.core_type != null)) return null;
+    const element_stride = payload_facts.element_stride orelse return null;
+    if (element_stride != expected_size) return null;
+    const element_byte_size = payload_facts.element_byte_size orelse return null;
+    const element_alignment = payload_facts.element_alignment orelse return null;
+    const capacity = payload_facts.capacity orelse return null;
+    if (element_byte_size != expected_size or element_alignment != expected_alignment or capacity == 0) return null;
+
+    return .{
+        .field_index = 1,
+        .pointer_offset = payload_facts.pointer_offset orelse return null,
+        .length_offset = payload_facts.length_offset orelse return null,
+        .element_kind = kind,
+        .element_byte_size = element_byte_size,
+        .element_alignment = element_alignment,
+        .element_stride = element_stride,
+        .capacity = capacity,
+    };
+}
+
+fn has_managed_text_layout(node: *const marshal.MarshalNode) bool {
+    const facts = node.measured orelse return false;
+    return facts.pointer_offset != null and facts.length_offset != null and
+        facts.byte_size == 8 and facts.alignment == 4;
+}
+
+fn validate_managed_text_child(node: *const marshal.MarshalNode) !void {
+    if (node.kind != .text or !has_managed_text_layout(node)) return error.UnsupportedMarshalShape;
+}
+
+fn validate_flat_record_scalar(child: *const marshal.MarshalNode) !void {
+    if (child.kind != .scalar) return error.UnsupportedMarshalShape;
+    switch (child.scalar_kind orelse return error.UnsupportedMarshalShape) {
+        .u32, .u64, .i64 => {},
+        else => return error.UnsupportedMarshalShape,
+    }
+    const facts = child.measured orelse return error.MeasuredChildMissing;
+    if (facts.core_type == null) return error.MeasuredScalarCoreTypeMissing;
 }
 
 pub fn validate_linear_span(pointer: u32, length: u32, memory_size: u32) !void {
@@ -179,6 +438,34 @@ const record_indirect_lower_operations = [_]MemoryOperation{
     .cabi_realloc_free,
 };
 
+const record_managed_text_lower_operations = [_]MemoryOperation{
+    .read_gc_span,
+    .cabi_realloc_alloc,
+    .copy_to_linear,
+    .canonical_call,
+    .cabi_realloc_free,
+};
+
+const record_managed_text_lower_multi_operations = [_]MemoryOperation{
+    .read_gc_span,
+    .cabi_realloc_alloc,
+    .copy_to_linear,
+    .cabi_realloc_alloc,
+    .copy_to_linear,
+    .canonical_call,
+    .cabi_realloc_free,
+    .cabi_realloc_free,
+};
+
+const record_managed_scalar_list_lower_operations = [_]MemoryOperation{
+    .read_gc_span,
+    .validate_linear_range,
+    .cabi_realloc_alloc,
+    .copy_to_linear,
+    .canonical_call,
+    .cabi_realloc_free,
+};
+
 const record_lift_operations = [_]MemoryOperation{
     .canonical_call,
     .validate_linear_range,
@@ -192,6 +479,175 @@ test "marshal operation plan preserves lower and lift ordering" {
     try std.testing.expectEqual(MemoryOperation.cabi_realloc_free, lower_operations[5]);
     try std.testing.expectEqual(MemoryOperation.canonical_call, lift_operations[0]);
     try std.testing.expectEqual(MemoryOperation.publish_gc_root, lift_operations[4]);
+}
+
+test "marshal operation plan admits only the measured managed-text record lower root" {
+    var code = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer code.deinit();
+    var label = @import("wit_abi_types.zig").AbiType.text(std.testing.allocator);
+    defer label.deinit();
+    var value = try @import("wit_abi_types.zig").AbiType.record(std.testing.allocator, &.{
+        .{ .name = "code", .value = &code },
+        .{ .name = "label", .value = &label },
+    });
+    defer value.deinit();
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-record-managed-lower@1.0.0",
+        .world = "probe",
+        .member = "api.write",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    }, &value, .lower, .{
+        .layout = .{ .record = .{
+            .byte_size = 12,
+            .alignment = 4,
+            .fields = &.{
+                .{ .name = "code", .offset = 0, .byte_size = 4, .alignment = 4, .indirect = null },
+                .{ .name = "label", .offset = 4, .byte_size = 8, .alignment = 4, .indirect = null },
+            },
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .text = .{
+                .pointer_offset = 0,
+                .length_offset = 4,
+                .byte_size = 8,
+                .alignment = 4,
+                .allocation = .cabi_realloc,
+                .free = .cabi_realloc,
+            } } },
+        },
+    });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+    const memory_plan = try build_sync_memory_plan(&plan);
+    try std.testing.expect(memory_plan.record_managed_text_lower);
+    try std.testing.expectEqual(@as(u8, 1), memory_plan.managed_text_field_count);
+    try std.testing.expectEqual(ManagedTextField{ .field_index = 1, .pointer_offset = 0, .length_offset = 4 }, memory_plan.managed_text_fields[0]);
+    try std.testing.expectEqual(@as(usize, 5), memory_plan.operations.len);
+    try std.testing.expectEqual(MemoryOperation.canonical_call, memory_plan.operations[3]);
+    try std.testing.expectEqual(MemoryOperation.cabi_realloc_free, memory_plan.operations[4]);
+}
+
+test "marshal operation plan orders two managed-text lower fields" {
+    var code = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer code.deinit();
+    var label = @import("wit_abi_types.zig").AbiType.text(std.testing.allocator);
+    defer label.deinit();
+    var note = @import("wit_abi_types.zig").AbiType.text(std.testing.allocator);
+    defer note.deinit();
+    var value = try @import("wit_abi_types.zig").AbiType.record(std.testing.allocator, &.{
+        .{ .name = "code", .value = &code },
+        .{ .name = "label", .value = &label },
+        .{ .name = "note", .value = &note },
+    });
+    defer value.deinit();
+
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-record-managed-lower-multi@1.0.0",
+        .world = "probe",
+        .member = "api.write",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    }, &value, .lower, .{
+        .layout = .{ .record = .{
+            .byte_size = 20,
+            .alignment = 4,
+            .fields = &.{
+                .{ .name = "code", .offset = 0, .byte_size = 4, .alignment = 4, .indirect = null },
+                .{ .name = "label", .offset = 4, .byte_size = 8, .alignment = 4, .indirect = null },
+                .{ .name = "note", .offset = 12, .byte_size = 8, .alignment = 4, .indirect = null },
+            },
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .text = .{
+                .pointer_offset = 0,
+                .length_offset = 4,
+                .byte_size = 8,
+                .alignment = 4,
+                .allocation = .cabi_realloc,
+                .free = .cabi_realloc,
+            } } },
+            .{ .layout = .{ .text = .{
+                .pointer_offset = 0,
+                .length_offset = 4,
+                .byte_size = 8,
+                .alignment = 4,
+                .allocation = .cabi_realloc,
+                .free = .cabi_realloc,
+            } } },
+        },
+    });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const memory_plan = try build_sync_memory_plan(&plan);
+    try std.testing.expectEqual(@as(u8, 2), memory_plan.managed_text_field_count);
+    try std.testing.expectEqual(ManagedTextField{ .field_index = 1, .pointer_offset = 0, .length_offset = 4 }, memory_plan.managed_text_fields[0]);
+    try std.testing.expectEqual(ManagedTextField{ .field_index = 2, .pointer_offset = 0, .length_offset = 4 }, memory_plan.managed_text_fields[1]);
+    try std.testing.expectEqual(@as(usize, 8), memory_plan.operations.len);
+    try std.testing.expectEqual(MemoryOperation.read_gc_span, memory_plan.operations[0]);
+    try std.testing.expectEqual(MemoryOperation.cabi_realloc_alloc, memory_plan.operations[1]);
+    try std.testing.expectEqual(MemoryOperation.copy_to_linear, memory_plan.operations[2]);
+    try std.testing.expectEqual(MemoryOperation.cabi_realloc_alloc, memory_plan.operations[3]);
+    try std.testing.expectEqual(MemoryOperation.copy_to_linear, memory_plan.operations[4]);
+    try std.testing.expectEqual(MemoryOperation.canonical_call, memory_plan.operations[5]);
+    try std.testing.expectEqual(MemoryOperation.cabi_realloc_free, memory_plan.operations[6]);
+    try std.testing.expectEqual(MemoryOperation.cabi_realloc_free, memory_plan.operations[7]);
+}
+
+test "marshal operation plan rejects text outside the managed-text root positions" {
+    var first = @import("wit_abi_types.zig").AbiType.text(std.testing.allocator);
+    defer first.deinit();
+    var code = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer code.deinit();
+    var last = @import("wit_abi_types.zig").AbiType.text(std.testing.allocator);
+    defer last.deinit();
+    var value = try @import("wit_abi_types.zig").AbiType.record(std.testing.allocator, &.{
+        .{ .name = "first", .value = &first },
+        .{ .name = "code", .value = &code },
+        .{ .name = "last", .value = &last },
+    });
+    defer value.deinit();
+
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-record-managed-lower-invalid@1.0.0",
+        .world = "probe",
+        .member = "api.write",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    }, &value, .lower, .{
+        .layout = .{ .record = .{
+            .byte_size = 20,
+            .alignment = 4,
+            .fields = &.{
+                .{ .name = "first", .offset = 0, .byte_size = 8, .alignment = 4, .indirect = null },
+                .{ .name = "code", .offset = 8, .byte_size = 4, .alignment = 4, .indirect = null },
+                .{ .name = "last", .offset = 12, .byte_size = 8, .alignment = 4, .indirect = null },
+            },
+        } },
+        .children = &.{
+            .{ .layout = .{ .text = .{
+                .pointer_offset = 0,
+                .length_offset = 4,
+                .byte_size = 8,
+                .alignment = 4,
+                .allocation = .cabi_realloc,
+                .free = .cabi_realloc,
+            } } },
+            .{ .layout = .{ .scalar = .{ .offset = 8, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .text = .{
+                .pointer_offset = 0,
+                .length_offset = 4,
+                .byte_size = 8,
+                .alignment = 4,
+                .allocation = .cabi_realloc,
+                .free = .cabi_realloc,
+            } } },
+        },
+    });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    try std.testing.expectError(error.UnsupportedMarshalShape, build_sync_memory_plan(&plan));
 }
 
 test "marshal operation plan admits measured scalar direct calls" {
@@ -253,6 +709,119 @@ test "marshal operation plan admits measured u32 list copies" {
     try std.testing.expectEqual(@as(usize, 6), memory_plan.operations.len);
 }
 
+test "marshal operation plan admits a bounded u32 list record lower" {
+    var code = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer code.deinit();
+    var element = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer element.deinit();
+    var payload = try @import("wit_abi_types.zig").AbiType.list(std.testing.allocator, &element);
+    defer payload.deinit();
+    var value = try @import("wit_abi_types.zig").AbiType.record(std.testing.allocator, &.{
+        .{ .name = "code", .value = &code },
+        .{ .name = "payload", .value = &payload },
+    });
+    defer value.deinit();
+
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-record-u32-list-lower@1.0.0",
+        .world = "probe",
+        .member = "api.write",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    }, &value, .lower, .{
+        .layout = .{ .record = .{
+            .byte_size = 12,
+            .alignment = 4,
+            .fields = &.{
+                .{ .name = "code", .offset = 0, .byte_size = 4, .alignment = 4, .indirect = null },
+                .{ .name = "payload", .offset = 4, .byte_size = 8, .alignment = 4, .indirect = null },
+            },
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .list = .{
+                .pointer_offset = 0,
+                .length_offset = 4,
+                .element_byte_size = 4,
+                .element_stride = 4,
+                .element_alignment = 4,
+                .ticket_offset = 0,
+                .capacity = 3,
+                .accepted_lengths = &.{ 0, 1, 2, 3 },
+                .allocation = .cabi_realloc,
+                .free = .cabi_realloc,
+            } }, .children = &.{.{ .layout = .{ .scalar = .{
+                .offset = 0,
+                .byte_size = 4,
+                .alignment = 4,
+                .core_type = .i32,
+            } } }} },
+        },
+    });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const memory_plan = try build_sync_memory_plan(&plan);
+    try std.testing.expectEqual(CopyShape.record_fields, memory_plan.copy_shape);
+    try std.testing.expect(memory_plan.record_managed_scalar_list_lower);
+    try std.testing.expectEqual(ScalarListElementKind.u32, memory_plan.managed_scalar_list_field.?.element_kind);
+    try std.testing.expectEqual(@as(u32, 4), memory_plan.managed_scalar_list_field.?.element_stride);
+    try std.testing.expectEqual(@as(u32, 3), memory_plan.managed_scalar_list_field.?.capacity);
+    try std.testing.expectEqual(@as(usize, 6), memory_plan.operations.len);
+}
+
+test "marshal operation plan admits a bounded byte-list record through the shared route" {
+    var code = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer code.deinit();
+    var element = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u8);
+    defer element.deinit();
+    var payload = try @import("wit_abi_types.zig").AbiType.list(std.testing.allocator, &element);
+    defer payload.deinit();
+    var value = try @import("wit_abi_types.zig").AbiType.record(std.testing.allocator, &.{
+        .{ .name = "code", .value = &code },
+        .{ .name = "payload", .value = &payload },
+    });
+    defer value.deinit();
+
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-record-byte-list-lower@1.0.0",
+        .world = "probe",
+        .member = "api.write",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    }, &value, .lower, .{
+        .layout = .{ .record = .{
+            .byte_size = 12,
+            .alignment = 4,
+            .fields = &.{
+                .{ .name = "code", .offset = 0, .byte_size = 4, .alignment = 4, .indirect = null },
+                .{ .name = "payload", .offset = 4, .byte_size = 8, .alignment = 4, .indirect = null },
+            },
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .byte_list = .{
+                .pointer_offset = 0,
+                .length_offset = 4,
+                .element_byte_size = 1,
+                .element_stride = 1,
+                .element_alignment = 1,
+                .capacity = 4,
+                .accepted_lengths = &.{ 0, 1, 2, 3, 4 },
+                .allocation = .cabi_realloc,
+                .free = .cabi_realloc,
+            } } },
+        },
+    });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const memory_plan = try build_sync_memory_plan(&plan);
+    try std.testing.expect(memory_plan.record_managed_scalar_list_lower);
+    try std.testing.expectEqual(ScalarListElementKind.byte, memory_plan.managed_scalar_list_field.?.element_kind);
+    try std.testing.expectEqual(@as(u32, 1), memory_plan.managed_scalar_list_field.?.element_stride);
+    try std.testing.expectEqual(@as(u32, 4), memory_plan.managed_scalar_list_field.?.capacity);
+    try std.testing.expectEqual(@as(usize, 6), memory_plan.operations.len);
+}
+
 test "marshal operation plan admits measured scalar record lift" {
     var code = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
     defer code.deinit();
@@ -292,6 +861,63 @@ test "marshal operation plan admits measured scalar record lift" {
     try std.testing.expectEqual(@as(usize, 5), memory_plan.operations.len);
     try std.testing.expectEqual(MemoryOperation.canonical_call, memory_plan.operations[0]);
     try std.testing.expectEqual(MemoryOperation.publish_gc_root, memory_plan.operations[4]);
+}
+
+test "marshal operation plan admits measured nested scalar record lift" {
+    var code = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer code.deinit();
+    var count = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u64);
+    defer count.deinit();
+    var header = try @import("wit_abi_types.zig").AbiType.record(std.testing.allocator, &.{
+        .{ .name = "code", .value = &code },
+        .{ .name = "count", .value = &count },
+    });
+    defer header.deinit();
+    var status = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .i64);
+    defer status.deinit();
+    var value = try @import("wit_abi_types.zig").AbiType.record(std.testing.allocator, &.{
+        .{ .name = "header", .value = &header },
+        .{ .name = "status", .value = &status },
+    });
+    defer value.deinit();
+
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-record-nested@1.0.0",
+        .world = "probe",
+        .member = "api.read",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+    }, &value, .lift, .{
+        .layout = .{ .record = .{
+            .byte_size = 32,
+            .alignment = 8,
+            .fields = &.{
+                .{ .name = "header", .offset = 0, .byte_size = 16, .alignment = 8, .indirect = null },
+                .{ .name = "status", .offset = 16, .byte_size = 8, .alignment = 8, .indirect = null },
+            },
+        } },
+        .children = &.{
+            .{ .layout = .{ .record = .{
+                .byte_size = 16,
+                .alignment = 8,
+                .fields = &.{
+                    .{ .name = "code", .offset = 0, .byte_size = 4, .alignment = 4, .indirect = null },
+                    .{ .name = "count", .offset = 8, .byte_size = 8, .alignment = 8, .indirect = null },
+                },
+            } }, .children = &.{
+                .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+                .{ .layout = .{ .scalar = .{ .offset = 8, .byte_size = 8, .alignment = 8, .core_type = .i64 } } },
+            } },
+            .{ .layout = .{ .scalar = .{ .offset = 16, .byte_size = 8, .alignment = 8, .core_type = .i64 } } },
+        },
+    });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const memory_plan = try build_sync_memory_plan(&plan);
+    try std.testing.expectEqual(CopyShape.record_fields, memory_plan.copy_shape);
+    try std.testing.expectEqual(marshal.Direction.lift, memory_plan.direction);
+    try std.testing.expectEqual(@as(u32, 2), memory_plan.record_field_count);
+    try std.testing.expectEqual(@as(usize, 5), memory_plan.operations.len);
 }
 
 test "marshal operation plan admits measured scalar record lower" {

@@ -35,11 +35,18 @@ pub fn emit_sync_marshal_module(
     const uses_linear_memory = switch (memory_plan.copy_shape) {
         .scalar => false,
         .text_bytes, .list_elements => true,
-        .record_fields => memory_plan.direction == .lift or memory_plan.record_indirect != null,
+        .record_fields => memory_plan.direction == .lift or
+            memory_plan.record_indirect != null or
+            memory_plan.record_managed_text_lower or
+            memory_plan.record_managed_scalar_list_lower,
     };
     const uses_realloc = switch (memory_plan.copy_shape) {
         .text_bytes, .list_elements => true,
-        .record_fields => memory_plan.record_indirect != null,
+        .record_fields => memory_plan.record_indirect != null or
+            memory_plan.record_managed_text_lower or
+            memory_plan.record_managed_scalar_list_lower or
+            (memory_plan.direction == .lift and
+                (marshal_ops.record_contains_text(&plan.root) or marshal_ops.record_contains_list(&plan.root))),
         .scalar => false,
     };
 
@@ -49,7 +56,11 @@ pub fn emit_sync_marshal_module(
     if (uses_linear_memory) {
         try runtime_gc_wat.emit_bytes_type(allocator, &out);
         try runtime_gc_wat.emit_text_type(allocator, &out);
-        if (memory_plan.element_core_type != null) {
+        if (memory_plan.element_core_type != null or
+            (memory_plan.managed_scalar_list_field != null and
+                memory_plan.managed_scalar_list_field.?.element_kind == .u32) or
+            (memory_plan.direction == .lift and marshal_ops.record_contains_u32_list(&plan.root)))
+        {
             try runtime_gc_wat.emit_u32_type(allocator, &out);
         }
     }
@@ -91,6 +102,56 @@ pub fn emit_sync_marshal_module(
     try append_fmt(allocator, &out, "  (export \"{s}\" (func ${s}))\n", .{ config.export_name, config.function_name });
     try out.appendSlice(allocator, ")\n");
     return out.toOwnedSlice(allocator);
+}
+
+/// Emit only the canonical import and linear-memory support needed by a
+/// marshal helper embedded in an existing GC module. The caller is
+/// responsible for emitting the GC object types and the helper body itself.
+/// This keeps the ordinary-call route on the same measured plan as the
+/// standalone probe without nesting a second `(module ...)`.
+pub fn emit_sync_marshal_gc_support(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    plan: *const marshal.SyncValuePlan,
+    config: EmitConfig,
+) !void {
+    try marshal.validate_sync_value_plan(plan);
+    const memory_plan = try marshal_ops.build_sync_memory_plan(plan);
+    try validate_config(allocator, plan, config, &memory_plan);
+    const uses_linear_memory = switch (memory_plan.copy_shape) {
+        .scalar => false,
+        .text_bytes, .list_elements => true,
+        .record_fields => memory_plan.direction == .lift or
+            memory_plan.record_indirect != null or
+            memory_plan.record_managed_text_lower or
+            memory_plan.record_managed_scalar_list_lower,
+    };
+    const uses_realloc = switch (memory_plan.copy_shape) {
+        .text_bytes, .list_elements => true,
+        .record_fields => memory_plan.record_indirect != null or
+            memory_plan.record_managed_text_lower or
+            memory_plan.record_managed_scalar_list_lower or
+            (memory_plan.direction == .lift and
+                (marshal_ops.record_contains_text(&plan.root) or marshal_ops.record_contains_list(&plan.root))),
+        .scalar => false,
+    };
+
+    try emit_canonical_import_type(allocator, out, config.direction, &memory_plan, plan, config);
+    if (uses_realloc) {
+        try out.appendSlice(allocator, "  (type $cabi_realloc_type (func (param i32 i32 i32 i32) (result i32)))\n");
+    }
+    try append_fmt(allocator, out, "  (import \"{s}\" \"{s}\" (func ${s} (type $canonical_{s})))\n", .{
+        config.canonical_import_module,
+        config.canonical_import_name,
+        config.canonical_call_name,
+        direction_name(config.direction),
+    });
+    if (!uses_linear_memory) return;
+    try append_fmt(allocator, out, "  (memory (export \"memory\") {d})\n", .{config.memory_min_pages});
+    if (uses_realloc) {
+        try out.appendSlice(allocator, "  (global $__marshal_heap (mut i32) (i32.const 16))\n");
+        try emit_realloc(allocator, out, config.realloc_name, config.emit_realloc_counters);
+    }
 }
 
 fn validate_config(
@@ -219,18 +280,34 @@ fn emit_record_lower_import_type(
         return;
     }
     try out.appendSlice(allocator, "  (type $canonical_lower (func (param");
-    for (plan.root.children) |*child| {
-        const facts = child.measured orelse return error.MeasuredChildMissing;
-        const core_type = facts.core_type orelse return error.MeasuredScalarCoreTypeMissing;
-        const core_name = switch (core_type) {
-            .i32 => " i32",
-            .i64 => " i64",
-            .f32 => " f32",
-            .f64 => " f64",
-        };
-        try out.appendSlice(allocator, core_name);
-    }
+    try append_record_lower_core_types(allocator, out, &plan.root);
     try out.appendSlice(allocator, ")))\n");
+}
+
+fn append_record_lower_core_types(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    node: *const marshal.MarshalNode,
+) !void {
+    if (node.kind != .record or node.children.len == 0) return error.UnsupportedMarshalShape;
+    for (node.children) |*child| {
+        switch (child.kind) {
+            .scalar => {
+                const facts = child.measured orelse return error.MeasuredChildMissing;
+                const core_type = facts.core_type orelse return error.MeasuredScalarCoreTypeMissing;
+                const core_name = switch (core_type) {
+                    .i32 => " i32",
+                    .i64 => " i64",
+                    .f32 => " f32",
+                    .f64 => " f64",
+                };
+                try out.appendSlice(allocator, core_name);
+            },
+            .record => try append_record_lower_core_types(allocator, out, child),
+            .text => try out.appendSlice(allocator, " i32 i32"),
+            .list => try out.appendSlice(allocator, " i32 i32"),
+        }
+    }
 }
 
 fn emit_record_type(
@@ -239,17 +316,57 @@ fn emit_record_type(
     plan: *const marshal.SyncValuePlan,
 ) !void {
     if (plan.root.kind != .record or plan.root.children.len == 0) return error.UnsupportedMarshalShape;
-    try out.appendSlice(allocator, "  (type $do_record (struct");
-    for (plan.root.children, 0..) |*child, index| {
-        const facts = child.measured orelse return error.MeasuredChildMissing;
-        const core_type = facts.core_type orelse return error.MeasuredScalarCoreTypeMissing;
-        const core_name = switch (core_type) {
-            .i32 => "i32",
-            .i64 => "i64",
-            .f32 => "f32",
-            .f64 => "f64",
-        };
-        try append_fmt(allocator, out, " (field $field{d} {s})", .{ index, core_name });
+    try emit_record_type_recursive(allocator, out, &plan.root, true);
+}
+
+fn emit_record_type_recursive(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    node: *const marshal.MarshalNode,
+    is_root: bool,
+) !void {
+    if (node.kind != .record or node.children.len == 0) return error.UnsupportedMarshalShape;
+    for (node.children) |*child| {
+        if (child.kind == .record) {
+            try emit_record_type_recursive(allocator, out, child, false);
+        }
+    }
+
+    if (is_root) {
+        try out.appendSlice(allocator, "  (type $do_record (struct");
+    } else {
+        const name = node.record_type_name orelse return error.UnsupportedMarshalShape;
+        if (!valid_wat_name(name)) return error.InvalidWatName;
+        try append_fmt(allocator, out, "  (type $do_{s} (struct", .{name});
+    }
+    for (node.children, 0..) |*child, index| {
+        switch (child.kind) {
+            .scalar => {
+                const facts = child.measured orelse return error.MeasuredChildMissing;
+                const core_type = facts.core_type orelse return error.MeasuredScalarCoreTypeMissing;
+                const core_name = switch (core_type) {
+                    .i32 => "i32",
+                    .i64 => "i64",
+                    .f32 => "f32",
+                    .f64 => "f64",
+                };
+                try append_fmt(allocator, out, " (field $field{d} {s})", .{ index, core_name });
+            },
+            .record => {
+                const name = child.record_type_name orelse return error.UnsupportedMarshalShape;
+                if (!valid_wat_name(name)) return error.InvalidWatName;
+                try append_fmt(allocator, out, " (field $field{d} (ref null $do_{s}))", .{ index, name });
+            },
+            .text => try append_fmt(allocator, out, " (field $field{d} (ref null $do_text))", .{index}),
+            .list => {
+                const element = child.children[0];
+                if (element.kind == .scalar and element.scalar_kind == .u32) {
+                    try append_fmt(allocator, out, " (field $field{d} (ref null $do_u32))", .{index});
+                } else {
+                    try append_fmt(allocator, out, " (field $field{d} (ref null $do_bytes))", .{index});
+                }
+            },
+        }
     }
     try out.appendSlice(allocator, "))\n");
 }
@@ -591,6 +708,137 @@ test "marshal module wrapper declares scalar record lower flat type" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"marshal\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(memory ") == null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "cabi_realloc") == null);
+}
+
+test "marshal module wrapper declares bounded record byte-list lower ABI" {
+    var code = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer code.deinit();
+    var byte = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u8);
+    defer byte.deinit();
+    var payload = try @import("wit_abi_types.zig").AbiType.list(std.testing.allocator, &byte);
+    defer payload.deinit();
+    var value = try @import("wit_abi_types.zig").AbiType.record(std.testing.allocator, &.{
+        .{ .name = "code", .value = &code },
+        .{ .name = "payload", .value = &payload },
+    });
+    defer value.deinit();
+
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-record-byte-list-lower@1.0.0",
+        .world = "probe",
+        .member = "api.write",
+        .revision = "wasm-tools-1.255.0",
+        .schema_hash = "sha256:byte-list-record-lower-v1",
+    }, &value, .lower, .{
+        .layout = .{ .record = .{
+            .byte_size = 12,
+            .alignment = 4,
+            .fields = &.{
+                .{ .name = "code", .offset = 0, .byte_size = 4, .alignment = 4, .indirect = null },
+                .{ .name = "payload", .offset = 4, .byte_size = 8, .alignment = 4, .indirect = null },
+            },
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .byte_list = .{
+                .pointer_offset = 0,
+                .length_offset = 4,
+                .element_byte_size = 1,
+                .element_stride = 1,
+                .element_alignment = 1,
+                .capacity = 4,
+                .accepted_lengths = &.{ 0, 1, 2, 3, 4 },
+                .allocation = .cabi_realloc,
+                .free = .cabi_realloc,
+            } } },
+        },
+    });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const wat = try emit_sync_marshal_module(std.testing.allocator, &plan, .{
+        .direction = .lower,
+        .canonical_import_module = "demo:marshal-record-byte-list-lower/api@1.0.0",
+        .canonical_import_name = "write",
+        .emit_realloc_counters = true,
+    });
+    defer std.testing.allocator.free(wat);
+
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lower (func (param i32 i32 i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(import \"demo:marshal-record-byte-list-lower/api@1.0.0\" \"write\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(memory (export \"memory\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $cabi_realloc") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(global $__alloc_count (mut i32)") != null);
+}
+
+test "marshal module wrapper declares bounded record u32-list lower ABI" {
+    var code = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer code.deinit();
+    var element = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer element.deinit();
+    var payload = try @import("wit_abi_types.zig").AbiType.list(std.testing.allocator, &element);
+    defer payload.deinit();
+    var value = try @import("wit_abi_types.zig").AbiType.record(std.testing.allocator, &.{
+        .{ .name = "code", .value = &code },
+        .{ .name = "payload", .value = &payload },
+    });
+    defer value.deinit();
+
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-record-u32-list-lower@1.0.0",
+        .world = "probe",
+        .member = "api.write",
+        .revision = "wasm-tools-1.255.0",
+        .schema_hash = "sha256:u32-list-record-lower-v1",
+    }, &value, .lower, .{
+        .layout = .{ .record = .{
+            .byte_size = 12,
+            .alignment = 4,
+            .fields = &.{
+                .{ .name = "code", .offset = 0, .byte_size = 4, .alignment = 4, .indirect = null },
+                .{ .name = "payload", .offset = 4, .byte_size = 8, .alignment = 4, .indirect = null },
+            },
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{
+                .layout = .{ .list = .{
+                    .pointer_offset = 0,
+                    .length_offset = 4,
+                    .element_byte_size = 4,
+                    .element_stride = 4,
+                    .element_alignment = 4,
+                    .ticket_offset = 0,
+                    .capacity = 3,
+                    .accepted_lengths = &.{ 0, 1, 2, 3 },
+                    .allocation = .cabi_realloc,
+                    .free = .cabi_realloc,
+                } },
+                .children = &.{.{ .layout = .{ .scalar = .{
+                    .offset = 0,
+                    .byte_size = 4,
+                    .alignment = 4,
+                    .core_type = .i32,
+                } } }},
+            },
+        },
+    });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const wat = try emit_sync_marshal_module(std.testing.allocator, &plan, .{
+        .direction = .lower,
+        .canonical_import_module = "demo:marshal-record-u32-list-lower/api@1.0.0",
+        .canonical_import_name = "write",
+        .emit_realloc_counters = true,
+    });
+    defer std.testing.allocator.free(wat);
+
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_u32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_record (struct (field $field0 i32) (field $field1 (ref null $do_u32))))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get $do_u32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.store") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lower (func (param i32 i32 i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(memory (export \"memory\")") != null);
 }
 
 test "marshal module wrapper rejects GC references at the canonical boundary" {

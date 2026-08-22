@@ -1,6 +1,6 @@
 # Roadmap 执行状态
 
-更新时间: 2026-08-20
+更新时间: 2026-08-23
 
 **本文只保留当前状态与阻断。** 历史小任务勾选与逐条 gate 证据已从仓库移除; 追溯用 git 历史与 `CHANGELOG.md`。
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
@@ -14,8 +14,110 @@ execution 和 ARC/GC equivalence gates 现在都消费该生成路径，分别�
 `sum=42` 与 `42/42`。默认 host/WIT route 仍保持 ARC；bounded flat scalar-record
 lower（含 `u32/u32` 与 `u32/u64/s64` measured shapes）以及 pinned 17-field `u64`
 indirect lower（136 bytes, alignment 8, canonical `(i32)` pointer）已闭合，
-indirect layouts beyond this shape、nested/general aggregate lower、
+two-level nested scalar-record lift（header=16 bytes, reading=32 bytes,
+canonical `(i32)` result-area pointer）and the three-level nested scalar-record
+lower（header=16 bytes, detail=32 bytes, writing=48 bytes, canonical
+`(i32, i64, i64, i64)`）也已闭合；indirect layouts beyond this
+shape、deeper/general aggregate lower、
 Option/Result/Variant、async/resource 和 G5c cutover 仍 pending。
+
+2026-08-22 增量: C14 four-level scalar-record lift/lower、C15-D
+multi-managed-text lower 与 C16-D multi-managed-text lift 已从 private
+explicit route 提升到普通 `do build`
+的精确 manifest-backed GC/WIT route。mixed lower 的 canonical ABI 为
+`(i32, i64, i64)`，并通过默认 host/equivalence/negative gates；其余默认
+host/equivalence/negative gates、
+Component assembly 与 pinned `wasm-tools 1.255.0` 验证通过；C15-D 的
+`allocations=2/frees=2` 与 C16-D 的 `value=17` 运行结果及等价结果均已锁定。
+这仍是十个固定同步 descriptor 的有界 promotion，通用 aggregate、
+async/resource、ownership 和 full GC cutover 继续 pending。
+
+2026-08-23 增量: 新增固定的
+`demo:marshal-record-u32-list-lift/api.read@1.0.0/lift` manifest-backed
+descriptor。它只接受同步 `@host_func` 与
+`Reading { code: u32, payload: [u32] }`，测得 12-byte result area、capacity
+`3`、accepted lengths `0..3`，canonical ABI 为一个 `(i32)` result-area
+pointer。lift 会校验 result-area/list span，将线性 `u32` payload 复制到
+`$do_u32`，只释放一次并构造 GC record；普通 default route、显式 route、
+Component host、ARC/GC equivalence 和 609-614 六个负例均通过 pinned
+`wasm-tools 1.255.0`，host 观察 `result=67`，等价结果为 `67/67`。
+default GC build/parse gate 现覆盖 74 fixtures。通用 list-record lift、
+async/resource、ownership 与 full G5c cutover 继续 pending。
+
+2026-08-23 增量: 新增固定的
+`demo:marshal-record-byte-list-lift/api.read@1.0.0/lift` manifest-backed
+descriptor。它只接受同步 `@host_func` 与
+`Reading { code: u32, payload: [u8] }`，使用 12-byte result area、payload
+capacity `3`、accepted lengths `0..3` 和 canonical `(i32)` result-area
+pointer。lift 将线性 byte payload 复制到 `$do_bytes`，只释放一次并构造 GC
+record；canonical import 不携带 GC reference。普通 default route、显式 route、
+Component host、ARC/GC equivalence 和 616-621 六个负例均通过 pinned
+`wasm-tools 1.255.0`；host 观察 `code=7`、`payload=[10,20,30]`、`result=67`、
+`stats=17`、一次 callback 与一次 allocation/free，等价结果为
+`67/67`、`17/17`、`1/1`。default GC build/parse gate 现覆盖 75 fixtures，
+G5c residual gate 已纳入该 descriptor 的 host/equivalence/negative 三个
+phase。该 promotion 仍是固定形状；通用 list-record lift、async/resource、
+ ownership 与 full G5c cutover 继续 pending。
+
+2026-08-23 增量: G5c bounded record lower 的内部实现已收敛为一个
+`ManagedScalarListField` route。外部 manifest 仍保留 `byte_list` 与 `list`
+两种输入 kind，内部只按 measured element kind、stride 和 capacity 选择
+`$do_bytes`/`$do_u32` 及对应 load/store；当前固定事实为 `u8` capacity `4`
+和 stride `1`、`u32` capacity `3` 和 stride `4`。length/multiplication/span
+guard、`cabi_realloc`、canonical call 与 exactly-once free 顺序保持不变，
+canonical ABI 未变化；这是同步 bounded lower 的内部去重，不新增 descriptor
+或扩大 list/async/resource/ownership admission。full G5c inventory 仍为
+`complete_rows=15 pending_rows=15`。
+
+2026-08-22 增量: 新增固定的
+`demo:marshal-record-byte-list-lower/api.write@1.0.0/lower` 私有
+`--gc-wit-marshal` evidence。它只接受 `Writing { code: u32, payload: [u8] }`，
+测得 12-byte root 与 canonical `(i32, i32, i32)` lower，Component host、
+ARC/GC equivalence 和六个源级负例均通过 pinned `wasm-tools 1.255.0`。
+该 descriptor 的精确普通 `@host_func` route 已随 default gate 提升；通用
+list-record lower、async/resource、ownership 与 full G5c cutover 继续
+pending。
+
+2026-08-22 增量: 新增固定的
+`demo:marshal-record-u32-list-lower/api.write@1.0.0/lower` manifest-backed
+descriptor。它只接受 `Writing { code: u32, payload: [u32] }`，测得 12-byte
+root、`list<u32>` capacity `3`、accepted lengths `0..3`，并使用 canonical
+`(i32, i32, i32)` lower。普通 `@host_func`、显式
+`--gc-wit-marshal`、Component host、ARC/GC equivalence 和六个源级负例均
+通过 pinned `wasm-tools 1.255.0`；host 观察 `code=7`、`payload=[10,20,30]`
+和 `result=42`，等价 gate 观察 `42/17` 与 `1/1` cleanup。默认 GC
+build/parse gate 现覆盖 74 fixtures。通用 list-record lower、async/resource、
+ownership 与 full G5c cutover 继续 pending。
+
+2026-08-22 增量: parsed synchronous GC route 新增第四个 managed segment 的
+直接 nested field path (`@get/@set(outer, .inner, .middle, .leaf, .core, ...)`)。
+该路径按 terminal、leaf、inner、middle、outer 的顺序重建 GC struct，并保持
+未修改字段与原 payload 可观察；新增 compiled fixture、独立 Wasmtime GC probe
+和 ARC/GC semantic equivalence 行均通过 `wasm-tools 1.255.0`、Wasmtime GC
+与 `27815` oracle。默认 GC build/parse gate 现为 71 fixtures，等价矩阵现为
+25 行、0 pending；更深 producer expression、async/resource、host/WIT 通用
+aggregate 与 G5c full cutover 仍 fail-closed/pending。
+
+2026-08-22 增量: parsed synchronous GC route 再新增第五个 managed segment 的
+直接 nested field path (`@get/@set(top, .outer, .inner, .middle, .leaf, .core, ...)`)。
+该路径按 terminal、leaf、middle、inner、outer、top 的顺序重建 GC struct，并保持
+未修改字段与原 `[u8]` payload reference 可观察；第六个 managed segment 的负例仍
+在 WAT 前拒绝。新增 compiled fixture、独立 Wasmtime GC probe 和 ARC/GC
+semantic equivalence 行均通过 pinned `wasm-tools 1.255.0`、Wasmtime GC 与
+`27815` oracle；focused `codegen_gc_sync.zig` 为 `245/245`、`gc_sync_probe.zig`
+为 `65/65`，默认 GC build/parse gate 为 72 fixtures，等价矩阵为 26 行、0 pending。
+通用 nested aggregate、producer expression、async/resource、host/WIT 通用
+lowering 与 G5c full cutover 仍 fail-closed/pending；migration inventory 保持
+`complete_rows=15 pending_rows=15`、exit 1。
+
+2026-08-22 增量: G5a nested managed-struct path 的内部实现已收敛为一个
+固定容量五-link 的 `GenericNestedFieldPath` record，以及 loop-based parser、
+`@get` chain emitter 和 `@set` terminal-to-root rebuild emitter；原先按深度
+复制的 records/parsers 已删除。该 refactor 不改变公开语法、ABI 或一至五层
+admission，六层仍在 WAT 前拒绝；focused `codegen_gc_sync.zig` 现为
+`245/245`，`gc_sync_probe.zig` 仍为 `65/65`。producer expression、六层及更深
+路径、async/resource、通用 host/WIT lowering 与 G5c full cutover 继续
+fail-closed/pending。
 
 ## 推进协议
 
@@ -29,7 +131,7 @@ Option/Result/Variant、async/resource 和 G5c cutover 仍 pending。
 | 项 | 状态 |
 | --- | --- |
 | v1 子集 | 发布候选已收口 |
-| GC-first memory migration | `doc/memory.md` 和 `doc/design/2026-08-11-gc-first-memory-decision.md` 是 v1 source/runtime target. G5a 当前已闭合 parsed fixed-index、参数化 `[u8] @set`、全部当前 scalar-list literal/update slices、registered scalar-list one-value `@put`、bounded `[text]` managed-element one-value `@put`、全部当前 scalar-array managed-field payload rebuild、direct-local nested struct、一层、两层与三层直接 nested managed-struct `@get/@set`、单一直接同步单返回 `[u8]`/`text` managed-field call producer、bounded `Tuple<text,[u8]>` rewrite、bounded imported managed identity、payload-union、resolved generic、bounded managed-struct-list append，以及 `--p3-wait-for-component` 的 bounded `Future<nil>` GC frame/table slice; G5b 已关闭全部 22 个当前 admitted synchronous executable rows（含 payload-union、resolved generic、`[Box]` one-value `@put`、nested field paths 与 direct call producer）；Task 3 已把默认同步 pipeline 的已准入 managed candidates（含 bounded synchronous `defer`、`return nil` no-result cleanup、推断出的 `text` body binding、推断出的 `[u8]` body storage `@put`，以及 body-only managed-struct storage ctor/field update）接到 typed GC/root 输出，GC path 不再声明旧 storage compiler locals，未准入 shape、普通 GC sync async 和 host/WIT 仍保持 ARC fallback; `runtime_arc_wat.zig`, `runtime_prelude_wat.zig` 和 `codegen_ownership.zig` 仍是待替换的 implementation debt; async G5b/G5c 与 full GC migration 尚未完成. |
+| GC-first memory migration | `doc/memory.md` 和 `doc/design/2026-08-11-gc-first-memory-decision.md` 是 v1 source/runtime target. G5a 当前已闭合 parsed fixed-index、参数化 `[u8] @set`、全部当前 scalar-list literal/update slices、registered scalar-list one-value `@put`、bounded `[text]` managed-element one-value `@put`、全部当前 scalar-array managed-field payload rebuild、direct-local nested struct、一层、两层、三层、四层与五层直接 nested managed-struct `@get/@set`、单一直接同步单返回 `[u8]`/`text` managed-field call producer、bounded `Tuple<text,[u8]>` rewrite、bounded imported managed identity、payload-union、resolved generic、bounded managed-struct-list append，以及 `--p3-wait-for-component` 的 bounded `Future<nil>` GC frame/table slice; G5b 已关闭全部 26 个当前 admitted synchronous executable rows（含 payload-union、resolved generic、`[Box]` one-value `@put`、nested field paths 与 direct call producer），并以同一 WIT/Rust/Wasmtime runner 完成 bounded two-await GC/linear Future frame equivalence；Task 3 已把默认同步 pipeline 的已准入 managed candidates（含 bounded synchronous `defer`、`return nil` no-result cleanup、推断出的 `text` body binding、推断出的 `[u8]` body storage `@put`，以及 body-only managed-struct storage ctor/field update）接到 typed GC/root 输出，GC path 不再声明旧 storage compiler locals，未准入 shape、普通 GC sync async 和 host/WIT 仍保持 ARC fallback; `runtime_arc_wat.zig`, `runtime_prelude_wat.zig` 和 `codegen_ownership.zig` 仍是待替换的 implementation debt; generic async/resource G5b/G5c 与 full GC migration 尚未完成. |
 | 阶段 A–F、H | done |
 | 阶段 D | 可推进项 done; D2.1 按 B 方案绿色 regression 收口 |
 | D2 真实 host smoke | in progress; real local filesystem preopen/read-directory, CLI pipe, compiler-generated TCP/UDP socket create/bind/drop loopback, and the private pinned `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size` async method gates are green; the method-level recovery matrix is documented, while general filesystem async and external HTTP remain blocked |
@@ -40,9 +142,26 @@ Option/Result/Variant、async/resource 和 G5c cutover 仍 pending。
 | 目录 | 标准库 `lib/`; 工具链 `src/` (原 `tool/`) |
 | active Component tooling | `wasm-tools 1.255.0 (76e20611d 2026-07-30)` only; SHA-256 `6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`; `--dummy-names legacy` is the current async naming mode |
 
-当前增量: G5a 默认同步候选新增推断 `[u8]/[u32]` 列表存储形状 (`seed [u8]/[u32]` + 单值 `@put`) 与一层、两层、三层直接 nested managed-struct field path; 默认 build/parse manifest 为 63 fixtures, 这些形状仍为 G5a-only. G5c residual baseline gate 已建立; bounded parser-backed text marshal 已通过 Core/WIT assembly、单一 host-driven lower gate 和固定 text ARC/GC equivalence gate（两条路径均为一次 allocation/free），C3 manifest-backed text lower 现在由哈希固定 descriptor 生成并纳入同一等价门禁；固定 `list<u32>` 也已通过 lower/lift host gates 与独立 ARC/GC equivalence gate; flat/mixed scalar-record 和 pinned 17-field indirect record lower 也已有 host/equivalence evidence; 但 host/WIT inventory 的通用 lift、一般 aggregate、compiler wiring 与 full GC cutover 仍被 pending rows 阻断.
+当前 host/WIT GC route 例外：普通 `do build` 仅对精确的 C14 lift/lower、
+C15-B/C15-D lower、C16-C/C16-D lift、bounded mixed scalar-record lower、
+bounded byte-list record lower/lift、bounded `list<u32>` record lower 与 bounded
+`list<u32>` record lift 使用 manifest-backed GC/WIT lowering；未被这十一个
+descriptor 精确准入的 host/WIT
+shape 仍保留
+ARC fallback。
 
-2026-08-20 增量: 第三个 managed segment 的直接同步 nested field path (`@get/@set(outer, .inner, .middle, .leaf, ...)`) 已接入 typed GC lowering；第四层、更深 producer expression、async/resource 与 host/WIT 仍 fail-closed。新增 compiled fixture、独立 Wasmtime GC probe 与 ARC/GC semantic equivalence 行均通过 `wasm-tools 1.255.0`、Wasmtime GC 和 `27815` oracle；默认 GC build/parse gate 现为 63 fixtures，等价矩阵现为 24 行。G5c full cutover 仍 pending.
+这里的 ARC fallback 仅指未准入 host/WIT shape；十一个精确同步 descriptor
+已经走默认 manifest-backed GC route。
+
+当前增量: G5a 默认同步候选新增推断 `[u8]/[u32]` 列表存储形状 (`seed [u8]/[u32]` + 单值 `@put`) 与一层、两层、三层、四层、五层直接 nested managed-struct field path; 默认 build/parse manifest 为 75 fixtures, 这些形状仍为 G5a-only. G5c residual baseline gate 已建立; bounded parser-backed text marshal 已通过 Core/WIT assembly、单一 host-driven lower gate 和固定 text ARC/GC equivalence gate（两条路径均为一次 allocation/free），C3 manifest-backed text lower、C4 manifest-backed `list<u32>` lower、C5 manifest-backed `list<u32>` lift、C6 manifest-backed flat scalar-record lower、C7 manifest-backed scalar-record lift、C8 manifest-backed mixed scalar-record lift、C9 manifest-backed 17-field indirect scalar-record lower、C10 manifest-backed two-level nested scalar-record lift、C11 manifest-backed two-level nested scalar-record lower 与 C12 manifest-backed three-level nested scalar-record lower、C13 manifest-backed three-level scalar-record lift 现在均由哈希固定 descriptor 生成并纳入等价门禁；C16-C 又将 C15-A 的 managed-record lift 接入真实 compiler opt-in，并以独立 host/equivalence/negative gate 验证 fail-closed 与 ARC 默认路由；固定 `list<u32>` 也已通过 lower/lift host gates 与独立 ARC/GC equivalence gate；fixed `list<u32>` record lower/lift 与 fixed byte-list record lower/lift 也已通过普通 host/equivalence/negative gate；flat/mixed/indirect/nested scalar-record 也已有普通 host/equivalence evidence；但 host/WIT inventory 的通用 lift、一般 aggregate、compiler wiring 与 full GC cutover 仍被 pending rows 阻断.
+
+上句的 pending compiler wiring 仅指 C15-B/C16-C 之外的通用或未准入
+host/WIT shape；新增精确 descriptor 的默认 route 由 2026-08-22 专项 gate
+单独覆盖。
+
+2026-08-20 增量: 第三个 managed segment 的直接同步 nested field path (`@get/@set(outer, .inner, .middle, .leaf, ...)`) 已接入 typed GC lowering；第四层、更深 producer expression、async/resource 与 host/WIT 仍 fail-closed。新增 compiled fixture、独立 Wasmtime GC probe 与 ARC/GC semantic equivalence 行均通过 `wasm-tools 1.255.0`、Wasmtime GC 和 `27815` oracle；默认 GC build/parse gate 现为 69 fixtures，等价矩阵现为 24 行。G5c full cutover 仍 pending.
+
+2026-08-21 增量: C15-B 私有 manifest-backed `record { code: u32, label: string }` lower 已闭合独立 Component host/equivalence gate。`wasm-tools 1.255.0` 实测 canonical import 为 `(i32, i32, i32)`，参数依次为 `code`, `label.ptr`, `label.len`；GC lower 路径严格执行一次 `cabi_realloc`、字节复制、host call、一次释放，且 canonical boundary 不携带 GC reference。host 观察到 `code=7`, `label=hello`, `write-calls=1`, `allocations=1`, `frees=1`，ARC/GC equivalence 同样通过。该证据仍为私有固定形状，不改变默认 host/WIT 路由；通用 managed-record lower、text/list record lower、async/resource 与 G5c full cutover 继续保持 pending。
 
 2026-08-16 增量: `nested-byte-list-put.do` 的精确 `[[u8]]` 单值 `@put` producer 已加入默认 58-fixture manifest 和 G5b 等价矩阵。
 2026-08-18 增量: `compiled_ok/100_compiled_test_managed_struct_list_append_gc_migration.do` 通过真实
@@ -78,9 +197,12 @@ fresh local with one zero-argument synchronous `defer` 也已接入同一路由�
 `two-await-component.do` 的 bounded `Future<nil>` `--p3-wait-for-component`
 路径。生成物使用 GC-traced `$async-frame` table、无 `__arc_` 或线性 frame
 allocator，并通过 `wasm-tools 1.255.0` parse、Wasmtime `-W gc=y` compile 和
-Component validate。这是 `future_stream_frames` 的 G5a Future-only 证据；普通
-GC sync async 入口仍为 `UnsupportedGcSyncAsync`，Stream/general async、G5b
-等价和 G5c 仍 pending。
+Component validate。这是 `future_stream_frames` 的 G5a Future-only 证据；随后
+`test_gc_async_frame_equivalence.sh` 在 2026-08-21 以同一 WIT、同一 Rust/Wasmtime
+runner 对 GC-traced frame 和固定 linear-frame oracle 完成 G5b 等价，观察到
+`pending-polls=4`、`external-wakes=4`、`completions=4`。普通 GC sync async
+入口仍为 `UnsupportedGcSyncAsync`，Stream/general async、任意 async producer
+和 G5c 仍 pending。
 
 2026-08-17 增量: measured canonical marshal boundary now admits direct
 `i32`/`i64`/`f32`/`f64` scalar lower/lift plans. The operation plan contains
@@ -1716,7 +1838,7 @@ package, signature, canonical-import, path, and unsupported-shape drift are
 negative-tested. The A shell gate also mutates a temporary source copy and
 requires `SourceHashMismatch` before Component assembly.
 
-Evidence: `cd src && zig test main.zig` (`519/519`),
+Evidence: `cd src && zig test main.zig` (`532/532`),
 `./src/build/test/run_tests.sh`,
 `bash examples/gc-p3-runtime/test_gc_wasi_random_list_lift.sh`, and
 `bash src/build/test/check_gc_g5c_residual_gate.sh baseline` pass. This is a
@@ -1768,3 +1890,487 @@ Rust/Wasmtime host. The gate observes `hello` and exactly one allocation/free
 on each route. This is still a private measured text slice: ordinary
 `do build` host/WIT routing remains ARC-backed, broader aggregate/lift shapes
 and G5c default cutover remain pending.
+
+### 2026-08-20 G5c C4 gate: private manifest-backed `list<u32>` lower
+
+The descriptor manifest now also pins
+`demo:marshal-u32-equivalence/api.send@1.0.0/lower` to a package/interface
+fragment plus a package-less `probe` world fragment. The loader verifies the
+concatenated source hash and `list<u32>` lower signature before the measured
+route emits the typed GC array copy/call module with canonical `(i32, i32)`
+parameters; the canonical import has no GC reference.
+
+`src/build/gc_marshal_u32_probe.zig` is the probe-only entry point and
+`examples/gc-p3-runtime/test_gc_marshal_u32_equivalence.sh` now generates the
+GC module through that manifest route, then assembles it beside the existing
+linear-memory ARC reference. The pinned Rust/Wasmtime runner observes
+`[10, 20, 30]` and exactly one allocation/free on both paths. This closes the
+measured `list<u32>` lower compiler/provenance/equivalence row only; ordinary
+`do build` host/WIT routing remains ARC-backed and general lift/aggregate,
+async/resource, and G5c cutover remain pending.
+
+### 2026-08-20 G5c C5 gate: private manifest-backed `list<u32>` lift
+
+The descriptor manifest now also pins
+`demo:marshal-u32-lift-host/api.receive@1.0.0/lift` to a package/interface
+fragment plus a package-less `probe` world fragment. The loader verifies the
+concatenated source hash and `list<u32>` lift signature before the measured
+route emits the typed GC-array result-area copy module with canonical `(i32)`
+input; the canonical import has no GC reference.
+
+`src/build/gc_marshal_u32_lift_probe.zig` is the probe-only entry point.
+`test_gc_marshal_u32_lift_host.sh` covers manifest-backed Component assembly
+and host execution, while `test_gc_marshal_u32_lift_equivalence.sh` compares
+the generated GC Component with the existing linear-memory ARC reference.
+Both paths produce checksum `60`. This closes the measured `list<u32>` lift
+compiler/provenance/equivalence row only; ordinary `do build` host/WIT routing,
+arbitrary lift/aggregate shapes, async/resource, and G5c cutover remain
+pending.
+
+### 2026-08-20 G5c C6 gate: private manifest-backed scalar-record lower
+
+The descriptor manifest now also pins
+`demo:marshal-record-lower/api.write@1.0.0/lower` to a package/interface
+fragment plus a package-less `probe` world fragment. The loader verifies the
+concatenated source hash and `writing` record signature before the private
+route emits the typed GC record lower module with canonical `(i32, i32)`
+parameters; no GC reference crosses the canonical import.
+
+`test_gc_marshal_record_lower_manifest_host.sh` covers manifest-backed
+Component assembly, a mutated-source `SourceHashMismatch` negative case, and
+Rust/Wasmtime host execution (`result=42`, `write-calls=1`). The paired
+`test_gc_marshal_record_lower_manifest_equivalence.sh` compares the generated
+GC Component with the flat linear-memory reference and observes `42/42` with
+one callback per path. This closes only the measured scalar-record lower
+compiler/provenance/equivalence row; ordinary host/WIT routing, nested/general
+aggregates, async/resource paths, and G5c cutover remain pending.
+
+### 2026-08-20 G5c C7 gate: private manifest-backed scalar-record lift
+
+The descriptor manifest now also pins
+`demo:marshal-record-host/api.read@1.0.0/lift` to a package/interface
+fragment plus a package-less `probe` world fragment. The loader verifies the
+concatenated source hash and `reading` record signature before the private
+route emits the typed GC result-area lift module with canonical `(i32)` input;
+no GC reference crosses the canonical import.
+
+`test_gc_marshal_record_lift_manifest_host.sh` covers manifest-backed
+Component assembly, a mutated-source `SourceHashMismatch` negative case, and
+Rust/Wasmtime host execution (`sum=42`). The paired
+`test_gc_marshal_record_lift_manifest_equivalence.sh` compares the generated
+GC Component with a linear-memory reference under the same WIT package and
+observes `42/42`. This closes only the measured scalar-record lift
+compiler/provenance/equivalence row; ordinary host/WIT routing, nested/general
+aggregates, async/resource paths, and G5c cutover remain pending.
+
+### 2026-08-20 G5c C8 gate: private manifest-backed mixed scalar-record lift
+
+The descriptor manifest now also pins
+`demo:marshal-record-mixed-host/api.read@1.0.0/lift` to a package/interface
+fragment plus a package-less `probe` world fragment. The loader verifies the
+concatenated source hash and `reading { code: u32, count: u64, status: s64 }`
+signature before the private route emits the typed GC result-area lift module.
+The measured record is 24 bytes with alignment 8 and field offsets `0/8/16`;
+the canonical import is `(i32)` and no GC reference crosses the import.
+
+`test_gc_marshal_record_mixed_lift_manifest_host.sh` covers Component assembly,
+source-hash drift rejection, and Rust/Wasmtime host execution (`sum=37` for
+`{7, 35, -5}`). The paired
+`test_gc_marshal_record_mixed_lift_manifest_equivalence.sh` compares the
+generated GC Component with a linear-memory reference and observes `37/37`.
+This closes only the measured mixed scalar-record lift compiler/provenance/
+equivalence row; ordinary host/WIT routing, nested/general aggregates,
+async/resource paths, and G5c cutover remain pending.
+
+### 2026-08-20 G5c C9 gate: private manifest-backed indirect scalar-record lower
+
+The descriptor manifest now also pins
+`demo:marshal-record-indirect-lower/api.write@1.0.0/lower` to a
+package/interface fragment plus a package-less `probe` world fragment. The
+loader verifies the concatenated source hash and the 17-field `u64` `writing`
+record signature before the private route emits the typed GC indirect lower
+module. The measured record is 136 bytes with alignment 8; its canonical
+import is a single `(i32)` pointer to the canonical record area, and no GC
+reference crosses the import.
+
+`test_gc_marshal_record_indirect_lower_manifest_host.sh` covers Component
+assembly, source-hash drift rejection, and the Rust/Wasmtime host adapter
+(`result=42`, `write-calls=1`). The paired
+`test_gc_marshal_record_indirect_lower_manifest_equivalence.sh` compares the
+generated GC Component with the linear-memory reference and observes `42/42`
+and `1/1` callback counts. This closes only the measured indirect
+scalar-record lower compiler/provenance/equivalence row; layouts beyond the
+pinned 17-field shape, ordinary host/WIT routing, nested/general aggregates,
+async/resource paths, and G5c cutover remain pending.
+
+### 2026-08-20 G5c C10 gate: private manifest-backed nested scalar-record lift
+
+The descriptor manifest now also pins
+`demo:marshal-record-nested-host/api.read@1.0.0/lift` to a package/interface
+fragment plus a package-less `probe` world fragment. The parser-backed route
+binds a two-level `reading { header: header, status: s64 }` value and the
+measured layout: `header` is 16 bytes/alignment 8 with fields at offsets `0`
+and `8`, while `reading` is 32 bytes/alignment 8 with `status` at offset `16`.
+The canonical import remains a single `(i32)` result-area pointer and no GC
+reference crosses the Component boundary.
+
+`test_gc_marshal_record_nested_lift_manifest_host.sh` covers Component
+assembly, source-hash drift rejection, measured-depth rejection through the
+route tests, and Rust/Wasmtime host execution (`sum=37`). The paired
+`test_gc_marshal_record_nested_lift_manifest_equivalence.sh` compares the
+generated recursive GC record construction with the linear-memory reference
+under the same WIT world and observes `37/37`. This closes only the pinned
+two-level nested lift compiler/provenance/equivalence row; deeper/general
+aggregates, nested lower, ordinary host/WIT routing, async/resource paths, and
+G5c cutover remain pending.
+
+### 2026-08-20 G5c C11 gate: private manifest-backed nested scalar-record lower
+
+The descriptor manifest now also pins
+`demo:marshal-record-nested-lower/api.write@1.0.0/lower` to a package/interface
+fragment plus a package-less `probe` world fragment. The parser-backed route
+binds a two-level `writing { header: header, status: s64 }` value and the
+measured layout: `header` is 16 bytes/alignment 8 with fields at offsets `0`
+and `8`, while `writing` is 32 bytes/alignment 8 with `status` at offset `16`.
+The WIT-derived canonical import is `(i32, i64, i64)`; recursive GC field
+flattening emits no GC reference at the Component boundary.
+
+`test_gc_marshal_record_nested_lower_manifest_host.sh` covers Component
+assembly, source-hash drift rejection, measured child-count rejection through
+the route tests, and Rust/Wasmtime host execution (`result=42`,
+`write-calls=1`). The paired
+`test_gc_marshal_record_nested_lower_manifest_equivalence.sh` compares the
+generated recursive GC lower path with the linear-memory reference and
+observes `42/42` and `1/1` callback counts. This closes only the pinned
+two-level nested lower compiler/provenance/equivalence row; deeper/general
+aggregates, indirect nested layouts, ordinary host/WIT routing, async/resource
+paths, and G5c cutover remain pending.
+
+### 2026-08-20 G5c C12 gate: private manifest-backed three-level nested scalar-record lower
+
+The descriptor manifest now also pins
+`demo:marshal-record-nested-lower-deep/api.write@1.0.0/lower` to a
+package/interface fragment plus a package-less `probe` world fragment. The
+parser-backed route binds `writing { detail: detail, tail: s64 }`, where
+`detail { header: header, status: s64 }` and
+`header { code: u32, count: u64 }`. The measured layouts are `header=16`,
+`detail=32`, and `writing=48` bytes, with nested offsets `0/8`, `header@0`,
+`status@16`, and `tail@32`. The WIT-derived canonical import is
+`(i32, i64, i64, i64)`; no GC reference crosses the Component boundary.
+
+`test_gc_marshal_record_nested_lower_deep_manifest_host.sh` covers Component
+assembly, source-hash and measured-shape route checks, and Rust/Wasmtime host
+execution (`result=42`, `write-calls=1`). The paired
+`test_gc_marshal_record_nested_lower_deep_manifest_equivalence.sh` compares
+the generated three-level GC flattening with the linear-memory reference and
+observes `42/42` and `1/1` callback counts. This closes only the pinned
+three-level nested scalar lower compiler/provenance/equivalence row; deeper or
+general aggregates, indirect nested layouts beyond this shape, ordinary
+host/WIT routing, async/resource paths, and G5c cutover remain pending.
+
+### 2026-08-20 G5c C13 gate: private manifest-backed three-level nested scalar-record lift
+
+The descriptor manifest now also pins
+`demo:marshal-record-nested-lift-deep/api.read@1.0.0/lift` to a
+package/interface fragment plus a package-less `probe` world fragment. The
+parser-backed route binds `reading { detail: detail, tail: s64 }`, where
+`detail { header: header, status: s64 }` and
+`header { code: u32, count: u64 }`. The pinned canonical result-area layout
+is `header=16`, `detail=24`, and `reading=32` bytes, with leaf offsets
+`code@0`, `count@8`, `status@16`, and `tail@24`; the canonical import remains
+one `(i32)` result-area pointer and no GC reference crosses the Component
+boundary.
+
+`test_gc_marshal_record_nested_lift_deep_manifest_host.sh` covers Component
+assembly, source-hash and measured-shape route checks, and Rust/Wasmtime host
+execution (`sum=42`). The paired
+`test_gc_marshal_record_nested_lift_deep_manifest_equivalence.sh` compares the
+generated recursive GC construction with the linear-memory reference and
+observes `42/42`. This closes only the pinned three-level nested lift
+compiler/provenance/equivalence row; deeper/general aggregates, indirect
+nested layouts beyond this shape, ordinary host/WIT routing, async/resource
+paths, and G5c cutover remain pending.
+
+### 2026-08-20 G5c C14 gate: private manifest-backed four-level nested scalar-record lift/lower
+
+The descriptor manifest now pins two additional private shapes:
+`demo:marshal-record-nested-lift-deeper/api.read@1.0.0/lift` and
+`demo:marshal-record-nested-lower-deeper/api.write@1.0.0/lower`. The parser-backed
+route validates the source hashes and the four-level tree
+`reading.detail.header.leaf`; the measured layouts are `leaf=16`, `header=24`,
+`detail=32`, and `reading=40` bytes, all aligned to 8. The flattened leaf
+offsets are `code@0`, `count@8`, `status@16`, `marker@24`, and `tail@32`.
+The lower canonical import is `(i32, i64, i64, i64, i64)` and the lift import
+is `(i32)`, with no GC reference crossing either Component boundary.
+
+`test_gc_marshal_record_nested_lift_deeper_manifest_host.sh` and
+`test_gc_marshal_record_nested_lower_deeper_manifest_host.sh` pass pinned
+Component assembly, source-hash drift rejection, and Rust/Wasmtime host
+execution (`sum=42` and `result=42`, one lower callback). The paired
+`*_deeper_manifest_equivalence.sh` gates compare each generated GC Component
+with a linear-memory ARC reference and observe `42/42` plus callback counts
+`1/1`. This closes only the private four-level scalar-record
+compiler/provenance/host/equivalence rows; arbitrary/deeper/general
+aggregates, default host/WIT compiler routing, async/resource paths, and G5c
+full cutover remain pending.
+
+### 2026-08-22 G5c C14 default synchronous host/WIT route promotion
+
+The ordinary `do build` compiler path now admits only the exact C14 lift and
+lower descriptors through the manifest-backed synchronous `@host_func` route.
+Before emitting WAT, the adapter recursively validates the four-level Do record
+tree, ordered scalar fields, synchronous host shape, and WIT locator/member.
+The canonical imports remain `(i32)` for lift and `(i32, i64, i64, i64, i64)`
+for lower, with no GC reference crossing either boundary. The explicit
+`--gc-wit-marshal` route remains private measured coverage for the same shape.
+
+The default host/equivalence/negative gates pass; focused C14 emitter tests are
+`3/3` green. The full Zig suite, repository regression, residual baseline,
+ReleaseSmall, release smoke, and inventory results are recorded after the
+current verification run. This closes only the exact C14 default route;
+arbitrary aggregates, async/resource, ownership syntax, and full G5c cutover
+remain pending.
+
+### 2026-08-20 G5c C15-A gate: private manifest-backed scalar-plus-text record lift
+
+The descriptor manifest now pins
+`demo:marshal-record-managed-lift/api.read@1.0.0/lift` for
+`reading { code: u32, label: string }`. The parser-backed route validates the
+source hash and the measured 12-byte result-area layout: `code@0`,
+`label.ptr@4`, and `label.len@8`, all aligned to 4. The canonical import remains
+one `(i32)` result-area pointer. The GC emitter copies the temporary text bytes
+into `$do_bytes`, constructs `$do_text`, then constructs the enclosing record;
+no GC reference crosses the Component boundary.
+
+`test_gc_marshal_record_managed_lift_manifest_host.sh` verifies pinned Core and
+Component assembly, source-hash drift rejection, and Rust/Wasmtime host
+execution (`value=12`, code `7` plus five-byte label). The paired
+`test_gc_marshal_record_managed_lift_manifest_equivalence.sh` compares the GC
+Component with a linear-memory reference and observes `12/12`. A measured
+child-count negative route test and the residual baseline gate also pass. This
+closes only the private scalar-plus-text lift row; text/list record lower,
+arbitrary managed aggregates, default host/WIT routing, async/resource paths,
+and G5c cutover remain pending.
+
+### 2026-08-21 G5c C15-B gate: private manifest-backed scalar-plus-text record lower
+
+The descriptor manifest pins
+`demo:marshal-record-managed-lower/api.write@1.0.0/lower` for
+`writing { code: u32, label: string }`. The measured record layout is 12 bytes
+with `code@0`, `label.ptr@4`, and `label.len@8`; the canonical lower import is
+the flat `(i32, i32, i32)` tuple `(code, label.ptr, label.len)`. No GC
+reference crosses the Component boundary.
+
+The GC emitter validates the text length, allocates one temporary linear span
+with `cabi_realloc`, copies the GC bytes, calls the host once, and frees the
+span once after the call. The host gate observes `code=7`, `label=hello`,
+`write-calls=1`, `allocations=1`, and `frees=1`; the ARC/GC equivalence gate
+observes identical fields, callback count, and cleanup counts. This closes
+only the private fixed `{u32,string}` lower row; general managed-record lower,
+text/list record lower, default host/WIT routing, async/resource paths, and
+G5c full cutover remain pending.
+
+### 2026-08-21 G5c C15-C gate: explicit compiler host/WIT wiring for C15-B
+
+The compiler now exposes the private opt-in
+`--gc-wit-marshal demo:marshal-record-managed-lower/api.write@1.0.0/lower`.
+The CLI rejects missing or duplicate descriptor values and rejects the option
+with other special targets or WIT sidecar outputs. With the option present,
+`do build` dispatches to the existing manifest-backed route; without it, the
+ordinary `compile_program_wat` path is unchanged.
+
+The compiler-generated Core WAT passes the pinned `wasm-tools 1.255.0`
+parse/embed/component-new/validate/component-wit sequence. The canonical
+import remains `(i32, i32, i32)`, no GC reference crosses the boundary, and
+the measured allocation/copy/call/free order remains unchanged. The compiler
+output host gate observes `code=7`, `label=hello`, one callback, one
+allocation, and one free. The compiler-output ARC/GC equivalence gate observes
+`allocations=1/1`, `frees=1/1`, and `write-calls=1/1`.
+
+This closes only the explicit private compiler wiring for the one C15-B
+descriptor. Default `@host`/WIT routing remains ARC-backed; general managed
+records, text/list aggregates, async/resource lowering, public ownership
+syntax, and G5c full cutover remain pending.
+
+### 2026-08-21 G5c C15-D gate: private multi-managed-text record lower
+
+The descriptor manifest now pins
+`demo:marshal-record-managed-lower-multi/api.write@1.0.0/lower` for
+`writing { code: u32, label: string, note: string }`. The measured root is
+20 bytes/alignment 4 with `code@0`, `label@4..11`, and `note@12..19`; the
+canonical lower import is `(i32, i32, i32, i32, i32)` in
+`code, label.ptr, label.len, note.ptr, note.len` order. No GC reference crosses
+the canonical boundary. The direct-root admission remains fail-closed for
+nested records, text-list fields, indirect layouts, and unsupported text
+positions.
+
+The GC emitter validates each text length, allocates and copies both spans,
+calls the canonical host once, and frees the spans in reverse order after the
+call. The standalone and real-compiler host gates observe
+`code=7`, `label=hello`, `note=world`, `write-calls=1`, `allocations=2`, and
+`frees=2`; the standalone and compiler ARC/GC equivalence gates observe
+`allocations=2/2`, `frees=2/2`, and `write-calls=1/1`. The commands are:
+
+```bash
+bash examples/gc-p3-runtime/test_gc_marshal_record_managed_lower_multi_manifest_host.sh
+bash examples/gc-p3-runtime/test_gc_marshal_record_managed_lower_multi_manifest_equivalence.sh
+bash examples/gc-p3-runtime/test_gc_marshal_record_managed_lower_multi_compiler_host.sh
+bash examples/gc-p3-runtime/test_gc_marshal_record_managed_lower_multi_compiler_equivalence.sh
+```
+
+This is private, explicit, single-descriptor evidence. It does not change the
+default `@host` route, and does not close general managed-record/text-list
+marshalling, async/resource lowering, public ownership syntax, or G5c full
+cutover.
+
+### 2026-08-21 G5c C16-A gate: real source-level host boundary
+
+The private compiler adapter now consumes the dedicated, host-first fixture
+`src/build/test/compile_ok/564_gc_wit_managed_record_host_boundary.do` before
+emitting descriptor
+`demo:marshal-record-managed-lower-multi/api.write@1.0.0/lower`. The token
+validator admits exactly one top-level synchronous `@host_func` with locator
+`demo:marshal-record-managed-lower-multi/api@1.0.0`, member `write`, one
+`Writing` parameter, and `nil` result. The record must be exactly
+`code: u32`, `label: text`, and `note: text` in declaration order. Unknown,
+mismatched, duplicate, extra, or unsupported declarations fail closed; the
+full CLI's async negative reaches the existing frontend registry guard and
+reports `UnknownP3AsyncHostDescriptor`, while the focused validator reports
+`AsyncGcWitHostDeclaration`.
+
+The emitted boundary remains the measured 20-byte root with offsets
+`code@0`, `label@4`, and `note@12`, and canonical lower
+`(i32, i32, i32, i32, i32)` in `code`, `label.ptr`, `label.len`, `note.ptr`,
+`note.len` order. No GC reference crosses the import. Compiler host and
+equivalence gates observe `code=7`, `label=hello`, `note=world`, one callback,
+two allocations, and two frees; equivalence is `2/2`, `2/2`, and `1/1`.
+The negative/default gate also confirms no WAT artifact on rejection and the
+ordinary fixture build remains ARC-backed.
+
+This is private and explicit only. It does not change default `@host` routing,
+does not admit general aggregate, async, resource, or ownership lowering, and
+does not close the G5c cutover or either host/WIT inventory row.
+
+### 2026-08-21 G5c C16-B gate: fixed-descriptor host validator expansion
+
+C16-B extends the source-level admission validator used by the explicit
+`--gc-wit-marshal` route to both fixed record descriptors. C15-B is admitted
+only for locator `demo:marshal-record-managed-lower/api@1.0.0`, member `write`,
+and `Writing { code: u32, label: text }`; C16-A keeps its separate
+`code/u32`, `label/text`, `note/text` field table. The validator chooses a
+descriptor-specific specification rather than inferring arbitrary Do-to-WIT
+types. Unknown descriptors, async markers, locator/member drift, shape drift,
+duplicates, and extra host declarations remain fail-closed before WAT.
+
+The C15-B compiler host and ARC/GC equivalence gates pass with one callback
+and `1/1` allocation/free counters. The new
+`test_gc_marshal_record_managed_lower_compiler_boundary_negative.sh` gate
+confirms the C15-B async and locator-mismatch fixtures fail with no WAT
+artifact, while the default host-first fixture still contains the ARC layout
+marker (`managed_count=1`, `payload_bytes=8`) and no private GC canonical
+import. This only broadens the private fixed-descriptor validator; default
+`@host`, general aggregate inference, ownership syntax, async/resource
+lowering, inventory pending rows, and G5c cutover are unchanged.
+
+### 2026-08-21 G5c C16-C gate: managed-record lift compiler boundary
+
+C16-C adds the private explicit compiler route for the measured C15-A lift
+descriptor `demo:marshal-record-managed-lift/api.read@1.0.0/lift`. The source
+validator requires one synchronous `@host_func`, zero parameters, `Reading`
+result, and ordered `code: u32` / `label: text` fields. The manifest-backed
+emitter reuses the 12-byte result-area layout and emits the canonical
+`(func (param i32))` import; the generated wrapper copies the managed text into
+GC values and returns `code + label.length`.
+
+Focused tests pass `3/3`. The compiler Component host gate returns `12`, and
+the compiler ARC/GC equivalence gate returns `12/12`. Async and locator
+mismatch fixtures fail before WAT, while the default fixture remains
+ARC-backed and has no private canonical import. Full verification also passes
+Zig `589/589`, `run_tests.sh` `pass=1276 fail=0 skip=3`, ReleaseSmall build,
+release smoke, and `git diff --check`.
+
+This closes only the fixed C16-C compiler boundary. It does not alter default
+`@host`, general aggregate or default host/WIT GC lowering, async/resource
+lowering, ownership syntax, the 15-row migration inventory, or G5c cutover.
+
+### 2026-08-21 G5c C16-D gate: multi-managed-field lift compiler boundary
+
+C16-D adds the private explicit compiler route for the measured descriptor
+`demo:marshal-record-managed-lift-multi/api.read@1.0.0/lift`. The source
+validator admits exactly one synchronous `@host_func`, zero parameters, and
+ordered `Reading { code: u32, label: text, note: text }` fields. The
+manifest-backed emitter measures a 20-byte result area (`code@0`,
+`label.ptr@4`, `label.len@8`, `note.ptr@12`, `note.len@16`) and emits the
+canonical `(func (param i32))` import; both managed text spans are copied into
+GC values and the fixed wrapper returns `17`.
+
+The compiler host gate passes with `value=17`; the ARC/GC equivalence gate
+passes with `17/17`. The pinned `wasm-tools 1.255.0` parse/embed/component-new/
+validate path passes, no GC reference crosses the canonical import, and the
+negative/default gate rejects async and locator mismatch before WAT while the
+ordinary build remains ARC-backed. Full verification passes Zig `591/591`,
+`run_tests.sh` `pass=1279 fail=0 skip=3`, ReleaseSmall, release smoke, and
+`git diff --check`.
+
+This closes only the private fixed C16-D compiler boundary. General aggregate
+inference, default host/WIT GC routing, text/list records outside the pinned
+descriptor, async/resource lowering, ownership syntax, the 15-row migration
+inventory, and G5c cutover remain pending.
+
+### 2026-08-21 G5b gate: GC/linear Future frame equivalence
+
+The bounded `future_stream_frames` G5b slice now has backend-neutral evidence.
+`examples/gc-p3-runtime/test_gc_async_frame_equivalence.sh` assembles the
+generated GC-traced frame/table Component and the fixed 40-byte linear-frame
+oracle from the same WIT, imports, callback state machine, and frame slots.
+The pinned `wasm-tools 1.255.0` parse/embed/component-new/validate sequence and
+the same Rust/Wasmtime runner pass for both Components; both observe
+`pending-polls=4`, `external-wakes=4`, and `completions=4`.
+
+This closes only G5b for two sequential `Future<nil>` awaits. It does not admit
+ordinary GC sync async lowering, generic async producers, `Stream<T>`, arbitrary
+async frames, resource shapes beyond their bounded rows, or G5c default
+routing/cutover. The migration inventory records the evidence while retaining
+those boundaries as pending.
+
+### 2026-08-21 G5c manifest-driven bounded compiler route closeout
+
+The four private synchronous managed-record routes now load their measured
+layouts from `doc/wit/gc_descriptor_manifest.json` and derive the host boundary
+from resolved WIT records and the actual Do `@host_func` tokens. The route is
+still explicit `--gc-wit-marshal` opt-in and the ordinary `@host` route remains
+ARC-backed. Eight compiler host/equivalence gates and four negative/default
+gates pass; full Zig is `598/598`, `run_tests.sh` is
+`pass=1279 fail=0 skip=3`, ReleaseSmall and release smoke pass, and
+`wasm-tools` is pinned to `1.255.0`. The inventory remains intentionally
+`complete_rows=15 pending_rows=15` with exit 1. General aggregates,
+async/resource lowering, ownership syntax, and full G5c cutover remain
+pending.
+
+### 2026-08-22 G5c residual gate coverage
+
+`check_gc_g5c_residual_gate.sh baseline` now reruns the verified bounded Future
+G5b GC/linear equivalence script before the manifest host/equivalence and ARC
+residual checks. A focused static wiring test protects that coverage and is
+executed by `run_release_smoke.sh`; the baseline still intentionally ends with
+`complete_rows=15 pending_rows=15` because the full G5c cutover and remaining
+host/WIT residual rows are not closed.
+
+### 2026-08-22 G5c default host/WIT route promotion
+
+The ordinary `do build` pipeline now loads and validates the exact manifest
+routes for C14 lift/lower, C15-B/C15-D lower, C16-C/C16-D lift, bounded mixed
+scalar-record lower, and bounded byte-list record lower. The eight default paths emit
+`;; gc-sync`, contain no `__arc_` marker, and keep GC references out of the
+canonical imports. Async and locator-mismatch inputs fail before WAT, and the
+focused emitter test protects compiler-root numeric field access. The C15-D
+default host/equivalence gates observe `allocations=2/frees=2` and `2/2`; the
+C16-D gates observe `value=17` and `17/17`.
+
+General aggregates, async/resource lowering, ownership syntax, and the 15-row
+migration inventory remain pending. The dedicated default, equivalence, and
+negative gates are green; full repository verification is also green:
+`zig test main.zig` `609/609`, `run_tests.sh` `pass=1297 fail=0 skip=3`,
+ReleaseSmall, release smoke, residual baseline, and `git diff --check` pass.
+The inventory intentionally remains `complete_rows=15 pending_rows=15` with
+exit 1.

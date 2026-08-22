@@ -36,6 +36,7 @@ pub const MarshalNode = struct {
     kind: NodeKind,
     canonical_shape: CanonicalShape,
     scalar_kind: ?wit_types.ScalarKind = null,
+    record_type_name: ?[]u8 = null,
     provisional_offset: u32,
     provisional_size: u32,
     provisional_alignment: u32,
@@ -49,6 +50,9 @@ pub const MeasuredFacts = struct {
     byte_size: u32,
     alignment: u32,
     element_stride: ?u32 = null,
+    element_byte_size: ?u32 = null,
+    element_alignment: ?u32 = null,
+    capacity: ?u32 = null,
     core_type: ?wit_layout.CoreWord = null,
     pointer_offset: ?u32 = null,
     length_offset: ?u32 = null,
@@ -333,6 +337,9 @@ fn build_node(allocator: std.mem.Allocator, source: *const wit_types.AbiType, of
                 record_alignment = @max(record_alignment, field_alignment);
                 const aligned_offset = align_up(field_offset, field_alignment);
                 children[initialized] = try build_node(allocator, field.value, aligned_offset);
+                if (field.value.kind() == .record) {
+                    children[initialized].record_type_name = try allocator.dupe(u8, field.name);
+                }
                 field_offset = aligned_offset + children[initialized].provisional_size;
             }
             return .{
@@ -392,6 +399,9 @@ fn bind_measured_node(
                 .byte_size = 8,
                 .alignment = 4,
                 .element_stride = facts.element_stride,
+                .element_byte_size = facts.element_byte_size,
+                .element_alignment = facts.element_alignment,
+                .capacity = facts.capacity,
                 .pointer_offset = facts.pointer_offset,
                 .length_offset = facts.length_offset,
             };
@@ -411,6 +421,9 @@ fn bind_measured_node(
                 .byte_size = 8,
                 .alignment = 4,
                 .element_stride = facts.element_stride,
+                .element_byte_size = facts.element_byte_size,
+                .element_alignment = facts.element_alignment,
+                .capacity = facts.capacity,
                 .pointer_offset = facts.pointer_offset,
                 .length_offset = facts.length_offset,
             };
@@ -490,4 +503,5 @@ fn align_up(value: u32, alignment: u32) u32 {
 fn deinit_node(allocator: std.mem.Allocator, node: MarshalNode) void {
     for (node.children) |child| deinit_node(allocator, child);
     if (node.children.len != 0) allocator.free(node.children);
+    if (node.record_type_name) |name| allocator.free(name);
 }
