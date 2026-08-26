@@ -1,0 +1,5 @@
+# build-arg: --p3-async-component
+do:g6-2-owned-record-producer/sink@0.1.0
+(func (export "[async-lift]produce")
+[producer-record-transfer]
+[producer-resource-drop-exactly-once]
