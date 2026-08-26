@@ -129,7 +129,7 @@ pub fn check_p3_async_host_imports(allocator: std.mem.Allocator, tokens: []const
         if (shape == null and !is_pinned_http_client_send_descriptor(descriptor) and
             !std.mem.eql(u8, descriptor.effect, "async")) return mark_error_at(tokens, idx, error.UnknownP3AsyncHostDescriptor);
         const is_stream_effect = if (shape) |resolved_shape| switch (resolved_shape) {
-            .http_stream_reader, .stream_reader_acquire, .stream_writer, .record_stream_reader, .record_resource_list_stream_reader, .record_resource_list_stream_producer, .record_resource_list_stream_dynamic_producer, .record_resource_list_stream_batched_producer, .scalar_list_stream_producer, .variant_resource_stream_reader => true,
+            .http_stream_reader, .stream_reader_acquire, .stream_writer, .record_stream_reader, .record_resource_list_stream_reader, .owned_record_stream_producer, .record_resource_list_stream_producer, .record_resource_list_stream_dynamic_producer, .record_resource_list_stream_batched_producer, .scalar_list_stream_producer, .variant_resource_stream_reader => true,
             else => false,
         } else false;
         if (!is_stream_effect and !std.mem.eql(u8, descriptor.effect, "async") and
@@ -165,6 +165,7 @@ fn descriptor_is_async_invocation(descriptor: p3_async_manifest.Descriptor) bool
         std.mem.eql(u8, descriptor.locator, "wasi:filesystem/types@0.3.0-rc-2025-09-16") and
         std.mem.eql(u8, descriptor.member, "descriptor.read-directory")) return true;
     return std.mem.eql(u8, descriptor.effect, "record-resource-list-stream-producer") or
+        std.mem.eql(u8, descriptor.effect, "record-resource-stream-producer") or
         std.mem.eql(u8, descriptor.effect, "record-resource-list-stream-dynamic-producer") or
         std.mem.eql(u8, descriptor.effect, "record-resource-list-stream-batched-producer") or
         std.mem.eql(u8, descriptor.effect, "scalar-list-stream-producer") or
@@ -185,6 +186,7 @@ fn p3_async_signature_matches(tokens: []const lexer.Token, start_idx: usize, end
             .stream_reader_acquire => return stream_reader_signature_matches(tokens, start_idx, close_idx, end_idx),
             .record_stream_reader => return record_stream_reader_signature_matches(tokens, start_idx, close_idx, end_idx, descriptor),
             .record_resource_list_stream_reader => return record_resource_list_stream_reader_signature_matches(tokens, start_idx, close_idx, end_idx, descriptor),
+            .owned_record_stream_producer => return owned_record_stream_producer_signature_matches(tokens, close_idx, end_idx, descriptor),
             .record_resource_list_stream_producer => return record_resource_list_stream_producer_signature_matches(tokens, close_idx, end_idx, descriptor),
             .record_resource_list_stream_dynamic_producer => return record_resource_list_stream_producer_signature_matches(tokens, close_idx, end_idx, descriptor),
             .record_resource_list_stream_batched_producer => return record_resource_list_stream_producer_signature_matches(tokens, close_idx, end_idx, descriptor),
@@ -538,6 +540,36 @@ fn record_resource_list_stream_producer_signature_matches(
         !std.mem.eql(u8, tokens[result_start + 4].lexeme, "ProducerError") or
         !tok_eq(tokens[result_start + 5], ">")) return false;
     return true;
+}
+
+fn owned_record_stream_producer_signature_matches(
+    tokens: []const lexer.Token,
+    params_close_idx: usize,
+    end_idx: usize,
+    descriptor: p3_async_manifest.Descriptor,
+) bool {
+    if (params_close_idx < 5 or
+        !tok_eq(tokens[params_close_idx - 5], "(") or
+        !tok_eq(tokens[params_close_idx - 4], "StreamWriter") or
+        !tok_eq(tokens[params_close_idx - 3], "<") or
+        tokens[params_close_idx - 2].kind != .ident or
+        !tok_eq(tokens[params_close_idx - 1], ">")) return false;
+
+    const shape = switch (p3_async_manifest.lowering_shape(descriptor) orelse return false) {
+        .owned_record_stream_producer => |value| value,
+        else => return false,
+    };
+    if (!source_type_matches_element(tokens[params_close_idx - 2].lexeme, shape.element)) return false;
+
+    const result_start = params_close_idx + 3;
+    return result_start + 6 == end_idx and
+        tok_eq(tokens[result_start], "Result") and
+        tok_eq(tokens[result_start + 1], "<") and
+        tok_eq(tokens[result_start + 2], "nil") and
+        tok_eq(tokens[result_start + 3], ",") and
+        tokens[result_start + 4].kind == .ident and
+        std.mem.eql(u8, tokens[result_start + 4].lexeme, "ProducerError") and
+        tok_eq(tokens[result_start + 5], ">");
 }
 
 fn scalar_list_stream_producer_signature_matches(
@@ -2433,6 +2465,31 @@ test "batched list resource producer host_async_func imports accept the exact li
     defer std.testing.allocator.free(tokens);
 
     try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "owned record producer host_async_func imports accept the exact direct writer signature" {
+    const source =
+        \\make_ticket = @host_func("do:g6-2-owned-record-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream", (StreamWriter<ResourceEntry>) -> Result<nil, ProducerError>)
+        \\Ticket = @wasi_resource("do:g6-2-owned-record-producer/source/ticket", { .id i64 })
+        \\ResourceEntry { .ticket Ticket }
+        \\ProducerError error = Io | Pipe | InvalidMode
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "owned record producer host_async_func imports reject a list writer signature" {
+    const source =
+        \\consume = @host_async_func("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
+        \\ProducerError error = Io | Pipe | InvalidMode
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectError(error.P3AsyncHostSignatureMismatch, check_p3_async_host_imports(std.testing.allocator, tokens));
 }
 
 test "scalar list producer host_async_func imports accept the exact u32 list writer signature" {
