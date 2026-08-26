@@ -1,5 +1,23 @@
 # Changelog
 
+# 2026-08-26 G6.2 direct owned-record producer lifecycle checkpoint:
+  added the private exact `do:g6-2-owned-record-producer@0.1.0` Component route
+  for `stream<resource-entry>`. The pinned WIT hash is
+  `6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace`; the
+  record is four bytes with `ticket: own<ticket>` at offset `0`, stream capacity
+  is `1`, and the source ticket seed is `111`. Canonical ABI, Do admission,
+  generated Component validation, and Rust/Wasmtime lifecycle gates pass the ten
+  ready/pending/error/cancel/early-drop/repeat/invalid modes with exactly-once
+  ticket, stream, and future cleanup plus an empty `ResourceTable` (repeat has
+  two creations and two drops). The canonical/generated comparison is recorded
+  as a separate Component lifecycle equivalence gate, not as an ARC/GC semantic
+  matrix row. Generic producers, arbitrary expressions, borrowed/list/variant
+  payloads, broader resource lowering, public ownership syntax, and full GC
+  cutover remain pending. Gates: `test_g6_2_owned_record_producer_abi.sh`,
+  `test_do_g6_2_owned_record_producer.sh`,
+  `test_rust_g6_2_owned_record_producer.sh`, and
+  `test_g6_2_owned_record_producer_equivalence.sh`.
+
 # 2026-08-23 G5c scalar-list route parameterization:
   the synchronous record lowerer now uses one internal
   `ManagedScalarListField` specification for both manifest `byte_list` and

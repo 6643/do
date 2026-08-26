@@ -70,6 +70,20 @@ run_gc_probe() {
     fi
 }
 
+# This is a separate Component lifecycle comparison, not an ARC/GC semantic
+# row: the direct owned-record producer has no ARC implementation to compare.
+run_direct_owned_record_component_equivalence() {
+    local gate_output="$TMP_DIR/g6-2-owned-record-producer-equivalence.output"
+    if ! WASM_TOOLS="$WASM_TOOLS_BIN" \
+        bash "$ROOT/examples/p3-runtime/test_g6_2_owned_record_producer_equivalence.sh" >"$gate_output" 2>&1; then
+        printf 'direct owned-record Component lifecycle gate failed\n' >&2
+        cat "$gate_output" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf 'PASS separate direct owned-record Component lifecycle equivalence gate (not an ARC/GC row)\n'
+}
+
 # row normal fixture gc probe
 matrix=$(cat <<'ROWS'
 list-set src/build/test/compiled_ok/49_compiled_test_storage_alias_set_keeps_old_value.do list_set
@@ -105,6 +119,8 @@ while read -r row fixture probe; do
     run_gc_probe "$row" "$probe"
     printf 'PASS %s: normal and GC observable results agree\n' "$row"
 done <<< "$matrix"
+
+run_direct_owned_record_component_equivalence
 
 pass_rows=0
 while read -r row fixture probe; do

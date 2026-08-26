@@ -2374,3 +2374,33 @@ negative gates are green; full repository verification is also green:
 ReleaseSmall, release smoke, residual baseline, and `git diff --check` pass.
 The inventory intentionally remains `complete_rows=15 pending_rows=15` with
 exit 1.
+
+### 2026-08-26 G6.2 direct owned-record producer lifecycle checkpoint
+
+The private descriptor `do:g6-2-owned-record-producer@0.1.0` now has a complete
+direct-record lifecycle proof. Its WIT hash is
+`6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace`; the only
+admitted stream element is `resource-entry`, a four-byte record with
+`ticket: own<ticket>` at offset `0`, and stream capacity is `1`. The source
+`make-ticket` ABI is `(u32) -> Ticket`; the sink is the exact async
+`StreamWriter<ResourceEntry> -> Result<nil, ProducerError>` shape.
+
+With Zig `0.16.0`, `wasm-tools 1.255.0`, Rust/Cargo `1.97.1`, and Wasmtime
+`47.0.2`, canonical assembly, Do admission, generated Component validation, and
+Rust/Wasmtime lifecycle gates pass for `ready`, `pending`, sink error before/after
+transfer, cancellation before/after transfer, early drop before/after transfer,
+`repeat`, and invalid. Valid rows observe the expected `[111]` transfer (or no
+transfer before ownership), exactly one ticket/stream/future cleanup and an empty
+`ResourceTable`; `repeat` observes two creations and two drops; invalid observes
+zero resource creation and zero drops. The canonical/generated comparison is
+kept as a separate Component lifecycle equivalence gate and is intentionally not
+counted as an ARC/GC semantic-equivalence row.
+
+This closes only the private direct owned-record slice. Generic producers,
+arbitrary producer expressions, borrowed/list/variant payloads, broader resource
+lowering, public `own<T>`/`borrow<T>`/`ref<T>` syntax, and full GC cutover remain
+pending. The dedicated gates are
+`examples/p3-runtime/test_g6_2_owned_record_producer_abi.sh`,
+`test_do_g6_2_owned_record_producer.sh`,
+`test_rust_g6_2_owned_record_producer.sh`, and
+`test_g6_2_owned_record_producer_equivalence.sh`.

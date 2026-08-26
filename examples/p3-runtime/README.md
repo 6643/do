@@ -134,6 +134,25 @@ awaits the next helper; `finish_stream` owns the countdown, sink call, and
 edge, arbitrary async calls, and arbitrary producer/resource shapes remain
 rejected.
 
+`g6-2-owned-record-producer.do` is the private direct owned-record producer
+slice. It admits only `StreamWriter<ResourceEntry>`, where
+`ResourceEntry` contains one `own` `Ticket` at record offset `0` in a four-byte
+record; the stream capacity is `1` and each valid call creates at most one
+ticket with seed `111`. Its WIT hash is
+`6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace`.
+Run `bash test_g6_2_owned_record_producer_abi.sh`,
+`bash test_do_g6_2_owned_record_producer.sh`, and
+`bash test_rust_g6_2_owned_record_producer.sh` for the canonical ABI,
+compiler-generated Component, and Rust/Wasmtime gates. The ten-mode matrix is
+`ready`, `pending`, sink error before/after transfer, cancellation before/after
+transfer, early drop before/after transfer, `repeat`, and invalid; every valid
+row requires exactly one ticket drop, one stream drop, one future drop, and an
+empty `ResourceTable` (the repeat row requires two of each). The companion
+`bash test_g6_2_owned_record_producer_equivalence.sh` compares canonical and
+generated Component lifecycle observations. This is not an ARC/GC semantic
+equivalence row and does not add a generic producer route, borrowed/list/variant
+payloads, or public `own<T>`/`borrow<T>`/`ref<T>` syntax.
+
 For `wasi:cli/run.run`, the source probe accepts either direct forwarding of
 `Future<Result<nil, nil>>`, or one exact unit-result branch: bind
 `await(pending)`, test `@is(replied, Ok)`, return `Err()` in that branch, then

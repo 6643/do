@@ -607,6 +607,14 @@ slice 解释为 G5c 或 full GC cutover。
   `ResourceTable`; fixtures `483`-`489` reject descriptor/element/count/sink/body/
   payload/result drift before WAT. Generic `list<T>`, arbitrary producer
   expressions, borrowed async payloads, and public ownership remain pending.
+- **G6.2 direct owned-record producer**: the private
+  `do:g6-2-owned-record-producer@0.1.0` descriptor admits only
+  `StreamWriter<ResourceEntry>` with one owned `Ticket` field. The four-byte
+  record uses offset `0`, stream capacity `1`, and ticket seed `111`; canonical
+  ABI, Do/Component, Rust/Wasmtime, and canonical/generated lifecycle gates pass
+  all ten modes with exactly-once cleanup and an empty `ResourceTable`. This is
+  a separate Component lifecycle comparison, not an ARC/GC matrix row; generic
+  producer/resource, borrowed/list/variant, and public ownership remain pending.
 - **Bounded async-call internal consolidation (2026-08-09)**: the five
   admitted child/inline/host-scalar forms now share private validated frame and
   cleanup facts only. Planner admission remains separate and emitter templates
