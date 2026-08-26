@@ -39,6 +39,7 @@ pub const LoweringShape = union(enum) {
     stream_reader_acquire: StreamReaderShape,
     record_stream_reader: RecordStreamReaderShape,
     record_resource_list_stream_reader: RecordResourceListStreamShape,
+    owned_record_stream_producer: OwnedRecordStreamProducerShape,
     record_resource_list_stream_producer: RecordResourceListStreamProducerShape,
     record_resource_list_stream_dynamic_producer: RecordResourceListStreamProducerShape,
     record_resource_list_stream_batched_producer: RecordResourceListStreamProducerShape,
@@ -85,6 +86,18 @@ pub const RecordResourceListStreamProducerShape = struct {
     stream: StreamCanonical,
     record_layout: RecordLayout,
     list_layout: ListResourceLayout,
+    producer: ProducerCanonical,
+};
+
+/// ABI facts for the private direct `stream<resource-entry>` producer. This
+/// shape intentionally excludes list metadata: a single record is transferred
+/// directly through the stream and owns exactly one ticket field.
+pub const OwnedRecordStreamProducerShape = struct {
+    element: []const u8,
+    stream_index: usize,
+    method: StreamOperation,
+    stream: StreamCanonical,
+    record_layout: RecordLayout,
     producer: ProducerCanonical,
 };
 
@@ -444,6 +457,11 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
 
     if (std.mem.eql(u8, descriptor.effect, "record-resource-list-stream-reader")) {
         if (valid_record_resource_list_stream_reader_descriptor(descriptor)) |shape| return .{ .record_resource_list_stream_reader = shape };
+        return null;
+    }
+
+    if (std.mem.eql(u8, descriptor.effect, "record-resource-stream-producer")) {
+        if (valid_owned_record_stream_producer_descriptor(descriptor)) |shape| return .{ .owned_record_stream_producer = shape };
         return null;
     }
 
@@ -1303,6 +1321,7 @@ fn parse_descriptor(allocator: std.mem.Allocator, value: std.json.Value) !Descri
         !std.mem.eql(u8, effect, "http-stream-reader") and
         !std.mem.eql(u8, effect, "stream-reader") and
         !std.mem.eql(u8, effect, "record-stream-reader") and
+        !std.mem.eql(u8, effect, "record-resource-stream-producer") and
         !std.mem.eql(u8, effect, "record-resource-list-stream-reader") and
         !std.mem.eql(u8, effect, "record-resource-list-stream-producer") and
         !std.mem.eql(u8, effect, "record-resource-list-stream-dynamic-producer") and
@@ -1995,6 +2014,82 @@ fn valid_record_resource_list_stream_reader_descriptor(descriptor: Descriptor) ?
         .future = future,
         .record_layout = record_layout,
         .list_layout = list_layout,
+    };
+}
+
+fn valid_owned_record_stream_producer_descriptor(descriptor: Descriptor) ?OwnedRecordStreamProducerShape {
+    const stream = descriptor.canonical.stream orelse return null;
+    const record_layout = descriptor.canonical.record_layout orelse return null;
+    const producer = descriptor.canonical.producer orelse return null;
+
+    if (!std.mem.eql(u8, descriptor.effect, "record-resource-stream-producer") or
+        !std.mem.eql(u8, descriptor.locator, "do:g6-2-owned-record-producer@0.1.0") or
+        !std.mem.eql(u8, descriptor.member, "consume-via-stream") or
+        descriptor.params.len != 1 or
+        !std.mem.eql(u8, descriptor.params[0], "stream<resource-entry>") or
+        descriptor.resource != null or
+        !std.mem.eql(u8, descriptor.result, "Result<nil,error-code>") or
+        descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, descriptor.wit_sha256.?, "6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace") or
+        !std.mem.eql(u8, descriptor.wit.package, "do:g6-2-owned-record-producer@0.1.0") or
+        !std.mem.eql(u8, descriptor.wit.interface, "sink") or
+        !std.mem.eql(u8, descriptor.wit.operation, "consume-via-stream") or
+        !std.mem.eql(u8, descriptor.wit.world, "owned-record-producer") or
+        !std.mem.eql(u8, descriptor.wit.parameter, "data") or
+        !equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i32" }) or
+        !equal_core_types(descriptor.canonical.core_results, &.{"i32"}) or
+        !equal_core_types(descriptor.canonical.completion_params, &.{ "i32", "i32" }) or
+        !std.mem.eql(u8, descriptor.canonical.completion, "task-return") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "do:g6-2-owned-record-producer/sink@0.1.0") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower]consume-via-stream") or
+        descriptor.canonical.result_payload != null or
+        descriptor.canonical.result_area_payload != null or
+        descriptor.canonical.future_owned != null or
+        descriptor.canonical.error_variants.len != 0 or
+        descriptor.canonical.list_resource_layout != null or
+        descriptor.canonical.scalar_list_layout != null or
+        descriptor.canonical.scalar_list_producer != null or
+        descriptor.canonical.future_input != null or
+        descriptor.canonical.future != null or
+        descriptor.canonical.variant_stream != null or
+        descriptor.canonical.variant_future != null or
+        descriptor.canonical.event_layout != null or
+        descriptor.canonical.ticket_drop_import != null or
+        !valid_single_ticket_record_layout(record_layout) or
+        !std.mem.eql(u8, stream.element, "resource-entry") or
+        !std.mem.eql(u8, producer.source_module, "do:g6-2-owned-record-producer/source@0.1.0") or
+        !std.mem.eql(u8, producer.source_import_name, "make-ticket") or
+        !equal_core_types(producer.source_core_params, &.{ "i32" }) or
+        !equal_core_types(producer.source_core_results, &.{ "i32" }) or
+        !std.mem.eql(u8, producer.resource_drop_import, "[resource-drop]ticket") or
+        producer.stream_capacity != 1 or
+        !std.mem.eql(u8, producer.terminal, "task-return") or
+        producer.runtime_count_param != null or
+        producer.runtime_max != null or
+        producer.runtime_mode_param == null or
+        !std.mem.eql(u8, producer.runtime_mode_param.?, "u32") or
+        producer.batch_count != null or
+        producer.batch_lengths != null) return null;
+
+    if (!valid_named_stream_operation(stream.new, "[stream-new-0]consume-via-stream", &.{}, &.{ "i64" }) or
+        !valid_named_stream_operation(stream.cancel_read, "[stream-cancel-read-0]consume-via-stream", &.{ "i32" }, &.{ "i32" }) or
+        !valid_named_stream_operation(stream.cancel_write, "[stream-cancel-write-0]consume-via-stream", &.{ "i32" }, &.{ "i32" }) or
+        !valid_named_stream_operation(stream.drop_readable, "[stream-drop-readable-0]consume-via-stream", &.{ "i32" }, &.{}) or
+        !valid_named_stream_operation(stream.drop_writable, "[stream-drop-writable-0]consume-via-stream", &.{ "i32" }, &.{}) or
+        !valid_named_stream_operation(stream.read, "[async-lower][stream-read-0]consume-via-stream", &.{ "i32", "i32", "i32" }, &.{ "i32" }) or
+        !valid_named_stream_operation(stream.write, "[async-lower][stream-write-0]consume-via-stream", &.{ "i32", "i32", "i32" }, &.{ "i32" })) return null;
+
+    return .{
+        .element = stream.element,
+        .stream_index = 0,
+        .method = .{
+            .import_name = descriptor.canonical.async_import_name,
+            .core_params = descriptor.canonical.core_params,
+            .core_results = descriptor.canonical.core_results,
+        },
+        .stream = stream,
+        .record_layout = record_layout,
+        .producer = producer,
     };
 }
 
@@ -5330,4 +5425,73 @@ test "batched list resource producer descriptor admits only its fixed two-batch 
     var wrong_mode_type = descriptor;
     wrong_mode_type.canonical.producer.?.runtime_mode_param = "u64";
     try std.testing.expect(lowering_shape(wrong_mode_type) == null);
+}
+
+test "owned record producer descriptor is pinned before lowering" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+
+    const descriptor = registry.find(
+        "do:g6-2-owned-record-producer@0.1.0",
+        "consume-via-stream",
+    ) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings(
+        "6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace",
+        descriptor.wit_sha256.?,
+    );
+    switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .owned_record_stream_producer => |shape| {
+            try std.testing.expectEqualStrings("resource-entry", shape.element);
+            try std.testing.expectEqual(@as(usize, 0), shape.stream_index);
+            try std.testing.expectEqual(@as(u32, 4), shape.record_layout.byte_size);
+            try std.testing.expectEqual(@as(u32, 0), shape.record_layout.fields[0].offset);
+            try std.testing.expectEqual(@as(u32, 1), shape.producer.stream_capacity);
+        },
+        else => return error.TestUnexpectedResult,
+    }
+}
+
+test "owned record producer lowering rejects descriptor drift" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+
+    const descriptor = registry.find(
+        "do:g6-2-owned-record-producer@0.1.0",
+        "consume-via-stream",
+    ) orelse return error.TestUnexpectedResult;
+
+    var wrong_hash = descriptor;
+    wrong_hash.wit_sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    try std.testing.expect(lowering_shape(wrong_hash) == null);
+
+    var wrong_element = descriptor;
+    var params = [_][]const u8{"stream<list<resource-entry>>"};
+    wrong_element.params = &params;
+    try std.testing.expect(lowering_shape(wrong_element) == null);
+
+    var wrong_byte_size = descriptor;
+    wrong_byte_size.canonical.record_layout.?.byte_size = 8;
+    try std.testing.expect(lowering_shape(wrong_byte_size) == null);
+
+    var borrowed_field = descriptor.canonical.record_layout.?.source_fields[0];
+    borrowed_field.ownership = .borrow;
+    var borrowed_layout = descriptor.canonical.record_layout.?;
+    borrowed_layout.source_fields = &.{borrowed_field};
+    var borrowed = descriptor;
+    borrowed.canonical.record_layout = borrowed_layout;
+    try std.testing.expect(lowering_shape(borrowed) == null);
+
+    var wrong_import = descriptor;
+    wrong_import.canonical.async_import_name = "[async-lower]consume-via-stream-drift";
+    try std.testing.expect(lowering_shape(wrong_import) == null);
+
+    var wrong_completion = descriptor;
+    wrong_completion.canonical.completion = "result-area";
+    try std.testing.expect(lowering_shape(wrong_completion) == null);
+
+    const neighboring = registry.find(
+        "do:g6-2-c-min-producer@0.1.0",
+        "consume-via-stream",
+    ) orelse return error.TestUnexpectedResult;
+    try std.testing.expect(lowering_shape(neighboring) != null);
 }
