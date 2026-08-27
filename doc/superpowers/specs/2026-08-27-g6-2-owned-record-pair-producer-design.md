@@ -84,10 +84,11 @@ world owned-record-pair-producer {
 }
 ```
 
-The implementation gate must compute the byte SHA-256 of this exact file and store
-it in the new manifest row. The design deliberately does not invent a hash before
-the source file is materialized; a missing or mismatched hash is an admission error,
-not a reason to silently regenerate the descriptor.
+The byte SHA-256 of this exact source (including its final newline) is
+`89345a5213936735d7f065cd54ed42b83d159b80305a1a900ae00df2e811704d`. The
+implementation gate must recompute this hash and store the same value in the new
+manifest row. A missing or mismatched hash is an admission error, not a reason to
+silently regenerate the descriptor.
 
 The package, instances, world, and members are contract identifiers:
 
