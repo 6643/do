@@ -177,6 +177,13 @@ The canonical import must contain no Wasm GC reference type. The record crosses 
 Component boundary as canonical resource handles in linear memory; Do source still
 has no public `own<T>`, `borrow<T>`, `ref<T>`, pointer, or lifetime syntax.
 
+The producer template must keep an ownership-presence bitmask separate from the two
+handle words. A resource-table representation of `0` is valid, so `left == 0` or
+`right == 0` must never be used as an absence test. Bit `0` means the left handle is
+guest-owned, bit `1` means the right handle is guest-owned, and bit `2` means the
+complete pair has transferred to the stream/host. The mask is cleared only after the
+corresponding drop or successful pair transfer.
+
 ## Producer sequence and ownership state machine
 
 For every valid non-repeat invocation, the fixed template performs this sequence:
@@ -184,10 +191,11 @@ For every valid non-repeat invocation, the fixed template performs this sequence
 1. reject mode `255` before allocating a stream or ticket;
 2. create `left` with `make-ticket(111)`;
 3. create `right` with `make-ticket(222)`;
-4. place both handles in the 8-byte record slot;
+4. place both handles in the 8-byte record slot and set ownership bits `0|1`;
 5. create a capacity-one stream and start the sink task;
 6. perform at most one stream write of the complete record;
-7. clear both guest-owned slots only after the write reports successful transfer;
+7. clear both guest-owned slots and set the transferred bit only after the write
+   reports successful transfer;
 8. finalize the sink task, stream ends, waitable and frame exactly once.
 
 The write is atomic from the ownership contract's perspective: there is no valid
@@ -210,9 +218,10 @@ stateDiagram-v2
 ```
 
 If the second `make-ticket` fails, the first ticket is released before any stream
-creation. If stream creation or sink start fails, both guest-owned tickets are
-released in reverse field order (`right`, then `left`). A successful transfer
-forbids guest-side ticket drops; the host lifts and drops both handles exactly once.
+creation. If stream creation or sink start fails, the ownership mask drops every set
+guest bit in reverse field order (`right`, then `left`), including a valid zero
+handle representation. A successful transfer forbids guest-side ticket drops; the
+host lifts and drops both handles exactly once.
 Cancellation cleans up guest/host state and never claims rollback of an external
 effect already observed by the sink.
 
