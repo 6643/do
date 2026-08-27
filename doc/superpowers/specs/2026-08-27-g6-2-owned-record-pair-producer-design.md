@@ -1,6 +1,6 @@
 # G6.2 Two-Owned-Field Record Producer Design
 
-> 状态：设计候选；实现前需要单独的 spec review 与执行计划批准。
+> 状态：已实现并验证（2026-08-27）；本文件仍是该私有 bounded gate 的契约。
 > 本文只定义一个私有、固定形状的 Component gate，不开放通用 producer 或
 > public ownership syntax。
 
@@ -230,8 +230,11 @@ effect already observed by the sink.
 
 The Rust/Wasmtime runner must use one Store per matrix invocation except for the
 `repeat` row, which intentionally reuses one Store and ResourceTable. The sink
-records the seeds in receive order and counts callbacks, stream drops, task/future
-drops, ticket drops, pending polls, cancellation calls, and table emptiness.
+records the seeds in receive order and counts the host callback, stream-consumer
+polls, `finish=true` polls, stream drops, host-future polls/completions/drops,
+ticket drops, pending polls, host-task cancellation, and table emptiness. The
+`callback-calls` counter is the invocation count of the async host import; it is
+separate from `poll-calls`, which counts `StreamConsumer::poll_consume` calls.
 
 | Mode | Sink behavior | Expected received seeds | Ticket owner at terminal |
 | --- | --- | --- | --- |
@@ -251,7 +254,15 @@ creation/cleanup, two ticket creations and exactly two ticket drops, no duplicat
 drop, no leaked handle, no third write, and an empty `ResourceTable`. `repeat` must
 observe four creations and four drops without relying on Store disposal to hide a
 leak. The `invalid` row must observe zero resource creation, zero sink callback and
-zero drop.
+zero drop. With Wasmtime 47.0.2, `finish-calls` is zero for every row: the
+producer's `subtask-cancel` aborts the host future and does not request a
+`StreamConsumer` finish callback. The four cancel/early-drop rows therefore record
+one `cancel-call`, one `pending-future-drop`, and zero future completions per
+invocation; all other non-invalid rows record zero cancellation, zero pending
+future drops, and one future completion per invocation. `pending` has two stream
+consumer polls (one `Pending`, one consuming poll); before-transfer cancellation or
+early-drop has zero stream-consumer polls, while after-transfer cancellation or
+early-drop has one.
 
 ## Negative boundary
 
@@ -263,6 +274,8 @@ The Do negative suite must reject before WAT and preserve the diagnostic
 - `borrow<ticket>` in either field or any borrowed stream/future payload;
 - wrong source seed signature, wrong sink result, wrong host binding kind, or a
   second source/sink binding;
+- renamed local host bindings (the only admitted names are `make_ticket` and
+  `consume`);
 - mode/body changes, an `async` token, `@async`, `@await`, or `@cancel` in the
   sentinel source;
 - seventh forwarding hop, arbitrary producer expression, generic list/variant,

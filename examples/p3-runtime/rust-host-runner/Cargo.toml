@@ -442,6 +442,14 @@ name = "do-p3-g6-2-owned-record-producer"
 path = "src/bin/g6_2_owned_record_producer.rs"
 
 [[bin]]
+name = "do-p3-g6-2-owned-record-pair-producer-abi"
+path = "src/bin/g6_2_owned_record_pair_producer_abi.rs"
+
+[[bin]]
+name = "do-p3-g6-2-owned-record-pair-producer"
+path = "src/bin/g6_2_owned_record_pair_producer.rs"
+
+[[bin]]
 name = "do-p3-wasi-filesystem-get-type-host-runner"
 path = "src/bin/wasi_filesystem_get_type.rs"
 

@@ -1,5 +1,32 @@
 # Changelog
 
+# 2026-08-27 G6.2 private two-owned-field record producer:
+  added the bounded, hash-pinned
+  `do:g6-2-owned-record-pair-producer@0.1.0` Component route for
+  `stream<resource-pair>`. The record is eight bytes with
+  `left: own<ticket>` at offset `0` and `right: own<ticket>` at offset `4`;
+  the stream capacity is `1`, the source seeds are `111` and `222`, and an
+  independent ownership mask transfers both fields atomically. Before transfer
+  cleanup drops `right` then `left`; after transfer the host drops both exactly
+  once. The pinned WIT hash is
+  `89345a5213936735d7f065cd54ed42b83d159b80305a1a900ae00df2e811704d`.
+  Canonical ABI, compiler-generated Do/Component, negative admission,
+  generated Rust/Wasmtime lifecycle, and canonical/generated equivalence gates
+  pass all ten ready/pending/error/cancel/early-drop/repeat/invalid modes with
+  an empty `ResourceTable`; repeat observes `4/4` ticket creation/drop and
+  invalid observes zero creation/drop. The independent Component lifecycle
+  evidence is not an ARC/GC semantic-equivalence row. Generic producers,
+  arbitrary expressions, borrowed/list/variant payloads, public
+  `own<T>`/`borrow<T>`/`ref<T>` syntax, general async/resource lowering, and
+  full GC cutover remain pending. The ABI runner additionally records host
+  callback count, stream-consumer poll/finish count, and host-future completion,
+  drop, and cancellation; Wasmtime 47.0.2 reports `finish-calls=0` for this
+  task-cancel path and one pending future drop for each cancel/early-drop mode.
+  Verification also passes full regression
+  `pass=1400 fail=0 skip=3`, `zig test main.zig` `688/688`, default GC
+  `86 fixtures`, semantic equivalence `26 rows; 0 pending`, ReleaseSmall, and
+  release smoke with `wasm-tools 1.255.0`.
+
 # 2026-08-26 G6.2 direct owned-record producer lifecycle checkpoint:
   added the private exact `do:g6-2-owned-record-producer@0.1.0` Component route
   for `stream<resource-entry>`. The pinned WIT hash is

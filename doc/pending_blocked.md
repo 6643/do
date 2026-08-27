@@ -1,6 +1,6 @@
 # 待处理与阻断清单
 
-更新时间: 2026-08-26
+更新时间: 2026-08-28
 基线: 默认回归以 `./src/build/test/run_tests.sh` 最新结果为准
 关系: 总规划 `doc/master_plan.md`; 接手 `doc/start_here.md`; 执行状态 `doc/roadmap_status.md`
 约定: **只记未关闭项**; 完成后从本文件删除或移入「已关闭摘要」, 并同步入口文档与 `CHANGELOG.md`。
@@ -10,6 +10,35 @@
 > managed-memory target。下文 ARC 只保留为当前 transition implementation 的历史
 > 证据, 不改变源码值语义; 后续 runtime work 目标为 GC。Component/WIT resource 的
 > ownership 与 drop 继续是显式 ABI contract, 不由 GC 接管。
+
+### G6.2 private two-owned-field record producer checkpoint (2026-08-27)
+
+本轮已闭合一个独立、私有且固定形状的 producer gate：descriptor
+`do:g6-2-owned-record-pair-producer@0.1.0` 只准入
+`StreamWriter<ResourcePair> -> Result<nil, ProducerError>`，其中
+`ResourcePair { left: Ticket, right: Ticket }` 映射为两个 `own<ticket>` 字段。
+WIT hash 为
+`89345a5213936735d7f065cd54ed42b83d159b80305a1a900ae00df2e811704d`，record
+size/alignment 为 `8/4`，字段 offset 为 `0/4`，stream capacity 为 `1`，seed
+为 `111/222`。独立 presence mask 只在完整 record 写入成功后清除两个 guest
+ownership bits 并原子转移；转移前按 `right -> left` 释放，转移后 host 各释放
+一次，handle 值 `0` 不作为 absence sentinel。
+
+canonical ABI、Do/Component、negative admission、generated Rust/Wasmtime
+lifecycle 与 canonical/generated equivalence gates 均通过十模式；valid 模式
+均为 `2/2` ticket drops、`1/1` stream/future cleanup 且 `table-empty=true`，
+repeat 为 `4/4`，invalid 不创建资源。Rust/Wasmtime 还记录每次有效 host import
+一次 `callback-calls`；`pending` 为两次 stream-consumer poll，转移前取消/早退
+为零次，转移后为一次；十种模式均为 `finish-calls=0`。四种取消/早退各有一次
+未完成 future drop，并以 `cancel-calls=1` 记录 host-task 中止；其余有效模式
+future 完成一次。该 Component 生命周期证据不计入
+ARC/GC semantic-equivalence matrix，迁移 inventory 仍为
+`complete_rows=15 pending_rows=15`、exit `1`。
+
+剩余阻断不变：generic producer、arbitrary producer expression、borrowed/list/
+variant/mixed resource payload、general async/resource lowering、public
+`own<T>`/`borrow<T>`/`ref<T>` syntax 与 full GC cutover 仍需独立 design 和
+可验证 gate；本 checkpoint 不扩大默认 route。
 
 ### G5c bounded mixed text + two `list<u32>` lower promotion (2026-08-25)
 

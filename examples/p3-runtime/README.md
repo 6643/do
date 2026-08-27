@@ -153,6 +153,35 @@ generated Component lifecycle observations. This is not an ARC/GC semantic
 equivalence row and does not add a generic producer route, borrowed/list/variant
 payloads, or public `own<T>`/`borrow<T>`/`ref<T>` syntax.
 
+`g6-2-owned-record-pair-producer.do` is the separate bounded two-owned-field
+record producer slice. It admits only the private descriptor
+`do:g6-2-owned-record-pair-producer@0.1.0` and
+`StreamWriter<ResourcePair> -> Result<nil, ProducerError>`. `ResourcePair` is an
+8-byte record with `left: own<Ticket>` at offset `0` and `right: own<Ticket>` at
+offset `4`; the stream capacity is `1`, and the producer seeds are `111` and
+`222`. A presence mask, independent of handle values, transfers both fields
+atomically only after the complete record write succeeds; before transfer the
+guest drops `right` then `left`, while after transfer the host drops both once.
+The pinned WIT hash is
+`89345a5213936735d7f065cd54ed42b83d159b80305a1a900ae00df2e811704d`.
+
+Run `bash test_g6_2_owned_record_pair_producer_abi.sh` for canonical ABI and
+Wasmtime validation, `bash test_do_g6_2_owned_record_pair_producer.sh` for the
+compiler-generated Component, `bash test_do_g6_2_owned_record_pair_producer_negative.sh`
+for fail-closed admission, `bash test_rust_g6_2_owned_record_pair_producer.sh`
+for generated ten-mode lifecycle counters, and
+`bash test_g6_2_owned_record_pair_producer_equivalence.sh` for canonical/generated
+observational equivalence. Valid modes observe `2/2` ticket drops and one
+stream/future cleanup with an empty `ResourceTable`; `repeat` observes `4/4`,
+and `invalid` creates no tickets. The ABI runner also asserts one host
+`callback-calls` per invocation, `finish-calls=0` for all modes, the measured
+stream-consumer poll counts (`pending=2`, before-transfer cancel/early-drop `0`,
+after-transfer `1`), and one `cancel-calls` plus one pending future drop for each
+cancel/early-drop mode. This is an independent Component lifecycle
+gate, not an ARC/GC equivalence row; generic producers, arbitrary expressions,
+borrowed/list/variant payloads, general async/resource lowering, and public
+ownership syntax remain unsupported.
+
 For `wasi:cli/run.run`, the source probe accepts either direct forwarding of
 `Future<Result<nil, nil>>`, or one exact unit-result branch: bind
 `await(pending)`, test `@is(replied, Ok)`, return `Err()` in that branch, then
