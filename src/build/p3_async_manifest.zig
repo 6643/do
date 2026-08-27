@@ -41,6 +41,7 @@ pub const LoweringShape = union(enum) {
     record_resource_list_stream_reader: RecordResourceListStreamShape,
     owned_record_stream_producer: OwnedRecordStreamProducerShape,
     record_resource_pair_stream_producer: OwnedRecordPairStreamProducerShape,
+    record_resource_pair_parameterized_stream_producer: ParameterizedOwnedRecordPairStreamProducerShape,
     record_resource_list_stream_producer: RecordResourceListStreamProducerShape,
     record_resource_list_stream_dynamic_producer: RecordResourceListStreamProducerShape,
     record_resource_list_stream_batched_producer: RecordResourceListStreamProducerShape,
@@ -112,6 +113,18 @@ pub const OwnedRecordPairStreamProducerShape = struct {
     stream: StreamCanonical,
     record_layout: RecordLayout,
     producer: ProducerCanonical,
+};
+
+/// ABI facts for the private parameterized direct `stream<resource-pair>`
+/// producer. Keep its producer metadata separate from the static pair route so
+/// an explicit seed-parameter contract cannot widen the static validator.
+pub const ParameterizedOwnedRecordPairStreamProducerShape = struct {
+    element: []const u8,
+    stream_index: usize,
+    method: StreamOperation,
+    stream: StreamCanonical,
+    record_layout: RecordLayout,
+    producer: ParameterizedOwnedRecordPairProducerCanonical,
 };
 
 /// ABI facts for the private `stream<list<u32>>` probe. This is intentionally
@@ -193,6 +206,21 @@ pub const ProducerCanonical = struct {
     runtime_mode_param: ?[]const u8 = null,
     batch_count: ?u32 = null,
     batch_lengths: ?[]const u32 = null,
+};
+
+pub const ParameterizedOwnedRecordPairProducerCanonical = struct {
+    source_module: []const u8,
+    source_import_name: []const u8,
+    source_core_params: []const []const u8,
+    source_core_results: []const []const u8,
+    resource_drop_import: []const u8,
+    stream_capacity: u32,
+    terminal: []const u8,
+    runtime_mode_param: []const u8,
+    left_seed_param: []const u8,
+    right_seed_param: []const u8,
+    producer_core_params: []const []const u8,
+    producer_core_results: []const []const u8,
 };
 
 pub const ScalarListProducerCanonical = struct {
@@ -480,6 +508,11 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
 
     if (std.mem.eql(u8, descriptor.effect, "record-resource-pair-stream-producer")) {
         if (valid_owned_record_pair_stream_producer_descriptor(descriptor)) |shape| return .{ .record_resource_pair_stream_producer = shape };
+        return null;
+    }
+
+    if (std.mem.eql(u8, descriptor.effect, "record-resource-pair-parameterized-stream-producer")) {
+        if (valid_parameterized_owned_record_pair_stream_producer_descriptor(descriptor)) |shape| return .{ .record_resource_pair_parameterized_stream_producer = shape };
         return null;
     }
 
@@ -1207,6 +1240,7 @@ pub const Canonical = struct {
     record_layout: ?RecordLayout = null,
     list_resource_layout: ?ListResourceLayout = null,
     producer: ?ProducerCanonical = null,
+    parameterized_owned_record_pair_producer: ?ParameterizedOwnedRecordPairProducerCanonical = null,
     scalar_list_layout: ?ScalarListLayout = null,
     scalar_list_producer: ?ScalarListProducerCanonical = null,
     async_import_module: []const u8,
@@ -1341,6 +1375,7 @@ fn parse_descriptor(allocator: std.mem.Allocator, value: std.json.Value) !Descri
         !std.mem.eql(u8, effect, "record-stream-reader") and
         !std.mem.eql(u8, effect, "record-resource-stream-producer") and
         !std.mem.eql(u8, effect, "record-resource-pair-stream-producer") and
+        !std.mem.eql(u8, effect, "record-resource-pair-parameterized-stream-producer") and
         !std.mem.eql(u8, effect, "record-resource-list-stream-reader") and
         !std.mem.eql(u8, effect, "record-resource-list-stream-producer") and
         !std.mem.eql(u8, effect, "record-resource-list-stream-dynamic-producer") and
@@ -1420,6 +1455,11 @@ fn parse_canonical(allocator: std.mem.Allocator, value: ?std.json.Value) !Canoni
     else
         null;
     errdefer if (producer) |value_to_free| free_producer_canonical(allocator, value_to_free);
+    const parameterized_owned_record_pair_producer = if (canonical.get("parameterized_owned_record_pair_producer")) |producer_value|
+        try parse_parameterized_owned_record_pair_producer_canonical(allocator, producer_value)
+    else
+        null;
+    errdefer if (parameterized_owned_record_pair_producer) |value_to_free| free_parameterized_owned_record_pair_producer_canonical(allocator, value_to_free);
     const scalar_list_layout = if (canonical.get("scalar_list_layout")) |layout_value|
         try parse_scalar_list_layout(layout_value)
     else
@@ -1499,6 +1539,7 @@ fn parse_canonical(allocator: std.mem.Allocator, value: ?std.json.Value) !Canoni
         .record_layout = record_layout,
         .list_resource_layout = list_resource_layout,
         .producer = producer,
+        .parameterized_owned_record_pair_producer = parameterized_owned_record_pair_producer,
         .scalar_list_layout = scalar_list_layout,
         .scalar_list_producer = scalar_list_producer,
         .async_import_module = async_import_module,
@@ -1636,6 +1677,88 @@ fn parse_producer_canonical(allocator: std.mem.Allocator, value: std.json.Value)
         .runtime_mode_param = runtime_mode_param,
         .batch_count = batch_count,
         .batch_lengths = batch_lengths,
+    };
+}
+
+fn parse_parameterized_owned_record_pair_producer_canonical(
+    allocator: std.mem.Allocator,
+    value: std.json.Value,
+) !ParameterizedOwnedRecordPairProducerCanonical {
+    const object = object_value(value) orelse return error.InvalidP3AsyncManifest;
+    if (!object_has_only_fields(object, &.{
+        "source_module",
+        "source_import_name",
+        "source_core_params",
+        "source_core_results",
+        "resource_drop_import",
+        "stream_capacity",
+        "terminal",
+        "runtime_mode_param",
+        "left_seed_param",
+        "right_seed_param",
+        "producer_core_params",
+        "producer_core_results",
+    })) return error.InvalidP3AsyncManifest;
+
+    const source_module = try duplicate_required(allocator, object.get("source_module"));
+    errdefer allocator.free(source_module);
+    const source_import_name = try duplicate_required(allocator, object.get("source_import_name"));
+    errdefer allocator.free(source_import_name);
+    const source_core_params = try duplicate_params(
+        allocator,
+        array_value(object.get("source_core_params")) orelse return error.InvalidP3AsyncManifest,
+    );
+    errdefer free_string_list(allocator, source_core_params);
+    const source_core_results = try duplicate_params(
+        allocator,
+        array_value(object.get("source_core_results")) orelse return error.InvalidP3AsyncManifest,
+    );
+    errdefer free_string_list(allocator, source_core_results);
+    const resource_drop_import = try duplicate_required(allocator, object.get("resource_drop_import"));
+    errdefer allocator.free(resource_drop_import);
+    const raw_stream_capacity = unsigned_value(object.get("stream_capacity")) orelse return error.InvalidP3AsyncManifest;
+    if (raw_stream_capacity > std.math.maxInt(u32)) return error.InvalidP3AsyncManifest;
+    const terminal = try duplicate_required(allocator, object.get("terminal"));
+    errdefer allocator.free(terminal);
+    const runtime_mode_param = try duplicate_required(allocator, object.get("runtime_mode_param"));
+    errdefer allocator.free(runtime_mode_param);
+    const left_seed_param = try duplicate_required(allocator, object.get("left_seed_param"));
+    errdefer allocator.free(left_seed_param);
+    const right_seed_param = try duplicate_required(allocator, object.get("right_seed_param"));
+    errdefer allocator.free(right_seed_param);
+    const producer_core_params = try duplicate_params(
+        allocator,
+        array_value(object.get("producer_core_params")) orelse return error.InvalidP3AsyncManifest,
+    );
+    errdefer free_string_list(allocator, producer_core_params);
+    const producer_core_results = try duplicate_params(
+        allocator,
+        array_value(object.get("producer_core_results")) orelse return error.InvalidP3AsyncManifest,
+    );
+    errdefer free_string_list(allocator, producer_core_results);
+
+    if (source_module.len == 0 or source_import_name.len == 0 or resource_drop_import.len == 0 or
+        terminal.len == 0 or runtime_mode_param.len == 0 or left_seed_param.len == 0 or right_seed_param.len == 0) {
+        return error.InvalidP3AsyncManifest;
+    }
+    for (source_core_params) |param| if (!is_core_scalar(param)) return error.InvalidP3AsyncManifest;
+    for (source_core_results) |result| if (!is_core_scalar(result)) return error.InvalidP3AsyncManifest;
+    for (producer_core_params) |param| if (!is_core_scalar(param)) return error.InvalidP3AsyncManifest;
+    for (producer_core_results) |result| if (!is_core_scalar(result)) return error.InvalidP3AsyncManifest;
+
+    return .{
+        .source_module = source_module,
+        .source_import_name = source_import_name,
+        .source_core_params = source_core_params,
+        .source_core_results = source_core_results,
+        .resource_drop_import = resource_drop_import,
+        .stream_capacity = @intCast(raw_stream_capacity),
+        .terminal = terminal,
+        .runtime_mode_param = runtime_mode_param,
+        .left_seed_param = left_seed_param,
+        .right_seed_param = right_seed_param,
+        .producer_core_params = producer_core_params,
+        .producer_core_results = producer_core_results,
     };
 }
 
@@ -2165,6 +2288,82 @@ fn valid_owned_record_pair_stream_producer_descriptor(descriptor: Descriptor) ?O
         !std.mem.eql(u8, producer.runtime_mode_param.?, "u32") or
         producer.batch_count != null or
         producer.batch_lengths != null) return null;
+
+    if (!valid_named_stream_operation(stream.new, "[stream-new-0]consume-via-stream", &.{}, &.{ "i64" }) or
+        !valid_named_stream_operation(stream.cancel_read, "[stream-cancel-read-0]consume-via-stream", &.{ "i32" }, &.{ "i32" }) or
+        !valid_named_stream_operation(stream.cancel_write, "[stream-cancel-write-0]consume-via-stream", &.{ "i32" }, &.{ "i32" }) or
+        !valid_named_stream_operation(stream.drop_readable, "[stream-drop-readable-0]consume-via-stream", &.{ "i32" }, &.{}) or
+        !valid_named_stream_operation(stream.drop_writable, "[stream-drop-writable-0]consume-via-stream", &.{ "i32" }, &.{}) or
+        !valid_named_stream_operation(stream.read, "[async-lower][stream-read-0]consume-via-stream", &.{ "i32", "i32", "i32" }, &.{ "i32" }) or
+        !valid_named_stream_operation(stream.write, "[async-lower][stream-write-0]consume-via-stream", &.{ "i32", "i32", "i32" }, &.{ "i32" })) return null;
+
+    return .{
+        .element = stream.element,
+        .stream_index = 0,
+        .method = .{
+            .import_name = descriptor.canonical.async_import_name,
+            .core_params = descriptor.canonical.core_params,
+            .core_results = descriptor.canonical.core_results,
+        },
+        .stream = stream,
+        .record_layout = record_layout,
+        .producer = producer,
+    };
+}
+
+fn valid_parameterized_owned_record_pair_stream_producer_descriptor(descriptor: Descriptor) ?ParameterizedOwnedRecordPairStreamProducerShape {
+    const stream = descriptor.canonical.stream orelse return null;
+    const record_layout = descriptor.canonical.record_layout orelse return null;
+    const producer = descriptor.canonical.parameterized_owned_record_pair_producer orelse return null;
+
+    if (!std.mem.eql(u8, descriptor.effect, "record-resource-pair-parameterized-stream-producer") or
+        !std.mem.eql(u8, descriptor.locator, "do:g6-2-owned-record-pair-parameterized-producer@0.1.0") or
+        !std.mem.eql(u8, descriptor.member, "consume-via-stream") or
+        descriptor.params.len != 1 or
+        !std.mem.eql(u8, descriptor.params[0], "stream<resource-pair>") or
+        descriptor.resource != null or
+        !std.mem.eql(u8, descriptor.result, "Result<nil,error-code>") or
+        descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, descriptor.wit_sha256.?, "e7abd3cf7b7543325865a0b4be4b32ae50a2470ac5083169250719f89b7ce53a") or
+        !std.mem.eql(u8, descriptor.wit.package, "do:g6-2-owned-record-pair-parameterized-producer@0.1.0") or
+        !std.mem.eql(u8, descriptor.wit.interface, "sink") or
+        !std.mem.eql(u8, descriptor.wit.operation, "consume-via-stream") or
+        !std.mem.eql(u8, descriptor.wit.world, "owned-record-pair-parameterized-producer") or
+        !std.mem.eql(u8, descriptor.wit.parameter, "data") or
+        !equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i32" }) or
+        !equal_core_types(descriptor.canonical.core_results, &.{ "i32" }) or
+        !equal_core_types(descriptor.canonical.completion_params, &.{ "i32", "i32" }) or
+        !std.mem.eql(u8, descriptor.canonical.completion, "task-return") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "do:g6-2-owned-record-pair-parameterized-producer/sink@0.1.0") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower]consume-via-stream") or
+        descriptor.canonical.result_payload != null or
+        descriptor.canonical.result_area_payload != null or
+        descriptor.canonical.future_owned != null or
+        descriptor.canonical.error_variants.len != 0 or
+        descriptor.canonical.list_resource_layout != null or
+        descriptor.canonical.scalar_list_layout != null or
+        descriptor.canonical.scalar_list_producer != null or
+        descriptor.canonical.producer != null or
+        descriptor.canonical.future_input != null or
+        descriptor.canonical.future != null or
+        descriptor.canonical.variant_stream != null or
+        descriptor.canonical.variant_future != null or
+        descriptor.canonical.event_layout != null or
+        descriptor.canonical.ticket_drop_import != null or
+        !valid_pair_ticket_record_layout(record_layout) or
+        !std.mem.eql(u8, stream.element, "resource-pair") or
+        !std.mem.eql(u8, producer.source_module, "do:g6-2-owned-record-pair-parameterized-producer/source@0.1.0") or
+        !std.mem.eql(u8, producer.source_import_name, "make-ticket") or
+        !equal_core_types(producer.source_core_params, &.{ "i32" }) or
+        !equal_core_types(producer.source_core_results, &.{ "i32" }) or
+        !std.mem.eql(u8, producer.resource_drop_import, "[resource-drop]ticket") or
+        producer.stream_capacity != 1 or
+        !std.mem.eql(u8, producer.terminal, "task-return") or
+        !std.mem.eql(u8, producer.runtime_mode_param, "u32") or
+        !std.mem.eql(u8, producer.left_seed_param, "u32") or
+        !std.mem.eql(u8, producer.right_seed_param, "u32") or
+        !equal_core_types(producer.producer_core_params, &.{ "i32", "i32", "i32" }) or
+        !equal_core_types(producer.producer_core_results, &.{ "i32" })) return null;
 
     if (!valid_named_stream_operation(stream.new, "[stream-new-0]consume-via-stream", &.{}, &.{ "i64" }) or
         !valid_named_stream_operation(stream.cancel_read, "[stream-cancel-read-0]consume-via-stream", &.{ "i32" }, &.{ "i32" }) or
@@ -3115,6 +3314,7 @@ fn free_canonical(allocator: std.mem.Allocator, canonical: Canonical) void {
     free_error_variants(allocator, canonical.error_variants);
     if (canonical.record_layout) |layout| free_record_layout(allocator, layout);
     if (canonical.producer) |producer| free_producer_canonical(allocator, producer);
+    if (canonical.parameterized_owned_record_pair_producer) |producer| free_parameterized_owned_record_pair_producer_canonical(allocator, producer);
     if (canonical.scalar_list_producer) |producer| free_scalar_list_producer_canonical(allocator, producer);
     allocator.free(canonical.async_import_module);
     allocator.free(canonical.async_import_name);
@@ -3142,6 +3342,23 @@ fn free_producer_canonical(allocator: std.mem.Allocator, producer: ProducerCanon
     if (producer.runtime_count_param) |value| allocator.free(value);
     if (producer.runtime_mode_param) |value| allocator.free(value);
     if (producer.batch_lengths) |values| allocator.free(values);
+}
+
+fn free_parameterized_owned_record_pair_producer_canonical(
+    allocator: std.mem.Allocator,
+    producer: ParameterizedOwnedRecordPairProducerCanonical,
+) void {
+    allocator.free(producer.source_module);
+    allocator.free(producer.source_import_name);
+    free_string_list(allocator, producer.source_core_params);
+    free_string_list(allocator, producer.source_core_results);
+    allocator.free(producer.resource_drop_import);
+    allocator.free(producer.terminal);
+    allocator.free(producer.runtime_mode_param);
+    allocator.free(producer.left_seed_param);
+    allocator.free(producer.right_seed_param);
+    free_string_list(allocator, producer.producer_core_params);
+    free_string_list(allocator, producer.producer_core_results);
 }
 
 fn free_scalar_list_producer_canonical(allocator: std.mem.Allocator, producer: ScalarListProducerCanonical) void {
@@ -5648,6 +5865,87 @@ test "owned record pair producer descriptor is pinned before lowering" {
         },
         else => return error.TestUnexpectedResult,
     }
+}
+
+test "parameterized owned record pair producer descriptor is pinned before lowering" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+
+    const descriptor = registry.find(
+        "do:g6-2-owned-record-pair-parameterized-producer@0.1.0",
+        "consume-via-stream",
+    ) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings(
+        "e7abd3cf7b7543325865a0b4be4b32ae50a2470ac5083169250719f89b7ce53a",
+        descriptor.wit_sha256.?,
+    );
+    try std.testing.expectEqualStrings("record-resource-pair-parameterized-stream-producer", descriptor.effect);
+    try std.testing.expectEqualStrings("stream<resource-pair>", descriptor.params[0]);
+    try std.testing.expectEqualStrings("Result<nil,error-code>", descriptor.result);
+    switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .record_resource_pair_parameterized_stream_producer => |shape| {
+            try std.testing.expectEqualStrings("resource-pair", shape.element);
+            try std.testing.expectEqual(@as(usize, 0), shape.stream_index);
+            try std.testing.expectEqual(@as(u32, 8), shape.record_layout.byte_size);
+            try std.testing.expectEqual(@as(usize, 2), shape.record_layout.fields.len);
+            try std.testing.expectEqual(@as(u32, 0), shape.record_layout.fields[0].offset);
+            try std.testing.expectEqual(@as(u32, 4), shape.record_layout.fields[1].offset);
+            try std.testing.expectEqual(@as(u32, 1), shape.producer.stream_capacity);
+            try std.testing.expectEqualStrings("u32", shape.producer.runtime_mode_param);
+            try std.testing.expectEqualStrings("u32", shape.producer.left_seed_param);
+            try std.testing.expectEqualStrings("u32", shape.producer.right_seed_param);
+            try std.testing.expectEqual(@as(usize, 3), shape.producer.producer_core_params.len);
+            try std.testing.expectEqual(@as(usize, 1), shape.producer.producer_core_results.len);
+        },
+        else => return error.TestUnexpectedResult,
+    }
+}
+
+test "parameterized owned record pair producer lowering rejects descriptor and ABI drift" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+
+    const descriptor = registry.find(
+        "do:g6-2-owned-record-pair-parameterized-producer@0.1.0",
+        "consume-via-stream",
+    ) orelse return error.TestUnexpectedResult;
+
+    var wrong_hash = descriptor;
+    wrong_hash.wit_sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    try std.testing.expect(lowering_shape(wrong_hash) == null);
+
+    var wrong_world = descriptor;
+    wrong_world.wit.world = "owned-record-pair-producer";
+    try std.testing.expect(lowering_shape(wrong_world) == null);
+
+    var wrong_element = descriptor;
+    var params = [_][]const u8{"stream<resource-entry>"};
+    wrong_element.params = &params;
+    try std.testing.expect(lowering_shape(wrong_element) == null);
+
+    var wrong_layout = descriptor;
+    var fields = [_]RecordField{
+        wrong_layout.canonical.record_layout.?.fields[0],
+        wrong_layout.canonical.record_layout.?.fields[1],
+    };
+    fields[1].offset = 8;
+    var layout = wrong_layout.canonical.record_layout.?;
+    layout.fields = &fields;
+    wrong_layout.canonical.record_layout = layout;
+    try std.testing.expect(lowering_shape(wrong_layout) == null);
+
+    var wrong_seed_type = descriptor;
+    wrong_seed_type.canonical.parameterized_owned_record_pair_producer.?.right_seed_param = "u64";
+    try std.testing.expect(lowering_shape(wrong_seed_type) == null);
+
+    var wrong_source_arity = descriptor;
+    var producer_params = [_][]const u8{"i32", "i32"};
+    wrong_source_arity.canonical.parameterized_owned_record_pair_producer.?.producer_core_params = &producer_params;
+    try std.testing.expect(lowering_shape(wrong_source_arity) == null);
+
+    var wrong_stream_write = descriptor;
+    wrong_stream_write.canonical.stream.?.write.import_name = "[async-lower][stream-write-0]drift";
+    try std.testing.expect(lowering_shape(wrong_stream_write) == null);
 }
 
 test "owned record pair producer lowering rejects descriptor and ownership drift" {

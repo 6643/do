@@ -5,6 +5,26 @@
 **本文只保留当前状态与阻断。** 历史小任务勾选与逐条 gate 证据已从仓库移除; 追溯用 git 历史与 `CHANGELOG.md`。
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
 
+2026-08-28 增量: G6.2 新增私有、hash-pinned 的参数化双 owned-field record
+producer descriptor `do:g6-2-owned-record-pair-parameterized-producer@0.1.0`。
+它只准入 `stream<resource-pair>`，record 为 8 bytes，`left/right: own<ticket>`
+位于 offset `0/4`，stream capacity 为 `1`，producer 输入为
+`(mode, left-seed, right-seed)` 三个 `u32` words；WIT hash 为
+`e7abd3cf7b7543325865a0b4be4b32ae50a2470ac5083169250719f89b7ce53a`。独立
+presence mask 只在完整 record 写入成功后原子转移两个 handle，转移前按
+`right -> left` 释放，转移后 host 各释放一次，handle `0` 不作为 absence
+sentinel。canonical ABI、Do/Component、十个 fail-closed negative fixtures、
+generated Rust/Wasmtime lifecycle 与 canonical/generated equivalence gates 均
+通过；valid 模式保持 `2/2` ticket cleanup、repeat 为 `4/4`，所有模式
+`table-empty=true`，invalid 不创建资源。fresh release-candidate verification
+为 full regression `pass=1410 fail=0 skip=3`、`zig test main.zig` `692/692`、
+ReleaseSmall 与 release smoke 通过，GC migration inventory 仍为
+`complete_rows=15 pending_rows=15`、exit `1`。该独立 Component 生命周期证据
+不计入 ARC/GC equivalence matrix。下一候选只能先做固定三字段
+`ResourceTriple` 的独立 design/probe；generic producer、arbitrary expression、
+borrowed/list/variant/general async-resource、公开 ownership syntax 与 full GC
+cutover 继续 pending。
+
 2026-08-27 增量: G6.2 新增私有、hash-pinned 的双 owned-field record
 producer descriptor `do:g6-2-owned-record-pair-producer@0.1.0`。它只准入
 `stream<resource-pair>`，record 为 8 bytes，`left/right: own<ticket>` 位于

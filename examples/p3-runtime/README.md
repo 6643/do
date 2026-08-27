@@ -182,6 +182,25 @@ gate, not an ARC/GC equivalence row; generic producers, arbitrary expressions,
 borrowed/list/variant payloads, general async/resource lowering, and public
 ownership syntax remain unsupported.
 
+`g6-2-owned-record-pair-parameterized-producer.do` is the next private,
+hash-pinned pair producer slice. It keeps the same `ResourcePair` ABI as the
+static route, but accepts independent `left-seed` and `right-seed` `u32`
+inputs through `produce(mode, left_seed, right_seed)`. Its descriptor is
+`do:g6-2-owned-record-pair-parameterized-producer@0.1.0`, the WIT hash is
+`e7abd3cf7b7543325865a0b4be4b32ae50a2470ac5083169250719f89b7ce53a`, and the
+record remains 8 bytes with `left/right: own<Ticket>` at offsets `0/4` and
+stream capacity `1`. The independent presence mask still transfers both
+handles only after a complete write and preserves `right -> left` cleanup
+before transfer. Run `test_g6_2_owned_record_pair_parameterized_producer_abi.sh`,
+`test_do_g6_2_owned_record_pair_parameterized_producer.sh`,
+`test_do_g6_2_owned_record_pair_parameterized_producer_negative.sh`,
+`test_rust_g6_2_owned_record_pair_parameterized_producer.sh`, and
+`test_g6_2_owned_record_pair_parameterized_producer_equivalence.sh` for the
+canonical ABI, fail-closed source admission, and ten-mode Rust/Wasmtime
+lifecycle/equivalence gates. Generic producers, arbitrary expressions,
+borrowed/list/variant payloads, general async/resource lowering, public
+ownership syntax, and full GC cutover remain unsupported.
+
 For `wasi:cli/run.run`, the source probe accepts either direct forwarding of
 `Future<Result<nil, nil>>`, or one exact unit-result branch: bind
 `await(pending)`, test `@is(replied, Ok)`, return `Err()` in that branch, then

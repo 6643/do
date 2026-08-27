@@ -40,6 +40,33 @@ variant/mixed resource payload、general async/resource lowering、public
 `own<T>`/`borrow<T>`/`ref<T>` syntax 与 full GC cutover 仍需独立 design 和
 可验证 gate；本 checkpoint 不扩大默认 route。
 
+### G6.2 private parameterized two-owned-field record producer checkpoint (2026-08-28)
+
+参数化 pair route 已完成独立、私有且固定形状的 admission gate：descriptor
+`do:g6-2-owned-record-pair-parameterized-producer@0.1.0` 只准入
+`StreamWriter<ResourcePair> -> Result<nil, ProducerError>`，producer 以
+`(mode, left-seed, right-seed)` 接收三个 `u32` words。WIT hash 为
+`e7abd3cf7b7543325865a0b4be4b32ae50a2470ac5083169250719f89b7ce53a`，record
+size/alignment 为 `8/4`，字段 offset 为 `0/4`，stream capacity 为 `1`。
+presence mask 在完整 record 写入成功后才原子转移两个 owned handle；转移前
+按 `right -> left` 释放，转移后 host 各释放一次，handle `0` 不作为 absence
+sentinel。
+
+canonical ABI、Do/Component、十个 fail-closed negative fixtures、generated
+Rust/Wasmtime lifecycle 与 canonical/generated equivalence gates 均通过。十种
+模式保持 valid `2/2` ticket cleanup、repeat `4/4`、`table-empty=true`，invalid
+不创建资源；`pending` 为两次 stream poll，转移前取消/早退为零次，转移后为一次，
+所有模式 `finish-calls=0`。fresh full regression 为 `pass=1410 fail=0 skip=3`，
+`zig test main.zig` 为 `692/692`，ReleaseSmall/release smoke 通过；inventory
+仍为 `complete_rows=15 pending_rows=15`、exit `1`。这些 Component 生命周期
+证据不关闭 ARC/GC semantic-equivalence row。
+
+该 route 只关闭参数化 pair 的私有证据，不扩大默认 route。generic producer、
+arbitrary producer expression、borrowed/list/variant/mixed resource payload、
+general async/resource lowering、public `own<T>`/`borrow<T>`/`ref<T>` syntax 与
+full GC cutover 仍 pending；下一候选必须先对固定三字段 `ResourceTriple` 另立
+design、probe 和 admission gate。
+
 ### G5c bounded mixed text + two `list<u32>` lower promotion (2026-08-25)
 
 固定 descriptor

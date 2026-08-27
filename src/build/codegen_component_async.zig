@@ -22,6 +22,7 @@ const codegen_component_record_stream = @import("codegen_component_record_stream
 const codegen_component_record_resource_list_stream = @import("codegen_component_record_resource_list_stream.zig");
 const codegen_component_owned_record_stream_producer = @import("codegen_component_owned_record_stream_producer.zig");
 const codegen_component_owned_record_pair_stream_producer = @import("codegen_component_owned_record_pair_stream_producer.zig");
+const codegen_component_parameterized_owned_record_pair_stream_producer = @import("codegen_component_parameterized_owned_record_pair_stream_producer.zig");
 const codegen_component_list_resource_producer = @import("codegen_component_list_resource_producer.zig");
 const codegen_component_dynamic_list_resource_producer = @import("codegen_component_dynamic_list_resource_producer.zig");
 const codegen_component_batched_list_resource_producer = @import("codegen_component_batched_list_resource_producer.zig");
@@ -54,6 +55,7 @@ pub const Target = enum {
     record_resource_list_stream,
     owned_record_stream_producer,
     owned_record_pair_stream_producer,
+    parameterized_owned_record_pair_stream_producer,
     record_resource_list_stream_producer,
     record_resource_list_stream_dynamic_producer,
     record_resource_list_stream_batched_producer,
@@ -185,6 +187,10 @@ pub fn emit_component_wat(
         },
         .owned_record_pair_stream_producer => codegen_component_owned_record_pair_stream_producer.emit_component_wat_for_tokens(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3OwnedRecordPairStreamProducer => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
+        .parameterized_owned_record_pair_stream_producer => codegen_component_parameterized_owned_record_pair_stream_producer.emit_component_wat_for_tokens(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3ParameterizedOwnedRecordPairStreamProducer => error.UnsupportedP3AsyncComponent,
             else => err,
         },
         .record_resource_list_stream_producer => codegen_component_list_resource_producer.emit_component_wat_for_tokens(allocator, tokens) catch |err| switch (err) {
@@ -962,6 +968,10 @@ pub fn emit_component_wit_with_graph(
             error.UnsupportedP3OwnedRecordPairStreamProducer => error.UnsupportedP3AsyncComponent,
             else => err,
         },
+        .parameterized_owned_record_pair_stream_producer => codegen_component_parameterized_owned_record_pair_stream_producer.emit_component_wit_for_tokens(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3ParameterizedOwnedRecordPairStreamProducer => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
         .record_resource_list_stream_producer => codegen_component_list_resource_producer.emit_component_wit_for_tokens(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3ListResourceProducer => error.UnsupportedP3AsyncComponent,
             else => err,
@@ -1097,6 +1107,10 @@ pub fn target_for_tokens_with_graph(
         return .owned_record_pair_stream_producer;
     } else |_| {}
 
+    if (codegen_component_parameterized_owned_record_pair_stream_producer.ParameterizedOwnedRecordPairStreamProducerPlan.analyze(tokens, registry)) |_| {
+        return .parameterized_owned_record_pair_stream_producer;
+    } else |_| {}
+
     if (codegen_component_dynamic_list_resource_producer.DynamicListResourceProducerPlan.analyze(tokens, registry)) |_| {
         return .record_resource_list_stream_dynamic_producer;
     } else |_| {}
@@ -1139,6 +1153,11 @@ pub fn target_for_tokens_with_graph(
                 _ = codegen_component_owned_record_pair_stream_producer.OwnedRecordPairStreamProducerPlan.analyze(tokens, registry) catch
                     return error.UnsupportedP3AsyncComponent;
                 break :blk .owned_record_pair_stream_producer;
+            } else return error.UnsupportedP3AsyncComponent,
+            .record_resource_pair_parameterized_stream_producer => if (binding.kind == .host_async_func) blk: {
+                _ = codegen_component_parameterized_owned_record_pair_stream_producer.ParameterizedOwnedRecordPairStreamProducerPlan.analyze(tokens, registry) catch
+                    return error.UnsupportedP3AsyncComponent;
+                break :blk .parameterized_owned_record_pair_stream_producer;
             } else return error.UnsupportedP3AsyncComponent,
             .record_resource_list_stream_producer => if (binding.kind == .host_async_func) blk: {
                 _ = codegen_component_list_resource_producer.ListResourceProducerPlan.analyze(tokens, registry) catch
@@ -1273,6 +1292,7 @@ fn target_for_descriptor(descriptor: p3_async_manifest.Descriptor) !Target {
         .record_resource_list_stream_reader => error.UnsupportedP3AsyncComponent,
         .owned_record_stream_producer => .owned_record_stream_producer,
         .record_resource_pair_stream_producer => .owned_record_pair_stream_producer,
+        .record_resource_pair_parameterized_stream_producer => .parameterized_owned_record_pair_stream_producer,
         .record_resource_list_stream_producer => .record_resource_list_stream_producer,
         .record_resource_list_stream_dynamic_producer => .record_resource_list_stream_dynamic_producer,
         .record_resource_list_stream_batched_producer => .record_resource_list_stream_batched_producer,
@@ -1985,6 +2005,61 @@ test "generic Component async direct owned-record pair dispatch emits pinned mar
     const wit = try emit_component_wit_with_graph(std.testing.allocator, tokens, null);
     defer std.testing.allocator.free(wit);
     try std.testing.expect(std.mem.indexOf(u8, wit, "world owned-record-pair-producer") != null);
+}
+
+test "generic Component async target classifies the parameterized owned-record pair producer" {
+    const source =
+        \\make_ticket = @host_func("do:g6-2-owned-record-pair-parameterized-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-owned-record-pair-parameterized-producer@0.1.0", "consume-via-stream", (StreamWriter<ResourcePair>) -> Result<nil, ProducerError>)
+        \\Ticket = @wasi_resource("do:g6-2-owned-record-pair-parameterized-producer/source/ticket", { .id i64 })
+        \\ResourcePair {
+        \\    .left Ticket
+        \\    .right Ticket
+        \\}
+        \\ProducerError error = Io | Pipe | InvalidMode
+        \\produce(mode u32, left_seed u32, right_seed u32) -> Result<nil, ProducerError> { return Ok() }
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try std.testing.expectEqual(
+        Target.parameterized_owned_record_pair_stream_producer,
+        try target_for_tokens(std.testing.allocator, tokens),
+    );
+}
+
+test "generic Component async parameterized owned-record pair dispatch emits three-input markers" {
+    const source =
+        \\make_ticket = @host_func("do:g6-2-owned-record-pair-parameterized-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-owned-record-pair-parameterized-producer@0.1.0", "consume-via-stream", (StreamWriter<ResourcePair>) -> Result<nil, ProducerError>)
+        \\Ticket = @wasi_resource("do:g6-2-owned-record-pair-parameterized-producer/source/ticket", { .id i64 })
+        \\ResourcePair {
+        \\    .left Ticket
+        \\    .right Ticket
+        \\}
+        \\ProducerError error = Io | Pipe | InvalidMode
+        \\produce(mode u32, left_seed u32, right_seed u32) -> Result<nil, ProducerError> { return Ok() }
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    const wat = try emit_component_wat(std.testing.allocator, program, tokens, null);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[producer-input-word-count] 3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[producer-input-mode]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[producer-left-ticket-seed-param]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[producer-right-ticket-seed-param]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[producer-seed-order] left then right") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+
+    const wit = try emit_component_wit_with_graph(std.testing.allocator, tokens, null);
+    defer std.testing.allocator.free(wit);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "world owned-record-pair-parameterized-producer") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "left-seed: u32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "right-seed: u32") != null);
 }
 
 test "generic Component async target classifies the bounded dynamic list producer" {

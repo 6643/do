@@ -1,5 +1,29 @@
 # Changelog
 
+# 2026-08-28 G6.2 private parameterized two-owned-field record producer:
+  added the bounded, hash-pinned
+  `do:g6-2-owned-record-pair-parameterized-producer@0.1.0` Component route for
+  `stream<resource-pair>` with independent `(mode, left-seed, right-seed)`
+  `u32` inputs. The record remains eight bytes with
+  `left: own<ticket>` at offset `0` and `right: own<ticket>` at offset `4`,
+  stream capacity `1`, and WIT hash
+  `e7abd3cf7b7543325865a0b4be4b32ae50a2470ac5083169250719f89b7ce53a`.
+  The independent ownership mask transfers both fields only after a complete
+  record write; pre-transfer cleanup remains `right` then `left`, and host
+  cleanup drops both exactly once. Canonical ABI, compiler-generated Do/
+  Component, ten fail-closed negative fixtures, generated Rust/Wasmtime
+  lifecycle, and canonical/generated equivalence gates pass all ten
+  ready/pending/error/cancel/early-drop/repeat/invalid modes with
+  `table-empty=true`; valid rows observe `2/2` ticket cleanup and `repeat`
+  observes `4/4`, while `invalid` creates no resources. Fresh repository
+  verification passes full regression `pass=1410 fail=0 skip=3`,
+  `zig test main.zig` `692/692`, ReleaseSmall, and release smoke with
+  `wasm-tools 1.255.0`. The independent Component lifecycle evidence is not
+  an ARC/GC semantic-equivalence row. Generic producers, arbitrary
+  expressions, borrowed/list/variant payloads, general async/resource
+  lowering, public `own<T>`/`borrow<T>`/`ref<T>` syntax, and full GC cutover
+  remain pending.
+
 # 2026-08-27 G6.2 private two-owned-field record producer:
   added the bounded, hash-pinned
   `do:g6-2-owned-record-pair-producer@0.1.0` Component route for
