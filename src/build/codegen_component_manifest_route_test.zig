@@ -1,5 +1,6 @@
 const std = @import("std");
 const marshal = @import("codegen_component_marshal_plan.zig");
+const descriptor_loader = @import("codegen_component_descriptor_manifest.zig");
 const manifest_route = @import("codegen_component_manifest_route.zig");
 const wit_layout = @import("wit_abi_layout.zig");
 
@@ -22,6 +23,30 @@ const managed_record_lift_descriptor = "demo:marshal-record-managed-lift/api.rea
 const managed_record_lower_descriptor = "demo:marshal-record-managed-lower/api.write@1.0.0/lower";
 const managed_record_lower_multi_descriptor = "demo:marshal-record-managed-lower-multi/api.write@1.0.0/lower";
 const u32_list_record_lower_descriptor = "demo:marshal-record-u32-list-lower/api.write@1.0.0/lower";
+const mixed_text_u32_list_record_lower_descriptor = "demo:marshal-record-mixed-text-u32-list-lower/api.write@1.0.0/lower";
+const mixed_text_byte_list_lift_descriptor = "demo:marshal-record-mixed-text-byte-list-lift/api.read@1.0.0/lift";
+
+test "manifest route emits from one loaded request" {
+    var loaded = try descriptor_loader.load_request_from_manifest(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        manifest_path,
+        mixed_text_byte_list_lift_descriptor,
+        null,
+    );
+    defer loaded.deinit();
+    const wat = try manifest_route.emit_sync_marshal_module_from_loaded_request(
+        std.testing.allocator,
+        &loaded,
+        null,
+        true,
+    );
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lift (func (param i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-record-mixed-text-byte-list-lift/api@1.0.0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(import") != null);
+}
 
 fn random_measurement() marshal.MeasuredNode {
     return .{ .layout = .{ .byte_list = .{
@@ -95,6 +120,78 @@ fn u32_list_record_lower_measurement() marshal.MeasuredNode {
             .alignment = 4,
             .core_type = .i32,
         } } }} },
+    } };
+}
+
+fn mixed_text_u32_list_record_lower_measurement() marshal.MeasuredNode {
+    return .{ .layout = .{ .record = .{
+        .byte_size = 20,
+        .alignment = 4,
+        .fields = &.{
+            .{ .name = "code", .offset = 0, .byte_size = 4, .alignment = 4, .indirect = null },
+            .{ .name = "label", .offset = 4, .byte_size = 8, .alignment = 4, .indirect = null },
+            .{ .name = "payload", .offset = 12, .byte_size = 8, .alignment = 4, .indirect = null },
+        },
+    } }, .children = &.{
+        .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+        .{ .layout = .{ .text = .{
+            .pointer_offset = 0,
+            .length_offset = 4,
+            .byte_size = 8,
+            .alignment = 4,
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        } } },
+        .{ .layout = .{ .list = .{
+            .pointer_offset = 0,
+            .length_offset = 4,
+            .element_byte_size = 4,
+            .element_stride = 4,
+            .element_alignment = 4,
+            .ticket_offset = 0,
+            .capacity = 3,
+            .accepted_lengths = &.{ 0, 1, 2, 3 },
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        } }, .children = &.{.{ .layout = .{ .scalar = .{
+            .offset = 0,
+            .byte_size = 4,
+            .alignment = 4,
+            .core_type = .i32,
+        } } }} },
+    } };
+}
+
+fn mixed_text_byte_list_lift_measurement() marshal.MeasuredNode {
+    return .{ .layout = .{ .record = .{
+        .byte_size = 20,
+        .alignment = 4,
+        .fields = &.{
+            .{ .name = "code", .offset = 0, .byte_size = 4, .alignment = 4, .indirect = null },
+            .{ .name = "label", .offset = 4, .byte_size = 8, .alignment = 4, .indirect = null },
+            .{ .name = "payload", .offset = 12, .byte_size = 8, .alignment = 4, .indirect = null },
+        },
+    } }, .children = &.{
+        .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+        .{ .layout = .{ .text = .{
+            .pointer_offset = 0,
+            .length_offset = 4,
+            .byte_size = 8,
+            .alignment = 4,
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        } } },
+        .{ .layout = .{ .byte_list = .{
+            .pointer_offset = 0,
+            .length_offset = 4,
+            .element_byte_size = 1,
+            .element_stride = 1,
+            .element_alignment = 1,
+            .capacity = 4,
+            .accepted_lengths = &.{ 0, 1, 2, 3, 4 },
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        } } },
     } };
 }
 
@@ -531,6 +628,42 @@ test "manifest route emits the pinned u32-list record lower" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lower (func (param i32 i32 i32)))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(ref null $do_u32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "array.get $do_u32") != null);
+}
+
+test "manifest route emits the pinned mixed text u32-list record lower" {
+    const wat = try manifest_route.emit_sync_marshal_module_from_manifest(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        manifest_path,
+        mixed_text_u32_list_record_lower_descriptor,
+        mixed_text_u32_list_record_lower_measurement(),
+        null,
+    );
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-record-mixed-text-u32-list-lower/api@1.0.0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lower (func (param i32 i32 i32 i32 i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(ref null $do_u32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get $do_u32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.store\n") != null);
+}
+
+test "manifest route emits the pinned mixed text byte-list record lift" {
+    const wat = try manifest_route.emit_sync_marshal_module_from_manifest(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        manifest_path,
+        mixed_text_byte_list_lift_descriptor,
+        mixed_text_byte_list_lift_measurement(),
+        null,
+    );
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-record-mixed-text-byte-list-lift/api@1.0.0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lift (func (param i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(ref null $do_bytes)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.load8_u") != null);
 }
 
 test "manifest-owned route emits the pinned u32-list record lower" {

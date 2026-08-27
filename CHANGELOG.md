@@ -18,6 +18,81 @@
   `test_rust_g6_2_owned_record_producer.sh`, and
   `test_g6_2_owned_record_producer_equivalence.sh`.
 
+# 2026-08-26 G6.2 parameterized six-hop forwarding:
+  the existing `StreamWriter<u8>` producer descriptor now admits exactly six
+  static helper forwarding edges. The analyzer bound changed only from five to
+  six; the descriptor, WIT world, `(writer, count, value)` parameters, single
+  `produce` export, canonical ABI, and cleanup contract are unchanged. The
+  positive Component gate, seventh-hop/arbitrary-producer negatives, and the
+  Rust/Wasmtime matrix for `count=0/1/3`, `value=90`, pending/ready/error,
+  early-drop, and cancel-after-transfer pass with one callback, one stream drop,
+  empty `ResourceTable`, and exactly-once cleanup. General producer/resource,
+  borrowed/list/variant, seventh-hop, and full GC cutover remain pending.
+
+# 2026-08-26 G5c residual capability gate and exact candidate verification:
+  the 15-row capability matrix was reviewed exactly once per row and selected
+  one synchronous descriptor,
+  `demo:marshal-record-mixed-text-byte-u32-lists-lower/api.write@1.0.0/lower`.
+  Its source/WIT hash matches the manifest at
+  `sha256:2d966dfc68f27f42ba7ce5f44c471907cf2ebe922a9af24d3cfc810847cce9c3`;
+  the fixed `Writing { code: u32, label: text, bytes: [u8], values: [u32] }`
+  route passes focused `90/90`, `43/43`, and `66/66` suites, Component host,
+  ARC/GC equivalence (`allocations=3/3`, `frees=3/3`, `write-calls=1/1`),
+  and seven pre-WAT descriptor-drift negatives. Default GC, residual,
+  semantic-equivalence, full regression (`pass=1398 fail=0 skip=3`), Zig
+  (`686/686`), ReleaseSmall, and release smoke also pass with the pinned
+  toolchain. The inventory remains deliberately open at
+  `complete_rows=15 pending_rows=15` with exit `1`; general aggregate/list,
+  async/resource, ownership syntax, and full GC cutover remain pending.
+
+# 2026-08-26 G5c verification refresh:
+  reran the mixed-text/two-`list<u32>` lower and lift batch with focused marshal
+  module/operation/WAT suites (`90/90`, `43/43`, `66/66`), Component host,
+  ARC/GC equivalence, and descriptor-drift negative gates. Fresh repository
+  evidence is `run_tests.sh` `pass=1388 fail=0 skip=3`, Zig `682/682`, default
+  GC `86 fixtures`, residual/semantic-equivalence, ReleaseSmall, and release
+  smoke passing with pinned `wasm-tools 1.255.0`. The migration inventory stays
+  intentionally open at `complete_rows=15 pending_rows=15` with exit `1`;
+  general aggregate/list, async/resource, ownership syntax, and full G5c
+  cutover are unchanged.
+
+# 2026-08-25 G5c mixed text + two `list<u32>` record lift promotion:
+  the ordinary synchronous `@host_func` route now admits only the hash-pinned
+  `demo:marshal-record-mixed-text-two-u32-lists-lift/api.read@1.0.0/lift`
+  descriptor for `Reading { code: u32, label: text, first: [u32], second: [u32] }`.
+  The measured result area is 28 bytes (`code@0`, `label.ptr@4`, `label.len@8`,
+  `first.ptr@12`, `first.len@16`, `second.ptr@20`, `second.len@24`) and the
+  canonical import is one `i32` result-area pointer with no GC reference. Three
+  linear spans are range-checked before copy and freed exactly once in reverse
+  order: `second`, `first`, `label`. Pinned Component/Rust/Wasmtime host
+  execution observes `code=7`, `label=hello`, `first=[10,20,5]`, `second=[3,4]`,
+  `result=54`, `stats=51`, one callback, and `3/3` allocations/frees;
+  ARC/GC equivalence observes `54/54`, `51/51`, and `1/1`. Fixtures `674`–`681`
+  reject drift before WAT. The default GC gate covers 85 fixtures; full
+  regression is `pass=1380 fail=0 skip=3`, Zig is `678/678`, and residual,
+  ReleaseSmall, and release smoke gates pass. This is fixed-shape evidence only;
+  general aggregate/list, async/resource lowering, ownership syntax, and full
+  G5c cutover remain pending, with inventory `complete_rows=15 pending_rows=15`
+  and exit `1`.
+
+# 2026-08-25 G5c mixed text + two `list<u32>` record lower promotion:
+  the ordinary synchronous `@host_func` route now admits only the hash-pinned
+  `demo:marshal-record-mixed-text-two-u32-lists-lower/api.write@1.0.0/lower`
+  descriptor for `Writing { code: u32, label: text, first: [u32], second: [u32] }`.
+  The measured root is 28 bytes (`code@0`, `label.ptr@4`, `label.len@8`,
+  `first.ptr@12`, `first.len@16`, `second.ptr@20`, `second.len@24`) and the
+  canonical import has seven `i32` words with no GC reference. Three linear
+  spans are range-checked before copy and freed exactly once in reverse order:
+  `second`, `first`, `label`. Pinned Component/Rust/Wasmtime host execution
+  observes `code=7`, `label=hello`, `first=[10,20,5]`, `second=[3,4]`, one
+  callback, and `3/3` allocations/frees; ARC/GC equivalence observes the same
+  values and cleanup. Fixtures `666`–`672` reject drift before WAT. The default
+  GC gate now covers 85 fixtures; full regression is `pass=1380 fail=0 skip=3`,
+  Zig is `678/678`, and residual, semantic-equivalence, ReleaseSmall, and release
+  smoke gates pass. This is fixed-shape evidence only; general aggregate/list,
+  async/resource lowering, ownership syntax, and full G5c cutover remain pending,
+  with inventory `complete_rows=15 pending_rows=15` and exit `1`.
+
 # 2026-08-23 G5c scalar-list route parameterization:
   the synchronous record lowerer now uses one internal
   `ManagedScalarListField` specification for both manifest `byte_list` and

@@ -194,6 +194,78 @@ name = "do-p3-gc-marshal-record-host-runner"
 path = "src/bin/gc_marshal_record.rs"
 
 [[bin]]
+name = "do-p3-gc-marshal-record-mixed-host-runner"
+path = "src/bin/gc_marshal_record_mixed.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-mixed-scalar-list-lower-host-runner"
+path = "src/bin/gc_marshal_record_mixed_scalar_list_lower.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-mixed-scalar-list-lower-equivalence-runner"
+path = "src/bin/gc_marshal_record_mixed_scalar_list_lower_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-two-u32-lists-lower-host-runner"
+path = "src/bin/gc_marshal_record_two_u32_lists_lower.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-two-u32-lists-lower-equivalence-runner"
+path = "src/bin/gc_marshal_record_two_u32_lists_lower_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-mixed-text-u32-list-lower-host-runner"
+path = "src/bin/gc_marshal_record_mixed_text_u32_list_lower.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-mixed-text-u32-list-lower-equivalence-runner"
+path = "src/bin/gc_marshal_record_mixed_text_u32_list_lower_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-mixed-text-two-u32-lists-lower-host-runner"
+path = "src/bin/gc_marshal_record_mixed_text_two_u32_lists_lower.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-mixed-text-two-u32-lists-lower-equivalence-runner"
+path = "src/bin/gc_marshal_record_mixed_text_two_u32_lists_lower_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-mixed-text-byte-u32-lists-lower-host-runner"
+path = "src/bin/gc_marshal_record_mixed_text_byte_u32_lists_lower.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-mixed-text-byte-u32-lists-lower-equivalence-runner"
+path = "src/bin/gc_marshal_record_mixed_text_byte_u32_lists_lower_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-mixed-text-u32-list-lift-host-runner"
+path = "src/bin/gc_marshal_record_mixed_text_u32_list_lift.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-mixed-text-u32-list-lift-equivalence-runner"
+path = "src/bin/gc_marshal_record_mixed_text_u32_list_lift.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-mixed-text-two-u32-lists-lift-host-runner"
+path = "src/bin/gc_marshal_record_mixed_text_two_u32_lists_lift.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-mixed-text-two-u32-lists-lift-equivalence-runner"
+path = "src/bin/gc_marshal_record_mixed_text_two_u32_lists_lift.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-mixed-text-byte-list-lift-host-runner"
+path = "src/bin/gc_marshal_record_mixed_text_byte_list_lift.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-mixed-text-byte-list-lift-equivalence-runner"
+path = "src/bin/gc_marshal_record_mixed_text_byte_list_lift.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-nested-host-runner"
+path = "src/bin/gc_marshal_record_nested.rs"
+
+[[bin]]
 name = "do-p3-gc-marshal-record-lower-host-runner"
 path = "src/bin/gc_marshal_record_lower.rs"
 
@@ -204,6 +276,122 @@ path = "src/bin/gc_marshal_record_lower_equivalence.rs"
 [[bin]]
 name = "do-p3-gc-marshal-record-equivalence-runner"
 path = "src/bin/gc_marshal_record_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-host-equivalence-runner"
+path = "src/bin/gc_marshal_record_host_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-mixed-host-equivalence-runner"
+path = "src/bin/gc_marshal_record_mixed_host_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-nested-host-equivalence-runner"
+path = "src/bin/gc_marshal_record_nested_host_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-nested-lower-host-runner"
+path = "src/bin/gc_marshal_record_nested_lower.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-nested-lower-host-equivalence-runner"
+path = "src/bin/gc_marshal_record_nested_lower_host_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-nested-lower-deep-host-runner"
+path = "src/bin/gc_marshal_record_nested_lower_deep.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-nested-lower-deep-host-equivalence-runner"
+path = "src/bin/gc_marshal_record_nested_lower_deep_host_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-nested-lift-deep-host-runner"
+path = "src/bin/gc_marshal_record_nested_lift_deep.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-nested-lift-deep-host-equivalence-runner"
+path = "src/bin/gc_marshal_record_nested_lift_deep_host_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-nested-lift-deeper-host-runner"
+path = "src/bin/gc_marshal_record_nested_lift_deeper.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-nested-lift-deeper-equivalence-runner"
+path = "src/bin/gc_marshal_record_nested_lift_deeper_host_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-nested-lower-deeper-host-runner"
+path = "src/bin/gc_marshal_record_nested_lower_deeper.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-nested-lower-deeper-equivalence-runner"
+path = "src/bin/gc_marshal_record_nested_lower_deeper_host_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-managed-lift-host-runner"
+path = "src/bin/gc_marshal_record_managed_lift.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-managed-lift-host-equivalence-runner"
+path = "src/bin/gc_marshal_record_managed_lift_host_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-managed-lift-multi-host-runner"
+path = "src/bin/gc_marshal_record_managed_lift_multi.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-managed-lift-multi-host-equivalence-runner"
+path = "src/bin/gc_marshal_record_managed_lift_multi_host_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-managed-lower-host-runner"
+path = "src/bin/gc_marshal_record_managed_lower.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-managed-lower-host-equivalence-runner"
+path = "src/bin/gc_marshal_record_managed_lower_host_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-managed-lower-multi-host-runner"
+path = "src/bin/gc_marshal_record_managed_lower_multi.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-managed-lower-multi-equivalence-runner"
+path = "src/bin/gc_marshal_record_managed_lower_multi_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-byte-list-lower-host-runner"
+path = "src/bin/gc_marshal_record_byte_list_lower.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-byte-list-lower-equivalence-runner"
+path = "src/bin/gc_marshal_record_byte_list_lower_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-u32-list-lower-host-runner"
+path = "src/bin/gc_marshal_record_u32_list_lower.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-u32-list-lower-equivalence-runner"
+path = "src/bin/gc_marshal_record_u32_list_lower_equivalence.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-u32-list-lift-host-runner"
+path = "src/bin/gc_marshal_record_u32_list_lift.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-u32-list-lift-equivalence-runner"
+path = "src/bin/gc_marshal_record_u32_list_lift.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-byte-list-lift-host-runner"
+path = "src/bin/gc_marshal_record_byte_list_lift.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-record-byte-list-lift-equivalence-runner"
+path = "src/bin/gc_marshal_record_byte_list_lift.rs"
 
 [[bin]]
 name = "do-p3-gc-marshal-record-indirect-lower-host-runner"

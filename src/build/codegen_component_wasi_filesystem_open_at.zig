@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
@@ -31,7 +32,7 @@ pub fn emit_component_wat(
         plan.descriptor.canonical.core_params.len != 2 or
         plan.descriptor.canonical.completion_params.len != 2)
         return error.UnsupportedP3WasiFilesystemOpenAtComponent;
-    return allocator.dupe(u8, @embedFile("wasi_filesystem_open_at_component_template.wat"));
+    return generated_text.alloc_block(allocator, 0, @embedFile("wasi_filesystem_open_at_component_template.wat"));
 }
 
 pub fn emit_component_wit(
@@ -41,7 +42,7 @@ pub fn emit_component_wit(
     var registry = try p3_async_manifest.Registry.load(allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(allocator);
     _ = try FilesystemOpenAtPlan.analyze(tokens, registry);
-    return allocator.dupe(u8, component_wit);
+    return generated_text.alloc_block(allocator, 0, component_wit);
 }
 
 pub const FilesystemOpenAtPlan = struct {
@@ -294,22 +295,27 @@ fn has_empty_start_function(tokens: []const lexer.Token) bool {
 }
 
 const component_wit =
-    "package wasi:filesystem@0.3.0-rc-2025-09-16;\n\n" ++
-    "interface types {\n" ++
-    "  flags path-flags { symlink-follow }\n" ++
-    "  flags open-flags { create, directory, exclusive, truncate }\n" ++
-    "  flags descriptor-flags { read, write, file-integrity-sync, data-integrity-sync, requested-write-sync, mutate-directory }\n" ++
-    "  enum error-code { access, already, bad-descriptor, busy, deadlock, quota, exist, file-too-large, illegal-byte-sequence, in-progress, interrupted, invalid, io, is-directory, loop, too-many-links, message-size, name-too-long, no-device, no-entry, no-lock, insufficient-memory, insufficient-space, not-directory, not-empty, not-recoverable, unsupported, no-tty, no-such-device, overflow, not-permitted, pipe, read-only, invalid-seek, text-file-busy, cross-device }\n" ++
-    "  resource descriptor { open-at: async func(path-flags: path-flags, path: string, open-flags: open-flags, descriptor-flags: descriptor-flags) -> result<descriptor, error-code>; }\n" ++
-    "}\n\n" ++
-    "interface probe {\n" ++
-    "  use types.{descriptor, error-code, path-flags, open-flags, descriptor-flags};\n" ++
-    "  run: async func(root: own<descriptor>, path-flags: path-flags, path: string, open-flags: open-flags, descriptor-flags: descriptor-flags) -> result<own<descriptor>, error-code>;\n" ++
-    "}\n\n" ++
-    "world open-at-probe {\n" ++
-    "  import types;\n" ++
-    "  export probe;\n" ++
-    "}\n";
+        \\package wasi:filesystem@0.3.0-rc-2025-09-16;
+    \\
+    \\interface types {
+    \\  flags path-flags { symlink-follow }
+    \\  flags open-flags { create, directory, exclusive, truncate }
+    \\  flags descriptor-flags { read, write, file-integrity-sync, data-integrity-sync, requested-write-sync, mutate-directory }
+    \\  enum error-code { access, already, bad-descriptor, busy, deadlock, quota, exist, file-too-large, illegal-byte-sequence, in-progress, interrupted, invalid, io, is-directory, loop, too-many-links, message-size, name-too-long, no-device, no-entry, no-lock, insufficient-memory, insufficient-space, not-directory, not-empty, not-recoverable, unsupported, no-tty, no-such-device, overflow, not-permitted, pipe, read-only, invalid-seek, text-file-busy, cross-device }
+    \\  resource descriptor { open-at: async func(path-flags: path-flags, path: string, open-flags: open-flags, descriptor-flags: descriptor-flags) -> result<descriptor, error-code>; }
+    \\}
+    \\
+    \\interface probe {
+    \\  use types.{descriptor, error-code, path-flags, open-flags, descriptor-flags};
+    \\  run: async func(root: own<descriptor>, path-flags: path-flags, path: string, open-flags: open-flags, descriptor-flags: descriptor-flags) -> result<own<descriptor>, error-code>;
+    \\}
+    \\
+    \\world open-at-probe {
+    \\  import types;
+    \\  export probe;
+    \\}
+    \\
+    ;
 
 test "open-at planner captures the fixed source shape" {
     const source = @embedFile("test/compile_ok/540_wasi_filesystem_open_at_component.do");

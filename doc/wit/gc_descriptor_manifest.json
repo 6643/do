@@ -35,6 +35,851 @@
         "module": "demo:marshal-equivalence/api@1.0.0",
         "name": "send"
       }
+    },
+    {
+      "id": "demo:marshal-u32-equivalence/api.send@1.0.0/lower",
+      "source": "examples/gc-p3-runtime/marshal-u32-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_u32_imports.wit",
+      "package": "demo:marshal-u32-equivalence@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "send",
+      "direction": "lower",
+      "params": ["list<u32>"],
+      "result": "_",
+      "source_sha256": "sha256:e80d9c42ceb69b922122dc0f081cd122fb253be043b8833dc6da5ff82968711b",
+      "canonical_import": {
+        "module": "demo:marshal-u32-equivalence/api@1.0.0",
+        "name": "send"
+      }
+    },
+    {
+      "id": "demo:marshal-u32-lift-host/api.receive@1.0.0/lift",
+      "source": "examples/gc-p3-runtime/marshal-u32-lift-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_u32_lift_imports.wit",
+      "package": "demo:marshal-u32-lift-host@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "receive",
+      "direction": "lift",
+      "params": [],
+      "result": "list<u32>",
+      "source_sha256": "sha256:bd16ada72fa9b87242e451cf572eba995df239f351a3ba03498ac431e788170d",
+      "canonical_import": {
+        "module": "demo:marshal-u32-lift-host/api@1.0.0",
+        "name": "receive"
+      }
+    },
+    {
+      "id": "demo:marshal-record-lower/api.write@1.0.0/lower",
+      "source": "examples/gc-p3-runtime/marshal-record-lower-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_lower_imports.wit",
+      "package": "demo:marshal-record-lower@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "write",
+      "direction": "lower",
+      "params": ["writing"],
+      "result": "_",
+      "source_sha256": "sha256:ca36fce31a2def6ecb860b6df6c1daac12cf023965c65a04e5ccaf6235ed09e4",
+      "canonical_import": {
+        "module": "demo:marshal-record-lower/api@1.0.0",
+        "name": "write"
+      }
+    },
+    {
+      "id": "demo:marshal-record-host/api.read@1.0.0/lift",
+      "source": "examples/gc-p3-runtime/marshal-record-lift-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_lift_imports.wit",
+      "package": "demo:marshal-record-host@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "read",
+      "direction": "lift",
+      "params": [],
+      "result": "reading",
+      "source_sha256": "sha256:4710e05491f74c75f60123c4d82115ce41292a5f4adad02077b3169367101c9a",
+      "canonical_import": {
+        "module": "demo:marshal-record-host/api@1.0.0",
+        "name": "read"
+      }
+    },
+    {
+      "id": "demo:marshal-record-mixed-host/api.read@1.0.0/lift",
+      "source": "examples/gc-p3-runtime/marshal-record-mixed-lift-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_mixed_lift_imports.wit",
+      "package": "demo:marshal-record-mixed-host@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "read",
+      "direction": "lift",
+      "params": [],
+      "result": "reading",
+      "source_sha256": "sha256:a5d4f244d19903a6a007eb93c837a7dfb23e0d9404792e0096f8442e7ac656dc",
+      "canonical_import": {
+        "module": "demo:marshal-record-mixed-host/api@1.0.0",
+        "name": "read"
+      }
+    },
+    {
+      "id": "demo:marshal-record-indirect-lower/api.write@1.0.0/lower",
+      "source": "examples/gc-p3-runtime/marshal-record-indirect-lower-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_indirect_lower_imports.wit",
+      "package": "demo:marshal-record-indirect-lower@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "write",
+      "direction": "lower",
+      "params": ["writing"],
+      "result": "_",
+      "source_sha256": "sha256:cc6316d0999d9715a73355efa2f3cc3f22e1cf0f73a1a8a7a24c225e73160bb3",
+      "canonical_import": {
+        "module": "demo:marshal-record-indirect-lower/api@1.0.0",
+        "name": "write"
+      }
+    },
+    {
+      "id": "demo:marshal-record-mixed-lower/api.write@1.0.0/lower",
+      "source": "examples/gc-p3-runtime/marshal-record-mixed-lower-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_mixed_lower_imports.wit",
+      "package": "demo:marshal-record-mixed-lower@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "write",
+      "direction": "lower",
+      "params": ["writing"],
+      "result": "_",
+      "source_sha256": "sha256:a2a14262572f8e8518ec6af33aeba940cfccf866b01983e8d091daee135a872b",
+      "measured_layout": {
+        "kind": "record",
+        "byte_size": 24,
+        "alignment": 8,
+        "fields": [
+          {"name": "code", "offset": 0, "byte_size": 4, "alignment": 4},
+          {"name": "count", "offset": 8, "byte_size": 8, "alignment": 8},
+          {"name": "status", "offset": 16, "byte_size": 8, "alignment": 8}
+        ],
+        "children": [
+          {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+          {"kind": "scalar", "offset": 8, "byte_size": 8, "alignment": 8, "core_type": "i64"},
+          {"kind": "scalar", "offset": 16, "byte_size": 8, "alignment": 8, "core_type": "i64"}
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-record-mixed-lower/api@1.0.0",
+        "name": "write"
+      }
+    },
+    {
+      "id": "demo:marshal-record-nested-host/api.read@1.0.0/lift",
+      "source": "examples/gc-p3-runtime/marshal-record-nested-lift-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_nested_lift_imports.wit",
+      "package": "demo:marshal-record-nested-host@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "read",
+      "direction": "lift",
+      "params": [],
+      "result": "reading",
+      "source_sha256": "sha256:fc584d660ccb82d12bd179d247b6fb0eea168468ff03b43dfb101391157a23fc",
+      "canonical_import": {
+        "module": "demo:marshal-record-nested-host/api@1.0.0",
+        "name": "read"
+      }
+    },
+    {
+      "id": "demo:marshal-record-nested-lower/api.write@1.0.0/lower",
+      "source": "examples/gc-p3-runtime/marshal-record-nested-lower-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_nested_lower_imports.wit",
+      "package": "demo:marshal-record-nested-lower@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "write",
+      "direction": "lower",
+      "params": ["writing"],
+      "result": "_",
+      "source_sha256": "sha256:d3deb51d29d35de19a98e016a0c88580fccfd05d91185d429f8960975a0b05ac",
+      "canonical_import": {
+        "module": "demo:marshal-record-nested-lower/api@1.0.0",
+        "name": "write"
+      }
+    },
+    {
+      "id": "demo:marshal-record-nested-lower-deep/api.write@1.0.0/lower",
+      "source": "examples/gc-p3-runtime/marshal-record-nested-lower-deep-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_nested_lower_deep_imports.wit",
+      "package": "demo:marshal-record-nested-lower-deep@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "write",
+      "direction": "lower",
+      "params": ["writing"],
+      "result": "_",
+      "source_sha256": "sha256:b81ce4055cbaff5892b1896d4f40be2dd67e96fee2252f1c2c2c3614c58cd1be",
+      "canonical_import": {
+        "module": "demo:marshal-record-nested-lower-deep/api@1.0.0",
+        "name": "write"
+      }
+    },
+    {
+      "id": "demo:marshal-record-nested-lift-deep/api.read@1.0.0/lift",
+      "source": "examples/gc-p3-runtime/marshal-record-nested-lift-deep-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_nested_lift_deep_imports.wit",
+      "package": "demo:marshal-record-nested-lift-deep@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "read",
+      "direction": "lift",
+      "params": [],
+      "result": "reading",
+      "source_sha256": "sha256:1557dd501407b34d67eb0ebb6df7f65450c50676261412730172a01caae33faa",
+      "canonical_import": {
+        "module": "demo:marshal-record-nested-lift-deep/api@1.0.0",
+        "name": "read"
+      }
+    },
+    {
+      "id": "demo:marshal-record-nested-lower-deeper/api.write@1.0.0/lower",
+      "source": "examples/gc-p3-runtime/marshal-record-nested-lower-deeper-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_nested_lower_deeper_imports.wit",
+      "package": "demo:marshal-record-nested-lower-deeper@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "write",
+      "direction": "lower",
+      "params": ["writing"],
+      "result": "_",
+      "source_sha256": "sha256:fbb8b6c0612581fac7b34722f28a9bb37af45369a1071ab00edcdb75759b4743",
+      "measured_layout": {
+        "kind": "record",
+        "byte_size": 40,
+        "alignment": 8,
+        "fields": [
+          {"name": "detail", "offset": 0, "byte_size": 32, "alignment": 8},
+          {"name": "tail", "offset": 32, "byte_size": 8, "alignment": 8}
+        ],
+        "children": [
+          {
+            "kind": "record",
+            "byte_size": 32,
+            "alignment": 8,
+            "fields": [
+              {"name": "header", "offset": 0, "byte_size": 24, "alignment": 8},
+              {"name": "marker", "offset": 24, "byte_size": 8, "alignment": 8}
+            ],
+            "children": [
+              {
+                "kind": "record",
+                "byte_size": 24,
+                "alignment": 8,
+                "fields": [
+                  {"name": "leaf", "offset": 0, "byte_size": 16, "alignment": 8},
+                  {"name": "status", "offset": 16, "byte_size": 8, "alignment": 8}
+                ],
+                "children": [
+                  {
+                    "kind": "record",
+                    "byte_size": 16,
+                    "alignment": 8,
+                    "fields": [
+                      {"name": "code", "offset": 0, "byte_size": 4, "alignment": 4},
+                      {"name": "count", "offset": 8, "byte_size": 8, "alignment": 8}
+                    ],
+                    "children": [
+                      {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+                      {"kind": "scalar", "offset": 8, "byte_size": 8, "alignment": 8, "core_type": "i64"}
+                    ]
+                  },
+                  {"kind": "scalar", "offset": 16, "byte_size": 8, "alignment": 8, "core_type": "i64"}
+                ]
+              },
+              {"kind": "scalar", "offset": 24, "byte_size": 8, "alignment": 8, "core_type": "i64"}
+            ]
+          },
+          {"kind": "scalar", "offset": 32, "byte_size": 8, "alignment": 8, "core_type": "i64"}
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-record-nested-lower-deeper/api@1.0.0",
+        "name": "write"
+      }
+    },
+    {
+      "id": "demo:marshal-record-nested-lift-deeper/api.read@1.0.0/lift",
+      "source": "examples/gc-p3-runtime/marshal-record-nested-lift-deeper-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_nested_lift_deeper_imports.wit",
+      "package": "demo:marshal-record-nested-lift-deeper@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "read",
+      "direction": "lift",
+      "params": [],
+      "result": "reading",
+      "source_sha256": "sha256:be58356b81bd4a225d2b568be45293338205a7ff5fe3d6927eceba3a0dc9a465",
+      "measured_layout": {
+        "kind": "record",
+        "byte_size": 40,
+        "alignment": 8,
+        "fields": [
+          {"name": "detail", "offset": 0, "byte_size": 32, "alignment": 8},
+          {"name": "tail", "offset": 32, "byte_size": 8, "alignment": 8}
+        ],
+        "children": [
+          {
+            "kind": "record",
+            "byte_size": 32,
+            "alignment": 8,
+            "fields": [
+              {"name": "header", "offset": 0, "byte_size": 24, "alignment": 8},
+              {"name": "marker", "offset": 24, "byte_size": 8, "alignment": 8}
+            ],
+            "children": [
+              {
+                "kind": "record",
+                "byte_size": 24,
+                "alignment": 8,
+                "fields": [
+                  {"name": "leaf", "offset": 0, "byte_size": 16, "alignment": 8},
+                  {"name": "status", "offset": 16, "byte_size": 8, "alignment": 8}
+                ],
+                "children": [
+                  {
+                    "kind": "record",
+                    "byte_size": 16,
+                    "alignment": 8,
+                    "fields": [
+                      {"name": "code", "offset": 0, "byte_size": 4, "alignment": 4},
+                      {"name": "count", "offset": 8, "byte_size": 8, "alignment": 8}
+                    ],
+                    "children": [
+                      {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+                      {"kind": "scalar", "offset": 8, "byte_size": 8, "alignment": 8, "core_type": "i64"}
+                    ]
+                  },
+                  {"kind": "scalar", "offset": 16, "byte_size": 8, "alignment": 8, "core_type": "i64"}
+                ]
+              },
+              {"kind": "scalar", "offset": 24, "byte_size": 8, "alignment": 8, "core_type": "i64"}
+            ]
+          },
+          {"kind": "scalar", "offset": 32, "byte_size": 8, "alignment": 8, "core_type": "i64"}
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-record-nested-lift-deeper/api@1.0.0",
+        "name": "read"
+      }
+    },
+    {
+      "id": "demo:marshal-record-managed-lift/api.read@1.0.0/lift",
+      "source": "examples/gc-p3-runtime/marshal-record-managed-lift-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_managed_lift_imports.wit",
+      "package": "demo:marshal-record-managed-lift@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "read",
+      "direction": "lift",
+      "params": [],
+      "result": "reading",
+      "source_sha256": "sha256:c738ac77ed119374e0e2559af5dd6afa53025cd2be850024ea73536705e2c728",
+      "measured_layout": {
+        "kind": "record",
+        "byte_size": 12,
+        "alignment": 4,
+        "fields": [
+          {"name": "code", "offset": 0, "byte_size": 4, "alignment": 4},
+          {"name": "label", "offset": 4, "byte_size": 8, "alignment": 4}
+        ],
+        "children": [
+          {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+          {"kind": "text", "pointer_offset": 0, "length_offset": 4, "byte_size": 8, "alignment": 4, "allocation": "cabi_realloc", "free": "cabi_realloc"}
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-record-managed-lift/api@1.0.0",
+        "name": "read"
+      }
+    },
+    {
+      "id": "demo:marshal-record-managed-lift-multi/api.read@1.0.0/lift",
+      "source": "examples/gc-p3-runtime/marshal-record-managed-lift-multi-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_managed_lift_multi_imports.wit",
+      "package": "demo:marshal-record-managed-lift-multi@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "read",
+      "direction": "lift",
+      "params": [],
+      "result": "reading",
+      "source_sha256": "sha256:c933d5f65ac81821b3c0dc6245612188138f2aa159a6ea76381148904e07aef6",
+      "measured_layout": {
+        "kind": "record",
+        "byte_size": 20,
+        "alignment": 4,
+        "fields": [
+          {"name": "code", "offset": 0, "byte_size": 4, "alignment": 4},
+          {"name": "label", "offset": 4, "byte_size": 8, "alignment": 4},
+          {"name": "note", "offset": 12, "byte_size": 8, "alignment": 4}
+        ],
+        "children": [
+          {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+          {"kind": "text", "pointer_offset": 0, "length_offset": 4, "byte_size": 8, "alignment": 4, "allocation": "cabi_realloc", "free": "cabi_realloc"},
+          {"kind": "text", "pointer_offset": 0, "length_offset": 4, "byte_size": 8, "alignment": 4, "allocation": "cabi_realloc", "free": "cabi_realloc"}
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-record-managed-lift-multi/api@1.0.0",
+        "name": "read"
+      }
+    },
+    {
+      "id": "demo:marshal-record-byte-list-lower/api.write@1.0.0/lower",
+      "source": "examples/gc-p3-runtime/marshal-record-byte-list-lower-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_byte_list_lower_imports.wit",
+      "package": "demo:marshal-record-byte-list-lower@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "write",
+      "direction": "lower",
+      "params": ["writing"],
+      "result": "_",
+      "source_sha256": "sha256:ecd32deabab30466882697adb8a09eb2967472764d297796b0e90efff1d874d2",
+      "measured_layout": {
+        "kind": "record",
+        "byte_size": 12,
+        "alignment": 4,
+        "fields": [
+          {"name": "code", "offset": 0, "byte_size": 4, "alignment": 4},
+          {"name": "payload", "offset": 4, "byte_size": 8, "alignment": 4}
+        ],
+        "children": [
+          {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+          {"kind": "byte_list", "byte_size": 8, "alignment": 4, "pointer_offset": 0, "length_offset": 4, "element_byte_size": 1, "element_stride": 1, "element_alignment": 1, "capacity": 4, "accepted_lengths": [0, 1, 2, 3, 4], "allocation": "cabi_realloc", "free": "cabi_realloc"}
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-record-byte-list-lower/api@1.0.0",
+        "name": "write"
+      }
+    },
+    {
+      "id": "demo:marshal-record-u32-list-lower/api.write@1.0.0/lower",
+      "source": "examples/gc-p3-runtime/marshal-record-u32-list-lower-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_u32_list_lower_imports.wit",
+      "package": "demo:marshal-record-u32-list-lower@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "write",
+      "direction": "lower",
+      "params": ["writing"],
+      "result": "_",
+      "source_sha256": "sha256:30a6d8c42680333d2c0b359888f589d41d30a82fc105e94ef1a43e0920fc519b",
+      "measured_layout": {
+        "kind": "record",
+        "byte_size": 12,
+        "alignment": 4,
+        "fields": [
+          {"name": "code", "offset": 0, "byte_size": 4, "alignment": 4},
+          {"name": "payload", "offset": 4, "byte_size": 8, "alignment": 4}
+        ],
+        "children": [
+          {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+          {"kind": "list", "byte_size": 8, "alignment": 4, "pointer_offset": 0, "length_offset": 4, "element_byte_size": 4, "element_stride": 4, "element_alignment": 4, "ticket_offset": 0, "capacity": 3, "accepted_lengths": [0, 1, 2, 3], "allocation": "cabi_realloc", "free": "cabi_realloc"}
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-record-u32-list-lower/api@1.0.0",
+        "name": "write"
+      }
+    },
+    {
+      "id": "demo:marshal-record-two-u32-lists-lower/api.write@1.0.0/lower",
+      "source": "examples/gc-p3-runtime/marshal-record-two-u32-lists-lower-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_two_u32_lists_lower_imports.wit",
+      "package": "demo:marshal-record-two-u32-lists-lower@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "write",
+      "direction": "lower",
+      "params": ["writing"],
+      "result": "_",
+      "source_sha256": "sha256:73b58431637645183a169b47e8716c6b55daf9dbea0c282059c4e93f404dc969",
+      "measured_layout": {
+        "kind": "record",
+        "byte_size": 20,
+        "alignment": 4,
+        "fields": [
+          {"name": "code", "offset": 0, "byte_size": 4, "alignment": 4},
+          {"name": "first", "offset": 4, "byte_size": 8, "alignment": 4},
+          {"name": "second", "offset": 12, "byte_size": 8, "alignment": 4}
+        ],
+        "children": [
+          {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+          {"kind": "list", "byte_size": 8, "alignment": 4, "pointer_offset": 0, "length_offset": 4, "element_byte_size": 4, "element_stride": 4, "element_alignment": 4, "ticket_offset": 0, "capacity": 3, "accepted_lengths": [0, 1, 2, 3], "allocation": "cabi_realloc", "free": "cabi_realloc"},
+          {"kind": "list", "byte_size": 8, "alignment": 4, "pointer_offset": 0, "length_offset": 4, "element_byte_size": 4, "element_stride": 4, "element_alignment": 4, "ticket_offset": 0, "capacity": 2, "accepted_lengths": [0, 1, 2], "allocation": "cabi_realloc", "free": "cabi_realloc"}
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-record-two-u32-lists-lower/api@1.0.0",
+        "name": "write"
+      }
+    },
+    {
+      "id": "demo:marshal-record-mixed-text-two-u32-lists-lower/api.write@1.0.0/lower",
+      "source": "examples/gc-p3-runtime/marshal-record-mixed-text-two-u32-lists-lower-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_mixed_text_two_u32_lists_lower_imports.wit",
+      "package": "demo:marshal-record-mixed-text-two-u32-lists-lower@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "write",
+      "direction": "lower",
+      "params": ["writing"],
+      "result": "_",
+      "source_sha256": "sha256:e37e68ef2b8509c78a80ab74b05a0512e4fe19bfaef5fc3cb26faad430000882",
+      "do_record_name": "Writing",
+      "measured_layout": {
+        "kind": "record",
+        "byte_size": 28,
+        "alignment": 4,
+        "fields": [
+          {"name": "code", "offset": 0, "byte_size": 4, "alignment": 4},
+          {"name": "label", "offset": 4, "byte_size": 8, "alignment": 4},
+          {"name": "first", "offset": 12, "byte_size": 8, "alignment": 4},
+          {"name": "second", "offset": 20, "byte_size": 8, "alignment": 4}
+        ],
+        "children": [
+          {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+          {"kind": "text", "pointer_offset": 0, "length_offset": 4, "byte_size": 8, "alignment": 4, "allocation": "cabi_realloc", "free": "cabi_realloc"},
+          {"kind": "list", "byte_size": 8, "alignment": 4, "pointer_offset": 0, "length_offset": 4, "element_byte_size": 4, "element_stride": 4, "element_alignment": 4, "ticket_offset": 0, "capacity": 3, "accepted_lengths": [0, 1, 2, 3], "allocation": "cabi_realloc", "free": "cabi_realloc"},
+          {"kind": "list", "byte_size": 8, "alignment": 4, "pointer_offset": 0, "length_offset": 4, "element_byte_size": 4, "element_stride": 4, "element_alignment": 4, "ticket_offset": 0, "capacity": 2, "accepted_lengths": [0, 1, 2], "allocation": "cabi_realloc", "free": "cabi_realloc"}
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-record-mixed-text-two-u32-lists-lower/api@1.0.0",
+        "name": "write"
+      }
+    },
+    {
+      "id": "demo:marshal-record-mixed-text-byte-u32-lists-lower/api.write@1.0.0/lower",
+      "source": "examples/gc-p3-runtime/marshal-record-mixed-text-byte-u32-lists-lower-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_mixed_text_byte_u32_lists_lower_imports.wit",
+      "package": "demo:marshal-record-mixed-text-byte-u32-lists-lower@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "write",
+      "direction": "lower",
+      "params": ["writing"],
+      "result": "_",
+      "source_sha256": "sha256:2d966dfc68f27f42ba7ce5f44c471907cf2ebe922a9af24d3cfc810847cce9c3",
+      "do_record_name": "Writing",
+      "measured_layout": {
+        "kind": "record",
+        "byte_size": 28,
+        "alignment": 4,
+        "fields": [
+          {"name": "code", "offset": 0, "byte_size": 4, "alignment": 4},
+          {"name": "label", "offset": 4, "byte_size": 8, "alignment": 4},
+          {"name": "bytes", "offset": 12, "byte_size": 8, "alignment": 4},
+          {"name": "values", "offset": 20, "byte_size": 8, "alignment": 4}
+        ],
+        "children": [
+          {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+          {"kind": "text", "pointer_offset": 0, "length_offset": 4, "byte_size": 8, "alignment": 4, "allocation": "cabi_realloc", "free": "cabi_realloc"},
+          {"kind": "byte_list", "byte_size": 8, "alignment": 4, "pointer_offset": 0, "length_offset": 4, "element_byte_size": 1, "element_stride": 1, "element_alignment": 1, "capacity": 4, "accepted_lengths": [0, 1, 2, 3, 4], "allocation": "cabi_realloc", "free": "cabi_realloc"},
+          {"kind": "list", "byte_size": 8, "alignment": 4, "pointer_offset": 0, "length_offset": 4, "element_byte_size": 4, "element_stride": 4, "element_alignment": 4, "ticket_offset": 0, "capacity": 3, "accepted_lengths": [0, 1, 2, 3], "allocation": "cabi_realloc", "free": "cabi_realloc"}
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-record-mixed-text-byte-u32-lists-lower/api@1.0.0",
+        "name": "write"
+      }
+    },
+    {
+      "id": "demo:marshal-record-u32-list-lift/api.read@1.0.0/lift",
+      "source": "examples/gc-p3-runtime/marshal-record-u32-list-lift-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_u32_list_lift_imports.wit",
+      "package": "demo:marshal-record-u32-list-lift@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "read",
+      "direction": "lift",
+      "params": [],
+      "result": "reading",
+      "source_sha256": "sha256:36169f05462b6c95b04f745add3b3b788e9f27b065ae9e51330332a9827ac00a",
+      "measured_layout": {
+        "kind": "record",
+        "byte_size": 12,
+        "alignment": 4,
+        "fields": [
+          {"name": "code", "offset": 0, "byte_size": 4, "alignment": 4},
+          {"name": "payload", "offset": 4, "byte_size": 8, "alignment": 4}
+        ],
+        "children": [
+          {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+          {"kind": "list", "byte_size": 8, "alignment": 4, "pointer_offset": 0, "length_offset": 4, "element_byte_size": 4, "element_stride": 4, "element_alignment": 4, "ticket_offset": 0, "capacity": 3, "accepted_lengths": [0, 1, 2, 3], "allocation": "cabi_realloc", "free": "cabi_realloc"}
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-record-u32-list-lift/api@1.0.0",
+        "name": "read"
+      }
+    },
+    {
+      "id": "demo:marshal-record-byte-list-lift/api.read@1.0.0/lift",
+      "source": "examples/gc-p3-runtime/marshal-record-byte-list-lift-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_byte_list_lift_imports.wit",
+      "package": "demo:marshal-record-byte-list-lift@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "read",
+      "direction": "lift",
+      "params": [],
+      "result": "reading",
+      "source_sha256": "sha256:b238d3a4513224b4782795f18a7d59d2fc158869d3232aa50b8168d0891b50a0",
+      "measured_layout": {
+        "kind": "record",
+        "byte_size": 12,
+        "alignment": 4,
+        "fields": [
+          {"name": "code", "offset": 0, "byte_size": 4, "alignment": 4},
+          {"name": "payload", "offset": 4, "byte_size": 8, "alignment": 4}
+        ],
+        "children": [
+          {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+          {"kind": "byte_list", "byte_size": 8, "alignment": 4, "pointer_offset": 0, "length_offset": 4, "element_byte_size": 1, "element_stride": 1, "element_alignment": 1, "capacity": 3, "accepted_lengths": [0, 1, 2, 3], "allocation": "cabi_realloc", "free": "cabi_realloc"}
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-record-byte-list-lift/api@1.0.0",
+        "name": "read"
+      }
+    },
+    {
+      "id": "demo:marshal-record-managed-lower/api.write@1.0.0/lower",
+      "source": "examples/gc-p3-runtime/marshal-record-managed-lower-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_managed_lower_imports.wit",
+      "package": "demo:marshal-record-managed-lower@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "write",
+      "direction": "lower",
+      "params": ["writing"],
+      "result": "_",
+      "source_sha256": "sha256:47a1b964a7faf0265bd939f9343431898fed0bef7317e42c08c92fb7b664d1af",
+      "measured_layout": {
+        "kind": "record",
+        "byte_size": 12,
+        "alignment": 4,
+        "fields": [
+          {"name": "code", "offset": 0, "byte_size": 4, "alignment": 4},
+          {"name": "label", "offset": 4, "byte_size": 8, "alignment": 4}
+        ],
+        "children": [
+          {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+          {"kind": "text", "pointer_offset": 0, "length_offset": 4, "byte_size": 8, "alignment": 4, "allocation": "cabi_realloc", "free": "cabi_realloc"}
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-record-managed-lower/api@1.0.0",
+        "name": "write"
+      }
+    },
+    {
+      "id": "demo:marshal-record-managed-lower-multi/api.write@1.0.0/lower",
+      "source": "examples/gc-p3-runtime/marshal-record-managed-lower-multi-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_managed_lower_multi_imports.wit",
+      "package": "demo:marshal-record-managed-lower-multi@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "write",
+      "direction": "lower",
+      "params": ["writing"],
+      "result": "_",
+      "source_sha256": "sha256:4edc65411193c0b147c5832e7ad2740126678f4e8d24dbf3097b94a686186d9f",
+      "measured_layout": {
+        "kind": "record",
+        "byte_size": 20,
+        "alignment": 4,
+        "fields": [
+          {"name": "code", "offset": 0, "byte_size": 4, "alignment": 4},
+          {"name": "label", "offset": 4, "byte_size": 8, "alignment": 4},
+          {"name": "note", "offset": 12, "byte_size": 8, "alignment": 4}
+        ],
+        "children": [
+          {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+          {"kind": "text", "pointer_offset": 0, "length_offset": 4, "byte_size": 8, "alignment": 4, "allocation": "cabi_realloc", "free": "cabi_realloc"},
+          {"kind": "text", "pointer_offset": 0, "length_offset": 4, "byte_size": 8, "alignment": 4, "allocation": "cabi_realloc", "free": "cabi_realloc"}
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-record-managed-lower-multi/api@1.0.0",
+        "name": "write"
+      }
+    },
+    {
+      "id": "demo:marshal-record-mixed-scalar-list-lower/api.write@1.0.0/lower",
+      "source": "examples/gc-p3-runtime/marshal-record-mixed-scalar-list-lower-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_mixed_scalar_list_lower_imports.wit",
+      "package": "demo:marshal-record-mixed-scalar-list-lower@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "write",
+      "direction": "lower",
+      "params": ["writing"],
+      "result": "_",
+      "source_sha256": "sha256:37557e6ecfcfa28bbc115eda90703245fb3e10f8ae3e00c5dd29782a1163949d",
+      "measured_layout": {
+        "kind": "record",
+        "byte_size": 20,
+        "alignment": 4,
+        "fields": [
+          {"name": "code", "offset": 0, "byte_size": 4, "alignment": 4},
+          {"name": "label", "offset": 4, "byte_size": 8, "alignment": 4},
+          {"name": "payload", "offset": 12, "byte_size": 8, "alignment": 4}
+        ],
+        "children": [
+          {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+          {"kind": "text", "pointer_offset": 0, "length_offset": 4, "byte_size": 8, "alignment": 4, "allocation": "cabi_realloc", "free": "cabi_realloc"},
+          {"kind": "byte_list", "byte_size": 8, "alignment": 4, "pointer_offset": 0, "length_offset": 4, "element_byte_size": 1, "element_stride": 1, "element_alignment": 1, "capacity": 4, "accepted_lengths": [0, 1, 2, 3, 4], "allocation": "cabi_realloc", "free": "cabi_realloc"}
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-record-mixed-scalar-list-lower/api@1.0.0",
+        "name": "write"
+      }
+    },
+    {
+      "id": "demo:marshal-record-mixed-text-u32-list-lower/api.write@1.0.0/lower",
+      "source": "examples/gc-p3-runtime/marshal-record-mixed-text-u32-list-lower-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_mixed_text_u32_list_lower_imports.wit",
+      "package": "demo:marshal-record-mixed-text-u32-list-lower@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "write",
+      "direction": "lower",
+      "params": ["writing"],
+      "result": "_",
+      "source_sha256": "sha256:c2586e73b4283cfa60ddcbd5afd1ac7a6397a3a9d9f7b4df3949328f541c4d1e",
+      "measured_layout": {
+        "kind": "record",
+        "byte_size": 20,
+        "alignment": 4,
+        "fields": [
+          {"name": "code", "offset": 0, "byte_size": 4, "alignment": 4},
+          {"name": "label", "offset": 4, "byte_size": 8, "alignment": 4},
+          {"name": "payload", "offset": 12, "byte_size": 8, "alignment": 4}
+        ],
+        "children": [
+          {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+          {"kind": "text", "pointer_offset": 0, "length_offset": 4, "byte_size": 8, "alignment": 4, "allocation": "cabi_realloc", "free": "cabi_realloc"},
+          {"kind": "list", "byte_size": 8, "alignment": 4, "pointer_offset": 0, "length_offset": 4, "element_byte_size": 4, "element_stride": 4, "element_alignment": 4, "ticket_offset": 0, "capacity": 3, "accepted_lengths": [0, 1, 2, 3], "allocation": "cabi_realloc", "free": "cabi_realloc"}
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-record-mixed-text-u32-list-lower/api@1.0.0",
+        "name": "write"
+      }
+    },
+    {
+      "id": "demo:marshal-record-mixed-text-u32-list-lift/api.read@1.0.0/lift",
+      "source": "examples/gc-p3-runtime/marshal-record-mixed-text-u32-list-lift-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_mixed_text_u32_list_lift_imports.wit",
+      "package": "demo:marshal-record-mixed-text-u32-list-lift@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "read",
+      "direction": "lift",
+      "params": [],
+      "result": "reading",
+      "do_record_name": "Reading",
+      "source_sha256": "sha256:980091cdd62299fdceb2d26d4839df3dc4f8ed92970af5d00cf169d94e74dc60",
+      "measured_layout": {
+        "kind": "record",
+        "byte_size": 20,
+        "alignment": 4,
+        "fields": [
+          {"name": "code", "offset": 0, "byte_size": 4, "alignment": 4},
+          {"name": "label", "offset": 4, "byte_size": 8, "alignment": 4},
+          {"name": "payload", "offset": 12, "byte_size": 8, "alignment": 4}
+        ],
+        "children": [
+          {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+          {"kind": "text", "pointer_offset": 0, "length_offset": 4, "byte_size": 8, "alignment": 4, "allocation": "cabi_realloc", "free": "cabi_realloc"},
+          {"kind": "list", "byte_size": 8, "alignment": 4, "pointer_offset": 0, "length_offset": 4, "element_byte_size": 4, "element_stride": 4, "element_alignment": 4, "ticket_offset": 0, "capacity": 3, "accepted_lengths": [0, 1, 2, 3], "allocation": "cabi_realloc", "free": "cabi_realloc"}
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-record-mixed-text-u32-list-lift/api@1.0.0",
+        "name": "read"
+      }
+    },
+    {
+      "id": "demo:marshal-record-mixed-text-byte-list-lift/api.read@1.0.0/lift",
+      "source": "examples/gc-p3-runtime/marshal-record-mixed-text-byte-list-lift-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_mixed_text_byte_list_lift_imports.wit",
+      "package": "demo:marshal-record-mixed-text-byte-list-lift@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "read",
+      "direction": "lift",
+      "params": [],
+      "result": "reading",
+      "do_record_name": "Reading",
+      "source_sha256": "sha256:5c311dbe65b0f101b016fcf824b2141c11d87685d8384bfe02e11345e2b175ad",
+      "measured_layout": {
+        "kind": "record",
+        "byte_size": 20,
+        "alignment": 4,
+        "fields": [
+          {"name": "code", "offset": 0, "byte_size": 4, "alignment": 4},
+          {"name": "label", "offset": 4, "byte_size": 8, "alignment": 4},
+          {"name": "payload", "offset": 12, "byte_size": 8, "alignment": 4}
+        ],
+        "children": [
+          {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+          {"kind": "text", "pointer_offset": 0, "length_offset": 4, "byte_size": 8, "alignment": 4, "allocation": "cabi_realloc", "free": "cabi_realloc"},
+          {"kind": "byte_list", "byte_size": 8, "alignment": 4, "pointer_offset": 0, "length_offset": 4, "element_byte_size": 1, "element_stride": 1, "element_alignment": 1, "capacity": 4, "accepted_lengths": [0, 1, 2, 3, 4], "allocation": "cabi_realloc", "free": "cabi_realloc"}
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-record-mixed-text-byte-list-lift/api@1.0.0",
+        "name": "read"
+      }
+    },
+    {
+      "id": "demo:marshal-record-mixed-text-two-u32-lists-lift/api.read@1.0.0/lift",
+      "source": "examples/gc-p3-runtime/marshal-record-mixed-text-two-u32-lists-lift-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_record_mixed_text_two_u32_lists_lift_imports.wit",
+      "package": "demo:marshal-record-mixed-text-two-u32-lists-lift@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "read",
+      "direction": "lift",
+      "params": [],
+      "result": "reading",
+      "do_record_name": "Reading",
+      "source_sha256": "sha256:518edd667347a947c1bb3b912b4cf3579be0288567086b7e4b45dc6345964e75",
+      "measured_layout": {
+        "kind": "record",
+        "byte_size": 28,
+        "alignment": 4,
+        "fields": [
+          {"name": "code", "offset": 0, "byte_size": 4, "alignment": 4},
+          {"name": "label", "offset": 4, "byte_size": 8, "alignment": 4},
+          {"name": "first", "offset": 12, "byte_size": 8, "alignment": 4},
+          {"name": "second", "offset": 20, "byte_size": 8, "alignment": 4}
+        ],
+        "children": [
+          {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+          {"kind": "text", "pointer_offset": 0, "length_offset": 4, "byte_size": 8, "alignment": 4, "allocation": "cabi_realloc", "free": "cabi_realloc"},
+          {"kind": "list", "byte_size": 8, "alignment": 4, "pointer_offset": 0, "length_offset": 4, "element_byte_size": 4, "element_stride": 4, "element_alignment": 4, "ticket_offset": 0, "capacity": 3, "accepted_lengths": [0, 1, 2, 3], "allocation": "cabi_realloc", "free": "cabi_realloc"},
+          {"kind": "list", "byte_size": 8, "alignment": 4, "pointer_offset": 0, "length_offset": 4, "element_byte_size": 4, "element_stride": 4, "element_alignment": 4, "ticket_offset": 0, "capacity": 2, "accepted_lengths": [0, 1, 2], "allocation": "cabi_realloc", "free": "cabi_realloc"}
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-record-mixed-text-two-u32-lists-lift/api@1.0.0",
+        "name": "read"
+      }
     }
   ]
 }

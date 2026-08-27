@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
@@ -486,43 +487,47 @@ pub fn emit_component_wit(allocator: std.mem.Allocator, tokens: []const lexer.To
     var registry = try p3_async_manifest.Registry.load(allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(allocator);
     if ((try HttpRequestBodyProducerPlan.analyze(tokens, registry)) != null) {
-        return allocator.dupe(u8, http_request_body_producer_component_wit);
+        return generated_text.alloc_block(allocator, 0, http_request_body_producer_component_wit);
     }
     if ((try HttpRequestBodyPlan.analyze(tokens, registry)) != null) {
-        return allocator.dupe(u8, http_request_body_probe_component_wit);
+        return generated_text.alloc_block(allocator, 0, http_request_body_probe_component_wit);
     }
     if ((try HttpRequestSendPlan.analyze(tokens, registry)) != null) {
-        return allocator.dupe(u8, http_request_send_probe_component_wit);
+        return generated_text.alloc_block(allocator, 0, http_request_send_probe_component_wit);
     }
     if ((try HttpRequestConstructorPlan.analyze(tokens, registry)) != null) {
-        return allocator.dupe(u8, http_request_empty_probe_component_wit);
+        return generated_text.alloc_block(allocator, 0, http_request_empty_probe_component_wit);
     }
     if ((try HttpResponseBodyPlan.analyze(tokens, registry)) != null) {
-        return allocator.dupe(u8, http_response_body_probe_component_wit);
+        return generated_text.alloc_block(allocator, 0, http_response_body_probe_component_wit);
     }
     if (try HttpServicePlan.analyze(tokens, registry)) |plan| {
-        if (plan.terminal == .cancel) return allocator.dupe(u8, http_payload_cancel_component_wit);
-        return allocator.dupe(u8, http_service_component_wit);
+        if (plan.terminal == .cancel) return generated_text.alloc_block(allocator, 0, http_payload_cancel_component_wit);
+        return generated_text.alloc_block(allocator, 0, http_service_component_wit);
     }
     if ((try HttpClientSendPlan.analyze(tokens, registry)) != null) {
-        return allocator.dupe(u8, http_client_probe_component_wit);
+        return generated_text.alloc_block(allocator, 0, http_client_probe_component_wit);
     }
     return error.UnsupportedP3AsyncHttpService;
 }
 
 pub fn emit_response_status_core_wat(allocator: std.mem.Allocator) ![]u8 {
     const operation = p3_http_wit_manifest.HttpResourceGraph.response_get_status_code;
-    const wat = try std.fmt.allocPrint(
+    const wat = try generated_text.alloc_fmt_block(
         allocator,
+        0,
         http_response_status_core_wat,
-        .{ operation.canonical_module, operation.canonical_name },
+        .{
+            .module = operation.canonical_module,
+            .name = operation.canonical_name,
+        },
     );
     errdefer allocator.free(wat);
-    return replace_and_free(allocator, wat, "[cabi-budget-runtime]", http_cabi_budget_runtime);
+    return replace_and_free_block(allocator, wat, "[cabi-budget-runtime]", 2, http_cabi_budget_runtime);
 }
 
 pub fn emit_response_status_component_wit(allocator: std.mem.Allocator) ![]u8 {
-    return allocator.dupe(u8, http_response_status_component_wit);
+    return generated_text.alloc_block(allocator, 0, http_response_status_component_wit);
 }
 
 const Handler = struct {
@@ -568,7 +573,8 @@ fn find_function_header(tokens: []const lexer.Token, idx: usize, expected_name: 
     } else if (!sema_tokens.is_top_level_decl_head(tokens, name_idx)) {
         return null;
     } else if (name_idx > 0 and tokens[name_idx - 1].line == tokens[name_idx].line and
-        tok_eq(tokens[name_idx - 1], "async")) {
+        tok_eq(tokens[name_idx - 1], "async"))
+    {
         return null;
     }
     const open_params = name_idx + 1;
@@ -1192,12 +1198,15 @@ fn emit_http_service_core_wat(allocator: std.mem.Allocator, descriptor: p3_async
 
 fn emit_http_cancellation_wat(allocator: std.mem.Allocator, descriptor: p3_async_manifest.Descriptor) ![]u8 {
     if (!is_http_send_descriptor(descriptor)) return error.UnsupportedP3AsyncHttpService;
-    var wat = try allocator.dupe(u8, http_payload_cancel_core_wat);
+    var wat = try generated_text.alloc_block(allocator, 0, http_payload_cancel_core_wat);
     errdefer allocator.free(wat);
-    const async_import = try std.fmt.allocPrint(
+    const async_import = try generated_text.alloc_fmt(
         allocator,
-        "(import \"{s}\" \"{s}\"",
-        .{ descriptor.canonical.async_import_module, descriptor.canonical.async_import_name },
+        "(import \"{[module]s}\" \"{[name]s}\"",
+        .{
+            .module = descriptor.canonical.async_import_module,
+            .name = descriptor.canonical.async_import_name,
+        },
     );
     defer allocator.free(async_import);
     wat = try replace_and_free(allocator, wat, "(import \"wasi:http/client@0.3.0-rc-2025-09-16\" \"[async-lower]send\"", async_import);
@@ -1209,9 +1218,9 @@ fn emit_http_response_body_wat(allocator: std.mem.Allocator, plan: HttpResponseB
         .http_stream_reader => |value| value,
         else => return error.UnsupportedP3AsyncHttpService,
     };
-    var wat = try allocator.dupe(u8, http_response_body_core_wat);
+    var wat = try generated_text.alloc_block(allocator, 0, http_response_body_core_wat);
     errdefer allocator.free(wat);
-    wat = try replace_and_free(allocator, wat, "[cabi-budget-runtime]", http_cabi_budget_runtime);
+    wat = try replace_and_free_block(allocator, wat, "[cabi-budget-runtime]", 2, http_cabi_budget_runtime);
     const future_new_name = try replace_http_payload_alias(allocator, shape.future_new.import_name);
     defer allocator.free(future_new_name);
     const future_write_name = try replace_http_payload_alias(allocator, shape.future_write.import_name);
@@ -1240,10 +1249,10 @@ fn emit_http_response_body_read_wat(allocator: std.mem.Allocator, plan: HttpResp
         .http_stream_reader => |value| value,
         else => return error.UnsupportedP3AsyncHttpService,
     };
-    var wat = try allocator.dupe(u8, http_response_body_read_core_wat);
+    var wat = try generated_text.alloc_block(allocator, 0, http_response_body_read_core_wat);
     errdefer allocator.free(wat);
-    wat = try replace_and_free(allocator, wat, "[cabi-budget-runtime]", http_cabi_budget_runtime);
-    const read_count = try std.fmt.allocPrint(allocator, "{d}", .{plan.read_count});
+    wat = try replace_and_free_block(allocator, wat, "[cabi-budget-runtime]", 2, http_cabi_budget_runtime);
+    const read_count = try generated_text.alloc_fmt(allocator, "{[count]d}", .{ .count = plan.read_count });
     defer allocator.free(read_count);
     const future_new_name = try replace_http_payload_alias(allocator, shape.future_new.import_name);
     defer allocator.free(future_new_name);
@@ -1263,23 +1272,44 @@ fn emit_http_response_body_read_wat(allocator: std.mem.Allocator, plan: HttpResp
         try allocator.dupe(u8, "");
     defer allocator.free(future_read_name);
     const future_read_import = if (plan.await_completion)
-        try std.fmt.allocPrint(allocator, "  (import \"{s}\" \"{s}\" (func $future-read (type $future-read)))", .{ plan.descriptor.canonical.async_import_module, future_read_name })
+        try generated_text.alloc_fmt(
+            allocator,
+            "  (import \"{[module]s}\" \"{[name]s}\" (func $future-read (type $future-read)))",
+            .{
+                .module = plan.descriptor.canonical.async_import_module,
+                .name = future_read_name,
+            },
+        )
     else
         try allocator.dupe(u8, "");
     defer allocator.free(future_read_import);
     const trailers_functions = if (plan.await_completion)
-        try allocator.dupe(u8, http_response_trailers_read_functions)
+        try generated_text.alloc_block(allocator, 2, http_response_trailers_read_functions)
     else
         try allocator.dupe(u8, "");
     defer allocator.free(trailers_functions);
     const finish_body = if (plan.await_completion)
-        "local.get $frame\n      call $start-trailers"
+        \\local.get $frame
+        \\      call $start-trailers
     else
-        "local.get $frame\n      call $cleanup";
+        \\local.get $frame
+        \\      call $cleanup
+    ;
     const future_event_handler = if (plan.await_completion)
-        "local.get $event\n        i32.const 4\n        i32.eq\n        if (result i32)\n          local.get $frame\n          local.get $payload\n          call $accept-trailers\n        else\n          unreachable\n        end"
+        \\local.get $event
+        \\        i32.const 4
+        \\        i32.eq
+        \\        if (result i32)
+        \\          local.get $frame
+        \\          local.get $payload
+        \\          call $accept-trailers
+        \\        else
+        \\          unreachable
+        \\        end
     else
-        "local.get $frame\n        call $cleanup";
+        \\local.get $frame
+        \\        call $cleanup
+    ;
     wat = try replace_and_free(allocator, wat, "[consume-body-module]", plan.descriptor.canonical.async_import_module);
     wat = try replace_and_free(allocator, wat, "[consume-body-name]", plan.descriptor.canonical.async_import_name);
     wat = try replace_and_free(allocator, wat, "[future-new-name]", future_new_name);
@@ -1288,8 +1318,8 @@ fn emit_http_response_body_read_wat(allocator: std.mem.Allocator, plan: HttpResp
     wat = try replace_and_free(allocator, wat, "[stream-read-name]", stream_read_name);
     wat = try replace_and_free(allocator, wat, "[future-read-import]", future_read_import);
     wat = try replace_and_free(allocator, wat, "[trailers-read-functions]", trailers_functions);
-    wat = try replace_and_free(allocator, wat, "[finish-body]", finish_body);
-    wat = try replace_and_free(allocator, wat, "[future-event-handler]", future_event_handler);
+    wat = try replace_and_free_block(allocator, wat, "[finish-body]", 0, finish_body);
+    wat = try replace_and_free_block(allocator, wat, "[future-event-handler]", 0, future_event_handler);
     wat = try replace_and_free(allocator, wat, "[stream-read-count-value]", read_count);
     wat = try replace_and_free(allocator, wat, "[stream-drop-name]", stream_drop_name);
     wat = try replace_and_free(allocator, wat, "[future-drop-name]", future_drop_name);
@@ -1307,9 +1337,9 @@ fn emit_http_request_constructor_wat(allocator: std.mem.Allocator, plan: HttpReq
     const future_new = shape.trailers_future.new orelse return error.UnsupportedP3AsyncHttpService;
     const future_write = shape.trailers_future.write orelse return error.UnsupportedP3AsyncHttpService;
     const future_drop_writable = shape.trailers_future.drop_writable orelse return error.UnsupportedP3AsyncHttpService;
-    var wat = try allocator.dupe(u8, http_request_empty_core_wat);
+    var wat = try generated_text.alloc_block(allocator, 0, http_request_empty_core_wat);
     errdefer allocator.free(wat);
-    wat = try replace_and_free(allocator, wat, "[cabi-budget-runtime]", http_cabi_budget_runtime);
+    wat = try replace_and_free_block(allocator, wat, "[cabi-budget-runtime]", 2, http_cabi_budget_runtime);
     wat = try replace_and_free(allocator, wat, "[request-new-module]", plan.descriptor.canonical.async_import_module);
     wat = try replace_and_free(allocator, wat, "[request-new-name]", plan.descriptor.canonical.async_import_name);
     wat = try replace_and_free(allocator, wat, "[fields-module]", http_types_locator);
@@ -1357,7 +1387,7 @@ fn emit_http_request_body_producer_wat(allocator: std.mem.Allocator, plan: HttpR
     const producer_data = try render_producer_data(allocator, plan.write_values[0..plan.write_count]);
     defer allocator.free(producer_data);
 
-    var producer_imports = try allocator.dupe(u8, http_request_body_producer_imports);
+    var producer_imports = try generated_text.alloc_block(allocator, 2, http_request_body_producer_imports);
     defer allocator.free(producer_imports);
     producer_imports = try replace_and_free(allocator, producer_imports, "[types-module]", http_types_locator);
     producer_imports = try replace_and_free(allocator, producer_imports, "[request-new-name]", plan.request_descriptor.canonical.async_import_name);
@@ -1371,13 +1401,13 @@ fn emit_http_request_body_producer_wat(allocator: std.mem.Allocator, plan: HttpR
     producer_imports = try replace_and_free(allocator, producer_imports, "[stream-drop-readable-name]", stream_shape.drop_readable.import_name);
     producer_imports = try replace_and_free(allocator, producer_imports, "[stream-drop-writable-name]", stream_shape.drop_writable.import_name);
 
-    var helpers = try allocator.dupe(u8, http_request_body_producer_helpers_wat);
+    var helpers = try generated_text.alloc_block(allocator, 2, http_request_body_producer_helpers_wat);
     defer allocator.free(helpers);
-    const write_count = try std.fmt.allocPrint(allocator, "{d}", .{plan.write_count});
+    const write_count = try generated_text.alloc_fmt(allocator, "{[count]d}", .{ .count = plan.write_count });
     defer allocator.free(write_count);
     helpers = try replace_and_free(allocator, helpers, "[producer-count]", write_count);
 
-    var wat = try allocator.dupe(u8, http_service_core_wat);
+    var wat = try generated_text.alloc_block(allocator, 0, http_service_core_wat);
     errdefer allocator.free(wat);
     wat = try replace_and_free(allocator, wat, "[gc-frame-runtime]", gc_frame_runtime.items);
     wat = try replace_and_free(allocator, wat, "[task-return-params]", task_return_params);
@@ -1389,17 +1419,31 @@ fn emit_http_request_body_producer_wat(allocator: std.mem.Allocator, plan: HttpR
     wat = try replace_and_free(allocator, wat, "[task-return-error-lowering]", task_return_error_lowering);
     wat = try replace_and_free(allocator, wat, "[task-return-ok-lowering]", task_return_ok_lowering);
     const send_import_anchor = "  (import \"wasi:http/client@0.3.0-rc-2025-09-16\" \"[async-lower]send\" (func $send (type $async-lower-send)))";
-    const send_imports = try std.fmt.allocPrint(allocator, "{s}\n{s}", .{ send_import_anchor, producer_imports });
+    const send_imports = try generated_text.alloc_fmt_block(
+        allocator,
+        2,
+        \\{[anchor]s}
+        \\{[imports]s}
+    ,
+        .{ .anchor = send_import_anchor, .imports = producer_imports },
+    );
     defer allocator.free(send_imports);
     wat = try replace_and_free(allocator, wat, send_import_anchor, send_imports);
-    wat = try replace_and_free(allocator, wat, "[body-future-event-handler]", http_request_body_producer_event_handler);
+    wat = try replace_and_free_block(allocator, wat, "[body-future-event-handler]", 6, http_request_body_producer_event_handler);
     wat = try replace_and_free(allocator, wat, "[async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle", "[async-lift]wasi:http/probe@0.3.0-rc-2025-09-16#run");
     wat = try replace_and_free(allocator, wat, "[callback][async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle", "[callback][async-lift]wasi:http/probe@0.3.0-rc-2025-09-16#run");
     wat = try replace_and_free(allocator, wat, "[export]wasi:http/handler@0.3.0-rc-2025-09-16", "[export]wasi:http/probe@0.3.0-rc-2025-09-16");
     wat = try replace_and_free(allocator, wat, "[task-return]handle", "[task-return]run");
     wat = try replace_and_free(allocator, wat, "(type $async-handler (func (param i32) (result i32)))", "(type $async-handler (func (result i32)))");
     wat = try replace_and_free(allocator, wat, "(param $request i32) (result i32)", "(result i32)");
-    wat = try replace_and_free(allocator, wat, "(memory (export \"memory\") 1)", "(memory (export \"memory\") 1)\n  (data (i32.const 512) \"[producer-data]\")");
+    wat = try replace_and_free_block(
+        allocator,
+        wat,
+        "(memory (export \"memory\") 1)",
+        0,
+        \\(memory (export "memory") 1)
+        \\(data (i32.const 512) "[producer-data]")
+    );
     wat = try replace_and_free(allocator, wat, "[producer-data]", producer_data);
 
     const frame_values = try producer_frame_values(allocator);
@@ -1407,25 +1451,47 @@ fn emit_http_request_body_producer_wat(allocator: std.mem.Allocator, plan: HttpR
     wat = try replace_and_free(
         allocator,
         wat,
-        "    i32.const 1\n    call $waitable-set-new\n    i32.const 0\n    i32.const 0\n    i32.const 0\n    struct.new $async-frame",
+        \\    i32.const 1
+        \\    call $waitable-set-new
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    struct.new $async-frame
+    ,
         frame_values,
     );
     const old_send_start =
-        "    local.get $request\n" ++
-        "    local.get $frame-ref\n" ++
-        "    struct.get $async-frame $slot-result-ptr\n" ++
-        "    call $send\n" ++
-        "    local.set $subtask\n" ++
-        "[immediate-completion]";
-    wat = try replace_and_free(allocator, wat, old_send_start, "    local.get $frame-ref\n    call $start-producer\n");
-    const helper_prefix = try std.fmt.allocPrint(allocator, "{s}\n  (func $result-buffer-for-handle", .{helpers});
+        \\    local.get $request
+        \\    local.get $frame-ref
+        \\    struct.get $async-frame $slot-result-ptr
+        \\    call $send
+        \\    local.set $subtask
+        \\[immediate-completion]
+    ;
+    wat = try replace_and_free_block(allocator, wat, old_send_start, 4,
+        \\local.get $frame-ref
+        \\call $start-producer
+        \\
+    );
+    const helper_prefix = try generated_text.alloc_fmt_block(
+        allocator,
+        2,
+        \\{[helpers]s}
+        \\  (func $result-buffer-for-handle
+    ,
+        .{ .helpers = helpers },
+    );
     defer allocator.free(helper_prefix);
     wat = try replace_and_free(allocator, wat, "  (func $result-buffer-for-handle", helper_prefix);
-    wat = try replace_and_free(
+    wat = try replace_and_free_block(
         allocator,
         wat,
         "      call $canonical-buffer-release",
-        "      local.get $frame-ref\n      call $drop-producer-reader\n      call $canonical-buffer-release",
+        6,
+        \\local.get $frame-ref
+        \\call $drop-producer-reader
+        \\call $canonical-buffer-release
+    ,
     );
     return wat;
 }
@@ -1461,28 +1527,31 @@ fn emit_http_core_wat(
     try append_canonical_buffer_metadata(allocator, &gc_frame_runtime, http_result_buffer_slot_bytes);
     try gc_async_frame.emit_frame_table_allocator_with_bytes(allocator, &gc_frame_runtime, layout.size);
 
-    const async_import = try std.fmt.allocPrint(
+    const async_import = try generated_text.alloc_fmt(
         allocator,
-        "(import \"{s}\" \"{s}\"",
-        .{ descriptor.canonical.async_import_module, descriptor.canonical.async_import_name },
+        "(import \"{[module]s}\" \"{[name]s}\"",
+        .{
+            .module = descriptor.canonical.async_import_module,
+            .name = descriptor.canonical.async_import_name,
+        },
     );
     defer allocator.free(async_import);
-    const task_return_import = try std.fmt.allocPrint(
+    const task_return_import = try generated_text.alloc_fmt(
         allocator,
-        "(import \"[export]{s}\" \"[task-return]{s}\"",
-        .{ export_locator, export_name },
+        "(import \"[export]{[locator]s}\" \"[task-return]{[name]s}\"",
+        .{ .locator = export_locator, .name = export_name },
     );
     defer allocator.free(task_return_import);
-    const async_lift_export = try std.fmt.allocPrint(
+    const async_lift_export = try generated_text.alloc_fmt(
         allocator,
-        "[async-lift]{s}#{s}",
-        .{ export_locator, export_name },
+        "[async-lift]{[locator]s}#{[name]s}",
+        .{ .locator = export_locator, .name = export_name },
     );
     defer allocator.free(async_lift_export);
-    const async_callback_export = try std.fmt.allocPrint(
+    const async_callback_export = try generated_text.alloc_fmt(
         allocator,
-        "[callback][async-lift]{s}#{s}",
-        .{ export_locator, export_name },
+        "[callback][async-lift]{[locator]s}#{[name]s}",
+        .{ .locator = export_locator, .name = export_name },
     );
     defer allocator.free(async_callback_export);
     const task_return_params = try render_core_param_list(allocator, descriptor.canonical.completion_params);
@@ -1499,7 +1568,7 @@ fn emit_http_core_wat(
         task_return_ok_lowering,
     );
     defer allocator.free(immediate_completion);
-    var wat = try allocator.dupe(u8, http_service_core_wat);
+    var wat = try generated_text.alloc_block(allocator, 0, http_service_core_wat);
     wat = try replace_and_free(allocator, wat, "[gc-frame-runtime]", gc_frame_runtime.items);
     wat = try replace_and_free(allocator, wat, "[task-return-params]", task_return_params);
     wat = try replace_and_free(allocator, wat, "[task-return-zero-tail]", task_return_zero_tail);
@@ -1510,7 +1579,18 @@ fn emit_http_core_wat(
     wat = try replace_and_free(allocator, wat, "(import \"[export]wasi:http/handler@0.3.0-rc-2025-09-16\" \"[task-return]handle\"", task_return_import);
     wat = try replace_and_free(allocator, wat, "[async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle", async_lift_export);
     wat = try replace_and_free(allocator, wat, "[callback][async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle", async_callback_export);
-    wat = try replace_and_free(allocator, wat, "[body-future-event-handler]", "        local.get $frame-ref\n        struct.get $async-frame $waitable-set\n        i32.const 4\n        i32.shl\n        i32.const 2\n        i32.or");
+    wat = try replace_and_free_block(
+        allocator,
+        wat,
+        "[body-future-event-handler]",
+        8,
+        \\local.get $frame-ref
+        \\struct.get $async-frame $waitable-set
+        \\i32.const 4
+        \\i32.shl
+        \\i32.const 2
+        \\i32.or
+    );
     return wat;
 }
 
@@ -1519,47 +1599,49 @@ fn render_http_immediate_completion(
     error_lowering: []const u8,
     ok_lowering: []const u8,
 ) ![]u8 {
-    return std.fmt.allocPrint(
+    return generated_text.alloc_fmt_block(
         allocator,
-        "    local.get $subtask\n" ++
-            "    i32.const 2\n" ++
-            "    i32.eq\n" ++
-            "    if (result i32)\n" ++
-            "      local.get $frame-ref\n" ++
-            "      struct.get $async-frame $slot-result-ptr\n" ++
-            "      i32.load\n" ++
-            "      if\n" ++
-            "        local.get $frame-ref\n" ++
-            "        struct.get $async-frame $slot-result-ptr\n" ++
-            "        i32.const 8\n" ++
-            "        i32.add\n" ++
-            "        i32.load\n" ++
-            "        local.set $error-tag\n" ++
-            "{s}\n" ++
-            "      else\n" ++
-            "{s}\n" ++
-            "      end\n" ++
-            "      call $canonical-buffer-release\n" ++
-            "      i32.const 0\n" ++
-            "      call $context-set-0\n" ++
-            "      local.get $frame\n" ++
-            "      call $frame-free\n" ++
-            "      i32.const 0\n" ++
-            "    else\n" ++
-            "      local.get $subtask\n" ++
-            "      i32.const 4\n" ++
-            "      i32.shr_u\n" ++
-            "      local.get $frame-ref\n" ++
-            "      struct.get $async-frame $waitable-set\n" ++
-            "      call $waitable-join\n" ++
-            "      local.get $frame-ref\n" ++
-            "      struct.get $async-frame $waitable-set\n" ++
-            "      i32.const 4\n" ++
-            "      i32.shl\n" ++
-            "      i32.const 2\n" ++
-            "      i32.or\n" ++
-            "    end",
-        .{ error_lowering, ok_lowering },
+        0,
+        \\    local.get $subtask
+        \\    i32.const 2
+        \\    i32.eq
+        \\    if (result i32)
+        \\      local.get $frame-ref
+        \\      struct.get $async-frame $slot-result-ptr
+        \\      i32.load
+        \\      if
+        \\        local.get $frame-ref
+        \\        struct.get $async-frame $slot-result-ptr
+        \\        i32.const 8
+        \\        i32.add
+        \\        i32.load
+        \\        local.set $error-tag
+        \\{[error_lowering]s}
+        \\      else
+        \\{[ok_lowering]s}
+        \\      end
+        \\      call $canonical-buffer-release
+        \\      i32.const 0
+        \\      call $context-set-0
+        \\      local.get $frame
+        \\      call $frame-free
+        \\      i32.const 0
+        \\    else
+        \\      local.get $subtask
+        \\      i32.const 4
+        \\      i32.shr_u
+        \\      local.get $frame-ref
+        \\      struct.get $async-frame $waitable-set
+        \\      call $waitable-join
+        \\      local.get $frame-ref
+        \\      struct.get $async-frame $waitable-set
+        \\      i32.const 4
+        \\      i32.shl
+        \\      i32.const 2
+        \\      i32.or
+        \\    end
+    ,
+        .{ .error_lowering = error_lowering, .ok_lowering = ok_lowering },
     );
 }
 
@@ -1569,7 +1651,7 @@ fn append_canonical_buffer_metadata(
     slot_bytes: u64,
 ) !void {
     const bytes = try async_byte_budget.bytes_for_canonical_buffer(0, slot_bytes);
-    const metadata = try std.fmt.allocPrint(allocator, "  ;; [canonical-buffer-bytes] {d}\n", .{bytes});
+    const metadata = try generated_text.alloc_fmt(allocator, "  ;; [canonical-buffer-bytes] {[bytes]d}\n", .{ .bytes = bytes });
     defer allocator.free(metadata);
     try out.appendSlice(allocator, metadata);
 }
@@ -1612,16 +1694,15 @@ fn emit_http_request_send_wat(allocator: std.mem.Allocator, plan: HttpRequestSen
         task_return_ok_lowering,
     );
     defer allocator.free(immediate_completion);
-    const task_return_import = try std.fmt.allocPrint(
-        allocator,
+    const task_return_import = try allocator.dupe(
+        u8,
         "(import \"[export]wasi:http/probe@0.3.0-rc-2025-09-16\" \"[task-return]run\"",
-        .{},
     );
     defer allocator.free(task_return_import);
     const async_lift_export = "[async-lift]wasi:http/probe@0.3.0-rc-2025-09-16#run";
     const async_callback_export = "[callback][async-lift]wasi:http/probe@0.3.0-rc-2025-09-16#run";
 
-    var request_imports = try allocator.dupe(u8, http_request_send_imports);
+    var request_imports = try generated_text.alloc_block(allocator, 2, http_request_send_imports);
     defer allocator.free(request_imports);
     request_imports = try replace_and_free(allocator, request_imports, "[types-module]", http_types_locator);
     request_imports = try replace_and_free(allocator, request_imports, "[request-new-name]", plan.request_descriptor.canonical.async_import_name);
@@ -1631,14 +1712,28 @@ fn emit_http_request_send_wat(allocator: std.mem.Allocator, plan: HttpRequestSen
     request_imports = try replace_and_free(allocator, request_imports, "[transmission-drop-name]", request_shape.transmission_future.drop_readable.import_name);
 
     const send_import_anchor = "  (import \"wasi:http/client@0.3.0-rc-2025-09-16\" \"[async-lower]send\" (func $send (type $async-lower-send)))";
-    const send_imports = try std.fmt.allocPrint(allocator, "{s}\n{s}", .{ send_import_anchor, request_imports });
+    const send_imports = try generated_text.alloc_fmt_block(
+        allocator,
+        2,
+        \\{[anchor]s}
+        \\{[request]s}
+    ,
+        .{ .anchor = send_import_anchor, .request = request_imports },
+    );
     defer allocator.free(send_imports);
-    const constructor_helper = try allocator.dupe(u8, http_request_constructor_helper_wat);
+    const constructor_helper = try generated_text.alloc_block(allocator, 2, http_request_constructor_helper_wat);
     defer allocator.free(constructor_helper);
-    const helper_prefix = try std.fmt.allocPrint(allocator, "{s}\n  (func $result-buffer-for-handle", .{constructor_helper});
+    const helper_prefix = try generated_text.alloc_fmt_block(
+        allocator,
+        2,
+        \\{[helper]s}
+        \\  (func $result-buffer-for-handle
+    ,
+        .{ .helper = constructor_helper },
+    );
     defer allocator.free(helper_prefix);
 
-    var wat = try allocator.dupe(u8, http_service_core_wat);
+    var wat = try generated_text.alloc_block(allocator, 0, http_service_core_wat);
     errdefer allocator.free(wat);
     wat = try replace_and_free(allocator, wat, "[gc-frame-runtime]", gc_frame_runtime.items);
     wat = try replace_and_free(allocator, wat, "[task-return-params]", task_return_params);
@@ -1649,12 +1744,32 @@ fn emit_http_request_send_wat(allocator: std.mem.Allocator, plan: HttpRequestSen
     wat = try replace_and_free(allocator, wat, send_import_anchor, send_imports);
     wat = try replace_and_free(allocator, wat, "(type $async-handler (func (param i32) (result i32)))", "(type $async-handler (func (result i32)))");
     wat = try replace_and_free(allocator, wat, "(param $request i32) (result i32)", "(result i32)");
-    wat = try replace_and_free(allocator, wat, "local.get $request\n    local.get $frame-ref", "call $construct-request\n    local.get $frame-ref");
+    wat = try replace_and_free_block(
+        allocator,
+        wat,
+        \\local.get $request
+        \\    local.get $frame-ref
+    ,
+        0,
+        \\call $construct-request
+        \\    local.get $frame-ref
+    );
     wat = try replace_and_free(allocator, wat, "  (func $result-buffer-for-handle", helper_prefix);
     wat = try replace_and_free(allocator, wat, "[async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle", async_lift_export);
     wat = try replace_and_free(allocator, wat, "[callback][async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle", async_callback_export);
     wat = try replace_and_free(allocator, wat, "(import \"[export]wasi:http/handler@0.3.0-rc-2025-09-16\" \"[task-return]handle\"", task_return_import);
-    wat = try replace_and_free(allocator, wat, "[body-future-event-handler]", "        local.get $frame-ref\n        struct.get $async-frame $waitable-set\n        i32.const 4\n        i32.shl\n        i32.const 2\n        i32.or");
+    wat = try replace_and_free_block(
+        allocator,
+        wat,
+        "[body-future-event-handler]",
+        8,
+        \\local.get $frame-ref
+        \\struct.get $async-frame $waitable-set
+        \\i32.const 4
+        \\i32.shl
+        \\i32.const 2
+        \\i32.or
+    );
     return wat;
 }
 
@@ -1705,16 +1820,15 @@ fn emit_http_request_body_wat(allocator: std.mem.Allocator, plan: HttpRequestBod
         task_return_ok_lowering,
     );
     defer allocator.free(immediate_completion);
-    const task_return_import = try std.fmt.allocPrint(
-        allocator,
+    const task_return_import = try allocator.dupe(
+        u8,
         "(import \"[export]wasi:http/probe@0.3.0-rc-2025-09-16\" \"[task-return]run\"",
-        .{},
     );
     defer allocator.free(task_return_import);
     const async_lift_export = "[async-lift]wasi:http/probe@0.3.0-rc-2025-09-16#run";
     const async_callback_export = "[callback][async-lift]wasi:http/probe@0.3.0-rc-2025-09-16#run";
 
-    var request_imports = try allocator.dupe(u8, http_request_send_imports);
+    var request_imports = try generated_text.alloc_block(allocator, 2, http_request_send_imports);
     defer allocator.free(request_imports);
     request_imports = try replace_and_free(allocator, request_imports, "[types-module]", http_types_locator);
     request_imports = try replace_and_free(allocator, request_imports, "[request-new-name]", plan.request_descriptor.canonical.async_import_name);
@@ -1723,25 +1837,55 @@ fn emit_http_request_body_wat(allocator: std.mem.Allocator, plan: HttpRequestBod
     request_imports = try replace_and_free(allocator, request_imports, "[future-drop-writable-name]", future_drop_writable.import_name);
     request_imports = try replace_and_free(allocator, request_imports, "[transmission-drop-name]", request_shape.transmission_future.drop_readable.import_name);
     const body_future_read_import = if (body_future_read) |operation|
-        try std.fmt.allocPrint(
+        try generated_text.alloc_fmt_block(
             allocator,
-            "  (type $body-future-read (func (param i32 i32) (result i32)))\n  (import \"{s}\" \"{s}\" (func $body-future-read (type $body-future-read)))\n",
-            .{ plan.body_descriptor.canonical.async_import_module, operation.import_name },
+            2,
+            \\  (type $body-future-read (func (param i32 i32) (result i32)))
+            \\  (import "{[module]s}" "{[name]s}" (func $body-future-read (type $body-future-read)))
+            \\
+        ,
+            .{
+                .module = plan.body_descriptor.canonical.async_import_module,
+                .name = operation.import_name,
+            },
         )
     else
         try allocator.dupe(u8, "");
     defer allocator.free(body_future_read_import);
-    const body_imports = try std.fmt.allocPrint(
+    const body_imports = try generated_text.alloc_fmt_block(
         allocator,
-        "  (type $body-acquire (func (param i32)))\n  (type $body-drop (func (param i32)))\n  (import \"{s}\" \"{s}\" (func $body-acquire (type $body-acquire)))\n  (import \"{s}\" \"{s}\" (func $body-completion-drop (type $body-drop)))\n{s}",
-        .{ plan.body_descriptor.canonical.async_import_module, plan.body_descriptor.canonical.async_import_name, plan.body_descriptor.canonical.async_import_module, body_shape.future_drop_readable.import_name, body_future_read_import },
+        2,
+        \\  (type $body-acquire (func (param i32)))
+        \\  (type $body-drop (func (param i32)))
+        \\  (import "{[module]s}" "{[acquire]s}" (func $body-acquire (type $body-acquire)))
+        \\  (import "{[module]s}" "{[drop]s}" (func $body-completion-drop (type $body-drop)))
+        \\{[future_read]s}
+    ,
+        .{
+            .module = plan.body_descriptor.canonical.async_import_module,
+            .acquire = plan.body_descriptor.canonical.async_import_name,
+            .drop = body_shape.future_drop_readable.import_name,
+            .future_read = body_future_read_import,
+        },
     );
     defer allocator.free(body_imports);
     const send_import_anchor = "  (import \"wasi:http/client@0.3.0-rc-2025-09-16\" \"[async-lower]send\" (func $send (type $async-lower-send)))";
-    const send_imports = try std.fmt.allocPrint(allocator, "{s}\n{s}\n{s}", .{ send_import_anchor, request_imports, body_imports });
+    const send_imports = try generated_text.alloc_fmt_block(
+        allocator,
+        2,
+        \\{[anchor]s}
+        \\{[request]s}
+        \\{[body]s}
+    ,
+        .{
+            .anchor = send_import_anchor,
+            .request = request_imports,
+            .body = body_imports,
+        },
+    );
     defer allocator.free(send_imports);
 
-    var helper = try allocator.dupe(u8, http_request_body_constructor_helper_wat);
+    var helper = try generated_text.alloc_block(allocator, 0, http_request_body_constructor_helper_wat);
     defer allocator.free(helper);
     helper = try replace_and_free(allocator, helper, "[body-module]", plan.body_descriptor.canonical.async_import_module);
     helper = try replace_and_free(allocator, helper, "[body-acquire-name]", plan.body_descriptor.canonical.async_import_name);
@@ -1754,17 +1898,26 @@ fn emit_http_request_body_wat(allocator: std.mem.Allocator, plan: HttpRequestBod
     const construct_acquire = if (plan.await_body_completion)
         ""
     else
-        "    local.get $frame-ref\n    call $acquire-body";
-    helper = try replace_and_free(allocator, helper, "[construct-acquire]", construct_acquire);
+        \\    local.get $frame-ref
+        \\    call $acquire-body
+    ;
+    helper = try replace_and_free_block(allocator, helper, "[construct-acquire]", 4, construct_acquire);
     const body_completion_functions = if (plan.await_body_completion)
         http_request_body_completion_await_functions
     else
         "";
-    helper = try replace_and_free(allocator, helper, "[body-completion-functions]", body_completion_functions);
-    const helper_prefix = try std.fmt.allocPrint(allocator, "{s}\n  (func $result-buffer-for-handle", .{helper});
+    helper = try replace_and_free_block(allocator, helper, "[body-completion-functions]", 2, body_completion_functions);
+    const helper_prefix = try generated_text.alloc_fmt_block(
+        allocator,
+        2,
+        \\{[helper]s}
+        \\  (func $result-buffer-for-handle
+    ,
+        .{ .helper = helper },
+    );
     defer allocator.free(helper_prefix);
 
-    var wat = try allocator.dupe(u8, http_service_core_wat);
+    var wat = try generated_text.alloc_block(allocator, 0, http_service_core_wat);
     errdefer allocator.free(wat);
     wat = try replace_and_free(allocator, wat, "[gc-frame-runtime]", gc_frame_runtime.items);
     wat = try replace_and_free(allocator, wat, "[task-return-params]", task_return_params);
@@ -1775,18 +1928,65 @@ fn emit_http_request_body_wat(allocator: std.mem.Allocator, plan: HttpRequestBod
     wat = try replace_and_free(allocator, wat, "(type $async-handler (func (param i32) (result i32)))", "(type $async-handler (func (result i32)))");
     wat = try replace_and_free(allocator, wat, "(param $request i32) (result i32)", "(result i32)");
     const request_start = if (plan.await_body_completion)
-        "    local.get $frame-ref\n    call $start-body-request"
+        \\    local.get $frame-ref
+        \\    call $start-body-request
     else
-        "    local.get $frame-ref\n    call $construct-request\n    local.get $frame-ref\n    struct.get $async-frame $slot-result-ptr\n    call $send";
-    wat = try replace_and_free(allocator, wat, "    local.get $request\n    local.get $frame-ref\n    struct.get $async-frame $slot-result-ptr\n    call $send", request_start);
+        \\    local.get $frame-ref
+        \\    call $construct-request
+        \\    local.get $frame-ref
+        \\    struct.get $async-frame $slot-result-ptr
+        \\    call $send
+    ;
+    wat = try replace_and_free_block(
+        allocator,
+        wat,
+        \\    local.get $request
+        \\    local.get $frame-ref
+        \\    struct.get $async-frame $slot-result-ptr
+        \\    call $send
+    ,
+        4,
+        request_start,
+    );
     const request_wait = if (plan.await_body_completion) "    return" else immediate_completion;
     wat = try replace_and_free(allocator, wat, "[immediate-completion]", request_wait);
     const body_future_event_handler = if (plan.await_body_completion)
-        "        local.get $event\n        i32.const 4\n        i32.eq\n        if (result i32)\n          local.get $frame-ref\n          local.get $payload\n          call $accept-body-completion\n        else\n          unreachable\n        end"
+        \\        local.get $event
+        \\        i32.const 4
+        \\        i32.eq
+        \\        if (result i32)
+        \\          local.get $frame-ref
+        \\          local.get $payload
+        \\          call $accept-body-completion
+        \\        else
+        \\          unreachable
+        \\        end
     else
-        "        local.get $frame-ref\n        struct.get $async-frame $waitable-set\n        i32.const 4\n        i32.shl\n        i32.const 2\n        i32.or";
-    wat = try replace_and_free(allocator, wat, "[body-future-event-handler]", body_future_event_handler);
-    wat = try replace_and_free(allocator, wat, "    i32.const 0\n    i32.const 0\n    i32.const 0\n    struct.new $async-frame", "    i32.const 0\n    i32.const 0\n    i32.const 0\n    i32.const 0\n    i32.const 0\n    i32.const 0\n    struct.new $async-frame");
+        \\        local.get $frame-ref
+        \\        struct.get $async-frame $waitable-set
+        \\        i32.const 4
+        \\        i32.shl
+        \\        i32.const 2
+        \\        i32.or
+    ;
+    wat = try replace_and_free_block(allocator, wat, "[body-future-event-handler]", 8, body_future_event_handler);
+    wat = try replace_and_free_block(
+        allocator,
+        wat,
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    struct.new $async-frame
+    ,
+        4,
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    struct.new $async-frame
+    );
     wat = try replace_and_free(allocator, wat, "  (func $result-buffer-for-handle", helper_prefix);
     wat = try replace_and_free(allocator, wat, "[async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle", async_lift_export);
     wat = try replace_and_free(allocator, wat, "[callback][async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle", async_callback_export);
@@ -1797,8 +1997,12 @@ fn emit_http_request_body_wat(allocator: std.mem.Allocator, plan: HttpRequestBod
 
 fn replace_all_with_body_cleanup(allocator: std.mem.Allocator, input: []u8) ![]u8 {
     const needle = "        call $task-return";
-    const replacement = "        local.get $frame-ref\n        call $drop-body-completion\n        call $task-return";
-    return replace_and_free(allocator, input, needle, replacement);
+    const replacement =
+        \\local.get $frame-ref
+        \\call $drop-body-completion
+        \\call $task-return
+    ;
+    return replace_and_free_block(allocator, input, needle, 8, replacement);
 }
 
 fn render_core_param_list(allocator: std.mem.Allocator, params: []const []const u8) ![]u8 {
@@ -1826,17 +2030,19 @@ fn render_http_ok_result_lowering(
     if (completion_params.len < 3 or
         !std.mem.eql(u8, completion_params[0], "i32") or
         !std.mem.eql(u8, completion_params[1], "i32")) return error.UnsupportedP3AsyncHttpService;
-    return std.fmt.allocPrint(
+    return generated_text.alloc_fmt_block(
         allocator,
-        "        i32.const 0\n" ++
-            "        local.get $frame-ref\n" ++
-            "        struct.get $async-frame $slot-result-ptr\n" ++
-            "        i32.const 8\n" ++
-            "        i32.add\n" ++
-            "        i32.load\n" ++
-            "{s}\n" ++
-            "        call $task-return",
-        .{zero_tail},
+        0,
+        \\        i32.const 0
+        \\        local.get $frame-ref
+        \\        struct.get $async-frame $slot-result-ptr
+        \\        i32.const 8
+        \\        i32.add
+        \\        i32.load
+        \\{[zero_tail]s}
+        \\        call $task-return
+    ,
+        .{ .zero_tail = zero_tail },
     );
 }
 
@@ -1864,13 +2070,16 @@ fn render_http_error_tag_guards(
     errdefer out.deinit(allocator);
     for (http_error_guard_discriminants) |discriminant| {
         if (allow_dns_payload and discriminant == 1 and descriptor_has_dns_error_variant(descriptor)) continue;
-        const guard = try std.fmt.allocPrint(
+        const guard = try generated_text.alloc_fmt_block(
             allocator,
-            "        local.get $error-tag\n" ++
-                "        i32.const {d}\n" ++
-                "        i32.eq\n" ++
-                "        if unreachable end\n",
-            .{discriminant},
+            8,
+            \\        local.get $error-tag
+            \\        i32.const {[discriminant]d}
+            \\        i32.eq
+            \\        if unreachable end
+            \\
+        ,
+            .{ .discriminant = discriminant },
         );
         defer allocator.free(guard);
         try out.appendSlice(allocator, guard);
@@ -1901,18 +2110,22 @@ fn render_http_error_variant_lowering(
     const payload = internal_payload orelse {
         const tag_guards = try render_http_error_tag_guards(allocator, descriptor, false);
         defer allocator.free(tag_guards);
-        return std.fmt.allocPrint(
+        return generated_text.alloc_fmt_block(
             allocator,
-            "{s}" ++
-                "        local.get $error-tag\n" ++
-                "        i32.const 38\n" ++
-                "        i32.eq\n" ++
-                "        if unreachable end\n" ++
-                "        i32.const 1\n" ++
-                "        local.get $error-tag\n" ++
-                "        {s}\n" ++
-                "        call $task-return",
-            .{ tag_guards, fallback_zero_tail },
+            8,
+            \\{[tag_guards]s}        local.get $error-tag
+            \\        i32.const 38
+            \\        i32.eq
+            \\        if unreachable end
+            \\        i32.const 1
+            \\        local.get $error-tag
+            \\        {[fallback_zero_tail]s}
+            \\        call $task-return
+        ,
+            .{
+                .tag_guards = tag_guards,
+                .fallback_zero_tail = fallback_zero_tail,
+            },
         );
     };
     if (payload.fields.len != 1 or payload.fields[0].kind != .optional_string) return error.UnsupportedP3AsyncHttpService;
@@ -1927,38 +2140,47 @@ fn render_http_error_variant_lowering(
     defer allocator.free(dns_fallback);
     const tag_guards = try render_http_error_tag_guards(allocator, descriptor, true);
     defer allocator.free(tag_guards);
-    return std.fmt.allocPrint(
+    return generated_text.alloc_fmt_block(
         allocator,
-        "{s}" ++
-            "        ;; [error-variant:internal-error]\n" ++
-            "        local.get $error-tag\n" ++
-            "        i32.const {d}\n" ++
-            "        i32.eq\n" ++
-            "        if\n" ++
-            "          i32.const 1\n" ++
-            "          local.get $error-tag\n" ++
-            "          local.get $frame-ref\n" ++
-            "          struct.get $async-frame $slot-result-ptr\n" ++
-            "          i32.const {d}\n" ++
-            "          i32.add\n" ++
-            "          i32.load\n" ++
-            "          local.get $frame-ref\n" ++
-            "          struct.get $async-frame $slot-result-ptr\n" ++
-            "          i32.const {d}\n" ++
-            "          i32.add\n" ++
-            "          i32.load\n" ++
-            "          i64.extend_i32_u\n" ++
-            "          local.get $frame-ref\n" ++
-            "          struct.get $async-frame $slot-result-ptr\n" ++
-            "          i32.const {d}\n" ++
-            "          i32.add\n" ++
-            "          i32.load\n" ++
-            "          {s}\n" ++
-            "          call $task-return\n" ++
-            "        else\n" ++
-            "{s}\n" ++
-            "        end",
-        .{ tag_guards, payload.discriminant, field.offset, pointer_offset, length_offset, residual_zero_tail, dns_fallback },
+        8,
+        \\{[tag_guards]s}        ;; [error-variant:internal-error]
+        \\        local.get $error-tag
+        \\        i32.const {[discriminant]d}
+        \\        i32.eq
+        \\        if
+        \\          i32.const 1
+        \\          local.get $error-tag
+        \\          local.get $frame-ref
+        \\          struct.get $async-frame $slot-result-ptr
+        \\          i32.const {[field_offset]d}
+        \\          i32.add
+        \\          i32.load
+        \\          local.get $frame-ref
+        \\          struct.get $async-frame $slot-result-ptr
+        \\          i32.const {[pointer_offset]d}
+        \\          i32.add
+        \\          i32.load
+        \\          i64.extend_i32_u
+        \\          local.get $frame-ref
+        \\          struct.get $async-frame $slot-result-ptr
+        \\          i32.const {[length_offset]d}
+        \\          i32.add
+        \\          i32.load
+        \\          {[residual_zero_tail]s}
+        \\          call $task-return
+        \\        else
+        \\{[dns_fallback]s}
+        \\        end
+    ,
+        .{
+            .tag_guards = tag_guards,
+            .discriminant = payload.discriminant,
+            .field_offset = field.offset,
+            .pointer_offset = pointer_offset,
+            .length_offset = length_offset,
+            .residual_zero_tail = residual_zero_tail,
+            .dns_fallback = dns_fallback,
+        },
     );
 }
 
@@ -1992,58 +2214,60 @@ fn render_http_dns_error_variant_fallback(
         descriptor.canonical.completion_params[2 + rcode.core_words.len + info_code.core_words.len ..],
     );
     defer allocator.free(residual_zero_tail);
-    return std.fmt.allocPrint(
+    return generated_text.alloc_fmt_block(
         allocator,
-        "        local.get $error-tag\n" ++
-            "        i32.const {d}\n" ++
-            "        i32.eq\n" ++
-            "        if\n" ++
-            "          ;; [error-variant:DNS-error]\n" ++
-            "          i32.const 1\n" ++
-            "          local.get $error-tag\n" ++
-            "          local.get $frame-ref\n" ++
-            "          struct.get $async-frame $slot-result-ptr\n" ++
-            "          i32.const {d}\n" ++
-            "          i32.add\n" ++
-            "          i32.load8_u\n" ++
-            "          local.get $frame-ref\n" ++
-            "          struct.get $async-frame $slot-result-ptr\n" ++
-            "          i32.const {d}\n" ++
-            "          i32.add\n" ++
-            "          i32.load\n" ++
-            "          i64.extend_i32_u\n" ++
-            "          local.get $frame-ref\n" ++
-            "          struct.get $async-frame $slot-result-ptr\n" ++
-            "          i32.const {d}\n" ++
-            "          i32.add\n" ++
-            "          i32.load\n" ++
-            "          local.get $frame-ref\n" ++
-            "          struct.get $async-frame $slot-result-ptr\n" ++
-            "          i32.const {d}\n" ++
-            "          i32.add\n" ++
-            "          i32.load8_u\n" ++
-            "          local.get $frame-ref\n" ++
-            "          struct.get $async-frame $slot-result-ptr\n" ++
-            "          i32.const {d}\n" ++
-            "          i32.add\n" ++
-            "          i32.load16_u\n" ++
-            "          {s}\n" ++
-            "          call $task-return\n" ++
-            "        else\n" ++
-            "          i32.const 1\n" ++
-            "          local.get $error-tag\n" ++
-            "          {s}\n" ++
-            "          call $task-return\n" ++
-            "        end",
+        8,
+        \\        local.get $error-tag
+        \\        i32.const {[discriminant]d}
+        \\        i32.eq
+        \\        if
+        \\          ;; [error-variant:DNS-error]
+        \\          i32.const 1
+        \\          local.get $error-tag
+        \\          local.get $frame-ref
+        \\          struct.get $async-frame $slot-result-ptr
+        \\          i32.const {[rcode_offset]d}
+        \\          i32.add
+        \\          i32.load8_u
+        \\          local.get $frame-ref
+        \\          struct.get $async-frame $slot-result-ptr
+        \\          i32.const {[rcode_pointer_offset]d}
+        \\          i32.add
+        \\          i32.load
+        \\          i64.extend_i32_u
+        \\          local.get $frame-ref
+        \\          struct.get $async-frame $slot-result-ptr
+        \\          i32.const {[rcode_length_offset]d}
+        \\          i32.add
+        \\          i32.load
+        \\          local.get $frame-ref
+        \\          struct.get $async-frame $slot-result-ptr
+        \\          i32.const {[info_code_offset]d}
+        \\          i32.add
+        \\          i32.load8_u
+        \\          local.get $frame-ref
+        \\          struct.get $async-frame $slot-result-ptr
+        \\          i32.const {[info_code_u16_offset]d}
+        \\          i32.add
+        \\          i32.load16_u
+        \\          {[residual_zero_tail]s}
+        \\          call $task-return
+        \\        else
+        \\          i32.const 1
+        \\          local.get $error-tag
+        \\          {[fallback_zero_tail]s}
+        \\          call $task-return
+        \\        end
+    ,
         .{
-            payload.discriminant,
-            rcode.offset,
-            rcode.offset + 4,
-            rcode.offset + 8,
-            info_code.offset,
-            info_code.offset + 2,
-            residual_zero_tail,
-            fallback_zero_tail,
+            .discriminant = payload.discriminant,
+            .rcode_offset = rcode.offset,
+            .rcode_pointer_offset = rcode.offset + 4,
+            .rcode_length_offset = rcode.offset + 8,
+            .info_code_offset = info_code.offset,
+            .info_code_u16_offset = info_code.offset + 2,
+            .residual_zero_tail = residual_zero_tail,
+            .fallback_zero_tail = fallback_zero_tail,
         },
     );
 }
@@ -2052,6 +2276,18 @@ fn replace_and_free(allocator: std.mem.Allocator, input: []u8, needle: []const u
     const replaced = try replace_all(allocator, input, needle, replacement);
     allocator.free(input);
     return replaced;
+}
+
+fn replace_and_free_block(
+    allocator: std.mem.Allocator,
+    input: []u8,
+    needle: []const u8,
+    base_indent: usize,
+    template: []const u8,
+) ![]u8 {
+    const replacement = try generated_text.alloc_block(allocator, base_indent, template);
+    defer allocator.free(replacement);
+    return replace_and_free(allocator, input, needle, replacement);
 }
 
 fn replace_all(allocator: std.mem.Allocator, input: []const u8, needle: []const u8, replacement: []const u8) ![]u8 {
@@ -3336,18 +3572,17 @@ const http_request_body_producer_event_handler =
 ;
 
 fn producer_frame_values(allocator: std.mem.Allocator) ![]u8 {
-    return allocator.dupe(
-        u8,
-        "    i32.const 1\n" ++
-            "    call $waitable-set-new\n" ++
-            "    i32.const 0\n" ++
-            "    i32.const 0\n" ++
-            "    i32.const 0\n" ++
-            "    i32.const 0\n" ++
-            "    i32.const 0\n" ++
-            "    i32.const 0\n" ++
-            "    i32.const 0\n" ++
-            "    struct.new $async-frame",
+    return generated_text.alloc_block(allocator, 4,
+        \\    i32.const 1
+        \\    call $waitable-set-new
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    struct.new $async-frame
     );
 }
 
@@ -3676,7 +3911,7 @@ const http_response_status_core_wat =
     \\  (type $drop (func (param i32)))
     \\  (type $cabi-realloc (func (param i32 i32 i32 i32) (result i32)))
     \\  (type $initialize (func))
-    \\  (import "{s}" "{s}" (func $get-status-code (type $status)))
+    \\  (import "{[module]s}" "{[name]s}" (func $get-status-code (type $status)))
     \\  (import "wasi:http/types@0.3.0-rc-2025-09-16" "[resource-drop]response" (func $drop-response (type $drop)))
     \\  (memory (export "memory") 1)
     \\[cabi-budget-runtime]
@@ -4268,11 +4503,13 @@ test "HTTP service emitter completes an immediately returned send without joinin
     const wat = try emit_http_service_core_wat(std.testing.allocator, descriptor);
     defer std.testing.allocator.free(wat);
 
-    try std.testing.expect(std.mem.indexOf(u8, wat, "local.set $subtask\n" ++
-        "    local.get $subtask\n" ++
-        "    i32.const 2\n" ++
-        "    i32.eq\n" ++
-        "    if (result i32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat,
+        \\local.set $subtask
+        \\    local.get $subtask
+        \\    i32.const 2
+        \\    i32.eq
+        \\    if (result i32)
+    ) != null);
 }
 
 test "HTTP payload cancellation emitter uses the private nil terminal path" {

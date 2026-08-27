@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const p3_async_manifest = @import("p3_async_manifest.zig");
 const future_owned_plan = @import("codegen_component_future_owned_plan.zig");
 const component_abi = @import("codegen_component_abi_plan.zig");
@@ -20,13 +21,24 @@ pub fn emit_component_wat(
         shape.resource_offset != plan.resource_offset or
         shape.presence_offset != plan.presence_offset or
         !std.mem.eql(u8, shape.drop_import, plan.drop_import)) return error.UnsupportedP3OwnedFutureComponent;
-    const markers = try std.fmt.allocPrint(
+    const markers = try generated_text.alloc_fmt_block(
         allocator,
-        "(module\n  ;; [gc-root-plan] suspendable-fields={d}\n  ;; [abi-plan] arguments={d} results={d}\n  ;; [resource-terminal] {s}\n",
-        .{ plan.root_plan.fields.len, plan.abi_plan.arguments.len, plan.abi_plan.results.len, terminal_action_name(plan.resource_plan.terminal_action) },
+        0,
+        \\(module
+        \\  ;; [gc-root-plan] suspendable-fields={[root_fields]d}
+        \\  ;; [abi-plan] arguments={[arguments]d} results={[results]d}
+        \\  ;; [resource-terminal] {[terminal]s}
+        \\
+    ,
+        .{
+            .root_fields = plan.root_plan.fields.len,
+            .arguments = plan.abi_plan.arguments.len,
+            .results = plan.abi_plan.results.len,
+            .terminal = terminal_action_name(plan.resource_plan.terminal_action),
+        },
     );
     defer allocator.free(markers);
-    const wat = try allocator.dupe(u8, future_owned_wat);
+    const wat = try generated_text.alloc_block(allocator, 0, future_owned_wat);
     errdefer allocator.free(wat);
     return replace_all(allocator, wat, "(module\n", markers);
 }
@@ -51,11 +63,23 @@ fn replace_all(allocator: std.mem.Allocator, input: []u8, needle: []const u8, re
 }
 
 pub fn emit_component_wit(allocator: std.mem.Allocator) ![]u8 {
-    return allocator.dupe(
-        u8,
-        "package do:future-owned-canonical@0.1.0;\n\n" ++
-            "interface source {\n  resource ticket {}\n  read: func() -> future<own<ticket>>;\n}\n\n" ++
-            "interface probe {\n  run: async func(mode: u32);\n}\n\n" ++
-            "world future-owned-canonical {\n  import source;\n  export probe;\n}\n",
+    return generated_text.alloc_block(allocator, 0,
+                \\package do:future-owned-canonical@0.1.0;
+        \\
+        \\interface source {
+        \\  resource ticket {}
+        \\  read: func() -> future<own<ticket>>;
+        \\}
+        \\
+        \\interface probe {
+        \\  run: async func(mode: u32);
+        \\}
+        \\
+        \\world future-owned-canonical {
+        \\  import source;
+        \\  export probe;
+        \\}
+        \\
+        ,
     );
 }

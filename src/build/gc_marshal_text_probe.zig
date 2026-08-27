@@ -5,6 +5,7 @@
 //! existing ARC/GC Component equivalence gate, not for the default compiler
 //! host/WIT route.
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const marshal = @import("codegen_component_marshal_plan.zig");
 const manifest_route = @import("codegen_component_manifest_route.zig");
 
@@ -44,23 +45,26 @@ pub fn emit_text_lower_module(
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
     try out.appendSlice(allocator, base[0 .. base.len - closing.len]);
-    try out.appendSlice(allocator,
-        "  (func $run (result i32)\n" ++
-            "    i32.const 5\n" ++
-            "    i32.const 104\n" ++
-            "    i32.const 101\n" ++
-            "    i32.const 108\n" ++
-            "    i32.const 108\n" ++
-            "    i32.const 111\n" ++
-            "    array.new_fixed $do_bytes 5\n" ++
-            "    struct.new $do_text\n" ++
-            "    call $marshal\n" ++
-            "    global.get $__alloc_count\n" ++
-            "    i32.const 16\n" ++
-            "    i32.mul\n" ++
-            "    global.get $__free_count\n" ++
-            "    i32.add)\n" ++
-            "  (export \"run\" (func $run))\n)\n");
+    try generated_text.append_block(allocator, &out, 0,
+                \\  (func $run (result i32)
+        \\    i32.const 5
+        \\    i32.const 104
+        \\    i32.const 101
+        \\    i32.const 108
+        \\    i32.const 108
+        \\    i32.const 111
+        \\    array.new_fixed $do_bytes 5
+        \\    struct.new $do_text
+        \\    call $marshal
+        \\    global.get $__alloc_count
+        \\    i32.const 16
+        \\    i32.mul
+        \\    global.get $__free_count
+        \\    i32.add)
+        \\  (export "run" (func $run))
+        \\)
+        \\
+        );
     return out.toOwnedSlice(allocator);
 }
 

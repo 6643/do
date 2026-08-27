@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
@@ -68,11 +69,11 @@ fn emit_stream_mirror_wat(
     const frame = StreamMirrorFrameLayout{};
     const wit_export = try writer_wit_identifier(allocator, plan.export_name);
     defer allocator.free(wit_export);
-    const task_return_export = try std.fmt.allocPrint(allocator, "[task-return]{s}", .{wit_export});
+    const task_return_export = try generated_text.alloc_fmt(allocator, "[task-return]{[export_name]s}", .{ .export_name = wit_export });
     defer allocator.free(task_return_export);
-    const async_lift_export = try std.fmt.allocPrint(allocator, "[async-lift]{s}", .{wit_export});
+    const async_lift_export = try generated_text.alloc_fmt(allocator, "[async-lift]{[export_name]s}", .{ .export_name = wit_export });
     defer allocator.free(async_lift_export);
-    const async_callback_export = try std.fmt.allocPrint(allocator, "[callback][async-lift]{s}", .{wit_export});
+    const async_callback_export = try generated_text.alloc_fmt(allocator, "[callback][async-lift]{[export_name]s}", .{ .export_name = wit_export });
     defer allocator.free(async_callback_export);
 
     const root_stream_new = try root_stream_import_name(allocator, sink_shape.new.import_name, wit_export);
@@ -90,22 +91,65 @@ fn emit_stream_mirror_wat(
     const root_stream_write = try root_stream_import_name(allocator, sink_shape.write.import_name, wit_export);
     defer allocator.free(root_stream_write);
 
-    const metadata = try std.fmt.allocPrint(
+    const metadata = try generated_text.alloc_fmt_block(
         allocator,
-        "  ;; [writer-result-tag-offset] 0\n  ;; [writer-result-payload-offset] 1\n  ;; Frame layout: writer queue head/count/capacity at 20/24/28; pending producer at 32; terminal/error at 36/40.\n  ;; [writer-capacity] {d}\n  ;; [writer-frame-size] {d}\n  ;; [stream-mirror-source-reader-offset] {d}\n  ;; [stream-mirror-source-completion-offset] {d}\n  ;; [stream-mirror-source-pending-offset] {d}\n  ;; [stream-mirror-source-result-tag-offset] {d}\n  ;; [stream-mirror-source-result-payload-offset] {d}\n  ;; [stream-mirror-remaining-offset] {d}\n  ;; [stream-mirror-frame-size] {d}\n",
-        .{ plan.capacity, frame.size, frame.source_reader, frame.source_completion, frame.source_pending, frame.source_result_tag, frame.source_result_payload, frame.remaining, frame.size },
+        2,
+        \\  ;; [writer-result-tag-offset] 0
+        \\  ;; [writer-result-payload-offset] 1
+        \\  ;; Frame layout: writer queue head/count/capacity at 20/24/28; pending producer at 32; terminal/error at 36/40.
+        \\  ;; [writer-capacity] {[capacity]d}
+        \\  ;; [writer-frame-size] {[frame_size]d}
+        \\  ;; [stream-mirror-source-reader-offset] {[source_reader]d}
+        \\  ;; [stream-mirror-source-completion-offset] {[source_completion]d}
+        \\  ;; [stream-mirror-source-pending-offset] {[source_pending]d}
+        \\  ;; [stream-mirror-source-result-tag-offset] {[source_result_tag]d}
+        \\  ;; [stream-mirror-source-result-payload-offset] {[source_result_payload]d}
+        \\  ;; [stream-mirror-remaining-offset] {[remaining]d}
+        \\  ;; [stream-mirror-frame-size] {[mirror_frame_size]d}
+        \\
+    ,
+        .{
+            .capacity = plan.capacity,
+            .frame_size = frame.size,
+            .source_reader = frame.source_reader,
+            .source_completion = frame.source_completion,
+            .source_pending = frame.source_pending,
+            .source_result_tag = frame.source_result_tag,
+            .source_result_payload = frame.source_result_payload,
+            .remaining = frame.remaining,
+            .mirror_frame_size = frame.size,
+        },
     );
     defer allocator.free(metadata);
 
-    const boundary = "  ;; [stream-mirror] bounded source-to-writer pump\n  ;; [stream-mirror-max-reads] 3\n  ;; [stream-mirror-source-cancel] future-drop-readable\n";
-    const source_imports = try std.fmt.allocPrint(
+    const boundary = try generated_text.alloc_block(allocator, 2,
+        \\  ;; [stream-mirror] bounded source-to-writer pump
+        \\  ;; [stream-mirror-max-reads] 3
+        \\  ;; [stream-mirror-source-cancel] future-drop-readable
+        \\
+    );
+    defer allocator.free(boundary);
+    const source_imports = try generated_text.alloc_fmt_block(
         allocator,
-        "  (type $source-acquire (func (param i32)))\n  (import \"{s}\" \"{s}\" (func $source-acquire (type $source-acquire)))\n  (import \"{s}\" \"{s}\" (func $source-stream-read (type $stream-io)))\n  (import \"{s}\" \"{s}\" (func $source-stream-drop-readable (type $stream-drop)))\n  (import \"{s}\" \"{s}\" (func $source-future-drop-readable (type $stream-drop)))\n",
-        .{ plan.source_descriptor.canonical.async_import_module, plan.source_descriptor.canonical.async_import_name, plan.source_descriptor.canonical.async_import_module, source_shape.read.import_name, plan.source_descriptor.canonical.async_import_module, source_shape.drop_readable.import_name, plan.source_descriptor.canonical.async_import_module, source_shape.future_drop_readable.import_name },
+        2,
+        \\  (type $source-acquire (func (param i32)))
+        \\  (import "{[module]s}" "{[acquire]s}" (func $source-acquire (type $source-acquire)))
+        \\  (import "{[module]s}" "{[read]s}" (func $source-stream-read (type $stream-io)))
+        \\  (import "{[module]s}" "{[drop_readable]s}" (func $source-stream-drop-readable (type $stream-drop)))
+        \\  (import "{[module]s}" "{[future_drop]s}" (func $source-future-drop-readable (type $stream-drop)))
+        \\
+    ,
+        .{
+            .module = plan.source_descriptor.canonical.async_import_module,
+            .acquire = plan.source_descriptor.canonical.async_import_name,
+            .read = source_shape.read.import_name,
+            .drop_readable = source_shape.drop_readable.import_name,
+            .future_drop = source_shape.future_drop_readable.import_name,
+        },
     );
     defer allocator.free(source_imports);
 
-    var wat = try allocator.dupe(u8, writer_core_wat);
+    var wat = try generated_text.alloc_block(allocator, 0, writer_core_wat);
     wat = try remove_forwarded_writer_root(allocator, wat);
     wat = try replace_and_free(allocator, wat, "i64.const 64", "i64.const 96");
     wat = try replace_and_free(allocator, wat, "i32.const 64", "i32.const 96");
@@ -137,7 +181,11 @@ fn emit_stream_mirror_wat(
     const mirror_callback = try stream_mirror_callback_body(allocator);
     defer allocator.free(mirror_callback);
     wat = try replace_and_free(allocator, wat, "[guest-callback-body]", mirror_callback);
-    const source_import_insertion = try std.fmt.allocPrint(allocator, "{s}  (import \"[export]$root\" \"[task-cancel]", .{source_imports});
+    const source_import_insertion = try generated_text.alloc_fmt(
+        allocator,
+        "  {[imports]s}  (import \"[export]$root\" \"[task-cancel]\"",
+        .{ .imports = source_imports },
+    );
     defer allocator.free(source_import_insertion);
     wat = try replace_and_free(allocator, wat, "  (import \"[export]$root\" \"[task-cancel]", source_import_insertion);
     wat = try strip_guest_root_stream_imports(allocator, wat, sink_shape, wit_export);
@@ -148,9 +196,32 @@ pub fn emit_stream_mirror_component_wit(allocator: std.mem.Allocator, tokens: []
     var registry = try p3_async_manifest.Registry.load(allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(allocator);
     _ = component_async_plan.StreamMirrorPlan.analyze(tokens, registry) catch return error.UnsupportedP3StreamMirrorComponent;
-    return allocator.dupe(
-        u8,
-        "package do:stream-probe@0.1.0;\n\ninterface types {\n  enum error-code { io, illegal-byte-sequence, pipe }\n}\n\ninterface source {\n  use types.{error-code};\n  read-via-stream: func() -> tuple<stream<u8>, future<result<_, error-code>>>;\n}\n\ninterface sink {\n  use types.{error-code};\n  write-via-stream: async func(data: stream<u8>) -> result<_, error-code>;\n}\n\nworld stream-mirror-probe {\n  import source;\n  import sink;\n  use types.{error-code};\n  export produce: async func() -> result<_, error-code>;\n}\n",
+    return generated_text.alloc_block(
+        allocator,
+        0,
+        \\package do:stream-probe@0.1.0;
+        \\
+        \\interface types {
+        \\  enum error-code { io, illegal-byte-sequence, pipe }
+        \\}
+        \\
+        \\interface source {
+        \\  use types.{error-code};
+        \\  read-via-stream: func() -> tuple<stream<u8>, future<result<_, error-code>>>;
+        \\}
+        \\
+        \\interface sink {
+        \\  use types.{error-code};
+        \\  write-via-stream: async func(data: stream<u8>) -> result<_, error-code>;
+        \\}
+        \\
+        \\world stream-mirror-probe {
+        \\  import source;
+        \\  import sink;
+        \\  use types.{error-code};
+        \\  export produce: async func() -> result<_, error-code>;
+        \\}
+        \\
     );
 }
 
@@ -452,7 +523,7 @@ fn stream_mirror_entry_wat(
         \\      call $mirror-start-read
         \\    end
         \\  )
-        \\  (func (export "{s}") (type $async-run-no-param) (local $frame i32) (local $pair i64) (local $readable i32) (local $writable i32) (local $subtask i32)
+        \\  (func (export "{[export_name]s}") (type $async-run-no-param) (local $frame i32) (local $pair i64) (local $readable i32) (local $writable i32) (local $subtask i32)
         \\    call $frame-alloc
         \\    local.set $frame
         \\    local.get $frame
@@ -518,7 +589,7 @@ fn stream_mirror_entry_wat(
         \\    call $mirror-start-read
         \\  )
     ;
-    return std.fmt.allocPrint(allocator, format, .{export_name});
+    return generated_text.alloc_fmt_block(allocator, 2, format, .{ .export_name = export_name });
 }
 
 fn stream_mirror_callback_body(allocator: std.mem.Allocator) ![]u8 {
@@ -585,7 +656,7 @@ fn stream_mirror_callback_body(allocator: std.mem.Allocator) ![]u8 {
         \\      end
         \\    end
     ;
-    return allocator.dupe(u8, format);
+    return generated_text.alloc_block(allocator, 4, format);
 }
 
 fn emit_writer_wat(
@@ -595,11 +666,11 @@ fn emit_writer_wat(
     const shape = plan.stream;
     const wit_export = try writer_wit_identifier(allocator, plan.export_name);
     defer allocator.free(wit_export);
-    const task_return_export = try std.fmt.allocPrint(allocator, "[task-return]{s}", .{wit_export});
+    const task_return_export = try generated_text.alloc_fmt(allocator, "[task-return]{[export_name]s}", .{ .export_name = wit_export });
     defer allocator.free(task_return_export);
-    const async_lift_export = try std.fmt.allocPrint(allocator, "[async-lift]{s}", .{wit_export});
+    const async_lift_export = try generated_text.alloc_fmt(allocator, "[async-lift]{[export_name]s}", .{ .export_name = wit_export });
     defer allocator.free(async_lift_export);
-    const async_callback_export = try std.fmt.allocPrint(allocator, "[callback][async-lift]{s}", .{wit_export});
+    const async_callback_export = try generated_text.alloc_fmt(allocator, "[callback][async-lift]{[export_name]s}", .{ .export_name = wit_export });
     defer allocator.free(async_callback_export);
     const root_stream_new = try root_stream_import_name(allocator, shape.new.import_name, wit_export);
     defer allocator.free(root_stream_new);
@@ -632,10 +703,20 @@ fn emit_writer_wat(
     const lease_transfer = if (plan.producer_helper_name != null) "async-helper" else "direct";
     const terminal_metadata = try writer_terminal_metadata(allocator, plan.producer_terminal);
     defer allocator.free(terminal_metadata);
-    const boundary_metadata = try std.fmt.allocPrint(
+    const boundary_metadata = try generated_text.alloc_fmt_block(
         allocator,
-        "  ;; [writer-endpoint-mode] {s}\n  ;; [writer-lease-transfer] {s}\n  ;; [writer-queue-capacity] {d}\n{s}",
-        .{ endpoint_mode, lease_transfer, plan.queue_capacity, terminal_metadata },
+        2,
+        \\  ;; [writer-endpoint-mode] {[endpoint_mode]s}
+        \\  ;; [writer-lease-transfer] {[lease_transfer]s}
+        \\  ;; [writer-queue-capacity] {[queue_capacity]d}
+        \\{[terminal_metadata]s}
+    ,
+        .{
+            .endpoint_mode = endpoint_mode,
+            .lease_transfer = lease_transfer,
+            .queue_capacity = plan.queue_capacity,
+            .terminal_metadata = terminal_metadata,
+        },
     );
     defer allocator.free(boundary_metadata);
     const producer_data = switch (plan.endpoint_mode) {
@@ -650,11 +731,11 @@ fn emit_writer_wat(
     };
     defer allocator.free(producer_data);
 
-    var wat = try allocator.dupe(u8, writer_core_wat);
+    var wat = try generated_text.alloc_block(allocator, 0, writer_core_wat);
     wat = try replace_and_free(allocator, wat, "[writer-frame-layout]", frame_metadata.items);
-    const result_tag_offset = try std.fmt.allocPrint(allocator, "{d}", .{frame_layout.result_tag});
+    const result_tag_offset = try generated_text.alloc_fmt(allocator, "{[offset]d}", .{ .offset = frame_layout.result_tag });
     defer allocator.free(result_tag_offset);
-    const result_payload_offset = try std.fmt.allocPrint(allocator, "{d}", .{frame_layout.result_payload});
+    const result_payload_offset = try generated_text.alloc_fmt(allocator, "{[offset]d}", .{ .offset = frame_layout.result_payload });
     defer allocator.free(result_payload_offset);
     wat = try replace_and_free(allocator, wat, "[writer-result-tag-offset-value]", result_tag_offset);
     wat = try replace_and_free(allocator, wat, "[writer-result-payload-offset-value]", result_payload_offset);
@@ -711,7 +792,7 @@ fn emit_writer_wat(
     defer allocator.free(callback_body);
     wat = try replace_and_free(allocator, wat, "[guest-callback-body]", callback_body);
     if (plan.endpoint_mode == .guest_producer) {
-        const forward_export = try std.fmt.allocPrint(allocator, "(func (export \"{s}\") (type $async-run)", .{async_lift_export});
+        const forward_export = try generated_text.alloc_fmt(allocator, "(func (export \"{[export_name]s}\") (type $async-run)", .{ .export_name = async_lift_export });
         defer allocator.free(forward_export);
         const unused_export = "(func (export \"[async-lift]__forward_unused\") (type $async-run)";
         wat = try replace_and_free(allocator, wat, forward_export, unused_export);
@@ -734,15 +815,15 @@ fn guest_producer_entry_wat(
         \\    block $producer-wait
         \\      loop $producer-loop
         \\        local.get $frame
-        \\        i32.const {d}
+        \\        i32.const {[producer_index]d}
         \\        i32.add
         \\        i32.load
         \\        local.tee $index
-        \\        i32.const {d}
+        \\        i32.const {[write_count]d}
         \\        i32.ge_u
         \\        if
         \\          local.get $frame
-        \\          i32.const {d}
+        \\          i32.const {[stream_writable]d}
         \\          i32.add
         \\          i32.load
         \\          call $stream-drop-writable
@@ -758,7 +839,7 @@ fn guest_producer_entry_wat(
         \\        i32.eqz
         \\        if
         \\          local.get $frame
-        \\          i32.const {d}
+        \\          i32.const {[producer_index]d}
         \\          i32.add
         \\          local.get $index
         \\          i32.const 1
@@ -779,11 +860,11 @@ fn guest_producer_entry_wat(
         \\          i32.eq
         \\          if
         \\            local.get $frame
-        \\            i32.const {d}
+        \\            i32.const {[stream_writable]d}
         \\            i32.add
         \\            i32.load
         \\            local.get $frame
-        \\            i32.const {d}
+        \\            i32.const {[waitable_set]d}
         \\            i32.add
         \\            i32.load
         \\            call $waitable-join
@@ -791,7 +872,7 @@ fn guest_producer_entry_wat(
         \\          br $producer-wait
         \\        end
         \\        local.get $frame
-        \\        i32.const {d}
+        \\        i32.const {[stream_writable]d}
         \\        i32.add
         \\        i32.load
         \\        call $stream-drop-writable
@@ -799,7 +880,7 @@ fn guest_producer_entry_wat(
         \\      end
         \\    end
         \\    local.get $frame
-        \\    i32.const {d}
+        \\    i32.const {[waitable_set]d}
         \\    i32.add
         \\    i32.load
         \\    i32.const 4
@@ -807,7 +888,7 @@ fn guest_producer_entry_wat(
         \\    i32.const 2
         \\    i32.or
         \\  )
-        \\  (func (export "{s}") (type $async-run-no-param) (local $frame i32) (local $pair i64) (local $readable i32) (local $writable i32) (local $status i32) (local $subtask i32)
+        \\  (func (export "{[async_lift_export]s}") (type $async-run-no-param) (local $frame i32) (local $pair i64) (local $readable i32) (local $writable i32) (local $status i32) (local $subtask i32)
         \\    call $frame-alloc
         \\    local.set $frame
         \\    local.get $frame
@@ -836,47 +917,47 @@ fn guest_producer_entry_wat(
         \\    i32.store
         \\    ;; Initialize every queue/lease slot before the first direct write.
         \\    local.get $frame
-        \\    i32.const {d}
+        \\    i32.const {[queue_head]d}
         \\    i32.add
         \\    i32.const 0
         \\    i32.store
         \\    local.get $frame
-        \\    i32.const {d}
+        \\    i32.const {[queue_count]d}
         \\    i32.add
         \\    i32.const 0
         \\    i32.store
         \\    local.get $frame
-        \\    i32.const {d}
+        \\    i32.const {[queue_capacity_offset]d}
         \\    i32.add
-        \\    i32.const {d}
+        \\    i32.const {[queue_capacity]d}
         \\    i32.store
         \\    local.get $frame
-        \\    i32.const {d}
-        \\    i32.add
-        \\    i32.const 0
-        \\    i32.store
-        \\    local.get $frame
-        \\    i32.const {d}
+        \\    i32.const {[pending_producer]d}
         \\    i32.add
         \\    i32.const 0
         \\    i32.store
         \\    local.get $frame
-        \\    i32.const {d}
+        \\    i32.const {[terminal_state]d}
         \\    i32.add
         \\    i32.const 0
         \\    i32.store
         \\    local.get $frame
-        \\    i32.const {d}
+        \\    i32.const {[error_payload]d}
         \\    i32.add
         \\    i32.const 0
         \\    i32.store
         \\    local.get $frame
-        \\    i32.const {d}
+        \\    i32.const {[pending_ptr]d}
         \\    i32.add
         \\    i32.const 0
         \\    i32.store
         \\    local.get $frame
-        \\    i32.const {d}
+        \\    i32.const {[pending_len]d}
+        \\    i32.add
+        \\    i32.const 0
+        \\    i32.store
+        \\    local.get $frame
+        \\    i32.const {[producer_index]d}
         \\    i32.add
         \\    ;; The first value is submitted before the host reader starts.
         \\    i32.const 1
@@ -935,26 +1016,21 @@ fn guest_producer_entry_wat(
         \\    end
         \\  )
     ;
-    return std.fmt.allocPrint(allocator, format, .{
-        frame_layout.producer_index,
-        producer_write_count,
-        frame_layout.stream_writable,
-        frame_layout.producer_index,
-        frame_layout.stream_writable,
-        frame_layout.waitable_set,
-        frame_layout.stream_writable,
-        frame_layout.waitable_set,
-        async_lift_export,
-        frame_layout.queue_head,
-        frame_layout.queue_count,
-        frame_layout.queue_capacity,
-        queue_capacity,
-        frame_layout.pending_producer,
-        frame_layout.terminal_state,
-        frame_layout.error_payload,
-        frame_layout.pending_ptr,
-        frame_layout.pending_len,
-        frame_layout.producer_index,
+    return generated_text.alloc_fmt_block(allocator, 2, format, .{
+        .producer_index = frame_layout.producer_index,
+        .write_count = producer_write_count,
+        .stream_writable = frame_layout.stream_writable,
+        .waitable_set = frame_layout.waitable_set,
+        .async_lift_export = async_lift_export,
+        .queue_head = frame_layout.queue_head,
+        .queue_count = frame_layout.queue_count,
+        .queue_capacity_offset = frame_layout.queue_capacity,
+        .queue_capacity = queue_capacity,
+        .pending_producer = frame_layout.pending_producer,
+        .terminal_state = frame_layout.terminal_state,
+        .error_payload = frame_layout.error_payload,
+        .pending_ptr = frame_layout.pending_ptr,
+        .pending_len = frame_layout.pending_len,
     });
 }
 
@@ -968,12 +1044,25 @@ fn guest_producer_dynamic_entry_wat(
 ) ![]u8 {
     const run_type = if (parameterized_value) "$async-run-i64-i32" else "$async-run-i64";
     const value_pump = if (parameterized_value)
-        try std.fmt.allocPrint(allocator, "        i32.const 512\n        local.get $frame\n        i32.const {d}\n        i32.add\n        i32.load8_u\n        i32.store8\n", .{frame_layout.producer_value})
+        try generated_text.alloc_fmt_block(allocator, 8,
+            \\i32.const 512
+            \\local.get $frame
+            \\i32.const {[producer_value]d}
+            \\i32.add
+            \\i32.load8_u
+            \\i32.store8
+        , .{ .producer_value = frame_layout.producer_value })
     else
         try allocator.dupe(u8, "");
     defer allocator.free(value_pump);
     const value_init = if (parameterized_value)
-        try std.fmt.allocPrint(allocator, "    local.get $frame\n    i32.const {d}\n    i32.add\n    local.get 1\n    i32.store8\n", .{frame_layout.producer_value})
+        try generated_text.alloc_fmt_block(allocator, 4,
+            \\local.get $frame
+            \\i32.const {[producer_value]d}
+            \\i32.add
+            \\local.get 1
+            \\i32.store8
+        , .{ .producer_value = frame_layout.producer_value })
     else
         try allocator.dupe(u8, "");
     defer allocator.free(value_init);
@@ -990,7 +1079,7 @@ fn guest_producer_dynamic_entry_wat(
         \\        i64.load
         \\        i64.eqz
         \\        if
-        \\{s}
+        \\{[terminal_wat]s}
         \\          local.get $frame
         \\          i32.const 16
         \\          i32.add
@@ -998,7 +1087,7 @@ fn guest_producer_dynamic_entry_wat(
         \\          call $stream-drop-writable
         \\          br $producer-wait
         \\        end
-        \\{s}
+        \\{[value_pump]s}
         \\        local.get $frame
         \\        i32.const 512
         \\        i32.const 1
@@ -1059,7 +1148,7 @@ fn guest_producer_dynamic_entry_wat(
         \\    i32.const 2
         \\    i32.or
         \\  )
-        \\  (func (export "{s}") (type {s}) (local $frame i32) (local $pair i64) (local $readable i32) (local $writable i32) (local $subtask i32) (local $pump i32)
+        \\  (func (export "{[async_lift_export]s}") (type {[run_type]s}) (local $frame i32) (local $pair i64) (local $readable i32) (local $writable i32) (local $subtask i32) (local $pump i32)
         \\    call $frame-alloc
         \\    local.set $frame
         \\    local.get $frame
@@ -1099,7 +1188,7 @@ fn guest_producer_dynamic_entry_wat(
         \\    local.get $frame
         \\    i32.const 28
         \\    i32.add
-        \\    i32.const {d}
+        \\    i32.const {[queue_capacity]d}
         \\    i32.store
         \\    local.get $frame
         \\    i32.const 32
@@ -1131,7 +1220,7 @@ fn guest_producer_dynamic_entry_wat(
         \\    i32.add
         \\    local.get 0
         \\    i64.store
-        \\{s}
+        \\{[value_init]s}
         \\    ;; Register the sink before the first producer step, including count=0.
         \\    local.get $frame
         \\    call $context-set-0
@@ -1187,7 +1276,14 @@ fn guest_producer_dynamic_entry_wat(
         \\    i32.or
         \\  )
     ;
-    return std.fmt.allocPrint(allocator, format, .{ terminal_wat, value_pump, async_lift_export, run_type, queue_capacity, value_init });
+    return generated_text.alloc_fmt_block(allocator, 2, format, .{
+        .terminal_wat = terminal_wat,
+        .value_pump = value_pump,
+        .async_lift_export = async_lift_export,
+        .run_type = run_type,
+        .queue_capacity = queue_capacity,
+        .value_init = value_init,
+    });
 }
 
 fn writer_terminal_wat(
@@ -1197,10 +1293,27 @@ fn writer_terminal_wat(
 ) ![]u8 {
     return switch (terminal) {
         .close => allocator.dupe(u8, ""),
-        .abort_pipe_when_value => |selector| std.fmt.allocPrint(
+        .abort_pipe_when_value => |selector| generated_text.alloc_fmt_block(
             allocator,
-            "          local.get $frame\n          i32.const {d}\n          i32.add\n          i32.load8_u\n          i32.const {d}\n          i32.eq\n          if\n          else\n            local.get $frame\n            i32.const 2\n            call $writer-abort\n            drop\n          end\n",
-            .{ frame_layout.producer_value, selector },
+            10,
+            \\local.get $frame
+            \\i32.const {[producer_value]d}
+            \\i32.add
+            \\i32.load8_u
+            \\i32.const {[selector]d}
+            \\i32.eq
+            \\if
+            \\else
+            \\  local.get $frame
+            \\  i32.const 2
+            \\  call $writer-abort
+            \\  drop
+            \\end
+            \\
+            , .{
+                .producer_value = frame_layout.producer_value,
+                .selector = selector,
+            },
         ),
     };
 }
@@ -1210,7 +1323,7 @@ fn producer_data_wat(allocator: std.mem.Allocator, values: []const u8) ![]u8 {
     var data = std.ArrayList(u8).empty;
     errdefer data.deinit(allocator);
     for (values) |value| {
-        const escaped = try std.fmt.allocPrint(allocator, "\\{X:0>2}", .{value});
+        const escaped = try generated_text.alloc_fmt(allocator, "\\{[value]X:0>2}", .{ .value = value });
         defer allocator.free(escaped);
         try data.appendSlice(allocator, escaped);
     }
@@ -1223,10 +1336,10 @@ fn writer_terminal_metadata(
 ) ![]u8 {
     return switch (terminal) {
         .close => allocator.dupe(u8, "  ;; [writer-terminal] close\n"),
-        .abort_pipe_when_value => |selector| std.fmt.allocPrint(
+        .abort_pipe_when_value => |selector| generated_text.alloc_fmt(
             allocator,
-            "  ;; [writer-terminal] branch-abort-pipe selector={d} code=2\n",
-            .{selector},
+            "  ;; [writer-terminal] branch-abort-pipe selector={[selector]d} code=2\n",
+            .{ .selector = selector },
         ),
     };
 }
@@ -1254,11 +1367,11 @@ fn forwarded_writer_callback_body(
         \\      i32.load
         \\      call $subtask-drop
         \\      local.get $frame
-        \\      i32.load8_u offset={d}
+        \\      i32.load8_u offset={[result_tag]d}
         \\      local.get $frame
-        \\      i32.const {d}
+        \\      i32.const {[result_payload]d}
         \\      i32.add
-        \\      i32.load8_u offset={d}
+        \\      i32.load8_u offset={[result_tag]d}
         \\      local.get $frame
         \\      call $writer-promote
         \\      drop
@@ -1267,7 +1380,7 @@ fn forwarded_writer_callback_body(
         \\      drop
         \\      call $task-return
         \\      local.get $frame
-        \\      i32.const {d}
+        \\      i32.const {[waitable_set]d}
         \\      i32.add
         \\      i32.load
         \\      call $waitable-set-drop
@@ -1276,7 +1389,7 @@ fn forwarded_writer_callback_body(
         \\      i32.const 0
         \\    else
         \\      local.get $frame
-        \\      i32.const {d}
+        \\      i32.const {[waitable_set]d}
         \\      i32.add
         \\      i32.load
         \\      i32.const 4
@@ -1285,12 +1398,10 @@ fn forwarded_writer_callback_body(
         \\      i32.or
         \\    end
     ;
-    return std.fmt.allocPrint(allocator, format, .{
-        frame_layout.result_tag,
-        frame_layout.result_payload,
-        frame_layout.result_tag,
-        frame_layout.waitable_set,
-        frame_layout.waitable_set,
+    return generated_text.alloc_fmt_block(allocator, 4, format, .{
+        .result_tag = frame_layout.result_tag,
+        .result_payload = frame_layout.result_payload,
+        .waitable_set = frame_layout.waitable_set,
     });
 }
 
@@ -1317,12 +1428,12 @@ fn guest_producer_callback_body(
         \\        call $writer-pump-step
         \\      else
         \\        local.get $frame
-        \\        i32.const {d}
+        \\        i32.const {[stream_writable]d}
         \\        i32.add
         \\        i32.load
         \\        call $stream-drop-writable
         \\        local.get $frame
-        \\        i32.const {d}
+        \\        i32.const {[waitable_set]d}
         \\        i32.add
         \\        i32.load
         \\        i32.const 4
@@ -1350,14 +1461,14 @@ fn guest_producer_callback_body(
         \\        call $writer-finalize
         \\        drop
         \\        local.get $frame
-        \\        i32.load8_u offset={d}
+        \\        i32.load8_u offset={[result_tag]d}
         \\        local.get $frame
-        \\        i32.const {d}
+        \\        i32.const {[result_payload]d}
         \\        i32.add
-        \\        i32.load8_u offset={d}
+        \\        i32.load8_u offset={[result_tag]d}
         \\        call $task-return
         \\        local.get $frame
-        \\        i32.const {d}
+        \\        i32.const {[waitable_set]d}
         \\        i32.add
         \\        i32.load
         \\        call $waitable-set-drop
@@ -1369,13 +1480,11 @@ fn guest_producer_callback_body(
         \\      end
         \\    end
     ;
-    return std.fmt.allocPrint(allocator, format, .{
-        frame_layout.stream_writable,
-        frame_layout.waitable_set,
-        frame_layout.result_tag,
-        frame_layout.result_payload,
-        frame_layout.result_tag,
-        frame_layout.waitable_set,
+    return generated_text.alloc_fmt_block(allocator, 4, format, .{
+        .stream_writable = frame_layout.stream_writable,
+        .waitable_set = frame_layout.waitable_set,
+        .result_tag = frame_layout.result_tag,
+        .result_payload = frame_layout.result_payload,
     });
 }
 
@@ -1402,12 +1511,12 @@ fn guest_producer_dynamic_callback_body(
         \\        call $writer-pump-step
         \\      else
         \\        local.get $frame
-        \\        i32.const {d}
+        \\        i32.const {[stream_writable]d}
         \\        i32.add
         \\        i32.load
         \\        call $stream-drop-writable
         \\        local.get $frame
-        \\        i32.const {d}
+        \\        i32.const {[waitable_set]d}
         \\        i32.add
         \\        i32.load
         \\        i32.const 4
@@ -1431,9 +1540,9 @@ fn guest_producer_dynamic_callback_body(
         \\        i32.add
         \\        i32.load
         \\        call $subtask-drop
-        \\{s}
+        \\{[terminal_completion]s}
         \\        local.get $frame
-        \\        i32.const {d}
+        \\        i32.const {[waitable_set]d}
         \\        i32.add
         \\        i32.load
         \\        call $waitable-set-drop
@@ -1445,11 +1554,10 @@ fn guest_producer_dynamic_callback_body(
         \\      end
         \\    end
     ;
-    return std.fmt.allocPrint(allocator, format, .{
-        frame_layout.stream_writable,
-        frame_layout.waitable_set,
-        terminal_completion,
-        frame_layout.waitable_set,
+    return generated_text.alloc_fmt_block(allocator, 4, format, .{
+        .stream_writable = frame_layout.stream_writable,
+        .waitable_set = frame_layout.waitable_set,
+        .terminal_completion = terminal_completion,
     });
 }
 
@@ -1459,17 +1567,62 @@ fn writer_terminal_completion_wat(
     terminal: component_async_plan.WriterTerminalAction,
 ) ![]u8 {
     return switch (terminal) {
-        .close => std.fmt.allocPrint(
+        .close => generated_text.alloc_fmt_block(
             allocator,
-            "        local.get $frame\n        call $writer-finalize\n        drop\n        local.get $frame\n        i32.load8_u offset={d}\n        local.get $frame\n        i32.const {d}\n        i32.add\n        i32.load8_u offset={d}\n        call $task-return\n",
-            .{ frame_layout.result_tag, frame_layout.result_payload, frame_layout.result_tag },
+            8,
+            \\        local.get $frame
+            \\        call $writer-finalize
+            \\        drop
+            \\        local.get $frame
+            \\        i32.load8_u offset={[result_tag]d}
+            \\        local.get $frame
+            \\        i32.const {[result_payload]d}
+            \\        i32.add
+            \\        i32.load8_u offset={[result_tag]d}
+            \\        call $task-return
+            \\
+            , .{
+                .result_tag = frame_layout.result_tag,
+                .result_payload = frame_layout.result_payload,
+            },
         ),
         .abort_pipe_when_value => |selector| blk: {
             _ = selector;
-            break :blk std.fmt.allocPrint(
+            break :blk generated_text.alloc_fmt_block(
                 allocator,
-                "        local.get $frame\n        i32.const {d}\n        i32.add\n        i32.load\n        i32.const 2\n        i32.eq\n        if\n          i32.const 1\n          local.get $frame\n          i32.const {d}\n          i32.add\n          i32.load\n          call $task-return\n        else\n          local.get $frame\n          call $writer-finalize\n          drop\n          local.get $frame\n          i32.load8_u offset={d}\n          local.get $frame\n          i32.const {d}\n          i32.add\n          i32.load8_u offset={d}\n          call $task-return\n        end\n",
-                .{ frame_layout.terminal_state, frame_layout.error_payload, frame_layout.result_tag, frame_layout.result_payload, frame_layout.result_tag },
+                8,
+                \\        local.get $frame
+                \\        i32.const {[terminal_state]d}
+                \\        i32.add
+                \\        i32.load
+                \\        i32.const 2
+                \\        i32.eq
+                \\        if
+                \\          i32.const 1
+                \\          local.get $frame
+                \\          i32.const {[error_payload]d}
+                \\          i32.add
+                \\          i32.load
+                \\          call $task-return
+                \\        else
+                \\          local.get $frame
+                \\          call $writer-finalize
+                \\          drop
+                \\          local.get $frame
+                \\          i32.load8_u offset={[result_tag]d}
+                \\          local.get $frame
+                \\          i32.const {[result_payload]d}
+                \\          i32.add
+                \\          i32.load8_u offset={[result_tag]d}
+                \\          call $task-return
+                \\        end
+                \\
+                , .{
+                    .terminal_state = frame_layout.terminal_state,
+                    .error_payload = frame_layout.error_payload,
+                    .result_tag = frame_layout.result_tag,
+                    .result_payload = frame_layout.result_payload,
+                },
             );
         },
     };
@@ -1494,7 +1647,13 @@ fn strip_guest_root_stream_imports(
     for (roots) |root| {
         const rendered = try root_stream_import_name(allocator, root.import_name, wit_export);
         defer allocator.free(rendered);
-        const line = try std.fmt.allocPrint(allocator, "  (import \"[export]$root\" \"{s}\" (func {s} (type {s})))\n", .{ rendered, root.func_name, root.type_name });
+        const line = try generated_text.alloc_fmt(allocator,
+            "  (import \"[export]$root\" \"{[rendered]s}\" (func {[func_name]s} (type {[type_name]s})))\n",
+            .{
+            .rendered = rendered,
+            .func_name = root.func_name,
+            .type_name = root.type_name,
+        });
         defer allocator.free(line);
         output = try replace_and_free(allocator, output, line, "");
     }
@@ -1503,7 +1662,10 @@ fn strip_guest_root_stream_imports(
 
 fn root_stream_import_name(allocator: std.mem.Allocator, import_name: []const u8, wit_export: []const u8) ![]u8 {
     const suffix_start = std.mem.lastIndexOfScalar(u8, import_name, ']') orelse return error.UnsupportedP3StreamWriterComponent;
-    return std.fmt.allocPrint(allocator, "{s}{s}", .{ import_name[0 .. suffix_start + 1], wit_export });
+    return generated_text.alloc_fmt(allocator, "{[prefix]s}{[export_name]s}", .{
+        .prefix = import_name[0 .. suffix_start + 1],
+        .export_name = wit_export,
+    });
 }
 
 fn writer_wit_identifier(allocator: std.mem.Allocator, source_name: []const u8) ![]u8 {
@@ -2164,10 +2326,29 @@ pub fn emit_component_wit(allocator: std.mem.Allocator, tokens: []const lexer.To
             .countdown => if (plan.producer_value_name != null) "(count: u64, value: u8)" else "(count: u64)",
         },
     };
-    return std.fmt.allocPrint(
+    return generated_text.alloc_fmt_block(
         allocator,
-        "package {s};\n\ninterface {s} {{\n  enum error-code {{ io, illegal-byte-sequence, pipe }}\n  write-via-stream: async func(data: stream<u8>) -> result<_, error-code>;\n}}\n\nworld {s} {{\n  import {s};\n  use {s}.{{error-code}};\n  export {s}: async func{s} -> result<_, error-code>;\n}}\n",
-        .{ descriptor.wit.package, descriptor.wit.interface, descriptor.wit.world, descriptor.wit.interface, descriptor.wit.interface, export_name, export_params },
+        0,
+        \\package {[package]s};
+        \\
+        \\interface {[interface]s} {{
+        \\  enum error-code {{ io, illegal-byte-sequence, pipe }}
+        \\  write-via-stream: async func(data: stream<u8>) -> result<_, error-code>;
+        \\}}
+        \\
+        \\world {[world]s} {{
+        \\  import {[interface]s};
+        \\  use {[interface]s}.{{error-code}};
+        \\  export {[export_name]s}: async func{[export_params]s} -> result<_, error-code>;
+        \\}}
+        \\
+        , .{
+            .package = descriptor.wit.package,
+            .interface = descriptor.wit.interface,
+            .world = descriptor.wit.world,
+            .export_name = export_name,
+            .export_params = export_params,
+        },
     );
 }
 

@@ -1557,7 +1557,7 @@ const ParameterizedStreamWriterFunction = struct {
 };
 
 // Keep helper-chain admission bounded until general async-call lowering exists.
-const max_parameterized_forwarding_hops: usize = 5;
+const max_parameterized_forwarding_hops: usize = 6;
 
 const ParameterizedParameterKind = enum {
     writer,
@@ -3483,7 +3483,68 @@ test "StreamWriterPlan accepts a fifth parameterized producer forwarding hop" {
     try std.testing.expectEqualStrings("value", plan.producer_value_name.?);
 }
 
-test "StreamWriterPlan rejects a sixth parameterized producer forwarding hop" {
+test "StreamWriterPlan accepts a sixth parameterized producer forwarding hop" {
+    const source =
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\ProbeError error = Io | IllegalByteSequence | Pipe
+        \\StreamError error = StreamClosed | StreamWriteFailed
+        \\async finish_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
+        \\    remaining u64 = count
+        \\    loop {
+        \\        if @eq(remaining, 0) { break }
+        \\        write_pending Future<Result<nil, StreamError>> = writer(value)
+        \\        write_result Result<nil, StreamError> = await(write_pending)
+        \\        _ = write_result
+        \\        remaining = @sub(remaining, 1)
+        \\    }
+        \\    defer close(writer)
+        \\    sink_pending Future<Result<nil, ProbeError>> = sink_write(writer)
+        \\    return await(sink_pending)
+        \\}
+        \\async inner_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
+        \\    pending Future<Result<nil, ProbeError>> = finish_stream(writer, count, value)
+        \\    return await(pending)
+        \\}
+        \\async middle_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
+        \\    pending Future<Result<nil, ProbeError>> = inner_stream(writer, count, value)
+        \\    return await(pending)
+        \\}
+        \\async forward_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
+        \\    pending Future<Result<nil, ProbeError>> = middle_stream(writer, count, value)
+        \\    return await(pending)
+        \\}
+        \\async entry_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
+        \\    pending Future<Result<nil, ProbeError>> = forward_stream(writer, count, value)
+        \\    return await(pending)
+        \\}
+        \\async extra_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
+        \\    pending Future<Result<nil, ProbeError>> = entry_stream(writer, count, value)
+        \\    return await(pending)
+        \\}
+        \\async outer_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
+        \\    pending Future<Result<nil, ProbeError>> = extra_stream(writer, count, value)
+        \\    return await(pending)
+        \\}
+        \\async produce(count u64, value u8) -> Result<nil, ProbeError> {
+        \\    reader StreamReader<u8>, writer StreamWriter<u8> = new_stream<u8>(1)
+        \\    pending Future<Result<nil, ProbeError>> = outer_stream(writer, count, value)
+        \\    return await(pending)
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+
+    const plan = try StreamWriterPlan.analyze(tokens, registry);
+    try std.testing.expectEqual(ProducerMode.countdown, plan.producer_mode);
+    try std.testing.expectEqualStrings("outer_stream", plan.producer_helper_name.?);
+    try std.testing.expectEqualStrings("count", plan.producer_count_name.?);
+    try std.testing.expectEqualStrings("value", plan.producer_value_name.?);
+}
+
+test "StreamWriterPlan rejects a seventh parameterized producer forwarding hop" {
     const source =
         \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
         \\ProbeError error = Io | IllegalByteSequence | Pipe
@@ -3525,9 +3586,13 @@ test "StreamWriterPlan rejects a sixth parameterized producer forwarding hop" {
         \\    pending Future<Result<nil, ProbeError>> = outer_stream(writer, count, value)
         \\    return await(pending)
         \\}
+        \\async ultra_outer_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
+        \\    pending Future<Result<nil, ProbeError>> = super_outer_stream(writer, count, value)
+        \\    return await(pending)
+        \\}
         \\async produce(count u64, value u8) -> Result<nil, ProbeError> {
         \\    reader StreamReader<u8>, writer StreamWriter<u8> = new_stream<u8>(1)
-        \\    pending Future<Result<nil, ProbeError>> = super_outer_stream(writer, count, value)
+        \\    pending Future<Result<nil, ProbeError>> = ultra_outer_stream(writer, count, value)
         \\    return await(pending)
         \\}
         \\start() {}

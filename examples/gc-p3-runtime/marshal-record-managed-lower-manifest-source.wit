@@ -1,0 +1,10 @@
+package demo:marshal-record-managed-lower@1.0.0;
+
+interface api {
+  record writing {
+    code: u32,
+    label: string,
+  }
+
+  write: func(value: writing);
+}

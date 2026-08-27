@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
 
@@ -100,14 +101,14 @@ fn emit_wat(allocator: std.mem.Allocator, out: *std.ArrayList(u8), plan: TaskBri
         .explicit_future => "explicit-future",
         .task_context => "task-context",
     };
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 0,
         \\(module
         \\  ;; [task-bridge]
         \\  ;; [task-bridge-mode]
     );
     try out.appendSlice(allocator, " ");
     try out.appendSlice(allocator, mode_name);
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 2,
         \\
         \\  (type $task-bridge-frame (struct
         \\    (field $state i32)
@@ -121,16 +122,16 @@ fn emit_wat(allocator: std.mem.Allocator, out: *std.ArrayList(u8), plan: TaskBri
         \\    ;; [task-bridge-frame-free]
         \\    nop)
     );
-    try append_fmt(allocator, out,
+    try generated_text.append_fmt_block(allocator, out, 2,
         \\
-        \\  (func ${s}
+        \\  (func ${[work_name]s}
         \\    ;; [task-bridge-work]
         \\    nop
         \\  )
         \\  (func $task-bridge-work-future-await (param $future i32)
         \\    ;; [task-bridge-child-await]
-        \\    call ${s})
-        \\  (func ${s} (result i32)
+        \\    call ${[work_name]s})
+        \\  (func ${[child_name]s} (result i32)
         \\    (local $child_frame i32)
         \\    (local $work_future i32)
         \\    (local $child_result i32)
@@ -142,27 +143,27 @@ fn emit_wat(allocator: std.mem.Allocator, out: *std.ArrayList(u8), plan: TaskBri
         \\    local.get $work_future
         \\    call $task-bridge-work-future-await
         \\    ;; [task-bridge-resume]
-        \\    i32.const {s}
+        \\    i32.const {[result_literal]s}
         \\    local.set $child_result
         \\    local.get $child_frame
         \\    call $task-bridge-terminal-cleanup
         \\    local.get $child_result
         \\  )
-    , .{ plan.work_name, plan.work_name, plan.child_name, plan.result_literal });
-    try append_fmt(allocator, out,
+    , .{ .work_name = plan.work_name, .child_name = plan.child_name, .result_literal = plan.result_literal });
+    try generated_text.append_fmt_block(allocator, out, 2,
         \\
         \\  (func $task-bridge-future-new (result i32)
         \\    ;; [task-bridge-future-create]
         \\    i32.const 2)
         \\  (func $task-bridge-future-await (param $future i32) (result i32)
         \\    ;; [task-bridge-future-await]
-        \\    call ${s})
+        \\    call ${[child_name]s})
         \\  (func $task-bridge-future-drop (param $future i32)
         \\    ;; [task-bridge-future-drop]
         \\    nop
         \\  )
-    , .{plan.child_name});
-    try out.appendSlice(allocator,
+    , .{ .child_name = plan.child_name });
+    try generated_text.append_block(allocator, out, 2,
         \\
         \\  (func $task-bridge-terminal-cleanup (param $frame i32)
         \\    ;; [task-bridge-terminal]
@@ -171,23 +172,23 @@ fn emit_wat(allocator: std.mem.Allocator, out: *std.ArrayList(u8), plan: TaskBri
         \\    call $task-bridge-frame-free)
     );
     switch (plan.mode) {
-        .direct_root => try append_fmt(allocator, out,
+        .direct_root => try generated_text.append_fmt_block(allocator, out, 2,
             \\
-            \\  (func ${s} (result i32)
+            \\  (func ${[root_name]s} (result i32)
             \\    (local $root_frame i32)
             \\    (local $result i32)
             \\    ;; [task-bridge-root]
             \\    call $task-bridge-frame-alloc
             \\    local.set $root_frame
-            \\    call ${s}
+            \\    call ${[child_name]s}
             \\    local.set $result
             \\    local.get $root_frame
             \\    call $task-bridge-terminal-cleanup
             \\    local.get $result)
-        , .{plan.root_name, plan.child_name}),
-        .explicit_future => try append_fmt(allocator, out,
+        , .{ .root_name = plan.root_name, .child_name = plan.child_name }),
+        .explicit_future => try generated_text.append_fmt_block(allocator, out, 2,
             \\
-            \\  (func ${s} (result i32)
+            \\  (func ${[root_name]s} (result i32)
             \\    (local $root_frame i32)
             \\    (local $future i32)
             \\    (local $result i32)
@@ -204,10 +205,10 @@ fn emit_wat(allocator: std.mem.Allocator, out: *std.ArrayList(u8), plan: TaskBri
             \\    local.get $root_frame
             \\    call $task-bridge-terminal-cleanup
             \\    local.get $result)
-        , .{plan.root_name}),
-        .task_context => try append_fmt(allocator, out,
+        , .{ .root_name = plan.root_name }),
+        .task_context => try generated_text.append_fmt_block(allocator, out, 2,
             \\
-            \\  (func ${s} (result i32)
+            \\  (func ${[root_name]s} (result i32)
             \\    (local $root_frame i32)
             \\    (local $work_future i32)
             \\    (local $result i32)
@@ -219,22 +220,22 @@ fn emit_wat(allocator: std.mem.Allocator, out: *std.ArrayList(u8), plan: TaskBri
             \\    local.set $work_future
             \\    local.get $work_future
             \\    call $task-bridge-work-future-await
-            \\    call ${s}
+            \\    call ${[child_name]s}
             \\    local.set $result
             \\    local.get $root_frame
             \\    call $task-bridge-terminal-cleanup
             \\    local.get $result)
-        , .{plan.root_name, plan.child_name}),
+        , .{ .root_name = plan.root_name, .child_name = plan.child_name }),
     }
-    try append_fmt(allocator, out,
+    try generated_text.append_fmt_block(allocator, out, 2,
         \\
         \\  (func $start
-        \\    call ${s}
+        \\    call ${[root_name]s}
         \\    drop)
-        \\  (export "run" (func ${s}))
+        \\  (export "run" (func ${[root_name]s}))
         \\  (export "_start" (func $start))
         \\)
-    , .{plan.root_name, plan.root_name});
+    , .{ .root_name = plan.root_name });
 }
 
 const FunctionRange = struct {
@@ -379,12 +380,6 @@ fn find_matching(tokens: []const lexer.Token, open_idx: usize, open: []const u8,
 
 fn tok_eq(token: lexer.Token, text: []const u8) bool {
     return std.mem.eql(u8, token.lexeme, text);
-}
-
-fn append_fmt(allocator: std.mem.Allocator, out: *std.ArrayList(u8), comptime fmt: []const u8, args: anytype) !void {
-    const text = try std.fmt.allocPrint(allocator, fmt, args);
-    defer allocator.free(text);
-    try out.appendSlice(allocator, text);
 }
 
 test "task bridge recognizes a direct resumable call from a synchronous root" {

@@ -14,10 +14,23 @@ const positive_source =
 ;
 
 const expected_wit =
-    "package do:future-owned-canonical@0.1.0;\n\n" ++
-    "interface source {\n  resource ticket {}\n  read: func() -> future<own<ticket>>;\n}\n\n" ++
-    "interface probe {\n  run: async func(mode: u32);\n}\n\n" ++
-    "world future-owned-canonical {\n  import source;\n  export probe;\n}\n";
+        \\package do:future-owned-canonical@0.1.0;
+    \\
+    \\interface source {
+    \\  resource ticket {}
+    \\  read: func() -> future<own<ticket>>;
+    \\}
+    \\
+    \\interface probe {
+    \\  run: async func(mode: u32);
+    \\}
+    \\
+    \\world future-owned-canonical {
+    \\  import source;
+    \\  export probe;
+    \\}
+    \\
+    ;
 
 test "future-owned emitter emits the measured private frame markers" {
     const tokens = try lexer.tokenize(std.testing.allocator, positive_source);

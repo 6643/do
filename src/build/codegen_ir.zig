@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 
 pub const ValueId = struct {
     index: usize,
@@ -342,7 +343,7 @@ pub fn emit_function_wat(allocator: std.mem.Allocator, func: *const Function) ![
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
 
-    try append_fmt(&out, allocator, "  (func ${s}\n", .{func.name});
+    try append_fmt(&out, allocator, "  (func ${[name]s}\n", .{ .name = func.name });
     try emit_function_body_wat_into(&out, allocator, func);
     try out.appendSlice(allocator, "  )\n");
     return out.toOwnedSlice(allocator);
@@ -389,10 +390,10 @@ fn emit_return_block_wat(out: *std.ArrayList(u8), allocator: std.mem.Allocator, 
     try emit_instrs_wat(out, allocator, func, block.instrs.items, indent);
     const term = block.terminator orelse return error.UnsupportedIrWatShape;
     switch (term) {
-        .ret => try append_fmt(out, allocator, "{s}return\n", .{indent}),
+        .ret => try append_fmt(out, allocator, "{[indent]s}return\n", .{ .indent = indent }),
         .ret_value => |value| {
             try emit_local_get_wat(out, allocator, func, indent, value);
-            try append_fmt(out, allocator, "{s}return\n", .{indent});
+            try append_fmt(out, allocator, "{[indent]s}return\n", .{ .indent = indent });
         },
         else => return error.UnsupportedIrWatShape,
     }
@@ -406,23 +407,23 @@ fn emit_instrs_wat(out: *std.ArrayList(u8), allocator: std.mem.Allocator, func: 
 
 fn emit_instr_wat(out: *std.ArrayList(u8), allocator: std.mem.Allocator, func: *const Function, instr: Instr, indent: []const u8) !void {
     switch (instr) {
-        .const_i32 => |value| try append_fmt(out, allocator, "{s}i32.const {d}\n", .{ indent, value }),
+        .const_i32 => |value| try append_fmt(out, allocator, "{[indent]s}i32.const {[value]d}\n", .{ .indent = indent, .value = value }),
         .const_value => |value| try emit_const_value_wat(out, allocator, indent, value),
         .local_get => |value| try emit_local_get_wat(out, allocator, func, indent, value),
         .local_set => |value| try emit_local_write_wat(out, allocator, func, indent, "local.set", value),
         .local_tee => |value| try emit_local_write_wat(out, allocator, func, indent, "local.tee", value),
-        .numeric => |op| try append_fmt(out, allocator, "{s}{s}.{s}\n", .{ indent, scalar_wat_prefix(op.ty), numeric_wat_name(op.op) }),
-        .compare => |op| try append_fmt(out, allocator, "{s}{s}.{s}\n", .{ indent, scalar_wat_prefix(op.ty), compare_wat_name(op.op) }),
-        .call => |name| try append_fmt(out, allocator, "{s}call ${s}\n", .{ indent, name }),
+        .numeric => |op| try append_fmt(out, allocator, "{[indent]s}{[ty]s}.{[op]s}\n", .{ .indent = indent, .ty = scalar_wat_prefix(op.ty), .op = numeric_wat_name(op.op) }),
+        .compare => |op| try append_fmt(out, allocator, "{[indent]s}{[ty]s}.{[op]s}\n", .{ .indent = indent, .ty = scalar_wat_prefix(op.ty), .op = compare_wat_name(op.op) }),
+        .call => |name| try append_fmt(out, allocator, "{[indent]s}call ${[name]s}\n", .{ .indent = indent, .name = name }),
     }
 }
 
 fn emit_const_value_wat(out: *std.ArrayList(u8), allocator: std.mem.Allocator, indent: []const u8, value: ConstValue) !void {
     switch (value) {
-        .i32 => |v| try append_fmt(out, allocator, "{s}i32.const {d}\n", .{ indent, v }),
-        .i64 => |v| try append_fmt(out, allocator, "{s}i64.const {d}\n", .{ indent, v }),
-        .f32 => |v| try append_fmt(out, allocator, "{s}f32.const {d}\n", .{ indent, v }),
-        .f64 => |v| try append_fmt(out, allocator, "{s}f64.const {d}\n", .{ indent, v }),
+        .i32 => |v| try append_fmt(out, allocator, "{[indent]s}i32.const {[v]d}\n", .{ .indent = indent, .v = v }),
+        .i64 => |v| try append_fmt(out, allocator, "{[indent]s}i64.const {[v]d}\n", .{ .indent = indent, .v = v }),
+        .f32 => |v| try append_fmt(out, allocator, "{[indent]s}f32.const {[v]d}\n", .{ .indent = indent, .v = v }),
+        .f64 => |v| try append_fmt(out, allocator, "{[indent]s}f64.const {[v]d}\n", .{ .indent = indent, .v = v }),
     }
 }
 
@@ -431,11 +432,11 @@ fn emit_local_get_wat(out: *std.ArrayList(u8), allocator: std.mem.Allocator, fun
 }
 
 fn emit_local_write_wat(out: *std.ArrayList(u8), allocator: std.mem.Allocator, func: *const Function, indent: []const u8, op: []const u8, value: ValueId) !void {
-    try append_fmt(out, allocator, "{s}{s} $", .{ indent, op });
+    try append_fmt(out, allocator, "{[indent]s}{[op]s} $", .{ .indent = indent, .op = op });
     if (func.value_name(value)) |name| {
         try out.appendSlice(allocator, name);
     } else {
-        try append_fmt(out, allocator, "v{d}", .{value.index});
+        try append_fmt(out, allocator, "v{[index]d}", .{ .index = value.index });
     }
     try out.appendSlice(allocator, "\n");
 }
@@ -483,9 +484,7 @@ fn compare_wat_name(op: CompareOp) []const u8 {
 }
 
 fn append_fmt(out: *std.ArrayList(u8), allocator: std.mem.Allocator, comptime fmt: []const u8, args: anytype) !void {
-    const text = try std.fmt.allocPrint(allocator, fmt, args);
-    defer allocator.free(text);
-    try out.appendSlice(allocator, text);
+    try generated_text.append_fmt(allocator, out, fmt, args);
 }
 
 fn is_foldable_empty_branch_block(block: Block) bool {

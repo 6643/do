@@ -1,7 +1,7 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::sync::{
-    atomic::{AtomicU32, Ordering},
     Arc,
+    atomic::{AtomicU32, Ordering},
 };
 use wasmtime::component::{Component, Linker, Val};
 use wasmtime::{Config, Engine, Store};
@@ -41,7 +41,7 @@ fn main() -> Result<()> {
             _ => {
                 return Err(wasmtime::Error::msg(
                     "record lower parameter was not a record",
-                ))
+                ));
             }
         };
         if fields.len() != 3 {

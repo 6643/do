@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
@@ -712,7 +713,7 @@ pub fn emit_component_wit(allocator: std.mem.Allocator, tokens: []const lexer.To
 }
 
 fn emit_read_directory_wat(allocator: std.mem.Allocator, plan: ReadDirectoryPlan) ![]u8 {
-    var wat = try allocator.dupe(u8, read_directory_core_wat);
+    var wat = try generated_text.alloc_block(allocator, 0, read_directory_core_wat);
     errdefer allocator.free(wat);
     const record_shape = switch (p3_async_manifest.lowering_shape(plan.descriptor) orelse return error.UnsupportedP3WasiReadDirectoryComponent) {
         .record_stream_reader => |shape| shape,
@@ -724,19 +725,19 @@ fn emit_read_directory_wat(allocator: std.mem.Allocator, plan: ReadDirectoryPlan
     const record_name_len_offset = record_layout.field_offset("name-len") orelse return error.UnsupportedP3WasiReadDirectoryComponent;
     const export_name = try sanitized_export_name(allocator, plan.export_name);
     defer allocator.free(export_name);
-    const read_count_text = try std.fmt.allocPrint(allocator, "{d}", .{plan.read_count});
+    const read_count_text = try generated_text.alloc_fmt(allocator, "{[count]d}", .{ .count = plan.read_count });
     defer allocator.free(read_count_text);
-    const record_type_offset_text = try std.fmt.allocPrint(allocator, "{d}", .{record_type_offset});
+    const record_type_offset_text = try generated_text.alloc_fmt(allocator, "{[offset]d}", .{ .offset = record_type_offset });
     defer allocator.free(record_type_offset_text);
-    const record_name_ptr_offset_text = try std.fmt.allocPrint(allocator, "{d}", .{record_name_ptr_offset});
+    const record_name_ptr_offset_text = try generated_text.alloc_fmt(allocator, "{[offset]d}", .{ .offset = record_name_ptr_offset });
     defer allocator.free(record_name_ptr_offset_text);
-    const record_name_len_offset_text = try std.fmt.allocPrint(allocator, "{d}", .{record_name_len_offset});
+    const record_name_len_offset_text = try generated_text.alloc_fmt(allocator, "{[offset]d}", .{ .offset = record_name_len_offset });
     defer allocator.free(record_name_len_offset_text);
-    const task_return_name = try std.fmt.allocPrint(allocator, "[task-return]{s}", .{export_name});
+    const task_return_name = try generated_text.alloc_fmt(allocator, "[task-return]{[export_name]s}", .{ .export_name = export_name });
     defer allocator.free(task_return_name);
-    const async_lift_name = try std.fmt.allocPrint(allocator, "[async-lift]wasi:filesystem/probe@0.3.0-rc-2025-09-16#{s}", .{export_name});
+    const async_lift_name = try generated_text.alloc_fmt(allocator, "[async-lift]wasi:filesystem/probe@0.3.0-rc-2025-09-16#{[export_name]s}", .{ .export_name = export_name });
     defer allocator.free(async_lift_name);
-    const callback_async_lift_name = try std.fmt.allocPrint(allocator, "[callback][async-lift]wasi:filesystem/probe@0.3.0-rc-2025-09-16#{s}", .{export_name});
+    const callback_async_lift_name = try generated_text.alloc_fmt(allocator, "[callback][async-lift]wasi:filesystem/probe@0.3.0-rc-2025-09-16#{[export_name]s}", .{ .export_name = export_name });
     defer allocator.free(callback_async_lift_name);
     const replacements = [_][2][]const u8{
         .{ "[method-module]", plan.descriptor.canonical.async_import_module },
@@ -774,7 +775,7 @@ fn emit_read_directory_wat(allocator: std.mem.Allocator, plan: ReadDirectoryPlan
 fn emit_read_directory_wit(allocator: std.mem.Allocator, plan: ReadDirectoryPlan) ![]u8 {
     const export_name = try sanitized_export_name(allocator, plan.export_name);
     defer allocator.free(export_name);
-    const wit = try allocator.dupe(u8, read_directory_component_wit);
+    const wit = try generated_text.alloc_block(allocator, 0, read_directory_component_wit);
     return replace_and_free(allocator, wit, "[export-name]", export_name);
 }
 

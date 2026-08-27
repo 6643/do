@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
@@ -54,13 +55,13 @@ fn emit_record_stream_wat(allocator: std.mem.Allocator, plan: RecordStreamSource
     defer allocator.free(export_name);
     const export_locator = try component_export_locator(allocator, plan.descriptor.wit.package, "probe");
     defer allocator.free(export_locator);
-    const task_return_name = try std.fmt.allocPrint(allocator, "[task-return]{s}", .{export_name});
+    const task_return_name = try generated_text.alloc_fmt(allocator, "[task-return]{[export_name]s}", .{ .export_name = export_name });
     defer allocator.free(task_return_name);
-    const async_lift_name = try std.fmt.allocPrint(allocator, "[async-lift]{s}#{s}", .{ export_locator, export_name });
+    const async_lift_name = try generated_text.alloc_fmt(allocator, "[async-lift]{[locator]s}#{[export_name]s}", .{ .locator = export_locator, .export_name = export_name });
     defer allocator.free(async_lift_name);
-    const callback_name = try std.fmt.allocPrint(allocator, "[callback][async-lift]{s}#{s}", .{ export_locator, export_name });
+    const callback_name = try generated_text.alloc_fmt(allocator, "[callback][async-lift]{[locator]s}#{[export_name]s}", .{ .locator = export_locator, .export_name = export_name });
     defer allocator.free(callback_name);
-    const task_return_module = try std.fmt.allocPrint(allocator, "[export]{s}", .{export_locator});
+    const task_return_module = try generated_text.alloc_fmt(allocator, "[export]{[locator]s}", .{ .locator = export_locator });
     defer allocator.free(task_return_module);
     const record_area_text = try decimal_text(allocator, record_area_offset);
     defer allocator.free(record_area_text);
@@ -77,7 +78,7 @@ fn emit_record_stream_wat(allocator: std.mem.Allocator, plan: RecordStreamSource
     const wat_future_read_type = try wat_func_type(allocator, "future-read", future.read.?.core_params, future.read.?.core_results);
     defer allocator.free(wat_future_read_type);
 
-    var wat = try allocator.dupe(u8, generic_record_stream_core_wat);
+    var wat = try generated_text.alloc_block(allocator, 0, generic_record_stream_core_wat);
     errdefer allocator.free(wat);
     const replacements = [_][2][]const u8{
         .{ "[method-type]", method_type },
@@ -129,35 +130,111 @@ fn emit_record_stream_wit(allocator: std.mem.Allocator, plan: RecordStreamSource
         defer allocator.free(resource_declarations);
         const nested_declarations = try build_nested_wit_record_declarations(allocator, layout);
         defer allocator.free(nested_declarations);
-        try append_fmt(allocator, &wit, "package {s};\n\ninterface types {{\n  enum error-code {{ io, no-entry }}\n}}\n\ninterface {s} {{\n  use types.{{error-code}};\n{s}{s}  record {s} {{\n", .{ plan.descriptor.wit.package, interface_name, resource_declarations, nested_declarations, record_name });
+        try generated_text.append_fmt_block(allocator, &wit, 0,
+            \\package {[package]s};
+            \\
+            \\interface types {{
+            \\  enum error-code {{ io, no-entry }}
+            \\}}
+            \\
+            \\interface {[interface]s} {{
+            \\  use types.{{error-code}};
+            \\{[resources]s}{[nested]s}  record {[record]s} {{
+            \\
+            , .{
+                .package = plan.descriptor.wit.package,
+                .interface = interface_name,
+                .resources = resource_declarations,
+                .nested = nested_declarations,
+                .record = record_name,
+            });
         try append_wit_record_fields(allocator, &wit, layout);
-        try append_fmt(allocator, &wit, "  }}\n  {s}: func() -> tuple<stream<{s}>, future<result<_, error-code>>>;\n}}\n\ninterface probe {{\n  use types.{{error-code}};\n  {s}: async func() -> result<_, error-code>;\n}}\n\nworld {s} {{\n  import types;\n  import {s};\n  export probe;\n}}\n", .{ wit_name_borrowed(plan.descriptor.wit.operation), record_name, export_name, world_name, interface_name });
+        try generated_text.append_fmt_block(allocator, &wit, 0,
+            \\  }}
+            \\  {[operation]s}: func() -> tuple<stream<{[record]s}>, future<result<_, error-code>>>;
+            \\}}
+            \\
+            \\interface probe {{
+            \\  use types.{{error-code}};
+            \\  {[export_name]s}: async func() -> result<_, error-code>;
+            \\}}
+            \\
+            \\world {[world]s} {{
+            \\  import types;
+            \\  import {[interface]s};
+            \\  export probe;
+            \\}}
+            \\
+            , .{
+                .operation = wit_name_borrowed(plan.descriptor.wit.operation),
+                .record = record_name,
+                .export_name = export_name,
+                .world = world_name,
+                .interface = interface_name,
+            });
         return wit.toOwnedSlice(allocator);
     }
-    try append_fmt(allocator, &wit, "package {s};\n\ninterface types {{\n  record {s} {{\n", .{ plan.descriptor.wit.package, record_name });
+    try generated_text.append_fmt_block(allocator, &wit, 0,
+        \\package {[package]s};
+        \\
+        \\interface types {{
+        \\  record {[record]s} {{
+        \\
+        , .{
+            .package = plan.descriptor.wit.package,
+            .record = record_name,
+        });
     for (layout.source_fields) |field| {
         const field_name = try wit_name(allocator, field.name);
         defer allocator.free(field_name);
-        try append_fmt(allocator, &wit, "    {s}: {s},\n", .{ field_name, wit_source_type(field.source_type) });
+        try append_fmt(allocator, &wit, "    {[field]s}: {[type]s},\n", .{
+            .field = field_name,
+            .type = wit_source_type(field.source_type),
+        });
     }
-    try append_fmt(allocator, &wit, "  }}\n  enum error-code {{ io, no-entry }}\n}}\n\ninterface {s} {{\n  use types.{{error-code, {s}}};\n  {s}: func() -> tuple<stream<{s}>, future<result<_, error-code>>>;\n}}\n\ninterface probe {{\n  use types.{{error-code}};\n  {s}: async func() -> result<_, error-code>;\n}}\n\nworld {s} {{\n  import types;\n  import {s};\n  export probe;\n}}\n", .{ interface_name, record_name, wit_name_borrowed(plan.descriptor.wit.operation), record_name, export_name, world_name, interface_name });
+    try generated_text.append_fmt_block(allocator, &wit, 0,
+        \\  }}
+        \\  enum error-code {{ io, no-entry }}
+        \\}}
+        \\
+        \\interface {[interface]s} {{
+        \\  use types.{{error-code, {[record]s}}};
+        \\  {[operation]s}: func() -> tuple<stream<{[record]s}>, future<result<_, error-code>>>;
+        \\}}
+        \\
+        \\interface probe {{
+        \\  use types.{{error-code}};
+        \\  {[export_name]s}: async func() -> result<_, error-code>;
+        \\}}
+        \\
+        \\world {[world]s} {{
+        \\  import types;
+        \\  import {[interface]s};
+        \\  export probe;
+        \\}}
+        \\
+        , .{
+            .interface = interface_name,
+            .record = record_name,
+            .operation = wit_name_borrowed(plan.descriptor.wit.operation),
+            .export_name = export_name,
+            .world = world_name,
+        });
     return wit.toOwnedSlice(allocator);
 }
 
 fn append_fmt(allocator: std.mem.Allocator, out: *std.ArrayList(u8), comptime fmt: []const u8, args: anytype) !void {
-    const rendered = try std.fmt.allocPrint(allocator, fmt, args);
-    defer allocator.free(rendered);
-    try out.appendSlice(allocator, rendered);
+    try generated_text.append_fmt(allocator, out, fmt, args);
 }
 
 fn wat_func_type(allocator: std.mem.Allocator, name: []const u8, params: []const []const u8, results: []const []const u8) ![]u8 {
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
-    try append_fmt(allocator, &out, "(type ${s} (func", .{name});
-    for (params) |param| try append_fmt(allocator, &out, " (param {s})", .{param});
+    try append_fmt(allocator, &out, "(type ${[name]s} (func", .{ .name = name });
+    for (params) |param| try append_fmt(allocator, &out, " (param {[param]s})", .{ .param = param });
     if (results.len != 0) {
         try out.appendSlice(allocator, " (result");
-        for (results) |result| try append_fmt(allocator, &out, " {s}", .{result});
+        for (results) |result| try append_fmt(allocator, &out, " {[result]s}", .{ .result = result });
         try out.appendSlice(allocator, ")");
     }
     try out.appendSlice(allocator, "))");
@@ -165,7 +242,7 @@ fn wat_func_type(allocator: std.mem.Allocator, name: []const u8, params: []const
 }
 
 fn decimal_text(allocator: std.mem.Allocator, value: u32) ![]u8 {
-    return std.fmt.allocPrint(allocator, "{d}", .{value});
+    return generated_text.alloc_fmt(allocator, "{[value]d}", .{ .value = value });
 }
 
 fn align_u32(value: u32, alignment: u32) u32 {
@@ -212,15 +289,23 @@ fn build_record_field_markers(allocator: std.mem.Allocator, layout: p3_async_man
             continue;
         }
         if (field.ownership == .own) {
-            try append_fmt(allocator, &out, "    ;; [record-resource-field-{s}]\n", .{field.resource.?});
+            try append_fmt(allocator, &out, "    ;; [record-resource-field-{[resource]s}]\n", .{ .resource = field.resource.? });
         }
         if (field.storage.len == 1) {
             const offset = storage_offset(layout, field.storage[0]) orelse return error.UnsupportedP3RecordStreamComponent;
-            try append_fmt(allocator, &out, "    ;; [record-field-{s}-offset] {d}\n", .{ field.name, offset });
+            try append_fmt(allocator, &out, "    ;; [record-field-{[field]s}-offset] {[offset]d}\n", .{ .field = field.name, .offset = offset });
         } else if (field.storage.len == 2) {
             const ptr_offset = storage_offset(layout, field.storage[0]) orelse return error.UnsupportedP3RecordStreamComponent;
             const len_offset = storage_offset(layout, field.storage[1]) orelse return error.UnsupportedP3RecordStreamComponent;
-            try append_fmt(allocator, &out, "    ;; [record-field-{s}-ptr-offset] {d}\n    ;; [record-field-{s}-len-offset] {d}\n", .{ field.name, ptr_offset, field.name, len_offset });
+            try generated_text.append_fmt_block(allocator, &out, 4,
+                \\;; [record-field-{[field]s}-ptr-offset] {[ptr]d}
+                \\;; [record-field-{[field]s}-len-offset] {[len]d}
+                \\
+                , .{
+                    .field = field.name,
+                    .ptr = ptr_offset,
+                    .len = len_offset,
+                });
         }
     }
     return out.toOwnedSlice(allocator);
@@ -238,7 +323,15 @@ fn append_nested_field_markers(
     }
     if (field.ownership != .own or field.storage.len != 1 or field.resource == null) return error.UnsupportedP3RecordStreamComponent;
     const offset = storage_offset(layout, field.storage[0]) orelse return error.UnsupportedP3RecordStreamComponent;
-    try append_fmt(allocator, out, "    ;; [record-resource-field-{s}]\n    ;; [record-field-{s}-offset] {d}\n", .{ field.resource.?, field.name, offset });
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\;; [record-resource-field-{[resource]s}]
+        \\;; [record-field-{[field]s}-offset] {[offset]d}
+        \\
+        , .{
+            .resource = field.resource.?,
+            .field = field.name,
+            .offset = offset,
+        });
 }
 
 fn build_record_decode_body(allocator: std.mem.Allocator, layout: p3_async_manifest.RecordLayout, record_area_offset: u32, owned_area_offset: u32, record_active_offset: u32) ![]u8 {
@@ -255,13 +348,63 @@ fn build_record_decode_body(allocator: std.mem.Allocator, layout: p3_async_manif
         if (field.ownership == .own) {
             if (field.storage.len != 1) return error.UnsupportedP3RecordStreamComponent;
             const offset = storage_offset(layout, field.storage[0]) orelse return error.UnsupportedP3RecordStreamComponent;
-            try append_fmt(allocator, &out, "    ;; owned resource field {s}\n    local.get $frame\n    i32.const {d}\n    i32.add\n    local.get $frame\n    i32.const {d}\n    i32.add\n    i32.const {d}\n    i32.add\n    i32.load\n    i32.store\n    local.get $frame\n    i32.const {d}\n    i32.add\n    i32.const 1\n    i32.store\n", .{ field.name, owned_area_offset + owned_cursor, record_area_offset, offset, record_active_offset });
+            try generated_text.append_fmt_block(allocator, &out, 4,
+                \\;; owned resource field {[field]s}
+                \\local.get $frame
+                \\i32.const {[owned_offset]d}
+                \\i32.add
+                \\local.get $frame
+                \\i32.const {[record_area]d}
+                \\i32.add
+                \\i32.const {[field_offset]d}
+                \\i32.add
+                \\i32.load
+                \\i32.store
+                \\local.get $frame
+                \\i32.const {[active_offset]d}
+                \\i32.add
+                \\i32.const 1
+                \\i32.store
+                \\
+                , .{
+                    .field = field.name,
+                    .owned_offset = owned_area_offset + owned_cursor,
+                    .record_area = record_area_offset,
+                    .field_offset = offset,
+                    .active_offset = record_active_offset,
+                });
             owned_cursor += try owned_field_size(layout, field);
         } else if (std.mem.eql(u8, field.source_type, "string")) {
             if (field.storage.len != 2) return error.UnsupportedP3RecordStreamComponent;
             const ptr_offset = storage_offset(layout, field.storage[0]) orelse return error.UnsupportedP3RecordStreamComponent;
             const len_offset = storage_offset(layout, field.storage[1]) orelse return error.UnsupportedP3RecordStreamComponent;
-            try append_fmt(allocator, &out, "    ;; source field {s}: UTF-8 pointer/length copied into owned storage\n    local.get $frame\n    i32.const {d}\n    i32.add\n    local.get $frame\n    i32.const {d}\n    i32.add\n    i32.const {d}\n    i32.add\n    i32.load\n    local.get $frame\n    i32.const {d}\n    i32.add\n    i32.const {d}\n    i32.add\n    i32.load\n    call $copy-text\n    i32.store\n", .{ field.name, owned_area_offset + owned_cursor, record_area_offset, ptr_offset, record_area_offset, len_offset });
+            try generated_text.append_fmt_block(allocator, &out, 4,
+                \\;; source field {[field]s}: UTF-8 pointer/length copied into owned storage
+                \\local.get $frame
+                \\i32.const {[owned_offset]d}
+                \\i32.add
+                \\local.get $frame
+                \\i32.const {[record_area]d}
+                \\i32.add
+                \\i32.const {[ptr_offset]d}
+                \\i32.add
+                \\i32.load
+                \\local.get $frame
+                \\i32.const {[record_area]d}
+                \\i32.add
+                \\i32.const {[len_offset]d}
+                \\i32.add
+                \\i32.load
+                \\call $copy-text
+                \\i32.store
+                \\
+                , .{
+                    .field = field.name,
+                    .owned_offset = owned_area_offset + owned_cursor,
+                    .record_area = record_area_offset,
+                    .ptr_offset = ptr_offset,
+                    .len_offset = len_offset,
+                });
             owned_cursor += try owned_field_size(layout, field);
         } else {
             if (field.storage.len != 1) return error.UnsupportedP3RecordStreamComponent;
@@ -270,7 +413,27 @@ fn build_record_decode_body(allocator: std.mem.Allocator, layout: p3_async_manif
             const core_type = field_core_type(layout, storage_name) orelse return error.UnsupportedP3RecordStreamComponent;
             const load = core_load(core_type) orelse return error.UnsupportedP3RecordStreamComponent;
             const store = core_store(core_type) orelse return error.UnsupportedP3RecordStreamComponent;
-            try append_fmt(allocator, &out, "    ;; source field {s}\n    local.get $frame\n    i32.const {d}\n    i32.add\n    local.get $frame\n    i32.const {d}\n    i32.add\n    i32.const {d}\n    i32.add\n    {s}\n    {s}\n", .{ field.name, owned_area_offset + owned_cursor, record_area_offset, offset, load, store });
+            try generated_text.append_fmt_block(allocator, &out, 4,
+                \\;; source field {[field]s}
+                \\local.get $frame
+                \\i32.const {[owned_offset]d}
+                \\i32.add
+                \\local.get $frame
+                \\i32.const {[record_area]d}
+                \\i32.add
+                \\i32.const {[field_offset]d}
+                \\i32.add
+                \\{[load]s}
+                \\{[store]s}
+                \\
+                , .{
+                    .field = field.name,
+                    .owned_offset = owned_area_offset + owned_cursor,
+                    .record_area = record_area_offset,
+                    .field_offset = offset,
+                    .load = load,
+                    .store = store,
+                });
             owned_cursor += try owned_field_size(layout, field);
         }
     }
@@ -293,7 +456,33 @@ fn append_nested_decode_body(
     }
     if (field.ownership != .own or field.storage.len != 1 or field.resource == null) return error.UnsupportedP3RecordStreamComponent;
     const offset = storage_offset(layout, field.storage[0]) orelse return error.UnsupportedP3RecordStreamComponent;
-    try append_fmt(allocator, out, "    ;; nested owned resource field {s}\n    ;; [record-resource-field-{s}]\n    local.get $frame\n    i32.const {d}\n    i32.add\n    local.get $frame\n    i32.const {d}\n    i32.add\n    i32.const {d}\n    i32.add\n    i32.load\n    i32.store\n    local.get $frame\n    i32.const {d}\n    i32.add\n    i32.const 1\n    i32.store\n", .{ field.name, field.resource.?, owned_area_offset + owned_cursor.*, record_area_offset, offset, record_active_offset });
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\;; nested owned resource field {[field]s}
+        \\;; [record-resource-field-{[resource]s}]
+        \\local.get $frame
+        \\i32.const {[owned_offset]d}
+        \\i32.add
+        \\local.get $frame
+        \\i32.const {[record_area]d}
+        \\i32.add
+        \\i32.const {[field_offset]d}
+        \\i32.add
+        \\i32.load
+        \\i32.store
+        \\local.get $frame
+        \\i32.const {[active_offset]d}
+        \\i32.add
+        \\i32.const 1
+        \\i32.store
+        \\
+        , .{
+            .field = field.name,
+            .resource = field.resource.?,
+            .owned_offset = owned_area_offset + owned_cursor.*,
+            .record_area = record_area_offset,
+            .field_offset = offset,
+            .active_offset = record_active_offset,
+        });
     owned_cursor.* += 4;
 }
 
@@ -340,7 +529,7 @@ fn append_wit_resource_declaration(
     try seen.append(allocator, resource);
     const resource_name = try wit_name(allocator, resource);
     defer allocator.free(resource_name);
-    try append_fmt(allocator, out, "  resource {s} {{}}\n", .{resource_name});
+    try append_fmt(allocator, out, "  resource {[name]s} {{}}\n", .{ .name = resource_name });
 }
 
 fn append_nested_wit_resources(
@@ -397,7 +586,7 @@ fn append_nested_wit_record_declaration(
     }
     const record_name = try wit_name(allocator, record_source_type);
     defer allocator.free(record_name);
-    try append_fmt(allocator, out, "  record {s} {{\n", .{record_name});
+    try append_fmt(allocator, out, "  record {[name]s} {{\n", .{ .name = record_name });
     for (fields) |field| {
         const field_name = try wit_name(allocator, field.name);
         defer allocator.free(field_name);
@@ -405,11 +594,11 @@ fn append_nested_wit_record_declaration(
             if (field.nested_fields.len != 1) return error.UnsupportedP3RecordStreamComponent;
             const nested_name = try wit_name(allocator, field.source_type);
             defer allocator.free(nested_name);
-            try append_fmt(allocator, out, "    {s}: {s},\n", .{ field_name, nested_name });
+            try append_fmt(allocator, out, "    {[field]s}: {[nested]s},\n", .{ .field = field_name, .nested = nested_name });
         } else if (field.ownership == .own) {
             const resource_name = try wit_name(allocator, field.resource orelse return error.UnsupportedP3RecordStreamComponent);
             defer allocator.free(resource_name);
-            try append_fmt(allocator, out, "    {s}: own<{s}>,\n", .{ field_name, resource_name });
+            try append_fmt(allocator, out, "    {[field]s}: own<{[resource]s}>,\n", .{ .field = field_name, .resource = resource_name });
         } else {
             return error.UnsupportedP3RecordStreamComponent;
         }
@@ -424,13 +613,13 @@ fn append_wit_record_fields(allocator: std.mem.Allocator, out: *std.ArrayList(u8
         if (field.nested_fields.len != 0) {
             const nested_name = try wit_name(allocator, field.source_type);
             defer allocator.free(nested_name);
-            try append_fmt(allocator, out, "    {s}: {s},\n", .{ field_name, nested_name });
+            try append_fmt(allocator, out, "    {[field]s}: {[nested]s},\n", .{ .field = field_name, .nested = nested_name });
         } else if (field.ownership == .own) {
             const resource_name = try wit_name(allocator, field.resource.?);
             defer allocator.free(resource_name);
-            try append_fmt(allocator, out, "    {s}: own<{s}>,\n", .{ field_name, resource_name });
+            try append_fmt(allocator, out, "    {[field]s}: own<{[resource]s}>,\n", .{ .field = field_name, .resource = resource_name });
         } else {
-            try append_fmt(allocator, out, "    {s}: {s},\n", .{ field_name, wit_source_type(field.source_type) });
+            try append_fmt(allocator, out, "    {[field]s}: {[type]s},\n", .{ .field = field_name, .type = wit_source_type(field.source_type) });
         }
     }
 }
@@ -469,7 +658,7 @@ fn append_resource_drop_import(
     try seen.append(allocator, .{ .resource = resource, .drop_import = drop_import });
     const resource_name = try sanitized_name(allocator, resource);
     defer allocator.free(resource_name);
-    try append_fmt(allocator, out, "    (import \"{s}\" \"{s}\" (func $resource-drop-{s} (type $resource-drop)))\n", .{ module, drop_import, resource_name });
+    try append_fmt(allocator, out, "    (import \"{[module]s}\" \"{[drop_import]s}\" (func $resource-drop-{[resource]s} (type $resource-drop)))\n", .{ .module = module, .drop_import = drop_import, .resource = resource_name });
 }
 
 fn append_nested_resource_drop_imports(
@@ -496,7 +685,16 @@ fn build_record_resource_release_body(allocator: std.mem.Allocator, layout: p3_a
     errdefer out.deinit(allocator);
     if (!has_owned_resource_field(layout)) return out.toOwnedSlice(allocator);
 
-    try append_fmt(allocator, &out, "    local.get $frame\n    i32.const {d}\n    i32.add\n    i32.load\n    i32.eqz\n    if\n    else\n", .{record_active_offset});
+    try generated_text.append_fmt_block(allocator, &out, 4,
+        \\local.get $frame
+        \\i32.const {[active_offset]d}
+        \\i32.add
+        \\i32.load
+        \\i32.eqz
+        \\if
+        \\else
+        \\
+        , .{ .active_offset = record_active_offset });
     var owned_cursor: u32 = 0;
     for (layout.source_fields) |field| {
         if (field.nested_fields.len != 0) {
@@ -514,7 +712,15 @@ fn build_record_resource_release_body(allocator: std.mem.Allocator, layout: p3_a
             owned_cursor += try owned_field_size(layout, field);
         }
     }
-    try append_fmt(allocator, &out, "      local.get $frame\n      i32.const {d}\n      i32.add\n      i32.const 0\n      i32.store\n    end\n", .{record_active_offset});
+    try generated_text.append_fmt_block(allocator, &out, 4,
+        \\  local.get $frame
+        \\  i32.const {[active_offset]d}
+        \\  i32.add
+        \\  i32.const 0
+        \\  i32.store
+        \\end
+        \\
+        , .{ .active_offset = record_active_offset });
     return out.toOwnedSlice(allocator);
 }
 
@@ -542,7 +748,29 @@ fn append_resource_release(
 ) !void {
     const resource_name = try sanitized_name(allocator, resource);
     defer allocator.free(resource_name);
-    try append_fmt(allocator, out, "      ;; [record-resource-release-{s}]\n      local.get $frame\n      i32.const {d}\n      i32.add\n      i32.load\n      i32.eqz\n      if\n      else\n        local.get $frame\n        i32.const {d}\n        i32.add\n        i32.load\n        local.tee $record-handle\n        call $resource-drop-{s}\n        local.get $frame\n        i32.const {d}\n        i32.add\n        i32.const 0\n        i32.store\n      end\n", .{ resource_name, offset, offset, resource_name, offset });
+    try generated_text.append_fmt_block(allocator, out, 6,
+        \\;; [record-resource-release-{[resource]s}]
+        \\local.get $frame
+        \\i32.const {[offset]d}
+        \\i32.add
+        \\i32.load
+        \\i32.eqz
+        \\if
+        \\else
+        \\  local.get $frame
+        \\  i32.const {[offset]d}
+        \\  i32.add
+        \\  i32.load
+        \\  local.tee $record-handle
+        \\  call $resource-drop-{[resource]s}
+        \\  local.get $frame
+        \\  i32.const {[offset]d}
+        \\  i32.add
+        \\  i32.const 0
+        \\  i32.store
+        \\end
+        \\
+        , .{ .resource = resource_name, .offset = offset });
 }
 
 fn storage_offset(layout: p3_async_manifest.RecordLayout, name: []const u8) ?u32 {
@@ -604,7 +832,11 @@ fn wit_name_borrowed(source_name: []const u8) []const u8 {
 
 fn component_export_locator(allocator: std.mem.Allocator, package: []const u8, interface_name: []const u8) ![]u8 {
     const version_start = std.mem.indexOfScalar(u8, package, '@') orelse return error.UnsupportedP3RecordStreamComponent;
-    return std.fmt.allocPrint(allocator, "{s}/{s}@{s}", .{ package[0..version_start], interface_name, package[version_start + 1 ..] });
+    return generated_text.alloc_fmt(allocator, "{[package]s}/{[interface]s}@{[version]s}", .{
+        .package = package[0..version_start],
+        .interface = interface_name,
+        .version = package[version_start + 1 ..],
+    });
 }
 
 fn replace_and_free(allocator: std.mem.Allocator, input: []u8, needle: []const u8, replacement: []const u8) ![]u8 {

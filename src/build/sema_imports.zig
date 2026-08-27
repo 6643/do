@@ -1929,6 +1929,37 @@ test "ordinary host imports accept custom WIT package locators" {
     try check_host_imports(std.testing.allocator, tokens);
 }
 
+test "ordinary host imports accept a public classic record parameter" {
+    const source =
+        \\Writing {
+        \\    code u32
+        \\    label text
+        \\    note text
+        \\}
+        \\write = @host_func("demo:marshal-record-managed-lower-multi/api@1.0.0", "write", (Writing) -> nil)
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try check_host_imports(std.testing.allocator, tokens);
+}
+
+test "async host scan ignores an ordinary custom record host import" {
+    const source =
+        \\Writing {
+        \\    code u32
+        \\    label text
+        \\    note text
+        \\}
+        \\write = @host_func("demo:marshal-record-managed-lower-multi/api@1.0.0", "write", (Writing) -> nil)
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
 test "host_func is the strict synchronous host marker" {
     const source =
         \\host_add = @host_func("env", "add", (i32) -> i32)

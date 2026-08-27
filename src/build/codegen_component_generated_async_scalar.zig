@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
 const imports = @import("imports.zig");
@@ -24,7 +25,7 @@ pub fn emit_component_wit(allocator: std.mem.Allocator, tokens: []const lexer.To
         @embedFile("generated_async_scalar_i64_component.wit")
         else
         @embedFile("generated_async_scalar_component.wit");
-    return allocator.dupe(u8, source);
+    return generated_text.alloc_block(allocator, 0, source);
 }
 
 pub fn emit_component_wit_with_graph(
@@ -38,22 +39,22 @@ pub fn emit_component_wit_with_graph(
         @embedFile("generated_async_scalar_i64_component.wit")
     else
         @embedFile("generated_async_scalar_component.wit");
-    return allocator.dupe(u8, source);
+    return generated_text.alloc_block(allocator, 0, source);
 }
 
 fn render_wat(
     allocator: std.mem.Allocator,
     plan: generated_async_scalar_plan.GeneratedAsyncScalarPlan,
 ) ![]u8 {
-    var wat = try allocator.dupe(u8, @embedFile("generated_async_scalar_component_template.wat"));
+    var wat = try generated_text.alloc_block(allocator, 0, @embedFile("generated_async_scalar_component_template.wat"));
     errdefer allocator.free(wat);
 
-    var offset_buf: [32]u8 = undefined;
-    var byte_size_buf: [32]u8 = undefined;
-    var alignment_buf: [32]u8 = undefined;
-    const offset = try std.fmt.bufPrint(&offset_buf, "{}", .{plan.payload.offset});
-    const byte_size = try std.fmt.bufPrint(&byte_size_buf, "{}", .{plan.payload.byte_size});
-    const alignment = try std.fmt.bufPrint(&alignment_buf, "{}", .{plan.payload.alignment});
+    const offset = try generated_text.alloc_fmt(allocator, "{[value]d}", .{ .value = plan.payload.offset });
+    defer allocator.free(offset);
+    const byte_size = try generated_text.alloc_fmt(allocator, "{[value]d}", .{ .value = plan.payload.byte_size });
+    defer allocator.free(byte_size);
+    const alignment = try generated_text.alloc_fmt(allocator, "{[value]d}", .{ .value = plan.payload.alignment });
+    defer allocator.free(alignment);
     const payload_ops = payload_operations(plan.payload) orelse return invalid_template;
 
     wat = try replace_required(allocator, wat, "__ASYNC_IMPORT_MODULE__", plan.async_import_module);

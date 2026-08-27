@@ -137,17 +137,20 @@ pub fn write_package(dir: std.Io.Dir, io: std.Io) !void {
 fn append_async_payload_alias(allocator: std.mem.Allocator, types: []const u8) ![]u8 {
     const close = std.mem.lastIndexOf(u8, types, "\n}\n") orelse return error.InvalidPinnedHttpResourceGraph;
     const alias =
-        "\n  /// Internal payload alias used only to resolve async intrinsic payload types.\n" ++
-        "  consume-body-payload: func(\n" ++
-        "    this: response,\n" ++
-        "    res: future<result<_, error-code>>,\n" ++
-        "  ) -> tuple<stream<u8>, future<result<option<trailers>, error-code>>>;\n" ++
-        "  request-new-payload: func(\n" ++
-        "    headers: headers,\n" ++
-        "    contents: option<stream<u8>>,\n" ++
-        "    trailers: future<result<option<trailers>, error-code>>,\n" ++
-        "    options: option<request-options>,\n" ++
-        "  ) -> tuple<request, future<result<_, error-code>>>;\n";
+                \\
+        \\  /// Internal payload alias used only to resolve async intrinsic payload types.
+        \\  consume-body-payload: func(
+        \\    this: response,
+        \\    res: future<result<_, error-code>>,
+        \\  ) -> tuple<stream<u8>, future<result<option<trailers>, error-code>>>;
+        \\  request-new-payload: func(
+        \\    headers: headers,
+        \\    contents: option<stream<u8>>,
+        \\    trailers: future<result<option<trailers>, error-code>>,
+        \\    options: option<request-options>,
+        \\  ) -> tuple<request, future<result<_, error-code>>>;
+        \\
+        ;
 
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);

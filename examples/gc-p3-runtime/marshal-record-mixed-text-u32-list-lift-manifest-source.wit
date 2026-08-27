@@ -1,0 +1,11 @@
+package demo:marshal-record-mixed-text-u32-list-lift@1.0.0;
+
+interface api {
+  record reading {
+    code: u32,
+    label: string,
+    payload: list<u32>,
+  }
+
+  read: func() -> reading;
+}

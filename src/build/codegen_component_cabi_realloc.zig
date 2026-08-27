@@ -1,4 +1,10 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
+
+const InsertionKind = enum {
+    single_line,
+    block,
+};
 
 pub const Error = error{
     MissingMemoryExport,
@@ -12,15 +18,17 @@ pub fn rewrite(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     errdefer allocator.free(output);
 
     if (std.mem.indexOf(u8, output, "[cabi-budget-runtime]") != null) {
-        output = try replace_all(allocator, output, "[cabi-budget-runtime]", budget_runtime);
+        const rendered = try generated_text.alloc_block(allocator, 2, budget_runtime);
+        defer allocator.free(rendered);
+        output = try replace_all(allocator, output, "[cabi-budget-runtime]", rendered);
     } else {
         if (std.mem.indexOf(u8, output, "(func $async-byte-budget-reserve") == null) {
-            const next = try insert_after_memory(allocator, output, budget_helpers);
+            const next = try insert_after_memory(allocator, output, budget_helpers, .block);
             allocator.free(output);
             output = next;
         }
         if (std.mem.indexOf(u8, output, "(global $heap-next") == null) {
-            const next = try insert_after_memory(allocator, output, heap_global);
+            const next = try insert_after_memory(allocator, output, heap_global, .single_line);
             allocator.free(output);
             output = next;
         }
@@ -31,16 +39,34 @@ pub fn rewrite(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     return output;
 }
 
-fn insert_after_memory(allocator: std.mem.Allocator, input: []const u8, insertion: []const u8) ![]u8 {
+fn insert_after_memory(allocator: std.mem.Allocator, input: []const u8, insertion: []const u8, kind: InsertionKind) ![]u8 {
     const memory_start = std.mem.indexOf(u8, input, "(memory (export \"memory\")") orelse return error.MissingMemoryExport;
     const line_end = std.mem.indexOfPos(u8, input, memory_start, "\n") orelse return error.MissingMemoryExport;
-    return std.fmt.allocPrint(allocator, "{s}{s}\n{s}", .{ input[0 .. line_end + 1], insertion, input[line_end + 1 ..] });
+    const rendered = switch (kind) {
+        .single_line => try allocator.dupe(u8, insertion),
+        .block => try generated_text.alloc_block(allocator, 2, insertion),
+    };
+    defer allocator.free(rendered);
+    var output = std.ArrayList(u8).empty;
+    errdefer output.deinit(allocator);
+    try output.appendSlice(allocator, input[0 .. line_end + 1]);
+    try output.appendSlice(allocator, rendered);
+    try output.append(allocator, '\n');
+    try output.appendSlice(allocator, input[line_end + 1 ..]);
+    return output.toOwnedSlice(allocator);
 }
 
 fn replace_realloc(allocator: std.mem.Allocator, input: []u8) ![]u8 {
     const start = std.mem.indexOf(u8, input, "  (func (export \"cabi_realloc\")") orelse return allocator.dupe(u8, input);
     const end = find_form_end(input, start) orelse return allocator.dupe(u8, input);
-    return std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ input[0..start], realloc_func, input[end..] });
+    const rendered = try generated_text.alloc_block(allocator, 2, realloc_func);
+    defer allocator.free(rendered);
+    var output = std.ArrayList(u8).empty;
+    errdefer output.deinit(allocator);
+    try output.appendSlice(allocator, input[0..start]);
+    try output.appendSlice(allocator, rendered);
+    try output.appendSlice(allocator, input[end..]);
+    return output.toOwnedSlice(allocator);
 }
 
 fn find_form_end(input: []const u8, start: usize) ?usize {
@@ -124,9 +150,7 @@ fn replace_all(allocator: std.mem.Allocator, input: []u8, needle: []const u8, re
     return output.toOwnedSlice(allocator);
 }
 
-const heap_global =
-    \\  (global $heap-next (mut i32) (i32.const 65536))
-;
+const heap_global = "  (global $heap-next (mut i32) (i32.const 65536))\n";
 
 const budget_helpers =
     \\  ;; [async-byte-budget-limit] -1

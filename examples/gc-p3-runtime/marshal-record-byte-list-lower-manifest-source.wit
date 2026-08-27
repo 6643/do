@@ -1,0 +1,10 @@
+package demo:marshal-record-byte-list-lower@1.0.0;
+
+interface api {
+  record writing {
+    code: u32,
+    payload: list<u8>,
+  }
+
+  write: func(value: writing);
+}

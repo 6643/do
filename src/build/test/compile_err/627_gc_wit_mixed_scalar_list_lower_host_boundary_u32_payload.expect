@@ -1,0 +1,3 @@
+# build-arg: --gc-wit-marshal
+# build-arg: demo:marshal-record-mixed-scalar-list-lower/api.write@1.0.0/lower
+GcWitHostRecordMismatch

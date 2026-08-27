@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const lexer = @import("lexer.zig");
 const p3_async_manifest = @import("p3_async_manifest.zig");
 const wit_abi_layout = @import("wit_abi_layout.zig");
@@ -73,7 +74,7 @@ pub fn emit_component_wat(allocator: std.mem.Allocator, plan: ScalarListStreamPr
     if (plan.layout.result_pointer_offset != 64 or plan.layout.result_length_offset != 68 or
         plan.layout.element_stride != 4 or plan.layout.max_items != 3 or
         plan.producer.stream_capacity != 1) return error.UnsupportedP3ScalarListProducer;
-    return allocator.dupe(u8, canonical_core_wat);
+    return generated_text.alloc_block(allocator, 0, canonical_core_wat);
 }
 
 pub fn emit_component_wat_for_tokens(allocator: std.mem.Allocator, tokens: []const lexer.Token) ![]u8 {
@@ -86,12 +87,25 @@ pub fn emit_component_wat_for_tokens(allocator: std.mem.Allocator, tokens: []con
 pub fn emit_component_wit(allocator: std.mem.Allocator, plan: ScalarListStreamProducerPlan) ![]u8 {
     try validate_internal_plans(allocator, plan);
     if (!std.mem.eql(u8, plan.descriptor.wit.world, "scalar-list-producer")) return error.UnsupportedP3ScalarListProducer;
-    return allocator.dupe(
-        u8,
-        "package do:g6-2-scalar-list-producer@0.1.0;\n\n" ++
-            "interface types {\n  enum error-code { io, pipe, invalid-mode }\n}\n\n" ++
-            "interface sink {\n  use types.{error-code};\n  consume-via-stream: async func(data: stream<list<u32>>) -> result<_, error-code>;\n}\n\n" ++
-            "world scalar-list-producer {\n  use types.{error-code};\n  import sink;\n  export produce: async func(count: u32) -> result<_, error-code>;\n}\n",
+    return generated_text.alloc_block(allocator, 0,
+                \\package do:g6-2-scalar-list-producer@0.1.0;
+        \\
+        \\interface types {
+        \\  enum error-code { io, pipe, invalid-mode }
+        \\}
+        \\
+        \\interface sink {
+        \\  use types.{error-code};
+        \\  consume-via-stream: async func(data: stream<list<u32>>) -> result<_, error-code>;
+        \\}
+        \\
+        \\world scalar-list-producer {
+        \\  use types.{error-code};
+        \\  import sink;
+        \\  export produce: async func(count: u32) -> result<_, error-code>;
+        \\}
+        \\
+        ,
     );
 }
 

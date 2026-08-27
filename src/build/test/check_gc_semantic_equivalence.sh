@@ -96,6 +96,8 @@ nested-managed-struct src/build/test/compiled_ok/84_compiled_test_nested_managed
 nested-field-path src/build/test/compiled_ok/101_compiled_test_nested_field_path_gc_migration.do nested_field_path
 two-level-nested-field-path src/build/test/compiled_ok/102_compiled_test_two_level_nested_field_path_gc_migration.do two_level_nested_field_path
 three-level-nested-field-path src/build/test/compiled_ok/103_compiled_test_three_level_nested_field_path_gc_migration.do three_level_nested_field_path
+four-level-nested-field-path src/build/test/compiled_ok/105_compiled_test_four_level_nested_field_path_gc_migration.do four_level_nested_field_path
+five-level-nested-field-path src/build/test/compiled_ok/106_compiled_test_five_level_nested_field_path_gc_migration.do five_level_nested_field_path
 managed-tuple src/build/test/compiled_ok/85_compiled_test_managed_tuple_gc_migration.do managed_tuple_text_bytes
 scalar-list-u32 src/build/test/compiled_ok/86_compiled_test_u32_list_gc_migration.do u32_list_set
 scalar-list-i16 src/build/test/compiled_ok/87_compiled_test_i16_list_gc_migration.do i16_list_set

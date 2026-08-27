@@ -111,6 +111,10 @@ fn emit_layout_depth_first(
     index: usize,
 ) anyerror!void {
     if (emitted[index]) return;
+    if (is_inline_record_layout(layouts[index])) {
+        emitted[index] = true;
+        return;
+    }
     if (visiting[index]) return error.UnsupportedGcSyncType;
     visiting[index] = true;
     defer visiting[index] = false;
@@ -127,6 +131,14 @@ fn emit_layout_depth_first(
 
     try runtime_gc_wat.emit_gc_struct_type(allocator, out, layouts[index], managed_arrays);
     emitted[index] = true;
+}
+
+fn is_inline_record_layout(layout: gc_layout.GcStructLayout) bool {
+    if (layout.fields.len == 0) return false;
+    for (layout.fields) |field| {
+        if (field.rep != .inline_value) return false;
+    }
+    return true;
 }
 
 fn emit_managed_array_depth_first(
@@ -172,7 +184,8 @@ fn validate_layout_names(
         }
         for (layout.fields) |field| {
             if (field.rep == .inline_value and !type_name.is_core_wasm_scalar(field.ty)) {
-                return error.UnsupportedGcSyncType;
+                const nested_index = find_layout_index(layouts, field.ty) orelse return error.UnsupportedGcSyncType;
+                if (!is_inline_record_layout(layouts[nested_index])) return error.UnsupportedGcSyncType;
             }
             if (field.rep == .resource_handle) return error.UnsupportedGcSyncType;
             if (field.rep == .gc_managed and gc_layout.leaf_layout_for_type(field.ty) == null and

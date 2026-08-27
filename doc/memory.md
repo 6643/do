@@ -122,9 +122,11 @@ File {
    时解除 Component/WIT resource ownership。当前已有 bounded
    `Future<nil>` sequential-await 与 private resource `Result` terminal slices:
    `--p3-wait-for-component` 和 `--p3-async-component` 分别使用 GC-traced
-   frame/table；资源 drop 仍由 Component boundary 负责。资源取消 slice 另以
-   同一 Rust/Wasmtime host 比较 GC Component 与 hand-authored linear Component
-   的终态观测。上述证据不等同于普通 GC sync async admission, 也不覆盖
+   frame/table；该 bounded `two-await` Future slice 另以同一 WIT、同一
+   Rust/Wasmtime host 比较生成的 GC Component 与 hand-authored linear
+   frame Component, 四项 pending/wake/completion 统计一致。资源 drop 仍由
+   Component boundary 负责。资源取消 slice 也使用同一 backend-neutral 终态
+   观测。上述证据不等同于普通 GC sync async admission, 也不覆盖
    `Stream<T>`、通用 async-call 或一般 resource shapes。
 4. 取消只清理 guest/Component state, 不回滚已发出的 host side effect。
 

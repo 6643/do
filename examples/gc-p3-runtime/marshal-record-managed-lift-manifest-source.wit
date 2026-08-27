@@ -1,0 +1,10 @@
+package demo:marshal-record-managed-lift@1.0.0;
+
+interface api {
+  record reading {
+    code: u32,
+    label: string,
+  }
+
+  read: func() -> reading;
+}

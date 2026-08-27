@@ -4,6 +4,7 @@ const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const runtime_prelude_wat = @import("runtime_prelude_wat.zig");
 const codegen_union_layout = @import("codegen_union_layout.zig");
+const component_marshal = @import("codegen_component_marshal_plan.zig");
 
 const free_union_layout = codegen_union_layout.free_union_layout;
 const UnionLayout = codegen_union_layout.UnionLayout;
@@ -141,6 +142,9 @@ pub const EmitOptions = struct {
     p3_async_v2_scalar_i64_component: bool = false,
     // Migration-only parsed GC route; intentionally not exposed by the CLI.
     gc_sync: bool = false,
+    /// A verified manifest-backed synchronous host/WIT plan. The plan and
+    /// import slices are owned by the caller for the duration of emission.
+    gc_sync_host_wit_route: ?*const GcSyncHostWitRoute = null,
     gc_core: bool = false,
     host_export: bool = false,
     host_manifest_out: ?*std.ArrayList(u8) = null,
@@ -324,11 +328,17 @@ pub const CodegenError = anyerror;
 pub const HostImport = struct {
     alias: []const u8,
     source_alias: []const u8,
+    locator: []const u8,
     field: []const u8,
     params: []const []const u8,
     result: ?[]const u8,
     tokens: []const lexer.Token,
     owned_alias: bool = false,
+};
+
+pub const GcSyncHostWitRoute = struct {
+    plan: *const component_marshal.SyncValuePlan,
+    host_import: HostImport,
 };
 
 pub const CodegenImportPrefix = enum {

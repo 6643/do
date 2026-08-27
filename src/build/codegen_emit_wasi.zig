@@ -1,5 +1,6 @@
 //! WASI host call / result emit (no host table parse; see codegen_wasi_registry.zig).
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const payload_wat = @import("wat_payload.zig");
@@ -103,17 +104,50 @@ fn emit_wasi_family_arg(
         if (!try emit_expr(allocator, tokens, start_idx, end_idx, locals, ctx, "u8", out)) return false;
         try out.appendSlice(allocator, "    i32.extend8_u\n");
     }
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{WASI_FAMILY_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[WASI_FAMILY_TMP_LOCAL]s}\n", .{ .WASI_FAMILY_TMP_LOCAL = WASI_FAMILY_TMP_LOCAL });
 
     // Accept both the public 4/6 family values and already-canonical 0/1 values.
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{WASI_FAMILY_TMP_LOCAL});
-    try out.appendSlice(allocator, "    i32.const 0\n    i32.eq\n    if (result i32)\n      i32.const 0\n    else\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{WASI_FAMILY_TMP_LOCAL});
-    try out.appendSlice(allocator, "      i32.const 1\n      i32.eq\n      if (result i32)\n        i32.const 1\n      else\n");
-    try append_fmt(allocator, out, "        local.get ${s}\n", .{WASI_FAMILY_TMP_LOCAL});
-    try out.appendSlice(allocator, "        i32.const 4\n        i32.eq\n        if (result i32)\n          i32.const 0\n        else\n");
-    try append_fmt(allocator, out, "          local.get ${s}\n", .{WASI_FAMILY_TMP_LOCAL});
-    try out.appendSlice(allocator, "          i32.const 6\n          i32.eq\n          if (result i32)\n            i32.const 1\n          else\n            unreachable\n          end\n        end\n      end\n    end\n");
+    try append_fmt(allocator, out, "    local.get ${[WASI_FAMILY_TMP_LOCAL]s}\n", .{ .WASI_FAMILY_TMP_LOCAL = WASI_FAMILY_TMP_LOCAL });
+    try generated_text.append_block(allocator, out, 4,
+        \\    i32.const 0
+        \\    i32.eq
+        \\    if (result i32)
+        \\      i32.const 0
+        \\    else
+        \\
+    );
+    try append_fmt(allocator, out, "      local.get ${[WASI_FAMILY_TMP_LOCAL]s}\n", .{ .WASI_FAMILY_TMP_LOCAL = WASI_FAMILY_TMP_LOCAL });
+    try generated_text.append_block(allocator, out, 6,
+        \\      i32.const 1
+        \\      i32.eq
+        \\      if (result i32)
+        \\        i32.const 1
+        \\      else
+        \\
+    );
+    try append_fmt(allocator, out, "        local.get ${[WASI_FAMILY_TMP_LOCAL]s}\n", .{ .WASI_FAMILY_TMP_LOCAL = WASI_FAMILY_TMP_LOCAL });
+    try generated_text.append_block(allocator, out, 8,
+        \\        i32.const 4
+        \\        i32.eq
+        \\        if (result i32)
+        \\          i32.const 0
+        \\        else
+        \\
+    );
+    try append_fmt(allocator, out, "          local.get ${[WASI_FAMILY_TMP_LOCAL]s}\n", .{ .WASI_FAMILY_TMP_LOCAL = WASI_FAMILY_TMP_LOCAL });
+    try generated_text.append_block(allocator, out, 4,
+        \\          i32.const 6
+        \\          i32.eq
+        \\          if (result i32)
+        \\            i32.const 1
+        \\          else
+        \\            unreachable
+        \\          end
+        \\        end
+        \\      end
+        \\    end
+        \\
+    );
     return true;
 }
 
@@ -168,8 +202,8 @@ pub fn emit_wasi_result_filesize_multi_assignment(
         return error.NoMatchingCall;
     }
     try emit_wasi_result_filesize_values(allocator, out);
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{status_name});
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{written_name});
+    try append_fmt(allocator, out, "    local.set ${[status_name]s}\n", .{ .status_name = status_name });
+    try append_fmt(allocator, out, "    local.set ${[written_name]s}\n", .{ .written_name = written_name });
     return true;
 }
 
@@ -209,8 +243,8 @@ pub fn emit_wasi_result_u64_stream_status_multi_assignment(
         return error.NoMatchingCall;
     }
     try emit_wasi_result_filesize_values(allocator, out);
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{status_name});
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{value_name});
+    try append_fmt(allocator, out, "    local.set ${[status_name]s}\n", .{ .status_name = status_name });
+    try append_fmt(allocator, out, "    local.set ${[value_name]s}\n", .{ .value_name = value_name });
     return true;
 }
 
@@ -250,8 +284,8 @@ pub fn emit_wasi_result_descriptor_status_multi_assignment(
         return error.NoMatchingCall;
     }
     try emit_wasi_result_descriptor_values(allocator, out);
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{status_name});
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{descriptor_name});
+    try append_fmt(allocator, out, "    local.set ${[status_name]s}\n", .{ .status_name = status_name });
+    try append_fmt(allocator, out, "    local.set ${[descriptor_name]s}\n", .{ .descriptor_name = descriptor_name });
     return true;
 }
 
@@ -290,7 +324,7 @@ pub fn emit_wasi_result_unit_status_multi_assignment(
         return error.NoMatchingCall;
     }
     try emit_wasi_result_unit_status_value(allocator, out);
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{status_name});
+    try append_fmt(allocator, out, "    local.set ${[status_name]s}\n", .{ .status_name = status_name });
     return true;
 }
 
@@ -341,9 +375,9 @@ pub fn emit_wasi_result_read_multi_assignment(
         return error.NoMatchingCall;
     }
     try emit_wasi_result_read_values(allocator, out);
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{status_name});
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{done_name});
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[status_name]s}\n", .{ .status_name = status_name });
+    try append_fmt(allocator, out, "    local.set ${[done_name]s}\n", .{ .done_name = done_name });
+    try append_fmt(allocator, out, "    local.set ${[STORAGE_OVERWRITE_TMP_LOCAL]s}\n", .{ .STORAGE_OVERWRITE_TMP_LOCAL = STORAGE_OVERWRITE_TMP_LOCAL });
     try emit_replace_managed_local_from_tmp(allocator, data_name, out);
     return true;
 }
@@ -385,8 +419,8 @@ pub fn emit_wasi_result_list_u8_status_multi_assignment(
         return error.NoMatchingCall;
     }
     try emit_wasi_result_list_u8_values(allocator, out);
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{status_name});
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[status_name]s}\n", .{ .status_name = status_name });
+    try append_fmt(allocator, out, "    local.set ${[STORAGE_OVERWRITE_TMP_LOCAL]s}\n", .{ .STORAGE_OVERWRITE_TMP_LOCAL = STORAGE_OVERWRITE_TMP_LOCAL });
     try emit_replace_managed_local_from_tmp(allocator, data_name, out);
     return true;
 }
@@ -413,10 +447,7 @@ pub fn emit_wasi_record_struct_binding(
     var i = decl.fields.len;
     while (i > 0) {
         i -= 1;
-        try append_fmt(allocator, out, "    local.set ${s}.{s}\n", .{
-            tokens[start_idx].lexeme,
-            public_decl_name(decl.fields[i].name),
-        });
+        try append_fmt(allocator, out, "    local.set ${[lexeme]s}.{[name]s}\n", .{ .lexeme = tokens[start_idx].lexeme, .name = public_decl_name(decl.fields[i].name) });
     }
     return true;
 }
@@ -475,7 +506,7 @@ pub fn emit_wasi_record_result_fields(
         const field_offset = struct_field_payload_offset(decl, field_name) orelse return error.NoMatchingCall;
         try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
         if (field_offset != 0) {
-            try append_fmt(allocator, out, "    i32.const {d}\n", .{field_offset});
+            try append_fmt(allocator, out, "    i32.const {[field_offset]d}\n", .{ .field_offset = field_offset });
             try out.appendSlice(allocator, "    i32.add\n");
         }
         try append_load_for_payload_type(allocator, out, field.ty);
@@ -590,7 +621,7 @@ pub fn emit_wasi_list_u8_result_call(
     try out.appendSlice(allocator, "    call $");
     try append_wasi_import_symbol(allocator, out, import.target);
     try out.appendSlice(allocator, "\n");
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 4,
         \\    global.get $__wasi_result_area_base
         \\    i32.load
         \\    global.get $__wasi_result_area_base
@@ -625,7 +656,7 @@ pub fn emit_wasi_list_preopen_result_call(
     try out.appendSlice(allocator, "    call $");
     try append_wasi_import_symbol(allocator, out, import.target);
     try out.appendSlice(allocator, "\n");
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 4,
         \\    global.get $__wasi_result_area_base
         \\    i32.load
         \\    global.get $__wasi_result_area_base
@@ -634,7 +665,7 @@ pub fn emit_wasi_list_preopen_result_call(
         \\    i32.load
         \\
     );
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{pack_type_id});
+    try append_fmt(allocator, out, "    i32.const {[pack_type_id]d}\n", .{ .pack_type_id = pack_type_id });
     try out.appendSlice(allocator, "    call $__wasi_list_preopen_to_storage\n");
     return true;
 }
@@ -755,31 +786,36 @@ fn emit_wasi_pack_ip_socket_address_arg(
     const struct_local = find_struct_local(locals.struct_locals.items, sname) orelse return false;
 
     try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF});
+    try append_fmt(allocator, out, "    i32.const {[SOCKET_ADDR_PACK_OFF]d}\n", .{ .SOCKET_ADDR_PACK_OFF = SOCKET_ADDR_PACK_OFF });
     try out.appendSlice(allocator, "    i32.add\n");
     // ptr stays on stack for store sequence via local tee pattern: duplicate with local? Use get/set base each time.
     // Store disc
     try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF});
+    try append_fmt(allocator, out, "    i32.const {[SOCKET_ADDR_PACK_OFF]d}\n", .{ .SOCKET_ADDR_PACK_OFF = SOCKET_ADDR_PACK_OFF });
     try out.appendSlice(allocator, "    i32.add\n");
     if (is_v4) {
         try out.appendSlice(allocator, "    i32.const 0\n"); // ipv4 disc
         try out.appendSlice(allocator, "    i32.store\n");
         // port u16 @ +4
         try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
-        try append_fmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 4});
+        try append_fmt(allocator, out, "    i32.const {[SOCKET_ADDR_PACK_OFF]d}\n", .{ .SOCKET_ADDR_PACK_OFF = SOCKET_ADDR_PACK_OFF + 4 });
         try out.appendSlice(allocator, "    i32.add\n");
-        try append_fmt(allocator, out, "    local.get ${s}.port\n", .{struct_local.name});
+        try append_fmt(allocator, out, "    local.get ${[name]s}.port\n", .{ .name = struct_local.name });
         try out.appendSlice(allocator, "    i32.store16\n");
         // pad u16 @ +6, then a,b,c,d @ +8..+11
         try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
-        try append_fmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 6});
-        try out.appendSlice(allocator, "    i32.add\n    i32.const 0\n    i32.store16\n");
+        try append_fmt(allocator, out, "    i32.const {[SOCKET_ADDR_PACK_OFF]d}\n", .{ .SOCKET_ADDR_PACK_OFF = SOCKET_ADDR_PACK_OFF + 6 });
+        try generated_text.append_block(allocator, out, 4,
+            \\    i32.add
+            \\    i32.const 0
+            \\    i32.store16
+            \\
+        );
         inline for (.{ "a", "b", "c", "d" }, 0..) |field, fi| {
             try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
-            try append_fmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 8 + fi});
+            try append_fmt(allocator, out, "    i32.const {[fi]d}\n", .{ .fi = SOCKET_ADDR_PACK_OFF + 8 + fi });
             try out.appendSlice(allocator, "    i32.add\n");
-            try append_fmt(allocator, out, "    local.get ${s}.{s}\n", .{ struct_local.name, field });
+            try append_fmt(allocator, out, "    local.get ${[name]s}.{[field]s}\n", .{ .name = struct_local.name, .field = field });
             try out.appendSlice(allocator, "    i32.store8\n");
         }
     } else {
@@ -787,13 +823,13 @@ fn emit_wasi_pack_ip_socket_address_arg(
         try out.appendSlice(allocator, "    i32.store\n");
         // port @ +4
         try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
-        try append_fmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 4});
+        try append_fmt(allocator, out, "    i32.const {[SOCKET_ADDR_PACK_OFF]d}\n", .{ .SOCKET_ADDR_PACK_OFF = SOCKET_ADDR_PACK_OFF + 4 });
         try out.appendSlice(allocator, "    i32.add\n");
-        try append_fmt(allocator, out, "    local.get ${s}.port\n", .{struct_local.name});
+        try append_fmt(allocator, out, "    local.get ${[name]s}.port\n", .{ .name = struct_local.name });
         try out.appendSlice(allocator, "    i32.store16\n");
         // flowinfo = 0 @ +8
         try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
-        try append_fmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 8});
+        try append_fmt(allocator, out, "    i32.const {[SOCKET_ADDR_PACK_OFF]d}\n", .{ .SOCKET_ADDR_PACK_OFF = SOCKET_ADDR_PACK_OFF + 8 });
         try out.appendSlice(allocator, "    i32.add\n");
         try out.appendSlice(allocator, "    i32.const 0\n");
         try out.appendSlice(allocator, "    i32.store\n");
@@ -802,14 +838,14 @@ fn emit_wasi_pack_ip_socket_address_arg(
         try append_store_u64_big_endian_field(allocator, out, struct_local.name, "lo", SOCKET_ADDR_PACK_OFF + 20, "    ");
         // scope_id = 0 @ +28
         try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
-        try append_fmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 28});
+        try append_fmt(allocator, out, "    i32.const {[SOCKET_ADDR_PACK_OFF]d}\n", .{ .SOCKET_ADDR_PACK_OFF = SOCKET_ADDR_PACK_OFF + 28 });
         try out.appendSlice(allocator, "    i32.add\n");
         try out.appendSlice(allocator, "    i32.const 0\n");
         try out.appendSlice(allocator, "    i32.store\n");
     }
     // leave pack ptr on stack
     try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF});
+    try append_fmt(allocator, out, "    i32.const {[SOCKET_ADDR_PACK_OFF]d}\n", .{ .SOCKET_ADDR_PACK_OFF = SOCKET_ADDR_PACK_OFF });
     try out.appendSlice(allocator, "    i32.add\n");
     return true;
 }
@@ -822,56 +858,61 @@ fn emit_wasi_pack_ip_socket_address_from_union_local(
     // Tag 0 = V4, 1 = V6. Payloads: V4 a,b,c,d,port; V6 hi,lo,port (max slots overlap).
     // For v1, only support packing when tag known at emit is too hard; always emit branch on tag.
     try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF});
+    try append_fmt(allocator, out, "    i32.const {[SOCKET_ADDR_PACK_OFF]d}\n", .{ .SOCKET_ADDR_PACK_OFF = SOCKET_ADDR_PACK_OFF });
     try out.appendSlice(allocator, "    i32.add\n");
-    try append_fmt(allocator, out, "    local.get ${s}.__union_tag\n", .{uname});
+    try append_fmt(allocator, out, "    local.get ${[uname]s}.__union_tag\n", .{ .uname = uname });
     try out.appendSlice(allocator, "    i32.store\n"); // disc = case tag (0=V4, 1=V6)
 
     // Common: port is last payload field for both — V4 has 5 slots (0..4), V6 has 3 (0..2).
     // Layout for V4: p0=a p1=b p2=c p3=d p4=port
     // Layout for V6: p0=hi p1=lo p2=port — different; branch on tag.
-    try append_fmt(allocator, out, "    local.get ${s}.__union_tag\n", .{uname});
+    try append_fmt(allocator, out, "    local.get ${[uname]s}.__union_tag\n", .{ .uname = uname });
     try out.appendSlice(allocator, "    i32.eqz\n");
     try out.appendSlice(allocator, "    if\n");
     // V4 pack: port @+4, padding @+6, bytes @+8..+11.
     try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 4});
+    try append_fmt(allocator, out, "      i32.const {[SOCKET_ADDR_PACK_OFF]d}\n", .{ .SOCKET_ADDR_PACK_OFF = SOCKET_ADDR_PACK_OFF + 4 });
     try out.appendSlice(allocator, "      i32.add\n");
-    try append_fmt(allocator, out, "      local.get ${s}.__union_payload_4\n", .{uname});
+    try append_fmt(allocator, out, "      local.get ${[uname]s}.__union_payload_4\n", .{ .uname = uname });
     try out.appendSlice(allocator, "      i32.store16\n");
     try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 6});
-    try out.appendSlice(allocator, "      i32.add\n      i32.const 0\n      i32.store16\n");
+    try append_fmt(allocator, out, "      i32.const {[SOCKET_ADDR_PACK_OFF]d}\n", .{ .SOCKET_ADDR_PACK_OFF = SOCKET_ADDR_PACK_OFF + 6 });
+    try generated_text.append_block(allocator, out, 6,
+        \\      i32.add
+        \\      i32.const 0
+        \\      i32.store16
+        \\
+    );
     inline for (0..4) |fi| {
         try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
-        try append_fmt(allocator, out, "      i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 8 + fi});
+        try append_fmt(allocator, out, "      i32.const {[fi]d}\n", .{ .fi = SOCKET_ADDR_PACK_OFF + 8 + fi });
         try out.appendSlice(allocator, "      i32.add\n");
-        try append_fmt(allocator, out, "      local.get ${s}.__union_payload_{d}\n", .{ uname, fi });
+        try append_fmt(allocator, out, "      local.get ${[uname]s}.__union_payload_{[fi]d}\n", .{ .uname = uname, .fi = fi });
         try out.appendSlice(allocator, "      i32.store8\n");
     }
     try out.appendSlice(allocator, "    else\n");
     // V6 pack
     try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 4});
+    try append_fmt(allocator, out, "      i32.const {[SOCKET_ADDR_PACK_OFF]d}\n", .{ .SOCKET_ADDR_PACK_OFF = SOCKET_ADDR_PACK_OFF + 4 });
     try out.appendSlice(allocator, "      i32.add\n");
-    try append_fmt(allocator, out, "      local.get ${s}.__union_payload_2\n", .{uname});
+    try append_fmt(allocator, out, "      local.get ${[uname]s}.__union_payload_2\n", .{ .uname = uname });
     try out.appendSlice(allocator, "      i32.store16\n");
     try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 8});
+    try append_fmt(allocator, out, "      i32.const {[SOCKET_ADDR_PACK_OFF]d}\n", .{ .SOCKET_ADDR_PACK_OFF = SOCKET_ADDR_PACK_OFF + 8 });
     try out.appendSlice(allocator, "      i32.add\n");
     try out.appendSlice(allocator, "      i32.const 0\n");
     try out.appendSlice(allocator, "      i32.store\n");
     try append_store_u64_big_endian_field(allocator, out, uname, "__union_payload_0", SOCKET_ADDR_PACK_OFF + 12, "      ");
     try append_store_u64_big_endian_field(allocator, out, uname, "__union_payload_1", SOCKET_ADDR_PACK_OFF + 20, "      ");
     try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF + 28});
+    try append_fmt(allocator, out, "      i32.const {[SOCKET_ADDR_PACK_OFF]d}\n", .{ .SOCKET_ADDR_PACK_OFF = SOCKET_ADDR_PACK_OFF + 28 });
     try out.appendSlice(allocator, "      i32.add\n");
     try out.appendSlice(allocator, "      i32.const 0\n");
     try out.appendSlice(allocator, "      i32.store\n");
     try out.appendSlice(allocator, "    end\n");
 
     try out.appendSlice(allocator, "    global.get $__wasi_result_area_base\n");
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{SOCKET_ADDR_PACK_OFF});
+    try append_fmt(allocator, out, "    i32.const {[SOCKET_ADDR_PACK_OFF]d}\n", .{ .SOCKET_ADDR_PACK_OFF = SOCKET_ADDR_PACK_OFF });
     try out.appendSlice(allocator, "    i32.add\n");
     return true;
 }
@@ -886,13 +927,18 @@ fn append_store_u64_big_endian_field(
 ) !void {
     inline for (0..8) |byte_idx| {
         const shift: u32 = @as(u32, 56 - byte_idx * 8);
-        try append_fmt(allocator, out, "{s}global.get $__wasi_result_area_base\n", .{indent});
-        try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset + byte_idx });
-        try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
-        try append_fmt(allocator, out, "{s}local.get ${s}.{s}\n", .{ indent, local_base, field_name });
-        try append_fmt(allocator, out, "{s}i64.const {d}\n", .{ indent, shift });
-        try append_fmt(allocator, out, "{s}i64.shr_u\n", .{indent});
-        try append_fmt(allocator, out, "{s}i64.const 255\n{s}i64.and\n{s}i64.store8\n", .{ indent, indent, indent });
+        try append_fmt(allocator, out, "{[indent]s}global.get $__wasi_result_area_base\n", .{ .indent = indent });
+        try append_fmt(allocator, out, "{[indent]s}i32.const {[byte_idx]d}\n", .{ .indent = indent, .byte_idx = offset + byte_idx });
+        try append_fmt(allocator, out, "{[indent]s}i32.add\n", .{ .indent = indent });
+        try append_fmt(allocator, out, "{[indent]s}local.get ${[local_base]s}.{[field_name]s}\n", .{ .indent = indent, .local_base = local_base, .field_name = field_name });
+        try append_fmt(allocator, out, "{[indent]s}i64.const {[shift]d}\n", .{ .indent = indent, .shift = shift });
+        try append_fmt(allocator, out, "{[indent]s}i64.shr_u\n", .{ .indent = indent });
+        try generated_text.append_block(
+            allocator,
+            out,
+            indent.len,
+            "i64.const 255\ni64.and\ni64.store8\n",
+        );
     }
 }
 
@@ -1039,7 +1085,7 @@ pub fn emit_wasi_descriptor_handle_arg(
         }
     }
     const field_ty = id_ty orelse return false;
-    try append_fmt(allocator, out, "    local.get ${s}.id\n", .{struct_local.name});
+    try append_fmt(allocator, out, "    local.get ${[name]s}.id\n", .{ .name = struct_local.name });
     if (std.mem.eql(u8, field_ty, "i64")) {
         try out.appendSlice(allocator, "    i32.wrap_i64\n");
         return true;
@@ -1086,8 +1132,8 @@ pub fn emit_wasi_string_arg(
 ) !bool {
     if (string_literal_arg_lexeme(tokens, start_idx, end_idx)) |lexeme| {
         const data = ctx.string_data.find(lexeme) orelse return error.NoMatchingCall;
-        try append_fmt(allocator, out, "    i32.const {d}\n", .{data.ptr});
-        try append_fmt(allocator, out, "    i32.const {d}\n", .{data.bytes.len});
+        try append_fmt(allocator, out, "    i32.const {[ptr]d}\n", .{ .ptr = data.ptr });
+        try append_fmt(allocator, out, "    i32.const {[len]d}\n", .{ .len = data.bytes.len });
         return true;
     }
 
@@ -1229,7 +1275,7 @@ pub fn emit_wasi_result_unit_status_value(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
 ) !void {
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 4,
         \\    global.get $__wasi_result_area_base
         \\    i32.load
         \\    i32.eqz
@@ -1262,15 +1308,15 @@ pub fn emit_wasi_coarse_error_enum_payload(
     const failed_name = wasi_coarse_failed_variant_name(import, err_ty) orelse return false;
     const failed_val = error_enum_branch_value(tokens, err_ty, failed_name) orelse return false;
     if (wasi_coarse_error_always_failed(import)) {
-        try append_fmt(allocator, out, "      i32.const {d}\n", .{failed_val});
+        try append_fmt(allocator, out, "      i32.const {[failed_val]d}\n", .{ .failed_val = failed_val });
         return true;
     }
     const closed_name = wasi_coarse_closed_variant_name(err_ty) orelse return false;
     const closed_val = error_enum_branch_value(tokens, err_ty, closed_name) orelse return false;
     // status = error-code+1; 1 ⇒ Closed (same as *status_to_error helpers).
     try out.appendSlice(allocator, "      global.get $__wasi_result_area_base\n");
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{code_offset});
-    try out.appendSlice(allocator,
+    try append_fmt(allocator, out, "      i32.const {[code_offset]d}\n", .{ .code_offset = code_offset });
+    try generated_text.append_block(allocator, out, 6,
         \\      i32.add
         \\      i32.load
         \\      i32.const 1
@@ -1280,9 +1326,9 @@ pub fn emit_wasi_coarse_error_enum_payload(
         \\      if (result i32)
         \\
     );
-    try append_fmt(allocator, out, "        i32.const {d}\n", .{closed_val});
+    try append_fmt(allocator, out, "        i32.const {[closed_val]d}\n", .{ .closed_val = closed_val });
     try out.appendSlice(allocator, "      else\n");
-    try append_fmt(allocator, out, "        i32.const {d}\n", .{failed_val});
+    try append_fmt(allocator, out, "        i32.const {[failed_val]d}\n", .{ .failed_val = failed_val });
     try out.appendSlice(allocator, "      end\n");
     return true;
 }
@@ -1347,7 +1393,7 @@ pub fn emit_wasi_unit_result_as_union_value(
     }
 
     // Stack: i32 payload, i32 tag (matches emitUnionValue order).
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 4,
         \\    global.get $__wasi_result_area_base
         \\    i32.load
         \\    i32.eqz
@@ -1362,7 +1408,7 @@ pub fn emit_wasi_unit_result_as_union_value(
             return error.NoMatchingCall;
         }
     } else {
-        try out.appendSlice(allocator,
+        try generated_text.append_block(allocator, out, 6,
             \\      global.get $__wasi_result_area_base
             \\      i32.const 4
             \\      i32.add
@@ -1372,7 +1418,7 @@ pub fn emit_wasi_unit_result_as_union_value(
             \\
         );
     }
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{err.tag});
+    try append_fmt(allocator, out, "      i32.const {[tag]d}\n", .{ .tag = err.tag });
     try out.appendSlice(allocator, "    end\n");
     return true;
 }
@@ -1444,14 +1490,14 @@ pub fn emit_wasi_filesize_result_as_union_value(
     try out.appendSlice(allocator, "    i32.eqz\n");
     try out.appendSlice(allocator, "    if (result");
     for (layout.payload_tys) |payload_ty| {
-        try append_fmt(allocator, out, " {s}", .{codegen_wasm_type(ctx, payload_ty)});
+        try append_fmt(allocator, out, " {[payload_ty]s}", .{ .payload_ty = codegen_wasm_type(ctx, payload_ty) });
     }
     try out.appendSlice(allocator, " i32)\n");
 
     // ok: filesize at result-area +8; zero err slot; ok tag
     for (layout.payload_tys, 0..) |payload_ty, idx| {
         if (idx == ok.payload_start) {
-            try out.appendSlice(allocator,
+            try generated_text.append_block(allocator, out, 6,
                 \\      global.get $__wasi_result_area_base
                 \\      i32.const 8
                 \\      i32.add
@@ -1459,10 +1505,10 @@ pub fn emit_wasi_filesize_result_as_union_value(
                 \\
             );
         } else {
-            try append_fmt(allocator, out, "      {s}.const 0\n", .{codegen_wasm_type(ctx, payload_ty)});
+            try append_fmt(allocator, out, "      {[payload_ty]s}.const 0\n", .{ .payload_ty = codegen_wasm_type(ctx, payload_ty) });
         }
     }
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{ok.tag});
+    try append_fmt(allocator, out, "      i32.const {[tag]d}\n", .{ .tag = ok.tag });
 
     try out.appendSlice(allocator, "    else\n");
     // err: zero ok slot; status or coarse FileError at +8; err tag
@@ -1472,7 +1518,7 @@ pub fn emit_wasi_filesize_result_as_union_value(
                 return error.NoMatchingCall;
             }
         } else if (idx == err.payload_start) {
-            try out.appendSlice(allocator,
+            try generated_text.append_block(allocator, out, 6,
                 \\      global.get $__wasi_result_area_base
                 \\      i32.const 8
                 \\      i32.add
@@ -1482,10 +1528,10 @@ pub fn emit_wasi_filesize_result_as_union_value(
                 \\
             );
         } else {
-            try append_fmt(allocator, out, "      {s}.const 0\n", .{codegen_wasm_type(ctx, payload_ty)});
+            try append_fmt(allocator, out, "      {[payload_ty]s}.const 0\n", .{ .payload_ty = codegen_wasm_type(ctx, payload_ty) });
         }
     }
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{err.tag});
+    try append_fmt(allocator, out, "      i32.const {[tag]d}\n", .{ .tag = err.tag });
     try out.appendSlice(allocator, "    end\n");
     return true;
 }
@@ -1564,14 +1610,14 @@ pub fn emit_wasi_read_result_as_union_value(
     try out.appendSlice(allocator, "    i32.eqz\n");
     try out.appendSlice(allocator, "    if (result");
     for (layout.payload_tys) |payload_ty| {
-        try append_fmt(allocator, out, " {s}", .{codegen_wasm_type(ctx, payload_ty)});
+        try append_fmt(allocator, out, " {[payload_ty]s}", .{ .payload_ty = codegen_wasm_type(ctx, payload_ty) });
     }
     try out.appendSlice(allocator, " i32)\n");
 
     // ok: list→storage + done bool; zero err slot; ok tag
     for (layout.payload_tys, 0..) |payload_ty, idx| {
         if (idx == ok.payload_start) {
-            try out.appendSlice(allocator,
+            try generated_text.append_block(allocator, out, 6,
                 \\      global.get $__wasi_result_area_base
                 \\      i32.const 4
                 \\      i32.add
@@ -1584,7 +1630,7 @@ pub fn emit_wasi_read_result_as_union_value(
                 \\
             );
         } else if (idx == ok.payload_start + 1) {
-            try out.appendSlice(allocator,
+            try generated_text.append_block(allocator, out, 6,
                 \\      global.get $__wasi_result_area_base
                 \\      i32.const 12
                 \\      i32.add
@@ -1592,10 +1638,10 @@ pub fn emit_wasi_read_result_as_union_value(
                 \\
             );
         } else {
-            try append_fmt(allocator, out, "      {s}.const 0\n", .{codegen_wasm_type(ctx, payload_ty)});
+            try append_fmt(allocator, out, "      {[payload_ty]s}.const 0\n", .{ .payload_ty = codegen_wasm_type(ctx, payload_ty) });
         }
     }
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{ok.tag});
+    try append_fmt(allocator, out, "      i32.const {[tag]d}\n", .{ .tag = ok.tag });
 
     try out.appendSlice(allocator, "    else\n");
     // err: empty storage + false done in ok slots; status = error-code + 1 at +4; err tag
@@ -1609,7 +1655,7 @@ pub fn emit_wasi_read_result_as_union_value(
                 return error.NoMatchingCall;
             }
         } else if (idx == err.payload_start) {
-            try out.appendSlice(allocator,
+            try generated_text.append_block(allocator, out, 6,
                 \\      global.get $__wasi_result_area_base
                 \\      i32.const 4
                 \\      i32.add
@@ -1619,10 +1665,10 @@ pub fn emit_wasi_read_result_as_union_value(
                 \\
             );
         } else {
-            try append_fmt(allocator, out, "      {s}.const 0\n", .{codegen_wasm_type(ctx, payload_ty)});
+            try append_fmt(allocator, out, "      {[payload_ty]s}.const 0\n", .{ .payload_ty = codegen_wasm_type(ctx, payload_ty) });
         }
     }
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{err.tag});
+    try append_fmt(allocator, out, "      i32.const {[tag]d}\n", .{ .tag = err.tag });
     try out.appendSlice(allocator, "    end\n");
     return true;
 }
@@ -1691,14 +1737,14 @@ pub fn emit_wasi_list_u8_result_as_union_value(
     try out.appendSlice(allocator, "    i32.eqz\n");
     try out.appendSlice(allocator, "    if (result");
     for (layout.payload_tys) |payload_ty| {
-        try append_fmt(allocator, out, " {s}", .{codegen_wasm_type(ctx, payload_ty)});
+        try append_fmt(allocator, out, " {[payload_ty]s}", .{ .payload_ty = codegen_wasm_type(ctx, payload_ty) });
     }
     try out.appendSlice(allocator, " i32)\n");
 
     // ok: storage handle from list{ptr,len}; zero err slot; ok tag
     for (layout.payload_tys, 0..) |payload_ty, idx| {
         if (idx == ok.payload_start) {
-            try out.appendSlice(allocator,
+            try generated_text.append_block(allocator, out, 6,
                 \\      global.get $__wasi_result_area_base
                 \\      i32.const 4
                 \\      i32.add
@@ -1711,10 +1757,10 @@ pub fn emit_wasi_list_u8_result_as_union_value(
                 \\
             );
         } else {
-            try append_fmt(allocator, out, "      {s}.const 0\n", .{codegen_wasm_type(ctx, payload_ty)});
+            try append_fmt(allocator, out, "      {[payload_ty]s}.const 0\n", .{ .payload_ty = codegen_wasm_type(ctx, payload_ty) });
         }
     }
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{ok.tag});
+    try append_fmt(allocator, out, "      i32.const {[tag]d}\n", .{ .tag = ok.tag });
 
     try out.appendSlice(allocator, "    else\n");
     // err: empty storage in ok slot; status or coarse StreamError at +4; err tag
@@ -1726,7 +1772,7 @@ pub fn emit_wasi_list_u8_result_as_union_value(
                 return false;
             }
         } else if (idx == err.payload_start) {
-            try out.appendSlice(allocator,
+            try generated_text.append_block(allocator, out, 6,
                 \\      global.get $__wasi_result_area_base
                 \\      i32.const 4
                 \\      i32.add
@@ -1736,10 +1782,10 @@ pub fn emit_wasi_list_u8_result_as_union_value(
                 \\
             );
         } else {
-            try append_fmt(allocator, out, "      {s}.const 0\n", .{codegen_wasm_type(ctx, payload_ty)});
+            try append_fmt(allocator, out, "      {[payload_ty]s}.const 0\n", .{ .payload_ty = codegen_wasm_type(ctx, payload_ty) });
         }
     }
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{err.tag});
+    try append_fmt(allocator, out, "      i32.const {[tag]d}\n", .{ .tag = err.tag });
     try out.appendSlice(allocator, "    end\n");
     return true;
 }
@@ -1802,14 +1848,14 @@ pub fn emit_wasi_descriptor_result_as_union_value(
     try out.appendSlice(allocator, "    i32.eqz\n");
     try out.appendSlice(allocator, "    if (result");
     for (layout.payload_tys) |payload_ty| {
-        try append_fmt(allocator, out, " {s}", .{codegen_wasm_type(ctx, payload_ty)});
+        try append_fmt(allocator, out, " {[payload_ty]s}", .{ .payload_ty = codegen_wasm_type(ctx, payload_ty) });
     }
     try out.appendSlice(allocator, " i32)\n");
 
     // ok: fill ok payload from descriptor; zero other slots; ok tag
     for (layout.payload_tys, 0..) |payload_ty, idx| {
         if (idx == ok.payload_start) {
-            try out.appendSlice(allocator,
+            try generated_text.append_block(allocator, out, 6,
                 \\      global.get $__wasi_result_area_base
                 \\      i32.const 4
                 \\      i32.add
@@ -1820,10 +1866,10 @@ pub fn emit_wasi_descriptor_result_as_union_value(
                 try out.appendSlice(allocator, "      i64.extend_i32_s\n");
             }
         } else {
-            try append_fmt(allocator, out, "      {s}.const 0\n", .{codegen_wasm_type(ctx, payload_ty)});
+            try append_fmt(allocator, out, "      {[payload_ty]s}.const 0\n", .{ .payload_ty = codegen_wasm_type(ctx, payload_ty) });
         }
     }
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{ok.tag});
+    try append_fmt(allocator, out, "      i32.const {[tag]d}\n", .{ .tag = ok.tag });
 
     try out.appendSlice(allocator, "    else\n");
     // err: zero ok slots; status or coarse *OpenFailed; err tag
@@ -1833,7 +1879,7 @@ pub fn emit_wasi_descriptor_result_as_union_value(
                 return error.NoMatchingCall;
             }
         } else if (idx == err.payload_start) {
-            try out.appendSlice(allocator,
+            try generated_text.append_block(allocator, out, 6,
                 \\      global.get $__wasi_result_area_base
                 \\      i32.const 4
                 \\      i32.add
@@ -1843,10 +1889,10 @@ pub fn emit_wasi_descriptor_result_as_union_value(
                 \\
             );
         } else {
-            try append_fmt(allocator, out, "      {s}.const 0\n", .{codegen_wasm_type(ctx, payload_ty)});
+            try append_fmt(allocator, out, "      {[payload_ty]s}.const 0\n", .{ .payload_ty = codegen_wasm_type(ctx, payload_ty) });
         }
     }
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{err.tag});
+    try append_fmt(allocator, out, "      i32.const {[tag]d}\n", .{ .tag = err.tag });
     try out.appendSlice(allocator, "    end\n");
     return true;
 }
@@ -1855,7 +1901,7 @@ pub fn emit_wasi_result_read_values(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
 ) !void {
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 4,
         \\    global.get $__wasi_result_area_base
         \\    i32.load
         \\    i32.eqz
@@ -1877,7 +1923,7 @@ pub fn emit_wasi_result_read_values(
         \\    else
     );
     try storage_wat.emit_empty_storage_u8_value(allocator, out);
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 4,
         \\      i32.const 0
         \\      global.get $__wasi_result_area_base
         \\      i32.const 4
@@ -1894,7 +1940,7 @@ pub fn emit_wasi_result_list_u8_values(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
 ) !void {
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 4,
         \\    global.get $__wasi_result_area_base
         \\    i32.load
         \\    i32.eqz
@@ -1912,7 +1958,7 @@ pub fn emit_wasi_result_list_u8_values(
         \\    else
     );
     try storage_wat.emit_empty_storage_u8_value(allocator, out);
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 4,
         \\      global.get $__wasi_result_area_base
         \\      i32.const 4
         \\      i32.add
@@ -1928,7 +1974,7 @@ pub fn emit_wasi_result_descriptor_values(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
 ) !void {
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 4,
         \\    global.get $__wasi_result_area_base
         \\    i32.load
         \\    i32.eqz
@@ -1955,7 +2001,7 @@ pub fn emit_wasi_result_filesize_values(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
 ) !void {
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 4,
         \\    global.get $__wasi_result_area_base
         \\    i32.load
         \\    i32.eqz

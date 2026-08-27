@@ -1,0 +1,25 @@
+package demo:marshal-record-nested-lower-deep@1.0.0;
+
+interface api {
+  record header {
+    code: u32,
+    count: u64,
+  }
+
+  record detail {
+    header: header,
+    status: s64,
+  }
+
+  record writing {
+    detail: detail,
+    tail: s64,
+  }
+
+  write: func(value: writing);
+}
+
+world probe {
+  import api;
+  export run: func() -> u32;
+}

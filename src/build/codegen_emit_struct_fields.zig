@@ -228,8 +228,8 @@ pub fn emit_field_reflection_loop_block(allocator: std.mem.Allocator, tokens: []
     const break_label = try std.fmt.allocPrint(allocator, "__field_break_{d}", .{header.loop_idx});
     defer allocator.free(break_label);
 
-    try append_fmt(allocator, out, "    ;; field-reflect-loop type={s}\n", .{header.decl.name});
-    try append_fmt(allocator, out, "    block ${s}\n", .{break_label});
+    try append_fmt(allocator, out, "    ;; field-reflect-loop type={[type]s}\n", .{ .type = header.decl.name });
+    try append_fmt(allocator, out, "    block ${[label]s}\n", .{ .label = break_label });
     var visible_index: usize = 0;
     for (header.decl.fields, 0..) |field, decl_index| {
         if (!field_visible_from_tokens(field, header.decl, tokens)) continue;
@@ -256,7 +256,7 @@ pub fn emit_field_reflection_loop_block(allocator: std.mem.Allocator, tokens: []
             .cleanup_locals = &field_cleanup_locals,
             .defer_ctx = defer_ctx orelse return error.NoMatchingCall,
         };
-        try append_fmt(allocator, out, "    block ${s}\n", .{continue_label});
+        try append_fmt(allocator, out, "    block ${[name]s}\n", .{ .name = continue_label });
         var active_return_cleanup_locals = try merge_return_cleanup_locals(allocator, return_cleanup_locals, &field_cleanup_locals);
         defer active_return_cleanup_locals.deinit(allocator);
         var active_control_cleanup_locals = try merge_return_cleanup_locals(allocator, control_cleanup_locals, &field_cleanup_locals);
@@ -287,20 +287,20 @@ pub fn emit_managed_struct_field_set(allocator: std.mem.Allocator, tokens: []con
     if (move_source == null and is_direct_managed_local_expr(tokens, value_start, value_end, locals, ctx)) {
         try out.appendSlice(allocator, "    call $__arc_inc\n");
     }
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
 
     const struct_local = find_struct_local(locals.struct_locals.items, target_name) orelse return error.NoMatchingCall;
     const decl = find_struct_decl(ctx.structs, struct_local.ty) orelse return error.NoMatchingCall;
     const layout = find_struct_layout(ctx.struct_layouts, struct_local.ty) orelse return error.NoMatchingCall;
 
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{target_name});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = target_name });
     try out.appendSlice(allocator, "    call $__arc_rc\n");
     try out.appendSlice(allocator, "    i32.const 1\n");
     try out.appendSlice(allocator, "    i32.eq\n");
     try out.appendSlice(allocator, "    if (result i32)\n");
-    try append_fmt(allocator, out, "      ;; arc-managed-struct-reuse {s}.{s}\n", .{ target_name, field_name });
-    try append_fmt(allocator, out, "      ;; arc-overwrite-release {s}.{s}\n", .{ target_name, field_name });
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "      ;; arc-managed-struct-reuse {[target]s}.{[field]s}\n", .{ .target = target_name, .field = field_name });
+    try append_fmt(allocator, out, "      ;; arc-overwrite-release {[target]s}.{[field]s}\n", .{ .target = target_name, .field = field_name });
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
     try append_managed_struct_field_ptr(allocator, out, target_name, field_offset);
     try append_load_for_payload_type(allocator, out, field_ty);
     try out.appendSlice(allocator, "      i32.ne\n");
@@ -310,18 +310,18 @@ pub fn emit_managed_struct_field_set(allocator: std.mem.Allocator, tokens: []con
     try out.appendSlice(allocator, "        call $__arc_dec\n");
     try out.appendSlice(allocator, "      end\n");
     try append_managed_struct_field_ptr(allocator, out, target_name, field_offset);
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
     try append_store_for_payload_type(allocator, out, field_ty);
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{target_name});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = target_name });
     try out.appendSlice(allocator, "    else\n");
-    try append_fmt(allocator, out, "      ;; arc-managed-struct-clone-set {s}.{s}\n", .{ target_name, field_name });
+    try append_fmt(allocator, out, "      ;; arc-managed-struct-clone-set {[target]s}.{[field]s}\n", .{ .target = target_name, .field = field_name });
     try emit_managed_struct_clone_with_field_set(allocator, target_name, field_name, decl, struct_local.ty, layout, out);
     try out.appendSlice(allocator, "    end\n");
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{target_name});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = target_name });
     if (move_source) |source| {
-        try append_fmt(allocator, out, "    ;; field-set-move {s}\n", .{source.source_name});
+        try append_fmt(allocator, out, "    ;; field-set-move {[name]s}\n", .{ .name = source.source_name });
         try emit_zero_value_for_type(allocator, ctx, out, field_ty);
-        try append_fmt(allocator, out, "    local.set ${s}\n", .{source.actual_name});
+        try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = source.actual_name });
     }
 }
 
@@ -377,9 +377,9 @@ pub fn emit_struct_field_meta_set_assignment(allocator: std.mem.Allocator, token
     const field_name = public_decl_name(field.name);
     const field_ty = find_local_field_type(locals.locals.items, struct_local.name, field_name) orelse field.ty;
 
-    try append_fmt(allocator, out, "    ;; field-set name={s} field={s}\n", .{
-        tokens[start_idx].lexeme,
-        field_name,
+    try append_fmt(allocator, out, "    ;; field-set name={[target]s} field={[field]s}\n", .{
+        .target = tokens[start_idx].lexeme,
+        .field = field_name,
     });
 
     if (find_struct_layout(ctx.struct_layouts, struct_local.ty)) |layout| {
@@ -411,23 +411,23 @@ pub fn emit_struct_field_meta_set_assignment(allocator: std.mem.Allocator, token
     }
 
     if (!try codegen_callbacks.emit_expr(allocator, tokens, value_start, close_paren, locals, ctx, field_ty, out)) return error.NoMatchingCall;
-    try append_fmt(allocator, out, "    local.set ${s}.{s}\n", .{
-        struct_local.name,
-        field_name,
+    try append_fmt(allocator, out, "    local.set ${[name]s}.{[field]s}\n", .{
+        .name = struct_local.name,
+        .field = field_name,
     });
     return true;
 }
 
 pub fn append_union_payload_local_get(allocator: std.mem.Allocator, out: *std.ArrayList(u8), base: []const u8, idx: usize) !void {
-    try append_fmt(allocator, out, "    local.get ${s}.__union_payload_{d}\n", .{ base, idx });
+    try append_fmt(allocator, out, "    local.get ${[name]s}.__union_payload_{[index]d}\n", .{ .name = base, .index = idx });
 }
 
 pub fn append_union_tag_local_get(allocator: std.mem.Allocator, out: *std.ArrayList(u8), base: []const u8) !void {
-    try append_fmt(allocator, out, "    local.get ${s}.__union_tag\n", .{base});
+    try append_fmt(allocator, out, "    local.get ${[name]s}.__union_tag\n", .{ .name = base });
 }
 
 pub fn append_union_tag_local_set(allocator: std.mem.Allocator, out: *std.ArrayList(u8), base: []const u8) !void {
-    try append_fmt(allocator, out, "    local.set ${s}.__union_tag\n", .{base});
+    try append_fmt(allocator, out, "    local.set ${[name]s}.__union_tag\n", .{ .name = base });
 }
 
 pub fn is_managed_struct_field(layout: StructLayout, field_name: []const u8) bool {
@@ -455,7 +455,7 @@ pub fn emit_struct_field_local_get(allocator: std.mem.Allocator, tokens: []const
         try append_union_tag_local_get(allocator, out, union_local.name);
         return;
     }
-    try append_fmt(allocator, out, "    local.get ${s}.{s}\n", .{ base, field_name });
+    try append_fmt(allocator, out, "    local.get ${[name]s}.{[field]s}\n", .{ .name = base, .field = field_name });
     if (copy_managed and is_managed_local_type(field_ty, ctx)) {
         try out.appendSlice(allocator, "    call $__arc_inc\n");
     }
@@ -487,7 +487,7 @@ pub fn emit_struct_field_local_set(allocator: std.mem.Allocator, tokens: []const
     if (is_tuple_type_name(field_ty)) {
         return try emit_tuple_local_set(allocator, union_local_name, field_ty, ctx, out);
     }
-    try append_fmt(allocator, out, "    local.set ${s}.{s}\n", .{ base, field_name });
+    try append_fmt(allocator, out, "    local.set ${[name]s}.{[field]s}\n", .{ .name = base, .field = field_name });
 }
 
 pub fn emit_struct_fields_from_local(allocator: std.mem.Allocator, tokens: []const lexer.Token, struct_local: StructLocal, decl: StructDecl, locals: *const LocalSet, ctx: CodegenContext, copy_managed: bool, out: *std.ArrayList(u8)) CodegenError!void {
@@ -509,10 +509,10 @@ pub fn emit_managed_struct_clone_with_field_set(allocator: std.mem.Allocator, ta
         owned_types.deinit(allocator);
     }
 
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{layout.payload_bytes});
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{layout.type_id});
+    try append_fmt(allocator, out, "      i32.const {[value]d}\n", .{ .value = layout.payload_bytes });
+    try append_fmt(allocator, out, "      i32.const {[value]d}\n", .{ .value = layout.type_id });
     try out.appendSlice(allocator, "      call $__arc_alloc\n");
-    try append_fmt(allocator, out, "      local.set ${s}\n", .{STORAGE_WRITE_TARGET_TMP_LOCAL});
+    try append_fmt(allocator, out, "      local.set ${[name]s}\n", .{ .name = STORAGE_WRITE_TARGET_TMP_LOCAL });
 
     for (decl.fields) |field| {
         const field_name = public_decl_name(field.name);
@@ -521,7 +521,7 @@ pub fn emit_managed_struct_clone_with_field_set(allocator: std.mem.Allocator, ta
 
         try append_managed_struct_field_ptr(allocator, out, STORAGE_WRITE_TARGET_TMP_LOCAL, field_offset);
         if (std.mem.eql(u8, field_name, target_field_name)) {
-            try append_fmt(allocator, out, "      local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+            try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
             try append_store_for_payload_type(allocator, out, field_ty);
             continue;
         }
@@ -534,15 +534,15 @@ pub fn emit_managed_struct_clone_with_field_set(allocator: std.mem.Allocator, ta
         try append_store_for_payload_type(allocator, out, field_ty);
     }
 
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{target_name});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = target_name });
     try out.appendSlice(allocator, "      call $__arc_dec\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{STORAGE_WRITE_TARGET_TMP_LOCAL});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_TARGET_TMP_LOCAL });
 }
 
 pub fn append_managed_struct_field_ptr(allocator: std.mem.Allocator, out: *std.ArrayList(u8), local_name: []const u8, field_offset: usize) !void {
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{local_name});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = local_name });
     try out.appendSlice(allocator, "    call $__arc_payload\n");
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{field_offset});
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = field_offset });
     try out.appendSlice(allocator, "    i32.add\n");
 }
 
@@ -564,13 +564,13 @@ pub fn emit_managed_struct_expr_field_get(allocator: std.mem.Allocator, tokens: 
     const field_ty = try substitute_struct_field_type(allocator, decl, struct_ty, field.ty, &owned_types);
 
     if (!try codegen_callbacks.emit_expr(allocator, tokens, value_start, value_end, locals, ctx, struct_ty, out)) return false;
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
     try append_managed_struct_field_ptr(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, field_offset);
     try append_load_for_payload_type(allocator, out, field_ty);
     if (is_managed_struct_field(layout, field_name)) {
         try out.appendSlice(allocator, "    call $__arc_inc\n");
     }
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
     try out.appendSlice(allocator, "    call $__arc_dec\n");
     return true;
 }
@@ -584,13 +584,13 @@ pub fn emit_field_reflection_intrinsic(allocator: std.mem.Allocator, tokens: []c
     }
     if (std.mem.eql(u8, call_name, "field_index")) {
         const meta = single_field_meta_arg(tokens, start_idx, end_idx, locals) orelse return false;
-        try append_fmt(allocator, out, "    i32.const {d}\n", .{meta.visible_index});
+        try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = meta.visible_index });
         return true;
     }
     if (std.mem.eql(u8, call_name, "field_has_default")) {
         const meta = single_field_meta_arg(tokens, start_idx, end_idx, locals) orelse return false;
         const field = field_from_meta(ctx, meta) orelse return false;
-        try append_fmt(allocator, out, "    i32.const {d}\n", .{@intFromBool(field.default_start != null)});
+        try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = @intFromBool(field.default_start != null) });
         return true;
     }
     if (std.mem.eql(u8, call_name, "field_get")) {
@@ -622,16 +622,16 @@ pub fn emit_field_get_call(allocator: std.mem.Allocator, tokens: []const lexer.T
             try field_get_last_use_move_source(allocator, tokens, start_idx, end_idx, struct_local, field.ty, ctx_info.*, locals, ctx)
         else
             null;
-        try append_fmt(allocator, out, "    local.get ${s}\n", .{struct_local.name});
+        try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = struct_local.name });
         try out.appendSlice(allocator, "    call $__arc_payload\n");
-        try append_fmt(allocator, out, "    i32.const {d}\n", .{field_offset});
+        try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = field_offset });
         try out.appendSlice(allocator, "    i32.add\n");
         try append_load_for_payload_type(allocator, out, field.ty);
         if (is_managed_struct_field(layout, field_name) and move_source == null) {
             try out.appendSlice(allocator, "    call $__arc_inc\n");
         }
         if (move_source) |source| {
-            try append_fmt(allocator, out, "    ;; field-get-move {s}.{s}\n", .{ source.source_name, field_name });
+            try append_fmt(allocator, out, "    ;; field-get-move {[source]s}.{[field]s}\n", .{ .source = source.source_name, .field = field_name });
             try emit_zero_value_for_type(allocator, ctx, out, field.ty);
             try append_managed_struct_field_ptr(allocator, out, struct_local.name, field_offset);
             try append_store_for_payload_type(allocator, out, field.ty);
@@ -642,9 +642,9 @@ pub fn emit_field_get_call(allocator: std.mem.Allocator, tokens: []const lexer.T
     if (try emit_unmanaged_struct_field_get(allocator, tokens, struct_local, field_name, field.ty, locals, ctx, out)) {
         return true;
     }
-    try append_fmt(allocator, out, "    local.get ${s}.{s}\n", .{
-        struct_local.name,
-        field_name,
+    try append_fmt(allocator, out, "    local.get ${[name]s}.{[field]s}\n", .{
+        .name = struct_local.name,
+        .field = field_name,
     });
     return true;
 }
@@ -751,7 +751,7 @@ pub fn fresh_struct_literal_binding_stmt_end(allocator: std.mem.Allocator, token
 pub const emit_block_release_managed_locals = codegen_ownership.emit_block_release_managed_locals;
 pub const body_can_reach_end = codegen_control_flow.body_can_reach_end;
 pub fn emit_zero_value_for_type(allocator: std.mem.Allocator, ctx: CodegenContext, out: *std.ArrayList(u8), ty: []const u8) !void {
-    try append_fmt(allocator, out, "    {s}.const 0\n", .{codegen_wasm_type(ctx, ty)});
+    try append_fmt(allocator, out, "    {[name]s}.const 0\n", .{ .name = codegen_wasm_type(ctx, ty) });
 }
 
 pub fn collect_field_reflection_body_locals(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext, out: *LocalSet) CodegenError!void {
@@ -770,7 +770,7 @@ pub fn collect_field_reflection_body_locals(allocator: std.mem.Allocator, tokens
 }
 
 pub fn append_union_payload_local_set(allocator: std.mem.Allocator, out: *std.ArrayList(u8), base: []const u8, idx: usize) !void {
-    try append_fmt(allocator, out, "    local.set ${s}.__union_payload_{d}\n", .{ base, idx });
+    try append_fmt(allocator, out, "    local.set ${[name]s}.__union_payload_{[index]d}\n", .{ .name = base, .index = idx });
 }
 
 pub fn apply_guard_return_nil_narrowing(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *LocalSet) !void {

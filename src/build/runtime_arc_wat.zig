@@ -1,5 +1,6 @@
 //! ARC runtime WAT prelude (extracted from runtime_prelude_wat).
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 
 pub const ManagedFieldOffset = struct {
     name: []const u8,
@@ -39,11 +40,11 @@ pub fn emit_arc_runtime_header(
     const release_worklist_base = heap_base - ARC_RELEASE_WORKLIST_BYTES;
     const wasi_result_area_base = release_worklist_base - WASI_RESULT_AREA_BYTES;
 
-    try append_fmt(allocator, out, "  ;; arc-runtime block_size={d} object_header={d}\n", .{ ARC_BLOCK_SIZE, ARC_OBJECT_HEADER_BYTES });
-    try append_fmt(allocator, out, "  (global $__heap_base i32 (i32.const {d}))\n", .{heap_base});
-    try append_fmt(allocator, out, "  (global $__heap_cursor (mut i32) (i32.const {d}))\n", .{heap_base});
-    try append_fmt(allocator, out, "  (global $__wasi_result_area_base i32 (i32.const {d}))\n", .{wasi_result_area_base});
-    try append_fmt(allocator, out, "  (global $__release_worklist_base i32 (i32.const {d}))\n", .{release_worklist_base});
+    try append_fmt(allocator, out, "  ;; arc-runtime block_size={[ARC_BLOCK_SIZE]d} object_header={[ARC_OBJECT_HEADER_BYTES]d}\n", .{ .ARC_BLOCK_SIZE = ARC_BLOCK_SIZE, .ARC_OBJECT_HEADER_BYTES = ARC_OBJECT_HEADER_BYTES });
+    try append_fmt(allocator, out, "  (global $__heap_base i32 (i32.const {[heap_base]d}))\n", .{ .heap_base = heap_base });
+    try append_fmt(allocator, out, "  (global $__heap_cursor (mut i32) (i32.const {[heap_base]d}))\n", .{ .heap_base = heap_base });
+    try append_fmt(allocator, out, "  (global $__wasi_result_area_base i32 (i32.const {[wasi_result_area_base]d}))\n", .{ .wasi_result_area_base = wasi_result_area_base });
+    try append_fmt(allocator, out, "  (global $__release_worklist_base i32 (i32.const {[release_worklist_base]d}))\n", .{ .release_worklist_base = release_worklist_base });
 }
 
 
@@ -53,23 +54,13 @@ pub fn emit_arc_layout_table(
     struct_layouts: []const StructLayout,
 ) !void {
     for (struct_layouts) |layout| {
-        try append_fmt(allocator, out, "  ;; arc-layout type_id={d} name={s} managed_count={d} payload_bytes={d}\n", .{
-            layout.type_id,
-            layout.name,
-            layout.managed_fields.len,
-            layout.payload_bytes,
-        });
+        try append_fmt(allocator, out, "  ;; arc-layout type_id={[type_id]d} name={[name]s} managed_count={[len]d} payload_bytes={[payload_bytes]d}\n", .{ .type_id = layout.type_id, .name = layout.name, .len = layout.managed_fields.len, .payload_bytes = layout.payload_bytes });
         for (layout.managed_fields, 0..) |field, index| {
-            try append_fmt(allocator, out, "  ;; arc-layout-managed-offset type_id={d} index={d} offset={d} field={s}\n", .{
-                layout.type_id,
-                index,
-                field.offset,
-                field.name,
-            });
+            try append_fmt(allocator, out, "  ;; arc-layout-managed-offset type_id={[type_id]d} index={[index]d} offset={[offset]d} field={[name]s}\n", .{ .type_id = layout.type_id, .index = index, .offset = field.offset, .name = field.name });
         }
     }
 
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 2,
         \\  (func $__layout_managed_count (param $type_id i32) (result i32)
         \\    local.get $type_id
         \\    i32.const 1
@@ -82,18 +73,9 @@ pub fn emit_arc_layout_table(
     );
     for (struct_layouts, 0..) |layout, index| {
         if (has_earlier_layout_type_id(struct_layouts[0..index], layout.type_id)) continue;
-        try append_fmt(allocator, out,
-            \\    local.get $type_id
-            \\    i32.const {d}
-            \\    i32.eq
-            \\    if
-            \\      i32.const {d}
-            \\      return
-            \\    end
-            \\
-        , .{ layout.type_id, layout.managed_fields.len });
+        try generated_text.append_fmt_block(allocator, out, 4, "    local.get $type_id\n    i32.const {[type_id]d}\n    i32.eq\n    if\n      i32.const {[len]d}\n      return\n    end\n", .{ .type_id = layout.type_id, .len = layout.managed_fields.len });
     }
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 2,
         \\    unreachable
         \\  )
         \\  (func $__layout_managed_offset (param $type_id i32) (param $index i32) (result i32)
@@ -107,32 +89,17 @@ pub fn emit_arc_layout_table(
     );
     for (struct_layouts, 0..) |layout, index| {
         if (has_earlier_layout_type_id(struct_layouts[0..index], layout.type_id)) continue;
-        try append_fmt(allocator, out,
-            \\    local.get $type_id
-            \\    i32.const {d}
-            \\    i32.eq
-            \\    if
-            \\
-        , .{layout.type_id});
+        try generated_text.append_fmt_block(allocator, out, 4, "    local.get $type_id\n    i32.const {[type_id]d}\n    i32.eq\n    if\n", .{ .type_id = layout.type_id });
         for (layout.managed_fields, 0..) |field, field_index| {
-            try append_fmt(allocator, out,
-                \\      local.get $index
-                \\      i32.const {d}
-                \\      i32.eq
-                \\      if
-                \\        i32.const {d}
-                \\        return
-                \\      end
-                \\
-            , .{ field_index, field.offset });
+            try generated_text.append_fmt_block(allocator, out, 6, "      local.get $index\n      i32.const {[field_index]d}\n      i32.eq\n      if\n        i32.const {[offset]d}\n        return\n      end\n", .{ .field_index = field_index, .offset = field.offset });
         }
-        try out.appendSlice(allocator,
+        try generated_text.append_block(allocator, out, 4,
             \\      unreachable
             \\    end
             \\
         );
     }
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 2,
         \\    unreachable
         \\  )
         \\  (func $__layout_is_storage_pack (param $type_id i32) (result i32)
@@ -148,18 +115,9 @@ pub fn emit_arc_layout_table(
     for (struct_layouts, 0..) |layout, index| {
         if (has_earlier_layout_type_id(struct_layouts[0..index], layout.type_id)) continue;
         if (!layout.is_storage_pack) continue;
-        try append_fmt(allocator, out,
-            \\    local.get $type_id
-            \\    i32.const {d}
-            \\    i32.eq
-            \\    if
-            \\      i32.const 1
-            \\      return
-            \\    end
-            \\
-        , .{layout.type_id});
+        try generated_text.append_fmt_block(allocator, out, 4, "    local.get $type_id\n    i32.const {[type_id]d}\n    i32.eq\n    if\n      i32.const 1\n      return\n    end\n", .{ .type_id = layout.type_id });
     }
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 2,
         \\    i32.const 0
         \\  )
         \\  (func $__layout_storage_pack_elem_bytes (param $type_id i32) (result i32)
@@ -174,18 +132,9 @@ pub fn emit_arc_layout_table(
     for (struct_layouts, 0..) |layout, index| {
         if (has_earlier_layout_type_id(struct_layouts[0..index], layout.type_id)) continue;
         if (!layout.is_storage_pack) continue;
-        try append_fmt(allocator, out,
-            \\    local.get $type_id
-            \\    i32.const {d}
-            \\    i32.eq
-            \\    if
-            \\      i32.const {d}
-            \\      return
-            \\    end
-            \\
-        , .{ layout.type_id, layout.payload_bytes });
+        try generated_text.append_fmt_block(allocator, out, 4, "    local.get $type_id\n    i32.const {[type_id]d}\n    i32.eq\n    if\n      i32.const {[payload_bytes]d}\n      return\n    end\n", .{ .type_id = layout.type_id, .payload_bytes = layout.payload_bytes });
     }
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 2,
         \\    unreachable
         \\  )
     );
@@ -199,7 +148,7 @@ pub fn emit_arc_runtime_prelude(
     struct_layouts: []const StructLayout,
 ) !void {
     try emit_arc_runtime_header(allocator, out, string_data, struct_layouts);
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 2,
         \\  ;; arc-runtime memory grow helper v0
         \\  (func $__memory_grow_to (param $end i32)
         \\    memory.size
@@ -1045,7 +994,7 @@ pub fn emit_arc_runtime_prelude(
         \\
     );
     try emit_arc_layout_table(allocator, out, struct_layouts);
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 2,
         \\  ;; arc-runtime large span release v1
         \\  (func $__arc_release_large (param $object i32)
         \\    (local $block i32)
@@ -1899,9 +1848,5 @@ pub fn append_fmt(
     comptime fmt: []const u8,
     args: anytype,
 ) !void {
-    const text = try std.fmt.allocPrint(allocator, fmt, args);
-    defer allocator.free(text);
-    try out.appendSlice(allocator, text);
+    try generated_text.append_fmt(allocator, out, fmt, args);
 }
-
-

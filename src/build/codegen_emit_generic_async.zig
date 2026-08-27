@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
 const imports = @import("imports.zig");
@@ -25,7 +26,7 @@ pub fn emit_if_supported(
 }
 
 fn emit_wat(allocator: std.mem.Allocator, out: *std.ArrayList(u8), plan: generic_async_plan.GenericAsyncPlan) !void {
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 0,
         \\(module
         \\  ;; generic async vertical slice
         \\  (type $generic-async-frame (struct
@@ -37,9 +38,9 @@ fn emit_wat(allocator: std.mem.Allocator, out: *std.ArrayList(u8), plan: generic
         \\    i32.const 0)
         \\  (func $generic-frame-free (param $handle i32))
     );
-    try append_fmt(allocator, out, "  (func ${s})\n", .{plan.work_name});
-    try append_fmt(allocator, out,
-        \\  (func ${s}
+    try generated_text.append_fmt(allocator, out, "  (func ${[work_name]s})\n", .{ .work_name = plan.work_name });
+    try generated_text.append_fmt_block(allocator, out, 2,
+        \\  (func ${[root_name]s}
         \\    (local $frame i32)
         \\    ;; [generic-async-frame]
         \\    call $generic-frame-alloc
@@ -47,23 +48,23 @@ fn emit_wat(allocator: std.mem.Allocator, out: *std.ArrayList(u8), plan: generic
         \\    i32.const 0
         \\    drop
         \\    ;; [generic-async-suspend]
-        \\    call ${s}
+        \\    call ${[work_name]s}
         \\    ;; [generic-async-suspend]
-        \\    call ${s}
+        \\    call ${[work_name]s}
         \\    ;; [generic-async-cancel]
-        \\    call ${s}
+        \\    call ${[work_name]s}
         \\    local.get $frame
         \\    call $generic-frame-free
         \\    ;; [generic-async-terminal]
         \\  )
-    , .{ plan.root_name, plan.work_name, plan.work_name, plan.work_name });
-    try append_fmt(allocator, out,
+    , .{ .root_name = plan.root_name, .work_name = plan.work_name });
+    try generated_text.append_fmt_block(allocator, out, 2,
         \\  (func $start
-        \\    call ${s})
-        \\  (export "run" (func ${s}))
+        \\    call ${[root_name]s})
+        \\  (export "run" (func ${[root_name]s}))
         \\  (export "_start" (func $start))
         \\)
-    , .{ plan.root_name, plan.root_name });
+    , .{ .root_name = plan.root_name });
 }
 
 fn has_generic_async_operation(tokens: []const lexer.Token) bool {
@@ -74,17 +75,6 @@ fn has_generic_async_operation(tokens: []const lexer.Token) bool {
             std.mem.eql(u8, tokens[idx + 1].lexeme, "cancel")) return true;
     }
     return false;
-}
-
-fn append_fmt(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    comptime fmt: []const u8,
-    args: anytype,
-) !void {
-    const text = try std.fmt.allocPrint(allocator, fmt, args);
-    defer allocator.free(text);
-    try out.appendSlice(allocator, text);
 }
 
 fn count_marker(wat: []const u8, marker: []const u8) usize {

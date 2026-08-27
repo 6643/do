@@ -119,6 +119,15 @@ test "program accepts a nested CLI stdin stream host declaration" {
     try check_program(std.testing.allocator, program, tokens);
 }
 
+test "diagnostic C16-A complete program check" {
+    const source = @embedFile("test/compile_ok/564_gc_wit_managed_record_host_boundary.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+    try check_program(std.testing.allocator, program, tokens);
+}
+
 test "program accepts an HTTP body stream completion tuple" {
     const source =
         \\consume_body = @host_func("wasi:http/types@0.3.0-rc-2025-09-16", "response.consume-body", (HttpResponse) -> Tuple<Stream<u8>, Future<Result<option<trailers>, HttpError>>>)

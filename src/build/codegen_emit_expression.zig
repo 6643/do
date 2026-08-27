@@ -889,20 +889,20 @@ pub fn emit_user_func(allocator: std.mem.Allocator, func: FuncDecl, ctx: Codegen
     func_ctx.callback_bindings = func.callback_bindings;
 
     const tokens = func.tokens;
-    try append_fmt(allocator, out, "  (func ${s}", .{func.name});
+    try append_fmt(allocator, out, "  (func ${[name]s}", .{ .name = func.name });
     for (func.params) |param| {
         if (param.callback != null) continue;
         var abi_fields = host_abi_fields.AbiParamList.init(allocator);
         defer abi_fields.deinit();
         try abi_fields.collect_param(param, tokens, func_ctx);
         for (abi_fields.items.items) |field| {
-            try append_fmt(allocator, out, " (param ${s} {s})", .{ field.name, field.wasm_type });
+            try append_fmt(allocator, out, " (param ${[name]s} {[wasm_type]s})", .{ .name = field.name, .wasm_type = field.wasm_type });
         }
     }
     if (func.results.len != 0) {
         try out.appendSlice(allocator, " (result");
         for (func.results) |result| {
-            try append_fmt(allocator, out, " {s}", .{codegen_wasm_type(func_ctx, result)});
+            try append_fmt(allocator, out, " {[result]s}", .{ .result = codegen_wasm_type(func_ctx, result) });
         }
         try out.appendSlice(allocator, ")");
     }
@@ -927,10 +927,7 @@ pub fn emit_user_func(allocator: std.mem.Allocator, func: FuncDecl, ctx: Codegen
     if (self_tail_tco) |tco| {
         for (tco.func.params) |param| {
             if (param.callback != null) continue;
-            try append_fmt(allocator, out, "    (local $__tail_arg_{s} {s})\n", .{
-                param.name,
-                codegen_wasm_type(func_ctx, param.ty),
-            });
+            try append_fmt(allocator, out, "    (local $__tail_arg_{[name]s} {[ty]s})\n", .{ .name = param.name, .ty = codegen_wasm_type(func_ctx, param.ty) });
         }
     }
     if (func.arrow) {
@@ -949,7 +946,7 @@ pub fn emit_user_func(allocator: std.mem.Allocator, func: FuncDecl, ctx: Codegen
         };
         const can_reach_end = body_can_reach_end(tokens, func.body_start, func.body_end);
         if (self_tail_tco) |tco| {
-            try append_fmt(allocator, out, "    loop ${s}\n", .{tco.loop_label});
+            try append_fmt(allocator, out, "    loop ${[loop_label]s}\n", .{ .loop_label = tco.loop_label });
             try emit_self_tail_loop_local_reset(allocator, tco.func, &locals, func_ctx, out);
             try codegen_callbacks.emit_body(allocator, tokens, func.body_start, func.body_end, func.body_start, &locals, &cleanup_locals, &EMPTY_LOCAL_SET, func_ctx, func.results, func.result_items, func.result_struct, func.result_union, null, &root_defer, null, &tco, out);
             try out.appendSlice(allocator, "    end\n");
@@ -1045,7 +1042,7 @@ fn emit_ident_literal_or_local(
 ) !bool {
     if (expected_ty) |ty| {
         if (error_enum_branch_value(tokens, ty, tok.lexeme)) |value| {
-            try append_fmt(allocator, out, "    i32.const {d}\n", .{value});
+            try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = value });
             return true;
         }
         if (value_enum_branch_value(ctx, tokens, ty, tok.lexeme)) |value| {
@@ -1080,7 +1077,7 @@ fn emit_ident_literal_or_local(
         if (try emit_union_local_payload_for_type(allocator, tok.lexeme, ty, locals, ctx, out)) return true;
     }
     if (find_local_name(locals.locals.items, tok.lexeme)) |local_name| {
-        try append_fmt(allocator, out, "    local.get ${s}\n", .{local_name});
+        try append_fmt(allocator, out, "    local.get ${[local_name]s}\n", .{ .local_name = local_name });
         return true;
     }
     if (find_callback_call_arg(ctx.callback_call_args, tok.lexeme)) |callback_arg| {
@@ -1133,7 +1130,7 @@ fn emit_expected_storage_agg_literal(
     if (!try emit_storage_agg_literal(allocator, tokens, range.start, range.end, STORAGE_OVERWRITE_TMP_LOCAL, elem_ty, locals, ctx, out)) {
         return error.NoMatchingCall;
     }
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.get ${[STORAGE_OVERWRITE_TMP_LOCAL]s}\n", .{ .STORAGE_OVERWRITE_TMP_LOCAL = STORAGE_OVERWRITE_TMP_LOCAL });
     return true;
 }
 
@@ -1232,8 +1229,8 @@ pub fn emit_expr_with_move_context(allocator: std.mem.Allocator, tokens: []const
         if (string_literal_arg_lexeme(tokens, arg_start, arg_end)) |lexeme| {
             if (!host_param_is_ptr_len(host_import, param_idx)) return error.NoMatchingCall;
             const data = ctx.string_data.find(lexeme) orelse return error.NoMatchingCall;
-            try append_fmt(allocator, out, "    i32.const {d}\n", .{data.ptr});
-            try append_fmt(allocator, out, "    i32.const {d}\n", .{data.bytes.len});
+            try append_fmt(allocator, out, "    i32.const {[ptr]d}\n", .{ .ptr = data.ptr });
+            try append_fmt(allocator, out, "    i32.const {[len]d}\n", .{ .len = data.bytes.len });
             param_idx += 2;
         } else if (try emit_storage_ptr_len_host_arg(allocator, tokens, arg_start, arg_end, locals, host_import, param_idx, out)) {
             param_idx += 2;
@@ -1248,6 +1245,6 @@ pub fn emit_expr_with_move_context(allocator: std.mem.Allocator, tokens: []const
         if (arg_start < call_head.args_end and tok_eq(tokens[arg_start], ",")) arg_start += 1;
     }
     if (param_idx != host_import.params.len) return error.NoMatchingCall;
-    try append_fmt(allocator, out, "    call ${s}\n", .{host_import.alias});
+    try append_fmt(allocator, out, "    call ${[alias]s}\n", .{ .alias = host_import.alias });
     return true;
 }

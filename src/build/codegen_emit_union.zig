@@ -686,7 +686,7 @@ pub fn emit_union_branch_value(allocator: std.mem.Allocator, tokens: []const lex
             for (layout.payload_tys) |payload_ty| {
                 try emit_zero_value_for_type(allocator, ctx, out, payload_ty);
             }
-            try append_fmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
+            try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = branch.tag });
             return true;
         }
         if (expr_call_head(tokens, range)) |call_head| {
@@ -694,7 +694,7 @@ pub fn emit_union_branch_value(allocator: std.mem.Allocator, tokens: []const lex
                 for (layout.payload_tys) |payload_ty| {
                     try emit_zero_value_for_type(allocator, ctx, out, payload_ty);
                 }
-                try append_fmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
+                try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = branch.tag });
                 return true;
             }
         }
@@ -740,7 +740,7 @@ fn write_union_branch_slots(
             try emit_zero_value_for_type(allocator, ctx, out, payload_ty);
         }
     }
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = branch.tag });
 }
 
 fn emit_payload_enum_ctor_branch(
@@ -799,7 +799,7 @@ fn emit_unmanaged_struct_local_as_payload(
     if (find_struct_layout(ctx.struct_layouts, emit_ty) != null) return null;
     const decl = find_struct_decl(ctx.structs, emit_ty) orelse return false;
     for (decl.fields) |field| {
-        try append_fmt(allocator, out, "    local.get ${s}.{s}\n", .{ struct_local.name, public_decl_name(field.name) });
+        try append_fmt(allocator, out, "    local.get ${[name]s}.{[field]s}\n", .{ .name = struct_local.name, .field = public_decl_name(field.name) });
     }
     return true;
 }
@@ -922,7 +922,7 @@ pub fn emit_union_is_call(allocator: std.mem.Allocator, tokens: []const lexer.To
 
     for (tags.items, 0..) |tag, idx| {
         try append_union_tag_local_get(allocator, out, union_local.name);
-        try append_fmt(allocator, out, "    i32.const {d}\n", .{tag});
+        try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = tag });
         try out.appendSlice(allocator, "    i32.eq\n");
         if (idx != 0) try out.appendSlice(allocator, "    i32.or\n");
     }
@@ -1002,7 +1002,7 @@ pub fn emit_union_expr_tag_and_discard_payload(allocator: std.mem.Allocator, tok
     if (!try codegen_callbacks.emit_user_func_call_with_move_context(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, move_ctx, out)) {
         return false;
     }
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
     var idx = layout.payload_tys.len;
     while (idx > 0) {
         idx -= 1;
@@ -1012,7 +1012,7 @@ pub fn emit_union_expr_tag_and_discard_payload(allocator: std.mem.Allocator, tok
             try out.appendSlice(allocator, "    drop\n");
         }
     }
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
     return true;
 }
 
@@ -1033,10 +1033,10 @@ pub fn emit_union_error_branch_comparison(allocator: std.mem.Allocator, tokens: 
         if (branch.tag == 0 or branch.payload_len != 1) continue;
         const branch_value = error_branch_value_for_comparison(allocator, ctx, tokens, value_start, value_end, branch.ty) orelse continue;
         try append_union_tag_local_get(allocator, out, union_local.name);
-        try append_fmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
+        try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = branch.tag });
         try out.appendSlice(allocator, "    i32.eq\n");
         try append_union_payload_local_get(allocator, out, union_local.name, branch.payload_start);
-        try append_fmt(allocator, out, "    i32.const {d}\n", .{branch_value});
+        try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = branch_value });
         try out.appendSlice(allocator, "    i32.eq\n");
         try out.appendSlice(allocator, "    i32.and\n");
         if (std.mem.eql(u8, call_name, "ne")) {
@@ -1107,7 +1107,7 @@ pub fn emit_union_local_payload_for_type(allocator: std.mem.Allocator, name: []c
 
     try append_union_payload_local_get(allocator, out, union_local.name, branch.payload_start);
     if (is_managed_local_type(union_local.layout.payload_tys[branch.payload_start], ctx)) {
-        try append_fmt(allocator, out, "    ;; arc-union-payload-copy-inc {s}.__union_payload_{d}\n", .{ union_local.name, branch.payload_start });
+        try append_fmt(allocator, out, "    ;; arc-union-payload-copy-inc {[name]s}.__union_payload_{[index]d}\n", .{ .name = union_local.name, .index = branch.payload_start });
         try out.appendSlice(allocator, "    call $__arc_inc\n");
     }
     return true;
@@ -1279,7 +1279,7 @@ pub fn emit_union_struct_field_get_call(allocator: std.mem.Allocator, tokens: []
             const field_ty = find_struct_field_type(payload.decl, field_name) orelse return false;
             try append_union_payload_local_get(allocator, out, name, payload.branch.payload_start);
             try out.appendSlice(allocator, "    call $__arc_payload\n");
-            try append_fmt(allocator, out, "    i32.const {d}\n", .{field_offset});
+            try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = field_offset });
             try out.appendSlice(allocator, "    i32.add\n");
             try append_load_for_payload_type(allocator, out, field_ty);
             if (is_managed_struct_field(layout, field_name)) {
@@ -1364,15 +1364,15 @@ pub fn emit_union_payload_comparison_call(allocator: std.mem.Allocator, tokens: 
     if (!try codegen_callbacks.emit_user_func_call_with_move_context(allocator, tokens, call_head.args_start, call_head.args_end, locals, ctx, func, null, out)) {
         return false;
     }
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
     if (!try codegen_callbacks.emit_expr(allocator, tokens, second_start, second_end, locals, ctx, branch.ty, out)) {
         return false;
     }
     const op_ty = codegen_scalar_type(ctx, branch.ty);
     const eq_op = comparison_wasm_op("eq", op_ty) orelse return false;
-    try append_fmt(allocator, out, "    {s}\n", .{eq_op});
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
+    try append_fmt(allocator, out, "    {[name]s}\n", .{ .name = eq_op });
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = branch.tag });
     try out.appendSlice(allocator, "    i32.eq\n");
     try out.appendSlice(allocator, "    i32.and\n");
     if (std.mem.eql(u8, call_name, "ne")) {
@@ -1403,9 +1403,9 @@ pub fn emit_union_payload_comparison_local(allocator: std.mem.Allocator, tokens:
     }
     const op_ty = codegen_scalar_type(ctx, branch.ty);
     const eq_op = comparison_wasm_op("eq", op_ty) orelse return false;
-    try append_fmt(allocator, out, "    {s}\n", .{eq_op});
+    try append_fmt(allocator, out, "    {[name]s}\n", .{ .name = eq_op });
     try append_union_tag_local_get(allocator, out, union_local.name);
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{branch.tag});
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = branch.tag });
     try out.appendSlice(allocator, "    i32.eq\n");
     try out.appendSlice(allocator, "    i32.and\n");
     if (std.mem.eql(u8, call_name, "ne")) {
@@ -1476,17 +1476,17 @@ pub fn emit_union_storage_payload_get_call(allocator: std.mem.Allocator, tokens:
         try emit_storage_data_ptr(allocator, out, storage_name);
         if (!try codegen_callbacks.emit_expr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return false;
         if (elem_bytes != 1) {
-            try append_fmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
+            try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = elem_bytes });
             try out.appendSlice(allocator, "    i32.mul\n");
         }
         try out.appendSlice(allocator, "    i32.add\n");
-        try append_fmt(allocator, out, "    local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
+        try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = TUPLE_PACK_BASE_TMP_LOCAL });
         try append_load_tuple_leaves_owning_to_stack_ctx(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ", ctx);
     } else {
         try emit_storage_data_ptr(allocator, out, storage_name);
         if (!try codegen_callbacks.emit_expr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return false;
         if (elem_bytes != 1) {
-            try append_fmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
+            try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = elem_bytes });
             try out.appendSlice(allocator, "    i32.mul\n");
         }
         try out.appendSlice(allocator, "    i32.add\n");

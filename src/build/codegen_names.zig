@@ -1,15 +1,13 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const type_util = @import("type_name.zig");
-
 pub fn append_fmt(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
     comptime fmt: []const u8,
     args: anytype,
 ) !void {
-    const text = try std.fmt.allocPrint(allocator, fmt, args);
-    defer allocator.free(text);
-    try out.appendSlice(allocator, text);
+    try generated_text.append_fmt(allocator, out, fmt, args);
 }
 
 pub fn public_decl_name(name: []const u8) []const u8 {
@@ -31,7 +29,7 @@ pub fn module_scoped_symbol_name(
 ) ![]u8 {
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
-    try append_fmt(allocator, &out, "__mod_{d}__", .{module_idx});
+    try append_fmt(allocator, &out, "__mod_{[module_idx]d}__", .{ .module_idx = module_idx });
     try append_mangled_type_name(allocator, &out, public_decl_name(name));
     return out.toOwnedSlice(allocator);
 }

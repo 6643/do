@@ -1,0 +1,11 @@
+package demo:marshal-record-mixed-lower@1.0.0;
+
+interface api {
+  record writing {
+    code: u32,
+    count: u64,
+    status: s64,
+  }
+
+  write: func(value: writing);
+}

@@ -1573,7 +1573,7 @@ pub fn generic_instance_name(allocator: std.mem.Allocator, template: FuncDecl, b
         }
     }
     for (callback_bindings) |binding| {
-        try append_fmt(allocator, &out, "__cb_{d}_{d}", .{ binding.arg_start, binding.arg_end });
+        try append_fmt(allocator, &out, "__cb_{[arg_start]d}_{[arg_end]d}", .{ .arg_start = binding.arg_start, .arg_end = binding.arg_end });
     }
     return out.toOwnedSlice(allocator);
 }

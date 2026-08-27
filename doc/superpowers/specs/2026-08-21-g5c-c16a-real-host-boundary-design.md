@@ -2,9 +2,10 @@
 
 ## Status
 
-Proposed after the C15-D standalone and private compiler gates passed. This
-design is a bounded promotion of the C15-D probe. It does not change the
-default host/WIT route, admit arbitrary aggregate lowering, or close G5c.
+Implemented and verified on 2026-08-21 after the C15-D standalone/private
+compiler gates and the C16-A negative/default-route gate passed. This design is
+a bounded promotion of the C15-D probe. It does not change the default
+host/WIT route, admit arbitrary aggregate lowering, or close G5c.
 
 ## Goal
 
@@ -28,10 +29,10 @@ The option is a migration gate, not a new default backend selector.
 
 ## Context and alternatives
 
-The current C15-C/D path loads the manifest and emits a private module, but the
-C15-D compiler gate uses a generic `01_start_entry_valid.do` input and does not
-consume a source-level host declaration. The normal `@host_func` path remains
-ARC-backed. This is the exact gap this design closes.
+Before C16-A, the C15-C/D path loaded the manifest and emitted a private module,
+but the compiler gate did not consume a source-level host declaration. The
+normal `@host_func` path remains ARC-backed. This is the exact gap this design
+closes.
 
 ### A: declaration-checked private adapter (selected)
 
@@ -66,16 +67,19 @@ promotion and would not be safely reversible.
 The positive fixture contains one top-level declaration equivalent to:
 
 ```do
-Writing {
-    .code u32
-    .label text
-    .note text
-}
-
 write = @host_func("demo:marshal-record-managed-lower-multi/api@1.0.0", "write", (Writing) -> nil)
+
+Writing {
+    code u32
+    label text
+    note text
+}
 
 start() {}
 ```
+
+The host import appears before the record because the current parser requires
+top-level imports before ordinary declarations.
 
 The exact fixture is a dedicated `compile_ok` case; its declaration is the
 source-level contract under test. The adapter does not infer a WIT descriptor
@@ -91,7 +95,10 @@ Before any WAT slice is returned, the adapter must validate, in this order:
    package, world, interface, member, direction, signature, canonical import,
    and measured layout.
 3. The entry program contains exactly one top-level host declaration for this
-   private target. It must be `@host_func`, not `@host_async_func`.
+   private target. It must be `@host_func`, not `@host_async_func`. The
+   token-level validator returns `AsyncGcWitHostDeclaration`; the full CLI
+   reaches the existing frontend registry guard first and reports
+   `UnknownP3AsyncHostDescriptor` for the negative async fixture.
 4. The locator equals the descriptor canonical Component module
    `demo:marshal-record-managed-lower-multi/api@1.0.0`; the member equals
    `write`; and the result is `nil`.
@@ -177,6 +184,9 @@ The implementation plan must provide independently observable gates:
 6. The ordinary build of the same fixture without `--gc-wit-marshal` remains
    on the ARC path; the existing full regression, ReleaseSmall build,
    residual gate, and migration inventory keep their current results.
+7. `test_gc_marshal_record_managed_lower_multi_compiler_boundary_negative.sh`
+   proves async/mismatch rejection, no WAT artifact, the default ARC route,
+   the existing C15-B/C15-D compiler gates, and the residual baseline.
 
 ## Exit criteria and non-goals
 

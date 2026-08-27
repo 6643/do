@@ -48,9 +48,14 @@ outer_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeE
     return @await(pending)
 }
 
+ultra_outer_stream(writer StreamWriter<u8>, count u64, value u8) -> Result<nil, ProbeError> {
+    pending Future<Result<nil, ProbeError>> = @async(outer_stream(writer, count, value))
+    return @await(pending)
+}
+
 produce(count u64, value u8) -> Result<nil, ProbeError> {
     reader StreamReader<u8>, writer StreamWriter<u8> = new_stream<u8>(1)
-    pending Future<Result<nil, ProbeError>> = @async(outer_stream(writer, count, value))
+    pending Future<Result<nil, ProbeError>> = @async(ultra_outer_stream(writer, count, value))
     return @await(pending)
 }
 

@@ -37,7 +37,7 @@ pub fn emit_string_data_memory(
     }
     try out.appendSlice(allocator, "  (export \"cm32p2_memory\" (memory 0))\n");
     for (string_data) |data| {
-        try append_fmt(allocator, out, "  (data (i32.const {d}) ", .{data.ptr});
+        try append_fmt(allocator, out, "  (data (i32.const {[ptr]d}) ", .{ .ptr = data.ptr });
         try append_wat_string_literal(allocator, out, data.bytes);
         try out.appendSlice(allocator, ")\n");
     }

@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("../build/codegen_text.zig");
 const async_lowering = @import("async_lowering.zig");
 const model = @import("model.zig");
 const signature = @import("signature.zig");
@@ -165,11 +166,7 @@ fn append_lowering(
     if (lowering.payload) |payload| {
         try out.appendSlice(allocator, ",\"payload\":{\"core_type\":\"");
         try append_json_text(out, allocator, payload.core_type);
-        try append_fmt(out, allocator, "\",\"offset\":{d},\"byte_size\":{d},\"alignment\":{d},\"encoding\":\"", .{
-            payload.offset,
-            payload.byte_size,
-            payload.alignment,
-        });
+        try append_fmt(out, allocator, "\",\"offset\":{[offset]d},\"byte_size\":{[byte_size]d},\"alignment\":{[alignment]d},\"encoding\":\"", .{ .offset = payload.offset, .byte_size = payload.byte_size, .alignment = payload.alignment });
         try append_json_text(out, allocator, payload.encoding);
         try out.appendSlice(allocator, "\"}");
     }
@@ -183,7 +180,7 @@ fn append_package_locator(out: *std.ArrayList(u8), allocator: std.mem.Allocator,
     try out.append(allocator, ':');
     try append_json_text(out, allocator, package.name);
     try out.append(allocator, '@');
-    try append_fmt(out, allocator, "{d}.{d}.{d}", .{ package.version.major, package.version.minor, package.version.patch });
+    try append_fmt(out, allocator, "{[major]d}.{[minor]d}.{[patch]d}", .{ .major = package.version.major, .minor = package.version.minor, .patch = package.version.patch });
     if (package.version.prerelease.len != 0) {
         try out.append(allocator, '-');
         try append_json_text(out, allocator, package.version.prerelease);
@@ -216,7 +213,5 @@ fn append_json_text(out: *std.ArrayList(u8), allocator: std.mem.Allocator, text:
 }
 
 fn append_fmt(out: *std.ArrayList(u8), allocator: std.mem.Allocator, comptime format: []const u8, args: anytype) !void {
-    const text = try std.fmt.allocPrint(allocator, format, args);
-    defer allocator.free(text);
-    try out.appendSlice(allocator, text);
+    try generated_text.append_fmt(allocator, out, format, args);
 }

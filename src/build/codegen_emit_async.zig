@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const async_model = @import("codegen_async_model.zig");
 const gc_async_frame = @import("codegen_gc_async_frame.zig");
 
@@ -10,11 +11,13 @@ pub fn emit_generic_async_frame_metadata(
     terminal_offset: u32,
     size: u32,
 ) !void {
-    try append_fmt(allocator, out, "  ;; [generic-async-frame-layout] state={d} future={d} terminal={d} size={d}\n", .{
-        state_offset,
-        future_offset,
-        terminal_offset,
-        size,
+    try generated_text.append_fmt(allocator, out,
+        "  ;; [generic-async-frame-layout] state={[state_offset]d} future={[future_offset]d} terminal={[terminal_offset]d} size={[size]d}\n",
+        .{
+        .state_offset = state_offset,
+        .future_offset = future_offset,
+        .terminal_offset = terminal_offset,
+        .size = size,
     });
 }
 
@@ -23,13 +26,13 @@ pub fn emit_frame_metadata(
     out: *std.ArrayList(u8),
     plan: async_model.AsyncFunctionPlan,
 ) !void {
-    try append_fmt(allocator, out, "  ;; [async-frame] {s}\n", .{plan.name});
+    try generated_text.append_fmt(allocator, out, "  ;; [async-frame] {[name]s}\n", .{ .name = plan.name });
     for (plan.frame.resume_states) |state| {
-        try append_fmt(allocator, out, "  ;; [async-state] {d}\n", .{state.id});
+        try generated_text.append_fmt(allocator, out, "  ;; [async-state] {[id]d}\n", .{ .id = state.id });
     }
-    try append_fmt(allocator, out, "  ;; [async-cleanup] {d}\n", .{plan.frame.cleanup_state});
+    try generated_text.append_fmt(allocator, out, "  ;; [async-cleanup] {[cleanup_state]d}\n", .{ .cleanup_state = plan.frame.cleanup_state });
     for (plan.layout.slots) |slot| {
-        try append_fmt(allocator, out, "  ;; [async-slot] {s} offset={d}\n", .{ slot.name, slot.offset });
+        try generated_text.append_fmt(allocator, out, "  ;; [async-slot] {[name]s} offset={[offset]d}\n", .{ .name = slot.name, .offset = slot.offset });
     }
 }
 
@@ -66,20 +69,22 @@ pub fn emit_stream_writer_frame_metadata(
     layout: StreamWriterFrameLayout,
     capacity: u32,
 ) !void {
-    try append_fmt(allocator, out, "  ;; [writer-result-tag-offset] {d}\n", .{layout.result_tag});
-    try append_fmt(allocator, out, "  ;; [writer-result-payload-offset] {d}\n", .{layout.result_payload});
-    try append_fmt(allocator, out, "  ;; Frame layout: writer queue head/count/capacity at {d}/{d}/{d}; pending producer at {d}; terminal/error at {d}/{d}.\n", .{
-        layout.queue_head,
-        layout.queue_count,
-        layout.queue_capacity,
-        layout.pending_producer,
-        layout.terminal_state,
-        layout.error_payload,
+    try generated_text.append_fmt(allocator, out, "  ;; [writer-result-tag-offset] {[offset]d}\n", .{ .offset = layout.result_tag });
+    try generated_text.append_fmt(allocator, out, "  ;; [writer-result-payload-offset] {[offset]d}\n", .{ .offset = layout.result_payload });
+    try generated_text.append_fmt(allocator, out,
+        "  ;; Frame layout: writer queue head/count/capacity at {[queue_head]d}/{[queue_count]d}/{[queue_capacity]d}; pending producer at {[pending_producer]d}; terminal/error at {[terminal_state]d}/{[error_payload]d}.\n",
+        .{
+        .queue_head = layout.queue_head,
+        .queue_count = layout.queue_count,
+        .queue_capacity = layout.queue_capacity,
+        .pending_producer = layout.pending_producer,
+        .terminal_state = layout.terminal_state,
+        .error_payload = layout.error_payload,
     });
-    try append_fmt(allocator, out, "  ;; [writer-capacity] {d}\n", .{capacity});
-    try append_fmt(allocator, out, "  ;; [writer-frame-size] {d}\n", .{layout.size});
-    try append_fmt(allocator, out, "  ;; [writer-producer-index-offset] {d}\n", .{layout.producer_index});
-    try append_fmt(allocator, out, "  ;; [writer-producer-value-offset] {d}\n", .{layout.producer_value});
+    try generated_text.append_fmt(allocator, out, "  ;; [writer-capacity] {[capacity]d}\n", .{ .capacity = capacity });
+    try generated_text.append_fmt(allocator, out, "  ;; [writer-frame-size] {[size]d}\n", .{ .size = layout.size });
+    try generated_text.append_fmt(allocator, out, "  ;; [writer-producer-index-offset] {[offset]d}\n", .{ .offset = layout.producer_index });
+    try generated_text.append_fmt(allocator, out, "  ;; [writer-producer-value-offset] {[offset]d}\n", .{ .offset = layout.producer_value });
 }
 
 pub fn emit_async_terminal_cleanup(
@@ -88,27 +93,20 @@ pub fn emit_async_terminal_cleanup(
     frame: async_model.FrameModel,
     reason: AsyncTerminalReason,
 ) !void {
-    try append_fmt(allocator, out, "  ;; [async-terminal] {s}\n", .{@tagName(reason)});
+    try generated_text.append_fmt(allocator, out, "  ;; [async-terminal] {[reason]s}\n", .{ .reason = @tagName(reason) });
     if (frame.resume_states.len != 0) {
         const active_defers = frame.resume_states[frame.resume_states.len - 1].active_defers;
         var index = active_defers.len;
         while (index != 0) {
             index -= 1;
-            try append_fmt(allocator, out, "  ;; [async-defer] defer {d}\n", .{active_defers[index].token_index});
+            try generated_text.append_fmt(allocator, out, "  ;; [async-defer] defer {[token_index]d}\n", .{ .token_index = active_defers[index].token_index });
         }
     }
-    try out.appendSlice(allocator, "  local.get $frame\n  call $frame-free\n");
-}
-
-fn append_fmt(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    comptime fmt: []const u8,
-    args: anytype,
-) !void {
-    const text = try std.fmt.allocPrint(allocator, fmt, args);
-    defer allocator.free(text);
-    try out.appendSlice(allocator, text);
+    try generated_text.append_block(allocator, out, 2,
+        \\  local.get $frame
+        \\  call $frame-free
+        \\
+        );
 }
 
 test "async terminal cleanup releases defers in reverse order before the frame" {
@@ -189,4 +187,6 @@ test "GC frame table allocator clears roots before returning slot handles" {
     const recycle = clear + std.mem.indexOf(u8, wat.items[clear..], "global.set $async-frame-free-head").?;
     try std.testing.expect(clear < recycle);
     try std.testing.expect(std.mem.indexOf(u8, wat.items, "table.grow $async-frames") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat.items, "{d}") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat.items, "async-byte-budget-release") == null);
 }

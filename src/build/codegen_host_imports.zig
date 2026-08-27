@@ -54,6 +54,37 @@ pub fn collect_env_host_imports(
         i = line_end - 1;
     }
 }
+
+/// Collect synchronous `@host_func` declarations regardless of their
+/// locator. The legacy collector above intentionally remains env-only for the
+/// ARC pipeline; the bounded GC/WIT route uses this complete view to select a
+/// manifest-backed descriptor before lowering a call.
+pub fn collect_host_imports(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    out: *std.ArrayList(HostImport),
+) !void {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (tok_eq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tok_eq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0 or !is_line_start(tokens, i)) continue;
+        if (!is_host_func_start(tokens, i)) continue;
+
+        const line_end = find_line_end(tokens, i);
+        const import = try parse_host_import(allocator, tokens, i, line_end);
+        errdefer allocator.free(import.params);
+        try out.append(allocator, import);
+        i = line_end - 1;
+    }
+}
 pub fn collect_env_host_imports_from_modules(
     allocator: std.mem.Allocator,
     modules: []const imports.ModuleRecord,
@@ -90,10 +121,28 @@ pub fn parse_env_host_import(
     start_idx: usize,
     line_end: usize,
 ) !HostImport {
-    // name = @host_func("env", "field", (...) -> T)
+    const import = try parse_host_import(allocator, tokens, start_idx, line_end);
+    const locator = string_token_body(tokens[start_idx + 5].lexeme) orelse {
+        allocator.free(import.params);
+        return error.InvalidImportDecl;
+    };
+    if (!std.mem.eql(u8, locator, "env")) {
+        allocator.free(import.params);
+        return error.InvalidImportDecl;
+    }
+    return import;
+}
+
+pub fn parse_host_import(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    line_end: usize,
+) !HostImport {
+    // name = @host_func("locator", "field", (...) -> T)
+    if (start_idx + 9 >= line_end) return error.InvalidImportDecl;
     const alias = public_decl_name(tokens[start_idx].lexeme);
     const locator = string_token_body(tokens[start_idx + 5].lexeme) orelse return error.InvalidImportDecl;
-    if (!std.mem.eql(u8, locator, "env")) return error.InvalidImportDecl;
     if (!tok_eq(tokens[start_idx + 6], ",")) return error.InvalidImportDecl;
     const field = string_token_body(tokens[start_idx + 7].lexeme) orelse return error.InvalidImportDecl;
     if (!tok_eq(tokens[start_idx + 8], ",")) return error.InvalidImportDecl;
@@ -127,6 +176,7 @@ pub fn parse_env_host_import(
     return .{
         .alias = alias,
         .source_alias = alias,
+        .locator = locator,
         .field = field,
         .params = try params.toOwnedSlice(allocator),
         .result = result,
@@ -168,6 +218,17 @@ pub fn is_env_host_import_start(tokens: []const lexer.Token, idx: usize) bool {
     if (tokens[idx + 7].kind != .string) return false;
     if (!tok_eq(tokens[idx + 8], ",")) return false;
     return true;
+}
+
+pub fn is_host_func_start(tokens: []const lexer.Token, idx: usize) bool {
+    const line_end = find_line_end(tokens, idx);
+    if (idx + 9 >= line_end) return false;
+    if (tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=")) return false;
+    if (!tok_eq(tokens[idx + 2], "@") or tokens[idx + 3].kind != .ident or
+        !std.mem.eql(u8, tokens[idx + 3].lexeme, "host_func") or
+        !tok_eq(tokens[idx + 4], "(")) return false;
+    if (tokens[idx + 5].kind != .string or tokens[idx + 7].kind != .string) return false;
+    return tok_eq(tokens[idx + 6], ",") and tok_eq(tokens[idx + 8], ",");
 }
 pub fn host_call_args_match(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, host_import: HostImport) bool {
     var param_idx: usize = 0;

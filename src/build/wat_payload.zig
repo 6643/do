@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const type_util = @import("type_name.zig");
 
 /// WAT emission for scalar payload load/store and scheme-A Tuple leaf pack.
@@ -48,9 +49,7 @@ fn append_fmt(
     comptime fmt: []const u8,
     args: anytype,
 ) !void {
-    const text = try std.fmt.allocPrint(allocator, fmt, args);
-    defer allocator.free(text);
-    try out.appendSlice(allocator, text);
+    try generated_text.append_fmt(allocator, out, fmt, args);
 }
 
 pub fn append_store_for_payload_type(
@@ -88,26 +87,26 @@ pub fn append_store_for_payload_type_with_indent(
     indent: []const u8,
 ) !void {
     if (std.mem.eql(u8, ty, "i8") or std.mem.eql(u8, ty, "u8")) {
-        try append_fmt(allocator, out, "{s}i32.store8\n", .{indent});
+        try append_fmt(allocator, out, "{[indent]s}i32.store8\n", .{ .indent = indent });
         return;
     }
     if (std.mem.eql(u8, ty, "i16") or std.mem.eql(u8, ty, "u16")) {
-        try append_fmt(allocator, out, "{s}i32.store16\n", .{indent});
+        try append_fmt(allocator, out, "{[indent]s}i32.store16\n", .{ .indent = indent });
         return;
     }
     if (std.mem.eql(u8, ty, "i64") or std.mem.eql(u8, ty, "u64")) {
-        try append_fmt(allocator, out, "{s}i64.store\n", .{indent});
+        try append_fmt(allocator, out, "{[indent]s}i64.store\n", .{ .indent = indent });
         return;
     }
     if (std.mem.eql(u8, ty, "f32")) {
-        try append_fmt(allocator, out, "{s}f32.store\n", .{indent});
+        try append_fmt(allocator, out, "{[indent]s}f32.store\n", .{ .indent = indent });
         return;
     }
     if (std.mem.eql(u8, ty, "f64")) {
-        try append_fmt(allocator, out, "{s}f64.store\n", .{indent});
+        try append_fmt(allocator, out, "{[indent]s}f64.store\n", .{ .indent = indent });
         return;
     }
-    try append_fmt(allocator, out, "{s}i32.store\n", .{indent});
+    try append_fmt(allocator, out, "{[indent]s}i32.store\n", .{ .indent = indent });
 }
 
 pub fn append_load_for_payload_type(
@@ -153,34 +152,34 @@ pub fn append_load_for_payload_type_with_indent(
     indent: []const u8,
 ) !void {
     if (std.mem.eql(u8, ty, "i8")) {
-        try append_fmt(allocator, out, "{s}i32.load8_s\n", .{indent});
+        try append_fmt(allocator, out, "{[indent]s}i32.load8_s\n", .{ .indent = indent });
         return;
     }
     if (std.mem.eql(u8, ty, "u8")) {
-        try append_fmt(allocator, out, "{s}i32.load8_u\n", .{indent});
+        try append_fmt(allocator, out, "{[indent]s}i32.load8_u\n", .{ .indent = indent });
         return;
     }
     if (std.mem.eql(u8, ty, "i16")) {
-        try append_fmt(allocator, out, "{s}i32.load16_s\n", .{indent});
+        try append_fmt(allocator, out, "{[indent]s}i32.load16_s\n", .{ .indent = indent });
         return;
     }
     if (std.mem.eql(u8, ty, "u16")) {
-        try append_fmt(allocator, out, "{s}i32.load16_u\n", .{indent});
+        try append_fmt(allocator, out, "{[indent]s}i32.load16_u\n", .{ .indent = indent });
         return;
     }
     if (std.mem.eql(u8, ty, "i64") or std.mem.eql(u8, ty, "u64")) {
-        try append_fmt(allocator, out, "{s}i64.load\n", .{indent});
+        try append_fmt(allocator, out, "{[indent]s}i64.load\n", .{ .indent = indent });
         return;
     }
     if (std.mem.eql(u8, ty, "f32")) {
-        try append_fmt(allocator, out, "{s}f32.load\n", .{indent});
+        try append_fmt(allocator, out, "{[indent]s}f32.load\n", .{ .indent = indent });
         return;
     }
     if (std.mem.eql(u8, ty, "f64")) {
-        try append_fmt(allocator, out, "{s}f64.load\n", .{indent});
+        try append_fmt(allocator, out, "{[indent]s}f64.load\n", .{ .indent = indent });
         return;
     }
-    try append_fmt(allocator, out, "{s}i32.load\n", .{indent});
+    try append_fmt(allocator, out, "{[indent]s}i32.load\n", .{ .indent = indent });
 }
 
 /// Stack holds leaf0..leafN-1 (top = last). Spill reverse into memory at base_local + leaf offsets.
@@ -213,13 +212,13 @@ pub fn append_store_tuple_scalar_leaves_from_stack(
         i -= 1;
         const leaf_ty = leaf_types.items[i];
         const spill = tuple_pack_spill_local(leaf_ty);
-        try append_fmt(allocator, out, "{s}local.set ${s}\n", .{ indent, spill });
-        try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+        try append_fmt(allocator, out, "{[indent]s}local.set ${[spill]s}\n", .{ .indent = indent, .spill = spill });
+        try append_fmt(allocator, out, "{[indent]s}local.get ${[base_local]s}\n", .{ .indent = indent, .base_local = base_local });
         if (offsets[i] != 0) {
-            try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offsets[i] });
-            try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
+            try append_fmt(allocator, out, "{[indent]s}i32.const {[i]d}\n", .{ .indent = indent, .i = offsets[i] });
+            try append_fmt(allocator, out, "{[indent]s}i32.add\n", .{ .indent = indent });
         }
-        try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, spill });
+        try append_fmt(allocator, out, "{[indent]s}local.get ${[spill]s}\n", .{ .indent = indent, .spill = spill });
         try append_store_for_payload_type_with_indent(allocator, out, leaf_ty, indent);
     }
 }
@@ -243,10 +242,10 @@ pub fn append_load_tuple_scalar_leaves_to_stack(
         if (!type_util.is_tuple_packable_leaf_type(leaf_ty)) {
             return error.UnsupportedTupleStorageLeaf;
         }
-        try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+        try append_fmt(allocator, out, "{[indent]s}local.get ${[base_local]s}\n", .{ .indent = indent, .base_local = base_local });
         if (offset != 0) {
-            try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, offset });
-            try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
+            try append_fmt(allocator, out, "{[indent]s}i32.const {[offset]d}\n", .{ .indent = indent, .offset = offset });
+            try append_fmt(allocator, out, "{[indent]s}i32.add\n", .{ .indent = indent });
         }
         try append_load_for_payload_type_with_indent(allocator, out, leaf_ty, indent);
         offset += type_util.type_payload_bytes(leaf_ty);
@@ -276,13 +275,13 @@ pub fn append_inc_managed_tuple_leaves_on_stack(
         // Per-leaf spill slot: text+u8 both lower to i32 and must not share one temp.
         const spill = tuple_pack_spill_local_at(leaf_ty, i);
         spills[i] = spill;
-        try append_fmt(allocator, out, "{s}local.set ${s}\n", .{ indent, spill });
+        try append_fmt(allocator, out, "{[indent]s}local.set ${[spill]s}\n", .{ .indent = indent, .spill = spill });
     }
     for (leaf_types.items, 0..) |leaf_ty, idx| {
-        try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, spills[idx] });
+        try append_fmt(allocator, out, "{[indent]s}local.get ${[idx]s}\n", .{ .indent = indent, .idx = spills[idx] });
         if (type_util.is_managed_payload_type(leaf_ty)) {
-            try append_fmt(allocator, out, "{s};; tuple-pack-managed-leaf-inc\n", .{indent});
-            try append_fmt(allocator, out, "{s}call $__arc_inc\n", .{indent});
+            try append_fmt(allocator, out, "{[indent]s};; tuple-pack-managed-leaf-inc\n", .{ .indent = indent });
+            try append_fmt(allocator, out, "{[indent]s}call $__arc_inc\n", .{ .indent = indent });
         }
     }
 }
@@ -301,19 +300,19 @@ pub fn append_load_tuple_element_from_packed_base(
     const elem_offset = type_util.tuple_element_pack_offset(tuple_ty, elem_index) orelse return error.UnsupportedLowering;
     if (type_util.is_tuple_type_name(elem_ty)) {
         if (elem_offset != 0) {
-            try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
-            try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_offset });
-            try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
-            try append_fmt(allocator, out, "{s}local.set ${s}\n", .{ indent, base_local });
+            try append_fmt(allocator, out, "{[indent]s}local.get ${[base_local]s}\n", .{ .indent = indent, .base_local = base_local });
+            try append_fmt(allocator, out, "{[indent]s}i32.const {[elem_offset]d}\n", .{ .indent = indent, .elem_offset = elem_offset });
+            try append_fmt(allocator, out, "{[indent]s}i32.add\n", .{ .indent = indent });
+            try append_fmt(allocator, out, "{[indent]s}local.set ${[base_local]s}\n", .{ .indent = indent, .base_local = base_local });
         }
         try append_load_tuple_scalar_leaves_to_stack(allocator, out, elem_ty, base_local, indent);
         return;
     }
     if (!type_util.is_tuple_packable_leaf_type(elem_ty)) return error.UnsupportedTupleStorageLeaf;
-    try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+    try append_fmt(allocator, out, "{[indent]s}local.get ${[base_local]s}\n", .{ .indent = indent, .base_local = base_local });
     if (elem_offset != 0) {
-        try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_offset });
-        try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
+        try append_fmt(allocator, out, "{[indent]s}i32.const {[elem_offset]d}\n", .{ .indent = indent, .elem_offset = elem_offset });
+        try append_fmt(allocator, out, "{[indent]s}i32.add\n", .{ .indent = indent });
     }
     try append_load_for_payload_type_with_indent(allocator, out, elem_ty, indent);
 }
@@ -347,7 +346,7 @@ pub fn append_load_payload_or_tuple_to_stack(
         try append_load_tuple_scalar_leaves_to_stack(allocator, out, elem_ty, base_local, indent);
         return;
     }
-    try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, base_local });
+    try append_fmt(allocator, out, "{[indent]s}local.get ${[base_local]s}\n", .{ .indent = indent, .base_local = base_local });
     if (indent.len == 0 or std.mem.eql(u8, indent, "    ")) {
         try append_load_for_payload_type(allocator, out, elem_ty);
     } else {
@@ -359,7 +358,10 @@ test "payload store/load wat for i32" {
     var out = std.ArrayList(u8).empty;
     defer out.deinit(std.testing.allocator);
     try append_store_for_payload_type(std.testing.allocator, &out, "i32");
-    try std.testing.expectEqualStrings("    i32.store\n", out.items);
+    try std.testing.expectEqualStrings(
+        \\    i32.store
+        \\
+        , out.items);
     out.clearRetainingCapacity();
     try append_load_for_payload_type(std.testing.allocator, &out, "u8");
     try std.testing.expectEqualStrings("    i32.load8_u\n", out.items);

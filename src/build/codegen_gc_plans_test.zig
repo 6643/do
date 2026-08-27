@@ -14,6 +14,7 @@ const wit_types = @import("wit_abi_types.zig");
 const wit_layout = @import("wit_abi_layout.zig");
 const wit_resolve = @import("../wit/resolve.zig");
 const wit_registry = @import("../wit/marshal_registry.zig");
+const lexer = @import("lexer.zig");
 
 const bounded_text_marshal_wit =
     \\package demo:marshal@1.0.0;
@@ -630,6 +631,237 @@ test "descriptor loader resolves a hash-pinned random member" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "i64.const 16") != null);
 }
 
+test "descriptor loader decodes the manifest-owned managed record layout" {
+    var loaded = try descriptor_loader.load_request_from_manifest(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        "doc/wit/gc_descriptor_manifest.json",
+        "demo:marshal-record-managed-lower/api.write@1.0.0/lower",
+        null,
+    );
+    defer loaded.deinit();
+    switch (loaded.request.measured.layout) {
+        .record => |record| {
+            try std.testing.expectEqual(@as(u32, 12), record.byte_size);
+            try std.testing.expectEqual(@as(usize, 2), record.fields.len);
+            try std.testing.expectEqualStrings("label", record.fields[1].name);
+        },
+        else => return error.TestUnexpectedResult,
+    }
+}
+
+test "descriptor loader derives the managed host boundary from WIT" {
+    const source = @embedFile("test/compile_ok/565_gc_wit_managed_record_host_boundary.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try descriptor_loader.validate_host_boundary_from_manifest(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        "doc/wit/gc_descriptor_manifest.json",
+        "demo:marshal-record-managed-lower/api.write@1.0.0/lower",
+        tokens,
+    );
+}
+
+test "descriptor loader derives the bounded byte-list host boundary from WIT" {
+    const source = @embedFile("test/compile_ok/592_gc_wit_record_byte_list_lower_host_boundary.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try descriptor_loader.validate_host_boundary_from_manifest(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        "doc/wit/gc_descriptor_manifest.json",
+        "demo:marshal-record-byte-list-lower/api.write@1.0.0/lower",
+        tokens,
+    );
+}
+
+test "descriptor loader derives the bounded u32-list host boundary from WIT" {
+    const source = @embedFile("test/compile_ok/601_gc_wit_record_u32_list_lower_host_boundary.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try descriptor_loader.validate_host_boundary_from_manifest(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        "doc/wit/gc_descriptor_manifest.json",
+        "demo:marshal-record-u32-list-lower/api.write@1.0.0/lower",
+        tokens,
+    );
+}
+
+test "descriptor loader derives the mixed text u32-list host boundary from WIT" {
+    const source = @embedFile("test/compile_ok/630_gc_wit_mixed_text_u32_list_lower_host_boundary.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try descriptor_loader.validate_host_boundary_from_manifest(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        "doc/wit/gc_descriptor_manifest.json",
+        "demo:marshal-record-mixed-text-u32-list-lower/api.write@1.0.0/lower",
+        tokens,
+    );
+}
+
+test "descriptor loader derives the mixed text u32-list lift plan" {
+    const source = @embedFile("test/compile_ok/639_gc_wit_mixed_text_u32_list_lift_host_boundary.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try descriptor_loader.validate_host_boundary_from_manifest(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        "doc/wit/gc_descriptor_manifest.json",
+        "demo:marshal-record-mixed-text-u32-list-lift/api.read@1.0.0/lift",
+        tokens,
+    );
+
+    var loaded = try descriptor_loader.load_request_from_manifest(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        "doc/wit/gc_descriptor_manifest.json",
+        "demo:marshal-record-mixed-text-u32-list-lift/api.read@1.0.0/lift",
+        null,
+    );
+    defer loaded.deinit();
+
+    const memory_plan = try marshal_ops.build_sync_memory_plan(&loaded.plan);
+    try std.testing.expectEqual(marshal.Direction.lift, memory_plan.direction);
+    try std.testing.expectEqual(@as(u32, 3), memory_plan.record_field_count);
+    try std.testing.expectEqual(@as(u32, 20), loaded.plan.root.measured.?.byte_size);
+    try std.testing.expectEqual(@as(u32, 4), loaded.plan.root.measured.?.alignment);
+    try std.testing.expectEqual(@as(u32, 4), loaded.plan.root.children[1].measured.?.offset);
+    try std.testing.expectEqual(@as(u32, 12), loaded.plan.root.children[2].measured.?.offset);
+    try std.testing.expectEqual(@as(u32, 4), loaded.plan.root.children[2].measured.?.element_stride.?);
+    try std.testing.expectEqual(@as(u32, 3), loaded.plan.root.children[2].measured.?.capacity.?);
+    const expected = [_]marshal_ops.MemoryOperation{
+        .canonical_call,
+        .validate_linear_range,
+        .copy_from_linear,
+        .construct_gc_value,
+        .publish_gc_root,
+    };
+    try std.testing.expectEqualSlices(marshal_ops.MemoryOperation, &expected, memory_plan.operations);
+}
+
+test "descriptor loader derives the mixed text byte-list lift plan" {
+    const source = @embedFile("test/compile_ok/648_gc_wit_mixed_text_byte_list_lift_host_boundary.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try descriptor_loader.validate_host_boundary_from_manifest(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        "doc/wit/gc_descriptor_manifest.json",
+        "demo:marshal-record-mixed-text-byte-list-lift/api.read@1.0.0/lift",
+        tokens,
+    );
+
+    var loaded = try descriptor_loader.load_request_from_manifest(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        "doc/wit/gc_descriptor_manifest.json",
+        "demo:marshal-record-mixed-text-byte-list-lift/api.read@1.0.0/lift",
+        null,
+    );
+    defer loaded.deinit();
+
+    const memory_plan = try marshal_ops.build_sync_memory_plan(&loaded.plan);
+    try std.testing.expectEqual(marshal.Direction.lift, memory_plan.direction);
+    try std.testing.expectEqual(@as(u32, 3), memory_plan.record_field_count);
+    try std.testing.expectEqual(@as(u32, 20), loaded.plan.root.measured.?.byte_size);
+    try std.testing.expectEqual(@as(u32, 4), loaded.plan.root.measured.?.alignment);
+    try std.testing.expectEqual(@as(u32, 4), loaded.plan.root.children[1].measured.?.offset);
+    try std.testing.expectEqual(@as(u32, 12), loaded.plan.root.children[2].measured.?.offset);
+    try std.testing.expectEqual(@as(u32, 1), loaded.plan.root.children[2].measured.?.element_stride.?);
+    try std.testing.expectEqual(@as(u32, 4), loaded.plan.root.children[2].measured.?.capacity.?);
+    const expected = [_]marshal_ops.MemoryOperation{
+        .canonical_call,
+        .validate_linear_range,
+        .copy_from_linear,
+        .construct_gc_value,
+        .publish_gc_root,
+    };
+    try std.testing.expectEqualSlices(marshal_ops.MemoryOperation, &expected, memory_plan.operations);
+}
+
+test "descriptor loader derives the mixed text and two u32-list lift plan" {
+    const source = @embedFile("test/compile_ok/673_gc_wit_mixed_text_two_u32_lists_lift_host_boundary.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    const descriptor_id = "demo:marshal-record-mixed-text-two-u32-lists-lift/api.read@1.0.0/lift";
+    try descriptor_loader.validate_host_boundary_from_manifest(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        "doc/wit/gc_descriptor_manifest.json",
+        descriptor_id,
+        tokens,
+    );
+
+    var loaded = try descriptor_loader.load_request_from_manifest(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        "doc/wit/gc_descriptor_manifest.json",
+        descriptor_id,
+        null,
+    );
+    defer loaded.deinit();
+
+    try std.testing.expectEqual(marshal.Direction.lift, loaded.plan.direction);
+    try std.testing.expectEqual(@as(usize, 1), loaded.plan.abi.results.len);
+    try std.testing.expectEqualStrings("memory", loaded.plan.abi.results[0].canonical_type);
+    try std.testing.expect(!loaded.plan.contains_gc_reference);
+
+    const root = loaded.plan.root.measured orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 28), root.byte_size);
+    try std.testing.expectEqual(@as(u32, 4), root.alignment);
+    try std.testing.expectEqual(@as(usize, 4), loaded.plan.root.children.len);
+    try std.testing.expectEqual(@as(u32, 0), loaded.plan.root.children[0].measured.?.offset);
+    try std.testing.expectEqual(@as(u32, 4), loaded.plan.root.children[1].measured.?.offset);
+    try std.testing.expectEqual(@as(u32, 12), loaded.plan.root.children[2].measured.?.offset);
+    try std.testing.expectEqual(@as(u32, 20), loaded.plan.root.children[3].measured.?.offset);
+    try std.testing.expectEqual(@as(u32, 4), loaded.plan.root.children[2].measured.?.element_stride.?);
+    try std.testing.expectEqual(@as(u32, 4), loaded.plan.root.children[3].measured.?.element_stride.?);
+    try std.testing.expectEqual(@as(u32, 3), loaded.plan.root.children[2].measured.?.capacity.?);
+    try std.testing.expectEqual(@as(u32, 2), loaded.plan.root.children[3].measured.?.capacity.?);
+
+    const descriptor = try loaded.manifest.find_descriptor(descriptor_id);
+    const measured_layout = descriptor.measured_layout orelse unreachable;
+    const first = measured_layout.children[2];
+    const second = measured_layout.children[3];
+    try std.testing.expectEqualSlices(u32, &[_]u32{ 0, 1, 2, 3 }, first.accepted_lengths);
+    try std.testing.expectEqualSlices(u32, &[_]u32{ 0, 1, 2 }, second.accepted_lengths);
+
+    const memory_plan = try marshal_ops.build_sync_memory_plan(&loaded.plan);
+    try std.testing.expectEqual(@as(u32, 4), memory_plan.record_field_count);
+    try std.testing.expect(memory_plan.record_mixed_text_two_u32_lists_lift);
+    const expected = [_]marshal_ops.MemoryOperation{
+        .canonical_call,
+        .validate_linear_range,
+        .validate_linear_range,
+        .validate_linear_range,
+        .validate_linear_range,
+        .copy_from_linear,
+        .copy_from_linear,
+        .copy_from_linear,
+        .construct_gc_value,
+        .publish_gc_root,
+        .cabi_realloc_free,
+        .cabi_realloc_free,
+        .cabi_realloc_free,
+    };
+    try std.testing.expectEqualSlices(marshal_ops.MemoryOperation, &expected, memory_plan.operations);
+}
+
 test "descriptor loader rejects source hash drift before planning" {
     var hash: [71]u8 = undefined;
     const manifest_source = try descriptor_manifest_json(std.testing.allocator, descriptor_source_hash(&hash), "demo:descriptor@1.0.0", "read", "list<u8>");
@@ -1016,6 +1248,64 @@ test "canonical marshal plan binds measured record fields and list stride" {
     try std.testing.expectEqual(@as(u32, 16), plan.root.measured.?.byte_size);
     try std.testing.expectEqual(@as(u32, 8), plan.root.children[1].measured.?.offset);
     try std.testing.expectEqual(@as(u32, 8), plan.root.children[1].measured.?.element_stride.?);
+}
+
+test "canonical marshal ops admit the bounded record byte-list lower shape" {
+    var code = wit_types.AbiType.scalar(std.testing.allocator, .u32);
+    defer code.deinit();
+    var byte = wit_types.AbiType.scalar(std.testing.allocator, .u8);
+    defer byte.deinit();
+    var payload = try wit_types.AbiType.list(std.testing.allocator, &byte);
+    defer payload.deinit();
+    var record = try wit_types.AbiType.record(std.testing.allocator, &.{
+        .{ .name = "code", .value = &code },
+        .{ .name = "payload", .value = &payload },
+    });
+    defer record.deinit();
+
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-record-byte-list-lower@1.0.0",
+        .world = "probe",
+        .member = "write",
+        .revision = "wasm-tools-1.255.0",
+        .schema_hash = "sha256:byte-list-record-lower-v1",
+    }, &record, .lower, .{
+        .layout = .{ .record = .{
+            .byte_size = 12,
+            .alignment = 4,
+            .fields = &.{
+                .{ .name = "code", .offset = 0, .byte_size = 4, .alignment = 4, .indirect = null },
+                .{ .name = "payload", .offset = 4, .byte_size = 8, .alignment = 4, .indirect = null },
+            },
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .byte_list = .{
+                .pointer_offset = 0,
+                .length_offset = 4,
+                .element_byte_size = 1,
+                .element_stride = 1,
+                .element_alignment = 1,
+                .capacity = 4,
+                .accepted_lengths = &.{ 0, 1, 2, 3, 4 },
+                .allocation = .cabi_realloc,
+                .free = .cabi_realloc,
+            } } },
+        },
+    });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const ops = try marshal_ops.build_sync_memory_plan(&plan);
+    try std.testing.expectEqual(marshal_ops.CopyShape.record_fields, ops.copy_shape);
+    try std.testing.expectEqual(@as(u32, 2), ops.record_field_count);
+    try std.testing.expectEqualSlices(marshal_ops.MemoryOperation, &.{
+        .read_gc_span,
+        .validate_linear_range,
+        .cabi_realloc_alloc,
+        .copy_to_linear,
+        .canonical_call,
+        .cabi_realloc_free,
+    }, ops.operations);
 }
 
 test "canonical marshal plan rejects indirect record fields before emission" {

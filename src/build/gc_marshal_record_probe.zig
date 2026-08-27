@@ -1,6 +1,7 @@
 //! Test-only parser-backed scalar-record marshal module generator.
 
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const marshal_route = @import("codegen_component_marshal_route.zig");
 const marshal_plan = @import("codegen_component_marshal_plan.zig");
 const wit_layout = @import("wit_abi_layout.zig");
@@ -331,32 +332,38 @@ fn append_indirect_record_lower_host_entry(allocator: std.mem.Allocator, base: [
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
     try out.appendSlice(allocator, base[0 .. base.len - closing.len]);
-    try out.appendSlice(allocator,
-        "  (func $run (result i32)\n" ++
-            "    (local $writing (ref null $do_record))\n" ++
-            "    ");
+    try generated_text.append_block(allocator, &out, 2,
+                \\  (func $run (result i32)
+        \\    (local $writing (ref null $do_record))
+        \\
+        );
     inline for (0..17) |index| {
-        try append_fmt(allocator, &out, "i64.const {d}\n    ", .{index + 1});
+        try generated_text.append_fmt(allocator, &out, "    i64.const {[value]d}\n", .{ .value = index + 1 });
     }
-    try out.appendSlice(allocator,
-        "struct.new $do_record\n" ++
-            "    local.set $writing\n" ++
-            "    local.get $writing\n" ++
-            "    call $marshal\n" ++
-            "    i32.const 42)\n" ++
-            "  (export \"run\" (func $run))\n");
+    try generated_text.append_block(allocator, &out, 2,
+                \\    struct.new $do_record
+        \\    local.set $writing
+        \\    local.get $writing
+        \\    call $marshal
+        \\    i32.const 42)
+        \\  (export "run" (func $run))
+        \\
+        );
     try out.appendSlice(allocator, closing);
     return out.toOwnedSlice(allocator);
 }
 
 fn append_mixed_record_lower_host_entry(allocator: std.mem.Allocator, base: []const u8) ![]u8 {
-    const closing = ")\n";
+    const closing =
+        \\)
+        \\
+        ;
     if (!std.mem.endsWith(u8, base, closing)) return error.InvalidGeneratedModule;
 
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
     try out.appendSlice(allocator, base[0 .. base.len - closing.len]);
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, &out, 2,
         \\  (func $run (result i32)
         \\    (local $writing (ref null $do_record))
         \\    i32.const 7
@@ -374,13 +381,16 @@ fn append_mixed_record_lower_host_entry(allocator: std.mem.Allocator, base: []co
 }
 
 fn append_record_host_entry(allocator: std.mem.Allocator, base: []const u8) ![]u8 {
-    const closing = ")\n";
+    const closing =
+        \\)
+        \\
+        ;
     if (!std.mem.endsWith(u8, base, closing)) return error.InvalidGeneratedModule;
 
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
     try out.appendSlice(allocator, base[0 .. base.len - closing.len]);
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, &out, 2,
         \\  (func $run (result i32)
         \\    (local $reading (ref null $do_record))
         \\    call $marshal
@@ -399,13 +409,16 @@ fn append_record_host_entry(allocator: std.mem.Allocator, base: []const u8) ![]u
 }
 
 fn append_record_lower_host_entry(allocator: std.mem.Allocator, base: []const u8) ![]u8 {
-    const closing = ")\n";
+    const closing =
+        \\)
+        \\
+        ;
     if (!std.mem.endsWith(u8, base, closing)) return error.InvalidGeneratedModule;
 
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
     try out.appendSlice(allocator, base[0 .. base.len - closing.len]);
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, &out, 0,
         \\  (func $run (result i32)
         \\    (local $writing (ref null $do_record))
         \\    i32.const 7
@@ -453,15 +466,4 @@ fn validate_probe_args(args: []const []const u8) !void {
         !std.mem.eql(u8, args[3], "--lower-host") and
         !std.mem.eql(u8, args[3], "--lower-mixed-host") and
         !std.mem.eql(u8, args[3], "--lower-indirect-host")) return error.InvalidGcMarshalRecordArgs;
-}
-
-fn append_fmt(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    comptime format: []const u8,
-    args: anytype,
-) !void {
-    const text = try std.fmt.allocPrint(allocator, format, args);
-    defer allocator.free(text);
-    try out.appendSlice(allocator, text);
 }

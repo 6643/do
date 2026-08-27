@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const async_model = @import("codegen_async_model.zig");
 const async_byte_budget = @import("async_byte_budget.zig");
 
@@ -42,25 +43,35 @@ pub fn emit_frame_table_layout(
     layout: async_model.FrameLayout,
 ) !void {
     const frame_bytes = try bytes_for_frame_layout(layout);
-    try out.appendSlice(allocator, "  (type $async-frame (struct\n");
-    try out.appendSlice(allocator, "    (field $state (mut i32))\n");
-    try out.appendSlice(allocator, "    (field $waitable-set (mut i32))\n");
-    try out.appendSlice(allocator, "    (field $cleanup-flags (mut i32))\n");
-    try out.appendSlice(allocator, "    (field $completion-value (mut i32))\n");
+    try generated_text.append_block(allocator, out, 2,
+        \\  (type $async-frame (struct
+        \\    (field $state (mut i32))
+        \\    (field $waitable-set (mut i32))
+        \\    (field $cleanup-flags (mut i32))
+        \\    (field $completion-value (mut i32))
+    );
     for (layout.slots) |slot| {
         const core_type = frame_slot_core_type(slot.storage) orelse return error.UnsupportedAsyncGcFrameSlot;
-        try append_fmt(allocator, out, "    (field $slot-{s} (mut {s}))\n", .{ slot.name, core_type });
+        try generated_text.append_fmt(allocator, out, "    (field $slot-{[name]s} (mut {[core_type]s}))\n", .{ .name = slot.name, .core_type = core_type });
     }
-    try out.appendSlice(allocator, "  ))\n");
-    try append_fmt(allocator, out, "  ;; [async-frame-bytes] {d}\n", .{frame_bytes});
-    try out.appendSlice(allocator, "  (table $async-frames 0 (ref null $async-frame))\n");
+    try generated_text.append_fmt_block(
+        allocator,
+        out,
+        2,
+        \\  ))
+        \\  ;; [async-frame-bytes] {[frame_bytes]d}
+        \\  (table $async-frames 0 (ref null $async-frame))
+        \\
+        ,
+        .{ .frame_bytes = frame_bytes },
+    );
 }
 
 pub fn emit_frame_table_allocator(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
 ) !void {
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 2,
         \\  (type $async-free-slot (struct
         \\    (field $handle i32)
         \\    (field $next (ref null $async-free-slot))
@@ -91,8 +102,6 @@ pub fn emit_frame_table_allocator(
         \\    local.get $handle)
         \\  (func $frame-free (param $handle i32)
         \\    (local $node (ref $async-free-slot))
-        \\    i64.const {d}
-        \\    call $async-byte-budget-release
         \\    local.get $handle
         \\    ref.null $async-frame
         \\    table.set $async-frames
@@ -110,8 +119,8 @@ pub fn emit_frame_table_allocator_with_bytes(
     out: *std.ArrayList(u8),
     frame_bytes: u64,
 ) !void {
-    const runtime = try std.fmt.allocPrint(allocator,
-        \\  ;; [async-frame-budget-bytes] {d}
+    try generated_text.append_fmt_block(allocator, out, 2,
+        \\  ;; [async-frame-budget-bytes] {[frame_bytes]d}
         \\  ;; [async-byte-budget-limit] -1
         \\  (global $async-byte-budget-used (mut i64) (i64.const 0))
         \\  (global $async-byte-budget-limit (mut i64) (i64.const -1))
@@ -194,7 +203,7 @@ pub fn emit_frame_table_allocator_with_bytes(
         \\  (func $frame-alloc (param $frame (ref $async-frame)) (result i32)
         \\    (local $handle i32)
         \\    (local $node (ref $async-free-slot))
-        \\    i64.const {d}
+        \\    i64.const {[frame_bytes]d}
         \\    call $async-byte-budget-reserve
         \\    i32.eqz
         \\    if unreachable end
@@ -218,7 +227,7 @@ pub fn emit_frame_table_allocator_with_bytes(
         \\    i32.const -1
         \\    i32.eq
         \\    if
-        \\      i64.const {d}
+        \\      i64.const {[frame_bytes]d}
         \\      call $async-byte-budget-release
         \\      unreachable
         \\    end
@@ -229,7 +238,7 @@ pub fn emit_frame_table_allocator_with_bytes(
         \\  )
         \\  (func $frame-free (param $handle i32)
         \\    (local $node (ref $async-free-slot))
-        \\    i64.const {d}
+        \\    i64.const {[frame_bytes]d}
         \\    call $async-byte-budget-release
         \\    local.get $handle
         \\    ref.null $async-frame
@@ -241,9 +250,7 @@ pub fn emit_frame_table_allocator_with_bytes(
         \\    local.get $node
         \\    global.set $async-frame-free-head
         \\  )
-    , .{ frame_bytes, frame_bytes, frame_bytes, frame_bytes });
-    defer allocator.free(runtime);
-    try out.appendSlice(allocator, runtime);
+    , .{ .frame_bytes = frame_bytes });
 }
 
 fn frame_slot_core_type(storage: async_model.FrameSlotStorage) ?[]const u8 {
@@ -254,15 +261,4 @@ fn frame_slot_core_type(storage: async_model.FrameSlotStorage) ?[]const u8 {
         .f64 => "f64",
         .waitable, .unsupported => null,
     };
-}
-
-fn append_fmt(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    comptime fmt: []const u8,
-    args: anytype,
-) !void {
-    const text = try std.fmt.allocPrint(allocator, fmt, args);
-    defer allocator.free(text);
-    try out.appendSlice(allocator, text);
 }

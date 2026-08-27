@@ -40,6 +40,21 @@ if [[ "$wasm_tools_version" != "$expected_wasm_tools_version" ]]; then
 fi
 printf '[PASS] pinned wasm-tools: %s\n' "$wasm_tools_version"
 
+run_future_frame_equivalence_gate() {
+    local gate_output="$TMP_DIR/gc-async-frame-equivalence.output"
+    if ! DO_BIN="$DO_BIN" \
+        WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_async_frame_equivalence.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] bounded Future G5b GC/linear equivalence gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] bounded Future G5b GC/linear equivalence gate included\n'
+}
+
 run_descriptor_manifest_gate() {
     local gate_output="$TMP_DIR/gc-wasi-random-manifest.output"
     if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
@@ -82,9 +97,926 @@ run_text_equivalence_gate() {
     printf '[PASS] manifest-backed text ARC/GC equivalence gate included\n'
 }
 
+run_u32_lower_equivalence_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-u32-equivalence.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_u32_equivalence.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed list<u32> lower ARC/GC equivalence gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed list<u32> lower ARC/GC equivalence gate included\n'
+}
+
+run_u32_lift_equivalence_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-u32-lift-equivalence.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_u32_lift_equivalence.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed list<u32> lift ARC/GC equivalence gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed list<u32> lift ARC/GC equivalence gate included\n'
+}
+
+run_record_lower_manifest_host_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-record-lower-manifest-host.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_lower_manifest_host.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed scalar record lower host gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed scalar record lower host gate included\n'
+}
+
+run_record_lower_manifest_equivalence_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-record-lower-manifest-equivalence.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_lower_manifest_equivalence.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed scalar record lower ARC/GC equivalence gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed scalar record lower ARC/GC equivalence gate included\n'
+}
+
+run_record_lift_manifest_host_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-record-lift-manifest-host.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_lift_manifest_host.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed scalar record lift host gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed scalar record lift host gate included\n'
+}
+
+run_record_lift_manifest_equivalence_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-record-lift-manifest-equivalence.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_lift_manifest_equivalence.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed scalar record lift ARC/GC equivalence gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed scalar record lift ARC/GC equivalence gate included\n'
+}
+
+run_mixed_record_lift_manifest_host_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-record-mixed-lift-manifest-host.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_mixed_lift_manifest_host.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed mixed scalar record lift host gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed mixed scalar record lift host gate included\n'
+}
+
+run_mixed_record_lift_manifest_equivalence_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-record-mixed-lift-manifest-equivalence.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_mixed_lift_manifest_equivalence.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed mixed scalar record lift ARC/GC equivalence gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed mixed scalar record lift ARC/GC equivalence gate included\n'
+}
+
+run_indirect_record_lower_manifest_host_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-record-indirect-lower-manifest-host.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_indirect_lower_manifest_host.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed indirect scalar record lower host gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed indirect scalar record lower host gate included\n'
+}
+
+run_indirect_record_lower_manifest_equivalence_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-record-indirect-lower-manifest-equivalence.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_indirect_lower_manifest_equivalence.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed indirect scalar record lower ARC/GC equivalence gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed indirect scalar record lower ARC/GC equivalence gate included\n'
+}
+
+run_nested_record_lift_manifest_host_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-record-nested-lift-manifest-host.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_nested_lift_manifest_host.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed nested scalar record lift host gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed nested scalar record lift host gate included\n'
+}
+
+run_nested_record_lift_manifest_equivalence_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-record-nested-lift-manifest-equivalence.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_nested_lift_manifest_equivalence.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed nested scalar record lift ARC/GC equivalence gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed nested scalar record lift ARC/GC equivalence gate included\n'
+}
+
+run_nested_record_lower_manifest_host_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-record-nested-lower-manifest-host.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_nested_lower_manifest_host.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed nested scalar record lower host gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed nested scalar record lower host gate included\n'
+}
+
+run_nested_record_lower_manifest_equivalence_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-record-nested-lower-manifest-equivalence.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_nested_lower_manifest_equivalence.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed nested scalar record lower ARC/GC equivalence gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed nested scalar record lower ARC/GC equivalence gate included\n'
+}
+
+run_nested_record_lower_deep_manifest_host_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-record-nested-lower-deep-manifest-host.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_nested_lower_deep_manifest_host.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed three-level nested scalar record lower host gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed three-level nested scalar record lower host gate included\n'
+}
+
+run_nested_record_lower_deep_manifest_equivalence_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-record-nested-lower-deep-manifest-equivalence.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_nested_lower_deep_manifest_equivalence.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed three-level nested scalar record lower ARC/GC equivalence gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed three-level nested scalar record lower ARC/GC equivalence gate included\n'
+}
+
+run_nested_record_lift_deep_manifest_host_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-record-nested-lift-deep-manifest-host.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_nested_lift_deep_manifest_host.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed three-level nested scalar record lift host gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed three-level nested scalar record lift host gate included\n'
+}
+
+run_nested_record_lift_deep_manifest_equivalence_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-record-nested-lift-deep-manifest-equivalence.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_nested_lift_deep_manifest_equivalence.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed three-level nested scalar record lift ARC/GC equivalence gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed three-level nested scalar record lift ARC/GC equivalence gate included\n'
+}
+
+run_nested_record_deeper_manifest_gate() {
+    local direction="$1" phase="$2"
+    local script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_nested_${direction}_deeper_manifest_${phase}.sh"
+    local gate_output="$TMP_DIR/gc-marshal-record-nested-${direction}-deeper-manifest-${phase}.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$script" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed four-level nested scalar record %s %s gate failed\n' "$direction" "$phase" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed four-level nested scalar record %s %s gate included\n' "$direction" "$phase"
+}
+
+run_nested_record_deeper_compiler_gate() {
+    local direction="$1" phase="$2"
+    local script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_nested_${direction}_deeper_compiler_${phase}.sh"
+    local gate_output="$TMP_DIR/gc-marshal-record-nested-${direction}-deeper-compiler-${phase}.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$script" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] compiler-wired four-level nested scalar record %s %s gate failed\n' "$direction" "$phase" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] compiler-wired four-level nested scalar record %s %s gate included\n' "$direction" "$phase"
+}
+
+run_nested_record_deeper_compiler_negative_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-record-nested-deeper-compiler-negative.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_nested_deeper_compiler_boundary_negative.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] compiler-wired four-level nested scalar record negative gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] compiler-wired four-level nested scalar record negative gate included\n'
+}
+
+run_managed_record_lift_manifest_gate() {
+    local phase="$1"
+    local script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_managed_lift_manifest_${phase}.sh"
+    local gate_output="$TMP_DIR/gc-marshal-record-managed-lift-manifest-${phase}.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$script" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed managed-field record lift %s gate failed\n' "$phase" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed managed-field record lift %s gate included\n' "$phase"
+}
+
+run_managed_record_lower_manifest_gate() {
+    local phase="$1"
+    local script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_managed_lower_manifest_${phase}.sh"
+    local gate_output="$TMP_DIR/gc-marshal-record-managed-lower-manifest-${phase}.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$script" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed managed-field record lower %s gate failed\n' "$phase" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed managed-field record lower %s gate included\n' "$phase"
+}
+
+run_byte_list_record_lower_manifest_gate() {
+    local phase="$1"
+    local script
+    case "$phase" in
+        host)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_byte_list_lower_manifest_host.sh"
+            ;;
+        equivalence)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_byte_list_lower_manifest_equivalence.sh"
+            ;;
+        negative)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_byte_list_lower_negative.sh"
+            ;;
+        *)
+            printf '[FAIL] unknown byte-list record lower gate phase: %s\n' "$phase" >&2
+            return 1
+            ;;
+    esac
+    local gate_output="$TMP_DIR/gc-marshal-record-byte-list-lower-${phase}.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        DO_BIN="$DO_BIN" \
+        bash "$script" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed byte-list record lower %s gate failed\n' "$phase" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed byte-list record lower %s gate included\n' "$phase"
+}
+
+run_byte_list_record_lift_manifest_gate() {
+    local phase="$1"
+    local script
+    case "$phase" in
+        host)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_byte_list_lift_manifest_host.sh"
+            ;;
+        equivalence)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_byte_list_lift_manifest_equivalence.sh"
+            ;;
+        negative)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_byte_list_lift_negative.sh"
+            ;;
+        *)
+            printf '[FAIL] unknown byte-list record lift gate phase: %s\n' "$phase" >&2
+            return 1
+            ;;
+    esac
+    local gate_output="$TMP_DIR/gc-marshal-record-byte-list-lift-${phase}.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        DO_BIN="$DO_BIN" \
+        bash "$script" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed byte-list record lift %s gate failed\n' "$phase" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed byte-list record lift %s gate included\n' "$phase"
+}
+
+run_u32_list_record_lift_manifest_gate() {
+    local phase="$1"
+    local script
+    case "$phase" in
+        host)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_u32_list_lift_manifest_host.sh"
+            ;;
+        equivalence)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_u32_list_lift_manifest_equivalence.sh"
+            ;;
+        negative)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_u32_list_lift_negative.sh"
+            ;;
+        *)
+            printf '[FAIL] unknown u32-list record lift gate phase: %s\n' "$phase" >&2
+            return 1
+            ;;
+    esac
+    local gate_output="$TMP_DIR/gc-marshal-record-u32-list-lift-${phase}.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        DO_BIN="$DO_BIN" \
+        bash "$script" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed u32-list record lift %s gate failed\n' "$phase" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed u32-list record lift %s gate included\n' "$phase"
+}
+
+run_mixed_text_u32_list_record_lift_manifest_gate() {
+    local phase="$1"
+    local script
+    case "$phase" in
+        host)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_mixed_text_u32_list_lift_manifest_host.sh"
+            ;;
+        equivalence)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_mixed_text_u32_list_lift_manifest_equivalence.sh"
+            ;;
+        negative)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_mixed_text_u32_list_lift_negative.sh"
+            ;;
+        *)
+            printf '[FAIL] unknown mixed text/u32-list record lift gate phase: %s\n' "$phase" >&2
+            return 1
+            ;;
+    esac
+    local gate_output="$TMP_DIR/gc-marshal-record-mixed-text-u32-list-lift-${phase}.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        DO_BIN="$DO_BIN" \
+        bash "$script" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed mixed text/u32-list record lift %s gate failed\n' "$phase" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed mixed text/u32-list record lift %s gate included\n' "$phase"
+}
+
+run_mixed_text_byte_list_record_lift_manifest_gate() {
+    local phase="$1"
+    local script
+    case "$phase" in
+        host)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_mixed_text_byte_list_lift_manifest_host.sh"
+            ;;
+        equivalence)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_mixed_text_byte_list_lift_manifest_equivalence.sh"
+            ;;
+        negative)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_mixed_text_byte_list_lift_negative.sh"
+            ;;
+        *)
+            printf '[FAIL] unknown mixed text/byte-list record lift gate phase: %s\n' "$phase" >&2
+            return 1
+            ;;
+    esac
+    local gate_output="$TMP_DIR/gc-marshal-record-mixed-text-byte-list-lift-${phase}.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        DO_BIN="$DO_BIN" \
+        bash "$script" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed mixed text/byte-list record lift %s gate failed\n' "$phase" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed mixed text/byte-list record lift %s gate included\n' "$phase"
+}
+
+run_mixed_text_two_u32_lists_record_lift_manifest_gate() {
+    local phase="$1"
+    local script
+    case "$phase" in
+        host)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_mixed_text_two_u32_lists_lift_manifest_host.sh"
+            ;;
+        equivalence)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_mixed_text_two_u32_lists_lift_manifest_equivalence.sh"
+            ;;
+        negative)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_mixed_text_two_u32_lists_lift_negative.sh"
+            ;;
+        *)
+            printf '[FAIL] unknown mixed text/two-u32-list record lift gate phase: %s\n' "$phase" >&2
+            return 1
+            ;;
+    esac
+    local gate_output="$TMP_DIR/gc-marshal-record-mixed-text-two-u32-lists-lift-${phase}.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        DO_BIN="$DO_BIN" \
+        bash "$script" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed mixed text/two-u32-list record lift %s gate failed\n' "$phase" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed mixed text/two-u32-list record lift %s gate included\n' "$phase"
+}
+
+run_two_u32_lists_lower_gate() {
+    local phase="$1" script gate_output
+    case "$phase" in
+        host)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_two_u32_lists_lower_host.sh"
+            ;;
+        equivalence)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_two_u32_lists_lower_equivalence.sh"
+            ;;
+        negative)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_two_u32_lists_lower_negative.sh"
+            ;;
+        *)
+            printf '[FAIL] unknown two-u32-list record lower gate phase: %s\n' "$phase" >&2
+            return 1
+            ;;
+    esac
+    gate_output="$TMP_DIR/gc-marshal-record-two-u32-lists-lower-${phase}.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        DO_BIN="$DO_BIN" \
+        bash "$script" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed two-u32-list record lower %s gate failed\n' "$phase" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed two-u32-list record lower %s gate included\n' "$phase"
+}
+
+run_mixed_text_byte_u32_lists_lower_gate() {
+    local phase="$1" script gate_output
+    case "$phase" in
+        host)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_mixed_text_byte_u32_lists_lower_manifest_host.sh"
+            ;;
+        equivalence)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_mixed_text_byte_u32_lists_lower_manifest_equivalence.sh"
+            ;;
+        negative)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_record_mixed_text_byte_u32_lists_lower_negative.sh"
+            ;;
+        *)
+            printf '[FAIL] unknown mixed text/byte-u32-list record lower gate phase: %s\n' "$phase" >&2
+            return 1
+            ;;
+    esac
+    gate_output="$TMP_DIR/gc-marshal-record-mixed-text-byte-u32-lists-lower-${phase}.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        DO_BIN="$DO_BIN" \
+        bash "$script" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed mixed text/byte-u32-list record lower %s gate failed\n' "$phase" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed mixed text/byte-u32-list record lower %s gate included\n' "$phase"
+}
+
+run_default_multi_managed_route_gate() {
+    local phase="$1"
+    local script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_multi${phase}.sh"
+    local gate_output="$TMP_DIR/gc-default-managed-multi${phase}.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$script" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] default multi-managed-text route%s gate failed\n' "$phase" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] default multi-managed-text route%s gate included\n' "$phase"
+}
+
+run_default_c14_nested_record_deeper_gate() {
+    local phase="$1" script gate_output
+    case "$phase" in
+        host)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_nested_record_deeper.sh"
+            ;;
+        equivalence)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_nested_record_deeper_equivalence.sh"
+            ;;
+        negative)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_nested_record_deeper_negative.sh"
+            ;;
+        *)
+            printf '[FAIL] unknown default C14 nested-record gate phase: %s\n' "$phase" >&2
+            return 1
+            ;;
+    esac
+    gate_output="$TMP_DIR/gc-default-c14-nested-record-deeper-${phase}.output"
+    if ! DO_BIN="$DO_BIN" \
+        WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$script" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] default C14 four-level nested scalar record %s gate failed\n' "$phase" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] default C14 four-level nested scalar record %s gate included\n' "$phase"
+}
+
+run_default_mixed_lower_gate() {
+    local phase="$1" script gate_output
+    case "$phase" in
+        host)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_mixed_lower_host.sh"
+            ;;
+        equivalence)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_mixed_lower_equivalence.sh"
+            ;;
+        negative)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_mixed_lower_negative.sh"
+            ;;
+        *)
+            printf '[FAIL] unknown default mixed-lower gate phase: %s\n' "$phase" >&2
+            return 1
+            ;;
+    esac
+    gate_output="$TMP_DIR/gc-default-mixed-lower-${phase}.output"
+    if ! DO_BIN="$DO_BIN" \
+        WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$script" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] default mixed scalar record lower %s gate failed\n' "$phase" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] default mixed scalar record lower %s gate included\n' "$phase"
+}
+
+run_default_mixed_scalar_list_lower_gate() {
+    local phase="$1" script gate_output
+    case "$phase" in
+        host)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_mixed_scalar_list_lower_host.sh"
+            ;;
+        equivalence)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_mixed_scalar_list_lower_equivalence.sh"
+            ;;
+        negative)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_mixed_scalar_list_lower_negative.sh"
+            ;;
+        *)
+            printf '[FAIL] unknown default mixed scalar-list lower gate phase: %s\n' "$phase" >&2
+            return 1
+            ;;
+    esac
+    gate_output="$TMP_DIR/gc-default-mixed-scalar-list-lower-${phase}.output"
+    if ! DO_BIN="$DO_BIN" \
+        WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        bash "$script" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] default mixed scalar-list record lower %s gate failed\n' "$phase" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] default mixed scalar-list record lower %s gate included\n' "$phase"
+}
+
+run_default_mixed_text_u32_list_lower_gate() {
+    local phase="$1" script gate_output
+    case "$phase" in
+        host)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_mixed_text_u32_list_lower_host.sh"
+            ;;
+        equivalence)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_mixed_text_u32_list_lower_equivalence.sh"
+            ;;
+        negative)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_mixed_text_u32_list_lower_negative.sh"
+            ;;
+        *)
+            printf '[FAIL] unknown default mixed text/u32-list lower gate phase: %s\n' "$phase" >&2
+            return 1
+            ;;
+    esac
+    gate_output="$TMP_DIR/gc-default-mixed-text-u32-list-lower-${phase}.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        WASMTIME_BIN="$WASMTIME_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        DO_BIN="$DO_BIN" \
+        bash "$script" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] default mixed text/u32-list lower %s gate failed\n' "$phase" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] default mixed text/u32-list lower %s gate included\n' "$phase"
+}
+
+run_default_mixed_text_u32_list_lift_gate() {
+    local phase="$1" script gate_output
+    case "$phase" in
+        host)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_mixed_text_u32_list_lift_host.sh"
+            ;;
+        equivalence)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_mixed_text_u32_list_lift_equivalence.sh"
+            ;;
+        negative)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_mixed_text_u32_list_lift_negative.sh"
+            ;;
+        *)
+            printf '[FAIL] unknown default mixed text/u32-list lift gate phase: %s\n' "$phase" >&2
+            return 1
+            ;;
+    esac
+    gate_output="$TMP_DIR/gc-default-mixed-text-u32-list-lift-${phase}.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        DO_BIN="$DO_BIN" \
+        bash "$script" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] default mixed text/u32-list lift %s gate failed\n' "$phase" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] default mixed text/u32-list lift %s gate included\n' "$phase"
+}
+
+run_default_mixed_text_byte_list_lift_gate() {
+    local phase="$1" script gate_output
+    case "$phase" in
+        host)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_mixed_text_byte_list_lift_host.sh"
+            ;;
+        equivalence)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_mixed_text_byte_list_lift_equivalence.sh"
+            ;;
+        negative)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_mixed_text_byte_list_lift_negative.sh"
+            ;;
+        *)
+            printf '[FAIL] unknown default mixed text/byte-list lift gate phase: %s\n' "$phase" >&2
+            return 1
+            ;;
+    esac
+    gate_output="$TMP_DIR/gc-default-mixed-text-byte-list-lift-${phase}.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        DO_BIN="$DO_BIN" \
+        bash "$script" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] default mixed text/byte-list lift %s gate failed\n' "$phase" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] default mixed text/byte-list lift %s gate included\n' "$phase"
+}
+
+run_default_mixed_text_two_u32_lists_lift_gate() {
+    local phase="$1" script gate_output
+    case "$phase" in
+        host)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_mixed_text_two_u32_lists_lift_host.sh"
+            ;;
+        equivalence)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_mixed_text_two_u32_lists_lift_equivalence.sh"
+            ;;
+        negative)
+            script="$ROOT_DIR/examples/gc-p3-runtime/test_gc_default_host_route_mixed_text_two_u32_lists_lift_negative.sh"
+            ;;
+        *)
+            printf '[FAIL] unknown default mixed text/two-u32-list lift gate phase: %s\n' "$phase" >&2
+            return 1
+            ;;
+    esac
+    gate_output="$TMP_DIR/gc-default-mixed-text-two-u32-lists-lift-${phase}.output"
+    if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
+        ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        DO_BIN="$DO_BIN" \
+        bash "$script" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] default mixed text/two-u32-list lift %s gate failed\n' "$phase" >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] default mixed text/two-u32-list lift %s gate included\n' "$phase"
+}
+
+run_future_frame_equivalence_gate
 run_descriptor_manifest_gate
 run_random_equivalence_gate
 run_text_equivalence_gate
+run_u32_lower_equivalence_gate
+run_u32_lift_equivalence_gate
+run_record_lower_manifest_host_gate
+run_record_lower_manifest_equivalence_gate
+run_record_lift_manifest_host_gate
+run_record_lift_manifest_equivalence_gate
+run_mixed_record_lift_manifest_host_gate
+run_mixed_record_lift_manifest_equivalence_gate
+run_indirect_record_lower_manifest_host_gate
+run_indirect_record_lower_manifest_equivalence_gate
+run_nested_record_lift_manifest_host_gate
+run_nested_record_lift_manifest_equivalence_gate
+run_nested_record_lower_manifest_host_gate
+run_nested_record_lower_manifest_equivalence_gate
+run_nested_record_lower_deep_manifest_host_gate
+run_nested_record_lower_deep_manifest_equivalence_gate
+run_nested_record_lift_deep_manifest_host_gate
+run_nested_record_lift_deep_manifest_equivalence_gate
+run_nested_record_deeper_manifest_gate lower host
+run_nested_record_deeper_manifest_gate lower equivalence
+run_nested_record_deeper_manifest_gate lift host
+run_nested_record_deeper_manifest_gate lift equivalence
+run_nested_record_deeper_compiler_gate lower host
+run_nested_record_deeper_compiler_gate lower equivalence
+run_nested_record_deeper_compiler_gate lift host
+run_nested_record_deeper_compiler_gate lift equivalence
+run_nested_record_deeper_compiler_negative_gate
+run_managed_record_lift_manifest_gate host
+run_managed_record_lift_manifest_gate equivalence
+run_managed_record_lower_manifest_gate host
+run_managed_record_lower_manifest_gate equivalence
+run_byte_list_record_lower_manifest_gate host
+run_byte_list_record_lower_manifest_gate equivalence
+run_byte_list_record_lower_manifest_gate negative
+run_byte_list_record_lift_manifest_gate host
+run_byte_list_record_lift_manifest_gate equivalence
+run_byte_list_record_lift_manifest_gate negative
+run_u32_list_record_lift_manifest_gate host
+run_u32_list_record_lift_manifest_gate equivalence
+run_u32_list_record_lift_manifest_gate negative
+run_mixed_text_u32_list_record_lift_manifest_gate host
+run_mixed_text_u32_list_record_lift_manifest_gate equivalence
+run_mixed_text_u32_list_record_lift_manifest_gate negative
+run_mixed_text_byte_list_record_lift_manifest_gate host
+run_mixed_text_byte_list_record_lift_manifest_gate equivalence
+run_mixed_text_byte_list_record_lift_manifest_gate negative
+run_mixed_text_two_u32_lists_record_lift_manifest_gate host
+run_mixed_text_two_u32_lists_record_lift_manifest_gate equivalence
+run_mixed_text_two_u32_lists_record_lift_manifest_gate negative
+run_two_u32_lists_lower_gate host
+run_two_u32_lists_lower_gate equivalence
+run_two_u32_lists_lower_gate negative
+run_mixed_text_byte_u32_lists_lower_gate host
+run_mixed_text_byte_u32_lists_lower_gate equivalence
+run_mixed_text_byte_u32_lists_lower_gate negative
+run_default_multi_managed_route_gate ""
+run_default_multi_managed_route_gate "_equivalence"
+run_default_c14_nested_record_deeper_gate host
+run_default_c14_nested_record_deeper_gate equivalence
+run_default_c14_nested_record_deeper_gate negative
+run_default_mixed_lower_gate host
+run_default_mixed_lower_gate equivalence
+run_default_mixed_lower_gate negative
+run_default_mixed_scalar_list_lower_gate host
+run_default_mixed_scalar_list_lower_gate equivalence
+run_default_mixed_scalar_list_lower_gate negative
+run_default_mixed_text_u32_list_lower_gate host
+run_default_mixed_text_u32_list_lower_gate equivalence
+run_default_mixed_text_u32_list_lower_gate negative
+run_default_mixed_text_u32_list_lift_gate host
+run_default_mixed_text_u32_list_lift_gate equivalence
+run_default_mixed_text_u32_list_lift_gate negative
+run_default_mixed_text_byte_list_lift_gate host
+run_default_mixed_text_byte_list_lift_gate equivalence
+run_default_mixed_text_byte_list_lift_gate negative
+run_default_mixed_text_two_u32_lists_lift_gate host
+run_default_mixed_text_two_u32_lists_lift_gate equivalence
+run_default_mixed_text_two_u32_lists_lift_gate negative
 
 build_fixture() {
     local fixture="$1" output="$2"
@@ -329,7 +1261,7 @@ else
 fi
 
 if [[ "$MODE" == baseline ]]; then
-    printf 'G5c residual baseline gate passed: admitted GC, residual ARC, gc-core oracle, manifest random/text equivalence, inventory pending\n'
+    printf 'G5c residual baseline gate passed: bounded Future G5b equivalence, admitted GC, residual ARC, gc-core oracle, manifest random/text/list<u32>/scalar-record/mixed/mixed-lower/managed-field/managed-field-lower/byte-list-record-lower/nested-record/mixed-text-u32-list lift-lower/two-u32-list lower equivalence including three-level and four-level nested lower/lift, default multi-managed-text and C14 nested-record/mixed-lower/mixed-text-u32-list-lower/mixed-text-u32-list-lift/two-u32-list lower host/equivalence/negative, inventory pending\n'
 else
-    printf 'G5c cutover residual gate passed: admitted GC, no ARC residual, no gc-core selector, inventory complete\n'
+    printf 'G5c cutover residual gate passed: bounded Future G5b equivalence, admitted GC, mixed-lower coverage, no ARC residual, no gc-core selector, inventory complete\n'
 fi

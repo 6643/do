@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 
 pub const WasiLowering = struct {
     module: []const u8,
@@ -30,20 +31,13 @@ pub fn emit_async_component_contract(
     out: *std.ArrayList(u8),
     contract: AsyncComponentContract,
 ) !void {
-    try append_fmt(allocator, out,
-        \\;; generic-async contract export="{s}" host="{s}" member="{s}"
-        \\;; generic-async async-lift="[async-lift]{s}"
-        \\;; generic-async callback="[callback][async-lift]{s}"
-        \\;; generic-async task-return="[task-return]{s}"
-        \\;; generic-async cancellation="[subtask-cancel]" drop="[subtask-drop]"
-        \\
-    , .{
-        contract.export_name,
-        contract.host_locator,
-        contract.host_member,
-        contract.export_name,
-        contract.export_name,
-        contract.export_name,
+    try generated_text.append_fmt_block(allocator, out, 0, ";; generic-async contract export=\"{[export_name]s}\" host=\"{[host_locator]s}\" member=\"{[host_member]s}\"\n;; generic-async async-lift=\"[async-lift]{[export_name_2]s}\"\n;; generic-async callback=\"[callback][async-lift]{[export_name_3]s}\"\n;; generic-async task-return=\"[task-return]{[export_name_4]s}\"\n;; generic-async cancellation=\"[subtask-cancel]\" drop=\"[subtask-drop]\"\n", .{
+        .export_name = contract.export_name,
+        .host_locator = contract.host_locator,
+        .host_member = contract.host_member,
+        .export_name_2 = contract.export_name,
+        .export_name_3 = contract.export_name,
+        .export_name_4 = contract.export_name,
     });
 }
 
@@ -53,11 +47,7 @@ pub fn emit_wasi_bindings(
     wasi_imports: anytype,
 ) !void {
     for (wasi_imports) |import| {
-        try append_fmt(allocator, out, "  ;; wasi-bind source=\"{s}\" alias=\"{s}\" target=\"{s}\" params=\"", .{
-            import.source,
-            import.alias,
-            import.target,
-        });
+        try append_fmt(allocator, out, "  ;; wasi-bind source=\"{[source]s}\" alias=\"{[alias]s}\" target=\"{[target]s}\" params=\"", .{ .source = import.source, .alias = import.alias, .target = import.target });
         try append_do_signature_as_wit(allocator, out, import.params);
         try out.appendSlice(allocator, "\" result=\"");
         try append_do_signature_as_wit(allocator, out, import.result);
@@ -78,16 +68,13 @@ pub fn emit_wasi_core_imports(
         if (has_string(seen.items, import.target)) continue;
         try seen.append(allocator, import.target);
 
-        try append_fmt(allocator, out, "  (import \"{s}\" \"{s}\" (func $", .{
-            lowering.module,
-            lowering.name,
-        });
+        try append_fmt(allocator, out, "  (import \"{[module]s}\" \"{[name]s}\" (func $", .{ .module = lowering.module, .name = lowering.name });
         try append_wasi_import_symbol(allocator, out, import.target);
         if (lowering.param != null) {
-            try append_fmt(allocator, out, " (param {s})", .{lowering.param.?});
+            try append_fmt(allocator, out, " (param {[param]s})", .{ .param = lowering.param.? });
         }
         if (lowering.result != null) {
-            try append_fmt(allocator, out, " (result {s})", .{lowering.result.?});
+            try append_fmt(allocator, out, " (result {[result]s})", .{ .result = lowering.result.? });
         }
         try out.appendSlice(allocator, "))\n");
     }
@@ -99,16 +86,16 @@ pub fn emit_host_imports(
     host_imports: anytype,
 ) !void {
     for (host_imports) |host_import| {
-        try append_fmt(allocator, out, "  (import \"env\" \"{s}\" (func ${s}", .{ host_import.field, host_import.alias });
+        try append_fmt(allocator, out, "  (import \"env\" \"{[field]s}\" (func ${[alias]s}", .{ .field = host_import.field, .alias = host_import.alias });
         if (host_import.params.len != 0) {
             try out.appendSlice(allocator, " (param");
             for (host_import.params) |param| {
-                try append_fmt(allocator, out, " {s}", .{wasm_type(param)});
+                try append_fmt(allocator, out, " {[param]s}", .{ .param = wasm_type(param) });
             }
             try out.appendSlice(allocator, ")");
         }
         if (host_import.result) |result| {
-            try append_fmt(allocator, out, " (result {s})", .{wasm_type(result)});
+            try append_fmt(allocator, out, " (result {[result]s})", .{ .result = wasm_type(result) });
         }
         try out.appendSlice(allocator, "))\n");
     }
@@ -384,9 +371,7 @@ fn append_fmt(
     comptime fmt: []const u8,
     args: anytype,
 ) !void {
-    const text = try std.fmt.allocPrint(allocator, fmt, args);
-    defer allocator.free(text);
-    try out.appendSlice(allocator, text);
+    try generated_text.append_fmt(allocator, out, fmt, args);
 }
 
 test "component metadata writer emits wasi bind manifest comments" {

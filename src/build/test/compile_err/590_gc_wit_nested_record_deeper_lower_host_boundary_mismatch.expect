@@ -1,0 +1,3 @@
+# build-arg: --gc-wit-marshal
+# build-arg: demo:marshal-record-nested-lower-deeper/api.write@1.0.0/lower
+GcWitHostMemberMismatch

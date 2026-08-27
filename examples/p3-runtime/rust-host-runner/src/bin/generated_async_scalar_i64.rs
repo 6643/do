@@ -25,7 +25,9 @@ impl Mode {
             "ready" => Ok(Self::Ready),
             "pending" => Ok(Self::Pending),
             "cancel" => Ok(Self::Cancel),
-            value => bail!("DO_GENERIC_ASYNC_SCALAR_MODE must be ready, pending, or cancel, got {value}"),
+            value => {
+                bail!("DO_GENERIC_ASYNC_SCALAR_MODE must be ready, pending, or cancel, got {value}")
+            }
         }
     }
 }
@@ -143,7 +145,12 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
         )?,))
     }))?;
 
-    let mut store = Store::new(&engine, State { table: ResourceTable::new() });
+    let mut store = Store::new(
+        &engine,
+        State {
+            table: ResourceTable::new(),
+        },
+    );
     let instance = map_wasmtime(linker.instantiate_async(&mut store, &component).await)?;
     let run = map_wasmtime(instance.get_typed_func::<(), ()>(&mut store, "run"))?;
     let call = map_wasmtime(
@@ -172,10 +179,18 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
         );
     }
     if mode == Mode::Pending && (stats.polls != 3 || stats.wakes != 1) {
-        bail!("pending scalar i64 ABI mismatch: polls={} wakes={}", stats.polls, stats.wakes);
+        bail!(
+            "pending scalar i64 ABI mismatch: polls={} wakes={}",
+            stats.polls,
+            stats.wakes
+        );
     }
     if mode == Mode::Ready && (stats.polls != 2 || stats.wakes != 0) {
-        bail!("ready scalar i64 ABI mismatch: polls={} wakes={}", stats.polls, stats.wakes);
+        bail!(
+            "ready scalar i64 ABI mismatch: polls={} wakes={}",
+            stats.polls,
+            stats.wakes
+        );
     }
     println!(
         "mode={} value=42 polls={} wakes={} completions={} future-drops={} pending-future-drops={} frame-drops=1 table-empty=true",

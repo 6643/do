@@ -90,6 +90,7 @@ const Local = model.Local;
 const CodegenContext = context.CodegenContext;
 const CodegenError = model.CodegenError;
 const EmitOptions = model.EmitOptions;
+const GcSyncHostWitRoute = model.GcSyncHostWitRoute;
 const StructDecl = model.StructDecl;
 const StructField = model.StructField;
 const StructLayout = model.StructLayout;
@@ -606,6 +607,233 @@ fn tokens_have_gc_sync_candidate(tokens: []const lexer.Token) bool {
     }
     if (found_candidate and tokens_have_multiple_managed_gets_in_call(tokens)) return false;
     return found_candidate;
+}
+
+fn gc_sync_scalar_leaf_header(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    if (start_idx >= end_idx or !tok_eq(tokens[start_idx], "(")) return false;
+    const close_params = find_matching_in_range(tokens, start_idx, "(", ")", end_idx) catch return false;
+    if (close_params >= end_idx) return false;
+
+    var param = start_idx + 1;
+    while (param < close_params) {
+        const param_end = find_arg_end(tokens, param, close_params);
+        if (param_end != param + 2 or tokens[param].kind != .ident or
+            tokens[param + 1].kind != .ident or !type_util.is_core_wasm_scalar(tokens[param + 1].lexeme)) return false;
+        param = param_end;
+        if (param < close_params and tok_eq(tokens[param], ",")) param += 1;
+    }
+
+    var arrow_idx: ?usize = null;
+    var i = close_params + 1;
+    while (i < end_idx) : (i += 1) {
+        if (tok_eq(tokens[i], "->")) {
+            arrow_idx = i;
+            break;
+        }
+        if (tok_eq(tokens[i], "-") and i + 1 < end_idx and tok_eq(tokens[i + 1], ">")) {
+            arrow_idx = i;
+            break;
+        }
+    }
+    const arrow = arrow_idx orelse return false;
+    const result_start = arrow + if (tok_eq(tokens[arrow], "->")) @as(usize, 1) else @as(usize, 2);
+    return result_start + 1 == end_idx and tokens[result_start].kind == .ident and
+        type_util.is_core_wasm_scalar(tokens[result_start].lexeme);
+}
+
+fn gc_sync_scalar_leaf_body(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    function_name: []const u8,
+) bool {
+    var i = start_idx;
+    var saw_return = false;
+    while (i < end_idx) {
+        const stmt_end = find_stmt_end(tokens, i, end_idx);
+        if (stmt_end <= i or tok_eq(tokens[i], "return") and saw_return) return false;
+        if (tok_eq(tokens[i], "return")) {
+            if (i + 1 == stmt_end) return false;
+            var expr_idx = i + 1;
+            while (expr_idx + 1 < stmt_end) : (expr_idx += 1) {
+                if (tokens[expr_idx].kind == .ident and
+                    std.mem.eql(u8, tokens[expr_idx].lexeme, function_name) and
+                    tok_eq(tokens[expr_idx + 1], "(")) return false;
+            }
+            saw_return = true;
+        } else {
+            return false;
+        }
+        i = stmt_end;
+    }
+    return saw_return;
+}
+
+const GcScalarFunctionRange = struct {
+    body_start: usize,
+    body_end: usize,
+};
+
+fn gc_sync_scalar_function_range(tokens: []const lexer.Token, name: []const u8) ?GcScalarFunctionRange {
+    var found: ?GcScalarFunctionRange = null;
+    var i: usize = 0;
+    while (i + 1 < tokens.len) : (i += 1) {
+        if (tokens[i].kind != .ident or !tok_eq(tokens[i + 1], "(") or
+            !is_top_level_decl_head(tokens, i) or !std.mem.eql(u8, tokens[i].lexeme, name)) continue;
+        const close_params = find_matching(tokens, i + 1, "(", ")") catch return null;
+        const body_open = find_top_level_block_open(tokens, close_params + 1, tokens.len) orelse return null;
+        const body_close = find_matching(tokens, body_open, "{", "}") catch return null;
+        if (found != null) return null;
+        found = .{ .body_start = body_open + 1, .body_end = body_close };
+        i = body_close;
+    }
+    return found;
+}
+
+fn gc_sync_scalar_call_graph_reaches(
+    tokens: []const lexer.Token,
+    current_name: []const u8,
+    target_name: []const u8,
+    depth: usize,
+) bool {
+    if (depth >= tokens.len) return true;
+    const range = gc_sync_scalar_function_range(tokens, current_name) orelse return true;
+    var i = range.body_start;
+    while (i + 1 < range.body_end) : (i += 1) {
+        if (tokens[i].kind != .ident or !tok_eq(tokens[i + 1], "(")) continue;
+        if (i > 0 and tok_eq(tokens[i - 1], "@")) continue;
+        const callee_name = tokens[i].lexeme;
+        _ = gc_sync_scalar_function_range(tokens, callee_name) orelse return true;
+        if (std.mem.eql(u8, callee_name, target_name)) return true;
+        if (gc_sync_scalar_call_graph_reaches(tokens, callee_name, target_name, depth + 1)) return true;
+    }
+    return false;
+}
+
+fn tokens_have_gc_sync_scalar_call_graph_cycle(tokens: []const lexer.Token) bool {
+    var i: usize = 0;
+    while (i + 1 < tokens.len) : (i += 1) {
+        if (tokens[i].kind != .ident or !tok_eq(tokens[i + 1], "(") or
+            !is_top_level_decl_head(tokens, i)) continue;
+        const close_params = find_matching(tokens, i + 1, "(", ")") catch return true;
+        const body_open = find_top_level_block_open(tokens, close_params + 1, tokens.len) orelse return true;
+        const body_close = find_matching(tokens, body_open, "{", "}") catch return true;
+        if (gc_sync_scalar_call_graph_reaches(tokens, tokens[i].lexeme, tokens[i].lexeme, 0)) return true;
+        i = body_close;
+    }
+    return false;
+}
+
+fn tokens_have_gc_sync_scalar_leaf_candidate(tokens: []const lexer.Token) bool {
+    var found = false;
+    var i: usize = 0;
+    while (i + 1 < tokens.len) : (i += 1) {
+        if (tokens[i].kind != .ident or !tok_eq(tokens[i + 1], "(") or
+            !is_top_level_decl_head(tokens, i)) continue;
+        if (std.mem.eql(u8, tokens[i].lexeme, "start")) {
+            const close_params = find_matching(tokens, i + 1, "(", ")") catch continue;
+            const body_open = find_top_level_block_open(tokens, close_params + 1, tokens.len) orelse continue;
+            i = find_matching(tokens, body_open, "{", "}") catch body_open;
+            continue;
+        }
+        const close_params = find_matching(tokens, i + 1, "(", ")") catch return false;
+        const body_open = find_top_level_block_open(tokens, close_params + 1, tokens.len) orelse return false;
+        const body_close = find_matching(tokens, body_open, "{", "}") catch return false;
+        if (gc_sync_header_has_unsupported_shape(tokens, i + 1, body_open) or
+            !gc_sync_scalar_leaf_header(tokens, i + 1, body_open) or
+            !gc_sync_scalar_leaf_body(tokens, body_open + 1, body_close, tokens[i].lexeme)) return false;
+        found = true;
+        i = body_close;
+    }
+    return found and !tokens_have_gc_sync_scalar_call_graph_cycle(tokens);
+}
+
+fn gc_sync_scalar_control_flow_atom(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    return end_idx == start_idx + 1 and
+        (tokens[start_idx].kind == .ident or tokens[start_idx].kind == .number);
+}
+
+fn gc_sync_scalar_control_flow_expr(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    if (start_idx >= end_idx) return false;
+    if (gc_sync_scalar_control_flow_atom(tokens, start_idx, end_idx)) return true;
+    if (end_idx != start_idx + 7 or !tok_eq(tokens[start_idx], "@") or
+        !tok_eq(tokens[start_idx + 1], "eq") or !tok_eq(tokens[start_idx + 2], "(") or
+        !tok_eq(tokens[start_idx + 4], ",") or !tok_eq(tokens[start_idx + 6], ")")) return false;
+    return gc_sync_scalar_control_flow_atom(tokens, start_idx + 3, start_idx + 4) and
+        gc_sync_scalar_control_flow_atom(tokens, start_idx + 5, start_idx + 6);
+}
+
+fn gc_sync_scalar_control_flow_return(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    return start_idx + 1 < end_idx and tok_eq(tokens[start_idx], "return") and
+        gc_sync_scalar_control_flow_expr(tokens, start_idx + 1, end_idx);
+}
+
+fn gc_sync_scalar_control_flow_branch(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    const stmt_end = find_stmt_end(tokens, start_idx, end_idx);
+    return stmt_end == end_idx and gc_sync_scalar_control_flow_return(tokens, start_idx, end_idx);
+}
+
+fn gc_sync_scalar_control_flow_if(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    if (start_idx >= end_idx or !tok_eq(tokens[start_idx], "if")) return false;
+    const open_idx = find_top_level_block_open(tokens, start_idx + 1, end_idx) orelse return false;
+    if (!gc_sync_scalar_control_flow_expr(tokens, start_idx + 1, open_idx)) return false;
+    const close_idx = find_matching_in_range(tokens, open_idx, "{", "}", end_idx) catch return false;
+    if (close_idx >= end_idx or !gc_sync_scalar_control_flow_branch(tokens, open_idx + 1, close_idx)) return false;
+
+    if (close_idx + 2 >= end_idx or !tok_eq(tokens[close_idx + 1], "else")) return false;
+    const else_start = close_idx + 2;
+    if (tok_eq(tokens[else_start], "if")) return gc_sync_scalar_control_flow_if(tokens, else_start, end_idx);
+    if (!tok_eq(tokens[else_start], "{")) return false;
+    const else_close = find_matching_in_range(tokens, else_start, "{", "}", end_idx) catch return false;
+    return else_close + 1 == end_idx and
+        gc_sync_scalar_control_flow_branch(tokens, else_start + 1, else_close);
+}
+
+fn gc_sync_scalar_control_flow_guard(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    if (start_idx >= end_idx or !tok_eq(tokens[start_idx], "if")) return false;
+    const return_idx = find_top_level_token(tokens, start_idx + 1, end_idx, "return") orelse return false;
+    if (!gc_sync_scalar_control_flow_expr(tokens, start_idx + 1, return_idx)) return false;
+    const guard_end = find_stmt_end(tokens, start_idx, end_idx);
+    if (guard_end <= return_idx or !gc_sync_scalar_control_flow_return(tokens, return_idx, guard_end)) return false;
+    if (guard_end >= end_idx) return false;
+    const final_end = find_stmt_end(tokens, guard_end, end_idx);
+    return final_end == end_idx and gc_sync_scalar_control_flow_return(tokens, guard_end, final_end);
+}
+
+fn gc_sync_scalar_control_flow_body(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    if (start_idx >= end_idx or !tok_eq(tokens[start_idx], "if")) return false;
+    if (find_top_level_block_open(tokens, start_idx + 1, end_idx) != null) {
+        return gc_sync_scalar_control_flow_if(tokens, start_idx, end_idx);
+    }
+    return gc_sync_scalar_control_flow_guard(tokens, start_idx, end_idx);
+}
+
+fn tokens_have_gc_sync_scalar_control_flow_candidate(tokens: []const lexer.Token) bool {
+    var found_control_flow = false;
+    var i: usize = 0;
+    while (i + 1 < tokens.len) : (i += 1) {
+        if (tokens[i].kind != .ident or !tok_eq(tokens[i + 1], "(") or
+            !is_top_level_decl_head(tokens, i)) continue;
+        const close_params = find_matching(tokens, i + 1, "(", ")") catch return false;
+        const body_open = find_top_level_block_open(tokens, close_params + 1, tokens.len) orelse return false;
+        const body_close = find_matching(tokens, body_open, "{", "}") catch return false;
+        if (std.mem.eql(u8, tokens[i].lexeme, "start")) {
+            i = body_close;
+            continue;
+        }
+        if (gc_sync_header_has_unsupported_shape(tokens, i + 1, body_open) or
+            !gc_sync_scalar_leaf_header(tokens, i + 1, body_open)) return false;
+        if (!gc_sync_scalar_leaf_body(tokens, body_open + 1, body_close, tokens[i].lexeme) and
+            !gc_sync_scalar_control_flow_body(tokens, body_open + 1, body_close)) return false;
+        if (gc_sync_scalar_control_flow_body(tokens, body_open + 1, body_close)) found_control_flow = true;
+        i = body_close;
+    }
+    if (!found_control_flow or tokens_have_host_or_wit_binding(tokens) or
+        tokens_require_async_lowering(tokens) or tokens_have_managed_struct_declaration(tokens)) return false;
+    for (tokens) |token| {
+        if (tok_eq(token, "loop") or tok_eq(token, "defer")) return false;
+    }
+    return !tokens_have_gc_sync_scalar_call_graph_cycle(tokens);
 }
 
 fn body_has_gc_sync_scalar_multi_result_return(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
@@ -2128,6 +2356,10 @@ fn graph_has_gc_sync_candidate(graph: *const imports.ModuleGraph) bool {
     return false;
 }
 
+fn graph_has_imported_module(graph: *const imports.ModuleGraph) bool {
+    return graph.modules.len > 1;
+}
+
 fn graph_has_host_or_wit_binding(graph: *const imports.ModuleGraph) bool {
     for (graph.modules) |module| {
         if (tokens_have_host_or_wit_binding(module.tokens)) return true;
@@ -2183,8 +2415,12 @@ fn emit_checked_gc_sync(
     program: parser.Program,
     tokens: []const lexer.Token,
     module_graph: ?*const imports.ModuleGraph,
+    gc_host_route: ?*const GcSyncHostWitRoute,
 ) ![]u8 {
-    const wat = try codegen_gc_sync.emit_gc_wat_for_supported_program(allocator, program, tokens, module_graph);
+    const wat = if (gc_host_route) |route|
+        try codegen_gc_sync.emit_gc_wat_for_supported_program_with_host_route(allocator, program, tokens, module_graph, route)
+    else
+        try codegen_gc_sync.emit_gc_wat_for_supported_program(allocator, program, tokens, module_graph);
     validate_gc_sync_output(wat) catch |err| {
         allocator.free(wat);
         return err;
@@ -2197,23 +2433,45 @@ fn try_emit_default_gc_sync(
     program: parser.Program,
     tokens: []const lexer.Token,
     module_graph: ?*const imports.ModuleGraph,
+    gc_host_route: ?*const GcSyncHostWitRoute,
 ) !?[]u8 {
     // Imported modules and host/WIT declarations remain outside the parsed
     // GC admission boundary until their ABI/resource rows close. Only the
     // entry module can select this synchronous route for now.
     const candidate = tokens_have_gc_sync_candidate(tokens);
-    if (!candidate) return null;
-    if (tokens_have_host_or_wit_binding(tokens)) return null;
-    if (module_graph) |graph| if (graph_has_host_or_wit_binding(graph)) return null;
+    const scalar_leaf_candidate = !candidate and tokens_have_gc_sync_scalar_leaf_candidate(tokens);
+    const scalar_control_flow_candidate = !candidate and !scalar_leaf_candidate and
+        tokens_have_gc_sync_scalar_control_flow_candidate(tokens);
+    if (!gc_sync_admission_allows_verified_host_route(
+        candidate or scalar_leaf_candidate or scalar_control_flow_candidate,
+        gc_host_route,
+    )) return null;
+    // The scalar-leaf route has no module-qualified call environment yet. Keep
+    // imported modules on the existing route until that symbol boundary is
+    // admitted; otherwise a child-module call can resolve to a root helper.
+    if (scalar_leaf_candidate or scalar_control_flow_candidate) {
+        if (module_graph) |graph| if (graph_has_imported_module(graph)) return null;
+    }
+    if (tokens_have_host_or_wit_binding(tokens) and gc_host_route == null) return null;
+    if (module_graph) |graph| if (graph_has_host_or_wit_binding(graph) and gc_host_route == null) return null;
 
-    const wat = emit_checked_gc_sync(allocator, program, tokens, module_graph) catch |err| {
+    const wat = emit_checked_gc_sync(allocator, program, tokens, module_graph, gc_host_route) catch |err| {
         // A managed candidate must never silently re-enter the ARC emitter.
         // Unsupported shapes remain explicit capability errors until their GC
         // lowering is admitted by the migration ledger.
+        if ((scalar_leaf_candidate or scalar_control_flow_candidate) and
+            codegen_gc_sync.is_gc_sync_admission_rejection(err)) return null;
         if (is_gc_sync_capability_error(err)) return err;
         return err;
     };
     return wat;
+}
+
+fn gc_sync_admission_allows_verified_host_route(
+    candidate: bool,
+    gc_host_route: ?*const GcSyncHostWitRoute,
+) bool {
+    return candidate or gc_host_route != null;
 }
 
 pub fn emit_wat(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph) ![]u8 {
@@ -2225,6 +2483,28 @@ test "aggregate await tokens require async lowering" {
     defer std.testing.allocator.free(tokens);
 
     try std.testing.expect(tokens_require_async_lowering(tokens));
+}
+
+test "verified GC host route admits a host-call-only managed body" {
+    const source =
+        \\write = @host_func("demo:marshal-record-managed-lower/api@1.0.0", "write", (Writing) -> nil)
+        \\Writing {
+        \\    code u32
+        \\    label text
+        \\}
+        \\start() {
+        \\    value Writing = Writing{code = 7, label = "hello"}
+        \\    write(value)
+        \\}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try std.testing.expect(!tokens_have_gc_sync_candidate(tokens));
+
+    // The route payload is not dereferenced by the admission predicate; the
+    // GC emitter performs the full plan/call validation after admission.
+    const route: GcSyncHostWitRoute = undefined;
+    try std.testing.expect(gc_sync_admission_allows_verified_host_route(false, &route));
 }
 
 test "GC candidate scan skips scalar-only control flow" {
@@ -2243,6 +2523,72 @@ test "GC candidate scan skips scalar-only control flow" {
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     try std.testing.expect(!tokens_have_gc_sync_candidate(tokens));
+}
+
+test "default pipeline routes a pure scalar leaf through GC" {
+    const source =
+        \\sum_values(a i32, b i32) -> i32 {
+        \\    return @add(a, b)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_default_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "default pipeline admits scalar if else through GC" {
+    const source =
+        \\choose(value i32) -> i32 {
+        \\    if @eq(value, 0) {
+        \\        return 7
+        \\    } else {
+        \\        return value
+        \\    }
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_default_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-root branch_join") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "default pipeline admits scalar guard return through GC" {
+    const source =
+        \\guard(value i32) -> i32 {
+        \\    if @eq(value, 0) return 7
+        \\    return value
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_default_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-root guard_join") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "default pipeline admits scalar else if chain through GC" {
+    const source =
+        \\choose_chain(value i32) -> i32 {
+        \\    if @eq(value, 0) {
+        \\        return 7
+        \\    } else if @eq(value, 1) {
+        \\        return 8
+        \\    } else {
+        \\        return value
+        \\    }
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_default_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
+    try std.testing.expect(std.mem.count(u8, wat, ";; gc-root branch_join") >= 2);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
 test "GC candidate scan admits managed locals in a function body" {
@@ -2542,17 +2888,19 @@ test "GC candidate scan admits a bounded byte-list loop break" {
 
 test "GC candidate scan admits a bounded cross-scope labeled byte-list break" {
     const source =
-        "start() {\n" ++
-        "#outer\n" ++
-        "    loop {\n" ++
-        "        outer [u8] = \"outer\"\n" ++
-        "        loop {\n" ++
-        "            inner [u8] = \"inner\"\n" ++
-        "            break #outer\n" ++
-        "        }\n" ++
-        "    }\n" ++
-        "    return\n" ++
-        "}\n";
+        \\start() {
+        \\#outer
+        \\    loop {
+        \\        outer [u8] = "outer"
+        \\        loop {
+        \\            inner [u8] = "inner"
+        \\            break #outer
+        \\        }
+        \\    }
+        \\    return
+        \\}
+        \\
+    ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     try std.testing.expect(tokens_have_gc_sync_candidate(tokens));
@@ -2560,17 +2908,19 @@ test "GC candidate scan admits a bounded cross-scope labeled byte-list break" {
 
 test "default pipeline lowers a bounded cross-scope labeled byte-list break through the outer GC block" {
     const source =
-        "start() {\n" ++
-        "#outer\n" ++
-        "    loop {\n" ++
-        "        outer [u8] = \"outer\"\n" ++
-        "        loop {\n" ++
-        "            inner [u8] = \"inner\"\n" ++
-        "            break #outer\n" ++
-        "        }\n" ++
-        "    }\n" ++
-        "    return\n" ++
-        "}\n";
+        \\start() {
+        \\#outer
+        \\    loop {
+        \\        outer [u8] = "outer"
+        \\        loop {
+        \\            inner [u8] = "inner"
+        \\            break #outer
+        \\        }
+        \\    }
+        \\    return
+        \\}
+        \\
+    ;
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
@@ -2581,16 +2931,18 @@ test "default pipeline lowers a bounded cross-scope labeled byte-list break thro
 
 test "GC candidate scan admits a bounded cross-scope labeled byte-list continue" {
     const source =
-        "start() {\n" ++
-        "#outer\n" ++
-        "    loop {\n" ++
-        "        outer [u8] = \"outer\"\n" ++
-        "        loop {\n" ++
-        "            inner [u8] = \"inner\"\n" ++
-        "            continue #outer\n" ++
-        "        }\n" ++
-        "    }\n" ++
-        "}\n";
+        \\start() {
+        \\#outer
+        \\    loop {
+        \\        outer [u8] = "outer"
+        \\        loop {
+        \\            inner [u8] = "inner"
+        \\            continue #outer
+        \\        }
+        \\    }
+        \\}
+        \\
+    ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     try std.testing.expect(tokens_have_gc_sync_candidate(tokens));
@@ -2598,16 +2950,18 @@ test "GC candidate scan admits a bounded cross-scope labeled byte-list continue"
 
 test "default pipeline lowers a bounded cross-scope labeled continue through the outer GC loop" {
     const source =
-        "start() {\n" ++
-        "#outer\n" ++
-        "    loop {\n" ++
-        "        outer [u8] = \"outer\"\n" ++
-        "        loop {\n" ++
-        "            inner [u8] = \"inner\"\n" ++
-        "            continue #outer\n" ++
-        "        }\n" ++
-        "    }\n" ++
-        "}\n";
+        \\start() {
+        \\#outer
+        \\    loop {
+        \\        outer [u8] = "outer"
+        \\        loop {
+        \\            inner [u8] = "inner"
+        \\            continue #outer
+        \\        }
+        \\    }
+        \\}
+        \\
+    ;
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
@@ -2618,11 +2972,13 @@ test "default pipeline lowers a bounded cross-scope labeled continue through the
 
 test "GC candidate scan admits a bounded managed byte-list alias" {
     const source =
-        "start() {\n" ++
-        "    data [u8] = \"abc\"\n" ++
-        "    alias [u8] = data\n" ++
-        "    return\n" ++
-        "}\n";
+        \\start() {
+        \\    data [u8] = "abc"
+        \\    alias [u8] = data
+        \\    return
+        \\}
+        \\
+    ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     try std.testing.expect(tokens_have_gc_sync_candidate(tokens));
@@ -2630,11 +2986,13 @@ test "GC candidate scan admits a bounded managed byte-list alias" {
 
 test "default pipeline lowers a bounded managed byte-list alias through GC" {
     const source =
-        "start() {\n" ++
-        "    data [u8] = \"abc\"\n" ++
-        "    alias [u8] = data\n" ++
-        "    return\n" ++
-        "}\n";
+        \\start() {
+        \\    data [u8] = "abc"
+        \\    alias [u8] = data
+        \\    return
+        \\}
+        \\
+    ;
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
@@ -2645,15 +3003,18 @@ test "default pipeline lowers a bounded managed byte-list alias through GC" {
 
 test "GC candidate scan admits a bounded managed struct alias" {
     const source =
-        "Box {\n" ++
-        "    value [u8]\n" ++
-        "}\n\n" ++
-        "start() {\n" ++
-        "    bytes [u8] = \"abc\"\n" ++
-        "    box Box = Box{value = bytes}\n" ++
-        "    alias Box = box\n" ++
-        "    return\n" ++
-        "}\n";
+        \\Box {
+        \\    value [u8]
+        \\}
+        \\
+        \\start() {
+        \\    bytes [u8] = "abc"
+        \\    box Box = Box{value = bytes}
+        \\    alias Box = box
+        \\    return
+        \\}
+        \\
+    ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     try std.testing.expect(tokens_have_gc_sync_candidate(tokens));
@@ -2661,15 +3022,18 @@ test "GC candidate scan admits a bounded managed struct alias" {
 
 test "default pipeline lowers a bounded managed struct alias through GC" {
     const source =
-        "Box {\n" ++
-        "    value [u8]\n" ++
-        "}\n\n" ++
-        "start() {\n" ++
-        "    bytes [u8] = \"abc\"\n" ++
-        "    box Box = Box{value = bytes}\n" ++
-        "    alias Box = box\n" ++
-        "    return\n" ++
-        "}\n";
+        \\Box {
+        \\    value [u8]
+        \\}
+        \\
+        \\start() {
+        \\    bytes [u8] = "abc"
+        \\    box Box = Box{value = bytes}
+        \\    alias Box = box
+        \\    return
+        \\}
+        \\
+    ;
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
@@ -2680,12 +3044,14 @@ test "default pipeline lowers a bounded managed struct alias through GC" {
 
 test "GC candidate scan admits a bounded managed byte-list local overwrite" {
     const source =
-        "start() {\n" ++
-        "    data [u8] = \"abc\"\n" ++
-        "    next [u8] = \"def\"\n" ++
-        "    data = next\n" ++
-        "    return\n" ++
-        "}\n";
+        \\start() {
+        \\    data [u8] = "abc"
+        \\    next [u8] = "def"
+        \\    data = next
+        \\    return
+        \\}
+        \\
+    ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     try std.testing.expect(tokens_have_gc_sync_candidate(tokens));
@@ -2693,12 +3059,14 @@ test "GC candidate scan admits a bounded managed byte-list local overwrite" {
 
 test "default pipeline lowers a bounded managed byte-list local overwrite through GC" {
     const source =
-        "start() {\n" ++
-        "    data [u8] = \"abc\"\n" ++
-        "    next [u8] = \"def\"\n" ++
-        "    data = next\n" ++
-        "    return\n" ++
-        "}\n";
+        \\start() {
+        \\    data [u8] = "abc"
+        \\    next [u8] = "def"
+        \\    data = next
+        \\    return
+        \\}
+        \\
+    ;
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
@@ -2710,16 +3078,19 @@ test "default pipeline lowers a bounded managed byte-list local overwrite throug
 
 test "GC candidate scan admits a bounded managed multi-result call assignment" {
     const source =
-        "pair_take(x [u8]) -> [u8], i32 {\n" ++
-        "    return x, 3\n" ++
-        "}\n\n" ++
-        "start() {\n" ++
-        "    data [u8] = \"abc\"\n" ++
-        "    out [u8] = .{}\n" ++
-        "    n i32 = 0\n" ++
-        "    out, n = pair_take(data)\n" ++
-        "    return\n" ++
-        "}\n";
+        \\pair_take(x [u8]) -> [u8], i32 {
+        \\    return x, 3
+        \\}
+        \\
+        \\start() {
+        \\    data [u8] = "abc"
+        \\    out [u8] = .{}
+        \\    n i32 = 0
+        \\    out, n = pair_take(data)
+        \\    return
+        \\}
+        \\
+    ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     try std.testing.expect(tokens_have_gc_sync_candidate(tokens));
@@ -2727,16 +3098,19 @@ test "GC candidate scan admits a bounded managed multi-result call assignment" {
 
 test "default pipeline lowers a bounded managed multi-result call assignment through GC" {
     const source =
-        "pair_take(x [u8]) -> [u8], i32 {\n" ++
-        "    return x, 3\n" ++
-        "}\n\n" ++
-        "start() {\n" ++
-        "    data [u8] = \"abc\"\n" ++
-        "    out [u8] = .{}\n" ++
-        "    n i32 = 0\n" ++
-        "    out, n = pair_take(data)\n" ++
-        "    return\n" ++
-        "}\n";
+        \\pair_take(x [u8]) -> [u8], i32 {
+        \\    return x, 3
+        \\}
+        \\
+        \\start() {
+        \\    data [u8] = "abc"
+        \\    out [u8] = .{}
+        \\    n i32 = 0
+        \\    out, n = pair_take(data)
+        \\    return
+        \\}
+        \\
+    ;
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
@@ -2746,12 +3120,15 @@ test "default pipeline lowers a bounded managed multi-result call assignment thr
 
 test "GC candidate scan rejects bounded multi-result calls with extra managed parameters" {
     const source =
-        "pair_take(first [u8], second [u8]) -> [u8], i32 {\n" ++
-        "    return first, 3\n" ++
-        "}\n\n" ++
-        "start() {\n" ++
-        "    return\n" ++
-        "}\n";
+        \\pair_take(first [u8], second [u8]) -> [u8], i32 {
+        \\    return first, 3
+        \\}
+        \\
+        \\start() {
+        \\    return
+        \\}
+        \\
+    ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     try std.testing.expect(!tokens_have_gc_sync_candidate(tokens));
@@ -2759,20 +3136,24 @@ test "GC candidate scan rejects bounded multi-result calls with extra managed pa
 
 test "GC candidate scan admits a managed argument with a pure scalar struct result" {
     const source =
-        "Point {\n" ++
-        "    x i32\n" ++
-        "    y i32\n" ++
-        "}\n\n" ++
-        "size_point(x [u8]) -> Point {\n" ++
-        "    n i32 = @len(x)\n" ++
-        "    p Point = Point{x = n, y = n}\n" ++
-        "    return p\n" ++
-        "}\n\n" ++
-        "start() {\n" ++
-        "    data [u8] = \"abc\"\n" ++
-        "    p Point = size_point(data)\n" ++
-        "    return\n" ++
-        "}\n";
+        \\Point {
+        \\    x i32
+        \\    y i32
+        \\}
+        \\
+        \\size_point(x [u8]) -> Point {
+        \\    n i32 = @len(x)
+        \\    p Point = Point{x = n, y = n}
+        \\    return p
+        \\}
+        \\
+        \\start() {
+        \\    data [u8] = "abc"
+        \\    p Point = size_point(data)
+        \\    return
+        \\}
+        \\
+    ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     try std.testing.expect(tokens_have_gc_sync_candidate(tokens));
@@ -2780,20 +3161,24 @@ test "GC candidate scan admits a managed argument with a pure scalar struct resu
 
 test "default pipeline lowers a managed argument with a pure scalar struct result through GC" {
     const source =
-        "Point {\n" ++
-        "    x i32\n" ++
-        "    y i32\n" ++
-        "}\n\n" ++
-        "size_point(x [u8]) -> Point {\n" ++
-        "    n i32 = @len(x)\n" ++
-        "    p Point = Point{x = n, y = n}\n" ++
-        "    return p\n" ++
-        "}\n\n" ++
-        "start() {\n" ++
-        "    data [u8] = \"abc\"\n" ++
-        "    p Point = size_point(data)\n" ++
-        "    return\n" ++
-        "}\n";
+        \\Point {
+        \\    x i32
+        \\    y i32
+        \\}
+        \\
+        \\size_point(x [u8]) -> Point {
+        \\    n i32 = @len(x)
+        \\    p Point = Point{x = n, y = n}
+        \\    return p
+        \\}
+        \\
+        \\start() {
+        \\    data [u8] = "abc"
+        \\    p Point = size_point(data)
+        \\    return
+        \\}
+        \\
+    ;
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
@@ -2806,22 +3191,27 @@ test "default pipeline lowers a managed argument with a pure scalar struct resul
 
 test "GC candidate scan admits a bounded multi-result return with a synchronous defer" {
     const source =
-        "nop() -> nil {\n" ++
-        "    return nil\n" ++
-        "}\n\n" ++
-        "pair_take(x [u8]) -> [u8], i32 {\n" ++
-        "    return x, 3\n" ++
-        "}\n\n" ++
-        "pass(data [u8]) -> [u8], i32 {\n" ++
-        "    defer nop()\n" ++
-        "    return pair_take(data)\n" ++
-        "}\n\n" ++
-        "start() {\n" ++
-        "    out [u8] = .{}\n" ++
-        "    n i32 = 0\n" ++
-        "    out, n = pass(\"abc\")\n" ++
-        "    return\n" ++
-        "}\n";
+        \\nop() -> nil {
+        \\    return nil
+        \\}
+        \\
+        \\pair_take(x [u8]) -> [u8], i32 {
+        \\    return x, 3
+        \\}
+        \\
+        \\pass(data [u8]) -> [u8], i32 {
+        \\    defer nop()
+        \\    return pair_take(data)
+        \\}
+        \\
+        \\start() {
+        \\    out [u8] = .{}
+        \\    n i32 = 0
+        \\    out, n = pass("abc")
+        \\    return
+        \\}
+        \\
+    ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     try std.testing.expect(tokens_have_gc_sync_candidate(tokens));
@@ -2829,22 +3219,27 @@ test "GC candidate scan admits a bounded multi-result return with a synchronous 
 
 test "default pipeline lowers a bounded multi-result return with a synchronous defer through GC" {
     const source =
-        "nop() -> nil {\n" ++
-        "    return nil\n" ++
-        "}\n\n" ++
-        "pair_take(x [u8]) -> [u8], i32 {\n" ++
-        "    return x, 3\n" ++
-        "}\n\n" ++
-        "pass(data [u8]) -> [u8], i32 {\n" ++
-        "    defer nop()\n" ++
-        "    return pair_take(data)\n" ++
-        "}\n\n" ++
-        "start() {\n" ++
-        "    out [u8] = .{}\n" ++
-        "    n i32 = 0\n" ++
-        "    out, n = pass(\"abc\")\n" ++
-        "    return\n" ++
-        "}\n";
+        \\nop() -> nil {
+        \\    return nil
+        \\}
+        \\
+        \\pair_take(x [u8]) -> [u8], i32 {
+        \\    return x, 3
+        \\}
+        \\
+        \\pass(data [u8]) -> [u8], i32 {
+        \\    defer nop()
+        \\    return pair_take(data)
+        \\}
+        \\
+        \\start() {
+        \\    out [u8] = .{}
+        \\    n i32 = 0
+        \\    out, n = pass("abc")
+        \\    return
+        \\}
+        \\
+    ;
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
@@ -3668,7 +4063,7 @@ test "private synchronous GC route emits typed GC for a parsed managed update" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
-test "default pipeline retains ARC for an unconverted scalar path before the G5c cutover" {
+test "default pipeline routes a scalar identity through GC" {
     const source =
         \\identity(value u32) -> u32 {
         \\    return value
@@ -3681,8 +4076,106 @@ test "default pipeline retains ARC for an unconverted scalar path before the G5c
     defer program.deinit(std.testing.allocator);
     const wat = try emit_wat_with_options(std.testing.allocator, program, tokens, null, .{});
     defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_text") == null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "default pipeline keeps a recursive scalar leaf on the fallback route" {
+    const source =
+        \\recurse(value u32) -> u32 {
+        \\    return recurse(value)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_default_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") == null);
+}
+
+test "default pipeline keeps mutually recursive scalar helpers on the fallback route" {
+    const source =
+        \\even(value u32) -> u32 {
+        \\    return odd(value)
+        \\}
+        \\
+        \\odd(value u32) -> u32 {
+        \\    return even(value)
+        \\}
+        \\
+        \\start() {}
+    ;
+    const wat = try emit_default_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") == null);
+}
+
+test "default pipeline preserves an acyclic scalar helper call chain in GC" {
+    const source =
+        \\leaf(value u32) -> u32 {
+        \\    return @add(value, 1)
+        \\}
+        \\
+        \\middle(value u32) -> u32 {
+        \\    return leaf(value)
+        \\}
+        \\
+        \\caller(value u32) -> u32 {
+        \\    return middle(value)
+        \\}
+        \\
+        \\start() {}
+    ;
+    const wat = try emit_default_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $leaf") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $middle") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "default pipeline keeps a scalar loop on the fallback route" {
+    const source =
+        \\loop_value(value u32) -> u32 {
+        \\    loop {
+        \\        return value
+        \\    }
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_default_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") == null);
+}
+
+test "default pipeline keeps a deferred scalar leaf on the fallback route" {
+    const source =
+        \\cleanup() -> nil {
+        \\    return
+        \\}
+        \\deferred(value u32) -> u32 {
+        \\    defer cleanup()
+        \\    return value
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_default_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") == null);
+}
+
+test "default GC admission excludes scalar host bindings" {
+    const source =
+        \\host_now = @host_func("wasi:random/random@0.3.0", "get-random-u64", () -> u64)
+        \\start() {
+        \\    value u64 = host_now()
+        \\}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+    const wat = try try_emit_default_gc_sync(std.testing.allocator, program, tokens, null, null);
+    try std.testing.expect(wat == null);
 }
 
 test "default pipeline lowers an admitted synchronous managed identity through GC" {
@@ -4173,6 +4666,42 @@ test "compiled test route lowers a managed struct list append through GC" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_list_box $do_list_box") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_list_box") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC route lowers a four-level nested scalar field path" {
+    const source =
+        \\Core {
+        \\    value [u8]
+        \\    tag i32
+        \\}
+        \\Leaf {
+        \\    core Core
+        \\    tag i32
+        \\}
+        \\Middle {
+        \\    leaf Leaf
+        \\    tag i32
+        \\}
+        \\Inner {
+        \\    middle Middle
+        \\    tag i32
+        \\}
+        \\Outer {
+        \\    inner Inner
+        \\    tag i32
+        \\}
+        \\update(outer Outer) -> Outer {
+        \\    return @set(outer, .inner, .middle, .leaf, .core, .tag, 9)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $__arc_") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $leaf") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $middle") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $inner") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $outer") != null);
 }
 
 test "compiled test GC fallback accepts only explicit admission rejections" {
@@ -4891,7 +5420,7 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
         return codegen_component_async.emit_component_wat(allocator, program, tokens, module_graph);
     }
     if (options.p3_async_component) return codegen_component_async.emit_component_wat(allocator, program, tokens, module_graph);
-    if (options.gc_sync) return emit_checked_gc_sync(allocator, program, tokens, module_graph);
+    if (options.gc_sync) return emit_checked_gc_sync(allocator, program, tokens, module_graph, options.gc_sync_host_wit_route);
     if (options.gc_core) return codegen_gc_core.emit_gc_core_wat(allocator, program, tokens);
 
     if (options.p3_wait_for_component) return finalize_component_wat(allocator, codegen_p3_wait_for.emit_component_wat(allocator, program, tokens, module_graph));
@@ -4905,7 +5434,7 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
     // entering the GC route as well as before the legacy emitter below.
     install_gen_hooks();
     if (!options.host_export) {
-        if (try try_emit_default_gc_sync(allocator, program, tokens, module_graph)) |wat| return wat;
+        if (try try_emit_default_gc_sync(allocator, program, tokens, module_graph, options.gc_sync_host_wit_route)) |wat| return wat;
     }
 
     var out = std.ArrayList(u8).empty;
@@ -5058,9 +5587,9 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
     }
 
     try out.appendSlice(allocator, "(module\n");
-    try append_fmt(allocator, &out, "  ;; source_len={d}\n", .{program.source_len});
-    try append_fmt(allocator, &out, "  ;; token_count={d}\n", .{program.token_count});
-    try append_fmt(allocator, &out, "  ;; top_level_count={d}\n", .{program.top_level_count});
+    try append_fmt(allocator, &out, "  ;; source_len={[source_len]d}\n", .{ .source_len = program.source_len });
+    try append_fmt(allocator, &out, "  ;; token_count={[token_count]d}\n", .{ .token_count = program.token_count });
+    try append_fmt(allocator, &out, "  ;; top_level_count={[top_level_count]d}\n", .{ .top_level_count = program.top_level_count });
     try wat_component_metadata.emit_wasi_bindings(allocator, &out, wasi_imports.items);
     try wat_component_metadata.emit_wasi_core_imports(allocator, &out, wasi_imports.items);
     try wat_component_metadata.emit_host_imports(allocator, &out, host_imports.items);
@@ -5259,10 +5788,10 @@ pub fn emit_test_wat(allocator: std.mem.Allocator, program: parser.Program, toke
     };
 
     try out.appendSlice(allocator, "(module\n");
-    try append_fmt(allocator, &out, "  ;; source_len={d}\n", .{program.source_len});
-    try append_fmt(allocator, &out, "  ;; token_count={d}\n", .{program.token_count});
-    try append_fmt(allocator, &out, "  ;; top_level_count={d}\n", .{program.top_level_count});
-    try append_fmt(allocator, &out, "  ;; compiled_test_count={d}\n", .{test_decls.len});
+    try append_fmt(allocator, &out, "  ;; source_len={[source_len]d}\n", .{ .source_len = program.source_len });
+    try append_fmt(allocator, &out, "  ;; token_count={[token_count]d}\n", .{ .token_count = program.token_count });
+    try append_fmt(allocator, &out, "  ;; top_level_count={[top_level_count]d}\n", .{ .top_level_count = program.top_level_count });
+    try append_fmt(allocator, &out, "  ;; compiled_test_count={[len]d}\n", .{ .len = test_decls.len });
     try wat_component_metadata.emit_wasi_bindings(allocator, &out, wasi_imports.items);
     try wat_component_metadata.emit_wasi_core_imports(allocator, &out, wasi_imports.items);
     try wat_component_metadata.emit_host_imports(allocator, &out, host_imports.items);

@@ -1,0 +1,17 @@
+package demo:marshal-record-mixed-text-two-u32-lists-lower@1.0.0;
+
+interface api {
+  record writing {
+    code: u32,
+    label: string,
+    first: list<u32>,
+    second: list<u32>,
+  }
+
+  write: func(value: writing);
+}
+
+world probe {
+  import api;
+  export run: func() -> u32;
+}

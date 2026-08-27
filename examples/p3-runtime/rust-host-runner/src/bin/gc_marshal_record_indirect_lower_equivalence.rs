@@ -1,7 +1,7 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::sync::{
-    atomic::{AtomicU32, Ordering},
     Arc,
+    atomic::{AtomicU32, Ordering},
 };
 use wasmtime::component::{Component, Linker, Val};
 use wasmtime::{Config, Engine, Store};
@@ -28,15 +28,23 @@ fn run_component(engine: &Engine, component_path: &str) -> Result<(u32, u32)> {
         }
         let fields = match &params[0] {
             Val::Record(fields) => fields,
-            _ => return Err(wasmtime::Error::msg("record lower parameter was not a record")),
+            _ => {
+                return Err(wasmtime::Error::msg(
+                    "record lower parameter was not a record",
+                ));
+            }
         };
         if fields.len() != 17 {
-            return Err(wasmtime::Error::msg("unexpected indirect record field count"));
+            return Err(wasmtime::Error::msg(
+                "unexpected indirect record field count",
+            ));
         }
         for (index, (name, value)) in fields.iter().enumerate() {
             let expected_name = format!("f{index}");
             let expected_value = (index + 1) as u64;
-            if name != &expected_name || !matches!(value, Val::U64(actual) if *actual == expected_value) {
+            if name != &expected_name
+                || !matches!(value, Val::U64(actual) if *actual == expected_value)
+            {
                 return Err(wasmtime::Error::msg(format!(
                     "unexpected indirect record field {name}={value:?}"
                 )));

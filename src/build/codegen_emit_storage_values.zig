@@ -20,6 +20,7 @@ pub const emit_storage_write_expr = storage_operations.emit_storage_write_expr;
 pub const is_direct_managed_local_expr = storage_operations.is_direct_managed_local_expr;
 
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const lexer = @import("lexer.zig");
 const type_util = @import("type_name.zig");
 const payload_wat = @import("wat_payload.zig");
@@ -319,7 +320,7 @@ pub fn emit_storage_binding(allocator: std.mem.Allocator, tokens: []const lexer.
     if (try emit_storage_agg_literal(allocator, tokens, eq_idx + 1, end_idx, target_name, storage.elem_ty, locals, ctx, out)) return;
 
     if (try emit_storage_write_expr(allocator, tokens, eq_idx + 1, end_idx, target_name, locals, ctx, out)) {
-        try append_fmt(allocator, out, "    local.set ${s}\n", .{target_name});
+        try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = target_name });
         return;
     }
 
@@ -341,7 +342,7 @@ pub fn emit_storage_binding(allocator: std.mem.Allocator, tokens: []const lexer.
         if (!emitted_move_call and is_direct_managed_local_expr(tokens, eq_idx + 1, end_idx, locals, ctx)) {
             try out.appendSlice(allocator, "    call $__arc_inc\n");
         }
-        try append_fmt(allocator, out, "    local.set ${s}\n", .{target_name});
+        try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = target_name });
         return;
     }
 
@@ -360,12 +361,12 @@ pub fn emit_storage_handle_assignment_expr(allocator: std.mem.Allocator, tokens:
     if (move_source == null and is_direct_managed_local_expr(tokens, start_idx, end_idx, locals, ctx)) {
         try out.appendSlice(allocator, "    call $__arc_inc\n");
     }
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
     try emit_replace_managed_local_from_tmp(allocator, target_name, out);
     if (move_source) |source| {
-        try append_fmt(allocator, out, "    ;; arc-overwrite-move {s}\n", .{source.source_name});
+        try append_fmt(allocator, out, "    ;; arc-overwrite-move {[name]s}\n", .{ .name = source.source_name });
         try out.appendSlice(allocator, "    i32.const 0\n");
-        try append_fmt(allocator, out, "    local.set ${s}\n", .{source.actual_name});
+        try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = source.actual_name });
     }
     return true;
 }
@@ -443,7 +444,7 @@ pub fn emit_storage_assignment(allocator: std.mem.Allocator, tokens: []const lex
     if (!try emit_storage_write_expr(allocator, tokens, rhs_start, end_idx, target_name, locals, ctx, out)) {
         return error.NoMatchingCall;
     }
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
     try emit_replace_managed_local_from_tmp(allocator, target_name, out);
     return true;
 }
@@ -462,7 +463,7 @@ pub fn emit_storage_agg_return_value(allocator: std.mem.Allocator, tokens: []con
     if (!try emit_storage_agg_literal(allocator, tokens, range.start, range.end, STORAGE_OVERWRITE_TMP_LOCAL, elem_ty, locals, ctx, out)) {
         return error.NoMatchingCall;
     }
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
     return true;
 }
 
@@ -478,43 +479,43 @@ pub fn emit_storage_u8_string_literal(allocator: std.mem.Allocator, tokens: []co
 
 pub fn emit_storage_u8_string_literal_value(allocator: std.mem.Allocator, tokens: []const lexer.Token, string_idx: usize, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
     try emit_storage_u8_string_literal_into_local(allocator, tokens, string_idx, STORAGE_OVERWRITE_TMP_LOCAL, ctx, out);
-    try out.appendSlice(allocator, "    local.get $" ++ STORAGE_OVERWRITE_TMP_LOCAL ++ "\n");
+    try generated_text.append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
 }
 
 pub fn emit_storage_u8_raw_string_value(allocator: std.mem.Allocator, key: []const u8, local_name: []const u8, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
     const data = ctx.string_data.find(key) orelse return error.NoMatchingCall;
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES + data.bytes.len});
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{TYPE_ID_STORAGE_U8});
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = STORAGE_PAYLOAD_HEADER_BYTES + data.bytes.len });
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = TYPE_ID_STORAGE_U8 });
     try out.appendSlice(allocator, "    call $__arc_alloc\n");
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{local_name});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = local_name });
     try emit_storage_len_ptr(allocator, out, local_name);
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{data.bytes.len});
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = data.bytes.len });
     try out.appendSlice(allocator, "    i32.store\n");
     try emit_storage_cap_ptr(allocator, out, local_name);
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{data.bytes.len});
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = data.bytes.len });
     try out.appendSlice(allocator, "    i32.store\n");
     try emit_storage_data_ptr(allocator, out, local_name);
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{data.ptr});
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{data.bytes.len});
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = data.ptr });
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = data.bytes.len });
     try out.appendSlice(allocator, "    memory.copy\n");
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{local_name});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = local_name });
 }
 
 pub fn emit_storage_u8_string_literal_into_local(allocator: std.mem.Allocator, tokens: []const lexer.Token, string_idx: usize, local_name: []const u8, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
     const data = ctx.string_data.find(tokens[string_idx].lexeme) orelse return error.NoMatchingCall;
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES + data.bytes.len});
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{TYPE_ID_STORAGE_U8});
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = STORAGE_PAYLOAD_HEADER_BYTES + data.bytes.len });
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = TYPE_ID_STORAGE_U8 });
     try out.appendSlice(allocator, "    call $__arc_alloc\n");
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{local_name});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = local_name });
     try emit_storage_len_ptr(allocator, out, local_name);
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{data.bytes.len});
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = data.bytes.len });
     try out.appendSlice(allocator, "    i32.store\n");
     try emit_storage_cap_ptr(allocator, out, local_name);
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{data.bytes.len});
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = data.bytes.len });
     try out.appendSlice(allocator, "    i32.store\n");
     try emit_storage_data_ptr(allocator, out, local_name);
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{data.ptr});
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{data.bytes.len});
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = data.ptr });
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = data.bytes.len });
     try out.appendSlice(allocator, "    memory.copy\n");
 }
 
@@ -528,23 +529,23 @@ pub fn emit_storage_agg_literal(allocator: std.mem.Allocator, tokens: []const le
     const elem_bytes = storage_element_byte_width_for_type(elem_ty, ctx) orelse return false;
     const type_id = storage_type_id_for_element(elem_ty, ctx);
     const count = count_agg_literal_items(tokens, start_idx + 2, close_brace);
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES + count * elem_bytes});
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{type_id});
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = STORAGE_PAYLOAD_HEADER_BYTES + count * elem_bytes });
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = type_id });
     try out.appendSlice(allocator, "    call $__arc_alloc\n");
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{local_name});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = local_name });
     const aggregate_name = if (is_managed_local_type(elem_ty, ctx) and std.mem.eql(u8, local_name, STORAGE_OVERWRITE_TMP_LOCAL))
         STORAGE_WRITE_NEXT_TMP_LOCAL
     else
         local_name;
     if (!std.mem.eql(u8, aggregate_name, local_name)) {
-        try append_fmt(allocator, out, "    local.get ${s}\n", .{local_name});
-        try append_fmt(allocator, out, "    local.set ${s}\n", .{aggregate_name});
+        try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = local_name });
+        try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = aggregate_name });
     }
     try emit_storage_len_ptr(allocator, out, aggregate_name);
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{count});
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = count });
     try out.appendSlice(allocator, "    i32.store\n");
     try emit_storage_cap_ptr(allocator, out, aggregate_name);
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{count});
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = count });
     try out.appendSlice(allocator, "    i32.store\n");
 
     var item_start = start_idx + 2;
@@ -561,15 +562,15 @@ pub fn emit_storage_agg_literal(allocator: std.mem.Allocator, tokens: []const le
             if (!try codegen_callbacks.emit_expr(allocator, tokens, item_start, item_end, locals, ctx, elem_ty, out)) return error.NoMatchingCall;
             try emit_storage_data_ptr(allocator, out, aggregate_name);
             if (item_index * elem_bytes != 0) {
-                try append_fmt(allocator, out, "    i32.const {d}\n", .{item_index * elem_bytes});
+                try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = item_index * elem_bytes });
                 try out.appendSlice(allocator, "    i32.add\n");
             }
-            try append_fmt(allocator, out, "    local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
+            try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = TUPLE_PACK_BASE_TMP_LOCAL });
             try append_store_tuple_leaves_owning_from_stack_ctx(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ", ctx);
         } else {
             try emit_storage_data_ptr(allocator, out, aggregate_name);
             if (item_index * elem_bytes != 0) {
-                try append_fmt(allocator, out, "    i32.const {d}\n", .{item_index * elem_bytes});
+                try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = item_index * elem_bytes });
                 try out.appendSlice(allocator, "    i32.add\n");
             }
             if (!try codegen_callbacks.emit_expr(allocator, tokens, item_start, item_end, locals, ctx, elem_ty, out)) return error.NoMatchingCall;
@@ -585,8 +586,8 @@ pub fn emit_storage_agg_literal(allocator: std.mem.Allocator, tokens: []const le
     }
     if (item_index != count) return error.NoMatchingCall;
     if (!std.mem.eql(u8, aggregate_name, local_name)) {
-        try append_fmt(allocator, out, "    local.get ${s}\n", .{aggregate_name});
-        try append_fmt(allocator, out, "    local.set ${s}\n", .{local_name});
+        try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = aggregate_name });
+        try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = local_name });
     }
     return true;
 }
@@ -629,11 +630,11 @@ pub fn emit_storage_content_comparison_call(allocator: std.mem.Allocator, tokens
         return true;
     }
     if (!try codegen_callbacks.emit_expr(allocator, tokens, args_start, first_end, locals, ctx, cmp_ty, out)) return false;
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_PUT_SOURCE_TMP_LOCAL });
     if (!try codegen_callbacks.emit_expr(allocator, tokens, second_start, second_end, locals, ctx, cmp_ty, out)) return false;
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_PUT_SOURCE_TMP_LOCAL });
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
     try out.appendSlice(allocator, "    call $__storage_equal_u8\n");
     if (std.mem.eql(u8, call_name, "ne")) {
         try out.appendSlice(allocator, "    i32.eqz\n");
@@ -647,40 +648,52 @@ pub fn emit_managed_payload_storage_content_comparison_call(allocator: std.mem.A
     if (!std.mem.eql(u8, nested_elem_ty, "u8")) return false;
 
     if (!try codegen_callbacks.emit_expr(allocator, tokens, left_start, left_end, locals, ctx, cmp_ty, out)) return false;
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_PUT_SOURCE_TMP_LOCAL });
     if (!try codegen_callbacks.emit_expr(allocator, tokens, right_start, right_end, locals, ctx, cmp_ty, out)) return false;
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
 
-    try append_fmt(allocator, out, "    i32.const 0\n    local.set ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
-    try append_fmt(allocator, out, "    i32.const 1\n    local.set ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\i32.const 0
+        \\local.set ${[name]s}
+        \\
+        , .{ .name = STORAGE_WRITE_SCAN_TMP_LOCAL });
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\i32.const 1
+        \\local.set ${[name]s}
+        \\
+        , .{ .name = STORAGE_WRITE_NEXT_TMP_LOCAL });
     try out.appendSlice(allocator, "    block $storage_managed_eq_done\n");
     try emit_storage_len_ptr(allocator, out, STORAGE_PUT_SOURCE_TMP_LOCAL);
     try out.appendSlice(allocator, "      i32.load\n");
     try emit_storage_len_ptr(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL);
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 6,
         \\      i32.load
         \\      i32.ne
         \\      if
         \\
     );
-    try append_fmt(allocator, out, "        i32.const 0\n        local.set ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
-    try out.appendSlice(allocator,
+    try generated_text.append_fmt_block(allocator, out, 8,
+        \\i32.const 0
+        \\local.set ${[name]s}
+        \\
+        , .{ .name = STORAGE_WRITE_NEXT_TMP_LOCAL });
+    try generated_text.append_block(allocator, out, 6,
         \\        br $storage_managed_eq_done
         \\      end
         \\      loop $storage_managed_eq_loop
         \\
     );
-    try append_fmt(allocator, out, "        local.get ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
+    try append_fmt(allocator, out, "        local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_SCAN_TMP_LOCAL });
     try emit_storage_len_ptr(allocator, out, STORAGE_PUT_SOURCE_TMP_LOCAL);
-    try out.appendSlice(allocator,
+    try generated_text.append_block(allocator, out, 8,
         \\        i32.load
         \\        i32.ge_u
         \\        br_if $storage_managed_eq_done
         \\
     );
     try emit_storage_data_ptr(allocator, out, STORAGE_PUT_SOURCE_TMP_LOCAL);
-    try append_fmt(allocator, out, "        local.get ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
-    try out.appendSlice(allocator,
+    try append_fmt(allocator, out, "        local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_SCAN_TMP_LOCAL });
+    try generated_text.append_block(allocator, out, 8,
         \\        i32.const 4
         \\        i32.mul
         \\        i32.add
@@ -688,8 +701,8 @@ pub fn emit_managed_payload_storage_content_comparison_call(allocator: std.mem.A
         \\
     );
     try emit_storage_data_ptr(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL);
-    try append_fmt(allocator, out, "        local.get ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
-    try out.appendSlice(allocator,
+    try append_fmt(allocator, out, "        local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_SCAN_TMP_LOCAL });
+    try generated_text.append_block(allocator, out, 8,
         \\        i32.const 4
         \\        i32.mul
         \\        i32.add
@@ -699,23 +712,33 @@ pub fn emit_managed_payload_storage_content_comparison_call(allocator: std.mem.A
         \\        if
         \\
     );
-    try append_fmt(allocator, out, "          i32.const 0\n          local.set ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
-    try out.appendSlice(allocator,
+    try generated_text.append_fmt_block(allocator, out, 10,
+        \\i32.const 0
+        \\local.set ${[name]s}
+        \\
+        , .{ .name = STORAGE_WRITE_NEXT_TMP_LOCAL });
+    try generated_text.append_block(allocator, out, 8,
         \\          br $storage_managed_eq_done
         \\        end
         \\
     );
-    try append_fmt(allocator, out, "        local.get ${s}\n        i32.const 1\n        i32.add\n        local.set ${s}\n", .{
-        STORAGE_WRITE_SCAN_TMP_LOCAL,
-        STORAGE_WRITE_SCAN_TMP_LOCAL,
-    });
-    try out.appendSlice(allocator,
+    try generated_text.append_fmt_block(allocator, out, 8,
+        \\local.get ${[name]s}
+        \\i32.const 1
+        \\i32.add
+        \\local.set ${[next_name]s}
+        \\
+        , .{
+            .name = STORAGE_WRITE_SCAN_TMP_LOCAL,
+            .next_name = STORAGE_WRITE_SCAN_TMP_LOCAL,
+        });
+    try generated_text.append_block(allocator, out, 4,
         \\        br $storage_managed_eq_loop
         \\      end
         \\    end
         \\
     );
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_NEXT_TMP_LOCAL });
     if (std.mem.eql(u8, call_name, "ne")) {
         try out.appendSlice(allocator, "    i32.eqz\n");
     }
@@ -785,7 +808,10 @@ pub fn emit_empty_storage_for_elem_type(allocator: std.mem.Allocator, elem_ty: [
 }
 
 pub fn emit_number_const(allocator: std.mem.Allocator, ctx: CodegenContext, out: *std.ArrayList(u8), lexeme: []const u8, ty: []const u8) !void {
-    try append_fmt(allocator, out, "    {s}.const {s}\n", .{ codegen_wasm_type(ctx, ty), lexeme });
+    try append_fmt(allocator, out, "    {[wasm_type]s}.const {[value]s}\n", .{
+        .wasm_type = codegen_wasm_type(ctx, ty),
+        .value = lexeme,
+    });
 }
 
 pub fn emit_tuple_field_path_get_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, first_end: usize, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {
@@ -797,7 +823,11 @@ pub fn emit_tuple_field_path_get_call(allocator: std.mem.Allocator, tokens: []co
     const elem_info = tuple_get_element_info(tokens, index_start, index_end, field_ty) orelse return false;
     const struct_local = find_struct_local(locals.struct_locals.items, tokens[start_idx].lexeme) orelse return false;
     const field_name = public_decl_name(tokens[field_start].lexeme);
-    try append_fmt(allocator, out, "    local.get ${s}.{s}.{d}\n", .{ struct_local.name, field_name, elem_info.index });
+    try append_fmt(allocator, out, "    local.get ${[name]s}.{[field]s}.{[index]d}\n", .{
+        .name = struct_local.name,
+        .field = field_name,
+        .index = elem_info.index,
+    });
     if (is_managed_local_type(elem_info.ty, ctx)) {
         try out.appendSlice(allocator, "    call $__arc_inc\n");
     }

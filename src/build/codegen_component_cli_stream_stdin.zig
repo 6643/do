@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
@@ -48,24 +49,24 @@ fn emit_stream_wat(
     allocator: std.mem.Allocator,
     plan: component_async_plan.StreamU8AcquirePlan,
 ) ![]u8 {
-    const eof_count = try std.fmt.allocPrint(allocator, "{d}", .{plan.read_count - 1});
+    const eof_count = try generated_text.alloc_fmt(allocator, "{[count]d}", .{ .count = plan.read_count - 1 });
     defer allocator.free(eof_count);
-    const read_count = try std.fmt.allocPrint(allocator, "{d}", .{plan.read_count});
+    const read_count = try generated_text.alloc_fmt(allocator, "{[count]d}", .{ .count = plan.read_count });
     defer allocator.free(read_count);
     const wit_export = try stream_wit_identifier(allocator, plan.export_name);
     defer allocator.free(wit_export);
-    const task_return_export = try std.fmt.allocPrint(allocator, "[task-return]{s}", .{wit_export});
+    const task_return_export = try generated_text.alloc_fmt(allocator, "[task-return]{[export_name]s}", .{ .export_name = wit_export });
     defer allocator.free(task_return_export);
-    const async_lift_export = try std.fmt.allocPrint(allocator, "[async-lift]{s}", .{wit_export});
+    const async_lift_export = try generated_text.alloc_fmt(allocator, "[async-lift]{[export_name]s}", .{ .export_name = wit_export });
     defer allocator.free(async_lift_export);
-    const async_callback_export = try std.fmt.allocPrint(allocator, "[callback][async-lift]{s}", .{wit_export});
+    const async_callback_export = try generated_text.alloc_fmt(allocator, "[callback][async-lift]{[export_name]s}", .{ .export_name = wit_export });
     defer allocator.free(async_callback_export);
     const reader_shape = switch (p3_async_manifest.lowering_shape(plan.descriptor) orelse return error.UnsupportedP3AsyncComponent) {
         .stream_reader_acquire => |shape| shape,
         else => return error.UnsupportedP3AsyncComponent,
     };
 
-    var wat = try allocator.dupe(u8, cli_stream_stdin_core_wat);
+    var wat = try generated_text.alloc_block(allocator, 0, cli_stream_stdin_core_wat);
     wat = try replace_and_free(allocator, wat, "[stream-eof-count]", eof_count);
     wat = try replace_and_free(allocator, wat, "[stream-read-count]", read_count);
     wat = try replace_and_free(allocator, wat, "[stream-module]", plan.descriptor.canonical.async_import_module);
@@ -85,10 +86,33 @@ fn emit_stream_wit(
 ) ![]u8 {
     const export_name = try stream_wit_identifier(allocator, plan.export_name);
     defer allocator.free(export_name);
-    return std.fmt.allocPrint(
+    return generated_text.alloc_fmt_block(
         allocator,
-        "package {s};\n\ninterface types {{\n  enum error-code {{ io, illegal-byte-sequence, pipe }}\n}}\n\ninterface {s} {{\n  use types.{{error-code}};\n  {s}: func() -> tuple<stream<u8>, future<result<_, error-code>>>;\n}}\n\nworld {s} {{\n  import {s};\n  export {s}: async func();\n}}\n",
-        .{ plan.descriptor.wit.package, plan.descriptor.wit.interface, plan.descriptor.wit.operation, plan.descriptor.wit.world, plan.descriptor.wit.interface, export_name },
+        0,
+        \\package {[package]s};
+        \\
+        \\interface types {{
+        \\  enum error-code {{ io, illegal-byte-sequence, pipe }}
+        \\}}
+        \\
+        \\interface {[interface]s} {{
+        \\  use types.{{error-code}};
+        \\  {[operation]s}: func() -> tuple<stream<u8>, future<result<_, error-code>>>;
+        \\}}
+        \\
+        \\world {[world]s} {{
+        \\  import {[interface]s};
+        \\  export {[export_name]s}: async func();
+        \\}}
+        \\
+        ,
+        .{
+            .package = plan.descriptor.wit.package,
+            .interface = plan.descriptor.wit.interface,
+            .operation = plan.descriptor.wit.operation,
+            .world = plan.descriptor.wit.world,
+            .export_name = export_name,
+        },
     );
 }
 

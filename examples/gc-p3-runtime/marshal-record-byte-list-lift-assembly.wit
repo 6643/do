@@ -1,0 +1,16 @@
+package demo:marshal-record-byte-list-lift@1.0.0;
+
+interface api {
+  record reading {
+    code: u32,
+    payload: list<u8>,
+  }
+
+  read: func() -> reading;
+}
+
+world probe {
+  import api;
+  export run: func() -> u32;
+  export stats: func() -> u32;
+}

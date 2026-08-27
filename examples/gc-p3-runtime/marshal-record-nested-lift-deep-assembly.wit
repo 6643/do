@@ -1,0 +1,25 @@
+package demo:marshal-record-nested-lift-deep@1.0.0;
+
+interface api {
+  record header {
+    code: u32,
+    count: u64,
+  }
+
+  record detail {
+    header: header,
+    status: s64,
+  }
+
+  record reading {
+    detail: detail,
+    tail: s64,
+  }
+
+  read: func() -> reading;
+}
+
+world probe {
+  import api;
+  export run: func() -> u32;
+}

@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
@@ -44,13 +45,13 @@ pub fn emit_component_wat(
         @embedFile("wasi_sockets_tcp_create_bind_drop.core.wat")
     else
         @embedFile("wasi_sockets_udp_create_bind_drop.core.wat");
-    return allocator.dupe(u8, wat);
+    return generated_text.alloc_block(allocator, 0, wat);
 }
 
 pub fn emit_component_wit(allocator: std.mem.Allocator, tokens: []const lexer.Token) ![]u8 {
     try socket_manifest.validate();
     _ = try analyze(tokens);
-    return allocator.dupe(u8, @embedFile("wasi_sockets_create_bind_drop.wit"));
+    return generated_text.alloc_block(allocator, 0, @embedFile("wasi_sockets_create_bind_drop.wit"));
 }
 
 fn has_protocol(tokens: []const lexer.Token, protocol: Protocol) bool {
@@ -175,19 +176,20 @@ test "socket create passes family before result area pointer" {
     try std.testing.expect(std.mem.indexOf(u8, wat,
         "      global.get $__wasi_result_area_base\n      call $tcp-bind") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat,
-        "      local.get $socket\n" ++
-            "      i32.const 0\n" ++
-            "      i32.const 0\n" ++
-            "      i32.const 127\n" ++
-            "      i32.const 0\n" ++
-            "      i32.const 0\n" ++
-            "      i32.const 1\n" ++
-            "      i32.const 0\n" ++
-            "      i32.const 0\n" ++
-            "      i32.const 0\n" ++
-            "      i32.const 0\n" ++
-            "      i32.const 0\n" ++
-            "      i32.const 0\n" ++
-            "      global.get $__wasi_result_area_base\n" ++
-            "      call $tcp-bind") != null);
+                \\      local.get $socket
+        \\      i32.const 0
+        \\      i32.const 0
+        \\      i32.const 127
+        \\      i32.const 0
+        \\      i32.const 0
+        \\      i32.const 1
+        \\      i32.const 0
+        \\      i32.const 0
+        \\      i32.const 0
+        \\      i32.const 0
+        \\      i32.const 0
+        \\      i32.const 0
+        \\      global.get $__wasi_result_area_base
+        \\      call $tcp-bind
+        ) != null);
 }

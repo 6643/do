@@ -1,0 +1,10 @@
+package demo:marshal-record-lower@1.0.0;
+
+interface api {
+  record writing {
+    code: u32,
+    count: u32,
+  }
+
+  write: func(value: writing);
+}

@@ -21,6 +21,6 @@ expect_unsupported() {
   grep -Fq 'UnsupportedP3AsyncComponent' "$stderr_file"
 }
 
-expect_unsupported stream-probe-guest-producer-sixth-forwarding.do sixth-forwarding
+expect_unsupported stream-probe-guest-producer-sixth-forwarding.do seventh-forwarding
 expect_unsupported stream-probe-guest-producer-arbitrary.do arbitrary-producer
-printf 'G6.2 general producer boundary rejection passed sixth-forwarding/arbitrary-producer\n'
+printf 'G6.2 general producer boundary rejection passed seventh-forwarding/arbitrary-producer\n'

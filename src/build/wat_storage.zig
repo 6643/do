@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const type_util = @import("type_name.zig");
 
 /// Pure WAT helpers for managed storage (`[T]` / text-backed) object layout access.
@@ -20,9 +21,7 @@ fn append_fmt(
     comptime fmt: []const u8,
     args: anytype,
 ) !void {
-    const text = try std.fmt.allocPrint(allocator, fmt, args);
-    defer allocator.free(text);
-    try out.appendSlice(allocator, text);
+    try generated_text.append_fmt(allocator, out, fmt, args);
 }
 
 pub fn emit_storage_payload_ptr(
@@ -30,7 +29,7 @@ pub fn emit_storage_payload_ptr(
     out: *std.ArrayList(u8),
     name: []const u8,
 ) !void {
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{name});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = name });
     try out.appendSlice(allocator, "    call $__arc_payload\n");
 }
 
@@ -40,8 +39,8 @@ pub fn emit_storage_payload_ptr_with_indent(
     name: []const u8,
     indent: []const u8,
 ) !void {
-    try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, name });
-    try append_fmt(allocator, out, "{s}call $__arc_payload\n", .{indent});
+    try append_fmt(allocator, out, "{[indent]s}local.get ${[name]s}\n", .{ .indent = indent, .name = name });
+    try append_fmt(allocator, out, "{[indent]s}call $__arc_payload\n", .{ .indent = indent });
 }
 
 pub fn emit_storage_len_ptr(
@@ -78,8 +77,8 @@ pub fn emit_storage_cap_ptr_with_indent(
     indent: []const u8,
 ) !void {
     try emit_storage_payload_ptr_with_indent(allocator, out, name, indent);
-    try append_fmt(allocator, out, "{s}i32.const 4\n", .{indent});
-    try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
+    try append_fmt(allocator, out, "{[indent]s}i32.const 4\n", .{ .indent = indent });
+    try append_fmt(allocator, out, "{[indent]s}i32.add\n", .{ .indent = indent });
 }
 
 pub fn emit_storage_data_ptr(
@@ -88,7 +87,7 @@ pub fn emit_storage_data_ptr(
     name: []const u8,
 ) !void {
     try emit_storage_payload_ptr(allocator, out, name);
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
+    try append_fmt(allocator, out, "    i32.const {[STORAGE_PAYLOAD_HEADER_BYTES]d}\n", .{ .STORAGE_PAYLOAD_HEADER_BYTES = STORAGE_PAYLOAD_HEADER_BYTES });
     try out.appendSlice(allocator, "    i32.add\n");
 }
 
@@ -100,13 +99,13 @@ pub fn emit_storage_element_ptr_from_local(
     index_local: []const u8,
     elem_bytes: usize,
 ) !void {
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{storage_local});
+    try append_fmt(allocator, out, "    local.get ${[storage_local]s}\n", .{ .storage_local = storage_local });
     try out.appendSlice(allocator, "    call $__arc_payload\n");
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
+    try append_fmt(allocator, out, "    i32.const {[STORAGE_PAYLOAD_HEADER_BYTES]d}\n", .{ .STORAGE_PAYLOAD_HEADER_BYTES = STORAGE_PAYLOAD_HEADER_BYTES });
     try out.appendSlice(allocator, "    i32.add\n");
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{index_local});
+    try append_fmt(allocator, out, "    local.get ${[index_local]s}\n", .{ .index_local = index_local });
     if (elem_bytes != 1) {
-        try append_fmt(allocator, out, "    i32.const {d}\n", .{elem_bytes});
+        try append_fmt(allocator, out, "    i32.const {[elem_bytes]d}\n", .{ .elem_bytes = elem_bytes });
         try out.appendSlice(allocator, "    i32.mul\n");
     }
     try out.appendSlice(allocator, "    i32.add\n");
@@ -120,16 +119,16 @@ pub fn emit_storage_element_ptr_from_local_with_indent(
     elem_bytes: usize,
     indent: []const u8,
 ) !void {
-    try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, storage_local });
-    try append_fmt(allocator, out, "{s}call $__arc_payload\n", .{indent});
-    try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, STORAGE_PAYLOAD_HEADER_BYTES });
-    try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
-    try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, index_local });
+    try append_fmt(allocator, out, "{[indent]s}local.get ${[storage_local]s}\n", .{ .indent = indent, .storage_local = storage_local });
+    try append_fmt(allocator, out, "{[indent]s}call $__arc_payload\n", .{ .indent = indent });
+    try append_fmt(allocator, out, "{[indent]s}i32.const {[STORAGE_PAYLOAD_HEADER_BYTES]d}\n", .{ .indent = indent, .STORAGE_PAYLOAD_HEADER_BYTES = STORAGE_PAYLOAD_HEADER_BYTES });
+    try append_fmt(allocator, out, "{[indent]s}i32.add\n", .{ .indent = indent });
+    try append_fmt(allocator, out, "{[indent]s}local.get ${[index_local]s}\n", .{ .indent = indent, .index_local = index_local });
     if (elem_bytes != 1) {
-        try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, elem_bytes });
-        try append_fmt(allocator, out, "{s}i32.mul\n", .{indent});
+        try append_fmt(allocator, out, "{[indent]s}i32.const {[elem_bytes]d}\n", .{ .indent = indent, .elem_bytes = elem_bytes });
+        try append_fmt(allocator, out, "{[indent]s}i32.mul\n", .{ .indent = indent });
     }
-    try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
+    try append_fmt(allocator, out, "{[indent]s}i32.add\n", .{ .indent = indent });
 }
 
 pub fn emit_storage_alias_protect(
@@ -139,7 +138,7 @@ pub fn emit_storage_alias_protect(
     target_name: []const u8,
 ) !void {
     if (std.mem.eql(u8, source_name, target_name)) return;
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{source_name});
+    try append_fmt(allocator, out, "    local.get ${[source_name]s}\n", .{ .source_name = source_name });
     try out.appendSlice(allocator, "    call $__arc_inc\n");
     try out.appendSlice(allocator, "    drop\n");
 }
@@ -151,7 +150,7 @@ pub fn emit_storage_alias_release(
     target_name: []const u8,
 ) !void {
     if (std.mem.eql(u8, source_name, target_name)) return;
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{source_name});
+    try append_fmt(allocator, out, "    local.get ${[source_name]s}\n", .{ .source_name = source_name });
     try out.appendSlice(allocator, "    call $__arc_dec\n");
 }
 
@@ -171,21 +170,21 @@ pub fn emit_empty_storage_with_type_id(
     type_id: usize,
     indent: []const u8,
 ) !void {
-    try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, STORAGE_PAYLOAD_HEADER_BYTES });
-    try append_fmt(allocator, out, "{s}i32.const {d}\n", .{ indent, type_id });
-    try append_fmt(allocator, out, "{s}call $__arc_alloc\n", .{indent});
-    try append_fmt(allocator, out, "{s}local.set ${s}\n", .{ indent, STORAGE_OVERWRITE_TMP_LOCAL });
-    try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, STORAGE_OVERWRITE_TMP_LOCAL });
-    try append_fmt(allocator, out, "{s}call $__arc_payload\n", .{indent});
-    try append_fmt(allocator, out, "{s}i32.const 0\n", .{indent});
-    try append_fmt(allocator, out, "{s}i32.store\n", .{indent});
-    try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, STORAGE_OVERWRITE_TMP_LOCAL });
-    try append_fmt(allocator, out, "{s}call $__arc_payload\n", .{indent});
-    try append_fmt(allocator, out, "{s}i32.const 4\n", .{indent});
-    try append_fmt(allocator, out, "{s}i32.add\n", .{indent});
-    try append_fmt(allocator, out, "{s}i32.const 0\n", .{indent});
-    try append_fmt(allocator, out, "{s}i32.store\n", .{indent});
-    try append_fmt(allocator, out, "{s}local.get ${s}\n", .{ indent, STORAGE_OVERWRITE_TMP_LOCAL });
+    try append_fmt(allocator, out, "{[indent]s}i32.const {[STORAGE_PAYLOAD_HEADER_BYTES]d}\n", .{ .indent = indent, .STORAGE_PAYLOAD_HEADER_BYTES = STORAGE_PAYLOAD_HEADER_BYTES });
+    try append_fmt(allocator, out, "{[indent]s}i32.const {[type_id]d}\n", .{ .indent = indent, .type_id = type_id });
+    try append_fmt(allocator, out, "{[indent]s}call $__arc_alloc\n", .{ .indent = indent });
+    try append_fmt(allocator, out, "{[indent]s}local.set ${[STORAGE_OVERWRITE_TMP_LOCAL]s}\n", .{ .indent = indent, .STORAGE_OVERWRITE_TMP_LOCAL = STORAGE_OVERWRITE_TMP_LOCAL });
+    try append_fmt(allocator, out, "{[indent]s}local.get ${[STORAGE_OVERWRITE_TMP_LOCAL]s}\n", .{ .indent = indent, .STORAGE_OVERWRITE_TMP_LOCAL = STORAGE_OVERWRITE_TMP_LOCAL });
+    try append_fmt(allocator, out, "{[indent]s}call $__arc_payload\n", .{ .indent = indent });
+    try append_fmt(allocator, out, "{[indent]s}i32.const 0\n", .{ .indent = indent });
+    try append_fmt(allocator, out, "{[indent]s}i32.store\n", .{ .indent = indent });
+    try append_fmt(allocator, out, "{[indent]s}local.get ${[STORAGE_OVERWRITE_TMP_LOCAL]s}\n", .{ .indent = indent, .STORAGE_OVERWRITE_TMP_LOCAL = STORAGE_OVERWRITE_TMP_LOCAL });
+    try append_fmt(allocator, out, "{[indent]s}call $__arc_payload\n", .{ .indent = indent });
+    try append_fmt(allocator, out, "{[indent]s}i32.const 4\n", .{ .indent = indent });
+    try append_fmt(allocator, out, "{[indent]s}i32.add\n", .{ .indent = indent });
+    try append_fmt(allocator, out, "{[indent]s}i32.const 0\n", .{ .indent = indent });
+    try append_fmt(allocator, out, "{[indent]s}i32.store\n", .{ .indent = indent });
+    try append_fmt(allocator, out, "{[indent]s}local.get ${[STORAGE_OVERWRITE_TMP_LOCAL]s}\n", .{ .indent = indent, .STORAGE_OVERWRITE_TMP_LOCAL = STORAGE_OVERWRITE_TMP_LOCAL });
 }
 
 /// type_id for scheme-A vs managed storage elements (matches codegen storageTypeIdForElement policy for non-struct).

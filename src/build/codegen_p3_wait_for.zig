@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
@@ -352,38 +353,42 @@ fn emit_component_core_wat(
     }
     const core_param = async_model.frame_slot_storage_core_wasm_type(plan.parameter_storage) orelse return error.UnsupportedP3WaitForComponent;
 
-    const async_lower_type = try std.fmt.allocPrint(
+    const async_lower_type = try generated_text.alloc_fmt(
         allocator,
-        "(type $async-lower-wait-for (func (param {s}) (result i32))",
-        .{core_param},
+        "(type $async-lower-wait-for (func (param {[core_param]s}) (result i32))",
+        .{ .core_param = core_param },
     );
     defer allocator.free(async_lower_type);
-    const async_run_type = try std.fmt.allocPrint(
+    const async_run_type = try generated_text.alloc_fmt(
         allocator,
-        "(type $async-run (func (param {s}) (result i32))",
-        .{core_param},
+        "(type $async-run (func (param {[core_param]s}) (result i32))",
+        .{ .core_param = core_param },
     );
     defer allocator.free(async_run_type);
-    const async_import = try std.fmt.allocPrint(
+    const async_import = try generated_text.alloc_fmt(
         allocator,
-        "(import \"{s}\" \"{s}\"",
-        .{ plan.descriptor.canonical.async_import_module, plan.descriptor.canonical.async_import_name },
+        "(import \"{[module]s}\" \"{[name]s}\"",
+        .{
+            .module = plan.descriptor.canonical.async_import_module,
+            .name = plan.descriptor.canonical.async_import_name,
+        },
     );
     defer allocator.free(async_import);
-    const task_return_export = try std.fmt.allocPrint(allocator, "[task-return]{s}", .{plan.export_name});
+    const task_return_export = try generated_text.alloc_fmt(allocator, "[task-return]{[name]s}", .{ .name = plan.export_name });
     defer allocator.free(task_return_export);
-    const async_lift_export = try std.fmt.allocPrint(allocator, "[async-lift]{s}", .{plan.export_name});
+    const async_lift_export = try generated_text.alloc_fmt(allocator, "[async-lift]{[name]s}", .{ .name = plan.export_name });
     defer allocator.free(async_lift_export);
-    const async_callback_export = try std.fmt.allocPrint(allocator, "[callback][async-lift]{s}", .{plan.export_name});
+    const async_callback_export = try generated_text.alloc_fmt(allocator, "[callback][async-lift]{[name]s}", .{ .name = plan.export_name });
     defer allocator.free(async_callback_export);
 
-    var wat = try allocator.dupe(u8, core_wat);
+    var wat = try generated_text.alloc_block(allocator, 0, core_wat);
     if (plan.body == .cancel) {
-        wat = try replace_between(
+        wat = try replace_between_block(
             allocator,
             wat,
             "  (func (export \"[async-lift]run\")",
             "  (func (export \"cabi_realloc\")",
+            2,
             cancel_async_body,
         );
     }
@@ -408,18 +413,77 @@ fn emit_cancel_frame_core_wat(
     framed_plan.second_argument = plan.first_argument;
     framed_plan.body = .two_await;
     var wat = try emit_two_await_core_wat(allocator, framed_plan, null);
-    const second_import = try std.fmt.allocPrint(allocator, "  (import \"{s}\" \"{s}\" (func $second-host-call (type $async-lower)))\n", .{ plan.descriptor.canonical.async_import_module, plan.descriptor.canonical.async_import_name });
+    const second_import = try generated_text.alloc_fmt(
+        allocator,
+        "  (import \"{[module]s}\" \"{[name]s}\" (func $second-host-call (type $async-lower)))\n",
+        .{
+            .module = plan.descriptor.canonical.async_import_module,
+            .name = plan.descriptor.canonical.async_import_name,
+        });
     defer allocator.free(second_import);
     wat = try replace_and_free(allocator, wat, second_import, "");
     wat = try replace_and_free(allocator, wat, "$second-host-call", "$first-host-call");
-    wat = try replace_and_free(allocator, wat, "  (import \"$root\" \"[context-set-0]\" (func $context-set-0 (param i32)))\n", "  (import \"$root\" \"[context-set-0]\" (func $context-set-0 (param i32)))\n  (import \"$root\" \"[subtask-drop]\" (func $subtask-drop (param i32)))\n  (import \"$root\" \"[subtask-cancel]\" (func $subtask-cancel (param i32) (result i32)))\n");
+    wat = try replace_and_free_block(
+        allocator,
+        wat,
+        \\  (import "$root" "[context-set-0]" (func $context-set-0 (param i32)))
+        \\
+        ,
+        2,
+        \\  (import "$root" "[context-set-0]" (func $context-set-0 (param i32)))
+        \\  (import "$root" "[subtask-drop]" (func $subtask-drop (param i32)))
+        \\  (import "$root" "[subtask-cancel]" (func $subtask-cancel (param i32) (result i32)))
+        \\
+        ,
+    );
     var cleanup = std.ArrayList(u8).empty;
     defer cleanup.deinit(allocator);
     try codegen_emit_async.emit_async_terminal_cleanup(allocator, &cleanup, async_plan.frame, .cancelled);
-    const body = try std.fmt.allocPrint(
+    const body = try generated_text.alloc_fmt_block(
         allocator,
-        "  (func (export \"[async-lift]run\") (type $async-run) (local $frame i32) (local $subtask i32)\n    i32.const 1\n    call $waitable-set-new\n    i32.const 0\n    i32.const 0\n    local.get 0\n    struct.new $async-frame\n    call $frame-alloc\n    local.tee $frame\n    call $context-set-0\n    local.get 0\n    call $first-host-call\n    local.set $subtask\n    local.get $subtask\n    i32.const 2\n    i32.eq\n    if (result i32)\n      i32.const 0\n      call $context-set-0\n{s}      call $task-return\n      i32.const 0\n    else\n      local.get $subtask\n      i32.const 4\n      i32.shr_u\n      call $subtask-cancel\n      i32.const 4\n      i32.ne\n      if unreachable end\n      local.get $subtask\n      i32.const 4\n      i32.shr_u\n      call $subtask-drop\n      i32.const 0\n      call $context-set-0\n{s}      call $task-return\n      i32.const 0\n    end\n  )\n\n",
-        .{ cleanup.items, cleanup.items },
+        2,
+        \\  (func (export "[async-lift]run") (type $async-run) (local $frame i32) (local $subtask i32)
+        \\    i32.const 1
+        \\    call $waitable-set-new
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    local.get 0
+        \\    struct.new $async-frame
+        \\    call $frame-alloc
+        \\    local.tee $frame
+        \\    call $context-set-0
+        \\    local.get 0
+        \\    call $first-host-call
+        \\    local.set $subtask
+        \\    local.get $subtask
+        \\    i32.const 2
+        \\    i32.eq
+        \\    if (result i32)
+        \\      i32.const 0
+        \\      call $context-set-0
+        \\{[cleanup]s}      call $task-return
+        \\      i32.const 0
+        \\    else
+        \\      local.get $subtask
+        \\      i32.const 4
+        \\      i32.shr_u
+        \\      call $subtask-cancel
+        \\      i32.const 4
+        \\      i32.ne
+        \\      if unreachable end
+        \\      local.get $subtask
+        \\      i32.const 4
+        \\      i32.shr_u
+        \\      call $subtask-drop
+        \\      i32.const 0
+        \\      call $context-set-0
+        \\{[cleanup]s}      call $task-return
+        \\      i32.const 0
+        \\    end
+        \\  )
+        \\
+        \\
+        , .{ .cleanup = cleanup.items },
     );
     defer allocator.free(body);
     return replace_between(allocator, wat, "  (func (export \"[async-lift]run\")", "  (func (export \"[callback][async-lift]run\")", body);
@@ -436,10 +500,13 @@ fn emit_single_frame_core_wat(
     framed_plan.second_argument = plan.first_argument;
     framed_plan.body = .two_await;
     var wat = try emit_two_await_core_wat(allocator, framed_plan, async_plan);
-    const second_import = try std.fmt.allocPrint(
+    const second_import = try generated_text.alloc_fmt(
         allocator,
-        "  (import \"{s}\" \"{s}\" (func $second-host-call (type $async-lower)))\n",
-        .{ plan.descriptor.canonical.async_import_module, plan.descriptor.canonical.async_import_name },
+        "  (import \"{[module]s}\" \"{[name]s}\" (func $second-host-call (type $async-lower)))\n",
+        .{
+            .module = plan.descriptor.canonical.async_import_module,
+            .name = plan.descriptor.canonical.async_import_name,
+        },
     );
     defer allocator.free(second_import);
     wat = try replace_and_free(
@@ -449,38 +516,103 @@ fn emit_single_frame_core_wat(
         "",
     );
     wat = try replace_and_free(allocator, wat, "$second-host-call", "$first-host-call");
-    wat = try replace_and_free(
+    wat = try replace_and_free_block(
         allocator,
         wat,
-        "    i32.const 1\n    call $waitable-set-new",
-        "    i32.const 2\n    call $waitable-set-new",
+        \\    i32.const 1
+        \\    call $waitable-set-new
+        ,
+        4,
+        \\    i32.const 2
+        \\    call $waitable-set-new
+        ,
     );
     var cleanup = std.ArrayList(u8).empty;
     defer cleanup.deinit(allocator);
     try codegen_emit_async.emit_async_terminal_cleanup(allocator, &cleanup, async_plan.frame, .returned);
-    const terminal = try std.fmt.allocPrint(
+    const terminal = try generated_text.alloc_fmt_block(
         allocator,
-        "        i32.const 0\n        call $context-set-0\n{s}        call $task-return\n        i32.const 0",
-        .{cleanup.items},
+        2,
+        \\        i32.const 0
+        \\        call $context-set-0
+        \\{[cleanup]s}        call $task-return
+        \\        i32.const 0
+        , .{ .cleanup = cleanup.items },
     );
     defer allocator.free(terminal);
     wat = try replace_and_free(
         allocator,
         wat,
-        "        i32.const 0\n        call $context-set-0\n        local.get $frame\n        call $frame-free\n        call $task-return\n        i32.const 0",
+        \\        i32.const 0
+        \\        call $context-set-0
+        \\        local.get $frame
+        \\        call $frame-free
+        \\        call $task-return
+        \\        i32.const 0
+        ,
         terminal,
     );
-    wat = try replace_and_free(
+    wat = try replace_and_free_block(
         allocator,
         wat,
-        "    local.get $subtask\n    i32.const 4\n    i32.shr_u\n    local.get $frame\n",
-        "    local.get $subtask\n    i32.const 2\n    i32.eq\n    if (result i32)\n      i32.const 0\n      call $context-set-0\n      local.get $frame\n      call $frame-free\n      call $task-return\n      i32.const 0\n    else\n    local.get $subtask\n    i32.const 4\n    i32.shr_u\n    local.get $frame\n",
+        \\    local.get $subtask
+        \\    i32.const 4
+        \\    i32.shr_u
+        \\    local.get $frame
+        ,
+        4,
+        \\    local.get $subtask
+        \\    i32.const 2
+        \\    i32.eq
+        \\    if (result i32)
+        \\      i32.const 0
+        \\      call $context-set-0
+        \\      local.get $frame
+        \\      call $frame-free
+        \\      call $task-return
+        \\      i32.const 0
+        \\    else
+        \\    local.get $subtask
+        \\    i32.const 4
+        \\    i32.shr_u
+        \\    local.get $frame
+        ,
     );
-    wat = try replace_and_free(
+    wat = try replace_and_free_block(
         allocator,
         wat,
-        "    local.get $frame\n    table.get $async-frames\n    ref.as_non_null\n    struct.get $async-frame $waitable-set\n    call $waitable-join\n    local.get $frame\n    table.get $async-frames\n    ref.as_non_null\n    struct.get $async-frame $waitable-set\n    i32.const 4\n    i32.shl\n    i32.const 2\n    i32.or\n  )",
-        "    local.get $frame\n    table.get $async-frames\n    ref.as_non_null\n    struct.get $async-frame $waitable-set\n    call $waitable-join\n    local.get $frame\n    table.get $async-frames\n    ref.as_non_null\n    struct.get $async-frame $waitable-set\n    i32.const 4\n    i32.shl\n    i32.const 2\n    i32.or\n    end\n  )",
+        \\    local.get $frame
+        \\    table.get $async-frames
+        \\    ref.as_non_null
+        \\    struct.get $async-frame $waitable-set
+        \\    call $waitable-join
+        \\    local.get $frame
+        \\    table.get $async-frames
+        \\    ref.as_non_null
+        \\    struct.get $async-frame $waitable-set
+        \\    i32.const 4
+        \\    i32.shl
+        \\    i32.const 2
+        \\    i32.or
+        \\  )
+        ,
+        4,
+        \\    local.get $frame
+        \\    table.get $async-frames
+        \\    ref.as_non_null
+        \\    struct.get $async-frame $waitable-set
+        \\    call $waitable-join
+        \\    local.get $frame
+        \\    table.get $async-frames
+        \\    ref.as_non_null
+        \\    struct.get $async-frame $waitable-set
+        \\    i32.const 4
+        \\    i32.shl
+        \\    i32.const 2
+        \\    i32.or
+        \\    end
+        \\  )
+        ,
     );
     return wat;
 }
@@ -508,10 +640,27 @@ fn emit_post_compute_frame_core_wat(
     var cleanup = std.ArrayList(u8).empty;
     defer cleanup.deinit(allocator);
     try codegen_emit_async.emit_async_terminal_cleanup(allocator, &cleanup, async_plan.frame, .returned);
-    const terminal = try std.fmt.allocPrint(
+    const terminal = try generated_text.alloc_fmt_block(
         allocator,
-        "        local.get $frame-ref\n        i32.const 2\n        struct.set $async-frame $state\n        local.get $frame-ref\n        struct.get $async-frame $slot-{s}\n        i64.const {d}\n        i64.add\n        drop\n        i32.const 0\n        call $context-set-0\n{s}        call $task-return\n        i32.const 0\n",
-        .{ post_await.source_name, post_await.addend, cleanup.items },
+        2,
+        \\        local.get $frame-ref
+        \\        i32.const 2
+        \\        struct.set $async-frame $state
+        \\        local.get $frame-ref
+        \\        struct.get $async-frame $slot-{[source_name]s}
+        \\        i64.const {[addend]d}
+        \\        i64.add
+        \\        drop
+        \\        i32.const 0
+        \\        call $context-set-0
+        \\{[cleanup]s}        call $task-return
+        \\        i32.const 0
+        \\
+        , .{
+            .source_name = post_await.source_name,
+            .addend = post_await.addend,
+            .cleanup = cleanup.items,
+        },
     );
     defer allocator.free(terminal);
     wat = try replace_between(
@@ -521,10 +670,25 @@ fn emit_post_compute_frame_core_wat(
         "      else\n",
         terminal,
     );
-    const immediate_terminal = try std.fmt.allocPrint(
+    const immediate_terminal = try generated_text.alloc_fmt_block(
         allocator,
-        "      i32.const 0\n      call $context-set-0\n      local.get $frame\n      table.get $async-frames\n      ref.as_non_null\n      struct.get $async-frame $slot-{s}\n      i64.const {d}\n      i64.add\n      drop\n{s}      call $task-return\n      i32.const 0",
-        .{ post_await.source_name, post_await.addend, cleanup.items },
+        2,
+        \\      i32.const 0
+        \\      call $context-set-0
+        \\      local.get $frame
+        \\      table.get $async-frames
+        \\      ref.as_non_null
+        \\      struct.get $async-frame $slot-{[source_name]s}
+        \\      i64.const {[addend]d}
+        \\      i64.add
+        \\      drop
+        \\{[cleanup]s}      call $task-return
+        \\      i32.const 0
+        , .{
+            .source_name = post_await.source_name,
+            .addend = post_await.addend,
+            .cleanup = cleanup.items,
+        },
     );
     defer allocator.free(immediate_terminal);
     wat = try replace_and_free(
@@ -567,7 +731,7 @@ fn emit_two_await_core_wat(
         !std.mem.eql(u8, layout.slots[0].name, plan.parameter_name) or
         layout.slots[0].storage != .i64)
         return error.UnsupportedP3WaitForComponent;
-    const parameter_field = try std.fmt.allocPrint(allocator, "$slot-{s}", .{layout.slots[0].name});
+    const parameter_field = try generated_text.alloc_fmt(allocator, "$slot-{[name]s}", .{ .name = layout.slots[0].name });
     defer allocator.free(parameter_field);
     const frame_slot_initializers = try emit_frame_slot_initializers(allocator, layout, plan.first_argument_name, plan.first_argument);
     defer allocator.free(frame_slot_initializers);
@@ -587,26 +751,32 @@ fn emit_two_await_core_wat(
     try gc_async_frame.emit_frame_table_layout(allocator, &gc_frame_runtime, layout);
     try gc_async_frame.emit_frame_table_allocator_with_bytes(allocator, &gc_frame_runtime, layout.size);
 
-    const first_import = try std.fmt.allocPrint(
+    const first_import = try generated_text.alloc_fmt(
         allocator,
-        "(import \"{s}\" \"{s}\"",
-        .{ plan.descriptor.canonical.async_import_module, plan.descriptor.canonical.async_import_name },
+        "(import \"{[module]s}\" \"{[name]s}\"",
+        .{
+            .module = plan.descriptor.canonical.async_import_module,
+            .name = plan.descriptor.canonical.async_import_name,
+        },
     );
     defer allocator.free(first_import);
-    const second_import = try std.fmt.allocPrint(
+    const second_import = try generated_text.alloc_fmt(
         allocator,
-        "(import \"{s}\" \"{s}\"",
-        .{ second.canonical.async_import_module, second.canonical.async_import_name },
+        "(import \"{[module]s}\" \"{[name]s}\"",
+        .{
+            .module = second.canonical.async_import_module,
+            .name = second.canonical.async_import_name,
+        },
     );
     defer allocator.free(second_import);
-    const task_return_export = try std.fmt.allocPrint(allocator, "[task-return]{s}", .{plan.export_name});
+    const task_return_export = try generated_text.alloc_fmt(allocator, "[task-return]{[name]s}", .{ .name = plan.export_name });
     defer allocator.free(task_return_export);
-    const async_lift_export = try std.fmt.allocPrint(allocator, "[async-lift]{s}", .{plan.export_name});
+    const async_lift_export = try generated_text.alloc_fmt(allocator, "[async-lift]{[name]s}", .{ .name = plan.export_name });
     defer allocator.free(async_lift_export);
-    const async_callback_export = try std.fmt.allocPrint(allocator, "[callback][async-lift]{s}", .{plan.export_name});
+    const async_callback_export = try generated_text.alloc_fmt(allocator, "[callback][async-lift]{[name]s}", .{ .name = plan.export_name });
     defer allocator.free(async_callback_export);
 
-    var wat = try allocator.dupe(u8, two_await_core_wat);
+    var wat = try generated_text.alloc_block(allocator, 0, two_await_core_wat);
     wat = try replace_and_free(allocator, wat, "[gc-frame-runtime]", gc_frame_runtime.items);
     wat = try replace_and_free(allocator, wat, "[parameter-field]", parameter_field);
     wat = try replace_and_free(allocator, wat, "[frame-slot-initializers]", frame_slot_initializers);
@@ -680,39 +850,147 @@ fn emit_if_eq_component_core_wat(
     var wat = try emit_two_await_core_wat(allocator, template, &shared.async_plan.?);
     if (has_join) {
         const third = shared.operations[2];
-        const third_import = try std.fmt.allocPrint(
+        const third_import = try generated_text.alloc_fmt(
             allocator,
-            "  (import \"{s}\" \"{s}\" (func $third-host-call (type $async-lower)))\n",
-            .{ third.descriptor.canonical.async_import_module, third.descriptor.canonical.async_import_name },
+            "  (import \"{[module]s}\" \"{[name]s}\" (func $third-host-call (type $async-lower)))\n",
+            .{
+                .module = third.descriptor.canonical.async_import_module,
+                .name = third.descriptor.canonical.async_import_name,
+            },
         );
         defer allocator.free(third_import);
         const root_import = "  (import \"$root\" \"[waitable-set-new]\"";
-        const imports_with_root = try std.fmt.allocPrint(allocator, "{s}{s}", .{ third_import, root_import });
+        const imports_with_root = try generated_text.alloc_fmt(allocator, "{[imports]s}{[root]s}", .{ .imports = third_import, .root = root_import });
         defer allocator.free(imports_with_root);
         wat = try replace_and_free(allocator, wat, root_import, imports_with_root);
     }
 
-    const async_lift = try std.fmt.allocPrint(allocator, "  (func (export \"[async-lift]{s}\")", .{shared.export_name});
+    const async_lift = try generated_text.alloc_fmt(allocator, "  (func (export \"[async-lift]{[name]s}\")", .{ .name = shared.export_name });
     defer allocator.free(async_lift);
-    const callback_lift = try std.fmt.allocPrint(allocator, "  (func (export \"[callback][async-lift]{s}\")", .{shared.export_name});
+    const callback_lift = try generated_text.alloc_fmt(allocator, "  (func (export \"[callback][async-lift]{[name]s}\")", .{ .name = shared.export_name });
     defer allocator.free(callback_lift);
-    const lifted = try std.fmt.allocPrint(
+    const lifted = try generated_text.alloc_fmt_block(
         allocator,
-        "  (func (export \"[async-lift]{s}\") (type $async-run) (local $frame i32) (local $subtask i32)\n    i32.const 1\n    call $waitable-set-new\n    i32.const 0\n    i32.const 0\n    local.get 0\n    struct.new $async-frame\n    call $frame-alloc\n    local.tee $frame\n    call $context-set-0\n    local.get 0\n    i64.const {d}\n    i64.eq\n    if (result i32)\n      local.get $frame\n      table.get $async-frames\n      ref.as_non_null\n      i32.const 1\n      struct.set $async-frame $state\n      local.get 0\n      call $first-host-call\n    else\n      local.get $frame\n      table.get $async-frames\n      ref.as_non_null\n      i32.const 2\n      struct.set $async-frame $state\n      local.get 0\n      call $second-host-call\n    end\n    local.set $subtask\n    local.get $subtask\n    i32.const 4\n    i32.shr_u\n    local.get $frame\n    table.get $async-frames\n    ref.as_non_null\n    struct.get $async-frame $waitable-set\n    call $waitable-join\n    local.get $frame\n    table.get $async-frames\n    ref.as_non_null\n    struct.get $async-frame $waitable-set\n    i32.const 4\n    i32.shl\n    i32.const 2\n    i32.or\n  )\n\n",
-        .{ shared.export_name, condition },
+        2,
+        \\  (func (export "[async-lift]{[export_name]s}") (type $async-run) (local $frame i32) (local $subtask i32)
+        \\    i32.const 1
+        \\    call $waitable-set-new
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    local.get 0
+        \\    struct.new $async-frame
+        \\    call $frame-alloc
+        \\    local.tee $frame
+        \\    call $context-set-0
+        \\    local.get 0
+        \\    i64.const {[condition]d}
+        \\    i64.eq
+        \\    if (result i32)
+        \\      local.get $frame
+        \\      table.get $async-frames
+        \\      ref.as_non_null
+        \\      i32.const 1
+        \\      struct.set $async-frame $state
+        \\      local.get 0
+        \\      call $first-host-call
+        \\    else
+        \\      local.get $frame
+        \\      table.get $async-frames
+        \\      ref.as_non_null
+        \\      i32.const 2
+        \\      struct.set $async-frame $state
+        \\      local.get 0
+        \\      call $second-host-call
+        \\    end
+        \\    local.set $subtask
+        \\    local.get $subtask
+        \\    i32.const 4
+        \\    i32.shr_u
+        \\    local.get $frame
+        \\    table.get $async-frames
+        \\    ref.as_non_null
+        \\    struct.get $async-frame $waitable-set
+        \\    call $waitable-join
+        \\    local.get $frame
+        \\    table.get $async-frames
+        \\    ref.as_non_null
+        \\    struct.get $async-frame $waitable-set
+        \\    i32.const 4
+        \\    i32.shl
+        \\    i32.const 2
+        \\    i32.or
+        \\  )
+        \\
+        \\
+        , .{
+            .export_name = shared.export_name,
+            .condition = condition,
+        },
     );
     defer allocator.free(lifted);
     wat = try replace_between(allocator, wat, async_lift, callback_lift, lifted);
 
-    const parameter_field = try std.fmt.allocPrint(allocator, "$slot-{s}", .{shared.parameter.name});
+    const parameter_field = try generated_text.alloc_fmt(allocator, "$slot-{[name]s}", .{ .name = shared.parameter.name });
     defer allocator.free(parameter_field);
     const callback = if (has_join)
         try emit_if_join_callback(allocator, shared.export_name, parameter_field)
     else
-        try std.fmt.allocPrint(
+        try generated_text.alloc_fmt_block(
             allocator,
-            "  (func (export \"[callback][async-lift]{s}\") (type $async-run-callback) (local $frame i32) (local $frame-ref (ref $async-frame))\n    call $context-get-0\n    local.set $frame\n    local.get $frame\n    table.get $async-frames\n    ref.as_non_null\n    local.set $frame-ref\n    local.get 0\n    i32.const 1\n    i32.eq\n    local.get 2\n    i32.const 2\n    i32.eq\n    i32.and\n    if (result i32)\n      local.get $frame-ref\n      struct.get $async-frame $state\n      i32.const 1\n      i32.eq\n      if (result i32)\n        i32.const 0\n        call $context-set-0\n        local.get $frame\n        call $frame-free\n        call $task-return\n        i32.const 0\n      else\n        local.get $frame-ref\n        struct.get $async-frame $state\n        i32.const 2\n        i32.eq\n        if (result i32)\n          i32.const 0\n          call $context-set-0\n          local.get $frame\n          call $frame-free\n          call $task-return\n          i32.const 0\n        else\n          unreachable\n        end\n      end\n    else\n      local.get $frame-ref\n      struct.get $async-frame $waitable-set\n      i32.const 4\n      i32.shl\n      i32.const 2\n      i32.or\n    end\n  )\n",
-            .{shared.export_name},
+            2,
+            \\  (func (export "[callback][async-lift]{[export_name]s}") (type $async-run-callback) (local $frame i32) (local $frame-ref (ref $async-frame))
+            \\    call $context-get-0
+            \\    local.set $frame
+            \\    local.get $frame
+            \\    table.get $async-frames
+            \\    ref.as_non_null
+            \\    local.set $frame-ref
+            \\    local.get 0
+            \\    i32.const 1
+            \\    i32.eq
+            \\    local.get 2
+            \\    i32.const 2
+            \\    i32.eq
+            \\    i32.and
+            \\    if (result i32)
+            \\      local.get $frame-ref
+            \\      struct.get $async-frame $state
+            \\      i32.const 1
+            \\      i32.eq
+            \\      if (result i32)
+            \\        i32.const 0
+            \\        call $context-set-0
+            \\        local.get $frame
+            \\        call $frame-free
+            \\        call $task-return
+            \\        i32.const 0
+            \\      else
+            \\        local.get $frame-ref
+            \\        struct.get $async-frame $state
+            \\        i32.const 2
+            \\        i32.eq
+            \\        if (result i32)
+            \\          i32.const 0
+            \\          call $context-set-0
+            \\          local.get $frame
+            \\          call $frame-free
+            \\          call $task-return
+            \\          i32.const 0
+            \\        else
+            \\          unreachable
+            \\        end
+            \\      end
+            \\    else
+            \\      local.get $frame-ref
+            \\      struct.get $async-frame $waitable-set
+            \\      i32.const 4
+            \\      i32.shl
+            \\      i32.const 2
+            \\      i32.or
+            \\    end
+            \\  )
+            \\
+            , .{ .export_name = shared.export_name },
         );
     defer allocator.free(callback);
     const cabi_realloc = "  (func (export \"cabi_realloc\")";
@@ -742,39 +1020,42 @@ fn emit_loop_countdown_component_core_wat(
     try gc_async_frame.emit_frame_table_layout(allocator, &gc_frame_runtime, async_plan.layout);
     try gc_async_frame.emit_frame_table_allocator_with_bytes(allocator, &gc_frame_runtime, async_plan.layout.size);
 
-    const host_import = try std.fmt.allocPrint(
+    const host_import = try generated_text.alloc_fmt(
         allocator,
-        "(import \"{s}\" \"{s}\"",
-        .{ operation.descriptor.canonical.async_import_module, operation.descriptor.canonical.async_import_name },
+        "(import \"{[module]s}\" \"{[name]s}\"",
+        .{
+            .module = operation.descriptor.canonical.async_import_module,
+            .name = operation.descriptor.canonical.async_import_name,
+        },
     );
     defer allocator.free(host_import);
-    const parameter_field = try std.fmt.allocPrint(allocator, "$slot-{s}", .{shared.parameter.name});
+    const parameter_field = try generated_text.alloc_fmt(allocator, "$slot-{[name]s}", .{ .name = shared.parameter.name });
     defer allocator.free(parameter_field);
-    const counter_field = try std.fmt.allocPrint(allocator, "$slot-{s}", .{countdown.counter_name});
+    const counter_field = try generated_text.alloc_fmt(allocator, "$slot-{[name]s}", .{ .name = countdown.counter_name });
     defer allocator.free(counter_field);
     const wit_export = try wit_identifier(allocator, shared.export_name);
     defer allocator.free(wit_export);
-    const task_return_export = try std.fmt.allocPrint(allocator, "[task-return]{s}", .{wit_export});
+    const task_return_export = try generated_text.alloc_fmt(allocator, "[task-return]{[name]s}", .{ .name = wit_export });
     defer allocator.free(task_return_export);
-    const async_lift_export = try std.fmt.allocPrint(allocator, "[async-lift]{s}", .{wit_export});
+    const async_lift_export = try generated_text.alloc_fmt(allocator, "[async-lift]{[name]s}", .{ .name = wit_export });
     defer allocator.free(async_lift_export);
-    const async_callback_export = try std.fmt.allocPrint(allocator, "[callback][async-lift]{s}", .{wit_export});
+    const async_callback_export = try generated_text.alloc_fmt(allocator, "[callback][async-lift]{[name]s}", .{ .name = wit_export });
     defer allocator.free(async_callback_export);
     const lifted = try emit_loop_countdown_lifted(allocator, shared.export_name, countdown.initial, countdown.host_argument, countdown.pre_guard, counter_field);
     defer allocator.free(lifted);
     const callback = try emit_loop_countdown_callback(allocator, shared.export_name, countdown.host_argument, parameter_field, counter_field);
     defer allocator.free(callback);
 
-    var wat = try allocator.dupe(u8, two_await_core_wat);
+    var wat = try generated_text.alloc_block(allocator, 0, two_await_core_wat);
     wat = try replace_and_free(allocator, wat, "[gc-frame-runtime]", gc_frame_runtime.items);
     wat = try replace_and_free(allocator, wat, "(import \"wasi:clocks/monotonic-clock@0.3.0\" \"[async-lower]wait-for\"", host_import);
     wat = try replace_and_free(allocator, wat, "  (import \"wasi:clocks/monotonic-clock@0.3.0\" \"[async-lower]wait-until\" (func $second-host-call (type $async-lower)))\n", "");
     wat = try replace_and_free(allocator, wat, "[task-return]run", task_return_export);
     wat = try replace_and_free(allocator, wat, "[async-lift]run", async_lift_export);
     wat = try replace_and_free(allocator, wat, "[callback][async-lift]run", async_callback_export);
-    const async_lift = try std.fmt.allocPrint(allocator, "  (func (export \"[async-lift]{s}\")", .{shared.export_name});
+    const async_lift = try generated_text.alloc_fmt(allocator, "  (func (export \"[async-lift]{[name]s}\")", .{ .name = shared.export_name });
     defer allocator.free(async_lift);
-    const callback_lift = try std.fmt.allocPrint(allocator, "  (func (export \"[callback][async-lift]{s}\")", .{shared.export_name});
+    const callback_lift = try generated_text.alloc_fmt(allocator, "  (func (export \"[callback][async-lift]{[name]s}\")", .{ .name = shared.export_name });
     defer allocator.free(callback_lift);
     wat = try replace_between(allocator, wat, async_lift, callback_lift, lifted);
     const cabi_realloc = "  (func (export \"cabi_realloc\")";
@@ -790,35 +1071,101 @@ fn emit_loop_countdown_lifted(
     counter_field: []const u8,
 ) ![]u8 {
     const initial_wat = switch (initial) {
-        .u64_literal => |value| try std.fmt.allocPrint(allocator, "i64.const {d}", .{value}),
+        .u64_literal => |value| try generated_text.alloc_fmt(allocator, "i64.const {[value]d}", .{ .value = value }),
         .parameter => try allocator.dupe(u8, "local.get 0"),
-        .parameter_add_u64_literal => |value| try std.fmt.allocPrint(allocator, "local.get 0\n    i64.const {d}\n    i64.add", .{value}),
+        .parameter_add_u64_literal => |value| try generated_text.alloc_fmt_block(
+            allocator,
+            0,
+            \\local.get 0
+            \\    i64.const {[value]d}
+            \\    i64.add
+        ,
+            .{ .value = value },
+        ),
     };
     defer allocator.free(initial_wat);
     const host_argument_wat = switch (host_argument) {
         .parameter => try allocator.dupe(u8, "local.get 0"),
-        .counter => try std.fmt.allocPrint(allocator, "local.get $frame\n    table.get $async-frames\n    ref.as_non_null\n    struct.get $async-frame {s}", .{counter_field}),
+        .counter => try generated_text.alloc_fmt_block(
+            allocator,
+            0,
+            \\local.get $frame
+            \\    table.get $async-frames
+            \\    ref.as_non_null
+            \\    struct.get $async-frame {[counter_field]s}
+        ,
+            .{ .counter_field = counter_field },
+        ),
     };
     defer allocator.free(host_argument_wat);
-    const launch_wat = try std.fmt.allocPrint(
+    const launch_wat = try generated_text.alloc_fmt_block(
         allocator,
-        "    {s}\n    call $first-host-call\n    local.set $subtask\n    local.get $subtask\n    i32.const 4\n    i32.shr_u\n    local.get $frame\n    table.get $async-frames\n    ref.as_non_null\n    struct.get $async-frame $waitable-set\n    call $waitable-join\n    local.get $frame\n    table.get $async-frames\n    ref.as_non_null\n    struct.get $async-frame $waitable-set\n    i32.const 4\n    i32.shl\n    i32.const 2\n    i32.or\n",
-        .{host_argument_wat},
+        4,
+        \\    {[host_argument]s}
+        \\    call $first-host-call
+        \\    local.set $subtask
+        \\    local.get $subtask
+        \\    i32.const 4
+        \\    i32.shr_u
+        \\    local.get $frame
+        \\    table.get $async-frames
+        \\    ref.as_non_null
+        \\    struct.get $async-frame $waitable-set
+        \\    call $waitable-join
+        \\    local.get $frame
+        \\    table.get $async-frames
+        \\    ref.as_non_null
+        \\    struct.get $async-frame $waitable-set
+        \\    i32.const 4
+        \\    i32.shl
+        \\    i32.const 2
+        \\    i32.or
+    ,
+        .{ .host_argument = host_argument_wat },
     );
     defer allocator.free(launch_wat);
     const guarded_launch_wat = if (pre_guard)
-        try std.fmt.allocPrint(
+        try generated_text.alloc_fmt_block(
             allocator,
-            "    local.get $frame\n    table.get $async-frames\n    ref.as_non_null\n    struct.get $async-frame {s}\n    i64.eqz\n    if (result i32)\n      i32.const 0\n      call $context-set-0\n      local.get $frame\n      call $frame-free\n      call $task-return\n      i32.const 0\n    else\n{s}    end\n",
-            .{ counter_field, launch_wat },
+            4,
+            \\    local.get $frame
+            \\    table.get $async-frames
+            \\    ref.as_non_null
+            \\    struct.get $async-frame {[counter_field]s}
+            \\    i64.eqz
+            \\    if (result i32)
+            \\      i32.const 0
+            \\      call $context-set-0
+            \\      local.get $frame
+            \\      call $frame-free
+            \\      call $task-return
+            \\      i32.const 0
+            \\    else
+            \\{[launch]s}    end
+        ,
+            .{ .counter_field = counter_field, .launch = launch_wat },
         )
     else
         try allocator.dupe(u8, launch_wat);
     defer allocator.free(guarded_launch_wat);
-    return std.fmt.allocPrint(
+    return generated_text.alloc_fmt_block(
         allocator,
-        "  (func (export \"[async-lift]{s}\") (type $async-run) (local $frame i32) (local $subtask i32)\n    i32.const 1\n    call $waitable-set-new\n    i32.const 0\n    i32.const 0\n    local.get 0\n    {s}\n    struct.new $async-frame\n    call $frame-alloc\n    local.tee $frame\n    call $context-set-0\n{s}  )\n\n",
-        .{ export_name, initial_wat, guarded_launch_wat },
+        2,
+        \\  (func (export "[async-lift]{[export_name]s}") (type $async-run) (local $frame i32) (local $subtask i32)
+        \\    i32.const 1
+        \\    call $waitable-set-new
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    local.get 0
+        \\    {[initial_wat]s}
+        \\    struct.new $async-frame
+        \\    call $frame-alloc
+        \\    local.tee $frame
+        \\    call $context-set-0
+        \\{[guarded_launch]s}  )
+        \\
+    ,
+        .{ .export_name = export_name, .initial_wat = initial_wat, .guarded_launch = guarded_launch_wat },
     );
 }
 
@@ -833,10 +1180,77 @@ fn emit_loop_countdown_callback(
         .parameter => parameter_field,
         .counter => counter_field,
     };
-    return std.fmt.allocPrint(
+    return generated_text.alloc_fmt_block(
         allocator,
-        "  (func (export \"[callback][async-lift]{s}\") (type $async-run-callback) (local $frame i32) (local $frame-ref (ref $async-frame)) (local $subtask i32)\n    call $context-get-0\n    local.set $frame\n    local.get $frame\n    table.get $async-frames\n    ref.as_non_null\n    local.set $frame-ref\n    local.get 0\n    i32.const 1\n    i32.eq\n    local.get 2\n    i32.const 2\n    i32.eq\n    i32.and\n    if (result i32)\n      local.get $frame-ref\n      struct.get $async-frame $state\n      i32.const 1\n      i32.ne\n      if unreachable end\n      local.get $frame-ref\n      local.get $frame-ref\n      struct.get $async-frame {s}\n      i64.const 1\n      i64.sub\n      struct.set $async-frame {s}\n      local.get $frame-ref\n      struct.get $async-frame {s}\n      i64.eqz\n      if (result i32)\n        i32.const 0\n        call $context-set-0\n        local.get $frame\n        call $frame-free\n        call $task-return\n        i32.const 0\n      else\n        local.get $frame-ref\n        struct.get $async-frame {s}\n        call $first-host-call\n        local.set $subtask\n        local.get $subtask\n        i32.const 4\n        i32.shr_u\n        local.get $frame-ref\n        struct.get $async-frame $waitable-set\n        call $waitable-join\n        local.get $frame-ref\n        struct.get $async-frame $waitable-set\n        i32.const 4\n        i32.shl\n        i32.const 2\n        i32.or\n      end\n    else\n      local.get $frame-ref\n      struct.get $async-frame $waitable-set\n      i32.const 4\n      i32.shl\n      i32.const 2\n      i32.or\n    end\n  )\n",
-        .{ export_name, counter_field, counter_field, counter_field, host_argument_field },
+        0,
+        \\  (func (export "[callback][async-lift]{[export_name]s}") (type $async-run-callback) (local $frame i32) (local $frame-ref (ref $async-frame)) (local $subtask i32)
+        \\    call $context-get-0
+        \\    local.set $frame
+        \\    local.get $frame
+        \\    table.get $async-frames
+        \\    ref.as_non_null
+        \\    local.set $frame-ref
+        \\    local.get 0
+        \\    i32.const 1
+        \\    i32.eq
+        \\    local.get 2
+        \\    i32.const 2
+        \\    i32.eq
+        \\    i32.and
+        \\    if (result i32)
+        \\      local.get $frame-ref
+        \\      struct.get $async-frame $state
+        \\      i32.const 1
+        \\      i32.ne
+        \\      if unreachable end
+        \\      local.get $frame-ref
+        \\      local.get $frame-ref
+        \\      struct.get $async-frame {[counter_field]s}
+        \\      i64.const 1
+        \\      i64.sub
+        \\      struct.set $async-frame {[counter_field]s}
+        \\      local.get $frame-ref
+        \\      struct.get $async-frame {[counter_field]s}
+        \\      i64.eqz
+        \\      if (result i32)
+        \\        i32.const 0
+        \\        call $context-set-0
+        \\        local.get $frame
+        \\        call $frame-free
+        \\        call $task-return
+        \\        i32.const 0
+        \\      else
+        \\        local.get $frame-ref
+        \\        struct.get $async-frame {[host_argument_field]s}
+        \\        call $first-host-call
+        \\        local.set $subtask
+        \\        local.get $subtask
+        \\        i32.const 4
+        \\        i32.shr_u
+        \\        local.get $frame-ref
+        \\        struct.get $async-frame $waitable-set
+        \\        call $waitable-join
+        \\        local.get $frame-ref
+        \\        struct.get $async-frame $waitable-set
+        \\        i32.const 4
+        \\        i32.shl
+        \\        i32.const 2
+        \\        i32.or
+        \\      end
+        \\    else
+        \\      local.get $frame-ref
+        \\      struct.get $async-frame $waitable-set
+        \\      i32.const 4
+        \\      i32.shl
+        \\      i32.const 2
+        \\      i32.or
+        \\    end
+        \\  )
+        , .{
+            .export_name = export_name,
+            .counter_field = counter_field,
+            .host_argument_field = host_argument_field,
+        },
     );
 }
 
@@ -845,10 +1259,79 @@ fn emit_if_join_callback(
     export_name: []const u8,
     parameter_field: []const u8,
 ) ![]u8 {
-    return std.fmt.allocPrint(
+    return generated_text.alloc_fmt_block(
         allocator,
-        "  (func (export \"[callback][async-lift]{s}\") (type $async-run-callback) (local $frame i32) (local $frame-ref (ref $async-frame)) (local $subtask i32)\n    call $context-get-0\n    local.set $frame\n    local.get $frame\n    table.get $async-frames\n    ref.as_non_null\n    local.set $frame-ref\n    local.get 0\n    i32.const 1\n    i32.eq\n    local.get 2\n    i32.const 2\n    i32.eq\n    i32.and\n    if (result i32)\n      local.get $frame-ref\n      struct.get $async-frame $state\n      i32.const 1\n      i32.eq\n      local.get $frame-ref\n      struct.get $async-frame $state\n      i32.const 2\n      i32.eq\n      i32.or\n      if (result i32)\n        local.get $frame-ref\n        i32.const 3\n        struct.set $async-frame $state\n        local.get $frame-ref\n        struct.get $async-frame {s}\n        call $third-host-call\n        local.set $subtask\n        local.get $subtask\n        i32.const 4\n        i32.shr_u\n        local.get $frame-ref\n        struct.get $async-frame $waitable-set\n        call $waitable-join\n        local.get $frame-ref\n        struct.get $async-frame $waitable-set\n        i32.const 4\n        i32.shl\n        i32.const 2\n        i32.or\n      else\n        local.get $frame-ref\n        struct.get $async-frame $state\n        i32.const 3\n        i32.ne\n        if unreachable end\n        i32.const 0\n        call $context-set-0\n        local.get $frame\n        call $frame-free\n        call $task-return\n        i32.const 0\n      end\n    else\n      local.get $frame-ref\n      struct.get $async-frame $waitable-set\n      i32.const 4\n      i32.shl\n      i32.const 2\n      i32.or\n    end\n  )\n",
-        .{ export_name, parameter_field },
+        2,
+        \\  (func (export "[callback][async-lift]{[export_name]s}") (type $async-run-callback) (local $frame i32) (local $frame-ref (ref $async-frame)) (local $subtask i32)
+        \\    call $context-get-0
+        \\    local.set $frame
+        \\    local.get $frame
+        \\    table.get $async-frames
+        \\    ref.as_non_null
+        \\    local.set $frame-ref
+        \\    local.get 0
+        \\    i32.const 1
+        \\    i32.eq
+        \\    local.get 2
+        \\    i32.const 2
+        \\    i32.eq
+        \\    i32.and
+        \\    if (result i32)
+        \\      local.get $frame-ref
+        \\      struct.get $async-frame $state
+        \\      i32.const 1
+        \\      i32.eq
+        \\      local.get $frame-ref
+        \\      struct.get $async-frame $state
+        \\      i32.const 2
+        \\      i32.eq
+        \\      i32.or
+        \\      if (result i32)
+        \\        local.get $frame-ref
+        \\        i32.const 3
+        \\        struct.set $async-frame $state
+        \\        local.get $frame-ref
+        \\        struct.get $async-frame {[parameter_field]s}
+        \\        call $third-host-call
+        \\        local.set $subtask
+        \\        local.get $subtask
+        \\        i32.const 4
+        \\        i32.shr_u
+        \\        local.get $frame-ref
+        \\        struct.get $async-frame $waitable-set
+        \\        call $waitable-join
+        \\        local.get $frame-ref
+        \\        struct.get $async-frame $waitable-set
+        \\        i32.const 4
+        \\        i32.shl
+        \\        i32.const 2
+        \\        i32.or
+        \\      else
+        \\        local.get $frame-ref
+        \\        struct.get $async-frame $state
+        \\        i32.const 3
+        \\        i32.ne
+        \\        if unreachable end
+        \\        i32.const 0
+        \\        call $context-set-0
+        \\        local.get $frame
+        \\        call $frame-free
+        \\        call $task-return
+        \\        i32.const 0
+        \\      end
+        \\    else
+        \\      local.get $frame-ref
+        \\      struct.get $async-frame $waitable-set
+        \\      i32.const 4
+        \\      i32.shl
+        \\      i32.const 2
+        \\      i32.or
+        \\    end
+        \\  )
+        , .{
+            .export_name = export_name,
+            .parameter_field = parameter_field,
+        },
     );
 }
 
@@ -883,24 +1366,24 @@ fn emit_sequential_component_core_wat(
         const operation = shared.operations[operation_index];
         try append_fmt(
             allocator,
-            &extra_imports,
-            "  (import \"{s}\" \"{s}\" (func ",
-            .{ operation.descriptor.canonical.async_import_module, operation.descriptor.canonical.async_import_name },
-        );
+            &extra_imports, "  (import \"{[async_import_module]s}\" \"{[async_import_name]s}\" (func ", .{ .async_import_module = operation.descriptor.canonical.async_import_module, .async_import_name = operation.descriptor.canonical.async_import_name });
         try append_host_call_symbol(allocator, &extra_imports, operation_index);
         try extra_imports.appendSlice(allocator, " (type $async-lower)))\n");
     }
     const root_import = "  (import \"$root\" \"[waitable-set-new]\"";
-    const imports_with_root = try std.fmt.allocPrint(allocator, "{s}{s}", .{ extra_imports.items, root_import });
+    const imports_with_root = try generated_text.alloc_fmt(allocator, "{[imports]s}{[root]s}", .{ .imports = extra_imports.items, .root = root_import });
     defer allocator.free(imports_with_root);
     wat = try replace_and_free(allocator, wat, root_import, imports_with_root);
 
-    const parameter_field = try std.fmt.allocPrint(allocator, "$slot-{s}", .{shared.parameter.name});
+    const parameter_field = try generated_text.alloc_fmt(allocator, "$slot-{[name]s}", .{ .name = shared.parameter.name });
     defer allocator.free(parameter_field);
     var tail = std.ArrayList(u8).empty;
     defer tail.deinit(allocator);
     try emit_extra_resume_tail(allocator, &tail, 2, shared.operations, &shared.async_plan.?, parameter_field);
-    wat = try replace_and_free(allocator, wat, two_await_terminal_tail, tail.items);
+    var terminal_tail = std.ArrayList(u8).empty;
+    defer terminal_tail.deinit(allocator);
+    try generated_text.append_block(allocator, &terminal_tail, 8, two_await_terminal_tail);
+    wat = try replace_and_free(allocator, wat, terminal_tail.items, tail.items);
     return wat;
 }
 
@@ -913,12 +1396,7 @@ fn emit_extra_resume_tail(
     parameter_field: []const u8,
 ) !void {
     if (state < operations.len) {
-        try append_fmt(
-            allocator,
-            out,
-            "        local.get $frame-ref\n        struct.get $async-frame $state\n        i32.const {d}\n        i32.eq\n        if (result i32)\n          local.get $frame-ref\n          i32.const {d}\n          struct.set $async-frame $state\n",
-            .{ state, state + 1 },
-        );
+        try generated_text.append_fmt_block(allocator, out, 8, "        local.get $frame-ref\n        struct.get $async-frame $state\n        i32.const {[state]d}\n        i32.eq\n        if (result i32)\n          local.get $frame-ref\n          i32.const {[state_2]d}\n          struct.set $async-frame $state\n", .{ .state = state, .state_2 = state + 1 });
         try append_resumed_argument_wat(
             allocator,
             out,
@@ -930,24 +1408,43 @@ fn emit_extra_resume_tail(
         );
         try out.appendSlice(allocator, "          call ");
         try append_host_call_symbol(allocator, out, state);
-        try out.appendSlice(allocator, "\n          local.set $subtask\n          local.get $subtask\n          i32.const 4\n          i32.shr_u\n          local.get $frame-ref\n          struct.get $async-frame $waitable-set\n          call $waitable-join\n          local.get $frame-ref\n          struct.get $async-frame $waitable-set\n          i32.const 4\n          i32.shl\n          i32.const 2\n          i32.or\n        else\n");
+        try generated_text.append_block(allocator, out, 8,
+            \\
+            \\          local.set $subtask
+            \\          local.get $subtask
+            \\          i32.const 4
+            \\          i32.shr_u
+            \\          local.get $frame-ref
+            \\          struct.get $async-frame $waitable-set
+            \\          call $waitable-join
+            \\          local.get $frame-ref
+            \\          struct.get $async-frame $waitable-set
+            \\          i32.const 4
+            \\          i32.shl
+            \\          i32.const 2
+            \\          i32.or
+            \\        else
+        );
         try emit_extra_resume_tail(allocator, out, state + 1, operations, async_plan, parameter_field);
         try out.appendSlice(allocator, "        end\n");
         return;
     }
-    try append_fmt(
-        allocator,
-        out,
-        "        local.get $frame-ref\n        struct.get $async-frame $state\n        i32.const {d}\n        i32.ne\n        if unreachable end\n        i32.const 0\n        call $context-set-0\n        local.get $frame\n        call $frame-free\n        call $task-return\n        i32.const 0\n",
-        .{state},
-    );
+    try generated_text.append_fmt_block(allocator, out, 8, "        local.get $frame-ref\n        struct.get $async-frame $state\n        i32.const {[state]d}\n        i32.ne\n        if unreachable end\n        i32.const 0\n        call $context-set-0\n        local.get $frame\n        call $frame-free\n        call $task-return\n        i32.const 0\n", .{ .state = state });
 }
 
 fn alloc_initial_argument_wat(allocator: std.mem.Allocator, argument: component_async_plan.ScalarArgument) ![]u8 {
     return switch (argument) {
         .parameter => allocator.dupe(u8, "local.get 0"),
-        .u64_literal => |value| std.fmt.allocPrint(allocator, "i64.const {d}", .{value}),
-        .u64_add_parameter_literal => |value| std.fmt.allocPrint(allocator, "local.get 0\n    i64.const {d}\n    i64.add", .{value}),
+        .u64_literal => |value| generated_text.alloc_fmt(allocator, "i64.const {[value]d}", .{ .value = value }),
+        .u64_add_parameter_literal => |value| generated_text.alloc_fmt_block(
+            allocator,
+            0,
+            \\local.get 0
+            \\    i64.const {[value]d}
+            \\    i64.add
+        ,
+            .{ .value = value },
+        ),
     };
 }
 
@@ -960,15 +1457,38 @@ fn alloc_resumed_argument_wat(
 ) ![]u8 {
     if (async_plan) |plan| {
         if (first_resume_state_contains(plan, argument_name)) {
-            const field = try std.fmt.allocPrint(allocator, "$slot-{s}", .{argument_name});
+            const field = try generated_text.alloc_fmt(allocator, "$slot-{[name]s}", .{ .name = argument_name });
             defer allocator.free(field);
-            return std.fmt.allocPrint(allocator, "local.get $frame-ref\n        struct.get $async-frame {s}", .{field});
+            return generated_text.alloc_fmt_block(
+                allocator,
+                0,
+                \\local.get $frame-ref
+                \\        struct.get $async-frame {[field]s}
+            ,
+                .{ .field = field },
+            );
         }
     }
     return switch (argument) {
-        .parameter => std.fmt.allocPrint(allocator, "local.get $frame-ref\n        struct.get $async-frame {s}", .{parameter_field}),
-        .u64_literal => |value| std.fmt.allocPrint(allocator, "i64.const {d}", .{value}),
-        .u64_add_parameter_literal => |value| std.fmt.allocPrint(allocator, "local.get $frame-ref\n        struct.get $async-frame {s}\n        i64.const {d}\n        i64.add", .{ parameter_field, value }),
+        .parameter => generated_text.alloc_fmt_block(
+            allocator,
+            0,
+            \\local.get $frame-ref
+            \\        struct.get $async-frame {[parameter_field]s}
+        ,
+            .{ .parameter_field = parameter_field },
+        ),
+        .u64_literal => |value| generated_text.alloc_fmt(allocator, "i64.const {[value]d}", .{ .value = value }),
+        .u64_add_parameter_literal => |value| generated_text.alloc_fmt_block(
+            allocator,
+            0,
+            \\local.get $frame-ref
+            \\        struct.get $async-frame {[parameter_field]s}
+            \\        i64.const {[value]d}
+            \\        i64.add
+        ,
+            .{ .parameter_field = parameter_field, .value = value },
+        ),
     };
 }
 
@@ -982,27 +1502,30 @@ fn append_resumed_argument_wat(
     indent: []const u8,
 ) !void {
     if (first_resume_state_contains(async_plan, argument_name)) {
-        try append_fmt(
+        try generated_text.append_fmt_block(
             allocator,
             out,
-            "{s}local.get $frame-ref\n{s}struct.get $async-frame $slot-{s}\n",
-            .{ indent, indent, argument_name },
+            indent.len,
+            "local.get $frame-ref\nstruct.get $async-frame $slot-{[argument_name]s}\n",
+            .{ .argument_name = argument_name },
         );
         return;
     }
     switch (argument) {
-        .parameter => try append_fmt(
+        .parameter => try generated_text.append_fmt_block(
             allocator,
             out,
-            "{s}local.get $frame-ref\n{s}struct.get $async-frame {s}\n",
-            .{ indent, indent, parameter_field },
+            indent.len,
+            "local.get $frame-ref\nstruct.get $async-frame {[parameter_field]s}\n",
+            .{ .parameter_field = parameter_field },
         ),
-        .u64_literal => |value| try append_fmt(allocator, out, "{s}i64.const {d}\n", .{ indent, value }),
-        .u64_add_parameter_literal => |value| try append_fmt(
+        .u64_literal => |value| try append_fmt(allocator, out, "{[indent]s}i64.const {[value]d}\n", .{ .indent = indent, .value = value }),
+        .u64_add_parameter_literal => |value| try generated_text.append_fmt_block(
             allocator,
             out,
-            "{s}local.get $frame-ref\n{s}struct.get $async-frame {s}\n{s}i64.const {d}\n{s}i64.add\n",
-            .{ indent, indent, parameter_field, indent, value, indent },
+            indent.len,
+            "local.get $frame-ref\nstruct.get $async-frame {[parameter_field]s}\ni64.const {[value]d}\ni64.add\n",
+            .{ .parameter_field = parameter_field, .value = value },
         ),
     }
 }
@@ -1020,22 +1543,23 @@ fn append_host_call_symbol(allocator: std.mem.Allocator, out: *std.ArrayList(u8)
         0 => try out.appendSlice(allocator, "$first-host-call"),
         1 => try out.appendSlice(allocator, "$second-host-call"),
         2 => try out.appendSlice(allocator, "$third-host-call"),
-        else => try append_fmt(allocator, out, "$host-call-{d}", .{operation_index}),
+        else => try append_fmt(allocator, out, "$host-call-{[operation_index]d}", .{ .operation_index = operation_index }),
     }
 }
 
 const two_await_terminal_tail =
-    "        local.get $frame-ref\n" ++
-    "        struct.get $async-frame $state\n" ++
-    "        i32.const 2\n" ++
-    "        i32.ne\n" ++
-    "        if unreachable end\n" ++
-    "        i32.const 0\n" ++
-    "        call $context-set-0\n" ++
-    "        local.get $frame\n" ++
-    "        call $frame-free\n" ++
-    "        call $task-return\n" ++
-    "        i32.const 0\n";
+    \\        local.get $frame-ref
+    \\        struct.get $async-frame $state
+    \\        i32.const 2
+    \\        i32.ne
+    \\        if unreachable end
+    \\        i32.const 0
+    \\        call $context-set-0
+    \\        local.get $frame
+    \\        call $frame-free
+    \\        call $task-return
+    \\        i32.const 0
+;
 
 fn emit_cli_result_core_wat(allocator: std.mem.Allocator, plan: CliResultPlan) ![]u8 {
     const await_sites = [_]async_model.AwaitSite{.{ .token_index = 0, .live_slots = &.{} }};
@@ -1050,26 +1574,29 @@ fn emit_cli_result_core_wat(allocator: std.mem.Allocator, plan: CliResultPlan) !
         layout.slots.len != 0 or
         layout.size != 16) return error.UnsupportedP3WaitForComponent;
 
-    const frame_size = try std.fmt.allocPrint(allocator, "{d}", .{layout.size});
+    const frame_size = try generated_text.alloc_fmt(allocator, "{[size]d}", .{ .size = layout.size });
     defer allocator.free(frame_size);
-    const waitable_set_offset = try std.fmt.allocPrint(allocator, "{d}", .{layout.waitable_set_offset});
+    const waitable_set_offset = try generated_text.alloc_fmt(allocator, "{[offset]d}", .{ .offset = layout.waitable_set_offset });
     defer allocator.free(waitable_set_offset);
-    const completion_value_offset = try std.fmt.allocPrint(allocator, "{d}", .{layout.completion_value_offset});
+    const completion_value_offset = try generated_text.alloc_fmt(allocator, "{[offset]d}", .{ .offset = layout.completion_value_offset });
     defer allocator.free(completion_value_offset);
-    const task_return_export = try std.fmt.allocPrint(allocator, "[task-return]{s}", .{plan.export_name});
+    const task_return_export = try generated_text.alloc_fmt(allocator, "[task-return]{[name]s}", .{ .name = plan.export_name });
     defer allocator.free(task_return_export);
-    const async_lift_export = try std.fmt.allocPrint(allocator, "[async-lift]{s}", .{plan.export_name});
+    const async_lift_export = try generated_text.alloc_fmt(allocator, "[async-lift]{[name]s}", .{ .name = plan.export_name });
     defer allocator.free(async_lift_export);
-    const async_callback_export = try std.fmt.allocPrint(allocator, "[callback][async-lift]{s}", .{plan.export_name});
+    const async_callback_export = try generated_text.alloc_fmt(allocator, "[callback][async-lift]{[name]s}", .{ .name = plan.export_name });
     defer allocator.free(async_callback_export);
-    const async_import = try std.fmt.allocPrint(
+    const async_import = try generated_text.alloc_fmt(
         allocator,
-        "(import \"{s}\" \"{s}\"",
-        .{ plan.descriptor.canonical.async_import_module, plan.descriptor.canonical.async_import_name },
+        "(import \"{[module]s}\" \"{[name]s}\"",
+        .{
+            .module = plan.descriptor.canonical.async_import_module,
+            .name = plan.descriptor.canonical.async_import_name,
+        },
     );
     defer allocator.free(async_import);
 
-    var wat = try allocator.dupe(u8, cli_result_core_wat);
+    var wat = try generated_text.alloc_block(allocator, 0, cli_result_core_wat);
     wat = try replace_and_free(allocator, wat, "[frame-size]", frame_size);
     wat = try replace_and_free(allocator, wat, "[waitable-set-offset]", waitable_set_offset);
     wat = try replace_and_free(allocator, wat, "[completion-value-offset]", completion_value_offset);
@@ -1111,30 +1638,33 @@ fn emit_scalar_result_core_wat(
 
     const wit_export = try wit_identifier(allocator, shared.export_name);
     defer allocator.free(wit_export);
-    const task_return_export = try std.fmt.allocPrint(allocator, "[task-return]{s}", .{wit_export});
+    const task_return_export = try generated_text.alloc_fmt(allocator, "[task-return]{[name]s}", .{ .name = wit_export });
     defer allocator.free(task_return_export);
-    const async_lift_export = try std.fmt.allocPrint(allocator, "[async-lift]{s}", .{wit_export});
+    const async_lift_export = try generated_text.alloc_fmt(allocator, "[async-lift]{[name]s}", .{ .name = wit_export });
     defer allocator.free(async_lift_export);
-    const async_callback_export = try std.fmt.allocPrint(allocator, "[callback][async-lift]{s}", .{wit_export});
+    const async_callback_export = try generated_text.alloc_fmt(allocator, "[callback][async-lift]{[name]s}", .{ .name = wit_export });
     defer allocator.free(async_callback_export);
-    const async_import = try std.fmt.allocPrint(
+    const async_import = try generated_text.alloc_fmt(
         allocator,
-        "(import \"{s}\" \"{s}\"",
-        .{ descriptor.canonical.async_import_module, descriptor.canonical.async_import_name },
+        "(import \"{[module]s}\" \"{[name]s}\"",
+        .{
+            .module = descriptor.canonical.async_import_module,
+            .name = descriptor.canonical.async_import_name,
+        },
     );
     defer allocator.free(async_import);
 
-    var wat = try allocator.dupe(u8, scalar_result_core_wat);
-    const frame_bytes = try std.fmt.allocPrint(allocator, "{d}", .{scalar_result_frame_bytes});
+    var wat = try generated_text.alloc_block(allocator, 0, scalar_result_core_wat);
+    const frame_bytes = try generated_text.alloc_fmt(allocator, "{[bytes]d}", .{ .bytes = scalar_result_frame_bytes });
     defer allocator.free(frame_bytes);
     wat = try replace_and_free(allocator, wat, "[scalar-result-frame-bytes]", frame_bytes);
-    wat = try replace_and_free(allocator, wat, "[scalar-result-budget-runtime]", scalar_result_budget_runtime);
+    wat = try replace_and_free_block(allocator, wat, "[scalar-result-budget-runtime]", 2, scalar_result_budget_runtime);
     wat = try replace_and_free(allocator, wat, "(import \"do:result-probe/run@0.1.0\" \"[async-lower]run\"", async_import);
     if (shared.terminal == .cancel) {
         wat = try replace_and_free(allocator, wat, "(type $task-return (func (param i32 i32)))", "(type $task-return (func))");
     }
-    wat = try replace_and_free(allocator, wat, "[terminal-body]", if (shared.terminal == .cancel) scalar_result_cancel_body else scalar_result_await_body);
-    wat = try replace_and_free(allocator, wat, "[callback-body]", if (shared.terminal == .cancel) scalar_result_cancel_callback_body else scalar_result_await_callback_body);
+    wat = try replace_and_free_block(allocator, wat, "[terminal-body]", 4, if (shared.terminal == .cancel) scalar_result_cancel_body else scalar_result_await_body);
+    wat = try replace_and_free_block(allocator, wat, "[callback-body]", 6, if (shared.terminal == .cancel) scalar_result_cancel_callback_body else scalar_result_await_callback_body);
     wat = try replace_and_free(allocator, wat, "[task-return]run", task_return_export);
     wat = try replace_and_free(allocator, wat, "[async-lift]run", async_lift_export);
     wat = try replace_and_free(allocator, wat, "[callback][async-lift]run", async_callback_export);
@@ -1158,25 +1688,33 @@ fn emit_scalar_result_wit_for_plan(
     defer allocator.free(result_type);
     const wit_export = try wit_identifier(allocator, shared.export_name);
     defer allocator.free(wit_export);
-    const import_result_suffix = try std.fmt.allocPrint(allocator, " -> {s}", .{result_type});
+    const import_result_suffix = try generated_text.alloc_fmt(allocator, " -> {[type]s}", .{ .type = result_type });
     defer allocator.free(import_result_suffix);
     const export_result_suffix = if (shared.terminal == .cancel) "" else import_result_suffix;
-    return std.fmt.allocPrint(
+    return generated_text.alloc_fmt_block(
         allocator,
-        "package {s};\n\ninterface {s} {{\n  {s}: async func({s}: {s}){s};\n}}\n\nworld {s} {{\n  import {s};\n  export {s}: async func({s}: {s}){s};\n}}\n",
-        .{
-            descriptor.wit.package,
-            descriptor.wit.interface,
-            descriptor.wit.operation,
-            descriptor.wit.parameter,
-            parameter_type,
-            import_result_suffix,
-            descriptor.wit.world,
-            descriptor.wit.interface,
-            wit_export,
-            descriptor.wit.parameter,
-            parameter_type,
-            export_result_suffix,
+        0,
+        \\package {[package]s};
+        \\
+        \\interface {[interface]s} {{
+        \\  {[operation]s}: async func({[parameter]s}: {[parameter_type]s}){[import_result_suffix]s};
+        \\}}
+        \\
+        \\world {[world]s} {{
+        \\  import {[interface]s};
+        \\  export {[export_name]s}: async func({[parameter]s}: {[parameter_type]s}){[export_result_suffix]s};
+        \\}}
+        \\
+        , .{
+            .package = descriptor.wit.package,
+            .interface = descriptor.wit.interface,
+            .operation = descriptor.wit.operation,
+            .parameter = descriptor.wit.parameter,
+            .parameter_type = parameter_type,
+            .import_result_suffix = import_result_suffix,
+            .world = descriptor.wit.world,
+            .export_name = wit_export,
+            .export_result_suffix = export_result_suffix,
         },
     );
 }
@@ -1185,10 +1723,10 @@ fn wit_result_type(allocator: std.mem.Allocator, source: p3_async_manifest.Scala
     const ok = if (std.mem.eql(u8, source.ok, "nil")) null else wit_scalar_type(source.ok) orelse return error.UnsupportedP3WaitForComponent;
     const err = if (std.mem.eql(u8, source.err, "nil")) null else wit_scalar_type(source.err) orelse return error.UnsupportedP3WaitForComponent;
     if (ok) |ok_type| {
-        if (err) |err_type| return std.fmt.allocPrint(allocator, "result<{s}, {s}>", .{ ok_type, err_type });
-        return std.fmt.allocPrint(allocator, "result<{s}>", .{ok_type});
+        if (err) |err_type| return generated_text.alloc_fmt(allocator, "result<{[ok]s}, {[err]s}>", .{ .ok = ok_type, .err = err_type });
+        return generated_text.alloc_fmt(allocator, "result<{[ok]s}>", .{ .ok = ok_type });
     }
-    if (err) |err_type| return std.fmt.allocPrint(allocator, "result<_, {s}>", .{err_type});
+    if (err) |err_type| return generated_text.alloc_fmt(allocator, "result<_, {[err]s}>", .{ .err = err_type });
     return error.UnsupportedP3WaitForComponent;
 }
 
@@ -1218,40 +1756,59 @@ fn emit_component_wit_for_plan(allocator: std.mem.Allocator, plan: ClockTemplate
     const wit_export = try wit_identifier(allocator, plan.export_name);
     defer allocator.free(wit_export);
     if (plan.second_descriptor) |second| {
-        return std.fmt.allocPrint(
+        return generated_text.alloc_fmt_block(
             allocator,
-            "package {s};\n\ninterface {s} {{\n  {s}: async func({s}: {s});\n  {s}: async func({s}: {s});\n}}\n\nworld {s} {{\n  import {s};\n  export {s}: async func({s}: {s});\n}}\n",
-            .{
-                plan.descriptor.wit.package,
-                plan.descriptor.wit.interface,
-                plan.descriptor.wit.operation,
-                plan.descriptor.wit.parameter,
-                plan.descriptor.params[0],
-                second.wit.operation,
-                second.wit.parameter,
-                second.params[0],
-                plan.descriptor.wit.world,
-                plan.descriptor.wit.interface,
-                wit_export,
-                plan.descriptor.wit.parameter,
-                plan.descriptor.params[0],
+            0,
+            \\package {[package]s};
+            \\
+            \\interface {[interface]s} {{
+            \\  {[first_operation]s}: async func({[first_parameter]s}: {[first_type]s});
+            \\  {[second_operation]s}: async func({[second_parameter]s}: {[second_type]s});
+            \\}}
+            \\
+            \\world {[world]s} {{
+            \\  import {[interface]s};
+            \\  export {[export_name]s}: async func({[export_parameter]s}: {[export_type]s});
+            \\}}
+            \\
+            , .{
+                .package = plan.descriptor.wit.package,
+                .interface = plan.descriptor.wit.interface,
+                .first_operation = plan.descriptor.wit.operation,
+                .first_parameter = plan.descriptor.wit.parameter,
+                .first_type = plan.descriptor.params[0],
+                .second_operation = second.wit.operation,
+                .second_parameter = second.wit.parameter,
+                .second_type = second.params[0],
+                .world = plan.descriptor.wit.world,
+                .export_name = wit_export,
+                .export_parameter = plan.descriptor.wit.parameter,
+                .export_type = plan.descriptor.params[0],
             },
         );
     }
-    return std.fmt.allocPrint(
+    return generated_text.alloc_fmt_block(
         allocator,
-        "package {s};\n\ninterface {s} {{\n  {s}: async func({s}: {s});\n}}\n\nworld {s} {{\n  import {s};\n  export {s}: async func({s}: {s});\n}}\n",
-        .{
-            plan.descriptor.wit.package,
-            plan.descriptor.wit.interface,
-            plan.descriptor.wit.operation,
-            plan.descriptor.wit.parameter,
-            plan.descriptor.params[0],
-            plan.descriptor.wit.world,
-            plan.descriptor.wit.interface,
-            wit_export,
-            plan.descriptor.wit.parameter,
-            plan.descriptor.params[0],
+        0,
+        \\package {[package]s};
+        \\
+        \\interface {[interface]s} {{
+        \\  {[operation]s}: async func({[parameter]s}: {[parameter_type]s});
+        \\}}
+        \\
+        \\world {[world]s} {{
+        \\  import {[interface]s};
+        \\  export {[export_name]s}: async func({[parameter]s}: {[parameter_type]s});
+        \\}}
+        \\
+        , .{
+            .package = plan.descriptor.wit.package,
+            .interface = plan.descriptor.wit.interface,
+            .operation = plan.descriptor.wit.operation,
+            .parameter = plan.descriptor.wit.parameter,
+            .parameter_type = plan.descriptor.params[0],
+            .world = plan.descriptor.wit.world,
+            .export_name = wit_export,
         },
     );
 }
@@ -1267,22 +1824,22 @@ fn emit_component_wit_for_shared_plan(
 
     var wit = std.ArrayList(u8).empty;
     errdefer wit.deinit(allocator);
-    try append_fmt(allocator, &wit, "package {s};\n\ninterface {s} {{\n", .{ first.wit.package, first.wit.interface });
+    try generated_text.append_fmt_block(allocator, &wit, 0, "package {[package]s};\n\ninterface {[interface]s} {{\n", .{ .package = first.wit.package, .interface = first.wit.interface });
     for (shared.operations, 0..) |operation, index| {
         if (has_prior_wit_operation(shared.operations[0..index], operation.descriptor)) continue;
-        try append_fmt(
-            allocator,
-            &wit,
-            "  {s}: async func({s}: {s});\n",
-            .{ operation.descriptor.wit.operation, operation.descriptor.wit.parameter, operation.descriptor.params[0] },
-        );
+        try append_fmt(allocator, &wit, "  {[operation]s}: async func({[parameter]s}: {[type]s});\n", .{
+            .operation = operation.descriptor.wit.operation,
+            .parameter = operation.descriptor.wit.parameter,
+            .type = operation.descriptor.params[0],
+        });
     }
-    try append_fmt(
-        allocator,
-        &wit,
-        "}}\n\nworld {s} {{\n  import {s};\n  export {s}: async func({s}: {s});\n}}\n",
-        .{ first.wit.world, first.wit.interface, wit_export, first.wit.parameter, first.params[0] },
-    );
+    try generated_text.append_fmt_block(allocator, &wit, 0, "}}\n\nworld {[world]s} {{\n  import {[interface]s};\n  export {[export_name]s}: async func({[parameter]s}: {[type]s});\n}}\n", .{
+            .world = first.wit.world,
+            .interface = first.wit.interface,
+            .export_name = wit_export,
+            .parameter = first.wit.parameter,
+            .type = first.params[0],
+        });
     return wit.toOwnedSlice(allocator);
 }
 
@@ -1302,16 +1859,26 @@ fn has_prior_wit_operation(
 fn emit_cli_result_wit_for_plan(allocator: std.mem.Allocator, plan: CliResultPlan) ![]u8 {
     const wit_export = try wit_identifier(allocator, plan.export_name);
     defer allocator.free(wit_export);
-    return std.fmt.allocPrint(
+    return generated_text.alloc_fmt_block(
         allocator,
-        "package {s};\n\ninterface {s} {{\n  {s}: async func() -> result;\n}}\n\nworld {s} {{\n  import {s};\n  export {s}: async func() -> result;\n}}\n",
-        .{
-            plan.descriptor.wit.package,
-            plan.descriptor.wit.interface,
-            plan.descriptor.wit.operation,
-            plan.descriptor.wit.world,
-            plan.descriptor.wit.interface,
-            wit_export,
+        0,
+        \\package {[package]s};
+        \\
+        \\interface {[interface]s} {{
+        \\  {[operation]s}: async func() -> result;
+        \\}}
+        \\
+        \\world {[world]s} {{
+        \\  import {[interface]s};
+        \\  export {[export_name]s}: async func() -> result;
+        \\}}
+        \\
+        , .{
+            .package = plan.descriptor.wit.package,
+            .interface = plan.descriptor.wit.interface,
+            .operation = plan.descriptor.wit.operation,
+            .world = plan.descriptor.wit.world,
+            .export_name = wit_export,
         },
     );
 }
@@ -1330,6 +1897,31 @@ fn replace_and_free(allocator: std.mem.Allocator, input: []u8, needle: []const u
     return replaced;
 }
 
+fn replace_and_free_block(
+    allocator: std.mem.Allocator,
+    input: []u8,
+    needle: []const u8,
+    base_indent: usize,
+    template: []const u8,
+) ![]u8 {
+    const replacement = try generated_text.alloc_block(allocator, base_indent, template);
+    defer allocator.free(replacement);
+    return replace_and_free(allocator, input, needle, replacement);
+}
+
+fn replace_between_block(
+    allocator: std.mem.Allocator,
+    input: []u8,
+    start: []const u8,
+    end: []const u8,
+    base_indent: usize,
+    template: []const u8,
+) ![]u8 {
+    const replacement = try generated_text.alloc_block(allocator, base_indent, template);
+    defer allocator.free(replacement);
+    return replace_between(allocator, input, start, end, replacement);
+}
+
 fn replace_between(
     allocator: std.mem.Allocator,
     input: []u8,
@@ -1340,10 +1932,10 @@ fn replace_between(
     const start_idx = std.mem.indexOf(u8, input, start) orelse return error.UnsupportedP3WaitForComponent;
     const tail_start = start_idx + start.len;
     const end_relative = std.mem.indexOf(u8, input[tail_start..], end) orelse return error.UnsupportedP3WaitForComponent;
-    const output = try std.fmt.allocPrint(allocator, "{s}{s}{s}", .{
-        input[0..start_idx],
-        replacement,
-        input[tail_start + end_relative ..],
+    const output = try generated_text.alloc_fmt(allocator, "{[prefix]s}{[replacement]s}{[suffix]s}", .{
+        .prefix = input[0..start_idx],
+        .replacement = replacement,
+        .suffix = input[tail_start + end_relative ..],
     });
     allocator.free(input);
     return output;
@@ -1369,9 +1961,7 @@ fn append_fmt(
     comptime fmt: []const u8,
     args: anytype,
 ) !void {
-    const text = try std.fmt.allocPrint(allocator, fmt, args);
-    defer allocator.free(text);
-    try out.appendSlice(allocator, text);
+    try generated_text.append_fmt(allocator, out, fmt, args);
 }
 
 const two_await_core_wat =

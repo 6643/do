@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const lexer = @import("lexer.zig");
 const imports = @import("imports.zig");
 const parser = @import("parser.zig");
@@ -20,14 +21,14 @@ pub fn emit_component_wat(
     var registry = try resource_abi_registry.Registry.load(allocator, @embedFile("resource_abi_registry.json"));
     defer registry.deinit(allocator);
     if (!matches_probe_program(tokens, registry)) return error.UnsupportedResourceProbeComponent;
-    return allocator.dupe(u8, resource_probe_core_wat);
+    return generated_text.alloc_block(allocator, 0, resource_probe_core_wat);
 }
 
 pub fn emit_component_wit(allocator: std.mem.Allocator, tokens: []const lexer.Token) ![]u8 {
     var registry = try resource_abi_registry.Registry.load(allocator, @embedFile("resource_abi_registry.json"));
     defer registry.deinit(allocator);
     if (!matches_probe_program(tokens, registry)) return error.UnsupportedResourceProbeComponent;
-    return allocator.dupe(u8, resource_probe_component_wit);
+    return generated_text.alloc_block(allocator, 0, resource_probe_component_wit);
 }
 
 fn matches_probe_program(tokens: []const lexer.Token, registry: resource_abi_registry.Registry) bool {

@@ -1,5 +1,6 @@
 //! Shared Core Wasm GC type fragments.
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const gc_layout = @import("codegen_gc_layout.zig");
 const payload_wat = @import("wat_payload.zig");
 
@@ -13,7 +14,7 @@ pub fn emit_scalar_array_type(
     array_name: []const u8,
     elem_ty: []const u8,
 ) !void {
-    try append_fmt(allocator, out, "  (type {s} (array (mut {s})))\n", .{ array_name, payload_wat.wasm_type(elem_ty) });
+    try append_fmt(allocator, out, "  (type {[array_name]s} (array (mut {[elem_ty]s})))\n", .{ .array_name = array_name, .elem_ty = payload_wat.wasm_type(elem_ty) });
 }
 
 pub fn emit_managed_array_type(
@@ -23,7 +24,7 @@ pub fn emit_managed_array_type(
     elem_ty: []const u8,
     managed_arrays: []const gc_layout.GcManagedArrayLayout,
 ) !void {
-    try append_fmt(allocator, out, "  (type {s} (array (mut (ref null $", .{array_name});
+    try append_fmt(allocator, out, "  (type {[array_name]s} (array (mut (ref null $", .{ .array_name = array_name });
     if (std.mem.eql(u8, elem_ty, "text")) {
         try out.appendSlice(allocator, "do_text");
     } else if (std.mem.eql(u8, elem_ty, "[u8]")) {
@@ -68,10 +69,10 @@ pub fn emit_managed_struct_type(
     scalar_field_name: ?[]const u8,
 ) !void {
     if (scalar_field_name) |field_name| {
-        try append_fmt(allocator, out, "  (type ${s} (struct (field ${s} (ref null $do_bytes)) (field ${s} i32)))\n", .{ struct_name, value_field_name, field_name });
+        try append_fmt(allocator, out, "  (type ${[struct_name]s} (struct (field ${[value_field_name]s} (ref null $do_bytes)) (field ${[field_name]s} i32)))\n", .{ .struct_name = struct_name, .value_field_name = value_field_name, .field_name = field_name });
         return;
     }
-    try append_fmt(allocator, out, "  (type ${s} (struct (field ${s} (ref null $do_bytes))))\n", .{ struct_name, value_field_name });
+    try append_fmt(allocator, out, "  (type ${[struct_name]s} (struct (field ${[value_field_name]s} (ref null $do_bytes))))\n", .{ .struct_name = struct_name, .value_field_name = value_field_name });
 }
 
 pub fn emit_gc_struct_type(
@@ -86,7 +87,7 @@ pub fn emit_gc_struct_type(
     var field_index: u32 = 0;
     while (field_index < layout.fields.len) : (field_index += 1) {
         const field = find_field_by_index(layout.fields, field_index) orelse return error.UnsupportedGcSyncType;
-        try append_fmt(allocator, out, " (field ${s} ", .{field.name});
+        try append_fmt(allocator, out, " (field ${[name]s} ", .{ .name = field.name });
         try append_gc_field_wasm_type(allocator, out, field, managed_arrays);
         try out.append(allocator, ')');
     }
@@ -158,7 +159,7 @@ pub fn emit_gc_payload_union_type(
         if (index == layout.managed_payload_index) {
             try out.appendSlice(allocator, " (field $bytes (ref null $do_bytes))");
         } else {
-            try append_fmt(allocator, out, " (field $payload_{d} {s})", .{ index, if (gc_layout.leaf_layout_for_type(payload_ty) != null) payload_wat.wasm_type(payload_ty) else "i32" });
+            try append_fmt(allocator, out, " (field $payload_{[index]d} {[i32]s})", .{ .index = index, .i32 = if (gc_layout.leaf_layout_for_type(payload_ty) != null) payload_wat.wasm_type(payload_ty) else "i32" });
         }
     }
     try out.appendSlice(allocator, "))\n");
@@ -170,7 +171,5 @@ fn append_fmt(
     comptime format: []const u8,
     args: anytype,
 ) !void {
-    const text = try std.fmt.allocPrint(allocator, format, args);
-    defer allocator.free(text);
-    try out.appendSlice(allocator, text);
+    try generated_text.append_fmt(allocator, out, format, args);
 }

@@ -1,0 +1,5 @@
+world probe {
+  import api;
+  export run: func() -> u32;
+  export stats: func() -> u32;
+}

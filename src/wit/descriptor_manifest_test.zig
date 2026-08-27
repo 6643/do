@@ -11,6 +11,61 @@ const valid_source =
     "\"source_sha256\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"," ++
     "\"canonical_import\":{\"module\":\"wasi:random/random@0.3.0-rc-2025-09-16\",\"name\":\"get-random-bytes\"}}]}";
 
+const measured_layout_prefix =
+    "\"measured_layout\":{\"kind\":\"record\",\"byte_size\":12,\"alignment\":4," ++
+    "\"fields\":[" ++
+    "{\"name\":\"code\",\"offset\":0,\"byte_size\":4,\"alignment\":4}," ++
+    "{\"name\":\"label\",\"offset\":4,\"byte_size\":8,\"alignment\":4}]," ++
+    "\"children\":[" ++
+    "{\"kind\":\"scalar\",\"offset\":0,\"byte_size\":4,\"alignment\":4,\"core_type\":\"i32\"}," ++
+    "{\"kind\":\"text\",\"pointer_offset\":0,\"length_offset\":4,\"byte_size\":8,\"alignment\":4," ++
+    "\"allocation\":\"cabi_realloc\",\"free\":\"cabi_realloc\"}]},"
+    ++ "\"canonical_import\":";
+
+fn source_with_measurement(allocator: std.mem.Allocator, prefix: []const u8) ![]u8 {
+    return std.mem.replaceOwned(u8, allocator, valid_source, "\"canonical_import\":", prefix);
+}
+
+test "descriptor manifest decodes a measured record layout" {
+    const source = try source_with_measurement(std.testing.allocator, measured_layout_prefix);
+    defer std.testing.allocator.free(source);
+    var parsed = try manifest.parse(std.testing.allocator, source);
+    defer parsed.deinit(std.testing.allocator);
+    const layout = parsed.document.descriptors[0].measured_layout orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(manifest.MeasurementKind.record, layout.kind);
+    try std.testing.expectEqual(@as(u32, 12), layout.byte_size);
+    try std.testing.expectEqual(@as(usize, 2), layout.fields.len);
+    try std.testing.expectEqualStrings("label", layout.fields[1].name);
+    try std.testing.expectEqual(@as(usize, 2), layout.children.len);
+    try std.testing.expectEqualStrings("i32", layout.children[0].core_type.?);
+}
+
+test "descriptor manifest rejects a measured child count drift" {
+    const malformed = std.mem.replaceOwned(
+        u8,
+        std.testing.allocator,
+        measured_layout_prefix,
+        ",\"children\":[{\"kind\":\"scalar\",\"offset\":0,\"byte_size\":4,\"alignment\":4,\"core_type\":\"i32\"},{\"kind\":\"text\",\"pointer_offset\":0,\"length_offset\":4,\"byte_size\":8,\"alignment\":4,\"allocation\":\"cabi_realloc\",\"free\":\"cabi_realloc\"}]},",
+        ",\"children\":[{\"kind\":\"scalar\",\"offset\":0,\"byte_size\":4,\"alignment\":4,\"core_type\":\"i32\"}]},",
+    ) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+    };
+    defer std.testing.allocator.free(malformed);
+    const source = try source_with_measurement(std.testing.allocator, malformed);
+    defer std.testing.allocator.free(source);
+    try std.testing.expectError(error.DescriptorMeasurementInvalid, manifest.parse(std.testing.allocator, source));
+}
+
+test "descriptor manifest rejects an invalid measured allocation action" {
+    const malformed = std.mem.replaceOwned(u8, std.testing.allocator, measured_layout_prefix, "cabi_realloc", "malloc") catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+    };
+    defer std.testing.allocator.free(malformed);
+    const source = try source_with_measurement(std.testing.allocator, malformed);
+    defer std.testing.allocator.free(source);
+    try std.testing.expectError(error.DescriptorMeasurementInvalid, manifest.parse(std.testing.allocator, source));
+}
+
 test "descriptor manifest parses a bounded WIT record" {
     var parsed = try manifest.parse(std.testing.allocator, valid_source);
     defer parsed.deinit(std.testing.allocator);

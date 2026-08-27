@@ -175,4 +175,7 @@ for lsp_case in "$LSP_DIR"/*.json; do
 done
 pass "do lsp"
 
+"$TEST_DIR/check_gc_g5c_residual_gate_test.sh"
+pass "G5c residual gate wiring"
+
 echo "[INFO] release smoke passed"

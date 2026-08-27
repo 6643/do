@@ -74,9 +74,9 @@ pub fn emit_storage_cap_ptr_with_indent(allocator: std.mem.Allocator, out: *std.
 }
 
 pub fn emit_storage_bounds_check(allocator: std.mem.Allocator, tokens: []const lexer.Token, offset_start: usize, offset_end: usize, locals: *const LocalSet, ctx: CodegenContext, storage_name: []const u8, width: usize, out: *std.ArrayList(u8)) !void {
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{storage_name});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = storage_name });
     if (!try codegen_callbacks.emit_expr(allocator, tokens, offset_start, offset_end, locals, ctx, "usize", out)) return error.NoMatchingCall;
-    try append_fmt(allocator, out, "    i32.const {d}\n", .{width});
+    try append_fmt(allocator, out, "    i32.const {[width]d}\n", .{ .width = width });
     try out.appendSlice(allocator, "    call $__storage_check_range\n");
 }
 
@@ -119,7 +119,7 @@ pub fn emit_storage_put_call(allocator: std.mem.Allocator, tokens: []const lexer
     }
 
     if (!try emit_storage_put_one_call(allocator, tokens, first_value_start, first_value_end, tokens[start_idx].lexeme, target_name, storage.elem_ty, locals, ctx, out)) return false;
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_PUT_SOURCE_TMP_LOCAL });
 
     var value_start = first_value_end;
     while (value_start < end_idx) {
@@ -131,12 +131,12 @@ pub fn emit_storage_put_call(allocator: std.mem.Allocator, tokens: []const lexer
         const value_end = find_arg_end(tokens, value_start, end_idx);
         if (value_end == value_start) return false;
         if (!try emit_storage_put_one_call(allocator, tokens, value_start, value_end, STORAGE_PUT_SOURCE_TMP_LOCAL, STORAGE_PUT_SOURCE_TMP_LOCAL, storage.elem_ty, locals, ctx, out)) return false;
-        try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+        try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
         try emit_replace_storage_put_source_tmp(allocator, target_name, out);
         value_start = value_end;
     }
 
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_PUT_SOURCE_TMP_LOCAL });
     return true;
 }
 
@@ -153,16 +153,16 @@ pub fn emit_storage_put_spread_call(allocator: std.mem.Allocator, tokens: []cons
     if (!std.mem.eql(u8, rest.elem_ty, elem_ty)) return false;
     const elem_bytes = storage_element_byte_width_for_type(elem_ty, ctx) orelse return false;
 
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{source_name});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = source_name });
     if (is_direct_managed_local_expr(tokens, spread_start, spread_end, locals, ctx)) {
         try out.appendSlice(allocator, "    call $__arc_inc\n");
     }
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_PUT_SOURCE_TMP_LOCAL });
     try out.appendSlice(allocator, "    i32.const 0\n");
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_WRITE_INDEX_TMP_LOCAL });
     try out.appendSlice(allocator, "    block $storage_put_spread_done\n");
     try out.appendSlice(allocator, "      loop $storage_put_spread_scan\n");
-    try append_fmt(allocator, out, "        local.get ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
+    try append_fmt(allocator, out, "        local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_INDEX_TMP_LOCAL });
     try emit_storage_len_ptr(allocator, out, rest_name);
     try out.appendSlice(allocator, "        i32.load\n");
     try out.appendSlice(allocator, "        i32.ge_u\n");
@@ -171,26 +171,26 @@ pub fn emit_storage_put_spread_call(allocator: std.mem.Allocator, tokens: []cons
         try emit_storage_element_ptr_from_local_with_indent(allocator, out, rest_name, STORAGE_WRITE_INDEX_TMP_LOCAL, 4, "        ");
         try out.appendSlice(allocator, "        i32.load\n");
         try out.appendSlice(allocator, "        call $__arc_inc\n");
-        try append_fmt(allocator, out, "        local.get ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
+        try append_fmt(allocator, out, "        local.get ${[name]s}\n", .{ .name = STORAGE_PUT_SOURCE_TMP_LOCAL });
         try out.appendSlice(allocator, "        call $__storage_put_managed_borrow\n");
     } else if (std.mem.eql(u8, elem_ty, "u8")) {
-        try append_fmt(allocator, out, "        local.get ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
+        try append_fmt(allocator, out, "        local.get ${[name]s}\n", .{ .name = STORAGE_PUT_SOURCE_TMP_LOCAL });
         try emit_storage_element_ptr_from_local_with_indent(allocator, out, rest_name, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes, "        ");
         try append_load_for_payload_type_with_indent(allocator, out, elem_ty, "        ");
         try out.appendSlice(allocator, "        call $__storage_put_u8\n");
     } else {
         try emit_storage_put_spread_scalar_element(allocator, rest_name, elem_ty, elem_bytes, ctx, out);
     }
-    try append_fmt(allocator, out, "        local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "        local.set ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
     try emit_replace_storage_put_source_tmp(allocator, target_name, out);
-    try append_fmt(allocator, out, "        local.get ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
+    try append_fmt(allocator, out, "        local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_INDEX_TMP_LOCAL });
     try out.appendSlice(allocator, "        i32.const 1\n");
     try out.appendSlice(allocator, "        i32.add\n");
-    try append_fmt(allocator, out, "        local.set ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
+    try append_fmt(allocator, out, "        local.set ${[name]s}\n", .{ .name = STORAGE_WRITE_INDEX_TMP_LOCAL });
     try out.appendSlice(allocator, "        br $storage_put_spread_scan\n");
     try out.appendSlice(allocator, "      end\n");
     try out.appendSlice(allocator, "    end\n");
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_PUT_SOURCE_TMP_LOCAL });
     return true;
 }
 
@@ -199,31 +199,31 @@ pub fn emit_storage_set_scalar_call(allocator: std.mem.Allocator, tokens: []cons
     try out.appendSlice(allocator, "    ;; storage-set-scalar\n");
     try emit_storage_alias_protect(allocator, out, source_name, target_name);
     if (!try codegen_callbacks.emit_expr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return false;
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{source_name});
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_WRITE_INDEX_TMP_LOCAL });
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = source_name });
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_INDEX_TMP_LOCAL });
     try out.appendSlice(allocator, "    i32.const 1\n");
     try out.appendSlice(allocator, "    call $__storage_check_range\n");
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{source_name});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = source_name });
     try out.appendSlice(allocator, "    call $__arc_rc\n");
     try out.appendSlice(allocator, "    i32.const 1\n");
     try out.appendSlice(allocator, "    i32.eq\n");
     try out.appendSlice(allocator, "    if (result i32)\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{source_name});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = source_name });
     try out.appendSlice(allocator, "    else\n");
     try emit_storage_clone_current_len_for_elem(allocator, out, source_name, elem_ty, elem_bytes, ctx);
     try out.appendSlice(allocator, "    end\n");
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
     if (is_tuple_type_name(elem_ty)) {
         if (tuple_has_managed_pack_leaf_ctx(elem_ty, ctx)) {
             // Dec replaced managed leaves before writing new ones.
             try emit_storage_element_ptr_from_local(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes);
-            try append_fmt(allocator, out, "    local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
+            try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = TUPLE_PACK_BASE_TMP_LOCAL });
             try emit_dec_managed_tuple_leaves_at_base(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ", ctx);
         }
         if (!try codegen_callbacks.emit_expr(allocator, tokens, value_start, value_end, locals, ctx, elem_ty, out)) return false;
         try emit_storage_element_ptr_from_local(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes);
-        try append_fmt(allocator, out, "    local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
+        try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = TUPLE_PACK_BASE_TMP_LOCAL });
         try append_store_tuple_leaves_owning_from_stack_ctx(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ", ctx);
     } else {
         try emit_storage_element_ptr_from_local(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes);
@@ -231,7 +231,7 @@ pub fn emit_storage_set_scalar_call(allocator: std.mem.Allocator, tokens: []cons
         try append_store_for_payload_type(allocator, out, elem_ty);
     }
     try emit_storage_alias_release(allocator, out, source_name, target_name);
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
     return true;
 }
 
@@ -239,38 +239,38 @@ pub fn emit_storage_put_spread_scalar_element(allocator: std.mem.Allocator, rest
     try out.appendSlice(allocator, "        ;; storage-put-spread-scalar\n");
     try emit_storage_len_ptr_with_indent(allocator, out, STORAGE_PUT_SOURCE_TMP_LOCAL, "        ");
     try out.appendSlice(allocator, "        i32.load\n");
-    try append_fmt(allocator, out, "        local.set ${s}\n", .{STORAGE_WRITE_LEN_TMP_LOCAL});
-    try append_fmt(allocator, out, "        local.get ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
+    try append_fmt(allocator, out, "        local.set ${[name]s}\n", .{ .name = STORAGE_WRITE_LEN_TMP_LOCAL });
+    try append_fmt(allocator, out, "        local.get ${[name]s}\n", .{ .name = STORAGE_PUT_SOURCE_TMP_LOCAL });
     try out.appendSlice(allocator, "        call $__arc_rc\n");
     try out.appendSlice(allocator, "        i32.const 1\n");
     try out.appendSlice(allocator, "        i32.eq\n");
-    try append_fmt(allocator, out, "        local.get ${s}\n", .{STORAGE_WRITE_LEN_TMP_LOCAL});
+    try append_fmt(allocator, out, "        local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_LEN_TMP_LOCAL });
     try emit_storage_cap_ptr_with_indent(allocator, out, STORAGE_PUT_SOURCE_TMP_LOCAL, "        ");
     try out.appendSlice(allocator, "        i32.load\n");
     try out.appendSlice(allocator, "        i32.lt_u\n");
     try out.appendSlice(allocator, "        i32.and\n");
     try out.appendSlice(allocator, "        if (result i32)\n");
-    try append_fmt(allocator, out, "          local.get ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
+    try append_fmt(allocator, out, "          local.get ${[name]s}\n", .{ .name = STORAGE_PUT_SOURCE_TMP_LOCAL });
     try out.appendSlice(allocator, "        else\n");
-    try append_fmt(allocator, out, "          local.get ${s}\n", .{STORAGE_WRITE_LEN_TMP_LOCAL});
+    try append_fmt(allocator, out, "          local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_LEN_TMP_LOCAL });
     try out.appendSlice(allocator, "          i32.const 1\n");
     try out.appendSlice(allocator, "          i32.add\n");
-    try append_fmt(allocator, out, "          local.set ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
+    try append_fmt(allocator, out, "          local.set ${[name]s}\n", .{ .name = STORAGE_WRITE_NEXT_TMP_LOCAL });
     try emit_storage_clone_with_len_local_for_elem(allocator, out, STORAGE_PUT_SOURCE_TMP_LOCAL, elem_ty, elem_bytes, STORAGE_WRITE_NEXT_TMP_LOCAL, STORAGE_WRITE_LEN_TMP_LOCAL, ctx);
     try out.appendSlice(allocator, "        end\n");
-    try append_fmt(allocator, out, "        local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "        local.set ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
     if (is_tuple_type_name(elem_ty)) {
         try emit_storage_element_ptr_from_local_with_indent(allocator, out, rest_name, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes, "        ");
-        try append_fmt(allocator, out, "        local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
+        try append_fmt(allocator, out, "        local.set ${[name]s}\n", .{ .name = TUPLE_PACK_BASE_TMP_LOCAL });
         // Spread copy: load without owning-inc, store without owning-inc (clone path already inced, or unique).
         try append_load_tuple_scalar_leaves_to_stack_ctx(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "        ", ctx);
         try emit_storage_element_ptr_from_local_with_indent(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_LEN_TMP_LOCAL, elem_bytes, "        ");
-        try append_fmt(allocator, out, "        local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
+        try append_fmt(allocator, out, "        local.set ${[name]s}\n", .{ .name = TUPLE_PACK_BASE_TMP_LOCAL });
         try append_store_tuple_scalar_leaves_from_stack_ctx(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "        ", ctx);
         if (tuple_has_managed_pack_leaf_ctx(elem_ty, ctx)) {
             // Unique-append path copies handles without clone-inc; share ownership with source element.
             try emit_storage_element_ptr_from_local_with_indent(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_LEN_TMP_LOCAL, elem_bytes, "        ");
-            try append_fmt(allocator, out, "        local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
+            try append_fmt(allocator, out, "        local.set ${[name]s}\n", .{ .name = TUPLE_PACK_BASE_TMP_LOCAL });
             try emit_inc_managed_tuple_leaves_at_base(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "        ", ctx);
         }
     } else {
@@ -280,7 +280,7 @@ pub fn emit_storage_put_spread_scalar_element(allocator: std.mem.Allocator, rest
         try append_store_for_payload_type_with_indent(allocator, out, elem_ty, "        ");
     }
     try emit_storage_len_ptr_with_indent(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, "        ");
-    try append_fmt(allocator, out, "        local.get ${s}\n", .{STORAGE_WRITE_LEN_TMP_LOCAL});
+    try append_fmt(allocator, out, "        local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_LEN_TMP_LOCAL });
     try out.appendSlice(allocator, "        i32.const 1\n");
     try out.appendSlice(allocator, "        i32.add\n");
     try out.appendSlice(allocator, "        i32.store\n");
@@ -292,30 +292,30 @@ pub fn emit_storage_put_scalar_call(allocator: std.mem.Allocator, tokens: []cons
     try emit_storage_alias_protect(allocator, out, source_name, target_name);
     try emit_storage_len_ptr(allocator, out, source_name);
     try out.appendSlice(allocator, "    i32.load\n");
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{source_name});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_WRITE_INDEX_TMP_LOCAL });
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = source_name });
     try out.appendSlice(allocator, "    call $__arc_rc\n");
     try out.appendSlice(allocator, "    i32.const 1\n");
     try out.appendSlice(allocator, "    i32.eq\n");
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_INDEX_TMP_LOCAL });
     try emit_storage_cap_ptr(allocator, out, source_name);
     try out.appendSlice(allocator, "    i32.load\n");
     try out.appendSlice(allocator, "    i32.lt_u\n");
     try out.appendSlice(allocator, "    i32.and\n");
     try out.appendSlice(allocator, "    if (result i32)\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{source_name});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = source_name });
     try out.appendSlice(allocator, "    else\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_INDEX_TMP_LOCAL });
     try out.appendSlice(allocator, "      i32.const 1\n");
     try out.appendSlice(allocator, "      i32.add\n");
-    try append_fmt(allocator, out, "      local.set ${s}\n", .{STORAGE_WRITE_LEN_TMP_LOCAL});
+    try append_fmt(allocator, out, "      local.set ${[name]s}\n", .{ .name = STORAGE_WRITE_LEN_TMP_LOCAL });
     try emit_storage_clone_with_len_local_for_elem(allocator, out, source_name, elem_ty, elem_bytes, STORAGE_WRITE_LEN_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, ctx);
     try out.appendSlice(allocator, "    end\n");
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
     if (is_tuple_type_name(elem_ty)) {
         if (!try codegen_callbacks.emit_expr(allocator, tokens, value_start, value_end, locals, ctx, elem_ty, out)) return false;
         try emit_storage_element_ptr_from_local(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes);
-        try append_fmt(allocator, out, "    local.set ${s}\n", .{TUPLE_PACK_BASE_TMP_LOCAL});
+        try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = TUPLE_PACK_BASE_TMP_LOCAL });
         try append_store_tuple_leaves_owning_from_stack_ctx(allocator, out, elem_ty, TUPLE_PACK_BASE_TMP_LOCAL, "    ", ctx);
     } else {
         try emit_storage_element_ptr_from_local(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, elem_bytes);
@@ -323,96 +323,96 @@ pub fn emit_storage_put_scalar_call(allocator: std.mem.Allocator, tokens: []cons
         try append_store_for_payload_type(allocator, out, elem_ty);
     }
     try emit_storage_len_ptr(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL);
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_INDEX_TMP_LOCAL });
     try out.appendSlice(allocator, "    i32.const 1\n");
     try out.appendSlice(allocator, "    i32.add\n");
     try out.appendSlice(allocator, "    i32.store\n");
     try emit_storage_alias_release(allocator, out, source_name, target_name);
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
     return true;
 }
 
 pub fn emit_storage_clone_current_len(allocator: std.mem.Allocator, out: *std.ArrayList(u8), source_name: []const u8, elem_bytes: usize) !void {
     try emit_storage_len_ptr(allocator, out, source_name);
     try out.appendSlice(allocator, "      i32.load\n");
-    try append_fmt(allocator, out, "      local.set ${s}\n", .{STORAGE_WRITE_LEN_TMP_LOCAL});
+    try append_fmt(allocator, out, "      local.set ${[name]s}\n", .{ .name = STORAGE_WRITE_LEN_TMP_LOCAL });
     try emit_storage_clone_with_len_local(allocator, out, source_name, elem_bytes, STORAGE_WRITE_LEN_TMP_LOCAL, STORAGE_WRITE_LEN_TMP_LOCAL);
 }
 
 pub fn emit_storage_clone_current_len_for_elem(allocator: std.mem.Allocator, out: *std.ArrayList(u8), source_name: []const u8, elem_ty: []const u8, elem_bytes: usize, ctx: CodegenContext) !void {
     try emit_storage_len_ptr(allocator, out, source_name);
     try out.appendSlice(allocator, "      i32.load\n");
-    try append_fmt(allocator, out, "      local.set ${s}\n", .{STORAGE_WRITE_LEN_TMP_LOCAL});
+    try append_fmt(allocator, out, "      local.set ${[name]s}\n", .{ .name = STORAGE_WRITE_LEN_TMP_LOCAL });
     try emit_storage_clone_with_len_local_for_elem(allocator, out, source_name, elem_ty, elem_bytes, STORAGE_WRITE_LEN_TMP_LOCAL, STORAGE_WRITE_LEN_TMP_LOCAL, ctx);
 }
 
 pub fn emit_storage_clone_managed_current_len(allocator: std.mem.Allocator, out: *std.ArrayList(u8), source_name: []const u8) !void {
     try emit_storage_len_ptr(allocator, out, source_name);
     try out.appendSlice(allocator, "      i32.load\n");
-    try append_fmt(allocator, out, "      local.set ${s}\n", .{STORAGE_WRITE_LEN_TMP_LOCAL});
+    try append_fmt(allocator, out, "      local.set ${[name]s}\n", .{ .name = STORAGE_WRITE_LEN_TMP_LOCAL });
     try emit_storage_clone_managed_with_len_local(allocator, out, source_name, STORAGE_WRITE_LEN_TMP_LOCAL, STORAGE_WRITE_LEN_TMP_LOCAL);
 }
 
 pub fn emit_storage_clone_managed_with_len_local(allocator: std.mem.Allocator, out: *std.ArrayList(u8), source_name: []const u8, next_len_local: []const u8, copy_len_local: []const u8) !void {
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{next_len_local});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = next_len_local });
     try out.appendSlice(allocator, "      i32.const 4\n");
     try out.appendSlice(allocator, "      i32.mul\n");
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
+    try append_fmt(allocator, out, "      i32.const {[value]d}\n", .{ .value = STORAGE_PAYLOAD_HEADER_BYTES });
     try out.appendSlice(allocator, "      i32.add\n");
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{TYPE_ID_STORAGE_MANAGED});
+    try append_fmt(allocator, out, "      i32.const {[value]d}\n", .{ .value = TYPE_ID_STORAGE_MANAGED });
     try out.appendSlice(allocator, "      call $__arc_alloc\n");
-    try append_fmt(allocator, out, "      local.set ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
+    try append_fmt(allocator, out, "      local.set ${[name]s}\n", .{ .name = STORAGE_WRITE_NEXT_TMP_LOCAL });
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_NEXT_TMP_LOCAL });
     try out.appendSlice(allocator, "      call $__arc_payload\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{next_len_local});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = next_len_local });
     try out.appendSlice(allocator, "      i32.store\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_NEXT_TMP_LOCAL });
     try out.appendSlice(allocator, "      call $__arc_payload\n");
     try out.appendSlice(allocator, "      i32.const 4\n");
     try out.appendSlice(allocator, "      i32.add\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{next_len_local});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = next_len_local });
     try out.appendSlice(allocator, "      i32.store\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_NEXT_TMP_LOCAL });
     try out.appendSlice(allocator, "      call $__arc_payload\n");
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
+    try append_fmt(allocator, out, "      i32.const {[value]d}\n", .{ .value = STORAGE_PAYLOAD_HEADER_BYTES });
     try out.appendSlice(allocator, "      i32.add\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{source_name});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = source_name });
     try out.appendSlice(allocator, "      call $__arc_payload\n");
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
+    try append_fmt(allocator, out, "      i32.const {[value]d}\n", .{ .value = STORAGE_PAYLOAD_HEADER_BYTES });
     try out.appendSlice(allocator, "      i32.add\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{copy_len_local});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = copy_len_local });
     try out.appendSlice(allocator, "      i32.const 4\n");
     try out.appendSlice(allocator, "      i32.mul\n");
     try out.appendSlice(allocator, "      memory.copy\n");
     try emit_storage_inc_copied_managed_elements(allocator, out, STORAGE_WRITE_NEXT_TMP_LOCAL, copy_len_local);
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_NEXT_TMP_LOCAL });
 }
 
 pub fn emit_storage_inc_copied_managed_elements(allocator: std.mem.Allocator, out: *std.ArrayList(u8), storage_local: []const u8, copy_len_local: []const u8) !void {
     try out.appendSlice(allocator, "      ;; storage-managed-clone-inc\n");
     try out.appendSlice(allocator, "      i32.const 0\n");
-    try append_fmt(allocator, out, "      local.set ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
+    try append_fmt(allocator, out, "      local.set ${[name]s}\n", .{ .name = STORAGE_WRITE_SCAN_TMP_LOCAL });
     try out.appendSlice(allocator, "      block $storage_clone_inc_done\n");
     try out.appendSlice(allocator, "        loop $storage_clone_inc_scan\n");
-    try append_fmt(allocator, out, "          local.get ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
-    try append_fmt(allocator, out, "          local.get ${s}\n", .{copy_len_local});
+    try append_fmt(allocator, out, "          local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_SCAN_TMP_LOCAL });
+    try append_fmt(allocator, out, "          local.get ${[name]s}\n", .{ .name = copy_len_local });
     try out.appendSlice(allocator, "          i32.ge_u\n");
     try out.appendSlice(allocator, "          br_if $storage_clone_inc_done\n");
-    try append_fmt(allocator, out, "          local.get ${s}\n", .{storage_local});
+    try append_fmt(allocator, out, "          local.get ${[name]s}\n", .{ .name = storage_local });
     try out.appendSlice(allocator, "          call $__arc_payload\n");
-    try append_fmt(allocator, out, "          i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
+    try append_fmt(allocator, out, "          i32.const {[value]d}\n", .{ .value = STORAGE_PAYLOAD_HEADER_BYTES });
     try out.appendSlice(allocator, "          i32.add\n");
-    try append_fmt(allocator, out, "          local.get ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
+    try append_fmt(allocator, out, "          local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_SCAN_TMP_LOCAL });
     try out.appendSlice(allocator, "          i32.const 4\n");
     try out.appendSlice(allocator, "          i32.mul\n");
     try out.appendSlice(allocator, "          i32.add\n");
     try out.appendSlice(allocator, "          i32.load\n");
     try out.appendSlice(allocator, "          call $__arc_inc\n");
     try out.appendSlice(allocator, "          drop\n");
-    try append_fmt(allocator, out, "          local.get ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
+    try append_fmt(allocator, out, "          local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_SCAN_TMP_LOCAL });
     try out.appendSlice(allocator, "          i32.const 1\n");
     try out.appendSlice(allocator, "          i32.add\n");
-    try append_fmt(allocator, out, "          local.set ${s}\n", .{STORAGE_WRITE_SCAN_TMP_LOCAL});
+    try append_fmt(allocator, out, "          local.set ${[name]s}\n", .{ .name = STORAGE_WRITE_SCAN_TMP_LOCAL });
     try out.appendSlice(allocator, "          br $storage_clone_inc_scan\n");
     try out.appendSlice(allocator, "        end\n");
     try out.appendSlice(allocator, "      end\n");
@@ -429,44 +429,44 @@ pub fn emit_storage_clone_with_len_local_for_elem(allocator: std.mem.Allocator, 
 }
 
 pub fn emit_storage_clone_with_len_local_typed(allocator: std.mem.Allocator, out: *std.ArrayList(u8), source_name: []const u8, elem_bytes: usize, next_len_local: []const u8, copy_len_local: []const u8, type_id: usize, pack_layout: ?StructLayout) !void {
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{next_len_local});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = next_len_local });
     if (elem_bytes != 1) {
-        try append_fmt(allocator, out, "      i32.const {d}\n", .{elem_bytes});
+        try append_fmt(allocator, out, "      i32.const {[value]d}\n", .{ .value = elem_bytes });
         try out.appendSlice(allocator, "      i32.mul\n");
     }
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
+    try append_fmt(allocator, out, "      i32.const {[value]d}\n", .{ .value = STORAGE_PAYLOAD_HEADER_BYTES });
     try out.appendSlice(allocator, "      i32.add\n");
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{type_id});
+    try append_fmt(allocator, out, "      i32.const {[value]d}\n", .{ .value = type_id });
     try out.appendSlice(allocator, "      call $__arc_alloc\n");
-    try append_fmt(allocator, out, "      local.set ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
+    try append_fmt(allocator, out, "      local.set ${[name]s}\n", .{ .name = STORAGE_WRITE_NEXT_TMP_LOCAL });
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_NEXT_TMP_LOCAL });
     try out.appendSlice(allocator, "      call $__arc_payload\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{next_len_local});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = next_len_local });
     try out.appendSlice(allocator, "      i32.store\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_NEXT_TMP_LOCAL });
     try out.appendSlice(allocator, "      call $__arc_payload\n");
     try out.appendSlice(allocator, "      i32.const 4\n");
     try out.appendSlice(allocator, "      i32.add\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{next_len_local});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = next_len_local });
     try out.appendSlice(allocator, "      i32.store\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_NEXT_TMP_LOCAL });
     try out.appendSlice(allocator, "      call $__arc_payload\n");
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
+    try append_fmt(allocator, out, "      i32.const {[value]d}\n", .{ .value = STORAGE_PAYLOAD_HEADER_BYTES });
     try out.appendSlice(allocator, "      i32.add\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{source_name});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = source_name });
     try out.appendSlice(allocator, "      call $__arc_payload\n");
-    try append_fmt(allocator, out, "      i32.const {d}\n", .{STORAGE_PAYLOAD_HEADER_BYTES});
+    try append_fmt(allocator, out, "      i32.const {[value]d}\n", .{ .value = STORAGE_PAYLOAD_HEADER_BYTES });
     try out.appendSlice(allocator, "      i32.add\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{copy_len_local});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = copy_len_local });
     if (elem_bytes != 1) {
-        try append_fmt(allocator, out, "      i32.const {d}\n", .{elem_bytes});
+        try append_fmt(allocator, out, "      i32.const {[value]d}\n", .{ .value = elem_bytes });
         try out.appendSlice(allocator, "      i32.mul\n");
     }
     try out.appendSlice(allocator, "      memory.copy\n");
     if (pack_layout) |layout| {
         try emit_storage_inc_copied_pack_elements(allocator, out, STORAGE_WRITE_NEXT_TMP_LOCAL, copy_len_local, layout);
     }
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{STORAGE_WRITE_NEXT_TMP_LOCAL});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_NEXT_TMP_LOCAL });
 }
 
 pub fn emit_storage_element_ptr_from_local(allocator: std.mem.Allocator, out: *std.ArrayList(u8), storage_local: []const u8, index_local: []const u8, elem_bytes: usize) !void {
@@ -487,25 +487,25 @@ pub fn emit_storage_alias_release(allocator: std.mem.Allocator, out: *std.ArrayL
 
 pub fn emit_replace_storage_put_source_tmp(allocator: std.mem.Allocator, target_name: []const u8, out: *std.ArrayList(u8)) !void {
     try out.appendSlice(allocator, "    ;; storage-put-source-replace\n");
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_PUT_SOURCE_TMP_LOCAL });
     try out.appendSlice(allocator, "    i32.ne\n");
     try out.appendSlice(allocator, "    if\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{target_name});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = STORAGE_PUT_SOURCE_TMP_LOCAL });
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = target_name });
     try out.appendSlice(allocator, "      i32.ne\n");
     try out.appendSlice(allocator, "      if\n");
-    try append_fmt(allocator, out, "        local.get ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
+    try append_fmt(allocator, out, "        local.get ${[name]s}\n", .{ .name = STORAGE_PUT_SOURCE_TMP_LOCAL });
     try out.appendSlice(allocator, "        call $__arc_dec\n");
     try out.appendSlice(allocator, "      end\n");
     try out.appendSlice(allocator, "    end\n");
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_PUT_SOURCE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_PUT_SOURCE_TMP_LOCAL });
 }
 
 pub fn emit_overwrite_release_managed_local(allocator: std.mem.Allocator, name: []const u8, out: *std.ArrayList(u8)) !void {
-    try append_fmt(allocator, out, "    ;; arc-overwrite-release {s}\n", .{name});
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{name});
+    try append_fmt(allocator, out, "    ;; arc-overwrite-release {[name]s}\n", .{ .name = name });
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = name });
     try out.appendSlice(allocator, "    call $__arc_dec\n");
 }
 
@@ -536,7 +536,7 @@ pub fn emit_storage_set_call(allocator: std.mem.Allocator, tokens: []const lexer
     }
 
     try emit_storage_alias_protect(allocator, out, tokens[start_idx].lexeme, target_name);
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{tokens[start_idx].lexeme});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = tokens[start_idx].lexeme });
     if (!try codegen_callbacks.emit_expr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return false;
     if (!try codegen_callbacks.emit_expr(allocator, tokens, value_start, value_end, locals, ctx, "u8", out)) return false;
     try out.appendSlice(allocator, "    call $__storage_set_u8\n");
@@ -553,7 +553,7 @@ pub fn emit_storage_put_one_call(allocator: std.mem.Allocator, tokens: []const l
     }
 
     try emit_storage_alias_protect(allocator, out, source_name, target_name);
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{source_name});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = source_name });
     if (!try codegen_callbacks.emit_expr(allocator, tokens, value_start, value_end, locals, ctx, "u8", out)) return false;
     try out.appendSlice(allocator, "    call $__storage_put_u8\n");
     try emit_storage_alias_release(allocator, out, source_name, target_name);
@@ -564,21 +564,21 @@ pub fn emit_storage_set_managed_call(allocator: std.mem.Allocator, tokens: []con
     try out.appendSlice(allocator, "    ;; storage-set-managed\n");
     try emit_storage_alias_protect(allocator, out, source_name, target_name);
     if (!try codegen_callbacks.emit_expr(allocator, tokens, index_start, index_end, locals, ctx, "usize", out)) return false;
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{source_name});
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_WRITE_INDEX_TMP_LOCAL });
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = source_name });
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_INDEX_TMP_LOCAL });
     try out.appendSlice(allocator, "    i32.const 1\n");
     try out.appendSlice(allocator, "    call $__storage_check_range\n");
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{source_name});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = source_name });
     try out.appendSlice(allocator, "    call $__arc_rc\n");
     try out.appendSlice(allocator, "    i32.const 1\n");
     try out.appendSlice(allocator, "    i32.eq\n");
     try out.appendSlice(allocator, "    if (result i32)\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{source_name});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = source_name });
     try out.appendSlice(allocator, "    else\n");
     try emit_storage_clone_managed_current_len(allocator, out, source_name);
     try out.appendSlice(allocator, "    end\n");
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
     try emit_storage_element_ptr_from_local(allocator, out, STORAGE_OVERWRITE_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, 4);
     try out.appendSlice(allocator, "    i32.load\n");
     try out.appendSlice(allocator, "    ;; storage-managed-overwrite-dec\n");
@@ -587,7 +587,7 @@ pub fn emit_storage_set_managed_call(allocator: std.mem.Allocator, tokens: []con
     if (!try emit_managed_storage_value(allocator, tokens, value_start, value_end, elem_ty, locals, ctx, out)) return false;
     try out.appendSlice(allocator, "    i32.store\n");
     try emit_storage_alias_release(allocator, out, source_name, target_name);
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
     return true;
 }
 
@@ -596,38 +596,38 @@ pub fn emit_storage_put_managed_call(allocator: std.mem.Allocator, tokens: []con
     try emit_storage_alias_protect(allocator, out, source_name, target_name);
     try emit_storage_len_ptr(allocator, out, source_name);
     try out.appendSlice(allocator, "    i32.load\n");
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{source_name});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_WRITE_INDEX_TMP_LOCAL });
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = source_name });
     try out.appendSlice(allocator, "    call $__arc_rc\n");
     try out.appendSlice(allocator, "    i32.const 1\n");
     try out.appendSlice(allocator, "    i32.eq\n");
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_INDEX_TMP_LOCAL });
     try emit_storage_cap_ptr(allocator, out, source_name);
     try out.appendSlice(allocator, "    i32.load\n");
     try out.appendSlice(allocator, "    i32.lt_u\n");
     try out.appendSlice(allocator, "    i32.and\n");
     try out.appendSlice(allocator, "    if (result i32)\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{source_name});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = source_name });
     try out.appendSlice(allocator, "    else\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_INDEX_TMP_LOCAL });
     try out.appendSlice(allocator, "      i32.const 1\n");
     try out.appendSlice(allocator, "      i32.add\n");
-    try append_fmt(allocator, out, "      local.set ${s}\n", .{STORAGE_WRITE_LEN_TMP_LOCAL});
+    try append_fmt(allocator, out, "      local.set ${[name]s}\n", .{ .name = STORAGE_WRITE_LEN_TMP_LOCAL });
     try emit_storage_clone_managed_with_len_local(allocator, out, source_name, STORAGE_WRITE_LEN_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL);
     try out.appendSlice(allocator, "    end\n");
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{STORAGE_WRITE_TARGET_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_OVERWRITE_TMP_LOCAL });
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = STORAGE_WRITE_TARGET_TMP_LOCAL });
     try emit_storage_element_ptr_from_local(allocator, out, STORAGE_WRITE_TARGET_TMP_LOCAL, STORAGE_WRITE_INDEX_TMP_LOCAL, 4);
     if (!try emit_managed_storage_value(allocator, tokens, value_start, value_end, elem_ty, locals, ctx, out)) return false;
     try out.appendSlice(allocator, "    i32.store\n");
     try emit_storage_len_ptr(allocator, out, STORAGE_WRITE_TARGET_TMP_LOCAL);
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_WRITE_INDEX_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_INDEX_TMP_LOCAL });
     try out.appendSlice(allocator, "    i32.const 1\n");
     try out.appendSlice(allocator, "    i32.add\n");
     try out.appendSlice(allocator, "    i32.store\n");
     try emit_storage_alias_release(allocator, out, source_name, target_name);
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_WRITE_TARGET_TMP_LOCAL});
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = STORAGE_WRITE_TARGET_TMP_LOCAL });
     return true;
 }
 

@@ -1,5 +1,5 @@
-use anyhow::{bail, Context, Result};
-use futures::future::{select, Either};
+use anyhow::{Context, Result, bail};
+use futures::future::{Either, select};
 use futures::pin_mut;
 use std::path::Path;
 use std::pin::Pin;

@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
@@ -29,7 +30,7 @@ pub fn emit_component_wat(
     if (!std.mem.eql(u8, plan.descriptor.canonical.async_import_module, locator) or
         !std.mem.eql(u8, plan.descriptor.canonical.async_import_name, "[async-lower][method]descriptor.metadata-hash"))
         return error.UnsupportedP3WasiFilesystemMetadataHashComponent;
-    return allocator.dupe(u8, @embedFile("wasi_filesystem_metadata_hash_component_template.wat"));
+    return generated_text.alloc_block(allocator, 0, @embedFile("wasi_filesystem_metadata_hash_component_template.wat"));
 }
 
 pub fn emit_component_wit(
@@ -39,7 +40,7 @@ pub fn emit_component_wit(
     var registry = try p3_async_manifest.Registry.load(allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(allocator);
     _ = try MetadataHashPlan.analyze(tokens, registry);
-    return allocator.dupe(u8, component_wit);
+    return generated_text.alloc_block(allocator, 0, component_wit);
 }
 
 pub const MetadataHashPlan = struct {
@@ -206,22 +207,27 @@ fn has_empty_start_function(tokens: []const lexer.Token) bool {
 }
 
 const component_wit =
-    "package wasi:filesystem@0.3.0-rc-2025-09-16;\n\n" ++
-    "interface types {\n" ++
-    "  record metadata-hash-value { lower: u64, upper: u64 }\n" ++
-    "  enum error-code { access, already, bad-descriptor, busy, deadlock, quota, exist, file-too-large, illegal-byte-sequence, in-progress, interrupted, invalid, io, is-directory, loop, too-many-links, message-size, name-too-long, no-device, no-entry, no-lock, insufficient-memory, insufficient-space, not-directory, not-empty, not-recoverable, unsupported, no-tty, no-such-device, overflow, not-permitted, pipe, read-only, invalid-seek, text-file-busy, cross-device }\n" ++
-    "  resource descriptor {\n" ++
-    "    metadata-hash: async func() -> result<metadata-hash-value, error-code>;\n" ++
-    "  }\n" ++
-    "}\n\n" ++
-    "interface probe {\n" ++
-    "  use types.{descriptor, metadata-hash-value, error-code};\n" ++
-    "  run: async func(file: own<descriptor>) -> result<metadata-hash-value, error-code>;\n" ++
-    "}\n\n" ++
-    "world metadata-hash-probe {\n" ++
-    "  import types;\n" ++
-    "  export probe;\n" ++
-    "}\n";
+        \\package wasi:filesystem@0.3.0-rc-2025-09-16;
+    \\
+    \\interface types {
+    \\  record metadata-hash-value { lower: u64, upper: u64 }
+    \\  enum error-code { access, already, bad-descriptor, busy, deadlock, quota, exist, file-too-large, illegal-byte-sequence, in-progress, interrupted, invalid, io, is-directory, loop, too-many-links, message-size, name-too-long, no-device, no-entry, no-lock, insufficient-memory, insufficient-space, not-directory, not-empty, not-recoverable, unsupported, no-tty, no-such-device, overflow, not-permitted, pipe, read-only, invalid-seek, text-file-busy, cross-device }
+    \\  resource descriptor {
+    \\    metadata-hash: async func() -> result<metadata-hash-value, error-code>;
+    \\  }
+    \\}
+    \\
+    \\interface probe {
+    \\  use types.{descriptor, metadata-hash-value, error-code};
+    \\  run: async func(file: own<descriptor>) -> result<metadata-hash-value, error-code>;
+    \\}
+    \\
+    \\world metadata-hash-probe {
+    \\  import types;
+    \\  export probe;
+    \\}
+    \\
+    ;
 
 test "metadata-hash source shape admits the bounded direct await" {
     const source = @embedFile("test/compile_ok/516_wasi_filesystem_metadata_hash_component.do");

@@ -1,0 +1,16 @@
+package demo:marshal-record-two-u32-lists-lower@1.0.0;
+
+interface api {
+  record writing {
+    code: u32,
+    first: list<u32>,
+    second: list<u32>,
+  }
+
+  write: func(value: writing);
+}
+
+world probe {
+  import api;
+  export run: func() -> u32;
+}

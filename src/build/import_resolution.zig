@@ -2497,6 +2497,31 @@ test "only WIT-locator host declarations are importable" {
     try std.testing.expectEqual(@as(?DeclKind, null), find_public_decl_kind(env_tokens, "send"));
 }
 
+test "C16-A classic record host root enters the module graph" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", std.testing.allocator);
+    defer std.testing.allocator.free(root);
+    const input_path = try std.fs.path.join(std.testing.allocator, &.{ root, "main.do" });
+    defer std.testing.allocator.free(input_path);
+    const source =
+        \\Writing {
+        \\    code u32
+        \\    label text
+        \\    note text
+        \\}
+        \\write = @host_func("demo:marshal-record-managed-lower-multi/api@1.0.0", "write", (Writing) -> nil)
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    var graph = try check_and_load(std.testing.io, std.testing.allocator, input_path, tokens, "lib");
+    defer graph.deinit();
+    try std.testing.expectEqual(@as(usize, 0), graph.generated_async_lowerings.len);
+}
+
 test "generated WIT schema 2 lowering enters the module graph" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();

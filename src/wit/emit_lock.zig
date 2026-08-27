@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("../build/codegen_text.zig");
 const model = @import("model.zig");
 
 pub fn render(allocator: std.mem.Allocator, binding: model.BindingModel) ![]u8 {
@@ -42,11 +43,7 @@ fn append_package(allocator: std.mem.Allocator, out: *std.ArrayList(u8), package
     try out.appendSlice(allocator, package.namespace);
     try out.append(allocator, ':');
     try out.appendSlice(allocator, package.name);
-    try append_fmt(allocator, out, "@{d}.{d}.{d}", .{
-        package.version.major,
-        package.version.minor,
-        package.version.patch,
-    });
+    try append_fmt(allocator, out, "@{[major]d}.{[minor]d}.{[patch]d}", .{ .major = package.version.major, .minor = package.version.minor, .patch = package.version.patch });
     if (package.version.prerelease.len != 0) {
         try out.append(allocator, '-');
         try out.appendSlice(allocator, package.version.prerelease);
@@ -54,7 +51,5 @@ fn append_package(allocator: std.mem.Allocator, out: *std.ArrayList(u8), package
 }
 
 fn append_fmt(allocator: std.mem.Allocator, out: *std.ArrayList(u8), comptime format: []const u8, args: anytype) !void {
-    const text = try std.fmt.allocPrint(allocator, format, args);
-    defer allocator.free(text);
-    try out.appendSlice(allocator, text);
+    try generated_text.append_fmt(allocator, out, format, args);
 }

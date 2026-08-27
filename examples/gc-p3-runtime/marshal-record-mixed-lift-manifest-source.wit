@@ -1,0 +1,11 @@
+package demo:marshal-record-mixed-host@1.0.0;
+
+interface api {
+  record reading {
+    code: u32,
+    count: u64,
+    status: s64,
+  }
+
+  read: func() -> reading;
+}

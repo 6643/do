@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
@@ -200,7 +201,7 @@ pub fn emit_component_wat(
     if (!std.mem.eql(u8, shape.record_layout.name, "descriptor-stat") or
         !std.mem.eql(u8, plan.descriptor.canonical.async_import_name, "[async-lower][method]descriptor.stat"))
         return error.UnsupportedP3WasiFilesystemStatComponent;
-    return allocator.dupe(u8, @embedFile("wasi_filesystem_stat_component_template.wat"));
+    return generated_text.alloc_block(allocator, 0, @embedFile("wasi_filesystem_stat_component_template.wat"));
 }
 
 pub fn emit_component_wit(
@@ -210,7 +211,7 @@ pub fn emit_component_wit(
     var registry = try p3_async_manifest.Registry.load(allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(allocator);
     _ = try StatPlan.analyze(tokens, registry);
-    return allocator.dupe(u8, component_wit);
+    return generated_text.alloc_block(allocator, 0, component_wit);
 }
 
 pub fn matches_descriptor(descriptor: p3_async_manifest.Descriptor) bool {
@@ -219,24 +220,29 @@ pub fn matches_descriptor(descriptor: p3_async_manifest.Descriptor) bool {
 }
 
 const component_wit =
-    "package wasi:filesystem@0.3.0-rc-2025-09-16;\n\n" ++
-    "interface types {\n" ++
-    "  use wasi:clocks/wall-clock@0.3.0-rc-2025-09-16.{datetime};\n" ++
-    "  type filesize = u64;\n" ++
-    "  type link-count = u64;\n" ++
-    "  enum descriptor-type { unknown, block-device, character-device, directory, fifo, symbolic-link, regular-file, socket }\n" ++
-    "  record descriptor-stat { %type: descriptor-type, link-count: link-count, size: filesize, data-access-timestamp: option<datetime>, data-modification-timestamp: option<datetime>, status-change-timestamp: option<datetime> }\n" ++
-    "  enum error-code { access, already, bad-descriptor, busy, deadlock, quota, exist, file-too-large, illegal-byte-sequence, in-progress, interrupted, invalid, io, is-directory, loop, too-many-links, message-size, name-too-long, no-device, no-entry, no-lock, insufficient-memory, insufficient-space, not-directory, not-empty, not-recoverable, unsupported, no-tty, no-such-device, overflow, not-permitted, pipe, read-only, invalid-seek, text-file-busy, cross-device }\n" ++
-    "  resource descriptor { stat: async func() -> result<descriptor-stat, error-code>; }\n" ++
-    "}\n\n" ++
-    "interface probe {\n" ++
-    "  use types.{descriptor, descriptor-stat, error-code};\n" ++
-    "  run: async func(file: own<descriptor>) -> result<descriptor-stat, error-code>;\n" ++
-    "}\n\n" ++
-    "world stat-probe {\n" ++
-    "  import types;\n" ++
-    "  export probe;\n" ++
-    "}\n";
+        \\package wasi:filesystem@0.3.0-rc-2025-09-16;
+    \\
+    \\interface types {
+    \\  use wasi:clocks/wall-clock@0.3.0-rc-2025-09-16.{datetime};
+    \\  type filesize = u64;
+    \\  type link-count = u64;
+    \\  enum descriptor-type { unknown, block-device, character-device, directory, fifo, symbolic-link, regular-file, socket }
+    \\  record descriptor-stat { %type: descriptor-type, link-count: link-count, size: filesize, data-access-timestamp: option<datetime>, data-modification-timestamp: option<datetime>, status-change-timestamp: option<datetime> }
+    \\  enum error-code { access, already, bad-descriptor, busy, deadlock, quota, exist, file-too-large, illegal-byte-sequence, in-progress, interrupted, invalid, io, is-directory, loop, too-many-links, message-size, name-too-long, no-device, no-entry, no-lock, insufficient-memory, insufficient-space, not-directory, not-empty, not-recoverable, unsupported, no-tty, no-such-device, overflow, not-permitted, pipe, read-only, invalid-seek, text-file-busy, cross-device }
+    \\  resource descriptor { stat: async func() -> result<descriptor-stat, error-code>; }
+    \\}
+    \\
+    \\interface probe {
+    \\  use types.{descriptor, descriptor-stat, error-code};
+    \\  run: async func(file: own<descriptor>) -> result<descriptor-stat, error-code>;
+    \\}
+    \\
+    \\world stat-probe {
+    \\  import types;
+    \\  export probe;
+    \\}
+    \\
+    ;
 
 test "descriptor.stat planner admits the exact direct-await contract" {
     const source = @embedFile("test/compile_ok/498_wasi_filesystem_stat_component.do");

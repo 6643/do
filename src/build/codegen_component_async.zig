@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const imports = @import("imports.zig");
 const module_graph_types = @import("module_graph.zig");
 const lexer = @import("lexer.zig");
@@ -372,7 +373,7 @@ fn emit_generic_async_component_wat(
 
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
-    try out.appendSlice(allocator, generic_async_component_wat);
+    try generated_text.append_block(allocator, &out, 0, generic_async_component_wat);
     try wat_component_metadata.emit_async_component_contract(allocator, &out, .{
         .export_name = plan.root_name,
         .host_locator = plan.host_locator,
@@ -385,7 +386,7 @@ fn emit_generic_async_runtime_component_wat(
     allocator: std.mem.Allocator,
     plan: component_async_plan.GenericAsyncComponentPlan,
 ) ![]u8 {
-    var wat = try allocator.dupe(u8, generic_async_runtime_component_wat);
+    var wat = try generated_text.alloc_block(allocator, 0, generic_async_runtime_component_wat);
     errdefer allocator.free(wat);
     wat = try replace_all(allocator, wat, "__ASYNC_IMPORT_MODULE__", plan.async_import_module);
     wat = try replace_all(allocator, wat, "__ASYNC_IMPORT_NAME__", plan.async_import_name);
@@ -400,7 +401,7 @@ fn emit_generic_async_component_wit(
     var plan = try component_async_plan.analyze_generic_async_component(allocator, tokens, module_graph);
     defer plan.deinit(allocator);
     if (plan.source_mode == .descriptor_async) {
-        return allocator.dupe(u8,
+    return generated_text.alloc_block(allocator, 0,
             \\package do:generic-async-runtime-probe@0.1.0;
             \\
             \\interface host {
@@ -414,7 +415,7 @@ fn emit_generic_async_component_wit(
             \\
         );
     }
-    return allocator.dupe(u8,
+    return generated_text.alloc_block(allocator, 0,
         \\package do:generic-async-probe@0.1.0;
         \\
         \\interface host {

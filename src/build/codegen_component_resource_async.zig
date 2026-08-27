@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
@@ -38,11 +39,11 @@ pub fn emit_component_wit(allocator: std.mem.Allocator, tokens: []const lexer.To
     var plan = component_async_plan.ComponentAsyncFunctionPlan.analyze(allocator, tokens, registry) catch return error.UnsupportedP3AsyncResourceComponent;
     defer plan.deinit(allocator);
     const descriptor = try require_probe_shape(tokens, &plan);
-    if (plan.terminal == .cancel) return allocator.dupe(u8, if (descriptor_matches_owned_error_probe(descriptor))
+    if (plan.terminal == .cancel) return generated_text.alloc_block(allocator, 0, if (descriptor_matches_owned_error_probe(descriptor))
         resource_owned_error_cancel_component_wit
     else
         resource_async_cancel_component_wit);
-    return allocator.dupe(u8, if (descriptor_matches_owned_error_probe(descriptor))
+    return generated_text.alloc_block(allocator, 0, if (descriptor_matches_owned_error_probe(descriptor))
         resource_owned_error_component_wit
     else
         resource_async_component_wit);
@@ -142,20 +143,20 @@ fn emit_resource_async_core_wat(allocator: std.mem.Allocator, descriptor: p3_asy
     try append_canonical_buffer_metadata(allocator, &gc_frame_runtime);
     try gc_async_frame.emit_frame_table_allocator_with_bytes(allocator, &gc_frame_runtime, layout.size);
 
-    const async_import = try std.fmt.allocPrint(
+    const async_import = try generated_text.alloc_fmt(
         allocator,
-        "(import \"{s}\" \"{s}\"",
-        .{ descriptor.canonical.async_import_module, descriptor.canonical.async_import_name },
+        "(import \"{[module]s}\" \"{[name]s}\"",
+        .{ .module = descriptor.canonical.async_import_module, .name = descriptor.canonical.async_import_name },
     );
     defer allocator.free(async_import);
-    var wat = try allocator.dupe(u8, resource_async_core_wat);
+    var wat = try generated_text.alloc_block(allocator, 0, resource_async_core_wat);
     wat = try replace_and_free(allocator, wat, "[gc-frame-runtime]", gc_frame_runtime.items);
     wat = try replace_and_free(allocator, wat, "(import \"do:resource-probe/http@0.1.0\" \"[async-lower]send\"", async_import);
     const error_drop_import = if (descriptor_matches_owned_error_probe(descriptor))
-        try std.fmt.allocPrint(
+        try generated_text.alloc_fmt(
             allocator,
-            "  (import \"{s}\" \"[resource-drop]error-resource\" (func $drop-error-resource (type $resource-drop)))\n",
-            .{descriptor.canonical.async_import_module},
+            "  (import \"{[module]s}\" \"[resource-drop]error-resource\" (func $drop-error-resource (type $resource-drop)))\n",
+            .{ .module = descriptor.canonical.async_import_module },
         )
     else
         try allocator.dupe(u8, "");
@@ -171,22 +172,22 @@ fn emit_resource_async_core_wat(allocator: std.mem.Allocator, descriptor: p3_asy
 }
 
 fn emit_resource_async_cancel_core_wat(allocator: std.mem.Allocator, descriptor: p3_async_manifest.Descriptor) ![]u8 {
-    const async_import = try std.fmt.allocPrint(
+    const async_import = try generated_text.alloc_fmt(
         allocator,
-        "(import \"{s}\" \"{s}\"",
-        .{ descriptor.canonical.async_import_module, descriptor.canonical.async_import_name },
+        "(import \"{[module]s}\" \"{[name]s}\"",
+        .{ .module = descriptor.canonical.async_import_module, .name = descriptor.canonical.async_import_name },
     );
     defer allocator.free(async_import);
     const error_drop_import = if (descriptor_matches_owned_error_probe(descriptor))
-        try std.fmt.allocPrint(
+        try generated_text.alloc_fmt(
             allocator,
-            "  (import \"{s}\" \"[resource-drop]error-resource\" (func $drop-error-resource (type $resource-drop)))\n",
-            .{descriptor.canonical.async_import_module},
+            "  (import \"{[module]s}\" \"[resource-drop]error-resource\" (func $drop-error-resource (type $resource-drop)))\n",
+            .{ .module = descriptor.canonical.async_import_module },
         )
     else
         try allocator.dupe(u8, "");
     defer allocator.free(error_drop_import);
-    var wat = try allocator.dupe(u8, resource_async_cancel_core_wat);
+    var wat = try generated_text.alloc_block(allocator, 0, resource_async_cancel_core_wat);
     wat = try replace_and_free(allocator, wat, "[resource-owned-error-cancel-drop-import]", error_drop_import);
     wat = try replace_and_free(allocator, wat, "(import \"do:resource-probe/http@0.1.0\" \"[async-lower]send\"", async_import);
     return replace_and_free(allocator, wat, "do:resource-probe/http@0.1.0", descriptor.canonical.async_import_module);
@@ -194,7 +195,7 @@ fn emit_resource_async_cancel_core_wat(allocator: std.mem.Allocator, descriptor:
 
 fn append_canonical_buffer_metadata(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
     const bytes = try async_byte_budget.bytes_for_canonical_buffer(0, resource_result_buffer_slot_bytes);
-    const metadata = try std.fmt.allocPrint(allocator, "  ;; [canonical-buffer-bytes] {d}\n", .{bytes});
+    const metadata = try generated_text.alloc_fmt(allocator, "  ;; [canonical-buffer-bytes] {[bytes]d}\n", .{ .bytes = bytes });
     defer allocator.free(metadata);
     try out.appendSlice(allocator, metadata);
 }

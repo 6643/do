@@ -25,16 +25,16 @@ pub fn emit_replace_managed_local_from_tmp(
     name: []const u8,
     out: *std.ArrayList(u8),
 ) !void {
-    try append_fmt(allocator, out, "    ;; arc-overwrite-release {s}\n", .{name});
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{name});
+    try append_fmt(allocator, out, "    ;; arc-overwrite-release {[name]s}\n", .{ .name = name });
+    try append_fmt(allocator, out, "    local.get ${[STORAGE_OVERWRITE_TMP_LOCAL]s}\n", .{ .STORAGE_OVERWRITE_TMP_LOCAL = STORAGE_OVERWRITE_TMP_LOCAL });
+    try append_fmt(allocator, out, "    local.get ${[name]s}\n", .{ .name = name });
     try out.appendSlice(allocator, "    i32.ne\n");
     try out.appendSlice(allocator, "    if\n");
-    try append_fmt(allocator, out, "      local.get ${s}\n", .{name});
+    try append_fmt(allocator, out, "      local.get ${[name]s}\n", .{ .name = name });
     try out.appendSlice(allocator, "      call $__arc_dec\n");
     try out.appendSlice(allocator, "    end\n");
-    try append_fmt(allocator, out, "    local.get ${s}\n", .{STORAGE_OVERWRITE_TMP_LOCAL});
-    try append_fmt(allocator, out, "    local.set ${s}\n", .{name});
+    try append_fmt(allocator, out, "    local.get ${[STORAGE_OVERWRITE_TMP_LOCAL]s}\n", .{ .STORAGE_OVERWRITE_TMP_LOCAL = STORAGE_OVERWRITE_TMP_LOCAL });
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = name });
 }
 
 pub fn emit_release_managed_locals(allocator: std.mem.Allocator, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) !void {
@@ -148,11 +148,11 @@ pub fn build_block_ownership_plan(allocator: std.mem.Allocator, locals: *const L
 
 pub fn emit_ownership_release_plan(allocator: std.mem.Allocator, release_plan: ownership.ExitPlan, out: *std.ArrayList(u8)) !void {
     for (release_plan.release_steps) |step| {
-        try append_fmt(allocator, out, "    ;; arc-release-local {s}\n", .{step.local_name});
-        try append_fmt(allocator, out, "    local.get ${s}\n", .{step.local_name});
+        try append_fmt(allocator, out, "    ;; arc-release-local {[local_name]s}\n", .{ .local_name = step.local_name });
+        try append_fmt(allocator, out, "    local.get ${[local_name]s}\n", .{ .local_name = step.local_name });
         try out.appendSlice(allocator, "    call $__arc_dec\n");
         if (!step.clear_after_release) continue;
         try out.appendSlice(allocator, "    i32.const 0\n");
-        try append_fmt(allocator, out, "    local.set ${s}\n", .{step.local_name});
+        try append_fmt(allocator, out, "    local.set ${[local_name]s}\n", .{ .local_name = step.local_name });
     }
 }

@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const call_plan = @import("codegen_component_async_call_plan.zig");
 const component_abi = @import("codegen_component_abi_plan.zig");
 const component_resources = @import("codegen_component_resource_plan.zig");
@@ -14,7 +15,7 @@ pub fn emit_component_wat(
         inline_async_call_component_wat
     else
         async_call_component_wat;
-    var wat = try allocator.dupe(u8, template);
+    var wat = try generated_text.alloc_block(allocator, 0, template);
     errdefer allocator.free(wat);
     wat = try replace_all(allocator, wat, "__ASYNC_IMPORT_MODULE__", plan.async_import_module);
     wat = try replace_all(allocator, wat, "__ASYNC_IMPORT_NAME__", plan.async_import_name);
@@ -23,65 +24,128 @@ pub fn emit_component_wat(
     wat = try replace_all(allocator, wat, "__HELPER_ARGUMENT_PARAM__", if (plan.argument_value != null) " (param $value i32)" else "");
 
     const argument_store = if (plan.argument_value != null)
-        "    ;; [guest-async-arg-store]\n    local.get $frame\n    i32.const 12\n    i32.add\n    local.get $value\n    i32.store\n"
+        try generated_text.alloc_block(allocator, 4,
+            \\    ;; [guest-async-arg-store]
+            \\    local.get $frame
+            \\    i32.const 12
+            \\    i32.add
+            \\    local.get $value
+            \\    i32.store
+            \\
+        )
     else
-        "";
+        try allocator.dupe(u8, "");
+    defer allocator.free(argument_store);
     wat = try replace_all(allocator, wat, "__ARGUMENT_STORE__", argument_store);
 
     const argument_load = if (plan.argument_value != null)
-        "    ;; [guest-async-arg-load]\n    local.get $frame\n    i32.const 12\n    i32.add\n    i32.load\n    drop\n"
+        try generated_text.alloc_block(allocator, 4,
+            \\    ;; [guest-async-arg-load]
+            \\    local.get $frame
+            \\    i32.const 12
+            \\    i32.add
+            \\    i32.load
+            \\    drop
+            \\
+        )
     else
-        "";
+        try allocator.dupe(u8, "");
+    defer allocator.free(argument_load);
     wat = try replace_all(allocator, wat, "__ARGUMENT_LOAD__", argument_load);
 
     const argument_value = if (plan.argument_value) |value|
-        try std.fmt.allocPrint(allocator, "    i32.const {d}\n", .{value})
+        try generated_text.alloc_fmt(allocator, "    i32.const {[value]d}\n", .{ .value = value })
     else
         try allocator.dupe(u8, "");
     defer allocator.free(argument_value);
     wat = try replace_all(allocator, wat, "__ROOT_ARGUMENT__", argument_value);
 
     const inline_argument_value = if (plan.inline_argument_value) |value|
-        try std.fmt.allocPrint(allocator, "    i32.const {d}\n", .{value})
+        try generated_text.alloc_fmt(allocator, "    i32.const {[value]d}\n", .{ .value = value })
     else
         try allocator.dupe(u8, "");
     defer allocator.free(inline_argument_value);
 
     const child_argument_value = if (plan.argument_value) |value|
-        try std.fmt.allocPrint(allocator, "    i32.const {d}\n", .{value})
+        try generated_text.alloc_fmt(allocator, "    i32.const {[value]d}\n", .{ .value = value })
     else
         try allocator.dupe(u8, "");
     defer allocator.free(child_argument_value);
 
     const inline_argument_store = if (plan.inline_argument_value != null)
-        "    ;; [guest-inline-arg-store]\n    local.get $frame\n    i32.const 12\n    i32.add\n__INLINE_ARGUMENT__    i32.store\n"
+        try generated_text.alloc_block(allocator, 0,
+            \\    ;; [guest-inline-arg-store]
+            \\    local.get $frame
+            \\    i32.const 12
+            \\    i32.add
+            \\__INLINE_ARGUMENT__    i32.store
+            \\
+        )
     else
-        "";
+        try allocator.dupe(u8, "");
+    defer allocator.free(inline_argument_store);
     wat = try replace_all(allocator, wat, "__INLINE_ARGUMENT_STORE__", inline_argument_store);
 
     const inline_argument_load = if (plan.inline_argument_value != null)
-        "    ;; [guest-inline-arg-load]\n    local.get $frame\n    i32.const 12\n    i32.add\n    i32.load\n    drop\n"
+        try generated_text.alloc_block(allocator, 4,
+            \\    ;; [guest-inline-arg-load]
+            \\    local.get $frame
+            \\    i32.const 12
+            \\    i32.add
+            \\    i32.load
+            \\    drop
+            \\
+        )
     else
-        "";
+        try allocator.dupe(u8, "");
+    defer allocator.free(inline_argument_load);
     wat = try replace_all(allocator, wat, "__INLINE_ARGUMENT_LOAD__", inline_argument_load);
 
     const child_argument_store = if (plan.argument_value != null and plan.inline_helper_call)
-        "    ;; [guest-async-arg-store]\n    local.get $frame\n    i32.const 12\n    i32.add\n__CHILD_ARGUMENT__    i32.store\n"
+        try generated_text.alloc_block(allocator, 0,
+            \\    ;; [guest-async-arg-store]
+            \\    local.get $frame
+            \\    i32.const 12
+            \\    i32.add
+            \\__CHILD_ARGUMENT__    i32.store
+            \\
+        )
     else
-        "";
+        try allocator.dupe(u8, "");
+    defer allocator.free(child_argument_store);
     wat = try replace_all(allocator, wat, "__CHILD_ARGUMENT_STORE__", child_argument_store);
 
     const child_argument_load = if (plan.argument_value != null and plan.inline_helper_call)
-        "    ;; [guest-async-arg-load]\n    local.get $frame\n    i32.const 12\n    i32.add\n    i32.load\n    drop\n"
+        try generated_text.alloc_block(allocator, 4,
+            \\    ;; [guest-async-arg-load]
+            \\    local.get $frame
+            \\    i32.const 12
+            \\    i32.add
+            \\    i32.load
+            \\    drop
+            \\
+        )
     else
-        "";
+        try allocator.dupe(u8, "");
+    defer allocator.free(child_argument_load);
     wat = try replace_all(allocator, wat, "__CHILD_ARGUMENT_LOAD__", child_argument_load);
     wat = try replace_all(allocator, wat, "__INLINE_ARGUMENT__", inline_argument_value);
     wat = try replace_all(allocator, wat, "__CHILD_ARGUMENT__", child_argument_value);
-    const markers = try std.fmt.allocPrint(
+    const markers = try generated_text.alloc_fmt_block(
         allocator,
-        "(module\n  ;; [gc-root-plan] suspendable-fields={d}\n  ;; [abi-plan] arguments={d} results={d}\n  ;; [resource-terminal] {s}\n",
-        .{ plan.root_plan.fields.len, plan.abi_plan.arguments.len, plan.abi_plan.results.len, terminal_action_name(plan.resource_plan.terminal_action) },
+        0,
+        \\(module
+        \\  ;; [gc-root-plan] suspendable-fields={[root_fields]d}
+        \\  ;; [abi-plan] arguments={[arguments]d} results={[results]d}
+        \\  ;; [resource-terminal] {[terminal]s}
+        \\
+    ,
+        .{
+            .root_fields = plan.root_plan.fields.len,
+            .arguments = plan.abi_plan.arguments.len,
+            .results = plan.abi_plan.results.len,
+            .terminal = terminal_action_name(plan.resource_plan.terminal_action),
+        },
     );
     defer allocator.free(markers);
     wat = try replace_all(allocator, wat, "(module\n", markers);
@@ -97,11 +161,19 @@ fn terminal_action_name(action: component_resources.TerminalAction) []const u8 {
 }
 
 pub fn emit_component_wit(allocator: std.mem.Allocator) ![]u8 {
-    return allocator.dupe(
-        u8,
-        "package do:generic-async-call-probe@0.1.0;\n\n" ++
-            "interface host {\n  work: async func();\n}\n\n" ++
-            "world probe {\n  import host;\n  export run: async func();\n}\n",
+    return generated_text.alloc_block(allocator, 0,
+                \\package do:generic-async-call-probe@0.1.0;
+        \\
+        \\interface host {
+        \\  work: async func();
+        \\}
+        \\
+        \\world probe {
+        \\  import host;
+        \\  export run: async func();
+        \\}
+        \\
+        ,
     );
 }
 

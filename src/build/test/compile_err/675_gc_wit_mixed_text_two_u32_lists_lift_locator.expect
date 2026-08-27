@@ -1,0 +1,3 @@
+# build-arg: --gc-wit-marshal
+# build-arg: demo:marshal-record-mixed-text-two-u32-lists-lift/api.read@1.0.0/lift
+GcWitHostLocatorMismatch

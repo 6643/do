@@ -1,0 +1,9 @@
+write = @host_func("demo:marshal-record-managed-lower-multi/api@1.0.0", "other", (Writing) -> nil)
+
+Writing {
+    code u32
+    label text
+    note text
+}
+
+start() {}

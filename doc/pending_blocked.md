@@ -1,6 +1,6 @@
 # 待处理与阻断清单
 
-更新时间: 2026-08-23
+更新时间: 2026-08-26
 基线: 默认回归以 `./src/build/test/run_tests.sh` 最新结果为准
 关系: 总规划 `doc/master_plan.md`; 接手 `doc/start_here.md`; 执行状态 `doc/roadmap_status.md`
 约定: **只记未关闭项**; 完成后从本文件删除或移入「已关闭摘要」, 并同步入口文档与 `CHANGELOG.md`。
@@ -10,6 +10,170 @@
 > managed-memory target。下文 ARC 只保留为当前 transition implementation 的历史
 > 证据, 不改变源码值语义; 后续 runtime work 目标为 GC。Component/WIT resource 的
 > ownership 与 drop 继续是显式 ABI contract, 不由 GC 接管。
+
+### G5c bounded mixed text + two `list<u32>` lower promotion (2026-08-25)
+
+固定 descriptor
+`demo:marshal-record-mixed-text-two-u32-lists-lower/api.write@1.0.0/lower` 已完成
+独立 spec、manifest/WIT source hash、普通同步 `@host_func` default route、
+Component/Rust/Wasmtime host、negative、ARC/GC equivalence 与全量验证。它只准入：
+
+```text
+Writing { code: u32, label: text, first: [u32], second: [u32] }
+```
+
+root 为 28 bytes，字段偏移为 `0/4/12/20`，两个 list capacity 为 `3/2`、stride
+为 `4`，canonical lower ABI 为七个 `i32` words，且无 GC reference 跨边界。三条
+linear span 均在 copy 前做范围校验，host call 一次，按
+`second -> first -> label` exactly once 释放。Host 观察
+`code=7`、`label=hello`、`first=[10,20,5]`、`second=[3,4]`、
+`allocations=3/frees=3`、`write-calls=1`；ARC/GC equivalence 观察 `3/3`
+cleanup 与 `1/1` callback；负例 `666–672` 在 WAT 前拒绝。default GC gate 覆盖
+`86 fixtures`，`run_tests.sh` 为 `pass=1398 fail=0 skip=3`，`zig test main.zig`
+为 `686/686`，residual、semantic-equivalence、ReleaseSmall 和 release smoke
+均通过。
+
+这是固定形状 promotion，不开放通用 aggregate/list、async/resource、ownership
+syntax 或 full G5c cutover；inventory 仍为 `complete_rows=15 pending_rows=15`、
+exit `1`。
+
+### G5c bounded mixed text + two `list<u32>` lift promotion (2026-08-25)
+
+当前 inventory 仍为 `complete_rows=15 pending_rows=15`、exit `1`。mixed text +
+two `list<u32>` lower 已闭合，不重复作为候选；本轮已完成同步
+`Reading { code: u32, label: text, first: [u32], second: [u32] }` lift。独立
+spec/plan 与实现验证；lift 只准入 `Reading { code: u32, label: text, first:
+[u32], second: [u32] }`，result area 为 28 bytes，canonical ABI 为单个 `i32`
+result-area pointer，三条 span 按 `second -> first -> label` exactly once 释放。
+Host 观察 `result=54`、`stats=51`、`read-calls=1`、`allocations=3/frees=3`；
+ARC/GC equivalence 为 `54/54`、`51/51`、`1/1`，负例 `674–681` 在 WAT 前拒绝。
+这是固定形状 promotion，不开放通用 aggregate/list、async/resource、ownership
+syntax 或 full G5c cutover；inventory 仍为 pending。
+
+### G5c residual capability matrix and candidate gate (2026-08-26)
+
+15-row capability matrix 已完成逐行复核，每行只出现一次：
+`host_wit_marshalling` 中的一个 exact descriptor 被选为 candidate，其余 14
+行因通用 aggregate/list、producer、async/resource、ownership 或缺少 ABI/
+cleanup 契约而保持 blocked。候选为：
+
+```text
+demo:marshal-record-mixed-text-byte-u32-lists-lower/api.write@1.0.0/lower
+```
+
+它只接受同步 `@host_func` 与
+`Writing { code: u32, label: text, bytes: [u8], values: [u32] }`，manifest
+source/WIT hash 为
+`sha256:2d966dfc68f27f42ba7ce5f44c471907cf2ebe922a9af24d3cfc810847cce9c3`，
+root 为 28 bytes，canonical lower ABI 为七个 scalar `i32` words，无 GC
+reference 跨边界。当前 host/equivalence/negative 以及 focused、default、
+residual、semantic-equivalence、全量回归、ReleaseSmall、release smoke 门禁
+均已现场通过；host 观察 `allocations=3/frees=3`、`write-calls=1`，等价为
+`3/3` cleanup、`1/1` callback，7 个 drift case 在 WAT 前拒绝。
+
+该候选仍是固定形状 promotion，不关闭 migration row。下一步只做候选收口
+和 release-candidate maintenance，然后重新筛选下一单一同步 descriptor；不
+扩大默认 route，也不开放 `own<T>`、`borrow<T>`、`ref<T>`、通用 async/resource
+或 full GC cutover。
+
+### G5c current batch verification refresh (2026-08-26)
+
+Fresh verification reran the focused marshal module/operation/WAT suites with
+`90/90`, `43/43`, and `66/66` passing. The mixed-text/two-`list<u32>` lower and
+lift host, ARC/GC equivalence, and negative gates all pass with the pinned
+`wasm-tools 1.255.0`; the full regression is `pass=1398 fail=0 skip=3`, Zig is
+`686/686`, the default GC gate covers `86 fixtures`, the residual and semantic
+equivalence gates pass, and ReleaseSmall/release smoke pass. The migration
+inventory intentionally remains `complete_rows=15 pending_rows=15` with exit
+`1`. This refresh changes evidence only; it does not close a migration row or
+open general aggregate/list, async/resource, or ownership syntax.
+
+### Release-candidate maintenance and residual recheck (2026-08-26)
+
+Release-candidate maintenance and the residual recheck are green with explicit
+project-local `TMPDIR` and Zig cache paths. The default `/tmp` tmpfs produced
+`DiskQuota` while writing compiler caches; no source or semantic failure was
+observed. The rerun passed the six-hop Do/Rust gates, focused marshal module/ops/WAT
+`90/90`, `43/43`, `66/66`, full regression `pass=1398 fail=0 skip=3`, Zig
+`686/686`, default GC `86 fixtures`, G5c residual, semantic-equivalence `26 rows;
+0 pending`, ReleaseSmall, and release smoke.
+
+The inventory remains `complete_rows=15 pending_rows=15` with deliberate exit `1`.
+The matrix has one candidate and fourteen blocked rows; the candidate-specific
+mixed-text/byte-u32-list lower host, ARC/GC equivalence, and negative gates pass.
+The matrix table now escapes the union separator as `Unit \| Bytes([u8])`, so its
+15-row decision columns are machine-readable. The candidate is fixed-shape only;
+the next executable work is an independently designed G6.2 bounded producer/resource
+shape. General aggregate/list, arbitrary producer expressions, borrowed/variant
+payloads, seventh-hop/deeper nested resource shapes, public ownership syntax, and
+full GC cutover remain blocked.
+
+### G5c bounded mixed text + `list<u32>` lower promotion (2026-08-25)
+
+The hash-pinned descriptor
+`demo:marshal-record-mixed-text-u32-list-lower/api.write@1.0.0/lower` is
+closed only for the exact synchronous source/WIT pair
+`Writing { code: u32, label: text, payload: [u32] }`. The measured root is
+20 bytes with field offsets `0`, `4`, and `12`; the `list<u32>` child has
+capacity `3`, element size/alignment/stride `4`, and the canonical lower import
+has five `i32` words with no GC reference. The GC lowerer copies the label and
+u32 payload into temporary linear spans, calls the host once, then frees
+payload before label exactly once. Host output is `code=7`, `label=hello`,
+`payload=[10,20,5]`, `allocations=2`, `frees=2`, `write-calls=1`; ARC/GC
+equivalence observes `2/2` cleanup and `1/1` callback. Fixtures 631-638 reject
+async, locator/member, field-order, payload-kind, extra-field, and record-name
+drift before WAT. The default 83-fixture gate, residual three-phase gate, and
+ReleaseSmall/release smoke pass with pinned `wasm-tools 1.255.0`.
+
+This is a fixed-shape promotion, not general record/list lowering. Arbitrary
+aggregates, async/resource lowering, ownership syntax, and full G5c cutover
+remain pending; the migration inventory remains
+`complete_rows=15 pending_rows=15` with exit 1.
+
+### G5c bounded mixed text + `list<u32>` lift promotion (2026-08-25)
+
+The hash-pinned descriptor
+`demo:marshal-record-mixed-text-u32-list-lift/api.read@1.0.0/lift` is closed
+only for the exact synchronous source/WIT pair
+`Reading { code: u32, label: text, payload: [u32] }`. The measured result area
+is 20 bytes with field offsets `0`, `4`, and `12`; the `list<u32>` child has
+capacity `3`, element size/alignment/stride `4`, and the canonical lift import
+has one `i32` result-area pointer with no GC reference. The GC lift copies the
+label into `$do_bytes` and the payload into `$do_u32`, then frees payload before
+label exactly once. Host output is `code=7`, `label=hello`,
+`payload=[10,20,5]`, `result=47`, `stats=34`, `read-calls=1`,
+`allocations=2`, `frees=2`; ARC/GC equivalence observes `47/47`, `34/34`,
+and `1/1`. Fixtures `640–647` reject async, locator/member, field-order,
+payload-kind, extra-field, and record-name drift before WAT. The default gate
+covers `83 fixtures`, and the residual, ReleaseSmall, and release-smoke gates
+pass with pinned `wasm-tools 1.255.0`.
+
+This is a fixed-shape promotion, not general mixed record/list lift. Arbitrary
+aggregates, other list element types, async/resource lowering, ownership syntax,
+and full G5c cutover remain pending; the migration inventory remains
+`complete_rows=15 pending_rows=15` with exit 1.
+
+### G5c bounded mixed text + byte-list lift promotion (2026-08-25)
+
+The hash-pinned descriptor
+`demo:marshal-record-mixed-text-byte-list-lift/api.read@1.0.0/lift` is closed
+only for the exact synchronous source/WIT pair
+`Reading { code: u32, label: text, payload: [u8] }`. The measured result area
+is 20 bytes with field offsets `0`, `4`, and `12`; the `list<u8>` child has
+capacity `4`, element size/alignment/stride `1`, and the canonical lift import
+has one `i32` result-area pointer with no GC reference. The GC lift copies both
+label and payload into `$do_bytes`, then frees payload before label exactly once.
+Host output is `code=7`, `label=hello`, `payload=[10,20,5]`, `result=47`,
+`stats=17`, `read-calls=1`, `allocations=2`, `frees=2`; ARC/GC equivalence
+observes `47/47`, `17/17`, and `1/1`. Fixtures `649–656` reject async,
+locator/member, field-order, payload-kind, extra-field, and record-name drift
+before WAT. The current default gate covers `83 fixtures`, and the residual,
+ReleaseSmall, and release-smoke gates pass with pinned `wasm-tools 1.255.0`.
+
+This is a fixed-shape promotion, not general mixed record/list lift. Arbitrary
+aggregates, other list element types, async/resource lowering, ownership syntax,
+and full G5c cutover remain pending; the migration inventory remains
+`complete_rows=15 pending_rows=15` with exit 1.
 
 ### G5c scalar-list internal route parameterization (2026-08-23)
 
@@ -25,15 +189,46 @@ ownership syntax, and full G5c cutover remain pending; the existing
 
 ### G5c default host/WIT route update (2026-08-23)
 
-普通 `do build` 已接入十一个精确的 manifest-backed synchronous route：C14
+普通 `do build` 已接入固定的一组精确 manifest-backed synchronous route：C14
 four-level scalar-record lift/lower、C15-B/C15-D managed-record lower、
 C16-C/C16-D managed-record lift、bounded mixed scalar-record lower、bounded
 byte-list record lower/lift、bounded `list<u32>` record lower 与 bounded
-`list<u32>` record lift。十一者的 default GC、
+`list<u32>` record lift、bounded mixed scalar-list record lower、bounded mixed
+text/u32-list record lower/lift、bounded mixed text/two-u32-list record lower/lift。
+各 route 的
+default GC、
 canonical ABI 无 GC reference、async/locator/member mismatch 负例、host/
 equivalence 和无 ARC marker gate 已通过。通用 aggregate、async/resource、
-公开 ownership syntax 以及完整 G5c migration 仍是 pending；本节不将十一个
+公开 ownership syntax 以及完整 G5c migration 仍是 pending；本节不将这些
 bounded route 的完成扩大解释为全量 host/WIT cutover。
+
+2026-08-25 route consolidation checkpoint: C14–C20 的 default 与显式
+marshal route 现在共用一次 manifest-backed `LoadedRequest`、descriptor
+registry、owned host-boundary facts 和 measured `SyncValuePlan`。已登记 locator
+但 member 漂移在 WAT 前返回 `GcWitHostMemberMismatch`；未知 locator 仍保持
+既有 ARC fallback。新鲜 focused host/equivalence/negative 矩阵与 residual gate、
+完整回归 `pass=1363 fail=0 skip=3`、`zig test main.zig` `668/668`、default
+`83 fixtures`、ReleaseSmall/release-smoke 均通过。该 checkpoint 只收敛重复解析、
+span guard、canonical ABI 与 exactly-once cleanup 的 fail-closed 边界，不提升通用
+aggregate/list、async/resource 或 ownership；所有 15 个 migration rows 仍按
+inventory 保持 pending。
+
+### G5c private mixed scalar-list record lower descriptor status (2026-08-23)
+
+The hash-pinned descriptor
+`demo:marshal-record-mixed-scalar-list-lower/api.write@1.0.0/lower` is closed
+for the exact source/WIT pair
+`Writing { code: u32, label: text, payload: [u8] }`. Its measured root is
+20 bytes with field offsets `0`, `4`, and `12`; the canonical lower import has
+five `i32` words in field order: `code`, `label.ptr`, `label.len`,
+`payload.ptr`, and `payload.len`. The GC lowerer copies both managed spans to
+linear memory, calls the host once, and frees payload then label exactly once.
+The host and ARC/GC equivalence gates observe `code=7`, `label=hello`,
+`payload=[10,20,5]`, two allocations, and two frees. Fixtures 623-629 reject
+async, locator, member, field-order, payload-element, and extra-field drift
+before WAT. General record/list lowering, lift, async/resource lowering,
+ownership syntax, and full G5c cutover remain pending; the migration inventory
+remains `complete_rows=15 pending_rows=15` with exit 1.
 
 ### G5c private byte-list record lift descriptor status (2026-08-23)
 
@@ -125,7 +320,7 @@ only. Public `own<T>`/`borrow<T>`/`ref<T>` syntax remains outside this phase.
 
 | ID | 问题 | 证据 / 停止点 | 恢复条件 |
 | --- | --- | --- | --- |
-| **G6.2** | `descriptor.read-directory` 及 record-stream 通用能力 | generic consumer 已覆盖注册的非 filesystem record streams；bounded producer、StreamMirror、private Result cancellation、HTTP payload cancellation、resource-list stream、私有 `do:variant-resource-stream-canonical@0.1.0`、动态 count `0..3` 的私有 `do:g6-2-c-min-dynamic-producer@0.1.0`、固定两批 `[111,222]`/`[333]` 的私有 `do:g6-2-batched-list-producer@0.1.0`，以及私有 `do:g6-2-scalar-list-producer@0.1.0` `stream<list<u32>>` producer 的 compiler-generated Component/Rust/Wasmtime gate 均已通过。scalar producer 固定 `ptr=64/len=68/stride=4/max=3`、stream capacity `1`、count `0..3`/invalid `4`，并保留 pending、sink error、early drop、转移前/后 cancellation、exactly-once list cleanup、empty `ResourceTable` 与 fail-closed 负例。D2 另关闭了私有 `descriptor.get-type`、`descriptor.sync`、`descriptor.get-flags`、`descriptor.stat`、`descriptor.sync-data`、`descriptor.metadata-hash`、`descriptor.metadata-hash-at`、`descriptor.stat-at`、`descriptor.open-at` 与 `descriptor.set-size` 十个有界方法；十者均固定 upstream WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`，并分别通过独立 ABI、compiler admission 和 ready/pending/error/cancel cleanup gate；`sync-data`、`metadata-hash`、`metadata-hash-at`、`stat-at`、`open-at` 与 `set-size` 另通过 repeat 与 Store-disposal early-drop 边界。仍缺一般 async helper/producer lease、任意 producer 表达式、通用 list、通用 borrowed/variant lowering、第六跳 forwarding、第七层或更一般 nested resource 字段、payload-bearing completion error 的更广形状、任意其它 filesystem async method 与通用 resource cancellation。Pinned `wasm-tools 1.255.0` 对含 `borrow<T>` 的 stream record 在 Component embed 阶段明确拒绝 | 保持所有 private bounded descriptor 的精确边界；扩展其他 producer/resource shape 前必须另立 design、probe 与 gate |
+| **G6.2** | `descriptor.read-directory` 及 record-stream 通用能力 | generic consumer 已覆盖注册的非 filesystem record streams；bounded producer、StreamMirror、private Result cancellation、HTTP payload cancellation、resource-list stream、私有 `do:variant-resource-stream-canonical@0.1.0`、动态 count `0..3` 的私有 `do:g6-2-c-min-dynamic-producer@0.1.0`、固定两批 `[111,222]`/`[333]` 的私有 `do:g6-2-batched-list-producer@0.1.0`，以及私有 `do:g6-2-scalar-list-producer@0.1.0` `stream<list<u32>>` producer 的 compiler-generated Component/Rust/Wasmtime gate 均已通过。scalar producer 固定 `ptr=64/len=68/stride=4/max=3`、stream capacity `1`、count `0..3`/invalid `4`，并保留 pending、sink error、early drop、转移前/后 cancellation、exactly-once list cleanup、empty `ResourceTable` 与 fail-closed 负例。D2 另关闭了私有 `descriptor.get-type`、`descriptor.sync`、`descriptor.get-flags`、`descriptor.stat`、`descriptor.sync-data`、`descriptor.metadata-hash`、`descriptor.metadata-hash-at`、`descriptor.stat-at`、`descriptor.open-at` 与 `descriptor.set-size` 十个有界方法；十者均固定 upstream WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`，并分别通过独立 ABI、compiler admission 和 ready/pending/error/cancel cleanup gate；`sync-data`、`metadata-hash`、`metadata-hash-at`、`stat-at`、`open-at` 与 `set-size` 另通过 repeat 与 Store-disposal early-drop 边界。仍缺一般 async helper/producer lease、任意 producer 表达式、通用 list、通用 borrowed/variant lowering、第七跳 forwarding、第七层或更一般 nested resource 字段、payload-bearing completion error 的更广形状、任意其它 filesystem async method 与通用 resource cancellation。Pinned `wasm-tools 1.255.0` 对含 `borrow<T>` 的 stream record 在 Component embed 阶段明确拒绝 | 保持所有 private bounded descriptor 的精确边界；扩展其他 producer/resource shape 前必须另立 design、probe 与 gate |
 | **06.2** | 历史总项 | 已拆到 G2–G6；通用 consumer slice 已关闭，剩余边界由 **G6.2** 的后续 gates 承接 | 同上 |
 
 **D2 general filesystem/HTTP recovery boundary (2026-08-11):**
@@ -467,7 +662,7 @@ values, root hard-cancel, general filesystem/HTTP async, and public
 
 本轮执行复核（2026-08-07）重新运行了六跳 forwarding/任意 producer 边界、borrowed stream rejection 与 `p3_async_manifest`（74/74）；三个 gate 均保持预期拒绝/通过。同步确认了 descriptor-bounded StreamMirror 六模式、默认 Bun 回归 `pass=1116 fail=0 skip=3`、WASM 回归 `pass=1118 fail=0 skip=3`（WASM smoke `6/6`）和 ReleaseSmall smoke 通过；nested lowering、borrowed rejection、G6.2 boundary 与完整 compiler/Wasm 矩阵均保持绿色，未新增 descriptor 或 lowering。
 
-**规则**: 固定一至三条目 read-directory slice、generic consumer slice、multi-owned、多个顶层 nested-owned resource path 以及一层/两层/三层/四层/五层/六层 nested-owned resource consumer slice、注册的单读 `stream<list<resource-entry>>` private slice、bounded scalar producer slice、受限（最多五跳 forwarding）helper-mediated producer-lease slice、固定/参数化 `u64` countdown producer slice、参数化 helper producer slice及其五跳 forwarding、三种 typed 参数受限重排形状与 branch-selected terminal slice 均已可用；无对应 producer-lease/resource gate 时，不绕过上述边界扩 WASI async/stream codegen。
+**规则**: 固定一至三条目 read-directory slice、generic consumer slice、multi-owned、多个顶层 nested-owned resource path 以及一层/两层/三层/四层/五层/六层 nested-owned resource consumer slice、注册的单读 `stream<list<resource-entry>>` private slice、bounded scalar producer slice、受限（最多六跳 forwarding）helper-mediated producer-lease slice、固定/参数化 `u64` countdown producer slice、参数化 helper producer slice及其六跳 forwarding、三种 typed 参数受限重排形状与 branch-selected terminal slice 均已可用；无对应 producer-lease/resource gate 时，不绕过上述边界扩 WASI async/stream codegen。
 
 **G6.2 HTTP payload-error checkpoint (registered slice green; broader support pending):**
 注册的 `internal-error(option<string>)` 与
@@ -607,6 +802,13 @@ slice 解释为 G5c 或 full GC cutover。
   `ResourceTable`; fixtures `483`-`489` reject descriptor/element/count/sink/body/
   payload/result drift before WAT. Generic `list<T>`, arbitrary producer
   expressions, borrowed async payloads, and public ownership remain pending.
+- **G6.2 parameterized six-hop forwarding**: the existing
+  `StreamWriter<u8>` descriptor now admits exactly six static helper transfers.
+  The analyzer, generated Component, seventh-hop negative, and Rust/Wasmtime
+  `count=0/1/3`, `value=90`, pending/ready/error/early-drop/cancel matrix pass
+  with one callback, one stream drop, empty `ResourceTable`, and exactly-once
+  cleanup. This does not admit arbitrary producers, seventh-hop forwarding,
+  borrowed/list/variant payloads, or general resource lowering.
 - **G6.2 direct owned-record producer**: the private
   `do:g6-2-owned-record-producer@0.1.0` descriptor admits only
   `StreamWriter<ResourceEntry>` with one owned `Ticket` field. The four-byte

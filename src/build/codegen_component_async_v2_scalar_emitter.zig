@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const generated_scalar_plan = @import("codegen_generated_async_scalar_plan.zig");
 const abi_layout = @import("wit_abi_layout.zig");
 
@@ -20,14 +21,14 @@ pub fn emit_scalar_i64(
         return error.InvalidGenericAbiV2ScalarLayout;
     }
 
-    var wat = try allocator.dupe(u8, @embedFile("generated_async_scalar_i64_v2_template.wat"));
+    var wat = try generated_text.alloc_block(allocator, 0, @embedFile("generated_async_scalar_i64_v2_template.wat"));
     errdefer allocator.free(wat);
-    var offset_buf: [32]u8 = undefined;
-    var size_buf: [32]u8 = undefined;
-    var alignment_buf: [32]u8 = undefined;
-    const offset = try std.fmt.bufPrint(&offset_buf, "{}", .{measured.offset});
-    const size = try std.fmt.bufPrint(&size_buf, "{}", .{measured.byte_size});
-    const alignment = try std.fmt.bufPrint(&alignment_buf, "{}", .{measured.alignment});
+    const offset = try generated_text.alloc_fmt(allocator, "{[value]d}", .{ .value = measured.offset });
+    defer allocator.free(offset);
+    const size = try generated_text.alloc_fmt(allocator, "{[value]d}", .{ .value = measured.byte_size });
+    defer allocator.free(size);
+    const alignment = try generated_text.alloc_fmt(allocator, "{[value]d}", .{ .value = measured.alignment });
+    defer allocator.free(alignment);
 
     wat = try replace_required(allocator, wat, "__V2_ASYNC_IMPORT_MODULE__", plan.async_import_module);
     wat = try replace_required(allocator, wat, "__V2_ASYNC_IMPORT_NAME__", plan.async_import_name);

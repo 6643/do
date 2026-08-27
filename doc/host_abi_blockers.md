@@ -2114,7 +2114,7 @@ an external WIT error payload.
 **Writer boundary:** the admitted producer shapes use a descriptor-specific
 writable queue pump and explicit frame-owned cleanup. They are intentionally
 not a general producer language: arbitrary producer expressions, reordered or
-literal helper arguments, a sixth forwarding hop, borrowed/list/variant
+literal helper arguments, a seventh forwarding hop, borrowed/list/variant
 resource fields, and broader filesystem async methods remain rejected. A
 general writable endpoint with unrestricted resumable reader-to-writer
 composition is still outside the current gate.
@@ -3608,3 +3608,24 @@ This closes only the two fixed default promotion rows. General aggregates,
 generic async/producer and Stream lowering, async/resource host/WIT paths,
 ownership syntax, and full GC cutover remain pending. The migration inventory
 intentionally remains `complete_rows=15 pending_rows=15` with exit 1.
+
+### G6.2 parameterized six-hop forwarding (2026-08-26)
+
+The bounded parameterized `StreamWriter<u8>` producer now admits exactly six
+static helper forwarding edges for the existing
+`do:stream-probe@0.1.0/write-via-stream` descriptor. The Do fixture keeps the
+same `(writer, count, value)` parameters, exports only `produce`, and uses the
+existing countdown/write/close sequence; no descriptor, WIT member, or public
+syntax was added. The analyzer bound is the single change from five to six;
+arbitrary producer expressions, literal/reordered arguments, loops, borrowed,
+list, and variant payloads remain rejected.
+
+The positive Component gate and the seventh-hop negative pass with pinned
+`wasm-tools 1.255.0`. Rust/Wasmtime covers `count=0/1/3`, `value=90`,
+pending/ready/`Err(pipe)`, early drop, and cancel-after-transfer. Each row
+observes one host callback, one stream drop, expected payload, and an empty
+`ResourceTable`; cancellation reports no successful external effect. The
+canonical boundary remains free of Wasm GC references and cleanup is
+exactly-once. This closes only the sixth-hop bounded capability; general
+producer/resource lowering, seventh-hop forwarding, and full GC cutover remain
+pending.

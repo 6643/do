@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const lexer = @import("lexer.zig");
 const codegen_collect_functions = @import("codegen_collect_functions.zig");
 const codegen_emit_async = @import("codegen_emit_async.zig");
@@ -343,13 +344,21 @@ pub fn emit_resume_dispatch(
     frame: FrameModel,
 ) !void {
     for (frame.resume_states) |state| {
-        const branch = try std.fmt.allocPrint(
+        const branch = try generated_text.alloc_fmt_block(
             allocator,
-            "  local.get $async_state\n  i32.const {d}\n  i32.eq\n  if\n    br $async_resume_{d}\n  end\n",
-            .{ state.id, state.id },
+            2,
+            \\  local.get $async_state
+            \\  i32.const {[state]d}
+            \\  i32.eq
+            \\  if
+            \\    br $async_resume_{[state]d}
+            \\  end
+            \\
+            ,
+            .{ .state = state.id },
         );
         defer allocator.free(branch);
-        try out.appendSlice(allocator, branch);
+        try generated_text.append_block(allocator, out, 2, branch);
     }
     try out.appendSlice(allocator, "  br $async_cleanup\n");
 }

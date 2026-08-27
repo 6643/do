@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const lexer = @import("lexer.zig");
 const imports = @import("imports.zig");
 const parser = @import("parser.zig");
@@ -12,12 +13,12 @@ pub fn emit_component_wat(allocator: std.mem.Allocator, program: parser.Program,
     _ = program;
     _ = module_graph;
     if (!matches_probe(tokens)) return error.UnsupportedWasiFilesystemPreopenComponent;
-    return allocator.dupe(u8, preopen_core_wat);
+    return generated_text.alloc_block(allocator, 0, preopen_core_wat);
 }
 
 pub fn emit_component_wit(allocator: std.mem.Allocator, tokens: []const lexer.Token) ![]u8 {
     if (!matches_probe(tokens)) return error.UnsupportedWasiFilesystemPreopenComponent;
-    return allocator.dupe(u8, preopen_component_wit);
+    return generated_text.alloc_block(allocator, 0, preopen_component_wit);
 }
 
 fn matches_probe(tokens: []const lexer.Token) bool {

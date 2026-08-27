@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const manifest = @import("p3_async_manifest.zig");
 const abi_layout = @import("wit_abi_layout.zig");
 const abi_types = @import("wit_abi_types.zig");
@@ -17,7 +18,7 @@ pub fn emit_variant_resource_stream(
         return error.InvalidGenericAbiV2Layout;
     }
 
-    var wat = try allocator.dupe(u8, @embedFile("variant_resource_stream_v2_template.wat"));
+    var wat = try generated_text.alloc_block(allocator, 0, @embedFile("variant_resource_stream_v2_template.wat"));
     errdefer allocator.free(wat);
 
     const probe_module = try probe_module_name(allocator, descriptor.wit.package);
@@ -44,7 +45,10 @@ pub fn emit_variant_resource_stream(
 fn probe_module_name(allocator: std.mem.Allocator, package: []const u8) ![]u8 {
     const at = std.mem.lastIndexOfScalar(u8, package, '@') orelse return invalid_template;
     if (at == 0 or at + 1 >= package.len) return invalid_template;
-    return try std.fmt.allocPrint(allocator, "{s}/probe{s}", .{ package[0..at], package[at..] });
+    return generated_text.alloc_fmt(allocator, "{[prefix]s}/probe{[version]s}", .{
+        .prefix = package[0..at],
+        .version = package[at..],
+    });
 }
 
 fn replace_number(
@@ -53,8 +57,8 @@ fn replace_number(
     needle: []const u8,
     value: u32,
 ) ![]u8 {
-    var buffer: [32]u8 = undefined;
-    const replacement = try std.fmt.bufPrint(&buffer, "{}", .{value});
+    const replacement = try generated_text.alloc_fmt(allocator, "{[value]d}", .{ .value = value });
+    defer allocator.free(replacement);
     return replace_required(allocator, input, needle, replacement);
 }
 

@@ -1,0 +1,3 @@
+# build-arg: --gc-wit-marshal
+# build-arg: demo:marshal-record-nested-lift-deeper/api.read@1.0.0/lift
+UnknownP3AsyncHostDescriptor

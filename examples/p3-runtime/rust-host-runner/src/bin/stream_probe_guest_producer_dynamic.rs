@@ -1,9 +1,12 @@
 use anyhow::{Context, Result, bail};
 use futures::channel::oneshot;
+use futures::future::{Either, select};
+use futures::pin_mut;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context as TaskContext, Poll};
+use std::thread;
 use std::time::Duration;
 use wasmtime::component::{Component, Linker, Source, StreamConsumer, StreamResult};
 use wasmtime::{Config, Engine, Store};
@@ -38,6 +41,7 @@ enum Mode {
     Ready,
     Error,
     Abort,
+    CancelAfterTransfer,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,6 +52,7 @@ enum ProducerShape {
     ParameterizedThreeHop,
     ParameterizedFourHop,
     ParameterizedFiveHop,
+    ParameterizedSixHop,
     BranchTerminal,
 }
 
@@ -60,9 +65,10 @@ impl ProducerShape {
             Some("parameterized-three-hop") => Ok(Self::ParameterizedThreeHop),
             Some("parameterized-four-hop") => Ok(Self::ParameterizedFourHop),
             Some("parameterized-five-hop") => Ok(Self::ParameterizedFiveHop),
+            Some("parameterized-six-hop") => Ok(Self::ParameterizedSixHop),
             Some("branch-terminal") => Ok(Self::BranchTerminal),
             Some(other) => bail!(
-                "unknown producer shape {other}; expected parameterized, parameterized-helper, parameterized-three-hop, parameterized-four-hop, parameterized-five-hop, or branch-terminal"
+                "unknown producer shape {other}; expected parameterized, parameterized-helper, parameterized-three-hop, parameterized-four-hop, parameterized-five-hop, parameterized-six-hop, or branch-terminal"
             ),
         }
     }
@@ -75,6 +81,7 @@ impl ProducerShape {
                 | Self::ParameterizedThreeHop
                 | Self::ParameterizedFourHop
                 | Self::ParameterizedFiveHop
+                | Self::ParameterizedSixHop
                 | Self::BranchTerminal
         )
     }
@@ -87,6 +94,7 @@ impl ProducerShape {
             Self::ParameterizedThreeHop => "parameterized-three-hop",
             Self::ParameterizedFourHop => "parameterized-four-hop",
             Self::ParameterizedFiveHop => "parameterized-five-hop",
+            Self::ParameterizedSixHop => "parameterized-six-hop",
             Self::BranchTerminal => "branch-terminal",
         }
     }
@@ -99,6 +107,7 @@ impl Mode {
             "ready" => Ok(Self::Ready),
             "error" => Ok(Self::Error),
             "abort" => Ok(Self::Abort),
+            "cancel-after-transfer" => Ok(Self::CancelAfterTransfer),
             other => bail!("unknown mode {other}; expected pending, ready, error, or abort"),
         }
     }
@@ -109,6 +118,7 @@ impl Mode {
             Self::Ready => "ready",
             Self::Error => "err:pipe",
             Self::Abort => "abort:pipe",
+            Self::CancelAfterTransfer => "cancel-after-transfer",
         }
     }
 }
@@ -124,6 +134,7 @@ struct Stats {
 struct RecordingConsumer {
     stats: Arc<Mutex<Stats>>,
     dropped: Option<oneshot::Sender<()>>,
+    transferred: Option<oneshot::Sender<()>>,
     expected_items: usize,
     consumed_items: usize,
     pending_once: bool,
@@ -177,6 +188,9 @@ impl StreamConsumer<()> for RecordingConsumer {
             .expect("dynamic producer stats mutex poisoned")
             .items
             .extend_from_slice(&items);
+        if let Some(sender) = consumer.transferred.take() {
+            let _ = sender.send(());
+        }
         if consumer.consumed_items >= consumer.expected_items && !consumer.hold_until_writer_drop {
             Poll::Ready(Ok(StreamResult::Dropped))
         } else {
@@ -204,7 +218,7 @@ fn map_wasmtime<T>(result: wasmtime::Result<T>) -> Result<T> {
 fn main() -> Result<()> {
     let component_path = std::env::args()
         .nth(1)
-        .context("usage: do-p3-stream-probe-guest-producer-dynamic-host-runner <component.wasm> [pending|ready|error|abort] [parameterized|parameterized-helper|parameterized-three-hop|parameterized-four-hop|parameterized-five-hop|branch-terminal]")?;
+        .context("usage: do-p3-stream-probe-guest-producer-dynamic-host-runner <component.wasm> [pending|ready|error|abort|cancel-after-transfer] [parameterized|parameterized-helper|parameterized-three-hop|parameterized-four-hop|parameterized-five-hop|parameterized-six-hop|branch-terminal]")?;
     let mode = Mode::parse(
         &std::env::args()
             .nth(2)
@@ -229,12 +243,18 @@ async fn run(component_path: &Path, mode: Mode, producer: ProducerShape) -> Resu
     let expected_count = Arc::new(Mutex::new(0_usize));
     let host_stats = Arc::clone(&stats);
     let host_expected_count = Arc::clone(&expected_count);
+    let transfer_signal = Arc::new(Mutex::new(None::<oneshot::Sender<()>>));
+    let host_transfer_signal = Arc::clone(&transfer_signal);
     let mut sink = map_wasmtime(linker.instance(SINK_INSTANCE))?;
     map_wasmtime(sink.func_wrap_concurrent(
         "write-via-stream",
         move |accessor, (reader,): (wasmtime::component::StreamReader<u8>,)| {
             let stats = Arc::clone(&host_stats);
             let (dropped_sender, dropped_receiver) = oneshot::channel();
+            let transferred_sender = host_transfer_signal
+                .lock()
+                .expect("dynamic transfer signal mutex poisoned")
+                .take();
             stats
                 .lock()
                 .expect("dynamic producer stats mutex poisoned")
@@ -249,6 +269,7 @@ async fn run(component_path: &Path, mode: Mode, producer: ProducerShape) -> Resu
                         RecordingConsumer {
                             stats: Arc::clone(&stats),
                             dropped: Some(dropped_sender),
+                            transferred: transferred_sender,
                             expected_items,
                             consumed_items: 0,
                             pending_once: mode == Mode::Pending,
@@ -256,6 +277,9 @@ async fn run(component_path: &Path, mode: Mode, producer: ProducerShape) -> Resu
                         },
                     )
                 })?;
+                if mode == Mode::CancelAfterTransfer {
+                    futures::future::pending::<()>().await;
+                }
                 dropped_receiver
                     .await
                     .map_err(|_| wasmtime::Error::msg("dynamic stream reader was not dropped"))?;
@@ -282,16 +306,44 @@ async fn run(component_path: &Path, mode: Mode, producer: ProducerShape) -> Resu
         } else {
             90
         };
-        for count in [0_u64, 1, 3] {
-            reset_stats(&stats, &expected_count, count);
-            let result = map_wasmtime(map_wasmtime(
-                store
-                    .run_concurrent(async |accessor| {
-                        produce.call_concurrent(&accessor, (count, value)).await
-                    })
-                    .await,
-            )?)?;
-            verify_run(&stats, mode, producer, count, value, result)?;
+        let counts: &[u64] = if mode == Mode::CancelAfterTransfer {
+            &[3]
+        } else {
+            &[0, 1, 3]
+        };
+        for count in counts {
+            reset_stats(&stats, &expected_count, *count);
+            if mode == Mode::CancelAfterTransfer {
+                let (sender, receiver) = oneshot::channel();
+                *transfer_signal
+                    .lock()
+                    .expect("dynamic transfer signal mutex poisoned") = Some(sender);
+                let call = store.run_concurrent(async |accessor| {
+                    produce.call_concurrent(&accessor, (*count, value)).await
+                });
+                pin_mut!(call);
+                pin_mut!(receiver);
+                match select(call, receiver).await {
+                    Either::Left((result, _)) => {
+                        let result = map_wasmtime(map_wasmtime(result)?)?;
+                        bail!("cancellation completed before transfer result={result:?}");
+                    }
+                    Either::Right((_, pending_call)) => {
+                        drop(pending_call);
+                        thread::sleep(Duration::from_millis(25));
+                    }
+                }
+                verify_cancel_run(&stats, producer, *count, value)?;
+            } else {
+                let result = map_wasmtime(map_wasmtime(
+                    store
+                        .run_concurrent(async |accessor| {
+                            produce.call_concurrent(&accessor, (*count, value)).await
+                        })
+                        .await,
+                )?)?;
+                verify_run(&stats, mode, producer, *count, value, result)?;
+            }
         }
     } else {
         let produce = map_wasmtime(
@@ -363,6 +415,40 @@ fn verify_run(
         stats.host_calls,
         stats.pending_polls,
         stats.stream_drops,
+    );
+    Ok(())
+}
+
+fn verify_cancel_run(
+    stats: &Arc<Mutex<Stats>>,
+    producer: ProducerShape,
+    count: u64,
+    value: u8,
+) -> Result<()> {
+    let stats = stats.lock().expect("dynamic producer cancellation stats mutex poisoned");
+    let expected = vec![value; count as usize];
+    if stats.items != expected
+        || stats.host_calls != 1
+        || stats.pending_polls != 0
+        || stats.stream_drops != 1
+    {
+        bail!(
+            "dynamic producer cancellation mismatch producer={} count={} items={:?} host-calls={} pending-polls={} stream-drops={}",
+            producer.label(),
+            count,
+            stats.items,
+            stats.host_calls,
+            stats.pending_polls,
+            stats.stream_drops,
+        );
+    }
+    println!(
+        "dynamic producer cancellation passed producer={} count={} items={:?} host-call-count={} pending-polls={} stream-drops=1 result=None",
+        producer.label(),
+        count,
+        stats.items,
+        stats.host_calls,
+        stats.pending_polls,
     );
     Ok(())
 }

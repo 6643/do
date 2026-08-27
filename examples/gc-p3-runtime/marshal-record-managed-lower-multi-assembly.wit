@@ -1,0 +1,16 @@
+package demo:marshal-record-managed-lower-multi@1.0.0;
+
+interface api {
+  record writing {
+    code: u32,
+    label: string,
+    note: string,
+  }
+
+  write: func(value: writing);
+}
+
+world probe {
+  import api;
+  export run: func() -> u32;
+}

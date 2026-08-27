@@ -1,51 +1,37 @@
 Result<T | E> = Ok(T) | Err(E)
 Result<T> = Ok(T) | Err(T)
 
+Option<T> = Some(T) | nil
+
 ByteKind<u8> = ByteSpace(1) | ByteDigit(2) | ByteLetter(3)
 
 Message = Quit | Text([u8]) | Binary([u8]) | TcpAddr(IpSocketAddress)
-Message<nil | [u8] | IpSocketAddress> = Quit(nil) | Text([u8]) | Binary([u8]) | TcpAddr(IpSocketAddress)
 
-@host_func("wasi:clocks")
+// 无载荷
+// 单载荷
+// 多载荷
+E = A | B(i32) | C(i32, i64)
 
-Instant {
-seconds i64
-nanoseconds u32
+// 类型, 值绑定
+ByteKind<u8> = ByteSpace(1) | ByteDigit(2) | ByteLetter(3)
+
+match e{
+A => print("A")
+
 }
 
-now(clock Clock) -> Instant
+• 本阶段计划已完成闭环，新增并验证了固定的 mixed scalar-list record lower route：
 
-```
-Box {
-    has_tag bool
-    age u32
-}
-update(box Box) -> nil {
-    @set(box, .has_tag, false)
-}
+demo:marshal-record-mixed-scalar-list-lower/api.write@1.0.0/lower
 
-start(){
-    b = Box{has_tag = true, age = 18}
-    update(b) // 默认引用传递
-    a = b // 手动显式克隆, 这个时候是有两份的, 不要再隐式了。
-    // 基本类型是值传递, i32/i8/f32/bool/...
-    // 复杂类型是引用传递, struct/array/string/...
-    // 所以暂时不用添加借用和所有权, 这应该是能处理吧？
-    // 这样就能避免多分配内存
-}
+验证结果：
 
-
-
-  @get(value T, path...) -> V
-  @get(target ref<T>, path...) -> nil
-
-  @set(value T, path..., value V) -> T
-  @set(target ref<T>, path..., value V) -> nil
-
-
-
-Box{
-    value ref<u32>
-}
-
-```
+- Zig 单测：625/625
+- 集成回归：1328 pass，0 fail，3 skip
+- ReleaseSmall、release smoke、GC default gate：通过，76 fixtures
+- G5c residual gate：通过
+- 75 个新增 shell 脚本语法检查通过
+- 两个新 Rust runner 定向格式检查通过
+- wasm-tools 1.255.0
+- git diff --check 通过
+- 文档已同步：doc/pending_blocked.md、doc/roadmap_status.md

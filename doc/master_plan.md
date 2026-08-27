@@ -1,7 +1,7 @@
 # do 编译器主计划
 
-状态: v1 子集发布候选已收口; G6 generic consumer 与 bounded nested resource paths 已闭环, D2 私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size` 已闭环, 私有有界 `stream<list<u32>>` producer promotion 已闭环, 剩余 producer/resource residual
-更新时间: 2026-08-11
+状态: v1 子集发布候选已收口; G5c residual capability matrix 已完成且当前 exact candidate 已通过专用与全局门禁; G6 generic consumer 与 bounded nested resource paths 已闭环, D2 私有 descriptor slices 与私有有界 `stream<list<u32>>` producer promotion 已闭环, 剩余 producer/resource residual
+更新时间: 2026-08-26
 
 实时接手入口: `doc/start_here.md`。  
 执行证据与历史勾选不再维护在本文; 需要追溯时查 git 与 `CHANGELOG.md`。
@@ -18,7 +18,7 @@
 - `do check`: lexer/parser/sema/import diagnostics only; 诊断收集在 `src/build/diagnostics.zig`。
 - 阶段 A–F、H 已完成; D 可推进项与 D2.1 已收口; D2 真实本地 file/dir/CLI stream、compiler-generated TCP/UDP socket create/bind/drop loopback smoke 与私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size` async slices 已收口，但总项仍受通用 filesystem async/external HTTP 阻断; G1–G5、G6.4 已完成; **阶段 I (I1+I2) 已关闭**。
 - 架构扁平拆分已落地: `type_name` / `sema_error` / `diagnostics` / `gen_*` 域竖切 / `sema_*` 域竖切 (见 `AGENTS.md`)。
-- 最近回归: `./src/build/test/run_tests.sh` → `pass=1243 fail=0 skip=3`; `RUN_WASM=1 ./src/build/test/run_tests.sh` → `pass=1245 fail=0 skip=3` (WASM smoke `6/6`); ReleaseSmall smoke 与 `cd src && zig test main.zig` (`359/359`) 均通过。
+- 最新文档记录的回归: `./src/build/test/run_tests.sh` → `pass=1398 fail=0 skip=3`; `zig test main.zig` → `686/686`; default GC gate → `86 fixtures`；ReleaseSmall/release smoke 均通过。`RUN_WASM=1` 的最后已核实 checkpoint 为 `pass=1269 fail=0 skip=3`（2026-08-20），不作为当前默认基线；inventory 仍为 `complete_rows=15 pending_rows=15`、预期 exit `1`。
 - G6.2 私有 direct owned-record producer 已通过独立 canonical ABI、Do/Component、Rust/Wasmtime 与 canonical/generated Component 生命周期等价门禁：精确 `stream<resource-entry>`、4-byte `ticket: own<ticket>` record、offset `0`、capacity `1`、WIT hash `6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace`；十模式 valid/invalid cleanup 均闭环。该 Component 等价证据不计入 ARC/GC 语义矩阵；通用 producer/resource 与公开 ownership syntax 仍未开放。
 - D2 `descriptor.sync` 的私有记录固定 upstream WIT hash
   `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`、regular/
@@ -110,7 +110,7 @@
 | D ARC / ownership | done (可推进项) |
 | E 后端 IR / codegen | done |
 | F LSP | done (v1 无 rename) |
-| G WASI / Component | G1–G5、G6.1、G6.2 bounded read-directory slice + generic record-stream consumer + multi-owned/multiple-path/one-/two-/three-/four-/five-/six-level nested-owned resource consumer + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + **private async host scalar-argument compiler promotion** + helper-mediated lease（含五跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized forwarding-helper（含 typed-parameter reorder）+ branch-selected terminal checkpoints + private resource Result error/cancellation + pinned HTTP payload cancellation + private variant-resource-stream checkpoint + record-layout/source-mirror checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private bounded scalar `stream<list<u32>>` producer promotion + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at` slices、G6.3、G6.4 done; G6.2 general producer/resource extensions and general async/D2 methods pending |
+| G WASI / Component | G1–G5、G6.1、G6.2 bounded read-directory slice + generic record-stream consumer + multi-owned/multiple-path/one-/two-/three-/four-/five-/six-level nested-owned resource consumer + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + **private async host scalar-argument compiler promotion** + helper-mediated lease（含六跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized forwarding-helper（含 typed-parameter reorder）+ branch-selected terminal checkpoints + private resource Result error/cancellation + pinned HTTP payload cancellation + private variant-resource-stream checkpoint + record-layout/source-mirror checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private bounded scalar `stream<list<u32>>` producer promotion + **private direct owned-record `stream<resource-entry>` producer lifecycle checkpoint** + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at` slices、G6.3、G6.4 done; G6.2 general producer/resource extensions and general async/D2 methods pending |
 | D2 `descriptor.set-size` | private bounded `(i32,i64,i32)->i32` async method slice closed; fixture `552` and generated Component/Rust/Wasmtime mutation/cancellation matrix green; general filesystem async remains pending |
 | H 发布前治理 | done |
 | I 语言扩展 | **closed** (I1 递归/TCO + I2 Tuple 第一版) |
@@ -126,11 +126,11 @@ I2 已收窄: managed/`text` 叶子、pure-scalar struct 嵌套子槽、以及�
 
 用户说 `go` / `next` 时 (细节见 `doc/pending_blocked.md` §6 与 `doc/start_here.md` §6):
 
-1. 检查发布候选回归、文档漂移或可独立验证的小修。
-2. 维护 colorless async / WIT bindgen 的 bounded gates；`--p3-async-call-component`、`--p3-async-host-arg-component` 与 `--p3-owned-future-component` 都只覆盖各自的一个私有形状。扩展 manifest-to-lowering、Future payload、Stream、resource 或一般 async-call 前，先建立独立 design、pinned ABI probe、负向边界和 Component/Rust/Wasmtime gate。
-3. 维护 D2 真实 host matrix：local filesystem preopen/read-directory、CLI pipe、socket create/bind/drop loopback 与私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at` 已有 gate；保留通用 filesystem async、external HTTP 的明确阻断。
-4. 固定 read-directory、generic consumer、multi-owned/multiple nested paths/one-/two-/three-/four-/five-/six-level nested-owned resource、bounded scalar producer、固定/参数化 `u64` countdown producer、受限（最多五跳 forwarding）helper-mediated lease、branch-selected terminal 与 StreamMirror slices，以及 capability matrix/ownership invariant 复核均已闭环；下一步只能为新的 producer/resource shape 建立独立 design、pinned probe 和 runtime gate，不绕过剩余边界。
-5. D2 外的 deferred codegen/ownership/JSON/LSP 仍需单独授权。
+1. 发布候选维护与文档基线已复核通过（显式项目缓存路径下）；后续只处理新出现的真实发布阻断或文档漂移。
+2. G5c 的 15-row inventory 与 residual matrix 已重新逐行核验；当前仍为 `complete_rows=15 pending_rows=15`，唯一固定 candidate 已完成专用闭环，14 行保持 blocked。
+3. 当前没有第二个满足 admission contract 的同步 exact candidate；不扩大通用 aggregate/list、任意 producer、async/resource 或 ownership，也不从邻近 descriptor 推断通用能力。
+4. G6.2 direct owned-record producer 当前 bounded lifecycle gate 已闭环；下一步仍只能为新的 producer/resource shape 建立独立 design gate，并按 design → manifest/hash/ABI → negative → Component → Rust/Wasmtime ready/pending/error/cancel/drop → ownership invariant 顺序闭环，再考虑 default promotion。
+5. D2 通用 filesystem async/external HTTP 与 deferred codegen/ownership/JSON/LSP 继续保持明确阻断或单独授权，不与本阶段混合。
 
 验收命令:
 

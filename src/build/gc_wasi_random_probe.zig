@@ -4,6 +4,7 @@
 //! the checked-in WASI source, fixed registry signature, canonical import, and
 //! GC-to-linear-memory lift agree for one synchronous operation.
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const marshal = @import("codegen_component_marshal_plan.zig");
 const manifest_route = @import("codegen_component_manifest_route.zig");
 const wasi_registry = @import("codegen_wasi_registry.zig");
@@ -46,14 +47,18 @@ pub fn emit_random_bytes_lift_module(
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
     try out.appendSlice(allocator, base[0 .. base.len - 2]);
-    try out.appendSlice(allocator, "  (func $run (result i32)\n" ++
-        "    (local $bytes (ref null $do_bytes))\n" ++
-        "    call $marshal\n" ++
-        "    local.set $bytes\n" ++
-        "    local.get $bytes\n" ++
-        "    ref.as_non_null\n" ++
-        "    array.len)\n" ++
-        "  (export \"run\" (func $run))\n)\n");
+    try generated_text.append_block(allocator, &out, 0,
+        \\  (func $run (result i32)
+        \\    (local $bytes (ref null $do_bytes))
+        \\    call $marshal
+        \\    local.set $bytes
+        \\    local.get $bytes
+        \\    ref.as_non_null
+        \\    array.len)
+        \\  (export "run" (func $run))
+        \\)
+        \\
+        );
     return out.toOwnedSlice(allocator);
 }
 

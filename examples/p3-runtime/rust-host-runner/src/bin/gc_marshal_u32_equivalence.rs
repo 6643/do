@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use wasmtime::component::{Component, Linker};
 use wasmtime::{Config, Engine, Store};
 

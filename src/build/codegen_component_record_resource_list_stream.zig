@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
@@ -94,18 +95,21 @@ pub fn emit_component_wit(allocator: std.mem.Allocator, tokens: []const lexer.To
 fn emit_wat_for_plan(allocator: std.mem.Allocator, plan: ListResourceStreamPlan) ![]u8 {
     const version_at = std.mem.indexOfScalar(u8, plan.descriptor.wit.package, '@') orelse return error.UnsupportedP3RecordResourceListStreamComponent;
     const package_name = plan.descriptor.wit.package[0..version_at];
+    const template = try generated_text.alloc_block(allocator, 0, canonical_core_wat);
+    defer allocator.free(template);
     return replace_all(
         allocator,
-        canonical_core_wat,
+        template,
         "do:record-resource-list-stream-canonical",
         package_name,
     );
 }
 
 fn emit_wit_for_plan(allocator: std.mem.Allocator, plan: ListResourceStreamPlan) ![]u8 {
-    return std.fmt.allocPrint(
+    return generated_text.alloc_fmt_block(
         allocator,
-        \\package {s};
+        0,
+        \\package {[package]s};
         \\
         \\interface types {{
         \\  enum error-code {{ io }}
@@ -130,14 +134,17 @@ fn emit_wit_for_plan(allocator: std.mem.Allocator, plan: ListResourceStreamPlan)
         \\  run: async func() -> result<_, error-code>;
         \\}}
         \\
-        \\world {s} {{
+        \\world {[world]s} {{
         \\  import types;
         \\  import source;
         \\  export probe;
         \\}}
         \\
     ,
-        .{ plan.descriptor.wit.package, plan.descriptor.wit.world },
+        .{
+            .package = plan.descriptor.wit.package,
+            .world = plan.descriptor.wit.world,
+        },
     );
 }
 

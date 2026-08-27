@@ -18,6 +18,7 @@ pub const Args = struct {
     p3_async_component_v2: bool = false,
     p3_async_v2_scalar_i64_component: bool = false,
     gc_core: bool = false,
+    gc_wit_marshal_descriptor: ?[]const u8 = null,
     p3_wit_output_path: ?[]const u8 = null,
     p3_wit_package_output_path: ?[]const u8 = null,
     host_export: bool = false,
@@ -59,6 +60,7 @@ pub fn parse_build(args: []const []const u8) !Args {
     var p3_async_component_v2 = false;
     var p3_async_v2_scalar_i64_component = false;
     var gc_core = false;
+    var gc_wit_marshal_descriptor: ?[]const u8 = null;
     var p3_wit_output_path: ?[]const u8 = null;
     var p3_wit_package_output_path: ?[]const u8 = null;
     var host_export = false;
@@ -121,6 +123,14 @@ pub fn parse_build(args: []const []const u8) !Args {
             gc_core = true;
             continue;
         }
+        if (std.mem.eql(u8, args[i], "--gc-wit-marshal")) {
+            if (gc_wit_marshal_descriptor != null) return error.DuplicateGcWitMarshal;
+            if (i + 1 >= args.len) return error.MissingGcWitMarshalDescriptor;
+            i += 1;
+            if (std.mem.startsWith(u8, args[i], "-")) return error.MissingGcWitMarshalDescriptor;
+            gc_wit_marshal_descriptor = args[i];
+            continue;
+        }
         if (std.mem.eql(u8, args[i], "--p3-wit-output")) {
             if (i + 1 >= args.len) return error.MissingP3WitOutputPath;
             i += 1;
@@ -155,9 +165,11 @@ pub fn parse_build(args: []const []const u8) !Args {
     }
     const path = input_path orelse return error.MissingInputPath;
     if (host_manifest_path != null and !host_export) return error.HostManifestRequiresHostExport;
-    if ((p3_wait_for_component or p3_resource_probe_component or p3_wasi_filesystem_preopen_component or p3_wasi_filesystem_stat_component or p3_wasi_sockets_create_bind_drop_component or p3_resource_async_component or p3_async_component or p3_async_call_component or p3_async_host_arg_component or p3_owned_future_component or p3_async_component_v2 or p3_async_v2_scalar_i64_component or gc_core) and (component_core or host_export)) return error.UnexpectedCliArg;
-    const special_target_count: u8 = @as(u8, @intFromBool(p3_wait_for_component)) + @as(u8, @intFromBool(p3_resource_probe_component)) + @as(u8, @intFromBool(p3_wasi_filesystem_preopen_component)) + @as(u8, @intFromBool(p3_wasi_filesystem_stat_component)) + @as(u8, @intFromBool(p3_wasi_sockets_create_bind_drop_component)) + @as(u8, @intFromBool(p3_resource_async_component)) + @as(u8, @intFromBool(p3_async_component)) + @as(u8, @intFromBool(p3_async_call_component)) + @as(u8, @intFromBool(p3_async_host_arg_component)) + @as(u8, @intFromBool(p3_owned_future_component)) + @as(u8, @intFromBool(p3_async_component_v2)) + @as(u8, @intFromBool(p3_async_v2_scalar_i64_component)) + @as(u8, @intFromBool(gc_core));
+    const gc_wit_marshal = gc_wit_marshal_descriptor != null;
+    if ((p3_wait_for_component or p3_resource_probe_component or p3_wasi_filesystem_preopen_component or p3_wasi_filesystem_stat_component or p3_wasi_sockets_create_bind_drop_component or p3_resource_async_component or p3_async_component or p3_async_call_component or p3_async_host_arg_component or p3_owned_future_component or p3_async_component_v2 or p3_async_v2_scalar_i64_component or gc_core or gc_wit_marshal) and (component_core or host_export)) return error.UnexpectedCliArg;
+    const special_target_count: u8 = @as(u8, @intFromBool(p3_wait_for_component)) + @as(u8, @intFromBool(p3_resource_probe_component)) + @as(u8, @intFromBool(p3_wasi_filesystem_preopen_component)) + @as(u8, @intFromBool(p3_wasi_filesystem_stat_component)) + @as(u8, @intFromBool(p3_wasi_sockets_create_bind_drop_component)) + @as(u8, @intFromBool(p3_resource_async_component)) + @as(u8, @intFromBool(p3_async_component)) + @as(u8, @intFromBool(p3_async_call_component)) + @as(u8, @intFromBool(p3_async_host_arg_component)) + @as(u8, @intFromBool(p3_owned_future_component)) + @as(u8, @intFromBool(p3_async_component_v2)) + @as(u8, @intFromBool(p3_async_v2_scalar_i64_component)) + @as(u8, @intFromBool(gc_core)) + @as(u8, @intFromBool(gc_wit_marshal));
     if (special_target_count > 1) return error.UnexpectedCliArg;
+    if (gc_wit_marshal and (p3_wit_output_path != null or p3_wit_package_output_path != null)) return error.UnexpectedCliArg;
     if (p3_wit_output_path != null and !p3_wait_for_component and !p3_resource_probe_component and !p3_wasi_filesystem_preopen_component and !p3_wasi_filesystem_stat_component and !p3_wasi_sockets_create_bind_drop_component and !p3_resource_async_component and !p3_async_component and !p3_async_call_component and !p3_async_host_arg_component and !p3_owned_future_component and !p3_async_component_v2 and !p3_async_v2_scalar_i64_component) return error.P3WitOutputRequiresP3Target;
     if (p3_wit_package_output_path != null and !p3_wait_for_component and !p3_resource_probe_component and !p3_wasi_filesystem_preopen_component and !p3_resource_async_component and !p3_async_component) return error.P3WitPackageOutputRequiresP3Target;
     if (p3_wit_package_output_path != null and !p3_async_component) return error.P3WitPackageOutputRequiresUnifiedTarget;
@@ -182,6 +194,7 @@ pub fn parse_build(args: []const []const u8) !Args {
         .p3_async_component_v2 = p3_async_component_v2,
         .p3_async_v2_scalar_i64_component = p3_async_v2_scalar_i64_component,
         .gc_core = gc_core,
+        .gc_wit_marshal_descriptor = gc_wit_marshal_descriptor,
         .p3_wit_output_path = p3_wit_output_path,
         .p3_wit_package_output_path = p3_wit_package_output_path,
         .host_export = host_export,
@@ -430,6 +443,45 @@ test "parse_build accepts the explicit Core Wasm GC target" {
     const args = [_][]const u8{ "build", "app.do", "--gc-core" };
     const parsed = try parse_build(&args);
     try std.testing.expect(parsed.gc_core);
+}
+
+test "parse_build accepts the explicit GC WIT marshal descriptor" {
+    const descriptor = "demo:marshal-record-managed-lower/api.write@1.0.0/lower";
+    const args = [_][]const u8{ "build", "app.do", "--gc-wit-marshal", descriptor };
+    const parsed = try parse_build(&args);
+    try std.testing.expectEqualStrings(descriptor, parsed.gc_wit_marshal_descriptor.?);
+}
+
+test "parse_build rejects a missing GC WIT marshal descriptor" {
+    const args = [_][]const u8{ "build", "app.do", "--gc-wit-marshal" };
+    try std.testing.expectError(error.MissingGcWitMarshalDescriptor, parse_build(&args));
+}
+
+test "parse_build rejects duplicate GC WIT marshal descriptors" {
+    const descriptor = "demo:marshal-record-managed-lower/api.write@1.0.0/lower";
+    const args = [_][]const u8{ "build", "app.do", "--gc-wit-marshal", descriptor, "--gc-wit-marshal", descriptor };
+    try std.testing.expectError(error.DuplicateGcWitMarshal, parse_build(&args));
+}
+
+test "parse_build rejects GC WIT marshal target combinations" {
+    const descriptor = "demo:marshal-record-managed-lower/api.write@1.0.0/lower";
+    const component_core = [_][]const u8{ "build", "app.do", "--gc-wit-marshal", descriptor, "--component-core" };
+    try std.testing.expectError(error.UnexpectedCliArg, parse_build(&component_core));
+
+    const host_export = [_][]const u8{ "build", "app.do", "--gc-wit-marshal", descriptor, "--host-export" };
+    try std.testing.expectError(error.UnexpectedCliArg, parse_build(&host_export));
+
+    const gc_core = [_][]const u8{ "build", "app.do", "--gc-wit-marshal", descriptor, "--gc-core" };
+    try std.testing.expectError(error.UnexpectedCliArg, parse_build(&gc_core));
+
+    const p3_target = [_][]const u8{ "build", "app.do", "--gc-wit-marshal", descriptor, "--p3-wait-for-component" };
+    try std.testing.expectError(error.UnexpectedCliArg, parse_build(&p3_target));
+
+    const wit_output = [_][]const u8{ "build", "app.do", "--gc-wit-marshal", descriptor, "--p3-wit-output", "app.wit" };
+    try std.testing.expectError(error.UnexpectedCliArg, parse_build(&wit_output));
+
+    const wit_package_output = [_][]const u8{ "build", "app.do", "--gc-wit-marshal", descriptor, "--p3-wit-package-output", "app.wit-package" };
+    try std.testing.expectError(error.UnexpectedCliArg, parse_build(&wit_package_output));
 }
 
 test "parse_build rejects filesystem preopen target with another P3 target" {

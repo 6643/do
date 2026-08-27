@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const lexer = @import("lexer.zig");
 const p3_async_manifest = @import("p3_async_manifest.zig");
 const wit_abi_async = @import("wit_abi_async.zig");
@@ -98,19 +99,33 @@ pub fn emit_component_wat(allocator: std.mem.Allocator, plan: ListResourceProduc
         plan.layout.element_stride != 4 or plan.layout.ticket_offset != 0 or
         plan.layout.max_items != 3 or plan.producer.stream_capacity != 1) return error.UnsupportedP3ListResourceProducer;
 
-    const metadata = try std.fmt.allocPrint(
+    const metadata = try generated_text.alloc_fmt_block(
         allocator,
-        "\n  ;; [producer-list-transfer] clear-source-slots-before-list-release\n  ;; [producer-child-before-parent-cleanup] ticket-slots,list,stream,future,waitable,frame\n  ;; [producer-plan-layout] pointer={d} length={d} stride={d} ticket-offset={d} capacity={d}\n",
-        .{ plan.layout.result_pointer_offset, plan.layout.result_length_offset, plan.layout.element_stride, plan.layout.ticket_offset, plan.producer.stream_capacity },
+        2,
+        \\
+        \\  ;; [producer-list-transfer] clear-source-slots-before-list-release
+        \\  ;; [producer-child-before-parent-cleanup] ticket-slots,list,stream,future,waitable,frame
+        \\  ;; [producer-plan-layout] pointer={[pointer]d} length={[length]d} stride={[stride]d} ticket-offset={[ticket_offset]d} capacity={[capacity]d}
+        \\
+    ,
+        .{
+            .pointer = plan.layout.result_pointer_offset,
+            .length = plan.layout.result_length_offset,
+            .stride = plan.layout.element_stride,
+            .ticket_offset = plan.layout.ticket_offset,
+            .capacity = plan.producer.stream_capacity,
+        },
     );
     defer allocator.free(metadata);
 
-    const close = std.mem.lastIndexOf(u8, canonical_core_wat, "\n)") orelse return error.UnsupportedP3ListResourceProducer;
+    const core_wat = try generated_text.alloc_block(allocator, 0, canonical_core_wat);
+    defer allocator.free(core_wat);
+    const close = std.mem.lastIndexOf(u8, core_wat, "\n)") orelse return error.UnsupportedP3ListResourceProducer;
     var output = std.ArrayList(u8).empty;
     errdefer output.deinit(allocator);
-    try output.appendSlice(allocator, canonical_core_wat[0..close]);
+    try output.appendSlice(allocator, core_wat[0..close]);
     try output.appendSlice(allocator, metadata);
-    try output.appendSlice(allocator, canonical_core_wat[close..]);
+    try output.appendSlice(allocator, core_wat[close..]);
     return output.toOwnedSlice(allocator);
 }
 
@@ -124,12 +139,33 @@ pub fn emit_component_wat_for_tokens(allocator: std.mem.Allocator, tokens: []con
 pub fn emit_component_wit(allocator: std.mem.Allocator, plan: ListResourceProducerPlan) ![]u8 {
     try validate_internal_plans(allocator, plan);
     if (!std.mem.eql(u8, plan.descriptor.wit.world, "c-min-producer")) return error.UnsupportedP3ListResourceProducer;
-    return allocator.dupe(u8,
-        "package do:g6-2-c-min-producer@0.1.0;\n\n" ++
-            "interface types {\n  enum error-code { io, pipe, invalid-mode }\n  resource ticket {}\n  record resource-entry { ticket: own<ticket> }\n}\n\n" ++
-            "interface source {\n  use types.{ticket};\n  make-ticket: func(seed: u32) -> own<ticket>;\n}\n\n" ++
-            "interface sink {\n  use types.{error-code, resource-entry};\n  consume-via-stream: async func(data: stream<list<resource-entry>>) -> result<_, error-code>;\n}\n\n" ++
-            "world c-min-producer {\n  use types.{error-code};\n  import source;\n  import sink;\n  export produce: async func(mode: u32) -> result<_, error-code>;\n}\n",
+    return generated_text.alloc_block(allocator, 0,
+                \\package do:g6-2-c-min-producer@0.1.0;
+        \\
+        \\interface types {
+        \\  enum error-code { io, pipe, invalid-mode }
+        \\  resource ticket {}
+        \\  record resource-entry { ticket: own<ticket> }
+        \\}
+        \\
+        \\interface source {
+        \\  use types.{ticket};
+        \\  make-ticket: func(seed: u32) -> own<ticket>;
+        \\}
+        \\
+        \\interface sink {
+        \\  use types.{error-code, resource-entry};
+        \\  consume-via-stream: async func(data: stream<list<resource-entry>>) -> result<_, error-code>;
+        \\}
+        \\
+        \\world c-min-producer {
+        \\  use types.{error-code};
+        \\  import source;
+        \\  import sink;
+        \\  export produce: async func(mode: u32) -> result<_, error-code>;
+        \\}
+        \\
+        ,
     );
 }
 

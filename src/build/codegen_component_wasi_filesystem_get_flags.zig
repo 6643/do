@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
@@ -29,7 +30,7 @@ pub fn emit_component_wat(
     if (!std.mem.eql(u8, plan.descriptor.canonical.async_import_module, locator) or
         !std.mem.eql(u8, plan.descriptor.canonical.async_import_name, "[async-lower][method]descriptor.get-flags"))
         return error.UnsupportedP3WasiFilesystemGetFlagsComponent;
-    return allocator.dupe(u8, @embedFile("wasi_filesystem_get_flags_component_template.wat"));
+    return generated_text.alloc_block(allocator, 0, @embedFile("wasi_filesystem_get_flags_component_template.wat"));
 }
 
 pub fn emit_component_wit(
@@ -39,7 +40,7 @@ pub fn emit_component_wit(
     var registry = try p3_async_manifest.Registry.load(allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(allocator);
     _ = try GetFlagsPlan.analyze(tokens, registry);
-    return allocator.dupe(u8, component_wit);
+    return generated_text.alloc_block(allocator, 0, component_wit);
 }
 
 pub const GetFlagsPlan = struct {
@@ -202,14 +203,19 @@ fn has_empty_start_function(tokens: []const lexer.Token) bool {
 }
 
 const component_wit =
-    "package wasi:filesystem@0.3.0-rc-2025-09-16;\n\n" ++
-    "interface types {\n" ++
-    "  flags descriptor-flags { read, write, file-integrity-sync, data-integrity-sync, requested-write-sync, mutate-directory }\n" ++
-    "  enum error-code { access, already, bad-descriptor, busy, deadlock, quota, exist, file-too-large, illegal-byte-sequence, in-progress, interrupted, invalid, io, is-directory, loop, too-many-links, message-size, name-too-long, no-device, no-entry, no-lock, insufficient-memory, insufficient-space, not-directory, not-empty, not-recoverable, unsupported, no-tty, no-such-device, overflow, not-permitted, pipe, read-only, invalid-seek, text-file-busy, cross-device }\n" ++
-    "  resource descriptor { get-flags: async func() -> result<descriptor-flags, error-code>; }\n" ++
-    "}\n\n" ++
-    "interface probe { use types.{descriptor, descriptor-flags, error-code}; run: async func(directory: own<descriptor>) -> result<descriptor-flags, error-code>; }\n\n" ++
-    "world get-flags-probe { import types; export probe; }\n";
+        \\package wasi:filesystem@0.3.0-rc-2025-09-16;
+    \\
+    \\interface types {
+    \\  flags descriptor-flags { read, write, file-integrity-sync, data-integrity-sync, requested-write-sync, mutate-directory }
+    \\  enum error-code { access, already, bad-descriptor, busy, deadlock, quota, exist, file-too-large, illegal-byte-sequence, in-progress, interrupted, invalid, io, is-directory, loop, too-many-links, message-size, name-too-long, no-device, no-entry, no-lock, insufficient-memory, insufficient-space, not-directory, not-empty, not-recoverable, unsupported, no-tty, no-such-device, overflow, not-permitted, pipe, read-only, invalid-seek, text-file-busy, cross-device }
+    \\  resource descriptor { get-flags: async func() -> result<descriptor-flags, error-code>; }
+    \\}
+    \\
+    \\interface probe { use types.{descriptor, descriptor-flags, error-code}; run: async func(directory: own<descriptor>) -> result<descriptor-flags, error-code>; }
+    \\
+    \\world get-flags-probe { import types; export probe; }
+    \\
+    ;
 
 test "filesystem descriptor get-flags source shape admits the bounded direct await" {
     const source = @embedFile("test/compile_ok/471_wasi_filesystem_get_flags_component.do");

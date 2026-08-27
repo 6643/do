@@ -8,6 +8,20 @@ const marshal = @import("codegen_component_marshal_plan.zig");
 const descriptor_loader = @import("codegen_component_descriptor_manifest.zig");
 const marshal_route = @import("codegen_component_marshal_route.zig");
 
+pub fn emit_sync_marshal_module_from_loaded_request(
+    allocator: std.mem.Allocator,
+    loaded: *const descriptor_loader.LoadedRequest,
+    canonical_u64_arg: ?u64,
+    emit_realloc_counters: bool,
+) ![]u8 {
+    return marshal_route.emit_sync_marshal_module_from_plan(
+        allocator,
+        &loaded.plan,
+        canonical_u64_arg,
+        emit_realloc_counters,
+    );
+}
+
 pub fn emit_sync_marshal_module_from_manifest(
     io: std.Io,
     allocator: std.mem.Allocator,
@@ -49,6 +63,38 @@ pub fn emit_sync_marshal_module_from_manifest_with_options(
         canonical_u64_arg,
     );
     defer loaded.deinit();
-    loaded.request.emit_realloc_counters = emit_realloc_counters;
-    return marshal_route.emit_sync_marshal_module_from_wit_source(allocator, loaded.request);
+    return emit_sync_marshal_module_from_loaded_request(
+        allocator,
+        &loaded,
+        canonical_u64_arg,
+        emit_realloc_counters,
+    );
+}
+
+/// Real compiler entry point: measurement facts are owned by the selected
+/// manifest descriptor rather than supplied by a caller.
+pub fn emit_sync_marshal_module_from_manifest_owned(
+    io: std.Io,
+    allocator: std.mem.Allocator,
+    repository_root: []const u8,
+    manifest_path: []const u8,
+    descriptor_id: []const u8,
+    canonical_u64_arg: ?u64,
+    emit_realloc_counters: bool,
+) ![]u8 {
+    var loaded = try descriptor_loader.load_request_from_manifest(
+        io,
+        allocator,
+        repository_root,
+        manifest_path,
+        descriptor_id,
+        canonical_u64_arg,
+    );
+    defer loaded.deinit();
+    return emit_sync_marshal_module_from_loaded_request(
+        allocator,
+        &loaded,
+        canonical_u64_arg,
+        emit_realloc_counters,
+    );
 }

@@ -1,0 +1,9 @@
+# build-arg: --gc-wit-marshal
+# build-arg: demo:marshal-record-byte-list-lift/api.read@1.0.0/lift
+(type $do_record
+(type $canonical_lift (func (param i32)))
+(import "demo:marshal-record-byte-list-lift/api@1.0.0" "read"
+array.new_default $do_bytes
+array.set $do_bytes
+struct.new $do_record
+count=1 call $cabi_realloc

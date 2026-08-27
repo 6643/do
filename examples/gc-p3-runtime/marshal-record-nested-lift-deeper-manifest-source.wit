@@ -1,0 +1,25 @@
+package demo:marshal-record-nested-lift-deeper@1.0.0;
+
+interface api {
+  record leaf {
+    code: u32,
+    count: u64,
+  }
+
+  record header {
+    leaf: leaf,
+    status: s64,
+  }
+
+  record detail {
+    header: header,
+    marker: s64,
+  }
+
+  record reading {
+    detail: detail,
+    tail: s64,
+  }
+
+  read: func() -> reading;
+}

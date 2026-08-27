@@ -1,4 +1,5 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
@@ -31,14 +32,14 @@ pub fn emit_component_wat(
     var registry = try p3_async_manifest.Registry.load(allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(allocator);
     _ = try VariantResourceStreamPlan.analyze(tokens, registry);
-    return try allocator.dupe(u8, @embedFile("variant_resource_stream_canonical.wat"));
+    return generated_text.alloc_block(allocator, 0, @embedFile("variant_resource_stream_canonical.wat"));
 }
 
 pub fn emit_component_wit(allocator: std.mem.Allocator, tokens: []const lexer.Token) ![]u8 {
     var registry = try p3_async_manifest.Registry.load(allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(allocator);
     _ = try VariantResourceStreamPlan.analyze(tokens, registry);
-    return try allocator.dupe(u8, @embedFile("variant_resource_stream_canonical.wit"));
+    return generated_text.alloc_block(allocator, 0, @embedFile("variant_resource_stream_canonical.wit"));
 }
 
 fn has_exact_signature(tokens: []const lexer.Token) bool {

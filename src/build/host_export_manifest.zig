@@ -28,7 +28,6 @@ pub fn emit(allocator: std.mem.Allocator, functions: []const model.FuncDecl, ent
     try out.appendSlice(allocator, "]}\n");
     return out.toOwnedSlice(allocator);
 }
-
 fn append_source_params(allocator: std.mem.Allocator, out: *std.ArrayList(u8), func: model.FuncDecl) !void {
     try out.appendSlice(allocator, ",\"source_params\":[");
     for (func.params, 0..) |param, idx| {

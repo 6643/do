@@ -1,6 +1,11 @@
 const std = @import("std");
 const cli = @import("cli.zig");
 const codegen = @import("codegen_api.zig");
+const codegen_gc_wit_marshal = @import("codegen_gc_wit_marshal.zig");
+const codegen_gc_wit_host_boundary = @import("codegen_gc_wit_host_boundary.zig");
+const codegen_component_descriptor_manifest = @import("codegen_component_descriptor_manifest.zig");
+const codegen_host_imports = @import("codegen_host_imports.zig");
+const codegen_model = @import("codegen_model.zig");
 const diag = @import("diag.zig");
 const entry = @import("entry.zig");
 const imports = @import("imports.zig");
@@ -9,6 +14,28 @@ const parser = @import("parser.zig");
 const p3_http_wit_manifest = @import("p3_http_wit_manifest.zig");
 const sema = @import("sema.zig");
 const test_runner = @import("test_runner.zig");
+
+const GcSyncHostWitRoute = codegen_model.GcSyncHostWitRoute;
+const HostImport = codegen_model.HostImport;
+
+const GC_DESCRIPTOR_MANIFEST = "doc/wit/gc_descriptor_manifest.json";
+
+const GcHostRouteLease = struct {
+    loaded: codegen_component_descriptor_manifest.LoadedRequest,
+    host_import: HostImport,
+    allocator: std.mem.Allocator,
+
+    fn route(self: *const GcHostRouteLease) GcSyncHostWitRoute {
+        return .{ .plan = &self.loaded.plan, .host_import = self.host_import };
+    }
+
+    fn deinit(self: *GcHostRouteLease) void {
+        const owned_imports = [_]HostImport{self.host_import};
+        codegen_host_imports.free_host_imports(self.allocator, owned_imports[0..]);
+        self.loaded.deinit();
+        self.* = undefined;
+    }
+};
 
 pub const LoadedProgram = struct {
     source: []const u8,
@@ -36,6 +63,13 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
     var loaded = try load_program(init, parsed_cli.input_path);
     defer loaded.deinit(allocator);
 
+    var gc_host_route_lease = load_default_gc_host_route(io, allocator, ".", loaded.tokens) catch |err| {
+        try diag.print_compile_error(io, parsed_cli.input_path, loaded.source, loaded.tokens, err, null);
+        std.process.exit(1);
+    };
+    defer if (gc_host_route_lease) |*lease| lease.deinit();
+    var gc_host_route_storage: ?GcSyncHostWitRoute = if (gc_host_route_lease) |*lease| lease.route() else null;
+
     if (parsed_cli.p3_wit_package_output_path != null) {
         const supports_http_wit_package = codegen.requires_p3_http_wit_package(allocator, loaded.tokens) catch |err| {
             try diag.print_compile_error(io, parsed_cli.input_path, loaded.source, loaded.tokens, err, null);
@@ -49,7 +83,12 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
 
     var host_manifest = std.ArrayList(u8).empty;
     defer host_manifest.deinit(allocator);
-    const wat = try compile_program_wat(io, allocator, parsed_cli.input_path, parsed_cli.component_core, parsed_cli.p3_wait_for_component, parsed_cli.p3_resource_probe_component, parsed_cli.p3_wasi_filesystem_preopen_component, parsed_cli.p3_wasi_filesystem_stat_component, parsed_cli.p3_wasi_sockets_create_bind_drop_component, parsed_cli.p3_resource_async_component, parsed_cli.p3_async_component, parsed_cli.p3_async_call_component, parsed_cli.p3_async_host_arg_component, parsed_cli.p3_owned_future_component, parsed_cli.p3_async_component_v2, parsed_cli.p3_async_v2_scalar_i64_component, parsed_cli.gc_core, parsed_cli.host_export, if (parsed_cli.host_manifest_path != null) &host_manifest else null, &loaded);
+    const wat = if (parsed_cli.gc_wit_marshal_descriptor) |descriptor_id| blk: {
+        break :blk emit_gc_wit_marshal_target(io, allocator, ".", descriptor_id, loaded.tokens) catch |err| {
+            try diag.print_compile_error(io, parsed_cli.input_path, loaded.source, loaded.tokens, err, null);
+            std.process.exit(1);
+        };
+    } else try compile_program_wat(io, allocator, parsed_cli.input_path, parsed_cli.component_core, parsed_cli.p3_wait_for_component, parsed_cli.p3_resource_probe_component, parsed_cli.p3_wasi_filesystem_preopen_component, parsed_cli.p3_wasi_filesystem_stat_component, parsed_cli.p3_wasi_sockets_create_bind_drop_component, parsed_cli.p3_resource_async_component, parsed_cli.p3_async_component, parsed_cli.p3_async_call_component, parsed_cli.p3_async_host_arg_component, parsed_cli.p3_owned_future_component, parsed_cli.p3_async_component_v2, parsed_cli.p3_async_v2_scalar_i64_component, parsed_cli.gc_core, parsed_cli.host_export, if (parsed_cli.host_manifest_path != null) &host_manifest else null, &loaded, if (gc_host_route_storage) |*route| route else null);
     defer allocator.free(wat);
 
     std.Io.Dir.cwd().writeFile(io, .{ .sub_path = parsed_cli.output_path, .data = wat }) catch |err| {
@@ -108,6 +147,66 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
         };
     }
     try print_compile_ok(io, parsed_cli, loaded.program);
+}
+
+fn emit_gc_wit_marshal_target(
+    io: std.Io,
+    allocator: std.mem.Allocator,
+    repository_root: []const u8,
+    descriptor_id: []const u8,
+    entry_tokens: []const lexer.Token,
+) ![]u8 {
+    return codegen_gc_wit_marshal.emit_module(io, allocator, repository_root, descriptor_id, entry_tokens);
+}
+
+fn admitted_gc_host_descriptor(locator: []const u8, member: []const u8) ?[]const u8 {
+    return codegen_gc_wit_host_boundary.descriptor_id_for_host(locator, member);
+}
+
+fn load_default_gc_host_route(
+    io: std.Io,
+    allocator: std.mem.Allocator,
+    repository_root: []const u8,
+    tokens: []const lexer.Token,
+) !?GcHostRouteLease {
+    var host_imports = std.ArrayList(HostImport).empty;
+    defer {
+        codegen_host_imports.free_host_imports(allocator, host_imports.items);
+        host_imports.deinit(allocator);
+    }
+    try codegen_host_imports.collect_host_imports(allocator, tokens, &host_imports);
+
+    var selected_index: ?usize = null;
+    var descriptor_id: ?[]const u8 = null;
+    for (host_imports.items, 0..) |host_import, index| {
+        const candidate = admitted_gc_host_descriptor(host_import.locator, host_import.field) orelse {
+            if (codegen_gc_wit_host_boundary.is_admitted_host_locator(host_import.locator)) {
+                return error.GcWitHostMemberMismatch;
+            }
+            continue;
+        };
+        if (selected_index != null) return error.DuplicateGcWitHostDeclaration;
+        selected_index = index;
+        descriptor_id = candidate;
+    }
+    const index = selected_index orelse return null;
+    const selected_descriptor = descriptor_id orelse return error.UnsupportedGcWitHostDescriptor;
+
+    var loaded = try codegen_component_descriptor_manifest.load_request_from_manifest(
+        io,
+        allocator,
+        repository_root,
+        GC_DESCRIPTOR_MANIFEST,
+        selected_descriptor,
+        null,
+    );
+    errdefer loaded.deinit();
+    try codegen_component_descriptor_manifest.validate_loaded_host_boundary(&loaded, tokens);
+
+    const selected = host_imports.items[index];
+    host_imports.items[index].params = &.{};
+    host_imports.items[index].owned_alias = false;
+    return .{ .loaded = loaded, .host_import = selected, .allocator = allocator };
 }
 
 pub fn run_test(init: std.process.Init, args: []const []const u8) !void {
@@ -241,6 +340,7 @@ pub fn compile_program_wat(
     host_export: bool,
     host_manifest_out: ?*std.ArrayList(u8),
     loaded: *const LoadedProgram,
+    gc_host_route: ?*const GcSyncHostWitRoute,
 ) ![]u8 {
     return compile_program_wat_parts(
         io,
@@ -266,6 +366,7 @@ pub fn compile_program_wat(
         loaded.tokens,
         loaded.program,
         &loaded.module_graph,
+        gc_host_route,
     );
 }
 
@@ -293,6 +394,7 @@ fn compile_program_wat_parts(
     tokens: []const lexer.Token,
     program: parser.Program,
     module_graph: *const imports.ModuleGraph,
+    gc_host_route: ?*const GcSyncHostWitRoute,
 ) ![]u8 {
     if (requires_start_entry(host_export, p3_async_component or p3_wasi_filesystem_stat_component or p3_async_call_component or p3_async_host_arg_component or p3_owned_future_component or p3_async_component_v2 or p3_async_v2_scalar_i64_component, p3_wasi_sockets_create_bind_drop_component) and
         !codegen.program_requires_async_lowering(program, tokens, module_graph))
@@ -320,6 +422,7 @@ fn compile_program_wat_parts(
         .gc_core = gc_core,
         .host_export = host_export,
         .host_manifest_out = host_manifest_out,
+        .gc_sync_host_wit_route = gc_host_route,
     }) catch |err| {
         try diag.print_compile_error(io, input_path, source, tokens, err, null);
         std.process.exit(1);
@@ -408,4 +511,161 @@ test "p3 async component owns the WIT root instead of requiring start" {
     try std.testing.expect(!requires_start_entry(false, true, false));
     try std.testing.expect(requires_start_entry(false, false, false));
     try std.testing.expect(!requires_start_entry(true, false, false));
+}
+
+test "explicit GC WIT marshal dispatch uses the manifest adapter" {
+    const source = @embedFile("test/compile_ok/565_gc_wit_managed_record_host_boundary.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    const wat = try emit_gc_wit_marshal_target(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        codegen_gc_wit_marshal.managed_record_lower_descriptor,
+        tokens,
+    );
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-record-managed-lower/api@1.0.0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"run\" (func $run))") != null);
+}
+
+test "default GC host admission covers the verified multi-managed descriptors" {
+    const lower = admitted_gc_host_descriptor(
+        "demo:marshal-record-managed-lower-multi/api@1.0.0",
+        "write",
+    ) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings(
+        codegen_gc_wit_host_boundary.managed_record_lower_multi_descriptor,
+        lower,
+    );
+
+    const lift = admitted_gc_host_descriptor(
+        "demo:marshal-record-managed-lift-multi/api@1.0.0",
+        "read",
+    ) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings(
+        codegen_gc_wit_host_boundary.managed_record_lift_multi_descriptor,
+        lift,
+    );
+    try std.testing.expect(
+        admitted_gc_host_descriptor("demo:unadmitted/api@1.0.0", "write") == null,
+    );
+}
+
+test "default GC host route rejects a known locator with a mismatched member" {
+    const source = @embedFile("test/compile_err/590_gc_wit_nested_record_deeper_lower_host_boundary_mismatch.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try std.testing.expectError(
+        error.GcWitHostMemberMismatch,
+        load_default_gc_host_route(std.testing.io, std.testing.allocator, "..", tokens),
+    );
+}
+
+test "default GC host admission covers the C14 nested scalar descriptors" {
+    const lower = admitted_gc_host_descriptor(
+        "demo:marshal-record-nested-lower-deeper/api@1.0.0",
+        "write",
+    ) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings(
+        codegen_gc_wit_host_boundary.nested_record_lower_deeper_descriptor,
+        lower,
+    );
+
+    const lift = admitted_gc_host_descriptor(
+        "demo:marshal-record-nested-lift-deeper/api@1.0.0",
+        "read",
+    ) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings(
+        codegen_gc_wit_host_boundary.nested_record_lift_deeper_descriptor,
+        lift,
+    );
+}
+
+test "default GC host admission covers the mixed scalar lower descriptor" {
+    const mixed = admitted_gc_host_descriptor(
+        "demo:marshal-record-mixed-lower/api@1.0.0",
+        "write",
+    ) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings(
+        codegen_gc_wit_host_boundary.mixed_record_lower_descriptor,
+        mixed,
+    );
+}
+
+test "default GC host admission covers the mixed scalar-list lower descriptor" {
+    const descriptor = admitted_gc_host_descriptor(
+        "demo:marshal-record-mixed-scalar-list-lower/api@1.0.0",
+        "write",
+    ) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings(
+        codegen_gc_wit_host_boundary.mixed_scalar_list_lower_descriptor,
+        descriptor,
+    );
+}
+
+test "default GC host admission covers the mixed text u32-list lower descriptor" {
+    const descriptor = admitted_gc_host_descriptor(
+        "demo:marshal-record-mixed-text-u32-list-lower/api@1.0.0",
+        "write",
+    ) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings(
+        codegen_gc_wit_host_boundary.mixed_text_u32_list_lower_descriptor,
+        descriptor,
+    );
+}
+
+test "default GC host admission covers the mixed text two-u32-list lower descriptor" {
+    const descriptor = admitted_gc_host_descriptor(
+        "demo:marshal-record-mixed-text-two-u32-lists-lower/api@1.0.0",
+        "write",
+    ) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings(
+        codegen_gc_wit_host_boundary.mixed_text_two_u32_lists_lower_descriptor,
+        descriptor,
+    );
+}
+
+test "default GC host admission covers the mixed text byte-list lift descriptor" {
+    const descriptor = admitted_gc_host_descriptor(
+        "demo:marshal-record-mixed-text-byte-list-lift/api@1.0.0",
+        "read",
+    ) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings(
+        codegen_gc_wit_host_boundary.mixed_text_byte_list_lift_descriptor,
+        descriptor,
+    );
+}
+
+test "default GC host admission covers the bounded byte-list lower descriptor" {
+    const descriptor = admitted_gc_host_descriptor(
+        "demo:marshal-record-byte-list-lower/api@1.0.0",
+        "write",
+    ) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings(
+        "demo:marshal-record-byte-list-lower/api.write@1.0.0/lower",
+        descriptor,
+    );
+}
+
+test "default GC host admission covers the bounded u32-list lower descriptor" {
+    const descriptor = admitted_gc_host_descriptor(
+        "demo:marshal-record-u32-list-lower/api@1.0.0",
+        "write",
+    ) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings(
+        codegen_gc_wit_host_boundary.record_u32_list_lower_descriptor,
+        descriptor,
+    );
+}
+
+test "default GC host admission covers the bounded u32-list lift descriptor" {
+    const descriptor = admitted_gc_host_descriptor(
+        "demo:marshal-record-u32-list-lift/api@1.0.0",
+        "read",
+    ) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings(
+        codegen_gc_wit_host_boundary.record_u32_list_lift_descriptor,
+        descriptor,
+    );
 }

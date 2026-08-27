@@ -1,11 +1,12 @@
 const std = @import("std");
+const generated_text = @import("codegen_text.zig");
 
 pub fn emit_func_open(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
     name: []const u8,
 ) !void {
-    try append_fmt(allocator, out, "  (func ${s}\n", .{name});
+    try generated_text.append_fmt(allocator, out, "  (func ${[name]s}\n", .{ .name = name });
 }
 
 pub fn emit_func_close(
@@ -21,7 +22,7 @@ pub fn emit_func_export(
     export_name: []const u8,
     func_name: []const u8,
 ) !void {
-    try append_fmt(allocator, out, "  (export \"{s}\" (func ${s}))\n", .{ export_name, func_name });
+    try generated_text.append_fmt(allocator, out, "  (export \"{[export_name]s}\" (func ${[func_name]s}))\n", .{ .export_name = export_name, .func_name = func_name });
 }
 
 pub fn emit_local_decl(
@@ -30,7 +31,7 @@ pub fn emit_local_decl(
     name: []const u8,
     ty: []const u8,
 ) !void {
-    try append_fmt(allocator, out, "    (local ${s} {s})\n", .{ name, ty });
+    try generated_text.append_fmt(allocator, out, "    (local ${[name]s} {[ty]s})\n", .{ .name = name, .ty = ty });
 }
 
 pub fn emit_compiled_test_open(
@@ -39,8 +40,8 @@ pub fn emit_compiled_test_open(
     index: usize,
     name_lexeme: []const u8,
 ) !void {
-    try append_fmt(allocator, out, "  ;; compiled-test {d} {s}\n", .{ index, name_lexeme });
-    try append_fmt(allocator, out, "  (func $__test_{d}\n", .{index});
+    try generated_text.append_fmt(allocator, out, "  ;; compiled-test {[index]d} {[name]s}\n", .{ .index = index, .name = name_lexeme });
+    try generated_text.append_fmt(allocator, out, "  (func $__test_{[index]d}\n", .{ .index = index });
 }
 
 pub fn emit_compiled_test_export(
@@ -48,7 +49,7 @@ pub fn emit_compiled_test_export(
     out: *std.ArrayList(u8),
     index: usize,
 ) !void {
-    try append_fmt(allocator, out, "  (export \"__test_{d}\" (func $__test_{d}))\n", .{ index, index });
+    try generated_text.append_fmt(allocator, out, "  (export \"__test_{[index]d}\" (func $__test_{[index]d}))\n", .{ .index = index });
 }
 
 pub fn emit_test_start_func(
@@ -58,21 +59,10 @@ pub fn emit_test_start_func(
 ) !void {
     try out.appendSlice(allocator, "  (func $_start\n");
     for (0..test_count) |idx| {
-        try append_fmt(allocator, out, "    call $__test_{d}\n", .{idx});
+        try generated_text.append_fmt(allocator, out, "    call $__test_{[index]d}\n", .{ .index = idx });
     }
     try out.appendSlice(allocator, "  )\n");
     try out.appendSlice(allocator, "  (export \"_start\" (func $_start))\n");
-}
-
-fn append_fmt(
-    allocator: std.mem.Allocator,
-    out: *std.ArrayList(u8),
-    comptime fmt: []const u8,
-    args: anytype,
-) !void {
-    const text = try std.fmt.allocPrint(allocator, fmt, args);
-    defer allocator.free(text);
-    try out.appendSlice(allocator, text);
 }
 
 test "function body writer emits function shell locals and export" {

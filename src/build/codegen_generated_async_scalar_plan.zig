@@ -36,14 +36,16 @@ test "generated scalar async admission accepts the pinned await/cancel slice" {
 
 test "generated scalar async admission accepts the project-root generated module path" {
     const source =
-        "completion = @lib(\"./wit/do_generic_async_scalar_probe__host__probe.do\", completion)\n" ++
-        "run() -> nil {\n" ++
-        "    ready Future<u32> = completion()\n" ++
-        "    value u32 = @await(ready)\n" ++
-        "    pending Future<u32> = completion()\n" ++
-        "    @cancel(pending)\n" ++
-        "}\n" ++
-        "start() {}\n";
+        \\completion = @lib("./wit/do_generic_async_scalar_probe__host__probe.do", completion)
+        \\run() -> nil {
+        \\    ready Future<u32> = completion()
+        \\    value u32 = @await(ready)
+        \\    pending Future<u32> = completion()
+        \\    @cancel(pending)
+        \\}
+        \\start() {}
+        \\
+    ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
@@ -74,126 +76,146 @@ test "generated scalar async admission accepts the pinned Future<i64> slice" {
 
 test "generated scalar async admission rejects a hand-written host copy" {
     const source =
-        "completion = @host_func(\"do:generic-async-scalar-probe/host@0.1.0\", \"completion\", () -> Future<u32>)\n" ++
-        "run() -> nil {\n" ++
-        "    ready Future<u32> = completion()\n" ++
-        "    value u32 = @await(ready)\n" ++
-        "    pending Future<u32> = completion()\n" ++
-        "    @cancel(pending)\n" ++
-        "}\n" ++
-        "start() {}\n";
+        \\completion = @host_func("do:generic-async-scalar-probe/host@0.1.0", "completion", () -> Future<u32>)
+        \\run() -> nil {
+        \\    ready Future<u32> = completion()
+        \\    value u32 = @await(ready)
+        \\    pending Future<u32> = completion()
+        \\    @cancel(pending)
+        \\}
+        \\start() {}
+        \\
+    ;
     try expect_unsupported(source);
 }
 
 test "generated scalar async admission rejects a second await" {
     try expect_unsupported(
-        "completion = @lib(\"./wit/scalar/do_generic_async_scalar_probe__host__probe.do\", completion)\n" ++
-            "run() -> nil {\n" ++
-            "    first Future<u32> = completion()\n" ++
-            "    value u32 = @await(first)\n" ++
-            "    second Future<u32> = completion()\n" ++
-            "    @await(second)\n" ++
-            "    pending Future<u32> = completion()\n" ++
-            "    @cancel(pending)\n" ++
-            "}\n" ++
-            "start() {}\n",
+        \\completion = @lib("./wit/scalar/do_generic_async_scalar_probe__host__probe.do", completion)
+        \\run() -> nil {
+        \\    first Future<u32> = completion()
+        \\    value u32 = @await(first)
+        \\    second Future<u32> = completion()
+        \\    @await(second)
+        \\    pending Future<u32> = completion()
+        \\    @cancel(pending)
+        \\}
+        \\start() {}
+        \\
+        ,
     );
 }
 
 test "generated scalar async admission rejects a non-u32 payload" {
     try expect_unsupported_with_graph(
-        "completion = @lib(\"./wit/scalar/do_generic_async_scalar_probe__host__probe.do\", completion)\n" ++
-            "run() -> nil {\n" ++
-            "    ready Future<i64> = completion()\n" ++
-            "    value i64 = @await(ready)\n" ++
-            "    pending Future<i64> = completion()\n" ++
-            "    @cancel(pending)\n" ++
-            "}\n" ++
-            "start() {}\n",
+        \\completion = @lib("./wit/scalar/do_generic_async_scalar_probe__host__probe.do", completion)
+        \\run() -> nil {
+        \\    ready Future<i64> = completion()
+        \\    value i64 = @await(ready)
+        \\    pending Future<i64> = completion()
+        \\    @cancel(pending)
+        \\}
+        \\start() {}
+        \\
+        ,
     );
 }
 
 test "generated scalar async admission rejects a text payload" {
     try expect_unsupported_with_graph(
-        "completion = @lib(\"./wit/scalar/do_generic_async_scalar_probe__host__probe.do\", completion)\n" ++
-            "run() -> nil {\n" ++
-            "    ready Future<text> = completion()\n" ++
-            "    value text = @await(ready)\n" ++
-            "    pending Future<text> = completion()\n" ++
-            "    @cancel(pending)\n" ++
-            "}\n" ++
-            "start() {}\n",
+        \\completion = @lib("./wit/scalar/do_generic_async_scalar_probe__host__probe.do", completion)
+        \\run() -> nil {
+        \\    ready Future<text> = completion()
+        \\    value text = @await(ready)
+        \\    pending Future<text> = completion()
+        \\    @cancel(pending)
+        \\}
+        \\start() {}
+        \\
+        ,
     );
 }
 
 test "generated scalar async admission rejects timeout await" {
     try expect_unsupported_with_graph(
-        "completion = @lib(\"./wit/scalar/do_generic_async_scalar_probe__host__probe.do\", completion)\n" ++
-            "run() -> nil {\n" ++
-            "    ready Future<u32> = completion()\n" ++
-            "    value u32 = await(ready, 10)\n" ++
-            "    pending Future<u32> = completion()\n" ++
-            "    @cancel(pending)\n" ++
-            "}\n" ++
-            "start() {}\n",
+        \\completion = @lib("./wit/scalar/do_generic_async_scalar_probe__host__probe.do", completion)
+        \\run() -> nil {
+        \\    ready Future<u32> = completion()
+        \\    value u32 = await(ready, 10)
+        \\    pending Future<u32> = completion()
+        \\    @cancel(pending)
+        \\}
+        \\start() {}
+        \\
+        ,
     );
 }
 
 test "generated scalar async admission rejects an async root" {
     try expect_unsupported_with_graph(
-        "completion = @lib(\"./wit/scalar/do_generic_async_scalar_probe__host__probe.do\", completion)\n" ++
-            "async run() -> nil {\n" ++
-            "    ready Future<u32> = completion()\n" ++
-            "    value u32 = @await(ready)\n" ++
-            "    pending Future<u32> = completion()\n" ++
-            "    @cancel(pending)\n" ++
-            "}\n" ++
-            "start() {}\n",
+        \\completion = @lib("./wit/scalar/do_generic_async_scalar_probe__host__probe.do", completion)
+        \\async run() -> nil {
+        \\    ready Future<u32> = completion()
+        \\    value u32 = @await(ready)
+        \\    pending Future<u32> = completion()
+        \\    @cancel(pending)
+        \\}
+        \\start() {}
+        \\
+        ,
     );
 }
 
 test "generated scalar async admission rejects implicit async creation" {
     try expect_unsupported_with_graph(
-        "completion = @lib(\"./wit/scalar/do_generic_async_scalar_probe__host__probe.do\", completion)\n" ++
-            "run() -> nil {\n" ++
-            "    ready Future<u32> = @async(completion())\n" ++
-            "    value u32 = @await(ready)\n" ++
-            "    pending Future<u32> = completion()\n" ++
-            "    @cancel(pending)\n" ++
-            "}\n" ++
-            "start() {}\n",
+        \\completion = @lib("./wit/scalar/do_generic_async_scalar_probe__host__probe.do", completion)
+        \\run() -> nil {
+        \\    ready Future<u32> = @async(completion())
+        \\    value u32 = @await(ready)
+        \\    pending Future<u32> = completion()
+        \\    @cancel(pending)
+        \\}
+        \\start() {}
+        \\
+        ,
     );
 }
 
 test "generated scalar async admission rejects an unregistered locator" {
     try expect_unsupported_with_graph(
-        "completion = @lib(\"./wit/do_unregistered_scalar_probe__host__probe.do\", completion)\n" ++
-            "run() -> nil {\n" ++
-            "    ready Future<u32> = completion()\n" ++
-            "    value u32 = @await(ready)\n" ++
-            "    pending Future<u32> = completion()\n" ++
-            "    @cancel(pending)\n" ++
-            "}\n" ++
-            "start() {}\n",
+        \\completion = @lib("./wit/do_unregistered_scalar_probe__host__probe.do", completion)
+        \\run() -> nil {
+        \\    ready Future<u32> = completion()
+        \\    value u32 = @await(ready)
+        \\    pending Future<u32> = completion()
+        \\    @cancel(pending)
+        \\}
+        \\start() {}
+        \\
+        ,
     );
 }
 
 test "generated scalar async admission rejects resource and stream members" {
     try expect_unsupported_with_graph(
-        "resource = @lib(\"./wit/scalar/do_generic_async_scalar_probe__host__probe.do\", resource)\n" ++
-            "run() -> nil {\n" ++
-            "    pending Future<u32> = resource()\n" ++
-            "    @cancel(pending)\n" ++
-            "}\n" ++
-            "start() {}\n",
+        \\resource = @lib("./wit/scalar/do_generic_async_scalar_probe__host__probe.do", resource)
+        \\run() -> nil {
+        \\    pending Future<u32> = resource()
+        \\    @cancel(pending)
+        \\}
+        \\start() {}
+        \\
+        ,
     );
     try expect_unsupported_with_graph(
-        "stream = @lib(\"./wit/scalar/do_generic_async_scalar_probe__host__probe.do\", stream)\n" ++
-            "run() -> nil {\n" ++
-            "    pending Future<u32> = stream()\n" ++
-            "    @cancel(pending)\n" ++
-            "}\n" ++
-            "start() {}\n",
+        \\stream = @lib("./wit/scalar/do_generic_async_scalar_probe__host__probe.do", stream)
+        \\run() -> nil {
+        \\    pending Future<u32> = stream()
+        \\    @cancel(pending)
+        \\}
+        \\start() {}
+        \\
+        ,
     );
 }
 

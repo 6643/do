@@ -58,9 +58,18 @@ test "async host scalar argument emitter emits the pinned WIT world" {
     const wit = try emitter.emit_component_wit(std.testing.allocator);
     defer std.testing.allocator.free(wit);
     try std.testing.expectEqualStrings(
-        "package do:async-call-arg-probe@0.1.0;\n\n" ++
-            "interface host {\n  work: async func(value: u32);\n}\n\n" ++
-            "world probe {\n  import host;\n  export run: async func();\n}\n",
+                \\package do:async-call-arg-probe@0.1.0;
+        \\
+        \\interface host {
+        \\  work: async func(value: u32);
+        \\}
+        \\
+        \\world probe {
+        \\  import host;
+        \\  export run: async func();
+        \\}
+        \\
+        ,
         wit,
     );
 }

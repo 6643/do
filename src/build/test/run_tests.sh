@@ -66,6 +66,8 @@ fi
 
 echo "[INFO] check compiler module boundaries"
 "$TEST_DIR/check_module_boundaries.sh"
+echo "[INFO] check generated-text block API"
+"$TEST_DIR/check_generated_text_api.sh"
 
 if [[ ! -x "$DO_BIN" ]]; then
     echo "[FAIL] compiler binary not found: $DO_BIN"
