@@ -94,8 +94,10 @@ The package, instances, world, and members are contract identifiers:
 | Item | Exact value |
 | --- | --- |
 | package | `do:g6-2-owned-record-pair-producer@0.1.0` |
-| source instance | `do:g6-2-owned-record-pair-producer/source@0.1.0` |
-| sink instance | `do:g6-2-owned-record-pair-producer/sink@0.1.0` |
+| source Component instance | `do:g6-2-owned-record-pair-producer/source@0.1.0` |
+| sink Component instance | `do:g6-2-owned-record-pair-producer/sink@0.1.0` |
+| source Do host locator | `do:g6-2-owned-record-pair-producer/source@0.1.0` |
+| sink Do host locator | `do:g6-2-owned-record-pair-producer@0.1.0` |
 | world | `owned-record-pair-producer` |
 | source member | `make-ticket` |
 | sink member | `consume-via-stream` |
@@ -138,7 +140,10 @@ Admission is fail-closed and exact:
 - no `async` declaration token and no `@async`, `@await`, or `@cancel` intrinsic;
 - no list, variant, nested record, borrowed field, extra host binding, or extra
   top-level declaration;
-- source and sink locator/member/signature must match the table above byte-for-byte.
+- source and sink Do host locator/member/signature must match the host-locator
+  rows above byte-for-byte. The generated sink Component import uses the separate
+  sink-instance row; this follows the existing manifest convention and is not an
+  alias or compatibility route.
 
 The compiler must use a separate lowering-shape variant and separate emitter module
 for this descriptor. Reusing a generic “any record with owned fields” predicate is
@@ -289,4 +294,3 @@ This design does not:
 - implement independent guest child tasks, general filesystem/HTTP async, or root
   hard-cancel;
 - close any G5c migration row or claim full GC cutover.
-
