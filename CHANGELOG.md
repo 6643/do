@@ -1,5 +1,22 @@
 # Changelog
 
+# 2026-08-28 G6.2 private fixed three-owned-field record producer probe:
+  added the standalone, hash-pinned canonical WIT/WAT probe for
+  `do:g6-2-owned-record-triple-producer@0.1.0`. `ResourceTriple` is a
+  12-byte, 4-byte-aligned record with `left/middle/right: own<ticket>` at
+  offsets `0/4/8`; the capacity-one producer accepts four `u32` words in
+  `(mode,left-seed,middle-seed,right-seed)` order. An independent presence mask
+  transfers all three handles only after a complete record write, releases
+  `right -> middle -> left` before transfer, and leaves the host to drop each
+  transferred ticket exactly once; handle `0` is valid. Canonical WAT
+  parse/embed/component-new/validate and the Rust/Wasmtime ten-mode lifecycle
+  gate pass with `3/3` ticket cleanup per valid row, `6/6` on `repeat`, expected
+  cancellation/early-drop future cleanup, and `table-empty=true` for every row.
+  This is private design/probe evidence only: it is not an ARC/GC
+  semantic-equivalence row and adds no manifest entry, compiler dispatch, Do
+  fixture, or public `own<T>`/`borrow<T>`/`ref<T>` syntax. Compiler admission
+  requires a separate approved implementation plan.
+
 # 2026-08-28 G6.2 private parameterized two-owned-field record producer:
   added the bounded, hash-pinned
   `do:g6-2-owned-record-pair-parameterized-producer@0.1.0` Component route for

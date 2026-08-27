@@ -182,6 +182,28 @@ gate, not an ARC/GC equivalence row; generic producers, arbitrary expressions,
 borrowed/list/variant payloads, general async/resource lowering, and public
 ownership syntax remain unsupported.
 
+The standalone `g6-2-owned-record-triple-producer` probe measures the next
+bounded resource shape without compiler admission. Its pinned WIT package is
+`do:g6-2-owned-record-triple-producer@0.1.0` with hash
+`73fd57dc8f34f13023b48f2b82e439b212eab52192886f0d07a37d86e63658b1`.
+`ResourceTriple` is a 12-byte, 4-byte-aligned record with
+`left/middle/right: own<Ticket>` at offsets `0/4/8`; the capacity-one stream
+producer accepts `(mode, left-seed, middle-seed, right-seed)` as four `u32`
+words. The independent presence mask transfers all three handles only after a
+complete write, releases `right -> middle -> left` before transfer, and leaves
+host cleanup to drop each transferred ticket exactly once; handle `0` is valid.
+
+Run `bash test_g6_2_owned_record_triple_producer_abi.sh` for the pinned WIT,
+canonical WAT, Component assembly, and validation gate, then run
+`bash test_rust_g6_2_owned_record_triple_producer.sh` for the ten-mode
+Rust/Wasmtime lifecycle matrix. Valid rows observe `3/3` ticket cleanup,
+`repeat` observes `6/6`, cancellation/early-drop rows record the expected
+pending-future cleanup, and every row leaves `table-empty=true`. This is
+private design/probe evidence only: it is not an ARC/GC equivalence row and
+adds no manifest entry, compiler lowering, Do fixture, or public
+`own<T>`/`borrow<T>`/`ref<T>` syntax. A future compiler admission requires a
+separate approved implementation plan.
+
 `g6-2-owned-record-pair-parameterized-producer.do` is the next private,
 hash-pinned pair producer slice. It keeps the same `ResourcePair` ABI as the
 static route, but accepts independent `left-seed` and `right-seed` `u32`

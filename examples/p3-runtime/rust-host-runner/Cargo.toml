@@ -458,6 +458,14 @@ name = "do-p3-g6-2-owned-record-pair-parameterized-producer"
 path = "src/bin/g6_2_owned_record_pair_parameterized_producer.rs"
 
 [[bin]]
+name = "do-p3-g6-2-owned-record-triple-producer-abi"
+path = "src/bin/g6_2_owned_record_triple_producer_abi.rs"
+
+[[bin]]
+name = "do-p3-g6-2-owned-record-triple-producer"
+path = "src/bin/g6_2_owned_record_triple_producer.rs"
+
+[[bin]]
 name = "do-p3-wasi-filesystem-get-type-host-runner"
 path = "src/bin/wasi_filesystem_get_type.rs"
 

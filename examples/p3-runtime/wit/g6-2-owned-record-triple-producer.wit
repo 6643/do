@@ -1,0 +1,35 @@
+package do:g6-2-owned-record-triple-producer@0.1.0;
+
+interface types {
+  enum error-code { io, pipe, invalid-mode }
+  resource ticket {}
+  record resource-triple {
+    left: own<ticket>,
+    middle: own<ticket>,
+    right: own<ticket>,
+  }
+}
+
+interface source {
+  use types.{ticket};
+  make-ticket: func(seed: u32) -> own<ticket>;
+}
+
+interface sink {
+  use types.{error-code, resource-triple};
+  consume-via-stream: async func(
+    data: stream<resource-triple>
+  ) -> result<_, error-code>;
+}
+
+world owned-record-triple-producer {
+  use types.{error-code};
+  import source;
+  import sink;
+  export produce: async func(
+    mode: u32,
+    left-seed: u32,
+    middle-seed: u32,
+    right-seed: u32
+  ) -> result<_, error-code>;
+}

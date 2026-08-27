@@ -11,6 +11,29 @@
 > 证据, 不改变源码值语义; 后续 runtime work 目标为 GC。Component/WIT resource 的
 > ownership 与 drop 继续是显式 ABI contract, 不由 GC 接管。
 
+### G6.2 private fixed three-owned-field record producer probe (2026-08-28)
+
+三字段 `ResourceTriple` 已完成独立、私有且固定形状的 design/probe。canonical WIT
+package `do:g6-2-owned-record-triple-producer@0.1.0` 的 hash 为
+`73fd57dc8f34f13023b48f2b82e439b212eab52192886f0d07a37d86e63658b1`；record
+为 12 bytes、alignment 4，`left/middle/right: own<ticket>` 位于 offset
+`0/4/8`，stream capacity 为 `1`，producer 输入为
+`(mode,left-seed,middle-seed,right-seed)` 四个 `u32` words。presence mask 只在完整
+record 写入后原子转移三个 owned handle；转移前按 `right -> middle -> left` 释放，
+转移后 host 各释放一次，handle `0` 不作为 absence sentinel。
+
+canonical WAT parse/embed/component-new/validate 与 Rust/Wasmtime 十模式 lifecycle gate
+均通过；valid 模式为 `3/3` ticket cleanup、repeat 为 `6/6`，四种取消/早退模式各有
+一次 host-task cancel 与 pending-future drop，所有模式 `table-empty=true`，invalid 不
+创建资源。该 Component 生命周期证据不计入 ARC/GC semantic-equivalence matrix，
+也不关闭任何 migration row。
+
+该 probe 只关闭 triple 的 private design/probe 证据，不扩大默认 route。manifest row、
+compiler dispatch、Do fixture 和公开 `own<T>`/`borrow<T>`/`ref<T>` syntax 仍未增加；
+generic producer、arbitrary producer expression、borrowed/list/variant/mixed resource
+payload、general async/resource lowering 与 full GC cutover 仍 pending。若要进入 compiler
+admission，必须另立实现计划并获得明确批准。
+
 ### G6.2 private two-owned-field record producer checkpoint (2026-08-27)
 
 本轮已闭合一个独立、私有且固定形状的 producer gate：descriptor
@@ -64,8 +87,8 @@ Rust/Wasmtime lifecycle 与 canonical/generated equivalence gates 均通过。�
 该 route 只关闭参数化 pair 的私有证据，不扩大默认 route。generic producer、
 arbitrary producer expression、borrowed/list/variant/mixed resource payload、
 general async/resource lowering、public `own<T>`/`borrow<T>`/`ref<T>` syntax 与
-full GC cutover 仍 pending；下一候选必须先对固定三字段 `ResourceTriple` 另立
-design、probe 和 admission gate。
+full GC cutover 仍 pending；固定三字段 `ResourceTriple` 的 private design/probe 已通过；
+下一步若要 compiler admission，必须另立实现计划并经明确批准。
 
 ### G5c bounded mixed text + two `list<u32>` lower promotion (2026-08-25)
 

@@ -1,6 +1,6 @@
 # do 编译器主计划
 
-状态: v1 子集发布候选已收口; G5c residual capability matrix 已完成且当前 exact candidate 已通过专用与全局门禁; G6 generic consumer、bounded nested resource paths、私有双 owned-field record producer 与参数化双 owned-field record producer 已闭环, D2 私有 descriptor slices 与私有有界 `stream<list<u32>>` producer promotion 已闭环, 剩余 producer/resource residual
+状态: v1 子集发布候选已收口; G5c residual capability matrix 已完成且当前 exact candidate 已通过专用与全局门禁; G6 generic consumer、bounded nested resource paths、私有双 owned-field record producer、参数化双 owned-field record producer 与固定三字段 `ResourceTriple` private design/probe 已闭环, D2 私有 descriptor slices 与私有有界 `stream<list<u32>>` producer promotion 已闭环, 剩余 producer/resource residual
 更新时间: 2026-08-28
 
 实时接手入口: `doc/start_here.md`。  
@@ -22,6 +22,7 @@
 - G6.2 私有 direct owned-record producer 已通过独立 canonical ABI、Do/Component、Rust/Wasmtime 与 canonical/generated Component 生命周期等价门禁：精确 `stream<resource-entry>`、4-byte `ticket: own<ticket>` record、offset `0`、capacity `1`、WIT hash `6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace`；十模式 valid/invalid cleanup 均闭环。该 Component 等价证据不计入 ARC/GC 语义矩阵；通用 producer/resource 与公开 ownership syntax 仍未开放。
 - G6.2 私有 two-owned-field record producer 已通过独立 canonical ABI、Do/Component、negative admission、generated Rust/Wasmtime 与 canonical/generated Component 生命周期等价门禁：精确 `stream<resource-pair>`、8-byte `left/right: own<ticket>` record、offset `0/4`、capacity `1`、WIT hash `89345a5213936735d7f065cd54ed42b83d159b80305a1a900ae00df2e811704d`；presence mask 只在完整写入成功后原子转移两个 handle，十模式 valid/invalid cleanup 均闭环，valid 为 `2/2` drops、repeat 为 `4/4`，invalid 不创建资源；ABI 还观测 host `callback-calls`、stream poll/finish（`finish-calls=0`）及取消模式的 `cancel-calls=1` 与 pending future drop。该独立 Component 生命周期证据不计入 ARC/GC 语义矩阵；generic producer、arbitrary expression、borrowed/list/variant payload、general async/resource lowering 与公开 ownership syntax 仍未开放。
 - G6.2 私有参数化 two-owned-field record producer 已通过独立 canonical ABI、Do/Component、十个 fail-closed negative fixtures、generated Rust/Wasmtime 与 canonical/generated Component 生命周期等价门禁：精确 descriptor `do:g6-2-owned-record-pair-parameterized-producer@0.1.0`、WIT hash `e7abd3cf7b7543325865a0b4be4b32ae50a2470ac5083169250719f89b7ce53a`、`stream<resource-pair>`、8-byte `left/right: own<ticket>` record、offset `0/4`、capacity `1`、producer inputs `(mode,left-seed,right-seed)`；presence mask 只在完整写入成功后原子转移两个 handle，十模式 valid/invalid cleanup 均闭环，valid 为 `2/2` drops、repeat 为 `4/4`，invalid 不创建资源，`table-empty=true`。该独立 Component 生命周期证据不计入 ARC/GC 语义矩阵；generic producer、arbitrary expression、borrowed/list/variant payload、general async/resource lowering 与公开 ownership syntax 仍未开放。
+- G6.2 固定三字段 `ResourceTriple` private design/probe 已通过独立 canonical WIT/WAT、Component assembly/validation 与 Rust/Wasmtime lifecycle gate：package `do:g6-2-owned-record-triple-producer@0.1.0`、WIT hash `73fd57dc8f34f13023b48f2b82e439b212eab52192886f0d07a37d86e63658b1`、12-byte/alignment-4 `left/middle/right: own<ticket>` record、offset `0/4/8`、capacity `1`、producer inputs `(mode,left-seed,middle-seed,right-seed)`；presence mask 仅在完整写入后转移，转移前按 `right -> middle -> left` 释放，转移后 host 各释放一次，十模式 valid/invalid cleanup 均闭环，valid 为 `3/3` drops、repeat 为 `6/6`，所有模式 `table-empty=true`，invalid 不创建资源。该独立 Component 生命周期证据不计入 ARC/GC 语义矩阵，也未新增 manifest row、compiler dispatch、Do fixture 或公开 ownership syntax；generic producer、arbitrary expression、borrowed/list/variant payload、general async/resource lowering 与 full GC cutover 仍未开放。
 - D2 `descriptor.sync` 的私有记录固定 upstream WIT hash
   `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`、regular/
   cancel mirror hashes `18ce7dc9efb991cd8e5f945797aea73edeed79f0cfc51ea664cb81537e54e719` /
@@ -131,7 +132,7 @@ I2 已收窄: managed/`text` 叶子、pure-scalar struct 嵌套子槽、以及�
 1. 发布候选维护与文档基线已复核通过（显式项目缓存路径下）；后续只处理新出现的真实发布阻断或文档漂移。
 2. G5c 的 15-row inventory 与 residual matrix 已重新逐行核验；当前仍为 `complete_rows=15 pending_rows=15`，唯一固定 candidate 已完成专用闭环，14 行保持 blocked。
 3. 当前没有第二个满足 admission contract 的同步 exact candidate；不扩大通用 aggregate/list、任意 producer、async/resource 或 ownership，也不从邻近 descriptor 推断通用能力。
-4. G6.2 direct、static two-owned-field 与 parameterized two-owned-field record producer 的独立 lifecycle gates 均已闭环；下一步推荐只对固定三字段 `ResourceTriple { left, middle, right: own<ticket> }` 建立独立 design/probe gate，并按 design → manifest/hash/ABI → negative → Component → Rust/Wasmtime ready/pending/error/cancel/drop → ownership invariant 顺序闭环。probe 通过后仍需单独实现计划与明确批准，不能直接 default promotion。
+4. G6.2 direct、static two-owned-field、parameterized two-owned-field record producer 与固定三字段 `ResourceTriple` private design/probe 的独立 lifecycle/design gates 均已闭环；下一阶段若获明确批准，才建立 triple compiler-admission 计划，依次覆盖 manifest/hash/ABI、source matcher、negative fixtures、generated WAT/Component parity、Rust/Wasmtime ready/pending/error/cancel/drop、ownership invariant 与完整回归。不得直接扩大 default route。
 5. D2 通用 filesystem async/external HTTP 与 deferred codegen/ownership/JSON/LSP 继续保持明确阻断或单独授权，不与本阶段混合。
 
 验收命令:

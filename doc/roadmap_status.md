@@ -5,6 +5,25 @@
 **本文只保留当前状态与阻断。** 历史小任务勾选与逐条 gate 证据已从仓库移除; 追溯用 git 历史与 `CHANGELOG.md`。
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
 
+2026-08-28 增量: G6.2 完成独立、私有且固定形状的三字段
+`ResourceTriple` producer design/probe。canonical WIT package
+`do:g6-2-owned-record-triple-producer@0.1.0` 的 hash 为
+`73fd57dc8f34f13023b48f2b82e439b212eab52192886f0d07a37d86e63658b1`；record
+为 12 bytes、alignment 4，`left/middle/right: own<ticket>` 位于 offset
+`0/4/8`，stream capacity 为 `1`，producer 输入为
+`(mode,left-seed,middle-seed,right-seed)` 四个 `u32` words。独立 presence mask
+只在完整 record 写入后原子转移三个 handle，转移前按
+`right -> middle -> left` 释放，转移后 host 各释放一次，handle `0` 不作为
+absence sentinel。canonical WAT 的 parse/embed/component-new/validate 与
+Rust/Wasmtime 十模式 lifecycle gate 均通过；valid 模式为 `3/3` ticket
+cleanup、repeat 为 `6/6`，四种取消/早退模式各有一次 host-task cancel 与
+pending-future drop，所有模式 `table-empty=true`，invalid 不创建资源。
+该证据是 private Component design/probe，不计入 ARC/GC equivalence matrix，
+也没有新增 manifest row、compiler dispatch、Do fixture 或公开 ownership
+syntax。下一阶段若要 compiler admission，必须另立实现计划并获得明确批准；
+generic producer、arbitrary expression、borrowed/list/variant/general
+async-resource 与 full GC cutover 继续 pending。
+
 2026-08-28 增量: G6.2 新增私有、hash-pinned 的参数化双 owned-field record
 producer descriptor `do:g6-2-owned-record-pair-parameterized-producer@0.1.0`。
 它只准入 `stream<resource-pair>`，record 为 8 bytes，`left/right: own<ticket>`
@@ -20,10 +39,10 @@ generated Rust/Wasmtime lifecycle 与 canonical/generated equivalence gates 均
 为 full regression `pass=1410 fail=0 skip=3`、`zig test main.zig` `692/692`、
 ReleaseSmall 与 release smoke 通过，GC migration inventory 仍为
 `complete_rows=15 pending_rows=15`、exit `1`。该独立 Component 生命周期证据
-不计入 ARC/GC equivalence matrix。下一候选只能先做固定三字段
-`ResourceTriple` 的独立 design/probe；generic producer、arbitrary expression、
-borrowed/list/variant/general async-resource、公开 ownership syntax 与 full GC
-cutover 继续 pending。
+不计入 ARC/GC equivalence matrix。固定三字段 `ResourceTriple` 的 private
+design/probe 已通过；下一阶段若要 compiler admission，必须另立实现计划并获
+明确批准。generic producer、arbitrary expression、borrowed/list/variant/general
+async-resource、公开 ownership syntax 与 full GC cutover 继续 pending。
 
 2026-08-27 增量: G6.2 新增私有、hash-pinned 的双 owned-field record
 producer descriptor `do:g6-2-owned-record-pair-producer@0.1.0`。它只准入
@@ -319,7 +338,7 @@ fail-closed/pending。
 | 阶段 A–F、H | done |
 | 阶段 D | 可推进项 done; D2.1 按 B 方案绿色 regression 收口 |
 | D2 真实 host smoke | in progress; real local filesystem preopen/read-directory, CLI pipe, compiler-generated TCP/UDP socket create/bind/drop loopback, and the private pinned `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size` async method gates are green; the method-level recovery matrix is documented, while general filesystem async and external HTTP remain blocked |
-| 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + **private bounded async host scalar-argument compiler promotion** + helper-mediated lease（含六跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含六跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + **private bounded scalar `stream<list<u32>>` producer promotion** + **private direct owned-record `stream<resource-entry>` producer lifecycle checkpoint** + **private bounded two-owned-field `stream<resource-pair>` producer lifecycle checkpoint** + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size` slices、G6.3、G6.4 done; generic list/producer、borrowed payload、general async-call、D2 general methods 与 root hard-cancel 仍 pending |
+| 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + **private bounded async host scalar-argument compiler promotion** + helper-mediated lease（含六跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含六跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + **private bounded scalar `stream<list<u32>>` producer promotion** + **private direct owned-record `stream<resource-entry>` producer lifecycle checkpoint** + **private bounded two-owned-field `stream<resource-pair>` producer lifecycle checkpoint** + **private parameterized two-owned-field `stream<resource-pair>` producer lifecycle checkpoint** + **private fixed three-owned-field `ResourceTriple` design/probe** + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size` slices、G6.3、G6.4 done; generic list/producer、borrowed payload、general async-call、D2 general methods 与 root hard-cancel 仍 pending |
 | Colorless async / WIT bindgen | canonical `@async/@await/@cancel` surface, legacy `async` deprecation, schema 1/2 generated manifest checks, automatic discovery for the admitted schema 2 unit and scalar capabilities, plus opt-in v2 variant/scalar-i64 slices, the `--p3-async-call-component` root-owned local-frame slice including one inline `u32` scalar argument, the private `--p3-async-host-arg-component` scalar-argument compiler slice, and the private `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` slice verified; general async-call promotion and D2 recovery designs are frozen without compiler widening; unrestricted generated WIT lowering remains pending |
 | 阶段 I | **closed** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构扁平拆分 | 已落地: `diagnostics` / `type_name` / `sema_error` / codegen 域竖切 / **`sema_*` 域竖切** (`sema_tokens`/`sema_shapes`/`sema_function_*`/`sema_structures`/`sema_type_checks`/`sema_imports`/`sema_control`) |
@@ -1983,14 +2002,14 @@ Bun regression refresh (2026-08-06)
 
 | 类 | 项 |
 | --- | --- |
-| blocked | G6.2 general producer-lease/borrowed-resource/list extensions; path-sensitive `StreamWriter<T>` lease semantic foundation is done (branch/loop joins, defer, transfer, write, finalization, exit diagnostics 405-410); 06.2→G6.2 (multi-owned consumer, multiple nested paths, one-/two-/three-/four-/five-/six-level nested resource consumer, descriptor-bounded single-read list-owned resource stream, bounded scalar producer, fixed/parameterized `u64` countdown producer, parameterized helper including six forwarding hops and typed-parameter reorder, helper-mediated lease, branch-selected close/abort terminal, descriptor-bounded StreamMirror, private resource Result cancellation, and pinned HTTP payload cancellation pending/immediate-`Ok`/immediate-`DnsTimeout` plus bounded immediate `DNS-error` optional-string (`Some`/`None`) lowering/runtime cleanup done; private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size` slices are closed; empty payload strings, other payload-bearing immediate errors, seventh forwarding hop, seventh nested level, and general resource/list/filesystem shapes remain pending) |
+| blocked | G6.2 general producer-lease/borrowed-resource/list extensions; path-sensitive `StreamWriter<T>` lease semantic foundation is done (branch/loop joins, defer, transfer, write, finalization, exit diagnostics 405-410); 06.2→G6.2 (multi-owned consumer, multiple nested paths, one-/two-/three-/four-/five-/six-level nested resource consumer, descriptor-bounded single-read list-owned resource stream, bounded scalar producer, fixed/parameterized `u64` countdown producer, parameterized helper including six forwarding hops and typed-parameter reorder, helper-mediated lease, branch-selected close/abort terminal, descriptor-bounded StreamMirror, private resource Result cancellation, pinned HTTP payload cancellation pending/immediate-`Ok`/immediate-`DnsTimeout` plus bounded immediate `DNS-error` optional-string (`Some`/`None`) lowering/runtime cleanup, and fixed three-owned-field `ResourceTriple` design/probe done; private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size` slices are closed; empty payload strings, other payload-bearing immediate errors, seventh forwarding hop, seventh nested level, triple compiler admission, and general resource/list/filesystem shapes remain pending) |
 | pending | P2 左侧反推泛型 (默认不放开); skip 16/96/118 |
 | deferred | GC runtime migration (replace the current ARC transition implementation), ownership IR、真 host I/O、JSON 扩展、LSP/fmt、wasm emitter 等 (见该文件 §3) |
 
 ## 下一步
 
 1. 发布候选维护 (回归 / 文档漂移 / 独立小修)。
-2. 推进 G6.2 后续 gates；generic consumer、多个顶层 nested paths、一-/两层/三层/四层/五层/六层 nested resource、descriptor-bounded single-read list-owned resource stream、bounded scalar producer、固定/参数化 `u64` countdown producer、参数化 helper（含六跳 forwarding 与 typed-parameter reorder）、受限 helper-mediated lease、branch-selected terminal、固定 read-directory、StreamMirror、private resource Result cancellation、HTTP payload cancellation、pinned negative gates 与 ownership invariant 复核均已闭环；一般 producer lease、通用 list、borrowed/variant、第七跳 forwarding、第七层或更一般 nested resource fields 与更广泛 async method 仍需独立设计与验证，不绕过剩余边界扩 codegen。
+2. 推进 G6.2 后续 gates；generic consumer、多个顶层 nested paths、一-/两层/三层/四层/五层/六层 nested resource、descriptor-bounded single-read list-owned resource stream、bounded scalar producer、固定/参数化 `u64` countdown producer、参数化 helper（含六跳 forwarding 与 typed-parameter reorder）、受限 helper-mediated lease、branch-selected terminal、固定 read-directory、StreamMirror、private resource Result cancellation、HTTP payload cancellation、pinned negative gates、ownership invariant 复核与固定三字段 `ResourceTriple` design/probe 均已闭环；一般 producer lease、通用 list、borrowed/variant、第七跳 forwarding、第七层或更一般 nested resource fields、triple compiler admission 与更广泛 async method 仍需独立设计/批准和验证，不绕过剩余边界扩 codegen。
 3. 可选授权项见 `doc/pending_blocked.md` 与 README「下一阶段计划」。
 
 ### 2026-08-20 G5c A gate: fixed WASI random `list<u8>` GC lift
