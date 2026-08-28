@@ -2346,6 +2346,7 @@ fn valid_owned_record_triple_stream_producer_descriptor(descriptor: Descriptor) 
         descriptor.canonical.result_payload != null or descriptor.canonical.result_area_payload != null or descriptor.canonical.future_owned != null or
         descriptor.canonical.error_variants.len != 0 or descriptor.canonical.list_resource_layout != null or descriptor.canonical.scalar_list_layout != null or
         descriptor.canonical.scalar_list_producer != null or descriptor.canonical.future_input != null or descriptor.canonical.future != null or
+        descriptor.canonical.parameterized_owned_record_pair_producer != null or
         descriptor.canonical.variant_stream != null or descriptor.canonical.variant_future != null or descriptor.canonical.event_layout != null or
         descriptor.canonical.ticket_drop_import != null or !valid_triple_ticket_record_layout(record_layout) or
         !std.mem.eql(u8, stream.element, "resource-triple") or
@@ -6137,6 +6138,16 @@ test "owned record triple producer lowering rejects descriptor and ABI drift" {
     var wrong_signature = descriptor;
     wrong_signature.canonical.stream.?.write.core_results = &.{"i64"};
     try std.testing.expect(lowering_shape(wrong_signature) == null);
+}
+
+test "owned record triple producer rejects parameterized producer metadata" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("do:g6-2-owned-record-triple-producer@0.1.0", "consume-via-stream") orelse return error.TestUnexpectedResult;
+    const parameterized = registry.find("do:g6-2-owned-record-pair-parameterized-producer@0.1.0", "consume-via-stream") orelse return error.TestUnexpectedResult;
+    var drifted = descriptor;
+    drifted.canonical.parameterized_owned_record_pair_producer = parameterized.canonical.parameterized_owned_record_pair_producer;
+    try std.testing.expect(lowering_shape(drifted) == null);
 }
 
 fn right_layout_field(descriptor: Descriptor, index: usize) RecordField {
