@@ -2482,6 +2482,64 @@
             }
         },
         {
+            "locator": "do:g6-2-owned-record-triple-producer@0.1.0",
+            "member": "consume-via-stream",
+            "effect": "record-resource-triple-stream-producer",
+            "params": ["stream<resource-triple>"],
+            "result": "Result<nil,error-code>",
+            "resource": null,
+            "wit_sha256": "73fd57dc8f34f13023b48f2b82e439b212eab52192886f0d07a37d86e63658b1",
+            "canonical": {
+                "core_params": ["i32", "i32"],
+                "core_results": ["i32"],
+                "completion_params": ["i32", "i32"],
+                "completion": "task-return",
+                "async_import_module": "do:g6-2-owned-record-triple-producer/sink@0.1.0",
+                "async_import_name": "[async-lower]consume-via-stream",
+                "record_layout": {
+                    "name": "resource-triple",
+                    "byte_size": 12,
+                    "fields": [
+                        {"name": "left", "core_type": "i32", "offset": 0},
+                        {"name": "middle", "core_type": "i32", "offset": 4},
+                        {"name": "right", "core_type": "i32", "offset": 8}
+                    ],
+                    "source_fields": [
+                        {"name": "left", "source_type": "ticket", "storage": ["left"], "ownership": "own", "resource": "ticket", "drop_import": "[resource-drop]ticket"},
+                        {"name": "middle", "source_type": "ticket", "storage": ["middle"], "ownership": "own", "resource": "ticket", "drop_import": "[resource-drop]ticket"},
+                        {"name": "right", "source_type": "ticket", "storage": ["right"], "ownership": "own", "resource": "ticket", "drop_import": "[resource-drop]ticket"}
+                    ]
+                },
+                "producer": {
+                    "source_module": "do:g6-2-owned-record-triple-producer/source@0.1.0",
+                    "source_import_name": "make-ticket",
+                    "source_core_params": ["i32"],
+                    "source_core_results": ["i32"],
+                    "resource_drop_import": "[resource-drop]ticket",
+                    "stream_capacity": 1,
+                    "terminal": "task-return",
+                    "runtime_mode_param": "u32"
+                },
+                "stream": {
+                    "element": "resource-triple",
+                    "new": {"import_name": "[stream-new-0]consume-via-stream", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[stream-cancel-read-0]consume-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[stream-cancel-write-0]consume-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[stream-drop-readable-0]consume-via-stream", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[stream-drop-writable-0]consume-via-stream", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][stream-read-0]consume-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][stream-write-0]consume-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]}
+                }
+            },
+            "wit": {
+                "package": "do:g6-2-owned-record-triple-producer@0.1.0",
+                "interface": "sink",
+                "operation": "consume-via-stream",
+                "world": "owned-record-triple-producer",
+                "parameter": "data"
+            }
+        },
+        {
             "locator": "do:g6-2-owned-record-pair-parameterized-producer@0.1.0",
             "member": "consume-via-stream",
             "effect": "record-resource-pair-parameterized-stream-producer",

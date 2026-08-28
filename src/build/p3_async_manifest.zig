@@ -41,6 +41,7 @@ pub const LoweringShape = union(enum) {
     record_resource_list_stream_reader: RecordResourceListStreamShape,
     owned_record_stream_producer: OwnedRecordStreamProducerShape,
     record_resource_pair_stream_producer: OwnedRecordPairStreamProducerShape,
+    record_resource_triple_stream_producer: OwnedRecordTripleStreamProducerShape,
     record_resource_pair_parameterized_stream_producer: ParameterizedOwnedRecordPairStreamProducerShape,
     record_resource_list_stream_producer: RecordResourceListStreamProducerShape,
     record_resource_list_stream_dynamic_producer: RecordResourceListStreamProducerShape,
@@ -107,6 +108,15 @@ pub const OwnedRecordStreamProducerShape = struct {
 /// intentionally a separate shape from the single-owned-field producer so
 /// admission cannot widen to arbitrary owned records.
 pub const OwnedRecordPairStreamProducerShape = struct {
+    element: []const u8,
+    stream_index: usize,
+    method: StreamOperation,
+    stream: StreamCanonical,
+    record_layout: RecordLayout,
+    producer: ProducerCanonical,
+};
+
+pub const OwnedRecordTripleStreamProducerShape = struct {
     element: []const u8,
     stream_index: usize,
     method: StreamOperation,
@@ -508,6 +518,11 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
 
     if (std.mem.eql(u8, descriptor.effect, "record-resource-pair-stream-producer")) {
         if (valid_owned_record_pair_stream_producer_descriptor(descriptor)) |shape| return .{ .record_resource_pair_stream_producer = shape };
+        return null;
+    }
+
+    if (std.mem.eql(u8, descriptor.effect, "record-resource-triple-stream-producer")) {
+        if (valid_owned_record_triple_stream_producer_descriptor(descriptor)) |shape| return .{ .record_resource_triple_stream_producer = shape };
         return null;
     }
 
@@ -1375,6 +1390,7 @@ fn parse_descriptor(allocator: std.mem.Allocator, value: std.json.Value) !Descri
         !std.mem.eql(u8, effect, "record-stream-reader") and
         !std.mem.eql(u8, effect, "record-resource-stream-producer") and
         !std.mem.eql(u8, effect, "record-resource-pair-stream-producer") and
+        !std.mem.eql(u8, effect, "record-resource-triple-stream-producer") and
         !std.mem.eql(u8, effect, "record-resource-pair-parameterized-stream-producer") and
         !std.mem.eql(u8, effect, "record-resource-list-stream-reader") and
         !std.mem.eql(u8, effect, "record-resource-list-stream-producer") and
@@ -2311,6 +2327,44 @@ fn valid_owned_record_pair_stream_producer_descriptor(descriptor: Descriptor) ?O
     };
 }
 
+fn valid_owned_record_triple_stream_producer_descriptor(descriptor: Descriptor) ?OwnedRecordTripleStreamProducerShape {
+    const stream = descriptor.canonical.stream orelse return null;
+    const record_layout = descriptor.canonical.record_layout orelse return null;
+    const producer = descriptor.canonical.producer orelse return null;
+    if (!std.mem.eql(u8, descriptor.locator, "do:g6-2-owned-record-triple-producer@0.1.0") or
+        !std.mem.eql(u8, descriptor.member, "consume-via-stream") or
+        descriptor.params.len != 1 or !std.mem.eql(u8, descriptor.params[0], "stream<resource-triple>") or
+        descriptor.resource != null or !std.mem.eql(u8, descriptor.result, "Result<nil,error-code>") or
+        descriptor.wit_sha256 == null or !std.mem.eql(u8, descriptor.wit_sha256.?, "73fd57dc8f34f13023b48f2b82e439b212eab52192886f0d07a37d86e63658b1") or
+        !std.mem.eql(u8, descriptor.wit.package, "do:g6-2-owned-record-triple-producer@0.1.0") or
+        !std.mem.eql(u8, descriptor.wit.interface, "sink") or !std.mem.eql(u8, descriptor.wit.operation, "consume-via-stream") or
+        !std.mem.eql(u8, descriptor.wit.world, "owned-record-triple-producer") or !std.mem.eql(u8, descriptor.wit.parameter, "data") or
+        !equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i32" }) or !equal_core_types(descriptor.canonical.core_results, &.{ "i32" }) or
+        !equal_core_types(descriptor.canonical.completion_params, &.{ "i32", "i32" }) or !std.mem.eql(u8, descriptor.canonical.completion, "task-return") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "do:g6-2-owned-record-triple-producer/sink@0.1.0") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower]consume-via-stream") or
+        descriptor.canonical.result_payload != null or descriptor.canonical.result_area_payload != null or descriptor.canonical.future_owned != null or
+        descriptor.canonical.error_variants.len != 0 or descriptor.canonical.list_resource_layout != null or descriptor.canonical.scalar_list_layout != null or
+        descriptor.canonical.scalar_list_producer != null or descriptor.canonical.future_input != null or descriptor.canonical.future != null or
+        descriptor.canonical.variant_stream != null or descriptor.canonical.variant_future != null or descriptor.canonical.event_layout != null or
+        descriptor.canonical.ticket_drop_import != null or !valid_triple_ticket_record_layout(record_layout) or
+        !std.mem.eql(u8, stream.element, "resource-triple") or
+        !std.mem.eql(u8, producer.source_module, "do:g6-2-owned-record-triple-producer/source@0.1.0") or
+        !std.mem.eql(u8, producer.source_import_name, "make-ticket") or !equal_core_types(producer.source_core_params, &.{ "i32" }) or
+        !equal_core_types(producer.source_core_results, &.{ "i32" }) or !std.mem.eql(u8, producer.resource_drop_import, "[resource-drop]ticket") or
+        producer.stream_capacity != 1 or !std.mem.eql(u8, producer.terminal, "task-return") or producer.runtime_count_param != null or
+        producer.runtime_max != null or producer.runtime_mode_param == null or !std.mem.eql(u8, producer.runtime_mode_param.?, "u32") or
+        producer.batch_count != null or producer.batch_lengths != null) return null;
+    if (!valid_named_stream_operation(stream.new, "[stream-new-0]consume-via-stream", &.{}, &.{ "i64" }) or
+        !valid_named_stream_operation(stream.cancel_read, "[stream-cancel-read-0]consume-via-stream", &.{ "i32" }, &.{ "i32" }) or
+        !valid_named_stream_operation(stream.cancel_write, "[stream-cancel-write-0]consume-via-stream", &.{ "i32" }, &.{ "i32" }) or
+        !valid_named_stream_operation(stream.drop_readable, "[stream-drop-readable-0]consume-via-stream", &.{ "i32" }, &.{}) or
+        !valid_named_stream_operation(stream.drop_writable, "[stream-drop-writable-0]consume-via-stream", &.{ "i32" }, &.{}) or
+        !valid_named_stream_operation(stream.read, "[async-lower][stream-read-0]consume-via-stream", &.{ "i32", "i32", "i32" }, &.{ "i32" }) or
+        !valid_named_stream_operation(stream.write, "[async-lower][stream-write-0]consume-via-stream", &.{ "i32", "i32", "i32" }, &.{ "i32" })) return null;
+    return .{ .element = stream.element, .stream_index = 0, .method = .{ .import_name = descriptor.canonical.async_import_name, .core_params = descriptor.canonical.core_params, .core_results = descriptor.canonical.core_results }, .stream = stream, .record_layout = record_layout, .producer = producer };
+}
+
 fn valid_parameterized_owned_record_pair_stream_producer_descriptor(descriptor: Descriptor) ?ParameterizedOwnedRecordPairStreamProducerShape {
     const stream = descriptor.canonical.stream orelse return null;
     const record_layout = descriptor.canonical.record_layout orelse return null;
@@ -2791,6 +2845,17 @@ fn valid_pair_ticket_record_layout(layout: RecordLayout) bool {
         right.offset == 4 and
         valid_owned_ticket_source_field(left_source, "left") and
         valid_owned_ticket_source_field(right_source, "right");
+}
+
+fn valid_triple_ticket_record_layout(layout: RecordLayout) bool {
+    if (!std.mem.eql(u8, layout.name, "resource-triple") or layout.byte_size != 12 or layout.fields.len != 3 or layout.source_fields.len != 3) return false;
+    const names = [_][]const u8{"left", "middle", "right"};
+    for (names, 0..) |name, index| {
+        const field = layout.fields[index];
+        if (!std.mem.eql(u8, field.name, name) or !std.mem.eql(u8, field.core_type, "i32") or field.offset != index * 4 or
+            !valid_owned_ticket_source_field(layout.source_fields[index], name)) return false;
+    }
+    return true;
 }
 
 fn valid_owned_ticket_source_field(field: RecordSourceField, name: []const u8) bool {
@@ -5995,4 +6060,85 @@ test "owned record pair producer lowering rejects descriptor and ownership drift
     var wrong_locator = descriptor;
     wrong_locator.locator = "do:unregistered-pair-producer@0.1.0";
     try std.testing.expect(lowering_shape(wrong_locator) == null);
+}
+
+test "owned record triple producer descriptor is pinned before lowering" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("do:g6-2-owned-record-triple-producer@0.1.0", "consume-via-stream") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("73fd57dc8f34f13023b48f2b82e439b212eab52192886f0d07a37d86e63658b1", descriptor.wit_sha256.?);
+    switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .record_resource_triple_stream_producer => |shape| {
+            try std.testing.expectEqualStrings("resource-triple", shape.element);
+            try std.testing.expectEqual(@as(usize, 0), shape.stream_index);
+            try std.testing.expectEqual(@as(u32, 12), shape.record_layout.byte_size);
+            try std.testing.expectEqual(@as(usize, 3), shape.record_layout.fields.len);
+            try std.testing.expectEqual(@as(u32, 4), shape.record_layout.fields[1].offset);
+            try std.testing.expectEqual(@as(u32, 8), shape.record_layout.fields[2].offset);
+            try std.testing.expectEqual(@as(u32, 1), shape.producer.stream_capacity);
+        },
+        else => return error.TestUnexpectedResult,
+    }
+}
+
+test "owned record triple producer lowering rejects descriptor and ABI drift" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("do:g6-2-owned-record-triple-producer@0.1.0", "consume-via-stream") orelse return error.TestUnexpectedResult;
+
+    var wrong_hash = descriptor;
+    wrong_hash.wit_sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    try std.testing.expect(lowering_shape(wrong_hash) == null);
+    var wrong_package = descriptor;
+    wrong_package.wit.package = "do:wrong@0.1.0";
+    try std.testing.expect(lowering_shape(wrong_package) == null);
+    var wrong_world = descriptor;
+    wrong_world.wit.world = "wrong-world";
+    try std.testing.expect(lowering_shape(wrong_world) == null);
+    var wrong_element = descriptor;
+    wrong_element.params = &.{"stream<resource-pair>"};
+    try std.testing.expect(lowering_shape(wrong_element) == null);
+    var wrong_size = descriptor;
+    wrong_size.canonical.record_layout.?.byte_size = 16;
+    try std.testing.expect(lowering_shape(wrong_size) == null);
+    var wrong_middle = descriptor;
+    var middle_fields = [_]RecordField{ wrong_middle.canonical.record_layout.?.fields[0], wrong_middle.canonical.record_layout.?.fields[1], wrong_middle.canonical.record_layout.?.fields[2] };
+    middle_fields[1].offset = 8;
+    var middle_layout = wrong_middle.canonical.record_layout.?;
+    middle_layout.fields = &middle_fields;
+    wrong_middle.canonical.record_layout = middle_layout;
+    try std.testing.expect(lowering_shape(wrong_middle) == null);
+    var wrong_right = descriptor;
+    var right_fields = [_]RecordField{ right_layout_field(descriptor, 0), right_layout_field(descriptor, 1), right_layout_field(descriptor, 2) };
+    right_fields[2].offset = 12;
+    var right_layout = wrong_right.canonical.record_layout.?;
+    right_layout.fields = &right_fields;
+    wrong_right.canonical.record_layout = right_layout;
+    try std.testing.expect(lowering_shape(wrong_right) == null);
+    var wrong_count = descriptor;
+    var two_fields = [_]RecordField{ descriptor.canonical.record_layout.?.fields[0], descriptor.canonical.record_layout.?.fields[1] };
+    var two_layout = wrong_count.canonical.record_layout.?;
+    two_layout.fields = &two_fields;
+    wrong_count.canonical.record_layout = two_layout;
+    try std.testing.expect(lowering_shape(wrong_count) == null);
+    var wrong_ownership = descriptor;
+    var source_fields = [_]RecordSourceField{ descriptor.canonical.record_layout.?.source_fields[0], descriptor.canonical.record_layout.?.source_fields[1], descriptor.canonical.record_layout.?.source_fields[2] };
+    source_fields[1].ownership = .borrow;
+    var source_layout = wrong_ownership.canonical.record_layout.?;
+    source_layout.source_fields = &source_fields;
+    wrong_ownership.canonical.record_layout = source_layout;
+    try std.testing.expect(lowering_shape(wrong_ownership) == null);
+    var wrong_source = descriptor;
+    wrong_source.canonical.producer.?.source_module = "do:wrong/source@0.1.0";
+    try std.testing.expect(lowering_shape(wrong_source) == null);
+    var wrong_import = descriptor;
+    wrong_import.canonical.stream.?.write.import_name = "[stream-write-drift]";
+    try std.testing.expect(lowering_shape(wrong_import) == null);
+    var wrong_signature = descriptor;
+    wrong_signature.canonical.stream.?.write.core_results = &.{"i64"};
+    try std.testing.expect(lowering_shape(wrong_signature) == null);
+}
+
+fn right_layout_field(descriptor: Descriptor, index: usize) RecordField {
+    return descriptor.canonical.record_layout.?.fields[index];
 }
