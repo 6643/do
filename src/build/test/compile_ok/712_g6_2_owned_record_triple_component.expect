@@ -1,0 +1,9 @@
+# build-arg: --p3-async-component
+do:g6-2-owned-record-triple-producer/sink@0.1.0
+(func (export "[async-lift]produce")
+[producer-record-byte-size] 12
+[producer-record-middle-offset] 4
+[producer-record-right-offset] 8
+[producer-input-word-count] 4
+[producer-record-transfer]
+[producer-resource-drop-exactly-once]
