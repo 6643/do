@@ -3,9 +3,9 @@
 `--p3-async-component` is the explicit unified source-to-Component target. It
 classifies the pinned descriptor before selecting a lowering: scalar/unit
 clocks, `wasi:cli/run.run` with `Result<nil, nil>`, the private two-word
-resource `Result` probe, the fixed `wasi:http/client.send` service, or the
-fixed `wasi:filesystem/types.descriptor.read-directory` one-to-three-entry
-slice. It
+resource `Result` probe, the fixed `wasi:http/client.send` service, the fixed
+`wasi:filesystem/types.descriptor.read-directory` one-to-three-entry slice, or
+the private fixed `ResourceTriple` producer route. It
 emits Core WAT plus a WIT sidecar for component assembly. List, generic Stream,
 generic record streams, payload-bearing HTTP `error-code`, and every
 unclassified descriptor are rejected rather than falling into a probe
@@ -182,8 +182,8 @@ gate, not an ARC/GC equivalence row; generic producers, arbitrary expressions,
 borrowed/list/variant payloads, general async/resource lowering, and public
 ownership syntax remain unsupported.
 
-The standalone `g6-2-owned-record-triple-producer` probe measures the next
-bounded resource shape without compiler admission. Its pinned WIT package is
+The fixed `g6-2-owned-record-triple-producer` route now has private compiler
+admission behind `--p3-async-component`. Its pinned WIT package is
 `do:g6-2-owned-record-triple-producer@0.1.0` with hash
 `73fd57dc8f34f13023b48f2b82e439b212eab52192886f0d07a37d86e63658b1`.
 `ResourceTriple` is a 12-byte, 4-byte-aligned record with
@@ -194,18 +194,23 @@ complete write, releases `right -> middle -> left` before transfer, and leaves
 host cleanup to drop each transferred ticket exactly once; handle `0` is valid.
 
 Run `bash test_g6_2_owned_record_triple_producer_abi.sh` for the pinned WIT,
-canonical WAT, Component assembly, and validation gate, then run
-`bash test_rust_g6_2_owned_record_triple_producer.sh` for the ten-mode
-Rust/Wasmtime lifecycle matrix. Valid rows observe `3/3` ticket cleanup,
-`repeat` observes `6/6`, cancellation/early-drop rows record the expected
-pending-future cleanup, and every row leaves `table-empty=true`. This is
-private design/probe evidence only: it is not an ARC/GC equivalence row and
-adds no manifest entry, compiler lowering, Do fixture, or public
-`own<T>`/`borrow<T>`/`ref<T>` syntax. A future compiler admission requires a
-separate approved implementation plan.
+canonical WAT, Component assembly, and validation gate;
+`bash test_do_g6_2_owned_record_triple_producer.sh` and
+`bash test_do_g6_2_owned_record_triple_producer_negative.sh` for positive and
+13-case fail-closed compiler admission; `bash
+test_rust_g6_2_owned_record_triple_producer.sh` for the generated ten-mode
+Rust/Wasmtime lifecycle matrix; and `bash
+test_g6_2_owned_record_triple_producer_equivalence.sh` for canonical/generated
+WAT/WIT and observation parity. Valid rows observe `3/3` ticket cleanup,
+`repeat` observes `6/6`, cancellation/early-drop rows record one cancel and
+pending-future drop, invalid creates no resources, and every row leaves
+`table-empty=true`. This remains private Component/compiler evidence, not an
+ARC/GC equivalence row; generic/arbitrary producers, borrowed/list/variant
+payloads, general async/resource lowering, public `own<T>`/`borrow<T>`/`ref<T>`
+syntax, and full GC cutover remain unsupported.
 
-`g6-2-owned-record-pair-parameterized-producer.do` is the next private,
-hash-pinned pair producer slice. It keeps the same `ResourcePair` ABI as the
+`g6-2-owned-record-pair-parameterized-producer.do` is the private,
+hash-pinned parameterized pair producer slice. It keeps the same `ResourcePair` ABI as the
 static route, but accepts independent `left-seed` and `right-seed` `u32`
 inputs through `produce(mode, left_seed, right_seed)`. Its descriptor is
 `do:g6-2-owned-record-pair-parameterized-producer@0.1.0`, the WIT hash is

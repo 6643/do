@@ -1,5 +1,27 @@
 # Changelog
 
+# 2026-08-28 G6.2 private fixed three-owned-field record compiler admission:
+  admitted exactly the hash-pinned `do:g6-2-owned-record-triple-producer@0.1.0`
+  shape behind `--p3-async-component`. `ResourceTriple` remains a 12-byte,
+  4-byte-aligned record with `left/middle/right: own<ticket>` at offsets
+  `0/4/8`, a capacity-one stream, and producer inputs in
+  `(mode,left-seed,middle-seed,right-seed)` four-`u32` order. The manifest,
+  dedicated source matcher/lowering, generated WIT/WAT, Component validation,
+  and 13 fail-closed compiler fixtures (712-724) are pinned to WIT hash
+  `73fd57dc8f34f13023b48f2b82e439b212eab52192886f0d07a37d86e63658b1`.
+  Canonical and generated WAT/WIT are byte-identical; canonical/generated
+  Rust/Wasmtime observations agree across all ten ready/pending/error/
+  cancel/early-drop/repeat/invalid modes. Valid rows retain `3/3` ticket
+  cleanup, `repeat` retains `6/6`, cancellation/early-drop retain one
+  pending-future drop and cancel, invalid creates no resources, and every row
+  leaves `table-empty=true`. Fresh verification passes `zig test main.zig`
+  `695/695`, full regression `pass=1424 fail=0 skip=3`, ReleaseSmall, release
+  smoke, and the three triple gates with `wasm-tools 1.255.0`. The route is
+  private compiler evidence only: it does not add public `own<T>`/`borrow<T>`/
+  `ref<T>` syntax, generic/arbitrary producer lowering, borrowed/list/variant
+  payload lowering, general async/resource lowering, or a GC inventory row;
+  inventory remains `complete_rows=15 pending_rows=15` with exit `1`.
+
 # 2026-08-28 G6.2 private fixed three-owned-field record producer probe:
   added the standalone, hash-pinned canonical WIT/WAT probe for
   `do:g6-2-owned-record-triple-producer@0.1.0`. `ResourceTriple` is a

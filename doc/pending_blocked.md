@@ -11,29 +11,6 @@
 > 证据, 不改变源码值语义; 后续 runtime work 目标为 GC。Component/WIT resource 的
 > ownership 与 drop 继续是显式 ABI contract, 不由 GC 接管。
 
-### G6.2 private fixed three-owned-field record producer probe (2026-08-28)
-
-三字段 `ResourceTriple` 已完成独立、私有且固定形状的 design/probe。canonical WIT
-package `do:g6-2-owned-record-triple-producer@0.1.0` 的 hash 为
-`73fd57dc8f34f13023b48f2b82e439b212eab52192886f0d07a37d86e63658b1`；record
-为 12 bytes、alignment 4，`left/middle/right: own<ticket>` 位于 offset
-`0/4/8`，stream capacity 为 `1`，producer 输入为
-`(mode,left-seed,middle-seed,right-seed)` 四个 `u32` words。presence mask 只在完整
-record 写入后原子转移三个 owned handle；转移前按 `right -> middle -> left` 释放，
-转移后 host 各释放一次，handle `0` 不作为 absence sentinel。
-
-canonical WAT parse/embed/component-new/validate 与 Rust/Wasmtime 十模式 lifecycle gate
-均通过；valid 模式为 `3/3` ticket cleanup、repeat 为 `6/6`，四种取消/早退模式各有
-一次 host-task cancel 与 pending-future drop，所有模式 `table-empty=true`，invalid 不
-创建资源。该 Component 生命周期证据不计入 ARC/GC semantic-equivalence matrix，
-也不关闭任何 migration row。
-
-该 probe 只关闭 triple 的 private design/probe 证据，不扩大默认 route。manifest row、
-compiler dispatch、Do fixture 和公开 `own<T>`/`borrow<T>`/`ref<T>` syntax 仍未增加；
-generic producer、arbitrary producer expression、borrowed/list/variant/mixed resource
-payload、general async/resource lowering 与 full GC cutover 仍 pending。若要进入 compiler
-admission，必须另立实现计划并获得明确批准。
-
 ### G6.2 private two-owned-field record producer checkpoint (2026-08-27)
 
 本轮已闭合一个独立、私有且固定形状的 producer gate：descriptor
@@ -87,8 +64,8 @@ Rust/Wasmtime lifecycle 与 canonical/generated equivalence gates 均通过。�
 该 route 只关闭参数化 pair 的私有证据，不扩大默认 route。generic producer、
 arbitrary producer expression、borrowed/list/variant/mixed resource payload、
 general async/resource lowering、public `own<T>`/`borrow<T>`/`ref<T>` syntax 与
-full GC cutover 仍 pending；固定三字段 `ResourceTriple` 的 private design/probe 已通过；
-下一步若要 compiler admission，必须另立实现计划并经明确批准。
+full GC cutover 仍 pending；固定三字段 `ResourceTriple` 的 private compiler
+admission 已通过并在下方「已关闭摘要」记录。
 
 ### G5c bounded mixed text + two `list<u32>` lower promotion (2026-08-25)
 
@@ -399,7 +376,7 @@ only. Public `own<T>`/`borrow<T>`/`ref<T>` syntax remains outside this phase.
 
 | ID | 问题 | 证据 / 停止点 | 恢复条件 |
 | --- | --- | --- | --- |
-| **G6.2** | `descriptor.read-directory` 及 record-stream 通用能力 | generic consumer 已覆盖注册的非 filesystem record streams；bounded producer、StreamMirror、private Result cancellation、HTTP payload cancellation、resource-list stream、私有 `do:variant-resource-stream-canonical@0.1.0`、动态 count `0..3` 的私有 `do:g6-2-c-min-dynamic-producer@0.1.0`、固定两批 `[111,222]`/`[333]` 的私有 `do:g6-2-batched-list-producer@0.1.0`，以及私有 `do:g6-2-scalar-list-producer@0.1.0` `stream<list<u32>>` producer 的 compiler-generated Component/Rust/Wasmtime gate 均已通过。scalar producer 固定 `ptr=64/len=68/stride=4/max=3`、stream capacity `1`、count `0..3`/invalid `4`，并保留 pending、sink error、early drop、转移前/后 cancellation、exactly-once list cleanup、empty `ResourceTable` 与 fail-closed 负例。D2 另关闭了私有 `descriptor.get-type`、`descriptor.sync`、`descriptor.get-flags`、`descriptor.stat`、`descriptor.sync-data`、`descriptor.metadata-hash`、`descriptor.metadata-hash-at`、`descriptor.stat-at`、`descriptor.open-at` 与 `descriptor.set-size` 十个有界方法；十者均固定 upstream WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`，并分别通过独立 ABI、compiler admission 和 ready/pending/error/cancel cleanup gate；`sync-data`、`metadata-hash`、`metadata-hash-at`、`stat-at`、`open-at` 与 `set-size` 另通过 repeat 与 Store-disposal early-drop 边界。仍缺一般 async helper/producer lease、任意 producer 表达式、通用 list、通用 borrowed/variant lowering、第七跳 forwarding、第七层或更一般 nested resource 字段、payload-bearing completion error 的更广形状、任意其它 filesystem async method 与通用 resource cancellation。Pinned `wasm-tools 1.255.0` 对含 `borrow<T>` 的 stream record 在 Component embed 阶段明确拒绝 | 保持所有 private bounded descriptor 的精确边界；扩展其他 producer/resource shape 前必须另立 design、probe 与 gate |
+| **G6.2** | `descriptor.read-directory` 及 record-stream 通用能力 | generic consumer 已覆盖注册的非 filesystem record streams；bounded producer、StreamMirror、private Result cancellation、HTTP payload cancellation、resource-list stream、私有 `do:variant-resource-stream-canonical@0.1.0`、动态 count `0..3` 的私有 `do:g6-2-c-min-dynamic-producer@0.1.0`、固定两批 `[111,222]`/`[333]` 的私有 `do:g6-2-batched-list-producer@0.1.0`，以及私有 `do:g6-2-scalar-list-producer@0.1.0` `stream<list<u32>>` producer 的 compiler-generated Component/Rust/Wasmtime gate 均已通过。scalar producer 固定 `ptr=64/len=68/stride=4/max=3`、stream capacity `1`、count `0..3`/invalid `4`，并保留 pending、sink error、early drop、转移前/后 cancellation、exactly-once list cleanup、empty `ResourceTable` 与 fail-closed 负例。D2 另关闭了私有 `descriptor.get-type`、`descriptor.sync`、`descriptor.get-flags`、`descriptor.stat`、`descriptor.sync-data`、`descriptor.metadata-hash`、`descriptor.metadata-hash-at`、`descriptor.stat-at`、`descriptor.open-at` 与 `descriptor.set-size` 十个有界方法；十者均固定 upstream WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`，并分别通过独立 ABI、compiler admission 和 ready/pending/error/cancel cleanup gate；`sync-data`、`metadata-hash`、`metadata-hash-at`、`stat-at`、`open-at` 与 `set-size` 另通过 repeat 与 Store-disposal early-drop 边界。固定三字段 `ResourceTriple` compiler admission 已关闭，但仍缺一般 async helper/producer lease、任意 producer 表达式、通用 list、通用 borrowed/variant lowering、第七跳 forwarding、第七层或更一般 nested resource 字段、payload-bearing completion error 的更广形状、任意其它 filesystem async method 与通用 resource cancellation。Pinned `wasm-tools 1.255.0` 对含 `borrow<T>` 的 stream record 在 Component embed 阶段明确拒绝 | 保持所有 private bounded descriptor 的精确边界；扩展其他 producer/resource shape 前必须另立 design、probe 与 gate |
 | **06.2** | 历史总项 | 已拆到 G2–G6；通用 consumer slice 已关闭，剩余边界由 **G6.2** 的后续 gates 承接 | 同上 |
 
 **D2 general filesystem/HTTP recovery boundary (2026-08-11):**
@@ -896,6 +873,22 @@ slice 解释为 G5c 或 full GC cutover。
   all ten modes with exactly-once cleanup and an empty `ResourceTable`. This is
   a separate Component lifecycle comparison, not an ARC/GC matrix row; generic
   producer/resource, borrowed/list/variant, and public ownership remain pending.
+- **G6.2 fixed three-owned-field record producer**: the private compiler route
+  admits exactly `do:g6-2-owned-record-triple-producer@0.1.0` behind
+  `--p3-async-component`. Its WIT hash is
+  `73fd57dc8f34f13023b48f2b82e439b212eab52192886f0d07a37d86e63658b1`;
+  `ResourceTriple` is a 12-byte, alignment-4 record with
+  `left/middle/right: own<ticket>` at offsets `0/4/8`, a capacity-one stream,
+  and producer inputs `(mode,left-seed,middle-seed,right-seed)` as four `u32`
+  words. The manifest/source matcher, generated WAT/WIT, Component validation,
+  13 fail-closed compiler fixtures (`712`-`724`), Rust/Wasmtime ten-mode
+  lifecycle, and canonical/generated parity gates pass. Valid rows observe
+  `3/3` ticket cleanup, `repeat` observes `6/6`, cancellation/early-drop each
+  observe one cancel and pending-future drop, invalid creates no resources, and
+  every mode leaves `table-empty=true`. This private route is not an ARC/GC
+  equivalence row or inventory row; generic/arbitrary producers,
+  borrowed/list/variant payloads, general async/resource lowering, and public
+  `own<T>`/`borrow<T>`/`ref<T>` syntax remain pending.
 - **Bounded async-call internal consolidation (2026-08-09)**: the five
   admitted child/inline/host-scalar forms now share private validated frame and
   cleanup facts only. Planner admission remains separate and emitter templates
