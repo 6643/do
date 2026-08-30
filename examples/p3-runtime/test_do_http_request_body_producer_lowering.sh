@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 do_bin="$repo_root/bin/do"
 fixture="$repo_root/examples/p3-runtime/http-request-body-producer-send-first.do"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-p3-http-request-body-producer-lowering.XXXXXX")
@@ -36,7 +38,7 @@ close_line=$(awk '/\(func \$start-producer-write/{inside=1} inside && /call \$pr
 test -n "$request_line" -a -n "$close_line"
 test "$request_line" -lt "$close_line"
 
-wasm-tools parse "$core_wat" -o "$core_wasm"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
 cat >>"$wit_dir/worlds.wit" <<'WIT'
 
 interface probe {
@@ -51,10 +53,9 @@ world http-request-body-producer-probe {
   export probe;
 }
 WIT
-wasm-tools component embed "$wit_dir" "$core_wasm" \
-  --world http-request-body-producer-probe \
-  --features cm-async,cm-more-async-builtins -o "$embedded"
-wasm-tools component new "$embedded" -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" embed-component "$wit_dir" "$core_wasm" \
+  http-request-body-producer-probe -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component"
 
 printf 'WASI HTTP request body producer lowering passed\n'

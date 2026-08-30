@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 do_bin="$repo_root/bin/do"
 fixture="$repo_root/examples/p3-runtime/http-request-body.do"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-p3-http-request-body-lowering.XXXXXX")
@@ -29,7 +31,7 @@ if grep -Fq 'async-lower][request.new]' "$core_wat"; then
   exit 1
 fi
 
-wasm-tools parse "$core_wat" -o "$core_wasm"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
 cat >>"$wit_dir/worlds.wit" <<'WIT'
 
 interface probe {
@@ -44,9 +46,9 @@ world http-request-body-probe {
   export probe;
 }
 WIT
-wasm-tools component embed "$wit_dir" "$core_wasm" \
-  --world http-request-body-probe --features cm-async,cm-more-async-builtins -o "$embedded"
-wasm-tools component new "$embedded" -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" embed-component "$wit_dir" "$core_wasm" \
+  http-request-body-probe -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component"
 
 printf 'WASI HTTP request body lowering passed\n'

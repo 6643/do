@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 do_bin="$repo_root/bin/do"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
 fixture="$repo_root/examples/p3-runtime/variant-resource-stream.do"
@@ -23,12 +25,11 @@ grep -Fq '[event-tag-offset]' "$wat_file"
 grep -Fq '[event-payload-offset]' "$wat_file"
 grep -Fq '[resource-drop]ticket' "$wat_file"
 
-wasm-tools parse "$wat_file" -o "$core_wasm"
-wasm-tools component embed "$wit_file" "$core_wasm" \
-  --world variant-resource-stream-canonical \
-  --features cm-async,cm-more-async-builtins -o "$embedded"
-wasm-tools component new --skip-validation "$embedded" -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" parse-core "$wat_file" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit_file" "$core_wasm" \
+  variant-resource-stream-canonical -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component"
 
 if ! command -v cc >/dev/null 2>&1; then
   export CC="$runner_dir/zig-cc.sh"

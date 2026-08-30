@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 do_bin="$repo_root/bin/do"
 fixture="$repo_root/examples/p3-runtime/http-response-consume-body.do"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-p3-http-response-body.XXXXXX")
@@ -30,12 +32,12 @@ world http-response-body-probe {
 }
 WIT
 
-wasm-tools parse "$core_wat" -o "$core_wasm"
-wasm-tools component embed "$wit_dir" "$core_wasm" \
-  --world http-response-body-probe -o "$embedded"
-wasm-tools component new "$embedded" -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
-wasm-tools print "$component" -o "$component_wat"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit_dir" "$core_wasm" \
+  http-response-body-probe -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component"
+"$toolchain_bin" print-component "$component" >"$component_wat"
 grep -Fq 'call $consume-body' "$component_wat"
 
 printf 'WASI HTTP response consume-body assembly passed\n'
