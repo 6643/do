@@ -2,8 +2,9 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 do_bin=${DO_BIN:-"$repo_root/bin/do"}
-wasm_tools_bin=${WASM_TOOLS:-wasm-tools}
 source="$repo_root/examples/p3-runtime/g6-2-owned-record-triple-producer.do"
 probe_wit="$repo_root/examples/p3-runtime/wit/g6-2-owned-record-triple-producer.wit"
 tmp_root=${TMPDIR:-"$repo_root/.tmp/do-tmp"}
@@ -26,7 +27,6 @@ component="$tmp_dir/owned-record-triple-producer.component.wasm"
 test -x "$do_bin"
 test -f "$source"
 test -f "$probe_wit"
-command -v "$wasm_tools_bin" >/dev/null 2>&1
 
 DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$source" \
   --p3-async-component --p3-wit-output "$wit" -o "$core_wat"
@@ -69,12 +69,10 @@ if grep -Fq '__arc_' "$core_wat"; then
   exit 1
 fi
 
-"$wasm_tools_bin" parse "$core_wat" -o "$core_wasm"
-"$wasm_tools_bin" component embed "$wit" "$core_wasm" \
-  --world owned-record-triple-producer \
-  --features cm-async,cm-more-async-builtins \
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit" "$core_wasm" owned-record-triple-producer \
   -o "$embedded"
-"$wasm_tools_bin" component new --skip-validation "$embedded" -o "$component"
-"$wasm_tools_bin" validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component"
 
 printf 'G6.2 owned-record triple producer Do Component gate passed\n'
