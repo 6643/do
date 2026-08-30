@@ -21,6 +21,10 @@ Both gates retain their existing source/WIT/WAT/hash/marker, ARC, and
 reference-boundary assertions, plus existing temporary-directory cleanup.
 Neither script retains a wasm-tools version guard or an old-version fallback.
 
+Reviewer follow-up strengthens the canonical gate with the fixed WIT SHA-256
+assertion and complete values for all layout, path, capacity, signature,
+input-mode, ownership, transfer, drop, and cleanup markers.
+
 ## Commands and results
 
 - From repository root `/home/_/._/_/do`:
@@ -43,3 +47,12 @@ Neither script retains a wasm-tools version guard or an old-version fallback.
     adapter`.
 - `git diff --check`
   - PASS, exit 0.
+
+## Reviewer follow-up verification
+
+Pending execution after strengthening the canonical assertions:
+
+- `bash examples/p3-runtime/test_g6_2_owned_record_nested_canonical.sh`
+- `bash examples/p3-runtime/test_do_g6_2_owned_record_nested_producer.sh`
+- `bash examples/p3-runtime/test_wasm_tools_current_only.sh`
+- `git diff --check`

@@ -28,24 +28,24 @@ test -f "$wat" || {
 }
 test -x "$toolchain_bin"
 
-printf 'wit-sha256=%s\n' "$(sha256sum "$wit" | awk '{print $1}')"
+wit_sha256=$(sha256sum "$wit" | awk '{print $1}')
+printf 'wit-sha256=%s\n' "$wit_sha256"
+test "$wit_sha256" = \
+  9662440709b01044544d4c4350f3e6f783a8f06aaa5c884a96a1e43a935a7543
 for marker in \
-  'producer-record-byte-size' \
-  'producer-record-alignment' \
-  'producer-nested-ticket-offset' \
-  'producer-stream-capacity' \
-  'producer-source-signature' \
-  'producer-input-mode' \
-  'producer-record-transfer' \
-  'producer-resource-drop-exactly-once' \
-  'producer-child-before-parent-cleanup'; do
-  rg -q "^\\s*;; \\[${marker}\\]" "$wat"
+  '[producer-record-byte-size] 4' \
+  '[producer-record-alignment] 4' \
+  '[producer-nested-ticket-offset] 0' \
+  '[producer-nested-path] inner.ticket' \
+  '[producer-stream-capacity] 1' \
+  '[producer-source-signature] (i32) -> (i32)' \
+  '[producer-input-mode]' \
+  '[producer-ownership-mask] guest=1 transferred=2' \
+  '[producer-record-transfer]' \
+  '[producer-resource-drop-exactly-once]' \
+  '[producer-child-before-parent-cleanup]'; do
+  grep -Fq ";; $marker" "$wat"
 done
-grep -Fq '[producer-record-byte-size] 4' "$wat"
-grep -Fq '[producer-record-alignment] 4' "$wat"
-grep -Fq '[producer-nested-ticket-offset] 0' "$wat"
-grep -Fq '[producer-stream-capacity] 1' "$wat"
-grep -Fq '[producer-source-signature] (i32) -> (i32)' "$wat"
 if grep -Fq '__arc_' "$wat"; then
   printf 'nested producer canonical WAT contains ARC symbol\n' >&2
   exit 1
