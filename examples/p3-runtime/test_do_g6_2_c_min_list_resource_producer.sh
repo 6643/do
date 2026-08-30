@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 do_bin=${DO_BIN:-"$repo_root/bin/do"}
 source="$repo_root/examples/p3-runtime/g6-2-c-min-list-resource-producer.do"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-g6-2-c-min-producer.XXXXXX")
@@ -23,5 +25,5 @@ grep -Fq '[producer-stream-capacity]' "$core_wat"
 grep -Fq '[producer-list-transfer]' "$core_wat"
 grep -Fq '[producer-child-before-parent-cleanup]' "$core_wat"
 
-wasm-tools parse "$core_wat" -o "$tmp_dir/c-min-producer.core.wasm"
+"$toolchain_bin" parse-core "$core_wat" -o "$tmp_dir/c-min-producer.core.wasm"
 printf 'G6.2 C-min producer compiler gate passed\n'

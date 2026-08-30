@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 do_bin=${DO_BIN:-"$repo_root/bin/do"}
 source="$repo_root/examples/p3-runtime/g6-2-c-min-dynamic-list-resource-producer.do"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-g6-2-c-min-dynamic-producer.XXXXXX")
@@ -31,11 +33,9 @@ grep -Fq 'world dynamic-list-producer' "$wit"
 core_wasm="$tmp_dir/dynamic-producer.core.wasm"
 embedded="$tmp_dir/dynamic-producer.embedded.wasm"
 component="$tmp_dir/dynamic-producer.component.wasm"
-wasm-tools parse "$core_wat" -o "$core_wasm"
-wasm-tools component embed "$wit" "$core_wasm" \
-  --world dynamic-list-producer \
-  --features cm-async,cm-more-async-builtins \
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit" "$core_wasm" dynamic-list-producer \
   -o "$embedded"
-wasm-tools component new --skip-validation "$embedded" -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component"
 printf 'G6.2 bounded dynamic list producer compiler gate passed\n'
