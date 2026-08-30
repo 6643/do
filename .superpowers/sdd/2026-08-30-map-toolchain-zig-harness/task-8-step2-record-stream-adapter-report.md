@@ -17,17 +17,60 @@ All commands were run from `/home/_/._/_/do` unless noted.
 bash -n examples/p3-runtime/test_do_record_resource_stream_probe_lowering.sh examples/p3-runtime/test_do_record_resource_stream_multi_probe_lowering.sh examples/p3-runtime/test_do_record_resource_stream_multiple_nested_probe_lowering.sh examples/p3-runtime/test_do_record_resource_stream_nested_probe_lowering.sh examples/p3-runtime/test_do_record_resource_stream_nested_two_level_probe_lowering.sh examples/p3-runtime/test_do_record_resource_stream_nested_three_level_probe_lowering.sh examples/p3-runtime/test_do_record_resource_stream_nested_four_level_probe_lowering.sh examples/p3-runtime/test_do_record_resource_stream_nested_five_level_probe_lowering.sh examples/p3-runtime/test_do_record_resource_stream_nested_six_level_probe_lowering.sh
 exit=0
 
-for each of the nine files: bash examples/p3-runtime/<file>
-result: 9/9 passed from repository root; every exit code was 0
+bash examples/p3-runtime/test_do_record_resource_stream_probe_lowering.sh
+exit=0
+bash examples/p3-runtime/test_do_record_resource_stream_multi_probe_lowering.sh
+exit=0
+bash examples/p3-runtime/test_do_record_resource_stream_multiple_nested_probe_lowering.sh
+exit=0
+bash examples/p3-runtime/test_do_record_resource_stream_nested_probe_lowering.sh
+exit=0
+bash examples/p3-runtime/test_do_record_resource_stream_nested_two_level_probe_lowering.sh
+exit=0
+bash examples/p3-runtime/test_do_record_resource_stream_nested_three_level_probe_lowering.sh
+exit=0
+bash examples/p3-runtime/test_do_record_resource_stream_nested_four_level_probe_lowering.sh
+exit=0
+bash examples/p3-runtime/test_do_record_resource_stream_nested_five_level_probe_lowering.sh
+exit=0
+bash examples/p3-runtime/test_do_record_resource_stream_nested_six_level_probe_lowering.sh
+exit=0
 
-unrelated_cwd=$(mktemp -d); cd "$unrelated_cwd"; for each of the nine absolute script paths: bash "$script"
-result: 9/9 passed from unrelated temporary cwd; every exit code was 0
+unrelated_cwd=$(mktemp -d); cd "$unrelated_cwd"
+bash /home/_/._/_/do/examples/p3-runtime/test_do_record_resource_stream_probe_lowering.sh
+exit=0
+bash /home/_/._/_/do/examples/p3-runtime/test_do_record_resource_stream_multi_probe_lowering.sh
+exit=0
+bash /home/_/._/_/do/examples/p3-runtime/test_do_record_resource_stream_multiple_nested_probe_lowering.sh
+exit=0
+bash /home/_/._/_/do/examples/p3-runtime/test_do_record_resource_stream_nested_probe_lowering.sh
+exit=0
+bash /home/_/._/_/do/examples/p3-runtime/test_do_record_resource_stream_nested_two_level_probe_lowering.sh
+exit=0
+bash /home/_/._/_/do/examples/p3-runtime/test_do_record_resource_stream_nested_three_level_probe_lowering.sh
+exit=0
+bash /home/_/._/_/do/examples/p3-runtime/test_do_record_resource_stream_nested_four_level_probe_lowering.sh
+exit=0
+bash /home/_/._/_/do/examples/p3-runtime/test_do_record_resource_stream_nested_five_level_probe_lowering.sh
+exit=0
+bash /home/_/._/_/do/examples/p3-runtime/test_do_record_resource_stream_nested_six_level_probe_lowering.sh
+exit=0
 
 bash examples/p3-runtime/test_wasm_tools_current_only.sh
 wasm-tools current-only guard passed through do-toolchain adapter
 exit=0
 
-git diff --check
+git diff --check -- \
+  examples/p3-runtime/test_do_record_resource_stream_probe_lowering.sh \
+  examples/p3-runtime/test_do_record_resource_stream_multi_probe_lowering.sh \
+  examples/p3-runtime/test_do_record_resource_stream_multiple_nested_probe_lowering.sh \
+  examples/p3-runtime/test_do_record_resource_stream_nested_probe_lowering.sh \
+  examples/p3-runtime/test_do_record_resource_stream_nested_two_level_probe_lowering.sh \
+  examples/p3-runtime/test_do_record_resource_stream_nested_three_level_probe_lowering.sh \
+  examples/p3-runtime/test_do_record_resource_stream_nested_four_level_probe_lowering.sh \
+  examples/p3-runtime/test_do_record_resource_stream_nested_five_level_probe_lowering.sh \
+  examples/p3-runtime/test_do_record_resource_stream_nested_six_level_probe_lowering.sh \
+  .superpowers/sdd/2026-08-30-map-toolchain-zig-harness/task-8-step2-record-stream-adapter-report.md
 exit=0
 ```
 
