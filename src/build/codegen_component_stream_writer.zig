@@ -183,7 +183,7 @@ fn emit_stream_mirror_wat(
     wat = try replace_and_free(allocator, wat, "[guest-callback-body]", mirror_callback);
     const source_import_insertion = try generated_text.alloc_fmt(
         allocator,
-        "  {[imports]s}  (import \"[export]$root\" \"[task-cancel]\"",
+        "  {[imports]s}  (import \"[export]$root\" \"[task-cancel]",
         .{ .imports = source_imports },
     );
     defer allocator.free(source_import_insertion);
@@ -3801,6 +3801,8 @@ test "stream mirror lowering emits source and writer callback states" {
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "[stream-mirror-source-read]") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "[stream-mirror-writer-write]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "\"[task-cancel]\"\"") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(import \"[export]$root\" \"[task-cancel]\" (func $task-cancel") != null);
 
     const wit = try emit_stream_mirror_component_wit(std.testing.allocator, tokens);
     defer std.testing.allocator.free(wit);
