@@ -50,9 +50,20 @@ input-mode, ownership, transfer, drop, and cleanup markers.
 
 ## Reviewer follow-up verification
 
-Pending execution after strengthening the canonical assertions:
-
-- `bash examples/p3-runtime/test_g6_2_owned_record_nested_canonical.sh`
-- `bash examples/p3-runtime/test_do_g6_2_owned_record_nested_producer.sh`
+- `bash -n examples/p3-runtime/test_do_g6_2_owned_record_nested_producer.sh examples/p3-runtime/test_g6_2_owned_record_nested_canonical.sh`
+  - PASS, exit 0.
+- From repository root `/home/_/._/_/do`:
+  - `bash examples/p3-runtime/test_g6_2_owned_record_nested_canonical.sh`
+    - PASS, exit 0; printed the expected fixed WIT hash and canonical gate
+      marker.
+  - `bash examples/p3-runtime/test_do_g6_2_owned_record_nested_producer.sh`
+    - PASS, exit 0.
+- From unrelated cwd `/tmp/do-g6-2-nested-adapter-cwd.tnmhSV`:
+  - `bash /home/_/._/_/do/examples/p3-runtime/test_g6_2_owned_record_nested_canonical.sh`
+    - PASS, exit 0.
+  - `bash /home/_/._/_/do/examples/p3-runtime/test_do_g6_2_owned_record_nested_producer.sh`
+    - PASS, exit 0.
 - `bash examples/p3-runtime/test_wasm_tools_current_only.sh`
+  - PASS, exit 0.
 - `git diff --check`
+  - PASS, exit 0.
