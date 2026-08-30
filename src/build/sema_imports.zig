@@ -229,6 +229,27 @@ fn p3_async_signature_matches(tokens: []const lexer.Token, start_idx: usize, end
     return token_range_matches_type_name(tokens, close_idx + 3, end_idx, descriptor.result);
 }
 
+fn http_request_constructor_signature_matches(
+    tokens: []const lexer.Token,
+    params_start_idx: usize,
+    params_close_idx: usize,
+    end_idx: usize,
+) bool {
+    const empty_params = params_close_idx == params_start_idx + 1;
+    const body_params = params_close_idx == params_start_idx + 5 and
+        tok_eq(tokens[params_start_idx + 1], "Stream") and
+        tok_eq(tokens[params_start_idx + 2], "<") and
+        tok_eq(tokens[params_start_idx + 3], "u8") and
+        tok_eq(tokens[params_start_idx + 4], ">");
+    if (!empty_params and !body_params) return false;
+    return compact_token_range_equals(
+        tokens,
+        params_close_idx + 3,
+        end_idx,
+        "Tuple<HttpRequest,Future<Result<nil,HttpError>>>",
+    );
+}
+
 fn filesystem_get_type_signature_matches(
     tokens: []const lexer.Token,
     params_start_idx: usize,
