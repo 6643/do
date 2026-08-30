@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-stream-writer-producer-parameterized-forwarding-helper.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 
@@ -32,10 +34,9 @@ if grep -Fq '(func (export "[async-lift]forward_stream")' "$core_path" ||
   exit 1
 fi
 
-wasm-tools parse "$core_path" -o "$core_wasm"
-wasm-tools component embed "$wit_path" "$core_wasm" \
-  --world stream-writer-probe -o "$embedded_path"
-wasm-tools component new "$embedded_path" -o "$component_path"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component_path"
+"$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit_path" "$core_wasm" stream-writer-probe -o "$embedded_path"
+"$toolchain_bin" new-component "$embedded_path" -o "$component_path"
+"$toolchain_bin" validate-component "$component_path"
 
 printf 'parameterized forwarding helper producer Component lowering passed\n'

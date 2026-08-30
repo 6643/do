@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-stream-writer-producer-helper-owned-descriptor.XXXXXX")
 core_path="$tmp_dir/stream-writer-producer-helper-owned.wat"
 wit_path="$tmp_dir/stream-writer-producer-helper-owned.wit"
@@ -17,10 +19,9 @@ DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build --p3-async-component \
 cmp "$wit_path" "$repo_root/examples/p3-runtime/wit/stream-probe-guest-producer.wit"
 grep -Fq '[writer-lease-transfer] async-helper' "$core_path"
 grep -Fq '(data (i32.const 512) "\41\42")' "$core_path"
-wasm-tools parse "$core_path" -o "$core_wasm"
-wasm-tools component embed "$wit_path" "$core_wasm" \
-  --world stream-writer-probe -o "$embedded_path"
-wasm-tools component new "$embedded_path" -o "$component_path"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component_path"
+"$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit_path" "$core_wasm" stream-writer-probe -o "$embedded_path"
+"$toolchain_bin" new-component "$embedded_path" -o "$component_path"
+"$toolchain_bin" validate-component "$component_path"
 
 printf 'async-helper-owned producer lease lowering passed\n'
