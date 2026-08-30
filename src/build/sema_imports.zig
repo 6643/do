@@ -2149,6 +2149,42 @@ test "pinned HTTP request constructor accepts its tuple and input future signatu
     try check_p3_async_host_imports(std.testing.allocator, tokens);
 }
 
+test "pinned HTTP request constructor accepts its body stream signature" {
+    const source =
+        \\request_new = @host_func("wasi:http/types@0.3.0-rc-2025-09-16", "request.new", (Stream<u8>) -> Tuple<HttpRequest, Future<Result<nil, HttpError>>>)
+        \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
+        \\HttpError error = Io | Protocol
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "pinned HTTP request constructor rejects a wrong parameter" {
+    const source =
+        \\request_new = @host_func("wasi:http/types@0.3.0-rc-2025-09-16", "request.new", (u8) -> Tuple<HttpRequest, Future<Result<nil, HttpError>>>)
+        \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
+        \\HttpError error = Io | Protocol
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectError(error.P3AsyncHostSignatureMismatch, check_p3_async_host_imports(std.testing.allocator, tokens));
+}
+
+test "pinned HTTP request constructor rejects a wrong result" {
+    const source =
+        \\request_new = @host_func("wasi:http/types@0.3.0-rc-2025-09-16", "request.new", () -> Tuple<HttpRequest, Future<Result<HttpResponse, HttpError>>>)
+        \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
+        \\HttpError error = Io | Protocol
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectError(error.P3AsyncHostSignatureMismatch, check_p3_async_host_imports(std.testing.allocator, tokens));
+}
+
 test "generated WIT host bindings accept custom resource signatures" {
     const source =
         \\send = @host_func("do:bindgen-probe/api@0.1.0", "send", (Request) -> Response | ApiError)
