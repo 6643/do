@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 do_bin="$repo_root/bin/do"
 source="$repo_root/examples/p3-runtime/stream-probe-component.do"
 wat=$(mktemp /tmp/do-stream-probe.XXXXXX.wat)
@@ -21,9 +23,9 @@ fi
 grep -Fq 'package do:stream-probe@0.1.0' "$wit"
 grep -Fq 'world stream-probe' "$wit"
 
-wasm-tools parse "$wat" -o "$core"
-wasm-tools component embed "$wit" "$core" --world stream-probe -o "$embedded"
-wasm-tools component new --skip-validation "$embedded" -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" parse-core "$wat" -o "$core"
+"$toolchain_bin" embed-component "$wit" "$core" stream-probe -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component"
 
 printf 'descriptor-owned stream reader lowering passed\n'

@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 fixture="$repo_root/examples/p3-runtime/async-resource-result-component.do"
 wit="$repo_root/src/build/p3_async_resource_probe.wit"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-p3-async-resource-result.XXXXXX")
@@ -31,8 +33,8 @@ if grep -Fq 'global $frame-next' "$core_path"; then
   exit 1
 fi
 
-wasm-tools parse "$core_path" -o "$tmp_dir/async-resource-result.wasm"
-wasm-tools component embed "$wit_path" "$tmp_dir/async-resource-result.wasm" \
-  --world async-resource-probe -o "$embedded_path"
-wasm-tools component new "$embedded_path" -o "$component_path"
-wasm-tools validate "$component_path"
+"$toolchain_bin" parse-core "$core_path" -o "$tmp_dir/async-resource-result.wasm"
+"$toolchain_bin" embed-component "$wit_path" "$tmp_dir/async-resource-result.wasm" \
+  async-resource-probe -o "$embedded_path"
+"$toolchain_bin" new-component "$embedded_path" -o "$component_path"
+"$toolchain_bin" validate-component "$component_path"

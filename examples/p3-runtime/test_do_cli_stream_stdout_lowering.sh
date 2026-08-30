@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 wat=$(mktemp /tmp/do-cli-stream-stdout.XXXXXX.wat)
 wit=$(mktemp /tmp/do-cli-stream-stdout.XXXXXX.wit)
 core=$(mktemp /tmp/do-cli-stream-stdout.XXXXXX.wasm)
@@ -17,7 +19,7 @@ grep -Fq '[async-lower][stream-write-0]write-via-stream' "$wat"
 grep -Fq '[stream-drop-writable-0]write-via-stream' "$wat"
 grep -Fq '(export "[async-lift]write"' "$wat"
 
-wasm-tools parse "$wat" -o "$core"
+"$toolchain_bin" parse-core "$wat" -o "$core"
 bash "$repo_root/examples/p3-runtime/assemble_async_component.sh" \
     "$wit" "$core" stream-stdout-probe "$component"
 

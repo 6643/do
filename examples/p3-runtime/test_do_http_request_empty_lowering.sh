@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 do_bin="$repo_root/bin/do"
 fixture="$repo_root/examples/p3-runtime/http-request-empty.do"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-p3-http-request-empty.XXXXXX")
@@ -24,10 +26,10 @@ grep -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[future-drop-writable-1]request
 grep -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[future-drop-readable-2]request-new-payload"' "$core_wat"
 grep -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[resource-drop]request"' "$core_wat"
 
-wasm-tools parse "$core_wat" -o "$core_wasm"
-wasm-tools component embed "$wit" "$core_wasm" \
-  --world http-request-probe --features cm-async,cm-more-async-builtins -o "$embedded"
-wasm-tools component new "$embedded" -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit" "$core_wasm" \
+  http-request-probe -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component"
 
 printf 'WASI HTTP empty request lowering passed\n'
