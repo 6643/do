@@ -129,7 +129,7 @@ pub fn check_p3_async_host_imports(allocator: std.mem.Allocator, tokens: []const
         if (shape == null and !is_pinned_http_client_send_descriptor(descriptor) and
             !std.mem.eql(u8, descriptor.effect, "async")) return mark_error_at(tokens, idx, error.UnknownP3AsyncHostDescriptor);
         const is_stream_effect = if (shape) |resolved_shape| switch (resolved_shape) {
-            .http_stream_reader, .stream_reader_acquire, .stream_writer, .record_stream_reader, .record_resource_list_stream_reader, .owned_record_stream_producer, .record_resource_pair_stream_producer, .record_resource_triple_stream_producer, .record_resource_pair_parameterized_stream_producer, .record_resource_list_stream_producer, .record_resource_list_stream_dynamic_producer, .record_resource_list_stream_batched_producer, .scalar_list_stream_producer, .variant_resource_stream_reader => true,
+            .http_request_constructor, .http_stream_reader, .stream_reader_acquire, .stream_writer, .record_stream_reader, .record_resource_list_stream_reader, .owned_record_stream_producer, .record_resource_pair_stream_producer, .record_resource_nested_stream_producer, .record_resource_triple_stream_producer, .record_resource_pair_parameterized_stream_producer, .record_resource_list_stream_producer, .record_resource_list_stream_dynamic_producer, .record_resource_list_stream_batched_producer, .scalar_list_stream_producer, .variant_resource_stream_reader => true,
             else => false,
         } else false;
         if (!is_stream_effect and !std.mem.eql(u8, descriptor.effect, "async") and
@@ -210,6 +210,7 @@ fn p3_async_signature_matches(tokens: []const lexer.Token, start_idx: usize, end
             .filesystem_stat_at => return filesystem_stat_at_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_stat => return filesystem_stat_signature_matches(tokens, start_idx, close_idx, end_idx),
             .future_owned_resource => return future_owned_signature_matches(tokens, start_idx, close_idx, end_idx),
+            .http_request_constructor => return http_request_constructor_signature_matches(tokens, start_idx, close_idx, end_idx),
             else => {},
         }
     }
@@ -2108,6 +2109,18 @@ test "private future-owned host_func accepts the Future resource signature" {
     const source =
         \\read = @host_func("do:future-owned-canonical/source@0.1.0", "read", () -> Future<Ticket>)
         \\Ticket = @wasi_resource("do:future-owned-canonical/source/ticket", { .id i64 })
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "pinned HTTP request constructor accepts its tuple and input future signature" {
+    const source =
+        \\request_new = @host_func("wasi:http/types@0.3.0-rc-2025-09-16", "request.new", () -> Tuple<HttpRequest, Future<Result<nil, HttpError>>>)
+        \\HttpRequest = @wasi_resource("http/types/request", { .id i64 })
+        \\HttpError error = Io | Protocol
     ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
