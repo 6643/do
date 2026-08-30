@@ -41,10 +41,27 @@ All commands were run from repository root `/home/_/._/_/do` unless noted.
 
 3. Unrelated temporary cwd (`/tmp/do-pure-adapter-cwd.hQc4Hh`):
 
-   Each of the same five `bash /home/_/._/_/do/examples/p3-runtime/<gate>.sh`
-   commands was run after changing into that temporary directory.
+   Each command below was run after `cd /tmp/do-pure-adapter-cwd.hQc4Hh`:
 
-   Result: all five passed, each exit code 0.
+   `bash /home/_/._/_/do/examples/p3-runtime/test_do_http_request_body_lowering.sh`
+
+   Result: passed, exit code 0.
+
+   `bash /home/_/._/_/do/examples/p3-runtime/test_do_http_request_body_await_completion_lowering.sh`
+
+   Result: passed, exit code 0.
+
+   `bash /home/_/._/_/do/examples/p3-runtime/test_do_http_request_body_producer_lowering.sh`
+
+   Result: passed, exit code 0.
+
+   `bash /home/_/._/_/do/examples/p3-runtime/test_do_http_response_consume_body_assembly.sh`
+
+   Result: passed, exit code 0.
+
+   `bash /home/_/._/_/do/examples/p3-runtime/test_do_variant_resource_stream_lowering.sh`
+
+   Result: passed, exit code 0.
 
 4. Current-only toolchain guard:
 
