@@ -12,18 +12,33 @@ const map_source =
     \\world probe { import api; }
 ;
 
+const WitOutputKind = enum { sidecar, package };
+
+const OrderedMarkerPair = struct {
+    first: []const u8,
+    second: []const u8,
+};
+
 const PureLoweringCase = struct {
     name: []const u8,
     source: []const u8,
     build_flag: []const u8,
     world: []const u8,
     wit_snapshot: ?[]const u8,
+    wit_output_kind: WitOutputKind = .sidecar,
+    package_wit_markers: []const []const u8 = &.{},
+    package_type_markers: []const []const u8 = &.{},
+    package_world_suffix: ?[]const u8 = null,
     wit_markers: []const []const u8 = &.{},
     markers: []const []const u8,
     forbidden_markers: []const []const u8,
     count_marker: ?[]const u8 = null,
     expected_count: usize = 0,
     validate_core: bool = false,
+    ordinary_build_error: ?[]const u8 = null,
+    ordered_markers: ?OrderedMarkerPair = null,
+    wat_snapshot: ?[]const u8 = null,
+    wit_sha256: ?[]const u8 = null,
 };
 
 const pure_lowering_cases = [_]PureLoweringCase{
@@ -150,6 +165,183 @@ const pure_lowering_cases = [_]PureLoweringCase{
             "wasi:http/types@0.3.0-rc-2025-09-16\" \"[resource-drop]request",
         },
         .forbidden_markers = &.{},
+    },
+    .{
+        .name = "HTTP request body package lowering",
+        .source = "examples/p3-runtime/http-request-body.do",
+        .build_flag = "--p3-async-component",
+        .world = "http-request-body-probe",
+        .wit_snapshot = null,
+        .wit_output_kind = .package,
+        .package_wit_markers = &.{
+            "package wasi:http@0.3.0-rc-2025-09-16",
+            "world http-request-body-probe",
+            "import wasi:cli/stdin@0.3.0-rc-2025-09-16",
+        },
+        .package_type_markers = &.{
+            "consume-body-payload: func(",
+            "request-new-payload: func(",
+        },
+        .package_world_suffix =
+            \\
+            \\interface probe {
+            \\  use types.{response, error-code};
+            \\  run: async func() -> result<response, error-code>;
+            \\}
+            \\
+            \\world http-request-body-probe {
+            \\  import types;
+            \\  import client;
+            \\  import wasi:cli/stdin@0.3.0-rc-2025-09-16;
+            \\  export probe;
+            \\}
+            \\
+        ,
+        .markers = &.{
+            "wasi:cli/stdin@0.3.0-rc-2025-09-16\" \"read-via-stream\"",
+            "wasi:http/types@0.3.0-rc-2025-09-16\" \"[static]request.new\"",
+            "wasi:http/client@0.3.0-rc-2025-09-16\" \"[async-lower]send\"",
+            "wasi:cli/stdin@0.3.0-rc-2025-09-16\" \"[future-drop-readable-1]read-via-stream\"",
+            "call $body-acquire",
+            "call $construct-request",
+            "call $drop-body-completion",
+            "i32.const 1",
+        },
+        .forbidden_markers = &.{ "async-lower][request.new" },
+    },
+    .{
+        .name = "HTTP request body completion-await package lowering",
+        .source = "examples/p3-runtime/http-request-body-await-completion.do",
+        .build_flag = "--p3-async-component",
+        .world = "http-request-body-probe",
+        .wit_snapshot = null,
+        .wit_output_kind = .package,
+        .package_wit_markers = &.{ "package wasi:http@0.3.0-rc-2025-09-16", "world http-request-body-probe" },
+        .package_type_markers = &.{ "consume-body-payload: func(", "request-new-payload: func(" },
+        .package_world_suffix =
+            \\
+            \\interface probe {
+            \\  use types.{response, error-code};
+            \\  run: async func() -> result<response, error-code>;
+            \\}
+            \\
+            \\world http-request-body-probe {
+            \\  import types;
+            \\  import client;
+            \\  import wasi:cli/stdin@0.3.0-rc-2025-09-16;
+            \\  export probe;
+            \\}
+            \\
+        ,
+        .markers = &.{
+            "wasi:cli/stdin@0.3.0-rc-2025-09-16\" \"[async-lower][future-read-1]read-via-stream\"",
+            "call $start-body-request",
+            "call $start-body-completion",
+            "call $accept-body-completion",
+            "struct.set $async-frame $slot-body-completion-result",
+            "struct.set $async-frame $slot-body-request",
+            "i32.const 48",
+            "call $acquire-body",
+            "call $construct-request",
+        },
+        .forbidden_markers = &.{},
+        .ordinary_build_error = "AsyncLoweringUnavailable",
+    },
+    .{
+        .name = "HTTP request body producer package lowering",
+        .source = "examples/p3-runtime/http-request-body-producer-send-first.do",
+        .build_flag = "--p3-async-component",
+        .world = "http-request-body-producer-probe",
+        .wit_snapshot = null,
+        .wit_output_kind = .package,
+        .package_wit_markers = &.{ "package wasi:http@0.3.0-rc-2025-09-16", "world http-request-body-producer-probe" },
+        .package_type_markers = &.{ "consume-body-payload: func(", "request-new-payload: func(" },
+        .package_world_suffix =
+            \\
+            \\interface probe {
+            \\  use types.{response, error-code};
+            \\  run: async func() -> result<response, error-code>;
+            \\}
+            \\
+            \\world http-request-body-producer-probe {
+            \\  import types;
+            \\  import client;
+            \\  import wasi:cli/stdout@0.3.0-rc-2025-09-16;
+            \\  export probe;
+            \\}
+            \\
+        ,
+        .markers = &.{
+            "wasi:cli/stdout@0.3.0-rc-2025-09-16\" \"[stream-new-0]write-via-stream\"",
+            "wasi:cli/stdout@0.3.0-rc-2025-09-16\" \"[async-lower][stream-write-0]write-via-stream\"",
+            "wasi:cli/stdout@0.3.0-rc-2025-09-16\" \"[stream-drop-writable-0]write-via-stream\"",
+            "wasi:http/types@0.3.0-rc-2025-09-16\" \"[static]request.new\"",
+            "wasi:http/client@0.3.0-rc-2025-09-16\" \"[async-lower]send\"",
+            "call $start-producer",
+            "call $construct-producer-request",
+            "call $start-producer-send",
+            "[future-drop-readable-2]request-new-payload",
+            "(export \"[async-lift]wasi:http/probe@0.3.0-rc-2025-09-16#run\")",
+        },
+        .forbidden_markers = &.{},
+        .ordered_markers = .{ .first = "call $producer-request-new", .second = "call $producer-stream-drop-writable" },
+    },
+    .{
+        .name = "HTTP response consume-body package assembly",
+        .source = "examples/p3-runtime/http-response-consume-body.do",
+        .build_flag = "--p3-async-component",
+        .world = "http-response-body-probe",
+        .wit_snapshot = null,
+        .wit_output_kind = .package,
+        .package_wit_markers = &.{ "package wasi:http@0.3.0-rc-2025-09-16", "world http-response-body-probe" },
+        .package_type_markers = &.{ "consume-body-payload: func(", "request-new-payload: func(" },
+        .package_world_suffix =
+            \\
+            \\interface probe {
+            \\  use types.{response};
+            \\  run: async func(response: response);
+            \\}
+            \\
+            \\world http-response-body-probe {
+            \\  import types;
+            \\  export probe;
+            \\}
+            \\
+        ,
+        .markers = &.{ "call $consume-body" },
+        .forbidden_markers = &.{},
+    },
+    .{
+        .name = "variant resource stream lowering",
+        .source = "examples/p3-runtime/variant-resource-stream.do",
+        .build_flag = "--p3-async-component",
+        .world = "variant-resource-stream-canonical",
+        .wit_snapshot = "examples/p3-runtime/wit/variant-resource-stream-canonical.wit",
+        .markers = &.{ "[event-tag-offset]", "[event-payload-offset]", "[resource-drop]ticket" },
+        .forbidden_markers = &.{},
+    },
+    .{
+        .name = "G6.2 owned-record nested producer and canonical validation",
+        .source = "examples/p3-runtime/g6-2-owned-record-nested-producer.do",
+        .build_flag = "--p3-async-component",
+        .world = "owned-record-nested-producer",
+        .wit_snapshot = "examples/p3-runtime/wit/g6-2-owned-record-nested-producer.wit",
+        .markers = &.{
+            ";; [producer-record-byte-size] 4",
+            ";; [producer-record-alignment] 4",
+            ";; [producer-nested-ticket-offset] 0",
+            ";; [producer-nested-path] inner.ticket",
+            ";; [producer-stream-capacity] 1",
+            ";; [producer-source-signature] (i32) -> (i32)",
+            ";; [producer-ownership-mask] guest=1 transferred=2",
+            ";; [producer-record-transfer]",
+            ";; [producer-resource-drop-exactly-once]",
+            ";; [producer-child-before-parent-cleanup]",
+            "(func (export \"[async-lift]produce\")",
+        },
+        .forbidden_markers = &.{ "__arc_", "ref.null", "struct.new", "array.new" },
+        .wat_snapshot = "examples/p3-runtime/g6-2-owned-record-nested-producer-canonical.wat",
+        .wit_sha256 = "9662440709b01044544d4c4350f3e6f783a8f06aaa5c884a96a1e43a935a7543",
     },
     .{
         .name = "async resource Result lowering",
@@ -1280,8 +1472,11 @@ fn run_p3_pure_lowering_matrix(
         const stem = std.fs.path.basename(case.source)[0 .. std.fs.path.basename(case.source).len - ".do".len];
         const wat = try std.fmt.allocPrint(init.gpa, "{s}/{s}.pure.wat", .{ temp_path, stem });
         defer init.gpa.free(wat);
-        const wit = try std.fmt.allocPrint(init.gpa, "{s}/{s}.pure.wit", .{ temp_path, stem });
-        defer init.gpa.free(wit);
+        const wit_output = if (case.wit_output_kind == .package)
+            try std.fmt.allocPrint(init.gpa, "{s}/{s}.pure.wit-package", .{ temp_path, stem })
+        else
+            try std.fmt.allocPrint(init.gpa, "{s}/{s}.pure.wit", .{ temp_path, stem });
+        defer init.gpa.free(wit_output);
         const core = try std.fmt.allocPrint(init.gpa, "{s}/{s}.pure.core.wasm", .{ temp_path, stem });
         defer init.gpa.free(core);
         const embedded = try std.fmt.allocPrint(init.gpa, "{s}/{s}.pure.embedded.wasm", .{ temp_path, stem });
@@ -1292,26 +1487,86 @@ fn run_p3_pure_lowering_matrix(
         defer init.gpa.free(lib_root);
 
         const build_args = [_][]const u8{
-            "build", source, case.build_flag, "--p3-wit-output", wit, "-o", wat,
+            "build", source, case.build_flag,
+            if (case.wit_output_kind == .package) "--p3-wit-package-output" else "--p3-wit-output",
+            wit_output, "-o", wat,
         };
         var build_result = try run_do_args(init, do_bin, &build_args, lib_root, null, 120_000);
         defer build_result.deinit(init.gpa);
         try expect_success(init, &build_result);
         if (build_result.stderr.len != 0) return error.UnexpectedCommandStderr;
 
-        const generated_wit = try read_file(init, wit);
-        defer init.gpa.free(generated_wit);
-        if (case.wit_snapshot) |snapshot_path| {
-            const snapshot = try join(init.gpa, repo_root, snapshot_path);
-            defer init.gpa.free(snapshot);
-            try assert_file_equals(init, snapshot, generated_wit);
+        const wit_for_embed = wit_output;
+        if (case.wit_output_kind == .package) {
+            try expect_file(init.io, wit_output);
+            for ([_][]const u8{ "worlds.wit", "types.wit", "deps.toml", "deps.lock" }) |package_file| {
+                const path = try join(init.gpa, wit_output, package_file);
+                defer init.gpa.free(path);
+                try expect_file(init.io, path);
+            }
+            if (case.package_world_suffix) |suffix| {
+                const worlds_path = try join(init.gpa, wit_output, "worlds.wit");
+                defer init.gpa.free(worlds_path);
+                const worlds = try read_file(init, worlds_path);
+                defer init.gpa.free(worlds);
+                var updated = std.ArrayList(u8).empty;
+                defer updated.deinit(init.gpa);
+                try updated.appendSlice(init.gpa, worlds);
+                try updated.appendSlice(init.gpa, suffix);
+                try write_file(init, worlds_path, updated.items);
+            }
+            const worlds_path = try join(init.gpa, wit_output, "worlds.wit");
+            defer init.gpa.free(worlds_path);
+            const worlds = try read_file(init, worlds_path);
+            defer init.gpa.free(worlds);
+            for (case.package_wit_markers) |marker| {
+                if (std.mem.indexOf(u8, worlds, marker) == null) return error.P3LoweringWitMarkerMissing;
+            }
+            const types_path = try join(init.gpa, wit_output, "types.wit");
+            defer init.gpa.free(types_path);
+            const types = try read_file(init, types_path);
+            defer init.gpa.free(types);
+            for (case.package_type_markers) |marker| {
+                if (std.mem.indexOf(u8, types, marker) == null) return error.P3LoweringWitMarkerMissing;
+            }
         } else {
-            for (case.wit_markers) |marker| {
-                if (std.mem.indexOf(u8, generated_wit, marker) == null) return error.P3LoweringWitMarkerMissing;
+            const generated_wit = try read_file(init, wit_output);
+            defer init.gpa.free(generated_wit);
+            if (case.wit_snapshot) |snapshot_path| {
+                const snapshot = try join(init.gpa, repo_root, snapshot_path);
+                defer init.gpa.free(snapshot);
+                try assert_file_equals(init, snapshot, generated_wit);
+            } else {
+                for (case.wit_markers) |marker| {
+                    if (std.mem.indexOf(u8, generated_wit, marker) == null) return error.P3LoweringWitMarkerMissing;
+                }
+            }
+        }
+        if (case.ordinary_build_error) |expected_error| {
+            const ordinary_wat = try std.fmt.allocPrint(init.gpa, "{s}/{s}.ordinary.wat", .{ temp_path, stem });
+            defer init.gpa.free(ordinary_wat);
+            const ordinary_args = [_][]const u8{ "build", source, "-o", ordinary_wat };
+            var ordinary = try run_do_args(init, do_bin, &ordinary_args, lib_root, null, 120_000);
+            defer ordinary.deinit(init.gpa);
+            if (ordinary.succeeded()) return error.P3LoweringUnexpectedSuccess;
+            if (std.mem.indexOf(u8, ordinary.stdout, expected_error) == null and
+                std.mem.indexOf(u8, ordinary.stderr, expected_error) == null)
+            {
+                return error.P3LoweringExpectedErrorMissing;
             }
         }
         const wat_source = try read_file(init, wat);
         defer init.gpa.free(wat_source);
+        if (case.wat_snapshot) |snapshot_path| {
+            const snapshot = try join(init.gpa, repo_root, snapshot_path);
+            defer init.gpa.free(snapshot);
+            try assert_file_equals(init, snapshot, wat_source);
+        }
+        if (case.wit_sha256) |expected_hash| {
+            if (case.wit_output_kind != .sidecar) return error.InvalidWitHashTarget;
+            const actual_hash = try file_sha256_hex(init, wit_output);
+            if (!std.mem.eql(u8, &actual_hash, expected_hash)) return error.WitHashMismatch;
+        }
         for (case.markers) |marker| {
             if (std.mem.indexOf(u8, wat_source, marker) == null) return error.P3LoweringMarkerMissing;
         }
@@ -1321,35 +1576,69 @@ fn run_p3_pure_lowering_matrix(
         if (case.count_marker) |marker| {
             if (std.mem.count(u8, wat_source, marker) != case.expected_count) return error.P3LoweringCountMismatch;
         }
-
-        const parse_args = [_][]const u8{ toolchain_bin, "parse-core", wat, "-o", core };
-        var parsed = try process.run_checked(init.gpa, init.io, .{ .argv = &parse_args, .environ = init.environ_map });
-        defer parsed.deinit(init.gpa);
-        try expect_success(init, &parsed);
-
-        if (case.validate_core) {
-            const core_validate_args = [_][]const u8{ toolchain_bin, "validate-core", core };
-            var core_validated = try process.run_checked(init.gpa, init.io, .{ .argv = &core_validate_args, .environ = init.environ_map });
-            defer core_validated.deinit(init.gpa);
-            try expect_success(init, &core_validated);
+        if (case.ordered_markers) |ordered| {
+            const first = std.mem.indexOf(u8, wat_source, ordered.first) orelse return error.P3LoweringOrderedMarkerMissing;
+            const second = std.mem.indexOf(u8, wat_source, ordered.second) orelse return error.P3LoweringOrderedMarkerMissing;
+            if (first >= second) return error.P3LoweringMarkerOrderMismatch;
         }
 
-        const embed_args = [_][]const u8{ toolchain_bin, "embed-component", wit, core, case.world, "-o", embedded };
-        var embedded_result = try process.run_checked(init.gpa, init.io, .{ .argv = &embed_args, .environ = init.environ_map });
-        defer embedded_result.deinit(init.gpa);
-        try expect_success(init, &embedded_result);
+        try validate_pure_component(init, toolchain_bin, wit_for_embed, wat, case.world, core, embedded, component, case.validate_core);
 
-        const new_args = [_][]const u8{ toolchain_bin, "new-component", embedded, "-o", component };
-        var created = try process.run_checked(init.gpa, init.io, .{ .argv = &new_args, .environ = init.environ_map });
-        defer created.deinit(init.gpa);
-        try expect_success(init, &created);
-        try expect_file(init.io, component);
-
-        const validate_args = [_][]const u8{ toolchain_bin, "validate-component", component };
-        var validated = try process.run_checked(init.gpa, init.io, .{ .argv = &validate_args, .environ = init.environ_map });
-        defer validated.deinit(init.gpa);
-        try expect_success(init, &validated);
+        if (case.wat_snapshot) |canonical_wat_path| {
+            const canonical_wat = try join(init.gpa, repo_root, canonical_wat_path);
+            defer init.gpa.free(canonical_wat);
+            const canonical_wit_path = case.wit_snapshot orelse return error.MissingCanonicalWitSnapshot;
+            const canonical_wit = try join(init.gpa, repo_root, canonical_wit_path);
+            defer init.gpa.free(canonical_wit);
+            const canonical_core = try std.fmt.allocPrint(init.gpa, "{s}/{s}.canonical.core.wasm", .{ temp_path, stem });
+            defer init.gpa.free(canonical_core);
+            const canonical_embedded = try std.fmt.allocPrint(init.gpa, "{s}/{s}.canonical.embedded.wasm", .{ temp_path, stem });
+            defer init.gpa.free(canonical_embedded);
+            const canonical_component = try std.fmt.allocPrint(init.gpa, "{s}/{s}.canonical.component.wasm", .{ temp_path, stem });
+            defer init.gpa.free(canonical_component);
+            try validate_pure_component(init, toolchain_bin, canonical_wit, canonical_wat, case.world, canonical_core, canonical_embedded, canonical_component, false);
+        }
     }
+}
+
+fn validate_pure_component(
+    init: std.process.Init,
+    toolchain_bin: []const u8,
+    wit: []const u8,
+    wat: []const u8,
+    world: []const u8,
+    core: []const u8,
+    embedded: []const u8,
+    component: []const u8,
+    validate_core: bool,
+) !void {
+    const parse_args = [_][]const u8{ toolchain_bin, "parse-core", wat, "-o", core };
+    var parsed = try process.run_checked(init.gpa, init.io, .{ .argv = &parse_args, .environ = init.environ_map });
+    defer parsed.deinit(init.gpa);
+    try expect_success(init, &parsed);
+
+    if (validate_core) {
+        const core_validate_args = [_][]const u8{ toolchain_bin, "validate-core", core };
+        var core_validated = try process.run_checked(init.gpa, init.io, .{ .argv = &core_validate_args, .environ = init.environ_map });
+        defer core_validated.deinit(init.gpa);
+        try expect_success(init, &core_validated);
+    }
+
+    const embed_args = [_][]const u8{ toolchain_bin, "embed-component", wit, core, world, "-o", embedded };
+    var embedded_result = try process.run_checked(init.gpa, init.io, .{ .argv = &embed_args, .environ = init.environ_map });
+    defer embedded_result.deinit(init.gpa);
+    try expect_success(init, &embedded_result);
+
+    const new_args = [_][]const u8{ toolchain_bin, "new-component", embedded, "-o", component };
+    var created = try process.run_checked(init.gpa, init.io, .{ .argv = &new_args, .environ = init.environ_map });
+    defer created.deinit(init.gpa);
+    try expect_success(init, &created);
+    try expect_file(init.io, component);
+
+    const validate_args = [_][]const u8{ toolchain_bin, "validate-component", component };
+    var validated = try process.run_checked(init.gpa, init.io, .{ .argv = &validate_args, .environ = init.environ_map });
+    defer validated.deinit(init.gpa);
+    try expect_success(init, &validated);
 }
 
 fn run_rust_runtime_matrix(
@@ -1709,7 +1998,7 @@ test "integration harness case table has required routes" {
 }
 
 test "p3 pure lowering matrix has explicit cases" {
-    try std.testing.expect(pure_lowering_cases.len >= 23);
+    try std.testing.expect(pure_lowering_cases.len >= 29);
 }
 
 test "rust runtime matrix has explicit cases" {
