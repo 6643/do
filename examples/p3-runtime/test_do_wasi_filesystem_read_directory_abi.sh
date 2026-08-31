@@ -2,28 +2,19 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 wit_root="$repo_root/src/build/p3_wit/wasi-http-0.3.0-rc-2025-09-16"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-g6-2-read-directory-abi.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
-
-case "$(wasm-tools --version)" in
-  "wasm-tools 1.255.0 (76e20611d "*) ;;
-  *)
-    printf 'unexpected wasm-tools version: %s\n' "$(wasm-tools --version)" >&2
-    exit 1
-    ;;
-esac
 
 wat="$tmp_dir/filesystem.wat"
 core_wasm="$tmp_dir/filesystem.wasm"
 component="$tmp_dir/filesystem.component.wasm"
 component_wit="$tmp_dir/filesystem.component.wit"
 
-wasm-tools component embed "$wit_root" \
-  --world wasi:filesystem/imports \
-  --dummy-names legacy --async-callback \
-  --features cm-async,cm-more-async-builtins \
-  -t -o "$wat"
+"$toolchain_bin" embed-component-template "$wit_root" wasi:filesystem/imports \
+  --features component-async > "$wat"
 
 require_wat() {
   if ! grep -Fq -- "$1" "$wat"; then
@@ -77,9 +68,10 @@ require_import_type '[future-new-1][method]descriptor.read-directory' 3
 require_import_type '[async-lower][future-read-1][method]descriptor.read-directory' 7
 require_import_type '[future-drop-readable-1][method]descriptor.read-directory' 0
 
-wasm-tools parse "$wat" -o "$core_wasm"
-wasm-tools component new "$core_wasm" -o "$component"
-wasm-tools component wit "$component" > "$component_wit"
+"$toolchain_bin" parse-core "$wat" -o "$core_wasm"
+"$toolchain_bin" new-component "$core_wasm" -o "$component"
+"$toolchain_bin" validate-component "$component" --features component-async
+"$toolchain_bin" component-wit "$component" > "$component_wit"
 
 grep -Fq 'read-directory: async func() -> tuple<stream<directory-entry>, future<result<_, error-code>>>;' "$component_wit"
 grep -Fq 'record directory-entry {' "$component_wit"
