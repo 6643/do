@@ -598,19 +598,21 @@ function emitComponentWasm(plan, outputPath, coreWat) {
 
     const embeddedPath = path.join(tmpDir, "embedded.wasm");
     const componentPath = path.join(tmpDir, "component.wasm");
-    runWasmTools(
+    runToolchain(
       [
-        "component",
-        "embed",
+        "embed-component",
         path.join(tmpDir, "wit"),
         path.join(tmpDir, "core_component.wat"),
+        "imports",
+        "--features",
+        "none",
         "-o",
         embeddedPath,
       ],
       "wasm-tools component embed",
     );
-    runWasmTools(["component", "new", embeddedPath, "-o", componentPath], "wasm-tools component new");
-    runWasmTools(["validate", componentPath], "wasm-tools validate");
+    runToolchain(["new-component", embeddedPath, "-o", componentPath], "wasm-tools component new");
+    runToolchain(["validate-component", componentPath, "--features", "none"], "wasm-tools validate");
 
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.copyFileSync(componentPath, outputPath);
@@ -619,9 +621,14 @@ function emitComponentWasm(plan, outputPath, coreWat) {
   }
 }
 
-function runWasmTools(args, label) {
-  const wasmTools = process.env.WASM_TOOLS || "wasm-tools";
-  const result = spawnSync(wasmTools, args, { encoding: "utf8" });
+function runToolchain(args, label) {
+  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+  const toolchainBin = process.env.DO_TOOLCHAIN_BIN || path.resolve(scriptDir, "../../../bin/do-toolchain");
+  const toolchainLock = process.env.DO_TOOLCHAIN_LOCK || path.resolve(scriptDir, "../../../toolchain/toolchain.lock.json");
+  const result = spawnSync(toolchainBin, args, {
+    encoding: "utf8",
+    env: { ...process.env, DO_TOOLCHAIN_LOCK: toolchainLock },
+  });
   if (result.error) {
     failPlan(`${label} failed: ${result.error.message}`);
   }

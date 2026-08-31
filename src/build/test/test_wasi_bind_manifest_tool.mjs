@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const [validatorPath, tmpDir] = process.argv.slice(2);
 if (!validatorPath || !tmpDir) {
@@ -13,7 +14,9 @@ if (!validatorPath || !tmpDir) {
 
 fs.mkdirSync(tmpDir, { recursive: true });
 
-const wasmTools = process.env.WASM_TOOLS || commandPath("wasm-tools");
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const toolchainBin = process.env.DO_TOOLCHAIN_BIN || path.resolve(scriptDir, "../../../bin/do-toolchain");
+const toolchainLock = process.env.DO_TOOLCHAIN_LOCK || path.resolve(scriptDir, "../../../toolchain/toolchain.lock.json");
 
 const registryPath = path.join(tmpDir, "wasi_registry.json");
 fs.writeFileSync(
@@ -104,14 +107,6 @@ fs.writeFileSync(
     2,
   ),
 );
-
-function commandPath(name) {
-  const result = spawnSync("sh", ["-c", `command -v ${name}`], {
-    encoding: "utf8",
-  });
-  if (result.status !== 0) return null;
-  return result.stdout.trim() || null;
-}
 
 const okWatPath = path.join(tmpDir, "wasi_bind_manifest_tool_ok.wat");
 fs.writeFileSync(
@@ -1520,16 +1515,6 @@ assert.equal(
     "",
   ].join("\n"),
 );
-if (wasmTools) {
-  const parseMixedWitDirResult = spawnSync(wasmTools, ["component", "wit", mixedWitDir], {
-    encoding: "utf8",
-  });
-  assert.equal(parseMixedWitDirResult.status, 0, parseMixedWitDirResult.stderr);
-  assert.match(parseMixedWitDirResult.stdout, /package do:imports;/);
-  assert.match(parseMixedWitDirResult.stdout, /package wasi:clocks/);
-  assert.match(parseMixedWitDirResult.stdout, /package wasi:io/);
-}
-
 const componentCoreWatPath = path.join(tmpDir, "wasi_bind_manifest_tool_component_core.wat");
 fs.writeFileSync(
   componentCoreWatPath,
@@ -1595,11 +1580,14 @@ assert.equal(
   )}\n`,
 );
 
-const fakeWasmToolsPath = path.join(tmpDir, "fake_wasm_tools_validate_fails.sh");
+const fakeToolchainPath = path.join(tmpDir, "fake_do_toolchain.sh");
+const fakeToolchainLogPath = path.join(tmpDir, "fake_do_toolchain.argv");
 fs.writeFileSync(
-  fakeWasmToolsPath,
+  fakeToolchainPath,
   [
     "#!/bin/sh",
+    "set -eu",
+    "printf '%s\\n' \"$*\" >> \"$DO_FAKE_TOOLCHAIN_LOG\"",
     "out=''",
     "prev=''",
     "for arg in \"$@\"; do",
@@ -1608,24 +1596,24 @@ fs.writeFileSync(
     "  fi",
     "  prev=\"$arg\"",
     "done",
-    "if [ \"$1\" = 'component' ] && [ \"$2\" = 'embed' ]; then",
+    "if [ \"$1\" = 'embed-component' ]; then",
     "  printf 'embedded' > \"$out\"",
     "  exit 0",
     "fi",
-    "if [ \"$1\" = 'component' ] && [ \"$2\" = 'new' ]; then",
+    "if [ \"$1\" = 'new-component' ]; then",
     "  printf 'component' > \"$out\"",
     "  exit 0",
     "fi",
-    "if [ \"$1\" = 'validate' ]; then",
+    "if [ \"$1\" = 'validate-component' ]; then",
     "  echo 'forced validate failure' >&2",
     "  exit 9",
     "fi",
-    "echo \"unexpected fake wasm-tools args: $*\" >&2",
+    "echo \"unexpected fake do-toolchain args: $*\" >&2",
     "exit 99",
     "",
   ].join("\n"),
 );
-fs.chmodSync(fakeWasmToolsPath, 0o755);
+fs.chmodSync(fakeToolchainPath, 0o755);
 const fakeValidateFailureResult = spawnSync(
   process.execPath,
   [
@@ -1638,29 +1626,55 @@ const fakeValidateFailureResult = spawnSync(
   ],
   {
     encoding: "utf8",
-    env: { ...process.env, WASM_TOOLS: fakeWasmToolsPath },
+    env: {
+      ...process.env,
+      DO_TOOLCHAIN_BIN: fakeToolchainPath,
+      DO_TOOLCHAIN_LOCK: toolchainLock,
+      DO_FAKE_TOOLCHAIN_LOG: fakeToolchainLogPath,
+      WASM_TOOLS: fakeToolchainPath,
+    },
   },
 );
 assert.notEqual(fakeValidateFailureResult.status, 0, "component wasm output should validate generated component");
 assert.match(fakeValidateFailureResult.stderr, /wasm-tools validate failed: forced validate failure/);
+const fakeToolchainArgs = fs.readFileSync(fakeToolchainLogPath, "utf8").trimEnd().split("\n");
+assert.equal(fakeToolchainArgs.length, 3);
+assert.match(fakeToolchainArgs[0], /^embed-component \/[^ ]+\/wit \/[^ ]+\/core_component\.wat imports --features none -o \/[^ ]+\/embedded\.wasm$/);
+assert.match(fakeToolchainArgs[1], /^new-component \/[^ ]+\/embedded\.wasm -o \/[^ ]+\/component\.wasm$/);
+assert.match(fakeToolchainArgs[2], /^validate-component \/[^ ]+\/component\.wasm --features none$/);
 
-if (wasmTools) {
+if (fs.existsSync(toolchainBin)) {
   const embeddedPath = path.join(tmpDir, "component_input_embedded.wasm");
   const componentPath = path.join(tmpDir, "component_input.component.wasm");
-  const embedResult = spawnSync(
-    wasmTools,
-    ["component", "embed", path.join(componentInputDir, "wit"), path.join(componentInputDir, "core_component.wat"), "-o", embeddedPath],
-    { encoding: "utf8" },
-  );
+  const toolchainEnv = { ...process.env, DO_TOOLCHAIN_LOCK: toolchainLock };
+  const embedResult = spawnSync(toolchainBin, [
+    "embed-component",
+    path.join(componentInputDir, "wit"),
+    path.join(componentInputDir, "core_component.wat"),
+    "imports",
+    "--features",
+    "none",
+    "-o",
+    embeddedPath,
+  ], { encoding: "utf8", env: toolchainEnv });
   assert.equal(embedResult.status, 0, embedResult.stderr);
-  const componentResult = spawnSync(wasmTools, ["component", "new", embeddedPath, "-o", componentPath], {
+  const componentResult = spawnSync(toolchainBin, ["new-component", embeddedPath, "-o", componentPath], {
     encoding: "utf8",
+    env: toolchainEnv,
   });
   assert.equal(componentResult.status, 0, componentResult.stderr);
-  const validateComponentResult = spawnSync(wasmTools, ["validate", componentPath], {
+  const validateComponentResult = spawnSync(toolchainBin, ["validate-component", componentPath, "--features", "none"], {
     encoding: "utf8",
+    env: toolchainEnv,
   });
   assert.equal(validateComponentResult.status, 0, validateComponentResult.stderr);
+  const componentWitResult = spawnSync(toolchainBin, ["component-wit", componentPath], {
+    encoding: "utf8",
+    env: toolchainEnv,
+  });
+  assert.equal(componentWitResult.status, 0, componentWitResult.stderr);
+  assert.match(componentWitResult.stdout, /package wasi:clocks/);
+  assert.match(componentWitResult.stdout, /package wasi:io/);
 
   const generatedComponentPath = path.join(tmpDir, "component_tool_output.wasm");
   const generatedComponentResult = spawnSync(
@@ -1675,7 +1689,7 @@ if (wasmTools) {
     ],
     {
       encoding: "utf8",
-      env: { ...process.env, WASM_TOOLS: wasmTools },
+      env: toolchainEnv,
     },
   );
   assert.equal(generatedComponentResult.status, 0, generatedComponentResult.stderr);
