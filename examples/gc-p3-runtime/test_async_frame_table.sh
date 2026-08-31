@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 wasmtime_bin=${WASMTIME_BIN:-/home/_/Public/wasmtime/bin/wasmtime}
 fixture="$repo_root/examples/gc-p3-runtime/async-frame-table.wat"
 compiled=$(mktemp "${TMPDIR:-/tmp}/do-gc-async-frame-table.XXXXXX")
@@ -12,7 +14,7 @@ if [ ! -x "$wasmtime_bin" ]; then
   exit 1
 fi
 
-wasm-tools parse "$fixture" -o "$compiled.wasm"
+"$toolchain_bin" parse-core "$fixture" -o "$compiled.wasm"
 "$wasmtime_bin" compile -W gc=y -o "$compiled" "$fixture"
 result=$("$wasmtime_bin" -W gc=y --invoke probe "$fixture")
 if [ "$result" != "27815" ]; then

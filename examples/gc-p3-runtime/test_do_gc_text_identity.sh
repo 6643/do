@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 wasmtime_bin=${WASMTIME_BIN:-/home/_/Public/wasmtime/bin/wasmtime}
 fixture="$repo_root/examples/gc-p3-runtime/text-identity.do"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-gc-text-identity.XXXXXX")
@@ -14,7 +16,7 @@ fi
 
 wat_path="$tmp_dir/text-identity.wat"
 zig run "$repo_root/src/build/gc_sync_probe.zig" -- "$fixture" "$wat_path" identity
-wasm-tools parse "$wat_path" -o "$tmp_dir/text-identity.wasm"
+"$toolchain_bin" parse-core "$wat_path" -o "$tmp_dir/text-identity.wasm"
 "$wasmtime_bin" compile -W gc=y -o "$tmp_dir/text-identity.compiled" "$wat_path"
 
 result=$("$wasmtime_bin" -W gc=y --invoke probe "$wat_path")

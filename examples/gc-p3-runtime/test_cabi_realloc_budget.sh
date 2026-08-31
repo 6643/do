@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 wasmtime_bin=${WASMTIME_BIN:-/home/_/.local/bin/wasmtime}
 fixture="$repo_root/examples/gc-p3-runtime/cabi-realloc-budget.wat"
 compiled=$(mktemp "${TMPDIR:-/tmp}/do-cabi-realloc-budget.XXXXXX")
@@ -12,7 +14,7 @@ if [ ! -x "$wasmtime_bin" ]; then
   exit 1
 fi
 
-wasm-tools parse "$fixture" -o "$compiled.wasm"
+"$toolchain_bin" parse-core "$fixture" -o "$compiled.wasm"
 probe=$($wasmtime_bin --invoke probe "$fixture")
 if [ "$probe" != "4" ]; then
   printf 'expected grow/shrink probe result 4, got %s\n' "$probe" >&2
