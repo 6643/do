@@ -1582,6 +1582,7 @@ assert.equal(
 
 const fakeToolchainPath = path.join(tmpDir, "fake_do_toolchain.sh");
 const fakeToolchainLogPath = path.join(tmpDir, "fake_do_toolchain.argv");
+fs.writeFileSync(fakeToolchainLogPath, "");
 fs.writeFileSync(
   fakeToolchainPath,
   [
