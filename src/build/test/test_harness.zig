@@ -333,6 +333,7 @@ const pure_lowering_cases = [_]PureLoweringCase{
             ";; [producer-nested-path] inner.ticket",
             ";; [producer-stream-capacity] 1",
             ";; [producer-source-signature] (i32) -> (i32)",
+            ";; [producer-input-mode]",
             ";; [producer-ownership-mask] guest=1 transferred=2",
             ";; [producer-record-transfer]",
             ";; [producer-resource-drop-exactly-once]",

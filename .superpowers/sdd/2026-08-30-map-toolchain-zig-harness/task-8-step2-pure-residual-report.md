@@ -41,6 +41,10 @@ No unrelated pre-existing dirty files were modified.
 
 ## Commands and results
 
+- Red evidence before the final assertion update:
+  - `if rg -n '\[producer-input-mode\]' src/build/test/test_harness.zig; then exit 0; else printf 'RED: harness lacks required canonical marker [producer-input-mode]\n' >&2; exit 1; fi`
+  - FAIL (expected red): exit `1`, reporting the missing nested-producer
+    canonical marker.
 - `cd src && zig test build/test/test_harness.zig`
   - PASS: 4/4 tests.
 - `cd src && zig build test --summary all`
@@ -54,16 +58,16 @@ No unrelated pre-existing dirty files were modified.
   - PASS: `test_do_http_request_body_producer_lowering.sh`.
   - PASS: `test_do_http_response_consume_body_assembly.sh`.
   - PASS: `test_do_variant_resource_stream_lowering.sh`.
-  - BLOCKED by existing version guard: `test_do_g6_2_owned_record_nested_producer.sh`
-    and `test_g6_2_owned_record_nested_canonical.sh` require `wasm-tools
-    1.255.0`, while the current installed binary is `1.258.0`. Both exited
-    fail-closed before assembly.
+  - PASS: `test_do_g6_2_owned_record_nested_producer.sh`.
+  - PASS: `test_g6_2_owned_record_nested_canonical.sh`.
 - `git diff --check`
   - PASS.
 
 ## Residual concerns
 
-The two nested shell gates remain outside this change and retain their
-`wasm-tools 1.255.0` guard. The Zig harness validates the same generated and
-canonical nested artifacts through the locked current-only adapter, but this
-does not claim that all remaining pure shell scripts have been migrated.
+The existing pure shell matrix still contains additional assembly-only gates
+outside this bounded batch, including nested producer ABI/equivalence and
+other G6.2 producer variants. This change does not claim that all pure shell
+scripts have been migrated. The full `zig build test --summary all` integration
+run remains a separate long-running gate and is not claimed from the focused
+verification below.
