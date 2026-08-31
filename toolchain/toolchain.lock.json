@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "wasm_tools": {
+    "name": "wasm-tools",
+    "path": "/home/_/.local/bin/wasm-tools",
+    "version": "wasm-tools 1.258.0 (5c6d31c78 2026-08-24)",
+    "sha256": "282e0014d38daf233cb10fb92815813b339e2b7f8b4734f6698f0176c7d99424",
+    "capabilities": ["parse-core", "strip-core", "validate-core", "embed-component", "embed-component-template", "new-component", "validate-component", "component-wit", "component-targets", "print-component"]
+  },
+  "wasmtime": {
+    "name": "wasmtime",
+    "path": "/home/_/.local/bin/wasmtime",
+    "version": "wasmtime 48.0.1 (7bac2c277 2026-08-24)",
+    "sha256": "5a61e28214e31c2a52154103407bae5265a36732b3af502609e5ffe19f249463",
+    "capabilities": ["run-wasmtime", "compile-core-gc", "invoke-core-gc", "run-core-gc"]
+  },
+  "zig": {
+    "name": "zig",
+    "path": "/snap/zig/16117/zig",
+    "version": "0.16.0",
+    "sha256": "",
+    "capabilities": []
+  },
+  "rustc": {
+    "name": "rustc",
+    "path": "rustc",
+    "version": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+    "sha256": "",
+    "capabilities": []
+  },
+  "cargo": {
+    "name": "cargo",
+    "path": "cargo",
+    "version": "cargo 1.97.1 (c980f4866 2026-06-30)",
+    "sha256": "",
+    "capabilities": []
+  },
+  "rust_wasmtime": {
+    "version": "48.0.1",
+    "target_version": "48.0.1",
+    "status": "verified"
+  }
+}
