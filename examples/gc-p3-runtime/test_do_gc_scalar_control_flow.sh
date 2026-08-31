@@ -4,7 +4,8 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 do_bin=${DO_BIN:-$repo_root/bin/do}
-wasm_tools_bin=${WASM_TOOLS_BIN:-$(command -v wasm-tools || true)}
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 fixture="$repo_root/examples/gc-p3-runtime/scalar-control-flow.do"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-gc-scalar-control-flow.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
@@ -13,15 +14,10 @@ if [ ! -x "$do_bin" ]; then
   printf 'missing do compiler: %s\n' "$do_bin" >&2
   exit 1
 fi
-if [ -z "$wasm_tools_bin" ] || [ ! -x "$wasm_tools_bin" ]; then
-  printf 'missing wasm-tools executable\n' >&2
-  exit 1
-fi
-
 wat_path="$tmp_dir/scalar-control-flow.wat"
 wasm_path="$tmp_dir/scalar-control-flow.wasm"
 DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$fixture" -o "$wat_path"
-"$wasm_tools_bin" parse "$wat_path" -o "$wasm_path"
+"$toolchain_bin" parse-core "$wat_path" -o "$wasm_path"
 
 rg -q ';; gc-sync ' "$wat_path"
 rg -q ';; gc-root branch_join' "$wat_path"
