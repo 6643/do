@@ -78,6 +78,16 @@ fi
 grep -Fq 'active shell contains legacy toolchain references' "$tmp_dir/legacy.stderr"
 rm -f -- "$negative_fixture"
 
+find_bin="$tmp_dir/find-bin"
+mkdir -p "$find_bin"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 2' >"$find_bin/find"
+chmod +x "$find_bin/find"
+if PATH="$find_bin:$PATH" "$GATE" >"$tmp_dir/find.stdout" 2>"$tmp_dir/find.stderr"; then
+    printf '[FAIL] adapter gate swallowed a find execution failure\n' >&2
+    exit 1
+fi
+grep -Fq 'alias file scan failed' "$tmp_dir/find.stderr"
+
 fake_bin="$tmp_dir/fake-bin"
 mkdir -p "$fake_bin"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 2' >"$fake_bin/rg"

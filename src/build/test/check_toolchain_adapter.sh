@@ -71,6 +71,24 @@ fi
 scan_wasm_tools_aliases() {
     local file
     local alias_refs
+    local file_list
+    local find_status
+
+    if file_list="$(mktemp "${TMPDIR:-/tmp}/do-toolchain-alias-files.XXXXXX")"; then
+        :
+    else
+        printf '[FAIL] alias file scan failed: unable to create file list\n' >&2
+        return 1
+    fi
+
+    if find "$ROOT_DIR/examples" "$ROOT_DIR/src/build/test" -type f -name '*.sh' ! -path '*/tmp/*' -print0 >"$file_list"; then
+        :
+    else
+        find_status=$?
+        rm -f -- "$file_list"
+        printf '[FAIL] alias file scan failed (find exit %d)\n' "$find_status" >&2
+        return 1
+    fi
 
     while IFS= read -r -d '' file; do
         case "$file" in
@@ -79,7 +97,7 @@ scan_wasm_tools_aliases() {
                 ;;
         esac
 
-        if ! alias_refs="$(awk '
+        if alias_refs="$(awk '
             function alias_invocation(line, name, prefix) {
                 prefix = "^[[:space:]]*((if|then|elif|while|until|do|!|command|env)[[:space:]]+)*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+)*"
                 return line ~ (prefix "\\\"?\\$" name "\\\"?[[:space:]]+[^[:space:]]+") ||
@@ -121,13 +139,17 @@ scan_wasm_tools_aliases() {
                 }
             }
         ' "$file")"; then
+            :
+        else
+            rm -f -- "$file_list"
             printf '[FAIL] wasm-tools alias scan failed: %s\n' "$file" >&2
             return 1
         fi
         if [[ -n "$alias_refs" ]]; then
             printf '%s\n' "$alias_refs"
         fi
-    done < <(find "$ROOT_DIR/examples" "$ROOT_DIR/src/build/test" -type f -name '*.sh' ! -path '*/tmp/*' -print0)
+    done <"$file_list"
+    rm -f -- "$file_list"
 }
 
 if ! alias_tool_refs="$(scan_wasm_tools_aliases)"; then
