@@ -3,7 +3,9 @@ set -euo pipefail
 # Verification Status: verified
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-wasm_tools_bin=${WASM_TOOLS_BIN:-wasm-tools}
+cd "$repo_root"
+toolchain_bin=${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 zig_bin=${ZIG_BIN:-zig}
 cargo_bin=${CARGO_BIN:-cargo}
 runner_cc=${RUST_RUNNER_CC:-$repo_root/examples/p3-runtime/rust-host-runner/zig-cc.sh}
@@ -18,11 +20,10 @@ tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-gc-marshal-equivalence.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 gc_core_wat="$tmp_dir/generated-gc.core.wat"
 
-tool_version=$("$wasm_tools_bin" --version)
-case "$tool_version" in
-  "wasm-tools 1.255.0 (76e20611d"*) ;;
-  *) printf 'unexpected wasm-tools version: %s\n' "$tool_version" >&2; exit 1 ;;
-esac
+if [ ! -x "$toolchain_bin" ]; then
+  printf 'missing do-toolchain executable: %s\n' "$toolchain_bin" >&2
+  exit 1
+fi
 
 if [ ! -f "$wit" ] || [ ! -f "$probe" ] || [ ! -f "$arc_core_wat" ]; then
   printf 'missing text marshal equivalence fixture\n' >&2
@@ -38,14 +39,14 @@ if grep -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$gc_core_wat"; t
   printf 'GC reference crossed the Component ABI\n' >&2
   exit 1
 fi
-"$wasm_tools_bin" parse "$gc_core_wat" -o "$tmp_dir/gc-core.wasm"
-"$wasm_tools_bin" parse "$arc_core_wat" -o "$tmp_dir/arc-core.wasm"
-"$wasm_tools_bin" component embed "$wit" "$tmp_dir/gc-core.wasm" --world probe -o "$tmp_dir/gc-embedded.wasm"
-"$wasm_tools_bin" component embed "$wit" "$tmp_dir/arc-core.wasm" --world probe -o "$tmp_dir/arc-embedded.wasm"
-"$wasm_tools_bin" component new "$tmp_dir/gc-embedded.wasm" -o "$tmp_dir/gc.component.wasm"
-"$wasm_tools_bin" component new "$tmp_dir/arc-embedded.wasm" -o "$tmp_dir/arc.component.wasm"
-"$wasm_tools_bin" validate "$tmp_dir/gc.component.wasm"
-"$wasm_tools_bin" validate "$tmp_dir/arc.component.wasm"
+"$toolchain_bin" parse-core "$gc_core_wat" -o "$tmp_dir/gc-core.wasm"
+"$toolchain_bin" parse-core "$arc_core_wat" -o "$tmp_dir/arc-core.wasm"
+"$toolchain_bin" embed-component "$wit" "$tmp_dir/gc-core.wasm" probe --features none -o "$tmp_dir/gc-embedded.wasm"
+"$toolchain_bin" embed-component "$wit" "$tmp_dir/arc-core.wasm" probe --features none -o "$tmp_dir/arc-embedded.wasm"
+"$toolchain_bin" new-component "$tmp_dir/gc-embedded.wasm" -o "$tmp_dir/gc.component.wasm"
+"$toolchain_bin" new-component "$tmp_dir/arc-embedded.wasm" -o "$tmp_dir/arc.component.wasm"
+"$toolchain_bin" validate-component "$tmp_dir/gc.component.wasm" --features none
+"$toolchain_bin" validate-component "$tmp_dir/arc.component.wasm" --features none
 
 output=$(
   CC="$cc_bin" CXX="$cxx_bin" \

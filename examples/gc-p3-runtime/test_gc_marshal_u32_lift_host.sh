@@ -3,7 +3,9 @@ set -euo pipefail
 # Verification Status: verified
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-wasm_tools_bin=${WASM_TOOLS_BIN:-wasm-tools}
+cd "$repo_root"
+toolchain_bin=${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 zig_bin=${ZIG_BIN:-zig}
 wasmtime_bin=${WASMTIME_BIN:-/home/_/Public/wasmtime/bin/wasmtime}
 cargo_bin=${CARGO_BIN:-cargo}
@@ -17,11 +19,10 @@ runner_manifest="$repo_root/examples/p3-runtime/rust-host-runner/Cargo.toml"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-gc-marshal-u32-lift.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 
-tool_version=$("$wasm_tools_bin" --version)
-case "$tool_version" in
-  "wasm-tools 1.255.0 (76e20611d"*) ;;
-  *) printf 'unexpected wasm-tools version: %s\n' "$tool_version" >&2; exit 1 ;;
-esac
+if [ ! -x "$toolchain_bin" ]; then
+  printf 'missing do-toolchain executable: %s\n' "$toolchain_bin" >&2
+  exit 1
+fi
 if [ ! -f "$wit" ] || [ ! -f "$probe" ]; then
   printf 'missing u32 list lift fixture\n' >&2
   exit 1
@@ -37,11 +38,11 @@ if grep -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$gc_core_wat" >"
   cat "$tmp_dir/gc-import.stderr" >&2
   exit 1
 fi
-"$wasm_tools_bin" parse "$gc_core_wat" -o "$tmp_dir/core.wasm"
-"$wasm_tools_bin" component embed "$wit" "$tmp_dir/core.wasm" --world probe -o "$tmp_dir/embedded.wasm"
-"$wasm_tools_bin" component new "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
-"$wasm_tools_bin" validate "$tmp_dir/component.wasm"
-"$wasm_tools_bin" component wit "$tmp_dir/component.wasm" >"$tmp_dir/component.wit"
+"$toolchain_bin" parse-core "$gc_core_wat" -o "$tmp_dir/core.wasm"
+"$toolchain_bin" embed-component "$wit" "$tmp_dir/core.wasm" probe --features none -o "$tmp_dir/embedded.wasm"
+"$toolchain_bin" new-component "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
+"$toolchain_bin" validate-component "$tmp_dir/component.wasm" --features none
+"$toolchain_bin" component-wit "$tmp_dir/component.wasm" >"$tmp_dir/component.wit"
 grep -Fq 'receive: func() -> list<u32>' "$tmp_dir/component.wit"
 
 output=$(

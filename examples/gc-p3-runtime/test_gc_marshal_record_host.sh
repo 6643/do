@@ -2,7 +2,9 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-wasm_tools_bin=${WASM_TOOLS_BIN:-wasm-tools}
+cd "$repo_root"
+toolchain_bin=${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 wasmtime_bin=${WASMTIME_BIN:-/home/_/Public/wasmtime/bin/wasmtime}
 zig_bin=${ZIG_BIN:-zig}
 cargo_bin=${CARGO_BIN:-cargo}
@@ -17,11 +19,10 @@ tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-gc-marshal-record.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 core_wat="$tmp_dir/generated.core.wat"
 
-tool_version=$("$wasm_tools_bin" --version)
-case "$tool_version" in
-  "wasm-tools 1.255.0 (76e20611d"*) ;;
-  *) printf 'unexpected wasm-tools version: %s\n' "$tool_version" >&2; exit 1 ;;
-esac
+if [ ! -x "$toolchain_bin" ]; then
+  printf 'missing do-toolchain executable: %s\n' "$toolchain_bin" >&2
+  exit 1
+fi
 if [ ! -x "$wasmtime_bin" ] || [ ! -x "$cc_bin" ] || [ ! -x "$cxx_bin" ] || [ ! -x "$linker_bin" ]; then
   printf 'missing Wasmtime or Rust runner linker\n' >&2
   exit 1
@@ -29,15 +30,15 @@ fi
 
 "$zig_bin" run "$probe" -- "$wit" "$core_wat" --host
 
-"$wasm_tools_bin" parse "$core_wat" -o "$tmp_dir/core.wasm"
+"$toolchain_bin" parse-core "$core_wat" -o "$tmp_dir/core.wasm"
 if grep -E '^[[:space:]]*\(import .*\(ref' "$core_wat" >"$tmp_dir/gc-import.stderr"; then
   cat "$tmp_dir/gc-import.stderr" >&2
   exit 1
 fi
-"$wasm_tools_bin" component embed "$wit" "$tmp_dir/core.wasm" --world probe -o "$tmp_dir/embedded.wasm"
-"$wasm_tools_bin" component new "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
-"$wasm_tools_bin" validate "$tmp_dir/component.wasm"
-"$wasm_tools_bin" component wit "$tmp_dir/component.wasm" >"$tmp_dir/component.wit"
+"$toolchain_bin" embed-component "$wit" "$tmp_dir/core.wasm" probe --features none -o "$tmp_dir/embedded.wasm"
+"$toolchain_bin" new-component "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
+"$toolchain_bin" validate-component "$tmp_dir/component.wasm" --features none
+"$toolchain_bin" component-wit "$tmp_dir/component.wasm" >"$tmp_dir/component.wit"
 grep -Fq 'read: func() -> reading' "$tmp_dir/component.wit"
 
 output=$(
