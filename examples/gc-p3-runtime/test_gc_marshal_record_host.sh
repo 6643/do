@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$repo_root"
-toolchain_bin=${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}
+toolchain_bin="$repo_root/bin/do-toolchain"
 export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 wasmtime_bin=${WASMTIME_BIN:-/home/_/Public/wasmtime/bin/wasmtime}
 zig_bin=${ZIG_BIN:-zig}

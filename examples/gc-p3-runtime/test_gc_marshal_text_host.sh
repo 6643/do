@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$repo_root"
-toolchain_bin=${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}
+toolchain_bin="$repo_root/bin/do-toolchain"
 export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 cargo_bin=${CARGO_BIN:-cargo}
 runner_cc=${RUST_RUNNER_CC:-$repo_root/examples/p3-runtime/rust-host-runner/zig-cc.sh}
