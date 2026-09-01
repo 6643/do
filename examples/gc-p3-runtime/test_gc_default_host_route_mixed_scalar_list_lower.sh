@@ -2,14 +2,20 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+cd "$repo_root"
+toolchain_bin=${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 do_bin=${DO_BIN:-$repo_root/bin/do}
 input_do=$repo_root/examples/gc-p3-runtime/ordinary-host-mixed-scalar-list-lower-call.do
-wasm_tools_bin=${WASM_TOOLS_BIN:-wasm-tools}
 wat_file=$(mktemp "${TMPDIR:-/tmp}/do-g5c-default-mixed-scalar-list-lower.XXXXXX.wat")
 trap 'rm -f "$wat_file"' EXIT
 
 if [[ ! -x "$do_bin" ]]; then
     printf '[FAIL] missing do compiler executable: %s\n' "$do_bin" >&2
+    exit 1
+fi
+if [[ ! -x "$toolchain_bin" ]]; then
+    printf '[FAIL] missing do-toolchain executable: %s\n' "$toolchain_bin" >&2
     exit 1
 fi
 
@@ -46,5 +52,5 @@ if [[ -z "$call_line" || "$call_line" -ge "$first_free_line" || "$first_free_lin
     exit 1
 fi
 
-"$wasm_tools_bin" validate --features gc "$wat_file" >/dev/null
+"$toolchain_bin" validate-core "$wat_file" >/dev/null
 printf 'GREEN: mixed scalar-list record lower uses automatic manifest-backed GC/WIT route\n'

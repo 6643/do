@@ -2,11 +2,12 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-tool_version=$(wasm-tools --version)
-case "$tool_version" in
-  "wasm-tools 1.255.0 (76e20611d"*) ;;
-  *) printf 'unexpected wasm-tools version: %s\n' "$tool_version" >&2; exit 1 ;;
-esac
+toolchain_bin=${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
+if [ ! -x "$toolchain_bin" ]; then
+  printf 'missing do-toolchain executable: %s\n' "$toolchain_bin" >&2
+  exit 1
+fi
 
 wit="$repo_root/examples/gc-p3-runtime/marshal-text-assembly.wit"
 core_wat="$repo_root/examples/gc-p3-runtime/marshal-text-core.wat"
@@ -31,17 +32,17 @@ assert_no_gc_imports() {
   fi
 }
 
-run_checked "$tmp_dir/parse.stderr" wasm-tools parse "$core_wat" -o "$tmp_dir/core.wasm"
+run_checked "$tmp_dir/parse.stderr" "$toolchain_bin" parse-core "$core_wat" -o "$tmp_dir/core.wasm"
 assert_no_gc_imports "$core_wat"
-run_checked "$tmp_dir/embed.stderr" wasm-tools component embed "$wit" "$tmp_dir/core.wasm" --world probe -o "$tmp_dir/embedded.wasm"
-run_checked "$tmp_dir/new.stderr" wasm-tools component new "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
-run_checked "$tmp_dir/validate.stderr" wasm-tools validate "$tmp_dir/component.wasm"
-run_checked "$tmp_dir/wit.stderr" wasm-tools component wit "$tmp_dir/component.wasm" >"$tmp_dir/component.wit"
+run_checked "$tmp_dir/embed.stderr" "$toolchain_bin" embed-component "$wit" "$tmp_dir/core.wasm" probe --features none -o "$tmp_dir/embedded.wasm"
+run_checked "$tmp_dir/new.stderr" "$toolchain_bin" new-component "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
+run_checked "$tmp_dir/validate.stderr" "$toolchain_bin" validate-component "$tmp_dir/component.wasm" --features none
+run_checked "$tmp_dir/wit.stderr" "$toolchain_bin" component-wit "$tmp_dir/component.wasm" >"$tmp_dir/component.wit"
 grep -Fq 'send: func(value: string)' "$tmp_dir/component.wit"
 
 sed 's/send:/renamed:/' "$wit" >"$tmp_dir/renamed.wit"
-run_checked "$tmp_dir/renamed-embed.stderr" wasm-tools component embed "$tmp_dir/renamed.wit" "$tmp_dir/core.wasm" --world probe -o "$tmp_dir/renamed-embedded.wasm"
-if wasm-tools component new "$tmp_dir/renamed-embedded.wasm" -o "$tmp_dir/renamed.component.wasm" 2>"$tmp_dir/renamed-new.stderr"; then
+run_checked "$tmp_dir/renamed-embed.stderr" "$toolchain_bin" embed-component "$tmp_dir/renamed.wit" "$tmp_dir/core.wasm" probe --features none -o "$tmp_dir/renamed-embedded.wasm"
+if "$toolchain_bin" new-component "$tmp_dir/renamed-embedded.wasm" -o "$tmp_dir/renamed.component.wasm" 2>"$tmp_dir/renamed-new.stderr"; then
   printf 'altered WIT member unexpectedly assembled\n' >&2
   exit 1
 fi

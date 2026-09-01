@@ -3,7 +3,9 @@ set -euo pipefail
 # Verification Status: verified
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-wasm_tools_bin=${WASM_TOOLS_BIN:-wasm-tools}
+cd "$repo_root"
+toolchain_bin=${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 zig_bin=${ZIG_BIN:-zig}
 cargo_bin=${CARGO_BIN:-cargo}
 runner_cc=${RUST_RUNNER_CC:-$repo_root/examples/p3-runtime/rust-host-runner/zig-cc.sh}
@@ -21,11 +23,10 @@ if [ ! -x "$do_bin" ]; then
   printf 'missing do compiler executable: %s\n' "$do_bin" >&2
   exit 1
 fi
-tool_version=$($wasm_tools_bin --version)
-case "$tool_version" in
-  "wasm-tools 1.255.0 (76e20611d"*) ;;
-  *) printf 'unexpected wasm-tools version: %s\n' "$tool_version" >&2; exit 1 ;;
-esac
+if [ ! -x "$toolchain_bin" ]; then
+  printf 'missing do-toolchain executable: %s\n' "$toolchain_bin" >&2
+  exit 1
+fi
 if [ ! -x "$cc_bin" ] || [ ! -x "$cxx_bin" ] || [ ! -x "$linker_bin" ]; then
   printf 'missing Rust runner linker\n' >&2
   exit 1
@@ -60,10 +61,10 @@ fi
 
 awk '{ print } /  \(export "_start" \(func \$_start\)\)/ { print "  (func (export \"run\") (result i32) call $_start i32.const 34)" }' \
   "$tmp_dir/core.wat" > "$tmp_dir/component.core.wat"
-"$wasm_tools_bin" parse "$tmp_dir/component.core.wat" -o "$tmp_dir/core.wasm"
-"$wasm_tools_bin" component embed "$wit" "$tmp_dir/core.wasm" --world probe -o "$tmp_dir/embedded.wasm"
-"$wasm_tools_bin" component new "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
-"$wasm_tools_bin" validate "$tmp_dir/component.wasm"
+"$toolchain_bin" parse-core "$tmp_dir/component.core.wat" -o "$tmp_dir/core.wasm"
+"$toolchain_bin" embed-component "$wit" "$tmp_dir/core.wasm" probe --features none -o "$tmp_dir/embedded.wasm"
+"$toolchain_bin" new-component "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
+"$toolchain_bin" validate-component "$tmp_dir/component.wasm" --features none
 
 output=$(
   CC="$cc_bin" CXX="$cxx_bin" \
@@ -97,10 +98,10 @@ rg -q 'struct.new \$reading' "$tmp_dir/lift.core.wat"
 
 awk '{ print } /  \(export "_start" \(func \$_start\)\)/ { print "  (func (export \"run\") (result i32) call $_start i32.const 17)" }' \
   "$tmp_dir/lift.core.wat" > "$tmp_dir/lift.component.core.wat"
-"$wasm_tools_bin" parse "$tmp_dir/lift.component.core.wat" -o "$tmp_dir/lift.core.wasm"
-"$wasm_tools_bin" component embed "$lift_wit" "$tmp_dir/lift.core.wasm" --world probe -o "$tmp_dir/lift.embedded.wasm"
-"$wasm_tools_bin" component new "$tmp_dir/lift.embedded.wasm" -o "$tmp_dir/lift.component.wasm"
-"$wasm_tools_bin" validate "$tmp_dir/lift.component.wasm"
+"$toolchain_bin" parse-core "$tmp_dir/lift.component.core.wat" -o "$tmp_dir/lift.core.wasm"
+"$toolchain_bin" embed-component "$lift_wit" "$tmp_dir/lift.core.wasm" probe --features none -o "$tmp_dir/lift.embedded.wasm"
+"$toolchain_bin" new-component "$tmp_dir/lift.embedded.wasm" -o "$tmp_dir/lift.component.wasm"
+"$toolchain_bin" validate-component "$tmp_dir/lift.component.wasm" --features none
 
 lift_output=$(
   CC="$cc_bin" CXX="$cxx_bin" \

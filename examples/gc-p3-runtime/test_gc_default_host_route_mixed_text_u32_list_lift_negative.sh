@@ -3,18 +3,12 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-wasm_tools_bin=${WASM_TOOLS_BIN:-wasm-tools}
+cd "$repo_root"
 zig_bin=${ZIG_BIN:-zig}
 do_bin=${DO_BIN:-$repo_root/bin/do}
 descriptor=demo:marshal-record-mixed-text-u32-list-lift/api.read@1.0.0/lift
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-gc-default-mixed-text-u32-list-lift-negative.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
-
-tool_version=$($wasm_tools_bin --version)
-case "$tool_version" in
-  "wasm-tools 1.255.0 (76e20611d"*) ;;
-  *) printf 'unexpected wasm-tools version: %s\n' "$tool_version" >&2; exit 1 ;;
-esac
 
 (
   cd "$repo_root/src"

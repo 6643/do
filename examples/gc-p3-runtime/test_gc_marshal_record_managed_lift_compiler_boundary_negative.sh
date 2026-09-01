@@ -2,8 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+cd "$repo_root"
 zig_bin=${ZIG_BIN:-zig}
-wasm_tools_bin=${WASM_TOOLS_BIN:-wasm-tools}
 do_bin=$repo_root/bin/do
 descriptor=demo:marshal-record-managed-lift/api.read@1.0.0/lift
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-gc-marshal-record-managed-lift-negative.XXXXXX")
@@ -13,12 +13,6 @@ if [ ! -x "$do_bin" ]; then
   printf 'missing do compiler executable: %s\n' "$do_bin" >&2
   exit 1
 fi
-tool_version=$($wasm_tools_bin --version)
-case "$tool_version" in
-  "wasm-tools 1.255.0 (76e20611d"*) ;;
-  *) printf 'unexpected wasm-tools version: %s\n' "$tool_version" >&2; exit 1 ;;
-esac
-
 (
   cd "$repo_root/src"
   "$zig_bin" build -Doptimize=Debug
