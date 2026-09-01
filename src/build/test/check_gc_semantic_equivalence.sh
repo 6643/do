@@ -4,9 +4,10 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 DO_BIN="${DO_BIN:-$ROOT/bin/do}"
-WASM_TOOLS_BIN="${WASM_TOOLS_BIN:-$(command -v wasm-tools || true)}"
 WASMTIME_BIN="${WASMTIME_BIN:-/home/_/Public/wasmtime/bin/wasmtime}"
 NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
+TOOLCHAIN_BIN="$ROOT/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$ROOT/toolchain/toolchain.lock.json"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/do-gc-equivalence.XXXXXX")"
 trap 'rm -rf -- "$TMP_DIR"' EXIT
 
@@ -14,8 +15,8 @@ if [[ ! -x "$DO_BIN" ]]; then
     printf 'missing do compiler: %s\n' "$DO_BIN" >&2
     exit 1
 fi
-if [[ -z "$WASM_TOOLS_BIN" || ! -x "$WASM_TOOLS_BIN" ]]; then
-    printf 'missing wasm-tools executable\n' >&2
+if [[ ! -x "$TOOLCHAIN_BIN" ]]; then
+    printf 'missing do-toolchain executable: %s\n' "$TOOLCHAIN_BIN" >&2
     exit 1
 fi
 if [[ -z "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
@@ -43,7 +44,7 @@ run_compiled_fixture() {
         cat "$stdout_file" >&2
         return 1
     fi
-    "$WASM_TOOLS_BIN" parse "$source_wat" -o "$source_wasm" >/dev/null
+    "$TOOLCHAIN_BIN" parse-core "$source_wat" -o "$source_wasm" >/dev/null
     if ! "$NODE_BIN" "$ROOT/src/build/test/run_compiled_test_case.mjs" "$source_wasm" "$source_wat" >"$TMP_DIR/${base}.run.stdout" 2>"$TMP_DIR/${base}.run.stderr"; then
         printf 'row=%s normal execution failed\n' "$row" >&2
         cat "$TMP_DIR/${base}.run.stderr" >&2
@@ -59,7 +60,7 @@ run_compiled_fixture() {
 run_gc_probe() {
     local row="$1" probe="$2"
     local output
-    if ! output=$(WASMTIME_BIN="$WASMTIME_BIN" WASM_TOOLS_BIN="$WASM_TOOLS_BIN" bash "$ROOT/examples/gc-p3-runtime/test_do_gc_${probe}.sh"); then
+    if ! output=$(WASMTIME_BIN="$WASMTIME_BIN" bash "$ROOT/examples/gc-p3-runtime/test_do_gc_${probe}.sh"); then
         printf 'row=%s GC probe failed\n' "$row" >&2
         return 1
     fi
@@ -74,8 +75,7 @@ run_gc_probe() {
 # row: the direct owned-record producer has no ARC implementation to compare.
 run_direct_owned_record_component_equivalence() {
     local gate_output="$TMP_DIR/g6-2-owned-record-producer-equivalence.output"
-    if ! WASM_TOOLS="$WASM_TOOLS_BIN" \
-        bash "$ROOT/examples/p3-runtime/test_g6_2_owned_record_producer_equivalence.sh" >"$gate_output" 2>&1; then
+    if ! bash "$ROOT/examples/p3-runtime/test_g6_2_owned_record_producer_equivalence.sh" >"$gate_output" 2>&1; then
         printf 'direct owned-record Component lifecycle gate failed\n' >&2
         cat "$gate_output" >&2
         return 1
