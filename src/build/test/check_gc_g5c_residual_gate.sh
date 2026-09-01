@@ -2,7 +2,10 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+cd "$ROOT_DIR"
 DO_BIN="${DO_BIN:-$ROOT_DIR/bin/do}"
+TOOLCHAIN_BIN="${DO_TOOLCHAIN_BIN:-$ROOT_DIR/bin/do-toolchain}"
+# Residual downstream gates still consume this historical environment contract.
 WASM_TOOLS_BIN="${WASM_TOOLS_BIN:-$(command -v wasm-tools || true)}"
 WASMTIME_BIN="${WASMTIME_BIN:-$(command -v wasmtime || true)}"
 ZIG_BIN="${ZIG_BIN:-zig}"
@@ -10,6 +13,7 @@ CARGO_BIN="${CARGO_BIN:-cargo}"
 MODE="${1:-baseline}"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/do-gc-g5c-residual.XXXXXX")"
 trap 'rm -rf -- "$TMP_DIR"' EXIT
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$ROOT_DIR/toolchain/toolchain.lock.json}"
 
 case "$MODE" in
     baseline|cutover) ;;
@@ -23,6 +27,10 @@ if [[ ! -x "$DO_BIN" ]]; then
     printf '[FAIL] missing do compiler executable: %s\n' "$DO_BIN" >&2
     exit 1
 fi
+if [[ ! -x "$TOOLCHAIN_BIN" ]]; then
+    printf '[FAIL] missing do-toolchain executable: %s\n' "$TOOLCHAIN_BIN" >&2
+    exit 1
+fi
 if [[ -z "$WASM_TOOLS_BIN" || ! -x "$WASM_TOOLS_BIN" ]]; then
     printf '[FAIL] missing wasm-tools executable: %s\n' "${WASM_TOOLS_BIN:-<unset>}" >&2
     exit 1
@@ -32,13 +40,15 @@ if [[ -z "$WASMTIME_BIN" || ! -x "$WASMTIME_BIN" ]]; then
     exit 1
 fi
 
-wasm_tools_version="$($WASM_TOOLS_BIN --version 2>&1)"
-expected_wasm_tools_version='wasm-tools 1.255.0 (76e20611d 2026-07-30)'
-if [[ "$wasm_tools_version" != "$expected_wasm_tools_version" ]]; then
-    printf '[FAIL] wasm-tools identity mismatch: expected %s, got: %s\n' "$expected_wasm_tools_version" "$wasm_tools_version" >&2
+toolchain_probe_output="$($TOOLCHAIN_BIN probe 2>&1)" || {
+    printf '[FAIL] current toolchain probe failed:\n%s\n' "$toolchain_probe_output" >&2
+    exit 1
+}
+if [[ "$toolchain_probe_output" != *'"schema":1'* || "$toolchain_probe_output" != *'"wasm_tools":'* ]]; then
+    printf '[FAIL] current toolchain probe returned no wasm-tools identity:\n%s\n' "$toolchain_probe_output" >&2
     exit 1
 fi
-printf '[PASS] pinned wasm-tools: %s\n' "$wasm_tools_version"
+printf '[PASS] pinned wasm-tools identity verified by do-toolchain probe\n'
 
 run_future_frame_equivalence_gate() {
     local gate_output="$TMP_DIR/gc-async-frame-equivalence.output"
@@ -1107,7 +1117,7 @@ run_default_gc_gate() {
 
 run_gc_core_oracle() {
     local wat_file="$1"
-    "$WASM_TOOLS_BIN" parse "$wat_file" -o "$TMP_DIR/gc-core.wasm" >/dev/null
+    "$TOOLCHAIN_BIN" parse-core "$wat_file" -o "$TMP_DIR/gc-core.wasm" >/dev/null
     "$WASMTIME_BIN" compile -W gc=y -o "$TMP_DIR/gc-core.compiled" "$wat_file"
     local result
     result="$($WASMTIME_BIN -W gc=y --invoke probe "$wat_file")"
@@ -1148,7 +1158,7 @@ if rg -q '__arc_' "$admitted_wat"; then
     printf '[FAIL] admitted output contains ARC marker: %s\n' "$admitted_wat" >&2
     exit 1
 fi
-"$WASM_TOOLS_BIN" parse "$admitted_wat" -o "$TMP_DIR/admitted.wasm" >/dev/null
+"$TOOLCHAIN_BIN" parse-core "$admitted_wat" -o "$TMP_DIR/admitted.wasm" >/dev/null
 printf '[PASS] admitted default build is GC-only and parses: %s\n' "$(basename "$admitted_fixture")"
 
 migrated_fixture="$ROOT_DIR/src/build/test/compile_ok/63_arc_if_else_return_releases_managed_locals.do"
@@ -1166,7 +1176,7 @@ if ! rg -q ';; gc-sync ' "$migrated_wat"; then
     printf '[FAIL] migrated if-else fixture lacks GC marker: %s\n' "$migrated_fixture" >&2
     exit 1
 fi
-"$WASM_TOOLS_BIN" parse "$migrated_wat" -o "$TMP_DIR/migrated-if-else.wasm" >/dev/null
+"$TOOLCHAIN_BIN" parse-core "$migrated_wat" -o "$TMP_DIR/migrated-if-else.wasm" >/dev/null
 printf '[PASS] migrated default build is GC-only and parses: %s\n' "$(basename "$migrated_fixture")"
 
 host_wit_fixture="$ROOT_DIR/src/build/test/compile_ok/274_wasi_preopens_list_tuple_lower.do"
@@ -1192,7 +1202,7 @@ if rg -q ';; gc-sync' "$host_wit_wat"; then
     printf '[FAIL] host/WIT residual output selected the GC route: %s\n' "$host_wit_fixture" >&2
     exit 1
 fi
-"$WASM_TOOLS_BIN" parse "$host_wit_wat" -o "$TMP_DIR/host-wit.wasm" >/dev/null
+"$TOOLCHAIN_BIN" parse-core "$host_wit_wat" -o "$TMP_DIR/host-wit.wasm" >/dev/null
 printf '[PASS] host/WIT managed boundary remains ARC and parses: %s\n' "$(basename "$host_wit_fixture")"
 
 residual_fixture="$ROOT_DIR/src/build/test/compile_ok/203_arc_field_reflection_get_return_fresh_local_defer_keeps_inc_lower.do"
