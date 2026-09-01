@@ -3,7 +3,9 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-wasm_tools_bin=${WASM_TOOLS_BIN:-wasm-tools}
+cd "$repo_root"
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 zig_bin=${ZIG_BIN:-zig}
 cargo_bin=${CARGO_BIN:-cargo}
 runner_cc=${RUST_RUNNER_CC:-$repo_root/examples/p3-runtime/rust-host-runner/zig-cc.sh}
@@ -15,13 +17,8 @@ runner_manifest=$repo_root/examples/p3-runtime/rust-host-runner/Cargo.toml
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-gc-default-nested-deeper-host.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 
-tool_version=$($wasm_tools_bin --version)
-case "$tool_version" in
-  "wasm-tools 1.255.0 (76e20611d"*) ;;
-  *) printf 'unexpected wasm-tools version: %s\n' "$tool_version" >&2; exit 1 ;;
-esac
-if [ ! -x "$cc_bin" ] || [ ! -x "$cxx_bin" ] || [ ! -x "$linker_bin" ]; then
-  printf 'missing Rust runner linker\n' >&2
+if [ ! -x "$toolchain_bin" ] || [ ! -x "$cc_bin" ] || [ ! -x "$cxx_bin" ] || [ ! -x "$linker_bin" ]; then
+  printf 'missing do-toolchain or Rust runner linker\n' >&2
   exit 1
 fi
 
@@ -72,10 +69,10 @@ build_and_run() {
 
   awk '{ print } /  \(export "_start" \(func \$_start\)\)/ { print "  (func (export \"run\") (result i32) call $_start i32.const 42)" }' \
     "$core_wat" > "$component_core_wat"
-  "$wasm_tools_bin" parse "$component_core_wat" -o "$core_wasm"
-  "$wasm_tools_bin" component embed "$wit" "$core_wasm" --world probe -o "$embedded"
-  "$wasm_tools_bin" component new "$embedded" -o "$component"
-  "$wasm_tools_bin" validate "$component"
+  "$toolchain_bin" parse-core "$component_core_wat" -o "$core_wasm"
+  "$toolchain_bin" embed-component "$wit" "$core_wasm" probe --features none -o "$embedded"
+  "$toolchain_bin" new-component "$embedded" -o "$component"
+  "$toolchain_bin" validate-component "$component" --features none
 
   local output
   output=$(
