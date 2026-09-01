@@ -8,7 +8,7 @@ export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 wasmtime_bin=${WASMTIME_BIN:-/home/_/Public/wasmtime/bin/wasmtime}
 fixture="$repo_root/examples/gc-p3-runtime/async-frame-table.wat"
 compiled=$(mktemp "${TMPDIR:-/tmp}/do-gc-async-frame-table.XXXXXX")
-trap 'rm -f "$compiled"' EXIT
+trap 'rm -f "$compiled" "$compiled.wasm"' EXIT
 
 if [ ! -x "$wasmtime_bin" ]; then
   printf 'missing executable Wasmtime binary: %s\n' "$wasmtime_bin" >&2
