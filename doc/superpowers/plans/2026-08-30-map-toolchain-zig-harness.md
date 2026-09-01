@@ -590,6 +590,13 @@ core shims 和 component-input shims）已改用 `bin/do-toolchain parse-core`�
   manifest/managed gate；nested compiler 变体、其余 GC direct-tool 入口及
   `run_tests.sh` 逻辑收敛仍待后续批次。
 
+  **实施 checkpoint (2026-09-01 nested deeper compiler):** 四层 nested record
+  lift/lower 的 compiler host/equivalence 共 4 个 gate 已统一使用 current-only
+  `bin/do-toolchain`，并固定 `none` feature profile；根目录和无关 `/tmp` cwd
+  各 4/4 通过，保留四层 WAT layout、GC/ARC equivalence、Component validate
+  和 Rust host marker。该 checkpoint 关闭 nested compiler 变体；其余 GC
+  direct-tool 入口、`run_tests.sh` 逻辑收敛和 Task 8 Step 4/5 仍待完成。
+
 - [x] **Step 3: 迁移 Rust host 批次。**
 
   最后迁移调用 `cargo run` 的脚本；Zig harness 只负责准备 Component、传参和比对 marker，Rust 仍负责 runtime 行为。
