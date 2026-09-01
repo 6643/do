@@ -4,7 +4,8 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 do_bin=${DO_BIN:-$repo_root/bin/do}
-wasm_tools_bin=${WASM_TOOLS_BIN:-$(command -v wasm-tools || true)}
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 wasmtime_bin=${WASMTIME_BIN:-/home/_/Public/wasmtime/bin/wasmtime}
 cargo_bin=${CARGO_BIN:-cargo}
 fixture="$repo_root/examples/p3-runtime/two-await-component.do"
@@ -16,10 +17,6 @@ trap 'rm -rf -- "$tmp_dir"' EXIT
 
 if [[ ! -x "$do_bin" ]]; then
   printf 'missing do compiler: %s\n' "$do_bin" >&2
-  exit 1
-fi
-if [[ -z "$wasm_tools_bin" || ! -x "$wasm_tools_bin" ]]; then
-  printf 'missing wasm-tools executable\n' >&2
   exit 1
 fi
 if [[ ! -x "$wasmtime_bin" ]]; then
@@ -39,18 +36,11 @@ if ! command -v cc >/dev/null 2>&1; then
   export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$runner_dir/zig-cc.sh"
 fi
 
-expected_wasm_tools='wasm-tools 1.255.0 (76e20611d 2026-07-30)'
-actual_wasm_tools=$($wasm_tools_bin --version)
-if [[ "$actual_wasm_tools" != "$expected_wasm_tools" ]]; then
-  printf 'unexpected wasm-tools version: expected %s, got %s\n' \
-    "$expected_wasm_tools" "$actual_wasm_tools" >&2
-  exit 1
-fi
-
 build_gc_component() {
   local wat="$tmp_dir/gc.wat" wit="$tmp_dir/gc.wit" embedded="$tmp_dir/gc.embedded.wasm" component="$tmp_dir/gc.component.wasm"
-  DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$fixture" \
+  (cd "$repo_root" && DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$fixture" \
     --p3-wait-for-component --p3-wit-output "$wit" -o "$wat" >/dev/null
+  )
   if grep -Fq '__arc_' "$wat"; then
     printf 'generated GC frame output contains ARC markers\n' >&2
     exit 1
@@ -61,19 +51,19 @@ build_gc_component() {
       exit 1
     fi
   done
-  "$wasm_tools_bin" parse "$wat" -o "$tmp_dir/gc.core.wasm" >/dev/null
-  "$wasm_tools_bin" component embed "$wit" "$wat" --world probe -o "$embedded"
-  "$wasm_tools_bin" component new "$embedded" -o "$component"
-  "$wasm_tools_bin" validate "$component"
+  "$toolchain_bin" parse-core "$wat" -o "$tmp_dir/gc.core.wasm" >/dev/null
+  "$toolchain_bin" embed-component "$wit" "$tmp_dir/gc.core.wasm" probe --features component-async -o "$embedded"
+  "$toolchain_bin" new-component "$embedded" -o "$component"
+  "$toolchain_bin" validate-component "$component" --features component-async
   printf '%s\n' "$component"
 }
 
 build_linear_component() {
   local wit="$tmp_dir/gc.wit" embedded="$tmp_dir/linear.embedded.wasm" component="$tmp_dir/linear.component.wasm"
-  "$wasm_tools_bin" parse "$linear_core" -o "$tmp_dir/linear.core.wasm" >/dev/null
-  "$wasm_tools_bin" component embed "$wit" "$linear_core" --world probe -o "$embedded"
-  "$wasm_tools_bin" component new "$embedded" -o "$component"
-  "$wasm_tools_bin" validate "$component"
+  "$toolchain_bin" parse-core "$linear_core" -o "$tmp_dir/linear.core.wasm" >/dev/null
+  "$toolchain_bin" embed-component "$wit" "$tmp_dir/linear.core.wasm" probe --features component-async -o "$embedded"
+  "$toolchain_bin" new-component "$embedded" -o "$component"
+  "$toolchain_bin" validate-component "$component" --features component-async
   printf '%s\n' "$component"
 }
 
@@ -113,4 +103,4 @@ for marker in \
   fi
 done
 
-printf 'GC/linear Future frame equivalence passed rows=1 pending-polls=4 external-wakes=4 completions=4 wasm-tools=%s\n' "$actual_wasm_tools"
+printf 'GC/linear Future frame equivalence passed rows=1 pending-polls=4 external-wakes=4 completions=4\n'

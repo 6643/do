@@ -4,7 +4,8 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 do_bin=${DO_BIN:-$repo_root/bin/do}
-wasm_tools_bin=${WASM_TOOLS_BIN:-/home/_/.local/bin/wasm-tools}
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 wasmtime_bin=${WASMTIME_BIN:-/home/_/Public/wasmtime/bin/wasmtime}
 fixture="$repo_root/examples/p3-runtime/async-resource-result-component.do"
 expected_wit="$repo_root/src/build/p3_async_resource_probe.wit"
@@ -18,10 +19,6 @@ if [ ! -x "$do_bin" ]; then
   printf 'missing do compiler: %s\n' "$do_bin" >&2
   exit 1
 fi
-if [ ! -x "$wasm_tools_bin" ]; then
-  printf 'missing wasm-tools executable: %s\n' "$wasm_tools_bin" >&2
-  exit 1
-fi
 if [ ! -x "$wasmtime_bin" ]; then
   printf 'missing Wasmtime executable: %s\n' "$wasmtime_bin" >&2
   exit 1
@@ -31,22 +28,15 @@ if [ ! -f "$fixture" ] || [ ! -f "$expected_wit" ]; then
   exit 1
 fi
 
-expected_wasm_tools='wasm-tools 1.255.0 (76e20611d 2026-07-30)'
-actual_wasm_tools=$($wasm_tools_bin --version)
-if [ "$actual_wasm_tools" != "$expected_wasm_tools" ]; then
-  printf 'unexpected wasm-tools version: expected %s, got %s\n' \
-    "$expected_wasm_tools" "$actual_wasm_tools" >&2
-  exit 1
-fi
-
 wat_path="$tmp_dir/async-resource-result.wat"
 wit_path="$tmp_dir/async-resource-result.wit"
 core_path="$tmp_dir/async-resource-result.core.wasm"
 embedded_path="$tmp_dir/async-resource-result.embedded.wasm"
 component_path="$tmp_dir/async-resource-result.component.wasm"
 
-DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$fixture" \
+(cd "$repo_root" && DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$fixture" \
   --p3-async-component --p3-wit-output "$wit_path" -o "$wat_path"
+)
 cmp "$expected_wit" "$wit_path"
 
 if grep -Fq '__arc_' "$wat_path"; then
@@ -80,21 +70,21 @@ for forbidden in 'call $drop-request' 'call $drop-response'; do
   fi
 done
 
-"$wasm_tools_bin" parse "$wat_path" -o "$core_path"
+"$toolchain_bin" parse-core "$wat_path" -o "$core_path"
 "$wasmtime_bin" compile -W gc=y -o "$tmp_dir/async-resource-result.compiled" "$wat_path"
-"$wasm_tools_bin" component embed "$wit_path" "$core_path" \
-  --world async-resource-probe -o "$embedded_path"
-"$wasm_tools_bin" component new "$embedded_path" -o "$component_path"
-"$wasm_tools_bin" validate "$component_path"
+"$toolchain_bin" embed-component "$wit_path" "$core_path" async-resource-probe \
+  --features component-async -o "$embedded_path"
+"$toolchain_bin" new-component "$embedded_path" -o "$component_path"
+"$toolchain_bin" validate-component "$component_path" --features component-async
 
 # The existing Rust/Wasmtime adapter executes pending, immediate, and error
 # terminal paths and asserts exactly-once request/response cleanup. Keep it
 # behind an explicit switch so structural gate debugging can remain isolated.
 if [ "${RUN_RESOURCE_HOST:-1}" = 1 ]; then
-  PATH="$(dirname "$wasm_tools_bin"):$PATH" bash "$host_gate"
-  PATH="$(dirname "$wasm_tools_bin"):$PATH" bash "$cancel_shape_gate"
-  PATH="$(dirname "$wasm_tools_bin"):$PATH" bash "$cancel_host_gate"
+  PATH="$(dirname "$toolchain_bin"):$PATH" bash "$host_gate"
+  PATH="$(dirname "$toolchain_bin"):$PATH" bash "$cancel_shape_gate"
+  PATH="$(dirname "$toolchain_bin"):$PATH" bash "$cancel_host_gate"
 fi
 
-printf 'Do bounded GC resource terminal cleanup passed: fixture=%s wasm-tools=%s\n' \
-  "$(basename "$fixture")" "$actual_wasm_tools"
+printf 'Do bounded GC resource terminal cleanup passed: fixture=%s\n' \
+  "$(basename "$fixture")"
