@@ -597,6 +597,15 @@ core shims 和 component-input shims）已改用 `bin/do-toolchain parse-core`�
   和 Rust host marker。该 checkpoint 关闭 nested compiler 变体；其余 GC
   direct-tool 入口、`run_tests.sh` 逻辑收敛和 Task 8 Step 4/5 仍待完成。
 
+  **实施 checkpoint (2026-09-01 synchronous record gates):** 基础 scalar
+  record lower、mixed text/byte-list lift 和 mixed text/two-u32-list lift 的
+  host/equivalence 共 6 个 gate 已统一使用 current-only `bin/do-toolchain`，
+  固定 `none` profile 并移除旧版本/旧 CLI 调用。根目录和无关 `/tmp` cwd 各
+  6/6 通过，保留 WAT shape、ARC/GC equivalence、Component validation、Rust
+  host 和 allocation/cleanup marker。该 checkpoint 关闭本批同步 record 入口；
+  async-frame、resource-terminal-cleanup、WASI random 和 G5C residual wrapper
+  仍需单独审查或迁移。
+
 - [x] **Step 3: 迁移 Rust host 批次。**
 
   最后迁移调用 `cargo run` 的脚本；Zig harness 只负责准备 Component、传参和比对 marker，Rust 仍负责 runtime 行为。
