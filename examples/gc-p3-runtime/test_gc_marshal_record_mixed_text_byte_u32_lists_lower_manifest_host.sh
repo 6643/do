@@ -3,7 +3,9 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-wasm_tools_bin=${WASM_TOOLS_BIN:-wasm-tools}
+cd "$repo_root"
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 zig_bin=${ZIG_BIN:-zig}
 cargo_bin=${CARGO_BIN:-cargo}
 runner_cc=${RUST_RUNNER_CC:-$repo_root/examples/p3-runtime/rust-host-runner/zig-cc.sh}
@@ -14,13 +16,8 @@ runner_manifest=$repo_root/examples/p3-runtime/rust-host-runner/Cargo.toml
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-gc-mixed-text-byte-u32-lists-lower-host.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 
-tool_version=$($wasm_tools_bin --version)
-case "$tool_version" in
-    "wasm-tools 1.255.0 (76e20611d"*) ;;
-    *) printf 'unexpected wasm-tools version: %s\n' "$tool_version" >&2; exit 1 ;;
-esac
-if [[ ! -x "$do_bin" || ! -x "$runner_cc" ]]; then
-    printf 'missing compiler or Rust runner linker\n' >&2
+if [[ ! -x "$do_bin" || ! -x "$toolchain_bin" || ! -x "$runner_cc" ]]; then
+    printf 'missing compiler, do-toolchain, or Rust runner linker\n' >&2
     exit 1
 fi
 
@@ -53,10 +50,10 @@ fi
 
 awk '{ print } /  \(export "_start" \(func \$_start\)\)/ { print "  (func (export \"run\") (result i32) call $_start i32.const 51)" }' \
     "$tmp_dir/core.wat" > "$tmp_dir/component.core.wat"
-"$wasm_tools_bin" parse "$tmp_dir/component.core.wat" -o "$tmp_dir/core.wasm"
-"$wasm_tools_bin" component embed "$wit" "$tmp_dir/core.wasm" --world probe -o "$tmp_dir/embedded.wasm"
-"$wasm_tools_bin" component new "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
-"$wasm_tools_bin" validate "$tmp_dir/component.wasm"
+"$toolchain_bin" parse-core "$tmp_dir/component.core.wat" -o "$tmp_dir/core.wasm"
+"$toolchain_bin" embed-component "$wit" "$tmp_dir/core.wasm" probe --features none -o "$tmp_dir/embedded.wasm"
+"$toolchain_bin" new-component "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
+"$toolchain_bin" validate-component "$tmp_dir/component.wasm" --features none
 
 output=$(
     CC="$runner_cc" CXX="$runner_cc" \
