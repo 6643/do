@@ -3,7 +3,8 @@ set -euo pipefail
 # Verification Status: verified
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-wasm_tools_bin=${WASM_TOOLS_BIN:-wasm-tools}
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 wasmtime_bin=${WASMTIME_BIN:-/home/_/Public/wasmtime/bin/wasmtime}
 zig_bin=${ZIG_BIN:-zig}
 cargo_bin=${CARGO_BIN:-cargo}
@@ -19,11 +20,6 @@ runner_manifest=$repo_root/examples/p3-runtime/rust-host-runner/Cargo.toml
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-gc-marshal-record-byte-list-lift-host.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 
-tool_version=$($wasm_tools_bin --version)
-case "$tool_version" in
-  "wasm-tools 1.255.0 (76e20611d"*) ;;
-  *) printf 'unexpected wasm-tools version: %s\n' "$tool_version" >&2; exit 1 ;;
-esac
 if [ ! -x "$wasmtime_bin" ] || [ ! -x "$cc_bin" ] || [ ! -x "$cxx_bin" ] || [ ! -x "$linker_bin" ]; then
   printf 'missing Wasmtime or Rust runner linker\n' >&2
   exit 1
@@ -34,9 +30,9 @@ fi
   "$zig_bin" build -Doptimize=Debug
 )
 
-DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$input_do" \
-  --gc-wit-marshal "$descriptor" -o "$tmp_dir/core.wat"
-"$wasm_tools_bin" parse "$tmp_dir/core.wat" -o "$tmp_dir/core.wasm"
+(cd "$repo_root" && DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$input_do" \
+  --gc-wit-marshal "$descriptor" -o "$tmp_dir/core.wat")
+"$toolchain_bin" parse-core "$tmp_dir/core.wat" -o "$tmp_dir/core.wasm"
 rg -q '\(type \$canonical_lift \(func \(param i32\)\)\)' "$tmp_dir/core.wat"
 rg -q '\(import "demo:marshal-record-byte-list-lift/api@1.0.0" "read"' "$tmp_dir/core.wat"
 if rg -q '__arc_' "$tmp_dir/core.wat"; then
@@ -59,9 +55,9 @@ if [ -z "$call_line" ] || [ -z "$free_line" ] || [ "$call_line" -ge "$free_line"
   exit 1
 fi
 
-"$wasm_tools_bin" component embed "$wit" "$tmp_dir/core.wasm" --world probe -o "$tmp_dir/embedded.wasm"
-"$wasm_tools_bin" component new "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
-"$wasm_tools_bin" validate "$tmp_dir/component.wasm"
+"$toolchain_bin" embed-component "$wit" "$tmp_dir/core.wasm" probe --features none -o "$tmp_dir/embedded.wasm"
+"$toolchain_bin" new-component "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
+"$toolchain_bin" validate-component "$tmp_dir/component.wasm" --features none
 
 output=$( \
   CC="$cc_bin" CXX="$cxx_bin" \
