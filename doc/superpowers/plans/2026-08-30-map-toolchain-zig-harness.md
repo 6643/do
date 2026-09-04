@@ -772,6 +772,17 @@ core shims 和 component-input shims）已改用 `bin/do-toolchain parse-core`�
   该 checkpoint 闭合 Task 8 Step 3；Task 4 map runtime 仍独立受通用
   map/pair-list ABI lowering 阻断。
 
+  **实施 checkpoint (2026-09-04 GC host CLI prerequisite cleanup):**
+  四个 GC host gate (`u32` lower/lift 与 scalar-record lift/lower) 已移除只用于
+  前置检查的 `WASMTIME_BIN`/`wasmtime_bin` CLI 依赖；Core/Component 操作继续
+  通过 current-only `bin/do-toolchain`，Rust Wasmtime crate 运行时和所有
+  host/cleanup assertions 保持不变。四脚本在根目录和无关 `/tmp` cwd 各 4/4
+  通过，`bash -n`、无 direct CLI 扫描、完整 `zig build test --summary all`
+  (`14/14` steps、`51/51` tests) 与 `git diff --check` 均通过。报告位于
+  `.superpowers/sdd/2026-08-30-map-toolchain-zig-harness/task-8-step3-gc-host-cli-prerequisite-report.md`。
+  该 checkpoint 仅关闭四个脚本的陈旧前置依赖，不改变 C API linker 边界或
+  Task 4 map lifecycle 阻断。
+
 - [x] **Step 4: 保留或删除 Shell 启动入口。**
 
   **实施 checkpoint (2026-09-01 first auxiliary batch):** Zig harness 新增

@@ -7,7 +7,6 @@ cd "$repo_root"
 toolchain_bin="$repo_root/bin/do-toolchain"
 export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 zig_bin=${ZIG_BIN:-zig}
-wasmtime_bin=${WASMTIME_BIN:-/home/_/Public/wasmtime/bin/wasmtime}
 cargo_bin=${CARGO_BIN:-cargo}
 runner_cc=${RUST_RUNNER_CC:-$repo_root/examples/p3-runtime/rust-host-runner/zig-cc.sh}
 cc_bin=${CC:-$runner_cc}
@@ -27,8 +26,8 @@ if [ ! -f "$wit" ] || [ ! -f "$probe" ]; then
   printf 'missing u32 list lift fixture\n' >&2
   exit 1
 fi
-if [ ! -x "$wasmtime_bin" ] || [ ! -x "$cc_bin" ] || [ ! -x "$cxx_bin" ] || [ ! -x "$linker_bin" ]; then
-  printf 'missing Wasmtime or Rust runner linker\n' >&2
+if [ ! -x "$cc_bin" ] || [ ! -x "$cxx_bin" ] || [ ! -x "$linker_bin" ]; then
+  printf 'missing Rust runner linker\n' >&2
   exit 1
 fi
 
