@@ -589,6 +589,18 @@ smoke 阶段、退出码和输出 marker 保持。`run_wasm_smoke.sh` 6/6 通过
 该 checkpoint 仅关闭两个辅助 smoke 入口，Task 8 Step 2 仍有 GC/旧
 `run_tests.sh` 逻辑和历史检查待处理；C API 脚本仍属于非 CLI linker 边界。
 
+**实施 checkpoint (2026-09-04 GC pure assembly):**
+Zig harness 新增 `GC assembly matrix`，覆盖 `marshal-text` 与 parser-backed
+`marshal-record` 两个纯 assembly/validation gate：静态/生成 Core WAT、
+`parse-core`、`embed-component`、`new-component`、`validate-component`、
+WIT member extraction，以及 WIT member 漂移拒绝和 canonical import GC
+reference 负例。对应两个 Shell gate 在根目录和无关 `/tmp` cwd 均通过；完整
+`zig build test --summary all` 为 `14/14` steps、`51/51` tests。报告位于
+`.superpowers/sdd/2026-08-30-map-toolchain-zig-harness/task-8-step2-gc-assembly-matrix-report.md`。
+该 checkpoint 仅关闭 text/scalar-record 子批次；GC marshal/host linker、
+async-frame Component、WASI random、C API 边界和其余 direct-tool 入口仍待分类，
+Task 8 Step 2 不勾选。
+
 **实施 checkpoint (2026-08-31 run-tests parse):** 旧 `src/build/test/run_tests.sh`
 中的 5 个 Core WAT parse 路径（compiled must-pass、compiled ok/trap、WASI
 core shims 和 component-input shims）已改用 `bin/do-toolchain parse-core`，并

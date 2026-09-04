@@ -36,6 +36,20 @@ const GcRuntimeOracleCase = struct {
     probes: []const GcRuntimeOracleProbe,
 };
 
+const GcAssemblyCase = struct {
+    name: []const u8,
+    wit: []const u8,
+    static_core_wat: ?[]const u8,
+    generator: ?[]const u8,
+    component_wit_marker: []const u8,
+    core_markers: []const []const u8,
+    rename_from: []const u8,
+    rename_to: []const u8,
+    missing_function_marker: []const u8,
+    reference_needle: []const u8,
+    reference_replacement: []const u8,
+};
+
 const gc_core_oracle_cases = [_]GcCoreOracleCase{
     .{ .fixture = "text-identity.do", .mode = "identity" },
     .{ .fixture = "text-identity-renamed.do", .mode = "relay" },
@@ -70,6 +84,41 @@ const gc_runtime_oracle_cases = [_]GcRuntimeOracleCase{
             .{ .export_name = "rollback_probe", .expected = "1" },
             .{ .export_name = "quota_reject", .expected = null },
         },
+    },
+};
+
+const gc_assembly_cases = [_]GcAssemblyCase{
+    .{
+        .name = "text marshal component",
+        .wit = "examples/gc-p3-runtime/marshal-text-assembly.wit",
+        .static_core_wat = "examples/gc-p3-runtime/marshal-text-core.wat",
+        .generator = null,
+        .component_wit_marker = "send: func(value: string)",
+        .core_markers = &.{
+            "(type $do_text (struct",
+            "(type $canonical_lower (func (param i32 i32)))",
+        },
+        .rename_from = "send:",
+        .rename_to = "renamed:",
+        .missing_function_marker = "missing function `send`",
+        .reference_needle = "(func $canonical_call",
+        .reference_replacement = "(func $canonical_call (param (ref null $do_text))",
+    },
+    .{
+        .name = "record marshal component",
+        .wit = "examples/gc-p3-runtime/marshal-record-assembly.wit",
+        .static_core_wat = null,
+        .generator = "src/gc_marshal_record_probe_main.zig",
+        .component_wit_marker = "read: func() -> reading",
+        .core_markers = &.{
+            "(type $do_record (struct",
+            "(type $canonical_lift (func (param i32)))",
+        },
+        .rename_from = "read:",
+        .rename_to = "renamed:",
+        .missing_function_marker = "missing function `read`",
+        .reference_needle = "(func $canonical_call (type $canonical_lift))",
+        .reference_replacement = "(func $canonical_call (param (ref null $do_record)))",
     },
 };
 
@@ -935,6 +984,7 @@ fn run_all(init: std.process.Init) !void {
             .gc_core_oracle => if (std.mem.eql(u8, init.environ_map.get("RUN_GC_CORE") orelse "0", "1"))
                 try run_gc_core_oracle(init, repo_root, temp.path),
             .gc_runtime_oracle => try run_gc_runtime_oracle(init, repo_root, toolchain_bin, temp.path),
+            .gc_assembly_matrix => try run_gc_assembly_matrix(init, repo_root, toolchain_bin, temp.path),
             .map_core_probe => try run_map_core_probe(init, repo_root, toolchain_bin, temp.path),
             .map_sync_component => try run_map_sync_component(init, repo_root, do_bin, toolchain_bin, temp.path),
         }
@@ -2485,6 +2535,91 @@ fn run_gc_runtime_oracle(
     }
 }
 
+fn run_gc_assembly_matrix(
+    init: std.process.Init,
+    repo_root: []const u8,
+    toolchain_bin: []const u8,
+    temp_path: []const u8,
+) !void {
+    const zig_name = init.environ_map.get("ZIG_BIN") orelse "zig";
+    const zig_bin = try find_executable(init, zig_name);
+    defer init.gpa.free(zig_bin);
+
+    for (gc_assembly_cases) |case| {
+        const wit = try join(init.gpa, repo_root, case.wit);
+        defer init.gpa.free(wit);
+        const stem = std.fs.path.basename(case.wit)[0 .. std.fs.path.basename(case.wit).len - ".wit".len];
+        const core_wat = if (case.static_core_wat) |relative| blk: {
+            break :blk try join(init.gpa, repo_root, relative);
+        } else blk: {
+            const generated = try std.fmt.allocPrint(init.gpa, "{s}/{s}.gc-assembly.core.wat", .{ temp_path, stem });
+            const probe = try join(init.gpa, repo_root, case.generator orelse return error.MissingGcAssemblyGenerator);
+            defer init.gpa.free(probe);
+            const args = [_][]const u8{ zig_bin, "run", probe, "--", wit, generated };
+            var result = try process.run_checked(init.gpa, init.io, .{
+                .argv = &args,
+                .environ = init.environ_map,
+                .cwd = repo_root,
+                .timeout_ms = 120_000,
+            });
+            defer result.deinit(init.gpa);
+            try expect_success(init, &result);
+            break :blk generated;
+        };
+        defer init.gpa.free(core_wat);
+
+        const core = try std.fmt.allocPrint(init.gpa, "{s}/{s}.gc-assembly.core.wasm", .{ temp_path, stem });
+        defer init.gpa.free(core);
+        const embedded = try std.fmt.allocPrint(init.gpa, "{s}/{s}.gc-assembly.embedded.wasm", .{ temp_path, stem });
+        defer init.gpa.free(embedded);
+        const component = try std.fmt.allocPrint(init.gpa, "{s}/{s}.gc-assembly.component.wasm", .{ temp_path, stem });
+        defer init.gpa.free(component);
+
+        const core_source = try read_file(init, core_wat);
+        defer init.gpa.free(core_source);
+        if (import_decl_has_reference(core_source)) return error.GcAssemblyReferenceCrossedAbi;
+        for (case.core_markers) |marker| {
+            if (std.mem.indexOf(u8, core_source, marker) == null) return error.GcAssemblyCoreMarkerMissing;
+        }
+
+        try run_adapter_success(init, toolchain_bin, &.{ "parse-core", core_wat, "-o", core });
+        try run_adapter_success(init, toolchain_bin, &.{
+            "embed-component", wit, core, "probe", "--features", "none", "-o", embedded,
+        });
+        try run_adapter_success(init, toolchain_bin, &.{ "new-component", embedded, "-o", component });
+        try run_adapter_success(init, toolchain_bin, &.{ "validate-component", component, "--features", "none" });
+
+        var component_wit = try run_adapter_command(init, toolchain_bin, &.{ "component-wit", component });
+        defer component_wit.deinit(init.gpa);
+        try expect_success(init, &component_wit);
+        try process.assert_stdout_contains(component_wit, case.component_wit_marker);
+
+        const wit_source = try read_file(init, wit);
+        defer init.gpa.free(wit_source);
+        const renamed_source = try std.mem.replaceOwned(u8, init.gpa, wit_source, case.rename_from, case.rename_to);
+        defer init.gpa.free(renamed_source);
+        if (std.mem.eql(u8, wit_source, renamed_source)) return error.GcAssemblyRenameNeedleMissing;
+        const renamed_wit = try std.fmt.allocPrint(init.gpa, "{s}/{s}.gc-assembly.renamed.wit", .{ temp_path, stem });
+        defer init.gpa.free(renamed_wit);
+        try write_file(init, renamed_wit, renamed_source);
+        const renamed_embedded = try std.fmt.allocPrint(init.gpa, "{s}/{s}.gc-assembly.renamed.embedded.wasm", .{ temp_path, stem });
+        defer init.gpa.free(renamed_embedded);
+        const renamed_component = try std.fmt.allocPrint(init.gpa, "{s}/{s}.gc-assembly.renamed.component.wasm", .{ temp_path, stem });
+        defer init.gpa.free(renamed_component);
+        try run_adapter_success(init, toolchain_bin, &.{
+            "embed-component", renamed_wit, core, "probe", "--features", "none", "-o", renamed_embedded,
+        });
+        var renamed_new = try run_adapter_command(init, toolchain_bin, &.{ "new-component", renamed_embedded, "-o", renamed_component });
+        defer renamed_new.deinit(init.gpa);
+        try expect_external_failure(&renamed_new, case.missing_function_marker);
+
+        const injected_source = try std.mem.replaceOwned(u8, init.gpa, core_source, case.reference_needle, case.reference_replacement);
+        defer init.gpa.free(injected_source);
+        if (std.mem.eql(u8, core_source, injected_source)) return error.GcAssemblyReferenceNeedleMissing;
+        if (!import_decl_has_reference(injected_source)) return error.GcAssemblyReferenceNegativeMissing;
+    }
+}
+
 fn run_map_core_probe(
     init: std.process.Init,
     repo_root: []const u8,
@@ -3253,7 +3388,7 @@ fn report_case_failure(init: std.process.Init, result: process.CommandResult) !v
 }
 
 test "integration harness case table has required routes" {
-    try std.testing.expectEqual(@as(usize, 22), test_cases.cases.len);
+    try std.testing.expectEqual(@as(usize, 23), test_cases.cases.len);
 }
 
 test "GC runtime oracle matrix covers async frame and C ABI probes" {
@@ -3269,6 +3404,19 @@ test "GC runtime oracle matrix covers async frame and C ABI probes" {
     try std.testing.expectEqual(@as(usize, 3), gc_runtime_oracle_cases[1].probes.len);
     try std.testing.expectEqualStrings("27815", gc_runtime_oracle_cases[0].probes[0].expected.?);
     try std.testing.expect(gc_runtime_oracle_cases[1].probes[2].expected == null);
+}
+
+test "GC assembly matrix covers text and parser-backed record fixtures" {
+    var found = false;
+    for (test_cases.cases) |case| {
+        if (std.mem.eql(u8, case.name, "GC assembly matrix")) found = true;
+    }
+    try std.testing.expect(found);
+    try std.testing.expectEqual(@as(usize, 2), gc_assembly_cases.len);
+    try std.testing.expectEqualStrings("examples/gc-p3-runtime/marshal-text-assembly.wit", gc_assembly_cases[0].wit);
+    try std.testing.expectEqualStrings("examples/gc-p3-runtime/marshal-record-assembly.wit", gc_assembly_cases[1].wit);
+    try std.testing.expect(gc_assembly_cases[0].static_core_wat != null);
+    try std.testing.expect(gc_assembly_cases[1].generator != null);
 }
 
 test "compile-only WASI sidecars have explicit expectation kinds" {
