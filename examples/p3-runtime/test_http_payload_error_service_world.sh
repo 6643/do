@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 pinned_wit="$repo_root/src/build/p3_wit/wasi-http-0.3.0-rc-2025-09-16"
 core_wat="$repo_root/examples/p3-runtime/http-payload-error-service-world.wat"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
@@ -24,10 +26,10 @@ for case_name in internal-error-none internal-error-some; do
   if [[ "$case_name" == internal-error-none ]]; then
     perl -0pi -e 's/i32\.const 38\n    i32\.const 1\n    i64\.const 512\n    i32\.const 1/i32.const 38\n    i32.const 0\n    i64.const 0\n    i32.const 0/' "$candidate_wat"
   fi
-  wasm-tools parse "$candidate_wat" -o "$candidate_wasm"
-  wasm-tools component embed "$wit_dir" "$candidate_wasm" --world service -o "$embedded"
-  wasm-tools component new "$embedded" -o "$component"
-  wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+  "$toolchain_bin" parse-core "$candidate_wat" -o "$candidate_wasm"
+  "$toolchain_bin" embed-component "$wit_dir" "$candidate_wasm" service -o "$embedded"
+  "$toolchain_bin" new-component "$embedded" -o "$component"
+  "$toolchain_bin" validate-component "$component" --features component-async
   for delivery in pending ready; do
     output=$(cd "$runner_dir" && \
       CC="$PWD/zig-cc.sh" CXX="$PWD/zig-cc.sh" \

@@ -23,6 +23,7 @@ pub const NodeKind = enum {
     scalar,
     text,
     list,
+    map,
     record,
 };
 
@@ -56,6 +57,10 @@ pub const MeasuredFacts = struct {
     core_type: ?wit_layout.CoreWord = null,
     pointer_offset: ?u32 = null,
     length_offset: ?u32 = null,
+    map_key_offset: ?u32 = null,
+    map_value_offset: ?u32 = null,
+    map_pair_byte_size: ?u32 = null,
+    map_pair_alignment: ?u32 = null,
     indirect: ?wit_layout.IndirectMeasurement = null,
 };
 
@@ -69,6 +74,7 @@ pub const MeasuredLayout = union(enum) {
     text: wit_layout.TextLayoutMeasurement,
     list: wit_layout.ListLayoutMeasurement,
     byte_list: wit_layout.ByteListLayoutMeasurement,
+    map: wit_layout.MapLayoutMeasurement,
     record: wit_layout.RecordMeasurement,
 };
 
@@ -271,6 +277,7 @@ fn source_type_name(source: *const wit_types.AbiType) []const u8 {
         .scalar => "scalar",
         .text => "text",
         .list => "list",
+        .map => "map",
         .record => "record",
         else => "unsupported",
     };
@@ -284,7 +291,7 @@ fn canonical_type_name(source: *const wit_types.AbiType) ![]const u8 {
             .f64 => "f64",
             else => "i32",
         },
-        .text, .list => "(i32,i32)",
+        .text, .list, .map => "(i32,i32)",
         .record => "memory",
         .resource => error.ResourceBoundaryUnsupported,
         .unit, .tuple, .option, .result, .variant => error.UnsupportedMarshalShape,
@@ -313,6 +320,34 @@ fn build_node(allocator: std.mem.Allocator, source: *const wit_types.AbiType, of
             children[0] = try build_node(allocator, element, 0);
             return .{
                 .kind = .list,
+                .canonical_shape = .ptr_len,
+                .provisional_offset = offset,
+                .provisional_size = 8,
+                .provisional_alignment = 4,
+                .children = children,
+            };
+        },
+        .map => {
+            const key = source.map_key() orelse return error.UnsupportedMarshalShape;
+            const value = source.map_value() orelse return error.UnsupportedMarshalShape;
+            if (key.kind() != .scalar and key.kind() != .text) return error.UnsupportedMarshalShape;
+
+            var children = try allocator.alloc(MarshalNode, 2);
+            var initialized: usize = 0;
+            errdefer {
+                for (children[0..initialized]) |child| deinit_node(allocator, child);
+                allocator.free(children);
+            }
+
+            children[0] = try build_node(allocator, key, 0);
+            initialized = 1;
+            const value_alignment = try canonical_alignment(value);
+            const value_offset = align_up(children[0].provisional_size, value_alignment);
+            children[1] = try build_node(allocator, value, value_offset);
+            initialized = 2;
+
+            return .{
+                .kind = .map,
                 .canonical_shape = .ptr_len,
                 .provisional_offset = offset,
                 .provisional_size = 8,
@@ -428,6 +463,38 @@ fn bind_measured_node(
                 .length_offset = facts.length_offset,
             };
         },
+        .map => |facts| {
+            if (source.kind() != .map) return error.MeasuredKindMismatch;
+            var layout = try wit_layout.MapLayoutPlan.init(allocator, source, facts);
+            defer layout.deinit();
+            if (measured.children.len != 2 or node.children.len != 2) return error.MeasuredChildCountMismatch;
+            const key = source.map_key() orelse return error.UnsupportedMeasuredShape;
+            const value = source.map_value() orelse return error.UnsupportedMeasuredShape;
+            try bind_measured_node(allocator, &node.children[0], key, measured.children[0], facts.key.offset);
+            try bind_measured_node(allocator, &node.children[1], value, measured.children[1], facts.value.offset);
+            const key_facts = node.children[0].measured orelse return error.MeasuredChildMissing;
+            const value_facts = node.children[1].measured orelse return error.MeasuredChildMissing;
+            if (key_facts.byte_size != facts.key.byte_size or key_facts.alignment != facts.key.alignment or
+                value_facts.byte_size != facts.value.byte_size or value_facts.alignment != facts.value.alignment)
+            {
+                return error.MeasuredFieldMismatch;
+            }
+            node.measured = .{
+                .offset = placement_offset orelse 0,
+                .byte_size = 8,
+                .alignment = 4,
+                .element_stride = facts.element_stride,
+                .element_byte_size = facts.element_byte_size,
+                .element_alignment = facts.element_alignment,
+                .capacity = facts.capacity,
+                .pointer_offset = facts.pointer_offset,
+                .length_offset = facts.length_offset,
+                .map_key_offset = facts.key.offset,
+                .map_value_offset = facts.value.offset,
+                .map_pair_byte_size = facts.element_byte_size,
+                .map_pair_alignment = facts.element_alignment,
+            };
+        },
         .record => |facts| {
             if (source.kind() != .record) return error.MeasuredKindMismatch;
             var layout = try wit_layout.LayoutPlan.record(allocator, source, facts);
@@ -478,7 +545,7 @@ fn scalar_node(source: *const wit_types.AbiType, offset: u32) !MarshalNode {
 fn canonical_alignment(source: *const wit_types.AbiType) !u32 {
     return switch (source.kind()) {
         .scalar => (try scalar_node(source, 0)).provisional_alignment,
-        .text, .list => 4,
+        .text, .list, .map => 4,
         .record => {
             const field_count = source.record_field_count() orelse return error.UnsupportedMarshalShape;
             var alignment: u32 = 1;
@@ -504,4 +571,30 @@ fn deinit_node(allocator: std.mem.Allocator, node: MarshalNode) void {
     for (node.children) |child| deinit_node(allocator, child);
     if (node.children.len != 0) allocator.free(node.children);
     if (node.record_type_name) |name| allocator.free(name);
+}
+
+test "marshal plan represents map as a pair-list node" {
+    var key = wit_types.AbiType.scalar(std.testing.allocator, .u32);
+    defer key.deinit();
+    var value = wit_types.AbiType.text(std.testing.allocator);
+    defer value.deinit();
+    var source = try wit_types.AbiType.map(std.testing.allocator, &key, &value);
+    defer source.deinit();
+
+    const plan = try build_sync_value_plan(std.testing.allocator, .{
+        .package = "demo:marshal-map@1.0.0",
+        .world = "probe",
+        .member = "api.lookup",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    }, &source, .lower);
+    defer deinit_sync_value_plan(std.testing.allocator, plan);
+
+    try std.testing.expectEqual(NodeKind.map, plan.root.kind);
+    try std.testing.expectEqual(CanonicalShape.ptr_len, plan.root.canonical_shape);
+    try std.testing.expectEqual(@as(usize, 2), plan.root.children.len);
+    try std.testing.expectEqual(NodeKind.scalar, plan.root.children[0].kind);
+    try std.testing.expectEqual(NodeKind.text, plan.root.children[1].kind);
+    try std.testing.expectEqualStrings("map", plan.abi.arguments[0].source_type);
+    try std.testing.expectEqualStrings("(i32,i32)", plan.abi.arguments[0].canonical_type);
 }

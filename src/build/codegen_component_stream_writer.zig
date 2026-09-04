@@ -2318,7 +2318,8 @@ pub fn emit_component_wit(allocator: std.mem.Allocator, tokens: []const lexer.To
         .stream_writer => {},
         else => return error.UnsupportedP3StreamWriterComponent,
     }
-    const export_name = plan.export_name;
+    const export_name = try writer_wit_identifier(allocator, plan.export_name);
+    defer allocator.free(export_name);
     const export_params = switch (plan.endpoint_mode) {
         .forwarded_reader => "(data: stream<u8>)",
         .guest_producer => switch (plan.producer_mode) {
@@ -3014,6 +3015,26 @@ test "component writer WIT names the producer root after an async helper transfe
     const wit = try emit_component_wit(std.testing.allocator, tokens);
     defer std.testing.allocator.free(wit);
     try std.testing.expect(std.mem.indexOf(u8, wit, "export produce: async func() -> result<_, error-code>;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "export write_stream:") == null);
+}
+
+test "component writer WIT converts a snake case forwarded export" {
+    const source =
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\async write_stream(writer StreamWriter<u8>) -> Result<nil, ProbeError> {
+        \\    defer close(writer)
+        \\    pending Future<Result<nil, ProbeError>> = sink_write(writer)
+        \\    return await(pending)
+        \\}
+        \\ProbeError error = Io
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    const wit = try emit_component_wit(std.testing.allocator, tokens);
+    defer std.testing.allocator.free(wit);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "export write-stream: async func(data: stream<u8>) -> result<_, error-code>;") != null);
     try std.testing.expect(std.mem.indexOf(u8, wit, "export write_stream:") == null);
 }
 

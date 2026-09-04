@@ -3,22 +3,17 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 do_bin=${DO_BIN:-"$repo_root/bin/do"}
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
 source="$repo_root/examples/p3-runtime/async-host-scalar-argument.do"
 wit_snapshot="$repo_root/examples/p3-runtime/wit/async-call-arg-probe.wit"
-wasm_tools=${WASM_TOOLS:-wasm-tools}
 
 test -x "$do_bin"
+test -x "$toolchain_bin"
 test -f "$source"
 test -f "$wit_snapshot"
 test -f "$runner_dir/src/bin/async_call_arg_probe.rs"
-
-if [[ "$wasm_tools" == */* ]]; then
-    test -x "$wasm_tools"
-else
-    wasm_tools=$(command -v "$wasm_tools")
-fi
-test "$($wasm_tools --version)" = "wasm-tools 1.255.0 (76e20611d 2026-07-30)"
 
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-rust-async-host-scalar-argument.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
@@ -33,11 +28,11 @@ DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$source" \
     --p3-async-host-arg-component --p3-wit-output "$wit" -o "$core_wat"
 cmp "$wit_snapshot" "$wit"
 
-"$wasm_tools" parse "$core_wat" -o "$core_wasm"
-"$wasm_tools" component embed "$wit" "$core_wasm" \
-    --world probe --features cm-async,cm-more-async-builtins -o "$embedded"
-"$wasm_tools" component new --skip-validation "$embedded" -o "$component"
-"$wasm_tools" validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit" "$core_wasm" probe \
+    --features component-async -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component"
 
 runner_env=()
 if ! command -v cc >/dev/null; then

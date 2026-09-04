@@ -49,6 +49,23 @@ pub fn emit_u32_type(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !voi
     try emit_scalar_array_type(allocator, out, "$do_u32", "u32");
 }
 
+pub fn emit_map_type(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
+    try emit_map_type_for_value(allocator, out, "$do_u32");
+}
+
+pub fn emit_map_type_for_value(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    value_array_type: []const u8,
+) !void {
+    try append_fmt(
+        allocator,
+        out,
+        "  (type $do_map (struct (field $len i32) (field $keys (ref null $do_u32)) (field $vals (ref null {[value_array_type]s}))))\n",
+        .{ .value_array_type = value_array_type },
+    );
+}
+
 pub fn emit_text_type(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
     try out.appendSlice(allocator, "  (type $do_text (struct (field $length i32) (field $bytes (ref null $do_bytes))))\n");
 }

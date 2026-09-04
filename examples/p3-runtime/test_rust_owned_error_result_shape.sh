@@ -2,12 +2,16 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
 cargo_bin=${CARGO_BIN:-cargo}
 tmp_root=${TMPDIR:-"$repo_root/.tmp/do-tmp"}
 mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/owned-error-shape.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
+
+test -x "$toolchain_bin"
 
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
   "$repo_root/examples/p3-runtime/owned-error-resource-probe.do" \
@@ -16,17 +20,17 @@ DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
   -o "$tmp_dir/owned-error-result.wat"
 cmp "$repo_root/src/build/p3_async_resource_owned_error_probe.wit" \
   "$tmp_dir/owned-error-result.wit"
-wasm-tools parse "$tmp_dir/owned-error-result.wat" \
+"$toolchain_bin" parse-core "$tmp_dir/owned-error-result.wat" \
   -o "$tmp_dir/owned-error-result.wasm"
-wasm-tools component embed \
+"$toolchain_bin" embed-component \
   "$tmp_dir/owned-error-result.wit" \
   "$tmp_dir/owned-error-result.wasm" \
-  --world owned-error-result-probe \
+  owned-error-result-probe --features component-async \
   -o "$tmp_dir/owned-error-result.embedded.wasm"
-wasm-tools component new "$tmp_dir/owned-error-result.embedded.wasm" \
+"$toolchain_bin" new-component "$tmp_dir/owned-error-result.embedded.wasm" \
   -o "$tmp_dir/owned-error-result.component.wasm"
-wasm-tools validate --features cm-async,cm-more-async-builtins \
-  "$tmp_dir/owned-error-result.component.wasm"
+"$toolchain_bin" validate-component \
+  "$tmp_dir/owned-error-result.component.wasm" --features component-async
 
 if ! command -v cc >/dev/null && command -v zig >/dev/null; then
   export CC="$runner_dir/zig-cc.sh"
@@ -78,11 +82,11 @@ DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
   "$repo_root/examples/p3-runtime/owned-error-resource-cancel-component.do" \
   --p3-async-component --p3-wit-output "$cancel_wit" -o "$cancel_core"
 cmp "$repo_root/src/build/p3_async_resource_owned_error_cancel_probe.wit" "$cancel_wit"
-wasm-tools parse "$cancel_core" -o "$cancel_wasm"
-wasm-tools component embed "$cancel_wit" "$cancel_wasm" \
-  --world owned-error-resource-cancel-probe -o "$cancel_embedded"
-wasm-tools component new "$cancel_embedded" -o "$cancel_component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$cancel_component"
+"$toolchain_bin" parse-core "$cancel_core" -o "$cancel_wasm"
+"$toolchain_bin" embed-component "$cancel_wit" "$cancel_wasm" \
+  owned-error-resource-cancel-probe --features component-async -o "$cancel_embedded"
+"$toolchain_bin" new-component "$cancel_embedded" -o "$cancel_component"
+"$toolchain_bin" validate-component "$cancel_component" --features component-async
 
 run_cancel_case() {
   local label=$1
@@ -106,11 +110,11 @@ run_cancel_case generated "$cancel_component"
 hand_wasm="$tmp_dir/owned-error-cancel-hand.wasm"
 hand_embedded="$tmp_dir/owned-error-cancel-hand.embedded.wasm"
 hand_component="$tmp_dir/owned-error-cancel-hand.component.wasm"
-wasm-tools parse "$repo_root/examples/p3-runtime/owned-error-resource-cancel-probe.wat" -o "$hand_wasm"
-wasm-tools component embed "$repo_root/examples/p3-runtime/wit/resource-probe-owned-error-cancel.wit" "$hand_wasm" \
-  --world owned-error-resource-cancel-probe -o "$hand_embedded"
-wasm-tools component new "$hand_embedded" -o "$hand_component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$hand_component"
+"$toolchain_bin" parse-core "$repo_root/examples/p3-runtime/owned-error-resource-cancel-probe.wat" -o "$hand_wasm"
+"$toolchain_bin" embed-component "$repo_root/examples/p3-runtime/wit/resource-probe-owned-error-cancel.wit" "$hand_wasm" \
+  owned-error-resource-cancel-probe --features component-async -o "$hand_embedded"
+"$toolchain_bin" new-component "$hand_embedded" -o "$hand_component"
+"$toolchain_bin" validate-component "$hand_component" --features component-async
 run_cancel_case hand-written "$hand_component"
 
 printf 'pinned owned-error Result Component shape and runtime matrix passed\n'

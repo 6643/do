@@ -3,12 +3,15 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 do_bin=${DO_BIN:-"$repo_root/bin/do"}
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 source="$repo_root/examples/p3-runtime/async-call-scalar-argument.do"
 wit_snapshot="$repo_root/examples/p3-runtime/async-call-component.wit"
-wasm_tools=${WASM_TOOLS:-wasm-tools}
-component_output=${1:-/tmp/async-call-scalar-argument.component.wasm}
+component_output=/tmp/async-call-scalar-argument.component.wasm
+if (($# > 0)); then component_output=$1; fi
 
 test -x "$do_bin"
+test -x "$toolchain_bin"
 test -f "$source"
 test -f "$wit_snapshot"
 
@@ -41,8 +44,8 @@ if grep -Fq '[task-return]helper' "$core_wat" || grep -Fq '[async-lift]helper' "
     exit 1
 fi
 
-"$wasm_tools" parse "$core_wat" -o "$core_wasm"
-WASM_TOOLS="$wasm_tools" bash "$repo_root/examples/p3-runtime/assemble_async_component.sh" \
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+bash "$repo_root/examples/p3-runtime/assemble_async_component.sh" \
     "$wit" "$core_wasm" probe "$component"
 cp "$component" "$component_output"
 test -s "$component_output"

@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-p3-http-request-body-producer-runtime.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
@@ -11,10 +13,12 @@ wit_dir="$tmp_dir/wit-package"
 embedded="$tmp_dir/producer.embedded.wasm"
 component="$tmp_dir/producer.component.wasm"
 
+test -x "$toolchain_bin"
+
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
   "$repo_root/examples/p3-runtime/http-request-body-producer-send-first.do" \
   --p3-async-component --p3-wit-package-output "$wit_dir" -o "$core_wat"
-wasm-tools parse "$core_wat" -o "$core_wasm"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
 cat >>"$wit_dir/worlds.wit" <<'WIT'
 
 interface probe {
@@ -29,11 +33,10 @@ world http-request-body-producer-probe {
   export probe;
 }
 WIT
-wasm-tools component embed "$wit_dir" "$core_wasm" \
-  --world http-request-body-producer-probe \
-  --features cm-async,cm-more-async-builtins -o "$embedded"
-wasm-tools component new "$embedded" -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" embed-component "$wit_dir" "$core_wasm" http-request-body-producer-probe \
+  --features component-async -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features component-async
 
 runner_env=(
   CC="$runner_dir/zig-cc.sh"

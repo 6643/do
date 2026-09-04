@@ -3,6 +3,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
 fixture="$repo_root/examples/p3-runtime/async-resource-result-cancel-component.do"
 cargo_bin=${CARGO_BIN:-cargo}
@@ -11,6 +13,8 @@ tmp_root=${TMPDIR:-"$repo_root/.tmp/do-tmp"}
 mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/resource-cancel-runtime.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
+
+test -x "$toolchain_bin"
 
 target_libdir=$("$rustc_bin" --print target-libdir)
 if ! compgen -G "$target_libdir/libstd*.rlib" >/dev/null; then
@@ -48,11 +52,11 @@ embedded_path="$tmp_dir/generated.embedded.wasm"
 component_path="$tmp_dir/generated.component.wasm"
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
   --p3-async-component "$fixture" --p3-wit-output "$wit_path" -o "$core_path"
-wasm-tools parse "$core_path" -o "$wasm_path"
-wasm-tools component embed "$wit_path" "$wasm_path" \
-  --world async-resource-cancel-probe -o "$embedded_path"
-wasm-tools component new "$embedded_path" -o "$component_path"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component_path"
+"$toolchain_bin" parse-core "$core_path" -o "$wasm_path"
+"$toolchain_bin" embed-component "$wit_path" "$wasm_path" \
+  async-resource-cancel-probe --features component-async -o "$embedded_path"
+"$toolchain_bin" new-component "$embedded_path" -o "$component_path"
+"$toolchain_bin" validate-component "$component_path" --features component-async
 
 check_output() {
   local output=$1
@@ -83,15 +87,15 @@ output=$("$cargo_bin" run --quiet --manifest-path "$runner_dir/Cargo.toml" \
   --bin do-p3-resource-result-cancel-host-runner -- "$component_path")
 check_output "$output"
 
-wasm-tools parse "$repo_root/examples/p3-runtime/resource-result-cancel-probe.wat" \
+"$toolchain_bin" parse-core "$repo_root/examples/p3-runtime/resource-result-cancel-probe.wat" \
   -o "$tmp_dir/probe.wasm"
-wasm-tools component embed \
+"$toolchain_bin" embed-component \
   "$repo_root/examples/p3-runtime/resource-result-cancel-probe.wit" \
-  "$tmp_dir/probe.wasm" --world async-resource-cancel-probe \
+  "$tmp_dir/probe.wasm" async-resource-cancel-probe --features component-async \
   -o "$tmp_dir/probe.embedded.wasm"
-wasm-tools component new "$tmp_dir/probe.embedded.wasm" \
+"$toolchain_bin" new-component "$tmp_dir/probe.embedded.wasm" \
   -o "$tmp_dir/probe.component.wasm"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$tmp_dir/probe.component.wasm"
+"$toolchain_bin" validate-component "$tmp_dir/probe.component.wasm" --features component-async
 probe_output=$("$cargo_bin" run --quiet --manifest-path "$runner_dir/Cargo.toml" \
   --bin do-p3-resource-result-cancel-host-runner -- "$tmp_dir/probe.component.wasm")
 check_output "$probe_output"

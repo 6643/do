@@ -2,18 +2,14 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-wasm_tools=${WASM_TOOLS:-wasm-tools}
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 fixture="$repo_root/src/build/test/compile_ok/498_wasi_filesystem_stat_component.do"
 template="$repo_root/src/build/wasi_filesystem_stat_component_template.wat"
 clock_wit="$repo_root/examples/p3-runtime/wit/wasi-clocks-wall-clock.wit"
 expected_generated_wit_sha256=4a2e5055c2ec06c772660b211c3e3ab3e3e15d8b5931c8e7def804e56d5175da
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-d2-filesystem-stat-compiler.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
-
-command -v "$wasm_tools" >/dev/null || {
-  printf 'missing executable: %s\n' "$wasm_tools" >&2
-  exit 1
-}
 
 generated_wit="$tmp_dir/generated.wit"
 generated_core_wat="$tmp_dir/generated.core.wat"
@@ -63,13 +59,13 @@ grep -Fq 'run: async func(file: own<descriptor>) -> result<descriptor-stat, erro
   exit 1
 }
 
-"$wasm_tools" parse "$generated_core_wat" -o "$generated_core_wasm"
-"$wasm_tools" component embed "$wit_dir" "$generated_core_wasm" \
-  --world stat-probe --features cm-async,cm-more-async-builtins -o "$embedded"
-"$wasm_tools" component new --skip-validation "$embedded" -o "$component"
-"$wasm_tools" validate --features cm-async,cm-more-async-builtins "$component"
-"$wasm_tools" print "$component" >"$component_wat"
-"$wasm_tools" component wit "$component" >"$component_wit"
+"$toolchain_bin" parse-core "$generated_core_wat" -o "$generated_core_wasm"
+"$toolchain_bin" embed-component "$wit_dir" "$generated_core_wasm" \
+  stat-probe -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features component-async
+"$toolchain_bin" print-component "$component" >"$component_wat"
+"$toolchain_bin" component-wit "$component" >"$component_wit"
 
 for fragment in \
   '"[async-lower][method]descriptor.stat"' \

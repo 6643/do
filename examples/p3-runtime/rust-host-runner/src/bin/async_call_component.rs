@@ -462,11 +462,11 @@ async fn run_scalar(component_path: &Path, mode: ScalarMode) -> Result<()> {
     let guest_completed = stats.guest_completed.load(Ordering::SeqCst);
     match mode {
         ScalarMode::Ready => {
-            if calls != 1
-                || polls != 1
+            if calls != 2
+                || polls != 2
                 || wakes != 0
-                || completions != 1
-                || drops != 1
+                || completions != 2
+                || drops != 2
                 || pending_drops != 0
                 || !guest_completed
                 || !table_empty
@@ -476,15 +476,15 @@ async fn run_scalar(component_path: &Path, mode: ScalarMode) -> Result<()> {
                 );
             }
             println!(
-                "mode=ready child-completions=1 child-drops=1 host-future-drops=1 table-empty=true"
+                "mode=ready child-completions=2 child-drops=2 host-future-drops=2 table-empty=true"
             );
         }
         ScalarMode::Pending => {
-            if calls != 1
-                || polls < 2
-                || wakes != 1
-                || completions != 1
-                || drops != 1
+            if calls != 2
+                || polls < 4
+                || wakes != 2
+                || completions != 2
+                || drops != 2
                 || pending_drops != 0
                 || !guest_completed
                 || !table_empty
@@ -494,7 +494,7 @@ async fn run_scalar(component_path: &Path, mode: ScalarMode) -> Result<()> {
                 );
             }
             println!(
-                "mode=pending child-completions=1 child-drops=1 host-future-drops=1 table-empty=true"
+                "mode=pending child-completions=2 child-drops=2 host-future-drops=2 table-empty=true"
             );
         }
         ScalarMode::Cancel => {

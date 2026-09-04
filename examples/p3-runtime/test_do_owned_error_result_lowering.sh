@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 fixture="$repo_root/examples/p3-runtime/owned-error-resource-probe.do"
 tmp_root=${TMPDIR:-"$repo_root/.tmp/do-tmp"}
 mkdir -p "$tmp_root"
@@ -20,16 +22,16 @@ grep -Fq '[resource-drop]error-resource' "$tmp_dir/owned-error-result.wat"
 grep -Fq ';; [resource-owned-error-result]' "$tmp_dir/owned-error-result.wat"
 grep -Fq 'world owned-error-result-probe' "$tmp_dir/owned-error-result.wit"
 
-wasm-tools parse "$tmp_dir/owned-error-result.wat" \
+"$toolchain_bin" parse-core "$tmp_dir/owned-error-result.wat" \
   -o "$tmp_dir/owned-error-result.wasm"
-wasm-tools component embed "$tmp_dir/owned-error-result.wit" \
+"$toolchain_bin" embed-component "$tmp_dir/owned-error-result.wit" \
   "$tmp_dir/owned-error-result.wasm" \
-  --world owned-error-result-probe \
+  owned-error-result-probe \
   -o "$tmp_dir/owned-error-result.embedded.wasm"
-wasm-tools component new "$tmp_dir/owned-error-result.embedded.wasm" \
+"$toolchain_bin" new-component "$tmp_dir/owned-error-result.embedded.wasm" \
   -o "$tmp_dir/owned-error-result.component.wasm"
-wasm-tools validate --features cm-async,cm-more-async-builtins \
-  "$tmp_dir/owned-error-result.component.wasm"
+"$toolchain_bin" validate-component "$tmp_dir/owned-error-result.component.wasm" \
+  --features component-async
 
 cancel_core="$tmp_dir/owned-error-cancel.wat"
 cancel_wit="$tmp_dir/owned-error-cancel.wit"
@@ -47,11 +49,11 @@ if grep -Fq 'do:resource-probe/http@0.1.0' "$cancel_core"; then
   printf 'owned-error cancellation retained the old resource package\n' >&2
   exit 1
 fi
-wasm-tools parse "$cancel_core" -o "$cancel_wasm"
-wasm-tools component embed "$cancel_wit" "$cancel_wasm" \
-  --world owned-error-resource-cancel-probe -o "$cancel_embedded"
-wasm-tools component new "$cancel_embedded" -o "$cancel_component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$cancel_component"
+"$toolchain_bin" parse-core "$cancel_core" -o "$cancel_wasm"
+"$toolchain_bin" embed-component "$cancel_wit" "$cancel_wasm" \
+  owned-error-resource-cancel-probe -o "$cancel_embedded"
+"$toolchain_bin" new-component "$cancel_embedded" -o "$cancel_component"
+"$toolchain_bin" validate-component "$cancel_component" --features component-async
 
 expect_rejected() {
   local fixture="$1"

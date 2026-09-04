@@ -3,7 +3,8 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 do_bin=${DO_BIN:-"$repo_root/bin/do"}
-wasm_tools_bin=${WASM_TOOLS:-wasm-tools}
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
 canonical_wat="$repo_root/examples/p3-runtime/g6-2-owned-record-pair-parameterized-producer-canonical.wat"
 probe_wit="$repo_root/examples/p3-runtime/wit/g6-2-owned-record-pair-parameterized-producer.wit"
@@ -20,15 +21,11 @@ cleanup() {
 trap cleanup EXIT
 
 test -x "$do_bin"
+test -x "$toolchain_bin"
 test -f "$canonical_wat"
 test -f "$probe_wit"
 test -f "$source"
 test -f "$runner_dir/Cargo.toml"
-command -v "$wasm_tools_bin" >/dev/null 2>&1
-expected_tools_version=${WASM_TOOLS_EXPECT_VERSION:-1.255.0}
-actual_tools_version=$($wasm_tools_bin --version | awk 'NR == 1 { print $2 }')
-test "$actual_tools_version" = "$expected_tools_version"
-
 canonical_component="$tmp_dir/canonical.component.wasm"
 generated_wat="$tmp_dir/generated.wat"
 generated_wit="$tmp_dir/generated.wit"
@@ -41,13 +38,11 @@ assemble_component() {
   local output="$4"
   local core_wasm="$tmp_dir/$stem.core.wasm"
   local embedded="$tmp_dir/$stem.embedded.wasm"
-  "$wasm_tools_bin" parse "$wat" -o "$core_wasm"
-  "$wasm_tools_bin" component embed "$wit" "$core_wasm" \
-    --world owned-record-pair-parameterized-producer \
-    --features cm-async,cm-more-async-builtins \
-    -o "$embedded"
-  "$wasm_tools_bin" component new --skip-validation "$embedded" -o "$output"
-  "$wasm_tools_bin" validate --features cm-async,cm-more-async-builtins "$output"
+  "$toolchain_bin" parse-core "$wat" -o "$core_wasm"
+  "$toolchain_bin" embed-component "$wit" "$core_wasm" owned-record-pair-parameterized-producer \
+    --features component-async -o "$embedded"
+  "$toolchain_bin" new-component "$embedded" -o "$output"
+  "$toolchain_bin" validate-component "$output" --features component-async
 }
 
 assemble_component "$canonical_wat" "$probe_wit" canonical "$canonical_component"

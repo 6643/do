@@ -37,6 +37,8 @@ pub fn render_modules_with_hashes(
     defer async_lowering.deinit(allocator, lowerings);
     const resources = try manifest.collect_resource_facts(allocator, binding);
     defer manifest.deinit_resource_facts(allocator, resources);
+    const maps = try manifest.collect_map_facts(allocator, binding);
+    defer manifest.deinit_map_facts(allocator, maps);
 
     var out = std.ArrayList(u8).empty;
     if (lowerings.len == 0) {
@@ -105,6 +107,13 @@ pub fn render_modules_with_hashes(
         if (index != 0) try out.append(allocator, ',');
         try append_resource(&out, allocator, resource);
     }
+    if (maps.len != 0) {
+        try out.appendSlice(allocator, "],\"maps\":[");
+        for (maps, 0..) |map, index| {
+            if (index != 0) try out.append(allocator, ',');
+            try append_map(&out, allocator, map);
+        }
+    }
     if (lowerings.len != 0) {
         try out.appendSlice(allocator, "],\"async_lowerings\":[");
         for (lowerings, 0..) |lowering, index| {
@@ -117,6 +126,20 @@ pub fn render_modules_with_hashes(
     }
     try out.append(allocator, '}');
     return out.toOwnedSlice(allocator);
+}
+
+fn append_map(out: *std.ArrayList(u8), allocator: std.mem.Allocator, map: manifest.MapFact) !void {
+    try out.appendSlice(allocator, "{\"member\":\"");
+    try append_json_text(out, allocator, map.member);
+    try out.appendSlice(allocator, "\",\"path\":\"");
+    try append_json_text(out, allocator, map.path);
+    try out.appendSlice(allocator, "\",\"key\":\"");
+    try append_json_text(out, allocator, map.key);
+    try out.appendSlice(allocator, "\",\"value\":\"");
+    try append_json_text(out, allocator, map.value);
+    try out.appendSlice(allocator, "\",\"abi\":\"");
+    try append_json_text(out, allocator, map.abi);
+    try out.appendSlice(allocator, "\"}");
 }
 
 fn append_resource(

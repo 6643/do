@@ -46,6 +46,10 @@ pub const nested_record_lift_deeper_descriptor =
     "demo:marshal-record-nested-lift-deeper/api.read@1.0.0/lift";
 pub const nested_record_lower_deeper_descriptor =
     "demo:marshal-record-nested-lower-deeper/api.write@1.0.0/lower";
+pub const map_u32_u32_lower_descriptor =
+    "demo:marshal-map-u32-u32/api.write@1.0.0/lower";
+pub const map_u32_u32_lift_descriptor =
+    "demo:marshal-map-u32-u32/api.read@1.0.0/lift";
 
 const AdmissionEntry = struct {
     locator: []const u8,
@@ -74,6 +78,8 @@ const ADMITTED_DESCRIPTORS = [_]AdmissionEntry{
     .{ .locator = "demo:marshal-record-mixed-text-two-u32-lists-lift/api@1.0.0", .member = "read", .descriptor_id = mixed_text_two_u32_lists_lift_descriptor, .explicit_probe = true },
     .{ .locator = "demo:marshal-record-nested-lower-deeper/api@1.0.0", .member = "write", .descriptor_id = nested_record_lower_deeper_descriptor, .explicit_probe = true },
     .{ .locator = "demo:marshal-record-nested-lift-deeper/api@1.0.0", .member = "read", .descriptor_id = nested_record_lift_deeper_descriptor, .explicit_probe = true },
+    .{ .locator = "demo:marshal-map-u32-u32/api@1.0.0", .member = "write", .descriptor_id = map_u32_u32_lower_descriptor, .explicit_probe = true },
+    .{ .locator = "demo:marshal-map-u32-u32/api@1.0.0", .member = "read", .descriptor_id = map_u32_u32_lift_descriptor, .explicit_probe = true },
 };
 
 pub fn descriptor_id_for_host(locator: []const u8, member: []const u8) ?[]const u8 {
@@ -108,14 +114,15 @@ pub const HostBoundaryField = struct {
     nested_fields: ?[]const HostBoundaryField = null,
 };
 
-pub const HostBoundaryShape = enum { lower_record, lift_record };
+pub const HostBoundaryShape = enum { lower_record, lift_record, lower_map, lift_map };
 
 pub const HostBoundarySpec = struct {
     locator: []const u8,
     member: []const u8,
-    record_name: []const u8,
-    fields: []const HostBoundaryField,
+    record_name: []const u8 = "",
+    fields: []const HostBoundaryField = &.{},
     shape: HostBoundaryShape,
+    root_type: []const u8 = "",
 };
 
 /// Owned form used by a manifest-loaded request. WIT model names may belong to
@@ -128,6 +135,7 @@ pub const OwnedHostBoundarySpec = struct {
     record_name: []u8,
     fields: []HostBoundaryField,
     shape: HostBoundaryShape,
+    root_type: []u8,
 
     pub fn from_spec(allocator: std.mem.Allocator, spec: HostBoundarySpec) !OwnedHostBoundarySpec {
         const locator = try allocator.dupe(u8, spec.locator);
@@ -136,6 +144,8 @@ pub const OwnedHostBoundarySpec = struct {
         errdefer allocator.free(member);
         const record_name = try allocator.dupe(u8, spec.record_name);
         errdefer allocator.free(record_name);
+        const root_type = try allocator.dupe(u8, spec.root_type);
+        errdefer allocator.free(root_type);
         const fields = try duplicate_fields(allocator, spec.fields);
         return .{
             .allocator = allocator,
@@ -144,6 +154,7 @@ pub const OwnedHostBoundarySpec = struct {
             .record_name = record_name,
             .fields = fields,
             .shape = spec.shape,
+            .root_type = root_type,
         };
     }
 
@@ -154,6 +165,7 @@ pub const OwnedHostBoundarySpec = struct {
             .record_name = self.record_name,
             .fields = self.fields,
             .shape = self.shape,
+            .root_type = self.root_type,
         };
     }
 
@@ -162,6 +174,7 @@ pub const OwnedHostBoundarySpec = struct {
         self.allocator.free(self.locator);
         self.allocator.free(self.member);
         self.allocator.free(self.record_name);
+        self.allocator.free(self.root_type);
         self.* = undefined;
     }
 };
@@ -504,8 +517,11 @@ pub fn validate_with_spec(tokens: []const lexer.Token, spec: HostBoundarySpec) !
             return error.GcWitHostLocatorMismatch;
         }
         if (!std.mem.eql(u8, host.member, spec.member)) return error.GcWitHostMemberMismatch;
-        const record = fixed_record orelse
-            (find_record_for_host(tokens, host, spec.shape) orelse return error.GcWitHostRecordMismatch);
+        const record = switch (spec.shape) {
+            .lower_record, .lift_record => fixed_record orelse
+                (find_record_for_host(tokens, host, spec.shape) orelse return error.GcWitHostRecordMismatch),
+            .lower_map, .lift_map => null,
+        };
         try validate_target_signature(tokens, host, record, spec);
         i = host.close_idx;
     }
@@ -528,6 +544,7 @@ fn find_record_for_host(tokens: []const lexer.Token, host: HostDecl, shape: Host
             tokens[host.result_idx].lexeme
         else
             return null,
+        .lower_map, .lift_map => return null,
     };
     return find_record(tokens, record_name);
 }
@@ -572,7 +589,7 @@ fn parse_host(tokens: []const lexer.Token, at_idx: usize) !HostDecl {
     const sig_open = at_idx + 7;
     if (!tok_eq(tokens[sig_open], "(")) return error.InvalidGcWitHostBoundary;
     const params_close = try find_matching_in_range(tokens, sig_open, "(", ")", outer_close);
-    if (params_close + 4 != outer_close or !tok_eq(tokens[params_close + 1], "-") or
+    if (params_close + 3 >= outer_close or !tok_eq(tokens[params_close + 1], "-") or
         !tok_eq(tokens[params_close + 2], ">")) return error.InvalidGcWitHostBoundary;
     return .{
         .locator = string_token_body(tokens[at_idx + 3].lexeme) orelse return error.InvalidGcWitHostBoundary,
@@ -585,14 +602,15 @@ fn parse_host(tokens: []const lexer.Token, at_idx: usize) !HostDecl {
     };
 }
 
-fn validate_target_signature(tokens: []const lexer.Token, host: HostDecl, record: RecordRange, spec: DescriptorSpec) !void {
+fn validate_target_signature(tokens: []const lexer.Token, host: HostDecl, record: ?RecordRange, spec: DescriptorSpec) !void {
     const param_count = if (host.params_close == host.params_open + 1)
         0
     else
         1 + count_top_level_commas(tokens, host.params_open + 1, host.params_close);
     switch (spec.shape) {
         .lower_record => {
-            if (host.result_idx >= tokens.len or tokens[host.result_idx].kind != .ident or
+            if (host.result_idx >= host.close_idx or host.result_idx + 1 != host.close_idx or
+                tokens[host.result_idx].kind != .ident or
                 !tok_eq(tokens[host.result_idx], "nil")) return error.GcWitHostSignatureMismatch;
             if (param_count != 1) return error.GcWitHostSignatureMismatch;
             if (spec.record_name.len != 0 and
@@ -604,12 +622,36 @@ fn validate_target_signature(tokens: []const lexer.Token, host: HostDecl, record
         },
         .lift_record => {
             if (param_count != 0) return error.GcWitHostSignatureMismatch;
-            if (host.result_idx >= tokens.len or tokens[host.result_idx].kind != .ident or
+            if (host.result_idx >= host.close_idx or
+                host.result_idx + 1 != host.close_idx or tokens[host.result_idx].kind != .ident or
                 (spec.record_name.len != 0 and !tok_eq(tokens[host.result_idx], spec.record_name)))
                 return error.GcWitHostRecordMismatch;
         },
+        .lower_map => {
+            if (host.result_idx >= host.close_idx or host.result_idx + 1 != host.close_idx or
+                tokens[host.result_idx].kind != .ident or !tok_eq(tokens[host.result_idx], "nil"))
+            {
+                return error.GcWitHostSignatureMismatch;
+            }
+            if (param_count != 1 or
+                !match_do_root_type(tokens, host.params_open + 1, host.params_close, spec.root_type))
+            {
+                return error.GcWitHostSignatureMismatch;
+            }
+            return;
+        },
+        .lift_map => {
+            if (param_count != 0 or
+                !match_do_root_type(tokens, host.result_idx, host.close_idx, spec.root_type))
+            {
+                return error.GcWitHostSignatureMismatch;
+            }
+            return;
+        },
     }
-    if (!record_matches(tokens, record, spec.fields)) return error.GcWitHostRecordMismatch;
+    if (!record_matches(tokens, record orelse return error.GcWitHostRecordMismatch, spec.fields)) {
+        return error.GcWitHostRecordMismatch;
+    }
 }
 
 fn count_top_level_commas(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) usize {
@@ -672,6 +714,22 @@ fn match_do_field_type(
     if (start_idx >= end_idx or tokens[start_idx].kind != .ident) return null;
     if (!tok_eq(tokens[start_idx], expected)) return null;
     return start_idx + 1;
+}
+
+fn match_do_root_type(
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    expected: []const u8,
+) bool {
+    if (!std.mem.eql(u8, expected, "HashMap<u32, u32>")) return false;
+    return end_idx == start_idx + 6 and
+        tokens[start_idx].kind == .ident and tok_eq(tokens[start_idx], "HashMap") and
+        tok_eq(tokens[start_idx + 1], "<") and
+        tokens[start_idx + 2].kind == .ident and tok_eq(tokens[start_idx + 2], "u32") and
+        tok_eq(tokens[start_idx + 3], ",") and
+        tokens[start_idx + 4].kind == .ident and tok_eq(tokens[start_idx + 4], "u32") and
+        tok_eq(tokens[start_idx + 5], ">");
 }
 
 fn expect_error(source: []const u8, expected: anyerror) !void {
@@ -855,6 +913,54 @@ test "GC WIT host boundary rejects a missing host declaration" {
     );
 }
 
+test "map host boundary accepts an exact u32 map lower declaration" {
+    const spec = HostBoundarySpec{
+        .locator = "demo:marshal-map-u32-u32/api@1.0.0",
+        .member = "write",
+        .shape = .lower_map,
+        .root_type = "HashMap<u32, u32>",
+    };
+    const source =
+        \\HashMap = @lib("hash_map.do", HashMap)
+        \\write = @host_func("demo:marshal-map-u32-u32/api@1.0.0", "write", (HashMap<u32, u32>) -> nil)
+        ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try validate_with_spec(tokens, spec);
+}
+
+test "map host boundary accepts an exact u32 map lift declaration" {
+    const spec = HostBoundarySpec{
+        .locator = "demo:marshal-map-u32-u32/api@1.0.0",
+        .member = "read",
+        .shape = .lift_map,
+        .root_type = "HashMap<u32, u32>",
+    };
+    const source =
+        \\HashMap = @lib("hash_map.do", HashMap)
+        \\read = @host_func("demo:marshal-map-u32-u32/api@1.0.0", "read", () -> HashMap<u32, u32>)
+        ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try validate_with_spec(tokens, spec);
+}
+
+test "map host boundary rejects a wrong map value type" {
+    const spec = HostBoundarySpec{
+        .locator = "demo:marshal-map-u32-u32/api@1.0.0",
+        .member = "write",
+        .shape = .lower_map,
+        .root_type = "HashMap<u32, u32>",
+    };
+    const source =
+        \\HashMap = @lib("hash_map.do", HashMap)
+        \\write = @host_func("demo:marshal-map-u32-u32/api@1.0.0", "write", (HashMap<u32, text>) -> nil)
+        ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try std.testing.expectError(error.GcWitHostSignatureMismatch, validate_with_spec(tokens, spec));
+}
+
 test "GC WIT host boundary rejects an async marker" {
     try expect_error(
         "Writing {\n    code u32\n    label text\n    note text\n}\nwrite = @host_async_func(\"demo:marshal-record-managed-lower-multi/api@1.0.0\", \"write\", (Writing) -> nil)",
@@ -947,6 +1053,8 @@ test "GC WIT host descriptor registry covers every default route" {
         .{ .locator = "demo:marshal-record-mixed-text-byte-list-lift/api@1.0.0", .member = "read", .descriptor = mixed_text_byte_list_lift_descriptor },
         .{ .locator = "demo:marshal-record-nested-lower-deeper/api@1.0.0", .member = "write", .descriptor = nested_record_lower_deeper_descriptor },
         .{ .locator = "demo:marshal-record-nested-lift-deeper/api@1.0.0", .member = "read", .descriptor = nested_record_lift_deeper_descriptor },
+        .{ .locator = "demo:marshal-map-u32-u32/api@1.0.0", .member = "write", .descriptor = map_u32_u32_lower_descriptor },
+        .{ .locator = "demo:marshal-map-u32-u32/api@1.0.0", .member = "read", .descriptor = map_u32_u32_lift_descriptor },
     };
     for (cases) |case| {
         const descriptor = descriptor_id_for_host(case.locator, case.member) orelse return error.TestUnexpectedResult;

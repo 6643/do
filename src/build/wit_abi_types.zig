@@ -21,6 +21,7 @@ pub const AbiTypeKind = enum {
     result,
     variant,
     list,
+    map,
     resource,
 };
 
@@ -80,6 +81,11 @@ const ResultShape = struct {
     err: ?*AbiType,
 };
 
+const MapShape = struct {
+    key: *AbiType,
+    value: *AbiType,
+};
+
 const Shape = union(AbiTypeKind) {
     unit: void,
     scalar: ScalarKind,
@@ -90,6 +96,7 @@ const Shape = union(AbiTypeKind) {
     result: ResultShape,
     variant: []VariantCase,
     list: *AbiType,
+    map: MapShape,
     resource: ResourceShape,
 };
 
@@ -189,6 +196,23 @@ pub const AbiType = struct {
         };
     }
 
+    pub fn map(
+        allocator: Allocator,
+        key: *const AbiType,
+        value: *const AbiType,
+    ) (AbiTypeError || Allocator.Error)!AbiType {
+        var owned_key: ?*AbiType = null;
+        errdefer free_ptr(allocator, owned_key);
+        owned_key = try clone_ptr(allocator, key);
+        return .{
+            .allocator = allocator,
+            .shape = .{ .map = .{
+                .key = owned_key.?,
+                .value = try clone_ptr(allocator, value),
+            } },
+        };
+    }
+
     pub fn kind(self: *const AbiType) AbiTypeKind {
         return switch (self.shape) {
             .unit => .unit,
@@ -200,6 +224,7 @@ pub const AbiType = struct {
             .result => .result,
             .variant => .variant,
             .list => .list,
+            .map => .map,
             .resource => .resource,
         };
     }
@@ -221,6 +246,20 @@ pub const AbiType = struct {
     pub fn list_element(self: *const AbiType) ?*const AbiType {
         return switch (self.shape) {
             .list => |value| value,
+            else => null,
+        };
+    }
+
+    pub fn map_key(self: *const AbiType) ?*const AbiType {
+        return switch (self.shape) {
+            .map => |value| value.key,
+            else => null,
+        };
+    }
+
+    pub fn map_value(self: *const AbiType) ?*const AbiType {
+        return switch (self.shape) {
+            .map => |value| value.value,
             else => null,
         };
     }
@@ -275,6 +314,10 @@ pub const AbiType = struct {
                 }
             },
             .list => |value| try value.validate(),
+            .map => |value| {
+                try value.key.validate();
+                try value.value.validate();
+            },
             .resource => |value| try validate_name(value.name),
         }
     }
@@ -318,6 +361,7 @@ pub const AbiType = struct {
                 break :blk try AbiType.variant(allocator, specs);
             },
             .list => |value| AbiType.list(allocator, value),
+            .map => |value| AbiType.map(allocator, value.key, value.value),
             .resource => |value| AbiType.resource(allocator, value.name, value.mode),
         };
     }
@@ -343,6 +387,10 @@ pub const AbiType = struct {
                 self.allocator.free(cases);
             },
             .list => |value| free_ptr(self.allocator, value),
+            .map => |value| {
+                free_ptr(self.allocator, value.key);
+                free_ptr(self.allocator, value.value);
+            },
             .resource => |value| self.allocator.free(value.name),
         }
         self.shape = .{ .unit = {} };
@@ -460,6 +508,10 @@ fn eql_shape(lhs: Shape, rhs: Shape) bool {
             .list => |other| value.eql(other),
             else => false,
         },
+        .map => |value| switch (rhs) {
+            .map => |other| value.key.eql(other.key) and value.value.eql(other.value),
+            else => false,
+        },
         .resource => |value| switch (rhs) {
             .resource => |other| value.mode == other.mode and std.mem.eql(u8, value.name, other.name),
             else => false,
@@ -555,6 +607,26 @@ test "ABI type equality compares recursive shapes and ownership modes" {
     var borrowed = try AbiType.resource(std.testing.allocator, "ticket", .borrow);
     defer borrowed.deinit();
     try std.testing.expect(!owned.eql(&borrowed));
+}
+
+test "ABI map owns recursive key and value shapes" {
+    var key = AbiType.scalar(std.testing.allocator, .u32);
+    defer key.deinit();
+    var value = try AbiType.list(std.testing.allocator, &key);
+    defer value.deinit();
+
+    var map = try AbiType.map(std.testing.allocator, &key, &value);
+    defer map.deinit();
+
+    try std.testing.expectEqual(AbiTypeKind.map, map.kind());
+    try std.testing.expect(map.map_key() != null);
+    try std.testing.expect(map.map_value() != null);
+    try std.testing.expect(map.map_key().?.eql(&key));
+    try std.testing.expect(map.map_value().?.eql(&value));
+
+    var clone = try map.clone(std.testing.allocator);
+    defer clone.deinit();
+    try std.testing.expect(map.eql(&clone));
 }
 
 test "ABI type validation rejects empty result and variant shapes" {

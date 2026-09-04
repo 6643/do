@@ -2,10 +2,13 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-p3-single-await-post-compute.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 
 core_path="$tmp_dir/single-await.wat"
+core_wasm="$tmp_dir/single-await.core.wasm"
 wit_path="$tmp_dir/single-await.wit"
 embedded_path="$tmp_dir/single-await.embedded.wasm"
 component_path="$tmp_dir/single-await.component.wasm"
@@ -32,9 +35,10 @@ if [ "$(grep -Fc 'call $first-host-call' "$core_path")" -ne 1 ]; then
   exit 1
 fi
 
-wasm-tools component embed "$wit_path" "$core_path" --world probe -o "$embedded_path"
-wasm-tools component new "$embedded_path" -o "$component_path"
-wasm-tools validate "$component_path"
+"$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit_path" "$core_wasm" probe -o "$embedded_path"
+"$toolchain_bin" new-component "$embedded_path" -o "$component_path"
+"$toolchain_bin" validate-component "$component_path"
 DO_P3_COMPONENT="$component_path" \
 DO_P3_CLOCK_INPUT=27815 \
 DO_P3_CLOCK_EXPECTED_DURATION=27816 \

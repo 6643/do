@@ -108,6 +108,7 @@ test {
     _ = @import("wit/resolve.zig");
     _ = @import("wit/run.zig");
     _ = @import("wit/signature.zig");
+    _ = @import("wit/tests.zig");
     _ = @import("build/codegen_ir.zig");
     _ = @import("build/run.zig");
     _ = @import("build/codegen_gc_facts_test.zig");
@@ -150,6 +151,8 @@ test {
     _ = @import("build/async_byte_budget_test.zig");
     _ = @import("build/codegen_component_async_shape_test.zig");
     _ = @import("build/codegen_component_async_differential_test.zig");
+    _ = @import("build/test/toolchain_adapter_test.zig");
+    _ = @import("build/toolchain_cli.zig");
     _ = @import("build/sema_error.zig");
     _ = @import("wit/manifest.zig");
     _ = @import("wit/manifest_test.zig");

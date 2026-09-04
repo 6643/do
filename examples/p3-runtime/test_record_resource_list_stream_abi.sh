@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
 tmp_root=${TMPDIR:-"$repo_root/.tmp/do-tmp"}
 mkdir -p "$tmp_root"
@@ -18,13 +20,11 @@ test -f "$wat"
 test -f "$wit"
 test -f "$runner_dir/src/bin/record_resource_list_stream_abi.rs"
 
-wasm-tools parse "$wat" -o "$core_wasm"
-wasm-tools component embed "$wit" "$core_wasm" \
-  --world record-resource-list-stream-canonical \
-  --features cm-async,cm-more-async-builtins \
-  -o "$embedded"
-wasm-tools component new --skip-validation "$embedded" -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" parse-core "$wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit" "$core_wasm" record-resource-list-stream-canonical \
+  --features component-async -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features component-async
 
 if ! command -v cc >/dev/null 2>&1; then
   export CC="$runner_dir/zig-cc.sh"
@@ -110,13 +110,11 @@ build_variant() {
       ;;
   esac
 
-  wasm-tools parse "$variant" -o "$variant_core"
-  wasm-tools component embed "$wit" "$variant_core" \
-    --world record-resource-list-stream-canonical \
-    --features cm-async,cm-more-async-builtins \
-    -o "$variant_embedded"
-  wasm-tools component new --skip-validation "$variant_embedded" -o "$component"
-  wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+  "$toolchain_bin" parse-core "$variant" -o "$variant_core"
+  "$toolchain_bin" embed-component "$wit" "$variant_core" record-resource-list-stream-canonical \
+    --features component-async -o "$variant_embedded"
+  "$toolchain_bin" new-component "$variant_embedded" -o "$component"
+  "$toolchain_bin" validate-component "$component" --features component-async
 }
 
 expect_mode() {

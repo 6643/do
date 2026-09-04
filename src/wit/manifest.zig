@@ -2,6 +2,7 @@
 const std = @import("std");
 const model = @import("model.zig");
 const signature = @import("signature.zig");
+const marshal_registry = @import("marshal_registry.zig");
 
 pub const ManifestError = error{
     InvalidManifest,
@@ -21,6 +22,9 @@ pub const ManifestError = error{
     ManifestResourceInvalid,
     ManifestDuplicateResource,
     ManifestResourceMismatch,
+    ManifestMapInvalid,
+    ManifestDuplicateMap,
+    ManifestMapMismatch,
 };
 
 pub const Member = struct {
@@ -70,6 +74,16 @@ pub const ResourceFact = struct {
     terminal_action: []const u8,
 };
 
+/// Parser-owned evidence for a WIT map. The pair-list representation is an
+/// ABI fact only; the generated Do binding remains a HashMap.
+pub const MapFact = struct {
+    member: []const u8,
+    path: []const u8,
+    key: []const u8,
+    value: []const u8,
+    abi: []const u8,
+};
+
 pub const Document = struct {
     schema: u32,
     package: []const u8,
@@ -79,6 +93,7 @@ pub const Document = struct {
     sha256: []const u8,
     members: []const Member,
     resources: []const ResourceFact,
+    maps: []const MapFact,
     async_lowerings: []const AsyncLowering,
 };
 
@@ -91,6 +106,7 @@ pub const Parsed = struct {
         allocator.free(self.document.module_hashes);
         allocator.free(self.document.members);
         allocator.free(self.document.resources);
+        allocator.free(self.document.maps);
         allocator.free(self.document.async_lowerings);
         self.tree.deinit();
         self.* = undefined;
@@ -170,6 +186,20 @@ pub fn parse(allocator: std.mem.Allocator, source: []const u8) (ManifestError ||
         }
     }
 
+    var maps = std.ArrayList(MapFact).empty;
+    errdefer maps.deinit(allocator);
+    if (root.get("maps")) |map_value| {
+        const map_values = array_value(map_value) orelse return error.ManifestMapInvalid;
+        for (map_values.items) |value| {
+            const map = try parse_map_fact(value);
+            for (maps.items) |existing| {
+                if (std.mem.eql(u8, existing.member, map.member) and
+                    std.mem.eql(u8, existing.path, map.path)) return error.ManifestDuplicateMap;
+            }
+            try maps.append(allocator, map);
+        }
+    }
+
     var async_lowerings = std.ArrayList(AsyncLowering).empty;
     errdefer async_lowerings.deinit(allocator);
     if (schema == 2) {
@@ -210,6 +240,7 @@ pub fn parse(allocator: std.mem.Allocator, source: []const u8) (ManifestError ||
             .sha256 = sha256,
             .members = try members.toOwnedSlice(allocator),
             .resources = try resources.toOwnedSlice(allocator),
+            .maps = try maps.toOwnedSlice(allocator),
             .async_lowerings = try async_lowerings.toOwnedSlice(allocator),
         },
     };
@@ -286,6 +317,13 @@ pub fn validate_binding(
         if (!resource_fact_equal(expected, actual)) return error.ManifestResourceMismatch;
     }
 
+    const expected_maps = try collect_map_facts(allocator, binding);
+    defer deinit_map_facts(allocator, expected_maps);
+    if (document.maps.len != expected_maps.len) return error.ManifestMapMismatch;
+    for (expected_maps, document.maps) |expected, actual| {
+        if (!map_fact_equal(expected, actual)) return error.ManifestMapMismatch;
+    }
+
     for (document.async_lowerings) |lowering| {
         if (!hash_matches(lowering.wit_sha256, binding.content_hash)) return error.ManifestLoweringMismatch;
         if (!std.mem.eql(u8, lowering.wit_package, document.package) or
@@ -352,6 +390,152 @@ pub fn collect_resource_facts(
 pub fn deinit_resource_facts(allocator: std.mem.Allocator, facts: []const ResourceFact) void {
     for (facts) |fact| allocator.free(fact.member);
     allocator.free(facts);
+}
+
+pub fn collect_map_facts(allocator: std.mem.Allocator, binding: model.BindingModel) ![]MapFact {
+    var facts = std.ArrayList(MapFact).empty;
+    errdefer deinit_map_facts(allocator, facts.items);
+
+    for (binding.interfaces) |interface| {
+        for (interface.functions) |function| {
+            const member = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ interface.name, function.name });
+            defer allocator.free(member);
+            for (function.params, 0..) |param, index| {
+                const path = try std.fmt.allocPrint(allocator, "param[{d}]", .{index});
+                defer allocator.free(path);
+                try collect_map_type(allocator, &facts, &interface, member, path, param.type_ref, &.{ });
+            }
+            if (function.result) |result| {
+                try collect_map_type(allocator, &facts, &interface, member, "result", result, &.{ });
+            }
+        }
+    }
+    return facts.toOwnedSlice(allocator);
+}
+
+pub fn deinit_map_facts(allocator: std.mem.Allocator, facts: []const MapFact) void {
+    for (facts) |fact| {
+        allocator.free(fact.member);
+        allocator.free(fact.path);
+        allocator.free(fact.key);
+        allocator.free(fact.value);
+    }
+    allocator.free(facts);
+}
+
+fn collect_map_type(
+    allocator: std.mem.Allocator,
+    facts: *std.ArrayList(MapFact),
+    interface: *const model.InterfaceDecl,
+    member: []const u8,
+    path: []const u8,
+    type_ref: *const model.TypeRef,
+    active: []const []const u8,
+) !void {
+    if (type_ref.kind == .map) {
+        const shape = marshal_registry.map_pair_list_shape(type_ref) orelse return error.ManifestMapInvalid;
+        const key = try render_wit_type(allocator, shape.key);
+        errdefer allocator.free(key);
+        const value = try render_wit_type(allocator, shape.value);
+        errdefer allocator.free(value);
+        try facts.append(allocator, .{
+            .member = try allocator.dupe(u8, member),
+            .path = try allocator.dupe(u8, path),
+            .key = key,
+            .value = value,
+            .abi = shape.representation,
+        });
+        const key_path = try std.fmt.allocPrint(allocator, "{s}.key", .{path});
+        defer allocator.free(key_path);
+        const value_path = try std.fmt.allocPrint(allocator, "{s}.value", .{path});
+        defer allocator.free(value_path);
+        try collect_map_type(allocator, facts, interface, member, key_path, shape.key, active);
+        try collect_map_type(allocator, facts, interface, member, value_path, shape.value, active);
+        return;
+    }
+
+    if (type_ref.kind == .named) {
+        for (active) |name| if (std.mem.eql(u8, name, type_ref.name)) return;
+        for (interface.aliases) |alias| {
+            if (!std.mem.eql(u8, alias.name, type_ref.name)) continue;
+            var next = try allocator.alloc([]const u8, active.len + 1);
+            defer allocator.free(next);
+            @memcpy(next[0..active.len], active);
+            next[active.len] = type_ref.name;
+            return collect_map_type(allocator, facts, interface, member, path, alias.type_ref, next);
+        }
+        for (interface.records) |record| {
+            if (!std.mem.eql(u8, record.name, type_ref.name)) continue;
+            var next = try allocator.alloc([]const u8, active.len + 1);
+            defer allocator.free(next);
+            @memcpy(next[0..active.len], active);
+            next[active.len] = type_ref.name;
+            for (record.fields) |field| {
+                const field_path = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ path, field.name });
+                defer allocator.free(field_path);
+                try collect_map_type(allocator, facts, interface, member, field_path, field.type_ref, next);
+            }
+            return;
+        }
+    }
+
+    for (type_ref.args, 0..) |arg, index| {
+        const child_path = try std.fmt.allocPrint(allocator, "{s}[{d}]", .{ path, index });
+        defer allocator.free(child_path);
+        try collect_map_type(allocator, facts, interface, member, child_path, arg, active);
+    }
+}
+
+fn render_wit_type(allocator: std.mem.Allocator, type_ref: *const model.TypeRef) ![]u8 {
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+    try append_wit_type(&out, allocator, type_ref);
+    return out.toOwnedSlice(allocator);
+}
+
+fn append_wit_type(out: *std.ArrayList(u8), allocator: std.mem.Allocator, type_ref: *const model.TypeRef) !void {
+    const name = switch (type_ref.kind) {
+        .bool => "bool",
+        .s8 => "s8",
+        .u8 => "u8",
+        .s16 => "s16",
+        .u16 => "u16",
+        .s32 => "s32",
+        .u32 => "u32",
+        .s64 => "s64",
+        .u64 => "u64",
+        .f32 => "f32",
+        .f64 => "f64",
+        .char => "char",
+        .string => "string",
+        .unit => "unit",
+        .named => type_ref.name,
+        .list => "list",
+        .option => "option",
+        .result => "result",
+        .future => "future",
+        .stream => "stream",
+        .tuple => "tuple",
+        .map => "map",
+        .own => "own",
+        .borrow => "borrow",
+    };
+    try out.appendSlice(allocator, name);
+    if (type_ref.args.len == 0) return;
+    try out.append(allocator, '<');
+    for (type_ref.args, 0..) |arg, index| {
+        if (index != 0) try out.appendSlice(allocator, ", ");
+        try append_wit_type(out, allocator, arg);
+    }
+    try out.append(allocator, '>');
+}
+
+fn map_fact_equal(lhs: MapFact, rhs: MapFact) bool {
+    return std.mem.eql(u8, lhs.member, rhs.member) and
+        std.mem.eql(u8, lhs.path, rhs.path) and
+        std.mem.eql(u8, lhs.key, rhs.key) and
+        std.mem.eql(u8, lhs.value, rhs.value) and
+        std.mem.eql(u8, lhs.abi, rhs.abi);
 }
 
 fn collect_resource_type(
@@ -567,6 +751,19 @@ fn parse_resource_fact(value: std.json.Value) ManifestError!ResourceFact {
     };
 }
 
+fn parse_map_fact(value: std.json.Value) ManifestError!MapFact {
+    const object = object_value(value) orelse return error.ManifestMapInvalid;
+    const member = string_value(object.get("member")) orelse return error.ManifestMapInvalid;
+    const path = string_value(object.get("path")) orelse return error.ManifestMapInvalid;
+    const key = string_value(object.get("key")) orelse return error.ManifestMapInvalid;
+    const map_value = string_value(object.get("value")) orelse return error.ManifestMapInvalid;
+    const abi = string_value(object.get("abi")) orelse return error.ManifestMapInvalid;
+    if (!valid_member_name(member) or !valid_map_path(path) or
+        !valid_map_key_schema(key) or !valid_signature(map_value) or
+        !std.mem.eql(u8, abi, "pair-list")) return error.ManifestMapInvalid;
+    return .{ .member = member, .path = path, .key = key, .value = map_value, .abi = abi };
+}
+
 fn parse_async_lowering(value: std.json.Value) ManifestError!AsyncLowering {
     const object = object_value(value) orelse return error.ManifestLoweringMismatch;
     const capability = string_value(object.get("capability")) orelse return error.ManifestLoweringMismatch;
@@ -718,6 +915,20 @@ fn valid_member_name(name: []const u8) bool {
         if (!(std.ascii.isAlphanumeric(ch) or ch == '_' or ch == '-' or ch == '.')) return false;
     }
     return true;
+}
+
+fn valid_map_path(path: []const u8) bool {
+    if (path.len == 0 or !std.mem.startsWith(u8, path, "param[") and !std.mem.eql(u8, path, "result")) return false;
+    return valid_signature(path);
+}
+
+fn valid_map_key_schema(value: []const u8) bool {
+    return std.mem.eql(u8, value, "bool") or
+        std.mem.eql(u8, value, "s8") or std.mem.eql(u8, value, "u8") or
+        std.mem.eql(u8, value, "s16") or std.mem.eql(u8, value, "u16") or
+        std.mem.eql(u8, value, "s32") or std.mem.eql(u8, value, "u32") or
+        std.mem.eql(u8, value, "s64") or std.mem.eql(u8, value, "u64") or
+        std.mem.eql(u8, value, "char") or std.mem.eql(u8, value, "string");
 }
 
 fn valid_signature(value: []const u8) bool {

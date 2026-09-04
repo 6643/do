@@ -5,9 +5,12 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 pinned_wit="$repo_root/src/build/p3_wit/wasi-http-0.3.0-rc-2025-09-16"
 probe_fragment="$repo_root/examples/p3-runtime/wit/http-payload-error-probe.wit"
 do_bin="$repo_root/bin/do"
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-http-payload-error-abi.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
+test -x "$toolchain_bin"
 
 wit_dir="$tmp_dir/wit-package"
 mkdir -p "$wit_dir"
@@ -24,12 +27,12 @@ for candidate in canonical host-lowered; do
   component="$tmp_dir/$candidate.component.wasm"
   component_wit="$tmp_dir/$candidate.component.wit"
 
-  wasm-tools parse "$core_wat" -o "$core_wasm"
-  wasm-tools component embed "$wit_dir" "$core_wasm" \
-    --world http-payload-error-probe -o "$embedded"
-  wasm-tools component new "$embedded" -o "$component"
-  wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
-  wasm-tools component wit "$component" >"$component_wit"
+  "$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+  "$toolchain_bin" embed-component "$wit_dir" "$core_wasm" http-payload-error-probe \
+    --features component-async -o "$embedded"
+  "$toolchain_bin" new-component "$embedded" -o "$component"
+  "$toolchain_bin" validate-component "$component" --features component-async
+  "$toolchain_bin" component-wit "$component" >"$component_wit"
 
   grep -Fq 'import wasi:http/types@0.3.0-rc-2025-09-16;' "$component_wit"
   grep -Fq 'import wasi:http/client@0.3.0-rc-2025-09-16;' "$component_wit"
@@ -41,12 +44,12 @@ dns_error_core_wasm="$tmp_dir/dns-error-canonical.wasm"
 dns_error_embedded="$tmp_dir/dns-error-canonical.embedded.wasm"
 dns_error_component="$tmp_dir/dns-error-canonical.component.wasm"
 dns_error_component_wit="$tmp_dir/dns-error-canonical.component.wit"
-wasm-tools parse "$dns_error_core_wat" -o "$dns_error_core_wasm"
-wasm-tools component embed "$wit_dir" "$dns_error_core_wasm" \
-  --world http-payload-error-probe -o "$dns_error_embedded"
-wasm-tools component new "$dns_error_embedded" -o "$dns_error_component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$dns_error_component"
-wasm-tools component wit "$dns_error_component" >"$dns_error_component_wit"
+"$toolchain_bin" parse-core "$dns_error_core_wat" -o "$dns_error_core_wasm"
+"$toolchain_bin" embed-component "$wit_dir" "$dns_error_core_wasm" http-payload-error-probe \
+  --features component-async -o "$dns_error_embedded"
+"$toolchain_bin" new-component "$dns_error_embedded" -o "$dns_error_component"
+"$toolchain_bin" validate-component "$dns_error_component" --features component-async
+"$toolchain_bin" component-wit "$dns_error_component" >"$dns_error_component_wit"
 grep -Fq 'export wasi:http/probe@0.3.0-rc-2025-09-16;' "$dns_error_component_wit"
 
 if [[ ${1:-} == --assemble-only ]]; then
@@ -98,11 +101,11 @@ for candidate in control canonical host-lowered dns-error; do
     RUNTIME_CANONICAL_TAIL="$runtime_canonical_tail" perl -0pi -e \
       's/        i32\.const 0\n        i64\.const 0\n        i32\.const 0\n        i32\.const 0\n        i32\.const 0\n        i32\.const 0/$ENV{RUNTIME_CANONICAL_TAIL}/' "$runtime_wat"
   fi
-  wasm-tools parse "$runtime_wat" -o "$runtime_wasm"
-  wasm-tools component embed "$runtime_wit_dir" "$runtime_wasm" \
-    --world http-payload-error-probe -o "$runtime_embedded"
-  wasm-tools component new "$runtime_embedded" -o "$runtime_component"
-  wasm-tools validate --features cm-async,cm-more-async-builtins "$runtime_component"
+  "$toolchain_bin" parse-core "$runtime_wat" -o "$runtime_wasm"
+  "$toolchain_bin" embed-component "$runtime_wit_dir" "$runtime_wasm" http-payload-error-probe \
+    --features component-async -o "$runtime_embedded"
+  "$toolchain_bin" new-component "$runtime_embedded" -o "$runtime_component"
+  "$toolchain_bin" validate-component "$runtime_component" --features component-async
 done
 
 run_component_case() {

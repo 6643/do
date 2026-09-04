@@ -253,7 +253,7 @@ counters, ticket creation/drop counts, and final `table-empty=true`.
   borrowed/list/variant resource payloads, general async/resource lowering,
   public ownership syntax, and full GC cutover explicitly pending.
 
-- [ ] **Step 3: Review the staged path list before committing.**
+- [x] **Step 3: Review the staged path list before committing.**
 
   ```bash
   git diff --check
@@ -272,7 +272,7 @@ counters, ticket creation/drop counts, and final `table-empty=true`.
 This task starts only after Tasks 1–4 are green. It is a design gate, not an
 authorization to implement a new public language feature.
 
-- [ ] **Step 1: Compare the three candidate shapes.**
+- [x] **Step 1: Compare the three candidate shapes.**
 
   | Candidate | Evidence needed | Decision |
   | --- | --- | --- |
@@ -280,7 +280,7 @@ authorization to implement a new public language feature.
   | Nested owned-resource record producer | Independent probe for nested field offsets, recursive cleanup and transfer ordering, plus new analyzer/layout facts | Not recommended now: more compiler branches before a direct triple-field invariant is measured |
   | Generic producer or public `own<T>`/`borrow<T>`/`ref<T>` | Generic IR, ownership/escape rules, async cancellation/lifetime contract, broad regression migration | Defer: architectural scope exceeds G6.2 bounded evidence and remains a documented blocker |
 
-- [ ] **Step 2: Apply the admission criteria.**
+- [x] **Step 2: Apply the admission criteria.**
 
   Admit a candidate only when all of these are independently observable: a
   pinned WIT hash; canonical ABI without Wasm GC references; exact descriptor and
@@ -289,13 +289,16 @@ authorization to implement a new public language feature.
   exactly-once resource, stream, task, and future cleanup; no static-route drift;
   and no change to the migration inventory.
 
-- [ ] **Step 3: Stop or open a separate design.**
+- [x] **Step 3: Stop or open a separate design.**
 
-  If the recommended triple probe does not measure the stated ABI or lifecycle,
-  record the actual result in `doc/pending_blocked.md` and stop this candidate.
-  If it passes, write a new dated spec under
-  `doc/superpowers/specs/2026-08-28-g6-2-owned-record-triple-producer-design.md`
-  and wait for explicit design approval before creating its implementation plan.
+  The recommended triple probe measured the stated ABI and lifecycle. Its dated
+  design is recorded in
+  `doc/superpowers/specs/2026-08-28-g6-2-owned-record-triple-producer-design.md`,
+  and the separately approved implementation plan is
+  `doc/superpowers/plans/2026-08-28-g6-2-owned-record-triple-compiler-admission.md`.
+  The compiler admission and release evidence are now complete. Any further
+  producer/resource shape, including nested producer lowering, requires a new
+  design and explicit approval rather than extending this plan implicitly.
 
 ## Stop Conditions And Rollback
 

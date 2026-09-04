@@ -880,6 +880,74 @@
         "module": "demo:marshal-record-mixed-text-two-u32-lists-lift/api@1.0.0",
         "name": "read"
       }
+    },
+    {
+      "id": "demo:marshal-map-u32-u32/api.write@1.0.0/lower",
+      "source": "examples/gc-p3-runtime/marshal-map-u32-u32-lower-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_map_u32_u32_lower_imports.wit",
+      "package": "demo:marshal-map-u32-u32@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "write",
+      "direction": "lower",
+      "params": ["map<u32, u32>"],
+      "result": "_",
+      "map_abi": {"key": "u32", "value": "u32", "representation": "pair-list"},
+      "source_sha256": "sha256:b128724921b18e58faf5b374dc9477e4e6eb68cf694777cd7cffcbc4512de083",
+      "measured_layout": {
+        "kind": "map",
+        "byte_size": 8,
+        "alignment": 4,
+        "pointer_offset": 0,
+        "length_offset": 4,
+        "element_byte_size": 8,
+        "element_stride": 8,
+        "element_alignment": 4,
+        "key": {"offset": 0, "byte_size": 4, "alignment": 4},
+        "value": {"offset": 4, "byte_size": 4, "alignment": 4},
+        "capacity": 2,
+        "accepted_lengths": [0, 1, 2],
+        "allocation": "cabi_realloc",
+        "free": "cabi_realloc"
+      },
+      "canonical_import": {
+        "module": "demo:marshal-map-u32-u32/api@1.0.0",
+        "name": "write"
+      }
+    },
+    {
+      "id": "demo:marshal-map-u32-u32/api.read@1.0.0/lift",
+      "source": "examples/gc-p3-runtime/marshal-map-u32-u32-lift-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_map_u32_u32_lift_imports.wit",
+      "package": "demo:marshal-map-u32-u32@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "read",
+      "direction": "lift",
+      "params": [],
+      "result": "map<u32, u32>",
+      "map_abi": {"key": "u32", "value": "u32", "representation": "pair-list"},
+      "source_sha256": "sha256:bacdca89888e2fed4582c784082c0f3c54182e454e4a34886eec340fc3aca547",
+      "measured_layout": {
+        "kind": "map",
+        "byte_size": 8,
+        "alignment": 4,
+        "pointer_offset": 0,
+        "length_offset": 4,
+        "element_byte_size": 8,
+        "element_stride": 8,
+        "element_alignment": 4,
+        "key": {"offset": 0, "byte_size": 4, "alignment": 4},
+        "value": {"offset": 4, "byte_size": 4, "alignment": 4},
+        "capacity": 2,
+        "accepted_lengths": [0, 1, 2],
+        "allocation": "cabi_realloc",
+        "free": "cabi_realloc"
+      },
+      "canonical_import": {
+        "module": "demo:marshal-map-u32-u32/api@1.0.0",
+        "name": "read"
+      }
     }
   ]
 }

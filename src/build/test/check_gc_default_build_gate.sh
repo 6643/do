@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 EXAMPLE_DIR="$ROOT_DIR/examples/gc-p3-runtime"
 DO_BIN="${DO_BIN:-$ROOT_DIR/bin/do}"
-WASM_TOOLS_BIN="${WASM_TOOLS_BIN:-$(command -v wasm-tools || true)}"
+TOOLCHAIN_BIN="${DO_TOOLCHAIN_BIN:-$ROOT_DIR/bin/do-toolchain}"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/do-gc-default-build.XXXXXX")"
 trap 'rm -rf -- "$TMP_DIR"' EXIT
 
@@ -12,13 +12,8 @@ if [[ ! -x "$DO_BIN" ]]; then
     printf 'missing do compiler executable: %s\n' "$DO_BIN" >&2
     exit 1
 fi
-if [[ -z "$WASM_TOOLS_BIN" || ! -x "$WASM_TOOLS_BIN" ]]; then
-    printf 'missing wasm-tools executable: %s\n' "${WASM_TOOLS_BIN:-<unset>}" >&2
-    exit 1
-fi
-wasm_tools_version="$("$WASM_TOOLS_BIN" --version 2>/dev/null || true)"
-if [[ "$wasm_tools_version" != 'wasm-tools 1.255.0'* ]]; then
-    printf 'unsupported wasm-tools version: %s (expected 1.255.0)\n' "${wasm_tools_version:-<unknown>}" >&2
+if [[ ! -x "$TOOLCHAIN_BIN" ]]; then
+    printf 'missing do-toolchain executable: %s\n' "$TOOLCHAIN_BIN" >&2
     exit 1
 fi
 
@@ -516,7 +511,7 @@ for fixture in "${fixtures[@]}"; do
             exit 1
         fi
     fi
-    "$WASM_TOOLS_BIN" parse "$wat_file" -o "$wasm_file" >/dev/null
+    "$TOOLCHAIN_BIN" parse-core "$wat_file" -o "$wasm_file" >/dev/null
     if [[ ! -s "$wasm_file" ]]; then
         printf 'wasm-tools parse produced no Wasm: %s\n' "$fixture" >&2
         exit 1

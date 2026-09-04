@@ -96,6 +96,7 @@ fn convert_type(
         .f64 => wit_types.AbiType.scalar(allocator, .f64),
         .string => wit_types.AbiType.text(allocator),
         .list => convert_list(allocator, interface, type_ref, active),
+        .map => convert_map(allocator, interface, type_ref, active),
         .named => convert_named(allocator, interface, type_ref, active),
         .unit, .option, .result, .future, .stream, .tuple, .own, .borrow => error.UnsupportedWitMarshalShape,
         .char => error.UnsupportedWitMarshalShape,
@@ -135,6 +136,23 @@ fn convert_list(
     var child = try convert_type(allocator, interface, type_ref.args[0], active);
     defer child.deinit();
     return wit_types.AbiType.list(allocator, &child);
+}
+
+fn convert_map(
+    allocator: std.mem.Allocator,
+    interface: *const wit_model.InterfaceDecl,
+    type_ref: *const wit_model.TypeRef,
+    active: *std.StringHashMap(void),
+) (ResolveError || wit_types.AbiTypeError || std.mem.Allocator.Error)!wit_types.AbiType {
+    if (type_ref.args.len != 2 or !wit_model.map_key_allowed(type_ref.args[0])) {
+        return error.UnsupportedWitMarshalShape;
+    }
+
+    var key = try convert_type(allocator, interface, type_ref.args[0], active);
+    defer key.deinit();
+    var value = try convert_type(allocator, interface, type_ref.args[1], active);
+    defer value.deinit();
+    return wit_types.AbiType.map(allocator, &key, &value);
 }
 
 fn convert_named(

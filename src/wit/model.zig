@@ -48,6 +48,7 @@ pub const TypeKind = enum {
     future,
     stream,
     tuple,
+    map,
     own,
     borrow,
     unit,
@@ -240,4 +241,11 @@ pub fn type_is_resource(type_ref: *const TypeRef, resources: []const ResourceDec
         if (std.mem.eql(u8, resource.name, type_ref.name)) return true;
     }
     return false;
+}
+
+pub fn map_key_allowed(type_ref: *const TypeRef) bool {
+    return switch (type_ref.kind) {
+        .bool, .s8, .u8, .s16, .u16, .s32, .u32, .s64, .u64, .char, .string => true,
+        else => false,
+    };
 }

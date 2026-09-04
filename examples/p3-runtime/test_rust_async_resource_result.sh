@@ -3,6 +3,8 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 cargo_bin=${CARGO_BIN:-cargo}
 rustc_bin=${RUSTC:-rustc}
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-p3-async-resource-result.XXXXXX")
@@ -37,16 +39,18 @@ if ! command -v cc >/dev/null; then
   export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$runner_dir/zig-cc.sh"
 fi
 
+test -x "$toolchain_bin"
+
 core_path="$tmp_dir/async-resource-result.wat"
 component_path="$tmp_dir/async-resource-result.component.wasm"
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
   "$repo_root/examples/p3-runtime/async-resource-result-component.do" \
   --p3-async-component -o "$core_path"
-wasm-tools parse "$core_path" -o "$tmp_dir/async-resource-result.wasm"
-wasm-tools component embed "$repo_root/src/build/p3_async_resource_probe.wit" \
-  "$tmp_dir/async-resource-result.wasm" --world async-resource-probe \
-  -o "$tmp_dir/async-resource-result.embedded.wasm"
-wasm-tools component new "$tmp_dir/async-resource-result.embedded.wasm" -o "$component_path"
+"$toolchain_bin" parse-core "$core_path" -o "$tmp_dir/async-resource-result.wasm"
+"$toolchain_bin" embed-component "$repo_root/src/build/p3_async_resource_probe.wit" \
+  "$tmp_dir/async-resource-result.wasm" async-resource-probe \
+  --features component-async -o "$tmp_dir/async-resource-result.embedded.wasm"
+"$toolchain_bin" new-component "$tmp_dir/async-resource-result.embedded.wasm" -o "$component_path"
 
 output=$("$cargo_bin" run --quiet --manifest-path "$runner_dir/Cargo.toml" \
   --bin do-p3-async-resource-result-host-runner -- "$component_path")

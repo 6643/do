@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
 core_wat="$repo_root/examples/p3-runtime/http-payload-cancel-dns-error-discard-probe.wat"
 tmp_root=${TMPDIR:-"$repo_root/.tmp/do-tmp"}
@@ -14,16 +16,17 @@ core_wasm="$tmp_dir/http-payload-cancel-dns-error-probe.wasm"
 embedded="$tmp_dir/http-payload-cancel-dns-error-probe.embedded.wasm"
 component="$tmp_dir/http-payload-cancel-dns-error-probe.component.wasm"
 
+test -x "$toolchain_bin"
+
 cp -R "$repo_root/src/build/p3_wit/wasi-http-0.3.0-rc-2025-09-16" "$wit_dir"
 cp "$repo_root/examples/p3-runtime/wit/http-payload-cancel-service-world.wit" \
   "$wit_dir/http-payload-cancel-service-world.wit"
 
-wasm-tools parse "$core_wat" -o "$core_wasm"
-wasm-tools component embed "$wit_dir" "$core_wasm" \
-  --world http-payload-cancel \
-  --features cm-async,cm-more-async-builtins -o "$embedded"
-wasm-tools component new "$embedded" --skip-validation -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit_dir" "$core_wasm" http-payload-cancel \
+  --features component-async -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features component-async
 
 CC="$runner_dir/zig-cc.sh" \
 CXX="$runner_dir/zig-cc.sh" \

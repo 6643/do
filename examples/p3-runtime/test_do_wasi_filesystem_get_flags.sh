@@ -2,7 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-wasm_tools=${WASM_TOOLS:-wasm-tools}
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 fixture="$repo_root/src/build/test/compile_ok/471_wasi_filesystem_get_flags_component.do"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-d2-filesystem-get-flags-compiler.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
@@ -15,11 +16,11 @@ component="$tmp_dir/generated.component.wasm"
 
 "$repo_root/bin/do" build "$fixture" \
   --p3-async-component --p3-wit-output "$generated_wit" -o "$generated_core_wat"
-"$wasm_tools" parse "$generated_core_wat" -o "$generated_core_wasm"
-"$wasm_tools" component embed "$generated_wit" "$generated_core_wasm" \
-  --world get-flags-probe --features cm-async,cm-more-async-builtins -o "$embedded"
-"$wasm_tools" component new --skip-validation "$embedded" -o "$component"
-"$wasm_tools" validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" parse-core "$generated_core_wat" -o "$generated_core_wasm"
+"$toolchain_bin" embed-component "$generated_wit" "$generated_core_wasm" \
+  get-flags-probe -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features component-async
 
 grep -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$generated_wit"
 grep -Fq 'flags descriptor-flags' "$generated_wit"
@@ -35,8 +36,8 @@ for name in 472_wasi_filesystem_get_flags_unregistered 473_wasi_filesystem_get_f
     exit 1
   fi
 done
-grep -Fq 'UnknownP3AsyncHostDescriptor' "$tmp_dir/472_wasi_filesystem_get_flags_unregistered.err"
-grep -Fq 'UnsupportedP3AsyncComponent' "$tmp_dir/473_wasi_filesystem_get_flags_wrong_result.err"
-grep -Fq 'UnsupportedP3AsyncComponent' "$tmp_dir/474_wasi_filesystem_get_flags_borrowed_payload.err"
+grep -Fq 'UnsupportedP3AsyncComponent' "$tmp_dir/472_wasi_filesystem_get_flags_unregistered.err"
+grep -Fq 'P3AsyncHostSignatureMismatch' "$tmp_dir/473_wasi_filesystem_get_flags_wrong_result.err"
+grep -Fq 'P3AsyncHostSignatureMismatch' "$tmp_dir/474_wasi_filesystem_get_flags_borrowed_payload.err"
 
 printf 'D2 filesystem descriptor.get-flags compiler Component gate passed\n'

@@ -2,7 +2,10 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
+test -x "$toolchain_bin"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-stream-writer-producer-helper-owned-runtime.XXXXXX")
 core_path="$tmp_dir/stream-writer-producer-helper-owned.wat"
 wit_path="$tmp_dir/stream-writer-producer-helper-owned.wit"
@@ -14,11 +17,11 @@ DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build --p3-async-component \
   --p3-wit-output "$wit_path" \
   "$repo_root/examples/p3-runtime/stream-probe-guest-producer-helper-owned.do" \
   -o "$core_path"
-wasm-tools parse "$core_path" -o "$core_wasm"
-wasm-tools component embed "$wit_path" "$core_wasm" \
-  --world stream-writer-probe -o "$embedded_path"
-wasm-tools component new "$embedded_path" -o "$component_path"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component_path"
+"$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit_path" "$core_wasm" stream-writer-probe \
+  --features component-async -o "$embedded_path"
+"$toolchain_bin" new-component "$embedded_path" -o "$component_path"
+"$toolchain_bin" validate-component "$component_path" --features component-async
 
 if ! command -v cc >/dev/null 2>&1; then
   export CC="$runner_dir/zig-cc.sh"

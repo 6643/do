@@ -2,10 +2,13 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 fixture="$repo_root/examples/p3-runtime/cancel-wait-for-component.do"
 tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/do-p3-cancel-lowering.XXXXXX")
 trap 'rm -rf -- "$tmpdir"' EXIT
 core_path="$tmpdir/cancel-wait-for.wat"
+core_wasm="$tmpdir/cancel-wait-for.core.wasm"
 wit_path="$tmpdir/cancel-wait-for.wit"
 embedded_path="$tmpdir/cancel-wait-for.embedded.wasm"
 component_path="$tmpdir/cancel-wait-for.component.wasm"
@@ -40,7 +43,8 @@ for forbidden in operation_id request_cancel CancelledAck terminal-ack; do
   fi
 done
 
-wasm-tools component embed "$wit_path" "$core_path" --world probe -o "$embedded_path"
-wasm-tools component new "$embedded_path" -o "$component_path"
-wasm-tools validate "$component_path"
+"$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit_path" "$core_wasm" probe -o "$embedded_path"
+"$toolchain_bin" new-component "$embedded_path" -o "$component_path"
+"$toolchain_bin" validate-component "$component_path"
 DO_P3_COMPONENT="$component_path" "$repo_root/examples/p3-runtime/test_rust_cancel_wait_for.sh"

@@ -2,8 +2,11 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-p3-if-await.XXXXXX")
 core_path="$tmp_dir/if-await.wat"
+core_wasm="$tmp_dir/if-await.core.wasm"
 wit_path="$tmp_dir/if-await.wit"
 embedded_path="$tmp_dir/if-await.embedded.wasm"
 component_path="$tmp_dir/if-await.component.wasm"
@@ -18,9 +21,10 @@ grep -Fq 'call $second-host-call' "$core_path"
 grep -Fq 'wait-for: async func(how-long: u64)' "$wit_path"
 grep -Fq 'wait-until: async func(when: u64)' "$wit_path"
 
-wasm-tools component embed "$wit_path" "$core_path" --world probe -o "$embedded_path"
-wasm-tools component new "$embedded_path" -o "$component_path"
-wasm-tools validate "$component_path"
+"$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit_path" "$core_wasm" probe -o "$embedded_path"
+"$toolchain_bin" new-component "$embedded_path" -o "$component_path"
+"$toolchain_bin" validate-component "$component_path"
 
 if ! command -v cc >/dev/null; then
   if ! command -v zig >/dev/null; then

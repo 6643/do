@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 tmp_root=${TMPDIR:-"$repo_root/.tmp/do-tmp"}
 mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/resource-cancel-shape.XXXXXX")
@@ -45,11 +47,11 @@ if grep -Fq '$async-frame' "$core_path"; then
   exit 1
 fi
 
-wasm-tools parse "$core_path" -o "$core_wasm"
-wasm-tools component embed "$wit_path" "$core_wasm" \
-  --world async-resource-cancel-probe -o "$embedded_path"
-wasm-tools component new "$embedded_path" -o "$component_path"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component_path"
+"$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit_path" "$core_wasm" \
+  async-resource-cancel-probe -o "$embedded_path"
+"$toolchain_bin" new-component "$embedded_path" -o "$component_path"
+"$toolchain_bin" validate-component "$component_path" --features component-async
 
 for rejected in \
   async-resource-result-cancel-double.do \
@@ -71,14 +73,15 @@ for rejected in \
   grep -Fq "$expected_error" "$stderr_path"
 done
 
-wasm-tools parse "$repo_root/examples/p3-runtime/resource-result-cancel-probe.wat" \
+"$toolchain_bin" parse-core "$repo_root/examples/p3-runtime/resource-result-cancel-probe.wat" \
   -o "$tmp_dir/probe.wasm"
-wasm-tools component embed \
+"$toolchain_bin" embed-component \
   "$repo_root/examples/p3-runtime/resource-result-cancel-probe.wit" \
-  "$tmp_dir/probe.wasm" --world async-resource-cancel-probe \
+  "$tmp_dir/probe.wasm" async-resource-cancel-probe \
   -o "$tmp_dir/probe.embedded.wasm"
-wasm-tools component new "$tmp_dir/probe.embedded.wasm" \
+"$toolchain_bin" new-component "$tmp_dir/probe.embedded.wasm" \
   -o "$tmp_dir/probe.component.wasm"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$tmp_dir/probe.component.wasm"
+"$toolchain_bin" validate-component "$tmp_dir/probe.component.wasm" \
+  --features component-async
 
 printf 'resource Result cancellation lowering, negative boundaries, and pinned assembly passed\n'

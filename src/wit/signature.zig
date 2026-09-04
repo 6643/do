@@ -1,7 +1,7 @@
 const std = @import("std");
 const model = @import("model.zig");
 
-pub const Error = error{InvalidTypeArity};
+pub const Error = error{ InvalidTypeArity, InvalidMapKey };
 
 pub fn render(
     allocator: std.mem.Allocator,
@@ -96,6 +96,15 @@ pub fn append_type(
                 if (index != 0) try out.appendSlice(allocator, ", ");
                 try append_type(out, allocator, arg, error_alias);
             }
+            try out.append(allocator, '>');
+        },
+        .map => {
+            if (type_ref.args.len != 2) return error.InvalidTypeArity;
+            if (!model.map_key_allowed(type_ref.args[0])) return error.InvalidMapKey;
+            try out.appendSlice(allocator, "map<");
+            try append_type(out, allocator, type_ref.args[0], error_alias);
+            try out.appendSlice(allocator, ", ");
+            try append_type(out, allocator, type_ref.args[1], error_alias);
             try out.append(allocator, '>');
         },
         .own, .borrow => {

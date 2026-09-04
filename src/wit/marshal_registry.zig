@@ -18,6 +18,19 @@ pub const ResolvedValueMember = struct {
     content_hash: [32]u8,
 };
 
+pub const MapPairListShape = struct {
+    key: *const model.TypeRef,
+    value: *const model.TypeRef,
+    representation: []const u8 = "pair-list",
+};
+
+/// Describe the canonical ABI representation without claiming that the
+/// current GC marshal emitter can lower the map payload yet.
+pub fn map_pair_list_shape(type_ref: *const model.TypeRef) ?MapPairListShape {
+    if (type_ref.kind != .map or type_ref.args.len != 2 or !model.map_key_allowed(type_ref.args[0])) return null;
+    return .{ .key = type_ref.args[0], .value = type_ref.args[1] };
+}
+
 pub fn find_value_member(
     binding: *const model.BindingModel,
     interface_name: []const u8,

@@ -3,6 +3,8 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 fixture="$repo_root/examples/p3-runtime/cancel-wait-for-component.wat"
 wit="$repo_root/examples/p3-runtime/cancel-wait-for-component.wit"
 cargo_bin=${CARGO_BIN:-cargo}
@@ -28,6 +30,8 @@ if ! compgen -G "$target_libdir/libstd*.rlib" >/dev/null; then
   export RUSTFLAGS="${RUSTFLAGS:-} -Zunstable-options --sysroot=$sysroot_dir"
 fi
 
+test -x "$toolchain_bin"
+
 if ! command -v cc >/dev/null; then
   if ! command -v zig >/dev/null; then
     printf 'missing C linker: install cc or make zig available\n' >&2
@@ -43,9 +47,9 @@ embedded="$tmpdir/cancel-wait-for.embedded.wasm"
 component=${DO_P3_COMPONENT:-}
 if [ -z "$component" ]; then
   component="$tmpdir/cancel-wait-for.component.wasm"
-  wasm-tools component embed "$wit" "$fixture" --world probe -o "$embedded"
-  wasm-tools component new "$embedded" -o "$component"
-  wasm-tools validate "$component"
+  "$toolchain_bin" embed-component "$wit" "$fixture" probe -o "$embedded"
+  "$toolchain_bin" new-component "$embedded" -o "$component"
+  "$toolchain_bin" validate-component "$component"
 fi
 
 output=$("$cargo_bin" run --quiet --manifest-path "$runner_dir/Cargo.toml" \

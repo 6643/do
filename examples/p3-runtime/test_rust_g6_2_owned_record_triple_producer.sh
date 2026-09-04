@@ -3,7 +3,8 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 do_bin=${DO_BIN:-"$repo_root/bin/do"}
-wasm_tools_bin=${WASM_TOOLS:-wasm-tools}
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
 tmp_root=${TMPDIR:-"$repo_root/.tmp/do-tmp"}
 mkdir -p "$tmp_root"
@@ -25,16 +26,11 @@ embedded="$tmp_dir/generated.embedded.wasm"
 component="$tmp_dir/generated.component.wasm"
 
 test -x "$do_bin"
+test -x "$toolchain_bin"
 test -f "$source"
 test -f "$probe_wit"
 test -f "$runner_dir/Cargo.toml"
 test -f "$runner_dir/src/bin/g6_2_owned_record_triple_producer.rs"
-command -v "$wasm_tools_bin" >/dev/null 2>&1
-
-expected_tools_version=${WASM_TOOLS_EXPECT_VERSION:-1.255.0}
-actual_tools_version=$($wasm_tools_bin --version | awk 'NR == 1 { print $2 }')
-test "$actual_tools_version" = "$expected_tools_version"
-
 # Keep the measured canonical ABI probe independent from the generated route.
 bash "$repo_root/examples/p3-runtime/test_g6_2_owned_record_triple_producer_abi.sh"
 
@@ -75,13 +71,11 @@ if grep -Fq '__arc_' "$wat"; then
   exit 1
 fi
 
-"$wasm_tools_bin" parse "$wat" -o "$core_wasm"
-"$wasm_tools_bin" component embed "$wit" "$core_wasm" \
-  --world owned-record-triple-producer \
-  --features cm-async,cm-more-async-builtins \
-  -o "$embedded"
-"$wasm_tools_bin" component new --skip-validation "$embedded" -o "$component"
-"$wasm_tools_bin" validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" parse-core "$wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit" "$core_wasm" owned-record-triple-producer \
+  --features component-async -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features component-async
 
 if ! command -v cc >/dev/null 2>&1; then
   export CC="$runner_dir/zig-cc.sh"

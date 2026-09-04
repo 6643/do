@@ -49,7 +49,7 @@ if rg -n '^pub const .* = codegen_(generics|storage_layout|emit_wasi)\.' "$BUILD
     fail=1
 fi
 
-if [[ -e "$BUILD_DIR/sema_control.zig" ]] || rg -n '@import\("sema_control\.zig"\)' "$BUILD_DIR" --glob '*.zig'; then
+if [[ -e "$BUILD_DIR/sema_control.zig" ]] || rg -n '@import\("sema_control\.zig"\)' "$BUILD_DIR" --glob '*.zig' --glob '!**/structural_checks.zig' --glob '!**/structural_checks_test.zig'; then
     echo "legacy sema_control facade remains" >&2
     fail=1
 fi

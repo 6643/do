@@ -3,6 +3,8 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-d2-filesystem.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 
@@ -18,10 +20,12 @@ component="$tmp_dir/preopen.component.wasm"
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
   "$repo_root/examples/p3-runtime/wasi-filesystem-preopen.do" \
   --p3-wasi-filesystem-preopen-component --p3-wit-output "$wit" -o "$wat"
-wasm-tools parse "$wat" -o "$core"
-wasm-tools component embed "$wit" "$core" --world preopen-probe -o "$embedded"
-wasm-tools component new "$embedded" -o "$component"
-wasm-tools validate "$component"
+test -x "$toolchain_bin"
+"$toolchain_bin" parse-core "$wat" -o "$core"
+"$toolchain_bin" embed-component "$wit" "$core" preopen-probe \
+  --features none -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features none
 
 runner_env=(
   CC="$runner_dir/zig-cc.sh"

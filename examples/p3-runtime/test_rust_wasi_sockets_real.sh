@@ -3,6 +3,8 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-d2-sockets-real.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 
@@ -26,10 +28,12 @@ for protocol in tcp udp; do
   DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
     "$source" --p3-wasi-sockets-create-bind-drop-component \
     --p3-wit-output "$wit" -o "$wat" >/dev/null
-  wasm-tools parse "$wat" -o "$core"
-  wasm-tools component embed "$wit" "$core" --world socket-probe -o "$embedded"
-  wasm-tools component new "$embedded" -o "$component"
-  wasm-tools validate "$component"
+  test -x "$toolchain_bin"
+  "$toolchain_bin" parse-core "$wat" -o "$core"
+  "$toolchain_bin" embed-component "$wit" "$core" socket-probe \
+    --features none -o "$embedded"
+  "$toolchain_bin" new-component "$embedded" -o "$component"
+  "$toolchain_bin" validate-component "$component" --features none
 
   for failure in none create bind; do
     output=$(cd "$runner_dir" && env "${runner_env[@]}" \

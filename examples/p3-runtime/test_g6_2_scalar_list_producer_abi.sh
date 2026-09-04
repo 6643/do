@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
 tmp_root=${TMPDIR:-"$repo_root/.tmp/do-tmp"}
 mkdir -p "$tmp_root"
@@ -22,14 +24,6 @@ for path in "$wat" "$runner" "$wit"; do
   fi
 done
 
-expected_tools_version=${WASM_TOOLS_EXPECT_VERSION:-1.255.0}
-actual_tools_version=$(wasm-tools --version | awk 'NR == 1 { print $2 }')
-if [[ "$actual_tools_version" != "$expected_tools_version" ]]; then
-  printf 'wasm-tools version mismatch: expected %s, got %s\n' \
-    "$expected_tools_version" "$actual_tools_version" >&2
-  exit 1
-fi
-
 grep -Fq 'package do:g6-2-scalar-list-producer@0.1.0;' "$wit"
 grep -Fq 'consume-via-stream: async func(data: stream<list<u32>>) -> result<_, error-code>;' "$wit"
 grep -Fq 'export produce: async func(count: u32) -> result<_, error-code>;' "$wit"
@@ -49,13 +43,11 @@ for marker in \
   rg -q "^\\s*;; \\[$marker\\]$" "$wat"
 done
 
-wasm-tools parse "$wat" -o "$core_wasm"
-wasm-tools component embed "$wit" "$core_wasm" \
-  --world scalar-list-producer \
-  --features cm-async,cm-more-async-builtins \
-  -o "$embedded"
-wasm-tools component new --skip-validation "$embedded" -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" parse-core "$wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit" "$core_wasm" scalar-list-producer \
+  --features component-async -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features component-async
 
 marker_value() {
   local marker="$1"

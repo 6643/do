@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 tmp_root=${TMPDIR:-"$repo_root/.tmp/do-tmp"}
 mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/stream-mirror.XXXXXX")
@@ -20,11 +22,11 @@ DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build --p3-async-component \
   --p3-wit-output "$wit_path" "$fixture" -o "$core_wat"
 cmp "$wit_path" "$expected_wit"
 
-wasm-tools parse "$core_wat" -o "$core_wasm"
-wasm-tools validate --features gc,cm-async,cm-more-async-builtins "$core_wasm"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+"$toolchain_bin" validate-core "$core_wasm"
 TMPDIR="$tmp_root" bash "$repo_root/examples/p3-runtime/assemble_async_component.sh" \
   "$wit_path" "$core_wasm" stream-mirror-probe "$component_path"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component_path"
+"$toolchain_bin" validate-component "$component_path" --features component-async
 
 grep -Fq '[stream-mirror-source-read]' "$core_wat"
 grep -Fq '[stream-mirror-writer-write]' "$core_wat"

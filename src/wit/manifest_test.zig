@@ -28,6 +28,35 @@ const resource_source =
     \\world probe { import api; }
 ;
 
+const map_source =
+    \\package demo:map-manifest@1.0.0;
+    \\
+    \\interface api {
+    \\  lookup: func(values: map<string, u32>) -> map<u32, string>;
+    \\}
+    \\
+    \\world probe { import api; }
+;
+
+test "manifest records map schema and pair-list ABI representation" {
+    var binding = try resolve.resolve_source(std.testing.allocator, map_source, "probe");
+    defer binding.deinit();
+
+    const source = try emit_manifest.render(std.testing.allocator, binding, "demo_map_manifest__api__probe.do");
+    defer std.testing.allocator.free(source);
+    try std.testing.expect(std.mem.indexOf(u8, source, "\"maps\":[") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "\"member\":\"api.lookup\",\"path\":\"param[0]\",\"key\":\"string\",\"value\":\"u32\",\"abi\":\"pair-list\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "\"path\":\"result\",\"key\":\"u32\",\"value\":\"string\",\"abi\":\"pair-list\"") != null);
+
+    var parsed = try manifest.parse(std.testing.allocator, source);
+    defer parsed.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 2), parsed.document.maps.len);
+    try std.testing.expectEqualStrings("param[0]", parsed.document.maps[0].path);
+    try std.testing.expectEqualStrings("string", parsed.document.maps[0].key);
+    try std.testing.expectEqualStrings("pair-list", parsed.document.maps[0].abi);
+    try manifest.validate_binding(std.testing.allocator, &parsed, binding);
+}
+
 const pinned_async_source =
     \\package do:generic-async-runtime-probe@0.1.0;
     \\

@@ -26,6 +26,34 @@ const bounded_text_marshal_wit =
     \\world probe { import api; }
 ;
 
+const unsupported_map_marshal_wit =
+    \\package demo:marshal-map@1.0.0;
+    \\
+    \\interface api {
+    \\  lookup: func(value: map<string, u32>) -> map<u32, string>;
+    \\}
+    \\
+    \\world probe { import api; }
+;
+
+test "WIT registry adapter converts map key and value types" {
+    var binding = try wit_resolve.resolve_source(std.testing.allocator, unsupported_map_marshal_wit, "probe");
+    defer binding.deinit();
+    const member = try wit_registry.find_value_member(&binding, "api", "lookup");
+
+    var lower = try marshal_registry.resolve_member_abi_type(std.testing.allocator, &member, .lower);
+    defer lower.deinit();
+    try std.testing.expectEqual(wit_types.AbiTypeKind.map, lower.kind());
+    try std.testing.expectEqual(wit_types.AbiTypeKind.text, lower.map_key().?.kind());
+    try std.testing.expectEqual(wit_types.ScalarKind.u32, lower.map_value().?.scalar_kind().?);
+
+    var lift = try marshal_registry.resolve_member_abi_type(std.testing.allocator, &member, .lift);
+    defer lift.deinit();
+    try std.testing.expectEqual(wit_types.AbiTypeKind.map, lift.kind());
+    try std.testing.expectEqual(wit_types.ScalarKind.u32, lift.map_key().?.scalar_kind().?);
+    try std.testing.expectEqual(wit_types.AbiTypeKind.text, lift.map_value().?.kind());
+}
+
 const bounded_scalar_record_marshal_wit =
     \\package demo:marshal-record@1.0.0;
     \\

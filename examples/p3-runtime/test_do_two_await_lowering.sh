@@ -2,8 +2,11 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-p3-two-await.XXXXXX")
 core_path="$tmp_dir/two-await.wat"
+core_wasm="$tmp_dir/two-await.core.wasm"
 wit_path="$tmp_dir/two-await.wit"
 embedded_path="$tmp_dir/two-await.embedded.wasm"
 component_path="$tmp_dir/two-await.component.wasm"
@@ -23,9 +26,10 @@ fi
 grep -Fq 'wait-for: async func(how-long: u64)' "$wit_path"
 grep -Fq 'wait-until: async func(when: u64)' "$wit_path"
 
-wasm-tools component embed "$wit_path" "$core_path" --world probe -o "$embedded_path"
-wasm-tools component new "$embedded_path" -o "$component_path"
-wasm-tools validate "$component_path"
+"$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit_path" "$core_wasm" probe -o "$embedded_path"
+"$toolchain_bin" new-component "$embedded_path" -o "$component_path"
+"$toolchain_bin" validate-component "$component_path"
 
 if ! command -v cc >/dev/null; then
   if ! command -v zig >/dev/null; then
@@ -55,6 +59,7 @@ for marker in \
 done
 
 literal_core_path="$tmp_dir/literal-two-await.wat"
+literal_core_wasm="$tmp_dir/literal-two-await.core.wasm"
 literal_wit_path="$tmp_dir/literal-two-await.wit"
 literal_embedded_path="$tmp_dir/literal-two-await.embedded.wasm"
 literal_component_path="$tmp_dir/literal-two-await.component.wasm"
@@ -71,6 +76,7 @@ if [ "$(grep -Fc 'i64.add' "$literal_core_path")" -lt 2 ]; then
   exit 1
 fi
 
-wasm-tools component embed "$literal_wit_path" "$literal_core_path" --world probe -o "$literal_embedded_path"
-wasm-tools component new "$literal_embedded_path" -o "$literal_component_path"
-wasm-tools validate "$literal_component_path"
+"$toolchain_bin" parse-core "$literal_core_path" -o "$literal_core_wasm"
+"$toolchain_bin" embed-component "$literal_wit_path" "$literal_core_wasm" probe -o "$literal_embedded_path"
+"$toolchain_bin" new-component "$literal_embedded_path" -o "$literal_component_path"
+"$toolchain_bin" validate-component "$literal_component_path"

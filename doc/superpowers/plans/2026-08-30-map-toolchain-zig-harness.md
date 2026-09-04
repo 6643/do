@@ -112,10 +112,12 @@
 
 ### Task 4: 接通 manifest、marshal registry 和 map ABI 生命周期测试
 
-当前状态（2026-08-30）：manifest/registry 的 map schema 与 pair-list 事实已
-落地并通过单元及标准回归；通用 map Component lowering 尚不存在，因此真实
-同步 lift、异步 copy、Stream 跨 poll 的运行时 gate 暂缓，避免把静态元数据
-误报为运行时能力。
+当前状态（2026-09-02）：manifest/registry 的 map schema 与 pair-list 事实已
+落地并通过单元及标准回归；`wit_abi_types` 与 bounded Core WAT
+lower/lift probe 已覆盖 `u32` key + `u32`/`text` value，并通过当前
+toolchain parse/validate。通用 map Component/WIT lowering 尚不存在，因此真实
+同步 lift、异步 copy、Stream 跨 poll 的运行时 gate 暂缓，避免把 bounded Core
+证据或静态元数据误报为运行时能力。
 
 **Files:**
 - Modify: `src/wit/marshal_registry.zig`
@@ -157,17 +159,19 @@
 
 - [ ] **Step 4: 实现四条生命周期路径。**
 
-  阻断：`src/build/wit_abi_types.zig` 和当前 marshal WAT emitter 没有通用
-  map/pair-list ABI 节点与构造路径。当前 registry 对 map 明确返回
-  `UnsupportedWitMarshalShape`；在新增 ABI lowering、边界拷贝和 cleanup
+  阻断：`src/build/wit_abi_types.zig` 与 bounded Core WAT emitter 已有受限
+  map/pair-list 节点和构造 probe，但当前 marshal registry/Component route
+  尚无通用 map lowering。当前 registry 对未支持 shape 明确返回
+  `UnsupportedWitMarshalShape`；在补齐通用 ABI lowering、边界拷贝和 cleanup
   authority 之前不得创建通过型 runtime gate。
 
   fixture 覆盖同步输入、同步 result lift、async input copy、Stream 跨 poll owned buffer；每条路径都要求错误、取消、drop 和 Store disposal 只释放一次。
 
 - [ ] **Step 5: 运行 focused map gate。**
 
-  依赖 Step 4；目前仅验证 wasm-tools 1.258.0 能解析 map WIT 并生成
-  pair-list 形态的 component metadata，尚无 Do map runtime 结果证据。
+  依赖 Step 4；目前仅验证 bounded Core WAT 的 lower/lift 产物和 map WIT
+  pair-list metadata 能由 wasm-tools 1.258.0 解析/验证，尚无 Do map
+  Component runtime 结果证据。
 
   Run: `bash examples/p3-runtime/test_wit_map_lifetime.sh`
 
@@ -195,9 +199,11 @@
 
 - [x] **Step 2: 运行失败测试。**
 
-  Run: `cd src && zig test build/test/toolchain_adapter_test.zig`
+  Run: `cd src && zig test main.zig --test-filter 'toolchain adapter'`
 
-  Expected: adapter API 尚未存在时失败。
+  Expected: adapter API 尚未存在时失败；测试通过 `main.zig` 聚合入口加载，
+  以遵守 Zig 0.16 的模块路径边界（直接执行
+  `build/test/toolchain_adapter_test.zig` 会拒绝其父目录导入）。
 
 - [x] **Step 3: 写单一 lock。**
 
@@ -217,7 +223,7 @@
 
 - [x] **Step 7: 运行 adapter focused gates。**
 
-  Run: `cd src && zig test build/test/toolchain_adapter_test.zig && ../bin/do-toolchain probe`
+  Run: `cd src && zig test main.zig --test-filter 'toolchain' && ../bin/do-toolchain probe`
 
   Expected: probe 输出当前版本、hash 和 capability JSON；错误版本、错误 hash、缺少 capability 均以非零退出结束。
 
@@ -704,15 +710,50 @@ core shims 和 component-input shims）已改用 `bin/do-toolchain parse-core`�
   该 checkpoint 闭合 Task 8 Step 3；Task 4 map runtime 仍独立受通用
   map/pair-list ABI lowering 阻断。
 
-- [ ] **Step 4: 保留或删除 Shell 启动入口。**
+- [x] **Step 4: 保留或删除 Shell 启动入口。**
+
+  **实施 checkpoint (2026-09-01 first auxiliary batch):** Zig harness 新增
+  table-driven `CLI and tool matrix`、`external dependency negative matrix` 与
+  `socket ABI matrix`。它们分别覆盖 `wasi_bind_manifest`、CLI output-order/
+  strict-arg、缺失 `wasm-tools`/`node` 诊断，以及四个 socket ABI WAT 生成与
+  Node marker 校验；均通过统一 Zig process/temp-dir helpers。fresh
+  `zig build test --summary all` 为 `12/12` steps、`35/35` tests。该批次仍是
+  Step 4 的中间 checkpoint：module-boundary/generated-text、compile-only
+  WASI expectations、`RUN_GC_CORE` 对等入口和逐 fixture Shell/Zig 差异报告
+  尚未完成，故 `run_tests.sh` 不删除或压缩。
 
   将 `run_tests.sh` 缩减为调用 `cd src && zig build test` 的薄入口；当 CI 和文档均改用 Zig 入口后删除重复 Shell 逻辑。不得修改 `.deps/wit-bindgen`。
 
-- [ ] **Step 5: 每批运行对等性验证。**
+  **实施 checkpoint (2026-09-02):** 对等报告确认后，
+  `src/build/test/run_tests.sh` 已缩减为只进入 `src` 并执行
+  `zig build test --summary all` 的薄入口；`RUN_WASM`、`RUN_GC_CORE`、
+  module-boundary/generated-text、CLI/tool 负例、compile-only WASI、socket
+  ABI、structural 与 Rust lifecycle 均由 Zig harness 的显式 cases 编排。
+  `check_run_tests_entrypoint.sh` 锁定 cwd、参数、cache 环境和 opt-in 变量
+  继承。旧 Shell fixture runner 作为 Step 5 的 pre-cutover baseline 保留在
+  parity report，不再作为 active runner；`SKIP_BUILD` 不再控制该薄入口。
+
+- [x] **Step 5: 每批运行对等性验证。**
 
   Run: `bash <old-gate>`（迁移前保存的基线）与 `cd src && zig build test --summary all`。
 
   Expected: 两者对同一 fixture 的退出码、错误分类、WAT/WIT marker、Rust lifecycle marker 一致；差异必须记录为明确的契约修订。
+
+  **实施 checkpoint (2026-09-02):** Shell 与 Zig 在同一 checkout、同一
+  current-only toolchain 下各产生 1,443 条 fixture 记录。Shell
+  `SKIP_BUILD=1 bash src/build/test/run_tests.sh` 退出码为 0，汇总为
+  `pass=1446 fail=0 skip=3`；`DO_HARNESS_FIXTURE_REPORT=1 zig build test
+  --summary all` 退出码为 0，`12/12` steps、`35/35` tests。将 Shell
+  `PASS`/`SKIP`、`.do`/`.json` 后缀和 `check multi` 特例归一化后，11 个
+  fixture 类别逐行 `comm -3` 差异为 0。报告位于
+  `.superpowers/sdd/2026-08-30-map-toolchain-zig-harness/task-8-step4-5-parity-report.md`。
+  期间修正 Zig harness 在 `.compiled_must_pass` 成功后错误报告 `skip` 的
+  状态契约，并增加回归测试；两条入口现在保留相同的 182 pass、3 skip
+  `ok` fixture 状态。
+
+  该报告中的 Shell 汇总是切换前保存的 baseline；切换后由
+  `check_run_tests_entrypoint.sh` 验证薄入口契约，完整 active 回归由 Task 9
+  Step 3 重新执行。
 
 ### Task 9: 完成 active 文档、门禁和发布回归
 
@@ -730,26 +771,43 @@ core shims 和 component-input shims）已改用 `bin/do-toolchain parse-core`�
 - Consumes: Tasks 1–8 的 lock、probe JSON、map lifecycle evidence、Zig harness 报告和 Rust 48.0.1 结果。
 - Produces: active 文档与实现一致、升级可回滚、current-only 和 map lifecycle 门禁闭环。
 
-- [ ] **Step 1: 添加集中式 active gate。**
+- [x] **Step 1: 添加集中式 active gate。**
 
   `check_toolchain_adapter.sh` 只检查 lock identity、adapter probe、active raw command scan 和旧版 executable-path 引用；历史 `doc/` 与 dated plan 不参与 raw scan。
 
-- [ ] **Step 2: 同步 active 文档。**
+- [x] **Step 2: 同步 active 文档。**
 
   记录 map 是否支持、pair-list 只是 ABI 表示、operation lifetime、Zig test 入口、Rust runner 保留原因和 current-only 版本；删除 active route 对旧版本的要求，不改历史证据。
 
-- [ ] **Step 3: 运行完整验证。**
+- [x] **Step 3: 运行完整验证。**
 
-  Run: `cd src && zig build test --summary all`; `./src/build/test/run_tests.sh`; `bash src/build/test/check_toolchain_adapter.sh`; `git diff --check`; `cargo test --locked --manifest-path examples/p3-runtime/rust-host-runner/Cargo.toml`。
+  Run: `cd src && zig build test --summary all`; `./src/build/test/run_tests.sh`; `RUN_WASM=1 ./src/build/test/run_tests.sh`; `RUN_GC_CORE=1 ./src/build/test/run_tests.sh`; `./src/build/test/run_release_smoke.sh`; `bash src/build/test/check_toolchain_adapter.sh`; `bash src/build/test/check_run_tests_entrypoint.sh`; `git diff --check`; `CC=examples/p3-runtime/rust-host-runner/zig-cc.sh CXX=examples/p3-runtime/rust-host-runner/zig-cc.sh CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=examples/p3-runtime/rust-host-runner/zig-cc.sh cargo test --locked --manifest-path examples/p3-runtime/rust-host-runner/Cargo.toml`。
 
   Expected: 编译器回归、map focused tests、Component assembly、Rust/Wasmtime lifecycle、current-only adapter 和 Shell-to-Zig 对等性全部通过；任何失败保留原始输出并按 P0/P1/P2/P3 分级。
 
-- [ ] **Step 4: 形成回滚点。**
+  当前主机未安装名为 `cc` 的系统 linker，因此未设置环境变量的裸
+  `cargo test --locked` 会在 Wasmtime build script 阶段以 `linker 'cc' not
+  found` 退出 101；项目已有的 `zig-cc.sh` 等价 linker 环境通过完整 Cargo
+  测试。该差异属于验证环境前提，不改变 Rust runner 契约，也不写入全局
+  Cargo 配置。
 
-  回滚只恢复 `toolchain/toolchain.lock.json`、adapter 和 harness 入口；不得通过恢复旧 compiler semantic code 来掩盖工具链或 runtime failure。
+- [x] **Step 4: 形成回滚点。**
 
-- [ ] **Step 5: 交付前检查工作区。**
+  回滚边界记录于
+  `.superpowers/sdd/2026-08-30-map-toolchain-zig-harness/task-9-step4-rollback-checkpoint.md`。
+  回滚只恢复 `toolchain/toolchain.lock.json`、adapter 和 harness 入口；不得
+  通过恢复旧 compiler semantic code 来掩盖工具链或 runtime failure。
+
+- [x] **Step 5: 交付前检查工作区。**
 
   Run: `git status --short`, `git diff --stat`, `git diff --check`。
 
   Expected: 只包含本计划允许的规格、adapter、map、harness、active gate 和文档变更；现有未相关 dirty 改动保持原状。
+
+  **实施 checkpoint (2026-09-02):** fresh `git status --short
+  --untracked-files=all`、`git diff --stat` 与 `git diff --check` 完成。当前
+  工作区共有 216 个 tracked diff paths 和 68 个 expected untracked source/
+  spec/fixture paths，均位于本仓库计划涉及的 compiler/WIT/adapter/harness/
+  runtime/docs 范围；未发现 target、`.zig-cache`、`.tmp`、`.wasm`、`.o`、
+  `.rlib` 或 `.rmeta` 等生成物进入未跟踪集合。既有 dirty 改动保持不变，未
+  执行 broad reset/checkout/clean。

@@ -3,6 +3,8 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 do_bin=${DO_BIN:-"$repo_root/bin/do"}
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
 tmp_root=${TMPDIR:-"$repo_root/.tmp/do-tmp"}
 mkdir -p "$tmp_root"
@@ -18,6 +20,7 @@ component="$tmp_dir/generated.component.wasm"
 bin=do-p3-g6-2-c-min-list-resource-producer-abi
 
 test -x "$do_bin"
+test -x "$toolchain_bin"
 test -f "$source"
 test -f "$runner_dir/Cargo.toml"
 
@@ -33,11 +36,11 @@ grep -Fq '[producer-list-transfer]' "$wat"
 grep -Fq '[producer-child-before-parent-cleanup]' "$wat"
 grep -Fq 'export produce: async func(mode: u32)' "$wit"
 
-wasm-tools parse "$wat" -o "$core_wasm"
-wasm-tools component embed "$wit" "$core_wasm" \
-  --world c-min-producer --features cm-async,cm-more-async-builtins -o "$embedded"
-wasm-tools component new --skip-validation "$embedded" -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" parse-core "$wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit" "$core_wasm" c-min-producer \
+  --features component-async -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features component-async
 
 if ! command -v cc >/dev/null 2>&1; then
   export CC="$runner_dir/zig-cc.sh"
@@ -102,11 +105,11 @@ sed '/;; \[mode-before-transfer\]/a\
     i32.const 0\
     call $cleanup\
     return' "$wat" >"$cancel_wat"
-wasm-tools parse "$cancel_wat" -o "$cancel_core"
-wasm-tools component embed "$wit" "$cancel_core" \
-  --world c-min-producer --features cm-async,cm-more-async-builtins -o "$cancel_embedded"
-wasm-tools component new --skip-validation "$cancel_embedded" -o "$cancel_component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$cancel_component"
+"$toolchain_bin" parse-core "$cancel_wat" -o "$cancel_core"
+"$toolchain_bin" embed-component "$wit" "$cancel_core" c-min-producer \
+  --features component-async -o "$cancel_embedded"
+"$toolchain_bin" new-component "$cancel_embedded" -o "$cancel_component"
+"$toolchain_bin" validate-component "$cancel_component" --features component-async
 cancel_output=$(cargo run --quiet --locked --manifest-path "$runner_dir/Cargo.toml" \
   --bin "$bin" -- "$cancel_component" cancel-before-transfer)
 grep -Fq 'mode=cancel-before-transfer result=Some((Ok(()),)) entries=[]' <<<"$cancel_output"

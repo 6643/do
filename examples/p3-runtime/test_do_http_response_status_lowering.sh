@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 do_bin="$repo_root/bin/do"
 fixture="$repo_root/examples/p3-runtime/http-response-status.do"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-p3-http-response-status.XXXXXX")
@@ -23,11 +25,11 @@ grep -Fq '(func $run (param $response i32) (result i32)' "$core_wat"
 grep -Fq 'get-status-code: func() -> u16' "$wit"
 grep -Fq 'run: func(response: own<response>) -> u16' "$wit"
 
-wasm-tools parse "$core_wat" -o "$core_wasm"
-wasm-tools component embed "$wit" "$core_wasm" --world http-status-probe -o "$embedded"
-wasm-tools component new "$embedded" -o "$component"
-wasm-tools validate "$component"
-wasm-tools component wit "$component" > "$component_wit"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit" "$core_wasm" http-status-probe -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component"
+"$toolchain_bin" component-wit "$component" > "$component_wit"
 
 grep -Fq 'import wasi:http/types@0.3.0-rc-2025-09-16;' "$component_wit"
 grep -Fq 'export wasi:http/probe@0.3.0-rc-2025-09-16;' "$component_wit"

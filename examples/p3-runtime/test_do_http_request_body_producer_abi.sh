@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 wit="$repo_root/examples/p3-runtime/wit/http-request-body-producer-probe.wit"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-p3-http-request-body-producer-abi.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
@@ -155,18 +157,18 @@ for import_name in \
   grep -Fq "\"$import_name\"" "$core_wat"
 done
 
-wasm-tools parse "$core_wat" -o "$core_wasm"
-wasm-tools component embed "$wit_dir" "$core_wasm" \
-  --world http-request-body-producer-probe -o "$embedded"
-wasm-tools component new "$embedded" -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit_dir" "$core_wasm" \
+  http-request-body-producer-probe -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features component-async
 
 sed 's/\[stream-new-0\]write-via-stream/[stream-new-0]wrong-stream/' \
   "$core_wat" >"$wrong_wat"
-wasm-tools parse "$wrong_wat" -o "$wrong_wasm"
-wasm-tools component embed "$wit_dir" "$wrong_wasm" \
-  --world http-request-body-producer-probe -o "$wrong_embedded"
-if wasm-tools component new "$wrong_embedded" -o "$wrong_component" >"$wrong_output" 2>&1; then
+"$toolchain_bin" parse-core "$wrong_wat" -o "$wrong_wasm"
+"$toolchain_bin" embed-component "$wit_dir" "$wrong_wasm" \
+  http-request-body-producer-probe -o "$wrong_embedded"
+if "$toolchain_bin" new-component "$wrong_embedded" -o "$wrong_component" >"$wrong_output" 2>&1; then
   printf 'unregistered root stream import unexpectedly assembled\n' >&2
   exit 1
 fi

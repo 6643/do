@@ -68,6 +68,16 @@ const source_wit =
     \\world probe { import api; }
 ;
 
+const map_source_wit =
+    \\package demo:marshal-route-map@1.0.0;
+    \\
+    \\interface api {
+    \\  lookup: func(value: map<u32, u32>) -> map<u32, u32>;
+    \\}
+    \\
+    \\world probe { import api; }
+;
+
 test "component marshal route resolves a parser-backed member" {
     const wat = try emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
         .source = source_wit,
@@ -85,4 +95,50 @@ test "component marshal route resolves a parser-backed member" {
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-route/api@1.0.0") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(result i32)") != null);
+}
+
+test "component marshal route resolves a parser-backed map member" {
+    const measured = marshal.MeasuredNode{
+        .layout = .{ .map = .{
+            .pointer_offset = 0,
+            .length_offset = 4,
+            .element_byte_size = 8,
+            .element_stride = 8,
+            .element_alignment = 4,
+            .key = .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+            .value = .{ .offset = 4, .byte_size = 4, .alignment = 4 },
+            .capacity = 2,
+            .accepted_lengths = &.{ 0, 1, 2 },
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .scalar = .{ .offset = 4, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+        },
+    };
+
+    const lower = try emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = map_source_wit,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "lookup",
+        .direction = .lower,
+        .measured = measured,
+    });
+    defer std.testing.allocator.free(lower);
+    try std.testing.expect(std.mem.indexOf(u8, lower, "demo:marshal-route-map/api@1.0.0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower, "(param $input (ref null $do_map))") != null);
+
+    const lift = try emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = map_source_wit,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "lookup",
+        .direction = .lift,
+        .measured = measured,
+    });
+    defer std.testing.allocator.free(lift);
+    try std.testing.expect(std.mem.indexOf(u8, lift, "demo:marshal-route-map/api@1.0.0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lift, "(result (ref null $do_map))") != null);
 }

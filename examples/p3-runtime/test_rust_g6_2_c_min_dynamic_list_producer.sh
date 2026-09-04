@@ -3,6 +3,8 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 do_bin=${DO_BIN:-"$repo_root/bin/do"}
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
 tmp_root=${TMPDIR:-"$repo_root/.tmp/do-tmp"}
 mkdir -p "$tmp_root"
@@ -18,6 +20,7 @@ component="$tmp_dir/generated.component.wasm"
 bin=do-p3-g6-2-c-min-dynamic-list-producer
 
 test -x "$do_bin"
+test -x "$toolchain_bin"
 test -f "$source"
 test -f "$runner_dir/Cargo.toml"
 
@@ -29,11 +32,11 @@ grep -Fq '[producer-list-transfer]' "$wat"
 grep -Fq '[producer-child-before-parent-cleanup]' "$wat"
 grep -Fq 'export produce: async func(count: u32)' "$wit"
 
-wasm-tools parse "$wat" -o "$core_wasm"
-wasm-tools component embed "$wit" "$core_wasm" \
-  --world dynamic-list-producer --features cm-async,cm-more-async-builtins -o "$embedded"
-wasm-tools component new --skip-validation "$embedded" -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" parse-core "$wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit" "$core_wasm" dynamic-list-producer \
+  --features component-async -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features component-async
 
 test -f "$runner_dir/src/bin/g6_2_c_min_dynamic_list_producer.rs"
 
@@ -128,11 +131,11 @@ build_variant() {
       ;;
   esac
 
-  wasm-tools parse "$variant" -o "$variant_core"
-  wasm-tools component embed "$wit" "$variant_core" \
-    --world dynamic-list-producer --features cm-async,cm-more-async-builtins -o "$variant_embedded"
-  wasm-tools component new --skip-validation "$variant_embedded" -o "$variant_component"
-  wasm-tools validate --features cm-async,cm-more-async-builtins "$variant_component"
+  "$toolchain_bin" parse-core "$variant" -o "$variant_core"
+  "$toolchain_bin" embed-component "$wit" "$variant_core" dynamic-list-producer \
+    --features component-async -o "$variant_embedded"
+  "$toolchain_bin" new-component "$variant_embedded" -o "$variant_component"
+  "$toolchain_bin" validate-component "$variant_component" --features component-async
   printf '%s\n' "$variant_component"
 }
 

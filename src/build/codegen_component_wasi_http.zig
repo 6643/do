@@ -1948,7 +1948,11 @@ fn emit_http_request_body_wat(allocator: std.mem.Allocator, plan: HttpRequestBod
         4,
         request_start,
     );
-    const request_wait = if (plan.await_body_completion) "    return" else immediate_completion;
+    const request_wait = if (plan.await_body_completion)
+        \\    local.get $subtask
+        \\    return
+    else
+        immediate_completion;
     wat = try replace_and_free(allocator, wat, "[immediate-completion]", request_wait);
     const body_future_event_handler = if (plan.await_body_completion)
         \\        local.get $event
@@ -4397,6 +4401,8 @@ test "HTTP request body plan accepts serialized source completion await" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "[async-lower][future-read-1]read-via-stream") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "call $start-body-completion") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "call $start-body-request") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat,
+        "    call $start-body-request\n    local.set $subtask\n    local.get $subtask\n    return") != null);
 }
 
 test "HTTP response body emitter creates the input future with the pinned type indexes" {

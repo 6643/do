@@ -1,0 +1,11 @@
+package demo:marshal-map-u32-u32@1.0.0;
+
+interface api {
+  write: func(value: map<u32, u32>);
+}
+
+world probe {
+  import api;
+  export run: func() -> u32;
+  export stats: func() -> u32;
+}

@@ -2,25 +2,17 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 tmp_root=${TMPDIR:-"$repo_root/.tmp/do-tmp"}
 mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/borrow-capability-matrix.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 
-expected_version=${WASM_TOOLS_EXPECT_VERSION:-1.255.0}
-wasm_tools=${WASM_TOOLS:-wasm-tools}
-tool_version=$("$wasm_tools" --version)
-printf 'wasm-tools=%s\n' "$tool_version"
-case "$tool_version" in
-  "wasm-tools $expected_version"*) ;;
-  *)
-    printf 'expected wasm-tools %s, got: %s\n' "$expected_version" "$tool_version" >&2
-    exit 1
-    ;;
-esac
+test -x "$toolchain_bin"
 
 printf '(module)\n' > "$tmp_dir/empty.wat"
-"$wasm_tools" parse "$tmp_dir/empty.wat" -o "$tmp_dir/empty.wasm"
+"$toolchain_bin" parse-core "$tmp_dir/empty.wat" -o "$tmp_dir/empty.wasm"
 
 write_wit() {
   local shape=$1
@@ -146,9 +138,9 @@ check_accepted() {
   local embedded="$tmp_dir/$shape.embedded.wasm"
   local component="$tmp_dir/$shape.component.wasm"
   write_wit "$shape"
-  "$wasm_tools" component embed "$tmp_dir/$shape.wit" "$tmp_dir/empty.wasm" \
-    --world "$world" -o "$embedded"
-  "$wasm_tools" component new "$embedded" -o "$component"
+  "$toolchain_bin" embed-component "$tmp_dir/$shape.wit" "$tmp_dir/empty.wasm" \
+    "$world" -o "$embedded"
+  "$toolchain_bin" new-component "$embedded" -o "$component"
   printf '%s=accepted\n' "$shape"
 }
 
@@ -157,8 +149,8 @@ check_rejected() {
   local world="borrow-$shape"
   local stderr_file="$tmp_dir/$shape.stderr"
   write_wit "$shape"
-  if "$wasm_tools" component embed "$tmp_dir/$shape.wit" "$tmp_dir/empty.wasm" \
-    --world "$world" -o "$tmp_dir/$shape.embedded.wasm" \
+  if "$toolchain_bin" embed-component "$tmp_dir/$shape.wit" "$tmp_dir/empty.wasm" \
+    "$world" -o "$tmp_dir/$shape.embedded.wasm" \
     >"$tmp_dir/$shape.stdout" 2>"$stderr_file"; then
     printf '%s unexpectedly accepted\n' "$shape" >&2
     exit 1

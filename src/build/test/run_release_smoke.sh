@@ -8,10 +8,11 @@ TEST_DIR="$ROOT_DIR/src/build/test"
 LIB_DIR="$TEST_DIR/lib"
 TMP_DIR="${DO_RELEASE_SMOKE_TMP_DIR:-$TEST_DIR/tmp/release_smoke}"
 DO_BIN="$ROOT_DIR/bin/do"
+TOOLCHAIN_BIN="${DO_TOOLCHAIN_BIN:-$ROOT_DIR/bin/do-toolchain}"
 ZIG_BIN="${ZIG_BIN:-$(command -v zig || true)}"
 ZIG_BIN="${ZIG_BIN:-/home/_/_/zig/zig}"
-WASM_TOOLS="${WASM_TOOLS:-$(command -v wasm-tools || true)}"
 NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$ROOT_DIR/toolchain/toolchain.lock.json}"
 
 BUILD_INPUT="$TEST_DIR/compile_ok/01_start_entry_valid.do"
 TEST_INPUT="$TEST_DIR/ok/01_path_get_single.do"
@@ -56,7 +57,7 @@ rm -f "$TMP_DIR"/* 2>/dev/null || true
 
 require_exec "$ZIG_BIN" "zig"
 require_exec "$NODE_BIN" "node"
-require_exec "$WASM_TOOLS" "wasm-tools"
+require_exec "$TOOLCHAIN_BIN" "do-toolchain"
 
 echo "[INFO] build ReleaseSmall compiler"
 (
@@ -103,7 +104,7 @@ if ! DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" test "$COMPILED_INPUT" --compiled -o "$com
 fi
 expect_empty_file "$compiled_stderr" "do test --compiled stderr"
 [[ -s "$compiled_wat" ]] || fail "do test --compiled output missing"
-"$WASM_TOOLS" parse "$compiled_wat" -o "$compiled_wasm" >"$TMP_DIR/compiled.parse.stdout" 2>"$TMP_DIR/compiled.parse.stderr" || {
+"$TOOLCHAIN_BIN" parse-core "$compiled_wat" -o "$compiled_wasm" >"$TMP_DIR/compiled.parse.stdout" 2>"$TMP_DIR/compiled.parse.stderr" || {
     cat "$TMP_DIR/compiled.parse.stderr" >&2
     fail "compiled wat parse"
 }

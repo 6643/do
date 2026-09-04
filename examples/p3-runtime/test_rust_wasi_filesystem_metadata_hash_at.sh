@@ -3,32 +3,20 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 fixture="$repo_root/src/build/test/compile_ok/520_wasi_filesystem_metadata_hash_at_component.do"
 wit="$repo_root/examples/p3-runtime/wit/wasi-filesystem-metadata-hash-at.wit"
 cancel_wit="$repo_root/examples/p3-runtime/wit/wasi-filesystem-metadata-hash-at-cancel.wit"
 core_wat="$repo_root/examples/p3-runtime/wasi-filesystem-metadata-hash-at.core.wat"
 cancel_core_wat="$repo_root/examples/p3-runtime/wasi-filesystem-metadata-hash-at-cancel.core.wat"
 runner_source="$runner_dir/src/bin/wasi_filesystem_metadata_hash_at.rs"
-wasm_tools=${WASM_TOOLS:-wasm-tools}
-expected_wasm_tools='wasm-tools 1.255.0 (76e20611d 2026-07-30)'
-expected_wasm_tools_sha256=6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013
 expected_wit_sha256=95e24b70eeed89407706c18a6e4cd13a8bc4dce72d1e56638436b03287d23412
 expected_cancel_wit_sha256=aca9c5933786a00a2dd20b1ad1ddbb6d0a79ab5b3bdbd5bd61e14b100a3b6e0a
 expected_core_wat_sha256=44e5d94d13676bf25326fc04969cfd758e01b6d77061829136f1c9f869e2e536
 expected_cancel_core_wat_sha256=c9681e8d68f17f06409cc423c24bc4c051c39263cecb2c5976e2f8385c0e9caa
 
-command -v "$wasm_tools" >/dev/null || {
-    printf 'missing executable: %s\n' "$wasm_tools" >&2
-    exit 1
-}
-[[ "$($wasm_tools --version)" == "$expected_wasm_tools" ]] || {
-    printf 'wasm-tools version mismatch\n' >&2
-    exit 1
-}
-[[ "$(sha256sum "$(command -v "$wasm_tools")" | awk '{print $1}')" == "$expected_wasm_tools_sha256" ]] || {
-    printf 'wasm-tools hash mismatch\n' >&2
-    exit 1
-}
+test -x "$toolchain_bin"
 
 check_sha() {
     local path=$1
@@ -79,11 +67,11 @@ build_component() {
     local core="$tmp_dir/$name.core.wasm"
     local embedded="$tmp_dir/$name.embedded.wasm"
     local component="$tmp_dir/$name.component.wasm"
-    "$wasm_tools" parse "$wat" -o "$core"
-    "$wasm_tools" component embed "$input_dir" "$core" --world "$world" \
-        --features cm-async,cm-more-async-builtins -o "$embedded"
-    "$wasm_tools" component new --skip-validation "$embedded" -o "$component"
-    "$wasm_tools" validate --features cm-async,cm-more-async-builtins "$component"
+    "$toolchain_bin" parse-core "$wat" -o "$core"
+    "$toolchain_bin" embed-component "$input_dir" "$core" "$world" \
+        --features component-async -o "$embedded"
+    "$toolchain_bin" new-component "$embedded" -o "$component"
+    "$toolchain_bin" validate-component "$component" --features component-async
     printf '%s\n' "$component"
 }
 

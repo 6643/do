@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 wit="$repo_root/examples/p3-runtime/wit/generic-async-scalar-probe.wit"
 core_wat="$repo_root/examples/p3-runtime/generic-async-scalar-probe.core.wat"
 runner_manifest="$repo_root/examples/p3-runtime/rust-host-runner/Cargo.toml"
@@ -53,12 +55,12 @@ if grep -Fq '"[async-lower]completion"' "$core_wat"; then
   exit 1
 fi
 
-wasm-tools parse "$core_wat" -o "$core_wasm"
-wasm-tools component embed "$wit" "$core_wasm" --world probe -o "$embedded"
-wasm-tools component new "$embedded" -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit" "$core_wasm" probe -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features component-async
 component_text="$tmp_dir/component.txt"
-wasm-tools print "$component" > "$component_text"
+"$toolchain_bin" print-component "$component" > "$component_text"
 grep -Fq '(type (;0;) (future u32))' "$component_text"
 grep -Fq '"[async-lower][future-read-0]completion"' "$component_text"
 grep -Fq '"[async-lower][future-cancel-read-0]completion"' "$component_text"

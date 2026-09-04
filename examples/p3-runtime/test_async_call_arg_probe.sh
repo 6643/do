@@ -2,26 +2,14 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 wit="$repo_root/examples/p3-runtime/wit/async-call-arg-probe.wit"
 core_wat="$repo_root/examples/p3-runtime/async-call-arg-probe-canonical.wat"
 
+test -x "$toolchain_bin"
 test -f "$wit"
 test -f "$core_wat"
-
-wasm_tools=${WASM_TOOLS:-wasm-tools}
-if [[ "$wasm_tools" == */* ]]; then
-  test -x "$wasm_tools"
-else
-  wasm_tools=$(command -v "$wasm_tools")
-fi
-
-expected_version='wasm-tools 1.255.0 (76e20611d 2026-07-30)'
-expected_sha256='6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013'
-
-actual_version=$($wasm_tools --version)
-test "$actual_version" = "$expected_version"
-actual_sha256=$(sha256sum "$wasm_tools" | awk '{print $1}')
-test "$actual_sha256" = "$expected_sha256"
 
 grep -Fq 'package do:async-call-arg-probe@0.1.0;' "$wit"
 grep -Fq 'work: async func(value: u32);' "$wit"
@@ -55,18 +43,17 @@ custom_wat="$tmp_dir/custom.wat"
 custom_wasm="$tmp_dir/custom.wasm"
 component="$tmp_dir/component.wasm"
 
-"$wasm_tools" parse "$core_wat" -o "$core_wasm"
-"$wasm_tools" component embed "$wit" \
-  --world probe --dummy-names legacy --async-callback -t > "$tmp_dir/dummy.wat"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+"$toolchain_bin" embed-component-template "$wit" probe > "$tmp_dir/dummy.wat"
 custom_line=$(grep '^  (@custom "component-type"' "$tmp_dir/dummy.wat" || true)
 test -n "$custom_line"
-"$wasm_tools" strip -a "$core_wasm" -o "$stripped_wasm"
-"$wasm_tools" print "$stripped_wasm" > "$stripped_wat"
+"$toolchain_bin" strip-core "$core_wasm" -o "$stripped_wasm"
+"$toolchain_bin" print-component "$stripped_wasm" > "$stripped_wat"
 sed '$d' "$stripped_wat" > "$custom_wat"
 printf '%s\n' "$custom_line" ')' >> "$custom_wat"
-"$wasm_tools" parse "$custom_wat" -o "$custom_wasm"
-"$wasm_tools" component new --skip-validation "$custom_wasm" -o "$component"
-"$wasm_tools" validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" parse-core "$custom_wat" -o "$custom_wasm"
+"$toolchain_bin" new-component "$custom_wasm" -o "$component"
+"$toolchain_bin" validate-component "$component"
 
 # A changed scalar width or parameter arity must fail before Component
 # assembly. The canonical Core import remains the measured one-u32 shape.
@@ -78,16 +65,15 @@ for shape in u64 two-params; do
   else
     sed -i 's/value: u32/value: u32, extra: u32/' "$mutated_wit"
   fi
-  "$wasm_tools" component embed "$mutated_wit" \
-    --world probe --dummy-names legacy --async-callback -t > "$tmp_dir/$shape.dummy.wat"
+  "$toolchain_bin" embed-component-template "$mutated_wit" probe > "$tmp_dir/$shape.dummy.wat"
   mutated_line=$(grep '^  (@custom "component-type"' "$tmp_dir/$shape.dummy.wat" || true)
   test -n "$mutated_line"
   mutated_wat="$tmp_dir/$shape.custom.wat"
   mutated_wasm="$tmp_dir/$shape.custom.wasm"
   sed '$d' "$stripped_wat" > "$mutated_wat"
   printf '%s\n' "$mutated_line" ')' >> "$mutated_wat"
-  "$wasm_tools" parse "$mutated_wat" -o "$mutated_wasm"
-  if "$wasm_tools" component new --skip-validation "$mutated_wasm" \
+  "$toolchain_bin" parse-core "$mutated_wat" -o "$mutated_wasm"
+  if "$toolchain_bin" new-component "$mutated_wasm" \
       -o "$tmp_dir/$shape.component.wasm" >"$tmp_dir/$shape.out" 2>"$tmp_dir/$shape.err"; then
     printf 'negative shape unexpectedly assembled: %s\n' "$shape" >&2
     exit 1
@@ -117,5 +103,5 @@ if [[ -n "${PROBE_COMPONENT_OUT:-}" ]]; then
   component_path=$PROBE_COMPONENT_OUT
 fi
 
-printf 'async-call arg probe: version=%s sha256=%s wit-sha256=%s frame-size=20 argument-offset=12 component=%s\n' \
-  "$actual_version" "$actual_sha256" "$wit_sha256" "$component_path"
+printf 'async-call arg probe: toolchain=adapter wit-sha256=%s frame-size=20 argument-offset=12 component=%s\n' \
+  "$wit_sha256" "$component_path"

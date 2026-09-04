@@ -454,6 +454,7 @@ fn parse_type(parser: *Parser) (ParseError || std.mem.Allocator.Error)!*model.Ty
     if (std.mem.eql(u8, name_token.lexeme, "future")) kind = .future;
     if (std.mem.eql(u8, name_token.lexeme, "stream")) kind = .stream;
     if (std.mem.eql(u8, name_token.lexeme, "tuple")) kind = .tuple;
+    if (std.mem.eql(u8, name_token.lexeme, "map")) kind = .map;
     if (std.mem.eql(u8, name_token.lexeme, "own")) kind = .own;
     if (std.mem.eql(u8, name_token.lexeme, "borrow")) kind = .borrow;
 

@@ -2,7 +2,10 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
+test -x "$toolchain_bin"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-p3-guest-stream-writer.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 core_path="$tmp_dir/guest-stream-writer.wat"
@@ -15,7 +18,7 @@ DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build --p3-async-component \
     "$repo_root/examples/p3-runtime/cli-stream-stdout-guest-producer.do" \
     -o "$core_path"
 sed -i '/^  export produce:/i\\  export byte-budget-limit: func(limit: s64) -> s32;' "$wit_path"
-wasm-tools parse "$core_path" -o "$core_wasm"
+"$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
 bash "$repo_root/examples/p3-runtime/assemble_async_component.sh" \
     "$wit_path" "$core_wasm" stream-stdout-probe "$component"
 

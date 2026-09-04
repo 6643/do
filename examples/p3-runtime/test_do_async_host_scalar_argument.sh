@@ -3,26 +3,14 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 do_bin=${DO_BIN:-"$repo_root/bin/do"}
-current_wasm_tools=${WASM_TOOLS:-wasm-tools}
+toolchain_bin=${DO_TOOLCHAIN_BIN:-"$repo_root/bin/do-toolchain"}
 source="$repo_root/examples/p3-runtime/async-host-scalar-argument.do"
 wit_snapshot="$repo_root/examples/p3-runtime/wit/async-call-arg-probe.wit"
 
 test -x "$do_bin"
+test -x "$toolchain_bin"
 test -f "$source"
 test -f "$wit_snapshot"
-
-resolve_tool() {
-    local requested=$1
-    if [[ "$requested" == */* ]]; then
-        test -x "$requested"
-        printf '%s\n' "$requested"
-    else
-        command -v "$requested"
-    fi
-}
-
-current_wasm_tools=$(resolve_tool "$current_wasm_tools")
-test "$("$current_wasm_tools" --version)" = "wasm-tools 1.255.0 (76e20611d 2026-07-30)"
 
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-async-host-scalar-argument.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
@@ -56,13 +44,12 @@ if grep -Fq '[task-return]helper' "$core_wat" || grep -Fq '[async-lift]helper' "
     exit 1
 fi
 
-# Current wasm-tools route.
-"$current_wasm_tools" parse "$core_wat" -o "$core_wasm"
-"$current_wasm_tools" component embed "$wit" "$core_wasm" \
-    --world probe --features cm-async,cm-more-async-builtins -o "$embedded"
-"$current_wasm_tools" component new --skip-validation "$embedded" -o "$component"
-"$current_wasm_tools" validate --features cm-async,cm-more-async-builtins "$component"
+# Current-only toolchain adapter route.
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit" "$core_wasm" probe -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component"
 
 test -s "$component"
 printf 'do async host scalar argument Component gate passed wasm-tools=%s frame=20 arg-slot=12 value=7\n' \
-    "$current_wasm_tools"
+    "$toolchain_bin"

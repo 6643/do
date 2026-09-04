@@ -35,7 +35,7 @@ pub fn emit_sync_marshal_module(
     try validate_config(allocator, plan, config, &memory_plan);
     const uses_linear_memory = switch (memory_plan.copy_shape) {
         .scalar => false,
-        .text_bytes, .list_elements => true,
+        .text_bytes, .list_elements, .map_entries => true,
         .record_fields => memory_plan.direction == .lift or
             memory_plan.record_indirect != null or
             memory_plan.record_managed_text_lower or
@@ -46,7 +46,7 @@ pub fn emit_sync_marshal_module(
             memory_plan.record_managed_mixed_scalar_list_lower,
     };
     const uses_realloc = switch (memory_plan.copy_shape) {
-        .text_bytes, .list_elements => true,
+        .text_bytes, .list_elements, .map_entries => true,
         .record_fields => memory_plan.record_indirect != null or
             memory_plan.record_managed_text_lower or
             memory_plan.record_managed_scalar_list_lower or
@@ -66,6 +66,7 @@ pub fn emit_sync_marshal_module(
         try runtime_gc_wat.emit_bytes_type(allocator, &out);
         try runtime_gc_wat.emit_text_type(allocator, &out);
         if (memory_plan.element_core_type != null or
+            memory_plan.copy_shape == .map_entries or
             (memory_plan.managed_scalar_list_field != null and
                 memory_plan.managed_scalar_list_field.?.element_kind == .u32) or
             memory_plan.managed_scalar_list_pair_lower != null or
@@ -74,6 +75,13 @@ pub fn emit_sync_marshal_module(
             (memory_plan.direction == .lift and marshal_ops.record_contains_u32_list(&plan.root)))
         {
             try runtime_gc_wat.emit_u32_type(allocator, &out);
+        }
+        if (memory_plan.copy_shape == .map_entries) {
+            const map_value_type = try map_gc_value_array_type(plan);
+            if (std.mem.eql(u8, map_value_type, "$do_text_array")) {
+                try runtime_gc_wat.emit_managed_array_type(allocator, &out, "$do_text_array", "text", &.{});
+            }
+            try runtime_gc_wat.emit_map_type_for_value(allocator, &out, map_value_type);
         }
     }
     if (memory_plan.copy_shape == .record_fields) {
@@ -140,7 +148,7 @@ pub fn emit_sync_marshal_gc_support(
     try validate_config(allocator, plan, config, &memory_plan);
     const uses_linear_memory = switch (memory_plan.copy_shape) {
         .scalar => false,
-        .text_bytes, .list_elements => true,
+        .text_bytes, .list_elements, .map_entries => true,
         .record_fields => memory_plan.direction == .lift or
             memory_plan.record_indirect != null or
             memory_plan.record_managed_text_lower or
@@ -151,7 +159,7 @@ pub fn emit_sync_marshal_gc_support(
             memory_plan.record_managed_mixed_scalar_list_lower,
     };
     const uses_realloc = switch (memory_plan.copy_shape) {
-        .text_bytes, .list_elements => true,
+        .text_bytes, .list_elements, .map_entries => true,
         .record_fields => memory_plan.record_indirect != null or
             memory_plan.record_managed_text_lower or
             memory_plan.record_managed_scalar_list_lower or
@@ -194,6 +202,16 @@ fn marshal_heap_start(plan: *const marshal.SyncValuePlan) !u32 {
     const result_end = std.math.add(u32, root.offset, root.byte_size) catch return error.OffsetOverflow;
     const aligned_end = std.math.add(u32, result_end, 3) catch return error.OffsetOverflow;
     return @max(@as(u32, 16), aligned_end & ~@as(u32, 3));
+}
+
+fn map_gc_value_array_type(plan: *const marshal.SyncValuePlan) ![]const u8 {
+    if (plan.root.kind != .map or plan.root.children.len != 2) return error.UnsupportedMarshalShape;
+    const value = &plan.root.children[1];
+    return switch (value.kind) {
+        .scalar => if (value.scalar_kind == .u32) "$do_u32" else error.UnsupportedMarshalShape,
+        .text => "$do_text_array",
+        else => error.UnsupportedMarshalShape,
+    };
 }
 
 fn validate_config(
@@ -358,6 +376,7 @@ fn append_record_lower_core_types(
             .record => try append_record_lower_core_types(allocator, out, child),
             .text => try out.appendSlice(allocator, " i32 i32"),
             .list => try out.appendSlice(allocator, " i32 i32"),
+            .map => return error.UnsupportedMarshalShape,
         }
     }
 }
@@ -418,6 +437,7 @@ fn emit_record_type_recursive(
                     try append_fmt(allocator, out, " (field $field{[index]d} (ref null $do_bytes))", .{ .index = index });
                 }
             },
+            .map => return error.UnsupportedMarshalShape,
         }
     }
     try out.appendSlice(allocator, "))\n");
@@ -689,6 +709,88 @@ test "marshal module wrapper uses an indirect result area for u32 list lift" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lift (func (param i32)))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "local.get $__result_area") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 4") != null);
+}
+
+test "marshal module wrapper assembles scalar map lower and lift types" {
+    var key = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer key.deinit();
+    var value = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer value.deinit();
+    var map = try @import("wit_abi_types.zig").AbiType.map(std.testing.allocator, &key, &value);
+    defer map.deinit();
+
+    const lower_plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-map@1.0.0",
+        .world = "probe",
+        .member = "api.lookup",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    }, &map, .lower, .{
+        .layout = .{ .map = .{
+            .pointer_offset = 0,
+            .length_offset = 4,
+            .element_byte_size = 8,
+            .element_stride = 8,
+            .element_alignment = 4,
+            .key = .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+            .value = .{ .offset = 4, .byte_size = 4, .alignment = 4 },
+            .capacity = 4,
+            .accepted_lengths = &.{ 0, 1, 4 },
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .scalar = .{ .offset = 4, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+        },
+    });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, lower_plan);
+    const lower_wat = try emit_sync_marshal_module(std.testing.allocator, &lower_plan, .{
+        .direction = .lower,
+        .canonical_import_module = "demo:marshal-map/api@1.0.0",
+        .canonical_import_name = "lookup",
+    });
+    defer std.testing.allocator.free(lower_wat);
+    try std.testing.expect(std.mem.indexOf(u8, lower_wat, "(type $do_map") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower_wat, "(type $do_u32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower_wat, "(type $canonical_lower (func (param i32 i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower_wat, "(param $input (ref null $do_map))") != null);
+
+    const lift_plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-map@1.0.0",
+        .world = "probe",
+        .member = "api.lookup",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    }, &map, .lift, .{
+        .layout = .{ .map = .{
+            .pointer_offset = 0,
+            .length_offset = 4,
+            .element_byte_size = 8,
+            .element_stride = 8,
+            .element_alignment = 4,
+            .key = .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+            .value = .{ .offset = 4, .byte_size = 4, .alignment = 4 },
+            .capacity = 4,
+            .accepted_lengths = &.{ 0, 1, 4 },
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .scalar = .{ .offset = 4, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+        },
+    });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, lift_plan);
+    const lift_wat = try emit_sync_marshal_module(std.testing.allocator, &lift_plan, .{
+        .direction = .lift,
+        .canonical_import_module = "demo:marshal-map/api@1.0.0",
+        .canonical_import_name = "lookup",
+    });
+    defer std.testing.allocator.free(lift_wat);
+    try std.testing.expect(std.mem.indexOf(u8, lift_wat, "(type $do_map") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lift_wat, "(type $canonical_lift (func (param i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lift_wat, "(result (ref null $do_map))") != null);
 }
 
 test "marshal module wrapper declares scalar record lift type" {

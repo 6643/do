@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 wit="$repo_root/examples/p3-runtime/wit/wasi-filesystem-stat.wit"
 cancel_wit="$repo_root/examples/p3-runtime/wit/wasi-filesystem-stat-cancel.wit"
 clock_wit="$repo_root/examples/p3-runtime/wit/wasi-clocks-wall-clock.wit"
@@ -9,18 +11,10 @@ upstream_wit="$repo_root/src/build/p3_wit/wasi-http-0.3.0-rc-2025-09-16/deps/fil
 core_wat="$repo_root/examples/p3-runtime/wasi-filesystem-stat.core.wat"
 cancel_core_wat="$repo_root/examples/p3-runtime/wasi-filesystem-stat-cancel.core.wat"
 
-expected_current_version='wasm-tools 1.255.0 (76e20611d 2026-07-30)'
-expected_current_sha256=6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013
 expected_clock_sha256=6c6d8706c22c3f7548cfddf87cd176d37a6accc4eb8cc03d7b4fb2eaa06019e6
 expected_mirror_sha256=4f5ee39cad9280cdcd308550978ba0006503f5952d61304fc5130a74df5ea121
 expected_cancel_mirror_sha256=caf50d3fb78cca697ed05cbe02aa86794359ba1e8d576ba5156857d2ffb5af28
 expected_upstream_sha256=8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f
-
-current_wasm_tools=wasm-tools
-command -v "$current_wasm_tools" >/dev/null || {
-  printf 'missing executable: %s\n' "$current_wasm_tools" >&2
-  exit 1
-}
 
 for path in "$wit" "$cancel_wit" "$clock_wit" "$upstream_wit"; do
   [[ -f "$path" ]] || {
@@ -35,19 +29,6 @@ for path in "$core_wat" "$cancel_core_wat"; do
     exit 1
   }
 done
-
-actual_current_version=$($current_wasm_tools --version)
-actual_current_sha256=$(sha256sum "$(command -v "$current_wasm_tools")" | awk '{print $1}')
-[[ "$actual_current_version" == "$expected_current_version" ]] || {
-  printf 'wasm-tools version mismatch: expected %s, got %s\n' \
-    "$expected_current_version" "$actual_current_version" >&2
-  exit 1
-}
-[[ "$actual_current_sha256" == "$expected_current_sha256" ]] || {
-  printf 'wasm-tools hash mismatch: expected %s, got %s\n' \
-    "$expected_current_sha256" "$actual_current_sha256" >&2
-  exit 1
-}
 
 [[ "$(sha256sum "$clock_wit" | awk '{print $1}')" == "$expected_clock_sha256" ]] || {
   printf 'wall-clock WIT mirror hash changed\n' >&2
@@ -83,12 +64,10 @@ cp "$cancel_wit" "$tmp_dir/cancel/wasi-filesystem-stat-cancel.wit"
 cp "$clock_wit" "$tmp_dir/regular/deps/clocks/wall-clock.wit"
 cp "$clock_wit" "$tmp_dir/cancel/deps/clocks/wall-clock.wit"
 
-"$current_wasm_tools" component embed "$tmp_dir/regular" --world stat-probe \
-  --dummy-names legacy --async-callback \
-  --features cm-async,cm-more-async-builtins -t >"$tmp_dir/current-regular.wat"
-"$current_wasm_tools" component embed "$tmp_dir/cancel" --world stat-cancel-probe \
-  --dummy-names legacy --async-callback \
-  --features cm-async,cm-more-async-builtins -t >"$tmp_dir/current-cancel.wat"
+"$toolchain_bin" embed-component-template "$tmp_dir/regular" stat-probe \
+  --features component-async >"$tmp_dir/current-regular.wat"
+"$toolchain_bin" embed-component-template "$tmp_dir/cancel" stat-cancel-probe \
+  --features component-async >"$tmp_dir/current-cancel.wat"
 
 require_text() {
   local file="$1"
@@ -159,10 +138,10 @@ require_core_layout "$cancel_core_wat"
 
 core_tmp="$tmp_dir/stat.core.wasm"
 cancel_core_tmp="$tmp_dir/stat-cancel.core.wasm"
-"$current_wasm_tools" parse "$core_wat" -o "$core_tmp"
-"$current_wasm_tools" validate --features cm-async,cm-more-async-builtins "$core_tmp"
-"$current_wasm_tools" parse "$cancel_core_wat" -o "$cancel_core_tmp"
-"$current_wasm_tools" validate --features cm-async,cm-more-async-builtins "$cancel_core_tmp"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_tmp"
+"$toolchain_bin" validate-core "$core_tmp"
+"$toolchain_bin" parse-core "$cancel_core_wat" -o "$cancel_core_tmp"
+"$toolchain_bin" validate-core "$cancel_core_tmp"
 
 assemble_component() {
   local input_dir="$1"
@@ -174,12 +153,11 @@ assemble_component() {
   local component_wat="$tmp_dir/$name.component.wat"
   local component_wit="$tmp_dir/$name.component.wit"
 
-  "$current_wasm_tools" component embed "$input_dir" "$core" --world "$world" \
-    --features cm-async,cm-more-async-builtins -o "$embedded"
-  "$current_wasm_tools" component new --skip-validation "$embedded" -o "$component"
-  "$current_wasm_tools" validate --features cm-async,cm-more-async-builtins "$component"
-  "$current_wasm_tools" print "$component" >"$component_wat"
-  "$current_wasm_tools" component wit "$component" >"$component_wit"
+  "$toolchain_bin" embed-component "$input_dir" "$core" "$world" -o "$embedded"
+  "$toolchain_bin" new-component "$embedded" -o "$component"
+  "$toolchain_bin" validate-component "$component" --features component-async
+  "$toolchain_bin" print-component "$component" >"$component_wat"
+  "$toolchain_bin" component-wit "$component" >"$component_wit"
 
   require_text "$component_wat" '"[async-lower][method]descriptor.stat"'
   require_text "$component_wat" '"[resource-drop]descriptor"'
@@ -208,7 +186,7 @@ assemble_component "$tmp_dir/regular" stat-probe "$core_tmp" stat
 assemble_component "$tmp_dir/cancel" stat-cancel-probe "$cancel_core_tmp" stat-cancel
 
 printf 'D2 filesystem descriptor.stat WIT ABI capability passed\n'
-printf 'wasm-tools=%s sha256=%s\n' "$actual_current_version" "$actual_current_sha256"
+printf 'toolchain-adapter=current-only\n'
 printf 'clock-mirror-sha256=%s stat-mirror-sha256=%s cancel-mirror-sha256=%s upstream-sha256=%s\n' \
   "$expected_clock_sha256" "$expected_mirror_sha256" "$expected_cancel_mirror_sha256" "$expected_upstream_sha256"
 printf 'async-import=[async-lower][method]descriptor.stat core=(i32,i32)->i32\n'

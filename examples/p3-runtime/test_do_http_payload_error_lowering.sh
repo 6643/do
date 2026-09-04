@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 do_bin="$repo_root/bin/do"
 fixture="$repo_root/examples/p3-runtime/http-service.do"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
@@ -34,10 +36,10 @@ if rg -U -q 'i32\.const 38\n\s*i32\.eq\n\s*if unreachable end' "$core_wat"; then
   exit 1
 fi
 
-wasm-tools parse "$core_wat" -o "$core_wasm"
-wasm-tools component embed "$wit_dir" "$core_wasm" --world service -o "$embedded"
-wasm-tools component new "$embedded" -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit_dir" "$core_wasm" service -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features component-async
 
 if [[ "$delivery_mode" == pending || "$delivery_mode" == all ]]; then
   delivery=pending

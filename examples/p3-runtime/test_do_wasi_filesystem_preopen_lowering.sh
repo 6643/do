@@ -12,9 +12,9 @@ grep -Fq 'sync: func() -> result<_, error-code>' "$tmp_dir/preopen.wit"
 grep -Fq '[method]descriptor.open-at' "$tmp_dir/preopen.wat"
 grep -Fq '[resource-drop]descriptor' "$tmp_dir/preopen.wat"
 "$toolchain_bin" parse-core "$tmp_dir/preopen.wat" -o "$tmp_dir/preopen.wasm"
-"$toolchain_bin" embed-component "$tmp_dir/preopen.wit" "$tmp_dir/preopen.wasm" preopen-probe -o "$tmp_dir/preopen.embedded.wasm"
+"$toolchain_bin" embed-component "$tmp_dir/preopen.wit" "$tmp_dir/preopen.wasm" preopen-probe --features none -o "$tmp_dir/preopen.embedded.wasm"
 "$toolchain_bin" new-component "$tmp_dir/preopen.embedded.wasm" -o "$tmp_dir/preopen.component.wasm"
-"$toolchain_bin" validate-component "$tmp_dir/preopen.component.wasm"
+"$toolchain_bin" validate-component "$tmp_dir/preopen.component.wasm" --features none
 sed 's/return 1/return 2/' "$repo_root/examples/p3-runtime/wasi-filesystem-preopen.do" >"$tmp_dir/changed.do"
 if "$repo_root/bin/do" build "$tmp_dir/changed.do" --p3-wasi-filesystem-preopen-component -o "$tmp_dir/changed.wat" >"$tmp_dir/stdout" 2>"$tmp_dir/stderr"; then exit 1; fi
 grep -Fq 'UnsupportedWasiFilesystemPreopenComponent' "$tmp_dir/stderr"

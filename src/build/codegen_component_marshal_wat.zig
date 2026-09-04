@@ -34,6 +34,11 @@ const CleanupBinding = struct {
     alignment: u32 = 1,
 };
 
+const MapValueKind = enum {
+    u32,
+    text,
+};
+
 pub fn emit_sync_marshal_function(
     allocator: std.mem.Allocator,
     plan: *const marshal.SyncValuePlan,
@@ -49,6 +54,10 @@ pub fn emit_sync_marshal_function(
         .text_bytes, .list_elements => switch (memory_plan.direction) {
             .lower => try emit_lower(allocator, &out, &memory_plan, config),
             .lift => try emit_lift(allocator, &out, &memory_plan, config),
+        },
+        .map_entries => switch (memory_plan.direction) {
+            .lower => try emit_map_lower(allocator, &out, plan, &memory_plan, config),
+            .lift => try emit_map_lift(allocator, &out, plan, &memory_plan, config),
         },
         .record_fields => switch (memory_plan.direction) {
             .lower => try emit_record_lower(allocator, &out, plan, &memory_plan, config),
@@ -316,6 +325,7 @@ fn emit_lower(
         .scalar => return error.UnsupportedMarshalShape,
         .text_bytes => "(ref null $do_text)",
         .list_elements => if (memory_plan.element_core_type != null) "(ref null $do_u32)" else "(ref null $do_bytes)",
+        .map_entries => return error.UnsupportedMarshalShape,
         .record_fields => return error.UnsupportedMarshalShape,
     };
     try generated_text.append_fmt_block(
@@ -422,6 +432,7 @@ fn emit_lift(
         .scalar => return error.UnsupportedMarshalShape,
         .text_bytes => "(ref null $do_text)",
         .list_elements => if (memory_plan.element_core_type != null) "(ref null $do_u32)" else "(ref null $do_bytes)",
+        .map_entries => return error.UnsupportedMarshalShape,
         .record_fields => return error.UnsupportedMarshalShape,
     };
     const array_type = if (memory_plan.element_core_type != null) "$do_u32" else "$do_bytes";
@@ -543,6 +554,7 @@ fn emit_lift(
             \\local.set $__gc_result
             \\
         ),
+        .map_entries => return error.UnsupportedMarshalShape,
         .record_fields => return error.UnsupportedMarshalShape,
     }
     try generated_text.append_fmt_block(allocator, out, 4,
@@ -558,6 +570,697 @@ fn emit_lift(
         \\local.get $__gc_result)
         \\
     );
+}
+
+fn emit_map_lower(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    plan: *const marshal.SyncValuePlan,
+    memory_plan: *const marshal_ops.MemoryPlan,
+    config: EmitConfig,
+) !void {
+    const value_kind = try validate_u32_key_map(plan, memory_plan);
+    if (value_kind == .text) {
+        return emit_map_lower_text(allocator, out, plan, memory_plan, config);
+    }
+    const key_offset = memory_plan.map_key_offset orelse return error.MeasuredMapFieldMissing;
+    const value_offset = memory_plan.map_value_offset orelse return error.MeasuredMapFieldMissing;
+    const stride = memory_plan.element_stride;
+
+    try generated_text.append_fmt_block(allocator, out, 2,
+        \\  (func ${[function_name]s} (param ${[input_local]s} (ref null $do_map))
+        \\    (local $__gc_length i32)
+        \\    (local $__map_index i32)
+        \\    (local $__copy_bytes i32)
+        \\    (local $__copy_bytes64 i64)
+        \\    (local $__cabi_ptr i32)
+        \\    (local $__memory_bytes i64)
+        \\
+    , .{ .function_name = config.function_name, .input_local = config.input_local });
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\    local.get ${[input_local]s}
+        \\    ref.as_non_null
+        \\    struct.get $do_map $len
+        \\    local.set $__gc_length
+        \\    local.get ${[input_local]s}
+        \\    ref.as_non_null
+        \\    struct.get $do_map $keys
+        \\    ref.as_non_null
+        \\    array.len
+        \\    local.get $__gc_length
+        \\    i32.lt_u
+        \\    if unreachable end
+        \\    local.get ${[input_local]s}
+        \\    ref.as_non_null
+        \\    struct.get $do_map $vals
+        \\    ref.as_non_null
+        \\    array.len
+        \\    local.get $__gc_length
+        \\    i32.lt_u
+        \\    if unreachable end
+        \\
+    , .{ .input_local = config.input_local });
+    try append_copy_byte_count(allocator, out, stride);
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    i32.const {[alignment]d}
+        \\    local.get $__copy_bytes
+        \\
+    , .{ .alignment = memory_plan.map_pair_alignment orelse return error.MeasuredElementAlignmentMissing });
+    try append_named_call(allocator, out, config.realloc_name);
+    try out.appendSlice(allocator, "    local.set $__cabi_ptr\n");
+    try emit_span_guard(allocator, out, "__cabi_ptr", "__copy_bytes");
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\i32.const 0
+        \\local.set $__map_index
+        \\block $__map_copy_done
+        \\  loop $__map_copy
+        \\    local.get $__map_index
+        \\    local.get $__gc_length
+        \\    i32.ge_u
+        \\    br_if $__map_copy_done
+        \\    local.get $__cabi_ptr
+        \\    local.get $__map_index
+        \\    i32.const {[stride]d}
+        \\    i32.mul
+        \\    i32.add
+        \\    i32.const {[key_offset]d}
+        \\    i32.add
+        \\    local.get ${[input_local]s}
+        \\    ref.as_non_null
+        \\    struct.get $do_map $keys
+        \\    ref.as_non_null
+        \\    local.get $__map_index
+        \\    array.get $do_u32
+        \\    i32.store
+        \\    local.get $__cabi_ptr
+        \\    local.get $__map_index
+        \\    i32.const {[stride]d}
+        \\    i32.mul
+        \\    i32.add
+        \\    i32.const {[value_offset]d}
+        \\    i32.add
+        \\    local.get ${[input_local]s}
+        \\    ref.as_non_null
+        \\    struct.get $do_map $vals
+        \\    ref.as_non_null
+        \\    local.get $__map_index
+        \\    array.get $do_u32
+        \\    i32.store
+        \\    local.get $__map_index
+        \\    i32.const 1
+        \\    i32.add
+        \\    local.set $__map_index
+        \\    br $__map_copy
+        \\  end
+        \\end
+        \\local.get $__cabi_ptr
+        \\local.get $__gc_length
+        \\
+    , .{ .input_local = config.input_local, .stride = stride, .key_offset = key_offset, .value_offset = value_offset });
+    try append_named_call(allocator, out, config.canonical_call_name);
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\local.get $__cabi_ptr
+        \\local.get $__copy_bytes
+        \\i32.const {[alignment]d}
+        \\i32.const 0
+        \\
+    , .{ .alignment = memory_plan.map_pair_alignment.? });
+    try append_named_call(allocator, out, config.realloc_name);
+    try out.appendSlice(allocator, "    drop)\n");
+}
+
+fn emit_map_lift(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    plan: *const marshal.SyncValuePlan,
+    memory_plan: *const marshal_ops.MemoryPlan,
+    config: EmitConfig,
+) !void {
+    const value_kind = try validate_u32_key_map(plan, memory_plan);
+    if (value_kind == .text) {
+        return emit_map_lift_text(allocator, out, plan, memory_plan, config);
+    }
+    const pointer_offset = memory_plan.result_area_pointer_offset orelse return error.MeasuredResultAreaPointerMissing;
+    const length_offset = memory_plan.result_area_length_offset orelse return error.MeasuredResultAreaLengthMissing;
+    const key_offset = memory_plan.map_key_offset orelse return error.MeasuredMapFieldMissing;
+    const value_offset = memory_plan.map_value_offset orelse return error.MeasuredMapFieldMissing;
+    const stride = memory_plan.element_stride;
+
+    try generated_text.append_fmt_block(allocator, out, 2,
+        \\(func ${[function_name]s} (result (ref null $do_map))
+        \\  (local $__result_area i32)
+        \\  (local $__cabi_ptr i32)
+        \\  (local $__gc_length i32)
+        \\  (local $__map_index i32)
+        \\  (local $__copy_bytes i32)
+        \\  (local $__copy_bytes64 i64)
+        \\  (local $__memory_bytes i64)
+       \\  (local $__keys (ref $do_u32))
+       \\  (local $__vals (ref $do_u32))
+        \\
+    , .{ .function_name = config.function_name });
+    try generated_text.append_block(allocator, out, 4,
+        \\i32.const 0
+        \\local.set $__result_area
+        \\local.get $__result_area
+        \\
+    );
+    try append_named_call(allocator, out, config.canonical_call_name);
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\local.get $__result_area
+        \\i32.const {[pointer_offset]d}
+        \\i32.add
+        \\i32.load
+        \\local.set $__cabi_ptr
+        \\local.get $__result_area
+        \\i32.const {[length_offset]d}
+        \\i32.add
+        \\i32.load
+        \\local.set $__gc_length
+        \\
+    , .{ .pointer_offset = pointer_offset, .length_offset = length_offset });
+    try append_copy_byte_count(allocator, out, stride);
+    try emit_span_guard(allocator, out, "__cabi_ptr", "__copy_bytes");
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\local.get $__gc_length
+        \\array.new_default $do_u32
+        \\local.set $__keys
+        \\local.get $__gc_length
+        \\array.new_default $do_u32
+        \\local.set $__vals
+        \\i32.const 0
+        \\local.set $__map_index
+        \\block $__map_copy_done
+        \\  loop $__map_copy
+        \\    local.get $__map_index
+        \\    local.get $__gc_length
+        \\    i32.ge_u
+        \\    br_if $__map_copy_done
+        \\    local.get $__keys
+        \\    local.get $__map_index
+        \\    local.get $__cabi_ptr
+        \\    local.get $__map_index
+        \\    i32.const {[stride]d}
+        \\    i32.mul
+        \\    i32.add
+        \\    i32.const {[key_offset]d}
+        \\    i32.add
+        \\    i32.load
+        \\    array.set $do_u32
+        \\    local.get $__vals
+        \\    local.get $__map_index
+        \\    local.get $__cabi_ptr
+        \\    local.get $__map_index
+        \\    i32.const {[stride]d}
+        \\    i32.mul
+        \\    i32.add
+        \\    i32.const {[value_offset]d}
+        \\    i32.add
+        \\    i32.load
+        \\    array.set $do_u32
+        \\    local.get $__map_index
+        \\    i32.const 1
+        \\    i32.add
+        \\    local.set $__map_index
+        \\    br $__map_copy
+        \\  end
+        \\end
+        \\local.get $__cabi_ptr
+        \\local.get $__copy_bytes
+        \\i32.const {[alignment]d}
+        \\i32.const 0
+        \\
+    , .{ .stride = stride, .key_offset = key_offset, .value_offset = value_offset, .alignment = memory_plan.map_pair_alignment.? });
+    try append_named_call(allocator, out, config.realloc_name);
+    try generated_text.append_block(allocator, out, 4,
+        \\drop
+        \\local.get $__gc_length
+        \\local.get $__keys
+        \\local.get $__vals
+        \\struct.new $do_map)
+        \\
+    );
+}
+
+fn emit_map_lower_text(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    plan: *const marshal.SyncValuePlan,
+    memory_plan: *const marshal_ops.MemoryPlan,
+    config: EmitConfig,
+) !void {
+    _ = plan;
+    const key_offset = memory_plan.map_key_offset orelse return error.MeasuredMapFieldMissing;
+    const value_offset = memory_plan.map_value_offset orelse return error.MeasuredMapFieldMissing;
+    const stride = memory_plan.element_stride;
+    const alignment = memory_plan.map_pair_alignment orelse return error.MeasuredElementAlignmentMissing;
+
+    try generated_text.append_fmt_block(allocator, out, 2,
+        \\  (func ${[function_name]s} (param ${[input_local]s} (ref null $do_map))
+        \\    (local $__gc_length i32)
+        \\    (local $__map_index i32)
+        \\    (local $__text_index i32)
+        \\    (local $__text_length i32)
+        \\    (local $__payload_offset i32)
+        \\    (local $__payload_bytes i32)
+        \\    (local $__payload_bytes64 i64)
+        \\    (local $__copy_bytes i32)
+        \\    (local $__copy_bytes64 i64)
+        \\    (local $__total_bytes i32)
+        \\    (local $__total_bytes64 i64)
+        \\    (local $__cabi_ptr i32)
+        \\    (local $__payload_ptr i32)
+        \\    (local $__text_bytes (ref $do_bytes))
+        \\    (local $__memory_bytes i64)
+        \\
+    , .{ .function_name = config.function_name, .input_local = config.input_local });
+
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\    local.get ${[input_local]s}
+        \\    ref.as_non_null
+        \\    struct.get $do_map $len
+        \\    local.set $__gc_length
+        \\    local.get ${[input_local]s}
+        \\    ref.as_non_null
+        \\    struct.get $do_map $keys
+        \\    ref.as_non_null
+        \\    array.len
+        \\    local.get $__gc_length
+        \\    i32.lt_u
+        \\    if unreachable end
+        \\    local.get ${[input_local]s}
+        \\    ref.as_non_null
+        \\    struct.get $do_map $vals
+        \\    ref.as_non_null
+        \\    array.len
+        \\    local.get $__gc_length
+        \\    i32.lt_u
+        \\    if unreachable end
+        \\
+    , .{ .input_local = config.input_local });
+
+    // Measure all text payloads before allocating the canonical pair span.
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\    i64.const 0
+        \\    local.set $__payload_bytes64
+        \\    i32.const 0
+        \\    local.set $__map_index
+        \\    block $__map_measure_done
+        \\      loop $__map_measure
+        \\        local.get $__map_index
+        \\        local.get $__gc_length
+        \\        i32.ge_u
+        \\        br_if $__map_measure_done
+        \\        local.get ${[input_local]s}
+        \\        ref.as_non_null
+        \\        struct.get $do_map $vals
+        \\        ref.as_non_null
+        \\        local.get $__map_index
+        \\        array.get $do_text_array
+        \\        ref.as_non_null
+        \\        struct.get $do_text $length
+        \\        local.set $__text_length
+        \\        local.get ${[input_local]s}
+        \\        ref.as_non_null
+        \\        struct.get $do_map $vals
+        \\        ref.as_non_null
+        \\        local.get $__map_index
+        \\        array.get $do_text_array
+        \\        ref.as_non_null
+        \\        struct.get $do_text $bytes
+        \\        ref.as_non_null
+        \\        array.len
+        \\        local.get $__text_length
+        \\        i32.lt_u
+        \\        if unreachable end
+        \\        local.get $__payload_bytes64
+        \\        local.get $__text_length
+        \\        i64.extend_i32_u
+        \\        i64.add
+        \\        local.tee $__payload_bytes64
+        \\        i64.const 4294967295
+        \\        i64.gt_u
+        \\        if unreachable end
+        \\        local.get $__map_index
+        \\        i32.const 1
+        \\        i32.add
+        \\        local.set $__map_index
+        \\        br $__map_measure
+        \\      end
+        \\    end
+        \\
+    , .{ .input_local = config.input_local });
+
+    try append_copy_byte_count(allocator, out, stride);
+    try generated_text.append_block(allocator, out, 4,
+        \\local.get $__copy_bytes64
+        \\local.get $__payload_bytes64
+        \\i64.add
+        \\local.tee $__total_bytes64
+        \\i64.const 4294967295
+        \\i64.gt_u
+        \\if unreachable end
+        \\local.get $__total_bytes64
+        \\i32.wrap_i64
+        \\local.set $__total_bytes
+        \\
+    );
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    i32.const {[alignment]d}
+        \\    local.get $__total_bytes
+        \\
+    , .{ .alignment = alignment });
+    try append_named_call(allocator, out, config.realloc_name);
+    try out.appendSlice(allocator, "    local.set $__cabi_ptr\n");
+    try emit_span_guard(allocator, out, "__cabi_ptr", "__total_bytes");
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\i32.const 0
+        \\local.get $__copy_bytes
+        \\i32.add
+        \\local.set $__payload_offset
+        \\i32.const 0
+        \\local.set $__map_index
+        \\block $__map_copy_done
+        \\  loop $__map_copy
+        \\    local.get $__map_index
+        \\    local.get $__gc_length
+        \\    i32.ge_u
+        \\    br_if $__map_copy_done
+        \\    local.get $__cabi_ptr
+        \\    local.get $__map_index
+        \\    i32.const {[stride]d}
+        \\    i32.mul
+        \\    i32.add
+        \\    i32.const {[key_offset]d}
+        \\    i32.add
+        \\    local.get ${[input_local]s}
+        \\    ref.as_non_null
+        \\    struct.get $do_map $keys
+        \\    ref.as_non_null
+        \\    local.get $__map_index
+        \\    array.get $do_u32
+        \\    i32.store
+        \\    local.get ${[input_local]s}
+        \\    ref.as_non_null
+        \\    struct.get $do_map $vals
+        \\    ref.as_non_null
+        \\    local.get $__map_index
+        \\    array.get $do_text_array
+        \\    ref.as_non_null
+        \\    struct.get $do_text $length
+        \\    local.set $__text_length
+        \\    local.get ${[input_local]s}
+        \\    ref.as_non_null
+        \\    struct.get $do_map $vals
+        \\    ref.as_non_null
+        \\    local.get $__map_index
+        \\    array.get $do_text_array
+        \\    ref.as_non_null
+        \\    struct.get $do_text $bytes
+        \\    ref.as_non_null
+        \\    local.set $__text_bytes
+        \\    local.get $__cabi_ptr
+        \\    local.get $__payload_offset
+        \\    i32.add
+        \\    local.tee $__payload_ptr
+        \\    local.get $__cabi_ptr
+        \\    local.get $__map_index
+        \\    i32.const {[stride]d}
+        \\    i32.mul
+        \\    i32.add
+        \\    i32.const {[value_offset]d}
+        \\    i32.add
+        \\    i32.store
+        \\    local.get $__cabi_ptr
+        \\    local.get $__map_index
+        \\    i32.const {[stride]d}
+        \\    i32.mul
+        \\    i32.add
+        \\    i32.const {[value_offset]d}
+        \\    i32.add
+        \\    i32.const 4
+        \\    i32.add
+        \\    local.get $__text_length
+        \\    i32.store
+        \\    i32.const 0
+        \\    local.set $__text_index
+        \\    block $__map_text_copy_done
+        \\      loop $__map_text_copy
+        \\        local.get $__text_index
+        \\        local.get $__text_length
+        \\        i32.ge_u
+        \\        br_if $__map_text_copy_done
+        \\        local.get $__payload_ptr
+        \\        local.get $__text_index
+        \\        i32.add
+        \\        local.get $__text_bytes
+        \\        local.get $__text_index
+        \\        array.get_s $do_bytes
+        \\        i32.store8
+        \\        local.get $__text_index
+        \\        i32.const 1
+        \\        i32.add
+        \\        local.set $__text_index
+        \\        br $__map_text_copy
+        \\      end
+        \\    end
+        \\    local.get $__payload_offset
+        \\    local.get $__text_length
+        \\    i32.add
+        \\    local.set $__payload_offset
+        \\    local.get $__map_index
+        \\    i32.const 1
+        \\    i32.add
+        \\    local.set $__map_index
+        \\    br $__map_copy
+        \\  end
+        \\end
+        \\local.get $__cabi_ptr
+        \\local.get $__gc_length
+        \\
+    , .{ .input_local = config.input_local, .stride = stride, .key_offset = key_offset, .value_offset = value_offset });
+    try append_named_call(allocator, out, config.canonical_call_name);
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\local.get $__cabi_ptr
+        \\local.get $__total_bytes
+        \\i32.const {[alignment]d}
+        \\i32.const 0
+        \\
+    , .{ .alignment = alignment });
+    try append_named_call(allocator, out, config.realloc_name);
+    try out.appendSlice(allocator, "    drop)\n");
+}
+
+fn emit_map_lift_text(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    plan: *const marshal.SyncValuePlan,
+    memory_plan: *const marshal_ops.MemoryPlan,
+    config: EmitConfig,
+) !void {
+    _ = plan;
+    const pointer_offset = memory_plan.result_area_pointer_offset orelse return error.MeasuredResultAreaPointerMissing;
+    const length_offset = memory_plan.result_area_length_offset orelse return error.MeasuredResultAreaLengthMissing;
+    const key_offset = memory_plan.map_key_offset orelse return error.MeasuredMapFieldMissing;
+    const value_offset = memory_plan.map_value_offset orelse return error.MeasuredMapFieldMissing;
+    const stride = memory_plan.element_stride;
+    const alignment = memory_plan.map_pair_alignment orelse return error.MeasuredElementAlignmentMissing;
+
+    try generated_text.append_fmt_block(allocator, out, 2,
+        \\(func ${[function_name]s} (result (ref null $do_map))
+        \\  (local $__result_area i32)
+        \\  (local $__cabi_ptr i32)
+        \\  (local $__gc_length i32)
+        \\  (local $__map_index i32)
+        \\  (local $__text_index i32)
+        \\  (local $__text_ptr i32)
+        \\  (local $__text_length i32)
+        \\  (local $__copy_bytes i32)
+        \\  (local $__copy_bytes64 i64)
+        \\  (local $__memory_bytes i64)
+        \\  (local $__keys (ref $do_u32))
+        \\  (local $__vals (ref $do_text_array))
+        \\  (local $__text_bytes (ref $do_bytes))
+        \\  (local $__text_result (ref $do_text))
+        \\
+    , .{ .function_name = config.function_name });
+    try generated_text.append_block(allocator, out, 4,
+        \\i32.const 0
+        \\local.set $__result_area
+        \\local.get $__result_area
+        \\
+    );
+    try append_named_call(allocator, out, config.canonical_call_name);
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\local.get $__result_area
+        \\i32.const {[pointer_offset]d}
+        \\i32.add
+        \\i32.load
+        \\local.set $__cabi_ptr
+        \\local.get $__result_area
+        \\i32.const {[length_offset]d}
+        \\i32.add
+        \\i32.load
+        \\local.set $__gc_length
+        \\
+    , .{ .pointer_offset = pointer_offset, .length_offset = length_offset });
+    try append_copy_byte_count(allocator, out, stride);
+    try emit_span_guard(allocator, out, "__cabi_ptr", "__copy_bytes");
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\local.get $__gc_length
+        \\array.new_default $do_u32
+        \\local.set $__keys
+        \\local.get $__gc_length
+        \\array.new_default $do_text_array
+        \\local.set $__vals
+        \\i32.const 0
+        \\local.set $__map_index
+        \\block $__map_copy_done
+        \\  loop $__map_copy
+        \\    local.get $__map_index
+        \\    local.get $__gc_length
+        \\    i32.ge_u
+        \\    br_if $__map_copy_done
+        \\    local.get $__keys
+        \\    local.get $__map_index
+        \\    local.get $__cabi_ptr
+        \\    local.get $__map_index
+        \\    i32.const {[stride]d}
+        \\    i32.mul
+        \\    i32.add
+        \\    i32.const {[key_offset]d}
+        \\    i32.add
+        \\    i32.load
+        \\    array.set $do_u32
+        \\    local.get $__cabi_ptr
+        \\    local.get $__map_index
+        \\    i32.const {[stride]d}
+        \\    i32.mul
+        \\    i32.add
+        \\    i32.const {[value_offset]d}
+        \\    i32.add
+        \\    i32.load
+        \\    local.set $__text_ptr
+        \\    local.get $__cabi_ptr
+        \\    local.get $__map_index
+        \\    i32.const {[stride]d}
+        \\    i32.mul
+        \\    i32.add
+        \\    i32.const {[value_offset]d}
+        \\    i32.add
+        \\    i32.const 4
+        \\    i32.add
+        \\    i32.load
+        \\    local.set $__text_length
+        \\
+    , .{ .stride = stride, .key_offset = key_offset, .value_offset = value_offset });
+    try emit_span_guard(allocator, out, "__text_ptr", "__text_length");
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\local.get $__text_length
+        \\array.new_default $do_bytes
+        \\local.set $__text_bytes
+        \\i32.const 0
+        \\local.set $__text_index
+        \\block $__map_text_copy_done
+        \\  loop $__map_text_copy
+        \\    local.get $__text_index
+        \\    local.get $__text_length
+        \\    i32.ge_u
+        \\    br_if $__map_text_copy_done
+        \\    local.get $__text_bytes
+        \\    local.get $__text_index
+        \\    local.get $__text_ptr
+        \\    local.get $__text_index
+        \\    i32.add
+        \\    i32.load8_u
+        \\    array.set $do_bytes
+        \\    local.get $__text_index
+        \\    i32.const 1
+        \\    i32.add
+        \\    local.set $__text_index
+        \\    br $__map_text_copy
+        \\  end
+        \\end
+        \\local.get $__text_length
+        \\local.get $__text_bytes
+        \\struct.new $do_text
+        \\local.set $__text_result
+        \\local.get $__vals
+        \\local.get $__map_index
+        \\local.get $__text_result
+        \\array.set $do_text_array
+        \\local.get $__map_index
+        \\i32.const 1
+        \\i32.add
+        \\local.set $__map_index
+        \\br $__map_copy
+        \\  end
+        \\end
+        \\local.get $__cabi_ptr
+        \\local.get $__copy_bytes
+        \\i32.const {[alignment]d}
+        \\i32.const 0
+        \\
+    , .{ .alignment = alignment });
+    try append_named_call(allocator, out, config.realloc_name);
+    try generated_text.append_block(allocator, out, 4,
+        \\drop
+        \\local.get $__gc_length
+        \\local.get $__keys
+        \\local.get $__vals
+        \\struct.new $do_map)
+        \\
+    );
+}
+
+fn validate_u32_key_map(
+    plan: *const marshal.SyncValuePlan,
+    memory_plan: *const marshal_ops.MemoryPlan,
+) !MapValueKind {
+    if (plan.root.kind != .map or plan.root.children.len != 2) return error.UnsupportedMarshalShape;
+    const key = &plan.root.children[0];
+    if (key.kind != .scalar or key.scalar_kind != .u32) return error.UnsupportedMarshalShape;
+    const value = &plan.root.children[1];
+    const value_kind: MapValueKind = switch (value.kind) {
+        .scalar => if (value.scalar_kind == .u32) .u32 else return error.UnsupportedMarshalShape,
+        .text => .text,
+        else => return error.UnsupportedMarshalShape,
+    };
+    const pair_size: u32 = switch (value_kind) {
+        .u32 => 8,
+        .text => 12,
+    };
+    if (memory_plan.copy_shape != .map_entries or memory_plan.element_stride != pair_size or
+        memory_plan.map_pair_byte_size != pair_size or memory_plan.map_pair_alignment != 4 or
+        memory_plan.map_key_offset != 0 or memory_plan.map_value_offset != 4)
+    {
+        return error.UnsupportedMarshalShape;
+    }
+
+    const key_facts = key.measured orelse return error.MeasuredChildMissing;
+    if (key_facts.offset != 0 or key_facts.byte_size != 4 or key_facts.alignment != 4 or key_facts.core_type != .i32) {
+        return error.UnsupportedMarshalShape;
+    }
+    const value_facts = value.measured orelse return error.MeasuredChildMissing;
+    switch (value_kind) {
+        .u32 => {
+            if (value_facts.offset != 4 or value_facts.byte_size != 4 or value_facts.alignment != 4 or value_facts.core_type != .i32) {
+                return error.UnsupportedMarshalShape;
+            }
+        },
+        .text => {
+            if (value_facts.offset != 4 or value_facts.byte_size != 8 or value_facts.alignment != 4 or
+                value_facts.pointer_offset != 0 or value_facts.length_offset != 4)
+            {
+                return error.UnsupportedMarshalShape;
+            }
+        },
+    }
+    return value_kind;
 }
 
 fn emit_record_lift(
@@ -1090,6 +1793,7 @@ fn emit_record_lift_value(
                 \\
             , .{ .stride = stride, .realloc_name = realloc_name, .array_local = array_local });
         },
+        .map => return error.UnsupportedMarshalShape,
         .record => {
             const measured = node.measured orelse return error.MeasuredChildMissing;
             const record_offset = if (is_root)
@@ -1843,10 +2547,7 @@ fn emit_record_lower_managed_text_scalar_list_pair_impl(
             \\
         , .{ .slot = slot + 1 });
         if (field.element_stride == 1) {
-            try generated_text.append_block(allocator, out, 8,
-                \\i32.add
-                \\
-            );
+            try out.appendSlice(allocator, "        i32.add\n");
         } else {
             try generated_text.append_fmt_block(allocator, out, 8,
                 \\i32.const {[stride]d}
@@ -2426,6 +3127,7 @@ fn append_source_length(
             \\    local.set $__gc_length
             \\
         , .{ .input_local = input_local }),
+        .map_entries => return error.UnsupportedMarshalShape,
         .record_fields => return error.UnsupportedMarshalShape,
     }
 }
@@ -2474,6 +3176,7 @@ fn append_source_byte(
             \\        array.get_s $do_bytes
             \\
         , .{ .input_local = input_local }),
+        .map_entries => return error.UnsupportedMarshalShape,
         .record_fields => return error.UnsupportedMarshalShape,
     }
 }
@@ -2864,6 +3567,173 @@ test "canonical marshal WAT emits typed u32 list lower and lift copies" {
     try std.testing.expect(std.mem.indexOf(u8, lift_wat, "(ref null $do_u32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, lift_wat, "array.set $do_u32") != null);
     try std.testing.expect(std.mem.indexOf(u8, lift_wat, "i32.load") != null);
+}
+
+test "canonical marshal WAT lowers and lifts a scalar map pair-list" {
+    var key = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer key.deinit();
+    var value = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer value.deinit();
+    var map = try @import("wit_abi_types.zig").AbiType.map(std.testing.allocator, &key, &value);
+    defer map.deinit();
+
+    const lower_plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-map@1.0.0",
+        .world = "probe",
+        .member = "api.lookup",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    }, &map, .lower, .{
+        .layout = .{ .map = .{
+            .pointer_offset = 0,
+            .length_offset = 4,
+            .element_byte_size = 8,
+            .element_stride = 8,
+            .element_alignment = 4,
+            .key = .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+            .value = .{ .offset = 4, .byte_size = 4, .alignment = 4 },
+            .capacity = 4,
+            .accepted_lengths = &.{ 0, 1, 4 },
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .scalar = .{ .offset = 4, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+        },
+    });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, lower_plan);
+    const lower_wat = try emit_sync_marshal_function(std.testing.allocator, &lower_plan, .{});
+    defer std.testing.allocator.free(lower_wat);
+    try std.testing.expect(std.mem.indexOf(u8, lower_wat, "(param $input (ref null $do_map))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower_wat, "array.get $do_u32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower_wat, "i32.const 8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower_wat, "call $canonical_call") != null);
+    try std.testing.expect(std.mem.lastIndexOf(u8, lower_wat, "call $cabi_realloc") != null);
+
+    const lift_plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-map@1.0.0",
+        .world = "probe",
+        .member = "api.lookup",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+    }, &map, .lift, .{
+        .layout = .{ .map = .{
+            .pointer_offset = 0,
+            .length_offset = 4,
+            .element_byte_size = 8,
+            .element_stride = 8,
+            .element_alignment = 4,
+            .key = .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+            .value = .{ .offset = 4, .byte_size = 4, .alignment = 4 },
+            .capacity = 4,
+            .accepted_lengths = &.{ 0, 1, 4 },
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .scalar = .{ .offset = 4, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+        },
+    });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, lift_plan);
+    const lift_wat = try emit_sync_marshal_function(std.testing.allocator, &lift_plan, .{ .function_name = "map_lift" });
+    defer std.testing.allocator.free(lift_wat);
+    try std.testing.expect(std.mem.indexOf(u8, lift_wat, "(func $map_lift") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lift_wat, "(result (ref null $do_map))") != null);
+    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, lift_wat, "array.new_default $do_u32"));
+    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, lift_wat, "array.set $do_u32"));
+    try std.testing.expect(std.mem.indexOf(u8, lift_wat, "struct.new $do_map") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lift_wat, "call $canonical_call") != null);
+}
+
+test "canonical marshal WAT lowers and lifts a u32 text map" {
+    var key = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer key.deinit();
+    var value = @import("wit_abi_types.zig").AbiType.text(std.testing.allocator);
+    defer value.deinit();
+    var map = @import("wit_abi_types.zig").AbiType.map(std.testing.allocator, &key, &value) catch unreachable;
+    defer map.deinit();
+
+    const lower_plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-map-text@1.0.0",
+        .world = "probe",
+        .member = "api.lookup",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+    }, &map, .lower, .{
+        .layout = .{ .map = .{
+            .pointer_offset = 0,
+            .length_offset = 4,
+            .element_byte_size = 12,
+            .element_stride = 12,
+            .element_alignment = 4,
+            .key = .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+            .value = .{ .offset = 4, .byte_size = 8, .alignment = 4 },
+            .capacity = 2,
+            .accepted_lengths = &.{ 0, 1, 2 },
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .text = .{
+                .pointer_offset = 0,
+                .length_offset = 4,
+                .byte_size = 8,
+                .alignment = 4,
+                .allocation = .cabi_realloc,
+                .free = .cabi_realloc,
+            } } },
+        },
+    });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, lower_plan);
+    const lower_wat = try emit_sync_marshal_function(std.testing.allocator, &lower_plan, .{});
+    defer std.testing.allocator.free(lower_wat);
+    try std.testing.expect(std.mem.indexOf(u8, lower_wat, "(param $input (ref null $do_map))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower_wat, "array.get $do_text_array") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower_wat, "array.get_s $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower_wat, "i32.const 12") != null);
+
+    const lift_plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-map-text@1.0.0",
+        .world = "probe",
+        .member = "api.lookup",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    }, &map, .lift, .{
+        .layout = .{ .map = .{
+            .pointer_offset = 0,
+            .length_offset = 4,
+            .element_byte_size = 12,
+            .element_stride = 12,
+            .element_alignment = 4,
+            .key = .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+            .value = .{ .offset = 4, .byte_size = 8, .alignment = 4 },
+            .capacity = 2,
+            .accepted_lengths = &.{ 0, 1, 2 },
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .text = .{
+                .pointer_offset = 0,
+                .length_offset = 4,
+                .byte_size = 8,
+                .alignment = 4,
+                .allocation = .cabi_realloc,
+                .free = .cabi_realloc,
+            } } },
+        },
+    });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, lift_plan);
+    const lift_wat = try emit_sync_marshal_function(std.testing.allocator, &lift_plan, .{});
+    defer std.testing.allocator.free(lift_wat);
+    try std.testing.expect(std.mem.indexOf(u8, lift_wat, "(result (ref null $do_map))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lift_wat, "array.new_default $do_text_array") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lift_wat, "struct.new $do_text") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lift_wat, "array.set $do_text_array") != null);
 }
 
 test "canonical marshal WAT lifts a scalar record from the result area" {

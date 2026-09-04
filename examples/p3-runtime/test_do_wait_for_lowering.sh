@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-p3-wait-for-lowering.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 
@@ -18,6 +20,7 @@ for fixture in \
     *) printf 'missing expected async import for %s\n' "$fixture_name" >&2; exit 1 ;;
   esac
   core_path="$tmp_dir/$fixture_name.wat"
+  core_wasm="$tmp_dir/$fixture_name.core.wasm"
   wit_path="$tmp_dir/$fixture_name.wit"
   embedded_path="$tmp_dir/$fixture_name.embedded.wasm"
   component_path="$tmp_dir/$fixture_name.component.wasm"
@@ -39,8 +42,9 @@ for fixture in \
     exit 1
   fi
 
-  wasm-tools component embed "$wit_path" "$core_path" --world probe -o "$embedded_path"
-  wasm-tools component new "$embedded_path" -o "$component_path"
+  "$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
+  "$toolchain_bin" embed-component "$wit_path" "$core_wasm" probe -o "$embedded_path"
+  "$toolchain_bin" new-component "$embedded_path" -o "$component_path"
 
   DO_P3_COMPONENT="$component_path" "$repo_root/examples/p3-runtime/test_rust_wait_for.sh"
 done

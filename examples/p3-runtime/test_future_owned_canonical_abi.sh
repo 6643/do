@@ -3,22 +3,14 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 tmp_root=${TMPDIR:-"$repo_root/.tmp/do-tmp"}
 mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/future-owned-canonical-abi.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 
-wasm_tools=${WASM_TOOLS:-wasm-tools}
-expected_version=${WASM_TOOLS_EXPECT_VERSION:-1.255.0}
-tool_version=$("$wasm_tools" --version)
-printf 'wasm-tools=%s\n' "$tool_version"
-case "$tool_version" in
-  "wasm-tools $expected_version"*) ;;
-  *)
-    printf 'expected wasm-tools %s, got: %s\n' "$expected_version" "$tool_version" >&2
-    exit 1
-    ;;
-esac
+test -x "$toolchain_bin"
 
 wat="$repo_root/examples/p3-runtime/future-owned-canonical.wat"
 wit="$repo_root/examples/p3-runtime/wit/future-owned-canonical.wit"
@@ -30,15 +22,13 @@ test -f "$wat"
 test -f "$wit"
 test -f "$runner_dir/src/bin/future_owned_canonical_abi.rs"
 
-"$wasm_tools" parse "$wat" -o "$core_wasm"
-"$wasm_tools" component embed "$wit" "$core_wasm" \
-  --world future-owned-canonical \
-  --features cm-async,cm-more-async-builtins \
-  -o "$embedded"
-"$wasm_tools" component new --skip-validation "$embedded" -o "$component"
-"$wasm_tools" validate --features cm-async,cm-more-async-builtins "$component"
-"$wasm_tools" component wit "$component" | grep -Fq 'read: func() -> future<ticket>'
-"$wasm_tools" component wit "$component" | grep -Fq 'run: async func(mode: u32)'
+"$toolchain_bin" parse-core "$wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit" "$core_wasm" future-owned-canonical \
+  --features core-gc-async -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features core-gc-async
+"$toolchain_bin" component-wit "$component" | grep -Fq 'read: func() -> future<ticket>'
+"$toolchain_bin" component-wit "$component" | grep -Fq 'run: async func(mode: u32)'
 
 marker_value() {
   local marker="$1"

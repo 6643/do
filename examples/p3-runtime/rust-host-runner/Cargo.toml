@@ -7,7 +7,7 @@ publish = false
 [dependencies]
 anyhow = "1"
 futures = "0.3"
-wasmtime = { version = "=47.0.2", default-features = false, features = ["cranelift", "runtime", "wat", "gc-drc", "component-model-async"] }
+wasmtime = { version = "=48.0.1", default-features = false, features = ["cranelift", "runtime", "wat", "gc-drc", "component-model-async"] }
 
 [[bin]]
 name = "do-p3-resource-probe-host-runner"
@@ -188,6 +188,10 @@ path = "src/bin/gc_marshal_u32.rs"
 [[bin]]
 name = "do-p3-gc-marshal-u32-lift-host-runner"
 path = "src/bin/gc_marshal_u32_lift.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-map-u32-u32"
+path = "src/bin/gc_marshal_map_u32_u32.rs"
 
 [[bin]]
 name = "do-p3-gc-marshal-record-host-runner"

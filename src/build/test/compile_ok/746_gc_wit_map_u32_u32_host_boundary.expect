@@ -1,0 +1,9 @@
+# build-arg: --gc-wit-marshal
+# build-arg: demo:marshal-map-u32-u32/api.write@1.0.0/lower
+(type $do_map
+(type $canonical_lower (func (param i32 i32)))
+(import "demo:marshal-map-u32-u32/api@1.0.0" "write"
+array.get $do_u32
+array.new_fixed $do_u32 2
+struct.new $do_map
+count=2 call $cabi_realloc

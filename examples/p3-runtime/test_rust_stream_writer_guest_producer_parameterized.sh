@@ -2,7 +2,10 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
+test -x "$toolchain_bin"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-stream-writer-producer-parameterized.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 
@@ -25,10 +28,10 @@ grep -Fq 'i32.store8' "$core_path"
 grep -Fq 'i32.load8_u' "$core_path"
 grep -Fq '(data (i32.const 512) "\00")' "$core_path"
 
-wasm-tools parse "$core_path" -o "$core_wasm"
+"$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
 bash "$repo_root/examples/p3-runtime/assemble_async_component.sh" \
   "$wit_path" "$core_wasm" stream-writer-probe "$component_path"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component_path"
+"$toolchain_bin" validate-component "$component_path" --features component-async
 
 if ! command -v cc >/dev/null 2>&1; then
   export CC="$runner_dir/zig-cc.sh"

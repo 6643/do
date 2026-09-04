@@ -25,6 +25,7 @@ pub const CopyShape = enum {
     scalar,
     text_bytes,
     list_elements,
+    map_entries,
     record_fields,
 };
 
@@ -96,6 +97,10 @@ pub const MemoryPlan = struct {
     record_managed_mixed_scalar_list_lower: bool = false,
     managed_mixed_scalar_list_lower: ?ManagedMixedScalarListLower = null,
     record_mixed_text_two_u32_lists_lift: bool = false,
+    map_pair_byte_size: ?u32 = null,
+    map_pair_alignment: ?u32 = null,
+    map_key_offset: ?u32 = null,
+    map_value_offset: ?u32 = null,
     operations: []const MemoryOperation,
 };
 
@@ -145,6 +150,26 @@ pub fn build_sync_memory_plan(plan: *const marshal.SyncValuePlan) !MemoryPlan {
                 .result_area_pointer_offset = measured.pointer_offset,
                 .result_area_length_offset = measured.length_offset,
                 .operations = operations_for(plan.direction),
+            };
+        },
+        .map => {
+            if (plan.root.children.len != 2) return error.MeasuredChildCountMismatch;
+            const map_measured = plan.root.measured orelse return error.MeasuredLayoutRequired;
+            const stride = map_measured.element_stride orelse return error.MeasuredElementStrideMissing;
+            const pair_size = map_measured.map_pair_byte_size orelse return error.MeasuredElementByteSizeMissing;
+            const pair_alignment = map_measured.map_pair_alignment orelse return error.MeasuredElementAlignmentMissing;
+            try validate_map_node(&plan.root, stride, pair_size, pair_alignment);
+            return .{
+                .direction = plan.direction,
+                .copy_shape = .map_entries,
+                .element_stride = stride,
+                .result_area_pointer_offset = map_measured.pointer_offset,
+                .result_area_length_offset = map_measured.length_offset,
+                .map_pair_byte_size = pair_size,
+                .map_pair_alignment = pair_alignment,
+                .map_key_offset = map_measured.map_key_offset,
+                .map_value_offset = map_measured.map_value_offset,
+                .operations = map_operations_for(plan.direction),
             };
         },
         .record => {
@@ -345,7 +370,38 @@ fn validate_record_lift_node(node: *const marshal.MarshalNode, is_root: bool) !v
                     try validate_u32_list_lift_node(child);
                 }
             },
+            .map => return error.UnsupportedMarshalShape,
         }
+    }
+}
+
+fn validate_map_node(
+    node: *const marshal.MarshalNode,
+    stride: u32,
+    pair_size: u32,
+    pair_alignment: u32,
+) !void {
+    if (node.kind != .map or node.children.len != 2) return error.UnsupportedMarshalShape;
+    if (node.canonical_shape != .ptr_len or stride < pair_size or pair_alignment == 0) {
+        return error.UnsupportedMarshalShape;
+    }
+    const measured = node.measured orelse return error.MeasuredChildMissing;
+    if (measured.byte_size != 8 or measured.alignment != 4 or
+        measured.pointer_offset == null or measured.length_offset == null or
+        measured.capacity == null)
+    {
+        return error.UnsupportedMarshalShape;
+    }
+    const key = &node.children[0];
+    if (key.kind != .scalar and key.kind != .text) return error.UnsupportedMarshalShape;
+    const key_facts = key.measured orelse return error.MeasuredChildMissing;
+    const value = &node.children[1];
+    const value_facts = value.measured orelse return error.MeasuredChildMissing;
+    if (key_facts.byte_size == 0 or value_facts.byte_size == 0 or
+        key_facts.offset > pair_size -| key_facts.byte_size or
+        value_facts.offset > pair_size -| value_facts.byte_size)
+    {
+        return error.UnsupportedMarshalShape;
     }
 }
 
@@ -667,6 +723,13 @@ fn operations_for(direction: marshal.Direction) []const MemoryOperation {
     };
 }
 
+fn map_operations_for(direction: marshal.Direction) []const MemoryOperation {
+    return switch (direction) {
+        .lower => &map_lower_operations,
+        .lift => &map_lift_operations,
+    };
+}
+
 const lower_operations = [_]MemoryOperation{
     .read_gc_span,
     .validate_linear_range,
@@ -687,6 +750,24 @@ const lift_operations = [_]MemoryOperation{
 
 const scalar_operations = [_]MemoryOperation{
     .canonical_call,
+};
+
+const map_lower_operations = [_]MemoryOperation{
+    .read_gc_span,
+    .validate_linear_range,
+    .cabi_realloc_alloc,
+    .copy_to_linear,
+    .canonical_call,
+    .cabi_realloc_free,
+};
+
+const map_lift_operations = [_]MemoryOperation{
+    .canonical_call,
+    .validate_linear_range,
+    .copy_from_linear,
+    .construct_gc_value,
+    .publish_gc_root,
+    .cabi_realloc_free,
 };
 
 const record_lower_operations = [_]MemoryOperation{
@@ -1031,6 +1112,51 @@ test "marshal operation plan admits measured u32 list copies" {
     try std.testing.expectEqual(CopyShape.list_elements, memory_plan.copy_shape);
     try std.testing.expectEqual(@as(u32, 4), memory_plan.element_stride);
     try std.testing.expectEqual(@as(usize, 6), memory_plan.operations.len);
+}
+
+test "marshal operation plan admits a measured scalar map pair-list" {
+    var key = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer key.deinit();
+    var value = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer value.deinit();
+    var map = try @import("wit_abi_types.zig").AbiType.map(std.testing.allocator, &key, &value);
+    defer map.deinit();
+
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-map@1.0.0",
+        .world = "probe",
+        .member = "api.lookup",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    }, &map, .lower, .{
+        .layout = .{ .map = .{
+            .pointer_offset = 0,
+            .length_offset = 4,
+            .element_byte_size = 8,
+            .element_stride = 8,
+            .element_alignment = 4,
+            .key = .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+            .value = .{ .offset = 4, .byte_size = 4, .alignment = 4 },
+            .capacity = 4,
+            .accepted_lengths = &.{ 0, 1, 4 },
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .scalar = .{ .offset = 4, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+        },
+    });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const memory_plan = try build_sync_memory_plan(&plan);
+    try std.testing.expectEqual(CopyShape.map_entries, memory_plan.copy_shape);
+    try std.testing.expectEqual(@as(u32, 8), memory_plan.element_stride);
+    try std.testing.expectEqual(@as(usize, 6), memory_plan.operations.len);
+    try std.testing.expectEqual(MemoryOperation.read_gc_span, memory_plan.operations[0]);
+    try std.testing.expectEqual(MemoryOperation.copy_to_linear, memory_plan.operations[3]);
+    try std.testing.expectEqual(MemoryOperation.canonical_call, memory_plan.operations[4]);
+    try std.testing.expectEqual(MemoryOperation.cabi_realloc_free, memory_plan.operations[5]);
 }
 
 test "marshal operation plan admits a bounded u32 list record lower" {

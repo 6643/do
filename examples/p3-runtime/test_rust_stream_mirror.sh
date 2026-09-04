@@ -14,13 +14,16 @@ core_wasm="$tmp_dir/stream-mirror.wasm"
 component_path="$tmp_dir/stream-mirror.component.wasm"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
 cargo_target_dir=${CARGO_TARGET_DIR:-"$repo_root/.tmp/do-tmp/cargo-target"}
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
+test -x "$toolchain_bin"
 
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build --p3-async-component \
   --p3-wit-output "$wit_path" "$fixture" -o "$core_wat"
-wasm-tools parse "$core_wat" -o "$core_wasm"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
 TMPDIR="$tmp_root" bash "$repo_root/examples/p3-runtime/assemble_async_component.sh" \
   "$wit_path" "$core_wasm" stream-mirror-probe "$component_path"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component_path"
+"$toolchain_bin" validate-component "$component_path" --features component-async
 
 if (($# == 0)); then
   modes=(pending ready source-eof error cancel early-drop)

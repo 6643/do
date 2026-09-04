@@ -160,8 +160,20 @@ test "toolchain adapter maps the core GC async profile to current feature flags"
 test "toolchain adapter feature profiles reject arbitrary feature strings" {
     try std.testing.expectEqual(toolchain.FeatureProfile.none, try toolchain.parse_feature_profile("none"));
     try std.testing.expectEqual(toolchain.FeatureProfile.component_async, try toolchain.parse_feature_profile("component-async"));
+    try std.testing.expectEqual(toolchain.FeatureProfile.component_map, try toolchain.parse_feature_profile("component-map"));
     try std.testing.expectEqual(toolchain.FeatureProfile.core_gc_async, try toolchain.parse_feature_profile("core-gc-async"));
     try std.testing.expectError(error.InvalidFeatureProfile, toolchain.parse_feature_profile("gc,custom"));
+}
+
+test "toolchain adapter maps the component map profile to cm-map" {
+    const argv = try toolchain.build_argv(std.testing.allocator, .validate_component, .{
+        .validate_component = .{ .component = "map.component.wasm", .features = .component_map },
+    });
+    defer toolchain.free_argv(std.testing.allocator, argv);
+
+    const expected = [_][]const u8{ "validate", "--features", "cm-map", "map.component.wasm" };
+    try std.testing.expectEqual(expected.len, argv.len);
+    for (expected, 0..) |value, index| try std.testing.expectEqualStrings(value, argv[index]);
 }
 
 test "toolchain lock records current CLI identities and verified Rust crate upgrade" {

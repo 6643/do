@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 fixture="$repo_root/examples/p3-runtime/generic-async-single-future.do"
 wit="$repo_root/examples/p3-runtime/generic-async-single-future.wit"
 runner_manifest="$repo_root/examples/p3-runtime/rust-host-runner/Cargo.toml"
@@ -28,10 +30,10 @@ for marker in \
   grep -Fq "$marker" "$core_wat"
 done
 
-wasm-tools parse "$core_wat" -o "$core_wasm"
-wasm-tools component embed "$wit" "$core_wasm" --world probe -o "$embedded"
-wasm-tools component new "$embedded" -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit" "$core_wasm" probe -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features component-async
 
 cargo_bin=${CARGO_BIN:-cargo}
 if ! command -v cc >/dev/null && command -v zig >/dev/null; then

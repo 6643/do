@@ -3,11 +3,13 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 do_bin=${DO_BIN:-"$repo_root/bin/do"}
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 source="$repo_root/examples/p3-runtime/future-owned-component.do"
 wit_snapshot="$repo_root/examples/p3-runtime/future-owned-component.wit"
-wasm_tools=${WASM_TOOLS:-wasm-tools}
 
 test -x "$do_bin"
+test -x "$toolchain_bin"
 test -f "$source"
 test -f "$wit_snapshot"
 
@@ -40,12 +42,12 @@ if grep -Fq '[task-return]helper' "$core_wat" ||
   exit 1
 fi
 
-"$wasm_tools" parse "$core_wat" -o "$core_wasm"
-WASM_TOOLS="$wasm_tools" bash "$repo_root/examples/p3-runtime/assemble_async_component.sh" \
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+bash "$repo_root/examples/p3-runtime/assemble_async_component.sh" \
   "$wit" "$core_wasm" future-owned-canonical "$component"
-"$wasm_tools" validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" validate-component "$component"
 component_wit=$tmp_dir/component.wit
-"$wasm_tools" component wit "$component" >"$component_wit"
+"$toolchain_bin" component-wit "$component" >"$component_wit"
 grep -Fq 'read: func() -> future<ticket>' "$component_wit"
 grep -Fq 'run: async func(mode: u32)' "$component_wit"
 

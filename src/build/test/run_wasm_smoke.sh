@@ -10,8 +10,9 @@ TMP_DIR="$TEST_DIR/tmp/wasm_run"
 ZIG_BIN="${ZIG_BIN:-$(command -v zig || true)}"
 ZIG_BIN="${ZIG_BIN:-/home/_/_/zig/zig}"
 DO_BIN="$ROOT_DIR/bin/do"
-WASM_TOOLS="${WASM_TOOLS:-$(command -v wasm-tools || true)}"
+TOOLCHAIN_BIN="${DO_TOOLCHAIN_BIN:-$ROOT_DIR/bin/do-toolchain}"
 NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$ROOT_DIR/toolchain/toolchain.lock.json}"
 
 pass_count=0
 fail_count=0
@@ -36,8 +37,8 @@ if [[ ! -x "$DO_BIN" ]]; then
     echo "[FAIL] compiler binary not found: $DO_BIN"
     exit 1
 fi
-if [[ -z "$WASM_TOOLS" || ! -x "$WASM_TOOLS" ]]; then
-    echo "[FAIL] wasm-tools not found"
+if [[ ! -x "$TOOLCHAIN_BIN" ]]; then
+    echo "[FAIL] do-toolchain not found"
     exit 1
 fi
 if [[ -z "$NODE_BIN" || ! -x "$NODE_BIN" ]]; then
@@ -63,7 +64,7 @@ run_case() {
         return
     fi
 
-    if ! "$WASM_TOOLS" parse "$wat_file" -o "$wasm_file" >"$TMP_DIR/$name.parse.stdout" 2>"$TMP_DIR/$name.parse.stderr"; then
+    if ! "$TOOLCHAIN_BIN" parse-core "$wat_file" -o "$wasm_file" >"$TMP_DIR/$name.parse.stdout" 2>"$TMP_DIR/$name.parse.stderr"; then
         echo "[FAIL] wasm run $name (wat parse failed)"
         cat "$TMP_DIR/$name.parse.stderr"
         ((fail_count += 1))

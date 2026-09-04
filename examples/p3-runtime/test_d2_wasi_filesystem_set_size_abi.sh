@@ -2,34 +2,17 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 wit="$repo_root/examples/p3-runtime/wit/wasi-filesystem-set-size.wit"
 cancel_wit="$repo_root/examples/p3-runtime/wit/wasi-filesystem-set-size-cancel.wit"
 core_wat="$repo_root/examples/p3-runtime/wasi-filesystem-set-size.core.wat"
 cancel_core_wat="$repo_root/examples/p3-runtime/wasi-filesystem-set-size-cancel.core.wat"
 upstream_wit="$repo_root/src/build/p3_wit/wasi-http-0.3.0-rc-2025-09-16/deps/filesystem/types.wit"
 
-expected_current_version=${WASM_TOOLS_EXPECT_VERSION:-'wasm-tools 1.255.0 (76e20611d 2026-07-30)'}
-expected_current_sha256=${WASM_TOOLS_EXPECT_SHA256:-6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013}
 expected_mirror_sha256=f09241f8fcf4b94e1a684553b439b592f254c83c7d23a3708930040a2324c3f4
 expected_cancel_mirror_sha256=7030161e35a18fe40220cb2701864141a00a6c8d897cdfc8291839f2b742cc67
 expected_upstream_sha256=8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f
-
-current_wasm_tools=${WASM_TOOLS:-wasm-tools}
-
-resolve_tool() {
-  local requested="$1"
-  if [[ "$requested" == */* ]]; then
-    [[ -x "$requested" ]] || {
-      printf 'missing executable: %s\n' "$requested" >&2
-      exit 1
-    }
-    printf '%s\n' "$requested"
-    return
-  fi
-  command -v "$requested"
-}
-
-current_wasm_tools=$(resolve_tool "$current_wasm_tools")
 
 for path in "$wit" "$cancel_wit" "$core_wat" "$cancel_core_wat" "$upstream_wit"; do
   [[ -f "$path" ]] || {
@@ -38,18 +21,6 @@ for path in "$wit" "$cancel_wit" "$core_wat" "$cancel_core_wat" "$upstream_wit";
   }
 done
 
-actual_current_version=$($current_wasm_tools --version)
-actual_current_sha256=$(sha256sum "$current_wasm_tools" | awk '{print $1}')
-[[ "$actual_current_version" == "$expected_current_version" ]] || {
-  printf 'current wasm-tools version mismatch: expected %s, got %s\n' \
-    "$expected_current_version" "$actual_current_version" >&2
-  exit 1
-}
-[[ "$actual_current_sha256" == "$expected_current_sha256" ]] || {
-  printf 'current wasm-tools hash mismatch: expected %s, got %s\n' \
-    "$expected_current_sha256" "$actual_current_sha256" >&2
-  exit 1
-}
 [[ "$(sha256sum "$wit" | awk '{print $1}')" == "$expected_mirror_sha256" ]] || {
   printf 'filesystem set-size WIT mirror hash changed\n' >&2
   exit 1
@@ -76,12 +47,10 @@ trap 'rm -rf -- "$tmp_dir"' EXIT
 
 current_dummy="$tmp_dir/current-dummy.wat"
 current_cancel_dummy="$tmp_dir/current-cancel-dummy.wat"
-"$current_wasm_tools" component embed "$wit" --world set-size-probe \
-  --dummy-names legacy --async-callback \
-  --features cm-async,cm-more-async-builtins -t >"$current_dummy"
-"$current_wasm_tools" component embed "$cancel_wit" --world set-size-cancel-probe \
-  --dummy-names legacy --async-callback \
-  --features cm-async,cm-more-async-builtins -t >"$current_cancel_dummy"
+"$toolchain_bin" embed-component-template "$wit" set-size-probe \
+  --features component-async >"$current_dummy"
+"$toolchain_bin" embed-component-template "$cancel_wit" set-size-cancel-probe \
+  --features component-async >"$current_cancel_dummy"
 
 require_text() {
   local file="$1"
@@ -146,10 +115,10 @@ require_core_layout "$cancel_core_wat"
 
 core_tmp="$tmp_dir/set-size.core.wasm"
 cancel_core_tmp="$tmp_dir/set-size-cancel.core.wasm"
-"$current_wasm_tools" parse "$core_wat" -o "$core_tmp"
-"$current_wasm_tools" validate --features cm-async,cm-more-async-builtins "$core_tmp"
-"$current_wasm_tools" parse "$cancel_core_wat" -o "$cancel_core_tmp"
-"$current_wasm_tools" validate --features cm-async,cm-more-async-builtins "$cancel_core_tmp"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_tmp"
+"$toolchain_bin" validate-core "$core_tmp"
+"$toolchain_bin" parse-core "$cancel_core_wat" -o "$cancel_core_tmp"
+"$toolchain_bin" validate-core "$cancel_core_tmp"
 
 assemble_component() {
   local input_wit="$1"
@@ -161,12 +130,11 @@ assemble_component() {
   local component_wat="$tmp_dir/$name.component.wat"
   local component_wit="$tmp_dir/$name.component.wit"
 
-  "$current_wasm_tools" component embed "$input_wit" "$core" --world "$world" \
-    --features cm-async,cm-more-async-builtins -o "$embedded"
-  "$current_wasm_tools" component new --skip-validation "$embedded" -o "$component"
-  "$current_wasm_tools" validate --features cm-async,cm-more-async-builtins "$component"
-  "$current_wasm_tools" print "$component" >"$component_wat"
-  "$current_wasm_tools" component wit "$component" >"$component_wit"
+  "$toolchain_bin" embed-component "$input_wit" "$core" "$world" -o "$embedded"
+  "$toolchain_bin" new-component "$embedded" -o "$component"
+  "$toolchain_bin" validate-component "$component" --features component-async
+  "$toolchain_bin" print-component "$component" >"$component_wat"
+  "$toolchain_bin" component-wit "$component" >"$component_wit"
 
   require_text "$component_wat" '"[async-lower][method]descriptor.set-size"'
   require_text "$component_wat" '"[resource-drop]descriptor"'
@@ -196,7 +164,7 @@ assemble_component "$wit" set-size-probe "$core_tmp" set-size
 assemble_component "$cancel_wit" set-size-cancel-probe "$cancel_core_tmp" set-size-cancel
 
 printf 'D2 filesystem descriptor.set-size ABI capability passed\n'
-printf 'wasm-tools=%s sha256=%s\n' "$actual_current_version" "$actual_current_sha256"
+printf 'toolchain-adapter=current-only\n'
 printf 'set-size-mirror-sha256=%s cancel-mirror-sha256=%s upstream-sha256=%s\n' \
   "$expected_mirror_sha256" "$expected_cancel_mirror_sha256" "$expected_upstream_sha256"
 printf 'async-import=[async-lower][method]descriptor.set-size core=(i32,i64,i32)->i32\n'

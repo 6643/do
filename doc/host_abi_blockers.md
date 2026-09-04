@@ -7,6 +7,31 @@
 > Source value semantics remain unchanged; future backend work targets GC, and
 > Component/WIT resource ownership and drop remain explicit non-GC contracts.
 
+### Current toolchain and harness boundary (2026-09-02)
+
+The active Component toolchain is current-only through `bin/do-toolchain`, pinned
+by `toolchain/toolchain.lock.json` to `wasm-tools 1.258.0` and Wasmtime `48.0.1`.
+Task 9 Step 1's adapter gate and negative scans pass from the repository root and
+an unrelated `/tmp` cwd. Task 8 Step 3 Rust host adapter batches are closed by
+their scoped reports; Task 8 Steps 4/5 are closed by the thin `run_tests.sh`
+wrapper, the entrypoint contract check, and the parity report. Task 9 Step 2
+active documentation is synchronized. Task 9 Steps 3/5 are also closed:
+default and both opt-in thin-entry runs report 14/14 steps and 50/50 tests,
+ReleaseSmall/release smoke and the adapter/entrypoint gates pass, and the
+workspace review found no generated target/cache artifacts. Rust Cargo tests
+pass with the repository `zig-cc.sh` linker environment because this host has no
+`cc`; the plain-command failure is an environment prerequisite, not an ABI
+failure. Historical `wasm-tools 1.255.0` references below are evidence only and
+are not active tool invocations.
+
+WIT `map<K,V>` parser/model/manifest metadata is represented as a pair-list ABI
+shape. `wit_abi_types` and the bounded Core WAT probe cover `u32` keys with
+`u32`/`text` values in both lower and lift directions, and pass the current
+toolchain's parse/validate checks. Generic Component/WIT map lowering,
+synchronous lift, async input copy, and Stream cross-poll owned-buffer cleanup
+are not implemented. Unsupported map marshal shapes must remain fail-closed
+until those lifecycle paths have a real ABI emitter and focused runtime gates.
+
 ### G5c scalar-list internal route parameterization (2026-08-23)
 
 The synchronous bounded record lower path now normalizes manifest `byte_list`
@@ -166,6 +191,8 @@ The green rows cover `[u8]`, text, nested managed struct, managed Tuple,
 `[u32]`/`[i16]`/`[f32]`/`[f64]` list updates, and file-backed imported text
 identity. The migration inventory links the checker as G5b evidence for these
 rows.
+
+G5b async/resource executable coverage ledger: `doc/g5b_async_resource_coverage.md`.
 
 The parsed GC probe also now covers the fixed-index `[bool]` update shape. Its
 independent probe checks that the copied result changes the selected element

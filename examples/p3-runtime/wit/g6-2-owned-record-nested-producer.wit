@@ -1,0 +1,31 @@
+package do:g6-2-owned-record-nested-producer@0.1.0;
+
+interface types {
+  enum error-code { io, pipe, invalid-mode }
+  resource ticket {}
+  record inner {
+    ticket: own<ticket>,
+  }
+  record outer {
+    inner: inner,
+  }
+}
+
+interface source {
+  use types.{ticket};
+  make-ticket: func(seed: u32) -> own<ticket>;
+}
+
+interface sink {
+  use types.{error-code, outer};
+  consume-via-stream: async func(
+    data: stream<outer>
+  ) -> result<_, error-code>;
+}
+
+world owned-record-nested-producer {
+  use types.{error-code};
+  import source;
+  import sink;
+  export produce: async func(mode: u32) -> result<_, error-code>;
+}

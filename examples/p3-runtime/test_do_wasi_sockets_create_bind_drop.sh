@@ -2,14 +2,10 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-d2-sockets.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
-
-version=$(wasm-tools --version)
-case "$version" in
-  "wasm-tools 1.255.0 (76e20611d"*) ;;
-  *) printf 'unexpected wasm-tools version: %s\n' "$version" >&2; exit 1 ;;
-esac
 
 for protocol in tcp udp; do
   source="$repo_root/examples/p3-runtime/wasi-sockets-create-bind-drop-component.do"
@@ -31,10 +27,10 @@ for protocol in tcp udp; do
   grep -Fq "[static]${protocol}-socket.create" "$wat"
   grep -Fq "[method]${protocol}-socket.bind" "$wat"
   grep -Fq "[resource-drop]${protocol}-socket" "$wat"
-  wasm-tools parse "$wat" -o "$core"
-  wasm-tools component embed "$wit" "$core" --world socket-probe -o "$embedded"
-  wasm-tools component new "$embedded" -o "$component"
-  wasm-tools validate "$component"
+  "$toolchain_bin" parse-core "$wat" -o "$core"
+  "$toolchain_bin" embed-component "$wit" "$core" socket-probe -o "$embedded"
+  "$toolchain_bin" new-component "$embedded" -o "$component"
+  "$toolchain_bin" validate-component "$component"
 done
 
 negative_wat="$tmp_dir/negative.wat"

@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
 fixture="$repo_root/examples/p3-runtime/http-payload-cancel.do"
 tmp_root=${TMPDIR:-"$repo_root/.tmp/do-tmp"}
@@ -14,6 +16,8 @@ core_wat="$tmp_dir/http-payload-cancel.wat"
 core_wasm="$tmp_dir/http-payload-cancel.wasm"
 embedded="$tmp_dir/http-payload-cancel.embedded.wasm"
 component="$tmp_dir/http-payload-cancel.component.wasm"
+
+test -x "$toolchain_bin"
 
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build "$fixture" \
   --p3-async-component --p3-wit-package-output "$wit_dir" -o "$core_wat"
@@ -32,12 +36,11 @@ grep -Fq 'call $subtask-drop' "$core_wat"
 cp "$repo_root/examples/p3-runtime/wit/http-payload-cancel-service-world.wit" \
   "$wit_dir/http-payload-cancel-service-world.wit"
 
-wasm-tools parse "$core_wat" -o "$core_wasm"
-wasm-tools component embed "$wit_dir" "$core_wasm" \
-  --world http-payload-cancel \
-  --features cm-async,cm-more-async-builtins -o "$embedded"
-wasm-tools component new "$embedded" --skip-validation -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit_dir" "$core_wasm" http-payload-cancel \
+  --features component-async -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features component-async
 
 CC="$runner_dir/zig-cc.sh" \
 CXX="$runner_dir/zig-cc.sh" \

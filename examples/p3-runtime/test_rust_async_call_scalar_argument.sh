@@ -28,8 +28,8 @@ ready=$(run_mode ready)
 pending=$(run_mode pending)
 cancel=$(run_mode cancel)
 
-grep -Fq 'mode=ready child-completions=1 child-drops=1 host-future-drops=1 table-empty=true' <<<"$ready"
-grep -Fq 'mode=pending child-completions=1 child-drops=1 host-future-drops=1 table-empty=true' <<<"$pending"
+grep -Fq 'mode=ready child-completions=2 child-drops=2 host-future-drops=2 table-empty=true' <<<"$ready"
+grep -Fq 'mode=pending child-completions=2 child-drops=2 host-future-drops=2 table-empty=true' <<<"$pending"
 grep -Fq 'mode=cancel child-cancellations=1 child-drops=1 host-future-drops=1 table-empty=true' <<<"$cancel"
 for output in "$ready" "$pending" "$cancel"; do
     grep -Fq 'async-call root-terminal=1 duplicate-drop=0' <<<"$output"

@@ -22,6 +22,16 @@ const measured_layout_prefix =
     "\"allocation\":\"cabi_realloc\",\"free\":\"cabi_realloc\"}]},"
     ++ "\"canonical_import\":";
 
+const map_measured_layout_prefix =
+    "\"measured_layout\":{\"kind\":\"map\",\"byte_size\":8,\"alignment\":4," ++
+    "\"pointer_offset\":0,\"length_offset\":4,\"element_byte_size\":8," ++
+    "\"element_stride\":8,\"element_alignment\":4," ++
+    "\"key\":{\"offset\":0,\"byte_size\":4,\"alignment\":4}," ++
+    "\"value\":{\"offset\":4,\"byte_size\":4,\"alignment\":4}," ++
+    "\"capacity\":2,\"accepted_lengths\":[0,1,2]," ++
+    "\"allocation\":\"cabi_realloc\",\"free\":\"cabi_realloc\"}," ++
+    "\"canonical_import\":";
+
 fn source_with_measurement(allocator: std.mem.Allocator, prefix: []const u8) ![]u8 {
     return std.mem.replaceOwned(u8, allocator, valid_source, "\"canonical_import\":", prefix);
 }
@@ -56,6 +66,35 @@ test "descriptor manifest rejects a measured child count drift" {
     try std.testing.expectError(error.DescriptorMeasurementInvalid, manifest.parse(std.testing.allocator, source));
 }
 
+test "descriptor manifest decodes a map measurement" {
+    const source = try source_with_measurement(std.testing.allocator, map_measured_layout_prefix);
+    defer std.testing.allocator.free(source);
+    var parsed = try manifest.parse(std.testing.allocator, source);
+    defer parsed.deinit(std.testing.allocator);
+    const layout = parsed.document.descriptors[0].measured_layout orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(manifest.MeasurementKind.map, layout.kind);
+    try std.testing.expectEqual(@as(u32, 8), layout.byte_size);
+    try std.testing.expectEqual(@as(u32, 0), layout.map_key.?.offset);
+    try std.testing.expectEqual(@as(u32, 4), layout.map_value.?.offset);
+    try std.testing.expectEqual(@as(usize, 3), layout.accepted_lengths.len);
+}
+
+test "descriptor manifest rejects a map measurement without value facts" {
+    const malformed = std.mem.replaceOwned(
+        u8,
+        std.testing.allocator,
+        map_measured_layout_prefix,
+        "\"value\":{\"offset\":4,\"byte_size\":4,\"alignment\":4},",
+        "",
+    ) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+    };
+    defer std.testing.allocator.free(malformed);
+    const source = try source_with_measurement(std.testing.allocator, malformed);
+    defer std.testing.allocator.free(source);
+    try std.testing.expectError(error.DescriptorMeasurementInvalid, manifest.parse(std.testing.allocator, source));
+}
+
 test "descriptor manifest rejects an invalid measured allocation action" {
     const malformed = std.mem.replaceOwned(u8, std.testing.allocator, measured_layout_prefix, "cabi_realloc", "malloc") catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
@@ -75,6 +114,39 @@ test "descriptor manifest parses a bounded WIT record" {
     const descriptor = parsed.document.descriptors[0];
     try std.testing.expectEqualStrings("imports", descriptor.world);
     try std.testing.expectEqualStrings("list<u8>", descriptor.result);
+}
+
+test "descriptor manifest parses an explicit map pair-list ABI shape" {
+    const source = std.mem.replaceOwned(
+        u8,
+        std.testing.allocator,
+        valid_source,
+        "\"source_sha256\":",
+        "\"map_abi\":{\"key\":\"string\",\"value\":\"u32\",\"representation\":\"pair-list\"},\"source_sha256\":",
+    ) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+    };
+    defer std.testing.allocator.free(source);
+    var parsed = try manifest.parse(std.testing.allocator, source);
+    defer parsed.deinit(std.testing.allocator);
+    const map_abi = parsed.document.descriptors[0].map_abi orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("string", map_abi.key);
+    try std.testing.expectEqualStrings("u32", map_abi.value);
+    try std.testing.expectEqualStrings("pair-list", map_abi.representation);
+}
+
+test "descriptor manifest rejects a non-scalar map key" {
+    const source = std.mem.replaceOwned(
+        u8,
+        std.testing.allocator,
+        valid_source,
+        "\"source_sha256\":",
+        "\"map_abi\":{\"key\":\"list<u8>\",\"value\":\"u32\",\"representation\":\"pair-list\"},\"source_sha256\":",
+    ) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+    };
+    defer std.testing.allocator.free(source);
+    try std.testing.expectError(error.DescriptorMapInvalid, manifest.parse(std.testing.allocator, source));
 }
 
 test "descriptor manifest rejects duplicate ids" {

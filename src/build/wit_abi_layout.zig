@@ -87,6 +87,27 @@ pub const ListLayoutMeasurement = struct {
     free: FreeAction,
 };
 
+pub const MapFieldMeasurement = struct {
+    offset: u32,
+    byte_size: u32,
+    alignment: u32,
+    indirect: ?IndirectMeasurement = null,
+};
+
+pub const MapLayoutMeasurement = struct {
+    pointer_offset: u32,
+    length_offset: u32,
+    element_byte_size: u32,
+    element_stride: u32,
+    element_alignment: u32,
+    key: MapFieldMeasurement,
+    value: MapFieldMeasurement,
+    capacity: u32,
+    accepted_lengths: []const u32,
+    allocation: AllocationAction,
+    free: FreeAction,
+};
+
 pub const OwnedSlot = struct {
     index: u32,
     offset: u32,
@@ -205,6 +226,74 @@ pub const ListLayoutPlan = struct {
             .stride = self.element_stride,
             .ticket_offset = self.ticket_offset,
         };
+    }
+};
+
+pub const MapLayoutPlan = struct {
+    allocator: Allocator,
+    pointer_offset: u32,
+    length_offset: u32,
+    element_byte_size: u32,
+    element_stride: u32,
+    element_alignment: u32,
+    key: MapFieldMeasurement,
+    value: MapFieldMeasurement,
+    capacity: u32,
+    accepted_lengths: []u32,
+    allocation: AllocationAction,
+    free: FreeAction,
+
+    pub fn init(
+        allocator: Allocator,
+        value: *const abi_types.AbiType,
+        measured: MapLayoutMeasurement,
+    ) (LayoutError || abi_types.AbiTypeError || Allocator.Error)!MapLayoutPlan {
+        if (value.kind() != .map) return error.WrongRootKind;
+        try value.validate();
+        const key = value.map_key() orelse return error.UnsupportedListElement;
+        if (key.kind() != .scalar and key.kind() != .text) return error.UnsupportedListElement;
+        try validate_map_measurement(measured);
+
+        const accepted_lengths = try allocator.dupe(u32, measured.accepted_lengths);
+        errdefer allocator.free(accepted_lengths);
+        return .{
+            .allocator = allocator,
+            .pointer_offset = measured.pointer_offset,
+            .length_offset = measured.length_offset,
+            .element_byte_size = measured.element_byte_size,
+            .element_stride = measured.element_stride,
+            .element_alignment = measured.element_alignment,
+            .key = measured.key,
+            .value = measured.value,
+            .capacity = measured.capacity,
+            .accepted_lengths = accepted_lengths,
+            .allocation = measured.allocation,
+            .free = measured.free,
+        };
+    }
+
+    pub fn deinit(self: *MapLayoutPlan) void {
+        if (self.accepted_lengths.len != 0) self.allocator.free(self.accepted_lengths);
+        self.accepted_lengths = &.{};
+    }
+
+    pub fn validate_length(self: *const MapLayoutPlan, length: u32) LayoutError!void {
+        if (length > self.capacity) return error.InvalidListLength;
+        for (self.accepted_lengths) |accepted| {
+            if (accepted == length) return;
+        }
+        return error.InvalidListLength;
+    }
+
+    pub fn validate_runtime_length(self: *const MapLayoutPlan, length: u32) LayoutError!void {
+        if (length > self.capacity) return error.InvalidListLength;
+    }
+
+    pub fn entry_offset(self: *const MapLayoutPlan, index: u32) LayoutError!u32 {
+        if (index >= self.capacity) return error.InvalidListLength;
+        const offset = @as(u64, index) * @as(u64, self.element_stride);
+        if (offset > std.math.maxInt(u32)) return error.OffsetOverflow;
+        return @intCast(offset);
     }
 };
 
@@ -524,6 +613,50 @@ fn validate_byte_list_measurement(measured: ByteListLayoutMeasurement) LayoutErr
     }
     const last_slot_end = @as(u64, measured.capacity) * measured.element_stride;
     if (last_slot_end > std.math.maxInt(u32)) return error.OffsetOverflow;
+}
+
+fn validate_map_measurement(measured: MapLayoutMeasurement) LayoutError!void {
+    if (measured.capacity == 0) return error.InvalidCapacity;
+    if (measured.element_byte_size == 0 or !is_power_of_two(measured.element_alignment)) return error.InvalidAlignment;
+    if (measured.element_byte_size % measured.element_alignment != 0) return error.InvalidAlignment;
+    if (measured.element_stride == 0 or measured.element_stride < measured.element_byte_size or
+        measured.element_stride % measured.element_alignment != 0)
+    {
+        return error.InvalidStride;
+    }
+    if (!is_aligned(measured.pointer_offset, 4) or !is_aligned(measured.length_offset, 4)) {
+        return error.MisalignedOffset;
+    }
+    if (measured.pointer_offset > std.math.maxInt(u32) - 4 or
+        measured.length_offset > std.math.maxInt(u32) - 4)
+    {
+        return error.OffsetOverflow;
+    }
+    if (measured.pointer_offset == measured.length_offset) return error.LayoutOutOfBounds;
+    try validate_map_field(measured.element_byte_size, measured.key);
+    try validate_map_field(measured.element_byte_size, measured.value);
+    const key_end = @as(u64, measured.key.offset) + measured.key.byte_size;
+    const value_end = @as(u64, measured.value.offset) + measured.value.byte_size;
+    if (key_end > std.math.maxInt(u32) or value_end > std.math.maxInt(u32)) return error.OffsetOverflow;
+    if (measured.key.offset < value_end and measured.value.offset < key_end) return error.LayoutOutOfBounds;
+    if (measured.allocation == .none or measured.free == .none) return error.MissingListStorageActions;
+    if (measured.accepted_lengths.len == 0 or measured.accepted_lengths[0] != 0) return error.InvalidListLength;
+    var previous: u32 = 0;
+    for (measured.accepted_lengths, 0..) |length, index| {
+        if (length > measured.capacity or (index != 0 and length <= previous)) return error.InvalidListLength;
+        previous = length;
+    }
+    const last_slot_end = @as(u64, measured.capacity - 1) * measured.element_stride + measured.element_byte_size;
+    if (last_slot_end > std.math.maxInt(u32)) return error.OffsetOverflow;
+}
+
+fn validate_map_field(pair_size: u32, field: MapFieldMeasurement) LayoutError!void {
+    if (field.byte_size == 0 or !is_power_of_two(field.alignment)) return error.InvalidAlignment;
+    if (!is_aligned(field.offset, field.alignment)) return error.MisalignedOffset;
+    try check_region(field.offset, field.byte_size, pair_size);
+    if (field.indirect) |indirect| {
+        if (indirect.core_words.len == 0) return error.MissingIndirectMetadata;
+    }
 }
 
 fn scalar_measurement(kind: abi_types.ScalarKind) PayloadMeasurement {

@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
 wit="$repo_root/examples/p3-runtime/wit/wasi-filesystem-get-type.wit"
 core_wat="$repo_root/examples/p3-runtime/wasi-filesystem-get-type.core.wat"
@@ -25,18 +27,19 @@ generated_core_wat="$tmp_dir/generated.core.wat"
 generated_core_wasm="$tmp_dir/generated.core.wasm"
 generated_embedded="$tmp_dir/generated.embedded.wasm"
 generated_component="$tmp_dir/generated.component.wasm"
-wasm_tools=${WASM_TOOLS:-wasm-tools}
 
-"$wasm_tools" parse "$core_wat" -o "$core_wasm"
-"$wasm_tools" component embed "$wit" "$core_wasm" \
-  --world get-type-probe --features cm-async,cm-more-async-builtins -o "$embedded"
-"$wasm_tools" component new --skip-validation "$embedded" -o "$component"
-"$wasm_tools" validate --features cm-async,cm-more-async-builtins "$component"
-"$wasm_tools" parse "$cancel_core_wat" -o "$cancel_core_wasm"
-"$wasm_tools" component embed "$cancel_wit" "$cancel_core_wasm" \
-  --world get-type-cancel-probe --features cm-async,cm-more-async-builtins -o "$cancel_embedded"
-"$wasm_tools" component new --skip-validation "$cancel_embedded" -o "$cancel_component"
-"$wasm_tools" validate --features cm-async,cm-more-async-builtins "$cancel_component"
+test -x "$toolchain_bin"
+
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit" "$core_wasm" get-type-probe \
+  --features component-async -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features component-async
+"$toolchain_bin" parse-core "$cancel_core_wat" -o "$cancel_core_wasm"
+"$toolchain_bin" embed-component "$cancel_wit" "$cancel_core_wasm" get-type-cancel-probe \
+  --features component-async -o "$cancel_embedded"
+"$toolchain_bin" new-component "$cancel_embedded" -o "$cancel_component"
+"$toolchain_bin" validate-component "$cancel_component" --features component-async
 grep -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$cancel_wit"
 grep -Fq 'cancel: async func();' "$cancel_wit"
 grep -Fq 'world get-type-cancel-probe' "$cancel_wit"
@@ -44,11 +47,11 @@ grep -Fq '"[async-lower][subtask-cancel]"' "$cancel_core_wat"
 
 "$repo_root/bin/do" build "$repo_root/src/build/test/compile_ok/459_wasi_filesystem_get_type_component.do" \
   --p3-async-component --p3-wit-output "$generated_wit" -o "$generated_core_wat"
-"$wasm_tools" parse "$generated_core_wat" -o "$generated_core_wasm"
-"$wasm_tools" component embed "$generated_wit" "$generated_core_wasm" \
-  --world get-type-probe --features cm-async,cm-more-async-builtins -o "$generated_embedded"
-"$wasm_tools" component new --skip-validation "$generated_embedded" -o "$generated_component"
-"$wasm_tools" validate --features cm-async,cm-more-async-builtins "$generated_component"
+"$toolchain_bin" parse-core "$generated_core_wat" -o "$generated_core_wasm"
+"$toolchain_bin" embed-component "$generated_wit" "$generated_core_wasm" get-type-probe \
+  --features component-async -o "$generated_embedded"
+"$toolchain_bin" new-component "$generated_embedded" -o "$generated_component"
+"$toolchain_bin" validate-component "$generated_component" --features component-async
 grep -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$generated_wit"
 grep -Fq 'get-type: async func()' "$generated_wit"
 grep -Fq 'run: async func(directory: own<descriptor>)' "$generated_wit"

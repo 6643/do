@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 wit_file="$repo_root/examples/p3-runtime/wit/cli-stream-stdout.wit"
 registry="$repo_root/src/build/p3_async_registry.json"
 expected_hash="03ff93468efa2d4d3e58e441b924e3ee984d4d8b8080ca45646c92a14609acc4"
@@ -13,13 +15,8 @@ trap 'rm -rf "$work_dir"' EXIT
 wat_file="$work_dir/stream-stdout.wat"
 wasm_file="$work_dir/stream-stdout.wasm"
 
-wasm-tools component embed \
-    "$wit_file" \
-    --world stream-stdout-probe \
-    --dummy-names legacy \
-    --async-callback \
-    -t > "$wat_file"
-wasm-tools parse "$wat_file" -o "$wasm_file" >/dev/null
+"$toolchain_bin" embed-component-template "$wit_file" stream-stdout-probe > "$wat_file"
+"$toolchain_bin" parse-core "$wat_file" -o "$wasm_file"
 
 module='wasi:cli/stdout@0.3.0-rc-2025-09-16'
 for import_name in \

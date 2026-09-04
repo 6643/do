@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 tmp_root=${TMPDIR:-"$repo_root/.tmp/do-tmp"}
 mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/record-resource-list-stream-boundary.XXXXXX")
@@ -17,11 +19,9 @@ DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
   --p3-async-component \
   "$repo_root/examples/p3-runtime/record-resource-stream-probe-component.do" \
   -o "$core_wat" >/dev/null
-wasm-tools parse "$core_wat" -o "$core_wasm"
-wasm-tools component embed "$wit" "$core_wasm" \
-  --world record-resource-list-stream-probe \
-  --features cm-async,cm-more-async-builtins \
-  -o "$embedded"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit" "$core_wasm" \
+  record-resource-list-stream-probe -o "$embedded"
 
 if DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
   --p3-async-component \
@@ -31,5 +31,5 @@ if DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
   exit 1
 fi
 
-grep -Fq 'UnknownP3AsyncHostDescriptor' "$stderr_file"
+grep -Fq 'UnsupportedP3AsyncComponent' "$stderr_file"
 printf 'record-resource list stream WIT acceptance and Do rejection passed\n'

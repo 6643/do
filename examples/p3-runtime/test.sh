@@ -2,8 +2,11 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
+test -x "$toolchain_bin"
 "$repo_root/examples/p3-runtime/verify_p3_wit.sh"
-wasm-tools component wit "$repo_root/examples/p3-runtime/probe.wit" >/dev/null
+"$toolchain_bin" component-wit "$repo_root/examples/p3-runtime/probe.wit" >/dev/null
 output=$("$repo_root/examples/p3-runtime/build_and_run.sh")
 
 "$repo_root/examples/p3-runtime/test_c_api_host_drive_queue.sh"

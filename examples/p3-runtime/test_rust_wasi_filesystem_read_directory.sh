@@ -3,6 +3,8 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-p3-read-directory-runtime.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 
@@ -15,11 +17,12 @@ component="$tmp_dir/read-directory.component.wasm"
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
   "$repo_root/examples/p3-runtime/wasi-filesystem-read-directory.do" \
   --p3-async-component --p3-wit-output "$wit" -o "$core_wat"
-wasm-tools parse "$core_wat" -o "$core_wasm"
-wasm-tools component embed "$wit" "$core_wasm" \
-  --world read-directory-probe --features cm-async,cm-more-async-builtins -o "$embedded"
-wasm-tools component new "$embedded" -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+test -x "$toolchain_bin"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit" "$core_wasm" read-directory-probe \
+  --features component-async -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features component-async
 
 runner_env=(
   CC="$runner_dir/zig-cc.sh"

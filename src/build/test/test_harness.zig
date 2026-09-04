@@ -1,6 +1,7 @@
 const std = @import("std");
 const process = @import("process.zig");
 const test_cases = @import("test_cases.zig");
+const structural_checks = @import("structural_checks.zig");
 
 const map_source =
     \\package demo:maps@1.0.0;
@@ -17,6 +18,27 @@ const WitOutputKind = enum { sidecar, package };
 const OrderedMarkerPair = struct {
     first: []const u8,
     second: []const u8,
+};
+
+const GcCoreOracleCase = struct {
+    fixture: []const u8,
+    mode: ?[]const u8,
+};
+
+const gc_core_oracle_cases = [_]GcCoreOracleCase{
+    .{ .fixture = "text-identity.do", .mode = "identity" },
+    .{ .fixture = "text-identity-renamed.do", .mode = "relay" },
+    .{ .fixture = "list-set.do", .mode = "update" },
+    .{ .fixture = "list-put.do", .mode = "append_byte" },
+    .{ .fixture = "parameterized-list-set.do", .mode = "set_at" },
+    .{ .fixture = "parameterized-list-set-renamed.do", .mode = "replace" },
+    .{ .fixture = "managed-struct-set.do", .mode = null },
+    .{ .fixture = "managed-struct-renamed.do", .mode = null },
+    .{ .fixture = "managed-struct-preserve-field.do", .mode = null },
+    .{ .fixture = "managed-struct-payload.do", .mode = "update" },
+    .{ .fixture = "managed-struct-payload-renamed.do", .mode = "rewrite" },
+    .{ .fixture = "nested-managed-struct.do", .mode = "replace" },
+    .{ .fixture = "managed-tuple-text-bytes.do", .mode = "rewrite" },
 };
 
 const PureLoweringCase = struct {
@@ -39,6 +61,57 @@ const PureLoweringCase = struct {
     ordered_markers: ?OrderedMarkerPair = null,
     wat_snapshot: ?[]const u8 = null,
     wit_sha256: ?[]const u8 = null,
+};
+
+const ComponentTemplateCase = struct {
+    wit: []const u8,
+    world: []const u8,
+    markers: []const []const u8,
+};
+
+const component_template_cases = [_]ComponentTemplateCase{
+    .{
+        .wit = "examples/p3-runtime/wit/async-template.wit",
+        .world = "probe",
+        .markers = &.{
+            "[async-lower]wait-for",
+            "[async-lift]run",
+            "[callback][async-lift]run",
+            "[task-return]run",
+        },
+    },
+    .{
+        .wit = "examples/p3-runtime/wit/cli-stream-stdin.wit",
+        .world = "stream-stdin-probe",
+        .markers = &.{
+            "wasi:cli/stdin@0.3.0-rc-2025-09-16\" \"read-via-stream",
+            "(param i32)",
+            "\"$root\" \"[waitable-set-new]\"",
+            "\"[export]$root\" \"[task-return]run\"",
+        },
+    },
+    .{
+        .wit = "examples/p3-runtime/wit/cli-stream-stdout.wit",
+        .world = "stream-stdout-probe",
+        .markers = &.{
+            "wasi:cli/stdout@0.3.0-rc-2025-09-16\" \"[async-lower]write-via-stream",
+            "[async-lower]write-via-stream",
+            "[stream-new-0]write-via-stream",
+            "[stream-drop-writable-0]write-via-stream",
+        },
+    },
+    .{
+        .wit = "src/build/p3_wit/wasi-http-0.3.0-rc-2025-09-16",
+        .world = "wasi:filesystem/imports",
+        .markers = &.{
+            "wasi:filesystem/types@0.3.0-rc-2025-09-16\" \"[async-lower][method]descriptor.read-directory",
+            "[stream-new-0][method]descriptor.read-directory",
+            "[async-lower][stream-read-0][method]descriptor.read-directory",
+            "[future-new-1][method]descriptor.read-directory",
+            "[async-lower][future-read-1][method]descriptor.read-directory",
+            "[future-drop-readable-1][method]descriptor.read-directory",
+        },
+    },
 };
 
 const pure_lowering_cases = [_]PureLoweringCase{
@@ -402,6 +475,52 @@ const pure_lowering_cases = [_]PureLoweringCase{
         .forbidden_markers = &.{},
     },
     .{
+        .name = "D2 TCP socket create-bind-drop lowering",
+        .source = "examples/p3-runtime/wasi-sockets-create-bind-drop-component.do",
+        .build_flag = "--p3-wasi-sockets-create-bind-drop-component",
+        .world = "socket-probe",
+        .wit_snapshot = null,
+        .wit_markers = &.{
+            "package wasi:sockets@0.3.0;",
+            "resource tcp-socket {",
+            "world socket-probe {",
+        },
+        .markers = &.{
+            ";; socket-target protocol=tcp",
+            "[static]tcp-socket.create",
+            "[method]tcp-socket.bind",
+            "[resource-drop]tcp-socket",
+        },
+        .forbidden_markers = &.{
+            "[static]udp-socket.create",
+            "[method]udp-socket.bind",
+            "[resource-drop]udp-socket",
+        },
+    },
+    .{
+        .name = "D2 UDP socket create-bind-drop lowering",
+        .source = "examples/p3-runtime/wasi-udp-sockets-create-bind-drop-component.do",
+        .build_flag = "--p3-wasi-sockets-create-bind-drop-component",
+        .world = "socket-probe",
+        .wit_snapshot = null,
+        .wit_markers = &.{
+            "package wasi:sockets@0.3.0;",
+            "resource udp-socket {",
+            "world socket-probe {",
+        },
+        .markers = &.{
+            ";; socket-target protocol=udp",
+            "[static]udp-socket.create",
+            "[method]udp-socket.bind",
+            "[resource-drop]udp-socket",
+        },
+        .forbidden_markers = &.{
+            "[static]tcp-socket.create",
+            "[method]tcp-socket.bind",
+            "[resource-drop]tcp-socket",
+        },
+    },
+    .{
         .name = "generic record stream lowering",
         .source = "examples/p3-runtime/record-stream-probe-component.do",
         .build_flag = "--p3-async-component",
@@ -679,6 +798,40 @@ const rust_runtime_cases = [_]RustRuntimeCase{
     },
 };
 
+const MapSyncComponentCase = struct {
+    name: []const u8,
+    source: []const u8,
+    descriptor: []const u8,
+    wit: []const u8,
+    canonical_type: []const u8,
+    wit_marker: []const u8,
+    mode: []const u8,
+    runtime_marker: []const u8,
+};
+
+const map_sync_component_cases = [_]MapSyncComponentCase{
+    .{
+        .name = "map<u32,u32> synchronous lower Component host gate",
+        .source = "examples/gc-p3-runtime/map-u32-u32-lower.do",
+        .descriptor = "demo:marshal-map-u32-u32/api.write@1.0.0/lower",
+        .wit = "examples/gc-p3-runtime/marshal-map-u32-u32-lower-assembly.wit",
+        .canonical_type = "(type $canonical_lower (func (param i32 i32)))",
+        .wit_marker = "write: func(value: map<u32, u32>)",
+        .mode = "lower",
+        .runtime_marker = "GC map<u32,u32> lower host adapter passed entries=[7->70, 9->90] result=42 stats=17 write-calls=1 allocations=1 frees=1",
+    },
+    .{
+        .name = "map<u32,u32> synchronous lift Component host gate",
+        .source = "examples/gc-p3-runtime/map-u32-u32-lift.do",
+        .descriptor = "demo:marshal-map-u32-u32/api.read@1.0.0/lift",
+        .wit = "examples/gc-p3-runtime/marshal-map-u32-u32-lift-assembly.wit",
+        .canonical_type = "(type $canonical_lift (func (param i32)))",
+        .wit_marker = "read: func() -> map<u32, u32>",
+        .mode = "lift",
+        .runtime_marker = "GC map<u32,u32> lift host adapter passed entries=[7->70, 9->90] result=176 stats=17 read-calls=1 allocations=1 frees=1",
+    },
+};
+
 const ComponentFixture = struct {
     wat: []u8,
     wit: []u8,
@@ -735,10 +888,22 @@ fn run_all(init: std.process.Init) !void {
                 try run_rust_runtime_matrix(init, repo_root, do_bin, toolchain_bin, temp.path);
             },
             .compiler_fixture_matrix => try run_compiler_fixture_matrix(init, repo_root, do_bin, temp.path),
+            .compiler_compiled_fixture_matrix => try run_compiler_compiled_fixture_matrix(init, repo_root, do_bin, toolchain_bin, temp.path),
             .compiler_auxiliary_matrix => try run_compiler_auxiliary_matrix(init, repo_root, do_bin, temp.path),
             .compiler_compiled_trap_matrix => if (std.mem.eql(u8, init.environ_map.get("RUN_WASM") orelse "0", "1"))
                 try run_compiled_trap_matrix(init, repo_root, do_bin, toolchain_bin, temp.path),
+            .wasm_smoke_matrix => if (std.mem.eql(u8, init.environ_map.get("RUN_WASM") orelse "0", "1"))
+                try run_wasm_smoke_matrix(init, repo_root, do_bin, toolchain_bin, temp.path),
             .gc_default_matrix => try run_gc_default_matrix(init, repo_root, do_bin, toolchain_bin, temp.path),
+            .component_template_validation => try run_component_template_validation(init, repo_root, toolchain_bin),
+            .tool_matrix => try run_tool_matrix(init, repo_root, do_bin, temp.path),
+            .external_dependency_negative_matrix => try run_external_dependency_negative_matrix(init, repo_root, do_bin, temp.path),
+            .socket_abi_matrix => try run_socket_abi_matrix(init, repo_root, do_bin, temp.path),
+            .structural_gate => try run_structural_gate(init, repo_root),
+            .gc_core_oracle => if (std.mem.eql(u8, init.environ_map.get("RUN_GC_CORE") orelse "0", "1"))
+                try run_gc_core_oracle(init, repo_root, temp.path),
+            .map_core_probe => try run_map_core_probe(init, repo_root, toolchain_bin, temp.path),
+            .map_sync_component => try run_map_sync_component(init, repo_root, do_bin, toolchain_bin, temp.path),
         }
         try print_case_passed(init.io, case.name);
     }
@@ -762,6 +927,103 @@ fn run_compiler_fixture_matrix(
     try run_do_test_directory(init, do_bin, test_root, "compile_ok", temp_path, fixture_lib_root, stdlib_root, .compile_ok);
     try run_do_test_directory(init, do_bin, test_root, "compile_err", temp_path, fixture_lib_root, stdlib_root, .compile_err);
     try run_std_library_matrix(init, do_bin, stdlib_root);
+}
+
+fn run_compiler_compiled_fixture_matrix(
+    init: std.process.Init,
+    repo_root: []const u8,
+    do_bin: []const u8,
+    toolchain_bin: []const u8,
+    temp_path: []const u8,
+) !void {
+    const test_root = try join(init.gpa, repo_root, "src/build/test");
+    defer init.gpa.free(test_root);
+    const lib_root = try join(init.gpa, test_root, "lib");
+    defer init.gpa.free(lib_root);
+
+    for ([_][]const u8{ "compiled_ok", "compiled_err" }) |directory_name| {
+        const directory = try join(init.gpa, test_root, directory_name);
+        defer init.gpa.free(directory);
+        const names = try collect_files(init.gpa, init.io, directory, ".do");
+        defer free_names(init.gpa, names);
+        for (names) |name| {
+            if (std.mem.startsWith(u8, name, "fixture.")) continue;
+            const fixture = try join(init.gpa, directory, name);
+            defer init.gpa.free(fixture);
+            if (std.mem.eql(u8, directory_name, "compiled_ok")) {
+                try run_compiled_ok_fixture(init, repo_root, do_bin, toolchain_bin, fixture, temp_path, lib_root);
+                try report_fixture(init, "compiled_ok", fixture, .pass);
+            } else {
+                try run_compiled_err_fixture(init, do_bin, fixture, temp_path, lib_root);
+                try report_fixture(init, "compiled_err", fixture, .pass);
+            }
+        }
+    }
+}
+
+fn run_compiled_ok_fixture(
+    init: std.process.Init,
+    repo_root: []const u8,
+    do_bin: []const u8,
+    toolchain_bin: []const u8,
+    fixture: []const u8,
+    temp_path: []const u8,
+    lib_root: []const u8,
+) !void {
+    const wat = try fixture_output_path(init.gpa, temp_path, fixture, ".compiled.wat");
+    defer init.gpa.free(wat);
+    const expect = try replace_extension(init.gpa, fixture, ".expect");
+    defer init.gpa.free(expect);
+    const args = [_][]const u8{ "test", fixture, "--compiled", "-o", wat };
+    var generated = try run_do_args(init, do_bin, &args, lib_root, null, 120_000);
+    defer generated.deinit(init.gpa);
+    try expect_success(init, &generated);
+    try process.assert_stdout_contains(generated, "ok:");
+    try expect_file(init.io, wat);
+    if (try file_exists(init.io, expect)) {
+        const source = try read_file(init, wat);
+        defer init.gpa.free(source);
+        try assert_expected_lines(init, expect, source);
+    }
+
+    if (!std.mem.eql(u8, init.environ_map.get("RUN_WASM") orelse "0", "1")) return;
+    const node = try find_node_runtime(init);
+    defer init.gpa.free(node);
+    const runner = try join(init.gpa, repo_root, "src/build/test/run_compiled_test_case.mjs");
+    defer init.gpa.free(runner);
+    const wasm = try fixture_output_path(init.gpa, temp_path, fixture, ".compiled.wasm");
+    defer init.gpa.free(wasm);
+    try run_adapter_success(init, toolchain_bin, &.{ "parse-core", wat, "-o", wasm });
+    var executed = try process.run_checked(init.gpa, init.io, .{
+        .argv = &.{ node, runner, wasm, wat },
+        .environ = init.environ_map,
+        .cwd = repo_root,
+        .timeout_ms = 120_000,
+    });
+    defer executed.deinit(init.gpa);
+    try expect_success(init, &executed);
+    try process.assert_stdout_contains(executed, "test \"");
+    try process.assert_stdout_contains(executed, " ... ok");
+    try process.assert_stdout_contains(executed, "ok:");
+}
+
+fn run_compiled_err_fixture(
+    init: std.process.Init,
+    do_bin: []const u8,
+    fixture: []const u8,
+    temp_path: []const u8,
+    lib_root: []const u8,
+) !void {
+    const expect = try replace_extension(init.gpa, fixture, ".expect");
+    defer init.gpa.free(expect);
+    if (!try file_exists(init.io, expect)) return error.MissingFixtureExpectation;
+    const wat = try fixture_output_path(init.gpa, temp_path, fixture, ".compiled-err.wat");
+    defer init.gpa.free(wat);
+    const args = [_][]const u8{ "test", fixture, "--compiled", "-o", wat };
+    var generated = try run_do_args(init, do_bin, &args, lib_root, null, 120_000);
+    defer generated.deinit(init.gpa);
+    if (generated.exit_code() == 0) return error.FixtureExpectedFailure;
+    try assert_expected_lines(init, expect, generated.stderr);
 }
 
 fn run_compiler_auxiliary_matrix(
@@ -809,6 +1071,7 @@ fn run_do_run_matrix(
         } else if (output.stdout.len != 0) {
             return error.UnexpectedCommandStdout;
         }
+        try report_fixture(init, "run", fixture, .pass);
     }
 }
 
@@ -872,12 +1135,16 @@ fn run_format_matrix(
         if (write_again.stdout.len != 0 or write_again.stderr.len != 0) return error.UnexpectedCommandOutput;
         try assert_file_contents_path(init, write_path, formatted.stdout);
 
-        if (std.mem.eql(u8, original, formatted.stdout)) continue;
+        if (std.mem.eql(u8, original, formatted.stdout)) {
+            try report_fixture(init, "fmt", fixture, .pass);
+            continue;
+        }
         var check_original = try run_fmt_flag(init, do_bin, "--check", fixture, lib_root);
         defer check_original.deinit(init.gpa);
         if (check_original.exit_code() == 0) return error.UnexpectedFormatAcceptance;
         try process.assert_stderr_contains(check_original, "error[FormatMismatch]");
         if (check_original.stdout.len != 0) return error.UnexpectedCommandStdout;
+        try report_fixture(init, "fmt", fixture, .pass);
     }
 }
 
@@ -909,6 +1176,7 @@ fn run_check_matrix(
             try expect_success(init, &output);
             if (output.stdout.len != 0 or output.stderr.len != 0) return error.UnexpectedCommandOutput;
         }
+        try report_fixture(init, "check", fixture, .pass);
     }
 
     const valid = try join(init.gpa, directory, "01_valid.do");
@@ -944,6 +1212,7 @@ fn run_check_matrix(
     try process.assert_stderr_contains(multiple_invalid, bad_first);
     try process.assert_stderr_contains(multiple_invalid, bad_second);
     if (multiple_invalid.stdout.len != 0) return error.UnexpectedCommandStdout;
+    try report_fixture(init, "check", "multi", .pass);
 }
 
 fn run_lsp_matrix(
@@ -974,6 +1243,7 @@ fn run_lsp_matrix(
         try expect_success(init, &output);
         try process.assert_stdout_contains(output, "ok: lsp ");
         if (output.stderr.len != 0) return error.UnexpectedCommandStderr;
+        try report_fixture(init, "lsp", fixture, .pass);
     }
 }
 
@@ -1025,10 +1295,114 @@ fn run_compiled_trap_matrix(
         });
         defer executed.deinit(init.gpa);
         if (executed.exit_code() == 0) return error.ExpectedCompiledTrap;
+        try report_fixture(init, "compiled_trap", fixture, .pass);
+    }
+}
+
+fn run_wasm_smoke_matrix(
+    init: std.process.Init,
+    repo_root: []const u8,
+    do_bin: []const u8,
+    toolchain_bin: []const u8,
+    temp_path: []const u8,
+) !void {
+    const test_root = try join(init.gpa, repo_root, "src/build/test");
+    defer init.gpa.free(test_root);
+    const directory = try join(init.gpa, test_root, "run");
+    defer init.gpa.free(directory);
+    const lib_root = try join(init.gpa, test_root, "lib");
+    defer init.gpa.free(lib_root);
+    const runner = try join(init.gpa, test_root, "run_wasm_case.mjs");
+    defer init.gpa.free(runner);
+    const names = try collect_files(init.gpa, init.io, directory, ".do");
+    defer free_names(init.gpa, names);
+    const node = try find_node_runtime(init);
+    defer init.gpa.free(node);
+
+    for (names) |name| {
+        const fixture = try join(init.gpa, directory, name);
+        defer init.gpa.free(fixture);
+        const wat = try fixture_output_path(init.gpa, temp_path, fixture, ".wasm-smoke.wat");
+        defer init.gpa.free(wat);
+        const wasm = try fixture_output_path(init.gpa, temp_path, fixture, ".wasm-smoke.wasm");
+        defer init.gpa.free(wasm);
+        const build_args = [_][]const u8{ "build", fixture, "-o", wat };
+        var built = try run_do_args(init, do_bin, &build_args, lib_root, null, 120_000);
+        defer built.deinit(init.gpa);
+        try expect_success(init, &built);
+        const parse_args = [_][]const u8{ "parse-core", wat, "-o", wasm };
+        try run_adapter_success(init, toolchain_bin, &parse_args);
+        const execute_args = [_][]const u8{ node, runner, wasm };
+        var executed = try process.run_checked(init.gpa, init.io, .{
+            .argv = &execute_args,
+            .environ = init.environ_map,
+            .cwd = repo_root,
+            .timeout_ms = 120_000,
+        });
+        defer executed.deinit(init.gpa);
+        try expect_success(init, &executed);
+
+        const expect = try replace_extension(init.gpa, fixture, ".stdout.expect");
+        defer init.gpa.free(expect);
+        if (try file_exists(init.io, expect)) {
+            try assert_file_equals(init, expect, executed.stdout);
+        } else if (executed.stdout.len != 0) {
+            return error.UnexpectedWasmSmokeStdout;
+        }
+        try report_fixture(init, "wasm_run", fixture, .pass);
     }
 }
 
 const FixtureMode = enum { ok, err, compile_ok, compile_err };
+const FixtureStatus = enum { pass, skip };
+
+fn format_fixture_report(
+    allocator: std.mem.Allocator,
+    category: []const u8,
+    fixture: []const u8,
+    status: FixtureStatus,
+) ![]u8 {
+    return std.fmt.allocPrint(allocator, "fixture-result category={s} name={s} status={s}\n", .{
+        category,
+        std.fs.path.basename(fixture),
+        @tagName(status),
+    });
+}
+
+fn report_fixture(init: std.process.Init, category: []const u8, fixture: []const u8, status: FixtureStatus) !void {
+    if (!std.mem.eql(u8, init.environ_map.get("DO_HARNESS_FIXTURE_REPORT") orelse "0", "1")) return;
+    const line = try format_fixture_report(init.gpa, category, fixture, status);
+    defer init.gpa.free(line);
+    try std.Io.File.stdout().writeStreamingAll(init.io, line);
+}
+
+const CompileExpectationKind = enum {
+    wasi_bind,
+    component_plan,
+    wit,
+    wit_dir,
+    core_imports,
+    core_shims,
+    component_input,
+    component_core,
+};
+
+fn classify_compile_expectation(path: []const u8) ?CompileExpectationKind {
+    const entries = .{
+        .{ .suffix = ".wasi_bind.expect", .kind = CompileExpectationKind.wasi_bind },
+        .{ .suffix = ".component_plan.expect", .kind = CompileExpectationKind.component_plan },
+        .{ .suffix = ".wit.expect", .kind = CompileExpectationKind.wit },
+        .{ .suffix = ".wit_dir.expect", .kind = CompileExpectationKind.wit_dir },
+        .{ .suffix = ".core_imports.expect", .kind = CompileExpectationKind.core_imports },
+        .{ .suffix = ".core_shims.expect", .kind = CompileExpectationKind.core_shims },
+        .{ .suffix = ".component_input.expect", .kind = CompileExpectationKind.component_input },
+        .{ .suffix = ".component_core.expect", .kind = CompileExpectationKind.component_core },
+    };
+    inline for (entries) |entry| {
+        if (std.mem.endsWith(u8, path, entry.suffix)) return entry.kind;
+    }
+    return null;
+}
 
 fn run_do_test_directory(
     init: std.process.Init,
@@ -1049,12 +1423,23 @@ fn run_do_test_directory(
         if (std.mem.startsWith(u8, name, "fixture.")) continue;
         const fixture = try join(init.gpa, directory, name);
         defer init.gpa.free(fixture);
-        switch (mode) {
+        const category = @tagName(mode);
+        const status = switch (mode) {
             .ok => try run_ok_fixture(init, do_bin, fixture, temp_path, lib_root, stdlib_root),
-            .err => try run_err_fixture(init, do_bin, fixture, lib_root),
-            .compile_ok => try run_compile_fixture(init, do_bin, fixture, temp_path, lib_root, true),
-            .compile_err => try run_compile_fixture(init, do_bin, fixture, temp_path, lib_root, false),
-        }
+            .err => blk: {
+                try run_err_fixture(init, do_bin, fixture, lib_root);
+                break :blk .pass;
+            },
+            .compile_ok => blk: {
+                try run_compile_fixture(init, do_bin, fixture, temp_path, lib_root, true);
+                break :blk .pass;
+            },
+            .compile_err => blk: {
+                try run_compile_fixture(init, do_bin, fixture, temp_path, lib_root, false);
+                break :blk .pass;
+            },
+        };
+        try report_fixture(init, category, fixture, status);
     }
 }
 
@@ -1065,12 +1450,15 @@ fn run_ok_fixture(
     temp_path: []const u8,
     lib_root: []const u8,
     stdlib_root: []const u8,
-) !void {
+) !FixtureStatus {
     const output = try run_do_command(init, do_bin, "test", fixture, null, lib_root, null);
     defer init.gpa.free(output.stdout);
     defer init.gpa.free(output.stderr);
     defer init.gpa.free(output.command);
-    if (output.exit_code() != 0) return report_case_failure(init, output);
+    if (output.exit_code() != 0) {
+        try report_case_failure(init, output);
+        unreachable;
+    }
 
     const has_report = std.mem.indexOf(u8, output.stdout, "test \"") != null and
         std.mem.indexOf(u8, output.stdout, "ok:") != null;
@@ -1087,8 +1475,15 @@ fn run_ok_fixture(
             const repo_root = init.environ_map.get("DO_HARNESS_REPO_ROOT") orelse
                 return error.MissingHarnessEnvironment;
             try run_compiled_must_pass(init, repo_root, fixture, temp_path, stdlib_root);
+            return status_after_compiled_must_pass();
         }
+        return .skip;
     }
+    return .pass;
+}
+
+fn status_after_compiled_must_pass() FixtureStatus {
+    return .pass;
 }
 
 fn run_compiled_must_pass(
@@ -1122,8 +1517,8 @@ fn run_compiled_must_pass(
     try process.assert_stdout_contains(executed, "ok:");
 }
 
-fn run_std_fixture(init: std.process.Init, do_bin: []const u8, fixture: []const u8, lib_root: []const u8) !void {
-    if (std.mem.eql(u8, std.fs.path.basename(fixture), "_.do")) return;
+fn run_std_fixture(init: std.process.Init, do_bin: []const u8, fixture: []const u8, lib_root: []const u8) !FixtureStatus {
+    if (std.mem.eql(u8, std.fs.path.basename(fixture), "_.do")) return .pass;
     const output = try run_do_command(init, do_bin, "test", fixture, null, lib_root, null);
     defer init.gpa.free(output.stdout);
     defer init.gpa.free(output.stderr);
@@ -1132,10 +1527,12 @@ fn run_std_fixture(init: std.process.Init, do_bin: []const u8, fixture: []const 
         const has_report = std.mem.indexOf(u8, output.stdout, "test \"") != null and
             std.mem.indexOf(u8, output.stdout, "ok:") != null;
         if (!has_report) return error.FixtureContractMismatch;
-        return;
+        if (std.mem.indexOf(u8, output.stdout, " ... skipped") != null) return .skip;
+        return .pass;
     }
-    if (std.mem.indexOf(u8, output.stderr, "NoTestDecl") != null) return;
-    return report_case_failure(init, output);
+    if (std.mem.indexOf(u8, output.stderr, "NoTestDecl") != null) return .pass;
+    try report_case_failure(init, output);
+    unreachable;
 }
 
 fn run_std_library_matrix(init: std.process.Init, do_bin: []const u8, stdlib_root: []const u8) !void {
@@ -1144,7 +1541,8 @@ fn run_std_library_matrix(init: std.process.Init, do_bin: []const u8, stdlib_roo
     for (names) |name| {
         const fixture = try join(init.gpa, stdlib_root, name);
         defer init.gpa.free(fixture);
-        try run_std_fixture(init, do_bin, fixture, stdlib_root);
+        const status = try run_std_fixture(init, do_bin, fixture, stdlib_root);
+        try report_fixture(init, "stdlib", fixture, status);
     }
 }
 
@@ -1223,10 +1621,324 @@ fn run_compile_fixture(
             defer init.gpa.free(manifest_source);
             try assert_expected_lines(init, host_manifest_expect, manifest_source);
         }
+        try run_compile_wasi_expectations(init, do_bin, fixture, temp_path, lib_root, wat, wat_source);
     } else {
         if (output.exit_code() == 0) return error.FixtureExpectedFailure;
         try assert_expected_lines(init, expect, output.stderr);
     }
+}
+
+fn run_compile_wasi_expectations(
+    init: std.process.Init,
+    do_bin: []const u8,
+    fixture: []const u8,
+    temp_path: []const u8,
+    lib_root: []const u8,
+    wat: []const u8,
+    wat_source: []const u8,
+) !void {
+    const repo_root = init.environ_map.get("DO_HARNESS_REPO_ROOT") orelse return error.MissingHarnessEnvironment;
+    const toolchain_bin = init.environ_map.get("DO_HARNESS_TOOLCHAIN_BIN") orelse return error.MissingHarnessEnvironment;
+    const lock_path = init.environ_map.get("DO_TOOLCHAIN_LOCK") orelse return error.MissingHarnessEnvironment;
+
+    const sidecars = [_][]const u8{
+        ".wasi_bind.expect",
+        ".component_plan.expect",
+        ".wit.expect",
+        ".wit_dir.expect",
+        ".core_imports.expect",
+        ".core_shims.expect",
+        ".component_input.expect",
+        ".component_core.expect",
+    };
+    var has_sidecar = false;
+    for (sidecars) |suffix| {
+        const path = try replace_extension(init.gpa, fixture, suffix);
+        defer init.gpa.free(path);
+        if (try file_exists(init.io, path)) {
+            has_sidecar = true;
+            break;
+        }
+    }
+    const has_manifest = std.mem.indexOf(u8, wat_source, ";; wasi-bind ") != null;
+    if (!has_sidecar and !has_manifest) return;
+
+    const node = try find_node_runtime(init);
+    defer init.gpa.free(node);
+    const script = try join(init.gpa, repo_root, "src/build/test/validate_wasi_bind_manifest.mjs");
+    defer init.gpa.free(script);
+    const registry = try join(init.gpa, repo_root, "doc/wit/wasi_registry.json");
+    defer init.gpa.free(registry);
+
+    if (has_manifest) {
+        var result = try run_wasi_manifest_mode(init, repo_root, node, script, registry, lock_path, toolchain_bin, wat, null, null);
+        defer result.deinit(init.gpa);
+        try expect_success(init, &result);
+    }
+
+    const component_plan_expect = try replace_extension(init.gpa, fixture, ".component_plan.expect");
+    defer init.gpa.free(component_plan_expect);
+    const has_component_plan = try file_exists(init.io, component_plan_expect);
+    if (has_component_plan) {
+        var result = try run_wasi_manifest_mode(init, repo_root, node, script, registry, lock_path, toolchain_bin, wat, "--component-plan", null);
+        defer result.deinit(init.gpa);
+        try expect_success(init, &result);
+        try assert_expected_lines(init, component_plan_expect, result.stdout);
+    }
+
+    const wit_expect = try replace_extension(init.gpa, fixture, ".wit.expect");
+    defer init.gpa.free(wit_expect);
+    const has_wit = try file_exists(init.io, wit_expect);
+    const wit_dir_expect = try replace_extension(init.gpa, fixture, ".wit_dir.expect");
+    defer init.gpa.free(wit_dir_expect);
+    const has_wit_dir = try file_exists(init.io, wit_dir_expect);
+    if (has_wit) {
+        var result = try run_wasi_manifest_mode(init, repo_root, node, script, registry, lock_path, toolchain_bin, wat, "--wit", null);
+        defer result.deinit(init.gpa);
+        try expect_success(init, &result);
+        try assert_expected_lines(init, wit_expect, result.stdout);
+        if (!has_wit_dir) {
+            const wit_path = try fixture_output_path(init.gpa, temp_path, fixture, ".wasi.wit");
+            defer init.gpa.free(wit_path);
+            try write_file(init, wit_path, result.stdout);
+            var parsed = try run_adapter_command(init, toolchain_bin, &.{ "component-wit", wit_path });
+            defer parsed.deinit(init.gpa);
+            try expect_success(init, &parsed);
+        }
+    }
+
+    if (has_wit_dir) {
+        const wit_dir = try fixture_output_path(init.gpa, temp_path, fixture, ".wasi.wit-dir");
+        defer init.gpa.free(wit_dir);
+        var result = try run_wasi_manifest_mode(init, repo_root, node, script, registry, lock_path, toolchain_bin, wat, "--wit-dir", wit_dir);
+        defer result.deinit(init.gpa);
+        try expect_success(init, &result);
+        const wit_dir_output = try collect_wit_dir_output(init, toolchain_bin, wit_dir, temp_path, fixture);
+        defer init.gpa.free(wit_dir_output);
+        try assert_expected_lines(init, wit_dir_expect, wit_dir_output);
+    }
+
+    const core_imports_expect = try replace_extension(init.gpa, fixture, ".core_imports.expect");
+    defer init.gpa.free(core_imports_expect);
+    if (try file_exists(init.io, core_imports_expect)) {
+        var result = try run_wasi_manifest_mode(init, repo_root, node, script, registry, lock_path, toolchain_bin, wat, "--core-imports", null);
+        defer result.deinit(init.gpa);
+        try expect_success(init, &result);
+        try assert_expected_lines(init, core_imports_expect, result.stdout);
+    }
+
+    const core_shims_expect = try replace_extension(init.gpa, fixture, ".core_shims.expect");
+    defer init.gpa.free(core_shims_expect);
+    if (try file_exists(init.io, core_shims_expect)) {
+        var result = try run_wasi_manifest_mode(init, repo_root, node, script, registry, lock_path, toolchain_bin, wat, "--core-shims", null);
+        defer result.deinit(init.gpa);
+        try expect_success(init, &result);
+        try assert_expected_lines(init, core_shims_expect, result.stdout);
+        try parse_generated_core_shims(init, toolchain_bin, temp_path, fixture, result.stdout);
+    }
+
+    const component_input_expect = try replace_extension(init.gpa, fixture, ".component_input.expect");
+    defer init.gpa.free(component_input_expect);
+    const has_component_input = try file_exists(init.io, component_input_expect);
+    if (has_component_input) {
+        const component_input_dir = try fixture_output_path(init.gpa, temp_path, fixture, ".wasi.component-input");
+        defer init.gpa.free(component_input_dir);
+        var result = try run_wasi_manifest_mode(init, repo_root, node, script, registry, lock_path, toolchain_bin, wat, "--component-input-dir", component_input_dir);
+        defer result.deinit(init.gpa);
+        try expect_success(init, &result);
+
+        const component_input_output = try collect_component_input_output(init, toolchain_bin, component_input_dir, temp_path, fixture);
+        defer init.gpa.free(component_input_output);
+        try assert_expected_lines(init, component_input_expect, component_input_output);
+        const embedded = try fixture_output_path(init.gpa, temp_path, fixture, ".wasi.input.embedded.wasm");
+        defer init.gpa.free(embedded);
+        const component = try fixture_output_path(init.gpa, temp_path, fixture, ".wasi.input.component.wasm");
+        defer init.gpa.free(component);
+        const input_wit = try join(init.gpa, component_input_dir, "wit");
+        defer init.gpa.free(input_wit);
+        const input_core = try join(init.gpa, component_input_dir, "core_component.wat");
+        defer init.gpa.free(input_core);
+        try run_adapter_success(init, toolchain_bin, &.{
+            "embed-component", input_wit, input_core, "imports", "--features", "none", "-o", embedded,
+        });
+        try run_adapter_success(init, toolchain_bin, &.{ "new-component", embedded, "-o", component });
+        try run_adapter_success(init, toolchain_bin, &.{ "validate-component", component, "--features", "none" });
+
+        const tool_component = try fixture_output_path(init.gpa, temp_path, fixture, ".wasi.input.tool.component.wasm");
+        defer init.gpa.free(tool_component);
+        var generated = try run_wasi_manifest_mode(init, repo_root, node, script, registry, lock_path, toolchain_bin, wat, "--component-wasm", tool_component);
+        defer generated.deinit(init.gpa);
+        try expect_success(init, &generated);
+        try expect_file(init.io, tool_component);
+    }
+
+    const component_core_expect = try replace_extension(init.gpa, fixture, ".component_core.expect");
+    defer init.gpa.free(component_core_expect);
+    if (try file_exists(init.io, component_core_expect)) {
+        const component_core = try fixture_output_path(init.gpa, temp_path, fixture, ".component-core.wat");
+        defer init.gpa.free(component_core);
+        const args = [_][]const u8{ "build", fixture, "--component-core", "-o", component_core };
+        var built = try run_do_args(init, do_bin, &args, lib_root, null, 120_000);
+        defer built.deinit(init.gpa);
+        try expect_success(init, &built);
+        const source = try read_file(init, component_core);
+        defer init.gpa.free(source);
+        try assert_expected_lines(init, component_core_expect, source);
+        if (std.mem.indexOf(u8, source, "(memory (export \"memory\")") != null) return error.ComponentCoreExportsPlainMemory;
+        if (has_component_input) {
+            const input_root = try fixture_output_path(init.gpa, temp_path, fixture, ".wasi.component-core-input");
+            defer init.gpa.free(input_root);
+            const input_wit = try join(init.gpa, input_root, "wit");
+            defer init.gpa.free(input_wit);
+            var wit_result = try run_wasi_manifest_mode(init, repo_root, node, script, registry, lock_path, toolchain_bin, component_core, "--wit-dir", input_wit);
+            defer wit_result.deinit(init.gpa);
+            try expect_success(init, &wit_result);
+            const embedded = try fixture_output_path(init.gpa, temp_path, fixture, ".wasi.component-core.embedded.wasm");
+            defer init.gpa.free(embedded);
+            const component = try fixture_output_path(init.gpa, temp_path, fixture, ".wasi.component-core.component.wasm");
+            defer init.gpa.free(component);
+            try run_adapter_success(init, toolchain_bin, &.{ "embed-component", input_wit, component_core, "imports", "--features", "none", "-o", embedded });
+            try run_adapter_success(init, toolchain_bin, &.{ "new-component", embedded, "-o", component });
+            try run_adapter_success(init, toolchain_bin, &.{ "validate-component", component, "--features", "none" });
+        }
+    }
+}
+
+fn run_wasi_manifest_mode(
+    init: std.process.Init,
+    cwd: []const u8,
+    node: []const u8,
+    script: []const u8,
+    registry: []const u8,
+    lock_path: []const u8,
+    toolchain_bin: []const u8,
+    wat: []const u8,
+    mode: ?[]const u8,
+    output_path: ?[]const u8,
+) !process.CommandResult {
+    var argv: std.ArrayList([]const u8) = .empty;
+    defer argv.deinit(init.gpa);
+    try argv.append(init.gpa, node);
+    try argv.append(init.gpa, script);
+    try argv.append(init.gpa, "--registry");
+    try argv.append(init.gpa, registry);
+    if (mode) |value| {
+        try argv.append(init.gpa, value);
+        if (output_path) |path| try argv.append(init.gpa, path);
+    }
+    try argv.append(init.gpa, wat);
+    const env = [_]process.EnvVar{
+        .{ .name = "DO_TOOLCHAIN_BIN", .value = toolchain_bin },
+        .{ .name = "DO_TOOLCHAIN_LOCK", .value = lock_path },
+    };
+    return process.run_checked(init.gpa, init.io, .{
+        .argv = argv.items,
+        .environ = init.environ_map,
+        .env = &env,
+        .cwd = cwd,
+        .timeout_ms = 120_000,
+    });
+}
+
+fn run_adapter_command(init: std.process.Init, toolchain_bin: []const u8, args: []const []const u8) !process.CommandResult {
+    var argv: std.ArrayList([]const u8) = .empty;
+    defer argv.deinit(init.gpa);
+    try argv.append(init.gpa, toolchain_bin);
+    try argv.appendSlice(init.gpa, args);
+    return process.run_checked(init.gpa, init.io, .{ .argv = argv.items, .environ = init.environ_map });
+}
+
+fn run_adapter_success(init: std.process.Init, toolchain_bin: []const u8, args: []const []const u8) !void {
+    var result = try run_adapter_command(init, toolchain_bin, args);
+    defer result.deinit(init.gpa);
+    try expect_success(init, &result);
+}
+
+fn parse_generated_core_shims(
+    init: std.process.Init,
+    toolchain_bin: []const u8,
+    temp_path: []const u8,
+    fixture: []const u8,
+    source: []const u8,
+) !void {
+    const module = try fixture_output_path(init.gpa, temp_path, fixture, ".core-shims.module.wat");
+    defer init.gpa.free(module);
+    var wrapped: std.ArrayList(u8) = .empty;
+    defer wrapped.deinit(init.gpa);
+    try wrapped.appendSlice(init.gpa, "(module\n");
+    try wrapped.appendSlice(init.gpa, source);
+    try wrapped.appendSlice(init.gpa, "\n)\n");
+    try write_file(init, module, wrapped.items);
+    const wasm = try fixture_output_path(init.gpa, temp_path, fixture, ".core-shims.module.wasm");
+    defer init.gpa.free(wasm);
+    try run_adapter_success(init, toolchain_bin, &.{ "parse-core", module, "-o", wasm });
+}
+
+fn collect_wit_dir_output(
+    init: std.process.Init,
+    toolchain_bin: []const u8,
+    wit_dir: []const u8,
+    temp_path: []const u8,
+    fixture: []const u8,
+) ![]u8 {
+    const parsed = try fixture_output_path(init.gpa, temp_path, fixture, ".wasi.wit-dir.parsed");
+    defer init.gpa.free(parsed);
+    var result = try run_adapter_command(init, toolchain_bin, &.{ "component-wit", wit_dir });
+    defer result.deinit(init.gpa);
+    try expect_success(init, &result);
+    try write_file(init, parsed, result.stdout);
+    return read_file(init, parsed);
+}
+
+fn collect_component_input_output(
+    init: std.process.Init,
+    toolchain_bin: []const u8,
+    input_dir: []const u8,
+    temp_path: []const u8,
+    fixture: []const u8,
+) ![]u8 {
+    const output_path = try fixture_output_path(init.gpa, temp_path, fixture, ".wasi.component-input.txt");
+    defer init.gpa.free(output_path);
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(init.gpa);
+    const files = [_][]const u8{
+        "metadata.json",
+        "component_plan.json",
+        "core_imports.wat",
+        "core_shims.wat",
+    };
+    for (files) |name| {
+        const path = try join(init.gpa, input_dir, name);
+        defer init.gpa.free(path);
+        const source = try read_file(init, path);
+        defer init.gpa.free(source);
+        try output.appendSlice(init.gpa, source);
+    }
+
+    const wit_dir = try join(init.gpa, input_dir, "wit");
+    defer init.gpa.free(wit_dir);
+    var wit_result = try run_adapter_command(init, toolchain_bin, &.{ "component-wit", wit_dir });
+    defer wit_result.deinit(init.gpa);
+    try expect_success(init, &wit_result);
+    try output.appendSlice(init.gpa, wit_result.stdout);
+
+    const shims_module = try fixture_output_path(init.gpa, temp_path, fixture, ".wasi.component-input.shims.module.wat");
+    defer init.gpa.free(shims_module);
+    const shims = try join(init.gpa, input_dir, "core_shims.wat");
+    defer init.gpa.free(shims);
+    const shims_source = try read_file(init, shims);
+    defer init.gpa.free(shims_source);
+    var wrapped: std.ArrayList(u8) = .empty;
+    defer wrapped.deinit(init.gpa);
+    try wrapped.appendSlice(init.gpa, "(module\n");
+    try wrapped.appendSlice(init.gpa, shims_source);
+    try wrapped.appendSlice(init.gpa, "\n)\n");
+    try write_file(init, shims_module, wrapped.items);
+    const shims_wasm = try fixture_output_path(init.gpa, temp_path, fixture, ".wasi.component-input.shims.module.wasm");
+    defer init.gpa.free(shims_wasm);
+    try run_adapter_success(init, toolchain_bin, &.{ "parse-core", shims_module, "-o", shims_wasm });
+    try write_file(init, output_path, output.items);
+    return read_file(init, output_path);
 }
 
 fn run_gc_default_matrix(
@@ -1245,7 +1957,8 @@ fn run_gc_default_matrix(
 
     var fixture_count: usize = 0;
     for (names) |name| {
-        if (std.mem.eql(u8, name, "imported-text-helper.do") or std.mem.eql(u8, name, "imported_text_helper.do")) continue;
+        if (std.mem.eql(u8, name, "imported-text-helper.do") or std.mem.eql(u8, name, "imported_text_helper.do") or
+            std.mem.eql(u8, name, "map-u32-u32-lower.do") or std.mem.eql(u8, name, "map-u32-u32-lift.do")) continue;
         const fixture = try join(init.gpa, gc_root, name);
         defer init.gpa.free(fixture);
         const wat = try fixture_output_path(init.gpa, temp_path, fixture, ".gc.wat");
@@ -1272,7 +1985,7 @@ fn run_gc_default_matrix(
         if (!try file_exists(init.io, wasm)) return error.MissingCompiledArtifact;
         fixture_count += 1;
     }
-    if (fixture_count != 86) return error.GcFixtureManifestDrift;
+        if (fixture_count != 86) return error.GcFixtureManifestDrift;
 }
 
 fn assert_gc_default_wat(name: []const u8, source: []const u8) !void {
@@ -1458,6 +2171,397 @@ fn run_wit_snapshot_validation(
     defer resource_output.deinit(init.gpa);
     try expect_success(init, &resource_output);
     try process.assert_stdout_contains(resource_output, "resource ticket");
+}
+
+fn run_component_template_validation(
+    init: std.process.Init,
+    repo_root: []const u8,
+    toolchain_bin: []const u8,
+) !void {
+    for (component_template_cases) |case| {
+        const wit = try join(init.gpa, repo_root, case.wit);
+        defer init.gpa.free(wit);
+        const args = [_][]const u8{ toolchain_bin, "embed-component-template", wit, case.world };
+        var result = try process.run_checked(init.gpa, init.io, .{
+            .argv = &args,
+            .environ = init.environ_map,
+            .cwd = repo_root,
+            .timeout_ms = 120_000,
+        });
+        defer result.deinit(init.gpa);
+        try expect_success(init, &result);
+        if (result.stderr.len != 0 or result.stdout.len == 0) return error.UnexpectedCommandOutput;
+        for (case.markers) |marker| try process.assert_stdout_contains(result, marker);
+    }
+}
+
+fn run_tool_matrix(
+    init: std.process.Init,
+    repo_root: []const u8,
+    do_bin: []const u8,
+    temp_path: []const u8,
+) !void {
+    const test_root = try join(init.gpa, repo_root, "src/build/test");
+    defer init.gpa.free(test_root);
+    const compile_ok = try join(init.gpa, test_root, "compile_ok/01_start_entry_valid.do");
+    defer init.gpa.free(compile_ok);
+    const compiled_ok = try join(init.gpa, test_root, "compiled_ok/01_compiled_test_entry.do");
+    defer init.gpa.free(compiled_ok);
+    const validator = try join(init.gpa, test_root, "validate_wasi_bind_manifest.mjs");
+    defer init.gpa.free(validator);
+    const manifest_tool = try join(init.gpa, test_root, "test_wasi_bind_manifest_tool.mjs");
+    defer init.gpa.free(manifest_tool);
+    const lib_root = try join(init.gpa, repo_root, "lib");
+    defer init.gpa.free(lib_root);
+
+    const node = try find_node_runtime(init);
+    defer init.gpa.free(node);
+    const manifest_args = [_][]const u8{ node, manifest_tool, validator, temp_path };
+    var manifest = try process.run_checked(init.gpa, init.io, .{
+        .argv = &manifest_args,
+        .environ = init.environ_map,
+        .cwd = repo_root,
+        .timeout_ms = 120_000,
+    });
+    defer manifest.deinit(init.gpa);
+    try expect_success(init, &manifest);
+    try process.assert_stdout_contains(manifest, "ok: wasi-bind manifest tool");
+
+    const build_output = try std.fmt.allocPrint(init.gpa, "{s}/cli-output-order-build.wat", .{temp_path});
+    defer init.gpa.free(build_output);
+    const test_output = try std.fmt.allocPrint(init.gpa, "{s}/cli-output-order-test.wat", .{temp_path});
+    defer init.gpa.free(test_output);
+    const build_args = [_][]const u8{ "build", "-o", build_output, compile_ok };
+    var built = try run_do_args(init, do_bin, &build_args, lib_root, repo_root, 120_000);
+    defer built.deinit(init.gpa);
+    try expect_success(init, &built);
+    try process.assert_stdout_contains(built, "ok:");
+    try expect_file(init.io, build_output);
+
+    const compiled_args = [_][]const u8{ "test", "--compiled", "-o", test_output, compiled_ok };
+    var compiled = try run_do_args(init, do_bin, &compiled_args, lib_root, repo_root, 120_000);
+    defer compiled.deinit(init.gpa);
+    try expect_success(init, &compiled);
+    try process.assert_stdout_contains(compiled, "ok:");
+    try expect_file(init.io, test_output);
+
+    try expect_do_failure_with_marker(init, do_bin, lib_root, repo_root, &.{ "build", compile_ok, "--bad" }, "error[UnexpectedCliArg]");
+    try expect_do_failure_with_marker(init, do_bin, lib_root, repo_root, &.{ "build", compile_ok, compile_ok }, "error[UnexpectedCliArg]");
+    try expect_do_failure_with_marker(init, do_bin, lib_root, repo_root, &.{ "run", compile_ok, "--bad" }, "error[UnexpectedCliArg]");
+    try expect_do_failure_with_marker(init, do_bin, lib_root, repo_root, &.{ "run", compile_ok, compile_ok }, "error[UnexpectedCliArg]");
+    try expect_do_failure_with_marker(init, do_bin, lib_root, repo_root, &.{ "test", "ok/01_path_get_single.do", "-o", build_output }, "error[OutputRequiresCompiledTest]");
+}
+
+fn run_external_dependency_negative_matrix(
+    init: std.process.Init,
+    repo_root: []const u8,
+    do_bin: []const u8,
+    temp_path: []const u8,
+) !void {
+    const test_root = try join(init.gpa, repo_root, "src/build/test");
+    defer init.gpa.free(test_root);
+    const fixture = try join(init.gpa, test_root, "run/01_start_scalar.do");
+    defer init.gpa.free(fixture);
+    const lib_root = try join(init.gpa, test_root, "lib");
+    defer init.gpa.free(lib_root);
+
+    const missing_tools_dir = try std.fmt.allocPrint(init.gpa, "{s}/missing-wasm-tools", .{temp_path});
+    defer init.gpa.free(missing_tools_dir);
+    var missing_tools = try std.Io.Dir.cwd().createDirPathOpen(init.io, missing_tools_dir, .{});
+    missing_tools.close(init.io);
+    const missing_tools_env = [_]process.EnvVar{
+        .{ .name = "PATH", .value = missing_tools_dir },
+    };
+    var wasm_missing = try run_do_args_with_env(init, do_bin, &.{ "run", fixture }, lib_root, repo_root, 120_000, &missing_tools_env);
+    defer wasm_missing.deinit(init.gpa);
+    try expect_external_failure(&wasm_missing, "error[MissingExternalTool]: wasm-tools not found");
+
+    const wasm_tools = try find_executable(init, "wasm-tools");
+    defer init.gpa.free(wasm_tools);
+    const node_tools_dir = try std.fmt.allocPrint(init.gpa, "{s}/missing-node-tools", .{temp_path});
+    defer init.gpa.free(node_tools_dir);
+    var node_tools = try std.Io.Dir.cwd().createDirPathOpen(init.io, node_tools_dir, .{});
+    defer node_tools.close(init.io);
+    try node_tools.symLink(init.io, wasm_tools, "wasm-tools", .{});
+    const missing_node = try std.fmt.allocPrint(init.gpa, "{s}/missing-node", .{node_tools_dir});
+    defer init.gpa.free(missing_node);
+    const missing_node_env = [_]process.EnvVar{
+        .{ .name = "PATH", .value = node_tools_dir },
+        .{ .name = "NODE_BIN", .value = missing_node },
+    };
+    var node_missing = try run_do_args_with_env(init, do_bin, &.{ "run", fixture }, lib_root, repo_root, 120_000, &missing_node_env);
+    defer node_missing.deinit(init.gpa);
+    try expect_external_failure(&node_missing, "error[MissingExternalTool]: node not found");
+}
+
+fn run_socket_abi_matrix(
+    init: std.process.Init,
+    repo_root: []const u8,
+    do_bin: []const u8,
+    temp_path: []const u8,
+) !void {
+    const test_root = try join(init.gpa, repo_root, "src/build/test");
+    defer init.gpa.free(test_root);
+    const lib_root = try join(init.gpa, repo_root, "lib");
+    defer init.gpa.free(lib_root);
+    const fixture_names = [_][]const u8{
+        "compile_ok/291_wasi_tcp_create_union.do",
+        "compile_ok/292_wasi_tcp_bind_payload_addr.do",
+        "compile_ok/296_wasi_tcp_bind_ipv6_payload_addr.do",
+        "compile_ok/297_wasi_tcp_create_dynamic_family.do",
+    };
+    var wat_paths: [fixture_names.len][]u8 = undefined;
+    var wat_count: usize = 0;
+    defer {
+        for (wat_paths[0..wat_count]) |path| init.gpa.free(path);
+    }
+    for (fixture_names, 0..) |fixture_name, index| {
+        const fixture = try join(init.gpa, test_root, fixture_name);
+        defer init.gpa.free(fixture);
+        wat_paths[index] = try fixture_output_path(init.gpa, temp_path, fixture, ".socket.wat");
+        wat_count += 1;
+        const build_args = [_][]const u8{ "build", fixture, "-o", wat_paths[index] };
+        var built = try run_do_args(init, do_bin, &build_args, lib_root, repo_root, 120_000);
+        defer built.deinit(init.gpa);
+        try expect_success(init, &built);
+        try expect_file(init.io, wat_paths[index]);
+    }
+
+    const node = try find_node_runtime(init);
+    defer init.gpa.free(node);
+    const socket_script = try join(init.gpa, test_root, "test_socket_abi.mjs");
+    defer init.gpa.free(socket_script);
+    const args = [_][]const u8{ node, socket_script, wat_paths[0], wat_paths[1], wat_paths[2], wat_paths[3] };
+    var result = try process.run_checked(init.gpa, init.io, .{
+        .argv = &args,
+        .environ = init.environ_map,
+        .cwd = repo_root,
+        .timeout_ms = 120_000,
+    });
+    defer result.deinit(init.gpa);
+    try expect_success(init, &result);
+    try process.assert_stdout_contains(result, "ok: socket ABI");
+}
+
+fn run_structural_gate(init: std.process.Init, repo_root: []const u8) !void {
+    const build_root = try join(init.gpa, repo_root, "src/build");
+    defer init.gpa.free(build_root);
+    const src_root = try join(init.gpa, repo_root, "src");
+    defer init.gpa.free(src_root);
+    try structural_checks.check_module_tree(init.gpa, init.io, build_root);
+    try structural_checks.check_generated_text_tree(init.gpa, init.io, src_root);
+}
+
+fn run_gc_core_oracle(init: std.process.Init, repo_root: []const u8, temp_path: []const u8) !void {
+    const toolchain = init.environ_map.get("DO_HARNESS_TOOLCHAIN_BIN") orelse
+        return error.MissingHarnessEnvironment;
+    const zig_name = init.environ_map.get("ZIG_BIN") orelse "zig";
+    const zig_bin = try find_executable(init, zig_name);
+    defer init.gpa.free(zig_bin);
+    const probe = try join(init.gpa, repo_root, "src/build/gc_sync_probe.zig");
+    defer init.gpa.free(probe);
+    const example_root = try join(init.gpa, repo_root, "examples/gc-p3-runtime");
+    defer init.gpa.free(example_root);
+    const lib_root = try join(init.gpa, repo_root, "lib");
+    defer init.gpa.free(lib_root);
+
+    for (gc_core_oracle_cases) |case| {
+        const fixture = try join(init.gpa, example_root, case.fixture);
+        defer init.gpa.free(fixture);
+        const stem = std.fs.path.basename(case.fixture)[0 .. std.fs.path.basename(case.fixture).len - ".do".len];
+        const wat = try std.fmt.allocPrint(init.gpa, "{s}/{s}.gc-oracle.wat", .{ temp_path, stem });
+        defer init.gpa.free(wat);
+        if (case.mode) |mode| {
+            const args = [_][]const u8{ zig_bin, "run", probe, "--", fixture, wat, mode };
+            var generated = try process.run_checked(init.gpa, init.io, .{
+                .argv = &args,
+                .environ = init.environ_map,
+                .cwd = repo_root,
+                .timeout_ms = 120_000,
+            });
+            defer generated.deinit(init.gpa);
+            try expect_success(init, &generated);
+        } else {
+            const do_bin = init.environ_map.get("DO_HARNESS_DO_BIN") orelse return error.MissingHarnessEnvironment;
+            const build_args = [_][]const u8{ "build", fixture, "--gc-core", "-o", wat };
+            var generated = try run_do_args(init, do_bin, &build_args, lib_root, repo_root, 120_000);
+            defer generated.deinit(init.gpa);
+            try expect_success(init, &generated);
+        }
+        try expect_file(init.io, wat);
+
+        const wasm = try std.fmt.allocPrint(init.gpa, "{s}.wasm", .{wat});
+        defer init.gpa.free(wasm);
+        var parsed = try run_adapter_command(init, toolchain, &.{ "parse-core", wat, "-o", wasm });
+        defer parsed.deinit(init.gpa);
+        try expect_success(init, &parsed);
+
+        const compiled = try std.fmt.allocPrint(init.gpa, "{s}.compiled", .{wat});
+        defer init.gpa.free(compiled);
+        var compiled_result = try run_adapter_command(init, toolchain, &.{ "compile-core-gc", wat, "-o", compiled });
+        defer compiled_result.deinit(init.gpa);
+        try expect_success(init, &compiled_result);
+        try expect_file(init.io, compiled);
+
+        var invoked = try run_adapter_command(init, toolchain, &.{ "invoke-core-gc", wat, "--export", "probe" });
+        defer invoked.deinit(init.gpa);
+        try expect_success(init, &invoked);
+        const result = std.mem.trim(u8, invoked.stdout, " \t\r\n");
+        if (!std.mem.eql(u8, result, "27815")) return error.GcCoreOracleMismatch;
+    }
+}
+
+fn run_map_core_probe(
+    init: std.process.Init,
+    repo_root: []const u8,
+    toolchain_bin: []const u8,
+    temp_path: []const u8,
+) !void {
+    const zig_name = init.environ_map.get("ZIG_BIN") orelse "zig";
+    const zig_bin = try find_executable(init, zig_name);
+    defer init.gpa.free(zig_bin);
+    const probe = try join(init.gpa, repo_root, "src/gc_marshal_map_probe_main.zig");
+    defer init.gpa.free(probe);
+
+    const value_kinds = [_][]const u8{ "u32", "text" };
+    const directions = [_][]const u8{ "lower", "lift" };
+    for (value_kinds) |value_kind| {
+        for (directions) |direction| {
+            const wat = try std.fmt.allocPrint(init.gpa, "{s}/map-{s}-{s}.wat", .{ temp_path, value_kind, direction });
+            defer init.gpa.free(wat);
+            const wasm = try std.fmt.allocPrint(init.gpa, "{s}/map-{s}-{s}.wasm", .{ temp_path, value_kind, direction });
+            defer init.gpa.free(wasm);
+
+            var argv: std.ArrayList([]const u8) = .empty;
+            defer argv.deinit(init.gpa);
+            try argv.appendSlice(init.gpa, &.{ zig_bin, "run", probe, "--", direction });
+            if (std.mem.eql(u8, value_kind, "text")) try argv.append(init.gpa, value_kind);
+            try argv.append(init.gpa, wat);
+
+            var generated = try process.run_checked(init.gpa, init.io, .{
+                .argv = argv.items,
+                .environ = init.environ_map,
+                .cwd = repo_root,
+                .timeout_ms = 120_000,
+            });
+            defer generated.deinit(init.gpa);
+            try expect_success(init, &generated);
+            try expect_file(init.io, wat);
+
+            const source = try read_file(init, wat);
+            defer init.gpa.free(source);
+            if (std.mem.indexOf(u8, source, "(type $do_map") == null) return error.MapCoreTypeMissing;
+            if (std.mem.eql(u8, value_kind, "u32")) {
+                if (std.mem.indexOf(u8, source, "(type $do_u32") == null) return error.MapCoreScalarTypeMissing;
+            } else if (std.mem.indexOf(u8, source, "(type $do_text_array") == null) {
+                return error.MapCoreTextTypeMissing;
+            }
+            const canonical_type = if (std.mem.eql(u8, direction, "lower"))
+                "(type $canonical_lower (func (param i32 i32)))"
+            else
+                "(type $canonical_lift (func (param i32)))";
+            if (std.mem.indexOf(u8, source, canonical_type) == null) return error.MapCoreCanonicalTypeMissing;
+
+            var parsed = try run_adapter_command(init, toolchain_bin, &.{ "parse-core", wat, "-o", wasm });
+            defer parsed.deinit(init.gpa);
+            try expect_success(init, &parsed);
+            try expect_file(init.io, wasm);
+
+            var validated = try run_adapter_command(init, toolchain_bin, &.{ "validate-core", wasm });
+            defer validated.deinit(init.gpa);
+            try expect_success(init, &validated);
+        }
+    }
+}
+
+fn run_map_sync_component(
+    init: std.process.Init,
+    repo_root: []const u8,
+    do_bin: []const u8,
+    toolchain_bin: []const u8,
+    temp_path: []const u8,
+) !void {
+    const lib_root = try join(init.gpa, repo_root, "lib");
+    defer init.gpa.free(lib_root);
+    const manifest = try join(init.gpa, repo_root, "examples/p3-runtime/rust-host-runner/Cargo.toml");
+    defer init.gpa.free(manifest);
+    const linker = try join(init.gpa, repo_root, "examples/p3-runtime/rust-host-runner/zig-cc.sh");
+    defer init.gpa.free(linker);
+    const env = [_]process.EnvVar{
+        .{ .name = "CC", .value = linker },
+        .{ .name = "CXX", .value = linker },
+        .{ .name = "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER", .value = linker },
+    };
+
+    for (map_sync_component_cases) |case| {
+        const source = try join(init.gpa, repo_root, case.source);
+        defer init.gpa.free(source);
+        const wit = try join(init.gpa, repo_root, case.wit);
+        defer init.gpa.free(wit);
+        const stem = std.fs.path.basename(case.source)[0 .. std.fs.path.basename(case.source).len - ".do".len];
+        const wat = try std.fmt.allocPrint(init.gpa, "{s}/{s}.map-sync.wat", .{ temp_path, stem });
+        defer init.gpa.free(wat);
+        const core = try std.fmt.allocPrint(init.gpa, "{s}/{s}.map-sync.wasm", .{ temp_path, stem });
+        defer init.gpa.free(core);
+        const embedded = try std.fmt.allocPrint(init.gpa, "{s}/{s}.map-sync.embedded.wasm", .{ temp_path, stem });
+        defer init.gpa.free(embedded);
+        const component = try std.fmt.allocPrint(init.gpa, "{s}/{s}.map-sync.component.wasm", .{ temp_path, stem });
+        defer init.gpa.free(component);
+
+        const build_args = [_][]const u8{
+            "build", source, "--gc-wit-marshal", case.descriptor, "-o", wat,
+        };
+        var built = try run_do_args(init, do_bin, &build_args, lib_root, repo_root, 120_000);
+        defer built.deinit(init.gpa);
+        try expect_success(init, &built);
+        try expect_file(init.io, wat);
+
+        const wat_source = try read_file(init, wat);
+        defer init.gpa.free(wat_source);
+        if (std.mem.indexOf(u8, wat_source, case.canonical_type) == null) return error.MapCanonicalTypeMissing;
+        if (std.mem.indexOf(u8, wat_source, "__arc_") != null) return error.ObsoleteArcMarker;
+        if (std.mem.indexOf(u8, wat_source, "(import") == null) return error.MapCanonicalImportMissing;
+        if (import_decl_has_reference(wat_source)) return error.MapReferenceCrossedComponentAbi;
+
+        try run_adapter_success(init, toolchain_bin, &.{ "parse-core", wat, "-o", core });
+        try run_adapter_success(init, toolchain_bin, &.{
+            "embed-component", wit, core, "probe", "--features", "component-map", "-o", embedded,
+        });
+        try run_adapter_success(init, toolchain_bin, &.{ "new-component", embedded, "-o", component });
+        try run_adapter_success(init, toolchain_bin, &.{ "validate-component", component, "--features", "component-map" });
+
+        var component_wit = try run_adapter_command(init, toolchain_bin, &.{ "component-wit", component });
+        defer component_wit.deinit(init.gpa);
+        try expect_success(init, &component_wit);
+        try process.assert_stdout_contains(component_wit, case.wit_marker);
+
+        const runner_args = [_][]const u8{
+            "cargo", "run", "--quiet", "--locked", "--manifest-path", manifest,
+            "--bin", "do-p3-gc-marshal-map-u32-u32", "--", component, case.mode,
+        };
+        var runtime = try process.run_checked(init.gpa, init.io, .{
+            .argv = &runner_args,
+            .environ = init.environ_map,
+            .env = &env,
+            .cwd = repo_root,
+            .timeout_ms = 600_000,
+        });
+        defer runtime.deinit(init.gpa);
+        try expect_success(init, &runtime);
+        try process.assert_stdout_contains(runtime, case.runtime_marker);
+    }
+}
+
+fn import_decl_has_reference(source: []const u8) bool {
+    var lines = std.mem.splitScalar(u8, source, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+        if (!std.mem.startsWith(u8, trimmed, "(import")) continue;
+        if (std.mem.indexOf(u8, trimmed, "(param") == null and
+            std.mem.indexOf(u8, trimmed, "(result") == null) continue;
+        if (std.mem.indexOf(u8, trimmed, "(ref") != null) return true;
+    }
+    return false;
 }
 
 fn run_p3_pure_lowering_matrix(
@@ -1793,10 +2897,9 @@ fn expect_file(io: std.Io, path: []const u8) !void {
 }
 
 fn print_case_passed(io: std.Io, name: []const u8) !void {
-    var buffer: [256]u8 = undefined;
-    var writer = std.Io.File.stdout().writer(io, &buffer);
-    try writer.interface.print("integration case passed: {s}\n", .{name});
-    try writer.interface.flush();
+    var line: [256]u8 = undefined;
+    const rendered = try std.fmt.bufPrint(&line, "integration case passed: {s}\n", .{name});
+    try std.Io.File.stdout().writeStreamingAll(io, rendered);
 }
 
 fn write_stderr(io: std.Io, text: []const u8) !void {
@@ -1955,6 +3058,87 @@ fn run_do_args(
     });
 }
 
+fn run_do_args_with_env(
+    init: std.process.Init,
+    do_bin: []const u8,
+    args: []const []const u8,
+    lib_root: []const u8,
+    cwd: ?[]const u8,
+    timeout_ms: u64,
+    extra_env: []const process.EnvVar,
+) !process.CommandResult {
+    var argv: std.ArrayList([]const u8) = .empty;
+    defer argv.deinit(init.gpa);
+    try argv.append(init.gpa, do_bin);
+    try argv.appendSlice(init.gpa, args);
+
+    var env: std.ArrayList(process.EnvVar) = .empty;
+    defer env.deinit(init.gpa);
+    try env.append(init.gpa, .{ .name = "DO_LIB_ROOT", .value = lib_root });
+    try env.appendSlice(init.gpa, extra_env);
+    return process.run_checked(init.gpa, init.io, .{
+        .argv = argv.items,
+        .environ = init.environ_map,
+        .env = env.items,
+        .cwd = cwd,
+        .timeout_ms = timeout_ms,
+    });
+}
+
+fn expect_do_failure_with_marker(
+    init: std.process.Init,
+    do_bin: []const u8,
+    lib_root: []const u8,
+    cwd: ?[]const u8,
+    args: []const []const u8,
+    marker: []const u8,
+) !void {
+    var result = try run_do_args(init, do_bin, args, lib_root, cwd, 120_000);
+    defer result.deinit(init.gpa);
+    if (result.succeeded()) return error.ExpectedCommandFailure;
+    try process.assert_stderr_contains(result, marker);
+    if (result.stdout.len != 0) return error.UnexpectedCommandStdout;
+}
+
+fn expect_external_failure(result: *const process.CommandResult, marker: []const u8) !void {
+    if (result.succeeded()) return error.ExpectedCommandFailure;
+    try process.assert_stderr_contains(result.*, marker);
+    if (result.stdout.len != 0) return error.UnexpectedCommandStdout;
+}
+
+fn find_executable(init: std.process.Init, name: []const u8) ![]u8 {
+    if (std.fs.path.isAbsolute(name)) {
+        std.Io.Dir.cwd().access(init.io, name, .{ .execute = true }) catch |err| switch (err) {
+            error.FileNotFound, error.AccessDenied => return error.FileNotFound,
+            else => return err,
+        };
+        return init.gpa.dupe(u8, name);
+    }
+
+    const path_env = init.environ_map.get("PATH") orelse return error.FileNotFound;
+    var paths = std.mem.tokenizeScalar(u8, path_env, std.fs.path.delimiter);
+    while (paths.next()) |directory| {
+        const candidate = try std.fs.path.join(init.gpa, &.{ directory, name });
+        defer init.gpa.free(candidate);
+        std.Io.Dir.cwd().access(init.io, candidate, .{ .execute = true }) catch |err| switch (err) {
+            error.FileNotFound, error.AccessDenied => continue,
+            else => return err,
+        };
+        return init.gpa.dupe(u8, candidate);
+    }
+    return error.FileNotFound;
+}
+
+fn find_node_runtime(init: std.process.Init) ![]u8 {
+    if (init.environ_map.get("NODE_BIN")) |configured| {
+        if (configured.len != 0) return find_executable(init, configured);
+    }
+    return find_executable(init, "node") catch |err| switch (err) {
+        error.FileNotFound => find_executable(init, "bun"),
+        else => err,
+    };
+}
+
 fn run_fmt_flag(
     init: std.process.Init,
     do_bin: []const u8,
@@ -1995,11 +3179,49 @@ fn report_case_failure(init: std.process.Init, result: process.CommandResult) !v
 }
 
 test "integration harness case table has required routes" {
-    try std.testing.expectEqual(@as(usize, 11), test_cases.cases.len);
+    try std.testing.expectEqual(@as(usize, 21), test_cases.cases.len);
+}
+
+test "compile-only WASI sidecars have explicit expectation kinds" {
+    const expected = [_]struct { suffix: []const u8, kind: CompileExpectationKind }{
+        .{ .suffix = ".wasi_bind.expect", .kind = .wasi_bind },
+        .{ .suffix = ".component_plan.expect", .kind = .component_plan },
+        .{ .suffix = ".wit.expect", .kind = .wit },
+        .{ .suffix = ".wit_dir.expect", .kind = .wit_dir },
+        .{ .suffix = ".core_imports.expect", .kind = .core_imports },
+        .{ .suffix = ".core_shims.expect", .kind = .core_shims },
+        .{ .suffix = ".component_input.expect", .kind = .component_input },
+        .{ .suffix = ".component_core.expect", .kind = .component_core },
+    };
+    for (expected) |entry| {
+        try std.testing.expectEqual(entry.kind, classify_compile_expectation(entry.suffix).?);
+    }
+    try std.testing.expect(classify_compile_expectation(".expect") == null);
+}
+
+test "RUN_WASM smoke has a dedicated integration route" {
+    var found = false;
+    for (test_cases.cases) |case| {
+        if (case.kind == .wasm_smoke_matrix) found = true;
+    }
+    try std.testing.expect(found);
+}
+
+test "fixture report line has stable status encoding" {
+    const line = try format_fixture_report(std.testing.allocator, "compile_ok", "fixture.do", .pass);
+    defer std.testing.allocator.free(line);
+    try std.testing.expectEqualStrings(
+        "fixture-result category=compile_ok name=fixture.do status=pass\n",
+        line,
+    );
+}
+
+test "compiled must pass promotes skipped ok fixture to pass" {
+    try std.testing.expectEqual(FixtureStatus.pass, status_after_compiled_must_pass());
 }
 
 test "p3 pure lowering matrix has explicit cases" {
-    try std.testing.expect(pure_lowering_cases.len >= 29);
+    try std.testing.expect(pure_lowering_cases.len >= 31);
 }
 
 test "rust runtime matrix has explicit cases" {
@@ -2017,5 +3239,20 @@ test "rust runtime matrix has explicit cases" {
     try std.testing.expectEqualStrings("cancel-child", case.expectations[3].mode);
     for (case.expectations) |expectation| {
         try std.testing.expect(expectation.markers.len > 0);
+    }
+}
+
+test "map synchronous Component matrix has explicit lower and lift cases" {
+    try std.testing.expectEqual(@as(usize, 2), map_sync_component_cases.len);
+    try std.testing.expectEqualStrings("examples/gc-p3-runtime/map-u32-u32-lower.do", map_sync_component_cases[0].source);
+    try std.testing.expectEqualStrings("demo:marshal-map-u32-u32/api.write@1.0.0/lower", map_sync_component_cases[0].descriptor);
+    try std.testing.expectEqualStrings("lower", map_sync_component_cases[0].mode);
+    try std.testing.expectEqualStrings("examples/gc-p3-runtime/map-u32-u32-lift.do", map_sync_component_cases[1].source);
+    try std.testing.expectEqualStrings("demo:marshal-map-u32-u32/api.read@1.0.0/lift", map_sync_component_cases[1].descriptor);
+    try std.testing.expectEqualStrings("lift", map_sync_component_cases[1].mode);
+    for (map_sync_component_cases) |case| {
+        try std.testing.expect(case.canonical_type.len > 0);
+        try std.testing.expect(case.wit_marker.len > 0);
+        try std.testing.expect(case.runtime_marker.len > 0);
     }
 }

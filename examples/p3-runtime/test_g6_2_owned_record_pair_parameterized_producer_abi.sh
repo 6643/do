@@ -3,7 +3,8 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
-wasm_tools_bin=${WASM_TOOLS:-wasm-tools}
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 tmp_root=${TMPDIR:-"$repo_root/.tmp/do-tmp"}
 mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/g6-2-owned-record-pair-parameterized-producer.XXXXXX")
@@ -29,9 +30,7 @@ for path in "$wat" "$runner" "$wit"; do
   }
 done
 
-expected_tools_version=${WASM_TOOLS_EXPECT_VERSION:-1.255.0}
-actual_tools_version=$($wasm_tools_bin --version | awk 'NR == 1 { print $2 }')
-test "$actual_tools_version" = "$expected_tools_version"
+test -x "$toolchain_bin"
 test "$(sha256sum "$wit" | awk '{print $1}')" = \
   e7abd3cf7b7543325865a0b4be4b32ae50a2470ac5083169250719f89b7ce53a
 
@@ -55,13 +54,11 @@ if grep -Fq '__arc_' "$wat"; then
   exit 1
 fi
 
-$wasm_tools_bin parse "$wat" -o "$core_wasm"
-$wasm_tools_bin component embed "$wit" "$core_wasm" \
-  --world owned-record-pair-parameterized-producer \
-  --features cm-async,cm-more-async-builtins \
-  -o "$embedded"
-$wasm_tools_bin component new --skip-validation "$embedded" -o "$component"
-$wasm_tools_bin validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" parse-core "$wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit" "$core_wasm" owned-record-pair-parameterized-producer \
+  --features component-async -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features component-async
 
 if ! command -v cc >/dev/null 2>&1; then
   export CC="$runner_dir/zig-cc.sh"

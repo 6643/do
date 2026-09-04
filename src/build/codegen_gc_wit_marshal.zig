@@ -23,6 +23,8 @@ pub const mixed_scalar_list_lower_descriptor = host_boundary.mixed_scalar_list_l
 pub const mixed_text_u32_list_lift_descriptor = host_boundary.mixed_text_u32_list_lift_descriptor;
 pub const mixed_text_byte_list_lift_descriptor = host_boundary.mixed_text_byte_list_lift_descriptor;
 pub const mixed_text_two_u32_lists_lift_descriptor = host_boundary.mixed_text_two_u32_lists_lift_descriptor;
+pub const map_u32_u32_lower_descriptor = host_boundary.map_u32_u32_lower_descriptor;
+pub const map_u32_u32_lift_descriptor = host_boundary.map_u32_u32_lift_descriptor;
 
 pub fn emit_module(
     io: std.Io,
@@ -48,6 +50,8 @@ pub fn emit_module(
     const is_mixed_text_u32_list_lift = std.mem.eql(u8, descriptor_id, mixed_text_u32_list_lift_descriptor);
     const is_mixed_text_byte_list_lift = std.mem.eql(u8, descriptor_id, mixed_text_byte_list_lift_descriptor);
     const is_mixed_text_two_u32_lists_lift = std.mem.eql(u8, descriptor_id, mixed_text_two_u32_lists_lift_descriptor);
+    const is_map_u32_u32_lower = std.mem.eql(u8, descriptor_id, map_u32_u32_lower_descriptor);
+    const is_map_u32_u32_lift = std.mem.eql(u8, descriptor_id, map_u32_u32_lift_descriptor);
     var loaded = try descriptor_loader.load_request_from_manifest(
         io,
         allocator,
@@ -80,7 +84,73 @@ pub fn emit_module(
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
     try out.appendSlice(allocator, base[0 .. base.len - closing.len]);
-    if (is_managed_record_lift_multi) {
+    if (is_map_u32_u32_lower) {
+        try generated_text.append_block(allocator, &out, 2,
+            \\  (func $run (result i32)
+            \\    i32.const 2
+            \\    i32.const 7
+            \\    i32.const 9
+            \\    array.new_fixed $do_u32 2
+            \\    i32.const 70
+            \\    i32.const 90
+            \\    array.new_fixed $do_u32 2
+            \\    struct.new $do_map
+            \\    call $marshal
+            \\    i32.const 42)
+            \\  (func $stats (result i32)
+            \\    global.get $__alloc_count
+            \\    i32.const 16
+            \\    i32.mul
+            \\    global.get $__free_count
+            \\    i32.add)
+            \\  (export "run" (func $run))
+            \\  (export "stats" (func $stats))
+            \\
+        );
+    } else if (is_map_u32_u32_lift) {
+        try generated_text.append_block(allocator, &out, 2,
+            \\  (func $run (result i32)
+            \\    (local $reading (ref null $do_map))
+            \\    call $marshal
+            \\    local.set $reading
+            \\    local.get $reading
+            \\    ref.as_non_null
+            \\    struct.get $do_map $keys
+            \\    ref.as_non_null
+            \\    i32.const 0
+            \\    array.get $do_u32
+            \\    local.get $reading
+            \\    ref.as_non_null
+            \\    struct.get $do_map $keys
+            \\    ref.as_non_null
+            \\    i32.const 1
+            \\    array.get $do_u32
+            \\    i32.add
+            \\    local.get $reading
+            \\    ref.as_non_null
+            \\    struct.get $do_map $vals
+            \\    ref.as_non_null
+            \\    i32.const 0
+            \\    array.get $do_u32
+            \\    i32.add
+            \\    local.get $reading
+            \\    ref.as_non_null
+            \\    struct.get $do_map $vals
+            \\    ref.as_non_null
+            \\    i32.const 1
+            \\    array.get $do_u32
+            \\    i32.add)
+            \\  (func $stats (result i32)
+            \\    global.get $__alloc_count
+            \\    i32.const 16
+            \\    i32.mul
+            \\    global.get $__free_count
+            \\    i32.add)
+            \\  (export "run" (func $run))
+            \\  (export "stats" (func $stats))
+            \\
+        );
+    } else if (is_managed_record_lift_multi) {
         try generated_text.append_block(allocator, &out, 2,
             \\  (func $run (result i32)
             \\    (local $reading (ref null $do_record))
@@ -718,6 +788,33 @@ test "GC WIT marshal C16-A rejects a generic entry without the host declaration"
             tokens,
         ),
     );
+}
+
+test "GC WIT map lower run constructs fixed arrays with immediate lengths only" {
+    const source =
+        \\HashMap = @lib("hash_map.do", HashMap)
+        \\write = @host_func("demo:marshal-map-u32-u32/api@1.0.0", "write", (HashMap<u32, u32>) -> nil)
+        ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    const wat = try emit_module(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        map_u32_u32_lower_descriptor,
+        tokens,
+    );
+    defer std.testing.allocator.free(wat);
+
+    try std.testing.expect(std.mem.indexOf(u8, wat,
+        "    i32.const 2\n    i32.const 7\n    i32.const 9\n    array.new_fixed $do_u32 2\n",
+    ) != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat,
+        "    array.new_fixed $do_u32 2\n    i32.const 2\n    i32.const 70\n",
+    ) == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat,
+        "    i32.const 70\n    i32.const 90\n    array.new_fixed $do_u32 2\n",
+    ) != null);
 }
 
 test "C18 record u32 list lift compiler route emits a module" {

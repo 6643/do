@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="$repo_root/bin/do-toolchain"
+export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
 do_bin="$repo_root/bin/do"
 source="$repo_root/examples/p3-runtime/cli-stream-stdin-component.do"
 bounded_source="$repo_root/examples/p3-runtime/cli-stream-stdin-one-read.do"
@@ -34,11 +36,11 @@ if grep -Fq '__stream_completion_global' "$wat"; then
     exit 1
 fi
 
-wasm-tools parse "$wat" -o "$core"
-wasm-tools component embed "$wit" "$core" --world stream-stdin-probe \
+"$toolchain_bin" parse-core "$wat" -o "$core"
+"$toolchain_bin" embed-component "$wit" "$core" stream-stdin-probe \
     -o "$embedded"
-wasm-tools component new --skip-validation "$embedded" -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features component-async
 
 "$do_bin" build --p3-async-component --p3-wit-output "$bounded_wit" "$bounded_source" -o "$bounded_wat"
 grep -Fq '(export "[async-lift]read-once"' "$bounded_wat"
@@ -48,10 +50,10 @@ if grep -Fq '[stream-read-count]' "$bounded_wat"; then
     exit 1
 fi
 grep -Fq 'export read-once: async func()' "$bounded_wit"
-wasm-tools parse "$bounded_wat" -o "$bounded_core"
-wasm-tools component embed "$bounded_wit" "$bounded_core" --world stream-stdin-probe \
+"$toolchain_bin" parse-core "$bounded_wat" -o "$bounded_core"
+"$toolchain_bin" embed-component "$bounded_wit" "$bounded_core" stream-stdin-probe \
     -o "$bounded_embedded"
-wasm-tools component new --skip-validation "$bounded_embedded" -o "$bounded_component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$bounded_component"
+"$toolchain_bin" new-component "$bounded_embedded" -o "$bounded_component"
+"$toolchain_bin" validate-component "$bounded_component" --features component-async
 
 printf 'CLI stdin stream lowering passed\n'

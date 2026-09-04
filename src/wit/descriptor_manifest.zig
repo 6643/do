@@ -21,6 +21,7 @@ pub const ManifestError = error{
     DescriptorSignatureInvalid,
     DescriptorCanonicalImportInvalid,
     DescriptorMeasurementInvalid,
+    DescriptorMapInvalid,
     DescriptorNotFound,
 };
 
@@ -31,16 +32,29 @@ pub const CanonicalImport = struct {
     name: []const u8,
 };
 
+pub const MapAbi = struct {
+    key: []const u8,
+    value: []const u8,
+    representation: []const u8,
+};
+
 pub const MeasurementKind = enum {
     scalar,
     text,
     list,
     byte_list,
+    map,
     record,
 };
 
 pub const MeasuredField = struct {
     name: []const u8,
+    offset: u32,
+    byte_size: u32,
+    alignment: u32,
+};
+
+pub const MeasuredMapField = struct {
     offset: u32,
     byte_size: u32,
     alignment: u32,
@@ -63,6 +77,8 @@ pub const MeasuredNode = struct {
     capacity: ?u32 = null,
     allocation: ?[]const u8 = null,
     free: ?[]const u8 = null,
+    map_key: ?MeasuredMapField = null,
+    map_value: ?MeasuredMapField = null,
     accepted_lengths: []const u32 = &.{},
     fields: []const MeasuredField = &.{},
     children: []const MeasuredNode = &.{},
@@ -85,6 +101,7 @@ pub const Descriptor = struct {
     do_record_name: ?[]const u8 = null,
     source_sha256: []const u8,
     canonical_import: CanonicalImport,
+    map_abi: ?MapAbi = null,
     measured_layout: ?MeasuredNode = null,
 };
 
@@ -206,6 +223,8 @@ fn parse_descriptor(allocator: std.mem.Allocator, value: std.json.Value) (Manife
         measured_layout = try parse_measured_node(allocator, raw_layout);
     }
 
+    const map_abi = if (object.get("map_abi")) |raw_map| try parse_map_abi(raw_map) else null;
+
     return .{
         .id = id,
         .source = source,
@@ -220,8 +239,19 @@ fn parse_descriptor(allocator: std.mem.Allocator, value: std.json.Value) (Manife
         .do_record_name = do_record_name,
         .source_sha256 = source_sha256,
         .canonical_import = .{ .module = import_module, .name = import_name },
+        .map_abi = map_abi,
         .measured_layout = measured_layout,
     };
+}
+
+fn parse_map_abi(value: std.json.Value) ManifestError!MapAbi {
+    const object = object_value(value) orelse return error.DescriptorMapInvalid;
+    const key = string_value(object.get("key")) orelse return error.DescriptorMapInvalid;
+    const map_value = string_value(object.get("value")) orelse return error.DescriptorMapInvalid;
+    const representation = string_value(object.get("representation")) orelse return error.DescriptorMapInvalid;
+    if (!valid_map_key_schema(key) or !valid_text(map_value) or
+        !std.mem.eql(u8, representation, "pair-list")) return error.DescriptorMapInvalid;
+    return .{ .key = key, .value = map_value, .representation = representation };
 }
 
 fn parse_measured_node(allocator: std.mem.Allocator, value: std.json.Value) (ManifestError || std.mem.Allocator.Error)!MeasuredNode {
@@ -320,6 +350,64 @@ fn parse_measured_node(allocator: std.mem.Allocator, value: std.json.Value) (Man
                 node.accepted_lengths = accepted;
             }
         },
+        .map => {
+            node.pointer_offset = bounded_u32(object.get("pointer_offset"));
+            node.length_offset = bounded_u32(object.get("length_offset"));
+            node.element_byte_size = bounded_u32(object.get("element_byte_size"));
+            node.element_stride = bounded_u32(object.get("element_stride"));
+            node.element_alignment = bounded_u32(object.get("element_alignment"));
+            node.capacity = bounded_u32(object.get("capacity"));
+            node.allocation = string_value(object.get("allocation"));
+            node.free = string_value(object.get("free"));
+            const element_byte_size = node.element_byte_size orelse return error.DescriptorMeasurementInvalid;
+            const element_stride = node.element_stride orelse return error.DescriptorMeasurementInvalid;
+            const element_alignment = node.element_alignment orelse return error.DescriptorMeasurementInvalid;
+            const capacity = node.capacity orelse return error.DescriptorMeasurementInvalid;
+            if (node.pointer_offset == null or node.length_offset == null or
+                node.allocation == null or node.free == null or capacity == 0 or
+                !std.mem.eql(u8, node.allocation.?, "cabi_realloc") or
+                !std.mem.eql(u8, node.free.?, "cabi_realloc") or
+                byte_size != 8 or alignment != 4 or
+                node.pointer_offset.? == node.length_offset.? or
+                !valid_region(node.pointer_offset.?, 4, byte_size) or
+                !valid_region(node.length_offset.?, 4, byte_size) or
+                !valid_alignment(element_alignment) or element_byte_size == 0 or
+                element_byte_size % element_alignment != 0 or
+                element_stride < element_byte_size or
+                element_stride % element_alignment != 0)
+            {
+                return error.DescriptorMeasurementInvalid;
+            }
+            node.map_key = try parse_measured_map_field(
+                object.get("key") orelse return error.DescriptorMeasurementInvalid,
+                element_byte_size,
+            );
+            node.map_value = try parse_measured_map_field(
+                object.get("value") orelse return error.DescriptorMeasurementInvalid,
+                element_byte_size,
+            );
+            const key = node.map_key.?;
+            const map_value = node.map_value.?;
+            if (key.offset < map_value.offset + map_value.byte_size and
+                map_value.offset < key.offset + key.byte_size)
+            {
+                return error.DescriptorMeasurementInvalid;
+            }
+            const raw_lengths = object.get("accepted_lengths") orelse return error.DescriptorMeasurementInvalid;
+            const length_values = array_value(raw_lengths) orelse return error.DescriptorMeasurementInvalid;
+            var accepted = try allocator.alloc(u32, length_values.items.len);
+            errdefer allocator.free(accepted);
+            if (accepted.len == 0) return error.DescriptorMeasurementInvalid;
+            for (length_values.items, 0..) |raw_length, index| {
+                accepted[index] = bounded_u32(raw_length) orelse return error.DescriptorMeasurementInvalid;
+                if (accepted[index] > capacity or (index == 0 and accepted[index] != 0) or
+                    (index != 0 and accepted[index] <= accepted[index - 1]))
+                {
+                    return error.DescriptorMeasurementInvalid;
+                }
+            }
+            node.accepted_lengths = accepted;
+        },
         .record => {
             const field_values = array_value(object.get("fields")) orelse return error.DescriptorMeasurementInvalid;
             const child_values = array_value(object.get("children")) orelse return error.DescriptorMeasurementInvalid;
@@ -383,6 +471,19 @@ fn parse_measured_fields(
     return fields;
 }
 
+fn parse_measured_map_field(value: std.json.Value, pair_size: u32) ManifestError!MeasuredMapField {
+    const object = object_value(value) orelse return error.DescriptorMeasurementInvalid;
+    const offset = bounded_u32(object.get("offset")) orelse return error.DescriptorMeasurementInvalid;
+    const byte_size = bounded_u32(object.get("byte_size")) orelse return error.DescriptorMeasurementInvalid;
+    const alignment = bounded_u32(object.get("alignment")) orelse return error.DescriptorMeasurementInvalid;
+    if (byte_size == 0 or !valid_alignment(alignment) or !is_aligned(offset, alignment) or
+        !valid_region(offset, byte_size, pair_size))
+    {
+        return error.DescriptorMeasurementInvalid;
+    }
+    return .{ .offset = offset, .byte_size = byte_size, .alignment = alignment };
+}
+
 fn parse_measured_children(
     allocator: std.mem.Allocator,
     values: std.json.Array,
@@ -412,6 +513,7 @@ fn parse_measurement_kind(value: []const u8) ?MeasurementKind {
     if (std.mem.eql(u8, value, "text")) return .text;
     if (std.mem.eql(u8, value, "list")) return .list;
     if (std.mem.eql(u8, value, "byte_list")) return .byte_list;
+    if (std.mem.eql(u8, value, "map")) return .map;
     if (std.mem.eql(u8, value, "record")) return .record;
     return null;
 }
@@ -487,6 +589,15 @@ fn valid_text(value: []const u8) bool {
     if (value.len == 0) return false;
     for (value) |ch| if (ch < 0x20 or ch == '"' or ch == '\\') return false;
     return true;
+}
+
+fn valid_map_key_schema(value: []const u8) bool {
+    return std.mem.eql(u8, value, "bool") or
+        std.mem.eql(u8, value, "s8") or std.mem.eql(u8, value, "u8") or
+        std.mem.eql(u8, value, "s16") or std.mem.eql(u8, value, "u16") or
+        std.mem.eql(u8, value, "s32") or std.mem.eql(u8, value, "u32") or
+        std.mem.eql(u8, value, "s64") or std.mem.eql(u8, value, "u64") or
+        std.mem.eql(u8, value, "char") or std.mem.eql(u8, value, "string");
 }
 
 fn valid_sha256(value: []const u8) bool {

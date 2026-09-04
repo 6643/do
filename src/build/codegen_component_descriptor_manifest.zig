@@ -218,6 +218,19 @@ fn load_request_internal(
                 .lift => .lift_record,
             },
         });
+    } else if (root_type.kind == .map) {
+        const root_type_name = do_boundary_type(root_type) orelse return error.UnsupportedWitShape;
+        owned_host_boundary = try host_boundary.OwnedHostBoundarySpec.from_spec(allocator, .{
+            .locator = descriptor.canonical_import.module,
+            .member = descriptor.member,
+            .record_name = "",
+            .fields = &.{},
+            .shape = switch (descriptor.direction) {
+                .lower => .lower_map,
+                .lift => .lift_map,
+            },
+            .root_type = root_type_name,
+        });
     }
     errdefer if (owned_host_boundary) |*boundary| boundary.deinit();
 
@@ -352,6 +365,61 @@ fn convert_manifest_measurement(
                 .children = children,
             };
         },
+        .map => {
+            // The manifest stores map pair field facts directly rather than
+            // duplicating child nodes. The first admitted route is the
+            // scalar u32/u32 pair, so materialize the two canonical i32
+            // children required by the marshal binder here.
+            if (children.len != 0) return error.DescriptorMeasurementInvalid;
+            const key = node.map_key orelse return error.DescriptorMeasurementInvalid;
+            const value = node.map_value orelse return error.DescriptorMeasurementInvalid;
+            if (key.byte_size != 4 or key.alignment != 4 or
+                value.byte_size != 4 or value.alignment != 4)
+            {
+                return error.DescriptorMeasurementInvalid;
+            }
+            children = try allocator.alloc(marshal.MeasuredNode, 2);
+            children[0] = .{ .layout = .{ .scalar = .{
+                .offset = key.offset,
+                .byte_size = key.byte_size,
+                .alignment = key.alignment,
+                .core_type = .i32,
+            } } };
+            initialized_children = 1;
+            children[1] = .{ .layout = .{ .scalar = .{
+                .offset = value.offset,
+                .byte_size = value.byte_size,
+                .alignment = value.alignment,
+                .core_type = .i32,
+            } } };
+            initialized_children = 2;
+            return .{
+                .layout = .{ .map = .{
+                    .pointer_offset = node.pointer_offset orelse return error.DescriptorMeasurementInvalid,
+                    .length_offset = node.length_offset orelse return error.DescriptorMeasurementInvalid,
+                    .element_byte_size = node.element_byte_size orelse return error.DescriptorMeasurementInvalid,
+                    .element_stride = node.element_stride orelse return error.DescriptorMeasurementInvalid,
+                    .element_alignment = node.element_alignment orelse return error.DescriptorMeasurementInvalid,
+                    .key = .{
+                        .offset = key.offset,
+                        .byte_size = key.byte_size,
+                        .alignment = key.alignment,
+                        .indirect = null,
+                    },
+                    .value = .{
+                        .offset = value.offset,
+                        .byte_size = value.byte_size,
+                        .alignment = value.alignment,
+                        .indirect = null,
+                    },
+                    .capacity = node.capacity orelse return error.DescriptorMeasurementInvalid,
+                    .accepted_lengths = node.accepted_lengths,
+                    .allocation = try convert_allocation_action(node.allocation orelse return error.DescriptorMeasurementInvalid),
+                    .free = try convert_free_action(node.free orelse return error.DescriptorMeasurementInvalid),
+                } },
+                .children = children,
+            };
+        },
         .record => {
             var fields: []wit_layout.FieldMeasurement = &.{};
             if (node.fields.len != 0) fields = try allocator.alloc(wit_layout.FieldMeasurement, node.fields.len);
@@ -471,6 +539,11 @@ fn do_boundary_type(type_ref: *const wit_model.TypeRef) ?[]const u8 {
             "[u32]"
         else
             null,
+        .map => if (type_ref.args.len == 2 and
+            type_ref.args[0].kind == .u32 and type_ref.args[1].kind == .u32)
+            "HashMap<u32, u32>"
+        else
+            null,
         else => null,
     };
 }
@@ -509,7 +582,7 @@ fn append_wit_type(
         .string => try out.appendSlice(allocator, "string"),
         .unit => try out.appendSlice(allocator, "_"),
         .named => try out.appendSlice(allocator, type_ref.name),
-        .list, .option, .result, .future, .stream, .tuple, .own, .borrow => {
+        .list, .option, .result, .future, .stream, .tuple, .map, .own, .borrow => {
             const name = switch (type_ref.kind) {
                 .list => "list",
                 .option => "option",
@@ -517,11 +590,13 @@ fn append_wit_type(
                 .future => "future",
                 .stream => "stream",
                 .tuple => "tuple",
+                .map => "map",
                 .own => "own",
                 .borrow => "borrow",
                 else => unreachable,
             };
-            if (type_ref.args.len == 0) return error.InvalidSignature;
+            if ((type_ref.kind == .map and type_ref.args.len != 2) or
+                (type_ref.kind != .map and type_ref.args.len == 0)) return error.InvalidSignature;
             try out.appendSlice(allocator, name);
             try out.append(allocator, '<');
             for (type_ref.args, 0..) |arg, index| {
@@ -632,6 +707,61 @@ test "loaded request owns host boundary facts" {
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     try validate_loaded_host_boundary(&loaded, tokens);
+}
+
+test "descriptor WIT renderer preserves map syntax while boundary admission stays unsupported" {
+    const source =
+        \\package demo:map-descriptor@1.0.0;
+        \\
+        \\interface api {
+        \\  lookup: func(values: map<string, u32>) -> map<u32, string>;
+        \\}
+        \\
+        \\world probe { import api; }
+    ;
+    var binding = try wit_resolve.resolve_source(std.testing.allocator, source, "probe");
+    defer binding.deinit();
+
+    const member = try wit_registry.find_value_member(&binding, "api", "lookup");
+    const rendered_param = try render_wit_type(std.testing.allocator, member.function.params[0].type_ref);
+    defer std.testing.allocator.free(rendered_param);
+    try std.testing.expectEqualStrings("map<string, u32>", rendered_param);
+
+    const rendered_result = try render_wit_type(std.testing.allocator, member.function.result.?);
+    defer std.testing.allocator.free(rendered_result);
+    try std.testing.expectEqualStrings("map<u32, string>", rendered_result);
+    try std.testing.expect(do_boundary_type(member.function.params[0].type_ref) == null);
+}
+
+test "manifest converter decodes a measured u32 map" {
+    const node = descriptor_manifest.MeasuredNode{
+        .kind = .map,
+        .byte_size = 8,
+        .alignment = 4,
+        .pointer_offset = 0,
+        .length_offset = 4,
+        .element_byte_size = 8,
+        .element_stride = 8,
+        .element_alignment = 4,
+        .capacity = 2,
+        .allocation = "cabi_realloc",
+        .free = "cabi_realloc",
+        .map_key = .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+        .map_value = .{ .offset = 4, .byte_size = 4, .alignment = 4 },
+        .accepted_lengths = &.{ 0, 1, 2 },
+    };
+    const converted = try convert_manifest_measurement(std.testing.allocator, node);
+    defer deinit_marshal_measured_node(std.testing.allocator, converted);
+    switch (converted.layout) {
+        .map => |map| {
+            try std.testing.expectEqual(@as(u32, 8), map.element_byte_size);
+            try std.testing.expectEqual(@as(u32, 8), map.element_stride);
+            try std.testing.expectEqual(@as(u32, 0), map.key.offset);
+            try std.testing.expectEqual(@as(u32, 4), map.value.offset);
+        },
+        else => return error.TestUnexpectedResult,
+    }
+    try std.testing.expectEqual(@as(usize, 2), converted.children.len);
 }
 
 test "loaded request admits the two u32 list lower host boundary" {

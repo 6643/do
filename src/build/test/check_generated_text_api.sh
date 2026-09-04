@@ -6,7 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 # All structured generated text must use the explicit-indent block helpers.
 legacy_files=$(rg -l \
     'append_fmt_generated|alloc_fmt_generated|append_generated|alloc_generated' \
-    "$ROOT_DIR/src" --glob '*.zig' || true)
+    "$ROOT_DIR/src" --glob '*.zig' --glob '!**/structural_checks.zig' --glob '!**/structural_checks_test.zig' || true)
 
 if [[ -n "$legacy_files" ]]; then
     printf 'legacy generated-text helper references remain:\n%s\n' "$legacy_files" >&2
@@ -16,7 +16,7 @@ fi
 # Every append_fmt implementation must delegate to the shared helper.  Keeping
 # another std.fmt.allocPrint body silently creates a second formatting contract.
 duplicate_fmt_impls=$(rg -l -U -P 'fn append_fmt\([^}]{0,800}?std\.fmt\.allocPrint' \
-    "$ROOT_DIR/src" --glob '*.zig' | rg -v '/codegen_text\.zig$' || true)
+    "$ROOT_DIR/src" --glob '*.zig' --glob '!**/structural_checks.zig' --glob '!**/structural_checks_test.zig' | rg -v '/codegen_text\.zig$' || true)
 if [[ -n "$duplicate_fmt_impls" ]]; then
     printf 'duplicate append_fmt implementations remain:\n%s\n' "$duplicate_fmt_impls" >&2
     exit 1
@@ -34,7 +34,7 @@ fi
 
 unindexed_format_calls=$(rg -n -U -P \
     '(?:generated_text\.)?(?:append_fmt|alloc_fmt)\([^;\n]{0,600}?\{[sdifxXboc]\}' \
-    "$ROOT_DIR/src" --glob '*.zig' || true)
+    "$ROOT_DIR/src" --glob '*.zig' --glob '!**/structural_checks.zig' --glob '!**/structural_checks_test.zig' || true)
 if [[ -n "$unindexed_format_calls" ]]; then
     printf 'unindexed generated-text format placeholders remain:\n%s\n' "$unindexed_format_calls" >&2
     exit 1
@@ -45,7 +45,7 @@ fi
 # empty tuple used by wrappers that have no format arguments.
 positional_format_args=$(rg -n -U -P \
     '(?:append_fmt|alloc_fmt|append_fmt_block|alloc_fmt_block)\([^)]{0,1600}?,[[:space:]]*\.\{[[:space:]]*[^.[:space:]}]' \
-    "$ROOT_DIR/src" --glob '*.zig' || true)
+    "$ROOT_DIR/src" --glob '*.zig' --glob '!**/structural_checks.zig' --glob '!**/structural_checks_test.zig' || true)
 if [[ -n "$positional_format_args" ]]; then
     printf 'positional generated-text format arguments remain; use named fields:\n%s\n' "$positional_format_args" >&2
     exit 1
@@ -55,7 +55,7 @@ unformatted_single_line_calls=$(awk '
 $0 ~ /append_fmt\(.*"[^"]*"[^;]*\.\{[[:space:]]*\}[[:space:]]*\)/ {
     printf "%s:%d:%s\n", FILENAME, FNR, $0
 }
-' $(rg -l 'append_fmt\(' "$ROOT_DIR/src" --glob '*.zig' || true))
+' $(rg -l 'append_fmt\(' "$ROOT_DIR/src" --glob '*.zig' --glob '!**/structural_checks.zig' --glob '!**/structural_checks_test.zig' || true))
 if [[ -n "$unformatted_single_line_calls" ]]; then
     printf 'single-line generated text without placeholders must use appendSlice:\n%s\n' "$unformatted_single_line_calls" >&2
     exit 1
@@ -73,7 +73,7 @@ for forbidden in \
     'allocator.dupe(u8, two_await_core_wat)' \
     'allocator.dupe(u8, cli_result_core_wat)' \
     'allocator.dupe(u8, scalar_result_core_wat)'; do
-    if rg -n -F "$forbidden" "$ROOT_DIR/src/build" --glob '*.zig' >/dev/null; then
+    if rg -n -F "$forbidden" "$ROOT_DIR/src/build" --glob '*.zig' --glob '!**/structural_checks.zig' --glob '!**/structural_checks_test.zig' >/dev/null; then
         printf 'static generated WAT template must use alloc_block: %s\n' "$forbidden" >&2
         exit 1
     fi
@@ -91,7 +91,7 @@ for forbidden in \
     'allocator.dupe(u8, http_request_send_imports)' \
     'allocator.dupe(u8, http_request_constructor_helper_wat)' \
     'allocator.dupe(u8, http_request_body_constructor_helper_wat)'; do
-    if rg -n -F "$forbidden" "$ROOT_DIR/src/build" --glob '*.zig' >/dev/null; then
+    if rg -n -F "$forbidden" "$ROOT_DIR/src/build" --glob '*.zig' --glob '!**/structural_checks.zig' --glob '!**/structural_checks_test.zig' >/dev/null; then
         printf 'static HTTP generated text must use alloc_block: %s\n' "$forbidden" >&2
         exit 1
     fi
@@ -100,7 +100,7 @@ done
 for forbidden in \
     'output.appendSlice(allocator, canonical_core_wat[0..close])' \
     'output.appendSlice(allocator, canonical_core_wat[close..])'; do
-    if rg -n -F "$forbidden" "$ROOT_DIR/src/build" --glob '*.zig' >/dev/null; then
+    if rg -n -F "$forbidden" "$ROOT_DIR/src/build" --glob '*.zig' --glob '!**/structural_checks.zig' --glob '!**/structural_checks_test.zig' >/dev/null; then
         printf 'embedded generated WAT must be normalized through alloc_block: %s\n' "$forbidden" >&2
         exit 1
     fi
@@ -115,7 +115,7 @@ for generated_file in \
     fi
 done
 
-if rg -n -F 'appendSlice(allocator, generic_async_component_wat)' "$ROOT_DIR/src/build" --glob '*.zig' >/dev/null; then
+if rg -n -F 'appendSlice(allocator, generic_async_component_wat)' "$ROOT_DIR/src/build" --glob '*.zig' --glob '!**/structural_checks.zig' --glob '!**/structural_checks_test.zig' >/dev/null; then
     printf 'static generated WAT template must use append_block: generic_async_component_wat\n' >&2
     exit 1
 fi
@@ -134,7 +134,7 @@ fi
 # use different paths and are intentionally outside this check.
 multi_line_append_slices=$(rg -n -U -P \
     'appendSlice\([^;]{0,1800}?"[^"\n]*(?:\\n){2}' \
-    "$ROOT_DIR/src/build" "$ROOT_DIR/src/wit" --glob '*.zig' || true)
+    "$ROOT_DIR/src/build" "$ROOT_DIR/src/wit" --glob '*.zig' --glob '!**/structural_checks.zig' --glob '!**/structural_checks_test.zig' || true)
 if [[ -n "$multi_line_append_slices" ]]; then
     printf 'multi-line generated text must use a block helper:\n%s\n' "$multi_line_append_slices" >&2
     exit 1
@@ -142,7 +142,7 @@ fi
 
 single_line_raw_fmt=$(rg -n -U -P \
     '(?s)(?:generated_text\.)?append_fmt\([^)]{0,1200}?^\s*\\\\' \
-    "$ROOT_DIR/src" --glob '*.zig' || true)
+    "$ROOT_DIR/src" --glob '*.zig' --glob '!**/structural_checks.zig' --glob '!**/structural_checks_test.zig' || true)
 if [[ -n "$single_line_raw_fmt" ]]; then
     printf 'single-line raw templates must use append_fmt with a named format:\n%s\n' "$single_line_raw_fmt" >&2
     exit 1
@@ -172,7 +172,7 @@ done
 
 unindexed_block_calls=$(rg -n -U -P \
     'generated_text\.(?:append_fmt_block|alloc_fmt_block)\((?:(?!\);)[\s\S])*\{[sd]\}' \
-    "$ROOT_DIR/src/build" --glob '*.zig' || true)
+    "$ROOT_DIR/src/build" --glob '*.zig' --glob '!**/structural_checks.zig' --glob '!**/structural_checks_test.zig' || true)
 if [[ -n "$unindexed_block_calls" ]]; then
     printf 'unindexed generated-text block placeholders remain:\n%s\n' "$unindexed_block_calls" >&2
     exit 1
@@ -204,7 +204,7 @@ in_call {
         reset()
     }
 }
-' $(rg -l 'append_fmt_block' "$ROOT_DIR/src" --glob '*.zig' || true))
+' $(rg -l 'append_fmt_block' "$ROOT_DIR/src" --glob '*.zig' --glob '!**/structural_checks.zig' --glob '!**/structural_checks_test.zig' || true))
 if [[ -n "$single_line_blocks" ]]; then
     printf 'single-line formatted blocks must use append_fmt:\n%s\n' "$single_line_blocks" >&2
     exit 1
@@ -236,7 +236,7 @@ in_call {
         reset()
     }
 }
-' $(rg -l 'alloc_fmt_block' "$ROOT_DIR/src" --glob '*.zig' || true))
+' $(rg -l 'alloc_fmt_block' "$ROOT_DIR/src" --glob '*.zig' --glob '!**/structural_checks.zig' --glob '!**/structural_checks_test.zig' || true))
 if [[ -n "$single_line_alloc_blocks" ]]; then
     printf 'single-line allocated formatted blocks must use alloc_fmt:\n%s\n' "$single_line_alloc_blocks" >&2
     exit 1
@@ -269,7 +269,7 @@ in_call {
         reset()
     }
 }
-' $(rg -l 'append_block' "$ROOT_DIR/src" --glob '*.zig' || true))
+' $(rg -l 'append_block' "$ROOT_DIR/src" --glob '*.zig' --glob '!**/structural_checks.zig' --glob '!**/structural_checks_test.zig' || true))
 if [[ -n "$single_line_static_blocks" ]]; then
     printf 'single-line static blocks must use appendSlice or allocator.dupe:\n%s\n' "$single_line_static_blocks" >&2
     exit 1

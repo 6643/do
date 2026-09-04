@@ -2,9 +2,12 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 wit_file="$repo_root/examples/p3-runtime/wit/wasi-clocks-0.3.0.wit"
 manifest="$repo_root/examples/p3-runtime/p3-clocks-manifest.json"
 
+test -x "$toolchain_bin"
 test -f "$wit_file"
 test -f "$manifest"
 
@@ -21,5 +24,5 @@ grep -Fq '"interface": "monotonic-clock"' "$manifest"
 grep -Fq '"member": "wait-for"' "$manifest"
 grep -Fq '"effect": "async"' "$manifest"
 
-wasm-tools component wit "$wit_file" >/dev/null
+"$toolchain_bin" component-wit "$wit_file" >/dev/null
 printf 'P3 WIT snapshot verified: wasi:clocks/monotonic-clock.wait-for\n'

@@ -4,12 +4,15 @@ set -euo pipefail
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 repo_root=$(cd -- "$script_dir/../.." && pwd -P)
 do_bin=${DO_BIN:-"$repo_root/bin/do"}
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 source_wit="$repo_root/examples/p3-runtime/wit/generic-async-scalar-i64-probe.wit"
 source_main="$script_dir/project/scalar_i64_async_main.do"
 runner_manifest="$repo_root/examples/p3-runtime/rust-host-runner/Cargo.toml"
 scalar_target=${DO_GENERIC_ABI_V2_SCALAR_TARGET:---p3-async-v2-scalar-i64}
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-generic-abi-v2-scalar-i64.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
+test -x "$toolchain_bin"
 
 mkdir -p "$tmp_dir/wit"
 cp "$source_main" "$tmp_dir/scalar_i64_async_main.do"
@@ -28,10 +31,11 @@ grep -Fq '[scalar-payload] offset=16 byte-size=8 alignment=8 encoding=core-s64' 
 grep -Fq 'i64.load' "$tmp_dir/runtime.wat"
 grep -Fq 'i64.store' "$tmp_dir/runtime.wat"
 
-wasm-tools parse "$tmp_dir/runtime.wat" -o "$tmp_dir/runtime.core.wasm"
-wasm-tools component embed "$source_wit" "$tmp_dir/runtime.core.wasm" --world probe -o "$tmp_dir/embedded.wasm"
-wasm-tools component new "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$tmp_dir/component.wasm"
+"$toolchain_bin" parse-core "$tmp_dir/runtime.wat" -o "$tmp_dir/runtime.core.wasm"
+"$toolchain_bin" embed-component "$source_wit" "$tmp_dir/runtime.core.wasm" probe \
+  --features component-async -o "$tmp_dir/embedded.wasm"
+"$toolchain_bin" new-component "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
+"$toolchain_bin" validate-component "$tmp_dir/component.wasm" --features component-async
 
 if ! command -v cc >/dev/null 2>&1; then
   export CC="$repo_root/examples/p3-runtime/rust-host-runner/zig-cc.sh"

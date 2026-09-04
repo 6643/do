@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+toolchain_bin="${DO_TOOLCHAIN_BIN:-$repo_root/bin/do-toolchain}"
+export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$repo_root/toolchain/toolchain.lock.json}"
 runner_dir="$repo_root/examples/p3-runtime/rust-host-runner"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-p3-http-response-body-three-read-runtime.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
@@ -11,6 +13,8 @@ core_wat="$tmp_dir/response-body-three-read.wat"
 core_wasm="$tmp_dir/response-body-three-read.wasm"
 embedded="$tmp_dir/response-body-three-read.embedded.wasm"
 component="$tmp_dir/response-body-three-read.component.wasm"
+
+test -x "$toolchain_bin"
 
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
   "$repo_root/examples/p3-runtime/http-response-consume-body-three-read.do" \
@@ -29,11 +33,11 @@ world http-response-body-probe {
 }
 WIT
 
-wasm-tools parse "$core_wat" -o "$core_wasm"
-wasm-tools component embed "$wit_dir" "$core_wasm" \
-  --world http-response-body-probe -o "$embedded"
-wasm-tools component new "$embedded" -o "$component"
-wasm-tools validate --features cm-async,cm-more-async-builtins "$component"
+"$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
+"$toolchain_bin" embed-component "$wit_dir" "$core_wasm" http-response-body-probe \
+  --features component-async -o "$embedded"
+"$toolchain_bin" new-component "$embedded" -o "$component"
+"$toolchain_bin" validate-component "$component" --features component-async
 
 if ! command -v cc >/dev/null; then
     export CC="$runner_dir/zig-cc.sh"

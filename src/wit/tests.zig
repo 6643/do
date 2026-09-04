@@ -154,6 +154,51 @@ test "wit parser retains interface type declarations and ownership wrappers" {
     try std.testing.expectEqual(model.TypeKind.own, interface.functions[0].params[0].type_ref.kind);
 }
 
+test "wit parser retains map key and value types" {
+    const source =
+        \\package demo:maps@1.0.0;
+        \\
+        \\interface api {
+        \\  lookup: func(values: map<string, u32>) -> map<u32, string>;
+        \\}
+        \\
+        \\world probe { import api; }
+    ;
+    var ast = try parser.parse(std.testing.allocator, source);
+    defer ast.deinit();
+
+    const function = ast.interfaces[0].functions[0];
+    const input = function.params[0].type_ref;
+    const output = function.result.?;
+    try std.testing.expectEqual(model.TypeKind.map, input.kind);
+    try std.testing.expectEqual(@as(usize, 2), input.args.len);
+    try std.testing.expectEqual(model.TypeKind.string, input.args[0].kind);
+    try std.testing.expectEqual(model.TypeKind.u32, input.args[1].kind);
+    try std.testing.expectEqual(model.TypeKind.map, output.kind);
+    try std.testing.expectEqual(model.TypeKind.u32, output.args[0].kind);
+    try std.testing.expectEqual(model.TypeKind.string, output.args[1].kind);
+}
+
+test "wit map key classifier accepts scalars and rejects composite keys" {
+    const source =
+        \\package demo:map-keys@1.0.0;
+        \\
+        \\interface api {
+        \\  scalar: func(values: map<string, u32>);
+        \\  composite: func(values: map<list<u8>, u32>);
+        \\}
+        \\
+        \\world probe { import api; }
+    ;
+    var ast = try parser.parse(std.testing.allocator, source);
+    defer ast.deinit();
+
+    const scalar_key = ast.interfaces[0].functions[0].params[0].type_ref.args[0];
+    const composite_key = ast.interfaces[0].functions[1].params[0].type_ref.args[0];
+    try std.testing.expect(model.map_key_allowed(scalar_key));
+    try std.testing.expect(!model.map_key_allowed(composite_key));
+}
+
 test "wit resolver selects world and computes stable content hash" {
     var binding = try resolve.resolve_source(std.testing.allocator, probe_source, "probe");
     defer binding.deinit();
@@ -412,6 +457,55 @@ test "wit emitter translates the probe world into deterministic Do bindings" {
     try std.testing.expect(std.mem.indexOf(u8, source, "Future<u32>") != null);
     try std.testing.expect(std.mem.indexOf(u8, source, "Stream<u8>") != null);
     try std.testing.expect(std.mem.indexOf(u8, source, "async send") == null);
+}
+
+test "wit emitter maps WIT map values to HashMap" {
+    const source =
+        \\package demo:map-bindings@1.0.0;
+        \\
+        \\interface api {
+        \\  lookup: func(values: map<string, u32>) -> map<u32, string>;
+        \\}
+        \\
+        \\world probe { import api; }
+    ;
+    var binding = try resolve.resolve_source(std.testing.allocator, source, "probe");
+    defer binding.deinit();
+
+    const generated = try emit_do.render_module(std.testing.allocator, binding, binding.interfaces[0]);
+    defer std.testing.allocator.free(generated);
+    try std.testing.expect(std.mem.indexOf(u8, generated, "(HashMap<text, u32>) -> HashMap<u32, text>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, generated, "HashMap<text, u32>") != null);
+}
+
+test "wit emitter rejects invalid map shape" {
+    const arity_source =
+        \\package demo:map-arity@1.0.0;
+        \\
+        \\interface api { lookup: func(values: map<u32>) -> u32; }
+        \\
+        \\world probe { import api; }
+    ;
+    var arity_binding = try resolve.resolve_source(std.testing.allocator, arity_source, "probe");
+    defer arity_binding.deinit();
+    try std.testing.expectError(
+        error.InvalidTypeArity,
+        emit_do.render_module(std.testing.allocator, arity_binding, arity_binding.interfaces[0]),
+    );
+
+    const key_source =
+        \\package demo:map-key@1.0.0;
+        \\
+        \\interface api { lookup: func(values: map<list<u8>, u32>) -> u32; }
+        \\
+        \\world probe { import api; }
+    ;
+    var key_binding = try resolve.resolve_source(std.testing.allocator, key_source, "probe");
+    defer key_binding.deinit();
+    try std.testing.expectError(
+        error.InvalidMapKey,
+        emit_do.render_module(std.testing.allocator, key_binding, key_binding.interfaces[0]),
+    );
 }
 
 test "wit emitter renders stable manifest and lock records" {
