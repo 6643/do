@@ -783,6 +783,16 @@ core shims 和 component-input shims）已改用 `bin/do-toolchain parse-core`�
   该 checkpoint 仅关闭四个脚本的陈旧前置依赖，不改变 C API linker 边界或
   Task 4 map lifecycle 阻断。
 
+  **实施 checkpoint (2026-09-04 GC host CLI prerequisite follow-up):** 其余 19 个
+  GC marshal record host gate 也已移除未使用的 `WASMTIME_BIN`/`wasmtime_bin`
+  前置检查；`do-toolchain`、Zig/compiler、Rust runner linker、WIT mutation、
+  Component host execution、cleanup 和 marker 保持不变。19/19 在根目录运行，
+  且显式设置 `WASMTIME_BIN=/nonexistent`，全部通过；`bash -n`、目标静态扫描、
+  `git diff --check` 均通过。报告位于
+  `.superpowers/sdd/2026-08-30-map-toolchain-zig-harness/task-8-step3-gc-host-cli-prerequisite-followup-report.md`。
+  `run-wasmtime.sh` 的故意 CLI runtime oracle 未改动；该 checkpoint 仍不改变
+  C API linker 边界或 Task 4 map lifecycle 阻断。
+
 - [x] **Step 4: 保留或删除 Shell 启动入口。**
 
   **实施 checkpoint (2026-09-01 first auxiliary batch):** Zig harness 新增

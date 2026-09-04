@@ -6,6 +6,13 @@
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
 G5b async/resource coverage ledger: `doc/g5b_async_resource_coverage.md`。
 
+2026-09-04 增量: 19 个剩余 GC marshal record host gate 已移除未使用的
+`WASMTIME_BIN`/`wasmtime_bin` CLI 前置检查；`do-toolchain`、Rust Wasmtime host
+runner、WIT/Component、cleanup 和 marker 契约保持不变。19/19 根目录 gate 在
+`WASMTIME_BIN=/nonexistent` 下通过，`bash -n`、静态扫描和 `git diff --check`
+通过。`run-wasmtime.sh` 的故意 CLI runtime oracle 未改动；该清理不代表通用
+map lifecycle、C API linker 或 full GC cutover 完成。
+
 2026-09-04 增量: G6.2 general producer/resource internal contract consolidation
 已闭环。不可变 `ProducerContract` 统一 source/sink、measured payload layout、ownership
 path、transfer commit 和 terminal cleanup facts；direct record、fixed pair、
