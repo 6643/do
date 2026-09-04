@@ -159,6 +159,7 @@ pub fn build_sync_memory_plan(plan: *const marshal.SyncValuePlan) !MemoryPlan {
             const pair_size = map_measured.map_pair_byte_size orelse return error.MeasuredElementByteSizeMissing;
             const pair_alignment = map_measured.map_pair_alignment orelse return error.MeasuredElementAlignmentMissing;
             try validate_map_node(&plan.root, stride, pair_size, pair_alignment);
+            try validate_map_operation_lifetime(plan.direction, map_operations_for(plan.direction));
             return .{
                 .direction = plan.direction,
                 .copy_shape = .map_entries,
@@ -716,6 +717,20 @@ pub fn copy_byte_count(length: u32, stride: u32) !u32 {
     return @as(u32, @intCast(total));
 }
 
+/// Keep canonical map spans inside one synchronous operation frame. Lowering
+/// must copy before the call and release only after it; lifting must construct
+/// and publish the GC value before releasing the result-area span.
+pub fn validate_map_operation_lifetime(
+    direction: marshal.Direction,
+    operations: []const MemoryOperation,
+) !void {
+    const expected = map_operations_for(direction);
+    if (operations.len != expected.len) return error.InvalidMapOperationLifetime;
+    for (operations, 0..) |operation, index| {
+        if (operation != expected[index]) return error.InvalidMapOperationLifetime;
+    }
+}
+
 fn operations_for(direction: marshal.Direction) []const MemoryOperation {
     return switch (direction) {
         .lower => &lower_operations,
@@ -1157,6 +1172,67 @@ test "marshal operation plan admits a measured scalar map pair-list" {
     try std.testing.expectEqual(MemoryOperation.copy_to_linear, memory_plan.operations[3]);
     try std.testing.expectEqual(MemoryOperation.canonical_call, memory_plan.operations[4]);
     try std.testing.expectEqual(MemoryOperation.cabi_realloc_free, memory_plan.operations[5]);
+}
+
+test "map operation lifetime keeps lower span owned until call then frees it" {
+    const operations = [_]MemoryOperation{
+        .read_gc_span,
+        .validate_linear_range,
+        .cabi_realloc_alloc,
+        .copy_to_linear,
+        .canonical_call,
+        .cabi_realloc_free,
+    };
+    try validate_map_operation_lifetime(.lower, &operations);
+}
+
+test "map operation lifetime copies lift result before publishing and freeing" {
+    const operations = [_]MemoryOperation{
+        .canonical_call,
+        .validate_linear_range,
+        .copy_from_linear,
+        .construct_gc_value,
+        .publish_gc_root,
+        .cabi_realloc_free,
+    };
+    try validate_map_operation_lifetime(.lift, &operations);
+}
+
+test "map operation lifetime rejects free before lower canonical call" {
+    const operations = [_]MemoryOperation{
+        .read_gc_span,
+        .validate_linear_range,
+        .cabi_realloc_alloc,
+        .copy_to_linear,
+        .cabi_realloc_free,
+        .canonical_call,
+    };
+    try std.testing.expectError(error.InvalidMapOperationLifetime, validate_map_operation_lifetime(.lower, &operations));
+}
+
+test "map operation lifetime rejects lift publish before result copy" {
+    const operations = [_]MemoryOperation{
+        .canonical_call,
+        .validate_linear_range,
+        .publish_gc_root,
+        .copy_from_linear,
+        .construct_gc_value,
+        .cabi_realloc_free,
+    };
+    try std.testing.expectError(error.InvalidMapOperationLifetime, validate_map_operation_lifetime(.lift, &operations));
+}
+
+test "map operation lifetime rejects an async escape marker" {
+    const operations = [_]MemoryOperation{
+        .read_gc_span,
+        .validate_linear_range,
+        .cabi_realloc_alloc,
+        .copy_to_linear,
+        .canonical_call,
+        .publish_gc_root,
+        .cabi_realloc_free,
+    };
+    try std.testing.expectError(error.InvalidMapOperationLifetime, validate_map_operation_lifetime(.lower, &operations));
 }
 
 test "marshal operation plan admits a bounded u32 list record lower" {

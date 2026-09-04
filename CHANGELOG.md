@@ -1,5 +1,14 @@
 # Changelog
 
+# 2026-09-04 Synchronous map operation-frame lifetime guard:
+  added a focused validator to the measured map memory plan. Lowering now
+  requires pair-list copy before the canonical call and release after it;
+  lifting requires result-area copy, GC-value construction/root publication,
+  and only then release. Five unit tests cover valid order and reject early
+  release, early publication, and an async escape marker. This is an internal
+  guard for the existing synchronous route; generic async map copying, Stream
+  cross-poll buffers, and broader cleanup authority remain blocked.
+
 # 2026-09-04 G6.2 general producer/resource contract consolidation:
   closed the internal immutable `ProducerContract` gate for the nine already
   admitted private producer routes: direct record, fixed pair, parameterized

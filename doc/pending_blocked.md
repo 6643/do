@@ -49,6 +49,11 @@ lower/lift，并通过当前 `wasm-tools` 的 parse/validate。精确同步
 `map<u32,u32>` lower/lift 的 manifest-backed Component route 已闭环：
 `HashMap<u32,u32>` host boundary、Do/Rust/Wasmtime fixtures、负例签名漂移和
 Zig harness 均通过，lower/lift 各为一次 host call 与一次 allocation/free。
+同步 map operation-frame 顺序门禁已加入：lower 在 canonical call 前完成临时
+pair-list copy，call 后才释放；lift 在释放 result-area 前完成 copy、GC value
+construct 和 root publish，异步逃逸标记在 WAT 前拒绝。该门禁只约束已有同步
+route，不代表 async map 参数 copy、Stream 跨 poll owned buffer 或通用 cleanup
+authority 已实现。
 通用 Component/WIT map lowering、其他 key/value 组合、async 参数 copy、Stream
 跨 poll owned buffer 和统一 cleanup authority 尚未实现。当前 registry 对这些
 未支持 shape 仍返回 `UnsupportedWitMarshalShape`，不得据精确 route 推断通用

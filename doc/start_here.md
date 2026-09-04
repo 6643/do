@@ -55,7 +55,7 @@
 | 架构审查/重构 | 五轮已落地 (见 §4); 默认不继续拆 god module |
 | active Component tooling | `wasm-tools 1.258.0 (5c6d31c78 2026-08-24)`; SHA-256 `282e0014d38daf233cb10fb92815813b339e2b7f8b4734f6698f0176c7d99424`; current-only adapter path is `bin/do-toolchain` |
 | Toolchain adapter / Zig harness | Task 9 Step 1 active gate、Task 8 Step 3 Rust host adapter、Step 4/5 Shell-to-Zig parity 均已闭合；`run_tests.sh` 现在只是 `cd src && zig build test --summary all` 的薄入口，`RUN_WASM`/`RUN_GC_CORE` 由 Zig harness 继承处理 |
-| WIT `map<K,V>` runtime | parser/model/manifest/registry 的 pair-list schema 已完成；精确同步 manifest-backed `map<u32,u32>` lower/lift Component route 已通过 Do/Rust/Wasmtime host gate（各一次 host call 与一次 allocation/free）；`wit_abi_types` 与 bounded Core WAT probe 已覆盖 `u32` key + `u32`/`text` value 的 lower/lift 并通过 current toolchain parse/validate；通用 Component/WIT map lowering、其他 key/value 组合、async copy 与 Stream 跨 poll owned buffer 仍阻断，未支持 shape 继续 fail-closed |
+| WIT `map<K,V>` runtime | parser/model/manifest/registry 的 pair-list schema 已完成；精确同步 manifest-backed `map<u32,u32>` lower/lift Component route 已通过 Do/Rust/Wasmtime host gate（各一次 host call 与一次 allocation/free）；同步 operation-frame 顺序门禁已锁定 lower 的 copy-before-call/free-after-call 与 lift 的 copy/construct/publish-before-free；`wit_abi_types` 与 bounded Core WAT probe 已覆盖 `u32` key + `u32`/`text` value 的 lower/lift 并通过 current toolchain parse/validate；通用 Component/WIT map lowering、其他 key/value 组合、async copy 与 Stream 跨 poll owned buffer 仍阻断，未支持 shape 继续 fail-closed |
 
 ## 3. 验证入口
 

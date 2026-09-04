@@ -6,6 +6,14 @@
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
 G5b async/resource coverage ledger: `doc/g5b_async_resource_coverage.md`。
 
+2026-09-04 增量: 同步 WIT map 的 operation-frame 顺序门禁已加入
+`codegen_component_marshal_ops`。lower 固定为读取/范围校验/分配/复制、canonical
+call、释放；lift 固定为 canonical call、范围校验/复制、构造并发布 GC 值、释放。
+五个 focused tests 覆盖正常顺序、释放过早、发布过早和异步逃逸标记；map
+`build_sync_memory_plan` 在生成前执行该校验。此项只锁定当前同步 route 的 span
+生命周期，不实现 async map 参数 copy、Stream 跨 poll buffer、通用 map lowering
+或统一异步 cleanup；这些阻断保持不变。
+
 2026-09-04 增量: active toolchain gate 新增 GC host prerequisite 守卫，扫描
 `examples/gc-p3-runtime/test_*_host.sh` 中未使用的 `WASMTIME_BIN`、`wasmtime_bin`
 和 `$wasmtime`，并保留 `run-wasmtime.sh` 的有意直接 Wasmtime runtime oracle。
