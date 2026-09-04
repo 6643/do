@@ -6,7 +6,6 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 do_bin=${DO_BIN:-$repo_root/bin/do}
 toolchain_bin="$repo_root/bin/do-toolchain"
 export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
-wasmtime_bin=${WASMTIME_BIN:-/home/_/Public/wasmtime/bin/wasmtime}
 cargo_bin=${CARGO_BIN:-cargo}
 fixture="$repo_root/examples/p3-runtime/two-await-component.do"
 linear_core="$repo_root/examples/gc-p3-runtime/async-frame-linear-oracle.wat"
@@ -19,10 +18,11 @@ if [[ ! -x "$do_bin" ]]; then
   printf 'missing do compiler: %s\n' "$do_bin" >&2
   exit 1
 fi
-if [[ ! -x "$wasmtime_bin" ]]; then
-  printf 'missing Wasmtime executable: %s\n' "$wasmtime_bin" >&2
+if [[ ! -x "$toolchain_bin" ]]; then
+  printf 'missing do-toolchain executable: %s\n' "$toolchain_bin" >&2
   exit 1
 fi
+"$toolchain_bin" probe >/dev/null
 if [[ ! -f "$linear_core" ]]; then
   printf 'missing linear async-frame oracle: %s\n' "$linear_core" >&2
   exit 1
