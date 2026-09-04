@@ -5,7 +5,6 @@ set -euo pipefail
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 toolchain_bin="$repo_root/bin/do-toolchain"
 export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
-wasmtime_bin=${WASMTIME_BIN:-/home/_/Public/wasmtime/bin/wasmtime}
 zig_bin=${ZIG_BIN:-zig}
 cargo_bin=${CARGO_BIN:-cargo}
 runner_cc=${RUST_RUNNER_CC:-$repo_root/examples/p3-runtime/rust-host-runner/zig-cc.sh}
@@ -20,8 +19,8 @@ runner_manifest=$repo_root/examples/p3-runtime/rust-host-runner/Cargo.toml
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-gc-marshal-record-byte-list-lift-host.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 
-if [ ! -x "$wasmtime_bin" ] || [ ! -x "$cc_bin" ] || [ ! -x "$cxx_bin" ] || [ ! -x "$linker_bin" ]; then
-  printf 'missing Wasmtime or Rust runner linker\n' >&2
+if [ ! -x "$cc_bin" ] || [ ! -x "$cxx_bin" ] || [ ! -x "$linker_bin" ]; then
+  printf 'missing Rust runner linker\n' >&2
   exit 1
 fi
 
