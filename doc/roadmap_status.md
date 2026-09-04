@@ -39,6 +39,19 @@ extraction、成员漂移拒绝和 canonical import GC reference 负例。对应
 Step 2 仍有 GC marshal/host linker、async-frame Component、WASI random、C API
 边界及其余 direct-tool 入口待分类。
 
+2026-09-04 增量: Zig `P3 pure lowering matrix` 新增
+`two-await-component.do` 的 bounded `--p3-wait-for-component` GC frame/table
+case，检查生成 WIT 的 `export run: async func(how-long: u64)`、GC-traced
+`$async-frame` table、`table.get` 与 `$waitable-set` access，并拒绝 `__arc_`
+和线性 frame allocator marker。Core GC compile 与专用
+`test_gc_async_frame_component.sh` 均改用 current-only
+`bin/do-toolchain compile-core-gc`；根目录及无关 `/tmp` cwd 的 component gate
+与 GC/linear equivalence gate 均通过，计数保持 `pending-polls=4`、
+`external-wakes=4`、`completions=4`。完整 `zig build test --summary all` 为
+`14/14 steps、51/51 tests`。该批次仅闭合 bounded Future/frame-table pure
+evidence，不代表通用 async/Stream、host runtime、WASI random、C API 边界或
+Task 8 Step 2 全部完成。
+
 2026-09-02 工具链/测试编排增量: current-only `do-toolchain` 锁定并实测
 `wasm-tools 1.258.0 (5c6d31c78 2026-08-24)`、Wasmtime `48.0.1`；Task 9
 Step 1 active gate、Task 8 Step 3 Rust host adapter 与 Step 4/5

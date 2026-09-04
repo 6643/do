@@ -601,6 +601,22 @@ reference 负例。对应两个 Shell gate 在根目录和无关 `/tmp` cwd 均�
 async-frame Component、WASI random、C API 边界和其余 direct-tool 入口仍待分类，
 Task 8 Step 2 不勾选。
 
+**实施 checkpoint (2026-09-04 GC async frame/table):**
+Zig `P3 pure lowering matrix` 新增 `two-await-component.do` 的 bounded
+`--p3-wait-for-component` case，检查生成 WIT 的
+`export run: async func(how-long: u64)`、GC-traced `$async-frame` table、
+`table.get` 和 `$waitable-set` access，并拒绝 `__arc_` 与线性 frame allocator
+marker。该 case 的 Core GC compile 以及专用
+`test_gc_async_frame_component.sh` 均改用 current-only
+`bin/do-toolchain compile-core-gc`；根目录和无关 `/tmp` cwd 的 component gate
+与 GC/linear equivalence gate 均通过，等价计数保持
+`pending-polls=4`、`external-wakes=4`、`completions=4`。完整
+`zig build test --summary all` 为 `14/14` steps、`51/51` tests。报告位于
+`.superpowers/sdd/2026-08-30-map-toolchain-zig-harness/task-8-step2-gc-async-frame-table-report.md`。
+该 checkpoint 仅关闭 bounded Future/frame-table pure 子批次；通用 async
+lowering、Stream/general async、host runtime、WASI random、C API 边界和其余
+direct-tool 入口仍待分类，Task 8 Step 2 不勾选。
+
 **实施 checkpoint (2026-08-31 run-tests parse):** 旧 `src/build/test/run_tests.sh`
 中的 5 个 Core WAT parse 路径（compiled must-pass、compiled ok/trap、WASI
 core shims 和 component-input shims）已改用 `bin/do-toolchain parse-core`，并

@@ -5,7 +5,6 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 do_bin=${DO_BIN:-$repo_root/bin/do}
 toolchain_bin="$repo_root/bin/do-toolchain"
 export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
-wasmtime_bin=${WASMTIME_BIN:-/home/_/Public/wasmtime/bin/wasmtime}
 fixture="$repo_root/examples/p3-runtime/two-await-component.do"
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-gc-async-frame-component.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
@@ -14,8 +13,8 @@ if [ ! -x "$do_bin" ]; then
   printf 'missing do compiler: %s\n' "$do_bin" >&2
   exit 1
 fi
-if [ ! -x "$wasmtime_bin" ]; then
-  printf 'missing Wasmtime executable: %s\n' "$wasmtime_bin" >&2
+if [ ! -x "$toolchain_bin" ]; then
+  printf 'missing do-toolchain executable: %s\n' "$toolchain_bin" >&2
   exit 1
 fi
 
@@ -49,7 +48,7 @@ if grep -Fq 'global $frame-next' "$wat_path"; then
 fi
 
 "$toolchain_bin" parse-core "$wat_path" -o "$core_path"
-"$wasmtime_bin" compile -W gc=y -o "$tmp_dir/two-await.compiled" "$wat_path"
+"$toolchain_bin" compile-core-gc "$wat_path" -o "$tmp_dir/two-await.compiled"
 "$toolchain_bin" embed-component "$wit_path" "$core_path" probe --features component-async -o "$embedded_path"
 "$toolchain_bin" new-component "$embedded_path" -o "$component_path"
 "$toolchain_bin" validate-component "$component_path" --features component-async

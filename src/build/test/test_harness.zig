@@ -138,6 +138,7 @@ const PureLoweringCase = struct {
     count_marker: ?[]const u8 = null,
     expected_count: usize = 0,
     validate_core: bool = false,
+    compile_core_gc: bool = false,
     ordinary_build_error: ?[]const u8 = null,
     ordered_markers: ?OrderedMarkerPair = null,
     wat_snapshot: ?[]const u8 = null,
@@ -255,6 +256,22 @@ const pure_lowering_cases = [_]PureLoweringCase{
             "i32.const 20",
         },
         .forbidden_markers = &.{ "[task-return]helper", "[async-lift]helper" },
+    },
+    .{
+        .name = "bounded async GC frame/table lowering",
+        .source = "examples/p3-runtime/two-await-component.do",
+        .build_flag = "--p3-wait-for-component",
+        .world = "probe",
+        .wit_snapshot = null,
+        .wit_markers = &.{ "export run: async func(how-long: u64)" },
+        .markers = &.{
+            "(type $async-frame (struct",
+            "(table $async-frames 0 (ref null $async-frame))",
+            "table.get $async-frames",
+            "struct.get $async-frame $waitable-set",
+        },
+        .forbidden_markers = &.{ "__arc_", "global $frame-next" },
+        .compile_core_gc = true,
     },
     .{
         .name = "CLI stdin stream lowering",
@@ -2896,6 +2913,13 @@ fn run_p3_pure_lowering_matrix(
             if (first >= second) return error.P3LoweringMarkerOrderMismatch;
         }
 
+        if (case.compile_core_gc) {
+            const compiled = try std.fmt.allocPrint(init.gpa, "{s}/{s}.pure.gc.compiled", .{ temp_path, stem });
+            defer init.gpa.free(compiled);
+            try run_adapter_success(init, toolchain_bin, &.{ "compile-core-gc", wat, "-o", compiled });
+            try expect_file(init.io, compiled);
+        }
+
         try validate_pure_component(init, toolchain_bin, wit_for_embed, wat, case.world, core, embedded, component, case.validate_core);
 
         if (case.wat_snapshot) |canonical_wat_path| {
@@ -3417,6 +3441,14 @@ test "GC assembly matrix covers text and parser-backed record fixtures" {
     try std.testing.expectEqualStrings("examples/gc-p3-runtime/marshal-record-assembly.wit", gc_assembly_cases[1].wit);
     try std.testing.expect(gc_assembly_cases[0].static_core_wat != null);
     try std.testing.expect(gc_assembly_cases[1].generator != null);
+}
+
+test "pure lowering matrix covers the bounded async GC frame table" {
+    var found = false;
+    for (pure_lowering_cases) |case| {
+        if (std.mem.eql(u8, case.source, "examples/p3-runtime/two-await-component.do")) found = true;
+    }
+    try std.testing.expect(found);
 }
 
 test "compile-only WASI sidecars have explicit expectation kinds" {
