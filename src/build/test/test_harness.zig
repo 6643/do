@@ -25,6 +25,17 @@ const GcCoreOracleCase = struct {
     mode: ?[]const u8,
 };
 
+const GcRuntimeOracleProbe = struct {
+    export_name: []const u8,
+    expected: ?[]const u8,
+};
+
+const GcRuntimeOracleCase = struct {
+    name: []const u8,
+    fixture: []const u8,
+    probes: []const GcRuntimeOracleProbe,
+};
+
 const gc_core_oracle_cases = [_]GcCoreOracleCase{
     .{ .fixture = "text-identity.do", .mode = "identity" },
     .{ .fixture = "text-identity-renamed.do", .mode = "relay" },
@@ -39,6 +50,27 @@ const gc_core_oracle_cases = [_]GcCoreOracleCase{
     .{ .fixture = "managed-struct-payload-renamed.do", .mode = "rewrite" },
     .{ .fixture = "nested-managed-struct.do", .mode = "replace" },
     .{ .fixture = "managed-tuple-text-bytes.do", .mode = "rewrite" },
+};
+
+const gc_runtime_oracle_cases = [_]GcRuntimeOracleCase{
+    .{
+        .name = "async frame table",
+        .fixture = "async-frame-table.wat",
+        .probes = &.{
+            .{ .export_name = "probe", .expected = "27815" },
+            .{ .export_name = "budget_probe", .expected = "1" },
+            .{ .export_name = "canonical_budget_probe", .expected = "1" },
+        },
+    },
+    .{
+        .name = "C ABI realloc budget",
+        .fixture = "cabi-realloc-budget.wat",
+        .probes = &.{
+            .{ .export_name = "probe", .expected = "4" },
+            .{ .export_name = "rollback_probe", .expected = "1" },
+            .{ .export_name = "quota_reject", .expected = null },
+        },
+    },
 };
 
 const PureLoweringCase = struct {
@@ -902,6 +934,7 @@ fn run_all(init: std.process.Init) !void {
             .structural_gate => try run_structural_gate(init, repo_root),
             .gc_core_oracle => if (std.mem.eql(u8, init.environ_map.get("RUN_GC_CORE") orelse "0", "1"))
                 try run_gc_core_oracle(init, repo_root, temp.path),
+            .gc_runtime_oracle => try run_gc_runtime_oracle(init, repo_root, toolchain_bin, temp.path),
             .map_core_probe => try run_map_core_probe(init, repo_root, toolchain_bin, temp.path),
             .map_sync_component => try run_map_sync_component(init, repo_root, do_bin, toolchain_bin, temp.path),
         }
@@ -2411,6 +2444,47 @@ fn run_gc_core_oracle(init: std.process.Init, repo_root: []const u8, temp_path: 
     }
 }
 
+fn run_gc_runtime_oracle(
+    init: std.process.Init,
+    repo_root: []const u8,
+    toolchain_bin: []const u8,
+    temp_path: []const u8,
+) !void {
+    const example_root = try join(init.gpa, repo_root, "examples/gc-p3-runtime");
+    defer init.gpa.free(example_root);
+
+    for (gc_runtime_oracle_cases) |case| {
+        const fixture = try join(init.gpa, example_root, case.fixture);
+        defer init.gpa.free(fixture);
+        const stem = std.fs.path.basename(case.fixture)[0 .. std.fs.path.basename(case.fixture).len - ".wat".len];
+        const wasm = try std.fmt.allocPrint(init.gpa, "{s}/{s}.gc-runtime.wasm", .{ temp_path, stem });
+        defer init.gpa.free(wasm);
+        const compiled = try std.fmt.allocPrint(init.gpa, "{s}/{s}.gc-runtime.compiled", .{ temp_path, stem });
+        defer init.gpa.free(compiled);
+
+        try run_adapter_success(init, toolchain_bin, &.{ "parse-core", fixture, "-o", wasm });
+        try expect_file(init.io, wasm);
+        try run_adapter_success(init, toolchain_bin, &.{ "compile-core-gc", fixture, "-o", compiled });
+        try expect_file(init.io, compiled);
+
+        for (case.probes) |probe| {
+            var invoked = try run_adapter_command(init, toolchain_bin, &.{
+                "invoke-core-gc", fixture, "--export", probe.export_name,
+            });
+            defer invoked.deinit(init.gpa);
+
+            if (probe.expected) |expected| {
+                try expect_success(init, &invoked);
+                const actual = std.mem.trim(u8, invoked.stdout, " \t\r\n");
+                if (!std.mem.eql(u8, actual, expected)) return error.GcRuntimeOracleMismatch;
+            } else {
+                if (invoked.succeeded()) return error.ExpectedCommandFailure;
+                if (invoked.stdout.len != 0) return error.UnexpectedCommandStdout;
+            }
+        }
+    }
+}
+
 fn run_map_core_probe(
     init: std.process.Init,
     repo_root: []const u8,
@@ -3179,7 +3253,22 @@ fn report_case_failure(init: std.process.Init, result: process.CommandResult) !v
 }
 
 test "integration harness case table has required routes" {
-    try std.testing.expectEqual(@as(usize, 21), test_cases.cases.len);
+    try std.testing.expectEqual(@as(usize, 22), test_cases.cases.len);
+}
+
+test "GC runtime oracle matrix covers async frame and C ABI probes" {
+    var found = false;
+    for (test_cases.cases) |case| {
+        if (std.mem.eql(u8, case.name, "GC runtime oracle matrix")) found = true;
+    }
+    try std.testing.expect(found);
+    try std.testing.expectEqual(@as(usize, 2), gc_runtime_oracle_cases.len);
+    try std.testing.expectEqualStrings("async-frame-table.wat", gc_runtime_oracle_cases[0].fixture);
+    try std.testing.expectEqualStrings("cabi-realloc-budget.wat", gc_runtime_oracle_cases[1].fixture);
+    try std.testing.expectEqual(@as(usize, 3), gc_runtime_oracle_cases[0].probes.len);
+    try std.testing.expectEqual(@as(usize, 3), gc_runtime_oracle_cases[1].probes.len);
+    try std.testing.expectEqualStrings("27815", gc_runtime_oracle_cases[0].probes[0].expected.?);
+    try std.testing.expect(gc_runtime_oracle_cases[1].probes[2].expected == null);
 }
 
 test "compile-only WASI sidecars have explicit expectation kinds" {

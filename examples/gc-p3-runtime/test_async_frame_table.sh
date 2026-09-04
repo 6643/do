@@ -5,33 +5,28 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$repo_root"
 toolchain_bin="$repo_root/bin/do-toolchain"
 export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
-wasmtime_bin=${WASMTIME_BIN:-/home/_/Public/wasmtime/bin/wasmtime}
 fixture="$repo_root/examples/gc-p3-runtime/async-frame-table.wat"
 compiled=$(mktemp "${TMPDIR:-/tmp}/do-gc-async-frame-table.XXXXXX")
 trap 'rm -f "$compiled" "$compiled.wasm"' EXIT
 
-if [ ! -x "$wasmtime_bin" ]; then
-  printf 'missing executable Wasmtime binary: %s\n' "$wasmtime_bin" >&2
-  exit 1
-fi
 if [ ! -x "$toolchain_bin" ]; then
   printf 'missing do-toolchain executable: %s\n' "$toolchain_bin" >&2
   exit 1
 fi
 
 "$toolchain_bin" parse-core "$fixture" -o "$compiled.wasm"
-"$wasmtime_bin" compile -W gc=y -o "$compiled" "$fixture"
-result=$("$wasmtime_bin" -W gc=y --invoke probe "$fixture")
+"$toolchain_bin" compile-core-gc "$fixture" -o "$compiled"
+result=$("$toolchain_bin" invoke-core-gc "$fixture" --export probe)
 if [ "$result" != "27815" ]; then
   printf 'expected GC async frame-table result 27815, got %s\n' "$result" >&2
   exit 1
 fi
-budget_result=$("$wasmtime_bin" -W gc=y --invoke budget_probe "$fixture")
+budget_result=$("$toolchain_bin" invoke-core-gc "$fixture" --export budget_probe)
 if [ "$budget_result" != "1" ]; then
   printf 'expected GC async frame budget result 1, got %s\n' "$budget_result" >&2
   exit 1
 fi
-canonical_result=$("$wasmtime_bin" -W gc=y --invoke canonical_budget_probe "$fixture")
+canonical_result=$("$toolchain_bin" invoke-core-gc "$fixture" --export canonical_budget_probe)
 if [ "$canonical_result" != "1" ]; then
   printf 'expected canonical buffer budget result 1, got %s\n' "$canonical_result" >&2
   exit 1

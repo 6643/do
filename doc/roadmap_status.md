@@ -21,6 +21,15 @@ ReleaseSmall/release smoke 通过，inventory 保持 `complete_rows=15 pending_r
 且预期 exit `1`。该整理不开放 public ownership、generic/arbitrary producer、
 borrowed/list/variant async payload 或 unmeasured shape；后续扩大仍须另立 design/gate。
 
+2026-09-04 增量: 两个 bounded GC runtime-oracle gate
+`test_async_frame_table.sh` 与 `test_cabi_realloc_budget.sh` 已统一通过
+current-only `bin/do-toolchain` 的 parse、GC compile 和 invoke 操作；Zig harness
+新增 `GC runtime oracle matrix`，固定观察 async-frame `27815/1/1`、realloc
+`4/1` 与 quota rejection trap。根目录及无关 `/tmp` cwd 各自通过，完整
+`zig build test --summary all` 为 `14/14 steps、51/51 tests`。这只是 GC runtime
+oracle 编排收敛，不代表 P3 host binding、通用 map lifecycle 或 full GC cutover
+完成；其余 GC marshal/host linker 与 async/component direct-tool 入口仍按批次分类。
+
 2026-09-02 工具链/测试编排增量: current-only `do-toolchain` 锁定并实测
 `wasm-tools 1.258.0 (5c6d31c78 2026-08-24)`、Wasmtime `48.0.1`；Task 9
 Step 1 active gate、Task 8 Step 3 Rust host adapter 与 Step 4/5

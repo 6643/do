@@ -18,6 +18,7 @@ pub const Kind = enum {
     socket_abi_matrix,
     structural_gate,
     gc_core_oracle,
+    gc_runtime_oracle,
     map_core_probe,
     map_sync_component,
 };
@@ -47,13 +48,14 @@ pub const cases = [_]Case{
     .{ .name = "socket ABI matrix", .kind = .socket_abi_matrix },
     .{ .name = "structural gate bridge", .kind = .structural_gate },
     .{ .name = "Core GC oracle bridge", .kind = .gc_core_oracle },
+    .{ .name = "GC runtime oracle matrix", .kind = .gc_runtime_oracle },
     .{ .name = "bounded map Core ABI probe", .kind = .map_core_probe },
     .{ .name = "manifest-backed map Component host gate", .kind = .map_sync_component },
 };
 
 test "integration case table is stable and non-empty" {
     const std = @import("std");
-    try std.testing.expect(cases.len >= 21);
+    try std.testing.expect(cases.len >= 22);
     try std.testing.expectEqual(Kind.compiler_smoke, cases[0].kind);
     try std.testing.expectEqual(Kind.wit_map, cases[1].kind);
     try std.testing.expectEqual(Kind.component_assembly, cases[2].kind);
@@ -73,6 +75,7 @@ test "integration case table is stable and non-empty" {
     try std.testing.expectEqual(Kind.socket_abi_matrix, cases[16].kind);
     try std.testing.expectEqual(Kind.structural_gate, cases[17].kind);
     try std.testing.expectEqual(Kind.gc_core_oracle, cases[18].kind);
-    try std.testing.expectEqual(Kind.map_core_probe, cases[19].kind);
-    try std.testing.expectEqual(Kind.map_sync_component, cases[20].kind);
+    try std.testing.expectEqual(Kind.gc_runtime_oracle, cases[19].kind);
+    try std.testing.expectEqual(Kind.map_core_probe, cases[20].kind);
+    try std.testing.expectEqual(Kind.map_sync_component, cases[21].kind);
 }

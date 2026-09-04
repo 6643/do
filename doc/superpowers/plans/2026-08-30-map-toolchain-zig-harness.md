@@ -338,6 +338,17 @@ toolchain parse/validate。通用 map Component/WIT lowering 尚不存在，因�
   `.superpowers/sdd/2026-08-30-map-toolchain-zig-harness/task-8-step1-gc-adapter-report.md`。
   Step 1 仍未勾选：`run_tests.sh` 的其他逻辑和完整旧 Shell 入口收敛仍待完成。
 
+  **实施 checkpoint (2026-09-04 GC runtime oracle):**
+  `test_async_frame_table.sh` 与 `test_cabi_realloc_budget.sh` 已将 parse、GC
+  compile 和所有无参 runtime probe 统一改为 current-only `bin/do-toolchain`
+  typed operations；`GC runtime oracle matrix` 已加入 Zig harness，固定覆盖
+  async-frame `27815/1/1`、realloc `4/1` 和 quota rejection trap。两脚本在根目录
+  与无关 `/tmp` cwd 各自通过，完整 `zig build test --summary all` 为
+  `14/14` steps、`51/51` tests。报告位于
+  `.superpowers/sdd/2026-08-30-map-toolchain-zig-harness/task-8-step1-gc-runtime-oracle-adapter-report.md`。
+  该 checkpoint 仅关闭两个 runtime-oracle 子批次；GC marshal/host linker、async
+  component 和其余 direct-tool 入口仍待分类迁移，Task 8 Step 1 不勾选。
+
 - [ ] **Step 2: 迁移纯 assembly/validation 批次。**
 
   再迁移 `examples/p3-runtime` 中只执行 `do`、parse、embed、new、validate、WIT/hash 检查的脚本；命令全部改为 adapter operation。
