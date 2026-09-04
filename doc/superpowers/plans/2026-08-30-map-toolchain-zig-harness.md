@@ -617,6 +617,19 @@ marker。该 case 的 Core GC compile 以及专用
 lowering、Stream/general async、host runtime、WASI random、C API 边界和其余
 direct-tool 入口仍待分类，Task 8 Step 2 不勾选。
 
+**实施 checkpoint (2026-09-04 GC resource terminal):**
+现有 `async-resource-result-component.do` pure lowering case 已启用
+`compile_core_gc`，由 Zig matrix 通过 current-only
+`bin/do-toolchain compile-core-gc` 编译 GC async frame/result WAT 并检查产物。
+专用 `test_gc_resource_terminal_cleanup.sh` 的同一条 Core GC compile 也已移除
+Wasmtime 直调用；Rust host、取消形状、取消运行时与 GC/linear equivalence
+子 gate 保持不变。该 gate 在根目录和无关 `/tmp` cwd 均通过，完整
+`zig build test --summary all` 为 `14/14` steps、`51/51` tests。报告位于
+`.superpowers/sdd/2026-08-30-map-toolchain-zig-harness/task-8-step2-gc-resource-terminal-adapter-report.md`。
+该 checkpoint 仅关闭 bounded async resource Result compile-adapter 子批次；
+通用 async/resource、Stream/general async、WASI random、C API 边界和其余
+direct-tool 入口仍待分类，Task 8 Step 2 不勾选。
+
 **实施 checkpoint (2026-08-31 run-tests parse):** 旧 `src/build/test/run_tests.sh`
 中的 5 个 Core WAT parse 路径（compiled must-pass、compiled ok/trap、WASI
 core shims 和 component-input shims）已改用 `bin/do-toolchain parse-core`，并

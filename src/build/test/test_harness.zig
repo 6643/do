@@ -534,6 +534,7 @@ const pure_lowering_cases = [_]PureLoweringCase{
             "i32.const 0",
         },
         .forbidden_markers = &.{ "global $frame-next" },
+        .compile_core_gc = true,
     },
     .{
         .name = "owned-error resource Result lowering",
@@ -3447,6 +3448,17 @@ test "pure lowering matrix covers the bounded async GC frame table" {
     var found = false;
     for (pure_lowering_cases) |case| {
         if (std.mem.eql(u8, case.source, "examples/p3-runtime/two-await-component.do")) found = true;
+    }
+    try std.testing.expect(found);
+}
+
+test "pure lowering matrix compiles the async resource Result case with GC" {
+    var found = false;
+    for (pure_lowering_cases) |case| {
+        if (std.mem.eql(u8, case.source, "examples/p3-runtime/async-resource-result-component.do")) {
+            found = true;
+            try std.testing.expect(case.compile_core_gc);
+        }
     }
     try std.testing.expect(found);
 }

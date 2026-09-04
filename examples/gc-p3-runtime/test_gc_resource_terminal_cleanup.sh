@@ -6,7 +6,6 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 do_bin=${DO_BIN:-$repo_root/bin/do}
 toolchain_bin="$repo_root/bin/do-toolchain"
 export DO_TOOLCHAIN_LOCK="$repo_root/toolchain/toolchain.lock.json"
-wasmtime_bin=${WASMTIME_BIN:-/home/_/Public/wasmtime/bin/wasmtime}
 fixture="$repo_root/examples/p3-runtime/async-resource-result-component.do"
 expected_wit="$repo_root/src/build/p3_async_resource_probe.wit"
 host_gate="$repo_root/examples/p3-runtime/test_rust_async_resource_result.sh"
@@ -19,8 +18,8 @@ if [ ! -x "$do_bin" ]; then
   printf 'missing do compiler: %s\n' "$do_bin" >&2
   exit 1
 fi
-if [ ! -x "$wasmtime_bin" ]; then
-  printf 'missing Wasmtime executable: %s\n' "$wasmtime_bin" >&2
+if [ ! -x "$toolchain_bin" ]; then
+  printf 'missing do-toolchain executable: %s\n' "$toolchain_bin" >&2
   exit 1
 fi
 if [ ! -f "$fixture" ] || [ ! -f "$expected_wit" ]; then
@@ -71,7 +70,7 @@ for forbidden in 'call $drop-request' 'call $drop-response'; do
 done
 
 "$toolchain_bin" parse-core "$wat_path" -o "$core_path"
-"$wasmtime_bin" compile -W gc=y -o "$tmp_dir/async-resource-result.compiled" "$wat_path"
+"$toolchain_bin" compile-core-gc "$wat_path" -o "$tmp_dir/async-resource-result.compiled"
 "$toolchain_bin" embed-component "$wit_path" "$core_path" async-resource-probe \
   --features component-async -o "$embedded_path"
 "$toolchain_bin" new-component "$embedded_path" -o "$component_path"
