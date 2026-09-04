@@ -1,7 +1,7 @@
 # 待处理与阻断清单
 
-更新时间: 2026-08-28
-基线: 默认回归以 `./src/build/test/run_tests.sh` 最新结果为准
+更新时间: 2026-09-04
+基线: 默认回归由 `./src/build/test/run_tests.sh` 薄入口转发到 Zig harness
 关系: 总规划 `doc/master_plan.md`; 接手 `doc/start_here.md`; 执行状态 `doc/roadmap_status.md`
 约定: **只记未关闭项**; 完成后从本文件删除或移入「已关闭摘要」, 并同步入口文档与 `CHANGELOG.md`。
 
@@ -10,6 +10,49 @@
 > managed-memory target。下文 ARC 只保留为当前 transition implementation 的历史
 > 证据, 不改变源码值语义; 后续 runtime work 目标为 GC。Component/WIT resource 的
 > ownership 与 drop 继续是显式 ABI contract, 不由 GC 接管。
+
+### Toolchain adapter 与 Zig harness (2026-09-02)
+
+Task 9 Step 1 的 current-only active gate 已通过独立复核：
+`src/build/test/check_toolchain_adapter.sh` 固定检查仓库
+`bin/do-toolchain`、`toolchain/toolchain.lock.json`、probe identity、active
+Shell raw-command/alias 扫描和旧版引用拒绝；根目录及无关 `/tmp` cwd、负例、
+`bash -n` 与 scoped `git diff --check` 均通过。当前 active route 为
+`wasm-tools 1.258.0`、Wasmtime `48.0.1`；历史 `1.255.0` 只保留在 dated
+证据中。跨行二级 Shell alias 尚未被完整解析，属于 P3 残余风险，当前 active
+脚本未命中且不阻断本 gate。
+
+Task 8 Step 3 的 Rust host adapter 批次已按报告闭合；Step 4 的 Shell 入口已
+缩减为 `cd src && zig build test --summary all` 薄 wrapper，Step 5 的逐 fixture
+parity 已闭合，报告位于
+`.superpowers/sdd/2026-08-30-map-toolchain-zig-harness/task-8-step4-5-parity-report.md`。
+`check_run_tests_entrypoint.sh` 另外锁定 cwd、参数、cache 环境和
+`RUN_WASM`/`RUN_GC_CORE` 继承。Task 9 Step 1 active gate 与 Step 2 文档同步
+已闭合；Task 9 Step 3 的完整 active 验证和 Step 5 的交付前工作区审查也已
+通过。默认、`RUN_WASM=1`、`RUN_GC_CORE=1` 薄入口均为 14/14 steps、51/51
+tests，ReleaseSmall/release smoke、adapter gate、入口契约和
+`git diff --check` 均通过；Rust Cargo 测试使用仓库内 `zig-cc.sh` linker 环境
+通过，裸命令的 `cc` 缺失仅是本机环境前提。
+
+验证环境备注：本机没有 `cc` 可执行文件，裸 `cargo test --locked` 会在
+Wasmtime build script 阶段失败；通过仓库内
+`examples/p3-runtime/rust-host-runner/zig-cc.sh` 注入 `CC`、`CXX` 和 target
+linker 后，Rust 48.0.1 全量测试通过。该项是环境前提，不是 active runtime
+blocker。
+
+### WIT map runtime lowering (P2, exact sync route closed; general pending)
+
+`map<K,V>` 的 parser/model/manifest/registry schema 已按 pair-list ABI 表示
+完成；map 与 `list<tuple<K,V>>` 仍是不同语义。`wit_abi_types` 已有 map 节点，
+bounded Core WAT emitter/probe 已覆盖 `u32` key 与 `u32`/`text` value 的
+lower/lift，并通过当前 `wasm-tools` 的 parse/validate。精确同步
+`map<u32,u32>` lower/lift 的 manifest-backed Component route 已闭环：
+`HashMap<u32,u32>` host boundary、Do/Rust/Wasmtime fixtures、负例签名漂移和
+Zig harness 均通过，lower/lift 各为一次 host call 与一次 allocation/free。
+通用 Component/WIT map lowering、其他 key/value 组合、async 参数 copy、Stream
+跨 poll owned buffer 和统一 cleanup authority 尚未实现。当前 registry 对这些
+未支持 shape 仍返回 `UnsupportedWitMarshalShape`，不得据精确 route 推断通用
+map runtime 已完成。该剩余阻断不妨碍主线的 GC/G6.2/D2 独立工作。
 
 ### G6.2 private two-owned-field record producer checkpoint (2026-08-27)
 
@@ -889,6 +932,37 @@ slice 解释为 G5c 或 full GC cutover。
   equivalence row or inventory row; generic/arbitrary producers,
   borrowed/list/variant payloads, general async/resource lowering, and public
   `own<T>`/`borrow<T>`/`ref<T>` syntax remain pending.
+- **G6.2 nested-owned-record producer**: the private compiler route admits only
+  `do:g6-2-owned-record-nested-producer@0.1.0` / `consume-via-stream` with
+  `Outer { inner: Inner }` and `Inner { ticket: own<Ticket> }`. The pinned WIT
+  hash is
+  `9662440709b01044544d4c4350f3e6f783a8f06aaa5c884a96a1e43a935a7543`;
+  outer layout is 4 bytes/alignment 4, semantic path `inner.ticket` is the
+  flattened `i32` leaf at offset `0`, source ABI is `(i32) -> (i32)`, stream
+  capacity is `1`, and seed is `111`. Independent ownership bits
+  `guest=1/transferred=2` release the nested leaf exactly once before or after
+  transfer. The manifest/source matcher, generated WAT/WIT, Component
+  validation, 21 negative fixtures (`725`-`745`), Rust/Wasmtime ten-mode
+  lifecycle, and canonical/generated parity gates pass; cancellation/early
+  drop has one cancel and pending-future drop with zero completion, repeat is
+  `[111,111]`, invalid creates no resources, and every row leaves
+  `table-empty=true`. This is closed private evidence, not an ARC/GC matrix or
+  inventory row; public ownership syntax, generic/arbitrary producer lowering,
+  borrowed/list/variant payloads, and general async/resource lowering remain
+  pending.
+- **G6.2 general producer/resource contract consolidation (2026-09-04)**: the
+  immutable internal `ProducerContract` now normalizes measured source/sink,
+  payload layout, ownership paths, transfer commit, and terminal cleanup for
+  the nine already-private routes: direct record, fixed pair, parameterized
+  pair, triple, nested, list-resource, dynamic-list, batched-list, and
+  scalar-list. The consolidated gate passes `routes=9`,
+  `canonical-parity=5`, `lifecycle=9`, and `table-empty=true`; the existing
+  WAT/WIT/template/hash/marker bytes and route-specific diagnostics remain
+  unchanged. Four negative fixtures reject arbitrary expression, shared lease,
+  borrowed async payload, and hop overflow before WAT. This closes internal
+  reuse only; public `own<T>`/`borrow<T>`/`ref<T>`, generic/arbitrary producer
+  lowering, borrowed/list/variant async payloads, unmeasured shapes, and the
+  GC inventory rows remain pending.
 - **Bounded async-call internal consolidation (2026-08-09)**: the five
   admitted child/inline/host-scalar forms now share private validated frame and
   cleanup facts only. Planner admission remains separate and emitter templates

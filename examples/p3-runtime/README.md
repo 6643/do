@@ -12,12 +12,26 @@ unclassified descriptor are rejected rather than falling into a probe
 template. Ordinary `do build` keeps its async-lowering guard.
 
 Component assembly for the verified v1 path is centralized in
-`assemble_async_component.sh`. It accepts only `wasm-tools 1.255.0` with the
-pinned SHA-256 and uses the current tool's `--dummy-names legacy` async naming
-mode. The output target is `wasmtime-p3`; there is no 1.254.0 compatibility
-assembler or legacy binary path. Run `bash test_wasmtime_p3_assembly.sh` for the
+`assemble_async_component.sh`. It uses the current-only `bin/do-toolchain`
+adapter, whose lock pins `wasm-tools 1.258.0` and the SHA-256; the adapter owns
+the current tool's `--dummy-names legacy` async naming mode. The output target
+is `wasmtime-p3`; there is no 1.254.0 compatibility assembler or legacy binary
+path. Run `bash test_wasmtime_p3_assembly.sh` for the
 Core-WAT -> Component -> Rust/Wasmtime golden gate. This target does not claim
 standard32 or complete WASI support.
+
+The 2026-09-04 G6.2 consolidation gate now routes the nine existing private
+producer shapes through one immutable internal `ProducerContract`: direct
+record, fixed pair, parameterized pair, triple, nested record, list-resource,
+dynamic-list, batched-list, and scalar-list. The contract carries measured
+source/sink facts, payload layout, ownership paths, transfer-commit state, and
+terminal cleanup authority. `bash test_g6_2_general_producer_contract.sh`
+reports `routes=9 canonical-parity=5 lifecycle=9 table-empty=true`; the
+route-specific templates, hashes, markers, and lifecycle counts are unchanged.
+The companion negative gate rejects arbitrary expressions, shared leases,
+borrowed async payloads, and hop overflow before WAT. This is internal reuse
+only: generic producer lowering, public ownership syntax, unmeasured list or
+variant shapes, and general async/resource lowering remain unsupported.
 
 The colorless async-call probe is a separate opt-in target:
 `async-call-component.do` with `--p3-async-call-component`. It keeps `helper()`
@@ -73,7 +87,7 @@ rejected because cancellation has no source-level result branch. The writer
 work currently has an internal bounded FIFO/lease model with Zig coverage for
 backpressure, FIFO order, transfer, close, abort, and wake state. Pinned
 `wasi:cli/stdout.write-via-stream` WIT produces a complete async canonical ABI
-with `wasm-tools 1.255.0`; the descriptor and A-route forwarding wrapper are
+through the current-only toolchain adapter; the descriptor and A-route forwarding wrapper are
 now registered. The wrapper now emits a fixed-capacity writer frame and
 explicit `writer-enqueue`/`writer-promote` backpressure helpers, while
 preserving the existing reader forwarding path. `test_rust_stream_writer.sh`
@@ -208,6 +222,36 @@ pending-future drop, invalid creates no resources, and every row leaves
 ARC/GC equivalence row; generic/arbitrary producers, borrowed/list/variant
 payloads, general async/resource lowering, public `own<T>`/`borrow<T>`/`ref<T>`
 syntax, and full GC cutover remain unsupported.
+
+`g6-2-owned-record-nested-producer.do` is the private nested-owned-record
+producer slice. It admits only descriptor
+`do:g6-2-owned-record-nested-producer@0.1.0` and
+`consume-via-stream`: `Outer { inner: Inner }` contains
+`Inner { ticket: own<Ticket> }`. The pinned WIT hash is
+`9662440709b01044544d4c4350f3e6f783a8f06aaa5c884a96a1e43a935a7543`.
+The measured outer record is 4 bytes/alignment 4; semantic path
+`inner.ticket` is flattened to the canonical `i32` slot at offset `0`, the
+stream capacity is `1`, source ABI is `(i32) -> (i32)`, and the source seed is
+`111`. An independent `guest=1/transferred=2` ownership mask keeps handle `0`
+valid, releases the nested leaf exactly once before transfer, and leaves the
+host to release it exactly once after a complete accepted write.
+
+Run `bash test_g6_2_owned_record_nested_canonical.sh` for the pinned WIT/WAT
+ABI and current `wasm-tools` Component gate,
+`bash test_do_g6_2_owned_record_nested_producer.sh` for compiler-generated
+Do/Component admission, and
+`bash test_do_g6_2_owned_record_nested_producer_negative.sh` for 21 fail-closed
+source/descriptor mutations. Run
+`bash test_rust_g6_2_owned_record_nested_producer.sh` for the ten-mode
+Rust/Wasmtime lifecycle and
+`bash test_g6_2_owned_record_nested_producer_equivalence.sh` for
+canonical/generated WIT/WAT and lifecycle parity. Valid rows require one
+ticket, stream, and future cleanup; cancellation/early-drop rows require one
+cancel and pending-future drop with zero completion; `repeat` observes
+`[111,111]`; `invalid` allocates no resources; every mode leaves
+`table-empty=true`. This is private fixed-shape Component/compiler evidence,
+not public `own<T>`/`borrow<T>`/`ref<T>` syntax, generic nested or arbitrary
+producer lowering, general async/resource lowering, or a GC inventory row.
 
 `g6-2-owned-record-pair-parameterized-producer.do` is the private,
 hash-pinned parameterized pair producer slice. It keeps the same `ResourcePair` ABI as the

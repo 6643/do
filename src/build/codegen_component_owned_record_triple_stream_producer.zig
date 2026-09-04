@@ -2,6 +2,7 @@ const std = @import("std");
 const generated_text = @import("codegen_text.zig");
 const lexer = @import("lexer.zig");
 const p3_async_manifest = @import("p3_async_manifest.zig");
+const producer_contract = @import("codegen_component_producer_contract.zig");
 const wit_abi_layout = @import("wit_abi_layout.zig");
 const wit_abi_types = @import("wit_abi_types.zig");
 
@@ -20,6 +21,7 @@ pub const OwnedRecordTripleStreamProducerPlan = struct {
     mode_name: []const u8,
     layout: p3_async_manifest.RecordLayout,
     producer: p3_async_manifest.ProducerCanonical,
+    contract: producer_contract.ProducerContract,
 };
 
 pub fn analyze(
@@ -99,6 +101,8 @@ pub fn analyze(
         shape.producer.batch_lengths != null)
         return error.UnsupportedP3OwnedRecordTripleStreamProducer;
 
+    const contract = producer_contract.producer_contract_from_descriptor(descriptor) catch
+        return error.UnsupportedP3OwnedRecordTripleStreamProducer;
     return .{
         .descriptor = descriptor,
         .source_host_name = source.name,
@@ -110,6 +114,7 @@ pub fn analyze(
         .mode_name = "mode",
         .layout = shape.record_layout,
         .producer = shape.producer,
+        .contract = contract,
     };
 }
 
@@ -191,6 +196,16 @@ fn validate_internal_plans(
     allocator: std.mem.Allocator,
     plan: OwnedRecordTripleStreamProducerPlan,
 ) ProducerError!void {
+    producer_contract.validate_contract(plan.contract) catch return error.UnsupportedP3OwnedRecordTripleStreamProducer;
+    if (!std.mem.eql(u8, plan.contract.descriptor_id, plan.descriptor.locator) or
+        plan.contract.sink.capacity != plan.producer.stream_capacity) return error.UnsupportedP3OwnedRecordTripleStreamProducer;
+    const record = switch (plan.contract.payload) {
+        .record => |value| value,
+        else => return error.UnsupportedP3OwnedRecordTripleStreamProducer,
+    };
+    if (record.byte_size != plan.layout.byte_size or record.fields.len != plan.layout.fields.len) {
+        return error.UnsupportedP3OwnedRecordTripleStreamProducer;
+    }
     const shape = switch (p3_async_manifest.lowering_shape(plan.descriptor) orelse
         return error.UnsupportedP3OwnedRecordTripleStreamProducer) {
         .record_resource_triple_stream_producer => |value| value,
@@ -595,6 +610,9 @@ test "owned record triple producer admits the pinned source shape" {
     try std.testing.expectEqualStrings("ResourceTriple", plan.record_type_name);
     try std.testing.expectEqual(@as(u32, 12), plan.layout.byte_size);
     try std.testing.expectEqual(@as(usize, 3), plan.layout.fields.len);
+    try std.testing.expectEqualStrings(plan.descriptor.locator, plan.contract.descriptor_id);
+    try std.testing.expectEqual(@as(usize, 3), plan.contract.ownership.leaves.len);
+    try std.testing.expectEqual(@as(u32, 8), plan.contract.ownership.leaves[2].handle_offset);
 }
 
 test "owned record triple producer emits the pinned WAT and WIT contracts" {

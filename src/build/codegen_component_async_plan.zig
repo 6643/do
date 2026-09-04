@@ -6,9 +6,154 @@ const codegen_model = @import("codegen_model.zig");
 const imports = @import("imports.zig");
 const module_graph = @import("module_graph.zig");
 const p3_async_manifest = @import("p3_async_manifest.zig");
+const producer_contract = @import("codegen_component_producer_contract.zig");
 const generated_async_scalar_plan = @import("codegen_generated_async_scalar_plan.zig");
 
 pub const GeneratedAsyncScalarPlan = generated_async_scalar_plan.GeneratedAsyncScalarPlan;
+
+pub const ProducerContract = producer_contract.ProducerContract;
+
+pub const ProducerContractAnalysis = struct {
+    contract: ProducerContract,
+    sink_binding_name: []const u8,
+    source_binding_name: ?[]const u8,
+};
+
+pub const ProducerContractAnalysisError = error{
+    UnsupportedP3AsyncComponent,
+};
+
+/// Bind one already-selected producer descriptor to the typed host bindings
+/// that appear in the Do source. The descriptor/shape pair is supplied by the
+/// manifest matcher so this adapter cannot select a neighboring descriptor or
+/// infer a layout from source text.
+pub fn analyze_producer_contract(
+    tokens: []const lexer.Token,
+    descriptor: p3_async_manifest.Descriptor,
+    shape: p3_async_manifest.LoweringShape,
+) ProducerContractAnalysisError!ProducerContractAnalysis {
+    const normalized = producer_contract.producer_contract_from_shape(descriptor, shape) catch
+        return error.UnsupportedP3AsyncComponent;
+
+    var sink_binding_name: ?[]const u8 = null;
+    var sink_binding_count: usize = 0;
+    var source_binding_name: ?[]const u8 = null;
+    var source_binding_count: usize = 0;
+    var async_source_binding_count: usize = 0;
+    var sink_binding: ?ProducerHostBinding = null;
+
+    for (tokens, 0..) |_, idx| {
+        const binding = parse_producer_host_binding_at(tokens, idx) orelse continue;
+        if (binding.kind == .async and
+            std.mem.eql(u8, binding.locator, descriptor.locator) and
+            std.mem.eql(u8, binding.member, descriptor.member))
+        {
+            sink_binding_name = binding.name;
+            sink_binding_count += 1;
+            sink_binding = binding;
+            continue;
+        }
+
+        if (!std.mem.eql(u8, binding.locator, normalized.source.module) or
+            !std.mem.eql(u8, binding.member, normalized.source.import_name)) continue;
+        if (binding.kind == .async) {
+            async_source_binding_count += 1;
+        } else {
+            source_binding_name = binding.name;
+            source_binding_count += 1;
+        }
+    }
+
+    if (sink_binding_count != 1) return error.UnsupportedP3AsyncComponent;
+    const selected_sink = sink_binding orelse return error.UnsupportedP3AsyncComponent;
+    if (signature_contains_ownership_qualifier(tokens, selected_sink) or
+        !producer_source_is_registered_sentinel(tokens)) return error.UnsupportedP3AsyncComponent;
+    // Scalar-list producers source their values from the descriptor's own
+    // async operation and therefore have no separate host source binding.
+    if (normalized.ownership.leaves.len != 0 and
+        (source_binding_count != 1 or async_source_binding_count != 0))
+    {
+        return error.UnsupportedP3AsyncComponent;
+    }
+
+    return .{
+        .contract = normalized,
+        .sink_binding_name = sink_binding_name.?,
+        .source_binding_name = source_binding_name,
+    };
+}
+
+const ProducerHostBindingKind = enum { sync, async };
+
+const ProducerHostBinding = struct {
+    name: []const u8,
+    locator: []const u8,
+    member: []const u8,
+    kind: ProducerHostBindingKind,
+    signature_open: usize,
+    signature_close: usize,
+};
+
+fn parse_producer_host_binding_at(tokens: []const lexer.Token, idx: usize) ?ProducerHostBinding {
+    if (idx + 8 >= tokens.len or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "=") or
+        !tok_eq(tokens[idx + 2], "@") or (!tok_eq(tokens[idx + 3], "host_func") and
+        !tok_eq(tokens[idx + 3], "host_async_func")) or !tok_eq(tokens[idx + 4], "(") or
+        tokens[idx + 5].kind != .string or !tok_eq(tokens[idx + 6], ",") or
+        tokens[idx + 7].kind != .string or !tok_eq(tokens[idx + 8], ",")) return null;
+    if (idx + 9 >= tokens.len or !tok_eq(tokens[idx + 9], "(")) return null;
+    const signature_close = find_matching(tokens, idx + 9, "(", ")") orelse return null;
+    const locator = string_token_body(tokens[idx + 5]) orelse return null;
+    const member = string_token_body(tokens[idx + 7]) orelse return null;
+    return .{
+        .name = tokens[idx].lexeme,
+        .locator = locator,
+        .member = member,
+        .kind = if (tok_eq(tokens[idx + 3], "host_async_func")) .async else .sync,
+        .signature_open = idx + 9,
+        .signature_close = signature_close,
+    };
+}
+
+fn signature_contains_ownership_qualifier(tokens: []const lexer.Token, binding: ProducerHostBinding) bool {
+    for (tokens[binding.signature_open..binding.signature_close]) |token| {
+        if (tok_eq(token, "own") or tok_eq(token, "borrow") or tok_eq(token, "borrow_mut") or tok_eq(token, "ref")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// The private producer descriptors are backed by canonical emitters whose
+/// Do-side producer body is intentionally only a registration sentinel. Any
+/// expression, call, branch, or async operation must be rejected before an
+/// emitter can consume the normalized contract.
+fn producer_source_is_registered_sentinel(tokens: []const lexer.Token) bool {
+    var depth: usize = 0;
+    var idx: usize = 0;
+    while (idx + 1 < tokens.len) : (idx += 1) {
+        if (tok_eq(tokens[idx], "{")) {
+            depth += 1;
+            continue;
+        }
+        if (tok_eq(tokens[idx], "}")) {
+            if (depth > 0) depth -= 1;
+            continue;
+        }
+        if (depth != 0) continue;
+        if (!tok_eq(tokens[idx], "produce") or !tok_eq(tokens[idx + 1], "(")) continue;
+        const params_close = find_matching(tokens, idx + 1, "(", ")") orelse return false;
+        var body_open = params_close + 1;
+        while (body_open < tokens.len and !tok_eq(tokens[body_open], "{")) : (body_open += 1) {}
+        if (body_open >= tokens.len) return false;
+        const body_close = find_matching(tokens, body_open, "{", "}") orelse return false;
+        return body_close == body_open + 5 and
+            tok_eq(tokens[body_open + 1], "return") and
+            tok_eq(tokens[body_open + 2], "Ok") and
+            tok_eq(tokens[body_open + 3], "(") and
+            tok_eq(tokens[body_open + 4], ")");
+    }
+    return false;
+}
 
 pub fn analyze_generated_async_scalar(
     allocator: std.mem.Allocator,
@@ -1684,7 +1829,8 @@ fn parse_parameterized_helper_binding(
     var wrapper_close_idx: ?usize = null;
     if (result_end + 4 < end_idx and tok_eq(tokens[result_end + 2], "@") and
         result_end + 6 < end_idx and tok_eq(tokens[result_end + 3], "async") and
-        tok_eq(tokens[result_end + 4], "(")) {
+        tok_eq(tokens[result_end + 4], "("))
+    {
         helper_name_idx = result_end + 5;
         helper_open_idx = result_end + 6;
         if (tokens[helper_name_idx].kind != .ident or !tok_eq(tokens[helper_open_idx], "(")) return null;
@@ -2461,28 +2607,56 @@ fn parse_post_await_computation(
 fn parse_future_binding(tokens: []const lexer.Token, idx: usize, end_idx: usize, argument_name: []const u8) ?FutureBinding {
     if (idx + 8 >= end_idx or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "Future") or !tok_eq(tokens[idx + 2], "<")) return null;
     const result_end = find_matching(tokens, idx + 2, "<", ">") orelse return null;
-    if (result_end + 5 >= end_idx or !tok_eq(tokens[result_end + 1], "=") or tokens[result_end + 2].kind != .ident or !tok_eq(tokens[result_end + 3], "(") or tokens[result_end + 4].kind != .ident or !std.mem.eql(u8, tokens[result_end + 4].lexeme, argument_name) or !tok_eq(tokens[result_end + 5], ")")) return null;
+    if (result_end + 3 >= end_idx or !tok_eq(tokens[result_end + 1], "=")) return null;
+    const call_start = result_end + 2;
+    const async_call = call_start + 2 < end_idx and tok_eq(tokens[call_start], "@") and
+        tok_eq(tokens[call_start + 1], "async") and tok_eq(tokens[call_start + 2], "(");
+    const function_idx = if (async_call) call_start + 3 else call_start;
+    const open_idx = function_idx + 1;
+    const argument_idx = function_idx + 2;
+    const close_idx = function_idx + 3;
+    if (close_idx >= end_idx or tokens[function_idx].kind != .ident or !tok_eq(tokens[open_idx], "(") or
+        tokens[argument_idx].kind != .ident or !std.mem.eql(u8, tokens[argument_idx].lexeme, argument_name) or !tok_eq(tokens[close_idx], ")")) return null;
+    const next_idx = if (async_call) blk: {
+        const wrapper_close = close_idx + 1;
+        if (wrapper_close >= end_idx or !tok_eq(tokens[wrapper_close], ")")) return null;
+        break :blk wrapper_close + 1;
+    } else close_idx + 1;
     return .{
         .name = tokens[idx].lexeme,
-        .host_name = tokens[result_end + 2].lexeme,
-        .argument_name = tokens[result_end + 4].lexeme,
+        .host_name = tokens[function_idx].lexeme,
+        .argument_name = tokens[argument_idx].lexeme,
         .result_start = idx + 3,
         .result_end = result_end,
-        .next_idx = result_end + 6,
+        .next_idx = next_idx,
     };
 }
 
 fn parse_future_binding_any(tokens: []const lexer.Token, idx: usize, end_idx: usize) ?FutureBinding {
     if (idx + 8 >= end_idx or tokens[idx].kind != .ident or !tok_eq(tokens[idx + 1], "Future") or !tok_eq(tokens[idx + 2], "<")) return null;
     const result_end = find_matching(tokens, idx + 2, "<", ">") orelse return null;
-    if (result_end + 5 >= end_idx or !tok_eq(tokens[result_end + 1], "=") or tokens[result_end + 2].kind != .ident or !tok_eq(tokens[result_end + 3], "(") or tokens[result_end + 4].kind != .ident or !tok_eq(tokens[result_end + 5], ")")) return null;
+    if (result_end + 3 >= end_idx or !tok_eq(tokens[result_end + 1], "=")) return null;
+    const call_start = result_end + 2;
+    const async_call = call_start + 2 < end_idx and tok_eq(tokens[call_start], "@") and
+        tok_eq(tokens[call_start + 1], "async") and tok_eq(tokens[call_start + 2], "(");
+    const function_idx = if (async_call) call_start + 3 else call_start;
+    const open_idx = function_idx + 1;
+    const argument_idx = function_idx + 2;
+    const close_idx = function_idx + 3;
+    if (close_idx >= end_idx or tokens[function_idx].kind != .ident or !tok_eq(tokens[open_idx], "(") or
+        tokens[argument_idx].kind != .ident or !tok_eq(tokens[close_idx], ")")) return null;
+    const next_idx = if (async_call) blk: {
+        const wrapper_close = close_idx + 1;
+        if (wrapper_close >= end_idx or !tok_eq(tokens[wrapper_close], ")")) return null;
+        break :blk wrapper_close + 1;
+    } else close_idx + 1;
     return .{
         .name = tokens[idx].lexeme,
-        .host_name = tokens[result_end + 2].lexeme,
-        .argument_name = tokens[result_end + 4].lexeme,
+        .host_name = tokens[function_idx].lexeme,
+        .argument_name = tokens[argument_idx].lexeme,
         .result_start = idx + 3,
         .result_end = result_end,
-        .next_idx = result_end + 6,
+        .next_idx = next_idx,
     };
 }
 
@@ -2972,6 +3146,40 @@ test "StreamWriterPlan accepts a producer lease transferred through an async hel
     const plan = try StreamWriterPlan.analyze(tokens, registry);
     try std.testing.expectEqual(EndpointMode.guest_producer, plan.endpoint_mode);
     try std.testing.expectEqual(@as(usize, 2), plan.producer_write_count);
+    try std.testing.expectEqualStrings("write_stream", plan.producer_helper_name.?);
+}
+
+test "StreamWriterPlan accepts canonical async helper calls" {
+    const source =
+        \\sink_write = @host_async_func("do:stream-probe@0.1.0", "write-via-stream", (StreamWriter<u8>) -> Result<nil, ProbeError>)
+        \\ProbeError error = Io | IllegalByteSequence | Pipe
+        \\StreamError error = StreamClosed | StreamWriteFailed
+        \\write_stream(writer StreamWriter<u8>) -> Result<nil, ProbeError> {
+        \\    defer close(writer)
+        \\    pending Future<Result<nil, ProbeError>> = sink_write(writer)
+        \\    return @await(pending)
+        \\}
+        \\produce() -> Result<nil, ProbeError> {
+        \\    reader StreamReader<u8>, writer StreamWriter<u8> = new_stream<u8>(1)
+        \\    write_pending Future<Result<nil, StreamError>> = writer(65)
+        \\    write_result Result<nil, StreamError> = @await(write_pending)
+        \\    _ = write_result
+        \\    write_pending_2 Future<Result<nil, StreamError>> = writer(66)
+        \\    write_result_2 Result<nil, StreamError> = @await(write_pending_2)
+        \\    _ = write_result_2
+        \\    pending Future<Result<nil, ProbeError>> = @async(write_stream(writer))
+        \\    return @await(pending)
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+
+    const plan = try StreamWriterPlan.analyze(tokens, registry);
+    try std.testing.expectEqual(EndpointMode.guest_producer, plan.endpoint_mode);
+    try std.testing.expectEqualStrings("produce", plan.export_name);
     try std.testing.expectEqualStrings("write_stream", plan.producer_helper_name.?);
 }
 
@@ -3962,6 +4170,114 @@ test "StreamWriterPlan rejects a source sequence beyond the bounded limit" {
     defer registry.deinit(std.testing.allocator);
 
     try std.testing.expectError(error.UnsupportedP3StreamWriterComponent, StreamWriterPlan.analyze(tokens, registry));
+}
+
+test "producer contract source analysis binds the measured source and sink" {
+    const source =
+        \\make_ticket = @host_func("do:g6-2-owned-record-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream", (StreamWriter<ResourceEntry>) -> Result<nil, ProducerError>)
+        \\Ticket = @wasi_resource("do:g6-2-owned-record-producer/source/ticket", { .id i64 })
+        \\ResourceEntry { .ticket Ticket }
+        \\ProducerError error = Io | Pipe | InvalidMode
+        \\produce(mode u32) -> Result<nil, ProducerError> { return Ok() }
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream") orelse
+        return error.TestUnexpectedResult;
+    const shape = p3_async_manifest.lowering_shape(descriptor) orelse return error.TestUnexpectedResult;
+
+    const analysis = try analyze_producer_contract(tokens, descriptor, shape);
+    try std.testing.expectEqualStrings("consume", analysis.sink_binding_name);
+    try std.testing.expectEqualStrings("make_ticket", analysis.source_binding_name.?);
+    try std.testing.expectEqualStrings(descriptor.locator, analysis.contract.descriptor_id);
+    try std.testing.expectEqualStrings(descriptor.wit_sha256.?, analysis.contract.descriptor_hash.?);
+}
+
+test "producer contract source analysis rejects a missing typed source binding" {
+    const source =
+        \\consume = @host_async_func("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream", (StreamWriter<ResourceEntry>) -> Result<nil, ProducerError>)
+        \\Ticket = @wasi_resource("do:g6-2-owned-record-producer/source/ticket", { .id i64 })
+        \\ResourceEntry { .ticket Ticket }
+        \\ProducerError error = Io | Pipe | InvalidMode
+        \\produce(mode u32) -> Result<nil, ProducerError> { return Ok() }
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream") orelse
+        return error.TestUnexpectedResult;
+    const shape = p3_async_manifest.lowering_shape(descriptor) orelse return error.TestUnexpectedResult;
+
+    try std.testing.expectError(error.UnsupportedP3AsyncComponent, analyze_producer_contract(tokens, descriptor, shape));
+}
+
+test "producer contract source analysis rejects an arbitrary producer expression" {
+    const source =
+        \\make_ticket = @host_func("do:g6-2-owned-record-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream", (StreamWriter<ResourceEntry>) -> Result<nil, ProducerError>)
+        \\Ticket = @wasi_resource("do:g6-2-owned-record-producer/source/ticket", { .id i64 })
+        \\ResourceEntry { .ticket Ticket }
+        \\ProducerError error = Io | Pipe | InvalidMode
+        \\produce(mode u32) -> Result<nil, ProducerError> { return Ok(mode) }
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream") orelse
+        return error.TestUnexpectedResult;
+    const shape = p3_async_manifest.lowering_shape(descriptor) orelse return error.TestUnexpectedResult;
+
+    try std.testing.expectError(error.UnsupportedP3AsyncComponent, analyze_producer_contract(tokens, descriptor, shape));
+}
+
+test "producer contract source analysis rejects a shared sink lease" {
+    const source =
+        \\make_ticket = @host_func("do:g6-2-owned-record-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream", (StreamWriter<ResourceEntry>) -> Result<nil, ProducerError>)
+        \\Ticket = @wasi_resource("do:g6-2-owned-record-producer/source/ticket", { .id i64 })
+        \\ResourceEntry { .ticket Ticket }
+        \\ProducerError error = Io | Pipe | InvalidMode
+        \\produce(mode u32) -> Result<nil, ProducerError> { consume(mode); consume(mode); return Ok() }
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream") orelse
+        return error.TestUnexpectedResult;
+    const shape = p3_async_manifest.lowering_shape(descriptor) orelse return error.TestUnexpectedResult;
+
+    try std.testing.expectError(error.UnsupportedP3AsyncComponent, analyze_producer_contract(tokens, descriptor, shape));
+}
+
+test "producer contract source analysis rejects a borrowed async payload" {
+    const source =
+        \\make_ticket = @host_func("do:g6-2-owned-record-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream", (StreamWriter<borrow<Ticket>>) -> Result<nil, ProducerError>)
+        \\Ticket = @wasi_resource("do:g6-2-owned-record-producer/source/ticket", { .id i64 })
+        \\ResourceEntry { .ticket Ticket }
+        \\ProducerError error = Io | Pipe | InvalidMode
+        \\produce(mode u32) -> Result<nil, ProducerError> { return Ok() }
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream") orelse
+        return error.TestUnexpectedResult;
+    const shape = p3_async_manifest.lowering_shape(descriptor) orelse return error.TestUnexpectedResult;
+
+    try std.testing.expectError(error.UnsupportedP3AsyncComponent, analyze_producer_contract(tokens, descriptor, shape));
 }
 
 test "StreamMirrorPlan accepts the bounded source to writer loop" {

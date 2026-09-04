@@ -1,9 +1,69 @@
 # Roadmap 执行状态
 
-更新时间: 2026-08-28
+更新时间: 2026-09-04
 
 **本文只保留当前状态与阻断。** 历史小任务勾选与逐条 gate 证据已从仓库移除; 追溯用 git 历史与 `CHANGELOG.md`。
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
+G5b async/resource coverage ledger: `doc/g5b_async_resource_coverage.md`。
+
+2026-09-04 增量: G6.2 general producer/resource internal contract consolidation
+已闭环。不可变 `ProducerContract` 统一 source/sink、measured payload layout、ownership
+path、transfer commit 和 terminal cleanup facts；direct record、fixed pair、
+parameterized pair、triple、nested、list-resource、dynamic-list、batched-list、
+scalar-list 九条既有 private route 通过 route-specific adapters 重放，未改变
+WAT/WIT/template/hash/marker。consolidated Component/Rust/Wasmtime gate 为
+`routes=9 canonical-parity=5 lifecycle=9 table-empty=true`；有效与无效 cleanup、
+cancel、pending future 计数保持既有 contract，四条 source/lease 负例均在 WAT 前拒绝。
+当前工具链仍为锁定的 `wasm-tools 1.258.0` / Wasmtime `48.0.1`；fresh checks 为默认
+`pass=1070 fail=0 skip=3`、`RUN_WASM=1 pass=1072 fail=0 skip=3`、
+`zig test main.zig 785/785`、`RUN_GC_CORE=1` `14/14 steps; 51/51 tests`，
+ReleaseSmall/release smoke 通过，inventory 保持 `complete_rows=15 pending_rows=15`
+且预期 exit `1`。该整理不开放 public ownership、generic/arbitrary producer、
+borrowed/list/variant async payload 或 unmeasured shape；后续扩大仍须另立 design/gate。
+
+2026-09-02 工具链/测试编排增量: current-only `do-toolchain` 锁定并实测
+`wasm-tools 1.258.0 (5c6d31c78 2026-08-24)`、Wasmtime `48.0.1`；Task 9
+Step 1 active gate、Task 8 Step 3 Rust host adapter 与 Step 4/5
+Shell-to-Zig parity 均闭合。`src/build/test/run_tests.sh` 已缩减为
+`cd src && zig build test --summary all` 的薄入口，`RUN_WASM` 与
+`RUN_GC_CORE` 由 Zig harness 继承；默认及两种 opt-in 回归均为 `14/14`
+steps、`51/51` tests。WIT map parser/model/manifest/registry schema 已完成；
+精确同步 `map<u32,u32>` manifest-backed Component lower/lift、`wit_abi_types`
+与 bounded Core WAT probe 已覆盖 `u32` key + `u32`/`text` value 的 lower/lift，
+并通过 current toolchain parse/validate 与 Rust/Wasmtime host gate；通用
+Component/WIT map lowering、async 参数 copy、Stream 跨 poll buffer 与生命周期
+扩展仍阻断。历史段落中的
+`wasm-tools 1.255.0` 仅作历史证据，不是当前 active adapter 版本。
+
+2026-09-03 增量: 精确同步 `map<u32,u32>` lower/lift route 已由
+manifest-owned measured pair-list layout、`HashMap<u32,u32>` host boundary、Do
+fixtures、负例签名漂移、Rust/Wasmtime host oracle 和 Zig harness gate 闭环。
+lower/lift 各观察一次 host call 与一次 allocation/free；该固定 shape 不扩展
+通用 map key/value、async 参数 copy、Stream 跨 poll owned buffer 或 cleanup
+authority。
+
+2026-08-30 增量: G6.2 新增私有、hash-pinned 的 nested-owned-record producer
+compiler admission，descriptor 为
+`do:g6-2-owned-record-nested-producer@0.1.0`，仅准入
+`consume-via-stream`。WIT hash 为
+`9662440709b01044544d4c4350f3e6f783a8f06aaa5c884a96a1e43a935a7543`；精确
+形状为 `Outer { inner: Inner }` 与 `Inner { ticket: own<Ticket> }`，outer 为
+4 bytes/alignment 4，语义路径 `inner.ticket` 在 canonical ABI 中为 offset `0`
+的 `i32`，stream capacity 为 `1`，source ABI 为 `(i32) -> (i32)`，seed 为
+`111`。独立 ownership mask 为 `guest=1 transferred=2`，完整 record 写入前
+按 nested path exactly once 清理，成功转移后由 host exactly once 释放；不以
+handle `0` 表示缺失。manifest/source matcher、生成 WAT/WIT、Component
+validate、21 个负例 fixture (`725`–`745`)、Rust/Wasmtime 十模式 lifecycle
+与 canonical/generated parity gate 均通过；取消/早退模式为零 completion、一次
+cancel 与 pending-future drop，repeat 为 `[111,111]`，所有模式
+`table-empty=true`。该增量记录的 pre-fix checkpoint 为 `pass=1446 fail=0 skip=3`、
+`zig test main.zig` `697/697`；当前 post-fix standard regression 为
+`pass=1446 fail=0 skip=3`、`zig test main.zig` `701/701`，扩展的
+`RUN_WASM=1` 为 `pass=1448 fail=0 skip=3`，ReleaseSmall/release smoke 与
+current-only `wasm-tools 1.258.0` 均通过。该 route 是 private fixed-shape evidence，不开放
+公共 ownership syntax、generic/arbitrary producer、general async/resource，也
+不新增 GC inventory row；inventory 仍为 `complete_rows=15 pending_rows=15`、
+预期 exit `1`。
 
 2026-08-28 增量: G6.2 完成固定三字段 `ResourceTriple` 的私有 compiler
 admission。精确 manifest/source matcher/lowering、13 个负例 fixture
@@ -345,14 +405,15 @@ fail-closed/pending。
 | 阶段 I | **closed** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构扁平拆分 | 已落地: `diagnostics` / `type_name` / `sema_error` / codegen 域竖切 / **`sema_*` 域竖切** (`sema_tokens`/`sema_shapes`/`sema_function_*`/`sema_structures`/`sema_type_checks`/`sema_imports`/`sema_control`) |
 | 目录 | 标准库 `lib/`; 工具链 `src/` (原 `tool/`) |
-| active Component tooling | `wasm-tools 1.255.0 (76e20611d 2026-07-30)` only; SHA-256 `6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`; `--dummy-names legacy` is the current async naming mode |
+| active Component tooling | `wasm-tools 1.258.0 (5c6d31c78 2026-08-24)` only; SHA-256 `282e0014d38daf233cb10fb92815813b339e2b7f8b4734f6698f0176c7d99424`; `--dummy-names legacy` is the current async naming mode and all migrated gates use `bin/do-toolchain` |
 
 当前 host/WIT GC route 例外：普通 `do build` 仅对精确的 C14 lift/lower、
 C15-B/C15-D lower、C16-C/C16-D lift、bounded mixed scalar-record lower、
 bounded byte-list record lower/lift、bounded `list<u32>` record lower 与 bounded
 `list<u32>` record lift、bounded mixed scalar-list record lower、bounded mixed
 text/u32-list record lower/lift、bounded mixed text/byte-list record lift、bounded
-mixed text/two-u32-list record lower/lift 使用
+mixed text/two-u32-list record lower/lift、精确同步 `map<u32,u32>` lower/lift
+使用
 manifest-backed GC/WIT lowering；未被这些精确的
 descriptor 精确准入的 host/WIT
 shape 仍保留

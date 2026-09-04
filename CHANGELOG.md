@@ -1,5 +1,88 @@
 # Changelog
 
+# 2026-09-04 G6.2 general producer/resource contract consolidation:
+  closed the internal immutable `ProducerContract` gate for the nine already
+  admitted private producer routes: direct record, fixed pair, parameterized
+  pair, triple, nested record, list-resource, dynamic-list, batched-list, and
+  scalar-list. The normalized contract carries measured source/sink and payload
+  layout facts, ownership paths, transfer commit, and terminal cleanup authority;
+  route-specific emitters keep their existing WAT/WIT templates, hashes, and
+  markers. The consolidated current-only Component/Rust/Wasmtime gate passes
+  `routes=9 canonical-parity=5 lifecycle=9 table-empty=true`, and the four
+  source/lease negative fixtures reject arbitrary expression, shared lease,
+  borrowed async payload, and hop overflow before WAT. Verification also passes
+  the default harness (`pass=1070 fail=0 skip=3`), `RUN_WASM=1`
+  (`pass=1072 fail=0 skip=3`), `RUN_GC_CORE=1` (`14/14 steps; 51/51 tests`),
+  `zig test main.zig` (`785/785`), ReleaseSmall, and release smoke. This does
+  not open public ownership syntax, generic/arbitrary producer lowering,
+  borrowed/list/variant async payloads, unmeasured shapes, or a GC inventory row;
+  inventory remains `complete_rows=15 pending_rows=15` with deliberate exit `1`.
+
+# 2026-09-03 Synchronous WIT map Component gate:
+  closed the exact manifest-backed `map<u32,u32>` lower/lift route. The checked-in
+  WIT worlds, source hashes, measured pair-list layout, `HashMap<u32, u32>` host
+  boundary, Do fixtures, Rust/Wasmtime oracle, negative signature fixture, and
+  Zig harness case all pass with current-only `wasm-tools 1.258.0` and Wasmtime
+  `48.0.1`. Lower and lift each perform one host call and observe one
+  allocation/free pair. This is a fixed synchronous shape only; generic map
+  values, async argument copy, Stream cross-poll buffers, and broader cleanup
+  authority remain blocked.
+
+# 2026-09-02 Zig harness entrypoint closeout:
+  recorded the pre-cutover Shell/Zig fixture parity report and reduced
+  `src/build/test/run_tests.sh` to the current-only
+  `cd src && zig build test --summary all` wrapper. Compiler, WIT map parser,
+  Component, GC, CLI/tool, socket ABI, structural, and Rust lifecycle cases are
+  now explicit Zig harness routes; `RUN_WASM` and `RUN_GC_CORE` are inherited by
+  that harness. `check_run_tests_entrypoint.sh` locks cwd, arguments, cache
+  variables, and opt-in propagation. The bounded Core map node/emitter probe now
+  passes current-toolchain parse/validate for `u32` key with `u32`/`text` values;
+  generic Component/WIT map runtime remains independently blocked on lowering
+  and lifecycle cleanup.
+
+# 2026-09-01 Toolchain adapter gate and Rust host migration checkpoint:
+  independently re-reviewed the current-only `bin/do-toolchain` active gate.
+  Direct command, path, version, subcommand, same-file alias, `rg`/`find`
+  failure propagation, root/unrelated-cwd, and negative fixtures pass. The
+  active lock remains `wasm-tools 1.258.0` with Wasmtime `48.0.1`; older
+  `1.255.0` references remain historical evidence only. Task 8 Step 3 Rust host
+  adapter batches are closed by their scoped reports. Zig harness parity and
+  Shell entrypoint reduction (Steps 4/5) remain open, and generic WIT map
+  runtime lowering remains independently blocked on Component/WIT pair-list
+  lowering and lifecycle cleanup.
+
+# 2026-08-30 G6.2 private nested-owned-record producer compiler admission:
+  admitted exactly the hash-pinned
+  `do:g6-2-owned-record-nested-producer@0.1.0` shape behind
+  `--p3-async-component`. The stream element is `Outer { inner: Inner }`,
+  where `Inner { ticket: own<Ticket> }`; the measured outer record is 4 bytes
+  with alignment 4 and the semantic `inner.ticket` leaf is flattened to an
+  `i32` at offset `0`. The capacity-one stream uses source
+  `(i32) -> (i32)` with ticket seed `111`. A separate ownership mask keeps
+  `guest=1` and `transferred=2`: the nested leaf is released exactly once
+  before transfer, while the host releases it exactly once after an accepted
+  complete record write. Handle value `0` remains valid.
+  The pinned WIT hash is
+  `9662440709b01044544d4c4350f3e6f783a8f06aaa5c884a96a1e43a935a7543`.
+  Manifest/source matching, generated WAT/WIT, Component validation, 21
+  fail-closed compiler fixtures (`725`-`745`), and canonical/generated parity
+  all pass. Rust/Wasmtime covers ten ready/pending/error/cancel/early-drop/
+  repeat/invalid modes: valid rows drop one ticket, stream, and future;
+  cancellation/early-drop rows record one cancel and pending-future drop with
+  zero future completions; `repeat` observes `[111,111]` and two cleanups;
+  `invalid` allocates no resources; every mode leaves `table-empty=true`.
+  The nested-route checkpoint was initially recorded at full regression
+  `pass=1446 fail=0 skip=3` and `zig test main.zig` `697/697`; the current
+  post-fix standard release-candidate verification is `pass=1446 fail=0 skip=3`,
+  `701/701`, while the extended `RUN_WASM=1` run is `pass=1448 fail=0 skip=3`.
+  ReleaseSmall, release smoke, current-only
+  `wasm-tools 1.255.0`, the 114-test manifest/negative gate, and all nested
+  route gates passing. This is private fixed-shape Component/compiler evidence only:
+  it does not open public `own<T>`/`borrow<T>`/`ref<T>` syntax, generic nested
+  or arbitrary producer lowering, general async/resource lowering, or a GC
+  inventory row; inventory remains `complete_rows=15 pending_rows=15` with
+  deliberate exit `1`.
+
 # 2026-08-28 G6.2 private fixed three-owned-field record compiler admission:
   admitted exactly the hash-pinned `do:g6-2-owned-record-triple-producer@0.1.0`
   shape behind `--p3-async-component`. `ResourceTriple` remains a 12-byte,

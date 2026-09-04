@@ -1,6 +1,7 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
 const sema_tokens = @import("sema_tokens.zig");
+const producer_contract = @import("codegen_component_producer_contract.zig");
 
 const find_line_end_idx = sema_tokens.find_line_end_idx;
 const find_loop_block_open = sema_tokens.find_loop_block_open;
@@ -15,6 +16,7 @@ pub const LeaseError = error{
     Unfinalized,
     InvalidDeferTransfer,
     InvalidLeaseIndex,
+    TransferBeforeCompleteWrite,
 };
 
 pub const LeaseState = enum {
@@ -113,6 +115,129 @@ pub const LeaseEnv = struct {
     fn register_defer(self: *LeaseEnv, id: u32) LeaseError!void {
         try self.require_owned(id);
         self.states[id] = .owned_deferred;
+    }
+};
+
+/// Internal producer/resource lifecycle state. This is deliberately separate
+/// from `LeaseState`, whose writer-binding semantics are kept source-compatible
+/// for existing callers. It is initialized only from an already-validated
+/// normalized ProducerContract and never introduces source-level ownership
+/// syntax.
+pub const ProducerLeaseState = enum {
+    owned,
+    borrowed_use,
+    transferred,
+    in_flight,
+    completed,
+    cancelled,
+    finalized,
+    maybe,
+};
+
+pub const ProducerLeaseEvent = union(enum) {
+    borrow_begin: u32,
+    borrow_end: u32,
+    transfer_commit: struct { id: u32, complete_write: bool },
+    begin_in_flight: u32,
+    complete: u32,
+    cancel: u32,
+    finalize: u32,
+};
+
+pub const ProducerLeaseEnv = struct {
+    states: []ProducerLeaseState,
+
+    pub fn init(allocator: std.mem.Allocator, contract: producer_contract.ProducerContract) !ProducerLeaseEnv {
+        producer_contract.validate_contract(contract) catch return error.InvalidState;
+        const ownership_count = contract.ownership.leaves.len + contract.ownership.parents.len;
+        const count = if (ownership_count == 0) 1 else ownership_count;
+        const states = try allocator.alloc(ProducerLeaseState, count);
+        for (states) |*item_state| item_state.* = .owned;
+        return .{ .states = states };
+    }
+
+    pub fn deinit(self: *ProducerLeaseEnv, allocator: std.mem.Allocator) void {
+        allocator.free(self.states);
+        self.states = &.{};
+    }
+
+    pub fn apply(self: *ProducerLeaseEnv, event: ProducerLeaseEvent) LeaseError!void {
+        return switch (event) {
+            .borrow_begin => |id| self.borrow_begin(id),
+            .borrow_end => |id| self.borrow_end(id),
+            .transfer_commit => |value| self.transfer_commit(value.id, value.complete_write),
+            .begin_in_flight => |id| self.begin_in_flight(id),
+            .complete => |id| self.complete(id),
+            .cancel => |id| self.cancel(id),
+            .finalize => |id| self.finalize(id),
+        };
+    }
+
+    pub fn join(allocator: std.mem.Allocator, left: ProducerLeaseEnv, right: ProducerLeaseEnv) !ProducerLeaseEnv {
+        if (left.states.len != right.states.len) return error.JoinConflict;
+        const states = try allocator.alloc(ProducerLeaseState, left.states.len);
+        errdefer allocator.free(states);
+        for (left.states, right.states, 0..) |left_state, right_state, idx| {
+            states[idx] = if (left_state == right_state) left_state else .maybe;
+        }
+        return .{ .states = states };
+    }
+
+    pub fn can_exit(self: *const ProducerLeaseEnv) LeaseError!void {
+        for (self.states) |item_state| {
+            switch (item_state) {
+                .finalized => {},
+                .maybe => return error.JoinConflict,
+                else => return error.Unfinalized,
+            }
+        }
+    }
+
+    fn state(self: *const ProducerLeaseEnv, id: u32) LeaseError!ProducerLeaseState {
+        if (id >= self.states.len) return error.InvalidLeaseIndex;
+        return self.states[id];
+    }
+
+    fn borrow_begin(self: *ProducerLeaseEnv, id: u32) LeaseError!void {
+        if (try self.state(id) != .owned) return error.InvalidState;
+        self.states[id] = .borrowed_use;
+    }
+
+    fn borrow_end(self: *ProducerLeaseEnv, id: u32) LeaseError!void {
+        if (try self.state(id) != .borrowed_use) return error.InvalidState;
+        self.states[id] = .owned;
+    }
+
+    fn transfer_commit(self: *ProducerLeaseEnv, id: u32, complete_write: bool) LeaseError!void {
+        if (!complete_write) return error.TransferBeforeCompleteWrite;
+        if (try self.state(id) != .owned) return error.InvalidState;
+        self.states[id] = .transferred;
+    }
+
+    fn begin_in_flight(self: *ProducerLeaseEnv, id: u32) LeaseError!void {
+        if (try self.state(id) != .transferred) return error.InvalidState;
+        self.states[id] = .in_flight;
+    }
+
+    fn complete(self: *ProducerLeaseEnv, id: u32) LeaseError!void {
+        if (try self.state(id) != .in_flight) return error.InvalidState;
+        self.states[id] = .completed;
+    }
+
+    fn cancel(self: *ProducerLeaseEnv, id: u32) LeaseError!void {
+        switch (try self.state(id)) {
+            .owned, .in_flight => self.states[id] = .cancelled,
+            .finalized => return error.AlreadyFinalized,
+            .borrowed_use, .transferred, .completed, .cancelled, .maybe => return error.InvalidState,
+        }
+    }
+
+    fn finalize(self: *ProducerLeaseEnv, id: u32) LeaseError!void {
+        switch (try self.state(id)) {
+            .completed, .cancelled => self.states[id] = .finalized,
+            .finalized => return error.AlreadyFinalized,
+            else => return error.InvalidState,
+        }
     }
 };
 
@@ -458,6 +583,7 @@ fn map_lease_error(err: LeaseError) anyerror {
         error.InvalidState, error.JoinConflict => error.StreamWriterLeasePathConflict,
         error.Unfinalized => error.StreamWriterLeaseDropped,
         error.InvalidLeaseIndex => error.StreamWriterLeasePathConflict,
+        error.TransferBeforeCompleteWrite => error.StreamWriterLeasePathConflict,
     };
 }
 
@@ -657,4 +783,107 @@ test "join accepts equal finalized branches" {
     var owned_join = joined;
     defer owned_join.deinit(std.testing.allocator);
     try std.testing.expectEqual(LeaseState.finalized, owned_join.states[0]);
+}
+
+test "producer lease transfer requires a complete write commit" {
+    const path = [_][]const u8{"ticket"};
+    const leaves = [_]producer_contract.OwnershipLeaf{.{
+        .path = &path,
+        .resource = "ticket",
+        .handle_offset = 0,
+        .drop_import = "[resource-drop]ticket",
+        .bit = 0,
+    }};
+    const value = producer_contract.ProducerContract{
+        .descriptor_id = "do:test-producer",
+        .source = .{ .module = "source", .import_name = "make", .core_params = &.{}, .core_results = &.{"i32"} },
+        .sink = .{ .module = "sink", .member = "consume", .capacity = 1, .read_import = "read", .write_import = "write", .drop_import = "drop" },
+        .payload = .{ .scalar = .{ .core_type = "i32", .byte_size = 4, .alignment = 4 } },
+        .ownership = .{ .leaves = &leaves, .parents = &.{} },
+        .terminal = .{ .close_action = "close", .abort_action = null, .cancel_action = "cancel", .cleanup_order = &.{ .resource, .stream, .future, .waitable, .frame } },
+    };
+    var env = try ProducerLeaseEnv.init(std.testing.allocator, value);
+    defer env.deinit(std.testing.allocator);
+
+    try std.testing.expectError(
+        error.TransferBeforeCompleteWrite,
+        env.apply(.{ .transfer_commit = .{ .id = 0, .complete_write = false } }),
+    );
+    try env.apply(.{ .transfer_commit = .{ .id = 0, .complete_write = true } });
+    try std.testing.expectEqual(ProducerLeaseState.transferred, env.states[0]);
+    try env.apply(.{ .begin_in_flight = 0 });
+    try std.testing.expectEqual(ProducerLeaseState.in_flight, env.states[0]);
+}
+
+test "producer lease cancellation and finalization are exactly once" {
+    const value = producer_contract.ProducerContract{
+        .descriptor_id = "do:test-producer",
+        .source = .{ .module = "source", .import_name = "make", .core_params = &.{}, .core_results = &.{"i32"} },
+        .sink = .{ .module = "sink", .member = "consume", .capacity = 1, .read_import = "read", .write_import = "write", .drop_import = "drop" },
+        .payload = .{ .scalar = .{ .core_type = "i32", .byte_size = 4, .alignment = 4 } },
+        .ownership = .{ .leaves = &.{}, .parents = &.{} },
+        .terminal = .{ .close_action = "close", .abort_action = null, .cancel_action = "cancel", .cleanup_order = &.{ .stream, .future, .waitable, .frame } },
+    };
+    var env = try ProducerLeaseEnv.init(std.testing.allocator, value);
+    defer env.deinit(std.testing.allocator);
+
+    try env.apply(.{ .cancel = 0 });
+    try std.testing.expectEqual(ProducerLeaseState.cancelled, env.states[0]);
+    try env.apply(.{ .finalize = 0 });
+    try std.testing.expectEqual(ProducerLeaseState.finalized, env.states[0]);
+    try std.testing.expectError(error.AlreadyFinalized, env.apply(.{ .finalize = 0 }));
+    try env.can_exit();
+}
+
+fn test_producer_contract() producer_contract.ProducerContract {
+    return .{
+        .descriptor_id = "do:test-producer",
+        .source = .{ .module = "source", .import_name = "make", .core_params = &.{}, .core_results = &.{"i32"} },
+        .sink = .{ .module = "sink", .member = "consume", .capacity = 1, .read_import = "read", .write_import = "write", .drop_import = "drop" },
+        .payload = .{ .scalar = .{ .core_type = "i32", .byte_size = 4, .alignment = 4 } },
+        .ownership = .{ .leaves = &.{}, .parents = &.{} },
+        .terminal = .{ .close_action = "close", .abort_action = null, .cancel_action = "cancel", .cleanup_order = &.{ .stream, .future, .waitable, .frame } },
+    };
+}
+
+test "producer lease borrowed use cannot cross poll or share transfer" {
+    var env = try ProducerLeaseEnv.init(std.testing.allocator, test_producer_contract());
+    defer env.deinit(std.testing.allocator);
+
+    try env.apply(.{ .borrow_begin = 0 });
+    try std.testing.expectError(error.InvalidState, env.apply(.{ .begin_in_flight = 0 }));
+    try std.testing.expectError(error.InvalidState, env.apply(.{ .transfer_commit = .{ .id = 0, .complete_write = true } }));
+    try std.testing.expectError(error.InvalidState, env.apply(.{ .cancel = 0 }));
+    try env.apply(.{ .borrow_end = 0 });
+    try env.apply(.{ .transfer_commit = .{ .id = 0, .complete_write = true } });
+    try env.apply(.{ .begin_in_flight = 0 });
+    try env.apply(.{ .complete = 0 });
+    try env.apply(.{ .finalize = 0 });
+    try env.can_exit();
+}
+
+test "producer lease branch join turns divergent ownership into a non-exitable maybe" {
+    var left = try ProducerLeaseEnv.init(std.testing.allocator, test_producer_contract());
+    defer left.deinit(std.testing.allocator);
+    var right = try ProducerLeaseEnv.init(std.testing.allocator, test_producer_contract());
+    defer right.deinit(std.testing.allocator);
+    try left.apply(.{ .transfer_commit = .{ .id = 0, .complete_write = true } });
+
+    var joined = try ProducerLeaseEnv.join(std.testing.allocator, left, right);
+    defer joined.deinit(std.testing.allocator);
+    try std.testing.expectEqual(ProducerLeaseState.maybe, joined.states[0]);
+    try std.testing.expectError(error.JoinConflict, joined.can_exit());
+    try std.testing.expectError(error.InvalidState, joined.apply(.{ .transfer_commit = .{ .id = 0, .complete_write = true } }));
+}
+
+test "producer lease cancellation after transfer requires in-flight state" {
+    var env = try ProducerLeaseEnv.init(std.testing.allocator, test_producer_contract());
+    defer env.deinit(std.testing.allocator);
+
+    try env.apply(.{ .transfer_commit = .{ .id = 0, .complete_write = true } });
+    try std.testing.expectError(error.InvalidState, env.apply(.{ .cancel = 0 }));
+    try env.apply(.{ .begin_in_flight = 0 });
+    try env.apply(.{ .cancel = 0 });
+    try env.apply(.{ .finalize = 0 });
+    try env.can_exit();
 }

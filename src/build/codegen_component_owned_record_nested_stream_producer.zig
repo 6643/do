@@ -6,15 +6,16 @@ const producer_contract = @import("codegen_component_producer_contract.zig");
 const wit_abi_layout = @import("wit_abi_layout.zig");
 const wit_abi_types = @import("wit_abi_types.zig");
 
-const canonical_core_wat = @embedFile("owned_record_stream_producer_template.wat");
+const canonical_core_wat = @embedFile("owned_record_nested_stream_producer_template.wat");
 
-pub const ProducerError = error{UnsupportedP3OwnedRecordStreamProducer};
+pub const ProducerError = error{UnsupportedP3OwnedRecordNestedStreamProducer};
 
-pub const OwnedRecordStreamProducerPlan = struct {
+pub const OwnedRecordNestedStreamProducerPlan = struct {
     descriptor: p3_async_manifest.Descriptor,
     source_host_name: []const u8,
     sink_host_name: []const u8,
     ticket_type_name: []const u8,
+    inner_type_name: []const u8,
     record_type_name: []const u8,
     error_type_name: []const u8,
     root_name: []const u8,
@@ -26,61 +27,51 @@ pub const OwnedRecordStreamProducerPlan = struct {
     pub fn analyze(
         tokens: []const lexer.Token,
         registry: p3_async_manifest.Registry,
-    ) ProducerError!OwnedRecordStreamProducerPlan {
-        const descriptor = registry.find("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream") orelse
-            return error.UnsupportedP3OwnedRecordStreamProducer;
-        const shape = switch (p3_async_manifest.lowering_shape(descriptor) orelse return error.UnsupportedP3OwnedRecordStreamProducer) {
-            .owned_record_stream_producer => |value| value,
-            else => return error.UnsupportedP3OwnedRecordStreamProducer,
+    ) ProducerError!OwnedRecordNestedStreamProducerPlan {
+        const descriptor = registry.find("do:g6-2-owned-record-nested-producer@0.1.0", "consume-via-stream") orelse
+            return error.UnsupportedP3OwnedRecordNestedStreamProducer;
+        const shape = switch (p3_async_manifest.lowering_shape(descriptor) orelse return error.UnsupportedP3OwnedRecordNestedStreamProducer) {
+            .record_resource_nested_stream_producer => |value| value,
+            else => return error.UnsupportedP3OwnedRecordNestedStreamProducer,
         };
 
-        const source = find_host_binding(tokens, .source) orelse return error.UnsupportedP3OwnedRecordStreamProducer;
-        const sink = find_host_binding(tokens, .sink) orelse return error.UnsupportedP3OwnedRecordStreamProducer;
+        const source = find_host_binding(tokens, .source) orelse return error.UnsupportedP3OwnedRecordNestedStreamProducer;
+        const sink = find_host_binding(tokens, .sink) orelse return error.UnsupportedP3OwnedRecordNestedStreamProducer;
         if (count_host_bindings(tokens) != 2 or
-            !std.mem.eql(u8, source.locator, "do:g6-2-owned-record-producer/source@0.1.0") or
+        !std.mem.eql(u8, source.name, "make_ticket") or
+        !std.mem.eql(u8, sink.name, "consume") or
+        !std.mem.eql(u8, source.locator, "do:g6-2-owned-record-nested-producer/source@0.1.0") or
             !std.mem.eql(u8, source.member, "make-ticket") or
             !source_signature_is_exact(tokens, source.signature_open) or
             !std.mem.eql(u8, sink.locator, descriptor.locator) or
             !std.mem.eql(u8, sink.member, descriptor.member) or
-            !sink_signature_is_exact(tokens, sink.signature_open)) return error.UnsupportedP3OwnedRecordStreamProducer;
+            !sink_signature_is_exact(tokens, sink.signature_open)) return error.UnsupportedP3OwnedRecordNestedStreamProducer;
 
-        const ticket = find_resource_decl(tokens) orelse return error.UnsupportedP3OwnedRecordStreamProducer;
+        const ticket = find_resource_decl(tokens) orelse return error.UnsupportedP3OwnedRecordNestedStreamProducer;
         if (count_resource_decls(tokens) != 1 or
             !std.mem.eql(u8, ticket.name, "Ticket") or
-            !std.mem.eql(u8, ticket.path, "do:g6-2-owned-record-producer/source/ticket") or
-            !resource_decl_is_exact(tokens, "Ticket", ticket.path)) return error.UnsupportedP3OwnedRecordStreamProducer;
-        if (count_record_decls(tokens, "ResourceEntry") != 1 or
-            !find_record_decl(tokens, "ResourceEntry", "Ticket") or
+            !std.mem.eql(u8, ticket.path, "do:g6-2-owned-record-nested-producer/source/ticket") or
+            !resource_decl_is_exact(tokens, "Ticket", ticket.path)) return error.UnsupportedP3OwnedRecordNestedStreamProducer;
+        if (count_record_decls(tokens, "Inner") != 1 or
+            count_record_decls(tokens, "Outer") != 1 or
+            !find_nested_record_decl(tokens) or
             !find_error_decl(tokens, "ProducerError") or
             count_error_decls(tokens, "ProducerError") != 1 or
             !find_producer_function(tokens, "produce", "ProducerError") or
-            !find_empty_start(tokens)) return error.UnsupportedP3OwnedRecordStreamProducer;
-        if (count_top_level_declarations(tokens) != 7 or
+            !find_empty_start(tokens)) return error.UnsupportedP3OwnedRecordNestedStreamProducer;
+        if (count_top_level_declarations(tokens) != 8 or
             count_top_level_functions(tokens) != 2 or
             count_named_functions(tokens, "produce") != 1 or
             count_named_functions(tokens, "start") != 1 or
             count_token_pair(tokens, "async") != 0 or
             count_intrinsic(tokens, "async") != 0 or
             count_intrinsic(tokens, "await") != 0 or
-            count_intrinsic(tokens, "cancel") != 0) return error.UnsupportedP3OwnedRecordStreamProducer;
+            count_intrinsic(tokens, "cancel") != 0) return error.UnsupportedP3OwnedRecordNestedStreamProducer;
 
-        if (!std.mem.eql(u8, shape.element, "resource-entry") or
-            shape.record_layout.byte_size != 4 or
-            shape.record_layout.fields.len != 1 or
-            shape.record_layout.source_fields.len != 1 or
-            !std.mem.eql(u8, shape.record_layout.name, "resource-entry") or
-            !std.mem.eql(u8, shape.record_layout.fields[0].name, "ticket") or
-            !std.mem.eql(u8, shape.record_layout.fields[0].core_type, "i32") or
-            shape.record_layout.fields[0].offset != 0 or
-            !std.mem.eql(u8, shape.record_layout.source_fields[0].name, "ticket") or
-            !std.mem.eql(u8, shape.record_layout.source_fields[0].source_type, "ticket") or
-            shape.record_layout.source_fields[0].ownership != .own or
-            shape.record_layout.source_fields[0].resource == null or
-            !std.mem.eql(u8, shape.record_layout.source_fields[0].resource.?, "ticket") or
-            shape.record_layout.source_fields[0].drop_import == null or
-            !std.mem.eql(u8, shape.record_layout.source_fields[0].drop_import.?, "[resource-drop]ticket") or
+        if (!std.mem.eql(u8, shape.element, "outer") or
+            !nested_layout_is_exact(shape.record_layout) or
             shape.producer.stream_capacity != 1 or
-            !std.mem.eql(u8, shape.producer.source_module, "do:g6-2-owned-record-producer/source@0.1.0") or
+            !std.mem.eql(u8, shape.producer.source_module, "do:g6-2-owned-record-nested-producer/source@0.1.0") or
             !std.mem.eql(u8, shape.producer.source_import_name, "make-ticket") or
             !std.mem.eql(u8, shape.producer.resource_drop_import, "[resource-drop]ticket") or
             !std.mem.eql(u8, shape.producer.terminal, "task-return") or
@@ -89,16 +80,17 @@ pub const OwnedRecordStreamProducerPlan = struct {
             shape.producer.runtime_mode_param == null or
             !std.mem.eql(u8, shape.producer.runtime_mode_param.?, "u32") or
             shape.producer.batch_count != null or
-            shape.producer.batch_lengths != null) return error.UnsupportedP3OwnedRecordStreamProducer;
+            shape.producer.batch_lengths != null) return error.UnsupportedP3OwnedRecordNestedStreamProducer;
 
         const contract = producer_contract.producer_contract_from_descriptor(descriptor) catch
-            return error.UnsupportedP3OwnedRecordStreamProducer;
+            return error.UnsupportedP3OwnedRecordNestedStreamProducer;
         return .{
             .descriptor = descriptor,
             .source_host_name = source.name,
             .sink_host_name = sink.name,
             .ticket_type_name = ticket.name,
-            .record_type_name = "ResourceEntry",
+            .inner_type_name = "Inner",
+            .record_type_name = "Outer",
             .error_type_name = "ProducerError",
             .root_name = "produce",
             .mode_name = "mode",
@@ -121,16 +113,16 @@ const HostBinding = struct {
 
 const ResourceDecl = struct { name: []const u8, path: []const u8 };
 
-pub fn emit_component_wat(allocator: std.mem.Allocator, plan: OwnedRecordStreamProducerPlan) ![]u8 {
+pub fn emit_component_wat(allocator: std.mem.Allocator, plan: OwnedRecordNestedStreamProducerPlan) ![]u8 {
     try validate_internal_plans(allocator, plan);
     if (plan.layout.byte_size != 4 or plan.layout.fields.len != 1 or
         plan.layout.fields[0].offset != 0 or plan.producer.stream_capacity != 1 or
-        !std.mem.eql(u8, plan.layout.fields[0].name, "ticket")) return error.UnsupportedP3OwnedRecordStreamProducer;
+        !std.mem.eql(u8, plan.layout.fields[0].name, "ticket")) return error.UnsupportedP3OwnedRecordNestedStreamProducer;
 
     const wat = try generated_text.alloc_block(allocator, 0, canonical_core_wat);
     if (std.mem.indexOf(u8, wat, "__arc_") != null) {
         allocator.free(wat);
-        return error.UnsupportedP3OwnedRecordStreamProducer;
+        return error.UnsupportedP3OwnedRecordNestedStreamProducer;
     }
     return wat;
 }
@@ -138,22 +130,27 @@ pub fn emit_component_wat(allocator: std.mem.Allocator, plan: OwnedRecordStreamP
 pub fn emit_component_wat_for_tokens(allocator: std.mem.Allocator, tokens: []const lexer.Token) ![]u8 {
     var registry = try p3_async_manifest.Registry.load(allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(allocator);
-    const plan = try OwnedRecordStreamProducerPlan.analyze(tokens, registry);
+    const plan = try OwnedRecordNestedStreamProducerPlan.analyze(tokens, registry);
     return emit_component_wat(allocator, plan);
 }
 
-pub fn emit_component_wit(allocator: std.mem.Allocator, plan: OwnedRecordStreamProducerPlan) ![]u8 {
+pub fn emit_component_wit(allocator: std.mem.Allocator, plan: OwnedRecordNestedStreamProducerPlan) ![]u8 {
     try validate_internal_plans(allocator, plan);
-    if (!std.mem.eql(u8, plan.descriptor.wit.world, "owned-record-producer")) {
-        return error.UnsupportedP3OwnedRecordStreamProducer;
+    if (!std.mem.eql(u8, plan.descriptor.wit.world, "owned-record-nested-producer")) {
+        return error.UnsupportedP3OwnedRecordNestedStreamProducer;
     }
     return generated_text.alloc_block(allocator, 0,
-        \\package do:g6-2-owned-record-producer@0.1.0;
+        \\package do:g6-2-owned-record-nested-producer@0.1.0;
         \\
         \\interface types {
         \\  enum error-code { io, pipe, invalid-mode }
         \\  resource ticket {}
-        \\  record resource-entry { ticket: own<ticket> }
+        \\  record inner {
+        \\    ticket: own<ticket>,
+        \\  }
+        \\  record outer {
+        \\    inner: inner,
+        \\  }
         \\}
         \\
         \\interface source {
@@ -162,13 +159,13 @@ pub fn emit_component_wit(allocator: std.mem.Allocator, plan: OwnedRecordStreamP
         \\}
         \\
         \\interface sink {
-        \\  use types.{error-code, resource-entry};
+        \\  use types.{error-code, outer};
         \\  consume-via-stream: async func(
-        \\    data: stream<resource-entry>
+        \\    data: stream<outer>
         \\  ) -> result<_, error-code>;
         \\}
         \\
-        \\world owned-record-producer {
+        \\world owned-record-nested-producer {
         \\  use types.{error-code};
         \\  import source;
         \\  import sink;
@@ -181,29 +178,64 @@ pub fn emit_component_wit(allocator: std.mem.Allocator, plan: OwnedRecordStreamP
 pub fn emit_component_wit_for_tokens(allocator: std.mem.Allocator, tokens: []const lexer.Token) ![]u8 {
     var registry = try p3_async_manifest.Registry.load(allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(allocator);
-    const plan = try OwnedRecordStreamProducerPlan.analyze(tokens, registry);
+    const plan = try OwnedRecordNestedStreamProducerPlan.analyze(tokens, registry);
     return emit_component_wit(allocator, plan);
 }
 
-fn validate_internal_plans(allocator: std.mem.Allocator, plan: OwnedRecordStreamProducerPlan) ProducerError!void {
-    producer_contract.validate_contract(plan.contract) catch return error.UnsupportedP3OwnedRecordStreamProducer;
+fn validate_internal_plans(allocator: std.mem.Allocator, plan: OwnedRecordNestedStreamProducerPlan) ProducerError!void {
+    producer_contract.validate_contract(plan.contract) catch return error.UnsupportedP3OwnedRecordNestedStreamProducer;
     if (!std.mem.eql(u8, plan.contract.descriptor_id, plan.descriptor.locator) or
-        plan.contract.sink.capacity != plan.producer.stream_capacity) return error.UnsupportedP3OwnedRecordStreamProducer;
+        plan.contract.sink.capacity != plan.producer.stream_capacity) return error.UnsupportedP3OwnedRecordNestedStreamProducer;
     const record = switch (plan.contract.payload) {
         .record => |value| value,
-        else => return error.UnsupportedP3OwnedRecordStreamProducer,
+        else => return error.UnsupportedP3OwnedRecordNestedStreamProducer,
     };
     if (record.byte_size != plan.layout.byte_size or record.fields.len != plan.layout.fields.len) {
-        return error.UnsupportedP3OwnedRecordStreamProducer;
+        return error.UnsupportedP3OwnedRecordNestedStreamProducer;
     }
-    var ticket = wit_abi_types.AbiType.resource(allocator, "ticket", .own) catch return error.UnsupportedP3OwnedRecordStreamProducer;
-    defer ticket.deinit();
-    var entry = wit_abi_types.AbiType.record(allocator, &.{
-        .{ .name = "ticket", .value = &ticket },
-    }) catch return error.UnsupportedP3OwnedRecordStreamProducer;
-    defer entry.deinit();
+    const shape = switch (p3_async_manifest.lowering_shape(plan.descriptor) orelse
+        return error.UnsupportedP3OwnedRecordNestedStreamProducer) {
+        .record_resource_nested_stream_producer => |value| value,
+        else => return error.UnsupportedP3OwnedRecordNestedStreamProducer,
+    };
+    if (!std.mem.eql(u8, shape.element, "outer") or
+        !std.mem.eql(u8, shape.stream.element, "outer") or
+        !nested_layout_is_exact(shape.record_layout) or
+        !nested_layout_is_exact(plan.layout) or
+        !std.mem.eql(u8, plan.ticket_type_name, "Ticket") or
+        !std.mem.eql(u8, plan.inner_type_name, "Inner") or
+        !std.mem.eql(u8, plan.record_type_name, "Outer") or
+        !std.mem.eql(u8, plan.error_type_name, "ProducerError") or
+        !std.mem.eql(u8, plan.root_name, "produce") or
+        !std.mem.eql(u8, plan.mode_name, "mode") or
+        !std.mem.eql(u8, shape.producer.source_module, plan.producer.source_module) or
+        !std.mem.eql(u8, shape.producer.source_import_name, plan.producer.source_import_name) or
+        !std.mem.eql(u8, shape.producer.resource_drop_import, plan.producer.resource_drop_import) or
+        shape.producer.stream_capacity != plan.producer.stream_capacity or
+        !std.mem.eql(u8, shape.producer.terminal, plan.producer.terminal) or
+        !std.mem.eql(u8, shape.producer.runtime_mode_param.?, plan.producer.runtime_mode_param.?) or
+        !valid_named_stream_operation(shape.stream.new, "[stream-new-0]consume-via-stream", &.{}, &.{ "i64" }) or
+        !valid_named_stream_operation(shape.stream.cancel_read, "[stream-cancel-read-0]consume-via-stream", &.{ "i32" }, &.{ "i32" }) or
+        !valid_named_stream_operation(shape.stream.cancel_write, "[stream-cancel-write-0]consume-via-stream", &.{ "i32" }, &.{ "i32" }) or
+        !valid_named_stream_operation(shape.stream.drop_readable, "[stream-drop-readable-0]consume-via-stream", &.{ "i32" }, &.{}) or
+        !valid_named_stream_operation(shape.stream.drop_writable, "[stream-drop-writable-0]consume-via-stream", &.{ "i32" }, &.{}) or
+        !valid_named_stream_operation(shape.stream.read, "[async-lower][stream-read-0]consume-via-stream", &.{ "i32", "i32", "i32" }, &.{ "i32" }) or
+        !valid_named_stream_operation(shape.stream.write, "[async-lower][stream-write-0]consume-via-stream", &.{ "i32", "i32", "i32" }, &.{ "i32" }))
+        return error.UnsupportedP3OwnedRecordNestedStreamProducer;
 
-    var layout = wit_abi_layout.LayoutPlan.record(allocator, &entry, .{
+    var ticket = wit_abi_types.AbiType.resource(allocator, "ticket", .own) catch
+        return error.UnsupportedP3OwnedRecordNestedStreamProducer;
+    defer ticket.deinit();
+    var inner = wit_abi_types.AbiType.record(allocator, &.{
+        .{ .name = "ticket", .value = &ticket },
+    }) catch return error.UnsupportedP3OwnedRecordNestedStreamProducer;
+    defer inner.deinit();
+    var outer = wit_abi_types.AbiType.record(allocator, &.{
+        .{ .name = "inner", .value = &inner },
+    }) catch return error.UnsupportedP3OwnedRecordNestedStreamProducer;
+    defer outer.deinit();
+
+    var layout = wit_abi_layout.LayoutPlan.record(allocator, &outer, .{
         .byte_size = plan.layout.byte_size,
         .alignment = 4,
         .fields = &.{.{
@@ -213,12 +245,11 @@ fn validate_internal_plans(allocator: std.mem.Allocator, plan: OwnedRecordStream
             .alignment = 4,
             .indirect = null,
         }},
-    }) catch return error.UnsupportedP3OwnedRecordStreamProducer;
+    }) catch return error.UnsupportedP3OwnedRecordNestedStreamProducer;
     defer layout.deinit();
     if (layout.byte_size != 4 or layout.alignment != 4 or layout.record_fields.len != 1 or
-        layout.record_fields[0].offset != 0 or !std.mem.eql(u8, layout.record_fields[0].name, "ticket")) {
-        return error.UnsupportedP3OwnedRecordStreamProducer;
-    }
+        layout.record_fields[0].offset != 0 or !std.mem.eql(u8, layout.record_fields[0].name, "ticket"))
+        return error.UnsupportedP3OwnedRecordNestedStreamProducer;
 }
 
 fn find_host_binding(tokens: []const lexer.Token, wanted: BindingKind) ?HostBinding {
@@ -328,7 +359,7 @@ fn source_signature_is_exact(tokens: []const lexer.Token, open: usize) bool {
 fn sink_signature_is_exact(tokens: []const lexer.Token, open: usize) bool {
     const close = find_matching(tokens, open, "(", ")") orelse return false;
     return close == open + 5 and tok_eq(tokens[open + 1], "StreamWriter") and tok_eq(tokens[open + 2], "<") and
-        tok_eq(tokens[open + 3], "ResourceEntry") and tok_eq(tokens[open + 4], ">") and
+        tok_eq(tokens[open + 3], "Outer") and tok_eq(tokens[open + 4], ">") and
         tok_eq(tokens[close + 1], "-") and tok_eq(tokens[close + 2], ">") and
         tok_eq(tokens[close + 3], "Result") and tok_eq(tokens[close + 4], "<") and tok_eq(tokens[close + 5], "nil") and
         tok_eq(tokens[close + 6], ",") and tok_eq(tokens[close + 7], "ProducerError") and tok_eq(tokens[close + 8], ">");
@@ -357,10 +388,17 @@ fn resource_decl_is_exact(tokens: []const lexer.Token, name: []const u8, path: [
     return false;
 }
 
-fn find_record_decl(tokens: []const lexer.Token, name: []const u8, field_type: []const u8) bool {
+fn find_nested_record_decl(tokens: []const lexer.Token) bool {
+    return find_record_decl(tokens, "Inner", "ticket", "Ticket") and
+        find_record_decl(tokens, "Outer", "inner", "Inner");
+}
+
+fn find_record_decl(tokens: []const lexer.Token, name: []const u8, field_name: []const u8, field_type: []const u8) bool {
     var idx: usize = 0;
-    while (idx + 5 < tokens.len) : (idx += 1) {
-        if (!tok_eq(tokens[idx], name) or !tok_eq(tokens[idx + 1], "{") or !tok_eq(tokens[idx + 2], ".ticket") or
+    while (idx + 4 < tokens.len) : (idx += 1) {
+        if (!tok_eq(tokens[idx], name) or !tok_eq(tokens[idx + 1], "{") or
+            !std.mem.startsWith(u8, tokens[idx + 2].lexeme, ".") or
+            !std.mem.eql(u8, tokens[idx + 2].lexeme[1..], field_name) or
             !tok_eq(tokens[idx + 3], field_type) or !tok_eq(tokens[idx + 4], "}")) continue;
         return true;
     }
@@ -481,11 +519,38 @@ fn tok_eq(token: lexer.Token, expected: []const u8) bool {
     return std.mem.eql(u8, token.lexeme, expected);
 }
 
+fn nested_layout_is_exact(layout: p3_async_manifest.RecordLayout) bool {
+    if (!std.mem.eql(u8, layout.name, "outer") or layout.byte_size != 4 or
+        layout.fields.len != 1 or layout.source_fields.len != 1) return false;
+    const field = layout.fields[0];
+    const outer = layout.source_fields[0];
+    if (!std.mem.eql(u8, field.name, "ticket") or !std.mem.eql(u8, field.core_type, "i32") or field.offset != 0 or
+        !std.mem.eql(u8, outer.name, "inner") or !std.mem.eql(u8, outer.source_type, "inner") or
+        outer.storage.len != 0 or outer.ownership != .none or outer.resource != null or outer.drop_import != null or
+        outer.nested_fields.len != 1) return false;
+    const leaf = outer.nested_fields[0];
+    return std.mem.eql(u8, leaf.name, "ticket") and std.mem.eql(u8, leaf.source_type, "ticket") and
+        leaf.storage.len == 1 and std.mem.eql(u8, leaf.storage[0], "ticket") and leaf.ownership == .own and
+        leaf.resource != null and std.mem.eql(u8, leaf.resource.?, "ticket") and leaf.drop_import != null and
+        std.mem.eql(u8, leaf.drop_import.?, "[resource-drop]ticket") and leaf.nested_fields.len == 0;
+}
+
+fn valid_named_stream_operation(operation: p3_async_manifest.StreamOperation, name: []const u8, params: []const []const u8, results: []const []const u8) bool {
+    return std.mem.eql(u8, operation.import_name, name) and equal_core_types(operation.core_params, params) and equal_core_types(operation.core_results, results);
+}
+
+fn equal_core_types(actual: []const []const u8, expected: []const []const u8) bool {
+    if (actual.len != expected.len) return false;
+    for (actual, expected) |left, right| if (!std.mem.eql(u8, left, right)) return false;
+    return true;
+}
+
 const exact_source =
-    \\make_ticket = @host_func("do:g6-2-owned-record-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
-    \\consume = @host_async_func("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream", (StreamWriter<ResourceEntry>) -> Result<nil, ProducerError>)
-    \\Ticket = @wasi_resource("do:g6-2-owned-record-producer/source/ticket", { .id i64 })
-    \\ResourceEntry { .ticket Ticket }
+    \\make_ticket = @host_func("do:g6-2-owned-record-nested-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+    \\consume = @host_async_func("do:g6-2-owned-record-nested-producer@0.1.0", "consume-via-stream", (StreamWriter<Outer>) -> Result<nil, ProducerError>)
+    \\Ticket = @wasi_resource("do:g6-2-owned-record-nested-producer/source/ticket", { .id i64 })
+    \\Inner { .ticket Ticket }
+    \\Outer { .inner Inner }
     \\ProducerError error = Io | Pipe | InvalidMode
     \\produce(mode u32) -> Result<nil, ProducerError> {
     \\    return Ok()
@@ -499,8 +564,8 @@ fn expect_plan_error(source: []const u8) !void {
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     try std.testing.expectError(
-        error.UnsupportedP3OwnedRecordStreamProducer,
-        OwnedRecordStreamProducerPlan.analyze(tokens, registry),
+        error.UnsupportedP3OwnedRecordNestedStreamProducer,
+        OwnedRecordNestedStreamProducerPlan.analyze(tokens, registry),
     );
 }
 
@@ -510,48 +575,71 @@ test "owned record producer plan accepts the exact Do source" {
     const tokens = try lexer.tokenize(std.testing.allocator, exact_source);
     defer std.testing.allocator.free(tokens);
 
-    const plan = try OwnedRecordStreamProducerPlan.analyze(tokens, registry);
+    const plan = try OwnedRecordNestedStreamProducerPlan.analyze(tokens, registry);
     try std.testing.expectEqualStrings("make_ticket", plan.source_host_name);
     try std.testing.expectEqualStrings("consume", plan.sink_host_name);
     try std.testing.expectEqualStrings("Ticket", plan.ticket_type_name);
-    try std.testing.expectEqualStrings("ResourceEntry", plan.record_type_name);
+    try std.testing.expectEqualStrings("Outer", plan.record_type_name);
     try std.testing.expectEqualStrings("ProducerError", plan.error_type_name);
     try std.testing.expectEqualStrings("produce", plan.root_name);
     try std.testing.expectEqualStrings("mode", plan.mode_name);
     try std.testing.expectEqual(@as(u32, 4), plan.layout.byte_size);
+    try std.testing.expectEqualStrings("Inner", plan.inner_type_name);
     try std.testing.expectEqual(@as(u32, 1), plan.producer.stream_capacity);
     try std.testing.expectEqualStrings(plan.descriptor.locator, plan.contract.descriptor_id);
     try std.testing.expectEqual(@as(usize, 1), plan.contract.ownership.leaves.len);
-    try std.testing.expectEqual(@as(u32, 0), plan.contract.ownership.leaves[0].handle_offset);
+    try std.testing.expectEqual(@as(usize, 1), plan.contract.ownership.parents.len);
+    try std.testing.expectEqualStrings("inner", plan.contract.ownership.parents[0].path[0]);
 }
 
-test "owned record producer emitter preserves the pinned direct-record contracts" {
+test "owned record nested producer emitter preserves the pinned nested contracts" {
     var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(std.testing.allocator);
     const tokens = try lexer.tokenize(std.testing.allocator, exact_source);
     defer std.testing.allocator.free(tokens);
 
-    const plan = try OwnedRecordStreamProducerPlan.analyze(tokens, registry);
+    const plan = try OwnedRecordNestedStreamProducerPlan.analyze(tokens, registry);
     const wat = try emit_component_wat(std.testing.allocator, plan);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "[producer-record-byte-size] 4") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "[producer-record-transfer]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[producer-nested-path] inner.ticket") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "[producer-resource-drop-exactly-once]") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 
     const wit = try emit_component_wit(std.testing.allocator, plan);
     defer std.testing.allocator.free(wit);
-    try std.testing.expect(std.mem.indexOf(u8, wit, "package do:g6-2-owned-record-producer@0.1.0;\n") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wit, "data: stream<resource-entry>\n") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wit, "world owned-record-producer") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "package do:g6-2-owned-record-nested-producer@0.1.0;\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "data: stream<outer>\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "record inner") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "inner: inner") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "world owned-record-nested-producer") != null);
+}
+
+test "owned record nested producer template preserves canonical WAT markers" {
+    for ([_][]const u8{ "__arc_", "ref.null", "struct.new", "array.new" }) |forbidden| {
+        try std.testing.expect(std.mem.indexOf(u8, canonical_core_wat, forbidden) == null);
+    }
+    for ([_][]const u8{
+        "[producer-nested-path] inner.ticket",
+        "[producer-nested-ticket-offset] 0",
+        "[producer-record-byte-size] 4",
+        "[producer-ownership-mask] guest=1 transferred=2",
+        "[producer-record-transfer]",
+        "[producer-resource-drop-exactly-once]",
+        "[producer-child-before-parent-cleanup]",
+    }) |marker| {
+        try std.testing.expect(std.mem.indexOf(u8, canonical_core_wat, marker) != null);
+    }
 }
 
 test "owned record producer plan rejects list-shaped sink" {
     try expect_plan_error(
-        \\make_ticket = @host_func("do:g6-2-owned-record-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
-        \\consume = @host_async_func("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream", (StreamWriter<[ResourceEntry]>) -> Result<nil, ProducerError>)
-        \\Ticket = @wasi_resource("do:g6-2-owned-record-producer/source/ticket", { .id i64 })
-        \\ResourceEntry { .ticket Ticket }
+        \\make_ticket = @host_func("do:g6-2-owned-record-nested-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-owned-record-nested-producer@0.1.0", "consume-via-stream", (StreamWriter<[Outer]>) -> Result<nil, ProducerError>)
+        \\Ticket = @wasi_resource("do:g6-2-owned-record-nested-producer/source/ticket", { .id i64 })
+        \\Inner { .ticket Ticket }
+        \\Outer { .inner Inner }
         \\ProducerError error = Io | Pipe | InvalidMode
         \\produce(mode u32) -> Result<nil, ProducerError> { return Ok() }
         \\start() {}
@@ -560,10 +648,11 @@ test "owned record producer plan rejects list-shaped sink" {
 
 test "owned record producer plan rejects an unrelated record element" {
     try expect_plan_error(
-        \\make_ticket = @host_func("do:g6-2-owned-record-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
-        \\consume = @host_async_func("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream", (StreamWriter<OtherEntry>) -> Result<nil, ProducerError>)
-        \\Ticket = @wasi_resource("do:g6-2-owned-record-producer/source/ticket", { .id i64 })
-        \\ResourceEntry { .ticket Ticket }
+        \\make_ticket = @host_func("do:g6-2-owned-record-nested-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-owned-record-nested-producer@0.1.0", "consume-via-stream", (StreamWriter<OtherEntry>) -> Result<nil, ProducerError>)
+        \\Ticket = @wasi_resource("do:g6-2-owned-record-nested-producer/source/ticket", { .id i64 })
+        \\Inner { .ticket Ticket }
+        \\Outer { .inner Inner }
         \\OtherEntry { .ticket Ticket }
         \\ProducerError error = Io | Pipe | InvalidMode
         \\produce(mode u32) -> Result<nil, ProducerError> { return Ok() }
@@ -573,10 +662,11 @@ test "owned record producer plan rejects an unrelated record element" {
 
 test "owned record producer plan rejects a borrowed record field" {
     try expect_plan_error(
-        \\make_ticket = @host_func("do:g6-2-owned-record-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
-        \\consume = @host_async_func("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream", (StreamWriter<ResourceEntry>) -> Result<nil, ProducerError>)
-        \\Ticket = @wasi_resource("do:g6-2-owned-record-producer/source/ticket", { .id i64 })
-        \\ResourceEntry { .ticket borrow<Ticket> }
+        \\make_ticket = @host_func("do:g6-2-owned-record-nested-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-owned-record-nested-producer@0.1.0", "consume-via-stream", (StreamWriter<Outer>) -> Result<nil, ProducerError>)
+        \\Ticket = @wasi_resource("do:g6-2-owned-record-nested-producer/source/ticket", { .id i64 })
+        \\Inner { .ticket borrow<Ticket> }
+        \\Outer { .inner Inner }
         \\ProducerError error = Io | Pipe | InvalidMode
         \\produce(mode u32) -> Result<nil, ProducerError> { return Ok() }
         \\start() {}
@@ -585,11 +675,12 @@ test "owned record producer plan rejects a borrowed record field" {
 
 test "owned record producer plan rejects a second host binding" {
     try expect_plan_error(
-        \\make_ticket = @host_func("do:g6-2-owned-record-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
-        \\consume = @host_async_func("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream", (StreamWriter<ResourceEntry>) -> Result<nil, ProducerError>)
+        \\make_ticket = @host_func("do:g6-2-owned-record-nested-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-owned-record-nested-producer@0.1.0", "consume-via-stream", (StreamWriter<Outer>) -> Result<nil, ProducerError>)
         \\extra = @host_func("env", "extra", () -> nil)
-        \\Ticket = @wasi_resource("do:g6-2-owned-record-producer/source/ticket", { .id i64 })
-        \\ResourceEntry { .ticket Ticket }
+        \\Ticket = @wasi_resource("do:g6-2-owned-record-nested-producer/source/ticket", { .id i64 })
+        \\Inner { .ticket Ticket }
+        \\Outer { .inner Inner }
         \\ProducerError error = Io | Pipe | InvalidMode
         \\produce(mode u32) -> Result<nil, ProducerError> { return Ok() }
         \\start() {}
@@ -598,10 +689,11 @@ test "owned record producer plan rejects a second host binding" {
 
 test "owned record producer plan rejects a changed resource path" {
     try expect_plan_error(
-        \\make_ticket = @host_func("do:g6-2-owned-record-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
-        \\consume = @host_async_func("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream", (StreamWriter<ResourceEntry>) -> Result<nil, ProducerError>)
-        \\Ticket = @wasi_resource("do:g6-2-owned-record-producer/source/other-ticket", { .id i64 })
-        \\ResourceEntry { .ticket Ticket }
+        \\make_ticket = @host_func("do:g6-2-owned-record-nested-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-owned-record-nested-producer@0.1.0", "consume-via-stream", (StreamWriter<Outer>) -> Result<nil, ProducerError>)
+        \\Ticket = @wasi_resource("do:g6-2-owned-record-nested-producer/source/other-ticket", { .id i64 })
+        \\Inner { .ticket Ticket }
+        \\Outer { .inner Inner }
         \\ProducerError error = Io | Pipe | InvalidMode
         \\produce(mode u32) -> Result<nil, ProducerError> { return Ok() }
         \\start() {}
@@ -610,10 +702,11 @@ test "owned record producer plan rejects a changed resource path" {
 
 test "owned record producer plan rejects an async ticket source" {
     try expect_plan_error(
-        \\make_ticket = @host_async_func("do:g6-2-owned-record-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
-        \\consume = @host_async_func("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream", (StreamWriter<ResourceEntry>) -> Result<nil, ProducerError>)
-        \\Ticket = @wasi_resource("do:g6-2-owned-record-producer/source/ticket", { .id i64 })
-        \\ResourceEntry { .ticket Ticket }
+        \\make_ticket = @host_async_func("do:g6-2-owned-record-nested-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-owned-record-nested-producer@0.1.0", "consume-via-stream", (StreamWriter<Outer>) -> Result<nil, ProducerError>)
+        \\Ticket = @wasi_resource("do:g6-2-owned-record-nested-producer/source/ticket", { .id i64 })
+        \\Inner { .ticket Ticket }
+        \\Outer { .inner Inner }
         \\ProducerError error = Io | Pipe | InvalidMode
         \\produce(mode u32) -> Result<nil, ProducerError> { return Ok() }
         \\start() {}
@@ -622,10 +715,11 @@ test "owned record producer plan rejects an async ticket source" {
 
 test "owned record producer plan rejects a non-sentinel producer body" {
     try expect_plan_error(
-        \\make_ticket = @host_func("do:g6-2-owned-record-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
-        \\consume = @host_async_func("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream", (StreamWriter<ResourceEntry>) -> Result<nil, ProducerError>)
-        \\Ticket = @wasi_resource("do:g6-2-owned-record-producer/source/ticket", { .id i64 })
-        \\ResourceEntry { .ticket Ticket }
+        \\make_ticket = @host_func("do:g6-2-owned-record-nested-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-owned-record-nested-producer@0.1.0", "consume-via-stream", (StreamWriter<Outer>) -> Result<nil, ProducerError>)
+        \\Ticket = @wasi_resource("do:g6-2-owned-record-nested-producer/source/ticket", { .id i64 })
+        \\Inner { .ticket Ticket }
+        \\Outer { .inner Inner }
         \\ProducerError error = Io | Pipe | InvalidMode
         \\produce(mode u32) -> Result<nil, ProducerError> { return Err(Io) }
         \\start() {}
@@ -634,10 +728,11 @@ test "owned record producer plan rejects a non-sentinel producer body" {
 
 test "owned record producer plan rejects an await intrinsic" {
     try expect_plan_error(
-        \\make_ticket = @host_func("do:g6-2-owned-record-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
-        \\consume = @host_async_func("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream", (StreamWriter<ResourceEntry>) -> Result<nil, ProducerError>)
-        \\Ticket = @wasi_resource("do:g6-2-owned-record-producer/source/ticket", { .id i64 })
-        \\ResourceEntry { .ticket Ticket }
+        \\make_ticket = @host_func("do:g6-2-owned-record-nested-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
+        \\consume = @host_async_func("do:g6-2-owned-record-nested-producer@0.1.0", "consume-via-stream", (StreamWriter<Outer>) -> Result<nil, ProducerError>)
+        \\Ticket = @wasi_resource("do:g6-2-owned-record-nested-producer/source/ticket", { .id i64 })
+        \\Inner { .ticket Ticket }
+        \\Outer { .inner Inner }
         \\ProducerError error = Io | Pipe | InvalidMode
         \\produce(mode u32) -> Result<nil, ProducerError> { return Ok() }
         \\start() { @await(mode) }

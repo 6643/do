@@ -2,6 +2,7 @@ const std = @import("std");
 const generated_text = @import("codegen_text.zig");
 const lexer = @import("lexer.zig");
 const p3_async_manifest = @import("p3_async_manifest.zig");
+const producer_contract = @import("codegen_component_producer_contract.zig");
 const wit_abi_layout = @import("wit_abi_layout.zig");
 const wit_abi_types = @import("wit_abi_types.zig");
 
@@ -23,6 +24,7 @@ pub const OwnedRecordPairStreamProducerPlan = struct {
     mode_name: []const u8,
     layout: p3_async_manifest.RecordLayout,
     producer: p3_async_manifest.ProducerCanonical,
+    contract: producer_contract.ProducerContract,
 
     pub fn analyze(
         tokens: []const lexer.Token,
@@ -100,6 +102,8 @@ pub const OwnedRecordPairStreamProducerPlan = struct {
             shape.producer.batch_lengths != null)
             return error.UnsupportedP3OwnedRecordPairStreamProducer;
 
+        const contract = producer_contract.producer_contract_from_descriptor(descriptor) catch
+            return error.UnsupportedP3OwnedRecordPairStreamProducer;
         return .{
             .descriptor = descriptor,
             .source_host_name = source.name,
@@ -111,6 +115,7 @@ pub const OwnedRecordPairStreamProducerPlan = struct {
             .mode_name = "mode",
             .layout = shape.record_layout,
             .producer = shape.producer,
+            .contract = contract,
         };
     }
 };
@@ -195,6 +200,16 @@ pub fn emit_component_wit_for_tokens(allocator: std.mem.Allocator, tokens: []con
 }
 
 fn validate_internal_plans(allocator: std.mem.Allocator, plan: OwnedRecordPairStreamProducerPlan) ProducerError!void {
+    producer_contract.validate_contract(plan.contract) catch return error.UnsupportedP3OwnedRecordPairStreamProducer;
+    if (!std.mem.eql(u8, plan.contract.descriptor_id, plan.descriptor.locator) or
+        plan.contract.sink.capacity != plan.producer.stream_capacity) return error.UnsupportedP3OwnedRecordPairStreamProducer;
+    const record = switch (plan.contract.payload) {
+        .record => |value| value,
+        else => return error.UnsupportedP3OwnedRecordPairStreamProducer,
+    };
+    if (record.byte_size != plan.layout.byte_size or record.fields.len != plan.layout.fields.len) {
+        return error.UnsupportedP3OwnedRecordPairStreamProducer;
+    }
     var ticket = wit_abi_types.AbiType.resource(allocator, "ticket", .own) catch
         return error.UnsupportedP3OwnedRecordPairStreamProducer;
     defer ticket.deinit();
@@ -516,6 +531,9 @@ test "owned record pair producer plan and emitter accept only the pinned shape" 
     try std.testing.expectEqualStrings("ResourcePair", plan.record_type_name);
     try std.testing.expectEqual(@as(u32, 8), plan.layout.byte_size);
     try std.testing.expectEqual(@as(usize, 2), plan.layout.fields.len);
+    try std.testing.expectEqualStrings(plan.descriptor.locator, plan.contract.descriptor_id);
+    try std.testing.expectEqual(@as(usize, 2), plan.contract.ownership.leaves.len);
+    try std.testing.expectEqual(@as(u32, 4), plan.contract.ownership.leaves[1].handle_offset);
 
     const wat = try emit_component_wat(std.testing.allocator, plan);
     defer std.testing.allocator.free(wat);

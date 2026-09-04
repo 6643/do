@@ -2,6 +2,7 @@ const std = @import("std");
 const generated_text = @import("codegen_text.zig");
 const lexer = @import("lexer.zig");
 const p3_async_manifest = @import("p3_async_manifest.zig");
+const producer_contract = @import("codegen_component_producer_contract.zig");
 const wit_abi_async = @import("wit_abi_async.zig");
 const wit_abi_layout = @import("wit_abi_layout.zig");
 const wit_abi_ownership = @import("wit_abi_ownership.zig");
@@ -22,6 +23,7 @@ pub const ListResourceProducerPlan = struct {
     mode_name: []const u8,
     layout: p3_async_manifest.ListResourceLayout,
     producer: p3_async_manifest.ProducerCanonical,
+    contract: producer_contract.ProducerContract,
 
     pub fn analyze(tokens: []const lexer.Token, registry: p3_async_manifest.Registry) ProducerError!ListResourceProducerPlan {
         const descriptor = registry.find("do:g6-2-c-min-producer@0.1.0", "consume-via-stream") orelse
@@ -66,6 +68,8 @@ pub const ListResourceProducerPlan = struct {
             !std.mem.eql(u8, shape.producer.source_import_name, "make-ticket") or
             !std.mem.eql(u8, shape.producer.resource_drop_import, "[resource-drop]ticket")) return error.UnsupportedP3ListResourceProducer;
 
+        const contract = producer_contract.producer_contract_from_descriptor(descriptor) catch
+            return error.UnsupportedP3ListResourceProducer;
         return .{
             .descriptor = descriptor,
             .source_host_name = source.name,
@@ -77,6 +81,7 @@ pub const ListResourceProducerPlan = struct {
             .mode_name = "mode",
             .layout = shape.list_layout,
             .producer = shape.producer,
+            .contract = contract,
         };
     }
 };
@@ -170,6 +175,17 @@ pub fn emit_component_wit(allocator: std.mem.Allocator, plan: ListResourceProduc
 }
 
 fn validate_internal_plans(allocator: std.mem.Allocator, plan: ListResourceProducerPlan) ProducerError!void {
+    producer_contract.validate_contract(plan.contract) catch return error.UnsupportedP3ListResourceProducer;
+    if (!std.mem.eql(u8, plan.contract.descriptor_id, plan.descriptor.locator) or
+        plan.contract.sink.capacity != plan.producer.stream_capacity) return error.UnsupportedP3ListResourceProducer;
+    const contract_list = switch (plan.contract.payload) {
+        .list => |value| value,
+        else => return error.UnsupportedP3ListResourceProducer,
+    };
+    if (contract_list.pointer_offset != plan.layout.result_pointer_offset or
+        contract_list.length_offset != plan.layout.result_length_offset or
+        contract_list.element_stride != plan.layout.element_stride or
+        contract_list.max_items != plan.layout.max_items) return error.UnsupportedP3ListResourceProducer;
     const accepted_lengths = [_]u32{ 0, 1, 3 };
     var ticket = wit_abi_types.AbiType.resource(allocator, "ticket", .own) catch return error.UnsupportedP3ListResourceProducer;
     defer ticket.deinit();
@@ -455,6 +471,9 @@ test "C-min producer plan accepts the exact fixed Do source" {
     try std.testing.expectEqual(@as(u32, 68), plan.layout.result_length_offset);
     try std.testing.expectEqual(@as(u32, 4), plan.layout.element_stride);
     try std.testing.expectEqual(@as(u32, 1), plan.producer.stream_capacity);
+    try std.testing.expectEqualStrings(plan.descriptor.locator, plan.contract.descriptor_id);
+    try std.testing.expectEqual(@as(usize, 1), plan.contract.ownership.leaves.len);
+    try std.testing.expectEqual(@as(u32, 64), plan.contract.payload.list.pointer_offset);
 
     const wat = try emit_component_wat(std.testing.allocator, plan);
     defer std.testing.allocator.free(wat);
