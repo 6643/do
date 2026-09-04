@@ -179,4 +179,17 @@ if [[ -n "$legacy_refs" ]]; then
     exit 1
 fi
 
+if ! gc_host_refs="$(run_rg_no_match -n \
+    -e 'WASMTIME_BIN' \
+    -e 'wasmtime_bin' \
+    -e '\$wasmtime' \
+    --glob 'test_*_host.sh' \
+    "$ROOT_DIR/examples/gc-p3-runtime")"; then
+    exit 1
+fi
+if [[ -n "$gc_host_refs" ]]; then
+    printf '[FAIL] active GC host scripts contain stale Wasmtime CLI prerequisites:\n%s\n' "$gc_host_refs" >&2
+    exit 1
+fi
+
 printf '[PASS] toolchain adapter active gate\n'

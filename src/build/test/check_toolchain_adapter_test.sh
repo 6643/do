@@ -15,7 +15,8 @@ grep -Fq '[PASS] toolchain adapter active gate' <<<"$root_output"
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/do-toolchain-adapter-test.XXXXXX")"
 negative_fixture=""
 tmp_fixture=""
-trap 'rm -f -- "$negative_fixture" "$tmp_fixture"; rm -rf -- "$tmp_dir"' EXIT
+gc_host_fixture=""
+trap 'rm -f -- "$negative_fixture" "$tmp_fixture" "$gc_host_fixture"; rm -rf -- "$tmp_dir"' EXIT
 tmp_output="$(cd "$tmp_dir" && "$GATE")"
 grep -Fq '[PASS] toolchain adapter active gate' <<<"$tmp_output"
 
@@ -77,6 +78,16 @@ if "$GATE" >"$tmp_dir/legacy.stdout" 2>"$tmp_dir/legacy.stderr"; then
 fi
 grep -Fq 'active shell contains legacy toolchain references' "$tmp_dir/legacy.stderr"
 rm -f -- "$negative_fixture"
+
+gc_host_fixture="$(mktemp "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_cli_guard_tmp.XXXXXX_host.sh")"
+printf '%s\n' 'wasmtime_bin=/opt/legacy/wasmtime' >"$gc_host_fixture"
+if "$GATE" >"$tmp_dir/gc_host.stdout" 2>"$tmp_dir/gc_host.stderr"; then
+    printf '[FAIL] stale GC host Wasmtime prerequisite was accepted\n' >&2
+    exit 1
+fi
+grep -Fq 'active GC host scripts contain stale Wasmtime CLI prerequisites' "$tmp_dir/gc_host.stderr"
+rm -f -- "$gc_host_fixture"
+gc_host_fixture=""
 
 find_bin="$tmp_dir/find-bin"
 mkdir -p "$find_bin"

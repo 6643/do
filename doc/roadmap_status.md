@@ -6,6 +6,13 @@
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
 G5b async/resource coverage ledger: `doc/g5b_async_resource_coverage.md`。
 
+2026-09-04 增量: active toolchain gate 新增 GC host prerequisite 守卫，扫描
+`examples/gc-p3-runtime/test_*_host.sh` 中未使用的 `WASMTIME_BIN`、`wasmtime_bin`
+和 `$wasmtime`，并保留 `run-wasmtime.sh` 的有意直接 Wasmtime runtime oracle。
+测试夹具 RED/GREEN、active gate、完整 `zig build test --summary all`
+(`14/14` steps、`51/51` tests) 和 `git diff --check` 均通过；不改变 C API
+linker、通用 map/async lifecycle 或 full GC cutover 状态。
+
 2026-09-04 增量: 19 个剩余 GC marshal record host gate 已移除未使用的
 `WASMTIME_BIN`/`wasmtime_bin` CLI 前置检查；`do-toolchain`、Rust Wasmtime host
 runner、WIT/Component、cleanup 和 marker 契约保持不变。19/19 根目录 gate 在

@@ -856,7 +856,13 @@ core shims 和 component-input shims）已改用 `bin/do-toolchain parse-core`�
 
 - [x] **Step 1: 添加集中式 active gate。**
 
-  `check_toolchain_adapter.sh` 只检查 lock identity、adapter probe、active raw command scan 和旧版 executable-path 引用；历史 `doc/` 与 dated plan 不参与 raw scan。
+  `check_toolchain_adapter.sh` 只检查 lock identity、adapter probe、active raw command scan 和旧版 executable-path 引用；历史 `doc/` 与 dated plan 不参与 raw scan。GC host 脚本另有窄范围守卫，拒绝 `test_*_host.sh` 中未使用的 `WASMTIME_BIN`/`wasmtime_bin`/`$wasmtime` 前置依赖，并显式保留 `run-wasmtime.sh` runtime oracle。
+
+  **实施 checkpoint (2026-09-04 GC host prerequisite guard):** active gate 新增
+  GC host stale-prerequisite scan，测试用临时 `test_*_host.sh` 夹具锁定拒绝行为。
+  RED/GREEN、`bash -n`、active gate、完整 `zig build test --summary all`
+  (`14/14` steps、`51/51` tests) 和 `git diff --check` 均通过。报告位于
+  `.superpowers/sdd/2026-08-30-map-toolchain-zig-harness/task-9-step1-gc-host-prerequisite-guard-report.md`。
 
 - [x] **Step 2: 同步 active 文档。**
 
