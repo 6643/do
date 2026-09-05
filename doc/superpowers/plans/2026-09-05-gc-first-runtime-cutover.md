@@ -272,7 +272,7 @@
   14/14 build steps and 53/53 tests. The value gate emitted only the known
   wasm-tools experimental `--invoke` warning.
 
-- [ ] **Step 5: Commit the value/runtime migration.**
+- [x] **Step 5: Commit the value/runtime migration.**
 
   ```bash
   git add src/build/runtime_gc_wat.zig src/build/runtime_gc_prelude_wat.zig \
@@ -285,6 +285,9 @@
     src/build/codegen_gc_emit_test.zig src/build/codegen_gc_plans_test.zig
   git commit -m "Migrate Do values and storage to Wasm GC"
   ```
+
+  Observed on 2026-09-06: committed locally as `7206827` (`Migrate Do values
+  and storage to Wasm GC`); no push was performed.
 
 ## Task 4: GC Roots And Existing Bounded Async Frames
 
