@@ -2453,6 +2453,7 @@ fn run_structural_gate(init: std.process.Init, repo_root: []const u8) !void {
     try structural_checks.check_module_tree(init.gpa, init.io, build_root);
     try structural_checks.check_generated_text_tree(init.gpa, init.io, src_root);
 }
+
 fn run_gc_arc_inventory(init: std.process.Init, repo_root: []const u8) !void {
     const script = try join(init.gpa, repo_root, "src/build/test/check_gc_arc_inventory.sh");
     defer init.gpa.free(script);
