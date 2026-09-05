@@ -1005,6 +1005,7 @@ fn run_all(init: std.process.Init) !void {
             .gc_assembly_matrix => try run_gc_assembly_matrix(init, repo_root, toolchain_bin, temp.path),
             .map_core_probe => try run_map_core_probe(init, repo_root, toolchain_bin, temp.path),
             .map_sync_component => try run_map_sync_component(init, repo_root, do_bin, toolchain_bin, temp.path),
+            .gc_arc_inventory => try run_gc_arc_inventory(init, repo_root),
         }
         try print_case_passed(init.io, case.name);
     }
@@ -2452,6 +2453,21 @@ fn run_structural_gate(init: std.process.Init, repo_root: []const u8) !void {
     try structural_checks.check_module_tree(init.gpa, init.io, build_root);
     try structural_checks.check_generated_text_tree(init.gpa, init.io, src_root);
 }
+fn run_gc_arc_inventory(init: std.process.Init, repo_root: []const u8) !void {
+    const script = try join(init.gpa, repo_root, "src/build/test/check_gc_arc_inventory.sh");
+    defer init.gpa.free(script);
+    const argv = [_][]const u8{ "bash", script };
+    var result = try process.run_checked(init.gpa, init.io, .{
+        .argv = &argv,
+        .environ = init.environ_map,
+        .cwd = repo_root,
+        .timeout_ms = 120_000,
+    });
+    defer result.deinit(init.gpa);
+    try expect_success(init, &result);
+    try process.assert_stdout_contains(result, "mode=pre_cutover");
+    try process.assert_stdout_contains(result, "unclassified=0");
+}
 
 fn run_gc_core_oracle(init: std.process.Init, repo_root: []const u8, temp_path: []const u8) !void {
     const toolchain = init.environ_map.get("DO_HARNESS_TOOLCHAIN_BIN") orelse
@@ -3413,7 +3429,7 @@ fn report_case_failure(init: std.process.Init, result: process.CommandResult) !v
 }
 
 test "integration harness case table has required routes" {
-    try std.testing.expectEqual(@as(usize, 23), test_cases.cases.len);
+    try std.testing.expectEqual(@as(usize, 24), test_cases.cases.len);
 }
 
 test "GC runtime oracle matrix covers async frame and C ABI probes" {

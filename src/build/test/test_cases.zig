@@ -22,6 +22,7 @@ pub const Kind = enum {
     gc_assembly_matrix,
     map_core_probe,
     map_sync_component,
+    gc_arc_inventory,
 };
 
 pub const Case = struct {
@@ -53,11 +54,12 @@ pub const cases = [_]Case{
     .{ .name = "GC assembly matrix", .kind = .gc_assembly_matrix },
     .{ .name = "bounded map Core ABI probe", .kind = .map_core_probe },
     .{ .name = "manifest-backed map Component host gate", .kind = .map_sync_component },
+    .{ .name = "GC ARC inventory classification", .kind = .gc_arc_inventory },
 };
 
 test "integration case table is stable and non-empty" {
     const std = @import("std");
-    try std.testing.expect(cases.len >= 23);
+    try std.testing.expect(cases.len >= 24);
     try std.testing.expectEqual(Kind.compiler_smoke, cases[0].kind);
     try std.testing.expectEqual(Kind.wit_map, cases[1].kind);
     try std.testing.expectEqual(Kind.component_assembly, cases[2].kind);
@@ -81,4 +83,5 @@ test "integration case table is stable and non-empty" {
     try std.testing.expectEqual(Kind.gc_assembly_matrix, cases[20].kind);
     try std.testing.expectEqual(Kind.map_core_probe, cases[21].kind);
     try std.testing.expectEqual(Kind.map_sync_component, cases[22].kind);
+    try std.testing.expectEqual(Kind.gc_arc_inventory, cases[23].kind);
 }
