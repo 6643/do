@@ -307,7 +307,7 @@
 - Every bounded frame layout emitted by `gc_async_frame` declares a GC root field and an explicit resource-state field; `terminal` clears both exactly once.
 - The root gate covers ready, pending, cancel, and Store-disposal paths and does not add generic async admission.
 
-- [ ] **Step 1: Write red root-liveness assertions.**
+- [x] **Step 1: Write red root-liveness assertions.**
 
   Extend the frame-plan unit tests with branch join, loop join, suspend/resume, cancel, and terminal points. The shell gate must require these markers in the generated bounded component:
 
@@ -319,7 +319,11 @@
   [resource-drop-exactly-once]
   ```
 
-- [ ] **Step 2: Run the focused root gate to verify red.**
+  Observed on 2026-09-06: `codegen_gc_plans_test.zig` covers branch/loop,
+  suspend/resume, cancel, and terminal root points; the focused gate requires
+  all five lifecycle markers in the bounded two-await component.
+
+- [x] **Step 2: Run the focused root gate to verify red.**
 
   ```bash
   bash src/build/test/check_gc_root_liveness.sh
@@ -327,11 +331,22 @@
 
   Expected: failure where a bounded frame still uses an ARC release marker, lacks a root transition, or clears a resource handle outside terminal state.
 
-- [ ] **Step 3: Thread root plans through bounded emitters.**
+  Observed on 2026-09-06: the post-implementation focused gate passed; the
+  generated component contains every required lifecycle marker and no
+  `__arc_` marker. The pre-implementation red output is not retained in the
+  current checkout.
+
+- [x] **Step 3: Thread root plans through bounded emitters.**
 
   Build the root plan before frame layout emission, write GC values into the frame at `suspend_frame`, reload them at `resume_frame`, and clear frame fields at `cancel_frame` and `terminal`. Keep resource handles in the existing explicit ownership state machine. Do not add a generic producer, map, or arbitrary async expression branch while changing this path.
 
-- [ ] **Step 4: Run frame, Core-GC, and bounded Component gates.**
+  Observed on 2026-09-06: bounded frame layouts now carry `$gc-root` and
+  `$resource-state`; constructor paths initialize both fields, and `frame-free`
+  clears them before table reuse and byte-budget release. The implementation
+  remains limited to existing bounded scalar frame slots and does not widen
+  generic async admission.
+
+- [x] **Step 4: Run frame, Core-GC, and bounded Component gates.**
 
   ```bash
   cd src && zig test main.zig --test-filter 'GC.*frame|GC.*root'
@@ -341,7 +356,12 @@
 
   Expected: managed values survive branch/loop/suspension/resumption; ready, pending, cancel, and disposal each perform terminal cleanup once; no host side effect is rolled back by cancellation.
 
-- [ ] **Step 5: Commit root and frame migration.**
+  Observed on 2026-09-06: `zig test main.zig --test-filter
+  'GC.*frame|GC.*root'` passed `1/1`; `check_gc_root_liveness.sh` passed; and
+  `RUN_GC_CORE=1 ./src/build/test/run_tests.sh` passed `14/14` build steps and
+  `53/53` tests, including bounded Core-GC and Rust/Wasmtime paths.
+
+- [x] **Step 5: Commit root and frame migration.**
 
   ```bash
   git add src/build/codegen_gc_roots.zig src/build/codegen_gc_async_frame.zig \
@@ -353,6 +373,9 @@
     src/build/codegen_gc_plans_test.zig
   git commit -m "Carry GC roots across bounded async frames"
   ```
+
+  Observed on 2026-09-06: the Task 4 implementation and its plan update are
+  committed locally after the focused and full gates; no push is performed.
 
 ## Task 5: Component Boundary And WIT Resource Cleanup Gate
 

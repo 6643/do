@@ -48,7 +48,9 @@ test "budgeted frame allocator accounts a layout before table growth" {
     try std.testing.expect(std.mem.indexOf(u8, wat.items, "call $async-byte-budget-reserve") != null);
     const frame_free = std.mem.indexOf(u8, wat.items, "(func $frame-free").?;
     const release = frame_free + std.mem.indexOf(u8, wat.items[frame_free..], "call $async-byte-budget-release").?;
+    const lookup = frame_free + std.mem.indexOf(u8, wat.items[frame_free..], "table.get $async-frames").?;
     const clear = frame_free + std.mem.indexOf(u8, wat.items[frame_free..], "ref.null $async-frame").?;
+    try std.testing.expect(lookup < release);
     try std.testing.expect(release < clear);
 }
 
@@ -63,4 +65,37 @@ test "budgeted frame allocator exposes an owner-configured runtime limit" {
     try std.testing.expect(std.mem.indexOf(u8, wat.items, "(func (export \"byte-budget-limit\") (param $limit i64) (result i32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat.items, "global.get $async-byte-budget-limit") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat.items, "i64.gt_u") != null);
+}
+
+test "GC frame layout declares root and resource lifecycle fields" {
+    const slots = [_]async_model.FrameLayoutSlot{};
+    const layout = async_model.FrameLayout{ .size = 16, .slots = &slots };
+    var wat = std.ArrayList(u8).empty;
+    defer wat.deinit(std.testing.allocator);
+
+    try gc_async_frame.emit_frame_table_layout(std.testing.allocator, &wat, layout);
+
+    try std.testing.expect(std.mem.indexOf(u8, wat.items, "(field $gc-root (mut (ref null any)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat.items, "(field $resource-state (mut i32))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat.items, "[gc-root][suspend_frame]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat.items, "[gc-root][resume_frame]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat.items, "[gc-root][cancel_frame]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat.items, "[gc-root][terminal]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat.items, "[resource-drop-exactly-once]") != null);
+}
+
+test "GC frame constructor helper initializes metadata fields" {
+    const input =
+        "  i32.const 1\n" ++
+        "  struct.new $async-frame\n";
+    const wat = try gc_async_frame.inject_frame_constructor_initializers(std.testing.allocator, input);
+    defer std.testing.allocator.free(wat);
+
+    try std.testing.expectEqualStrings(
+        "  i32.const 1\n" ++
+            "  ref.null any\n" ++
+            "  i32.const 0\n" ++
+            "  struct.new $async-frame\n",
+        wat,
+    );
 }

@@ -22,7 +22,24 @@ pub const SuspendableRootField = struct {
 };
 pub const SuspendableRootPlan = struct { fields: []const SuspendableRootField };
 
+const synchronous_root_points = [_]RootPoint{.local_bind};
+const suspendable_root_points = [_]RootPoint{
+    .local_bind,
+    .overwrite,
+    .branch_join,
+    .loop_join,
+    .return_value,
+    .suspend_frame,
+    .resume_frame,
+    .cancel_frame,
+    .terminal,
+};
+
 pub fn build_root_plan(allocator: std.mem.Allocator, locals: []const RootLocal, mode: RootMode) !RootPlan {
+    const points = if (mode == .synchronous)
+        synchronous_root_points[0..]
+    else
+        suspendable_root_points[0..];
     var slot_count: usize = 0;
     for (locals, 0..) |local, index| {
         if (local.rep == .resource_handle) return error.ResourceCannotBeGcRoot;
@@ -32,7 +49,7 @@ pub fn build_root_plan(allocator: std.mem.Allocator, locals: []const RootLocal, 
                 return error.DuplicateRootLocal;
             }
         }
-        slot_count += if (mode == .synchronous) 1 else 5;
+        slot_count += points.len;
     }
 
     var slots = try allocator.alloc(RootSlot, slot_count);
@@ -40,14 +57,10 @@ pub fn build_root_plan(allocator: std.mem.Allocator, locals: []const RootLocal, 
     var cursor: usize = 0;
     for (locals) |local| {
         if (local.rep != .gc_managed) continue;
-        slots[cursor] = .{ .name = local.name, .point = .local_bind, .bind_at_entry = local.bind_at_entry };
-        cursor += 1;
-        if (mode != .suspendable) continue;
-        slots[cursor] = .{ .name = local.name, .point = .suspend_frame };
-        slots[cursor + 1] = .{ .name = local.name, .point = .resume_frame };
-        slots[cursor + 2] = .{ .name = local.name, .point = .cancel_frame };
-        slots[cursor + 3] = .{ .name = local.name, .point = .terminal };
-        cursor += 4;
+        for (points) |point| {
+            slots[cursor] = .{ .name = local.name, .point = point, .bind_at_entry = local.bind_at_entry };
+            cursor += 1;
+        }
     }
     return .{ .slots = slots };
 }

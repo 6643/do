@@ -27,10 +27,14 @@ pub fn emit_component_wat(
     var plan = component_async_plan.ComponentAsyncFunctionPlan.analyze(allocator, tokens, registry) catch return error.UnsupportedP3AsyncResourceComponent;
     defer plan.deinit(allocator);
     const descriptor = try require_probe_shape(tokens, &plan);
-    return if (plan.terminal == .cancel)
-        emit_resource_async_cancel_core_wat(allocator, descriptor)
+    const wat = if (plan.terminal == .cancel)
+        try emit_resource_async_cancel_core_wat(allocator, descriptor)
     else
-        emit_resource_async_core_wat(allocator, descriptor);
+        try emit_resource_async_core_wat(allocator, descriptor);
+    errdefer allocator.free(wat);
+    const initialized = try gc_async_frame.inject_frame_constructor_initializers(allocator, wat);
+    allocator.free(wat);
+    return initialized;
 }
 
 pub fn emit_component_wit(allocator: std.mem.Allocator, tokens: []const lexer.Token) ![]u8 {

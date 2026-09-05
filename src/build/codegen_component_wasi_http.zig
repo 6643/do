@@ -457,30 +457,36 @@ pub fn emit_component_wat(
     _ = module_graph;
     var registry = try p3_async_manifest.Registry.load(allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(allocator);
-    if (try HttpRequestBodyProducerPlan.analyze(tokens, registry)) |plan| {
-        return emit_http_request_body_producer_wat(allocator, plan);
-    }
-    if (try HttpRequestBodyPlan.analyze(tokens, registry)) |plan| {
-        return emit_http_request_body_wat(allocator, plan);
-    }
-    if (try HttpRequestSendPlan.analyze(tokens, registry)) |plan| {
-        return emit_http_request_send_wat(allocator, plan);
-    }
-    if (try HttpRequestConstructorPlan.analyze(tokens, registry)) |plan| {
-        return emit_http_request_constructor_wat(allocator, plan);
-    }
-    if (try HttpResponseBodyPlan.analyze(tokens, registry)) |plan| {
-        if (plan.read_count != 0) return emit_http_response_body_read_wat(allocator, plan);
-        return emit_http_response_body_wat(allocator, plan);
-    }
-    if (try HttpServicePlan.analyze(tokens, registry)) |plan| {
-        if (plan.terminal == .cancel) return emit_http_cancellation_wat(allocator, plan.descriptor);
-        return emit_http_core_wat(allocator, plan.descriptor, "wasi:http/handler@0.3.0-rc-2025-09-16", "handle");
-    }
-    if (try HttpClientSendPlan.analyze(tokens, registry)) |plan| {
-        return emit_http_core_wat(allocator, plan.descriptor, "wasi:http/probe@0.3.0-rc-2025-09-16", "run");
-    }
-    return error.UnsupportedP3AsyncHttpService;
+    const wat = blk: {
+        if (try HttpRequestBodyProducerPlan.analyze(tokens, registry)) |plan| {
+            break :blk try emit_http_request_body_producer_wat(allocator, plan);
+        }
+        if (try HttpRequestBodyPlan.analyze(tokens, registry)) |plan| {
+            break :blk try emit_http_request_body_wat(allocator, plan);
+        }
+        if (try HttpRequestSendPlan.analyze(tokens, registry)) |plan| {
+            break :blk try emit_http_request_send_wat(allocator, plan);
+        }
+        if (try HttpRequestConstructorPlan.analyze(tokens, registry)) |plan| {
+            break :blk try emit_http_request_constructor_wat(allocator, plan);
+        }
+        if (try HttpResponseBodyPlan.analyze(tokens, registry)) |plan| {
+            if (plan.read_count != 0) break :blk try emit_http_response_body_read_wat(allocator, plan);
+            break :blk try emit_http_response_body_wat(allocator, plan);
+        }
+        if (try HttpServicePlan.analyze(tokens, registry)) |plan| {
+            if (plan.terminal == .cancel) break :blk try emit_http_cancellation_wat(allocator, plan.descriptor);
+            break :blk try emit_http_core_wat(allocator, plan.descriptor, "wasi:http/handler@0.3.0-rc-2025-09-16", "handle");
+        }
+        if (try HttpClientSendPlan.analyze(tokens, registry)) |plan| {
+            break :blk try emit_http_core_wat(allocator, plan.descriptor, "wasi:http/probe@0.3.0-rc-2025-09-16", "run");
+        }
+        return error.UnsupportedP3AsyncHttpService;
+    };
+    errdefer allocator.free(wat);
+    const initialized = try gc_async_frame.inject_frame_constructor_initializers(allocator, wat);
+    allocator.free(wat);
+    return initialized;
 }
 
 pub fn emit_component_wit(allocator: std.mem.Allocator, tokens: []const lexer.Token) ![]u8 {

@@ -233,6 +233,43 @@ test "suspendable root plan keeps managed frame fields live through terminal" {
     try std.testing.expectEqual(roots.RootPoint.terminal, plan.fields[0].live_until);
 }
 
+test "suspendable GC root plan records control-flow and terminal points" {
+    const locals = [_]roots.RootLocal{
+        .{ .name = "message", .rep = .gc_managed },
+    };
+    const plan = try roots.build_root_plan(std.testing.allocator, locals[0..], .suspendable);
+    defer roots.deinit_root_plan(std.testing.allocator, plan);
+
+    const expected = [_]roots.RootPoint{
+        .local_bind,
+        .overwrite,
+        .branch_join,
+        .loop_join,
+        .return_value,
+        .suspend_frame,
+        .resume_frame,
+        .cancel_frame,
+        .terminal,
+    };
+    try std.testing.expectEqual(expected.len, plan.slots.len);
+    for (expected, 0..) |point, index| {
+        try std.testing.expectEqualStrings("message", plan.slots[index].name);
+        try std.testing.expectEqual(point, plan.slots[index].point);
+    }
+}
+
+test "suspendable GC root plan preserves entry binding policy" {
+    const locals = [_]roots.RootLocal{
+        .{ .name = "message", .rep = .gc_managed, .bind_at_entry = false },
+    };
+    const plan = try roots.build_root_plan(std.testing.allocator, locals[0..], .suspendable);
+    defer roots.deinit_root_plan(std.testing.allocator, plan);
+
+    for (plan.slots) |slot| {
+        try std.testing.expect(!slot.bind_at_entry);
+    }
+}
+
 test "resource terminal completion and cancellation race is single shot" {
     const plan_facts = resources.ResourceFacts{
         .transfers = &.{.{ .type_name = "File", .direction = .own_in, .drop_authority = true }},

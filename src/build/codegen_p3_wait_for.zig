@@ -39,7 +39,10 @@ pub fn emit_component_wat(
     if (shared.async_plan) |*async_plan| {
         wat = try append_async_plan_metadata(allocator, wat, async_plan);
     }
-    return wat;
+    errdefer allocator.free(wat);
+    const initialized = try gc_async_frame.inject_frame_constructor_initializers(allocator, wat);
+    allocator.free(wat);
+    return initialized;
 }
 
 fn append_async_plan_metadata(

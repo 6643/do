@@ -49,16 +49,27 @@ pub fn emit_frame_table_layout(
         \\    (field $waitable-set (mut i32))
         \\    (field $cleanup-flags (mut i32))
         \\    (field $completion-value (mut i32))
+        \\
     );
     for (layout.slots) |slot| {
         const core_type = frame_slot_core_type(slot.storage) orelse return error.UnsupportedAsyncGcFrameSlot;
         try generated_text.append_fmt(allocator, out, "    (field $slot-{[name]s} (mut {[core_type]s}))\n", .{ .name = slot.name, .core_type = core_type });
     }
+    try generated_text.append_block(allocator, out, 4,
+        \\    (field $gc-root (mut (ref null any)))
+        \\    (field $resource-state (mut i32))
+        \\
+    );
     try generated_text.append_fmt_block(
         allocator,
         out,
         2,
         \\  ))
+        \\  ;; [gc-root][suspend_frame]
+        \\  ;; [gc-root][resume_frame]
+        \\  ;; [gc-root][cancel_frame]
+        \\  ;; [gc-root][terminal]
+        \\  ;; [resource-drop-exactly-once]
         \\  ;; [async-frame-bytes] {[frame_bytes]d}
         \\  (table $async-frames 0 (ref null $async-frame))
         \\
@@ -102,6 +113,19 @@ pub fn emit_frame_table_allocator(
         \\    local.get $handle)
         \\  (func $frame-free (param $handle i32)
         \\    (local $node (ref $async-free-slot))
+        \\    (local $frame (ref $async-frame))
+        \\    ;; [gc-root][cancel_frame]
+        \\    ;; [gc-root][terminal]
+        \\    ;; [resource-drop-exactly-once]
+        \\    local.get $handle
+        \\    table.get $async-frames
+        \\    ref.as_non_null
+        \\    local.tee $frame
+        \\    ref.null any
+        \\    struct.set $async-frame $gc-root
+        \\    local.get $frame
+        \\    i32.const 0
+        \\    struct.set $async-frame $resource-state
         \\    local.get $handle
         \\    ref.null $async-frame
         \\    table.set $async-frames
@@ -238,6 +262,19 @@ pub fn emit_frame_table_allocator_with_bytes(
         \\  )
         \\  (func $frame-free (param $handle i32)
         \\    (local $node (ref $async-free-slot))
+        \\    (local $frame (ref $async-frame))
+        \\    ;; [gc-root][cancel_frame]
+        \\    ;; [gc-root][terminal]
+        \\    ;; [resource-drop-exactly-once]
+        \\    local.get $handle
+        \\    table.get $async-frames
+        \\    ref.as_non_null
+        \\    local.tee $frame
+        \\    ref.null any
+        \\    struct.set $async-frame $gc-root
+        \\    local.get $frame
+        \\    i32.const 0
+        \\    struct.set $async-frame $resource-state
         \\    i64.const {[frame_bytes]d}
         \\    call $async-byte-budget-release
         \\    local.get $handle
@@ -251,6 +288,39 @@ pub fn emit_frame_table_allocator_with_bytes(
         \\    global.set $async-frame-free-head
         \\  )
     , .{ .frame_bytes = frame_bytes });
+}
+
+/// Append the two trailing metadata values required by every GC async-frame
+/// constructor. Keeping this as a single transformation avoids per-template
+/// field-order drift when a bounded emitter has multiple constructor paths.
+pub fn inject_frame_constructor_initializers(
+    allocator: std.mem.Allocator,
+    input: []const u8,
+) ![]u8 {
+    const needle = "struct.new $async-frame";
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+
+    var cursor: usize = 0;
+    while (std.mem.indexOfPos(u8, input, cursor, needle)) |index| {
+        try out.appendSlice(allocator, input[cursor..index]);
+
+        const line_start = if (std.mem.lastIndexOfScalar(u8, input[0..index], '\n')) |newline| newline + 1 else 0;
+        const indent = input[line_start..index];
+        for (indent) |byte| {
+            if (byte != ' ' and byte != '\t') return error.InvalidAsyncFrameConstructor;
+        }
+
+        try out.appendSlice(allocator, "ref.null any\n");
+        try out.appendSlice(allocator, indent);
+        try out.appendSlice(allocator, "i32.const 0\n");
+        try out.appendSlice(allocator, indent);
+        try out.appendSlice(allocator, needle);
+        cursor = index + needle.len;
+    }
+
+    try out.appendSlice(allocator, input[cursor..]);
+    return out.toOwnedSlice(allocator);
 }
 
 fn frame_slot_core_type(storage: async_model.FrameSlotStorage) ?[]const u8 {
