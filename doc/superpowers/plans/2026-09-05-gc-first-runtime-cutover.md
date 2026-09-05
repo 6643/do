@@ -187,6 +187,9 @@
 ## Task 3: GC Runtime, Storage, And Do-Value Semantics
 
 **Files:**
+- Modify: `src/build/codegen_gc_sync.zig`
+- Modify: `src/build/gc_sync_probe.zig`
+- Modify: `src/build/codegen_pipeline.zig`
 - Modify: `src/build/runtime_gc_wat.zig`
 - Modify: `src/build/runtime_gc_prelude_wat.zig`
 - Modify: `src/build/codegen_emit_storage_operations.zig`
@@ -207,7 +210,7 @@
 - `codegen_ownership` retains only WIT resource `OwnershipPlan` helpers. Do-value scope exit returns an empty release plan and does not emit a scope cleanup call.
 - The semantic probe returns `27815` for the existing GC frame arithmetic and returns `123321` for a copied `Box` whose updated value is `123` while the old logical value remains `321`.
 
-- [ ] **Step 1: Write the failing value and WAT-marker tests.**
+- [x] **Step 1: Write the failing value and WAT-marker tests.**
 
   Add the source fixture:
 
@@ -226,7 +229,12 @@
 
   The shell gate builds it through the default route, requires `backend=gc`, rejects every `__arc_` marker, and executes a Core-GC probe that checks the original `tag` and pre-update `value` are still reachable after the replacement.
 
-- [ ] **Step 2: Run the focused test to verify red.**
+  Observed on 2026-09-06: added the fixture, expected probe result, shell gate,
+  candidate-scan test, default-route WAT assertions, and loaded-module-graph
+  regression test. The initial focused tests exposed an allocator leak in the
+  new GC marker wrapper.
+
+- [x] **Step 2: Run the focused test to verify red.**
 
   ```bash
   bash src/build/test/check_gc_value_semantics.sh
@@ -234,11 +242,21 @@
 
   Expected: failure on the missing semantic marker or an ARC storage/release instruction in the generated output.
 
-- [ ] **Step 3: Replace Do-value ARC operations with typed GC operations.**
+  Observed on 2026-09-06: the focused inline-struct tests reached the expected
+  WAT assertions but exited nonzero because DebugAllocator reported two leaked
+  `raw_wat` slices from the marker wrapper; this identified the ownership defect
+  before the fix.
+
+- [x] **Step 3: Replace Do-value ARC operations with typed GC operations.**
 
   Change storage/tuple/payload emitters to construct replacement values and to use GC array/struct operations. Remove calls to `emit_replace_managed_local_from_tmp`, `emit_release_managed_locals`, `emit_block_release_managed_locals`, and `emit_fallthrough_release_managed_locals` from normal Do-value emission; leave resource-plan calls at their existing WIT boundary sites. Add explicit output markers `;; gc-value-replacement`, `;; gc-root-read`, and `;; gc-unique-reuse` at the corresponding guarded operations so the gate can distinguish source semantics from implementation details.
 
-- [ ] **Step 4: Run semantic and unit verification.**
+  Implemented on 2026-09-06: inline scalar struct parameters are flattened into
+  scalar ABI values, `@set` returns replacement field values without constructing
+  a new GC struct, and the default/test GC marker wrappers release their raw WAT
+  slice exactly once. The Core-GC probe preserves the untouched field.
+
+- [x] **Step 4: Run semantic and unit verification.**
 
   ```bash
   bash src/build/test/check_gc_value_semantics.sh
@@ -247,6 +265,12 @@
   ```
 
   Expected: read-only large values do not produce payload copies; shared updates preserve the old logical value; unique non-escaping storage may reuse only behind `gc-unique-reuse`; the existing `27815` probe remains unchanged.
+
+  Observed on 2026-09-06: value gate returned `123321`; `zig test main.zig
+  --test-filter 'GC.*plan'` passed 1/1; focused inline and compiled-test
+  allocator checks passed; `RUN_GC_CORE=1 ./src/build/test/run_tests.sh` passed
+  14/14 build steps and 53/53 tests. The value gate emitted only the known
+  wasm-tools experimental `--invoke` warning.
 
 - [ ] **Step 5: Commit the value/runtime migration.**
 

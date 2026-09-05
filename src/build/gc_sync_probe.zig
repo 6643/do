@@ -276,7 +276,13 @@ const NestedByteListPutProbe = struct {
     function_name: []const u8,
 };
 
+const InlineScalarStructUpdateProbe = struct {
+    function_name: []const u8,
+    expected_value: u32,
+};
+
 const ProbeCallShape = union(enum) {
+    inline_scalar_struct_update: InlineScalarStructUpdateProbe,
     byte_list_literal,
     byte_list_put,
     fixed_list_update,
@@ -386,6 +392,9 @@ fn find_probe_call_shape(functions: []const FuncDecl, structs: []const StructDec
 }
 
 fn probe_call_shape(func: FuncDecl, structs: []const StructDecl, payload_enums: []const PayloadEnumDecl) !ProbeCallShape {
+    if (try find_inline_scalar_struct_update_probe(func, structs)) |probe| {
+        return .{ .inline_scalar_struct_update = probe };
+    }
     if (func.results.len != 1) return error.UnsupportedGcSyncProbeSignature;
     if (func.params.len == 0 and std.mem.eql(u8, func.results[0], "[u8]") and is_byte_list_literal_body(func)) return .byte_list_literal;
     if (func.params.len == 1 and
@@ -458,6 +467,52 @@ fn probe_call_shape(func: FuncDecl, structs: []const StructDecl, payload_enums: 
     if (find_text_list_probe(func)) |probe| return .{ .text_list_literal = probe };
     if (find_nested_byte_list_probe(func)) |probe| return .{ .nested_byte_list_literal = probe };
     return error.UnsupportedGcSyncProbeSignature;
+}
+
+fn find_inline_scalar_struct_update_probe(func: FuncDecl, structs: []const StructDecl) !?InlineScalarStructUpdateProbe {
+    if (func.params.len != 1 or func.result_struct == null or func.results.len != 2 or
+        !std.mem.eql(u8, func.result_struct.?, func.params[0].ty)) return null;
+    const decl = find_struct_decl(structs, func.params[0].ty) orelse return null;
+    if (decl.fields.len != 2) return null;
+    for (decl.fields) |field| {
+        if (!is_i32_scalar_type(field.ty)) return null;
+    }
+
+    const range = body_expr_range(func) orelse return null;
+    const tokens = func.tokens;
+    if (range.start + 3 >= range.end or !tok_eq(tokens[range.start], "@") or
+        !tok_eq(tokens[range.start + 1], "set") or !tok_eq(tokens[range.start + 2], "(")) return null;
+    const close_idx = find_matching_in_range(tokens, range.start + 2, "(", ")", range.end) catch return null;
+    if (close_idx + 1 != range.end) return null;
+    const target_end = find_arg_end(tokens, range.start + 3, close_idx);
+    if (target_end >= close_idx or target_end != range.start + 4 or
+        tokens[range.start + 3].kind != .ident or
+        !std.mem.eql(u8, tokens[range.start + 3].lexeme, func.params[0].name)) return null;
+    const field_start = target_end + 1;
+    const field_end = find_arg_end(tokens, field_start, close_idx);
+    if (field_end != field_start + 1 or tokens[field_start].kind != .ident or
+        tokens[field_start].lexeme.len < 2 or tokens[field_start].lexeme[0] != '.') return null;
+    const field_name = tokens[field_start].lexeme[1..];
+    var field_index: ?usize = null;
+    for (decl.fields, 0..) |field, index| {
+        if (std.mem.eql(u8, public_decl_name(field.name), field_name)) {
+            field_index = index;
+            break;
+        }
+    }
+    if (field_index == null or field_index.? != 0) return null;
+    if (field_end >= close_idx or !tok_eq(tokens[field_end], ",")) return null;
+    const value_start = field_end + 1;
+    const value_end = find_arg_end(tokens, value_start, close_idx);
+    if (value_end != close_idx or value_end != value_start + 1 or tokens[value_start].kind != .number) return null;
+    const expected_value = std.fmt.parseInt(u32, tokens[value_start].lexeme, 10) catch return null;
+    return .{ .function_name = func.name, .expected_value = expected_value };
+}
+
+fn is_i32_scalar_type(ty: []const u8) bool {
+    return std.mem.eql(u8, ty, "bool") or std.mem.eql(u8, ty, "i8") or std.mem.eql(u8, ty, "u8") or
+        std.mem.eql(u8, ty, "i16") or std.mem.eql(u8, ty, "u16") or std.mem.eql(u8, ty, "i32") or
+        std.mem.eql(u8, ty, "u32") or std.mem.eql(u8, ty, "isize") or std.mem.eql(u8, ty, "usize");
 }
 
 fn find_text_list_probe(func: FuncDecl) ?TextListProbe {
@@ -1933,6 +1988,12 @@ fn append_byte_list_probe(
 ) !void {
     const module_end = std.mem.lastIndexOf(u8, wat, ")\n") orelse return error.InvalidGcSyncProbeWat;
     if (module_end + 2 != wat.len) return error.InvalidGcSyncProbeWat;
+    switch (call_shape) {
+        .inline_scalar_struct_update => |probe| {
+            return append_inline_scalar_struct_update_probe(allocator, out, wat, probe);
+        },
+        else => {},
+    }
     if (call_shape == .byte_list_literal) {
         return append_byte_list_literal_probe(allocator, out, wat, function_name);
     }
@@ -2049,6 +2110,7 @@ fn append_byte_list_probe(
     }
     try out.appendSlice(allocator, wat[0..module_end]);
     const update_index: u32 = switch (call_shape) {
+        .inline_scalar_struct_update => unreachable,
         .byte_list_literal => unreachable,
         .byte_list_put => unreachable,
         .fixed_list_update => 0,
@@ -2090,6 +2152,7 @@ fn append_byte_list_probe(
         .nested_byte_list_put => unreachable,
     };
     const original_value: u32 = switch (call_shape) {
+        .inline_scalar_struct_update => unreachable,
         .byte_list_literal => unreachable,
         .byte_list_put => unreachable,
         .fixed_list_update => 1,
@@ -2176,6 +2239,46 @@ fn append_byte_list_probe(
             .updated_index = update_index,
         },
     );
+}
+
+fn append_inline_scalar_struct_update_probe(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    wat: []const u8,
+    probe: InlineScalarStructUpdateProbe,
+) !void {
+    const module_end = std.mem.lastIndexOf(u8, wat, ")\n") orelse return error.InvalidGcSyncProbeWat;
+    if (module_end + 2 != wat.len) return error.InvalidGcSyncProbeWat;
+    try out.appendSlice(allocator, wat[0..module_end]);
+    try generated_text.append_fmt_block(
+        allocator,
+        out,
+        2,
+        \\  (func (export "probe") (result i32)
+        \\    (local $value i32)
+        \\    (local $tag i32)
+        \\    i32.const 1
+        \\    i32.const 321
+        \\    call ${[function_name]s}
+        \\    local.set $tag
+        \\    local.set $value
+        \\    local.get $value
+        \\    i32.const {[expected_value]d}
+        \\    i32.ne
+        \\    if unreachable end
+        \\    local.get $tag
+        \\    i32.const 321
+        \\    i32.ne
+        \\    if unreachable end
+        \\    local.get $value
+        \\    i32.const 1000
+        \\    i32.mul
+        \\    local.get $tag
+        \\    i32.add
+        \\  )
+        \\)
+        \\
+    , .{ .function_name = probe.function_name, .expected_value = probe.expected_value });
 }
 
 fn append_managed_text_branch_probe(

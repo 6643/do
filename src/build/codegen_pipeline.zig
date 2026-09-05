@@ -585,8 +585,10 @@ fn tokens_have_gc_sync_candidate(tokens: []const lexer.Token) bool {
         }
         if (has_inline_scalar_struct_result) {
             const has_single_managed_param = gc_sync_header_has_single_bounded_managed_param(tokens, i + 1, body_open);
-            if (!has_single_managed_param or
-                !body_has_gc_sync_inline_scalar_struct_result(tokens, body_open + 1, body_close)) return false;
+            const has_single_inline_struct_param = gc_sync_header_has_single_inline_scalar_struct_param(tokens, i + 1, body_open);
+            const has_inline_struct_body = body_has_gc_sync_inline_scalar_struct_result(tokens, body_open + 1, body_close) or
+                body_has_gc_sync_inline_scalar_struct_set_return(tokens, body_open + 1, body_close);
+            if ((!has_single_managed_param and !has_single_inline_struct_param) or !has_inline_struct_body) return false;
             header_candidate = true;
         }
         if (has_scalar_union_result or has_managed_union_result) header_candidate = true;
@@ -2120,6 +2122,29 @@ fn gc_sync_header_has_single_bounded_managed_param(tokens: []const lexer.Token, 
         (tok_eq(tokens[close_params + 1], "-") and close_params + 2 < end_idx and tok_eq(tokens[close_params + 2], ">"));
 }
 
+fn gc_sync_struct_is_inline_scalar(tokens: []const lexer.Token, name: []const u8) bool {
+    const range = find_top_level_struct_range(tokens, name) orelse return false;
+    var field_count: usize = 0;
+    var i = range.open_idx + 1;
+    while (i < range.close_idx) {
+        if (i + 1 >= range.close_idx or tokens[i].kind != .ident or tokens[i + 1].kind != .ident or
+            !type_util.is_core_wasm_scalar(tokens[i + 1].lexeme)) return false;
+        field_count += 1;
+        i += 2;
+    }
+    return field_count != 0;
+}
+
+fn gc_sync_header_has_single_inline_scalar_struct_param(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    if (start_idx >= end_idx or !tok_eq(tokens[start_idx], "(")) return false;
+    const close_params = find_matching_in_range(tokens, start_idx, "(", ")", end_idx) catch return false;
+    if (close_params != start_idx + 3 or tokens[start_idx + 1].kind != .ident or tokens[start_idx + 2].kind != .ident) return false;
+    if (close_params + 1 >= end_idx) return false;
+    if (!(tok_eq(tokens[close_params + 1], "->") or
+        (tok_eq(tokens[close_params + 1], "-") and close_params + 2 < end_idx and tok_eq(tokens[close_params + 2], ">")))) return false;
+    return gc_sync_struct_is_inline_scalar(tokens, tokens[start_idx + 2].lexeme);
+}
+
 fn gc_sync_header_has_inline_scalar_struct_result(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     var arrow_idx: ?usize = null;
     var i = start_idx;
@@ -2137,16 +2162,7 @@ fn gc_sync_header_has_inline_scalar_struct_result(tokens: []const lexer.Token, s
     const result_start = arrow + if (tok_eq(tokens[arrow], "->")) @as(usize, 1) else @as(usize, 2);
     if (result_start + 1 != end_idx or tokens[result_start].kind != .ident) return false;
     const result_name = tokens[result_start].lexeme;
-    const range = find_top_level_struct_range(tokens, result_name) orelse return false;
-    var field_count: usize = 0;
-    i = range.open_idx + 1;
-    while (i < range.close_idx) {
-        if (i + 1 >= range.close_idx or tokens[i].kind != .ident or tokens[i + 1].kind != .ident or
-            !type_util.is_core_wasm_scalar(tokens[i + 1].lexeme)) return false;
-        field_count += 1;
-        i += 2;
-    }
-    return field_count != 0;
+    return gc_sync_struct_is_inline_scalar(tokens, result_name);
 }
 
 fn body_has_gc_sync_inline_scalar_struct_result(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
@@ -2174,6 +2190,31 @@ fn body_has_gc_sync_inline_scalar_struct_result(tokens: []const lexer.Token, sta
         i = stmt_end;
     }
     return saw_struct_literal and saw_struct_binding and saw_return;
+}
+
+fn body_has_gc_sync_inline_scalar_struct_set_return(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var i = start_idx;
+    var saw_return = false;
+    while (i < end_idx) {
+        const stmt_end = find_stmt_end(tokens, i, end_idx);
+        if (stmt_end <= i or saw_return or !tok_eq(tokens[i], "return")) return false;
+        if (i + 3 >= stmt_end or !tok_eq(tokens[i + 1], "@") or !tok_eq(tokens[i + 2], "set") or
+            !tok_eq(tokens[i + 3], "(")) return false;
+        const close_idx = find_matching_in_range(tokens, i + 3, "(", ")", stmt_end) catch return false;
+        if (close_idx + 1 != stmt_end) return false;
+        const target_end = find_arg_end(tokens, i + 4, close_idx);
+        if (target_end != i + 5 or tokens[i + 4].kind != .ident or target_end >= close_idx or !tok_eq(tokens[target_end], ",")) return false;
+        const field_start = target_end + 1;
+        const field_end = find_arg_end(tokens, field_start, close_idx);
+        if (field_end != field_start + 1 or tokens[field_start].kind != .ident or
+            tokens[field_start].lexeme.len < 2 or tokens[field_start].lexeme[0] != '.' or
+            field_end >= close_idx or !tok_eq(tokens[field_end], ",")) return false;
+        const value_start = field_end + 1;
+        if (value_start >= close_idx or find_arg_end(tokens, value_start, close_idx) != close_idx) return false;
+        saw_return = true;
+        i = stmt_end;
+    }
+    return saw_return;
 }
 
 fn gc_sync_header_has_managed_struct_multi_result(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
@@ -2422,8 +2463,8 @@ fn emit_checked_gc_sync(
         try codegen_gc_sync.emit_gc_wat_for_supported_program_with_host_route(allocator, program, tokens, module_graph, route)
     else
         try codegen_gc_sync.emit_gc_wat_for_supported_program(allocator, program, tokens, module_graph);
+    defer allocator.free(raw_wat);
     const wat = add_backend_marker(allocator, raw_wat, "gc") catch |err| {
-        allocator.free(raw_wat);
         return err;
     };
     validate_gc_sync_output(wat) catch |err| {
@@ -2630,6 +2671,74 @@ test "GC candidate scan admits an inferred body-only text binding" {
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     try std.testing.expect(tokens_have_gc_sync_candidate(tokens));
+}
+
+test "GC candidate scan admits an inline scalar struct copy update" {
+    const source =
+        \\Box {
+        \\    value u32
+        \\    tag u32
+        \\}
+        \\update(box Box) -> Box {
+        \\    return @set(box, .value, 123)
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try std.testing.expect(tokens_have_gc_sync_candidate(tokens));
+}
+
+test "default pipeline emits an inline scalar struct copy update through GC" {
+    const source =
+        \\Box {
+        \\    value u32
+        \\    tag u32
+        \\}
+        \\update(box Box) -> Box {
+        \\    return @set(box, .value, 123)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_default_wat_for_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $update (param $box.value i32) (param $box.tag i32) (result i32 i32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $box") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-value-replacement") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-root-read") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-unique-reuse") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "default pipeline emits an inline scalar struct copy update with its loaded module graph" {
+    const source =
+        \\Box {
+        \\    value u32
+        \\    tag u32
+        \\}
+        \\update(box Box) -> Box {
+        \\    return @set(box, .value, 123)
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+    var modules = [_]imports.ModuleRecord{
+        .{ .path = "fixture.do", .source = null, .owns_source = false, .tokens = tokens, .owns_tokens = false },
+    };
+    var graph = imports.ModuleGraph{ .allocator = std.testing.allocator, .dep_root = "", .modules = modules[0..] };
+    const wat = try emit_wat_with_options(std.testing.allocator, program, tokens, &graph, .{});
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $update (param $box.value i32) (param $box.tag i32) (result i32 i32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $box") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-value-replacement") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-root-read") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-unique-reuse") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
 test "compiled-test candidate scan admits an inferred text binding" {
@@ -5695,8 +5804,8 @@ pub fn emit_test_wat(allocator: std.mem.Allocator, program: parser.Program, toke
             if (!codegen_gc_sync.is_gc_sync_admission_rejection(err)) return err;
             break :blk null;
         }) |gc_wat| {
+            defer allocator.free(gc_wat);
             const marked_wat = add_backend_marker(allocator, gc_wat, "gc") catch |err| {
-                allocator.free(gc_wat);
                 return err;
             };
             validate_gc_sync_output(marked_wat) catch |err| {
