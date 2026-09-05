@@ -64,7 +64,8 @@ pub fn emit_sync_marshal_function(
             .lift => try emit_record_lift(allocator, &out, plan, &memory_plan, config),
         },
     }
-    return out.toOwnedSlice(allocator);
+    const body = try out.toOwnedSlice(allocator);
+    return prepend_linear_temp_marker(allocator, body, config.realloc_name);
 }
 
 /// Return the scalar leaf count for a measured record whose entire tree is
@@ -144,7 +145,41 @@ pub fn emit_sync_scalar_record_bridge_function(
             try out.appendSlice(allocator, "  )\n");
         },
     }
-    return out.toOwnedSlice(allocator);
+    const body = try out.toOwnedSlice(allocator);
+    return prepend_linear_temp_marker(allocator, body, config.realloc_name);
+}
+
+fn prepend_linear_temp_marker(
+    allocator: std.mem.Allocator,
+    body: []u8,
+    realloc_name: []const u8,
+) ![]u8 {
+    errdefer allocator.free(body);
+
+    var free_count: usize = 0;
+    var previous_was_zero = false;
+    var lines = std.mem.splitScalar(u8, body, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+        if (std.mem.eql(u8, trimmed, "i32.const 0")) {
+            previous_was_zero = true;
+            continue;
+        }
+        if (previous_was_zero and std.mem.startsWith(u8, trimmed, "call $") and
+            std.mem.eql(u8, trimmed["call $".len..], realloc_name))
+        {
+            free_count += 1;
+        }
+        previous_was_zero = false;
+    }
+
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+    try generated_text.append_fmt(allocator, &out, "  ;; [linear-temp-free] count={[count]d}\n", .{ .count = free_count });
+    try out.appendSlice(allocator, body);
+    const result = try out.toOwnedSlice(allocator);
+    allocator.free(body);
+    return result;
 }
 
 fn append_scalar_record_param_types(
@@ -3534,6 +3569,7 @@ test "canonical marshal WAT emits typed u32 list lower and lift copies" {
     defer marshal.deinit_sync_value_plan(std.testing.allocator, lower_plan);
     const lower_wat = try emit_sync_marshal_function(std.testing.allocator, &lower_plan, .{});
     defer std.testing.allocator.free(lower_wat);
+    try std.testing.expect(std.mem.indexOf(u8, lower_wat, "[linear-temp-free] count=1") != null);
     try std.testing.expect(std.mem.indexOf(u8, lower_wat, "(ref null $do_u32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, lower_wat, "array.get $do_u32") != null);
     try std.testing.expect(std.mem.indexOf(u8, lower_wat, "i32.store") != null);

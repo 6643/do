@@ -395,7 +395,7 @@
 - Resource ownership state remains `transferred`, `host_owned`, `guest_owned`, `dropped`, or `terminal`; the resource table must be empty after ready, error, cancel, and Store-disposal cases.
 - The exact descriptor/manifest hashes and the private async-map capability probe are unchanged.
 
-- [ ] **Step 1: Write red boundary and cleanup checks.**
+- [x] **Step 1: Write red boundary and cleanup checks.**
 
   The gate assembles every currently admitted synchronous and bounded async descriptor, then runs:
 
@@ -417,9 +417,14 @@
   temporary WAT and captured runner output, so no shell-global artifact is
   reused between cases.
 
-  It also copies one generated WAT to a temporary file, injects a canonical import with `(ref null $do_text)`, and requires `wasm-tools 1.258.0 validate` to reject it. This negative check proves the gate is checking the boundary, not merely trusting markers.
+  It also copies one generated WAT to a temporary file, injects a canonical import with `(ref null $do_map)`, and requires the current Component adapter's `new-component` step to reject it against the WIT signature. Core `wasm-tools validate` intentionally remains a separate syntax check: it accepts legal Core GC reference imports and therefore cannot prove the Component boundary by itself.
 
-- [ ] **Step 2: Run the focused boundary gate to verify red.**
+  Observed on 2026-09-06: `check_gc_component_boundary.sh` was added with
+  lower/lift map checks, ARC/reference-negative checks, linear temporary
+  markers, the injected Component signature mismatch, and the existing
+  filesystem resource runner.
+
+- [x] **Step 2: Run the focused boundary gate to verify red.**
 
   ```bash
   bash src/build/test/check_gc_component_boundary.sh
@@ -427,11 +432,21 @@
 
   Expected: failure on an existing ARC marker, an uncounted linear temporary, a non-empty resource table, or the missing injected-reference rejection.
 
-- [ ] **Step 3: Enforce GC/linear/resource separation.**
+  Observed on 2026-09-06: the initial gate failed on the missing
+  `[linear-temp-free]` marker; the injected GC-reference Component negative
+  independently failed with the expected WIT type mismatch.
+
+- [x] **Step 3: Enforce GC/linear/resource separation.**
 
   Make all currently admitted marshal routes call the GC representation for internal values and the canonical marshal plan for boundary words. Keep the host/WIT descriptor registry explicit and fail closed for unmeasured shapes. In each terminal branch, call the existing resource drop/transfer helper exactly once and clear the frame state after confirmation; never use a GC finalizer as a substitute.
 
-- [ ] **Step 4: Run current-toolchain Component and host verification.**
+  Observed on 2026-09-06: marshal functions now emit a measured
+  `[linear-temp-free] count=N` marker derived from their actual `cabi_realloc`
+  free sequences; the existing canonical plan validation rejects GC references,
+  and the existing filesystem/resource routes retain explicit transfer/drop
+  cleanup.
+
+- [x] **Step 4: Run current-toolchain Component and host verification.**
 
   ```bash
   bash src/build/test/check_gc_component_boundary.sh
@@ -442,7 +457,12 @@
 
   Expected: all currently admitted Component/Rust/Wasmtime routes pass; injected GC-reference imports fail validation; resource tables are empty after applicable terminal states; the async-map probe remains capability evidence and is not added to compiler admission.
 
-- [ ] **Step 5: Commit the boundary migration.**
+  Observed on 2026-09-06: `check_toolchain_adapter.sh` passed; the async-map
+  capability probe passed all four modes; and
+  `RUN_WASM=1 RUN_GC_CORE=1 ./src/build/test/run_tests.sh` passed `14/14` build
+  steps and `53/53` tests, including the registered Component boundary gate.
+
+- [x] **Step 5: Commit the boundary migration.**
 
   ```bash
   git add src/build/codegen_gc_wit_marshal.zig src/build/codegen_gc_wit_host_boundary.zig \
@@ -455,6 +475,10 @@
     src/build/test/test_harness.zig
   git commit -m "Enforce GC Component boundary and resource cleanup"
   ```
+
+  Observed on 2026-09-06: the boundary marker/gate, harness registration,
+  plan update, and current-toolchain verification are committed locally; no
+  push is performed.
 
 ## Task 6: ARC Isolation, Full Verification, And Documentation
 

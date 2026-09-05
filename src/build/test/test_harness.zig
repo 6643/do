@@ -1007,6 +1007,7 @@ fn run_all(init: std.process.Init) !void {
             .map_sync_component => try run_map_sync_component(init, repo_root, do_bin, toolchain_bin, temp.path),
             .gc_arc_inventory => try run_gc_arc_inventory(init, repo_root),
             .gc_backend_firewall => try run_gc_backend_firewall(init, repo_root),
+            .gc_component_boundary => try run_gc_component_boundary(init, repo_root),
         }
         try print_case_passed(init.io, case.name);
     }
@@ -2484,6 +2485,21 @@ fn run_gc_backend_firewall(init: std.process.Init, repo_root: []const u8) !void 
     defer result.deinit(init.gpa);
     try expect_success(init, &result);
     try process.assert_stdout_contains(result, "GC backend firewall red/green checks passed");
+}
+
+fn run_gc_component_boundary(init: std.process.Init, repo_root: []const u8) !void {
+    const script = try join(init.gpa, repo_root, "src/build/test/check_gc_component_boundary.sh");
+    defer init.gpa.free(script);
+    const argv = [_][]const u8{ "bash", script };
+    var result = try process.run_checked(init.gpa, init.io, .{
+        .argv = &argv,
+        .environ = init.environ_map,
+        .cwd = repo_root,
+        .timeout_ms = 600_000,
+    });
+    defer result.deinit(init.gpa);
+    try expect_success(init, &result);
+    try process.assert_stdout_contains(result, "GC Component boundary and resource cleanup gate passed");
 }
 
 fn run_gc_core_oracle(init: std.process.Init, repo_root: []const u8, temp_path: []const u8) !void {
