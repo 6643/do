@@ -126,7 +126,13 @@ pub const FieldMetaLocal = struct {
     visible_index: usize,
 };
 
+pub const ManagedBackend = enum {
+    gc,
+    arc_equivalence_oracle,
+};
+
 pub const EmitOptions = struct {
+    backend: ManagedBackend = .gc,
     component_core: bool = false,
     p3_wait_for_component: bool = false,
     p3_resource_probe_component: bool = false,

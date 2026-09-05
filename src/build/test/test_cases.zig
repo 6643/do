@@ -23,6 +23,7 @@ pub const Kind = enum {
     map_core_probe,
     map_sync_component,
     gc_arc_inventory,
+    gc_backend_firewall,
 };
 
 pub const Case = struct {
@@ -55,11 +56,12 @@ pub const cases = [_]Case{
     .{ .name = "bounded map Core ABI probe", .kind = .map_core_probe },
     .{ .name = "manifest-backed map Component host gate", .kind = .map_sync_component },
     .{ .name = "GC ARC inventory classification", .kind = .gc_arc_inventory },
+    .{ .name = "GC backend firewall", .kind = .gc_backend_firewall },
 };
 
 test "integration case table is stable and non-empty" {
     const std = @import("std");
-    try std.testing.expect(cases.len >= 24);
+    try std.testing.expect(cases.len >= 25);
     try std.testing.expectEqual(Kind.compiler_smoke, cases[0].kind);
     try std.testing.expectEqual(Kind.wit_map, cases[1].kind);
     try std.testing.expectEqual(Kind.component_assembly, cases[2].kind);

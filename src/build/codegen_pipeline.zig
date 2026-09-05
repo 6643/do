@@ -90,6 +90,7 @@ const Local = model.Local;
 const CodegenContext = context.CodegenContext;
 const CodegenError = model.CodegenError;
 const EmitOptions = model.EmitOptions;
+const ManagedBackend = model.ManagedBackend;
 const GcSyncHostWitRoute = model.GcSyncHostWitRoute;
 const StructDecl = model.StructDecl;
 const StructField = model.StructField;
@@ -2417,15 +2418,30 @@ fn emit_checked_gc_sync(
     module_graph: ?*const imports.ModuleGraph,
     gc_host_route: ?*const GcSyncHostWitRoute,
 ) ![]u8 {
-    const wat = if (gc_host_route) |route|
+    const raw_wat = if (gc_host_route) |route|
         try codegen_gc_sync.emit_gc_wat_for_supported_program_with_host_route(allocator, program, tokens, module_graph, route)
     else
         try codegen_gc_sync.emit_gc_wat_for_supported_program(allocator, program, tokens, module_graph);
+    const wat = add_backend_marker(allocator, raw_wat, "gc") catch |err| {
+        allocator.free(raw_wat);
+        return err;
+    };
     validate_gc_sync_output(wat) catch |err| {
         allocator.free(wat);
         return err;
     };
     return wat;
+}
+
+fn add_backend_marker(allocator: std.mem.Allocator, wat: []const u8, backend: []const u8) ![]u8 {
+    const module_prefix = "(module\n";
+    if (!std.mem.startsWith(u8, wat, module_prefix)) return error.InvalidBackendModule;
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+    try out.appendSlice(allocator, module_prefix);
+    try append_fmt(allocator, &out, "  ;; backend={[backend]s}\n", .{ .backend = backend });
+    try out.appendSlice(allocator, wat[module_prefix.len..]);
+    return out.toOwnedSlice(allocator);
 }
 
 fn try_emit_default_gc_sync(
@@ -4041,6 +4057,30 @@ test "normal pipeline exposes a private synchronous GC route" {
     try std.testing.expect(@hasField(EmitOptions, "gc_sync"));
 }
 
+test "managed backend defaults to GC and the ARC oracle is explicit" {
+    try std.testing.expectEqual(ManagedBackend.gc, (EmitOptions{}).backend);
+
+    const source =
+        \\start() {
+        \\    value text = "hello"
+        \\    return
+        \\}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    const gc_wat = try emit_wat_with_options(std.testing.allocator, program, tokens, null, .{});
+    defer std.testing.allocator.free(gc_wat);
+    try std.testing.expect(std.mem.indexOf(u8, gc_wat, "  ;; backend=gc\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, gc_wat, "__arc_") == null);
+
+    const oracle_wat = try emit_arc_equivalence_wat(std.testing.allocator, program, tokens, null, .{});
+    defer std.testing.allocator.free(oracle_wat);
+    try std.testing.expect(std.mem.indexOf(u8, oracle_wat, "  ;; backend=arc-equivalence-oracle\n") != null);
+}
+
 test "private synchronous GC route emits typed GC for a parsed managed update" {
     const source =
         \\Box {
@@ -5383,6 +5423,23 @@ fn expect_synchronous_gc_locals(wat: []const u8, function_name: []const u8) !voi
 }
 
 pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph, options: EmitOptions) ![]u8 {
+    return emit_wat_with_backend(allocator, program, tokens, module_graph, options);
+}
+
+fn emit_arc_equivalence_wat(
+    allocator: std.mem.Allocator,
+    program: parser.Program,
+    tokens: []const lexer.Token,
+    module_graph: ?*const imports.ModuleGraph,
+    options: EmitOptions,
+) ![]u8 {
+    var oracle_options = options;
+    oracle_options.backend = .arc_equivalence_oracle;
+    return emit_wat_with_backend(allocator, program, tokens, module_graph, oracle_options);
+}
+
+fn emit_wat_with_backend(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph, options: EmitOptions) ![]u8 {
+    const use_gc_backend = options.backend == .gc;
     if (options.p3_resource_probe_component) return finalize_component_wat(allocator, codegen_component_resource_probe.emit_component_wat(allocator, program, tokens, module_graph));
     if (options.p3_wasi_filesystem_preopen_component) return finalize_component_wat(allocator, codegen_component_wasi_filesystem_preopen.emit_component_wat(allocator, program, tokens, module_graph));
     if (options.p3_wasi_sockets_create_bind_drop_component) return finalize_component_wat(allocator, codegen_component_wasi_sockets.emit_component_wat(allocator, program, tokens, module_graph));
@@ -5420,7 +5477,7 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
         return codegen_component_async.emit_component_wat(allocator, program, tokens, module_graph);
     }
     if (options.p3_async_component) return codegen_component_async.emit_component_wat(allocator, program, tokens, module_graph);
-    if (options.gc_sync) return emit_checked_gc_sync(allocator, program, tokens, module_graph, options.gc_sync_host_wit_route);
+    if (use_gc_backend and options.gc_sync) return emit_checked_gc_sync(allocator, program, tokens, module_graph, options.gc_sync_host_wit_route);
     if (options.gc_core) return codegen_gc_core.emit_gc_core_wat(allocator, program, tokens);
 
     if (options.p3_wait_for_component) return finalize_component_wat(allocator, codegen_p3_wait_for.emit_component_wat(allocator, program, tokens, module_graph));
@@ -5433,7 +5490,7 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
     // generic/reflection helpers, so install the normal generation hooks before
     // entering the GC route as well as before the legacy emitter below.
     install_gen_hooks();
-    if (!options.host_export) {
+    if (use_gc_backend and !options.host_export) {
         if (try try_emit_default_gc_sync(allocator, program, tokens, module_graph, options.gc_sync_host_wit_route)) |wat| return wat;
     }
 
@@ -5587,6 +5644,7 @@ pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Progr
     }
 
     try out.appendSlice(allocator, "(module\n");
+    if (!use_gc_backend) try out.appendSlice(allocator, "  ;; backend=arc-equivalence-oracle\n");
     try append_fmt(allocator, &out, "  ;; source_len={[source_len]d}\n", .{ .source_len = program.source_len });
     try append_fmt(allocator, &out, "  ;; token_count={[token_count]d}\n", .{ .token_count = program.token_count });
     try append_fmt(allocator, &out, "  ;; top_level_count={[top_level_count]d}\n", .{ .top_level_count = program.top_level_count });
@@ -5637,11 +5695,15 @@ pub fn emit_test_wat(allocator: std.mem.Allocator, program: parser.Program, toke
             if (!codegen_gc_sync.is_gc_sync_admission_rejection(err)) return err;
             break :blk null;
         }) |gc_wat| {
-            validate_gc_sync_output(gc_wat) catch |err| {
+            const marked_wat = add_backend_marker(allocator, gc_wat, "gc") catch |err| {
                 allocator.free(gc_wat);
                 return err;
             };
-            return gc_wat;
+            validate_gc_sync_output(marked_wat) catch |err| {
+                allocator.free(marked_wat);
+                return err;
+            };
+            return marked_wat;
         }
     }
 

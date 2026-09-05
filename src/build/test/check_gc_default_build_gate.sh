@@ -27,7 +27,9 @@ assert_no_arc_marker() {
 
 assert_gc_marker() {
     local wat_file="$1"
-    if ! rg -q ';; gc-sync ' "$wat_file" || ! rg -q '\$do_' "$wat_file"; then
+    if ! rg -q '^  ;; backend=gc$' "$wat_file" ||
+        ! rg -q ';; gc-sync ' "$wat_file" ||
+        ! rg -q '\$do_' "$wat_file"; then
         printf 'generated WAT lacks the expected GC lowering markers: %s\n' "$wat_file" >&2
         return 1
     fi
@@ -195,6 +197,10 @@ for fixture in "${fixtures[@]}"; do
     else
         assert_no_arc_marker "$wat_file"
         assert_gc_marker "$wat_file"
+    fi
+    if ! rg -q '^  ;; backend=gc$' "$wat_file"; then
+        printf 'generated WAT lacks the backend=gc marker: %s\n' "$wat_file" >&2
+        exit 1
     fi
     if [[ "$name" == ordinary-host-c15b-call ]]; then
         rg -q '\(import "demo:marshal-record-managed-lower/api@1.0.0" "write"' "$wat_file"
