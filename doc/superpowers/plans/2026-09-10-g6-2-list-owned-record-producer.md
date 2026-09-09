@@ -32,6 +32,7 @@
 - Create src/build/codegen_component_list_owned_record_stream_producer.zig: exact token matcher, normalized plan, WIT emitter, and WAT adapter.
 - Create src/build/list_owned_record_stream_producer_template.wat: fixed canonical core WAT and lifecycle markers.
 - Modify src/build/codegen_component_async.zig: isolated target enum, analyzer dispatch, WIT/WAT dispatch, and focused tests.
+- Modify src/main.zig: import the new focused producer-contract test into the full Zig test root.
 - Create examples/p3-runtime/wit/g6-2-owned-record-list-producer.wit, examples/p3-runtime/g6-2-owned-record-list-producer.do, and examples/p3-runtime/g6-2-owned-record-list-producer-canonical.wat.
 - Create examples/p3-runtime/test_g6_2_list_owned_record_producer_abi.sh, test_do_g6_2_list_owned_record_producer.sh, test_do_g6_2_list_owned_record_producer_negative.sh, test_rust_g6_2_list_owned_record_producer.sh, and test_g6_2_list_owned_record_producer_equivalence.sh.
 - Create Rust bins examples/p3-runtime/rust-host-runner/src/bin/g6_2_list_owned_record_producer_abi.rs and g6_2_list_owned_record_producer.rs; add only explicit Cargo bin entries.
@@ -320,14 +321,19 @@ cmp "$PWD/.tmp/do-tmp/g6-2-list-generated.wit" \
 
   Expected: focused tests pass, generated WIT is byte-identical, WAT markers match the canonical template, and generated WAT has no __arc_.
 
-- [ ] Step 6: Commit the adapter and dispatch.
+- [ ] Step 6: Register the focused test in the full test root.
+
+  Add `_ = @import("build/codegen_component_list_owned_record_stream_producer_test.zig");` beside the existing component producer tests in src/main.zig. Re-run `(cd src && zig test main.zig)` and confirm the new tests execute without changing unrelated test behavior.
+
+- [ ] Step 7: Commit the adapter and dispatch.
 
 ~~~bash
 git diff --check
 git add src/build/codegen_component_list_owned_record_stream_producer.zig \
   src/build/list_owned_record_stream_producer_template.wat \
   src/build/codegen_component_async.zig \
-  src/build/codegen_component_list_owned_record_stream_producer_test.zig
+  src/build/codegen_component_list_owned_record_stream_producer_test.zig \
+  src/main.zig
 git commit -m "Implement list-owned-record producer lowering"
 ~~~
 
