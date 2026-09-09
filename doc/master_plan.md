@@ -1,7 +1,7 @@
 # do 编译器主计划
 
 状态: v1 子集发布候选已收口; G5c residual capability matrix 已完成且当前 exact candidate 已通过专用与全局门禁; G6 generic consumer、bounded nested resource paths、私有双 owned-field record producer、参数化双 owned-field record producer、固定三字段 `ResourceTriple`、nested-owned-record private compiler admission、private async `map<u32,u32>` compiler admission 与 G6.2 general producer/resource internal contract consolidation 已闭环, D2 私有 descriptor slices 与私有有界 `stream<list<u32>>` producer promotion 已闭环, 剩余 producer/resource residual；Task 8 Step 4/5 Shell-to-Zig parity 与 Task 9 active gate/文档/回归/回滚检查点已闭环；Task 6 GC-first runtime cutover 已闭环，普通编译入口现为 GC-only，ARC 仅保留显式 test-only equivalence oracle
-更新时间: 2026-09-09
+更新时间: 2026-09-10
 
 实时接手入口: `doc/start_here.md`。  
 执行证据与历史勾选不再维护在本文; 需要追溯时查 git 与 `CHANGELOG.md`。
@@ -48,13 +48,35 @@ Zig `0.16.0`、Rust/Cargo `1.97.1`。文档中较早的 `wasm-tools 1.255.0`
 WASI/component、Rust lifecycle 与 structural 编排已验证；`run_tests.sh` 现为
 薄入口 `cd src && zig build test --summary all`，默认及 `RUN_WASM=1` /
 `RUN_GC_CORE=1` opt-in 回归均为 `14/14` steps、`53/53` tests；独立
-`zig test main.zig` 为 `1561/1561`；WIT map 的
+`zig test main.zig` 为 `1568/1568`；WIT map 的
 `wit_abi_types`/bounded Core WAT lower/lift probe 与精确同步
 `map<u32,u32>` manifest-backed Component lower/lift gate 已通过 current
 toolchain parse/validate 和 Rust/Wasmtime host execution；精确 async
 `map<u32,u32>` capability 与 private `--p3-async-map-component` compiler route
 也已通过固定 WIT/WAT、负例和四模式 lifecycle gate，但通用 Component/WIT map
 runtime lowering 仍独立阻断。
+
+## 0.3 2026-09-10 mixed scalar/owned producer compiler admission
+
+G6.2 新增的 private mixed owned-record producer compiler admission 已闭环。
+精确 descriptor `do:g6-2-owned-record-mixed-producer@0.1.0` 仅在
+`--p3-async-component` 下接受 `MixedEntry { code: u32, ticket: own<Ticket> }`
+与 capacity-one `stream<mixed-entry>`；record size/alignment 为 `8/4`，字段
+offset 为 `code=0`、`ticket=4`，source 为 `(i32) -> (i32)`，ticket seed 为
+`111`，WIT SHA-256 为
+`5fe1c2ed6a0c348bf6f0e96596afc419bbbd379345421f02fa36f05aa472d9ed`。内部
+immutable `ProducerContract` 只为 `ticket` 建立 bit `0` ownership leaf，scalar
+`code` 不进入 ownership mask；完整 record 写入后才提交 transfer，转移前后
+均 exactly once cleanup，handle `0` 仍可作为有效值。
+
+正向 Do/Component gate、9 个 WAT 前负例 (`762`–`770`)、canonical ABI、生成
+Rust/Wasmtime 生命周期和 canonical/generated parity 均通过；十模式覆盖
+ready/pending、sink error、transfer 前后 cancel/early-drop、repeat 与 invalid，
+有效路径为 `1/1` ticket cleanup（repeat `2/2`），invalid 不创建资源且所有
+模式 `table-empty=true`。canonical/generated WAT 与 WIT 保持字节一致，生成
+WAT 不含 `__arc_`。这是 private fixed-shape evidence，不新增 GC inventory row，
+不开放 public `own<T>`/`borrow<T>`/`ref<T>`、generic/arbitrary producer、
+borrowed/list/variant payload 或 general async/resource lowering。
 
 已完成并可作为后续依赖的能力:
 
@@ -66,7 +88,7 @@ runtime lowering 仍独立阻断。
 - `do check`: lexer/parser/sema/import diagnostics only; 诊断收集在 `src/build/diagnostics.zig`。
 - 阶段 A–F、H 已完成; D 可推进项与 D2.1 已收口; D2 真实本地 file/dir/CLI stream、compiler-generated TCP/UDP socket create/bind/drop loopback smoke 与私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size` async slices 已收口，但总项仍受通用 filesystem async/external HTTP 阻断; G1–G5、G6.4 已完成; **阶段 I (I1+I2) 已关闭**。
 - 架构扁平拆分已落地: `type_name` / `sema_error` / `diagnostics` / `gen_*` 域竖切 / `sema_*` 域竖切 (见 `AGENTS.md`)。
-- 最新 fresh release-candidate 回归: 默认及 `RUN_WASM=1 RUN_GC_CORE=1` 组合的 `./src/build/test/run_tests.sh` 均为 `14/14` steps、`53/53` tests；`zig test main.zig` 为 `1561/1561`。ReleaseSmall/release smoke、GC default gate（87 fixtures）、ARC inventory post-cutover（`rows=49 matches=480 unclassified=0 normal_route_matches=0`）、生产依赖闭包（`modules=153 forbidden=0`）和 semantic-equivalence（26 rows; 0 pending）均通过；inventory 仍为 `complete_rows=15 pending_rows=15`、预期 exit `1`。
+- 最新 fresh release-candidate 回归: 默认及 `RUN_WASM=1 RUN_GC_CORE=1` 组合的 `./src/build/test/run_tests.sh` 均为 `14/14` steps、`53/53` tests；`zig test main.zig` 为 `1568/1568`。ReleaseSmall/release smoke、GC default gate（87 fixtures）、ARC inventory post-cutover（`rows=49 matches=480 unclassified=0 normal_route_matches=0`）、生产依赖闭包（`modules=153 forbidden=0`）和 semantic-equivalence（26 rows; 0 pending）均通过；inventory 仍为 `complete_rows=15 pending_rows=15`、预期 exit `1`。
 - G6.2 私有 direct owned-record producer 已通过独立 canonical ABI、Do/Component、Rust/Wasmtime 与 canonical/generated Component 生命周期等价门禁：精确 `stream<resource-entry>`、4-byte `ticket: own<ticket>` record、offset `0`、capacity `1`、WIT hash `6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace`；十模式 valid/invalid cleanup 均闭环。该 Component 等价证据不计入 ARC/GC 语义矩阵；通用 producer/resource 与公开 ownership syntax 仍未开放。
 - G6.2 私有 two-owned-field record producer 已通过独立 canonical ABI、Do/Component、negative admission、generated Rust/Wasmtime 与 canonical/generated Component 生命周期等价门禁：精确 `stream<resource-pair>`、8-byte `left/right: own<ticket>` record、offset `0/4`、capacity `1`、WIT hash `89345a5213936735d7f065cd54ed42b83d159b80305a1a900ae00df2e811704d`；presence mask 只在完整写入成功后原子转移两个 handle，十模式 valid/invalid cleanup 均闭环，valid 为 `2/2` drops、repeat 为 `4/4`，invalid 不创建资源；ABI 还观测 host `callback-calls`、stream poll/finish（`finish-calls=0`）及取消模式的 `cancel-calls=1` 与 pending future drop。该独立 Component 生命周期证据不计入 ARC/GC 语义矩阵；generic producer、arbitrary expression、borrowed/list/variant payload、general async/resource lowering 与公开 ownership syntax 仍未开放。
 - G6.2 私有参数化 two-owned-field record producer 已通过独立 canonical ABI、Do/Component、十个 fail-closed negative fixtures、generated Rust/Wasmtime 与 canonical/generated Component 生命周期等价门禁：精确 descriptor `do:g6-2-owned-record-pair-parameterized-producer@0.1.0`、WIT hash `e7abd3cf7b7543325865a0b4be4b32ae50a2470ac5083169250719f89b7ce53a`、`stream<resource-pair>`、8-byte `left/right: own<ticket>` record、offset `0/4`、capacity `1`、producer inputs `(mode,left-seed,right-seed)`；presence mask 只在完整写入成功后原子转移两个 handle，十模式 valid/invalid cleanup 均闭环，valid 为 `2/2` drops、repeat 为 `4/4`，invalid 不创建资源，`table-empty=true`。该独立 Component 生命周期证据不计入 ARC/GC 语义矩阵；generic producer、arbitrary expression、borrowed/list/variant payload、general async/resource lowering 与公开 ownership syntax 仍未开放。
