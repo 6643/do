@@ -41,6 +41,7 @@ pub const LoweringShape = union(enum) {
     record_stream_reader: RecordStreamReaderShape,
     record_resource_list_stream_reader: RecordResourceListStreamShape,
     owned_record_stream_producer: OwnedRecordStreamProducerShape,
+    record_resource_mixed_stream_producer: MixedOwnedRecordStreamProducerShape,
     record_resource_pair_stream_producer: OwnedRecordPairStreamProducerShape,
     record_resource_triple_stream_producer: OwnedRecordTripleStreamProducerShape,
     record_resource_nested_stream_producer: OwnedRecordNestedStreamProducerShape,
@@ -106,6 +107,17 @@ pub const RecordResourceListStreamProducerShape = struct {
 /// shape intentionally excludes list metadata: a single record is transferred
 /// directly through the stream and owns exactly one ticket field.
 pub const OwnedRecordStreamProducerShape = struct {
+    element: []const u8,
+    stream_index: usize,
+    method: StreamOperation,
+    stream: StreamCanonical,
+    record_layout: RecordLayout,
+    producer: ProducerCanonical,
+};
+
+/// ABI facts for the private mixed `stream<mixed-entry>` producer. The record
+/// keeps one ordinary scalar field separate from one owned resource leaf.
+pub const MixedOwnedRecordStreamProducerShape = struct {
     element: []const u8,
     stream_index: usize,
     method: StreamOperation,
@@ -297,6 +309,7 @@ pub const RecordSourceField = struct {
 pub const RecordLayout = struct {
     name: []const u8,
     byte_size: u32,
+    alignment: u32 = 4,
     fields: []const RecordField,
     source_fields: []const RecordSourceField,
 
@@ -535,6 +548,11 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
 
     if (std.mem.eql(u8, descriptor.effect, "record-resource-stream-producer")) {
         if (valid_owned_record_stream_producer_descriptor(descriptor)) |shape| return .{ .owned_record_stream_producer = shape };
+        return null;
+    }
+
+    if (std.mem.eql(u8, descriptor.effect, "record-resource-mixed-stream-producer")) {
+        if (valid_mixed_owned_record_stream_producer_descriptor(descriptor)) |shape| return .{ .record_resource_mixed_stream_producer = shape };
         return null;
     }
 
@@ -1464,6 +1482,7 @@ fn parse_descriptor(allocator: std.mem.Allocator, value: std.json.Value) !Descri
         !std.mem.eql(u8, effect, "stream-reader") and
         !std.mem.eql(u8, effect, "record-stream-reader") and
         !std.mem.eql(u8, effect, "record-resource-stream-producer") and
+        !std.mem.eql(u8, effect, "record-resource-mixed-stream-producer") and
         !std.mem.eql(u8, effect, "record-resource-pair-stream-producer") and
         !std.mem.eql(u8, effect, "record-resource-triple-stream-producer") and
         !std.mem.eql(u8, effect, "record-resource-nested-stream-producer") and
@@ -2327,6 +2346,82 @@ fn valid_owned_record_stream_producer_descriptor(descriptor: Descriptor) ?OwnedR
     };
 }
 
+fn valid_mixed_owned_record_stream_producer_descriptor(descriptor: Descriptor) ?MixedOwnedRecordStreamProducerShape {
+    const stream = descriptor.canonical.stream orelse return null;
+    const record_layout = descriptor.canonical.record_layout orelse return null;
+    const producer = descriptor.canonical.producer orelse return null;
+
+    if (!std.mem.eql(u8, descriptor.effect, "record-resource-mixed-stream-producer") or
+        !std.mem.eql(u8, descriptor.locator, "do:g6-2-owned-record-mixed-producer@0.1.0") or
+        !std.mem.eql(u8, descriptor.member, "consume-via-stream") or
+        descriptor.params.len != 1 or
+        !std.mem.eql(u8, descriptor.params[0], "stream<mixed-entry>") or
+        descriptor.resource != null or
+        !std.mem.eql(u8, descriptor.result, "Result<nil,error-code>") or
+        descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, descriptor.wit_sha256.?, "5fe1c2ed6a0c348bf6f0e96596afc419bbbd379345421f02fa36f05aa472d9ed") or
+        !std.mem.eql(u8, descriptor.wit.package, "do:g6-2-owned-record-mixed-producer@0.1.0") or
+        !std.mem.eql(u8, descriptor.wit.interface, "sink") or
+        !std.mem.eql(u8, descriptor.wit.operation, "consume-via-stream") or
+        !std.mem.eql(u8, descriptor.wit.world, "owned-record-mixed-producer") or
+        !std.mem.eql(u8, descriptor.wit.parameter, "data") or
+        !equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i32" }) or
+        !equal_core_types(descriptor.canonical.core_results, &.{ "i32" }) or
+        !equal_core_types(descriptor.canonical.completion_params, &.{ "i32", "i32" }) or
+        !std.mem.eql(u8, descriptor.canonical.completion, "task-return") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "do:g6-2-owned-record-mixed-producer/sink@0.1.0") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower]consume-via-stream") or
+        descriptor.canonical.result_payload != null or
+        descriptor.canonical.result_area_payload != null or
+        descriptor.canonical.future_owned != null or
+        descriptor.canonical.error_variants.len != 0 or
+        descriptor.canonical.list_resource_layout != null or
+        descriptor.canonical.scalar_list_layout != null or
+        descriptor.canonical.scalar_list_producer != null or
+        descriptor.canonical.future_input != null or
+        descriptor.canonical.future != null or
+        descriptor.canonical.variant_stream != null or
+        descriptor.canonical.variant_future != null or
+        descriptor.canonical.event_layout != null or
+        descriptor.canonical.ticket_drop_import != null or
+        !valid_mixed_record_layout(record_layout) or
+        !std.mem.eql(u8, stream.element, "mixed-entry") or
+        !std.mem.eql(u8, producer.source_module, "do:g6-2-owned-record-mixed-producer/source@0.1.0") or
+        !std.mem.eql(u8, producer.source_import_name, "make-ticket") or
+        !equal_core_types(producer.source_core_params, &.{ "i32" }) or
+        !equal_core_types(producer.source_core_results, &.{ "i32" }) or
+        !std.mem.eql(u8, producer.resource_drop_import, "[resource-drop]ticket") or
+        producer.stream_capacity != 1 or
+        !std.mem.eql(u8, producer.terminal, "task-return") or
+        producer.runtime_count_param != null or
+        producer.runtime_max != null or
+        producer.runtime_mode_param == null or
+        !std.mem.eql(u8, producer.runtime_mode_param.?, "u32") or
+        producer.batch_count != null or
+        producer.batch_lengths != null) return null;
+
+    if (!valid_named_stream_operation(stream.new, "[stream-new-0]consume-via-stream", &.{}, &.{ "i64" }) or
+        !valid_named_stream_operation(stream.cancel_read, "[stream-cancel-read-0]consume-via-stream", &.{ "i32" }, &.{ "i32" }) or
+        !valid_named_stream_operation(stream.cancel_write, "[stream-cancel-write-0]consume-via-stream", &.{ "i32" }, &.{ "i32" }) or
+        !valid_named_stream_operation(stream.drop_readable, "[stream-drop-readable-0]consume-via-stream", &.{ "i32" }, &.{}) or
+        !valid_named_stream_operation(stream.drop_writable, "[stream-drop-writable-0]consume-via-stream", &.{ "i32" }, &.{}) or
+        !valid_named_stream_operation(stream.read, "[async-lower][stream-read-0]consume-via-stream", &.{ "i32", "i32", "i32" }, &.{ "i32" }) or
+        !valid_named_stream_operation(stream.write, "[async-lower][stream-write-0]consume-via-stream", &.{ "i32", "i32", "i32" }, &.{ "i32" })) return null;
+
+    return .{
+        .element = stream.element,
+        .stream_index = 0,
+        .method = .{
+            .import_name = descriptor.canonical.async_import_name,
+            .core_params = descriptor.canonical.core_params,
+            .core_results = descriptor.canonical.core_results,
+        },
+        .stream = stream,
+        .record_layout = record_layout,
+        .producer = producer,
+    };
+}
+
 fn valid_owned_record_pair_stream_producer_descriptor(descriptor: Descriptor) ?OwnedRecordPairStreamProducerShape {
     const stream = descriptor.canonical.stream orelse return null;
     const record_layout = descriptor.canonical.record_layout orelse return null;
@@ -2949,6 +3044,34 @@ fn valid_single_ticket_record_layout(layout: RecordLayout) bool {
         source.nested_fields.len == 0;
 }
 
+fn valid_mixed_record_layout(layout: RecordLayout) bool {
+    if (!std.mem.eql(u8, layout.name, "mixed-entry") or
+        layout.byte_size != 8 or
+        layout.alignment != 4 or
+        layout.fields.len != 2 or
+        layout.source_fields.len != 2) return false;
+
+    const code = layout.fields[0];
+    const ticket = layout.fields[1];
+    const code_source = layout.source_fields[0];
+    const ticket_source = layout.source_fields[1];
+    return std.mem.eql(u8, code.name, "code") and
+        std.mem.eql(u8, code.core_type, "i32") and
+        code.offset == 0 and
+        std.mem.eql(u8, ticket.name, "ticket") and
+        std.mem.eql(u8, ticket.core_type, "i32") and
+        ticket.offset == 4 and
+        std.mem.eql(u8, code_source.name, "code") and
+        std.mem.eql(u8, code_source.source_type, "u32") and
+        code_source.storage.len == 1 and
+        std.mem.eql(u8, code_source.storage[0], "code") and
+        code_source.ownership == .none and
+        code_source.resource == null and
+        code_source.drop_import == null and
+        code_source.nested_fields.len == 0 and
+        valid_owned_ticket_source_field(ticket_source, "ticket");
+}
+
 fn valid_pair_ticket_record_layout(layout: RecordLayout) bool {
     if (!std.mem.eql(u8, layout.name, "resource-pair") or
         layout.byte_size != 8 or
@@ -3306,6 +3429,11 @@ fn parse_record_layout(allocator: std.mem.Allocator, value: std.json.Value) !Rec
     const raw_byte_size = unsigned_value(object.get("byte_size")) orelse return error.InvalidP3AsyncManifest;
     if (raw_byte_size == 0 or raw_byte_size > std.math.maxInt(u32) or raw_byte_size % 4 != 0) return error.InvalidP3AsyncManifest;
     const byte_size: u32 = @intCast(raw_byte_size);
+    const alignment: u32 = if (object.get("alignment")) |raw_alignment| blk: {
+        const alignment_value = unsigned_value(raw_alignment) orelse return error.InvalidP3AsyncManifest;
+        if (alignment_value == 0 or alignment_value > std.math.maxInt(u32)) return error.InvalidP3AsyncManifest;
+        break :blk @intCast(alignment_value);
+    } else 4;
     const values = array_value(object.get("fields")) orelse return error.InvalidP3AsyncManifest;
     if (values.items.len == 0) return error.InvalidP3AsyncManifest;
 
@@ -3416,6 +3544,7 @@ fn parse_record_layout(allocator: std.mem.Allocator, value: std.json.Value) !Rec
     return .{
         .name = name,
         .byte_size = byte_size,
+        .alignment = alignment,
         .fields = try fields.toOwnedSlice(allocator),
         .source_fields = try source_fields.toOwnedSlice(allocator),
     };
@@ -6052,7 +6181,10 @@ test "mixed owned record producer descriptor is admitted before lowering" {
             try std.testing.expectEqual(@as(u32, 4), shape.record_layout.alignment);
             try std.testing.expectEqual(@as(u32, 0), shape.record_layout.fields[0].offset);
             try std.testing.expectEqual(@as(u32, 4), shape.record_layout.fields[1].offset);
-            try std.testing.expectEqual(@as(usize, 1), shape.record_layout.source_fields.len);
+            try std.testing.expectEqual(@as(usize, 2), shape.record_layout.source_fields.len);
+            try std.testing.expectEqual(RecordOwnership.none, shape.record_layout.source_fields[0].ownership);
+            try std.testing.expectEqual(RecordOwnership.own, shape.record_layout.source_fields[1].ownership);
+            try std.testing.expectEqualStrings("[resource-drop]ticket", shape.record_layout.source_fields[1].drop_import.?);
             try std.testing.expectEqual(@as(u32, 1), shape.producer.stream_capacity);
         },
         else => return error.TestUnexpectedResult,

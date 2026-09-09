@@ -450,6 +450,10 @@ name = "do-p3-g6-2-owned-record-producer"
 path = "src/bin/g6_2_owned_record_producer.rs"
 
 [[bin]]
+name = "do-p3-g6-2-mixed-owned-record-producer-abi"
+path = "src/bin/g6_2_mixed_owned_record_producer_abi.rs"
+
+[[bin]]
 name = "do-p3-g6-2-owned-record-pair-producer-abi"
 path = "src/bin/g6_2_owned_record_pair_producer_abi.rs"
 

@@ -2426,6 +2426,63 @@
             }
         },
         {
+            "locator": "do:g6-2-owned-record-mixed-producer@0.1.0",
+            "member": "consume-via-stream",
+            "effect": "record-resource-mixed-stream-producer",
+            "params": ["stream<mixed-entry>"],
+            "result": "Result<nil,error-code>",
+            "resource": null,
+            "wit_sha256": "5fe1c2ed6a0c348bf6f0e96596afc419bbbd379345421f02fa36f05aa472d9ed",
+            "canonical": {
+                "core_params": ["i32", "i32"],
+                "core_results": ["i32"],
+                "completion_params": ["i32", "i32"],
+                "completion": "task-return",
+                "async_import_module": "do:g6-2-owned-record-mixed-producer/sink@0.1.0",
+                "async_import_name": "[async-lower]consume-via-stream",
+                "record_layout": {
+                    "name": "mixed-entry",
+                    "byte_size": 8,
+                    "alignment": 4,
+                    "fields": [
+                        {"name": "code", "core_type": "i32", "offset": 0},
+                        {"name": "ticket", "core_type": "i32", "offset": 4}
+                    ],
+                    "source_fields": [
+                        {"name": "code", "source_type": "u32", "storage": ["code"]},
+                        {"name": "ticket", "source_type": "ticket", "storage": ["ticket"], "ownership": "own", "resource": "ticket", "drop_import": "[resource-drop]ticket"}
+                    ]
+                },
+                "producer": {
+                    "source_module": "do:g6-2-owned-record-mixed-producer/source@0.1.0",
+                    "source_import_name": "make-ticket",
+                    "source_core_params": ["i32"],
+                    "source_core_results": ["i32"],
+                    "resource_drop_import": "[resource-drop]ticket",
+                    "stream_capacity": 1,
+                    "terminal": "task-return",
+                    "runtime_mode_param": "u32"
+                },
+                "stream": {
+                    "element": "mixed-entry",
+                    "new": {"import_name": "[stream-new-0]consume-via-stream", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[stream-cancel-read-0]consume-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[stream-cancel-write-0]consume-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[stream-drop-readable-0]consume-via-stream", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[stream-drop-writable-0]consume-via-stream", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][stream-read-0]consume-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][stream-write-0]consume-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]}
+                }
+            },
+            "wit": {
+                "package": "do:g6-2-owned-record-mixed-producer@0.1.0",
+                "interface": "sink",
+                "operation": "consume-via-stream",
+                "world": "owned-record-mixed-producer",
+                "parameter": "data"
+            }
+        },
+        {
             "locator": "do:g6-2-owned-record-pair-producer@0.1.0",
             "member": "consume-via-stream",
             "effect": "record-resource-pair-stream-producer",
