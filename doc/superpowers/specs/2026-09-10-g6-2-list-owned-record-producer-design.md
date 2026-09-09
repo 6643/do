@@ -129,7 +129,7 @@ The contract identifiers are fixed:
 | source member | `make-ticket` |
 | sink member | `consume-via-stream` |
 | export member | `produce` |
-| descriptor effect | `record-resource-list-stream-producer` |
+| descriptor effect | `record-resource-list-owned-record-stream-producer` |
 
 ## Exact Do adapter shape
 
@@ -215,9 +215,11 @@ presence bit is set.
 
 ## Internal normalized contract
 
-The manifest matcher adds one private shape, for example
-`record_resource_list_stream_producer`, and passes it through the existing
-immutable `ProducerContract` boundary.
+The manifest matcher adds one private shape,
+`record_resource_list_owned_record_stream_producer`, and passes it through the
+existing immutable `ProducerContract` boundary. This name is intentionally
+distinct from the existing `record_resource_list_stream_producer` shape,
+which means `stream<list<resource-entry>>`.
 
 The normalized values are:
 
@@ -232,7 +234,7 @@ ownership.leaves = [
 ]
 list_allocations = [
   { path:[values], element:u32, stride:4, capacity:3,
-    release:cabi_realloc }
+    pointer_offset:0, length_offset:4, release:cabi_realloc }
 ]
 ownership.parents = []
 source = (i32) -> (i32)
