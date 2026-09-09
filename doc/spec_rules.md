@@ -1213,6 +1213,7 @@ item = @get(user, .abc, @add(i, 1), .name)
 7. 字段默认值按构造上下文求值；顶层常量构造要求字段默认值可 CTFE，运行时构造允许运行时默认值。字段默认值处于 CTFE 上下文时，同样禁止通过调用链写模块级可变变量及其 import alias。
 
 8. P3 Component 的 bounded dynamic `StreamWriter<u8>` producer 不是一般源码循环语义；当前仅在 descriptor-specific lowering 中接受固定 countdown 形状：`produce(count u64) -> nil | E` 每轮写 literal `65`，或 `produce(count u64, value u8) -> nil | E` 每轮写同一个 `value`；两者都要求容量为 1、zero-pre-guard、await/discard 后减一、单次 sink await 与 `defer close(writer)`。两种形状的 `count=0` 表示空 stream；其他动态元素、任意循环控制流、一般 async call 和 `own<T>`/`borrow<T>`/`ref<T>` 均不因该 gate 开放。
+9. 会生成 WAT 的 `do build <input.do>` 和 `do test <input.do> --compiled` 必须显式提供 `-o <output.wat>`；缺少该选项时在读取源码或生成 WAT 前返回 `OutputPathRequired`，不得隐式写入当前工作目录。普通 `do test <input.do>` 是静态 runner，不生成 WAT，因此不需要 `-o`。
 
 ## 14. 标准库草案边界
 

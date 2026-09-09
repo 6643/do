@@ -502,6 +502,7 @@ pub fn error_summary(err: anyerror) []const u8 {
         error.UnsupportedLowering => "当前编译路径尚未支持该 lowering",
         error.UnsupportedTupleStorageLeaf => "非 packable 叶子的 `[Tuple]` storage 尚未支持 scheme-A pack",
         error.MissingOutputPath => "示例: `do build input.do -o out.wat` 或 `do test sample.do --compiled -o sample.wat`",
+        error.OutputPathRequired => "`do build` 和 `do test --compiled` 必须显式指定输出路径",
         error.MissingP3WitOutputPath => "`--p3-wit-output` 后需要一个 WIT 输出路径",
         error.P3WitOutputRequiresP3Target => "`--p3-wit-output` 只能与 P3 Component target 一起使用",
         error.MissingP3WitPackageOutputPath => "`--p3-wit-package-output` 后需要一个目录输出路径",
@@ -608,6 +609,7 @@ pub fn error_hint(err: anyerror) []const u8 {
         error.UnsupportedLowering => "常见后置边界: 非 packable 的 `[Tuple]` storage 直接元素；该错误不是重载匹配失败",
         error.UnsupportedTupleStorageLeaf => "直接元素须为标量、managed handle (`text` / `[T]`)、嵌套 Tuple、pure-scalar 具名 struct 子布局、或含 managed 字段的具名 struct 句柄槽；禁止拍平为扁平 Tuple；该错误不是重载匹配失败",
         error.MissingOutputPath => "示例: `do build input.do -o out.wat` 或 `do test sample.do --compiled -o sample.wat`",
+        error.OutputPathRequired => "写作 `do build input.do -o out.wat` 或 `do test input.do --compiled -o out.wat`；不会默认写入当前目录",
         error.MissingP3WitOutputPath => "写作 `--p3-wit-output out.wit`；它与 `--p3-async-component` 配对输出 assembly sidecar",
         error.P3WitOutputRequiresP3Target => "写作 `do build input.do --p3-async-component --p3-wit-output out.wit -o out.wat`",
         error.MissingP3WitPackageOutputPath => "写作 `--p3-wit-package-output out.wit-package`；该目录保留完整 WIT dependencies",
@@ -615,7 +617,7 @@ pub fn error_hint(err: anyerror) []const u8 {
         error.P3WitPackageOutputRequiresUnifiedTarget => "使用统一 `--p3-async-component`，不与单独 probe target 混用",
         error.P3WitPackageOutputRequiresHttpService => "源码必须声明 pinned `wasi:http/client@0.3.0-rc-2025-09-16` 的固定 async `send` service 形态；该 package 不启用通用 HTTP/resource/Stream lowering",
         error.MissingTestInputPath => "示例: `do test sample.do` 或 `do test sample.do --compiled -o sample.wat`",
-        error.UnexpectedCliArg => "build 写作 `do build input.do [-o out.wat]`; test 写作 `do test input.do` 或 `do test input.do --compiled [-o out.wat]`",
+        error.UnexpectedCliArg => "build 写作 `do build input.do ... -o out.wat`; test 写作 `do test input.do` 或 `do test input.do --compiled -o out.wat`",
         error.OutputRequiresCompiledTest => "生成 WAT 的测试入口写作 `do test input.do --compiled -o out.wat`",
         error.FormatMismatch => "运行 `do fmt input.do` 查看格式化后的 stdout 输出",
         else => "语法示例: `if expr { ... }`, `loop { ... }`, `@get(value, .field)`, `Type{field = value}`",
@@ -671,6 +673,17 @@ test "tuple non-packable storage leaf has dedicated diagnostic" {
     try std.testing.expectEqualStrings("UnsupportedTupleStorageLeaf", diagnostic.code);
     try std.testing.expectEqualStrings(error_summary(error.UnsupportedTupleStorageLeaf), diagnostic.message);
     try std.testing.expectEqualStrings(error_hint(error.UnsupportedTupleStorageLeaf), diagnostic.hint);
+}
+
+test "missing output path has an explicit diagnostic" {
+    try std.testing.expectEqualStrings(
+        "`do build` 和 `do test --compiled` 必须显式指定输出路径",
+        error_summary(error.OutputPathRequired),
+    );
+    try std.testing.expectEqualStrings(
+        "写作 `do build input.do -o out.wat` 或 `do test input.do --compiled -o out.wat`；不会默认写入当前目录",
+        error_hint(error.OutputPathRequired),
+    );
 }
 
 test "P3 async component diagnostic includes the admitted HTTP service" {

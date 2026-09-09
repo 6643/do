@@ -1084,7 +1084,7 @@ fn run_compiled_ok_fixture(
     const pending_manifest = try read_file(init, pending_manifest_path);
     defer init.gpa.free(pending_manifest);
     if (find_gc_pending_entry(pending_manifest, .compiled_ok, std.fs.path.basename(fixture))) |entry| {
-        const pending_args = [_][]const u8{ "test", fixture, "--compiled" };
+        const pending_args = [_][]const u8{ "test", fixture, "--compiled", "-o", wat };
         var pending = try run_do_args(init, do_bin, &pending_args, lib_root, null, 120_000);
         defer pending.deinit(init.gpa);
         if (pending.succeeded()) return error.GcCompiledPendingUnexpectedSuccess;
@@ -1680,8 +1680,10 @@ fn run_compiled_must_pass(
     defer init.gpa.free(pending_manifest_path);
     const pending_manifest = try read_file(init, pending_manifest_path);
     defer init.gpa.free(pending_manifest);
+    const pending_wat = try fixture_output_path(init.gpa, temp_path, fixture, ".compiled-pending.wat");
+    defer init.gpa.free(pending_wat);
     if (find_gc_pending_entry(pending_manifest, .compiled_must_pass, std.fs.path.basename(fixture))) |entry| {
-        const extra = [_][]const u8{ "--compiled" };
+        const extra = [_][]const u8{ "--compiled", "-o", pending_wat };
         var pending = try run_do_command(
             init,
             init.environ_map.get("DO_HARNESS_DO_BIN") orelse return error.MissingHarnessEnvironment,
@@ -2464,6 +2466,22 @@ fn run_tool_matrix(
     try expect_success(init, &compiled);
     try process.assert_stdout_contains(compiled, "ok:");
     try expect_file(init.io, test_output);
+
+    const implicit_output = try std.fmt.allocPrint(init.gpa, "{s}/out.wat", .{temp_path});
+    defer init.gpa.free(implicit_output);
+    const missing_build_args = [_][]const u8{ "build", compile_ok };
+    var missing_build = try run_do_args(init, do_bin, &missing_build_args, lib_root, temp_path, 120_000);
+    defer missing_build.deinit(init.gpa);
+    if (missing_build.succeeded()) return error.ExpectedCommandFailure;
+    try process.assert_stderr_contains(missing_build, "error[OutputPathRequired]");
+    if (try file_exists(init.io, implicit_output)) return error.ImplicitWatOutputCreated;
+
+    const missing_compiled_args = [_][]const u8{ "test", compiled_ok, "--compiled" };
+    var missing_compiled = try run_do_args(init, do_bin, &missing_compiled_args, lib_root, temp_path, 120_000);
+    defer missing_compiled.deinit(init.gpa);
+    if (missing_compiled.succeeded()) return error.ExpectedCommandFailure;
+    try process.assert_stderr_contains(missing_compiled, "error[OutputPathRequired]");
+    if (try file_exists(init.io, implicit_output)) return error.ImplicitWatOutputCreated;
 
     try expect_do_failure_with_marker(init, do_bin, lib_root, repo_root, &.{ "build", compile_ok, "--bad" }, "error[UnexpectedCliArg]");
     try expect_do_failure_with_marker(init, do_bin, lib_root, repo_root, &.{ "build", compile_ok, compile_ok }, "error[UnexpectedCliArg]");

@@ -22,6 +22,7 @@ bin/*
 # Local scratch and diagnostic outputs
 .tmp/
 **/.tmp/
+/out.wat
 .quota-probe.*/
 
 # Local upstream reference checkouts

@@ -28,7 +28,7 @@
 - Create: `src/build/test/compile_ok/340_host_export_manifest.host_manifest.expect`
 
 **Interfaces:**
-- Consumes: `do build <input> [-o <wat>]`.
+- Consumes: `do build <input> -o <wat>`.
 - Produces: `Args.host_export: bool` and `Args.host_manifest_path: ?[]const u8`; `--host-manifest` is rejected unless `--host-export` is present.
 
 - [ ] **Step 1: Write CLI unit tests before parsing changes.**

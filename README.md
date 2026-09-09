@@ -86,6 +86,8 @@ src/lsp/        do lsp diagnostics + formatting + semantic tokens + hover + comp
 
 ## 构建
 
+生成 WAT 的 `do build` 和 `do test --compiled` 必须显式提供 `-o <output.wat>`；编译器不会隐式写入当前工作目录。
+
 ```bash
 cd src
 zig build -Doptimize=ReleaseSmall

@@ -45,7 +45,7 @@ pub const CheckArgs = struct {
 
 pub fn parse_build(args: []const []const u8) !Args {
     var input_path: ?[]const u8 = null;
-    var output_path: []const u8 = "out.wat";
+    var output_path: ?[]const u8 = null;
     var component_core = false;
     var p3_wait_for_component = false;
     var p3_resource_probe_component = false;
@@ -174,12 +174,13 @@ pub fn parse_build(args: []const []const u8) !Args {
     if (p3_wit_package_output_path != null and !p3_wait_for_component and !p3_resource_probe_component and !p3_wasi_filesystem_preopen_component and !p3_resource_async_component and !p3_async_component) return error.P3WitPackageOutputRequiresP3Target;
     if (p3_wit_package_output_path != null and !p3_async_component) return error.P3WitPackageOutputRequiresUnifiedTarget;
     if (p3_wit_output_path != null and p3_wit_package_output_path != null) return error.UnexpectedCliArg;
+    const output = output_path orelse return error.OutputPathRequired;
     if (p3_wit_output_path) |wit_path| {
-        if (std.mem.eql(u8, wit_path, output_path)) return error.UnexpectedCliArg;
+        if (std.mem.eql(u8, wit_path, output)) return error.UnexpectedCliArg;
     }
     return .{
         .input_path = path,
-        .output_path = output_path,
+        .output_path = output,
         .component_core = component_core,
         .p3_wait_for_component = p3_wait_for_component,
         .p3_resource_probe_component = p3_resource_probe_component,
@@ -204,9 +205,8 @@ pub fn parse_build(args: []const []const u8) !Args {
 
 pub fn parse_test(args: []const []const u8) !Args {
     var input_path: ?[]const u8 = null;
-    var output_path: []const u8 = "out.wat";
+    var output_path: ?[]const u8 = null;
     var compiled_test = false;
-    var has_output_path = false;
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
         if (std.mem.eql(u8, args[i], "--compiled")) {
@@ -217,18 +217,18 @@ pub fn parse_test(args: []const []const u8) !Args {
             if (i + 1 >= args.len) return error.MissingOutputPath;
             i += 1;
             output_path = args[i];
-            has_output_path = true;
             continue;
         }
         if (std.mem.startsWith(u8, args[i], "-")) return error.UnexpectedCliArg;
         if (input_path != null) return error.UnexpectedCliArg;
         input_path = args[i];
     }
-    if (has_output_path and !compiled_test) return error.OutputRequiresCompiledTest;
+    if (output_path != null and !compiled_test) return error.OutputRequiresCompiledTest;
     const path = input_path orelse return error.MissingTestInputPath;
+    const output = if (compiled_test) output_path orelse return error.OutputPathRequired else "";
     return .{
         .input_path = path,
-        .output_path = output_path,
+        .output_path = output,
         .compiled_test = compiled_test,
     };
 }
@@ -305,55 +305,60 @@ test "parse_run accepts exactly one input path" {
 }
 
 test "parse_build accepts host export and manifest" {
-    const args = [_][]const u8{ "build", "app.do", "--host-export", "--host-manifest", "app.host.json" };
+    const args = [_][]const u8{ "build", "app.do", "--host-export", "--host-manifest", "app.host.json", "-o", "app.wat" };
     const parsed = try parse_build(&args);
     try std.testing.expect(parsed.host_export);
     try std.testing.expectEqualStrings("app.host.json", parsed.host_manifest_path.?);
 }
 
+test "parse_build requires an explicit output path" {
+    const args = [_][]const u8{ "build", "app.do" };
+    try std.testing.expectError(error.OutputPathRequired, parse_build(&args));
+}
+
 test "parse_build accepts the pinned P3 wait-for component target" {
-    const args = [_][]const u8{ "build", "app.do", "--p3-wait-for-component" };
+    const args = [_][]const u8{ "build", "app.do", "--p3-wait-for-component", "-o", "app.wat" };
     const parsed = try parse_build(&args);
     try std.testing.expect(parsed.p3_wait_for_component);
 }
 
 test "parse_build accepts the pinned resource probe component target" {
-    const args = [_][]const u8{ "build", "app.do", "--p3-resource-probe-component", "--p3-wit-output", "app.wit" };
+    const args = [_][]const u8{ "build", "app.do", "--p3-resource-probe-component", "--p3-wit-output", "app.wit", "-o", "app.wat" };
     const parsed = try parse_build(&args);
     try std.testing.expect(parsed.p3_resource_probe_component);
     try std.testing.expectEqualStrings("app.wit", parsed.p3_wit_output_path.?);
 }
 
 test "parse_build accepts the pinned filesystem preopen component target" {
-    const args = [_][]const u8{ "build", "app.do", "--p3-wasi-filesystem-preopen-component", "--p3-wit-output", "app.wit" };
+    const args = [_][]const u8{ "build", "app.do", "--p3-wasi-filesystem-preopen-component", "--p3-wit-output", "app.wit", "-o", "app.wat" };
     const parsed = try parse_build(&args);
     try std.testing.expect(parsed.p3_wasi_filesystem_preopen_component);
     try std.testing.expectEqualStrings("app.wit", parsed.p3_wit_output_path.?);
 }
 
 test "parse_build accepts the pinned socket create bind drop component target" {
-    const args = [_][]const u8{ "build", "app.do", "--p3-wasi-sockets-create-bind-drop-component", "--p3-wit-output", "app.wit" };
+    const args = [_][]const u8{ "build", "app.do", "--p3-wasi-sockets-create-bind-drop-component", "--p3-wit-output", "app.wit", "-o", "app.wat" };
     const parsed = try parse_build(&args);
     try std.testing.expect(parsed.p3_wasi_sockets_create_bind_drop_component);
     try std.testing.expectEqualStrings("app.wit", parsed.p3_wit_output_path.?);
 }
 
 test "parse_build accepts the private async resource component target" {
-    const args = [_][]const u8{ "build", "app.do", "--p3-resource-async-component", "--p3-wit-output", "app.wit" };
+    const args = [_][]const u8{ "build", "app.do", "--p3-resource-async-component", "--p3-wit-output", "app.wit", "-o", "app.wat" };
     const parsed = try parse_build(&args);
     try std.testing.expect(parsed.p3_resource_async_component);
     try std.testing.expectEqualStrings("app.wit", parsed.p3_wit_output_path.?);
 }
 
 test "parse_build accepts the unified P3 async component target" {
-    const args = [_][]const u8{ "build", "app.do", "--p3-async-component", "--p3-wit-output", "app.wit" };
+    const args = [_][]const u8{ "build", "app.do", "--p3-async-component", "--p3-wit-output", "app.wit", "-o", "app.wat" };
     const parsed = try parse_build(&args);
     try std.testing.expect(parsed.p3_async_component);
     try std.testing.expectEqualStrings("app.wit", parsed.p3_wit_output_path.?);
 }
 
 test "parse_build accepts the private filesystem stat component target" {
-    const args = [_][]const u8{ "build", "app.do", "--p3-wasi-filesystem-stat-component", "--p3-wit-output", "app.wit" };
+    const args = [_][]const u8{ "build", "app.do", "--p3-wasi-filesystem-stat-component", "--p3-wit-output", "app.wit", "-o", "app.wat" };
     const parsed = try parse_build(&args);
     try std.testing.expect(parsed.p3_wasi_filesystem_stat_component);
     try std.testing.expectEqualStrings("app.wit", parsed.p3_wit_output_path.?);
@@ -371,14 +376,14 @@ test "parse_build rejects the private filesystem stat target combinations" {
 }
 
 test "parse_build accepts the opt-in async call component target" {
-    const args = [_][]const u8{ "build", "app.do", "--p3-async-call-component", "--p3-wit-output", "app.wit" };
+    const args = [_][]const u8{ "build", "app.do", "--p3-async-call-component", "--p3-wit-output", "app.wit", "-o", "app.wat" };
     const parsed = try parse_build(&args);
     try std.testing.expect(parsed.p3_async_call_component);
     try std.testing.expectEqualStrings("app.wit", parsed.p3_wit_output_path.?);
 }
 
 test "parse_build accepts the private async host scalar argument target" {
-    const args = [_][]const u8{ "build", "app.do", "--p3-async-host-arg-component", "--p3-wit-output", "app.wit" };
+    const args = [_][]const u8{ "build", "app.do", "--p3-async-host-arg-component", "--p3-wit-output", "app.wit", "-o", "app.wat" };
     const parsed = try parse_build(&args);
     try std.testing.expect(parsed.p3_async_host_arg_component);
     try std.testing.expectEqualStrings("app.wit", parsed.p3_wit_output_path.?);
@@ -396,7 +401,7 @@ test "parse_build rejects private async host scalar argument target combinations
 }
 
 test "parse_build accepts the private owned future component target" {
-    const args = [_][]const u8{ "build", "app.do", "--p3-owned-future-component", "--p3-wit-output", "app.wit" };
+    const args = [_][]const u8{ "build", "app.do", "--p3-owned-future-component", "--p3-wit-output", "app.wit", "-o", "app.wat" };
     const parsed = try parse_build(&args);
     try std.testing.expect(parsed.p3_owned_future_component);
     try std.testing.expectEqualStrings("app.wit", parsed.p3_wit_output_path.?);
@@ -422,7 +427,7 @@ test "parse_build rejects async call target combinations" {
 }
 
 test "parse_build accepts the Generic ABI v2 Component profile" {
-    const args = [_][]const u8{ "build", "app.do", "--p3-async-component-v2", "--p3-wit-output", "app.wit" };
+    const args = [_][]const u8{ "build", "app.do", "--p3-async-component-v2", "--p3-wit-output", "app.wit", "-o", "app.wat" };
     const parsed = try parse_build(&args);
     try std.testing.expect(parsed.p3_async_component_v2);
     try std.testing.expectEqualStrings("app.wit", parsed.p3_wit_output_path.?);
@@ -434,20 +439,20 @@ test "parse_build rejects a v2 Component profile combined with v1" {
 }
 
 test "parse_build accepts the opt-in generic ABI v2 scalar-i64 target" {
-    const args = [_][]const u8{ "build", "app.do", "--p3-async-v2-scalar-i64", "--p3-wit-output", "app.wit" };
+    const args = [_][]const u8{ "build", "app.do", "--p3-async-v2-scalar-i64", "--p3-wit-output", "app.wit", "-o", "app.wat" };
     const parsed = try parse_build(&args);
     try std.testing.expect(parsed.p3_async_v2_scalar_i64_component);
 }
 
 test "parse_build accepts the explicit Core Wasm GC target" {
-    const args = [_][]const u8{ "build", "app.do", "--gc-core" };
+    const args = [_][]const u8{ "build", "app.do", "--gc-core", "-o", "app.wat" };
     const parsed = try parse_build(&args);
     try std.testing.expect(parsed.gc_core);
 }
 
 test "parse_build accepts the explicit GC WIT marshal descriptor" {
     const descriptor = "demo:marshal-record-managed-lower/api.write@1.0.0/lower";
-    const args = [_][]const u8{ "build", "app.do", "--gc-wit-marshal", descriptor };
+    const args = [_][]const u8{ "build", "app.do", "--gc-wit-marshal", descriptor, "-o", "app.wat" };
     const parsed = try parse_build(&args);
     try std.testing.expectEqualStrings(descriptor, parsed.gc_wit_marshal_descriptor.?);
 }
@@ -504,19 +509,19 @@ test "parse_build rejects incompatible resource probe component targets" {
 }
 
 test "parse_build accepts a P3 WIT sidecar only for the P3 target" {
-    const args = [_][]const u8{ "build", "app.do", "--p3-wait-for-component", "--p3-wit-output", "app.wit" };
+    const args = [_][]const u8{ "build", "app.do", "--p3-wait-for-component", "--p3-wit-output", "app.wit", "-o", "app.wat" };
     const parsed = try parse_build(&args);
     try std.testing.expectEqualStrings("app.wit", parsed.p3_wit_output_path.?);
 
     const missing_target = [_][]const u8{ "build", "app.do", "--p3-wit-output", "app.wit" };
     try std.testing.expectError(error.P3WitOutputRequiresP3Target, parse_build(&missing_target));
 
-    const same_path = [_][]const u8{ "build", "app.do", "--p3-wait-for-component", "--p3-wit-output", "out.wat" };
+    const same_path = [_][]const u8{ "build", "app.do", "--p3-wait-for-component", "--p3-wit-output", "out.wat", "-o", "out.wat" };
     try std.testing.expectError(error.UnexpectedCliArg, parse_build(&same_path));
 }
 
 test "parse_build accepts a P3 WIT package output directory" {
-    const args = [_][]const u8{ "build", "app.do", "--p3-async-component", "--p3-wit-package-output", "app.wit-package" };
+    const args = [_][]const u8{ "build", "app.do", "--p3-async-component", "--p3-wit-package-output", "app.wit-package", "-o", "app.wat" };
     const parsed = try parse_build(&args);
     try std.testing.expectEqualStrings("app.wit-package", parsed.p3_wit_package_output_path.?);
 }
@@ -529,6 +534,11 @@ test "parse_build restricts a P3 WIT package output directory to the unified tar
 test "parse_build rejects a manifest without host export" {
     const args = [_][]const u8{ "build", "app.do", "--host-manifest", "app.host.json" };
     try std.testing.expectError(error.HostManifestRequiresHostExport, parse_build(&args));
+}
+
+test "compiled parse_test requires an explicit output path" {
+    const args = [_][]const u8{ "test", "app.do", "--compiled" };
+    try std.testing.expectError(error.OutputPathRequired, parse_test(&args));
 }
 
 test "parse_run rejects extra args and flags" {
