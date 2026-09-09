@@ -233,6 +233,7 @@ fn is_strict_prefix(prefix: []const []const u8, path: []const []const u8) bool {
 
 const RecordProducerKind = enum {
     direct,
+    mixed,
     pair,
     triple,
     nested,
@@ -242,6 +243,7 @@ const RecordProducerKind = enum {
 };
 
 const direct_ticket_path = [_][]const u8{"ticket"};
+const mixed_ticket_path = [_][]const u8{"ticket"};
 const pair_left_path = [_][]const u8{"left"};
 const pair_right_path = [_][]const u8{"right"};
 const triple_left_path = [_][]const u8{"left"};
@@ -257,6 +259,9 @@ const list_ticket_path = [_][]const u8{ "list", "ticket" };
 // borrow path storage without introducing an ownership/deinit obligation.
 const direct_ticket_leaves = [_]OwnershipLeaf{
     .{ .path = &direct_ticket_path, .resource = "ticket", .handle_offset = 0, .drop_import = "[resource-drop]ticket", .bit = 0 },
+};
+const mixed_ticket_leaves = [_]OwnershipLeaf{
+    .{ .path = &mixed_ticket_path, .resource = "ticket", .handle_offset = 4, .drop_import = "[resource-drop]ticket", .bit = 0 },
 };
 const pair_ticket_leaves = [_]OwnershipLeaf{
     .{ .path = &pair_left_path, .resource = "ticket", .handle_offset = 0, .drop_import = "[resource-drop]ticket", .bit = 0 },
@@ -301,6 +306,14 @@ pub fn producer_contract_from_shape(
             value.producer,
             value.stream,
             .direct,
+        ),
+        .record_resource_mixed_stream_producer => |value| build_record_contract(
+            descriptor,
+            value.element,
+            value.record_layout,
+            value.producer,
+            value.stream,
+            .mixed,
         ),
         .record_resource_pair_stream_producer => |value| build_record_contract(
             descriptor,
@@ -395,6 +408,7 @@ fn build_record_contract(
 
     const ownership = switch (kind) {
         .direct => try ownership_for_direct(layout),
+        .mixed => try ownership_for_mixed(layout),
         .pair => try ownership_for_pair(layout),
         .triple => try ownership_for_triple(layout),
         .nested => try ownership_for_nested(layout),
@@ -570,6 +584,7 @@ fn record_descriptor_matches(
 fn record_effect_matches(descriptor: p3_async_manifest.Descriptor, kind: RecordProducerKind) bool {
     return switch (kind) {
         .direct => std.mem.eql(u8, descriptor.effect, "record-resource-stream-producer"),
+        .mixed => std.mem.eql(u8, descriptor.effect, "record-resource-mixed-stream-producer"),
         .pair => std.mem.eql(u8, descriptor.effect, "record-resource-pair-stream-producer"),
         .triple => std.mem.eql(u8, descriptor.effect, "record-resource-triple-stream-producer"),
         .nested => std.mem.eql(u8, descriptor.effect, "record-resource-nested-stream-producer"),
@@ -647,6 +662,24 @@ fn ownership_for_direct(layout: p3_async_manifest.RecordLayout) ContractError!Ow
     return .{ .leaves = &direct_ticket_leaves, .parents = &.{} };
 }
 
+fn ownership_for_mixed(layout: p3_async_manifest.RecordLayout) ContractError!OwnershipTransferPlan {
+    if (!std.mem.eql(u8, layout.name, "mixed-entry") or layout.byte_size != 8 or
+        layout.alignment != 4 or layout.fields.len != 2 or layout.source_fields.len != 2 or
+        !field_matches(layout.fields[0], "code", "i32", 0) or
+        !field_matches(layout.fields[1], "ticket", "i32", 4))
+        return error.UnsupportedProducerContract;
+
+    const scalar = layout.source_fields[0];
+    if (!std.mem.eql(u8, scalar.name, "code") or !std.mem.eql(u8, scalar.source_type, "u32") or
+        scalar.storage.len != 1 or !std.mem.eql(u8, scalar.storage[0], "code") or
+        scalar.ownership != .none or scalar.resource != null or scalar.drop_import != null or
+        scalar.nested_fields.len != 0)
+        return error.UnsupportedProducerContract;
+    if (!owned_source_matches(layout.source_fields[1], "ticket"))
+        return error.UnsupportedProducerContract;
+    return .{ .leaves = &mixed_ticket_leaves, .parents = &.{} };
+}
+
 fn ownership_for_pair(layout: p3_async_manifest.RecordLayout) ContractError!OwnershipTransferPlan {
     if (!valid_owned_record_layout(layout, "resource-pair", &.{ "left", "right" }, &.{ 0, 4 }))
         return error.UnsupportedProducerContract;
@@ -714,4 +747,33 @@ test "producer contract validates a minimal scalar plan" {
         .terminal = .{ .close_action = "close", .abort_action = null, .cancel_action = "cancel", .cleanup_order = &.{ .stream, .future, .waitable, .frame } },
     };
     try validate_contract(value);
+}
+
+test "mixed owned record producer normalizes scalar and resource fields" {
+    var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find(
+        "do:g6-2-owned-record-mixed-producer@0.1.0",
+        "consume-via-stream",
+    ) orelse return error.TestUnexpectedResult;
+
+    const contract = try producer_contract_from_descriptor(descriptor);
+    const record = switch (contract.payload) {
+        .record => |value| value,
+        else => return error.TestUnexpectedResult,
+    };
+    try std.testing.expectEqualStrings("mixed-entry", record.name);
+    try std.testing.expectEqual(@as(u32, 8), record.byte_size);
+    try std.testing.expectEqual(@as(u32, 4), record.alignment);
+    try std.testing.expectEqual(@as(usize, 2), record.fields.len);
+    try std.testing.expectEqualStrings("code", record.fields[0].name);
+    try std.testing.expectEqual(@as(u32, 0), record.fields[0].offset);
+    try std.testing.expectEqualStrings("ticket", record.fields[1].name);
+    try std.testing.expectEqual(@as(u32, 4), record.fields[1].offset);
+    try std.testing.expectEqual(@as(usize, 1), contract.ownership.leaves.len);
+    try std.testing.expectEqualStrings("ticket", contract.ownership.leaves[0].path[0]);
+    try std.testing.expectEqual(@as(u32, 4), contract.ownership.leaves[0].handle_offset);
+    try std.testing.expectEqual(@as(u8, 0), contract.ownership.leaves[0].bit);
+    try std.testing.expect(contract.ownership.parents.len == 0);
+    try std.testing.expect(contract.ownership.complete_write_required);
 }

@@ -21,6 +21,7 @@ const codegen_component_wasi_filesystem_stat = @import("codegen_component_wasi_f
 const codegen_component_record_stream = @import("codegen_component_record_stream.zig");
 const codegen_component_record_resource_list_stream = @import("codegen_component_record_resource_list_stream.zig");
 const codegen_component_owned_record_stream_producer = @import("codegen_component_owned_record_stream_producer.zig");
+const codegen_component_mixed_owned_record_stream_producer = @import("codegen_component_mixed_owned_record_stream_producer.zig");
 const codegen_component_owned_record_pair_stream_producer = @import("codegen_component_owned_record_pair_stream_producer.zig");
 const codegen_component_owned_record_triple_stream_producer = @import("codegen_component_owned_record_triple_stream_producer.zig");
 const codegen_component_owned_record_nested_stream_producer = @import("codegen_component_owned_record_nested_stream_producer.zig");
@@ -56,6 +57,7 @@ pub const Target = enum {
     record_stream,
     record_resource_list_stream,
     owned_record_stream_producer,
+    mixed_owned_record_stream_producer,
     owned_record_pair_stream_producer,
     owned_record_triple_stream_producer,
     owned_record_nested_stream_producer,
@@ -187,6 +189,10 @@ pub fn emit_component_wat(
         },
         .owned_record_stream_producer => codegen_component_owned_record_stream_producer.emit_component_wat_for_tokens(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3OwnedRecordStreamProducer => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
+        .mixed_owned_record_stream_producer => codegen_component_mixed_owned_record_stream_producer.emit_component_wat_for_tokens(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3MixedOwnedRecordStreamProducer => error.UnsupportedP3AsyncComponent,
             else => err,
         },
         .owned_record_pair_stream_producer => codegen_component_owned_record_pair_stream_producer.emit_component_wat_for_tokens(allocator, tokens) catch |err| switch (err) {
@@ -976,6 +982,10 @@ pub fn emit_component_wit_with_graph(
             error.UnsupportedP3OwnedRecordStreamProducer => error.UnsupportedP3AsyncComponent,
             else => err,
         },
+        .mixed_owned_record_stream_producer => codegen_component_mixed_owned_record_stream_producer.emit_component_wit_for_tokens(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3MixedOwnedRecordStreamProducer => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
         .owned_record_pair_stream_producer => codegen_component_owned_record_pair_stream_producer.emit_component_wit_for_tokens(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3OwnedRecordPairStreamProducer => error.UnsupportedP3AsyncComponent,
             else => err,
@@ -1123,6 +1133,10 @@ pub fn target_for_tokens_with_graph(
         return .owned_record_stream_producer;
     } else |_| {}
 
+    if (codegen_component_mixed_owned_record_stream_producer.MixedOwnedRecordStreamProducerPlan.analyze(tokens, registry)) |_| {
+        return .mixed_owned_record_stream_producer;
+    } else |_| {}
+
     if (codegen_component_owned_record_pair_stream_producer.OwnedRecordPairStreamProducerPlan.analyze(tokens, registry)) |_| {
         return .owned_record_pair_stream_producer;
     } else |_| {}
@@ -1155,6 +1169,7 @@ pub fn target_for_tokens_with_graph(
         const shape = p3_async_manifest.lowering_shape(descriptor) orelse return error.UnsupportedP3AsyncComponent;
         const is_normalized_producer = switch (shape) {
             .owned_record_stream_producer,
+            .record_resource_mixed_stream_producer,
             .record_resource_pair_stream_producer,
             .record_resource_triple_stream_producer,
             .record_resource_nested_stream_producer,
@@ -1195,6 +1210,11 @@ pub fn target_for_tokens_with_graph(
                 _ = codegen_component_owned_record_stream_producer.OwnedRecordStreamProducerPlan.analyze(tokens, registry) catch
                     return error.UnsupportedP3AsyncComponent;
                 break :blk .owned_record_stream_producer;
+            } else return error.UnsupportedP3AsyncComponent,
+            .record_resource_mixed_stream_producer => if (binding.kind == .host_async_func) blk: {
+                _ = codegen_component_mixed_owned_record_stream_producer.MixedOwnedRecordStreamProducerPlan.analyze(tokens, registry) catch
+                    return error.UnsupportedP3AsyncComponent;
+                break :blk .mixed_owned_record_stream_producer;
             } else return error.UnsupportedP3AsyncComponent,
             .record_resource_pair_stream_producer => if (binding.kind == .host_async_func) blk: {
                 _ = codegen_component_owned_record_pair_stream_producer.OwnedRecordPairStreamProducerPlan.analyze(tokens, registry) catch
@@ -1349,6 +1369,7 @@ fn target_for_descriptor(descriptor: p3_async_manifest.Descriptor) !Target {
         .filesystem_stat => .wasi_filesystem_stat,
         .record_resource_list_stream_reader => error.UnsupportedP3AsyncComponent,
         .owned_record_stream_producer => .owned_record_stream_producer,
+        .record_resource_mixed_stream_producer => .mixed_owned_record_stream_producer,
         .record_resource_pair_stream_producer => .owned_record_pair_stream_producer,
         .record_resource_nested_stream_producer => .owned_record_nested_stream_producer,
         .record_resource_triple_stream_producer => .owned_record_triple_stream_producer,
@@ -1989,6 +2010,36 @@ test "generic Component async target classifies the direct owned-record producer
         Target.owned_record_stream_producer,
         try target_for_tokens(std.testing.allocator, tokens),
     );
+}
+
+test "generic Component async target classifies the mixed owned-record producer" {
+    const source = @embedFile("test/check/761_g6_2_mixed_owned_record_producer_component.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try std.testing.expectEqual(
+        Target.mixed_owned_record_stream_producer,
+        try target_for_tokens(std.testing.allocator, tokens),
+    );
+}
+
+test "generic Component async mixed owned-record dispatch emits scalar and resource markers" {
+    const source = @embedFile("test/check/761_g6_2_mixed_owned_record_producer_component.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    const wat = try emit_component_wat(std.testing.allocator, program, tokens, null);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[producer-record-code-offset] 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[producer-record-ticket-offset] 4") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[producer-record-transfer]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+
+    const wit = try emit_component_wit_with_graph(std.testing.allocator, tokens, null);
+    defer std.testing.allocator.free(wit);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "record mixed-entry") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "world owned-record-mixed-producer") != null);
 }
 
 test "generic Component async direct owned-record producer dispatch emits pinned markers" {

@@ -1,5 +1,27 @@
 # Changelog
 
+# 2026-09-10 G6.2 private mixed scalar/owned record producer:
+  added the exact `do:g6-2-owned-record-mixed-producer@0.1.0` compiler route
+  behind `--p3-async-component`. The route admits only
+  `MixedEntry { code: u32, ticket: own<Ticket> }` in a capacity-one
+  `stream<mixed-entry>`; its measured record is 8 bytes/alignment 4 with
+  `code`/`ticket` offsets `0/4`, source `(i32) -> (i32)`, ticket seed `111`, and
+  pinned WIT SHA-256
+  `5fe1c2ed6a0c348bf6f0e96596afc419bbbd379345421f02fa36f05aa472d9ed`.
+  The immutable `ProducerContract` gives ownership bit `0` only to `ticket`,
+  commits transfer after a complete record write, and preserves exactly-once
+  cleanup before and after transfer; scalar `code` is outside the ownership
+  mask and handle value `0` remains valid.
+  Do/Component positive admission, nine WAT-before-rejection negatives
+  (`762`-`770`), canonical ABI, generated Rust/Wasmtime lifecycle, and
+  canonical/generated parity pass ten ready/pending/error/cancel/early-drop/
+  repeat/invalid modes. Valid rows drop one ticket (repeat `2/2`), invalid
+  creates no resources, all modes leave `table-empty=true`, and generated WAT
+  contains no `__arc_`. This is private fixed-shape evidence only: it does not
+  add a GC inventory row or open public `own<T>`/`borrow<T>`/`ref<T>`, generic or
+  arbitrary producer, borrowed/list/variant payload, or general async/resource
+  lowering.
+
 # 2026-09-09 Private async `map<u32,u32>` compiler admission:
   added the private `--p3-async-map-component` route for exactly
   `demo:map-async-probe/api@0.1.0.submit` with `HashMap<u32,u32>`, two literal

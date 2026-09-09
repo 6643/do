@@ -1,10 +1,31 @@
 # Roadmap 执行状态
 
-更新时间: 2026-09-09
+更新时间: 2026-09-10
 
 **本文只保留当前状态与阻断。** 历史小任务勾选与逐条 gate 证据已从仓库移除; 追溯用 git 历史与 `CHANGELOG.md`。
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
 G5b async/resource coverage ledger: `doc/g5b_async_resource_coverage.md`。
+
+2026-09-10 增量: G6.2 新增的 private mixed owned-record producer compiler
+admission 已闭环。精确 descriptor
+`do:g6-2-owned-record-mixed-producer@0.1.0` 仅在
+`--p3-async-component` 下接受 `MixedEntry { code: u32, ticket: own<Ticket> }`
+与 capacity-one `stream<mixed-entry>`；record size/alignment 为 `8/4`，字段
+offset 为 `code=0`、`ticket=4`，source 为 `(i32) -> (i32)`，ticket seed 为
+`111`，WIT SHA-256 为
+`5fe1c2ed6a0c348bf6f0e96596afc419bbbd379345421f02fa36f05aa472d9ed`。内部
+immutable `ProducerContract` 只为 `ticket` 建立 bit `0` ownership leaf，scalar
+`code` 不进入 ownership mask；完整 record 写入后才提交 transfer，转移前后
+均 exactly once cleanup，handle `0` 仍可作为有效值。
+
+正向 Do/Component gate、9 个 WAT 前负例 (`762`–`770`)、canonical ABI、生成
+Rust/Wasmtime 生命周期和 canonical/generated parity 均通过；十模式覆盖
+ready/pending、sink error、transfer 前后 cancel/early-drop、repeat 与 invalid，
+有效路径为 `1/1` ticket cleanup（repeat `2/2`），invalid 不创建资源且所有
+模式 `table-empty=true`。canonical/generated WAT 与 WIT 保持字节一致，生成
+WAT 不含 `__arc_`。这是 private fixed-shape evidence，不新增 GC inventory row，
+不开放 public `own<T>`/`borrow<T>`/`ref<T>`、generic/arbitrary producer、
+borrowed/list/variant payload 或 general async/resource lowering。
 
 2026-09-09 增量: Task 6 GC-first runtime cutover 已闭环。生产入口
 `src/build/codegen_runtime_api.zig` 只选择 Wasm GC；ARC emitter 与 ARC runtime
@@ -499,7 +520,7 @@ fail-closed/pending。
 | 阶段 A–F、H | done |
 | 阶段 D | 可推进项 done; D2.1 按 B 方案绿色 regression 收口 |
 | D2 真实 host smoke | in progress; real local filesystem preopen/read-directory, CLI pipe, compiler-generated TCP/UDP socket create/bind/drop loopback, and the private pinned `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size` async method gates are green; the method-level recovery matrix is documented, while general filesystem async and external HTTP remain blocked |
-| 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + **private bounded async host scalar-argument compiler promotion** + helper-mediated lease（含六跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含六跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + **private bounded scalar `stream<list<u32>>` producer promotion** + **private direct owned-record `stream<resource-entry>` producer lifecycle checkpoint** + **private bounded two-owned-field `stream<resource-pair>` producer lifecycle checkpoint** + **private parameterized two-owned-field `stream<resource-pair>` producer lifecycle checkpoint** + **private fixed three-owned-field `ResourceTriple` compiler admission** + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size` slices、G6.3、G6.4 done; generic list/producer、borrowed payload、general async-call、D2 general methods 与 root hard-cancel 仍 pending |
+| 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + **private bounded async host scalar-argument compiler promotion** + helper-mediated lease（含六跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含六跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + **private bounded scalar `stream<list<u32>>` producer promotion** + **private direct owned-record `stream<resource-entry>` producer lifecycle checkpoint** + **private bounded two-owned-field `stream<resource-pair>` producer lifecycle checkpoint** + **private parameterized two-owned-field `stream<resource-pair>` producer lifecycle checkpoint** + **private fixed three-owned-field `ResourceTriple` compiler admission** + **private mixed scalar/owned `MixedEntry` producer compiler admission** + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size` slices、G6.3、G6.4 done; generic list/producer、borrowed payload、general async-call、D2 general methods 与 root hard-cancel 仍 pending |
 | Colorless async / WIT bindgen | canonical `@async/@await/@cancel` surface, legacy `async` deprecation, schema 1/2 generated manifest checks, automatic discovery for the admitted schema 2 unit and scalar capabilities, plus opt-in v2 variant/scalar-i64 slices, the `--p3-async-call-component` root-owned local-frame slice including one inline `u32` scalar argument, the private `--p3-async-host-arg-component` scalar-argument compiler slice, and the private `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` slice verified; general async-call promotion and D2 recovery designs are frozen without compiler widening; unrestricted generated WIT lowering remains pending |
 | 阶段 I | **closed** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构扁平拆分 | 已落地: `diagnostics` / `type_name` / `sema_error` / codegen 域竖切 / **`sema_*` 域竖切** (`sema_tokens`/`sema_shapes`/`sema_function_*`/`sema_structures`/`sema_type_checks`/`sema_imports`/`sema_control`) |

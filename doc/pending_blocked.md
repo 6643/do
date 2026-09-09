@@ -1,6 +1,6 @@
 # 待处理与阻断清单
 
-更新时间: 2026-09-09
+更新时间: 2026-09-10
 基线: 默认回归由 `./src/build/test/run_tests.sh` 薄入口转发到 Zig harness
 关系: 总规划 `doc/master_plan.md`; 接手 `doc/start_here.md`; 执行状态 `doc/roadmap_status.md`
 约定: **只记未关闭项**; 完成后从本文件删除或移入「已关闭摘要」, 并同步入口文档与 `CHANGELOG.md`。
@@ -24,6 +24,28 @@ normal_route_matches=0`，生产依赖闭包 `modules=153 forbidden=0`，GC defa
 该项只关闭 backend 选择和 ARC 隔离，不关闭下方 capability inventory；
 `complete_rows=15 pending_rows=15` 仍按设计返回 `1`，通用 async/map/producer/
 resource lowering 与 public `own<T>`/`borrow<T>`/`ref<T>` syntax 继续 pending。
+
+### G6.2 private mixed owned-record producer (已关闭, 2026-09-10)
+
+精确 descriptor `do:g6-2-owned-record-mixed-producer@0.1.0` 已在
+`--p3-async-component` 下完成 private compiler admission。它只接受
+`MixedEntry { code: u32, ticket: own<Ticket> }`、capacity-one
+`stream<mixed-entry>`、同步 source `(i32) -> (i32)` 和一个 `mode u32` producer
+输入；record size/alignment 为 `8/4`，字段 offset 为 `code=0`、`ticket=4`，
+ticket seed 为 `111`，WIT SHA-256 为
+`5fe1c2ed6a0c348bf6f0e96596afc419bbbd379345421f02fa36f05aa472d9ed`。
+immutable `ProducerContract` 只为 `ticket` 建立 bit `0` ownership leaf，scalar
+`code` 不带 ownership/drop bit；完整 record 写入是唯一 transfer commit point，
+转移前后 cleanup 均 exactly once，handle `0` 在 presence bit 设置时仍有效。
+
+Do/Component 正向 gate、9 个 WAT 前负例 (`762`–`770`)、canonical ABI、生成
+Rust/Wasmtime lifecycle 和 canonical/generated parity 全部通过。十模式覆盖
+ready/pending、sink error、transfer 前后 cancel/early-drop、repeat、invalid；
+valid 为 `1/1` ticket cleanup（repeat `2/2`），invalid 不创建资源，所有模式
+`table-empty=true`，生成 WAT/WIT 与 canonical 产物保持字节一致且无 `__arc_`。
+该项不关闭通用 producer、arbitrary expression、borrowed/list/variant payload、
+general async/resource lowering 或 public `own<T>`/`borrow<T>`/`ref<T>` syntax，
+也不新增 GC inventory row；这些仍按下方边界单独推进。
 
 ### Toolchain adapter 与 Zig harness (2026-09-02)
 
