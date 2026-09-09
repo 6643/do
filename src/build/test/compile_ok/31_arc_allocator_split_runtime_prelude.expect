@@ -1,12 +1,6 @@
-;; arc-runtime allocator v1
-(func $__arc_alloc (param $payload_bytes i32) (param $type_id i32) (result i32)
-(local $object_bytes i32)
-i32.const 1024
-i32.lt_u
-call $__arc_alloc_small
-call $__arc_alloc_large
-(func $__arc_alloc_small (param $payload_bytes i32) (param $type_id i32) (result i32)
-;; arc-runtime small block allocator v1
-(func $__arc_alloc_large (param $payload_bytes i32) (param $type_id i32) (result i32)
-;; arc-runtime large block allocator v1
-(func $__arc_alloc_bump (param $payload_bytes i32) (param $type_id i32) (result i32)
+;; backend=gc
+;; gc-sync source_len=23 token_count=6
+(type $do_bytes (array (mut i8)))
+(func $__gc_bytes_eq
+(func $__gc_text_eq
+(func $_start

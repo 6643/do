@@ -13,6 +13,44 @@ if [ ! -x "$do_bin" ]; then
   printf 'missing do compiler executable: %s\n' "$do_bin" >&2
   exit 1
 fi
+
+assert_function_without_gc_struct_ops() {
+  local wat_file="$1"
+  local function_name="$2"
+  if ! awk -v wanted="$function_name" '
+      BEGIN {
+        in_func = 0
+        found = 0
+        depth = 0
+        bad = 0
+      }
+      {
+        if (!in_func) {
+          prefix = "(func $" wanted
+          start = index($0, prefix)
+          if (start == 0) next
+          suffix = substr($0, start + length(prefix), 1)
+          if (suffix != "" && suffix != " " && suffix != "\t" && suffix != "(") next
+          in_func = 1
+          found = 1
+        }
+        if (in_func) {
+          line = $0
+          opens = gsub(/\(/, "", line)
+          closes = gsub(/\)/, "", line)
+          depth += opens - closes
+          if ($0 ~ /struct\.(new|get)/) bad = 1
+          if (depth == 0) in_func = 0
+        }
+      }
+      END {
+        exit (!found || bad)
+      }
+    ' "$wat_file"; then
+    printf 'function contains an unexpected GC struct operation: %s (%s)\n' "$wat_file" "$function_name" >&2
+    return 1
+  fi
+}
 (
   cd "$repo_root/src"
   "$zig_bin" build -Doptimize=Debug
@@ -79,7 +117,7 @@ if ! rg -q '^  \(func \$read \(result i32 i64 i64 i64 i64\)' "$default_wat"; the
   printf '[FAIL] default C14 fixture lacks the inline scalar lift bridge\n' >&2
   exit 1
 fi
-if rg -q 'struct\.(new|get)' "$default_wat"; then
+if ! assert_function_without_gc_struct_ops "$default_wat" read; then
   printf '[FAIL] default C14 fixture crossed a GC struct operation\n' >&2
   exit 1
 fi

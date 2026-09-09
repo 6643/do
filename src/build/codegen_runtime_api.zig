@@ -9,6 +9,8 @@ const codegen_component_async = @import("codegen_component_async.zig");
 const codegen_component_async_call = @import("codegen_component_async_call.zig");
 const codegen_component_async_host_arg = @import("codegen_component_async_host_arg.zig");
 const codegen_component_async_host_arg_plan = @import("codegen_component_async_host_arg_plan.zig");
+const codegen_component_async_map = @import("codegen_component_async_map.zig");
+const codegen_component_async_map_plan = @import("codegen_component_async_map_plan.zig");
 const codegen_component_cabi_realloc = @import("codegen_component_cabi_realloc.zig");
 const codegen_component_future_owned = @import("codegen_component_future_owned.zig");
 const codegen_component_future_owned_plan = @import("codegen_component_future_owned_plan.zig");
@@ -37,6 +39,7 @@ pub const CodegenError = codegen_model.CodegenError;
 pub const GcSyncHostWitRoute = codegen_model.GcSyncHostWitRoute;
 
 pub const emit_p3_wait_for_wit = codegen_p3_wait_for.emit_component_wit_for_tokens;
+pub const emit_p3_async_map_component_wit = codegen_component_async_map.emit_component_wit;
 pub const emit_p3_async_call_component_wit = codegen_component_async_call.emit_component_wit;
 pub const emit_p3_owned_future_component_wit = codegen_component_future_owned.emit_component_wit;
 pub const emit_p3_async_host_arg_component_wit = codegen_component_async_host_arg.emit_component_wit;
@@ -65,6 +68,11 @@ pub fn emit_wat_with_options(
 ) ![]u8 {
     if (options.backend != .gc) return error.UnsupportedGcBackendRoute;
 
+    if (options.p3_async_map_component) {
+        var plan = try codegen_component_async_map_plan.analyze(allocator, tokens);
+        defer plan.deinit(allocator);
+        return codegen_component_async_map.emit_component_wat(allocator, plan);
+    }
     if (options.p3_resource_probe_component)
         return finalize_component_wat(allocator, codegen_component_resource_probe.emit_component_wat(allocator, program, tokens, module_graph));
     if (options.p3_wasi_filesystem_preopen_component)

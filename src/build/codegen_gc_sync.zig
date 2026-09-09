@@ -2,8 +2,8 @@
 //!
 //! This module intentionally has a small admitted surface.  It lowers scalar
 //! values, `text`, and `[u8]` values with typed GC references and fails closed
-//! for aggregates, resources, host calls, and async syntax.  The normal ARC
-//! pipeline remains the default until the later migration gates are closed.
+//! for aggregates, resources, host calls, and async syntax.  The GC route is
+//! selected by the normal compiler entry; ARC is test-only equivalence code.
 const std = @import("std");
 const generated_text = @import("codegen_text.zig");
 const imports = @import("imports.zig");

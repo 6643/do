@@ -12,6 +12,10 @@ zig-cache/
 .zig-global-cache*/
 **/.zig-global-cache*/
 
+# Per-task local caches and scratch outputs
+.task*-cache*/
+.task*-tmp/
+
 # Frontend generated output
 examples/ui-signal/dist/
 

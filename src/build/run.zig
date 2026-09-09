@@ -51,6 +51,10 @@ pub const LoadedProgram = struct {
     }
 };
 
+pub const LoadOptions = struct {
+    defer_async_map_validation: bool = false,
+};
+
 pub fn run(init: std.process.Init, args: []const []const u8) !void {
     const allocator = init.gpa;
     const io = init.io;
@@ -60,7 +64,9 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
         std.process.exit(1);
     };
 
-    var loaded = try load_program(init, parsed_cli.input_path);
+    var loaded = try load_program_with_options(init, parsed_cli.input_path, .{
+        .defer_async_map_validation = parsed_cli.p3_async_map_component,
+    });
     defer loaded.deinit(allocator);
 
     var gc_host_route_lease = load_default_gc_host_route(io, allocator, ".", loaded.tokens) catch |err| {
@@ -88,7 +94,7 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
             try diag.print_compile_error(io, parsed_cli.input_path, loaded.source, loaded.tokens, err, null);
             std.process.exit(1);
         };
-    } else try compile_program_wat(io, allocator, parsed_cli.input_path, parsed_cli.component_core, parsed_cli.p3_wait_for_component, parsed_cli.p3_resource_probe_component, parsed_cli.p3_wasi_filesystem_preopen_component, parsed_cli.p3_wasi_filesystem_stat_component, parsed_cli.p3_wasi_sockets_create_bind_drop_component, parsed_cli.p3_resource_async_component, parsed_cli.p3_async_component, parsed_cli.p3_async_call_component, parsed_cli.p3_async_host_arg_component, parsed_cli.p3_owned_future_component, parsed_cli.p3_async_component_v2, parsed_cli.p3_async_v2_scalar_i64_component, parsed_cli.gc_core, parsed_cli.host_export, if (parsed_cli.host_manifest_path != null) &host_manifest else null, &loaded, if (gc_host_route_storage) |*route| route else null);
+    } else try compile_program_wat(io, allocator, parsed_cli.input_path, parsed_cli.component_core, parsed_cli.p3_wait_for_component, parsed_cli.p3_async_map_component, parsed_cli.p3_resource_probe_component, parsed_cli.p3_wasi_filesystem_preopen_component, parsed_cli.p3_wasi_filesystem_stat_component, parsed_cli.p3_wasi_sockets_create_bind_drop_component, parsed_cli.p3_resource_async_component, parsed_cli.p3_async_component, parsed_cli.p3_async_call_component, parsed_cli.p3_async_host_arg_component, parsed_cli.p3_owned_future_component, parsed_cli.p3_async_component_v2, parsed_cli.p3_async_v2_scalar_i64_component, parsed_cli.gc_core, parsed_cli.host_export, if (parsed_cli.host_manifest_path != null) &host_manifest else null, &loaded, if (gc_host_route_storage) |*route| route else null);
     defer allocator.free(wat);
 
     std.Io.Dir.cwd().writeFile(io, .{ .sub_path = parsed_cli.output_path, .data = wat }) catch |err| {
@@ -104,6 +110,8 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
     if (parsed_cli.p3_wit_output_path) |path| {
         const wit = (if (parsed_cli.p3_resource_probe_component)
             codegen.emit_p3_resource_probe_wit(allocator, loaded.tokens)
+        else if (parsed_cli.p3_async_map_component)
+            codegen.emit_p3_async_map_component_wit(allocator)
         else if (parsed_cli.p3_wasi_filesystem_preopen_component)
             codegen.emit_p3_wasi_filesystem_preopen_wit(allocator, loaded.tokens)
         else if (parsed_cli.p3_wasi_filesystem_stat_component)
@@ -276,6 +284,14 @@ fn compile_tests(
 }
 
 pub fn load_program(init: std.process.Init, input_path: []const u8) !LoadedProgram {
+    return load_program_with_options(init, input_path, .{});
+}
+
+pub fn load_program_with_options(
+    init: std.process.Init,
+    input_path: []const u8,
+    options: LoadOptions,
+) !LoadedProgram {
     const allocator = init.gpa;
     const io = init.io;
 
@@ -297,7 +313,9 @@ pub fn load_program(init: std.process.Init, input_path: []const u8) !LoadedProgr
     };
     errdefer program.deinit(allocator);
 
-    sema.check_program(allocator, program, tokens) catch |err| {
+    sema.check_program_with_options(allocator, program, tokens, .{
+        .defer_async_map_validation = options.defer_async_map_validation,
+    }) catch |err| {
         try diag.print_compile_error(io, input_path, source, tokens, err, sema_error_loc());
         std.process.exit(1);
     };
@@ -325,6 +343,7 @@ pub fn compile_program_wat(
     input_path: []const u8,
     component_core: bool,
     p3_wait_for_component: bool,
+    p3_async_map_component: bool,
     p3_resource_probe_component: bool,
     p3_wasi_filesystem_preopen_component: bool,
     p3_wasi_filesystem_stat_component: bool,
@@ -348,6 +367,7 @@ pub fn compile_program_wat(
         input_path,
         component_core,
         p3_wait_for_component,
+        p3_async_map_component,
         p3_resource_probe_component,
         p3_wasi_filesystem_preopen_component,
         p3_wasi_filesystem_stat_component,
@@ -376,6 +396,7 @@ fn compile_program_wat_parts(
     input_path: []const u8,
     component_core: bool,
     p3_wait_for_component: bool,
+    p3_async_map_component: bool,
     p3_resource_probe_component: bool,
     p3_wasi_filesystem_preopen_component: bool,
     p3_wasi_filesystem_stat_component: bool,
@@ -396,7 +417,7 @@ fn compile_program_wat_parts(
     module_graph: *const imports.ModuleGraph,
     gc_host_route: ?*const GcSyncHostWitRoute,
 ) ![]u8 {
-    if (requires_start_entry(host_export, p3_async_component or p3_wasi_filesystem_stat_component or p3_async_call_component or p3_async_host_arg_component or p3_owned_future_component or p3_async_component_v2 or p3_async_v2_scalar_i64_component, p3_wasi_sockets_create_bind_drop_component) and
+    if (requires_start_entry(host_export, p3_async_component or p3_async_map_component or p3_wasi_filesystem_stat_component or p3_async_call_component or p3_async_host_arg_component or p3_owned_future_component or p3_async_component_v2 or p3_async_v2_scalar_i64_component, p3_wasi_sockets_create_bind_drop_component) and
         !codegen.program_requires_async_lowering(program, tokens, module_graph))
     {
         entry.validate_start(program) catch |err| {
@@ -408,6 +429,7 @@ fn compile_program_wat_parts(
     return codegen.emit_wat_with_options(allocator, program, tokens, module_graph, .{
         .component_core = component_core,
         .p3_wait_for_component = p3_wait_for_component,
+        .p3_async_map_component = p3_async_map_component,
         .p3_resource_probe_component = p3_resource_probe_component,
         .p3_wasi_filesystem_preopen_component = p3_wasi_filesystem_preopen_component,
         .p3_wasi_filesystem_stat_component = p3_wasi_filesystem_stat_component,

@@ -1181,29 +1181,26 @@ printf '[PASS] migrated default build is GC-only and parses: %s\n' "$(basename "
 
 host_wit_fixture="$ROOT_DIR/src/build/test/compile_ok/274_wasi_preopens_list_tuple_lower.do"
 host_wit_wat="$TMP_DIR/host-wit.wat"
-if ! build_fixture "$host_wit_fixture" "$host_wit_wat"; then
-    printf '[FAIL] host/WIT residual fixture failed to build: %s\n' "$host_wit_fixture" >&2
+host_wit_status=0
+if build_fixture "$host_wit_fixture" "$host_wit_wat"; then
+    host_wit_status=0
+else
+    host_wit_status=$?
+fi
+if [[ "$host_wit_status" -eq 0 ]]; then
+    printf '[FAIL] host/WIT residual fixture unexpectedly accepted: %s\n' "$host_wit_fixture" >&2
+    exit 1
+fi
+if [[ -e "$host_wit_wat" ]]; then
+    printf '[FAIL] host/WIT residual fixture left a WAT artifact after rejection: %s\n' "$host_wit_fixture" >&2
+    exit 1
+fi
+if ! grep -Fq 'error[UnsupportedGcSyncModuleGraph]' "$host_wit_wat.stderr"; then
+    printf '[FAIL] host/WIT residual fixture missing diagnostic error[UnsupportedGcSyncModuleGraph]: %s\n' "$host_wit_fixture" >&2
     cat "$host_wit_wat.stderr" >&2
     exit 1
 fi
-if ! rg -q ';; wasi-bind source="entry" alias="host_preopens"' "$host_wit_wat"; then
-    printf '[FAIL] host/WIT output lacks its binding manifest record: %s\n' "$host_wit_fixture" >&2
-    exit 1
-fi
-if ! rg -q 'import "cm32p2\|wasi:filesystem/preopens" "get-directories"' "$host_wit_wat"; then
-    printf '[FAIL] host/WIT output lacks its canonical import: %s\n' "$host_wit_fixture" >&2
-    exit 1
-fi
-if ! rg -q '__arc_' "$host_wit_wat"; then
-    printf '[FAIL] host/WIT residual output unexpectedly lacks ARC marker: %s\n' "$host_wit_fixture" >&2
-    exit 1
-fi
-if rg -q ';; gc-sync' "$host_wit_wat"; then
-    printf '[FAIL] host/WIT residual output selected the GC route: %s\n' "$host_wit_fixture" >&2
-    exit 1
-fi
-"$TOOLCHAIN_BIN" parse-core "$host_wit_wat" -o "$TMP_DIR/host-wit.wasm" >/dev/null
-printf '[PASS] host/WIT managed boundary remains ARC and parses: %s\n' "$(basename "$host_wit_fixture")"
+printf '[PASS] host/WIT residual fixture rejected before WAT emission with error[UnsupportedGcSyncModuleGraph] (status=%s): %s\n' "$host_wit_status" "$(basename "$host_wit_fixture")"
 
 residual_fixture="$ROOT_DIR/src/build/test/compile_ok/203_arc_field_reflection_get_return_fresh_local_defer_keeps_inc_lower.do"
 residual_wat="$TMP_DIR/residual.wat"

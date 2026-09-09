@@ -1,10 +1,8 @@
-local.get $box
-call $__arc_inc
+;; backend=gc
+;; gc-sync source_len=189 token_count=52
+(type $box (struct (field $value (ref null $do_bytes))))
+struct.new $box
 local.set $alias
-local.get $alias
-;; arc-release-local alias
-local.get $alias
-call $__arc_dec
-;; arc-release-local box
-local.get $box
-call $__arc_dec
+;; gc-root local_bind $alias
+struct.get $box $value
+array.len

@@ -1,10 +1,6 @@
-;; arc-runtime small slot release v1
-(func $__small_block_for_object (param $object i32) (result i32)
-(func $__small_slot_for_object (param $object i32) (result i32)
-(func $__arc_release_small (param $object i32)
-call $__small_block_for_object
-call $__small_slot_for_object
-i32.xor
-i32.and
-i32.store8
-call $__arc_release_small
+;; backend=gc
+;; gc-sync source_len=23 token_count=6
+(type $do_bytes (array (mut i8)))
+(func $__gc_bytes_eq
+(func $__gc_text_eq
+(func $_start

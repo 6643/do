@@ -1,7 +1,6 @@
-(func $make_bytes (result i32)
-;; arc-return-move data
-local.get $data
-return
+;; backend=gc
+;; gc-sync source_len=113 token_count=23
 call $make_bytes
+;; gc-root call_result
 local.set $out
-;; arc-release-local out
+;; gc-root local_bind $out

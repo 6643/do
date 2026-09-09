@@ -1,4 +1,6 @@
+;; backend=gc
+;; gc-sync source_len=387 token_count=96
 (func $sum_guard_with_defer
-;; defer-cleanup-call cleanup
 count=0 loop $__tail_sum_guard_with_defer
 count=3 call $sum_guard_with_defer
+count=3 call $cleanup

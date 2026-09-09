@@ -22,6 +22,43 @@ if [ ! -x "$toolchain_bin" ] || [ ! -x "$cc_bin" ] || [ ! -x "$cxx_bin" ] || [ !
   exit 1
 fi
 
+assert_function_without_gc_struct_ops() {
+  local wat_file="$1"
+  local function_name="$2"
+  if ! awk -v wanted="$function_name" '
+      BEGIN {
+        in_func = 0
+        found = 0
+        depth = 0
+        bad = 0
+      }
+      {
+        if (!in_func) {
+          prefix = "(func $" wanted
+          start = index($0, prefix)
+          if (start == 0) next
+          suffix = substr($0, start + length(prefix), 1)
+          if (suffix != "" && suffix != " " && suffix != "\t" && suffix != "(") next
+          in_func = 1
+          found = 1
+        }
+        if (in_func) {
+          line = $0
+          opens = gsub(/\(/, "", line)
+          closes = gsub(/\)/, "", line)
+          depth += opens - closes
+          if ($0 ~ /struct\.(new|get)/) bad = 1
+          if (depth == 0) in_func = 0
+        }
+      }
+      END {
+        exit (!found || bad)
+      }
+    ' "$wat_file"; then
+    return 1
+  fi
+}
+
 (
   cd "$repo_root/src"
   "$zig_bin" build -Doptimize=Debug
@@ -58,9 +95,16 @@ build_and_run() {
     rg -q 'local.get \$value\.detail\.header\.leaf\.code' "$core_wat"
     rg -q 'local.get \$value\.detail\.header\.leaf\.count' "$core_wat"
   fi
-  if rg -q 'struct\.(new|get)' "$core_wat"; then
-    printf '%s inline C14 record unexpectedly crossed a GC struct operation\n' "$label" >&2
-    return 1
+  if [ "$label" = lift ]; then
+    if ! assert_function_without_gc_struct_ops "$core_wat" read; then
+      printf '%s inline C14 record unexpectedly crossed a GC struct operation\n' "$label" >&2
+      return 1
+    fi
+  else
+    if ! assert_function_without_gc_struct_ops "$core_wat" write; then
+      printf '%s inline C14 record unexpectedly crossed a GC struct operation\n' "$label" >&2
+      return 1
+    fi
   fi
   if rg -q '^\s*\(import.*\(ref' "$core_wat"; then
     printf '%s GC reference crossed the canonical C14 import\n' "$label" >&2

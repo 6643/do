@@ -7,8 +7,8 @@ G5b Task 9 Step 4; it does not close G5c or authorize a G5c cutover.
 Evidence uses the current pinned toolchain: `wasm-tools 1.258.0`, Wasmtime
 `48.0.1`, and Rust/Cargo `1.97.1` where a Rust host runner is used. The current
 thin-entry regression `./src/build/test/run_tests.sh` and its `RUN_WASM=1` /
-`RUN_GC_CORE=1` variants each complete with `14/14 steps; 51/51 tests`; the
-underlying compiler test aggregate is `zig test main.zig 785/785`. These are
+`RUN_GC_CORE=1` variants each complete with `14/14 steps; 53/53 tests`; the
+underlying compiler test aggregate is `zig test main.zig 1561/1561`. These are
 repository regression evidence only and do not by themselves prove that this
 matrix is closed. Older `wasm-tools 1.255.0` / Wasmtime `47.0.2` numbers in
 dated reports are historical snapshots, not active toolchain requirements.

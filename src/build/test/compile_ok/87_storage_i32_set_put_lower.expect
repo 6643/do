@@ -1,5 +1,6 @@
-;; storage-set-scalar
-;; storage-put-scalar
-i32.const 4
-i32.mul
-i32.store
+;; backend=gc
+;; gc-sync source_len=120 token_count=47
+(type $do_i32 (array (mut i32)))
+array.copy $do_i32 $do_i32
+array.set $do_i32
+array.get $do_i32

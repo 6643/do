@@ -1331,6 +1331,7 @@ fn target_for_descriptor(descriptor: p3_async_manifest.Descriptor) !Target {
     return switch (shape) {
         .scalar_unit => .scalar_unit,
         .async_host_scalar_argument => error.UnsupportedP3AsyncComponent,
+        .async_map_u32_u32 => error.UnsupportedP3AsyncComponent,
         .scalar_result => .scalar_result,
         .unit_result_tag => .unit_result_tag,
         .future_owned_resource => error.UnsupportedP3AsyncComponent,

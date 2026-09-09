@@ -1,7 +1,7 @@
 if
-;; defer-cleanup-call cleanup
 call $cleanup
-;; arc-guard-return-release
-;; arc-release-local data
-call $__arc_dec
+return
+end
+;; gc-root guard_join
+call $cleanup
 return

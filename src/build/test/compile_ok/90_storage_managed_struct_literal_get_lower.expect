@@ -1,6 +1,7 @@
-i32.const 65535
-;; arc-storage-managed-release
-;; storage-managed-element-inc
-;; storage-managed-get-inc
-;; arc-release-local xs
-;; arc-release-local out
+;; backend=gc
+;; gc-sync source_len=186 token_count=59
+(type $do_list_box (array (mut (ref null $box))))
+struct.new $box
+array.new_fixed $do_list_box 1
+array.get $do_list_box
+struct.get $box $value

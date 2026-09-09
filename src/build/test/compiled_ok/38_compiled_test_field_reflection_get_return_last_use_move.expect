@@ -1,2 +1,3 @@
 ;; compiled-test 0 "compiled field reflection get return last use move"
+;; backend=gc
 count=0 ;; field-get-move user.name

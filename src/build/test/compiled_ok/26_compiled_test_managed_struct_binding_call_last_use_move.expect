@@ -1,2 +1,3 @@
 ;; compiled-test 0 "compiled managed struct binding call last use move"
-;; arc-call-move box
+;; backend=gc
+call $move_box

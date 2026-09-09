@@ -19,7 +19,7 @@ evidence: ARC inventory post-cutover `rows=49 matches=480 unclassified=0
 normal_route_matches=0`，生产依赖闭包 `modules=153 forbidden=0`，GC default gate
 `87 fixtures`，semantic-equivalence `26 rows; 0 pending`；默认及
 `RUN_WASM=1 RUN_GC_CORE=1` harness 均为 `14/14 steps; 53/53 tests`，独立
-`zig test main.zig` 为 `1556/1556`，ReleaseSmall/release smoke 通过。
+`zig test main.zig` 为 `1561/1561`，ReleaseSmall/release smoke 通过。
 
 该项只关闭 backend 选择和 ARC 隔离，不关闭下方 capability inventory；
 `complete_rows=15 pending_rows=15` 仍按设计返回 `1`，通用 async/map/producer/
@@ -55,9 +55,11 @@ linker 后，Rust 48.0.1 全量测试通过。该项是环境前提，不是 act
 blocker。
 
 2026-09-09 验证刷新：默认及 `RUN_WASM=1 RUN_GC_CORE=1` 组合回归均为
-`14/14 steps; 53/53 tests`，`zig test main.zig` 为 `1556/1556`，ReleaseSmall 与
-release smoke 通过。新增 async map probe 已包含在两次 harness 运行中；这些结果
-不改变下方通用 map、Stream 跨 poll 或 cleanup authority 的阻断边界。
+`14/14 steps; 53/53 tests`，`zig test main.zig` 为 `1561/1561`，ReleaseSmall 与
+release smoke 通过。新增 async map probe 与 private compiler admission 已包含在
+两次 harness 运行中；默认不带 flag 的 async-map fixture 仍返回
+`AsyncLoweringUnavailable` 且不写出 WAT/WIT。这些结果不改变下方通用 map、Stream
+跨 poll 或 cleanup authority 的阻断边界。
 
 ### WIT map runtime lowering (P2, exact sync route closed; general pending)
 
@@ -79,9 +81,16 @@ WIT 为 `async func(values: map<u32, u32>) -> u32`，Core 观察形状为
 返回 Future 前复制，随后由 canonical WAT 覆盖 guest 输入；`ready`、`pending`、
 `cancel`、`drop` 四种终态均验证 `input-mismatches=0`、一次 frame free、一次
 future drop 和空 `ResourceTable`。设计与产物见
-`doc/superpowers/specs/2026-09-05-async-map-capability-design.md`；该 probe
-不提供 Do compiler lowering，不关闭任何 G5c inventory row。
-通用 Component/WIT map lowering、其他 key/value 组合、async 参数 copy、Stream
+`doc/superpowers/specs/2026-09-05-async-map-capability-design.md`；该 probe 本身
+只证明 runtime capability，不等于通用 compiler lowering。
+
+其上新增的 private compiler admission 只由
+`--p3-async-map-component` 选择，严格接受两个固定 pair、一个 helper/root
+await 拓扑和 pinned descriptor；WAT/WIT snapshot、五个 WAT 前负例、Component
+validate 与 Rust/Wasmtime 四模式 gate 均通过。默认 route 仍返回
+`AsyncLoweringUnavailable`，且不产生 WAT/WIT。该 private route 不关闭任何 G5c
+inventory row。
+通用 Component/WIT map lowering、其他 key/value 组合、其他 async map 参数 copy、Stream
 跨 poll owned buffer 和统一 cleanup authority 尚未实现。当前 registry 对这些
 未支持 shape 仍返回 `UnsupportedWitMarshalShape`，不得据精确 route 推断通用
 map runtime 已完成。该剩余阻断不妨碍主线的 GC/G6.2/D2 独立工作。
@@ -917,7 +926,7 @@ slice 解释为 G5c 或 full GC cutover。
   `rows=49 matches=480 unclassified=0 normal_route_matches=0`，生产依赖闭包为
   `modules=153 forbidden=0`，GC default gate 为 `87 fixtures`，semantic-equivalence
   为 `26 rows; 0 pending`。默认及 `RUN_WASM=1 RUN_GC_CORE=1` harness 均为
-  `14/14 steps; 53/53 tests`，`zig test main.zig` 为 `1556/1556`，ReleaseSmall/
+  `14/14 steps; 53/53 tests`，`zig test main.zig` 为 `1561/1561`，ReleaseSmall/
   release smoke 通过。该项不关闭 `complete_rows=15 pending_rows=15` capability
   inventory，也不开放 public `own<T>`/`borrow<T>`/`ref<T>` 或通用
   async/map/producer/resource lowering。
@@ -1006,6 +1015,17 @@ slice 解释为 G5c 或 full GC cutover。
   reuse only; public `own<T>`/`borrow<T>`/`ref<T>`, generic/arbitrary producer
   lowering, borrowed/list/variant async payloads, unmeasured shapes, and the
   GC inventory rows remain pending.
+- **Private async `map<u32,u32>` compiler admission (2026-09-09)**: the
+  `--p3-async-map-component` route admits only the pinned
+  `demo:map-async-probe/api@0.1.0.submit` shape with `HashMap<u32,u32>`, two
+  literal pairs `[7,70]` and `[9,90]`, and one helper/root await topology. Its
+  manifest/hash, fixed Core `(i32 ptr, i32 len, i32 result_area) -> i32` shape,
+  generated WAT/WIT snapshots, copy/overwrite/result/cleanup markers, five
+  WAT-before-rejection negatives, Component validation, and Rust/Wasmtime
+  `ready/pending/cancel/drop` lifecycle all pass. The default route still
+  returns `AsyncLoweringUnavailable` with no artifacts. Generic async map,
+  other key/value combinations, Stream cross-poll buffers, arbitrary producers,
+  and public ownership syntax remain pending.
 - **Bounded async-call internal consolidation (2026-08-09)**: the five
   admitted child/inline/host-scalar forms now share private validated frame and
   cleanup facts only. Planner admission remains separate and emitter templates

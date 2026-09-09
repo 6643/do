@@ -18,6 +18,7 @@ pub const FeatureProfile = enum {
     none,
     component_async,
     component_map,
+    component_async_map,
     core_gc_async,
 };
 
@@ -25,6 +26,7 @@ pub fn parse_feature_profile(name: []const u8) AdapterError!FeatureProfile {
     if (std.mem.eql(u8, name, "none")) return .none;
     if (std.mem.eql(u8, name, "component-async")) return .component_async;
     if (std.mem.eql(u8, name, "component-map")) return .component_map;
+    if (std.mem.eql(u8, name, "component-async-map")) return .component_async_map;
     if (std.mem.eql(u8, name, "core-gc-async")) return .core_gc_async;
     return error.InvalidFeatureProfile;
 }
@@ -34,6 +36,7 @@ fn feature_list(profile: FeatureProfile) ?[]const u8 {
         .none => null,
         .component_async => "cm-async,cm-more-async-builtins",
         .component_map => "cm-map",
+        .component_async_map => "cm-map,cm-async,cm-more-async-builtins",
         .core_gc_async => "gc,cm-async,cm-more-async-builtins",
     };
 }

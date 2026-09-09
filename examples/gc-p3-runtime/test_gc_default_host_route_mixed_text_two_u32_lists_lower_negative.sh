@@ -61,10 +61,28 @@ done
 )
 
 unadmitted_wat="$tmp_dir/unadmitted.wat"
-DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$repo_root/src/build/test/compile_ok/03_env_host_import_i32.do" -o "$unadmitted_wat"
-if ! rg -q '__arc_' "$unadmitted_wat"; then
-    printf '[FAIL] unrelated unadmitted host fixture unexpectedly lost its ARC fallback\n' >&2
+unadmitted_stderr="$tmp_dir/unadmitted.stderr"
+unadmitted_stdout="$tmp_dir/unadmitted.stdout"
+unadmitted_status=0
+if DO_LIB_ROOT="$repo_root/lib" "$do_bin" build \
+    "$repo_root/src/build/test/compile_ok/03_env_host_import_i32.do" \
+    -o "$unadmitted_wat" >"$unadmitted_stdout" 2>"$unadmitted_stderr"; then
+    unadmitted_status=0
+else
+    unadmitted_status=$?
+fi
+if [ "$unadmitted_status" -eq 0 ]; then
+    printf '[FAIL] unrelated unadmitted host fixture unexpectedly accepted\n' >&2
     exit 1
 fi
-printf '[PASS] unrelated unadmitted host fixture retains ARC fallback\n'
+if [ -e "$unadmitted_wat" ]; then
+    printf '[FAIL] unrelated unadmitted host fixture left a WAT artifact after rejection\n' >&2
+    exit 1
+fi
+if ! grep -Fq 'error[UnsupportedGcSyncModuleGraph]' "$unadmitted_stderr"; then
+    printf '[FAIL] unrelated unadmitted host fixture missing diagnostic error[UnsupportedGcSyncModuleGraph]\n' >&2
+    cat "$unadmitted_stderr" >&2
+    exit 1
+fi
+printf '[PASS] unrelated unadmitted host fixture rejected before WAT emission with error[UnsupportedGcSyncModuleGraph] (status=%s)\n' "$unadmitted_status"
 printf 'mixed text/two-u32-list lower negative boundary gate passed\n'

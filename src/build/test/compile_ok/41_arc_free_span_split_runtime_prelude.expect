@@ -1,6 +1,6 @@
-;; arc-runtime free span split v1
-(func $__free_span_split_tail (param $block i32) (param $used_span i32)
-(local $original_span i32)
-(local $tail_block i32)
-call $__free_span_split_tail
-call $__free_span_push
+;; backend=gc
+;; gc-sync source_len=23 token_count=6
+(type $do_bytes (array (mut i8)))
+(func $__gc_bytes_eq
+(func $__gc_text_eq
+(func $_start

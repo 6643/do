@@ -1,2 +1,3 @@
 ;; compiled-test 0 "compiled struct get binding fresh local move"
-count=1 ;; field-get-move box.value
+;; backend=gc
+struct.get $box $value

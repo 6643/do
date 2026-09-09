@@ -1,5 +1,19 @@
 # Changelog
 
+# 2026-09-09 Private async `map<u32,u32>` compiler admission:
+  added the private `--p3-async-map-component` route for exactly
+  `demo:map-async-probe/api@0.1.0.submit` with `HashMap<u32,u32>`, two literal
+  pairs `[7,70]` and `[9,90]`, one helper/root await topology, and the pinned
+  WIT hash `821f5a1d20b600284efca10ad78f16e64d3ca5f42df566d4f045ef5b5348d3a0`.
+  The strict source matcher, fixed `(i32 ptr, i32 len, i32 result_area) -> i32`
+  Core template, WAT/WIT snapshots, input-copy/overwrite/result/cleanup markers,
+  five WAT-before-rejection negatives, Component validation, and Rust/Wasmtime
+  `ready/pending/cancel/drop` lifecycle pass. The default route still returns
+  `AsyncLoweringUnavailable` without artifacts; generic async map, other
+  key/value combinations, Stream cross-poll buffers, arbitrary producers, and
+  public ownership syntax remain pending. The older 2026-09-05 entry below is
+  retained as the runtime-only probe checkpoint.
+
 # 2026-09-09 GC-first runtime cutover:
   completed Task 6. The installed compiler now enters the GC-only production API
   `src/build/codegen_runtime_api.zig`; ARC is no longer an implicit fallback and is
@@ -9,7 +23,7 @@
   production dependency closure reports `modules=153 forbidden=0`, the default GC
   gate covers `87 fixtures`, and the semantic-equivalence matrix reports
   `26 rows; 0 pending`. Fresh default and `RUN_WASM=1 RUN_GC_CORE=1` harness runs
-  are `14/14 steps; 53/53 tests`; `zig test main.zig` is `1556/1556`, and
+  are `14/14 steps; 53/53 tests`; `zig test main.zig` is `1561/1561`, and
   ReleaseSmall/release smoke pass on `wasm-tools 1.258.0`, Wasmtime `48.0.1`,
   Zig `0.16.0`, and Rust/Cargo `1.97.1`. The migration capability inventory
   intentionally remains `complete_rows=15 pending_rows=15` with exit `1`.

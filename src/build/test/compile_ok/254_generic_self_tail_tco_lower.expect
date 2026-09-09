@@ -1,4 +1,5 @@
+;; backend=gc
+;; gc-sync source_len=202 token_count=61
 (func $last_tail__i32
-loop $__tail_last_tail__i32
-count=1 call $last_tail__i32
-br $__tail_last_tail__i32
+count=2 call $last_tail__i32
+count=0 loop $__tail_last_tail__i32

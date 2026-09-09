@@ -22,6 +22,7 @@ pub const Kind = enum {
     gc_assembly_matrix,
     map_core_probe,
     map_sync_component,
+    map_async_component,
     gc_arc_inventory,
     gc_backend_firewall,
     gc_component_boundary,
@@ -56,6 +57,7 @@ pub const cases = [_]Case{
     .{ .name = "GC assembly matrix", .kind = .gc_assembly_matrix },
     .{ .name = "bounded map Core ABI probe", .kind = .map_core_probe },
     .{ .name = "manifest-backed map Component host gate", .kind = .map_sync_component },
+    .{ .name = "async map Component capability gate", .kind = .map_async_component },
     .{ .name = "GC ARC inventory classification", .kind = .gc_arc_inventory },
     .{ .name = "GC backend firewall", .kind = .gc_backend_firewall },
     .{ .name = "GC Component boundary and resource cleanup", .kind = .gc_component_boundary },
@@ -87,6 +89,8 @@ test "integration case table is stable and non-empty" {
     try std.testing.expectEqual(Kind.gc_assembly_matrix, cases[20].kind);
     try std.testing.expectEqual(Kind.map_core_probe, cases[21].kind);
     try std.testing.expectEqual(Kind.map_sync_component, cases[22].kind);
-    try std.testing.expectEqual(Kind.gc_arc_inventory, cases[23].kind);
-    try std.testing.expectEqual(Kind.gc_component_boundary, cases[24].kind);
+    try std.testing.expectEqual(Kind.map_async_component, cases[23].kind);
+    try std.testing.expectEqual(Kind.gc_arc_inventory, cases[24].kind);
+    try std.testing.expectEqual(Kind.gc_backend_firewall, cases[25].kind);
+    try std.testing.expectEqual(Kind.gc_component_boundary, cases[26].kind);
 }

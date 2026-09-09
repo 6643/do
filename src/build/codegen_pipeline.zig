@@ -220,6 +220,8 @@ const codegen_component_async = @import("codegen_component_async.zig");
 const codegen_component_async_call = @import("codegen_component_async_call.zig");
 const codegen_component_async_host_arg_plan = @import("codegen_component_async_host_arg_plan.zig");
 const codegen_component_async_host_arg = @import("codegen_component_async_host_arg.zig");
+const codegen_component_async_map = @import("codegen_component_async_map.zig");
+const codegen_component_async_map_plan = @import("codegen_component_async_map_plan.zig");
 const codegen_component_future_owned = @import("codegen_component_future_owned.zig");
 const codegen_component_future_owned_plan = @import("codegen_component_future_owned_plan.zig");
 const codegen_gc_core = @import("codegen_gc_core.zig");
@@ -228,6 +230,7 @@ pub const emit_gc_wat_for_supported_program = codegen_gc_sync.emit_gc_wat_for_su
 const codegen_emit_generic_async = @import("codegen_emit_generic_async.zig");
 const codegen_task_bridge = @import("codegen_task_bridge.zig");
 pub const emit_p3_wait_for_wit = codegen_p3_wait_for.emit_component_wit_for_tokens;
+pub const emit_p3_async_map_component_wit = codegen_component_async_map.emit_component_wit;
 pub const emit_p3_async_call_component_wit = codegen_component_async_call.emit_component_wit;
 pub const emit_p3_owned_future_component_wit = codegen_component_future_owned.emit_component_wit;
 const collect_body_locals_with_mode = codegen_body.collect_body_locals_with_mode;
@@ -5765,6 +5768,14 @@ fn emit_wat_with_backend(
     legacy_runtime: ?LegacyRuntime,
 ) ![]u8 {
     const use_gc_backend = options.backend == .gc;
+    if (options.p3_async_map_component) {
+        var plan = codegen_component_async_map_plan.analyze(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3AsyncMapComponent => return error.UnsupportedP3AsyncMapComponent,
+            else => return err,
+        };
+        defer plan.deinit(allocator);
+        return codegen_component_async_map.emit_component_wat(allocator, plan);
+    }
     if (options.p3_resource_probe_component) return finalize_component_wat(allocator, codegen_component_resource_probe.emit_component_wat(allocator, program, tokens, module_graph));
     if (options.p3_wasi_filesystem_preopen_component) return finalize_component_wat(allocator, codegen_component_wasi_filesystem_preopen.emit_component_wat(allocator, program, tokens, module_graph));
     if (options.p3_wasi_sockets_create_bind_drop_component) return finalize_component_wat(allocator, codegen_component_wasi_sockets.emit_component_wat(allocator, program, tokens, module_graph));

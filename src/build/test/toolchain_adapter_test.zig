@@ -161,6 +161,7 @@ test "toolchain adapter feature profiles reject arbitrary feature strings" {
     try std.testing.expectEqual(toolchain.FeatureProfile.none, try toolchain.parse_feature_profile("none"));
     try std.testing.expectEqual(toolchain.FeatureProfile.component_async, try toolchain.parse_feature_profile("component-async"));
     try std.testing.expectEqual(toolchain.FeatureProfile.component_map, try toolchain.parse_feature_profile("component-map"));
+    try std.testing.expectEqual(toolchain.FeatureProfile.component_async_map, try toolchain.parse_feature_profile("component-async-map"));
     try std.testing.expectEqual(toolchain.FeatureProfile.core_gc_async, try toolchain.parse_feature_profile("core-gc-async"));
     try std.testing.expectError(error.InvalidFeatureProfile, toolchain.parse_feature_profile("gc,custom"));
 }
@@ -172,6 +173,19 @@ test "toolchain adapter maps the component map profile to cm-map" {
     defer toolchain.free_argv(std.testing.allocator, argv);
 
     const expected = [_][]const u8{ "validate", "--features", "cm-map", "map.component.wasm" };
+    try std.testing.expectEqual(expected.len, argv.len);
+    for (expected, 0..) |value, index| try std.testing.expectEqualStrings(value, argv[index]);
+}
+
+test "toolchain adapter maps the combined component async map profile" {
+    const argv = try toolchain.build_argv(std.testing.allocator, .validate_component, .{
+        .validate_component = .{ .component = "async-map.component.wasm", .features = .component_async_map },
+    });
+    defer toolchain.free_argv(std.testing.allocator, argv);
+
+    const expected = [_][]const u8{
+        "validate", "--features", "cm-map,cm-async,cm-more-async-builtins", "async-map.component.wasm",
+    };
     try std.testing.expectEqual(expected.len, argv.len);
     for (expected, 0..) |value, index| try std.testing.expectEqualStrings(value, argv[index]);
 }

@@ -1,2 +1,3 @@
 ;; compiled-test 0 "compiled storage multi-result assignment call last use move"
-;; arc-call-move data
+;; backend=gc
+call $pair_take

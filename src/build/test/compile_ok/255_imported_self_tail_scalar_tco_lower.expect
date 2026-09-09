@@ -1,4 +1,5 @@
+;; backend=gc
+;; gc-sync source_len=109 token_count=24
 (func $sum_tail
-loop $__tail_sum_tail
-count=1 call $sum_tail
-br $__tail_sum_tail
+count=2 call $sum_tail
+count=0 loop $__tail_sum_tail

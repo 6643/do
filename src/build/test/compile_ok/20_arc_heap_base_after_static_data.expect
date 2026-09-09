@@ -1,3 +1,6 @@
-;; arc-runtime block_size=1024 object_header=8
-(global $__heap_base i32 (i32.const 2048))
-(global $__heap_cursor (mut i32) (i32.const 2048))
+;; backend=gc
+(type $do_bytes (array (mut i8)))
+(func $_start
+(local $data (ref null $do_bytes))
+array.new_fixed $do_bytes 3
+;; gc-root local_bind $data

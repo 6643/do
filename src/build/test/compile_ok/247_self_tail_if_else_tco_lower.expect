@@ -1,4 +1,5 @@
+;; backend=gc
+;; gc-sync source_len=342 token_count=88
 (func $sum_branch
-loop $__tail_sum_branch
-count=1 call $sum_branch
-br $__tail_sum_branch
+count=3 call $sum_branch
+count=0 loop $__tail_sum_branch

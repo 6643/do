@@ -23,10 +23,26 @@ pub fn take_last_error_site() ?ErrorSite {
     return sema_error.take_last_error_site();
 }
 
+pub const CheckOptions = struct {
+    /// A private compiler target can own the complete async-host shape check
+    /// so its route-specific diagnostic is emitted before generic registry
+    /// diagnostics. All ordinary callers retain the default validation.
+    defer_async_map_validation: bool = false,
+};
+
 pub fn check_program(
     allocator: std.mem.Allocator,
     program: parser.Program,
     tokens: []const lexer.Token,
+) !void {
+    return check_program_with_options(allocator, program, tokens, .{});
+}
+
+pub fn check_program_with_options(
+    allocator: std.mem.Allocator,
+    program: parser.Program,
+    tokens: []const lexer.Token,
+    options: CheckOptions,
 ) !void {
     sema_error.clear_last_error_site();
     if (program.source_len == 0) return error.EmptySource;
@@ -45,7 +61,9 @@ pub fn check_program(
     try sema_structures.check_path_access(tokens);
     try sema_structures.check_field_segment_positions(tokens);
     try sema_imports.check_host_imports(allocator, tokens);
-    try sema_imports.check_p3_async_host_imports(allocator, tokens);
+    if (!options.defer_async_map_validation) {
+        try sema_imports.check_p3_async_host_imports(allocator, tokens);
+    }
     try sema_imports.check_local_imports(tokens);
     if (program.top_level_count == 0) return sema_tokens.mark_error_at(tokens, 0, error.NoTopLevelDecl);
 
@@ -68,7 +86,9 @@ pub fn check_program(
     try sema_type_checks.check_bare_nil_types(tokens);
     try sema_result.check_result_constructor_context(tokens);
     try sema_async.check_await_context(tokens);
-    try sema_async.check_async_ownership(allocator, tokens);
+    if (!options.defer_async_map_validation) {
+        try sema_async.check_async_ownership(allocator, tokens);
+    }
     try sema_async.check_implicit_future_creation(tokens);
     try sema_type_checks.check_inline_func_type_union_branches(tokens);
     try sema_type_checks.check_duplicate_union_branches(tokens);
@@ -117,6 +137,28 @@ test "program accepts a nested CLI stdin stream host declaration" {
     defer program.deinit(std.testing.allocator);
 
     try check_program(std.testing.allocator, program, tokens);
+}
+
+test "private async map build option defers route-owned validation" {
+    const source =
+        \\submit = @host_async_func("demo:map-async-probe/api@0.1.0", "submit", (u64) -> u32)
+        \\
+        \\run() -> u32 {
+        \\    return 0
+        \\}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    try std.testing.expectError(
+        error.P3AsyncHostSignatureMismatch,
+        check_program(std.testing.allocator, program, tokens),
+    );
+    try check_program_with_options(std.testing.allocator, program, tokens, .{
+        .defer_async_map_validation = true,
+    });
 }
 
 test "diagnostic C16-A complete program check" {

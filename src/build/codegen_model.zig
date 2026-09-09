@@ -135,6 +135,7 @@ pub const EmitOptions = struct {
     backend: ManagedBackend = .gc,
     component_core: bool = false,
     p3_wait_for_component: bool = false,
+    p3_async_map_component: bool = false,
     p3_resource_probe_component: bool = false,
     p3_wasi_filesystem_preopen_component: bool = false,
     p3_wasi_filesystem_stat_component: bool = false,

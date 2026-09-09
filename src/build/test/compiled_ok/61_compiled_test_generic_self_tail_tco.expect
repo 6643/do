@@ -1,5 +1,4 @@
 ;; compiled-test 0 "compiled generic self tail tco"
 (func $last_tail__i32
-loop $__tail_last_tail__i32
-count=1 call $last_tail__i32
-br $__tail_last_tail__i32
+;; backend=gc
+count=2 call $last_tail__i32

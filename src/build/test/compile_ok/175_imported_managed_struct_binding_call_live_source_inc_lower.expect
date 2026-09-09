@@ -1,4 +1,7 @@
-count=3 call $__arc_inc
-count=0 ;; arc-call-move box
+count=0 call $__arc_inc
+;; gc-root local_bind $box
+call $echo_box
+;; gc-root call_result
 local.set $out
+;; gc-root local_bind $out
 local.set $again

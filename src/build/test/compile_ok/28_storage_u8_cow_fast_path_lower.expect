@@ -1,9 +1,4 @@
-;; arc-runtime storage write helpers v1
-call $__arc_rc
-i32.eq
-i32.lt_u
-local.get $storage
-return
-memory.copy
-call $__storage_set_u8
-call $__storage_put_u8
+;; backend=gc
+;; gc-sync source_len=105 token_count=35
+array.copy $do_bytes $do_bytes
+array.set $do_bytes

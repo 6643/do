@@ -1,7 +1,6 @@
-;; arc-runtime layout table v1
-(func $__layout_managed_count (param $type_id i32) (result i32)
-(func $__layout_managed_offset (param $type_id i32) (param $index i32) (result i32)
-i32.const 1
-i32.eq
-i32.const 0
-unreachable
+;; backend=gc
+;; gc-sync source_len=23 token_count=6
+(type $do_bytes (array (mut i8)))
+(func $__gc_bytes_eq
+(func $__gc_text_eq
+(func $_start

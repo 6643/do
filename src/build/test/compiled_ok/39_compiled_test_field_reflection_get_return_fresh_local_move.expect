@@ -1,2 +1,3 @@
 ;; compiled-test 0 "compiled field reflection get return fresh local move"
-count=1 ;; field-get-move user.name
+;; backend=gc
+call $take_name

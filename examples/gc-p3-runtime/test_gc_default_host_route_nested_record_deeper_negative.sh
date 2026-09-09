@@ -58,11 +58,28 @@ run_rejection \
   GcWitHostMemberMismatch
 
 unadmitted_wat="$tmp_dir/unadmitted.wat"
-"$do_bin" build "$repo_root/src/build/test/compile_ok/03_env_host_import_i32.do" -o "$unadmitted_wat"
-if ! rg -q '__arc_' "$unadmitted_wat"; then
-  printf '[FAIL] unadmitted env host fixture unexpectedly lost its ARC route\n' >&2
+unadmitted_stderr="$tmp_dir/unadmitted.stderr"
+unadmitted_stdout="$tmp_dir/unadmitted.stdout"
+unadmitted_status=0
+if "$do_bin" build "$repo_root/src/build/test/compile_ok/03_env_host_import_i32.do" \
+    -o "$unadmitted_wat" >"$unadmitted_stdout" 2>"$unadmitted_stderr"; then
+  unadmitted_status=0
+else
+  unadmitted_status=$?
+fi
+if [ "$unadmitted_status" -eq 0 ]; then
+  printf '[FAIL] unadmitted env host fixture unexpectedly accepted\n' >&2
   exit 1
 fi
-printf '[PASS] unadmitted host fixture retains its existing ARC route\n'
+if [ -e "$unadmitted_wat" ]; then
+  printf '[FAIL] unadmitted env host fixture left a WAT artifact after rejection\n' >&2
+  exit 1
+fi
+if ! grep -Fq 'error[UnsupportedGcSyncModuleGraph]' "$unadmitted_stderr"; then
+  printf '[FAIL] unadmitted env host fixture missing diagnostic error[UnsupportedGcSyncModuleGraph]\n' >&2
+  cat "$unadmitted_stderr" >&2
+  exit 1
+fi
+printf '[PASS] unadmitted host fixture rejected before WAT emission with error[UnsupportedGcSyncModuleGraph] (status=%s)\n' "$unadmitted_status"
 
 printf 'default C14 four-level nested scalar record negative gates passed\n'

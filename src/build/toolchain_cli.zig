@@ -179,7 +179,7 @@ fn probe(init: std.process.Init, lock_path: []const u8) !void {
 fn usage(io: std.Io, code: u8) !void {
     var buffer: [1024]u8 = undefined;
     var out = std.Io.File.stderr().writer(io, &buffer);
-    try out.interface.writeAll("usage: do-toolchain probe | parse-core <input> -o <output> | strip-core <input> -o <output> | validate-core <wasm> | compile-core-gc <input> -o <output> | invoke-core-gc <module> --export <name> | run-core-gc <module> | embed-component <wit> <core> <world> [--features <none|component-async|component-map|core-gc-async>] -o <output> | embed-component-template <wit> <world> [--features <none|component-async|component-map|core-gc-async>] | new-component <embedded> -o <output> | validate-component <component> [--features <none|component-async|component-map|core-gc-async>] | component-wit <component> [--world <world>] | component-targets <wit> <component> --world <world> | print-component <component> | run-wasmtime <component> [-- <args...>]\n");
+    try out.interface.writeAll("usage: do-toolchain probe | parse-core <input> -o <output> | strip-core <input> -o <output> | validate-core <wasm> | compile-core-gc <input> -o <output> | invoke-core-gc <module> --export <name> | run-core-gc <module> | embed-component <wit> <core> <world> [--features <none|component-async|component-map|component-async-map|core-gc-async>] -o <output> | embed-component-template <wit> <world> [--features <none|component-async|component-map|component-async-map|core-gc-async>] | new-component <embedded> -o <output> | validate-component <component> [--features <none|component-async|component-map|component-async-map|core-gc-async>] | component-wit <component> [--world <world>] | component-targets <wit> <component> --world <world> | print-component <component> | run-wasmtime <component> [-- <args...>]\n");
     try out.interface.flush();
     std.process.exit(code);
 }
@@ -304,6 +304,18 @@ test "toolchain CLI parses the core GC async component profile" {
 
     try std.testing.expectEqual(toolchain.Operation.embed_component, parsed.operation);
     try std.testing.expectEqual(toolchain.FeatureProfile.core_gc_async, parsed.args.embed_component.features);
+}
+
+test "toolchain CLI parses the combined component async map profile" {
+    const parsed = try parse_operation(&.{
+        "validate-component",
+        "async-map.component.wasm",
+        "--features",
+        "component-async-map",
+    });
+
+    try std.testing.expectEqual(toolchain.Operation.validate_component, parsed.operation);
+    try std.testing.expectEqual(toolchain.FeatureProfile.component_async_map, parsed.args.validate_component.features);
 }
 
 test "toolchain CLI rejects an invalid component feature profile" {

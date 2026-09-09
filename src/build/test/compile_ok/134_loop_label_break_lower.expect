@@ -1,5 +1,4 @@
-;; loop-block
-block $__loop_break_
-loop $__loop_body_
-;; loop-break-release
-br $__loop_break_
+;; gc-root loop_join
+block $__gc_break_
+loop $__gc_loop_
+br $__gc_break_

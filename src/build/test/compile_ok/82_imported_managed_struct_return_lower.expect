@@ -1,5 +1,6 @@
-(func $make_box (result i32)
-;; arc-return-move box
+;; backend=gc
+;; gc-sync source_len=125 token_count=30
 call $make_box
+;; gc-root call_result
 local.set $box
-;; arc-release-local box
+;; gc-root local_bind $box

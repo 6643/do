@@ -1,8 +1,7 @@
-;; loop-block
-;; if-else-block
-;; loop-continue-release
-;; loop-break-release
-;; arc-block-release
-;; arc-release-local b
-;; arc-release-local c
-;; arc-release-local a
+;; backend=gc
+;; gc-sync source_len=276 token_count=64
+block $__gc_break_0
+loop $__gc_loop_1
+br $__gc_loop_1
+br $__gc_break_0
+;; gc-root loop_join

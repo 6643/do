@@ -194,6 +194,10 @@ name = "do-p3-gc-marshal-map-u32-u32"
 path = "src/bin/gc_marshal_map_u32_u32.rs"
 
 [[bin]]
+name = "do-p3-async-map-capability-host-runner"
+path = "src/bin/async_map_capability.rs"
+
+[[bin]]
 name = "do-p3-gc-marshal-record-host-runner"
 path = "src/bin/gc_marshal_record.rs"
 

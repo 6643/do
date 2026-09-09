@@ -1,0 +1,10 @@
+package demo:map-async-probe@0.1.0;
+
+interface api {
+  submit: async func(values: map<u32, u32>) -> u32;
+}
+
+world probe {
+  import api;
+  export run: async func() -> u32;
+}

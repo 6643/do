@@ -1,3 +1,6 @@
-count=0 ;; field-get-move box.value
-count=2 call $__arc_inc
-count=1 ;; arc-overwrite-release data
+count=0 call $__arc_inc
+;; gc-root local_bind $box
+;; gc-root overwrite $data
+struct.get $box $value
+local.set $data
+call $nop

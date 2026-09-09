@@ -1,4 +1,5 @@
+;; backend=gc
+;; gc-sync source_len=321 token_count=84
 (func $choose_tail__i32
-loop $__tail_choose_tail__i32
-count=1 call $choose_tail__i32
-br $__tail_choose_tail__i32
+count=3 call $choose_tail__i32
+count=0 loop $__tail_choose_tail__i32

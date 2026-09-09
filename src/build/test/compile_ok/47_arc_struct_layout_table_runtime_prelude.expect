@@ -1,5 +1,7 @@
-;; arc-layout type_id=2 name=Box managed_count=1 payload_bytes=4
-;; arc-layout-managed-offset type_id=2 index=0 offset=0 field=value
-i32.const 2
-i32.eq
-i32.const 1
+;; backend=gc
+;; gc-sync source_len=47 token_count=13
+(type $do_bytes (array (mut i8)))
+(type $box (struct (field $value (ref null $do_bytes))))
+(func $__gc_bytes_eq
+(func $__gc_text_eq
+(func $_start

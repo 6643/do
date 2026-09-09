@@ -1,11 +1,5 @@
-(func $make_byte_pair (result i32 i32)
-;; arc-return-move left
-;; arc-return-move right
-local.get $left
-local.get $right
-return
+;; backend=gc
+;; gc-sync source_len=182 token_count=34
 call $make_byte_pair
-;; arc-overwrite-release second
 local.set $second
-;; arc-overwrite-release first
 local.set $first

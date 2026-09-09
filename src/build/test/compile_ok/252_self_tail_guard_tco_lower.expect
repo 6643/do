@@ -1,4 +1,5 @@
+;; backend=gc
+;; gc-sync source_len=290 token_count=83
 (func $sum_guard
-loop $__tail_sum_guard
-count=1 call $sum_guard
-br $__tail_sum_guard
+count=3 call $sum_guard
+count=0 loop $__tail_sum_guard

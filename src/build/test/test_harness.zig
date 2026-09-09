@@ -931,6 +931,60 @@ const map_sync_component_cases = [_]MapSyncComponentCase{
     },
 };
 
+const AsyncMapComponentCase = struct {
+    name: []const u8,
+    source: []const u8,
+    wit: []const u8,
+    wat: []const u8,
+    runner_bin: []const u8,
+    wit_marker: []const u8,
+};
+
+const async_map_component_cases = [_]AsyncMapComponentCase{
+    .{
+        .name = "async map<u32,u32> Component capability",
+        .source = "examples/p3-runtime/async-map-component.do",
+        .wit = "examples/p3-runtime/wit/async-map-capability.wit",
+        .wat = "examples/p3-runtime/async-map-capability-canonical.wat",
+        .runner_bin = "do-p3-async-map-capability-host-runner",
+        .wit_marker = "submit: async func(values: map<u32, u32>) -> u32",
+    },
+};
+
+const AsyncMapNegativeCase = struct {
+    name: []const u8,
+    needle: []const u8,
+    replacement: []const u8,
+};
+
+const async_map_negative_cases = [_]AsyncMapNegativeCase{
+    .{
+        .name = "wrong value type",
+        .needle = "HashMap<u32, u32>) -> u32",
+        .replacement = "HashMap<u32, u64>) -> u32",
+    },
+    .{
+        .name = "dynamic map construction",
+        .needle = "empty_hash_map(key, value)",
+        .replacement = "empty_hash_map(1, value)",
+    },
+    .{
+        .name = "extra pair",
+        .needle = "    child Future<u32> = @async(helper(values))",
+        .replacement = "    values = hash_put(values, 11, 110)\n    child Future<u32> = @async(helper(values))",
+    },
+    .{
+        .name = "synchronous host marker",
+        .needle = "@host_async_func",
+        .replacement = "@host_func",
+    },
+    .{
+        .name = "second await",
+        .needle = "    return @await(child)",
+        .replacement = "    return @await(child)\n    return @await(child)",
+    },
+};
+
 const ComponentFixture = struct {
     wat: []u8,
     wit: []u8,
@@ -1005,6 +1059,7 @@ fn run_all(init: std.process.Init) !void {
             .gc_assembly_matrix => try run_gc_assembly_matrix(init, repo_root, toolchain_bin, temp.path),
             .map_core_probe => try run_map_core_probe(init, repo_root, toolchain_bin, temp.path),
             .map_sync_component => try run_map_sync_component(init, repo_root, do_bin, toolchain_bin, temp.path),
+            .map_async_component => try run_async_map_component(init, repo_root, do_bin, toolchain_bin, temp.path),
             .gc_arc_inventory => try run_gc_arc_inventory(init, repo_root),
             .gc_backend_firewall => try run_gc_backend_firewall(init, repo_root),
             .gc_component_boundary => try run_gc_component_boundary(init, repo_root),
@@ -2984,6 +3039,173 @@ fn run_map_sync_component(
     }
 }
 
+fn run_async_map_component(
+    init: std.process.Init,
+    repo_root: []const u8,
+    do_bin: []const u8,
+    toolchain_bin: []const u8,
+    temp_path: []const u8,
+) !void {
+    const lib_root = try join(init.gpa, repo_root, "lib");
+    defer init.gpa.free(lib_root);
+    const manifest = try join(init.gpa, repo_root, "examples/p3-runtime/rust-host-runner/Cargo.toml");
+    defer init.gpa.free(manifest);
+    const linker = try join(init.gpa, repo_root, "examples/p3-runtime/rust-host-runner/zig-cc.sh");
+    defer init.gpa.free(linker);
+    const env = [_]process.EnvVar{
+        .{ .name = "CC", .value = linker },
+        .{ .name = "CXX", .value = linker },
+        .{ .name = "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER", .value = linker },
+    };
+
+    for (async_map_component_cases) |case| {
+        const source = try join(init.gpa, repo_root, case.source);
+        defer init.gpa.free(source);
+        const source_text = try read_file(init, source);
+        defer init.gpa.free(source_text);
+        const wit = try join(init.gpa, repo_root, case.wit);
+        defer init.gpa.free(wit);
+        const wat_snapshot = try join(init.gpa, repo_root, case.wat);
+        defer init.gpa.free(wat_snapshot);
+        const stem = std.fs.path.basename(case.source)[0 .. std.fs.path.basename(case.source).len - ".do".len];
+        const wat = try std.fmt.allocPrint(init.gpa, "{s}/{s}.async-map.generated.wat", .{ temp_path, stem });
+        defer init.gpa.free(wat);
+        const wit_output = try std.fmt.allocPrint(init.gpa, "{s}/{s}.async-map.generated.wit", .{ temp_path, stem });
+        defer init.gpa.free(wit_output);
+        const core = try std.fmt.allocPrint(init.gpa, "{s}/{s}.async-map.core.wasm", .{ temp_path, stem });
+        defer init.gpa.free(core);
+        const embedded = try std.fmt.allocPrint(init.gpa, "{s}/{s}.async-map.embedded.wasm", .{ temp_path, stem });
+        defer init.gpa.free(embedded);
+        const component = try std.fmt.allocPrint(init.gpa, "{s}/{s}.async-map.component.wasm", .{ temp_path, stem });
+        defer init.gpa.free(component);
+
+        const build_args = [_][]const u8{
+            "build", source, "--p3-async-map-component", "--p3-wit-output", wit_output, "-o", wat,
+        };
+        var built = try run_do_args(init, do_bin, &build_args, lib_root, repo_root, 120_000);
+        defer built.deinit(init.gpa);
+        try expect_success(init, &built);
+        if (built.stderr.len != 0) return error.UnexpectedCommandStderr;
+        try expect_file(init.io, wat);
+        try expect_file(init.io, wit_output);
+        const generated_wit = try read_file(init, wit_output);
+        defer init.gpa.free(generated_wit);
+        try assert_file_equals(init, wit, generated_wit);
+        const generated_wat = try read_file(init, wat);
+        defer init.gpa.free(generated_wat);
+        try assert_file_equals(init, wat_snapshot, generated_wat);
+        const wat_source = generated_wat;
+        if (std.mem.indexOf(u8, wat_source, "(type $async-submit (func (param i32 i32 i32) (result i32)))") == null) {
+            return error.AsyncMapCanonicalTypeMissing;
+        }
+        if (std.mem.indexOf(u8, wat_source, "__arc_") != null) return error.ObsoleteArcMarker;
+        for ([_][]const u8{
+            ";; [async-map-input-copy]",
+            ";; [async-map-input-overwrite]",
+            ";; [async-map-result-area]",
+            ";; [async-map-pending]",
+            ";; [async-map-complete]",
+            ";; [async-map-cancel]",
+            ";; [async-map-drop]",
+            ";; [async-map-frame-free]",
+        }) |marker| {
+            if (std.mem.indexOf(u8, wat_source, marker) == null) return error.AsyncMapMarkerMissing;
+        }
+
+        try run_async_map_negative_matrix(init, do_bin, repo_root, lib_root, temp_path, source_text);
+
+        try run_adapter_success(init, toolchain_bin, &.{ "parse-core", wat, "-o", core });
+        try run_adapter_success(init, toolchain_bin, &.{
+            "embed-component", wit, core, "probe", "--features", "component-async-map", "-o", embedded,
+        });
+        try run_adapter_success(init, toolchain_bin, &.{ "new-component", embedded, "-o", component });
+        try run_adapter_success(init, toolchain_bin, &.{ "validate-component", component, "--features", "component-async-map" });
+
+        var component_wit = try run_adapter_command(init, toolchain_bin, &.{ "component-wit", component });
+        defer component_wit.deinit(init.gpa);
+        try expect_success(init, &component_wit);
+        try process.assert_stdout_contains(component_wit, case.wit_marker);
+
+        const runner_build_args = [_][]const u8{
+            "cargo", "build", "--quiet", "--locked", "--manifest-path", manifest, "--bin", case.runner_bin,
+        };
+        var runner_built = try process.run_checked(init.gpa, init.io, .{
+            .argv = &runner_build_args,
+            .environ = init.environ_map,
+            .env = &env,
+            .cwd = repo_root,
+            .timeout_ms = 600_000,
+        });
+        defer runner_built.deinit(init.gpa);
+        try expect_success(init, &runner_built);
+
+        const modes = [_][]const u8{ "ready", "pending", "cancel", "drop" };
+        for (modes) |mode| {
+            const runner_args = [_][]const u8{
+                "cargo", "run", "--quiet", "--locked", "--manifest-path", manifest,
+                "--bin", case.runner_bin, "--", component, mode,
+            };
+            var runtime = try process.run_checked(init.gpa, init.io, .{
+                .argv = &runner_args,
+                .environ = init.environ_map,
+                .env = &env,
+                .cwd = repo_root,
+                .timeout_ms = 600_000,
+            });
+            defer runtime.deinit(init.gpa);
+            try expect_success(init, &runtime);
+            try process.assert_stdout_contains(runtime, "entries=[7->70, 9->90]");
+            try process.assert_stdout_contains(runtime, "input-mismatches=0");
+            try process.assert_stdout_contains(runtime, "frame-frees=1");
+            try process.assert_stdout_contains(runtime, "table-empty=true");
+            if (std.mem.eql(u8, mode, "ready") or std.mem.eql(u8, mode, "pending")) {
+                try process.assert_stdout_contains(runtime, "result=42");
+                try process.assert_stdout_contains(runtime, "completions=1");
+                try process.assert_stdout_contains(runtime, "pending-future-drops=0");
+            } else {
+                try process.assert_stdout_contains(runtime, "result=0");
+                try process.assert_stdout_contains(runtime, "completions=0");
+                try process.assert_stdout_contains(runtime, "pending-future-drops=1");
+            }
+        }
+    }
+}
+
+fn run_async_map_negative_matrix(
+    init: std.process.Init,
+    do_bin: []const u8,
+    repo_root: []const u8,
+    lib_root: []const u8,
+    temp_path: []const u8,
+    source_text: []const u8,
+) !void {
+    for (async_map_negative_cases, 0..) |case, index| {
+        const mutated = try std.mem.replaceOwned(u8, init.gpa, source_text, case.needle, case.replacement);
+        defer init.gpa.free(mutated);
+        if (std.mem.eql(u8, mutated, source_text)) return error.AsyncMapNegativeMutationMissing;
+
+        const source = try std.fmt.allocPrint(init.gpa, "{s}/async-map-negative-{d}.do", .{ temp_path, index });
+        defer init.gpa.free(source);
+        const wat = try std.fmt.allocPrint(init.gpa, "{s}/async-map-negative-{d}.wat", .{ temp_path, index });
+        defer init.gpa.free(wat);
+        const wit = try std.fmt.allocPrint(init.gpa, "{s}/async-map-negative-{d}.wit", .{ temp_path, index });
+        defer init.gpa.free(wit);
+        try write_file(init, source, mutated);
+
+        const args = [_][]const u8{
+            "build", source, "--p3-async-map-component", "--p3-wit-output", wit, "-o", wat,
+        };
+        var result = try run_do_args(init, do_bin, &args, lib_root, repo_root, 120_000);
+        defer result.deinit(init.gpa);
+        if (result.succeeded()) return error.AsyncMapNegativeUnexpectedSuccess;
+        try process.assert_stderr_contains(result, "UnsupportedP3AsyncMapComponent");
+        if (result.stdout.len != 0) return error.UnexpectedCommandStdout;
+        if (try file_exists(init.io, wat) or try file_exists(init.io, wit)) {
+            return error.AsyncMapNegativeProducedArtifact;
+        }
+    }
+}
+
 fn import_decl_has_reference(source: []const u8) bool {
     var lines = std.mem.splitScalar(u8, source, '\n');
     while (lines.next()) |line| {
@@ -3618,7 +3840,7 @@ fn report_case_failure(init: std.process.Init, result: process.CommandResult) !v
 }
 
 test "integration harness case table has required routes" {
-    try std.testing.expectEqual(@as(usize, 24), test_cases.cases.len);
+    try std.testing.expectEqual(@as(usize, 27), test_cases.cases.len);
 }
 
 test "GC runtime oracle matrix covers async frame and C ABI probes" {
@@ -3787,4 +4009,15 @@ test "map synchronous Component matrix has explicit lower and lift cases" {
         try std.testing.expect(case.wit_marker.len > 0);
         try std.testing.expect(case.runtime_marker.len > 0);
     }
+}
+
+test "async map Component matrix has one pinned capability case" {
+    try std.testing.expectEqual(@as(usize, 1), async_map_component_cases.len);
+    const case = async_map_component_cases[0];
+    try std.testing.expectEqualStrings("examples/p3-runtime/async-map-component.do", case.source);
+    try std.testing.expectEqualStrings("examples/p3-runtime/wit/async-map-capability.wit", case.wit);
+    try std.testing.expectEqualStrings("examples/p3-runtime/async-map-capability-canonical.wat", case.wat);
+    try std.testing.expectEqualStrings("do-p3-async-map-capability-host-runner", case.runner_bin);
+    try std.testing.expectEqualStrings("submit: async func(values: map<u32, u32>) -> u32", case.wit_marker);
+    try std.testing.expectEqual(@as(usize, 5), async_map_negative_cases.len);
 }

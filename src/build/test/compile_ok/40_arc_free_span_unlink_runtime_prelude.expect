@@ -1,8 +1,6 @@
-;; arc-runtime free span unlink v1
-(func $__free_span_unlink (param $target i32)
-(local $prev i32)
-(local $block i32)
-global.get $__free_span_head
-global.set $__free_span_head
-call $__free_span_unlink
-call $__arc_alloc_from_large_block
+;; backend=gc
+;; gc-sync source_len=23 token_count=6
+(type $do_bytes (array (mut i8)))
+(func $__gc_bytes_eq
+(func $__gc_text_eq
+(func $_start

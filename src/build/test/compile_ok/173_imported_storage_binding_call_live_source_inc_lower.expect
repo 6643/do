@@ -1,4 +1,7 @@
-count=1 call $__arc_inc
-count=0 ;; arc-call-move data
+count=0 call $__arc_inc
+;; gc-root local_bind $data
+call $echo_bytes
+;; gc-root call_result
 local.set $out
+;; gc-root local_bind $out
 local.set $again

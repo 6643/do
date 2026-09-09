@@ -1,5 +1,6 @@
-;; arc-runtime release worklist v1
-(func $__arc_release (param $object i32)
-local.get $object
-call $__arc_release_managed_children
-call $__arc_release
+;; backend=gc
+;; gc-sync source_len=23 token_count=6
+(type $do_bytes (array (mut i8)))
+(func $__gc_bytes_eq
+(func $__gc_text_eq
+(func $_start

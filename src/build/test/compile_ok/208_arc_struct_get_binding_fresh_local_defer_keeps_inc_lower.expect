@@ -1,2 +1,5 @@
-count=0 ;; field-get-move box.value
-count=2 call $__arc_inc
+count=0 call $__arc_inc
+;; gc-root local_bind $box
+struct.get $box $value
+;; gc-root local_bind $value
+call $nop

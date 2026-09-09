@@ -19,6 +19,7 @@ pub const Descriptor = struct {
 pub const LoweringShape = union(enum) {
     scalar_unit: ScalarUnitShape,
     async_host_scalar_argument: ScalarUnitShape,
+    async_map_u32_u32: AsyncMapShape,
     unit_result_tag: void,
     scalar_result: ScalarResultShape,
     filesystem_get_type: FilesystemGetTypeShape,
@@ -50,6 +51,14 @@ pub const LoweringShape = union(enum) {
     scalar_list_stream_producer: ScalarListStreamProducerShape,
     variant_resource_stream_reader: VariantResourceStreamShape,
     stream_writer: StreamWriterShape,
+};
+
+/// ABI facts for the one private async `map<u32, u32>` admission slice.
+/// Keeping this shape distinct from scalar async descriptors prevents the
+/// generic async matcher from accepting arbitrary map layouts.
+pub const AsyncMapShape = struct {
+    source_param: []const u8,
+    source_result: []const u8,
 };
 
 /// ABI facts observed for a record-valued stream that is intentionally not
@@ -630,6 +639,14 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
         } };
     }
 
+    if (std.mem.eql(u8, descriptor.effect, "async-map-u32-u32")) {
+        if (!valid_async_map_u32_u32_descriptor(descriptor)) return null;
+        return .{ .async_map_u32_u32 = .{
+            .source_param = descriptor.params[0],
+            .source_result = descriptor.result,
+        } };
+    }
+
     if (!std.mem.eql(u8, descriptor.effect, "async") or !std.mem.eql(u8, descriptor.canonical.completion, "task-return")) return null;
 
     if (descriptor.params.len == 1 and
@@ -756,6 +773,45 @@ fn valid_async_host_scalar_argument_descriptor(descriptor: Descriptor) bool {
         std.mem.eql(u8, descriptor.wit.operation, "work") and
         std.mem.eql(u8, descriptor.wit.world, "probe") and
         std.mem.eql(u8, descriptor.wit.parameter, "value");
+}
+
+fn valid_async_map_u32_u32_descriptor(descriptor: Descriptor) bool {
+    return std.mem.eql(u8, descriptor.locator, "demo:map-async-probe/api@0.1.0") and
+        std.mem.eql(u8, descriptor.member, "submit") and
+        std.mem.eql(u8, descriptor.effect, "async-map-u32-u32") and
+        descriptor.params.len == 1 and
+        std.mem.eql(u8, descriptor.params[0], "HashMap<u32, u32>") and
+        std.mem.eql(u8, descriptor.result, "u32") and
+        descriptor.resource == null and
+        descriptor.wit_sha256 != null and
+        std.mem.eql(u8, descriptor.wit_sha256.?, "821f5a1d20b600284efca10ad78f16e64d3ca5f42df566d4f045ef5b5348d3a0") and
+        equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i32", "i32" }) and
+        equal_core_types(descriptor.canonical.core_results, &.{ "i32" }) and
+        equal_core_types(descriptor.canonical.completion_params, &.{ "i32" }) and
+        std.mem.eql(u8, descriptor.canonical.completion, "task-return") and
+        std.mem.eql(u8, descriptor.canonical.async_import_module, "demo:map-async-probe/api@0.1.0") and
+        std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower]submit") and
+        std.mem.eql(u8, descriptor.wit.package, "demo:map-async-probe@0.1.0") and
+        std.mem.eql(u8, descriptor.wit.interface, "api") and
+        std.mem.eql(u8, descriptor.wit.operation, "submit") and
+        std.mem.eql(u8, descriptor.wit.world, "probe") and
+        std.mem.eql(u8, descriptor.wit.parameter, "values") and
+        descriptor.canonical.result_payload == null and
+        descriptor.canonical.result_area_payload == null and
+        descriptor.canonical.future_owned == null and
+        descriptor.canonical.record_layout == null and
+        descriptor.canonical.list_resource_layout == null and
+        descriptor.canonical.producer == null and
+        descriptor.canonical.parameterized_owned_record_pair_producer == null and
+        descriptor.canonical.scalar_list_layout == null and
+        descriptor.canonical.scalar_list_producer == null and
+        descriptor.canonical.stream == null and
+        descriptor.canonical.future_input == null and
+        descriptor.canonical.future == null and
+        descriptor.canonical.variant_stream == null and
+        descriptor.canonical.variant_future == null and
+        descriptor.canonical.event_layout == null and
+        descriptor.canonical.ticket_drop_import == null;
 }
 
 fn valid_filesystem_get_type_descriptor(descriptor: Descriptor) ?FilesystemGetTypeShape {
@@ -1401,6 +1457,7 @@ fn parse_descriptor(allocator: std.mem.Allocator, value: std.json.Value) !Descri
     const effect = string_value(object.get("effect")) orelse return error.InvalidP3AsyncManifest;
     if (!std.mem.eql(u8, effect, "async") and
         !std.mem.eql(u8, effect, "async-host-scalar-argument") and
+        !std.mem.eql(u8, effect, "async-map-u32-u32") and
         !std.mem.eql(u8, effect, "future-owned-resource") and
         !std.mem.eql(u8, effect, "http-request-constructor") and
         !std.mem.eql(u8, effect, "http-stream-reader") and
@@ -4033,6 +4090,41 @@ test "private async host scalar argument descriptor rejects signature and hash d
     canonical.completion = "task-cancel";
     drifted = descriptor;
     drifted.canonical = canonical;
+    try std.testing.expect(lowering_shape(drifted) == null);
+}
+
+test "checked-in registry admits the private async map u32 pair descriptor" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("demo:map-async-probe/api@0.1.0", "submit") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("async-map-u32-u32", descriptor.effect);
+    try std.testing.expectEqualStrings("HashMap<u32, u32>", descriptor.params[0]);
+    try std.testing.expectEqualStrings("u32", descriptor.result);
+    try std.testing.expectEqualStrings("821f5a1d20b600284efca10ad78f16e64d3ca5f42df566d4f045ef5b5348d3a0", descriptor.wit_sha256.?);
+    switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .async_map_u32_u32 => |shape| {
+            try std.testing.expectEqualStrings("HashMap<u32, u32>", shape.source_param);
+            try std.testing.expectEqualStrings("u32", shape.source_result);
+        },
+        else => return error.TestUnexpectedResult,
+    }
+}
+
+test "private async map u32 pair descriptor rejects ABI drift" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("demo:map-async-probe/api@0.1.0", "submit") orelse return error.TestUnexpectedResult;
+
+    var drifted = descriptor;
+    drifted.params = &.{ "HashMap<u32, u64>" };
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.canonical.completion_params = &.{ "i64" };
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.wit_sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
     try std.testing.expect(lowering_shape(drifted) == null);
 }
 

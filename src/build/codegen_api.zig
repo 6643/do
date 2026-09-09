@@ -25,6 +25,7 @@ const codegen_component_async = @import("codegen_component_async.zig");
 const codegen_component_async_call = @import("codegen_component_async_call.zig");
 const codegen_component_async_host_arg = @import("codegen_component_async_host_arg.zig");
 const codegen_component_future_owned = @import("codegen_component_future_owned.zig");
+const codegen_component_async_map = @import("codegen_component_async_map.zig");
 
 pub const EmitOptions = model.EmitOptions;
 pub const CodegenError = model.CodegenError;
@@ -35,6 +36,7 @@ pub const emit_gc_wat_for_supported_program = codegen_pipeline.emit_gc_wat_for_s
 pub const program_requires_async_lowering = codegen_pipeline.program_requires_async_lowering;
 pub const emit_test_wat = codegen_pipeline.emit_test_wat;
 pub const emit_p3_wait_for_wit = codegen_pipeline.emit_p3_wait_for_wit;
+pub const emit_p3_async_map_component_wit = codegen_component_async_map.emit_component_wit;
 pub const emit_p3_resource_probe_wit = codegen_component_resource_probe.emit_component_wit;
 pub const emit_p3_wasi_filesystem_preopen_wit = codegen_component_wasi_filesystem_preopen.emit_component_wit;
 pub const emit_p3_wasi_sockets_create_bind_drop_wit = codegen_component_wasi_sockets.emit_component_wit;

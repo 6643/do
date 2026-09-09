@@ -1,12 +1,6 @@
-;; arc-runtime generic slot class table v1
-(func $__slot_class_table_addr (param $slot_units i32) (result i32)
-(func $__slot_class_table_get (param $slot_units i32) (result i32)
-;; zero table slot means no block
-(func $__slot_class_table_get (param $slot_units i32) (result i32)
-(func $__slot_class_table_set (param $slot_units i32) (param $head i32)
-i32.const 2
-i32.shl
-i32.load
-i32.store
-call $__slot_class_table_get
-call $__slot_class_table_set
+;; backend=gc
+;; gc-sync source_len=23 token_count=6
+(type $do_bytes (array (mut i8)))
+(func $__gc_bytes_eq
+(func $__gc_text_eq
+(func $_start

@@ -1,6 +1,7 @@
-;; if-else-block
-;; arc-overwrite-release x
-;; arc-block-release
-;; arc-release-local y
-;; arc-release-local z
-;; arc-release-local x
+;; backend=gc
+;; gc-sync source_len=171 token_count=53
+if
+;; gc-root overwrite $x
+else
+;; gc-root overwrite $x
+;; gc-root branch_join

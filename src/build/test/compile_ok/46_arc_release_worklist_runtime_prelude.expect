@@ -1,11 +1,6 @@
-;; arc-runtime release worklist v1
-(global $__release_worklist_base i32
-(global $__release_worklist_top (mut i32) (i32.const 0))
-(func $__release_worklist_push (param $object i32)
-(func $__release_worklist_pop (result i32)
-(func $__arc_dec_no_drain (param $object i32)
-(func $__arc_drain_release_worklist
-call $__release_worklist_push
-call $__release_worklist_pop
-call $__arc_dec_no_drain
-call $__arc_drain_release_worklist
+;; backend=gc
+;; gc-sync source_len=23 token_count=6
+(type $do_bytes (array (mut i8)))
+(func $__gc_bytes_eq
+(func $__gc_text_eq
+(func $_start

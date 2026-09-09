@@ -1,10 +1,16 @@
-;; defer-cleanup-call cleanup_inner
+block $__gc_break_0
+loop $__gc_loop_1
+;; gc-root local_bind $outer_data
+block $__gc_break_2
+loop $__gc_loop_3
+;; gc-root local_bind $inner_data
 call $cleanup_inner
-;; defer-cleanup-call cleanup_outer
+br $__gc_break_0
+end
+end
+;; gc-root loop_join
 call $cleanup_outer
-;; loop-break-release
-;; arc-release-local inner_data
-call $__arc_dec
-;; arc-release-local outer_data
-call $__arc_dec
-br $__loop_break_
+end
+end
+;; gc-root loop_join
+return

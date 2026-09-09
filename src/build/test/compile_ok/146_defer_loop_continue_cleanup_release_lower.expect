@@ -1,8 +1,8 @@
-;; loop-block
-;; defer-cleanup-call cleanup
+block $__gc_break_0
+loop $__gc_loop_1
+;; gc-root local_bind $data
 call $cleanup
-;; loop-continue-release
-;; arc-release-local data
-call $__arc_dec
-br $__loop_body_
-unreachable
+br $__gc_loop_1
+end
+end
+;; gc-root loop_join

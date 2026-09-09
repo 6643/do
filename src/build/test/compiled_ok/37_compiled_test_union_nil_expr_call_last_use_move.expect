@@ -1,4 +1,4 @@
 ;; compiled-test 0 "compiled union nil expr call last use move"
+;; backend=gc
 (type $do_union (struct
 struct.get $do_union $tag
-count=0 ;; arc-call-move data

@@ -1,6 +1,6 @@
 ;; compiled-test 0 "compiled storage alias set keeps old value"
-count=2 call $__arc_inc
-count=1 call $__storage_set_u8
+;; backend=gc
+array.copy $do_bytes $do_bytes
 local.get $alias
 i32.const 98
 i32.eq

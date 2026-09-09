@@ -1,2 +1,3 @@
 ;; compiled-test 0 "compiled storage return call last use move"
-;; arc-call-move data
+;; backend=gc
+call $pass

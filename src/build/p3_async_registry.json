@@ -2654,6 +2654,30 @@
                 "world": "owned-record-pair-parameterized-producer",
                 "parameter": "data"
             }
+        },
+        {
+            "locator": "demo:map-async-probe/api@0.1.0",
+            "member": "submit",
+            "effect": "async-map-u32-u32",
+            "params": ["HashMap<u32, u32>"],
+            "result": "u32",
+            "resource": null,
+            "wit_sha256": "821f5a1d20b600284efca10ad78f16e64d3ca5f42df566d4f045ef5b5348d3a0",
+            "canonical": {
+                "core_params": ["i32", "i32", "i32"],
+                "core_results": ["i32"],
+                "completion_params": ["i32"],
+                "completion": "task-return",
+                "async_import_module": "demo:map-async-probe/api@0.1.0",
+                "async_import_name": "[async-lower]submit"
+            },
+            "wit": {
+                "package": "demo:map-async-probe@0.1.0",
+                "interface": "api",
+                "operation": "submit",
+                "world": "probe",
+                "parameter": "values"
+            }
         }
     ]
 }

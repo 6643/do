@@ -134,7 +134,8 @@ pub fn check_p3_async_host_imports(allocator: std.mem.Allocator, tokens: []const
         } else false;
         if (!is_stream_effect and !std.mem.eql(u8, descriptor.effect, "async") and
             !std.mem.eql(u8, descriptor.effect, "async-host-scalar-argument") and
-            !std.mem.eql(u8, descriptor.effect, "future-owned-resource")) return mark_error_at(tokens, idx, error.UnknownP3AsyncHostDescriptor);
+            !std.mem.eql(u8, descriptor.effect, "future-owned-resource") and
+            !std.mem.eql(u8, descriptor.effect, "async-map-u32-u32")) return mark_error_at(tokens, idx, error.UnknownP3AsyncHostDescriptor);
     }
 }
 
@@ -157,7 +158,8 @@ fn is_admitted_generic_async_probe(
 
 fn descriptor_is_async_invocation(descriptor: p3_async_manifest.Descriptor) bool {
     if (std.mem.eql(u8, descriptor.effect, "async") or
-        std.mem.eql(u8, descriptor.effect, "async-host-scalar-argument")) return true;
+        std.mem.eql(u8, descriptor.effect, "async-host-scalar-argument") or
+        std.mem.eql(u8, descriptor.effect, "async-map-u32-u32")) return true;
     // The filesystem read-directory descriptor has a record-stream lowering
     // shape but its pinned WIT declaration is `async func`; the other current
     // record-stream reader probes are ordinary `func` declarations.
@@ -213,6 +215,7 @@ fn p3_async_signature_matches(tokens: []const lexer.Token, start_idx: usize, end
             .filesystem_stat => return filesystem_stat_signature_matches(tokens, start_idx, close_idx, end_idx),
             .future_owned_resource => return future_owned_signature_matches(tokens, start_idx, close_idx, end_idx),
             .http_request_constructor => return http_request_constructor_signature_matches(tokens, start_idx, close_idx, end_idx),
+            .async_map_u32_u32 => return async_map_signature_matches(tokens, start_idx, close_idx, end_idx),
             else => {},
         }
     }
@@ -229,6 +232,27 @@ fn p3_async_signature_matches(tokens: []const lexer.Token, start_idx: usize, end
     }
     if (param_idx != descriptor.params.len) return false;
     return token_range_matches_type_name(tokens, close_idx + 3, end_idx, descriptor.result);
+}
+
+fn async_map_signature_matches(
+    tokens: []const lexer.Token,
+    params_start_idx: usize,
+    params_close_idx: usize,
+    end_idx: usize,
+) bool {
+    return params_close_idx == params_start_idx + 7 and
+        tokens[params_start_idx + 1].kind == .ident and
+        std.mem.eql(u8, tokens[params_start_idx + 1].lexeme, "HashMap") and
+        tok_eq(tokens[params_start_idx + 2], "<") and
+        tokens[params_start_idx + 3].kind == .ident and
+        std.mem.eql(u8, tokens[params_start_idx + 3].lexeme, "u32") and
+        tok_eq(tokens[params_start_idx + 4], ",") and
+        tokens[params_start_idx + 5].kind == .ident and
+        std.mem.eql(u8, tokens[params_start_idx + 5].lexeme, "u32") and
+        tok_eq(tokens[params_start_idx + 6], ">") and
+        end_idx == params_close_idx + 4 and
+        tokens[params_close_idx + 3].kind == .ident and
+        std.mem.eql(u8, tokens[params_close_idx + 3].lexeme, "u32");
 }
 
 fn http_request_constructor_signature_matches(
