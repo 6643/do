@@ -124,6 +124,29 @@ done <<< "$matrix"
 
 run_direct_owned_record_component_equivalence
 
+oracle_output="$TMP_DIR/arc-oracle.stdout"
+oracle_error="$TMP_DIR/arc-oracle.stderr"
+ORACLE_ZIG_BIN="${ZIG_BIN:-$(command -v zig || true)}"
+if [[ -z "$ORACLE_ZIG_BIN" || ! -x "$ORACLE_ZIG_BIN" ]]; then
+    printf 'missing Zig executable for explicit ARC equivalence oracle\n' >&2
+    exit 1
+fi
+if ! "$ORACLE_ZIG_BIN" test "$ROOT/src/main.zig" \
+    --test-filter 'ARC equivalence oracle' \
+    >"$oracle_output" 2>"$oracle_error"; then
+    printf 'explicit ARC equivalence oracle failed\n' >&2
+    cat "$oracle_output" >&2
+    cat "$oracle_error" >&2
+    exit 1
+fi
+if ! grep -Fq 'ARC equivalence oracle: explicit test-only route' "$oracle_output" "$oracle_error"; then
+    printf 'explicit ARC equivalence oracle did not report its route\n' >&2
+    cat "$oracle_output" >&2
+    cat "$oracle_error" >&2
+    exit 1
+fi
+printf 'PASS explicit ARC equivalence oracle uses test-only route\n'
+
 pass_rows=0
 while read -r row fixture probe; do
     [[ -z "$row" ]] && continue

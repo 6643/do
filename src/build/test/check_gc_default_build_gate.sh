@@ -19,7 +19,7 @@ fi
 
 assert_no_arc_marker() {
     local wat_file="$1"
-    if rg -q '__arc_' "$wat_file"; then
+    if rg -q '__arc_|arc-runtime|arc-layout|arc-overwrite|arc-release|arc-fallthrough-release|arc-block-release' "$wat_file"; then
         printf 'generated WAT contains obsolete ARC marker: %s\n' "$wat_file" >&2
         return 1
     fi
@@ -31,6 +31,44 @@ assert_gc_marker() {
         ! rg -q ';; gc-sync ' "$wat_file" ||
         ! rg -q '\$do_' "$wat_file"; then
         printf 'generated WAT lacks the expected GC lowering markers: %s\n' "$wat_file" >&2
+        return 1
+    fi
+}
+
+assert_function_without_gc_struct_ops() {
+    local wat_file="$1"
+    local function_name="$2"
+    if ! awk -v wanted="$function_name" '
+        BEGIN {
+            in_func = 0
+            found = 0
+            depth = 0
+            bad = 0
+        }
+        {
+            if (!in_func) {
+                prefix = "(func $" wanted
+                start = index($0, prefix)
+                if (start == 0) next
+                suffix = substr($0, start + length(prefix), 1)
+                if (suffix != "" && suffix != " " && suffix != "\t" && suffix != "(") next
+                in_func = 1
+                found = 1
+            }
+            if (in_func) {
+                line = $0
+                opens = gsub(/\(/, "", line)
+                closes = gsub(/\)/, "", line)
+                depth += opens - closes
+                if ($0 ~ /struct\.(new|get)/) bad = 1
+                if (depth == 0) in_func = 0
+            }
+        }
+        END {
+            exit (!found || bad)
+        }
+    ' "$wat_file"; then
+        printf 'function contains an unexpected GC struct operation: %s (%s)\n' "$wat_file" "$function_name" >&2
         return 1
     fi
 }
@@ -48,6 +86,24 @@ if assert_gc_marker "$negative_gc_wat"; then
     printf 'GC marker negative check unexpectedly accepted non-GC WAT\n' >&2
     exit 1
 fi
+negative_gc_boundary_wat="$TMP_DIR/negative-gc-boundary.wat"
+printf '%s\n' \
+    '(module' \
+    '  (func $__runtime_helper' \
+    '    struct.get $do_text $length' \
+    '  )' \
+    '  (func $read' \
+    '    i32.const 0' \
+    '  )' \
+    ')' >"$negative_gc_boundary_wat"
+if ! assert_function_without_gc_struct_ops "$negative_gc_boundary_wat" read; then
+    printf 'GC boundary function check rejected a clean function\n' >&2
+    exit 1
+fi
+if assert_function_without_gc_struct_ops "$negative_gc_boundary_wat" __runtime_helper >/dev/null 2>&1; then
+    printf 'GC boundary function check ignored a struct operation in the target function\n' >&2
+    exit 1
+fi
 
 expected_fixture_manifest=$(cat <<'EOF'
 bool-list-set.do
@@ -58,6 +114,7 @@ f64-list-set.do
 five-level-nested-field-path.do
 four-level-nested-field-path.do
 gc-payload-union.do
+gc-value-copy-update.do
 generic-managed-identity.do
 i16-list-literal.do
 i16-list-set.do
@@ -139,7 +196,8 @@ usize-list.do
 EOF
 )
 actual_fixture_manifest=$(find "$EXAMPLE_DIR" -maxdepth 1 -type f -name '*.do' -printf '%f\n' | sort)
-if ! diff -u <(printf '%s\n' "$expected_fixture_manifest") <(printf '%s\n' "$actual_fixture_manifest" | rg -v '^(imported-text-helper|imported_text_helper)\.do$'); then
+non_default_fixture_filter='^(imported-text-helper|imported_text_helper|map-u32-u32-(lift|lower))\.do$'
+if ! diff -u <(printf '%s\n' "$expected_fixture_manifest") <(printf '%s\n' "$actual_fixture_manifest" | rg -v "$non_default_fixture_filter"); then
     printf 'admitted GC fixture manifest drifted\n' >&2
     exit 1
 fi
@@ -215,7 +273,7 @@ for fixture in "${fixtures[@]}"; do
     if [[ "$name" == ordinary-host-c14-lift-call ]]; then
         rg -q '\(import "demo:marshal-record-nested-lift-deeper/api@1.0.0" "read"' "$wat_file"
         rg -q '\(func \$read \(result i32 i64 i64 i64 i64\)' "$wat_file"
-        if rg -q 'struct\.(new|get)' "$wat_file"; then
+        if ! assert_function_without_gc_struct_ops "$wat_file" read; then
             printf 'ordinary C14 lift unexpectedly crossed a GC struct operation: %s\n' "$wat_file" >&2
             exit 1
         fi
@@ -224,7 +282,7 @@ for fixture in "${fixtures[@]}"; do
         rg -q '\(import "demo:marshal-record-nested-lower-deeper/api@1.0.0" "write"' "$wat_file"
         rg -q '\(type \$canonical_lower \(func \(param i32 i64 i64 i64 i64\)\)\)' "$wat_file"
         rg -q '\(func \$write \(param \$__gc_arg_0 i32\) \(param \$__gc_arg_1 i64\) \(param \$__gc_arg_2 i64\) \(param \$__gc_arg_3 i64\) \(param \$__gc_arg_4 i64\)' "$wat_file"
-        if rg -q 'struct\.(new|get)' "$wat_file"; then
+        if ! assert_function_without_gc_struct_ops "$wat_file" write; then
             printf 'ordinary C14 lower unexpectedly crossed a GC struct operation: %s\n' "$wat_file" >&2
             exit 1
         fi

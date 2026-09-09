@@ -1,9 +1,10 @@
 # do v1 内存模型
 
-**状态**: Wasm GC 是 Do 唯一选定的 managed-memory 后端。当前已准入同步路径的
-G5b ARC/GC 等价性矩阵为 23 行全绿；另有一个资源 `Result` 取消终态通过
-GC/线性 Component backend-neutral oracle。编译器仍含 ARC 实现代码和未准入路径,
-因此全局 runtime migration 尚未完成。
+**状态**: Wasm GC 是 Do 唯一选定的 managed-memory 后端，且已成为普通编译入口的
+唯一 managed backend。Task 6 GC-first runtime cutover 已闭环：当前已准入同步路径的
+ARC/GC 等价性矩阵为 26 行全绿，ARC 只保留在显式 test-only equivalence oracle；未准入
+能力继续在 WAT 前 fail-closed。GC migration capability inventory 仍为
+`complete_rows=15 pending_rows=15`，这是能力缺口，不是 backend cutover 阻断。
 
 **目标**: 在不向用户暴露指针或引用的前提下, 为 Wasm lowering、`[T]`、`text`、
 结构体、host ABI、Future/Stream 和 Component/WIT 资源提供统一边界。
@@ -154,19 +155,19 @@ Wasm linear memory 是 runtime implementation detail。源码不暴露地址。
 4. 不把 Wasm GC typed references 暴露为 Do source values。
 5. 不把 COW optimization 解释为公开 mutability 或 reference semantics。
 
-## 8. Implementation Migration
+## 8. Implementation State
 
-GC-first 是目标规范。以下 ARC implementation debt 仍需单独的 compiler/runtime
-migration, 完成前不得宣称 default `do build` 已使用 full GC:
-
-1. `src/build/runtime_arc_wat.zig` 和 `src/build/runtime_prelude_wat.zig`。
-2. `src/build/codegen_ownership.zig` 及 ARC scope-exit release plans。
-3. storage layout、alias、overwrite、return 和 loop 的 ARC-specific WAT tests。
-4. GC-managed list/text/struct lowering, GC frame roots, Component boundary
-   marshaling, and the full regression matrix.
+普通 `do build` 已通过 `codegen_runtime_api.zig` 进入 GC-only production route；
+ARC 不再作为默认 fallback。`runtime_arc_wat.zig`、`runtime_prelude_wat.zig` 及
+相关 legacy emitters 仅由显式 `src/build/test/gc_arc_equivalence_oracle.zig`
+测试入口引用，用于保留 26 行等价快照。WIT resource 的 ownership/drop 计划仍是
+独立的 Component/ABI 生命周期，不由 GC 接管。
 
 历史 ARC object layout、allocator、`rc == 1` reuse 和 `inc/dec` 规则不再是
-v1 规范。它们保留在源码、changelog 和 dated plans 中作为迁移证据。
+v1 规范；它们保留在源码、changelog 和 dated plans 中作为迁移证据。通用
+async/map/producer/resource lowering、公开 `own<T>`/`borrow<T>`/`ref<T>` 语法和
+其余 15 个 capability inventory pending rows 仍需各自的 design/gate，不能以
+GC cutover 证据替代。
 
 ## 9. Required Verification
 

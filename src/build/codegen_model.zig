@@ -2,7 +2,7 @@
 const std = @import("std");
 const imports = @import("imports.zig");
 const lexer = @import("lexer.zig");
-const runtime_prelude_wat = @import("runtime_prelude_wat.zig");
+const codegen_layout = @import("codegen_layout.zig");
 const codegen_union_layout = @import("codegen_union_layout.zig");
 const component_marshal = @import("codegen_component_marshal_plan.zig");
 
@@ -77,8 +77,8 @@ pub const PayloadEnumDecl = struct {
     owned_name: bool = false,
 };
 
-pub const ManagedFieldOffset = runtime_prelude_wat.ManagedFieldOffset;
-pub const StructLayout = runtime_prelude_wat.StructLayout;
+pub const ManagedFieldOffset = codegen_layout.ManagedFieldOffset;
+pub const StructLayout = codegen_layout.StructLayout;
 
 pub const StructLocal = struct {
     name: []const u8,
@@ -371,7 +371,7 @@ pub const ReachVisit = struct {
     call_idx: ?usize = null,
 };
 
-pub const StringData = runtime_prelude_wat.StringData;
+pub const StringData = codegen_layout.StringData;
 // Call-site head parsed from tokens (shared by lower/import).
 pub const ExprCallHead = struct {
     name_idx: usize,

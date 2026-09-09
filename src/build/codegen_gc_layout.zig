@@ -66,6 +66,12 @@ pub const GcPayloadUnionLayout = struct {
     managed_tag: u32,
     payload_tys: []const []const u8,
     managed_payload_index: u32,
+    /// Optional scalar-error arm used by inline `bytes | Error` results. The
+    /// scalar payload is kept in a typed i32 carrier slot beside the managed
+    /// byte reference; named payload enums continue to use the unit arm only.
+    scalar_case: ?[]const u8 = null,
+    scalar_tag: u32 = 0,
+    scalar_payload_index: u32 = 0,
     owned_name: ?[]u8 = null,
 };
 

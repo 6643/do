@@ -483,10 +483,12 @@
 ## Task 6: ARC Isolation, Full Verification, And Documentation
 
 **Files:**
-- Modify: `src/build/codegen_pipeline.zig`, `src/build/codegen_model.zig`, and normal emitter imports to remove ARC from the production dependency graph
+- Modify: `src/build/codegen_pipeline.zig`, `src/build/codegen_model.zig`, `src/build/codegen_gc_sync.zig`, `src/build/run.zig`, and normal emitter imports to remove ARC from the production dependency graph
+- Create: `src/build/codegen_runtime_api.zig`, `src/build/codegen_gc_generics.zig`, `src/build/codegen_gc_diagnostic_compat.zig`, and `src/build/codegen_layout.zig` for the GC-only production boundary
 - Create: `src/build/test/gc_arc_equivalence_oracle.zig`
 - Modify: `src/build.zig` and `src/main.zig` only for explicit test-only oracle registration
 - Modify: `src/build/test/check_gc_migration_inventory.sh`
+- Create: `src/build/test/gc_compiled_pending.tsv`
 - Modify: `src/build/test/check_gc_default_build_gate.sh` and `src/build/test/check_gc_semantic_equivalence.sh`
 - Modify: `doc/memory.md`, `doc/master_plan.md`, `doc/roadmap_status.md`, `doc/pending_blocked.md`, `doc/start_here.md`, and `CHANGELOG.md`
 - Verify: `src/build/runtime_arc_wat.zig`, `src/build/runtime_prelude_wat.zig`, and all files listed as `test_oracle` in `doc/gc_arc_inventory.tsv`
@@ -497,7 +499,7 @@
 - `check_gc_semantic_equivalence.sh` invokes the oracle through the explicit `arc_equivalence_oracle` path and compares the existing snapshot rows against the GC route; it does not make ARC available to `emit_wat`.
 - Documentation distinguishes admitted GC routes, capability-only probes, and pending G5c/G6.2/D2 rows.
 
-- [ ] **Step 1: Write the production dependency and equivalence red checks.**
+- [x] **Step 1: Write the production dependency and equivalence red checks.**
 
   Add checks that build the installed binary, inspect its imports, and run one explicit oracle invocation:
 
@@ -508,7 +510,10 @@
 
   Expected before isolation: the dependency scan finds production ARC references, while the equivalence script still uses the legacy path implicitly. Keep that output as the final migration baseline.
 
-- [ ] **Step 2: Run the red checks and freeze the equivalence snapshot.**
+  Implemented: the production dependency scan, explicit ARC oracle route, and
+  post-cutover GC marker checks are now part of the focused gates.
+
+- [x] **Step 2: Run the red checks and freeze the equivalence snapshot.**
 
   ```bash
   ./src/build/test/check_gc_arc_inventory.sh
@@ -517,11 +522,21 @@
 
   Expected: the inventory identifies every remaining production reference; the equivalence script reports the existing row count and observed values. Do not alter `complete_rows=15 pending_rows=15` in this step.
 
-- [ ] **Step 3: Isolate or remove ARC from normal builds.**
+  Observed on 2026-09-09: `check_gc_arc_inventory.sh --post-cutover` reports
+  `rows=49 matches=480 unclassified=0 normal_route_matches=0`; the migration
+  inventory still reports `complete_rows=15 pending_rows=15` and exits `1` by
+  design; semantic equivalence reports `26 rows; 0 pending`.
+
+- [x] **Step 3: Isolate or remove ARC from normal builds.**
 
   Remove `runtime_prelude_wat` and Do-value `codegen_ownership` imports from normal emitters. Move the remaining legacy code behind the explicitly named test oracle, or delete it after the snapshot if no test requires replay. Make `src/main.zig` and `src/build.zig` register the oracle only in test compilation. Update `check_gc_default_build_gate.sh` so every admitted fixture requires `backend=gc` and forbids `__arc_`, `arc-runtime`, and `arc-layout`.
 
-- [ ] **Step 4: Run the complete acceptance matrix.**
+  Implemented on 2026-09-09: normal compilation enters
+  `codegen_runtime_api.zig`; the production dependency closure reports
+  `modules=153 forbidden=0`; ARC runtime/emitter references remain only behind
+  the explicit equivalence oracle and WIT resource lifecycle helpers.
+
+- [x] **Step 4: Run the complete acceptance matrix.**
 
   ```bash
   cd src && zig test main.zig
@@ -538,11 +553,23 @@
 
   Expected: all currently admitted routes pass with `backend=gc` and no normal-route ARC markers; unsupported shapes fail before WAT with their existing diagnostics; equivalence observations remain unchanged; bounded Future/Stream/resource cleanup is exactly once; Component validation and Rust/Wasmtime execution pass on the four pinned toolchain versions. The migration inventory may still intentionally print `complete_rows=15 pending_rows=15` and exit `1` because those are capability gaps, not cutover failures.
 
-- [ ] **Step 5: Synchronize authoritative documentation from fresh output.**
+  Observed on 2026-09-09: default and combined `RUN_WASM=1 RUN_GC_CORE=1`
+  harness runs each pass `14/14 steps; 53/53 tests`; `zig test main.zig` passes
+  `1556/1556`; ReleaseSmall/release smoke, toolchain adapter, GC default,
+  Component boundary, async-map capability, ARC inventory and semantic
+  equivalence gates all pass. The installed toolchain is
+  `wasm-tools 1.258.0`, Wasmtime `48.0.1`, Zig `0.16.0`, Rust/Cargo `1.97.1`.
+
+- [x] **Step 5: Synchronize authoritative documentation from fresh output.**
 
   Append a dated entry to each listed document containing the actual command results. State explicitly that GC is the only normal managed backend, ARC is test-only or removed, public ownership/reference syntax remains absent, the async-map probe is not compiler admission, and G5c remains `complete_rows=15 pending_rows=15`. Preserve existing async-map, toolchain, and unrelated worktree entries.
 
-- [ ] **Step 6: Run the final self-review and commit the cutover.**
+  Updated on 2026-09-09: `doc/memory.md`, `doc/master_plan.md`,
+  `doc/roadmap_status.md`, `doc/pending_blocked.md`, `doc/start_here.md`, and
+  `CHANGELOG.md` now record the GC-only production route, explicit ARC oracle,
+  current verification counts, and the unchanged capability pending inventory.
+
+- [x] **Step 6: Run the final self-review and commit the cutover.**
 
   ```bash
   if rg -n "$(printf '\x54\x42\x44|\x54\x4f\x44\x4f|\x46\x49\x58\x4d\x45')" \
@@ -564,13 +591,17 @@
 
   The `rg` command must return no plan placeholders; `git diff --check` must be clean; staged paths must exclude unrelated dirty files.
 
+  Completed on 2026-09-09 after the final self-review and scoped staging; the
+  cutover is committed locally as `Complete GC-first runtime cutover` and is not
+  pushed by this plan.
+
 ## Final Self-Review Checklist
 
-- [ ] Every ARC reference found by the scanner has a domain and action, and every normal-route Do-value reference is replaced or removed.
-- [ ] The default compiler has one explicit GC backend decision and no silent ARC fallback.
-- [ ] Do values, GC roots, canonical linear temporaries, and WIT resources have separate lifecycle rules.
-- [ ] Branch, loop, return, bounded suspension/resumption, cancellation, and terminal cleanup are each covered by a focused gate.
-- [ ] No GC reference crosses a Component/WIT boundary, and resource cleanup is not delegated to GC.
-- [ ] Unsupported async/map/producer/borrow/resource shapes retain their fail-closed diagnostics.
-- [ ] The G5c inventory remains `complete_rows=15 pending_rows=15` unless an independent capability plan changes it.
-- [ ] All final claims are backed by current command output on the pinned toolchain.
+- [x] Every ARC reference found by the scanner has a domain and action, and every normal-route Do-value reference is replaced or removed.
+- [x] The default compiler has one explicit GC backend decision and no silent ARC fallback.
+- [x] Do values, GC roots, canonical linear temporaries, and WIT resources have separate lifecycle rules.
+- [x] Branch, loop, return, bounded suspension/resumption, cancellation, and terminal cleanup are each covered by a focused gate.
+- [x] No GC reference crosses a Component/WIT boundary, and resource cleanup is not delegated to GC.
+- [x] Unsupported async/map/producer/borrow/resource shapes retain their fail-closed diagnostics.
+- [x] The G5c inventory remains `complete_rows=15 pending_rows=15` unless an independent capability plan changes it.
+- [x] All final claims are backed by current command output on the pinned toolchain.

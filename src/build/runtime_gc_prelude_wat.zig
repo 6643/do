@@ -88,6 +88,19 @@ pub fn emit_gc_sync_prelude(
     scalar_arrays: [gc_layout.scalar_array_specs.len]bool,
     managed_arrays: []const gc_layout.GcManagedArrayLayout,
 ) !void {
+    try emit_gc_sync_types(allocator, out, layouts, payload_unions, has_tuple_text_bytes, scalar_arrays, managed_arrays);
+    try emit_gc_sync_helpers(allocator, out);
+}
+
+pub fn emit_gc_sync_types(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    layouts: []const gc_layout.GcStructLayout,
+    payload_unions: []const gc_layout.GcPayloadUnionLayout,
+    has_tuple_text_bytes: bool,
+    scalar_arrays: [gc_layout.scalar_array_specs.len]bool,
+    managed_arrays: []const gc_layout.GcManagedArrayLayout,
+) !void {
     try emit_text_prelude(allocator, out);
     for (gc_layout.scalar_array_specs, 0..) |spec, index| {
         if (scalar_arrays[index]) try runtime_gc_wat.emit_scalar_array_type(allocator, out, spec.array_name, spec.elem_ty);
@@ -97,6 +110,121 @@ pub fn emit_gc_sync_prelude(
         try runtime_gc_wat.emit_gc_payload_union_type(allocator, out, payload_union);
     }
     if (has_tuple_text_bytes) try runtime_gc_wat.emit_tuple_text_bytes_type(allocator, out);
+}
+
+pub fn emit_gc_sync_helpers(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
+    try emit_bytes_eq_helper(allocator, out);
+    try emit_text_eq_helper(allocator, out);
+}
+
+fn emit_bytes_eq_helper(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
+    try out.appendSlice(allocator,
+        \\  (func $__gc_bytes_eq (param $left (ref null $do_bytes)) (param $right (ref null $do_bytes)) (result i32)
+        \\    (local $length i32)
+        \\    (local $index i32)
+        \\    local.get $left
+        \\    ref.is_null
+        \\    if
+        \\      local.get $right
+        \\      ref.is_null
+        \\      return
+        \\    end
+        \\    local.get $right
+        \\    ref.is_null
+        \\    if
+        \\      i32.const 0
+        \\      return
+        \\    end
+        \\    local.get $left
+        \\    ref.as_non_null
+        \\    array.len
+        \\    local.set $length
+        \\    local.get $right
+        \\    ref.as_non_null
+        \\    array.len
+        \\    local.get $length
+        \\    i32.ne
+        \\    if
+        \\      i32.const 0
+        \\      return
+        \\    end
+        \\    i32.const 0
+        \\    local.set $index
+        \\    block $__gc_bytes_eq_done
+        \\      loop $__gc_bytes_eq_loop
+        \\        local.get $index
+        \\        local.get $length
+        \\        i32.ge_u
+        \\        br_if $__gc_bytes_eq_done
+        \\        local.get $left
+        \\        ref.as_non_null
+        \\        local.get $index
+        \\        array.get_u $do_bytes
+        \\        local.get $right
+        \\        ref.as_non_null
+        \\        local.get $index
+        \\        array.get_u $do_bytes
+        \\        i32.ne
+        \\        if
+        \\          i32.const 0
+        \\          return
+        \\        end
+        \\        local.get $index
+        \\        i32.const 1
+        \\        i32.add
+        \\        local.set $index
+        \\        br $__gc_bytes_eq_loop
+        \\      end
+        \\    end
+        \\    i32.const 1
+        \\  )
+        \\
+    );
+}
+
+fn emit_text_eq_helper(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
+    try out.appendSlice(allocator,
+        \\  (func $__gc_text_eq (param $left (ref null $do_text)) (param $right (ref null $do_text)) (result i32)
+        \\    (local $left_bytes (ref null $do_bytes))
+        \\    (local $right_bytes (ref null $do_bytes))
+        \\    local.get $left
+        \\    ref.is_null
+        \\    if
+        \\      local.get $right
+        \\      ref.is_null
+        \\      return
+        \\    end
+        \\    local.get $right
+        \\    ref.is_null
+        \\    if
+        \\      i32.const 0
+        \\      return
+        \\    end
+        \\    local.get $left
+        \\    ref.as_non_null
+        \\    struct.get $do_text $length
+        \\    local.get $right
+        \\    ref.as_non_null
+        \\    struct.get $do_text $length
+        \\    i32.ne
+        \\    if
+        \\      i32.const 0
+        \\      return
+        \\    end
+        \\    local.get $left
+        \\    ref.as_non_null
+        \\    struct.get $do_text $bytes
+        \\    local.set $left_bytes
+        \\    local.get $right
+        \\    ref.as_non_null
+        \\    struct.get $do_text $bytes
+        \\    local.set $right_bytes
+        \\    local.get $left_bytes
+        \\    local.get $right_bytes
+        \\    call $__gc_bytes_eq
+        \\  )
+        \\
+    );
 }
 
 fn emit_layout_depth_first(

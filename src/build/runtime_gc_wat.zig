@@ -2,6 +2,7 @@
 const std = @import("std");
 const generated_text = @import("codegen_text.zig");
 const gc_layout = @import("codegen_gc_layout.zig");
+const codegen_names = @import("codegen_names.zig");
 const payload_wat = @import("wat_payload.zig");
 
 pub fn emit_bytes_type(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
@@ -104,7 +105,7 @@ pub fn emit_gc_struct_type(
     var field_index: u32 = 0;
     while (field_index < layout.fields.len) : (field_index += 1) {
         const field = find_field_by_index(layout.fields, field_index) orelse return error.UnsupportedGcSyncType;
-        try append_fmt(allocator, out, " (field ${[name]s} ", .{ .name = field.name });
+        try append_fmt(allocator, out, " (field ${[name]s} ", .{ .name = codegen_names.public_decl_name(field.name) });
         try append_gc_field_wasm_type(allocator, out, field, managed_arrays);
         try out.append(allocator, ')');
     }
@@ -157,7 +158,13 @@ fn append_gc_field_wasm_type(
 }
 
 fn append_lowered_name(allocator: std.mem.Allocator, out: *std.ArrayList(u8), name: []const u8) !void {
-    for (name) |ch| try out.append(allocator, std.ascii.toLower(ch));
+    for (name) |ch| {
+        if ((ch >= 'a' and ch <= 'z') or (ch >= 'A' and ch <= 'Z') or (ch >= '0' and ch <= '9')) {
+            try out.append(allocator, std.ascii.toLower(ch));
+        } else {
+            try out.append(allocator, '_');
+        }
+    }
 }
 
 pub fn emit_tuple_text_bytes_type(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
@@ -189,4 +196,26 @@ fn append_fmt(
     args: anytype,
 ) !void {
     try generated_text.append_fmt(allocator, out, format, args);
+}
+
+test "GC struct type uses the public field name for private source fields" {
+    const allocator = std.testing.allocator;
+    const fields = [_]gc_layout.GcFieldLayout{
+        .{ .name = ".items", .ty = "[[u8]]", .rep = .gc_managed, .field_index = 0 },
+    };
+    const layout = gc_layout.GcStructLayout{ .name = "Box", .fields = fields[0..] };
+    const list_ty = try allocator.dupe(u8, "[[u8]]");
+    defer allocator.free(list_ty);
+    const elem_ty = try allocator.dupe(u8, "[u8]");
+    defer allocator.free(elem_ty);
+    const array_name = try allocator.dupe(u8, "$do_list_list_u8");
+    defer allocator.free(array_name);
+    const managed_arrays = [_]gc_layout.GcManagedArrayLayout{
+        .{ .list_ty = list_ty, .elem_ty = elem_ty, .array_name = array_name },
+    };
+    var out = std.ArrayList(u8).empty;
+    defer out.deinit(allocator);
+
+    try emit_gc_struct_type(allocator, &out, layout, managed_arrays[0..]);
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "(field $items (ref null $do_list_list_u8))") != null);
 }

@@ -26,6 +26,7 @@ const module_tokens_equal = codegen_tokens.module_tokens_equal;
 const string_literal_arg_lexeme = codegen_tokens.string_literal_arg_lexeme;
 const append_mangled_type_name = codegen_names.append_mangled_type_name;
 const module_scoped_symbol_name = codegen_names.module_scoped_symbol_name;
+const is_core_wasm_scalar = codegen_names.is_core_wasm_scalar;
 
 pub fn collect_env_host_imports(
     allocator: std.mem.Allocator,
@@ -239,6 +240,7 @@ pub fn host_call_args_match(tokens: []const lexer.Token, start_idx: usize, end_i
             if (!host_param_is_ptr_len(host_import, param_idx)) return false;
             param_idx += 2;
         } else if (host_arg_could_be_storage_ptr_len_syntax(tokens, arg_start, arg_end) and host_param_is_ptr_len(host_import, param_idx)) {
+            if (host_arg_is_known_scalar_binding(tokens, arg_start, arg_end)) return false;
             param_idx += 2;
         } else {
             if (param_idx >= host_import.params.len) return false;
@@ -260,4 +262,15 @@ pub fn host_param_is_ptr_len(host_import: HostImport, param_idx: usize) bool {
 pub fn host_arg_could_be_storage_ptr_len_syntax(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
     const range = trim_parens(tokens, start_idx, end_idx);
     return range.end == range.start + 1 and tokens[range.start].kind == .ident;
+}
+
+fn host_arg_is_known_scalar_binding(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    const range = trim_parens(tokens, start_idx, end_idx);
+    if (range.end != range.start + 1 or tokens[range.start].kind != .ident) return false;
+    const name = tokens[range.start].lexeme;
+    for (tokens, 0..) |token, index| {
+        if (token.kind != .ident or !std.mem.eql(u8, token.lexeme, name)) continue;
+        if (index + 1 < tokens.len and tokens[index + 1].kind == .ident and is_core_wasm_scalar(tokens[index + 1].lexeme)) return true;
+    }
+    return false;
 }

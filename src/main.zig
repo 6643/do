@@ -110,12 +110,19 @@ test {
     _ = @import("wit/signature.zig");
     _ = @import("wit/tests.zig");
     _ = @import("build/codegen_ir.zig");
+    // Keep legacy emitter unit tests and the explicit equivalence oracle out
+    // of the installed compiler while still running them in the test root.
+    _ = @import("build/codegen_api.zig");
     _ = @import("build/run.zig");
     _ = @import("build/codegen_gc_facts_test.zig");
     _ = @import("build/codegen_gc_model_adapter_test.zig");
     _ = @import("build/codegen_gc_sync_adapter_test.zig");
+    _ = @import("build/codegen_gc_diagnostic_compat.zig");
     _ = @import("build/codegen_control_flow_test.zig");
     _ = @import("build/codegen_gc_plans_test.zig");
+    _ = @import("build/codegen_gc_async_frame_test.zig");
+    _ = @import("build/codegen_gc_sync.zig");
+    _ = @import("build/codegen_gc_generics_test.zig");
     _ = @import("build/gc_marshal_record_probe.zig");
     _ = @import("build/codegen_component_marshal_route.zig");
     _ = @import("build/codegen_component_manifest_route_test.zig");
@@ -141,10 +148,10 @@ test {
     _ = @import("build/gc_marshal_record_managed_lower_probe.zig");
     _ = @import("build/gc_marshal_record_managed_lower_multi_probe.zig");
     _ = @import("build/codegen_gc_emit_test.zig");
+    _ = @import("build/test/gc_arc_equivalence_oracle.zig");
     _ = @import("build/wat_component_metadata.zig");
     _ = @import("build/wat_function_body.zig");
     _ = @import("build/ownership_facts.zig");
-    _ = @import("build/runtime_prelude_wat.zig");
     _ = @import("build/type_name.zig");
     _ = @import("build/wat_payload.zig");
     _ = @import("build/wat_storage.zig");

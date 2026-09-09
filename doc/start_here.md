@@ -2,6 +2,8 @@
 
 这是当前主线的接手入口。状态以本文为准; 计划摘要见 `doc/master_plan.md`; 近期变更见 `CHANGELOG.md`。不保留向后兼容旧路径或历史流水账。
 
+当前基线日期: `2026-09-09`。
+
 ## 1. 阅读顺序
 
 1. [README.md](../README.md) — 能力摘要、非目标、下一阶段计划
@@ -30,8 +32,11 @@
 | 项 | 状态 |
 | --- | --- |
 | v1 子集 | 发布候选已收口 |
+| GC-first runtime cutover | Task 6 已闭环；普通 `do build`/`do test` 只走 `codegen_runtime_api.zig` 的 Wasm GC route，ARC 仅由显式 test-only `gc_arc_equivalence_oracle.zig` 调用；ARC inventory `rows=49 matches=480 unclassified=0 normal_route_matches=0`，生产依赖闭包 `modules=153 forbidden=0` |
+| 当前验证基线 | 默认及 `RUN_WASM=1 RUN_GC_CORE=1` 为 `14/14 steps; 53/53 tests`；`zig test main.zig` 为 `1556/1556`；GC default gate `87 fixtures`、semantic-equivalence `26 rows; 0 pending`、ReleaseSmall/release smoke 通过 |
+| 当前能力边界 | `complete_rows=15 pending_rows=15` 仍为能力缺口；通用 async/map/producer/resource lowering 与 public `own<T>`/`borrow<T>`/`ref<T>` syntax 继续 pending，未准入形状在 WAT 前 fail-closed |
 | GC-first memory migration | G5a 已完成 parsed fixed-index + 参数化 `[u8] @set` + 全部当前标量 list literal/update（`[bool]`、`[i8]`、`[i16]`、`[i32]`、`[i64]`、`[u16]`、`[u32]`、`[u64]`、`[isize]`、`[usize]`、`[f32]`、`[f64]`）+ bounded text/list/struct/tuple/union/generic/import slices、直接局部对象的一层、两层、三层、四层与五层 nested managed-struct `@get/@set`，以及 `--p3-wait-for-component` 的 bounded `Future<nil>` GC frame/table slice 和 private resource `Result` terminal Component gate；G5b 已完成当前 admitted synchronous 的 26 行 ARC/GC executable equivalence matrix，`future_stream_frames` 的两个 sequential `Future<nil>` 也已完成 GC/linear backend-neutral equivalence，non-CLI probes 验证旧值保持、新值更新和 root 保活。Task 3 已将默认同步 pipeline 的已准入 managed candidates（含 bounded synchronous `defer`、`return nil` no-result cleanup、推断出的 `text` body binding、推断出的 `[u8]`/`[u32]` body storage `@put`，以及 body-only managed-struct storage ctor/field update）接到 typed GC/root 输出，GC path 过滤旧 storage compiler locals；普通 host/WIT 的 C14 lift/lower、C15-B/C15-D lower、C16-C/C16-D lift、bounded mixed scalar-record lower、bounded byte-list record lower/lift、bounded `list<u32>` record lower 与 bounded `list<u32>` record lift、bounded mixed text/u32-list record lower/lift 已接入 manifest-backed 默认 GC route，未准入的 host/WIT shape、普通 GC sync async 和 Stream 仍 ARC fallback；root/storage conversion、generic async/resource G5b/G5c、G5c full cutover 与旧 ARC expectation 迁移未完成。新增 C10–C16-B 私有 manifest-backed nested/scalar-plus-text/multi-managed-text record lift/lower 与真实 source-level host boundary 证据，其中固定 descriptor 的默认 gate 已闭合。 |
-| G5c route consolidation | C14–C20 已统一消费一次 manifest-backed `LoadedRequest`、descriptor registry 与 measured `SyncValuePlan`；default/explicit route 不重复解析 request，已登记 locator 的 member drift 在 WAT 前 fail-closed。新鲜 focused route/residual gate、Zig harness `14/14 steps; 51/51 tests`、default `86 fixtures`、semantic-equivalence `26 rows; 0 pending`、ReleaseSmall/release smoke 已通过；`RUN_WASM=1` 与 `RUN_GC_CORE=1` wrapper 回归均为 `14/14 steps; 51/51 tests`；inventory 仍为 `complete_rows=15 pending_rows=15`、exit 1。 |
+| G5c route consolidation | C14–C20 已统一消费一次 manifest-backed `LoadedRequest`、descriptor registry 与 measured `SyncValuePlan`；default/explicit route 不重复解析 request，已登记 locator 的 member drift 在 WAT 前 fail-closed。新鲜 focused route/residual gate、Zig harness `14/14 steps; 53/53 tests`、default `86 fixtures`、semantic-equivalence `26 rows; 0 pending`、ReleaseSmall/release smoke 已通过；`RUN_WASM=1` 与 `RUN_GC_CORE=1` wrapper 回归均为 `14/14 steps; 53/53 tests`；inventory 仍为 `complete_rows=15 pending_rows=15`、exit 1。 |
 | G5c bounded mixed text + two `list<u32>` lower | 精确 descriptor `demo:marshal-record-mixed-text-two-u32-lists-lower/api.write@1.0.0/lower` 已通过默认 route、Component/Rust/Wasmtime、negative 与 ARC/GC equivalence；root 28 bytes、canonical 七个 `i32`、三 span `second -> first -> label` exactly-once cleanup，host 观察 `allocations=3/frees=3`、`write-calls=1`。这是固定形状 promotion，不关闭 migration row。 |
 | G5c bounded mixed text + two `list<u32>` lift | 精确 descriptor `demo:marshal-record-mixed-text-two-u32-lists-lift/api.read@1.0.0/lift` 已通过默认 route、Component/Rust/Wasmtime、negative 与 ARC/GC equivalence；result area 28 bytes、canonical 单个 `(i32)` pointer、三 span `second -> first -> label` exactly-once cleanup，host 观察 `result=54`、`stats=51`、`read-calls=1`、`allocations=3/frees=3`，equivalence 为 `54/54`、`51/51`、`1/1`。这是固定形状 promotion，不关闭 migration row。 |
 | G5c residual capability matrix | 15 个 residual row 已逐行复核且仍全部 pending；14 行 blocked，唯一 candidate 为 `demo:marshal-record-mixed-text-byte-u32-lists-lower/api.write@1.0.0/lower`。该候选只接受同步、manifest-backed、ABI 可测量且 canonical ABI 无 GC reference 的固定 shape，已完成 spec/host/equivalence/negative/default/full verification；release-candidate maintenance、G6.2 双 owned-field producer gate 与固定三字段 `ResourceTriple` private compiler admission 已完成，不扩大默认 route。 |
@@ -55,7 +60,12 @@
 | 架构审查/重构 | 五轮已落地 (见 §4); 默认不继续拆 god module |
 | active Component tooling | `wasm-tools 1.258.0 (5c6d31c78 2026-08-24)`; SHA-256 `282e0014d38daf233cb10fb92815813b339e2b7f8b4734f6698f0176c7d99424`; current-only adapter path is `bin/do-toolchain` |
 | Toolchain adapter / Zig harness | Task 9 Step 1 active gate、Task 8 Step 3 Rust host adapter、Step 4/5 Shell-to-Zig parity 均已闭合；`run_tests.sh` 现在只是 `cd src && zig build test --summary all` 的薄入口，`RUN_WASM`/`RUN_GC_CORE` 由 Zig harness 继承处理 |
-| WIT `map<K,V>` runtime | parser/model/manifest/registry 的 pair-list schema 已完成；精确同步 manifest-backed `map<u32,u32>` lower/lift Component route 已通过 Do/Rust/Wasmtime host gate（各一次 host call 与一次 allocation/free）；同步 operation-frame 顺序门禁已锁定 lower 的 copy-before-call/free-after-call 与 lift 的 copy/construct/publish-before-free；`wit_abi_types` 与 bounded Core WAT probe 已覆盖 `u32` key + `u32`/`text` value 的 lower/lift 并通过 current toolchain parse/validate；通用 Component/WIT map lowering、其他 key/value 组合、async copy 与 Stream 跨 poll owned buffer 仍阻断，未支持 shape 继续 fail-closed |
+| WIT `map<K,V>` runtime | parser/model/manifest/registry 的 pair-list schema 已完成；精确同步 manifest-backed `map<u32,u32>` lower/lift Component route 已通过 Do/Rust/Wasmtime host gate（各一次 host call 与一次 allocation/free）；同步 operation-frame 顺序门禁已锁定 lower 的 copy-before-call/free-after-call 与 lift 的 copy/construct/publish-before-free；新增精确 async `map<u32,u32>` capability probe，固定 `(ptr,len,result_area)` Core 形状并通过 `ready/pending/cancel/drop` host lifecycle（输入复制、一次 frame free、空 `ResourceTable`）；`wit_abi_types` 与 bounded Core WAT probe 已覆盖 `u32` key + `u32`/`text` value 的 lower/lift 并通过 current toolchain parse/validate；通用 Component/WIT map lowering、其他 key/value 组合、async map compiler copy、Stream 跨 poll owned buffer 与统一 cleanup authority 仍阻断，未支持 shape 继续 fail-closed |
+
+上表中的历史 GC migration 行保留能力切片的审计描述；Task 6 已经单独关闭
+backend cutover。当前普通编译不再使用 ARC fallback，ARC 只通过显式 test-only
+equivalence oracle 运行；`complete_rows=15 pending_rows=15` 仍表示未实现能力，
+不是 cutover 状态。
 
 ## 3. 验证入口
 
@@ -201,8 +211,8 @@ bash examples/p3-runtime/test_g6_2_scalar_list_producer_abi.sh
 
 # 默认完整回归（薄入口；当前基线）
 ./src/build/test/run_tests.sh
-# 2026-09-04: wrapper delegates to `cd src && zig build test --summary all`;
-# Build Summary: 14/14 steps succeeded; 51/51 tests passed.
+# 2026-09-05: wrapper delegates to `cd src && zig build test --summary all`;
+# Build Summary: 14/14 steps succeeded; 53/53 tests passed.
 # `RUN_WASM=1` and `RUN_GC_CORE=1` are inherited by the Zig harness and use the
 # current-only `bin/do-toolchain` adapter. The GC inventory remains
 # `complete_rows=15 pending_rows=15`, exit 1.
@@ -244,16 +254,16 @@ cd src && zig test main.zig --test-filter 'manifest route'
 
 ```bash
 RUN_WASM=1 ./src/build/test/run_tests.sh
-# 2026-09-04: 14/14 steps、51/51 tests passed; current harness summaries are
+# 2026-09-05: 14/14 steps、53/53 tests passed; current harness summaries are
 # default pass=1070 and RUN_WASM=1 pass=1072, with skip=3.
 ```
 
 | 基线项 | 最近值 |
 | --- | --- |
-| 默认回归 | `pass=1070 fail=0 skip=3` (`14/14 steps; 51/51 tests`) |
-| WASM 扩展回归 (`RUN_WASM=1`) | `pass=1072 fail=0 skip=3` (`14/14 steps; 51/51 tests`) |
-| Core GC 扩展回归 (`RUN_GC_CORE=1`) | `14/14 steps; 51/51 tests` |
-| `zig test main.zig` | `785/785` (当前独立单测基线) |
+| 默认回归 | `pass=1070 fail=0 skip=3` (`14/14 steps; 53/53 tests`) |
+| WASM 扩展回归 (`RUN_WASM=1`) | `pass=1072 fail=0 skip=3` (`14/14 steps; 53/53 tests`) |
+| Core GC 扩展回归 (`RUN_GC_CORE=1`) | `14/14 steps; 53/53 tests` |
+| `zig test main.zig` | `792/792` (当前独立单测基线) |
 | async host scalar-argument ABI probe | current-only adapter Component assembly green; frame `20` bytes, argument `u32@12`; ready/pending/cancel oracle green with `argument=7`, exactly-once Future drop, empty `ResourceTable`; probe-only, general lowering pending |
 | G6.2 scalar-list producer | private `stream<list<u32>>` promotion green; `ptr=64`, `len=68`, `stride=4`, max `3`, stream capacity `1`; count `0..3`, invalid `4`, pending/error/drop/cancel, exactly-once list release, empty `ResourceTable`; generic list/producer remains pending |
 | G5c bounded text host marshal | pinned Core/WIT assembly plus Rust/Wasmtime host execution observes one canonical `hello` string from a fixed GC text lower/copy/call probe; the paired ARC/GC equivalence probe reports one allocation/free on each route; lift, general shapes, compiler wiring, and default-route cutover remain pending |
@@ -633,6 +643,22 @@ WAT 写出前拒绝。该 slice 当时的 default GC build/parse gate 覆盖
 为 pinned `wasm-tools 1.255.0`。这是固定 bounded promotion，不开放通用
 aggregate/list、async/resource、ownership syntax，也不关闭 migration row；
 inventory 仍为 `complete_rows=15 pending_rows=15`。
+
+### 当前阶段增量（2026-09-05）
+
+精确 async `map<u32,u32>` capability probe 已完成并通过专用 gate：WIT 为
+`async func(values: map<u32, u32>) -> u32`，Core 观察形状为
+`(i32 ptr, i32 len, i32 result_area) -> i32`。host 在 Future 可能挂起前复制
+pair-list，canonical WAT 随后覆盖 guest 输入；`ready/pending/cancel/drop` 均满足
+`input-mismatches=0`、`frame-frees=1`、空 `ResourceTable` 与 exactly-once future
+cleanup。设计记录见
+`doc/superpowers/specs/2026-09-05-async-map-capability-design.md`。
+
+本轮默认及 `RUN_WASM=1 RUN_GC_CORE=1` 组合回归均为
+`14/14 steps succeeded; 53/53 tests passed`，`zig test main.zig` 为 `792/792`，
+ReleaseSmall/release smoke 通过。该 probe 只关闭精确 runtime capability 证据，
+不开放通用 async map lowering、Stream 跨 poll buffer、ownership syntax 或新的
+GC inventory row。
 
 ### 当前阶段交接（2026-09-04）
 

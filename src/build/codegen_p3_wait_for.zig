@@ -2776,7 +2776,7 @@ test "component lowering carries scalar locals into the async frame layout" {
     const wat = try emit_component_wat(std.testing.allocator, program, tokens, null);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(field $slot-delay (mut i64))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "i64.const 41\n\n    struct.new $async-frame") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i64.const 41\n\n    ref.null any\n    i32.const 0\n    struct.new $async-frame") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $async-frame $slot-delay\n        call $second-host-call") != null);
 }
 
@@ -2919,7 +2919,7 @@ test "component lowering initializes a countdown loop frame slot from its parame
 
     const wat = try emit_component_wat(std.testing.allocator, program, tokens, null);
     defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "local.get 0\n    local.get 0\n    struct.new $async-frame") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "local.get 0\n    local.get 0\n    ref.null any\n    i32.const 0\n    struct.new $async-frame") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.set $async-frame $slot-remaining") != null);
 }
 
@@ -2947,7 +2947,7 @@ test "component lowering initializes a countdown loop frame slot from a paramete
 
     const wat = try emit_component_wat(std.testing.allocator, program, tokens, null);
     defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "local.get 0\n    i64.const 1\n    i64.add\n    struct.new $async-frame") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "local.get 0\n    local.get 0\n    i64.const 1\n    i64.add\n    ref.null any\n    i32.const 0\n    struct.new $async-frame") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.set $async-frame $slot-remaining") != null);
 }
 

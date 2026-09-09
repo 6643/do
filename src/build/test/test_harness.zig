@@ -1055,8 +1055,8 @@ fn run_compiler_compiled_fixture_matrix(
             const fixture = try join(init.gpa, directory, name);
             defer init.gpa.free(fixture);
             if (std.mem.eql(u8, directory_name, "compiled_ok")) {
-                try run_compiled_ok_fixture(init, repo_root, do_bin, toolchain_bin, fixture, temp_path, lib_root);
-                try report_fixture(init, "compiled_ok", fixture, .pass);
+                const status = try run_compiled_ok_fixture(init, repo_root, do_bin, toolchain_bin, fixture, temp_path, lib_root);
+                try report_fixture(init, "compiled_ok", fixture, status);
             } else {
                 try run_compiled_err_fixture(init, do_bin, fixture, temp_path, lib_root);
                 try report_fixture(init, "compiled_err", fixture, .pass);
@@ -1073,24 +1073,42 @@ fn run_compiled_ok_fixture(
     fixture: []const u8,
     temp_path: []const u8,
     lib_root: []const u8,
-) !void {
+) !FixtureStatus {
     const wat = try fixture_output_path(init.gpa, temp_path, fixture, ".compiled.wat");
     defer init.gpa.free(wat);
     const expect = try replace_extension(init.gpa, fixture, ".expect");
     defer init.gpa.free(expect);
+
+    const pending_manifest_path = try join(init.gpa, repo_root, "src/build/test/gc_compiled_pending.tsv");
+    defer init.gpa.free(pending_manifest_path);
+    const pending_manifest = try read_file(init, pending_manifest_path);
+    defer init.gpa.free(pending_manifest);
+    if (find_gc_pending_entry(pending_manifest, .compiled_ok, std.fs.path.basename(fixture))) |entry| {
+        const pending_args = [_][]const u8{ "test", fixture, "--compiled" };
+        var pending = try run_do_args(init, do_bin, &pending_args, lib_root, null, 120_000);
+        defer pending.deinit(init.gpa);
+        if (pending.succeeded()) return error.GcCompiledPendingUnexpectedSuccess;
+        try process.assert_stderr_contains(pending, entry.diagnostic);
+        return .skip;
+    }
+
     const args = [_][]const u8{ "test", fixture, "--compiled", "-o", wat };
     var generated = try run_do_args(init, do_bin, &args, lib_root, null, 120_000);
     defer generated.deinit(init.gpa);
     try expect_success(init, &generated);
     try process.assert_stdout_contains(generated, "ok:");
     try expect_file(init.io, wat);
+    const source = try read_file(init, wat);
+    defer init.gpa.free(source);
+    if (std.mem.indexOf(u8, source, ";; backend=gc") == null) return error.GcBackendMarkerMissing;
+    for ([_][]const u8{ "__arc_", "arc-runtime", "arc-layout" }) |marker| {
+        if (std.mem.indexOf(u8, source, marker) != null) return error.ObsoleteArcMarker;
+    }
     if (try file_exists(init.io, expect)) {
-        const source = try read_file(init, wat);
-        defer init.gpa.free(source);
         try assert_expected_lines(init, expect, source);
     }
 
-    if (!std.mem.eql(u8, init.environ_map.get("RUN_WASM") orelse "0", "1")) return;
+    if (!std.mem.eql(u8, init.environ_map.get("RUN_WASM") orelse "0", "1")) return .pass;
     const node = try find_node_runtime(init);
     defer init.gpa.free(node);
     const runner = try join(init.gpa, repo_root, "src/build/test/run_compiled_test_case.mjs");
@@ -1109,6 +1127,7 @@ fn run_compiled_ok_fixture(
     try process.assert_stdout_contains(executed, "test \"");
     try process.assert_stdout_contains(executed, " ... ok");
     try process.assert_stdout_contains(executed, "ok:");
+    return .pass;
 }
 
 fn run_compiled_err_fixture(
@@ -1156,12 +1175,26 @@ fn run_do_run_matrix(
 ) !void {
     const directory = try join(init.gpa, test_root, "run");
     defer init.gpa.free(directory);
+    const pending_manifest_path = try join(init.gpa, repo_root, "src/build/test/gc_compiled_pending.tsv");
+    defer init.gpa.free(pending_manifest_path);
+    const pending_manifest = try read_file(init, pending_manifest_path);
+    defer init.gpa.free(pending_manifest);
     const names = try collect_files(init.gpa, init.io, directory, ".do");
     defer free_names(init.gpa, names);
 
     for (names) |name| {
         const fixture = try join(init.gpa, directory, name);
         defer init.gpa.free(fixture);
+        if (find_gc_pending_entry(pending_manifest, .run, name)) |entry| {
+            const args = [_][]const u8{ "run", fixture };
+            var pending = try run_do_args(init, do_bin, &args, lib_root, repo_root, 120_000);
+            defer pending.deinit(init.gpa);
+            if (pending.succeeded()) return error.GcRunPendingUnexpectedSuccess;
+            try process.assert_stderr_contains(pending, entry.diagnostic);
+            if (pending.stdout.len != 0) return error.UnexpectedPendingRunStdout;
+            try report_fixture(init, "run", fixture, .skip);
+            continue;
+        }
         const expect = try replace_extension(init.gpa, fixture, ".stdout.expect");
         defer init.gpa.free(expect);
         const args = [_][]const u8{ "run", fixture };
@@ -1418,6 +1451,10 @@ fn run_wasm_smoke_matrix(
     defer init.gpa.free(lib_root);
     const runner = try join(init.gpa, test_root, "run_wasm_case.mjs");
     defer init.gpa.free(runner);
+    const pending_manifest_path = try join(init.gpa, repo_root, "src/build/test/gc_compiled_pending.tsv");
+    defer init.gpa.free(pending_manifest_path);
+    const pending_manifest = try read_file(init, pending_manifest_path);
+    defer init.gpa.free(pending_manifest);
     const names = try collect_files(init.gpa, init.io, directory, ".do");
     defer free_names(init.gpa, names);
     const node = try find_node_runtime(init);
@@ -1433,6 +1470,13 @@ fn run_wasm_smoke_matrix(
         const build_args = [_][]const u8{ "build", fixture, "-o", wat };
         var built = try run_do_args(init, do_bin, &build_args, lib_root, null, 120_000);
         defer built.deinit(init.gpa);
+        if (wasm_smoke_pending_entry(pending_manifest, name)) |entry| {
+            if (built.succeeded()) return error.GcRunPendingUnexpectedSuccess;
+            try process.assert_stderr_contains(built, entry.diagnostic);
+            if (built.stdout.len != 0) return error.UnexpectedPendingRunStdout;
+            try report_fixture(init, "wasm_run", fixture, .skip);
+            continue;
+        }
         try expect_success(init, &built);
         const parse_args = [_][]const u8{ "parse-core", wat, "-o", wasm };
         try run_adapter_success(init, toolchain_bin, &parse_args);
@@ -1534,14 +1578,8 @@ fn run_do_test_directory(
                 try run_err_fixture(init, do_bin, fixture, lib_root);
                 break :blk .pass;
             },
-            .compile_ok => blk: {
-                try run_compile_fixture(init, do_bin, fixture, temp_path, lib_root, true);
-                break :blk .pass;
-            },
-            .compile_err => blk: {
-                try run_compile_fixture(init, do_bin, fixture, temp_path, lib_root, false);
-                break :blk .pass;
-            },
+            .compile_ok => try run_compile_fixture(init, do_bin, fixture, temp_path, lib_root, true),
+            .compile_err => try run_compile_fixture(init, do_bin, fixture, temp_path, lib_root, false),
         };
         try report_fixture(init, category, fixture, status);
     }
@@ -1578,8 +1616,7 @@ fn run_ok_fixture(
         if (try file_exists(init.io, compiled_must_pass)) {
             const repo_root = init.environ_map.get("DO_HARNESS_REPO_ROOT") orelse
                 return error.MissingHarnessEnvironment;
-            try run_compiled_must_pass(init, repo_root, fixture, temp_path, stdlib_root);
-            return status_after_compiled_must_pass();
+            return try run_compiled_must_pass(init, repo_root, fixture, temp_path, stdlib_root);
         }
         return .skip;
     }
@@ -1590,13 +1627,76 @@ fn status_after_compiled_must_pass() FixtureStatus {
     return .pass;
 }
 
+const GcPendingMode = enum {
+    compiled_must_pass,
+    compiled_ok,
+    compile_ok,
+    run,
+};
+
+const GcPendingEntry = struct {
+    mode: GcPendingMode,
+    fixture_name: []const u8,
+    diagnostic: []const u8,
+};
+
+fn parse_gc_pending_mode(value: []const u8) ?GcPendingMode {
+    if (std.mem.eql(u8, value, "compiled_must_pass")) return .compiled_must_pass;
+    if (std.mem.eql(u8, value, "compiled_ok")) return .compiled_ok;
+    if (std.mem.eql(u8, value, "compile_ok")) return .compile_ok;
+    if (std.mem.eql(u8, value, "run")) return .run;
+    return null;
+}
+
+fn find_gc_pending_entry(manifest: []const u8, mode: GcPendingMode, fixture_name: []const u8) ?GcPendingEntry {
+    var lines = std.mem.splitScalar(u8, manifest, '\n');
+    while (lines.next()) |raw_line| {
+        const line = std.mem.trim(u8, raw_line, " \t\r");
+        if (line.len == 0 or line[0] == '#') continue;
+        var columns = std.mem.splitScalar(u8, line, '\t');
+        const mode_text = std.mem.trim(u8, columns.next() orelse continue, " \t");
+        const name = std.mem.trim(u8, columns.next() orelse continue, " \t");
+        const diagnostic = std.mem.trim(u8, columns.next() orelse continue, " \t");
+        const parsed_mode = parse_gc_pending_mode(mode_text) orelse continue;
+        if (parsed_mode == mode and std.mem.eql(u8, name, fixture_name) and diagnostic.len != 0) {
+            return .{ .mode = parsed_mode, .fixture_name = name, .diagnostic = diagnostic };
+        }
+    }
+    return null;
+}
+
+fn wasm_smoke_pending_entry(manifest: []const u8, fixture_name: []const u8) ?GcPendingEntry {
+    return find_gc_pending_entry(manifest, .run, fixture_name);
+}
+
 fn run_compiled_must_pass(
     init: std.process.Init,
     repo_root: []const u8,
     fixture: []const u8,
     temp_path: []const u8,
     stdlib_root: []const u8,
-) !void {
+) !FixtureStatus {
+    const pending_manifest_path = try join(init.gpa, repo_root, "src/build/test/gc_compiled_pending.tsv");
+    defer init.gpa.free(pending_manifest_path);
+    const pending_manifest = try read_file(init, pending_manifest_path);
+    defer init.gpa.free(pending_manifest);
+    if (find_gc_pending_entry(pending_manifest, .compiled_must_pass, std.fs.path.basename(fixture))) |entry| {
+        const extra = [_][]const u8{ "--compiled" };
+        var pending = try run_do_command(
+            init,
+            init.environ_map.get("DO_HARNESS_DO_BIN") orelse return error.MissingHarnessEnvironment,
+            "test",
+            fixture,
+            &extra,
+            stdlib_root,
+            null,
+        );
+        defer pending.deinit(init.gpa);
+        if (pending.succeeded()) return error.GcCompiledPendingUnexpectedSuccess;
+        try process.assert_stderr_contains(pending, entry.diagnostic);
+        return .skip;
+    }
+
     const wat = try fixture_output_path(init.gpa, temp_path, fixture, ".compiled.wat");
     defer init.gpa.free(wat);
     const wasm = try fixture_output_path(init.gpa, temp_path, fixture, ".compiled.wasm");
@@ -1619,6 +1719,7 @@ fn run_compiled_must_pass(
     try expect_success(init, &executed);
     try process.assert_stdout_contains(executed, " ... ok");
     try process.assert_stdout_contains(executed, "ok:");
+    return status_after_compiled_must_pass();
 }
 
 fn run_std_fixture(init: std.process.Init, do_bin: []const u8, fixture: []const u8, lib_root: []const u8) !FixtureStatus {
@@ -1670,7 +1771,7 @@ fn run_compile_fixture(
     temp_path: []const u8,
     lib_root: []const u8,
     expected_success: bool,
-) !void {
+) !FixtureStatus {
     const wat = try fixture_output_path(init.gpa, temp_path, fixture, ".matrix.wat");
     defer init.gpa.free(wat);
     const expect = try replace_extension(init.gpa, fixture, ".expect");
@@ -1712,6 +1813,19 @@ fn run_compile_fixture(
     });
     defer output.deinit(init.gpa);
     if (expected_success) {
+        const repo_root = init.environ_map.get("DO_HARNESS_REPO_ROOT") orelse
+            return error.MissingHarnessEnvironment;
+        const pending_manifest_path = try join(init.gpa, repo_root, "src/build/test/gc_compiled_pending.tsv");
+        defer init.gpa.free(pending_manifest_path);
+        const pending_manifest = try read_file(init, pending_manifest_path);
+        defer init.gpa.free(pending_manifest);
+        if (find_gc_pending_entry(pending_manifest, .compile_ok, std.fs.path.basename(fixture))) |entry| {
+            if (output.succeeded()) return error.GcCompilePendingUnexpectedSuccess;
+            try process.assert_stderr_contains(output, entry.diagnostic);
+            return .skip;
+        }
+    }
+    if (expected_success) {
         try expect_success(init, &output);
         if (!try file_exists(init.io, wat)) return error.FixtureMissingOutput;
         try process.assert_stdout_contains(output, "ok:");
@@ -1726,9 +1840,11 @@ fn run_compile_fixture(
             try assert_expected_lines(init, host_manifest_expect, manifest_source);
         }
         try run_compile_wasi_expectations(init, do_bin, fixture, temp_path, lib_root, wat, wat_source);
+        return .pass;
     } else {
         if (output.exit_code() == 0) return error.FixtureExpectedFailure;
         try assert_expected_lines(init, expect, output.stderr);
+        return .pass;
     }
 }
 
@@ -2089,7 +2205,7 @@ fn run_gc_default_matrix(
         if (!try file_exists(init.io, wasm)) return error.MissingCompiledArtifact;
         fixture_count += 1;
     }
-        if (fixture_count != 86) return error.GcFixtureManifestDrift;
+        if (fixture_count != 87) return error.GcFixtureManifestDrift;
 }
 
 fn assert_gc_default_wat(name: []const u8, source: []const u8) !void {
@@ -2408,6 +2524,10 @@ fn run_socket_abi_matrix(
     defer init.gpa.free(test_root);
     const lib_root = try join(init.gpa, repo_root, "lib");
     defer init.gpa.free(lib_root);
+    const pending_manifest_path = try join(init.gpa, repo_root, "src/build/test/gc_compiled_pending.tsv");
+    defer init.gpa.free(pending_manifest_path);
+    const pending_manifest = try read_file(init, pending_manifest_path);
+    defer init.gpa.free(pending_manifest);
     const fixture_names = [_][]const u8{
         "compile_ok/291_wasi_tcp_create_union.do",
         "compile_ok/292_wasi_tcp_bind_payload_addr.do",
@@ -2416,19 +2536,37 @@ fn run_socket_abi_matrix(
     };
     var wat_paths: [fixture_names.len][]u8 = undefined;
     var wat_count: usize = 0;
+    var pending_count: usize = 0;
     defer {
         for (wat_paths[0..wat_count]) |path| init.gpa.free(path);
     }
-    for (fixture_names, 0..) |fixture_name, index| {
+    for (fixture_names) |fixture_name| {
         const fixture = try join(init.gpa, test_root, fixture_name);
         defer init.gpa.free(fixture);
-        wat_paths[index] = try fixture_output_path(init.gpa, temp_path, fixture, ".socket.wat");
-        wat_count += 1;
-        const build_args = [_][]const u8{ "build", fixture, "-o", wat_paths[index] };
+        const wat_path = try fixture_output_path(init.gpa, temp_path, fixture, ".socket.wat");
+        var keep_wat = false;
+        defer if (!keep_wat) init.gpa.free(wat_path);
+        const build_args = [_][]const u8{ "build", fixture, "-o", wat_path };
         var built = try run_do_args(init, do_bin, &build_args, lib_root, repo_root, 120_000);
         defer built.deinit(init.gpa);
+        if (find_gc_pending_entry(pending_manifest, .compile_ok, std.fs.path.basename(fixture_name))) |entry| {
+            if (built.succeeded()) return error.GcCompilePendingUnexpectedSuccess;
+            try process.assert_stderr_contains(built, entry.diagnostic);
+            if (built.stdout.len != 0) return error.UnexpectedPendingSocketStdout;
+            pending_count += 1;
+            try report_fixture(init, "socket_abi", fixture, .skip);
+            continue;
+        }
+        wat_paths[wat_count] = wat_path;
+        wat_count += 1;
+        keep_wat = true;
         try expect_success(init, &built);
-        try expect_file(init.io, wat_paths[index]);
+        try expect_file(init.io, wat_path);
+    }
+
+    if (wat_count == 0) {
+        if (pending_count != fixture_names.len) return error.SocketAbiFixtureMatrixEmpty;
+        return;
     }
 
     const node = try find_node_runtime(init);
@@ -3548,6 +3686,52 @@ test "fixture report line has stable status encoding" {
 
 test "compiled must pass promotes skipped ok fixture to pass" {
     try std.testing.expectEqual(FixtureStatus.pass, status_after_compiled_must_pass());
+}
+
+test "GC pending manifest matches explicit modes and fixture diagnostics" {
+    const manifest =
+        "# mode\tfixture\tdiagnostic\n" ++
+        "compiled_must_pass\tpending.do\tUnsupportedGcBackendRoute\n" ++
+        "compiled_ok\tcompiled-pending.do\tUnsupportedGcBackendRoute\n" ++
+        "compile_ok\tlowering.do\tUnsupportedLowering\n" ++
+        "run\trun-pending.do\tUnsupportedGcSyncModuleGraph\n";
+    const compiled = find_gc_pending_entry(manifest, .compiled_must_pass, "pending.do").?;
+    try std.testing.expectEqualStrings("UnsupportedGcBackendRoute", compiled.diagnostic);
+    const compile = find_gc_pending_entry(manifest, .compile_ok, "lowering.do").?;
+    try std.testing.expectEqualStrings(
+        "UnsupportedLowering",
+        compile.diagnostic,
+    );
+    const compiled_ok = find_gc_pending_entry(manifest, .compiled_ok, "compiled-pending.do").?;
+    try std.testing.expectEqualStrings("UnsupportedGcBackendRoute", compiled_ok.diagnostic);
+    const run = find_gc_pending_entry(manifest, .run, "run-pending.do").?;
+    try std.testing.expectEqualStrings("UnsupportedGcSyncModuleGraph", run.diagnostic);
+    try std.testing.expect(find_gc_pending_entry(manifest, .compile_ok, "pending.do") == null);
+}
+
+test "GC pending manifest recognizes compiled_ok mode" {
+    try std.testing.expect(parse_gc_pending_mode("compiled_ok") != null);
+}
+
+test "GC pending manifest recognizes run mode" {
+    try std.testing.expect(parse_gc_pending_mode("run") != null);
+}
+
+test "GC WASM smoke policy recognizes pending run fixtures" {
+    const manifest = "run\trun-pending.do\tUnsupportedGcSyncModuleGraph\n";
+    const entry = wasm_smoke_pending_entry(manifest, "run-pending.do") orelse
+        return error.MissingExpectedPendingFixture;
+    try std.testing.expectEqualStrings("UnsupportedGcSyncModuleGraph", entry.diagnostic);
+}
+
+test "GC pending manifest includes the current compile fixture basename" {
+    const manifest = @embedFile("gc_compiled_pending.tsv");
+    const entry = find_gc_pending_entry(
+        manifest,
+        .compile_ok,
+        "120_wasi_result_descriptor_open_at_multi_lhs_lower.do",
+    ) orelse return error.MissingExpectedPendingFixture;
+    try std.testing.expectEqualStrings("error[UnsupportedGcSyncModuleGraph]", entry.diagnostic);
 }
 
 test "p3 pure lowering matrix has explicit cases" {

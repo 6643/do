@@ -1,9 +1,10 @@
 const std = @import("std");
 const runtime_arc_wat = @import("runtime_arc_wat.zig");
+const codegen_layout = @import("codegen_layout.zig");
 
-pub const ManagedFieldOffset = runtime_arc_wat.ManagedFieldOffset;
-pub const StructLayout = runtime_arc_wat.StructLayout;
-pub const StringData = runtime_arc_wat.StringData;
+pub const ManagedFieldOffset = codegen_layout.ManagedFieldOffset;
+pub const StructLayout = codegen_layout.StructLayout;
+pub const StringData = codegen_layout.StringData;
 
 pub const MemoryOptions = struct {
     component_core: bool = false,

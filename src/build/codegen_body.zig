@@ -18,12 +18,8 @@ const codegen_storage_layout = @import("codegen_storage_layout.zig");
 const codegen_host_imports = @import("codegen_host_imports.zig");
 const codegen_wasi_registry = @import("codegen_wasi_registry.zig");
 const codegen_union_layout = @import("codegen_union_layout.zig");
-const ownership = @import("ownership.zig");
-const ownership_facts = @import("ownership_facts.zig");
 const imports = @import("imports.zig");
 const test_runner = @import("test_runner.zig");
-const payload_wat = @import("wat_payload.zig");
-const storage_wat = @import("wat_storage.zig");
 
 const append_loop_source_storage_local = context.append_loop_source_storage_local;
 const parse_union_type_layout = codegen_collect_util.parse_union_type_layout;

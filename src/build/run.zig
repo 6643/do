@@ -1,6 +1,6 @@
 const std = @import("std");
 const cli = @import("cli.zig");
-const codegen = @import("codegen_api.zig");
+const codegen = @import("codegen_runtime_api.zig");
 const codegen_gc_wit_marshal = @import("codegen_gc_wit_marshal.zig");
 const codegen_gc_wit_host_boundary = @import("codegen_gc_wit_host_boundary.zig");
 const codegen_component_descriptor_manifest = @import("codegen_component_descriptor_manifest.zig");
@@ -527,6 +527,21 @@ test "explicit GC WIT marshal dispatch uses the manifest adapter" {
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-record-managed-lower/api@1.0.0") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"run\" (func $run))") != null);
+}
+
+test "compiled GC fixture remains admitted after frontend and module loading" {
+    const allocator = std.testing.allocator;
+    const source = @embedFile("test/compiled_ok/49_compiled_test_storage_alias_set_keeps_old_value.do");
+    const tokens = try lexer.tokenize(allocator, source);
+    defer allocator.free(tokens);
+    var program = try parser.parse_program(allocator, tokens, source.len);
+    defer program.deinit(allocator);
+    try sema.check_program(allocator, program, tokens);
+    var graph = try imports.check_and_load(std.testing.io, allocator, "compiled-alias.do", tokens, "lib");
+    defer graph.deinit();
+    const wat = try codegen.emit_test_wat(allocator, program, tokens, &graph);
+    defer allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; backend=gc") != null);
 }
 
 test "default GC host admission covers the verified multi-managed descriptors" {

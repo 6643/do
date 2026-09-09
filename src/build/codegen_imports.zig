@@ -120,6 +120,93 @@ pub fn validate_reachable_wasi_host_import_build_uses_from_tests(
     try validate_reachable_wasi_host_import_stack(allocator, graph, &stack, &visited);
 }
 
+pub const ReachabilityRoot = enum {
+    start,
+    tests,
+};
+
+fn intrinsic_is_host_or_wit(name: []const u8) bool {
+    return std.mem.eql(u8, name, "host") or
+        std.mem.startsWith(u8, name, "host_") or
+        std.mem.startsWith(u8, name, "wasi_");
+}
+
+fn module_has_host_or_wit_binding(tokens: []const lexer.Token) bool {
+    for (tokens, 0..) |token, index| {
+        if (!tok_eq(token, "@") or index + 1 >= tokens.len or tokens[index + 1].kind != .ident) continue;
+        if (intrinsic_is_host_or_wit(tokens[index + 1].lexeme)) return true;
+    }
+    return false;
+}
+
+fn module_has_host_or_wit_binding_named(tokens: []const lexer.Token, name: []const u8) bool {
+    var depth_brace: usize = 0;
+    var i: usize = 0;
+    while (i + 3 < tokens.len) : (i += 1) {
+        if (tok_eq(tokens[i], "{")) {
+            depth_brace += 1;
+            continue;
+        }
+        if (tok_eq(tokens[i], "}")) {
+            if (depth_brace > 0) depth_brace -= 1;
+            continue;
+        }
+        if (depth_brace != 0 or !is_line_start(tokens, i) or
+            tokens[i].kind != .ident or !std.mem.eql(u8, public_decl_name(tokens[i].lexeme), name)) continue;
+        if (!tok_eq(tokens[i + 1], "=") or !tok_eq(tokens[i + 2], "@") or tokens[i + 3].kind != .ident) continue;
+        if (intrinsic_is_host_or_wit(tokens[i + 3].lexeme)) return true;
+    }
+    return false;
+}
+
+/// Return whether the GC route encounters a host/WIT declaration through the
+/// entry module's emitted call graph. Root declarations remain fail-closed;
+/// imported declarations are inspected only when their binding is actually
+/// called through a reachable function or test body.
+pub fn graph_has_reachable_host_or_wit_binding(
+    allocator: std.mem.Allocator,
+    entry_tokens: []const lexer.Token,
+    graph: *const imports.ModuleGraph,
+    root: ReachabilityRoot,
+) !bool {
+    const root_idx = find_root_module_index(graph.modules, entry_tokens) orelse return false;
+    if (module_has_host_or_wit_binding(entry_tokens)) return true;
+
+    var stack = std.ArrayList(ReachVisit).empty;
+    defer stack.deinit(allocator);
+    var visited = std.ArrayList(ReachVisit).empty;
+    defer visited.deinit(allocator);
+
+    switch (root) {
+        .start => try collect_start_body_calls(allocator, graph.modules[root_idx].tokens, root_idx, &stack),
+        .tests => try collect_test_body_calls(allocator, graph.modules[root_idx].tokens, root_idx, &stack),
+    }
+    try collect_all_function_body_calls(allocator, graph.modules[root_idx].tokens, root_idx, &stack);
+
+    while (stack.items.len != 0) {
+        const visit = stack.pop().?;
+        if (has_reach_visit(visited.items, visit)) continue;
+        try visited.append(allocator, visit);
+
+        const module = graph.modules[visit.module_idx];
+        if (visit.module_idx != root_idx and
+            module_has_host_or_wit_binding_named(module.tokens, public_decl_name(visit.name))) return true;
+
+        if (find_codegen_import_by_alias(module.tokens, visit.name)) |import_ref| {
+            if (find_imported_module_index(allocator, graph, visit.module_idx, import_ref)) |child_idx| {
+                try push_reach_visit(allocator, &stack, .{
+                    .module_idx = child_idx,
+                    .name = import_ref.target,
+                });
+            }
+            continue;
+        }
+
+        try collect_function_body_calls(allocator, module.tokens, visit.module_idx, visit.name, &stack);
+    }
+    return false;
+}
+
 pub fn validate_reachable_wasi_host_import_stack(
     allocator: std.mem.Allocator,
     graph: *const imports.ModuleGraph,

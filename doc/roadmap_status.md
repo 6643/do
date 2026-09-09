@@ -1,10 +1,39 @@
 # Roadmap 执行状态
 
-更新时间: 2026-09-04
+更新时间: 2026-09-09
 
 **本文只保留当前状态与阻断。** 历史小任务勾选与逐条 gate 证据已从仓库移除; 追溯用 git 历史与 `CHANGELOG.md`。
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
 G5b async/resource coverage ledger: `doc/g5b_async_resource_coverage.md`。
+
+2026-09-09 增量: Task 6 GC-first runtime cutover 已闭环。生产入口
+`src/build/codegen_runtime_api.zig` 只选择 Wasm GC；ARC emitter 与 ARC runtime
+仅由显式 test-only `src/build/test/gc_arc_equivalence_oracle.zig` 引用，普通
+`do build` 不再隐式 fallback 到 ARC。当前 fresh evidence 为 ARC inventory
+post-cutover `rows=49 matches=480 unclassified=0 normal_route_matches=0`、生产
+依赖闭包 `modules=153 forbidden=0`、GC default gate `87 fixtures` 和
+semantic-equivalence `26 rows; 0 pending`。默认及 `RUN_WASM=1 RUN_GC_CORE=1`
+回归均为 `14/14 steps; 53/53 tests`，独立 `zig test main.zig` 为 `1556/1556`，
+ReleaseSmall/release smoke、Component boundary 和 async-map capability gate 均
+通过。当前工具链为 `wasm-tools 1.258.0`、Wasmtime `48.0.1`、Zig `0.16.0`、
+Rust/Cargo `1.97.1`。
+
+GC cutover 只关闭 backend 选择与 ARC 隔离，不关闭 capability inventory：
+`complete_rows=15 pending_rows=15` 仍按设计返回 `1`；通用 async/map/producer/
+resource lowering 与 public `own<T>`/`borrow<T>`/`ref<T>` syntax 继续 pending，
+未准入形状保持 fail-closed。
+
+2026-09-05 增量: 新增独立 async `map<u32,u32>` capability probe。固定 WIT
+`async func(values: map<u32, u32>) -> u32` 与 Core `(i32 ptr, i32 len, i32 result_area) -> i32`
+形状，通过 current-only `wasm-tools 1.258.0` / Wasmtime `48.0.1` 完成
+Component parse/embed/new/validate 和 Rust host `ready/pending/cancel/drop` 矩阵。
+host 在 Future 可能挂起前复制 pair-list，WAT 随后覆盖 guest 输入；四种模式均观察
+`input-mismatches=0`、`frame-frees=1`、空 `ResourceTable`，完成模式一次 completion，
+取消/drop 模式一次 pending-future drop。专用 gate 为
+`examples/p3-runtime/test_async_map_capability.sh`；这只证明精确 runtime
+capability，不开放通用 async map lowering、Stream 跨 poll buffer 或 ownership syntax。
+本轮默认及 `RUN_WASM=1 RUN_GC_CORE=1` 组合回归均为 `14/14 steps; 53/53 tests`，
+`zig test main.zig` 为 `792/792`，ReleaseSmall/release smoke 通过。
 
 2026-09-04 增量: 同步 WIT map 的 operation-frame 顺序门禁已加入
 `codegen_component_marshal_ops`。lower 固定为读取/范围校验/分配/复制、canonical
@@ -446,6 +475,9 @@ fail-closed/pending。
 | 项 | 状态 |
 | --- | --- |
 | v1 子集 | 发布候选已收口 |
+| GC-first runtime cutover | Task 6 已闭环；普通编译入口只走 `codegen_runtime_api.zig` 的 Wasm GC route，ARC 仅保留在显式 test-only equivalence oracle；ARC inventory post-cutover `rows=49 matches=480 unclassified=0 normal_route_matches=0`，生产依赖闭包 `modules=153 forbidden=0` |
+| 当前验证基线 | 默认及 `RUN_WASM=1 RUN_GC_CORE=1` 为 `14/14 steps; 53/53 tests`；`zig test main.zig` 为 `1556/1556`；GC default gate `87 fixtures`、semantic-equivalence `26 rows; 0 pending`、ReleaseSmall/release smoke 通过 |
+| capability inventory | `complete_rows=15 pending_rows=15` 仍为能力缺口并按设计 exit `1`；通用 async/map/producer/resource lowering 与 public `own<T>`/`borrow<T>`/`ref<T>` syntax 继续 pending |
 | GC-first memory migration | `doc/memory.md` 和 `doc/design/2026-08-11-gc-first-memory-decision.md` 是 v1 source/runtime target. G5a 当前已闭合 parsed fixed-index、参数化 `[u8] @set`、全部当前 scalar-list literal/update slices、registered scalar-list one-value `@put`、bounded `[text]` managed-element one-value `@put`、全部当前 scalar-array managed-field payload rebuild、direct-local nested struct、一层、两层、三层、四层与五层直接 nested managed-struct `@get/@set`、单一直接同步单返回 `[u8]`/`text` managed-field call producer、bounded `Tuple<text,[u8]>` rewrite、bounded imported managed identity、payload-union、resolved generic、bounded managed-struct-list append，以及 `--p3-wait-for-component` 的 bounded `Future<nil>` GC frame/table slice; G5b 已关闭全部 26 个当前 admitted synchronous executable rows（含 payload-union、resolved generic、`[Box]` one-value `@put`、nested field paths 与 direct call producer），并以同一 WIT/Rust/Wasmtime runner 完成 bounded two-await GC/linear Future frame equivalence；Task 3 已把默认同步 pipeline 的已准入 managed candidates（含 bounded synchronous `defer`、`return nil` no-result cleanup、推断出的 `text` body binding、推断出的 `[u8]` body storage `@put`，以及 body-only managed-struct storage ctor/field update）接到 typed GC/root 输出，GC path 不再声明旧 storage compiler locals，未准入 shape、普通 GC sync async 和 host/WIT 仍保持 ARC fallback; `runtime_arc_wat.zig`, `runtime_prelude_wat.zig` 和 `codegen_ownership.zig` 仍是待替换的 implementation debt; generic async/resource G5b/G5c 与 full GC migration 尚未完成. |
 | GC-first scalar-leaf default route | `examples/gc-p3-runtime/scalar-leaf.do` 的纯同步 scalar identity/arithmetic 已走默认 typed GC route；递归、loop、defer、host/WIT、managed、async/resource 形状保持 fallback/fail-closed。独立 gate、默认 83-fixture build/parse gate 和 focused negative tests 已锁定；这不是 migration row closure 或 full G5c cutover。 |
 | GC-first scalar control-flow default route | `examples/gc-p3-runtime/scalar-control-flow.do` 的纯同步 scalar `if/else`、`else-if` 与 guard-return 已走默认 typed GC route，输出含 `branch_join`/`guard_join` 且无 `__arc_`；loop、`defer`、递归、导入模块、host/WIT、managed、async/resource 与任意 producer expression 保持 fallback/fail-closed。该 slice 不改变语法、不关闭 migration row 或 full G5c cutover。 |

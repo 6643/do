@@ -1,5 +1,33 @@
 # Changelog
 
+# 2026-09-09 GC-first runtime cutover:
+  completed Task 6. The installed compiler now enters the GC-only production API
+  `src/build/codegen_runtime_api.zig`; ARC is no longer an implicit fallback and is
+  reachable only through the explicit test-only
+  `src/build/test/gc_arc_equivalence_oracle.zig` route. The post-cutover ARC scan
+  reports `rows=49 matches=480 unclassified=0 normal_route_matches=0`, the
+  production dependency closure reports `modules=153 forbidden=0`, the default GC
+  gate covers `87 fixtures`, and the semantic-equivalence matrix reports
+  `26 rows; 0 pending`. Fresh default and `RUN_WASM=1 RUN_GC_CORE=1` harness runs
+  are `14/14 steps; 53/53 tests`; `zig test main.zig` is `1556/1556`, and
+  ReleaseSmall/release smoke pass on `wasm-tools 1.258.0`, Wasmtime `48.0.1`,
+  Zig `0.16.0`, and Rust/Cargo `1.97.1`. The migration capability inventory
+  intentionally remains `complete_rows=15 pending_rows=15` with exit `1`.
+  Public `own<T>`/`borrow<T>`/`ref<T>` and general async/map/producer/resource
+  lowering remain separate pending work.
+
+# 2026-09-05 Async `map<u32,u32>` capability probe:
+  added a pinned WIT/Component probe for `async func(values: map<u32, u32>) -> u32`.
+  The private Core observation shape is `(i32 ptr, i32 len, i32 result_area) -> i32`.
+  The Rust/Wasmtime host copies the pair-list before returning a Future, while the
+  canonical WAT overwrites the guest input after the call to prove that no raw
+  `ptr,len` survives suspension. `ready`, `pending`, `cancel`, and `drop` all pass
+  the input-copy, result-area, exactly-once frame/future cleanup, and empty-table
+  checks with current-only `wasm-tools 1.258.0` and Wasmtime `48.0.1`.
+  This is runtime capability evidence only: no Do compiler lowering, generic map
+  shape, Stream cross-poll buffer, public ownership syntax, or GC inventory row is
+  opened. Gate: `examples/p3-runtime/test_async_map_capability.sh`.
+
 # 2026-09-04 Synchronous map operation-frame lifetime guard:
   added a focused validator to the measured map memory plan. Lowering now
   requires pair-list copy before the canonical call and release after it;

@@ -58,6 +58,7 @@ const ImportedAliasContext = model.ImportedAliasContext;
 const OwnedFuncTypeShape = model.OwnedFuncTypeShape;
 const ParsedCodegenType = model.ParsedCodegenType;
 const ReachVisit = model.ReachVisit;
+const ReachabilityRoot = codegen_imports.ReachabilityRoot;
 const StructDecl = model.StructDecl;
 const StructLayout = model.StructLayout;
 const PayloadEnumDecl = model.PayloadEnumDecl;
@@ -599,6 +600,7 @@ pub fn collect_direct_gc_sync_imported_func_decls(
     structs: []const StructDecl,
     struct_layouts: []const StructLayout,
     payload_enums: []const PayloadEnumDecl,
+    reachability_root: ReachabilityRoot,
     out: *std.ArrayList(FuncDecl),
 ) !void {
     const root_idx = find_root_module_index(graph.modules, entry_tokens) orelse return;
@@ -608,7 +610,10 @@ pub fn collect_direct_gc_sync_imported_func_decls(
     var visited = std.ArrayList(ReachVisit).empty;
     defer visited.deinit(allocator);
 
-    try collect_start_body_calls(allocator, graph.modules[root_idx].tokens, root_idx, &stack);
+    switch (reachability_root) {
+        .start => try collect_start_body_calls(allocator, graph.modules[root_idx].tokens, root_idx, &stack),
+        .tests => try collect_test_body_calls(allocator, graph.modules[root_idx].tokens, root_idx, &stack),
+    }
     try collect_all_function_body_calls(allocator, graph.modules[root_idx].tokens, root_idx, &stack);
     while (stack.items.len != 0) {
         const visit = stack.pop().?;

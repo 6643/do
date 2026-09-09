@@ -1,28 +1,11 @@
 //! ARC runtime WAT prelude (extracted from runtime_prelude_wat).
 const std = @import("std");
 const generated_text = @import("codegen_text.zig");
+const codegen_layout = @import("codegen_layout.zig");
 
-pub const ManagedFieldOffset = struct {
-    name: []const u8,
-    offset: usize,
-};
-
-pub const StructLayout = struct {
-    name: []const u8,
-    type_id: usize,
-    payload_bytes: usize,
-    managed_fields: []const ManagedFieldOffset,
-    owned_name: bool = false,
-    /// When true: this layout describes one packed storage element (payload_bytes = elem width;
-    /// managed_fields offsets are relative to element start). Used for `[Tuple<...>]` with managed leaves.
-    is_storage_pack: bool = false,
-};
-
-pub const StringData = struct {
-    lexeme: []const u8 = "",
-    ptr: usize,
-    bytes: []const u8,
-};
+pub const ManagedFieldOffset = codegen_layout.ManagedFieldOffset;
+pub const StructLayout = codegen_layout.StructLayout;
+pub const StringData = codegen_layout.StringData;
 
 pub const ARC_BLOCK_SIZE: usize = 1024;
 pub const ARC_OBJECT_HEADER_BYTES: usize = 8;

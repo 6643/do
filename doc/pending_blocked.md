@@ -1,15 +1,29 @@
 # 待处理与阻断清单
 
-更新时间: 2026-09-04
+更新时间: 2026-09-09
 基线: 默认回归由 `./src/build/test/run_tests.sh` 薄入口转发到 Zig harness
 关系: 总规划 `doc/master_plan.md`; 接手 `doc/start_here.md`; 执行状态 `doc/roadmap_status.md`
 约定: **只记未关闭项**; 完成后从本文件删除或移入「已关闭摘要」, 并同步入口文档与 `CHANGELOG.md`。
 
-> **Superseded by GC-first (2026-08-11):** `doc/memory.md` 与
-> `doc/design/2026-08-11-gc-first-memory-decision.md` 已选定 Wasm GC 为 v1
-> managed-memory target。下文 ARC 只保留为当前 transition implementation 的历史
-> 证据, 不改变源码值语义; 后续 runtime work 目标为 GC。Component/WIT resource 的
-> ownership 与 drop 继续是显式 ABI contract, 不由 GC 接管。
+> **Superseded by GC-first (2026-08-11, cutover closed 2026-09-09):**
+> `doc/memory.md` 与 `doc/design/2026-08-11-gc-first-memory-decision.md` 已选定
+> Wasm GC 为 v1 managed-memory target。Task 6 已将普通编译入口切换为 GC-only；
+> ARC 只保留为显式 test-only equivalence oracle。下文只记录仍未关闭的能力缺口；
+> Component/WIT resource 的 ownership 与 drop 继续是显式 ABI contract, 不由 GC 接管。
+
+### GC-first runtime cutover (已关闭, 2026-09-09)
+
+生产入口 `src/build/codegen_runtime_api.zig` 只选择 Wasm GC，ARC runtime/legacy
+emitter 仅由 `src/build/test/gc_arc_equivalence_oracle.zig` 显式引用。fresh
+evidence: ARC inventory post-cutover `rows=49 matches=480 unclassified=0
+normal_route_matches=0`，生产依赖闭包 `modules=153 forbidden=0`，GC default gate
+`87 fixtures`，semantic-equivalence `26 rows; 0 pending`；默认及
+`RUN_WASM=1 RUN_GC_CORE=1` harness 均为 `14/14 steps; 53/53 tests`，独立
+`zig test main.zig` 为 `1556/1556`，ReleaseSmall/release smoke 通过。
+
+该项只关闭 backend 选择和 ARC 隔离，不关闭下方 capability inventory；
+`complete_rows=15 pending_rows=15` 仍按设计返回 `1`，通用 async/map/producer/
+resource lowering 与 public `own<T>`/`borrow<T>`/`ref<T>` syntax 继续 pending。
 
 ### Toolchain adapter 与 Zig harness (2026-09-02)
 
@@ -40,6 +54,11 @@ Wasmtime build script 阶段失败；通过仓库内
 linker 后，Rust 48.0.1 全量测试通过。该项是环境前提，不是 active runtime
 blocker。
 
+2026-09-09 验证刷新：默认及 `RUN_WASM=1 RUN_GC_CORE=1` 组合回归均为
+`14/14 steps; 53/53 tests`，`zig test main.zig` 为 `1556/1556`，ReleaseSmall 与
+release smoke 通过。新增 async map probe 已包含在两次 harness 运行中；这些结果
+不改变下方通用 map、Stream 跨 poll 或 cleanup authority 的阻断边界。
+
 ### WIT map runtime lowering (P2, exact sync route closed; general pending)
 
 `map<K,V>` 的 parser/model/manifest/registry schema 已按 pair-list ABI 表示
@@ -54,6 +73,14 @@ pair-list copy，call 后才释放；lift 在释放 result-area 前完成 copy�
 construct 和 root publish，异步逃逸标记在 WAT 前拒绝。该门禁只约束已有同步
 route，不代表 async map 参数 copy、Stream 跨 poll owned buffer 或通用 cleanup
 authority 已实现。
+精确 async capability probe `demo:map-async-probe/api.submit@0.1.0` 已单独建立：
+WIT 为 `async func(values: map<u32, u32>) -> u32`，Core 观察形状为
+`(i32 ptr, i32 len, i32 result_area) -> i32`。固定 pair-list 输入在 host callback
+返回 Future 前复制，随后由 canonical WAT 覆盖 guest 输入；`ready`、`pending`、
+`cancel`、`drop` 四种终态均验证 `input-mismatches=0`、一次 frame free、一次
+future drop 和空 `ResourceTable`。设计与产物见
+`doc/superpowers/specs/2026-09-05-async-map-capability-design.md`；该 probe
+不提供 Do compiler lowering，不关闭任何 G5c inventory row。
 通用 Component/WIT map lowering、其他 key/value 组合、async 参数 copy、Stream
 跨 poll owned buffer 和统一 cleanup authority 尚未实现。当前 registry 对这些
 未支持 shape 仍返回 `UnsupportedWitMarshalShape`，不得据精确 route 推断通用
@@ -883,6 +910,17 @@ slice 解释为 G5c 或 full GC cutover。
 ---
 
 ## 5. 已关闭摘要 (勿当待办)
+
+- **Task 6 GC-first runtime cutover (2026-09-09)**: 普通编译入口已切换到
+  `codegen_runtime_api.zig` 的 Wasm GC-only route；ARC runtime/legacy emitter 只
+  由显式 test-only `gc_arc_equivalence_oracle.zig` 引用。post-cutover ARC scan 为
+  `rows=49 matches=480 unclassified=0 normal_route_matches=0`，生产依赖闭包为
+  `modules=153 forbidden=0`，GC default gate 为 `87 fixtures`，semantic-equivalence
+  为 `26 rows; 0 pending`。默认及 `RUN_WASM=1 RUN_GC_CORE=1` harness 均为
+  `14/14 steps; 53/53 tests`，`zig test main.zig` 为 `1556/1556`，ReleaseSmall/
+  release smoke 通过。该项不关闭 `complete_rows=15 pending_rows=15` capability
+  inventory，也不开放 public `own<T>`/`borrow<T>`/`ref<T>` 或通用
+  async/map/producer/resource lowering。
 
 - pure-scalar struct 作为 Tuple storage 嵌套子槽 (`compile_ok/272`, `ok/192`; 局部名 `$pair.0.x`)
 - managed/`text` 作为 Tuple **直接叶子** storage + path chain (`compile_ok/270`–`271`)

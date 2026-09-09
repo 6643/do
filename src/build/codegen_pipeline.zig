@@ -9,7 +9,6 @@ const ownership_facts = @import("ownership_facts.zig");
 const parser = @import("parser.zig");
 const sema_tokens = @import("sema_tokens.zig");
 const payload_wat = @import("wat_payload.zig");
-const runtime_prelude_wat = @import("runtime_prelude_wat.zig");
 const storage_wat = @import("wat_storage.zig");
 const test_runner = @import("test_runner.zig");
 const type_util = @import("type_name.zig");
@@ -150,6 +149,21 @@ const union_layouts_equal = codegen_union_layout.union_layouts_equal;
 const WasiHostImport = codegen_wasi_registry.WasiHostImport;
 const validate_wasi_host_import_build_uses = codegen_wasi_registry.validate_wasi_host_import_build_uses;
 const WASI_BINDING_ENTRY_SOURCE = codegen_wasi_registry.WASI_BINDING_ENTRY_SOURCE;
+
+pub const LegacyRuntime = struct {
+    emit_string_data_memory: *const fn (
+        allocator: std.mem.Allocator,
+        out: *std.ArrayList(u8),
+        string_data: []const StringData,
+        component_core: bool,
+    ) anyerror!void,
+    emit_legacy_runtime_prelude: *const fn (
+        allocator: std.mem.Allocator,
+        out: *std.ArrayList(u8),
+        string_data: []const StringData,
+        struct_layouts: []const StructLayout,
+    ) anyerror!void,
+};
 
 const tok_eq = codegen_tokens.tok_eq;
 const find_matching = codegen_tokens.find_matching;
@@ -1927,7 +1941,7 @@ fn gc_sync_header_has_scalar_union_result(tokens: []const lexer.Token, start_idx
     if (result_start >= end_idx or find_top_level_token(tokens, result_start, end_idx, "|") == null) return false;
     var branch_start = result_start;
     var branch_count: usize = 0;
-    var saw_scalar_struct = false;
+    var saw_scalar_value = false;
     var saw_error = false;
     while (branch_start < end_idx) {
         const branch_end = find_top_level_token(tokens, branch_start, end_idx, "|") orelse end_idx;
@@ -1936,15 +1950,15 @@ fn gc_sync_header_has_scalar_union_result(tokens: []const lexer.Token, start_idx
             const name = tokens[branch_start].lexeme;
             if (codegen_collect_util.is_error_like_type(tokens, name)) {
                 saw_error = true;
-            } else if (find_top_level_struct_range(tokens, name) != null) {
-                saw_scalar_struct = true;
+            } else if (type_util.is_core_wasm_scalar(name) or find_top_level_struct_range(tokens, name) != null) {
+                saw_scalar_value = true;
             }
         }
         branch_count += 1;
         if (branch_end == end_idx) break;
         branch_start = branch_end + 1;
     }
-    return branch_count >= 2 and saw_scalar_struct and saw_error;
+    return branch_count >= 2 and saw_scalar_value and saw_error;
 }
 
 fn gc_sync_header_has_managed_union_result(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
@@ -2051,6 +2065,18 @@ fn body_has_gc_sync_inferred_text_binding(tokens: []const lexer.Token, start_idx
     return false;
 }
 
+fn body_has_gc_sync_value_enum_binding(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) bool {
+    var i = start_idx;
+    while (i + 3 < end_idx) : (i += 1) {
+        if (tokens[i].kind != .ident or tokens[i + 1].kind != .ident or
+            !is_declared_type_name(tokens[i + 1].lexeme) or !tok_eq(tokens[i + 2], "=")) continue;
+        const rhs_end = find_stmt_end(tokens, i + 3, end_idx);
+        if (rhs_end == i + 4 and tokens[i + 3].kind == .ident) return true;
+        i = rhs_end;
+    }
+    return false;
+}
+
 fn tokens_have_gc_sync_test_candidate(tokens: []const lexer.Token) bool {
     if (tokens_have_field_reflection(tokens)) return false;
     var i: usize = 0;
@@ -2059,6 +2085,7 @@ fn tokens_have_gc_sync_test_candidate(tokens: []const lexer.Token) bool {
         const body_open = find_top_level_block_open(tokens, i + 1, tokens.len) orelse continue;
         const body_close = find_matching(tokens, body_open, "{", "}") catch continue;
         if (body_has_gc_sync_inferred_text_binding(tokens, body_open + 1, body_close)) return true;
+        if (body_has_gc_sync_value_enum_binding(tokens, body_open + 1, body_close)) return true;
         for (tokens[body_open + 1 .. body_close]) |token| {
             if (token.kind == .ident and std.mem.eql(u8, token.lexeme, "text")) return true;
             if (token.kind == .symbol and std.mem.eql(u8, token.lexeme, "[")) return true;
@@ -2402,13 +2429,6 @@ fn graph_has_imported_module(graph: *const imports.ModuleGraph) bool {
     return graph.modules.len > 1;
 }
 
-fn graph_has_host_or_wit_binding(graph: *const imports.ModuleGraph) bool {
-    for (graph.modules) |module| {
-        if (tokens_have_host_or_wit_binding(module.tokens)) return true;
-    }
-    return false;
-}
-
 fn is_gc_sync_capability_error(err: anyerror) bool {
     return switch (err) {
         error.GcSyncArityMismatch,
@@ -2510,7 +2530,12 @@ fn try_emit_default_gc_sync(
         if (module_graph) |graph| if (graph_has_imported_module(graph)) return null;
     }
     if (tokens_have_host_or_wit_binding(tokens) and gc_host_route == null) return null;
-    if (module_graph) |graph| if (graph_has_host_or_wit_binding(graph) and gc_host_route == null) return null;
+    if (module_graph) |graph| if (try codegen_imports.graph_has_reachable_host_or_wit_binding(
+        allocator,
+        tokens,
+        graph,
+        .start,
+    ) and gc_host_route == null) return null;
 
     const wat = emit_checked_gc_sync(allocator, program, tokens, module_graph, gc_host_route) catch |err| {
         // A managed candidate must never silently re-enter the ARC emitter.
@@ -2540,6 +2565,23 @@ test "aggregate await tokens require async lowering" {
     defer std.testing.allocator.free(tokens);
 
     try std.testing.expect(tokens_require_async_lowering(tokens));
+}
+
+test "debug gc admission probes" {
+    const cases = [_][]const u8{
+        @embedFile("test/compile_err/06_wasi_host_import_build_unsupported.do"),
+        @embedFile("test/compile_err/14_bool_and_int_args.do"),
+        @embedFile("test/compile_err/16_imported_func_missing_helper_no_global_fallback.do"),
+        @embedFile("test/compile_err/17_text_len_not_storage.do"),
+    };
+    for (cases, 0..) |source, index| {
+        const tokens = try lexer.tokenize(std.testing.allocator, source);
+        defer std.testing.allocator.free(tokens);
+        if (index == 0) try std.testing.expect(!tokens_have_gc_sync_candidate(tokens));
+        if (index == 1) try std.testing.expect(!tokens_have_gc_sync_candidate(tokens));
+        if (index == 2) try std.testing.expect(!tokens_have_gc_sync_candidate(tokens));
+        if (index == 3) try std.testing.expect(!tokens_have_gc_sync_candidate(tokens));
+    }
 }
 
 test "verified GC host route admits a host-call-only managed body" {
@@ -3091,7 +3133,7 @@ test "default pipeline lowers a bounded cross-scope labeled continue through the
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "br $__gc_loop_1") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "br $__gc_loop_3") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "br $__gc_loop_3") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
@@ -4139,7 +4181,7 @@ test "default pipeline lowers a synchronous managed defer through GC" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
-test "compiled scalar tests keep the ARC route before GC admission" {
+test "compiled scalar tests fail closed before GC admission" {
     const source =
         \\sum_tail(n i32, acc i32) -> i32 {
         \\    if @eq(n, 0) return acc
@@ -4156,10 +4198,10 @@ test "compiled scalar tests keep the ARC route before GC admission" {
     defer std.testing.allocator.free(tokens);
     var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
     defer program.deinit(std.testing.allocator);
-    const wat = try emit_test_wat(std.testing.allocator, program, tokens, null);
-    defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") == null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "loop $__tail_sum_tail") != null);
+    try std.testing.expectError(
+        error.UnsupportedGcBackendRoute,
+        emit_test_wat(std.testing.allocator, program, tokens, null),
+    );
 }
 
 test "normal pipeline exposes a private synchronous GC route" {
@@ -4184,10 +4226,21 @@ test "managed backend defaults to GC and the ARC oracle is explicit" {
     defer std.testing.allocator.free(gc_wat);
     try std.testing.expect(std.mem.indexOf(u8, gc_wat, "  ;; backend=gc\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, gc_wat, "__arc_") == null);
+}
 
-    const oracle_wat = try emit_arc_equivalence_wat(std.testing.allocator, program, tokens, null, .{});
-    defer std.testing.allocator.free(oracle_wat);
-    try std.testing.expect(std.mem.indexOf(u8, oracle_wat, "  ;; backend=arc-equivalence-oracle\n") != null);
+test "normal options reject the ARC equivalence backend" {
+    const source =
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    try std.testing.expectError(
+        error.UnsupportedGcBackendRoute,
+        emit_wat_with_options(std.testing.allocator, program, tokens, null, .{ .backend = .arc_equivalence_oracle }),
+    );
 }
 
 test "private synchronous GC route emits typed GC for a parsed managed update" {
@@ -4229,19 +4282,42 @@ test "default pipeline routes a scalar identity through GC" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
-test "default pipeline keeps a recursive scalar leaf on the fallback route" {
+test "default pipeline fails closed for a recursive scalar leaf" {
     const source =
         \\recurse(value u32) -> u32 {
         \\    return recurse(value)
         \\}
         \\start() {}
     ;
-    const wat = try emit_default_wat_for_source(std.testing.allocator, source);
-    defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") == null);
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+    try std.testing.expectError(
+        error.UnsupportedGcBackendRoute,
+        emit_wat_with_options(std.testing.allocator, program, tokens, null, .{}),
+    );
 }
 
-test "default pipeline keeps mutually recursive scalar helpers on the fallback route" {
+test "default pipeline rejects an unadmitted route instead of using ARC" {
+    const source =
+        \\recurse(value u32) -> u32 {
+        \\    return recurse(value)
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    try std.testing.expectError(
+        error.UnsupportedGcBackendRoute,
+        emit_wat_with_options(std.testing.allocator, program, tokens, null, .{}),
+    );
+}
+
+test "default pipeline fails closed for mutually recursive scalar helpers" {
     const source =
         \\even(value u32) -> u32 {
         \\    return odd(value)
@@ -4253,9 +4329,14 @@ test "default pipeline keeps mutually recursive scalar helpers on the fallback r
         \\
         \\start() {}
     ;
-    const wat = try emit_default_wat_for_source(std.testing.allocator, source);
-    defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") == null);
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+    try std.testing.expectError(
+        error.UnsupportedGcBackendRoute,
+        emit_wat_with_options(std.testing.allocator, program, tokens, null, .{}),
+    );
 }
 
 test "default pipeline preserves an acyclic scalar helper call chain in GC" {
@@ -4282,7 +4363,7 @@ test "default pipeline preserves an acyclic scalar helper call chain in GC" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
-test "default pipeline keeps a scalar loop on the fallback route" {
+test "default pipeline fails closed for a scalar loop" {
     const source =
         \\loop_value(value u32) -> u32 {
         \\    loop {
@@ -4291,12 +4372,17 @@ test "default pipeline keeps a scalar loop on the fallback route" {
         \\}
         \\start() {}
     ;
-    const wat = try emit_default_wat_for_source(std.testing.allocator, source);
-    defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") == null);
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+    try std.testing.expectError(
+        error.UnsupportedGcBackendRoute,
+        emit_wat_with_options(std.testing.allocator, program, tokens, null, .{}),
+    );
 }
 
-test "default pipeline keeps a deferred scalar leaf on the fallback route" {
+test "default pipeline fails closed for a deferred scalar leaf" {
     const source =
         \\cleanup() -> nil {
         \\    return
@@ -4307,9 +4393,14 @@ test "default pipeline keeps a deferred scalar leaf on the fallback route" {
         \\}
         \\start() {}
     ;
-    const wat = try emit_default_wat_for_source(std.testing.allocator, source);
-    defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") == null);
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+    try std.testing.expectError(
+        error.UnsupportedGcBackendRoute,
+        emit_wat_with_options(std.testing.allocator, program, tokens, null, .{}),
+    );
 }
 
 test "default GC admission excludes scalar host bindings" {
@@ -4657,7 +4748,7 @@ test "GC route lowers a reachable imported managed struct identity" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
-test "GC route rejects a graph containing an imported host binding" {
+test "GC route ignores an unreachable imported host binding" {
     const source =
         \\start() {}
     ;
@@ -4676,13 +4767,13 @@ test "GC route rejects a graph containing an imported host binding" {
         .{ .path = "./clock.do", .source = null, .owns_source = false, .tokens = imported_tokens, .owns_tokens = false },
     };
     var graph = imports.ModuleGraph{ .allocator = std.testing.allocator, .dep_root = "", .modules = modules[0..] };
-    try std.testing.expectError(
-        error.UnsupportedGcSyncModuleGraph,
-        emit_wat_with_options(std.testing.allocator, program, tokens, &graph, .{ .gc_sync = true }),
-    );
+    const wat = try emit_wat_with_options(std.testing.allocator, program, tokens, &graph, .{ .gc_sync = true });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $_start") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
-test "GC route rejects a graph containing an imported WIT declaration" {
+test "GC route ignores an unreachable imported WIT declaration" {
     const source =
         \\start() {}
     ;
@@ -4699,6 +4790,35 @@ test "GC route rejects a graph containing an imported WIT declaration" {
     var modules = [_]imports.ModuleRecord{
         .{ .path = "./entry.do", .source = null, .owns_source = false, .tokens = tokens, .owns_tokens = false },
         .{ .path = "./resource.do", .source = null, .owns_source = false, .tokens = imported_tokens, .owns_tokens = false },
+    };
+    var graph = imports.ModuleGraph{ .allocator = std.testing.allocator, .dep_root = "", .modules = modules[0..] };
+    const wat = try emit_wat_with_options(std.testing.allocator, program, tokens, &graph, .{ .gc_sync = true });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $_start") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "GC route rejects a reachable imported host binding" {
+    const source =
+        \\now = @lib("./clock.do", now)
+        \\relay() -> u64 {
+        \\    return now()
+        \\}
+        \\start() {}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    const imported_source =
+        \\now = @host_func("env", "now", () -> u64)
+    ;
+    const imported_tokens = try lexer.tokenize(std.testing.allocator, imported_source);
+    defer std.testing.allocator.free(imported_tokens);
+    var modules = [_]imports.ModuleRecord{
+        .{ .path = "./entry.do", .source = null, .owns_source = false, .tokens = tokens, .owns_tokens = false },
+        .{ .path = "./clock.do", .source = null, .owns_source = false, .tokens = imported_tokens, .owns_tokens = false },
     };
     var graph = imports.ModuleGraph{ .allocator = std.testing.allocator, .dep_root = "", .modules = modules[0..] };
     try std.testing.expectError(
@@ -4770,6 +4890,46 @@ test "compiled test route emits admitted managed test bodies with GC" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"_start\" (func $_start))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(local $value (ref null $do_text))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-root local_bind $value") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
+test "compiled test route admits an imported scalar union helper graph" {
+    const source =
+        \\value = @lib("~/test.imported_scalar_union_helper.do", value)
+        \\test "compiled imported scalar union helper" {
+        \\    if @eq(value(50), 3) return
+        \\}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    const imported_source =
+        \\TestError error = Bad
+        \\
+        \\.parse_digit(byte u8) -> u16 | TestError {
+        \\    if @and(@ge(byte, 48), @le(byte, 57)) return @as(u16, @sub(byte, 48))
+        \\    return Bad
+        \\}
+        \\
+        \\value(byte u8) -> u16 {
+        \\    parsed = parse_digit(byte)
+        \\    if @is(parsed, TestError) return 0
+        \\    return @add(parsed, 1)
+        \\}
+    ;
+    const imported_tokens = try lexer.tokenize(std.testing.allocator, imported_source);
+    defer std.testing.allocator.free(imported_tokens);
+    var modules = [_]imports.ModuleRecord{
+        .{ .path = "entry.do", .source = null, .owns_source = false, .tokens = tokens, .owns_tokens = false },
+        .{ .path = "lib/test.imported_scalar_union_helper.do", .source = null, .owns_source = false, .tokens = imported_tokens, .owns_tokens = false },
+    };
+    var graph = imports.ModuleGraph{ .allocator = std.testing.allocator, .dep_root = "lib", .modules = modules[0..] };
+    const wat = try emit_test_wat(std.testing.allocator, program, tokens, &graph);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $value") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $__mod_1__parse_digit") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
@@ -4857,8 +5017,51 @@ test "compiled test GC fallback accepts only explicit admission rejections" {
     try std.testing.expect(codegen_gc_sync.is_gc_sync_admission_rejection(error.UnsupportedGcSyncType));
     try std.testing.expect(codegen_gc_sync.is_gc_sync_admission_rejection(error.UnsupportedGcSyncExpression));
     try std.testing.expect(codegen_gc_sync.is_gc_sync_admission_rejection(error.NoMatchingCall));
+    try std.testing.expect(codegen_gc_sync.is_gc_sync_admission_rejection(error.UnionPayloadRequiresNarrowing));
+    try std.testing.expect(codegen_gc_sync.is_gc_sync_admission_rejection(error.UnsupportedLowering));
     try std.testing.expect(!codegen_gc_sync.is_gc_sync_admission_rejection(error.OutOfMemory));
     try std.testing.expect(!codegen_gc_sync.is_gc_sync_admission_rejection(error.UnexpectedResult));
+}
+
+test "compiled test pipeline rejects an unadmitted route instead of using ARC" {
+    const source =
+        \\Box {
+        \\    value [u8]
+        \\}
+        \\
+        \\test "entry" {
+        \\    box Box = Box{value = .{1, 2}}
+        \\    updated Box = @set(box, .value, .{3, 4})
+        \\    _ = updated
+        \\}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    try std.testing.expectError(
+        error.UnsupportedGcBackendRoute,
+        emit_test_wat(std.testing.allocator, program, tokens, null),
+    );
+}
+
+test "compiled test pipeline rejects a scalar legacy route" {
+    const source =
+        \\test "entry" {
+        \\    value u32 = 1
+        \\    if @eq(value, 1) return
+        \\}
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+
+    try std.testing.expectError(
+        error.UnsupportedGcBackendRoute,
+        emit_test_wat(std.testing.allocator, program, tokens, null),
+    );
 }
 
 test "GC output guard rejects ARC runtime markers" {
@@ -5532,22 +5735,35 @@ fn expect_synchronous_gc_locals(wat: []const u8, function_name: []const u8) !voi
 }
 
 pub fn emit_wat_with_options(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph, options: EmitOptions) ![]u8 {
-    return emit_wat_with_backend(allocator, program, tokens, module_graph, options);
+    // The production API has exactly one managed backend.  The legacy route
+    // is entered only through the test-only equivalence wrapper below, so a
+    // caller cannot opt into ARC by constructing public EmitOptions.
+    if (options.backend != .gc) return error.UnsupportedGcBackendRoute;
+    return emit_wat_with_backend(allocator, program, tokens, module_graph, options, null);
 }
 
-fn emit_arc_equivalence_wat(
+/// Test-only compatibility route. Normal `emit_wat` never selects this backend.
+pub fn emit_arc_equivalence_wat(
+    allocator: std.mem.Allocator,
+    program: parser.Program,
+    tokens: []const lexer.Token,
+    module_graph: ?*const imports.ModuleGraph,
+    legacy_runtime: LegacyRuntime,
+    options: EmitOptions,
+) ![]u8 {
+    var oracle_options = options;
+    oracle_options.backend = .arc_equivalence_oracle;
+    return emit_wat_with_backend(allocator, program, tokens, module_graph, oracle_options, legacy_runtime);
+}
+
+fn emit_wat_with_backend(
     allocator: std.mem.Allocator,
     program: parser.Program,
     tokens: []const lexer.Token,
     module_graph: ?*const imports.ModuleGraph,
     options: EmitOptions,
+    legacy_runtime: ?LegacyRuntime,
 ) ![]u8 {
-    var oracle_options = options;
-    oracle_options.backend = .arc_equivalence_oracle;
-    return emit_wat_with_backend(allocator, program, tokens, module_graph, oracle_options);
-}
-
-fn emit_wat_with_backend(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph, options: EmitOptions) ![]u8 {
     const use_gc_backend = options.backend == .gc;
     if (options.p3_resource_probe_component) return finalize_component_wat(allocator, codegen_component_resource_probe.emit_component_wat(allocator, program, tokens, module_graph));
     if (options.p3_wasi_filesystem_preopen_component) return finalize_component_wat(allocator, codegen_component_wasi_filesystem_preopen.emit_component_wat(allocator, program, tokens, module_graph));
@@ -5602,6 +5818,8 @@ fn emit_wat_with_backend(allocator: std.mem.Allocator, program: parser.Program, 
     if (use_gc_backend and !options.host_export) {
         if (try try_emit_default_gc_sync(allocator, program, tokens, module_graph, options.gc_sync_host_wit_route)) |wat| return wat;
     }
+
+    if (use_gc_backend) return error.UnsupportedGcBackendRoute;
 
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
@@ -5760,8 +5978,9 @@ fn emit_wat_with_backend(allocator: std.mem.Allocator, program: parser.Program, 
     try wat_component_metadata.emit_wasi_bindings(allocator, &out, wasi_imports.items);
     try wat_component_metadata.emit_wasi_core_imports(allocator, &out, wasi_imports.items);
     try wat_component_metadata.emit_host_imports(allocator, &out, host_imports.items);
-    try runtime_prelude_wat.emit_string_data_memory(allocator, &out, string_data.items.items, .{ .component_core = options.component_core });
-    try runtime_prelude_wat.emit_arc_runtime_prelude(allocator, &out, string_data.items.items, struct_layouts.items);
+    const runtime = legacy_runtime orelse return error.ArcEquivalenceOracleRequiresRuntime;
+    try runtime.emit_string_data_memory(allocator, &out, string_data.items.items, options.component_core);
+    try runtime.emit_legacy_runtime_prelude(allocator, &out, string_data.items.items, struct_layouts.items);
     try emit_user_funcs(allocator, ctx, &out);
     if (options.host_export) {
         try emit_host_exports(allocator, ctx, &out);
@@ -5783,6 +6002,28 @@ fn finalize_component_wat(allocator: std.mem.Allocator, result: anyerror![]u8) !
 }
 
 pub fn emit_test_wat(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token, module_graph: ?*const imports.ModuleGraph) ![]u8 {
+    return emit_test_wat_with_backend(allocator, program, tokens, module_graph, .gc, null);
+}
+
+/// Test-only compatibility route. Normal compiled tests never select this backend.
+pub fn emit_arc_equivalence_test_wat(
+    allocator: std.mem.Allocator,
+    program: parser.Program,
+    tokens: []const lexer.Token,
+    module_graph: ?*const imports.ModuleGraph,
+    legacy_runtime: LegacyRuntime,
+) ![]u8 {
+    return emit_test_wat_with_backend(allocator, program, tokens, module_graph, .arc_equivalence_oracle, legacy_runtime);
+}
+
+fn emit_test_wat_with_backend(
+    allocator: std.mem.Allocator,
+    program: parser.Program,
+    tokens: []const lexer.Token,
+    module_graph: ?*const imports.ModuleGraph,
+    backend: ManagedBackend,
+    legacy_runtime: ?LegacyRuntime,
+) ![]u8 {
     install_gen_hooks();
 
     var out = std.ArrayList(u8).empty;
@@ -5799,22 +6040,27 @@ pub fn emit_test_wat(allocator: std.mem.Allocator, program: parser.Program, toke
     // the existing ARC/TCO path until the global GC cutover; attempting the
     // GC emitter here would silently lose backend-specific lowering such as
     // self-tail loops and field reflection.
-    if (tokens_have_gc_sync_candidate(tokens) or tokens_have_gc_sync_test_candidate(tokens)) {
-        if (codegen_gc_sync.emit_gc_wat_for_supported_tests(allocator, program, tokens, module_graph) catch |err| blk: {
+    const use_gc_backend = backend == .gc;
+    const gc_test_candidate = tokens_have_gc_sync_candidate(tokens) or
+        (module_graph != null and graph_has_gc_sync_candidate(module_graph.?)) or
+        tokens_have_gc_sync_test_candidate(tokens);
+    if (gc_test_candidate) {
+        const gc_wat = codegen_gc_sync.emit_gc_wat_for_supported_tests(allocator, program, tokens, module_graph) catch |err| {
             if (!codegen_gc_sync.is_gc_sync_admission_rejection(err)) return err;
-            break :blk null;
-        }) |gc_wat| {
-            defer allocator.free(gc_wat);
-            const marked_wat = add_backend_marker(allocator, gc_wat, "gc") catch |err| {
-                return err;
-            };
-            validate_gc_sync_output(marked_wat) catch |err| {
-                allocator.free(marked_wat);
-                return err;
-            };
-            return marked_wat;
-        }
+            return error.UnsupportedGcBackendRoute;
+        };
+        defer allocator.free(gc_wat);
+        const marked_wat = add_backend_marker(allocator, gc_wat, "gc") catch |err| {
+            return err;
+        };
+        validate_gc_sync_output(marked_wat) catch |err| {
+            allocator.free(marked_wat);
+            return err;
+        };
+        return marked_wat;
     }
+
+    if (use_gc_backend) return error.UnsupportedGcBackendRoute;
 
     var host_imports = std.ArrayList(HostImport).empty;
     defer {
@@ -5966,8 +6212,9 @@ pub fn emit_test_wat(allocator: std.mem.Allocator, program: parser.Program, toke
     try wat_component_metadata.emit_wasi_bindings(allocator, &out, wasi_imports.items);
     try wat_component_metadata.emit_wasi_core_imports(allocator, &out, wasi_imports.items);
     try wat_component_metadata.emit_host_imports(allocator, &out, host_imports.items);
-    try runtime_prelude_wat.emit_string_data_memory(allocator, &out, string_data.items.items, .{});
-    try runtime_prelude_wat.emit_arc_runtime_prelude(allocator, &out, string_data.items.items, struct_layouts.items);
+    const runtime = legacy_runtime orelse return error.ArcEquivalenceOracleRequiresRuntime;
+    try runtime.emit_string_data_memory(allocator, &out, string_data.items.items, false);
+    try runtime.emit_legacy_runtime_prelude(allocator, &out, string_data.items.items, struct_layouts.items);
     try emit_user_funcs(allocator, ctx, &out);
     try emit_test_funcs(allocator, tokens, test_decls, ctx, &out);
     try wat_function_body.emit_test_start_func(allocator, &out, test_decls.len);

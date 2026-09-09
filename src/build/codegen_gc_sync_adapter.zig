@@ -164,13 +164,13 @@ pub fn append_wasm_type_for_with_unions_and_arrays(
     const facts = try classify_admitted_type_with_layouts_and_unions_and_arrays(ty, structs, layouts, payload_unions, managed_arrays);
     if (facts.payload_union_layout) |payload_union| {
         try out.appendSlice(allocator, "(ref null $");
-        for (payload_union.name) |ch| try out.append(allocator, std.ascii.toLower(ch));
+        try append_lowered_wat_name(allocator, out, payload_union.name);
         try out.append(allocator, ')');
         return;
     }
     if (facts.aggregate_layout) |aggregate| {
         try out.appendSlice(allocator, "(ref null $");
-        for (aggregate.name) |ch| try out.append(allocator, std.ascii.toLower(ch));
+        try append_lowered_wat_name(allocator, out, aggregate.name);
         try out.append(allocator, ')');
         return;
     }
@@ -241,6 +241,16 @@ fn find_payload_union_layout(layouts: []const layout.GcPayloadUnionLayout, name:
         if (std.mem.eql(u8, item.source_ty, name)) return item;
     }
     return null;
+}
+
+fn append_lowered_wat_name(allocator: std.mem.Allocator, out: *std.ArrayList(u8), name: []const u8) !void {
+    for (name) |ch| {
+        if ((ch >= 'a' and ch <= 'z') or (ch >= 'A' and ch <= 'Z') or (ch >= '0' and ch <= '9')) {
+            try out.append(allocator, std.ascii.toLower(ch));
+        } else {
+            try out.append(allocator, '_');
+        }
+    }
 }
 
 fn scalar_wasm_type(ty: []const u8) Error![]const u8 {
