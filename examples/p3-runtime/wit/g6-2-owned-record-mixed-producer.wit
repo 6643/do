@@ -1,0 +1,29 @@
+package do:g6-2-owned-record-mixed-producer@0.1.0;
+
+interface types {
+  enum error-code { io, pipe, invalid-mode }
+  resource ticket {}
+  record mixed-entry {
+    code: u32,
+    ticket: own<ticket>,
+  }
+}
+
+interface source {
+  use types.{ticket};
+  make-ticket: func(seed: u32) -> own<ticket>;
+}
+
+interface sink {
+  use types.{error-code, mixed-entry};
+  consume-via-stream: async func(
+    data: stream<mixed-entry>
+  ) -> result<_, error-code>;
+}
+
+world owned-record-mixed-producer {
+  use types.{error-code};
+  import source;
+  import sink;
+  export produce: async func(mode: u32) -> result<_, error-code>;
+}

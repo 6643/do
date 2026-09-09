@@ -6037,6 +6037,28 @@ test "owned record producer descriptor is pinned before lowering" {
     }
 }
 
+test "mixed owned record producer descriptor is admitted before lowering" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+
+    const descriptor = registry.find(
+        "do:g6-2-owned-record-mixed-producer@0.1.0",
+        "consume-via-stream",
+    ) orelse return error.TestUnexpectedResult;
+    switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .record_resource_mixed_stream_producer => |shape| {
+            try std.testing.expectEqualStrings("mixed-entry", shape.element);
+            try std.testing.expectEqual(@as(u32, 8), shape.record_layout.byte_size);
+            try std.testing.expectEqual(@as(u32, 4), shape.record_layout.alignment);
+            try std.testing.expectEqual(@as(u32, 0), shape.record_layout.fields[0].offset);
+            try std.testing.expectEqual(@as(u32, 4), shape.record_layout.fields[1].offset);
+            try std.testing.expectEqual(@as(usize, 1), shape.record_layout.source_fields.len);
+            try std.testing.expectEqual(@as(u32, 1), shape.producer.stream_capacity);
+        },
+        else => return error.TestUnexpectedResult,
+    }
+}
+
 test "owned record producer lowering rejects descriptor drift" {
     var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(std.testing.allocator);
