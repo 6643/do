@@ -6,8 +6,8 @@ fn source_contract() contract.SourceContract {
     return .{
         .module = "source@0.1.0",
         .import_name = "make-ticket",
-        .core_params = &.{ "i32" },
-        .core_results = &.{ "i32" },
+        .core_params = &.{"i32"},
+        .core_results = &.{"i32"},
     };
 }
 
@@ -189,6 +189,7 @@ test "producer contract conversion admits every registered producer shape" {
 
     const locators = [_][]const u8{
         "do:g6-2-owned-record-producer@0.1.0",
+        "do:g6-2-owned-record-list-producer@0.1.0",
         "do:g6-2-owned-record-pair-producer@0.1.0",
         "do:g6-2-owned-record-triple-producer@0.1.0",
         "do:g6-2-owned-record-nested-producer@0.1.0",
@@ -257,6 +258,94 @@ test "producer contract conversion preserves nested and list facts" {
     }
     try std.testing.expectEqual(@as(usize, 1), list.ownership.leaves.len);
     try std.testing.expectEqual(@as(usize, 1), list.ownership.parents.len);
+}
+
+test "producer contract conversion preserves list-owned-record allocation facts" {
+    var loaded = try registry();
+    defer loaded.deinit(std.testing.allocator);
+
+    const list_owned = try converted(loaded, "do:g6-2-owned-record-list-producer@0.1.0");
+    switch (list_owned.payload) {
+        .record => |layout| {
+            try std.testing.expectEqualStrings("list-entry", layout.name);
+            try std.testing.expectEqual(@as(u32, 12), layout.byte_size);
+            try std.testing.expectEqual(@as(u32, 8), layout.fields[1].offset);
+        },
+        else => return error.TestUnexpectedResult,
+    }
+    try std.testing.expectEqual(@as(usize, 1), list_owned.ownership.leaves.len);
+    try std.testing.expectEqualStrings("ticket", list_owned.ownership.leaves[0].path[0]);
+    try std.testing.expectEqual(@as(u32, 8), list_owned.ownership.leaves[0].handle_offset);
+    try std.testing.expectEqual(@as(u8, 0), list_owned.ownership.leaves[0].bit);
+    try std.testing.expectEqual(@as(usize, 1), list_owned.list_allocations.len);
+    const allocation = list_owned.list_allocations[0];
+    try std.testing.expectEqualStrings("values", allocation.path[0]);
+    try std.testing.expectEqualStrings("u32", allocation.element_core_type);
+    try std.testing.expectEqual(@as(u32, 0), allocation.pointer_offset);
+    try std.testing.expectEqual(@as(u32, 4), allocation.length_offset);
+    try std.testing.expectEqual(@as(u32, 4), allocation.element_stride);
+    try std.testing.expectEqual(@as(u32, 3), allocation.max_items);
+    try std.testing.expectEqualStrings("cabi_realloc", allocation.release_import);
+    try std.testing.expectEqual(@as(usize, 0), list_owned.ownership.parents.len);
+}
+
+test "producer contract rejects invalid list allocation facts" {
+    const allocation_path = [_][]const u8{"values"};
+    const ticket_path = [_][]const u8{"ticket"};
+    const valid = contract.ListAllocation{
+        .path = &allocation_path,
+        .element_core_type = "u32",
+        .pointer_offset = 0,
+        .length_offset = 4,
+        .element_stride = 4,
+        .max_items = 3,
+        .release_import = "cabi_realloc",
+    };
+    const ticket_leaf = [_]contract.OwnershipLeaf{
+        .{ .path = &ticket_path, .resource = "ticket", .handle_offset = 8, .drop_import = "[resource-drop]ticket", .bit = 0 },
+    };
+    var value = base_contract(.{ .scalar = .{ .core_type = "i32", .byte_size = 4, .alignment = 4 } }, &ticket_leaf, &.{});
+    value.list_allocations = &.{valid};
+    try contract.validate_contract(value);
+
+    var empty_path = valid;
+    empty_path.path = &.{};
+    value.list_allocations = &.{empty_path};
+    try std.testing.expectError(error.InvalidListAllocation, contract.validate_contract(value));
+
+    var empty_type = valid;
+    empty_type.element_core_type = "";
+    value.list_allocations = &.{empty_type};
+    try std.testing.expectError(error.InvalidListAllocation, contract.validate_contract(value));
+
+    var empty_release = valid;
+    empty_release.release_import = "";
+    value.list_allocations = &.{empty_release};
+    try std.testing.expectError(error.InvalidListAllocation, contract.validate_contract(value));
+
+    var colliding_offsets = valid;
+    colliding_offsets.length_offset = 0;
+    value.list_allocations = &.{colliding_offsets};
+    try std.testing.expectError(error.InvalidListAllocation, contract.validate_contract(value));
+
+    var zero_stride = valid;
+    zero_stride.element_stride = 0;
+    value.list_allocations = &.{zero_stride};
+    try std.testing.expectError(error.InvalidListAllocation, contract.validate_contract(value));
+
+    var zero_capacity = valid;
+    zero_capacity.max_items = 0;
+    value.list_allocations = &.{zero_capacity};
+    try std.testing.expectError(error.InvalidListAllocation, contract.validate_contract(value));
+
+    const duplicate = [_]contract.ListAllocation{ valid, valid };
+    value.list_allocations = &duplicate;
+    try std.testing.expectError(error.DuplicateListAllocationPath, contract.validate_contract(value));
+
+    var leaf_path = valid;
+    leaf_path.path = &ticket_path;
+    value.list_allocations = &.{leaf_path};
+    try std.testing.expectError(error.ListAllocationOwnershipOverlap, contract.validate_contract(value));
 }
 
 test "producer contract conversion preserves dynamic, batched, scalar-list, and parameterized facts" {

@@ -20,6 +20,9 @@ pub const ContractError = error{
     InvalidCleanupOrder,
     DuplicateCleanupStage,
     ParentCleanupBeforeChild,
+    InvalidListAllocation,
+    DuplicateListAllocationPath,
+    ListAllocationOwnershipOverlap,
     UnsupportedProducerContract,
 };
 
@@ -50,6 +53,16 @@ pub const ListLayout = struct {
     length_offset: u32,
     element_stride: u32,
     max_items: u32,
+};
+
+pub const ListAllocation = struct {
+    path: []const []const u8,
+    element_core_type: []const u8,
+    pointer_offset: u32,
+    length_offset: u32,
+    element_stride: u32,
+    max_items: u32,
+    release_import: []const u8,
 };
 
 pub const PayloadLayout = union(enum) {
@@ -113,6 +126,7 @@ pub const ProducerContract = struct {
     runtime_mode_param: ?[]const u8 = null,
     batch_count: ?u32 = null,
     batch_lengths: []const u32 = &.{},
+    list_allocations: []const ListAllocation = &.{},
     producer_core_params: []const []const u8 = &.{},
     producer_core_results: []const []const u8 = &.{},
     left_seed_param: ?[]const u8 = null,
@@ -158,6 +172,7 @@ pub fn validate_contract(value: ProducerContract) ContractError!void {
     if (!value.ownership.complete_write_required) return error.TransferBeforeCompleteWrite;
     if (!value.ownership.pre_transfer_reverse_order) return error.NonReverseOwnershipCleanup;
     try validate_ownership(value.ownership);
+    try validate_list_allocations(value.list_allocations, value.ownership);
     try validate_terminal(value.terminal);
 }
 
@@ -193,6 +208,26 @@ fn validate_ownership(ownership: OwnershipTransferPlan) ContractError!void {
             }
         }
         if (!has_child) return error.InvalidOwnershipParent;
+    }
+}
+
+fn validate_list_allocations(
+    allocations: []const ListAllocation,
+    ownership: OwnershipTransferPlan,
+) ContractError!void {
+    for (allocations, 0..) |allocation, index| {
+        if (allocation.path.len == 0 or allocation.element_core_type.len == 0 or
+            allocation.release_import.len == 0 or
+            allocation.pointer_offset == allocation.length_offset or
+            allocation.element_stride == 0 or allocation.max_items == 0)
+            return error.InvalidListAllocation;
+
+        for (allocations[0..index]) |prior| {
+            if (same_path(prior.path, allocation.path)) return error.DuplicateListAllocationPath;
+        }
+        for (ownership.leaves) |leaf| {
+            if (same_path(leaf.path, allocation.path)) return error.ListAllocationOwnershipOverlap;
+        }
     }
 }
 
@@ -251,6 +286,8 @@ const triple_middle_path = [_][]const u8{"middle"};
 const triple_right_path = [_][]const u8{"right"};
 const nested_inner_path = [_][]const u8{"inner"};
 const nested_inner_ticket_path = [_][]const u8{ "inner", "ticket" };
+const list_owned_values_path = [_][]const u8{"values"};
+const list_owned_ticket_path = [_][]const u8{"ticket"};
 const list_path = [_][]const u8{"list"};
 const list_ticket_path = [_][]const u8{ "list", "ticket" };
 
@@ -277,6 +314,20 @@ const nested_ticket_leaves = [_]OwnershipLeaf{
 };
 const nested_ticket_parents = [_]OwnershipParent{
     .{ .path = &nested_inner_path, .bit = 1 },
+};
+const list_owned_record_ticket_leaves = [_]OwnershipLeaf{
+    .{ .path = &list_owned_ticket_path, .resource = "ticket", .handle_offset = 8, .drop_import = "[resource-drop]ticket", .bit = 0 },
+};
+const list_owned_record_allocations = [_]ListAllocation{
+    .{
+        .path = &list_owned_values_path,
+        .element_core_type = "u32",
+        .pointer_offset = 0,
+        .length_offset = 4,
+        .element_stride = 4,
+        .max_items = 3,
+        .release_import = "cabi_realloc",
+    },
 };
 const list_ticket_leaves = [_]OwnershipLeaf{
     .{ .path = &list_ticket_path, .resource = "ticket", .handle_offset = 0, .drop_import = "[resource-drop]ticket", .bit = 0 },
@@ -345,6 +396,14 @@ pub fn producer_contract_from_shape(
             value.record_layout,
             value.producer,
             value.stream,
+        ),
+        .record_resource_list_owned_record_stream_producer => |value| build_list_owned_record_contract(
+            descriptor,
+            value.element,
+            value.record_layout,
+            value.producer,
+            value.stream,
+            value.record_list_layout,
         ),
         .record_resource_list_stream_producer => |value| build_list_contract(
             descriptor,
@@ -427,6 +486,65 @@ fn build_record_contract(
         .runtime_mode_param = producer.runtime_mode_param,
         .batch_count = producer.batch_count,
         .batch_lengths = producer.batch_lengths orelse &.{},
+    };
+    validate_contract(value) catch return error.UnsupportedProducerContract;
+    return value;
+}
+
+fn build_list_owned_record_contract(
+    descriptor: p3_async_manifest.Descriptor,
+    element: []const u8,
+    layout: p3_async_manifest.RecordLayout,
+    producer: p3_async_manifest.ProducerCanonical,
+    stream: p3_async_manifest.StreamCanonical,
+    record_list_layout: p3_async_manifest.RecordListLayout,
+) ContractError!ProducerContract {
+    if (!std.mem.eql(u8, descriptor.effect, "record-resource-list-owned-record-stream-producer") or
+        !std.mem.eql(u8, descriptor.locator, "do:g6-2-owned-record-list-producer@0.1.0") or
+        !std.mem.eql(u8, descriptor.member, "consume-via-stream") or
+        descriptor.resource != null or
+        !std.mem.eql(u8, descriptor.result, "Result<nil,error-code>") or
+        descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, descriptor.wit_sha256.?, "cf7d047069cd9b30066debc88ce8edc159c9d2a90a310e56e384bb42c19cd6eb") or
+        !std.mem.eql(u8, descriptor.wit.package, "do:g6-2-owned-record-list-producer@0.1.0") or
+        !std.mem.eql(u8, descriptor.wit.interface, "sink") or
+        !std.mem.eql(u8, descriptor.wit.operation, "consume-via-stream") or
+        !std.mem.eql(u8, descriptor.wit.world, "owned-record-list-producer") or
+        !std.mem.eql(u8, descriptor.wit.parameter, "data") or
+        !std.mem.eql(u8, element, "list-entry") or
+        !std.mem.eql(u8, stream.element, "list-entry") or
+        !record_descriptor_matches(descriptor, element, producer, stream) or
+        !valid_list_owned_record_layout(layout) or
+        !valid_record_list_layout(record_list_layout) or
+        !std.mem.eql(u8, producer.source_module, "do:g6-2-owned-record-list-producer/source@0.1.0") or
+        !std.mem.eql(u8, producer.source_import_name, "make-ticket") or
+        producer.source_core_params.len != 1 or
+        !std.mem.eql(u8, producer.source_core_params[0], "i32") or
+        producer.source_core_results.len != 1 or
+        !std.mem.eql(u8, producer.source_core_results[0], "i32") or
+        !std.mem.eql(u8, producer.resource_drop_import, "[resource-drop]ticket") or
+        producer.stream_capacity != 1 or
+        !std.mem.eql(u8, producer.terminal, "task-return") or
+        producer.runtime_count_param != null or
+        producer.runtime_max != null or
+        producer.runtime_mode_param == null or
+        !std.mem.eql(u8, producer.runtime_mode_param.?, "u32") or
+        producer.batch_count != null or
+        producer.batch_lengths != null or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "do:g6-2-owned-record-list-producer/sink@0.1.0") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower]consume-via-stream"))
+        return error.UnsupportedProducerContract;
+
+    const value = ProducerContract{
+        .descriptor_id = descriptor.locator,
+        .descriptor_hash = descriptor.wit_sha256,
+        .source = source_from_producer(producer),
+        .sink = sink_from_stream(descriptor, stream, producer.stream_capacity),
+        .payload = .{ .record = layout },
+        .ownership = try ownership_for_list_owned_record(layout),
+        .terminal = terminal_from_stream(producer.terminal, stream),
+        .runtime_mode_param = producer.runtime_mode_param,
+        .list_allocations = &list_owned_record_allocations,
     };
     validate_contract(value) catch return error.UnsupportedProducerContract;
     return value;
@@ -707,6 +825,40 @@ fn ownership_for_nested(layout: p3_async_manifest.RecordLayout) ContractError!Ow
         leaf.drop_import == null or !std.mem.eql(u8, leaf.drop_import.?, "[resource-drop]ticket") or
         leaf.nested_fields.len != 0) return error.UnsupportedProducerContract;
     return .{ .leaves = &nested_ticket_leaves, .parents = &nested_ticket_parents };
+}
+
+fn ownership_for_list_owned_record(layout: p3_async_manifest.RecordLayout) ContractError!OwnershipTransferPlan {
+    if (!valid_list_owned_record_layout(layout)) return error.UnsupportedProducerContract;
+    return .{ .leaves = &list_owned_record_ticket_leaves, .parents = &.{} };
+}
+
+fn valid_record_list_layout(layout: p3_async_manifest.RecordListLayout) bool {
+    return layout.pointer_offset == 0 and
+        layout.length_offset == 4 and
+        layout.element_stride == 4 and
+        layout.max_items == 3;
+}
+
+fn valid_list_owned_record_layout(layout: p3_async_manifest.RecordLayout) bool {
+    if (!std.mem.eql(u8, layout.name, "list-entry") or
+        layout.byte_size != 12 or
+        layout.alignment != 4 or
+        layout.fields.len != 2 or
+        layout.source_fields.len != 2 or
+        !field_matches(layout.fields[0], "values", "i32", 0) or
+        !field_matches(layout.fields[1], "ticket", "i32", 8)) return false;
+
+    const values = layout.source_fields[0];
+    const ticket = layout.source_fields[1];
+    return std.mem.eql(u8, values.name, "values") and
+        std.mem.eql(u8, values.source_type, "list<u32>") and
+        values.storage.len == 1 and
+        std.mem.eql(u8, values.storage[0], "values") and
+        values.ownership == .none and
+        values.resource == null and
+        values.drop_import == null and
+        values.nested_fields.len == 0 and
+        owned_source_matches(ticket, "ticket");
 }
 
 fn valid_owned_record_layout(
