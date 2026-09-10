@@ -65,8 +65,8 @@ flowchart TD
 
 **Interfaces:**
 - The positive adapter contains two host bindings, one Ticket resource, one ListEntry { .values [u32] .ticket Ticket }, one ProducerError, the sentinel produce(mode u32) -> Result<nil, ProducerError>, and empty start().
-- Before the manifest row exists, the positive build fails with UnsupportedP3AsyncComponent and emits no WAT.
-- Each negative changes one fact: missing/reordered/extra field, wrong list type, borrowed/non-resource ticket, wrong marker/source/body, nested payload, wrong stream shape, or extra binding. Every negative expects UnsupportedP3AsyncComponent and no WAT.
+- Before the manifest row exists, the positive build fails with UnknownP3AsyncHostDescriptor during the existing semantic import gate and emits no WAT. After the exact row is registered, the same adapter reaches component admission and must fail with UnsupportedP3AsyncComponent until the dedicated route is implemented.
+- Each negative changes one fact: missing/reordered/extra field, wrong list type, borrowed/non-resource ticket, wrong marker/source/body, nested payload, wrong stream shape, or extra binding. Before manifest registration each negative observes UnknownP3AsyncHostDescriptor; after registration each must reach UnsupportedP3AsyncComponent and emit no WAT.
 - The new Zig test imports the not-yet-created producer plan and asserts the desired record/list facts; its initial failure must identify the missing module or plan, not a typo.
 
 - [ ] Step 1: Write the exact positive adapter and check fixture.
@@ -109,7 +109,7 @@ bash examples/p3-runtime/test_do_g6_2_list_owned_record_producer.sh
 bash examples/p3-runtime/test_do_g6_2_list_owned_record_producer_negative.sh
 ~~~
 
-  Expected result: the Zig test fails because the plan module does not exist, and the adapter gate fails closed with UnsupportedP3AsyncComponent.
+  Expected result: the Zig test fails because the plan module does not exist, and the adapter gates fail closed with UnknownP3AsyncHostDescriptor until the manifest row is introduced.
 
 - [ ] Step 5: Commit only RED artifacts.
 
