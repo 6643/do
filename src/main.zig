@@ -126,6 +126,7 @@ test {
     _ = @import("build/gc_marshal_record_probe.zig");
     _ = @import("build/codegen_component_marshal_route.zig");
     _ = @import("build/codegen_component_manifest_route_test.zig");
+    _ = @import("build/codegen_component_list_owned_record_stream_producer_test.zig");
     _ = @import("build/codegen_component_descriptor_manifest.zig");
     _ = @import("build/codegen_component_marshal_wat.zig");
     _ = @import("build/codegen_text.zig");
