@@ -42,8 +42,14 @@ for prefix in "${fixtures[@]}"; do
     printf 'list-owned-record negative fixture unexpectedly compiled: %s\n' "$fixture" >&2
     exit 1
   fi
-  grep -Fq 'UnknownP3AsyncHostDescriptor' "$stderr"
+  while IFS= read -r expected_line || [[ -n "$expected_line" ]]; do
+    [[ -z "$expected_line" || "$expected_line" == \#* ]] && continue
+    grep -Fq "$expected_line" "$stderr" || {
+      printf 'missing expected diagnostic %s for %s\n' "$expected_line" "$fixture" >&2
+      exit 1
+    }
+  done <"$expected"
   test ! -e "$wat"
 done
 
-printf 'G6.2 list-owned-record producer negative RED gate passed fixtures=%d emission=none\n' "${#fixtures[@]}"
+printf 'G6.2 list-owned-record producer negative gate passed fixtures=%d diagnostics=expect emission=none\n' "${#fixtures[@]}"

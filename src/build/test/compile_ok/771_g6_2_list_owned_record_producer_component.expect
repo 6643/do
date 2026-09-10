@@ -1,0 +1,14 @@
+# build-arg: --p3-async-component
+do:g6-2-owned-record-list-producer/sink@0.1.0
+(func (export "[async-lift]produce")
+[producer-record-byte-size] 12
+[producer-record-alignment] 4
+[producer-record-values-pointer-offset] 0
+[producer-record-values-length-offset] 4
+[producer-record-ticket-offset] 8
+[producer-list-stride] 4
+[producer-list-capacity] 3
+[producer-stream-capacity] 1
+[producer-record-transfer]
+[producer-list-release-exactly-once]
+[producer-resource-drop-exactly-once]
