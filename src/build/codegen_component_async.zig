@@ -1374,6 +1374,7 @@ fn target_for_descriptor(descriptor: p3_async_manifest.Descriptor) !Target {
         .record_resource_nested_stream_producer => .owned_record_nested_stream_producer,
         .record_resource_triple_stream_producer => .owned_record_triple_stream_producer,
         .record_resource_pair_parameterized_stream_producer => .parameterized_owned_record_pair_stream_producer,
+        .record_resource_list_owned_record_stream_producer => error.UnsupportedP3AsyncComponent,
         .record_resource_list_stream_producer => .record_resource_list_stream_producer,
         .record_resource_list_stream_dynamic_producer => .record_resource_list_stream_dynamic_producer,
         .record_resource_list_stream_batched_producer => .record_resource_list_stream_batched_producer,

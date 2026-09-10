@@ -1547,6 +1547,97 @@
             }
         },
         {
+            "locator": "do:g6-2-owned-record-list-producer@0.1.0",
+            "member": "consume-via-stream",
+            "effect": "record-resource-list-owned-record-stream-producer",
+            "params": ["stream<list-entry>"],
+            "result": "Result<nil,error-code>",
+            "resource": null,
+            "wit_sha256": "cf7d047069cd9b30066debc88ce8edc159c9d2a90a310e56e384bb42c19cd6eb",
+            "canonical": {
+                "core_params": ["i32", "i32"],
+                "core_results": ["i32"],
+                "completion_params": ["i32", "i32"],
+                "completion": "task-return",
+                "async_import_module": "do:g6-2-owned-record-list-producer/sink@0.1.0",
+                "async_import_name": "[async-lower]consume-via-stream",
+                "record_layout": {
+                    "name": "list-entry",
+                    "byte_size": 12,
+                    "alignment": 4,
+                    "fields": [
+                        {"name": "values", "core_type": "i32", "offset": 0},
+                        {"name": "ticket", "core_type": "i32", "offset": 8}
+                    ],
+                    "source_fields": [
+                        {"name": "values", "source_type": "list<u32>", "storage": ["values"]},
+                        {"name": "ticket", "source_type": "ticket", "storage": ["ticket"], "ownership": "own", "resource": "ticket", "drop_import": "[resource-drop]ticket"}
+                    ]
+                },
+                "record_list_layout": {
+                    "pointer_offset": 0,
+                    "length_offset": 4,
+                    "element_stride": 4,
+                    "max_items": 3
+                },
+                "producer": {
+                    "source_module": "do:g6-2-owned-record-list-producer/source@0.1.0",
+                    "source_import_name": "make-ticket",
+                    "source_core_params": ["i32"],
+                    "source_core_results": ["i32"],
+                    "resource_drop_import": "[resource-drop]ticket",
+                    "stream_capacity": 1,
+                    "terminal": "task-return",
+                    "runtime_mode_param": "u32"
+                },
+                "stream": {
+                    "element": "list-entry",
+                    "new": {
+                        "import_name": "[stream-new-0]consume-via-stream",
+                        "core_params": [],
+                        "core_results": ["i64"]
+                    },
+                    "cancel_read": {
+                        "import_name": "[stream-cancel-read-0]consume-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "cancel_write": {
+                        "import_name": "[stream-cancel-write-0]consume-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": ["i32"]
+                    },
+                    "drop_readable": {
+                        "import_name": "[stream-drop-readable-0]consume-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "drop_writable": {
+                        "import_name": "[stream-drop-writable-0]consume-via-stream",
+                        "core_params": ["i32"],
+                        "core_results": []
+                    },
+                    "read": {
+                        "import_name": "[async-lower][stream-read-0]consume-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    },
+                    "write": {
+                        "import_name": "[async-lower][stream-write-0]consume-via-stream",
+                        "core_params": ["i32", "i32", "i32"],
+                        "core_results": ["i32"]
+                    }
+                }
+            },
+            "wit": {
+                "package": "do:g6-2-owned-record-list-producer@0.1.0",
+                "interface": "sink",
+                "operation": "consume-via-stream",
+                "world": "owned-record-list-producer",
+                "parameter": "data"
+            }
+        },
+        {
             "locator": "do:variant-resource-stream-canonical@0.1.0",
             "member": "read-via-stream",
             "effect": "variant-resource-stream-reader",
