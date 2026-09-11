@@ -1,0 +1,30 @@
+package do:g6-2-owned-record-two-list-producer@0.1.0;
+
+interface types {
+  enum error-code { io, pipe, invalid-mode }
+  resource ticket {}
+  record two-list-entry {
+    first: list<u32>,
+    second: list<u32>,
+    ticket: own<ticket>,
+  }
+}
+
+interface source {
+  use types.{ticket};
+  make-ticket: func(seed: u32) -> own<ticket>;
+}
+
+interface sink {
+  use types.{error-code, two-list-entry};
+  consume-via-stream: async func(
+    data: stream<two-list-entry>
+  ) -> result<_, error-code>;
+}
+
+world owned-record-two-list-producer {
+  use types.{error-code};
+  import source;
+  import sink;
+  export produce: async func(mode: u32) -> result<_, error-code>;
+}
