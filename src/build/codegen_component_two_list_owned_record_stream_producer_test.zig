@@ -46,3 +46,58 @@ test "two-list owned-record producer rejects a changed list element" {
         producer.TwoListOwnedRecordStreamProducerPlan.analyze(tokens, registry),
     );
 }
+
+test "two-list owned-record producer emits the pinned WAT and WIT" {
+    const source = @embedFile("test/check/782_g6_2_two_list_owned_record_producer_component.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    const wat = try producer.emit_component_wat_for_tokens(std.testing.allocator, tokens);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[producer-first-pointer-offset] 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[producer-second-pointer-offset] 8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[producer-ticket-offset] 16") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[producer-list-release-exactly-once]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "[producer-resource-drop-exactly-once]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(ref ") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(struct ") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(array ") == null);
+
+    const wit = try producer.emit_component_wit_for_tokens(std.testing.allocator, tokens);
+    defer std.testing.allocator.free(wit);
+    const expected_wit =
+        \\package do:g6-2-owned-record-two-list-producer@0.1.0;
+        \\
+        \\interface types {
+        \\  enum error-code { io, pipe, invalid-mode }
+        \\  resource ticket {}
+        \\  record two-list-entry {
+        \\    first: list<u32>,
+        \\    second: list<u32>,
+        \\    ticket: own<ticket>,
+        \\  }
+        \\}
+        \\
+        \\interface source {
+        \\  use types.{ticket};
+        \\  make-ticket: func(seed: u32) -> own<ticket>;
+        \\}
+        \\
+        \\interface sink {
+        \\  use types.{error-code, two-list-entry};
+        \\  consume-via-stream: async func(
+        \\    data: stream<two-list-entry>
+        \\  ) -> result<_, error-code>;
+        \\}
+        \\
+        \\world owned-record-two-list-producer {
+        \\  use types.{error-code};
+        \\  import source;
+        \\  import sink;
+        \\  export produce: async func(mode: u32) -> result<_, error-code>;
+        \\}
+        \\
+    ;
+    try std.testing.expectEqualStrings(expected_wit, wit);
+}
