@@ -524,7 +524,9 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
     let expected_stream_drops = mode.expected_stream_drops();
     let expected_future_drops = expected_invocations;
     let expected_resource_drops = expected_invocations;
-    let expected_list_releases = expected_received.len() as u32 * 2;
+    let expected_list_allocations = expected_invocations * 2;
+    let expected_list_read_releases = expected_received.len() as u32 * 2;
+    let expected_list_releases = expected_list_allocations;
     let expected_pending = u32::from(mode == Mode::Pending);
     let expected_pending_future_drops = mode.expected_pending_future_drops();
     let expected_cancel_calls = expected_pending_future_drops;
@@ -541,11 +543,11 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
         || snapshot.pending_future_drops != expected_pending_future_drops
         || snapshot.pending_polls != expected_pending
         || snapshot.cancel_calls != expected_cancel_calls
-        || snapshot.list_read_releases != expected_list_releases
+        || snapshot.list_read_releases != expected_list_read_releases
         || !table_empty
     {
         bail!(
-            "two-list owned-record ABI mismatch mode={} result={:?} expected={:?} received={:?} expected-received={:?} resource-created={} resource-drops={} host-calls={} poll-calls={} expected-poll-calls={} stream-drops={} expected-stream-drops={} future-drops={} future-polls={} future-completions={} pending-future-drops={} pending-polls={} cancel-calls={} list-read-releases={} expected-list-read-releases={} list-releases={} table-empty={}",
+            "two-list owned-record ABI mismatch mode={} result={:?} expected={:?} received={:?} expected-received={:?} resource-created={} resource-drops={} host-calls={} poll-calls={} expected-poll-calls={} stream-drops={} expected-stream-drops={} future-drops={} future-polls={} future-completions={} pending-future-drops={} pending-polls={} cancel-calls={} list-read-releases={} expected-list-read-releases={} list-allocations={} list-releases={} table-empty={}",
             mode.label(),
             result.0,
             expected_result,
@@ -565,14 +567,15 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
             snapshot.pending_polls,
             snapshot.cancel_calls,
             snapshot.list_read_releases,
-            expected_list_releases,
+            expected_list_read_releases,
+            expected_list_allocations,
             expected_list_releases,
             table_empty,
         );
     }
 
     println!(
-        "mode={} received={:?} resource-created={} resource-drops={} host-calls={} poll-calls={} stream-drops={} future-drops={} future-polls={} future-completions={} pending-future-drops={} pending-polls={} cancel-calls={} list-read-releases={} list-releases={} table-empty=true result={:?} layout=record-offset:{} record-byte-size:{} record-alignment:{} first-pointer-offset:{} first-length-offset:{} second-pointer-offset:{} second-length-offset:{} ticket-offset:{} list-stride:{} list-capacity:{} stream-capacity:{}",
+        "mode={} received={:?} resource-created={} resource-drops={} host-calls={} poll-calls={} stream-drops={} future-drops={} future-polls={} future-completions={} pending-future-drops={} pending-polls={} cancel-calls={} list-read-releases={} list-allocations={} list-releases={} table-empty=true result={:?} layout=record-offset:{} record-byte-size:{} record-alignment:{} first-pointer-offset:{} first-length-offset:{} second-pointer-offset:{} second-length-offset:{} ticket-offset:{} list-stride:{} list-capacity:{} stream-capacity:{}",
         mode.label(),
         snapshot.received,
         snapshot.created,
@@ -587,6 +590,7 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
         snapshot.pending_polls,
         snapshot.cancel_calls,
         snapshot.list_read_releases,
+        expected_list_allocations,
         expected_list_releases,
         result.0,
         RECORD_OFFSET,
