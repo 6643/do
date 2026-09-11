@@ -47,6 +47,7 @@ pub const LoweringShape = union(enum) {
     record_resource_nested_stream_producer: OwnedRecordNestedStreamProducerShape,
     record_resource_pair_parameterized_stream_producer: ParameterizedOwnedRecordPairStreamProducerShape,
     record_resource_list_owned_record_stream_producer: ListOwnedRecordStreamProducerShape,
+    record_resource_two_list_owned_record_stream_producer: TwoListOwnedRecordStreamProducerShape,
     record_resource_list_stream_producer: RecordResourceListStreamProducerShape,
     record_resource_list_stream_dynamic_producer: RecordResourceListStreamProducerShape,
     record_resource_list_stream_batched_producer: RecordResourceListStreamProducerShape,
@@ -111,6 +112,19 @@ pub const ListOwnedRecordStreamProducerShape = struct {
     stream: StreamCanonical,
     record_layout: RecordLayout,
     record_list_layout: RecordListLayout,
+    producer: ProducerCanonical,
+};
+
+/// ABI facts for the private `stream<two-list-entry>` producer. The record has
+/// two independent scalar-list backing spans plus one owned ticket; keep this
+/// shape distinct from the single-list route so admission cannot widen to an
+/// arbitrary number of list fields.
+pub const TwoListOwnedRecordStreamProducerShape = struct {
+    element: []const u8,
+    stream_index: usize,
+    method: StreamOperation,
+    stream: StreamCanonical,
+    record_layout: RecordLayout,
     producer: ProducerCanonical,
 };
 
@@ -596,6 +610,11 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
 
     if (std.mem.eql(u8, descriptor.effect, "record-resource-list-owned-record-stream-producer")) {
         if (valid_record_resource_list_owned_record_stream_producer_descriptor(descriptor)) |shape| return .{ .record_resource_list_owned_record_stream_producer = shape };
+        return null;
+    }
+
+    if (std.mem.eql(u8, descriptor.effect, "record-resource-two-list-owned-record-stream-producer")) {
+        if (valid_two_list_owned_record_stream_producer_descriptor(descriptor)) |shape| return .{ .record_resource_two_list_owned_record_stream_producer = shape };
         return null;
     }
 
@@ -1512,6 +1531,7 @@ fn parse_descriptor(allocator: std.mem.Allocator, value: std.json.Value) !Descri
         !std.mem.eql(u8, effect, "record-resource-nested-stream-producer") and
         !std.mem.eql(u8, effect, "record-resource-pair-parameterized-stream-producer") and
         !std.mem.eql(u8, effect, "record-resource-list-owned-record-stream-producer") and
+        !std.mem.eql(u8, effect, "record-resource-two-list-owned-record-stream-producer") and
         !std.mem.eql(u8, effect, "record-resource-list-stream-reader") and
         !std.mem.eql(u8, effect, "record-resource-list-stream-producer") and
         !std.mem.eql(u8, effect, "record-resource-list-stream-dynamic-producer") and
@@ -2856,6 +2876,84 @@ fn valid_record_resource_list_owned_record_stream_producer_descriptor(descriptor
     };
 }
 
+fn valid_two_list_owned_record_stream_producer_descriptor(descriptor: Descriptor) ?TwoListOwnedRecordStreamProducerShape {
+    const stream = descriptor.canonical.stream orelse return null;
+    const record_layout = descriptor.canonical.record_layout orelse return null;
+    const producer = descriptor.canonical.producer orelse return null;
+
+    if (!std.mem.eql(u8, descriptor.effect, "record-resource-two-list-owned-record-stream-producer") or
+        !std.mem.eql(u8, descriptor.locator, "do:g6-2-owned-record-two-list-producer@0.1.0") or
+        !std.mem.eql(u8, descriptor.member, "consume-via-stream") or
+        descriptor.params.len != 1 or
+        !std.mem.eql(u8, descriptor.params[0], "stream<two-list-entry>") or
+        descriptor.resource != null or
+        !std.mem.eql(u8, descriptor.result, "Result<nil,error-code>") or
+        descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, descriptor.wit_sha256.?, "14ba67e070346a127e75c7dfd73c71d6082ad7d9385c7d803834319dabc6404a") or
+        !std.mem.eql(u8, descriptor.wit.package, "do:g6-2-owned-record-two-list-producer@0.1.0") or
+        !std.mem.eql(u8, descriptor.wit.interface, "sink") or
+        !std.mem.eql(u8, descriptor.wit.operation, "consume-via-stream") or
+        !std.mem.eql(u8, descriptor.wit.world, "owned-record-two-list-producer") or
+        !std.mem.eql(u8, descriptor.wit.parameter, "data") or
+        !equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i32" }) or
+        !equal_core_types(descriptor.canonical.core_results, &.{ "i32" }) or
+        !equal_core_types(descriptor.canonical.completion_params, &.{ "i32", "i32" }) or
+        !std.mem.eql(u8, descriptor.canonical.completion, "task-return") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "do:g6-2-owned-record-two-list-producer/sink@0.1.0") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower]consume-via-stream") or
+        descriptor.canonical.result_payload != null or
+        descriptor.canonical.result_area_payload != null or
+        descriptor.canonical.future_owned != null or
+        descriptor.canonical.error_variants.len != 0 or
+        descriptor.canonical.list_resource_layout != null or
+        descriptor.canonical.record_list_layout != null or
+        descriptor.canonical.scalar_list_layout != null or
+        descriptor.canonical.scalar_list_producer != null or
+        descriptor.canonical.parameterized_owned_record_pair_producer != null or
+        descriptor.canonical.future_input != null or
+        descriptor.canonical.future != null or
+        descriptor.canonical.variant_stream != null or
+        descriptor.canonical.variant_future != null or
+        descriptor.canonical.event_layout != null or
+        descriptor.canonical.ticket_drop_import != null or
+        !valid_two_list_owned_record_layout(record_layout) or
+        !std.mem.eql(u8, stream.element, "two-list-entry") or
+        !std.mem.eql(u8, producer.source_module, "do:g6-2-owned-record-two-list-producer/source@0.1.0") or
+        !std.mem.eql(u8, producer.source_import_name, "make-ticket") or
+        !equal_core_types(producer.source_core_params, &.{ "i32" }) or
+        !equal_core_types(producer.source_core_results, &.{ "i32" }) or
+        !std.mem.eql(u8, producer.resource_drop_import, "[resource-drop]ticket") or
+        producer.stream_capacity != 1 or
+        !std.mem.eql(u8, producer.terminal, "task-return") or
+        producer.runtime_count_param != null or
+        producer.runtime_max != null or
+        producer.runtime_mode_param == null or
+        !std.mem.eql(u8, producer.runtime_mode_param.?, "u32") or
+        producer.batch_count != null or
+        producer.batch_lengths != null) return null;
+
+    if (!valid_named_stream_operation(stream.new, "[stream-new-0]consume-via-stream", &.{}, &.{ "i64" }) or
+        !valid_named_stream_operation(stream.cancel_read, "[stream-cancel-read-0]consume-via-stream", &.{ "i32" }, &.{ "i32" }) or
+        !valid_named_stream_operation(stream.cancel_write, "[stream-cancel-write-0]consume-via-stream", &.{ "i32" }, &.{ "i32" }) or
+        !valid_named_stream_operation(stream.drop_readable, "[stream-drop-readable-0]consume-via-stream", &.{ "i32" }, &.{}) or
+        !valid_named_stream_operation(stream.drop_writable, "[stream-drop-writable-0]consume-via-stream", &.{ "i32" }, &.{}) or
+        !valid_named_stream_operation(stream.read, "[async-lower][stream-read-0]consume-via-stream", &.{ "i32", "i32", "i32" }, &.{ "i32" }) or
+        !valid_named_stream_operation(stream.write, "[async-lower][stream-write-0]consume-via-stream", &.{ "i32", "i32", "i32" }, &.{ "i32" })) return null;
+
+    return .{
+        .element = stream.element,
+        .stream_index = 0,
+        .method = .{
+            .import_name = descriptor.canonical.async_import_name,
+            .core_params = descriptor.canonical.core_params,
+            .core_results = descriptor.canonical.core_results,
+        },
+        .stream = stream,
+        .record_layout = record_layout,
+        .producer = producer,
+    };
+}
+
 fn valid_scalar_list_stream_producer_descriptor(descriptor: Descriptor) ?ScalarListStreamProducerShape {
     const stream = descriptor.canonical.stream orelse return null;
     const list_layout = descriptor.canonical.scalar_list_layout orelse return null;
@@ -3196,6 +3294,35 @@ fn valid_list_owned_record_layout(layout: RecordLayout) bool {
         ticket.drop_import != null and
         std.mem.eql(u8, ticket.drop_import.?, "[resource-drop]ticket") and
         ticket.nested_fields.len == 0;
+}
+
+fn valid_two_list_owned_record_layout(layout: RecordLayout) bool {
+    if (!std.mem.eql(u8, layout.name, "two-list-entry") or
+        layout.byte_size != 20 or
+        layout.alignment != 4 or
+        layout.fields.len != 3 or
+        layout.source_fields.len != 3 or
+        !record_field_matches(layout.fields[0], "first", "i32", 0) or
+        !record_field_matches(layout.fields[1], "second", "i32", 8) or
+        !record_field_matches(layout.fields[2], "ticket", "i32", 16)) return false;
+
+    const first = layout.source_fields[0];
+    const second = layout.source_fields[1];
+    const ticket = layout.source_fields[2];
+    return valid_two_list_source_field(first, "first") and
+        valid_two_list_source_field(second, "second") and
+        valid_owned_ticket_source_field(ticket, "ticket");
+}
+
+fn valid_two_list_source_field(field: RecordSourceField, name: []const u8) bool {
+    return std.mem.eql(u8, field.name, name) and
+        std.mem.eql(u8, field.source_type, "list<u32>") and
+        field.storage.len == 1 and
+        std.mem.eql(u8, field.storage[0], name) and
+        field.ownership == .none and
+        field.resource == null and
+        field.drop_import == null and
+        field.nested_fields.len == 0;
 }
 
 fn record_field_matches(field: RecordField, name: []const u8, core_type: []const u8, offset: u32) bool {
@@ -4973,6 +5100,120 @@ test "list-owned-record producer descriptor rejects measured drift" {
     switch (lowering_shape(old_descriptor) orelse return error.TestUnexpectedResult) {
         .record_resource_list_stream_producer => |shape| {
             try std.testing.expectEqualStrings("list<resource-entry>", shape.stream.element);
+        },
+        else => return error.TestUnexpectedResult,
+    }
+}
+
+test "checked-in registry admits the two-list owned-record producer shape" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+
+    const descriptor = registry.find(
+        "do:g6-2-owned-record-two-list-producer@0.1.0",
+        "consume-via-stream",
+    ) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("record-resource-two-list-owned-record-stream-producer", descriptor.effect);
+    try std.testing.expectEqualStrings("stream<two-list-entry>", descriptor.params[0]);
+    try std.testing.expectEqualStrings(
+        "14ba67e070346a127e75c7dfd73c71d6082ad7d9385c7d803834319dabc6404a",
+        descriptor.wit_sha256.?,
+    );
+    switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .record_resource_two_list_owned_record_stream_producer => |shape| {
+            try std.testing.expectEqualStrings("two-list-entry", shape.element);
+            try std.testing.expectEqual(@as(usize, 0), shape.stream_index);
+            try std.testing.expectEqual(@as(u32, 20), shape.record_layout.byte_size);
+            try std.testing.expectEqual(@as(u32, 4), shape.record_layout.alignment);
+            try std.testing.expectEqual(@as(u32, 0), shape.record_layout.fields[0].offset);
+            try std.testing.expectEqual(@as(u32, 8), shape.record_layout.fields[1].offset);
+            try std.testing.expectEqual(@as(u32, 16), shape.record_layout.fields[2].offset);
+            try std.testing.expectEqual(@as(u32, 1), shape.producer.stream_capacity);
+        },
+        else => return error.TestUnexpectedResult,
+    }
+}
+
+test "two-list owned-record producer descriptor rejects measured drift" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const original = registry.find(
+        "do:g6-2-owned-record-two-list-producer@0.1.0",
+        "consume-via-stream",
+    ) orelse return error.TestUnexpectedResult;
+
+    var wrong_hash = original;
+    wrong_hash.wit_sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    try std.testing.expect(lowering_shape(wrong_hash) == null);
+
+    var wrong_element = original;
+    wrong_element.canonical.stream.?.element = "list<two-list-entry>";
+    try std.testing.expect(lowering_shape(wrong_element) == null);
+
+    var wrong_byte_size = original;
+    wrong_byte_size.canonical.record_layout.?.byte_size = 16;
+    try std.testing.expect(lowering_shape(wrong_byte_size) == null);
+
+    var wrong_second_offset = original;
+    var wrong_fields: [3]RecordField = .{
+        original.canonical.record_layout.?.fields[0],
+        original.canonical.record_layout.?.fields[1],
+        original.canonical.record_layout.?.fields[2],
+    };
+    wrong_fields[1].offset = 4;
+    var wrong_layout = original.canonical.record_layout.?;
+    wrong_layout.fields = &wrong_fields;
+    wrong_second_offset.canonical.record_layout = wrong_layout;
+    try std.testing.expect(lowering_shape(wrong_second_offset) == null);
+
+    var wrong_first_type = original;
+    var wrong_first_sources: [3]RecordSourceField = .{
+        original.canonical.record_layout.?.source_fields[0],
+        original.canonical.record_layout.?.source_fields[1],
+        original.canonical.record_layout.?.source_fields[2],
+    };
+    wrong_first_sources[0].source_type = "list<u8>";
+    var wrong_first_layout = original.canonical.record_layout.?;
+    wrong_first_layout.source_fields = &wrong_first_sources;
+    wrong_first_type.canonical.record_layout = wrong_first_layout;
+    try std.testing.expect(lowering_shape(wrong_first_type) == null);
+
+    var borrowed_ticket = original;
+    var borrowed_sources: [3]RecordSourceField = .{
+        original.canonical.record_layout.?.source_fields[0],
+        original.canonical.record_layout.?.source_fields[1],
+        original.canonical.record_layout.?.source_fields[2],
+    };
+    borrowed_sources[2].ownership = .borrow;
+    var borrowed_layout = original.canonical.record_layout.?;
+    borrowed_layout.source_fields = &borrowed_sources;
+    borrowed_ticket.canonical.record_layout = borrowed_layout;
+    try std.testing.expect(lowering_shape(borrowed_ticket) == null);
+
+    var wrong_source = original;
+    wrong_source.canonical.producer.?.source_core_params = &.{ "i64" };
+    try std.testing.expect(lowering_shape(wrong_source) == null);
+
+    var wrong_stream_operation = original;
+    wrong_stream_operation.canonical.stream.?.write.import_name = "[wrong]stream-write";
+    try std.testing.expect(lowering_shape(wrong_stream_operation) == null);
+
+    var extra_record_list = original;
+    extra_record_list.canonical.record_list_layout = .{
+        .pointer_offset = 0,
+        .length_offset = 4,
+        .element_stride = 4,
+        .max_items = 3,
+    };
+    try std.testing.expect(lowering_shape(extra_record_list) == null);
+
+    const old_descriptor = registry.find(
+        "do:g6-2-owned-record-list-producer@0.1.0",
+        "consume-via-stream",
+    ) orelse return error.TestUnexpectedResult;
+    switch (lowering_shape(old_descriptor) orelse return error.TestUnexpectedResult) {
+        .record_resource_list_owned_record_stream_producer => |shape| {
+            try std.testing.expectEqualStrings("list-entry", shape.element);
         },
         else => return error.TestUnexpectedResult,
     }
