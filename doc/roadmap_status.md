@@ -1,10 +1,33 @@
 # Roadmap 执行状态
 
-更新时间: 2026-09-10
+更新时间: 2026-09-11
 
 **本文只保留当前状态与阻断。** 历史小任务勾选与逐条 gate 证据已从仓库移除; 追溯用 git 历史与 `CHANGELOG.md`。
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
 G5b async/resource coverage ledger: `doc/g5b_async_resource_coverage.md`。
+
+2026-09-11 增量: G6.2 private list-owned-record producer compiler/runtime gate
+已闭环。精确 descriptor
+`do:g6-2-owned-record-list-producer@0.1.0` 仅在
+`--p3-async-component` 下接受
+`ListEntry { values: list<u32>, ticket: own<Ticket> }` 与 capacity-one
+`stream<list-entry>`；WIT SHA-256 为
+`cf7d047069cd9b30066debc88ce8edc159c9d2a90a310e56e384bb42c19cd6eb`。
+record size/alignment 为 `12/4`，`values.ptr/len` offset 为 `0/4`，`ticket`
+offset 为 `8`，list stride/capacity 为 `4/3`，stream capacity 为 `1`；边界
+不暴露 Wasm GC reference。immutable `ProducerContract` 将 list backing
+allocation 作为独立 cleanup fact，ownership mask 仅覆盖 `ticket`，完整
+record 写入后才提交 transfer。
+
+Do/Component 正向 gate、10 个 WAT 前负例、canonical ABI、生成 Rust/Wasmtime
+十模式 lifecycle、canonical/generated parity、完整回归与 `zig test main.zig`
+均通过：harness `14/14 steps; 53/53 tests`，Zig `1575/1575`。ready/pending、
+sink error、transfer 前后 cancel/early-drop、repeat、invalid 均验证 list
+release 与 resource drop exactly once；repeat 为 `2/2`，invalid 不创建资源，
+所有模式 `table-empty=true`，生成 WAT 不含 `__arc_`。该项仍是 private
+fixed-shape evidence，不新增 GC inventory row，不开放 public `own<T>`/
+`borrow<T>`/`ref<T>`、generic/arbitrary producer 或 general async/resource
+lowering；inventory 仍为 `complete_rows=15 pending_rows=15`。
 
 2026-09-10 增量: G6.2 新增的 private mixed owned-record producer compiler
 admission 已闭环。精确 descriptor

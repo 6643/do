@@ -1,5 +1,24 @@
 # Changelog
 
+# 2026-09-11 G6.2 private list-owned-record producer:
+  closed the exact `do:g6-2-owned-record-list-producer@0.1.0` route behind
+  `--p3-async-component`. It admits only
+  `ListEntry { values: list<u32>, ticket: own<Ticket> }` in a capacity-one
+  `stream<list-entry>`. The measured record is 12 bytes/alignment 4 with
+  `values.ptr/len` offsets `0/4`, `ticket` offset `8`, list stride/capacity
+  `4/3`, and pinned WIT SHA-256
+  `cf7d047069cd9b30066debc88ce8edc159c9d2a90a310e56e384bb42c19cd6eb`.
+  The immutable `ProducerContract` treats list backing storage as a separate
+  cleanup fact and commits the ticket transfer only after a complete record
+  write. Do/Component, ten WAT-before-rejection negatives, canonical ABI,
+  generated Rust/Wasmtime lifecycle, and canonical/generated parity pass all
+  ten ready/pending/error/cancel/early-drop/repeat/invalid modes; list and
+  resource cleanup are exactly once, invalid creates no resources, every mode
+  leaves `table-empty=true`, and generated WAT contains no `__arc_`. This is
+  private fixed-shape evidence only; public ownership syntax, generic or
+  arbitrary producer lowering, and general async/resource lowering remain
+  pending.
+
 # 2026-09-10 G6.2 private mixed scalar/owned record producer:
   added the exact `do:g6-2-owned-record-mixed-producer@0.1.0` compiler route
   behind `--p3-async-component`. The route admits only

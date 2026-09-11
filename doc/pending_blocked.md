@@ -1,6 +1,6 @@
 # 待处理与阻断清单
 
-更新时间: 2026-09-10
+更新时间: 2026-09-11
 基线: 默认回归由 `./src/build/test/run_tests.sh` 薄入口转发到 Zig harness
 关系: 总规划 `doc/master_plan.md`; 接手 `doc/start_here.md`; 执行状态 `doc/roadmap_status.md`
 约定: **只记未关闭项**; 完成后从本文件删除或移入「已关闭摘要」, 并同步入口文档与 `CHANGELOG.md`。
@@ -24,6 +24,25 @@ normal_route_matches=0`，生产依赖闭包 `modules=153 forbidden=0`，GC defa
 该项只关闭 backend 选择和 ARC 隔离，不关闭下方 capability inventory；
 `complete_rows=15 pending_rows=15` 仍按设计返回 `1`，通用 async/map/producer/
 resource lowering 与 public `own<T>`/`borrow<T>`/`ref<T>` syntax 继续 pending。
+
+### G6.2 private list-owned-record producer (已关闭, 2026-09-11)
+
+精确 descriptor `do:g6-2-owned-record-list-producer@0.1.0` 已完成 private
+compiler admission 与 runtime lifecycle gate。它只接受
+`ListEntry { values: list<u32>, ticket: own<Ticket> }`、capacity-one
+`stream<list-entry>`、同步 source `(i32) -> (i32)` 和固定 producer 输入；
+WIT hash 为
+`cf7d047069cd9b30066debc88ce8edc159c9d2a90a310e56e384bb42c19cd6eb`，record
+`12/4`，`values.ptr/len=0/4`，`ticket=8`，list `stride/capacity=4/3`。
+list backing allocation 独立计入 cleanup，完整 record 写入后才 transfer，
+资源与 list 均 exactly once cleanup。
+
+Do/Component、10 个 WAT 前负例、canonical ABI、生成 Rust/Wasmtime 十模式与
+canonical/generated parity 均通过；完整 harness 为 `14/14 steps; 53/53 tests`，
+`zig test main.zig` 为 `1575/1575`，所有模式 `table-empty=true`，生成 WAT 无
+`__arc_`。这是固定形状证据，不关闭通用 producer、arbitrary expression、
+borrowed/list/variant payload、general async/resource lowering 或 public
+`own<T>`/`borrow<T>`/`ref<T>` syntax；不新增 inventory row。
 
 ### G6.2 private mixed owned-record producer (已关闭, 2026-09-10)
 

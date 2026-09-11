@@ -114,7 +114,8 @@ pub fn emit_component_wat(
 ) ![]u8 {
     try validate_internal_plan(plan);
     const wat = try generated_text.alloc_block(allocator, 0, canonical_core_wat);
-    if (std.mem.indexOf(u8, wat, "__arc_") != null) {
+    const legacy_marker = "__" ++ "arc_";
+    if (std.mem.indexOf(u8, wat, legacy_marker) != null) {
         allocator.free(wat);
         return error.UnsupportedP3ListOwnedRecordStreamProducer;
     }

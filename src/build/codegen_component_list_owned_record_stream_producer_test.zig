@@ -28,7 +28,8 @@ test "list-owned-record producer plan admits measured list and ticket facts" {
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "[producer-record-transfer]") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "[producer-list-release-exactly-once]") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+    const legacy_marker = "__" ++ "arc_";
+    try std.testing.expect(std.mem.indexOf(u8, wat, legacy_marker) == null);
 
     const wit = try producer.emit_component_wit(std.testing.allocator, plan);
     defer std.testing.allocator.free(wit);

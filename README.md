@@ -1,5 +1,12 @@
 # do 语言
 
+最新 G6.2 增量（2026-09-11）：private `list<u32> + own<Ticket>` record producer
+已通过 canonical ABI、Component、Rust/Wasmtime 十模式 lifecycle 和
+canonical/generated parity；record `12/4`、list `stride/capacity=4/3`，WIT
+hash 为 `cf7d047069cd9b30066debc88ce8edc159c9d2a90a310e56e384bb42c19cd6eb`。
+这是固定形状内部证据，不开放 public `own<T>`/`borrow<T>`/`ref<T>` 或 generic
+producer lowering。
+
 > 当前仓库状态: v1 子集发布候选已收口; 后续默认只处理发布阻断回归、文档漂移或已确认的 G6 / 运行时决策项。
 
 `do` 是一种面向 wasm 环境的值语义编程语言，当前仓库已收口第二版编译器的 v1 可验证子集，后续功能按本文的下一阶段计划推进。
@@ -58,7 +65,7 @@ src/lsp/        do lsp diagnostics + formatting + semantic tokens + hover + comp
 - 标准库: 已验证 JSON struct stringify/from_json、bytes/text/utf8/utf16、hex/base64/url、math/binary/mem/atomic/range/slice/path/fp/list/set/hash_map/hash、md5/sha1/sha256 等基础库; time/random/file/dir/io.stream 只承诺已登记 WASI wrapper lowering; net/tcp/udp/http.client 只承诺当前 shape/check smoke, 真实 host I/O 后置。
 - 后端与 WASI: 公开输出仍以 WAT 为主; 当前 build/test 子集已覆盖标量、结构体 flatten、typed GC/root managed values、多返回、基础 `@get/@set/@put`、WASI result-area/resource-drop lowering、component plan/core imports/core shims/component input 和真实 component wasm validate gate；固定 `descriptor.read-directory` 一至三条目 slice、注册的 scalar/string generic consumer、多个直接及一层/两层/三层/四层/五层/六层及两个顶层 nested `own` resource-field consumer、bounded scalar producer、受限 helper-mediated lease、固定/参数化 `u64` countdown producer、参数化 helper（含六跳 forwarding 与三种 typed 参数受限重排）producer、branch-selected `close/abort` terminal、private C-min/dynamic/batched list-resource producer、private direct/two-field/parameterized two-field/triple/mixed scalar-owned record producer、精确同步 manifest-backed `map<u32,u32>` lower/lift route、精确 private async `map<u32,u32>` compiler route 已完成 ABI、lowering 与 Rust/Wasmtime 验证，general producer/borrowed/list/variant/第七跳 forwarding/第七层 nested 或更一般 resource 扩展仍受边界约束。
 - 工具链: `do build`、`do test`、`do test --compiled`、`do check`、`do run`、`do fmt` 和 `do lsp` 第一版均已落地; LSP 当前覆盖 diagnostics、formatting、semantic tokens、hover、completion、definition 和最小 workspace index。
-- 验证入口: 当前默认完整回归由 `./src/build/test/run_tests.sh` 薄入口执行 `cd src && zig build test --summary all`，最近结果为 `14/14 steps; 53/53 tests`；`RUN_WASM=1` 与 `RUN_GC_CORE=1` 也已通过同一结果。`zig test main.zig` 最近结果为 `1568/1568`，精确同步 manifest-backed `map<u32,u32>` lower/lift Component gate、private async `map<u32,u32>` compiler/lifecycle gate 与 G6.2 mixed scalar/owned record producer gates 已通过；发布前 smoke 入口是 `./src/build/test/run_release_smoke.sh`。
+- 验证入口: 当前默认完整回归由 `./src/build/test/run_tests.sh` 薄入口执行 `cd src && zig build test --summary all`，最近结果为 `14/14 steps; 53/53 tests`；`RUN_WASM=1` 与 `RUN_GC_CORE=1` 也已通过同一结果。`zig test main.zig` 最近结果为 `1575/1575`，精确同步 manifest-backed `map<u32,u32>` lower/lift Component gate、private async `map<u32,u32>` compiler/lifecycle gate 与 G6.2 list-owned-record producer gates 已通过；发布前 smoke 入口是 `./src/build/test/run_release_smoke.sh`。
 
 ## v1 非目标
 
