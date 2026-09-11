@@ -122,7 +122,7 @@ The proposed descriptor identifiers are:
 | source member | `make-ticket` |
 | sink member | `consume-via-stream` |
 | export member | `produce` |
-| descriptor effect | a new distinct private two-list producer effect |
+| descriptor effect | `record-resource-two-list-owned-record-stream-producer` |
 
 ## Exact Do adapter shape
 
@@ -299,4 +299,3 @@ existing route, when any of these facts changes:
 
 The negative gate must assert that no `.wat` or `.wit` output is emitted and
 that no old producer route accepts the changed fixture.
-
