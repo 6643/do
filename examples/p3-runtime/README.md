@@ -20,6 +20,23 @@ path. Run `bash test_wasmtime_p3_assembly.sh` for the
 Core-WAT -> Component -> Rust/Wasmtime golden gate. This target does not claim
 standard32 or complete WASI support.
 
+The 2026-09-11 G6.2 list-owned-record gate adds a private
+`ListEntry { values: list<u32>, ticket: own<Ticket> }` producer route. The
+hash-pinned descriptor `do:g6-2-owned-record-list-producer@0.1.0` accepts only
+capacity-one `stream<list-entry>`, measures the record as 12 bytes/alignment 4
+with `values.ptr/len` at offsets `0/4` and `ticket` at `8`, and measures list
+stride/capacity as `4/3`. The generated/canonical WIT hash is
+`cf7d047069cd9b30066debc88ce8edc159c9d2a90a310e56e384bb42c19cd6eb`.
+Run `bash test_rust_g6_2_list_owned_record_producer.sh` for the ten-mode
+Rust/Wasmtime lifecycle gate and
+`bash test_g6_2_list_owned_record_producer_equivalence.sh` for byte-identical
+canonical/generated WIT/WAT and lifecycle parity. List backing storage is a
+separate cleanup fact; valid paths release list and ticket exactly once,
+invalid performs no allocation, and every mode leaves `table-empty=true`.
+This is private fixed-shape evidence only: generic/arbitrary producers,
+borrowed/variant payloads, public ownership syntax, and general async/resource
+lowering remain unsupported.
+
 The 2026-09-04 G6.2 consolidation gate now routes the nine existing private
 producer shapes through one immutable internal `ProducerContract`: direct
 record, fixed pair, parameterized pair, triple, nested record, list-resource,
