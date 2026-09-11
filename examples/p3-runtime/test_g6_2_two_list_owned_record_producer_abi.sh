@@ -66,6 +66,28 @@ for marker in \
   rg -q "^\\s*;; \\[${marker}\\]" "$wat"
 done
 
+assert_fixed_line_count() {
+  local expected="$1"
+  local needle="$2"
+  local file="$3"
+  local actual
+  actual=$(awk -v needle="$needle" 'index($0, needle) { count++ } END { print count + 0 }' "$file")
+  if [[ "$actual" != "$expected" ]]; then
+    printf 'two-list owned-record WAT count mismatch: expected=%s actual=%s needle=%s\n' \
+      "$expected" "$actual" "$needle" >&2
+    exit 1
+  fi
+}
+
+assert_fixed_line_count 1 '(global $list-allocation-count (export "producer-list-allocation-count")' "$wat"
+assert_fixed_line_count 1 '(global $list-release-count (export "producer-list-release-count")' "$wat"
+assert_fixed_line_count 1 'global.get $list-allocation-count' "$wat"
+assert_fixed_line_count 1 'global.set $list-allocation-count' "$wat"
+assert_fixed_line_count 1 'global.get $list-release-count' "$wat"
+assert_fixed_line_count 1 'global.set $list-release-count' "$wat"
+assert_fixed_line_count 3 'call $cabi-realloc' "$wat"
+assert_fixed_line_count 4 'call $free-list' "$wat"
+
 marker_value() {
   local marker="$1"
   awk -v marker="$marker" '
