@@ -6,9 +6,11 @@
 ## 1. 目标
 
 让所有已接入 `ProducerContract` 的 private G6.2 producer route 共用一套确定性的
-WAT lifecycle、ownership transfer 和 cleanup emitter。route 继续单独负责 descriptor
-source matcher、payload 编解码和 WIT 文本，不新增公开类型、语法或受支持的 descriptor
-shape。
+WAT lifecycle、ownership transfer 和 cleanup emitter。共享层同时消费经过校验的
+`ProducerContract` 与 route-private `ProducerRuntimeLayout`：前者描述 WIT/canonical
+ownership facts，后者描述 frame offsets、state tags 和本地 WAT symbols。route 继续单独
+负责 descriptor source matcher、payload 编解码和 WIT 文本，不新增公开类型、语法或受
+支持的 descriptor shape。
 
 当前有 12 个 `codegen_component_*producer.zig` 模块持有 `ProducerContract`，合计约
 7130 行。归一契约已经集中描述 source/sink、payload、owned leaf、list allocation、
@@ -31,9 +33,9 @@ generic producer lowering。
 
 ### A. Contract-driven lifecycle emitter (采用)
 
-由共享模块把已验证的 `ProducerContract` 编译为不可变 lifecycle plan，再确定性生成
-transfer、post-transfer cancel、terminal 和 cleanup WAT fragments。route assembler 注入
-payload 专属 fragments，并保持最终 WAT/WIT byte parity。
+由共享模块把已验证的 `ProducerContract` 与 `ProducerRuntimeLayout` 编译为不可变
+lifecycle plan，再确定性生成 transfer、post-transfer cancel、terminal 和 cleanup WAT
+fragments。route assembler 注入 payload 专属 fragments，并保持最终 WAT/WIT byte parity。
 
 收益是 ownership 状态机和 cleanup 顺序只有一个实现，同时保留逐 descriptor 的
 fail-closed admission。代价是迁移期必须同时维护旧 snapshot 与新 fragment 组合，并逐
@@ -57,7 +59,8 @@ flowchart TD
     W[WIT registry and manifest] --> M[Route descriptor matcher]
     D[Do tokens] --> M
     M --> C[Validated ProducerContract]
-    C --> P[ProducerLifecyclePlan compiler]
+    L[Route-private ProducerRuntimeLayout] --> P[ProducerLifecyclePlan compiler]
+    C --> P
     P --> E[Shared lifecycle WAT emitter]
     M --> R[Route payload codec and source adapter]
     E --> A[Route assembler]
@@ -68,36 +71,91 @@ flowchart TD
     I --> V
 ```
 
-依赖方向固定为 `registry/tokens -> matcher -> validated contract -> lifecycle plan ->
-shared emitter -> route assembler`。共享 emitter 不读取 lexer token、不查 registry、不猜
-descriptor 或 layout；route assembler 不重新推断 ownership 和 cleanup order。
+依赖方向固定为 `registry/tokens -> matcher -> validated contract` 与
+`route template facts -> ProducerRuntimeLayout`，再汇合到
+`ProducerLifecyclePlan -> shared emitter -> route assembler`。共享 emitter 不读取 lexer
+token、不查 registry、不猜 descriptor、canonical payload offset 或 runtime slot；route
+assembler 不重新推断 ownership 和 cleanup order。
 
 ## 5. 组件边界
 
 ### 5.1 `ProducerLifecyclePlan`
 
-新增内部 immutable plan，字段只来自通过 `validate_contract` 的 `ProducerContract`：
+新增内部 immutable plan，字段只来自通过 `validate_contract` 的 `ProducerContract` 和
+通过 `validate_runtime_layout` 的 `ProducerRuntimeLayout`：
 
 ```text
 ProducerLifecyclePlan {
-  descriptor_id
-  owned_slots: [OwnedSlot { bit, handle_offset, drop_import, path }]
-  list_slots: [ListSlot { path, ptr_offset, len_offset, free_import }]
+  contract: ProducerContract            // shallow copy; borrowed route facts
+  runtime: ProducerRuntimeLayout        // shallow copy; borrowed route facts
+  owned_slots: []const OwnershipLeaf    // view of contract.ownership.leaves
+  list_slots: []const ListAllocation   // view of contract.list_allocations
   transfer_commit: CompleteWriteOnly
-  terminal: { close, abort?, cancel }
-  cleanup_order
+  terminal: TerminalContract            // view of contract.terminal
+  cleanup_order: []const CleanupStage  // view of contract.terminal.cleanup_order
 }
+
+`from_contract` has no allocator by design. It must return a shallow, immutable plan
+whose slices borrow the caller-owned contract and runtime storage; only the later
+fragment emitter allocates WAT text. `owned_slots` and `list_slots` are views, not
+copied arrays, so route facts cannot be silently rewritten while entering the
+shared emitter.
 ```
 
 plan compiler 必须拒绝重复 bit/path、缺失 drop/free import、handle `0` absence sentinel、
-transfer-before-complete-write、parent-before-child cleanup，以及契约未测量的 payload kind。
-它不接受 lexer token 或 route-specific plan，因此不能扩大 source admission。
+transfer-before-complete-write、parent-before-child cleanup、runtime offset overlap、
+不完整的 ownership state tags、未覆盖的 post-transfer cancel state、cleanup op 与
+contract stage 不匹配，以及契约未测量的 payload kind。每个 runtime offset 只能由一个
+拥有者 op 写入或释放；`RuntimeCleanupOp` 是封闭 union，不接受任意 WAT 字符串。它不
+接受 lexer token；runtime layout 只能由已选定的 route adapter 提供，因此不能扩大 source
+admission。
+
+`ProducerRuntimeLayout` 的最小字段为：
+
+```text
+ProducerRuntimeLayout {
+  frame_size
+  result_tag_offset: ?u32
+  result_payload_offset: ?u32
+  waitable_offset: ?u32
+  readable_offset: ?u32
+  writable_offset: ?u32
+  record_state_offset: ?u32
+  subtask_offset: ?u32
+  pending_write_offset: ?u32
+  mode_offset: ?u32
+  payload_base_offset: ?u32
+  ownership_states: { guest: u32, transferred: u32, released: u32 }
+  post_transfer_cancel_states: [u32]
+  cleanup_ops: [RuntimeCleanupOp]
+}
+
+RuntimeCleanupOp = one of:
+  drop_resource { state_offset, handle_offset, drop_symbol }
+  drop_resource_list { state_offset, pointer_offset, length_offset, element_stride, drop_symbol }
+  free_list { state_offset, pointer_offset, length_offset, clear_offsets, free_symbol }
+  drop_stream { readable_offset, writable_offset, cancel_read, cancel_write, drop_readable, drop_writable }
+  drop_future { offset, drop_symbol }
+  drop_subtask { offset, drop_symbol, cancel_symbol }
+  drop_waitable { offset, drop_symbol }
+  free_frame { offset, free_symbol }
+}
+```
+
+`?u32` is required for every optional slot: `0` remains a valid frame offset and
+must never mean "absent". `frame_size` is a non-zero `u32`; every present offset
+must be strictly below it and aligned to the access emitted by its cleanup op.
+The three ownership state tags are explicit route facts, must be pairwise
+distinct, and are validated before a lifecycle plan is created. The closed
+`RuntimeCleanupOp` union is the only way a route may describe cleanup; a route
+cannot inject an arbitrary WAT fragment or symbol sequence into the shared
+emitter.
 
 ### 5.2 共享 lifecycle WAT emitter
 
-新增扁平模块 `src/build/codegen_component_producer_emitter.zig`；plan 类型、
-`from_contract` compiler 和 emitter 均放在该模块，不再增加中间模块。它只生成以下
-确定性 fragments：
+新增扁平模块 `src/build/codegen_component_producer_emitter.zig`；
+`ProducerRuntimeLayout`、plan 类型、`from_contract` compiler 和 emitter 均放在该模块，
+不再增加中间模块。它只生成以下确定性 fragments：
 
 - ownership/list slot 初始化与 presence state；
 - complete-write 后的 transfer commit；
@@ -108,7 +166,14 @@ transfer-before-complete-write、parent-before-child cleanup，以及契约未�
 
 共享 emitter 不生成 payload bytes、source call 参数、record/list 编码循环、WIT 或
 Component metadata。所有 fragment 使用现有 `codegen_text.zig` 的稳定文本 API，禁止
-route 自行拼出第二套 lifecycle 状态机。
+route 自行拼出第二套 lifecycle 状态机。共享 emitter 的入口必须显式接收两个输入：
+
+```zig
+pub fn from_contract(
+    contract: producer_contract.ProducerContract,
+    runtime: ProducerRuntimeLayout,
+) !ProducerLifecyclePlan
+```
 
 ### 5.3 Route adapter 和 assembler
 
@@ -126,8 +191,10 @@ assembler 只组合共享 lifecycle fragments 与 route payload fragments。不�
 
 ## 6. 数据流与状态不变量
 
-1. matcher 先完成 descriptor、manifest hash、token topology 和 payload shape 校验。
-2. `validate_contract` 成功后，plan compiler 才能生成 `ProducerLifecyclePlan`。
+1. matcher 先完成 descriptor、manifest hash、token topology 和 payload shape 校验；route
+   同时选择与当前 template 对应的 `ProducerRuntimeLayout`。
+2. `validate_contract` 与 `validate_runtime_layout` 都成功后，plan compiler 才能生成
+   `ProducerLifecyclePlan`。
 3. payload 完整写入 sink 后才能提交 owned resource 和 list backing transfer。
 4. transfer 前失败按 reverse acquisition order 清理；owned child 必须先于 parent。
 5. transfer 后 guest 清除对应 owner bit，不得再次 drop 已转交的 resource/list。
@@ -151,7 +218,8 @@ assembler 只组合共享 lifecycle fragments 与 route payload fragments。不�
 
 1. 冻结所有当前 contract-backed route 的 WAT/WIT bytes、hash、markers 和 lifecycle
    counter 基线。
-2. 先为 plan compiler 与 shared emitter 写失败测试，再实现未接入生产 route 的纯模块。
+2. 先为 runtime-layout validator、plan compiler 与 shared emitter 写失败测试，再实现
+   未接入生产 route 的纯模块。
 3. 迁移 resource-only direct owned-record route，验证最小 owned leaf 状态机。
 4. 迁移 two-list-owned-record route，验证多个 list allocation 与 resource 的 cleanup 顺序。
 5. 分组迁移 pair/triple/nested、mixed/list、dynamic/batched/scalar route；每组通过后才删除
