@@ -131,6 +131,15 @@ zig build -Doptimize=ReleaseSmall
 git diff --check
 ```
 
-本阶段完成定义是 focused probe、全量 Zig tests、ReleaseSmall build 和现有 regression
-harness 全部通过，且 `git diff --stat` 只包含本阶段的 docs、test-only probe、test root
-import 和测试文件。
+本阶段实际证据：
+
+- focused canonical-frame probe: `17/17` tests passed；
+- `cd src && zig test main.zig`: `1612/1612` tests passed；
+- `cd src && zig build -Doptimize=ReleaseSmall`: exit `0`；
+- `./src/build/test/run_tests.sh`: `14/14 steps; 53/53 tests passed`；
+- `git diff --check`: passed；未修改任何 WAT template 或生产 route。
+
+因此 D1 的 facts/decomposition/parity gate 已关闭，但 shared emitter、state IR 和 route
+migration 仍是 deferred，不能从 probe 结果推断为已实现。验证必须从 `src` 目录执行；若
+从仓库根目录直接运行 `zig test src/main.zig`，现有相对 fixture 测试会产生
+`FileNotFound`，该结果不作为源码回归证据。

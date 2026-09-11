@@ -27,7 +27,7 @@
 - Create: `doc/superpowers/specs/2026-09-12-g6-2-canonical-frame-probe-design.md` — approved design。
 - Create: `doc/superpowers/plans/2026-09-12-g6-2-canonical-frame-probe.md` — this plan。
 
-### Task 1: Define probe facts and validation API
+### Task 1: Define probe facts and validation API (completed)
 
 **Files:**
 - Create: `src/build/codegen_component_producer_mapping_probe.zig`
@@ -37,11 +37,11 @@
 - Consumes: `RuntimeField`, `CanonicalBinding`, `TemplateAuditSpec` concepts from `codegen_component_producer_runtime_audit.zig`。
 - Produces: `FrameFact`, `OwnershipEncoding`, `OwnershipFact`, `BindingFact`, `LifecycleFact`, `TemplateFact`, `TemplateObservation`, `ProbeError`, `validate_facts`。
 
-- [ ] **Step 1: Write failing fact validation tests**
+- [x] **Step 1: Write failing fact validation tests**
 
   Add tests for one valid scalar route and failures for empty route, field overlap, binding overlap, and invalid ownership encoding.
 
-- [ ] **Step 2: Run focused test and verify failure**
+- [x] **Step 2: Run focused test and verify failure**
 
   Run:
   ```bash
@@ -49,15 +49,15 @@
   ```
   Expected: FAIL because the new probe types/functions are not defined.
 
-- [ ] **Step 3: Implement facts and fail-closed validator**
+- [x] **Step 3: Implement facts and fail-closed validator**
 
   Implement borrowed slices, explicit ownership encoding, interval checks, and `validate_facts` without allocation or WAT emission. Reject zero-sized frame, out-of-range fields/bindings, overlaps, empty lifecycle anchors, and batch alias ranges.
 
-- [ ] **Step 4: Run focused test and verify pass**
+- [x] **Step 4: Run focused test and verify pass**
 
   Re-run the focused command; expected: all Task 1 fact tests PASS.
 
-### Task 2: Add the 12 checked-in template fact entries
+### Task 2: Add the 12 checked-in template fact entries (completed)
 
 **Files:**
 - Modify: `src/build/codegen_component_producer_mapping_probe.zig`
@@ -67,23 +67,23 @@
 - Consumes: `TemplateFact` and `validate_facts` from Task 1。
 - Produces: `pub const checked_in_template_facts: []const TemplateFact` with exactly 12 entries and `fact_for_route` lookup。
 
-- [ ] **Step 1: Write failing coverage test**
+- [x] **Step 1: Write failing coverage test**
 
   Assert exactly 12 unique template names, `frame_size == 128` per entry, non-empty frame/binding/lifecycle facts, and route-specific marker sets (record, C-min, scalar, batched).
 
-- [ ] **Step 2: Run test to capture the missing table**
+- [x] **Step 2: Run test to capture the missing table**
 
   Run the focused command; expected: FAIL on missing table/lookup.
 
-- [ ] **Step 3: Implement the table from checked-in template comments and route constants**
+- [x] **Step 3: Implement the table from checked-in template comments and route constants**
 
   Encode the observed frame slots (0/4/8/12/16/20/32/36/40 plus payload slots), scalar/mask/batched ownership values, canonical payload offsets, and each route's actual marker names. Keep all slices backed by module constants.
 
-- [ ] **Step 4: Run the 12-entry coverage test**
+- [x] **Step 4: Run the 12-entry coverage test**
 
   Expected: PASS with no duplicate route or template identity and all entries passing `validate_facts`.
 
-### Task 3: Implement marker extraction and template decomposition
+### Task 3: Implement marker extraction and template decomposition (completed)
 
 **Files:**
 - Modify: `src/build/codegen_component_producer_mapping_probe.zig`
@@ -93,23 +93,23 @@
 - Consumes: `TemplateFact` entries and immutable template bytes。
 - Produces: `decompose_template(template, fact) ProbeError!TemplateObservation` and `marker_value(template, marker) ?[]const u8`。
 
-- [ ] **Step 1: Add failing positive/negative decomposition tests**
+- [x] **Step 1: Add failing positive/negative decomposition tests**
 
   For all 12 embedded templates, require every fact marker and lifecycle anchor; mutate an in-memory copy to remove a marker and reorder two anchors, expecting `MissingMarker` and `LifecycleOrder`.
 
-- [ ] **Step 2: Run focused test and verify failure**
+- [x] **Step 2: Run focused test and verify failure**
 
   Expected: FAIL because decomposition functions are not implemented.
 
-- [ ] **Step 3: Implement read-only marker/anchor scan**
+- [x] **Step 3: Implement read-only marker/anchor scan**
 
   Scan existing `[producer-*]` comments and lifecycle function anchors without modifying bytes. Numeric markers must match their fact value; marker presence must remain route-specific. Return borrowed offsets/counts in `TemplateObservation`.
 
-- [ ] **Step 4: Run all 12 decomposition tests**
+- [x] **Step 4: Run all 12 decomposition tests**
 
   Expected: PASS; no template file changes.
 
-### Task 4: Add canonical/generated prefix-suffix parity probe and negative gates
+### Task 4: Add canonical/generated prefix-suffix parity probe and negative gates (completed)
 
 **Files:**
 - Modify: `src/build/codegen_component_producer_mapping_probe.zig`
@@ -119,40 +119,40 @@
 - Consumes: canonical template bytes and generated WAT bytes。
 - Produces: `verify_canonical_segments(canonical, generated) ProbeError!ParityObservation`。
 
-- [ ] **Step 1: Write failing parity tests**
+- [x] **Step 1: Write failing parity tests**
 
   Verify a generated string with metadata inserted before the final `\n)` passes; mutate one prefix byte, one suffix byte, and add a second canonical segment, expecting `CanonicalParity` or `DuplicateCanonicalSegment`. Add batch pointer alias and cleanup-order negative fact fixtures.
 
-- [ ] **Step 2: Run focused test and verify failure**
+- [x] **Step 2: Run focused test and verify failure**
 
   Expected: FAIL until the parity and negative gates exist.
 
-- [ ] **Step 3: Implement parity and negative checks**
+- [x] **Step 3: Implement parity and negative checks**
 
   Split canonical bytes at its final module close, require generated prefix/suffix byte equality and exactly one canonical segment boundary, and reuse interval/order validators for alias and cleanup failures. Do not compare or rewrite metadata bytes.
 
-- [ ] **Step 4: Run focused probe suite**
+- [x] **Step 4: Run focused probe suite**
 
   Expected: all positive and negative tests PASS.
 
-### Task 5: Wire test root, format, full verification, and closeout docs
+### Task 5: Wire test root, format, full verification, and closeout docs (completed)
 
 **Files:**
 - Modify: `src/main.zig: test-root imports`
 - Modify: `doc/superpowers/specs/2026-09-12-g6-2-canonical-frame-probe-design.md` — record actual evidence。
 - Modify: `doc/superpowers/plans/2026-09-12-g6-2-canonical-frame-probe.md` — mark completed units。
 
-- [ ] **Step 1: Add test-root import and format**
+- [x] **Step 1: Add test-root import and format**
 
   Add only the new test module import, then run `zig fmt` on changed Zig files.
 
-- [ ] **Step 2: Run focused probe gate**
+- [x] **Step 2: Run focused probe gate**
 
   ```bash
   cd src && TMPDIR="$PWD/../.tmp/do-tmp" ZIG_LOCAL_CACHE_DIR="$PWD/../.tmp/zig-cache" ZIG_GLOBAL_CACHE_DIR="$PWD/../.tmp/zig-gcache" zig test main.zig --test-filter "producer canonical frame probe"
   ```
 
-- [ ] **Step 3: Run full gates**
+- [x] **Step 3: Run full gates**
 
   ```bash
   (cd src && TMPDIR="$PWD/../.tmp/do-tmp" ZIG_LOCAL_CACHE_DIR="$PWD/../.tmp/zig-cache" ZIG_GLOBAL_CACHE_DIR="$PWD/../.tmp/zig-gcache" zig test main.zig)
@@ -161,11 +161,11 @@
   git diff --check
   ```
 
-- [ ] **Step 4: Record evidence and residual risk**
+- [x] **Step 4: Record evidence and residual risk**
 
   Update the spec/plan with actual counts and keep shared emitter/state IR explicitly deferred. Do not update capability status as completed.
 
-- [ ] **Step 5: Commit the D1 slice**
+- [x] **Step 5: Commit the D1 slice**
 
   ```bash
   git add src/main.zig src/build/codegen_component_producer_mapping_probe.zig src/build/codegen_component_producer_mapping_probe_test.zig doc/superpowers/specs/2026-09-12-g6-2-canonical-frame-probe-design.md doc/superpowers/plans/2026-09-12-g6-2-canonical-frame-probe.md
