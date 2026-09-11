@@ -190,6 +190,7 @@ test "producer contract conversion admits every registered producer shape" {
     const locators = [_][]const u8{
         "do:g6-2-owned-record-producer@0.1.0",
         "do:g6-2-owned-record-list-producer@0.1.0",
+        "do:g6-2-owned-record-two-list-producer@0.1.0",
         "do:g6-2-owned-record-pair-producer@0.1.0",
         "do:g6-2-owned-record-triple-producer@0.1.0",
         "do:g6-2-owned-record-nested-producer@0.1.0",
@@ -210,6 +211,37 @@ test "producer contract conversion admits every registered producer shape" {
         try std.testing.expectEqualStrings(descriptor.canonical.async_import_module, value.sink.module);
         try std.testing.expectEqualStrings(descriptor.member, value.sink.member);
     }
+}
+
+test "two-list owned-record producer normalizes independent list allocations" {
+    var loaded = try registry();
+    defer loaded.deinit(std.testing.allocator);
+
+    const value = try converted(loaded, "do:g6-2-owned-record-two-list-producer@0.1.0");
+    const record = switch (value.payload) {
+        .record => |layout| layout,
+        else => return error.TestUnexpectedResult,
+    };
+    try std.testing.expectEqualStrings("two-list-entry", record.name);
+    try std.testing.expectEqual(@as(u32, 20), record.byte_size);
+    try std.testing.expectEqual(@as(u32, 4), record.alignment);
+    try std.testing.expectEqual(@as(usize, 3), record.fields.len);
+    try std.testing.expectEqualStrings("first", record.fields[0].name);
+    try std.testing.expectEqual(@as(u32, 0), record.fields[0].offset);
+    try std.testing.expectEqualStrings("second", record.fields[1].name);
+    try std.testing.expectEqual(@as(u32, 8), record.fields[1].offset);
+    try std.testing.expectEqualStrings("ticket", record.fields[2].name);
+    try std.testing.expectEqual(@as(u32, 16), record.fields[2].offset);
+    try std.testing.expectEqual(@as(usize, 1), value.ownership.leaves.len);
+    try std.testing.expectEqualStrings("ticket", value.ownership.leaves[0].path[0]);
+    try std.testing.expectEqual(@as(u32, 16), value.ownership.leaves[0].handle_offset);
+    try std.testing.expectEqual(@as(usize, 2), value.list_allocations.len);
+    try std.testing.expectEqualStrings("first", value.list_allocations[0].path[0]);
+    try std.testing.expectEqual(@as(u32, 0), value.list_allocations[0].pointer_offset);
+    try std.testing.expectEqual(@as(u32, 4), value.list_allocations[0].length_offset);
+    try std.testing.expectEqualStrings("second", value.list_allocations[1].path[0]);
+    try std.testing.expectEqual(@as(u32, 8), value.list_allocations[1].pointer_offset);
+    try std.testing.expectEqual(@as(u32, 12), value.list_allocations[1].length_offset);
 }
 
 test "producer contract conversion preserves direct pair and triple ownership facts" {

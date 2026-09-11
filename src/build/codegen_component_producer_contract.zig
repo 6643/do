@@ -288,6 +288,9 @@ const nested_inner_path = [_][]const u8{"inner"};
 const nested_inner_ticket_path = [_][]const u8{ "inner", "ticket" };
 const list_owned_values_path = [_][]const u8{"values"};
 const list_owned_ticket_path = [_][]const u8{"ticket"};
+const two_list_first_path = [_][]const u8{"first"};
+const two_list_second_path = [_][]const u8{"second"};
+const two_list_ticket_path = [_][]const u8{"ticket"};
 const list_path = [_][]const u8{"list"};
 const list_ticket_path = [_][]const u8{ "list", "ticket" };
 
@@ -324,6 +327,29 @@ const list_owned_record_allocations = [_]ListAllocation{
         .element_core_type = "u32",
         .pointer_offset = 0,
         .length_offset = 4,
+        .element_stride = 4,
+        .max_items = 3,
+        .release_import = "cabi_realloc",
+    },
+};
+const two_list_owned_record_ticket_leaves = [_]OwnershipLeaf{
+    .{ .path = &two_list_ticket_path, .resource = "ticket", .handle_offset = 16, .drop_import = "[resource-drop]ticket", .bit = 0 },
+};
+const two_list_owned_record_allocations = [_]ListAllocation{
+    .{
+        .path = &two_list_first_path,
+        .element_core_type = "u32",
+        .pointer_offset = 0,
+        .length_offset = 4,
+        .element_stride = 4,
+        .max_items = 3,
+        .release_import = "cabi_realloc",
+    },
+    .{
+        .path = &two_list_second_path,
+        .element_core_type = "u32",
+        .pointer_offset = 8,
+        .length_offset = 12,
         .element_stride = 4,
         .max_items = 3,
         .release_import = "cabi_realloc",
@@ -404,6 +430,13 @@ pub fn producer_contract_from_shape(
             value.producer,
             value.stream,
             value.record_list_layout,
+        ),
+        .record_resource_two_list_owned_record_stream_producer => |value| build_two_list_owned_record_contract(
+            descriptor,
+            value.element,
+            value.record_layout,
+            value.producer,
+            value.stream,
         ),
         .record_resource_list_stream_producer => |value| build_list_contract(
             descriptor,
@@ -545,6 +578,63 @@ fn build_list_owned_record_contract(
         .terminal = terminal_from_stream(producer.terminal, stream),
         .runtime_mode_param = producer.runtime_mode_param,
         .list_allocations = &list_owned_record_allocations,
+    };
+    validate_contract(value) catch return error.UnsupportedProducerContract;
+    return value;
+}
+
+fn build_two_list_owned_record_contract(
+    descriptor: p3_async_manifest.Descriptor,
+    element: []const u8,
+    layout: p3_async_manifest.RecordLayout,
+    producer: p3_async_manifest.ProducerCanonical,
+    stream: p3_async_manifest.StreamCanonical,
+) ContractError!ProducerContract {
+    if (!std.mem.eql(u8, descriptor.effect, "record-resource-two-list-owned-record-stream-producer") or
+        !std.mem.eql(u8, descriptor.locator, "do:g6-2-owned-record-two-list-producer@0.1.0") or
+        !std.mem.eql(u8, descriptor.member, "consume-via-stream") or
+        descriptor.resource != null or
+        !std.mem.eql(u8, descriptor.result, "Result<nil,error-code>") or
+        descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, descriptor.wit_sha256.?, "14ba67e070346a127e75c7dfd73c71d6082ad7d9385c7d803834319dabc6404a") or
+        !std.mem.eql(u8, descriptor.wit.package, "do:g6-2-owned-record-two-list-producer@0.1.0") or
+        !std.mem.eql(u8, descriptor.wit.interface, "sink") or
+        !std.mem.eql(u8, descriptor.wit.operation, "consume-via-stream") or
+        !std.mem.eql(u8, descriptor.wit.world, "owned-record-two-list-producer") or
+        !std.mem.eql(u8, descriptor.wit.parameter, "data") or
+        !std.mem.eql(u8, element, "two-list-entry") or
+        !std.mem.eql(u8, stream.element, "two-list-entry") or
+        !record_descriptor_matches(descriptor, element, producer, stream) or
+        !valid_two_list_owned_record_layout(layout) or
+        !std.mem.eql(u8, producer.source_module, "do:g6-2-owned-record-two-list-producer/source@0.1.0") or
+        !std.mem.eql(u8, producer.source_import_name, "make-ticket") or
+        producer.source_core_params.len != 1 or
+        !std.mem.eql(u8, producer.source_core_params[0], "i32") or
+        producer.source_core_results.len != 1 or
+        !std.mem.eql(u8, producer.source_core_results[0], "i32") or
+        !std.mem.eql(u8, producer.resource_drop_import, "[resource-drop]ticket") or
+        producer.stream_capacity != 1 or
+        !std.mem.eql(u8, producer.terminal, "task-return") or
+        producer.runtime_count_param != null or
+        producer.runtime_max != null or
+        producer.runtime_mode_param == null or
+        !std.mem.eql(u8, producer.runtime_mode_param.?, "u32") or
+        producer.batch_count != null or
+        producer.batch_lengths != null or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "do:g6-2-owned-record-two-list-producer/sink@0.1.0") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower]consume-via-stream"))
+        return error.UnsupportedProducerContract;
+
+    const value = ProducerContract{
+        .descriptor_id = descriptor.locator,
+        .descriptor_hash = descriptor.wit_sha256,
+        .source = source_from_producer(producer),
+        .sink = sink_from_stream(descriptor, stream, producer.stream_capacity),
+        .payload = .{ .record = layout },
+        .ownership = .{ .leaves = &two_list_owned_record_ticket_leaves, .parents = &.{} },
+        .terminal = terminal_from_stream(producer.terminal, stream),
+        .runtime_mode_param = producer.runtime_mode_param,
+        .list_allocations = &two_list_owned_record_allocations,
     };
     validate_contract(value) catch return error.UnsupportedProducerContract;
     return value;
@@ -859,6 +949,34 @@ fn valid_list_owned_record_layout(layout: p3_async_manifest.RecordLayout) bool {
         values.drop_import == null and
         values.nested_fields.len == 0 and
         owned_source_matches(ticket, "ticket");
+}
+
+fn valid_two_list_owned_record_layout(layout: p3_async_manifest.RecordLayout) bool {
+    if (!std.mem.eql(u8, layout.name, "two-list-entry") or
+        layout.byte_size != 20 or
+        layout.alignment != 4 or
+        layout.fields.len != 3 or
+        layout.source_fields.len != 3 or
+        !field_matches(layout.fields[0], "first", "i32", 0) or
+        !field_matches(layout.fields[1], "second", "i32", 8) or
+        !field_matches(layout.fields[2], "ticket", "i32", 16)) return false;
+
+    const first = layout.source_fields[0];
+    const second = layout.source_fields[1];
+    return valid_two_list_source_matches(first, "first") and
+        valid_two_list_source_matches(second, "second") and
+        owned_source_matches(layout.source_fields[2], "ticket");
+}
+
+fn valid_two_list_source_matches(field: p3_async_manifest.RecordSourceField, name: []const u8) bool {
+    return std.mem.eql(u8, field.name, name) and
+        std.mem.eql(u8, field.source_type, "list<u32>") and
+        field.storage.len == 1 and
+        std.mem.eql(u8, field.storage[0], name) and
+        field.ownership == .none and
+        field.resource == null and
+        field.drop_import == null and
+        field.nested_fields.len == 0;
 }
 
 fn valid_owned_record_layout(
