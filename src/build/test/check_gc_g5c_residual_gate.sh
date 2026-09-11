@@ -11,7 +11,11 @@ WASMTIME_BIN="${WASMTIME_BIN:-$(command -v wasmtime || true)}"
 ZIG_BIN="${ZIG_BIN:-zig}"
 CARGO_BIN="${CARGO_BIN:-cargo}"
 MODE="${1:-baseline}"
-TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/do-gc-g5c-residual.XXXXXX")"
+ZIG_CACHE_ROOT="${DO_G5C_ZIG_CACHE_ROOT:-$ROOT_DIR/.tmp/do-tmp/g5c-zig-cache}"
+export ZIG_LOCAL_CACHE_DIR="${ZIG_LOCAL_CACHE_DIR:-$ZIG_CACHE_ROOT/local}"
+export ZIG_GLOBAL_CACHE_DIR="${ZIG_GLOBAL_CACHE_DIR:-$ZIG_CACHE_ROOT/global}"
+mkdir -p "$ZIG_LOCAL_CACHE_DIR" "$ZIG_GLOBAL_CACHE_DIR"
+TMP_DIR="$(mktemp -d "${TMPDIR:-$ROOT_DIR/.tmp/do-tmp}/do-gc-g5c-residual.XXXXXX")"
 trap 'rm -rf -- "$TMP_DIR"' EXIT
 export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$ROOT_DIR/toolchain/toolchain.lock.json}"
 

@@ -29,6 +29,11 @@ fixed-shape evidence，不新增 GC inventory row，不开放 public `own<T>`/
 `borrow<T>`/`ref<T>`、generic/arbitrary producer 或 general async/resource
 lowering；inventory 仍为 `complete_rows=15 pending_rows=15`。
 
+2026-09-11 工具链维护: G5c residual gate 现在默认使用仓库内
+`.tmp/do-tmp/g5c-zig-cache/{local,global}`，并向所有 Rust/Zig 子 gate 传播这两个
+变量；直接运行 gate 不再依赖可能被清理的用户级 Zig cache。结构回归、无 cache
+环境复验和完整 `run_tests.sh` 均通过。
+
 2026-09-10 增量: G6.2 新增的 private mixed owned-record producer compiler
 admission 已闭环。精确 descriptor
 `do:g6-2-owned-record-mixed-producer@0.1.0` 仅在

@@ -77,6 +77,11 @@ Shell raw-command/alias 扫描和旧版引用拒绝；根目录及无关 `/tmp` 
 证据中。跨行二级 Shell alias 尚未被完整解析，属于 P3 残余风险，当前 active
 脚本未命中且不阻断本 gate。
 
+2026-09-11 维护修复: G5c residual gate 已为直接执行建立仓库内 Zig local/global
+cache 默认值，并向所有子 gate 继承；清理用户级 Zig cache 不再导致 Rust 链接
+失败。该修复已通过结构回归、无显式 cache 环境的完整 residual gate 和完整
+`run_tests.sh`，不改变任何能力边界或 inventory 状态。
+
 Task 8 Step 3 的 Rust host adapter 批次已按报告闭合；Step 4 的 Shell 入口已
 缩减为 `cd src && zig build test --summary all` 薄 wrapper，Step 5 的逐 fixture
 parity 已闭合，报告位于

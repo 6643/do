@@ -1,5 +1,14 @@
 # Changelog
 
+# 2026-09-11 G5c residual gate cache isolation:
+  fixed direct residual-gate execution after a user-level Zig cache cleanup.
+  `src/build/test/check_gc_g5c_residual_gate.sh` now defaults both Zig cache
+  directories to `.tmp/do-tmp/g5c-zig-cache/{local,global}` and exports them to
+  every Rust/Zig child gate, while preserving explicit environment overrides.
+  The structural gate, direct residual gate without cache variables, and the
+  full `run_tests.sh` harness pass; no compiler capability or inventory row was
+  changed.
+
 # 2026-09-11 G6.2 private list-owned-record producer:
   closed the exact `do:g6-2-owned-record-list-producer@0.1.0` route behind
   `--p3-async-component`. It admits only

@@ -13,6 +13,16 @@ if ! rg -q '^# Verification Status: (verified|complete)$' "$EVIDENCE"; then
     printf '[FAIL] bounded Future G5b evidence is not marked verified\n' >&2
     exit 1
 fi
+if ! rg -q 'ZIG_CACHE_ROOT=.*ROOT_DIR/\.tmp/do-tmp/g5c-zig-cache' "$GATE" ||
+   ! rg -q 'export ZIG_LOCAL_CACHE_DIR=' "$GATE"; then
+    printf '[FAIL] G5c residual gate does not configure a repository-local Zig cache root\n' >&2
+    exit 1
+fi
+if ! rg -q 'export ZIG_GLOBAL_CACHE_DIR=' "$GATE" ||
+   ! rg -q 'mkdir -p "\$ZIG_LOCAL_CACHE_DIR" "\$ZIG_GLOBAL_CACHE_DIR"' "$GATE"; then
+    printf '[FAIL] G5c residual gate does not create both Zig cache directories\n' >&2
+    exit 1
+fi
 
 for gate in \
     test_gc_default_host_route_nested_record_deeper.sh \
