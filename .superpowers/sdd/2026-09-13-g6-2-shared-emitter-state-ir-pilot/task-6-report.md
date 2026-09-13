@@ -4,6 +4,7 @@ Date: 2026-09-13
 Scope: private single-route G6.2 shared emitter/state-IR pilot
 Status: complete-with-residuals; full regression and list/frame runtime sub-gates remain unresolved/unverified
 Evidence revision commit: `44216d0` (`Record G6.2 artifact guard status`)
+Latest source hardening commit: `59c8624` (`Harden G6.2 shared emitter pilot admission`)
 
 ## Toolchain
 
@@ -18,7 +19,7 @@ All Zig commands used repository-local cache directories under
 
 | Gate | Command/result | Status |
 | --- | --- | --- |
-| Zig unit | `(cd src && ... zig test main.zig)`; `1717/1717` passed | PASS |
+| Zig unit | `(cd src && ... zig test main.zig)`; `1724/1724` passed | PASS |
 | Release build | `(cd src && ... zig build -Doptimize=ReleaseSmall)`; exit 0 | PASS |
 | Full regression | `./src/build/test/run_tests.sh`; harness `53/53` passed, overall exit 1 | BLOCKED |
 | Release smoke | `./src/build/test/run_release_smoke.sh`; all smoke rows passed | PASS |
@@ -69,7 +70,7 @@ The pilot guard focused command was:
 (cd src && TMPDIR="$PWD/../.tmp/task-6-evidence/do-tmp" ZIG_LOCAL_CACHE_DIR="$PWD/../.tmp/task-6-evidence/zig-cache" ZIG_GLOBAL_CACHE_DIR="$PWD/../.tmp/task-6-evidence/zig-gcache" zig test main.zig --test-filter "producer shared emitter pilot")
 ```
 
-Raw output: `.tmp/task-6-evidence/round2/pilot-focused.log`, result `13/13`
+Raw output: `.tmp/task-6-evidence/round2/pilot-focused.log`, result `20/20`
 passed. The strict artifact guard command actually used for the existing and
 missing paths was:
 
@@ -137,7 +138,7 @@ The focused command was:
 
 Its raw output is `.tmp/task-6-evidence/round2/state-ir-focused.log` and it
 reported `15/15` passed. The pilot focused command/output is
-`.tmp/task-6-evidence/round2/pilot-focused.log` and reported `13/13` passed.
+`.tmp/task-6-evidence/round2/pilot-focused.log` and reported `20/20` passed.
 
 `test_rust_g6_2_owned_record_producer.sh` and
 `test_g6_2_owned_record_producer_equivalence.sh` passed ready, pending,
@@ -215,7 +216,7 @@ the old route gate operational.
 
 The ordinary route remains on the old emitter. Pilot admission failures returned
 named errors and did not accept a fallback output. Old producer focused tests
-(`15/15`) and pilot focused tests (`13/13`) passed. WAT/WIT byte parity and the
+(`15/15`) and pilot focused tests (`20/20`) passed. WAT/WIT byte parity and the
 capability inventory diff were clean. No route promotion, capability inventory
 update, public ownership syntax, or generic/arbitrary producer work was done.
 

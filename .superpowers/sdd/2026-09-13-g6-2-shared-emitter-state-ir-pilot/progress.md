@@ -87,6 +87,12 @@
 
 - Task 6: complete-with-residuals at `44216d0` (`Record G6.2 artifact guard status`); full regression ARC inventory remains BLOCKED and list/frame runtime counters remain unverified.
 
+### Whole-branch hardening and verification
+
+- Commit `59c8624` (`Harden G6.2 shared emitter pilot admission`) removes the production adapter's test-only `mapping_probe` dependency, wires `LifecycleStateIR` into fragment assembly, pins direct route facts/markers/bindings/lifecycle/hash fail-closed, and preserves allocator errors.
+- Scoped re-review accepted all four prior Important findings; no new Critical/Important breakage was found. `mapping_probe` remains test-only.
+- Fresh verification: pilot focused `20/20`, producer filter `195/195`, full `zig test main.zig` `1724/1724`, ReleaseSmall build and release smoke exit `0`. `run_tests.sh` still reports `53/53` harness cases but exits `1` on ARC inventory `exit 2`, `unclassified=3`; host runtime list/frame counters remain unverified.
+
 ### Task 6 review findings and ruling
 
 - P1: Component artifact evidence invoked the ordinary `--p3-async-component` path, which is the old emitter; it did not prove that the private pilot entry generated the artifact passed to `wasm-tools`.

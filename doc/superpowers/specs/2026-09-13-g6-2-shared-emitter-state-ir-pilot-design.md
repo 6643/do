@@ -342,8 +342,10 @@ Task 6 status：complete-with-residuals。Step 1（full regression）和 Step 3�
 runtime counters）保持 unchecked/unverified；Step 2、Step 4、Step 5、Step 6
 已完成。此次 evidence revision 的提交 subject 为
 `44216d0 Record G6.2 artifact guard status`，不代表 full regression green。
+源码 admission hardening and fresh verification are recorded at
+`59c8624 Harden G6.2 shared emitter pilot admission`。
 
-- Zig unit gate：`(cd src && ... zig test main.zig)`，`1717/1717` passed，exit 0。
+- Zig unit gate：`(cd src && ... zig test main.zig)`，`1724/1724` passed，exit 0。
 - Release build：`(cd src && ... zig build -Doptimize=ReleaseSmall)`，exit 0。
 - Release smoke：`./src/build/test/run_release_smoke.sh`，exit 0。
 - Formatting gate：`git diff --check`，exit 0。
@@ -370,7 +372,7 @@ runtime counters）保持 unchecked/unverified；Step 2、Step 4、Step 5、Step
   在验证后删除。
 - GC/ARC guard：pilot focused command
   `(cd src && ... zig test main.zig --test-filter "producer shared emitter pilot")`
-  exit 0，`13/13` passed；raw output 为
+  exit 0，`20/20` passed；raw output 为
   `.tmp/task-6-evidence/round2/pilot-focused.log`。对 private artifact 的
   strict guard 先检查 `-r`，再区分 `rg` 的 `0`（marker match，失败）、
   `1`（无匹配，clean）和 `>=2`（I/O/error，失败）；现有 artifact 输出
@@ -402,7 +404,7 @@ runtime counters）保持 unchecked/unverified；Step 2、Step 4、Step 5、Step
   因默认 `/home/_/.cache/zig` 缺少 `Scrt1.o`、libc/runtime archives 在 linker
   阶段失败，已作为 environment evidence 保留，不作为运行时通过依据。
 - Rollback/default：普通 `--p3-async-component` 输出与 checked-in WAT/WIT
-  byte-for-byte 一致；pilot focused `13/13`、旧 producer focused `15/15`、
+  byte-for-byte 一致；pilot focused `20/20`、旧 producer focused `15/15`、
   旧 route Component gate 均通过，capability inventory 无 diff。实际 rollback
   在 `git archive HEAD` 临时 checkout 中把 `emit_component_wat_pilot` 替换为
   立即 `InvalidAdmission`，重建临时 compiler 后旧 route Component gate exit 0；

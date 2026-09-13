@@ -418,7 +418,7 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
 
 - [ ] **Step 1: Run all Zig/unit and build gates with current local caches.**
 
-  Evidence (2026-09-13, Zig 0.16.0): `zig test main.zig` passed `1717/1717`;
+  Evidence (2026-09-13, Zig 0.16.0): `zig test main.zig` passed `1724/1724`;
   `zig build -Doptimize=ReleaseSmall` passed; `run_release_smoke.sh` passed;
   and `git diff --check` passed. `run_tests.sh` ran its `53/53` harness tests but
   exited `1` because `check_gc_arc_inventory.sh` exited `2` on unclassified
