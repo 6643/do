@@ -77,9 +77,8 @@ git diff --check
 
 - Task 4 validates and assembles named spans but does not wire the private pilot
   emitter; that is reserved for Task 5.
-- The fragment API maps allocator failure to the existing `FragmentError`
-  surface as `InvalidSpan`, because the required interface does not expose an
-  allocation error. No output slice is returned on that path.
+- The fragment API exposes `FragmentError.OutOfMemory` and propagates allocator
+  failure unchanged. No output slice is returned on that path.
 - Full repository, release, Component, Rust, and Wasmtime gates are outside
   the Task 4 focused slice and were not run here.
 
@@ -114,3 +113,8 @@ After the implementation fix, the required focused command passed:
 The failing allocator test also observed zero successful allocations and zero
 deallocations, proving that no output artifact is produced on allocation
 failure. `zig fmt` and `git diff --check` were rerun for the fix.
+
+## Documentation review round 2
+
+Removed the stale `InvalidSpan` allocator note; the report now matches the
+explicit `OutOfMemory` API and propagation implemented in the fragment module.
