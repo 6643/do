@@ -82,3 +82,35 @@ git diff --check
   allocation error. No output slice is returned on that path.
 - Full repository, release, Component, Rust, and Wasmtime gates are outside
   the Task 4 focused slice and were not run here.
+
+## Review round 1 evidence
+
+Two review regressions were reproduced before the fixes:
+
+1. A `std.testing.FailingAllocator` configured with `fail_index = 0` caused
+   `assemble` to return `InvalidSpan` instead of the allocator's
+   `OutOfMemory` error.
+2. The missing-marker test did not prove marker ownership because its marker
+   did not occur anywhere in the template.
+
+The tests were updated first and the focused filter was rerun. The first
+regression failed with:
+
+```text
+expected error.OutOfMemory, found error.InvalidSpan
+```
+
+The implementation now exposes `FragmentError.OutOfMemory` and propagates the
+allocator error unchanged. The marker regression now requires
+`[producer-record-transfer]` from the payload fragment even though that marker
+exists in the lifecycle fragment, and correctly returns `MissingMarker`.
+
+After the implementation fix, the required focused command passed:
+
+```text
+16/16 tests passed.
+```
+
+The failing allocator test also observed zero successful allocations and zero
+deallocations, proving that no output artifact is produced on allocation
+failure. `zig fmt` and `git diff --check` were rerun for the fix.

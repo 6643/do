@@ -26,6 +26,7 @@ pub const FragmentError = error{
     InvalidKindOrder,
     WholeTemplateFragment,
     MissingMarker,
+    OutOfMemory,
 };
 
 pub fn validate_fragment_table(template: []const u8, fragment_table: []const Fragment) FragmentError!void {
@@ -73,7 +74,7 @@ pub fn validate_fragment_table(template: []const u8, fragment_table: []const Fra
 pub fn assemble(allocator: std.mem.Allocator, template: []const u8, fragment_table: []const Fragment) FragmentError![]u8 {
     try validate_fragment_table(template, fragment_table);
 
-    const output = allocator.alloc(u8, template.len) catch return error.InvalidSpan;
+    const output = allocator.alloc(u8, template.len) catch |err| return err;
     errdefer allocator.free(output);
 
     var cursor: usize = 0;

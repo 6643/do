@@ -112,7 +112,7 @@ test "producer fragment table rejects one whole-template fragment" {
 
 test "producer fragment table rejects a missing marker" {
     var changed = direct_fragments;
-    changed[2].required_markers = &.{"[producer-missing-marker]"};
+    changed[1].required_markers = &.{"[producer-record-transfer]"};
     try std.testing.expectError(error.MissingMarker, fragments.validate_fragment_table(template, &changed));
 }
 
@@ -120,6 +120,13 @@ test "producer fragment assembly fails closed for invalid coverage" {
     var changed = direct_fragments;
     changed[2].span.start += 1;
     try std.testing.expectError(error.FragmentGap, fragments.assemble(std.testing.allocator, template, &changed));
+}
+
+test "producer fragment assembly propagates allocator exhaustion without an artifact" {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+    try std.testing.expectError(error.OutOfMemory, fragments.assemble(failing.allocator(), template, &direct_fragments));
+    try std.testing.expectEqual(@as(usize, 0), failing.allocations);
+    try std.testing.expectEqual(@as(usize, 0), failing.deallocations);
 }
 
 fn marker_offset(marker: []const u8) u32 {
