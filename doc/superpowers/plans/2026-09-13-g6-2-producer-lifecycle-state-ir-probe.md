@@ -551,5 +551,6 @@ the capability inventory.
   parity claim, generic admission, public ownership syntax, or D2 expansion was added.
 - The logical cleanup order is not a claim about template function-body call order; existing
   Component/Rust/Wasmtime and runtime audit gates retain that responsibility.
-- No failures or unverified release evidence remain. The report is at
+- No release gate failed; the failed zsh status-capture wrapper is documented as unverified and
+  is not release-gate evidence. The report is at
   `.superpowers/sdd/2026-09-13-g6-2-producer-lifecycle-state-ir-probe/task-5-report.md`.
