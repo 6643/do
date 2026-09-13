@@ -1,10 +1,24 @@
 # Roadmap 执行状态
 
-更新时间: 2026-09-11
+更新时间: 2026-09-13
 
 **本文只保留当前状态与阻断。** 历史小任务勾选与逐条 gate 证据已从仓库移除; 追溯用 git 历史与 `CHANGELOG.md`。
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
 G5b async/resource coverage ledger: `doc/g5b_async_resource_coverage.md`。
+
+2026-09-13 增量: G6.2 shared emitter/state-IR private pilot 的 Task 6
+repository gate 已完成 inventory 分类修复。`598f2a0` 为 pilot guard 与
+test-oracle `__arc_` 引用补充精确 `test_oracle/isolate_test_only` 账本行；
+fresh pre-cutover/post-cutover ARC scan 均为 `rows=55 matches=492
+unclassified=0`，post-cutover `normal_route_matches=0`，生产依赖闭包为
+`modules=162 forbidden=0`。当前 Zig 全量为 `1728/1728`，薄入口为
+`14/14 steps; 53/53 tests`，ReleaseSmall 与 release smoke 通过。
+private pilot 仍保持 byte-parity staged、默认 dispatch 不变；Rust/Wasmtime
+host runner 没有 list/frame runtime counters，因此该子门禁仍为
+unverified，整体状态为 complete-with-residuals。12-route migration、
+generic/arbitrary producer、public ownership syntax、semantic-parity rewrite
+和 D2 general async 继续 deferred。证据见
+`.superpowers/sdd/2026-09-13-g6-2-shared-emitter-state-ir-pilot/`。
 
 2026-09-11 增量: G6.2 private two-list owned-record producer compiler/runtime
 gate 已闭环。精确 descriptor
@@ -567,8 +581,8 @@ fail-closed/pending。
 | 项 | 状态 |
 | --- | --- |
 | v1 子集 | 发布候选已收口 |
-| GC-first runtime cutover | Task 6 已闭环；普通编译入口只走 `codegen_runtime_api.zig` 的 Wasm GC route，ARC 仅保留在显式 test-only equivalence oracle；ARC inventory post-cutover `rows=49 matches=480 unclassified=0 normal_route_matches=0`，生产依赖闭包 `modules=153 forbidden=0` |
-| 当前验证基线 | 默认及 `RUN_WASM=1 RUN_GC_CORE=1` 为 `14/14 steps; 53/53 tests`；`zig test main.zig` 为 `1568/1568`；GC default gate `87 fixtures`、semantic-equivalence `26 rows; 0 pending`、ReleaseSmall/release smoke 通过 |
+| GC-first runtime cutover | Task 6 已闭环；普通编译入口只走 `codegen_runtime_api.zig` 的 Wasm GC route，ARC 仅保留在显式 test-only equivalence oracle；当前 ARC inventory post-cutover `rows=55 matches=492 unclassified=0 normal_route_matches=0`，生产依赖闭包 `modules=162 forbidden=0` |
+| 当前验证基线 | 默认及 `RUN_WASM=1 RUN_GC_CORE=1` 为 `14/14 steps; 53/53 tests`；`zig test main.zig` 为 `1728/1728`；GC default gate `87 fixtures`、semantic-equivalence `26 rows; 0 pending`、ReleaseSmall/release smoke 通过 |
 | capability inventory | `complete_rows=15 pending_rows=15` 仍为能力缺口并按设计 exit `1`；通用 async/map/producer/resource lowering 与 public `own<T>`/`borrow<T>`/`ref<T>` syntax 继续 pending |
 | GC-first memory migration | `doc/memory.md` 和 `doc/design/2026-08-11-gc-first-memory-decision.md` 是 v1 source/runtime target. G5a 当前已闭合 parsed fixed-index、参数化 `[u8] @set`、全部当前 scalar-list literal/update slices、registered scalar-list one-value `@put`、bounded `[text]` managed-element one-value `@put`、全部当前 scalar-array managed-field payload rebuild、direct-local nested struct、一层、两层、三层、四层与五层直接 nested managed-struct `@get/@set`、单一直接同步单返回 `[u8]`/`text` managed-field call producer、bounded `Tuple<text,[u8]>` rewrite、bounded imported managed identity、payload-union、resolved generic、bounded managed-struct-list append，以及 `--p3-wait-for-component` 的 bounded `Future<nil>` GC frame/table slice; G5b 已关闭全部 26 个当前 admitted synchronous executable rows（含 payload-union、resolved generic、`[Box]` one-value `@put`、nested field paths 与 direct call producer），并以同一 WIT/Rust/Wasmtime runner 完成 bounded two-await GC/linear Future frame equivalence；Task 3 已把默认同步 pipeline 的已准入 managed candidates（含 bounded synchronous `defer`、`return nil` no-result cleanup、推断出的 `text` body binding、推断出的 `[u8]` body storage `@put`，以及 body-only managed-struct storage ctor/field update）接到 typed GC/root 输出，GC path 不再声明旧 storage compiler locals，未准入 shape、普通 GC sync async 和 host/WIT 在 WAT 前 fail-closed; `runtime_arc_wat.zig`, `runtime_prelude_wat.zig` 和 `codegen_ownership.zig` 仍是待替换的 implementation debt; generic async/resource G5b/G5c 与 full GC migration 尚未完成. |
 | GC-first scalar-leaf default route | `examples/gc-p3-runtime/scalar-leaf.do` 的纯同步 scalar identity/arithmetic 已走默认 typed GC route；递归、loop、defer、host/WIT、managed、async/resource 形状保持 fallback/fail-closed。独立 gate、默认 83-fixture build/parse gate 和 focused negative tests 已锁定；这不是 migration row closure 或 full G5c cutover。 |

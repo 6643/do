@@ -341,25 +341,24 @@ route-by-route 回滚，且不会把 test-only probe 直接变成 production dep
 当前工具版本：Zig `0.16.0`，`wasm-tools 1.258.0 (5c6d31c78 2026-08-24)`，
 Wasmtime `48.0.1 (7bac2c277 2026-08-24)`。
 
-Task 6 status：complete-with-residuals。Step 1（full regression）和 Step 3（list/frame
-runtime counters）保持 unchecked/unverified；Step 2、Step 4、Step 5、Step 6
-已完成。此次 evidence revision 的提交 subject 为
-`44216d0 Record G6.2 artifact guard status`，不代表 full regression green。
+Task 6 status：complete-with-residuals。Step 3（list/frame runtime counters）保持
+unchecked/unverified；Step 1、Step 2、Step 4、Step 5、Step 6 已完成。当前 evidence
+revision 的提交 subject 为 `598f2a0 Classify G6.2 ARC guard references`。
 源码 admission hardening and fresh verification are recorded at
 `59c8624 Harden G6.2 shared emitter pilot admission`。
 
-- Zig unit gate：`(cd src && ... zig test main.zig)`，`1724/1724` passed，exit 0。
+- Zig unit gate：`(cd src && ... zig test main.zig)`，`1728/1728` passed，exit 0。
 - Release build：`(cd src && ... zig build -Doptimize=ReleaseSmall)`，exit 0。
 - Release smoke：`./src/build/test/run_release_smoke.sh`，exit 0。
 - Formatting gate：`git diff --check`，exit 0。
-- Full regression：`./src/build/test/run_tests.sh` 的 harness 子测试为
-  `53/53` passed，但总 exit 1。唯一失败是 `check_gc_arc_inventory.sh` exit 2，
-  因为新 pilot ARC-rejection guard 和 negative fixture 的 `__arc_` 文本未在
-  `doc/gc_arc_inventory.tsv` 分类（源码证据：
-  `src/build/codegen_component_producer_emitter.zig:57-58`、
-  `src/build/codegen_component_producer_emitter_test.zig:163`）。这是
-  source/inventory gate mismatch；本 Task 不扩大到 inventory 或 production
-  emitter 改动。
+- Full regression：`./src/build/test/run_tests.sh` 为 `14/14 steps; 53/53 tests`，
+  exit 0。此前由新 pilot ARC-rejection guard 和 negative fixture 引起的
+  source/inventory mismatch 已在 `598f2a0` 中以精确 `test_oracle` 分类修复。
+- ARC inventory / production closure：`bash src/build/test/check_gc_arc_inventory.sh`
+  与 `--post-cutover` 均通过；最新输出为
+  `rows=55 matches=492 unclassified=0`、
+  `normal_route_matches=0`，生产依赖闭包为 `modules=162 forbidden=0`。
+  组合原始输出为 `.tmp/task-6-evidence/round4/arc-inventory-both.log`。
 - Artifact gate：临时 helper 直接调用 private
   `producer.emit_component_wat_pilot`，输出路径为
   `.tmp/task-6-evidence/private-pilot/pilot.wat`；该文件通过当前
@@ -421,13 +420,23 @@ topology 和 adapter/probe field-level parity 校验。提交后的 focused test
 `20/20`、owned-record producer `15/15`、state-IR map `16/16`，全量 `zig test main.zig`
 为 `1728/1728`，均 exit `0`。`run_release_smoke.sh` 和 ReleaseSmall build 也 exit `0`。
 
-完整 integration harness 重跑为 `53/53` 子测试通过、总 exit `1`；失败仍仅为
-`check_gc_arc_inventory.sh` 的既有 ARC inventory mismatch（当前 `unclassified=2`）。
-host runner 未提供 list/frame runtime counters，因此该子门禁继续保持 unverified。
+`b130817` 之后的 integration harness 历史重跑为 `53/53` 子测试通过、总 exit `1`；
+该历史 mismatch 已由 `598f2a0` 修复。当前 host runner 未提供 list/frame runtime
+counters，因此该子门禁继续保持 unverified。
 
 因此本 spec 的 Task 6 status 为 complete-with-residuals，只关闭“单 route private pilot 的 artifact、observed lifecycle counters
-和 rollback 证据”范围；list/frame runtime counters 未提供，完整 repository
-regression 仍有上述 ARC inventory mismatch，不能宣称所有 Task 6 gates 全绿，也不能
-由 state-IR probe 单独宣称 runtime equivalence。
+和 rollback 证据”范围；list/frame runtime counters 未提供，不能宣称所有 runtime
+子门禁全绿，也不能由 state-IR probe 单独宣称 runtime equivalence。ARC inventory
+与完整 repository regression 已在 `598f2a0` 后通过。
 12-route migration、generic/arbitrary producers、public ownership syntax、
 semantic-parity rewrite 和 D2 general async 保持 deferred。
+
+### 11.2 Inventory classification follow-up (`598f2a0`)
+
+`doc/gc_arc_inventory.tsv` 新增了 G6.2 pilot guard 与 test fixture 的精确
+`test_oracle/isolate_test_only` 分类。该修复只改变 inventory 账本，不改变生产
+emitter、默认 dispatch、WAT/WIT bytes 或能力矩阵。fresh pre-cutover/post-cutover
+扫描均为 `rows=55 matches=492 unclassified=0`，post-cutover 的
+`normal_route_matches=0`，生产依赖闭包为 `modules=162 forbidden=0`；因此 Step 1
+现在可标记完成。list/frame runtime counters 仍因 host runner 未暴露而保持
+unverified，pilot 仍是 complete-with-residuals。

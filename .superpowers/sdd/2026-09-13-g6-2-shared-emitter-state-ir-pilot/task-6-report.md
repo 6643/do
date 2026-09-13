@@ -2,8 +2,8 @@
 
 Date: 2026-09-13
 Scope: private single-route G6.2 shared emitter/state-IR pilot
-Status: complete-with-residuals; full regression and list/frame runtime sub-gates remain unresolved/unverified
-Evidence revision commit: `44216d0` (`Record G6.2 artifact guard status`)
+Status: complete-with-residuals; list/frame runtime sub-gates remain unverified
+Evidence revision commit: `598f2a0` (`Classify G6.2 ARC guard references`)
 Latest source hardening commit: `59c8624` (`Harden G6.2 shared emitter pilot admission`)
 
 ## Toolchain
@@ -19,11 +19,12 @@ All Zig commands used repository-local cache directories under
 
 | Gate | Command/result | Status |
 | --- | --- | --- |
-| Zig unit | `(cd src && ... zig test main.zig)`; `1724/1724` passed | PASS |
+| Zig unit | `(cd src && ... zig test main.zig)`; `1728/1728` passed | PASS |
 | Release build | `(cd src && ... zig build -Doptimize=ReleaseSmall)`; exit 0 | PASS |
-| Full regression | `./src/build/test/run_tests.sh`; harness `53/53` passed, overall exit 1 | BLOCKED |
+| Full regression | `./src/build/test/run_tests.sh`; `14/14 steps; 53/53 tests`, exit 0 | PASS |
 | Release smoke | `./src/build/test/run_release_smoke.sh`; all smoke rows passed | PASS |
 | Diff check | `git diff --check`; exit 0 | PASS |
+| ARC inventory / production closure | `check_gc_arc_inventory.sh` and `--post-cutover`; `rows=55 matches=492 unclassified=0 normal_route_matches=0`, `modules=162 forbidden=0` | PASS |
 | Component artifact | parse/embed/new/validate with current wasm-tools; all exit 0 | PASS |
 | Direct runtime gate | existing Do Component gate; exit 0 | PASS |
 | Rust/Wasmtime lifecycle | local-cache rerun, 10 rows; observed counters passed; list/frame runtime counters unavailable | PARTIAL / UNVERIFIED |
@@ -111,10 +112,14 @@ Raw output: `.tmp/task-6-evidence/round3/artifact-guard-strict.log`, exactly
 `artifact-boundary-scan=clean`, `existing-artifact-scan exit=0`,
 `artifact missing or unreadable: .tmp/task-6-evidence/private-pilot/missing-pilot.wat`,
 and `missing-artifact-scan exit=2`. The repository ARC inventory command was
-`bash src/build/test/check_gc_arc_inventory.sh`; raw output is
-`.tmp/task-6-evidence/round2/arc-inventory.log`, with exit `2` and
-`ARC inventory mode=pre_cutover rows=53 matches=490 unclassified=3`.
-This remains the unresolved full-regression blocker.
+`bash src/build/test/check_gc_arc_inventory.sh`; the pre-fix mismatch is retained
+in `.tmp/task-6-evidence/round2/arc-inventory.log` as historical evidence. After
+commit `598f2a0`, the fresh combined output is
+`.tmp/task-6-evidence/round4/arc-inventory-both.log`:
+`pre_cutover rows=55 matches=492 unclassified=0`, followed by
+`post_cutover rows=55 matches=492 unclassified=0 normal_route_matches=0` and
+`GC production dependency closure: modules=162 forbidden=0`. The inventory gate
+is now green; it is no longer a full-regression blocker.
 
 Round 4 documentation note: this strict command and the round3 log supersede
 the earlier fail-open artifact-scan snippet; the initial failed log capture was
@@ -155,7 +160,7 @@ runtime archives. This is environment evidence. Re-running with repository-local
 `ZIG_LOCAL_CACHE_DIR` and `ZIG_GLOBAL_CACHE_DIR` passed; no runtime failure is
 hidden by that retry.
 
-## Regression Failure Classification
+## Historical Regression Failure and Resolution
 
 `run_tests.sh` output ended with `Build Summary: 12/14 steps succeeded (1
 failed); 53/53 tests passed`. The failed integration case was
@@ -169,11 +174,11 @@ unclassified ARC reference: src/build/codegen_component_producer_emitter.zig:58:
 
 Classification: source/inventory gate mismatch, not environment. The new
 production guard intentionally rejects the marker, while the inventory scanner
-requires every matching source reference to be classified. Task 6 does not
-modify `doc/gc_arc_inventory.tsv` or the production emitter; changing only the
-permitted emitter test file would leave the production references unclassified.
-This remains an acceptance concern and is not represented as a green full
-regression result.
+requires every matching source reference to be classified. This historical
+failure was resolved by commit `598f2a0`, which added exact test-oracle
+classifications for the production guard and its test fixture. A fresh scan now
+reports `rows=55 matches=492 unclassified=0`; the full regression is therefore
+green. The original output above remains retained as the pre-fix record.
 
 ## Default Diagnostics and Rollback
 
@@ -231,11 +236,15 @@ added fail-closed ownership-state role and record-topology checks, and changed
 adapter/probe parity to compare all fact fields. The follow-up documentation
 commit synchronized the plan, spec and ledger with `PilotInput.template_wat`.
 
-Post-fix verification passed: pilot `20/20`, owned-record producer `15/15`,
-state-IR map `16/16`, full `zig test main.zig` `1728/1728`, ReleaseSmall build,
-and release smoke. The integration harness still had `53/53` child tests pass
-but exited `1` because the ARC inventory command exited `2`; the current scan
-reports `unclassified=2`. Host list/frame runtime counters remain unavailable
-and therefore unverified. The scoped re-review found no Critical or Important
-finding and no new breakage; generic extra/missing `source_fields` completeness
-remains a Minor residual for future non-direct record routes.
+Post-fix verification at `b130817` passed: pilot `20/20`, owned-record producer
+`15/15`, state-IR map `16/16`, full `zig test main.zig` `1728/1728`, ReleaseSmall
+build, and release smoke. Its integration run still had `53/53` child tests pass
+but exited `1` because the ARC inventory had two unclassified references; that
+is the historical pre-`598f2a0` state. Commit `598f2a0` adds the exact inventory
+classifications, after which the fresh integration harness exits `0` with
+`14/14 steps; 53/53 tests` and the post-cutover scan reports
+`rows=55 matches=492 unclassified=0 normal_route_matches=0`. Host list/frame
+runtime counters remain unavailable and therefore unverified. The scoped
+re-review found no Critical or Important finding and no new breakage; generic
+extra/missing `source_fields` completeness remains a Minor residual for future
+non-direct record routes.

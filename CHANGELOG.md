@@ -1,5 +1,19 @@
 # Changelog
 
+# 2026-09-13 G6.2 shared emitter/state-IR pilot gate refresh:
+  classified the private pilot guard and test-oracle ARC references in
+  `doc/gc_arc_inventory.tsv` (`598f2a0`). Fresh pre-cutover/post-cutover scans
+  report `rows=55 matches=492 unclassified=0`, with post-cutover
+  `normal_route_matches=0` and production dependency closure
+  `modules=162 forbidden=0`. The full harness is green at
+  `14/14 steps; 53/53 tests`, and `zig test main.zig` is `1728/1728`.
+  The single-route shared emitter/state-IR pilot remains private and
+  byte-parity staged; default dispatch and capability inventory are unchanged.
+  Host list/frame runtime counters are unavailable, so the pilot remains
+  `complete-with-residuals`; 12-route migration, generic/arbitrary producers,
+  public ownership syntax, semantic-parity rewrite, and D2 general async remain
+  deferred.
+
 # 2026-09-11 G6.2 private two-list owned-record producer:
   closed the exact `do:g6-2-owned-record-two-list-producer@0.1.0` route behind
   `--p3-async-component`. It admits only

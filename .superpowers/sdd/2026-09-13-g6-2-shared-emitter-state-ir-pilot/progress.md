@@ -85,19 +85,19 @@
 - Ruling: fix round 2 must add explicit null checks for unsupported canonical variants, pin direct record alignment to the measured value independently of mutable shape, expand the GC opcode set, and treat comment delimiters as token boundaries with regressions for coordinated plan mutation and `ref.null;;`/missing opcodes. Cost if wrong: future or adversarial route facts could remain admission/GC fail-open despite current focused parity.
 - Task 5 fix round 2: `2499f02` closes non-direct canonical optional-shape admission, pins direct alignment, adds coordinated mutation regressions, expands GC/reference tokens and semicolon tokenization. Scoped re-review passed all findings with no new P1 or regression. Task 5: complete at `2499f02` (implementation `1d2e4af`, fix rounds `291e635`, `2499f02`).
 
-- Task 6: complete-with-residuals at `44216d0` (`Record G6.2 artifact guard status`); full regression ARC inventory remains BLOCKED and list/frame runtime counters remain unverified.
+- Task 6: complete-with-residuals at `598f2a0` (`Classify G6.2 ARC guard references`); full regression and ARC inventory are green, while list/frame runtime counters remain unverified.
 
 ### Final review fix (`b130817`)
 
 - Commit `b130817` (`Close G6.2 final review findings`) moves template source ownership into the direct route adapter, adds explicit ownership-state role and record payload-topology validation, and upgrades adapter/probe parity to field-level comparison. The shared emitter remains private and the default route remains unchanged.
 - Scoped post-commit re-review found no Critical or Important findings and no new breakage. Minor residuals are limited to completeness checks for extra/missing `source_fields` in future generic record routes; direct pilot admission remains exact.
-- Post-fix verification: pilot `20/20`, owned-record producer `15/15`, state-IR map `16/16`, and full `zig test main.zig` `1728/1728` passed with exit `0`; ReleaseSmall build and release smoke passed. `run_tests.sh` still passed `53/53` child tests but exited `1` on `check_gc_arc_inventory.sh` exit `2` (`unclassified=2`), and host list/frame runtime counters remain unverified.
+- Post-fix verification at this point: pilot `20/20`, owned-record producer `15/15`, state-IR map `16/16`, and full `zig test main.zig` `1728/1728` passed with exit `0`; ReleaseSmall build and release smoke passed. The `run_tests.sh` result below is the pre-`598f2a0` state: `53/53` child tests passed but the command exited `1` on ARC inventory exit `2` (`unclassified=2`). Host list/frame runtime counters remain unverified.
 
 ### Whole-branch hardening and verification
 
 - Commit `59c8624` (`Harden G6.2 shared emitter pilot admission`) removes the production adapter's test-only `mapping_probe` dependency, wires `LifecycleStateIR` into fragment assembly, pins direct route facts/markers/bindings/lifecycle/hash fail-closed, and preserves allocator errors.
 - Scoped re-review accepted all four prior Important findings; no new Critical/Important breakage was found. `mapping_probe` remains test-only.
-- Fresh verification: pilot focused `20/20`, producer filter `195/195`, full `zig test main.zig` `1724/1724`, ReleaseSmall build and release smoke exit `0`. `run_tests.sh` still reports `53/53` harness cases but exits `1` on ARC inventory `exit 2`, `unclassified=3`; host runtime list/frame counters remain unverified.
+- Fresh verification at this hardening revision: pilot focused `20/20`, producer filter `195/195`, full `zig test main.zig` `1724/1724`, ReleaseSmall build and release smoke exit `0`. The `run_tests.sh` result is pre-`598f2a0`: `53/53` harness cases passed but the command exited `1` on ARC inventory exit `2`, `unclassified=3`; host runtime list/frame counters remain unverified.
 
 ### Task 6 review findings and ruling
 
@@ -124,8 +124,8 @@
 ### Task 6 fix round 3 result and ruling
 
 - The artifact guard now checks existence/readability before scanning and handles `rg` status explicitly: `0` is a marker match and fails the gate, `1` is a clean no-match result, and `>=2` is an I/O/error result and fails the gate. The verified private artifact remains `.tmp/task-6-evidence/private-pilot/pilot.wat`; strict round-3 output is `.tmp/task-6-evidence/round3/artifact-guard-strict.log` with `artifact-boundary-scan=clean`, `existing-artifact-scan exit=0`, the missing-artifact diagnostic, and `missing-artifact-scan exit=2`.
-- The ledger, report and spec identify evidence commits `a9ad501` (`Record G6.2 pilot gate evidence`), `4fab935` (`Close G6.2 pilot evidence package`), `4df221b` (`Record G6.2 lifecycle gate status`) and latest revision `44216d0` (`Record G6.2 artifact guard status`).
-- Task 6 is complete-with-residuals: private artifact/rollback evidence is closed, while full regression remains blocked by ARC inventory (`exit 2`, `unclassified=3`) and list/frame runtime counters remain unverified.
+- The ledger, report and spec identify evidence commits `a9ad501` (`Record G6.2 pilot gate evidence`), `4fab935` (`Close G6.2 pilot evidence package`), `4df221b` (`Record G6.2 lifecycle gate status`) and revision `44216d0` (`Record G6.2 artifact guard status`). The subsequent inventory classification revision is `598f2a0` (`Classify G6.2 ARC guard references`).
+- At this revision Task 6 was complete-with-residuals: private artifact/rollback evidence was closed, while full regression remained blocked by ARC inventory (`exit 2`, `unclassified=3`) and list/frame runtime counters remained unverified.
 - Ruling: round 3 is addressed without modifying runner, inventory, production source or route dispatch. Residual gates remain visible and prevent a full-green claim.
 
 ### Task 6 fix round 3 review result and ruling
@@ -135,13 +135,25 @@
 
 ### Task 6 fix round 4 review result and ruling
 
-- Round 4 scoped re-review accepted all findings: the report now presents the strict existence/readability and explicit `rg` status guard; report/spec/progress agree on `complete-with-residuals`, evidence revision `44216d0`, and `.tmp/task-6-evidence/round3/artifact-guard-strict.log`; ARC inventory remains exit 2 with `unclassified=3`, and list/frame runtime counters remain explicitly unverified.
+- Round 4 scoped re-review accepted all findings at the time: the report presented the strict existence/readability and explicit `rg` status guard; report/spec/progress agreed on `complete-with-residuals`, evidence revision `44216d0`, and `.tmp/task-6-evidence/round3/artifact-guard-strict.log`; the then-current ARC inventory was exit 2 with `unclassified=3`, and list/frame runtime counters remained explicitly unverified.
 - No new breakage was found in the documentation-only fix. Task 6 remains complete-with-residuals, not full-green; the deferred 12-route migration, generic/arbitrary producer, public ownership syntax, semantic-parity rewrite and D2 general async remain outside this plan.
 - Ruling: close the Task 6 review loop and proceed to whole-branch review. Cost if wrong: a hidden cross-task regression or stale residual claim would survive into the next phase.
+
+### Inventory classification follow-up (`598f2a0`)
+
+- Commit `598f2a0` adds exact `test_oracle/isolate_test_only` classifications for the
+  G6.2 pilot guard and test fixture references in `doc/gc_arc_inventory.tsv`.
+- Fresh output is recorded in `.tmp/task-6-evidence/round4/arc-inventory-both.log`:
+  pre-cutover `rows=55 matches=492 unclassified=0`; post-cutover
+  `rows=55 matches=492 unclassified=0 normal_route_matches=0`; production
+  dependency closure `modules=162 forbidden=0`.
+- The full harness now exits `0` with `14/14 steps; 53/53 tests`. Task 6 remains
+  complete-with-residuals solely because host list/frame runtime counters are not
+  exposed; the static zero-list/frame evidence and all other gates remain recorded.
 
 ### Ruling: Task 2 marker validation boundary
 
 The map builder receives borrowed route facts but no WAT/template observation. It therefore must reject empty/duplicate marker facts, while actual expected-vs-observed marker byte comparison is a fragment/pilot responsibility and must be tested there. This follows the approved spec's separation between measured route facts and template assembly; cost if wrong: the map filter alone would not catch a changed template marker, so Task 4/5's parity tests are load-bearing and must include that negative case.
 - Task 4: complete at `7143a5e` (implementation `7be594d`, fix `a45c612`, report `7143a5e`).
 - Task 5: complete at `2499f02` (implementation `1d2e4af`, fixes `291e635`, `2499f02`).
-- Task 6: complete-with-residuals at `44216d0` (`Record G6.2 artifact guard status`); full regression ARC inventory remains BLOCKED and list/frame runtime counters remain unverified.
+- Task 6: complete-with-residuals at `598f2a0` (`Classify G6.2 ARC guard references`); full regression and ARC inventory are green, while list/frame runtime counters remain unverified.

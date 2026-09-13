@@ -417,18 +417,18 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
 - Consumes: Tasks 1-5's focused tests and the existing direct route golden/runtime harness.
 - Produces: verified gate evidence, updated status/checklists, and no route promotion.
 
-- [ ] **Step 1: Run all Zig/unit and build gates with current local caches.**
+- [x] **Step 1: Run all Zig/unit and build gates with current local caches.**
 
   Evidence (2026-09-13, Zig 0.16.0): `zig test main.zig` passed `1728/1728`;
-  `zig build -Doptimize=ReleaseSmall` passed; `run_release_smoke.sh` passed;
-  and `git diff --check` passed. `run_tests.sh` ran its `53/53` harness tests but
-  exited `1` because `check_gc_arc_inventory.sh` exited `2` on unclassified
-  `__arc_` references in the new pilot emitter guard and negative test fixture
-  (`src/build/codegen_component_producer_emitter.zig:61` and
-  `src/build/codegen_component_producer_emitter_test.zig:172`). This is a
-  source/inventory gate mismatch, not an environment failure; the failed output
-  is retained in `task-6-report.md`. No source change is made in Task 6 because
-  changing only the permitted test file would not classify the production guard.
+  `zig build -Doptimize=ReleaseSmall`, `run_tests.sh` (`14/14 steps; 53/53
+  tests`) and `run_release_smoke.sh` all passed; `git diff --check` passed.
+  The ARC inventory was then corrected in commit `598f2a0` by classifying the
+  pilot guard and test-oracle references. The current inventory is
+  `rows=55 matches=492 unclassified=0`; post-cutover also reports
+  `normal_route_matches=0` and the production dependency closure reports
+  `modules=162 forbidden=0`. The earlier inventory mismatch is retained as
+  historical evidence in `task-6-report.md`, but it is no longer an active
+  repository gate failure.
 
   ```bash
   (cd src && TMPDIR="$PWD/../.tmp/do-tmp" ZIG_LOCAL_CACHE_DIR="$PWD/../.tmp/zig-cache" ZIG_GLOBAL_CACHE_DIR="$PWD/../.tmp/zig-gcache" zig test main.zig)
@@ -440,13 +440,14 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
 
   Record expected/actual counts, exit status and cache/tool versions; preserve any failed command and classify it as environment or source evidence before continuing.
 
-  Final-fix follow-up (`b130817 Close G6.2 final review findings`) re-ran the
-  focused pilot (`20/20`), owned-record producer (`15/15`), state-IR map
-  (`16/16`), and full Zig suite (`1728/1728`) with exit `0`. The integration
-  harness was also rerun: its `53/53` child tests passed, but the overall exit
-  remained `1` because `check_gc_arc_inventory.sh` returned `2` for two
-  intentionally unclassified `__arc_` guard/test references. This does not
-  close the repository inventory gate.
+  Final-fix follow-up (`b130817 Close G6.2 final review findings`) and the
+  inventory classification fix (`598f2a0 Classify G6.2 ARC guard references`)
+  re-ran the focused pilot (`20/20`), owned-record producer (`15/15`), state-IR
+  map (`16/16`), and full Zig suite (`1728/1728`) with exit `0`. The
+  integration harness now exits `0` with `14/14 steps; 53/53 tests`; both
+  pre-cutover and post-cutover inventory scans are fully classified. Step 3
+  remains unchecked because the host runner still exposes no list/frame runtime
+  counters.
 
 - [x] **Step 2: Run current-toolchain Component/WIT artifact gates.**
 

@@ -1,6 +1,6 @@
 # 待处理与阻断清单
 
-更新时间: 2026-09-11
+更新时间: 2026-09-13
 基线: 默认回归由 `./src/build/test/run_tests.sh` 薄入口转发到 Zig harness
 关系: 总规划 `doc/master_plan.md`; 接手 `doc/start_here.md`; 执行状态 `doc/roadmap_status.md`
 约定: **只记未关闭项**; 完成后从本文件删除或移入「已关闭摘要」, 并同步入口文档与 `CHANGELOG.md`。
@@ -10,6 +10,21 @@
 > Wasm GC 为 v1 managed-memory target。Task 6 已将普通编译入口切换为 GC-only；
 > ARC 只保留为显式 test-only equivalence oracle。下文只记录仍未关闭的能力缺口；
 > Component/WIT resource 的 ownership 与 drop 继续是显式 ABI contract, 不由 GC 接管。
+
+### G6.2 shared emitter/state-IR private pilot (阶段完成, runtime residual)
+
+单 route private pilot 的 artifact、default-route byte parity、rollback 与
+repository inventory gate 已完成。`598f2a0` 为 pilot guard/test-oracle 的
+`__arc_` 引用补充精确账本分类；fresh ARC scan 为
+`rows=55 matches=492 unclassified=0`，post-cutover
+`normal_route_matches=0`，生产依赖闭包为 `modules=162 forbidden=0`；
+`zig test main.zig` 为 `1728/1728`，薄入口为 `14/14 steps; 53/53 tests`。
+
+该 pilot 仍保持 private、byte-parity staged，默认 dispatch 与能力矩阵不变。
+现有 Rust/Wasmtime host runner 没有 list/frame runtime counters，因此该子门禁
+保持 `unverified`，整体按 `complete-with-residuals` 记录；12-route migration、
+generic/arbitrary producer、public ownership syntax、semantic-parity rewrite
+和 D2 general async 仍是下方独立 pending 项。
 
 ### GC-first runtime cutover (已关闭, 2026-09-09)
 
