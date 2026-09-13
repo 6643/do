@@ -16,6 +16,7 @@ const direct_payload_start: u32 = 4086;
 const direct_lifecycle_start: u32 = 4491;
 const direct_metadata_start: u32 = 6364;
 const direct_suffix_start: u32 = 15517;
+const direct_descriptor_hash = "6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace";
 const direct_fragment_markers = [_][]const u8{
     "[producer-record-byte-size] 4",
     "[producer-record-ticket-offset] 0",
@@ -163,6 +164,7 @@ pub fn emit_component_wat(allocator: std.mem.Allocator, plan: OwnedRecordStreamP
 /// Private-by-convention pilot entry. The default producer route intentionally
 /// remains on emit_component_wat until a separate promotion decision.
 pub fn emit_component_wat_pilot(allocator: std.mem.Allocator, plan: OwnedRecordStreamProducerPlan) pilot_emitter.PilotError![]u8 {
+    validate_direct_plan(plan) catch return error.InvalidAdmission;
     const measured = mapping_probe.fact_for_route("owned-record-direct") orelse return error.InvalidAdmission;
     var frame_facts: producer_facts.RouteFrameFacts = measured.*;
     frame_facts.descriptor_id = plan.contract.descriptor_id;
@@ -174,10 +176,178 @@ pub fn emit_component_wat_pilot(allocator: std.mem.Allocator, plan: OwnedRecordS
             .frame_facts = frame_facts,
             .fragments = &direct_fragments,
             .golden_wat = canonical_core_wat,
-            .template_wat = canonical_core_wat,
         },
         .canonical_wit_hash = plan.contract.descriptor_hash orelse "",
     });
+}
+
+fn validate_direct_plan(plan: OwnedRecordStreamProducerPlan) pilot_emitter.PilotError!void {
+    if (!std.mem.eql(u8, plan.descriptor.locator, "do:g6-2-owned-record-producer@0.1.0") or
+        !std.mem.eql(u8, plan.descriptor.member, "consume-via-stream") or
+        !std.mem.eql(u8, plan.descriptor.effect, "record-resource-stream-producer") or
+        !same_string_list(plan.descriptor.params, &.{"stream<resource-entry>"}) or
+        !std.mem.eql(u8, plan.descriptor.result, "Result<nil,error-code>") or
+        plan.descriptor.resource != null or plan.descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, plan.descriptor.wit_sha256.?, direct_descriptor_hash) or
+        !std.mem.eql(u8, plan.descriptor.wit.package, "do:g6-2-owned-record-producer@0.1.0") or
+        !std.mem.eql(u8, plan.descriptor.wit.interface, "sink") or
+        !std.mem.eql(u8, plan.descriptor.wit.operation, "consume-via-stream") or
+        !std.mem.eql(u8, plan.descriptor.wit.world, "owned-record-producer") or
+        !std.mem.eql(u8, plan.descriptor.wit.parameter, "data") or
+        !same_string_list(plan.descriptor.canonical.core_params, &.{ "i32", "i32" }) or
+        !same_string_list(plan.descriptor.canonical.core_results, &.{"i32"}) or
+        !same_string_list(plan.descriptor.canonical.completion_params, &.{ "i32", "i32" }) or
+        !std.mem.eql(u8, plan.descriptor.canonical.completion, "task-return") or
+        !std.mem.eql(u8, plan.descriptor.canonical.async_import_module, "do:g6-2-owned-record-producer/sink@0.1.0") or
+        !std.mem.eql(u8, plan.descriptor.canonical.async_import_name, "[async-lower]consume-via-stream"))
+    {
+        return error.InvalidAdmission;
+    }
+
+    const shape = switch (p3_async_manifest.lowering_shape(plan.descriptor) orelse return error.InvalidAdmission) {
+        .owned_record_stream_producer => |value| value,
+        else => return error.InvalidAdmission,
+    };
+    if (!record_layout_equal(plan.layout, shape.record_layout) or
+        !producer_equal(plan.producer, shape.producer) or
+        !record_layout_equal(plan.descriptor.canonical.record_layout orelse return error.InvalidAdmission, shape.record_layout) or
+        !producer_equal(plan.descriptor.canonical.producer orelse return error.InvalidAdmission, shape.producer) or
+        !stream_equal(plan.descriptor.canonical.stream orelse return error.InvalidAdmission, shape.stream) or
+        !std.mem.eql(u8, plan.source_host_name, "make_ticket") or
+        !std.mem.eql(u8, plan.sink_host_name, "consume") or
+        !std.mem.eql(u8, plan.ticket_type_name, "Ticket") or
+        !std.mem.eql(u8, plan.record_type_name, "ResourceEntry") or
+        !std.mem.eql(u8, plan.error_type_name, "ProducerError") or
+        !std.mem.eql(u8, plan.root_name, "produce") or
+        !std.mem.eql(u8, plan.mode_name, "mode"))
+    {
+        return error.InvalidAdmission;
+    }
+    const expected_contract = producer_contract.producer_contract_from_shape(
+        plan.descriptor,
+        .{ .owned_record_stream_producer = shape },
+    ) catch return error.InvalidAdmission;
+    if (!contract_equal(plan.contract, expected_contract)) return error.InvalidAdmission;
+}
+
+fn record_layout_equal(left: p3_async_manifest.RecordLayout, right: p3_async_manifest.RecordLayout) bool {
+    if (!std.mem.eql(u8, left.name, right.name) or left.byte_size != right.byte_size or left.alignment != right.alignment or
+        left.fields.len != right.fields.len or left.source_fields.len != right.source_fields.len) return false;
+    for (left.fields, right.fields) |a, b| {
+        if (!std.mem.eql(u8, a.name, b.name) or !std.mem.eql(u8, a.core_type, b.core_type) or a.offset != b.offset) return false;
+    }
+    for (left.source_fields, right.source_fields) |a, b| {
+        if (!source_field_equal(a, b)) return false;
+    }
+    return true;
+}
+
+fn source_field_equal(left: p3_async_manifest.RecordSourceField, right: p3_async_manifest.RecordSourceField) bool {
+    return std.mem.eql(u8, left.name, right.name) and std.mem.eql(u8, left.source_type, right.source_type) and
+        same_string_list(left.storage, right.storage) and left.ownership == right.ownership and
+        same_optional(left.resource, right.resource) and same_optional(left.drop_import, right.drop_import) and
+        left.nested_fields.len == right.nested_fields.len;
+}
+
+fn producer_equal(left: p3_async_manifest.ProducerCanonical, right: p3_async_manifest.ProducerCanonical) bool {
+    return std.mem.eql(u8, left.source_module, right.source_module) and
+        std.mem.eql(u8, left.source_import_name, right.source_import_name) and
+        same_string_list(left.source_core_params, right.source_core_params) and
+        same_string_list(left.source_core_results, right.source_core_results) and
+        std.mem.eql(u8, left.resource_drop_import, right.resource_drop_import) and
+        left.stream_capacity == right.stream_capacity and std.mem.eql(u8, left.terminal, right.terminal) and
+        same_optional(left.runtime_count_param, right.runtime_count_param) and left.runtime_max == right.runtime_max and
+        same_optional(left.runtime_mode_param, right.runtime_mode_param) and left.batch_count == right.batch_count and
+        same_optional_u32_slice(left.batch_lengths, right.batch_lengths);
+}
+
+fn stream_equal(left: p3_async_manifest.StreamCanonical, right: p3_async_manifest.StreamCanonical) bool {
+    return std.mem.eql(u8, left.element, right.element) and operation_equal(left.new, right.new) and
+        operation_equal(left.cancel_read, right.cancel_read) and operation_equal(left.cancel_write, right.cancel_write) and
+        operation_equal(left.drop_readable, right.drop_readable) and operation_equal(left.drop_writable, right.drop_writable) and
+        operation_equal(left.read, right.read) and operation_equal(left.write, right.write);
+}
+
+fn operation_equal(left: p3_async_manifest.StreamOperation, right: p3_async_manifest.StreamOperation) bool {
+    return std.mem.eql(u8, left.import_name, right.import_name) and
+        same_string_list(left.core_params, right.core_params) and same_string_list(left.core_results, right.core_results);
+}
+
+fn contract_equal(left: producer_contract.ProducerContract, right: producer_contract.ProducerContract) bool {
+    if (!std.mem.eql(u8, left.descriptor_id, right.descriptor_id) or !same_optional(left.descriptor_hash, right.descriptor_hash) or
+        !std.mem.eql(u8, left.source.module, right.source.module) or !std.mem.eql(u8, left.source.import_name, right.source.import_name) or
+        !same_string_list(left.source.core_params, right.source.core_params) or !same_string_list(left.source.core_results, right.source.core_results) or
+        !std.mem.eql(u8, left.sink.module, right.sink.module) or !std.mem.eql(u8, left.sink.member, right.sink.member) or
+        left.sink.capacity != right.sink.capacity or !std.mem.eql(u8, left.sink.read_import, right.sink.read_import) or
+        !std.mem.eql(u8, left.sink.write_import, right.sink.write_import) or !std.mem.eql(u8, left.sink.drop_import, right.sink.drop_import) or
+        !payload_equal(left.payload, right.payload) or !ownership_equal(left.ownership, right.ownership) or
+        !terminal_equal(left.terminal, right.terminal) or !same_optional(left.runtime_count_param, right.runtime_count_param) or
+        left.runtime_max != right.runtime_max or !same_optional(left.runtime_mode_param, right.runtime_mode_param) or
+        left.batch_count != right.batch_count or !same_u32_slice(left.batch_lengths, right.batch_lengths) or
+        left.list_allocations.len != right.list_allocations.len or !same_string_list(left.producer_core_params, right.producer_core_params) or
+        !same_string_list(left.producer_core_results, right.producer_core_results) or !same_optional(left.left_seed_param, right.left_seed_param) or
+        !same_optional(left.right_seed_param, right.right_seed_param)) return false;
+    for (left.list_allocations, right.list_allocations) |a, b| {
+        if (!same_string_list(a.path, b.path) or !std.mem.eql(u8, a.element_core_type, b.element_core_type) or
+            a.pointer_offset != b.pointer_offset or a.length_offset != b.length_offset or a.element_stride != b.element_stride or
+            a.max_items != b.max_items or !std.mem.eql(u8, a.release_import, b.release_import)) return false;
+    }
+    return true;
+}
+
+fn payload_equal(left: producer_contract.PayloadLayout, right: producer_contract.PayloadLayout) bool {
+    return switch (left) {
+        .record => |a| switch (right) {
+            .record => |b| record_layout_equal(a, b),
+            else => false,
+        },
+        .scalar => |a| switch (right) {
+            .scalar => |b| std.mem.eql(u8, a.core_type, b.core_type) and a.byte_size == b.byte_size and a.alignment == b.alignment,
+            else => false,
+        },
+        .list => |a| switch (right) {
+            .list => |b| a.pointer_offset == b.pointer_offset and a.length_offset == b.length_offset and a.element_stride == b.element_stride and a.max_items == b.max_items,
+            else => false,
+        },
+    };
+}
+
+fn ownership_equal(left: producer_contract.OwnershipTransferPlan, right: producer_contract.OwnershipTransferPlan) bool {
+    if (left.complete_write_required != right.complete_write_required or left.pre_transfer_reverse_order != right.pre_transfer_reverse_order or
+        left.leaves.len != right.leaves.len or left.parents.len != right.parents.len) return false;
+    for (left.leaves, right.leaves) |a, b| {
+        if (!same_string_list(a.path, b.path) or !std.mem.eql(u8, a.resource, b.resource) or a.handle_offset != b.handle_offset or
+            !std.mem.eql(u8, a.drop_import, b.drop_import) or a.bit != b.bit or a.absence_sentinel != b.absence_sentinel) return false;
+    }
+    for (left.parents, right.parents) |a, b| if (!same_string_list(a.path, b.path) or a.bit != b.bit) return false;
+    return true;
+}
+
+fn terminal_equal(left: producer_contract.TerminalContract, right: producer_contract.TerminalContract) bool {
+    if (!std.mem.eql(u8, left.close_action, right.close_action) or !same_optional(left.abort_action, right.abort_action) or
+        !std.mem.eql(u8, left.cancel_action, right.cancel_action) or left.cleanup_order.len != right.cleanup_order.len) return false;
+    for (left.cleanup_order, right.cleanup_order) |a, b| if (a != b) return false;
+    return true;
+}
+
+fn same_string_list(left: []const []const u8, right: []const []const u8) bool {
+    if (left.len != right.len) return false;
+    for (left, right) |a, b| if (!std.mem.eql(u8, a, b)) return false;
+    return true;
+}
+
+fn same_optional(left: ?[]const u8, right: ?[]const u8) bool {
+    if (left == null or right == null) return left == null and right == null;
+    return std.mem.eql(u8, left.?, right.?);
+}
+
+fn same_u32_slice(left: []const u32, right: []const u32) bool {
+    return std.mem.eql(u32, left, right);
+}
+
+fn same_optional_u32_slice(left: ?[]const u32, right: ?[]const u32) bool {
+    if (left == null or right == null) return left == null and right == null;
+    return same_u32_slice(left.?, right.?);
 }
 
 pub fn emit_component_wat_for_tokens(allocator: std.mem.Allocator, tokens: []const lexer.Token) ![]u8 {

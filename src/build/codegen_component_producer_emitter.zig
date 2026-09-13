@@ -4,6 +4,8 @@ const fragments = @import("codegen_component_producer_fragments.zig");
 const producer_contract = @import("codegen_component_producer_contract.zig");
 const state_ir = @import("codegen_component_producer_state_ir.zig");
 
+const canonical_template_wat: []const u8 = @embedFile("owned_record_stream_producer_template.wat");
+
 pub const PilotError = error{
     InvalidAdmission,
     InvalidIdentity,
@@ -23,10 +25,6 @@ pub const PilotFacts = struct {
     frame_facts: facts.RouteFrameFacts,
     fragments: []const fragments.Fragment,
     golden_wat: []const u8,
-    /// The immutable fragment source. A blank value preserves the compact
-    /// standalone API by treating golden_wat as the source for callers that
-    /// do not need an independent parity oracle.
-    template_wat: []const u8 = "",
 };
 
 pub const PilotInput = struct {
@@ -51,14 +49,16 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
     }) catch return error.InvalidMap;
     const lifecycle = state_ir.build_lifecycle_ir(input.facts.contract, map) catch return error.InvalidLifecycle;
 
-    const template_wat = if (input.facts.template_wat.len == 0) input.facts.golden_wat else input.facts.template_wat;
-    fragments.validate_fragment_table(template_wat, input.facts.fragments) catch return error.InvalidFragments;
-    const assembled = fragments.assemble(allocator, template_wat, input.facts.fragments) catch return error.InvalidFragments;
+    fragments.validate_fragment_table(canonical_template_wat, input.facts.fragments) catch return error.InvalidFragments;
+    const assembled = fragments.assemble(allocator, canonical_template_wat, input.facts.fragments) catch return error.InvalidFragments;
     errdefer allocator.free(assembled);
 
     _ = lifecycle;
-    if (std.mem.indexOf(u8, assembled, "__arc_") != null) return error.ArcRuntimeMarker;
-    if (contains_canonical_gc_reference(assembled)) return error.CanonicalGcReference;
+    if (std.mem.indexOf(u8, assembled, "__arc_") != null or
+        std.mem.indexOf(u8, input.facts.golden_wat, "__arc_") != null) return error.ArcRuntimeMarker;
+    if (contains_canonical_gc_reference(assembled) or contains_canonical_gc_reference(input.facts.golden_wat)) {
+        return error.CanonicalGcReference;
+    }
     if (!std.mem.eql(u8, assembled, input.facts.golden_wat)) return error.ByteParityMismatch;
 
     return assembled;
@@ -133,15 +133,90 @@ fn same_string_list(left: []const []const u8, right: []const []const u8) bool {
 }
 
 fn contains_canonical_gc_reference(wat: []const u8) bool {
+    var index: usize = 0;
+    var block_comment_depth: usize = 0;
+    var line_comment = false;
+    var string = false;
+    var escaped = false;
+    var open_paren = false;
+    while (index < wat.len) {
+        if (line_comment) {
+            if (wat[index] == '\n') line_comment = false;
+            index += 1;
+            continue;
+        }
+        if (block_comment_depth != 0) {
+            if (index + 1 < wat.len and wat[index] == '(' and wat[index + 1] == ';') {
+                block_comment_depth += 1;
+                index += 2;
+            } else if (index + 1 < wat.len and wat[index] == ';' and wat[index + 1] == ')') {
+                block_comment_depth -= 1;
+                index += 2;
+            } else {
+                index += 1;
+            }
+            continue;
+        }
+        if (string) {
+            if (escaped) {
+                escaped = false;
+            } else if (wat[index] == '\\') {
+                escaped = true;
+            } else if (wat[index] == '"') {
+                string = false;
+            }
+            index += 1;
+            continue;
+        }
+        if (index + 1 < wat.len and wat[index] == ';' and wat[index + 1] == ';') {
+            line_comment = true;
+            index += 2;
+            continue;
+        }
+        if (index + 1 < wat.len and wat[index] == '(' and wat[index + 1] == ';') {
+            block_comment_depth = 1;
+            index += 2;
+            continue;
+        }
+        if (wat[index] == '"') {
+            string = true;
+            index += 1;
+            continue;
+        }
+        if (wat[index] == '(') {
+            open_paren = true;
+            index += 1;
+            continue;
+        }
+        if (wat[index] == ')') {
+            open_paren = false;
+            index += 1;
+            continue;
+        }
+        if (std.ascii.isWhitespace(wat[index])) {
+            index += 1;
+            continue;
+        }
+        const start = index;
+        while (index < wat.len and !std.ascii.isWhitespace(wat[index]) and wat[index] != '(' and wat[index] != ')' and wat[index] != '"') {
+            index += 1;
+        }
+        const token = wat[start..index];
+        if ((open_paren and std.mem.eql(u8, token, "ref")) or is_gc_token(token)) return true;
+        open_paren = false;
+    }
+    return false;
+}
+
+fn is_gc_token(token: []const u8) bool {
     const gc_tokens = [_][]const u8{
-        "(ref",
-        "externref",
-        "anyref",
-        "eqref",
-        "funcref",
-        "structref",
-        "arrayref",
+        "externref",    "anyref",          "eqref",          "funcref",    "i31ref",            "structref",          "arrayref",
+        "i31.new",      "i31.get_s",       "i31.get_u",      "ref.i31",    "ref.null",          "ref.is_null",        "ref.func",
+        "ref.eq",       "ref.as_non_null", "ref.cast",       "ref.test",   "struct.new",        "struct.new_default", "struct.get",
+        "struct.get_s", "struct.get_u",    "struct.set",     "array.new",  "array.new_default", "array.new_fixed",    "array.get",
+        "array.get_s",  "array.get_u",     "array.set",      "array.len",  "array.copy",        "any.convert_extern", "extern.convert_any",
+        "br_on_cast",   "br_on_cast_fail", "br_on_non_null", "br_on_null",
     };
-    for (gc_tokens) |token| if (std.mem.indexOf(u8, wat, token) != null) return true;
+    for (gc_tokens) |gc_token| if (std.mem.eql(u8, token, gc_token)) return true;
     return false;
 }

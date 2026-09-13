@@ -74,7 +74,6 @@ fn pilot_input(plan: producer.OwnedRecordStreamProducerPlan) emitter.PilotInput 
             .frame_facts = frame_facts,
             .fragments = &direct_fragments,
             .golden_wat = direct_template,
-            .template_wat = direct_template,
         },
         .canonical_wit_hash = plan.contract.descriptor_hash orelse "",
     };
@@ -162,7 +161,7 @@ test "producer shared emitter pilot rejects ARC runtime markers" {
     var changed = try std.testing.allocator.dupe(u8, direct_template);
     defer std.testing.allocator.free(changed);
     std.mem.copyForwards(u8, changed[0..6], "__arc_");
-    input.facts.template_wat = changed;
+    input.facts.golden_wat = changed;
     try std.testing.expectError(error.ArcRuntimeMarker, emitter.emit_pilot_wat(std.testing.allocator, input));
 }
 
@@ -174,8 +173,50 @@ test "producer shared emitter pilot rejects a canonical boundary GC reference" {
     var changed = try std.testing.allocator.dupe(u8, direct_template);
     defer std.testing.allocator.free(changed);
     std.mem.copyForwards(u8, changed[0..9], "(ref null");
-    input.facts.template_wat = changed;
+    input.facts.golden_wat = changed;
     try std.testing.expectError(error.CanonicalGcReference, emitter.emit_pilot_wat(std.testing.allocator, input));
+}
+
+test "producer shared emitter pilot rejects GC opcodes and types but ignores plain text" {
+    var context = try PlanContext.init();
+    defer context.deinit();
+    const plan = context.plan;
+    const gc_tokens = [_][]const u8{
+        "ref.null",
+        "i31ref",
+        "i31.new",
+        "i31.get_s",
+        "i31.get_u",
+        "ref.i31",
+        "ref.cast",
+        "ref.is_null",
+        "(ref null $ticket)",
+        "struct.new",
+        "struct.get_s",
+        "struct.get_u",
+        "array.new",
+        "array.new_fixed",
+        "array.get_s",
+        "array.get_u",
+        "br_on_cast",
+    };
+    for (gc_tokens) |token| {
+        var changed = try std.testing.allocator.dupe(u8, direct_template);
+        defer std.testing.allocator.free(changed);
+        std.mem.copyForwards(u8, changed[0..token.len], token);
+        changed[token.len] = '\n';
+        var input = pilot_input(plan);
+        input.facts.golden_wat = changed;
+        try std.testing.expectError(error.CanonicalGcReference, emitter.emit_pilot_wat(std.testing.allocator, input));
+    }
+
+    var plain_text = try std.testing.allocator.dupe(u8, direct_template);
+    defer std.testing.allocator.free(plain_text);
+    const comment = ";; ref.null is ordinary text\n";
+    std.mem.copyForwards(u8, plain_text[0..comment.len], comment);
+    var input = pilot_input(plan);
+    input.facts.golden_wat = plain_text;
+    try std.testing.expectError(error.ByteParityMismatch, emitter.emit_pilot_wat(std.testing.allocator, input));
 }
 
 test "producer shared emitter pilot adapter rejects non-direct source and sink shapes" {
@@ -188,5 +229,47 @@ test "producer shared emitter pilot adapter rejects non-direct source and sink s
 
     changed = plan;
     changed.contract.sink.member = "other";
+    try std.testing.expectError(error.InvalidAdmission, producer.emit_component_wat_pilot(std.testing.allocator, changed));
+}
+
+test "producer shared emitter pilot adapter rejects mutated measured plan facts" {
+    var context = try PlanContext.init();
+    defer context.deinit();
+    const plan = context.plan;
+
+    var changed = plan;
+    changed.descriptor.wit.world = "other";
+    try std.testing.expectError(error.InvalidAdmission, producer.emit_component_wat_pilot(std.testing.allocator, changed));
+
+    changed = plan;
+    changed.layout.alignment = 8;
+    try std.testing.expectError(error.InvalidAdmission, producer.emit_component_wat_pilot(std.testing.allocator, changed));
+
+    changed = plan;
+    changed.producer.stream_capacity = 2;
+    try std.testing.expectError(error.InvalidAdmission, producer.emit_component_wat_pilot(std.testing.allocator, changed));
+
+    changed = plan;
+    changed.producer.terminal = "other";
+    try std.testing.expectError(error.InvalidAdmission, producer.emit_component_wat_pilot(std.testing.allocator, changed));
+
+    changed = plan;
+    changed.contract.terminal.close_action = "other";
+    try std.testing.expectError(error.InvalidAdmission, producer.emit_component_wat_pilot(std.testing.allocator, changed));
+
+    changed = plan;
+    var source_fields = [_]p3_async_manifest.RecordSourceField{changed.layout.source_fields[0]};
+    source_fields[0].storage = &.{"other"};
+    changed.layout.source_fields = &source_fields;
+    try std.testing.expectError(error.InvalidAdmission, producer.emit_component_wat_pilot(std.testing.allocator, changed));
+
+    changed = plan;
+    var leaves = [_]@TypeOf(changed.contract.ownership.leaves[0]){changed.contract.ownership.leaves[0]};
+    leaves[0].absence_sentinel = 1;
+    changed.contract.ownership.leaves = &leaves;
+    try std.testing.expectError(error.InvalidAdmission, producer.emit_component_wat_pilot(std.testing.allocator, changed));
+
+    changed = plan;
+    changed.contract.producer_core_params = &.{"i32"};
     try std.testing.expectError(error.InvalidAdmission, producer.emit_component_wat_pilot(std.testing.allocator, changed));
 }
