@@ -34,6 +34,15 @@ const MatrixScenario = enum {
     incomplete_groups,
 };
 
+const ExpectedField = struct { name: []const u8, offset: u32 };
+const ExpectedAllocation = struct {
+    path: []const []const u8,
+    pointer_offset: u32,
+    length_offset: u32,
+    element_stride: u32,
+    max_items: u32,
+};
+
 const frame_facts = [_]mapping_probe.FrameFact{
     .{ .name = "result", .offset = 0, .width = 4, .alignment = 4, .role = .result_tag },
 };
@@ -567,6 +576,7 @@ fn run_checked_in_matrix(scenario: MatrixScenario) !void {
         };
         const report = try probe.validate_program(shell);
         try std.testing.expectEqualStrings(identity.route_id, report.route_id);
+        try assert_checked_in_route_facts(identity.route_id, contract, mapping.*, report);
 
         switch (scenario) {
             .success => try assert_success_trace(report, contract, mapping.*),
@@ -781,9 +791,207 @@ fn assert_post_transfer_cancel(
     const observation = try probe.run(lifecycle_program(report.route_id, contract, mapping, trace));
     const model = try probe.derive_model_for_test(lifecycle_program(report.route_id, contract, mapping, &.{}));
     const counts = disposition_counts(model);
+    if (counts.resources != 0) {
+        try assert_post_transfer_cancel_rejects_guest_release(report, contract, mapping);
+    }
     try std.testing.expectEqual(counts.resources, observation.transferred_count);
     try std.testing.expectEqual(counts.list_backing, observation.released_count);
     try std.testing.expectEqual(probe.TerminalState.completed, observation.terminal_state);
+}
+
+fn assert_post_transfer_cancel_rejects_guest_release(
+    report: probe.ProgramReport,
+    contract: producer_contract.ProducerContract,
+    mapping: mapping_probe.TemplateFact,
+) !void {
+    var events: [256]probe.LifecycleEvent = undefined;
+    var length: usize = 0;
+    try append_acquire_all(&events, &length, report);
+    try append_complete_and_transfer_all(&events, &length, report);
+    try append_event(&events, &length, .{ .cancel = {} });
+    try append_event(&events, &length, .{ .release = .{ .group_index = 0, .asset_index = 0 } });
+    try append_cleanup_and_terminal(&events, &length, contract);
+    try std.testing.expectError(
+        error.GuestReleaseAfterTransfer,
+        probe.run(lifecycle_program(report.route_id, contract, mapping, events[0..length])),
+    );
+}
+
+fn assert_checked_in_route_facts(
+    route_id: []const u8,
+    contract: producer_contract.ProducerContract,
+    mapping: mapping_probe.TemplateFact,
+    report: probe.ProgramReport,
+) !void {
+    const expected_cleanup = [_]producer_contract.CleanupStage{ .resource, .list, .stream, .future, .subtask, .waitable, .frame };
+    try std.testing.expectEqualSlices(producer_contract.CleanupStage, &expected_cleanup, contract.terminal.cleanup_order);
+
+    if (std.mem.eql(u8, route_id, "owned-record-direct")) {
+        try expect_report(report, 1, 1, 1);
+        try expect_mapping(mapping, "resource-or-list", .scalar, 1, 2, 3, &.{"ticket"});
+        try expect_record(contract, "resource-entry", 4, &.{.{ .name = "ticket", .offset = 0 }});
+        try expect_owned_paths(contract, &.{&.{"ticket"}}, &.{});
+    } else if (std.mem.eql(u8, route_id, "owned-record-list")) {
+        try expect_report(report, 1, 2, 2);
+        try expect_mapping(mapping, "resource-or-list", .scalar, 1, 2, 3, &.{"record-entry"});
+        try expect_record(contract, "list-entry", 12, &.{ .{ .name = "values", .offset = 0 }, .{ .name = "ticket", .offset = 8 } });
+        try expect_owned_paths(contract, &.{&.{"ticket"}}, &.{});
+        try expect_list_allocations(contract, &.{.{ .path = &.{"values"}, .pointer_offset = 0, .length_offset = 4, .element_stride = 4, .max_items = 3 }});
+    } else if (std.mem.eql(u8, route_id, "owned-record-two-list")) {
+        try expect_report(report, 1, 3, 3);
+        try expect_mapping(mapping, "resource-or-list", .scalar, 1, 2, 3, &.{"two-list-entry"});
+        try expect_record(contract, "two-list-entry", 20, &.{ .{ .name = "first", .offset = 0 }, .{ .name = "second", .offset = 8 }, .{ .name = "ticket", .offset = 16 } });
+        try expect_owned_paths(contract, &.{&.{"ticket"}}, &.{});
+        try expect_list_allocations(contract, &.{ .{ .path = &.{"first"}, .pointer_offset = 0, .length_offset = 4, .element_stride = 4, .max_items = 3 }, .{ .path = &.{"second"}, .pointer_offset = 8, .length_offset = 12, .element_stride = 4, .max_items = 3 } });
+    } else if (std.mem.eql(u8, route_id, "owned-record-pair")) {
+        try expect_report(report, 1, 2, 2);
+        try expect_mapping(mapping, "resource-pair", .mask, 3, 4, 0, &.{ "left", "right" });
+        try expect_record(contract, "resource-pair", 8, &.{ .{ .name = "left", .offset = 0 }, .{ .name = "right", .offset = 4 } });
+        try expect_owned_paths(contract, &.{ &.{"left"}, &.{"right"} }, &.{});
+    } else if (std.mem.eql(u8, route_id, "owned-record-triple")) {
+        try expect_report(report, 1, 3, 3);
+        try expect_mapping(mapping, "resource-triple", .mask, 7, 8, 0, &.{ "left", "middle", "right" });
+        try expect_record(contract, "resource-triple", 12, &.{ .{ .name = "left", .offset = 0 }, .{ .name = "middle", .offset = 4 }, .{ .name = "right", .offset = 8 } });
+        try expect_owned_paths(contract, &.{ &.{"left"}, &.{"middle"}, &.{"right"} }, &.{});
+    } else if (std.mem.eql(u8, route_id, "owned-record-nested")) {
+        try expect_report(report, 1, 1, 1);
+        try expect_mapping(mapping, "nested-inner-ticket", .mask, 1, 2, 0, &.{"ticket"});
+        try expect_record(contract, "outer", 4, &.{.{ .name = "ticket", .offset = 0 }});
+        try expect_owned_paths(contract, &.{&.{ "inner", "ticket" }}, &.{&.{"inner"}});
+        try std.testing.expectEqual(@as(u8, 0), contract.ownership.leaves[0].bit);
+        try std.testing.expectEqual(@as(u8, 1), contract.ownership.parents[0].bit);
+    } else if (std.mem.eql(u8, route_id, "owned-record-mixed")) {
+        try expect_report(report, 1, 1, 1);
+        try expect_mapping(mapping, "resource-or-list", .scalar, 1, 2, 3, &.{ "left", "right" });
+        try expect_record(contract, "mixed-entry", 8, &.{ .{ .name = "code", .offset = 0 }, .{ .name = "ticket", .offset = 4 } });
+        try expect_owned_paths(contract, &.{&.{"ticket"}}, &.{});
+        const record = record_layout(contract);
+        try std.testing.expectEqual(p3_async_manifest.RecordOwnership.none, record.source_fields[0].ownership);
+        try std.testing.expect(record.source_fields[0].resource == null);
+        try std.testing.expectEqual(p3_async_manifest.RecordOwnership.own, record.source_fields[1].ownership);
+    } else if (std.mem.eql(u8, route_id, "owned-record-parameterized-pair")) {
+        try expect_report(report, 1, 2, 2);
+        try expect_mapping(mapping, "resource-pair", .mask, 3, 4, 0, &.{ "left", "right" });
+        try expect_record(contract, "resource-pair", 8, &.{ .{ .name = "left", .offset = 0 }, .{ .name = "right", .offset = 4 } });
+        try expect_owned_paths(contract, &.{ &.{"left"}, &.{"right"} }, &.{});
+        try std.testing.expectEqualStrings("u32", contract.runtime_mode_param.?);
+        try std.testing.expectEqualStrings("u32", contract.left_seed_param.?);
+        try std.testing.expectEqualStrings("u32", contract.right_seed_param.?);
+        try std.testing.expectEqual(@as(usize, 3), contract.producer_core_params.len);
+        try std.testing.expectEqual(@as(usize, 1), contract.producer_core_results.len);
+    } else if (std.mem.eql(u8, route_id, "c-min-list")) {
+        try expect_report(report, 1, 2, 2);
+        try expect_mapping(mapping, "resource-or-list", .scalar, 1, 2, 3, &.{ "list-pointer", "list-length" });
+        try expect_list_payload(contract, 64, 68, 4, 3);
+        try expect_owned_paths(contract, &.{&.{ "list", "ticket" }}, &.{&.{"list"}});
+        try std.testing.expectEqualStrings("result-area", contract.terminal.close_action);
+    } else if (std.mem.eql(u8, route_id, "c-min-dynamic-list")) {
+        try expect_report(report, 1, 2, 2);
+        try expect_mapping(mapping, "resource-or-list", .scalar, 1, 2, 3, &.{ "list-pointer", "list-length" });
+        try expect_list_payload(contract, 64, 68, 4, 3);
+        try expect_owned_paths(contract, &.{&.{ "list", "ticket" }}, &.{&.{"list"}});
+        try std.testing.expectEqualStrings("u32", contract.runtime_count_param.?);
+        try std.testing.expectEqual(@as(u32, 3), contract.runtime_max.?);
+    } else if (std.mem.eql(u8, route_id, "scalar-list")) {
+        try expect_report(report, 1, 1, 1);
+        try expect_mapping(mapping, "resource-or-list", .scalar, 1, 2, 3, &.{ "list-pointer", "list-length" });
+        try expect_list_payload(contract, 64, 68, 4, 3);
+        try std.testing.expectEqual(@as(usize, 0), contract.ownership.leaves.len);
+        try std.testing.expectEqual(@as(usize, 0), contract.ownership.parents.len);
+        try std.testing.expectEqualStrings("u32", contract.runtime_count_param.?);
+        try std.testing.expectEqual(@as(u32, 3), contract.runtime_max.?);
+    } else if (std.mem.eql(u8, route_id, "c-min-batched-list")) {
+        try expect_report(report, 2, 2, 4);
+        try expect_mapping(mapping, "batch-0", .batched_scalar, 1, 2, 3, &.{ "batch-0-pointer", "batch-0-length", "batch-1-pointer", "batch-1-length" });
+        try std.testing.expectEqual(@as(usize, 2), mapping.ownership.len);
+        try std.testing.expectEqualStrings("batch-1", mapping.ownership[1].name);
+        try expect_list_payload(contract, 64, 68, 4, 2);
+        try expect_owned_paths(contract, &.{&.{ "list", "ticket" }}, &.{&.{"list"}});
+        try std.testing.expectEqual(@as(u32, 2), contract.batch_count.?);
+        try std.testing.expectEqualSlices(u32, &.{ 2, 1 }, contract.batch_lengths);
+        try std.testing.expectEqual(mapping_probe.OwnershipEncoding.batched_scalar, mapping.ownership[1].encoding);
+        try std.testing.expectEqual(@as(u32, 1), mapping.ownership[1].guest_value);
+        try std.testing.expectEqual(@as(u32, 2), mapping.ownership[1].transferred_value);
+        try std.testing.expectEqual(@as(u32, 3), mapping.ownership[1].released_value);
+    } else return error.TestUnexpectedResult;
+}
+
+fn expect_report(report: probe.ProgramReport, groups: u32, assets_per_group: u32, assets: u32) !void {
+    try std.testing.expectEqual(groups, report.group_count);
+    try std.testing.expectEqual(assets_per_group, report.assets_per_group);
+    try std.testing.expectEqual(assets, report.asset_count);
+}
+
+fn expect_mapping(
+    mapping: mapping_probe.TemplateFact,
+    ownership_name: []const u8,
+    encoding: mapping_probe.OwnershipEncoding,
+    guest_value: u32,
+    transferred_value: u32,
+    released_value: u32,
+    binding_names: []const []const u8,
+) !void {
+    try std.testing.expectEqual(@as(usize, binding_names.len), mapping.bindings.len);
+    for (binding_names, 0..) |name, index| try std.testing.expectEqualStrings(name, mapping.bindings[index].name);
+    try std.testing.expect(mapping.ownership.len != 0);
+    try std.testing.expectEqualStrings(ownership_name, mapping.ownership[0].name);
+    try std.testing.expectEqual(encoding, mapping.ownership[0].encoding);
+    try std.testing.expectEqual(guest_value, mapping.ownership[0].guest_value);
+    try std.testing.expectEqual(transferred_value, mapping.ownership[0].transferred_value);
+    try std.testing.expectEqual(released_value, mapping.ownership[0].released_value);
+}
+
+fn record_layout(contract: producer_contract.ProducerContract) p3_async_manifest.RecordLayout {
+    return switch (contract.payload) {
+        .record => |layout| layout,
+        else => unreachable,
+    };
+}
+
+fn expect_record(contract: producer_contract.ProducerContract, name: []const u8, byte_size: u32, fields: []const ExpectedField) !void {
+    const layout = record_layout(contract);
+    try std.testing.expectEqualStrings(name, layout.name);
+    try std.testing.expectEqual(byte_size, layout.byte_size);
+    try std.testing.expectEqual(fields.len, layout.fields.len);
+    for (fields, 0..) |field, index| {
+        try std.testing.expectEqualStrings(field.name, layout.fields[index].name);
+        try std.testing.expectEqual(field.offset, layout.fields[index].offset);
+    }
+}
+
+fn expect_owned_paths(contract: producer_contract.ProducerContract, leaves: []const []const []const u8, parents: []const []const []const u8) !void {
+    try std.testing.expectEqual(leaves.len, contract.ownership.leaves.len);
+    try std.testing.expectEqual(parents.len, contract.ownership.parents.len);
+    for (leaves, 0..) |path, index| try expect_path(contract.ownership.leaves[index].path, path);
+    for (parents, 0..) |path, index| try expect_path(contract.ownership.parents[index].path, path);
+}
+
+fn expect_path(actual: []const []const u8, expected: []const []const u8) !void {
+    try std.testing.expectEqual(expected.len, actual.len);
+    for (expected, 0..) |segment, index| try std.testing.expectEqualStrings(segment, actual[index]);
+}
+
+fn expect_list_allocations(contract: producer_contract.ProducerContract, expected: []const ExpectedAllocation) !void {
+    try std.testing.expectEqual(expected.len, contract.list_allocations.len);
+    for (expected, 0..) |allocation, index| {
+        const actual = contract.list_allocations[index];
+        try expect_path(actual.path, allocation.path);
+        try std.testing.expectEqual(allocation.pointer_offset, actual.pointer_offset);
+        try std.testing.expectEqual(allocation.length_offset, actual.length_offset);
+        try std.testing.expectEqual(allocation.element_stride, actual.element_stride);
+        try std.testing.expectEqual(allocation.max_items, actual.max_items);
+    }
+}
+
+fn expect_list_payload(contract: producer_contract.ProducerContract, pointer_offset: u32, length_offset: u32, stride: u32, max_items: u32) !void {
+    const layout = switch (contract.payload) {
+        .list => |value| value,
+        else => return error.TestUnexpectedResult,
+    };
+    try std.testing.expectEqual(pointer_offset, layout.pointer_offset);
+    try std.testing.expectEqual(length_offset, layout.length_offset);
+    try std.testing.expectEqual(stride, layout.element_stride);
+    try std.testing.expectEqual(max_items, layout.max_items);
 }
 
 fn assert_batched_mixed(
