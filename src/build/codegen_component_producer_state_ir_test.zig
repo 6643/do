@@ -259,3 +259,11 @@ test "producer lifecycle state IR rejects post-transfer rollback" {
     ir.post_transfer_cancel.rolls_back_host_effects = true;
     try std.testing.expectError(error.PostTransferRollback, state_ir.validate_lifecycle_ir(contract(), lifecycle_map(), ir));
 }
+
+test "producer lifecycle state IR rejects malformed canonical map" {
+    var map = lifecycle_map();
+    var changed = ownership;
+    changed[0].state_offset = 128;
+    map.ownership = &changed;
+    try std.testing.expectError(error.InvalidAsset, state_ir.build_lifecycle_ir(contract(), map));
+}

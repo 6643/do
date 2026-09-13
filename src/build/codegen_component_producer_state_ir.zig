@@ -141,6 +141,7 @@ pub fn validate_frame_map(map: CanonicalFrameMap, contract: producer_contract.Pr
 
 pub fn build_lifecycle_ir(contract: producer_contract.ProducerContract, map: CanonicalFrameMap) LifecycleError!LifecycleStateIR {
     validate_contract_for_lifecycle(contract) catch |err| return err;
+    validate_map_for_lifecycle(contract, map) catch |err| return err;
     const group_count = try lifecycle_group_count(contract, map);
     const schema_count = try lifecycle_schema_count(contract);
     const asset_count = std.math.mul(u32, group_count, schema_count) catch return error.UnsupportedBound;
@@ -199,6 +200,7 @@ pub fn build_lifecycle_ir(contract: producer_contract.ProducerContract, map: Can
 
 pub fn validate_lifecycle_ir(contract: producer_contract.ProducerContract, map: CanonicalFrameMap, ir: LifecycleStateIR) LifecycleError!void {
     validate_contract_for_lifecycle(contract) catch |err| return err;
+    validate_map_for_lifecycle(contract, map) catch |err| return err;
     const group_count = try lifecycle_group_count(contract, map);
     const schema_count = try lifecycle_schema_count(contract);
     const expected_asset_count = std.math.mul(u32, group_count, schema_count) catch return error.UnsupportedBound;
@@ -290,6 +292,15 @@ fn lifecycle_group_count(contract: producer_contract.ProducerContract, map: Cano
     }
     if (map.ownership.len != 1) return error.InvalidGroup;
     return 1;
+}
+
+fn validate_map_for_lifecycle(contract: producer_contract.ProducerContract, map: CanonicalFrameMap) LifecycleError!void {
+    validate_frame_map(map, contract) catch |err| switch (err) {
+        error.InvalidIdentity => return error.InvalidGroup,
+        error.UnsupportedBound => return error.UnsupportedBound,
+        error.BatchAlias => return error.InvalidGroup,
+        else => return error.InvalidAsset,
+    };
 }
 
 fn lifecycle_schema_count(contract: producer_contract.ProducerContract) LifecycleError!u32 {
