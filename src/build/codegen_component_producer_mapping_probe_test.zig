@@ -1,4 +1,5 @@
 const std = @import("std");
+const facts = @import("codegen_component_producer_facts.zig");
 const probe = @import("codegen_component_producer_mapping_probe.zig");
 
 const valid_fields = [_]probe.FrameFact{
@@ -60,6 +61,32 @@ test "producer canonical frame probe rejects overlapping frame fields" {
     var fact = valid_fact();
     fact.frames = &fields;
     try std.testing.expectError(error.FrameOverlap, probe.validate_facts(fact));
+}
+
+test "producer canonical frame probe shares zero-offset identity" {
+    comptime {
+        if (@TypeOf(probe.FrameFact) != @TypeOf(facts.FrameFact) or
+            @TypeOf(probe.BindingFact) != @TypeOf(facts.CanonicalBinding) or
+            @TypeOf(probe.TemplateFact) != @TypeOf(facts.RouteFrameFacts))
+        {
+            @compileError("mapping probe facts must alias production facts");
+        }
+    }
+    const fields = [_]facts.FrameFact{.{ .name = "tag", .offset = 0, .width = 4, .alignment = 4, .role = .result_tag }};
+    const ownership = [_]facts.OwnershipFact{.{ .name = "state", .encoding = .scalar, .state_offset = 0, .guest_value = 1, .transferred_value = 2, .released_value = 3 }};
+    const bindings = [_]facts.CanonicalBinding{.{ .name = "payload", .canonical_offset = 0, .payload_size = 4, .frame_offset = 4, .width = 4 }};
+    const lifecycle = [_]facts.LifecycleAnchor{.{ .name = "life", .required_text = &.{"life"}, .ordered_anchors = &.{"life"} }};
+    const route = facts.RouteFrameFacts{ .route_id = "zero", .descriptor_id = "descriptor", .frame_size = 8, .frames = &fields, .ownership = &ownership, .bindings = &bindings, .lifecycle = &lifecycle };
+    const production_report = try facts.validate(route);
+    const probe_report = try probe.validate_facts(route);
+    try std.testing.expectEqual(production_report, probe_report);
+
+    var mutated_bindings = bindings;
+    mutated_bindings[0].width = 5;
+    var mutated = route;
+    mutated.bindings = &mutated_bindings;
+    try std.testing.expectError(error.BindingOutsidePayload, facts.validate_route_facts(mutated));
+    try std.testing.expectError(error.BindingOutsidePayload, probe.validate_facts(mutated));
 }
 
 test "producer canonical frame probe rejects overlapping bindings" {

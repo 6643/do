@@ -1,4 +1,5 @@
 const std = @import("std");
+const facts = @import("codegen_component_producer_facts.zig");
 
 /// Probe errors are deliberately separate from producer/runtime errors. The
 /// probe is a read-only audit boundary and must never select a route or emit
@@ -25,83 +26,15 @@ pub const ProbeError = error{
     DuplicateCanonicalSegment,
 };
 
-pub const FrameRole = enum {
-    result_tag,
-    result_payload,
-    waitable,
-    readable,
-    writable,
-    ownership_state,
-    subtask,
-    pending_write,
-    mode,
-    payload,
-    resource_handle,
-    list_pointer,
-    list_length,
-    list_element_area,
-};
-
-pub const FrameFact = struct {
-    name: []const u8,
-    offset: u32,
-    width: u32,
-    alignment: u32,
-    role: FrameRole,
-};
-
-pub const OwnershipEncoding = enum {
-    scalar,
-    mask,
-    batched_scalar,
-};
-
-pub const OwnershipFact = struct {
-    name: []const u8,
-    encoding: OwnershipEncoding,
-    state_offset: u32,
-    guest_value: u32,
-    transferred_value: u32,
-    released_value: u32,
-};
-
-pub const BindingFact = struct {
-    name: []const u8,
-    canonical_offset: u32,
-    payload_size: u32,
-    frame_offset: u32,
-    width: u32,
-};
-
-pub const LifecycleFact = struct {
-    name: []const u8,
-    required_text: []const []const u8,
-    ordered_anchors: []const []const u8,
-};
-
-pub const MarkerFact = struct {
-    name: []const u8,
-    expected_value: ?[]const u8 = null,
-};
-
-pub const TemplateFact = struct {
-    route_id: []const u8,
-    template_name: []const u8,
-    frame_size: u32,
-    frames: []const FrameFact,
-    ownership: []const OwnershipFact,
-    bindings: []const BindingFact,
-    lifecycle: []const LifecycleFact,
-    markers: []const MarkerFact = &.{},
-};
-
-pub const FactReport = struct {
-    route_id: []const u8,
-    frame_count: usize,
-    ownership_count: usize,
-    binding_count: usize,
-    lifecycle_count: usize,
-};
+pub const FrameRole = facts.FrameRole;
+pub const FrameFact = facts.FrameFact;
+pub const OwnershipEncoding = facts.OwnershipEncoding;
+pub const OwnershipFact = facts.OwnershipFact;
+pub const BindingFact = facts.CanonicalBinding;
+pub const LifecycleFact = facts.LifecycleAnchor;
+pub const MarkerFact = facts.MarkerBinding;
+pub const TemplateFact = facts.RouteFrameFacts;
+pub const FactReport = facts.FactReport;
 
 pub const TemplateObservation = struct {
     route_id: []const u8,
@@ -121,73 +54,7 @@ pub const ParityObservation = struct {
 /// slices. Zero remains a valid offset; only an empty fact is considered
 /// missing.
 pub fn validate_facts(fact: TemplateFact) ProbeError!FactReport {
-    if (fact.route_id.len == 0 or fact.template_name.len == 0) {
-        return error.InvalidIdentity;
-    }
-    if (fact.frame_size == 0 or fact.frames.len == 0 or fact.ownership.len == 0 or
-        fact.bindings.len == 0 or fact.lifecycle.len == 0)
-    {
-        return error.InvalidFrameSize;
-    }
-
-    for (fact.frames, 0..) |field, index| {
-        if (field.name.len == 0 or field.width == 0 or field.alignment == 0) {
-            return error.InvalidFrame;
-        }
-        if (field.offset % field.alignment != 0) return error.FrameMisaligned;
-        try validate_range(fact.frame_size, field.offset, field.width, error.FrameOutside);
-        for (fact.frames[0..index]) |prior| {
-            if (ranges_overlap(prior.offset, prior.width, field.offset, field.width)) {
-                return error.FrameOverlap;
-            }
-        }
-    }
-
-    for (fact.ownership) |ownership| {
-        if (ownership.name.len == 0 or ownership.guest_value == ownership.transferred_value) {
-            return error.InvalidOwnership;
-        }
-        if (ownership.encoding != .mask and
-            (ownership.guest_value == ownership.released_value or
-                ownership.transferred_value == ownership.released_value))
-        {
-            return error.InvalidOwnership;
-        }
-        try validate_range(fact.frame_size, ownership.state_offset, 4, error.OwnershipStateOutsideFrame);
-    }
-
-    for (fact.bindings, 0..) |binding, index| {
-        if (binding.name.len == 0 or binding.width == 0 or binding.payload_size == 0) {
-            return error.InvalidBinding;
-        }
-        try validate_range(binding.payload_size, binding.canonical_offset, binding.width, error.BindingOutsidePayload);
-        try validate_range(fact.frame_size, binding.frame_offset, binding.width, error.BindingOutsideFrame);
-        for (fact.bindings[0..index]) |prior| {
-            if (ranges_overlap(prior.frame_offset, prior.width, binding.frame_offset, binding.width)) {
-                return error.BindingOverlap;
-            }
-        }
-    }
-
-    for (fact.lifecycle) |lifecycle| {
-        if (lifecycle.name.len == 0 or lifecycle.required_text.len == 0 or lifecycle.ordered_anchors.len == 0) {
-            return error.MissingLifecycle;
-        }
-        for (lifecycle.required_text) |required| {
-            if (required.len == 0) return error.MissingLifecycle;
-        }
-        for (lifecycle.ordered_anchors) |anchor| {
-            if (anchor.len == 0) return error.MissingLifecycle;
-        }
-    }
-
-    return .{
-        .route_id = fact.route_id,
-        .frame_count = fact.frames.len,
-        .ownership_count = fact.ownership.len,
-        .binding_count = fact.bindings.len,
-        .lifecycle_count = fact.lifecycle.len,
-    };
+    return facts.validate(fact) catch |err| return err;
 }
 
 const record_frames = [_]FrameFact{
