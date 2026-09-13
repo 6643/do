@@ -506,7 +506,7 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
 
   Mark only verified steps `[x]`, record exact command outcomes and tool versions in the spec/plan, and state that 12-route migration, generic/arbitrary producers, public ownership syntax, semantic-parity rewrite and D2 general async remain deferred. Do not update the capability inventory as promoted and do not claim runtime equivalence from the state-IR probe alone.
 
-- [ ] **Step 6: Commit the verified pilot package.**
+- [x] **Step 6: Commit the verified pilot package.**
 
   ```bash
   git add src/build/codegen_component_producer_facts.zig \
