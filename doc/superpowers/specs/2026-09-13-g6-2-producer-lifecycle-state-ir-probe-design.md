@@ -1,7 +1,7 @@
 # G6.2 Producer Lifecycle State-IR Probe 设计
 
 日期: 2026-09-13
-状态: 方案 A 已批准; 书面设计待复核
+状态: 已完成; test-only lifecycle state-IR probe、12-route matrix 与 release gates 已验证
 
 ## 1. 背景与目标
 
@@ -230,6 +230,11 @@ probe 必须区分以下错误，且任何错误都不得继续 terminal 主路�
 route scenario 是面向未来 shared emitter 的可执行契约。它证明 state model 可以无歧义地
 表达当前 12 条 route 的 assets、group 和 terminal obligations，并能拒绝非法 trace。
 
+本 probe 验证的是可复用的逻辑 state model 和非法 trace 的拒绝能力；它不解析 WAT，也不证明
+template instruction equivalence。production shared emitter、state IR consumption、route
+migration、semantic parity、generic producer admission、public ownership syntax 和 D2 async
+expansion 均保持 deferred。
+
 它 **不解析现有 WAT 函数体，也不证明现有模板逐指令等于该 trace**。现有模板行为继续由
 checked-in byte parity、Component validation 及 Rust/Wasmtime lifecycle gate 证明。若后续
 shared emitter 消费本 IR，必须另外把 emitter output 与 IR event 对应关系纳入 route-by-route
@@ -268,15 +273,40 @@ cd ..
 git diff --check
 ```
 
+### Task 5 release evidence (2026-09-13)
+
+- Test-root isolation: `src/main.zig` contains exactly one import of
+  `build/codegen_component_producer_lifecycle_state_probe_test.zig`; the production compiler
+  and codegen dispatch do not import the lifecycle implementation. The three authorized files
+  were formatted with `zig fmt`; exit status was `0` and stdout was empty.
+- Focused command `zig test main.zig --test-filter "producer lifecycle state probe"`: exact
+  output was `All 43 tests passed.` and exit status was `0` (`43/43`, including `main.test_0`;
+  42 probe tests).
+- Full command `zig test main.zig`: exact final output was
+  `1654/1654 fmt.format.test.format_source normalizes CRLF trailing whitespace and is idempotent...OK`
+  followed by `All 1654 tests passed.`; exit status was `0`.
+- ReleaseSmall command `zig build -Doptimize=ReleaseSmall`: stdout/stderr was empty; exit status
+  was `0`.
+- Integration command `./src/build/test/run_tests.sh`: exact summary was
+  `Build Summary: 14/14 steps succeeded; 53/53 tests passed`, followed by `test success`; exit
+  status was `0`.
+- `git diff --check`: stdout/stderr was empty; exit status was `0`.
+
+These gates validate this test-only slice. They do not promote `doc/master_plan.md` or any
+capability inventory.
+
 ## 9. 非目标与后续门禁
 
 本阶段不做:
 
 - production shared lifecycle emitter 或 route migration;
+- state IR consumption by production codegen;
 - template/WAT/WIT 重写，或从 byte parity 切换为 semantic parity;
+- semantic parity as a substitute for the existing template/runtime gates;
 - generic/arbitrary producer admission;
 - public `own<T>`、`borrow<T>`、`ref<T>` 或其他语言语法;
 - borrowed async payload、filesystem async 或 HTTP 扩展;
+- D2 async expansion;
 - 用 state probe 替代 Component/Rust/Wasmtime runtime cleanup gate。
 
 只有本 probe 的 12-route matrix 和负例全部通过后，才可另立 shared emitter 设计。该设计仍

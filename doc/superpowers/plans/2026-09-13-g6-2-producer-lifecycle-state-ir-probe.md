@@ -1,5 +1,8 @@
 # G6.2 Producer Lifecycle State-IR Probe Implementation Plan
 
+**Status:** Completed on 2026-09-13. Tasks 1-4 are implemented; Task 5 release evidence is
+recorded below. This completion applies only to this state-IR probe plan/spec.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 为现有 12 条 G6.2 producer route 增加一个 test-only、无分配、失败关闭的生命周期 state-IR probe，验证 ownership transfer、list backing release、cancel、反向清理和 exactly-once 约束，同时不改变任何生产产物。
@@ -455,11 +458,11 @@ pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8;
 - Consumes: the complete lifecycle probe and 12-route test matrix from Tasks 1-4.
 - Produces: test-root registration, actual evidence counts, and a completed plan/spec closeout; no capability matrix promotion.
 
-- [ ] **Step 1: Verify test-root isolation and format**
+- [x] **Step 1: Verify test-root isolation and format**
 
   Confirm the Task 1 import is present exactly once in `src/main.zig`. Do not import the implementation into production compiler code. Run `zig fmt` only on the new implementation/test files and `src/main.zig`.
 
-- [ ] **Step 2: Run the focused gate**
+- [x] **Step 2: Run the focused gate**
 
   ```bash
   cd src
@@ -471,7 +474,7 @@ pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8;
 
   Record the exact test count and zero exit status in both the spec and plan.
 
-- [ ] **Step 3: Run all repository gates**
+- [x] **Step 3: Run all repository gates**
 
   ```bash
   cd src
@@ -492,7 +495,7 @@ pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8;
 
   Expected: focused lifecycle probe green, full Zig suite green, ReleaseSmall exit `0`, integration harness green, and no whitespace errors. Preserve any failed command and mark its evidence as unverified; do not bypass or delete tests.
 
-- [ ] **Step 4: Update closeout documentation**
+- [x] **Step 4: Update closeout documentation**
 
   Mark only this state-IR probe plan/spec as completed with exact observed counts. State explicitly that:
 
@@ -501,7 +504,7 @@ pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8;
   - production shared emitter, state IR consumption, route migration, semantic parity, generic producer admission, public ownership syntax, and D2 async expansion remain deferred;
   - `doc/master_plan.md` and capability inventory must not be promoted by this test-only slice.
 
-- [ ] **Step 5: Commit the verified closeout**
+- [x] **Step 5: Commit the verified closeout**
 
   ```bash
   git add src/main.zig \
@@ -513,6 +516,21 @@ pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8;
   git commit -m "Verify G6.2 lifecycle state probe"
   ```
 
+#### Observed release evidence (2026-09-13)
+
+- `zig fmt src/main.zig src/build/codegen_component_producer_lifecycle_state_probe.zig src/build/codegen_component_producer_lifecycle_state_probe_test.zig`: exit `0`, empty output.
+- Focused `zig test main.zig --test-filter "producer lifecycle state probe"`: `43/43`, exact final line `All 43 tests passed.`, exit `0`. This includes `main.test_0` and 42 probe tests.
+- Full `zig test main.zig`: `1654/1654`, exact final line `All 1654 tests passed.`, exit `0`.
+- `zig build -Doptimize=ReleaseSmall`: empty output, exit `0`.
+- `./src/build/test/run_tests.sh`: `Build Summary: 14/14 steps succeeded; 53/53 tests passed`, `test success`, exit `0`.
+- `git diff --check`: empty output, exit `0`.
+
+The probe validates a reusable logical state model and rejects invalid traces. It does not parse
+WAT or prove template instruction equivalence. Production shared emitter, state IR consumption,
+route migration, semantic parity, generic producer admission, public ownership syntax, and D2
+async expansion remain deferred. This test-only slice does not promote `doc/master_plan.md` or
+the capability inventory.
+
 ## Self-review checklist
 
 - Spec section 3 facts ownership is implemented by the existing contract/mapping inputs and the test-only identity table.
@@ -522,3 +540,16 @@ pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8;
 - Spec section 7 proof boundary and existing runtime gate responsibility are recorded in Task 5.
 - No task creates a production emitter, imports the probe into codegen dispatch, changes WAT/WIT bytes, or expands public syntax.
 - All later task interfaces use the exact names and types introduced earlier; no step relies on an undefined helper.
+
+## Task 5 Self-Review and Concerns
+
+- Facts ownership remains in `ProducerContract`/`TemplateFact`; the test-only identity table only
+  connects route, descriptor, and member identities.
+- The 64-bit bound, deterministic asset ordering, state transitions, cancellation, cleanup cursor,
+  terminal guards, all 12 routes, and named negative cases remain covered by Tasks 1-4.
+- No production emitter, codegen dispatch import, WAT/WIT byte change, route migration, semantic
+  parity claim, generic admission, public ownership syntax, or D2 expansion was added.
+- The logical cleanup order is not a claim about template function-body call order; existing
+  Component/Rust/Wasmtime and runtime audit gates retain that responsibility.
+- No failures or unverified release evidence remain. The report is at
+  `.superpowers/sdd/2026-09-13-g6-2-producer-lifecycle-state-ir-probe/task-5-report.md`.
