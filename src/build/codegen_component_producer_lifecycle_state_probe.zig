@@ -124,7 +124,9 @@ fn asset_topology_count(contract: producer_contract.ProducerContract) LifecycleE
             var covered = false;
             for (contract.list_allocations) |allocation| {
                 if (allocation.pointer_offset == layout.pointer_offset and
-                    allocation.length_offset == layout.length_offset)
+                    allocation.length_offset == layout.length_offset and
+                    allocation.element_stride == layout.element_stride and
+                    allocation.max_items == layout.max_items)
                 {
                     covered = true;
                     break;

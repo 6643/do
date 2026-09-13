@@ -117,3 +117,27 @@ test "producer lifecycle state probe rejects more than 64 assets per group" {
     program.contract.list_allocations = &many_allocations;
     try std.testing.expectError(error.UnsupportedProbeBound, probe.validate_program(program));
 }
+
+test "producer lifecycle state probe keeps distinct payload list backing identities" {
+    const list_path = [_][]const u8{"values"};
+    const allocation = producer_contract.ListAllocation{
+        .path = &list_path,
+        .element_core_type = "i32",
+        .pointer_offset = 8,
+        .length_offset = 12,
+        .element_stride = 8,
+        .max_items = 2,
+        .release_import = "release",
+    };
+    var allocations = [_]producer_contract.ListAllocation{allocation};
+    var program = valid_program();
+    program.contract.payload = .{ .list = .{
+        .pointer_offset = 8,
+        .length_offset = 12,
+        .element_stride = 4,
+        .max_items = 1,
+    } };
+    program.contract.list_allocations = &allocations;
+    const report = try probe.validate_program(program);
+    try std.testing.expectEqual(@as(u32, 3), report.assets_per_group);
+}
