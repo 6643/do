@@ -791,12 +791,43 @@ fn assert_post_transfer_cancel(
     const observation = try probe.run(lifecycle_program(report.route_id, contract, mapping, trace));
     const model = try probe.derive_model_for_test(lifecycle_program(report.route_id, contract, mapping, &.{}));
     const counts = disposition_counts(model);
-    if (counts.resources != 0) {
+    if (std.mem.eql(u8, report.route_id, "scalar-list")) {
+        try std.testing.expectEqual(@as(usize, 0), contract.ownership.leaves.len);
+    } else {
+        try assert_resource_asset_zero(report.route_id, contract);
         try assert_post_transfer_cancel_rejects_guest_release(report, contract, mapping);
     }
     try std.testing.expectEqual(counts.resources, observation.transferred_count);
     try std.testing.expectEqual(counts.list_backing, observation.released_count);
     try std.testing.expectEqual(probe.TerminalState.completed, observation.terminal_state);
+}
+
+fn assert_resource_asset_zero(route_id: []const u8, contract: producer_contract.ProducerContract) !void {
+    const expected_path: []const []const u8 = if (std.mem.eql(u8, route_id, "owned-record-nested"))
+        &.{ "inner", "ticket" }
+    else if (std.mem.eql(u8, route_id, "c-min-list") or
+        std.mem.eql(u8, route_id, "c-min-dynamic-list") or
+        std.mem.eql(u8, route_id, "c-min-batched-list"))
+        &.{ "list", "ticket" }
+    else if (std.mem.eql(u8, route_id, "owned-record-pair"))
+        &.{"left"}
+    else if (std.mem.eql(u8, route_id, "owned-record-triple"))
+        &.{"left"}
+    else if (std.mem.eql(u8, route_id, "owned-record-parameterized-pair"))
+        &.{"left"}
+    else if (std.mem.eql(u8, route_id, "owned-record-direct") or
+        std.mem.eql(u8, route_id, "owned-record-list") or
+        std.mem.eql(u8, route_id, "owned-record-two-list") or
+        std.mem.eql(u8, route_id, "owned-record-mixed"))
+        &.{"ticket"}
+    else
+        return error.TestUnexpectedResult;
+
+    try std.testing.expect(contract.ownership.leaves.len != 0);
+    const asset_zero = contract.ownership.leaves[0];
+    try expect_path(asset_zero.path, expected_path);
+    try std.testing.expectEqualStrings("ticket", asset_zero.resource);
+    try std.testing.expectEqualStrings("[resource-drop]ticket", asset_zero.drop_import);
 }
 
 fn assert_post_transfer_cancel_rejects_guest_release(
