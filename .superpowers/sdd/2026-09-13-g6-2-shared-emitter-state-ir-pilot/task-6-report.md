@@ -83,6 +83,23 @@ Raw output: `.tmp/task-6-evidence/round2/artifact-guard-scan.log`, exactly
 `ARC inventory mode=pre_cutover rows=53 matches=490 unclassified=3`.
 This remains the unresolved full-regression blocker.
 
+The corrected round-3 guard was run against the existing artifact and an
+intentionally missing path. It first requires `-r`, then handles `rg` statuses
+as `0=marker-match/fail`, `1=no-match/clean`, and `>=2=I/O error/fail`:
+
+```text
+artifact-boundary-scan=clean
+existing-artifact-scan exit=0
+artifact missing or unreadable: .tmp/task-6-evidence/private-pilot/missing-pilot.wat
+missing-artifact-scan exit=2
+```
+
+Raw output: `.tmp/task-6-evidence/round3/artifact-guard-strict.log`. The first
+attempt to capture this log failed before execution because the outer shell
+redirected into a not-yet-created directory; that orchestration failure was
+not used as gate evidence and the command was rerun after creating the
+authorized temporary directory.
+
 ## Lifecycle Evidence
 
 Static frame/lifecycle evidence was produced by a temporary helper using the

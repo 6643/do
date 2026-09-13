@@ -378,6 +378,11 @@ runtime counters）保持 unchecked/unverified；Step 2、Step 4、Step 5、Step
   输出 `ARC inventory mode=pre_cutover rows=53 matches=490 unclassified=3`，
   raw output 为 `.tmp/task-6-evidence/round2/arc-inventory.log`；该 blocker
   保持 unresolved。
+- Round 3 artifact guard 先检查 `-r`，再区分 `rg` 的 `0`（marker match，失败）、
+  `1`（无匹配，clean）和 `>=2`（I/O/error，失败）。现有 artifact 输出
+  `artifact-boundary-scan=clean`、`existing-artifact-scan exit=0`；缺失路径输出
+  `artifact missing or unreadable: ...`、`missing-artifact-scan exit=2`。raw output
+  为 `.tmp/task-6-evidence/round3/artifact-guard-strict.log`。
 - Lifecycle static evidence：`(cd src && ... zig test main.zig --test-filter
   "producer lifecycle state IR")` exit 0，`15/15` passed；direct route helper
   输出 `contract.list_allocations.len=0`、`map.frame_size=128`、
