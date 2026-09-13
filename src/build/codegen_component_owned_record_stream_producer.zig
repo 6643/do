@@ -3,10 +3,35 @@ const generated_text = @import("codegen_text.zig");
 const lexer = @import("lexer.zig");
 const p3_async_manifest = @import("p3_async_manifest.zig");
 const producer_contract = @import("codegen_component_producer_contract.zig");
+const producer_facts = @import("codegen_component_producer_facts.zig");
+const producer_fragments = @import("codegen_component_producer_fragments.zig");
+const mapping_probe = @import("codegen_component_producer_mapping_probe.zig");
+const pilot_emitter = @import("codegen_component_producer_emitter.zig");
 const wit_abi_layout = @import("wit_abi_layout.zig");
 const wit_abi_types = @import("wit_abi_types.zig");
 
 const canonical_core_wat = @embedFile("owned_record_stream_producer_template.wat");
+
+const direct_payload_start: u32 = 4086;
+const direct_lifecycle_start: u32 = 4491;
+const direct_metadata_start: u32 = 6364;
+const direct_suffix_start: u32 = 15517;
+const direct_fragment_markers = [_][]const u8{
+    "[producer-record-byte-size] 4",
+    "[producer-record-ticket-offset] 0",
+    "[producer-stream-capacity] 1",
+    "[producer-ticket-seed] 111",
+    "[producer-record-transfer]",
+    "[producer-resource-drop-exactly-once]",
+    "[producer-child-before-parent-cleanup]",
+};
+const direct_fragments = [_]producer_fragments.Fragment{
+    .{ .name = "direct-prefix", .kind = .prefix, .span = .{ .start = 0, .end = direct_payload_start }, .required_markers = &.{}, .order = 0 },
+    .{ .name = "direct-payload", .kind = .payload, .span = .{ .start = direct_payload_start, .end = direct_lifecycle_start }, .required_markers = &direct_fragment_markers, .order = 1 },
+    .{ .name = "direct-lifecycle", .kind = .lifecycle, .span = .{ .start = direct_lifecycle_start, .end = direct_metadata_start }, .required_markers = &.{}, .order = 2 },
+    .{ .name = "direct-metadata", .kind = .metadata, .span = .{ .start = direct_metadata_start, .end = direct_suffix_start }, .required_markers = &.{}, .order = 3 },
+    .{ .name = "direct-suffix", .kind = .suffix, .span = .{ .start = direct_suffix_start, .end = @intCast(canonical_core_wat.len) }, .required_markers = &.{}, .order = 4 },
+};
 
 pub const ProducerError = error{UnsupportedP3OwnedRecordStreamProducer};
 
@@ -135,6 +160,26 @@ pub fn emit_component_wat(allocator: std.mem.Allocator, plan: OwnedRecordStreamP
     return wat;
 }
 
+/// Private-by-convention pilot entry. The default producer route intentionally
+/// remains on emit_component_wat until a separate promotion decision.
+pub fn emit_component_wat_pilot(allocator: std.mem.Allocator, plan: OwnedRecordStreamProducerPlan) pilot_emitter.PilotError![]u8 {
+    const measured = mapping_probe.fact_for_route("owned-record-direct") orelse return error.InvalidAdmission;
+    var frame_facts: producer_facts.RouteFrameFacts = measured.*;
+    frame_facts.descriptor_id = plan.contract.descriptor_id;
+    return pilot_emitter.emit_pilot_wat(allocator, .{
+        .facts = .{
+            .route_id = measured.route_id,
+            .descriptor_id = plan.contract.descriptor_id,
+            .contract = plan.contract,
+            .frame_facts = frame_facts,
+            .fragments = &direct_fragments,
+            .golden_wat = canonical_core_wat,
+            .template_wat = canonical_core_wat,
+        },
+        .canonical_wit_hash = plan.contract.descriptor_hash orelse "",
+    });
+}
+
 pub fn emit_component_wat_for_tokens(allocator: std.mem.Allocator, tokens: []const lexer.Token) ![]u8 {
     var registry = try p3_async_manifest.Registry.load(allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(allocator);
@@ -216,7 +261,8 @@ fn validate_internal_plans(allocator: std.mem.Allocator, plan: OwnedRecordStream
     }) catch return error.UnsupportedP3OwnedRecordStreamProducer;
     defer layout.deinit();
     if (layout.byte_size != 4 or layout.alignment != 4 or layout.record_fields.len != 1 or
-        layout.record_fields[0].offset != 0 or !std.mem.eql(u8, layout.record_fields[0].name, "ticket")) {
+        layout.record_fields[0].offset != 0 or !std.mem.eql(u8, layout.record_fields[0].name, "ticket"))
+    {
         return error.UnsupportedP3OwnedRecordStreamProducer;
     }
 }
