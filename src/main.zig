@@ -130,6 +130,7 @@ test {
     _ = @import("build/codegen_component_two_list_owned_record_stream_producer_test.zig");
     _ = @import("build/codegen_component_producer_runtime_audit_test.zig");
     _ = @import("build/codegen_component_producer_mapping_probe_test.zig");
+    _ = @import("build/codegen_component_producer_lifecycle_state_probe_test.zig");
     _ = @import("build/codegen_component_descriptor_manifest.zig");
     _ = @import("build/codegen_component_marshal_wat.zig");
     _ = @import("build/codegen_text.zig");
