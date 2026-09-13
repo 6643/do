@@ -48,7 +48,7 @@ pub fn validate_route_facts(facts: RouteFrameFacts) FactError!void {
 }
 
 pub fn validate(facts: RouteFrameFacts) FactError!FactReport {
-    if (facts.route_id.len == 0 or (facts.descriptor_id.len == 0 and facts.template_name.len == 0)) return error.InvalidIdentity;
+    if (facts.route_id.len == 0 or facts.descriptor_id.len == 0) return error.InvalidIdentity;
     if (facts.frame_size == 0 or facts.frames.len == 0 or facts.ownership.len == 0 or facts.bindings.len == 0 or facts.lifecycle.len == 0) return error.InvalidFrameSize;
     for (facts.frames, 0..) |field, index| {
         if (field.name.len == 0 or field.width == 0 or field.alignment == 0) return error.InvalidFrame;
@@ -65,7 +65,10 @@ pub fn validate(facts: RouteFrameFacts) FactError!FactReport {
         if (binding.name.len == 0 or binding.width == 0 or binding.payload_size == 0) return error.InvalidBinding;
         try range(binding.payload_size, binding.canonical_offset, binding.width, error.BindingOutsidePayload);
         try range(facts.frame_size, binding.frame_offset, binding.width, error.BindingOutsideFrame);
-        for (facts.bindings[0..index]) |prior| if (overlap(prior.frame_offset, prior.width, binding.frame_offset, binding.width)) return error.BindingOverlap;
+        for (facts.bindings[0..index]) |prior| {
+            if (overlap(prior.canonical_offset, prior.width, binding.canonical_offset, binding.width) or
+                overlap(prior.frame_offset, prior.width, binding.frame_offset, binding.width)) return error.BindingOverlap;
+        }
     }
     for (facts.lifecycle) |lifecycle| {
         if (lifecycle.name.len == 0 or lifecycle.required_text.len == 0 or lifecycle.ordered_anchors.len == 0) return error.MissingLifecycle;

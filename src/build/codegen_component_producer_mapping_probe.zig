@@ -54,7 +54,11 @@ pub const ParityObservation = struct {
 /// slices. Zero remains a valid offset; only an empty fact is considered
 /// missing.
 pub fn validate_facts(fact: TemplateFact) ProbeError!FactReport {
-    return facts.validate(fact) catch |err| return err;
+    // Legacy probe entries use template_name as their compatibility identity;
+    // production validation itself requires descriptor_id.
+    var production_fact = fact;
+    if (production_fact.descriptor_id.len == 0) production_fact.descriptor_id = production_fact.template_name;
+    return facts.validate(production_fact) catch |err| return err;
 }
 
 const record_frames = [_]FrameFact{

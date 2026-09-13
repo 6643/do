@@ -89,6 +89,40 @@ test "producer canonical frame probe shares zero-offset identity" {
     try std.testing.expectError(error.BindingOutsidePayload, probe.validate_facts(mutated));
 }
 
+test "producer canonical frame probe requires production descriptor identity" {
+    var fact = valid_fact();
+    try std.testing.expectError(error.InvalidIdentity, facts.validate_route_facts(fact));
+    fact.descriptor_id = "descriptor";
+    try facts.validate_route_facts(fact);
+}
+
+test "producer canonical frame probe rejects canonical binding overlap" {
+    const second = [_]facts.CanonicalBinding{
+        .{ .name = "first", .canonical_offset = 0, .payload_size = 8, .frame_offset = 8, .width = 4 },
+        .{ .name = "second", .canonical_offset = 2, .payload_size = 8, .frame_offset = 12, .width = 4 },
+    };
+    var fact = valid_fact();
+    fact.bindings = &second;
+    try std.testing.expectError(error.BindingOverlap, facts.validate_route_facts(.{
+        .route_id = fact.route_id,
+        .descriptor_id = "descriptor",
+        .frame_size = 32,
+        .frames = fact.frames,
+        .ownership = fact.ownership,
+        .bindings = fact.bindings,
+        .lifecycle = fact.lifecycle,
+    }));
+    try std.testing.expectError(error.BindingOverlap, probe.validate_facts(.{
+        .route_id = fact.route_id,
+        .template_name = fact.template_name,
+        .frame_size = 32,
+        .frames = fact.frames,
+        .ownership = fact.ownership,
+        .bindings = fact.bindings,
+        .lifecycle = fact.lifecycle,
+    }));
+}
+
 test "producer canonical frame probe rejects overlapping bindings" {
     var bindings = valid_bindings;
     bindings[0].frame_offset = 14;
