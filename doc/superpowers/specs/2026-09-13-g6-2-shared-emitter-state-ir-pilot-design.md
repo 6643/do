@@ -338,6 +338,11 @@ route-by-route 回滚，且不会把 test-only probe 直接变成 production dep
 当前工具版本：Zig `0.16.0`，`wasm-tools 1.258.0 (5c6d31c78 2026-08-24)`，
 Wasmtime `48.0.1 (7bac2c277 2026-08-24)`。
 
+Task 6 status：partial close。Step 1（full regression）和 Step 3（list/frame
+runtime counters）保持 unchecked/unverified；Step 2、Step 4、Step 5、Step 6
+已完成。此次 evidence revision 的提交 subject 为
+`Record G6.2 lifecycle gate status`，不代表 full regression green。
+
 - Zig unit gate：`(cd src && ... zig test main.zig)`，`1717/1717` passed，exit 0。
 - Release build：`(cd src && ... zig build -Doptimize=ReleaseSmall)`，exit 0。
 - Release smoke：`./src/build/test/run_release_smoke.sh`，exit 0。
@@ -363,12 +368,30 @@ Wasmtime `48.0.1 (7bac2c277 2026-08-24)`。
   WAT hash 为 `095da7cd4c131a7318fc4bf5fd87b2d99e2672bff568edc577a553e228f856c5`。
   产物无 `__arc_`，canonical boundary 未发现 Wasm GC reference。helper 已
   在验证后删除。
+- GC/ARC guard：pilot focused command
+  `(cd src && ... zig test main.zig --test-filter "producer shared emitter pilot")`
+  exit 0，`13/13` passed；raw output 为
+  `.tmp/task-6-evidence/round2/pilot-focused.log`。对 private artifact 的
+  `rg` guard 输出 `artifact-boundary-scan=clean`，raw output 为
+  `.tmp/task-6-evidence/round2/artifact-guard-scan.log`。repository ARC
+  inventory 原始命令 `bash src/build/test/check_gc_arc_inventory.sh` exit 2，
+  输出 `ARC inventory mode=pre_cutover rows=53 matches=490 unclassified=3`，
+  raw output 为 `.tmp/task-6-evidence/round2/arc-inventory.log`；该 blocker
+  保持 unresolved。
+- Lifecycle static evidence：`(cd src && ... zig test main.zig --test-filter
+  "producer lifecycle state IR")` exit 0，`15/15` passed；direct route helper
+  输出 `contract.list_allocations.len=0`、`map.frame_size=128`、
+  `ir.asset_count=1`、`ir.list_backing_count=0`、`ir.group_count=1`、
+  `ir.acquire_count=1`、`ir.barrier_count=1`、`ir.transfer_count=1`、
+  `ir.reverse_release_count=1`、`ir.cleanup_count=7`。因此本 route 没有
+  list backing asset，frame/state-IR 生命周期静态证据已验证。
 - Rust/Wasmtime：既有 direct route gate 和 canonical/generated equivalence
   gate 在 repository-local Zig cache 下通过 10 个 lifecycle rows，均为
   `table-empty=true`，资源、stream、future cleanup exactly-once（repeat 为
-  2 次）。首次运行因默认 `/home/_/.cache/zig` 缺少 `Scrt1.o`、libc/runtime
-  archives 在 linker 阶段失败，已作为 environment evidence 保留，不作为运行时
-  通过依据。
+  2 次）。host runner 没有 list/frame runtime counters，因此 runtime
+  list/frame exactly-once 子门禁保持 unverified，不能用静态 IR 替代它。首次运行
+  因默认 `/home/_/.cache/zig` 缺少 `Scrt1.o`、libc/runtime archives 在 linker
+  阶段失败，已作为 environment evidence 保留，不作为运行时通过依据。
 - Rollback/default：普通 `--p3-async-component` 输出与 checked-in WAT/WIT
   byte-for-byte 一致；pilot focused `13/13`、旧 producer focused `15/15`、
   旧 route Component gate 均通过，capability inventory 无 diff。实际 rollback
@@ -376,8 +399,9 @@ Wasmtime `48.0.1 (7bac2c277 2026-08-24)`。
   立即 `InvalidAdmission`，重建临时 compiler 后旧 route Component gate exit 0；
   这证明删除 private dispatch 后旧 route 仍可用，而非仅证明默认未使用。
 
-因此本 spec 只关闭“单 route private pilot 的 artifact、focused runtime 和 rollback
-证据”范围；完整 repository regression 仍有上述 ARC inventory mismatch，不能宣称
-所有 Task 6 gates 全绿，也不能由 state-IR probe 单独宣称 runtime equivalence。
+因此本 spec 只关闭“单 route private pilot 的 artifact、observed lifecycle counters
+和 rollback 证据”范围；list/frame runtime counters 未提供，完整 repository
+regression 仍有上述 ARC inventory mismatch，不能宣称所有 Task 6 gates 全绿，也不能
+由 state-IR probe 单独宣称 runtime equivalence。
 12-route migration、generic/arbitrary producers、public ownership syntax、
 semantic-parity rewrite 和 D2 general async 保持 deferred。

@@ -2,6 +2,8 @@
 
 Date: 2026-09-13
 Scope: private single-route G6.2 shared emitter/state-IR pilot
+Status: partial close; full regression and list/frame runtime sub-gates remain unresolved/unverified
+Evidence revision commit subject: `Record G6.2 lifecycle gate status`
 
 ## Toolchain
 
@@ -23,7 +25,7 @@ All Zig commands used repository-local cache directories under
 | Diff check | `git diff --check`; exit 0 | PASS |
 | Component artifact | parse/embed/new/validate with current wasm-tools; all exit 0 | PASS |
 | Direct runtime gate | existing Do Component gate; exit 0 | PASS |
-| Rust/Wasmtime lifecycle | local-cache rerun, 10 rows; all assertions passed | PASS |
+| Rust/Wasmtime lifecycle | local-cache rerun, 10 rows; observed counters passed; list/frame runtime counters unavailable | PARTIAL / UNVERIFIED |
 | Default/rollback | WAT/WIT byte parity, focused tests, old route gate | PASS |
 
 ## Artifact Evidence
@@ -59,7 +61,47 @@ pilot guard scan.
 The helper was deleted after this run; it was an untracked test utility and is
 not part of the pilot package.
 
+## GC and ARC Guard Evidence
+
+The pilot guard focused command was:
+
+```text
+(cd src && TMPDIR="$PWD/../.tmp/task-6-evidence/do-tmp" ZIG_LOCAL_CACHE_DIR="$PWD/../.tmp/task-6-evidence/zig-cache" ZIG_GLOBAL_CACHE_DIR="$PWD/../.tmp/task-6-evidence/zig-gcache" zig test main.zig --test-filter "producer shared emitter pilot")
+```
+
+Raw output: `.tmp/task-6-evidence/round2/pilot-focused.log`, result `13/13`
+passed. The direct artifact scan command was:
+
+```text
+if rg -n "__arc_|\\(ref null|externref|anyref|eqref|funcref|i31ref|structref|arrayref|ref\\.null|ref\\.cast|struct\\.new|array\\.new" .tmp/task-6-evidence/private-pilot/pilot.wat; then exit 1; else echo artifact-boundary-scan=clean; fi
+```
+
+Raw output: `.tmp/task-6-evidence/round2/artifact-guard-scan.log`, exactly
+`artifact-boundary-scan=clean`. The repository ARC inventory command was
+`bash src/build/test/check_gc_arc_inventory.sh`; raw output is
+`.tmp/task-6-evidence/round2/arc-inventory.log`, with exit `2` and
+`ARC inventory mode=pre_cutover rows=53 matches=490 unclassified=3`.
+This remains the unresolved full-regression blocker.
+
 ## Lifecycle Evidence
+
+Static frame/lifecycle evidence was produced by a temporary helper using the
+existing production modules and exact direct source. The raw output is
+`.tmp/task-6-evidence/round2/lifecycle-helper.log`:
+
+```text
+route=owned-record-direct descriptor=do:g6-2-owned-record-producer@0.1.0 contract.list_allocations.len=0 map.frame_size=128 map.fields.len=10 ir.asset_count=1 ir.list_backing_count=0 ir.group_count=1 ir.acquire_count=1 ir.barrier_count=1 ir.transfer_count=1 ir.reverse_release_count=1 ir.cleanup_count=7 cleanup_order_len=7 terminal=present
+```
+
+The focused command was:
+
+```text
+(cd src && TMPDIR="$PWD/../.tmp/task-6-evidence/do-tmp" ZIG_LOCAL_CACHE_DIR="$PWD/../.tmp/task-6-evidence/zig-cache" ZIG_GLOBAL_CACHE_DIR="$PWD/../.tmp/task-6-evidence/zig-gcache" zig test main.zig --test-filter "producer lifecycle state IR")
+```
+
+Its raw output is `.tmp/task-6-evidence/round2/state-ir-focused.log` and it
+reported `15/15` passed. The pilot focused command/output is
+`.tmp/task-6-evidence/round2/pilot-focused.log` and reported `13/13` passed.
 
 `test_rust_g6_2_owned_record_producer.sh` and
 `test_g6_2_owned_record_producer_equivalence.sh` passed ready, pending,
@@ -112,7 +154,18 @@ single-invocation error/cancel/drop rows created and dropped one resource;
 repeat created/dropped two resources; invalid created/dropped zero. The
 capability inventory command was `git diff --exit-code -- doc/gc_arc_inventory.tsv`
 and exited 0. No separate diagnostics snapshot exists for this successful
-source; the existing compile fixture expectations and focused tests passed.
+source; the existing compile fixture expectations and focused tests passed. The
+host runner has no list/frame counters. Consequently list/frame runtime
+exactly-once is unverified; it is supported only by the static evidence above,
+not claimed as a runtime observation.
+
+Raw default-route outputs are `.tmp/task-6-evidence/rollback/default-build.log`,
+`.tmp/task-6-evidence/rollback/default.wat`,
+`.tmp/task-6-evidence/rollback/default.wit`, and
+`.tmp/task-6-evidence/rollback/descriptor-evidence.txt`. The raw capability
+diff output path is `.tmp/task-6-evidence/rollback/capability-inventory-diff.log`.
+The successful default command and the absence of a separate diagnostics
+snapshot are recorded explicitly above.
 
 Rollback was an actual temporary-copy operation. `git archive HEAD` was
 extracted to `.tmp/task-6-evidence/rollback-copy.iWoKQc`; in that copy only,

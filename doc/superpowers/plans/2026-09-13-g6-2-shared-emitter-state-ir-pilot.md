@@ -466,19 +466,26 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
 
   Generate the pilot WAT/WIT into a temporary directory, then run the current `wasm-tools` sequence used by the repository: `wasm-tools parse`, `wasm-tools component embed`, `wasm-tools component new`, and `wasm-tools validate --features cm-async,cm-more-async-builtins`. Verify WIT bytes/hash, descriptor identity, no `__arc_` marker and no Wasm GC reference crossing the canonical boundary. Record `wasm-tools --version` and `wasmtime --version` from the live environment.
 
-- [x] **Step 3: Run the existing Rust/Wasmtime lifecycle matrix for the unchanged direct route.**
+- [ ] **Step 3: Run the existing Rust/Wasmtime lifecycle matrix for the unchanged direct route.**
 
   The existing Do Component gate and canonical/generated equivalence runner
-  passed. The local-cache rerun covered 10 rows: ready, pending,
+  passed for the observed counters. The local-cache rerun covered 10 rows: ready, pending,
   sink-error-before/after, cancel-before/after-transfer,
   early-drop-before/after-transfer, repeat and invalid. Every row reported
   `table-empty=true`; resource, stream and future cleanup were exactly once
-  (repeat was exactly twice). The first Rust invocation failed at the linker
+  (repeat was exactly twice). The direct contract/static IR evidence separately
+  records `contract.list_allocations.len=0` and
+  `ir.list_backing_count=0`; the host runner exposes no list/frame counters, so
+  runtime list/frame exactly-once remains unverified. The first Rust invocation failed at the linker
   because the default Zig cache lacked `Scrt1.o`, libc and runtime archives;
   this environment failure is retained in `task-6-report.md` and was not used
   as a runtime result.
 
   Exercise ready, pending, sink error, transfer-before/after cancel, early-drop and repeat rows using the existing runner. Require resource/list/frame exactly-once cleanup and `table-empty=true`; compare pilot artifact observations with the old artifact. Do not add a new runtime behavior or treat the logical state-IR test as a replacement for this gate.
+
+  Status ledger: resource/stream/future runtime observations are verified; list/frame
+  runtime counters are unavailable from the host runner and remain unverified. The
+  static contract/state-IR evidence is recorded in `task-6-report.md`.
 
 - [x] **Step 4: Verify default-route non-regression and rollback.**
 
