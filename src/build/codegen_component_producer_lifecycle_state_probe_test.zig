@@ -1,7 +1,38 @@
 const std = @import("std");
+const p3_async_manifest = @import("p3_async_manifest.zig");
 const producer_contract = @import("codegen_component_producer_contract.zig");
 const mapping_probe = @import("codegen_component_producer_mapping_probe.zig");
 const probe = @import("codegen_component_producer_lifecycle_state_probe.zig");
+
+const RouteIdentity = struct {
+    route_id: []const u8,
+    descriptor_id: []const u8,
+    member: []const u8,
+};
+
+const checked_in_routes = [_]RouteIdentity{
+    .{ .route_id = "owned-record-direct", .descriptor_id = "do:g6-2-owned-record-producer@0.1.0", .member = "consume-via-stream" },
+    .{ .route_id = "owned-record-list", .descriptor_id = "do:g6-2-owned-record-list-producer@0.1.0", .member = "consume-via-stream" },
+    .{ .route_id = "owned-record-two-list", .descriptor_id = "do:g6-2-owned-record-two-list-producer@0.1.0", .member = "consume-via-stream" },
+    .{ .route_id = "owned-record-pair", .descriptor_id = "do:g6-2-owned-record-pair-producer@0.1.0", .member = "consume-via-stream" },
+    .{ .route_id = "owned-record-triple", .descriptor_id = "do:g6-2-owned-record-triple-producer@0.1.0", .member = "consume-via-stream" },
+    .{ .route_id = "owned-record-nested", .descriptor_id = "do:g6-2-owned-record-nested-producer@0.1.0", .member = "consume-via-stream" },
+    .{ .route_id = "owned-record-mixed", .descriptor_id = "do:g6-2-owned-record-mixed-producer@0.1.0", .member = "consume-via-stream" },
+    .{ .route_id = "owned-record-parameterized-pair", .descriptor_id = "do:g6-2-owned-record-pair-parameterized-producer@0.1.0", .member = "consume-via-stream" },
+    .{ .route_id = "c-min-list", .descriptor_id = "do:g6-2-c-min-producer@0.1.0", .member = "consume-via-stream" },
+    .{ .route_id = "c-min-dynamic-list", .descriptor_id = "do:g6-2-c-min-dynamic-producer@0.1.0", .member = "consume-via-stream" },
+    .{ .route_id = "scalar-list", .descriptor_id = "do:g6-2-scalar-list-producer@0.1.0", .member = "consume-via-stream" },
+    .{ .route_id = "c-min-batched-list", .descriptor_id = "do:g6-2-batched-list-producer@0.1.0", .member = "consume-via-stream" },
+};
+
+const MatrixScenario = enum {
+    success,
+    pre_transfer_failure,
+    post_transfer_cancel,
+    batched_mixed,
+    repeat,
+    incomplete_groups,
+};
 
 const frame_facts = [_]mapping_probe.FrameFact{
     .{ .name = "result", .offset = 0, .width = 4, .alignment = 4, .role = .result_tag },
@@ -485,4 +516,334 @@ test "producer lifecycle state probe transition rejects missing terminal" {
 
 fn valid_program_with_events(events: []const probe.LifecycleEvent) probe.LifecycleProgram {
     return .{ .route_id = "test-route", .contract = valid_contract(), .mapping = valid_mapping(), .events = events };
+}
+
+test "producer lifecycle state probe covers twelve checked-in routes" {
+    try run_checked_in_matrix(.success);
+}
+
+test "producer lifecycle state probe covers transfer-before-failure cleanup" {
+    try run_checked_in_matrix(.pre_transfer_failure);
+}
+
+test "producer lifecycle state probe covers transfer-after-cancel" {
+    try run_checked_in_matrix(.post_transfer_cancel);
+}
+
+test "producer lifecycle state probe isolates batched groups" {
+    try run_checked_in_matrix(.batched_mixed);
+}
+
+test "producer lifecycle state probe doubles observations for repeat" {
+    try run_checked_in_matrix(.repeat);
+}
+
+test "producer lifecycle state probe rejects incomplete pair and triple groups" {
+    try run_checked_in_matrix(.incomplete_groups);
+}
+
+fn run_checked_in_matrix(scenario: MatrixScenario) !void {
+    var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+
+    var matched: usize = 0;
+    for (checked_in_routes) |identity| {
+        const descriptor = registry.find(identity.descriptor_id, identity.member) orelse
+            return error.TestUnexpectedResult;
+        try std.testing.expectEqualStrings(identity.member, descriptor.member);
+
+        const mapping = mapping_probe.fact_for_route(identity.route_id) orelse
+            return error.TestUnexpectedResult;
+        const contract = try producer_contract.producer_contract_from_descriptor(descriptor);
+        try std.testing.expectEqualStrings(identity.descriptor_id, contract.descriptor_id);
+        try std.testing.expectEqualStrings(identity.member, contract.sink.member);
+
+        var empty_events: [1]probe.LifecycleEvent = undefined;
+        const shell = probe.LifecycleProgram{
+            .route_id = identity.route_id,
+            .contract = contract,
+            .mapping = mapping.*,
+            .events = empty_events[0..0],
+        };
+        const report = try probe.validate_program(shell);
+        try std.testing.expectEqualStrings(identity.route_id, report.route_id);
+
+        switch (scenario) {
+            .success => try assert_success_trace(report, contract, mapping.*),
+            .pre_transfer_failure => try assert_pre_transfer_failure(report, contract, mapping.*),
+            .post_transfer_cancel => try assert_post_transfer_cancel(report, contract, mapping.*),
+            .batched_mixed => {
+                if (!std.mem.eql(u8, identity.route_id, "c-min-batched-list")) continue;
+                try assert_batched_mixed(report, contract, mapping.*);
+                matched += 1;
+            },
+            .repeat => try assert_repeat(report, contract, mapping.*),
+            .incomplete_groups => {
+                if (!std.mem.eql(u8, identity.route_id, "owned-record-pair") and
+                    !std.mem.eql(u8, identity.route_id, "owned-record-triple")) continue;
+                try assert_incomplete_group(report, contract, mapping.*);
+                matched += 1;
+            },
+        }
+        if (scenario != .batched_mixed and scenario != .incomplete_groups) matched += 1;
+    }
+
+    const expected = switch (scenario) {
+        .batched_mixed => 1,
+        .incomplete_groups => 2,
+        else => checked_in_routes.len,
+    };
+    try std.testing.expectEqual(expected, matched);
+}
+
+fn append_event(buffer: *[256]probe.LifecycleEvent, length: *usize, event: probe.LifecycleEvent) !void {
+    if (length.* >= buffer.len) return error.TestUnexpectedResult;
+    buffer[length.*] = event;
+    length.* += 1;
+}
+
+fn append_acquire_all(
+    buffer: *[256]probe.LifecycleEvent,
+    length: *usize,
+    report: probe.ProgramReport,
+) !void {
+    for (0..@as(usize, @intCast(report.group_count))) |group_index| {
+        for (0..@as(usize, @intCast(report.assets_per_group))) |asset_index| {
+            try append_event(buffer, length, .{ .acquire = .{
+                .group_index = @intCast(group_index),
+                .asset_index = @intCast(asset_index),
+            } });
+        }
+    }
+}
+
+fn append_release_all_reverse(
+    buffer: *[256]probe.LifecycleEvent,
+    length: *usize,
+    report: probe.ProgramReport,
+) !void {
+    var group_index = report.group_count;
+    while (group_index != 0) {
+        group_index -= 1;
+        var asset_index = report.assets_per_group;
+        while (asset_index != 0) {
+            asset_index -= 1;
+            try append_event(buffer, length, .{ .release = .{
+                .group_index = group_index,
+                .asset_index = asset_index,
+            } });
+        }
+    }
+}
+
+fn append_complete_and_transfer_all(
+    buffer: *[256]probe.LifecycleEvent,
+    length: *usize,
+    report: probe.ProgramReport,
+) !void {
+    for (0..@as(usize, @intCast(report.group_count))) |group_index| {
+        try append_event(buffer, length, .{ .write_complete = @intCast(group_index) });
+        try append_event(buffer, length, .{ .transfer_commit = @intCast(group_index) });
+    }
+}
+
+fn append_cleanup_and_terminal(
+    buffer: *[256]probe.LifecycleEvent,
+    length: *usize,
+    contract: producer_contract.ProducerContract,
+) !void {
+    for (contract.terminal.cleanup_order) |stage| {
+        try append_event(buffer, length, .{ .cleanup_stage = stage });
+    }
+    try append_event(buffer, length, .{ .terminal = {} });
+}
+
+fn success_trace(
+    buffer: *[256]probe.LifecycleEvent,
+    report: probe.ProgramReport,
+    contract: producer_contract.ProducerContract,
+) ![]const probe.LifecycleEvent {
+    var length: usize = 0;
+    try append_acquire_all(buffer, &length, report);
+    try append_complete_and_transfer_all(buffer, &length, report);
+    try append_cleanup_and_terminal(buffer, &length, contract);
+    return buffer[0..length];
+}
+
+fn pre_transfer_failure_trace(
+    buffer: *[256]probe.LifecycleEvent,
+    report: probe.ProgramReport,
+    contract: producer_contract.ProducerContract,
+) ![]const probe.LifecycleEvent {
+    var length: usize = 0;
+    try append_acquire_all(buffer, &length, report);
+    try append_release_all_reverse(buffer, &length, report);
+    try append_cleanup_and_terminal(buffer, &length, contract);
+    return buffer[0..length];
+}
+
+fn post_transfer_cancel_trace(
+    buffer: *[256]probe.LifecycleEvent,
+    report: probe.ProgramReport,
+    contract: producer_contract.ProducerContract,
+) ![]const probe.LifecycleEvent {
+    var length: usize = 0;
+    try append_acquire_all(buffer, &length, report);
+    try append_complete_and_transfer_all(buffer, &length, report);
+    try append_event(buffer, &length, .{ .cancel = {} });
+    try append_cleanup_and_terminal(buffer, &length, contract);
+    return buffer[0..length];
+}
+
+fn batched_mixed_trace(
+    buffer: *[256]probe.LifecycleEvent,
+    report: probe.ProgramReport,
+    contract: producer_contract.ProducerContract,
+) ![]const probe.LifecycleEvent {
+    if (report.group_count != 2) return error.TestUnexpectedResult;
+    var length: usize = 0;
+    for (0..@as(usize, @intCast(report.assets_per_group))) |asset_index| {
+        try append_event(buffer, &length, .{ .acquire = .{ .group_index = 0, .asset_index = @intCast(asset_index) } });
+    }
+    try append_event(buffer, &length, .{ .write_complete = 0 });
+    try append_event(buffer, &length, .{ .transfer_commit = 0 });
+    for (0..@as(usize, @intCast(report.assets_per_group))) |asset_index| {
+        try append_event(buffer, &length, .{ .acquire = .{ .group_index = 1, .asset_index = @intCast(asset_index) } });
+    }
+    var asset_index = report.assets_per_group;
+    while (asset_index != 0) {
+        asset_index -= 1;
+        try append_event(buffer, &length, .{ .release = .{ .group_index = 1, .asset_index = asset_index } });
+    }
+    try append_cleanup_and_terminal(buffer, &length, contract);
+    return buffer[0..length];
+}
+
+fn lifecycle_program(
+    route_id: []const u8,
+    contract: producer_contract.ProducerContract,
+    mapping: mapping_probe.TemplateFact,
+    events: []const probe.LifecycleEvent,
+) probe.LifecycleProgram {
+    return .{ .route_id = route_id, .contract = contract, .mapping = mapping, .events = events };
+}
+
+fn disposition_counts(model: probe.Model) struct { resources: u32, list_backing: u32 } {
+    var resources: u32 = 0;
+    var list_backing: u32 = 0;
+    for (model.assets[0..@as(usize, @intCast(model.asset_count))]) |asset| {
+        switch (asset.disposition) {
+            .transfer_to_host => resources += 1,
+            .release_after_copy => list_backing += 1,
+        }
+    }
+    return .{ .resources = resources, .list_backing = list_backing };
+}
+
+fn assert_success_trace(
+    report: probe.ProgramReport,
+    contract: producer_contract.ProducerContract,
+    mapping: mapping_probe.TemplateFact,
+) !void {
+    var events: [256]probe.LifecycleEvent = undefined;
+    const trace = try success_trace(&events, report, contract);
+    const observation = try probe.run(lifecycle_program(report.route_id, contract, mapping, trace));
+    const model = try probe.derive_model_for_test(lifecycle_program(report.route_id, contract, mapping, &.{}));
+    const counts = disposition_counts(model);
+    try std.testing.expectEqual(probe.TerminalState.completed, observation.terminal_state);
+    try std.testing.expectEqual(report.asset_count, observation.acquired_count);
+    try std.testing.expectEqual(counts.resources, observation.transferred_count);
+    try std.testing.expectEqual(counts.list_backing, observation.released_count);
+    try std.testing.expectEqual(@as(u32, @intCast(contract.terminal.cleanup_order.len)), observation.cleanup_stage_count);
+}
+
+fn assert_pre_transfer_failure(
+    report: probe.ProgramReport,
+    contract: producer_contract.ProducerContract,
+    mapping: mapping_probe.TemplateFact,
+) !void {
+    var events: [256]probe.LifecycleEvent = undefined;
+    const trace = try pre_transfer_failure_trace(&events, report, contract);
+    const observation = try probe.run(lifecycle_program(report.route_id, contract, mapping, trace));
+    try std.testing.expectEqual(@as(u32, 0), observation.transferred_count);
+    try std.testing.expectEqual(report.asset_count, observation.released_count);
+    try std.testing.expectEqual(report.asset_count, observation.acquired_count);
+    try std.testing.expectEqual(probe.TerminalState.completed, observation.terminal_state);
+}
+
+fn assert_post_transfer_cancel(
+    report: probe.ProgramReport,
+    contract: producer_contract.ProducerContract,
+    mapping: mapping_probe.TemplateFact,
+) !void {
+    var events: [256]probe.LifecycleEvent = undefined;
+    const trace = try post_transfer_cancel_trace(&events, report, contract);
+    const observation = try probe.run(lifecycle_program(report.route_id, contract, mapping, trace));
+    const model = try probe.derive_model_for_test(lifecycle_program(report.route_id, contract, mapping, &.{}));
+    const counts = disposition_counts(model);
+    try std.testing.expectEqual(counts.resources, observation.transferred_count);
+    try std.testing.expectEqual(counts.list_backing, observation.released_count);
+    try std.testing.expectEqual(probe.TerminalState.completed, observation.terminal_state);
+}
+
+fn assert_batched_mixed(
+    report: probe.ProgramReport,
+    contract: producer_contract.ProducerContract,
+    mapping: mapping_probe.TemplateFact,
+) !void {
+    var events: [256]probe.LifecycleEvent = undefined;
+    var prefix_length: usize = 0;
+    for (0..@as(usize, @intCast(report.assets_per_group))) |asset_index| {
+        try append_event(&events, &prefix_length, .{ .acquire = .{ .group_index = 0, .asset_index = @intCast(asset_index) } });
+    }
+    try append_event(&events, &prefix_length, .{ .write_complete = 0 });
+    try append_event(&events, &prefix_length, .{ .transfer_commit = 0 });
+    try append_cleanup_and_terminal(&events, &prefix_length, contract);
+    try std.testing.expectError(
+        error.CleanupBeforeAssets,
+        probe.run(lifecycle_program(report.route_id, contract, mapping, events[0..prefix_length])),
+    );
+
+    const trace = try batched_mixed_trace(&events, report, contract);
+    const observation = try probe.run(lifecycle_program(report.route_id, contract, mapping, trace));
+    const model = try probe.derive_model_for_test(lifecycle_program(report.route_id, contract, mapping, &.{}));
+    const per_group = disposition_counts(.{
+        .assets = model.assets,
+        .asset_count = model.assets_per_group,
+        .group_count = 1,
+        .assets_per_group = model.assets_per_group,
+    });
+    try std.testing.expectEqual(@as(u32, 2), report.group_count);
+    try std.testing.expectEqual(per_group.resources, observation.transferred_count);
+    try std.testing.expectEqual(per_group.list_backing + model.assets_per_group, observation.released_count);
+    try std.testing.expectEqual(report.asset_count, observation.acquired_count);
+    try std.testing.expectEqual(probe.TerminalState.completed, observation.terminal_state);
+}
+
+fn assert_repeat(
+    report: probe.ProgramReport,
+    contract: producer_contract.ProducerContract,
+    mapping: mapping_probe.TemplateFact,
+) !void {
+    var first_events: [256]probe.LifecycleEvent = undefined;
+    var second_events: [256]probe.LifecycleEvent = undefined;
+    const first = try probe.run(lifecycle_program(report.route_id, contract, mapping, try success_trace(&first_events, report, contract)));
+    const second = try probe.run(lifecycle_program(report.route_id, contract, mapping, try success_trace(&second_events, report, contract)));
+    try std.testing.expectEqual(first, second);
+}
+
+fn assert_incomplete_group(
+    report: probe.ProgramReport,
+    contract: producer_contract.ProducerContract,
+    mapping: mapping_probe.TemplateFact,
+) !void {
+    if (report.group_count != 1 or report.assets_per_group < 2) return error.TestUnexpectedResult;
+    var events: [256]probe.LifecycleEvent = undefined;
+    var length: usize = 0;
+    try append_event(&events, &length, .{ .acquire = .{ .group_index = 0, .asset_index = 0 } });
+    try append_event(&events, &length, .{ .write_complete = 0 });
+    try std.testing.expectError(
+        error.WriteIncomplete,
+        probe.run(lifecycle_program(report.route_id, contract, mapping, events[0..length])),
+    );
 }
