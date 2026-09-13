@@ -85,7 +85,7 @@
 - Ruling: fix round 2 must add explicit null checks for unsupported canonical variants, pin direct record alignment to the measured value independently of mutable shape, expand the GC opcode set, and treat comment delimiters as token boundaries with regressions for coordinated plan mutation and `ref.null;;`/missing opcodes. Cost if wrong: future or adversarial route facts could remain admission/GC fail-open despite current focused parity.
 - Task 5 fix round 2: `2499f02` closes non-direct canonical optional-shape admission, pins direct alignment, adds coordinated mutation regressions, expands GC/reference tokens and semicolon tokenization. Scoped re-review passed all findings with no new P1 or regression. Task 5: complete at `2499f02` (implementation `1d2e4af`, fix rounds `291e635`, `2499f02`).
 
-- Task 6: complete-with-residuals at `4df221b` (`Record G6.2 lifecycle gate status`); full regression ARC inventory remains BLOCKED and list/frame runtime counters remain unverified.
+- Task 6: complete-with-residuals at `44216d0` (`Record G6.2 artifact guard status`); full regression ARC inventory remains BLOCKED and list/frame runtime counters remain unverified.
 
 ### Task 6 review findings and ruling
 
@@ -111,14 +111,19 @@
 
 ### Task 6 fix round 3 result and ruling
 
-- The artifact guard now checks existence/readability before scanning and handles `rg` status explicitly: `0` is a marker match and fails the gate, `1` is a clean no-match result, and `>=2` is an I/O/error result and fails the gate. The verified private artifact remains `.tmp/task-6-evidence/private-pilot/pilot.wat`; raw output is `.tmp/task-6-evidence/round2/artifact-guard-scan.log` with `artifact-boundary-scan=clean`.
-- The ignored ledger, report and spec now identify evidence commits `a9ad501` (`Record G6.2 pilot gate evidence`), `4fab935` (`Close G6.2 pilot evidence package`) and `4df221b` (`Record G6.2 lifecycle gate status`).
+- The artifact guard now checks existence/readability before scanning and handles `rg` status explicitly: `0` is a marker match and fails the gate, `1` is a clean no-match result, and `>=2` is an I/O/error result and fails the gate. The verified private artifact remains `.tmp/task-6-evidence/private-pilot/pilot.wat`; strict round-3 output is `.tmp/task-6-evidence/round3/artifact-guard-strict.log` with `artifact-boundary-scan=clean`, `existing-artifact-scan exit=0`, the missing-artifact diagnostic, and `missing-artifact-scan exit=2`.
+- The ledger, report and spec identify evidence commits `a9ad501` (`Record G6.2 pilot gate evidence`), `4fab935` (`Close G6.2 pilot evidence package`), `4df221b` (`Record G6.2 lifecycle gate status`) and latest revision `44216d0` (`Record G6.2 artifact guard status`).
 - Task 6 is complete-with-residuals: private artifact/rollback evidence is closed, while full regression remains blocked by ARC inventory (`exit 2`, `unclassified=3`) and list/frame runtime counters remain unverified.
 - Ruling: round 3 is addressed without modifying runner, inventory, production source or route dispatch. Residual gates remain visible and prevent a full-green claim.
+
+### Task 6 fix round 3 review result and ruling
+
+- P2 remains: the report still presents the old fail-open artifact scan command as the direct scan command, while the strict round-3 command exists only in prose/summary; the report and progress also disagree on latest evidence commit, raw log path, and partial/complete-with-residuals wording.
+- Ruling: fix round 4 is documentation-only. Replace the old command with the strict existence plus `rg` status handling, synchronize report/spec/progress to `44216d0` (`Record G6.2 artifact guard status`) and the round3 log paths, and use one explicit residual-status term. Preserve ARC inventory exit 2 and list/frame runtime unverified. Cost if wrong: recovery evidence could still direct auditors to a fail-open command or stale commit.
 
 ### Ruling: Task 2 marker validation boundary
 
 The map builder receives borrowed route facts but no WAT/template observation. It therefore must reject empty/duplicate marker facts, while actual expected-vs-observed marker byte comparison is a fragment/pilot responsibility and must be tested there. This follows the approved spec's separation between measured route facts and template assembly; cost if wrong: the map filter alone would not catch a changed template marker, so Task 4/5's parity tests are load-bearing and must include that negative case.
 - Task 4: complete at `7143a5e` (implementation `7be594d`, fix `a45c612`, report `7143a5e`).
 - Task 5: complete at `2499f02` (implementation `1d2e4af`, fixes `291e635`, `2499f02`).
-- Task 6: complete-with-residuals at `4df221b` (`Record G6.2 lifecycle gate status`); full regression ARC inventory remains BLOCKED and list/frame runtime counters remain unverified.
+- Task 6: complete-with-residuals at `44216d0` (`Record G6.2 artifact guard status`); full regression ARC inventory remains BLOCKED and list/frame runtime counters remain unverified.

@@ -338,10 +338,10 @@ route-by-route 回滚，且不会把 test-only probe 直接变成 production dep
 当前工具版本：Zig `0.16.0`，`wasm-tools 1.258.0 (5c6d31c78 2026-08-24)`，
 Wasmtime `48.0.1 (7bac2c277 2026-08-24)`。
 
-Task 6 status：partial close。Step 1（full regression）和 Step 3（list/frame
+Task 6 status：complete-with-residuals。Step 1（full regression）和 Step 3（list/frame
 runtime counters）保持 unchecked/unverified；Step 2、Step 4、Step 5、Step 6
 已完成。此次 evidence revision 的提交 subject 为
-`Record G6.2 lifecycle gate status`，不代表 full regression green。
+`44216d0 Record G6.2 artifact guard status`，不代表 full regression green。
 
 - Zig unit gate：`(cd src && ... zig test main.zig)`，`1717/1717` passed，exit 0。
 - Release build：`(cd src && ... zig build -Doptimize=ReleaseSmall)`，exit 0。
@@ -372,8 +372,12 @@ runtime counters）保持 unchecked/unverified；Step 2、Step 4、Step 5、Step
   `(cd src && ... zig test main.zig --test-filter "producer shared emitter pilot")`
   exit 0，`13/13` passed；raw output 为
   `.tmp/task-6-evidence/round2/pilot-focused.log`。对 private artifact 的
-  `rg` guard 输出 `artifact-boundary-scan=clean`，raw output 为
-  `.tmp/task-6-evidence/round2/artifact-guard-scan.log`。repository ARC
+  strict guard 先检查 `-r`，再区分 `rg` 的 `0`（marker match，失败）、
+  `1`（无匹配，clean）和 `>=2`（I/O/error，失败）；现有 artifact 输出
+  `artifact-boundary-scan=clean`、`existing-artifact-scan exit=0`，缺失路径输出
+  `artifact missing or unreadable: .tmp/task-6-evidence/private-pilot/missing-pilot.wat`、
+  `missing-artifact-scan exit=2`。strict guard raw output 为
+  `.tmp/task-6-evidence/round3/artifact-guard-strict.log`。repository ARC
   inventory 原始命令 `bash src/build/test/check_gc_arc_inventory.sh` exit 2，
   输出 `ARC inventory mode=pre_cutover rows=53 matches=490 unclassified=3`，
   raw output 为 `.tmp/task-6-evidence/round2/arc-inventory.log`；该 blocker
@@ -404,7 +408,7 @@ runtime counters）保持 unchecked/unverified；Step 2、Step 4、Step 5、Step
   立即 `InvalidAdmission`，重建临时 compiler 后旧 route Component gate exit 0；
   这证明删除 private dispatch 后旧 route 仍可用，而非仅证明默认未使用。
 
-因此本 spec 只关闭“单 route private pilot 的 artifact、observed lifecycle counters
+因此本 spec 的 Task 6 status 为 complete-with-residuals，只关闭“单 route private pilot 的 artifact、observed lifecycle counters
 和 rollback 证据”范围；list/frame runtime counters 未提供，完整 repository
 regression 仍有上述 ARC inventory mismatch，不能宣称所有 Task 6 gates 全绿，也不能
 由 state-IR probe 单独宣称 runtime equivalence。

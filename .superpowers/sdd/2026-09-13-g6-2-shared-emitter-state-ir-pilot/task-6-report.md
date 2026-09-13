@@ -2,8 +2,8 @@
 
 Date: 2026-09-13
 Scope: private single-route G6.2 shared emitter/state-IR pilot
-Status: partial close; full regression and list/frame runtime sub-gates remain unresolved/unverified
-Evidence revision commit subject: `Record G6.2 lifecycle gate status`
+Status: complete-with-residuals; full regression and list/frame runtime sub-gates remain unresolved/unverified
+Evidence revision commit: `44216d0` (`Record G6.2 artifact guard status`)
 
 ## Toolchain
 
@@ -70,35 +70,54 @@ The pilot guard focused command was:
 ```
 
 Raw output: `.tmp/task-6-evidence/round2/pilot-focused.log`, result `13/13`
-passed. The direct artifact scan command was:
+passed. The strict artifact guard command actually used for the existing and
+missing paths was:
 
-```text
-if rg -n "__arc_|\\(ref null|externref|anyref|eqref|funcref|i31ref|structref|arrayref|ref\\.null|ref\\.cast|struct\\.new|array\\.new" .tmp/task-6-evidence/private-pilot/pilot.wat; then exit 1; else echo artifact-boundary-scan=clean; fi
+```bash
+artifact_guard() {
+  local artifact_path="$1"
+  if [[ ! -r "$artifact_path" ]]; then
+    echo "artifact missing or unreadable: $artifact_path"
+    return 2
+  fi
+  rg -n '__arc_|\(ref null|externref|anyref|eqref|funcref|i31ref|structref|arrayref|ref\.null|ref\.cast|struct\.new|array\.new' "$artifact_path"
+  local rg_status=$?
+  case "$rg_status" in
+    0)
+      echo "artifact-boundary-scan=marker-match"
+      return 1
+      ;;
+    1)
+      echo "artifact-boundary-scan=clean"
+      return 0
+      ;;
+    *)
+      echo "artifact-boundary-scan=scan-error status=$rg_status"
+      return 2
+      ;;
+  esac
+}
+
+artifact_guard .tmp/task-6-evidence/private-pilot/pilot.wat
+existing_rc=$?
+printf 'existing-artifact-scan exit=%d\n' "$existing_rc"
+artifact_guard .tmp/task-6-evidence/private-pilot/missing-pilot.wat
+missing_rc=$?
+printf 'missing-artifact-scan exit=%d\n' "$missing_rc"
 ```
 
-Raw output: `.tmp/task-6-evidence/round2/artifact-guard-scan.log`, exactly
-`artifact-boundary-scan=clean`. The repository ARC inventory command was
+Raw output: `.tmp/task-6-evidence/round3/artifact-guard-strict.log`, exactly
+`artifact-boundary-scan=clean`, `existing-artifact-scan exit=0`,
+`artifact missing or unreadable: .tmp/task-6-evidence/private-pilot/missing-pilot.wat`,
+and `missing-artifact-scan exit=2`. The repository ARC inventory command was
 `bash src/build/test/check_gc_arc_inventory.sh`; raw output is
 `.tmp/task-6-evidence/round2/arc-inventory.log`, with exit `2` and
 `ARC inventory mode=pre_cutover rows=53 matches=490 unclassified=3`.
 This remains the unresolved full-regression blocker.
 
-The corrected round-3 guard was run against the existing artifact and an
-intentionally missing path. It first requires `-r`, then handles `rg` statuses
-as `0=marker-match/fail`, `1=no-match/clean`, and `>=2=I/O error/fail`:
-
-```text
-artifact-boundary-scan=clean
-existing-artifact-scan exit=0
-artifact missing or unreadable: .tmp/task-6-evidence/private-pilot/missing-pilot.wat
-missing-artifact-scan exit=2
-```
-
-Raw output: `.tmp/task-6-evidence/round3/artifact-guard-strict.log`. The first
-attempt to capture this log failed before execution because the outer shell
-redirected into a not-yet-created directory; that orchestration failure was
-not used as gate evidence and the command was rerun after creating the
-authorized temporary directory.
+Round 4 documentation note: this strict command and the round3 log supersede
+the earlier fail-open artifact-scan snippet; the initial failed log capture was
+an outer-shell redirection error and was not used as gate evidence.
 
 ## Lifecycle Evidence
 
