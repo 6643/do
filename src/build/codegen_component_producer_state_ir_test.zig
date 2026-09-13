@@ -87,6 +87,17 @@ test "producer canonical frame map rejects lifecycle anchor drift" {
     try std.testing.expectError(error.InvalidLifecycle, state_ir.build_frame_map(value));
 }
 
+test "producer canonical frame map rejects an omitted lifecycle anchor" {
+    var value = input();
+    const changed = [_]facts.LifecycleAnchor{.{
+        .name = "life",
+        .required_text = &.{ "acquire", "transfer" },
+        .ordered_anchors = &.{"acquire"},
+    }};
+    value.frame_facts.lifecycle = &changed;
+    try std.testing.expectError(error.InvalidLifecycle, state_ir.build_frame_map(value));
+}
+
 test "producer canonical frame map rejects batched pointer alias" {
     var value = input();
     const changed = [_]facts.FrameFact{

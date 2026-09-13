@@ -125,19 +125,25 @@ fn validate_extra(route: facts.RouteFrameFacts, contract: producer_contract.Prod
         if (anchor.name.len == 0 or anchor.required_text.len == 0 or anchor.ordered_anchors.len == 0) {
             return error.InvalidLifecycle;
         }
+        if (anchor.required_text.len != anchor.ordered_anchors.len) return error.InvalidLifecycle;
+        for (anchor.required_text, 0..) |required, index| {
+            if (required.len == 0 or contains(anchor.required_text[0..index], required)) return error.InvalidLifecycle;
+            if (!contains(anchor.ordered_anchors, required)) return error.InvalidLifecycle;
+        }
         for (anchor.ordered_anchors) |ordered| {
-            var found = false;
-            for (anchor.required_text) |required| {
-                if (std.mem.eql(u8, ordered, required)) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) return error.InvalidLifecycle;
+            if (ordered.len == 0 or !contains(anchor.required_text, ordered)) return error.InvalidLifecycle;
+        }
+        for (anchor.ordered_anchors, 0..) |ordered, index| {
+            if (contains(anchor.ordered_anchors[0..index], ordered)) return error.InvalidLifecycle;
         }
     }
 
     try validate_bounds_and_alias(route, contract);
+}
+
+fn contains(values: []const []const u8, needle: []const u8) bool {
+    for (values) |value| if (std.mem.eql(u8, value, needle)) return true;
+    return false;
 }
 
 fn map_fact_error(err: facts.FactError) MapError {
