@@ -5,7 +5,6 @@ const p3_async_manifest = @import("p3_async_manifest.zig");
 const producer_contract = @import("codegen_component_producer_contract.zig");
 const producer_facts = @import("codegen_component_producer_facts.zig");
 const producer_fragments = @import("codegen_component_producer_fragments.zig");
-const mapping_probe = @import("codegen_component_producer_mapping_probe.zig");
 const pilot_emitter = @import("codegen_component_producer_emitter.zig");
 const wit_abi_layout = @import("wit_abi_layout.zig");
 const wit_abi_types = @import("wit_abi_types.zig");
@@ -16,7 +15,6 @@ const direct_payload_start: u32 = 4086;
 const direct_lifecycle_start: u32 = 4491;
 const direct_metadata_start: u32 = 6364;
 const direct_suffix_start: u32 = 15517;
-const direct_descriptor_hash = "6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace";
 const direct_fragment_markers = [_][]const u8{
     "[producer-record-byte-size] 4",
     "[producer-record-ticket-offset] 0",
@@ -165,15 +163,13 @@ pub fn emit_component_wat(allocator: std.mem.Allocator, plan: OwnedRecordStreamP
 /// remains on emit_component_wat until a separate promotion decision.
 pub fn emit_component_wat_pilot(allocator: std.mem.Allocator, plan: OwnedRecordStreamProducerPlan) pilot_emitter.PilotError![]u8 {
     validate_direct_plan(plan) catch return error.InvalidAdmission;
-    const measured = mapping_probe.fact_for_route("owned-record-direct") orelse return error.InvalidAdmission;
-    var frame_facts: producer_facts.RouteFrameFacts = measured.*;
-    frame_facts.descriptor_id = plan.contract.descriptor_id;
+    const measured = producer_facts.direct_route_facts();
     return pilot_emitter.emit_pilot_wat(allocator, .{
         .facts = .{
             .route_id = measured.route_id,
             .descriptor_id = plan.contract.descriptor_id,
             .contract = plan.contract,
-            .frame_facts = frame_facts,
+            .frame_facts = measured,
             .fragments = &direct_fragments,
             .golden_wat = canonical_core_wat,
         },
@@ -188,7 +184,7 @@ fn validate_direct_plan(plan: OwnedRecordStreamProducerPlan) pilot_emitter.Pilot
         !same_string_list(plan.descriptor.params, &.{"stream<resource-entry>"}) or
         !std.mem.eql(u8, plan.descriptor.result, "Result<nil,error-code>") or
         plan.descriptor.resource != null or plan.descriptor.wit_sha256 == null or
-        !std.mem.eql(u8, plan.descriptor.wit_sha256.?, direct_descriptor_hash) or
+        !std.mem.eql(u8, plan.descriptor.wit_sha256.?, producer_facts.direct_descriptor_hash) or
         !std.mem.eql(u8, plan.descriptor.wit.package, "do:g6-2-owned-record-producer@0.1.0") or
         !std.mem.eql(u8, plan.descriptor.wit.interface, "sink") or
         !std.mem.eql(u8, plan.descriptor.wit.operation, "consume-via-stream") or
@@ -244,6 +240,10 @@ fn validate_direct_plan(plan: OwnedRecordStreamProducerPlan) pilot_emitter.Pilot
         .{ .owned_record_stream_producer = shape },
     ) catch return error.InvalidAdmission;
     if (!contract_equal(plan.contract, expected_contract)) return error.InvalidAdmission;
+}
+
+pub fn pilot_route_facts() producer_facts.RouteFrameFacts {
+    return producer_facts.direct_route_facts();
 }
 
 fn record_layout_equal(left: p3_async_manifest.RecordLayout, right: p3_async_manifest.RecordLayout) bool {

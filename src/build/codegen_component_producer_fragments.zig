@@ -1,4 +1,5 @@
 const std = @import("std");
+const state_ir = @import("codegen_component_producer_state_ir.zig");
 
 pub const FragmentKind = enum { prefix, payload, lifecycle, metadata, suffix };
 
@@ -26,6 +27,7 @@ pub const FragmentError = error{
     InvalidKindOrder,
     WholeTemplateFragment,
     MissingMarker,
+    LifecycleMismatch,
     OutOfMemory,
 };
 
@@ -73,7 +75,21 @@ pub fn validate_fragment_table(template: []const u8, fragment_table: []const Fra
 
 pub fn assemble(allocator: std.mem.Allocator, template: []const u8, fragment_table: []const Fragment) FragmentError![]u8 {
     try validate_fragment_table(template, fragment_table);
+    return assemble_validated(allocator, template, fragment_table);
+}
 
+pub fn assemble_with_lifecycle(
+    allocator: std.mem.Allocator,
+    template: []const u8,
+    fragment_table: []const Fragment,
+    lifecycle: state_ir.LifecycleStateIR,
+) FragmentError![]u8 {
+    try validate_fragment_table(template, fragment_table);
+    try validate_lifecycle_assembly(template, fragment_table, lifecycle);
+    return assemble_validated(allocator, template, fragment_table);
+}
+
+fn assemble_validated(allocator: std.mem.Allocator, template: []const u8, fragment_table: []const Fragment) FragmentError![]u8 {
     const output = allocator.alloc(u8, template.len) catch |err| return err;
     errdefer allocator.free(output);
 
@@ -86,6 +102,37 @@ pub fn assemble(allocator: std.mem.Allocator, template: []const u8, fragment_tab
         cursor += end - start;
     }
     return output;
+}
+
+fn validate_lifecycle_assembly(
+    template: []const u8,
+    fragment_table: []const Fragment,
+    lifecycle: state_ir.LifecycleStateIR,
+) FragmentError!void {
+    if (lifecycle.asset_count == 0 or lifecycle.group_count == 0 or
+        lifecycle.transfer_count != lifecycle.group_count or
+        lifecycle.barrier_count != lifecycle.group_count or lifecycle.cleanup_count == 0 or
+        lifecycle.lifecycle_anchors.len == 0)
+    {
+        return error.LifecycleMismatch;
+    }
+
+    var lifecycle_fragment_count: usize = 0;
+    for (fragment_table) |fragment| {
+        if (fragment.kind == .lifecycle) lifecycle_fragment_count += 1;
+    }
+    if (lifecycle_fragment_count != 1) return error.LifecycleMismatch;
+
+    for (lifecycle.lifecycle_anchors) |anchor| {
+        for (anchor.required_text) |required| {
+            if (required.len == 0 or std.mem.indexOf(u8, template, required) == null) return error.LifecycleMismatch;
+        }
+        var cursor: usize = 0;
+        for (anchor.ordered_anchors) |ordered| {
+            const found = std.mem.indexOfPos(u8, template, cursor, ordered) orelse return error.LifecycleMismatch;
+            cursor = found + ordered.len;
+        }
+    }
 }
 
 fn fragment_for_order(fragment_table: []const Fragment, order: u16) ?Fragment {

@@ -16,6 +16,7 @@ pub const PilotError = error{
     ByteParityMismatch,
     ArcRuntimeMarker,
     CanonicalGcReference,
+    OutOfMemory,
 };
 
 pub const PilotFacts = struct {
@@ -40,6 +41,7 @@ const direct_sink_module = "do:g6-2-owned-record-producer/sink@0.1.0";
 pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotError![]u8 {
     try validate_identity_and_hash(input);
     try validate_direct_admission(input.facts.contract);
+    if (!facts.route_facts_equal(input.facts.frame_facts, facts.direct_route_facts())) return error.InvalidAdmission;
 
     const map = state_ir.build_frame_map(.{
         .route_id = input.facts.route_id,
@@ -49,11 +51,14 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
     }) catch return error.InvalidMap;
     const lifecycle = state_ir.build_lifecycle_ir(input.facts.contract, map) catch return error.InvalidLifecycle;
 
-    fragments.validate_fragment_table(canonical_template_wat, input.facts.fragments) catch return error.InvalidFragments;
-    const assembled = fragments.assemble(allocator, canonical_template_wat, input.facts.fragments) catch return error.InvalidFragments;
+    validate_fragment_marker_ownership(input.facts.fragments, map) catch return error.InvalidFragments;
+    const assembled = fragments.assemble_with_lifecycle(allocator, canonical_template_wat, input.facts.fragments, lifecycle) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.LifecycleMismatch => return error.InvalidLifecycle,
+        else => return error.InvalidFragments,
+    };
     errdefer allocator.free(assembled);
 
-    _ = lifecycle;
     if (std.mem.indexOf(u8, assembled, "__arc_") != null or
         std.mem.indexOf(u8, input.facts.golden_wat, "__arc_") != null) return error.ArcRuntimeMarker;
     if (contains_canonical_gc_reference(assembled) or contains_canonical_gc_reference(input.facts.golden_wat)) {
@@ -73,9 +78,56 @@ fn validate_identity_and_hash(input: PilotInput) PilotError!void {
     {
         return error.InvalidIdentity;
     }
-    if (input.canonical_wit_hash.len == 0) return error.InvalidHash;
+    if (input.canonical_wit_hash.len == 0 or !std.mem.eql(u8, input.canonical_wit_hash, facts.direct_descriptor_hash)) return error.InvalidHash;
     const contract_hash = input.facts.contract.descriptor_hash orelse return error.InvalidHash;
-    if (!std.mem.eql(u8, input.canonical_wit_hash, contract_hash)) return error.InvalidHash;
+    if (!std.mem.eql(u8, contract_hash, facts.direct_descriptor_hash) or
+        !std.mem.eql(u8, input.canonical_wit_hash, contract_hash)) return error.InvalidHash;
+}
+
+fn validate_fragment_marker_ownership(fragment_table: []const fragments.Fragment, map: state_ir.CanonicalFrameMap) PilotError!void {
+    for (fragment_table) |fragment| {
+        for (fragment.required_markers) |required| {
+            if (fragment.kind != .payload or count_marker_owners(fragment_table, required) != 1 or
+                !marker_matches_fact(required, map.markers)) return error.InvalidFragments;
+        }
+    }
+    for (map.markers) |marker| {
+        var owner_count: usize = 0;
+        for (fragment_table) |fragment| {
+            for (fragment.required_markers) |required| {
+                if (marker_matches_name(required, marker.name)) owner_count += 1;
+            }
+        }
+        if (owner_count != 1) return error.InvalidFragments;
+    }
+}
+
+fn count_marker_owners(fragment_table: []const fragments.Fragment, required: []const u8) usize {
+    var count: usize = 0;
+    for (fragment_table) |fragment| {
+        for (fragment.required_markers) |candidate| {
+            if (std.mem.eql(u8, candidate, required)) count += 1;
+        }
+    }
+    return count;
+}
+
+fn marker_matches_fact(required: []const u8, markers: []const facts.MarkerBinding) bool {
+    for (markers) |marker| if (marker_matches_name(required, marker.name)) {
+        if (marker.expected_value) |expected| {
+            const prefix_len = marker.name.len + 2;
+            return required.len == prefix_len + 1 + expected.len and required[prefix_len] == ' ' and
+                marker_matches_name(required, marker.name) and
+                std.mem.eql(u8, required[prefix_len + 1 ..], expected);
+        }
+        return required.len == marker.name.len + 2;
+    };
+    return false;
+}
+
+fn marker_matches_name(required: []const u8, name: []const u8) bool {
+    return required.len >= name.len + 2 and required[0] == '[' and
+        required[name.len + 1] == ']' and std.mem.eql(u8, required[1 .. name.len + 1], name);
 }
 
 fn validate_direct_admission(contract: producer_contract.ProducerContract) PilotError!void {

@@ -6,6 +6,7 @@ const lexer = @import("lexer.zig");
 const mapping_probe = @import("codegen_component_producer_mapping_probe.zig");
 const producer = @import("codegen_component_owned_record_stream_producer.zig");
 const p3_async_manifest = @import("p3_async_manifest.zig");
+const state_ir = @import("codegen_component_producer_state_ir.zig");
 
 const direct_template: []const u8 = @embedFile("owned_record_stream_producer_template.wat");
 
@@ -125,7 +126,7 @@ test "producer shared emitter pilot rejects mutated frame facts" {
     const plan = context.plan;
     var input = pilot_input(plan);
     input.facts.frame_facts.frame_size = 64;
-    try std.testing.expectError(error.InvalidMap, emitter.emit_pilot_wat(std.testing.allocator, input));
+    try std.testing.expectError(error.InvalidAdmission, emitter.emit_pilot_wat(std.testing.allocator, input));
 }
 
 test "producer shared emitter pilot rejects invalid lifecycle and fragment tables" {
@@ -134,7 +135,7 @@ test "producer shared emitter pilot rejects invalid lifecycle and fragment table
     const plan = context.plan;
     var input = pilot_input(plan);
     input.facts.frame_facts.lifecycle = &.{};
-    try std.testing.expectError(error.InvalidMap, emitter.emit_pilot_wat(std.testing.allocator, input));
+    try std.testing.expectError(error.InvalidAdmission, emitter.emit_pilot_wat(std.testing.allocator, input));
 
     input = pilot_input(plan);
     input.facts.fragments = &.{};
@@ -337,4 +338,78 @@ test "producer shared emitter pilot adapter rejects mutated measured plan facts"
     changed.layout = mutated_layout;
     changed.contract.payload = .{ .record = mutated_layout };
     try std.testing.expectError(error.InvalidAdmission, producer.emit_component_wat_pilot(std.testing.allocator, changed));
+}
+
+test "producer shared emitter pilot adapter owns direct facts independently of the probe" {
+    const adapter_facts = producer.pilot_route_facts();
+    const measured = mapping_probe.fact_for_route("owned-record-direct") orelse unreachable;
+    try std.testing.expectEqualStrings(measured.route_id, adapter_facts.route_id);
+    try std.testing.expectEqualStrings(measured.template_name, adapter_facts.template_name);
+    try std.testing.expectEqual(measured.frame_size, adapter_facts.frame_size);
+    try std.testing.expectEqual(measured.frames.len, adapter_facts.frames.len);
+    try std.testing.expectEqual(measured.ownership.len, adapter_facts.ownership.len);
+    try std.testing.expectEqual(measured.bindings.len, adapter_facts.bindings.len);
+    try std.testing.expectEqual(measured.lifecycle.len, adapter_facts.lifecycle.len);
+    try std.testing.expectEqual(measured.markers.len, adapter_facts.markers.len);
+}
+
+test "producer shared emitter pilot rejects drifted measured marker facts" {
+    var context = try PlanContext.init();
+    defer context.deinit();
+    var input = pilot_input(context.plan);
+    input.facts.frame_facts.markers = &.{};
+    try std.testing.expectError(error.InvalidAdmission, emitter.emit_pilot_wat(std.testing.allocator, input));
+}
+
+test "producer shared emitter pilot rejects drifted measured binding facts" {
+    var context = try PlanContext.init();
+    defer context.deinit();
+    var input = pilot_input(context.plan);
+    const changed = [_]facts.CanonicalBinding{.{ .name = "ticket", .canonical_offset = 0, .payload_size = 4, .frame_offset = 60, .width = 4 }};
+    input.facts.frame_facts.bindings = &changed;
+    try std.testing.expectError(error.InvalidAdmission, emitter.emit_pilot_wat(std.testing.allocator, input));
+}
+
+test "producer shared emitter pilot rejects drifted measured lifecycle facts" {
+    var context = try PlanContext.init();
+    defer context.deinit();
+    var input = pilot_input(context.plan);
+    const changed = [_]facts.LifecycleAnchor{.{
+        .name = "record-lifecycle",
+        .required_text = &.{ "(func $release-guest-record", "(func $transfer-record" },
+        .ordered_anchors = &.{ "(func $release-guest-record", "(func $transfer-record" },
+    }};
+    input.facts.frame_facts.lifecycle = &changed;
+    try std.testing.expectError(error.InvalidAdmission, emitter.emit_pilot_wat(std.testing.allocator, input));
+}
+
+test "producer shared emitter pilot rejects a forged direct descriptor hash" {
+    var context = try PlanContext.init();
+    defer context.deinit();
+    var input = pilot_input(context.plan);
+    input.facts.contract.descriptor_hash = "forged-hash";
+    input.canonical_wit_hash = "forged-hash";
+    try std.testing.expectError(error.InvalidHash, emitter.emit_pilot_wat(std.testing.allocator, input));
+}
+
+test "producer shared emitter pilot uses lifecycle IR during fragment assembly" {
+    var context = try PlanContext.init();
+    defer context.deinit();
+    const input = pilot_input(context.plan);
+    const map = try state_ir.build_frame_map(.{
+        .route_id = input.facts.route_id,
+        .descriptor_id = input.facts.descriptor_id,
+        .contract = input.facts.contract,
+        .frame_facts = input.facts.frame_facts,
+    });
+    var lifecycle = try state_ir.build_lifecycle_ir(input.facts.contract, map);
+    lifecycle.transfer_count = 0;
+    try std.testing.expectError(error.LifecycleMismatch, fragments.assemble_with_lifecycle(std.testing.allocator, direct_template, &direct_fragments, lifecycle));
+}
+
+test "producer shared emitter pilot preserves allocator exhaustion" {
+    var context = try PlanContext.init();
+    defer context.deinit();
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+    try std.testing.expectError(error.OutOfMemory, emitter.emit_pilot_wat(failing.allocator(), pilot_input(context.plan)));
 }

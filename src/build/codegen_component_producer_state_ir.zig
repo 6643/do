@@ -53,6 +53,7 @@ pub const LifecycleStateIR = struct {
     reverse_release_count: u32,
     cleanup_order: [7]producer_contract.CleanupStage,
     cleanup_count: u32,
+    lifecycle_anchors: []const facts.LifecycleAnchor,
     terminal: TerminalPlan,
 };
 
@@ -168,6 +169,7 @@ pub fn build_lifecycle_ir(contract: producer_contract.ProducerContract, map: Can
         .reverse_release_count = asset_count,
         .cleanup_order = undefined,
         .cleanup_count = @intCast(contract.terminal.cleanup_order.len),
+        .lifecycle_anchors = map.lifecycle,
         .terminal = .{
             .close_action = contract.terminal.close_action,
             .abort_action = contract.terminal.abort_action,
@@ -209,6 +211,12 @@ pub fn validate_lifecycle_ir(contract: producer_contract.ProducerContract, map: 
     if (ir.asset_count != ir.acquire_count or ir.asset_count != ir.reverse_release_count) return error.InvalidAsset;
     if (ir.group_count != ir.transfer_count) return error.InvalidGroup;
     if (ir.group_count != ir.barrier_count) return error.TransferBeforeCompleteWrite;
+    if (ir.lifecycle_anchors.len != map.lifecycle.len or ir.lifecycle_anchors.len == 0) return error.InvalidAsset;
+    for (ir.lifecycle_anchors, map.lifecycle) |actual, expected| {
+        if (!std.mem.eql(u8, actual.name, expected.name) or
+            !string_lists_equal(actual.required_text, expected.required_text) or
+            !string_lists_equal(actual.ordered_anchors, expected.ordered_anchors)) return error.InvalidAsset;
+    }
 
     for (0..@intCast(ir.group_count)) |index| {
         const group = @as(u32, @intCast(index));
@@ -384,6 +392,12 @@ fn same_path(left: []const []const u8, right: []const []const u8) bool {
 fn same_optional(left: ?[]const u8, right: ?[]const u8) bool {
     if (left == null or right == null) return left == null and right == null;
     return std.mem.eql(u8, left.?, right.?);
+}
+
+fn string_lists_equal(left: []const []const u8, right: []const []const u8) bool {
+    if (left.len != right.len) return false;
+    for (left, right) |a, b| if (!std.mem.eql(u8, a, b)) return false;
+    return true;
 }
 
 fn validate_bounds_and_alias(route: facts.RouteFrameFacts, contract: producer_contract.ProducerContract) MapError!void {

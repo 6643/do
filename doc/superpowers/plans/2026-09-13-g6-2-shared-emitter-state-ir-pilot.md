@@ -76,11 +76,11 @@ pub const RouteFrameFacts = struct { route_id: []const u8, descriptor_id: []cons
 pub fn validate_route_facts(facts: RouteFrameFacts) FactError!void;
 ```
 
-- [ ] **Step 1: Add the production fact declarations and fail-closed interval helpers.**
+- [x] **Step 1: Add the production fact declarations and fail-closed interval helpers.**
 
   `validate_route_facts` must reject empty identities, zero frame/field widths, misalignment, out-of-frame fields, binding ranges outside payload/frame, overlapping intervals, invalid ownership values and empty lifecycle entries. It must accept offset `0` and handle value `0`; no helper may use either as absence.
 
-- [ ] **Step 2: Run the mapping probe tests before the compatibility edit.**
+- [x] **Step 2: Run the mapping probe tests before the compatibility edit.**
 
   Run:
 
@@ -91,15 +91,15 @@ pub fn validate_route_facts(facts: RouteFrameFacts) FactError!void;
 
   Expected: the existing route table remains green before the type migration; retain the output as the baseline for this task.
 
-- [ ] **Step 3: Make mapping probe reuse the production types and validator.**
+- [x] **Step 3: Make mapping probe reuse the production types and validator.**
 
   Replace duplicate declarations with aliases/re-exports from `codegen_component_producer_facts.zig`; keep the existing `ProbeError`, marker scanning, decomposition, canonical parity probe, 12-entry table and test-visible field names. Map `FactError` to `ProbeError` at the test-only boundary so existing diagnostics and tests remain stable.
 
-- [ ] **Step 4: Add a type-identity and zero-offset regression test.**
+- [x] **Step 4: Add a type-identity and zero-offset regression test.**
 
   Validate one direct route with frame/binding/ownership entries at offset `0`, assert the fact validator accepts it, and assert `mapping_probe.validate_facts` returns the same report. Mutate one interval and assert both paths fail closed.
 
-- [ ] **Step 5: Run focused tests, format, and commit the facts slice.**
+- [x] **Step 5: Run focused tests, format, and commit the facts slice.**
 
   Run the focused command again, then `zig fmt src/build/codegen_component_producer_facts.zig src/build/codegen_component_producer_mapping_probe.zig src/build/codegen_component_producer_mapping_probe_test.zig` and `git diff --check`. Commit only the three task files with subject `Extract G6.2 producer facts`.
 
@@ -154,11 +154,11 @@ pub fn validate_frame_map(map: CanonicalFrameMap, contract: producer_contract.Pr
 
   `FrameMapInput` is the allocation-free, route-local input used by this module. Task 5's `PilotFacts` must construct it by value from its borrowed `contract` and `frame_facts`; it must not introduce a second fact table or make the state-IR module import the emitter module.
 
-- [ ] **Step 1: Write RED map tests.**
+- [x] **Step 1: Write RED map tests.**
 
   Add a valid direct route case plus failures for empty route/descriptor identity, contract descriptor mismatch, frame overlap, binding overlap/out-of-bounds, duplicate ownership state, empty/duplicate marker facts, lifecycle anchor drift, batched pointer alias, a 65-asset/group bound, and a zero absence sentinel. `FrameMapInput` has no template observation by design; expected-vs-observed marker byte mismatch is tested by Task 4/5's fragment/pilot gate. Assert that no map fixture is accepted by silently dropping a field.
 
-- [ ] **Step 2: Run the map filter and capture the expected RED result.**
+- [x] **Step 2: Run the map filter and capture the expected RED result.**
 
   ```bash
   cd src
@@ -167,15 +167,15 @@ pub fn validate_frame_map(map: CanonicalFrameMap, contract: producer_contract.Pr
 
   Expected: failure because `CanonicalFrameMap` construction and validator are not implemented.
 
-- [ ] **Step 3: Implement allocation-free map construction.**
+- [x] **Step 3: Implement allocation-free map construction.**
 
   Call `producer_contract.validate_contract` and `facts.validate_route_facts` before constructing the borrowed view. Require the route id, descriptor id and contract descriptor id to match; verify all frame/binding/marker/lifecycle ranges and ownership bits; preserve canonical offset `0`; and enforce the direct pilot's fixed measured frame size and bounded asset/group limit. The function must return a map by value without creating a second fact table.
 
-- [ ] **Step 4: Run the positive and negative map tests.**
+- [x] **Step 4: Run the positive and negative map tests.**
 
   Re-run the filter and require every RED case to pass as a rejection, including explicit `zero sentinel`, `batch alias`, and marker-shape errors. Run `zig fmt` on the new module/test and `git diff --check`.
 
-- [ ] **Step 5: Commit the frame-map slice.**
+- [x] **Step 5: Commit the frame-map slice.**
 
   ```bash
   git add src/build/codegen_component_producer_state_ir.zig src/build/codegen_component_producer_state_ir_test.zig src/main.zig
@@ -243,19 +243,19 @@ pub fn validate_lifecycle_ir(contract: producer_contract.ProducerContract, map: 
 
   The fixed arrays and count fields are intentional: they keep the static plan allocation-free and prevent slices from escaping a stack builder. The cleanup array length must equal the current `CleanupStage` enum field count; if that count changes, update the declaration and its compile-time assertion in the same change.
 
-- [ ] **Step 1: Add RED tests for valid state plans and direct failure guards.**
+- [x] **Step 1: Add RED tests for valid state plans and direct failure guards.**
 
   Assert direct route asset transfer, list-backed release disposition, nested child-before-parent ordering, independent batched group ranges, complete-write barriers, reverse acquisition cleanup, and a post-transfer cancel plan whose `rolls_back_host_effects` is `false`. Add mutations that must reject transfer-before-write, partial group transfer, transfer/release disposition mismatch, reverse-order drift, duplicate cleanup stage, parent-before-child cleanup, terminal-before-cleanup, and post-transfer rollback.
 
-- [ ] **Step 2: Implement deterministic topology and static transition plan.**
+- [x] **Step 2: Implement deterministic topology and static transition plan.**
 
   Derive resource assets from contract ownership leaves in leaf order; derive list backing assets from list allocations and payload-list identity; replicate the schema per mapping group without aliasing ranges; cap total assets/groups at `64`; emit acquire, write barrier, atomic transfer, post-transfer cancel, reverse release, cleanup and terminal records. The builder must reject half-transfer plans and must not invent a resource asset for a list-only route.
 
-- [ ] **Step 3: Implement the invariant validator and make construction fail closed.**
+- [x] **Step 3: Implement the invariant validator and make construction fail closed.**
 
   Validate every count/range, exactly-once cleanup, child-before-parent release, terminal guard, transfer disposition and cancel semantics. A failed validator returns the named `LifecycleError` and never returns a partially initialized IR.
 
-- [ ] **Step 4: Run the state-IR filter and inspect the complete failure matrix.**
+- [x] **Step 4: Run the state-IR filter and inspect the complete failure matrix.**
 
   ```bash
   cd src
@@ -264,7 +264,7 @@ pub fn validate_lifecycle_ir(contract: producer_contract.ProducerContract, map: 
 
   Expected: all valid direct/nested/list/batched cases pass and every mutated IR is rejected with the expected error. Format the two task files and run `git diff --check`.
 
-- [ ] **Step 5: Commit the lifecycle IR slice.**
+- [x] **Step 5: Commit the lifecycle IR slice.**
 
   ```bash
   git add src/build/codegen_component_producer_state_ir.zig src/build/codegen_component_producer_state_ir_test.zig
@@ -311,11 +311,11 @@ pub fn validate_fragment_table(template: []const u8, fragments: []const Fragment
 pub fn assemble(allocator: std.mem.Allocator, template: []const u8, fragments: []const Fragment) FragmentError![]u8;
 ```
 
-- [ ] **Step 1: Write RED coverage tests.**
+- [x] **Step 1: Write RED coverage tests.**
 
   Use a small synthetic module and the direct route's named spans. Require exact contiguous coverage, prefix-first/suffix-last order, marker ownership, and byte-for-byte assembly. Add negative fixtures for empty table/name, out-of-range span, gap, overlap, order drift, invalid kind order, one whole-template fragment, and missing required marker.
 
-- [ ] **Step 2: Run the fragment filter to capture RED.**
+- [x] **Step 2: Run the fragment filter to capture RED.**
 
   ```bash
   cd src
@@ -324,15 +324,15 @@ pub fn assemble(allocator: std.mem.Allocator, template: []const u8, fragments: [
 
   Expected: failure because the fragment descriptor and assembler are not defined.
 
-- [ ] **Step 3: Implement span/order/marker validation without parsing or rewriting WAT.**
+- [x] **Step 3: Implement span/order/marker validation without parsing or rewriting WAT.**
 
   Validate that ordered spans cover `[0, template.len)` exactly once; reject a single span covering the whole template; require the first/last kinds to be `prefix`/`suffix`; and scan only each declared marker name within its declared span. The validator must not discover arbitrary fragments or treat the complete template as an opaque fallback fragment.
 
-- [ ] **Step 4: Implement allocator-owned assembly and test parity.**
+- [x] **Step 4: Implement allocator-owned assembly and test parity.**
 
   Append `template[span.start..span.end]` in `order` sequence into one caller-owned buffer. On any validation or append error, return an error and no output artifact. Assert the direct route's assembled bytes equal the old embedded template exactly.
 
-- [ ] **Step 5: Run, format, and commit the fragment slice.**
+- [x] **Step 5: Run, format, and commit the fragment slice.**
 
   Re-run the filter, format both new files, run `git diff --check`, then commit with subject `Add G6.2 producer fragments`.
 
@@ -380,11 +380,11 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
 
   The direct route adapter must expose only a private-by-convention `emit_component_wat_pilot` entry from `OwnedRecordStreamProducerPlan`; it must reject any descriptor/source/sink shape other than the measured direct route. Existing `emit_component_wat` and `emit_component_wit` remain the old route and are not routed through the pilot.
 
-- [ ] **Step 1: Add RED pilot parity and admission tests.**
+- [x] **Step 1: Add RED pilot parity and admission tests.**
 
   Analyze the checked-in exact Do source, construct the adapter input, and assert the pilot output equals the old `emit_component_wat` bytes. Add direct failures for wrong route id, descriptor mismatch, empty/hash mismatch, mutated frame fact, invalid lifecycle/fragment table, changed golden byte, `__arc_` output, and a synthetic WAT containing a GC reference crossing the canonical boundary. Assert each failure returns without a WAT buffer being accepted.
 
-- [ ] **Step 2: Run the pilot filter before wiring the implementation.**
+- [x] **Step 2: Run the pilot filter before wiring the implementation.**
 
   ```bash
   cd src
@@ -393,15 +393,15 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
 
   Expected: RED until the emitter, route adapter and fragment table exist.
 
-- [ ] **Step 3: Implement `emit_pilot_wat` with fail-closed ordering.**
+- [x] **Step 3: Implement `emit_pilot_wat` with fail-closed ordering.**
 
   Check route/descriptor identity and the non-empty canonical WIT hash first; construct `state_ir.FrameMapInput{ .route_id = input.facts.route_id, .descriptor_id = input.facts.descriptor_id, .contract = input.facts.contract, .frame_facts = input.facts.frame_facts }`; then call `build_frame_map`, `build_lifecycle_ir`, `validate_fragment_table`, and `assemble` in that order. Reject `__arc_` and canonical-boundary GC references; compare assembled bytes to `golden_wat`; free a temporary assembled buffer before returning parity/error failures. Do not catch an error and call the old emitter.
 
-- [ ] **Step 4: Add the direct route adapter without changing default dispatch.**
+- [x] **Step 4: Add the direct route adapter without changing default dispatch.**
 
-  In `codegen_component_owned_record_stream_producer.zig`, build `RouteFrameFacts` from the existing direct mapping entry, construct explicit five-kind fragment spans over `owned_record_stream_producer_template.wat`, pass `plan.contract.descriptor_hash` as `canonical_wit_hash`, and call the shared emitter only from `emit_component_wat_pilot`. Keep `emit_component_wat` returning the embedded template and keep all existing exact-source negative admission tests unchanged.
+  In `codegen_component_owned_record_stream_producer.zig`, use the adapter-owned immutable direct `RouteFrameFacts`, construct explicit five-kind fragment spans over `owned_record_stream_producer_template.wat`, pass `plan.contract.descriptor_hash` as `canonical_wit_hash`, and call the shared emitter only from `emit_component_wat_pilot`. Keep `emit_component_wat` returning the embedded template and keep all existing exact-source negative admission tests unchanged.
 
-- [ ] **Step 5: Run focused pilot tests, old emitter tests, format, and commit.**
+- [x] **Step 5: Run focused pilot tests, old emitter tests, format, and commit.**
 
   Run both `--test-filter "producer shared emitter pilot"` and the existing `--test-filter "owned record producer"`; require pilot/old byte parity and all old negative cases. Format all changed Zig files, run `git diff --check`, then commit with subject `Add G6.2 shared emitter pilot`.
 
@@ -459,9 +459,7 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
   was `6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace` and
   pilot WAT SHA-256 was
   `095da7cd4c131a7318fc4bf5fd87b2d99e2672bff568edc577a553e228f856c5`.
-  WIT SHA-256 was
-  `6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace`; WAT
-  SHA-256 matched the checked-in direct golden. The artifact contained no
+  WAT SHA-256 matched the checked-in direct golden. The artifact contained no
   `__arc_` marker and no canonical-boundary Wasm GC reference.
 
   Generate the pilot WAT/WIT into a temporary directory, then run the current `wasm-tools` sequence used by the repository: `wasm-tools parse`, `wasm-tools component embed`, `wasm-tools component new`, and `wasm-tools validate --features cm-async,cm-more-async-builtins`. Verify WIT bytes/hash, descriptor identity, no `__arc_` marker and no Wasm GC reference crossing the canonical boundary. Record `wasm-tools --version` and `wasmtime --version` from the live environment.
