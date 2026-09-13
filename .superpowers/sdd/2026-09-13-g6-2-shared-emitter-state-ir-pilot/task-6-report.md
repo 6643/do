@@ -223,3 +223,19 @@ update, public ownership syntax, or generic/arbitrary producer work was done.
 Deferred: 12-route migration, generic/arbitrary producers, public ownership
 syntax, semantic-parity rewrite and D2 general async. The state-IR probe is not
 a substitute for runtime equivalence.
+
+## Final Review-Fix Addendum (`b130817` / `2d14203`)
+
+The final code fix moved route WAT source ownership into the direct adapter,
+added fail-closed ownership-state role and record-topology checks, and changed
+adapter/probe parity to compare all fact fields. The follow-up documentation
+commit synchronized the plan, spec and ledger with `PilotInput.template_wat`.
+
+Post-fix verification passed: pilot `20/20`, owned-record producer `15/15`,
+state-IR map `16/16`, full `zig test main.zig` `1728/1728`, ReleaseSmall build,
+and release smoke. The integration harness still had `53/53` child tests pass
+but exited `1` because the ARC inventory command exited `2`; the current scan
+reports `unclassified=2`. Host list/frame runtime counters remain unavailable
+and therefore unverified. The scoped re-review found no Critical or Important
+finding and no new breakage; generic extra/missing `source_fields` completeness
+remains a Minor residual for future non-direct record routes.
