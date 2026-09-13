@@ -411,8 +411,25 @@ test "producer lifecycle state probe transition rejects cleanup before asset fin
     try std.testing.expectError(error.CleanupBeforeAssets, probe.run(valid_program_with_events(&events)));
 }
 
+test "producer lifecycle state probe transition rejects cleanup before acquisition" {
+    const events = [_]probe.LifecycleEvent{
+        .{ .cleanup_stage = .resource },
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .write_complete = 0 },
+        .{ .transfer_commit = 0 },
+        .{ .terminal = {} },
+    };
+    try std.testing.expectError(error.CleanupBeforeAssets, probe.run(valid_program_with_events(&events)));
+}
+
 test "producer lifecycle state probe transition rejects cleanup order drift" {
-    const events = [_]probe.LifecycleEvent{.{ .cleanup_stage = .list }};
+    const events = [_]probe.LifecycleEvent{
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .acquire = .{ .group_index = 0, .asset_index = 1 } },
+        .{ .write_complete = 0 },
+        .{ .transfer_commit = 0 },
+        .{ .cleanup_stage = .list },
+    };
     try std.testing.expectError(error.CleanupStageMismatch, probe.run(list_program(&events)));
 }
 

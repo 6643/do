@@ -301,7 +301,9 @@ pub fn run(program: LifecycleProgram) LifecycleError!TraceObservation {
             },
             .cleanup_stage => |stage| {
                 if (terminal_state == .completed) return error.CleanupAfterTerminal;
-                if (has_guest_assets(model, acquired_mask, transferred_mask, released_mask)) {
+                if (has_guest_assets(model, acquired_mask, transferred_mask, released_mask) or
+                    !all_groups_finalized(model, transferred_mask, released_mask))
+                {
                     return error.CleanupBeforeAssets;
                 }
                 if (cleanup_cursor >= program.contract.terminal.cleanup_order.len or
