@@ -441,10 +441,24 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
 
 - [x] **Step 2: Run current-toolchain Component/WIT artifact gates.**
 
+  A temporary Zig helper called the private
+  `producer.emit_component_wat_pilot` API directly (the helper was removed
+  after the run). It wrote
+  `.tmp/task-6-evidence/private-pilot/pilot.wat`; this exact file, rather than
+  a `do build` output, was passed to `wasm-tools parse`, `component embed`,
+  `component new`, and `validate --features cm-async,cm-more-async-builtins`,
+  all exit `0`. The command was:
+
+  ```bash
+  (cd src && TMPDIR="$PWD/../.tmp/task-6-evidence/do-tmp" ZIG_LOCAL_CACHE_DIR="$PWD/../.tmp/task-6-evidence/zig-cache" ZIG_GLOBAL_CACHE_DIR="$PWD/../.tmp/task-6-evidence/zig-gcache" zig run build/task_6_private_pilot_artifact_helper.zig -- "$PWD/../.tmp/task-6-evidence/private-pilot/pilot.wat")
+  ```
+
   Verified with `wasm-tools 1.258.0 (5c6d31c78 2026-08-24)` and `wasmtime
-  48.0.1 (7bac2c277 2026-08-24)`: pilot WAT/WIT were generated into a
-  temporary directory; `wasm-tools parse`, `component embed`, `component new`,
-  and `validate --features cm-async,cm-more-async-builtins` all exited `0`.
+  48.0.1 (7bac2c277 2026-08-24)`. WIT descriptor package/world was
+  `do:g6-2-owned-record-producer@0.1.0` / `owned-record-producer`; WIT SHA-256
+  was `6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace` and
+  pilot WAT SHA-256 was
+  `095da7cd4c131a7318fc4bf5fd87b2d99e2672bff568edc577a553e228f856c5`.
   WIT SHA-256 was
   `6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace`; WAT
   SHA-256 matched the checked-in direct golden. The artifact contained no
@@ -472,10 +486,12 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
   byte-for-byte (WAT SHA-256
   `095da7cd4c131a7318fc4bf5fd87b2d99e2672bff568edc577a553e228f856c5`, WIT
   SHA-256 as above). Pilot admission negative tests returned named errors with
-  no accepted fallback buffer; old-route focused tests and the old Component
-  gate passed after the private pilot entry remained unused by default
-  dispatch. `doc/gc_arc_inventory.tsv` had no diff. See `task-6-report.md` for
-  the exact command set and rollback evidence.
+  no accepted fallback buffer. For rollback, a temporary `git archive HEAD`
+  checkout replaced `emit_component_wat_pilot` with an immediate
+  `InvalidAdmission`, rebuilt its compiler, and ran
+  `DO_BIN=<rollback-copy>/bin/do examples/p3-runtime/test_do_g6_2_owned_record_producer.sh`;
+  the build and old-route gate both exited `0`. `doc/gc_arc_inventory.tsv` had
+  no diff. See `task-6-report.md` for the exact command set and artifact path.
 
   Compile the same source through ordinary `--p3-async-component` and assert old WAT/WIT bytes, diagnostics, descriptor/hash and capability inventory are unchanged. Exercise the private pilot with an intentionally invalid fact and assert a named error with no fallback artifact. Remove the private dispatch in a local rollback check and confirm the old route still passes its focused tests.
 

@@ -350,12 +350,19 @@ Wasmtime `48.0.1 (7bac2c277 2026-08-24)`。
   `src/build/codegen_component_producer_emitter_test.zig:163`）。这是
   source/inventory gate mismatch；本 Task 不扩大到 inventory 或 production
   emitter 改动。
-- Artifact gate：pilot WAT/WIT 临时产物通过当前 `wasm-tools parse`、
-  `component embed`、`component new` 和
-  `validate --features cm-async,cm-more-async-builtins`，均 exit 0。WIT hash
-  为 `6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace`；WAT
-  hash 为 `095da7cd4c131a7318fc4bf5fd87b2d99e2672bff568edc577a553e228f856c5`。
-  产物无 `__arc_`，canonical boundary 未发现 Wasm GC reference。
+- Artifact gate：临时 helper 直接调用 private
+  `producer.emit_component_wat_pilot`，输出路径为
+  `.tmp/task-6-evidence/private-pilot/pilot.wat`；该文件通过当前
+  `wasm-tools parse`、`component embed`、`component new` 和
+  `validate --features cm-async,cm-more-async-builtins`，均 exit 0。命令为
+  `(cd src && ... zig run build/task_6_private_pilot_artifact_helper.zig --
+  "$PWD/../.tmp/task-6-evidence/private-pilot/pilot.wat")`。descriptor
+  identity 为 package `do:g6-2-owned-record-producer@0.1.0` / world
+  `owned-record-producer`；WIT hash 为
+  `6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace`，pilot
+  WAT hash 为 `095da7cd4c131a7318fc4bf5fd87b2d99e2672bff568edc577a553e228f856c5`。
+  产物无 `__arc_`，canonical boundary 未发现 Wasm GC reference。helper 已
+  在验证后删除。
 - Rust/Wasmtime：既有 direct route gate 和 canonical/generated equivalence
   gate 在 repository-local Zig cache 下通过 10 个 lifecycle rows，均为
   `table-empty=true`，资源、stream、future cleanup exactly-once（repeat 为
@@ -364,8 +371,10 @@ Wasmtime `48.0.1 (7bac2c277 2026-08-24)`。
   通过依据。
 - Rollback/default：普通 `--p3-async-component` 输出与 checked-in WAT/WIT
   byte-for-byte 一致；pilot focused `13/13`、旧 producer focused `15/15`、
-  旧 route Component gate 均通过，capability inventory 无 diff。默认 dispatch
-  未读取 private pilot entry。
+  旧 route Component gate 均通过，capability inventory 无 diff。实际 rollback
+  在 `git archive HEAD` 临时 checkout 中把 `emit_component_wat_pilot` 替换为
+  立即 `InvalidAdmission`，重建临时 compiler 后旧 route Component gate exit 0；
+  这证明删除 private dispatch 后旧 route 仍可用，而非仅证明默认未使用。
 
 因此本 spec 只关闭“单 route private pilot 的 artifact、focused runtime 和 rollback
 证据”范围；完整 repository regression 仍有上述 ARC inventory mismatch，不能宣称
