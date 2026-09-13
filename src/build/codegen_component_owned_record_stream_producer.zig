@@ -174,6 +174,7 @@ pub fn emit_component_wat_pilot(allocator: std.mem.Allocator, plan: OwnedRecordS
             .golden_wat = canonical_core_wat,
         },
         .canonical_wit_hash = plan.contract.descriptor_hash orelse "",
+        .template_wat = canonical_core_wat,
     });
 }
 

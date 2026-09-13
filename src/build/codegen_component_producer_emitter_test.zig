@@ -10,6 +10,8 @@ const state_ir = @import("codegen_component_producer_state_ir.zig");
 
 const direct_template: []const u8 = @embedFile("owned_record_stream_producer_template.wat");
 
+const emitter_source: []const u8 = @embedFile("codegen_component_producer_emitter.zig");
+
 const exact_source =
     \\make_ticket = @host_func("do:g6-2-owned-record-producer/source@0.1.0", "make-ticket", (u32) -> Ticket)
     \\consume = @host_async_func("do:g6-2-owned-record-producer@0.1.0", "consume-via-stream", (StreamWriter<ResourceEntry>) -> Result<nil, ProducerError>)
@@ -77,7 +79,13 @@ fn pilot_input(plan: producer.OwnedRecordStreamProducerPlan) emitter.PilotInput 
             .golden_wat = direct_template,
         },
         .canonical_wit_hash = plan.contract.descriptor_hash orelse "",
+        .template_wat = direct_template,
     };
+}
+
+test "producer shared emitter has no route template ownership" {
+    try std.testing.expect(std.mem.indexOf(u8, emitter_source, "owned_record_stream_producer_template.wat") == null);
+    try std.testing.expect(std.mem.indexOf(u8, emitter_source, "@embedFile") == null);
 }
 
 test "producer shared emitter pilot preserves direct route bytes" {
@@ -162,7 +170,7 @@ test "producer shared emitter pilot rejects ARC runtime markers" {
     var changed = try std.testing.allocator.dupe(u8, direct_template);
     defer std.testing.allocator.free(changed);
     std.mem.copyForwards(u8, changed[0..6], "__arc_");
-    input.facts.golden_wat = changed;
+    input.template_wat = changed;
     try std.testing.expectError(error.ArcRuntimeMarker, emitter.emit_pilot_wat(std.testing.allocator, input));
 }
 
@@ -174,7 +182,7 @@ test "producer shared emitter pilot rejects a canonical boundary GC reference" {
     var changed = try std.testing.allocator.dupe(u8, direct_template);
     defer std.testing.allocator.free(changed);
     std.mem.copyForwards(u8, changed[0..9], "(ref null");
-    input.facts.golden_wat = changed;
+    input.template_wat = changed;
     try std.testing.expectError(error.CanonicalGcReference, emitter.emit_pilot_wat(std.testing.allocator, input));
 }
 
@@ -214,7 +222,7 @@ test "producer shared emitter pilot rejects GC opcodes and types but ignores pla
         std.mem.copyForwards(u8, changed[0..token.len], token);
         changed[token.len] = '\n';
         var input = pilot_input(plan);
-        input.facts.golden_wat = changed;
+        input.template_wat = changed;
         try std.testing.expectError(error.CanonicalGcReference, emitter.emit_pilot_wat(std.testing.allocator, input));
     }
 
@@ -247,7 +255,7 @@ test "producer shared emitter pilot rejects GC opcodes and types but ignores pla
     const adjacent_token = "ref.null;; ordinary text\n";
     std.mem.copyForwards(u8, adjacent[0..adjacent_token.len], adjacent_token);
     input = pilot_input(plan);
-    input.facts.golden_wat = adjacent;
+    input.template_wat = adjacent;
     try std.testing.expectError(error.CanonicalGcReference, emitter.emit_pilot_wat(std.testing.allocator, input));
 }
 
@@ -342,15 +350,9 @@ test "producer shared emitter pilot adapter rejects mutated measured plan facts"
 
 test "producer shared emitter pilot adapter owns direct facts independently of the probe" {
     const adapter_facts = producer.pilot_route_facts();
-    const measured = mapping_probe.fact_for_route("owned-record-direct") orelse unreachable;
-    try std.testing.expectEqualStrings(measured.route_id, adapter_facts.route_id);
-    try std.testing.expectEqualStrings(measured.template_name, adapter_facts.template_name);
-    try std.testing.expectEqual(measured.frame_size, adapter_facts.frame_size);
-    try std.testing.expectEqual(measured.frames.len, adapter_facts.frames.len);
-    try std.testing.expectEqual(measured.ownership.len, adapter_facts.ownership.len);
-    try std.testing.expectEqual(measured.bindings.len, adapter_facts.bindings.len);
-    try std.testing.expectEqual(measured.lifecycle.len, adapter_facts.lifecycle.len);
-    try std.testing.expectEqual(measured.markers.len, adapter_facts.markers.len);
+    var measured = (mapping_probe.fact_for_route("owned-record-direct") orelse unreachable).*;
+    measured.descriptor_id = facts.direct_descriptor_id;
+    try std.testing.expect(facts.route_facts_equal(measured, adapter_facts));
 }
 
 test "producer shared emitter pilot rejects drifted measured marker facts" {

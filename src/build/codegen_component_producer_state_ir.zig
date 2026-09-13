@@ -9,6 +9,9 @@ pub const MapError = error{
     InvalidFrame,
     InvalidBinding,
     BindingOverlap,
+    OwnershipStateRoleMismatch,
+    BindingTopologyMismatch,
+    OwnershipTopologyMismatch,
     OwnershipStateOverlap,
     InvalidMarker,
     InvalidLifecycle,
@@ -101,6 +104,7 @@ pub fn build_frame_map(input: FrameMapInput) MapError!CanonicalFrameMap {
 
     if (input.frame_facts.frame_size != 128) return error.UnsupportedBound;
     try validate_extra(input.frame_facts, input.contract);
+    try validate_fact_contract_correspondence(input.frame_facts, input.contract);
 
     const map = CanonicalFrameMap{
         .route_id = input.route_id,
@@ -138,6 +142,7 @@ pub fn validate_frame_map(map: CanonicalFrameMap, contract: producer_contract.Pr
     facts.validate_route_facts(route_facts) catch |err| return map_fact_error(err);
     if (map.frame_size != 128) return error.UnsupportedBound;
     try validate_extra(route_facts, contract);
+    try validate_fact_contract_correspondence(route_facts, contract);
 }
 
 pub fn build_lifecycle_ir(contract: producer_contract.ProducerContract, map: CanonicalFrameMap) LifecycleError!LifecycleStateIR {
@@ -449,6 +454,101 @@ fn validate_extra(route: facts.RouteFrameFacts, contract: producer_contract.Prod
     }
 
     try validate_bounds_and_alias(route, contract);
+}
+
+fn validate_fact_contract_correspondence(route: facts.RouteFrameFacts, contract: producer_contract.ProducerContract) MapError!void {
+    for (route.ownership) |ownership| {
+        var matched_state = false;
+        for (route.frames) |field| {
+            if (field.role == .ownership_state and field.offset == ownership.state_offset and field.width >= 4) {
+                matched_state = true;
+                break;
+            }
+        }
+        if (!matched_state) return error.OwnershipStateRoleMismatch;
+    }
+
+    switch (contract.payload) {
+        .record => |layout| try validate_record_fact_topology(route, contract, layout),
+        else => {},
+    }
+}
+
+fn validate_record_fact_topology(
+    route: facts.RouteFrameFacts,
+    contract: producer_contract.ProducerContract,
+    layout: anytype,
+) MapError!void {
+    if (route.bindings.len != layout.fields.len) return error.BindingTopologyMismatch;
+    if (route.ownership.len != contract.ownership.leaves.len) return error.OwnershipTopologyMismatch;
+
+    for (layout.fields, 0..) |field, field_index| {
+        const binding = find_binding(route.bindings, field.name) orelse return error.BindingTopologyMismatch;
+        const width = record_field_width(layout, field_index);
+        if (binding.canonical_offset != field.offset or binding.payload_size != layout.byte_size or
+            binding.width != width) return error.BindingTopologyMismatch;
+        var frame_match = false;
+        for (route.frames) |frame| {
+            if (frame.offset == binding.frame_offset and frame.width >= binding.width) {
+                frame_match = true;
+                break;
+            }
+        }
+        if (!frame_match) return error.BindingTopologyMismatch;
+
+        if (find_source_field(layout.source_fields, field.name)) |source| {
+            if (source.ownership == .own and !frame_has_resource_handle(route.frames, binding.frame_offset, binding.width)) {
+                return error.BindingTopologyMismatch;
+            }
+        }
+    }
+
+    for (contract.ownership.leaves) |leaf| {
+        const name = leaf.path[leaf.path.len - 1];
+        const source = find_source_field(layout.source_fields, name) orelse return error.OwnershipTopologyMismatch;
+        if (source.ownership != .own or source.resource == null or !std.mem.eql(u8, source.resource.?, leaf.resource) or
+            source.drop_import == null or !std.mem.eql(u8, source.drop_import.?, leaf.drop_import))
+        {
+            return error.OwnershipTopologyMismatch;
+        }
+        const binding = find_binding(route.bindings, name) orelse return error.OwnershipTopologyMismatch;
+        const field = find_record_field(layout.fields, name) orelse return error.OwnershipTopologyMismatch;
+        if (leaf.handle_offset != field.offset) return error.OwnershipTopologyMismatch;
+        if (!frame_has_resource_handle(route.frames, binding.frame_offset, binding.width)) {
+            return error.OwnershipTopologyMismatch;
+        }
+    }
+}
+
+fn find_binding(bindings: []const facts.CanonicalBinding, name: []const u8) ?facts.CanonicalBinding {
+    for (bindings) |binding| if (std.mem.eql(u8, binding.name, name)) return binding;
+    return null;
+}
+
+fn find_record_field(fields: anytype, name: []const u8) ?@TypeOf(fields[0]) {
+    for (fields) |field| if (std.mem.eql(u8, field.name, name)) return field;
+    return null;
+}
+
+fn find_source_field(fields: anytype, name: []const u8) ?@TypeOf(fields[0]) {
+    for (fields) |field| if (std.mem.eql(u8, field.name, name)) return field;
+    return null;
+}
+
+fn record_field_width(layout: anytype, index: usize) u32 {
+    const start = layout.fields[index].offset;
+    var end = layout.byte_size;
+    for (layout.fields) |field| {
+        if (field.offset > start and field.offset < end) end = field.offset;
+    }
+    return end - start;
+}
+
+fn frame_has_resource_handle(frames: []const facts.FrameFact, offset: u32, width: u32) bool {
+    for (frames) |frame| {
+        if (frame.role == .resource_handle and frame.offset == offset and frame.width >= width) return true;
+    }
+    return false;
 }
 
 fn contains(values: []const []const u8, needle: []const u8) bool {

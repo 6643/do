@@ -4,8 +4,6 @@ const fragments = @import("codegen_component_producer_fragments.zig");
 const producer_contract = @import("codegen_component_producer_contract.zig");
 const state_ir = @import("codegen_component_producer_state_ir.zig");
 
-const canonical_template_wat: []const u8 = @embedFile("owned_record_stream_producer_template.wat");
-
 pub const PilotError = error{
     InvalidAdmission,
     InvalidIdentity,
@@ -31,6 +29,7 @@ pub const PilotFacts = struct {
 pub const PilotInput = struct {
     facts: PilotFacts,
     canonical_wit_hash: []const u8,
+    template_wat: []const u8,
 };
 
 const direct_route_id = "owned-record-direct";
@@ -52,16 +51,15 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
     const lifecycle = state_ir.build_lifecycle_ir(input.facts.contract, map) catch return error.InvalidLifecycle;
 
     validate_fragment_marker_ownership(input.facts.fragments, map) catch return error.InvalidFragments;
-    const assembled = fragments.assemble_with_lifecycle(allocator, canonical_template_wat, input.facts.fragments, lifecycle) catch |err| switch (err) {
+    const assembled = fragments.assemble_with_lifecycle(allocator, input.template_wat, input.facts.fragments, lifecycle) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         error.LifecycleMismatch => return error.InvalidLifecycle,
         else => return error.InvalidFragments,
     };
     errdefer allocator.free(assembled);
 
-    if (std.mem.indexOf(u8, assembled, "__arc_") != null or
-        std.mem.indexOf(u8, input.facts.golden_wat, "__arc_") != null) return error.ArcRuntimeMarker;
-    if (contains_canonical_gc_reference(assembled) or contains_canonical_gc_reference(input.facts.golden_wat)) {
+    if (std.mem.indexOf(u8, assembled, "__arc_") != null) return error.ArcRuntimeMarker;
+    if (contains_canonical_gc_reference(assembled)) {
         return error.CanonicalGcReference;
     }
     if (!std.mem.eql(u8, assembled, input.facts.golden_wat)) return error.ByteParityMismatch;

@@ -1,6 +1,7 @@
 const std = @import("std");
 const facts = @import("codegen_component_producer_facts.zig");
 const producer_contract = @import("codegen_component_producer_contract.zig");
+const p3_async_manifest = @import("p3_async_manifest.zig");
 const state_ir = @import("codegen_component_producer_state_ir.zig");
 
 const path = [_][]const u8{"ticket"};
@@ -13,6 +14,21 @@ const bindings = [_]facts.CanonicalBinding{.{ .name = "payload", .canonical_offs
 const lifecycle = [_]facts.LifecycleAnchor{.{ .name = "life", .required_text = &.{ "acquire", "transfer" }, .ordered_anchors = &.{ "acquire", "transfer" } }};
 const markers = [_]facts.MarkerBinding{.{ .name = "descriptor", .expected_value = "test-descriptor" }};
 const list_values_path = [_][]const u8{"values"};
+const record_fields = [_]p3_async_manifest.RecordField{.{ .name = "ticket", .core_type = "i32", .offset = 0 }};
+const record_source_fields = [_]p3_async_manifest.RecordSourceField{.{
+    .name = "ticket",
+    .source_type = "ticket",
+    .storage = &.{},
+    .ownership = .own,
+    .resource = "ticket",
+    .drop_import = "drop",
+}};
+const record_frame_fields = [_]facts.FrameFact{
+    .{ .name = "tag", .offset = 0, .width = 4, .alignment = 4, .role = .result_tag },
+    .{ .name = "state", .offset = 4, .width = 4, .alignment = 4, .role = .ownership_state },
+    .{ .name = "ticket", .offset = 8, .width = 4, .alignment = 4, .role = .resource_handle },
+};
+const record_bindings = [_]facts.CanonicalBinding{.{ .name = "ticket", .canonical_offset = 0, .payload_size = 4, .frame_offset = 8, .width = 4 }};
 
 fn contract() producer_contract.ProducerContract {
     return .{
@@ -27,6 +43,24 @@ fn contract() producer_contract.ProducerContract {
 
 fn input() state_ir.FrameMapInput {
     return .{ .route_id = "test-route", .descriptor_id = "test-descriptor", .contract = contract(), .frame_facts = .{ .route_id = "test-route", .descriptor_id = "test-descriptor", .frame_size = 128, .frames = &fields, .ownership = &ownership, .bindings = &bindings, .lifecycle = &lifecycle, .markers = &markers } };
+}
+
+fn record_input() state_ir.FrameMapInput {
+    var value = input();
+    value.route_id = "owned-record-direct";
+    value.descriptor_id = facts.direct_descriptor_id;
+    value.contract.descriptor_id = facts.direct_descriptor_id;
+    value.frame_facts.route_id = "owned-record-direct";
+    value.frame_facts.descriptor_id = facts.direct_descriptor_id;
+    value.contract.payload = .{ .record = .{
+        .name = "resource-entry",
+        .byte_size = 4,
+        .fields = &record_fields,
+        .source_fields = &record_source_fields,
+    } };
+    value.frame_facts.frames = &record_frame_fields;
+    value.frame_facts.bindings = &record_bindings;
+    return value;
 }
 
 fn lifecycle_map() state_ir.CanonicalFrameMap {
@@ -71,6 +105,28 @@ test "producer canonical frame map rejects descriptor mismatch" {
     var value = input();
     value.descriptor_id = "other";
     try std.testing.expectError(error.InvalidIdentity, state_ir.build_frame_map(value));
+}
+
+test "producer canonical frame map rejects ownership fact without ownership-state frame role" {
+    var value = input();
+    var changed = fields;
+    changed[1].role = .result_payload;
+    value.frame_facts.frames = &changed;
+    try std.testing.expectError(error.OwnershipStateRoleMismatch, state_ir.build_frame_map(value));
+}
+
+test "producer canonical frame map rejects record binding topology drift" {
+    var value = record_input();
+    var changed = record_bindings;
+    changed[0].name = "other";
+    value.frame_facts.bindings = &changed;
+    try std.testing.expectError(error.BindingTopologyMismatch, state_ir.build_frame_map(value));
+}
+
+test "producer canonical frame map rejects record ownership topology drift" {
+    var value = record_input();
+    value.contract.ownership.leaves = &.{};
+    try std.testing.expectError(error.OwnershipTopologyMismatch, state_ir.build_frame_map(value));
 }
 
 test "producer canonical frame map rejects frame overlap" {
