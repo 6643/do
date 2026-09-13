@@ -121,6 +121,12 @@
 - P2 remains: the report still presents the old fail-open artifact scan command as the direct scan command, while the strict round-3 command exists only in prose/summary; the report and progress also disagree on latest evidence commit, raw log path, and partial/complete-with-residuals wording.
 - Ruling: fix round 4 is documentation-only. Replace the old command with the strict existence plus `rg` status handling, synchronize report/spec/progress to `44216d0` (`Record G6.2 artifact guard status`) and the round3 log paths, and use one explicit residual-status term. Preserve ARC inventory exit 2 and list/frame runtime unverified. Cost if wrong: recovery evidence could still direct auditors to a fail-open command or stale commit.
 
+### Task 6 fix round 4 review result and ruling
+
+- Round 4 scoped re-review accepted all findings: the report now presents the strict existence/readability and explicit `rg` status guard; report/spec/progress agree on `complete-with-residuals`, evidence revision `44216d0`, and `.tmp/task-6-evidence/round3/artifact-guard-strict.log`; ARC inventory remains exit 2 with `unclassified=3`, and list/frame runtime counters remain explicitly unverified.
+- No new breakage was found in the documentation-only fix. Task 6 remains complete-with-residuals, not full-green; the deferred 12-route migration, generic/arbitrary producer, public ownership syntax, semantic-parity rewrite and D2 general async remain outside this plan.
+- Ruling: close the Task 6 review loop and proceed to whole-branch review. Cost if wrong: a hidden cross-task regression or stale residual claim would survive into the next phase.
+
 ### Ruling: Task 2 marker validation boundary
 
 The map builder receives borrowed route facts but no WAT/template observation. It therefore must reject empty/duplicate marker facts, while actual expected-vs-observed marker byte comparison is a fragment/pilot responsibility and must be tested there. This follows the approved spec's separation between measured route facts and template assembly; cost if wrong: the map filter alone would not catch a changed template marker, so Task 4/5's parity tests are load-bearing and must include that negative case.
