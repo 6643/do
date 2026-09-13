@@ -1,9 +1,9 @@
 # G6.2 Producer Lifecycle State-IR Probe Implementation Plan
 
-**Status:** Completed on 2026-09-13. Tasks 1-4 are implemented; Task 5 release evidence is
-recorded below. This completion applies only to this state-IR probe plan/spec.
+**Status:** Completed on 2026-09-13. Tasks 1-5 and the final review follow-ups are implemented;
+release evidence is recorded below. This completion applies only to this state-IR probe plan/spec.
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkboxes for tracking; `[x]` marks a verified step.
 
 **Goal:** 为现有 12 条 G6.2 producer route 增加一个 test-only、无分配、失败关闭的生命周期 state-IR probe，验证 ownership transfer、list backing release、cancel、反向清理和 exactly-once 约束，同时不改变任何生产产物。
 
@@ -116,7 +116,7 @@ pub fn validate_program(program: LifecycleProgram) LifecycleError!ProgramReport;
 pub fn run(program: LifecycleProgram) LifecycleError!TraceObservation;
 ```
 
-- [ ] **Step 1: Write failing API tests and register the test root**
+- [x] **Step 1: Write failing API tests and register the test root**
 
   In the test module define a minimal scalar `ProducerContract` and `TemplateFact`, then assert that a valid `LifecycleProgram` returns a `ProgramReport` with route identity and counts. Add tests named exactly:
 
@@ -133,7 +133,7 @@ pub fn run(program: LifecycleProgram) LifecycleError!TraceObservation;
 
   The tests must import the new module and call `validate_program`; before implementation the compile must fail because the module/API does not exist.
 
-- [ ] **Step 2: Run the focused test and capture the expected failure**
+- [x] **Step 2: Run the focused test and capture the expected failure**
 
   Run:
 
@@ -147,7 +147,7 @@ pub fn run(program: LifecycleProgram) LifecycleError!TraceObservation;
 
   Expected result: compilation/test failure caused by the intentionally missing lifecycle probe declarations. Do not weaken the tests to make this step pass.
 
-- [ ] **Step 3: Add the minimal borrowed API and validation shell**
+- [x] **Step 3: Add the minimal borrowed API and validation shell**
 
   Implement the declarations above. `validate_program` must:
 
@@ -159,11 +159,11 @@ pub fn run(program: LifecycleProgram) LifecycleError!TraceObservation;
 
   Keep `run` as a guarded stub returning `TraceIncomplete` until Task 3 defines the transition engine; this makes the API compile without silently accepting events.
 
-- [ ] **Step 4: Re-run the focused tests**
+- [x] **Step 4: Re-run the focused tests**
 
   Run the same focused command. Expected: all four API/validation tests pass, while no production module imports the new probe.
 
-- [ ] **Step 5: Commit the API slice**
+- [x] **Step 5: Commit the API slice**
 
   ```bash
   git add src/build/codegen_component_producer_lifecycle_state_probe.zig \
@@ -202,7 +202,7 @@ pub fn derive_model_for_test(program: LifecycleProgram) LifecycleError!Model;
 pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8;
 ```
 
-- [ ] **Step 1: Write failing asset derivation tests**
+- [x] **Step 1: Write failing asset derivation tests**
 
   Add tests that construct the checked-in contracts and mappings and assert:
 
@@ -211,11 +211,13 @@ pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8;
   - nested owned record: one resource asset with the `inner.ticket` path retained;
   - scalar list: one list-backing asset despite zero ownership leaves;
   - batched list: two groups with independent asset ranges;
-  - a synthetic 65-asset contract returns `UnsupportedProbeBound`.
+  - a synthetic 65-asset contract returns `UnsupportedProbeBound`;
+  - an exact payload-list identity (pointer offset, length offset, element stride, and max-items)
+    is deduplicated and does not add a backing asset.
 
   The helper returns the fixed model by value, borrows all path slices, and is not imported by production compiler code. Assert the resource/list disposition and nested path through this view; do not add a route or emitter API.
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
   ```bash
   cd src
@@ -227,7 +229,10 @@ pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8;
 
   Expected result: failures because model derivation is not implemented.
 
-- [ ] **Step 3: Implement deterministic model derivation**
+  After implementation, this literal filter selects the root test plus all asset-model tests:
+  `12/12`, including `11` lifecycle asset tests.
+
+- [x] **Step 3: Implement deterministic model derivation**
 
   Add `build_model(program) LifecycleError!Model` and make `validate_program` call it. The implementation must:
 
@@ -242,11 +247,11 @@ pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8;
 
   `asset_bit(model, AssetId)` must guard both indices and return `InvalidAsset` on out-of-range input. It must never use a handle value as an absence check.
 
-- [ ] **Step 4: Run the focused asset tests**
+- [x] **Step 4: Run the focused asset tests**
 
   Re-run the asset filter. Expected: all derivation, group isolation, scalar-list and bound tests pass; Task 1 tests remain green.
 
-- [ ] **Step 5: Commit the model slice**
+- [x] **Step 5: Commit the model slice**
 
   ```bash
   git add src/build/codegen_component_producer_lifecycle_state_probe.zig \
@@ -265,13 +270,14 @@ pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8;
 - Consumes: `Model`/`asset_bit` from Task 2 and `LifecycleEvent`/`LifecycleProgram` from Task 1.
 - Produces: `run(program) LifecycleError!TraceObservation` and all state transition errors listed in Task 1.
 
-- [ ] **Step 1: Write RED transition tests**
+- [x] **Step 1: Write RED transition tests**
 
   Add focused tests with fixed event slices for:
 
   - success: acquire all, write-complete, transfer, logical cleanup stages, terminal;
   - transfer-before-write -> `TransferBeforeWrite`;
   - incomplete pair/triple write -> `WriteIncomplete`;
+  - triple-specific partial acquisition -> `WriteIncomplete`;
   - duplicate acquire -> `DuplicateAcquire`;
   - release order swap -> `InvalidReleaseOrder`;
   - guest release after transfer -> `GuestReleaseAfterTransfer`;
@@ -289,9 +295,13 @@ pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8;
   - out-of-range asset id -> `InvalidAsset`;
   - missing terminal at end -> `TraceIncomplete`.
 
+  Add a list-backed pre-transfer release trace and assert that the list-backing asset increments
+  `released_count`; add a valid pre-transfer `cancel`, strict reverse release, ordered cleanup and
+  terminal trace that reaches `.completed`.
+
   Assert observation semantics explicitly: `transferred_count` counts resource assets entering `transferred`; `released_count` counts any asset entering `released`, including list backing on a successful transfer and resource/list release on a pre-transfer failure.
 
-- [ ] **Step 2: Run transition tests and verify RED**
+- [x] **Step 2: Run transition tests and verify RED**
 
   ```bash
   cd src
@@ -303,7 +313,7 @@ pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8;
 
   Expected result: failures because `run` still returns `TraceIncomplete`.
 
-- [ ] **Step 3: Implement the fixed-size state machine**
+- [x] **Step 3: Implement the fixed-size state machine**
 
   In `run`, build the model, then keep local fixed-size state:
 
@@ -324,14 +334,14 @@ pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8;
   1. `acquire`: require active lifecycle, absent asset bit, and unwritten group; set acquired bit and append the global asset bit to acquisition order.
   2. `write_complete`: require active lifecycle and every asset in the group to be guest-owned; set the group bit. A scalar list succeeds because its payload-list backing asset is modeled.
   3. `transfer_commit`: require active lifecycle, written group, and every group asset guest-owned; first validate the whole group, then atomically mark resource assets transferred and list backing assets released. Set the transferred group bit only after all checks pass.
-  4. `cancel`: allow once before terminal, set `cancel_requested`, and forbid later acquire/write/transfer. Do not alter transferred/released asset masks.
+  4. `cancel`: allow once before terminal, set `cancel_requested`, and forbid later acquire/write/transfer. Do not alter transferred/released asset masks. A pre-transfer cancel still permits strict reverse release and ordered cleanup.
   5. `release`: require guest-owned asset and require it to be the last still-guest-owned asset in `acquisition_order`; mark released. Return the dedicated transferred/released errors for those states.
   6. `cleanup_stage`: reject terminal state, reject any remaining guest-owned asset, and require the stage to equal `contract.terminal.cleanup_order[cleanup_cursor]`; advance exactly once.
   7. `terminal`: reject duplicate, remaining guest-owned assets, unfinished group transfers/releases, or incomplete cleanup cursor; set `.completed`.
 
   `release` reverse-order checking must skip assets already finalized by an atomic transfer, but must never allow a newer still-guest-owned asset to remain while an older one is released. Keep all masks and counters local; no heap allocation and no fallback path.
 
-- [ ] **Step 4: Run transition tests and verify GREEN**
+- [x] **Step 4: Run transition tests and verify GREEN**
 
   Re-run the transition filter and then the complete focused probe filter:
 
@@ -345,7 +355,7 @@ pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8;
 
   Expected result: all API, model and transition tests pass.
 
-- [ ] **Step 5: Commit the runner slice**
+- [x] **Step 5: Commit the runner slice**
 
   ```bash
   git add src/build/codegen_component_producer_lifecycle_state_probe.zig \
@@ -363,7 +373,7 @@ pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8;
 - Consumes: `run`, `validate_program`, `ProgramReport`, `LifecycleEvent`, and `TraceObservation` from Tasks 1-3; `p3_async_manifest.Registry` and `producer_contract.producer_contract_from_descriptor` from existing modules.
 - Produces: test-only `RouteIdentity` table and scenario helpers; no production API or route admission.
 
-- [ ] **Step 1: Write the route identity and scenario RED tests**
+- [x] **Step 1: Write the route identity and scenario RED tests**
 
   Define this test-only identity shape:
 
@@ -400,21 +410,23 @@ pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8;
   - `producer lifecycle state probe isolates batched groups`
   - `producer lifecycle state probe doubles observations for repeat`
   - `producer lifecycle state probe rejects incomplete pair and triple groups`
+  - `producer lifecycle state probe identity table is unique and complete`
 
   Before helper implementation, the route filter must fail because the event builders and matrix assertions are absent.
 
-- [ ] **Step 2: Implement test-only scenario builders**
+- [x] **Step 2: Implement test-only scenario builders**
 
   Use a fixed `[256]LifecycleEvent` buffer and a length counter, not a production allocator. Build these traces from `ProgramReport` and `contract.terminal.cleanup_order`:
 
   1. `success_trace`: acquire each asset in group order, write-complete each group, transfer each group, emit every logical cleanup stage once, then terminal;
   2. `pre_transfer_failure_trace`: acquire every asset in deterministic asset order, release the still-owned assets in strict reverse order, emit cleanup stages, then terminal;
   3. `post_transfer_cancel_trace`: acquire/write/transfer every group, emit one cancel, cleanup stages, terminal;
-  4. `batched_mixed_trace`: complete and transfer group 0, acquire group 1, release group 1 in reverse order, cleanup, terminal.
+  4. `batched_mixed_trace`: complete and transfer group 0, acquire group 1, release group 1 in reverse order, cleanup, terminal;
+  5. `pre_transfer_cancel_trace`: acquire all assets, cancel before transfer, release all assets in strict reverse order, cleanup stages, terminal.
 
   Construct each `LifecycleProgram` only while its registry remains alive; all contract/mapping slices must remain borrowed for the call.
 
-- [ ] **Step 3: Implement route assertions**
+- [x] **Step 3: Implement route assertions**
 
   Load `@embedFile("p3_async_registry.json")` through `p3_async_manifest.Registry.load(std.testing.allocator, ...)`, find each identity descriptor, convert it with `producer_contract.producer_contract_from_descriptor`, and pair it with `mapping_probe.fact_for_route(route_id)`.
 
@@ -428,7 +440,12 @@ pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8;
 
   For pair/triple, add partial acquisition followed by `write_complete` and assert `WriteIncomplete`. For the batched route, assert group 0 transfer does not make group 1 assets transferred or released before its own trace events.
 
-- [ ] **Step 4: Run the route and negative matrix**
+  Assert the identity table has no duplicate route or descriptor identities and is set-equal to the
+  canonical 12-route set. Assert the pre-transfer cancel trace reaches `.completed` with zero
+  transfers and all acquired assets released; retain the post-transfer cancel guest-release
+  rejection.
+
+- [x] **Step 4: Run the route and negative matrix**
 
   ```bash
   cd src
@@ -440,7 +457,7 @@ pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8;
 
   Expected result: all 12 route positive scenarios and dedicated negative scenarios pass. The test must not invoke a producer emitter or compare generated WAT.
 
-- [ ] **Step 5: Commit the matrix slice**
+- [x] **Step 5: Commit the matrix slice**
 
   ```bash
   git add src/build/codegen_component_producer_lifecycle_state_probe_test.zig
@@ -519,8 +536,10 @@ pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8;
 #### Observed release evidence (2026-09-13)
 
 - `zig fmt src/main.zig src/build/codegen_component_producer_lifecycle_state_probe.zig src/build/codegen_component_producer_lifecycle_state_probe_test.zig`: exit `0`, empty output.
-- Focused `zig test main.zig --test-filter "producer lifecycle state probe"`: `43/43`, exact final line `All 43 tests passed.`, exit `0`. This includes `main.test_0` and 42 probe tests.
-- Full `zig test main.zig`: `1654/1654`, exact final line `All 1654 tests passed.`, exit `0`.
+- Asset-focused `zig test main.zig --test-filter "producer lifecycle state probe asset"`: `12/12`, exact final line `All 12 tests passed.`, exit `0`. This includes `main.test_0` and 11 asset-model tests.
+- Transition-focused `zig test main.zig --test-filter "producer lifecycle state probe transition"`: `26/26`, exact final line `All 26 tests passed.`, exit `0`. This includes `main.test_0` and 25 transition tests.
+- Focused `zig test main.zig --test-filter "producer lifecycle state probe"`: `50/50`, exact final line `All 50 tests passed.`, exit `0`. This includes `main.test_0` and 49 probe tests.
+- Full `zig test main.zig`: `1661/1661`, exact final line `All 1661 tests passed.`, exit `0`.
 - `zig build -Doptimize=ReleaseSmall`: empty output, exit `0`.
 - `./src/build/test/run_tests.sh`: `Build Summary: 14/14 steps succeeded; 53/53 tests passed`, `test success`, exit `0`.
 - `git diff --check`: empty output, exit `0`.
@@ -554,3 +573,16 @@ the capability inventory.
 - No release gate failed; the failed zsh status-capture wrapper is documented as unverified and
   is not release-gate evidence. The report is at
   `.superpowers/sdd/2026-09-13-g6-2-producer-lifecycle-state-ir-probe/task-5-report.md`.
+
+## Final Review Follow-ups (2026-09-13)
+
+- The Task 1-4 step checkboxes are marked only because their RED/GREEN evidence and commits are
+  recorded in the task reports; Task 5 closeout steps remain verified as well.
+- Test-only coverage now asserts exact `InvalidMapping` and `InvalidGroupCount` failures, identity
+  table uniqueness plus set equality against the canonical 12-route set, and exact four-field
+  payload-list deduplication.
+- Triple partial acquisition returns `WriteIncomplete`; list-backed pre-transfer release increments
+  `released_count`; and pre-transfer cancel permits strict reverse release, ordered cleanup, and a
+  completed terminal while post-transfer cancel semantics remain covered.
+- The corrected asset filter is `producer lifecycle state probe asset` and currently reports
+  `12/12`; the complete probe filter reports `50/50`, both with exit `0`.

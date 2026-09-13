@@ -1,7 +1,8 @@
 # G6.2 Producer Lifecycle State-IR Probe 设计
 
 日期: 2026-09-13
-状态: 已完成; test-only lifecycle state-IR probe、12-route matrix 与 release gates 已验证
+状态: 已完成; test-only lifecycle state-IR probe、12-route matrix、final review follow-ups 与
+release gates 已验证
 
 ## 1. 背景与目标
 
@@ -100,8 +101,9 @@ probe 把 contract 转换为有界的逻辑资产集合:
 每个 group 的 asset index 是确定的：先按 `ProducerContract.ownership.leaves` 顺序放置
 resource assets，再按 `list_allocations` 顺序放置 list-backing assets，最后在
 `PayloadLayout.list` 且没有同一 allocation 已覆盖该 backing 时放置一个 payload-list
-backing asset。重复的 pointer/length allocation 只产生一个 asset；asset schema 不从
-`TemplateFact` 的 frame 数量推断。
+backing asset。payload-list backing 与 allocation 的 identity 必须同时匹配 pointer offset、
+length offset、element stride 和 max-items；四个字段完全相同才只产生一个 asset。asset
+schema 不从 `TemplateFact` 的 frame 数量推断。
 
 资产数量和 group 数使用 `u64` bitset 表达，超过 64 时返回 `UnsupportedProbeBound`。这是
 当前 12 条私有 route 的 test-only 上限，不是公开 producer 能力限制。
@@ -132,6 +134,8 @@ TraceObservation = {
     transferred_count,
     released_count,
     cleanup_stage_count,
+    group_count,
+    asset_count,
     terminal_state,
 }
 ```
@@ -207,7 +211,11 @@ stateDiagram-v2
 - nested 验证 resource child ownership 在 parent runtime cleanup 前关闭;
 - list-owned/two-list-owned 验证 resource 与一个或两个 list allocation 的反向释放;
 - batched 验证第一组已 transfer、第二组 transfer 前失败时，两组状态隔离且第二组反向释放;
-- scalar list 验证没有 resource leaf 时仍有 payload-list ownership 和完整 terminal cleanup。
+- scalar list 验证没有 resource leaf 时仍有 payload-list ownership 和完整 terminal cleanup;
+- triple 验证 partial acquisition 后 `write_complete` 返回 `WriteIncomplete`，list/scalar-list
+  fixture 验证 pre-transfer release 会计入 list-backing asset;
+- pre-transfer cancel 验证 cancel 后仍可严格反向 release、按序 cleanup 并完成 terminal；
+  post-transfer cancel 仍验证 host-owned resource 不发生 guest release。
 
 ## 6. 失败关闭与错误边界
 
@@ -224,6 +232,8 @@ probe 必须区分以下错误，且任何错误都不得继续 terminal 主路�
 
 既有 validator 的具体错误在 probe 边界转换为 `InvalidContract` 或 `InvalidMapping`，但状态
 转换错误保持细分，便于测试锁定故障原因。probe 不 catch 后继续，也不生成 fallback trace。
+focused validation tests separately assert invalid mapping facts -> `InvalidMapping` and a
+`batch_count`/mapping ownership mismatch -> `InvalidGroupCount`.
 
 ## 7. 证明边界
 
@@ -256,6 +266,11 @@ cd src
 TMPDIR="$PWD/../.tmp/do-tmp" \
 ZIG_LOCAL_CACHE_DIR="$PWD/../.tmp/zig-cache" \
 ZIG_GLOBAL_CACHE_DIR="$PWD/../.tmp/zig-gcache" \
+zig test main.zig --test-filter "producer lifecycle state probe asset"
+
+TMPDIR="$PWD/../.tmp/do-tmp" \
+ZIG_LOCAL_CACHE_DIR="$PWD/../.tmp/zig-cache" \
+ZIG_GLOBAL_CACHE_DIR="$PWD/../.tmp/zig-gcache" \
 zig test main.zig --test-filter "producer lifecycle state probe"
 
 TMPDIR="$PWD/../.tmp/do-tmp" \
@@ -273,18 +288,24 @@ cd ..
 git diff --check
 ```
 
-### Task 5 release evidence (2026-09-13)
+### Task 5 and final-fix release evidence (2026-09-13)
 
 - Test-root isolation: `src/main.zig` contains exactly one import of
   `build/codegen_component_producer_lifecycle_state_probe_test.zig`; the production compiler
   and codegen dispatch do not import the lifecycle implementation. The three authorized files
   were formatted with `zig fmt`; exit status was `0` and stdout was empty.
+- Asset-focused command `zig test main.zig --test-filter "producer lifecycle state probe asset"`:
+  exact output was `All 12 tests passed.` and exit status was `0` (`12/12`, including
+  `main.test_0`; 11 asset-model tests). This filter now selects the intended asset tests.
+- Transition-focused command `zig test main.zig --test-filter "producer lifecycle state probe transition"`:
+  exact output was `All 26 tests passed.` and exit status was `0` (`26/26`, including
+  `main.test_0`; 25 transition tests).
 - Focused command `zig test main.zig --test-filter "producer lifecycle state probe"`: exact
-  output was `All 43 tests passed.` and exit status was `0` (`43/43`, including `main.test_0`;
-  42 probe tests).
+  output was `All 50 tests passed.` and exit status was `0` (`50/50`, including `main.test_0`;
+  49 probe tests).
 - Full command `zig test main.zig`: exact final output was
-  `1654/1654 fmt.format.test.format_source normalizes CRLF trailing whitespace and is idempotent...OK`
-  followed by `All 1654 tests passed.`; exit status was `0`.
+  `1661/1661 fmt.format.test.format_source normalizes CRLF trailing whitespace and is idempotent...OK`
+  followed by `All 1661 tests passed.`; exit status was `0`.
 - ReleaseSmall command `zig build -Doptimize=ReleaseSmall`: stdout/stderr was empty; exit status
   was `0`.
 - Integration command `./src/build/test/run_tests.sh`: exact summary was

@@ -25,6 +25,21 @@ const checked_in_routes = [_]RouteIdentity{
     .{ .route_id = "c-min-batched-list", .descriptor_id = "do:g6-2-batched-list-producer@0.1.0", .member = "consume-via-stream" },
 };
 
+const canonical_route_ids = [_][]const u8{
+    "owned-record-direct",
+    "owned-record-list",
+    "owned-record-two-list",
+    "owned-record-pair",
+    "owned-record-triple",
+    "owned-record-nested",
+    "owned-record-mixed",
+    "owned-record-parameterized-pair",
+    "c-min-list",
+    "c-min-dynamic-list",
+    "scalar-list",
+    "c-min-batched-list",
+};
+
 const MatrixScenario = enum {
     success,
     pre_transfer_failure,
@@ -84,6 +99,18 @@ fn valid_program() probe.LifecycleProgram {
     return .{ .route_id = "test-route", .contract = valid_contract(), .mapping = valid_mapping(), .events = &.{} };
 }
 
+fn invalid_mapping_program() probe.LifecycleProgram {
+    var program = valid_program();
+    program.mapping.frame_size = 0;
+    return program;
+}
+
+fn mismatched_batch_count_program() probe.LifecycleProgram {
+    var program = valid_program();
+    program.contract.batch_count = 2;
+    return program;
+}
+
 test "producer lifecycle state probe accepts a valid program shell" {
     const report = try probe.validate_program(valid_program());
     try std.testing.expectEqualStrings("test-route", report.route_id);
@@ -110,6 +137,18 @@ test "producer lifecycle state probe rejects invalid contract" {
     try std.testing.expectError(error.InvalidContract, probe.validate_program(program));
 }
 
+test "producer lifecycle state probe rejects invalid mapping facts" {
+    try std.testing.expectError(error.InvalidMapping, probe.validate_program(invalid_mapping_program()));
+}
+
+test "producer lifecycle state probe rejects mismatched batch count" {
+    try std.testing.expectError(error.InvalidGroupCount, probe.validate_program(mismatched_batch_count_program()));
+}
+
+test "producer lifecycle state probe identity table is unique and complete" {
+    try expect_identity_table_is_unique_and_complete();
+}
+
 const many_groups = [_]mapping_probe.OwnershipFact{.{
     .name = "asset",
     .encoding = .scalar,
@@ -119,7 +158,7 @@ const many_groups = [_]mapping_probe.OwnershipFact{.{
     .released_value = 3,
 }} ** 65;
 
-test "producer lifecycle state probe rejects more than 64 groups" {
+test "producer lifecycle state probe asset rejects more than 64 groups" {
     var program = valid_program();
     program.contract.batch_count = 65;
     program.mapping.ownership = &many_groups;
@@ -152,13 +191,13 @@ const many_allocations = blk: {
     break :blk allocations;
 };
 
-test "producer lifecycle state probe rejects more than 64 assets per group" {
+test "producer lifecycle state probe asset rejects more than 64 assets per group" {
     var program = valid_program();
     program.contract.list_allocations = &many_allocations;
     try std.testing.expectError(error.UnsupportedProbeBound, probe.validate_program(program));
 }
 
-test "producer lifecycle state probe keeps distinct payload list backing identities" {
+test "producer lifecycle state probe asset keeps distinct payload list backing identities" {
     const list_path = [_][]const u8{"values"};
     const allocation = producer_contract.ListAllocation{
         .path = &list_path,
@@ -182,7 +221,33 @@ test "producer lifecycle state probe keeps distinct payload list backing identit
     try std.testing.expectEqual(@as(u32, 3), report.assets_per_group);
 }
 
-test "producer lifecycle state probe derives a direct resource asset" {
+test "producer lifecycle state probe asset deduplicates exact payload list backing" {
+    const list_path = [_][]const u8{"values"};
+    const allocation = producer_contract.ListAllocation{
+        .path = &list_path,
+        .element_core_type = "i32",
+        .pointer_offset = 8,
+        .length_offset = 12,
+        .element_stride = 4,
+        .max_items = 2,
+        .release_import = "release",
+    };
+    var allocations = [_]producer_contract.ListAllocation{allocation};
+    var program = valid_program();
+    program.contract.payload = .{ .list = .{
+        .pointer_offset = 8,
+        .length_offset = 12,
+        .element_stride = 4,
+        .max_items = 2,
+    } };
+    program.contract.list_allocations = &allocations;
+    const model = try probe.derive_model_for_test(program);
+    try std.testing.expectEqual(@as(u32, 2), model.asset_count);
+    try std.testing.expectEqual(probe.AssetKind.resource, model.assets[0].kind);
+    try std.testing.expectEqual(probe.AssetKind.list_backing, model.assets[1].kind);
+}
+
+test "producer lifecycle state probe asset derives a direct resource asset" {
     const model = try probe.derive_model_for_test(valid_program());
     try std.testing.expectEqual(@as(u32, 1), model.asset_count);
     try std.testing.expectEqual(probe.AssetKind.resource, model.assets[0].kind);
@@ -190,7 +255,7 @@ test "producer lifecycle state probe derives a direct resource asset" {
     try std.testing.expectEqualStrings("ticket", model.assets[0].path[0]);
 }
 
-test "producer lifecycle state probe derives list backing after resource" {
+test "producer lifecycle state probe asset derives list backing after resource" {
     const path = [_][]const u8{"values"};
     const allocation = producer_contract.ListAllocation{
         .path = &path,
@@ -212,7 +277,7 @@ test "producer lifecycle state probe derives list backing after resource" {
     try std.testing.expectEqualStrings("values", model.assets[1].path[0]);
 }
 
-test "producer lifecycle state probe retains nested ownership path" {
+test "producer lifecycle state probe asset retains nested ownership path" {
     const inner = [_][]const u8{ "inner", "ticket" };
     var contract = valid_contract();
     var leaves = [_]producer_contract.OwnershipLeaf{contract.ownership.leaves[0]};
@@ -226,7 +291,7 @@ test "producer lifecycle state probe retains nested ownership path" {
     try std.testing.expectEqualStrings("ticket", model.assets[0].path[1]);
 }
 
-test "producer lifecycle state probe derives scalar list backing without ownership leaves" {
+test "producer lifecycle state probe asset derives scalar list backing without ownership leaves" {
     var contract = valid_contract();
     contract.payload = .{ .list = .{ .pointer_offset = 8, .length_offset = 12, .element_stride = 4, .max_items = 2 } };
     contract.ownership = .{ .leaves = &.{}, .parents = &.{} };
@@ -237,7 +302,7 @@ test "producer lifecycle state probe derives scalar list backing without ownersh
     try std.testing.expectEqual(probe.AssetKind.list_backing, model.assets[0].kind);
 }
 
-test "producer lifecycle state probe isolates batched asset ranges" {
+test "producer lifecycle state probe asset isolates batched asset ranges" {
     const groups = [_]mapping_probe.OwnershipFact{ ownership_facts[0], ownership_facts[0] };
     var mapping = valid_mapping();
     mapping.ownership = &groups;
@@ -253,13 +318,13 @@ test "producer lifecycle state probe isolates batched asset ranges" {
     try std.testing.expectEqual(@as(u8, 1), try probe.asset_bit(model, .{ .group_index = 1, .asset_index = 0 }));
 }
 
-test "producer lifecycle state probe rejects a synthetic 65 asset contract" {
+test "producer lifecycle state probe asset rejects a synthetic 65 asset contract" {
     var program = valid_program();
     program.contract.list_allocations = &many_allocations;
     try std.testing.expectError(error.UnsupportedProbeBound, probe.derive_model_for_test(program));
 }
 
-test "producer lifecycle state probe guards asset ids" {
+test "producer lifecycle state probe asset guards asset ids" {
     const model = try probe.derive_model_for_test(valid_program());
     try std.testing.expectError(error.InvalidAsset, probe.asset_bit(model, .{ .group_index = 1, .asset_index = 0 }));
     try std.testing.expectError(error.InvalidAsset, probe.asset_bit(model, .{ .group_index = 0, .asset_index = 1 }));
@@ -270,6 +335,14 @@ const pair_right_path = [_][]const u8{"right"};
 const pair_leaves = [_]producer_contract.OwnershipLeaf{
     .{ .path = &pair_left_path, .resource = "left", .handle_offset = 0, .drop_import = "drop", .bit = 0 },
     .{ .path = &pair_right_path, .resource = "right", .handle_offset = 4, .drop_import = "drop", .bit = 1 },
+};
+const triple_left_path = [_][]const u8{"left"};
+const triple_middle_path = [_][]const u8{"middle"};
+const triple_right_path = [_][]const u8{"right"};
+const triple_leaves = [_]producer_contract.OwnershipLeaf{
+    .{ .path = &triple_left_path, .resource = "left", .handle_offset = 0, .drop_import = "drop", .bit = 0 },
+    .{ .path = &triple_middle_path, .resource = "middle", .handle_offset = 4, .drop_import = "drop", .bit = 1 },
+    .{ .path = &triple_right_path, .resource = "right", .handle_offset = 8, .drop_import = "drop", .bit = 2 },
 };
 const list_allocation = producer_contract.ListAllocation{
     .path = &list_values_path,
@@ -284,6 +357,12 @@ const list_allocation = producer_contract.ListAllocation{
 fn pair_program(events: []const probe.LifecycleEvent) probe.LifecycleProgram {
     var contract = valid_contract();
     contract.ownership.leaves = &pair_leaves;
+    return .{ .route_id = "test-route", .contract = contract, .mapping = valid_mapping(), .events = events };
+}
+
+fn triple_program(events: []const probe.LifecycleEvent) probe.LifecycleProgram {
+    var contract = valid_contract();
+    contract.ownership.leaves = &triple_leaves;
     return .{ .route_id = "test-route", .contract = contract, .mapping = valid_mapping(), .events = events };
 }
 
@@ -329,6 +408,15 @@ test "producer lifecycle state probe transition rejects incomplete pair write" {
         .{ .write_complete = 0 },
     };
     try std.testing.expectError(error.WriteIncomplete, probe.run(pair_program(&events)));
+}
+
+test "producer lifecycle state probe transition rejects partial triple write" {
+    const events = [_]probe.LifecycleEvent{
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .acquire = .{ .group_index = 0, .asset_index = 1 } },
+        .{ .write_complete = 0 },
+    };
+    try std.testing.expectError(error.WriteIncomplete, probe.run(triple_program(&events)));
 }
 
 test "producer lifecycle state probe transition rejects duplicate acquire" {
@@ -391,6 +479,26 @@ test "producer lifecycle state probe transition counts pre-transfer releases" {
     try std.testing.expectEqual(@as(u32, 2), observation.released_count);
 }
 
+test "producer lifecycle state probe transition counts list backing pre-transfer release" {
+    const events = [_]probe.LifecycleEvent{
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .acquire = .{ .group_index = 0, .asset_index = 1 } },
+        .{ .release = .{ .group_index = 0, .asset_index = 1 } },
+        .{ .release = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .cleanup_stage = .resource },
+        .{ .cleanup_stage = .list },
+        .{ .terminal = {} },
+    };
+    const program = list_program(&events);
+    const model = try probe.derive_model_for_test(program);
+    try std.testing.expectEqual(probe.AssetKind.list_backing, model.assets[1].kind);
+    try std.testing.expectEqual(probe.Disposition.release_after_copy, model.assets[1].disposition);
+    const observation = try probe.run(program);
+    try std.testing.expectEqual(@as(u32, 0), observation.transferred_count);
+    try std.testing.expectEqual(@as(u32, 2), observation.released_count);
+    try std.testing.expectEqual(probe.TerminalState.completed, observation.terminal_state);
+}
+
 test "producer lifecycle state probe transition preserves transfer across cancel" {
     const events = [_]probe.LifecycleEvent{
         .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
@@ -403,6 +511,17 @@ test "producer lifecycle state probe transition preserves transfer across cancel
     const observation = try probe.run(valid_program_with_events(&events));
     try std.testing.expectEqual(@as(u32, 1), observation.transferred_count);
     try std.testing.expectEqual(@as(u32, 0), observation.released_count);
+    try std.testing.expectEqual(probe.TerminalState.completed, observation.terminal_state);
+}
+
+test "producer lifecycle state probe transition accepts pre-transfer cancel cleanup" {
+    var events: [256]probe.LifecycleEvent = undefined;
+    const trace = try pre_transfer_cancel_trace(&events);
+    const observation = try probe.run(list_program(trace));
+    try std.testing.expectEqual(@as(u32, 2), observation.acquired_count);
+    try std.testing.expectEqual(@as(u32, 0), observation.transferred_count);
+    try std.testing.expectEqual(@as(u32, 2), observation.released_count);
+    try std.testing.expectEqual(@as(u32, 2), observation.cleanup_stage_count);
     try std.testing.expectEqual(probe.TerminalState.completed, observation.terminal_state);
 }
 
@@ -606,6 +725,34 @@ fn run_checked_in_matrix(scenario: MatrixScenario) !void {
     try std.testing.expectEqual(expected, matched);
 }
 
+fn expect_identity_table_is_unique_and_complete() !void {
+    try std.testing.expectEqual(canonical_route_ids.len, checked_in_routes.len);
+
+    for (checked_in_routes, 0..) |identity, index| {
+        try std.testing.expectEqualStrings("consume-via-stream", identity.member);
+        try std.testing.expect(route_id_is_canonical(identity.route_id));
+        for (checked_in_routes[0..index]) |prior| {
+            try std.testing.expect(!std.mem.eql(u8, prior.route_id, identity.route_id));
+            try std.testing.expect(!std.mem.eql(u8, prior.descriptor_id, identity.descriptor_id));
+        }
+    }
+
+    for (canonical_route_ids) |route_id| {
+        var matches: usize = 0;
+        for (checked_in_routes) |identity| {
+            if (std.mem.eql(u8, identity.route_id, route_id)) matches += 1;
+        }
+        try std.testing.expectEqual(@as(usize, 1), matches);
+    }
+}
+
+fn route_id_is_canonical(route_id: []const u8) bool {
+    for (canonical_route_ids) |canonical| {
+        if (std.mem.eql(u8, canonical, route_id)) return true;
+    }
+    return false;
+}
+
 fn append_event(buffer: *[256]probe.LifecycleEvent, length: *usize, event: probe.LifecycleEvent) !void {
     if (length.* >= buffer.len) return error.TestUnexpectedResult;
     buffer[length.*] = event;
@@ -689,6 +836,18 @@ fn pre_transfer_failure_trace(
     try append_acquire_all(buffer, &length, report);
     try append_release_all_reverse(buffer, &length, report);
     try append_cleanup_and_terminal(buffer, &length, contract);
+    return buffer[0..length];
+}
+
+fn pre_transfer_cancel_trace(buffer: *[256]probe.LifecycleEvent) ![]const probe.LifecycleEvent {
+    const empty_events = [_]probe.LifecycleEvent{};
+    const program = list_program(&empty_events);
+    const report = try probe.validate_program(program);
+    var length: usize = 0;
+    try append_acquire_all(buffer, &length, report);
+    try append_event(buffer, &length, .{ .cancel = {} });
+    try append_release_all_reverse(buffer, &length, report);
+    try append_cleanup_and_terminal(buffer, &length, program.contract);
     return buffer[0..length];
 }
 
