@@ -153,8 +153,12 @@ test "producer lifecycle state probe derives a direct resource asset" {
 test "producer lifecycle state probe derives list backing after resource" {
     const path = [_][]const u8{"values"};
     const allocation = producer_contract.ListAllocation{
-        .path = &path, .element_core_type = "i32", .pointer_offset = 8,
-        .length_offset = 12, .element_stride = 4, .max_items = 2,
+        .path = &path,
+        .element_core_type = "i32",
+        .pointer_offset = 8,
+        .length_offset = 12,
+        .element_stride = 4,
+        .max_items = 2,
         .release_import = "release",
     };
     var allocations = [_]producer_contract.ListAllocation{allocation};
@@ -219,4 +223,249 @@ test "producer lifecycle state probe guards asset ids" {
     const model = try probe.derive_model_for_test(valid_program());
     try std.testing.expectError(error.InvalidAsset, probe.asset_bit(model, .{ .group_index = 1, .asset_index = 0 }));
     try std.testing.expectError(error.InvalidAsset, probe.asset_bit(model, .{ .group_index = 0, .asset_index = 1 }));
+}
+
+const pair_left_path = [_][]const u8{"left"};
+const pair_right_path = [_][]const u8{"right"};
+const pair_leaves = [_]producer_contract.OwnershipLeaf{
+    .{ .path = &pair_left_path, .resource = "left", .handle_offset = 0, .drop_import = "drop", .bit = 0 },
+    .{ .path = &pair_right_path, .resource = "right", .handle_offset = 4, .drop_import = "drop", .bit = 1 },
+};
+const list_allocation = producer_contract.ListAllocation{
+    .path = &list_values_path,
+    .element_core_type = "i32",
+    .pointer_offset = 8,
+    .length_offset = 12,
+    .element_stride = 4,
+    .max_items = 2,
+    .release_import = "release",
+};
+
+fn pair_program(events: []const probe.LifecycleEvent) probe.LifecycleProgram {
+    var contract = valid_contract();
+    contract.ownership.leaves = &pair_leaves;
+    return .{ .route_id = "test-route", .contract = contract, .mapping = valid_mapping(), .events = events };
+}
+
+const list_values_path = [_][]const u8{"values"};
+
+fn list_program(events: []const probe.LifecycleEvent) probe.LifecycleProgram {
+    var contract = valid_contract();
+    contract.payload = .{ .list = .{ .pointer_offset = 8, .length_offset = 12, .element_stride = 4, .max_items = 2 } };
+    contract.list_allocations = &.{list_allocation};
+    contract.terminal.cleanup_order = &.{ .resource, .list };
+    return .{ .route_id = "test-route", .contract = contract, .mapping = valid_mapping(), .events = events };
+}
+
+test "producer lifecycle state probe transition accepts acquire write transfer cleanup terminal" {
+    const events = [_]probe.LifecycleEvent{
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .acquire = .{ .group_index = 0, .asset_index = 1 } },
+        .{ .write_complete = 0 },
+        .{ .transfer_commit = 0 },
+        .{ .cleanup_stage = .resource },
+        .{ .cleanup_stage = .list },
+        .{ .terminal = {} },
+    };
+    const observation = try probe.run(list_program(&events));
+    try std.testing.expectEqual(@as(u32, 2), observation.acquired_count);
+    try std.testing.expectEqual(@as(u32, 1), observation.transferred_count);
+    try std.testing.expectEqual(@as(u32, 1), observation.released_count);
+    try std.testing.expectEqual(@as(u32, 2), observation.cleanup_stage_count);
+    try std.testing.expectEqual(probe.TerminalState.completed, observation.terminal_state);
+}
+
+test "producer lifecycle state probe transition rejects transfer before write" {
+    const events = [_]probe.LifecycleEvent{
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .transfer_commit = 0 },
+    };
+    try std.testing.expectError(error.TransferBeforeWrite, probe.run(valid_program_with_events(&events)));
+}
+
+test "producer lifecycle state probe transition rejects incomplete pair write" {
+    const events = [_]probe.LifecycleEvent{
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .write_complete = 0 },
+    };
+    try std.testing.expectError(error.WriteIncomplete, probe.run(pair_program(&events)));
+}
+
+test "producer lifecycle state probe transition rejects duplicate acquire" {
+    const events = [_]probe.LifecycleEvent{
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+    };
+    try std.testing.expectError(error.DuplicateAcquire, probe.run(valid_program_with_events(&events)));
+}
+
+test "producer lifecycle state probe transition rejects release order swap" {
+    const events = [_]probe.LifecycleEvent{
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .acquire = .{ .group_index = 0, .asset_index = 1 } },
+        .{ .release = .{ .group_index = 0, .asset_index = 0 } },
+    };
+    try std.testing.expectError(error.InvalidReleaseOrder, probe.run(pair_program(&events)));
+}
+
+test "producer lifecycle state probe transition rejects guest release after transfer" {
+    const events = [_]probe.LifecycleEvent{
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .write_complete = 0 },
+        .{ .transfer_commit = 0 },
+        .{ .release = .{ .group_index = 0, .asset_index = 0 } },
+    };
+    try std.testing.expectError(error.GuestReleaseAfterTransfer, probe.run(valid_program_with_events(&events)));
+}
+
+test "producer lifecycle state probe transition rejects duplicate release" {
+    const events = [_]probe.LifecycleEvent{
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .release = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .release = .{ .group_index = 0, .asset_index = 0 } },
+    };
+    try std.testing.expectError(error.DuplicateRelease, probe.run(valid_program_with_events(&events)));
+}
+
+test "producer lifecycle state probe transition rejects duplicate transfer" {
+    const events = [_]probe.LifecycleEvent{
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .write_complete = 0 },
+        .{ .transfer_commit = 0 },
+        .{ .transfer_commit = 0 },
+    };
+    try std.testing.expectError(error.DuplicateTransfer, probe.run(valid_program_with_events(&events)));
+}
+
+test "producer lifecycle state probe transition counts pre-transfer releases" {
+    const events = [_]probe.LifecycleEvent{
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .acquire = .{ .group_index = 0, .asset_index = 1 } },
+        .{ .release = .{ .group_index = 0, .asset_index = 1 } },
+        .{ .release = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .cleanup_stage = .resource },
+        .{ .terminal = {} },
+    };
+    const observation = try probe.run(pair_program(&events));
+    try std.testing.expectEqual(@as(u32, 0), observation.transferred_count);
+    try std.testing.expectEqual(@as(u32, 2), observation.released_count);
+}
+
+test "producer lifecycle state probe transition preserves transfer across cancel" {
+    const events = [_]probe.LifecycleEvent{
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .write_complete = 0 },
+        .{ .transfer_commit = 0 },
+        .{ .cancel = {} },
+        .{ .cleanup_stage = .resource },
+        .{ .terminal = {} },
+    };
+    const observation = try probe.run(valid_program_with_events(&events));
+    try std.testing.expectEqual(@as(u32, 1), observation.transferred_count);
+    try std.testing.expectEqual(@as(u32, 0), observation.released_count);
+    try std.testing.expectEqual(probe.TerminalState.completed, observation.terminal_state);
+}
+
+test "producer lifecycle state probe transition rejects transfer after cancel" {
+    const events = [_]probe.LifecycleEvent{
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .cancel = {} },
+        .{ .transfer_commit = 0 },
+    };
+    try std.testing.expectError(error.TransferAfterCancel, probe.run(valid_program_with_events(&events)));
+}
+
+test "producer lifecycle state probe transition rejects acquire write after cancel" {
+    const acquire_events = [_]probe.LifecycleEvent{ .{ .cancel = {} }, .{ .acquire = .{ .group_index = 0, .asset_index = 0 } } };
+    try std.testing.expectError(error.AcquireAfterCancel, probe.run(valid_program_with_events(&acquire_events)));
+
+    const write_events = [_]probe.LifecycleEvent{ .{ .cancel = {} }, .{ .write_complete = 0 } };
+    try std.testing.expectError(error.WriteAfterCancel, probe.run(valid_program_with_events(&write_events)));
+}
+
+test "producer lifecycle state probe transition rejects release of absent asset" {
+    const events = [_]probe.LifecycleEvent{.{ .release = .{ .group_index = 0, .asset_index = 0 } }};
+    try std.testing.expectError(error.AssetNotOwned, probe.run(valid_program_with_events(&events)));
+}
+
+test "producer lifecycle state probe transition rejects duplicate and late cancel" {
+    const duplicate_events = [_]probe.LifecycleEvent{ .{ .cancel = {} }, .{ .cancel = {} } };
+    try std.testing.expectError(error.DuplicateCancel, probe.run(valid_program_with_events(&duplicate_events)));
+
+    const late_events = [_]probe.LifecycleEvent{
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .write_complete = 0 },
+        .{ .transfer_commit = 0 },
+        .{ .cleanup_stage = .resource },
+        .{ .terminal = {} },
+        .{ .cancel = {} },
+    };
+    try std.testing.expectError(error.CancelAfterTerminal, probe.run(valid_program_with_events(&late_events)));
+}
+
+test "producer lifecycle state probe transition rejects cleanup before asset finalization" {
+    const events = [_]probe.LifecycleEvent{
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .cleanup_stage = .resource },
+    };
+    try std.testing.expectError(error.CleanupBeforeAssets, probe.run(valid_program_with_events(&events)));
+}
+
+test "producer lifecycle state probe transition rejects cleanup order drift" {
+    const events = [_]probe.LifecycleEvent{.{ .cleanup_stage = .list }};
+    try std.testing.expectError(error.CleanupStageMismatch, probe.run(list_program(&events)));
+}
+
+test "producer lifecycle state probe transition rejects terminal with guest assets" {
+    const events = [_]probe.LifecycleEvent{
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .terminal = {} },
+    };
+    try std.testing.expectError(error.TerminalBeforeAssets, probe.run(valid_program_with_events(&events)));
+}
+
+test "producer lifecycle state probe transition rejects cleanup after terminal" {
+    const events = [_]probe.LifecycleEvent{
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .write_complete = 0 },
+        .{ .transfer_commit = 0 },
+        .{ .cleanup_stage = .resource },
+        .{ .terminal = {} },
+        .{ .cleanup_stage = .resource },
+    };
+    try std.testing.expectError(error.CleanupAfterTerminal, probe.run(valid_program_with_events(&events)));
+}
+
+test "producer lifecycle state probe transition rejects early and duplicate terminal" {
+    const early_events = [_]probe.LifecycleEvent{.{ .terminal = {} }};
+    try std.testing.expectError(error.TerminalBeforeCleanup, probe.run(valid_program_with_events(&early_events)));
+
+    const duplicate_events = [_]probe.LifecycleEvent{
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .write_complete = 0 },
+        .{ .transfer_commit = 0 },
+        .{ .cleanup_stage = .resource },
+        .{ .terminal = {} },
+        .{ .terminal = {} },
+    };
+    try std.testing.expectError(error.DuplicateTerminal, probe.run(valid_program_with_events(&duplicate_events)));
+}
+
+test "producer lifecycle state probe transition rejects out of range asset" {
+    const events = [_]probe.LifecycleEvent{.{ .acquire = .{ .group_index = 1, .asset_index = 0 } }};
+    try std.testing.expectError(error.InvalidAsset, probe.run(valid_program_with_events(&events)));
+}
+
+test "producer lifecycle state probe transition rejects missing terminal" {
+    const events = [_]probe.LifecycleEvent{
+        .{ .acquire = .{ .group_index = 0, .asset_index = 0 } },
+        .{ .write_complete = 0 },
+        .{ .transfer_commit = 0 },
+        .{ .cleanup_stage = .resource },
+    };
+    try std.testing.expectError(error.TraceIncomplete, probe.run(valid_program_with_events(&events)));
+}
+
+fn valid_program_with_events(events: []const probe.LifecycleEvent) probe.LifecycleProgram {
+    return .{ .route_id = "test-route", .contract = valid_contract(), .mapping = valid_mapping(), .events = events };
 }

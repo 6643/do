@@ -143,7 +143,8 @@ fn build_model(program: LifecycleProgram) LifecycleError!Model {
                 if (allocation.pointer_offset == layout.pointer_offset and
                     allocation.length_offset == layout.length_offset and
                     allocation.element_stride == layout.element_stride and
-                    allocation.max_items == layout.max_items) {
+                    allocation.max_items == layout.max_items)
+                {
                     covered = true;
                     break;
                 }
@@ -182,8 +183,194 @@ pub fn asset_bit(model: Model, id: AssetId) LifecycleError!u8 {
 }
 
 pub fn run(program: LifecycleProgram) LifecycleError!TraceObservation {
-    _ = program;
-    return error.TraceIncomplete;
+    _ = try validate_program(program);
+    const model = try derive_model_for_test(program);
+
+    var acquired_mask: u64 = 0;
+    var transferred_mask: u64 = 0;
+    var released_mask: u64 = 0;
+    var written_groups: u64 = 0;
+    var transferred_groups: u64 = 0;
+    var acquisition_order: [64]u8 = undefined;
+    var acquisition_len: u8 = 0;
+    var cleanup_cursor: usize = 0;
+    var terminal_state: TerminalState = .active;
+    var acquired_count: u32 = 0;
+    var transferred_count: u32 = 0;
+    var released_count: u32 = 0;
+    var cleanup_stage_count: u32 = 0;
+
+    for (program.events) |event| {
+        switch (event) {
+            .acquire => |id| {
+                if (terminal_state != .active) return error.AcquireAfterCancel;
+                const bit = try asset_bit(model, id);
+                const mask = bit_mask(bit);
+                if ((acquired_mask & mask) != 0) return error.DuplicateAcquire;
+                const group_mask = try group_bit(model, id.group_index);
+                if ((written_groups & group_mask) != 0) return error.WriteIncomplete;
+                acquired_mask |= mask;
+                acquisition_order[acquisition_len] = bit;
+                acquisition_len += 1;
+                acquired_count += 1;
+            },
+            .write_complete => |group_index| {
+                if (terminal_state != .active) return error.WriteAfterCancel;
+                const group_mask = try group_bit(model, group_index);
+                var complete = true;
+                for (0..model.assets_per_group) |asset_index| {
+                    const bit = try asset_bit(model, .{
+                        .group_index = group_index,
+                        .asset_index = @intCast(asset_index),
+                    });
+                    if (!is_guest_owned(acquired_mask, transferred_mask, released_mask, bit)) {
+                        complete = false;
+                        break;
+                    }
+                }
+                if (!complete) return error.WriteIncomplete;
+                written_groups |= group_mask;
+            },
+            .transfer_commit => |group_index| {
+                if (terminal_state != .active) return error.TransferAfterCancel;
+                const group_mask = try group_bit(model, group_index);
+                if ((transferred_groups & group_mask) != 0) return error.DuplicateTransfer;
+                if ((written_groups & group_mask) == 0) return error.TransferBeforeWrite;
+
+                for (0..model.assets_per_group) |asset_index| {
+                    const bit = try asset_bit(model, .{
+                        .group_index = group_index,
+                        .asset_index = @intCast(asset_index),
+                    });
+                    if (!is_guest_owned(acquired_mask, transferred_mask, released_mask, bit)) {
+                        return error.WriteIncomplete;
+                    }
+                }
+
+                for (0..model.assets_per_group) |asset_index| {
+                    const global_index = @as(usize, @intCast(group_index)) *
+                        @as(usize, @intCast(model.assets_per_group)) + asset_index;
+                    const bit = try asset_bit(model, .{
+                        .group_index = group_index,
+                        .asset_index = @intCast(asset_index),
+                    });
+                    const mask = bit_mask(bit);
+                    switch (model.assets[global_index].kind) {
+                        .resource => {
+                            transferred_mask |= mask;
+                            transferred_count += 1;
+                        },
+                        .list_backing => {
+                            released_mask |= mask;
+                            released_count += 1;
+                        },
+                    }
+                }
+                transferred_groups |= group_mask;
+            },
+            .cancel => {
+                switch (terminal_state) {
+                    .active => terminal_state = .cancel_requested,
+                    .cancel_requested => return error.DuplicateCancel,
+                    .completed => return error.CancelAfterTerminal,
+                }
+            },
+            .release => |id| {
+                const bit = try asset_bit(model, id);
+                const mask = bit_mask(bit);
+                if ((transferred_mask & mask) != 0) return error.GuestReleaseAfterTransfer;
+                if ((released_mask & mask) != 0) return error.DuplicateRelease;
+                if ((acquired_mask & mask) == 0) return error.AssetNotOwned;
+
+                var cursor: usize = 0;
+                while (cursor < acquisition_len) : (cursor += 1) {
+                    if (acquisition_order[cursor] != bit) continue;
+                    var later = cursor + 1;
+                    while (later < acquisition_len) : (later += 1) {
+                        if (is_guest_owned(
+                            acquired_mask,
+                            transferred_mask,
+                            released_mask,
+                            acquisition_order[later],
+                        )) return error.InvalidReleaseOrder;
+                    }
+                    break;
+                }
+                released_mask |= mask;
+                released_count += 1;
+            },
+            .cleanup_stage => |stage| {
+                if (terminal_state == .completed) return error.CleanupAfterTerminal;
+                if (has_guest_assets(model, acquired_mask, transferred_mask, released_mask)) {
+                    return error.CleanupBeforeAssets;
+                }
+                if (cleanup_cursor >= program.contract.terminal.cleanup_order.len or
+                    program.contract.terminal.cleanup_order[cleanup_cursor] != stage)
+                {
+                    return error.CleanupStageMismatch;
+                }
+                cleanup_cursor += 1;
+                cleanup_stage_count += 1;
+            },
+            .terminal => {
+                switch (terminal_state) {
+                    .completed => return error.DuplicateTerminal,
+                    .active, .cancel_requested => {},
+                }
+                if (has_guest_assets(model, acquired_mask, transferred_mask, released_mask)) {
+                    return error.TerminalBeforeAssets;
+                }
+                if (!all_groups_finalized(model, transferred_mask, released_mask) or
+                    cleanup_cursor != program.contract.terminal.cleanup_order.len)
+                {
+                    return error.TerminalBeforeCleanup;
+                }
+                terminal_state = .completed;
+            },
+        }
+    }
+
+    if (terminal_state != .completed) return error.TraceIncomplete;
+    return .{
+        .acquired_count = acquired_count,
+        .transferred_count = transferred_count,
+        .released_count = released_count,
+        .cleanup_stage_count = cleanup_stage_count,
+        .group_count = model.group_count,
+        .asset_count = model.asset_count,
+        .terminal_state = terminal_state,
+    };
+}
+
+fn bit_mask(bit: u8) u64 {
+    return @as(u64, 1) << @intCast(bit);
+}
+
+fn group_bit(model: Model, group_index: u32) LifecycleError!u64 {
+    if (group_index >= model.group_count or group_index >= 64) return error.InvalidAsset;
+    return bit_mask(@intCast(group_index));
+}
+
+fn is_guest_owned(acquired_mask: u64, transferred_mask: u64, released_mask: u64, bit: u8) bool {
+    const mask = bit_mask(bit);
+    return (acquired_mask & mask) != 0 and
+        (transferred_mask & mask) == 0 and
+        (released_mask & mask) == 0;
+}
+
+fn has_guest_assets(model: Model, acquired_mask: u64, transferred_mask: u64, released_mask: u64) bool {
+    for (0..model.asset_count) |index| {
+        if (is_guest_owned(acquired_mask, transferred_mask, released_mask, @intCast(index))) return true;
+    }
+    return false;
+}
+
+fn all_groups_finalized(model: Model, transferred_mask: u64, released_mask: u64) bool {
+    for (0..model.asset_count) |index| {
+        const mask = bit_mask(@intCast(index));
+        if ((transferred_mask & mask) == 0 and (released_mask & mask) == 0) return false;
+    }
+    return true;
 }
 
 fn same(left: []const u8, right: []const u8) bool {
