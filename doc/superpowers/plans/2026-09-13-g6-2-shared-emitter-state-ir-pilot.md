@@ -373,6 +373,7 @@ pub const PilotFacts = struct {
 pub const PilotInput = struct {
     facts: PilotFacts,
     canonical_wit_hash: []const u8,
+    template_wat: []const u8,
 };
 
 pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotError![]u8;
@@ -395,11 +396,11 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
 
 - [x] **Step 3: Implement `emit_pilot_wat` with fail-closed ordering.**
 
-  Check route/descriptor identity and the non-empty canonical WIT hash first; construct `state_ir.FrameMapInput{ .route_id = input.facts.route_id, .descriptor_id = input.facts.descriptor_id, .contract = input.facts.contract, .frame_facts = input.facts.frame_facts }`; then call `build_frame_map`, `build_lifecycle_ir`, `validate_fragment_table`, and `assemble` in that order. Reject `__arc_` and canonical-boundary GC references; compare assembled bytes to `golden_wat`; free a temporary assembled buffer before returning parity/error failures. Do not catch an error and call the old emitter.
+  Check route/descriptor identity and the non-empty canonical WIT hash first; construct `state_ir.FrameMapInput{ .route_id = input.facts.route_id, .descriptor_id = input.facts.descriptor_id, .contract = input.facts.contract, .frame_facts = input.facts.frame_facts }`; then call `build_frame_map`, `build_lifecycle_ir`, `validate_fragment_table`, and `assemble_with_lifecycle(input.template_wat, ...)` in that order. Reject `__arc_` and canonical-boundary GC references in the assembled source; compare assembled bytes to `golden_wat`; free a temporary assembled buffer before returning parity/error failures. Do not catch an error and call the old emitter.
 
 - [x] **Step 4: Add the direct route adapter without changing default dispatch.**
 
-  In `codegen_component_owned_record_stream_producer.zig`, use the adapter-owned immutable direct `RouteFrameFacts`, construct explicit five-kind fragment spans over `owned_record_stream_producer_template.wat`, pass `plan.contract.descriptor_hash` as `canonical_wit_hash`, and call the shared emitter only from `emit_component_wat_pilot`. Keep `emit_component_wat` returning the embedded template and keep all existing exact-source negative admission tests unchanged.
+  In `codegen_component_owned_record_stream_producer.zig`, use the adapter-owned immutable direct `RouteFrameFacts` and `owned_record_stream_producer_template.wat` source, construct explicit five-kind fragment spans, pass both the template source and `plan.contract.descriptor_hash` as `canonical_wit_hash`, and call the shared emitter only from `emit_component_wat_pilot`. Keep `emit_component_wat` returning the embedded template and keep all existing exact-source negative admission tests unchanged.
 
 - [x] **Step 5: Run focused pilot tests, old emitter tests, format, and commit.**
 
@@ -418,13 +419,13 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
 
 - [ ] **Step 1: Run all Zig/unit and build gates with current local caches.**
 
-  Evidence (2026-09-13, Zig 0.16.0): `zig test main.zig` passed `1724/1724`;
+  Evidence (2026-09-13, Zig 0.16.0): `zig test main.zig` passed `1728/1728`;
   `zig build -Doptimize=ReleaseSmall` passed; `run_release_smoke.sh` passed;
   and `git diff --check` passed. `run_tests.sh` ran its `53/53` harness tests but
   exited `1` because `check_gc_arc_inventory.sh` exited `2` on unclassified
   `__arc_` references in the new pilot emitter guard and negative test fixture
-  (`src/build/codegen_component_producer_emitter.zig:57-58` and
-  `src/build/codegen_component_producer_emitter_test.zig:163`). This is a
+  (`src/build/codegen_component_producer_emitter.zig:61` and
+  `src/build/codegen_component_producer_emitter_test.zig:172`). This is a
   source/inventory gate mismatch, not an environment failure; the failed output
   is retained in `task-6-report.md`. No source change is made in Task 6 because
   changing only the permitted test file would not classify the production guard.
@@ -438,6 +439,14 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
   ```
 
   Record expected/actual counts, exit status and cache/tool versions; preserve any failed command and classify it as environment or source evidence before continuing.
+
+  Final-fix follow-up (`b130817 Close G6.2 final review findings`) re-ran the
+  focused pilot (`20/20`), owned-record producer (`15/15`), state-IR map
+  (`16/16`), and full Zig suite (`1728/1728`) with exit `0`. The integration
+  harness was also rerun: its `53/53` child tests passed, but the overall exit
+  remained `1` because `check_gc_arc_inventory.sh` returned `2` for two
+  intentionally unclassified `__arc_` guard/test references. This does not
+  close the repository inventory gate.
 
 - [x] **Step 2: Run current-toolchain Component/WIT artifact gates.**
 

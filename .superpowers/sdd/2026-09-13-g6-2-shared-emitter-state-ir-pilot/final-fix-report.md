@@ -67,9 +67,22 @@ bytes exactly.
 
 - The private pilot remains direct-route-only; default dispatch and the old
   emitter remain unchanged. No public ownership syntax or promotion was added.
+- The generic record helper validates the fields and ownership leaves it
+  consumes, but does not yet reject extra or missing `source_fields` entries in
+  every possible non-direct record shape. Direct pilot admission remains exact;
+  a future generic record route must add source-field collection equivalence.
 - Existing ARC/list-frame runtime residual statuses from Task 6 remain as
   previously recorded; this fix does not claim runtime counters that the
   runner does not emit.
 - The full integration harness and its pre-existing ARC inventory mismatch
   remain outside this code fix and are not reclassified by these focused
   compiler tests.
+
+## Scoped re-review
+
+The post-commit scoped review found no Critical or Important findings and no
+new breakage. It confirmed explicit adapter-owned template input, ownership
+state-role validation, record topology checks, and field-level fact parity.
+The source-field completeness item above remains a Minor future-generic-route
+residual. The stale plan/spec API text was synchronized in the follow-up
+documentation change.

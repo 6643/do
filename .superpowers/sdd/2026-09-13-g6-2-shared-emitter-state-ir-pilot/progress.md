@@ -87,6 +87,12 @@
 
 - Task 6: complete-with-residuals at `44216d0` (`Record G6.2 artifact guard status`); full regression ARC inventory remains BLOCKED and list/frame runtime counters remain unverified.
 
+### Final review fix (`b130817`)
+
+- Commit `b130817` (`Close G6.2 final review findings`) moves template source ownership into the direct route adapter, adds explicit ownership-state role and record payload-topology validation, and upgrades adapter/probe parity to field-level comparison. The shared emitter remains private and the default route remains unchanged.
+- Scoped post-commit re-review found no Critical or Important findings and no new breakage. Minor residuals are limited to completeness checks for extra/missing `source_fields` in future generic record routes; direct pilot admission remains exact.
+- Post-fix verification: pilot `20/20`, owned-record producer `15/15`, state-IR map `16/16`, and full `zig test main.zig` `1728/1728` passed with exit `0`; ReleaseSmall build and release smoke passed. `run_tests.sh` still passed `53/53` child tests but exited `1` on `check_gc_arc_inventory.sh` exit `2` (`unclassified=2`), and host list/frame runtime counters remain unverified.
+
 ### Whole-branch hardening and verification
 
 - Commit `59c8624` (`Harden G6.2 shared emitter pilot admission`) removes the production adapter's test-only `mapping_probe` dependency, wires `LifecycleStateIR` into fragment assembly, pins direct route facts/markers/bindings/lifecycle/hash fail-closed, and preserves allocator errors.

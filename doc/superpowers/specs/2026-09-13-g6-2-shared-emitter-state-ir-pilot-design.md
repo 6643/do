@@ -168,11 +168,14 @@ PilotFacts {
 PilotInput {
   facts: PilotFacts,
   canonical_wit_hash,
+  template_wat,
 }
 ```
 
 `PilotFacts` 的所有 slice 都借用 route adapter 或静态常量的存储；`golden_wat` 只用于
-parity comparator，不能作为 emitter 的单一完整输出 fragment。`FrameFact`、
+parity comparator，不能作为 emitter 的单一完整输出 fragment。`template_wat` 是 route
+adapter 提供的 immutable assembly source，emitter 不得自行 embed 或命名具体 route
+template。`FrameFact`、
 `CanonicalBinding`、`MarkerBinding` 和 `LifecycleAnchor` 的字段来源于现有 mapping probe
 事实提取，不允许在 emitter 内部重新扫描 lexer、registry 或任意 WAT。
 
@@ -409,6 +412,18 @@ runtime counters）保持 unchecked/unverified；Step 2、Step 4、Step 5、Step
   在 `git archive HEAD` 临时 checkout 中把 `emit_component_wat_pilot` 替换为
   立即 `InvalidAdmission`，重建临时 compiler 后旧 route Component gate exit 0；
   这证明删除 private dispatch 后旧 route 仍可用，而非仅证明默认未使用。
+
+### 11.1 Final review-fix verification (`b130817`)
+
+最终修复提交将 WAT source ownership 移到 direct route adapter，并在
+`PilotInput.template_wat` 中显式传入；同时补齐 ownership-state role、record binding
+topology 和 adapter/probe field-level parity 校验。提交后的 focused tests 为 pilot
+`20/20`、owned-record producer `15/15`、state-IR map `16/16`，全量 `zig test main.zig`
+为 `1728/1728`，均 exit `0`。`run_release_smoke.sh` 和 ReleaseSmall build 也 exit `0`。
+
+完整 integration harness 重跑为 `53/53` 子测试通过、总 exit `1`；失败仍仅为
+`check_gc_arc_inventory.sh` 的既有 ARC inventory mismatch（当前 `unclassified=2`）。
+host runner 未提供 list/frame runtime counters，因此该子门禁继续保持 unverified。
 
 因此本 spec 的 Task 6 status 为 complete-with-residuals，只关闭“单 route private pilot 的 artifact、observed lifecycle counters
 和 rollback 证据”范围；list/frame runtime counters 未提供，完整 repository
