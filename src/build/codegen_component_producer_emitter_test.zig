@@ -196,8 +196,15 @@ test "producer shared emitter pilot rejects GC opcodes and types but ignores pla
         "struct.get_u",
         "array.new",
         "array.new_fixed",
+        "array.new_data",
+        "array.new_elem",
+        "array.init_data",
+        "array.init_elem",
+        "array.fill",
         "array.get_s",
         "array.get_u",
+        "call_ref",
+        "return_call_ref",
         "br_on_cast",
     };
     for (gc_tokens) |token| {
@@ -217,6 +224,30 @@ test "producer shared emitter pilot rejects GC opcodes and types but ignores pla
     var input = pilot_input(plan);
     input.facts.golden_wat = plain_text;
     try std.testing.expectError(error.ByteParityMismatch, emitter.emit_pilot_wat(std.testing.allocator, input));
+
+    var plain_token = try std.testing.allocator.dupe(u8, direct_template);
+    defer std.testing.allocator.free(plain_token);
+    const ordinary = "pref.null;; ordinary text\n";
+    std.mem.copyForwards(u8, plain_token[0..ordinary.len], ordinary);
+    input = pilot_input(plan);
+    input.facts.golden_wat = plain_token;
+    try std.testing.expectError(error.ByteParityMismatch, emitter.emit_pilot_wat(std.testing.allocator, input));
+
+    var lone_semicolon = try std.testing.allocator.dupe(u8, direct_template);
+    defer std.testing.allocator.free(lone_semicolon);
+    const ordinary_semicolon = "plain;text\n";
+    std.mem.copyForwards(u8, lone_semicolon[0..ordinary_semicolon.len], ordinary_semicolon);
+    input = pilot_input(plan);
+    input.facts.golden_wat = lone_semicolon;
+    try std.testing.expectError(error.ByteParityMismatch, emitter.emit_pilot_wat(std.testing.allocator, input));
+
+    var adjacent = try std.testing.allocator.dupe(u8, direct_template);
+    defer std.testing.allocator.free(adjacent);
+    const adjacent_token = "ref.null;; ordinary text\n";
+    std.mem.copyForwards(u8, adjacent[0..adjacent_token.len], adjacent_token);
+    input = pilot_input(plan);
+    input.facts.golden_wat = adjacent;
+    try std.testing.expectError(error.CanonicalGcReference, emitter.emit_pilot_wat(std.testing.allocator, input));
 }
 
 test "producer shared emitter pilot adapter rejects non-direct source and sink shapes" {
@@ -271,5 +302,39 @@ test "producer shared emitter pilot adapter rejects mutated measured plan facts"
 
     changed = plan;
     changed.contract.producer_core_params = &.{"i32"};
+    try std.testing.expectError(error.InvalidAdmission, producer.emit_component_wat_pilot(std.testing.allocator, changed));
+
+    changed = plan;
+    changed.descriptor.canonical.record_list_layout = .{
+        .pointer_offset = 0,
+        .length_offset = 4,
+        .element_stride = 4,
+        .max_items = 1,
+    };
+    try std.testing.expectError(error.InvalidAdmission, producer.emit_component_wat_pilot(std.testing.allocator, changed));
+
+    changed = plan;
+    changed.descriptor.canonical.parameterized_owned_record_pair_producer = .{
+        .source_module = "source",
+        .source_import_name = "make-ticket",
+        .source_core_params = &.{"i32"},
+        .source_core_results = &.{"i32"},
+        .resource_drop_import = "drop",
+        .stream_capacity = 1,
+        .terminal = "task-return",
+        .runtime_mode_param = "u32",
+        .left_seed_param = "i32",
+        .right_seed_param = "i32",
+        .producer_core_params = &.{"i32"},
+        .producer_core_results = &.{"i32"},
+    };
+    try std.testing.expectError(error.InvalidAdmission, producer.emit_component_wat_pilot(std.testing.allocator, changed));
+
+    changed = plan;
+    var mutated_layout = changed.layout;
+    mutated_layout.alignment = 8;
+    changed.descriptor.canonical.record_layout = mutated_layout;
+    changed.layout = mutated_layout;
+    changed.contract.payload = .{ .record = mutated_layout };
     try std.testing.expectError(error.InvalidAdmission, producer.emit_component_wat_pilot(std.testing.allocator, changed));
 }

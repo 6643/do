@@ -199,7 +199,22 @@ fn validate_direct_plan(plan: OwnedRecordStreamProducerPlan) pilot_emitter.Pilot
         !same_string_list(plan.descriptor.canonical.completion_params, &.{ "i32", "i32" }) or
         !std.mem.eql(u8, plan.descriptor.canonical.completion, "task-return") or
         !std.mem.eql(u8, plan.descriptor.canonical.async_import_module, "do:g6-2-owned-record-producer/sink@0.1.0") or
-        !std.mem.eql(u8, plan.descriptor.canonical.async_import_name, "[async-lower]consume-via-stream"))
+        !std.mem.eql(u8, plan.descriptor.canonical.async_import_name, "[async-lower]consume-via-stream") or
+        plan.descriptor.canonical.result_payload != null or
+        plan.descriptor.canonical.result_area_payload != null or
+        plan.descriptor.canonical.future_owned != null or
+        plan.descriptor.canonical.error_variants.len != 0 or
+        plan.descriptor.canonical.list_resource_layout != null or
+        plan.descriptor.canonical.record_list_layout != null or
+        plan.descriptor.canonical.parameterized_owned_record_pair_producer != null or
+        plan.descriptor.canonical.scalar_list_layout != null or
+        plan.descriptor.canonical.scalar_list_producer != null or
+        plan.descriptor.canonical.future_input != null or
+        plan.descriptor.canonical.future != null or
+        plan.descriptor.canonical.variant_stream != null or
+        plan.descriptor.canonical.variant_future != null or
+        plan.descriptor.canonical.event_layout != null or
+        plan.descriptor.canonical.ticket_drop_import != null)
     {
         return error.InvalidAdmission;
     }
@@ -210,6 +225,7 @@ fn validate_direct_plan(plan: OwnedRecordStreamProducerPlan) pilot_emitter.Pilot
     };
     if (!record_layout_equal(plan.layout, shape.record_layout) or
         !producer_equal(plan.producer, shape.producer) or
+        plan.layout.alignment != 4 or shape.record_layout.alignment != 4 or
         !record_layout_equal(plan.descriptor.canonical.record_layout orelse return error.InvalidAdmission, shape.record_layout) or
         !producer_equal(plan.descriptor.canonical.producer orelse return error.InvalidAdmission, shape.producer) or
         !stream_equal(plan.descriptor.canonical.stream orelse return error.InvalidAdmission, shape.stream) or

@@ -86,3 +86,31 @@ after the fixes the pilot filter passed 13/13 and the old producer filter
 passed 15/15. `zig fmt` and `git diff --check` also passed. The canonical
 source is fixed to the direct-route pilot boundary and remains independent of
 the golden input; default dispatch and the old emitter remain unchanged.
+
+## Task 5 Review Fix Round 2
+
+The second review found that direct descriptor admission still allowed
+non-direct optional canonical shapes (`record_list_layout` and the
+parameterized producer), and that a coordinated mutation of descriptor layout,
+plan layout, and contract payload could remain self-consistent. The adapter now
+requires every non-direct canonical optional shape to be absent and pins the
+direct record alignment to `4` independently of the mutable lowering shape.
+The coordinated mutation regression returns `InvalidAdmission` before WAT
+assembly.
+
+The review also identified missing standard GC/reference tokens and a scanner
+delimiter gap. The token table now covers array fill/data/element creation and
+initialization plus `call_ref`/`return_call_ref`; `;` terminates ordinary
+tokens while `;;` line comments and nested block comments remain ignored.
+Regressions cover omitted opcodes, `ref.null;;` adjacency, ordinary text,
+comment false positives, and lone-semicolon progress. The latter caught a
+scanner loop that produced an empty token without advancing; the scanner now
+advances over a standalone `;` after preserving the comment branches.
+
+Round-2 TDD evidence: the new descriptor/layout and GC boundary regressions
+were observed RED before implementation, including a timeout on the standalone
+semicolon case, then the pilot filter passed 13/13
+and the old producer filter passed 15/15. The first format command was run from
+`src/` with root-relative paths and failed with `FileNotFound`; the corrected
+repository-root `zig fmt` command succeeded, followed by `zig fmt --check` and
+`git diff --check` passing.

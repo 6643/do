@@ -178,6 +178,10 @@ fn contains_canonical_gc_reference(wat: []const u8) bool {
             index += 2;
             continue;
         }
+        if (wat[index] == ';') {
+            index += 1;
+            continue;
+        }
         if (wat[index] == '"') {
             string = true;
             index += 1;
@@ -198,7 +202,7 @@ fn contains_canonical_gc_reference(wat: []const u8) bool {
             continue;
         }
         const start = index;
-        while (index < wat.len and !std.ascii.isWhitespace(wat[index]) and wat[index] != '(' and wat[index] != ')' and wat[index] != '"') {
+        while (index < wat.len and !std.ascii.isWhitespace(wat[index]) and wat[index] != '(' and wat[index] != ')' and wat[index] != '"' and wat[index] != ';') {
             index += 1;
         }
         const token = wat[start..index];
@@ -210,12 +214,13 @@ fn contains_canonical_gc_reference(wat: []const u8) bool {
 
 fn is_gc_token(token: []const u8) bool {
     const gc_tokens = [_][]const u8{
-        "externref",    "anyref",          "eqref",          "funcref",    "i31ref",            "structref",          "arrayref",
-        "i31.new",      "i31.get_s",       "i31.get_u",      "ref.i31",    "ref.null",          "ref.is_null",        "ref.func",
-        "ref.eq",       "ref.as_non_null", "ref.cast",       "ref.test",   "struct.new",        "struct.new_default", "struct.get",
-        "struct.get_s", "struct.get_u",    "struct.set",     "array.new",  "array.new_default", "array.new_fixed",    "array.get",
-        "array.get_s",  "array.get_u",     "array.set",      "array.len",  "array.copy",        "any.convert_extern", "extern.convert_any",
-        "br_on_cast",   "br_on_cast_fail", "br_on_non_null", "br_on_null",
+        "externref",      "anyref",          "eqref",           "funcref",            "i31ref",             "structref",          "arrayref",
+        "i31.new",        "i31.get_s",       "i31.get_u",       "ref.i31",            "ref.null",           "ref.is_null",        "ref.func",
+        "ref.eq",         "ref.as_non_null", "ref.cast",        "ref.test",           "struct.new",         "struct.new_default", "struct.get",
+        "struct.get_s",   "struct.get_u",    "struct.set",      "array.new",          "array.new_default",  "array.new_fixed",    "array.get",
+        "array.get_s",    "array.get_u",     "array.set",       "array.len",          "array.copy",         "array.fill",         "array.new_data",
+        "array.new_elem", "array.init_data", "array.init_elem", "any.convert_extern", "extern.convert_any", "call_ref",           "return_call_ref",
+        "br_on_cast",     "br_on_cast_fail", "br_on_non_null",  "br_on_null",
     };
     for (gc_tokens) |gc_token| if (std.mem.eql(u8, token, gc_token)) return true;
     return false;
