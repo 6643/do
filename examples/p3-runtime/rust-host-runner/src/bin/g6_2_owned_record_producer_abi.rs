@@ -423,10 +423,12 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
         call_produce(&mut store, &produce, mode.input()).await?
     };
 
+    let mut raw_counters = None;
     let observed_counters = if let (Some(counters), Some((base_a, base_b, base_c, base_d))) =
         (runtime_counters, counter_baseline)
     {
         let (a, b, c, d) = map_wasmtime(counters.call_async(&mut store, ()).await)?.0;
+        raw_counters = Some((a, b, c, d));
         Some((a - base_a, b - base_b, c - base_c, d - base_d))
     } else {
         None
@@ -478,7 +480,7 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
             || list_releases != 0
         {
             bail!(
-                "component counter mismatch mode={} observed={}/{}/{}/{} expected={}/{}/{}/{}",
+                "component counter mismatch mode={} observed={}/{}/{}/{} expected={}/{}/{}/{} baseline={:?} after={:?}",
                 mode.label(),
                 frame_allocations,
                 frame_releases,
@@ -488,6 +490,8 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
                 expected_invocations,
                 0,
                 0,
+                counter_baseline,
+                raw_counters,
             );
         }
     }

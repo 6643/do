@@ -120,6 +120,16 @@ mode 对 exact tuple 做断言。runner 的 output 必须同时打印 `counter-s
 - rollback 只删除 test-only instrumentation/world/runner 接线，旧 direct lifecycle
   gate 必须仍能独立通过。
 
+当前失败证据（2026-09-15）:
+
+- Wasmtime 1.258.0 的 `ready` runner 在读取前后均得到 `12/0/0/0`，差分为
+  `0/0/0/0`，而契约期望 `1/1/0/0`。
+- 临时在 `[async-lift]produce` 入口增加 `+100` 也没有改变 Component export 的
+  after 值，故不能把共享 `$frame-alloc/$frame-free` 或入口 marker 解释为
+  producer invocation 计数。
+- 该证据属于 runtime-semantics blocker；Task 3 保持 `unverified`，不得通过修改
+  期望值、静态 marker 或 host 调用次数推导来关闭。
+
 ## 6. 验收
 
 实现完成必须提供:
