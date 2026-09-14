@@ -69,16 +69,25 @@ fn count(haystack: []const u8, needle: []const u8) usize {
 fn instrumentation_prefix() []const u8 {
     return
     \\  ;; [test-only-runtime-counters]
-    \\  (type $runtime-counters (func (result i32 i32 i32 i32)))
+    \\  (type $runtime-counters (func (result i32)))
     \\  (global $runtime-counter-frame-allocations (mut i32) (i32.const 0))
     \\  (global $runtime-counter-frame-releases (mut i32) (i32.const 0))
     \\  (global $runtime-counter-list-allocations (mut i32) (i32.const 0))
     \\  (global $runtime-counter-list-releases (mut i32) (i32.const 0))
     \\  (func $runtime-counters (type $runtime-counters)
     \\    global.get $runtime-counter-frame-allocations
+    \\    i32.const 0
+    \\    i32.store
     \\    global.get $runtime-counter-frame-releases
+    \\    i32.const 4
+    \\    i32.store
     \\    global.get $runtime-counter-list-allocations
+    \\    i32.const 8
+    \\    i32.store
     \\    global.get $runtime-counter-list-releases
+    \\    i32.const 12
+    \\    i32.store
+    \\    i32.const 0
     \\  )
     \\  (export "runtime-counters" (func $runtime-counters))
     ;

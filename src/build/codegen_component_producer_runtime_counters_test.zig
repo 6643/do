@@ -13,6 +13,8 @@ test "producer runtime counter instrumentation preserves canonical WAT" {
     try std.testing.expectEqual(@as(usize, 4), count(instrumented, "(global $runtime-counter-"));
     try std.testing.expectEqual(@as(usize, 1), count(instrumented, "(export \"runtime-counters\""));
     try std.testing.expectEqual(@as(usize, 1), count(instrumented, "(func $runtime-counters (type"));
+    try std.testing.expect(std.mem.indexOf(u8, instrumented, "(type $runtime-counters (func (result i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, instrumented, "i32.const 12\n    i32.store") != null);
 }
 
 test "producer runtime counter instrumentation rejects missing anchors" {
