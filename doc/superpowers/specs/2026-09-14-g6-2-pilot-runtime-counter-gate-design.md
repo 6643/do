@@ -1,7 +1,7 @@
 # G6.2 Pilot Runtime Counter Gate 设计
 
 日期: 2026-09-14
-状态: 已批准，待实现
+状态: 已完成
 
 ## 1. 目标与边界
 
@@ -36,7 +36,18 @@ runtime-counters: func() -> tuple<u32, u32, u32, u32>
 3. `list_allocations`;
 4. `list_releases`。
 
-direct route 的每次有效调用期望为:
+`runtime-counters` 是 Core-global async 边界的诊断接口，不作为 runtime gate 的
+证据来源。Wasmtime Component async lift 后无法从该 export 稳定读取
+producer-attributable 增量；runner 只能记录其原始值，不能据此关闭或否决 gate。
+
+权威 runtime 证据是 counter world 新增的 test-only `runtime` import:
+
+```wit
+runtime-counter-event: func(kind: u32);
+```
+
+`$frame-alloc` 调用 `kind=1`，`$frame-free` 调用 `kind=2`。host runner 在
+producer 调用前后隔离 callback 计数；direct route 的每次有效调用期望为:
 
 ```text
 frame_allocations = invocation_count
@@ -49,10 +60,9 @@ list_releases    = 0
 精确翻倍。Rust/Wasmtime runner 仍必须同时检查已有的 resource/stream/future counters
 和 `ResourceTable` 为空；counter export 不能替代既有 lifecycle assertions。
 
-如果 Component assembly 或 Wasmtime 当前 API 无法把该 test-only export 从 Core
-module 暴露到 runner，gate 必须 fail closed，保留失败证据并继续记录
-`unverified`；不得改用静态 WAT marker、推导 cardinality 或 host call 次数冒充
-frame/list runtime observation。
+如果 Component assembly 或 Wasmtime 当前 API 无法安装或观察该 callback，gate 必须
+fail closed，保留失败证据；不得改用静态 WAT marker、tuple 值、推导 cardinality 或
+其他 host 调用次数冒充 frame runtime observation。
 
 ## 3. 组件与数据流
 
@@ -72,7 +82,8 @@ flowchart LR
 新增纯 helper `codegen_component_producer_runtime_counters.zig`，只接受已经通过
 `emit_pilot_wat` 的 direct canonical WAT。它必须:
 
-- 在唯一的 `$frame-alloc` / `$frame-free` 函数中增加 frame counter increment;
+- 在唯一的 `$frame-alloc` / `$frame-free` 函数中发送 `runtime-counter-event`，并保留
+  frame counter increment 供 tuple 诊断;
 - 增加 list counter globals，但 direct route 不得产生 list allocation/release;
 - 增加明确的 `runtime-counters` Core export;
 - 对缺失、重复或漂移的 insertion anchors fail closed;
@@ -85,14 +96,15 @@ canonical hash 和既有 marker，再执行固定 anchor replacement。
 ### 3.2 Test-only WIT world
 
 在 `examples/p3-runtime/wit/` 增加独立的 counter world。它复用原 world 的 source、
-sink、types 和 `produce`，额外导出 `runtime-counters`。该 WIT 有独立 SHA-256，不能
-覆盖或修改 canonical WIT。
+sink、types 和 `produce`，额外 import `runtime` 并保留 `runtime-counters` 诊断 export。
+该 WIT 有独立 SHA-256，不能覆盖或修改 canonical WIT。
 
 ### 3.3 Runner
 
-新增或扩展 Rust/Wasmtime test-only runner，读取 `runtime-counters` export，并在每个
-mode 对 exact tuple 做断言。runner 的 output 必须同时打印 `counter-source=component`
-和四项原始值，避免把静态期望误读为运行时观察。
+新增或扩展 Rust/Wasmtime test-only runner，安装 callback import，并在每个 mode 对
+exact alloc/free callback delta 做断言。`runtime-counters` export 可读取为诊断，但不得
+参与 pass/fail。runner 的 output 必须打印 `counter-source=component-callback` 和原始
+callback 值，避免把静态期望误读为运行时观察。
 
 ## 4. Gate 矩阵
 
@@ -114,21 +126,24 @@ mode 对 exact tuple 做断言。runner 的 output 必须同时打印 `counter-s
 ## 5. 失败与回滚
 
 - canonical output 与 instrumented output 混用时，脚本立即失败;
-- counter export 缺失、签名漂移、重复或无法读取时，gate 失败并保留 stderr;
-- 任一 mode 的 observed tuple 与 exact expectation 不一致时，gate 失败;
+- callback import 缺失、签名漂移、重复或无法安装时，gate 失败并保留 stderr;
+- 任一 mode 的 observed callback delta 与 exact expectation 不一致时，gate 失败;
 - counter gate 失败不改变默认 route，也不触发 silent fallback;
 - rollback 只删除 test-only instrumentation/world/runner 接线，旧 direct lifecycle
   gate 必须仍能独立通过。
 
-当前失败证据（2026-09-15）:
+已解决的 tuple 诊断与 A 裁定（2026-09-15）:
 
-- Wasmtime 1.258.0 的 `ready` runner 在读取前后均得到 `12/0/0/0`，差分为
-  `0/0/0/0`，而契约期望 `1/1/0/0`。
-- 临时在 `[async-lift]produce` 入口增加 `+100` 也没有改变 Component export 的
-  after 值，故不能把共享 `$frame-alloc/$frame-free` 或入口 marker 解释为
-  producer invocation 计数。
-- 该证据属于 runtime-semantics blocker；Task 3 保持 `unverified`，不得通过修改
-  期望值、静态 marker 或 host 调用次数推导来关闭。
+- Wasmtime 1.258.0 的 `ready` tuple 读取前后均为 `12/0/0/0`，临时在
+  `[async-lift]produce` 入口增加 `+100` 也不改变 after 值。因此 tuple 明确降级为
+  async Component 边界诊断，不能代表 producer invocation。
+- test-only Core callback 在八个单调用 mode 稳定观察 `1/1`，`repeat` 稳定观察
+  `2/2`。用户选择 A：`mode=255` 在 `$frame-alloc` 前由 `[async-lift]produce`
+  直接返回 `invalid-mode`；因此 `invalid` callback 为 `0/0`，并保持不创建
+  frame/stream/resource 的原始契约。
+- callback matrix 连同既有 lifecycle、ResourceTable empty 与 cancellation checks
+  通过。它是 test-only private evidence，不改变 production ABI、canonical WAT/WIT、
+  default dispatch 或公开语言能力。
 
 ## 6. 验收
 
@@ -136,12 +151,13 @@ mode 对 exact tuple 做断言。runner 的 output 必须同时打印 `counter-s
 
 1. instrumentation unit positive/negative tests;
 2. test-only WIT Component parse/embed/new/validate;
-3. Rust/Wasmtime 十模式 runtime matrix，明确标注 component counter source;
+3. Rust/Wasmtime 十模式 runtime callback matrix，明确标注 component callback source;
 4. canonical WAT/WIT byte parity、默认 route 和旧 rollback gate 无变化;
 5. `zig test main.zig`、ReleaseSmall、完整 `run_tests.sh`、release smoke 和
    `git diff --check` 通过;
 6. 更新 G6.2 plan、Task 6 report、`start_here.md`、`master_plan.md`、
-   `pending_blocked.md` 和 `CHANGELOG.md`，只有 runtime tuple 全绿才将残留标为关闭。
+   `pending_blocked.md` 和 `CHANGELOG.md`，只有 runtime callback matrix 与全套 gates
+   全绿才将残留标为关闭。
 
 ## 7. 非目标
 

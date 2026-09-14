@@ -2,7 +2,7 @@
 
 这是当前主线的接手入口。状态以本文为准; 计划摘要见 `doc/master_plan.md`; 近期变更见 `CHANGELOG.md`。不保留向后兼容旧路径或历史流水账。
 
-当前基线日期: `2026-09-13`。
+当前基线日期: `2026-09-15`。
 
 最新闭环: G6.2 shared emitter/state-IR single-route private pilot 的 Task 6
 artifact、default-route parity、rollback 与 repository inventory gate 已完成。
@@ -10,10 +10,11 @@ artifact、default-route parity、rollback 与 repository inventory gate 已完�
 `rows=55 matches=492 unclassified=0`，post-cutover
 `normal_route_matches=0`，生产依赖闭包为 `modules=162 forbidden=0`。
 完整 harness 为 `14/14 steps; 53/53 tests`，`zig test main.zig` 为
-`1728/1728`，ReleaseSmall 与 release smoke 通过。pilot 仍是 private
-byte-parity staged；host runner 没有 list/frame runtime counters，因此整体为
-`complete-with-residuals`，不开放 public ownership syntax 或 generic producer
-lowering。
+`1733/1733`，ReleaseSmall 与 release smoke 通过。pilot 仍是 private
+byte-parity staged；test-only callback counter gate 已闭环：八个单调用 mode 为
+`1/1`、`repeat` 为 `2/2`、`invalid` 为 `0/0`。Core-global counter tuple 仅作
+async Component 边界诊断。默认 dispatch、public ownership syntax 和 generic
+producer lowering 均未开放。
 
 ## 1. 阅读顺序
 
@@ -44,8 +45,8 @@ lowering。
 | --- | --- |
 | v1 子集 | 发布候选已收口 |
 | GC-first runtime cutover | Task 6 已闭环；普通 `do build`/`do test` 只走 `codegen_runtime_api.zig` 的 Wasm GC route，ARC 仅由显式 test-only `gc_arc_equivalence_oracle.zig` 调用；当前 ARC inventory `rows=55 matches=492 unclassified=0 normal_route_matches=0`，生产依赖闭包 `modules=162 forbidden=0` |
-| 当前验证基线 | 默认及 `RUN_WASM=1 RUN_GC_CORE=1` 为 `14/14 steps; 53/53 tests`；`zig test main.zig` 为 `1728/1728`；GC default gate `87 fixtures`、semantic-equivalence `26 rows; 0 pending`、ReleaseSmall/release smoke 通过 |
-| G6.2 shared emitter/state-IR pilot | 单 route private pilot 的 artifact、byte parity、rollback 与 inventory gate 已通过；host list/frame runtime counters 未暴露，状态为 `complete-with-residuals`；默认 dispatch、能力矩阵和公开 ownership syntax 不变 |
+| 当前验证基线 | 默认及 `RUN_WASM=1 RUN_GC_CORE=1` 为 `14/14 steps; 53/53 tests`；`zig test main.zig` 为 `1733/1733`；GC default gate `87 fixtures`、semantic-equivalence `26 rows; 0 pending`、ReleaseSmall/release smoke 通过 |
+| G6.2 shared emitter/state-IR pilot | 单 route private pilot 的 artifact、byte parity、rollback、inventory 与 test-only runtime callback counter gate 已通过；callback 十模式为单调用 `1/1`、repeat `2/2`、invalid `0/0`；Core-global tuple 仅诊断，默认 dispatch、能力矩阵和公开 ownership syntax 不变 |
 | 当前能力边界 | `complete_rows=15 pending_rows=15` 仍为能力缺口；通用 async/map/producer/resource lowering 与 public `own<T>`/`borrow<T>`/`ref<T>` syntax 继续 pending，未准入形状在 WAT 前 fail-closed |
 | Private async map compiler admission | 精确 `HashMap<u32,u32>` async host route 已由 `--p3-async-map-component` 准入；WIT/WAT snapshot、五个 WAT 前负例、Component validate 与 Rust/Wasmtime `ready/pending/cancel/drop` 均通过；默认 route 仍返回 `AsyncLoweringUnavailable`，通用 async map、Stream 跨 poll buffer 与 ownership syntax 继续 pending |
 | GC-first memory migration | G5a 已完成 parsed fixed-index + 参数化 `[u8] @set` + 全部当前标量 list literal/update（`[bool]`、`[i8]`、`[i16]`、`[i32]`、`[i64]`、`[u16]`、`[u32]`、`[u64]`、`[isize]`、`[usize]`、`[f32]`、`[f64]`）+ bounded text/list/struct/tuple/union/generic/import slices、直接局部对象的一层、两层、三层、四层与五层 nested managed-struct `@get/@set`，以及 `--p3-wait-for-component` 的 bounded `Future<nil>` GC frame/table slice 和 private resource `Result` terminal Component gate；G5b 已完成当前 admitted synchronous 的 26 行 ARC/GC executable equivalence matrix，`future_stream_frames` 的两个 sequential `Future<nil>` 也已完成 GC/linear backend-neutral equivalence，non-CLI probes 验证旧值保持、新值更新和 root 保活。Task 3 已将默认同步 pipeline 的已准入 managed candidates（含 bounded synchronous `defer`、`return nil` no-result cleanup、推断出的 `text` body binding、推断出的 `[u8]`/`[u32]` body storage `@put`，以及 body-only managed-struct storage ctor/field update）接到 typed GC/root 输出，GC path 过滤旧 storage compiler locals；普通 host/WIT 的 C14 lift/lower、C15-B/C15-D lower、C16-C/C16-D lift、bounded mixed scalar-record lower、bounded byte-list record lower/lift、bounded `list<u32>` record lower 与 bounded `list<u32>` record lift、bounded mixed text/u32-list record lower/lift 已接入 manifest-backed 默认 GC route，未准入的 host/WIT shape、普通 GC sync async 和 Stream 在 WAT 前 fail-closed；root/storage conversion、generic async/resource G5b/G5c、G5c full cutover 与旧 ARC expectation 迁移未完成。新增 C10–C16-B 私有 manifest-backed nested/scalar-plus-text/multi-managed-text record lift/lower 与真实 source-level host boundary 证据，其中固定 descriptor 的默认 gate 已闭合。 |

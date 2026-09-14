@@ -18,10 +18,15 @@ interface sink {
   ) -> result<_, error-code>;
 }
 
+interface runtime {
+  runtime-counter-event: func(kind: u32);
+}
+
 world owned-record-producer-counters {
   use types.{error-code};
   import source;
   import sink;
+  import runtime;
   export produce: async func(mode: u32) -> result<_, error-code>;
   export runtime-counters: func() -> tuple<u32, u32, u32, u32>;
 }

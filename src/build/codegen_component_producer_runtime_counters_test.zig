@@ -13,8 +13,19 @@ test "producer runtime counter instrumentation preserves canonical WAT" {
     try std.testing.expectEqual(@as(usize, 4), count(instrumented, "(global $runtime-counter-"));
     try std.testing.expectEqual(@as(usize, 1), count(instrumented, "(export \"runtime-counters\""));
     try std.testing.expectEqual(@as(usize, 1), count(instrumented, "(func $runtime-counters (type"));
+    try std.testing.expectEqual(@as(usize, 1), count(instrumented, "runtime-counter-event\" (func $runtime-counter-event"));
     try std.testing.expect(std.mem.indexOf(u8, instrumented, "(type $runtime-counters (func (result i32)))") != null);
     try std.testing.expect(std.mem.indexOf(u8, instrumented, "i32.const 12\n    i32.store") != null);
+    try std.testing.expect(std.mem.indexOf(u8, instrumented, "i32.const 1\n    call $runtime-counter-event") != null);
+    try std.testing.expect(std.mem.indexOf(u8, instrumented, "i32.const 2\n    call $runtime-counter-event") != null);
+    const runtime_import = std.mem.indexOf(u8, instrumented, "runtime-counter-event\" (func $runtime-counter-event") orelse return error.TestExpectedEqual;
+    const memory = std.mem.indexOf(u8, instrumented, "(memory (export \"memory\") 2)") orelse return error.TestExpectedEqual;
+    try std.testing.expect(runtime_import < memory);
+}
+
+test "owned record producer rejects invalid mode before allocating a frame" {
+    const invalid_guard = "local.get $mode\n    i32.const 255\n    i32.eq\n    if\n      i32.const 1\n      i32.const 2\n      call $task-return\n      i32.const 0\n      return\n    end\n    call $frame-alloc";
+    try std.testing.expect(std.mem.indexOf(u8, canonical_wat, invalid_guard) != null);
 }
 
 test "producer runtime counter instrumentation rejects missing anchors" {

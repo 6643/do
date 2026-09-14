@@ -35,7 +35,8 @@ pub fn instrument(allocator: std.mem.Allocator, canonical_wat: []const u8) Count
     const memory_position = std.mem.indexOf(u8, canonical_wat, memory_anchor) orelse return error.MissingAnchor;
     const alloc_position = std.mem.indexOfPos(u8, canonical_wat, memory_position + memory_anchor.len, frame_alloc_anchor) orelse return error.MissingAnchor;
     const free_position = std.mem.indexOfPos(u8, canonical_wat, alloc_position + frame_alloc_anchor.len, frame_free_anchor) orelse return error.MissingAnchor;
-    try append_segment(allocator, &output, canonical_wat, 0, memory_anchor, instrumentation_prefix());
+    try append_before_anchor(allocator, &output, canonical_wat, 0, memory_anchor, instrumentation_imports());
+    try append_segment(allocator, &output, canonical_wat, memory_position, memory_anchor, instrumentation_prefix());
     try append_segment(allocator, &output, canonical_wat, memory_position + memory_anchor.len, frame_alloc_anchor, frame_alloc_body());
     try append_segment(allocator, &output, canonical_wat, alloc_position + frame_alloc_anchor.len, frame_free_anchor, frame_free_body());
     output.appendSlice(allocator, canonical_wat[free_position + frame_free_anchor.len ..]) catch return error.OutOfMemory;
@@ -53,6 +54,12 @@ fn validate_anchor(wat: []const u8, anchor: []const u8) CounterError!void {
 fn append_segment(allocator: std.mem.Allocator, output: *std.ArrayList(u8), wat: []const u8, start: usize, anchor: []const u8, insertion: []const u8) CounterError!void {
     const position = std.mem.indexOfPos(u8, wat, start, anchor) orelse return error.MissingAnchor;
     output.appendSlice(allocator, wat[start .. position + anchor.len]) catch return error.OutOfMemory;
+    output.appendSlice(allocator, insertion) catch return error.OutOfMemory;
+}
+
+fn append_before_anchor(allocator: std.mem.Allocator, output: *std.ArrayList(u8), wat: []const u8, start: usize, anchor: []const u8, insertion: []const u8) CounterError!void {
+    const position = std.mem.indexOfPos(u8, wat, start, anchor) orelse return error.MissingAnchor;
+    output.appendSlice(allocator, wat[start..position]) catch return error.OutOfMemory;
     output.appendSlice(allocator, insertion) catch return error.OutOfMemory;
 }
 
@@ -93,8 +100,17 @@ fn instrumentation_prefix() []const u8 {
     ;
 }
 
+fn instrumentation_imports() []const u8 {
+    return
+    \\  (type $runtime-counter-event (func (param i32)))
+    \\  (import "do:g6-2-owned-record-producer/runtime@0.1.0" "runtime-counter-event" (func $runtime-counter-event (type $runtime-counter-event)))
+    ;
+}
+
 fn frame_alloc_body() []const u8 {
     return
+    \\    i32.const 1
+    \\    call $runtime-counter-event
     \\    global.get $runtime-counter-frame-allocations
     \\    i32.const 1
     \\    i32.add
@@ -104,6 +120,8 @@ fn frame_alloc_body() []const u8 {
 
 fn frame_free_body() []const u8 {
     return
+    \\    i32.const 2
+    \\    call $runtime-counter-event
     \\    global.get $runtime-counter-frame-releases
     \\    i32.const 1
     \\    i32.add

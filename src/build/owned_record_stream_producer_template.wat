@@ -445,6 +445,17 @@
     (local $pair i64)
     (local $status i32)
     (local $subtask i32)
+    ;; Invalid mode has no frame, waitable, stream, or resource ownership.
+    local.get $mode
+    i32.const 255
+    i32.eq
+    if
+      i32.const 1
+      i32.const 2
+      call $task-return
+      i32.const 0
+      return
+    end
     call $frame-alloc
     local.tee $frame
     call $context-set

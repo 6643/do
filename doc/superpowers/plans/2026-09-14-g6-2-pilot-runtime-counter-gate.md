@@ -9,7 +9,7 @@
 - Modify: `src/build/codegen_component_owned_record_stream_producer.zig` — 暴露 private test-only instrumentation entry，复用既有 pilot admission。
 - Modify: `src/main.zig` — 只导入 counter unit tests。
 - Create: `examples/p3-runtime/wit/g6-2-owned-record-producer-counters.wit` — 独立 test-only world。
-- Create: `examples/p3-runtime/rust-host-runner/src/bin/g6_2_owned_record_producer_counters_abi.rs` — Component counter runner。
+- Modify: `examples/p3-runtime/rust-host-runner/src/bin/g6_2_owned_record_producer_abi.rs` — test-only Component callback counter mode。
 - Create: `examples/p3-runtime/test_rust_g6_2_owned_record_producer_counters.sh` — current-toolchain assembly、十模式 gate 和 cache isolation。
 - Modify: `examples/p3-runtime/rust-host-runner/Cargo.toml` — 仅在确有新 binary 配置需要时修改。
 - Modify: G6.2 plan/report/status docs — 记录 observed tuple、失败证据和 residual closure。
@@ -33,12 +33,12 @@
 
 ## Task 3: Rust/Wasmtime observed counters
 
-1. runner 安装与原 direct route 相同的 source/sink/type host bindings。
-2. 实例化 test-only Component，先执行 `produce`，再读取 `runtime-counters`。
-3. 对十个 mode 断言 result、既有 lifecycle counters、table empty 和 component-returned counter tuple。
-4. output 明确打印 `counter-source=component` 和 observed values；不得打印只由 expected cardinality 推导的 list/frame 数作为 observed。
+1. runner 安装与原 direct route 相同的 source/sink/type host bindings，并安装 test-only `runtime-counter-event` callback import。
+2. 实例化 test-only Component，隔离 callback baseline 后执行 `produce`；`runtime-counters` tuple 只读取为诊断。
+3. 对十个 mode 断言 result、既有 lifecycle counters、table empty 和 observed callback alloc/free delta。
+4. output 明确打印 `counter-source=component-callback` 和 observed values；不得打印只由 expected cardinality 推导的 list/frame 数作为 observed。
 
-验收: 十模式全部 exact pass；任何 export 缺失或 tuple 漂移 fail closed。
+验收: 十模式 callback matrix 全部 exact pass；任何 callback import 缺失或漂移 fail closed。
 
 ## Task 4: rollback and repository gates
 
@@ -47,7 +47,14 @@
 3. 运行 ARC inventory/post-cutover closure，确认没有新的 normal-route ARC marker。
 4. 更新 Task 6 Step 3、plan/spec、`start_here.md`、`master_plan.md`、`pending_blocked.md`、`CHANGELOG.md`。
 
-验收: 只有 component counter tuple 和全套既有 gates 均通过，才能将 G6.2 pilot 从 `complete-with-residuals` 改为 `complete`；否则保留 residual 与原始失败日志。
+验收: 只有 component callback counter matrix 和全套既有 gates 均通过，才能将 G6.2 pilot 从 `complete-with-residuals` 改为 `complete`；tuple 保留诊断，不能作为闭环条件。
+
+## 完成记录 (2026-09-15)
+
+- Task 1: complete。固定 canonical artifact identity/anchor validation、test-only marker、唯一 callback import/export、alloc/free callback event 与 invalid-before-alloc regression 均已锁定。
+- Task 2: complete。独立 counter WIT 增加 `runtime` import；current-only Component parse/embed/new/validate 通过，canonical WAT/WIT hash 保持不变。
+- Task 3: complete。Core-global tuple 在 async Component 边界仅作诊断；callback 十模式得到八个单调用 `1/1`、`repeat` `2/2`、`invalid` `0/0`。A 裁定将 invalid guard 移至 frame allocation 前，保持 invalid 不创建 frame/stream/resource。
+- Task 4: complete。test-only instrumentation 不进入默认 dispatch；canonical direct gate、focused Zig tests、Component assembly/runtime matrix、full regression 与文档状态同步通过。generic producer/resource lowering 与 public ownership syntax 仍不在本计划范围。
 
 ## 标准命令
 
@@ -63,4 +70,4 @@ bash examples/p3-runtime/test_rust_g6_2_owned_record_producer_counters.sh
 ./src/build/test/run_tests.sh
 ```
 
-每个失败命令必须保留输出，并区分源码、工具链和环境原因。
+每个失败命令必须保留输出，并区分源码、工具链和环境原因；既有失败日志作为历史证据保留，不作为成功信号。

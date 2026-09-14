@@ -65,11 +65,11 @@ run_checked canonical-build env DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$s
 cmp "$generated_wit" "$canonical_wit"
 cmp "$canonical_wat" "$repo_root/src/build/owned_record_stream_producer_template.wat"
 test "$(sha256sum "$canonical_wat" | awk '{print $1}')" = \
-  095da7cd4c131a7318fc4bf5fd87b2d99e2672bff568edc577a553e228f856c5
+  fbbdf5c5a21220c5f8dcb2438ab70e68a701e8857d45905e0e3a2599e19bcaa7
 test "$(sha256sum "$generated_wit" | awk '{print $1}')" = \
   6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace
 test "$(sha256sum "$counter_wit" | awk '{print $1}')" = \
-  a234fba271d5217b34ecedf665be9d2bf210dd449f37773d591a7cb306d2f9f5
+  130d8ca370d649415f7412fdc3f37ab94fd4600ff40e8d3d2c6875d5f366a480
 
 run_checked instrument env ZIG_GLOBAL_CACHE_DIR="$repo_root/.tmp/zig-gcache" \
   ZIG_LOCAL_CACHE_DIR="$repo_root/.tmp/zig-cache" \
@@ -77,7 +77,7 @@ run_checked instrument env ZIG_GLOBAL_CACHE_DIR="$repo_root/.tmp/zig-gcache" \
   "$canonical_wat" "$instrumented_wat"
 
 test "$(sha256sum "$instrumented_wat" | awk '{print $1}')" != \
-  095da7cd4c131a7318fc4bf5fd87b2d99e2672bff568edc577a553e228f856c5
+  fbbdf5c5a21220c5f8dcb2438ab70e68a701e8857d45905e0e3a2599e19bcaa7
 grep -Fq '[test-only-runtime-counters]' "$instrumented_wat"
 grep -Fq '(export "runtime-counters"' "$instrumented_wat"
 test "$(grep -Fo '(export "runtime-counters"' "$instrumented_wat" | wc -l | tr -d ' ')" = 1
@@ -99,6 +99,12 @@ export ZIG_LOCAL_CACHE_DIR="$repo_root/.tmp/zig-cache"
 
 run_counter_mode() {
   local mode="$1"
+  local expected=1
+  if [[ "$mode" = repeat ]]; then
+    expected=2
+  elif [[ "$mode" = invalid ]]; then
+    expected=0
+  fi
   local output_file="$tmp_dir/counter-$mode.stdout"
   local error_file="$tmp_dir/counter-$mode.stderr"
   if ! cargo run --quiet --locked --manifest-path "$runner_dir/Cargo.toml" \
@@ -117,7 +123,8 @@ run_counter_mode() {
   fi
   cat "$output_file"
   grep -Fq "mode=$mode" "$output_file"
-  grep -Fq 'counter-source=component' "$output_file"
+  grep -Fq 'counter-source=component-callback' "$output_file"
+  grep -Fq "frame-allocations=$expected frame-releases=$expected" "$output_file"
 }
 
 for mode in ready pending sink-error-before sink-error-after cancel-before-transfer cancel-after-transfer early-drop-before-transfer early-drop-after-transfer repeat invalid; do

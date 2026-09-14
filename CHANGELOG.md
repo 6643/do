@@ -1,5 +1,19 @@
 # Changelog
 
+# 2026-09-15 G6.2 pilot runtime callback counter gate:
+  closed the test-only runtime observation residual without changing canonical
+  WAT/WIT, default dispatch, or public language capability. The independent
+  counter world imports `runtime-counter-event`; instrumentation emits event
+  `1` from `$frame-alloc` and event `2` from `$frame-free`. Rust/Wasmtime
+  observes exact callback deltas across all ten modes: eight single-invocation
+  modes are `1/1`, `repeat` is `2/2`, and `invalid` is `0/0`. User-selected
+  contract A rejects `mode=255` before frame allocation, preserving no
+  frame/stream/resource creation. The Core-global `runtime-counters` tuple is
+  retained only as an async Component boundary diagnostic because it cannot
+  provide a stable producer-attributable delta. Generic/arbitrary producer
+  lowering, public ownership syntax, semantic-parity rewrite, and D2 general
+  async remain deferred.
+
 # 2026-09-13 G6.2 shared emitter/state-IR pilot gate refresh:
   classified the private pilot guard and test-oracle ARC references in
   `doc/gc_arc_inventory.tsv` (`598f2a0`). Fresh pre-cutover/post-cutover scans
