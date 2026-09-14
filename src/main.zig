@@ -135,6 +135,7 @@ test {
     _ = @import("build/codegen_component_producer_fragments_test.zig");
     _ = @import("build/codegen_component_producer_emitter_test.zig");
     _ = @import("build/codegen_component_owned_record_stream_producer.zig");
+    _ = @import("build/codegen_component_producer_runtime_counters_test.zig");
     _ = @import("build/codegen_component_descriptor_manifest.zig");
     _ = @import("build/codegen_component_marshal_wat.zig");
     _ = @import("build/codegen_text.zig");

@@ -6,6 +6,7 @@ const producer_contract = @import("codegen_component_producer_contract.zig");
 const producer_facts = @import("codegen_component_producer_facts.zig");
 const producer_fragments = @import("codegen_component_producer_fragments.zig");
 const pilot_emitter = @import("codegen_component_producer_emitter.zig");
+const runtime_counters = @import("codegen_component_producer_runtime_counters.zig");
 const wit_abi_layout = @import("wit_abi_layout.zig");
 const wit_abi_types = @import("wit_abi_types.zig");
 
@@ -176,6 +177,16 @@ pub fn emit_component_wat_pilot(allocator: std.mem.Allocator, plan: OwnedRecordS
         .canonical_wit_hash = plan.contract.descriptor_hash orelse "",
         .template_wat = canonical_core_wat,
     });
+}
+
+/// Private test-only seam: instrument the already-admitted direct pilot artifact.
+pub fn emit_component_wat_pilot_runtime_counters(
+    allocator: std.mem.Allocator,
+    plan: OwnedRecordStreamProducerPlan,
+) (pilot_emitter.PilotError || runtime_counters.CounterError)![]u8 {
+    const canonical = try emit_component_wat_pilot(allocator, plan);
+    defer allocator.free(canonical);
+    return runtime_counters.instrument(allocator, canonical);
 }
 
 fn validate_direct_plan(plan: OwnedRecordStreamProducerPlan) pilot_emitter.PilotError!void {
