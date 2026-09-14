@@ -62,3 +62,18 @@ embedded direct canonical artifact and all direct route markers before writing.
 - Full repository regression, ReleaseSmall build, and `run_tests.sh` were not
   run because this task is scoped to the focused instrumentation unit gate.
 - The private seam is intentionally not connected to default dispatch.
+
+## Review fix
+
+Review requested a regression test for plausible canonical drift. Added a test that
+mutates the existing `$frame-alloc` anchor in an otherwise canonical copy and
+asserts `error.MissingAnchor`.
+
+Fix verification:
+
+```text
+zig test src/main.zig --test-filter "producer runtime counter"
+git diff --check
+```
+
+Expected result: 5 focused tests pass and `git diff --check` is clean.

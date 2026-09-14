@@ -24,6 +24,14 @@ test "producer runtime counter instrumentation rejects duplicate anchors" {
     try std.testing.expectError(error.DuplicateAnchor, counters.instrument(std.testing.allocator, duplicate));
 }
 
+test "producer runtime counter instrumentation rejects drifted anchor" {
+    const input = try std.testing.allocator.dupe(u8, canonical_wat);
+    defer std.testing.allocator.free(input);
+    const anchor = std.mem.indexOf(u8, input, "frame-alloc") orelse return error.TestExpectedEqual;
+    input[anchor + "frame-".len] = '0';
+    try std.testing.expectError(error.MissingAnchor, counters.instrument(std.testing.allocator, input));
+}
+
 fn count(haystack: []const u8, needle: []const u8) usize {
     var result: usize = 0;
     var offset: usize = 0;
