@@ -25,6 +25,30 @@ normal_route_matches=0`，生产依赖闭包 `modules=153 forbidden=0`，GC defa
 `complete_rows=15 pending_rows=15` 仍按设计返回 `1`，通用 async/map/producer/
 resource lowering 与 public `own<T>`/`borrow<T>`/`ref<T>` syntax 继续 pending。
 
+### D2 private `descriptor.read-via-stream` (已关闭, 2026-09-15)
+
+固定的 filesystem byte-stream reader 已完成独立 ABI、编译器 admission、
+Component lowering 和 Wasmtime 生命周期门禁。只准入
+`wasi:filesystem/types@0.3.0-rc-2025-09-16` 的
+`descriptor.read-via-stream`，声明必须是同步 `@host_func`：
+
+```text
+(File, u64) -> Tuple<Stream<u8>, Future<Result<nil, FileError>>>
+```
+
+方法 Core import 固定为 `(i32, i64, i32) -> nil`，结果区承载 stream 与
+completion future；函数体只允许一至三次显式 `@next`/`@await` byte read，随后
+一次 completion await。ABI、lowering、runtime 三个门禁均通过当前 adapter
+锁定的 `wasm-tools 1.258.0` / Wasmtime `48.0.1`；runtime matrix 覆盖
+ready、pending、`Err(io)`、cancel-before/after-EOF、Store early-drop 和
+repeat，并精确检查 completion/pending-future 与 stream/future/descriptor
+各一次 drop，live Store 的 `ResourceTable` 为空。
+
+这只是私有固定形状能力，不开放通用 filesystem/Stream async lowering、
+`write-via-stream`、`append-via-stream`、无限读取、任意 producer expression，
+也不开放 public `own<T>`/`borrow<T>`/`ref<T>` 语法；这些能力仍按阻断清单单独
+推进。
+
 ### G6.2 private two-list owned-record producer (已关闭, 2026-09-11)
 
 精确 descriptor `do:g6-2-owned-record-two-list-producer@0.1.0` 已完成 private

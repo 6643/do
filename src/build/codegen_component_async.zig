@@ -8,6 +8,7 @@ const codegen_component_resource_async = @import("codegen_component_resource_asy
 const codegen_component_cli_stream_stdin = @import("codegen_component_cli_stream_stdin.zig");
 const codegen_component_stream_writer = @import("codegen_component_stream_writer.zig");
 const codegen_component_wasi_filesystem_read_directory = @import("codegen_component_wasi_filesystem_read_directory.zig");
+const codegen_component_wasi_filesystem_read_via_stream = @import("codegen_component_wasi_filesystem_read_via_stream.zig");
 const codegen_component_wasi_filesystem_get_type = @import("codegen_component_wasi_filesystem_get_type.zig");
 const codegen_component_wasi_filesystem_get_flags = @import("codegen_component_wasi_filesystem_get_flags.zig");
 const codegen_component_wasi_filesystem_sync = @import("codegen_component_wasi_filesystem_sync.zig");
@@ -74,6 +75,7 @@ pub const Target = enum {
     stream_writer,
     stream_mirror,
     wasi_read_directory,
+    wasi_read_via_stream,
     wasi_filesystem_get_type,
     wasi_filesystem_get_flags,
     wasi_filesystem_sync,
@@ -253,6 +255,10 @@ pub fn emit_component_wat(
         }),
         .wasi_read_directory => codegen_component_wasi_filesystem_read_directory.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
             error.UnsupportedP3WasiReadDirectoryComponent => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
+        .wasi_read_via_stream => codegen_component_wasi_filesystem_read_via_stream.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
+            error.UnsupportedP3WasiReadViaStreamComponent => error.UnsupportedP3AsyncComponent,
             else => err,
         },
         .wasi_filesystem_get_type => codegen_component_wasi_filesystem_get_type.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
@@ -1054,6 +1060,10 @@ pub fn emit_component_wit_with_graph(
             error.UnsupportedP3WasiReadDirectoryComponent => error.UnsupportedP3AsyncComponent,
             else => err,
         },
+        .wasi_read_via_stream => codegen_component_wasi_filesystem_read_via_stream.emit_component_wit(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3WasiReadViaStreamComponent => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
         .wasi_filesystem_get_type => codegen_component_wasi_filesystem_get_type.emit_component_wit(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3WasiFilesystemGetTypeComponent => error.UnsupportedP3AsyncComponent,
             else => err,
@@ -1301,6 +1311,11 @@ pub fn target_for_tokens_with_graph(
             else
                 return error.UnsupportedP3AsyncComponent,
             .stream_writer => if (binding.kind == .host_async_func and stream_writer_signature_at(tokens, idx)) .stream_writer else return error.UnsupportedP3AsyncComponent,
+            .filesystem_byte_stream_reader => if (binding.kind == .host_func) blk: {
+                _ = codegen_component_wasi_filesystem_read_via_stream.ReadViaStreamPlan.analyze(tokens, registry) catch
+                    return error.UnsupportedP3AsyncComponent;
+                break :blk .wasi_read_via_stream;
+            } else return error.UnsupportedP3AsyncComponent,
             .filesystem_get_type => if (binding.kind == .host_async_func) blk: {
                 _ = codegen_component_wasi_filesystem_get_type.GetTypePlan.analyze(tokens, registry) catch
                     return error.UnsupportedP3AsyncComponent;
@@ -1396,6 +1411,7 @@ fn target_for_descriptor(descriptor: p3_async_manifest.Descriptor) !Target {
         .unit_result_tag => .unit_result_tag,
         .future_owned_resource => error.UnsupportedP3AsyncComponent,
         .stream_reader_acquire => .stream_reader,
+        .filesystem_byte_stream_reader => .wasi_read_via_stream,
         .record_stream_reader => .wasi_read_directory,
         .filesystem_get_type => .wasi_filesystem_get_type,
         .filesystem_get_flags => .wasi_filesystem_get_flags,
@@ -2377,6 +2393,15 @@ test "v2 promotion leaves default variant dispatch on v1" {
     const wat = try emit_component_wat(std.testing.allocator, undefined, tokens, null);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "generic ABI v2 independent descriptor emitter template") == null);
+}
+
+test "Component async target reserves the pinned filesystem byte reader route" {
+    const source = @embedFile("test/compile_ok/451_wasi_filesystem_read_via_stream_component.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    const target = try target_for_tokens(std.testing.allocator, tokens);
+    try std.testing.expectEqualStrings("wasi_read_via_stream", @tagName(target));
 }
 
 test "HTTP WIT package selection requires the exact service plan" {

@@ -6302,6 +6302,48 @@ test "checked-in registry admits the pinned filesystem descriptor get-type ABI" 
     try std.testing.expectEqualStrings("[resource-drop]descriptor", shape.resource_drop_import);
 }
 
+test "checked-in registry admits the pinned filesystem descriptor read-via-stream ABI" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-via-stream") orelse return error.TestUnexpectedResult;
+    const shape = switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .filesystem_byte_stream_reader => |value| value,
+        else => return error.TestUnexpectedResult,
+    };
+    try std.testing.expectEqualStrings("[method]descriptor.read-via-stream", shape.method.import_name);
+    try std.testing.expectEqual(@as(usize, 3), shape.method.core_params.len);
+    try std.testing.expectEqualStrings("i32", shape.method.core_params[0]);
+    try std.testing.expectEqualStrings("i64", shape.method.core_params[1]);
+    try std.testing.expectEqualStrings("i32", shape.method.core_params[2]);
+    try std.testing.expectEqualStrings("u8", shape.stream.element);
+    try std.testing.expectEqualStrings("[async-lower][stream-read-0][method]descriptor.read-via-stream", shape.stream.read.import_name);
+    try std.testing.expectEqualStrings("[stream-drop-readable-0][method]descriptor.read-via-stream", shape.stream.drop_readable.import_name);
+    try std.testing.expectEqualStrings("[async-lower][future-read-1][method]descriptor.read-via-stream", shape.future.read.?.import_name);
+    try std.testing.expectEqualStrings("[future-drop-readable-1][method]descriptor.read-via-stream", shape.future.drop_readable.import_name);
+}
+
+test "filesystem descriptor read-via-stream lowering rejects ABI drift" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-via-stream") orelse return error.TestUnexpectedResult;
+
+    var drifted = descriptor;
+    drifted.canonical.core_params = &.{ "i32", "i32", "i32" };
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.result = "tuple<stream<u16>,future<result<_,error-code>>>";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.wit_sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.canonical.async_import_name = "[async-lower][method]descriptor.read-via-stream";
+    try std.testing.expect(lowering_shape(drifted) == null);
+}
+
 test "checked-in registry admits the pinned filesystem descriptor get-flags ABI" {
     var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(std.testing.allocator);

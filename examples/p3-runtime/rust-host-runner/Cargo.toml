@@ -34,6 +34,10 @@ name = "do-p3-wasi-filesystem-read-directory-host-runner"
 path = "src/bin/wasi_filesystem_read_directory.rs"
 
 [[bin]]
+name = "do-p3-wasi-filesystem-read-via-stream-host-runner"
+path = "src/bin/wasi_filesystem_read_via_stream.rs"
+
+[[bin]]
 name = "do-p3-cancel-wait-for-host-runner"
 path = "src/bin/cancel_wait_for.rs"
 

@@ -3661,3 +3661,29 @@ canonical boundary remains free of Wasm GC references and cleanup is
 exactly-once. This closes only the sixth-hop bounded capability; general
 producer/resource lowering, seventh-hop forwarding, and full GC cutover remain
 pending.
+
+### D2 private `descriptor.read-via-stream` boundary (2026-09-15)
+
+The pinned filesystem method `wasi:filesystem/types@0.3.0-rc-2025-09-16` /
+`descriptor.read-via-stream` is now closed as a private, bounded capability.
+The source declaration is limited to a synchronous `@host_func` with
+`(File, u64) -> Tuple<Stream<u8>, Future<Result<nil, FileError>>>`; its measured
+Core method import is `(i32, i64, i32) -> nil`, with stream and completion handles
+returned through the canonical result area. The generated WIT sidecar is pinned
+to the filesystem source hash
+`8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`.
+
+The adapter ABI probe, compiler manifest/sema/target tests, dedicated emitter,
+and Component assembly gate pass with the active `wasm-tools 1.258.0` /
+Wasmtime `48.0.1` toolchain. The route accepts only one to three explicit byte
+stream `@next`/`@await` operations followed by one completion await. The Rust /
+Wasmtime matrix proves ready, pending, completion error, cancel before and
+after EOF, Store early-drop, and repeat-call lifecycles. It records completion
+versus pending-future drops and requires exactly-once stream/future/descriptor
+cleanup with an empty live `ResourceTable` (Store disposal is reported without
+claiming a table state).
+
+This closes only the fixed method-specific route. Generic filesystem or Stream
+async lowering, `write-via-stream`, `append-via-stream`, unbounded reads,
+arbitrary producer expressions, and public `own<T>`/`borrow<T>`/`ref<T>` syntax
+remain unavailable and are not inferred from this evidence.

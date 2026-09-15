@@ -39,3 +39,7 @@ case "$output" in
 esac
 
 "$repo_root/examples/p3-runtime/test_rust_cancel_wait_for.sh"
+
+"$repo_root/examples/p3-runtime/test_do_wasi_filesystem_read_via_stream_abi.sh"
+"$repo_root/examples/p3-runtime/test_do_wasi_filesystem_read_via_stream_lowering.sh"
+"$repo_root/examples/p3-runtime/test_rust_wasi_filesystem_read_via_stream.sh"

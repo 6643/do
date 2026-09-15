@@ -1,7 +1,7 @@
 # D2 Filesystem Read-Via-Stream Private Boundary
 
 Date: 2026-09-15
-Status: approved design; implementation plan committed; implementation not started
+Status: implemented and verified; private bounded capability closed
 
 ## Goal
 

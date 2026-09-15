@@ -6,9 +6,12 @@ run(file File, offset u64) -> nil {
     handles Tuple<Stream<u8>, Future<Result<nil, FileError>>> = read_via_stream(file, offset)
     reader Stream<u8> = @get(handles, 0)
     completion Future<Result<nil, FileError>> = @get(handles, 1)
-    pending Future<Result<u8, nil>> = @next(reader)
-    item Result<u8, nil> = @await(pending)
-    _ = item
+    pending_1 Future<Result<u8, nil>> = @next(reader)
+    item_1 Result<u8, nil> = @await(pending_1)
+    _ = item_1
+    pending_2 Future<Result<u8, nil>> = @next(reader)
+    item_2 Result<u8, nil> = @await(pending_2)
+    _ = item_2
     completed Result<nil, FileError> = @await(completion)
     _ = completed
     return
