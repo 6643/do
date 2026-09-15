@@ -129,7 +129,7 @@ pub fn check_p3_async_host_imports(allocator: std.mem.Allocator, tokens: []const
         if (shape == null and !is_pinned_http_client_send_descriptor(descriptor) and
             !std.mem.eql(u8, descriptor.effect, "async")) return mark_error_at(tokens, idx, error.UnknownP3AsyncHostDescriptor);
         const is_stream_effect = if (shape) |resolved_shape| switch (resolved_shape) {
-            .http_request_constructor, .http_stream_reader, .stream_reader_acquire, .stream_writer, .record_stream_reader, .record_resource_list_stream_reader, .owned_record_stream_producer, .record_resource_mixed_stream_producer, .record_resource_pair_stream_producer, .record_resource_nested_stream_producer, .record_resource_triple_stream_producer, .record_resource_pair_parameterized_stream_producer, .record_resource_list_owned_record_stream_producer, .record_resource_two_list_owned_record_stream_producer, .record_resource_list_stream_producer, .record_resource_list_stream_dynamic_producer, .record_resource_list_stream_batched_producer, .scalar_list_stream_producer, .variant_resource_stream_reader => true,
+            .http_request_constructor, .http_stream_reader, .stream_reader_acquire, .filesystem_byte_stream_reader, .stream_writer, .record_stream_reader, .record_resource_list_stream_reader, .owned_record_stream_producer, .record_resource_mixed_stream_producer, .record_resource_pair_stream_producer, .record_resource_nested_stream_producer, .record_resource_triple_stream_producer, .record_resource_pair_parameterized_stream_producer, .record_resource_list_owned_record_stream_producer, .record_resource_two_list_owned_record_stream_producer, .record_resource_list_stream_producer, .record_resource_list_stream_dynamic_producer, .record_resource_list_stream_batched_producer, .scalar_list_stream_producer, .variant_resource_stream_reader => true,
             else => false,
         } else false;
         if (!is_stream_effect and !std.mem.eql(u8, descriptor.effect, "async") and
@@ -193,6 +193,7 @@ fn p3_async_signature_matches(tokens: []const lexer.Token, start_idx: usize, end
         switch (resolved_shape) {
             .http_stream_reader => return http_stream_reader_signature_matches(tokens, start_idx, close_idx, end_idx),
             .stream_reader_acquire => return stream_reader_signature_matches(tokens, start_idx, close_idx, end_idx),
+            .filesystem_byte_stream_reader => return filesystem_byte_stream_reader_signature_matches(tokens, start_idx, close_idx, end_idx),
             .record_stream_reader => return record_stream_reader_signature_matches(tokens, start_idx, close_idx, end_idx, descriptor),
             .record_resource_list_stream_reader => return record_resource_list_stream_reader_signature_matches(tokens, start_idx, close_idx, end_idx, descriptor),
             .owned_record_stream_producer => return owned_record_stream_producer_signature_matches(tokens, close_idx, end_idx, descriptor),
@@ -489,6 +490,40 @@ fn stream_reader_signature_matches(
         !tok_eq(tokens[result_start + 15], ">") or
         !tok_eq(tokens[result_start + 16], ">")) return false;
     return true;
+}
+
+fn filesystem_byte_stream_reader_signature_matches(
+    tokens: []const lexer.Token,
+    params_start_idx: usize,
+    params_close_idx: usize,
+    end_idx: usize,
+) bool {
+    if (params_close_idx != params_start_idx + 4 or
+        tokens[params_start_idx + 1].kind != .ident or
+        !std.mem.eql(u8, tokens[params_start_idx + 1].lexeme, "File") or
+        !tok_eq(tokens[params_start_idx + 2], ",") or
+        !tok_eq(tokens[params_start_idx + 3], "u64")) return false;
+
+    const result_start = params_close_idx + 3;
+    return result_start + 17 == end_idx and
+        tok_eq(tokens[result_start], "Tuple") and
+        tok_eq(tokens[result_start + 1], "<") and
+        tok_eq(tokens[result_start + 2], "Stream") and
+        tok_eq(tokens[result_start + 3], "<") and
+        tok_eq(tokens[result_start + 4], "u8") and
+        tok_eq(tokens[result_start + 5], ">") and
+        tok_eq(tokens[result_start + 6], ",") and
+        tok_eq(tokens[result_start + 7], "Future") and
+        tok_eq(tokens[result_start + 8], "<") and
+        tok_eq(tokens[result_start + 9], "Result") and
+        tok_eq(tokens[result_start + 10], "<") and
+        tok_eq(tokens[result_start + 11], "nil") and
+        tok_eq(tokens[result_start + 12], ",") and
+        tokens[result_start + 13].kind == .ident and
+        std.mem.eql(u8, tokens[result_start + 13].lexeme, "FileError") and
+        tok_eq(tokens[result_start + 14], ">") and
+        tok_eq(tokens[result_start + 15], ">") and
+        tok_eq(tokens[result_start + 16], ">");
 }
 
 fn record_stream_reader_signature_matches(
@@ -2433,6 +2468,42 @@ test "pinned read-directory host_async_func imports accept the fixed record stre
     defer std.testing.allocator.free(tokens);
 
     try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "pinned filesystem read-via-stream host_func imports require the byte reader signature" {
+    const accepted =
+        \\read_via_stream = @host_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-via-stream", (File, u64) -> Tuple<Stream<u8>, Future<Result<nil, FileError>>>)
+        \\File = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+        \\FileError error = Io | NoEntry
+    ;
+    const rejected_host_kind =
+        \\read_via_stream = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-via-stream", (File, u64) -> Tuple<Stream<u8>, Future<Result<nil, FileError>>>)
+        \\File = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+        \\FileError error = Io | NoEntry
+    ;
+    const rejected_signatures = [_][]const u8{
+        \\read_via_stream = @host_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-via-stream", (File, u32) -> Tuple<Stream<u8>, Future<Result<nil, FileError>>>)
+        \\File = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+        \\FileError error = Io | NoEntry
+        ,
+        \\read_via_stream = @host_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.read-via-stream", (File, u64) -> Tuple<Stream<u16>, Future<Result<nil, FileError>>>)
+        \\File = @wasi_resource("filesystem/types/descriptor", { .id i64 })
+        \\FileError error = Io | NoEntry
+    };
+
+    const accepted_tokens = try lexer.tokenize(std.testing.allocator, accepted);
+    defer std.testing.allocator.free(accepted_tokens);
+    try check_p3_async_host_imports(std.testing.allocator, accepted_tokens);
+
+    const rejected_host_kind_tokens = try lexer.tokenize(std.testing.allocator, rejected_host_kind);
+    defer std.testing.allocator.free(rejected_host_kind_tokens);
+    try std.testing.expectError(error.UnknownP3AsyncHostDescriptor, check_p3_async_host_imports(std.testing.allocator, rejected_host_kind_tokens));
+
+    for (rejected_signatures) |source| {
+        const tokens = try lexer.tokenize(std.testing.allocator, source);
+        defer std.testing.allocator.free(tokens);
+        try std.testing.expectError(error.P3AsyncHostSignatureMismatch, check_p3_async_host_imports(std.testing.allocator, tokens));
+    }
 }
 
 test "pinned read-directory host_async_func imports use the same fixed signature" {

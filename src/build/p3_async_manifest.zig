@@ -38,6 +38,7 @@ pub const LoweringShape = union(enum) {
     http_request_constructor: HttpRequestConstructorShape,
     http_stream_reader: HttpStreamReaderShape,
     stream_reader_acquire: StreamReaderShape,
+    filesystem_byte_stream_reader: FilesystemByteStreamReaderShape,
     record_stream_reader: RecordStreamReaderShape,
     record_resource_list_stream_reader: RecordResourceListStreamShape,
     owned_record_stream_producer: OwnedRecordStreamProducerShape,
@@ -551,6 +552,15 @@ pub const StreamReaderShape = struct {
     future_drop_readable: StreamOperation,
 };
 
+/// ABI facts for the private synchronous filesystem byte reader. The method
+/// returns stream/future handles through a result area, unlike the async
+/// read-directory method and the parameter-free CLI stdin reader.
+pub const FilesystemByteStreamReaderShape = struct {
+    method: StreamOperation,
+    stream: StreamCanonical,
+    future: FutureCanonical,
+};
+
 pub const StreamOperation = struct {
     import_name: []const u8,
     core_params: []const []const u8,
@@ -565,6 +575,11 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
 
     if (std.mem.eql(u8, descriptor.effect, "stream-reader")) {
         if (valid_stream_reader_descriptor(descriptor)) |shape| return .{ .stream_reader_acquire = shape };
+        return null;
+    }
+
+    if (std.mem.eql(u8, descriptor.effect, "filesystem-byte-stream-reader")) {
+        if (valid_filesystem_byte_stream_reader_descriptor(descriptor)) |shape| return .{ .filesystem_byte_stream_reader = shape };
         return null;
     }
 
@@ -1523,6 +1538,7 @@ fn parse_descriptor(allocator: std.mem.Allocator, value: std.json.Value) !Descri
         !std.mem.eql(u8, effect, "http-request-constructor") and
         !std.mem.eql(u8, effect, "http-stream-reader") and
         !std.mem.eql(u8, effect, "stream-reader") and
+        !std.mem.eql(u8, effect, "filesystem-byte-stream-reader") and
         !std.mem.eql(u8, effect, "record-stream-reader") and
         !std.mem.eql(u8, effect, "record-resource-stream-producer") and
         !std.mem.eql(u8, effect, "record-resource-mixed-stream-producer") and
@@ -2198,6 +2214,74 @@ fn valid_stream_reader_descriptor(descriptor: Descriptor) ?StreamReaderShape {
         .read = stream.read,
         .drop_readable = stream.drop_readable,
         .future_drop_readable = future.drop_readable,
+    };
+}
+
+fn valid_filesystem_byte_stream_reader_descriptor(descriptor: Descriptor) ?FilesystemByteStreamReaderShape {
+    const stream = descriptor.canonical.stream orelse return null;
+    const future = descriptor.canonical.future orelse return null;
+    const future_new = future.new orelse return null;
+    const future_cancel_read = future.cancel_read orelse return null;
+    const future_cancel_write = future.cancel_write orelse return null;
+    const future_drop_writable = future.drop_writable orelse return null;
+    const future_read = future.read orelse return null;
+    const future_write = future.write orelse return null;
+
+    if (!std.mem.eql(u8, descriptor.locator, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.member, "descriptor.read-via-stream") or
+        descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, descriptor.wit_sha256.?, p3_filesystem_wit_manifest.directory_types_sha256) or
+        descriptor.params.len != 2 or
+        !std.mem.eql(u8, descriptor.params[0], "descriptor") or
+        !std.mem.eql(u8, descriptor.params[1], "u64") or
+        !std.mem.eql(u8, descriptor.result, "tuple<stream<u8>,future<result<_,error-code>>>") or
+        descriptor.resource != null or
+        !std.mem.eql(u8, descriptor.canonical.completion, "result-area") or
+        descriptor.canonical.completion_params.len != 0 or
+        !equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i64", "i32" }) or
+        descriptor.canonical.core_results.len != 0 or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[method]descriptor.read-via-stream") or
+        !std.mem.eql(u8, stream.element, "u8")) return null;
+
+    if (!valid_stream_operation(stream.new, &.{}, &.{"i64"}) or
+        !valid_stream_operation(stream.cancel_read, &.{"i32"}, &.{"i32"}) or
+        !valid_stream_operation(stream.cancel_write, &.{"i32"}, &.{"i32"}) or
+        !valid_stream_operation(stream.drop_readable, &.{"i32"}, &.{}) or
+        !valid_stream_operation(stream.drop_writable, &.{"i32"}, &.{}) or
+        !valid_stream_operation(stream.read, &.{ "i32", "i32", "i32" }, &.{"i32"}) or
+        !valid_stream_operation(stream.write, &.{ "i32", "i32", "i32" }, &.{"i32"}) or
+        !valid_stream_operation(future_new, &.{}, &.{"i64"}) or
+        !valid_stream_operation(future_cancel_read, &.{"i32"}, &.{"i32"}) or
+        !valid_stream_operation(future_cancel_write, &.{"i32"}, &.{"i32"}) or
+        !valid_stream_operation(future.drop_readable, &.{"i32"}, &.{}) or
+        !valid_stream_operation(future_drop_writable, &.{"i32"}, &.{}) or
+        !valid_stream_operation(future_read, &.{ "i32", "i32" }, &.{"i32"}) or
+        !valid_stream_operation(future_write, &.{ "i32", "i32" }, &.{"i32"})) return null;
+
+    if (!valid_named_stream_operation(stream.new, "[stream-new-0][method]descriptor.read-via-stream", &.{}, &.{"i64"}) or
+        !valid_named_stream_operation(stream.cancel_read, "[stream-cancel-read-0][method]descriptor.read-via-stream", &.{"i32"}, &.{"i32"}) or
+        !valid_named_stream_operation(stream.cancel_write, "[stream-cancel-write-0][method]descriptor.read-via-stream", &.{"i32"}, &.{"i32"}) or
+        !valid_named_stream_operation(stream.drop_readable, "[stream-drop-readable-0][method]descriptor.read-via-stream", &.{"i32"}, &.{}) or
+        !valid_named_stream_operation(stream.drop_writable, "[stream-drop-writable-0][method]descriptor.read-via-stream", &.{"i32"}, &.{}) or
+        !valid_named_stream_operation(stream.read, "[async-lower][stream-read-0][method]descriptor.read-via-stream", &.{ "i32", "i32", "i32" }, &.{"i32"}) or
+        !valid_named_stream_operation(stream.write, "[async-lower][stream-write-0][method]descriptor.read-via-stream", &.{ "i32", "i32", "i32" }, &.{"i32"}) or
+        !valid_named_stream_operation(future_new, "[future-new-1][method]descriptor.read-via-stream", &.{}, &.{"i64"}) or
+        !valid_named_stream_operation(future_cancel_read, "[future-cancel-read-1][method]descriptor.read-via-stream", &.{"i32"}, &.{"i32"}) or
+        !valid_named_stream_operation(future_cancel_write, "[future-cancel-write-1][method]descriptor.read-via-stream", &.{"i32"}, &.{"i32"}) or
+        !valid_named_stream_operation(future.drop_readable, "[future-drop-readable-1][method]descriptor.read-via-stream", &.{"i32"}, &.{}) or
+        !valid_named_stream_operation(future_drop_writable, "[future-drop-writable-1][method]descriptor.read-via-stream", &.{"i32"}, &.{}) or
+        !valid_named_stream_operation(future_read, "[async-lower][future-read-1][method]descriptor.read-via-stream", &.{ "i32", "i32" }, &.{"i32"}) or
+        !valid_named_stream_operation(future_write, "[async-lower][future-write-1][method]descriptor.read-via-stream", &.{ "i32", "i32" }, &.{"i32"})) return null;
+
+    return .{
+        .method = .{
+            .import_name = descriptor.canonical.async_import_name,
+            .core_params = descriptor.canonical.core_params,
+            .core_results = descriptor.canonical.core_results,
+        },
+        .stream = stream,
+        .future = future,
     };
 }
 

@@ -392,6 +392,49 @@
         },
         {
             "locator": "wasi:filesystem/types@0.3.0-rc-2025-09-16",
+            "member": "descriptor.read-via-stream",
+            "effect": "filesystem-byte-stream-reader",
+            "params": ["descriptor", "u64"],
+            "result": "tuple<stream<u8>,future<result<_,error-code>>>",
+            "resource": null,
+            "wit_sha256": "8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f",
+            "canonical": {
+                "core_params": ["i32", "i64", "i32"],
+                "core_results": [],
+                "completion_params": [],
+                "completion": "result-area",
+                "async_import_module": "wasi:filesystem/types@0.3.0-rc-2025-09-16",
+                "async_import_name": "[method]descriptor.read-via-stream",
+                "stream": {
+                    "element": "u8",
+                    "new": {"import_name": "[stream-new-0][method]descriptor.read-via-stream", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[stream-cancel-read-0][method]descriptor.read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[stream-cancel-write-0][method]descriptor.read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[stream-drop-readable-0][method]descriptor.read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[stream-drop-writable-0][method]descriptor.read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][stream-read-0][method]descriptor.read-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][stream-write-0][method]descriptor.read-via-stream", "core_params": ["i32", "i32", "i32"], "core_results": ["i32"]}
+                },
+                "future": {
+                    "new": {"import_name": "[future-new-1][method]descriptor.read-via-stream", "core_params": [], "core_results": ["i64"]},
+                    "cancel_read": {"import_name": "[future-cancel-read-1][method]descriptor.read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "cancel_write": {"import_name": "[future-cancel-write-1][method]descriptor.read-via-stream", "core_params": ["i32"], "core_results": ["i32"]},
+                    "drop_readable": {"import_name": "[future-drop-readable-1][method]descriptor.read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "drop_writable": {"import_name": "[future-drop-writable-1][method]descriptor.read-via-stream", "core_params": ["i32"], "core_results": []},
+                    "read": {"import_name": "[async-lower][future-read-1][method]descriptor.read-via-stream", "core_params": ["i32", "i32"], "core_results": ["i32"]},
+                    "write": {"import_name": "[async-lower][future-write-1][method]descriptor.read-via-stream", "core_params": ["i32", "i32"], "core_results": ["i32"]}
+                }
+            },
+            "wit": {
+                "package": "wasi:filesystem@0.3.0-rc-2025-09-16",
+                "interface": "types",
+                "operation": "descriptor.read-via-stream",
+                "world": "imports",
+                "parameter": ""
+            }
+        },
+        {
+            "locator": "wasi:filesystem/types@0.3.0-rc-2025-09-16",
             "member": "descriptor.read-directory",
             "effect": "record-stream-reader",
             "params": ["descriptor"],
