@@ -4,7 +4,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 INVENTORY_SCRIPT="$ROOT/src/build/test/check_gc_migration_inventory.sh"
 LOCK_FILE="$ROOT/toolchain/toolchain.lock.json"
-TOOLCHAIN_BIN="${DO_TOOLCHAIN_BIN:-$ROOT/bin/do-toolchain}"
+TOOLCHAIN_BIN="$ROOT/bin/do-toolchain"
+
+if [[ -n "${DO_TOOLCHAIN_BIN+x}" || -n "${DO_TOOLCHAIN_LOCK+x}" ]]; then
+    printf 'toolchain adapter/lock overrides are not permitted\n' >&2
+    exit 2
+fi
 
 usage() {
     printf 'usage: %s --row <row> --profile <S|H|A> --evidence-dir <directory>\n' "${BASH_SOURCE[0]}" >&2
@@ -88,6 +93,10 @@ esac
     printf 'row is not pending with empty evidence: %s\n' "$row" >&2
     exit 1
 }
+[[ "$g5a_status" == complete && "$g5b_status" == complete ]] || {
+    printf 'row has incomplete prerequisite status: g5a=%s g5b=%s\n' "$g5a_status" "$g5b_status" >&2
+    exit 1
+}
 
 commands_log="$evidence_dir/commands.log"
 summary_file="$evidence_dir/summary.txt"
@@ -96,6 +105,7 @@ printf 'row=%s\nprofile=%s\n' "$row" "$profile" >> "$commands_log"
 printf 'inventory=%s\n' "$row_line" >> "$commands_log"
 printf 'commit=%s\nbranch=%s\n' "$(git -C "$ROOT" rev-parse HEAD)" "$(git -C "$ROOT" branch --show-current)" >> "$commands_log"
 printf 'toolchain_lock=%s\n' "$LOCK_FILE" >> "$commands_log"
+export DO_TOOLCHAIN_LOCK="$LOCK_FILE"
 
 probe_file="$evidence_dir/toolchain-probe.json"
 printf '%s\n' '+ bin/do-toolchain probe' >> "$commands_log"
@@ -126,7 +136,7 @@ run_gate() {
     (cd "$ROOT" && ZIG_GLOBAL_CACHE_DIR="$evidence_dir/zig-cache" "$@") >"$output" 2>&1
     local rc=$?
     set -e
-    printf '%s exit=%d output=%s\n' "$name" "$rc" "$output" >> "$commands_log"
+    printf '%s expected_exit=0 actual_exit=%d output=%s\n' "$name" "$rc" "$output" >> "$commands_log"
     if ((rc != 0)); then
         printf '%s failed (exit %d); see %s\n' "$name" "$rc" "$output" >&2
         return 1
@@ -142,8 +152,64 @@ verify_paths() {
     IFS=',' read -r -a paths <<< "$list"
     for path in "${paths[@]}"; do
         [[ -n "$path" && "$path" != *$'\n'* ]] || { printf 'invalid %s path\n' "$label" >&2; return 1; }
+        case "$path" in
+            /*|..|../*|*/../*)
+                printf 'unsafe %s path: %s\n' "$label" "$path" >&2
+                return 1
+                ;;
+        esac
         [[ -e "$ROOT/$path" ]] || { printf 'missing %s path: %s\n' "$label" "$path" >&2; return 1; }
+        resolved=$(realpath -e -- "$ROOT/$path") || { printf 'cannot resolve %s path: %s\n' "$label" "$path" >&2; return 1; }
+        [[ "$resolved" == "$ROOT"/* ]] || {
+            printf '%s path escapes repository: %s -> %s\n' "$label" "$path" "$resolved" >&2
+            return 1
+        }
     done
+}
+
+check_common_artifacts() {
+    local file
+    while IFS= read -r -d '' file; do
+        if rg -n -q '__arc_|arc-runtime|arc-layout|arc-overwrite|arc-release|arc-fallthrough-release|arc-block-release' "$file"; then
+            printf 'ARC marker in admitted artifact: %s\n' "$file" >&2
+            return 1
+        fi
+    done < <(find "$evidence_dir" -type f \( -name '*.wat' -o -name '*.core.wat' \) -print0)
+}
+
+check_profile_artifacts() {
+    local all_logs="$evidence_dir/profile-input.log"
+    : > "$all_logs"
+    cat "$evidence_dir"/*.log >> "$all_logs" 2>/dev/null || true
+    case "$profile" in
+        S)
+            check_common_artifacts
+            ;;
+        H)
+            check_common_artifacts
+            if rg -n -q '^.*\(import.*\(ref|canonical.*\(ref|\(ref[^)]*canonical' "$all_logs"; then
+                printf 'GC reference at canonical boundary\n' >&2
+                return 1
+            fi
+            rg -q 'parse-core|embed-component|new-component|validate-component' "$all_logs" || {
+                printf 'H profile missing Component parse/embed/new/validate evidence\n' >&2
+                return 1
+            }
+            ;;
+        A)
+            check_common_artifacts
+            for marker in pending error cancel drop cleanup; do
+                rg -qi "$marker" "$all_logs" || {
+                    printf 'A profile missing lifecycle marker: %s\n' "$marker" >&2
+                    return 1
+                }
+            done
+            rg -qi 'exactly[- ]once|once.*cleanup|cleanup.*once' "$all_logs" || {
+                printf 'A profile missing exactly-once cleanup evidence\n' >&2
+                return 1
+            }
+            ;;
+    esac
 }
 
 verify_paths g5a_fixture "$g5a_sources"
@@ -173,6 +239,10 @@ run_path_list() {
 
 run_path_list g5a "$g5a_probes"
 run_path_list g5b "$g5b_evidence"
+check_profile_artifacts
+
+toolchain_versions=$(jq -r '[.wasm_tools,.wasmtime] | map(.name + "=" + .version + " sha256=" + .sha256) | join("; ")' "$LOCK_FILE")
+command_results=$(awk '/ expected_exit=/{printf "%s; ", $0}' "$commands_log")
 
 cat > "$summary_file" <<EOF
 row=$row
@@ -184,6 +254,8 @@ g5c_status=$g5c_status
 boundary=$boundary
 commands_log=$commands_log
 toolchain_probe=$probe_file
+toolchain_versions=$toolchain_versions
+command_results=$command_results
 result=passed
 EOF
 printf 'row=%s profile=%s result=passed summary=%s\n' "$row" "$profile" "$summary_file"
