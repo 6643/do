@@ -1,7 +1,7 @@
 # D2 Filesystem Read-Via-Stream Private Boundary
 
 Date: 2026-09-15
-Status: corrected design awaiting approval; implementation not started
+Status: approved design; implementation plan committed; implementation not started
 
 ## Goal
 
