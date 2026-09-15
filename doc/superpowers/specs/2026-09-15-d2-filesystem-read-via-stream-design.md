@@ -1,7 +1,7 @@
 # D2 Filesystem Read-Via-Stream Private Boundary
 
 Date: 2026-09-15
-Status: approved design; implementation not started
+Status: corrected design awaiting approval; implementation not started
 
 ## Goal
 
@@ -26,7 +26,7 @@ lowering, public `own<T>`, `borrow<T>`, or `ref<T>` syntax.
 The compiler accepts only this private declaration shape:
 
 ```do
-read_via_stream = @host_async_func(
+read_via_stream = @host_func(
     "wasi:filesystem/types@0.3.0-rc-2025-09-16",
     "descriptor.read-via-stream",
     (File, u64) -> Tuple<Stream<u8>, Future<Result<nil, FileError>>>,
@@ -42,6 +42,11 @@ pending Future<Result<u8, nil>> = @next(reader)
 item Result<u8, nil> = @await(pending)
 _ = item
 ```
+
+The method call itself is synchronous: it creates and returns the readable
+stream and completion-future handles. `@next(reader)` and `@await(completion)`
+are the asynchronous operations. The declaration is therefore `@host_func`,
+not `@host_async_func`.
 
 The source must then await and discard the completion future before returning:
 
@@ -59,9 +64,9 @@ admission. A source shape outside this grammar is rejected.
 
 ```mermaid
 flowchart LR
-    S[.do bounded byte reader] --> A[Private compiler admission]
+    S[.do host_func acquires handles] --> A[Private compiler admission]
     A --> E[Dedicated read-via-stream emitter]
-    E --> C[Measured Core imports and frame]
+    E --> C[Sync method ABI plus async handle operations]
     C --> W[Component assembly]
     W --> H[Wasmtime host probe]
     H --> L[ResourceTable lifecycle assertions]
@@ -78,13 +83,21 @@ record result area, while this route consumes one `u8` item.
 Before a registry descriptor or WAT emitter is added, a pinned-WIT Component
 probe records and validates all Core imports used by this exact method:
 
-- the method import and all parameter/result Core value types;
+- the synchronous `[method]descriptor.read-via-stream` import and all
+  parameter/result Core value types;
 - the `u64` `filesize` offset lowering and its argument order;
 - readable stream construction, read, cancellation, and drop imports;
 - readable future construction, read, cancellation, and drop imports;
 - result-area layout for a byte item, EOF, completion success, and
   `error-code` completion failure;
 - waitable/context/task-return imports used by the chosen async adapter.
+
+Current-toolchain observation is an input to this gate, not an inferred
+compatibility promise: `wasm-tools 1.258.0` emits the method import with Core
+shape `(i32, i64, i32) -> nil`. The arguments are descriptor handle, `u64`
+offset, and canonical result-area pointer. The method returns stream/future
+handles through that result area. The committed probe must reproduce this
+exact observation from the pinned WIT and fail when it changes.
 
 The probe emits an inspectable import snapshot. Its test compares the snapshot
 to the pinned WIT hash and fails when an import name, argument list, result
@@ -136,7 +149,7 @@ completion polls, cancellation callbacks, every drop category, and final
 Implementation proceeds in these gates:
 
 1. A WIT-derived ABI probe and its drift test establish the exact Core adapter.
-2. Compiler semantic tests accept only the fixed locator, member, resource
+2. Compiler semantic tests accept only the fixed `@host_func` locator, member, resource
    mirror, `u64` offset, byte stream item, completion result, and bounded body.
 3. Compiler negative fixtures reject a wrong locator/member, `u32` or reordered
    offset, non-byte stream, drifted error mirror, missing completion await,
