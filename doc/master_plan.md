@@ -12,7 +12,7 @@
 repository inventory gate 已完成。`598f2a0` 修复 G6.2 pilot guard/test-oracle
 引用的 ARC inventory 分类；当前 pre-cutover/post-cutover scan 为
 `rows=55 matches=492 unclassified=0`、`normal_route_matches=0`，生产依赖闭包为
-`modules=162 forbidden=0`。全量 `zig test main.zig` 为 `1733/1733`，
+`modules=162 forbidden=0`。全量 `zig test main.zig` 为 `1740/1740`，
 `./src/build/test/run_tests.sh` 为 `14/14 steps; 53/53 tests`，ReleaseSmall
 与 release smoke 通过。
 
@@ -69,7 +69,7 @@ Zig `0.16.0`、Rust/Cargo `1.97.1`。文档中较早的 `wasm-tools 1.255.0`
 WASI/component、Rust lifecycle 与 structural 编排已验证；`run_tests.sh` 现为
 薄入口 `cd src && zig build test --summary all`，默认及 `RUN_WASM=1` /
 `RUN_GC_CORE=1` opt-in 回归均为 `14/14` steps、`53/53` tests；独立
-`zig test main.zig` 为 `1733/1733`；WIT map 的
+`zig test main.zig` 为 `1740/1740`；WIT map 的
 `wit_abi_types`/bounded Core WAT lower/lift probe 与精确同步
 `map<u32,u32>` manifest-backed Component lower/lift gate 已通过 current
 toolchain parse/validate 和 Rust/Wasmtime host execution；精确 async
@@ -131,7 +131,7 @@ producer 或 general async/resource lowering。
 - `do check`: lexer/parser/sema/import diagnostics only; 诊断收集在 `src/build/diagnostics.zig`。
 - 阶段 A–F、H 已完成; D 可推进项与 D2.1 已收口; D2 真实本地 file/dir/CLI stream、compiler-generated TCP/UDP socket create/bind/drop loopback smoke 与私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size`/`descriptor.read-via-stream` async slices 已收口，但总项仍受通用 filesystem async/external HTTP 阻断; G1–G5、G6.4 已完成; **阶段 I (I1+I2) 已关闭**。
 - 架构扁平拆分已落地: `type_name` / `sema_error` / `diagnostics` / `gen_*` 域竖切 / `sema_*` 域竖切 (见 `AGENTS.md`)。
-- 最新 fresh release-candidate 回归: 默认及 `RUN_WASM=1 RUN_GC_CORE=1` 组合的 `./src/build/test/run_tests.sh` 均为 `14/14` steps、`53/53` tests；`zig test main.zig` 为 `1733/1733`。ReleaseSmall/release smoke、GC default gate（87 fixtures）、ARC inventory 当前 post-cutover（`rows=55 matches=492 unclassified=0 normal_route_matches=0`）、生产依赖闭包（`modules=162 forbidden=0`）和 semantic-equivalence（26 rows; 0 pending）均通过；inventory 仍为 `complete_rows=15 pending_rows=15`、预期 exit `1`。
+- 最新 fresh release-candidate 回归: 默认及 `RUN_WASM=1 RUN_GC_CORE=1` 组合的 `./src/build/test/run_tests.sh` 均为 `14/14` steps、`53/53` tests；`zig test main.zig` 为 `1740/1740`。ReleaseSmall/release smoke、GC default gate（87 fixtures）、ARC inventory 当前 post-cutover（`rows=55 matches=492 unclassified=0 normal_route_matches=0`）、生产依赖闭包（`modules=162 forbidden=0`）和 semantic-equivalence（26 rows; 0 pending）均通过；inventory 仍为 `complete_rows=15 pending_rows=15`、预期 exit `1`。
 - G6.2 私有 direct owned-record producer 已通过独立 canonical ABI、Do/Component、Rust/Wasmtime 与 canonical/generated Component 生命周期等价门禁：精确 `stream<resource-entry>`、4-byte `ticket: own<ticket>` record、offset `0`、capacity `1`、WIT hash `6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace`；十模式 valid/invalid cleanup 均闭环。该 Component 等价证据不计入 ARC/GC 语义矩阵；通用 producer/resource 与公开 ownership syntax 仍未开放。
 - G6.2 私有 two-owned-field record producer 已通过独立 canonical ABI、Do/Component、negative admission、generated Rust/Wasmtime 与 canonical/generated Component 生命周期等价门禁：精确 `stream<resource-pair>`、8-byte `left/right: own<ticket>` record、offset `0/4`、capacity `1`、WIT hash `89345a5213936735d7f065cd54ed42b83d159b80305a1a900ae00df2e811704d`；presence mask 只在完整写入成功后原子转移两个 handle，十模式 valid/invalid cleanup 均闭环，valid 为 `2/2` drops、repeat 为 `4/4`，invalid 不创建资源；ABI 还观测 host `callback-calls`、stream poll/finish（`finish-calls=0`）及取消模式的 `cancel-calls=1` 与 pending future drop。该独立 Component 生命周期证据不计入 ARC/GC 语义矩阵；generic producer、arbitrary expression、borrowed/list/variant payload、general async/resource lowering 与公开 ownership syntax 仍未开放。
 - G6.2 私有参数化 two-owned-field record producer 已通过独立 canonical ABI、Do/Component、十个 fail-closed negative fixtures、generated Rust/Wasmtime 与 canonical/generated Component 生命周期等价门禁：精确 descriptor `do:g6-2-owned-record-pair-parameterized-producer@0.1.0`、WIT hash `e7abd3cf7b7543325865a0b4be4b32ae50a2470ac5083169250719f89b7ce53a`、`stream<resource-pair>`、8-byte `left/right: own<ticket>` record、offset `0/4`、capacity `1`、producer inputs `(mode,left-seed,right-seed)`；presence mask 只在完整写入成功后原子转移两个 handle，十模式 valid/invalid cleanup 均闭环，valid 为 `2/2` drops、repeat 为 `4/4`，invalid 不创建资源，`table-empty=true`。该独立 Component 生命周期证据不计入 ARC/GC 语义矩阵；generic producer、arbitrary expression、borrowed/list/variant payload、general async/resource lowering 与公开 ownership syntax 仍未开放。

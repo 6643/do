@@ -11,7 +11,7 @@ artifact、default-route parity、rollback 与 repository inventory gate，以�
 `rows=55 matches=492 unclassified=0`，post-cutover
 `normal_route_matches=0`，生产依赖闭包为 `modules=162 forbidden=0`。
 完整 harness 为 `14/14 steps; 53/53 tests`，`zig test main.zig` 为
-`1733/1733`，ReleaseSmall 与 release smoke 通过。pilot 仍是 private
+`1740/1740`，ReleaseSmall 与 release smoke 通过。pilot 仍是 private
 byte-parity staged；test-only callback counter gate 已闭环：八个单调用 mode 为
 `1/1`、`repeat` 为 `2/2`、`invalid` 为 `0/0`。Core-global counter tuple 仅作
 async Component 边界诊断。默认 dispatch、public ownership syntax 和 generic
@@ -46,7 +46,7 @@ producer lowering 均未开放。
 | --- | --- |
 | v1 子集 | 发布候选已收口 |
 | GC-first runtime cutover | Task 6 已闭环；普通 `do build`/`do test` 只走 `codegen_runtime_api.zig` 的 Wasm GC route，ARC 仅由显式 test-only `gc_arc_equivalence_oracle.zig` 调用；当前 ARC inventory `rows=55 matches=492 unclassified=0 normal_route_matches=0`，生产依赖闭包 `modules=162 forbidden=0` |
-| 当前验证基线 | 默认及 `RUN_WASM=1 RUN_GC_CORE=1` 为 `14/14 steps; 53/53 tests`；`zig test main.zig` 为 `1733/1733`；GC default gate `87 fixtures`、semantic-equivalence `26 rows; 0 pending`、ReleaseSmall/release smoke 通过 |
+| 当前验证基线 | 默认及 `RUN_WASM=1 RUN_GC_CORE=1` 为 `14/14 steps; 53/53 tests`；`zig test main.zig` 为 `1740/1740`；GC default gate `87 fixtures`、semantic-equivalence `26 rows; 0 pending`、ReleaseSmall/release smoke 通过 |
 | G6.2 shared emitter/state-IR pilot | 单 route private pilot 的 artifact、byte parity、rollback、inventory 与 test-only runtime callback counter gate 已通过；callback 十模式为单调用 `1/1`、repeat `2/2`、invalid `0/0`；Core-global tuple 仅诊断，默认 dispatch、能力矩阵和公开 ownership syntax 不变 |
 | 当前能力边界 | `complete_rows=15 pending_rows=15` 仍为能力缺口；通用 async/map/producer/resource lowering 与 public `own<T>`/`borrow<T>`/`ref<T>` syntax 继续 pending，未准入形状在 WAT 前 fail-closed |
 | Private async map compiler admission | 精确 `HashMap<u32,u32>` async host route 已由 `--p3-async-map-component` 准入；WIT/WAT snapshot、五个 WAT 前负例、Component validate 与 Rust/Wasmtime `ready/pending/cancel/drop` 均通过；默认 route 仍返回 `AsyncLoweringUnavailable`，通用 async map、Stream 跨 poll buffer 与 ownership syntax 继续 pending |
@@ -280,7 +280,7 @@ RUN_WASM=1 ./src/build/test/run_tests.sh
 | 默认回归 | `pass=1070 fail=0 skip=3` (`14/14 steps; 53/53 tests`) |
 | WASM 扩展回归 (`RUN_WASM=1`) | `pass=1072 fail=0 skip=3` (`14/14 steps; 53/53 tests`) |
 | Core GC 扩展回归 (`RUN_GC_CORE=1`) | `14/14 steps; 53/53 tests` |
-| `zig test main.zig` | `1568/1568` (当前独立单测基线) |
+| `zig test main.zig` | `1740/1740` (当前独立单测基线) |
 | async host scalar-argument ABI probe | current-only adapter Component assembly green; frame `20` bytes, argument `u32@12`; ready/pending/cancel oracle green with `argument=7`, exactly-once Future drop, empty `ResourceTable`; probe-only, general lowering pending |
 | G6.2 scalar-list producer | private `stream<list<u32>>` promotion green; `ptr=64`, `len=68`, `stride=4`, max `3`, stream capacity `1`; count `0..3`, invalid `4`, pending/error/drop/cancel, exactly-once list release, empty `ResourceTable`; generic list/producer remains pending |
 | G5c bounded text host marshal | pinned Core/WIT assembly plus Rust/Wasmtime host execution observes one canonical `hello` string from a fixed GC text lower/copy/call probe; the paired ARC/GC equivalence probe reports one allocation/free on each route; lift, general shapes, compiler wiring, and default-route cutover remain pending |
