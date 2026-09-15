@@ -10,6 +10,17 @@
 
 **Spec:** `doc/superpowers/specs/2026-09-11-g6-2-owned-record-two-list-producer-design.md`
 
+## Current-toolchain revalidation (2026-09-15)
+
+The route was rechecked against the repository-pinned current toolchain after
+the original implementation pass: Zig `0.16.0`, `wasm-tools 1.258.0`,
+Wasmtime `48.0.1`, and Rust/Cargo `1.97.1`. The canonical ABI gate, positive
+and negative Do/Component gates, generated Rust/Wasmtime ten-mode lifecycle
+gate, and the dedicated canonical/generated equivalence gate
+`examples/p3-runtime/test_g6_2_two_list_owned_record_producer_equivalence.sh`
+all pass. This is a current revalidation record; it does not widen the
+fixed-shape route or retroactively mark historical RED steps as rerun.
+
 ## Global Constraints
 
 - Admit only the exact private descriptor `do:g6-2-owned-record-two-list-producer@0.1.0` under `--p3-async-component`.
@@ -33,6 +44,7 @@ Create these files:
 - `examples/p3-runtime/test_do_g6_2_two_list_owned_record_producer.sh` — generated Do WAT/WIT gate.
 - `examples/p3-runtime/test_do_g6_2_two_list_owned_record_producer_negative.sh` — fail-closed negative gate.
 - `examples/p3-runtime/test_rust_g6_2_two_list_owned_record_producer.sh` — generated Rust/Wasmtime lifecycle gate.
+- `examples/p3-runtime/test_g6_2_two_list_owned_record_producer_equivalence.sh` — canonical/generated Component and ten-mode lifecycle parity gate.
 - `examples/p3-runtime/rust-host-runner/src/bin/g6_2_two_list_owned_record_producer_abi.rs` — canonical probe runner.
 - `examples/p3-runtime/rust-host-runner/src/bin/g6_2_two_list_owned_record_producer.rs` — generated component lifecycle runner.
 - `src/build/codegen_component_two_list_owned_record_stream_producer.zig` — private analyzer and WAT/WIT emitter.
@@ -438,6 +450,7 @@ TMPDIR="$PWD/.tmp/do-tmp" bash examples/p3-runtime/test_g6_2_two_list_owned_reco
 TMPDIR="$PWD/.tmp/do-tmp" bash examples/p3-runtime/test_do_g6_2_two_list_owned_record_producer.sh
 TMPDIR="$PWD/.tmp/do-tmp" bash examples/p3-runtime/test_do_g6_2_two_list_owned_record_producer_negative.sh
 TMPDIR="$PWD/.tmp/do-tmp" bash examples/p3-runtime/test_rust_g6_2_two_list_owned_record_producer.sh
+TMPDIR="$PWD/.tmp/do-tmp" bash examples/p3-runtime/test_g6_2_two_list_owned_record_producer_equivalence.sh
 ```
 
 Expected result: all focused gates pass, the standard harness remains `14/14 steps`, standalone Zig tests pass, ReleaseSmall smoke succeeds, and no existing route or inventory count changes.

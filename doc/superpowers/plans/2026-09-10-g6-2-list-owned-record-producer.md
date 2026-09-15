@@ -11,6 +11,16 @@
 
 **Spec:** doc/superpowers/specs/2026-09-10-g6-2-list-owned-record-producer-design.md
 
+## Current-toolchain revalidation (2026-09-15)
+
+The route was rechecked against the repository-pinned current toolchain after
+the original implementation pass: Zig `0.16.0`, `wasm-tools 1.258.0`,
+Wasmtime `48.0.1`, and Rust/Cargo `1.97.1`. The canonical ABI gate, positive
+and negative Do/Component gates, generated Rust/Wasmtime ten-mode lifecycle
+gate, and canonical/generated equivalence gate all pass. This is a current
+revalidation record; it does not widen the fixed-shape route or retroactively
+mark historical RED steps as rerun.
+
 ## Global Constraints
 
 - Keep --p3-async-component opt-in and preserve every existing direct, pair, parameterized-pair, triple, nested, list, dynamic-list, batched-list, scalar-list, and mixed scalar/owned route.
