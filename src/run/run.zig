@@ -12,11 +12,11 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
         std.process.exit(1);
     };
 
-    const wasm_tools = find_executable(allocator, io, init.environ_map, "wasm-tools") catch |err| {
-        try print_tool_lookup_error(io, "wasm-tools", err);
+    const toolchain_bin = find_toolchain_adapter(allocator, io, init.environ_map) catch |err| {
+        try print_tool_lookup_error(io, "do-toolchain", err);
         std.process.exit(1);
     };
-    defer allocator.free(wasm_tools);
+    defer allocator.free(toolchain_bin);
 
     const node = find_node_runtime(allocator, io, init.environ_map) catch |err| {
         try print_tool_lookup_error(io, "node", err);
@@ -79,7 +79,7 @@ pub fn run(init: std.process.Init, args: []const []const u8) !void {
         std.process.exit(1);
     };
 
-    const parse_argv = [_][]const u8{ wasm_tools, "parse", wat_path, "-o", wasm_path };
+    const parse_argv = [_][]const u8{ toolchain_bin, "parse-core", wat_path, "-o", wasm_path };
     const parse_term = try spawn_forwarding(io, &parse_argv);
     const parse_exit = exit_code(parse_term);
     if (parse_exit != 0) std.process.exit(parse_exit);
@@ -173,6 +173,30 @@ fn find_node_runtime(
         error.FileNotFound => find_executable(allocator, io, environ_map, "bun"),
         else => err,
     };
+}
+
+fn find_toolchain_adapter(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    environ_map: *std.process.Environ.Map,
+) ![]u8 {
+    const configured = environ_map.get("DO_TOOLCHAIN_BIN") orelse "bin/do-toolchain";
+    if (configured.len == 0) return error.FileNotFound;
+
+    // A path containing a separator is resolved relative to the current
+    // repository directory. A bare name remains PATH-searchable, matching
+    // the existing NODE_BIN behavior.
+    if (std.mem.indexOfAny(u8, configured, "/\\") == null) {
+        return find_executable(allocator, io, environ_map, configured);
+    }
+
+    std.Io.Dir.cwd().access(io, configured, .{ .execute = true }) catch |err| switch (err) {
+        error.FileNotFound,
+        error.AccessDenied,
+        => return error.FileNotFound,
+        else => return err,
+    };
+    return allocator.dupe(u8, configured);
 }
 
 test "find_executable preserves PATH launcher path instead of resolving symlink target" {
@@ -276,4 +300,69 @@ test "find_node_runtime rejects a missing explicit NODE_BIN" {
     try env.put("NODE_BIN", "/path/that/does/not/exist/do-node");
 
     try std.testing.expectError(error.FileNotFound, find_node_runtime(allocator, io, &env));
+}
+
+test "find_toolchain_adapter prefers an explicit path" {
+    if (@import("builtin").os.tag == .windows) return error.SkipZigTest;
+
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const bin_dir = try tmp.dir.createDirPathOpen(io, "bin", .{});
+    defer bin_dir.close(io);
+    try bin_dir.symLink(io, "/bin/sh", "do-toolchain", .{});
+
+    var env = std.process.Environ.Map.init(allocator);
+    defer env.deinit();
+    const bin_path = try tmp.dir.realPathFileAlloc(io, "bin", allocator);
+    defer allocator.free(bin_path);
+    try env.put("PATH", "/bin");
+    const explicit = try std.fs.path.join(allocator, &.{ bin_path, "do-toolchain" });
+    defer allocator.free(explicit);
+    try env.put("DO_TOOLCHAIN_BIN", explicit);
+
+    const resolved = try find_toolchain_adapter(allocator, io, &env);
+    defer allocator.free(resolved);
+    try std.testing.expectEqualStrings(explicit, resolved);
+}
+
+test "find_toolchain_adapter resolves a bare name through PATH" {
+    if (@import("builtin").os.tag == .windows) return error.SkipZigTest;
+
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const bin_dir = try tmp.dir.createDirPathOpen(io, "bin", .{});
+    defer bin_dir.close(io);
+    try bin_dir.symLink(io, "/bin/sh", "do-toolchain", .{});
+
+    var env = std.process.Environ.Map.init(allocator);
+    defer env.deinit();
+    const bin_path = try tmp.dir.realPathFileAlloc(io, "bin", allocator);
+    defer allocator.free(bin_path);
+    try env.put("PATH", bin_path);
+    try env.put("DO_TOOLCHAIN_BIN", "do-toolchain");
+
+    const resolved = try find_toolchain_adapter(allocator, io, &env);
+    defer allocator.free(resolved);
+    const expected = try std.fs.path.join(allocator, &.{ bin_path, "do-toolchain" });
+    defer allocator.free(expected);
+    try std.testing.expectEqualStrings(expected, resolved);
+}
+
+test "find_toolchain_adapter rejects a missing configured path" {
+    if (@import("builtin").os.tag == .windows) return error.SkipZigTest;
+
+    const allocator = std.testing.allocator;
+    const io = std.testing.io;
+    var env = std.process.Environ.Map.init(allocator);
+    defer env.deinit();
+    try env.put("PATH", "/bin");
+    try env.put("DO_TOOLCHAIN_BIN", "/path/that/does/not/exist/do-toolchain");
+
+    try std.testing.expectError(error.FileNotFound, find_toolchain_adapter(allocator, io, &env));
 }

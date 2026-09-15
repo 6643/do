@@ -1075,7 +1075,7 @@ fn run_all(init: std.process.Init) !void {
             .gc_default_matrix => try run_gc_default_matrix(init, repo_root, do_bin, toolchain_bin, temp.path),
             .component_template_validation => try run_component_template_validation(init, repo_root, toolchain_bin),
             .tool_matrix => try run_tool_matrix(init, repo_root, do_bin, temp.path),
-            .external_dependency_negative_matrix => try run_external_dependency_negative_matrix(init, repo_root, do_bin, temp.path),
+            .external_dependency_negative_matrix => try run_external_dependency_negative_matrix(init, repo_root, do_bin, toolchain_bin, temp.path),
             .socket_abi_matrix => try run_socket_abi_matrix(init, repo_root, do_bin, temp.path),
             .structural_gate => try run_structural_gate(init, repo_root),
             .gc_core_oracle => if (std.mem.eql(u8, init.environ_map.get("RUN_GC_CORE") orelse "0", "1"))
@@ -2574,6 +2574,7 @@ fn run_external_dependency_negative_matrix(
     init: std.process.Init,
     repo_root: []const u8,
     do_bin: []const u8,
+    toolchain_bin: []const u8,
     temp_path: []const u8,
 ) !void {
     const test_root = try join(init.gpa, repo_root, "src/build/test");
@@ -2583,28 +2584,29 @@ fn run_external_dependency_negative_matrix(
     const lib_root = try join(init.gpa, test_root, "lib");
     defer init.gpa.free(lib_root);
 
-    const missing_tools_dir = try std.fmt.allocPrint(init.gpa, "{s}/missing-wasm-tools", .{temp_path});
+    const missing_toolchain = try std.fmt.allocPrint(init.gpa, "{s}/missing-do-toolchain", .{temp_path});
+    defer init.gpa.free(missing_toolchain);
+    const missing_tools_dir = try std.fmt.allocPrint(init.gpa, "{s}/missing-toolchain-path", .{temp_path});
     defer init.gpa.free(missing_tools_dir);
     var missing_tools = try std.Io.Dir.cwd().createDirPathOpen(init.io, missing_tools_dir, .{});
     missing_tools.close(init.io);
     const missing_tools_env = [_]process.EnvVar{
         .{ .name = "PATH", .value = missing_tools_dir },
+        .{ .name = "DO_TOOLCHAIN_BIN", .value = missing_toolchain },
     };
-    var wasm_missing = try run_do_args_with_env(init, do_bin, &.{ "run", fixture }, lib_root, repo_root, 120_000, &missing_tools_env);
-    defer wasm_missing.deinit(init.gpa);
-    try expect_external_failure(&wasm_missing, "error[MissingExternalTool]: wasm-tools not found");
+    var toolchain_missing = try run_do_args_with_env(init, do_bin, &.{ "run", fixture }, lib_root, repo_root, 120_000, &missing_tools_env);
+    defer toolchain_missing.deinit(init.gpa);
+    try expect_external_failure(&toolchain_missing, "error[MissingExternalTool]: do-toolchain not found");
 
-    const wasm_tools = try find_executable(init, "wasm-tools");
-    defer init.gpa.free(wasm_tools);
     const node_tools_dir = try std.fmt.allocPrint(init.gpa, "{s}/missing-node-tools", .{temp_path});
     defer init.gpa.free(node_tools_dir);
     var node_tools = try std.Io.Dir.cwd().createDirPathOpen(init.io, node_tools_dir, .{});
     defer node_tools.close(init.io);
-    try node_tools.symLink(init.io, wasm_tools, "wasm-tools", .{});
     const missing_node = try std.fmt.allocPrint(init.gpa, "{s}/missing-node", .{node_tools_dir});
     defer init.gpa.free(missing_node);
     const missing_node_env = [_]process.EnvVar{
         .{ .name = "PATH", .value = node_tools_dir },
+        .{ .name = "DO_TOOLCHAIN_BIN", .value = toolchain_bin },
         .{ .name = "NODE_BIN", .value = missing_node },
     };
     var node_missing = try run_do_args_with_env(init, do_bin, &.{ "run", fixture }, lib_root, repo_root, 120_000, &missing_node_env);

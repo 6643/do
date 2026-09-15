@@ -166,6 +166,9 @@ expect_empty_file "$run_stdout" "do run stdout"
 expect_empty_file "$run_stderr" "do run stderr"
 pass "do run"
 
+"$TEST_DIR/check_run_toolchain_adapter.sh"
+pass "do run toolchain adapter"
+
 for lsp_case in "$LSP_DIR"/*.json; do
     [[ -e "$lsp_case" ]] || continue
     lsp_name="$(basename "$lsp_case" .json)"
