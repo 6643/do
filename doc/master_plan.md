@@ -12,8 +12,8 @@
 repository inventory gate 已完成。`598f2a0` 修复 G6.2 pilot guard/test-oracle
 引用的 ARC inventory 分类；当前 pre-cutover/post-cutover scan 为
 `rows=55 matches=492 unclassified=0`、`normal_route_matches=0`，生产依赖闭包为
-`modules=162 forbidden=0`。全量 `zig test main.zig` 为 `1740/1740`，
-`./src/build/test/run_tests.sh` 为 `14/14 steps; 53/53 tests`，ReleaseSmall
+`modules=162 forbidden=0`。项目专用 Zig cache 下全量 `zig test main.zig` 为 `1743/1743`，
+`./src/build/test/run_tests.sh` 为 `14/14 steps; 56/56 tests`，ReleaseSmall
 与 release smoke 通过。
 
 pilot 的 runtime counter residual 已关闭。canonical WAT/WIT/default dispatch、
@@ -68,8 +68,8 @@ Zig `0.16.0`、Rust/Cargo `1.97.1`。文档中较早的 `wasm-tools 1.255.0`
 仅保留为历史验证证据，不参与 active route。Zig harness 的 compiler/GC、
 WASI/component、Rust lifecycle 与 structural 编排已验证；`run_tests.sh` 现为
 薄入口 `cd src && zig build test --summary all`，默认及 `RUN_WASM=1` /
-`RUN_GC_CORE=1` opt-in 回归均为 `14/14` steps、`53/53` tests；独立
-`zig test main.zig` 为 `1740/1740`；WIT map 的
+`RUN_GC_CORE=1` opt-in 回归均为 `14/14` steps、`56/56` tests；项目专用 Zig cache 下独立
+`zig test main.zig` 为 `1743/1743`；WIT map 的
 `wit_abi_types`/bounded Core WAT lower/lift probe 与精确同步
 `map<u32,u32>` manifest-backed Component lower/lift gate 已通过 current
 toolchain parse/validate 和 Rust/Wasmtime host execution；精确 async
@@ -267,7 +267,7 @@ I2 已收窄: managed/`text` 叶子、pure-scalar struct 嵌套子槽、以及�
 验收命令:
 
 ```bash
-cd src && zig test main.zig
+cd src && TMPDIR="$PWD/../.tmp/do-tmp" ZIG_LOCAL_CACHE_DIR="$PWD/../.tmp/zig-cache" ZIG_GLOBAL_CACHE_DIR="$PWD/../.tmp/zig-gcache" zig test main.zig
 ./src/build/test/run_tests.sh
 ./src/build/test/run_release_smoke.sh   # 发布前
 ```

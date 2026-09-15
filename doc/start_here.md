@@ -10,8 +10,9 @@ artifact、default-route parity、rollback 与 repository inventory gate，以�
 `598f2a0` 修复 pilot guard/test-oracle 的 ARC inventory 分类；当前 scan 为
 `rows=55 matches=492 unclassified=0`，post-cutover
 `normal_route_matches=0`，生产依赖闭包为 `modules=162 forbidden=0`。
-完整 harness 为 `14/14 steps; 53/53 tests`，`zig test main.zig` 为
-`1740/1740`，ReleaseSmall 与 release smoke 通过。pilot 仍是 private
+完整 harness 为 `14/14 steps; 56/56 tests`，使用项目专用 Zig cache 的
+`zig test main.zig` 为
+`1743/1743`，ReleaseSmall 与 release smoke 通过。pilot 仍是 private
 byte-parity staged；test-only callback counter gate 已闭环：八个单调用 mode 为
 `1/1`、`repeat` 为 `2/2`、`invalid` 为 `0/0`。Core-global counter tuple 仅作
 async Component 边界诊断。默认 dispatch、public ownership syntax 和 generic
@@ -46,12 +47,12 @@ producer lowering 均未开放。
 | --- | --- |
 | v1 子集 | 发布候选已收口 |
 | GC-first runtime cutover | Task 6 已闭环；普通 `do build`/`do test` 只走 `codegen_runtime_api.zig` 的 Wasm GC route，ARC 仅由显式 test-only `gc_arc_equivalence_oracle.zig` 调用；当前 ARC inventory `rows=55 matches=492 unclassified=0 normal_route_matches=0`，生产依赖闭包 `modules=162 forbidden=0` |
-| 当前验证基线 | 默认及 `RUN_WASM=1 RUN_GC_CORE=1` 为 `14/14 steps; 53/53 tests`；`zig test main.zig` 为 `1740/1740`；GC default gate `87 fixtures`、semantic-equivalence `26 rows; 0 pending`、ReleaseSmall/release smoke 通过 |
+| 当前验证基线 | 默认及 `RUN_WASM=1 RUN_GC_CORE=1` 为 `14/14 steps; 56/56 tests`；项目专用 Zig cache 下 `zig test main.zig` 为 `1743/1743`；GC default gate `87 fixtures`、semantic-equivalence `26 rows; 0 pending`、ReleaseSmall/release smoke 通过 |
 | G6.2 shared emitter/state-IR pilot | 单 route private pilot 的 artifact、byte parity、rollback、inventory 与 test-only runtime callback counter gate 已通过；callback 十模式为单调用 `1/1`、repeat `2/2`、invalid `0/0`；Core-global tuple 仅诊断，默认 dispatch、能力矩阵和公开 ownership syntax 不变 |
 | 当前能力边界 | `complete_rows=15 pending_rows=15` 仍为能力缺口；通用 async/map/producer/resource lowering 与 public `own<T>`/`borrow<T>`/`ref<T>` syntax 继续 pending，未准入形状在 WAT 前 fail-closed |
 | Private async map compiler admission | 精确 `HashMap<u32,u32>` async host route 已由 `--p3-async-map-component` 准入；WIT/WAT snapshot、五个 WAT 前负例、Component validate 与 Rust/Wasmtime `ready/pending/cancel/drop` 均通过；默认 route 仍返回 `AsyncLoweringUnavailable`，通用 async map、Stream 跨 poll buffer 与 ownership syntax 继续 pending |
 | GC-first memory migration | G5a 已完成 parsed fixed-index + 参数化 `[u8] @set` + 全部当前标量 list literal/update（`[bool]`、`[i8]`、`[i16]`、`[i32]`、`[i64]`、`[u16]`、`[u32]`、`[u64]`、`[isize]`、`[usize]`、`[f32]`、`[f64]`）+ bounded text/list/struct/tuple/union/generic/import slices、直接局部对象的一层、两层、三层、四层与五层 nested managed-struct `@get/@set`，以及 `--p3-wait-for-component` 的 bounded `Future<nil>` GC frame/table slice 和 private resource `Result` terminal Component gate；G5b 已完成当前 admitted synchronous 的 26 行 ARC/GC executable equivalence matrix，`future_stream_frames` 的两个 sequential `Future<nil>` 也已完成 GC/linear backend-neutral equivalence，non-CLI probes 验证旧值保持、新值更新和 root 保活。Task 3 已将默认同步 pipeline 的已准入 managed candidates（含 bounded synchronous `defer`、`return nil` no-result cleanup、推断出的 `text` body binding、推断出的 `[u8]`/`[u32]` body storage `@put`，以及 body-only managed-struct storage ctor/field update）接到 typed GC/root 输出，GC path 过滤旧 storage compiler locals；普通 host/WIT 的 C14 lift/lower、C15-B/C15-D lower、C16-C/C16-D lift、bounded mixed scalar-record lower、bounded byte-list record lower/lift、bounded `list<u32>` record lower 与 bounded `list<u32>` record lift、bounded mixed text/u32-list record lower/lift 已接入 manifest-backed 默认 GC route，未准入的 host/WIT shape、普通 GC sync async 和 Stream 在 WAT 前 fail-closed；root/storage conversion、generic async/resource G5b/G5c、G5c full cutover 与旧 ARC expectation 迁移未完成。新增 C10–C16-B 私有 manifest-backed nested/scalar-plus-text/multi-managed-text record lift/lower 与真实 source-level host boundary 证据，其中固定 descriptor 的默认 gate 已闭合。 |
-| G5c route consolidation | C14–C20 已统一消费一次 manifest-backed `LoadedRequest`、descriptor registry 与 measured `SyncValuePlan`；default/explicit route 不重复解析 request，已登记 locator 的 member drift 在 WAT 前 fail-closed。新鲜 focused route/residual gate、Zig harness `14/14 steps; 53/53 tests`、default `87 fixtures`、semantic-equivalence `26 rows; 0 pending`、ReleaseSmall/release smoke 已通过；`RUN_WASM=1` 与 `RUN_GC_CORE=1` wrapper 回归均为 `14/14 steps; 53/53 tests`；inventory 仍为 `complete_rows=15 pending_rows=15`、exit 1。 |
+| G5c route consolidation | C14–C20 已统一消费一次 manifest-backed `LoadedRequest`、descriptor registry 与 measured `SyncValuePlan`；default/explicit route 不重复解析 request，已登记 locator 的 member drift 在 WAT 前 fail-closed。新鲜 focused route/residual gate、Zig harness `14/14 steps; 56/56 tests`、default `87 fixtures`、semantic-equivalence `26 rows; 0 pending`、ReleaseSmall/release smoke 已通过；`RUN_WASM=1` 与 `RUN_GC_CORE=1` wrapper 回归均为 `14/14 steps; 56/56 tests`；inventory 仍为 `complete_rows=15 pending_rows=15`、exit 1。 |
 | G5c bounded mixed text + two `list<u32>` lower | 精确 descriptor `demo:marshal-record-mixed-text-two-u32-lists-lower/api.write@1.0.0/lower` 已通过默认 route、Component/Rust/Wasmtime、negative 与 ARC/GC equivalence；root 28 bytes、canonical 七个 `i32`、三 span `second -> first -> label` exactly-once cleanup，host 观察 `allocations=3/frees=3`、`write-calls=1`。这是固定形状 promotion，不关闭 migration row。 |
 | G5c bounded mixed text + two `list<u32>` lift | 精确 descriptor `demo:marshal-record-mixed-text-two-u32-lists-lift/api.read@1.0.0/lift` 已通过默认 route、Component/Rust/Wasmtime、negative 与 ARC/GC equivalence；result area 28 bytes、canonical 单个 `(i32)` pointer、三 span `second -> first -> label` exactly-once cleanup，host 观察 `result=54`、`stats=51`、`read-calls=1`、`allocations=3/frees=3`，equivalence 为 `54/54`、`51/51`、`1/1`。这是固定形状 promotion，不关闭 migration row。 |
 | G5c residual capability matrix | 15 个 residual row 已逐行复核且仍全部 pending；14 行 blocked，唯一 candidate 为 `demo:marshal-record-mixed-text-byte-u32-lists-lower/api.write@1.0.0/lower`。该候选只接受同步、manifest-backed、ABI 可测量且 canonical ABI 无 GC reference 的固定 shape，已完成 spec/host/equivalence/negative/default/full verification；release-candidate maintenance、G6.2 双 owned-field producer gate 与固定三字段 `ResourceTriple` private compiler admission 已完成，不扩大默认 route。 |
@@ -228,8 +229,8 @@ bash examples/p3-runtime/test_g6_2_scalar_list_producer_abi.sh
 
 # 默认完整回归（薄入口；当前基线）
 ./src/build/test/run_tests.sh
-# 2026-09-05: wrapper delegates to `cd src && zig build test --summary all`;
-# Build Summary: 14/14 steps succeeded; 53/53 tests passed.
+# 2026-09-15: wrapper delegates to `cd src && zig build test --summary all`;
+# Build Summary: 14/14 steps succeeded; 56/56 tests passed.
 # `RUN_WASM=1` and `RUN_GC_CORE=1` are inherited by the Zig harness and use the
 # current-only `bin/do-toolchain` adapter. The GC inventory remains
 # `complete_rows=15 pending_rows=15`, exit 1.
@@ -258,9 +259,9 @@ bash examples/gc-p3-runtime/test_gc_marshal_record_nested_lower_deeper_manifest_
 bash examples/gc-p3-runtime/test_gc_wasi_random_list_lift_equivalence.sh
 bash examples/gc-p3-runtime/test_gc_marshal_map_u32_u32_manifest_host.sh
 
-# codegen 单元测试
-cd src && zig test build/codegen_api.zig
-cd src && zig test main.zig --test-filter 'manifest route'
+# codegen 单元测试（使用项目专用 Zig cache）
+cd src && TMPDIR="$PWD/../.tmp/do-tmp" ZIG_LOCAL_CACHE_DIR="$PWD/../.tmp/zig-cache" ZIG_GLOBAL_CACHE_DIR="$PWD/../.tmp/zig-gcache" zig test build/codegen_api.zig
+cd src && TMPDIR="$PWD/../.tmp/do-tmp" ZIG_LOCAL_CACHE_DIR="$PWD/../.tmp/zig-cache" ZIG_GLOBAL_CACHE_DIR="$PWD/../.tmp/zig-gcache" zig test main.zig --test-filter 'manifest route'
 # 期望: All current codegen API tests passed.
 
 # 发布前 smoke
@@ -271,16 +272,16 @@ cd src && zig test main.zig --test-filter 'manifest route'
 
 ```bash
 RUN_WASM=1 ./src/build/test/run_tests.sh
-# 2026-09-05: 14/14 steps、53/53 tests passed; current harness summaries are
-# default pass=1070 and RUN_WASM=1 pass=1072, with skip=3.
+# 2026-09-15: 14/14 steps、56/56 tests passed; `RUN_WASM=1` and
+# `RUN_GC_CORE=1` use the same current-only adapter-backed harness summary.
 ```
 
 | 基线项 | 最近值 |
 | --- | --- |
-| 默认回归 | `pass=1070 fail=0 skip=3` (`14/14 steps; 53/53 tests`) |
-| WASM 扩展回归 (`RUN_WASM=1`) | `pass=1072 fail=0 skip=3` (`14/14 steps; 53/53 tests`) |
-| Core GC 扩展回归 (`RUN_GC_CORE=1`) | `14/14 steps; 53/53 tests` |
-| `zig test main.zig` | `1740/1740` (当前独立单测基线) |
+| 默认回归 | `14/14 steps; 56/56 tests` |
+| WASM 扩展回归 (`RUN_WASM=1`) | `14/14 steps; 56/56 tests` |
+| Core GC 扩展回归 (`RUN_GC_CORE=1`) | `14/14 steps; 56/56 tests` |
+| 项目专用 Zig cache 下 `zig test main.zig` | `1743/1743` (当前独立单测基线) |
 | async host scalar-argument ABI probe | current-only adapter Component assembly green; frame `20` bytes, argument `u32@12`; ready/pending/cancel oracle green with `argument=7`, exactly-once Future drop, empty `ResourceTable`; probe-only, general lowering pending |
 | G6.2 scalar-list producer | private `stream<list<u32>>` promotion green; `ptr=64`, `len=68`, `stride=4`, max `3`, stream capacity `1`; count `0..3`, invalid `4`, pending/error/drop/cancel, exactly-once list release, empty `ResourceTable`; generic list/producer remains pending |
 | G5c bounded text host marshal | pinned Core/WIT assembly plus Rust/Wasmtime host execution observes one canonical `hello` string from a fixed GC text lower/copy/call probe; the paired ARC/GC equivalence probe reports one allocation/free on each route; lift, general shapes, compiler wiring, and default-route cutover remain pending |

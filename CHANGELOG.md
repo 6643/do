@@ -1,5 +1,14 @@
 # Changelog
 
+# 2026-09-15 Current-only `do run` toolchain adapter and baseline refresh:
+  `do run` now resolves `DO_TOOLCHAIN_BIN` (default `bin/do-toolchain`) and
+  invokes its `parse-core` operation; it no longer calls `wasm-tools` directly.
+  The black-box adapter contract and missing-adapter diagnostic are covered by
+  the release-test harness. Fresh default, `RUN_WASM=1`, and `RUN_GC_CORE=1`
+  regression runs are `14/14 steps; 56/56 tests`; isolated-cache `zig test
+  main.zig` is `1743/1743`. The private `descriptor.read-via-stream` documentation
+  now distinguishes its fixed Component gate from generic `wasi-bind` lowering.
+
 # 2026-09-15 G6.2 pilot lifecycle residual closure:
   the test-only `runtime-counter-event` Component callback now observes direct
   route frame allocation/release. All ten modes pass: each single invocation is
