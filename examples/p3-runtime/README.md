@@ -5,11 +5,12 @@ classifies the pinned descriptor before selecting a lowering: scalar/unit
 clocks, `wasi:cli/run.run` with `Result<nil, nil>`, the private two-word
 resource `Result` probe, the fixed `wasi:http/client.send` service, the fixed
 `wasi:filesystem/types.descriptor.read-directory` one-to-three-entry slice, or
-the private fixed `ResourceTriple` producer route. It
-emits Core WAT plus a WIT sidecar for component assembly. List, generic Stream,
-generic record streams, payload-bearing HTTP `error-code`, and every
-unclassified descriptor are rejected rather than falling into a probe
-template. Ordinary `do build` keeps its async-lowering guard.
+the private fixed `ResourceTriple` and owned-record producer routes. It emits
+Core WAT plus a WIT sidecar for component assembly. Generic Stream, generic
+record streams, arbitrary list/producer shapes, payload-bearing HTTP
+`error-code`, and every unclassified descriptor are rejected rather than
+falling into a probe template. Ordinary `do build` keeps its async-lowering
+guard.
 
 Component assembly for the verified v1 path is centralized in
 `assemble_async_component.sh`. It uses the current-only `bin/do-toolchain`
@@ -36,6 +37,27 @@ invalid performs no allocation, and every mode leaves `table-empty=true`.
 This is private fixed-shape evidence only: generic/arbitrary producers,
 borrowed/variant payloads, public ownership syntax, and general async/resource
 lowering remain unsupported.
+
+The 2026-09-11 G6.2 two-list owned-record gate adds a separate private
+`TwoListEntry { first: list<u32>, second: list<u32>, ticket: own<Ticket> }`
+producer route. Its pinned descriptor is
+`do:g6-2-owned-record-two-list-producer@0.1.0` with WIT hash
+`14ba67e070346a127e75c7dfd73c71d6082ad7d9385c7d803834319dabc6404a`.
+The record is 20 bytes/alignment 4 with `first.ptr/len` at `0/4`,
+`second.ptr/len` at `8/12`, and `ticket` at `16`; both lists use stride/capacity
+`4/3` and the stream capacity is `1`. Run
+`bash test_g6_2_two_list_owned_record_producer_abi.sh`,
+`bash test_do_g6_2_two_list_owned_record_producer.sh`,
+`bash test_do_g6_2_two_list_owned_record_producer_negative.sh`,
+`bash test_rust_g6_2_two_list_owned_record_producer.sh`, and
+`bash test_g6_2_two_list_owned_record_producer_equivalence.sh` for canonical
+ABI, fail-closed admission, ten-mode Rust/Wasmtime lifecycle, and
+canonical/generated parity. The two list backing spans are independent cleanup
+facts; valid paths release both lists and the ticket exactly once, invalid
+performs no allocation, and every mode leaves `table-empty=true`. This remains
+fixed-shape private evidence and does not open generic producer lowering,
+borrowed/variant payloads, public ownership syntax, or general async/resource
+lowering.
 
 The 2026-09-04 G6.2 consolidation gate now routes the nine existing private
 producer shapes through one immutable internal `ProducerContract`: direct
