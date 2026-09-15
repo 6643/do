@@ -1735,7 +1735,8 @@ outside this runtime path.
 
 **2026-08-02 read-directory ABI checkpoint:**
 `examples/p3-runtime/test_do_wasi_filesystem_read_directory_abi.sh` generates
-the pinned `wasi:filesystem/imports` world with current `wasm-tools 1.255.0` and checks
+the pinned `wasi:filesystem/imports` world through the current-only
+`wasm-tools 1.258.0` adapter and checks
 the exact `[async-lower][method]descriptor.read-directory` import, stream index
 `0`, future index `1`, indexed stream/future drops, and the `(i32, i32) -> i32`
 method/future-read callback shape. The embedded component type confirms
@@ -1744,7 +1745,11 @@ has compiler lowering, Component assembly, and Rust/Wasmtime execution gates
 for one read and for a statically visible two-entry sequence plus EOF probe.
 The bounded runner observes `alpha`, `beta`, three stream reads including EOF,
 both pending-once and immediately-ready completion futures, exactly-once
-stream/future/resource cleanup, and an empty resource table. The fixed slice
+stream/future/resource cleanup, and an empty resource table. When the host has
+no system `cc`, both Rust runner gates and the shared C/Rust host wrappers
+create local/global Zig caches under temporary or explicit project paths; the
+cache wiring gate and both runtime modes pass without relying on deleted
+user-level cache objects. The fixed slice
 remains independently verified; its remaining boundary is arbitrary filesystem
 async methods and payload-bearing completion errors.
 

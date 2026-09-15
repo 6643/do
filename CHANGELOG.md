@@ -1,5 +1,13 @@
 # Changelog
 
+# 2026-09-15 P3 read-directory Rust/Wasmtime cache resilience:
+  both read-directory runtime gates, the C host smoke, and the shared Rust
+  linker wrapper now establish local/global Zig caches when the host has no
+  system `cc`, preventing stale user-cache objects from breaking the linker.
+  ReleaseSmall smoke includes a cache wiring gate;
+  ABI, lowering, bounded lowering, and pending/ready runtime modes pass through
+  the current `wasm-tools 1.258.0` adapter.
+
 # 2026-09-15 G6.2 pilot runtime callback counter gate:
   closed the test-only runtime observation residual without changing canonical
   WAT/WIT, default dispatch, or public language capability. The independent

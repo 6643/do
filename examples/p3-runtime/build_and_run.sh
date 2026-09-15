@@ -19,6 +19,12 @@ if [ ! -f "$wasmtime_lib/libwasmtime.so" ]; then
   exit 1
 fi
 
+zig_cache_root=$(mktemp -d "${TMPDIR:-/tmp}/do-p3-host-zig-cache.XXXXXX")
+trap 'rm -rf -- "$zig_cache_root"' EXIT
+export ZIG_LOCAL_CACHE_DIR="${ZIG_LOCAL_CACHE_DIR:-$zig_cache_root/local}"
+export ZIG_GLOBAL_CACHE_DIR="${ZIG_GLOBAL_CACHE_DIR:-$zig_cache_root/global}"
+mkdir -p "$ZIG_LOCAL_CACHE_DIR" "$ZIG_GLOBAL_CACHE_DIR"
+
 "$zig_bin" cc \
   -I "$wasmtime_include" \
   "$repo_root/examples/p3-runtime/host_runner.c" \

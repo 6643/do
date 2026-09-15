@@ -179,4 +179,7 @@ pass "do lsp"
 "$TEST_DIR/check_gc_g5c_residual_gate_test.sh"
 pass "G5c residual gate wiring"
 
+"$TEST_DIR/check_read_directory_runner_cache.sh"
+pass "read-directory Rust cache wiring"
+
 echo "[INFO] release smoke passed"

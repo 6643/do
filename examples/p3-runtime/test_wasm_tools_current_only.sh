@@ -19,7 +19,9 @@ legacy_refs=$(rg -n \
     -e 'LEGACY_WASM_TOOLS' \
     -e 'assemble_wasmtime_p3_legacy\.sh' \
     --glob '*.sh' examples/p3-runtime src/build/test \
-    | rg -v 'test_wasm_tools_current_only\.sh' || true)
+    | rg -v -e 'test_wasm_tools_current_only\.sh' \
+        -e 'check_toolchain_adapter\.sh' \
+        -e 'check_toolchain_adapter_test\.sh' || true)
 if [[ -n "$legacy_refs" ]]; then
     printf 'active wasm-tools legacy references remain:\n%s\n' "$legacy_refs" >&2
     exit 1

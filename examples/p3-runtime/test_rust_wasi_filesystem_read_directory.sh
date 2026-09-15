@@ -24,6 +24,13 @@ test -x "$toolchain_bin"
 "$toolchain_bin" new-component "$embedded" -o "$component"
 "$toolchain_bin" validate-component "$component" --features component-async
 
+if ! command -v cc >/dev/null 2>&1; then
+  zig_cache_root="$tmp_dir/zig-cache"
+  export ZIG_LOCAL_CACHE_DIR="${ZIG_LOCAL_CACHE_DIR:-$zig_cache_root/local}"
+  export ZIG_GLOBAL_CACHE_DIR="${ZIG_GLOBAL_CACHE_DIR:-$zig_cache_root/global}"
+  mkdir -p "$ZIG_LOCAL_CACHE_DIR" "$ZIG_GLOBAL_CACHE_DIR"
+fi
+
 runner_env=(
   CC="$runner_dir/zig-cc.sh"
   CXX="$runner_dir/zig-cc.sh"

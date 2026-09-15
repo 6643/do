@@ -1,10 +1,18 @@
 # Roadmap 执行状态
 
-更新时间: 2026-09-13
+更新时间: 2026-09-15
 
 **本文只保留当前状态与阻断。** 历史小任务勾选与逐条 gate 证据已从仓库移除; 追溯用 git 历史与 `CHANGELOG.md`。
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
 G5b async/resource coverage ledger: `doc/g5b_async_resource_coverage.md`。
+
+2026-09-15 增量: read-directory 的两个 Rust/Wasmtime runtime gate 在检测到
+宿主没有系统 `cc` 时，改为在临时目录或共享 linker wrapper 建立 Zig
+local/global cache，避免用户级 cache 被清理后链接失败。新增
+`src/build/test/check_read_directory_runner_cache.sh` 并接入 ReleaseSmall
+smoke；ABI、普通/ bounded lowering、pending/ready runtime gate 与完整
+`run_tests.sh` 均通过。当前 active toolchain 为 `wasm-tools 1.258.0` /
+Wasmtime `48.0.1`，不改变 read-directory 的固定 shape 或 G6.2 通用能力边界。
 
 2026-09-13 增量: G6.2 shared emitter/state-IR private pilot 的 Task 6
 repository gate 已完成 inventory 分类修复。`598f2a0` 为 pilot guard 与

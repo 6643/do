@@ -4,6 +4,11 @@
 
 **Goal:** Freeze the pinned `descriptor.read-directory` Core ABI and its non-scalar stream element without claiming that G6.2 lowering is implemented.
 
+> **Current-toolchain note (2026-09-15):** The probe is executed through the
+> current-only `bin/do-toolchain` adapter. The active lock is
+> `wasm-tools 1.258.0`; the older `1.254.0` command examples below are the
+> original design evidence, not an active compatibility target.
+
 **Architecture:** Generate a legacy async callback dummy Core module directly from the vendored WASI filesystem WIT with `wasm-tools 1.254.0`. Assert the descriptor method, stream index `0`, future index `1`, canonical function signatures, and the `directory-entry` record in the embedded component type. Keep this as an ABI evidence probe; the compiler registry, source syntax, and generic async lowering remain unchanged.
 
 **Tech Stack:** Vendored WIT, `wasm-tools 1.254.0`, shell assertions, repository blocker documentation.
