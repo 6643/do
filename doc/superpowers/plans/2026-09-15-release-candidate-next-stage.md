@@ -142,6 +142,6 @@
 ## Execution Record (2026-09-16)
 
 - Task 1 evidence: `git fetch origin` and `git rev-list --left-right --count HEAD...origin/main` reported `1 0` (the intentional local plan commit is one commit ahead; origin did not advance); `RUN_WASM=1 RUN_GC_CORE=1 ./src/build/test/run_tests.sh` reported `14/14 steps succeeded; 56/56 tests passed`; isolated-cache `zig test main.zig` reported `All 1743 tests passed.`; `./src/build/test/run_release_smoke.sh` passed every listed check.
-- Task 2 evidence: active baseline and stop-boundary scans match the current lock and keep historical dated counts unchanged.
+- Task 2 evidence: active baseline and stop-boundary scans found one stale current marker at `doc/master_plan.md:134`; it was corrected to `56/56` and `1743/1743`, while dated historical counts remain unchanged.
 - Task 3 evidence: closed private shapes are documented in the current plans/specs; no second exact candidate has a complete pinned ABI, source matcher, negative matrix, Component gate, Rust/Wasmtime lifecycle gate, and canonical/generated parity package. The review therefore remains fail-closed.
 - Task 4 state: the plan was initially committed as `15c34a8` and its evidence correction as `4541cbd`; push remains intentionally deferred because this turn did not include a delivery request. No code, public syntax, manifest, or capability inventory changes were made.
