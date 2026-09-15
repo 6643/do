@@ -1,5 +1,15 @@
 # Changelog
 
+# 2026-09-15 Current-only `borrow<T>` capability matrix:
+  rechecked the pinned Component boundary with `wasm-tools 1.258.0` and Wasmtime
+  `48.0.1`. The probe accepts direct, record, variant, list, future-owned, and
+  stream-owned shapes; borrowed stream records and `future<borrow<T>>` are rejected
+  at Component embed. A separate canonical-ABI probe accepts synchronous
+  `list<borrow<ticket>>`. These are toolchain capability observations only:
+  `list<borrow<ticket>>` is not registered in the Do compiler, public
+  `own<T>`/`borrow<T>`/`ref<T>` syntax remains closed, and no generic borrowed
+  async/stream/resource lowering is inferred.
+
 # 2026-09-15 D2 private filesystem `descriptor.read-via-stream`:
   closed the pinned bounded byte-stream reader route. The synchronous
   `@host_func` declaration uses `(File, u64) ->

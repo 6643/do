@@ -49,6 +49,20 @@ repeat，并精确检查 completion/pending-future 与 stream/future/descriptor
 也不开放 public `own<T>`/`borrow<T>`/`ref<T>` 语法；这些能力仍按阻断清单单独
 推进。
 
+### Current-only `borrow<T>` capability matrix (2026-09-15)
+
+当前锁定工具链为 `wasm-tools 1.258.0` / Wasmtime `48.0.1`。独立
+`bash examples/p3-runtime/test_borrow_capability_matrix.sh` probe 报告
+direct、record、variant、list、future-owned 与 stream-owned accepted；含
+`borrow<T>` 的 borrowed stream record 与 `future<borrow<T>>` 在 Component embed
+阶段 rejected-at-embed。独立
+`bash examples/p3-runtime/test_list_borrow_canonical_abi.sh` 通过
+`list<borrow<ticket>>` 的同步 canonical-ABI 矩阵。这里的 accepted/rejected
+结果只记录当前 Component 工具链边界：`list<borrow<ticket>>` 没有进入 Do
+compiler registry，不开放 public `borrow<T>`/`own<T>`/`ref<T>`，也不推导通用
+borrowed async、stream 或 resource lowering；后续扩展仍需新的固定 shape、design、
+WIT/WAT probe 与生命周期 gate。
+
 ### G6.2 private two-list owned-record producer (已关闭, 2026-09-11)
 
 精确 descriptor `do:g6-2-owned-record-two-list-producer@0.1.0` 已完成 private
@@ -555,7 +569,7 @@ only. Public `own<T>`/`borrow<T>`/`ref<T>` syntax remains outside this phase.
 
 | ID | 问题 | 证据 / 停止点 | 恢复条件 |
 | --- | --- | --- | --- |
-| **G6.2** | `descriptor.read-directory` 及 record-stream 通用能力 | generic consumer 已覆盖注册的非 filesystem record streams；bounded producer、StreamMirror、private Result cancellation、HTTP payload cancellation、resource-list stream、私有 `do:variant-resource-stream-canonical@0.1.0`、动态 count `0..3` 的私有 `do:g6-2-c-min-dynamic-producer@0.1.0`、固定两批 `[111,222]`/`[333]` 的私有 `do:g6-2-batched-list-producer@0.1.0`，以及私有 `do:g6-2-scalar-list-producer@0.1.0` `stream<list<u32>>` producer 的 compiler-generated Component/Rust/Wasmtime gate 均已通过。scalar producer 固定 `ptr=64/len=68/stride=4/max=3`、stream capacity `1`、count `0..3`/invalid `4`，并保留 pending、sink error、early drop、转移前/后 cancellation、exactly-once list cleanup、empty `ResourceTable` 与 fail-closed 负例。D2 另关闭了私有 `descriptor.get-type`、`descriptor.sync`、`descriptor.get-flags`、`descriptor.stat`、`descriptor.sync-data`、`descriptor.metadata-hash`、`descriptor.metadata-hash-at`、`descriptor.stat-at`、`descriptor.open-at` 与 `descriptor.set-size` 十个有界方法，以及本轮的私有 `descriptor.read-via-stream` bounded byte reader；前十者均固定 upstream WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`，并分别通过独立 ABI、compiler admission 和 ready/pending/error/cancel cleanup gate；`read-via-stream` 另固定同步 `(i32,i64,i32) -> nil` method ABI、`u64` offset、一至三次 byte read 与独立 completion await，且通过自己的 Component/Rust/Wasmtime 生命周期 gate。`sync-data`、`metadata-hash`、`metadata-hash-at`、`stat-at`、`open-at` 与 `set-size` 另通过 repeat 与 Store-disposal early-drop 边界。固定三字段 `ResourceTriple` compiler admission 已关闭，但仍缺一般 async helper/producer lease、任意 producer 表达式、通用 list、通用 borrowed/variant lowering、第七跳 forwarding、第七层或更一般 nested resource 字段、payload-bearing completion error 的更广形状、任意其它 filesystem async method 与通用 resource cancellation。Pinned `wasm-tools 1.255.0` 对含 `borrow<T>` 的 stream record 在 Component embed 阶段明确拒绝 | 保持所有 private bounded descriptor 的精确边界；扩展其他 producer/resource shape 前必须另立 design、probe 与 gate |
+| **G6.2** | `descriptor.read-directory` 及 record-stream 通用能力 | generic consumer 已覆盖注册的非 filesystem record streams；bounded producer、StreamMirror、private Result cancellation、HTTP payload cancellation、resource-list stream、私有 `do:variant-resource-stream-canonical@0.1.0`、动态 count `0..3` 的私有 `do:g6-2-c-min-dynamic-producer@0.1.0`、固定两批 `[111,222]`/`[333]` 的私有 `do:g6-2-batched-list-producer@0.1.0`，以及私有 `do:g6-2-scalar-list-producer@0.1.0` `stream<list<u32>>` producer 的 compiler-generated Component/Rust/Wasmtime gate 均已通过。scalar producer 固定 `ptr=64/len=68/stride=4/max=3`、stream capacity `1`、count `0..3`/invalid `4`，并保留 pending、sink error、early drop、转移前/后 cancellation、exactly-once list cleanup、empty `ResourceTable` 与 fail-closed 负例。D2 另关闭了私有 `descriptor.get-type`、`descriptor.sync`、`descriptor.get-flags`、`descriptor.stat`、`descriptor.sync-data`、`descriptor.metadata-hash`、`descriptor.metadata-hash-at`、`descriptor.stat-at`、`descriptor.open-at` 与 `descriptor.set-size` 十个有界方法，以及本轮的私有 `descriptor.read-via-stream` bounded byte reader；前十者均固定 upstream WIT hash `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`，并分别通过独立 ABI、compiler admission 和 ready/pending/error/cancel cleanup gate；`read-via-stream` 另固定同步 `(i32,i64,i32) -> nil` method ABI、`u64` offset、一至三次 byte read 与独立 completion await，且通过自己的 Component/Rust/Wasmtime 生命周期 gate。`sync-data`、`metadata-hash`、`metadata-hash-at`、`stat-at`、`open-at` 与 `set-size` 另通过 repeat 与 Store-disposal early-drop 边界。固定三字段 `ResourceTriple` compiler admission 已关闭，但仍缺一般 async helper/producer lease、任意 producer 表达式、通用 list、通用 borrowed/variant lowering、第七跳 forwarding、第七层或更一般 nested resource 字段、payload-bearing completion error 的更广形状、任意其它 filesystem async method 与通用 resource cancellation。当前锁定的 `wasm-tools 1.258.0` 复核仍显示含 `borrow<T>` 的 stream record 与 `future<borrow<T>>` 在 Component embed 阶段拒绝；同步 `list<borrow<ticket>>` 仍可作为 canonical ABI 证据，但不进入 Do compiler registry | 保持所有 private bounded descriptor 的精确边界；扩展其他 producer/resource shape 前必须另立 design、probe 与 gate |
 | **06.2** | 历史总项 | 已拆到 G2–G6；通用 consumer slice 已关闭，剩余边界由 **G6.2** 的后续 gates 承接 | 同上 |
 
 **D2 general filesystem/HTTP recovery boundary (2026-08-11):**

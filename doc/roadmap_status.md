@@ -16,6 +16,16 @@ early-drop/repeat 生命周期门禁均通过当前 `wasm-tools 1.258.0` / Wasmt
 filesystem/Stream async、`write-via-stream`/`append-via-stream` 或 public ownership
 syntax。
 
+2026-09-15 增量: current-only `borrow<T>` capability matrix 已按锁定工具链
+复核。`bash examples/p3-runtime/test_borrow_capability_matrix.sh` 在
+`wasm-tools 1.258.0` / Wasmtime `48.0.1` 下报告 direct、record、variant、list、
+future-owned 与 stream-owned accepted；含 borrowed stream record 与
+`future<borrow<T>>` 在 Component embed 阶段 rejected-at-embed。
+`bash examples/p3-runtime/test_list_borrow_canonical_abi.sh` 另通过
+`list<borrow<ticket>>` 的同步 canonical-ABI 矩阵。该结果只是 Component/canonical
+probe 证据，不进入 Do compiler registry，也不开放 public `borrow<T>`、ownership
+syntax 或通用 borrowed async/resource lowering；G6.2 停点保持不变。
+
 2026-09-15 增量: read-directory 的两个 Rust/Wasmtime runtime gate 在检测到
 宿主没有系统 `cc` 时，改为在临时目录或共享 linker wrapper 建立 Zig
 local/global cache，避免用户级 cache 被清理后链接失败。新增
