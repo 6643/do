@@ -1,5 +1,16 @@
 # Changelog
 
+# 2026-09-15 G6.2 pilot lifecycle residual closure:
+  the test-only `runtime-counter-event` Component callback now observes direct
+  route frame allocation/release. All ten modes pass: each single invocation is
+  `1/1`, `repeat` is `2/2`, and `invalid` is `0/0`. The direct contract/state-IR
+  records no list allocation asset (`list_allocations.len=0`,
+  `list_backing_count=0`), while the existing Rust/Wasmtime matrix verifies
+  resource, stream, and future cleanup with `table-empty=true`. The pilot is
+  now `complete` within its private byte-parity scope; canonical WAT/WIT,
+  default dispatch, capability inventory, generic producer/resource lowering,
+  and public ownership syntax are unchanged.
+
 # 2026-09-15 Current-only `borrow<T>` capability matrix:
   rechecked the pinned Component boundary with `wasm-tools 1.258.0` and Wasmtime
   `48.0.1`. The probe accepts direct, record, variant, list, future-owned, and
@@ -44,7 +55,7 @@
   lowering, public ownership syntax, semantic-parity rewrite, and D2 general
   async remain deferred.
 
-# 2026-09-13 G6.2 shared emitter/state-IR pilot gate refresh:
+# 2026-09-13 G6.2 shared emitter/state-IR pilot gate refresh (historical checkpoint):
   classified the private pilot guard and test-oracle ARC references in
   `doc/gc_arc_inventory.tsv` (`598f2a0`). Fresh pre-cutover/post-cutover scans
   report `rows=55 matches=492 unclassified=0`, with post-cutover
@@ -53,8 +64,9 @@
   `14/14 steps; 53/53 tests`, and `zig test main.zig` is `1728/1728`.
   The single-route shared emitter/state-IR pilot remains private and
   byte-parity staged; default dispatch and capability inventory are unchanged.
-  Host list/frame runtime counters are unavailable, so the pilot remains
-  `complete-with-residuals`; 12-route migration, generic/arbitrary producers,
+  Host list/frame runtime counters were unavailable at that checkpoint, so the pilot
+  was recorded as `complete-with-residuals`; the 2026-09-15 counter gate supersedes
+  that residual. 12-route migration, generic/arbitrary producers,
   public ownership syntax, semantic-parity rewrite, and D2 general async remain
   deferred.
 

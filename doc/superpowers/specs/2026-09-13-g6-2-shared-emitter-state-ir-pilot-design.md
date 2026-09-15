@@ -341,9 +341,11 @@ route-by-route 回滚，且不会把 test-only probe 直接变成 production dep
 当前工具版本：Zig `0.16.0`，`wasm-tools 1.258.0 (5c6d31c78 2026-08-24)`，
 Wasmtime `48.0.1 (7bac2c277 2026-08-24)`。
 
-Task 6 status：complete-with-residuals。Step 3（list/frame runtime counters）保持
-unchecked/unverified；Step 1、Step 2、Step 4、Step 5、Step 6 已完成。当前 evidence
-revision 的提交 subject 为 `598f2a0 Classify G6.2 ARC guard references`。
+At the 2026-09-13 checkpoint Task 6 status was
+`complete-with-residuals`: Step 3 (list/frame runtime counters) was
+unchecked/unverified; Step 1, Step 2, Step 4, Step 5, and Step 6 were complete.
+The current-only follow-up recorded in section 11.3 supersedes that residual
+for the direct route.
 源码 admission hardening and fresh verification are recorded at
 `59c8624 Harden G6.2 shared emitter pilot admission`。
 
@@ -398,7 +400,7 @@ revision 的提交 subject 为 `598f2a0 Classify G6.2 ARC guard references`。
   `ir.acquire_count=1`、`ir.barrier_count=1`、`ir.transfer_count=1`、
   `ir.reverse_release_count=1`、`ir.cleanup_count=7`。因此本 route 没有
   list backing asset，frame/state-IR 生命周期静态证据已验证。
-- Rust/Wasmtime：既有 direct route gate 和 canonical/generated equivalence
+- Rust/Wasmtime（2026-09-13 历史 checkpoint）：既有 direct route gate 和 canonical/generated equivalence
   gate 在 repository-local Zig cache 下通过 10 个 lifecycle rows，均为
   `table-empty=true`，资源、stream、future cleanup exactly-once（repeat 为
   2 次）。host runner 没有 list/frame runtime counters，因此 runtime
@@ -421,13 +423,13 @@ topology 和 adapter/probe field-level parity 校验。提交后的 focused test
 为 `1728/1728`，均 exit `0`。`run_release_smoke.sh` 和 ReleaseSmall build 也 exit `0`。
 
 `b130817` 之后的 integration harness 历史重跑为 `53/53` 子测试通过、总 exit `1`；
-该历史 mismatch 已由 `598f2a0` 修复。当前 host runner 未提供 list/frame runtime
-counters，因此该子门禁继续保持 unverified。
+该历史 mismatch 已由 `598f2a0` 修复。At that checkpoint the host runner
+did not provide list/frame runtime counters, so the residual remained open.
 
-因此本 spec 的 Task 6 status 为 complete-with-residuals，只关闭“单 route private pilot 的 artifact、observed lifecycle counters
-和 rollback 证据”范围；list/frame runtime counters 未提供，不能宣称所有 runtime
-子门禁全绿，也不能由 state-IR probe 单独宣称 runtime equivalence。ARC inventory
-与完整 repository regression 已在 `598f2a0` 后通过。
+因此在该历史 checkpoint，本 spec 的 Task 6 status 为
+`complete-with-residuals`，只关闭“单 route private pilot 的 artifact、observed
+lifecycle counters 和 rollback 证据”范围；ARC inventory 与完整 repository
+regression 已在 `598f2a0` 后通过。
 12-route migration、generic/arbitrary producers、public ownership syntax、
 semantic-parity rewrite 和 D2 general async 保持 deferred。
 
@@ -438,5 +440,21 @@ semantic-parity rewrite 和 D2 general async 保持 deferred。
 emitter、默认 dispatch、WAT/WIT bytes 或能力矩阵。fresh pre-cutover/post-cutover
 扫描均为 `rows=55 matches=492 unclassified=0`，post-cutover 的
 `normal_route_matches=0`，生产依赖闭包为 `modules=162 forbidden=0`；因此 Step 1
-现在可标记完成。list/frame runtime counters 仍因 host runner 未暴露而保持
-unverified，pilot 仍是 complete-with-residuals。
+可标记完成。At that checkpoint list/frame runtime counters still had no
+host observation and the pilot remained `complete-with-residuals`.
+
+### 11.3 Current-only lifecycle residual closure (2026-09-15)
+
+The test-only counter gate
+`bash examples/p3-runtime/test_rust_g6_2_owned_record_producer_counters.sh`
+now supplies the missing frame observation through the
+`runtime-counter-event` Component callback. All ten modes pass: single
+invocations report `frame-allocations=1 frame-releases=1`, `repeat` reports
+`2/2`, and `invalid` reports `0/0`. The existing direct Rust/Wasmtime matrix
+already verifies resource, stream, and future cleanup exactly once and
+`table-empty=true`; its static contract/state-IR records
+`contract.list_allocations.len=0` and `ir.list_backing_count=0`, so this route
+has no list backing asset requiring a runtime counter. The Core-global counter
+tuple remains diagnostic only. Task 6 Step 3 is therefore closed for this
+direct route, and the current pilot status is `complete`; this does not infer
+generic producer/resource lowering or public ownership syntax.

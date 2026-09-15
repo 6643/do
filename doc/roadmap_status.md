@@ -16,6 +16,16 @@ early-drop/repeat 生命周期门禁均通过当前 `wasm-tools 1.258.0` / Wasmt
 filesystem/Stream async、`write-via-stream`/`append-via-stream` 或 public ownership
 syntax。
 
+2026-09-15 增量: G6.2 shared emitter/state-IR private pilot 的历史 runtime
+residual 已由 test-only callback counter gate 收口。`bash
+examples/p3-runtime/test_rust_g6_2_owned_record_producer_counters.sh` 在十个
+mode 中观察 `$frame-alloc/$frame-free`：单调用均为 `1/1`，`repeat` 为 `2/2`，
+`invalid` 为 `0/0`；direct route 的 contract/state-IR 仍为
+`list_allocations.len=0` / `list_backing_count=0`。因此该 pilot 当前状态为
+`complete`；counter world 只用于测试观测，不改变 canonical WAT/WIT、默认
+dispatch 或能力矩阵。通用 producer/resource lowering、公开 ownership syntax、
+semantic-parity rewrite 和 D2 general async 仍 deferred。
+
 2026-09-15 增量: current-only `borrow<T>` capability matrix 已按锁定工具链
 复核。`bash examples/p3-runtime/test_borrow_capability_matrix.sh` 在
 `wasm-tools 1.258.0` / Wasmtime `48.0.1` 下报告 direct、record、variant、list、
@@ -34,15 +44,15 @@ smoke；ABI、普通/ bounded lowering、pending/ready runtime gate 与完整
 `run_tests.sh` 均通过。当前 active toolchain 为 `wasm-tools 1.258.0` /
 Wasmtime `48.0.1`，不改变 read-directory 的固定 shape 或 G6.2 通用能力边界。
 
-2026-09-13 增量: G6.2 shared emitter/state-IR private pilot 的 Task 6
+2026-09-13 增量（历史 checkpoint，已由 2026-09-15 counter gate 取代）: G6.2 shared emitter/state-IR private pilot 的 Task 6
 repository gate 已完成 inventory 分类修复。`598f2a0` 为 pilot guard 与
 test-oracle `__arc_` 引用补充精确 `test_oracle/isolate_test_only` 账本行；
 fresh pre-cutover/post-cutover ARC scan 均为 `rows=55 matches=492
 unclassified=0`，post-cutover `normal_route_matches=0`，生产依赖闭包为
 `modules=162 forbidden=0`。当前 Zig 全量为 `1728/1728`，薄入口为
 `14/14 steps; 53/53 tests`，ReleaseSmall 与 release smoke 通过。
-private pilot 仍保持 byte-parity staged、默认 dispatch 不变；Rust/Wasmtime
-host runner 没有 list/frame runtime counters，因此该子门禁仍为
+private pilot 仍保持 byte-parity staged、默认 dispatch 不变；当时 Rust/Wasmtime
+host runner 没有 list/frame runtime counters，因此该子门禁在当时为
 unverified，整体状态为 complete-with-residuals。12-route migration、
 generic/arbitrary producer、public ownership syntax、semantic-parity rewrite
 和 D2 general async 继续 deferred。证据见

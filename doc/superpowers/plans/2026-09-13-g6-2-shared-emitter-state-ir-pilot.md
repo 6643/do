@@ -445,9 +445,10 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
   re-ran the focused pilot (`20/20`), owned-record producer (`15/15`), state-IR
   map (`16/16`), and full Zig suite (`1728/1728`) with exit `0`. The
   integration harness now exits `0` with `14/14 steps; 53/53 tests`; both
-  pre-cutover and post-cutover inventory scans are fully classified. Step 3
-  remains unchecked because the host runner still exposes no list/frame runtime
-  counters.
+  pre-cutover and post-cutover inventory scans are fully classified. At this
+  2026-09-13 checkpoint Step 3 remained unchecked because the host runner did
+  not expose list/frame runtime counters; the current-only counter follow-up
+  below supersedes that residual for this direct route.
 
 - [x] **Step 2: Run current-toolchain Component/WIT artifact gates.**
 
@@ -474,7 +475,7 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
 
   Generate the pilot WAT/WIT into a temporary directory, then run the current `wasm-tools` sequence used by the repository: `wasm-tools parse`, `wasm-tools component embed`, `wasm-tools component new`, and `wasm-tools validate --features cm-async,cm-more-async-builtins`. Verify WIT bytes/hash, descriptor identity, no `__arc_` marker and no Wasm GC reference crossing the canonical boundary. Record `wasm-tools --version` and `wasmtime --version` from the live environment.
 
-- [ ] **Step 3: Run the existing Rust/Wasmtime lifecycle matrix for the unchanged direct route.**
+- [x] **Step 3: Run the existing Rust/Wasmtime lifecycle matrix for the unchanged direct route.**
 
   The existing Do Component gate and canonical/generated equivalence runner
   passed for the observed counters. The local-cache rerun covered 10 rows: ready, pending,
@@ -483,17 +484,26 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
   `table-empty=true`; resource, stream and future cleanup were exactly once
   (repeat was exactly twice). The direct contract/static IR evidence separately
   records `contract.list_allocations.len=0` and
-  `ir.list_backing_count=0`; the host runner exposes no list/frame counters, so
-  runtime list/frame exactly-once remains unverified. The first Rust invocation failed at the linker
+  `ir.list_backing_count=0`. The first Rust invocation failed at the linker
   because the default Zig cache lacked `Scrt1.o`, libc and runtime archives;
   this environment failure is retained in `task-6-report.md` and was not used
   as a runtime result.
 
   Exercise ready, pending, sink error, transfer-before/after cancel, early-drop and repeat rows using the existing runner. Require resource/list/frame exactly-once cleanup and `table-empty=true`; compare pilot artifact observations with the old artifact. Do not add a new runtime behavior or treat the logical state-IR test as a replacement for this gate.
 
-  Status ledger: resource/stream/future runtime observations are verified; list/frame
-  runtime counters are unavailable from the host runner and remain unverified. The
-  static contract/state-IR evidence is recorded in `task-6-report.md`.
+  Status ledger: resource/stream/future runtime observations are verified; this
+  direct route has no list allocation asset, and the current-only counter gate
+  observes frame allocation/release. The static contract/state-IR evidence and
+  the counter output together close the direct-route lifecycle requirement.
+
+  Current-only follow-up (2026-09-15):
+  `bash examples/p3-runtime/test_rust_g6_2_owned_record_producer_counters.sh`
+  passed all ten modes with `counter-source=component-callback`; each single
+  invocation reported `frame-allocations=1 frame-releases=1`, `repeat` reported
+  `2/2`, and `invalid` reported `0/0`. The route's contract remains
+  `list_allocations.len=0` and `ir.list_backing_count=0`, so no list allocation
+  exists to observe at runtime. The counter world is test-only and does not
+  alter canonical WAT/WIT or default dispatch.
 
 - [x] **Step 4: Verify default-route non-regression and rollback.**
 
@@ -512,9 +522,8 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
 
 - [x] **Step 5: Update evidence and close only the pilot scope.**
 
-  This step records the incomplete repository gate above rather than claiming
-  a fully green regression run. The pilot remains private and byte-parity
-  staged. Twelve-route migration, generic/arbitrary producers, public
+  This step records the private, byte-parity-staged pilot and its bounded
+  lifecycle evidence. Twelve-route migration, generic/arbitrary producers, public
   ownership syntax, semantic-parity rewrite and D2 general async remain
   deferred. The capability inventory is unchanged, and the state-IR probe is
   not treated as runtime equivalence.
