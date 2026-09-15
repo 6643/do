@@ -62,6 +62,43 @@ fi
 grep -Fq 'active shell invokes wasm-tools through an alias' "$tmp_dir/multi_alias.stderr"
 rm -f -- "$negative_fixture"
 
+printf '%s\n' \
+    'old_tool="$(command -v \' \
+    '    wasm-tools)' \
+    '"$old_tool" parse input.wat -o output.wasm' >"$negative_fixture"
+if "$GATE" >"$tmp_dir/multiline_alias.stdout" 2>"$tmp_dir/multiline_alias.stderr"; then
+    printf '[FAIL] alias scan accepted a multiline command lookup alias\n' >&2
+    exit 1
+fi
+grep -Fq 'active shell invokes wasm-tools through an alias' "$tmp_dir/multiline_alias.stderr"
+rm -f -- "$negative_fixture"
+
+printf '%s\n' \
+    'old_tool="$(' \
+    "    printf ')'" \
+    '    command -v wasm-tools' \
+    ')' \
+    '"$old_tool" parse input.wat -o output.wasm' >"$negative_fixture"
+if "$GATE" >"$tmp_dir/quoted_paren_alias.stdout" 2>"$tmp_dir/quoted_paren_alias.stderr"; then
+    printf '[FAIL] alias scan accepted a command lookup alias with a quoted parenthesis\n' >&2
+    exit 1
+fi
+grep -Fq 'active shell invokes wasm-tools through an alias' "$tmp_dir/quoted_paren_alias.stderr"
+rm -f -- "$negative_fixture"
+
+printf '%s\n' \
+    'old_tool="$(' \
+    '    # command lookup comment with a closing parenthesis )' \
+    '    command -v wasm-tools' \
+    ')' \
+    '"$old_tool" parse input.wat -o output.wasm' >"$negative_fixture"
+if "$GATE" >"$tmp_dir/comment_paren_alias.stdout" 2>"$tmp_dir/comment_paren_alias.stderr"; then
+    printf '[FAIL] alias scan accepted a command lookup alias with a comment parenthesis\n' >&2
+    exit 1
+fi
+grep -Fq 'active shell invokes wasm-tools through an alias' "$tmp_dir/comment_paren_alias.stderr"
+rm -f -- "$negative_fixture"
+
 tmp_fixture="$(mktemp "$ROOT_DIR/src/build/test/tmp/check_toolchain_adapter_tmp_fixture.XXXXXX.sh")"
 printf '%s\n' \
     'tmp_tool="/opt/legacy/wasm-tools"' \

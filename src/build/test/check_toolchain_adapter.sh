@@ -73,6 +73,7 @@ scan_wasm_tools_aliases() {
     local alias_refs
     local file_list
     local find_status
+    local normalized_file
 
     if file_list="$(mktemp "${TMPDIR:-/tmp}/do-toolchain-alias-files.XXXXXX")"; then
         :
@@ -97,6 +98,104 @@ scan_wasm_tools_aliases() {
                 ;;
         esac
 
+        normalized_file="$(mktemp "${TMPDIR:-/tmp}/do-toolchain-alias-source.XXXXXX")" || {
+            rm -f -- "$file_list"
+            printf '[FAIL] alias file scan failed: unable to create normalized source\n' >&2
+            return 1
+        }
+        if ! awk '
+            function push_substitution(parent_quote) {
+                substitution_depth++
+                substitution_parent_quote[substitution_depth] = parent_quote
+                substitution_paren_depth[substitution_depth] = 1
+            }
+
+            function scan_substitutions(value,    i, ch, next_ch, parent_quote) {
+                comment_state = 0
+                for (i = 1; i <= length(value); i++) {
+                    ch = substr(value, i, 1)
+                    next_ch = substr(value, i + 1, 1)
+
+                    if (comment_state) continue
+
+                    if (escape_next) {
+                        escape_next = 0
+                        continue
+                    }
+
+                    if (quote_state == "single") {
+                        if (ch == sprintf("%c", 39)) quote_state = ""
+                        continue
+                    }
+
+                    if (quote_state == "double") {
+                        if (ch == "\\") {
+                            escape_next = 1
+                        } else if (ch == "\"") {
+                            quote_state = ""
+                        } else if (ch == "$" && next_ch == "(") {
+                            push_substitution("double")
+                            quote_state = ""
+                            i++
+                        }
+                        continue
+                    }
+
+                    if (ch == "\\") {
+                        escape_next = 1
+                    } else if (ch == sprintf("%c", 39)) {
+                        quote_state = "single"
+                    } else if (ch == "\"") {
+                        quote_state = "double"
+                    } else if (ch == "$" && next_ch == "(") {
+                        push_substitution("")
+                        i++
+                    } else if (ch == "#" &&
+                        (i == 1 || substr(value, i - 1, 1) ~ /[[:space:];|&()<>]/)) {
+                        comment_state = 1
+                    } else if (substitution_depth > 0 && ch == "(") {
+                        substitution_paren_depth[substitution_depth]++
+                    } else if (substitution_depth > 0 && ch == ")") {
+                        substitution_paren_depth[substitution_depth]--
+                        if (substitution_paren_depth[substitution_depth] == 0) {
+                            parent_quote = substitution_parent_quote[substitution_depth]
+                            delete substitution_parent_quote[substitution_depth]
+                            delete substitution_paren_depth[substitution_depth]
+                            substitution_depth--
+                            quote_state = parent_quote
+                        }
+                    }
+                }
+                # A backslash immediately before the physical newline escapes
+                # that newline, not the first character on the next line.
+                escape_next = 0
+            }
+
+            {
+                scan_substitutions($0)
+                if (buffer != "") {
+                    buffer = buffer " " $0
+                    if (substitution_depth == 0) {
+                        print buffer
+                        buffer = ""
+                    }
+                    next
+                }
+                if (substitution_depth > 0) {
+                    buffer = $0
+                    next
+                }
+                print
+            }
+
+            END {
+                if (buffer != "") print buffer
+            }
+        ' "$file" >"$normalized_file"; then
+            rm -f -- "$normalized_file" "$file_list"
+            printf '[FAIL] alias file scan failed: unable to normalize source\n' >&2
+            return 1
+        fi
         if alias_refs="$(awk '
             function alias_invocation(line, name, prefix) {
                 prefix = "^[[:space:]]*((if|then|elif|while|until|do|!|command|env)[[:space:]]+)*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+)*"
@@ -138,13 +237,15 @@ scan_wasm_tools_aliases() {
                     }
                 }
             }
-        ' "$file")"; then
+        ' "$normalized_file")"; then
             :
         else
+            rm -f -- "$normalized_file"
             rm -f -- "$file_list"
             printf '[FAIL] wasm-tools alias scan failed: %s\n' "$file" >&2
             return 1
         fi
+        rm -f -- "$normalized_file"
         if [[ -n "$alias_refs" ]]; then
             printf '%s\n' "$alias_refs"
         fi
