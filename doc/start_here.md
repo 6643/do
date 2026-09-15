@@ -5,7 +5,8 @@
 当前基线日期: `2026-09-15`。
 
 最新闭环: G6.2 shared emitter/state-IR single-route private pilot 的 Task 6
-artifact、default-route parity、rollback 与 repository inventory gate 已完成。
+artifact、default-route parity、rollback 与 repository inventory gate，以及 D2
+私有 `descriptor.read-via-stream` bounded byte-reader gate 已完成。
 `598f2a0` 修复 pilot guard/test-oracle 的 ARC inventory 分类；当前 scan 为
 `rows=55 matches=492 unclassified=0`，post-cutover
 `normal_route_matches=0`，生产依赖闭包为 `modules=162 forbidden=0`。
@@ -742,10 +743,10 @@ Rust/Wasmtime -> exactly-once cleanup 顺序单独立项。默认 route 不直�
 
 | ID | 说明 | 恢复条件 |
 | --- | --- | --- |
-| G6.2 | `descriptor.read-directory`、注册 record-stream consumer 与 bounded scalar/dynamic/batched producer | scalar/string、多-owned-resource、多个顶层 nested paths 与一层/两层/三层/四层/五层/六层 nested-owned-resource consumer、注册 `do:stream-probe` 的 capacity-one `StreamWriter<u8>` producer、固定/参数化 `u64` countdown producer、参数化 helper 的六跳 forwarding、typed 参数受限重排、其它同类型 async helper、bounded StreamMirror、私有 `variant-resource-stream`、private C-min list/resource producer、动态 count `0..3` producer、固定两批 list-resource producer 与固定三字段 `ResourceTriple` compiler admission 已验证；一般 producer lease、borrowed/list/通用 variant、第七跳 forwarding、第七层或更一般 nested resource gates 与任意 filesystem async method 仍待单独推进 |
+| G6.2 | `descriptor.read-directory`、注册 record-stream consumer 与 bounded scalar/dynamic/batched producer | scalar/string、多-owned-resource、多个顶层 nested paths 与一层/两层/三层/四层/五层/六层 nested-owned-resource consumer、注册 `do:stream-probe` 的 capacity-one `StreamWriter<u8>` producer、固定/参数化 `u64` countdown producer、参数化 helper 的六跳 forwarding、typed 参数受限重排、其它同类型 async helper、bounded StreamMirror、私有 `variant-resource-stream`、private C-min list/resource producer、动态 count `0..3` producer、固定两批 list-resource producer 与固定三字段 `ResourceTriple` compiler admission 已验证；一般 producer lease、borrowed/list/通用 variant、第七跳 forwarding、第七层或更一般 nested resource gates 与任意其它 filesystem async method 仍待单独推进 |
 | G6.2-cancel | 私有 resource Result cancellation | 显式 `@cancel(completion)` 的 Do lowering、负边界、Component assembly 与 Rust/Wasmtime pending/drop/empty-table gate 已通过；pinned `wasi:http` service-world gate 另验证 pending、immediate `Ok(response)` 的 exactly-once drop、`DnsTimeout`、bounded `DNS-error.rcode` 的 `Some(nonempty)` 与 `None`（两种长度和 `info-code` optional 状态）以及同一布局的 `InternalError(Some(nonempty string))` / `InternalError(None)` canonical discard。同一组件实例连续两次 nonempty DNS error 会在每次精确释放后复用该私有槽位。`None` 不读取或释放 pointer/length；空字符串和其他 payload error 仍 trap；不扩展到通用 resource cancellation 或公开 ownership syntax |
 | G6.3 | **已关闭 (方案 B)** create/bind/drop + dual address | 见 `compile_ok/291`–`294`; TCP/UDP loopback real-host gate 已通过，listen/connect/accept 与真实 socket I/O 仍后置 |
-| D2 | 真实 host runtime smoke | local filesystem preopen/open-at/sync、read-directory stream、CLI stdin pipe、TCP/UDP socket create/bind/drop，以及私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size` async slices 已有 gates；通用 filesystem async 与 external HTTP 仍阻断 |
+| D2 | 真实 host runtime smoke | local filesystem preopen/open-at/sync、read-directory stream、CLI stdin pipe、TCP/UDP socket create/bind/drop，以及私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size`/`descriptor.read-via-stream` async slices 已有 gates；通用 filesystem async 与 external HTTP 仍阻断 |
 | 06.2 | 已拆到 G2–G6; 剩余由 G6.2 承接 | 同上 |
 
 **Result source policy (closed):** ordinary public and standard-library APIs use
@@ -773,7 +774,7 @@ public `own<T>`, `borrow<T>`, or `ref<T>` syntax.
     2026-08-22 增量：第五个 managed segment 的直接 `@get/@set(top, .outer, .inner, .middle, .leaf, .core, ...)` nested managed-struct 路径已通过 typed GC lowering、compiled-test、Wasmtime probe 和 26 行 ARC/GC 等价矩阵；内部实现随后收敛为固定容量五-link 的 `GenericNestedFieldPath` 与 loop-based parser/emitter，未改变公开 admission。第六个 managed segment、producer expression、async/resource 与通用 host/WIT 仍不准入。focused `codegen_gc_sync.zig` 为 `245/245`、`gc_sync_probe.zig` 为 `65/65`，默认 GC build/parse gate 为 72 fixtures，均使用 pinned `wasm-tools 1.255.0` 与 `27815` oracle。
 2. **推进 G6.2 后续 gates**: generic consumer、multi-owned-resource、多个顶层 nested-owned-resource paths、一层/两层/三层/四层/五层/六层 nested-owned-resource、bounded scalar/parameterized dynamic producer、参数化 helper（含六跳 forwarding 与 typed 参数受限重排）与受限 helper-mediated lease slices 已闭环；继续一般 producer lease、borrowed/list/variant、第七跳 forwarding、第七层或更一般 nested resource fields 与更广泛 async method 的独立验证
 2a. **当前 gate 状态**: branch-selected terminal、reordered helper、StreamMirror、pinned negative probes 与 ownership invariant 复核已通过；下一步只能在独立 positive plan 授权后扩大 producer/resource 形状
-3. **推进 D2 已授权的本地 smoke**: 维护 file/dir/CLI/socket create-bind-drop 与私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size` gates；通用 filesystem async/external HTTP 另立 target/design 后再推进
+3. **推进 D2 已授权的本地 smoke**: 维护 file/dir/CLI/socket create-bind-drop 与私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size`/`descriptor.read-via-stream` gates；通用 filesystem async/external HTTP 另立 target/design 后再推进
 4. **可选授权**: 其他 deferred 项 (ownership / JSON / LSP / codegen 再拆)
 
 **已关闭边界速查**:

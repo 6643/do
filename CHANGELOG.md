@@ -1,5 +1,17 @@
 # Changelog
 
+# 2026-09-15 D2 private filesystem `descriptor.read-via-stream`:
+  closed the pinned bounded byte-stream reader route. The synchronous
+  `@host_func` declaration uses `(File, u64) ->
+  Tuple<Stream<u8>, Future<Result<nil, FileError>>>`; the measured Core method
+  import is `(i32, i64, i32) -> nil`. Compiler admission accepts only one to
+  three explicit byte reads followed by one completion await. The dedicated
+  Component emitter and current-toolchain ABI/lowering gates pass, and the
+  Rust/Wasmtime matrix covers ready, pending, completion error, cancellation
+  before/after EOF, Store early-drop, and repeat with exactly-once cleanup of
+  stream, future, and descriptor handles. Generic filesystem/Stream lowering,
+  other stream methods, and public ownership syntax remain unavailable.
+
 # 2026-09-15 P3 read-directory Rust/Wasmtime cache resilience:
   both read-directory runtime gates, the C host smoke, and the shared Rust
   linker wrapper now establish local/global Zig caches when the host has no
