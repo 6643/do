@@ -602,8 +602,10 @@ check_h_component_log_chain() {
             if ($line =~ /\bparse-core\s+(\S+\.wat)\s+-o\s+(\S+\.wasm)\b/) {
                 push @parse, [$line_no, $1, $2];
             }
-            if ($line =~ /\bembed-component\s+(\S+\.wit)\s+(\S+\.wasm)\b.*?\s-o\s+(\S+\.wasm)\b/) {
-                push @embed, [$line_no, $1, $2, $3];
+            if ($line =~ /\bembed-component\s+(\S+)\s+(\S+\.wasm)\b.*?\s-o\s+(\S+\.wasm)\b/) {
+                my ($wit_source, $core_wasm, $embedded_wasm) = ($1, $2, $3);
+                next unless $wit_source =~ /\.wit\z/ || -d $wit_source;
+                push @embed, [$line_no, $wit_source, $core_wasm, $embedded_wasm];
             }
             if ($line =~ /\bnew-component\s+(\S+\.wasm)\s+-o\s+(\S+component\.wasm)\b/) {
                 push @new, [$line_no, $1, $2];
@@ -1030,6 +1032,16 @@ run_self_tests() {
         '+ /tool validate-component /tmp/h-component.wasm' > "$evidence_dir/g5a-h-self.log"
     if ! check_profile_artifacts; then
         printf 'self-test failed: complete H Component steps were rejected\n' >&2
+        return 1
+    fi
+    mkdir -p "$test_dir/h-input-package"
+    printf '%s\n' \
+        '+ /tool parse-core /tmp/h-input.wat -o /tmp/h-core.wasm' \
+        "+ /tool embed-component $test_dir/h-input-package /tmp/h-core.wasm probe --features none -o /tmp/h-embedded.wasm" \
+        '+ /tool new-component /tmp/h-embedded.wasm -o /tmp/h-component.wasm' \
+        '+ /tool validate-component /tmp/h-component.wasm' > "$evidence_dir/g5a-h-self.log"
+    if ! check_profile_artifacts; then
+        printf 'self-test failed: directory-form H Component steps were rejected\n' >&2
         return 1
     fi
     printf '%s\n' \
