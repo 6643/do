@@ -83,7 +83,7 @@ profile adds gates; it does not remove the common GC checks.
 | --- | --- | --- |
 | S: synchronous GC | `text`, `[u8]`, `other_lists`, `managed_struct_list_append`, `managed_structs`, `nested_structs`, `tuple_storage`, `unions`, `generic_calls`, `imports`, `sync_control_flow` | Positive and negative fixtures; default GC compilation; no `__arc_` in the admitted output; root/liveness checks where managed values are involved; ARC/GC equivalence for the frozen scope |
 | H: synchronous host/WIT | `host_wit_marshalling`, `host_wit_marshalling_managed_record_lower` | All applicable S gates; fixed manifest/package/member and source hash; measured layout and canonical ABI; no `(ref` at the boundary; Component parse/embed/new/validate; host payload and allocation/free assertions; rollback evidence |
-| A: Future/resource | `future_stream_frames`, `resource_terminal_cleanup` | Applicable S gates; GC/linear backend-neutral equivalence; Rust/Wasmtime ready/pending/error/cancel/early-drop/repeat lifecycle; exactly-once cleanup; empty `ResourceTable` where the route owns a live table |
+| A: Future/resource | `future_stream_frames`, `resource_terminal_cleanup` | Applicable S gates; GC/linear backend-neutral equivalence; Rust/Wasmtime Future pending/error/cancel/early-drop/repeat lifecycle plus an explicit ready/synchronous-completion rejection boundary; Resource ready/pending/error/cancel/early-drop/repeat lifecycle; exactly-once cleanup; empty `ResourceTable` where the route owns a live table |
 
 The row profile is selected from the current inventory boundary, not from the
 most ambitious shape a future implementation might support. For example,
@@ -104,9 +104,10 @@ Every row package must prove all of the following for its frozen scope:
 4. **Equivalence:** the fixed ARC oracle and GC output agree on the frozen
    observable results. The oracle is a test comparator, not a production
    backend.
-5. **Toolchain:** the run records the pinned Zig, current-only
-   `wasm-tools`, Wasmtime, and adapter versions from
-   `toolchain/toolchain.lock.json`.
+5. **Toolchain:** the run records the pinned Zig, rustc, Cargo,
+   current-only `wasm-tools`, Wasmtime, and adapter versions plus their
+   SHA-256 digests from `toolchain/toolchain.lock.json`; an empty or
+   malformed digest is a hard failure.
 6. **Reproducibility:** each command, expected exit code, actual exit code, and
    output artifact path is recorded in the evidence package.
 

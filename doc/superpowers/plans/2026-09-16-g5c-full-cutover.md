@@ -20,7 +20,10 @@ Spec: doc/superpowers/specs/2026-09-16-g5c-full-cutover-design.md
 - WIT resources retain explicit transfer, borrow, drop, cancellation, and terminal cleanup; GC reachability never replaces resource cleanup.
 - Do not add public own<T>, borrow<T>, ref<T>, Option, or Result syntax.
 - Do not add generic async, generic Stream<T>, arbitrary producer expressions, general filesystem/HTTP async, borrowed payload lowering, or an older-tool compatibility route.
-- Use bin/do-toolchain and toolchain/toolchain.lock.json; active scripts must not invoke an unpinned system wasm-tools directly.
+- Use bin/do-toolchain and toolchain/toolchain.lock.json; every executable
+  entry used by a row gate must have a fixed path, exact version, and
+  64-character SHA-256 digest; active scripts must not invoke an unpinned
+  system wasm-tools directly.
 - Preserve runtime_arc_wat.zig, runtime_prelude_wat.zig, codegen_ownership.zig, and the ARC oracle.
 - Each row ends with a focused gate, git diff --check, and a local commit. Do not push from this plan.
 - A failed row leaves its G5c field pending, preserves its failure log, and does not change already closed rows.
@@ -71,7 +74,7 @@ It must:
 2. Record git rev-parse HEAD, the branch, inventory output, and versions/hashes from bin/do-toolchain probe and toolchain/toolchain.lock.json in evidence-dir/commands.log.
 3. Run src/build/test/check_gc_arc_inventory.sh --post-cutover, src/build/test/check_gc_default_build_gate.sh, and src/build/test/check_gc_migration_evidence_test.sh. The first two must pass; the inventory status command is expected to return 1 before final closure.
 4. Run every comma-separated G5a probe and every comma-separated G5b script in the selected row. A non-zero probe stops that row and preserves its log.
-5. For H, require every generated boundary artifact checked by the invoked gate to contain no (ref in the canonical import and to pass Component parse/embed/new/validate. For A, require the invoked runner's ready/pending/error/cancel/early-drop/repeat observations and exactly-once cleanup where that row defines them.
+5. For H, require every generated boundary artifact checked by the invoked gate to contain no (ref in the canonical import and to pass Component parse/embed/new/validate. For A, require the invoked runner's frozen lifecycle observations: Future pending/error/cancel/early-drop/repeat plus an explicit ready/synchronous-completion rejection boundary, and Resource ready/pending/error/cancel/early-drop/repeat; require exactly-once cleanup where that row defines it.
 6. Write a deterministic summary containing row, profile, commands, expected and actual exit codes, toolchain versions, output-log paths, and the frozen rejection boundary. It must not write the inventory file.
 
 The runner fails closed for an unknown row, profile mismatch, missing file, non-pending row, unpinned toolchain, ARC marker in admitted WAT, GC reference at a canonical boundary, or an unexpected gate exit code. It must not delete a failed run directory.
@@ -81,6 +84,8 @@ The runner fails closed for an unknown row, profile mismatch, missing file, non-
 Files:
 - Create src/build/test/check_gc_g5c_row.sh
 - Create doc/g5c/evidence/.gitkeep
+- Modify toolchain/toolchain.lock.json to pin the Zig, rustc, and Cargo
+  executable paths and SHA-256 digests used by the row gate.
 - Test src/build/test/check_gc_g5c_row.sh, src/build/test/check_gc_migration_inventory.sh, src/build/test/check_gc_arc_inventory.sh
 
 Interfaces:
@@ -101,9 +106,10 @@ Expected: failure because the runner does not exist.
 
 Use awk -F '\t' to extract only the requested row between the inventory here-document markers. Parse all nine fields, split comma-separated paths without word-splitting path contents, and reject a non-pending row before invoking a route. Use an explicit case for S, H, and A. Run commands through bash, bin/do-toolchain, or the pinned paths in the lock.
 
-- [ ] Step 3: Verify the baseline.
+- [ ] Step 3: Verify the baseline and runner self-tests.
 
     run_dir="$(mktemp -d)"
+    bash src/build/test/check_gc_g5c_row.sh --row text --profile S --evidence-dir "$run_dir" --self-test
     bash src/build/test/check_gc_g5c_row.sh --row text --profile S --evidence-dir "$run_dir"
     set +e
     bash src/build/test/check_gc_migration_inventory.sh
@@ -111,11 +117,14 @@ Use awk -F '\t' to extract only the requested row between the inventory here-doc
     set -e
     test "$rc" -eq 1
 
-Expected: the row runner creates commands.log and a summary, and the inventory prints complete_rows=15 pending_rows=15 with exit 1.
+Expected: the self-test covers hash, artifact, canonical-boundary, H-chain,
+and lifecycle-schema rejection cases without running a later row's real
+probe; the text baseline creates commands.log and a summary, and the
+inventory prints complete_rows=15 pending_rows=15 with exit 1.
 
-- [ ] Step 4: Commit the runner only.
+- [ ] Step 4: Commit the runner and toolchain lock.
 
-    git add src/build/test/check_gc_g5c_row.sh doc/g5c/evidence/.gitkeep
+    git add src/build/test/check_gc_g5c_row.sh doc/g5c/evidence/.gitkeep toolchain/toolchain.lock.json
     git diff --cached --check
     git commit -m "Add G5c row evidence gate"
 
@@ -283,7 +292,7 @@ Files:
 - Modify only this TSV row in src/build/test/check_gc_migration_inventory.sh
 - Test examples/gc-p3-runtime/test_gc_async_frame_component.sh and test_gc_async_frame_equivalence.sh.
 
-- [ ] Step 1: Run --row future_stream_frames --profile A and record ready/pending/wake/completion observations, GC/linear comparison, frame/table markers, and AsyncLoweringUnavailable for unsupported ordinary async source.
+- [ ] Step 1: Run --row future_stream_frames --profile A and record the pending/error/cancel/early-drop/repeat observations, the explicit ready/synchronous-completion rejection boundary, GC/linear comparison, frame/table markers, and AsyncLoweringUnavailable for unsupported ordinary async source.
 - [ ] Step 2: Update only this row, require summary complete_rows=15 pending_rows=1, run git diff --check, and commit with message Close G5c Future-frame row.
 
 ### Task 16: Close resource_terminal_cleanup
