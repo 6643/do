@@ -182,6 +182,22 @@ verify_paths() {
     done
 }
 
+has_forbidden_canonical_import_ref() {
+    local file=$1
+    perl -0777 -e '
+        my $wat = <>;
+        my %gc_func_types;
+        while ($wat =~ /\(type\s+\(;\s*(\d+)\s*;\)\s+\(func\b(?:(?!\n\s*\((?:type|import|export|func)\b)[\s\S])*?\(ref\b/sg) {
+            $gc_func_types{$1} = 1;
+        }
+        exit 0 if $wat =~ /\(import\b(?:(?!\n\s*\(import\b)[\s\S])*?\(func\b(?:(?!\n\s*\(import\b)[\s\S])*?\(ref\b/sg;
+        while ($wat =~ /\(import\b(?:(?!\n\s*\(import\b)[\s\S])*?\(func\b(?:(?!\n\s*\(import\b)[\s\S])*?\(type\s+(\d+)\b/sg) {
+            exit 0 if $gc_func_types{$1};
+        }
+        exit 1;
+    ' "$file"
+}
+
 check_common_artifacts() {
     local file
     : > "$evidence_dir/artifact-check.log"
@@ -203,14 +219,21 @@ check_common_artifacts() {
             *.wasm|*.component.wasm)
                 local printed="$evidence_dir/$(basename "$file").printed.wat"
                 [[ -x "$WASM_TOOLS_BIN" ]] || { printf 'missing pinned wasm-tools: %s\n' "$WASM_TOOLS_BIN" >&2; return 1; }
-                "$WASM_TOOLS_BIN" print "$file" -o "$printed" 2>/dev/null || "$TOOLCHAIN_BIN" component-wit "$file" > "$printed"
-                if rg -U -P -n -q '\(import[\s\S]*?\(ref|\(import[\s\S]*?\(type\s+\$' "$printed"; then
+                if ! "$WASM_TOOLS_BIN" print "$file" -o "$printed" 2>/dev/null; then
+                    printf 'wasm-tools print failed for binary artifact: %s\n' "$file" >&2
+                    return 1
+                fi
+                [[ -s "$printed" ]] || {
+                    printf 'wasm-tools print produced no output for binary artifact: %s\n' "$file" >&2
+                    return 1
+                }
+                if has_forbidden_canonical_import_ref "$printed"; then
                     printf 'GC reference in binary canonical import artifact: %s\n' "$file" >&2
                     return 1
                 fi
                 ;;
             *.wat|*.core.wat)
-                if rg -U -P -n -q '\(import[\s\S]*?\(ref|\(import[\s\S]*?\(type\s+\$' "$file"; then
+                if has_forbidden_canonical_import_ref "$file"; then
                     printf 'GC reference in canonical import artifact: %s\n' "$file" >&2
                     return 1
                 fi
@@ -240,27 +263,110 @@ check_profile_artifacts() {
             ;;
         A)
             check_common_artifacts || return 1
-            local -a lifecycle_logs=("$evidence_dir"/g5a-*.log "$evidence_dir"/g5b-*.log)
             case "$row" in
                 future_stream_frames)
-                    rg -q 'ready|immediate-ready' "${lifecycle_logs[@]}"
-                    rg -q 'pending-polls=4' "${lifecycle_logs[@]}"
-                    rg -q 'parallel-calls=2' "${lifecycle_logs[@]}"
-                    rg -q 'external-wakes=4' "${lifecycle_logs[@]}"
-                    rg -q 'completions=4' "${lifecycle_logs[@]}"
-                    rg -q 'repeat' "${lifecycle_logs[@]}"
+                    local future_frames_log="$evidence_dir/g5a-test_gc_async_frame_component.log"
+                    local future_equivalence_log="$evidence_dir/g5b-test_gc_async_frame_equivalence.log"
+                    [[ -f "$future_frames_log" && -f "$future_equivalence_log" ]] || {
+                        printf 'future lifecycle evidence is not bound to the selected row\n' >&2
+                        return 1
+                    }
+                    rg -q '^Do bounded async GC frame/table component passed: fixture=two-await-component\.do$' "$future_frames_log" || {
+                        printf 'future frame/table probe output is missing\n' >&2
+                        return 1
+                    }
+                    for lifecycle in ready pending wake completion repeat; do
+                        rg -q "^future lifecycle=$lifecycle$" "$future_frames_log" || {
+                            printf 'future lifecycle evidence missing case: %s\n' "$lifecycle" >&2
+                            return 1
+                        }
+                    done
+                    rg -q '^GC/linear Future frame equivalence passed rows=1 pending-polls=4 external-wakes=4 completions=4$' "$future_equivalence_log" || {
+                        printf 'future lifecycle counters are not exact\n' >&2
+                        return 1
+                    }
+                    for marker in 'Rust P3 two-await adapter passed' 'clock parallel-calls=2' 'clock pending-polls=4' 'clock external-wakes=4' 'clock completions=4'; do
+                        rg -q -- "$marker" "$future_equivalence_log" || {
+                            printf 'future probe contract missing marker: %s\n' "$marker" >&2
+                            return 1
+                        }
+                    done
                     ;;
                 resource_terminal_cleanup)
-                    rg -qi 'pending.*(passed|adapter)' "${lifecycle_logs[@]}"
-                    rg -qi 'error.*(passed|adapter)' "${lifecycle_logs[@]}"
-                    rg -q 'cancel|cancellation' "${lifecycle_logs[@]}"
-                    rg -q 'early-drop|early drop|pending future drops=1' "${lifecycle_logs[@]}"
-                    rg -q 'repeat' "${lifecycle_logs[@]}"
-                    rg -q 'request consumed=([12])' "${lifecycle_logs[@]}"
-                    rg -q 'response (create|drop)=([02])' "${lifecycle_logs[@]}"
-                    if rg -q 'response drop=1' "${lifecycle_logs[@]}"; then return 1; fi
-                    rg -q 'pending future drops=1' "${lifecycle_logs[@]}"
-                    rg -q 'table-empty=true' "${lifecycle_logs[@]}"
+                    local resource_terminal_log="$evidence_dir/g5a-test_gc_resource_terminal_cleanup.log"
+                    local resource_cancel_log="$evidence_dir/g5b-test_rust_resource_cancellation_shape.log"
+                    [[ -f "$resource_terminal_log" && -f "$resource_cancel_log" ]] || {
+                        printf 'resource lifecycle evidence is not bound to the selected row\n' >&2
+                        return 1
+                    }
+                    rg -q '^Do bounded GC resource terminal cleanup passed: fixture=async-resource-result-component\.do$' "$resource_terminal_log" || {
+                        printf 'resource lifecycle evidence missing GC frame/table markers\n' >&2
+                        return 1
+                    }
+                    for expected in \
+                        'resource lifecycle case=ready request consumed=2 response create=2 response drop=2 table-empty=true' \
+                        'resource lifecycle case=pending request consumed=2 response create=2 response drop=2 table-empty=true' \
+                        'resource lifecycle case=error request consumed=2 response create=0 response drop=0 table-empty=true' \
+                        'resource lifecycle case=repeat request consumed=4 response create=4 response drop=4 table-empty=true'; do
+                        rg -q -- "^$expected$" "$resource_terminal_log" || {
+                            printf 'resource lifecycle evidence missing exact case: %s\n' "$expected" >&2
+                            return 1
+                        }
+                    done
+                    rg -q '^request consumed=1$' "$resource_cancel_log" || {
+                        printf 'resource cancel lifecycle counters are not exact\n' >&2
+                        return 1
+                    }
+                    rg -q '^pending future drops=1$' "$resource_cancel_log" || {
+                        printf 'resource early-drop lifecycle counters are not exact\n' >&2
+                        return 1
+                    }
+                    rg -q '^response create=0$' "$resource_cancel_log" || {
+                        printf 'resource cancel response creation is not exact\n' >&2
+                        return 1
+                    }
+                    rg -q '^response drop=0$' "$resource_cancel_log" || {
+                        printf 'resource cancel response cleanup is not exact\n' >&2
+                        return 1
+                    }
+                    rg -q '^table-empty=true$' "$resource_cancel_log" || {
+                        printf 'resource terminal table state is not exact\n' >&2
+                        return 1
+                    }
+                    for expected in \
+                        'resource lifecycle case=cancel request consumed=1 pending future drops=1 response create=0 response drop=0 table-empty=true' \
+                        'resource lifecycle case=early-drop request consumed=1 pending future drops=1 response create=0 response drop=0 table-empty=true'; do
+                        rg -q -- "^$expected$" "$resource_cancel_log" || {
+                            printf 'resource lifecycle evidence missing exact case: %s\n' "$expected" >&2
+                            return 1
+                        }
+                    done
+                    local resource_probe resource_cancel
+                    resource_probe="examples/p3-runtime/test_rust_async_resource_result.sh"
+                    resource_cancel="$ROOT/examples/p3-runtime/test_rust_resource_cancellation_shape.sh"
+                    for marker in \
+                        'Rust P3 async resource Result pending adapter passed' \
+                        'Rust P3 async resource Result immediate adapter passed' \
+                        'Rust P3 async resource Result error adapter passed' \
+                        'request consumed=2' 'response create=2' 'response drop=2' \
+                        'response create=0' 'response drop=0'; do
+                        rg -q -- "$marker" "$ROOT/$resource_probe" || {
+                            printf 'resource probe contract missing marker: %s\n' "$marker" >&2
+                            return 1
+                        }
+                    done
+                    rg -q -- 'Rust P3 async resource cancellation probe passed' "$resource_cancel" || {
+                        printf 'resource cancellation probe contract is missing\n' >&2
+                        return 1
+                    }
+                    rg -q -- 'resource Result cancellation GC/linear equivalence passed' "$resource_cancel" || {
+                        printf 'resource repeat/equivalence contract is missing\n' >&2
+                        return 1
+                    }
+                    rg -q '^resource Result cancellation GC/linear equivalence passed$' "$resource_cancel_log" || {
+                        printf 'resource lifecycle equivalence evidence is missing\n' >&2
+                        return 1
+                    }
                     ;;
                 *)
                     printf 'A profile has no lifecycle schema: %s\n' "$row" >&2
@@ -285,10 +391,17 @@ run_self_tests() {
         printf 'self-test failed: positive H profile was rejected\n' >&2
         return 1
     fi
-    printf '(module (import "env" "f" (func (param (ref null $x)))) (type $x (struct)))\n' > "$test_dir/forbidden.wat"
+    printf '(module\n(type $x (struct))\n(import "env" "f" (func (param (ref null $x))))\n)\n' > "$test_dir/forbidden.wat"
     printf '%s\n' "$test_dir/forbidden.wat" > "$evidence_dir/artifact-paths.log"
     if check_profile_artifacts; then
         printf 'self-test failed: H forbidden ref was accepted\n' >&2
+        return 1
+    fi
+    "$TOOLCHAIN_BIN" parse-core "$test_dir/forbidden.wat" -o "$test_dir/forbidden.component.wasm"
+    rm -f -- "$test_dir/forbidden.wat"
+    printf '%s\n' "$test_dir/forbidden.component.wasm" > "$evidence_dir/artifact-paths.log"
+    if check_profile_artifacts; then
+        printf 'self-test failed: valid binary H forbidden ref was accepted\n' >&2
         return 1
     fi
     printf 'not-a-wasm-component\n' > "$test_dir/binary.component.wasm"
@@ -297,7 +410,8 @@ run_self_tests() {
         printf 'self-test failed: invalid binary H artifact was accepted\n' >&2
         return 1
     fi
-    rm -f -- "$test_dir/forbidden.wat" "$test_dir/binary.component.wasm"
+    rm -f -- "$test_dir/forbidden.wat" "$test_dir/forbidden.component.wasm" "$test_dir/binary.component.wasm" \
+        "$evidence_dir/forbidden.component.wasm.printed.wat"
     rm -f -- "$evidence_dir/artifact-paths.log"
     if check_common_artifacts; then
         printf '%s\n' "$test_dir/missing.wat" > "$evidence_dir/artifact-paths.log"
@@ -307,26 +421,69 @@ run_self_tests() {
         fi
     fi
     rm -f -- "$evidence_dir/artifact-paths.log"
-    printf 'ready pending-polls=4 parallel-calls=2 external-wakes=4 completions=4 repeat\n' > "$evidence_dir/g5a-self.log"
+    printf '%s\n' \
+        'Do bounded async GC frame/table component passed: fixture=two-await-component.do' \
+        'future lifecycle=ready' \
+        'future lifecycle=pending' \
+        'future lifecycle=wake' \
+        'future lifecycle=completion' \
+        'future lifecycle=repeat' > "$evidence_dir/g5a-test_gc_async_frame_component.log"
+    printf '%s\n' \
+        'Rust P3 two-await adapter passed' \
+        'clock parallel-calls=2' \
+        'clock pending-polls=4' \
+        'clock external-wakes=4' \
+        'clock completions=4' \
+        'GC/linear Future frame equivalence passed rows=1 pending-polls=4 external-wakes=4 completions=4' > "$evidence_dir/g5b-test_gc_async_frame_equivalence.log"
     profile=A
     row=future_stream_frames
     if ! check_profile_artifacts; then
         printf 'self-test failed: positive A profile was rejected\n' >&2
         return 1
     fi
-    printf 'pending-polls=4\n' > "$evidence_dir/g5a-self.log"
+    printf 'Do bounded async GC frame/table component passed: fixture=two-await-component.do\n' > "$evidence_dir/g5a-test_gc_async_frame_component.log"
+    printf 'GC/linear Future frame equivalence passed rows=1 pending-polls=4 external-wakes=4 completions=4\n' > "$evidence_dir/g5b-test_gc_async_frame_equivalence.log"
     if check_profile_artifacts; then
         printf 'self-test failed: incomplete A lifecycle was accepted\n' >&2
         return 1
     fi
-    printf 'pending-polls=4 parallel-calls=2 external-wakes=4 completions=4 ready repeat\n' > "$evidence_dir/g5a-self.log"
+    printf '%s\n' \
+        'Do bounded GC resource terminal cleanup passed: fixture=async-resource-result-component.do' \
+        'resource lifecycle case=ready request consumed=2 response create=2 response drop=2 table-empty=true' \
+        'resource lifecycle case=pending request consumed=2 response create=2 response drop=2 table-empty=true' \
+        'resource lifecycle case=error request consumed=2 response create=0 response drop=0 table-empty=true' \
+        'resource lifecycle case=repeat request consumed=4 response create=4 response drop=4 table-empty=true' > "$evidence_dir/g5a-test_gc_resource_terminal_cleanup.log"
+    printf '%s\n' \
+        'Rust P3 async resource cancellation probe passed' \
+        'request consumed=1' \
+        'pending future drops=1' \
+        'response create=0' \
+        'response drop=0' \
+        'table-empty=true' \
+        'resource lifecycle case=cancel request consumed=1 pending future drops=1 response create=0 response drop=0 table-empty=true' \
+        'resource lifecycle case=early-drop request consumed=1 pending future drops=1 response create=0 response drop=0 table-empty=true' \
+        'resource Result cancellation GC/linear equivalence passed' > "$evidence_dir/g5b-test_rust_resource_cancellation_shape.log"
     row=resource_terminal_cleanup
-    printf 'pending adapter error adapter cancel early-drop repeat request consumed=1 pending future drops=1 response create=0 response drop=0 table-empty=true\n' > "$evidence_dir/g5b-self.log"
     if ! check_profile_artifacts; then
         printf 'self-test failed: positive resource A profile was rejected\n' >&2
         return 1
     fi
-    printf 'pending adapter error adapter cancel early-drop repeat request consumed=1 pending future drops=1 response create=0 response drop=1 table-empty=true\n' > "$evidence_dir/g5b-self.log"
+    printf '%s\n' \
+        'Do bounded GC resource terminal cleanup passed: fixture=async-resource-result-component.do' \
+        'resource lifecycle case=ready request consumed=2 response create=2 response drop=2 table-empty=true' \
+        'resource lifecycle case=pending request consumed=2 response create=2 response drop=2 table-empty=true' \
+        'resource lifecycle case=error request consumed=2 response create=0 response drop=0 table-empty=true' \
+        'resource lifecycle case=repeat request consumed=4 response create=4 response drop=4 table-empty=true' > "$evidence_dir/g5a-test_gc_resource_terminal_cleanup.log"
+    printf '%s\n' \
+        'Rust P3 async resource cancellation probe passed' \
+        'request consumed=1' \
+        'pending future drops=1' \
+        'response create=0' \
+        'response drop=1' \
+        'resource lifecycle case=cancel request consumed=1 pending future drops=1 response create=0 response drop=1 table-empty=true' \
+        'resource lifecycle case=early-drop request consumed=1 pending future drops=1 response create=0 response drop=0 table-empty=true' \
+        'table-empty=true' \
+        'resource Result cancellation GC/linear equivalence passed' > "$evidence_dir/g5b-test_rust_resource_cancellation_shape.log"
     if check_profile_artifacts; then
         printf 'self-test failed: wrong cleanup count was accepted\n' >&2
         return 1
