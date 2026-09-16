@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, bail};
 use futures::channel::oneshot;
+use futures::future::{BoxFuture, Either, select};
 use std::future::Future;
 use std::path::Path;
 use std::pin::Pin;
@@ -31,6 +32,30 @@ enum Shape {
     LoopCountdownPreGuard,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LifecycleMode {
+    Ready,
+    Pending,
+    Error,
+    Cancel,
+    EarlyDrop,
+    Repeat,
+}
+
+impl LifecycleMode {
+    fn parse(value: &str) -> Result<Self> {
+        match value {
+            "--ready" => Ok(Self::Ready),
+            "--pending" => Ok(Self::Pending),
+            "--error" => Ok(Self::Error),
+            "--cancel" => Ok(Self::Cancel),
+            "--early-drop" => Ok(Self::EarlyDrop),
+            "--repeat" => Ok(Self::Repeat),
+            other => bail!("unknown lifecycle mode: {other}"),
+        }
+    }
+}
+
 fn map_wasmtime<T>(result: wasmtime::Result<T>) -> Result<T> {
     result.map_err(|error| anyhow::anyhow!("{error}"))
 }
@@ -41,12 +66,38 @@ struct Stats {
     pending_polls: u32,
     external_wakes: u32,
     completions: u32,
+    host_errors: u32,
 }
 
 struct ClockWait {
     stats: Arc<Mutex<Stats>>,
     completion: oneshot::Receiver<()>,
     pending_recorded: bool,
+}
+
+struct CancelAfterHostCalls {
+    stats: Arc<Mutex<Stats>>,
+    required_calls: usize,
+}
+
+impl Future for CancelAfterHostCalls {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Self::Output> {
+        if self
+            .stats
+            .lock()
+            .expect("two-await lifecycle stats mutex poisoned")
+            .calls
+            .len()
+            >= self.required_calls
+        {
+            Poll::Ready(())
+        } else {
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
+    }
 }
 
 impl Future for ClockWait {
@@ -84,6 +135,22 @@ struct HostWake {
     completion: oneshot::Sender<()>,
 }
 
+struct ReadyHost {
+    stats: Arc<Mutex<Stats>>,
+}
+
+impl AccessorTask<()> for ReadyHost {
+    fn run(self, _accessor: &Accessor<()>) -> impl Future<Output = wasmtime::Result<()>> + Send {
+        async move {
+            self.stats
+                .lock()
+                .expect("two-await stats mutex poisoned")
+                .completions += 1;
+            Ok(())
+        }
+    }
+}
+
 impl AccessorTask<()> for HostWake {
     fn run(self, _accessor: &Accessor<()>) -> impl Future<Output = wasmtime::Result<()>> + Send {
         async move {
@@ -102,7 +169,18 @@ fn main() -> Result<()> {
     let component_path = args
         .next()
         .context("usage: do-p3-two-await-host-runner <component.wasm>")?;
-    let shape = match args.next().as_deref() {
+    let mode = args.next();
+    let lifecycle = mode
+        .as_deref()
+        .filter(|value| {
+            value.starts_with("--")
+                && !value.starts_with("--three-await")
+                && !value.starts_with("--if-")
+                && !value.starts_with("--loop-")
+        })
+        .map(LifecycleMode::parse)
+        .transpose()?;
+    let shape = match mode.as_deref() {
         None => Shape::TwoAwait,
         Some("--three-await") => Shape::ThreeAwait,
         Some("--if-branch") => Shape::IfBranch,
@@ -112,8 +190,18 @@ fn main() -> Result<()> {
         Some("--loop-countdown-parameter-add") => Shape::LoopCountdownParameterAdd,
         Some("--loop-countdown-counter-argument") => Shape::LoopCountdownCounterArgument,
         Some("--loop-countdown-pre-guard") => Shape::LoopCountdownPreGuard,
+        Some(_value) if lifecycle.is_some() => {
+            if args.next().is_some() {
+                bail!("lifecycle mode accepts exactly one mode argument")
+            }
+            return futures::executor::block_on(run_with_mode(
+                Path::new(&component_path),
+                Shape::TwoAwait,
+                lifecycle,
+            ));
+        }
         Some(_) => bail!(
-            "usage: do-p3-two-await-host-runner <component.wasm> [--three-await|--if-branch|--if-join|--loop-countdown|--loop-countdown-parameter|--loop-countdown-parameter-add|--loop-countdown-counter-argument|--loop-countdown-pre-guard]"
+            "usage: do-p3-two-await-host-runner <component.wasm> [--three-await|--if-branch|--if-join|--loop-countdown|--loop-countdown-parameter|--loop-countdown-parameter-add|--loop-countdown-counter-argument|--loop-countdown-pre-guard|--ready|--pending|--error|--cancel|--early-drop|--repeat]"
         ),
     };
     if args.next().is_some() {
@@ -121,10 +209,14 @@ fn main() -> Result<()> {
             "usage: do-p3-two-await-host-runner <component.wasm> [--three-await|--if-branch|--if-join|--loop-countdown|--loop-countdown-parameter|--loop-countdown-parameter-add|--loop-countdown-counter-argument|--loop-countdown-pre-guard]"
         );
     }
-    futures::executor::block_on(run(Path::new(&component_path), shape))
+    futures::executor::block_on(run_with_mode(Path::new(&component_path), shape, None))
 }
 
-async fn run(component_path: &Path, shape: Shape) -> Result<()> {
+async fn run_with_mode(
+    component_path: &Path,
+    shape: Shape,
+    lifecycle: Option<LifecycleMode>,
+) -> Result<()> {
     let mut config = Config::new();
     config.wasm_component_model(true);
     config.wasm_component_model_async(true);
@@ -138,15 +230,53 @@ async fn run(component_path: &Path, shape: Shape) -> Result<()> {
     let stats = Arc::new(Mutex::new(Stats::default()));
     let mut linker = Linker::new(&engine);
     let mut clock = map_wasmtime(linker.instance(CLOCK_INSTANCE))?;
+    let lifecycle_mode = lifecycle;
 
     let wait_for_stats = Arc::clone(&stats);
-    map_wasmtime(
-        clock.func_wrap_concurrent("wait-for", move |accessor, (deadline,): (u64,)| {
+    map_wasmtime(clock.func_wrap_concurrent(
+        "wait-for",
+        move |accessor, (deadline,): (u64,)| -> BoxFuture<'_, wasmtime::Result<()>> {
             let mut stats = wait_for_stats
                 .lock()
                 .expect("two-await stats mutex poisoned");
             stats.calls.push(("wait-for", deadline));
             drop(stats);
+            match lifecycle_mode {
+                Some(LifecycleMode::Ready) => {
+                    let host_event = accessor.spawn(ReadyHost {
+                        stats: Arc::clone(&wait_for_stats),
+                    });
+                    return Box::pin(async move {
+                        host_event?;
+                        Ok(())
+                    });
+                }
+                Some(LifecycleMode::Error) => {
+                    wait_for_stats
+                        .lock()
+                        .expect("two-await stats mutex poisoned")
+                        .host_errors += 1;
+                    return Box::pin(async {
+                        Err(wasmtime::Error::msg("two-await lifecycle host error"))
+                    });
+                }
+                _ => {}
+            }
+            if matches!(
+                lifecycle_mode,
+                Some(LifecycleMode::Cancel | LifecycleMode::EarlyDrop)
+            ) {
+                let (keep_alive, completion) = oneshot::channel();
+                let wait = ClockWait {
+                    stats: Arc::clone(&wait_for_stats),
+                    completion,
+                    pending_recorded: false,
+                };
+                return Box::pin(async move {
+                    let _keep_alive = keep_alive;
+                    wait.await
+                });
+            }
             let (completion_sender, completion) = oneshot::channel();
             let host_event = accessor.spawn(HostWake {
                 stats: Arc::clone(&wait_for_stats),
@@ -161,18 +291,54 @@ async fn run(component_path: &Path, shape: Shape) -> Result<()> {
                 host_event?;
                 wait.await
             })
-        }),
-    )?;
+        },
+    ))?;
 
     let wait_until_stats = Arc::clone(&stats);
     map_wasmtime(clock.func_wrap_concurrent(
         "wait-until",
-        move |accessor, (deadline,): (u64,)| {
+        move |accessor, (deadline,): (u64,)| -> BoxFuture<'_, wasmtime::Result<()>> {
             let mut stats = wait_until_stats
                 .lock()
                 .expect("two-await stats mutex poisoned");
             stats.calls.push(("wait-until", deadline));
             drop(stats);
+            match lifecycle_mode {
+                Some(LifecycleMode::Ready) => {
+                    let host_event = accessor.spawn(ReadyHost {
+                        stats: Arc::clone(&wait_until_stats),
+                    });
+                    return Box::pin(async move {
+                        host_event?;
+                        Ok(())
+                    });
+                }
+                Some(LifecycleMode::Error) => {
+                    wait_until_stats
+                        .lock()
+                        .expect("two-await stats mutex poisoned")
+                        .host_errors += 1;
+                    return Box::pin(async {
+                        Err(wasmtime::Error::msg("two-await lifecycle host error"))
+                    });
+                }
+                _ => {}
+            }
+            if matches!(
+                lifecycle_mode,
+                Some(LifecycleMode::Cancel | LifecycleMode::EarlyDrop)
+            ) {
+                let (keep_alive, completion) = oneshot::channel();
+                let wait = ClockWait {
+                    stats: Arc::clone(&wait_until_stats),
+                    completion,
+                    pending_recorded: false,
+                };
+                return Box::pin(async move {
+                    let _keep_alive = keep_alive;
+                    wait.await
+                });
+            }
             let (completion_sender, completion) = oneshot::channel();
             let host_event = accessor.spawn(HostWake {
                 stats: Arc::clone(&wait_until_stats),
@@ -201,6 +367,190 @@ async fn run(component_path: &Path, shape: Shape) -> Result<()> {
         Shape::LoopCountdownPreGuard => (LOOP_PRE_GUARD_FIRST, LOOP_PRE_GUARD_SECOND),
         _ => (FIRST_DEADLINE, SECOND_DEADLINE),
     };
+    if let Some(mode) = lifecycle {
+        match mode {
+            LifecycleMode::Ready | LifecycleMode::Pending => {
+                if mode == LifecycleMode::Ready {
+                    let call = map_wasmtime(
+                        store
+                            .run_concurrent(async |accessor| {
+                                run.call_concurrent(&accessor, (first_input,)).await
+                            })
+                            .await,
+                    )?;
+                    map_wasmtime(call)?;
+                } else {
+                    let pair = map_wasmtime(
+                        store
+                            .run_concurrent(async |accessor| {
+                                futures::try_join!(
+                                    run.call_concurrent(&accessor, (first_input,)),
+                                    run.call_concurrent(&accessor, (second_input,)),
+                                )
+                                .map(|_| ())
+                            })
+                            .await,
+                    )?;
+                    map_wasmtime(pair)?;
+                }
+            }
+            LifecycleMode::Error => {
+                for input in [first_input, second_input] {
+                    let outer = store
+                        .run_concurrent(async |accessor| {
+                            run.call_concurrent(&accessor, (input,)).await
+                        })
+                        .await;
+                    if let Ok(inner) = outer {
+                        if inner.is_ok() {
+                            bail!("two-await lifecycle error unexpectedly completed");
+                        }
+                    }
+                }
+            }
+            LifecycleMode::Cancel => {
+                let call = store.run_concurrent(async |accessor| {
+                    run.call_concurrent(&accessor, (first_input,)).await
+                });
+                let cancel = CancelAfterHostCalls {
+                    stats: Arc::clone(&stats),
+                    required_calls: 1,
+                };
+                match select(Box::pin(call), Box::pin(cancel)).await {
+                    Either::Left((result, _cancel)) => {
+                        let result = map_wasmtime(result)?;
+                        map_wasmtime(result)?;
+                        bail!("two-await cancel mode completed before cancellation");
+                    }
+                    Either::Right((_cancel, pending_call)) => drop(pending_call),
+                }
+            }
+            LifecycleMode::EarlyDrop => {
+                let call = store.run_concurrent(async |accessor| {
+                    run.call_concurrent(&accessor, (first_input,)).await
+                });
+                drop(call);
+            }
+            LifecycleMode::Repeat => {
+                for _ in 0..2 {
+                    let pair = map_wasmtime(
+                        store
+                            .run_concurrent(async |accessor| {
+                                futures::try_join!(
+                                    run.call_concurrent(&accessor, (first_input,)),
+                                    run.call_concurrent(&accessor, (second_input,)),
+                                )
+                                .map(|_| ())
+                            })
+                            .await,
+                    )?;
+                    map_wasmtime(pair)?;
+                }
+            }
+        }
+
+        let stats = stats
+            .lock()
+            .expect("two-await lifecycle stats mutex poisoned");
+        match mode {
+            LifecycleMode::Ready => {
+                if stats.calls.len() != 2
+                    || stats.pending_polls != 0
+                    || stats.external_wakes != 0
+                    || stats.completions != 2
+                    || stats.host_errors != 0
+                {
+                    bail!(
+                        "ready lifecycle observations invalid: calls={} pending-polls={} external-wakes={} completions={} host-errors={}",
+                        stats.calls.len(),
+                        stats.pending_polls,
+                        stats.external_wakes,
+                        stats.completions,
+                        stats.host_errors,
+                    );
+                }
+                println!(
+                    "future lifecycle case=ready pending-polls=0 external-wakes=0 completions=2"
+                );
+            }
+            LifecycleMode::Pending => {
+                if stats.calls.len() != 4
+                    || stats.pending_polls != 4
+                    || stats.external_wakes != 4
+                    || stats.completions != 4
+                    || stats.host_errors != 0
+                {
+                    bail!(
+                        "pending lifecycle observations invalid: calls={} pending-polls={} external-wakes={} completions={} host-errors={}",
+                        stats.calls.len(),
+                        stats.pending_polls,
+                        stats.external_wakes,
+                        stats.completions,
+                        stats.host_errors,
+                    );
+                }
+                println!(
+                    "future lifecycle case=pending pending-polls=4 external-wakes=4 completions=4"
+                );
+            }
+            LifecycleMode::Error => {
+                if stats.host_errors != 1 || stats.completions != 0 {
+                    bail!(
+                        "error lifecycle observations invalid: host-errors={} completions={}",
+                        stats.host_errors,
+                        stats.completions,
+                    );
+                }
+                println!("future lifecycle case=error host-errors=1 completions=0");
+            }
+            LifecycleMode::Cancel => {
+                if stats.calls.len() != 1 || stats.pending_polls == 0 || stats.completions != 0 {
+                    bail!(
+                        "cancel lifecycle observations invalid: calls={} pending-polls={} completions={}",
+                        stats.calls.len(),
+                        stats.pending_polls,
+                        stats.completions,
+                    );
+                }
+                println!("future lifecycle case=cancel host-calls=1 cancelled=1");
+            }
+            LifecycleMode::EarlyDrop => {
+                if !stats.calls.is_empty()
+                    || stats.pending_polls != 0
+                    || stats.external_wakes != 0
+                    || stats.completions != 0
+                {
+                    bail!(
+                        "early-drop lifecycle observations invalid: calls={} pending-polls={} external-wakes={} completions={}",
+                        stats.calls.len(),
+                        stats.pending_polls,
+                        stats.external_wakes,
+                        stats.completions,
+                    );
+                }
+                println!("future lifecycle case=early-drop host-calls=0 cancelled=1");
+            }
+            LifecycleMode::Repeat => {
+                if stats.calls.len() != 8
+                    || stats.pending_polls != 8
+                    || stats.external_wakes != 8
+                    || stats.completions != 8
+                {
+                    bail!(
+                        "repeat lifecycle observations invalid: calls={} pending-polls={} external-wakes={} completions={}",
+                        stats.calls.len(),
+                        stats.pending_polls,
+                        stats.external_wakes,
+                        stats.completions,
+                    );
+                }
+                println!(
+                    "future lifecycle case=repeat runs=2 pending-polls=8 external-wakes=8 completions=8"
+                );
+            }
+        }
+        return Ok(());
+    }
     let call = map_wasmtime(
         store
             .run_concurrent(async |accessor| {

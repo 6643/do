@@ -103,4 +103,69 @@ for marker in \
   fi
 done
 
-printf 'GC/linear Future frame equivalence passed rows=1 pending-polls=4 external-wakes=4 completions=4\n'
+run_lifecycle_mode() {
+  local component="$1" mode="$2" expected="$3" output
+  output=$("$cargo_bin" run --quiet --manifest-path "$runner_manifest" \
+    --bin do-p3-two-await-host-runner -- "$component" "$mode")
+  if ! printf '%s\n' "$output" | grep -Fxq "$expected"; then
+    printf 'missing two-await lifecycle marker mode=%s expected=%s\n%s\n' \
+      "$mode" "$expected" "$output" >&2
+    exit 1
+  fi
+  printf '%s\n' "$output" | grep -Fx "$expected"
+}
+
+run_unsupported_ready_mode() {
+  local component="$1" backend="$2" output rc
+  set +e
+  output=$("$cargo_bin" run --quiet --manifest-path "$runner_manifest" \
+    --bin do-p3-two-await-host-runner -- "$component" --ready 2>&1)
+  rc=$?
+  set -e
+  if ((rc == 0)); then
+    printf 'two-await ready mode unexpectedly completed successfully\n%s\n' "$output" >&2
+    exit 1
+  fi
+  if ! printf '%s\n' "$output" | grep -Fq 'Error: error while executing at wasm backtrace:'; then
+    printf 'two-await ready mode failed for an unexpected reason (exit %d)\n%s\n' \
+      "$rc" "$output" >&2
+    exit 1
+  fi
+  # Keep the raw trap in the captured gate log, but compare only the stable
+  # boundary marker between GC and linear components.
+  printf '%s\n' "$output" >&2
+  printf 'future lifecycle case=ready status=unsupported-sync-completion backend=%s\n' "$backend"
+}
+
+for mode_expected in \
+  '--pending|future lifecycle case=pending pending-polls=4 external-wakes=4 completions=4' \
+  '--error|future lifecycle case=error host-errors=1 completions=0' \
+  '--cancel|future lifecycle case=cancel host-calls=1 cancelled=1' \
+  '--early-drop|future lifecycle case=early-drop host-calls=0 cancelled=1' \
+  '--repeat|future lifecycle case=repeat runs=2 pending-polls=8 external-wakes=8 completions=8'; do
+  mode=${mode_expected%%|*}
+  expected=${mode_expected#*|}
+  gc_lifecycle=$(run_lifecycle_mode "$gc_component" "$mode" "$expected")
+  linear_lifecycle=$(run_lifecycle_mode "$linear_component" "$mode" "$expected")
+  if [[ "$gc_lifecycle" != "$linear_lifecycle" ]]; then
+    printf 'GC/linear Future lifecycle mismatch mode=%s gc=%s linear=%s\n' \
+      "$mode" "$gc_lifecycle" "$linear_lifecycle" >&2
+    exit 1
+  fi
+  # Re-emit the exact observation after comparing both backends so the row
+  # evidence log contains the lifecycle record rather than only the final
+  # summary line.
+  printf '%s\n' "$gc_lifecycle" "$linear_lifecycle"
+done
+
+gc_ready=$(run_unsupported_ready_mode "$gc_component" gc)
+linear_ready=$(run_unsupported_ready_mode "$linear_component" linear)
+if [[ "$gc_ready" != 'future lifecycle case=ready status=unsupported-sync-completion backend=gc' || \
+  "$linear_ready" != 'future lifecycle case=ready status=unsupported-sync-completion backend=linear' ]]; then
+  printf 'GC/linear Future ready-boundary mismatch: gc=%s linear=%s\n' \
+    "$gc_ready" "$linear_ready" >&2
+  exit 1
+fi
+printf '%s\n' "$gc_ready" "$linear_ready"
+
+printf 'GC/linear Future frame equivalence passed rows=1 ready=unsupported-sync-completion pending-polls=4 external-wakes=4 completions=4\n'

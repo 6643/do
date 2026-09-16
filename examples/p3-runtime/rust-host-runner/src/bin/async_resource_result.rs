@@ -122,6 +122,8 @@ fn main() -> Result<()> {
 async fn run(component_path: &Path) -> Result<()> {
     let immediate = std::env::var_os("DO_P3_ASYNC_RESOURCE_IMMEDIATE").is_some();
     let error_mode = std::env::var_os("DO_P3_ASYNC_RESOURCE_ERROR").is_some();
+    let repeat = std::env::var_os("DO_P3_ASYNC_RESOURCE_REPEAT").is_some();
+    let run_count = if repeat { 2 } else { 1 };
     let mut config = Config::new();
     config.wasm_component_model(true);
     config.wasm_component_model_async(true);
@@ -239,67 +241,50 @@ async fn run(component_path: &Path) -> Result<()> {
             stats: Stats::default(),
         },
     );
-    let first_request = store.data_mut().table.push(Request)?;
-    let second_request = store.data_mut().table.push(Request)?;
     let instance = map_wasmtime(linker.instantiate_async(&mut store, &component).await)?;
     let run = map_wasmtime(instance.get_typed_func::<(Resource<Request>,), (
         std::result::Result<Resource<Response>, probe::resource_types::http::ErrorCode>,
     )>(&mut store, "run"))?;
 
-    let results = map_wasmtime(map_wasmtime(
-        store
-            .run_concurrent(async |accessor| {
-                futures::try_join!(
-                    run.call_concurrent(accessor, (first_request,)),
-                    run.call_concurrent(accessor, (second_request,)),
-                )
-            })
-            .await,
-    )?)?;
-    if error_mode {
+    for _ in 0..run_count {
+        let first_request = store.data_mut().table.push(Request)?;
+        let second_request = store.data_mut().table.push(Request)?;
+        let results = map_wasmtime(map_wasmtime(
+            store
+                .run_concurrent(async |accessor| {
+                    futures::try_join!(
+                        run.call_concurrent(accessor, (first_request,)),
+                        run.call_concurrent(accessor, (second_request,)),
+                    )
+                })
+                .await,
+        )?)?;
         for (result,) in [results.0, results.1] {
-            if result.is_ok() {
-                bail!("expected Err(failed), got Ok(response)");
+            if error_mode {
+                if result.is_ok() {
+                    bail!("expected Err(failed), got Ok(response)");
+                }
+                continue;
             }
+            let response =
+                result.map_err(|error| anyhow::anyhow!("expected Ok(response), got {error:?}"))?;
+            if !response.owned() {
+                bail!("expected returned response to be owned by the caller");
+            }
+            let _ = store.data_mut().table.delete(response)?;
+            store.data_mut().stats.response_dropped += 1;
         }
-        let stats = &store.data().stats;
-        if stats.request_consumed != 2
-            || stats.response_created != 0
-            || stats.response_dropped != 0
-            || !store.data().table.is_empty()
-        {
-            bail!(
-                "unexpected error stats: request-consumed={} response-created={} response-dropped={} table-empty={}",
-                stats.request_consumed,
-                stats.response_created,
-                stats.response_dropped,
-                store.data().table.is_empty(),
-            );
-        }
-        println!("Rust P3 async resource Result error adapter passed");
-        println!("request consumed=2");
-        println!("response create=0");
-        println!("response drop=0");
-        return Ok(());
-    }
-
-    for (result,) in [results.0, results.1] {
-        let response =
-            result.map_err(|error| anyhow::anyhow!("expected Ok(response), got {error:?}"))?;
-        if !response.owned() {
-            bail!("expected returned response to be owned by the caller");
-        }
-        let _ = store.data_mut().table.delete(response)?;
-        store.data_mut().stats.response_dropped += 1;
     }
 
     let task_stats = task_stats
         .lock()
         .expect("async resource stats mutex poisoned");
     let stats = &store.data().stats;
-    if stats.request_consumed != 2
-        || stats.response_created != 2
-        || stats.response_dropped != 2
+    let expected_requests = 2 * run_count;
+    let expected_responses = if error_mode { 0 } else { expected_requests };
+    if stats.request_consumed != expected_requests
+        || stats.response_created != expected_responses
+        || stats.response_dropped != expected_responses
         || !store.data().table.is_empty()
     {
         bail!(
@@ -309,17 +294,28 @@ async fn run(component_path: &Path) -> Result<()> {
             stats.response_dropped
         );
     }
-    let expected_task_stats = if immediate { (0, 0, 0) } else { (2, 2, 2) };
+    let expected_task_stats = if immediate || error_mode {
+        (0, 0, 0)
+    } else {
+        (expected_requests, expected_requests, expected_requests)
+    };
     if *task_stats != expected_task_stats {
         bail!("expected task stats {expected_task_stats:?}, got {task_stats:?}");
     }
 
-    println!(
-        "Rust P3 async resource Result {} adapter passed",
-        if immediate { "immediate" } else { "pending" }
-    );
-    println!("request consumed=2");
-    println!("response create=2");
-    println!("response drop=2");
+    let case_name = if error_mode {
+        "error"
+    } else if repeat {
+        "repeat"
+    } else if immediate {
+        "immediate"
+    } else {
+        "pending"
+    };
+    println!("Rust P3 async resource Result {case_name} adapter passed");
+    println!("request consumed={expected_requests}");
+    println!("response create={expected_responses}");
+    println!("response drop={expected_responses}");
+    println!("table-empty=true");
     Ok(())
 }

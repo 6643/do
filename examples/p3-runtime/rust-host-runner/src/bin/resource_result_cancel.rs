@@ -93,6 +93,7 @@ fn main() -> Result<()> {
 }
 
 async fn run(component_path: &Path) -> Result<()> {
+    let early_drop = std::env::var_os("DO_P3_RESOURCE_EARLY_DROP").is_some();
     let mut config = Config::new();
     config.wasm_component_model(true);
     config.wasm_component_model_async(true);
@@ -156,6 +157,44 @@ async fn run(component_path: &Path) -> Result<()> {
     let instance = map_wasmtime(linker.instantiate_async(&mut store, &component).await)?;
     let cancel =
         map_wasmtime(instance.get_typed_func::<(Resource<Request>,), ()>(&mut store, "cancel"))?;
+    if early_drop {
+        let request_for_cleanup = Resource::<Request>::new_own(request.rep());
+        let call = store
+            .run_concurrent(async |accessor| cancel.call_concurrent(accessor, (request,)).await);
+        drop(call);
+        let _ = store.data_mut().table.delete(request_for_cleanup)?;
+        let host_stats = host_stats
+            .lock()
+            .expect("resource cancellation stats mutex poisoned");
+        let stats = &store.data().stats;
+        if stats.request_consumed != 0
+            || stats.response_created != 0
+            || stats.response_dropped != 0
+            || host_stats.pending_polls != 0
+            || host_stats.pending_drops != 0
+            || !store.data().table.is_empty()
+        {
+            bail!(
+                "unexpected resource early-drop stats: request-consumed={} response-created={} response-dropped={} pending-polls={} pending-future-drops={} table-empty={}",
+                stats.request_consumed,
+                stats.response_created,
+                stats.response_dropped,
+                host_stats.pending_polls,
+                host_stats.pending_drops,
+                store.data().table.is_empty(),
+            );
+        }
+        println!("request consumed=0");
+        println!("pending polls=0");
+        println!("pending future drops=0");
+        println!("response create=0");
+        println!("response drop=0");
+        println!("table-empty=true");
+        println!(
+            "resource lifecycle case=early-drop request consumed=0 pending polls=0 pending future drops=0 response create=0 response drop=0 table-empty=true"
+        );
+        return Ok(());
+    }
     map_wasmtime(map_wasmtime(
         store
             .run_concurrent(async |accessor| cancel.call_concurrent(accessor, (request,)).await)

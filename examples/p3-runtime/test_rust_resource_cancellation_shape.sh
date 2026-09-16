@@ -51,7 +51,7 @@ wasm_path="$tmp_dir/generated.wasm"
 embedded_path="$tmp_dir/generated.embedded.wasm"
 component_path="$tmp_dir/generated.component.wasm"
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
-  --p3-async-component "$fixture" --p3-wit-output "$wit_path" -o "$core_path"
+  --p3-async-component "$fixture" --p3-wit-output "$wit_path" -o "$core_path" >/dev/null
 "$toolchain_bin" parse-core "$core_path" -o "$wasm_path"
 "$toolchain_bin" embed-component "$wit_path" "$wasm_path" \
   async-resource-cancel-probe --features component-async -o "$embedded_path"
@@ -109,5 +109,47 @@ if [ "$generated_observation" != "$probe_observation" ]; then
 fi
 
 printf '%s\n' "$output"
+cancel_record=$(printf '%s\n' "$generated_observation" | paste -sd ' ' -)
+probe_cancel_record=$(printf '%s\n' "$probe_observation" | paste -sd ' ' -)
+printf 'resource lifecycle case=cancel backend=gc %s\n' "$cancel_record"
+printf 'resource lifecycle case=cancel backend=linear %s\n' "$probe_cancel_record"
+printf 'resource lifecycle equivalence case=cancel passed\n'
 printf 'resource Result cancellation GC/linear equivalence passed\n'
 printf 'pinned resource Result cancellation runtime probe passed\n'
+
+check_early_output() {
+  local output=$1
+  for marker in \
+    'request consumed=0' \
+    'pending polls=0' \
+    'pending future drops=0' \
+    'response create=0' \
+    'response drop=0' \
+    'table-empty=true' \
+    'resource lifecycle case=early-drop request consumed=0 pending polls=0 pending future drops=0 response create=0 response drop=0 table-empty=true'; do
+    if ! printf '%s\n' "$output" | grep -Fxq "$marker"; then
+      printf 'missing resource early-drop lifecycle marker: %s\n%s\n' "$marker" "$output" >&2
+      exit 1
+    fi
+  done
+}
+
+early_output=$(DO_P3_RESOURCE_EARLY_DROP=1 "$cargo_bin" run --quiet --manifest-path "$runner_dir/Cargo.toml" \
+  --bin do-p3-resource-result-cancel-host-runner -- "$component_path")
+check_early_output "$early_output"
+early_probe_output=$(DO_P3_RESOURCE_EARLY_DROP=1 "$cargo_bin" run --quiet --manifest-path "$runner_dir/Cargo.toml" \
+  --bin do-p3-resource-result-cancel-host-runner -- "$tmp_dir/probe.component.wasm")
+check_early_output "$early_probe_output"
+generated_early_observation=$(extract_observation "$early_output")
+probe_early_observation=$(extract_observation "$early_probe_output")
+if [ "$generated_early_observation" != "$probe_early_observation" ]; then
+  printf 'resource early-drop GC/linear observations diverged\n' >&2
+  diff -u <(printf '%s\n' "$generated_early_observation") \
+    <(printf '%s\n' "$probe_early_observation") >&2 || true
+  exit 1
+fi
+early_record=$(printf '%s\n' "$generated_early_observation" | paste -sd ' ' -)
+early_probe_record=$(printf '%s\n' "$probe_early_observation" | paste -sd ' ' -)
+printf 'resource lifecycle case=early-drop backend=gc %s\n' "$early_record"
+printf 'resource lifecycle case=early-drop backend=linear %s\n' "$early_probe_record"
+printf 'resource lifecycle equivalence case=early-drop passed\n'
